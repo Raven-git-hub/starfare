@@ -1,0 +1,1466 @@
+{
+  "claimsSeed": 4242,
+  "generatedAt": "2026-07-17T05:19:40.972Z",
+  "seedFile": "data/seed.json",
+  "guilds": [
+    {
+      "id": "guild_01",
+      "name": "Rynthe Compact",
+      "color": {
+        "r": 212,
+        "g": 73,
+        "b": 73
+      }
+    },
+    {
+      "id": "guild_02",
+      "name": "Selvane Trust",
+      "color": {
+        "r": 212,
+        "g": 115,
+        "b": 73
+      }
+    },
+    {
+      "id": "guild_03",
+      "name": "Pelgrave Compact",
+      "color": {
+        "r": 212,
+        "g": 157,
+        "b": 73
+      }
+    },
+    {
+      "id": "guild_04",
+      "name": "Ilyra Cartel",
+      "color": {
+        "r": 212,
+        "g": 198,
+        "b": 73
+      }
+    },
+    {
+      "id": "guild_05",
+      "name": "Thessic Consortium",
+      "color": {
+        "r": 185,
+        "g": 212,
+        "b": 73
+      }
+    },
+    {
+      "id": "guild_06",
+      "name": "Halcion Holdings",
+      "color": {
+        "r": 143,
+        "g": 212,
+        "b": 73
+      }
+    },
+    {
+      "id": "guild_07",
+      "name": "Axelis Group",
+      "color": {
+        "r": 101,
+        "g": 212,
+        "b": 73
+      }
+    },
+    {
+      "id": "guild_08",
+      "name": "Thessic Holdings",
+      "color": {
+        "r": 73,
+        "g": 212,
+        "b": 87
+      }
+    },
+    {
+      "id": "guild_09",
+      "name": "Ombrix Concern",
+      "color": {
+        "r": 73,
+        "g": 212,
+        "b": 129
+      }
+    },
+    {
+      "id": "guild_10",
+      "name": "Axelis Combine",
+      "color": {
+        "r": 73,
+        "g": 212,
+        "b": 171
+      }
+    },
+    {
+      "id": "guild_11",
+      "name": "Dracis Compact",
+      "color": {
+        "r": 73,
+        "g": 212,
+        "b": 212
+      }
+    },
+    {
+      "id": "guild_12",
+      "name": "Orun Concern",
+      "color": {
+        "r": 73,
+        "g": 171,
+        "b": 212
+      }
+    },
+    {
+      "id": "guild_13",
+      "name": "Baryx Cartel",
+      "color": {
+        "r": 73,
+        "g": 129,
+        "b": 212
+      }
+    },
+    {
+      "id": "guild_14",
+      "name": "Fenor Trust",
+      "color": {
+        "r": 73,
+        "g": 87,
+        "b": 212
+      }
+    },
+    {
+      "id": "guild_15",
+      "name": "Selvane Cartel",
+      "color": {
+        "r": 101,
+        "g": 73,
+        "b": 212
+      }
+    },
+    {
+      "id": "guild_16",
+      "name": "Orun Syndicate",
+      "color": {
+        "r": 143,
+        "g": 73,
+        "b": 212
+      }
+    },
+    {
+      "id": "guild_17",
+      "name": "Vantar Consortium",
+      "color": {
+        "r": 185,
+        "g": 73,
+        "b": 212
+      }
+    },
+    {
+      "id": "guild_18",
+      "name": "Novask Combine",
+      "color": {
+        "r": 212,
+        "g": 73,
+        "b": 198
+      }
+    },
+    {
+      "id": "guild_19",
+      "name": "Tharok Combine",
+      "color": {
+        "r": 212,
+        "g": 73,
+        "b": 157
+      }
+    },
+    {
+      "id": "guild_20",
+      "name": "Baryx Consortium",
+      "color": {
+        "r": 212,
+        "g": 73,
+        "b": 115
+      }
+    }
+  ],
+  "systemClaims": {
+    "sys_0712": "guild_01",
+    "sys_1027": "guild_01",
+    "sys_0468": "guild_01",
+    "sys_0001": "guild_01",
+    "sys_0323": "guild_01",
+    "sys_0420": "guild_01",
+    "sys_0587": "guild_01",
+    "sys_0694": "guild_01",
+    "sys_0254": "guild_02",
+    "sys_1160": "guild_02",
+    "sys_0582": "guild_02",
+    "sys_1178": "guild_02",
+    "sys_0659": "guild_02",
+    "sys_0589": "guild_02",
+    "sys_0559": "guild_02",
+    "sys_0431": "guild_02",
+    "sys_1058": "guild_03",
+    "sys_0962": "guild_03",
+    "sys_1329": "guild_04",
+    "sys_0453": "guild_04",
+    "sys_0907": "guild_04",
+    "sys_1150": "guild_05",
+    "sys_1259": "guild_05",
+    "sys_0677": "guild_06",
+    "sys_0110": "guild_06",
+    "sys_1140": "guild_06",
+    "sys_0339": "guild_06",
+    "sys_0718": "guild_06",
+    "sys_0551": "guild_06",
+    "sys_0248": "guild_07",
+    "sys_0650": "guild_07",
+    "sys_1158": "guild_07",
+    "sys_0464": "guild_07",
+    "sys_1301": "guild_07",
+    "sys_0493": "guild_07",
+    "sys_1298": "guild_08",
+    "sys_0040": "guild_08",
+    "sys_0690": "guild_08",
+    "sys_1268": "guild_08",
+    "sys_1217": "guild_09",
+    "sys_0604": "guild_09",
+    "sys_0571": "guild_09",
+    "sys_1195": "guild_09",
+    "sys_1370": "guild_09",
+    "sys_1119": "guild_09",
+    "sys_0605": "guild_09",
+    "sys_0674": "guild_10",
+    "sys_0168": "guild_10",
+    "sys_0610": "guild_10",
+    "sys_0269": "guild_10",
+    "sys_1157": "guild_11",
+    "sys_0709": "guild_11",
+    "sys_1248": "guild_11",
+    "sys_0602": "guild_11",
+    "sys_0376": "guild_11",
+    "sys_0516": "guild_11",
+    "sys_0574": "guild_12",
+    "sys_1115": "guild_12",
+    "sys_0680": "guild_12",
+    "sys_0760": "guild_12",
+    "sys_1166": "guild_12",
+    "sys_1151": "guild_12",
+    "sys_0373": "guild_13",
+    "sys_0350": "guild_13",
+    "sys_1010": "guild_13",
+    "sys_1376": "guild_13",
+    "sys_0173": "guild_13",
+    "sys_1246": "guild_13",
+    "sys_0859": "guild_14",
+    "sys_0841": "guild_14",
+    "sys_1095": "guild_14",
+    "sys_1207": "guild_15",
+    "sys_0447": "guild_15",
+    "sys_1102": "guild_15",
+    "sys_0475": "guild_15",
+    "sys_0480": "guild_15",
+    "sys_0303": "guild_15",
+    "sys_1428": "guild_15",
+    "sys_0569": "guild_15",
+    "sys_0731": "guild_15",
+    "sys_0809": "guild_16",
+    "sys_0154": "guild_16",
+    "sys_0317": "guild_16",
+    "sys_0845": "guild_16",
+    "sys_0220": "guild_17",
+    "sys_0523": "guild_17",
+    "sys_0606": "guild_17",
+    "sys_0030": "guild_17",
+    "sys_0086": "guild_17",
+    "sys_0004": "guild_17",
+    "sys_0321": "guild_17",
+    "sys_0387": "guild_17",
+    "sys_0562": "guild_17",
+    "sys_0424": "guild_18",
+    "sys_1190": "guild_18",
+    "sys_0060": "guild_19",
+    "sys_0672": "guild_19",
+    "sys_0739": "guild_19",
+    "sys_0406": "guild_19",
+    "sys_0545": "guild_19",
+    "sys_1219": "guild_19",
+    "sys_1029": "guild_19",
+    "sys_0175": "guild_20",
+    "sys_1256": "guild_20",
+    "sys_0734": "guild_20",
+    "sys_0108": "guild_20",
+    "sys_1374": "guild_20",
+    "sys_1000": "guild_20",
+    "sys_1077": "guild_20"
+  },
+  "guildOutposts": [
+    {
+      "id": "gop_1",
+      "guildId": "guild_01",
+      "coords": {
+        "q": 109,
+        "r": -108
+      },
+      "name": "Rynthe Waypoint 1"
+    },
+    {
+      "id": "gop_2",
+      "guildId": "guild_01",
+      "coords": {
+        "q": 116,
+        "r": -117
+      },
+      "name": "Rynthe Waypoint 2"
+    },
+    {
+      "id": "gop_3",
+      "guildId": "guild_01",
+      "coords": {
+        "q": 116,
+        "r": -120
+      },
+      "name": "Rynthe Waypoint 3"
+    },
+    {
+      "id": "gop_4",
+      "guildId": "guild_01",
+      "coords": {
+        "q": 120,
+        "r": -119
+      },
+      "name": "Rynthe Waypoint 4"
+    },
+    {
+      "id": "gop_5",
+      "guildId": "guild_02",
+      "coords": {
+        "q": -107,
+        "r": 25
+      },
+      "name": "Selvane Waypoint 1"
+    },
+    {
+      "id": "gop_6",
+      "guildId": "guild_02",
+      "coords": {
+        "q": -104,
+        "r": 23
+      },
+      "name": "Selvane Waypoint 2"
+    },
+    {
+      "id": "gop_7",
+      "guildId": "guild_03",
+      "coords": {
+        "q": -77,
+        "r": 40
+      },
+      "name": "Pelgrave Waypoint 1"
+    },
+    {
+      "id": "gop_8",
+      "guildId": "guild_03",
+      "coords": {
+        "q": -76,
+        "r": 43
+      },
+      "name": "Pelgrave Waypoint 2"
+    },
+    {
+      "id": "gop_9",
+      "guildId": "guild_03",
+      "coords": {
+        "q": -64,
+        "r": 34
+      },
+      "name": "Pelgrave Waypoint 3"
+    },
+    {
+      "id": "gop_10",
+      "guildId": "guild_03",
+      "coords": {
+        "q": -67,
+        "r": 42
+      },
+      "name": "Pelgrave Waypoint 4"
+    },
+    {
+      "id": "gop_11",
+      "guildId": "guild_03",
+      "coords": {
+        "q": -65,
+        "r": 35
+      },
+      "name": "Pelgrave Waypoint 5"
+    },
+    {
+      "id": "gop_12",
+      "guildId": "guild_06",
+      "coords": {
+        "q": 2,
+        "r": -70
+      },
+      "name": "Halcion Waypoint 1"
+    },
+    {
+      "id": "gop_13",
+      "guildId": "guild_06",
+      "coords": {
+        "q": -8,
+        "r": -67
+      },
+      "name": "Halcion Waypoint 2"
+    },
+    {
+      "id": "gop_14",
+      "guildId": "guild_06",
+      "coords": {
+        "q": -5,
+        "r": -70
+      },
+      "name": "Halcion Waypoint 3"
+    },
+    {
+      "id": "gop_15",
+      "guildId": "guild_07",
+      "coords": {
+        "q": 43,
+        "r": -149
+      },
+      "name": "Axelis Waypoint 1"
+    },
+    {
+      "id": "gop_16",
+      "guildId": "guild_07",
+      "coords": {
+        "q": 25,
+        "r": -141
+      },
+      "name": "Axelis Waypoint 2"
+    },
+    {
+      "id": "gop_17",
+      "guildId": "guild_07",
+      "coords": {
+        "q": 44,
+        "r": -147
+      },
+      "name": "Axelis Waypoint 3"
+    },
+    {
+      "id": "gop_18",
+      "guildId": "guild_07",
+      "coords": {
+        "q": 41,
+        "r": -150
+      },
+      "name": "Axelis Waypoint 4"
+    },
+    {
+      "id": "gop_19",
+      "guildId": "guild_08",
+      "coords": {
+        "q": -9,
+        "r": -13
+      },
+      "name": "Thessic Waypoint 1"
+    },
+    {
+      "id": "gop_20",
+      "guildId": "guild_08",
+      "coords": {
+        "q": -22,
+        "r": -6
+      },
+      "name": "Thessic Waypoint 2"
+    },
+    {
+      "id": "gop_21",
+      "guildId": "guild_08",
+      "coords": {
+        "q": -14,
+        "r": -5
+      },
+      "name": "Thessic Waypoint 3"
+    },
+    {
+      "id": "gop_22",
+      "guildId": "guild_08",
+      "coords": {
+        "q": -13,
+        "r": 2
+      },
+      "name": "Thessic Waypoint 4"
+    },
+    {
+      "id": "gop_23",
+      "guildId": "guild_09",
+      "coords": {
+        "q": 145,
+        "r": -167
+      },
+      "name": "Ombrix Waypoint 1"
+    },
+    {
+      "id": "gop_24",
+      "guildId": "guild_09",
+      "coords": {
+        "q": 148,
+        "r": -156
+      },
+      "name": "Ombrix Waypoint 2"
+    },
+    {
+      "id": "gop_25",
+      "guildId": "guild_09",
+      "coords": {
+        "q": 150,
+        "r": -158
+      },
+      "name": "Ombrix Waypoint 3"
+    },
+    {
+      "id": "gop_26",
+      "guildId": "guild_10",
+      "coords": {
+        "q": 34,
+        "r": 126
+      },
+      "name": "Axelis Waypoint 1"
+    },
+    {
+      "id": "gop_27",
+      "guildId": "guild_10",
+      "coords": {
+        "q": 47,
+        "r": 122
+      },
+      "name": "Axelis Waypoint 2"
+    },
+    {
+      "id": "gop_28",
+      "guildId": "guild_10",
+      "coords": {
+        "q": 48,
+        "r": 120
+      },
+      "name": "Axelis Waypoint 3"
+    },
+    {
+      "id": "gop_29",
+      "guildId": "guild_11",
+      "coords": {
+        "q": 127,
+        "r": 31
+      },
+      "name": "Dracis Waypoint 1"
+    },
+    {
+      "id": "gop_30",
+      "guildId": "guild_11",
+      "coords": {
+        "q": 116,
+        "r": 33
+      },
+      "name": "Dracis Waypoint 2"
+    },
+    {
+      "id": "gop_31",
+      "guildId": "guild_11",
+      "coords": {
+        "q": 115,
+        "r": 41
+      },
+      "name": "Dracis Waypoint 3"
+    },
+    {
+      "id": "gop_32",
+      "guildId": "guild_11",
+      "coords": {
+        "q": 126,
+        "r": 35
+      },
+      "name": "Dracis Waypoint 4"
+    },
+    {
+      "id": "gop_33",
+      "guildId": "guild_11",
+      "coords": {
+        "q": 126,
+        "r": 40
+      },
+      "name": "Dracis Waypoint 5"
+    },
+    {
+      "id": "gop_34",
+      "guildId": "guild_12",
+      "coords": {
+        "q": -53,
+        "r": 61
+      },
+      "name": "Orun Waypoint 1"
+    },
+    {
+      "id": "gop_35",
+      "guildId": "guild_12",
+      "coords": {
+        "q": -43,
+        "r": 70
+      },
+      "name": "Orun Waypoint 2"
+    },
+    {
+      "id": "gop_36",
+      "guildId": "guild_13",
+      "coords": {
+        "q": 21,
+        "r": 106
+      },
+      "name": "Baryx Waypoint 1"
+    },
+    {
+      "id": "gop_37",
+      "guildId": "guild_13",
+      "coords": {
+        "q": 17,
+        "r": 105
+      },
+      "name": "Baryx Waypoint 2"
+    },
+    {
+      "id": "gop_38",
+      "guildId": "guild_13",
+      "coords": {
+        "q": 24,
+        "r": 109
+      },
+      "name": "Baryx Waypoint 3"
+    },
+    {
+      "id": "gop_39",
+      "guildId": "guild_14",
+      "coords": {
+        "q": 174,
+        "r": -124
+      },
+      "name": "Fenor Waypoint 1"
+    },
+    {
+      "id": "gop_40",
+      "guildId": "guild_14",
+      "coords": {
+        "q": 170,
+        "r": -122
+      },
+      "name": "Fenor Waypoint 2"
+    },
+    {
+      "id": "gop_41",
+      "guildId": "guild_14",
+      "coords": {
+        "q": 178,
+        "r": -125
+      },
+      "name": "Fenor Waypoint 3"
+    },
+    {
+      "id": "gop_42",
+      "guildId": "guild_14",
+      "coords": {
+        "q": 171,
+        "r": -123
+      },
+      "name": "Fenor Waypoint 4"
+    },
+    {
+      "id": "gop_43",
+      "guildId": "guild_14",
+      "coords": {
+        "q": 172,
+        "r": -114
+      },
+      "name": "Fenor Waypoint 5"
+    },
+    {
+      "id": "gop_44",
+      "guildId": "guild_15",
+      "coords": {
+        "q": -178,
+        "r": 122
+      },
+      "name": "Selvane Waypoint 1"
+    },
+    {
+      "id": "gop_45",
+      "guildId": "guild_15",
+      "coords": {
+        "q": -176,
+        "r": 114
+      },
+      "name": "Selvane Waypoint 2"
+    },
+    {
+      "id": "gop_46",
+      "guildId": "guild_15",
+      "coords": {
+        "q": -172,
+        "r": 111
+      },
+      "name": "Selvane Waypoint 3"
+    },
+    {
+      "id": "gop_47",
+      "guildId": "guild_15",
+      "coords": {
+        "q": -175,
+        "r": 106
+      },
+      "name": "Selvane Waypoint 4"
+    },
+    {
+      "id": "gop_48",
+      "guildId": "guild_16",
+      "coords": {
+        "q": -58,
+        "r": 83
+      },
+      "name": "Orun Waypoint 1"
+    },
+    {
+      "id": "gop_49",
+      "guildId": "guild_16",
+      "coords": {
+        "q": -60,
+        "r": 85
+      },
+      "name": "Orun Waypoint 2"
+    },
+    {
+      "id": "gop_50",
+      "guildId": "guild_16",
+      "coords": {
+        "q": -55,
+        "r": 78
+      },
+      "name": "Orun Waypoint 3"
+    },
+    {
+      "id": "gop_51",
+      "guildId": "guild_18",
+      "coords": {
+        "q": 92,
+        "r": 39
+      },
+      "name": "Novask Waypoint 1"
+    },
+    {
+      "id": "gop_52",
+      "guildId": "guild_18",
+      "coords": {
+        "q": 96,
+        "r": 39
+      },
+      "name": "Novask Waypoint 2"
+    },
+    {
+      "id": "gop_53",
+      "guildId": "guild_19",
+      "coords": {
+        "q": -37,
+        "r": 14
+      },
+      "name": "Tharok Waypoint 1"
+    },
+    {
+      "id": "gop_54",
+      "guildId": "guild_19",
+      "coords": {
+        "q": -38,
+        "r": 6
+      },
+      "name": "Tharok Waypoint 2"
+    },
+    {
+      "id": "gop_55",
+      "guildId": "guild_19",
+      "coords": {
+        "q": -46,
+        "r": 8
+      },
+      "name": "Tharok Waypoint 3"
+    },
+    {
+      "id": "gop_56",
+      "guildId": "guild_19",
+      "coords": {
+        "q": -39,
+        "r": 10
+      },
+      "name": "Tharok Waypoint 4"
+    },
+    {
+      "id": "gop_57",
+      "guildId": "guild_20",
+      "coords": {
+        "q": 9,
+        "r": 62
+      },
+      "name": "Baryx Waypoint 1"
+    },
+    {
+      "id": "gop_58",
+      "guildId": "guild_20",
+      "coords": {
+        "q": 10,
+        "r": 63
+      },
+      "name": "Baryx Waypoint 2"
+    },
+    {
+      "id": "gop_59",
+      "guildId": "guild_20",
+      "coords": {
+        "q": 10,
+        "r": 61
+      },
+      "name": "Baryx Waypoint 3"
+    },
+    {
+      "id": "gop_60",
+      "guildId": "guild_20",
+      "coords": {
+        "q": 11,
+        "r": 56
+      },
+      "name": "Baryx Waypoint 4"
+    }
+  ],
+  "tollGates": [
+    {
+      "id": "gate_1",
+      "guildId": "guild_01",
+      "coords": {
+        "q": 120,
+        "r": -121
+      },
+      "name": "Rynthe Gate 1"
+    },
+    {
+      "id": "gate_2",
+      "guildId": "guild_01",
+      "coords": {
+        "q": 120,
+        "r": -126
+      },
+      "name": "Rynthe Gate 2"
+    },
+    {
+      "id": "gate_3",
+      "guildId": "guild_01",
+      "coords": {
+        "q": 123,
+        "r": -117
+      },
+      "name": "Rynthe Gate 3"
+    },
+    {
+      "id": "gate_4",
+      "guildId": "guild_01",
+      "coords": {
+        "q": 112,
+        "r": -117
+      },
+      "name": "Rynthe Gate 4"
+    },
+    {
+      "id": "gate_5",
+      "guildId": "guild_02",
+      "coords": {
+        "q": -107,
+        "r": 22
+      },
+      "name": "Selvane Gate 1"
+    },
+    {
+      "id": "gate_6",
+      "guildId": "guild_02",
+      "coords": {
+        "q": -100,
+        "r": 26
+      },
+      "name": "Selvane Gate 2"
+    },
+    {
+      "id": "gate_7",
+      "guildId": "guild_02",
+      "coords": {
+        "q": -120,
+        "r": 27
+      },
+      "name": "Selvane Gate 3"
+    },
+    {
+      "id": "gate_8",
+      "guildId": "guild_03",
+      "coords": {
+        "q": -75,
+        "r": 44
+      },
+      "name": "Pelgrave Gate 1"
+    },
+    {
+      "id": "gate_9",
+      "guildId": "guild_03",
+      "coords": {
+        "q": -83,
+        "r": 40
+      },
+      "name": "Pelgrave Gate 2"
+    },
+    {
+      "id": "gate_10",
+      "guildId": "guild_03",
+      "coords": {
+        "q": -63,
+        "r": 36
+      },
+      "name": "Pelgrave Gate 3"
+    },
+    {
+      "id": "gate_11",
+      "guildId": "guild_04",
+      "coords": {
+        "q": 73,
+        "r": 104
+      },
+      "name": "Ilyra Gate 1"
+    },
+    {
+      "id": "gate_12",
+      "guildId": "guild_05",
+      "coords": {
+        "q": 94,
+        "r": 30
+      },
+      "name": "Thessic Gate 1"
+    },
+    {
+      "id": "gate_13",
+      "guildId": "guild_05",
+      "coords": {
+        "q": 97,
+        "r": 32
+      },
+      "name": "Thessic Gate 2"
+    },
+    {
+      "id": "gate_14",
+      "guildId": "guild_05",
+      "coords": {
+        "q": 98,
+        "r": 36
+      },
+      "name": "Thessic Gate 3"
+    },
+    {
+      "id": "gate_15",
+      "guildId": "guild_05",
+      "coords": {
+        "q": 96,
+        "r": 28
+      },
+      "name": "Thessic Gate 4"
+    },
+    {
+      "id": "gate_16",
+      "guildId": "guild_06",
+      "coords": {
+        "q": 3,
+        "r": -67
+      },
+      "name": "Halcion Gate 1"
+    },
+    {
+      "id": "gate_17",
+      "guildId": "guild_07",
+      "coords": {
+        "q": 42,
+        "r": -149
+      },
+      "name": "Axelis Gate 1"
+    },
+    {
+      "id": "gate_18",
+      "guildId": "guild_08",
+      "coords": {
+        "q": -8,
+        "r": -22
+      },
+      "name": "Thessic Gate 1"
+    },
+    {
+      "id": "gate_19",
+      "guildId": "guild_09",
+      "coords": {
+        "q": 148,
+        "r": -163
+      },
+      "name": "Ombrix Gate 1"
+    },
+    {
+      "id": "gate_20",
+      "guildId": "guild_10",
+      "coords": {
+        "q": 45,
+        "r": 123
+      },
+      "name": "Axelis Gate 1"
+    },
+    {
+      "id": "gate_21",
+      "guildId": "guild_10",
+      "coords": {
+        "q": 38,
+        "r": 123
+      },
+      "name": "Axelis Gate 2"
+    },
+    {
+      "id": "gate_22",
+      "guildId": "guild_10",
+      "coords": {
+        "q": 48,
+        "r": 128
+      },
+      "name": "Axelis Gate 3"
+    },
+    {
+      "id": "gate_23",
+      "guildId": "guild_10",
+      "coords": {
+        "q": 47,
+        "r": 119
+      },
+      "name": "Axelis Gate 4"
+    },
+    {
+      "id": "gate_24",
+      "guildId": "guild_11",
+      "coords": {
+        "q": 124,
+        "r": 35
+      },
+      "name": "Dracis Gate 1"
+    },
+    {
+      "id": "gate_25",
+      "guildId": "guild_11",
+      "coords": {
+        "q": 131,
+        "r": 35
+      },
+      "name": "Dracis Gate 2"
+    },
+    {
+      "id": "gate_26",
+      "guildId": "guild_12",
+      "coords": {
+        "q": -46,
+        "r": 60
+      },
+      "name": "Orun Gate 1"
+    },
+    {
+      "id": "gate_27",
+      "guildId": "guild_12",
+      "coords": {
+        "q": -42,
+        "r": 68
+      },
+      "name": "Orun Gate 2"
+    },
+    {
+      "id": "gate_28",
+      "guildId": "guild_13",
+      "coords": {
+        "q": 21,
+        "r": 114
+      },
+      "name": "Baryx Gate 1"
+    },
+    {
+      "id": "gate_29",
+      "guildId": "guild_14",
+      "coords": {
+        "q": 172,
+        "r": -113
+      },
+      "name": "Fenor Gate 1"
+    },
+    {
+      "id": "gate_30",
+      "guildId": "guild_15",
+      "coords": {
+        "q": -175,
+        "r": 110
+      },
+      "name": "Selvane Gate 1"
+    },
+    {
+      "id": "gate_31",
+      "guildId": "guild_15",
+      "coords": {
+        "q": -183,
+        "r": 117
+      },
+      "name": "Selvane Gate 2"
+    },
+    {
+      "id": "gate_32",
+      "guildId": "guild_15",
+      "coords": {
+        "q": -186,
+        "r": 114
+      },
+      "name": "Selvane Gate 3"
+    },
+    {
+      "id": "gate_33",
+      "guildId": "guild_15",
+      "coords": {
+        "q": -175,
+        "r": 117
+      },
+      "name": "Selvane Gate 4"
+    },
+    {
+      "id": "gate_34",
+      "guildId": "guild_16",
+      "coords": {
+        "q": -57,
+        "r": 80
+      },
+      "name": "Orun Gate 1"
+    },
+    {
+      "id": "gate_35",
+      "guildId": "guild_16",
+      "coords": {
+        "q": -57,
+        "r": 73
+      },
+      "name": "Orun Gate 2"
+    },
+    {
+      "id": "gate_36",
+      "guildId": "guild_16",
+      "coords": {
+        "q": -50,
+        "r": 73
+      },
+      "name": "Orun Gate 3"
+    },
+    {
+      "id": "gate_37",
+      "guildId": "guild_17",
+      "coords": {
+        "q": -129,
+        "r": 164
+      },
+      "name": "Vantar Gate 1"
+    },
+    {
+      "id": "gate_38",
+      "guildId": "guild_17",
+      "coords": {
+        "q": -129,
+        "r": 154
+      },
+      "name": "Vantar Gate 2"
+    },
+    {
+      "id": "gate_39",
+      "guildId": "guild_18",
+      "coords": {
+        "q": 101,
+        "r": 36
+      },
+      "name": "Novask Gate 1"
+    },
+    {
+      "id": "gate_40",
+      "guildId": "guild_18",
+      "coords": {
+        "q": 88,
+        "r": 40
+      },
+      "name": "Novask Gate 2"
+    },
+    {
+      "id": "gate_41",
+      "guildId": "guild_18",
+      "coords": {
+        "q": 98,
+        "r": 33
+      },
+      "name": "Novask Gate 3"
+    },
+    {
+      "id": "gate_42",
+      "guildId": "guild_18",
+      "coords": {
+        "q": 90,
+        "r": 37
+      },
+      "name": "Novask Gate 4"
+    },
+    {
+      "id": "gate_43",
+      "guildId": "guild_19",
+      "coords": {
+        "q": -46,
+        "r": 10
+      },
+      "name": "Tharok Gate 1"
+    },
+    {
+      "id": "gate_44",
+      "guildId": "guild_19",
+      "coords": {
+        "q": -53,
+        "r": 13
+      },
+      "name": "Tharok Gate 2"
+    },
+    {
+      "id": "gate_45",
+      "guildId": "guild_19",
+      "coords": {
+        "q": -42,
+        "r": 18
+      },
+      "name": "Tharok Gate 3"
+    },
+    {
+      "id": "gate_46",
+      "guildId": "guild_20",
+      "coords": {
+        "q": 1,
+        "r": 65
+      },
+      "name": "Baryx Gate 1"
+    },
+    {
+      "id": "gate_47",
+      "guildId": "guild_20",
+      "coords": {
+        "q": 12,
+        "r": 55
+      },
+      "name": "Baryx Gate 2"
+    },
+    {
+      "id": "gate_48",
+      "guildId": "guild_20",
+      "coords": {
+        "q": 1,
+        "r": 60
+      },
+      "name": "Baryx Gate 3"
+    },
+    {
+      "id": "gate_49",
+      "guildId": "guild_20",
+      "coords": {
+        "q": 13,
+        "r": 61
+      },
+      "name": "Baryx Gate 4"
+    }
+  ],
+  "tollPaths": [
+    {
+      "id": "path_1",
+      "guildId": "guild_01",
+      "gateAId": "gate_1",
+      "gateBId": "gate_2"
+    },
+    {
+      "id": "path_2",
+      "guildId": "guild_01",
+      "gateAId": "gate_2",
+      "gateBId": "gate_4"
+    },
+    {
+      "id": "path_3",
+      "guildId": "guild_01",
+      "gateAId": "gate_4",
+      "gateBId": "gate_3"
+    },
+    {
+      "id": "path_4",
+      "guildId": "guild_02",
+      "gateAId": "gate_5",
+      "gateBId": "gate_6"
+    },
+    {
+      "id": "path_5",
+      "guildId": "guild_02",
+      "gateAId": "gate_6",
+      "gateBId": "gate_7"
+    },
+    {
+      "id": "path_6",
+      "guildId": "guild_03",
+      "gateAId": "gate_8",
+      "gateBId": "gate_9"
+    },
+    {
+      "id": "path_7",
+      "guildId": "guild_03",
+      "gateAId": "gate_9",
+      "gateBId": "gate_10"
+    },
+    {
+      "id": "path_8",
+      "guildId": "guild_05",
+      "gateAId": "gate_12",
+      "gateBId": "gate_15"
+    },
+    {
+      "id": "path_9",
+      "guildId": "guild_05",
+      "gateAId": "gate_15",
+      "gateBId": "gate_13"
+    },
+    {
+      "id": "path_10",
+      "guildId": "guild_05",
+      "gateAId": "gate_13",
+      "gateBId": "gate_14"
+    },
+    {
+      "id": "path_11",
+      "guildId": "guild_10",
+      "gateAId": "gate_20",
+      "gateBId": "gate_23"
+    },
+    {
+      "id": "path_12",
+      "guildId": "guild_10",
+      "gateAId": "gate_23",
+      "gateBId": "gate_21"
+    },
+    {
+      "id": "path_13",
+      "guildId": "guild_10",
+      "gateAId": "gate_21",
+      "gateBId": "gate_22"
+    },
+    {
+      "id": "path_14",
+      "guildId": "guild_11",
+      "gateAId": "gate_24",
+      "gateBId": "gate_25"
+    },
+    {
+      "id": "path_15",
+      "guildId": "guild_12",
+      "gateAId": "gate_26",
+      "gateBId": "gate_27"
+    },
+    {
+      "id": "path_16",
+      "guildId": "guild_15",
+      "gateAId": "gate_30",
+      "gateBId": "gate_33"
+    },
+    {
+      "id": "path_17",
+      "guildId": "guild_15",
+      "gateAId": "gate_33",
+      "gateBId": "gate_31"
+    },
+    {
+      "id": "path_18",
+      "guildId": "guild_15",
+      "gateAId": "gate_31",
+      "gateBId": "gate_32"
+    },
+    {
+      "id": "path_19",
+      "guildId": "guild_16",
+      "gateAId": "gate_34",
+      "gateBId": "gate_35"
+    },
+    {
+      "id": "path_20",
+      "guildId": "guild_16",
+      "gateAId": "gate_35",
+      "gateBId": "gate_36"
+    },
+    {
+      "id": "path_21",
+      "guildId": "guild_17",
+      "gateAId": "gate_37",
+      "gateBId": "gate_38"
+    },
+    {
+      "id": "path_22",
+      "guildId": "guild_18",
+      "gateAId": "gate_39",
+      "gateBId": "gate_41"
+    },
+    {
+      "id": "path_23",
+      "guildId": "guild_18",
+      "gateAId": "gate_41",
+      "gateBId": "gate_42"
+    },
+    {
+      "id": "path_24",
+      "guildId": "guild_18",
+      "gateAId": "gate_42",
+      "gateBId": "gate_40"
+    },
+    {
+      "id": "path_25",
+      "guildId": "guild_19",
+      "gateAId": "gate_43",
+      "gateBId": "gate_44"
+    },
+    {
+      "id": "path_26",
+      "guildId": "guild_19",
+      "gateAId": "gate_44",
+      "gateBId": "gate_45"
+    },
+    {
+      "id": "path_27",
+      "guildId": "guild_20",
+      "gateAId": "gate_46",
+      "gateBId": "gate_48"
+    },
+    {
+      "id": "path_28",
+      "guildId": "guild_20",
+      "gateAId": "gate_48",
+      "gateBId": "gate_47"
+    },
+    {
+      "id": "path_29",
+      "guildId": "guild_20",
+      "gateAId": "gate_47",
+      "gateBId": "gate_49"
+    }
+  ],
+  "stats": {
+    "totalGuilds": 20,
+    "totalClaimedSystems": 109,
+    "totalGuildOutposts": 60,
+    "totalTollGates": 49,
+    "totalTollPaths": 29
+  }
+}
