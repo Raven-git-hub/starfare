@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CHOAM // Galaxy Seed Viewer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+  :root {
+    --bg: #030408;
+    --line-bright: #2c3a52;
+    --text: #c7d3e6;
+    --text-dim: #5c6b85;
+    --system: #6fb7e8;
+    --outpost: #e8b93a;
+    --citadel: #f2ce5d;
+    --accent: #43d9c8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', monospace; overflow: hidden; }
+
+  #app { position: relative; width: 100vw; height: 100vh; }
+  canvas { position: absolute; top: 0; left: 0; display: block; cursor: grab; }
+  canvas.dragging { cursor: grabbing; }
+
+  .hud { position: absolute; pointer-events: none; color: var(--text); }
+
+  #topbar {
+    top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 22px; background: linear-gradient(to bottom, rgba(3,4,8,0.92), rgba(3,4,8,0));
+  }
+  #topbar .title { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 20px; letter-spacing: 3px; color: var(--accent); text-shadow: 0 0 12px rgba(67,217,200,0.35); }
+  #topbar .subtitle { font-size: 10px; letter-spacing: 2px; color: var(--text-dim); margin-top: 2px; }
+  #meta { text-align: right; font-size: 11px; color: var(--text-dim); line-height: 1.6; }
+  #meta span { color: var(--text); }
+
+  #hint {
+    position: absolute; top: 68px; left: 22px; font-size: 10px; color: var(--text-dim);
+    letter-spacing: 1px; background: rgba(8,10,16,0.7); border-left: 2px solid var(--line-bright); padding: 6px 10px;
+    line-height: 1.7; display: none;
+  }
+
+  #loadpanel {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    background: rgba(8,10,16,0.95); border: 1px solid var(--line-bright); border-radius: 3px;
+    padding: 28px 34px; pointer-events: auto; text-align: center; min-width: 340px;
+  }
+  #loadpanel .title { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: 2px; color: var(--accent); margin-bottom: 6px; }
+  #loadpanel .sub { font-size: 11px; color: var(--text-dim); margin-bottom: 18px; line-height: 1.6; }
+  #filebtn {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1.5px; background: rgba(67,217,200,0.12);
+    border: 1px solid var(--accent); color: var(--accent); padding: 11px 20px; border-radius: 2px; cursor: pointer;
+  }
+  #filebtn:hover { background: rgba(67,217,200,0.22); }
+  #fileinput { display: none; }
+  #loaderror { color: #e0525a; font-size: 11px; margin-top: 12px; display: none; }
+
+  #legend {
+    position: absolute; left: 22px; bottom: 22px; background: rgba(8,10,16,0.85);
+    border: 1px solid var(--line-bright); border-radius: 2px; padding: 14px 16px; pointer-events: auto; min-width: 190px;
+    display: none;
+  }
+  #legend .heading { font-family: 'Rajdhani', sans-serif; font-size: 11px; letter-spacing: 2px; color: var(--text-dim); margin-bottom: 10px; border-bottom: 1px solid #1c2637; padding-bottom: 6px; }
+  .legend-row { display: flex; align-items: center; gap: 9px; font-size: 11px; padding: 3px 0; }
+  .swatch { width: 12px; height: 12px; flex-shrink: 0; clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%); }
+
+  #controls { position: absolute; right: 22px; bottom: 22px; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: auto; }
+  #zoomreadout { font-size: 11px; color: var(--text-dim); background: rgba(8,10,16,0.85); border: 1px solid var(--line-bright); padding: 6px 10px; border-radius: 2px; letter-spacing: 1px; display: none; }
+  #zoomreadout span { color: var(--accent); }
+  button.hudbtn {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1.5px; background: rgba(8,10,16,0.92);
+    border: 1px solid var(--line-bright); color: var(--text); padding: 9px 14px; border-radius: 2px; cursor: pointer; display: none;
+  }
+  button.hudbtn:hover { border-color: var(--accent); color: var(--accent); }
+  button.hudbtn:disabled { opacity: 0.35; cursor: default; border-color: var(--line-bright); color: var(--text); }
+  #claimsbtn { display: none; }
+  #claimsinput { display: none; }
+
+  #syspanel {
+    position: absolute; right: 22px; top: 84px; width: 230px; background: rgba(8,10,16,0.9);
+    border: 1px solid var(--line-bright); border-radius: 2px; padding: 14px 16px; pointer-events: auto;
+    display: none; font-size: 11px; line-height: 1.7;
+  }
+  #syspanel .heading { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 1px; margin-bottom: 8px; color: var(--system); }
+  #syspanel .row span { color: var(--text-dim); }
+  #syspanel .row b { color: var(--text); font-weight: 500; }
+  #sp-details {
+    width: 100%; margin-top: 12px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1.5px;
+    background: rgba(67,217,200,0.10); border: 1px solid var(--accent); color: var(--accent);
+    padding: 9px 10px; border-radius: 2px; cursor: pointer;
+  }
+  #sp-details:hover { background: rgba(67,217,200,0.2); }
+  #sp-details:disabled { opacity: 0.4; cursor: default; background: rgba(255,255,255,0.04); border-color: var(--line-bright); color: var(--text-dim); }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="map"></canvas>
+
+  <div class="hud" id="topbar">
+    <div>
+      <div class="title">GALAXY SEED VIEWER</div>
+      <div class="subtitle">READS GENERATOR OUTPUT &middot; NO GAMEPLAY STATE</div>
+    </div>
+    <div id="meta"></div>
+  </div>
+
+  <div id="hint" class="hud">
+    DRAG &middot; ORBIT THE VIEW AROUND YOUR FOCUS POINT<br>
+    CLICK A HEX &middot; SET FOCUS &middot; SCROLL TO ZOOM IN<br>
+    CLICK OUTSIDE THE GALAXY &middot; RETURN FOCUS TO CORE
+  </div>
+
+  <div id="loadpanel">
+    <div class="title">LOAD GALAXY SEED</div>
+    <div class="sub">Select a seed.json produced by generate_seed.js.<br>Nothing is generated here — this only renders what's in the file.</div>
+    <button id="filebtn">CHOOSE SEED FILE</button>
+    <input type="file" id="fileinput" accept="application/json">
+    <div id="loaderror"></div>
+  </div>
+
+  <div id="legend" class="hud">
+    <div class="heading">SEED KEY</div>
+    <div class="legend-row"><div class="swatch" style="background:var(--system)"></div> Solar System</div>
+    <div class="legend-row"><div class="swatch" style="background:var(--accent)"></div> Your Guild (test)</div>
+    <div class="legend-row"><div class="swatch" style="background:var(--outpost)"></div> Syndicate Outpost</div>
+    <div class="legend-row"><div class="swatch" style="background:var(--citadel)"></div> The Citadel</div>
+  </div>
+
+  <div id="controls">
+    <div id="zoomreadout">ZOOM <span id="zoomval">1.0×</span></div>
+    <button class="hudbtn" id="claimsbtn">⌘ LOAD TEST CLAIMS</button>
+    <input type="file" id="claimsinput" accept="application/json">
+    <button class="hudbtn" id="recenter" disabled>⊙ RETURN TO CORE</button>
+  </div>
+
+  <div id="syspanel" class="hud" style="pointer-events:auto;">
+    <div class="heading" id="sp-name">—</div>
+    <div class="row"><span>Coords:</span> <b id="sp-coords">—</b></div>
+    <div class="row"><span>Type:</span> <b id="sp-type">—</b></div>
+    <div class="row"><span>Control:</span> <b id="sp-control">—</b></div>
+    <div class="row" id="sp-planets-row" style="display:none"><span>Planets:</span> <b id="sp-planets">—</b></div>
+    <button id="sp-details" disabled title="Placeholder — will open the solar system data guide">OPEN DETAILS</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  const canvas = document.getElementById('map');
+  const ctx = canvas.getContext('2d');
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  let galaxy = null;      // parsed seed JSON
+  let starDots = [];       // computed live, cosmetic only
+  const SQUASH = 0.52;
+
+  let angle = 0, zoom = 1;
+  let focus = { x: 0, y: 0 }, focusTarget = { x: 0, y: 0 };
+  let dragging = false, dragged = false, lastX = 0, lastY = 0;
+  let selected = null, selectedCoords = null, selectedType = null;
+  const VECTOR_ZOOM_THRESHOLD = 4; // below this, only marker dots show; at/above, real hex borders draw around the focus
+  let systemByKey = new Map(), outpostByKey = new Map(); // fast lookup for the live hex layer + click resolution
+
+  // ---------- placeholder guild, for testing "self" territory/labels ----------
+  // There is no live-state layer yet — ownership isn't part of the seed (see galaxy-state-model.md §1a).
+  // To test self-territory highlighting and self-labels ahead of that, list system ids here manually,
+  // e.g. TEST_PLAYER_GUILD.ownedSystemIds = ['sys_0001']. Empty by default: only the Syndicate exists today.
+  const TEST_PLAYER_GUILD = { ownedSystemIds: [] };
+
+  // optional test claims (generate_test_claims.js output) — NOT part of the real architecture,
+  // ownership is live state, never seed data (galaxy-state-model.md §1a). Purely for exercising rendering.
+  let claimsData = null;
+  let systemById = new Map(), guildById = new Map(), systemToGuild = new Map(), guildOutpostByKey = new Map(), gateByKey = new Map();
+
+  const COLOR_RGB = { system: [111,183,232], outpost: [232,185,58], citadel: [242,206,93], player: [67,217,200] };
+  function col(key, a) { const c = COLOR_RGB[key]; return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
+  function rgbaFrom(rgb, a) { return `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`; }
+
+  // all axial hexes within `radius` rings of `center` — used to expand a claim into its territory
+  function hexesInRadius(center, radius) {
+    const out = [];
+    for (let dq = -radius; dq <= radius; dq++) {
+      const rMin = Math.max(-radius, -dq - radius), rMax = Math.min(radius, -dq + radius);
+      for (let dr = rMin; dr <= rMax; dr++) out.push({ q: center.q + dq, r: center.r + dr });
+    }
+    return out;
+  }
+
+  // territory = Syndicate outposts (own hex) + any loaded guilds' claimed systems (their claimRadius)
+  // + guild outposts (own hex) + the placeholder guild's claims, drawn last so it wins overlaps.
+  // Returns "q,r" -> { r, g, b, label } — color AND owner name in one lookup, used by rendering, click, and the panel.
+  function computeTerritoryMap() {
+    const map = new Map();
+    galaxy.outposts.forEach(o => map.set(`${o.coords.q},${o.coords.r}`, { r:232, g:185, b:58, label: 'Syndicate' }));
+
+    if (claimsData) {
+      systemToGuild.forEach((guildId, systemId) => {
+        const sys = systemById.get(systemId);
+        const guild = guildById.get(guildId);
+        if (!sys || !guild) return;
+        hexesInRadius(sys.coords, sys.claimRadius || 1).forEach(h =>
+          map.set(`${h.q},${h.r}`, { r: guild.color.r, g: guild.color.g, b: guild.color.b, label: guild.name }));
+      });
+      claimsData.guildOutposts.forEach(o => {
+        const guild = guildById.get(o.guildId);
+        if (guild) map.set(`${o.coords.q},${o.coords.r}`, { r: guild.color.r, g: guild.color.g, b: guild.color.b, label: guild.name });
+      });
+      // toll gates — own hex only, marked isGate so rendering draws a hollow bold-ring "stargate"
+      // hex instead of a normal filled territory tile. Drawn after outposts so a gate always wins
+      // if a future data source ever put both on the same hex (generation already prevents that).
+      claimsData.tollGates.forEach(gt => {
+        const guild = guildById.get(gt.guildId);
+        if (guild) map.set(`${gt.coords.q},${gt.coords.r}`, { r: guild.color.r, g: guild.color.g, b: guild.color.b, label: guild.name, isGate: true });
+      });
+    }
+
+    TEST_PLAYER_GUILD.ownedSystemIds.forEach(id => {
+      const sys = systemById.get(id);
+      if (!sys) return;
+      hexesInRadius(sys.coords, sys.claimRadius || 1).forEach(h =>
+        map.set(`${h.q},${h.r}`, { r: 67, g: 217, b: 200, label: 'Your Guild (test)' }));
+    });
+
+    return map;
+  }
+
+  function hexCorners(cx, cy, hexSize) {
+    const pts = [];
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI / 180 * (60 * i);
+      pts.push({ x: cx + hexSize * Math.cos(a), y: cy + hexSize * Math.sin(a) });
+    }
+    return pts;
+  }
+
+  // diagonal-line label, ported from galaxy-map-hex.html's drawLabelBox
+  function drawLabelBox(p, lines, colorKey) {
+    const ang = -Math.PI / 4; // fixed diagonal, up-right
+    const lineLen = 28;
+    const ex = p.x + Math.cos(ang) * lineLen;
+    const ey = p.y + Math.sin(ang) * lineLen;
+    ctx.save();
+    ctx.strokeStyle = col(colorKey, 0.8);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+
+    const boxW = 150, boxH = 16 + lines.length * 13;
+    const bx = ex + 3, by = ey - boxH;
+    ctx.fillStyle = 'rgba(6,8,13,0.9)';
+    ctx.fillRect(bx, by, boxW, boxH);
+    ctx.strokeStyle = col(colorKey, 0.6);
+    ctx.strokeRect(bx, by, boxW, boxH);
+
+    ctx.textAlign = 'left';
+    lines.forEach((line, i) => {
+      if (i === 0) { ctx.font = "700 11px 'Rajdhani', sans-serif"; ctx.fillStyle = col(colorKey, 0.95); }
+      else { ctx.font = "10px 'JetBrains Mono', monospace"; ctx.fillStyle = 'rgba(199,211,230,0.85)'; }
+      ctx.fillText(line, bx + 8, by + 16 + i * 13);
+    });
+    ctx.restore();
+  }
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = window.innerWidth * dpr;
+    canvas.height = window.innerHeight * dpr;
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+  }
+
+  // ---------- must match generate_seed.js exactly ----------
+  function mulberry32(seed) {
+    return function () {
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function hexToPixel(q, r, hexSize) {
+    return { x: hexSize * 1.5 * q, y: hexSize * (Math.sqrt(3) / 2 * q + Math.sqrt(3) * r) };
+  }
+
+  // starfield is cosmetic-only and regenerated from the seed number — never stored
+  function genStarDots(seedNum) {
+    const rand = mulberry32(seedNum + 1); // offset so it doesn't correlate 1:1 with system placement
+    const p = galaxy.galaxyParams;
+    const ARMS = p.arms, twist = p.spiralTwist, R = p.radius;
+    const dots = [];
+    const N = 5200;
+    for (let i = 0; i < N; i++) {
+      const t = Math.pow(rand(), 0.55);
+      const r = t * R;
+      const arm = Math.floor(rand() * ARMS);
+      const jitter = (rand() - 0.5) * (0.55 - 0.35 * (r / R));
+      const theta = (Math.PI * 2 / ARMS) * arm + (r / R) * twist * Math.PI + jitter;
+      const x = Math.cos(theta) * r, y = Math.sin(theta) * r;
+      const core = r < 70;
+      dots.push({ x, y, r: core ? (0.8 + rand()*1.3) : (rand()*1.0+0.25), b: core ? 0.9 : (0.25+rand()*0.55) });
+    }
+    return dots;
+  }
+
+  // ---------- transform ----------
+  const cosA = () => Math.cos(angle), sinA = () => Math.sin(angle);
+  function worldToScreen(x, y) {
+    const dx = x - focus.x, dy = y - focus.y;
+    const ca = cosA(), sa = sinA();
+    const rx = dx * ca - dy * sa;
+    const ry = (dx * sa + dy * ca) * SQUASH;
+    return { x: rx * zoom + window.innerWidth / 2, y: ry * zoom + window.innerHeight / 2 };
+  }
+
+  function screenToWorld(sx, sy) {
+    const cx = (sx - window.innerWidth / 2) / zoom;
+    const cy = (sy - window.innerHeight / 2) / zoom / SQUASH;
+    const ca = cosA(), sa = sinA();
+    const dx = cx * ca + cy * sa;
+    const dy = -cx * sa + cy * ca;
+    return { x: dx + focus.x, y: dy + focus.y };
+  }
+  function pixelToAxial(x, y, hexSize) {
+    const q = (2/3 * x) / hexSize;
+    const r = (-1/3 * x + Math.sqrt(3)/3 * y) / hexSize;
+    return roundHex(q, r);
+  }
+  function roundHex(q, r) {
+    let x = q, z = r, y = -x - z;
+    let rx = Math.round(x), ry = Math.round(y), rz = Math.round(z);
+    const dx = Math.abs(rx-x), dy = Math.abs(ry-y), dz = Math.abs(rz-z);
+    if (dx > dy && dx > dz) rx = -ry - rz;
+    else if (dy > dz) ry = -rx - rz;
+    else rz = -rx - ry;
+    return { q: rx, r: rz };
+  }
+
+  function getMinZoom() {
+    const R = galaxy.galaxyParams.radius;
+    const fitX = (window.innerWidth / 2) / R;
+    const fitY = (window.innerHeight / 2) / (R * SQUASH);
+    return Math.min(fitX, fitY) * 0.92;
+  }
+  function getMaxZoom() {
+    return (Math.max(window.innerWidth, window.innerHeight) / (galaxy.galaxyParams.hexSize * 2)) * 5;
+  }
+
+  function render() {
+    if (!galaxy) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    ctx.fillStyle = '#030408';
+    ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+
+    const R = galaxy.galaxyParams.radius;
+    const originScr = worldToScreen(0, 0);
+    const exX = R * zoom, exY = R * zoom * SQUASH;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(originScr.x, originScr.y, exX, exY, 0, 0, Math.PI * 2);
+    ctx.clip();
+
+    // core glow
+    const grad = ctx.createRadialGradient(originScr.x, originScr.y, 0, originScr.x, originScr.y, 140*zoom);
+    grad.addColorStop(0, 'rgba(255,244,214,0.55)');
+    grad.addColorStop(0.4, 'rgba(255,214,150,0.18)');
+    grad.addColorStop(1, 'rgba(255,214,150,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(originScr.x - 300*zoom, originScr.y - 300*zoom, 600*zoom, 600*zoom);
+
+    // starfield
+    starDots.forEach(s => {
+      const p = worldToScreen(s.x, s.y);
+      if (p.x < -5 || p.x > window.innerWidth+5 || p.y < -5 || p.y > window.innerHeight+5) return;
+      ctx.globalAlpha = s.b;
+      ctx.fillStyle = '#eef4ff';
+      const rr = Math.max(0.5, s.r * Math.min(zoom, 1.6));
+      ctx.fillRect(p.x, p.y, rr, rr);
+    });
+    ctx.globalAlpha = 1;
+
+    // Citadel ring (radius only — not enumerated hex-by-hex, drawn as a disc)
+    const cit = galaxy.citadel;
+    const citCenter = worldToScreen(0, 0);
+    const citPxRadius = cit.radius * galaxy.galaxyParams.hexSize * 1.5 * zoom;
+    ctx.beginPath();
+    ctx.ellipse(citCenter.x, citCenter.y, citPxRadius, citPxRadius*SQUASH, 0, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(242,206,93,0.15)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(242,206,93,0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // territory — Syndicate outposts, guild-claimed systems, and guild outposts (if claims loaded).
+    // Runs at EVERY zoom (unlike the vector boundary layer below), so territory stays
+    // legible even zoomed out — a small filled hex per claimed tile.
+    const territoryMap = computeTerritoryMap();
+    const hexSizeT = galaxy.galaxyParams.hexSize;
+    territoryMap.forEach((owner, key) => {
+      const [q, r] = key.split(',').map(Number);
+      const p = hexToPixel(q, r, hexSizeT);
+      const scr = worldToScreen(p.x, p.y);
+      if (scr.x < -40 || scr.x > window.innerWidth+40 || scr.y < -40 || scr.y > window.innerHeight+40) return;
+      const corners = hexCorners(p.x, p.y, hexSizeT).map(c => worldToScreen(c.x, c.y));
+      ctx.beginPath();
+      corners.forEach((c, i) => i === 0 ? ctx.moveTo(c.x, c.y) : ctx.lineTo(c.x, c.y));
+      ctx.closePath();
+      if (owner.isGate) {
+        // toll gate — hollow "stargate" hex: little/no fill, bold guild-colored ring
+        ctx.fillStyle = rgbaFrom(owner, 0.08);
+        ctx.fill();
+        ctx.lineWidth = Math.min(3.2, 1.6 + zoom * 0.05);
+        ctx.strokeStyle = rgbaFrom(owner, 0.95);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = rgbaFrom(owner, 0.35);
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = rgbaFrom(owner, 0.6);
+        ctx.stroke();
+      }
+    });
+
+    // live hex layer — only the patch near the focus, computed on the fly since hexes
+    // aren't stored (§1a of the state model); this is the only place borders are drawn,
+    // exactly mirroring galaxy-map-hex.html's VECTOR_ZOOM_THRESHOLD behavior
+    if (zoom >= VECTOR_ZOOM_THRESHOLD) {
+      const hexSize = galaxy.galaxyParams.hexSize;
+      const citR = galaxy.citadel.radius;
+      const visibleR = (Math.hypot(window.innerWidth, window.innerHeight) / 2) / zoom / SQUASH + hexSize * 4;
+      const visibleR2 = visibleR * visibleR;
+      const centerAxial = pixelToAxial(focus.x, focus.y, hexSize);
+      const hexRange = Math.ceil(visibleR / (hexSize * 1.3)) + 2;
+
+      for (let dq = -hexRange; dq <= hexRange; dq++) {
+        for (let dr = -hexRange; dr <= hexRange; dr++) {
+          const q = centerAxial.q + dq, r = centerAxial.r + dr;
+          const p = hexToPixel(q, r, hexSize);
+          if (Math.hypot(p.x, p.y) > R) continue;              // outside the galaxy disc — no hex here
+          const fdx = p.x - focus.x, fdy = p.y - focus.y;
+          if (fdx * fdx + fdy * fdy > visibleR2) continue;      // outside the visible patch
+
+          const key = `${q},${r}`;
+          let fill, stroke = 'rgba(130,150,180,0.55)', lw = Math.min(2, 0.5 + zoom * 0.02);
+          const owner = territoryMap.get(key);
+          if (hexDistAxial({ q, r }, { q: 0, r: 0 }) <= citR) { fill = 'rgba(242,206,93,0.28)'; stroke = 'rgba(242,206,93,0.7)'; }
+          else if (owner && owner.isGate) { fill = rgbaFrom(owner, 0.08); stroke = rgbaFrom(owner, 0.95); lw = Math.min(3.5, 1.8 + zoom * 0.05); }
+          else if (owner) { fill = rgbaFrom(owner, 0.32); stroke = rgbaFrom(owner, 0.75); }
+          else if (systemByKey.has(key)) { fill = 'rgba(111,183,232,0.28)'; } // unclaimed system
+          else { fill = 'rgba(60,69,96,0.16)'; }
+
+          const corners = hexCorners(p.x, p.y, hexSize).map(c => worldToScreen(c.x, c.y));
+          ctx.beginPath();
+          corners.forEach((c, i) => i === 0 ? ctx.moveTo(c.x, c.y) : ctx.lineTo(c.x, c.y));
+          ctx.closePath();
+          ctx.fillStyle = fill;
+          ctx.fill();
+          ctx.lineWidth = lw;
+          ctx.strokeStyle = stroke;
+          ctx.stroke();
+        }
+      }
+    }
+
+    // toll paths — dashed line between two gates of the same guild, guild-colored. Drawn above 1×
+    // (same threshold as self-labels) and BEFORE markers, so gate/outpost diamonds sit on top of the line.
+    if (claimsData && zoom > 1) {
+      const gateById = new Map(claimsData.tollGates.map(gt => [gt.id, gt]));
+      claimsData.tollPaths.forEach(path => {
+        const a = gateById.get(path.gateAId), b = gateById.get(path.gateBId);
+        const guild = guildById.get(path.guildId);
+        if (!a || !b || !guild) return;
+        const pa = hexToPixel(a.coords.q, a.coords.r, galaxy.galaxyParams.hexSize);
+        const pb = hexToPixel(b.coords.q, b.coords.r, galaxy.galaxyParams.hexSize);
+        const scrA = worldToScreen(pa.x, pa.y), scrB = worldToScreen(pb.x, pb.y);
+        // skip if fully off-screen on both ends
+        const offA = scrA.x<-40||scrA.x>window.innerWidth+40||scrA.y<-40||scrA.y>window.innerHeight+40;
+        const offB = scrB.x<-40||scrB.x>window.innerWidth+40||scrB.y<-40||scrB.y>window.innerHeight+40;
+        if (offA && offB) return;
+        ctx.beginPath();
+        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = rgbaFrom(guild.color, 0.75);
+        ctx.lineWidth = Math.min(2, 0.8 + zoom * 0.03);
+        ctx.moveTo(scrA.x, scrA.y); ctx.lineTo(scrB.x, scrB.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      });
+    }
+
+    // systems
+    const sysRad = Math.min(3.4, 1.2 + zoom * 0.05);
+    galaxy.systems.forEach(sys => {
+      const p = hexToPixel(sys.coords.q, sys.coords.r, galaxy.galaxyParams.hexSize);
+      const scr = worldToScreen(p.x, p.y);
+      if (scr.x < -20 || scr.x > window.innerWidth+20 || scr.y < -20 || scr.y > window.innerHeight+20) return;
+      const guildId = systemToGuild.get(sys.id);
+      const guild = guildId ? guildById.get(guildId) : null;
+      ctx.beginPath();
+      ctx.arc(scr.x, scr.y, sysRad, 0, Math.PI*2);
+      ctx.fillStyle = selected===sys ? '#ffffff' : (guild ? rgbaFrom(guild.color, 0.95) : 'rgba(111,183,232,0.9)');
+      ctx.fill();
+    });
+
+    // outposts (diamond marker) — Syndicate (gold) always; guild outposts (if claims loaded) in their guild's color
+    galaxy.outposts.forEach(o => {
+      const p = hexToPixel(o.coords.q, o.coords.r, galaxy.galaxyParams.hexSize);
+      const scr = worldToScreen(p.x, p.y);
+      if (scr.x < -20 || scr.x > window.innerWidth+20 || scr.y < -20 || scr.y > window.innerHeight+20) return;
+      const s = Math.min(4.5, 1.8 + zoom*0.06);
+      ctx.beginPath();
+      ctx.moveTo(scr.x, scr.y-s); ctx.lineTo(scr.x+s, scr.y); ctx.lineTo(scr.x, scr.y+s); ctx.lineTo(scr.x-s, scr.y);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(232,185,58,0.9)';
+      ctx.fill();
+    });
+    if (claimsData) {
+      claimsData.guildOutposts.forEach(o => {
+        const p = hexToPixel(o.coords.q, o.coords.r, galaxy.galaxyParams.hexSize);
+        const scr = worldToScreen(p.x, p.y);
+        if (scr.x < -20 || scr.x > window.innerWidth+20 || scr.y < -20 || scr.y > window.innerHeight+20) return;
+        const guild = guildById.get(o.guildId);
+        const s = Math.min(4.5, 1.8 + zoom*0.06);
+        ctx.beginPath();
+        ctx.moveTo(scr.x, scr.y-s); ctx.lineTo(scr.x+s, scr.y); ctx.lineTo(scr.x, scr.y+s); ctx.lineTo(scr.x-s, scr.y);
+        ctx.closePath();
+        ctx.fillStyle = guild ? rgbaFrom(guild.color, 0.9) : 'rgba(200,200,200,0.9)';
+        ctx.fill();
+      });
+      // toll gates — SAME diamond marker as an outpost (deliberately identical); the hollow
+      // ring hex drawn above and the "Toll Gate" panel type are what actually distinguish them.
+      claimsData.tollGates.forEach(gt => {
+        const p = hexToPixel(gt.coords.q, gt.coords.r, galaxy.galaxyParams.hexSize);
+        const scr = worldToScreen(p.x, p.y);
+        if (scr.x < -20 || scr.x > window.innerWidth+20 || scr.y < -20 || scr.y > window.innerHeight+20) return;
+        const guild = guildById.get(gt.guildId);
+        const s = Math.min(4.5, 1.8 + zoom*0.06);
+        ctx.beginPath();
+        ctx.moveTo(scr.x, scr.y-s); ctx.lineTo(scr.x+s, scr.y); ctx.lineTo(scr.x, scr.y+s); ctx.lineTo(scr.x-s, scr.y);
+        ctx.closePath();
+        ctx.fillStyle = guild ? rgbaFrom(guild.color, 0.9) : 'rgba(200,200,200,0.9)';
+        ctx.fill();
+      });
+    }
+
+    // labels — diagonal line + name/detail box, ported from galaxy-map-hex.html.
+    // Syndicate outposts label at ALL zooms; the placeholder guild's own systems only above 1×.
+    // Everyone else (rivals, unclaimed) stays unlabeled, same as the original.
+    galaxy.outposts.forEach(o => {
+      const p = hexToPixel(o.coords.q, o.coords.r, galaxy.galaxyParams.hexSize);
+      const scr = worldToScreen(p.x, p.y);
+      if (scr.x < -150 || scr.x > window.innerWidth+150 || scr.y < -150 || scr.y > window.innerHeight+150) return;
+      drawLabelBox(scr, [o.name.toUpperCase(), 'SYNDICATE OUTPOST'], 'outpost');
+    });
+    if (zoom > 1) {
+      TEST_PLAYER_GUILD.ownedSystemIds.forEach(id => {
+        const sys = galaxy.systems.find(s => s.id === id);
+        if (!sys) return;
+        const p = hexToPixel(sys.coords.q, sys.coords.r, galaxy.galaxyParams.hexSize);
+        const scr = worldToScreen(p.x, p.y);
+        if (scr.x < -150 || scr.x > window.innerWidth+150 || scr.y < -150 || scr.y > window.innerHeight+150) return;
+        const planetLabel = sys.planets.length + (sys.planets.length===1 ? ' planet' : ' planets');
+        drawLabelBox(scr, [sys.name.toUpperCase(), planetLabel], 'player');
+      });
+    }
+
+    // selection outline — drawn live for exactly one hex, works for empty hexes too
+    if (selectedCoords) {
+      const p = hexToPixel(selectedCoords.q, selectedCoords.r, galaxy.galaxyParams.hexSize);
+      const corners = hexCorners(p.x, p.y, galaxy.galaxyParams.hexSize).map(c => worldToScreen(c.x, c.y));
+      ctx.beginPath();
+      corners.forEach((c, i) => i === 0 ? ctx.moveTo(c.x, c.y) : ctx.lineTo(c.x, c.y));
+      ctx.closePath();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.stroke();
+    }
+
+    ctx.restore();
+
+    ctx.beginPath();
+    ctx.ellipse(originScr.x, originScr.y, exX, exY, 0, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(90,110,150,0.28)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  function tick() {
+    focus.x += (focusTarget.x - focus.x) * 0.22;
+    focus.y += (focusTarget.y - focus.y) * 0.22;
+    render();
+    requestAnimationFrame(tick);
+  }
+
+  // ---------- interaction ----------
+  canvas.addEventListener('wheel', (e) => {
+    if (!galaxy) return;
+    e.preventDefault();
+    const factor = Math.exp(-e.deltaY * 0.0011);
+    zoom = Math.min(getMaxZoom(), Math.max(getMinZoom(), zoom * factor));
+    document.getElementById('zoomval').textContent = (zoom < 10 ? zoom.toFixed(1) : Math.round(zoom)) + '×';
+  }, { passive: false });
+
+  function screenAngle(sx, sy) { return Math.atan2(sy - window.innerHeight/2, sx - window.innerWidth/2); }
+
+  canvas.addEventListener('mousedown', (e) => {
+    if (!galaxy) return;
+    dragging = true; dragged = false; lastX = e.clientX; lastY = e.clientY;
+    focus.x = focusTarget.x; focus.y = focusTarget.y;
+    canvas.classList.add('dragging');
+  });
+  window.addEventListener('mouseup', (e) => {
+    canvas.classList.remove('dragging');
+    if (dragging && !dragged) handleClick(e);
+    dragging = false;
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (dragging) {
+      if (Math.abs(e.clientX-lastX)+Math.abs(e.clientY-lastY) > 3) dragged = true;
+      const a1 = screenAngle(lastX,lastY), a2 = screenAngle(e.clientX,e.clientY);
+      let d = a2-a1;
+      if (d > Math.PI) d -= Math.PI*2;
+      if (d < -Math.PI) d += Math.PI*2;
+      angle += d;
+      lastX = e.clientX; lastY = e.clientY;
+    }
+  });
+
+  function handleClick(e) {
+    const w = screenToWorld(e.clientX, e.clientY);
+    const hexSize = galaxy.galaxyParams.hexSize;
+    const R = galaxy.galaxyParams.radius;
+
+    // outside the galaxy disc entirely — behaves like clicking empty canvas in the original
+    if (Math.hypot(w.x, w.y) > R) {
+      selected = null; selectedCoords = null; selectedType = null;
+      focusTarget = { x: 0, y: 0 };
+      document.getElementById('syspanel').style.display = 'none';
+      document.getElementById('recenter').disabled = true;
+      return;
+    }
+
+    const ax = pixelToAxial(w.x, w.y, hexSize);
+    const territoryMap = computeTerritoryMap();
+
+    // what's at this hex? system > guild outpost > toll gate > Syndicate outpost > Citadel > claimed empty territory > empty
+    const key = `${ax.q},${ax.r}`;
+    let hit = systemByKey.get(key);
+    let type = 'system';
+    if (!hit) { hit = guildOutpostByKey.get(key); type = 'guildOutpost'; }
+    if (!hit) { hit = gateByKey.get(key); type = 'tollGate'; }
+    if (!hit) { hit = outpostByKey.get(key); type = 'outpost'; }
+    if (!hit && hexDistAxial(ax, {q:0,r:0}) <= galaxy.citadel.radius) { hit = galaxy.citadel; type = 'citadel'; }
+    if (!hit && territoryMap.has(key)) { hit = { coords: ax, owner: territoryMap.get(key) }; type = 'territory'; }
+    if (!hit) { hit = { coords: ax }; type = 'empty'; }
+
+    selected = hit; selectedCoords = ax; selectedType = type;
+    focusTarget = hexToPixel(ax.q, ax.r, hexSize);
+    showSysPanel(hit, type, ax);
+    document.getElementById('recenter').disabled = false;
+  }
+
+  function hexDistAxial(a, b) {
+    return (Math.abs(a.q-b.q) + Math.abs(a.q+a.r-b.q-b.r) + Math.abs(a.r-b.r)) / 2;
+  }
+
+  function showSysPanel(hit, type, ax) {
+    document.getElementById('syspanel').style.display = 'block';
+    const nameEl = document.getElementById('sp-name');
+    const typeEl = document.getElementById('sp-type');
+    const controlEl = document.getElementById('sp-control');
+    const planetsRow = document.getElementById('sp-planets-row');
+    const detailsBtn = document.getElementById('sp-details');
+
+    const coords = (type === 'empty' || type === 'territory') ? ax : hit.coords;
+    document.getElementById('sp-coords').textContent = `q${coords.q} r${coords.r}`;
+
+    if (type === 'system') {
+      nameEl.textContent = hit.name;
+      const guildId = systemToGuild.get(hit.id);
+      const guild = guildId ? guildById.get(guildId) : null;
+      nameEl.style.color = guild ? rgbaFrom(guild.color, 1) : 'var(--system)';
+      typeEl.textContent = 'Solar System';
+      controlEl.textContent = guild ? guild.name : 'Unclaimed';
+      planetsRow.style.display = 'block';
+      document.getElementById('sp-planets').textContent = hit.planets.length;
+      detailsBtn.disabled = false;
+    } else if (type === 'guildOutpost') {
+      const guild = guildById.get(hit.guildId);
+      nameEl.textContent = hit.name;
+      nameEl.style.color = guild ? rgbaFrom(guild.color, 1) : 'var(--text)';
+      typeEl.textContent = 'Guild Outpost';
+      controlEl.textContent = guild ? guild.name : 'Unknown guild';
+      planetsRow.style.display = 'none';
+      detailsBtn.disabled = true;
+    } else if (type === 'tollGate') {
+      const guild = guildById.get(hit.guildId);
+      nameEl.textContent = hit.name;
+      nameEl.style.color = guild ? rgbaFrom(guild.color, 1) : 'var(--text)';
+      typeEl.textContent = 'Toll Gate';
+      controlEl.textContent = guild ? guild.name : 'Unknown guild';
+      planetsRow.style.display = 'none';
+      detailsBtn.disabled = true;
+    } else if (type === 'outpost') {
+      nameEl.textContent = hit.name;
+      nameEl.style.color = 'var(--outpost)';
+      typeEl.textContent = 'Syndicate Outpost';
+      controlEl.textContent = 'Syndicate';
+      planetsRow.style.display = 'none';
+      detailsBtn.disabled = true;
+    } else if (type === 'citadel') {
+      nameEl.textContent = 'The Citadel';
+      nameEl.style.color = 'var(--citadel)';
+      typeEl.textContent = 'Syndicate Stronghold';
+      controlEl.textContent = 'Syndicate';
+      planetsRow.style.display = 'none';
+      detailsBtn.disabled = true;
+    } else if (type === 'territory') {
+      nameEl.textContent = '<empty space>';
+      nameEl.style.color = rgbaFrom(hit.owner, 1);
+      typeEl.textContent = 'Claimed territory';
+      controlEl.textContent = hit.owner.label;
+      planetsRow.style.display = 'none';
+      detailsBtn.disabled = true;
+    } else {
+      nameEl.textContent = '<empty space>';
+      nameEl.style.color = 'var(--text-dim)';
+      typeEl.textContent = 'Uninhabited hex';
+      controlEl.textContent = 'Unclaimed';
+      planetsRow.style.display = 'none';
+      detailsBtn.disabled = true;
+    }
+  }
+
+  document.getElementById('recenter').addEventListener('click', () => {
+    selected = null; selectedCoords = null; selectedType = null; focusTarget = { x: 0, y: 0 };
+    document.getElementById('syspanel').style.display = 'none';
+    document.getElementById('recenter').disabled = true;
+  });
+  window.addEventListener('resize', () => { resize(); if (galaxy) starDots = genStarDots(galaxy.seed); });
+
+  // ---------- file loading ----------
+  const fileInput = document.getElementById('fileinput');
+  document.getElementById('filebtn').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        if (!parsed.galaxyParams || !parsed.systems) throw new Error('Missing galaxyParams or systems — is this a seed.json from generate_seed.js?');
+        loadGalaxy(parsed);
+      } catch (err) {
+        const el = document.getElementById('loaderror');
+        el.textContent = 'Failed to load: ' + err.message;
+        el.style.display = 'block';
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  const claimsInput = document.getElementById('claimsinput');
+  document.getElementById('claimsbtn').addEventListener('click', () => claimsInput.click());
+  claimsInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        if (!parsed.guilds || !parsed.systemClaims) throw new Error('Missing guilds or systemClaims — is this a test_claims.json from generate_test_claims.js?');
+        loadClaims(parsed);
+      } catch (err) {
+        alert('Failed to load claims: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  function loadClaims(parsed) {
+    claimsData = parsed;
+    guildById = new Map(parsed.guilds.map(g => [g.id, g]));
+    systemToGuild = new Map(Object.entries(parsed.systemClaims));
+    guildOutpostByKey = new Map(parsed.guildOutposts.map(o => [`${o.coords.q},${o.coords.r}`, o]));
+    gateByKey = new Map((parsed.tollGates || []).map(gt => [`${gt.coords.q},${gt.coords.r}`, gt]));
+    document.getElementById('claimsbtn').textContent = `⌘ CLAIMS LOADED (${parsed.guilds.length} guilds)`;
+  }
+
+  function loadGalaxy(parsed) {
+    galaxy = parsed;
+    starDots = genStarDots(galaxy.seed);
+    zoom = getMinZoom();
+    angle = 0; focus = {x:0,y:0}; focusTarget = {x:0,y:0};
+    selected = null; selectedCoords = null; selectedType = null;
+
+    document.getElementById('loadpanel').style.display = 'none';
+    document.getElementById('legend').style.display = 'block';
+    document.getElementById('hint').style.display = 'block';
+    document.getElementById('zoomreadout').style.display = 'block';
+    document.getElementById('recenter').style.display = 'inline-block';
+    document.getElementById('recenter').disabled = true;
+    document.getElementById('zoomval').textContent = zoom.toFixed(1) + '×';
+
+    systemByKey = new Map(galaxy.systems.map(s => [`${s.coords.q},${s.coords.r}`, s]));
+    outpostByKey = new Map(galaxy.outposts.map(o => [`${o.coords.q},${o.coords.r}`, o]));
+    systemById = new Map(galaxy.systems.map(s => [s.id, s]));
+    document.getElementById('claimsbtn').style.display = 'inline-block';
+
+    const s = galaxy.stats || {};
+    document.getElementById('meta').innerHTML =
+      `SEED <span>${galaxy.seed}</span><br>` +
+      `HEXES <span>${(s.totalHexesInGalaxy||0).toLocaleString()}</span> (computed, not stored) &nbsp; SYSTEMS <span>${galaxy.systems.length}</span><br>` +
+      `PLANETS <span>${s.totalPlanets||0}</span> &nbsp; OUTPOSTS <span>${galaxy.outposts.length}</span>`;
+  }
+
+  resize(); tick();
+})();
+</script>
+</body>
+</html>
