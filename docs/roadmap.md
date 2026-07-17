@@ -150,7 +150,7 @@ Rulings needed from the project owner. "Accept proposal" is a valid answer to an
 - [ ] Concurrent action intake through the same validate-as-it-arrives discipline, now under real concurrency (Postgres transactions doing the work)
 - [ ] The Syndicate Exchange's **player order book** (design.md §5): asks/bids, conventional sorting, divergence from the Syndicate value line
 - [ ] Partial-transparency rules enforced server-side (stockpiles hidden, venture types visible)
-- [ ] Adversarial self-testing: two clients hammering the same shared number (the money-printer/dupe class of bug)
+- [ ] Adversarial self-testing: simulated ~200-actor squeeze against a single shared row (design.md §15.7) — the measurement deciding whether the escape hatches are needed; also covers the money-printer/dupe class of bug
 - [ ] First population test at ~5 humans (#12)
 
 **Exit criteria:** a weekend playtest with ≥3 humans, zero conservation violations, and at least one genuinely felt betrayal.
