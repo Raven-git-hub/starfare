@@ -57,6 +57,7 @@ Working spec: `docs/prompts/phase-1-sandbox-prompt.md` plus the Stage 1 report (
 Rulings needed from the project owner. "Accept proposal" is a valid answer to any of them; each decision gets recorded in design.md §19 in the same commit that implements it.
 
 - [ ] **#45 — Option A or B.** A *(recommended)*: fuel stays instant/Syndicate-delivered; a second raw good moves by shipment and pays tolls. B: fuel-only, produced fuel physically ships to the reserve. Most of the remaining numbers hang on this.
+- [ ] **#48 — force-sell: keep or drop.** Dropping it enables the pooled fuel-allocation model and the licence-premium anti-hoarding mechanism (design.md §8, `docs/fuel-allocation-model.md`); it re-derives the port's semantic #2 and the squeeze signature. Enforcement of illegal withholding is Phase 5; in Phase 1, dropping it just makes hoarding possible-and-expensive.
 - [ ] **#42 — posted-price semantics** (proposal: step 3 publishes next window's price)
 - [ ] **#43 — credit rounding** (proposal: `round(qty × price)`, identical both sides)
 - [ ] **#44 — scarcity allocation** (proposal: validate-as-they-arrive, whole order fails, fixed bot order)
