@@ -11,7 +11,7 @@
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done (residual experiments optional) |
-| 1 | Playable economy sandbox (widened) | 🔶 In progress — Stage 1 ✅, Stage 2 blocked on the decision checklist |
+| 1 | Playable economy sandbox (widened) | 🔶 In progress — Stage 1 ✅, checklist ✅ (19-07-26), Stage 2 ready to build |
 | 2 | Persist and tick on a server | ⬜ Not started |
 | G | Galaxy generation recovery (parallel track) | ⬜ Not started — design complete, code lost |
 | 3 | Multiplayer foundations | ⬜ Not started |
@@ -52,19 +52,19 @@ Working spec: `docs/prompts/phase-1-sandbox-prompt.md` plus the Stage 1 report (
 - [x] Plan: graph shape, file layout, tick-loop shape, world-interface boundary, bot tiers 1–2, contest design
 - [x] Invention table delivered (~24 rows) with proposals
 
-### Decision checklist — ⛔ blocks Stage 2
+### Decision checklist — ✅ answered 19-07-26 (unblocks Stage 2; rulings in `docs/phase-1-tuning.md`)
 
 Rulings needed from the project owner. "Accept proposal" is a valid answer to any of them; each decision gets recorded in design.md §19 in the same commit that implements it.
 
-- [ ] **#45 — Option A or B.** A *(recommended)*: fuel stays instant/Syndicate-delivered; a second raw good moves by shipment and pays tolls. B: fuel-only, produced fuel physically ships to the reserve. Most of the remaining numbers hang on this.
-- [ ] **#48 — force-sell: keep or drop.** Dropping it enables the pooled fuel-allocation model and the licence-premium anti-hoarding mechanism (design.md §8, `docs/fuel-allocation-model.md`); it re-derives the port's semantic #2 and the squeeze signature. Enforcement of illegal withholding is Phase 5; in Phase 1, dropping it just makes hoarding possible-and-expensive.
-- [ ] **#42 — posted-price semantics** (proposal: step 3 publishes next window's price)
-- [ ] **#43 — credit rounding** (proposal: `round(qty × price)`, identical both sides)
-- [ ] **#44 — scarcity allocation** (proposal: validate-as-they-arrive, whole order fails, fixed bot order)
-- [ ] **#46 — land rent out of Phase 1** (proposal: yes, tolls + tariffs only)
-- [ ] Eight-step tick order confirmed as amended in design.md §15.6 (adopted in the 17-07 consolidation; veto here if wrong)
-- [ ] Invariant 3 per-field rulings (proposals: credits **fail**; consumption **floors + records**; hoard-sales **fail**; reserve over-buys **fail whole order**; venture inputs floor via `min(rate, available)`; influence **fail**; Syndicate ledger exempt/may go negative)
-- [ ] **#47 — tuning numbers**, decide or accept proposals: player guild start · transit ticks per edge (2 open / 1 secured) · toll unit + default + range · tariff unit + default + range · influence starting stock + earn rate · contest open-cost/min-stake/window · disposition scale/deltas/grudge-multiplier/decay/cap · bot trading band + rolling window + budget floor · bot contest-defense policy · shortfall throttle in sandbox (record-only in the squeeze check) · graph topology (proposed: Citadel + 6 homes + 3 contested middles) · second good's market levers (if Option A)
+- [x] **#45 — Option A or B.** A *(recommended)*: fuel stays instant/Syndicate-delivered; a second raw good moves by shipment and pays tolls. B: fuel-only, produced fuel physically ships to the reserve. Most of the remaining numbers hang on this.
+- [x] **#48 — force-sell: keep or drop.** Dropping it enables the pooled fuel-allocation model and the licence-premium anti-hoarding mechanism (design.md §8, `docs/fuel-allocation-model.md`); it re-derives the port's semantic #2 and the squeeze signature. Enforcement of illegal withholding is Phase 5; in Phase 1, dropping it just makes hoarding possible-and-expensive.
+- [x] **#42 — posted-price semantics** (proposal: step 3 publishes next window's price)
+- [x] **#43 — credit rounding** (proposal: `round(qty × price)`, identical both sides)
+- [x] **#44 — scarcity allocation** (proposal: validate-as-they-arrive, whole order fails, fixed bot order)
+- [x] **#46 — land rent out of Phase 1** (proposal: yes, tolls + tariffs only)
+- [x] Eight-step tick order confirmed as amended in design.md §15.6 (adopted in the 17-07 consolidation; veto here if wrong)
+- [x] Invariant 3 per-field rulings (proposals: credits **fail**; consumption **floors + records**; hoard-sales **fail**; reserve over-buys **fail whole order**; venture inputs floor via `min(rate, available)`; influence **fail**; Syndicate ledger exempt/may go negative)
+- [x] **#47 — tuning numbers**, decide or accept proposals: player guild start · transit ticks per edge (2 open / 1 secured) · toll unit + default + range · tariff unit + default + range · influence starting stock + earn rate · contest open-cost/min-stake/window · disposition scale/deltas/grudge-multiplier/decay/cap · bot trading band + rolling window + budget floor · bot contest-defense policy · shortfall throttle in sandbox (record-only in the squeeze check) · graph topology (proposed: Citadel + 6 homes + 3 contested middles) · second good's market levers (if Option A)
 
 ### Stage 2 — Harness, then walking skeleton
 
