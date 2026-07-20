@@ -1,0 +1,9 @@
+{
+  "name": "starfare-sim",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Phase 1 economy engine — pure tick loop + invariant harness. No server, no DOM.",
+  "scripts": {
+    "test": "node --test"
+  }
+}
