@@ -95,3 +95,83 @@ test('scaffold determinism sanity check: same start, run twice, identical hash',
   }
   assert.equal(hashState(a), hashState(b));
 });
+
+// --- Step 1: production ---------------------------------------------------
+
+function oneVentureState() {
+  return createState({
+    guilds: [
+      {
+        id: 'g1',
+        credits: 0,
+        fuelHoard: 0,
+        ventures: [{ id: 'v1', ownerGuildId: 'g1', type: 'mining', productionRate: 3 }],
+      },
+    ],
+    reserve: { reserveLevel: 0 },
+    syndicate: { ledger: 0 },
+  });
+}
+
+test('production: one tick adds productionRate to outputStockpile', () => {
+  const s = oneVentureState();
+  const next = tick(s);
+  assert.equal(next.guilds[0].ventures[0].outputStockpile, 3);
+});
+
+test('production: five ticks accumulate 5x productionRate', () => {
+  let state = oneVentureState();
+  for (let i = 0; i < 5; i += 1) state = tick(state);
+  assert.equal(state.guilds[0].ventures[0].outputStockpile, 15); // 5 * 3
+});
+
+test('production: updatedAtTick is stamped with the tick it happened on', () => {
+  const s = oneVentureState();
+  assert.equal(s.guilds[0].ventures[0].updatedAtTick, null, 'unset before any production');
+  const next = tick(s);
+  assert.equal(next.guilds[0].ventures[0].updatedAtTick, 0); // stamped during tick 0 -> 1's processing
+  const nextNext = tick(next);
+  assert.equal(nextNext.guilds[0].ventures[0].updatedAtTick, 1);
+});
+
+test('production: a guild with no ventures array is untouched, not an error', () => {
+  // goodState()'s guilds have no `ventures` field at all -- invariants.js
+  // already treats this as legal (ventures is optional), so tick() must too.
+  assert.doesNotThrow(() => tick(goodState()));
+});
+
+test('production: multiple ventures across multiple guilds all advance independently', () => {
+  const s = createState({
+    guilds: [
+      {
+        id: 'g1',
+        credits: 0,
+        fuelHoard: 0,
+        ventures: [
+          { id: 'v1', ownerGuildId: 'g1', type: 'mining', productionRate: 2 },
+          { id: 'v2', ownerGuildId: 'g1', type: 'mining', productionRate: 5 },
+        ],
+      },
+      {
+        id: 'g2',
+        credits: 0,
+        fuelHoard: 0,
+        ventures: [{ id: 'v3', ownerGuildId: 'g2', type: 'mining', productionRate: 1 }],
+      },
+    ],
+    reserve: { reserveLevel: 0 },
+    syndicate: { ledger: 0 },
+  });
+  const next = tick(s);
+  assert.equal(next.guilds[0].ventures[0].outputStockpile, 2);
+  assert.equal(next.guilds[0].ventures[1].outputStockpile, 5);
+  assert.equal(next.guilds[1].ventures[0].outputStockpile, 1);
+});
+
+test('production output still passes every invariant over several ticks', () => {
+  let state = oneVentureState();
+  for (let i = 0; i < 20; i += 1) {
+    state = tick(state);
+    assert.deepEqual(checkInvariants(state, state.tick), []);
+  }
+});

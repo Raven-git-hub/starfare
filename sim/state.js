@@ -76,6 +76,10 @@ function createVenture({
     inputStockpiles: { ...inputStockpiles },
     outputStockpile,
     energyDraw,
+    // §15.2: "every mutation records its tick." null until tick.js's
+    // stepProduction first touches this venture -- there's been no
+    // mutation to record yet at construction time.
+    updatedAtTick: null,
   };
 }
 

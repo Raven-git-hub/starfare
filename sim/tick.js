@@ -1,24 +1,25 @@
 'use strict';
 
-// tick.js — the pure economy step. This is Stage 2's SCAFFOLD cut: the fixed
-// eight-step order from design.md §15.6, as eight named functions, with NO
-// game logic yet beyond the tick counter. Production, consumption, pricing,
-// etc. are real modules that don't exist yet (economy.js, territory.js,
-// bots.js — see sim/README.md's planned layout); wiring them in is later
-// work, one module at a time (working practice #3), not invented here.
+// tick.js — the pure economy step: the fixed eight-step order from
+// design.md §15.6, as eight named functions. Being filled in one pillar at a
+// time (working practice #3) rather than all at once, so each pillar is a
+// real, individually-tested fact rather than a batch of invented behavior.
 //
-// What IS real about this file, even before those modules land:
+// Landed so far: step 1, production (the simplest possible cut -- see its
+// own comment below for exactly what it does and doesn't do yet). Steps
+// 2-8 are still `identity` — explicit NAMED no-ops — because their real
+// logic needs modules that don't exist yet (economy.js, territory.js,
+// bots.js — see sim/README.md's planned layout). Their seam already sits in
+// the right place, in the right order, instead of being invented ad hoc
+// whenever that module lands.
+//
+// What IS real about this file, even where a step is still a stub:
 //   - the ORDER is fixed and correct per §15.6, so invariant 9 (deterministic
 //     tick order) has something true to hold onto as soon as steps start
 //     doing something
 //   - tick() is pure: it never mutates its `state` argument, always returns
 //     a new state object
 //   - no DOM access anywhere (the hard rule in sim/README.md)
-//
-// Each step function takes (state, actions) and returns a state. Every step
-// below is `identity` — an explicit NAMED no-op — so the seam for each
-// future module already sits in the right place, in the right order,
-// instead of being invented ad hoc whenever that module lands.
 
 // Deep-clones state so tick() can never accidentally mutate its input.
 // structuredClone is a plain JS global (Node 17+), not a DOM API.
@@ -26,9 +27,26 @@ function cloneState(state) {
   return structuredClone(state);
 }
 
-// Step 1 — production. Ventures turn inputs into outputStockpile.
-// SEAM: needs economy.js's production rules. No-op for now.
+// Step 1 — production. FIRST REAL STEP: the simplest possible cut. Every
+// venture's outputStockpile grows by its productionRate, once per tick.
+//
+// Deliberately NOT yet implemented, left for economy.js:
+//   - consuming inputStockpiles (Tier 2+ ventures need inputs; Tier-1 raw
+//     mining, design.md's pipeline, needs none, so this is honest for the
+//     walking skeleton's one mining venture, but wrong once a Tier-2+
+//     venture exists)
+//   - energyDraw / the fuel pool (that's step 2, stepConsumption, still a
+//     no-op below)
+//   - which GOOD was produced, so guild.lifetimeProduced can be credited
+//     (Venture has no "good" field yet -- adding one is a real decision,
+//     not something to invent here just to fill in this counter)
 function stepProduction(state, _actions) {
+  for (const guild of state.guilds) {
+    for (const venture of guild.ventures || []) {
+      venture.outputStockpile += venture.productionRate;
+      venture.updatedAtTick = state.tick;
+    }
+  }
   return state;
 }
 
