@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const {
   createGuild,
   createVenture,
+  createVehicle,
   createReserve,
   createSyndicate,
   createState,
@@ -40,13 +41,14 @@ function twoGuildScenario() {
   };
 }
 
-test('createGuild fills in defaults and nests ventures', () => {
+test('createGuild fills in defaults and nests ventures and vehicles', () => {
   const g = createGuild({ id: 'g1', credits: 10, fuelHoard: 0 });
   assert.equal(g.id, 'g1');
   assert.equal(g.name, 'g1', 'name defaults to id when not given');
   assert.equal(g.isBot, false);
   assert.equal(g.influence, 0);
   assert.deepEqual(g.ventures, []);
+  assert.deepEqual(g.vehicles, []);
   assert.deepEqual(g.lifetimeProduced, {});
 });
 
@@ -61,6 +63,62 @@ test('createVenture fills in defaults', () => {
   assert.equal(v.productionRate, 0);
   assert.deepEqual(v.inputStockpiles, {});
   assert.equal(v.outputStockpile, 0);
+});
+
+test('createVehicle defaults to a light transport, idle, with no fuel/speed/etc. invented', () => {
+  const v = createVehicle({
+    id: 'ship1',
+    ownerGuildId: 'g1',
+    speed: 2,
+    capacity: 10,
+    defenseRating: 1,
+    fuelCostToRun: 4,
+  });
+  assert.equal(v.class, 'lightTransport');
+  assert.equal(v.status, 'idle');
+  assert.equal(v.speed, 2);
+  assert.equal(v.capacity, 10);
+  assert.equal(v.defenseRating, 1);
+  assert.equal(v.fuelCostToRun, 4);
+  assert.equal(v.updatedAtTick, null);
+});
+
+test('createVehicle requires id, ownerGuildId, speed, capacity, defenseRating, and fuelCostToRun', () => {
+  const full = { id: 'ship1', ownerGuildId: 'g1', speed: 2, capacity: 10, defenseRating: 1, fuelCostToRun: 4 };
+  assert.throws(() => createVehicle({ ...full, id: undefined }), /id is required/);
+  assert.throws(() => createVehicle({ ...full, ownerGuildId: undefined }), /ownerGuildId is required/);
+  assert.throws(() => createVehicle({ ...full, speed: undefined }), /speed is required/);
+  assert.throws(() => createVehicle({ ...full, capacity: undefined }), /capacity is required/);
+  assert.throws(() => createVehicle({ ...full, defenseRating: undefined }), /defenseRating is required/);
+  assert.throws(() => createVehicle({ ...full, fuelCostToRun: undefined }), /fuelCostToRun is required/);
+  assert.doesNotThrow(() => createVehicle(full));
+});
+
+test('createVehicle: class and status can be overridden', () => {
+  const v = createVehicle({
+    id: 'ship1',
+    ownerGuildId: 'g1',
+    class: 'mediumTransport',
+    speed: 1,
+    capacity: 20,
+    defenseRating: 2,
+    fuelCostToRun: 8,
+    status: 'inTransit',
+  });
+  assert.equal(v.class, 'mediumTransport');
+  assert.equal(v.status, 'inTransit');
+});
+
+test('createGuild nests vehicles the same way it nests ventures', () => {
+  const g = createGuild({
+    id: 'g1',
+    credits: 10,
+    fuelHoard: 0,
+    vehicles: [{ id: 'ship1', ownerGuildId: 'g1', speed: 2, capacity: 10, defenseRating: 1, fuelCostToRun: 4 }],
+  });
+  assert.equal(g.vehicles.length, 1);
+  assert.equal(g.vehicles[0].id, 'ship1');
+  assert.equal(g.vehicles[0].class, 'lightTransport');
 });
 
 test('createReserve and createSyndicate require their one field', () => {
@@ -98,6 +156,26 @@ test('createState computes audit correctly regardless of scenario numbers', () =
     syndicate: { ledger: -1000 },
   };
   const state = createState(scenario);
+  assert.deepEqual(checkInvariants(state, 0), []);
+});
+
+test('createState assembles a scenario with a vehicle and still passes every invariant', () => {
+  const scenario = {
+    guilds: [
+      {
+        id: 'g1',
+        credits: 120,
+        fuelHoard: 0,
+        vehicles: [
+          { id: 'ship1', ownerGuildId: 'g1', speed: 2, capacity: 10, defenseRating: 1, fuelCostToRun: 4 },
+        ],
+      },
+    ],
+    reserve: { reserveLevel: 0 },
+    syndicate: { ledger: -120 },
+  };
+  const state = createState(scenario);
+  assert.equal(state.guilds[0].vehicles[0].id, 'ship1');
   assert.deepEqual(checkInvariants(state, 0), []);
 });
 

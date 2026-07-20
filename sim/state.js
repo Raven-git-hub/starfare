@@ -19,10 +19,11 @@
 
 // --- Entity constructors -----------------------------------------------
 
-// Guild (OWNED, design.md §15.4). `ventures` is nested here (rather than a
-// separate top-level array keyed by ownerGuildId) because that's the shape
-// invariants.js already reads (`g.ventures`) — see design.md §15.4's note
-// that Venture.ownerGuildId is the same fact seen from the other end.
+// Guild (OWNED, design.md §15.4). `ventures` and `vehicles` are nested here
+// (rather than separate top-level arrays keyed by ownerGuildId) because
+// that's the shape invariants.js already reads (`g.ventures`) — see
+// design.md §15.4's note that Venture.ownerGuildId is the same fact seen
+// from the other end. Vehicle follows the identical pattern.
 function createGuild({
   id,
   name = id,
@@ -32,6 +33,7 @@ function createGuild({
   influence = 0,
   incomeRate = 0,
   ventures = [],
+  vehicles = [],
 }) {
   if (id === undefined) throw new Error('createGuild: id is required');
   if (credits === undefined) throw new Error('createGuild: credits is required');
@@ -48,6 +50,7 @@ function createGuild({
     guildReputation: 0,
     lifetimeProduced: {}, // good -> int; monotonic, only ever increases (§13)
     ventures: ventures.map(createVenture),
+    vehicles: vehicles.map(createVehicle),
   };
 }
 
@@ -77,6 +80,48 @@ function createVenture({
     // §15.2: "every mutation records its tick." null until tick.js's
     // stepProduction first touches this venture -- there's been no
     // mutation to record yet at construction time.
+    updatedAtTick: null,
+  };
+}
+
+// Vehicle (OWNED, design.md §15.4): "id, ownerGuildId, class, speed/capacity/
+// defenseRating/fuelCostToRun, status." Only ONE class exists so far —
+// `lightTransport` (design.md §4's simplest ship, no sensors/weapons) — so
+// that's the default; anything else is a later addition, not invented here.
+//
+// speed/capacity/defenseRating/fuelCostToRun are REQUIRED, not defaulted —
+// same discipline as createGuild's credits/fuelHoard. None of these numbers
+// has a decided value anywhere in docs/phase-1-tuning.md yet; defaulting
+// them to something plausible would be inventing a game-balance number
+// silently (working practice #5). The caller must supply real numbers.
+function createVehicle({
+  id,
+  ownerGuildId,
+  class: vehicleClass = 'lightTransport',
+  speed,
+  capacity,
+  defenseRating,
+  fuelCostToRun,
+  status = 'idle',
+}) {
+  if (id === undefined) throw new Error('createVehicle: id is required');
+  if (ownerGuildId === undefined) throw new Error('createVehicle: ownerGuildId is required');
+  if (speed === undefined) throw new Error('createVehicle: speed is required');
+  if (capacity === undefined) throw new Error('createVehicle: capacity is required');
+  if (defenseRating === undefined) throw new Error('createVehicle: defenseRating is required');
+  if (fuelCostToRun === undefined) throw new Error('createVehicle: fuelCostToRun is required');
+
+  return {
+    id,
+    ownerGuildId,
+    class: vehicleClass,
+    speed,
+    capacity,
+    defenseRating,
+    fuelCostToRun,
+    status,
+    // §15.2: "every mutation records its tick." null until something (a
+    // future consumption/movement step) first touches this vehicle.
     updatedAtTick: null,
   };
 }
@@ -156,6 +201,7 @@ function createState(scenario) {
 module.exports = {
   createGuild,
   createVenture,
+  createVehicle,
   createReserve,
   createSyndicate,
   createState,
