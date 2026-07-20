@@ -68,9 +68,9 @@ Rulings needed from the project owner. "Accept proposal" is a valid answer to an
 
 ### Stage 2 — Harness, then walking skeleton
 
-- [ ] `package.json` (zero runtime dependencies; tests on `node:test`)
-- [ ] Invariant checks: conservation of fuel (1), conservation of credits (2, with an explicit Syndicate ledger), non-negativity (3, per-field), determinism (9) — asserting **every tick**, halting loudly with tick number and offending values
-- [ ] Canonical serialization + state hashing for byte-identical comparison
+- [x] `package.json` (zero runtime dependencies; tests on `node:test`)
+- [x] Invariant checks: conservation of fuel (1), conservation of credits (2, with an explicit Syndicate ledger), non-negativity (3, per-field), determinism (9) — asserting **every tick**, halting loudly with tick number and offending values
+- [x] Canonical serialization + state hashing for byte-identical comparison
 - [ ] `tick(state, actions)` pure function; all eight §15.6 steps as named functions in fixed order; no DOM access anywhere in `sim/`
 - [ ] Action intake validated as-it-arrives (state-as-it-stands), first-valid-wins
 - [ ] Walking skeleton: 2 guilds, 3 systems + Citadel, one venture each, fuel market live, one claim, one toll paid end-to-end
