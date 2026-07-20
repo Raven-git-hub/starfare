@@ -114,7 +114,7 @@ Rulings needed from the project owner. "Accept proposal" is a valid answer to an
 - [ ] Migration: in-memory Phase 1 state → persisted live state; seed remains a JSON file, linked by reference only
 - [ ] HTTP client: refresh-and-see, no WebSockets yet
 - [ ] Invariant checks running server-side every tick, with violation halting + alerting
-- [ ] Decide `generatedAt`'s fate in the seed (drop it, or accept content-level determinism)
+- [x] Decide `generatedAt`'s fate in the seed — **resolved early 20-07-26: dropped** from all generators + committed fixtures; file is now byte-identical across runs (design.md §16). *Residual:* `test_claims.json` still embeds an environment-dependent `seedFile` path — separate open determinism question, not yet ruled.
 
 **Exit criteria:** the milestone sentence at the top, plus a week of unattended ticking with zero invariant violations.
 

@@ -21,7 +21,7 @@ starfare/
 │   ├── roadmap.md             ← phases, checklists, status
 │   └── prompts/
 │       └── phase-1-sandbox-prompt.md   ← the working build prompt for Phase 1
-├── sim/                       ← the Phase 1 economy engine (empty — see sim/README.md)
+├── sim/                       ← the Phase 1 economy engine (invariant harness landed; tick loop next — see sim/README.md)
 ├── tools/                     ← offline generation tooling (Node, no dependencies)
 │   ├── generate_seed.js
 │   ├── generate_seed_recovered_partial.js   ← reference checkpoint, NOT the working generator
@@ -44,7 +44,7 @@ starfare/
 | `docs/roadmap.md` | Authoritative phase-by-phase checklists and exit criteria | ✅ Current; Track G updated 17-07-26 with the recovery result | Boxes ticked as work lands; the Phase 1 **decision checklist** answered first |
 | `docs/fuel-allocation-model.md` | The fuel pool, purchasing-power allocation, the Syndicate-only benefit & its regional-bloc tension, and conditional refinery licensing (added 19-07-26) | ✅ New, current | Force-sell ruling (#48) before build; folds into §8, which carries the summary |
 | `docs/prompts/phase-1-sandbox-prompt.md` | The working prompt Phase 1 is built from (three gated stages) | ✅ Versioned as written 16-07 | Nothing — historical artifact; superseded details are tracked in design.md/roadmap.md |
-| `sim/` | The Phase 1 economy engine: pure tick loop, invariant harness, world-interface boundary, bots, UI | ⬜ Empty | Decision checklist answered → Stage 2 build (harness first) |
+| `sim/` | The Phase 1 economy engine: pure tick loop, invariant harness, world-interface boundary, bots, UI | 🔶 Harness landed (`invariants.js`, `serialize.js`, tests green) | The pure `tick(state, actions)` loop + walking skeleton |
 | `tools/generate_seed.js` | Deterministic galaxy-seed generator — pipeline steps 1–3 + 7 only (systems, names, placeholder planets, outposts, Citadel). Usage: `node tools/generate_seed.js [seed] [outPath]` | 🔶 Works; determinism verified 16-07; regenerated and re-verified 17-07 (101,287 hexes · 1,500 systems · 5,290 planets · 9 outposts) | Track G: rings, archetypes, resource nodes, starter tagging, repair + validation per design.md §2/§13/§16 — lift what's already working from the recovered partial below rather than starting blank |
 | `tools/generate_seed_recovered_partial.js` | A 15-07-era generator recovered from a local machine 17-07-26. Adds pipeline steps 5, 6, 8, 10 — archetypes, resource nodes, starter tagging, validation — on top of 1–3 + 7. **A reference checkpoint, not the working generator.** Usage: `node tools/generate_seed_recovered_partial.js [seed] [outPath]` | 🔶 Runs; `validation: PASSED`, 361 starter systems, 5,089 planets on seed 7331. **No** ring classification, **no** rare-tier gradient, **no** repair pass — that logic exists in no code anywhere | Track G: reconcile its RNG divergence from the committed generator (5,089 planets vs 5,290 on the same seed — the two are not a clean subset/superset), then add rings/gradient/repair and merge |
 | `tools/generate_test_claims.js` | Test tooling (not architecture): writes a separate claims file — guilds, territory, outposts, toll gates/paths — obeying the real placement rules, so rendering can be exercised. Usage: `node tools/generate_test_claims.js [seedFile] [claimsSeed] [outPath]` | ✅ Works as designed; re-verified 17-07 (20 guilds · 109 systems · 60 outposts · 49 gates · 29 paths) | Nothing until the seed format grows (Track G) |

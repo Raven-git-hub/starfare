@@ -205,7 +205,10 @@ function generateTestClaims(seedFile, claimsSeed) {
 
   return {
     claimsSeed,
-    generatedAt: new Date().toISOString(),
+    // No generatedAt/wall-clock field on purpose (ruling 20-07-26, roadmap
+    // Phase 2) — see generate_seed.js. NOTE: `seedFile` below is still an
+    // environment-dependent input path and is a separate open determinism
+    // question (flagged for a ruling), not settled by this one.
     seedFile,
     guilds,
     systemClaims,

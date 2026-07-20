@@ -288,7 +288,7 @@ function generateGalaxySeed(seed) {
 
   return {
     seed,
-    generatedAt: new Date().toISOString(),
+    // No generatedAt field on purpose — see generate_seed.js (ruling 20-07-26).
     galaxyParams: {
       radius, hexSize, citadelRadius, arms, spiralTwist,
     },

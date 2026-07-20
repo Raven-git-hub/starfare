@@ -171,7 +171,10 @@ function generateGalaxySeed(seed) {
 
   return {
     seed,
-    generatedAt: new Date().toISOString(),
+    // No generatedAt/wall-clock field on purpose (ruling 20-07-26, roadmap
+    // Phase 2): the seed's identity is its seed number, and "when it was
+    // generated" is git's job, not the content's. Baking a timestamp in here
+    // made the file non-byte-deterministic across runs. Do not re-add it.
     galaxyParams: {
       radius, hexSize, citadelRadius, arms, spiralTwist,
     },
