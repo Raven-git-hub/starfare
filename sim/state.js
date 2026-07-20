@@ -62,7 +62,6 @@ function createVenture({
   productionRate = 0,
   inputStockpiles = {},
   outputStockpile = 0,
-  energyDraw = 0,
 }) {
   if (id === undefined) throw new Error('createVenture: id is required');
   if (ownerGuildId === undefined) throw new Error('createVenture: ownerGuildId is required');
@@ -75,7 +74,6 @@ function createVenture({
     productionRate,
     inputStockpiles: { ...inputStockpiles },
     outputStockpile,
-    energyDraw,
     // §15.2: "every mutation records its tick." null until tick.js's
     // stepProduction first touches this venture -- there's been no
     // mutation to record yet at construction time.

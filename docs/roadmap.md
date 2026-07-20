@@ -83,7 +83,7 @@ Rulings needed from the project owner. "Accept proposal" is a valid answer to an
 - [ ] **Squeeze regression check**: headless scripted replay of the sheet's 12-turn action grid reproduces the signature — price 5 → 7.03 → 16.75 → 38.48 peak → recovery; Dracis shortfalls 6/7/2; Refiner finishes richer than the Stockpiler (design.md §8)
 - [ ] Territory claim/contest working (influence-commitment contests; negotiated transfer)
 - [ ] Tolls and tariffs settable, negotiable with bots; disposition moves on costly actions, decays, stays capped, never touches prices
-- [ ] Ventures with automation parameters and energy draw from the shared pool
+- [ ] Ventures with automation parameters (production is renewable-powered — no fuel/energy draw; fuel is burned by spacecraft only, §3 / #54)
 - [ ] UI: map, guild dashboard, market panel with price history, territory/negotiation panels, event log, fast-forward
 - [ ] Boundary test: territory suite passes against **two** world adapters (the real graph + a toy topology)
 - [ ] Play sessions logged: can the player cause a squeeze? resist one? does #31's answer change when territory levers exist?

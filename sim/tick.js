@@ -35,8 +35,10 @@ function cloneState(state) {
 //     mining, design.md's pipeline, needs none, so this is honest for the
 //     walking skeleton's one mining venture, but wrong once a Tier-2+
 //     venture exists)
-//   - energyDraw / the fuel pool (that's step 2, stepConsumption, still a
-//     no-op below)
+//   - NOTE: ventures draw no fuel/energy at all (renewable-powered, §3 /
+//     open question #54). Fuel is burned by spacecraft, not ventures, so
+//     there is deliberately nothing here for step 2 to do on a venture's
+//     behalf.
 //   - which GOOD was produced, so guild.lifetimeProduced can be credited
 //     (Venture has no "good" field yet -- adding one is a real decision,
 //     not something to invent here just to fill in this counter)
@@ -50,8 +52,10 @@ function stepProduction(state, _actions) {
   return state;
 }
 
-// Step 2 — consumption / energy draw. Ventures draw from the fuel pool.
-// SEAM: needs economy.js + the fuel allocation model (docs/fuel-allocation-model.md).
+// Step 2 — consumption. SEAM for spacecraft fuel burn against the shared
+// allocation pool (docs/fuel-allocation-model.md) once Shipments/Vehicles
+// exist. Ventures are NOT consumers here: production is renewable-powered
+// and draws no Deuterium (§3 / open question #54).
 function stepConsumption(state, _actions) {
   return state;
 }
