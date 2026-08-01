@@ -79,7 +79,7 @@ Rulings needed from the project owner. "Accept proposal" is a valid answer to an
 - [ ] **Gate:** shown running before scaling up
 
 **Follow-on decisions surfaced in the Stage 2 build (01-08-26)** — each needs a ruling before the code that consumes it (working practice #5); until then it is an explicit, flagged placeholder in the code, never a silent number:
-- **Starter mining rate** — the player guild's Tier-1 mine has no decided `productionRate`; it sits at **0** (produces nothing) until ruled. This is the number that makes the quiet tick start visibly making ore.
+- [x] **Starter mining rate** — **ruled**: Titanium's base extraction rate is **5/tick** (`[FIRST-CUT]`; recorded in phase-1-tuning.md, 01-08-26). Extraction rate is a per-resource property, not a mine tier; droid buffs remain out of scope. `sim/demo.js`'s quiet ticks now visibly accumulate Titanium while conservation holds.
 - **Waystation count + placement rule** — the zero-state currently places one Syndicate waystation per contested-middle node as a deterministic placeholder. How many, where, and on what basis is open. Kept deterministic on purpose (a random layout would break invariant 9).
 - **Home-node assignment on founding** — `foundGuild` records no home system yet; which node a new guild is seated at (and whether founding claims it, per the +20-influence rule) is deferred to the territory slice.
 
