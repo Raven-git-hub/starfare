@@ -179,10 +179,16 @@ test('createState assembles a scenario with a vehicle and still passes every inv
   assert.deepEqual(checkInvariants(state, 0), []);
 });
 
-test('createState rejects a missing or empty guild list', () => {
-  assert.throws(() => createState({ reserve: {}, syndicate: {} }), /guilds must be a non-empty array/);
+test('createState requires guilds to be an array, but allows an empty roster', () => {
+  // Missing or non-array guilds is still an error...
+  assert.throws(() => createState({ reserve: {}, syndicate: {} }), /guilds must be an array/);
   assert.throws(
-    () => createState({ guilds: [], reserve: {}, syndicate: {} }),
-    /guilds must be a non-empty array/
+    () => createState({ guilds: 'nope', reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 } }),
+    /guilds must be an array/
   );
+  // ...but an EMPTY roster is now legal: it is the guild-less zero-state a fresh
+  // server boots into and waits in until the owner founds the first guild.
+  const zero = createState({ guilds: [], reserve: { reserveLevel: 30 }, syndicate: { ledger: 0 } });
+  assert.equal(zero.guilds.length, 0);
+  assert.deepEqual(checkInvariants(zero, 0), []);
 });

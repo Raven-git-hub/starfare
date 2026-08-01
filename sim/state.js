@@ -174,9 +174,12 @@ function sumCredits(guilds) {
 // invariants immediately — regardless of what numbers the scenario contains.
 function createState(scenario) {
   if (!scenario) throw new Error('createState: scenario is required');
-  if (!Array.isArray(scenario.guilds) || scenario.guilds.length === 0) {
-    throw new Error('createState: scenario.guilds must be a non-empty array');
+  if (!Array.isArray(scenario.guilds)) {
+    throw new Error('createState: scenario.guilds must be an array');
   }
+  // NOTE: an EMPTY roster is legal -- it is the guild-less zero-state a fresh
+  // server boots into and waits in until the owner founds the first guild
+  // (scenarios/zero-state.js, actions.js foundGuild).
 
   const guilds = scenario.guilds.map(createGuild);
   const reserve = createReserve(scenario.reserve);
@@ -187,6 +190,11 @@ function createState(scenario) {
     guilds,
     reserve,
     syndicate,
+    // world + claims are SHARED scaffolding carried inert by the engine (tick/
+    // intake/assert read none of it); they exist so a booted galaxy is legibly a
+    // galaxy. Optional, default empty. Real hex geography is Phase 4 (§2, §15.4).
+    world: scenario.world || { nodes: [] },
+    claims: Array.isArray(scenario.claims) ? scenario.claims : [],
     shipments: [], // IN-FLIGHT: empty until routes exist (walking skeleton has none)
     audit: {
       totalProduced: sumFuelHoards(guilds) + reserve.reserveLevel,

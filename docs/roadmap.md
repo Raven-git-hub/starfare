@@ -11,7 +11,7 @@
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done (residual experiments optional) |
-| 1 | Playable economy sandbox (widened) | 🔶 In progress — Stage 1 ✅, checklist ✅ (19-07-26), Stage 2 ready to build |
+| 1 | Playable economy sandbox (widened) | 🔶 In progress — Stage 1 ✅, checklist ✅ (19-07-26); Stage 2: harness + driver + zero-state ✅ (01-08-26), walking skeleton next |
 | 2 | Persist and tick on a server | ⬜ Not started |
 | G | Galaxy generation recovery (parallel track) | ⬜ Not started — design complete, code lost |
 | 3 | Multiplayer foundations | ⬜ Not started |
@@ -72,10 +72,16 @@ Rulings needed from the project owner. "Accept proposal" is a valid answer to an
 - [x] Invariant checks: conservation of fuel (1), conservation of credits (2, with an explicit Syndicate ledger), non-negativity (3, per-field), determinism (9) — asserting **every tick**, halting loudly with tick number and offending values
 - [x] Canonical serialization + state hashing for byte-identical comparison
 - [ ] `tick(state, actions)` pure function; all eight §15.6 steps as named functions in fixed order; no DOM access anywhere in `sim/`
-- [ ] Action intake validated as-it-arrives (state-as-it-stands), first-valid-wins
+- [x] Action intake validated as-it-arrives (state-as-it-stands), first-valid-wins — `actions.js`; wired into the driver and tested end-to-end via `advance` (01-08-26)
 - [ ] Walking skeleton: 2 guilds, 3 systems + Citadel, one venture each, fuel market live, one claim, one toll paid end-to-end
+  - [x] **First slice landed (01-08-26):** the driver `advance(state, actions)` (`sim/run.js`, intake→tick→assert — invariants now assert every tick in the running loop), the guild-less **zero-state** boot (`sim/scenarios/zero-state.js`), and the conservation-clean **`foundGuild`** action (starting credits debited from the Syndicate ledger). Watchable via `node sim/demo.js`; determinism green through the driver. Remaining on this line: fuel market (step 3), a second guild/bot, a real claim, a toll end-to-end.
 - [ ] Determinism test green: same start, run twice, identical hash at tick 50
 - [ ] **Gate:** shown running before scaling up
+
+**Follow-on decisions surfaced in the Stage 2 build (01-08-26)** — each needs a ruling before the code that consumes it (working practice #5); until then it is an explicit, flagged placeholder in the code, never a silent number:
+- **Starter mining rate** — the player guild's Tier-1 mine has no decided `productionRate`; it sits at **0** (produces nothing) until ruled. This is the number that makes the quiet tick start visibly making ore.
+- **Waystation count + placement rule** — the zero-state currently places one Syndicate waystation per contested-middle node as a deterministic placeholder. How many, where, and on what basis is open. Kept deterministic on purpose (a random layout would break invariant 9).
+- **Home-node assignment on founding** — `foundGuild` records no home system yet; which node a new guild is seated at (and whether founding claims it, per the +20-influence rule) is deferred to the territory slice.
 
 ### Stage 3 — The sandbox
 

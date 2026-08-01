@@ -1,0 +1,135 @@
+'use strict';
+
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+
+const { advance } = require('../run.js');
+const { createState } = require('../state.js');
+const { createZeroState, SYNDICATE_OWNER } = require('../scenarios/zero-state.js');
+const { createFoundGuildAction, createPaySyndicateFeeAction } = require('../actions.js');
+const { checkInvariants } = require('../invariants.js');
+const { hashState } = require('../serialize.js');
+
+// --- the driver's guards + purity -----------------------------------------
+
+test('advance requires state', () => {
+  assert.throws(() => advance(), /state is required/);
+});
+
+test('advance rejects a non-array actions argument', () => {
+  assert.throws(() => advance(createZeroState(), 'nope'), /actions must be an array/);
+});
+
+test('advance with no actions ticks exactly once and stays green', () => {
+  const s = createZeroState();
+  const { state: next } = advance(s);
+  assert.equal(next.tick, s.tick + 1);
+  assert.deepEqual(checkInvariants(next, next.tick), []);
+});
+
+test('advance never mutates its input state', () => {
+  const s = createZeroState();
+  const before = JSON.stringify(s);
+  advance(s, [createFoundGuildAction({ guildId: 'g1', credits: 120 })]);
+  assert.equal(JSON.stringify(s), before, 'input state must be untouched');
+});
+
+// --- the zero-state boots as an honest empty galaxy ------------------------
+
+test('the zero-state boots green with no guilds and Syndicate-owned claims', () => {
+  const s = createZeroState();
+  assert.equal(s.tick, 0);
+  assert.equal(s.guilds.length, 0);
+  assert.equal(s.reserve.reserveLevel, 30);
+  assert.equal(s.syndicate.ledger, 0);
+  // Citadel + one waystation per contested-middle node = 4 Syndicate claims.
+  assert.equal(s.claims.length, 4);
+  assert.ok(s.claims.every((c) => c.ownerGuildId === SYNDICATE_OWNER));
+  assert.equal(s.world.nodes.length, 10);
+  assert.deepEqual(checkInvariants(s, 0), []);
+});
+
+// --- founding the first guild is conservation-clean ------------------------
+
+test('foundGuild inserts the guild and debits its credits from the ledger', () => {
+  const s = createZeroState();
+  const action = createFoundGuildAction({ guildId: 'player', name: 'Player Guild', credits: 120, influence: 100 });
+  const { state: next, results } = advance(s, [action]);
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].accepted, true);
+
+  assert.equal(next.guilds.length, 1);
+  const g = next.guilds[0];
+  assert.equal(g.id, 'player');
+  assert.equal(g.credits, 120);
+  assert.equal(g.fuelHoard, 0);
+  assert.equal(g.influence, 100);
+
+  // Credits MOVED, none minted: ledger 0 -> -120, and the credit-conservation
+  // invariant still holds (this is the whole point of routing founding through
+  // the ledger rather than pre-loading a magic balance).
+  assert.equal(next.syndicate.ledger, -120);
+  assert.deepEqual(checkInvariants(next, next.tick), []);
+});
+
+test('foundGuild refuses a duplicate guild id (first-valid-wins)', () => {
+  const s = createZeroState();
+  const a = createFoundGuildAction({ guildId: 'dup', credits: 50 });
+  const b = createFoundGuildAction({ guildId: 'dup', credits: 999 });
+  const { state: next, results } = advance(s, [a, b]);
+  assert.equal(results[0].accepted, true);
+  assert.equal(results[1].accepted, false);
+  assert.match(results[1].reason, /already exists/);
+  assert.equal(next.guilds.length, 1);
+  assert.equal(next.syndicate.ledger, -50); // only the first debit landed
+});
+
+// --- validate-as-they-arrive survives the driver (§15.6's worked example) ---
+
+test('three "spend 80" orders on 100 credits: only the first is accepted', () => {
+  // design.md §15.6's own example, now run end-to-end through advance().
+  const s = createState({
+    guilds: [{ id: 'g1', credits: 100, fuelHoard: 0 }],
+    reserve: { reserveLevel: 0 },
+    syndicate: { ledger: -100 },
+  });
+  const spend80 = () => createPaySyndicateFeeAction({ guildId: 'g1', amount: 80 });
+  const { state: next, results } = advance(s, [spend80(), spend80(), spend80()]);
+  assert.deepEqual(results.map((r) => r.accepted), [true, false, false]);
+  assert.equal(next.guilds[0].credits, 20);
+  assert.equal(next.syndicate.ledger, -20);
+  assert.deepEqual(checkInvariants(next, next.tick), []);
+});
+
+// --- the tripwire actually FIRES (it is wired, not merely present) ----------
+
+test('advance halts loudly when a resulting state breaks an invariant', () => {
+  // A hand-built state that passes intake (no actions) but whose guild credits
+  // are negative -- the non-negativity tripwire must fire, naming the tick.
+  const broken = {
+    tick: 7,
+    guilds: [{ id: 'g1', credits: -1, fuelHoard: 0 }],
+    reserve: { reserveLevel: 0 },
+    syndicate: { ledger: 1 }, // credit total still 0, so ONLY non-negativity breaks
+    world: { nodes: [] },
+    claims: [],
+    shipments: [],
+    audit: { totalProduced: 0, totalConsumed: 0, expectedCreditTotal: 0 },
+  };
+  assert.throws(() => advance(broken), /Invariant violation at tick 8/);
+});
+
+// --- determinism through the driver ----------------------------------------
+
+test('same zero-state + same actions, run twice, byte-identical at tick 10', () => {
+  const actions = [createFoundGuildAction({ guildId: 'player', credits: 120, influence: 100 })];
+  function run() {
+    let s = createZeroState();
+    // turn 1 founds the guild; turns 2..10 are quiet ticks.
+    s = advance(s, actions).state;
+    for (let i = 0; i < 9; i += 1) s = advance(s).state;
+    return s;
+  }
+  assert.equal(hashState(run()), hashState(run()));
+});

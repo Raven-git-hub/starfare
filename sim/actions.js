@@ -1,5 +1,7 @@
 'use strict';
 
+const { createGuild } = require('./state.js');
+
 // actions.js — action constructors, and the validate-as-they-arrive intake
 // discipline (design.md §15.6). This is the guard against the game's own
 // named failure mode: "a guild with 100 credits gets three 'spend 80' orders
@@ -28,6 +30,22 @@ function createPaySyndicateFeeAction({ guildId, amount }) {
   if (guildId === undefined) throw new Error('createPaySyndicateFeeAction: guildId is required');
   if (amount === undefined) throw new Error('createPaySyndicateFeeAction: amount is required');
   return { type: 'paySyndicateFee', guildId, amount };
+}
+
+// Founding a guild: the conservation-clean event by which a guild comes into
+// being on a running galaxy -- the "owner creates their first guild" moment,
+// and later any join. Starting credits are DEBITED from the Syndicate ledger
+// (design.md §8: the ledger is the balancing account that funds guild credits),
+// so nothing is minted and invariant 2 holds. Starting fuelHoard is always 0:
+// every decided roster starts at 0 (docs/phase-1-tuning.md), and minting fuel
+// into a hoard would need a fuel-genesis rule we have not decided -- so this
+// action does not offer a non-zero starting hoard at all.
+function createFoundGuildAction({
+  guildId, name, isBot = false, credits, influence = 0, incomeRate = 0, ventures = [],
+}) {
+  if (guildId === undefined) throw new Error('createFoundGuildAction: guildId is required');
+  if (credits === undefined) throw new Error('createFoundGuildAction: credits is required');
+  return { type: 'foundGuild', guildId, name, isBot, credits, influence, incomeRate, ventures };
 }
 
 // --- Validation -------------------------------------------------------
@@ -60,6 +78,19 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'foundGuild') {
+    if (typeof action.guildId !== 'string' || action.guildId.length === 0) {
+      return { valid: false, reason: 'guildId must be a non-empty string' };
+    }
+    if (findGuild(state, action.guildId)) {
+      return { valid: false, reason: `a guild with id ${JSON.stringify(action.guildId)} already exists` };
+    }
+    if (typeof action.credits !== 'number' || !Number.isInteger(action.credits) || action.credits < 0) {
+      return { valid: false, reason: 'credits must be a non-negative integer (§15.2)' };
+    }
+    return { valid: true };
+  }
+
   return { valid: false, reason: `unknown action type: ${action.type}` };
 }
 
@@ -71,6 +102,24 @@ function applyAction(state, action) {
     const guild = findGuild(next, action.guildId);
     guild.credits -= action.amount;
     next.syndicate.ledger += action.amount;
+    return next;
+  }
+  if (action.type === 'foundGuild') {
+    const guild = createGuild({
+      id: action.guildId,
+      name: action.name,
+      isBot: action.isBot,
+      credits: action.credits,
+      fuelHoard: 0, // always 0 -- see createFoundGuildAction's note
+      influence: action.influence,
+      incomeRate: action.incomeRate,
+      ventures: action.ventures,
+    });
+    next.guilds.push(guild);
+    // The ledger FUNDS the starting credits: credits move Syndicate -> guild,
+    // none are created. expectedCreditTotal is unchanged (guild +C, ledger -C
+    // => net 0), so invariant 2 still holds.
+    next.syndicate.ledger -= action.credits;
     return next;
   }
   // Unreachable if validateAction() was checked first, since every accepted
@@ -112,6 +161,7 @@ function intake(state, actions) {
 
 module.exports = {
   createPaySyndicateFeeAction,
+  createFoundGuildAction,
   validateAction,
   applyAction,
   intake,
