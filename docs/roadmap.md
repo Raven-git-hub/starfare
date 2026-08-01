@@ -141,8 +141,9 @@ Rulings needed from the project owner. "Accept proposal" is a valid answer to an
 - [ ] Validation pass: every resourceType reachable, starter pool non-empty and spread across all 16 sectors, rare-tier guarantee post-repair; results in `validation.passed`/`validation.issues`
 - [ ] Verify against the 15-07 figures on seed 7331: ~393 starter systems; ~41% / ~3.6% rare-tier spread; repair pass fires zero times; stress-test the repair pass
 - [ ] Determinism re-verified after every step
-- [ ] Viewer renders `archetype` and `ring` (#34)
-- [ ] Index UI rebuilt or recovered, wired to real seed data (#34, #35)
+- [ ] Viewer renders `ring` (#34) — `archetype` + resource nodes now render in the System View (01-08-26); ring awaits the rare-tier gradient slice
+- [x] Index UI (System View) wired to real seed data (#34, #35) — the mockup's system/planet view is ported into `seed_viewer.html` as a `#detail-screen` overlay, opened by OPEN DETAILS on a clicked system and fed that system's archetypes + resource nodes; exit returns to the map (01-08-26)
+- [ ] Decide the standalone `system_planet_ui_mockup.html`'s fate now that the System View lives in `seed_viewer.html` — keep as an isolated design reference or retire it to avoid drift
 - [ ] Decide node **richness/yield** (slice A left it ungenerated — nodes carry only `id` + `resourceType`; a node's richness is an undecided number kept out of the canonical seed until designed)
 - [ ] Decide `Planet.stats`' fate (#33): build or delete
 
