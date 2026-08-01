@@ -3,7 +3,8 @@
  * Galaxy Seed Generator
  * ---------------------
  * Generates the static Galaxy Seed (see galaxy-state-model.md §1a):
- * a deterministic map shape — solar systems, blank placeholder planets,
+ * a deterministic map shape — solar systems, planets with archetypes and
+ * resource nodes,
  * Syndicate outposts, and the Citadel. No claims, no ventures, no live
  * state of any kind. Given the same seed number, always produces the
  * identical galaxy.
@@ -81,6 +82,116 @@ function outpostName(rand) {
   const prefixes = ['Free', 'Rim', 'Drift', 'Halo', 'Nomad', 'Waystation', 'Ledger', 'Anchor', 'Common'];
   const suffixes = ["'s Reach", ' Exchange', ' Landing', ' Market', ' Depot', ' Post'];
   return prefixes[Math.floor(rand() * prefixes.length)] + suffixes[Math.floor(rand() * suffixes.length)];
+}
+
+// ---------- planet archetypes & resource pools (design.md §2) ----------
+// Weights sum to 100 (relative frequency, not a literal percentage). Terran is
+// the homeworld archetype: 12 GUARANTEED nodes (incl. gold/silver/tungsten, per
+// §2) + 3 random from the same pool = 15, and the sole exception to the 10-node
+// cap. Oceanic guarantees >=2 Deuterium (the galaxy's only fuel source).
+const ARCHETYPES = {
+  rocky:       { weight: 28, nodeRange: [3, 6], pool: ['titanium', 'copper', 'lead', 'silica'] },
+  oceanic:     { weight: 14, nodeRange: [3, 5], pool: ['deuterium', 'carbon_products', 'polymers'], guaranteed: { deuterium: 2 } },
+  ice:         { weight: 14, nodeRange: [3, 5], pool: ['ammonia', 'nitrogen', 'helium'] },
+  desert:      { weight: 14, nodeRange: [2, 3], pool: ['titanium', 'silica'] },
+  terran:      { weight: 8,
+                 guaranteedList: ['titanium', 'titanium', 'copper', 'lead', 'silica', 'lithium', 'polymers', 'carbon_products', 'nitrogen', 'gold', 'silver', 'tungsten'],
+                 randomFill: 3,
+                 pool: ['titanium', 'copper', 'lead', 'silica', 'lithium', 'polymers', 'carbon_products', 'nitrogen', 'gold', 'silver', 'tungsten'] },
+  gasGiant:    { weight: 8,  nodeRange: [2, 4], pool: ['xenon', 'helium', 'nitrogen'] },
+  molten:      { weight: 8,  nodeRange: [2, 4], pool: ['gold', 'silver', 'tungsten'] },
+  irradiated:  { weight: 4,  nodeRange: [1, 3], pool: ['neodymium', 'palladium'] },
+  crystalline: { weight: 2,  nodeRange: [1, 3], pool: ['silica', 'neodymium'] },
+};
+const GLOBAL_MAX_NODES_PER_PLANET = 10; // §2 hard cap on randomly-drawn planets
+
+// Startup assertion (§2: "enforced as a startup assertion ... rather than a
+// comment"): no RANDOM archetype may exceed the cap. Terran has no nodeRange
+// (fixed 15) and is the named exception.
+for (const [name, def] of Object.entries(ARCHETYPES)) {
+  if (def.nodeRange && def.nodeRange[1] > GLOBAL_MAX_NODES_PER_PLANET) {
+    throw new Error(`archetype ${name} nodeRange max ${def.nodeRange[1]} exceeds the ${GLOBAL_MAX_NODES_PER_PLANET}-node cap`);
+  }
+}
+
+// Weighted, spatially-blind draw (design.md §2). The rare-tier RING gradient is
+// a separate pass (not yet built) that will re-weight this per ring.
+function pickArchetype(rand) {
+  const totalWeight = Object.values(ARCHETYPES).reduce((sum, a) => sum + a.weight, 0);
+  let roll = rand() * totalWeight;
+  for (const [key, def] of Object.entries(ARCHETYPES)) {
+    roll -= def.weight;
+    if (roll <= 0) return key;
+  }
+  return Object.keys(ARCHETYPES)[0]; // floating-point fallback, should never trigger
+}
+
+// Resource nodes for one planet. NODE RICHNESS/YIELD is deliberately NOT set:
+// it is an undecided number (roadmap follow-on), so the canonical seed carries
+// no placeholder for it -- it is added when richness is designed.
+function generateResourceNodes(archetype, rand, planetId) {
+  const def = ARCHETYPES[archetype];
+  let idx = 0;
+  const makeNode = (resourceType) => {
+    idx++;
+    return { id: `${planetId}_n${String(idx).padStart(2, '0')}`, resourceType };
+  };
+
+  // Terran: fixed 12 guaranteed + `randomFill` random draws from the pool = 15.
+  if (def.guaranteedList) {
+    const nodes = def.guaranteedList.map(makeNode);
+    for (let i = 0; i < (def.randomFill || 0); i++) {
+      nodes.push(makeNode(def.pool[Math.floor(rand() * def.pool.length)]));
+    }
+    return nodes;
+  }
+
+  const [min, max] = def.nodeRange;
+  const totalCount = Math.min(GLOBAL_MAX_NODES_PER_PLANET, min + Math.floor(rand() * (max - min + 1)));
+  const nodes = [];
+  let remaining = totalCount;
+  // guaranteed minimums first (e.g. Oceanic's >=2 Deuterium)
+  for (const [resourceType, minCount] of Object.entries(def.guaranteed || {})) {
+    for (let i = 0; i < minCount && remaining > 0; i++) { nodes.push(makeNode(resourceType)); remaining--; }
+  }
+  // fill the rest randomly from the archetype's pool
+  for (let i = 0; i < remaining; i++) {
+    nodes.push(makeNode(def.pool[Math.floor(rand() * def.pool.length)]));
+  }
+  return nodes;
+}
+
+// A system is starter-eligible if it holds >=1 Terran planet (design.md §13):
+// Terran's guaranteed spread makes it starter-viable by construction.
+function isStarterEligible(system) {
+  return system.planets.some(p => p.archetype === 'terran');
+}
+
+// Validation (pipeline step 10): every resourceType appears somewhere, and the
+// starter pool is non-empty and spread across every sector, not just healthy in
+// aggregate. (The rare-tier >=2-within-1/3 guarantee is checked once its repair
+// pass exists -- next slice.)
+function validateGalaxy(systems) {
+  const issues = [];
+  const resourceTypeCounts = {};
+  const archetypeCounts = {};
+  systems.forEach(sys => {
+    sys.planets.forEach(p => {
+      archetypeCounts[p.archetype] = (archetypeCounts[p.archetype] || 0) + 1;
+      p.resourceNodes.forEach(n => { resourceTypeCounts[n.resourceType] = (resourceTypeCounts[n.resourceType] || 0) + 1; });
+    });
+  });
+  const allResourceTypes = new Set();
+  Object.values(ARCHETYPES).forEach(def => { (def.pool || []).forEach(rt => allResourceTypes.add(rt)); });
+  allResourceTypes.forEach(rt => {
+    if (!resourceTypeCounts[rt]) issues.push(`resourceType '${rt}' does not appear anywhere in the generated galaxy`);
+  });
+  const starterSystems = systems.filter(s => s.starterEligible);
+  if (starterSystems.length === 0) issues.push('no starter-eligible (Terran-bearing) systems were generated at all');
+  const sectorsCovered = new Set(starterSystems.map(s => s.name.split('-')[0]));
+  const missingSectors = SECTOR_PREFIXES.filter(pfx => !sectorsCovered.has(pfx));
+  if (missingSectors.length > 0) issues.push(`starter-eligible systems missing from sectors: ${missingSectors.join(', ')}`);
+  return { issues, archetypeCounts, starterSystemCount: starterSystems.length };
 }
 
 // ---------- main generation ----------
@@ -169,6 +280,21 @@ function generateGalaxySeed(seed) {
   }
   outposts.forEach(o => { delete o._x; delete o._y; });
 
+  // --- pipeline steps 5, 6, 8: archetypes, resource nodes, starter tags ---
+  // Runs AFTER every base draw above, so the system/planet/outpost skeleton and
+  // all coordinates stay byte-identical to the bare seed; these passes only
+  // DECORATE the planets already built.
+  let totalResourceNodes = 0;
+  for (const sys of systems) {
+    for (const planet of sys.planets) {
+      planet.archetype = pickArchetype(rand);
+      planet.resourceNodes = generateResourceNodes(planet.archetype, rand, planet.id);
+      totalResourceNodes += planet.resourceNodes.length;
+    }
+    sys.starterEligible = isStarterEligible(sys);
+  }
+  const validation = validateGalaxy(systems); // pipeline step 10
+
   return {
     seed,
     // No generatedAt/wall-clock field on purpose (ruling 20-07-26, roadmap
@@ -181,11 +307,14 @@ function generateGalaxySeed(seed) {
     citadel: { coords: { q: 0, r: 0 }, radius: citadelRadius },
     systems,
     outposts,
+    validation: { passed: validation.issues.length === 0, issues: validation.issues },
     stats: {
       totalHexesInGalaxy: null, // filled in below
       totalSystems: systems.length,
       totalPlanets: planetCounter,
+      totalResourceNodes,
       totalOutposts: outposts.length,
+      starterSystems: validation.starterSystemCount,
       armEligibleHexesConsidered: armEligible.length,
     },
   };
@@ -218,4 +347,7 @@ console.log(`  seed:            ${seed}`);
 console.log(`  total hexes:     ${galaxy.stats.totalHexesInGalaxy.toLocaleString()} (not stored — regenerable from galaxyParams)`);
 console.log(`  systems:         ${galaxy.stats.totalSystems}`);
 console.log(`  planets:         ${galaxy.stats.totalPlanets}`);
+console.log(`  resource nodes:  ${galaxy.stats.totalResourceNodes.toLocaleString()}`);
+console.log(`  starter systems: ${galaxy.stats.starterSystems}`);
+console.log(`  validation:      ${galaxy.validation.passed ? 'PASSED' : 'FAILED -- ' + galaxy.validation.issues.join('; ')}`);
 console.log(`  outposts:        ${galaxy.stats.totalOutposts}`);

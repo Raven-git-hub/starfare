@@ -131,17 +131,19 @@ Rulings needed from the project owner. "Accept proposal" is a valid answer to an
 **Goal:** re-implement the lost 15-07 generator work against its surviving spec (design.md §2, §13, §16), and make the galaxy layer visible for the first time.
 **Entry:** none — schedulable any time. **Required before Phase 4.**
 
-- [x] Searched the local machine (17-07-26): recovered `client/system_planet_ui_mockup.html` and a partial 15-07-era generator, committed as `tools/generate_seed_recovered_partial.js`. It implements archetypes, resource-node generation, starter-eligible tagging, and validation — confirmed working, `validation: PASSED` on seed 7331. **Missing from this recovery:** ring classification, the rare-tier ×4/×1/×0.25 gradient, and the repair pass — none of that logic exists in this file, so §2's 41%/3.6% figures are still unverified against any real code. **Known discrepancy to resolve:** this file produces 5,089 planets for seed 7331 vs. the committed generator's 5,290 — the RNG stream diverges somewhere before or during planet-count generation, so the two files aren't a clean subset/superset of each other; reconciling that is part of finishing this track, not just layering ring logic on top. `galaxy-map-hex.html` and `SyndicateMarketplace.jsx` remain unrecovered.
+- [x] Searched the local machine (17-07-26): recovered `client/system_planet_ui_mockup.html` and a partial 15-07-era generator. Its archetype/resource-node/starter/validation logic (`validation: PASSED` on seed 7331) has now been **consolidated into `tools/generate_seed.js`** (01-08-26), with Terran corrected to §2 and applied as a decorating pass that preserves the base skeleton; the partial file was removed. The old **5,089-vs-5,290 planet-count discrepancy is resolved** (one generator, 5,290; the 15-07 build's ~393-starter figure was its own generator's and is superseded — this one yields 337). **Still missing:** ring classification, the rare-tier ×4/×1/×0.25 gradient, and the repair pass — §2's 41%/3.6% figures remain the verification targets for the next slice. `galaxy-map-hex.html` and `SyndicateMarketplace.jsx` remain unrecovered.
+- [x] **Archetypes + resource nodes landed (01-08-26):** steps 5, 6, 8, 10 consolidated into `generate_seed.js` as a skeleton-preserving decorating pass; `data/seed.json` regenerated (5,290 planets, 23,420 nodes, 337 starter systems, `validation: PASSED`); Terran corrected to §2. Remaining below: rings + gradient + repair + the 41%/3.6% verification + viewer/UI rendering.
 - [ ] Ring classification (inner/middle/outer by Citadel distance)
 - [ ] Nine archetypes, weighted draw, rare-tier ring multipliers (×4 / ×1 / ×0.25)
-- [ ] Resource-node generation: archetype pools + ranges; Terran guaranteed minimums (incl. Gold/Silver/Tungsten) + 3 random extras; Oceanic ≥2 Deuterium; 10-node cap asserted at startup, Terran the sole named exception
-- [ ] Starter-eligible tagging: system has ≥1 Terran planet
+- [x] Resource-node generation: archetype pools + ranges; Terran guaranteed minimums (incl. Gold/Silver/Tungsten) + 3 random extras; Oceanic ≥2 Deuterium; 10-node cap asserted at startup, Terran the sole named exception
+- [x] Starter-eligible tagging: system has ≥1 Terran planet
 - [ ] Rare-tier repair pass (≥2 rare-tier within ⅓ radius of every starter system)
 - [ ] Validation pass: every resourceType reachable, starter pool non-empty and spread across all 16 sectors, rare-tier guarantee post-repair; results in `validation.passed`/`validation.issues`
 - [ ] Verify against the 15-07 figures on seed 7331: ~393 starter systems; ~41% / ~3.6% rare-tier spread; repair pass fires zero times; stress-test the repair pass
 - [ ] Determinism re-verified after every step
 - [ ] Viewer renders `archetype` and `ring` (#34)
 - [ ] Index UI rebuilt or recovered, wired to real seed data (#34, #35)
+- [ ] Decide node **richness/yield** (slice A left it ungenerated — nodes carry only `id` + `resourceType`; a node's richness is an undecided number kept out of the canonical seed until designed)
 - [ ] Decide `Planet.stats`' fate (#33): build or delete
 
 **Exit criteria:** a committed seed regenerable from a published integer, with the galaxy layer visible in at least one client.
