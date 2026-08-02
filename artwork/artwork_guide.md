@@ -1,2 +1,0 @@
-Celestial:
-- Star.jpg
