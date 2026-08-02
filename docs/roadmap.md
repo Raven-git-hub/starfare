@@ -11,7 +11,7 @@
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done (residual experiments optional) |
-| 1 | Playable economy sandbox (widened) | 🔶 In progress — Stage 1 ✅, checklist ✅ (19-07-26); Stage 2: harness + driver + zero-state ✅ (01-08-26), walking skeleton next |
+| 1 | Playable economy sandbox (widened) | 🔶 In progress — Stage 1 ✅, checklist ✅ (19-07-26); Stage 2: harness + driver + zero-state ✅ (01-08-26), resource representation ✅ (02-08-26), walking skeleton continuing |
 | 2 | Persist and tick on a server | ⬜ Not started |
 | G | Galaxy generation recovery (parallel track) | 🔶 In progress — generator complete (rings, ×4/×1/×0.25 gradient, repair, validation) + viewer renders `ring` (02-08-26); remaining items are decisions only |
 | 3 | Multiplayer foundations | ⬜ Not started |
@@ -75,6 +75,7 @@ Rulings needed from the project owner. "Accept proposal" is a valid answer to an
 - [x] Action intake validated as-it-arrives (state-as-it-stands), first-valid-wins — `actions.js`; wired into the driver and tested end-to-end via `advance` (01-08-26)
 - [ ] Walking skeleton: 2 guilds, 3 systems + Citadel, one venture each, fuel market live, one claim, one toll paid end-to-end
   - [x] **First slice landed (01-08-26):** the driver `advance(state, actions)` (`sim/run.js`, intake→tick→assert — invariants now assert every tick in the running loop), the guild-less **zero-state** boot (`sim/scenarios/zero-state.js`), and the conservation-clean **`foundGuild`** action (starting credits debited from the Syndicate ledger). Watchable via `node sim/demo.js`; determinism green through the driver. Remaining on this line: fuel market (step 3), a second guild/bot, a real claim, a toll end-to-end.
+  - [x] **Resource representation landed (02-08-26):** guild-level typed `stockpiles` (replacing the typeless per-venture `outputStockpile`); the canonical resource vocabulary `sim/resources.js` (17 raw goods, **drift-guarded** against the generator's archetype pools by a test); the derived `galacticSupply` totals (`sim/supply.js`) written each tick with a **consistency invariant** asserted every tick; and step-1 production now depositing a mining venture's `resourceType` into its owner's stockpile. Watchable via `node sim/demo.js` — Titanium climbs 5→10→15 and the per-good totals + fuel pool print. Remaining on this line: fuel market/pricing (step 3), a second guild/bot, a real claim, a toll end-to-end.
 - [ ] Determinism test green: same start, run twice, identical hash at tick 50
 - [ ] **Gate:** shown running before scaling up
 
@@ -82,6 +83,9 @@ Rulings needed from the project owner. "Accept proposal" is a valid answer to an
 - [x] **Starter mining rate** — **ruled**: Titanium's base extraction rate is **5/tick** (`[FIRST-CUT]`; recorded in phase-1-tuning.md, 01-08-26). Extraction rate is a per-resource property, not a mine tier; droid buffs remain out of scope. `sim/demo.js`'s quiet ticks now visibly accumulate Titanium while conservation holds.
 - **Waystation count + placement rule** — the zero-state currently places one Syndicate waystation per contested-middle node as a deterministic placeholder. How many, where, and on what basis is open. Kept deterministic on purpose (a random layout would break invariant 9).
 - **Home-node assignment on founding** — `foundGuild` records no home system yet; which node a new guild is seated at (and whether founding claims it, per the +20-influence rule) is deferred to the territory slice.
+- [x] **#22 Deuterium's identity — ruled 02-08-26**: `deuterium` (raw, mined) and `deuterium_fuel` (refined; the fuel held in reserve/hoards) are two distinct goods; the refined good is not minable and is in no archetype pool. The id string `deuterium_fuel` is a `[FIRST-CUT]` open to veto. Encoded in `sim/resources.js`; full ruling in design.md §20.
+- [x] **Venture output model — decided 02-08-26**: the typeless per-venture `outputStockpile` is retired; produced goods are typed and flow into the owner guild's `stockpiles` (one home, no double-counting; producer attribution via `lifetimeProduced`). Reversible if a produced-but-unsold-at-venture state is later needed (design.md §15.4).
+- **Fuel price inputs** — surfaced by the representation slice, deferred to the pricing step: the committed `fuel-allocation-model.md` floats fuel price on the **reserve pool alone**, while the working rule from the 02-08-26 design chat wants **reserve + guild hoards**. `galacticSupply.fuel` already reports both figures; which the price reads is a Stage-3 ruling.
 
 ### Stage 3 — The sandbox
 

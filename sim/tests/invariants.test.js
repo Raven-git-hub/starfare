@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { checkInvariants, assertInvariants } = require('../invariants.js');
+const { computeGalacticSupply } = require('../supply.js');
 const { goodState, clone } = require('./fixtures.js');
 
 // Helper: does the violation list contain a rule whose name starts with `prefix`?
@@ -31,6 +32,7 @@ test('invariant 1: fuel in transit is counted', () => {
   // must still PASS. Proves in-transit fuel is not silently lost from the sum.
   s.reserve.reserveLevel -= 5;
   s.shipments.push({ cargo: { fuel: 5 } });
+  s.galacticSupply = computeGalacticSupply(s); // the communal pool really changed; keep the cache honest
   assert.deepEqual(checkInvariants(s, 0), []);
 });
 

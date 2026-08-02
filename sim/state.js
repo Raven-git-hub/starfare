@@ -17,6 +17,8 @@
 // block at the top of that file) and design.md §15.4 for full entity fields —
 // this is a SUBSET of §15.4, just what the walking skeleton needs first.
 
+const { computeGalacticSupply } = require('./supply.js');
+
 // --- Entity constructors -----------------------------------------------
 
 // Guild (OWNED, design.md §15.4). `ventures` and `vehicles` are nested here
@@ -32,6 +34,7 @@ function createGuild({
   fuelHoard,
   influence = 0,
   incomeRate = 0,
+  stockpiles = {},
   ventures = [],
   vehicles = [],
 }) {
@@ -48,6 +51,14 @@ function createGuild({
     influence,
     incomeRate,
     guildReputation: 0,
+    // stockpiles: good -> int, the guild's holdings of each RAW resource
+    // (design.md §15.4). Fuel is NOT here — it lives in fuelHoard, tracked by
+    // the fuel-conservation law. Empty = holds nothing; keys are added as
+    // production deposits goods. Legality of keys/values (known resource,
+    // integer, non-negative) is enforced every tick by invariants.js, not here
+    // — same division of labour as credits (this file assembles, invariants.js
+    // judges). Copied so a caller's object can't alias into state.
+    stockpiles: { ...stockpiles },
     lifetimeProduced: {}, // good -> int; monotonic, only ever increases (§13)
     ventures: ventures.map(createVenture),
     vehicles: vehicles.map(createVehicle),
@@ -62,9 +73,9 @@ function createVenture({
   id,
   ownerGuildId,
   type,
+  resourceType = null,
   productionRate = 0,
   inputStockpiles = {},
-  outputStockpile = 0,
 }) {
   if (id === undefined) throw new Error('createVenture: id is required');
   if (ownerGuildId === undefined) throw new Error('createVenture: ownerGuildId is required');
@@ -74,9 +85,24 @@ function createVenture({
     id,
     ownerGuildId,
     type,
+    // resourceType: the RAW good a MINING venture extracts. Its output goes to
+    // the owner guild's stockpile (tick.js stepProduction). null for ventures
+    // that don't mine a single named good (e.g. a future refinery/factory,
+    // whose output comes from a recipe, not one resourceType) — such a venture
+    // simply produces nothing under the current step-1 logic. In Slice 2 this
+    // will be derived from / validated against the seed resource node the
+    // venture occupies (its siteId); for now it is set directly by the
+    // scenario, sourced from docs/phase-1-tuning.md.
+    resourceType,
     productionRate,
     inputStockpiles: { ...inputStockpiles },
-    outputStockpile,
+    // NOTE: the old typeless `outputStockpile` scalar was retired in the
+    // resource-representation slice (02-08-26). Produced goods are typed and go
+    // straight into the owner guild's `stockpiles` — one home, no drift. There
+    // is no market or shipping yet, so "produced-but-unsold sits on the
+    // venture" carries no behaviour; when selling/shipping needs that state, it
+    // returns deliberately. Producer attribution is preserved via the guild's
+    // lifetimeProduced counter (§13).
     // §15.2: "every mutation records its tick." null until tick.js's
     // stepProduction first touches this venture -- there's been no
     // mutation to record yet at construction time.
@@ -201,7 +227,15 @@ function createState(scenario) {
       totalConsumed: 0,
       expectedCreditTotal: sumCredits(guilds) + syndicate.ledger,
     },
+    // Derived galactic-supply totals (the "resources section"). A CACHE for the
+    // viewer/telemetry, re-derived and asserted every tick by invariants.js so
+    // it can never silently drift from the guilds' actual stockpiles. Computed
+    // here (not trusted from the scenario) so createState's output always
+    // matches what it assembled — same discipline as `audit` above.
+    galacticSupply: null, // set just below, once `state` is assembled
   };
+
+  state.galacticSupply = computeGalacticSupply(state);
 
   return state;
 }

@@ -491,9 +491,9 @@ The **derive, don't store** principle does most of the work here. Of ~101,000 he
 
 ### 15.4 Core Entities
 
-**Guild** (OWNED): `id`, `name`, `isBot`, `credits` (≥0), `influence`, `fuelHoard` (≥0), `incomeRate` (the flat baseline allocation), `guildReputation`, `lifetimeProduced` (map good→int, **monotonic — only ever increases**; exists so starter-quest progress survives selling down stock, Section 13).
+**Guild** (OWNED): `id`, `name`, `isBot`, `credits` (≥0), `influence`, `fuelHoard` (≥0), `incomeRate` (the flat baseline allocation), `guildReputation`, `stockpiles` (map raw-good→int, ≥0 — the guild's holdings of each raw resource; **fuel is not here**, it lives in `fuelHoard` and is governed by the fuel-conservation law), `lifetimeProduced` (map good→int, **monotonic — only ever increases**; exists so starter-quest progress survives selling down stock, Section 13).
 
-**Venture** (OWNED): `id`, `ownerGuildId`, `type`, `licenceId`, `siteId` (the resource node or leased site it occupies — reference only), `productionRate`, `inputStockpiles`, `outputStockpile`, `droneComplement` (min/max), `reputation`, `shareholders`, `automation` (thresholds/targets/stop conditions). *(Ventures carry no fuel/energy draw: production is renewable-powered and consumes no Deuterium — §3. Fuel is burned by spacecraft, via `Vehicle.fuelCostToRun`.)*
+**Venture** (OWNED): `id`, `ownerGuildId`, `type`, `licenceId`, `siteId` (the resource node or leased site it occupies — reference only), `resourceType` (the raw good a mining venture extracts; its output flows to the owner guild's `stockpiles`), `productionRate`, `inputStockpiles`, `droneComplement` (min/max), `reputation`, `shareholders`, `automation` (thresholds/targets/stop conditions). *(Ventures carry no fuel/energy draw: production is renewable-powered and consumes no Deuterium — §3. Fuel is burned by spacecraft, via `Vehicle.fuelCostToRun`.)* *(The typeless per-venture `outputStockpile` scalar was **retired 02-08-26**: produced goods are typed and go straight into the owner guild's `stockpiles` — one home, no double-counting — with producer attribution preserved via `lifetimeProduced`. Reversible if a produced-but-unsold-at-venture state is later needed.)*
 
 **Vehicle** (OWNED): `id`, `ownerGuildId`, `class`, `speed`/`capacity`/`defenseRating`/`fuelCostToRun`, `status`. *(The Syndicate Hauler is an instance of this with a very high `defenseRating` — not a special case.)*
 
@@ -516,6 +516,8 @@ The **derive, don't store** principle does most of the work here. Of ~101,000 he
 **Shipment** (IN-FLIGHT): `id`, `cargo`, `shipperGuildId`, `vehicleId`, `originId`/`destId`, `routeId`, `departureTick`/`arrivalTick`, `currentRisk`, `status`. `routeId` may reference a Toll Path — see §15.6 for why that case is dramatically cheaper.
 
 **Global**: Galaxy Clock (`currentTick`, `tickRate`), Storyteller (read-signals, targeting weights, queued events), Server Config (the self-host levers, incl. storyteller preset).
+
+**Galactic Supply** (DERIVED, global cache): `resources` (map raw-good→int = Σ every guild's `stockpiles`, zero-filled to the full `resources.js` vocabulary for a stable display) and `fuel` (`reserve` = the communal Syndicate pool; `guildHeld` = Σ guild `fuelHoard`). Written onto the live state each tick as a convenience for the viewer/telemetry, but it is a pure re-derivation from the guilds' stockpiles and the reserve — invariant-checked against the live sum every tick, so the cache can never silently lie (derive-don't-store, with the cache *guarded*). Non-fuel totals are **not conserved** — mining mints goods, selling sinks them into the Syndicate's infinite backend — so the tripwire is a *consistency* check (cache == live sum), never a conservation one (constant over time). Fuel is the opposite: finite, no infinite backend (`fuel-allocation-model.md` §2), hence reported as the two figures the fuel-conservation law (invariant 1) is defined on.
 
 **Galaxy Seed entities** (separate store, §15.3): Solar System (`id`, `coords`, `name`, `claimRadius`, `ring`, `starterEligible`, `planets`), Planet (`id`, `archetype`, `stats` — atmosphere/size/climate/biomes, still empty, see Section 2, `resourceNodes`), Resource Node (`id`, `resourceType`). The term is **resource node** everywhere, in both this document and the code — never "mining slot."
 
@@ -727,7 +729,7 @@ Added by the narrative-layer thread:
 
 Added by the advanced-manufacturing pass:
 
-22. **Deuterium's identity** — the same resource as the Syndicate fuel utility's "Fuel," or a separate raw material.
+22. **Deuterium's identity** — the same resource as the Syndicate fuel utility's "Fuel," or a separate raw material. *(Resolved 02-08-26 — two goods: raw `deuterium` vs refined `deuterium_fuel`; see below.)*
 23. **Lease dispute routing and venture relocatability** — legality-system integration, and how strong landlord leverage should be.
 24. **Remaining recipes** — heavy ship classes, weapons, station modules, and Power Storage Units' full cross-asset role.
 25. **Naming/institutional consistency** — ✅ _resolved_: there is a single top-tier institution, **the Syndicate**, consolidating the roles previously split between CHOAM and the Fuel Company (fuel utility, venture licensing, and the public market/exchange).
@@ -753,7 +755,7 @@ Added by the planet-archetype and UI work:
 36. **Art production pipeline** — 9 archetype images plus star art are planned (AI-generated), but production, storage, sizing conventions, and delivery into the client are unspecified. The CSS placeholders are built to be swapped one line at a time, so this is unblocked, not blocking.
 37. **Terran self-sufficiency vs. the pull to expand** — surfaced by the Terran guarantee (Section 2): a guild that never leaves its homeworld has every resource in the game at low volume. Expansion pressure therefore has to come entirely from *scale and specialisation*, not scarcity of type. Whether that pressure is actually strong enough is untested, and won't be knowable until the Phase 1 economy runs.
 
-**Sharpened, not resolved — #22 (Deuterium's identity).** The generator now emits `deuterium` as a raw `resourceType` on Oceanic planets, while Section 3 has raw Deuterium → *Processed* Deuterium Fuel, and Section 8's fuel utility trades "Fuel." That's consistent with two-things-with-one-name, but the code currently only knows about the raw one. Worth settling the vocabulary before the fuel utility is built, or the seam between generator and economy will be exactly the kind of gap Section 18 warns about.
+**Resolved — #22 (Deuterium's identity), 02-08-26.** Two distinct goods that share a root name. `deuterium` is the **raw** resource mined on Oceanic planets — a normal stockpiled good like any other. `deuterium_fuel` is **refined** from it and is what "the fuel" means: the good held in the Syndicate reserve (`reserveLevel`) and in guild fuel hoards (`fuelHoard`), and the only Syndicate-regulated commodity (Section 3, Section 8). The refined good is **not** minable and appears in **no** archetype pool; it comes into being only once refining exists (not yet built), and is tracked by the fuel-conservation law (invariant 1), never as a row in the resource totals. The concrete id string `deuterium_fuel` is a **[FIRST-CUT]** naming choice, open to veto — but the two-goods split itself is the settled ruling. Both are encoded in `sim/resources.js`.
 
 Added by the Marketplace thread (merged 17-07-26):
 

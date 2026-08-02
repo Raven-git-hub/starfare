@@ -50,6 +50,7 @@ test('createGuild fills in defaults and nests ventures and vehicles', () => {
   assert.deepEqual(g.ventures, []);
   assert.deepEqual(g.vehicles, []);
   assert.deepEqual(g.lifetimeProduced, {});
+  assert.deepEqual(g.stockpiles, {}, 'stockpiles default to empty');
 });
 
 test('createGuild requires id, credits, and fuelHoard', () => {
@@ -62,7 +63,8 @@ test('createVenture fills in defaults', () => {
   const v = createVenture({ id: 'v1', ownerGuildId: 'g1', type: 'mining' });
   assert.equal(v.productionRate, 0);
   assert.deepEqual(v.inputStockpiles, {});
-  assert.equal(v.outputStockpile, 0);
+  assert.equal(v.resourceType, null, 'resourceType defaults to null (mines nothing until set)');
+  assert.equal(v.outputStockpile, undefined, 'the typeless outputStockpile scalar was retired');
 });
 
 test('createVehicle defaults to a light transport, idle, with no fuel/speed/etc. invented', () => {

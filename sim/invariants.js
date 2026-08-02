@@ -13,12 +13,14 @@
 // The slice of state this harness reads (full entity shapes: design.md §15.4).
 // state.js must populate these fields; nothing here invents a game number.
 //
-//   state.guilds     : [{ id, credits, fuelHoard, influence?, ventures? }]
+//   state.guilds     : [{ id, credits, fuelHoard, influence?, stockpiles?, ventures? }]
 //   state.reserve    : { reserveLevel }                    // SHARED fuel reserve
 //   state.syndicate  : { ledger }         // credits; may be negative (see below)
 //   state.shipments? : [{ cargo: { fuel? } }]   // fuel in transit; none yet in
 //                                               // the walking skeleton
 //   state.audit      : { totalProduced, totalConsumed, expectedCreditTotal }
+//   state.galacticSupply : { resources: {good->int}, fuel: {reserve, guildHeld} }
+//                          // DERIVED cache; checked against the live sum here
 //
 // audit.* are GLOBAL bookkeeping counters, not game numbers — they are the
 // running totals invariants 1 and 2 are literally *defined against*:
@@ -36,6 +38,9 @@
 // ---------------------------------------------------------------------------
 
 // One violation record shape everywhere: { rule, where, detail }.
+
+const { isRawResource } = require('./resources.js');
+const { computeGalacticSupply } = require('./supply.js');
 
 function sumFuelInTransit(state) {
   if (!Array.isArray(state.shipments)) return 0;
@@ -108,11 +113,20 @@ function checkNonNegativityAndIntegrality(state) {
     checkField(out, g.fuelHoard, `guild:${g.id}.fuelHoard`);
     if (g.influence !== undefined) checkField(out, g.influence, `guild:${g.id}.influence`);
 
+    // Stockpiles: every value is an integer, non-negative good; every key is a
+    // known raw resource (a stray/misspelled key would silently vanish from the
+    // galactic totals, so catch it here rather than let it rot).
+    if (g.stockpiles) {
+      for (const [good, qty] of Object.entries(g.stockpiles)) {
+        checkField(out, qty, `guild:${g.id}.stockpiles.${good}`);
+        if (!isRawResource(good)) {
+          out.push({ rule: 'known-resource (resources.js)', where: `guild:${g.id}.stockpiles.${good}`, detail: { good } });
+        }
+      }
+    }
+
     if (Array.isArray(g.ventures)) {
       for (const ven of g.ventures) {
-        if (ven.outputStockpile !== undefined) {
-          checkField(out, ven.outputStockpile, `venture:${ven.id}.outputStockpile`);
-        }
         if (ven.inputStockpiles) {
           for (const [good, qty] of Object.entries(ven.inputStockpiles)) {
             checkField(out, qty, `venture:${ven.id}.inputStockpiles.${good}`);
@@ -131,6 +145,45 @@ function checkNonNegativityAndIntegrality(state) {
   return out;
 }
 
+// Galactic-supply consistency — the derived totals cache (state.galacticSupply)
+// must equal a fresh re-derivation from the guilds' actual stockpiles and the
+// fuel figures. This is a CONSISTENCY check, not a conservation one: non-fuel
+// resources are not conserved (mining mints them, selling sinks them into the
+// Syndicate's infinite backend), so nothing here says a total is constant —
+// only that the cache the viewer/telemetry reads never lies about the live sum.
+// A missing cache on a real state is itself a violation: every state built by
+// createState or produced by tick carries one.
+function checkGalacticSupplyConsistency(state) {
+  const out = [];
+  const cache = state.galacticSupply;
+  if (!cache || typeof cache !== 'object') {
+    return [{ rule: 'galactic-supply-consistency', where: 'galacticSupply', detail: { missing: true } }];
+  }
+  const expected = computeGalacticSupply(state);
+
+  const cacheRes = cache.resources || {};
+  for (const [good, qty] of Object.entries(expected.resources)) {
+    if (cacheRes[good] !== qty) {
+      out.push({ rule: 'galactic-supply-consistency', where: `galacticSupply.resources.${good}`, detail: { cached: cacheRes[good], live: qty } });
+    }
+  }
+  // A cached key that isn't a known resource (so never re-derived) is stale/bogus.
+  for (const good of Object.keys(cacheRes)) {
+    if (!(good in expected.resources)) {
+      out.push({ rule: 'galactic-supply-consistency', where: `galacticSupply.resources.${good}`, detail: { cached: cacheRes[good], live: 'absent' } });
+    }
+  }
+
+  const cacheFuel = cache.fuel || {};
+  if (cacheFuel.reserve !== expected.fuel.reserve) {
+    out.push({ rule: 'galactic-supply-consistency', where: 'galacticSupply.fuel.reserve', detail: { cached: cacheFuel.reserve, live: expected.fuel.reserve } });
+  }
+  if (cacheFuel.guildHeld !== expected.fuel.guildHeld) {
+    out.push({ rule: 'galactic-supply-consistency', where: 'galacticSupply.fuel.guildHeld', detail: { cached: cacheFuel.guildHeld, live: expected.fuel.guildHeld } });
+  }
+  return out;
+}
+
 // Run all within-run invariants. Returns a (possibly empty) list of violations,
 // each tagged with the tick.
 function checkInvariants(state, tick) {
@@ -138,6 +191,7 @@ function checkInvariants(state, tick) {
     ...checkFuelConservation(state),
     ...checkCreditConservation(state),
     ...checkNonNegativityAndIntegrality(state),
+    ...checkGalacticSupplyConsistency(state),
   ];
   return violations.map((v) => ({ ...v, tick }));
 }

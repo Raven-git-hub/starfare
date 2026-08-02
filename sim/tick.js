@@ -21,31 +21,44 @@
 //     a new state object
 //   - no DOM access anywhere (the hard rule in sim/README.md)
 
+const { computeGalacticSupply } = require('./supply.js');
+
 // Deep-clones state so tick() can never accidentally mutate its input.
 // structuredClone is a plain JS global (Node 17+), not a DOM API.
 function cloneState(state) {
   return structuredClone(state);
 }
 
-// Step 1 — production. FIRST REAL STEP: the simplest possible cut. Every
-// venture's outputStockpile grows by its productionRate, once per tick.
+// Step 1 — production. FIRST REAL STEP: the simplest possible cut. A mining
+// venture extracts `productionRate` units of its `resourceType` each tick,
+// deposited straight into the OWNER guild's typed `stockpiles` map — one home
+// for produced goods, so nothing is double-counted (the totals in supply.js
+// derive from exactly this). `Venture.updatedAtTick` records when (§15.2's
+// "every mutation records its tick").
 //
 // Deliberately NOT yet implemented, left for economy.js:
 //   - consuming inputStockpiles (Tier 2+ ventures need inputs; Tier-1 raw
 //     mining, design.md's pipeline, needs none, so this is honest for the
 //     walking skeleton's one mining venture, but wrong once a Tier-2+
-//     venture exists)
+//     venture exists). A recipe-driven venture carries no single resourceType,
+//     so it produces nothing under this step-1 logic and is skipped below.
+//   - crediting guild.lifetimeProduced (§13's monotonic produced counter). The
+//     good is now known, so this is a one-liner away, but it is a separate
+//     concern with its own future tripwire (monotonicity) — wired when a
+//     consumer needs it, not speculatively here.
 //   - NOTE: ventures draw no fuel/energy at all (renewable-powered, §3 /
 //     open question #54). Fuel is burned by spacecraft, not ventures, so
 //     there is deliberately nothing here for step 2 to do on a venture's
 //     behalf.
-//   - which GOOD was produced, so guild.lifetimeProduced can be credited
-//     (Venture has no "good" field yet -- adding one is a real decision,
-//     not something to invent here just to fill in this counter)
 function stepProduction(state, _actions) {
   for (const guild of state.guilds) {
     for (const venture of guild.ventures || []) {
-      venture.outputStockpile += venture.productionRate;
+      // Skip anything with nothing to deposit: a venture that mines no named
+      // good, or one with a zero rate. No goods moved => no mutation to stamp.
+      if (!venture.resourceType || !venture.productionRate) continue;
+      if (!guild.stockpiles) guild.stockpiles = {};
+      guild.stockpiles[venture.resourceType] =
+        (guild.stockpiles[venture.resourceType] || 0) + venture.productionRate;
       venture.updatedAtTick = state.tick;
     }
   }
@@ -127,6 +140,14 @@ function tick(state, actions = []) {
     next = step(next, actions);
   }
   next.tick = state.tick + 1;
+
+  // Derive pass, NOT a §15.6 step: refresh the galactic-supply cache from the
+  // state the eight steps just produced. Kept out of the STEPS array on purpose
+  // — it computes nothing new about the game, it only re-totals what already
+  // happened, and invariants.js asserts it matches. (The eight-step order is a
+  // contract; this derivation is bookkeeping that runs after it.)
+  next.galacticSupply = computeGalacticSupply(next);
+
   return next;
 }
 

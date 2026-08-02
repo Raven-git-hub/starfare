@@ -13,12 +13,9 @@ const { createFoundGuildAction } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
 const { hashState } = require('./serialize.js');
 
-// Total Titanium sitting in a guild's mine output stockpiles.
-function minedTitanium(state) {
-  return state.guilds.reduce(
-    (sum, g) => sum + (g.ventures || []).reduce((a, v) => a + (v.outputStockpile || 0), 0),
-    0,
-  );
+// Total Titanium held across all guild stockpiles.
+function heldTitanium(state) {
+  return state.guilds.reduce((sum, g) => sum + ((g.stockpiles && g.stockpiles.titanium) || 0), 0);
 }
 
 function summary(state) {
@@ -30,7 +27,15 @@ function summary(state) {
     `  Syndicate ledger ${state.syndicate.ledger}`,
   ];
   if (state.guilds.some((g) => (g.ventures || []).length)) {
-    lines.push(`  mine output      ${minedTitanium(state)} Titanium`);
+    lines.push(`  titanium held    ${heldTitanium(state)}`);
+  }
+  const gs = state.galacticSupply;
+  if (gs) {
+    const nonzero = Object.entries(gs.resources)
+      .filter(([, q]) => q > 0)
+      .map(([k, q]) => `${k} ${q}`);
+    lines.push(`  galactic supply  ${nonzero.length ? nonzero.join(', ') : '(all resources 0)'}`);
+    lines.push(`  fuel pool        reserve ${gs.fuel.reserve}, guild-held ${gs.fuel.guildHeld}`);
   }
   lines.push(
     `  world nodes      ${state.world.nodes.length}`,
@@ -53,7 +58,7 @@ const foundPlayer = createFoundGuildAction({
   name: 'Player Guild',
   credits: 120,       // [phase-1-tuning.md]
   influence: 100,     // [phase-1-tuning.md]
-  ventures: [{ id: 'mine_1', ownerGuildId: 'player', type: 'mining', productionRate: 5 }], // [phase-1-tuning.md]
+  ventures: [{ id: 'mine_1', ownerGuildId: 'player', type: 'mining', resourceType: 'titanium', productionRate: 5 }], // [phase-1-tuning.md]
 });
 let res = advance(state, [foundPlayer]);
 state = res.state;
@@ -67,7 +72,7 @@ console.log('=== 3. Two quiet ticks (no actions) -- the mine keeps extracting ==
 for (let i = 0; i < 2; i += 1) {
   res = advance(state, []);
   state = res.state;
-  console.log(`  tick ${state.tick}: mine output now ${minedTitanium(state)} Titanium (+5), invariants OK`);
+  console.log(`  tick ${state.tick}: titanium held now ${heldTitanium(state)} (+5), invariants OK`);
 }
 console.log('\n  The galaxy is running: no action needed for the world to advance, and the');
 console.log('  mine turns out Titanium every tick while conservation holds throughout.');
