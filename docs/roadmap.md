@@ -13,7 +13,7 @@
 | 0 | Prove it's fun, learn to code | ✅ Done (residual experiments optional) |
 | 1 | Playable economy sandbox (widened) | 🔶 In progress — Stage 1 ✅, checklist ✅ (19-07-26); Stage 2: harness + driver + zero-state ✅ (01-08-26), walking skeleton next |
 | 2 | Persist and tick on a server | ⬜ Not started |
-| G | Galaxy generation recovery (parallel track) | ⬜ Not started — design complete, code lost |
+| G | Galaxy generation recovery (parallel track) | 🔶 In progress — generator complete (rings, ×4/×1/×0.25 gradient, repair, validation) + viewer renders `ring` (02-08-26); remaining items are decisions only |
 | 3 | Multiplayer foundations | ⬜ Not started |
 | 4 | Territory, routes, tolls, travel time (real map) | ⬜ Not started |
 | 5 | The political layer | ⬜ Not started |
@@ -133,18 +133,19 @@ Rulings needed from the project owner. "Accept proposal" is a valid answer to an
 
 - [x] Searched the local machine (17-07-26): recovered `client/system_planet_ui_mockup.html` and a partial 15-07-era generator. Its archetype/resource-node/starter/validation logic (`validation: PASSED` on seed 7331) has now been **consolidated into `tools/generate_seed.js`** (01-08-26), with Terran corrected to §2 and applied as a decorating pass that preserves the base skeleton; the partial file was removed. The old **5,089-vs-5,290 planet-count discrepancy is resolved** (one generator, 5,290; the 15-07 build's ~393-starter figure was its own generator's and is superseded — this one yields 337). **Still missing:** ring classification, the rare-tier ×4/×1/×0.25 gradient, and the repair pass — §2's 41%/3.6% figures remain the verification targets for the next slice. `galaxy-map-hex.html` and `SyndicateMarketplace.jsx` remain unrecovered.
 - [x] **Archetypes + resource nodes landed (01-08-26):** steps 5, 6, 8, 10 consolidated into `generate_seed.js` as a skeleton-preserving decorating pass; `data/seed.json` regenerated (5,290 planets, 23,420 nodes, 337 starter systems, `validation: PASSED`); Terran corrected to §2. Remaining below: rings + gradient + repair + the 41%/3.6% verification + viewer/UI rendering.
-- [ ] Ring classification (inner/middle/outer by Citadel distance)
-- [ ] Nine archetypes, weighted draw, rare-tier ring multipliers (×4 / ×1 / ×0.25)
+- [x] Ring classification (inner/middle/outer by Citadel distance) — pure geometry, no RNG; `system.ring` set at build time so the base skeleton stays byte-identical (02-08-26)
+- [x] Nine archetypes, weighted draw, rare-tier ring multipliers (×4 / ×1 / ×0.25) — measures ~38.7% inner / ~14.4% middle / ~4.3% outer rare-tier on seed 7331 (02-08-26)
 - [x] Resource-node generation: archetype pools + ranges; Terran guaranteed minimums (incl. Gold/Silver/Tungsten) + 3 random extras; Oceanic ≥2 Deuterium; 10-node cap asserted at startup, Terran the sole named exception
 - [x] Starter-eligible tagging: system has ≥1 Terran planet
-- [ ] Rare-tier repair pass (≥2 rare-tier within ⅓ radius of every starter system)
-- [ ] Validation pass: every resourceType reachable, starter pool non-empty and spread across all 16 sectors, rare-tier guarantee post-repair; results in `validation.passed`/`validation.issues`
-- [ ] Verify against the 15-07 figures on seed 7331: ~393 starter systems; ~41% / ~3.6% rare-tier spread; repair pass fires zero times; stress-test the repair pass
-- [ ] Determinism re-verified after every step
-- [ ] Viewer renders `ring` (#34) — `archetype` + resource nodes now render in the System View (01-08-26); ring awaits the rare-tier gradient slice
+- [x] Rare-tier repair pass (≥2 rare-tier within ⅓ radius of every starter system) — fires zero times on 7331; 359 repairs at a stress floor of 50, still valid (02-08-26)
+- [x] Validation pass: every resourceType reachable, starter pool non-empty and spread across all 16 sectors, rare-tier guarantee post-repair; results in `validation.passed`/`validation.issues` (02-08-26)
+- [x] Verified on seed 7331 (02-08-26): **368** starter systems (the 393 was a different, unrecovered build); rare-tier spread ~38.7% inner / ~4.3% outer (9.0×), close to the ~41%/~3.6% targets and exactly what ×4/×1/×0.25 predict; repair pass fires zero times; stress floor of 50 applies 359 repairs and still validates
+- [x] Determinism re-verified: same seed → byte-identical galaxy; `data/test_claims.json` still byte-identical (skeleton unchanged) (02-08-26)
+- [x] Viewer renders `ring` (#34) — System View header shows INNER/MIDDLE/OUTER and the map-side info panel carries a Ring row; verified in-browser (02-08-26)
 - [x] Index UI (System View) wired to real seed data (#34, #35) — the mockup's system/planet view is ported into `seed_viewer.html` as a `#detail-screen` overlay, opened by OPEN DETAILS on a clicked system and fed that system's archetypes + resource nodes; exit returns to the map (01-08-26)
 - [x] System View verified rendering in-browser (02-08-26) — fixed two defects in the port: a dropped `</div>` that left the overlay unclosed (swallowing the page scripts), and a CSS comment containing `*/` that voided the `#detail-screen` rule so the overlay never positioned over the map
 - [ ] Decide the standalone `system_planet_ui_mockup.html`'s fate now that the System View lives in `seed_viewer.html` — keep as an isolated design reference or retire it to avoid drift
+- [ ] Decide **which rare tier a repaired planet becomes** — the repair pass (design.md §2, §16 step 9) currently makes a base-weighted draw among molten/irradiated/crystalline. Unobservable on seed 7331 (repair never fires), so this is a flag, not a live number; a ruling of "accept the base-weighted draw" is a valid answer.
 - [ ] Decide node **richness/yield** (slice A left it ungenerated — nodes carry only `id` + `resourceType`; a node's richness is an undecided number kept out of the canonical seed until designed)
 - [ ] Decide `Planet.stats`' fate (#33): build or delete
 

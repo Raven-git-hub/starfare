@@ -588,6 +588,7 @@
     <div class="row"><span>Type:</span> <b id="sp-type">—</b></div>
     <div class="row"><span>Control:</span> <b id="sp-control">—</b></div>
     <div class="row" id="sp-planets-row" style="display:none"><span>Planets:</span> <b id="sp-planets">—</b></div>
+    <div class="row" id="sp-ring-row" style="display:none"><span>Ring:</span> <b id="sp-ring">—</b></div>
     <button id="sp-details" disabled title="Placeholder — will open the solar system data guide">OPEN DETAILS</button>
   </div>
 </div>
@@ -1167,6 +1168,8 @@
     const controlEl = document.getElementById('sp-control');
     const planetsRow = document.getElementById('sp-planets-row');
     const detailsBtn = document.getElementById('sp-details');
+    const ringRow = document.getElementById('sp-ring-row');
+    ringRow.style.display = 'none'; // shown only for systems that carry a ring
 
     const coords = (type === 'empty' || type === 'territory') ? ax : hit.coords;
     document.getElementById('sp-coords').textContent = `q${coords.q} r${coords.r}`;
@@ -1180,6 +1183,7 @@
       controlEl.textContent = guild ? guild.name : 'Unclaimed';
       planetsRow.style.display = 'block';
       document.getElementById('sp-planets').textContent = hit.planets.length;
+      if (hit.ring) { document.getElementById('sp-ring').textContent = hit.ring.toUpperCase(); ringRow.style.display = 'block'; }
       detailsBtn.disabled = false;
     } else if (type === 'guildOutpost') {
       const guild = guildById.get(hit.guildId);
@@ -1352,6 +1356,7 @@ function adaptSeedSystem(sys){
   return {
     name: sys.name,
     id: sys.id,
+    ring: sys.ring || null,
     planets: (sys.planets || []).map((p, i) => ({
       id: p.id,
       order: i + 1,
@@ -1418,7 +1423,8 @@ function renderCrumb(){
 
 function renderSystemView(){
   el.titleMain.textContent = SYSTEM.name;
-  el.titleSub.textContent = SYSTEM.planets.length + ' surveyed bodies · ' + SYSTEM.id;
+  const ringBit = SYSTEM.ring ? SYSTEM.ring.toUpperCase() + ' RING · ' : '';
+  el.titleSub.textContent = SYSTEM.planets.length + ' surveyed bodies · ' + ringBit + SYSTEM.id;
 
   el.stack.className = 'stack';
   el.stack.innerHTML = '';
