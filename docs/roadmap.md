@@ -13,7 +13,7 @@
 | 0 | Prove it's fun, learn to code | ✅ Done (residual experiments optional) |
 | 1 | Playable economy sandbox (widened) | 🔶 In progress — Stage 1 ✅, checklist ✅ (19-07-26); Stage 2: harness + driver + zero-state ✅ (01-08-26), resource representation ✅ (02-08-26), walking skeleton continuing |
 | 2 | Persist and tick on a server | ⬜ Not started |
-| G | Galaxy generation recovery (parallel track) | 🔶 In progress — generator complete (rings, ×4/×1/×0.25 gradient, repair, validation) + viewer renders `ring` (02-08-26); remaining items are decisions only |
+| G | Galaxy generation recovery (parallel track) | 🔶 In progress — generator complete (rings, ×4/×1/×0.25 gradient, repair, validation, settlement slots) + viewer renders `ring` (02-08-26); remaining items are decisions only |
 | 3 | Multiplayer foundations | ⬜ Not started |
 | 4 | Territory, routes, tolls, travel time (real map) | ⬜ Not started |
 | 5 | The political layer | ⬜ Not started |
@@ -76,6 +76,7 @@ Rulings needed from the project owner. "Accept proposal" is a valid answer to an
 - [ ] Walking skeleton: 2 guilds, 3 systems + Citadel, one venture each, fuel market live, one claim, one toll paid end-to-end
   - [x] **First slice landed (01-08-26):** the driver `advance(state, actions)` (`sim/run.js`, intake→tick→assert — invariants now assert every tick in the running loop), the guild-less **zero-state** boot (`sim/scenarios/zero-state.js`), and the conservation-clean **`foundGuild`** action (starting credits debited from the Syndicate ledger). Watchable via `node sim/demo.js`; determinism green through the driver. Remaining on this line: fuel market (step 3), a second guild/bot, a real claim, a toll end-to-end.
   - [x] **Resource representation landed (02-08-26):** guild-level typed `stockpiles` (replacing the typeless per-venture `outputStockpile`); the canonical resource vocabulary `sim/resources.js` (17 raw goods, **drift-guarded** against the generator's archetype pools by a test); the derived `galacticSupply` totals (`sim/supply.js`) written each tick with a **consistency invariant** asserted every tick; and step-1 production now depositing a mining venture's `resourceType` into its owner's stockpile. Watchable via `node sim/demo.js` — Titanium climbs 5→10→15 and the per-good totals + fuel pool print. Remaining on this line: fuel market/pricing (step 3), a second guild/bot, a real claim, a toll end-to-end.
+  - [x] **Venture ↔ seed link landed (02-08-26):** the first time the engine references the seed. Ventures carry a `siteId` (a resource node or settlement slot); `sim/seed.js` resolves it against `data/seed.json` (read-only); occupancy is the derived lookup `sim/occupancy.js`; and a new invariant asserts every `siteId` resolves to a real site, one venture per site, and a mining venture's `resourceType` matches its node. Settlement slots were added to the generator in the same slice (see Track G). Watchable via `node sim/demo.js` — the mine now shows seated at `pl_00001_n02 (titanium on pl_00001)`. The tick hot path stays seed-free (only seating-validation and the invariant read the seed).
 - [ ] Determinism test green: same start, run twice, identical hash at tick 50
 - [ ] **Gate:** shown running before scaling up
 
@@ -86,6 +87,8 @@ Rulings needed from the project owner. "Accept proposal" is a valid answer to an
 - [x] **#22 Deuterium's identity — ruled 02-08-26**: `deuterium` (raw, mined) and `deuterium_fuel` (refined; the fuel held in reserve/hoards) are two distinct goods; the refined good is not minable and is in no archetype pool. The id string `deuterium_fuel` is a `[FIRST-CUT]` open to veto. Encoded in `sim/resources.js`; full ruling in design.md §20.
 - [x] **Venture output model — decided 02-08-26**: the typeless per-venture `outputStockpile` is retired; produced goods are typed and flow into the owner guild's `stockpiles` (one home, no double-counting; producer attribution via `lifetimeProduced`). Reversible if a produced-but-unsold-at-venture state is later needed (design.md §15.4).
 - **Fuel price inputs** — surfaced by the representation slice, deferred to the pricing step: the committed `fuel-allocation-model.md` floats fuel price on the **reserve pool alone**, while the working rule from the 02-08-26 design chat wants **reserve + guild hoards**. `galacticSupply.fuel` already reports both figures; which the price reads is a Stage-3 ruling.
+- [x] **Settlement-slot counts — ruled 02-08-26** `[FIRST-CUT]`: per-planet non-mining build spaces by archetype — Terran 15; rocky/desert 7–10; ice/crystalline 4–7; oceanic 3–4; gasGiant/molten/irradiated 0. In the generator (`SETTLEMENT_SLOTS`) and `docs/phase-1-tuning.md`; open to a veto.
+- [x] **Venture seating model — decided 02-08-26**: a venture's `siteId` (resource node or settlement slot) is the authoritative location; occupancy is derived (`sim/occupancy.js`), never stored on the site (design.md §15). `resourceType` stays a denormalised copy of the node's, guarded by the site-occupancy invariant. The tick loop stays seed-free.
 
 ### Stage 3 — The sandbox
 
@@ -140,6 +143,7 @@ Rulings needed from the project owner. "Accept proposal" is a valid answer to an
 - [x] Ring classification (inner/middle/outer by Citadel distance) — pure geometry, no RNG; `system.ring` set at build time so the base skeleton stays byte-identical (02-08-26)
 - [x] Nine archetypes, weighted draw, rare-tier ring multipliers (×4 / ×1 / ×0.25) — measures ~38.7% inner / ~14.4% middle / ~4.3% outer rare-tier on seed 7331 (02-08-26)
 - [x] Resource-node generation: archetype pools + ranges; Terran guaranteed minimums (incl. Gold/Silver/Tungsten) + 3 random extras; Oceanic ≥2 Deuterium; 10-node cap asserted at startup, Terran the sole named exception
+- [x] **Settlement slots landed (02-08-26):** per-planet non-mining build spaces (`settlementSlots`, ids `_sNN`), count by archetype (Terran 15; rocky/desert 7–10; ice/crystalline 4–7; oceanic 3–4; gasGiant/molten/irradiated 0) `[FIRST-CUT]`; added as a decorate pass AFTER repair so every prior field stays byte-identical — `data/seed.json` regenerated (32,813 slots), determinism re-verified, generator tripwire covers the counts/ids. Drives where refinery/factory/construction ventures can later be seated (consumed live via `sim/seed.js`).
 - [x] Starter-eligible tagging: system has ≥1 Terran planet
 - [x] Rare-tier repair pass (≥2 rare-tier within ⅓ radius of every starter system) — fires zero times on 7331; 359 repairs at a stress floor of 50, still valid (02-08-26)
 - [x] Validation pass: every resourceType reachable, starter pool non-empty and spread across all 16 sectors, rare-tier guarantee post-repair; results in `validation.passed`/`validation.issues` (02-08-26)

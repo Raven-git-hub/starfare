@@ -89,3 +89,45 @@ test('repair pass engages under stress (floor raised to 50) and still validates'
   assert.ok(g.stats.rareTierRepairs > 0, 'expected repairs at floor=50');
   assert.equal(g.validation.passed, true, g.validation.issues.join('; '));
 });
+
+test('settlement slots: count matches the archetype spec, ids are distinct and sequential', () => {
+  const g = build();
+  for (const s of g.systems) {
+    for (const p of s.planets) {
+      const spec = G.SETTLEMENT_SLOTS[p.archetype];
+      assert.ok(spec, `no settlement spec for archetype ${p.archetype}`);
+      const n = p.settlementSlots.length;
+      if (spec.fixed !== undefined) {
+        assert.equal(n, spec.fixed, `${p.id} (${p.archetype}) should have exactly ${spec.fixed} slots`);
+      } else {
+        const [min, max] = spec.range;
+        assert.ok(n >= min && n <= max, `${p.id} (${p.archetype}) slot count ${n} outside [${min},${max}]`);
+      }
+      // ids: `${planetId}_sNN`, 1-based, sequential, and disjoint from _nNN nodes
+      p.settlementSlots.forEach((slot, i) => {
+        assert.equal(slot.id, `${p.id}_s${String(i + 1).padStart(2, '0')}`);
+      });
+    }
+  }
+});
+
+test('settlement slots: gaseous/hostile archetypes have none; terran has 15', () => {
+  const g = build();
+  for (const s of g.systems) {
+    for (const p of s.planets) {
+      if (p.archetype === 'gasGiant' || p.archetype === 'molten' || p.archetype === 'irradiated') {
+        assert.equal(p.settlementSlots.length, 0, `${p.archetype} must have 0 slots`);
+      }
+      if (p.archetype === 'terran') {
+        assert.equal(p.settlementSlots.length, 15, 'terran must have exactly 15 slots');
+      }
+    }
+  }
+});
+
+test('settlement slots: stats.totalSettlementSlots equals the live sum', () => {
+  const g = build();
+  let sum = 0;
+  for (const s of g.systems) for (const p of s.planets) sum += p.settlementSlots.length;
+  assert.equal(g.stats.totalSettlementSlots, sum);
+});

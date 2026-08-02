@@ -11,7 +11,13 @@ const { createZeroState } = require('./scenarios/zero-state.js');
 const { advance } = require('./run.js');
 const { createFoundGuildAction } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
+const { computeOccupancy } = require('./occupancy.js');
+const { getSite } = require('./seed.js');
 const { hashState } = require('./serialize.js');
+
+// A real Titanium resource node from the seed to seat the mine on. Chosen once,
+// here, so the demo shows a venture living on an actual place in the galaxy.
+const MINE_SITE = 'pl_00001_n02'; // pl_00001 (rocky), a titanium node
 
 // Total Titanium held across all guild stockpiles.
 function heldTitanium(state) {
@@ -28,6 +34,13 @@ function summary(state) {
   ];
   if (state.guilds.some((g) => (g.ventures || []).length)) {
     lines.push(`  titanium held    ${heldTitanium(state)}`);
+    const occ = computeOccupancy(state);
+    const seats = Object.entries(occ).map(([siteId, ventureId]) => {
+      const site = getSite(siteId);
+      const where = site ? `${site.kind === 'resource' ? site.resourceType : site.kind} on ${site.planetId}` : 'UNKNOWN SITE';
+      return `${ventureId} @ ${siteId} (${where})`;
+    });
+    if (seats.length) lines.push(`  ventures seated  ${seats.join('; ')}`);
   }
   const gs = state.galacticSupply;
   if (gs) {
@@ -58,7 +71,7 @@ const foundPlayer = createFoundGuildAction({
   name: 'Player Guild',
   credits: 120,       // [phase-1-tuning.md]
   influence: 100,     // [phase-1-tuning.md]
-  ventures: [{ id: 'mine_1', ownerGuildId: 'player', type: 'mining', resourceType: 'titanium', productionRate: 5 }], // [phase-1-tuning.md]
+  ventures: [{ id: 'mine_1', ownerGuildId: 'player', type: 'mining', siteId: MINE_SITE, resourceType: 'titanium', productionRate: 5 }], // [phase-1-tuning.md]
 });
 let res = advance(state, [foundPlayer]);
 state = res.state;

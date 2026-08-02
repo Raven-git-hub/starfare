@@ -41,6 +41,7 @@
 
 const { isRawResource } = require('./resources.js');
 const { computeGalacticSupply } = require('./supply.js');
+const { getSite } = require('./seed.js');
 
 function sumFuelInTransit(state) {
   if (!Array.isArray(state.shipments)) return 0;
@@ -184,6 +185,46 @@ function checkGalacticSupplyConsistency(state) {
   return out;
 }
 
+// Site occupancy / referential integrity — the first cross-check between live
+// state and the static seed. Only SEATED ventures (those with a siteId) are
+// checked; an unseated venture is legal (production runs off resourceType). For
+// each seated venture:
+//   - its siteId must resolve to a real seed node/slot (no dangling reference);
+//   - a mining venture (resourceType set) must sit on a resource node, and that
+//     node's resourceType must match the one driving its production — this is
+//     the guard that lets resourceType stay a denormalised copy safely;
+//   - at most one venture may occupy any given site.
+function checkSiteOccupancy(state) {
+  const out = [];
+  const seenAt = new Map(); // siteId -> first ventureId that claimed it
+
+  for (const g of state.guilds || []) {
+    for (const v of g.ventures || []) {
+      if (!v.siteId) continue; // unseated: nothing to check
+
+      const site = getSite(v.siteId);
+      if (!site) {
+        out.push({ rule: 'site-exists (seed.js)', where: `venture:${v.id}.siteId`, detail: { siteId: v.siteId } });
+        // fall through: still record the claim for duplicate detection
+      } else if (v.resourceType != null) {
+        // a mining venture: must be on a resource node whose good matches
+        if (site.kind !== 'resource') {
+          out.push({ rule: 'mining-venture-on-resource-node', where: `venture:${v.id}.siteId`, detail: { siteId: v.siteId, siteKind: site.kind } });
+        } else if (site.resourceType !== v.resourceType) {
+          out.push({ rule: 'venture-resource-matches-node', where: `venture:${v.id}.resourceType`, detail: { venture: v.resourceType, node: site.resourceType, siteId: v.siteId } });
+        }
+      }
+
+      if (seenAt.has(v.siteId)) {
+        out.push({ rule: 'one-venture-per-site', where: `site:${v.siteId}`, detail: { siteId: v.siteId, ventures: [seenAt.get(v.siteId), v.id] } });
+      } else {
+        seenAt.set(v.siteId, v.id);
+      }
+    }
+  }
+  return out;
+}
+
 // Run all within-run invariants. Returns a (possibly empty) list of violations,
 // each tagged with the tick.
 function checkInvariants(state, tick) {
@@ -192,6 +233,7 @@ function checkInvariants(state, tick) {
     ...checkCreditConservation(state),
     ...checkNonNegativityAndIntegrality(state),
     ...checkGalacticSupplyConsistency(state),
+    ...checkSiteOccupancy(state),
   ];
   return violations.map((v) => ({ ...v, tick }));
 }

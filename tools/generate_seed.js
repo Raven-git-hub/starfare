@@ -125,6 +125,27 @@ const ARCHETYPES = {
 };
 const GLOBAL_MAX_NODES_PER_PLANET = 10; // §2 hard cap on randomly-drawn planets
 
+// Settlement slots: surface spaces where a guild places NON-mining ventures
+// (Refinery / Manufacturing / Construction assets). SEPARATE from the
+// guaranteed resource nodes above -- they carry no resourceType, they are just
+// placeable spaces. Count is driven by archetype: the more solid/stable the
+// world, the more room to build. Terran is fixed at 15; the gaseous/hostile
+// archetypes (gasGiant, molten, irradiated) have none. Counts inside a range
+// are drawn from the seed's deterministic RNG, so a given seed number always
+// yields the same layout (invariant 9). [FIRST-CUT] numbers (02-08-26,
+// docs/phase-1-tuning.md) -- flagged for a veto, not silently baked in.
+const SETTLEMENT_SLOTS = {
+  terran:      { fixed: 15 },
+  rocky:       { range: [7, 10] },
+  desert:      { range: [7, 10] },
+  ice:         { range: [4, 7] },
+  crystalline: { range: [4, 7] },
+  oceanic:     { range: [3, 4] },
+  gasGiant:    { fixed: 0 },
+  molten:      { fixed: 0 },
+  irradiated:  { fixed: 0 },
+};
+
 // The three rare-tier archetypes (design.md §2). Only these receive the ring
 // multiplier; fuel and the common tier are exempt.
 const RARE_TIER = new Set(['molten', 'irradiated', 'crystalline']);
@@ -218,6 +239,25 @@ function generateResourceNodes(archetype, rand, planetId) {
     nodes.push(makeNode(def.pool[Math.floor(rand() * def.pool.length)]));
   }
   return nodes;
+}
+
+// Settlement slots for one planet (see SETTLEMENT_SLOTS). Distinct id space
+// from resource nodes: `_sNN` vs `_nNN`. Draws from `rand` only for ranged
+// archetypes; fixed ones (terran 15, gaseous/hostile 0) consume no RNG.
+function generateSettlementSlots(archetype, rand, planetId) {
+  const spec = SETTLEMENT_SLOTS[archetype] || { fixed: 0 };
+  let count;
+  if (spec.fixed !== undefined) {
+    count = spec.fixed;
+  } else {
+    const [min, max] = spec.range;
+    count = min + Math.floor(rand() * (max - min + 1));
+  }
+  const slots = [];
+  for (let i = 1; i <= count; i++) {
+    slots.push({ id: `${planetId}_s${String(i).padStart(2, '0')}` });
+  }
+  return slots;
 }
 
 // A system is starter-eligible if it holds >=1 Terran planet (design.md §13):
@@ -434,6 +474,18 @@ function generateGalaxySeed(seed, opts = {}) {
   totalResourceNodes = 0;
   for (const sys of systems) for (const planet of sys.planets) totalResourceNodes += planet.resourceNodes.length;
 
+  // --- settlement slots: a final decorate pass, AFTER repair so post-repair
+  // archetypes are honoured, and so these draws land LAST in the RNG stream --
+  // every field above stays byte-identical to the pre-settlement seed; only
+  // `settlementSlots` is added to each planet.
+  let totalSettlementSlots = 0;
+  for (const sys of systems) {
+    for (const planet of sys.planets) {
+      planet.settlementSlots = generateSettlementSlots(planet.archetype, rand, planet.id);
+      totalSettlementSlots += planet.settlementSlots.length;
+    }
+  }
+
   const validation = validateGalaxy(systems, hexSize, radius, rareTierMin); // pipeline step 10
 
   return {
@@ -454,6 +506,7 @@ function generateGalaxySeed(seed, opts = {}) {
       totalSystems: systems.length,
       totalPlanets: planetCounter,
       totalResourceNodes,
+      totalSettlementSlots,
       totalOutposts: outposts.length,
       starterSystems: validation.starterSystemCount,
       rareTierRepairs: repairs,
@@ -482,6 +535,7 @@ module.exports = {
   PARAMS, ARCHETYPES, RARE_TIER, RING_RARE_MULTIPLIER,
   mulberry32, hexToPixel, hexDist, classifyRing,
   pickArchetype, pickRareTier, generateResourceNodes,
+  generateSettlementSlots, SETTLEMENT_SLOTS,
   countRareTierWithin, repairRareTierGuarantee, validateGalaxy,
   generateGalaxySeed, countTotalHexes,
 };
@@ -502,6 +556,7 @@ if (require.main === module) {
   console.log(`  systems:         ${galaxy.stats.totalSystems}`);
   console.log(`  planets:         ${galaxy.stats.totalPlanets}`);
   console.log(`  resource nodes:  ${galaxy.stats.totalResourceNodes.toLocaleString()}`);
+  console.log(`  settlement slots:${galaxy.stats.totalSettlementSlots.toLocaleString()}`);
   console.log(`  starter systems: ${galaxy.stats.starterSystems}`);
   console.log(`  rare-tier repairs: ${galaxy.stats.rareTierRepairs}`);
   console.log(`  validation:      ${galaxy.validation.passed ? 'PASSED' : 'FAILED -- ' + galaxy.validation.issues.join('; ')}`);

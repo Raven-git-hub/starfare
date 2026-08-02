@@ -73,6 +73,7 @@ function createVenture({
   id,
   ownerGuildId,
   type,
+  siteId = null,
   resourceType = null,
   productionRate = 0,
   inputStockpiles = {},
@@ -85,14 +86,19 @@ function createVenture({
     id,
     ownerGuildId,
     type,
+    // siteId: the seed site this venture occupies — a resource node (mining) or
+    // a settlement slot (refinery/factory/construction). Reference only: it
+    // names a place in data/seed.json; the seed is never written back to. null
+    // = not seated anywhere yet. Referential integrity (the id resolves to a
+    // real site) and one-venture-per-site are enforced every tick by
+    // invariants.js, which is also where "a mining venture's resourceType must
+    // match its node's" lives — this file assembles, invariants.js judges.
+    siteId,
     // resourceType: the RAW good a MINING venture extracts. Its output goes to
-    // the owner guild's stockpile (tick.js stepProduction). null for ventures
-    // that don't mine a single named good (e.g. a future refinery/factory,
-    // whose output comes from a recipe, not one resourceType) — such a venture
-    // simply produces nothing under the current step-1 logic. In Slice 2 this
-    // will be derived from / validated against the seed resource node the
-    // venture occupies (its siteId); for now it is set directly by the
-    // scenario, sourced from docs/phase-1-tuning.md.
+    // the owner guild's stockpile (tick.js stepProduction). This DRIVES
+    // production; the seed node at siteId is the authority it is checked
+    // against (see invariants.js). null for ventures that don't mine a single
+    // named good (e.g. a future refinery/factory on a settlement slot).
     resourceType,
     productionRate,
     inputStockpiles: { ...inputStockpiles },
