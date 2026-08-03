@@ -1,0 +1,3 @@
+# Keep the build context lean and the image reproducible.
+.git
+dev/

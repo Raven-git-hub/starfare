@@ -264,7 +264,11 @@ function applyAction(state, action) {
     guild.ventures.push(createVenture({
       id: action.ventureId,
       ownerGuildId: action.guildId,
-      type: action.ventureType,
+      // establishVenture is mining-only for now, so default the venture type to
+      // 'mining' when the caller didn't set one — this lets a raw client action
+      // ({type:'establishVenture', ...}, no ventureType) work as-is, so the
+      // server can forward client JSON straight to intake without knowing shapes.
+      type: action.ventureType || 'mining',
       siteId: action.siteId,
       resourceType: action.resourceType,
       productionRate: action.productionRate,
