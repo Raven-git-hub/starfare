@@ -14,7 +14,8 @@
 // state.js must populate these fields; nothing here invents a game number.
 //
 //   state.guilds     : [{ id, credits, fuelHoard, influence?, stockpiles?,
-//                         ventures?, homeSystemId?, homePlanetId? }]
+//                         ventures? (each: siteId?, resourceType? | recipeId?,
+//                         productionRate?), homeSystemId?, homePlanetId? }]
 //   state.claims?    : [{ claimId, ownerGuildId, landmarkId, landmarkKind }]
 //                          // SHARED territory rows; reference real seed landmarks
 //   state.reserve    : { reserveLevel }                    // SHARED fuel reserve
@@ -42,9 +43,10 @@
 
 // One violation record shape everywhere: { rule, where, detail }.
 
-const { isRawResource } = require('./resources.js');
+const { isRawResource, isStockpileGood } = require('./resources.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { getSite, getLandmark, getSystem, getTerranHomeworld } = require('./seed.js');
+const { getRecipe } = require('./recipes.js');
 
 function sumFuelInTransit(state) {
   if (!Array.isArray(state.shipments)) return 0;
@@ -118,13 +120,13 @@ function checkNonNegativityAndIntegrality(state) {
     if (g.influence !== undefined) checkField(out, g.influence, `guild:${g.id}.influence`);
 
     // Stockpiles: every value is an integer, non-negative good; every key is a
-    // known raw resource (a stray/misspelled key would silently vanish from the
-    // galactic totals, so catch it here rather than let it rot).
+    // known stockpile good — raw OR processed (a stray/misspelled key would
+    // silently vanish from the galactic totals, so catch it here, not let it rot).
     if (g.stockpiles) {
       for (const [good, qty] of Object.entries(g.stockpiles)) {
         checkField(out, qty, `guild:${g.id}.stockpiles.${good}`);
-        if (!isRawResource(good)) {
-          out.push({ rule: 'known-resource (resources.js)', where: `guild:${g.id}.stockpiles.${good}`, detail: { good } });
+        if (!isStockpileGood(good)) {
+          out.push({ rule: 'known-good (resources.js)', where: `guild:${g.id}.stockpiles.${good}`, detail: { good } });
         }
       }
     }
@@ -215,6 +217,15 @@ function checkSiteOccupancy(state) {
           out.push({ rule: 'mining-venture-on-resource-node', where: `venture:${v.id}.siteId`, detail: { siteId: v.siteId, siteKind: site.kind } });
         } else if (site.resourceType !== v.resourceType) {
           out.push({ rule: 'venture-resource-matches-node', where: `venture:${v.id}.resourceType`, detail: { venture: v.resourceType, node: site.resourceType, siteId: v.siteId } });
+        }
+      } else if (v.recipeId != null) {
+        // a refining venture: must sit on a settlement slot, and its recipe must
+        // resolve (the territory analogue of a mining venture's node match).
+        if (site.kind !== 'settlement') {
+          out.push({ rule: 'refining-venture-on-settlement-slot', where: `venture:${v.id}.siteId`, detail: { siteId: v.siteId, siteKind: site.kind } });
+        }
+        if (!getRecipe(v.recipeId)) {
+          out.push({ rule: 'recipe-exists (recipes.js)', where: `venture:${v.id}.recipeId`, detail: { recipeId: v.recipeId } });
         }
       }
 

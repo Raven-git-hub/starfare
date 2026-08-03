@@ -85,6 +85,7 @@ function createVenture({
   type,
   siteId = null,
   resourceType = null,
+  recipeId = null,
   productionRate = 0,
   inputStockpiles = {},
 }) {
@@ -110,6 +111,14 @@ function createVenture({
     // against (see invariants.js). null for ventures that don't mine a single
     // named good (e.g. a future refinery/factory on a settlement slot).
     resourceType,
+    // recipeId: for a REFINING venture, the recipes.js recipe it runs (e.g.
+    // 'titanium_to_alloy') — consuming the recipe's input good from the owner's
+    // stockpile and producing its output good, up to `productionRate` batches
+    // per tick (tick.js stepProduction). null for a mining venture. A venture is
+    // one or the other: a mining venture sets resourceType, a refining venture
+    // sets recipeId. invariants.js checks a refining venture sits on a
+    // settlement slot and its recipeId resolves.
+    recipeId,
     productionRate,
     inputStockpiles: { ...inputStockpiles },
     // NOTE: the old typeless `outputStockpile` scalar was retired in the

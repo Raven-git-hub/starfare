@@ -22,6 +22,7 @@
 //   - no DOM access anywhere (the hard rule in sim/README.md)
 
 const { computeGalacticSupply } = require('./supply.js');
+const { getRecipe } = require('./recipes.js');
 
 // Deep-clones state so tick() can never accidentally mutate its input.
 // structuredClone is a plain JS global (Node 17+), not a DOM API.
@@ -29,19 +30,21 @@ function cloneState(state) {
   return structuredClone(state);
 }
 
-// Step 1 — production. FIRST REAL STEP: the simplest possible cut. A mining
-// venture extracts `productionRate` units of its `resourceType` each tick,
-// deposited straight into the OWNER guild's typed `stockpiles` map — one home
-// for produced goods, so nothing is double-counted (the totals in supply.js
-// derive from exactly this). `Venture.updatedAtTick` records when (§15.2's
-// "every mutation records its tick").
+// Step 1 — production. A MINING venture extracts `productionRate` units of its
+// `resourceType` each tick into the OWNER guild's typed `stockpiles`. A REFINING
+// venture (03-08-26) runs up to `productionRate` batches of its recipes.js
+// recipe, consuming the input good from and producing the output good into the
+// owner's stockpiles — throttled by available input so nothing goes negative.
+// One home for produced goods, so nothing is double-counted (supply.js derives
+// its totals from exactly these stockpiles). `Venture.updatedAtTick` records
+// when a venture moved goods (§15.2's "every mutation records its tick").
 //
 // Deliberately NOT yet implemented, left for economy.js:
-//   - consuming inputStockpiles (Tier 2+ ventures need inputs; Tier-1 raw
-//     mining, design.md's pipeline, needs none, so this is honest for the
-//     walking skeleton's one mining venture, but wrong once a Tier-2+
-//     venture exists). A recipe-driven venture carries no single resourceType,
-//     so it produces nothing under this step-1 logic and is skipped below.
+//   - per-venture `inputStockpiles` buffers: refining here draws its input
+//     straight from the owner guild's stockpile (the simplest honest model),
+//     not from a venture-local input buffer. When logistics needs that buffer
+//     (staging inputs at the venture before a run), it returns with its own
+//     tripwire; today it would be unused machinery.
 //   - crediting guild.lifetimeProduced (§13's monotonic produced counter). The
 //     good is now known, so this is a one-liner away, but it is a separate
 //     concern with its own future tripwire (monotonicity) — wired when a
@@ -53,13 +56,34 @@ function cloneState(state) {
 function stepProduction(state, _actions) {
   for (const guild of state.guilds) {
     for (const venture of guild.ventures || []) {
-      // Skip anything with nothing to deposit: a venture that mines no named
-      // good, or one with a zero rate. No goods moved => no mutation to stamp.
-      if (!venture.resourceType || !venture.productionRate) continue;
+      if (!venture.productionRate) continue; // zero rate: nothing to do
       if (!guild.stockpiles) guild.stockpiles = {};
-      guild.stockpiles[venture.resourceType] =
-        (guild.stockpiles[venture.resourceType] || 0) + venture.productionRate;
-      venture.updatedAtTick = state.tick;
+
+      // MINING: extract `productionRate` units of `resourceType` into the owner.
+      if (venture.resourceType) {
+        guild.stockpiles[venture.resourceType] =
+          (guild.stockpiles[venture.resourceType] || 0) + venture.productionRate;
+        venture.updatedAtTick = state.tick;
+        continue;
+      }
+
+      // REFINING: run up to `productionRate` batches of the venture's recipe,
+      // THROTTLED by the input the owner actually holds — consume the input good,
+      // produce the output good, both in the owner's stockpiles. Flooring
+      // affordable batches to available input means a stockpile can never be
+      // driven negative (so invariant 3 holds without a special case), and an
+      // under-supplied refinery simply runs at reduced throughput this tick.
+      if (venture.recipeId) {
+        const recipe = getRecipe(venture.recipeId);
+        if (!recipe) continue; // dangling recipeId: the occupancy invariant halts on it
+        const have = guild.stockpiles[recipe.input.good] || 0;
+        const batches = Math.min(venture.productionRate, Math.floor(have / recipe.input.qty));
+        if (batches <= 0) continue; // not enough input this tick: no goods move
+        guild.stockpiles[recipe.input.good] = have - batches * recipe.input.qty;
+        guild.stockpiles[recipe.output.good] =
+          (guild.stockpiles[recipe.output.good] || 0) + batches * recipe.output.qty;
+        venture.updatedAtTick = state.tick;
+      }
     }
   }
   return state;

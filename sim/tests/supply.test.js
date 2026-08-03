@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 
 const { createState } = require('../state.js');
 const { computeGalacticSupply } = require('../supply.js');
-const { RAW_RESOURCES } = require('../resources.js');
+const { STOCKPILE_GOODS } = require('../resources.js');
 const { tick } = require('../tick.js');
 const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
@@ -29,7 +29,8 @@ test('computeGalacticSupply sums stockpiles across guilds and zero-fills the res
   assert.equal(gs.resources.titanium, 15); // 10 + 5
   assert.equal(gs.resources.copper, 3);
   assert.equal(gs.resources.gold, 0, 'a good no one holds still has a (zero) row');
-  assert.equal(Object.keys(gs.resources).length, RAW_RESOURCES.length, 'every raw good present');
+  assert.equal(gs.resources.alloy_ingots, 0, 'processed goods get a (zero) row too');
+  assert.equal(Object.keys(gs.resources).length, STOCKPILE_GOODS.length, 'every stockpile good present (raw + processed)');
 });
 
 test('fuel is reported as communal reserve + guild-held, separately', () => {

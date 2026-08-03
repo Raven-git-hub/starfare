@@ -87,6 +87,7 @@ function buildSnapshot(state) {
         type: v.type,
         siteId: v.siteId || null,
         resourceType: v.resourceType || null,
+        recipeId: v.recipeId || null,
         productionRate: v.productionRate,
         site: site
           ? {

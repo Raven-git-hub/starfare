@@ -8,7 +8,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { RAW_RESOURCES, FUEL_GOOD, isRawResource, isFuel } = require('../resources.js');
+const { RAW_RESOURCES, PROCESSED_GOODS, STOCKPILE_GOODS, FUEL_GOOD, isRawResource, isFuel, isProcessedGood, isStockpileGood } = require('../resources.js');
 const { ARCHETYPES } = require('../../tools/generate_seed.js');
 
 // The union of every archetype pool in the generator — the ground truth for
@@ -44,4 +44,20 @@ test('the #22 ruling: deuterium is raw and minable, deuterium_fuel is fuel and i
 test('isRawResource rejects unknown goods', () => {
   assert.equal(isRawResource('unobtanium'), false);
   assert.equal(isRawResource(undefined), false);
+});
+
+test('alloy_ingots is a processed, stockpile good — not raw, not fuel', () => {
+  assert.equal(isProcessedGood('alloy_ingots'), true);
+  assert.equal(isStockpileGood('alloy_ingots'), true);
+  assert.equal(isRawResource('alloy_ingots'), false, 'processed goods are not minable');
+  assert.equal(isFuel('alloy_ingots'), false);
+  assert.equal(RAW_RESOURCES.includes('alloy_ingots'), false, 'never in the raw list / archetype pools');
+});
+
+test('STOCKPILE_GOODS is raw + processed, sorted and unique', () => {
+  const expected = [...RAW_RESOURCES, ...PROCESSED_GOODS].sort();
+  assert.deepEqual([...STOCKPILE_GOODS], expected);
+  assert.equal(new Set(STOCKPILE_GOODS).size, STOCKPILE_GOODS.length, 'no duplicates');
+  // fuel is a stockpile good under no interpretation
+  assert.equal(isStockpileGood(FUEL_GOOD), false);
 });

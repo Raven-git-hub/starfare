@@ -2,6 +2,7 @@
 
 const { createGuild, createVenture } = require('./state.js');
 const { isStarterSystem, getTerranHomeworld, getSite } = require('./seed.js');
+const { getRecipe } = require('./recipes.js');
 
 // actions.js — action constructors, and the validate-as-they-arrive intake
 // discipline (design.md §15.6). This is the guard against the game's own
@@ -64,33 +65,32 @@ function createFoundGuildAction({
 }
 
 // Establishing a venture: seating a NEW venture belonging to an existing guild
-// onto a real seed site, so it starts producing on the next tick. This is the
-// action the testbed needs to build up a galaxy interactively (add a guild, add
-// its ventures, then watch production tick) rather than only via a hand-authored
-// scenario. Scoped to MINING for now (the only venture kind that produces yet):
-//   - `siteId` must resolve to a real, UNOCCUPIED resource node in the seed;
-//   - `resourceType` must match that node's good (the same rule the occupancy
-//     invariant enforces — validated here so a bad request is refused cleanly
-//     rather than applied-then-halted);
-//   - `productionRate` is REQUIRED and operator-supplied. Only Titanium's rate
-//     is ruled (5/tick, phase-1-tuning.md); the rest are undecided, so rather
-//     than invent one this action takes the rate as an explicit input — a
-//     testbed dial, not a baked constant.
-// Establishing a venture moves no credits or fuel (there is no licence/site cost
-// yet — that is later economy work), so it touches no conservation invariant.
-// Refinery/factory ventures on settlement slots wait for the refining slice,
-// which brings their own recipe + occupancy rules.
+// onto a real seed site, so it starts producing on the next tick. Two kinds:
+//   - MINING (`type: 'mining'`): on a resource NODE. `resourceType` must match
+//     the node's good. Extracts `productionRate` units/tick.
+//   - REFINING (`type: 'refining'`, 03-08-26): on a SETTLEMENT SLOT. `recipeId`
+//     must be a known recipe (recipes.js). Runs up to `productionRate` batches/
+//     tick, consuming the recipe's input good from and producing its output good
+//     into the owner's stockpile (throttled by available input — tick.js).
+// Each rule is validated up front, mirroring the occupancy invariant, so a bad
+// request is refused cleanly rather than applied-then-halted. `productionRate` is
+// REQUIRED and operator-supplied — a testbed dial, since only Titanium's mining
+// rate is ruled; the rest (and refinery throughput) are undecided. Establishing
+// a venture moves no credits or fuel (no licence/site cost yet).
 function createEstablishVentureAction({
-  guildId, ventureId, type = 'mining', siteId, resourceType, productionRate,
+  guildId, ventureId, type = 'mining', siteId, resourceType, recipeId, productionRate,
 }) {
   if (guildId === undefined) throw new Error('createEstablishVentureAction: guildId is required');
   if (ventureId === undefined) throw new Error('createEstablishVentureAction: ventureId is required');
   if (siteId === undefined) throw new Error('createEstablishVentureAction: siteId is required');
-  if (resourceType === undefined) throw new Error('createEstablishVentureAction: resourceType is required');
   if (productionRate === undefined) throw new Error('createEstablishVentureAction: productionRate is required');
+  // Type-specific required field: a mining venture names the good it extracts;
+  // a refining venture names the recipe it runs.
+  if (type === 'mining' && resourceType === undefined) throw new Error('createEstablishVentureAction: resourceType is required for a mining venture');
+  if (type === 'refining' && recipeId === undefined) throw new Error('createEstablishVentureAction: recipeId is required for a refining venture');
   // `ventureType` (not `type`) in the action object, so it never collides with
   // the action's own discriminator `type: 'establishVenture'`.
-  return { type: 'establishVenture', guildId, ventureId, ventureType: type, siteId, resourceType, productionRate };
+  return { type: 'establishVenture', guildId, ventureId, ventureType: type, siteId, resourceType, recipeId, productionRate };
 }
 
 // --- Validation -------------------------------------------------------
@@ -188,23 +188,34 @@ function validateAction(state, action) {
     if (!site) {
       return { valid: false, reason: `site ${JSON.stringify(action.siteId)} does not exist in the seed` };
     }
-    // Mining-only for now: the site must be a resource node whose good matches
-    // the venture's resourceType — mirroring the occupancy invariant so a bad
-    // request is refused here, not applied and then halted mid-tick.
-    if (site.kind !== 'resource') {
-      return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is a ${site.kind} site, not a resource node (mining ventures only, for now)` };
-    }
-    if (typeof action.resourceType !== 'string' || action.resourceType !== site.resourceType) {
-      return { valid: false, reason: `resourceType ${JSON.stringify(action.resourceType)} does not match node ${JSON.stringify(action.siteId)}'s good ${JSON.stringify(site.resourceType)}` };
-    }
     // Checked against state-as-it-stands, so two ventures racing for the same
-    // node in one batch resolve first-valid-wins (the second is refused).
+    // site in one batch resolve first-valid-wins (the second is refused).
     const occupant = siteOccupant(state, action.siteId);
     if (occupant) {
       return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is already occupied by venture ${JSON.stringify(occupant.id)}` };
     }
     if (typeof action.productionRate !== 'number' || !Number.isInteger(action.productionRate) || action.productionRate <= 0) {
       return { valid: false, reason: 'productionRate must be a positive integer (§15.2)' };
+    }
+    // Type-specific placement rules, mirroring the occupancy invariant so a bad
+    // request is refused here rather than applied and then halted mid-tick.
+    const ventureType = action.ventureType || 'mining';
+    if (ventureType === 'mining') {
+      if (site.kind !== 'resource') {
+        return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is a ${site.kind} site, not a resource node (mining ventures need a resource node)` };
+      }
+      if (typeof action.resourceType !== 'string' || action.resourceType !== site.resourceType) {
+        return { valid: false, reason: `resourceType ${JSON.stringify(action.resourceType)} does not match node ${JSON.stringify(action.siteId)}'s good ${JSON.stringify(site.resourceType)}` };
+      }
+    } else if (ventureType === 'refining') {
+      if (site.kind !== 'settlement') {
+        return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is a ${site.kind} site, not a settlement slot (refining ventures sit on settlement slots)` };
+      }
+      if (!getRecipe(action.recipeId)) {
+        return { valid: false, reason: `recipeId ${JSON.stringify(action.recipeId)} is not a known recipe (recipes.js)` };
+      }
+    } else {
+      return { valid: false, reason: `unknown ventureType ${JSON.stringify(ventureType)} (expected 'mining' or 'refining')` };
     }
     return { valid: true };
   }
@@ -256,21 +267,20 @@ function applyAction(state, action) {
     return next;
   }
   if (action.type === 'establishVenture') {
-    // Seat a new mining venture on the guild. No credits/fuel move (no site cost
-    // yet). It starts producing on the NEXT production step: because intake runs
-    // before the tick's steps, establishing + ticking in the same advance() call
-    // mints its first batch immediately, exactly as an inline founding venture does.
+    // Seat a new venture on the guild. No credits/fuel move (no site cost yet).
+    // It starts producing on the NEXT production step: because intake runs before
+    // the tick's steps, establishing + ticking in the same advance() call runs
+    // its first batch immediately, exactly as an inline founding venture does.
+    // A mining venture carries resourceType; a refining one carries recipeId
+    // (createVenture defaults the unused one to null).
     const guild = findGuild(next, action.guildId);
     guild.ventures.push(createVenture({
       id: action.ventureId,
       ownerGuildId: action.guildId,
-      // establishVenture is mining-only for now, so default the venture type to
-      // 'mining' when the caller didn't set one — this lets a raw client action
-      // ({type:'establishVenture', ...}, no ventureType) work as-is, so the
-      // server can forward client JSON straight to intake without knowing shapes.
       type: action.ventureType || 'mining',
       siteId: action.siteId,
       resourceType: action.resourceType,
+      recipeId: action.recipeId,
       productionRate: action.productionRate,
     }));
     return next;

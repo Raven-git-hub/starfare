@@ -23,19 +23,19 @@
 //     fuel price may read one, the other, or their sum (an open pricing-time
 //     decision), and because fuel conservation (invariant 1) is defined on them.
 
-const { RAW_RESOURCES } = require('./resources.js');
+const { STOCKPILE_GOODS } = require('./resources.js');
 
 // computeGalacticSupply(state) — pure. Returns a fresh totals object:
 //   {
-//     resources: { <every raw resource>: <Σ guild.stockpiles[good]> },  // all
-//                 // 17 keys always present, zero-filled, for a stable display
+//     resources: { <every stockpile good>: <Σ guild.stockpiles[good]> }, // all
+//                 // raw + processed keys always present, zero-filled, stable
 //     fuel:      { reserve: <communal pool>, guildHeld: <Σ guild fuelHoard> },
 //   }
 function computeGalacticSupply(state) {
   const guilds = state.guilds || [];
 
   const resources = {};
-  for (const good of RAW_RESOURCES) resources[good] = 0;
+  for (const good of STOCKPILE_GOODS) resources[good] = 0;
   for (const g of guilds) {
     const stock = g.stockpiles || {};
     for (const [good, qty] of Object.entries(stock)) {

@@ -33,6 +33,11 @@
 ### Settlement slots (per-planet, by archetype)
 - **Counts** `[FIRST-CUT]` (ruled 02-08-26): surface spaces for **non-mining** ventures (refinery/manufacturing/construction), separate from resource nodes. The more solid/stable the world, the more room: **Terran 15** (fixed); **rocky / desert 7–10**; **ice / crystalline 4–7**; **oceanic 3–4**; **gasGiant / molten / irradiated 0**. Ranged counts are drawn from the seed's deterministic RNG at generation, so a given seed number always yields the same layout (invariant 9). Encoded in `tools/generate_seed.js` (`SETTLEMENT_SLOTS`); slot ids are `${planetId}_sNN`, disjoint from resource-node `_nNN` ids.
 
+### Refining (raw -> processed)
+- **First recipe** `[FIRST-CUT]` (03-08-26): **`titanium_to_alloy` = 3 titanium -> 1 alloy_ingot** per batch. A refining venture sits on a settlement slot and runs up to `productionRate` batches/tick, throttled by the titanium its owner holds. The catalog lives in `sim/recipes.js`.
+- **Processed-good id** `[FIRST-CUT]`: **`alloy_ingots`** — a *processed* good (held in stockpiles like a raw good, summed into galactic supply), distinct from raw resources and from the special `deuterium_fuel`. Id string open to veto; the raw/processed/fuel three-way distinction is settled.
+- **Refinery throughput**: `productionRate` (batches/tick) is **operator-supplied**, not a baked constant — like the mining rate, only Titanium's is ruled, so the testbed dials it.
+
 ### The second good (tolled/shipped raw)
 - **Good** `[FIRST-CUT]`: **Titanium** (a Tier-1 raw; also the onboarding starter-quest good, so it recurs later).
 - **Market** `[FIRST-CUT]`: reuses the fuel price curve's *shape* (§5) with its own levers — base $3, target reserve 20, sensitivity 0.6, floor $1, ceiling $20.
