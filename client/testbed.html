@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Syndicate // Testbed (debug)</title>
+<style>
+  :root {
+    --bg: #030408;
+    --panel: rgba(8,10,16,0.92);
+    --line: #1c2637;
+    --line-bright: #2c3a52;
+    --text: #c7d3e6;
+    --text-dim: #5c6b85;
+    --accent: #43d9c8;
+    --fuel: #e8b93a;
+    --warn: #e0525a;
+    --ok: #5fce8f;
+    --zero: #34405a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  body { padding: 20px 22px 60px; }
+
+  h1 { font-size: 18px; letter-spacing: 3px; color: var(--accent); font-weight: 700; }
+  .warnbar {
+    margin-top: 8px; padding: 8px 12px; border: 1px solid var(--warn); border-radius: 2px;
+    color: var(--warn); font-size: 11px; letter-spacing: 1px; background: rgba(224,82,90,0.08);
+  }
+
+  /* --- controls --- */
+  .controls { margin-top: 18px; border: 1px solid var(--line-bright); border-radius: 3px; padding: 14px 16px; background: var(--panel); }
+  .controls h2 { font-size: 12px; letter-spacing: 2px; color: var(--text-dim); font-weight: 500; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 12px; }
+  .btnrow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  button {
+    font-family: inherit; font-size: 12px; letter-spacing: 1.5px; cursor: pointer;
+    background: rgba(67,217,200,0.12); border: 1px solid var(--accent); color: var(--accent);
+    padding: 9px 16px; border-radius: 2px;
+  }
+  button:hover { background: rgba(67,217,200,0.22); }
+  button.warn { background: rgba(224,82,90,0.10); border-color: var(--warn); color: var(--warn); }
+  button.warn:hover { background: rgba(224,82,90,0.20); }
+  button.tick { font-weight: 700; }
+
+  .forms { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+  @media (max-width: 820px) { .forms { grid-template-columns: 1fr; } }
+  .form { border: 1px solid var(--line); border-radius: 2px; padding: 10px 12px; }
+  .form .ft { font-size: 11px; letter-spacing: 1.5px; color: var(--text-dim); margin-bottom: 8px; }
+  .field { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .field label { width: 96px; font-size: 11px; color: var(--text-dim); }
+  .field input {
+    flex: 1; font-family: inherit; font-size: 12px; background: #05070d; color: var(--text);
+    border: 1px solid var(--line-bright); border-radius: 2px; padding: 5px 7px;
+  }
+  .field input:focus { outline: none; border-color: var(--accent); }
+  .form button { margin-top: 6px; }
+
+  #status { margin-top: 12px; font-size: 12px; letter-spacing: 0.5px; min-height: 18px; }
+  #status.ok { color: var(--ok); }
+  #status.rejected { color: var(--fuel); }
+  #status.error { color: var(--warn); }
+  #status.info { color: var(--text-dim); }
+
+  .meta { margin-top: 16px; font-size: 12px; color: var(--text-dim); }
+  .meta b { color: var(--text); font-weight: 500; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 14px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line-bright); border-radius: 3px; padding: 14px 16px; }
+  .panel.fuel { border-color: var(--fuel); }
+  .panel h2 { font-size: 12px; letter-spacing: 2px; color: var(--text-dim); font-weight: 500; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 10px; }
+  .panel.fuel h2 { color: var(--fuel); }
+  .full { grid-column: 1 / -1; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 4px 8px 4px 0; }
+  th { color: var(--text-dim); font-weight: 500; border-bottom: 1px solid var(--line); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.zero td { color: var(--zero); }
+
+  .fuelrow { display: flex; gap: 26px; margin-top: 4px; }
+  .fuelrow .k { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; }
+  .fuelrow .v { font-size: 22px; color: var(--fuel); font-variant-numeric: tabular-nums; }
+  .fuelrow .cell.total .v { color: var(--text); }
+
+  .guildcard { border: 1px solid var(--line); border-radius: 2px; padding: 10px 12px; margin-bottom: 10px; }
+  .guildcard:last-child { margin-bottom: 0; }
+  .guildcard .top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .guildcard .gid { color: var(--accent); font-size: 13px; letter-spacing: 1px; }
+  .guildcard .tag { font-size: 10px; letter-spacing: 1px; color: var(--text-dim); border: 1px solid var(--line-bright); padding: 1px 6px; border-radius: 2px; }
+  .guildcard .stats { font-size: 12px; color: var(--text-dim); }
+  .guildcard .stats b { color: var(--text); font-weight: 500; }
+  .guildcard .home { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  .guildcard .home b { color: var(--text); font-weight: 500; }
+  .stockline { margin-top: 6px; font-size: 12px; }
+  .stockline .none { color: var(--text-dim); }
+  .site { color: var(--text-dim); }
+  .site b { color: var(--text); font-weight: 500; }
+  .badsite { color: var(--warn); }
+  .synd { color: var(--text-dim); }
+  .owned { color: var(--accent); }
+</style>
+</head>
+<body>
+  <h1>SYNDICATE // TESTBED</h1>
+  <div class="warnbar">DEBUG LENS + DRIVER — god's-eye view of live engine state, and manual controls to drive it. Shows figures players never see. NOT player UI. Manual tick: the galaxy advances only when you press TICK.</div>
+
+  <div class="controls">
+    <h2>DRIVE</h2>
+    <div class="btnrow">
+      <button id="btn-tick" class="tick" type="button">TICK &#9654;</button>
+      <button id="btn-refresh" type="button">REFRESH</button>
+      <button id="btn-reset" class="warn" type="button">RESET</button>
+    </div>
+
+    <div class="forms">
+      <div class="form" id="form-found">
+        <div class="ft">FOUND GUILD (enters on a starter system's Terran homeworld)</div>
+        <div class="field"><label>guildId</label><input id="f-guildId" value="player"></div>
+        <div class="field"><label>credits</label><input id="f-credits" value="120"></div>
+        <div class="field"><label>influence</label><input id="f-influence" value="100"></div>
+        <div class="field"><label>homeSystemId</label><input id="f-home" value="sys_0002"></div>
+        <button id="btn-found" type="button">FOUND</button>
+      </div>
+
+      <div class="form" id="form-venture">
+        <div class="ft">ESTABLISH VENTURE (a mine on an unoccupied resource node)</div>
+        <div class="field"><label>guildId</label><input id="v-guildId" value="player"></div>
+        <div class="field"><label>ventureId</label><input id="v-ventureId" value="mine_1"></div>
+        <div class="field"><label>siteId</label><input id="v-siteId" value="pl_00004_n01"></div>
+        <div class="field"><label>resourceType</label><input id="v-resourceType" value="titanium"></div>
+        <div class="field"><label>productionRate</label><input id="v-rate" value="5"></div>
+        <button id="btn-venture" type="button">ESTABLISH</button>
+      </div>
+    </div>
+
+    <div id="status" class="info">&nbsp;</div>
+  </div>
+
+  <div class="meta" id="meta"></div>
+  <div class="grid">
+    <div class="panel fuel full" id="fuelpanel"></div>
+    <div class="panel" id="supplypanel"></div>
+    <div class="panel" id="guildpanel"></div>
+    <div class="panel full" id="venturepanel"></div>
+    <div class="panel full" id="claimpanel"></div>
+  </div>
+
+<script>
+'use strict';
+
+// The testbed page: a DEBUG LENS that also DRIVES the engine. It computes
+// nothing — every change comes from the server, which runs the one true engine.
+// It renders whatever /snapshot returns and, on each button press, POSTs an
+// action or a tick and re-renders from the response (refresh-on-action: the view
+// only re-reads state when something could have changed — a tick or an action).
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+var statusEl = document.getElementById('status');
+function setStatus(text, kind) {
+  statusEl.textContent = text;
+  statusEl.className = kind || 'info';
+}
+
+// --- talking to the server (same origin, so no CORS) -----------------------
+
+async function api(method, path, body) {
+  var res = await fetch(path, {
+    method: method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  var data = await res.json();
+  return { status: res.status, data: data };
+}
+
+// GET /snapshot, POST /tick and POST /reset all return a snapshot directly.
+async function refresh(verb, label) {
+  try {
+    var r = await api(verb, verb === 'GET' ? '/snapshot' : arguments[2]);
+  } catch (err) {
+    setStatus('network error: ' + err.message, 'error');
+    return;
+  }
+  if (r.status >= 400) {
+    setStatus((r.data && r.data.error ? r.data.error : 'error') + (r.data && r.data.detail ? ' — ' + r.data.detail : ''), 'error');
+    return;
+  }
+  render(r.data);
+  if (label) setStatus(label + ' — now at tick ' + r.data.tick, 'ok');
+}
+
+// POST /action returns { accepted, reason, snapshot }. A rejection is a normal
+// outcome (shown in amber), not an error; a 500 is an engine throw (shown red).
+async function sendAction(action, verb) {
+  var r;
+  try {
+    r = await api('POST', '/action', action);
+  } catch (err) {
+    setStatus('network error: ' + err.message, 'error');
+    return;
+  }
+  if (r.status >= 500) {
+    setStatus((r.data.error || 'engine error') + (r.data.detail ? ' — ' + r.data.detail : ''), 'error');
+    return;
+  }
+  if (r.status === 400) {
+    setStatus(r.data.error || 'bad request', 'error');
+    return;
+  }
+  if (r.data.snapshot) render(r.data.snapshot);
+  if (r.data.accepted) {
+    setStatus(verb + ' accepted (no tick — press TICK to advance)', 'ok');
+  } else {
+    setStatus(verb + ' REJECTED: ' + r.data.reason, 'rejected');
+  }
+}
+
+// --- wire the controls ------------------------------------------------------
+
+document.getElementById('btn-tick').addEventListener('click', function () { refresh('POST', 'ticked', '/tick'); });
+document.getElementById('btn-refresh').addEventListener('click', function () { refresh('GET', 'refreshed'); });
+document.getElementById('btn-reset').addEventListener('click', function () { refresh('POST', 'reset', '/reset'); });
+
+function val(id) { return document.getElementById(id).value.trim(); }
+function intOr(id, fallback) { var n = parseInt(val(id), 10); return Number.isNaN(n) ? fallback : n; }
+
+document.getElementById('btn-found').addEventListener('click', function () {
+  sendAction({
+    type: 'foundGuild',
+    guildId: val('f-guildId'),
+    credits: intOr('f-credits', 0),
+    influence: intOr('f-influence', 0),
+    homeSystemId: val('f-home'),
+  }, 'foundGuild');
+});
+
+document.getElementById('btn-venture').addEventListener('click', function () {
+  sendAction({
+    type: 'establishVenture',
+    guildId: val('v-guildId'),
+    ventureId: val('v-ventureId'),
+    siteId: val('v-siteId'),
+    resourceType: val('v-resourceType'),
+    productionRate: intOr('v-rate', 0),
+  }, 'establishVenture');
+});
+
+// --- rendering (mirrors client/state_inspector.html) ------------------------
+
+function render(snap) {
+  document.getElementById('meta').innerHTML =
+    'tick <b>' + esc(snap.tick) + '</b>' +
+    ' &nbsp;·&nbsp; schema <b>' + esc(snap.schemaVersion) + '</b>' +
+    ' &nbsp;·&nbsp; Syndicate ledger <b>' + esc(snap.syndicate ? snap.syndicate.ledger : '?') + '</b>' +
+    ' &nbsp;·&nbsp; guilds <b>' + snap.guilds.length + '</b>' +
+    ' &nbsp;·&nbsp; ventures <b>' + snap.ventures.length + '</b>' +
+    ' &nbsp;·&nbsp; claims <b>' + (snap.claims ? snap.claims.length : 0) + '</b>';
+
+  renderFuel(snap.galacticSupply.fuel);
+  renderSupply(snap.galacticSupply.resources);
+  renderGuilds(snap.guilds);
+  renderVentures(snap.ventures);
+  renderClaims(snap.claims || []);
+}
+
+function renderFuel(fuel) {
+  document.getElementById('fuelpanel').innerHTML =
+    '<h2>FUEL POOL (deuterium_fuel — finite, conserved)</h2>' +
+    '<div class="fuelrow">' +
+      '<div class="cell"><div class="k">RESERVE (communal)</div><div class="v">' + esc(fuel.reserve) + '</div></div>' +
+      '<div class="cell"><div class="k">GUILD-HELD (Σ hoards)</div><div class="v">' + esc(fuel.guildHeld) + '</div></div>' +
+      '<div class="cell total"><div class="k">TOTAL IN EXISTENCE</div><div class="v">' + esc(fuel.total) + '</div></div>' +
+    '</div>';
+}
+
+function renderSupply(resources) {
+  var goods = Object.keys(resources).sort();
+  var rows = goods.map(function (g) {
+    var qty = resources[g];
+    var cls = qty === 0 ? ' class="zero"' : '';
+    return '<tr' + cls + '><td>' + esc(g) + '</td><td class="num">' + esc(qty) + '</td></tr>';
+  }).join('');
+  document.getElementById('supplypanel').innerHTML =
+    '<h2>GALACTIC SUPPLY (Σ guild stockpiles)</h2>' +
+    '<table><thead><tr><th>good</th><th class="num">total</th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+function renderGuilds(guilds) {
+  var cards = guilds.map(function (g) {
+    var stockKeys = Object.keys(g.stockpiles || {}).filter(function (k) { return g.stockpiles[k] > 0; }).sort();
+    var stock = stockKeys.length
+      ? stockKeys.map(function (k) { return esc(k) + ' ' + esc(g.stockpiles[k]); }).join(', ')
+      : '<span class="none">(empty)</span>';
+    var home = g.homeSystemId
+      ? '<div class="home">home <b>' + esc(g.homeSystemId) + '</b> · homeworld <b>' + esc(g.homePlanetId) + '</b></div>'
+      : '<div class="home">home <span class="none">(none)</span></div>';
+    return '' +
+      '<div class="guildcard">' +
+        '<div class="top">' +
+          '<span class="gid">' + esc(g.id) + (g.name && g.name !== g.id ? ' <span class="site">(' + esc(g.name) + ')</span>' : '') + '</span>' +
+          '<span class="tag">' + (g.isBot ? 'BOT' : 'HUMAN') + '</span>' +
+        '</div>' +
+        '<div class="stats">credits <b>' + esc(g.credits) + '</b> &nbsp; fuel hoard <b>' + esc(g.fuelHoard) + '</b> &nbsp; influence <b>' + esc(g.influence) + '</b></div>' +
+        home +
+        '<div class="stockline">stockpiles: ' + stock + '</div>' +
+      '</div>';
+  }).join('');
+  document.getElementById('guildpanel').innerHTML =
+    '<h2>GUILDS (' + guilds.length + ')</h2>' + (cards || '<div class="site">no guilds (zero-state) — FOUND one above</div>');
+}
+
+function renderVentures(ventures) {
+  var rows = ventures.map(function (v) {
+    var where;
+    if (v.site) {
+      var what = v.site.kind === 'resource' ? esc(v.site.resourceType) : esc(v.site.kind);
+      where = '<span class="site"><b>' + esc(v.siteId) + '</b> — ' + what + ' on ' + esc(v.site.planetId) + ' (' + esc(v.site.systemId) + ')</span>';
+    } else if (v.siteId) {
+      where = '<span class="badsite">' + esc(v.siteId) + ' — UNKNOWN SITE</span>';
+    } else {
+      where = '<span class="site">unseated</span>';
+    }
+    return '<tr>' +
+      '<td>' + esc(v.id) + '</td>' +
+      '<td>' + esc(v.ownerGuildId) + '</td>' +
+      '<td>' + esc(v.type) + '</td>' +
+      '<td>' + where + '</td>' +
+      '<td class="num">' + esc(v.productionRate) + '</td>' +
+    '</tr>';
+  }).join('');
+  document.getElementById('venturepanel').innerHTML =
+    '<h2>VENTURES &amp; OCCUPANCY (' + ventures.length + ')</h2>' +
+    (ventures.length
+      ? '<table><thead><tr><th>venture</th><th>owner</th><th>type</th><th>site</th><th class="num">rate</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      : '<div class="site">no ventures — ESTABLISH one above (needs a guild first)</div>');
+}
+
+// Territory: the SHARED claims layer, each with its seed landmark resolved. A
+// Syndicate-owned claim is dimmed; a guild-owned one (a home) is highlighted. A
+// dangling landmark is shown explicitly rather than hidden.
+function renderClaims(claims) {
+  var rows = claims.map(function (c) {
+    var owned = c.ownerGuildId !== 'syndicate';
+    var name = c.landmark && c.landmark.name ? ' <span class="site">(' + esc(c.landmark.name) + ')</span>' : '';
+    var place = c.landmark
+      ? esc(c.landmarkKind) + ' <b>' + esc(c.landmarkId) + '</b>' + name
+      : '<span class="badsite">' + esc(c.landmarkKind) + ' ' + esc(c.landmarkId) + ' — UNKNOWN LANDMARK</span>';
+    return '<tr>' +
+      '<td class="' + (owned ? 'owned' : 'synd') + '">' + esc(c.ownerGuildId) + '</td>' +
+      '<td class="site">' + place + '</td>' +
+      '<td class="num">' + esc(c.claimedAtTick) + '</td>' +
+      '<td>' + (c.contested ? '<span class="badsite">contested</span>' : '<span class="site">—</span>') + '</td>' +
+    '</tr>';
+  }).join('');
+  document.getElementById('claimpanel').innerHTML =
+    '<h2>TERRITORY / CLAIMS (' + claims.length + ')</h2>' +
+    (claims.length
+      ? '<table><thead><tr><th>owner</th><th>landmark</th><th class="num">tick</th><th>contested</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      : '<div class="site">no claims</div>');
+}
+
+// On load, pull the current state so the page reflects the live galaxy at once.
+refresh('GET', null);
+</script>
+</body>
+</html>

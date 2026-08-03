@@ -27,7 +27,8 @@
 // tick once and watch that batch produce.
 //
 // Endpoints (all JSON; permissive CORS for a local dev rig):
-//   GET  /            -> liveness + a one-line summary
+//   GET  /            -> the testbed UI page (client/testbed.html)
+//   GET  /health      -> liveness JSON + a one-line summary
 //   GET  /snapshot    -> buildSnapshot(state) (the debug lens' data; schema 2)
 //   POST /tick        -> advance one tick (no actions); returns the new snapshot
 //   POST /action      -> intake ONE action object (no tick); returns
@@ -37,6 +38,8 @@
 // Run:  node sim/server.js   (listens on $PORT, default 7331 — the galaxy seed)
 
 const http = require('node:http');
+const fs = require('node:fs');
+const { join } = require('node:path');
 
 const { createZeroState } = require('./scenarios/zero-state.js');
 const { advance } = require('./run.js');
@@ -45,6 +48,11 @@ const { assertInvariants } = require('./invariants.js');
 const { buildSnapshot } = require('./snapshot.js');
 
 const DEFAULT_PORT = 7331; // the galaxy seed number, and clear of the host's other services
+
+// The testbed UI page, served at GET /. Read from disk per request so an HTML
+// edit shows up on the next browser refresh (the repo is volume-mounted into the
+// container) without a server restart.
+const TESTBED_HTML = join(__dirname, '..', 'client', 'testbed.html');
 
 // --- the single live-state holder -----------------------------------------
 // One `let`, reached only through get/set. This is the seam Phase 2 replaces:
@@ -94,7 +102,20 @@ async function handleRequest(req, res) {
   // CORS preflight.
   if (method === 'OPTIONS') { sendJson(res, 204, {}); return; }
 
-  if (method === 'GET' && (path === '/' || path === '/health')) {
+  // GET / -> the testbed UI (HTML). GET /health -> the JSON liveness probe
+  // (unchanged, so anything scripted against it keeps working).
+  if (method === 'GET' && path === '/') {
+    try {
+      const html = fs.readFileSync(TESTBED_HTML);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+      res.end(html);
+    } catch (err) {
+      sendJson(res, 500, { error: 'could not read client/testbed.html', detail: String(err && err.message || err) });
+    }
+    return;
+  }
+
+  if (method === 'GET' && path === '/health') {
     const s = getState();
     sendJson(res, 200, {
       ok: true,
@@ -183,7 +204,8 @@ if (require.main === module) {
   const server = makeServer();
   server.listen(port, () => {
     console.log(`starfare testbed listening on http://0.0.0.0:${port}`);
-    console.log('  GET  /snapshot   POST /tick   POST /action   POST /reset');
+    console.log(`  open the UI at http://<host>:${port}/  (GET /health for JSON liveness)`);
+    console.log('  API: GET /snapshot   POST /tick   POST /action   POST /reset');
     console.log('  dev rig: in-memory, ephemeral, manual tick — NOT the Phase-2 server');
   });
 }

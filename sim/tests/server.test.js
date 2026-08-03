@@ -44,9 +44,19 @@ const mine = (over = {}) => req('POST', '/action', { type: 'establishVenture', g
 
 // --- read endpoints --------------------------------------------------------
 
-test('GET / reports liveness', async () => {
+test('GET / serves the testbed UI (HTML)', async () => {
+  const res = await fetch(base + '/');
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type') || '', /text\/html/);
+  const html = await res.text();
+  assert.match(html, /SYNDICATE \/\/ TESTBED/); // the page, not the JSON probe
+  assert.match(html, /id="btn-found"/);         // the driver controls are present
+  assert.match(html, /id="btn-tick"/);
+});
+
+test('GET /health reports liveness (JSON)', async () => {
   await reset();
-  const { status, body } = await req('GET', '/');
+  const { status, body } = await req('GET', '/health');
   assert.equal(status, 200);
   assert.equal(body.ok, true);
   assert.equal(body.service, 'starfare-testbed');
