@@ -42,6 +42,10 @@ function sampleState() {
     ],
     reserve: { reserveLevel: 30 },
     syndicate: { ledger: -200 },
+    claims: [
+      { claimId: 'claim_citadel', ownerGuildId: 'syndicate', landmarkId: 'citadel', landmarkKind: 'citadel', claimedAtTick: 0, contested: false },
+      { claimId: 'claim_home_player', ownerGuildId: 'player', landmarkId: 'sys_0002', landmarkKind: 'system', claimedAtTick: 0, contested: false },
+    ],
   });
 }
 
@@ -111,6 +115,33 @@ test('guild breakdown copies the shown fields and does not alias live state', ()
   // Mutating the snapshot must not reach back into the state's stockpiles.
   p.stockpiles.titanium = 999;
   assert.equal(s.guilds.find((g) => g.id === 'player').stockpiles.titanium, 15);
+});
+
+test('claims carry their seed landmark resolved, in order', () => {
+  const s = sampleState();
+  const snap = buildSnapshot(s);
+  assert.equal(snap.claims.length, 2);
+  const home = snap.claims.find((c) => c.claimId === 'claim_home_player');
+  assert.equal(home.ownerGuildId, 'player');
+  assert.equal(home.landmarkId, 'sys_0002');
+  assert.equal(home.landmarkKind, 'system');
+  assert.ok(home.landmark, 'the home system landmark must resolve');
+  assert.equal(home.landmark.kind, 'system');
+  const citadel = snap.claims.find((c) => c.claimId === 'claim_citadel');
+  assert.equal(citadel.landmark.kind, 'citadel');
+});
+
+test('a claim pointing at a missing landmark resolves to null, not a throw', () => {
+  const s = createState({
+    guilds: [],
+    reserve: { reserveLevel: 0 },
+    syndicate: { ledger: 0 },
+    claims: [
+      { claimId: 'c_bad', ownerGuildId: 'syndicate', landmarkId: 'sys_99999', landmarkKind: 'system', claimedAtTick: 0, contested: false },
+    ],
+  });
+  const snap = buildSnapshot(s);
+  assert.equal(snap.claims[0].landmark, null);
 });
 
 test('an unseated venture resolves to a null site rather than throwing', () => {

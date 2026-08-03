@@ -1,7 +1,7 @@
 'use strict';
 
-const { createGuild } = require('./state.js');
-const { isStarterSystem, getTerranHomeworld } = require('./seed.js');
+const { createGuild, createVenture } = require('./state.js');
+const { isStarterSystem, getTerranHomeworld, getSite } = require('./seed.js');
 
 // actions.js — action constructors, and the validate-as-they-arrive intake
 // discipline (design.md §15.6). This is the guard against the game's own
@@ -12,15 +12,19 @@ const { isStarterSystem, getTerranHomeworld } = require('./seed.js');
 // apply it immediately if it passes. Contested claims resolve first-valid-
 // wins under the same discipline (not exercised yet: no claims exist).
 //
-// SCOPE, deliberately thin: exactly ONE concrete action type —
-// `paySyndicateFee` — a guild paying credits into the Syndicate ledger. It's
-// grounded in fields that already exist (guild.credits, syndicate.ledger)
-// and satisfies invariant 2 on its own (credits move, none are minted or
-// destroyed), so it needs no economy.js/territory.js to mean something.
-// Every OTHER action type design.md eventually needs (placing an order,
-// setting a toll, casting a vote, claiming territory) waits for the module
-// that would actually give it an effect — inventing them now would mean
-// guessing at economy.js's shape before economy.js exists.
+// SCOPE: the action types the walking skeleton + testbed need so far, each
+// grounded in fields that already exist so it MEANS something without an
+// economy.js/territory.js to lean on:
+//   - paySyndicateFee   — credits move an OWNED balance -> the SHARED ledger
+//                         (invariant 2 holds: none minted or destroyed).
+//   - foundGuild        — a guild enters on a starter-eligible home (§13);
+//                         starting credits are debited from the ledger, so
+//                         nothing is minted, and it seats + claims the home.
+//   - establishVenture  — seat a NEW mining venture on a real seed node so it
+//                         produces on the next tick (occupancy-guarded).
+// Every OTHER action design.md eventually needs (placing an order, setting a
+// toll, casting a vote) waits for the module that would give it an effect —
+// inventing them now would mean guessing at economy.js before it exists.
 
 // --- Action constructor -----------------------------------------------
 
@@ -59,10 +63,62 @@ function createFoundGuildAction({
   return { type: 'foundGuild', guildId, name, isBot, credits, influence, incomeRate, homeSystemId, ventures };
 }
 
+// Establishing a venture: seating a NEW venture belonging to an existing guild
+// onto a real seed site, so it starts producing on the next tick. This is the
+// action the testbed needs to build up a galaxy interactively (add a guild, add
+// its ventures, then watch production tick) rather than only via a hand-authored
+// scenario. Scoped to MINING for now (the only venture kind that produces yet):
+//   - `siteId` must resolve to a real, UNOCCUPIED resource node in the seed;
+//   - `resourceType` must match that node's good (the same rule the occupancy
+//     invariant enforces — validated here so a bad request is refused cleanly
+//     rather than applied-then-halted);
+//   - `productionRate` is REQUIRED and operator-supplied. Only Titanium's rate
+//     is ruled (5/tick, phase-1-tuning.md); the rest are undecided, so rather
+//     than invent one this action takes the rate as an explicit input — a
+//     testbed dial, not a baked constant.
+// Establishing a venture moves no credits or fuel (there is no licence/site cost
+// yet — that is later economy work), so it touches no conservation invariant.
+// Refinery/factory ventures on settlement slots wait for the refining slice,
+// which brings their own recipe + occupancy rules.
+function createEstablishVentureAction({
+  guildId, ventureId, type = 'mining', siteId, resourceType, productionRate,
+}) {
+  if (guildId === undefined) throw new Error('createEstablishVentureAction: guildId is required');
+  if (ventureId === undefined) throw new Error('createEstablishVentureAction: ventureId is required');
+  if (siteId === undefined) throw new Error('createEstablishVentureAction: siteId is required');
+  if (resourceType === undefined) throw new Error('createEstablishVentureAction: resourceType is required');
+  if (productionRate === undefined) throw new Error('createEstablishVentureAction: productionRate is required');
+  // `ventureType` (not `type`) in the action object, so it never collides with
+  // the action's own discriminator `type: 'establishVenture'`.
+  return { type: 'establishVenture', guildId, ventureId, ventureType: type, siteId, resourceType, productionRate };
+}
+
 // --- Validation -------------------------------------------------------
 
 function findGuild(state, guildId) {
   return state.guilds.find((g) => g.id === guildId);
+}
+
+// Venture ids are unique across the whole galaxy, not just within a guild —
+// scan every guild's ventures. Returns the venture or undefined.
+function findVenture(state, ventureId) {
+  for (const g of state.guilds || []) {
+    for (const v of g.ventures || []) {
+      if (v.id === ventureId) return v;
+    }
+  }
+  return undefined;
+}
+
+// Which venture (if any) currently sits on a site — the same lookup the
+// occupancy invariant polices, used here to refuse a double-seating up front.
+function siteOccupant(state, siteId) {
+  for (const g of state.guilds || []) {
+    for (const v of g.ventures || []) {
+      if (v.siteId === siteId) return v;
+    }
+  }
+  return undefined;
 }
 
 // Validates ONE action against state-as-it-stands. Never mutates `state`.
@@ -114,6 +170,45 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'establishVenture') {
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (typeof action.ventureId !== 'string' || action.ventureId.length === 0) {
+      return { valid: false, reason: 'ventureId must be a non-empty string' };
+    }
+    if (findVenture(state, action.ventureId)) {
+      return { valid: false, reason: `a venture with id ${JSON.stringify(action.ventureId)} already exists` };
+    }
+    if (typeof action.siteId !== 'string' || action.siteId.length === 0) {
+      return { valid: false, reason: 'siteId must be a non-empty string' };
+    }
+    const site = getSite(action.siteId);
+    if (!site) {
+      return { valid: false, reason: `site ${JSON.stringify(action.siteId)} does not exist in the seed` };
+    }
+    // Mining-only for now: the site must be a resource node whose good matches
+    // the venture's resourceType — mirroring the occupancy invariant so a bad
+    // request is refused here, not applied and then halted mid-tick.
+    if (site.kind !== 'resource') {
+      return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is a ${site.kind} site, not a resource node (mining ventures only, for now)` };
+    }
+    if (typeof action.resourceType !== 'string' || action.resourceType !== site.resourceType) {
+      return { valid: false, reason: `resourceType ${JSON.stringify(action.resourceType)} does not match node ${JSON.stringify(action.siteId)}'s good ${JSON.stringify(site.resourceType)}` };
+    }
+    // Checked against state-as-it-stands, so two ventures racing for the same
+    // node in one batch resolve first-valid-wins (the second is refused).
+    const occupant = siteOccupant(state, action.siteId);
+    if (occupant) {
+      return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is already occupied by venture ${JSON.stringify(occupant.id)}` };
+    }
+    if (typeof action.productionRate !== 'number' || !Number.isInteger(action.productionRate) || action.productionRate <= 0) {
+      return { valid: false, reason: 'productionRate must be a positive integer (§15.2)' };
+    }
+    return { valid: true };
+  }
+
   return { valid: false, reason: `unknown action type: ${action.type}` };
 }
 
@@ -160,6 +255,22 @@ function applyAction(state, action) {
     next.syndicate.ledger -= action.credits;
     return next;
   }
+  if (action.type === 'establishVenture') {
+    // Seat a new mining venture on the guild. No credits/fuel move (no site cost
+    // yet). It starts producing on the NEXT production step: because intake runs
+    // before the tick's steps, establishing + ticking in the same advance() call
+    // mints its first batch immediately, exactly as an inline founding venture does.
+    const guild = findGuild(next, action.guildId);
+    guild.ventures.push(createVenture({
+      id: action.ventureId,
+      ownerGuildId: action.guildId,
+      type: action.ventureType,
+      siteId: action.siteId,
+      resourceType: action.resourceType,
+      productionRate: action.productionRate,
+    }));
+    return next;
+  }
   // Unreachable if validateAction() was checked first, since every accepted
   // type is handled above — fail loudly rather than silently no-op if not.
   throw new Error(`applyAction: unhandled action type: ${action.type}`);
@@ -200,6 +311,7 @@ function intake(state, actions) {
 module.exports = {
   createPaySyndicateFeeAction,
   createFoundGuildAction,
+  createEstablishVentureAction,
   validateAction,
   applyAction,
   intake,

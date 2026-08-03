@@ -27,11 +27,14 @@
 
 const { computeGalacticSupply } = require('./supply.js');
 const { computeOccupancy } = require('./occupancy.js');
-const { getSite } = require('./seed.js');
+const { getSite, getLandmark } = require('./seed.js');
 
 // Bump when the shape below changes so the inspector can refuse a stale file
 // loudly instead of rendering half of it. The inspector checks this.
-const SNAPSHOT_SCHEMA = 1;
+// v2 (03-08-26): added top-level `claims` (the SHARED territory layer), so the
+// debug lens can finally see Syndicate waystations + guild homes, not just
+// guilds/ventures.
+const SNAPSHOT_SCHEMA = 2;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
 //   {
@@ -46,6 +49,9 @@ const SNAPSHOT_SCHEMA = 1;
 //     ventures: [ { id, ownerGuildId, type, siteId, resourceType, productionRate,
 //                   site: { kind, planetId, systemId, resourceType } | null } ],
 //     occupancy: { <siteId>: <ventureId> },
+//     claims: [ { claimId, ownerGuildId, landmarkId, landmarkKind, claimedAtTick,
+//                 contested,
+//                 landmark: { kind, name?, coords?, ... } | null } ],
 //   }
 function buildSnapshot(state) {
   const supply = computeGalacticSupply(state);
@@ -94,6 +100,21 @@ function buildSnapshot(state) {
     }
   }
 
+  // Every territory claim, with its seed landmark resolved (as ventures resolve
+  // their site). A null `landmark` means a dangling reference the claim-integrity
+  // invariant would already be halting on; the lens surfaces the breakage rather
+  // than hiding it. The resolved landmark carries coords, so a map view can place
+  // the claim without re-loading the seed for geometry.
+  const claims = (state.claims || []).map((c) => ({
+    claimId: c.claimId,
+    ownerGuildId: c.ownerGuildId,
+    landmarkId: c.landmarkId,
+    landmarkKind: c.landmarkKind,
+    claimedAtTick: c.claimedAtTick,
+    contested: !!c.contested,
+    landmark: getLandmark(c.landmarkId, c.landmarkKind) || null,
+  }));
+
   const reserve = supply.fuel.reserve;
   const guildHeld = supply.fuel.guildHeld;
 
@@ -112,6 +133,7 @@ function buildSnapshot(state) {
     guilds,
     ventures,
     occupancy,
+    claims,
   };
 }
 
@@ -129,7 +151,7 @@ if (require.main === module) {
   const path = require('node:path');
   const { createZeroState } = require('./scenarios/zero-state.js');
   const { advance } = require('./run.js');
-  const { createFoundGuildAction } = require('./actions.js');
+  const { createFoundGuildAction, createEstablishVentureAction } = require('./actions.js');
 
   // Mirrors sim/demo.js's scenario (numbers sourced from phase-1-tuning.md):
   // one Titanium mine seated on a real seed node, $120 / influence 100.
@@ -145,6 +167,12 @@ if (require.main === module) {
     ],
   });
   state = advance(state, [found]).state; // founding also runs one tick
+  // A second mine, this time via the establishVenture action (the testbed's
+  // "add a venture" path), on the homeworld's other titanium node.
+  const secondMine = createEstablishVentureAction({
+    guildId: 'player', ventureId: 'mine_2', siteId: 'pl_00004_n02', resourceType: 'titanium', productionRate: 3,
+  });
+  state = advance(state, [secondMine]).state;
   for (let i = 0; i < 2; i += 1) state = advance(state, []).state; // two quiet ticks
 
   const outArg = process.argv[2];
