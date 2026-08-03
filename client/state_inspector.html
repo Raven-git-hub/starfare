@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Syndicate // State Inspector (debug)</title>
+<style>
+  :root {
+    --bg: #030408;
+    --panel: rgba(8,10,16,0.92);
+    --line: #1c2637;
+    --line-bright: #2c3a52;
+    --text: #c7d3e6;
+    --text-dim: #5c6b85;
+    --accent: #43d9c8;
+    --fuel: #e8b93a;
+    --warn: #e0525a;
+    --zero: #34405a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  body { padding: 20px 22px 60px; }
+
+  h1 { font-size: 18px; letter-spacing: 3px; color: var(--accent); font-weight: 700; }
+  .warnbar {
+    margin-top: 8px; padding: 8px 12px; border: 1px solid var(--warn); border-radius: 2px;
+    color: var(--warn); font-size: 11px; letter-spacing: 1px; background: rgba(224,82,90,0.08);
+  }
+  .meta { margin-top: 14px; font-size: 12px; color: var(--text-dim); }
+  .meta b { color: var(--text); font-weight: 500; }
+
+  .loader { margin-top: 22px; }
+  #filebtn {
+    font-family: inherit; font-size: 12px; letter-spacing: 1.5px; background: rgba(67,217,200,0.12);
+    border: 1px solid var(--accent); color: var(--accent); padding: 10px 18px; border-radius: 2px; cursor: pointer;
+  }
+  #filebtn:hover { background: rgba(67,217,200,0.22); }
+  #fileinput { display: none; }
+  .hint { margin-top: 10px; font-size: 11px; color: var(--text-dim); line-height: 1.7; max-width: 640px; }
+  #loaderror { margin-top: 12px; color: var(--warn); font-size: 12px; display: none; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 22px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--panel); border: 1px solid var(--line-bright); border-radius: 3px; padding: 14px 16px; }
+  .panel.fuel { border-color: var(--fuel); }
+  .panel h2 {
+    font-size: 12px; letter-spacing: 2px; color: var(--text-dim); font-weight: 500;
+    border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 10px;
+  }
+  .panel.fuel h2 { color: var(--fuel); }
+  .full { grid-column: 1 / -1; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 4px 8px 4px 0; }
+  th { color: var(--text-dim); font-weight: 500; border-bottom: 1px solid var(--line); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.zero td { color: var(--zero); }
+
+  .fuelrow { display: flex; gap: 26px; margin-top: 4px; }
+  .fuelrow .cell { }
+  .fuelrow .k { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; }
+  .fuelrow .v { font-size: 22px; color: var(--fuel); font-variant-numeric: tabular-nums; }
+  .fuelrow .cell.total .v { color: var(--text); }
+
+  .guildcard { border: 1px solid var(--line); border-radius: 2px; padding: 10px 12px; margin-bottom: 10px; }
+  .guildcard:last-child { margin-bottom: 0; }
+  .guildcard .top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .guildcard .gid { color: var(--accent); font-size: 13px; letter-spacing: 1px; }
+  .guildcard .tag { font-size: 10px; letter-spacing: 1px; color: var(--text-dim); border: 1px solid var(--line-bright); padding: 1px 6px; border-radius: 2px; }
+  .guildcard .stats { font-size: 12px; color: var(--text-dim); }
+  .guildcard .stats b { color: var(--text); font-weight: 500; }
+  .stockline { margin-top: 6px; font-size: 12px; }
+  .stockline .none { color: var(--text-dim); }
+  .site { color: var(--text-dim); }
+  .site b { color: var(--text); font-weight: 500; }
+  .badsite { color: var(--warn); }
+  #content { display: none; }
+</style>
+</head>
+<body>
+  <h1>SYNDICATE // STATE INSPECTOR</h1>
+  <div class="warnbar">DEBUG LENS — god's-eye view of live engine state. Shows figures players never see (real stockpiles, true fuel totals). NOT player UI.</div>
+
+  <div class="loader" id="loader">
+    <button id="filebtn" type="button">LOAD STATE SNAPSHOT</button>
+    <input type="file" id="fileinput" accept="application/json">
+    <div class="hint">
+      Nothing is computed here — this only renders a snapshot produced by the engine.<br>
+      Generate one with <b>node sim/snapshot.js</b> (writes <b>dev/state_snapshot.json</b>), then load that file.
+    </div>
+    <div id="loaderror"></div>
+  </div>
+
+  <div id="content">
+    <div class="meta" id="meta"></div>
+    <div class="grid">
+      <div class="panel fuel full" id="fuelpanel"></div>
+      <div class="panel" id="supplypanel"></div>
+      <div class="panel" id="guildpanel"></div>
+      <div class="panel full" id="venturepanel"></div>
+    </div>
+  </div>
+
+<script>
+'use strict';
+
+// Escape any string bound for innerHTML. Guild ids/names are developer-set, but
+// escaping keeps the renderer honest and this file copy-pasteable.
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+var fileinput = document.getElementById('fileinput');
+var loaderror = document.getElementById('loaderror');
+
+document.getElementById('filebtn').addEventListener('click', function () {
+  fileinput.click();
+});
+
+fileinput.addEventListener('change', function (e) {
+  var file = e.target.files && e.target.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function () {
+    try {
+      var snap = JSON.parse(reader.result);
+      validate(snap);
+      render(snap);
+      loaderror.style.display = 'none';
+    } catch (err) {
+      loaderror.textContent = 'Could not load: ' + err.message;
+      loaderror.style.display = 'block';
+    }
+  };
+  reader.readAsText(file);
+});
+
+// Fail loudly on a file that isn't a snapshot, rather than rendering a blank
+// page — the same courtesy seed_viewer.html gives ("is this a seed.json?").
+function validate(snap) {
+  if (!snap || typeof snap !== 'object') throw new Error('not a JSON object');
+  if (typeof snap.schemaVersion !== 'number') {
+    throw new Error('missing schemaVersion — is this a snapshot from sim/snapshot.js?');
+  }
+  if (!snap.galacticSupply || !snap.galacticSupply.resources || !snap.galacticSupply.fuel) {
+    throw new Error('missing galacticSupply — is this a snapshot from sim/snapshot.js?');
+  }
+  if (!Array.isArray(snap.guilds) || !Array.isArray(snap.ventures)) {
+    throw new Error('missing guilds/ventures — is this a snapshot from sim/snapshot.js?');
+  }
+}
+
+function render(snap) {
+  document.getElementById('loader').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+
+  document.getElementById('meta').innerHTML =
+    'tick <b>' + esc(snap.tick) + '</b>' +
+    ' &nbsp;·&nbsp; schema <b>' + esc(snap.schemaVersion) + '</b>' +
+    ' &nbsp;·&nbsp; Syndicate ledger <b>' + esc(snap.syndicate ? snap.syndicate.ledger : '?') + '</b>' +
+    ' &nbsp;·&nbsp; guilds <b>' + snap.guilds.length + '</b>' +
+    ' &nbsp;·&nbsp; ventures <b>' + snap.ventures.length + '</b>';
+
+  renderFuel(snap.galacticSupply.fuel);
+  renderSupply(snap.galacticSupply.resources);
+  renderGuilds(snap.guilds);
+  renderVentures(snap.ventures);
+}
+
+// Fuel gets its own panel because it is the one conserved, finite good — reserve
+// (communal pool) and guildHeld (Σ private hoards) are shown separately because
+// which the fuel price reads is still an open ruling.
+function renderFuel(fuel) {
+  document.getElementById('fuelpanel').innerHTML =
+    '<h2>FUEL POOL (deuterium_fuel — finite, conserved)</h2>' +
+    '<div class="fuelrow">' +
+      '<div class="cell"><div class="k">RESERVE (communal)</div><div class="v">' + esc(fuel.reserve) + '</div></div>' +
+      '<div class="cell"><div class="k">GUILD-HELD (Σ hoards)</div><div class="v">' + esc(fuel.guildHeld) + '</div></div>' +
+      '<div class="cell total"><div class="k">TOTAL IN EXISTENCE</div><div class="v">' + esc(fuel.total) + '</div></div>' +
+    '</div>';
+}
+
+// Every raw good, zeros dimmed, so the full 17-good vocabulary is legible and a
+// good appearing/disappearing is obvious.
+function renderSupply(resources) {
+  var goods = Object.keys(resources).sort();
+  var rows = goods.map(function (g) {
+    var qty = resources[g];
+    var cls = qty === 0 ? ' class="zero"' : '';
+    return '<tr' + cls + '><td>' + esc(g) + '</td><td class="num">' + esc(qty) + '</td></tr>';
+  }).join('');
+  document.getElementById('supplypanel').innerHTML =
+    '<h2>GALACTIC SUPPLY (Σ guild stockpiles)</h2>' +
+    '<table><thead><tr><th>good</th><th class="num">total</th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+function renderGuilds(guilds) {
+  var cards = guilds.map(function (g) {
+    var stockKeys = Object.keys(g.stockpiles || {}).filter(function (k) { return g.stockpiles[k] > 0; }).sort();
+    var stock = stockKeys.length
+      ? stockKeys.map(function (k) { return esc(k) + ' ' + esc(g.stockpiles[k]); }).join(', ')
+      : '<span class="none">(empty)</span>';
+    return '' +
+      '<div class="guildcard">' +
+        '<div class="top">' +
+          '<span class="gid">' + esc(g.id) + (g.name && g.name !== g.id ? ' <span class="site">(' + esc(g.name) + ')</span>' : '') + '</span>' +
+          '<span class="tag">' + (g.isBot ? 'BOT' : 'HUMAN') + '</span>' +
+        '</div>' +
+        '<div class="stats">credits <b>' + esc(g.credits) + '</b> &nbsp; fuel hoard <b>' + esc(g.fuelHoard) + '</b> &nbsp; influence <b>' + esc(g.influence) + '</b></div>' +
+        '<div class="stockline">stockpiles: ' + stock + '</div>' +
+      '</div>';
+  }).join('');
+  document.getElementById('guildpanel').innerHTML =
+    '<h2>GUILDS (' + guilds.length + ')</h2>' + (cards || '<div class="site">no guilds (zero-state)</div>');
+}
+
+// One row per venture, with its seed site resolved. A dangling/unseated site is
+// shown explicitly rather than hidden, so breakage is visible.
+function renderVentures(ventures) {
+  var rows = ventures.map(function (v) {
+    var where;
+    if (v.site) {
+      var what = v.site.kind === 'resource' ? esc(v.site.resourceType) : esc(v.site.kind);
+      where = '<span class="site"><b>' + esc(v.siteId) + '</b> — ' + what + ' on ' + esc(v.site.planetId) + ' (' + esc(v.site.systemId) + ')</span>';
+    } else if (v.siteId) {
+      where = '<span class="badsite">' + esc(v.siteId) + ' — UNKNOWN SITE</span>';
+    } else {
+      where = '<span class="site">unseated</span>';
+    }
+    return '<tr>' +
+      '<td>' + esc(v.id) + '</td>' +
+      '<td>' + esc(v.ownerGuildId) + '</td>' +
+      '<td>' + esc(v.type) + '</td>' +
+      '<td>' + where + '</td>' +
+      '<td class="num">' + esc(v.productionRate) + '</td>' +
+    '</tr>';
+  }).join('');
+  document.getElementById('venturepanel').innerHTML =
+    '<h2>VENTURES &amp; OCCUPANCY (' + ventures.length + ')</h2>' +
+    (ventures.length
+      ? '<table><thead><tr><th>venture</th><th>owner</th><th>type</th><th>site</th><th class="num">rate</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      : '<div class="site">no ventures</div>');
+}
+</script>
+</body>
+</html>
