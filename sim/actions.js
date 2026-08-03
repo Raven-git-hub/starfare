@@ -1,6 +1,7 @@
 'use strict';
 
 const { createGuild } = require('./state.js');
+const { isStarterSystem, getTerranHomeworld } = require('./seed.js');
 
 // actions.js — action constructors, and the validate-as-they-arrive intake
 // discipline (design.md §15.6). This is the guard against the game's own
@@ -40,12 +41,22 @@ function createPaySyndicateFeeAction({ guildId, amount }) {
 // every decided roster starts at 0 (docs/phase-1-tuning.md), and minting fuel
 // into a hoard would need a fuel-genesis rule we have not decided -- so this
 // action does not offer a non-zero starting hoard at all.
+//
+// homeSystemId (design.md §13, decided 03-08-26): every guild enters ON a
+// starter-eligible system (one holding >=1 Terran planet), so it is REQUIRED.
+// Founding claims that system for the guild and seats it on the system's Terran
+// homeworld. The claim is the ownership source of truth; the guild's
+// homeSystemId/homePlanetId are the denormalised pointer (invariants.js guards
+// the match). The genesis home-claim deliberately does NOT grant the "+20 on
+// claiming an uncontested system" earn bonus — that is for play actions, not
+// setup — so a guild starts at exactly its passed influence.
 function createFoundGuildAction({
-  guildId, name, isBot = false, credits, influence = 0, incomeRate = 0, ventures = [],
+  guildId, name, isBot = false, credits, influence = 0, incomeRate = 0, homeSystemId, ventures = [],
 }) {
   if (guildId === undefined) throw new Error('createFoundGuildAction: guildId is required');
   if (credits === undefined) throw new Error('createFoundGuildAction: credits is required');
-  return { type: 'foundGuild', guildId, name, isBot, credits, influence, incomeRate, ventures };
+  if (homeSystemId === undefined) throw new Error('createFoundGuildAction: homeSystemId is required');
+  return { type: 'foundGuild', guildId, name, isBot, credits, influence, incomeRate, homeSystemId, ventures };
 }
 
 // --- Validation -------------------------------------------------------
@@ -88,6 +99,18 @@ function validateAction(state, action) {
     if (typeof action.credits !== 'number' || !Number.isInteger(action.credits) || action.credits < 0) {
       return { valid: false, reason: 'credits must be a non-negative integer (§15.2)' };
     }
+    // Home must be a real starter-eligible system (§13) that no one has claimed
+    // yet — checked against state-as-it-stands, so two guilds racing for the
+    // same home in one batch resolve first-valid-wins like any other contest.
+    if (typeof action.homeSystemId !== 'string' || action.homeSystemId.length === 0) {
+      return { valid: false, reason: 'homeSystemId must be a non-empty string' };
+    }
+    if (!isStarterSystem(action.homeSystemId)) {
+      return { valid: false, reason: `homeSystemId ${JSON.stringify(action.homeSystemId)} is not a starter-eligible system (§13)` };
+    }
+    if ((state.claims || []).some((c) => c.landmarkId === action.homeSystemId)) {
+      return { valid: false, reason: `system ${JSON.stringify(action.homeSystemId)} is already claimed` };
+    }
     return { valid: true };
   }
 
@@ -105,6 +128,10 @@ function applyAction(state, action) {
     return next;
   }
   if (action.type === 'foundGuild') {
+    // Seat the guild on its home: record the denormalised home pointer and add
+    // the ownership claim (the source of truth). The Terran homeworld is the
+    // system's lowest-id Terran planet, resolved from the seed.
+    const homePlanetId = getTerranHomeworld(action.homeSystemId);
     const guild = createGuild({
       id: action.guildId,
       name: action.name,
@@ -113,12 +140,23 @@ function applyAction(state, action) {
       fuelHoard: 0, // always 0 -- see createFoundGuildAction's note
       influence: action.influence,
       incomeRate: action.incomeRate,
+      homeSystemId: action.homeSystemId,
+      homePlanetId,
       ventures: action.ventures,
     });
     next.guilds.push(guild);
+    next.claims.push({
+      claimId: `claim_home_${action.guildId}`,
+      ownerGuildId: action.guildId,
+      landmarkId: action.homeSystemId,
+      landmarkKind: 'system',
+      claimedAtTick: next.tick,
+      contested: false,
+    });
     // The ledger FUNDS the starting credits: credits move Syndicate -> guild,
     // none are created. expectedCreditTotal is unchanged (guild +C, ledger -C
-    // => net 0), so invariant 2 still holds.
+    // => net 0), so invariant 2 still holds. Founding does NOT grant the +20
+    // claim bonus (setup, not a play action -- see createFoundGuildAction).
     next.syndicate.ledger -= action.credits;
     return next;
   }

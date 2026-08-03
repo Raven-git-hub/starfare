@@ -13,7 +13,10 @@
 // The slice of state this harness reads (full entity shapes: design.md §15.4).
 // state.js must populate these fields; nothing here invents a game number.
 //
-//   state.guilds     : [{ id, credits, fuelHoard, influence?, stockpiles?, ventures? }]
+//   state.guilds     : [{ id, credits, fuelHoard, influence?, stockpiles?,
+//                         ventures?, homeSystemId?, homePlanetId? }]
+//   state.claims?    : [{ claimId, ownerGuildId, landmarkId, landmarkKind }]
+//                          // SHARED territory rows; reference real seed landmarks
 //   state.reserve    : { reserveLevel }                    // SHARED fuel reserve
 //   state.syndicate  : { ledger }         // credits; may be negative (see below)
 //   state.shipments? : [{ cargo: { fuel? } }]   // fuel in transit; none yet in
@@ -41,7 +44,7 @@
 
 const { isRawResource } = require('./resources.js');
 const { computeGalacticSupply } = require('./supply.js');
-const { getSite } = require('./seed.js');
+const { getSite, getLandmark, getSystem, getTerranHomeworld } = require('./seed.js');
 
 function sumFuelInTransit(state) {
   if (!Array.isArray(state.shipments)) return 0;
@@ -225,6 +228,57 @@ function checkSiteOccupancy(state) {
   return out;
 }
 
+// Claim integrity — the territory analogue of site occupancy. Every claim in
+// the SHARED territory layer names a seed landmark by (landmarkId, landmarkKind);
+// each must resolve to a real landmark of that exact kind (a citadel-kind claim
+// pointing at an outpost id fails, not resolves by luck). This is the referential
+// half of "live state references the seed by id" (design.md §15.3) for territory.
+function checkClaimIntegrity(state) {
+  const out = [];
+  for (const c of state.claims || []) {
+    if (typeof c.landmarkId !== 'string' || typeof c.landmarkKind !== 'string') {
+      out.push({ rule: 'claim-references-landmark', where: `claim:${c.claimId}`, detail: { landmarkId: c.landmarkId, landmarkKind: c.landmarkKind } });
+      continue;
+    }
+    if (!getLandmark(c.landmarkId, c.landmarkKind)) {
+      out.push({ rule: 'claim-landmark-exists (seed.js)', where: `claim:${c.claimId}`, detail: { landmarkId: c.landmarkId, landmarkKind: c.landmarkKind } });
+    }
+  }
+  return out;
+}
+
+// Guild home integrity — a guild's homeSystemId/homePlanetId is a DENORMALISED
+// pointer; this guards it against the seed and against the ownership source of
+// truth (its claim), the same discipline that lets a mining venture's
+// resourceType stay a denormalised copy. Only guilds WITH a home are checked; a
+// homeless guild (e.g. one built directly by a test) is legal. For each home:
+//   - the system resolves and is starter-eligible (design.md §13);
+//   - homePlanetId is exactly that system's Terran homeworld (seed's authority);
+//   - a matching home claim exists, owned by this guild (denormalisation agrees
+//     with the ownership row).
+function checkGuildHome(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    if (g.homeSystemId == null) continue; // homeless: nothing to check
+
+    const sys = getSystem(g.homeSystemId);
+    if (!sys || !sys.starterEligible) {
+      out.push({ rule: 'home-is-starter-system (§13)', where: `guild:${g.id}.homeSystemId`, detail: { homeSystemId: g.homeSystemId, resolved: !!sys, starterEligible: sys ? sys.starterEligible : null } });
+    } else {
+      const homeworld = getTerranHomeworld(g.homeSystemId);
+      if (g.homePlanetId !== homeworld) {
+        out.push({ rule: 'home-planet-matches-seed', where: `guild:${g.id}.homePlanetId`, detail: { homePlanetId: g.homePlanetId, seedHomeworld: homeworld, homeSystemId: g.homeSystemId } });
+      }
+    }
+
+    const claim = (state.claims || []).find((c) => c.landmarkId === g.homeSystemId && c.ownerGuildId === g.id);
+    if (!claim) {
+      out.push({ rule: 'home-claim-exists', where: `guild:${g.id}.homeSystemId`, detail: { homeSystemId: g.homeSystemId } });
+    }
+  }
+  return out;
+}
+
 // Run all within-run invariants. Returns a (possibly empty) list of violations,
 // each tagged with the tick.
 function checkInvariants(state, tick) {
@@ -234,6 +288,8 @@ function checkInvariants(state, tick) {
     ...checkNonNegativityAndIntegrality(state),
     ...checkGalacticSupplyConsistency(state),
     ...checkSiteOccupancy(state),
+    ...checkClaimIntegrity(state),
+    ...checkGuildHome(state),
   ];
   return violations.map((v) => ({ ...v, tick }));
 }

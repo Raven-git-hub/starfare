@@ -34,6 +34,8 @@ function createGuild({
   fuelHoard,
   influence = 0,
   incomeRate = 0,
+  homeSystemId = null,
+  homePlanetId = null,
   stockpiles = {},
   ventures = [],
   vehicles = [],
@@ -50,6 +52,14 @@ function createGuild({
     fuelHoard,
     influence,
     incomeRate,
+    // Home (design.md §13): the starter system a guild entered on, and its
+    // Terran homeworld planet within it. A DENORMALISED pointer for convenience;
+    // the OWNERSHIP source of truth is the guild's home claim in state.claims
+    // (§15.2). invariants.js asserts the two agree and that the system is really
+    // starter-eligible. null until seated — a guild built directly by a test
+    // (bypassing the foundGuild action) may legitimately have no home.
+    homeSystemId,
+    homePlanetId,
     guildReputation: 0,
     // stockpiles: good -> int, the guild's holdings of each RAW resource
     // (design.md §15.4). Fuel is NOT here — it lives in fuelHoard, tracked by
@@ -222,10 +232,13 @@ function createState(scenario) {
     guilds,
     reserve,
     syndicate,
-    // world + claims are SHARED scaffolding carried inert by the engine (tick/
-    // intake/assert read none of it); they exist so a booted galaxy is legibly a
-    // galaxy. Optional, default empty. Real hex geography is Phase 4 (§2, §15.4).
-    world: scenario.world || { nodes: [] },
+    // world is an opaque reference the engine carries inert (tick/intake/assert
+    // read none of it). The zero-state now sets it to { seed: <number> } — the
+    // galaxy IS the seed (§15.3), referenced, not copied — replacing the old
+    // placeholder node graph. A test may pass any shape or none. Real hex
+    // geography stays Phase 4 (§2, §15.4). claims (SHARED territory rows) DO
+    // carry weight: they reference real seed landmarks, guarded by invariants.js.
+    world: scenario.world || {},
     claims: Array.isArray(scenario.claims) ? scenario.claims : [],
     shipments: [], // IN-FLIGHT: empty until routes exist (walking skeleton has none)
     audit: {

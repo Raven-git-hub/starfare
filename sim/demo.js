@@ -17,7 +17,11 @@ const { hashState } = require('./serialize.js');
 
 // A real Titanium resource node from the seed to seat the mine on. Chosen once,
 // here, so the demo shows a venture living on an actual place in the galaxy.
-const MINE_SITE = 'pl_00001_n02'; // pl_00001 (rocky), a titanium node
+// The player's home: a real starter-eligible system (sys_0002, FEN-6425), and
+// a titanium node on its Terran homeworld -- so the guild, its homeworld, and
+// its first mine all live in the same place.
+const HOME_SYSTEM = 'sys_0002';
+const MINE_SITE = 'pl_00004_n01'; // titanium node on sys_0002's Terran homeworld pl_00004
 
 // Total Titanium held across all guild stockpiles.
 function heldTitanium(state) {
@@ -25,7 +29,7 @@ function heldTitanium(state) {
 }
 
 function summary(state) {
-  const claims = state.claims.map((c) => `${c.kind}@${c.nodeId}`).join(', ');
+  const claims = state.claims.map((c) => `${c.landmarkKind}@${c.landmarkId}`).join(', ');
   const lines = [
     `  tick             ${state.tick}`,
     `  guilds           ${state.guilds.length}${state.guilds.length ? ' (' + state.guilds.map((g) => `${g.id}:$${g.credits}`).join(', ') + ')' : ''}`,
@@ -51,7 +55,7 @@ function summary(state) {
     lines.push(`  fuel pool        reserve ${gs.fuel.reserve}, guild-held ${gs.fuel.guildHeld}`);
   }
   lines.push(
-    `  world nodes      ${state.world.nodes.length}`,
+    `  galaxy seed      ${state.world.seed}`,
     `  Syndicate claims ${state.claims.length}  [${claims}]`,
     `  state hash       ${hashState(state).slice(0, 16)}...`,
   );
@@ -65,12 +69,13 @@ console.log(summary(state));
 console.log('  invariants: OK\n');
 
 console.log('=== 2. The owner founds the first guild (one turn) ===');
-console.log('  action: foundGuild player ($120, influence 100, one mine @ 5 Titanium/tick)');
+console.log('  action: foundGuild player ($120, influence 100, home sys_0002, one mine @ 5 Titanium/tick)');
 const foundPlayer = createFoundGuildAction({
   guildId: 'player',
   name: 'Player Guild',
   credits: 120,       // [phase-1-tuning.md]
   influence: 100,     // [phase-1-tuning.md]
+  homeSystemId: HOME_SYSTEM,
   ventures: [{ id: 'mine_1', ownerGuildId: 'player', type: 'mining', siteId: MINE_SITE, resourceType: 'titanium', productionRate: 5 }], // [phase-1-tuning.md]
 });
 let res = advance(state, [foundPlayer]);

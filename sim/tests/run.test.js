@@ -30,7 +30,7 @@ test('advance with no actions ticks exactly once and stays green', () => {
 test('advance never mutates its input state', () => {
   const s = createZeroState();
   const before = JSON.stringify(s);
-  advance(s, [createFoundGuildAction({ guildId: 'g1', credits: 120 })]);
+  advance(s, [createFoundGuildAction({ guildId: 'g1', credits: 120, homeSystemId: 'sys_0002' })]);
   assert.equal(JSON.stringify(s), before, 'input state must be untouched');
 });
 
@@ -42,10 +42,12 @@ test('the zero-state boots green with no guilds and Syndicate-owned claims', () 
   assert.equal(s.guilds.length, 0);
   assert.equal(s.reserve.reserveLevel, 30);
   assert.equal(s.syndicate.ledger, 0);
-  // Citadel + one waystation per contested-middle node = 4 Syndicate claims.
-  assert.equal(s.claims.length, 4);
+  // Citadel + one waystation per seed outpost (9) = 10 Syndicate claims,
+  // every one referencing a real seed landmark.
+  assert.equal(s.claims.length, 10);
   assert.ok(s.claims.every((c) => c.ownerGuildId === SYNDICATE_OWNER));
-  assert.equal(s.world.nodes.length, 10);
+  // The world references the seed the galaxy is built over -- no invented graph.
+  assert.equal(s.world.seed, 7331);
   assert.deepEqual(checkInvariants(s, 0), []);
 });
 
@@ -53,7 +55,7 @@ test('the zero-state boots green with no guilds and Syndicate-owned claims', () 
 
 test('foundGuild inserts the guild and debits its credits from the ledger', () => {
   const s = createZeroState();
-  const action = createFoundGuildAction({ guildId: 'player', name: 'Player Guild', credits: 120, influence: 100 });
+  const action = createFoundGuildAction({ guildId: 'player', name: 'Player Guild', credits: 120, influence: 100, homeSystemId: 'sys_0002' });
   const { state: next, results } = advance(s, [action]);
 
   assert.equal(results.length, 1);
@@ -64,7 +66,15 @@ test('foundGuild inserts the guild and debits its credits from the ledger', () =
   assert.equal(g.id, 'player');
   assert.equal(g.credits, 120);
   assert.equal(g.fuelHoard, 0);
-  assert.equal(g.influence, 100);
+  assert.equal(g.influence, 100); // +20 claim bonus does NOT fire at founding
+
+  // Home seated (design.md §13): the guild lives on sys_0002's Terran homeworld,
+  // and a matching home claim -- the ownership source of truth -- was added.
+  assert.equal(g.homeSystemId, 'sys_0002');
+  assert.equal(g.homePlanetId, 'pl_00004');
+  const home = next.claims.find((c) => c.landmarkId === 'sys_0002' && c.ownerGuildId === 'player');
+  assert.ok(home, 'a guild-owned home claim on sys_0002 must exist');
+  assert.equal(home.landmarkKind, 'system');
 
   // Credits MOVED, none minted: ledger 0 -> -120, and the credit-conservation
   // invariant still holds (this is the whole point of routing founding through
@@ -75,8 +85,8 @@ test('foundGuild inserts the guild and debits its credits from the ledger', () =
 
 test('foundGuild refuses a duplicate guild id (first-valid-wins)', () => {
   const s = createZeroState();
-  const a = createFoundGuildAction({ guildId: 'dup', credits: 50 });
-  const b = createFoundGuildAction({ guildId: 'dup', credits: 999 });
+  const a = createFoundGuildAction({ guildId: 'dup', credits: 50, homeSystemId: 'sys_0002' });
+  const b = createFoundGuildAction({ guildId: 'dup', credits: 999, homeSystemId: 'sys_0002' });
   const { state: next, results } = advance(s, [a, b]);
   assert.equal(results[0].accepted, true);
   assert.equal(results[1].accepted, false);
@@ -123,7 +133,7 @@ test('advance halts loudly when a resulting state breaks an invariant', () => {
 // --- determinism through the driver ----------------------------------------
 
 test('same zero-state + same actions, run twice, byte-identical at tick 10', () => {
-  const actions = [createFoundGuildAction({ guildId: 'player', credits: 120, influence: 100 })];
+  const actions = [createFoundGuildAction({ guildId: 'player', credits: 120, influence: 100, homeSystemId: 'sys_0002' })];
   function run() {
     let s = createZeroState();
     // turn 1 founds the guild; turns 2..10 are quiet ticks.

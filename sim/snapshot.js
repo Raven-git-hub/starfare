@@ -61,6 +61,8 @@ function buildSnapshot(state) {
     credits: g.credits,
     fuelHoard: g.fuelHoard,
     influence: g.influence,
+    homeSystemId: g.homeSystemId || null,
+    homePlanetId: g.homePlanetId || null,
     stockpiles: { ...(g.stockpiles || {}) },
   }));
 
@@ -137,8 +139,9 @@ if (require.main === module) {
     name: 'Player Guild',
     credits: 120,
     influence: 100,
+    homeSystemId: 'sys_0002',
     ventures: [
-      { id: 'mine_1', ownerGuildId: 'player', type: 'mining', siteId: 'pl_00001_n02', resourceType: 'titanium', productionRate: 5 },
+      { id: 'mine_1', ownerGuildId: 'player', type: 'mining', siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5 },
     ],
   });
   state = advance(state, [found]).state; // founding also runs one tick

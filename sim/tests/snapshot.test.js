@@ -31,6 +31,8 @@ function sampleState() {
         credits: 120,
         fuelHoard: 4,
         influence: 100,
+        homeSystemId: 'sys_0002',
+        homePlanetId: 'pl_00004',
         stockpiles: { titanium: 15, lead: 3 },
         ventures: [
           { id: 'mine_1', ownerGuildId: 'player', type: 'mining', siteId: 'pl_00001_n02', resourceType: 'titanium', productionRate: 5 },
@@ -103,6 +105,8 @@ test('guild breakdown copies the shown fields and does not alias live state', ()
   assert.equal(p.credits, 120);
   assert.equal(p.fuelHoard, 4);
   assert.equal(p.influence, 100);
+  assert.equal(p.homeSystemId, 'sys_0002');
+  assert.equal(p.homePlanetId, 'pl_00004');
   assert.deepEqual(p.stockpiles, { titanium: 15, lead: 3 });
   // Mutating the snapshot must not reach back into the state's stockpiles.
   p.stockpiles.titanium = 999;
