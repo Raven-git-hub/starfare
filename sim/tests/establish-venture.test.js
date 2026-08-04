@@ -16,6 +16,7 @@ const assert = require('node:assert/strict');
 const { advance } = require('../run.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
 const { checkInvariants } = require('../invariants.js');
+const { guildTotals } = require('../stock.js');
 const {
   intake, validateAction, createFoundGuildAction, createEstablishVentureAction,
 } = require('../actions.js');
@@ -48,7 +49,7 @@ test('establishing a mine seats it and it produces on the next tick', () => {
   assert.equal(g.ventures.length, 1);
   assert.equal(g.ventures[0].siteId, 'pl_00004_n01');
   // establish + the same advance()'s tick => one batch already extracted.
-  assert.equal(g.stockpiles.titanium, 5);
+  assert.equal(guildTotals(g).titanium, 5);
   assert.deepEqual(checkInvariants(next, next.tick), []);
 });
 
@@ -56,9 +57,9 @@ test('two mines on two nodes sum their rates each tick', () => {
   let s = playerFounded();
   s = advance(s, [createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'mine_1', siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5 })]).state; // +5 => 5
   s = advance(s, [createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'mine_2', siteId: 'pl_00004_n02', resourceType: 'titanium', productionRate: 3 })]).state; // +5+3 => 13
-  assert.equal(s.guilds[0].stockpiles.titanium, 13);
+  assert.equal(guildTotals(s.guilds[0]).titanium, 13);
   s = advance(s, []).state; // quiet tick: +8 => 21
-  assert.equal(s.guilds[0].stockpiles.titanium, 21);
+  assert.equal(guildTotals(s.guilds[0]).titanium, 21);
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 

@@ -15,6 +15,7 @@ const { advance } = require('../run.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
 const { checkInvariants } = require('../invariants.js');
 const { computeGalacticSupply } = require('../supply.js');
+const { guildTotals } = require('../stock.js');
 const {
   validateAction, createFoundGuildAction, createEstablishVentureAction,
 } = require('../actions.js');
@@ -45,7 +46,7 @@ test('a refinery consumes BOTH inputs and produces titanium_alloy', () => {
   const r = advance(s, [refinery()]);   // mines first (=>15 ti, 10 carbon); rate 2 = 6 ti + 2 carbon -> 2 alloy
   s = r.state;
   assert.equal(r.results[0].accepted, true);
-  const g = () => s.guilds[0].stockpiles;
+  const g = () => guildTotals(s.guilds[0]);
   assert.equal(g().titanium, 9);        // 15 - 6
   assert.equal(g().carbon_products, 8); // 10 - 2
   assert.equal(g().titanium_alloy, 2);  // 2 batches * 1
@@ -63,7 +64,7 @@ test('a refinery throttles to the SCARCEST input and never goes negative', () =>
   s = advance(s, [cmine({ productionRate: 1 })]).state;  // carbon accrues slowly (1/tick) => the bottleneck
   // rate 100 wants 100 batches; titanium could afford floor(15/3)=5, but carbon only floor(2/1)=2.
   s = advance(s, [refinery({ productionRate: 100 })]).state;
-  const g = s.guilds[0].stockpiles;
+  const g = guildTotals(s.guilds[0]);
   assert.equal(g.carbon_products, 0);   // carbon (scarcest) capped batches at 2, drained to exactly 0
   assert.equal(g.titanium_alloy, 2);    // 2 batches, not 5 (titanium) and not 100 (rate)
   assert.equal(g.titanium, 9);          // 15 - 2*3, plenty left over
@@ -75,7 +76,7 @@ test('a refinery missing ANY input produces nothing (no-op, stays green)', () =>
   // titanium mine but NO carbon mine: one input is present, the other is absent.
   s = advance(s, [tmine()]).state;                 // titanium => 5
   s = advance(s, [refinery()]).state;              // mine +5 => 10 ti; carbon 0 => 0 batches
-  const g = s.guilds[0].stockpiles;
+  const g = guildTotals(s.guilds[0]);
   assert.equal(g.titanium, 10);                    // untouched — no batch ran
   assert.equal(g.titanium_alloy || 0, 0);
   assert.equal(g.carbon_products || 0, 0);

@@ -11,6 +11,7 @@ const assert = require('node:assert/strict');
 const { createState } = require('../state.js');
 const { computeOccupancy } = require('../occupancy.js');
 const { checkInvariants } = require('../invariants.js');
+const { getSite } = require('../seed.js');
 
 function stateWithVentures(ventures) {
   return createState({
@@ -52,6 +53,22 @@ test('a resourceType that disagrees with the node is caught', () => {
     { id: 'm1', ownerGuildId: 'g1', type: 'mining', siteId: 'pl_00001_n01', resourceType: 'titanium', productionRate: 1 },
   ]);
   assert.equal(hasRule(s, 'venture-resource-matches-node'), true);
+});
+
+test('a systemId stamped to match the site passes (ruling B1)', () => {
+  const sysId = getSite('pl_00001_n02').systemId;
+  const s = stateWithVentures([
+    { id: 'm1', ownerGuildId: 'g1', type: 'mining', siteId: 'pl_00001_n02', systemId: sysId, resourceType: 'titanium', productionRate: 1 },
+  ]);
+  assert.deepEqual(checkInvariants(s, 0), []);
+});
+
+test('a systemId that disagrees with the site is caught (ruling B1)', () => {
+  // pl_00001_n02 does not sit in sys_9999
+  const s = stateWithVentures([
+    { id: 'm1', ownerGuildId: 'g1', type: 'mining', siteId: 'pl_00001_n02', systemId: 'sys_9999', resourceType: 'titanium', productionRate: 1 },
+  ]);
+  assert.equal(hasRule(s, 'venture-system-matches-site'), true);
 });
 
 test('a mining venture parked on a settlement slot is caught', () => {

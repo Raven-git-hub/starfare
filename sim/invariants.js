@@ -119,14 +119,17 @@ function checkNonNegativityAndIntegrality(state) {
     checkField(out, g.fuelHoard, `guild:${g.id}.fuelHoard`);
     if (g.influence !== undefined) checkField(out, g.influence, `guild:${g.id}.influence`);
 
-    // Stockpiles: every value is an integer, non-negative good; every key is a
-    // known stockpile good — raw OR processed (a stray/misspelled key would
-    // silently vanish from the galactic totals, so catch it here, not let it rot).
+    // Stockpiles (ruling B1, §15.2): a NESTED map systemId -> good -> int. Every
+    // value is an integer, non-negative; every good key is a known stockpile good
+    // — raw OR processed (a stray/misspelled key would silently vanish from the
+    // galactic totals, so catch it here, not let it rot). Checked per system pool.
     if (g.stockpiles) {
-      for (const [good, qty] of Object.entries(g.stockpiles)) {
-        checkField(out, qty, `guild:${g.id}.stockpiles.${good}`);
-        if (!isStockpileGood(good)) {
-          out.push({ rule: 'known-good (resources.js)', where: `guild:${g.id}.stockpiles.${good}`, detail: { good } });
+      for (const [systemId, pool] of Object.entries(g.stockpiles)) {
+        for (const [good, qty] of Object.entries(pool || {})) {
+          checkField(out, qty, `guild:${g.id}.stockpiles.${systemId}.${good}`);
+          if (!isStockpileGood(good)) {
+            out.push({ rule: 'known-good (resources.js)', where: `guild:${g.id}.stockpiles.${systemId}.${good}`, detail: { good } });
+          }
         }
       }
     }
@@ -227,6 +230,15 @@ function checkSiteOccupancy(state) {
         if (!getRecipe(v.recipeId)) {
           out.push({ rule: 'recipe-exists (recipes.js)', where: `venture:${v.id}.recipeId`, detail: { recipeId: v.recipeId } });
         }
+      }
+
+      // The denormalised venture.systemId must match its site's system (ruling
+      // B1, §15.2): production deposits into guild.stockpiles[systemId], so a
+      // drifted copy would silently pool goods in the wrong system. Same guard
+      // shape as venture-resource-matches-node above; only checked when both the
+      // site and a systemId are present (a synthetic unseated venture has neither).
+      if (site && v.systemId != null && v.systemId !== site.systemId) {
+        out.push({ rule: 'venture-system-matches-site', where: `venture:${v.id}.systemId`, detail: { venture: v.systemId, site: site.systemId, siteId: v.siteId } });
       }
 
       if (seenAt.has(v.siteId)) {

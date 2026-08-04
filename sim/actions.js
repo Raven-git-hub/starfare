@@ -274,11 +274,16 @@ function applyAction(state, action) {
     // A mining venture carries resourceType; a refining one carries recipeId
     // (createVenture defaults the unused one to null).
     const guild = findGuild(next, action.guildId);
+    // Resolve the site once more (validateAction already proved it exists) to
+    // stamp the venture's systemId — the pool key production uses (ruling B1,
+    // §15.2). Denormalised from the site, guarded against it by invariants.js.
+    const site = getSite(action.siteId);
     guild.ventures.push(createVenture({
       id: action.ventureId,
       ownerGuildId: action.guildId,
       type: action.ventureType || 'mining',
       siteId: action.siteId,
+      systemId: site ? site.systemId : null,
       resourceType: action.resourceType,
       recipeId: action.recipeId,
       productionRate: action.productionRate,

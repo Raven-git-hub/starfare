@@ -16,8 +16,8 @@ const { hashState } = require('../serialize.js');
 function twoGuildState() {
   return createState({
     guilds: [
-      { id: 'g1', credits: 0, fuelHoard: 4, stockpiles: { titanium: 10, copper: 3 } },
-      { id: 'g2', credits: 0, fuelHoard: 1, stockpiles: { titanium: 5 } },
+      { id: 'g1', credits: 0, fuelHoard: 4, stockpiles: { sysA: { titanium: 10, copper: 3 } } },
+      { id: 'g2', credits: 0, fuelHoard: 1, stockpiles: { sysB: { titanium: 5 } } },
     ],
     reserve: { reserveLevel: 30 },
     syndicate: { ledger: 0 },

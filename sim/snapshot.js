@@ -28,6 +28,7 @@
 const { computeGalacticSupply } = require('./supply.js');
 const { computeOccupancy } = require('./occupancy.js');
 const { getSite, getLandmark } = require('./seed.js');
+const { guildTotals } = require('./stock.js');
 
 // Bump when the shape below changes so the inspector can refuse a stale file
 // loudly instead of rendering half of it. The inspector checks this.
@@ -69,7 +70,11 @@ function buildSnapshot(state) {
     influence: g.influence,
     homeSystemId: g.homeSystemId || null,
     homePlanetId: g.homePlanetId || null,
-    stockpiles: { ...(g.stockpiles || {}) },
+    // Guild-level holdings = the per-system pools flattened into one { good: int }
+    // (ruling B1, §15.2): the snapshot shows a guild's TOTAL across its systems,
+    // so the client keeps reading a flat map and needs no change. A per-system
+    // breakdown will be added here when a consumer (the management tab) needs it.
+    stockpiles: guildTotals(g),
   }));
 
   // Every venture, flattened out of its owner guild, with its seed site

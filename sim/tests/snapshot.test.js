@@ -19,6 +19,7 @@ const { computeGalacticSupply } = require('../supply.js');
 const { computeOccupancy } = require('../occupancy.js');
 const { getSite } = require('../seed.js');
 const { buildSnapshot, SNAPSHOT_SCHEMA } = require('../snapshot.js');
+const { guildTotals } = require('../stock.js');
 
 // A state with two guilds, real stockpiles, fuel in both the reserve and a
 // guild hoard, and one seated titanium mine — enough to exercise every branch.
@@ -33,12 +34,12 @@ function sampleState() {
         influence: 100,
         homeSystemId: 'sys_0002',
         homePlanetId: 'pl_00004',
-        stockpiles: { titanium: 15, lead: 3 },
+        stockpiles: { sys_0002: { titanium: 15, lead: 3 } },
         ventures: [
           { id: 'mine_1', ownerGuildId: 'player-guild', type: 'mining', siteId: 'pl_00001_n02', resourceType: 'titanium', productionRate: 5 },
         ],
       },
-      { id: 'bot_a', name: 'Bot A', isBot: true, credits: 80, fuelHoard: 1, stockpiles: { titanium: 5 } },
+      { id: 'bot_a', name: 'Bot A', isBot: true, credits: 80, fuelHoard: 1, stockpiles: { sysB: { titanium: 5 } } },
     ],
     reserve: { reserveLevel: 30 },
     syndicate: { ledger: -200 },
@@ -69,7 +70,7 @@ test('each good total equals the sum of that good across guild stockpiles', () =
   const s = sampleState();
   const snap = buildSnapshot(s);
   for (const good of Object.keys(snap.galacticSupply.resources)) {
-    const summed = s.guilds.reduce((n, g) => n + ((g.stockpiles && g.stockpiles[good]) || 0), 0);
+    const summed = s.guilds.reduce((n, g) => n + (guildTotals(g)[good] || 0), 0);
     assert.equal(snap.galacticSupply.resources[good], summed, `total for ${good} drifted`);
   }
 });
@@ -114,7 +115,7 @@ test('guild breakdown copies the shown fields and does not alias live state', ()
   assert.deepEqual(p.stockpiles, { titanium: 15, lead: 3 });
   // Mutating the snapshot must not reach back into the state's stockpiles.
   p.stockpiles.titanium = 999;
-  assert.equal(s.guilds.find((g) => g.id === 'player-guild').stockpiles.titanium, 15);
+  assert.equal(guildTotals(s.guilds.find((g) => g.id === 'player-guild')).titanium, 15);
 });
 
 test('claims carry their seed landmark resolved, in order', () => {

@@ -24,6 +24,7 @@
 //     decision), and because fuel conservation (invariant 1) is defined on them.
 
 const { STOCKPILE_GOODS } = require('./resources.js');
+const { guildTotals } = require('./stock.js');
 
 // computeGalacticSupply(state) — pure. Returns a fresh totals object:
 //   {
@@ -37,10 +38,11 @@ function computeGalacticSupply(state) {
   const resources = {};
   for (const good of STOCKPILE_GOODS) resources[good] = 0;
   for (const g of guilds) {
-    const stock = g.stockpiles || {};
-    for (const [good, qty] of Object.entries(stock)) {
-      // Unknown keys are left to invariants.js to flag; summing them here would
-      // hide the error. Only fold known resources into the totals.
+    // guildTotals flattens the guild's per-system pools (ruling B1, §15.2) into
+    // one { good: int } — the guild-wide PRICING AGGREGATE, which is exactly what
+    // galactic supply is. Unknown keys are left to invariants.js to flag; summing
+    // them here would hide the error, so only fold known resources into totals.
+    for (const [good, qty] of Object.entries(guildTotals(g))) {
       if (Object.prototype.hasOwnProperty.call(resources, good)) {
         resources[good] += qty;
       }

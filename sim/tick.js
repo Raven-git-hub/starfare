@@ -23,6 +23,7 @@
 
 const { computeGalacticSupply } = require('./supply.js');
 const { getRecipe } = require('./recipes.js');
+const { getStock, addStock } = require('./stock.js');
 
 // Deep-clones state so tick() can never accidentally mutate its input.
 // structuredClone is a plain JS global (Node 17+), not a DOM API.
@@ -58,19 +59,23 @@ function stepProduction(state, _actions) {
   for (const guild of state.guilds) {
     for (const venture of guild.ventures || []) {
       if (!venture.productionRate) continue; // zero rate: nothing to do
-      if (!guild.stockpiles) guild.stockpiles = {};
+      // Every deposit/draw lands in the venture's OWN system pool (ruling B1,
+      // §15.2): resources are system-scoped, so production is local to the
+      // system the venture sits in — never a flat guild pile. `systemId` is the
+      // denormalised site→system copy stamped at establish (state.js/actions.js).
+      const sys = venture.systemId;
 
-      // MINING: extract `productionRate` units of `resourceType` into the owner.
+      // MINING: extract `productionRate` units of `resourceType` into the owner's
+      // system pool.
       if (venture.resourceType) {
-        guild.stockpiles[venture.resourceType] =
-          (guild.stockpiles[venture.resourceType] || 0) + venture.productionRate;
+        addStock(guild, sys, venture.resourceType, venture.productionRate);
         venture.updatedAtTick = state.tick;
         continue;
       }
 
       // REFINING: run up to `productionRate` batches of the venture's recipe,
-      // THROTTLED by the scarcest input the owner actually holds — consume EACH
-      // input good, produce the output good, all in the owner's stockpiles.
+      // THROTTLED by the scarcest input the owner holds IN THAT SYSTEM — consume
+      // EACH input good, produce the output good, all within the one system pool.
       // Flooring affordable batches to the least-affordable input means no
       // stockpile can be driven negative (so invariant 3 holds without a special
       // case), and an under-supplied refinery simply runs at reduced throughput.
@@ -80,15 +85,13 @@ function stepProduction(state, _actions) {
         // batches = min(rate, floor(have / qty) for every input) — the scarcest input caps it.
         let batches = venture.productionRate;
         for (const inp of recipe.inputs) {
-          const have = guild.stockpiles[inp.good] || 0;
-          batches = Math.min(batches, Math.floor(have / inp.qty));
+          batches = Math.min(batches, Math.floor(getStock(guild, sys, inp.good) / inp.qty));
         }
         if (batches <= 0) continue; // some input is short this tick: no goods move
         for (const inp of recipe.inputs) {
-          guild.stockpiles[inp.good] = (guild.stockpiles[inp.good] || 0) - batches * inp.qty;
+          addStock(guild, sys, inp.good, -batches * inp.qty);
         }
-        guild.stockpiles[recipe.output.good] =
-          (guild.stockpiles[recipe.output.good] || 0) + batches * recipe.output.qty;
+        addStock(guild, sys, recipe.output.good, batches * recipe.output.qty);
         venture.updatedAtTick = state.tick;
       }
     }

@@ -18,6 +18,7 @@
 // this is a SUBSET of §15.4, just what the walking skeleton needs first.
 
 const { computeGalacticSupply } = require('./supply.js');
+const { cloneStockpiles } = require('./stock.js');
 
 // --- Entity constructors -----------------------------------------------
 
@@ -61,14 +62,16 @@ function createGuild({
     homeSystemId,
     homePlanetId,
     guildReputation: 0,
-    // stockpiles: good -> int, the guild's holdings of each RAW resource
-    // (design.md §15.4). Fuel is NOT here — it lives in fuelHoard, tracked by
+    // stockpiles: systemId -> good -> int, the guild's holdings of each RAW
+    // resource, SYSTEM-SCOPED per ruling B1 (§15.2) — a separate pool per system
+    // it operates in, accessed only via sim/stock.js. Fuel is NOT here — it
+    // lives in fuelHoard, tracked by
     // the fuel-conservation law. Empty = holds nothing; keys are added as
     // production deposits goods. Legality of keys/values (known resource,
     // integer, non-negative) is enforced every tick by invariants.js, not here
     // — same division of labour as credits (this file assembles, invariants.js
     // judges). Copied so a caller's object can't alias into state.
-    stockpiles: { ...stockpiles },
+    stockpiles: cloneStockpiles(stockpiles),
     lifetimeProduced: {}, // good -> int; monotonic, only ever increases (§13)
     ventures: ventures.map(createVenture),
     vehicles: vehicles.map(createVehicle),
@@ -84,6 +87,7 @@ function createVenture({
   ownerGuildId,
   type,
   siteId = null,
+  systemId = null,
   resourceType = null,
   recipeId = null,
   productionRate = 0,
@@ -105,6 +109,13 @@ function createVenture({
     // invariants.js, which is also where "a mining venture's resourceType must
     // match its node's" lives — this file assembles, invariants.js judges.
     siteId,
+    // systemId: the system the venture's site sits in — a DENORMALISED copy of
+    // getSite(siteId).systemId, stamped at establish (actions.js), same pattern
+    // as resourceType. It is the pool key production deposits into / draws from
+    // (ruling B1: resources are system-scoped, §15.2). Guarded against the site
+    // by invariants.js so the denormalised copy can't silently drift. null for a
+    // synthetic venture built directly by a test with no seat.
+    systemId,
     // resourceType: the RAW good a MINING venture extracts. Its output goes to
     // the owner guild's stockpile (tick.js stepProduction). This DRIVES
     // production; the seed node at siteId is the authority it is checked

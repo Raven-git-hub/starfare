@@ -7,6 +7,7 @@ const { tick, STEPS } = require('../tick.js');
 const { createState } = require('../state.js');
 const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
+const { guildTotals } = require('../stock.js');
 const { goodState, clone } = require('./fixtures.js');
 
 test('tick requires state', () => {
@@ -105,7 +106,7 @@ function oneVentureState() {
         id: 'g1',
         credits: 0,
         fuelHoard: 0,
-        ventures: [{ id: 'v1', ownerGuildId: 'g1', type: 'mining', resourceType: 'titanium', productionRate: 3 }],
+        ventures: [{ id: 'v1', ownerGuildId: 'g1', type: 'mining', systemId: 'sysA', resourceType: 'titanium', productionRate: 3 }],
       },
     ],
     reserve: { reserveLevel: 0 },
@@ -116,13 +117,13 @@ function oneVentureState() {
 test('production: one tick deposits productionRate of the mined good into the owner guild stockpile', () => {
   const s = oneVentureState();
   const next = tick(s);
-  assert.equal(next.guilds[0].stockpiles.titanium, 3);
+  assert.equal(guildTotals(next.guilds[0]).titanium, 3);
 });
 
 test('production: five ticks accumulate 5x productionRate in the guild stockpile', () => {
   let state = oneVentureState();
   for (let i = 0; i < 5; i += 1) state = tick(state);
-  assert.equal(state.guilds[0].stockpiles.titanium, 15); // 5 * 3
+  assert.equal(guildTotals(state.guilds[0]).titanium, 15); // 5 * 3
 });
 
 test('production: a venture with no resourceType mines nothing and is not stamped', () => {
@@ -159,24 +160,24 @@ test('production: multiple ventures across multiple guilds all advance independe
         credits: 0,
         fuelHoard: 0,
         ventures: [
-          { id: 'v1', ownerGuildId: 'g1', type: 'mining', resourceType: 'titanium', productionRate: 2 },
-          { id: 'v2', ownerGuildId: 'g1', type: 'mining', resourceType: 'copper', productionRate: 5 },
+          { id: 'v1', ownerGuildId: 'g1', type: 'mining', systemId: 'sysA', resourceType: 'titanium', productionRate: 2 },
+          { id: 'v2', ownerGuildId: 'g1', type: 'mining', systemId: 'sysA', resourceType: 'copper', productionRate: 5 },
         ],
       },
       {
         id: 'g2',
         credits: 0,
         fuelHoard: 0,
-        ventures: [{ id: 'v3', ownerGuildId: 'g2', type: 'mining', resourceType: 'titanium', productionRate: 1 }],
+        ventures: [{ id: 'v3', ownerGuildId: 'g2', type: 'mining', systemId: 'sysB', resourceType: 'titanium', productionRate: 1 }],
       },
     ],
     reserve: { reserveLevel: 0 },
     syndicate: { ledger: 0 },
   });
   const next = tick(s);
-  assert.equal(next.guilds[0].stockpiles.titanium, 2);
-  assert.equal(next.guilds[0].stockpiles.copper, 5);
-  assert.equal(next.guilds[1].stockpiles.titanium, 1);
+  assert.equal(guildTotals(next.guilds[0]).titanium, 2);
+  assert.equal(guildTotals(next.guilds[0]).copper, 5);
+  assert.equal(guildTotals(next.guilds[1]).titanium, 1);
 });
 
 test('production output still passes every invariant over several ticks', () => {
