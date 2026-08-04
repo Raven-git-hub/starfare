@@ -126,7 +126,6 @@
     --c-crystalline:#8862B0;  --c-crystalline-l:#B79EDA;  --c-crystalline-d:#4A3266;
 
     --panel-w:380px;
-    --hero-r:clamp(200px, 30vh, 380px);
   }
   #detail-screen.open{ display:block; }
   #detail-exit{
@@ -158,6 +157,9 @@
   }
 
   .index-header{
+    position:relative;
+    z-index:1;
+    background:var(--bg-panel);
     padding:28px 24px 18px;
     border-bottom:1px solid var(--line);
     flex-shrink:0;
@@ -228,7 +230,8 @@
     flex:1 1 auto;
     overflow-y:auto;
     position:relative;
-    padding:22px 0 calc(var(--hero-r) * 0.55 + 24px);
+    z-index:1;
+    padding:22px 0 24px;
   }
   .stack{
     position:relative;
@@ -406,15 +409,27 @@
      panel's bottom-left corner rather than centring it. .hero stays a plain
      decorative ring/border floating on top; it carries no image of its own
      and no longer needs per-archetype variants. */
+  /* hero-dock covers the WHOLE index sidebar (inset:0) and sits behind
+     everything else in it (z-index:0) — the header and stack-wrap below are
+     given z-index:1 so they paint above it and its own opaque background
+     masks the image, so the art only becomes visible starting right below
+     the header, with no need to know the header's exact height in px.
+     background-size:auto 100% fills the box's HEIGHT exactly (matching the
+     tall source images 1:1, no letterboxing) and lets width overrun; the
+     overflow:hidden on .index crops whatever spills past the right edge. */
   .hero-dock{
     position:absolute;
-    left:0; bottom:0;
-    width:100%;
-    height:calc(var(--hero-r) * 1.05);
+    inset:0;
+    z-index:0;
     pointer-events:none;
     overflow:hidden;
-    background-size:cover;
+    background-size:auto 100%;
     background-position:left bottom;
+    animation:hero-in 700ms ease-out both;
+  }
+  @keyframes hero-in{
+    from{ opacity:0; }
+    to{ opacity:1; }
   }
   .hero-dock.star{ background-image: url('assets/planets/star.jpg'); }
   .hero-dock.planet-rocky{ background-image: url('assets/planets/rocky.jpg'); }
@@ -427,28 +442,6 @@
   .hero-dock.planet-irradiated{ background-image: url('assets/planets/irradiated.jpg'); }
   .hero-dock.planet-crystalline{ background-image: url('assets/planets/crystalline.jpg'); }
 
-  .hero{
-    position:absolute;
-    left:calc(var(--hero-r) * -1);
-    bottom:calc(var(--hero-r) * -1);
-    width:calc(var(--hero-r) * 2);
-    height:calc(var(--hero-r) * 2);
-    border-radius:50%;
-    border:1px solid rgba(201,162,39,0.35);
-    box-shadow:0 0 0 1px rgba(201,162,39,0.08);
-    animation:hero-in 700ms ease-out both;
-  }
-  @keyframes hero-in{
-    from{ opacity:0; transform:scale(0.92); }
-    to{ opacity:1; transform:scale(1); }
-  }
-
-  .hero-ring{
-    position:absolute;
-    inset:14px;
-    border-radius:50%;
-    border:1px dashed rgba(232,223,200,0.25);
-  }
   /* ---------- Main content (right) ---------- */
   .main{
     position:relative;
@@ -605,9 +598,7 @@
       <div class="stack" id="stack"></div>
     </div>
 
-    <div class="hero-dock" id="heroDock">
-      <div class="hero" id="hero"></div>
-    </div>
+    <div class="hero-dock" id="heroDock"></div>
   </div>
 
   <div class="main">
@@ -1367,7 +1358,6 @@ const el = {
   titleMain: document.getElementById('titleMain'),
   titleSub: document.getElementById('titleSub'),
   stack: document.getElementById('stack'),
-  hero: document.getElementById('hero'),
   heroDock: document.getElementById('heroDock'),
   backBtn: document.getElementById('backBtn'),
   mainHeading: document.getElementById('mainHeading'),
@@ -1443,8 +1433,6 @@ function renderSystemView(){
 
   el.backBtn.classList.remove('visible');
 
-  el.hero.className = 'hero';
-  el.hero.innerHTML = '<span class="hero-ring"></span>';
   el.heroDock.className = 'hero-dock star';
 
   el.mainHeading.textContent = 'System Manifest';
@@ -1484,8 +1472,6 @@ function renderPlanetView(){
 
   el.backBtn.classList.add('visible');
 
-  el.hero.className = 'hero';
-  el.hero.innerHTML = '<span class="hero-ring"></span>';
   el.heroDock.className = 'hero-dock planet-' + p.archetype;
 
   el.mainHeading.textContent = 'Planet Manifest';
