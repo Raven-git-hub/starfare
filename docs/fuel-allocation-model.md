@@ -1,5 +1,7 @@
 # Fuel Allocation & Production — What This Thread Decided
 
+> **Superseded in part (05-08-26): the refining monopoly.** §6 (producer rewards / conditional refinery licence) and §9 (force-sell) below are **replaced** by the Syndicate refining monopoly — guilds may not refine fuel at all; they mine and sell raw Deuterium, the Syndicate refines it into the pool. See design.md §8. The allocation side (§§1–5) is unchanged.
+
 *A self-contained design summary of the fuel pool, allocation, and refinery-licensing model. Supersedes the committed-capital allocation ratio from the earlier fuel-policy thread as the **allocation** mechanism (it borrows one trick from it — see §9). Written to be pasted into design.md §8 or into a fresh session; nothing here has touched the doc yet.*
 
 ---
@@ -58,25 +60,27 @@ Two things make it work rather than sag:
 
 **Risk to log (watch, don't solve now)**: this rewards guilds that *start* with good neighbours and clustered territory — geography edges toward destiny. Probably fine (asymmetry is stated design), but "born next to two friendly guilds" shouldn't become a dominant opening.
 
-## 6. Producer rewards and the conditional refinery licence
+## 6. The refining monopoly — how fuel enters the pool
 
-**Role separation** (this is the "reward must be separate" instinct, made structural):
+**Decided (05-08-26): the Syndicate is the galaxy's sole *legal* refiner of Deuterium.** Refinement can never be licensed to a guild — it is proprietary Syndicate technology and, narratively, an **open secret** (every guild knows every other guild *could* refine). The monopoly exists not because no one else can, but to stop any guild cornering fuel and grinding the galactic economy to a halt — a founding reason the Syndicate was established (design.md §1). This **supersedes** the earlier conditional-refinery-licence / pledge-for-discount / volume-scaling mechanism this section previously described: there is no guild fuel-refining licence to price, so that whole apparatus is retired.
 
-- **Source side — producers** are paid in **credits + Syndicate standing/influence**. Not in more fuel: they already make fuel, so a fuel reward is circular.
-- **Sink side — productive consumers** are paid in **fuel allocation** drawn from the pool the producers filled.
+**The pipe (source → pool), keeping conservation exact (invariant 1):**
 
-**The refinery licence is a commitment device, not a capacity reward.** A free capacity grant would snowball fuel production toward one guild — the monopoly the whole design exists to prevent. Instead the licence is **discounted, conditional, and ongoing**:
+- **Guilds mine raw Deuterium** under an ordinary venture licence, like any ore (unlicensed mining is illegal on the normal terms, §7), and **sell it to the Syndicate** — a normal good sale paid in **credits + standing**. This is the old "producers are paid in credits, not fuel" reward, moved one step *upstream* to the miners.
+- **The Syndicate refines its Deuterium holdings into pool fuel.** The pool can therefore hold no more fuel than there is raw Deuterium mined and delivered — the **no-infinite-backend** property (§2) is preserved by construction.
+- **Guilds obtain fuel only by buying it from the pool** with their purchasing-power allocation (§§3–5), plus their own credits for anything beyond it.
 
-- Example shape: pledge 50% of a fuel venture's output to the Syndicate pool → 75% off the licence. Fail to produce that in a 24h window → pay the full fee. The discount is **rent on continued contribution**, not a one-time grant. Producing more doesn't give you more machines; it keeps your discount alive.
-- **Chosen non-linearity (decided): the pledge % required for a given discount rises with production volume.** A small refinery gets 75% off for pledging 50%; a galaxy-dominating one must pledge 70%+ for the same break. This attacks **absolute retained tonnage**, not just the ratio — hoarding gets *vastly* harder as you grow. Intent: if a guild goes the massive-fuel-production route, force it to think and commit properly.
-- **Bare (unpledged) licences are priced prohibitively.** A 100%-hoarder isn't blocked (pressure, not prohibition) — they just pay a punishing fee to keep every drop.
-- **The gap between the bare fee and the deep-discount fee *is* the price of hoarding**, expressed as licence cost. This is the **rebuilt anti-hoarding mechanic** — it replaces the deleted spoilage/storage/expiry list, as a licensing cost instead: more legible, more in-theme (*the Syndicate doesn't rot your fuel; it prices your membership*). **Do not re-add spoilage on top of this, or hoarding gets double-charged.**
+**Hoarding is legal — but only the fuel you bought.** A guild may sit on purchased fuel and refuse to burn it; that is the "we look after the little guy" allocation working as intended. It is self-limiting: allocation is sized to *actual burn* (§4), so a war-chest means buying the excess at full market price, which the price curve makes expensive as the pool thins. No spoilage/storage/expiry mechanic on top (do not re-add one).
+
+**Refining your own is the crime.** A guild *can* illegally mine-and-refine off the books into black-market fuel — **pressure, not prohibition** — but if caught pays a **steep fine** (§7), tuned to sit just on the line where the risk is sometimes worth taking. So the fuel schemer is now either a **legal buy-and-hold hoarder** of purchased fuel or an **outright criminal** running a black-market reserve — strictly more jeopardy than the old legal-hoard model, and better for it.
+
+**Detection** rides the same volume-based signal as any unlicensed over-production (a black-market fuel op moves more fuel than a guild's legal purchases can account for); enforcement is the §7 legality/fine system, which is Phase 5 — so until then illegal refining is *possible but unpunished in code*, and the Phase-1 default is simply that guilds don't refine (§9).
 
 ## 7. The self-stabilising loop
 
 The two mechanics pull on the same string, in a good way:
 
-Regionalism makes some guilds contribute less fuel to the pool → pool thins → price rises → licence discounts become **more** valuable (pool access matters more when fuel is scarce) → producers are pulled back toward pledging → pool refills.
+Regionalism makes some guilds contribute less raw Deuterium to the Syndicate → pool thins → price rises → **selling raw Deuterium to the Syndicate becomes more rewarding** (and buying fuel back more painful) → more is mined and sold, the Syndicate refines more → pool refills.
 
 That quiet negative feedback is a sign the two mechanics are compatible, not merely coexisting.
 
@@ -84,20 +88,18 @@ That quiet negative feedback is a sign the two mechanics are compatible, not mer
 
 - **#31 (squeeze balance)** — addressed: a big guild's big burn now competes for a *fixed* pooled surplus, and purchasing-power rationing means a windfall doesn't buy immunity. No standalone balancing lever needed.
 - **#1 (fuel governance)** — given a concrete allocation formula (per-burn purchasing power) and a concrete producer-side mechanism (conditional licensing).
-- **§8 anti-hoarding** — the spoilage/storage/expiry shopping list is **deleted**, rebuilt as the bare-licence premium (§6).
+- **§8 anti-hoarding** — the spoilage/storage/expiry shopping list stays **deleted**; anti-hoarding is now the **refining monopoly + legality** (§6), not a licence-cost premium (the earlier bare-licence-premium rebuild is itself superseded — there is no guild fuel licence to price).
 - **Need-blind allocation** — solved by per-burn sizing (§4); supersedes the committed-capital ratio on this specific point.
 
-## 9. Critical dependency — force-sell must be dropped
+## 9. Force-sell is moot under the refining monopoly
 
-This entire model presumes guilds **can** hoard fuel: the anti-hoarding licence premium only has something to bite on if hoarding is possible. But the current Phase 1 port contract (design.md §8, semantic #2) **bakes in force-sell** — production goes straight to the pool and the reserve is fuel's only counterparty, i.e. guilds *can't* hoard at all.
-
-So this model **requires force-sell to be dropped** (withholding becomes possible, and hoarding is disincentivised rather than forbidden). That decision was already flagged as colliding with the Phase 1 checklist; this model makes the collision load-bearing. **Resolve force-sell before implementing any of the above.** Note the enforcement side of "illegal withholding" (a council vote) is Phase 5 — so in Phase 1 hoarding is *possible and merely expensive*, which is exactly what the licence premium delivers without needing courts.
+The earlier model presumed guilds *could* legally refine and hoard their own fuel, and asked whether to drop **force-sell** so hoarding became possible-and-priced. The refining monopoly (§6) settles it from the other side: **there is no legal guild fuel production at all**, so there is nothing to force-sell. The Phase-1 default is simply that **guilds do not refine fuel**; legal hoarding exists only via *purchased* fuel (§6). Illegal refining is possible in fiction but unenforced until the §7 fine system lands (Phase 5). Design.md open question #48 is reframed accordingly: not "keep or drop force-sell," but "guilds don't produce fuel; the pool is Syndicate-refined from bought Deuterium."
 
 ## 10. Levers to tune (enumerated, not yet valued)
 
 - Route allocation multiplier (1.1×) and the reference price used to size the credit grant
 - The reserve-based price curve (already exists in the spreadsheet)
-- Base licence fee; max discount %; the pledge-%→discount curve; **how steeply that curve rises with production volume** (the anti-monopoly control)
+- The Deuterium→fuel **conversion rate**; whether the Syndicate **auto-refines** all it buys or holds raw stock; the **price/standing** a guild earns selling raw Deuterium; the **black-market refining fine** (§7). *(The retired licence-fee / discount-curve levers no longer apply — design.md #55.)*
 - The bare-licence premium (= the price of hoarding)
 - Quota window length (24h is a placeholder)
 - Grace/ramp on legitimate production dips
@@ -108,6 +110,6 @@ So this model **requires force-sell to be dropped** (withholding becomes possibl
 1. **1.1× vs 1.0×** — confirm the 10% route gain is an intended logistics subsidy.
 2. **Marketplace coverage** — does the fuel benefit extend to guild↔guild trades routed through the Syndicate marketplace, or only direct Syndicate/Guild trades? (Leaning: latter.)
 3. **Quota-window fairness** — 24h interacts hard with tick rate and async play; a guild that can't log in daily gets punished. Same shape as the vote-window fairness problem (#14).
-4. **Legitimate-dip grace** — a refinery knocked offline by a Storyteller event shouldn't lose its discount on the same tick the event hits, or the event does double damage.
+4. **Legitimate-dip grace** — *moot for fuel under the monopoly*: there is no guild fuel refinery to knock offline and no discount to lose. The analogous concern survives only for the general venture-licence quota (design.md §5), not here.
 5. **Geography-as-destiny** — watch that good starting neighbours don't become a dominant opening once there's real play.
-6. **Borrowed from the committed-capital thread**: its hoard-valuation trick still applies — value a hoard at *last tick's* price, and treat licensing itself as the observation — since making allocation/discount drop for hoarding again raises "how much fuel is this guild secretly sitting on."
+6. **Detecting a secret reserve.** Legal fuel hoards are visible (they are *purchased*); an illegal black-market refinery hides its output. Detection rides the volume signal (§6) — fuel moved that a guild's legal purchases can't account for — rather than the retired hoard-valuation-via-licensing trick.
