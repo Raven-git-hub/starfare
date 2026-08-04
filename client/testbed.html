@@ -139,6 +139,39 @@
   .sys-body .planet { margin-top: 10px; }
   .sys-body .pl-name { font-size: 12px; color: var(--text-dim); letter-spacing: 1px; margin-bottom: 4px; }
   .sys-body .pl-name b { color: var(--text); font-weight: 500; }
+  /* planet list (system view) + planet manifest (planet view) */
+  .planet-row {
+    display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left;
+    background: transparent; border: 1px solid var(--line); border-radius: 2px; color: var(--text);
+    padding: 8px 12px; margin-top: 6px; cursor: pointer;
+  }
+  .planet-row:hover { background: rgba(67,217,200,0.06); border-color: var(--line-bright); }
+  .planet-row .caret { color: var(--accent); }
+  .planet-row .pn { color: var(--text); font-weight: 500; }
+  .planet-row .pa { color: var(--text-dim); font-size: 11px; }
+  .planet-row .psum { flex: 1; text-align: right; color: var(--text-dim); font-size: 11px; }
+  .back-to-sys { background: transparent; border: none; color: var(--accent); padding: 4px 0; margin-top: 6px; cursor: pointer; font-size: 12px; letter-spacing: 0.5px; }
+  .back-to-sys:hover { text-decoration: underline; }
+  .manifest-head { font-size: 12px; color: var(--text); margin: 8px 0 4px; letter-spacing: 0.5px; }
+  .manifest-head b { color: var(--accent); font-weight: 500; }
+  .site-group-title { font-size: 11px; letter-spacing: 1.5px; color: var(--text-dim); margin: 12px 0 6px; }
+  .site-row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    border: 1px solid var(--line); border-radius: 2px; padding: 7px 10px; margin-bottom: 5px; font-size: 12px;
+  }
+  .site-row.occupied { border-color: var(--line-bright); }
+  .site-row .sid { color: var(--text); font-weight: 500; }
+  .site-row .swhat { color: var(--text-dim); }
+  .site-row .occ { color: var(--accent); }
+  .site-row .spacer { flex: 1; }
+  .site-row select, .site-row input {
+    font-family: inherit; font-size: 11px; background: #05070d; color: var(--text);
+    border: 1px solid var(--line-bright); border-radius: 2px; padding: 4px 6px;
+  }
+  .site-row input.rate { width: 54px; text-align: right; }
+  .site-row button { font-size: 11px; letter-spacing: 1px; padding: 5px 10px; }
+  .site-row button:disabled { opacity: 0.4; cursor: not-allowed; border-color: var(--line); color: var(--text-dim); background: transparent; }
+  .site-row .kindpick { color: var(--text-dim); font-size: 11px; }
 </style>
 </head>
 <body>
@@ -161,15 +194,9 @@
         <div class="field"><label>homeSystem</label><select id="f-home"></select></div>
         <button id="btn-found" type="button">FOUND</button>
       </div>
-
-      <div class="form" id="form-venture">
-        <div class="ft">ESTABLISH VENTURE (a mine on an unoccupied resource node)</div>
-        <div class="field"><label>guildId</label><input id="v-guildId" value="player"></div>
-        <div class="field"><label>ventureId</label><input id="v-ventureId" value="mine_1"></div>
-        <div class="field"><label>siteId</label><input id="v-siteId" value="pl_00004_n01"></div>
-        <div class="field"><label>resourceType</label><input id="v-resourceType" value="titanium"></div>
-        <div class="field"><label>productionRate</label><input id="v-rate" value="5"></div>
-        <button id="btn-venture" type="button">ESTABLISH</button>
+      <div class="form" id="form-note">
+        <div class="ft">ESTABLISH A VENTURE</div>
+        <div class="site" style="font-size:12px; line-height:1.6;">Establishing ventures now lives inside <b>MANAGE → a system → a planet</b> (the planet manifest): click an empty resource node to deploy a mine, or an empty settlement slot to deploy a refinery. One venture per site.</div>
       </div>
     </div>
 
@@ -302,17 +329,6 @@ document.getElementById('btn-found').addEventListener('click', function () {
   }, 'foundGuild');
 });
 
-document.getElementById('btn-venture').addEventListener('click', function () {
-  sendAction({
-    type: 'establishVenture',
-    guildId: val('v-guildId'),
-    ventureId: val('v-ventureId'),
-    siteId: val('v-siteId'),
-    resourceType: val('v-resourceType'),
-    productionRate: intOr('v-rate', 0),
-  }, 'establishVenture');
-});
-
 // --- rendering (mirrors client/state_inspector.html) ------------------------
 
 function render(snap) {
@@ -441,7 +457,9 @@ function renderClaims(claims) {
 var LAST_SNAP = null;      // the most recent snapshot render() received
 var overlayGuildId = null; // which guild the overlay manages (view state)
 var openSystems = {};      // systemId -> true when expanded (view state)
+var openPlanetBySys = {};  // systemId -> planetId currently drilled into (view state)
 var SYSTEM_LAYOUTS = {};   // systemId -> GET /system/:id layout (static cache)
+var RECIPES_LIST = [];     // GET /recipes catalog (rules; fetched once, cached)
 
 var goEl = document.getElementById('guild-overlay');
 function overlayOpen() { return goEl.classList.contains('open'); }
@@ -488,21 +506,118 @@ function closeGuildOverlay() {
   overlayGuildId = null;
 }
 
-// the ventures a guild has seated on one planet of one system (from the snapshot)
-function ventureRowsFor(snap, guildId, systemId, planetId) {
-  var vs = (snap.ventures || []).filter(function (v) {
-    return v.ownerGuildId === guildId && v.site && v.site.systemId === systemId && v.site.planetId === planetId;
-  });
-  if (!vs.length) return '<div class="site" style="margin-left:8px;">· no ventures here</div>';
-  return vs.map(function (v) {
-    var kind = v.type === 'mining' ? 'Mine' : v.type === 'refining' ? 'Refinery' : esc(v.type);
-    var makes = v.site && v.site.kind === 'resource'
-      ? 'mines ' + esc(v.site.resourceType)
-      : (v.recipeId ? 'refines ' + esc(v.recipeId) : '');
-    return '<div class="site" style="margin-left:8px;">· <b>' + esc(v.id) + '</b> — ' + kind +
-      ' @ ' + esc(v.siteId) + (makes ? ' (' + makes + ')' : '') +
-      ' · rate <b>' + esc(v.productionRate) + '</b></div>';
+// the venture seated on a given site (or null) — from the snapshot's ventures.
+function ventureAtSite(snap, siteId) {
+  return (snap.ventures || []).find(function (v) { return v.siteId === siteId; }) || null;
+}
+
+// occupancy counts for one planet: live occupancy (snapshot) over static sites.
+function planetOccCounts(planet, occ) {
+  var nT = 0, nO = 0, sT = 0, sO = 0;
+  planet.resourceNodes.forEach(function (n) { nT++; if (occ[n.id]) nO++; });
+  planet.settlementSlots.forEach(function (s) { sT++; if (occ[s.id]) sO++; });
+  return { nT: nT, nO: nO, sT: sT, sO: sO };
+}
+
+// recipe <option>s for the establish-refinery picker (labels from GET /recipes).
+function recipeOptionsHtml() {
+  if (!RECIPES_LIST.length) return '<option value="">(no recipes loaded)</option>';
+  return RECIPES_LIST.map(function (r) {
+    var label = r.id + ' — ' + r.input.qty + ' ' + r.input.good + ' \u2192 ' + r.output.qty + ' ' + r.output.good;
+    return '<option value="' + esc(r.id) + '">' + esc(label) + '</option>';
   }).join('');
+}
+
+// SYSTEM VIEW body: the system's planets as clickable rows (drill into one).
+function renderPlanetList(layout, sysId, occ) {
+  return layout.planets.map(function (p) {
+    var c = planetOccCounts(p, occ);
+    return '<button class="planet-row" data-sys="' + esc(sysId) + '" data-planet="' + esc(p.id) + '" type="button">' +
+      '<span class="caret">\u25b8</span>' +
+      '<span class="pn">' + esc(p.id) + '</span>' +
+      '<span class="pa">' + esc(p.archetype) + '</span>' +
+      '<span class="psum">nodes ' + c.nO + '/' + c.nT + ' · slots ' + c.sO + '/' + c.sT + '</span>' +
+    '</button>';
+  }).join('');
+}
+
+// PLANET VIEW body: the planet manifest — every resource node and settlement
+// slot as a row. An occupied site shows its venture (live, from the snapshot);
+// an empty one shows an establish control: a mine on a node (extracts the node's
+// resource), a Refinery-or-Factory on a slot (Factory disabled — the
+// manufacturing tier / constructed goods don't exist in the engine yet).
+function renderPlanetManifest(layout, sysId, planetId, snap, occ) {
+  var p = layout.planets.find(function (x) { return x.id === planetId; });
+  if (!p) { openPlanetBySys[sysId] = null; return renderPlanetList(layout, sysId, occ); }
+
+  var nodeRows = p.resourceNodes.map(function (n) {
+    var v = ventureAtSite(snap, n.id);
+    if (v) {
+      return '<div class="site-row occupied">' +
+        '<span class="sid">' + esc(n.id) + '</span>' +
+        '<span class="swhat">' + esc(n.resourceType) + '</span>' +
+        '<span class="spacer"></span>' +
+        '<span class="occ">' + esc(v.type === 'mining' ? 'Mine' : v.type) + ' ' + esc(v.id) + ' · rate ' + esc(v.productionRate) + '</span>' +
+      '</div>';
+    }
+    // rate is an operator dial (productionRate is operator-supplied, not baked);
+    // it defaults to titanium's ruled 5 and is editable per resource.
+    return '<div class="site-row">' +
+      '<span class="sid">' + esc(n.id) + '</span>' +
+      '<span class="swhat">' + esc(n.resourceType) + '</span>' +
+      '<span class="spacer"></span>' +
+      '<span class="kindpick">rate</span>' +
+      '<input class="rate" id="est-rate-' + esc(n.id) + '" value="5">' +
+      '<button class="deploy-mine" data-site="' + esc(n.id) + '" data-sys="' + esc(sysId) + '" data-resource="' + esc(n.resourceType) + '" type="button">DEPLOY MINE</button>' +
+    '</div>';
+  }).join('');
+
+  var slotRows = p.settlementSlots.map(function (s) {
+    var v = ventureAtSite(snap, s.id);
+    if (v) {
+      var what = v.type === 'refining' ? ('Refinery · ' + esc(v.recipeId || '?')) : esc(v.type);
+      return '<div class="site-row occupied">' +
+        '<span class="sid">' + esc(s.id) + '</span>' +
+        '<span class="swhat">settlement</span>' +
+        '<span class="spacer"></span>' +
+        '<span class="occ">' + what + ' ' + esc(v.id) + ' · rate ' + esc(v.productionRate) + '</span>' +
+      '</div>';
+    }
+    return '<div class="site-row">' +
+      '<span class="sid">' + esc(s.id) + '</span>' +
+      '<span class="swhat">settlement</span>' +
+      '<span class="spacer"></span>' +
+      '<span class="kindpick">Refinery</span>' +
+      '<select id="est-recipe-' + esc(s.id) + '">' + recipeOptionsHtml() + '</select>' +
+      '<input class="rate" id="est-rate-' + esc(s.id) + '" value="1">' +
+      '<button class="deploy-ref" data-site="' + esc(s.id) + '" data-sys="' + esc(sysId) + '" type="button">DEPLOY</button>' +
+      '<button class="deploy-factory" type="button" disabled title="Factory (processed \u2192 constructed) — the manufacturing tier does not exist in the engine yet">FACTORY</button>' +
+    '</div>';
+  }).join('');
+
+  return '<button class="back-to-sys" data-sys="' + esc(sysId) + '" type="button">\u2039 back to system</button>' +
+    '<div class="manifest-head">PLANET MANIFEST — <b>' + esc(p.id) + '</b> · ' + esc(p.archetype) + '</div>' +
+    '<div class="site-group-title">RESOURCE NODES (' + p.resourceNodes.length + ') — mining</div>' +
+    nodeRows +
+    '<div class="site-group-title">SETTLEMENT SLOTS (' + p.settlementSlots.length + ') — refinery / factory</div>' +
+    slotRows;
+}
+
+// deploy a venture from the manifest: auto-generate a unique ventureId (one
+// venture per site, so guild+site is unique) and send establishVenture. The
+// re-render after the action flips the site to occupied in place.
+function deployVenture(fields) {
+  if (!overlayGuildId) return;
+  if (!Number.isFinite(fields.productionRate) || fields.productionRate <= 0) {
+    setStatus('deploy: rate must be a positive integer', 'error');
+    return;
+  }
+  var action = Object.assign({
+    type: 'establishVenture',
+    guildId: overlayGuildId,
+    ventureId: overlayGuildId + '_' + fields.siteId,
+  }, fields);
+  sendAction(action, 'establishVenture');
 }
 
 // Pure render of the managed guild from the latest snapshot + cached layouts.
@@ -555,15 +670,9 @@ function renderGuildOverlay(snap) {
 
     var body = '';
     if (open) {
-      body = layout
-        ? layout.planets.map(function (p) {
-            return '<div class="planet">' +
-              '<div class="pl-name"><b>' + esc(p.id) + '</b> · ' + esc(p.archetype) +
-                ' · ' + p.resourceNodes.length + ' nodes, ' + p.settlementSlots.length + ' slots</div>' +
-              ventureRowsFor(snap, overlayGuildId, sysId, p.id) +
-            '</div>';
-          }).join('')
-        : '<div class="site">layout unavailable (could not reach GET /system/' + esc(sysId) + ')</div>';
+      if (!layout) body = '<div class="site">layout unavailable (could not reach GET /system/' + esc(sysId) + ')</div>';
+      else if (openPlanetBySys[sysId]) body = renderPlanetManifest(layout, sysId, openPlanetBySys[sysId], snap, occ);
+      else body = renderPlanetList(layout, sysId, occ);
     }
 
     var label = layout && layout.name ? layout.name : sysId;
@@ -594,10 +703,37 @@ document.getElementById('guildpanel').addEventListener('click', function (e) {
 });
 document.getElementById('go-guild').addEventListener('change', function () { openGuildOverlay(this.value); });
 document.getElementById('go-body').addEventListener('click', function (e) {
-  var h = e.target.closest('.sys-head');
-  if (!h || !h.dataset.sys) return;
-  openSystems[h.dataset.sys] = !openSystems[h.dataset.sys];
-  renderGuildOverlay(LAST_SNAP);
+  var sysHead = e.target.closest('.sys-head');
+  if (sysHead && sysHead.dataset.sys) {
+    openSystems[sysHead.dataset.sys] = !openSystems[sysHead.dataset.sys];
+    renderGuildOverlay(LAST_SNAP);
+    return;
+  }
+  var planetRow = e.target.closest('.planet-row');
+  if (planetRow) {
+    openPlanetBySys[planetRow.dataset.sys] = planetRow.dataset.planet;
+    renderGuildOverlay(LAST_SNAP);
+    return;
+  }
+  var back = e.target.closest('.back-to-sys');
+  if (back) {
+    openPlanetBySys[back.dataset.sys] = null;
+    renderGuildOverlay(LAST_SNAP);
+    return;
+  }
+  var mine = e.target.closest('.deploy-mine');
+  if (mine) {
+    var mrate = parseInt((document.getElementById('est-rate-' + mine.dataset.site) || {}).value, 10);
+    deployVenture({ ventureType: 'mining', siteId: mine.dataset.site, resourceType: mine.dataset.resource, productionRate: mrate });
+    return;
+  }
+  var ref = e.target.closest('.deploy-ref');
+  if (ref) {
+    var recipeSel = document.getElementById('est-recipe-' + ref.dataset.site);
+    var rrate = parseInt((document.getElementById('est-rate-' + ref.dataset.site) || {}).value, 10);
+    deployVenture({ ventureType: 'refining', siteId: ref.dataset.site, recipeId: recipeSel ? recipeSel.value : '', productionRate: rrate });
+    return;
+  }
 });
 document.getElementById('go-tick').addEventListener('click', function () { refresh('POST', 'ticked', '/tick'); });
 document.getElementById('go-refresh').addEventListener('click', function () { refresh('GET', 'refreshed'); });
@@ -629,9 +765,19 @@ async function loadStarters() {
   }
 }
 
+// The refining recipe catalog (GET /recipes) — RULES, not live state, so it's
+// fetched once and cached to populate the establish-refinery picker.
+async function loadRecipes() {
+  try {
+    var r = await api('GET', '/recipes');
+    if (r.status === 200 && r.data && Array.isArray(r.data.recipes)) RECIPES_LIST = r.data.recipes;
+  } catch (e) { /* picker shows "(no recipes loaded)"; a refinery deploy is then rejected clearly */ }
+}
+
 // On load, populate the home-system picker and pull the current state so the
 // page reflects the live galaxy at once.
 loadStarters();
+loadRecipes();
 refresh('GET', null);
 </script>
 </body>

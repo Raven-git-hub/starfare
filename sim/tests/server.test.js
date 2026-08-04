@@ -61,6 +61,9 @@ test('GET / serves the testbed UI (HTML)', async () => {
   assert.match(html, /class="manage"/);
   assert.match(html, /id="guild-overlay"/);
   assert.match(html, /id="go-guild"/);
+  // The standalone establish form was retired (slice 3, 04-08-26): establishing
+  // now lives in the planet manifest inside the overlay.
+  assert.doesNotMatch(html, /id="btn-venture"/);
 });
 
 test('GET /starters lists the seed\'s startable home systems', async () => {
@@ -102,6 +105,16 @@ test('GET /system/:id handles a multi-planet system and 404s an unknown id', asy
   const miss = await req('GET', '/system/sys_9999');
   assert.equal(miss.status, 404);
   assert.match(miss.body.error, /no such system/);
+});
+
+test('GET /recipes returns the refining catalog', async () => {
+  const { status, body } = await req('GET', '/recipes');
+  assert.equal(status, 200);
+  assert.ok(Array.isArray(body.recipes));
+  const alloy = body.recipes.find((r) => r.id === 'titanium_to_alloy');
+  assert.ok(alloy, 'titanium_to_alloy present');
+  assert.deepEqual(alloy.input, { good: 'titanium', qty: 3 });
+  assert.deepEqual(alloy.output, { good: 'alloy_ingots', qty: 1 });
 });
 
 test('GET /health reports liveness (JSON)', async () => {

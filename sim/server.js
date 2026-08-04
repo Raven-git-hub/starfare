@@ -35,6 +35,8 @@
 //   GET  /system/:id  -> one system's static layout: planets, each with its
 //                        resource nodes + settlement slots (seed-only; the UI
 //                        composes live occupancy from the snapshot on top)
+//   GET  /recipes     -> the refining recipe catalog (rules, not state; feeds
+//                        the establish-refinery picker)
 //   POST /tick        -> advance one tick (no actions); returns the new snapshot
 //   POST /action      -> intake ONE action object (no tick); returns
 //                        { accepted, reason, snapshot }
@@ -52,6 +54,7 @@ const { intake } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
 const { buildSnapshot } = require('./snapshot.js');
 const { getStarterSystems, getSystemLayout } = require('./seed.js');
+const { listRecipes } = require('./recipes.js');
 
 const DEFAULT_PORT = 7331; // the galaxy seed number, and clear of the host's other services
 
@@ -167,6 +170,15 @@ async function handleRequest(req, res) {
       return;
     }
     sendJson(res, 200, layout);
+    return;
+  }
+
+  // The refining recipe catalog — RULES, not live state (sim/recipes.js is the
+  // one source of truth for "what conversions exist"). Read-only and static, so
+  // the UI fetches it once to populate the establish-refinery picker; changing a
+  // recipe means editing recipes.js + restarting, never a live mutation here.
+  if (method === 'GET' && path === '/recipes') {
+    sendJson(res, 200, { recipes: listRecipes() });
     return;
   }
 
