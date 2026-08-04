@@ -8,7 +8,10 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { getSite, isResourceNode, isSettlementSlot, findNodesByResource } = require('../seed.js');
+const {
+  getSite, isResourceNode, isSettlementSlot, findNodesByResource,
+  getStarterSystems, isStarterSystem, getTerranHomeworld,
+} = require('../seed.js');
 
 test('getSite resolves a real resource node with its resourceType and location', () => {
   const site = getSite('pl_00001_n02');
@@ -47,4 +50,21 @@ test('findNodesByResource returns only that good, sorted, and includes a known n
   const ids = titanium.map((s) => s.id);
   assert.deepEqual(ids, [...ids].sort(), 'sorted by id');
   assert.ok(ids.includes('pl_00001_n02'));
+});
+
+test('getStarterSystems enumerates every starter, id-sorted, each with a real homeworld', () => {
+  const starters = getStarterSystems();
+  assert.equal(starters.length, 368); // seed 7331; pinned so a seed change is loud
+  // id-sorted and consistent with the single-system helpers it was missing.
+  for (let i = 1; i < starters.length; i++) {
+    assert.ok(starters[i - 1].id < starters[i].id, 'id-sorted');
+  }
+  for (const s of starters) {
+    assert.equal(isStarterSystem(s.id), true, `${s.id} is starter-eligible`);
+    assert.equal(s.terranHomeworldId, getTerranHomeworld(s.id), 'homeworld matches getTerranHomeworld');
+    assert.ok(typeof s.terranHomeworldId === 'string' && s.terranHomeworldId.length > 0, 'has a homeworld');
+    assert.ok(typeof s.name === 'string' && s.name.length > 0);
+    assert.ok(['inner', 'middle', 'outer'].includes(s.ring));
+  }
+  assert.equal(starters[0].id, 'sys_0002'); // the known first starter
 });

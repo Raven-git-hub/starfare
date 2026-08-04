@@ -164,6 +164,24 @@ function getTerranHomeworld(systemId) {
   return s ? s.terranHomeworldId : null;
 }
 
+// getStarterSystems() -> every starter-eligible system (design.md §13: it holds
+// >=1 Terran planet), each carried with its display name, ring, and the id of
+// the Terran homeworld a guild would seat on. Sorted by id for a stable,
+// deterministic order (mirrors getOutposts). This is the enumerator that the
+// single-system isStarterSystem/getTerranHomeworld pair was missing: the
+// testbed's home-system picker is built from it, so the picker offers exactly
+// the seed's real, startable homes — nothing free-typed, nothing invented.
+function getStarterSystems() {
+  const out = [];
+  for (const sys of index().bySystem.values()) {
+    if (sys.starterEligible) {
+      out.push({ id: sys.id, name: sys.name, ring: sys.ring, terranHomeworldId: sys.terranHomeworldId });
+    }
+  }
+  out.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return out;
+}
+
 // getSeedNumber() -> the integer the seed was generated from. The live world
 // records this so a galaxy knows which seed it is built over.
 function getSeedNumber() {
@@ -173,5 +191,5 @@ function getSeedNumber() {
 module.exports = {
   getSite, isResourceNode, isSettlementSlot, findNodesByResource,
   getCitadel, getSystem, getOutpost, getOutposts, getLandmark,
-  isStarterSystem, getTerranHomeworld, getSeedNumber,
+  isStarterSystem, getTerranHomeworld, getStarterSystems, getSeedNumber,
 };

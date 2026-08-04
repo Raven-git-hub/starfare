@@ -30,6 +30,8 @@
 //   GET  /            -> the testbed UI page (client/testbed.html)
 //   GET  /health      -> liveness JSON + a one-line summary
 //   GET  /snapshot    -> buildSnapshot(state) (the debug lens' data; schema 2)
+//   GET  /starters    -> the seed's starter-eligible systems (the home-system
+//                        picker's source; static, derived from the seed only)
 //   POST /tick        -> advance one tick (no actions); returns the new snapshot
 //   POST /action      -> intake ONE action object (no tick); returns
 //                        { accepted, reason, snapshot }
@@ -46,6 +48,7 @@ const { advance } = require('./run.js');
 const { intake } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
 const { buildSnapshot } = require('./snapshot.js');
+const { getStarterSystems } = require('./seed.js');
 
 const DEFAULT_PORT = 7331; // the galaxy seed number, and clear of the host's other services
 
@@ -129,6 +132,18 @@ async function handleRequest(req, res) {
 
   if (method === 'GET' && path === '/snapshot') {
     sendJson(res, 200, buildSnapshot(getState()));
+    return;
+  }
+
+  // The seed's starter-eligible systems, for the UI's home-system picker. This
+  // is a property of the SEED, not of live state — it never changes with the
+  // galaxy's tick — so it reads straight from the seed selector and is safe to
+  // fetch once on page load. It stays here (not in buildSnapshot) precisely
+  // because it is state-independent: the snapshot is the moving galaxy; this is
+  // the fixed menu of places a guild may start.
+  if (method === 'GET' && path === '/starters') {
+    const starters = getStarterSystems();
+    sendJson(res, 200, { starters, count: starters.length });
     return;
   }
 

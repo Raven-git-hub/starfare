@@ -52,6 +52,29 @@ test('GET / serves the testbed UI (HTML)', async () => {
   assert.match(html, /SYNDICATE \/\/ TESTBED/); // the page, not the JSON probe
   assert.match(html, /id="btn-found"/);         // the driver controls are present
   assert.match(html, /id="btn-tick"/);
+  // The home-system picker replaced the free-text id, and the invented-influence
+  // field is gone (see the /starters slice, 04-08-26).
+  assert.match(html, /<select id="f-home">/);
+  assert.doesNotMatch(html, /id="f-influence"/);
+});
+
+test('GET /starters lists the seed\'s startable home systems', async () => {
+  const { status, body } = await req('GET', '/starters');
+  assert.equal(status, 200);
+  // 368 starter-eligible systems in seed 7331. Pinned on purpose: if this ever
+  // changes, the seed changed under us and we want to be told loudly.
+  assert.equal(body.count, 368);
+  assert.equal(body.starters.length, 368);
+  // Shape: each carries what the picker shows plus the homeworld a guild seats on.
+  const s0 = body.starters[0];
+  assert.deepEqual(Object.keys(s0).sort(), ['id', 'name', 'ring', 'terranHomeworldId']);
+  // Starter-eligible ⟺ it has a Terran homeworld, so none may be null.
+  assert.ok(body.starters.every((s) => typeof s.terranHomeworldId === 'string' && s.terranHomeworldId.length > 0));
+  // Deterministic, id-sorted; sys_0002 is the known first starter (the old form default).
+  assert.equal(s0.id, 'sys_0002');
+  for (let i = 1; i < body.starters.length; i++) {
+    assert.ok(body.starters[i - 1].id < body.starters[i].id, 'starters must be id-sorted');
+  }
 });
 
 test('GET /health reports liveness (JSON)', async () => {

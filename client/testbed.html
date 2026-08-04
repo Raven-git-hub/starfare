@@ -48,11 +48,11 @@
   .form .ft { font-size: 11px; letter-spacing: 1.5px; color: var(--text-dim); margin-bottom: 8px; }
   .field { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
   .field label { width: 96px; font-size: 11px; color: var(--text-dim); }
-  .field input {
+  .field input, .field select {
     flex: 1; font-family: inherit; font-size: 12px; background: #05070d; color: var(--text);
     border: 1px solid var(--line-bright); border-radius: 2px; padding: 5px 7px;
   }
-  .field input:focus { outline: none; border-color: var(--accent); }
+  .field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
   .form button { margin-top: 6px; }
 
   #status { margin-top: 12px; font-size: 12px; letter-spacing: 0.5px; min-height: 18px; }
@@ -118,8 +118,7 @@
         <div class="ft">FOUND GUILD (enters on a starter system's Terran homeworld)</div>
         <div class="field"><label>guildId</label><input id="f-guildId" value="player"></div>
         <div class="field"><label>credits</label><input id="f-credits" value="120"></div>
-        <div class="field"><label>influence</label><input id="f-influence" value="100"></div>
-        <div class="field"><label>homeSystemId</label><input id="f-home" value="sys_0002"></div>
+        <div class="field"><label>homeSystem</label><select id="f-home"></select></div>
         <button id="btn-found" type="button">FOUND</button>
       </div>
 
@@ -231,11 +230,17 @@ function val(id) { return document.getElementById(id).value.trim(); }
 function intOr(id, fallback) { var n = parseInt(val(id), 10); return Number.isNaN(n) ? fallback : n; }
 
 document.getElementById('btn-found').addEventListener('click', function () {
+  // No influence field. Starting influence is a recorded tuning number
+  // (docs/phase-1-tuning.md → Influence: [FIRST-CUT] 100), an ONBOARDING grant
+  // that belongs in the seeding scenario — in one place, the tuning table. This
+  // is a debug rig for the tick/economy, not the onboarding path, and no tick
+  // step reads influence yet; so we omit the field and let the action apply its
+  // honest 0 default rather than duplicate that 100 in a form where it could
+  // drift or get fat-fingered. The onboarding scenario will apply it later.
   sendAction({
     type: 'foundGuild',
     guildId: val('f-guildId'),
     credits: intOr('f-credits', 0),
-    influence: intOr('f-influence', 0),
     homeSystemId: val('f-home'),
   }, 'foundGuild');
 });
@@ -365,7 +370,32 @@ function renderClaims(claims) {
       : '<div class="site">no claims</div>');
 }
 
-// On load, pull the current state so the page reflects the live galaxy at once.
+// Populate the home-system picker from the seed's real starter-eligible systems
+// (GET /starters). The picker offers exactly the startable homes the seed
+// defines — no free-typed id to fat-finger, nothing invented. The starter set is
+// static (a property of the seed, not live state), so it is fetched once on boot
+// and never re-loaded on tick/action. If the list can't be reached the picker
+// says so and FOUND will simply be rejected with a clear reason.
+async function loadStarters() {
+  var sel = document.getElementById('f-home');
+  try {
+    var r = await api('GET', '/starters');
+    if (r.status >= 400 || !r.data || !Array.isArray(r.data.starters) || r.data.starters.length === 0) {
+      sel.innerHTML = '<option value="">(could not load starters)</option>';
+      return;
+    }
+    sel.innerHTML = r.data.starters.map(function (s) {
+      return '<option value="' + esc(s.id) + '">' +
+        esc(s.id) + ' · ' + esc(s.name) + ' (' + esc(s.ring) + ')</option>';
+    }).join('');
+  } catch (err) {
+    sel.innerHTML = '<option value="">(could not load starters: ' + esc(err.message) + ')</option>';
+  }
+}
+
+// On load, populate the home-system picker and pull the current state so the
+// page reflects the live galaxy at once.
+loadStarters();
 refresh('GET', null);
 </script>
 </body>
