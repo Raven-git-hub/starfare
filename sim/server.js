@@ -37,6 +37,8 @@
 //                        composes live occupancy from the snapshot on top)
 //   GET  /recipes     -> the refining recipe catalog (rules, not state; feeds
 //                        the establish-refinery picker)
+//   GET  /goods       -> the good vocabulary by tier (raw, processed); static
+//                        rules, buckets the galactic-supply display
 //   POST /tick        -> advance one tick (no actions); returns the new snapshot
 //   POST /action      -> intake ONE action object (no tick); returns
 //                        { accepted, reason, snapshot }
@@ -55,6 +57,7 @@ const { assertInvariants } = require('./invariants.js');
 const { buildSnapshot } = require('./snapshot.js');
 const { getStarterSystems, getSystemLayout } = require('./seed.js');
 const { listRecipes } = require('./recipes.js');
+const { RAW_RESOURCES, PROCESSED_GOODS } = require('./resources.js');
 
 const DEFAULT_PORT = 7331; // the galaxy seed number, and clear of the host's other services
 
@@ -179,6 +182,16 @@ async function handleRequest(req, res) {
   // recipe means editing recipes.js + restarting, never a live mutation here.
   if (method === 'GET' && path === '/recipes') {
     sendJson(res, 200, { recipes: listRecipes() });
+    return;
+  }
+
+  // The good vocabulary, categorized (RULES, not state; from resources.js).
+  // Static and read-only, so the UI fetches it once to bucket the flat
+  // galactic-supply totals into manufacturing-tree tiers. Manufactured Parts and
+  // Constructed Assets are future tiers with no goods yet, so they aren't here —
+  // the UI renders them as empty placeholders.
+  if (method === 'GET' && path === '/goods') {
+    sendJson(res, 200, { raw: RAW_RESOURCES, processed: PROCESSED_GOODS });
     return;
   }
 

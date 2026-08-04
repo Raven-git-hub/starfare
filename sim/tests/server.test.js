@@ -120,6 +120,16 @@ test('GET /recipes returns the refining catalog', async () => {
   assert.deepEqual(alloy.output, { good: 'titanium_alloy', qty: 1 });
 });
 
+test('GET /goods returns the vocabulary by tier', async () => {
+  const { status, body } = await req('GET', '/goods');
+  assert.equal(status, 200);
+  assert.ok(Array.isArray(body.raw) && Array.isArray(body.processed));
+  // raw + processed together are exactly the stockpile goods (resources.js).
+  assert.ok(body.raw.includes('titanium'), 'a known raw good is present');
+  assert.ok(body.processed.includes('titanium_alloy'), 'a known processed good is present');
+  assert.ok(!body.raw.includes('titanium_alloy'), 'processed goods are not in the raw list');
+});
+
 test('GET /health reports liveness (JSON)', async () => {
   await reset();
   const { status, body } = await req('GET', '/health');

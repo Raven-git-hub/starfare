@@ -77,6 +77,11 @@
   th { color: var(--text-dim); font-weight: 500; border-bottom: 1px solid var(--line); }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   tr.zero td { color: var(--zero); }
+  /* GALACTIC SUPPLY manufacturing-tree sections */
+  .supply-sec { font-size: 11px; letter-spacing: 1.5px; color: var(--accent); margin: 14px 0 4px; }
+  .supply-sec.first { margin-top: 2px; }
+  .supply-sec.future { color: var(--text-dim); }
+  td.empty-sec { color: var(--text-dim); font-style: italic; padding: 3px 0; }
 
   .fuelrow { display: flex; gap: 26px; margin-top: 4px; }
   .fuelrow .k { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; }
@@ -359,16 +364,48 @@ function renderFuel(fuel) {
     '</div>';
 }
 
+// GALACTIC SUPPLY, bucketed into the four manufacturing-tree tiers (design §3:
+// Raw → Processed → Manufactured Parts → Constructed Assets). The quantities are
+// LIVE (from the snapshot); the raw-vs-processed split is STATIC rule data from
+// GET /goods (GOODS_CATS, fetched once) — the browser never hardcodes the
+// vocabulary. Manufactured Parts and Constructed Assets are future tiers with no
+// goods yet, shown as labelled placeholders so the tree's shape is visible.
 function renderSupply(resources) {
-  var goods = Object.keys(resources).sort();
-  var rows = goods.map(function (g) {
-    var qty = resources[g];
-    var cls = qty === 0 ? ' class="zero"' : '';
-    return '<tr' + cls + '><td>' + esc(g) + '</td><td class="num">' + esc(qty) + '</td></tr>';
+  function bodyFor(goods) {
+    if (!goods || !goods.length) return '<tr><td colspan="2" class="empty-sec">— none yet —</td></tr>';
+    return goods.slice().sort().map(function (g) {
+      var qty = resources[g] || 0;
+      var cls = qty === 0 ? ' class="zero"' : '';
+      return '<tr' + cls + '><td>' + esc(g) + '</td><td class="num">' + esc(qty) + '</td></tr>';
+    }).join('');
+  }
+  var html = '<h2>GALACTIC SUPPLY (Σ guild stockpiles)</h2>';
+
+  // Vocabulary not fetched yet: fall back to a flat list. loadGoods() re-renders
+  // this panel into sections the moment GET /goods returns.
+  if (!GOODS_CATS) {
+    var flat = Object.keys(resources).sort().map(function (g) {
+      var qty = resources[g];
+      var cls = qty === 0 ? ' class="zero"' : '';
+      return '<tr' + cls + '><td>' + esc(g) + '</td><td class="num">' + esc(qty) + '</td></tr>';
+    }).join('');
+    document.getElementById('supplypanel').innerHTML =
+      html + '<table><tbody>' + flat + '</tbody></table>';
+    return;
+  }
+
+  var sections = [
+    { label: '1 · RAW MATERIALS', goods: GOODS_CATS.raw, future: false },
+    { label: '2 · PROCESSED MATERIALS', goods: GOODS_CATS.processed, future: false },
+    { label: '3 · MANUFACTURED PARTS', goods: [], future: true },
+    { label: '4 · CONSTRUCTED ASSETS', goods: [], future: true },
+  ];
+  html += sections.map(function (s, i) {
+    var secCls = 'supply-sec' + (i === 0 ? ' first' : '') + (s.future ? ' future' : '');
+    return '<div class="' + secCls + '">' + esc(s.label) + '</div>' +
+      '<table><tbody>' + bodyFor(s.goods) + '</tbody></table>';
   }).join('');
-  document.getElementById('supplypanel').innerHTML =
-    '<h2>GALACTIC SUPPLY (Σ guild stockpiles)</h2>' +
-    '<table><thead><tr><th>good</th><th class="num">total</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  document.getElementById('supplypanel').innerHTML = html;
 }
 
 function renderGuilds(guilds) {
@@ -460,6 +497,7 @@ var openSystems = {};      // systemId -> true when expanded (view state)
 var openPlanetBySys = {};  // systemId -> planetId currently drilled into (view state)
 var SYSTEM_LAYOUTS = {};   // systemId -> GET /system/:id layout (static cache)
 var RECIPES_LIST = [];     // GET /recipes catalog (rules; fetched once, cached)
+var GOODS_CATS = null;     // GET /goods vocabulary by tier {raw,processed} (rules; fetched once)
 
 var goEl = document.getElementById('guild-overlay');
 function overlayOpen() { return goEl.classList.contains('open'); }
@@ -775,10 +813,26 @@ async function loadRecipes() {
   } catch (e) { /* picker shows "(no recipes loaded)"; a refinery deploy is then rejected clearly */ }
 }
 
+// The good vocabulary by tier (GET /goods) — RULES, not live state. Fetched once
+// and cached so the GALACTIC SUPPLY panel can bucket the flat live totals into
+// Raw / Processed sections without the browser hardcoding the vocabulary. On
+// arrival, re-render the supply panel from the latest snapshot so the sections
+// appear even if the first paint happened before /goods returned.
+async function loadGoods() {
+  try {
+    var r = await api('GET', '/goods');
+    if (r.status === 200 && r.data && Array.isArray(r.data.raw)) {
+      GOODS_CATS = r.data;
+      if (LAST_SNAP && LAST_SNAP.galacticSupply) renderSupply(LAST_SNAP.galacticSupply.resources);
+    }
+  } catch (e) { /* supply panel falls back to a flat list */ }
+}
+
 // On load, populate the home-system picker and pull the current state so the
 // page reflects the live galaxy at once.
 loadStarters();
 loadRecipes();
+loadGoods();
 refresh('GET', null);
 </script>
 </body>
