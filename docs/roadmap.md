@@ -1,6 +1,6 @@
 # Starfare — Roadmap
 
-*Last updated 17-07-26. This is the authoritative, checklist-level roadmap. `docs/design.md` §17 carries only a summary; when the two disagree on **status**, this file wins, and on **design**, that one wins. Update the relevant checklist in the same commit as the work it records — a checked box with no commit behind it is exactly the failure mode the 16-07 reconciliation caught.*
+*Last updated 04-08-26. This is the authoritative, checklist-level roadmap. `docs/design.md` §17 carries only a summary; when the two disagree on **status**, this file wins, and on **design**, that one wins. Update the relevant checklist in the same commit as the work it records — a checked box with no commit behind it is exactly the failure mode the 16-07 reconciliation caught.*
 
 **How phases work here:** each phase is a legitimate finish line, not a checkpoint. A phase isn't done until its **exit criteria** hold, and no phase starts until its **entry dependencies** do. "Phase" refers only to this roadmap — manufacturing levels are *tiers* (design.md §15.2).
 
