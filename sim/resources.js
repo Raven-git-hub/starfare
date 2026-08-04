@@ -56,11 +56,22 @@ const RAW_RESOURCE_SET = new Set(RAW_RESOURCES);
 // Processed goods: REFINED from raw goods and held in guild stockpiles like any
 // tradeable good — UNLIKE `deuterium_fuel`, which is also refined but lives in
 // the reserve/hoards and is governed by the fuel law, never as a stockpile row.
-// The first is `titanium_alloy` (refined from titanium + carbon_products; see
-// recipes.js). Processed goods are NOT minable and NOT in any archetype pool, so
-// the drift guard (which guards raw goods only) is unaffected. The id string is a
-// [FIRST-CUT], like `deuterium_fuel`; the raw-vs-processed distinction is settled.
+// This is the Phase-2 (raw -> processed) layer of the manufacturing tree; each
+// has a recipe in recipes.js. Processed goods are NOT minable and NOT in any
+// archetype pool, so the drift guard (which guards raw goods only) is unaffected.
+// The id strings are `[FIRST-CUT]` (from the design list, 04-08-26); the
+// raw-vs-processed distinction itself is settled. Kept sorted for a stable order.
 const PROCESSED_GOODS = Object.freeze([
+  'battery_cells',
+  'carbon_fiber_weave',
+  'composite_resin',
+  'conductive_material',
+  'heat_resistant_alloy',
+  'magnetic_assemblies',
+  'nanotube_cable',
+  'radiation_shielding',
+  'refrigerant_fluid',
+  'silicon_wafer',
   'titanium_alloy',
 ]);
 

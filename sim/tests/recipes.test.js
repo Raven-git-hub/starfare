@@ -28,6 +28,27 @@ test('listRecipes returns the catalog', () => {
   assert.deepEqual(ids, Object.keys(RECIPES).sort());
 });
 
+// A deliberate tripwire: the full Phase-2 catalog, pinned. Adding or removing a
+// recipe MUST update this list — so a catalog change is always a conscious,
+// reviewed edit, never an accident. (Ratios are [PLACEHOLDER]; the id SET is the
+// settled part.)
+test('the recipe catalog is exactly the Phase-2 raw->processed set', () => {
+  const ids = listRecipes().map((r) => r.id).sort();
+  assert.deepEqual(ids, [
+    'battery_cells',
+    'carbon_fiber_weave',
+    'composite_resin',
+    'conductive_material',
+    'heat_resistant_alloy',
+    'magnetic_assemblies',
+    'nanotube_cable',
+    'radiation_shielding',
+    'refrigerant_fluid',
+    'silicon_wafer',
+    'titanium_alloy',
+  ]);
+});
+
 test('every recipe references real stockpile goods (integrity guard)', () => {
   for (const r of listRecipes()) {
     assert.ok(Array.isArray(r.inputs) && r.inputs.length > 0, `${r.id} must have at least one input`);

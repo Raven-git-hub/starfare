@@ -54,6 +54,32 @@ test('titanium_alloy is a processed, stockpile good — not raw, not fuel', () =
   assert.equal(RAW_RESOURCES.includes('titanium_alloy'), false, 'never in the raw list / archetype pools');
 });
 
+// A deliberate tripwire: the full processed-goods vocabulary, pinned. This is the
+// Phase-2 (raw -> processed) layer; every entry has a recipe (recipes.js). Adding
+// or removing a processed good MUST update this list, so vocabulary changes are
+// always conscious. Each must be a processed stockpile good and never raw/fuel.
+test('the processed-goods vocabulary is exactly the Phase-2 set', () => {
+  assert.deepEqual([...PROCESSED_GOODS], [
+    'battery_cells',
+    'carbon_fiber_weave',
+    'composite_resin',
+    'conductive_material',
+    'heat_resistant_alloy',
+    'magnetic_assemblies',
+    'nanotube_cable',
+    'radiation_shielding',
+    'refrigerant_fluid',
+    'silicon_wafer',
+    'titanium_alloy',
+  ]);
+  for (const g of PROCESSED_GOODS) {
+    assert.equal(isProcessedGood(g), true, `${g} is a processed good`);
+    assert.equal(isStockpileGood(g), true, `${g} is a stockpile good`);
+    assert.equal(isRawResource(g), false, `${g} is not raw`);
+    assert.equal(isFuel(g), false, `${g} is not fuel`);
+  }
+});
+
 test('STOCKPILE_GOODS is raw + processed, sorted and unique', () => {
   const expected = [...RAW_RESOURCES, ...PROCESSED_GOODS].sort();
   assert.deepEqual([...STOCKPILE_GOODS], expected);

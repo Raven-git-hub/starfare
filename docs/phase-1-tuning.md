@@ -34,8 +34,20 @@
 - **Counts** `[FIRST-CUT]` (ruled 02-08-26): surface spaces for **non-mining** ventures (refinery/manufacturing/construction), separate from resource nodes. The more solid/stable the world, the more room: **Terran 15** (fixed); **rocky / desert 7–10**; **ice / crystalline 4–7**; **oceanic 3–4**; **gasGiant / molten / irradiated 0**. Ranged counts are drawn from the seed's deterministic RNG at generation, so a given seed number always yields the same layout (invariant 9). Encoded in `tools/generate_seed.js` (`SETTLEMENT_SLOTS`); slot ids are `${planetId}_sNN`, disjoint from resource-node `_nNN` ids.
 
 ### Refining (raw -> processed)
-- **First recipe** (03-08-26; multi-input 04-08-26): **`titanium_alloy` = 3 titanium + 1 carbon_products -> 1 titanium_alloy** per batch. **Ratios are `[PLACEHOLDER]`** — provisional and unbalanced, present so the recipe functions and can be tested; real numbers get set through the **live recipe editor** and then baked back into `sim/recipes.js`. A refining venture sits on a settlement slot and runs up to `productionRate` batches/tick, throttled by the **scarcest** input its owner holds. The catalog lives in `sim/recipes.js`; `inputs` is an **array**, so a recipe may require several goods at once.
-- **Processed-good id** `[FIRST-CUT]`: **`titanium_alloy`** (renamed from `alloy_ingots` 04-08-26 to fit the manufacturing-tree naming) — a *processed* good (held in stockpiles like a raw good, summed into galactic supply), distinct from raw resources and from the special `deuterium_fuel`. Id string open to veto; the raw/processed/fuel three-way distinction is settled.
+- **The Phase-2 catalog** (04-08-26): 11 raw->processed recipes, one per processed good, all in `sim/recipes.js`. **Every ratio is `[PLACEHOLDER]`** (new recipes seed at all-1s; `titanium_alloy` keeps its earlier 3:1 titanium cut) — provisional and unbalanced, present so each recipe functions and can be tested. **Real numbers get set through the live recipe editor** (next slice) and then baked back into `sim/recipes.js`. Input SETS come from the design list and deliberately keep **process gases** (helium/xenon/nitrogen) as manufacturing consumables, not only structural inputs. The recipes (output ← inputs):
+  - `titanium_alloy` ← titanium (×3) + carbon_products
+  - `carbon_fiber_weave` ← carbon_products + polymers
+  - `nanotube_cable` ← carbon_products + nitrogen + silica
+  - `battery_cells` ← lithium + polymers + nitrogen
+  - `conductive_material` ← copper + silica
+  - `silicon_wafer` ← silica + silver + palladium
+  - `composite_resin` ← polymers + nitrogen
+  - `heat_resistant_alloy` ← tungsten + helium + carbon_products
+  - `radiation_shielding` ← lead + titanium + xenon
+  - `magnetic_assemblies` ← neodymium + xenon + gold + lithium
+  - `refrigerant_fluid` ← ammonia + nitrogen
+- **How recipes run**: a refining venture sits on a settlement slot and runs up to `productionRate` batches/tick, throttled by the **scarcest** input its owner holds; `inputs` is an **array**, so a recipe may require several goods at once. The catalog SHAPE (a fixed, id-addressed set) is settled; the numbers are the open part. A pinned test (`recipes.test.js`, `resources.test.js`) makes adding/removing a recipe or good a deliberate, loud change.
+- **Processed-good ids** `[FIRST-CUT]` (from the design list, 04-08-26): the 11 goods above — each a *processed* good (held in stockpiles like a raw good, summed into galactic supply), distinct from raw resources and from the special `deuterium_fuel`. `titanium_alloy` was renamed from `alloy_ingots`. Id strings open to veto; the raw/processed/fuel distinction is settled.
 - **Refinery throughput**: `productionRate` (batches/tick) is **operator-supplied**, not a baked constant — like the mining rate, only Titanium's is ruled, so the testbed dials it.
 
 ### The second good (tolled/shipped raw)
