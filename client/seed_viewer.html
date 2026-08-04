@@ -275,18 +275,40 @@
   }
   .list-row.tab > *{ position:relative; z-index:1; }
 
-  /* archetype textures — real art (committed 05-08-26), one JPEG per archetype,
-     living at assets/planets/. background-size:cover on .list-row.tab already
-     handles arbitrary image aspect ratios. */
-  .tex-rocky{ background-image: url('assets/planets/rocky.jpg'); }
-  .tex-terran{ background-image: url('assets/planets/terran.jpg'); }
-  .tex-oceanic{ background-image: url('assets/planets/oceanic.jpg'); }
-  .tex-ice{ background-image: url('assets/planets/ice.jpg'); }
-  .tex-gasGiant{ background-image: url('assets/planets/gasGiant.jpg'); }
-  .tex-molten{ background-image: url('assets/planets/molten.jpg'); }
-  .tex-desert{ background-image: url('assets/planets/desert.jpg'); }
-  .tex-irradiated{ background-image: url('assets/planets/irradiated.jpg'); }
-  .tex-crystalline{ background-image: url('assets/planets/crystalline.jpg'); }
+  /* placeholder textures per archetype — two-layer gradients hinting at each
+     world's character. Deliberately kept here (05-08-26): at list-row thumbnail
+     size the real archetype art crops/squeezes badly, so real art is reserved
+     for the hero-dock panel below and these tabs stay patterned. */
+  .tex-rocky{ background:
+    radial-gradient(circle at 20% 25%, var(--c-rocky-l) 0%, transparent 40%),
+    radial-gradient(circle at 78% 70%, var(--c-rocky-d) 0%, transparent 45%),
+    var(--c-rocky); }
+  .tex-terran{ background:
+    radial-gradient(circle at 28% 72%, var(--c-terran-l) 0%, transparent 42%),
+    radial-gradient(circle at 72% 22%, var(--c-oceanic) 0%, transparent 36%),
+    var(--c-terran); }
+  .tex-oceanic{ background:
+    repeating-linear-gradient(180deg, var(--c-oceanic-l) 0px, var(--c-oceanic-l) 2px, transparent 2px, transparent 14px),
+    var(--c-oceanic); }
+  .tex-ice{ background:
+    repeating-linear-gradient(115deg, var(--c-ice-l) 0px, var(--c-ice-l) 3px, transparent 3px, transparent 22px),
+    var(--c-ice); }
+  .tex-gasGiant{ background:
+    repeating-linear-gradient(180deg, var(--c-gasGiant-d) 0px, var(--c-gasGiant-d) 10px, var(--c-gasGiant-l) 10px, var(--c-gasGiant-l) 18px, var(--c-gasGiant) 18px, var(--c-gasGiant) 30px); }
+  .tex-molten{ background:
+    radial-gradient(circle at 65% 72%, var(--c-molten-l) 0%, transparent 35%),
+    repeating-linear-gradient(60deg, var(--c-molten-d) 0px, var(--c-molten-d) 1px, transparent 1px, transparent 16px),
+    var(--c-molten); }
+  .tex-desert{ background:
+    repeating-linear-gradient(100deg, var(--c-desert-l) 0px, var(--c-desert-l) 6px, transparent 6px, transparent 26px),
+    var(--c-desert); }
+  .tex-irradiated{ background:
+    repeating-linear-gradient(45deg, var(--c-irradiated-d) 0px, var(--c-irradiated-d) 4px, transparent 4px, transparent 34px),
+    var(--c-irradiated); }
+  .tex-crystalline{ background:
+    linear-gradient(120deg, var(--c-crystalline-l) 0%, transparent 32%),
+    linear-gradient(255deg, var(--c-crystalline-d) 0%, transparent 38%),
+    var(--c-crystalline); }
   .tex-node{ background:
     repeating-linear-gradient(135deg, rgba(232,223,200,0.035) 0px, rgba(232,223,200,0.035) 1px, transparent 1px, transparent 12px),
     var(--bg-chip); }
@@ -378,6 +400,12 @@
   }
 
   /* ---------- Hero quarter-segment ---------- */
+  /* hero-dock is now the ART PANEL ITSELF (05-08-26) — the full-width strip
+     at the base of the index sidebar, ~380x210-400px. background-size:cover +
+     position:left bottom anchors each image's bottom-left corner to the
+     panel's bottom-left corner rather than centring it. .hero stays a plain
+     decorative ring/border floating on top; it carries no image of its own
+     and no longer needs per-archetype variants. */
   .hero-dock{
     position:absolute;
     left:0; bottom:0;
@@ -385,7 +413,20 @@
     height:calc(var(--hero-r) * 1.05);
     pointer-events:none;
     overflow:hidden;
+    background-size:cover;
+    background-position:left bottom;
   }
+  .hero-dock.star{ background-image: url('assets/planets/star.jpg'); }
+  .hero-dock.planet-rocky{ background-image: url('assets/planets/rocky.jpg'); }
+  .hero-dock.planet-terran{ background-image: url('assets/planets/terran.jpg'); }
+  .hero-dock.planet-oceanic{ background-image: url('assets/planets/oceanic.jpg'); }
+  .hero-dock.planet-ice{ background-image: url('assets/planets/ice.jpg'); }
+  .hero-dock.planet-gasGiant{ background-image: url('assets/planets/gasGiant.jpg'); }
+  .hero-dock.planet-molten{ background-image: url('assets/planets/molten.jpg'); }
+  .hero-dock.planet-desert{ background-image: url('assets/planets/desert.jpg'); }
+  .hero-dock.planet-irradiated{ background-image: url('assets/planets/irradiated.jpg'); }
+  .hero-dock.planet-crystalline{ background-image: url('assets/planets/crystalline.jpg'); }
+
   .hero{
     position:absolute;
     left:calc(var(--hero-r) * -1);
@@ -396,24 +437,11 @@
     border:1px solid rgba(201,162,39,0.35);
     box-shadow:0 0 0 1px rgba(201,162,39,0.08);
     animation:hero-in 700ms ease-out both;
-    background-size:cover;
-    background-position:center;
   }
   @keyframes hero-in{
     from{ opacity:0; transform:scale(0.92); }
     to{ opacity:1; transform:scale(1); }
   }
-
-  .hero.star{ background-image: url('assets/planets/star.jpg'); }
-  .hero.planet-rocky{ background-image: url('assets/planets/rocky.jpg'); }
-  .hero.planet-terran{ background-image: url('assets/planets/terran.jpg'); }
-  .hero.planet-oceanic{ background-image: url('assets/planets/oceanic.jpg'); }
-  .hero.planet-ice{ background-image: url('assets/planets/ice.jpg'); }
-  .hero.planet-gasGiant{ background-image: url('assets/planets/gasGiant.jpg'); }
-  .hero.planet-molten{ background-image: url('assets/planets/molten.jpg'); }
-  .hero.planet-desert{ background-image: url('assets/planets/desert.jpg'); }
-  .hero.planet-irradiated{ background-image: url('assets/planets/irradiated.jpg'); }
-  .hero.planet-crystalline{ background-image: url('assets/planets/crystalline.jpg'); }
 
   .hero-ring{
     position:absolute;
@@ -577,7 +605,7 @@
       <div class="stack" id="stack"></div>
     </div>
 
-    <div class="hero-dock">
+    <div class="hero-dock" id="heroDock">
       <div class="hero" id="hero"></div>
     </div>
   </div>
@@ -1340,6 +1368,7 @@ const el = {
   titleSub: document.getElementById('titleSub'),
   stack: document.getElementById('stack'),
   hero: document.getElementById('hero'),
+  heroDock: document.getElementById('heroDock'),
   backBtn: document.getElementById('backBtn'),
   mainHeading: document.getElementById('mainHeading'),
   emptyCopy: document.getElementById('emptyCopy'),
@@ -1414,8 +1443,9 @@ function renderSystemView(){
 
   el.backBtn.classList.remove('visible');
 
-  el.hero.className = 'hero star';
+  el.hero.className = 'hero';
   el.hero.innerHTML = '<span class="hero-ring"></span>';
+  el.heroDock.className = 'hero-dock star';
 
   el.mainHeading.textContent = 'System Manifest';
   el.emptyCopy.textContent = 'Territory, tolls, and venture data for this system have not yet been charted. Select a body from the index to continue.';
@@ -1454,8 +1484,9 @@ function renderPlanetView(){
 
   el.backBtn.classList.add('visible');
 
-  el.hero.className = 'hero planet-' + p.archetype;
+  el.hero.className = 'hero';
   el.hero.innerHTML = '<span class="hero-ring"></span>';
+  el.heroDock.className = 'hero-dock planet-' + p.archetype;
 
   el.mainHeading.textContent = 'Planet Manifest';
   el.emptyCopy.textContent = 'Claim status, venture activity, and extraction data for ' + planetDesignation(p) + ' have not yet been charted. Select a node from the index to continue.';
