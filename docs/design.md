@@ -409,7 +409,7 @@ A new guild needs a viable home system, but on a mature server most of the galax
 - Protected in practice by the storyteller's existing "small guilds fly beneath notice" rule (Section 9) — a reuse, not a new mechanism.
 - Backed by the **rare-tier proximity guarantee** (Section 2): ≥2 rare-tier planets within ⅓ galaxy radius, so a starter guild's path to advanced manufacturing is expensive but never blocked.
 
-*(Status: **designed; not currently implemented in the repo** — same situation as the archetype work (§2, §16). The 15-07 session reported it implemented, with 393 of 1,500 systems tagging starter-eligible on seed 7331 across all 16 sectors, but the code was never saved. Those figures become verification targets for Track G. Open question #30 is answered in design, unproven in code.)*
+*(Status: **implemented and verified (Track G)** — same as the archetype work (§2, §16). The generator tags starter-eligible systems (≥1 Terran planet) and the seed carries the flag; `sim/seed.js` (`isStarterSystem`/`getStarterSystems`) and the `foundGuild` action consume it, and the harness exposes it at `GET /starters`. Seed 7331 yields **368** starter systems spread across all 16 sectors (the old 393 figure was a different, unrecovered build — see §20). Open question #30 is resolved in design and code.)*
 
 Worth noting what this quietly costs: because Terran is both the homeworld archetype *and* the only source of a guaranteed full resource spread, a guild that never leaves its home planet has a real, if slow, self-sufficient economy. That was deliberate — but it means the pull to expand has to come from *volume and specialisation*, not from missing resources.
 
