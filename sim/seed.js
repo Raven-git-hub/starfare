@@ -37,6 +37,7 @@ function buildIndex() {
 
   const bySite = new Map();
   const bySystem = new Map();
+  const bySystemRaw = new Map();
   const byOutpost = new Map();
 
   for (const sys of seed.systems || []) {
@@ -64,6 +65,10 @@ function buildIndex() {
       id: sys.id, kind: 'system', name: sys.name, ring: sys.ring,
       coords: sys.coords, starterEligible: !!sys.starterEligible, terranHomeworldId,
     });
+    // Keep the raw seed system too, so getSystemLayout can hand back its planets
+    // (with nodes + slots) on demand without a second pass over the seed. It's a
+    // reference into the already-cached seed object, not a copy.
+    bySystemRaw.set(sys.id, sys);
   }
 
   for (const out of seed.outposts || []) {
@@ -77,7 +82,7 @@ function buildIndex() {
     ? { id: 'citadel', kind: 'citadel', coords: seed.citadel.coords, radius: seed.citadel.radius }
     : null;
 
-  return { bySite, bySystem, byOutpost, citadel, seedNumber: seed.seed };
+  return { bySite, bySystem, bySystemRaw, byOutpost, citadel, seedNumber: seed.seed };
 }
 
 function index() {
@@ -182,6 +187,32 @@ function getStarterSystems() {
   return out;
 }
 
+// getSystemLayout(id) -> a system's full STATIC territory, the way the UI drills
+// into it: the system's identity plus every planet with its resource nodes and
+// settlement slots. Empty slots are included on purpose — the UI needs to see
+// where a venture COULD be established, not only where one already sits. This is
+// pure seed data (the immutable substrate); the live overlay of who occupies
+// which site comes from the snapshot's occupancy and is composed in the browser.
+// Returns null if no such system exists (the endpoint turns that into a 404).
+// Planet / node / slot order is the seed's own deterministic order.
+function getSystemLayout(id) {
+  const sys = index().bySystemRaw.get(id);
+  if (!sys) return null;
+  return {
+    id: sys.id,
+    name: sys.name,
+    ring: sys.ring || null,
+    starterEligible: !!sys.starterEligible,
+    terranHomeworldId: getTerranHomeworld(sys.id),
+    planets: (sys.planets || []).map((p) => ({
+      id: p.id,
+      archetype: p.archetype,
+      resourceNodes: (p.resourceNodes || []).map((n) => ({ id: n.id, resourceType: n.resourceType })),
+      settlementSlots: (p.settlementSlots || []).map((s) => ({ id: s.id })),
+    })),
+  };
+}
+
 // getSeedNumber() -> the integer the seed was generated from. The live world
 // records this so a galaxy knows which seed it is built over.
 function getSeedNumber() {
@@ -191,5 +222,5 @@ function getSeedNumber() {
 module.exports = {
   getSite, isResourceNode, isSettlementSlot, findNodesByResource,
   getCitadel, getSystem, getOutpost, getOutposts, getLandmark,
-  isStarterSystem, getTerranHomeworld, getStarterSystems, getSeedNumber,
+  isStarterSystem, getTerranHomeworld, getStarterSystems, getSystemLayout, getSeedNumber,
 };

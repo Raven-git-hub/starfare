@@ -10,7 +10,7 @@ const assert = require('node:assert/strict');
 
 const {
   getSite, isResourceNode, isSettlementSlot, findNodesByResource,
-  getStarterSystems, isStarterSystem, getTerranHomeworld,
+  getStarterSystems, isStarterSystem, getTerranHomeworld, getSystemLayout,
 } = require('../seed.js');
 
 test('getSite resolves a real resource node with its resourceType and location', () => {
@@ -67,4 +67,41 @@ test('getStarterSystems enumerates every starter, id-sorted, each with a real ho
     assert.ok(['inner', 'middle', 'outer'].includes(s.ring));
   }
   assert.equal(starters[0].id, 'sys_0002'); // the known first starter
+});
+
+test('getSystemLayout returns a system with planets, nodes, and settlement slots', () => {
+  // sys_0002 is the demo home: a single-planet Terran system.
+  const sys = getSystemLayout('sys_0002');
+  assert.ok(sys);
+  assert.equal(sys.id, 'sys_0002');
+  assert.equal(sys.name, 'FEN-6425');
+  assert.equal(sys.starterEligible, true);
+  assert.equal(sys.terranHomeworldId, 'pl_00004');
+  assert.equal(sys.planets.length, 1);
+  const hw = sys.planets[0];
+  assert.equal(hw.id, 'pl_00004');
+  assert.equal(hw.archetype, 'terran');
+  assert.equal(hw.resourceNodes.length, 15); // Terran homeworld
+  assert.equal(hw.settlementSlots.length, 15); // Terran slot count ([FIRST-CUT])
+  // node shape carries id + resourceType; slot shape is id-only (no resourceType).
+  assert.deepEqual(hw.resourceNodes[0], { id: 'pl_00004_n01', resourceType: 'titanium' });
+  assert.deepEqual(Object.keys(hw.settlementSlots[0]), ['id']);
+  assert.equal(hw.settlementSlots[0].id, 'pl_00004_s01');
+});
+
+test('getSystemLayout handles a multi-planet system and returns null for a missing one', () => {
+  // sys_0009 has 4 planets (desert / terran / rocky / ice), incl. varying counts.
+  const sys = getSystemLayout('sys_0009');
+  assert.ok(sys);
+  assert.equal(sys.planets.length, 4);
+  const terran = sys.planets.find((p) => p.archetype === 'terran');
+  assert.ok(terran, 'has a terran planet');
+  assert.equal(terran.settlementSlots.length, 15);
+  // every site id resolves back through getSite — the layout and the site index agree.
+  for (const p of sys.planets) {
+    for (const n of p.resourceNodes) assert.equal(isResourceNode(n.id), true);
+    for (const s of p.settlementSlots) assert.equal(isSettlementSlot(s.id), true);
+  }
+  assert.equal(getSystemLayout('sys_9999'), null);
+  assert.equal(getSystemLayout('not-an-id'), null);
 });

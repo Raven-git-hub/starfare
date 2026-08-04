@@ -32,6 +32,9 @@
 //   GET  /snapshot    -> buildSnapshot(state) (the debug lens' data; schema 2)
 //   GET  /starters    -> the seed's starter-eligible systems (the home-system
 //                        picker's source; static, derived from the seed only)
+//   GET  /system/:id  -> one system's static layout: planets, each with its
+//                        resource nodes + settlement slots (seed-only; the UI
+//                        composes live occupancy from the snapshot on top)
 //   POST /tick        -> advance one tick (no actions); returns the new snapshot
 //   POST /action      -> intake ONE action object (no tick); returns
 //                        { accepted, reason, snapshot }
@@ -48,7 +51,7 @@ const { advance } = require('./run.js');
 const { intake } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
 const { buildSnapshot } = require('./snapshot.js');
-const { getStarterSystems } = require('./seed.js');
+const { getStarterSystems, getSystemLayout } = require('./seed.js');
 
 const DEFAULT_PORT = 7331; // the galaxy seed number, and clear of the host's other services
 
@@ -144,6 +147,26 @@ async function handleRequest(req, res) {
   if (method === 'GET' && path === '/starters') {
     const starters = getStarterSystems();
     sendJson(res, 200, { starters, count: starters.length });
+    return;
+  }
+
+  // One system's static territory layout (planets -> resource nodes + settlement
+  // slots), for the UI to drill into. Like /starters this is SEED data, not live
+  // state, so it never moves on a tick and the browser can cache it per system;
+  // the live overlay (who occupies which site) is composed from the snapshot's
+  // occupancy client-side. An unknown id is a 404 (the selector returns null).
+  if (method === 'GET' && path.startsWith('/system/')) {
+    const id = decodeURIComponent(path.slice('/system/'.length));
+    if (!id) {
+      sendJson(res, 400, { error: 'GET /system/:id requires a system id, e.g. /system/sys_0002' });
+      return;
+    }
+    const layout = getSystemLayout(id);
+    if (!layout) {
+      sendJson(res, 404, { error: `no such system: ${id}` });
+      return;
+    }
+    sendJson(res, 200, layout);
     return;
   }
 

@@ -77,6 +77,28 @@ test('GET /starters lists the seed\'s startable home systems', async () => {
   }
 });
 
+test('GET /system/:id returns a system\'s static layout (planets, nodes, slots)', async () => {
+  const { status, body } = await req('GET', '/system/sys_0002');
+  assert.equal(status, 200);
+  assert.equal(body.id, 'sys_0002');
+  assert.equal(body.terranHomeworldId, 'pl_00004');
+  assert.equal(body.planets.length, 1);
+  const hw = body.planets[0];
+  assert.equal(hw.archetype, 'terran');
+  assert.equal(hw.resourceNodes.length, 15);
+  assert.equal(hw.settlementSlots.length, 15); // the Terran slot anchor
+  assert.equal(hw.resourceNodes[0].resourceType, 'titanium');
+});
+
+test('GET /system/:id handles a multi-planet system and 404s an unknown id', async () => {
+  const multi = await req('GET', '/system/sys_0009');
+  assert.equal(multi.status, 200);
+  assert.equal(multi.body.planets.length, 4);
+  const miss = await req('GET', '/system/sys_9999');
+  assert.equal(miss.status, 404);
+  assert.match(miss.body.error, /no such system/);
+});
+
 test('GET /health reports liveness (JSON)', async () => {
   await reset();
   const { status, body } = await req('GET', '/health');
