@@ -29,7 +29,7 @@ test('computeGalacticSupply sums stockpiles across guilds and zero-fills the res
   assert.equal(gs.resources.titanium, 15); // 10 + 5
   assert.equal(gs.resources.copper, 3);
   assert.equal(gs.resources.gold, 0, 'a good no one holds still has a (zero) row');
-  assert.equal(gs.resources.alloy_ingots, 0, 'processed goods get a (zero) row too');
+  assert.equal(gs.resources.titanium_alloy, 0, 'processed goods get a (zero) row too');
   assert.equal(Object.keys(gs.resources).length, STOCKPILE_GOODS.length, 'every stockpile good present (raw + processed)');
 });
 

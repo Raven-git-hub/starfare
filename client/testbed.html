@@ -523,7 +523,8 @@ function planetOccCounts(planet, occ) {
 function recipeOptionsHtml() {
   if (!RECIPES_LIST.length) return '<option value="">(no recipes loaded)</option>';
   return RECIPES_LIST.map(function (r) {
-    var label = r.id + ' — ' + r.input.qty + ' ' + r.input.good + ' \u2192 ' + r.output.qty + ' ' + r.output.good;
+    var ins = (r.inputs || []).map(function (i) { return i.qty + ' ' + i.good; }).join(' + ');
+    var label = r.id + ' — ' + ins + ' \u2192 ' + r.output.qty + ' ' + r.output.good;
     return '<option value="' + esc(r.id) + '">' + esc(label) + '</option>';
   }).join('');
 }

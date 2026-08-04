@@ -12,11 +12,14 @@ const { RECIPES, getRecipe, listRecipes } = require('../recipes.js');
 const { isStockpileGood, isProcessedGood, isRawResource } = require('../resources.js');
 
 test('getRecipe resolves a known recipe and null otherwise', () => {
-  const r = getRecipe('titanium_to_alloy');
+  const r = getRecipe('titanium_alloy');
   assert.ok(r);
-  assert.equal(r.id, 'titanium_to_alloy');
-  assert.deepEqual(r.input, { good: 'titanium', qty: 3 });   // [FIRST-CUT] 3:1
-  assert.deepEqual(r.output, { good: 'alloy_ingots', qty: 1 });
+  assert.equal(r.id, 'titanium_alloy');
+  assert.deepEqual(r.inputs, [                       // [PLACEHOLDER] ratios
+    { good: 'titanium', qty: 3 },
+    { good: 'carbon_products', qty: 1 },
+  ]);
+  assert.deepEqual(r.output, { good: 'titanium_alloy', qty: 1 });
   assert.equal(getRecipe('nope'), null);
 });
 
@@ -27,15 +30,18 @@ test('listRecipes returns the catalog', () => {
 
 test('every recipe references real stockpile goods (integrity guard)', () => {
   for (const r of listRecipes()) {
-    assert.ok(isStockpileGood(r.input.good), `${r.id} input ${r.input.good} must be a stockpile good`);
+    assert.ok(Array.isArray(r.inputs) && r.inputs.length > 0, `${r.id} must have at least one input`);
+    for (const inp of r.inputs) {
+      assert.ok(isStockpileGood(inp.good), `${r.id} input ${inp.good} must be a stockpile good`);
+      assert.ok(Number.isInteger(inp.qty) && inp.qty > 0, `${r.id} input qty must be a positive integer`);
+    }
     assert.ok(isStockpileGood(r.output.good), `${r.id} output ${r.output.good} must be a stockpile good`);
-    assert.ok(Number.isInteger(r.input.qty) && r.input.qty > 0, `${r.id} input qty must be a positive integer`);
     assert.ok(Number.isInteger(r.output.qty) && r.output.qty > 0, `${r.id} output qty must be a positive integer`);
   }
 });
 
-test('the titanium_to_alloy recipe refines a raw good into a processed good', () => {
-  const r = getRecipe('titanium_to_alloy');
-  assert.equal(isRawResource(r.input.good), true);       // titanium is mined
-  assert.equal(isProcessedGood(r.output.good), true);    // alloy_ingots is refined
+test('the titanium_alloy recipe refines raw goods into a processed good', () => {
+  const r = getRecipe('titanium_alloy');
+  for (const inp of r.inputs) assert.equal(isRawResource(inp.good), true);  // titanium + carbon are mined
+  assert.equal(isProcessedGood(r.output.good), true);                       // titanium_alloy is refined
 });

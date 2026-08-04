@@ -32,12 +32,13 @@ function cloneState(state) {
 
 // Step 1 — production. A MINING venture extracts `productionRate` units of its
 // `resourceType` each tick into the OWNER guild's typed `stockpiles`. A REFINING
-// venture (03-08-26) runs up to `productionRate` batches of its recipes.js
-// recipe, consuming the input good from and producing the output good into the
-// owner's stockpiles — throttled by available input so nothing goes negative.
-// One home for produced goods, so nothing is double-counted (supply.js derives
-// its totals from exactly these stockpiles). `Venture.updatedAtTick` records
-// when a venture moved goods (§15.2's "every mutation records its tick").
+// venture (03-08-26; multi-input 04-08-26) runs up to `productionRate` batches of
+// its recipes.js recipe, consuming EACH of the recipe's input goods from and
+// producing the output good into the owner's stockpiles — throttled by the
+// scarcest input so nothing goes negative. One home for produced goods, so
+// nothing is double-counted (supply.js derives its totals from exactly these
+// stockpiles). `Venture.updatedAtTick` records when a venture moved goods
+// (§15.2's "every mutation records its tick").
 //
 // Deliberately NOT yet implemented, left for economy.js:
 //   - per-venture `inputStockpiles` buffers: refining here draws its input
@@ -68,18 +69,24 @@ function stepProduction(state, _actions) {
       }
 
       // REFINING: run up to `productionRate` batches of the venture's recipe,
-      // THROTTLED by the input the owner actually holds — consume the input good,
-      // produce the output good, both in the owner's stockpiles. Flooring
-      // affordable batches to available input means a stockpile can never be
-      // driven negative (so invariant 3 holds without a special case), and an
-      // under-supplied refinery simply runs at reduced throughput this tick.
+      // THROTTLED by the scarcest input the owner actually holds — consume EACH
+      // input good, produce the output good, all in the owner's stockpiles.
+      // Flooring affordable batches to the least-affordable input means no
+      // stockpile can be driven negative (so invariant 3 holds without a special
+      // case), and an under-supplied refinery simply runs at reduced throughput.
       if (venture.recipeId) {
         const recipe = getRecipe(venture.recipeId);
         if (!recipe) continue; // dangling recipeId: the occupancy invariant halts on it
-        const have = guild.stockpiles[recipe.input.good] || 0;
-        const batches = Math.min(venture.productionRate, Math.floor(have / recipe.input.qty));
-        if (batches <= 0) continue; // not enough input this tick: no goods move
-        guild.stockpiles[recipe.input.good] = have - batches * recipe.input.qty;
+        // batches = min(rate, floor(have / qty) for every input) — the scarcest input caps it.
+        let batches = venture.productionRate;
+        for (const inp of recipe.inputs) {
+          const have = guild.stockpiles[inp.good] || 0;
+          batches = Math.min(batches, Math.floor(have / inp.qty));
+        }
+        if (batches <= 0) continue; // some input is short this tick: no goods move
+        for (const inp of recipe.inputs) {
+          guild.stockpiles[inp.good] = (guild.stockpiles[inp.good] || 0) - batches * inp.qty;
+        }
         guild.stockpiles[recipe.output.good] =
           (guild.stockpiles[recipe.output.good] || 0) + batches * recipe.output.qty;
         venture.updatedAtTick = state.tick;

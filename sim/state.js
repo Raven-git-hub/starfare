@@ -112,7 +112,7 @@ function createVenture({
     // named good (e.g. a future refinery/factory on a settlement slot).
     resourceType,
     // recipeId: for a REFINING venture, the recipes.js recipe it runs (e.g.
-    // 'titanium_to_alloy') — consuming the recipe's input good from the owner's
+    // 'titanium_alloy') — consuming the recipe's input goods from the owner's
     // stockpile and producing its output good, up to `productionRate` batches
     // per tick (tick.js stepProduction). null for a mining venture. A venture is
     // one or the other: a mining venture sets resourceType, a refining venture

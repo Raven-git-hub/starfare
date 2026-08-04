@@ -46,12 +46,12 @@ test('isRawResource rejects unknown goods', () => {
   assert.equal(isRawResource(undefined), false);
 });
 
-test('alloy_ingots is a processed, stockpile good — not raw, not fuel', () => {
-  assert.equal(isProcessedGood('alloy_ingots'), true);
-  assert.equal(isStockpileGood('alloy_ingots'), true);
-  assert.equal(isRawResource('alloy_ingots'), false, 'processed goods are not minable');
-  assert.equal(isFuel('alloy_ingots'), false);
-  assert.equal(RAW_RESOURCES.includes('alloy_ingots'), false, 'never in the raw list / archetype pools');
+test('titanium_alloy is a processed, stockpile good — not raw, not fuel', () => {
+  assert.equal(isProcessedGood('titanium_alloy'), true);
+  assert.equal(isStockpileGood('titanium_alloy'), true);
+  assert.equal(isRawResource('titanium_alloy'), false, 'processed goods are not minable');
+  assert.equal(isFuel('titanium_alloy'), false);
+  assert.equal(RAW_RESOURCES.includes('titanium_alloy'), false, 'never in the raw list / archetype pools');
 });
 
 test('STOCKPILE_GOODS is raw + processed, sorted and unique', () => {

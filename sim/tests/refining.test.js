@@ -1,10 +1,12 @@
 'use strict';
 
-// Tests refining ventures (03-08-26): a venture on a SETTLEMENT SLOT that runs a
-// recipes.js recipe — consuming a raw good, producing a processed good — the
-// first raw->processed conversion. Uses real seed ids: pl_00004_n01/_n02 are
-// titanium nodes on sys_0002's homeworld; pl_00004_s01/_s02 are settlement slots.
-// Recipe titanium_to_alloy = 3 titanium -> 1 alloy_ingot per batch.
+// Tests refining ventures: a venture on a SETTLEMENT SLOT that runs a recipes.js
+// recipe, consuming raw goods and producing a processed good — the first
+// raw->processed conversion. Multi-input as of 04-08-26. Uses real seed ids:
+// pl_00004_n01 is a titanium node and pl_00004_n08 a carbon_products node on
+// sys_0002's homeworld; pl_00004_s01/_s02 are settlement slots.
+// Recipe titanium_alloy = 3 titanium + 1 carbon_products -> 1 titanium_alloy
+// per batch ([PLACEHOLDER] ratios).
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -21,8 +23,9 @@ function playerFounded() {
   const s = createZeroState();
   return advance(s, [createFoundGuildAction({ guildId: 'player', credits: 120, influence: 100, homeSystemId: 'sys_0002' })]).state;
 }
-const mine = (over = {}) => createEstablishVentureAction({ guildId: 'player', ventureId: 'mine', siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5, ...over });
-const refinery = (over = {}) => createEstablishVentureAction({ guildId: 'player', ventureId: 'refinery', type: 'refining', siteId: 'pl_00004_s01', recipeId: 'titanium_to_alloy', productionRate: 2, ...over });
+const tmine = (over = {}) => createEstablishVentureAction({ guildId: 'player', ventureId: 'tmine', siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5, ...over });
+const cmine = (over = {}) => createEstablishVentureAction({ guildId: 'player', ventureId: 'cmine', siteId: 'pl_00004_n08', resourceType: 'carbon_products', productionRate: 5, ...over });
+const refinery = (over = {}) => createEstablishVentureAction({ guildId: 'player', ventureId: 'refinery', type: 'refining', siteId: 'pl_00004_s01', recipeId: 'titanium_alloy', productionRate: 2, ...over });
 
 // --- constructor guards ----------------------------------------------------
 
@@ -33,44 +36,49 @@ test('a refining action requires a recipeId (not a resourceType)', () => {
   );
 });
 
-// --- establishing + converting ---------------------------------------------
+// --- establishing + converting (multi-input) -------------------------------
 
-test('a refinery on a settlement slot converts titanium to alloy ingots', () => {
+test('a refinery consumes BOTH inputs and produces titanium_alloy', () => {
   let s = playerFounded();
-  s = advance(s, [mine()]).state;       // +5 titanium/tick
-  const r = advance(s, [refinery()]);   // rate 2 batches = 6 titanium -> 2 alloy
+  s = advance(s, [tmine()]).state;      // +5 titanium => 5
+  s = advance(s, [cmine()]).state;      // +5 titanium => 10, +5 carbon => 5
+  const r = advance(s, [refinery()]);   // mines first (=>15 ti, 10 carbon); rate 2 = 6 ti + 2 carbon -> 2 alloy
   s = r.state;
   assert.equal(r.results[0].accepted, true);
   const g = () => s.guilds[0].stockpiles;
-  // this tick: mine +5 (=>10), refinery consumes 6 => 4 titanium, produces 2 alloy
-  assert.equal(g().titanium, 4);
-  assert.equal(g().alloy_ingots, 2);
+  assert.equal(g().titanium, 9);        // 15 - 6
+  assert.equal(g().carbon_products, 8); // 10 - 2
+  assert.equal(g().titanium_alloy, 2);  // 2 batches * 1
   assert.deepEqual(checkInvariants(s, s.tick), []);
-  s = advance(s, []).state; // +5 => 9, -6 => 3 titanium, +2 => 4 alloy
-  assert.equal(g().titanium, 3);
-  assert.equal(g().alloy_ingots, 4);
-  // the processed good shows up in the galactic totals
-  assert.equal(computeGalacticSupply(s).resources.alloy_ingots, 4);
+  s = advance(s, []).state;             // +5/+5 mines, -6 ti / -2 carbon, +2 alloy
+  assert.equal(g().titanium, 8);
+  assert.equal(g().carbon_products, 11);
+  assert.equal(g().titanium_alloy, 4);
+  assert.equal(computeGalacticSupply(s).resources.titanium_alloy, 4);
 });
 
-test('a refinery throttles to available input and never goes negative', () => {
+test('a refinery throttles to the SCARCEST input and never goes negative', () => {
   let s = playerFounded();
-  s = advance(s, [mine()]).state;                                  // +5 titanium => 5
-  // rate 100 batches wants 300 titanium; only ~10 exist after the mine ticks.
-  s = advance(s, [refinery({ productionRate: 100 })]).state;       // mine +5 => 10; floor(10/3)=3 batches
+  s = advance(s, [tmine()]).state;                       // titanium accrues fast (5/tick)
+  s = advance(s, [cmine({ productionRate: 1 })]).state;  // carbon accrues slowly (1/tick) => the bottleneck
+  // rate 100 wants 100 batches; titanium could afford floor(15/3)=5, but carbon only floor(2/1)=2.
+  s = advance(s, [refinery({ productionRate: 100 })]).state;
   const g = s.guilds[0].stockpiles;
-  assert.equal(g.titanium, 1);        // 10 - 3*3 = 1  (never negative)
-  assert.equal(g.alloy_ingots, 3);    // 3*1
+  assert.equal(g.carbon_products, 0);   // carbon (scarcest) capped batches at 2, drained to exactly 0
+  assert.equal(g.titanium_alloy, 2);    // 2 batches, not 5 (titanium) and not 100 (rate)
+  assert.equal(g.titanium, 9);          // 15 - 2*3, plenty left over
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
-test('a refinery with no input produces nothing (no-op, stays green)', () => {
+test('a refinery missing ANY input produces nothing (no-op, stays green)', () => {
   let s = playerFounded();
-  // refinery but NO mine: the guild holds no titanium.
-  s = advance(s, [refinery()]).state;
-  const g = s.guilds[0].stockpiles || {};
-  assert.equal(g.titanium || 0, 0);
-  assert.equal(g.alloy_ingots || 0, 0);
+  // titanium mine but NO carbon mine: one input is present, the other is absent.
+  s = advance(s, [tmine()]).state;                 // titanium => 5
+  s = advance(s, [refinery()]).state;              // mine +5 => 10 ti; carbon 0 => 0 batches
+  const g = s.guilds[0].stockpiles;
+  assert.equal(g.titanium, 10);                    // untouched — no batch ran
+  assert.equal(g.titanium_alloy || 0, 0);
+  assert.equal(g.carbon_products || 0, 0);
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
@@ -83,7 +91,7 @@ test('a refinery on a resource node is rejected', () => {
 });
 
 test('a mining venture on a settlement slot is rejected', () => {
-  const v = validateAction(playerFounded(), mine({ siteId: 'pl_00004_s01' }));
+  const v = validateAction(playerFounded(), tmine({ siteId: 'pl_00004_s01' }));
   assert.equal(v.valid, false);
   assert.match(v.reason, /not a resource node/);
 });

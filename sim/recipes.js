@@ -7,23 +7,33 @@
 // caller can NOT invent an arbitrary conversion (no turning 3 titanium into
 // 1000 gold), exactly as a mining venture can't mine a good a node doesn't hold.
 //
-// A recipe is a BATCH: `input.qty` of `input.good` -> `output.qty` of
-// `output.good`. A refining venture runs up to its `productionRate` batches per
-// tick, throttled by how much input its owner actually holds (tick.js's
-// production step). Both goods must be legal stockpile goods (resources.js) — a
-// drift-style test asserts that, so a recipe can't reference a good that doesn't
-// exist.
+// A recipe is a BATCH: it consumes `qty` of EACH good in `inputs` and produces
+// `output.qty` of `output.good`. A refining venture runs up to its
+// `productionRate` batches per tick, throttled by the SCARCEST input — the
+// fewest batches any single input can afford (tick.js's production step). Every
+// input good and the output must be a legal stockpile good (resources.js) — a
+// drift-style test asserts that, so a recipe can't reference a good that
+// doesn't exist.
 //
-// [FIRST-CUT] numbers (ruled 03-08-26; recorded in phase-1-tuning.md):
-//   titanium_to_alloy = 3 titanium -> 1 alloy_ingot per batch.
-// The ratio is open to a veto; the catalog SHAPE (a fixed, id-addressed set) is
-// the settled part.
+// Multi-input (04-08-26): `inputs` is an ARRAY, so a recipe can require several
+// goods at once (real manufacturing rarely takes a single feedstock). A
+// single-input recipe is just an array of length 1.
+//
+// [PLACEHOLDER] numbers: the ratios below are provisional and unbalanced — they
+// exist so the recipe FUNCTIONS and can be tested, not because they're tuned.
+// Real ratios are set through the live recipe editor and then baked back here
+// (recorded in phase-1-tuning.md). The catalog SHAPE (a fixed, id-addressed set
+// of multi-input batches) is the settled part.
+//   titanium_alloy = 3 titanium + 1 carbon_products -> 1 titanium_alloy.
 
 const RECIPES = Object.freeze({
-  titanium_to_alloy: Object.freeze({
-    id: 'titanium_to_alloy',
-    input: Object.freeze({ good: 'titanium', qty: 3 }),
-    output: Object.freeze({ good: 'alloy_ingots', qty: 1 }),
+  titanium_alloy: Object.freeze({
+    id: 'titanium_alloy',
+    inputs: Object.freeze([
+      Object.freeze({ good: 'titanium', qty: 3 }),
+      Object.freeze({ good: 'carbon_products', qty: 1 }),
+    ]),
+    output: Object.freeze({ good: 'titanium_alloy', qty: 1 }),
   }),
 });
 

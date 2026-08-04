@@ -56,12 +56,12 @@ const RAW_RESOURCE_SET = new Set(RAW_RESOURCES);
 // Processed goods: REFINED from raw goods and held in guild stockpiles like any
 // tradeable good — UNLIKE `deuterium_fuel`, which is also refined but lives in
 // the reserve/hoards and is governed by the fuel law, never as a stockpile row.
-// The first is `alloy_ingots` (refined from titanium; see recipes.js). Processed
-// goods are NOT minable and NOT in any archetype pool, so the drift guard (which
-// guards raw goods only) is unaffected. The id string is a [FIRST-CUT], like
-// `deuterium_fuel`; the raw-vs-processed distinction itself is settled.
+// The first is `titanium_alloy` (refined from titanium + carbon_products; see
+// recipes.js). Processed goods are NOT minable and NOT in any archetype pool, so
+// the drift guard (which guards raw goods only) is unaffected. The id string is a
+// [FIRST-CUT], like `deuterium_fuel`; the raw-vs-processed distinction is settled.
 const PROCESSED_GOODS = Object.freeze([
-  'alloy_ingots',
+  'titanium_alloy',
 ]);
 
 const PROCESSED_GOOD_SET = new Set(PROCESSED_GOODS);

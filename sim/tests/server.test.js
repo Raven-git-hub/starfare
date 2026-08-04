@@ -111,10 +111,13 @@ test('GET /recipes returns the refining catalog', async () => {
   const { status, body } = await req('GET', '/recipes');
   assert.equal(status, 200);
   assert.ok(Array.isArray(body.recipes));
-  const alloy = body.recipes.find((r) => r.id === 'titanium_to_alloy');
-  assert.ok(alloy, 'titanium_to_alloy present');
-  assert.deepEqual(alloy.input, { good: 'titanium', qty: 3 });
-  assert.deepEqual(alloy.output, { good: 'alloy_ingots', qty: 1 });
+  const alloy = body.recipes.find((r) => r.id === 'titanium_alloy');
+  assert.ok(alloy, 'titanium_alloy present');
+  assert.deepEqual(alloy.inputs, [
+    { good: 'titanium', qty: 3 },
+    { good: 'carbon_products', qty: 1 },
+  ]);
+  assert.deepEqual(alloy.output, { good: 'titanium_alloy', qty: 1 });
 });
 
 test('GET /health reports liveness (JSON)', async () => {
