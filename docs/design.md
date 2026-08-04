@@ -106,7 +106,7 @@ Toll Paths also turn out to be the single most technically valuable structure in
 
 ## 3. The Economy: Resources and the Manufacturing Tree
 
-Everything buildable traces back to raw materials mined from planets, through a **four-phase pipeline**: Raw Materials → Processed Materials → Manufactured Parts → Constructed Items / Advanced Assets. The one exception is **Deuterium**, which runs on a parallel track as the game's sole energy source — consumed to _run_ spacecraft (transport and fleets) rather than climbing the parts ladder. **Ventures do not burn Deuterium**: planet-bound production is powered by local renewable sources, so a guild that mines, refines, and manufactures entirely within its own system needs no fuel at all. Deuterium is the price of *movement* — reaching other systems, the Syndicate, and the wider market — which makes fuel consumption a lever on galactic *interaction* specifically, and keeps deliberate isolation a viable playstyle rather than a slow starvation. Deuterium is a fusion fuel found only on **sea worlds** — concretely, the **Oceanic** archetype (Section 2), where every planet is guaranteed ≥2 Deuterium nodes and Oceanic frequency is therefore the galaxy's fuel-supply dial. This makes Oceanic the *Arrakis* of the setting: one archetype, needed by every guild, controllable by none — the core premise made literal in the generator rather than only in the fiction. Processed Deuterium Fuel is the one commodity that is **Syndicate-regulated and cannot be sold privately**; guilds earn larger fuel allocations by contributing to deuterium reserves, giving the scarcity system a positive-sum lever alongside its baseline mechanics.
+Everything buildable traces back to raw materials mined from planets, through a **four-tier pipeline**: Raw Materials → Processed Materials → Manufactured Parts → Constructed Items / Advanced Assets. The one exception is **Deuterium**, which runs on a parallel track as the game's sole energy source — consumed to _run_ spacecraft (transport and fleets) rather than climbing the parts ladder. **Ventures do not burn Deuterium**: planet-bound production is powered by local renewable sources, so a guild that mines, refines, and manufactures entirely within its own system needs no fuel at all. Deuterium is the price of *movement* — reaching other systems, the Syndicate, and the wider market — which makes fuel consumption a lever on galactic *interaction* specifically, and keeps deliberate isolation a viable playstyle rather than a slow starvation. Deuterium is a fusion fuel found only on **sea worlds** — concretely, the **Oceanic** archetype (Section 2), where every planet is guaranteed ≥2 Deuterium nodes and Oceanic frequency is therefore the galaxy's fuel-supply dial. This makes Oceanic the *Arrakis* of the setting: one archetype, needed by every guild, controllable by none — the core premise made literal in the generator rather than only in the fiction. Processed Deuterium Fuel is the one commodity that is **Syndicate-regulated and cannot be sold privately**; guilds earn larger fuel allocations by contributing to deuterium reserves, giving the scarcity system a positive-sum lever alongside its baseline mechanics.
 
 ### Material Roles
 
@@ -120,7 +120,7 @@ Raw materials play three structurally different roles as they climb the tree, wh
 
 **Raw materials:** Minerals — Titanium, Lithium, Polymers, Carbon Products, Gold, Silver, Silica, Copper, Lead, Tungsten, Palladium, Neodymium. Gases — Xenon, Ammonia, Nitrogen, Helium. Fuel — Deuterium.
 
-**Phase 1 → 2 (Raw → Processed):** *(These are the live recipe catalog in `sim/recipes.js` — the id-addressed set of conversions a refining venture may run. Each is a **multi-input batch**, throttled by its scarcest input. Quantities are `[PLACEHOLDER]` pending the live tuner and are recorded in `docs/phase-1-tuning.md`, not fixed here; the input *sets* are the settled part. `sim/recipes.js` is authoritative for the exact ids and ratios.)*
+**Tier 1 → 2 (Raw → Processed):** *(These are the live recipe catalog in `sim/recipes.js` — the id-addressed set of conversions a refining venture may run. Each is a **multi-input batch**, throttled by its scarcest input. Quantities are `[PLACEHOLDER]` pending the live tuner and are recorded in `docs/phase-1-tuning.md`, not fixed here; the input *sets* are the settled part. `sim/recipes.js` is authoritative for the exact ids and ratios.)*
 
 |Processed Good|Made From (per batch)|
 |---|---|
@@ -138,7 +138,7 @@ Raw materials play three structurally different roles as they climb the tree, wh
 
 *Palladium, Xenon, Nitrogen, and Helium remain **process consumables** (catalyst / fabrication gases — §3 Material Roles above): they appear only as recipe inputs, never as their own processed good. "Glass" from the earlier sketch is not (yet) a catalog good.*
 
-**Phase 2 → 3 (Processed → Manufactured Parts):**
+**Tier 2 → 3 (Processed → Manufactured Parts):**
 
 |Manufactured Part|Built From|
 |---|---|
@@ -151,7 +151,7 @@ Raw materials play three structurally different roles as they climb the tree, wh
 |Motors/Generators|Magnetic Assemblies + Conductive Wire|
 |Life Support Machines|Composite Resin + Power Storage Units + Coolant Fluid|
 
-**Phase 3 → 4** began as a generic constructed-items table (Space Vehicles, Refinery/Factory Modules, Weapons, Stations/Colony Modules) establishing the key principle that most constructed items draw on **multiple independent supply chains simultaneously** — so cornering a single material can stall production several tiers up without ever touching the target directly. The advanced-manufacturing pass has since started replacing that table with specific asset recipes (Section 4). The whole tree remains a starting shape rather than a locked recipe list.
+**Tier 3 → 4** began as a generic constructed-items table (Space Vehicles, Refinery/Factory Modules, Weapons, Stations/Colony Modules) establishing the key principle that most constructed items draw on **multiple independent supply chains simultaneously** — so cornering a single material can stall production several tiers up without ever touching the target directly. The advanced-manufacturing pass has since started replacing that table with specific asset recipes (Section 4). The whole tree remains a starting shape rather than a locked recipe list.
 
 ---
 
