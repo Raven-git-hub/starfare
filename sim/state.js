@@ -76,7 +76,7 @@ function createGuild({
 }
 
 // Venture (OWNED, design.md §15.4). Fields not yet needed by the walking
-// skeleton (licenceId, siteId, droneComplement, shareholders, automation,
+// skeleton (licenceId, siteId, droidComplement, shareholders, automation,
 // reputation) are left out rather than defaulted to a made-up value —
 // add them when a real consumer needs them, not speculatively.
 function createVenture({
