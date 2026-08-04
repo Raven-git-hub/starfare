@@ -56,6 +56,11 @@ test('GET / serves the testbed UI (HTML)', async () => {
   // field is gone (see the /starters slice, 04-08-26).
   assert.match(html, /<select id="f-home">/);
   assert.doesNotMatch(html, /id="f-influence"/);
+  // Guild Management overlay scaffolding is present (slice 2, 04-08-26): the
+  // per-card MANAGE affordance, the full-screen overlay, and its guild selector.
+  assert.match(html, /class="manage"/);
+  assert.match(html, /id="guild-overlay"/);
+  assert.match(html, /id="go-guild"/);
 });
 
 test('GET /starters lists the seed\'s startable home systems', async () => {

@@ -99,6 +99,46 @@
   .badsite { color: var(--warn); }
   .synd { color: var(--text-dim); }
   .owned { color: var(--accent); }
+
+  /* --- Guild Management overlay (seed_viewer-style full-screen detail) --- */
+  .guildcard .manage { margin-top: 8px; font-size: 11px; letter-spacing: 1px; padding: 5px 12px; }
+  #guild-overlay {
+    position: fixed; inset: 0; z-index: 50; display: none; overflow-y: auto;
+    background: var(--bg); padding: 18px 22px 60px;
+  }
+  #guild-overlay.open { display: block; }
+  .go-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+  .go-bar h1 { font-size: 15px; }
+  .go-bar .pick { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; display: flex; align-items: center; gap: 6px; }
+  .go-bar select {
+    font-family: inherit; font-size: 12px; background: #05070d; color: var(--text);
+    border: 1px solid var(--line-bright); border-radius: 2px; padding: 6px 8px;
+  }
+  .go-bar .spacer { flex: 1; }
+  .go-head { border: 1px solid var(--line-bright); border-radius: 3px; padding: 12px 16px; background: var(--panel); margin-bottom: 14px; }
+  .go-head .gid { color: var(--accent); font-size: 15px; letter-spacing: 1px; }
+  .go-head .tag { font-size: 10px; letter-spacing: 1px; color: var(--text-dim); border: 1px solid var(--line-bright); padding: 1px 6px; border-radius: 2px; margin-left: 8px; }
+  .go-head .stats { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+  .go-head .stats b { color: var(--text); font-weight: 500; }
+  .go-head .holdings { font-size: 12px; margin-top: 8px; }
+  .go-head .holdings b { color: var(--text); font-weight: 500; }
+  .go-head .holdings .none { color: var(--text-dim); }
+  .go-sec-title { font-size: 12px; letter-spacing: 2px; color: var(--text-dim); margin: 4px 0 10px; }
+  .sys { border: 1px solid var(--line-bright); border-radius: 3px; margin-bottom: 10px; background: var(--panel); overflow: hidden; }
+  .sys-head {
+    display: flex; align-items: baseline; gap: 12px; width: 100%; text-align: left;
+    background: transparent; border: none; color: var(--text); padding: 11px 14px; cursor: pointer; letter-spacing: 0.5px;
+  }
+  .sys-head:hover { background: rgba(67,217,200,0.06); }
+  .sys-head .caret { color: var(--accent); width: 12px; }
+  .sys-head .sname { font-size: 13px; }
+  .sys-head .sname b { color: var(--accent); font-weight: 500; }
+  .sys-head .ssum { flex: 1; text-align: right; color: var(--text-dim); font-size: 11px; }
+  .home-badge { font-size: 10px; letter-spacing: 1px; color: var(--fuel); border: 1px solid var(--fuel); padding: 0 5px; border-radius: 2px; margin-left: 6px; }
+  .sys-body { padding: 4px 14px 14px 26px; border-top: 1px solid var(--line); }
+  .sys-body .planet { margin-top: 10px; }
+  .sys-body .pl-name { font-size: 12px; color: var(--text-dim); letter-spacing: 1px; margin-bottom: 4px; }
+  .sys-body .pl-name b { color: var(--text); font-weight: 500; }
 </style>
 </head>
 <body>
@@ -143,6 +183,23 @@
     <div class="panel" id="guildpanel"></div>
     <div class="panel full" id="venturepanel"></div>
     <div class="panel full" id="claimpanel"></div>
+  </div>
+
+  <!-- Guild Management overlay: a full-screen, seed_viewer-style detail screen
+       for ONE guild. Read-only debug lens; opened from a guild card's MANAGE
+       button, dismissed with BACK or Escape. Carries its own TICK/REFRESH so you
+       can advance the galaxy and watch this guild's numbers move in place. -->
+  <div id="guild-overlay">
+    <div class="go-bar">
+      <h1>GUILD MANAGEMENT</h1>
+      <label class="pick">managing <select id="go-guild"></select></label>
+      <span class="spacer"></span>
+      <button id="go-tick" class="tick" type="button">TICK &#9654;</button>
+      <button id="go-refresh" type="button">REFRESH</button>
+      <button id="go-exit" type="button">&#10005; BACK</button>
+    </div>
+    <div class="warnbar">DEBUG LENS — god's-eye view of one guild's live state. Shows figures players never see. NOT player UI.</div>
+    <div id="go-body"></div>
   </div>
 
 <script>
@@ -259,6 +316,7 @@ document.getElementById('btn-venture').addEventListener('click', function () {
 // --- rendering (mirrors client/state_inspector.html) ------------------------
 
 function render(snap) {
+  LAST_SNAP = snap;
   document.getElementById('meta').innerHTML =
     'tick <b>' + esc(snap.tick) + '</b>' +
     ' &nbsp;·&nbsp; schema <b>' + esc(snap.schemaVersion) + '</b>' +
@@ -272,6 +330,7 @@ function render(snap) {
   renderGuilds(snap.guilds);
   renderVentures(snap.ventures);
   renderClaims(snap.claims || []);
+  renderGuildOverlay(snap);
 }
 
 function renderFuel(fuel) {
@@ -314,6 +373,7 @@ function renderGuilds(guilds) {
         '<div class="stats">credits <b>' + esc(g.credits) + '</b> &nbsp; fuel hoard <b>' + esc(g.fuelHoard) + '</b> &nbsp; influence <b>' + esc(g.influence) + '</b></div>' +
         home +
         '<div class="stockline">stockpiles: ' + stock + '</div>' +
+        '<button class="manage" data-guild="' + esc(g.id) + '" type="button">MANAGE &#9656;</button>' +
       '</div>';
   }).join('');
   document.getElementById('guildpanel').innerHTML =
@@ -369,6 +429,182 @@ function renderClaims(claims) {
       ? '<table><thead><tr><th>owner</th><th>landmark</th><th class="num">tick</th><th>contested</th></tr></thead><tbody>' + rows + '</tbody></table>'
       : '<div class="site">no claims</div>');
 }
+
+// --- Guild Management overlay (seed_viewer-style full-screen detail) --------
+// A god's-eye, READ-ONLY view of ONE guild's live situation. It COMPUTES
+// NOTHING about the galaxy: live figures come from the latest /snapshot
+// (re-rendered on every tick), and each system's static layout
+// (planets/nodes/slots) comes from GET /system/:id, fetched once and cached
+// because the seed never moves. The browser holds only VIEW state — which guild
+// is being managed and which system sections are expanded — never a game number.
+
+var LAST_SNAP = null;      // the most recent snapshot render() received
+var overlayGuildId = null; // which guild the overlay manages (view state)
+var openSystems = {};      // systemId -> true when expanded (view state)
+var SYSTEM_LAYOUTS = {};   // systemId -> GET /system/:id layout (static cache)
+
+var goEl = document.getElementById('guild-overlay');
+function overlayOpen() { return goEl.classList.contains('open'); }
+
+// systems a guild controls = its system-kind claims (home first). One today,
+// but built to scale to N.
+function guildSystems(snap, guildId) {
+  var g = (snap.guilds || []).find(function (x) { return x.id === guildId; });
+  var homeId = g ? g.homeSystemId : null;
+  var ids = (snap.claims || [])
+    .filter(function (c) { return c.landmarkKind === 'system' && c.ownerGuildId === guildId; })
+    .map(function (c) { return c.landmarkId; });
+  ids.sort(function (a, b) {
+    if (a === homeId) return -1;
+    if (b === homeId) return 1;
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+  return ids;
+}
+
+// Fetch + cache any not-yet-known system layouts for the managed guild. Static
+// seed data, so once cached it is never refetched (not even on tick).
+async function ensureLayoutsFor(guildId) {
+  if (!LAST_SNAP) return;
+  var ids = guildSystems(LAST_SNAP, guildId);
+  await Promise.all(ids.map(async function (id) {
+    if (SYSTEM_LAYOUTS[id]) return;
+    try {
+      var r = await api('GET', '/system/' + encodeURIComponent(id));
+      if (r.status === 200 && r.data && r.data.planets) SYSTEM_LAYOUTS[id] = r.data;
+    } catch (e) { /* leave uncached; the summary line degrades gracefully */ }
+  }));
+}
+
+async function openGuildOverlay(guildId) {
+  overlayGuildId = guildId;
+  goEl.classList.add('open');
+  await ensureLayoutsFor(guildId);
+  renderGuildOverlay(LAST_SNAP);
+}
+
+function closeGuildOverlay() {
+  goEl.classList.remove('open');
+  overlayGuildId = null;
+}
+
+// the ventures a guild has seated on one planet of one system (from the snapshot)
+function ventureRowsFor(snap, guildId, systemId, planetId) {
+  var vs = (snap.ventures || []).filter(function (v) {
+    return v.ownerGuildId === guildId && v.site && v.site.systemId === systemId && v.site.planetId === planetId;
+  });
+  if (!vs.length) return '<div class="site" style="margin-left:8px;">· no ventures here</div>';
+  return vs.map(function (v) {
+    var kind = v.type === 'mining' ? 'Mine' : v.type === 'refining' ? 'Refinery' : esc(v.type);
+    var makes = v.site && v.site.kind === 'resource'
+      ? 'mines ' + esc(v.site.resourceType)
+      : (v.recipeId ? 'refines ' + esc(v.recipeId) : '');
+    return '<div class="site" style="margin-left:8px;">· <b>' + esc(v.id) + '</b> — ' + kind +
+      ' @ ' + esc(v.siteId) + (makes ? ' (' + makes + ')' : '') +
+      ' · rate <b>' + esc(v.productionRate) + '</b></div>';
+  }).join('');
+}
+
+// Pure render of the managed guild from the latest snapshot + cached layouts.
+function renderGuildOverlay(snap) {
+  if (!overlayOpen() || !snap) return;
+
+  // keep the guild selector in sync with the live guild list
+  var sel = document.getElementById('go-guild');
+  var guildIds = (snap.guilds || []).map(function (g) { return g.id; });
+  sel.innerHTML = guildIds.map(function (id) {
+    return '<option value="' + esc(id) + '"' + (id === overlayGuildId ? ' selected' : '') + '>' + esc(id) + '</option>';
+  }).join('');
+
+  // a guild we were managing can vanish (RESET) — close cleanly
+  if (guildIds.indexOf(overlayGuildId) === -1) { closeGuildOverlay(); return; }
+  var g = snap.guilds.find(function (x) { return x.id === overlayGuildId; });
+
+  var stockKeys = Object.keys(g.stockpiles || {}).filter(function (k) { return g.stockpiles[k] > 0; }).sort();
+  var holdings = stockKeys.length
+    ? stockKeys.map(function (k) { return esc(k) + ' <b>' + esc(g.stockpiles[k]) + '</b>'; }).join(' &nbsp; ')
+    : '<span class="none">(empty)</span>';
+
+  var head =
+    '<div class="go-head">' +
+      '<div><span class="gid">' + esc(g.id) + '</span>' +
+        (g.name && g.name !== g.id ? ' <span class="site">(' + esc(g.name) + ')</span>' : '') +
+        '<span class="tag">' + (g.isBot ? 'BOT' : 'HUMAN') + '</span></div>' +
+      '<div class="stats">credits <b>' + esc(g.credits) + '</b> &nbsp; fuel hoard <b>' + esc(g.fuelHoard) + '</b> &nbsp; influence <b>' + esc(g.influence) + '</b></div>' +
+      '<div class="holdings">holdings: ' + holdings + '</div>' +
+    '</div>';
+
+  var occ = snap.occupancy || {};
+  var homeId = g.homeSystemId;
+  var sysIds = guildSystems(snap, overlayGuildId);
+  var systemsHtml = sysIds.map(function (sysId) {
+    var layout = SYSTEM_LAYOUTS[sysId] || null;
+    var open = !!openSystems[sysId];
+
+    // static/live composition: how many of this system's sites are occupied
+    // (occupancy is LIVE from the snapshot; the site list is STATIC from layout)
+    var summary = 'loading layout…';
+    if (layout) {
+      var nT = 0, nO = 0, sT = 0, sO = 0;
+      layout.planets.forEach(function (p) {
+        p.resourceNodes.forEach(function (n) { nT++; if (occ[n.id]) nO++; });
+        p.settlementSlots.forEach(function (s) { sT++; if (occ[s.id]) sO++; });
+      });
+      summary = layout.planets.length + ' planet' + (layout.planets.length === 1 ? '' : 's') + ' · nodes ' + nO + '/' + nT + ' · slots ' + sO + '/' + sT;
+    }
+
+    var body = '';
+    if (open) {
+      body = layout
+        ? layout.planets.map(function (p) {
+            return '<div class="planet">' +
+              '<div class="pl-name"><b>' + esc(p.id) + '</b> · ' + esc(p.archetype) +
+                ' · ' + p.resourceNodes.length + ' nodes, ' + p.settlementSlots.length + ' slots</div>' +
+              ventureRowsFor(snap, overlayGuildId, sysId, p.id) +
+            '</div>';
+          }).join('')
+        : '<div class="site">layout unavailable (could not reach GET /system/' + esc(sysId) + ')</div>';
+    }
+
+    var label = layout && layout.name ? layout.name : sysId;
+    return '<div class="sys">' +
+      '<button class="sys-head" data-sys="' + esc(sysId) + '" type="button">' +
+        '<span class="caret">' + (open ? '\u25be' : '\u25b8') + '</span>' +
+        '<span class="sname"><b>' + esc(label) + '</b>' +
+          (layout && layout.name ? ' <span class="site">' + esc(sysId) + '</span>' : '') +
+          (layout && layout.ring ? ' · ' + esc(layout.ring) : '') +
+          (sysId === homeId ? '<span class="home-badge">HOME</span>' : '') + '</span>' +
+        '<span class="ssum">' + esc(summary) + '</span>' +
+      '</button>' +
+      (open ? '<div class="sys-body">' + body + '</div>' : '') +
+    '</div>';
+  }).join('');
+
+  document.getElementById('go-body').innerHTML =
+    head +
+    '<div class="go-sec-title">SYSTEMS (' + sysIds.length + ')</div>' +
+    (systemsHtml || '<div class="site">this guild controls no systems</div>');
+}
+
+// wiring: MANAGE buttons (delegated on the persistent guild panel), the guild
+// selector, the system collapsers, the overlay's own TICK/REFRESH, BACK, Escape.
+document.getElementById('guildpanel').addEventListener('click', function (e) {
+  var btn = e.target.closest('.manage');
+  if (btn && btn.dataset.guild) openGuildOverlay(btn.dataset.guild);
+});
+document.getElementById('go-guild').addEventListener('change', function () { openGuildOverlay(this.value); });
+document.getElementById('go-body').addEventListener('click', function (e) {
+  var h = e.target.closest('.sys-head');
+  if (!h || !h.dataset.sys) return;
+  openSystems[h.dataset.sys] = !openSystems[h.dataset.sys];
+  renderGuildOverlay(LAST_SNAP);
+});
+document.getElementById('go-tick').addEventListener('click', function () { refresh('POST', 'ticked', '/tick'); });
+document.getElementById('go-refresh').addEventListener('click', function () { refresh('GET', 'refreshed'); });
+document.getElementById('go-exit').addEventListener('click', closeGuildOverlay);
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && overlayOpen()) closeGuildOverlay();
+});
 
 // Populate the home-system picker from the seed's real starter-eligible systems
 // (GET /starters). The picker offers exactly the startable homes the seed
