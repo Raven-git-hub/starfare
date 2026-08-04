@@ -275,39 +275,18 @@
   }
   .list-row.tab > *{ position:relative; z-index:1; }
 
-  /* simple placeholder textures per archetype — two-layer gradients hinting at
-     each world's character. Swap any of these for background-image: url(...)
-     once real artwork exists; background-size:cover above already handles it. */
-  .tex-rocky{ background:
-    radial-gradient(circle at 20% 25%, var(--c-rocky-l) 0%, transparent 40%),
-    radial-gradient(circle at 78% 70%, var(--c-rocky-d) 0%, transparent 45%),
-    var(--c-rocky); }
-  .tex-terran{ background:
-    radial-gradient(circle at 28% 72%, var(--c-terran-l) 0%, transparent 42%),
-    radial-gradient(circle at 72% 22%, var(--c-oceanic) 0%, transparent 36%),
-    var(--c-terran); }
-  .tex-oceanic{ background:
-    repeating-linear-gradient(180deg, var(--c-oceanic-l) 0px, var(--c-oceanic-l) 2px, transparent 2px, transparent 14px),
-    var(--c-oceanic); }
-  .tex-ice{ background:
-    repeating-linear-gradient(115deg, var(--c-ice-l) 0px, var(--c-ice-l) 3px, transparent 3px, transparent 22px),
-    var(--c-ice); }
-  .tex-gasGiant{ background:
-    repeating-linear-gradient(180deg, var(--c-gasGiant-d) 0px, var(--c-gasGiant-d) 10px, var(--c-gasGiant-l) 10px, var(--c-gasGiant-l) 18px, var(--c-gasGiant) 18px, var(--c-gasGiant) 30px); }
-  .tex-molten{ background:
-    radial-gradient(circle at 65% 72%, var(--c-molten-l) 0%, transparent 35%),
-    repeating-linear-gradient(60deg, var(--c-molten-d) 0px, var(--c-molten-d) 1px, transparent 1px, transparent 16px),
-    var(--c-molten); }
-  .tex-desert{ background:
-    repeating-linear-gradient(100deg, var(--c-desert-l) 0px, var(--c-desert-l) 6px, transparent 6px, transparent 26px),
-    var(--c-desert); }
-  .tex-irradiated{ background:
-    repeating-linear-gradient(45deg, var(--c-irradiated-d) 0px, var(--c-irradiated-d) 4px, transparent 4px, transparent 34px),
-    var(--c-irradiated); }
-  .tex-crystalline{ background:
-    linear-gradient(120deg, var(--c-crystalline-l) 0%, transparent 32%),
-    linear-gradient(255deg, var(--c-crystalline-d) 0%, transparent 38%),
-    var(--c-crystalline); }
+  /* archetype textures — real art (committed 05-08-26), one JPEG per archetype,
+     living at assets/planets/. background-size:cover on .list-row.tab already
+     handles arbitrary image aspect ratios. */
+  .tex-rocky{ background-image: url('assets/planets/rocky.jpg'); }
+  .tex-terran{ background-image: url('assets/planets/terran.jpg'); }
+  .tex-oceanic{ background-image: url('assets/planets/oceanic.jpg'); }
+  .tex-ice{ background-image: url('assets/planets/ice.jpg'); }
+  .tex-gasGiant{ background-image: url('assets/planets/gasGiant.jpg'); }
+  .tex-molten{ background-image: url('assets/planets/molten.jpg'); }
+  .tex-desert{ background-image: url('assets/planets/desert.jpg'); }
+  .tex-irradiated{ background-image: url('assets/planets/irradiated.jpg'); }
+  .tex-crystalline{ background-image: url('assets/planets/crystalline.jpg'); }
   .tex-node{ background:
     repeating-linear-gradient(135deg, rgba(232,223,200,0.035) 0px, rgba(232,223,200,0.035) 1px, transparent 1px, transparent 12px),
     var(--bg-chip); }
@@ -417,22 +396,24 @@
     border:1px solid rgba(201,162,39,0.35);
     box-shadow:0 0 0 1px rgba(201,162,39,0.08);
     animation:hero-in 700ms ease-out both;
+    background-size:cover;
+    background-position:center;
   }
   @keyframes hero-in{
     from{ opacity:0; transform:scale(0.92); }
     to{ opacity:1; transform:scale(1); }
   }
 
-  .hero.star{ background:var(--brass-dim); }
-  .hero.planet-rocky{ background:var(--c-rocky); }
-  .hero.planet-terran{ background:var(--c-terran); }
-  .hero.planet-oceanic{ background:var(--c-oceanic); }
-  .hero.planet-ice{ background:var(--c-ice); }
-  .hero.planet-gasGiant{ background:var(--c-gasGiant); }
-  .hero.planet-molten{ background:var(--c-molten); }
-  .hero.planet-desert{ background:var(--c-desert); }
-  .hero.planet-irradiated{ background:var(--c-irradiated); }
-  .hero.planet-crystalline{ background:var(--c-crystalline); }
+  .hero.star{ background-image: url('assets/planets/star.jpg'); }
+  .hero.planet-rocky{ background-image: url('assets/planets/rocky.jpg'); }
+  .hero.planet-terran{ background-image: url('assets/planets/terran.jpg'); }
+  .hero.planet-oceanic{ background-image: url('assets/planets/oceanic.jpg'); }
+  .hero.planet-ice{ background-image: url('assets/planets/ice.jpg'); }
+  .hero.planet-gasGiant{ background-image: url('assets/planets/gasGiant.jpg'); }
+  .hero.planet-molten{ background-image: url('assets/planets/molten.jpg'); }
+  .hero.planet-desert{ background-image: url('assets/planets/desert.jpg'); }
+  .hero.planet-irradiated{ background-image: url('assets/planets/irradiated.jpg'); }
+  .hero.planet-crystalline{ background-image: url('assets/planets/crystalline.jpg'); }
 
   .hero-ring{
     position:absolute;
@@ -440,22 +421,6 @@
     border-radius:50%;
     border:1px dashed rgba(232,223,200,0.25);
   }
-  .hero-caption{
-    position:absolute;
-    right:22px; top:22px;
-    max-width:112px;
-    text-align:right;
-    pointer-events:none;
-  }
-  .hero-caption .tag{
-    display:block;
-    font-family:'IBM Plex Mono', monospace;
-    font-size:8px;
-    letter-spacing:0.1em;
-    color:rgba(232,223,200,0.45);
-    text-transform:uppercase;
-  }
-
   /* ---------- Main content (right) ---------- */
   .main{
     position:relative;
@@ -1450,7 +1415,7 @@ function renderSystemView(){
   el.backBtn.classList.remove('visible');
 
   el.hero.className = 'hero star';
-  el.hero.innerHTML = '<span class="hero-ring"></span><span class="hero-caption"><span class="tag">Artwork pending</span></span>';
+  el.hero.innerHTML = '<span class="hero-ring"></span>';
 
   el.mainHeading.textContent = 'System Manifest';
   el.emptyCopy.textContent = 'Territory, tolls, and venture data for this system have not yet been charted. Select a body from the index to continue.';
@@ -1490,7 +1455,7 @@ function renderPlanetView(){
   el.backBtn.classList.add('visible');
 
   el.hero.className = 'hero planet-' + p.archetype;
-  el.hero.innerHTML = '<span class="hero-ring"></span><span class="hero-caption"><span class="tag">Artwork pending</span></span>';
+  el.hero.innerHTML = '<span class="hero-ring"></span>';
 
   el.mainHeading.textContent = 'Planet Manifest';
   el.emptyCopy.textContent = 'Claim status, venture activity, and extraction data for ' + planetDesignation(p) + ' have not yet been charted. Select a node from the index to continue.';
