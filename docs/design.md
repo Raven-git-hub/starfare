@@ -114,7 +114,7 @@ Raw materials play three structurally different roles as they climb the tree, wh
 
 - **Embedded-component materials** physically persist into the final good — Titanium, Carbon Products, Lithium, Gold/Silver/Copper, Silica, Polymers, Tungsten, Lead, Neodymium.
 - **Process-consumable materials** are consumed _during_ fabrication rather than becoming part of the output — Palladium as a refining catalyst; Xenon and Nitrogen as fabrication gases. A shortage here throttles _all_ downstream output depending on the process, a distinct chokepoint from a missing component.
-- **Energy input** — Deuterium alone, sitting outside the tree entirely and tying into the energy-throttle mechanic.
+- **Energy input** — Deuterium alone, sitting outside the tree entirely: the fuel *spacecraft* burn for movement and interaction, never a venture input (production is renewable-powered — see this section's opening and open question #54).
 
 ### The Pipeline
 
@@ -207,7 +207,7 @@ Guilds set up **ventures** — small production companies for mining, refining/p
 
 Supply chains are an explicit **attack surface**: a guild can starve a rival's venture by cornering an input market or pressuring a supplier's territory owner — all without direct conflict or rule-breaking. **Partial transparency** supports this: venture _types_ are visible (letting rivals infer likely inputs), but exact stockpiles are hidden, preserving room for market intuition and the future espionage layer.
 
-**Production is automated.** Players set parameters — production rate, buy/sell thresholds, stop conditions, stockpile targets — rather than micromanaging, so casual players can set conservative defaults while engaged players tune aggressively. Production scale is throttled by **energy consumption drawn from the same fuel pool as fleet operations**, which is the deliberate crux: during a shortage, a guild must choose whether to fuel the fleet or fuel the factories.
+**Production is automated.** Players set parameters — production rate, buy/sell thresholds, stop conditions, stockpile targets — rather than micromanaging, so casual players can set conservative defaults while engaged players tune aggressively. Production draws **no fuel**: ventures are renewable-powered, so a guild can mine, refine, and manufacture entirely within its own system without touching Deuterium (§3, open question #54). Fuel is the price of *movement and interaction* — reaching other systems, the Syndicate, and the market — which is where a squeeze actually bites: through fleet and route burn and the shared allocation pool, not through any venture-level draw.
 
 Other guilds can take **minority investment stakes** in ventures they don't own, giving smaller guilds a way into production without territory and owners a way to raise capital without losing control — and creating negotiation surfaces like "I'll invest if you guarantee priority access to output."
 
