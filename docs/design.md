@@ -222,7 +222,37 @@ Supply chains are an explicit **attack surface**: a guild can starve a rival's v
 
 **Production is automated.** Players set parameters — production rate, buy/sell thresholds, stop conditions, stockpile targets — rather than micromanaging, so casual players can set conservative defaults while engaged players tune aggressively. Production draws **no fuel**: ventures are renewable-powered, so a guild can mine, refine, and manufacture entirely within its own system without touching Deuterium (§3, open question #54). Fuel is the price of *movement and interaction* — reaching other systems, the Syndicate, and the market — which is where a squeeze actually bites: through fleet and route burn and the shared allocation pool, not through any venture-level draw.
 
-Other guilds can take **minority investment stakes** in ventures they don't own, giving smaller guilds a way into production without territory and owners a way to raise capital without losing control — and creating negotiation surfaces like "I'll invest if you guarantee priority access to output."
+Other guilds can take **minority investment stakes** in ventures they don't own, giving smaller guilds a way into production without territory and owners a way to raise capital without losing control — and creating negotiation surfaces like "I'll invest if you guarantee priority access to output." Crucially, **an investor pays the owner a capital injection at the point of sale** (credits move investor→owner, so conservation holds — invariant 2). Without it, offering equity would be strictly irrational — a bounded fee cut bought with a permanent share of all future dividends — so the injection is what makes the equity lever in the licence fee below a real choice: **cash now versus income later.**
+
+### The Venture Licence Fee *(05-08-26)*
+
+A licensed venture pays the Syndicate an ongoing **maintenance fee**. The **basic fee** is a flat rate per venture type — the *maximum* the venture ever pays. Two levers reduce it, and the intent is that **neither alone does much, but in tandem they do a lot**:
+
+- **Output commitment** — a share of the venture's output promised to the Syndicate, expressed as a **percentage of the asset's *known standard output*** (its rated production, §4), so a droid-boosted asset (higher standard output) automatically owes a larger absolute quantity. Commitment is **firm**: miss the committed delivery and the guild pays the full basic fee as breach. Minimum commitment **5%** `[FIRST-CUT]`.
+- **Equity offered** — a stake in the venture offered to outside investors, up to the structural **49%** ceiling (the owner keeps control by retaining at least 51%). The fee keys off what was **offered at contract time**, not on whether investors actually buy it, and not on whether they later sell — an untouched 49% offering counts in full. (The capital injection an investor pays the owner, above, is what makes offering equity rational.)
+
+**Fuel is excluded**: Deuterium refining is a Syndicate monopoly with no guild licence to price (§8), so this fee model governs **non-fuel ventures only**.
+
+**The four-corner grid.** The two levers are not independent, and the relationship is not a curve to fit — you author the **four extreme corners** and interpolate. Let `c` = commitment (0 at the 5% minimum, 1 at 100%) and `o` = equity offered (0 at nothing, 1 at 49%):
+
+| | offer min | offer max |
+|---|---|---|
+| **commit min** | 100% fee | 75% fee |
+| **commit max** | 75% fee | **0% fee** |
+
+giving `fee% = 100·(1−c)(1−o) + 75·c(1−o) + 75·(1−c)·o + 0·c·o`. That bilinear interpolation makes every intermediate value fall out:
+
+| commit ↓ / offer → | 0 | 25% | 50% | 75% | max |
+|---|---|---|---|---|---|
+| **min (5%)** | 100 | 94 | 88 | 81 | 75 |
+| **25%** | 94 | 84 | 75 | 66 | 56 |
+| **50%** | 88 | 75 | 63 | 50 | 38 |
+| **75%** | 81 | 66 | 50 | 34 | 19 |
+| **100%** | 75 | 56 | 38 | 19 | **0** |
+
+Each lever alone buys 25 points of relief; together they buy 100 — the last half exists **only when both are pulled**, which is the "individually weak, jointly strong" intent expressed as arithmetic. Three properties worth keeping: the design statement is **four readable numbers**, not a fitted curve (tuning is editing the corner table); **asymmetry is free** — change the corners to 70/80 and you have said the Syndicate values output over openness, with no change to the formula; and the earlier "exponential" instinct still fits — apply a shaping exponent to `c` before interpolating (`c' = c^1.5`, so low commitments buy proportionally less), corners untouched.
+
+The fee is a credit **sink** to the Syndicate (sanctioned, invariant 2); breach charges the full basic fee (still a sink). The corner values (100/75/75/0), the 5% floor, the shaping exponent, and the per-type basic fees are all placeholders → open question #56. **Terms are alterable periodically**; if the venture has investors, alteration requires a **75% majority** (anti-scalping), whose basis is open question #57.
 
 ### Reputation and Hostile Takeovers
 
@@ -509,6 +539,8 @@ The **derive, don't store** principle does most of the work here. Of ~101,000 he
 **Venture** (OWNED): `id`, `ownerGuildId`, `type`, `assetId` (nullable — the ground **Asset** this venture operates; **reserved, not-yet-built**, §4/§15.4), `licenceId`, `siteId` (the resource node or settlement slot it occupies — reference only), `resourceType` (the raw good a mining venture extracts; its output flows to the owner guild's `stockpiles`), `recipeId` (for a **refining** venture (03-08-26): the `sim/recipes.js` recipe it runs — a **multi-input** batch (04-08-26): consuming EACH of the recipe's input goods from and producing its output good into the owner's `stockpiles`, up to `productionRate` batches/tick, throttled by the scarcest input; a venture sets `resourceType` XOR `recipeId`), `productionRate`, `inputStockpiles`, `droidComplement` (min/max), `reputation`, `shareholders`, `automation` (thresholds/targets/stop conditions). *(Ventures carry no fuel/energy draw: production is renewable-powered and consumes no Deuterium — §3. Fuel is burned by spacecraft, via `Vehicle.fuelCostToRun`.)* *(The typeless per-venture `outputStockpile` scalar was **retired 02-08-26**: produced goods are typed and go straight into the owner guild's `stockpiles` — one home, no double-counting — with producer attribution preserved via `lifetimeProduced`. Reversible if a produced-but-unsold-at-venture state is later needed.)* *(Goods are three kinds (`sim/resources.js`): **raw** (minable, in archetype pools), **processed** (refined into stockpiles — the Phase-2 catalog, 11 goods as of 04-08-26, e.g. `titanium_alloy`), and the special **fuel** (`deuterium_fuel`, held in reserve/hoards, governed by invariant 1). Raw + processed are the legal stockpile keys and the galactic-supply rows; the **recipe catalog** (`sim/recipes.js`) is the fixed set of raw->processed conversions a refining venture may run — each a **multi-input batch** — guarded like the resource vocabulary against referencing a good that doesn't exist.)*
 
 **Asset** (OWNED — **reserved, not yet built (04-08-26)**): `id`, `ownerGuildId`, `kind` (`miner` | `factory`). The physical machine a venture operates (`Venture.assetId`); **guild-owned, not venture-owned** — a venture merely runs it (§5). A `miner` sits on a resource node and extracts its `resourceType`; a `factory` sits on a settlement slot and runs whichever recipe the operating venture assigns it (refine T1→2 / manufacture T2→3 / construct T3→4 — the three factory modes, the latter two not yet built). Condition, decay, and relocatability (the orbital-limbo recovery) come with §5's lease treatment. No code consumer yet — documented as the reserved shape, per the "add fields when a real consumer needs them" convention (`sim/state.js`).
+
+**Licence** (OWNED — **reserved, not yet built (05-08-26)**): `id`, `ventureType`, `committedOutputPct` (≥ the 5% floor), `equityOfferedPct` (≤ 49%), `breachState`. The Syndicate Venture Licence a venture runs under (`Venture.licenceId`). Its **maintenance fee** = the per-type **basic fee** (a config constant, not stored per-licence) reduced by the four-corner grid (§5) interpolated on `committedOutputPct` × `equityOfferedPct`. **Non-fuel only** — Deuterium refining is a Syndicate monopoly with no guild licence (§8). No code consumer yet (`sim/actions.js`: "no licence/site cost yet") — documented as the reserved shape, per the "add fields when a real consumer needs them" convention.
 
 **Vehicle** (OWNED): `id`, `ownerGuildId`, `class`, `speed`/`capacity`/`defenseRating`/`fuelCostToRun`, `status`. *(The Syndicate Hauler is an instance of this with a very high `defenseRating` — not a special case.)*
 
@@ -803,6 +835,11 @@ Added by the fuel-consumption correction (21-07-26):
 **Added by the refining-monopoly ruling (05-08-26):**
 
 55. **Refining-monopoly tunables.** The Deuterium→fuel **conversion rate**; whether the Syndicate **auto-refines** everything it buys or holds raw stock; the **black-market refining fine** level (tuned to sit just on the worth-the-risk line, §7); and the price/standing a guild earns selling raw Deuterium to the Syndicate. Numbers deliberately unset (working rule 5).
+
+**Added by the venture-licence fee model (05-08-26):**
+
+56. **Venture-licence fee corners and shaping.** The four corner values (100/75/75/0 `[FIRST-CUT]`), the 5% minimum commitment, whether a shaping exponent is applied to `c` (and its value, e.g. `c^1.5`), and the per-venture-type basic fees — all placeholders, a decision-checklist table, never invented silently (working rule 5).
+57. **Terms-alteration majority basis.** Altering a venture's licence terms requires a **75% majority** when it has investors (anti-scalping, §5). Open: 75% of **shares outstanding** or of **votes cast**? A permanent blocking minority — e.g. the 25%-capped tenant of a leased venture (§4's lease model) — can block by simply ignoring the vote under "outstanding," whereas "cast" forces attendance and pulls in the vote-window fairness problem (#14/#51) at per-venture scale.
 
 ---
 
