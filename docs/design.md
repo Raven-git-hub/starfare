@@ -120,21 +120,23 @@ Raw materials play three structurally different roles as they climb the tree, wh
 
 **Raw materials:** Minerals — Titanium, Lithium, Polymers, Carbon Products, Gold, Silver, Silica, Copper, Lead, Tungsten, Palladium, Neodymium. Gases — Xenon, Ammonia, Nitrogen, Helium. Fuel — Deuterium.
 
-**Phase 1 → 2 (Raw → Processed):**
+**Phase 1 → 2 (Raw → Processed):** *(These are the live recipe catalog in `sim/recipes.js` — the id-addressed set of conversions a refining venture may run. Each is a **multi-input batch**, throttled by its scarcest input. Quantities are `[PLACEHOLDER]` pending the live tuner and are recorded in `docs/phase-1-tuning.md`, not fixed here; the input *sets* are the settled part. `sim/recipes.js` is authoritative for the exact ids and ratios.)*
 
-|Raw Material|Processed Material|
+|Processed Good|Made From (per batch)|
 |---|---|
-|Titanium|Titanium Alloy Plate/Ingot|
-|Carbon Products|Carbon Fiber Weave / Nanotube Cable|
-|Lithium|Battery Cells|
-|Gold / Silver / Copper|Conductive Wire/Contacts|
-|Silica|Glass / Silicon Wafer|
-|Polymers|Composite Resin|
-|Tungsten|Heat-Resistant Alloy|
-|Lead|Radiation Shielding Stock|
-|Neodymium|Magnetic Assemblies|
-|Ammonia|Coolant/Refrigerant Fluid|
-|Palladium, Xenon, Nitrogen, Helium|Consumed as process inputs only|
+|titanium_alloy|3 titanium + 1 carbon_products|
+|carbon_fiber_weave|1 carbon_products + 1 polymers|
+|nanotube_cable|1 carbon_products + 1 nitrogen + 1 silica|
+|battery_cells|1 lithium + 1 polymers + 1 nitrogen|
+|conductive_material|1 copper + 1 silica|
+|silicon_wafer|1 silica + 1 silver + 1 palladium|
+|composite_resin|1 polymers + 1 nitrogen|
+|heat_resistant_alloy|1 tungsten + 1 helium + 1 carbon_products|
+|radiation_shielding|1 lead + 1 titanium + 1 xenon|
+|magnetic_assemblies|1 neodymium + 1 xenon + 1 gold + 1 lithium|
+|refrigerant_fluid|1 ammonia + 1 nitrogen|
+
+*Palladium, Xenon, Nitrogen, and Helium remain **process consumables** (catalyst / fabrication gases — §3 Material Roles above): they appear only as recipe inputs, never as their own processed good. "Glass" from the earlier sketch is not (yet) a catalog good.*
 
 **Phase 2 → 3 (Processed → Manufactured Parts):**
 
