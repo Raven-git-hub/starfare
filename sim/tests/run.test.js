@@ -55,7 +55,7 @@ test('the zero-state boots green with no guilds and Syndicate-owned claims', () 
 
 test('foundGuild inserts the guild and debits its credits from the ledger', () => {
   const s = createZeroState();
-  const action = createFoundGuildAction({ guildId: 'player', name: 'Player Guild', credits: 120, influence: 100, homeSystemId: 'sys_0002' });
+  const action = createFoundGuildAction({ guildId: 'player-guild', name: 'Player Guild', credits: 120, influence: 100, homeSystemId: 'sys_0002' });
   const { state: next, results } = advance(s, [action]);
 
   assert.equal(results.length, 1);
@@ -63,7 +63,7 @@ test('foundGuild inserts the guild and debits its credits from the ledger', () =
 
   assert.equal(next.guilds.length, 1);
   const g = next.guilds[0];
-  assert.equal(g.id, 'player');
+  assert.equal(g.id, 'player-guild');
   assert.equal(g.credits, 120);
   assert.equal(g.fuelHoard, 0);
   assert.equal(g.influence, 100); // +20 claim bonus does NOT fire at founding
@@ -72,7 +72,7 @@ test('foundGuild inserts the guild and debits its credits from the ledger', () =
   // and a matching home claim -- the ownership source of truth -- was added.
   assert.equal(g.homeSystemId, 'sys_0002');
   assert.equal(g.homePlanetId, 'pl_00004');
-  const home = next.claims.find((c) => c.landmarkId === 'sys_0002' && c.ownerGuildId === 'player');
+  const home = next.claims.find((c) => c.landmarkId === 'sys_0002' && c.ownerGuildId === 'player-guild');
   assert.ok(home, 'a guild-owned home claim on sys_0002 must exist');
   assert.equal(home.landmarkKind, 'system');
 
@@ -133,7 +133,7 @@ test('advance halts loudly when a resulting state breaks an invariant', () => {
 // --- determinism through the driver ----------------------------------------
 
 test('same zero-state + same actions, run twice, byte-identical at tick 10', () => {
-  const actions = [createFoundGuildAction({ guildId: 'player', credits: 120, influence: 100, homeSystemId: 'sys_0002' })];
+  const actions = [createFoundGuildAction({ guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: 'sys_0002' })];
   function run() {
     let s = createZeroState();
     // turn 1 founds the guild; turns 2..10 are quiet ticks.

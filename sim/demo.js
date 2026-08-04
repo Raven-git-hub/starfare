@@ -69,14 +69,14 @@ console.log(summary(state));
 console.log('  invariants: OK\n');
 
 console.log('=== 2. The owner founds the first guild (one turn) ===');
-console.log('  action: foundGuild player ($120, influence 100, home sys_0002, one mine @ 5 Titanium/tick)');
+console.log('  action: foundGuild player-guild ($120, influence 100, home sys_0002, one mine @ 5 Titanium/tick)');
 const foundPlayer = createFoundGuildAction({
-  guildId: 'player',
+  guildId: 'player-guild',
   name: 'Player Guild',
   credits: 120,       // [phase-1-tuning.md]
   influence: 100,     // [phase-1-tuning.md]
   homeSystemId: HOME_SYSTEM,
-  ventures: [{ id: 'mine_1', ownerGuildId: 'player', type: 'mining', siteId: MINE_SITE, resourceType: 'titanium', productionRate: 5 }], // [phase-1-tuning.md]
+  ventures: [{ id: 'mine_1', ownerGuildId: 'player-guild', type: 'mining', siteId: MINE_SITE, resourceType: 'titanium', productionRate: 5 }], // [phase-1-tuning.md]
 });
 let res = advance(state, [foundPlayer]);
 state = res.state;

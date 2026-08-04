@@ -129,13 +129,13 @@ test('founding on a non-starter system is rejected', () => {
 test('founding seats the guild on its homeworld and claims the system', () => {
   const s = createZeroState();
   const { state: next, results } = intake(s, [
-    createFoundGuildAction({ guildId: 'player', credits: 120, influence: 100, homeSystemId: 'sys_0002' }),
+    createFoundGuildAction({ guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: 'sys_0002' }),
   ]);
   assert.equal(results[0].accepted, true);
   const g = next.guilds[0];
   assert.equal(g.homeSystemId, 'sys_0002');
   assert.equal(g.homePlanetId, 'pl_00004');
-  const home = next.claims.find((c) => c.landmarkId === 'sys_0002' && c.ownerGuildId === 'player');
+  const home = next.claims.find((c) => c.landmarkId === 'sys_0002' && c.ownerGuildId === 'player-guild');
   assert.ok(home);
   assert.equal(home.landmarkKind, 'system');
   assert.deepEqual(checkInvariants(next, next.tick), []);

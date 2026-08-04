@@ -21,11 +21,11 @@ const {
 
 function playerFounded() {
   const s = createZeroState();
-  return advance(s, [createFoundGuildAction({ guildId: 'player', credits: 120, influence: 100, homeSystemId: 'sys_0002' })]).state;
+  return advance(s, [createFoundGuildAction({ guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: 'sys_0002' })]).state;
 }
-const tmine = (over = {}) => createEstablishVentureAction({ guildId: 'player', ventureId: 'tmine', siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5, ...over });
-const cmine = (over = {}) => createEstablishVentureAction({ guildId: 'player', ventureId: 'cmine', siteId: 'pl_00004_n08', resourceType: 'carbon_products', productionRate: 5, ...over });
-const refinery = (over = {}) => createEstablishVentureAction({ guildId: 'player', ventureId: 'refinery', type: 'refining', siteId: 'pl_00004_s01', recipeId: 'titanium_alloy', productionRate: 2, ...over });
+const tmine = (over = {}) => createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'tmine', siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5, ...over });
+const cmine = (over = {}) => createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'cmine', siteId: 'pl_00004_n08', resourceType: 'carbon_products', productionRate: 5, ...over });
+const refinery = (over = {}) => createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'refinery', type: 'refining', siteId: 'pl_00004_s01', recipeId: 'titanium_alloy', productionRate: 2, ...over });
 
 // --- constructor guards ----------------------------------------------------
 

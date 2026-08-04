@@ -26,7 +26,7 @@ function sampleState() {
   return createState({
     guilds: [
       {
-        id: 'player',
+        id: 'player-guild',
         name: 'Player Guild',
         credits: 120,
         fuelHoard: 4,
@@ -35,7 +35,7 @@ function sampleState() {
         homePlanetId: 'pl_00004',
         stockpiles: { titanium: 15, lead: 3 },
         ventures: [
-          { id: 'mine_1', ownerGuildId: 'player', type: 'mining', siteId: 'pl_00001_n02', resourceType: 'titanium', productionRate: 5 },
+          { id: 'mine_1', ownerGuildId: 'player-guild', type: 'mining', siteId: 'pl_00001_n02', resourceType: 'titanium', productionRate: 5 },
         ],
       },
       { id: 'bot_a', name: 'Bot A', isBot: true, credits: 80, fuelHoard: 1, stockpiles: { titanium: 5 } },
@@ -44,7 +44,7 @@ function sampleState() {
     syndicate: { ledger: -200 },
     claims: [
       { claimId: 'claim_citadel', ownerGuildId: 'syndicate', landmarkId: 'citadel', landmarkKind: 'citadel', claimedAtTick: 0, contested: false },
-      { claimId: 'claim_home_player', ownerGuildId: 'player', landmarkId: 'sys_0002', landmarkKind: 'system', claimedAtTick: 0, contested: false },
+      { claimId: 'claim_home_player-guild', ownerGuildId: 'player-guild', landmarkId: 'sys_0002', landmarkKind: 'system', claimedAtTick: 0, contested: false },
     ],
   });
 }
@@ -105,7 +105,7 @@ test('each seated venture carries its seed site resolved by getSite', () => {
 test('guild breakdown copies the shown fields and does not alias live state', () => {
   const s = sampleState();
   const snap = buildSnapshot(s);
-  const p = snap.guilds.find((g) => g.id === 'player');
+  const p = snap.guilds.find((g) => g.id === 'player-guild');
   assert.equal(p.credits, 120);
   assert.equal(p.fuelHoard, 4);
   assert.equal(p.influence, 100);
@@ -114,15 +114,15 @@ test('guild breakdown copies the shown fields and does not alias live state', ()
   assert.deepEqual(p.stockpiles, { titanium: 15, lead: 3 });
   // Mutating the snapshot must not reach back into the state's stockpiles.
   p.stockpiles.titanium = 999;
-  assert.equal(s.guilds.find((g) => g.id === 'player').stockpiles.titanium, 15);
+  assert.equal(s.guilds.find((g) => g.id === 'player-guild').stockpiles.titanium, 15);
 });
 
 test('claims carry their seed landmark resolved, in order', () => {
   const s = sampleState();
   const snap = buildSnapshot(s);
   assert.equal(snap.claims.length, 2);
-  const home = snap.claims.find((c) => c.claimId === 'claim_home_player');
-  assert.equal(home.ownerGuildId, 'player');
+  const home = snap.claims.find((c) => c.claimId === 'claim_home_player-guild');
+  assert.equal(home.ownerGuildId, 'player-guild');
   assert.equal(home.landmarkId, 'sys_0002');
   assert.equal(home.landmarkKind, 'system');
   assert.ok(home.landmark, 'the home system landmark must resolve');

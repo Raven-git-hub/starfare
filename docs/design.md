@@ -476,7 +476,7 @@ Boring rules that exist to prevent drift between independently-written pieces of
 
 - **Money is stored as integer whole credits.** Never floating-point — drift silently violates conservation over thousands of ticks.
 - **Fuel and goods are integers** in v0 (fixed-point later would be a deliberate migration, not an accident).
-- **The word is `guild`** — never `faction`, `house`, or `player` — for the economic actor.
+- **The word is `guild`** — never `faction`, `house`, or `player` — for the economic actor. *(Guild **ids** distinguish human from constructed actors by prefix — the human's guild is `player-guild`, bot guilds `bot-guild` — an id convention, not a rename: the entity, its `guildId` field, and the code's `guild` variables stay `guild` throughout.)*
 - **Manufacturing *tiers*, never manufacturing "phases."** Tier 1 Raw → Tier 2 Processed → Tier 3 Parts → Tier 4 Constructed Assets. "Phase" is reserved exclusively for the development roadmap; the Marketplace thread's phase-tab vocabulary is retired so the two numbering schemes can't collide. *(Adopted 17-07-26.)*
 - **Ownership has a single source of truth.** Territory ownership lives on the map; a guild's "list of territories" is a *derived view*, never written to directly.
 - **Every ID is stable and unique**, never reused, even after the thing is destroyed.

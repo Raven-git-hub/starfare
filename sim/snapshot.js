@@ -158,20 +158,20 @@ if (require.main === module) {
   // one Titanium mine seated on a real seed node, $120 / influence 100.
   let state = createZeroState();
   const found = createFoundGuildAction({
-    guildId: 'player',
+    guildId: 'player-guild',
     name: 'Player Guild',
     credits: 120,
     influence: 100,
     homeSystemId: 'sys_0002',
     ventures: [
-      { id: 'mine_1', ownerGuildId: 'player', type: 'mining', siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5 },
+      { id: 'mine_1', ownerGuildId: 'player-guild', type: 'mining', siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5 },
     ],
   });
   state = advance(state, [found]).state; // founding also runs one tick
   // A second mine, this time via the establishVenture action (the testbed's
   // "add a venture" path), on the homeworld's other titanium node.
   const secondMine = createEstablishVentureAction({
-    guildId: 'player', ventureId: 'mine_2', siteId: 'pl_00004_n02', resourceType: 'titanium', productionRate: 5, // titanium's ruled rate, matching mine_1 [phase-1-tuning.md]
+    guildId: 'player-guild', ventureId: 'mine_2', siteId: 'pl_00004_n02', resourceType: 'titanium', productionRate: 5, // titanium's ruled rate, matching mine_1 [phase-1-tuning.md]
   });
   state = advance(state, [secondMine]).state;
   for (let i = 0; i < 2; i += 1) state = advance(state, []).state; // two quiet ticks
