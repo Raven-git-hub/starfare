@@ -37,8 +37,7 @@ starfare/
 ├── client/
 │   ├── seed_viewer.html       ← galaxy/claims viewer + System View drill-down (browser, no server)
 │   ├── state_inspector.html   ← god's-eye debug lens over a saved snapshot file
-│   ├── testbed.html           ← the live testbed UI the server serves at GET / (drives the engine)
-│   └── system_planet_ui_mockup.html   ← standalone System View prototype (its view now lives in seed_viewer.html)
+│   └── testbed.html           ← the live testbed UI the server serves at GET / (drives the engine)
 └── data/                      ← committed reference fixtures (all regenerable)
     ├── seed.json              ←   seed 7331, populated (planets · resource nodes · settlement slots)
     └── test_claims.json       ←   claims seed 4242 over seed 7331
@@ -56,7 +55,6 @@ starfare/
 | `tools/generate_seed.js` | The one deterministic galaxy-seed generator — pipeline steps 1–3, 5, 6, 7, 8, 10: systems, names, planets **with archetypes and resource nodes**, outposts, Citadel, starter-eligible tagging, validation. Usage: `node tools/generate_seed.js [seed] [outPath]` | ✅ Populated (01-08-26); byte-identical across runs; seed 7331 → 101,287 hexes · 1,500 systems · 5,290 planets · 23,420 nodes · 337 starter systems · 9 outposts (`validation: PASSED`) | Track G: steps 4 & 9 — ring classification + rare-tier ×4/×1/×0.25 gradient + repair pass (design.md §2) — still in no code; the next slice |
 | `tools/generate_test_claims.js` | Test tooling (not architecture): writes a separate claims file — guilds, territory, outposts, toll gates/paths — obeying the real placement rules, so rendering can be exercised. Usage: `node tools/generate_test_claims.js [seedFile] [claimsSeed] [outPath]` | ✅ Works as designed; re-verified 17-07 (20 guilds · 109 systems · 60 outposts · 49 gates · 29 paths) | Nothing until the seed format grows (Track G) |
 | `client/seed_viewer.html` | Browser viewer: pan/zoom galaxy, territory fills, hex borders at zoom, hollow-ring toll gates, dashed toll paths, click-anything info panel — and a full-screen **System View** overlay (OPEN DETAILS on a system → its planets → each planet's resource nodes, each with an Establish-Venture affordance; exit returns to the map). Loads files via the two file pickers | ✅ Works; System View wired to real seed data and verified in-browser (02-08-26) | Track G: render `ring` once seeds carry it (#34) |
-| `client/system_planet_ui_mockup.html` | The standalone System View prototype (design.md §16) — the origin of the view now embedded in `seed_viewer.html`; runs on hardcoded demo data | ✅ Wired into the viewer 01-08-26; kept as an isolated reference | Decide its fate: keep as reference or retire to avoid drift |
 | `client/state_inspector.html` | God's-eye **debug lens**: loads a saved snapshot file (from `node sim/snapshot.js`) and renders supply, fuel, guilds, ventures. Shows figures players never see — NOT player UI | ✅ Works (03-08-26) | Nothing pending |
 | `client/testbed.html` | The **testbed UI** the server serves at `GET /`: god's-eye panels (supply by tree-tier, fuel, guilds, ventures, claims) + Found-guild / Tick / Reset, and a read-only **Guild Management tab** — pick a guild, drill galaxy → system → planet, and establish ventures in place (mine on a node; refinery-with-recipe-picker on a slot). Drives the live engine over HTTP (refresh-on-action, manual tick) | ✅ Works; verified in headless Chromium (04-08-26) | Auto-tick (server heartbeat + poll), and the live recipe tuner surface |
 | `data/seed.json` | Reference seed 7331 — verified to be exactly what the committed generator produces | ✅ Current for the committed generator | Regenerate when Track G lands |
@@ -64,7 +62,7 @@ starfare/
 
 **Referenced but missing** (built in past sessions, never saved — rebuild per their specs in design.md §16): `galaxy-map-hex.html` · `SyndicateMarketplace.jsx`.
 
-*Recovered 17-07-26: `system_planet_ui_mockup.html` (kept as a reference) and a partial 15-07 `generate_seed.js` — the latter's archetype/node/starter/validation logic has since been absorbed into `tools/generate_seed.js` and the partial file removed (01-08-26).*
+*Recovered 17-07-26: `system_planet_ui_mockup.html` (its System View folded into `seed_viewer.html`; standalone file retired 04-08-26) and a partial 15-07 `generate_seed.js` — the latter's archetype/node/starter/validation logic has since been absorbed into `tools/generate_seed.js` and the partial file removed (01-08-26).*
 
 ## Running what exists
 
