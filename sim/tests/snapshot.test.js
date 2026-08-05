@@ -118,6 +118,36 @@ test('guild breakdown copies the shown fields and does not alias live state', ()
   assert.equal(guildTotals(s.guilds.find((g) => g.id === 'player-guild')).titanium, 15);
 });
 
+test('guild carries a per-system stockpile breakdown (ruling B1), beside the flat total', () => {
+  // The Production view needs a system's OWN holdings, so the snapshot exposes
+  // the nested pools (systemId -> good -> int) as well as the flat guild total.
+  const s = sampleState();
+  const snap = buildSnapshot(s);
+  const p = snap.guilds.find((g) => g.id === 'player-guild');
+  assert.deepEqual(p.stockpilesBySystem, { sys_0002: { titanium: 15, lead: 3 } });
+  // The flat total is still the SUM across systems, unchanged for existing readers.
+  assert.deepEqual(p.stockpiles, guildTotals(s.guilds.find((g) => g.id === 'player-guild')));
+  const bot = snap.guilds.find((g) => g.id === 'bot_a');
+  assert.deepEqual(bot.stockpilesBySystem, { sysB: { titanium: 5 } });
+  // A deep-enough copy: mutating the snapshot must not reach into live state.
+  p.stockpilesBySystem.sys_0002.titanium = 999;
+  assert.equal(guildTotals(s.guilds.find((g) => g.id === 'player-guild')).titanium, 15);
+});
+
+test('each venture carries its systemId and the reserved syndicateCommitment (0/unlicensed)', () => {
+  const s = sampleState();
+  const snap = buildSnapshot(s);
+  const v = snap.ventures.find((x) => x.id === 'mine_1');
+  // systemId is exposed top-level so the Production view can group by system;
+  // here it resolves to the seated site's system.
+  assert.equal(v.systemId, getSite('pl_00001_n02').systemId);
+  // The placeholder is present and 0 for every venture today — no licence exists.
+  assert.equal(v.syndicateCommitment, 0);
+  for (const anyV of snap.ventures) {
+    assert.equal(anyV.syndicateCommitment, 0, 'every venture is unlicensed (0) today');
+  }
+});
+
 test('claims carry their seed landmark resolved, in order', () => {
   const s = sampleState();
   const snap = buildSnapshot(s);

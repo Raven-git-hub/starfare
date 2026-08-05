@@ -238,6 +238,17 @@ function applyAction(state, action) {
     // the ownership claim (the source of truth). The Terran homeworld is the
     // system's lowest-id Terran planet, resolved from the seed.
     const homePlanetId = getTerranHomeworld(action.homeSystemId);
+    // Stamp each inline venture's denormalised systemId from its site (ruling B1,
+    // §15.2) — the pool key production deposits into. This mirrors what
+    // establishVenture does; without it an inline-founded mine would pool its
+    // goods under a `null` system instead of the one its node sits in. (The flat
+    // guild total is unaffected either way — guildTotals sums across pools — but
+    // the per-system breakdown, and any consumer keyed by system, must be right.)
+    const ventures = (action.ventures || []).map((v) => {
+      if (v.systemId != null || v.siteId == null) return v;
+      const site = getSite(v.siteId);
+      return site ? { ...v, systemId: site.systemId } : v;
+    });
     const guild = createGuild({
       id: action.guildId,
       name: action.name,
@@ -248,7 +259,7 @@ function applyAction(state, action) {
       incomeRate: action.incomeRate,
       homeSystemId: action.homeSystemId,
       homePlanetId,
-      ventures: action.ventures,
+      ventures,
     });
     next.guilds.push(guild);
     next.claims.push({
@@ -287,6 +298,10 @@ function applyAction(state, action) {
       resourceType: action.resourceType,
       recipeId: action.recipeId,
       productionRate: action.productionRate,
+      // syndicateCommitment is NOT taken from the action: it is engine-owned and
+      // defaults to 0 (unlicensed) in createVenture. Every venture established
+      // today is unlicensed, so the establish path never supplies it — the
+      // reserved placeholder shape (design.md §15.4, §5) lands at 0.
     }));
     return next;
   }

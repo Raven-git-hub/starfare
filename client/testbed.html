@@ -177,6 +177,44 @@
   .site-row button { font-size: 11px; letter-spacing: 1px; padding: 5px 10px; }
   .site-row button:disabled { opacity: 0.4; cursor: not-allowed; border-color: var(--line); color: var(--text-dim); background: transparent; }
   .site-row .kindpick { color: var(--text-dim); font-size: 11px; }
+
+  /* --- Production view (per-system, read-only) --- */
+  .sub-toggle { display: flex; gap: 8px; margin: 8px 0 12px; }
+  .sub-toggle button { font-size: 11px; letter-spacing: 1px; padding: 5px 12px; }
+  .sub-toggle button.active { background: rgba(67,217,200,0.24); font-weight: 700; }
+  .prod-note {
+    font-size: 11px; color: var(--text-dim); line-height: 1.6; border: 1px solid var(--line);
+    border-radius: 2px; padding: 8px 10px; margin-bottom: 12px; background: rgba(67,217,200,0.03);
+  }
+  .prod-note b { color: var(--text); font-weight: 500; }
+  .good-sec { border: 1px solid var(--line-bright); border-radius: 3px; margin-bottom: 10px; overflow: hidden; }
+  .good-head {
+    display: flex; align-items: baseline; gap: 12px; width: 100%; text-align: left;
+    background: transparent; border: none; color: var(--text); padding: 10px 14px; cursor: pointer; letter-spacing: 0.5px;
+  }
+  .good-head:hover { background: rgba(67,217,200,0.06); }
+  .good-head .caret { color: var(--accent); width: 12px; }
+  .good-head .gname { color: var(--accent); font-size: 13px; font-weight: 500; }
+  .good-head .gmeta { flex: 1; text-align: right; font-size: 11px; color: var(--text-dim); }
+  .good-head .short { color: var(--warn); }
+  .good-head .surplus { color: var(--ok); }
+  .good-body { padding: 4px 14px 14px; border-top: 1px solid var(--line); }
+  .pc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 760px) { .pc-grid { grid-template-columns: 1fr; } }
+  .pc-col h4 { font-size: 11px; letter-spacing: 1.5px; color: var(--text-dim); font-weight: 500; margin: 8px 0 4px; }
+  .pc-col h4 .side-prod { color: var(--accent); }
+  .pc-col h4 .side-cons { color: var(--fuel); }
+  .pc-col table { width: 100%; }
+  .pc-col td.site, .pc-col th { font-size: 11px; }
+  .pc-col tr.tot td { border-top: 1px solid var(--line); color: var(--text); font-weight: 500; }
+  .pc-col .commit { color: var(--text-dim); }
+  .pc-empty { color: var(--text-dim); font-size: 11px; font-style: italic; padding: 4px 0; }
+  .prod-summary { margin-top: 12px; font-size: 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 2px; }
+  .prod-summary .k { color: var(--text-dim); }
+  .prod-summary b { color: var(--text); font-weight: 500; }
+  .prod-summary .short { color: var(--warn); font-weight: 700; }
+  .prod-summary .surplus { color: var(--ok); }
+  .prod-summary .fcfs { display: block; margin-top: 4px; font-size: 11px; color: var(--text-dim); }
 </style>
 </head>
 <body>
@@ -495,6 +533,8 @@ var LAST_SNAP = null;      // the most recent snapshot render() received
 var overlayGuildId = null; // which guild the overlay manages (view state)
 var openSystems = {};      // systemId -> true when expanded (view state)
 var openPlanetBySys = {};  // systemId -> planetId currently drilled into (view state)
+var sysViewMode = {};      // systemId -> 'manifest' | 'production' (view state; default manifest)
+var openGoods = {};        // "systemId::good" -> true when a good's section is expanded (view state)
 var SYSTEM_LAYOUTS = {};   // systemId -> GET /system/:id layout (static cache)
 var RECIPES_LIST = [];     // GET /recipes catalog (rules; fetched once, cached)
 var GOODS_CATS = null;     // GET /goods vocabulary by tier {raw,processed} (rules; fetched once)
@@ -659,6 +699,174 @@ function deployVenture(fields) {
   sendAction(action, 'establishVenture');
 }
 
+// --- Production view (per-system, read-only) --------------------------------
+// This slice ONLY makes the CURRENT production picture visible: no sliders, no
+// allocation change, no selling. Everything shown is composed from ENGINE-OWNED
+// data — nothing is invented in the browser:
+//   - productionRate, resourceType, recipeId, syndicateCommitment, systemId  ← /snapshot
+//   - recipe input/output ratios                                             ← /recipes
+//   - a system's own holdings (stockpilesBySystem)                           ← /snapshot
+// The browser multiplies rate × recipe-ratio for the per-tick output / naive
+// demand and sums the columns. That is display composition of engine numbers,
+// not a recomputed game figure: no engine field is duplicated, no game state is
+// held here, and the tick remains the sole author of every underlying number.
+
+function recipeMap() {
+  var m = {};
+  RECIPES_LIST.forEach(function (r) { m[r.id] = r; });
+  return m;
+}
+
+// Build the per-good producer/consumer breakdown for one guild's ventures in one
+// system. Scoped to the managed guild AND the system: resources are pooled per
+// guild per system (ruling B1), so the set that actually contends over a shared
+// input is exactly this guild's ventures in this system. (Today one guild
+// controls one system, so "the managed guild's ventures here" == "every venture
+// in this system" — the task's wording — but scoping to the pool keeps it honest
+// when that stops being true.)
+function systemProductionModel(sysId, snap, guild) {
+  var rmap = recipeMap();
+  var goods = {}; // good -> { producers:[], consumers:[] }
+  function ensure(g) { if (!goods[g]) goods[g] = { producers: [], consumers: [] }; return goods[g]; }
+
+  var ventures = (snap.ventures || []).filter(function (v) {
+    return v.systemId === sysId && v.ownerGuildId === guild.id;
+  });
+  ventures.forEach(function (v) {
+    var where = v.site ? v.site.planetId : '(unseated)';
+    var commit = v.syndicateCommitment || 0;
+    if (v.resourceType) {
+      // a MINE: produces its raw good at productionRate/tick (output = the rate itself).
+      ensure(v.resourceType).producers.push({ id: v.id, where: where, site: v.siteId, qty: v.productionRate, commit: commit });
+    } else if (v.recipeId) {
+      var r = rmap[v.recipeId];
+      if (!r) return; // recipe catalog not loaded yet — skip rather than invent
+      // a REFINERY: produces output.qty and consumes each input.qty, per batch,
+      // up to productionRate batches/tick. NAIVE (ignores throttling) — the whole
+      // point of this slice is to make that naive-vs-contended gap visible.
+      ensure(r.output.good).producers.push({ id: v.id, where: where, site: v.siteId, qty: v.productionRate * r.output.qty, commit: commit });
+      (r.inputs || []).forEach(function (inp) {
+        ensure(inp.good).consumers.push({ id: v.id, where: where, site: v.siteId, qty: v.productionRate * inp.qty, commit: commit });
+      });
+    }
+  });
+  return { goods: goods, ventureCount: ventures.length };
+}
+
+// One producer/consumer column table (rows + a bold total). `qtyLabel` names the
+// per-tick figure ('out/tick' or 'use/tick'); commitment sits beside every row
+// and in the total — the reserved placeholder, 0 for all today.
+function pcColumn(title, sideClass, rows, qtyLabel) {
+  var head = '<h4><span class="' + sideClass + '">' + title + '</span></h4>';
+  if (!rows.length) return head + '<div class="pc-empty">— none —</div>';
+  var body = rows.map(function (row) {
+    return '<tr>' +
+      '<td>' + esc(row.id) + '</td>' +
+      '<td class="site">' + esc(row.site || row.where) + '</td>' +
+      '<td class="num">' + esc(row.qty) + '</td>' +
+      '<td class="num commit">' + esc(row.commit) + '</td>' +
+    '</tr>';
+  }).join('');
+  var totQty = rows.reduce(function (n, r) { return n + r.qty; }, 0);
+  var totCommit = rows.reduce(function (n, r) { return n + r.commit; }, 0);
+  var tot = '<tr class="tot">' +
+    '<td>TOTAL</td><td class="site"></td>' +
+    '<td class="num">' + esc(totQty) + '</td>' +
+    '<td class="num commit">' + esc(totCommit) + '</td>' +
+  '</tr>';
+  return head +
+    '<table><thead><tr><th>venture</th><th>site</th><th class="num">' + esc(qtyLabel) + '</th><th class="num">commit</th></tr></thead>' +
+    '<tbody>' + body + tot + '</tbody></table>';
+}
+
+// The whole Production panel for a system: a fixed explanatory note, then one
+// collapsible section per good PRODUCED in the system.
+function renderProductionView(sysId, snap, guild) {
+  var model = systemProductionModel(sysId, snap, guild);
+  if (model.ventureCount === 0) {
+    return '<div class="site">no ventures established in this system yet — deploy one from the MANIFEST view.</div>';
+  }
+
+  // Per-system holdings of the managed guild (ruling B1): what this system's pool
+  // currently holds of each good, from the snapshot's per-system breakdown.
+  var sysStock = (guild.stockpilesBySystem || {})[sysId] || {};
+
+  var note =
+    '<div class="prod-note">' +
+      'Figures are per <b>TICK</b> and <b>naive</b> (production rate × recipe ratio) — they do <b>not</b> account for throttling. ' +
+      'When a shared input is short, the engine serves consumers <b>first-come-first-served in venture-establishment order</b>: the earliest-established line gets first call on the pool and later lines starve. That contention is exactly what the SHORT figures below surface. ' +
+      '<br>Per-<b>hour</b> figures are deferred: they need a real tick-duration constant, a tuning decision not yet made (docs/phase-1-tuning.md). ' +
+      '“Syndicate commitment” is a <b>placeholder</b> (0 / unlicensed for every venture today) — it has a place beside every venture and in the totals, no function yet.' +
+    '</div>';
+
+  var producedGoods = Object.keys(model.goods)
+    .filter(function (g) { return model.goods[g].producers.length > 0; })
+    .sort();
+
+  if (!producedGoods.length) {
+    return note + '<div class="site">this system\'s ventures produce nothing yet.</div>';
+  }
+
+  var sections = producedGoods.map(function (good) {
+    var gm = model.goods[good];
+    var produced = gm.producers.reduce(function (n, r) { return n + r.qty; }, 0);
+    var demand = gm.consumers.reduce(function (n, r) { return n + r.qty; }, 0);
+    var onHand = sysStock[good] || 0;
+    var key = sysId + '::' + good;
+    var open = !!openGoods[key];
+
+    // Contention read: produced vs downstream demand within this system's pool.
+    var delta = produced - demand;
+    var badge, badgeCls;
+    if (demand === 0) { badge = 'no downstream demand'; badgeCls = ''; }
+    else if (delta < 0) { badge = 'SHORT by ' + (-delta) + '/tick'; badgeCls = 'short'; }
+    else if (delta > 0) { badge = 'surplus ' + delta + '/tick'; badgeCls = 'surplus'; }
+    else { badge = 'balanced'; badgeCls = ''; }
+
+    var meta = 'produced ' + produced + '/tick · demand ' + demand + '/tick · on hand ' + onHand +
+      ' · <span class="' + badgeCls + '">' + esc(badge) + '</span>';
+
+    var body = '';
+    if (open) {
+      var summary =
+        '<div class="prod-summary">' +
+          '<span class="k">produced</span> <b>' + produced + '</b>/tick &nbsp;·&nbsp; ' +
+          '<span class="k">downstream demand</span> <b>' + demand + '</b>/tick &nbsp;·&nbsp; ' +
+          '<span class="k">on hand (this system)</span> <b>' + onHand + '</b> &nbsp;·&nbsp; ' +
+          (demand === 0
+            ? '<span class="k">no consumers in-system</span>'
+            : delta < 0
+              ? '<span class="short">SHORT by ' + (-delta) + '/tick</span>'
+              : delta > 0
+                ? '<span class="surplus">surplus ' + delta + '/tick</span>'
+                : '<span>balanced</span>') +
+          (delta < 0
+            ? '<span class="fcfs">Downstream demand exceeds production: under the engine\'s first-come-first-served draw, consumers established earlier are served first and later ones run short.</span>'
+            : '') +
+        '</div>';
+      body =
+        '<div class="good-body">' +
+          '<div class="pc-grid">' +
+            '<div class="pc-col">' + pcColumn('PRODUCERS &#9656; output', 'side-prod', gm.producers, 'out/tick') + '</div>' +
+            '<div class="pc-col">' + pcColumn('CONSUMERS &#9666; demand', 'side-cons', gm.consumers, 'use/tick') + '</div>' +
+          '</div>' +
+          summary +
+        '</div>';
+    }
+
+    return '<div class="good-sec">' +
+      '<button class="good-head" data-good="' + esc(good) + '" data-sys="' + esc(sysId) + '" type="button">' +
+        '<span class="caret">' + (open ? '▾' : '▸') + '</span>' +
+        '<span class="gname">' + esc(good) + '</span>' +
+        '<span class="gmeta">' + meta + '</span>' +
+      '</button>' +
+      body +
+    '</div>';
+  }).join('');
+
+  return note + sections;
+}
+
 // Pure render of the managed guild from the latest snapshot + cached layouts.
 function renderGuildOverlay(snap) {
   if (!overlayOpen() || !snap) return;
@@ -709,9 +917,24 @@ function renderGuildOverlay(snap) {
 
     var body = '';
     if (open) {
-      if (!layout) body = '<div class="site">layout unavailable (could not reach GET /system/' + esc(sysId) + ')</div>';
-      else if (openPlanetBySys[sysId]) body = renderPlanetManifest(layout, sysId, openPlanetBySys[sysId], snap, occ);
-      else body = renderPlanetList(layout, sysId, occ);
+      // Two sub-views per system: MANIFEST (the planet/site drill-down + establish
+      // controls) and PRODUCTION (this slice's read-only resource-flow picture).
+      var mode = sysViewMode[sysId] || 'manifest';
+      var toggle = '<div class="sub-toggle">' +
+        '<button class="sub' + (mode === 'manifest' ? ' active' : '') + '" data-sysmode="manifest" data-sys="' + esc(sysId) + '" type="button">MANIFEST</button>' +
+        '<button class="sub' + (mode === 'production' ? ' active' : '') + '" data-sysmode="production" data-sys="' + esc(sysId) + '" type="button">PRODUCTION</button>' +
+        '</div>';
+      var inner;
+      if (mode === 'production') {
+        inner = renderProductionView(sysId, snap, g);
+      } else if (!layout) {
+        inner = '<div class="site">layout unavailable (could not reach GET /system/' + esc(sysId) + ')</div>';
+      } else if (openPlanetBySys[sysId]) {
+        inner = renderPlanetManifest(layout, sysId, openPlanetBySys[sysId], snap, occ);
+      } else {
+        inner = renderPlanetList(layout, sysId, occ);
+      }
+      body = toggle + inner;
     }
 
     var label = layout && layout.name ? layout.name : sysId;
@@ -745,6 +968,21 @@ document.getElementById('go-body').addEventListener('click', function (e) {
   var sysHead = e.target.closest('.sys-head');
   if (sysHead && sysHead.dataset.sys) {
     openSystems[sysHead.dataset.sys] = !openSystems[sysHead.dataset.sys];
+    renderGuildOverlay(LAST_SNAP);
+    return;
+  }
+  // MANIFEST / PRODUCTION sub-view toggle for a system.
+  var modeBtn = e.target.closest('[data-sysmode]');
+  if (modeBtn) {
+    sysViewMode[modeBtn.dataset.sys] = modeBtn.dataset.sysmode;
+    renderGuildOverlay(LAST_SNAP);
+    return;
+  }
+  // Collapse/expand one good's producers/consumers section in the Production view.
+  var goodHead = e.target.closest('.good-head');
+  if (goodHead) {
+    var k = goodHead.dataset.sys + '::' + goodHead.dataset.good;
+    openGoods[k] = !openGoods[k];
     renderGuildOverlay(LAST_SNAP);
     return;
   }

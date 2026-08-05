@@ -84,6 +84,10 @@
 - **Contest-defense** `[FIRST-CUT]`: defend an owned system if attacker's committed influence ≤ **0.5×** the bot's available influence, else concede.
 - **Shortfall throttle** `[FIRST-CUT]`: in the squeeze-regression check, **record-only** (matches the sheet); in live play, a shortfall cuts next-tick effective output proportionally.
 
+### Time & display
+
+- **Tick duration (real time per tick)** — **UNDECIDED, open item** (surfaced 05-08-26 by the read-only Production view). The Production view shows all flow figures per **TICK**; converting any of them to a per-**hour** rate needs a real seconds-per-tick (or ticks-per-hour) constant, which is a tuning decision **not yet made** — so per-hour is deliberately left a clean seam in the UI, and no number is invented. Phase 2's heartbeat carries a *working assumption* of **one minute/tick** (roadmap Phase 2, "confirm #5"), but that is a persistence-server assumption pending confirmation, not a ruled sandbox constant — do not hardcode a per-hour multiplier off it until it is ruled. When decided, record it here and the per-hour seam can light up in one place.
+
 ---
 
 *When Stage 2/3 runs and these start to feel wrong, change them here. That is the expected workflow, not a failure of planning.*

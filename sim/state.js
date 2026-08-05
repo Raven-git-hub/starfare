@@ -92,6 +92,7 @@ function createVenture({
   recipeId = null,
   productionRate = 0,
   inputStockpiles = {},
+  syndicateCommitment = 0,
 }) {
   if (id === undefined) throw new Error('createVenture: id is required');
   if (ownerGuildId === undefined) throw new Error('createVenture: ownerGuildId is required');
@@ -132,6 +133,18 @@ function createVenture({
     recipeId,
     productionRate,
     inputStockpiles: { ...inputStockpiles },
+    // syndicateCommitment: a RESERVED PLACEHOLDER (design.md §15.4, §5) for the
+    // share of this venture's output promised to the Syndicate under its future
+    // licence. 0 = UNLICENSED, which is every venture today: no licence system
+    // exists yet (Licence is itself a reserved entity, §15.4), so there is no
+    // path that sets this to anything but 0. It is ENGINE-OWNED — defaulted here
+    // rather than operator-supplied — precisely so the Production view can read a
+    // real field off the venture instead of inventing its own number. Kept an
+    // INTEGER (§15.2) so it sums cleanly in the view's totals: it is a per-tick
+    // committed QUANTITY of output, not a percentage. NO tick step reads it, so
+    // carrying it is a behavioural no-op; it exists to give commitment a home
+    // everywhere (rows + totals) before slice 3 gives it a function.
+    syndicateCommitment,
     // NOTE: the old typeless `outputStockpile` scalar was retired in the
     // resource-representation slice (02-08-26). Produced goods are typed and go
     // straight into the owner guild's `stockpiles` — one home, no drift. There

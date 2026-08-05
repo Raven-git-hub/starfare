@@ -14,6 +14,7 @@ const { assertInvariants } = require('./invariants.js');
 const { computeOccupancy } = require('./occupancy.js');
 const { getSite } = require('./seed.js');
 const { hashState } = require('./serialize.js');
+const { guildTotals } = require('./stock.js');
 
 // A real Titanium resource node from the seed to seat the mine on. Chosen once,
 // here, so the demo shows a venture living on an actual place in the galaxy.
@@ -23,9 +24,12 @@ const { hashState } = require('./serialize.js');
 const HOME_SYSTEM = 'sys_0002';
 const MINE_SITE = 'pl_00004_n01'; // titanium node on sys_0002's Terran homeworld pl_00004
 
-// Total Titanium held across all guild stockpiles.
+// Total Titanium held across all guild stockpiles. Stockpiles are SYSTEM-SCOPED
+// (ruling B1, §15.2): `guild.stockpiles` is a nested systemId->good->int map, so
+// read it through the stock.js accessor (`guildTotals` flattens the per-system
+// pools) rather than the old flat `g.stockpiles.titanium`, which B1 retired.
 function heldTitanium(state) {
-  return state.guilds.reduce((sum, g) => sum + ((g.stockpiles && g.stockpiles.titanium) || 0), 0);
+  return state.guilds.reduce((sum, g) => sum + (guildTotals(g).titanium || 0), 0);
 }
 
 function summary(state) {

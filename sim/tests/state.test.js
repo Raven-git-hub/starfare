@@ -65,6 +65,10 @@ test('createVenture fills in defaults', () => {
   assert.deepEqual(v.inputStockpiles, {});
   assert.equal(v.resourceType, null, 'resourceType defaults to null (mines nothing until set)');
   assert.equal(v.outputStockpile, undefined, 'the typeless outputStockpile scalar was retired');
+  // syndicateCommitment is the RESERVED placeholder (§15.4, §5): engine-owned and
+  // 0/unlicensed by default, since no licence system exists yet. It is defaulted
+  // (never operator-supplied) precisely so the Production view reads a real field.
+  assert.equal(v.syndicateCommitment, 0, 'syndicateCommitment defaults to 0 (unlicensed)');
 });
 
 test('createVehicle defaults to a light transport, idle, with no fuel/speed/etc. invented', () => {

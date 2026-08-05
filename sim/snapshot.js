@@ -28,14 +28,19 @@
 const { computeGalacticSupply } = require('./supply.js');
 const { computeOccupancy } = require('./occupancy.js');
 const { getSite, getLandmark } = require('./seed.js');
-const { guildTotals } = require('./stock.js');
+const { guildTotals, cloneStockpiles } = require('./stock.js');
 
 // Bump when the shape below changes so the inspector can refuse a stale file
 // loudly instead of rendering half of it. The inspector checks this.
 // v2 (03-08-26): added top-level `claims` (the SHARED territory layer), so the
 // debug lens can finally see Syndicate waystations + guild homes, not just
 // guilds/ventures.
-const SNAPSHOT_SCHEMA = 2;
+// v3 (05-08-26): the read-only Production view's data support — a guild's
+// per-system stockpile breakdown (`stockpilesBySystem`, ruling B1), and each
+// venture's `systemId` + reserved `syndicateCommitment` placeholder. All
+// ADDITIVE: existing fields (flat `stockpiles`, etc.) are untouched, so older
+// readers keep working; the bump is honest bookkeeping that the shape grew.
+const SNAPSHOT_SCHEMA = 3;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
 //   {
@@ -46,8 +51,10 @@ const SNAPSHOT_SCHEMA = 2;
 //     },
 //     syndicate: { ledger },
 //     guilds: [ { id, name, isBot, credits, fuelHoard, influence,
-//                 stockpiles: { good: int } } ],
-//     ventures: [ { id, ownerGuildId, type, siteId, resourceType, productionRate,
+//                 stockpiles: { good: int },                    // flat guild total
+//                 stockpilesBySystem: { systemId: { good: int } } } ], // per-system
+//     ventures: [ { id, ownerGuildId, type, siteId, systemId, resourceType,
+//                   recipeId, productionRate, syndicateCommitment,
 //                   site: { kind, planetId, systemId, resourceType } | null } ],
 //     occupancy: { <siteId>: <ventureId> },
 //     claims: [ { claimId, ownerGuildId, landmarkId, landmarkKind, claimedAtTick,
@@ -71,10 +78,16 @@ function buildSnapshot(state) {
     homeSystemId: g.homeSystemId || null,
     homePlanetId: g.homePlanetId || null,
     // Guild-level holdings = the per-system pools flattened into one { good: int }
-    // (ruling B1, §15.2): the snapshot shows a guild's TOTAL across its systems,
-    // so the client keeps reading a flat map and needs no change. A per-system
-    // breakdown will be added here when a consumer (the management tab) needs it.
+    // (ruling B1, §15.2): the guild's TOTAL across its systems, kept for existing
+    // readers (guild cards, the overlay holdings line) that want one figure.
     stockpiles: guildTotals(g),
+    // Per-system breakdown (ruling B1): the SAME pools, unflattened —
+    // systemId -> good -> int. Added now that the Production view needs a
+    // system's own holdings (the "add the field when a consumer needs it" case
+    // the roadmap anticipated). A deep-enough copy so the snapshot can never
+    // alias back into live state, exactly like the flat total above is a fresh
+    // object. The engine owns the split; the browser only reads a system's row.
+    stockpilesBySystem: cloneStockpiles(g.stockpiles || {}),
   }));
 
   // Every venture, flattened out of its owner guild, with its seed site
@@ -91,9 +104,18 @@ function buildSnapshot(state) {
         ownerGuildId: v.ownerGuildId,
         type: v.type,
         siteId: v.siteId || null,
+        // systemId: the venture's own denormalised system key (ruling B1) — the
+        // pool its production moves goods in. Exposed top-level so the Production
+        // view can group ventures by system without reaching into `site`. Falls
+        // back to the resolved site's system if a synthetic venture lacks it.
+        systemId: v.systemId || (site ? site.systemId : null),
         resourceType: v.resourceType || null,
         recipeId: v.recipeId || null,
         productionRate: v.productionRate,
+        // syndicateCommitment: the reserved placeholder (§15.4, §5), 0/unlicensed
+        // for every venture today. Surfaced so the view reads a real engine field
+        // beside each producer/consumer and in totals, never inventing its own.
+        syndicateCommitment: v.syndicateCommitment || 0,
         site: site
           ? {
               kind: site.kind,

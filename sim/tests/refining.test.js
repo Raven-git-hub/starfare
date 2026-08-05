@@ -15,7 +15,8 @@ const { advance } = require('../run.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
 const { checkInvariants } = require('../invariants.js');
 const { computeGalacticSupply } = require('../supply.js');
-const { guildTotals } = require('../stock.js');
+const { guildTotals, getStock } = require('../stock.js');
+const { getSite } = require('../seed.js');
 const {
   validateAction, createFoundGuildAction, createEstablishVentureAction,
 } = require('../actions.js');
@@ -109,4 +110,47 @@ test('two ventures cannot share a settlement slot', () => {
   const v = validateAction(s, refinery({ ventureId: 'refinery2' }));
   assert.equal(v.valid, false);
   assert.match(v.reason, /already occupied/);
+});
+
+// Ruling B1 (§15.2): production must pool in the venture's OWN system. A mine
+// founded via foundGuild's INLINE ventures (the demo.js / snapshot-CLI path) used
+// to skip systemId stamping — establishVenture stamped it, foundGuild did not —
+// so its output pooled under a stray `null` system key. The flat guild total hid
+// it (guildTotals sums across pools), but a same-system refinery drawing from the
+// real system pool would starve. This pins the fix: inline-founded output lands
+// in the site's system pool, and no null-keyed pool is created.
+test('a mine founded via foundGuild inline ventures pools output in the site\'s system, not a null pool (ruling B1)', () => {
+  const found = createFoundGuildAction({
+    guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: 'sys_0002',
+    ventures: [
+      { id: 'mine_1', ownerGuildId: 'player-guild', type: 'mining', siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5 },
+    ],
+  });
+  const s = advance(createZeroState(), [found]).state; // founding also runs one tick => +5 titanium
+  const g = s.guilds[0];
+  const sysId = getSite('pl_00004_n01').systemId; // sys_0002
+  assert.equal(g.ventures[0].systemId, sysId, 'the inline venture must be stamped with its site\'s systemId');
+  assert.equal(getStock(g, sysId, 'titanium'), 5, 'output pools in the site\'s system');
+  assert.equal(getStock(g, null, 'titanium'), 0, 'nothing pools under a null system');
+  assert.ok(!Object.prototype.hasOwnProperty.call(g.stockpiles, 'null'), 'no stray "null" pool exists');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+// The consequence the null-pool bug caused: a same-system refinery starved
+// because its input sat in the wrong pool. Founded inline (titanium mine) then a
+// refinery deployed in the same system must actually convert.
+test('an inline-founded mine feeds a same-system refinery (the starvation the null-pool bug caused)', () => {
+  const found = createFoundGuildAction({
+    guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: 'sys_0002',
+    ventures: [
+      { id: 'tmine', ownerGuildId: 'player-guild', type: 'mining', siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5 },
+      { id: 'cmine', ownerGuildId: 'player-guild', type: 'mining', siteId: 'pl_00004_n08', resourceType: 'carbon_products', productionRate: 5 },
+    ],
+  });
+  let s = advance(createZeroState(), [found]).state; // +5 ti, +5 carbon
+  s = advance(s, [refinery()]).state;                // deploy + tick: 3 ti + 1 carbon -> 1 alloy (rate 2, but only ~1 batch of inputs early)
+  s = advance(s, []).state;                          // another tick keeps converting
+  const totals = guildTotals(s.guilds[0]);
+  assert.ok((totals.titanium_alloy || 0) > 0, 'the refinery converts — its input pooled in the same system');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
 });

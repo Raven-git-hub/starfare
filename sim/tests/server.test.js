@@ -64,6 +64,11 @@ test('GET / serves the testbed UI (HTML)', async () => {
   // The standalone establish form was retired (slice 3, 04-08-26): establishing
   // now lives in the planet manifest inside the overlay.
   assert.doesNotMatch(html, /id="btn-venture"/);
+  // The read-only Production view (this slice) is served: its renderer, the
+  // MANIFEST/PRODUCTION sub-toggle, and the per-good producers/consumers grid.
+  assert.match(html, /renderProductionView/);
+  assert.match(html, /data-sysmode="production"/);
+  assert.match(html, /class="pc-grid"/);
 });
 
 test('GET /starters lists the seed\'s startable home systems', async () => {
@@ -138,14 +143,30 @@ test('GET /health reports liveness (JSON)', async () => {
   assert.equal(body.service, 'starfare-testbed');
 });
 
-test('GET /snapshot returns the zero-state snapshot (schema 2)', async () => {
+test('GET /snapshot returns the zero-state snapshot (schema 3)', async () => {
   await reset();
   const { status, body } = await req('GET', '/snapshot');
   assert.equal(status, 200);
-  assert.equal(body.schemaVersion, 2);
+  assert.equal(body.schemaVersion, 3); // bumped for the Production view's data support
   assert.equal(body.tick, 0);
   assert.equal(body.guilds.length, 0);
   assert.equal(body.claims.length, 10); // Citadel + 9 outposts
+});
+
+test('a founded guild\'s snapshot carries per-system stockpiles and each venture the reserved commitment', async () => {
+  await reset();
+  await found();
+  await mine();
+  const { body } = await req('POST', '/tick'); // one tick so the mine mints
+  const g = body.guilds[0];
+  // Per-system breakdown (ruling B1): titanium pooled in the home system.
+  assert.deepEqual(g.stockpilesBySystem, { sys_0002: { titanium: 5 } });
+  // Flat total still present and equal to the sum across systems.
+  assert.equal(g.stockpiles.titanium, 5);
+  // The venture carries its systemId and the reserved commitment placeholder (0).
+  const v = body.ventures[0];
+  assert.equal(v.systemId, 'sys_0002');
+  assert.equal(v.syndicateCommitment, 0);
 });
 
 // --- the manual-tick contract: actions do NOT tick -------------------------
