@@ -3,6 +3,8 @@
 const { createGuild, createVenture } = require('./state.js');
 const { isStarterSystem, getTerranHomeworld, getSite } = require('./seed.js');
 const { getRecipe } = require('./recipes.js');
+const { isStockpileGood } = require('./resources.js');
+const { setEntry } = require('./profile.js');
 
 // actions.js — action constructors, and the validate-as-they-arrive intake
 // discipline (design.md §15.6). This is the guard against the game's own
@@ -93,7 +95,34 @@ function createEstablishVentureAction({
   return { type: 'establishVenture', guildId, ventureId, ventureType: type, siteId, resourceType, recipeId, productionRate };
 }
 
+// Setting a guild's System Production Profile: storing, for ONE (guildId,
+// systemId), an optional per-good Gate-1 policy and/or optional per-venture
+// Gate-3 throttles (§5, §15.4) — the standing policy stepProduction will read to
+// route each good through the three gates. This slice only STORES it: no tick
+// step reads the profile yet (that is slice 2a-ii), so applying this action is a
+// behavioural no-op on production. Both `goods` and `throttles` are optional; an
+// action may set one, the other, or both, and it MERGES into the guild's profile
+// (per §15.4's sparse, standing-policy shape) rather than replacing it.
+function createSetProductionProfileAction({ guildId, systemId, goods, throttles }) {
+  if (guildId === undefined) throw new Error('createSetProductionProfileAction: guildId is required');
+  if (systemId === undefined) throw new Error('createSetProductionProfileAction: systemId is required');
+  return { type: 'setProductionProfile', guildId, systemId, goods, throttles };
+}
+
 // --- Validation -------------------------------------------------------
+
+// A Gate-1 `order` is a PERMUTATION of exactly these three fork names (§15.4):
+// same three, each once, any ordering. No more, no fewer, no strangers.
+const FORK_NAMES = ['syndicate', 'downstream', 'stockpile'];
+function isValidOrder(order) {
+  if (!Array.isArray(order) || order.length !== FORK_NAMES.length) return false;
+  const seen = new Set(order);
+  return seen.size === order.length && FORK_NAMES.every((name) => seen.has(name));
+}
+
+function isIntInRange(n, lo, hi) {
+  return typeof n === 'number' && Number.isInteger(n) && n >= lo && n <= hi;
+}
 
 function findGuild(state, guildId) {
   return state.guilds.find((g) => g.id === guildId);
@@ -220,6 +249,68 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'setProductionProfile') {
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (typeof action.systemId !== 'string' || action.systemId.length === 0) {
+      return { valid: false, reason: 'systemId must be a non-empty string' };
+    }
+    if (action.goods !== undefined) {
+      if (typeof action.goods !== 'object' || action.goods === null || Array.isArray(action.goods)) {
+        return { valid: false, reason: 'goods must be an object keyed by good' };
+      }
+      for (const [good, policy] of Object.entries(action.goods)) {
+        // Each key must be a real stockpile good (raw OR processed, NEVER
+        // deuterium_fuel, which is not a stockpile good — §resources.js).
+        if (!isStockpileGood(good)) {
+          return { valid: false, reason: `${JSON.stringify(good)} is not a known stockpile good` };
+        }
+        if (typeof policy !== 'object' || policy === null || Array.isArray(policy)) {
+          return { valid: false, reason: `policy for good ${JSON.stringify(good)} must be an object` };
+        }
+        // Each field is validated only WHERE PRESENT — a partial patch (e.g. just
+        // downstreamPct) is legal and merges over the good's stored entry (§15.4).
+        if (policy.order !== undefined && !isValidOrder(policy.order)) {
+          return { valid: false, reason: `order for good ${JSON.stringify(good)} must be a permutation of ["syndicate","downstream","stockpile"]` };
+        }
+        if (policy.downstreamPct !== undefined && !isIntInRange(policy.downstreamPct, 0, 100)) {
+          return { valid: false, reason: `downstreamPct for good ${JSON.stringify(good)} must be an integer 0..100 (§15.2)` };
+        }
+        if (policy.stockpile !== undefined) {
+          const sp = policy.stockpile;
+          if (typeof sp !== 'object' || sp === null || Array.isArray(sp)) {
+            return { valid: false, reason: `stockpile for good ${JSON.stringify(good)} must be an object` };
+          }
+          if (sp.mode !== 'percent' && sp.mode !== 'quantity') {
+            return { valid: false, reason: `stockpile.mode for good ${JSON.stringify(good)} must be "percent" or "quantity"` };
+          }
+          if (typeof sp.value !== 'number' || !Number.isInteger(sp.value) || sp.value < 0) {
+            return { valid: false, reason: `stockpile.value for good ${JSON.stringify(good)} must be a non-negative integer (§15.2)` };
+          }
+        }
+      }
+    }
+    if (action.throttles !== undefined) {
+      if (typeof action.throttles !== 'object' || action.throttles === null || Array.isArray(action.throttles)) {
+        return { valid: false, reason: 'throttles must be an object keyed by ventureId' };
+      }
+      for (const [ventureId, pct] of Object.entries(action.throttles)) {
+        if (!isIntInRange(pct, 0, 100)) {
+          return { valid: false, reason: `throttle for venture ${JSON.stringify(ventureId)} must be an integer 0..100 (§15.2)` };
+        }
+      }
+    }
+    // DELIBERATE NON-CHECKS (§5, §15.4): a `throttles` key naming a venture that
+    // does not currently exist, and a `goods` key for a good with no current
+    // producer, are BOTH accepted. The profile is advisory standing intent,
+    // reconciled at READ time — storing it ahead of, or after, the ventures it
+    // references is legal. Do not "fix" this into a referential check: the engine
+    // ignores stale entries at read time and a future venture picks up its policy.
+    return { valid: true };
+  }
+
   return { valid: false, reason: `unknown action type: ${action.type}` };
 }
 
@@ -305,6 +396,19 @@ function applyAction(state, action) {
     }));
     return next;
   }
+  if (action.type === 'setProductionProfile') {
+    // Merge the validated patch into the guild's profile via sim/profile.js — the
+    // one file that owns the nested shape. This mutates OWNED state only; it moves
+    // no credits/fuel and no tick step reads the profile yet (slice 2a-ii), so it
+    // is a behavioural no-op on production. Sibling owned-state actions
+    // (establishVenture) do NOT stamp a tick on the mutated entity — the profile
+    // shape carries no updatedAtTick field (§15.4) — so, per §15.2's "match how
+    // sibling actions handle it; if they don't stamp, don't invent it," this
+    // doesn't either.
+    const guild = findGuild(next, action.guildId);
+    setEntry(guild, action.systemId, { goods: action.goods, throttles: action.throttles });
+    return next;
+  }
   // Unreachable if validateAction() was checked first, since every accepted
   // type is handled above — fail loudly rather than silently no-op if not.
   throw new Error(`applyAction: unhandled action type: ${action.type}`);
@@ -346,6 +450,7 @@ module.exports = {
   createPaySyndicateFeeAction,
   createFoundGuildAction,
   createEstablishVentureAction,
+  createSetProductionProfileAction,
   validateAction,
   applyAction,
   intake,

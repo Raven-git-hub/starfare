@@ -19,6 +19,7 @@
 
 const { computeGalacticSupply } = require('./supply.js');
 const { cloneStockpiles } = require('./stock.js');
+const { cloneProfile } = require('./profile.js');
 
 // --- Entity constructors -----------------------------------------------
 
@@ -38,6 +39,7 @@ function createGuild({
   homeSystemId = null,
   homePlanetId = null,
   stockpiles = {},
+  productionProfile = {},
   ventures = [],
   vehicles = [],
 }) {
@@ -72,6 +74,15 @@ function createGuild({
     // — same division of labour as credits (this file assembles, invariants.js
     // judges). Copied so a caller's object can't alias into state.
     stockpiles: cloneStockpiles(stockpiles),
+    // productionProfile: systemId -> { goods, throttles }, the guild's per-system
+    // standing policy routing each good through §5's three gates, SYSTEM-SCOPED
+    // like stockpiles (ruling B1, §15.2) and accessed only via sim/profile.js.
+    // Defaults to {} (sparse: an absent entry means the all-defaults policy, so a
+    // guild behaves exactly as today). Copied through cloneProfile so a caller's
+    // object can't alias into engine state — the same discipline stockpiles uses.
+    // ENGINE-OWNED and, as of this slice, UNREAD by the tick: stored intent only
+    // (stepProduction's consumption of it is slice 2a-ii, §15.4).
+    productionProfile: cloneProfile(productionProfile),
     lifetimeProduced: {}, // good -> int; monotonic, only ever increases (§13)
     ventures: ventures.map(createVenture),
     vehicles: vehicles.map(createVehicle),

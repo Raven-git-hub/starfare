@@ -5,12 +5,14 @@ const assert = require('node:assert/strict');
 
 const {
   createPaySyndicateFeeAction,
+  createSetProductionProfileAction,
   validateAction,
   applyAction,
   intake,
 } = require('../actions.js');
 const { createState } = require('../state.js');
 const { checkInvariants } = require('../invariants.js');
+const { getGoodPolicy, getThrottlePct } = require('../profile.js');
 
 function twoGuildState() {
   return createState({
@@ -149,4 +151,123 @@ test('state produced by intake still passes every invariant', () => {
 test('intake requires state and an array of actions', () => {
   assert.throws(() => intake(undefined, []), /state is required/);
   assert.throws(() => intake(twoGuildState(), 'nope'), /actions must be an array/);
+});
+
+// --- setProductionProfile (slice 2a-i) ------------------------------------
+
+test('createSetProductionProfileAction requires guildId and systemId', () => {
+  assert.throws(() => createSetProductionProfileAction({ systemId: 's1' }), /guildId is required/);
+  assert.throws(() => createSetProductionProfileAction({ guildId: 'g1' }), /systemId is required/);
+});
+
+// A well-formed patch touching every field is accepted, applied, and reads back.
+test('a valid production-profile patch stores and reads back', () => {
+  const s = twoGuildState();
+  const action = createSetProductionProfileAction({
+    guildId: 'g1',
+    systemId: 'sys_0002',
+    goods: {
+      titanium: { order: ['downstream', 'stockpile', 'syndicate'], downstreamPct: 40, stockpile: { mode: 'quantity', value: 250 } },
+    },
+    throttles: { refinery: 30 },
+  });
+  assert.deepEqual(validateAction(s, action), { valid: true });
+  const next = applyAction(s, action);
+  assert.deepEqual(getGoodPolicy(next.guilds[0], 'sys_0002', 'titanium'), {
+    order: ['downstream', 'stockpile', 'syndicate'],
+    downstreamPct: 40,
+    stockpile: { mode: 'quantity', value: 250 },
+  });
+  assert.equal(getThrottlePct(next.guilds[0], 'sys_0002', 'refinery'), 30);
+  // Untouched goods/throttles still read their defaults.
+  assert.equal(getThrottlePct(next.guilds[0], 'sys_0002', 'other'), 100);
+});
+
+// Each malformed field is rejected with a reason.
+function rejects(action, re) {
+  const result = validateAction(twoGuildState(), action);
+  assert.equal(result.valid, false);
+  assert.match(result.reason, re);
+}
+
+test('validateAction rejects an unknown guild', () => {
+  rejects(createSetProductionProfileAction({ guildId: 'ghost', systemId: 's1' }), /no guild with id/);
+});
+
+test('validateAction rejects a non-string / empty systemId', () => {
+  rejects(createSetProductionProfileAction({ guildId: 'g1', systemId: '' }), /systemId must be a non-empty string/);
+});
+
+test('validateAction rejects an unknown good key', () => {
+  rejects(
+    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { not_a_good: { downstreamPct: 50 } } }),
+    /is not a known stockpile good/,
+  );
+});
+
+test('validateAction rejects deuterium_fuel as a good key (not a stockpile good)', () => {
+  rejects(
+    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { deuterium_fuel: { downstreamPct: 50 } } }),
+    /is not a known stockpile good/,
+  );
+});
+
+test('validateAction rejects a bad order (not a permutation of the three forks)', () => {
+  rejects(
+    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { titanium: { order: ['downstream', 'downstream', 'stockpile'] } } }),
+    /must be a permutation/,
+  );
+  rejects(
+    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { titanium: { order: ['downstream', 'stockpile'] } } }),
+    /must be a permutation/,
+  );
+});
+
+test('validateAction rejects downstreamPct out of range or non-integer', () => {
+  rejects(
+    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { titanium: { downstreamPct: 101 } } }),
+    /downstreamPct.*0\.\.100/,
+  );
+  rejects(
+    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { titanium: { downstreamPct: 50.5 } } }),
+    /downstreamPct.*0\.\.100/,
+  );
+});
+
+test('validateAction rejects a bad stockpile.mode and a negative stockpile.value', () => {
+  rejects(
+    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { titanium: { stockpile: { mode: 'nonsense', value: 0 } } } }),
+    /stockpile\.mode.*percent.*quantity/,
+  );
+  rejects(
+    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { titanium: { stockpile: { mode: 'percent', value: -1 } } } }),
+    /stockpile\.value.*non-negative integer/,
+  );
+});
+
+test('validateAction rejects a non-integer throttle', () => {
+  rejects(
+    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', throttles: { refinery: 33.3 } }),
+    /throttle.*0\.\.100/,
+  );
+});
+
+// The DELIBERATE non-checks (§5, §15.4): advisory intent stored ahead of / after
+// the ventures it references is legal. Neither is a referential error.
+test('validateAction ACCEPTS a throttle naming a not-yet-existing venture (advisory)', () => {
+  const action = createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', throttles: { 'venture-that-does-not-exist': 40 } });
+  assert.deepEqual(validateAction(twoGuildState(), action), { valid: true });
+});
+
+test('validateAction ACCEPTS a policy for a good with no current producer (advisory)', () => {
+  const action = createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { gold: { downstreamPct: 20 } } });
+  assert.deepEqual(validateAction(twoGuildState(), action), { valid: true });
+});
+
+test('a production-profile action leaves state passing every invariant', () => {
+  const s = twoGuildState();
+  const { state: next } = intake(s, [
+    createSetProductionProfileAction({ guildId: 'g1', systemId: 'sys_0002', goods: { titanium: { downstreamPct: 50 } }, throttles: { v1: 25 } }),
+  ]);
+  assert.deepEqual(checkInvariants(next, next.tick), []);
 });

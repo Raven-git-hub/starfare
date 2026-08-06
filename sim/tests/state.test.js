@@ -51,6 +51,17 @@ test('createGuild fills in defaults and nests ventures and vehicles', () => {
   assert.deepEqual(g.vehicles, []);
   assert.deepEqual(g.lifetimeProduced, {});
   assert.deepEqual(g.stockpiles, {}, 'stockpiles default to empty');
+  assert.deepEqual(g.productionProfile, {}, 'productionProfile defaults to empty');
+});
+
+test('createGuild copies productionProfile so a caller cannot alias into state', () => {
+  const supplied = { sys_0002: { goods: { titanium: { order: ['downstream', 'stockpile', 'syndicate'] } }, throttles: { v1: 25 } } };
+  const g = createGuild({ id: 'g1', credits: 0, fuelHoard: 0, productionProfile: supplied });
+  // Mutating the caller's object after construction must NOT reach into the guild.
+  supplied.sys_0002.throttles.v1 = 999;
+  supplied.sys_0002.goods.titanium.order.push('junk');
+  assert.equal(g.productionProfile.sys_0002.throttles.v1, 25);
+  assert.deepEqual(g.productionProfile.sys_0002.goods.titanium.order, ['downstream', 'stockpile', 'syndicate']);
 });
 
 test('createGuild requires id, credits, and fuelHoard', () => {
