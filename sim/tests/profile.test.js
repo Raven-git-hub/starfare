@@ -1,9 +1,10 @@
 'use strict';
 
-// Tests the System Production Profile as INERT owned state (slice 2a-i):
-//   - the sim/profile.js accessor layer (defaults, partial fills, round-trip),
-//   - and the load-bearing NO-OP PROOF: storing a profile does not move
-//     production, because no tick step reads it yet (that is slice 2a-ii).
+// Tests the System Production Profile accessor layer and its wiring into the tick:
+//   - the sim/profile.js accessor layer (defaults, partial fills, round-trip);
+//   - that the profile is now LIVE — slice 2a-i's no-op proof is INVERTED here:
+//     stepProduction reads the profile (slice 2a-ii), so a profile now MOVES
+//     production output. (The detailed per-gate behaviour lives in gates.test.js.)
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -110,28 +111,35 @@ function runScenario(profileActions) {
   return s;
 }
 
-// An aggressive, fully-populated profile — every Gate-1 fork amount, a reordered
-// waterfall, and throttles including one naming a NON-EXISTENT venture — so if
-// any of it leaked into the tick, the supply would move.
+// An aggressive, fully-populated profile — a reordered waterfall with a 90%
+// stockpile floor on titanium and the refinery throttled hard — so the tick that
+// now reads it MUST move the supply. (Includes a throttle naming a NON-EXISTENT
+// venture, harmlessly ignored — see the reconciliation tests in gates.test.js.)
 const profileAction = createSetProductionProfileAction({
   guildId: 'player-guild',
   systemId: 'sys_0002',
   goods: {
-    titanium: { order: ['downstream', 'stockpile', 'syndicate'], downstreamPct: 10, stockpile: { mode: 'percent', value: 90 } },
-    titanium_alloy: { order: ['stockpile', 'downstream', 'syndicate'], downstreamPct: 0, stockpile: { mode: 'quantity', value: 5 } },
+    titanium: { order: ['stockpile', 'downstream', 'syndicate'], downstreamPct: 10, stockpile: { mode: 'percent', value: 90 } },
   },
-  throttles: { refinery: 1, tmine: 0, 'ghost-venture': 50 },
+  throttles: { refinery: 1, 'ghost-venture': 50 },
 });
 
-test('galactic supply is byte-identical with vs. without a profile set', () => {
+// The slice-2a-i no-op proof, INVERTED: the profile is no longer inert. With a
+// 90%-of-fresh titanium stockpile floor ranked first and the refinery throttled to
+// 1%, the treatment run must produce STRICTLY LESS titanium_alloy than the control.
+test('a profile now MOVES production output — the tick reads it (2a-i no-op proof inverted)', () => {
   const control = runScenario([]);
   const treatment = runScenario([profileAction]);
-  assert.equal(
+  assert.notEqual(
     canonicalStringify(control.galacticSupply),
     canonicalStringify(treatment.galacticSupply),
-    'storing a production profile must not move production output — no tick reads it yet',
+    'the tick now reads the profile, so a profile must move production output',
   );
-  // And the profile really WAS stored (the treatment isn't a no-op by omission).
+  assert.ok(
+    (treatment.galacticSupply.resources.titanium_alloy || 0) < control.galacticSupply.resources.titanium_alloy,
+    'throttling the refinery + hoarding its titanium starves alloy production',
+  );
+  // And the profile really WAS stored.
   assert.equal(getThrottlePct(treatment.guilds[0], 'sys_0002', 'refinery'), 1);
 });
 

@@ -52,6 +52,18 @@ function getThrottlePct(guild, systemId, ventureId) {
   return throttles[ventureId] === undefined ? 100 : throttles[ventureId];
 }
 
+// hasThrottle(guild, systemId, ventureId) -> is a throttle EXPLICITLY stored for
+// that venture (as opposed to defaulting to 100)? Gate 3 needs this to pick its
+// regime: if ANY consumer of a good has a throttle set, the split is proportional;
+// if NONE do, it is the FCFS establishment-order default (§5). A throttle set to
+// 100 is "set" and must count — which getThrottlePct alone can't tell from the
+// default — so the regime choice reads presence here, not the value. Kept in this
+// file so tick.js never reaches into the raw profile shape.
+function hasThrottle(guild, systemId, ventureId) {
+  const throttles = ((guild.productionProfile || {})[systemId] || {}).throttles || {};
+  return Object.prototype.hasOwnProperty.call(throttles, ventureId);
+}
+
 // setEntry(guild, systemId, { goods?, throttles? }) -> MERGE a patch into the
 // guild's profile for one system, creating the nesting as needed. Merges at the
 // KEY level: each good in `goods` merges its supplied fields over that good's
@@ -112,4 +124,4 @@ function cloneProfile(profile) {
   return out;
 }
 
-module.exports = { getGoodPolicy, getThrottlePct, setEntry, cloneProfile };
+module.exports = { getGoodPolicy, getThrottlePct, hasThrottle, setEntry, cloneProfile };
