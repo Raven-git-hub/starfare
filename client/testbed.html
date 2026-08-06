@@ -199,22 +199,33 @@
   .good-head .short { color: var(--warn); }
   .good-head .surplus { color: var(--ok); }
   .good-body { padding: 4px 14px 14px; border-top: 1px solid var(--line); }
-  .pc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-  @media (max-width: 760px) { .pc-grid { grid-template-columns: 1fr; } }
-  .pc-col h4 { font-size: 11px; letter-spacing: 1.5px; color: var(--text-dim); font-weight: 500; margin: 8px 0 4px; }
-  .pc-col h4 .side-prod { color: var(--accent); }
-  .pc-col h4 .side-cons { color: var(--fuel); }
-  .pc-col table { width: 100%; }
-  .pc-col td.site, .pc-col th { font-size: 11px; }
-  .pc-col tr.tot td { border-top: 1px solid var(--line); color: var(--text); font-weight: 500; }
-  .pc-col .commit { color: var(--text-dim); }
-  .pc-empty { color: var(--text-dim); font-size: 11px; font-style: italic; padding: 4px 0; }
-  .prod-summary { margin-top: 12px; font-size: 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 2px; }
-  .prod-summary .k { color: var(--text-dim); }
-  .prod-summary b { color: var(--text); font-weight: 500; }
-  .prod-summary .short { color: var(--warn); font-weight: 700; }
-  .prod-summary .surplus { color: var(--ok); }
-  .prod-summary .fcfs { display: block; margin-top: 4px; font-size: 11px; color: var(--text-dim); }
+  /* Production view — the resolved display + the Gate-1/Gate-3 controls. */
+  .prod-line { font-size: 12px; margin: 8px 0; }
+  .prod-line .pl-h { font-size: 10px; letter-spacing: 1.5px; margin-right: 8px; }
+  .prod-line .side-prod { color: var(--accent); }
+  .gate { margin-top: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 2px; }
+  .gate-h { font-size: 11px; letter-spacing: 1.2px; color: var(--text-dim); margin-bottom: 6px; }
+  .gate-h .hint { letter-spacing: 0; text-transform: none; font-style: italic; color: var(--text-dim); opacity: 0.85; }
+  .fork-row { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 3px 0; }
+  .fork-row.fork-syn { opacity: 0.55; }
+  .fork-rank { color: var(--text-dim); width: 14px; text-align: right; }
+  .fork-move-wrap button { font-size: 10px; padding: 1px 5px; letter-spacing: 0; }
+  .fork-move-wrap button:disabled { opacity: 0.3; cursor: default; }
+  .fork-name { color: var(--accent); width: 96px; font-size: 11px; letter-spacing: 1px; }
+  .fork-amt { flex: 1; color: var(--text); }
+  .fork-amt input { width: 56px; font-family: inherit; font-size: 12px; background: #05070d; color: var(--text); border: 1px solid var(--line-bright); border-radius: 2px; padding: 3px 5px; }
+  .fork-amt select { font-family: inherit; font-size: 12px; background: #05070d; color: var(--text); border: 1px solid var(--line-bright); border-radius: 2px; padding: 3px 5px; }
+  .fork-amt input:focus, .fork-amt select:focus, .lines input:focus { outline: none; border-color: var(--accent); }
+  .fork-disabled { color: var(--fuel); font-size: 11px; font-style: italic; }
+  .fork-split { color: var(--text-dim); font-size: 11px; min-width: 60px; text-align: right; }
+  .deflt { color: var(--text-dim); font-size: 10px; font-style: italic; }
+  .supplied-line { margin-top: 6px; font-size: 11px; color: var(--text-dim); }
+  .supplied-line b { color: var(--text); font-weight: 500; }
+  table.lines { width: 100%; font-size: 12px; }
+  table.lines th { font-size: 10px; letter-spacing: 1px; color: var(--text-dim); font-weight: 500; text-align: left; }
+  table.lines td.site, table.lines td.num { font-size: 11px; }
+  table.lines input { width: 48px; font-family: inherit; font-size: 12px; background: #05070d; color: var(--text); border: 1px solid var(--line-bright); border-radius: 2px; padding: 3px 5px; }
+  .g3panel { margin-top: 12px; }
 </style>
 </head>
 <body>
@@ -699,17 +710,32 @@ function deployVenture(fields) {
   sendAction(action, 'establishVenture');
 }
 
-// --- Production view (per-system, read-only) --------------------------------
-// This slice ONLY makes the CURRENT production picture visible: no sliders, no
-// allocation change, no selling. Everything shown is composed from ENGINE-OWNED
-// data — nothing is invented in the browser:
-//   - productionRate, resourceType, recipeId, syndicateCommitment, systemId  ← /snapshot
-//   - recipe input/output ratios                                             ← /recipes
-//   - a system's own holdings (stockpilesBySystem)                           ← /snapshot
-// The browser multiplies rate × recipe-ratio for the per-tick output / naive
-// demand and sums the columns. That is display composition of engine numbers,
-// not a recomputed game figure: no engine field is duplicated, no game state is
-// held here, and the tick remains the sole author of every underlying number.
+// Send a setProductionProfile action carrying ONLY the changed field(s) as a
+// partial patch — the engine merges it over the stored entry (§15.4) — and
+// re-render from the returned snapshot. Values are sent as-is (integers): an
+// out-of-range one is NOT clamped here, so the engine's validation surfaces the
+// reason in amber (via sendAction), the same as any other rejected action.
+function sendProfile(systemId, patch) {
+  if (!overlayGuildId) return;
+  var action = { type: 'setProductionProfile', guildId: overlayGuildId, systemId: systemId };
+  if (patch.goods) action.goods = patch.goods;
+  if (patch.throttles) action.throttles = patch.throttles;
+  sendAction(action, 'setProductionProfile');
+}
+// Parse a control's value as an integer, or null if it isn't one (an empty /
+// non-numeric field is a local error, not an action to send).
+function fieldInt(el) { var n = parseInt(el.value, 10); return Number.isNaN(n) ? null : n; }
+
+// --- Production view (per-system, interactive) ------------------------------
+// Slice 2b-ii: the view now sources every per-good and per-line figure from the
+// engine's RESOLVED `production` block (snapshot schema 4) — the SAME numbers the
+// tick moves, computed by the one `resolveProduction` (design.md §5 "the resolved
+// numbers come from the engine, never the browser"). The browser does NO game
+// arithmetic here beyond the two display ratios in `ratioPct` (alloc as a percent
+// of own-max and of upstream) — everything else is an engine integer rendered
+// verbatim. The controls send `setProductionProfile` and re-render from the
+// returned snapshot, so setting a policy and watching the resolved rates move is
+// one round-trip; the tick still only advances on TICK.
 
 function recipeMap() {
   var m = {};
@@ -717,141 +743,173 @@ function recipeMap() {
   return m;
 }
 
-// Build the per-good producer/consumer breakdown for one guild's ventures in one
-// system. Scoped to the managed guild AND the system: resources are pooled per
-// guild per system (ruling B1), so the set that actually contends over a shared
-// input is exactly this guild's ventures in this system. (Today one guild
-// controls one system, so "the managed guild's ventures here" == "every venture
-// in this system" — the task's wording — but scoping to the pool keeps it honest
-// when that stops being true.)
-function systemProductionModel(sysId, snap, guild) {
-  var rmap = recipeMap();
-  var goods = {}; // good -> { producers:[], consumers:[] }
-  function ensure(g) { if (!goods[g]) goods[g] = { producers: [], consumers: [] }; return goods[g]; }
+// §15.4 Production Profile DOCUMENTED DEFAULTS — structural constants, not
+// invented numbers: order = pay-the-licence / feed-the-factories / pile-the-rest;
+// downstream fed fully (100%); keep nothing beyond overflow (percent 0); a line
+// runs at full-tilt (throttle 100). A control for a good/line with no stored
+// entry shows these; the sparse stored profile tells us which are explicitly set.
+var PROFILE_DEFAULTS = { order: ['syndicate', 'downstream', 'stockpile'], downstreamPct: 100, stockpileMode: 'percent', stockpileValue: 0, throttle: 100 };
+var FORK_LABEL = { syndicate: 'SYNDICATE', downstream: 'DOWNSTREAM', stockpile: 'STOCKPILE' };
 
-  var ventures = (snap.ventures || []).filter(function (v) {
-    return v.systemId === sysId && v.ownerGuildId === guild.id;
-  });
-  ventures.forEach(function (v) {
-    var where = v.site ? v.site.planetId : '(unseated)';
-    var commit = v.syndicateCommitment || 0;
-    if (v.resourceType) {
-      // a MINE: produces its raw good at productionRate/tick (output = the rate itself).
-      ensure(v.resourceType).producers.push({ id: v.id, where: where, site: v.siteId, qty: v.productionRate, commit: commit });
-    } else if (v.recipeId) {
-      var r = rmap[v.recipeId];
-      if (!r) return; // recipe catalog not loaded yet — skip rather than invent
-      // a REFINERY: produces output.qty and consumes each input.qty, per batch,
-      // up to productionRate batches/tick. NAIVE (ignores throttling) — the whole
-      // point of this slice is to make that naive-vs-contended gap visible.
-      ensure(r.output.good).producers.push({ id: v.id, where: where, site: v.siteId, qty: v.productionRate * r.output.qty, commit: commit });
-      (r.inputs || []).forEach(function (inp) {
-        ensure(inp.good).consumers.push({ id: v.id, where: where, site: v.siteId, qty: v.productionRate * inp.qty, commit: commit });
-      });
+// The managed guild's resolved report for one system, from the snapshot's
+// `production` block ([{ guildId, systems:[{ systemId, mines, goods, lines,
+// refineries }] }]). Null when the guild/system has no entry (no ventures).
+function findSystemReport(snap, guildId, sysId) {
+  var gp = (snap.production || []).find(function (p) { return p.guildId === guildId; });
+  if (!gp) return null;
+  return (gp.systems || []).find(function (r) { return r.systemId === sysId; }) || null;
+}
+
+// The ONLY game arithmetic the browser is allowed (design.md §5 step 1): an
+// allocation as a percent of own-max (alloc/demand) or of upstream (alloc/supplied)
+// — a display ratio of two engine integers, guarded against divide-by-zero.
+function ratioPct(numer, denom) {
+  if (!denom) return '—'; // '—' when the denominator is 0 (no demand / nothing supplied)
+  return Math.round((numer * 100) / denom) + '%';
+}
+
+// The effective Gate-1 policy for a good: the guild's SPARSE stored entry where a
+// field is set, the §15.4 default where it isn't. `*Set` flags let the view mark
+// defaulted controls (the sparse profile distinguishes set-to-100 from unset).
+function goodPolicy(storedGoods, good) {
+  var s = (storedGoods || {})[good] || {};
+  var sp = s.stockpile || {};
+  return {
+    order: Array.isArray(s.order) ? s.order.slice() : PROFILE_DEFAULTS.order.slice(),
+    downstreamPct: s.downstreamPct != null ? s.downstreamPct : PROFILE_DEFAULTS.downstreamPct,
+    downstreamSet: s.downstreamPct != null,
+    spMode: sp.mode != null ? sp.mode : PROFILE_DEFAULTS.stockpileMode,
+    spValue: sp.value != null ? sp.value : PROFILE_DEFAULTS.stockpileValue,
+    spSet: s.stockpile != null,
+  };
+}
+
+// The Gate-1 fork order as a ranked list with up/down buttons + each fork's amount
+// control. The Syndicate fork can sit in the order but has no editable amount (it
+// is the licence commitment, inert at 0 today) — greyed with a "no licences yet"
+// label, mirroring the Factory-today pattern. `split` is the resolved take per
+// fork this tick, shown beside each so the effect of the policy is on screen.
+function forkRankControls(sysId, good, pol, split) {
+  var orderCsv = pol.order.join(',');
+  return pol.order.map(function (f, i) {
+    var upDis = i === 0 ? ' disabled' : '';
+    var downDis = i === pol.order.length - 1 ? ' disabled' : '';
+    var moveBtns =
+      '<button class="fork-move" data-sys="' + esc(sysId) + '" data-good="' + esc(good) + '" data-fork="' + f + '" data-dir="up" data-order="' + esc(orderCsv) + '" type="button"' + upDis + '>▲</button>' +
+      '<button class="fork-move" data-sys="' + esc(sysId) + '" data-good="' + esc(good) + '" data-fork="' + f + '" data-dir="down" data-order="' + esc(orderCsv) + '" type="button"' + downDis + '>▼</button>';
+    var amount;
+    if (f === 'syndicate') {
+      amount = '<span class="fork-disabled">no licences yet</span>';
+    } else if (f === 'downstream') {
+      amount = 'cap <input class="dscap" data-sys="' + esc(sysId) + '" data-good="' + esc(good) + '" type="number" min="0" max="100" value="' + esc(pol.downstreamPct) + '">% of full-tilt' +
+        (pol.downstreamSet ? '' : ' <span class="deflt">(default)</span>');
+    } else {
+      amount =
+        '<select class="sp-mode" data-sys="' + esc(sysId) + '" data-good="' + esc(good) + '">' +
+          '<option value="percent"' + (pol.spMode === 'percent' ? ' selected' : '') + '>percent</option>' +
+          '<option value="quantity"' + (pol.spMode === 'quantity' ? ' selected' : '') + '>quantity</option>' +
+        '</select> ' +
+        '<input class="sp-val" data-sys="' + esc(sysId) + '" data-good="' + esc(good) + '" type="number" min="0" value="' + esc(pol.spValue) + '">' +
+        (pol.spSet ? '' : ' <span class="deflt">(default)</span>');
     }
-  });
-  return { goods: goods, ventureCount: ventures.length };
-}
-
-// One producer/consumer column table (rows + a bold total). `qtyLabel` names the
-// per-tick figure ('out/tick' or 'use/tick'); commitment sits beside every row
-// and in the total — the reserved placeholder, 0 for all today.
-function pcColumn(title, sideClass, rows, qtyLabel) {
-  var head = '<h4><span class="' + sideClass + '">' + title + '</span></h4>';
-  if (!rows.length) return head + '<div class="pc-empty">— none —</div>';
-  var body = rows.map(function (row) {
-    return '<tr>' +
-      '<td>' + esc(row.id) + '</td>' +
-      '<td class="site">' + esc(row.site || row.where) + '</td>' +
-      '<td class="num">' + esc(row.qty) + '</td>' +
-      '<td class="num commit">' + esc(row.commit) + '</td>' +
-    '</tr>';
+    return '<div class="fork-row' + (f === 'syndicate' ? ' fork-syn' : '') + '">' +
+      '<span class="fork-rank">' + (i + 1) + '</span>' +
+      '<span class="fork-move-wrap">' + moveBtns + '</span>' +
+      '<span class="fork-name">' + FORK_LABEL[f] + '</span>' +
+      '<span class="fork-amt">' + amount + '</span>' +
+      '<span class="fork-split">take ' + esc(split[f]) + '</span>' +
+    '</div>';
   }).join('');
-  var totQty = rows.reduce(function (n, r) { return n + r.qty; }, 0);
-  var totCommit = rows.reduce(function (n, r) { return n + r.commit; }, 0);
-  var tot = '<tr class="tot">' +
-    '<td>TOTAL</td><td class="site"></td>' +
-    '<td class="num">' + esc(totQty) + '</td>' +
-    '<td class="num commit">' + esc(totCommit) + '</td>' +
-  '</tr>';
-  return head +
-    '<table><thead><tr><th>venture</th><th>site</th><th class="num">' + esc(qtyLabel) + '</th><th class="num">commit</th></tr></thead>' +
-    '<tbody>' + body + tot + '</tbody></table>';
 }
 
-// The whole Production panel for a system: a fixed explanatory note, then one
-// collapsible section per good PRODUCED in the system.
+// The whole Production panel for a system: an explanatory note, one collapsible
+// section per good produced (Gate-1 controls + the resolved fork split + each
+// consuming line's resolved allocation), and a Gate-3 throttle panel (one row per
+// refinery). Every number is read straight from the engine's resolved report.
 function renderProductionView(sysId, snap, guild) {
-  var model = systemProductionModel(sysId, snap, guild);
-  if (model.ventureCount === 0) {
+  var report = findSystemReport(snap, guild.id, sysId);
+  var hasVentures = report && (((report.mines || []).length) || ((report.refineries || []).length));
+  if (!hasVentures) {
     return '<div class="site">no ventures established in this system yet — deploy one from the MANIFEST view.</div>';
   }
 
-  // Per-system holdings of the managed guild (ruling B1): what this system's pool
-  // currently holds of each good, from the snapshot's per-system breakdown.
+  var storedProfile = (guild.productionProfile || {})[sysId] || {};
+  var storedGoods = storedProfile.goods || {};
+  var storedThrottles = storedProfile.throttles || {};
   var sysStock = (guild.stockpilesBySystem || {})[sysId] || {};
+  var byId = {}; (snap.ventures || []).forEach(function (v) { byId[v.id] = v; });
+  var rmap = recipeMap();
 
   var note =
     '<div class="prod-note">' +
-      'Figures are per <b>TICK</b> and <b>naive</b> (production rate × recipe ratio) — they do <b>not</b> account for throttling. ' +
-      'When a shared input is short, the engine serves consumers <b>first-come-first-served in venture-establishment order</b>: the earliest-established line gets first call on the pool and later lines starve. That contention is exactly what the SHORT figures below surface. ' +
-      '<br>Per-<b>hour</b> figures are deferred: they need a real tick-duration constant, a tuning decision not yet made (docs/phase-1-tuning.md). ' +
-      '“Syndicate commitment” is a <b>placeholder</b> (0 / unlicensed for every venture today) — it has a place beside every venture and in the totals, no function yet.' +
+      'Every figure below is the engine’s <b>resolved</b> allocation for this tick — the <b>same</b> numbers the tick moves (design.md §5, from the snapshot’s <code>production</code> block), not a browser estimate. ' +
+      'Set the standing policy with the controls: reorder a good’s Gate-1 forks, cap Downstream, set a Stockpile floor, throttle a line — each sends <code>setProductionProfile</code> and the resolved numbers update in place. Nothing advances until you press <b>TICK</b>. ' +
+      'The <b>Syndicate</b> fork is inert (no licences yet); per-<b>hour</b> figures still await the tick-duration constant (docs/phase-1-tuning.md).' +
     '</div>';
 
-  var producedGoods = Object.keys(model.goods)
-    .filter(function (g) { return model.goods[g].producers.length > 0; })
-    .sort();
+  // Goods produced here: the routed goods (those with in-system consumers, so a
+  // real fork split) plus any raw good mined with no consumer. Both come from the
+  // engine report — routed goods from `goods`, raw producers from `mines`.
+  var goodSet = {};
+  Object.keys(report.goods || {}).forEach(function (g) { goodSet[g] = true; });
+  (report.mines || []).forEach(function (m) { goodSet[m.good] = true; });
+  var goods = Object.keys(goodSet).sort();
 
-  if (!producedGoods.length) {
-    return note + '<div class="site">this system\'s ventures produce nothing yet.</div>';
-  }
-
-  var sections = producedGoods.map(function (good) {
-    var gm = model.goods[good];
-    var produced = gm.producers.reduce(function (n, r) { return n + r.qty; }, 0);
-    var demand = gm.consumers.reduce(function (n, r) { return n + r.qty; }, 0);
+  var sections = goods.map(function (good) {
+    var rg = (report.goods || {})[good]; // undefined => produced but no in-system consumer
+    var mines = (report.mines || []).filter(function (m) { return m.good === good; });
+    var lines = (report.lines || []).filter(function (l) { return l.good === good; });
     var onHand = sysStock[good] || 0;
-    var key = sysId + '::' + good;
-    var open = !!openGoods[key];
+    var open = !!openGoods[sysId + '::' + good];
 
-    // Contention read: produced vs downstream demand within this system's pool.
-    var delta = produced - demand;
-    var badge, badgeCls;
-    if (demand === 0) { badge = 'no downstream demand'; badgeCls = ''; }
-    else if (delta < 0) { badge = 'SHORT by ' + (-delta) + '/tick'; badgeCls = 'short'; }
-    else if (delta > 0) { badge = 'surplus ' + delta + '/tick'; badgeCls = 'surplus'; }
-    else { badge = 'balanced'; badgeCls = ''; }
-
-    var meta = 'produced ' + produced + '/tick · demand ' + demand + '/tick · on hand ' + onHand +
-      ' · <span class="' + badgeCls + '">' + esc(badge) + '</span>';
+    var meta = rg
+      ? 'fresh ' + rg.fresh + '/tick · demand ' + rg.demand + ' · supplied ' + rg.supplied + ' · on hand ' + onHand
+      : 'no in-system consumer · on hand ' + onHand;
 
     var body = '';
     if (open) {
-      var summary =
-        '<div class="prod-summary">' +
-          '<span class="k">produced</span> <b>' + produced + '</b>/tick &nbsp;·&nbsp; ' +
-          '<span class="k">downstream demand</span> <b>' + demand + '</b>/tick &nbsp;·&nbsp; ' +
-          '<span class="k">on hand (this system)</span> <b>' + onHand + '</b> &nbsp;·&nbsp; ' +
-          (demand === 0
-            ? '<span class="k">no consumers in-system</span>'
-            : delta < 0
-              ? '<span class="short">SHORT by ' + (-delta) + '/tick</span>'
-              : delta > 0
-                ? '<span class="surplus">surplus ' + delta + '/tick</span>'
-                : '<span>balanced</span>') +
-          (delta < 0
-            ? '<span class="fcfs">Downstream demand exceeds production: under the engine\'s first-come-first-served draw, consumers established earlier are served first and later ones run short.</span>'
-            : '') +
+      var producers = mines.length
+        ? '<div class="prod-line"><span class="pl-h side-prod">PRODUCERS</span> ' +
+            mines.map(function (m) { return esc(m.ventureId) + ' <b>' + esc(m.amount) + '</b>/tick'; }).join(' &nbsp; ') +
+          '</div>'
+        : '';
+
+      if (rg) {
+        var pol = goodPolicy(storedGoods, good);
+        var gate1 =
+          '<div class="gate">' +
+            '<div class="gate-h">GATE 1 &middot; source waterfall <span class="hint">1st fork is fed first; priority wins even when it starves what’s below</span></div>' +
+            forkRankControls(sysId, good, pol, rg.fork) +
+            '<div class="supplied-line">downstream <b>supplied</b> this tick: <b>' + esc(rg.supplied) + '</b> &nbsp;(cap = ' + esc(pol.downstreamPct) + '% of full-tilt demand ' + esc(rg.demand) + ')</div>' +
+          '</div>';
+
+        var lineRows = lines.map(function (l) {
+          var ref = (report.refineries || []).find(function (r) { return r.ventureId === l.ventureId; });
+          var batches = ref ? ref.batches : null;
+          return '<tr>' +
+            '<td>' + esc(l.ventureId) + '</td>' +
+            '<td class="num">' + esc(l.demand) + '</td>' +
+            '<td class="num">' + esc(l.alloc) + '</td>' +
+            '<td class="num">' + ratioPct(l.alloc, l.demand) + '</td>' +
+            '<td class="num">' + ratioPct(l.alloc, rg.supplied) + '</td>' +
+            '<td class="num">' + (batches == null ? '—' : esc(batches)) + '</td>' +
+          '</tr>';
+        }).join('');
+        var gate3 =
+          '<div class="gate">' +
+            '<div class="gate-h">consuming lines &middot; resolved allocation this tick</div>' +
+            '<table class="lines"><thead><tr>' +
+              '<th>line</th><th class="num">own-max</th><th class="num">alloc</th>' +
+              '<th class="num">% own</th><th class="num">% upstream</th><th class="num">batches</th>' +
+            '</tr></thead><tbody>' + lineRows + '</tbody></table>' +
+          '</div>';
+
+        body = '<div class="good-body">' + producers + gate1 + gate3 + '</div>';
+      } else {
+        body = '<div class="good-body">' + producers +
+          '<div class="site">no in-system consumer — all fresh output stockpiles (on hand ' + esc(onHand) + ').</div>' +
         '</div>';
-      body =
-        '<div class="good-body">' +
-          '<div class="pc-grid">' +
-            '<div class="pc-col">' + pcColumn('PRODUCERS &#9656; output', 'side-prod', gm.producers, 'out/tick') + '</div>' +
-            '<div class="pc-col">' + pcColumn('CONSUMERS &#9666; demand', 'side-cons', gm.consumers, 'use/tick') + '</div>' +
-          '</div>' +
-          summary +
-        '</div>';
+      }
     }
 
     return '<div class="good-sec">' +
@@ -859,12 +917,37 @@ function renderProductionView(sysId, snap, guild) {
         '<span class="caret">' + (open ? '▾' : '▸') + '</span>' +
         '<span class="gname">' + esc(good) + '</span>' +
         '<span class="gmeta">' + meta + '</span>' +
-      '</button>' +
-      body +
+      '</button>' + body +
     '</div>';
   }).join('');
 
-  return note + sections;
+  // Gate 3 — the per-line throttles: one control per refinery in the system (a
+  // throttle governs the whole line, so it lives here once, not per input good).
+  var throttlePanel = '';
+  if ((report.refineries || []).length) {
+    var rows = report.refineries.map(function (r) {
+      var v = byId[r.ventureId];
+      var rec = v && v.recipeId ? rmap[v.recipeId] : null;
+      var outLabel = rec ? rec.output.good : '?';
+      var thr = storedThrottles[r.ventureId];
+      var pct = thr != null ? thr : PROFILE_DEFAULTS.throttle;
+      return '<tr>' +
+        '<td>' + esc(r.ventureId) + '</td>' +
+        '<td class="site">→ ' + esc(outLabel) + '</td>' +
+        '<td class="num"><input class="throttle" data-sys="' + esc(sysId) + '" data-vent="' + esc(r.ventureId) + '" type="number" min="0" max="100" value="' + esc(pct) + '">%' +
+          (thr != null ? '' : ' <span class="deflt">(default)</span>') + '</td>' +
+        '<td class="num">' + esc(r.batches) + '</td>' +
+      '</tr>';
+    }).join('');
+    throttlePanel =
+      '<div class="gate g3panel">' +
+        '<div class="gate-h">GATE 3 &middot; per-line throttle <span class="hint">run a line at N% of its own full-tilt max; a short shared input is split among throttled lines in proportion</span></div>' +
+        '<table class="lines"><thead><tr><th>line</th><th>output</th><th class="num">throttle</th><th class="num">batches/tick</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table>' +
+      '</div>';
+  }
+
+  return note + sections + throttlePanel;
 }
 
 // Pure render of the managed guild from the latest snapshot + cached layouts.
@@ -986,6 +1069,21 @@ document.getElementById('go-body').addEventListener('click', function (e) {
     renderGuildOverlay(LAST_SNAP);
     return;
   }
+  // Gate-1 fork reorder: swap the clicked fork with its neighbour and send the new
+  // order (a valid permutation by construction). The current order rides on the
+  // button as data-order, so no lookup into the snapshot is needed.
+  var forkBtn = e.target.closest('.fork-move');
+  if (forkBtn) {
+    if (forkBtn.disabled) return;
+    var order = forkBtn.dataset.order.split(',');
+    var idx = order.indexOf(forkBtn.dataset.fork);
+    var swap = forkBtn.dataset.dir === 'up' ? idx - 1 : idx + 1;
+    if (idx < 0 || swap < 0 || swap >= order.length) return;
+    var moved = order[idx]; order[idx] = order[swap]; order[swap] = moved;
+    var gpatch = {}; gpatch[forkBtn.dataset.good] = { order: order };
+    sendProfile(forkBtn.dataset.sys, { goods: gpatch });
+    return;
+  }
   var planetRow = e.target.closest('.planet-row');
   if (planetRow) {
     openPlanetBySys[planetRow.dataset.sys] = planetRow.dataset.planet;
@@ -1009,6 +1107,39 @@ document.getElementById('go-body').addEventListener('click', function (e) {
     var recipeSel = document.getElementById('est-recipe-' + ref.dataset.site);
     var rrate = parseInt((document.getElementById('est-rate-' + ref.dataset.site) || {}).value, 10);
     deployVenture({ ventureType: 'refining', siteId: ref.dataset.site, recipeId: recipeSel ? recipeSel.value : '', productionRate: rrate });
+    return;
+  }
+});
+// Production-view controls that fire on `change` (numeric inputs commit on blur/
+// Enter, so re-render never eats a keystroke): the Gate-1 downstream cap, the
+// stockpile mode+value, and the Gate-3 per-line throttle. Each builds a minimal
+// partial patch and routes through sendProfile → the engine → render().
+document.getElementById('go-body').addEventListener('change', function (e) {
+  var t = e.target;
+  if (t.classList.contains('dscap')) {
+    var d = fieldInt(t);
+    if (d === null) { setStatus('downstream cap: enter an integer', 'error'); return; }
+    var gp = {}; gp[t.dataset.good] = { downstreamPct: d };
+    sendProfile(t.dataset.sys, { goods: gp });
+    return;
+  }
+  // stockpile is one { mode, value } object — a change to either sends both, read
+  // from the two controls sharing this fork row.
+  if (t.classList.contains('sp-mode') || t.classList.contains('sp-val')) {
+    var row = t.closest('.fork-row');
+    var modeEl = row.querySelector('.sp-mode');
+    var valEl = row.querySelector('.sp-val');
+    var v = fieldInt(valEl);
+    if (v === null) { setStatus('stockpile value: enter an integer', 'error'); return; }
+    var gp2 = {}; gp2[t.dataset.good] = { stockpile: { mode: modeEl.value, value: v } };
+    sendProfile(t.dataset.sys, { goods: gp2 });
+    return;
+  }
+  if (t.classList.contains('throttle')) {
+    var p = fieldInt(t);
+    if (p === null) { setStatus('throttle: enter an integer', 'error'); return; }
+    var tp = {}; tp[t.dataset.vent] = p;
+    sendProfile(t.dataset.sys, { throttles: tp });
     return;
   }
 });

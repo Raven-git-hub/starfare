@@ -64,11 +64,20 @@ test('GET / serves the testbed UI (HTML)', async () => {
   // The standalone establish form was retired (slice 3, 04-08-26): establishing
   // now lives in the planet manifest inside the overlay.
   assert.doesNotMatch(html, /id="btn-venture"/);
-  // The read-only Production view (this slice) is served: its renderer, the
-  // MANIFEST/PRODUCTION sub-toggle, and the per-good producers/consumers grid.
+  // The Production view is served: its renderer and the MANIFEST/PRODUCTION toggle.
   assert.match(html, /renderProductionView/);
   assert.match(html, /data-sysmode="production"/);
-  assert.match(html, /class="pc-grid"/);
+  // Slice 2b-ii — the INTERACTIVE controls are present: the Gate-1 fork rank
+  // up/down buttons, the downstream-cap input, the Gate-3 per-line throttle input,
+  // and the disabled Syndicate-fork marker (inert until real licences).
+  assert.match(html, /class="fork-move"/);
+  assert.match(html, /class="dscap"/);
+  assert.match(html, /class="throttle"/);
+  assert.match(html, /no licences yet/);
+  // The naive browser-side recompute + its caption are gone — the view now shows
+  // the engine's resolved allocation, so nothing is captioned "naive".
+  assert.doesNotMatch(html, /class="pc-grid"/);
+  assert.doesNotMatch(html, /do <b>not<\/b> account for throttling/);
 });
 
 test('GET /starters lists the seed\'s startable home systems', async () => {
