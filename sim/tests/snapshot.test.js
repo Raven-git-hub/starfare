@@ -189,3 +189,73 @@ test('an unseated venture resolves to a null site rather than throwing', () => {
   assert.equal(v.siteId, null);
   assert.equal(v.site, null);
 });
+
+// --- schema 4: the interactive Production view's data support (slice 2b-i) ------
+
+test('snapshot schema is 4', () => {
+  assert.equal(SNAPSHOT_SCHEMA, 4);
+  assert.equal(buildSnapshot(sampleState()).schemaVersion, 4);
+});
+
+test('a guild carries its stored productionProfile SPARSE — a set entry present, an unset one absent', () => {
+  // A single system with an explicitly-set silica downstream cap and an r_a throttle;
+  // copper and r_b are NOT named. The snapshot must echo exactly what is stored
+  // (defaults NOT filled in) so slice 2b-ii's controls can tell set from defaulted.
+  const s = createState({
+    guilds: [{
+      id: 'g1', credits: 0, fuelHoard: 0,
+      productionProfile: { sysA: {
+        goods: { silica: { downstreamPct: 50 } },
+        throttles: { r_a: 100 },
+      } },
+      ventures: [
+        { id: 'r_a', ownerGuildId: 'g1', type: 'refining', systemId: 'sysA', recipeId: 'conductive_material', productionRate: 10 },
+      ],
+    }],
+    reserve: { reserveLevel: 0 },
+    syndicate: { ledger: 0 },
+  });
+  const g = buildSnapshot(s).guilds.find((x) => x.id === 'g1');
+  // Exactly the stored sparse shape — silica present, copper absent; r_a present, r_b absent.
+  assert.deepEqual(g.productionProfile, { sysA: { goods: { silica: { downstreamPct: 50 } }, throttles: { r_a: 100 } } });
+  // A deep-enough clone: mutating the snapshot must not reach into engine state.
+  g.productionProfile.sysA.throttles.r_a = 999;
+  assert.equal(s.guilds[0].productionProfile.sysA.throttles.r_a, 100);
+});
+
+test('a guild with no profile carries an empty {} (all-default), not undefined', () => {
+  const g = buildSnapshot(sampleState()).guilds.find((x) => x.id === 'player-guild');
+  assert.deepEqual(g.productionProfile, {});
+});
+
+test('the production block carries the resolved per-good and per-line numbers', () => {
+  // fresh silica 10 feeding two consumers (demand 20) under a 30% downstream cap:
+  // supplied floor(20*30/100)=6, FCFS gives r_a 6 / r_b 0 — the SAME resolution
+  // the tick applies (that shared-resolver equality is pinned in production.test.js).
+  const mine = (id, good, rate) => ({ id, ownerGuildId: 'g1', type: 'mining', systemId: 'sysA', resourceType: good, productionRate: rate });
+  const refinery = (id, recipeId, rate) => ({ id, ownerGuildId: 'g1', type: 'refining', systemId: 'sysA', recipeId, productionRate: rate });
+  const s = createState({
+    guilds: [{
+      id: 'g1', credits: 0, fuelHoard: 0,
+      productionProfile: { sysA: { goods: { silica: { downstreamPct: 30 } } } },
+      ventures: [
+        mine('cu', 'copper', 20), mine('si', 'silica', 10),
+        mine('ag', 'silver', 20), mine('pd', 'palladium', 20),
+        refinery('r_a', 'conductive_material', 10),
+        refinery('r_b', 'silicon_wafer', 10),
+      ],
+    }],
+    reserve: { reserveLevel: 0 },
+    syndicate: { ledger: 0 },
+  });
+  const snap = buildSnapshot(s);
+  const guildProd = snap.production.find((p) => p.guildId === 'g1');
+  const sysReport = guildProd.systems.find((r) => r.systemId === 'sysA');
+  assert.equal(sysReport.goods.silica.fresh, 10);
+  assert.equal(sysReport.goods.silica.demand, 20);
+  assert.equal(sysReport.goods.silica.supplied, 6);
+  const la = sysReport.lines.find((l) => l.good === 'silica' && l.ventureId === 'r_a');
+  assert.equal(la.alloc, 6);
+  assert.equal(sysReport.refineries.find((r) => r.ventureId === 'r_a').batches, 6);
+  assert.equal(sysReport.refineries.find((r) => r.ventureId === 'r_b').batches, 0);
+});

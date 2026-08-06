@@ -29,6 +29,8 @@ const { computeGalacticSupply } = require('./supply.js');
 const { computeOccupancy } = require('./occupancy.js');
 const { getSite, getLandmark } = require('./seed.js');
 const { guildTotals, cloneStockpiles } = require('./stock.js');
+const { cloneProfile } = require('./profile.js');
+const { previewProduction } = require('./production.js');
 
 // Bump when the shape below changes so the inspector can refuse a stale file
 // loudly instead of rendering half of it. The inspector checks this.
@@ -40,7 +42,16 @@ const { guildTotals, cloneStockpiles } = require('./stock.js');
 // venture's `systemId` + reserved `syndicateCommitment` placeholder. All
 // ADDITIVE: existing fields (flat `stockpiles`, etc.) are untouched, so older
 // readers keep working; the bump is honest bookkeeping that the shape grew.
-const SNAPSHOT_SCHEMA = 3;
+// v4 (07-08-26): the interactive Production view's data support (slice 2b-i) —
+// each guild row now carries its stored `productionProfile` (sparse, deep-cloned,
+// exactly as stored so the controls can tell explicitly-set from defaulted), and
+// a top-level `production` block = `previewProduction(state)` (per guild → per
+// system → the resolved per-good fork split and per-line allocation, computed by
+// the SAME resolver the tick uses). Still ADDITIVE: every v3 field is untouched,
+// so older readers keep working; this only grows the shape. Neither field is in
+// serialized state — the profile is engine-owned owned state read here, and the
+// preview is derived telemetry (not part of the determinism hash).
+const SNAPSHOT_SCHEMA = 4;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
 //   {
@@ -52,7 +63,10 @@ const SNAPSHOT_SCHEMA = 3;
 //     syndicate: { ledger },
 //     guilds: [ { id, name, isBot, credits, fuelHoard, influence,
 //                 stockpiles: { good: int },                    // flat guild total
-//                 stockpilesBySystem: { systemId: { good: int } } } ], // per-system
+//                 stockpilesBySystem: { systemId: { good: int } }, // per-system
+//                 productionProfile: { ... } } ],               // §5 profile, sparse as stored
+//     production: [ { guildId,                                  // previewProduction(state)
+//       systems: [ { systemId, mines, goods, lines, refineries } ] } ], // resolved per-system
 //     ventures: [ { id, ownerGuildId, type, siteId, systemId, resourceType,
 //                   recipeId, productionRate, syndicateCommitment,
 //                   site: { kind, planetId, systemId, resourceType } | null } ],
@@ -88,6 +102,13 @@ function buildSnapshot(state) {
     // alias back into live state, exactly like the flat total above is a fresh
     // object. The engine owns the split; the browser only reads a system's row.
     stockpilesBySystem: cloneStockpiles(g.stockpiles || {}),
+    // The guild's stored System Production Profile (§5/§15.4), deep-cloned so a
+    // consumer mutating the snapshot can never alias into engine state (same
+    // discipline as stockpiles). Emitted SPARSE — exactly as stored, defaults NOT
+    // filled in — so the interactive controls (slice 2b-ii) can tell an
+    // explicitly-set entry from a defaulted one (mirroring hasThrottle). Absent
+    // keys mean their defaults; an all-default guild carries `{}`.
+    productionProfile: cloneProfile(g.productionProfile || {}),
   }));
 
   // Every venture, flattened out of its owner guild, with its seed site
@@ -159,6 +180,12 @@ function buildSnapshot(state) {
     },
     syndicate: { ledger: state.syndicate ? state.syndicate.ledger : 0 },
     guilds,
+    // The resolved production preview (§5, ruled 07-08-26): per guild → per system
+    // → this tick's fresh, the Gate-1 fork split, each consuming line's resolved
+    // allocation, and each refinery's batches — all from the SAME resolveProduction
+    // the tick applies, so the displayed figures are engine truth and cannot drift.
+    // Derived telemetry: computed on demand, never part of serialized state.
+    production: previewProduction(state),
     ventures,
     occupancy,
     claims,

@@ -24,7 +24,7 @@
 const { computeGalacticSupply } = require('./supply.js');
 const { getRecipe } = require('./recipes.js');
 const { addStock } = require('./stock.js');
-const { getGoodPolicy, getThrottlePct, hasThrottle } = require('./profile.js');
+const { resolveProduction } = require('./production.js');
 
 // Deep-clones state so tick() can never accidentally mutate its input.
 // structuredClone is a plain JS global (Node 17+), not a DOM API.
@@ -33,44 +33,39 @@ function cloneState(state) {
 }
 
 // Step 1 — production, routed through §5's THREE GATES from the System Production
-// Profile (sim/profile.js). Per guild, per system, in three sub-steps:
+// Profile. The gate ARITHMETIC now lives in ONE pure function,
+// `resolveProduction(guild, systemId)` (sim/production.js) — see design.md §5
+// "the resolved numbers come from the engine, never the browser" (ruled 07-08-26).
+// This step is the APPLY half: it asks the resolver what production does this
+// tick, then MOVES the goods to match. The read-only `previewProduction` selector
+// (also sim/production.js, surfaced through the snapshot) asks the SAME resolver
+// what production WOULD do, so the displayed numbers and the moved numbers can
+// never drift — they are one computation.
 //
-//   1. MINE: each mining venture deposits `productionRate` of its `resourceType`
-//      into the owner's system pool, AND we record it as this tick's FRESH flow.
-//   2. ROUTE (Gates 1→3): for each raw good produced fresh this tick, the Gate-1
-//      waterfall decides how much refineries may collectively draw (`supplied`),
-//      and Gate 3 rations that across the competing consumers into per-refinery
-//      draw caps (`alloc`). Gate 2 is the naive full-tilt demand those gates key
-//      off. THE ROUTING IS ON FRESH PRODUCTION ONLY — never the accumulated pile.
-//   3. RUN: each refinery consumes up to its `alloc` (lockstep across inputs,
-//      scaled by its Gate-3 throttle) and produces its output good.
-//
-// THE SETTLED BEHAVIOUR CHANGE (§5 "never touch the pile"): the forks route only
-// THIS tick's fresh production; a refinery the fresh flow can't feed STALLS for
-// the tick — it does NOT draw down titanium accumulated on earlier ticks (a
-// stockpile-drawdown/buffer mechanism is deferred). Before this slice a refinery
-// drew from the whole system pool, so it could ramp off the pile; now it is
-// capped at fresh supply. With an ALL-DEFAULT profile this reproduces the old
-// FCFS-fed-fully behaviour EXCEPT where a pile would have been drawn — there the
-// number legitimately drops.
+// Per guild, per system (deterministic order), the resolver's report says:
+//   - `mines`: each producing mine's fresh deposit (good + amount) — routed through
+//     the Gate-1 waterfall and Gate-3 distribution INSIDE the resolver, on THIS
+//     tick's fresh flow only (§5 "never touch the pile": a refinery the fresh flow
+//     can't feed stalls, it does not draw down the accumulated pile).
+//   - `refineries`: how many batches each refinery runs (0 = starved this tick).
+// Applying it is pure bookkeeping: deposit each mine's fresh, then for each
+// refinery consume `batches × qty` of each input and produce `batches × output.qty`.
+// Because addStock is additive, the deposit-then-run order gives the exact same
+// final pool as before, and non-negativity (invariant 3) holds identically — the
+// resolver bounds every draw by `supplied ≤ fresh`.
 //
 // `Venture.updatedAtTick` records when a venture moved goods (§15.2). Every
 // deposit/draw lands in the venture's OWN system pool (ruling B1, §15.2):
 // `systemId` is the denormalised site→system copy stamped at establish.
 //
-// Deliberately NOT yet implemented, left for later slices:
-//   - the Syndicate fork (Gate 1) delivers nothing: `commitment` is Σ producers'
-//     `syndicateCommitment`, 0 for every venture today (no licences) — the fork
-//     is STRUCTURED but wires no delivery (slice 3). When it is non-zero, its
-//     take must LEAVE the pool (addStock −); flagged inline where it would.
-//   - per-venture `inputStockpiles` buffers, and crediting guild.lifetimeProduced
-//     (§13) — unchanged from before, wired when a consumer needs them.
-//   - ventures draw no fuel (renewable-powered, §3 / open question #54).
+// Deliberately NOT yet implemented, left for later slices (all inert in the
+// resolver too): the Syndicate fork delivers nothing (`syndicateCommitment` is 0
+// for every venture — slice 3); per-venture `inputStockpiles` buffers and
+// crediting guild.lifetimeProduced (§13); ventures draw no fuel (§3 / #54).
 //
-// DETERMINISM (invariant 9): every iteration order is fixed — guilds in array
-// order, systems by sorted systemId, goods by sorted name, consumers in
-// establishment (guild.ventures) order, and the proportional rounding remainder
-// handed out in establishment order. No plain-object key order feeds any number.
+// DETERMINISM (invariant 9): the iteration order is fixed here — guilds in array
+// order, systems by sorted systemId (the resolver fixes goods/consumer order
+// internally). No plain-object key order feeds any number.
 function stepProduction(state, _actions) {
   for (const guild of state.guilds) {
     const ventures = guild.ventures || [];
@@ -82,152 +77,39 @@ function stepProduction(state, _actions) {
     const systemIds = [...new Set(ventures.map((v) => v.systemId))]
       .sort((a, b) => (String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0));
     for (const sys of systemIds) {
-      produceInSystem(state, guild, sys, ventures);
+      applyProduction(state, guild, sys);
     }
   }
   return state;
 }
 
-// One (guild, system): mine fresh output, route it through the gates, run the
-// refineries. Mutates the guild's system pool in place (tick() already cloned
-// state, so this never touches the caller's input).
-function produceInSystem(state, guild, sys, ventures) {
-  // --- Sub-step 1: mine fresh raw output into the pool; track THIS tick's flow.
-  const fresh = {}; // good -> units produced this tick in this system (routing basis)
-  for (const v of ventures) {
-    if (v.systemId !== sys || !v.productionRate || !v.resourceType) continue;
-    addStock(guild, sys, v.resourceType, v.productionRate);
-    fresh[v.resourceType] = (fresh[v.resourceType] || 0) + v.productionRate;
+// One (guild, system): resolve production, then MOVE the goods to match the
+// report. This is the ONLY place addStock is called for production. Mutates the
+// guild's system pool in place (tick() already cloned state, so this never touches
+// the caller's input). The resolver reads no pool and mutates nothing.
+function applyProduction(state, guild, systemId) {
+  const report = resolveProduction(guild, systemId);
+  const byId = new Map((guild.ventures || []).map((v) => [v.id, v]));
+
+  // Deposit each mine's fresh output into the pool; stamp the mine's tick.
+  for (const m of report.mines) {
+    addStock(guild, systemId, m.good, m.amount);
+    byId.get(m.ventureId).updatedAtTick = state.tick;
+  }
+
+  // Run each refinery: consume its batches' inputs, produce its output. A starved
+  // refinery (0 batches) moves nothing — its unused allocation stays in the pool —
+  // and is NOT stamped, matching the old `if (batches <= 0) continue`.
+  for (const r of report.refineries) {
+    if (r.batches <= 0) continue;
+    const v = byId.get(r.ventureId);
+    const recipe = getRecipe(v.recipeId);
+    for (const inp of recipe.inputs) {
+      addStock(guild, systemId, inp.good, -r.batches * inp.qty);
+    }
+    addStock(guild, systemId, recipe.output.good, r.batches * recipe.output.qty);
     v.updatedAtTick = state.tick;
   }
-
-  // Refineries in this system, in establishment order (their order in ventures).
-  const refineries = ventures.filter((v) => v.systemId === sys && v.recipeId && v.productionRate);
-
-  // --- Sub-step 2: route each fresh raw good into per-refinery draw caps.
-  // alloc[ventureId][good] = units of `good` refinery `ventureId` may draw this tick.
-  const alloc = {};
-  for (const good of Object.keys(fresh).sort()) {
-    const freshG = fresh[good];
-    if (freshG <= 0) continue;
-
-    // Consumers of `good`: refineries whose recipe lists it as an input, with that
-    // input's per-batch qty — in establishment order.
-    const consumers = [];
-    for (const c of refineries) {
-      const recipe = getRecipe(c.recipeId);
-      if (!recipe) continue; // dangling recipeId — the occupancy invariant halts on it
-      const inp = recipe.inputs.find((i) => i.good === good);
-      if (inp) consumers.push({ venture: c, qty: inp.qty });
-    }
-    // Fresh good with no consumer this system: nothing to route — it all stays in
-    // the pool (the Stockpile fork's catch-all). Also covers a `goods` policy set
-    // for a good with no producer here (fresh 0 never reaches this loop at all).
-    if (consumers.length === 0) continue;
-
-    // Gate 2 — naive full-tilt demand. Each consumer's demand uses its RATED
-    // productionRate (NOT its throttle) and does not shrink if it will run slow for
-    // other reasons — a stable figure the Downstream cap keys off.
-    let demandTotal = 0;
-    for (const { venture, qty } of consumers) demandTotal += venture.productionRate * qty;
-
-    // Gate 1 — pour freshG through the forks in the policy order; compute `supplied`
-    // (the collective draw cap for downstream). Each fork takes from what remains.
-    const policy = getGoodPolicy(guild, sys, good);
-    // Σ producers' committed output — the Syndicate fork's amount. 0 for every
-    // venture today (no licences); structured so slice 3 wires delivery here.
-    let commitment = 0;
-    for (const v of ventures) {
-      if (v.systemId === sys && v.resourceType === good) commitment += v.syndicateCommitment || 0;
-    }
-    let supplied = 0;
-    let remaining = freshG;
-    policy.order.forEach((fork, i) => {
-      if (fork === 'syndicate') {
-        // Leaves the pool for the Syndicate. 0 today, so no pool op; when
-        // commitment > 0 this take must be removed via addStock(−) — slice 3.
-        remaining -= Math.min(commitment, remaining);
-      } else if (fork === 'downstream') {
-        const cap = Math.floor((demandTotal * policy.downstreamPct) / 100);
-        supplied = Math.min(cap, remaining);
-        remaining -= supplied;
-      } else if (fork === 'stockpile') {
-        // The take STAYS in the pool (it was deposited in sub-step 1), so we only
-        // decrement `remaining`. Last fork = catch-all (absorbs everything left);
-        // otherwise a floor set as a % of fresh production or a flat quantity.
-        const isLast = i === policy.order.length - 1;
-        const amt = isLast
-          ? remaining
-          : (policy.stockpile.mode === 'percent'
-            ? Math.floor((freshG * policy.stockpile.value) / 100)
-            : policy.stockpile.value);
-        remaining -= Math.min(amt, remaining);
-      }
-    });
-    // never-touch-the-pile falls out here: supplied ≤ freshG, so refinery draws
-    // (bounded by supplied) can never exceed this tick's fresh production.
-
-    // Gate 3 — distribute `supplied` across consumers into per-venture draw caps.
-    // Regime: FCFS unless SOME consumer has a throttle explicitly set (a throttle
-    // of 100 counts as set — hence hasThrottle, not the value).
-    const anyThrottled = consumers.some(({ venture }) => hasThrottle(guild, sys, venture.id));
-    if (!anyThrottled) {
-      // FCFS in establishment order: each takes min(its full demand, what's left).
-      let rem = supplied;
-      for (const { venture, qty } of consumers) {
-        const give = Math.min(venture.productionRate * qty, rem);
-        (alloc[venture.id] || (alloc[venture.id] = {}))[good] = give;
-        rem -= give;
-      }
-    } else {
-      // Proportional: each consumer's THROTTLED ask; scale down together if the
-      // asks exceed what arrived, remainder to the earliest-established line.
-      const asks = consumers.map(({ venture, qty }) =>
-        Math.floor((venture.productionRate * getThrottlePct(guild, sys, venture.id)) / 100) * qty);
-      const askTotal = asks.reduce((a, b) => a + b, 0);
-      let give;
-      if (askTotal <= supplied) {
-        give = asks; // everyone gets their throttled ask; any surplus stays in pool
-      } else {
-        give = asks.map((ask) => Math.floor((supplied * ask) / askTotal));
-        let remainder = supplied - give.reduce((a, b) => a + b, 0);
-        for (let idx = 0; remainder > 0; idx = (idx + 1) % consumers.length) {
-          give[idx] += 1;
-          remainder -= 1;
-        }
-      }
-      consumers.forEach(({ venture }, idx) => {
-        (alloc[venture.id] || (alloc[venture.id] = {}))[good] = give[idx];
-      });
-    }
-  }
-
-  // --- Sub-step 3: refineries run — consume allocated inputs, produce output.
-  for (const c of refineries) {
-    const recipe = getRecipe(c.recipeId);
-    if (!recipe) continue;
-    // The throttle scales the line's own rate (default 100 → full rate). Batches
-    // are then capped in LOCKSTEP by the scarcest allocated input (floor per input),
-    // so a multi-input line runs at one rate — as before, but bounded now by the
-    // Gate-3 allocation rather than the whole pool.
-    let batches = Math.floor((c.productionRate * getThrottlePct(guild, sys, c.id)) / 100);
-    for (const inp of recipe.inputs) {
-      const allocated = (alloc[c.id] && alloc[c.id][inp.good]) || 0;
-      batches = Math.min(batches, Math.floor(allocated / inp.qty));
-    }
-    if (batches <= 0) continue; // starved this tick: no goods move. Unused alloc stays in pool.
-    for (const inp of recipe.inputs) {
-      addStock(guild, sys, inp.good, -batches * inp.qty);
-    }
-    addStock(guild, sys, recipe.output.good, batches * recipe.output.qty);
-    c.updatedAtTick = state.tick;
-  }
-  // Sub-step 4 (processed goods): a refinery's output is now in the pool. No recipe
-  // consumes a processed good today (every recipe input is raw — verified), so its
-  // Gate-1 routing is trivial (demand 0, everything stays in the pool). When
-  // processed goods gain consumers, they route through this SAME per-good Gate-1
-  // logic within the tick, raw goods first then processed — no change needed here
-  // beyond having deposited the output above.
 }
 
 // Step 2 — consumption. SEAM for spacecraft fuel burn against the shared
