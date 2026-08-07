@@ -78,6 +78,11 @@ test('GET / serves the testbed UI (HTML)', async () => {
   // the engine's resolved allocation, so nothing is captioned "naive".
   assert.doesNotMatch(html, /class="pc-grid"/);
   assert.doesNotMatch(html, /do <b>not<\/b> account for throttling/);
+  // Slice 2c-ii — the review flag display: the per-issue list in the Production
+  // view and the issue-count badge on the system header (both render the engine's
+  // `review` array; no client-side issue logic).
+  assert.match(html, /class="review-issue"/);
+  assert.match(html, /class="review-badge"/);
 });
 
 test('GET /starters lists the seed\'s startable home systems', async () => {

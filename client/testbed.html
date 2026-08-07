@@ -199,6 +199,13 @@
   .good-head .short { color: var(--warn); }
   .good-head .surplus { color: var(--ok); }
   .good-body { padding: 4px 14px 14px; border-top: 1px solid var(--line); }
+  /* Review flag (slice 2c-ii) — advisory, so amber (--fuel) not error-red. */
+  .review-badge { color: var(--fuel); font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .review-block { border: 1px solid var(--fuel); border-radius: 3px; padding: 8px 12px; margin-bottom: 12px; background: rgba(232,185,58,0.06); }
+  .review-head { color: var(--fuel); font-size: 11px; letter-spacing: 1.2px; font-weight: 700; margin-bottom: 6px; }
+  .review-issue { font-size: 12px; color: var(--text); padding: 2px 0; }
+  .review-issue b { color: var(--fuel); font-weight: 500; }
+  .review-foot { margin-top: 6px; font-size: 11px; color: var(--text-dim); font-style: italic; }
   /* Production view — the resolved display + the Gate-1/Gate-3 controls. */
   .prod-line { font-size: 12px; margin: 8px 0; }
   .prod-line .pl-h { font-size: 10px; letter-spacing: 1.5px; margin-right: 8px; }
@@ -822,15 +829,39 @@ function forkRankControls(sysId, good, pol, split) {
   }).join('');
 }
 
+// The §5 review flag, rendered plain-language. PURE PRESENTATION: it maps each
+// engine issue (from the snapshot's `review` array — already computed and sorted by
+// slice 2c-i) to a human sentence, in the order given, and re-derives nothing. The
+// flag is advisory — it never auto-fixes; §5 forbids the engine rewriting stored
+// intent, and this display honours that (fix by editing the controls).
+function reviewIssueText(issue) {
+  if (issue.kind === 'stale_throttle') return 'Throttle set for removed venture <b>' + esc(issue.ventureId) + '</b> — no longer in this system.';
+  if (issue.kind === 'stale_good_policy') return 'Policy set for <b>' + esc(issue.good) + '</b>, which nothing here produces.';
+  if (issue.kind === 'unmanaged_surplus') return '<b>' + esc(issue.good) + '</b> is unallocated — mined here but nothing consumes it and no policy is set.';
+  return esc(issue.kind); // an unknown future kind: surface it raw rather than hide it
+}
+function renderReviewList(review) {
+  var issues = review || []; // guard a missing array (older snapshot / no entry)
+  if (!issues.length) return '';
+  return '<div class="review-block">' +
+    '<div class="review-head">⚠ REVIEW · ' + issues.length + ' item' + (issues.length === 1 ? '' : 's') + '</div>' +
+    issues.map(function (i) { return '<div class="review-issue">' + reviewIssueText(i) + '</div>'; }).join('') +
+    '<div class="review-foot">Advisory only — the engine never rewrites your stored policy (§5). Resolve by editing the controls below.</div>' +
+  '</div>';
+}
+
 // The whole Production panel for a system: an explanatory note, one collapsible
 // section per good produced (Gate-1 controls + the resolved fork split + each
 // consuming line's resolved allocation), and a Gate-3 throttle panel (one row per
 // refinery). Every number is read straight from the engine's resolved report.
 function renderProductionView(sysId, snap, guild) {
   var report = findSystemReport(snap, guild.id, sysId);
+  // The review flag shows FIRST, and even when no ventures remain — a stale
+  // throttle can outlive the venture it named, so it must still surface here.
+  var reviewBlock = renderReviewList(report ? report.review : []);
   var hasVentures = report && (((report.mines || []).length) || ((report.refineries || []).length));
   if (!hasVentures) {
-    return '<div class="site">no ventures established in this system yet — deploy one from the MANIFEST view.</div>';
+    return reviewBlock + '<div class="site">no ventures established in this system yet — deploy one from the MANIFEST view.</div>';
   }
 
   var storedProfile = (guild.productionProfile || {})[sysId] || {};
@@ -947,7 +978,7 @@ function renderProductionView(sysId, snap, guild) {
       '</div>';
   }
 
-  return note + sections + throttlePanel;
+  return reviewBlock + note + sections + throttlePanel;
 }
 
 // Pure render of the managed guild from the latest snapshot + cached layouts.
@@ -998,6 +1029,13 @@ function renderGuildOverlay(snap) {
       summary = layout.planets.length + ' planet' + (layout.planets.length === 1 ? '' : 's') + ' · nodes ' + nO + '/' + nT + ' · slots ' + sO + '/' + sT;
     }
 
+    // Review badge: the engine's issue count for this system (0 => no badge, no
+    // clutter). Read straight from the snapshot's `review` array — no client logic.
+    var reviewCount = ((findSystemReport(snap, g.id, sysId) || {}).review || []).length;
+    var reviewBadge = reviewCount > 0
+      ? '<span class="review-badge">⚠ ' + reviewCount + ' review</span> '
+      : '';
+
     var body = '';
     if (open) {
       // Two sub-views per system: MANIFEST (the planet/site drill-down + establish
@@ -1028,7 +1066,7 @@ function renderGuildOverlay(snap) {
           (layout && layout.name ? ' <span class="site">' + esc(sysId) + '</span>' : '') +
           (layout && layout.ring ? ' · ' + esc(layout.ring) : '') +
           (sysId === homeId ? '<span class="home-badge">HOME</span>' : '') + '</span>' +
-        '<span class="ssum">' + esc(summary) + '</span>' +
+        '<span class="ssum">' + reviewBadge + esc(summary) + '</span>' +
       '</button>' +
       (open ? '<div class="sys-body">' + body + '</div>' : '') +
     '</div>';
