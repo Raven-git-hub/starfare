@@ -117,9 +117,13 @@ test('anti-drift: the report predicts the pool deltas a real tick then produces'
   for (const good of Object.keys(predicted)) {
     assert.equal(held(after, good) - held(s, good), predicted[good], `delta for ${good} must match the report`);
   }
-  // And the report the preview surfaces is the same object the tick resolved from.
+  // And the report the preview surfaces is the same object the tick resolved from,
+  // plus the additive read-only `review` array (slice 2c-i) — the resolved fields
+  // that predict the tick are byte-identical; only the extra telemetry field is new.
   const preview = previewProduction(s);
-  assert.deepEqual(preview[0].systems[0], report);
+  const { review, ...resolved } = preview[0].systems[0];
+  assert.deepEqual(resolved, report);
+  assert.ok(Array.isArray(review), 'the preview adds a read-only review array');
 });
 
 // --- Purity: the selector reads state and changes nothing ----------------------

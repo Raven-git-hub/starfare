@@ -24,7 +24,9 @@
 // could change, so it is trivially pure and side-effect-free.
 
 const { getRecipe } = require('./recipes.js');
-const { getGoodPolicy, getThrottlePct, hasThrottle } = require('./profile.js');
+const {
+  getGoodPolicy, getThrottlePct, hasThrottle, storedThrottleIds, storedPolicyGoods,
+} = require('./profile.js');
 
 // resolveProduction(guild, systemId) -> a plain report for that (guild, system):
 //   {
@@ -184,6 +186,69 @@ function resolveProduction(guild, systemId) {
   return { systemId, mines, goods, lines, refineries };
 }
 
+// reviewSystem(guild, systemId) -> the §5 "review flag": a deterministically
+// sorted list of issue objects telling the player where their stored profile has
+// stopped cleanly covering reality. READ-ONLY telemetry on the preview path only —
+// it moves no goods and is NOT consulted by resolveProduction/stepProduction, so
+// it can never change production output. The engine flags; it never rewrites the
+// player's stored intent (§5, §15.4).
+//
+// Three triggers, matching §5's ruling exactly:
+//   (a) stale_throttle    — a stored throttle names a venture no longer in S.
+//   (b) stale_good_policy — a stored `goods` policy is for a good S no longer produces.
+//   (c) unmanaged_surplus — a RAW mined good with no in-system consumer AND no policy
+//                           set (the "you have unallocated titanium, go set it" nudge).
+// Deliberately NOT flagged (d): a consumer the player chose to starve (a downstream
+// cap / stockpile floor / throttle) — chosen scarcity is intent, not an oversight.
+// Because (c) fires only for RAW goods, a processed refinery output that nothing
+// consumes never flags (piling processed output is a normal, unmanaged-by-design state).
+function reviewSystem(guild, systemId) {
+  const ventures = (guild.ventures || []).filter((v) => v.systemId === systemId);
+  const ventureIds = new Set(ventures.map((v) => v.id));
+
+  // Derive what S actually produces/consumes from the current ventures + recipes.
+  const mineGoods = new Set();       // raw goods mined in S
+  const refOutputs = new Set();      // processed goods refined in S
+  const consumedInputs = new Set();  // goods some refinery in S lists as a recipe input
+  for (const v of ventures) {
+    if (v.resourceType) {
+      mineGoods.add(v.resourceType);
+    } else if (v.recipeId) {
+      const recipe = getRecipe(v.recipeId);
+      if (!recipe) continue; // dangling recipeId — the occupancy invariant halts on it
+      refOutputs.add(recipe.output.good);
+      for (const inp of recipe.inputs) consumedInputs.add(inp.good);
+    }
+  }
+  const producedGoods = new Set([...mineGoods, ...refOutputs]);
+  const policyGoods = new Set(storedPolicyGoods(guild, systemId));
+
+  const issues = [];
+  // (a) a throttle for a venture that has since been removed from S.
+  for (const id of storedThrottleIds(guild, systemId)) {
+    if (!ventureIds.has(id)) issues.push({ kind: 'stale_throttle', ventureId: id });
+  }
+  // (b) a `goods` policy for a good S no longer produces.
+  for (const good of storedPolicyGoods(guild, systemId)) {
+    if (!producedGoods.has(good)) issues.push({ kind: 'stale_good_policy', good });
+  }
+  // (c) a raw good produced here that nothing consumes and no policy covers.
+  for (const good of mineGoods) {
+    if (!consumedInputs.has(good) && !policyGoods.has(good)) {
+      issues.push({ kind: 'unmanaged_surplus', good });
+    }
+  }
+
+  // Sort by (kind, ventureId|good) so the list is deterministic (invariant 9).
+  issues.sort((a, b) => {
+    if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
+    const ak = a.ventureId || a.good;
+    const bk = b.ventureId || b.good;
+    return ak < bk ? -1 : ak > bk ? 1 : 0;
+  });
+  return issues;
+}
+
 // previewProduction(state) -> read-only display telemetry, per guild → per system.
 // Iterates every guild and system in the SAME deterministic order stepProduction
 // uses (guilds in array order; systems sorted by String-coerced systemId, so the
@@ -192,7 +257,9 @@ function resolveProduction(guild, systemId) {
 // telemetry — adds nothing to serialized state or the determinism hash.
 //
 // Shape (arrays keep their deterministic order through serialize.canonicalize):
-//   [ { guildId, systems: [ <resolveProduction report>, ... ] } ]
+//   [ { guildId, systems: [ { ...<resolveProduction report>, review: [ ...issues ] } ] } ]
+// The `review` array is attached HERE, on the read path only — resolveProduction
+// (shared with the move path) stays untouched, so the flag is provably a no-op.
 function previewProduction(state) {
   return (state.guilds || []).map((guild) => {
     const ventures = guild.ventures || [];
@@ -200,9 +267,12 @@ function previewProduction(state) {
       .sort((a, b) => (String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0));
     return {
       guildId: guild.id,
-      systems: systemIds.map((sys) => resolveProduction(guild, sys)),
+      systems: systemIds.map((sys) => ({
+        ...resolveProduction(guild, sys),
+        review: reviewSystem(guild, sys),
+      })),
     };
   });
 }
 
-module.exports = { resolveProduction, previewProduction };
+module.exports = { resolveProduction, reviewSystem, previewProduction };

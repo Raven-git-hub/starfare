@@ -190,11 +190,11 @@ test('an unseated venture resolves to a null site rather than throwing', () => {
   assert.equal(v.site, null);
 });
 
-// --- schema 4: the interactive Production view's data support (slice 2b-i) ------
+// --- schema 5: the Production view's data support (slices 2b-i / 2c-i) ----------
 
-test('snapshot schema is 4', () => {
-  assert.equal(SNAPSHOT_SCHEMA, 4);
-  assert.equal(buildSnapshot(sampleState()).schemaVersion, 4);
+test('snapshot schema is 5', () => {
+  assert.equal(SNAPSHOT_SCHEMA, 5);
+  assert.equal(buildSnapshot(sampleState()).schemaVersion, 5);
 });
 
 test('a guild carries its stored productionProfile SPARSE — a set entry present, an unset one absent', () => {

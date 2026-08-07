@@ -152,11 +152,11 @@ test('GET /health reports liveness (JSON)', async () => {
   assert.equal(body.service, 'starfare-testbed');
 });
 
-test('GET /snapshot returns the zero-state snapshot (schema 4)', async () => {
+test('GET /snapshot returns the zero-state snapshot (schema 5)', async () => {
   await reset();
   const { status, body } = await req('GET', '/snapshot');
   assert.equal(status, 200);
-  assert.equal(body.schemaVersion, 4); // bumped 3->4 for the interactive Production view's data support (slice 2b-i)
+  assert.equal(body.schemaVersion, 5); // bumped 4->5 for the §5 review flag (slice 2c-i)
   assert.equal(body.tick, 0);
   assert.equal(body.guilds.length, 0);
   assert.equal(body.claims.length, 10); // Citadel + 9 outposts

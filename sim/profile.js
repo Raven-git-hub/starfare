@@ -64,6 +64,26 @@ function hasThrottle(guild, systemId, ventureId) {
   return Object.prototype.hasOwnProperty.call(throttles, ventureId);
 }
 
+// storedThrottleIds(guild, systemId) -> sorted array of ventureIds that have an
+// EXPLICITLY-stored Gate-3 throttle for that system ([] when the system/profile is
+// absent). The plural of hasThrottle: it enumerates the stored keys rather than
+// testing one, so the review pass (§5, sim/production.js) can find throttles that
+// name a since-removed venture. Sorted for determinism (invariant 9).
+function storedThrottleIds(guild, systemId) {
+  const throttles = ((guild.productionProfile || {})[systemId] || {}).throttles || {};
+  return Object.keys(throttles).sort();
+}
+
+// storedPolicyGoods(guild, systemId) -> sorted array of goods that have an
+// EXPLICITLY-stored Gate-1 `goods` policy entry for that system ([] when absent).
+// The review pass uses it two ways: to flag a policy for a good no longer produced
+// (stale), and to silence the unmanaged-surplus flag for a good the player HAS set
+// a policy on. Reads the sparse shape here so callers never touch the raw profile.
+function storedPolicyGoods(guild, systemId) {
+  const goods = ((guild.productionProfile || {})[systemId] || {}).goods || {};
+  return Object.keys(goods).sort();
+}
+
 // setEntry(guild, systemId, { goods?, throttles? }) -> MERGE a patch into the
 // guild's profile for one system, creating the nesting as needed. Merges at the
 // KEY level: each good in `goods` merges its supplied fields over that good's
@@ -124,4 +144,4 @@ function cloneProfile(profile) {
   return out;
 }
 
-module.exports = { getGoodPolicy, getThrottlePct, hasThrottle, setEntry, cloneProfile };
+module.exports = { getGoodPolicy, getThrottlePct, hasThrottle, storedThrottleIds, storedPolicyGoods, setEntry, cloneProfile };

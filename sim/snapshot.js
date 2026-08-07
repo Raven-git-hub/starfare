@@ -51,7 +51,12 @@ const { previewProduction } = require('./production.js');
 // so older readers keep working; this only grows the shape. Neither field is in
 // serialized state — the profile is engine-owned owned state read here, and the
 // preview is derived telemetry (not part of the determinism hash).
-const SNAPSHOT_SCHEMA = 4;
+// v5 (07-08-26): the §5 review flag (slice 2c-i) — each system's entry in the
+// `production` block now carries a `review` array of issue objects (stale
+// throttles, stale good-policies, unmanaged raw surplus), computed on the read
+// path in `previewProduction`. Still ADDITIVE (every v4 field untouched) and still
+// derived telemetry, so the move path and the determinism hash are unchanged.
+const SNAPSHOT_SCHEMA = 5;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
 //   {
@@ -66,7 +71,8 @@ const SNAPSHOT_SCHEMA = 4;
 //                 stockpilesBySystem: { systemId: { good: int } }, // per-system
 //                 productionProfile: { ... } } ],               // §5 profile, sparse as stored
 //     production: [ { guildId,                                  // previewProduction(state)
-//       systems: [ { systemId, mines, goods, lines, refineries } ] } ], // resolved per-system
+//       systems: [ { systemId, mines, goods, lines, refineries,     // resolved per-system
+//                    review: [ { kind, ventureId?|good? } ] } ] } ], // §5 review flag (2c-i)
 //     ventures: [ { id, ownerGuildId, type, siteId, systemId, resourceType,
 //                   recipeId, productionRate, syndicateCommitment,
 //                   site: { kind, planetId, systemId, resourceType } | null } ],
