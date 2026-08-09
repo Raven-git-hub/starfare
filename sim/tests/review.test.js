@@ -175,14 +175,14 @@ test('purity: previewProduction does not mutate state, even when it raises issue
 
 // --- snapshot emission ---------------------------------------------------------
 
-test('snapshot: schema is 5 and the production block carries the review array', () => {
-  assert.equal(SNAPSHOT_SCHEMA, 5);
+test('snapshot: schema is 6 and the production block carries the review array', () => {
+  assert.equal(SNAPSHOT_SCHEMA, 6);
   const s = sysState({
     ventures: [mine('t', 'titanium', 5)],
     profile: { throttles: { ghost: 50 } },
   });
   const snap = buildSnapshot(s);
-  assert.equal(snap.schemaVersion, 5);
+  assert.equal(snap.schemaVersion, 6);
   const sysReport = snap.production.find((p) => p.guildId === 'g1').systems.find((r) => r.systemId === SYS);
   assert.deepEqual(sysReport.review, [
     { kind: 'stale_throttle', ventureId: 'ghost' },

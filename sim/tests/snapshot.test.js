@@ -190,11 +190,11 @@ test('an unseated venture resolves to a null site rather than throwing', () => {
   assert.equal(v.site, null);
 });
 
-// --- schema 5: the Production view's data support (slices 2b-i / 2c-i) ----------
+// --- schema 6: the Production view's data support (slices 2b-i / 2c-i / rewrite) -
 
-test('snapshot schema is 5', () => {
-  assert.equal(SNAPSHOT_SCHEMA, 5);
-  assert.equal(buildSnapshot(sampleState()).schemaVersion, 5);
+test('snapshot schema is 6', () => {
+  assert.equal(SNAPSHOT_SCHEMA, 6);
+  assert.equal(buildSnapshot(sampleState()).schemaVersion, 6);
 });
 
 test('a guild carries its stored productionProfile SPARSE — a set entry present, an unset one absent', () => {
@@ -230,8 +230,9 @@ test('a guild with no profile carries an empty {} (all-default), not undefined',
 
 test('the production block carries the resolved per-good and per-line numbers', () => {
   // fresh silica 10 feeding two consumers (demand 20) under a 30% downstream cap:
-  // supplied floor(20*30/100)=6, FCFS gives r_a 6 / r_b 0 — the SAME resolution
-  // the tick applies (that shared-resolver equality is pinned in production.test.js).
+  // supplied floor(20*30/100)=6, no stockpile to draw, FCFS gives r_a 6 / r_b 0 —
+  // the SAME resolution the tick applies (shared-resolver equality is pinned in
+  // production.test.js). r_a runs at a continuous rate 6 (all other inputs plentiful).
   const mine = (id, good, rate) => ({ id, ownerGuildId: 'g1', type: 'mining', systemId: 'sysA', resourceType: good, productionRate: rate });
   const refinery = (id, recipeId, rate) => ({ id, ownerGuildId: 'g1', type: 'refining', systemId: 'sysA', recipeId, productionRate: rate });
   const s = createState({
@@ -256,6 +257,6 @@ test('the production block carries the resolved per-good and per-line numbers', 
   assert.equal(sysReport.goods.silica.supplied, 6);
   const la = sysReport.lines.find((l) => l.good === 'silica' && l.ventureId === 'r_a');
   assert.equal(la.alloc, 6);
-  assert.equal(sysReport.refineries.find((r) => r.ventureId === 'r_a').batches, 6);
-  assert.equal(sysReport.refineries.find((r) => r.ventureId === 'r_b').batches, 0);
+  assert.equal(sysReport.refineries.find((r) => r.ventureId === 'r_a').rate, 6);
+  assert.equal(sysReport.refineries.find((r) => r.ventureId === 'r_b').rate, 0);
 });

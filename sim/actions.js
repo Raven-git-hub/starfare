@@ -290,6 +290,12 @@ function validateAction(state, action) {
             return { valid: false, reason: `stockpile.value for good ${JSON.stringify(good)} must be a non-negative integer (§15.2)` };
           }
         }
+        // reserveFloor (§5 rate-based rewrite): the drawdown reserve line, an
+        // integer quantity ≥ 0 the consumer draw won't dip the pile below.
+        if (policy.reserveFloor !== undefined
+            && (typeof policy.reserveFloor !== 'number' || !Number.isInteger(policy.reserveFloor) || policy.reserveFloor < 0)) {
+          return { valid: false, reason: `reserveFloor for good ${JSON.stringify(good)} must be a non-negative integer (§15.2)` };
+        }
       }
     }
     if (action.throttles !== undefined) {

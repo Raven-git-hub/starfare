@@ -154,6 +154,28 @@ function checkNonNegativityAndIntegrality(state) {
   return out;
 }
 
+// Output-accumulator carry — the ONE sanctioned non-integer (§5 rate-based
+// rewrite, Ruling 2). A refinery's fractional output is carried in
+// Venture.outputAccumulator between ticks and must stay in [0, 1): a value ≥ 1
+// means a whole unit that should have been minted was left uncarried (goods
+// silently lost from the ledger), and a negative value is nonsense. It is fenced
+// OFF the integer sweep above (goods stay integer; this is mint-TIMING state, not
+// a good balance), so it gets its own tripwire here. A venture that predates the
+// field (undefined) reads as 0 — legal — so only a present, out-of-range value trips.
+function checkOutputAccumulator(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    for (const v of g.ventures || []) {
+      const acc = v.outputAccumulator;
+      if (acc === undefined) continue;
+      if (typeof acc !== 'number' || Number.isNaN(acc) || acc < 0 || acc >= 1) {
+        out.push({ rule: 'output-accumulator-in-[0,1) (§5 Ruling 2)', where: `venture:${v.id}.outputAccumulator`, detail: { value: acc } });
+      }
+    }
+  }
+  return out;
+}
+
 // Galactic-supply consistency — the derived totals cache (state.galacticSupply)
 // must equal a fresh re-derivation from the guilds' actual stockpiles and the
 // fuel figures. This is a CONSISTENCY check, not a conservation one: non-fuel
@@ -309,6 +331,7 @@ function checkInvariants(state, tick) {
     ...checkFuelConservation(state),
     ...checkCreditConservation(state),
     ...checkNonNegativityAndIntegrality(state),
+    ...checkOutputAccumulator(state),
     ...checkGalacticSupplyConsistency(state),
     ...checkSiteOccupancy(state),
     ...checkClaimIntegrity(state),

@@ -27,7 +27,9 @@ const DEFAULT_ORDER = Object.freeze(['syndicate', 'downstream', 'stockpile']);
 // getGoodPolicy(guild, systemId, good) -> the good's Gate-1 policy with every
 // field defaulted (§15.4): `order` = ["syndicate","downstream","stockpile"],
 // `downstreamPct` = 100 (feed downstream fully), `stockpile` = { percent, 0 }
-// (keep nothing beyond overflow). A good/system with no stored entry returns the
+// (keep nothing beyond overflow), `reserveFloor` = 0 (§5 rate-based rewrite: the
+// drawdown reserve line the consumer draw won't dip the pile below — 0 means the
+// whole pile is drawable). A good/system with no stored entry returns the
 // all-defaults policy; a partially-set entry fills only the fields it set and
 // defaults the rest. The returned object is fresh (arrays/objects copied), so a
 // caller mutating it can never alias into engine state.
@@ -41,6 +43,7 @@ function getGoodPolicy(guild, systemId, good) {
       mode: stockpile.mode === undefined ? 'percent' : stockpile.mode,
       value: stockpile.value === undefined ? 0 : stockpile.value,
     },
+    reserveFloor: stored.reserveFloor === undefined ? 0 : stored.reserveFloor,
   };
 }
 
@@ -105,6 +108,7 @@ function setEntry(guild, systemId, patch) {
       if (policy.order !== undefined) merged.order = [...policy.order];
       if (policy.downstreamPct !== undefined) merged.downstreamPct = policy.downstreamPct;
       if (policy.stockpile !== undefined) merged.stockpile = { ...policy.stockpile };
+      if (policy.reserveFloor !== undefined) merged.reserveFloor = policy.reserveFloor;
       entry.goods[good] = merged;
     }
   }

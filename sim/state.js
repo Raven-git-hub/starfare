@@ -104,6 +104,7 @@ function createVenture({
   productionRate = 0,
   inputStockpiles = {},
   syndicateCommitment = 0,
+  outputAccumulator = 0,
 }) {
   if (id === undefined) throw new Error('createVenture: id is required');
   if (ownerGuildId === undefined) throw new Error('createVenture: ownerGuildId is required');
@@ -156,6 +157,17 @@ function createVenture({
     // carrying it is a behavioural no-op; it exists to give commitment a home
     // everywhere (rows + totals) before slice 3 gives it a function.
     syndicateCommitment,
+    // outputAccumulator: the per-venture fractional output carry (§5 rate-based
+    // rewrite, §15.4). A refinery runs at a CONTINUOUS rate (batches/tick may be
+    // fractional), but goods are integers (§15.2) — so the whole-unit output is
+    // minted when the accumulator crosses 1 and the sub-unit remainder is carried
+    // here to the next tick, held in [0, 1). It is the ONE sanctioned non-integer
+    // field, fenced OFF the conserved-goods ledger (units consumed/spilled/minted
+    // all stay integer); it is mint-TIMING state, not a good balance. A dedicated
+    // tick tripwire (invariants.js) asserts 0 ≤ outputAccumulator < 1 every tick.
+    // Default 0 (a fresh venture has nothing carried). Advanced only by
+    // stepProduction (tick.js) — the resolver reads it start-of-step and stays pure.
+    outputAccumulator,
     // NOTE: the old typeless `outputStockpile` scalar was retired in the
     // resource-representation slice (02-08-26). Produced goods are typed and go
     // straight into the owner guild's `stockpiles` — one home, no drift. There

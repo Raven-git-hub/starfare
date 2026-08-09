@@ -33,26 +33,27 @@ function cloneState(state) {
 }
 
 // Step 1 — production, routed through §5's THREE GATES from the System Production
-// Profile. The gate ARITHMETIC now lives in ONE pure function,
-// `resolveProduction(guild, systemId)` (sim/production.js) — see design.md §5
-// "the resolved numbers come from the engine, never the browser" (ruled 07-08-26).
-// This step is the APPLY half: it asks the resolver what production does this
-// tick, then MOVES the goods to match. The read-only `previewProduction` selector
-// (also sim/production.js, surfaced through the snapshot) asks the SAME resolver
-// what production WOULD do, so the displayed numbers and the moved numbers can
-// never drift — they are one computation.
+// Profile, now in the RATE-BASED model (§5 "Engine rewrite", 10-08-26). The gate
+// ARITHMETIC lives in ONE pure function, `resolveProduction(guild, systemId)`
+// (sim/production.js) — see §5 "the resolved numbers come from the engine, never
+// the browser". This step is the APPLY half: it asks the resolver what production
+// does this tick, then MOVES the goods to match. The read-only `previewProduction`
+// selector (also sim/production.js, surfaced through the snapshot) asks the SAME
+// resolver, so the displayed numbers and the moved numbers can never drift.
 //
 // Per guild, per system (deterministic order), the resolver's report says:
-//   - `mines`: each producing mine's fresh deposit (good + amount) — routed through
-//     the Gate-1 waterfall and Gate-3 distribution INSIDE the resolver, on THIS
-//     tick's fresh flow only (§5 "never touch the pile": a refinery the fresh flow
-//     can't feed stalls, it does not draw down the accumulated pile).
-//   - `refineries`: how many batches each refinery runs (0 = starved this tick).
-// Applying it is pure bookkeeping: deposit each mine's fresh, then for each
-// refinery consume `batches × qty` of each input and produce `batches × output.qty`.
-// Because addStock is additive, the deposit-then-run order gives the exact same
-// final pool as before, and non-negativity (invariant 3) holds identically — the
-// resolver bounds every draw by `supplied ≤ fresh`.
+//   - `mines`: each producing mine's fresh deposit (good + amount).
+//   - `lines`: per consuming line per input, the balancer split `consumed`/`spill`
+//     of its Gate-3 allocation (consumed + spill = alloc). Only `consumed` leaves
+//     the pool; the spill was never removed, so it needs no return trip.
+//   - `refineries`: each line's continuous `rate`, its whole-unit `minted` output,
+//     and its NEW `accumulator` (the fractional carry to write back on the venture).
+// Applying it is pure bookkeeping: deposit each mine's fresh, subtract each line's
+// `consumed`, add each refinery's `minted`, and advance `Venture.outputAccumulator`.
+// Non-negativity (invariant 3) holds BY CONSTRUCTION: the resolver bounds each
+// good's total allocation by `supplied + drawable` where `supplied ≤ fresh` and
+// `drawable = balance − reserveFloor`, so the pool ends at ≥ the reserve floor
+// (≥ 0) — the stockpile drawdown can reach the floor and no further.
 //
 // `Venture.updatedAtTick` records when a venture moved goods (§15.2). Every
 // deposit/draw lands in the venture's OWN system pool (ruling B1, §15.2):
@@ -85,8 +86,9 @@ function stepProduction(state, _actions) {
 
 // One (guild, system): resolve production, then MOVE the goods to match the
 // report. This is the ONLY place addStock is called for production. Mutates the
-// guild's system pool in place (tick() already cloned state, so this never touches
-// the caller's input). The resolver reads no pool and mutates nothing.
+// guild's system pool (and each refinery's outputAccumulator) in place — tick()
+// already cloned state, so this never touches the caller's input. The resolver
+// reads the pool balance + accumulators (start-of-step) and mutates nothing.
 function applyProduction(state, guild, systemId) {
   const report = resolveProduction(guild, systemId);
   const byId = new Map((guild.ventures || []).map((v) => [v.id, v]));
@@ -97,17 +99,23 @@ function applyProduction(state, guild, systemId) {
     byId.get(m.ventureId).updatedAtTick = state.tick;
   }
 
-  // Run each refinery: consume its batches' inputs, produce its output. A starved
-  // refinery (0 batches) moves nothing — its unused allocation stays in the pool —
-  // and is NOT stamped, matching the old `if (batches <= 0) continue`.
+  // Subtract each consuming line's `consumed` from the pool. The balancer's spill
+  // (alloc − consumed) was never removed, so it stays put — nothing to return.
+  for (const line of report.lines) {
+    if (line.consumed > 0) addStock(guild, systemId, line.good, -line.consumed);
+  }
+
+  // Mint each refinery's whole-unit output and advance its fractional carry. A
+  // starved line (rate 0) moves nothing and keeps its carry — NOT stamped, matching
+  // the old `if (batches <= 0) continue`.
   for (const r of report.refineries) {
-    if (r.batches <= 0) continue;
+    if (r.rate <= 0) continue;
     const v = byId.get(r.ventureId);
-    const recipe = getRecipe(v.recipeId);
-    for (const inp of recipe.inputs) {
-      addStock(guild, systemId, inp.good, -r.batches * inp.qty);
+    v.outputAccumulator = r.accumulator;
+    if (r.minted > 0) {
+      const recipe = getRecipe(v.recipeId);
+      addStock(guild, systemId, recipe.output.good, r.minted);
     }
-    addStock(guild, systemId, recipe.output.good, r.batches * recipe.output.qty);
     v.updatedAtTick = state.tick;
   }
 }
