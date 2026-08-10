@@ -278,23 +278,12 @@ function validateAction(state, action) {
         if (policy.downstreamPct !== undefined && !isIntInRange(policy.downstreamPct, 0, 100)) {
           return { valid: false, reason: `downstreamPct for good ${JSON.stringify(good)} must be an integer 0..100 (§15.2)` };
         }
-        if (policy.stockpile !== undefined) {
-          const sp = policy.stockpile;
-          if (typeof sp !== 'object' || sp === null || Array.isArray(sp)) {
-            return { valid: false, reason: `stockpile for good ${JSON.stringify(good)} must be an object` };
-          }
-          if (sp.mode !== 'percent' && sp.mode !== 'quantity') {
-            return { valid: false, reason: `stockpile.mode for good ${JSON.stringify(good)} must be "percent" or "quantity"` };
-          }
-          if (typeof sp.value !== 'number' || !Number.isInteger(sp.value) || sp.value < 0) {
-            return { valid: false, reason: `stockpile.value for good ${JSON.stringify(good)} must be a non-negative integer (§15.2)` };
-          }
-        }
-        // reserveFloor (§5 rate-based rewrite): the drawdown reserve line, an
-        // integer quantity ≥ 0 the consumer draw won't dip the pile below.
-        if (policy.reserveFloor !== undefined
-            && (typeof policy.reserveFloor !== 'number' || !Number.isInteger(policy.reserveFloor) || policy.reserveFloor < 0)) {
-          return { valid: false, reason: `reserveFloor for good ${JSON.stringify(good)} must be a non-negative integer (§15.2)` };
+        // reserveLevel (§5 one-pot distribution, Slice A): the quantity the Reserve
+        // claimant holds back at its priority slot — an integer ≥ 0. Replaces the
+        // old stockpile {mode,value} fork amount and the separate reserveFloor.
+        if (policy.reserveLevel !== undefined
+            && (typeof policy.reserveLevel !== 'number' || !Number.isInteger(policy.reserveLevel) || policy.reserveLevel < 0)) {
+          return { valid: false, reason: `reserveLevel for good ${JSON.stringify(good)} must be a non-negative integer (§15.2)` };
         }
       }
     }

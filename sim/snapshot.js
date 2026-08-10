@@ -68,6 +68,14 @@ const { previewProduction } = require('./production.js');
 // on each venture row here. `rate` and the carry fractions are floats (telemetry /
 // timing state); the snapshot is not part of the determinism hash, so this is honest
 // bookkeeping that the shape grew — no move-path change beyond the rewrite it reflects.
+// v6 (Slice A, 10-08-26): the §5 one-pot distribution reshapes the `production`
+// block's per-good entry (schema 6 still unreleased, so it is redefined in place, no
+// 6->7): `drawable`/`pool` are replaced by `reserve0` (start-of-step reserve), `pot`
+// (reserve0 + fresh), and `reserveDelta` (this tick's net reserve change — the
+// console's trend arrow); `fork.{stockpile,downstream,syndicate}` now report the
+// reserve HELD / consumer DRAW / syndicate DRAW; `supplied` is the consumer draw cap.
+// In the carried `productionProfile`, the per-good `stockpile {mode,value}` fork
+// amount and `reserveFloor` are replaced by the single `reserveLevel`.
 const SNAPSHOT_SCHEMA = 6;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:

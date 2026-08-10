@@ -755,8 +755,8 @@ function recipeMap() {
 // downstream fed fully (100%); keep nothing beyond overflow (percent 0); a line
 // runs at full-tilt (throttle 100). A control for a good/line with no stored
 // entry shows these; the sparse stored profile tells us which are explicitly set.
-var PROFILE_DEFAULTS = { order: ['syndicate', 'downstream', 'stockpile'], downstreamPct: 100, stockpileMode: 'percent', stockpileValue: 0, throttle: 100 };
-var FORK_LABEL = { syndicate: 'SYNDICATE', downstream: 'DOWNSTREAM', stockpile: 'STOCKPILE' };
+var PROFILE_DEFAULTS = { order: ['syndicate', 'downstream', 'stockpile'], downstreamPct: 100, reserveLevel: 0, throttle: 100 };
+var FORK_LABEL = { syndicate: 'SYNDICATE', downstream: 'DOWNSTREAM', stockpile: 'RESERVE' };
 
 // §5 rate-based rewrite: a line runs at a CONTINUOUS rate (batches/tick may be
 // fractional). Show it as an integer when whole, else to two places — pure
@@ -788,14 +788,14 @@ function ratioPct(numer, denom) {
 // defaulted controls (the sparse profile distinguishes set-to-100 from unset).
 function goodPolicy(storedGoods, good) {
   var s = (storedGoods || {})[good] || {};
-  var sp = s.stockpile || {};
   return {
     order: Array.isArray(s.order) ? s.order.slice() : PROFILE_DEFAULTS.order.slice(),
     downstreamPct: s.downstreamPct != null ? s.downstreamPct : PROFILE_DEFAULTS.downstreamPct,
     downstreamSet: s.downstreamPct != null,
-    spMode: sp.mode != null ? sp.mode : PROFILE_DEFAULTS.stockpileMode,
-    spValue: sp.value != null ? sp.value : PROFILE_DEFAULTS.stockpileValue,
-    spSet: s.stockpile != null,
+    // §5 one-pot (Slice A): the Reserve claimant holds up to `reserveLevel` at its
+    // priority slot — replaces the old stockpile {mode,value} fork amount.
+    reserveLevel: s.reserveLevel != null ? s.reserveLevel : PROFILE_DEFAULTS.reserveLevel,
+    reserveSet: s.reserveLevel != null,
   };
 }
 
@@ -819,13 +819,9 @@ function forkRankControls(sysId, good, pol, split) {
       amount = 'cap <input class="dscap" data-sys="' + esc(sysId) + '" data-good="' + esc(good) + '" type="number" min="0" max="100" value="' + esc(pol.downstreamPct) + '">% of full-tilt' +
         (pol.downstreamSet ? '' : ' <span class="deflt">(default)</span>');
     } else {
-      amount =
-        '<select class="sp-mode" data-sys="' + esc(sysId) + '" data-good="' + esc(good) + '">' +
-          '<option value="percent"' + (pol.spMode === 'percent' ? ' selected' : '') + '>percent</option>' +
-          '<option value="quantity"' + (pol.spMode === 'quantity' ? ' selected' : '') + '>quantity</option>' +
-        '</select> ' +
-        '<input class="sp-val" data-sys="' + esc(sysId) + '" data-good="' + esc(good) + '" type="number" min="0" value="' + esc(pol.spValue) + '">' +
-        (pol.spSet ? '' : ' <span class="deflt">(default)</span>');
+      // The Reserve claimant holds up to `reserveLevel` units at its priority slot.
+      amount = 'hold <input class="reserve-level" data-sys="' + esc(sysId) + '" data-good="' + esc(good) + '" type="number" min="0" value="' + esc(pol.reserveLevel) + '"> units' +
+        (pol.reserveSet ? '' : ' <span class="deflt">(default)</span>');
     }
     return '<div class="fork-row' + (f === 'syndicate' ? ' fork-syn' : '') + '">' +
       '<span class="fork-rank">' + (i + 1) + '</span>' +
@@ -1169,15 +1165,12 @@ document.getElementById('go-body').addEventListener('change', function (e) {
     sendProfile(t.dataset.sys, { goods: gp });
     return;
   }
-  // stockpile is one { mode, value } object — a change to either sends both, read
-  // from the two controls sharing this fork row.
-  if (t.classList.contains('sp-mode') || t.classList.contains('sp-val')) {
-    var row = t.closest('.fork-row');
-    var modeEl = row.querySelector('.sp-mode');
-    var valEl = row.querySelector('.sp-val');
-    var v = fieldInt(valEl);
-    if (v === null) { setStatus('stockpile value: enter an integer', 'error'); return; }
-    var gp2 = {}; gp2[t.dataset.good] = { stockpile: { mode: modeEl.value, value: v } };
+  // §5 one-pot (Slice A): the Reserve claimant's level — one integer quantity held
+  // at its priority slot (replaces the old stockpile {mode,value}).
+  if (t.classList.contains('reserve-level')) {
+    var v = fieldInt(t);
+    if (v === null) { setStatus('reserve level: enter an integer', 'error'); return; }
+    var gp2 = {}; gp2[t.dataset.good] = { reserveLevel: v };
     sendProfile(t.dataset.sys, { goods: gp2 });
     return;
   }

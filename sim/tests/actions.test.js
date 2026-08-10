@@ -167,7 +167,7 @@ test('a valid production-profile patch stores and reads back', () => {
     guildId: 'g1',
     systemId: 'sys_0002',
     goods: {
-      titanium: { order: ['downstream', 'stockpile', 'syndicate'], downstreamPct: 40, stockpile: { mode: 'quantity', value: 250 } },
+      titanium: { order: ['downstream', 'stockpile', 'syndicate'], downstreamPct: 40, reserveLevel: 250 },
     },
     throttles: { refinery: 30 },
   });
@@ -176,8 +176,7 @@ test('a valid production-profile patch stores and reads back', () => {
   assert.deepEqual(getGoodPolicy(next.guilds[0], 'sys_0002', 'titanium'), {
     order: ['downstream', 'stockpile', 'syndicate'],
     downstreamPct: 40,
-    stockpile: { mode: 'quantity', value: 250 },
-    reserveFloor: 0,
+    reserveLevel: 250,
   });
   assert.equal(getThrottlePct(next.guilds[0], 'sys_0002', 'refinery'), 30);
   // Untouched goods/throttles still read their defaults.
@@ -235,36 +234,25 @@ test('validateAction rejects downstreamPct out of range or non-integer', () => {
   );
 });
 
-test('validateAction rejects a bad stockpile.mode and a negative stockpile.value', () => {
+test('validateAction rejects a negative or non-integer reserveLevel (§5 one-pot, Slice A)', () => {
   rejects(
-    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { titanium: { stockpile: { mode: 'nonsense', value: 0 } } } }),
-    /stockpile\.mode.*percent.*quantity/,
+    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { titanium: { reserveLevel: -1 } } }),
+    /reserveLevel.*non-negative integer/,
   );
   rejects(
-    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { titanium: { stockpile: { mode: 'percent', value: -1 } } } }),
-    /stockpile\.value.*non-negative integer/,
-  );
-});
-
-test('validateAction rejects a negative or non-integer reserveFloor (§5 drawdown)', () => {
-  rejects(
-    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { titanium: { reserveFloor: -1 } } }),
-    /reserveFloor.*non-negative integer/,
-  );
-  rejects(
-    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { titanium: { reserveFloor: 5.5 } } }),
-    /reserveFloor.*non-negative integer/,
+    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { titanium: { reserveLevel: 5.5 } } }),
+    /reserveLevel.*non-negative integer/,
   );
 });
 
-test('a valid reserveFloor stores and reads back through getGoodPolicy', () => {
+test('a valid reserveLevel stores and reads back through getGoodPolicy', () => {
   const s = twoGuildState();
   const action = createSetProductionProfileAction({
-    guildId: 'g1', systemId: 'sys_0002', goods: { titanium: { reserveFloor: 40 } },
+    guildId: 'g1', systemId: 'sys_0002', goods: { titanium: { reserveLevel: 40 } },
   });
   assert.deepEqual(validateAction(s, action), { valid: true });
   const next = applyAction(s, action);
-  assert.equal(getGoodPolicy(next.guilds[0], 'sys_0002', 'titanium').reserveFloor, 40);
+  assert.equal(getGoodPolicy(next.guilds[0], 'sys_0002', 'titanium').reserveLevel, 40);
 });
 
 test('validateAction rejects a non-integer throttle', () => {
