@@ -27,13 +27,14 @@
 // undrawn surplus stay in the pool and are drawable NEXT tick.
 //
 // THE MODEL, in one breath (design.md §5 "Engine rewrite — rate-based resolution",
-// its "Rulings — composition, carry, ordering", and the "Correction — the recipe
-// ratio" that supersedes the original balancer): a consuming line runs at a
-// CONTINUOUS rate set by its scarcest input (no `floor(batches)` — so a 67% line
-// genuinely runs at 67%, never stalling at 0). The good's pool that Gate 3 rations
-// is the Downstream fork's fresh take PLUS the drawable stockpile (balance −
-// reserveFloor); one proportional split feeds both fresh and drawn-down shortfall
-// (Ruling 1). That one rate then lands on integer piles through a PER-GOOD carry:
+// its "Rulings — composition, carry, ordering", the "Correction — the recipe ratio"
+// that supersedes the original balancer, and "The distribution model — one pot"
+// (Slice A)): each good's pot = start-of-step reserve + fresh; three claimants draw
+// from it in the player's `order` — Reserve holds `min(reserveLevel, available)`,
+// Production offers consumers `min(demand×downstreamPct, available)`, Syndicate
+// delivers `min(commitment, available)`. A consuming line runs at a CONTINUOUS rate
+// set by its scarcest input (no `floor(batches)` — so a 67% line genuinely runs at
+// 67%, never stalling at 0). That one rate then lands on integer piles via a PER-GOOD carry:
 // every good the line touches — each input AND the output — accrues `rate × qty`
 // into its own remainder, `floor` of which is the whole units DRAWN (inputs) or
 // MINTED (output) this tick, the sub-unit part carried on. No independent rounding,
@@ -52,17 +53,22 @@ const {
 //   {
 //     systemId,
 //     mines:      [ { ventureId, good, amount } ],   // each producing mine's fresh deposit
-//     goods:      { [good]: { fresh, demand, fork: { syndicate, downstream, stockpile },
-//                             supplied, drawable, pool } },
+//     goods:      { [good]: { fresh, demand, reserve0, pot, supplied,
+//                             fork: { syndicate, downstream, stockpile }, reserveDelta } },
 //     lines:      [ { ventureId, good, demand, alloc, drawn } ],  // per consuming line, per input
 //     refineries: [ { ventureId, rate, bottleneckGood, minted, batchCarry } ],
 //   }
-// GOOD-LEVEL integers: `demand` is the Gate-2 naive full-tilt Σ (rated, not
-// throttled — the stable Downstream cap figure); `supplied` is the Downstream
-// fork's fresh take (= fork.downstream, ≤ fresh); `drawable` is the stockpile
-// above its reserve floor (start-of-step); `pool` = supplied + drawable is what
-// Gate 3 rations (Ruling 1 — the drawdown folds in here, one split for fresh and
-// drawn-down alike). LINE-LEVEL integers: `demand` = that line's full-tilt draw
+// GOOD-LEVEL integers (§5 one-pot distribution, Slice A): `fresh` = Σ mine output;
+// `demand` = the Gate-2 naive full-tilt Σ (rated, not throttled — the stable draw
+// cap basis); `reserve0` = start-of-step reserve; `pot` = reserve0 + fresh (the one
+// pot the three claimants draw from, in `order`); `supplied` = the consumer draw
+// CAP this tick (min of the downstream-% demand cap and what's left above the
+// Production slot); `fork` = the three claimants' takes — `stockpile` = reserve HELD
+// (stays in the pot), `downstream` = consumer DRAW (actual), `syndicate` = the
+// commitment DELIVERED (leaves to the Syndicate sink); `reserveDelta` = this tick's
+// net reserve change (pot − draws − reserve0), the console's trend arrow. Undrawn
+// goods stay in the pot as next tick's reserve. LINE-LEVEL integers: `demand` = that
+// line's full-tilt draw
 // for the input (rate × input-qty), `alloc` = the integer units Gate 3 handed it
 // (it bounds the rate — the pool is NOT debited by it), `drawn` = the whole units
 // the line actually pulls this tick (≤ alloc; the surplus of a non-binding input
@@ -105,8 +111,9 @@ function resolveProduction(guild, systemId) {
     for (const inp of recipe.inputs) goodsToRoute.add(inp.good);
   }
 
-  // --- Route each good through Gates 1→3 into per-line integer allocations.
-  const goods = {};
+  // --- Route each good through the one-pot claimants + Gate-3 into per-line allocs.
+  const goods = {};        // filled in the finalize pass (needs actual draws)
+  const goodPlans = [];    // per-good claim inputs carried to the finalize pass
   const lines = [];
   const alloc = {}; // ventureId -> good -> integer units allocated this tick
 
@@ -147,51 +154,37 @@ function resolveProduction(guild, systemId) {
     let demandTotal = 0;
     for (const { venture, qty } of consumers) demandTotal += venture.productionRate * qty;
 
-    // Gate 1 — pour freshG through the forks in the policy order; record each
-    // fork's take and compute `supplied` (the Downstream fresh take, ≤ fresh).
+    // §5 one-pot distribution (Slice A, 10-08-26). The whole pot for this good is the
+    // start-of-step reserve PLUS this tick's fresh; three claimants draw from it in
+    // the player's priority `order`. This REPLACES the route-fresh-through-forks +
+    // separate stockpile-drawdown framing (and the stockpile-% / reserveFloor fields).
     const policy = getGoodPolicy(guild, systemId, good);
-    const fork = { syndicate: 0, downstream: 0, stockpile: 0 };
-    let supplied = 0;
-    let remaining = freshG;
-    policy.order.forEach((f, i) => {
-      if (f === 'syndicate') {
-        const take = Math.min(commitment, remaining);
-        fork.syndicate = take;
-        remaining -= take;
-      } else if (f === 'downstream') {
-        const cap = Math.floor((demandTotal * policy.downstreamPct) / 100);
-        supplied = Math.min(cap, remaining);
-        fork.downstream = supplied;
-        remaining -= supplied;
-      } else if (f === 'stockpile') {
-        // Last fork = catch-all (absorbs everything left); otherwise a floor set as
-        // a % of fresh production or a flat quantity. The take stays in the pool
-        // either way (the apply step never removes it), so the resolver only tracks
-        // the figure — it moves nothing.
-        const isLast = i === policy.order.length - 1;
-        const amt = isLast
-          ? remaining
-          : (policy.stockpile.mode === 'percent'
-            ? Math.floor((freshG * policy.stockpile.value) / 100)
-            : policy.stockpile.value);
-        const take = Math.min(amt, remaining);
-        fork.stockpile = take;
-        remaining -= take;
-      }
+    const reserve0 = getStock(guild, systemId, good);
+    const pot = reserve0 + freshG;
+
+    // Walk the order UP TO the Production ('downstream') slot to find how much of the
+    // pot is offered to consumers. The claimants above Production are deterministic
+    // without knowing consumer draws — Reserve holds min(reserveLevel, available),
+    // Syndicate draws min(commitment, available). Claimants BELOW Production see the
+    // pot minus what consumers ACTUALLY draw, resolved in the finalize pass once the
+    // rates are known. `available` never goes negative — each take is ≤ it.
+    let availableForConsumers = pot;
+    for (const f of policy.order) {
+      if (f === 'downstream') break;
+      if (f === 'stockpile') availableForConsumers -= Math.min(policy.reserveLevel, availableForConsumers);
+      else if (f === 'syndicate') availableForConsumers -= Math.min(commitment, availableForConsumers);
+    }
+    const demandCap = Math.floor((demandTotal * policy.downstreamPct) / 100);
+    const consumerPool = Math.min(demandCap, availableForConsumers);
+
+    // Stash what the finalize pass needs; the fork split is assembled there (it needs
+    // the actual consumer draw, known only after the refinery rates resolve).
+    goodPlans.push({
+      good, fresh: freshG, reserve0, pot, demand: demandTotal,
+      order: policy.order, commitment, reserveLevel: policy.reserveLevel, consumerPool,
     });
 
-    // Ruling 1 — the stockpile drawdown FOLDS INTO Gate 3. The pool consumers
-    // ration is the Downstream fresh take PLUS the drawable stockpile: the balance
-    // at start-of-step (Ruling 3) minus the reserve floor. One combined pool, one
-    // proportional split — never a per-line race down the pile (the rejected 8/2;
-    // the ruled 5/5). Because supplied ≤ fresh and drawable ≤ balance − floor, the
-    // apply can draw the pile down to exactly the floor and no further (invariant 3
-    // holds by construction — see stepProduction).
-    const startBalance = getStock(guild, systemId, good);
-    const drawable = Math.max(0, startBalance - policy.reserveFloor);
-    const pool = supplied + drawable;
-
-    // Gate 3 — ration `pool` across consumers into integer per-line allocations.
+    // Gate 3 — ration `consumerPool` across consumers into integer per-line allocations.
     // Regime unchanged: FCFS in establishment order unless SOME consumer of this
     // good has a throttle explicitly set (a throttle of 100 counts as set — hence
     // hasThrottle, not the value), in which case the split is proportional.
@@ -200,7 +193,7 @@ function resolveProduction(guild, systemId) {
     if (!anyThrottled) {
       // FCFS in establishment order: each takes min(its full demand, what's left).
       give = [];
-      let rem = pool;
+      let rem = consumerPool;
       for (const { venture, qty } of consumers) {
         const g = Math.min(venture.productionRate * qty, rem);
         give.push(g);
@@ -209,7 +202,7 @@ function resolveProduction(guild, systemId) {
     } else {
       // Proportional to each line's THROTTLED demand — continuous, so a rate-1 line
       // at 67% is NOT floored to a 0 ask (the floor-batches stall this rewrite
-      // kills). Allocate min(pool, Σ ceil(want)) integer units split by the real
+      // kills). Allocate min(consumerPool, Σ ceil(want)) integer units split by the real
       // wants; the integer remainder goes to the earliest-established line
       // (invariant 9). Capping at Σ ceil(want) stops an abundant pool from
       // over-handing a line more than it can use (the surplus just stays put).
@@ -217,7 +210,7 @@ function resolveProduction(guild, systemId) {
         (getThrottlePct(guild, systemId, venture.id) / 100) * venture.productionRate * qty);
       const wantTotal = wants.reduce((a, b) => a + b, 0);
       const capTotal = wants.reduce((a, b) => a + Math.ceil(b), 0);
-      const toAllocate = Math.min(pool, capTotal);
+      const toAllocate = Math.min(consumerPool, capTotal);
       if (wantTotal <= 0) {
         give = wants.map(() => 0);
       } else {
@@ -233,8 +226,6 @@ function resolveProduction(guild, systemId) {
       (alloc[venture.id] || (alloc[venture.id] = {}))[good] = give[idx];
       lines.push({ ventureId: venture.id, good, demand: venture.productionRate * qty, alloc: give[idx] });
     });
-
-    goods[good] = { fresh: freshG, demand: demandTotal, fork, supplied, drawable, pool };
   }
 
   // --- Refineries: each runs at a CONTINUOUS rate = min(its throttle cap, the
@@ -289,6 +280,44 @@ function resolveProduction(guild, systemId) {
   // `alloc` only bounded the rate; the pool loses exactly `drawn`, never a refund.
   for (const line of lines) {
     line.drawn = (drawnByLine[line.ventureId] || {})[line.good] || 0;
+  }
+
+  // --- Finalize per good (§5 one-pot). With consumer draws now known, walk the
+  // claimant `order` with the ACTUAL consumer draw so a claimant BELOW Production
+  // sees the pot minus what consumers really took (not the offered pool). goodPlans
+  // is already in sorted-good order (built in the sorted good-loop), so this is
+  // deterministic. The fork reports reserve HELD / consumer DRAW / syndicate DRAW.
+  for (const plan of goodPlans) {
+    let consumerDraw = 0;
+    for (const line of lines) if (line.good === plan.good) consumerDraw += line.drawn;
+
+    let available = plan.pot;
+    let reserveHeld = 0;
+    let synDraw = 0;
+    for (const f of plan.order) {
+      if (f === 'stockpile') {
+        reserveHeld = Math.min(plan.reserveLevel, available);
+        available -= reserveHeld;
+      } else if (f === 'downstream') {
+        available -= consumerDraw;
+      } else if (f === 'syndicate') {
+        synDraw = Math.min(plan.commitment, available);
+        available -= synDraw;
+      }
+    }
+    // Goods left in the pot at tick end become next tick's reserve. reserveHeld STAYS
+    // in the pot; only the consumer draw and the syndicate delivery leave. Both are
+    // bounded by `available` at their slot, so newReserve ≥ 0 (invariant 3).
+    const newReserve = plan.pot - consumerDraw - synDraw;
+    goods[plan.good] = {
+      fresh: plan.fresh,
+      demand: plan.demand,
+      reserve0: plan.reserve0,           // start-of-step reserve (the pot minus fresh)
+      pot: plan.pot,                     // reserve0 + fresh — the whole pot the claimants draw from
+      supplied: plan.consumerPool,       // the consumer draw CAP this tick (min of demand-cap and what's left above Production)
+      fork: { syndicate: synDraw, downstream: consumerDraw, stockpile: reserveHeld },
+      reserveDelta: newReserve - plan.reserve0, // this tick's net reserve change — the console's trend arrow
+    };
   }
 
   return { systemId, mines, goods, lines, refineries };

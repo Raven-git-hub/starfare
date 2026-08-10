@@ -124,14 +124,15 @@ test('purity: previewProduction does not mutate state (hash identical before/aft
   assert.ok(Array.isArray(report) && report.length === 1, 'the preview still returns a real report');
 });
 
-// --- The report shape: fork split + drawdown pool + drawn + rate/carry telemetry -
+// --- The report shape: one-pot claimants + drawn + rate/carry telemetry ---------
 
-test('report: a good carries fresh/demand/fork/supplied/drawable/pool and each line its drawn units', () => {
-  // fresh silica 10, two consumers demanding 10 each (demand 20), a pre-seeded pile
-  // of 5, both throttled (r_a 100 / r_b 50). Gate 1 (default order) supplies
-  // min(20, 10)=10 fresh; drawable = 5 - floor(0) = 5; pool = 15. Proportional wants
-  // 10 and 5 (total 15), toAllocate=min(15,15)=15 => r_a 10, r_b 5. Other inputs
-  // plentiful, so r_a runs at rate 10, r_b at its throttle cap 5.
+test('report: a good carries fresh/demand/reserve0/pot/supplied/fork/reserveDelta and each line its drawn units', () => {
+  // §5 one-pot (Slice A): silica fresh 10 + a pre-seeded reserve of 5 => pot 15. Two
+  // consumers demand 10 each (demand 20); default order, no reserveLevel, so the whole
+  // pot is offered: supplied = min(demandCap 20, 15) = 15. Proportional wants 10 and 5
+  // (r_a 100% / r_b 50%), toAllocate=min(15,15)=15 => r_a 10, r_b 5. Both draw fully
+  // (other inputs plentiful), so consumerDraw = 15 — the reserve is drawn to 0 this
+  // tick (reserveDelta = 0 - 5 = -5).
   const s = sysState({
     ventures: [
       mine('cu', 'copper', 20), mine('si', 'silica', 10),
@@ -146,11 +147,14 @@ test('report: a good carries fresh/demand/fork/supplied/drawable/pool and each l
 
   const silica = report.goods.silica;
   assert.equal(silica.fresh, 10);
-  assert.equal(silica.demand, 20);        // Gate-2 naive full-tilt (10 + 10)
-  assert.equal(silica.supplied, 10);      // downstream fresh take (= fork.downstream)
-  assert.equal(silica.fork.downstream, 10);
-  assert.equal(silica.drawable, 5);       // the pile, above the (default 0) reserve floor
-  assert.equal(silica.pool, 15);          // supplied + drawable — what Gate 3 rations
+  assert.equal(silica.demand, 20);         // Gate-2 naive full-tilt (10 + 10)
+  assert.equal(silica.reserve0, 5);        // the pre-seeded reserve at start-of-step
+  assert.equal(silica.pot, 15);            // reserve0 + fresh — the one pot
+  assert.equal(silica.supplied, 15);       // consumer cap = min(demandCap 20, pot 15)
+  assert.equal(silica.fork.downstream, 15); // actual consumer draw (r_a 10 + r_b 5)
+  assert.equal(silica.fork.stockpile, 0);  // no reserveLevel set, nothing held
+  assert.equal(silica.fork.syndicate, 0);  // commitment 0
+  assert.equal(silica.reserveDelta, -5);   // the reserve drew down to 0 this tick
 
   const laSilica = report.lines.find((l) => l.good === 'silica' && l.ventureId === 'r_a');
   const lbSilica = report.lines.find((l) => l.good === 'silica' && l.ventureId === 'r_b');

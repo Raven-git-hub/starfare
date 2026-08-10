@@ -25,25 +25,24 @@
 const DEFAULT_ORDER = Object.freeze(['syndicate', 'downstream', 'stockpile']);
 
 // getGoodPolicy(guild, systemId, good) -> the good's Gate-1 policy with every
-// field defaulted (§15.4): `order` = ["syndicate","downstream","stockpile"],
-// `downstreamPct` = 100 (feed downstream fully), `stockpile` = { percent, 0 }
-// (keep nothing beyond overflow), `reserveFloor` = 0 (§5 rate-based rewrite: the
-// drawdown reserve line the consumer draw won't dip the pile below — 0 means the
-// whole pile is drawable). A good/system with no stored entry returns the
-// all-defaults policy; a partially-set entry fills only the fields it set and
-// defaults the rest. The returned object is fresh (arrays/objects copied), so a
-// caller mutating it can never alias into engine state.
+// field defaulted (§15.4): `order` = ["syndicate","downstream","stockpile"] (the
+// three claimants' priority), `downstreamPct` = 100 (feed the consumers fully),
+// `reserveLevel` = 0 (§5 one-pot distribution, Slice A: the quantity the Reserve
+// claimant holds back at its priority slot — 0 = hold nothing). A good/system with
+// no stored entry returns the all-defaults policy; a partially-set entry fills only
+// the fields it set and defaults the rest. The returned object is fresh (the order
+// array copied), so a caller mutating it can never alias into engine state.
+//
+// NOTE (Slice A, 10-08-26): this REPLACES the old `stockpile {mode,value}` fork
+// amount AND the separate `reserveFloor` with the single `reserveLevel` — one
+// reserve concept, a level held by its priority. A stored profile carrying the old
+// keys is harmless: they are simply ignored here (absent `reserveLevel` → 0).
 function getGoodPolicy(guild, systemId, good) {
   const stored = (((guild.productionProfile || {})[systemId] || {}).goods || {})[good] || {};
-  const stockpile = stored.stockpile || {};
   return {
     order: Array.isArray(stored.order) ? [...stored.order] : [...DEFAULT_ORDER],
     downstreamPct: stored.downstreamPct === undefined ? 100 : stored.downstreamPct,
-    stockpile: {
-      mode: stockpile.mode === undefined ? 'percent' : stockpile.mode,
-      value: stockpile.value === undefined ? 0 : stockpile.value,
-    },
-    reserveFloor: stored.reserveFloor === undefined ? 0 : stored.reserveFloor,
+    reserveLevel: stored.reserveLevel === undefined ? 0 : stored.reserveLevel,
   };
 }
 
@@ -107,8 +106,7 @@ function setEntry(guild, systemId, patch) {
       const merged = { ...current };
       if (policy.order !== undefined) merged.order = [...policy.order];
       if (policy.downstreamPct !== undefined) merged.downstreamPct = policy.downstreamPct;
-      if (policy.stockpile !== undefined) merged.stockpile = { ...policy.stockpile };
-      if (policy.reserveFloor !== undefined) merged.reserveFloor = policy.reserveFloor;
+      if (policy.reserveLevel !== undefined) merged.reserveLevel = policy.reserveLevel;
       entry.goods[good] = merged;
     }
   }
@@ -126,8 +124,8 @@ function setEntry(guild, systemId, patch) {
 // cloneProfile(profile) -> a deep-enough copy of the nested map so a caller's
 // object can never alias into engine state (state.js uses this in createGuild,
 // parallel to cloneStockpiles). Copies every level the shape actually nests:
-// the per-system entry, its goods map and each good's order array + stockpile
-// object, and its throttles map.
+// the per-system entry, its goods map and each good's order array (reserveLevel /
+// downstreamPct are scalars, copied by the spread), and its throttles map.
 function cloneProfile(profile) {
   const out = {};
   for (const [systemId, entry] of Object.entries(profile || {})) {
@@ -138,7 +136,6 @@ function cloneProfile(profile) {
         copy.goods[good] = {
           ...policy,
           ...(policy.order !== undefined ? { order: [...policy.order] } : {}),
-          ...(policy.stockpile !== undefined ? { stockpile: { ...policy.stockpile } } : {}),
         };
       }
     }

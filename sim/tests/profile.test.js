@@ -23,8 +23,7 @@ const { canonicalStringify, hashState } = require('../serialize.js');
 const DEFAULT_POLICY = {
   order: ['syndicate', 'downstream', 'stockpile'],
   downstreamPct: 100,
-  stockpile: { mode: 'percent', value: 0 },
-  reserveFloor: 0,
+  reserveLevel: 0,
 };
 
 // --- accessor defaults -----------------------------------------------------
@@ -41,8 +40,7 @@ test('a partially-set good entry fills only the set fields and defaults the rest
   assert.deepEqual(getGoodPolicy(g, 'sys_0002', 'titanium'), {
     order: ['syndicate', 'downstream', 'stockpile'], // defaulted
     downstreamPct: 40,                               // set
-    stockpile: { mode: 'percent', value: 0 },        // defaulted
-    reserveFloor: 0,                                 // defaulted
+    reserveLevel: 0,                                 // defaulted
   });
   // A DIFFERENT good in the same system still defaults everything.
   assert.deepEqual(getGoodPolicy(g, 'sys_0002', 'copper'), DEFAULT_POLICY);
@@ -55,7 +53,7 @@ test('a set policy and throttle round-trip back through get', () => {
       copper: {
         order: ['stockpile', 'syndicate', 'downstream'],
         downstreamPct: 0,
-        stockpile: { mode: 'quantity', value: 500 },
+        reserveLevel: 500,
       },
     },
     throttles: { refinery: 25 },
@@ -63,8 +61,7 @@ test('a set policy and throttle round-trip back through get', () => {
   assert.deepEqual(getGoodPolicy(g, 'sys_0002', 'copper'), {
     order: ['stockpile', 'syndicate', 'downstream'],
     downstreamPct: 0,
-    stockpile: { mode: 'quantity', value: 500 },
-    reserveFloor: 0,
+    reserveLevel: 500,
   });
   assert.equal(getThrottlePct(g, 'sys_0002', 'refinery'), 25);
 });
@@ -76,8 +73,7 @@ test('a second setEntry merges field-by-field, not wholesale replace', () => {
   assert.deepEqual(getGoodPolicy(g, 'sys_0002', 'titanium'), {
     order: ['downstream', 'stockpile', 'syndicate'], // survived the second patch
     downstreamPct: 60,                               // added by the second patch
-    stockpile: { mode: 'percent', value: 0 },
-    reserveFloor: 0,
+    reserveLevel: 0,
   });
 });
 
@@ -87,13 +83,12 @@ test('getGoodPolicy returns a fresh object — a caller cannot alias into state'
   const p = getGoodPolicy(g, 'sys_0002', 'titanium');
   p.order.push('junk');
   p.downstreamPct = 999;
-  p.stockpile.value = 999;
+  p.reserveLevel = 999;
   // Re-read: engine state is untouched by the caller's mutation.
   assert.deepEqual(getGoodPolicy(g, 'sys_0002', 'titanium'), {
     order: ['syndicate', 'downstream', 'stockpile'],
     downstreamPct: 40,
-    stockpile: { mode: 'percent', value: 0 },
-    reserveFloor: 0,
+    reserveLevel: 0,
   });
 });
 

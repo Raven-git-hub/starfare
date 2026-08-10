@@ -50,11 +50,11 @@ function cloneState(state) {
 //     and its NEW `batchCarry` (the per-good remainder map to write back, §5
 //     Correction).
 // Applying it is pure bookkeeping: deposit each mine's fresh, subtract each line's
-// `drawn`, add each refinery's `minted`, and write back `Venture.batchCarry`.
-// Non-negativity (invariant 3) holds BY CONSTRUCTION: each line draws `whole_g ≤
-// alloc_g` and Σ alloc ≤ `supplied + drawable` where `supplied ≤ fresh` and
-// `drawable = balance − reserveFloor`, so the pool ends at ≥ the reserve floor
-// (≥ 0) — the stockpile drawdown can reach the floor and no further.
+// `drawn`, add each refinery's `minted`, write back `Venture.batchCarry`, and deliver
+// each good's `fork.syndicate` to the sink. Non-negativity (invariant 3) holds BY
+// CONSTRUCTION (§5 one-pot, Slice A): the pot = start-of-step reserve + fresh, and
+// every claimant's take (reserve held, consumer draw, syndicate delivery) is ≤ the
+// `available` at its priority slot, so the pot ends at ≥ 0 (down to the held reserve).
 //
 // `Venture.updatedAtTick` records when a venture moved goods (§15.2). Every
 // deposit/draw lands in the venture's OWN system pool (ruling B1, §15.2):

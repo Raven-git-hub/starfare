@@ -84,21 +84,34 @@ test('drawdown: a refinery draws the shortfall from the accumulated pile (was: n
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
-// --- Gate 1 waterfall ----------------------------------------------------------
+// --- one-pot claimants: the Reserve is held by its PRIORITY -------------------
 
-test('Gate 1: a stockpile floor ranked above downstream starves downstream by exactly the floor', () => {
-  // fresh silica 10; a 40%-of-fresh stockpile floor ranked FIRST sets aside 4 before
-  // downstream is fed, leaving 6 for the rate-10 conductive line. demand copper/silica
-  // = 10 each. Copper is unconstrained (fresh 10), silica is floored: supplied silica
-  // = 10 - floor(10*40/100)=4 => 6. No pre-existing pile, so no drawdown: 6 batches.
+test('Reserve ranked ABOVE Production holds reserveLevel back, starving downstream by exactly that much', () => {
+  // §5 one-pot (Slice A): silica pot = 10 (fresh, no prior reserve). Reserve ranked
+  // FIRST with reserveLevel 4 holds 4 back before the consumers draw, leaving 6 — so
+  // the rate-10 conductive line runs at 6. The 4 held stays in the pool as reserve.
   let s = sysState({
     ventures: [mine('cu', 'copper', 10), mine('si', 'silica', 10), refinery('r', 'conductive_material', 10)],
-    profile: { goods: { silica: { order: ['stockpile', 'downstream', 'syndicate'], stockpile: { mode: 'percent', value: 40 } } } },
+    profile: { goods: { silica: { order: ['stockpile', 'downstream', 'syndicate'], reserveLevel: 4 } } },
   });
   s = tick(s);
-  assert.equal(held(s, 'conductive_material'), 6, 'downstream starved by exactly the 4-unit floor (10 - 4)');
-  assert.equal(held(s, 'silica'), 4, 'the floor stays in the pool');
-  assert.equal(held(s, 'copper'), 4, 'copper: 10 fresh - 6 consumed = 4 left (rate held at 6 by silica)');
+  assert.equal(held(s, 'conductive_material'), 6, 'consumers starved by exactly the 4 the reserve held (10 - 4)');
+  assert.equal(held(s, 'silica'), 4, 'the reserve level stays in the pot');
+  assert.equal(held(s, 'copper'), 4, 'copper: 10 fresh - 6 drawn = 4 (rate held at 6 by silica)');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('Reserve ranked BELOW Production is drained first — same level, opposite outcome', () => {
+  // The SAME reserveLevel 4, but the Reserve claimant ranked LAST: the consumers draw
+  // their full demand (10) first, and the reserve holds only what's left (0). Priority
+  // — not the level — decides who reaches a tight pot first (§5).
+  let s = sysState({
+    ventures: [mine('cu', 'copper', 10), mine('si', 'silica', 10), refinery('r', 'conductive_material', 10)],
+    profile: { goods: { silica: { order: ['downstream', 'syndicate', 'stockpile'], reserveLevel: 4 } } },
+  });
+  s = tick(s);
+  assert.equal(held(s, 'conductive_material'), 10, 'consumers drew first — full rate 10, reserve got the scraps');
+  assert.equal(held(s, 'silica'), 0, 'nothing left for the reserve to hold');
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
@@ -266,24 +279,25 @@ test('drawdown Ruling 1: two lines drawing one 10-unit silica pile split 5/5, or
   assert.deepEqual(checkInvariants(b, b.tick), []);
 });
 
-// --- reserveFloor: a no-mine input runs off the pile down to the floor, then stops -
+// --- reserveLevel: a no-mine input runs off the pile down to the level, then stops -
 
-test('reserveFloor: a titanium_alloy line with NO carbon mine runs off the carbon pile down to the floor', () => {
+test('reserveLevel: a titanium_alloy line with NO carbon mine runs off the carbon pile down to the level', () => {
   // titanium_alloy = 3 titanium + 1 carbon; refinery rate 2 (demand 6 ti, 2 carbon).
   // Titanium is mined 6/tick (meets demand). Carbon has NO mine — it comes entirely
-  // from a pre-seeded pile of 20 with a reserveFloor of 5. Each tick draws 2 carbon
-  // until the pile nears the floor, then the last unit runs a partial batch, and at
-  // the floor (5) the line stalls — the draw never dips below the reserve.
+  // from a pre-seeded pile of 20. With Reserve ranked FIRST at reserveLevel 5, each
+  // tick the reserve holds 5 back before consumers draw, so the line eats the pile
+  // down 2/tick, runs a partial batch as it nears the level, and at 5 stalls — the
+  // draw never dips below the reserve (§5 one-pot: the level protected by its priority).
   let s = sysState({
     ventures: [mine('t', 'titanium', 6), refinery('r', 'titanium_alloy', 2)],
-    profile: { goods: { carbon_products: { reserveFloor: 5 } } },
+    profile: { goods: { carbon_products: { order: ['stockpile', 'downstream', 'syndicate'], reserveLevel: 5 } } },
     stockpiles: { carbon_products: 20 },
   });
   for (let i = 0; i < 20; i += 1) {
     s = tick(s);
     assert.deepEqual(checkInvariants(s, s.tick), []);
   }
-  assert.equal(held(s, 'carbon_products'), 5, 'the draw floored at the reserve and stopped there');
+  assert.equal(held(s, 'carbon_products'), 5, 'the draw floored at the reserve level and stopped there');
   // 7 full ticks (2 carbon each: 20->6) + 1 partial (6->5) => 14 + 1 = 15 alloy, then stalls.
   assert.equal(held(s, 'titanium_alloy'), 15);
 });
@@ -318,11 +332,11 @@ test('under-draw: an abundant input is under-drawn (not depleted); a tier-1 raw 
 
 // --- conservation: the pool is debited only by whole units drawn, never negative -
 
-test('conservation: the pool is debited only by whole units drawn (<= alloc, <= pool) and never goes negative', () => {
+test('conservation: the pool is debited only by whole units drawn (<= alloc, <= supplied) and never goes negative', () => {
   // A contended, multi-input scenario run several ticks. Each tick, every line draws
   // a whole non-negative number of units no greater than its Gate-3 alloc, the total
-  // drawn of a good never exceeds that good's pool, and the tick's own invariants
-  // (non-negativity, galactic-supply consistency, the carry tripwire) all pass.
+  // drawn of a good never exceeds that good's consumer cap (`supplied`), and the
+  // tick's own invariants (non-negativity, galactic-supply, the carry tripwire) pass.
   let s = twoRefineriesForSilica({ throttles: { r_a: 67, r_b: 33 } }, 7);
   for (let i = 0; i < 12; i += 1) {
     const report = resolveProduction(s.guilds[0], SYS);
@@ -333,7 +347,7 @@ test('conservation: the pool is debited only by whole units drawn (<= alloc, <= 
       drawnPerGood[line.good] = (drawnPerGood[line.good] || 0) + line.drawn;
     }
     for (const [good, total] of Object.entries(drawnPerGood)) {
-      assert.ok(total <= report.goods[good].pool, `total drawn of ${good} (${total}) <= pool (${report.goods[good].pool})`);
+      assert.ok(total <= report.goods[good].supplied, `total drawn of ${good} (${total}) <= supplied (${report.goods[good].supplied})`);
     }
     s = tick(s);
     assert.deepEqual(checkInvariants(s, s.tick), []);
