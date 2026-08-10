@@ -68,12 +68,17 @@ test('GET / serves the testbed UI (HTML)', async () => {
   assert.match(html, /renderProductionView/);
   assert.match(html, /data-sysmode="production"/);
   // Slice 2b-ii — the INTERACTIVE controls are present: the Gate-1 fork rank
-  // up/down buttons, the downstream-cap input, the Gate-3 per-line throttle input,
-  // and the disabled Syndicate-fork marker (inert until real licences).
+  // up/down buttons, the downstream-cap input, the Gate-3 per-line throttle input.
   assert.match(html, /class="fork-move"/);
   assert.match(html, /class="dscap"/);
   assert.match(html, /class="throttle"/);
-  assert.match(html, /no licences yet/);
+  // Slice B-ii — the §5 Syndicate windowed-accrual send control (three-way mode
+  // selector + value input) and the windowed readout replace the old "no licences yet"
+  // placeholder. The readout renders the resolved send AND the pace side by side.
+  assert.match(html, /class="syn-mode"/);
+  assert.match(html, /class="syn-value"/);
+  assert.match(html, /class="syn-readout"/);
+  assert.doesNotMatch(html, /no licences yet/);
   // The naive browser-side recompute + its caption are gone — the view now shows
   // the engine's resolved allocation, so nothing is captioned "naive".
   assert.doesNotMatch(html, /class="pc-grid"/);
