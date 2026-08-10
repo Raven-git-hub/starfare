@@ -214,7 +214,7 @@
   .gate-h { font-size: 11px; letter-spacing: 1.2px; color: var(--text-dim); margin-bottom: 6px; }
   .gate-h .hint { letter-spacing: 0; text-transform: none; font-style: italic; color: var(--text-dim); opacity: 0.85; }
   .fork-row { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 3px 0; }
-  .fork-row.fork-syn { opacity: 0.55; }
+  /* The Syndicate fork carries a live send control now (Slice B-ii) — no longer greyed. */
   .fork-rank { color: var(--text-dim); width: 14px; text-align: right; }
   .fork-move-wrap button { font-size: 10px; padding: 1px 5px; letter-spacing: 0; }
   .fork-move-wrap button:disabled { opacity: 0.3; cursor: default; }
@@ -228,6 +228,14 @@
   .deflt { color: var(--text-dim); font-size: 10px; font-style: italic; }
   .supplied-line { margin-top: 6px; font-size: 11px; color: var(--text-dim); }
   .supplied-line b { color: var(--text); font-weight: 500; }
+  /* §5 Slice B: the Syndicate windowed-accrual readout — resolved send AND pace side by side. */
+  .syn-readout { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 6px 0 2px; padding: 5px 8px; font-size: 11px; color: var(--text-dim); background: #06090f; border-left: 2px solid var(--fuel); border-radius: 2px; }
+  .syn-readout.muted { color: var(--text-dim); font-style: italic; opacity: 0.85; }
+  .syn-readout b { color: var(--text); font-weight: 500; }
+  .syn-h { color: var(--fuel); letter-spacing: 1px; font-size: 10px; }
+  .syn-status { text-transform: uppercase; letter-spacing: 1px; font-size: 10px; color: var(--text-dim); }
+  .syn-status.syn-met { color: var(--accent); }
+  .syn-status.syn-breach { color: var(--warn); }
   table.lines { width: 100%; font-size: 12px; }
   table.lines th { font-size: 10px; letter-spacing: 1px; color: var(--text-dim); font-weight: 500; text-align: left; }
   table.lines td.site, table.lines td.num { font-size: 11px; }
@@ -765,6 +773,33 @@ function fmtRate(x) {
   if (x == null) return '—';
   return Number.isInteger(x) ? String(x) : x.toFixed(2);
 }
+// Format an engine percentage for display — integer when whole, else one place.
+// PURE FORMATTING of an engine number (like fmtRate), not a game computation.
+function fmtPct(x) {
+  if (x == null) return '—';
+  return (Number.isInteger(x) ? String(x) : x.toFixed(1)) + '%';
+}
+
+// The §5 Syndicate windowed-accrual readout for one good, rendered from the snapshot's
+// per-good `window` sub-object VERBATIM (the derived telemetry — in no hash). The §5
+// display rule this slice exists to satisfy: the resolved SEND and the PACE must sit
+// side by side, so a player in percent mode can SEE they are drifting toward a breach.
+// The browser computes nothing here — every figure is an engine value. `win` is
+// undefined for an uncommitted good (Q = 0): show a muted note, the control stays live.
+function syndicateReadout(win) {
+  if (!win) {
+    return '<div class="syn-readout muted">Syndicate window: <b>no commitment yet</b> (Q 0) — the send control above is advisory until a licence sets a commitment (§5).</div>';
+  }
+  var statusCls = win.status === 'breach' ? ' syn-breach' : (win.status === 'met' ? ' syn-met' : '');
+  return '<div class="syn-readout">' +
+    '<span class="syn-h">SYNDICATE WINDOW</span>' +
+    '<span class="syn-cell">achieved <b>' + fmtPct(win.pctAchieved) + '</b> (' + esc(win.delivered) + '/' + esc(win.Q) + ')</span>' +
+    '<span class="syn-cell">pace <b>' + fmtRate(win.requiredRate) + '</b>/tick</span>' +
+    '<span class="syn-cell">resolved send <b>' + esc(win.sendThisTick) + '</b>/tick</span>' +
+    '<span class="syn-cell">ticks left <b>' + esc(win.ticksRemaining) + '</b></span>' +
+    '<span class="syn-status' + statusCls + '">' + esc(win.status) + '</span>' +
+  '</div>';
+}
 
 // The managed guild's resolved report for one system, from the snapshot's
 // `production` block ([{ guildId, systems:[{ systemId, mines, goods, lines,
@@ -796,14 +831,22 @@ function goodPolicy(storedGoods, good) {
     // priority slot — replaces the old stockpile {mode,value} fork amount.
     reserveLevel: s.reserveLevel != null ? s.reserveLevel : PROFILE_DEFAULTS.reserveLevel,
     reserveSet: s.reserveLevel != null,
+    // §5 Slice B: the Syndicate fork's per-tick send control { mode, value }. ABSENT
+    // (null) = the paced required-rate default (the resolver reads a missing control
+    // as "pace it"). Like downstream/reserve above, the sparse stored entry tells us
+    // set-vs-defaulted so the selector can show "Paced" (and mark it default) when unset.
+    syndicate: s.syndicate != null ? { mode: s.syndicate.mode, value: s.syndicate.value } : null,
+    syndicateSet: s.syndicate != null,
   };
 }
 
 // The Gate-1 fork order as a ranked list with up/down buttons + each fork's amount
-// control. The Syndicate fork can sit in the order but has no editable amount (it
-// is the licence commitment, inert at 0 today) — greyed with a "no licences yet"
-// label, mirroring the Factory-today pattern. `split` is the resolved take per
-// fork this tick, shown beside each so the effect of the policy is on screen.
+// control. The Syndicate fork now carries the §5 windowed-accrual SEND control (Slice
+// B-ii): a three-way mode selector Paced | Absolute | Percent, with a value input for
+// Absolute (units/tick) and Percent (% of this tick's fresh). Paced is the default and
+// means "no stored control" (the engine paces the required-rate); see the change
+// handler for why re-selecting Paced after a set mode is a flagged deferral. `split`
+// is the resolved take per fork this tick, shown beside each.
 function forkRankControls(sysId, good, pol, split) {
   var orderCsv = pol.order.join(',');
   return pol.order.map(function (f, i) {
@@ -814,7 +857,21 @@ function forkRankControls(sysId, good, pol, split) {
       '<button class="fork-move" data-sys="' + esc(sysId) + '" data-good="' + esc(good) + '" data-fork="' + f + '" data-dir="down" data-order="' + esc(orderCsv) + '" type="button"' + downDis + '>▼</button>';
     var amount;
     if (f === 'syndicate') {
-      amount = '<span class="fork-disabled">no licences yet</span>';
+      // Three-way send control. `syndicate` is {mode,value} or null (paced default).
+      var smode = pol.syndicate ? pol.syndicate.mode : 'paced';
+      var sval = pol.syndicate ? pol.syndicate.value : 0;
+      var opt = function (v, label) { return '<option value="' + v + '"' + (smode === v ? ' selected' : '') + '>' + label + '</option>'; };
+      var sel = 'send <select class="syn-mode" data-sys="' + esc(sysId) + '" data-good="' + esc(good) + '">' +
+        opt('paced', 'Paced') + opt('absolute', 'Absolute') + opt('percent', 'Percent') + '</select>';
+      var vin;
+      if (smode === 'absolute') {
+        vin = ' <input class="syn-value" data-sys="' + esc(sysId) + '" data-good="' + esc(good) + '" data-mode="absolute" type="number" min="0" value="' + esc(sval) + '"> units/tick';
+      } else if (smode === 'percent') {
+        vin = ' <input class="syn-value" data-sys="' + esc(sysId) + '" data-good="' + esc(good) + '" data-mode="percent" type="number" min="0" value="' + esc(sval) + '">% of fresh';
+      } else {
+        vin = ' <span class="deflt">required-rate (paced)</span>';
+      }
+      amount = sel + vin + (pol.syndicateSet ? '' : ' <span class="deflt">(default)</span>');
     } else if (f === 'downstream') {
       amount = 'cap <input class="dscap" data-sys="' + esc(sysId) + '" data-good="' + esc(good) + '" type="number" min="0" max="100" value="' + esc(pol.downstreamPct) + '">% of full-tilt' +
         (pol.downstreamSet ? '' : ' <span class="deflt">(default)</span>');
@@ -878,8 +935,8 @@ function renderProductionView(sysId, snap, guild) {
   var note =
     '<div class="prod-note">' +
       'Every figure below is the engine’s <b>resolved</b> allocation for this tick — the <b>same</b> numbers the tick moves (design.md §5, from the snapshot’s <code>production</code> block), not a browser estimate. ' +
-      'Set the standing policy with the controls: reorder a good’s Gate-1 forks, cap Downstream, set a Stockpile floor, throttle a line — each sends <code>setProductionProfile</code> and the resolved numbers update in place. Nothing advances until you press <b>TICK</b>. ' +
-      'The <b>Syndicate</b> fork is inert (no licences yet); per-<b>hour</b> figures still await the tick-duration constant (docs/phase-1-tuning.md).' +
+      'Set the standing policy with the controls: reorder a good’s Gate-1 forks, cap Downstream, set a Reserve level, choose the Syndicate send (Paced / Absolute / Percent), throttle a line — each sends <code>setProductionProfile</code> and the resolved numbers update in place. Nothing advances until you press <b>TICK</b>. ' +
+      'The <b>Syndicate</b> send is <b>advisory</b> until a licence sets a commitment (Q 0 today, so the window readout shows “no commitment yet”); per-<b>hour</b> figures still await the tick-duration constant (docs/phase-1-tuning.md).' +
     '</div>';
 
   // Goods produced here: the routed goods (those with in-system consumers, so a
@@ -915,6 +972,7 @@ function renderProductionView(sysId, snap, guild) {
           '<div class="gate">' +
             '<div class="gate-h">GATE 1 &middot; source waterfall <span class="hint">1st fork is fed first; priority wins even when it starves what’s below</span></div>' +
             forkRankControls(sysId, good, pol, rg.fork) +
+            syndicateReadout(rg.window) +
             '<div class="supplied-line">downstream <b>supplied</b> this tick: <b>' + esc(rg.supplied) + '</b> &nbsp;(cap = ' + esc(pol.downstreamPct) + '% of full-tilt demand ' + esc(rg.demand) + ')</div>' +
           '</div>';
 
@@ -1179,6 +1237,37 @@ document.getElementById('go-body').addEventListener('change', function (e) {
     if (p === null) { setStatus('throttle: enter an integer', 'error'); return; }
     var tp = {}; tp[t.dataset.vent] = p;
     sendProfile(t.dataset.sys, { throttles: tp });
+    return;
+  }
+  // §5 Slice B: the Syndicate send MODE selector. Absolute/Percent POST a
+  // { syndicate: { mode, value } } patch (value taken from the sibling input if it is
+  // already showing, else 0 — the player then dials it). Paced means "no stored
+  // control", but setProductionProfile only MERGES and its validation rejects a null/
+  // empty syndicate — there is no clear-path in the engine (Slice B-i left none), and
+  // this slice must not touch the engine. So re-selecting Paced after a set mode is
+  // surfaced as a flagged deferral rather than a silent no-op; the re-render snaps the
+  // selector back to engine truth. (A tiny clear-path is a fair follow-up engine slice.)
+  if (t.classList.contains('syn-mode')) {
+    var mode = t.value;
+    if (mode === 'paced') {
+      setStatus('Reverting to Paced needs an engine clear-path (deferred) — the stored send stays. Set Absolute/Percent to override the pace.', 'error');
+      renderGuildOverlay(LAST_SNAP);
+      return;
+    }
+    var vEl = t.closest('.fork-amt') ? t.closest('.fork-amt').querySelector('.syn-value') : null;
+    var v0 = vEl ? fieldInt(vEl) : 0;
+    if (v0 === null) v0 = 0;
+    var gm = {}; gm[t.dataset.good] = { syndicate: { mode: mode, value: v0 } };
+    sendProfile(t.dataset.sys, { goods: gm });
+    return;
+  }
+  // The Syndicate send VALUE (units/tick for absolute, % of fresh for percent). The
+  // input carries its mode in data-mode, so we resend the whole { mode, value } control.
+  if (t.classList.contains('syn-value')) {
+    var sv = fieldInt(t);
+    if (sv === null) { setStatus('syndicate send: enter an integer', 'error'); return; }
+    var gv = {}; gv[t.dataset.good] = { syndicate: { mode: t.dataset.mode, value: sv } };
+    sendProfile(t.dataset.sys, { goods: gv });
     return;
   }
 });
