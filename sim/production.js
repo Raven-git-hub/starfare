@@ -122,9 +122,22 @@ function resolveProduction(guild, systemId) {
       const inp = recipe.inputs.find((i) => i.good === good);
       if (inp) consumers.push({ venture: c, qty: inp.qty });
     }
-    // A fresh good nobody consumes here: nothing to route — it all stays in the
-    // pool (the Stockpile fork's catch-all). No `goods` entry (no downstream figure).
-    if (consumers.length === 0) continue;
+    // Σ producers' committed output — the Gate-1 Syndicate fork's amount (§5
+    // "Syndicate fork delivery", 10-08-26). Summed over MINES producing this good
+    // (resourceType === good); refinery-output commitment is a later slice. Computed
+    // BEFORE the skip below so a committed *mine-to-sell* good (no in-system consumer)
+    // still routes its fork and delivers — the common case the old skip dropped.
+    let commitment = 0;
+    for (const v of ventures) {
+      if (v.resourceType === good) commitment += v.syndicateCommitment || 0;
+    }
+
+    // A fresh good nobody consumes AND that carries no commitment: nothing to route —
+    // it all stays in the pool (the Stockpile fork's catch-all). No `goods` entry. A
+    // good with consumers OR a non-zero commitment falls through and routes normally;
+    // for a committed no-consumer good, demandTotal is 0 so Downstream takes 0, the
+    // Syndicate fork takes min(commitment, fresh), and Stockpile catches the rest.
+    if (consumers.length === 0 && commitment === 0) continue;
 
     // Gate 2 — naive full-tilt demand: Σ rated rate × input-qty. Uses the RATED
     // productionRate, not the throttle, so it is the stable figure the Downstream
@@ -137,12 +150,6 @@ function resolveProduction(guild, systemId) {
     // Gate 1 — pour freshG through the forks in the policy order; record each
     // fork's take and compute `supplied` (the Downstream fresh take, ≤ fresh).
     const policy = getGoodPolicy(guild, systemId, good);
-    // Σ producers' committed output — the Syndicate fork's amount. 0 for every
-    // venture today (no licences); structured so slice 3 wires delivery here.
-    let commitment = 0;
-    for (const v of ventures) {
-      if (v.resourceType === good) commitment += v.syndicateCommitment || 0;
-    }
     const fork = { syndicate: 0, downstream: 0, stockpile: 0 };
     let supplied = 0;
     let remaining = freshG;

@@ -120,6 +120,18 @@ function applyProduction(state, guild, systemId) {
     }
     v.updatedAtTick = state.tick;
   }
+
+  // Deliver the Gate-1 Syndicate fork (§5 "Syndicate fork delivery", 10-08-26):
+  // remove each good's committed units from the pool — they leave the guild and sink
+  // into the Syndicate's infinite backend (no receiving entity; invariants.js's
+  // galactic-supply check already treats selling as a sink, not a conservation
+  // break). Instant/per-tick, full commitment, no buffer/fee/breach (licence layer,
+  // later). Goods are iterated in sorted key order for determinism (invariant 9);
+  // fork.syndicate is 0 for every unlicensed venture, so this is a no-op today.
+  for (const good of Object.keys(report.goods).sort()) {
+    const delivered = report.goods[good].fork.syndicate;
+    if (delivered > 0) addStock(guild, systemId, good, -delivered);
+  }
 }
 
 // Step 2 — consumption. SEAM for spacecraft fuel burn against the shared
