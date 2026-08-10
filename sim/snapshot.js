@@ -76,7 +76,18 @@ const { previewProduction } = require('./production.js');
 // reserve HELD / consumer DRAW / syndicate DRAW; `supplied` is the consumer draw cap.
 // In the carried `productionProfile`, the per-good `stockpile {mode,value}` fork
 // amount and `reserveFloor` are replaced by the single `reserveLevel`.
-const SNAPSHOT_SCHEMA = 6;
+// v7 (Slice B-i): the §5 Syndicate WINDOWED ACCRUAL. Each committed good's entry in the
+// `production` block gains a `window` sub-object = { Q, windowStart, delivered,
+// sendCarry, ticksRemaining, requiredRate, sendThisTick, pctAchieved, status } — the
+// per-good %-achieved / delivered / required-rate / ticks-remaining / resolved
+// send-this-tick / met|breach status telemetry the client renders and computes nothing
+// from (§5 display rule). Additive and present only for a good with a non-zero
+// commitment (0/unlicensed today ⇒ absent), so existing readers are untouched. In the
+// carried `productionProfile`, a good's policy may now carry the Syndicate send control
+// `syndicate {mode,value}`. windowStart/delivered/sendCarry ARE serialized engine state
+// (guild.syndicateWindows, in the determinism hash); the window telemetry here is
+// DERIVED (previewProduction) and is not.
+const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
 //   {

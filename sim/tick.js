@@ -25,6 +25,7 @@ const { computeGalacticSupply } = require('./supply.js');
 const { getRecipe } = require('./recipes.js');
 const { addStock } = require('./stock.js');
 const { resolveProduction } = require('./production.js');
+const { setWindow } = require('./windows.js');
 
 // Deep-clones state so tick() can never accidentally mutate its input.
 // structuredClone is a plain JS global (Node 17+), not a DOM API.
@@ -91,7 +92,11 @@ function stepProduction(state, _actions) {
 // already cloned state, so this never touches the caller's input. The resolver
 // reads the pool balance + accumulators (start-of-step) and mutates nothing.
 function applyProduction(state, guild, systemId) {
-  const report = resolveProduction(guild, systemId);
+  // The producing tick is state.tick + 1 (the tick number of the state this step
+  // yields), and the window length is the engine-wide state.windowN — passed so the
+  // resolver's windowed-accrual send matches what previewProduction reports for the
+  // same advance (anti-drift). Both are read only for a good carrying a commitment.
+  const report = resolveProduction(guild, systemId, { tick: state.tick + 1, windowN: state.windowN });
   const byId = new Map((guild.ventures || []).map((v) => [v.id, v]));
 
   // Deposit each mine's fresh output into the pool; stamp the mine's tick.
@@ -131,6 +136,17 @@ function applyProduction(state, guild, systemId) {
   for (const good of Object.keys(report.goods).sort()) {
     const delivered = report.goods[good].fork.syndicate;
     if (delivered > 0) addStock(guild, systemId, good, -delivered);
+  }
+
+  // Write back the §5 windowed-accrual state (guild.syndicateWindows) for each
+  // committed good — the running `delivered`, the re-stamped `windowStart` on a roll,
+  // and the fractional `sendCarry`. Only a good with a `window` entry (Q > 0) is
+  // touched, so an unlicensed guild never gets a syndicateWindows key: the no-op path
+  // stays byte-identical (the determinism-hash no-op proof). Goods iterated in sorted
+  // order for determinism (invariant 9), matching the delivery loop above.
+  for (const good of Object.keys(report.goods).sort()) {
+    const w = report.goods[good].window;
+    if (w) setWindow(guild, systemId, good, { windowStart: w.windowStart, delivered: w.delivered, sendCarry: w.sendCarry });
   }
 }
 

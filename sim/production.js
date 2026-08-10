@@ -29,10 +29,15 @@
 // THE MODEL, in one breath (design.md §5 "Engine rewrite — rate-based resolution",
 // its "Rulings — composition, carry, ordering", the "Correction — the recipe ratio"
 // that supersedes the original balancer, and "The distribution model — one pot"
-// (Slice A)): each good's pot = start-of-step reserve + fresh; three claimants draw
-// from it in the player's `order` — Reserve holds `min(reserveLevel, available)`,
-// Production offers consumers `min(demand×downstreamPct, available)`, Syndicate
-// delivers `min(commitment, available)`. A consuming line runs at a CONTINUOUS rate
+// (Slice A) + the §5 windowed accrual (Slice B-i)): each good's pot = start-of-step
+// reserve + fresh; three claimants draw from it in the player's `order` — Reserve holds
+// `min(reserveLevel, available)`, Production offers consumers `min(demand×downstreamPct,
+// available)`, and the Syndicate draws its PACED per-tick send toward the per-good
+// aggregate window target `Q` (Σ commitment over the mines) — FRESH ONLY, never past
+// `Q`, self-terminating at `Q`, resolving met/breach at the `tick % N == 0` boundary
+// (the window state lives in guild.syndicateWindows, sim/windows.js; the send lands on
+// integers via a per-good send carry, the same floor-and-carry discipline as batchCarry).
+// A consuming line runs at a CONTINUOUS rate
 // set by its scarcest input (no `floor(batches)` — so a 67% line genuinely runs at
 // 67%, never stalling at 0). That one rate then lands on integer piles via a PER-GOOD carry:
 // every good the line touches — each input AND the output — accrues `rate × qty`
@@ -48,6 +53,9 @@ const { getStock } = require('./stock.js');
 const {
   getGoodPolicy, getThrottlePct, hasThrottle, storedThrottleIds, storedPolicyGoods,
 } = require('./profile.js');
+const {
+  FIRST_CUT_WINDOW_N, winStartFor, windowFraction, getWindow,
+} = require('./windows.js');
 
 // resolveProduction(guild, systemId) -> a plain report for that (guild, system):
 //   {
@@ -83,8 +91,17 @@ const {
 // with no seat keeps its `systemId` (undefined/null) as its key, and the strict
 // `=== systemId` filter includes it when systemId is that same value — so a
 // seatless mine resolves without crashing and is never dropped.
-function resolveProduction(guild, systemId) {
+function resolveProduction(guild, systemId, opts = {}) {
   const ventures = (guild.ventures || []).filter((v) => v.systemId === systemId);
+
+  // The producing tick this resolve is FOR (the tick number of the state production
+  // yields — both callers pass state.tick + 1) and the engine-wide window length
+  // (state.windowN). A direct single-resolve (a test) may omit them, in which case
+  // the window falls to tick 1 of a default-length window — consulted ONLY where a
+  // good actually carries a commitment, so an unlicensed resolve never reads them.
+  const p = opts.tick == null ? 1 : opts.tick;
+  const windowN = opts.windowN == null ? FIRST_CUT_WINDOW_N : opts.windowN;
+  const curWindowStart = winStartFor(p, windowN);
 
   // --- Mines: this tick's fresh raw output (the routing basis), per producing
   // mine and aggregated per good. Order is establishment order (ventures order),
@@ -100,15 +117,35 @@ function resolveProduction(guild, systemId) {
   // Refineries in this system, in establishment order.
   const refineryVentures = ventures.filter((v) => v.recipeId && v.productionRate);
 
+  // --- The per-good aggregate Syndicate commitment target Q (§5 "windowed accrual"):
+  // Q = Σ over the MINES producing the good of `syndicateCommitment × windowFraction`
+  // (invariant 5 — the venture field is the single source of the target; the window
+  // accumulators live in guild.syndicateWindows, sim/windows.js). fraction is PINNED
+  // to 1 in Slice B-i (no mid-window join exists yet). Refinery-OUTPUT commitment is a
+  // later slice (this sums over mines only). Computed UP FRONT so a committed good
+  // with NO fresh and NO consumer (an idle committed mine) is still routed and still
+  // delivers 0 — fresh-only — rather than being silently skipped.
+  const commitmentQ = {};
+  for (const v of ventures) {
+    if (v.resourceType && v.syndicateCommitment) {
+      commitmentQ[v.resourceType] = (commitmentQ[v.resourceType] || 0)
+        + v.syndicateCommitment * windowFraction(v, curWindowStart, windowN);
+    }
+  }
+
   // Goods to route: everything mined fresh here PLUS every good some in-system
-  // refinery consumes — the latter so a good with NO local mine can still be fed by
-  // the stockpile drawdown (§5 rewrite: a titanium_alloy line runs off a bought-in
-  // carbon pile with no carbon mine). Sorted for determinism (invariant 9).
+  // refinery consumes (so a good with NO local mine can still be fed by the stockpile
+  // drawdown — §5 rewrite) PLUS every good carrying a non-zero commitment (so a
+  // committed mine-to-sell / idle good routes and delivers). Sorted for determinism
+  // (invariant 9).
   const goodsToRoute = new Set(Object.keys(fresh));
   for (const c of refineryVentures) {
     const recipe = getRecipe(c.recipeId);
     if (!recipe) continue; // dangling recipeId — the occupancy invariant halts on it
     for (const inp of recipe.inputs) goodsToRoute.add(inp.good);
+  }
+  for (const good of Object.keys(commitmentQ)) {
+    if (commitmentQ[good] > 0) goodsToRoute.add(good);
   }
 
   // --- Route each good through the one-pot claimants + Gate-3 into per-line allocs.
@@ -129,22 +166,14 @@ function resolveProduction(guild, systemId) {
       const inp = recipe.inputs.find((i) => i.good === good);
       if (inp) consumers.push({ venture: c, qty: inp.qty });
     }
-    // Σ producers' committed output — the Gate-1 Syndicate fork's amount (§5
-    // "Syndicate fork delivery", 10-08-26). Summed over MINES producing this good
-    // (resourceType === good); refinery-output commitment is a later slice. Computed
-    // BEFORE the skip below so a committed *mine-to-sell* good (no in-system consumer)
-    // still routes its fork and delivers — the common case the old skip dropped.
-    let commitment = 0;
-    for (const v of ventures) {
-      if (v.resourceType === good) commitment += v.syndicateCommitment || 0;
-    }
+    const Q = commitmentQ[good] || 0; // the aggregate windowed target (0 = unlicensed)
 
     // A fresh good nobody consumes AND that carries no commitment: nothing to route —
-    // it all stays in the pool (the Stockpile fork's catch-all). No `goods` entry. A
-    // good with consumers OR a non-zero commitment falls through and routes normally;
-    // for a committed no-consumer good, demandTotal is 0 so Downstream takes 0, the
-    // Syndicate fork takes min(commitment, fresh), and Stockpile catches the rest.
-    if (consumers.length === 0 && commitment === 0) continue;
+    // it all stays in the pool (next tick's reserve). No `goods` entry. A good with
+    // consumers OR a non-zero commitment falls through and routes normally; for a
+    // committed no-consumer good, demandTotal is 0 so Production takes 0, the Syndicate
+    // draws its paced fresh-only send, and everything else stays in the pot.
+    if (consumers.length === 0 && Q <= 0) continue;
 
     // Gate 2 — naive full-tilt demand: Σ rated rate × input-qty. Uses the RATED
     // productionRate, not the throttle, so it is the stable figure the Downstream
@@ -162,26 +191,43 @@ function resolveProduction(guild, systemId) {
     const reserve0 = getStock(guild, systemId, good);
     const pot = reserve0 + freshG;
 
+    // §5 windowed accrual: resolve THIS tick's INTENDED Syndicate send (a whole-unit
+    // count) from the window state + the per-tick send control (paced / absolute /
+    // percent). This reads guild.syndicateWindows START-OF-STEP (like batchCarry) and
+    // reports the NEW window state for apply to write back — the resolver mutates
+    // nothing. `win` is null for an uncommitted good (Q ≤ 0), so the Syndicate takes 0.
+    const win = Q > 0
+      ? resolveWindow(guild, systemId, good, Q, freshG, policy.syndicate, curWindowStart, windowN, p)
+      : null;
+    const intendedSend = win ? win.intendedSend : 0;
+
     // Walk the order UP TO the Production ('downstream') slot to find how much of the
-    // pot is offered to consumers. The claimants above Production are deterministic
-    // without knowing consumer draws — Reserve holds min(reserveLevel, available),
-    // Syndicate draws min(commitment, available). Claimants BELOW Production see the
-    // pot minus what consumers ACTUALLY draw, resolved in the finalize pass once the
-    // rates are known. `available` never goes negative — each take is ≤ it.
+    // pot is offered to consumers. Reserve holds min(reserveLevel, available). The
+    // Syndicate is FRESH-ONLY (§5): capped at its intended send AND at the fresh not
+    // yet spoken for (preFreshRem, full fresh here — no consumer has acted). Claimants
+    // BELOW Production see the pot minus what consumers ACTUALLY draw, resolved in the
+    // finalize pass. `available` never goes negative — each take is ≤ it.
     let availableForConsumers = pot;
+    let preFreshRem = freshG;
     for (const f of policy.order) {
       if (f === 'downstream') break;
-      if (f === 'stockpile') availableForConsumers -= Math.min(policy.reserveLevel, availableForConsumers);
-      else if (f === 'syndicate') availableForConsumers -= Math.min(commitment, availableForConsumers);
+      if (f === 'stockpile') {
+        availableForConsumers -= Math.min(policy.reserveLevel, availableForConsumers);
+      } else if (f === 'syndicate') {
+        const s = Math.min(intendedSend, availableForConsumers, preFreshRem);
+        availableForConsumers -= s;
+        preFreshRem -= s;
+      }
     }
     const demandCap = Math.floor((demandTotal * policy.downstreamPct) / 100);
     const consumerPool = Math.min(demandCap, availableForConsumers);
 
-    // Stash what the finalize pass needs; the fork split is assembled there (it needs
-    // the actual consumer draw, known only after the refinery rates resolve).
+    // Stash what the finalize pass needs; the fork split (and the Syndicate's actual,
+    // fresh-capped draw) is assembled there, once the consumer draw is known.
     goodPlans.push({
       good, fresh: freshG, reserve0, pot, demand: demandTotal,
-      order: policy.order, commitment, reserveLevel: policy.reserveLevel, consumerPool,
+      order: policy.order, reserveLevel: policy.reserveLevel, consumerPool,
+      Q, intendedSend, win,
     });
 
     // Gate 3 — ration `consumerPool` across consumers into integer per-line allocations.
@@ -291,7 +337,14 @@ function resolveProduction(guild, systemId) {
     let consumerDraw = 0;
     for (const line of lines) if (line.good === plan.good) consumerDraw += line.drawn;
 
+    // Walk the claimant order with the ACTUAL consumer draw. Track `available` (the
+    // pot remaining) AND `freshRem` (fresh not yet spoken for): consumers feed on
+    // fresh first (the rate-based drawdown), and the Syndicate is FRESH-ONLY, so it is
+    // capped at freshRem — which guarantees it NEVER reduces the reserve (§5). If a
+    // higher-priority Production claimant consumed the fresh, the Syndicate under-draws
+    // and the pace self-corrects (or breaches) — the on-theme competition for fresh.
     let available = plan.pot;
+    let freshRem = plan.fresh;
     let reserveHeld = 0;
     let synDraw = 0;
     for (const f of plan.order) {
@@ -300,16 +353,18 @@ function resolveProduction(guild, systemId) {
         available -= reserveHeld;
       } else if (f === 'downstream') {
         available -= consumerDraw;
+        freshRem -= Math.min(consumerDraw, freshRem);
       } else if (f === 'syndicate') {
-        synDraw = Math.min(plan.commitment, available);
+        synDraw = Math.min(plan.intendedSend, available, freshRem);
         available -= synDraw;
+        freshRem -= synDraw;
       }
     }
     // Goods left in the pot at tick end become next tick's reserve. reserveHeld STAYS
     // in the pot; only the consumer draw and the syndicate delivery leave. Both are
     // bounded by `available` at their slot, so newReserve ≥ 0 (invariant 3).
     const newReserve = plan.pot - consumerDraw - synDraw;
-    goods[plan.good] = {
+    const goodEntry = {
       fresh: plan.fresh,
       demand: plan.demand,
       reserve0: plan.reserve0,           // start-of-step reserve (the pot minus fresh)
@@ -318,9 +373,98 @@ function resolveProduction(guild, systemId) {
       fork: { syndicate: synDraw, downstream: consumerDraw, stockpile: reserveHeld },
       reserveDelta: newReserve - plan.reserve0, // this tick's net reserve change — the console's trend arrow
     };
+
+    // §5 windowed accrual telemetry + the engine-owned window state apply writes back.
+    // windowStart/delivered/sendCarry ARE serialized state (enter the determinism
+    // hash); the rest (ticksRemaining, requiredRate, sendThisTick, pctAchieved,
+    // status) is DERIVED telemetry the client renders and computes nothing from (§5
+    // display rule). synDraw is the ACTUAL delivery, so delivered advances by it and
+    // NEVER exceeds Q (intendedSend was ≤ Q − delivered). At the boundary tick
+    // (p % N == 0 — the window's last), status resolves met/breach AFTER this tick's
+    // apply; otherwise the window is still accruing.
+    if (plan.win) {
+      const w = plan.win;
+      const newDelivered = w.delivered + synDraw;
+      const isBoundary = (p % windowN) === 0;
+      goodEntry.window = {
+        Q: plan.Q,
+        windowStart: w.windowStart,
+        delivered: newDelivered,
+        sendCarry: w.newSendCarry,
+        ticksRemaining: w.ticksRemaining,
+        requiredRate: w.requiredRate,
+        sendThisTick: synDraw,
+        pctAchieved: plan.Q > 0 ? (newDelivered / plan.Q) * 100 : 100,
+        status: isBoundary ? (newDelivered >= plan.Q ? 'met' : 'breach') : 'accruing',
+      };
+    }
+
+    goods[plan.good] = goodEntry;
   }
 
   return { systemId, mines, goods, lines, refineries };
+}
+
+// resolveWindow(...) -> the §5 per-good windowed-accrual send for ONE tick. Reads the
+// stored window state (guild.syndicateWindows, sim/windows.js) at START-OF-STEP and
+// computes — moving nothing — the NEW window state apply will persist plus the
+// intended whole-unit send. Returns:
+//   { windowStart, delivered, newSendCarry, intendedSend, ticksRemaining, requiredRate }
+// where `delivered` is the delivered-so-far AFTER any window roll (0 on a fresh
+// window), `intendedSend` is this tick's whole-unit send capped at Q − delivered
+// (the fresh-only cap is applied by the finalize walk, not here), and requiredRate /
+// ticksRemaining are display telemetry.
+//
+// The window rolls on the GLOBAL cadence: if the stored windowStart is not the window
+// that contains this producing tick, the window has ended — delivered and the send
+// carry reset to 0 and a new windowStart is stamped (the "next tick opens a new
+// window" rule, §5). The per-tick send is:
+//   - default (no control): the PACED required-rate = (Q − delivered) / ticks-remaining
+//     — the minimum steady send to reach Q on time; it self-corrects.
+//   - "absolute": a fixed `value` units/tick.
+//   - "percent":  `value`% of THIS tick's fresh (the Syndicate fork's own mode).
+// That fractional rate lands on integers via the send carry (floor-and-carry, RULED):
+// accrue the intent, deliver the whole part, carry the sub-unit remainder in [0,1).
+function resolveWindow(guild, systemId, good, Q, freshG, control, curWindowStart, windowN, p) {
+  const stored = getWindow(guild, systemId, good);
+  const roll = !stored || stored.windowStart !== curWindowStart;
+  const windowStart = curWindowStart;
+  const delivered = roll ? 0 : stored.delivered;
+  const sendCarry = roll ? 0 : stored.sendCarry;
+
+  const remaining = Math.max(0, Q - delivered); // never send past Q
+
+  // ticks-remaining INCLUSIVE of this tick: boundary = windowStart + N − 1, so this is
+  // boundary − p + 1 = windowStart + N − p. It is ≥ 1 throughout the window and 1 on
+  // the boundary tick — the basis for the "minimum steady send" pace (§5). The §5 note
+  // that the naive display formula divides by zero on the final tick is honoured as a
+  // DEFENSIVE guard (the `> 0` below); with the inclusive count the resolver never
+  // actually divides by zero in-window, and any absurd rate is bounded by the fresh
+  // cap at apply, so no Infinity/NaN ever reaches integer state.
+  const ticksRemaining = windowStart + windowN - p;
+  const requiredRate = ticksRemaining > 0 ? remaining / ticksRemaining : remaining;
+
+  let targetRate;
+  if (!control) {
+    targetRate = requiredRate; // paced default
+  } else if (control.mode === 'absolute') {
+    targetRate = control.value;
+  } else if (control.mode === 'percent') {
+    targetRate = (control.value / 100) * freshG;
+  } else {
+    targetRate = requiredRate; // unknown mode → fall back to the pace
+  }
+  if (!(targetRate >= 0)) targetRate = 0; // guard NaN / negative
+
+  // Floor-and-carry (the batchCarry discipline, RULED): accrue the fractional intent,
+  // deliver the whole part, carry the sub-unit remainder in [0,1). The whole units are
+  // Q-capped here; the fresh-only cap is the finalize walk's job.
+  const desired = sendCarry + targetRate;
+  const wholeDesired = Math.floor(desired);
+  const newSendCarry = desired - wholeDesired;
+  const intendedSend = Math.min(wholeDesired, remaining);
+
+  return { windowStart, delivered, newSendCarry, intendedSend, ticksRemaining, requiredRate };
 }
 
 // reviewSystem(guild, systemId) -> the §5 "review flag": a deterministically
@@ -398,6 +542,12 @@ function reviewSystem(guild, systemId) {
 // The `review` array is attached HERE, on the read path only — resolveProduction
 // (shared with the move path) stays untouched, so the flag is provably a no-op.
 function previewProduction(state) {
+  // Preview the NEXT tick's production (state.tick + 1 is the tick it would yield),
+  // under the engine-wide window length, so the windowed-accrual telemetry matches
+  // exactly what applyProduction will do when the tick advances (the anti-drift
+  // guarantee). state.windowN may be undefined (no committed scenario has set it) —
+  // resolveProduction defaults it, and it is read only for committed goods.
+  const opts = { tick: (state.tick || 0) + 1, windowN: state.windowN };
   return (state.guilds || []).map((guild) => {
     const ventures = guild.ventures || [];
     const systemIds = [...new Set(ventures.map((v) => v.systemId))]
@@ -405,7 +555,7 @@ function previewProduction(state) {
     return {
       guildId: guild.id,
       systems: systemIds.map((sys) => ({
-        ...resolveProduction(guild, sys),
+        ...resolveProduction(guild, sys, opts),
         review: reviewSystem(guild, sys),
       })),
     };

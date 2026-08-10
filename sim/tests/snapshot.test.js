@@ -190,11 +190,37 @@ test('an unseated venture resolves to a null site rather than throwing', () => {
   assert.equal(v.site, null);
 });
 
-// --- schema 6: the Production view's data support (slices 2b-i / 2c-i / rewrite) -
+// --- schema 7: the §5 Syndicate windowed-accrual telemetry (Slice B-i) ----------
 
-test('snapshot schema is 6', () => {
-  assert.equal(SNAPSHOT_SCHEMA, 6);
-  assert.equal(buildSnapshot(sampleState()).schemaVersion, 6);
+test('snapshot schema is 7', () => {
+  assert.equal(SNAPSHOT_SCHEMA, 7);
+  assert.equal(buildSnapshot(sampleState()).schemaVersion, 7);
+});
+
+test('a committed good surfaces §5 windowed-accrual telemetry in the production block (Slice B-i)', () => {
+  // A committed titanium mine (Q=8 over N=4 ⇒ paced 2/tick). After a tick, the snapshot
+  // must carry, on that good's production entry, a `window` object with the §5 telemetry
+  // — %-achieved, delivered, required-rate, ticks-remaining, resolved send-this-tick,
+  // status. It PREVIEWS the next producing tick (delivered 4, the running total after it).
+  const { tick } = require('../tick.js');
+  let s = createState({
+    guilds: [{ id: 'g1', credits: 0, fuelHoard: 0, ventures: [
+      { id: 't', ownerGuildId: 'g1', type: 'mining', systemId: 'sysA', resourceType: 'titanium', productionRate: 10, syndicateCommitment: 8 },
+    ] }],
+    reserve: { reserveLevel: 0 },
+    syndicate: { ledger: 0 },
+    windowN: 4,
+  });
+  s = tick(s); // producing tick 1: delivered 2
+  const snap = buildSnapshot(s);
+  const win = snap.production[0].systems[0].goods.titanium.window;
+  assert.equal(win.Q, 8);
+  assert.equal(win.sendThisTick, 2, 'the resolved paced send (previewing producing tick 2)');
+  assert.equal(win.delivered, 4, 'delivered running total after the previewed tick (2 + 2)');
+  assert.equal(win.pctAchieved, 50, '4 of Q 8');
+  assert.equal(win.ticksRemaining, 3);
+  assert.equal(typeof win.requiredRate, 'number');
+  assert.equal(win.status, 'accruing');
 });
 
 test('a guild carries its stored productionProfile SPARSE — a set entry present, an unset one absent', () => {

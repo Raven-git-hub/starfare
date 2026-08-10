@@ -53,6 +53,7 @@
 ### Production flow *(10-08-26)*
 - **Starved-line warn threshold** `[FIRST-CUT]` — a consuming line is flagged "starved" (the §5 pulsing box / future Plant-Manager cue) only when its effective rate is below this fraction of its own throttle, so a rounding wobble near 100% doesn't cry wolf. **95%** — pure first-cut, tune in play.
 - **Tick duration (seconds per tick)** — *unruled*: the per-hour UI display (§5) multiplies by this, but the number isn't set. The engine stays per-tick; per-hour is a seam until this is ruled.
+- **Syndicate commitment window length `N` (ticks)** `[FIRST-CUT]` *(Slice B-i, 10-08-26)* — the number of ticks a per-good windowed accrual runs before it resolves met/breach and rolls (§5 "windowed accrual"; the boundary is the GLOBAL cadence `tick % N == 0`). **UNRULED — 24** as a pure first cut (design says a window is ≈24h once tick-duration is ruled; 24 echoes that memorably but is a guess, not a tuned figure — it is *not* a game-meaningful constant baked into the boundary maths). It is a single **engine-wide** value: the fallback `FIRST_CUT_WINDOW_N` lives flagged in `sim/windows.js`, and every scenario/test overrides it via `state.windowN` (an unlicensed scenario needs no window and sets none). Rule it here alongside tick-duration (≈24h → N once seconds/tick is fixed); until then the placeholder stands and no per-hour window length is invented in code.
 
 ### The second good (tolled/shipped raw)
 - **Good** `[FIRST-CUT]`: **Titanium** (a Tier-1 raw; also the onboarding starter-quest good, so it recurs later).

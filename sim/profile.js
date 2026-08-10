@@ -43,6 +43,13 @@ function getGoodPolicy(guild, systemId, good) {
     order: Array.isArray(stored.order) ? [...stored.order] : [...DEFAULT_ORDER],
     downstreamPct: stored.downstreamPct === undefined ? 100 : stored.downstreamPct,
     reserveLevel: stored.reserveLevel === undefined ? 0 : stored.reserveLevel,
+    // syndicate (§5 Slice B): the Syndicate fork's per-tick send control,
+    // { mode: "absolute"|"percent", value: int ≥ 0 }. Unlike the other fields there is
+    // no filled-in structural default — ABSENT means the PACED required-rate default,
+    // which the resolver reads as "no control ⇒ pace it." So the key is included ONLY
+    // when set (a fresh copy, no aliasing into engine state), and the returned policy's
+    // shape is otherwise unchanged from before this slice.
+    ...(stored.syndicate === undefined ? {} : { syndicate: { ...stored.syndicate } }),
   };
 }
 
@@ -107,6 +114,7 @@ function setEntry(guild, systemId, patch) {
       if (policy.order !== undefined) merged.order = [...policy.order];
       if (policy.downstreamPct !== undefined) merged.downstreamPct = policy.downstreamPct;
       if (policy.reserveLevel !== undefined) merged.reserveLevel = policy.reserveLevel;
+      if (policy.syndicate !== undefined) merged.syndicate = { ...policy.syndicate };
       entry.goods[good] = merged;
     }
   }
@@ -136,6 +144,7 @@ function cloneProfile(profile) {
         copy.goods[good] = {
           ...policy,
           ...(policy.order !== undefined ? { order: [...policy.order] } : {}),
+          ...(policy.syndicate !== undefined ? { syndicate: { ...policy.syndicate } } : {}),
         };
       }
     }
