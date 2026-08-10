@@ -26,7 +26,7 @@ const mine = (id, good, rate, commitment = 0) => ({
 const refinery = (id, recipeId, rate) => ({ id, ownerGuildId: 'g1', type: 'refining', systemId: SYS, recipeId, productionRate: rate });
 const held = (s, good) => getStock(s.guilds[0], SYS, good);
 
-function sysState({ ventures, profile = {}, stockpiles = {} }) {
+function sysState({ ventures, profile = {}, stockpiles = {}, windowN }) {
   return createState({
     guilds: [{
       id: 'g1', credits: 0, fuelHoard: 0,
@@ -36,9 +36,14 @@ function sysState({ ventures, profile = {}, stockpiles = {} }) {
     }],
     reserve: { reserveLevel: 0 },
     syndicate: { ledger: 0 },
+    windowN,
   });
 }
-const goodOf = (s, good) => resolveProduction(s.guilds[0], SYS).goods[good];
+// Resolve for the producing tick p=1 of the state's window (state.tick+1). Passing
+// windowN=1 makes every tick a boundary, so the paced send delivers the WHOLE Q in one
+// tick where fresh allows — isolating the one-pot PRIORITY composition (which Slice B
+// keeps intact) from the pacing that window-accrual.test.js covers.
+const goodOf = (s, good) => resolveProduction(s.guilds[0], SYS, { tick: 1, windowN: s.windowN }).goods[good];
 
 // --- the reserve trend delta (the console's arrow) -----------------------------
 
@@ -66,51 +71,57 @@ test('reserveDelta reports this tick net reserve change: + when fresh outpaces t
   assert.equal(goodOf(s2, 'titanium').reserveDelta, -1, 'fresh 5 - drawn 6 => -1 (drawn from the pile)');
 });
 
-// --- the Syndicate draws from the accumulated reserve, not just fresh -----------
+// --- the Syndicate draws FRESH ONLY — never the accumulated reserve (§5 Slice B) --
 
-test('Syndicate claimant draws from the POT (reserve + fresh), delivering beyond this tick fresh', () => {
-  // commitment 5 but fresh only 3, with a pre-seeded reserve of 10. Ranked first
-  // (default order), the Syndicate draws min(5, pot=13) = 5 — the 2-unit shortfall
-  // beyond fresh comes out of the reserve, which falls 10 -> 8.
+test('Syndicate claimant draws FRESH ONLY: a large reserve is never reduced by the fork', () => {
+  // This is the Slice-B REVERSAL of Slice A's "draws from the pot": commitment 5 but
+  // fresh only 3, with a pre-seeded reserve of 10, N=1 so the pace targets the whole
+  // Q. Ranked first, the Syndicate still takes ONLY the 3 fresh — the reserve (10) is
+  // untouched, and the window BREACHES (delivered 3 < Q 5) rather than raiding the pile.
   let s = sysState({
     ventures: [mine('t', 'titanium', 3, 5)],
     stockpiles: { titanium: 10 },
+    windowN: 1,
   });
   const before = computeGalacticSupply(s).resources.titanium; // 10 (the pile)
   const g = goodOf(s, 'titanium');
   assert.equal(g.pot, 13);
-  assert.equal(g.fork.syndicate, 5, 'delivers the full commitment 5, drawing 2 from reserve');
+  assert.equal(g.fork.syndicate, 3, 'delivers only the 3 fresh — never the reserve');
+  assert.equal(g.window.status, 'breach', 'delivered 3 < Q 5 at the boundary ⇒ breach, not a reserve raid');
   s = tick(s);
-  assert.equal(held(s, 'titanium'), 8, 'reserve fell 10 + 3 fresh - 5 delivered = 8');
-  assert.equal(before - computeGalacticSupply(s).resources.titanium, 2, 'galactic titanium net -2 (10 -> 8)');
+  assert.equal(held(s, 'titanium'), 10, 'reserve untouched: 10 + 3 fresh − 3 delivered = 10');
+  assert.equal(before - computeGalacticSupply(s).resources.titanium, 0, 'galactic titanium net 0 (the 3 fresh sank, the pile stayed)');
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
 // --- priority decides who reaches a tight pot first ----------------------------
 
 test('priority: Syndicate-first vs Production-first split a tight pot differently', () => {
-  // titanium pot 6 (mine 6, no prior reserve), commitment 4, a titanium_alloy line
-  // wanting 6 ti (rate 2). Carbon is plentiful. The pot (6) can't satisfy both the
-  // commitment (4) and the consumer demand (6) — priority decides.
+  // titanium pot 6 (mine 6, no prior reserve), commitment 4 with N=1 (so the pace
+  // targets the whole 4 this tick), a titanium_alloy line wanting 6 ti (rate 2). Carbon
+  // is plentiful. Fresh 6 can't satisfy both the commitment (4) and the demand (6) —
+  // priority (the one-pot claimant order, kept intact in Slice B) decides.
   const ventures = () => [mine('t', 'titanium', 6, 4), mine('c', 'carbon_products', 10), refinery('r', 'titanium_alloy', 2)];
 
-  // Syndicate FIRST: it takes 4, leaving 2 for the consumer.
+  // Syndicate FIRST: it takes 4 (fresh), leaving 2 for the consumer.
   const synFirst = sysState({
     ventures: ventures(),
     profile: { goods: { titanium: { order: ['syndicate', 'downstream', 'stockpile'] } } },
+    windowN: 1,
   });
   const gSyn = goodOf(synFirst, 'titanium');
-  assert.equal(gSyn.fork.syndicate, 4, 'syndicate first takes its full commitment');
+  assert.equal(gSyn.fork.syndicate, 4, 'syndicate first takes its full paced send (Q=4) from fresh');
   assert.equal(gSyn.fork.downstream, 2, 'the consumer gets only the 2 left');
 
-  // Production FIRST: the consumer takes its 6, leaving 0 for the syndicate.
+  // Production FIRST: the consumer takes its 6 fresh, leaving 0 fresh for the syndicate.
   const prodFirst = sysState({
     ventures: ventures(),
     profile: { goods: { titanium: { order: ['downstream', 'syndicate', 'stockpile'] } } },
+    windowN: 1,
   });
   const gProd = goodOf(prodFirst, 'titanium');
   assert.equal(gProd.fork.downstream, 6, 'production first draws its full demand');
-  assert.equal(gProd.fork.syndicate, 0, 'nothing left for the syndicate this tick');
+  assert.equal(gProd.fork.syndicate, 0, 'no fresh left for the syndicate this tick (fresh-only)');
 });
 
 // --- the reserve never goes below 0, under aggressive draws over a run ----------

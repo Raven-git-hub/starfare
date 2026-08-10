@@ -285,6 +285,22 @@ function validateAction(state, action) {
             && (typeof policy.reserveLevel !== 'number' || !Number.isInteger(policy.reserveLevel) || policy.reserveLevel < 0)) {
           return { valid: false, reason: `reserveLevel for good ${JSON.stringify(good)} must be a non-negative integer (§15.2)` };
         }
+        // syndicate (§5 Slice B): the Syndicate fork's per-tick send control. ABSENT =
+        // the paced required-rate default. When present it is { mode, value } with
+        // mode ∈ {absolute, percent} and value an integer ≥ 0 (percent = share of this
+        // tick's fresh; percent > 100 is legal — it just means "send all fresh, ASAP").
+        if (policy.syndicate !== undefined) {
+          const syn = policy.syndicate;
+          if (typeof syn !== 'object' || syn === null || Array.isArray(syn)) {
+            return { valid: false, reason: `syndicate for good ${JSON.stringify(good)} must be an object { mode, value }` };
+          }
+          if (syn.mode !== 'absolute' && syn.mode !== 'percent') {
+            return { valid: false, reason: `syndicate.mode for good ${JSON.stringify(good)} must be "absolute" or "percent"` };
+          }
+          if (typeof syn.value !== 'number' || !Number.isInteger(syn.value) || syn.value < 0) {
+            return { valid: false, reason: `syndicate.value for good ${JSON.stringify(good)} must be a non-negative integer (§15.2)` };
+          }
+        }
       }
     }
     if (action.throttles !== undefined) {

@@ -20,6 +20,7 @@
 const { computeGalacticSupply } = require('./supply.js');
 const { cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
+const { cloneWindows } = require('./windows.js');
 
 // --- Entity constructors -----------------------------------------------
 
@@ -40,6 +41,7 @@ function createGuild({
   homePlanetId = null,
   stockpiles = {},
   productionProfile = {},
+  syndicateWindows = {},
   ventures = [],
   vehicles = [],
 }) {
@@ -83,6 +85,14 @@ function createGuild({
     // ENGINE-OWNED and, as of this slice, UNREAD by the tick: stored intent only
     // (stepProduction's consumption of it is slice 2a-ii, §15.4).
     productionProfile: cloneProfile(productionProfile),
+    // syndicateWindows: systemId -> good -> { windowStart, delivered, sendCarry }, the
+    // ENGINE-OWNED per-(system, good) windowed-accrual state (§5 Slice B-i, sim/
+    // windows.js) — NOT player-set. Deliberately omitted from the returned object when
+    // empty (created LAZILY by applyProduction only for a committed good), so an
+    // unlicensed guild's serialized state is byte-identical to pre-Slice-B — the
+    // determinism-hash no-op proof. A caller's non-empty seed is deep-copied so it can
+    // never alias into engine state (like stockpiles/productionProfile).
+    ...(Object.keys(syndicateWindows).length ? { syndicateWindows: cloneWindows(syndicateWindows) } : {}),
     lifetimeProduced: {}, // good -> int; monotonic, only ever increases (§13)
     ventures: ventures.map(createVenture),
     vehicles: vehicles.map(createVehicle),
@@ -291,6 +301,12 @@ function createState(scenario) {
     guilds,
     reserve,
     syndicate,
+    // windowN: the single engine-wide Syndicate-accrual window length in ticks (§5
+    // Slice B-i). Present ONLY when the scenario sets it — a scenario with no
+    // commitments needs no window, so omitting it keeps an unlicensed run's serialized
+    // state byte-identical to pre-Slice-B (the resolver defaults it via the flagged
+    // [FIRST-CUT] in sim/windows.js when a committed good is nonetheless resolved).
+    ...(scenario.windowN === undefined ? {} : { windowN: scenario.windowN }),
     // world is an opaque reference the engine carries inert (tick/intake/assert
     // read none of it). The zero-state now sets it to { seed: <number> } — the
     // galaxy IS the seed (§15.3), referenced, not copied — replacing the old

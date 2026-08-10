@@ -178,6 +178,35 @@ function checkBatchCarry(state) {
   return out;
 }
 
+// Syndicate windowed-accrual state — the engine-owned per-(system, good) window
+// bookkeeping (guild.syndicateWindows, §5 Slice B-i, sim/windows.js). `windowStart`
+// and `delivered` are conserved-integer state (delivered is a running unit count that
+// must be a whole non-negative number; windowStart is the tick a window opened, a
+// positive integer). `sendCarry` is the sanctioned NON-integer — the fractional send
+// remainder, fenced OFF the goods ledger in [0, 1) with its own tripwire, exactly like
+// batchCarry: a value ≥ 1 means a whole unit that should have been delivered was left
+// uncarried, a negative one is nonsense. A guild with no committed goods has no
+// syndicateWindows field at all (legal — the no-op path); only present, out-of-range
+// values trip.
+function checkSyndicateWindows(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    if (!g.syndicateWindows) continue;
+    for (const [systemId, perGood] of Object.entries(g.syndicateWindows)) {
+      for (const [good, win] of Object.entries(perGood || {})) {
+        const where = `guild:${g.id}.syndicateWindows.${systemId}.${good}`;
+        checkField(out, win.delivered, `${where}.delivered`);
+        checkField(out, win.windowStart, `${where}.windowStart`);
+        const c = win.sendCarry;
+        if (typeof c !== 'number' || Number.isNaN(c) || c < 0 || c >= 1) {
+          out.push({ rule: 'send-carry-in-[0,1) (§5 Slice B)', where: `${where}.sendCarry`, detail: { value: c } });
+        }
+      }
+    }
+  }
+  return out;
+}
+
 // Galactic-supply consistency — the derived totals cache (state.galacticSupply)
 // must equal a fresh re-derivation from the guilds' actual stockpiles and the
 // fuel figures. This is a CONSISTENCY check, not a conservation one: non-fuel
@@ -334,6 +363,7 @@ function checkInvariants(state, tick) {
     ...checkCreditConservation(state),
     ...checkNonNegativityAndIntegrality(state),
     ...checkBatchCarry(state),
+    ...checkSyndicateWindows(state),
     ...checkGalacticSupplyConsistency(state),
     ...checkSiteOccupancy(state),
     ...checkClaimIntegrity(state),

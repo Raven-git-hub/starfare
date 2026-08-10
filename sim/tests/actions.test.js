@@ -255,6 +255,40 @@ test('a valid reserveLevel stores and reads back through getGoodPolicy', () => {
   assert.equal(getGoodPolicy(next.guilds[0], 'sys_0002', 'titanium').reserveLevel, 40);
 });
 
+// --- the §5 Slice B Syndicate send control `syndicate {mode, value}` -----------
+
+test('validateAction rejects a bad syndicate control (mode / value / shape)', () => {
+  rejects(
+    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { titanium: { syndicate: { mode: 'nope', value: 5 } } } }),
+    /syndicate\.mode.*absolute.*percent/,
+  );
+  rejects(
+    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { titanium: { syndicate: { mode: 'absolute', value: -1 } } } }),
+    /syndicate\.value.*non-negative integer/,
+  );
+  rejects(
+    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { titanium: { syndicate: { mode: 'percent', value: 2.5 } } } }),
+    /syndicate\.value.*non-negative integer/,
+  );
+  rejects(
+    createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', goods: { titanium: { syndicate: [1, 2] } } }),
+    /syndicate for good.*must be an object/,
+  );
+});
+
+test('a valid syndicate send control stores and reads back through getGoodPolicy', () => {
+  const s = twoGuildState();
+  // percent > 100 is legal (it just means "send all fresh, ASAP" — §5).
+  const action = createSetProductionProfileAction({
+    guildId: 'g1', systemId: 'sys_0002', goods: { titanium: { syndicate: { mode: 'percent', value: 150 } } },
+  });
+  assert.deepEqual(validateAction(s, action), { valid: true });
+  const next = applyAction(s, action);
+  assert.deepEqual(getGoodPolicy(next.guilds[0], 'sys_0002', 'titanium').syndicate, { mode: 'percent', value: 150 });
+  // A good with no syndicate control set carries no `syndicate` key (paced default).
+  assert.equal('syndicate' in getGoodPolicy(next.guilds[0], 'sys_0002', 'lead'), false);
+});
+
 test('validateAction rejects a non-integer throttle', () => {
   rejects(
     createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', throttles: { refinery: 33.3 } }),

@@ -157,11 +157,11 @@ test('GET /health reports liveness (JSON)', async () => {
   assert.equal(body.service, 'starfare-testbed');
 });
 
-test('GET /snapshot returns the zero-state snapshot (schema 6)', async () => {
+test('GET /snapshot returns the zero-state snapshot (schema 7)', async () => {
   await reset();
   const { status, body } = await req('GET', '/snapshot');
   assert.equal(status, 200);
-  assert.equal(body.schemaVersion, 6); // bumped 5->6 for the §5 rate-based engine rewrite
+  assert.equal(body.schemaVersion, 7); // bumped 6->7 for the §5 Syndicate windowed-accrual telemetry
   assert.equal(body.tick, 0);
   assert.equal(body.guilds.length, 0);
   assert.equal(body.claims.length, 10); // Citadel + 9 outposts
