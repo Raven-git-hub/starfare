@@ -4,26 +4,46 @@
 //
 // `resolveProduction(guild, systemId)` is a PURE resolver: given a guild and one
 // of its systems, it computes — but does NOT move — what production does this
-// tick. It returns a plain report (integers only). Two callers share it, which is
-// the whole point (design.md §5 "the resolved numbers come from the engine, never
-// the browser", ruled 07-08-26):
+// tick. It returns a plain report. Two callers share it, which is the whole point
+// (design.md §5 "the resolved numbers come from the engine, never the browser",
+// ruled 07-08-26):
 //   - `stepProduction` (sim/tick.js) APPLIES the report — it deposits each mine's
-//     fresh output and runs each refinery's batches, and is the only place goods
-//     actually move.
+//     fresh output, draws each line's whole `drawn` units, mints each refinery's
+//     whole output and writes back its carry, and is the only place goods move.
 //   - `previewProduction` (below) REPORTS the report — a read-only selector the
 //     snapshot carries so the interactive Production view shows engine truth.
 // Because both go through this single function they cannot drift: a preview can
 // never disagree with what the tick will do, by construction.
 //
-// KEY PROPERTY that makes the resolver clean: under §5's "never touch the pile,"
-// the resolution depends ONLY on the ventures' rates, their recipes, and the
-// profile — NOT on the current pool balance. Mining fresh = Σ mine rates; Gate
-// 1/2/3 all operate on that fresh flow; a refinery's batches come from its Gate-3
-// allocation. So this function reads the profile (via sim/profile.js) and the
-// ventures, and NOTHING from the stockpile pool — no state is read that a mutation
-// could change, so it is trivially pure and side-effect-free.
+// WHAT THE RESOLVER READS (§5 rate-based rewrite, 10-08-26 — supersedes the old
+// floor-batches resolver): the profile (via sim/profile.js), the ventures, their
+// per-venture `batchCarry` (the per-good sub-unit carries), AND the stockpile pool
+// BALANCE as it stands at the START of this tick's production step (Ruling 3). The
+// pool read is the documented departure from the old resolver's "reads NOTHING from
+// the pool": the stockpile drawdown needs the current balance to know how far a
+// consumer may draw. It is still a PURE, side-effect-free function — it reads
+// current state and mutates nothing; the balance is start-of-step state, not a
+// mutation observed mid-resolve. This tick's own Gate-1 stockpile deposit and the
+// undrawn surplus stay in the pool and are drawable NEXT tick.
+//
+// THE MODEL, in one breath (design.md §5 "Engine rewrite — rate-based resolution",
+// its "Rulings — composition, carry, ordering", and the "Correction — the recipe
+// ratio" that supersedes the original balancer): a consuming line runs at a
+// CONTINUOUS rate set by its scarcest input (no `floor(batches)` — so a 67% line
+// genuinely runs at 67%, never stalling at 0). The good's pool that Gate 3 rations
+// is the Downstream fork's fresh take PLUS the drawable stockpile (balance −
+// reserveFloor); one proportional split feeds both fresh and drawn-down shortfall
+// (Ruling 1). That one rate then lands on integer piles through a PER-GOOD carry:
+// every good the line touches — each input AND the output — accrues `rate × qty`
+// into its own remainder, `floor` of which is the whole units DRAWN (inputs) or
+// MINTED (output) this tick, the sub-unit part carried on. No independent rounding,
+// no refund — a non-binding input is simply under-drawn (its surplus stays put), so
+// the recipe ratio holds on average (bounded transient). The one non-integer the
+// rate itself is transient; the persisted fractions live in `batchCarry`, each
+// fenced in [0, 1) with its own tripwire.
 
 const { getRecipe } = require('./recipes.js');
+const { getStock } = require('./stock.js');
 const {
   getGoodPolicy, getThrottlePct, hasThrottle, storedThrottleIds, storedPolicyGoods,
 } = require('./profile.js');
@@ -32,14 +52,26 @@ const {
 //   {
 //     systemId,
 //     mines:      [ { ventureId, good, amount } ],   // each producing mine's fresh deposit
-//     goods:      { [good]: { fresh, demand, fork: { syndicate, downstream, stockpile }, supplied } },
-//     lines:      [ { ventureId, good, demand, alloc } ],  // per consuming line, per good it draws
-//     refineries: [ { ventureId, batches } ],        // batches each refinery runs (0 = starved)
+//     goods:      { [good]: { fresh, demand, fork: { syndicate, downstream, stockpile },
+//                             supplied, drawable, pool } },
+//     lines:      [ { ventureId, good, demand, alloc, drawn } ],  // per consuming line, per input
+//     refineries: [ { ventureId, rate, bottleneckGood, minted, batchCarry } ],
 //   }
-// All values are integers. `demand` in `goods` is the Gate-2 naive full-tilt Σ for
-// the good; `supplied` is the Downstream fork's take (the draw cap consumers share)
-// and equals `fork.downstream`. `demand` in `lines` is that one line's full-tilt
-// draw for that good (D_c_g = rate × input-qty).
+// GOOD-LEVEL integers: `demand` is the Gate-2 naive full-tilt Σ (rated, not
+// throttled — the stable Downstream cap figure); `supplied` is the Downstream
+// fork's fresh take (= fork.downstream, ≤ fresh); `drawable` is the stockpile
+// above its reserve floor (start-of-step); `pool` = supplied + drawable is what
+// Gate 3 rations (Ruling 1 — the drawdown folds in here, one split for fresh and
+// drawn-down alike). LINE-LEVEL integers: `demand` = that line's full-tilt draw
+// for the input (rate × input-qty), `alloc` = the integer units Gate 3 handed it
+// (it bounds the rate — the pool is NOT debited by it), `drawn` = the whole units
+// the line actually pulls this tick (≤ alloc; the surplus of a non-binding input
+// stays in the pool, undrawn). REFINERY-LEVEL: `rate` is the CONTINUOUS batches/tick
+// the line runs (a float — transient telemetry, never serialized); `bottleneckGood`
+// is the input that set the min (the scarcest, by definition — no search); `minted`
+// is the whole output units produced this tick; `batchCarry` is the venture's NEW
+// per-good carry map (every input + the output, each in [0, 1)), which
+// stepProduction writes back onto the venture (§5 Correction, Ruling 2 generalized).
 //
 // The null/undefined system is handled EXACTLY as stepProduction does: a venture
 // with no seat keeps its `systemId` (undefined/null) as its key, and the strict
@@ -62,37 +94,48 @@ function resolveProduction(guild, systemId) {
   // Refineries in this system, in establishment order.
   const refineryVentures = ventures.filter((v) => v.recipeId && v.productionRate);
 
-  // --- Route each fresh raw good through Gates 1→3 into per-line draw caps.
+  // Goods to route: everything mined fresh here PLUS every good some in-system
+  // refinery consumes — the latter so a good with NO local mine can still be fed by
+  // the stockpile drawdown (§5 rewrite: a titanium_alloy line runs off a bought-in
+  // carbon pile with no carbon mine). Sorted for determinism (invariant 9).
+  const goodsToRoute = new Set(Object.keys(fresh));
+  for (const c of refineryVentures) {
+    const recipe = getRecipe(c.recipeId);
+    if (!recipe) continue; // dangling recipeId — the occupancy invariant halts on it
+    for (const inp of recipe.inputs) goodsToRoute.add(inp.good);
+  }
+
+  // --- Route each good through Gates 1→3 into per-line integer allocations.
   const goods = {};
   const lines = [];
-  const alloc = {}; // ventureId -> good -> units this refinery may draw this tick
+  const alloc = {}; // ventureId -> good -> integer units allocated this tick
 
-  for (const good of Object.keys(fresh).sort()) {
-    const freshG = fresh[good];
-    if (freshG <= 0) continue;
+  for (const good of [...goodsToRoute].sort()) {
+    const freshG = fresh[good] || 0;
 
     // Consumers of `good`: refineries whose recipe lists it as an input, with that
     // input's per-batch qty — in establishment order.
     const consumers = [];
     for (const c of refineryVentures) {
       const recipe = getRecipe(c.recipeId);
-      if (!recipe) continue; // dangling recipeId — the occupancy invariant halts on it
+      if (!recipe) continue;
       const inp = recipe.inputs.find((i) => i.good === good);
       if (inp) consumers.push({ venture: c, qty: inp.qty });
     }
-    // Fresh good with no consumer this system: nothing to route — it all stays in
-    // the pool (the Stockpile fork's catch-all). No `goods` entry (there is no
-    // downstream figure to report), exactly as the old routing skipped it.
+    // A fresh good nobody consumes here: nothing to route — it all stays in the
+    // pool (the Stockpile fork's catch-all). No `goods` entry (no downstream figure).
     if (consumers.length === 0) continue;
 
     // Gate 2 — naive full-tilt demand: Σ rated rate × input-qty. Uses the RATED
-    // productionRate, not the throttle, so it is a stable figure the Downstream cap
-    // keys off (§5).
+    // productionRate, not the throttle, so it is the stable figure the Downstream
+    // cap keys off (§5). Effective (cross-input) demand is realised NOT here but by
+    // the per-line min-rate balancer below: a line held by a scarce partner input
+    // consumes less of this good and spills the rest back.
     let demandTotal = 0;
     for (const { venture, qty } of consumers) demandTotal += venture.productionRate * qty;
 
     // Gate 1 — pour freshG through the forks in the policy order; record each
-    // fork's take and compute `supplied` (the collective downstream draw cap).
+    // fork's take and compute `supplied` (the Downstream fresh take, ≤ fresh).
     const policy = getGoodPolicy(guild, systemId, good);
     // Σ producers' committed output — the Syndicate fork's amount. 0 for every
     // venture today (no licences); structured so slice 3 wires delivery here.
@@ -130,31 +173,49 @@ function resolveProduction(guild, systemId) {
       }
     });
 
-    // Gate 3 — distribute `supplied` across consumers into per-venture draw caps.
-    // Regime: FCFS unless SOME consumer has a throttle explicitly set (a throttle
-    // of 100 counts as set — hence hasThrottle, not the value).
+    // Ruling 1 — the stockpile drawdown FOLDS INTO Gate 3. The pool consumers
+    // ration is the Downstream fresh take PLUS the drawable stockpile: the balance
+    // at start-of-step (Ruling 3) minus the reserve floor. One combined pool, one
+    // proportional split — never a per-line race down the pile (the rejected 8/2;
+    // the ruled 5/5). Because supplied ≤ fresh and drawable ≤ balance − floor, the
+    // apply can draw the pile down to exactly the floor and no further (invariant 3
+    // holds by construction — see stepProduction).
+    const startBalance = getStock(guild, systemId, good);
+    const drawable = Math.max(0, startBalance - policy.reserveFloor);
+    const pool = supplied + drawable;
+
+    // Gate 3 — ration `pool` across consumers into integer per-line allocations.
+    // Regime unchanged: FCFS in establishment order unless SOME consumer of this
+    // good has a throttle explicitly set (a throttle of 100 counts as set — hence
+    // hasThrottle, not the value), in which case the split is proportional.
     const anyThrottled = consumers.some(({ venture }) => hasThrottle(guild, systemId, venture.id));
     let give;
     if (!anyThrottled) {
       // FCFS in establishment order: each takes min(its full demand, what's left).
       give = [];
-      let rem = supplied;
+      let rem = pool;
       for (const { venture, qty } of consumers) {
         const g = Math.min(venture.productionRate * qty, rem);
         give.push(g);
         rem -= g;
       }
     } else {
-      // Proportional: each consumer's THROTTLED ask; scale down together if the
-      // asks exceed what arrived, remainder to the earliest-established line.
-      const asks = consumers.map(({ venture, qty }) =>
-        Math.floor((venture.productionRate * getThrottlePct(guild, systemId, venture.id)) / 100) * qty);
-      const askTotal = asks.reduce((a, b) => a + b, 0);
-      if (askTotal <= supplied) {
-        give = asks; // everyone gets their throttled ask; any surplus stays in pool
+      // Proportional to each line's THROTTLED demand — continuous, so a rate-1 line
+      // at 67% is NOT floored to a 0 ask (the floor-batches stall this rewrite
+      // kills). Allocate min(pool, Σ ceil(want)) integer units split by the real
+      // wants; the integer remainder goes to the earliest-established line
+      // (invariant 9). Capping at Σ ceil(want) stops an abundant pool from
+      // over-handing a line more than it can use (the surplus just stays put).
+      const wants = consumers.map(({ venture, qty }) =>
+        (getThrottlePct(guild, systemId, venture.id) / 100) * venture.productionRate * qty);
+      const wantTotal = wants.reduce((a, b) => a + b, 0);
+      const capTotal = wants.reduce((a, b) => a + Math.ceil(b), 0);
+      const toAllocate = Math.min(pool, capTotal);
+      if (wantTotal <= 0) {
+        give = wants.map(() => 0);
       } else {
-        give = asks.map((ask) => Math.floor((supplied * ask) / askTotal));
-        let remainder = supplied - give.reduce((a, b) => a + b, 0);
+        give = wants.map((w) => Math.floor((toAllocate * w) / wantTotal));
+        let remainder = toAllocate - give.reduce((a, b) => a + b, 0);
         for (let idx = 0; remainder > 0; idx = (idx + 1) % consumers.length) {
           give[idx] += 1;
           remainder -= 1;
@@ -166,21 +227,61 @@ function resolveProduction(guild, systemId) {
       lines.push({ ventureId: venture.id, good, demand: venture.productionRate * qty, alloc: give[idx] });
     });
 
-    goods[good] = { fresh: freshG, demand: demandTotal, fork, supplied };
+    goods[good] = { fresh: freshG, demand: demandTotal, fork, supplied, drawable, pool };
   }
 
-  // --- Refineries: batches each runs, capped in LOCKSTEP by the scarcest allocated
-  // input (floor per input) and by its own throttled rate. 0 = starved this tick.
+  // --- Refineries: each runs at a CONTINUOUS rate = min(its throttle cap, the
+  // scarcest input's batch capacity alloc/qty). NO floor(batches). That one rate
+  // then lands on integer piles through a PER-GOOD carry (§5 "Correction — the
+  // recipe ratio"): for EVERY good the line touches — each input AND the output —
+  //     carry_g += rate × q_g ; whole_g = floor(carry_g) ; carry_g -= whole_g
+  // Inputs DRAW whole_g from the pool; the output MINTS whole_g; the sub-unit
+  // remainder carries to next tick. No independent rounding and no refund, so every
+  // good averages rate × q_g and the recipe ratio holds (bounded transient). This
+  // replaces the old round-input/accrue-output balancer, which broke the ratio.
   const refineries = [];
+  const drawnByLine = {}; // ventureId -> input good -> integer units drawn this tick
   for (const c of refineryVentures) {
     const recipe = getRecipe(c.recipeId);
     if (!recipe) continue;
-    let batches = Math.floor((c.productionRate * getThrottlePct(guild, systemId, c.id)) / 100);
+    const throttleCap = (getThrottlePct(guild, systemId, c.id) / 100) * c.productionRate;
+    // The scarcest input sets the rate; that input IS the bottleneck (no search —
+    // it is the min by definition, §5). Ties resolve to the first input in recipe
+    // order (a fixed, frozen array — deterministic).
+    let inputCap = Infinity;
+    let bottleneckGood = null;
     for (const inp of recipe.inputs) {
       const allocated = (alloc[c.id] && alloc[c.id][inp.good]) || 0;
-      batches = Math.min(batches, Math.floor(allocated / inp.qty));
+      const cap = allocated / inp.qty;
+      if (cap < inputCap) { inputCap = cap; bottleneckGood = inp.good; }
     }
-    refineries.push({ ventureId: c.id, batches });
+    const rate = Math.min(throttleCap, inputCap);
+
+    // Advance a fresh carry map from the venture's stored one (start-of-step, Ruling
+    // 3). One entry per input AND the output. whole_g ≤ alloc_g by construction:
+    // rate ≤ alloc_g / q_g and the carry is < 1, so carry + rate × q_g < 1 + alloc_g
+    // and its floor never exceeds alloc_g — the pool can't go negative.
+    const prev = c.batchCarry || {};
+    const batchCarry = {};
+    const drawn = {};
+    for (const inp of recipe.inputs) {
+      const raw = (prev[inp.good] || 0) + rate * inp.qty;
+      const whole = Math.floor(raw);
+      batchCarry[inp.good] = raw - whole;
+      drawn[inp.good] = whole;
+    }
+    const outRaw = (prev[recipe.output.good] || 0) + rate * recipe.output.qty;
+    const minted = Math.floor(outRaw);
+    batchCarry[recipe.output.good] = outRaw - minted;
+
+    drawnByLine[c.id] = drawn;
+    refineries.push({ ventureId: c.id, rate, bottleneckGood, minted, batchCarry });
+  }
+
+  // Back-fill each line's `drawn` (the whole input units the pool is debited by).
+  // `alloc` only bounded the rate; the pool loses exactly `drawn`, never a refund.
+  for (const line of lines) {
+    line.drawn = (drawnByLine[line.ventureId] || {})[line.good] || 0;
   }
 
   return { systemId, mines, goods, lines, refineries };

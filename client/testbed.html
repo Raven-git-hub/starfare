@@ -758,6 +758,14 @@ function recipeMap() {
 var PROFILE_DEFAULTS = { order: ['syndicate', 'downstream', 'stockpile'], downstreamPct: 100, stockpileMode: 'percent', stockpileValue: 0, throttle: 100 };
 var FORK_LABEL = { syndicate: 'SYNDICATE', downstream: 'DOWNSTREAM', stockpile: 'STOCKPILE' };
 
+// §5 rate-based rewrite: a line runs at a CONTINUOUS rate (batches/tick may be
+// fractional). Show it as an integer when whole, else to two places — pure
+// formatting of an engine number, no game maths in the browser.
+function fmtRate(x) {
+  if (x == null) return '—';
+  return Number.isInteger(x) ? String(x) : x.toFixed(2);
+}
+
 // The managed guild's resolved report for one system, from the snapshot's
 // `production` block ([{ guildId, systems:[{ systemId, mines, goods, lines,
 // refineries }] }]). Null when the guild/system has no entry (no ventures).
@@ -916,14 +924,14 @@ function renderProductionView(sysId, snap, guild) {
 
         var lineRows = lines.map(function (l) {
           var ref = (report.refineries || []).find(function (r) { return r.ventureId === l.ventureId; });
-          var batches = ref ? ref.batches : null;
+          var rate = ref ? ref.rate : null;
           return '<tr>' +
             '<td>' + esc(l.ventureId) + '</td>' +
             '<td class="num">' + esc(l.demand) + '</td>' +
             '<td class="num">' + esc(l.alloc) + '</td>' +
             '<td class="num">' + ratioPct(l.alloc, l.demand) + '</td>' +
             '<td class="num">' + ratioPct(l.alloc, rg.supplied) + '</td>' +
-            '<td class="num">' + (batches == null ? '—' : esc(batches)) + '</td>' +
+            '<td class="num">' + fmtRate(rate) + '</td>' +
           '</tr>';
         }).join('');
         var gate3 =
@@ -931,7 +939,7 @@ function renderProductionView(sysId, snap, guild) {
             '<div class="gate-h">consuming lines &middot; resolved allocation this tick</div>' +
             '<table class="lines"><thead><tr>' +
               '<th>line</th><th class="num">own-max</th><th class="num">alloc</th>' +
-              '<th class="num">% own</th><th class="num">% upstream</th><th class="num">batches</th>' +
+              '<th class="num">% own</th><th class="num">% upstream</th><th class="num">rate/tick</th>' +
             '</tr></thead><tbody>' + lineRows + '</tbody></table>' +
           '</div>';
 
@@ -967,13 +975,13 @@ function renderProductionView(sysId, snap, guild) {
         '<td class="site">→ ' + esc(outLabel) + '</td>' +
         '<td class="num"><input class="throttle" data-sys="' + esc(sysId) + '" data-vent="' + esc(r.ventureId) + '" type="number" min="0" max="100" value="' + esc(pct) + '">%' +
           (thr != null ? '' : ' <span class="deflt">(default)</span>') + '</td>' +
-        '<td class="num">' + esc(r.batches) + '</td>' +
+        '<td class="num">' + fmtRate(r.rate) + '</td>' +
       '</tr>';
     }).join('');
     throttlePanel =
       '<div class="gate g3panel">' +
         '<div class="gate-h">GATE 3 &middot; per-line throttle <span class="hint">run a line at N% of its own full-tilt max; a short shared input is split among throttled lines in proportion</span></div>' +
-        '<table class="lines"><thead><tr><th>line</th><th>output</th><th class="num">throttle</th><th class="num">batches/tick</th></tr></thead>' +
+        '<table class="lines"><thead><tr><th>line</th><th>output</th><th class="num">throttle</th><th class="num">rate/tick</th></tr></thead>' +
         '<tbody>' + rows + '</tbody></table>' +
       '</div>';
   }

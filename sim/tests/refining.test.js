@@ -40,47 +40,46 @@ test('a refining action requires a recipeId (not a resourceType)', () => {
 
 // --- establishing + converting (multi-input) -------------------------------
 
-// NUMBERS UPDATED for slice 2a-ii's "never touch the pile" rule (§5): a refinery
-// now draws only THIS tick's FRESH production, not the accumulated pile. Recipe
-// titanium_alloy = 3 titanium + 1 carbon -> 1 alloy; refinery rate 2 => full-tilt
-// demand 6 titanium/tick. But tmine mints only 5 fresh titanium/tick, so the
-// downstream draw is capped at 5, affording floor(5/3) = 1 batch — NOT the 2 the
-// old whole-pool draw managed by dipping into accumulated titanium. The pile grows
-// and is left untouched; the alloy figure legitimately drops from 2/tick to 1/tick.
-test('a refinery consumes BOTH inputs and produces titanium_alloy (fresh-only, never touches the pile)', () => {
+// NUMBERS UPDATED for the §5 rate-based rewrite (10-08-26): the stockpile is now a
+// DRAWABLE input source (drawdown, reserveFloor default 0). Recipe titanium_alloy =
+// 3 titanium + 1 carbon -> 1 alloy; refinery rate 2 => full-tilt demand 6 ti/tick.
+// tmine mints only 5 fresh ti/tick, but the line now draws the 1-unit shortfall from
+// the accumulated titanium pile — so it runs the full rate 2 (the fresh-only model
+// stalled it at 1). The pile falls by the drawn shortfall each tick.
+test('a refinery consumes BOTH inputs and produces titanium_alloy (drawing the pile for the shortfall)', () => {
   let s = playerFounded();
   s = advance(s, [tmine()]).state;      // +5 titanium => 5
   s = advance(s, [cmine()]).state;      // tmine +5 => 10 ti, cmine +5 => 5 carbon
-  const r = advance(s, [refinery()]);   // mines first (=>15 ti, 10 carbon); fresh this tick = 5 ti / 5 carbon
+  const r = advance(s, [refinery()]);   // start pile 10 ti / 5 carbon; fresh +5/+5; rate 2 (ti shortfall drawn)
   s = r.state;
   assert.equal(r.results[0].accepted, true);
   const g = () => guildTotals(s.guilds[0]);
-  // Fresh titanium 5 (< demand 6) caps the draw at 5 => floor(5/3)=1 batch: -3 ti, -1 carbon, +1 alloy.
-  assert.equal(g().titanium, 12);       // 15 - 3 (was 9 under whole-pool: -6)
-  assert.equal(g().carbon_products, 9); // 10 - 1 (was 8: -2)
-  assert.equal(g().titanium_alloy, 1);  // 1 batch, capped by fresh titanium (was 2)
+  // rate 2: consumes 6 ti + 2 carbon, mints 2 alloy. ti: 10 + 5 - 6 = 9; carbon: 5 + 5 - 2 = 8.
+  assert.equal(g().titanium, 9);        // fresh 5 + 1 drawn from the pile feed rate 2
+  assert.equal(g().carbon_products, 8);
+  assert.equal(g().titanium_alloy, 2);  // full rate 2 (fresh-only model gave 1)
   assert.deepEqual(checkInvariants(s, s.tick), []);
-  s = advance(s, []).state;             // +5 ti/+5 carbon fresh; again 1 batch: -3 ti, -1 carbon, +1 alloy
-  assert.equal(g().titanium, 14);       // 12 + 5 - 3 (was 8)
-  assert.equal(g().carbon_products, 13);// 9 + 5 - 1 (was 11)
-  assert.equal(g().titanium_alloy, 2);  // +1 (was 4)
-  assert.equal(computeGalacticSupply(s).resources.titanium_alloy, 2);
+  s = advance(s, []).state;             // start 9 ti / 8 carbon; fresh +5/+5; rate 2 again
+  assert.equal(g().titanium, 8);        // 9 + 5 - 6
+  assert.equal(g().carbon_products, 11);// 8 + 5 - 2
+  assert.equal(g().titanium_alloy, 4);  // +2
+  assert.equal(computeGalacticSupply(s).resources.titanium_alloy, 4);
 });
 
-// UPDATED for never-touch-the-pile: carbon fresh is 1/tick (the bottleneck), so the
-// draw is capped at 1 fresh carbon => 1 batch, regardless of a pile of carbon or
-// titanium built earlier. The accumulated carbon is NOT drained to zero any more —
-// only the fresh unit is spent — but the invariant (never negative) still holds.
-test('a refinery is capped by the SCARCEST FRESH input and never goes negative', () => {
+// UPDATED for the rate-based drawdown: carbon fresh is 1/tick, but the line now
+// draws down the small accumulated carbon pile too. It is still capped by the
+// SCARCEST input (carbon) and never goes negative — the draw bottoms out at 0
+// (reserveFloor default 0).
+test('a refinery is capped by the SCARCEST input and never goes negative', () => {
   let s = playerFounded();
   s = advance(s, [tmine()]).state;                       // titanium accrues fast (5/tick) => 5
   s = advance(s, [cmine({ productionRate: 1 })]).state;  // tmine +5 => 10 ti; cmine +1 => 1 carbon (the bottleneck)
-  // rate 100 wants 100 batches; fresh titanium 5 affords floor(5/3)=1, fresh carbon 1 affords floor(1/1)=1.
-  s = advance(s, [refinery({ productionRate: 100 })]).state; // mines +5 ti (=>15) / +1 carbon (=>2) fresh 5/1
+  // rate 100 wants 100 batches; carbon is the bottleneck: 1 fresh + 1 drawn = 2 => rate 2.
+  s = advance(s, [refinery({ productionRate: 100 })]).state; // start 10 ti / 1 carbon; fresh +5 ti / +1 carbon
   const g = guildTotals(s.guilds[0]);
-  assert.equal(g.carbon_products, 1);   // pool 2 (1 old + 1 fresh) - 1 consumed = 1 (was 0: old drew the pile too)
-  assert.equal(g.titanium_alloy, 1);    // 1 batch, capped by fresh carbon (was 2)
-  assert.equal(g.titanium, 12);         // 15 - 1*3 (was 9)
+  assert.equal(g.carbon_products, 0);   // 1 start + 1 fresh - 2 consumed = 0 (drawn to the floor)
+  assert.equal(g.titanium_alloy, 2);    // rate 2, capped by carbon (1 fresh + 1 drawn)
+  assert.equal(g.titanium, 9);          // 10 + 5 - round(2*3)=6 = 9
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 

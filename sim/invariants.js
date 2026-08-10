@@ -154,6 +154,30 @@ function checkNonNegativityAndIntegrality(state) {
   return out;
 }
 
+// Batch carries — the sanctioned non-integers (§5 rate-based rewrite, Ruling 2 as
+// generalized by the "Correction — the recipe ratio"). Each venture carries a
+// per-good sub-unit remainder in Venture.batchCarry (every recipe input AND the
+// output), and EVERY entry must stay in [0, 1): a value ≥ 1 means a whole unit that
+// should have been drawn/minted was left uncarried (goods silently mis-ledgered),
+// and a negative value is nonsense. The carries are fenced OFF the integer sweep
+// above (units drawn/minted stay integer; the carries are draw/mint-TIMING state),
+// so they get their own tripwire here. A venture with no map yet (undefined) is
+// legal; only a present, out-of-range entry trips.
+function checkBatchCarry(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    for (const v of g.ventures || []) {
+      if (v.batchCarry === undefined) continue;
+      for (const [good, frac] of Object.entries(v.batchCarry)) {
+        if (typeof frac !== 'number' || Number.isNaN(frac) || frac < 0 || frac >= 1) {
+          out.push({ rule: 'batch-carry-in-[0,1) (§5 Ruling 2)', where: `venture:${v.id}.batchCarry.${good}`, detail: { value: frac } });
+        }
+      }
+    }
+  }
+  return out;
+}
+
 // Galactic-supply consistency — the derived totals cache (state.galacticSupply)
 // must equal a fresh re-derivation from the guilds' actual stockpiles and the
 // fuel figures. This is a CONSISTENCY check, not a conservation one: non-fuel
@@ -309,6 +333,7 @@ function checkInvariants(state, tick) {
     ...checkFuelConservation(state),
     ...checkCreditConservation(state),
     ...checkNonNegativityAndIntegrality(state),
+    ...checkBatchCarry(state),
     ...checkGalacticSupplyConsistency(state),
     ...checkSiteOccupancy(state),
     ...checkClaimIntegrity(state),
