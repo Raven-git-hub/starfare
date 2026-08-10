@@ -104,7 +104,7 @@ function createVenture({
   productionRate = 0,
   inputStockpiles = {},
   syndicateCommitment = 0,
-  outputAccumulator = 0,
+  batchCarry = {},
 }) {
   if (id === undefined) throw new Error('createVenture: id is required');
   if (ownerGuildId === undefined) throw new Error('createVenture: ownerGuildId is required');
@@ -157,17 +157,20 @@ function createVenture({
     // carrying it is a behavioural no-op; it exists to give commitment a home
     // everywhere (rows + totals) before slice 3 gives it a function.
     syndicateCommitment,
-    // outputAccumulator: the per-venture fractional output carry (§5 rate-based
-    // rewrite, §15.4). A refinery runs at a CONTINUOUS rate (batches/tick may be
-    // fractional), but goods are integers (§15.2) — so the whole-unit output is
-    // minted when the accumulator crosses 1 and the sub-unit remainder is carried
-    // here to the next tick, held in [0, 1). It is the ONE sanctioned non-integer
-    // field, fenced OFF the conserved-goods ledger (units consumed/spilled/minted
-    // all stay integer); it is mint-TIMING state, not a good balance. A dedicated
-    // tick tripwire (invariants.js) asserts 0 ≤ outputAccumulator < 1 every tick.
-    // Default 0 (a fresh venture has nothing carried). Advanced only by
-    // stepProduction (tick.js) — the resolver reads it start-of-step and stays pure.
-    outputAccumulator,
+    // batchCarry: the per-good sub-unit carries (§5 rate-based rewrite, corrected
+    // 10-08-26 build-review, §15.4). A refinery runs at a CONTINUOUS rate
+    // (batches/tick may be fractional), but goods are integers (§15.2). So EVERY
+    // good the line touches — each recipe input AND the output — carries its own
+    // fractional remainder here, `{ [good]: fraction in [0,1) }`, all paced by the
+    // one rate: each tick a good accrues rate × qty, the whole part is drawn (input)
+    // or minted (output), the sub-unit part carried on. This is what makes the
+    // recipe RATIO hold on average (the earlier output-only carry rounded inputs and
+    // broke it). The carries are the sanctioned non-integers, fenced OFF the
+    // conserved-goods ledger (units drawn/minted stay integer); a dedicated tick
+    // tripwire (invariants.js) asserts every entry in [0, 1). Default {} (a fresh
+    // venture has nothing carried). Advanced only by stepProduction (tick.js) — the
+    // resolver reads it start-of-step and stays pure.
+    batchCarry: { ...batchCarry },
     // NOTE: the old typeless `outputStockpile` scalar was retired in the
     // resource-representation slice (02-08-26). Produced goods are typed and go
     // straight into the owner guild's `stockpiles` — one home, no drift. There

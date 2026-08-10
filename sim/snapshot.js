@@ -56,17 +56,18 @@ const { previewProduction } = require('./production.js');
 // throttles, stale good-policies, unmanaged raw surplus), computed on the read
 // path in `previewProduction`. Still ADDITIVE (every v4 field untouched) and still
 // derived telemetry, so the move path and the determinism hash are unchanged.
-// v6 (10-08-26): the §5 rate-based engine rewrite. The `production` block's shape
-// grew with the new resolver: each good now also carries `drawable`/`pool` (the
-// stockpile drawdown folded into Gate 3), each consuming line carries the balancer
-// `consumed`/`spill` beside `alloc`, and each refinery carries `{ rate,
-// bottleneckGood, minted, accumulator }` in place of the old `batches`. Each
-// `reserveFloor` the player has set surfaces in the carried `productionProfile`
-// (it rides along in the sparse per-good policy). Serialized venture state gains
-// `outputAccumulator` (the fractional output carry, §15.4), echoed on each venture
-// row here. `rate`/`accumulator` are floats (telemetry / mint-timing state); the
-// snapshot is not part of the determinism hash, so this is honest bookkeeping that
-// the shape grew — no move-path change beyond the rewrite the block reflects.
+// v6 (10-08-26): the §5 rate-based engine rewrite, with the "Correction — the
+// recipe ratio" folded in (schema 6 was never released, so this is its shape, no
+// 6->7). The `production` block's shape grew with the new resolver: each good now
+// also carries `drawable`/`pool` (the stockpile drawdown folded into Gate 3), each
+// consuming line carries the whole units `drawn` beside `alloc`, and each refinery
+// carries `{ rate, bottleneckGood, minted, batchCarry }` in place of the old
+// `batches`. Each `reserveFloor` the player has set surfaces in the carried
+// `productionProfile` (it rides along in the sparse per-good policy). Serialized
+// venture state gains `batchCarry` (the per-good sub-unit carries, §15.4), echoed
+// on each venture row here. `rate` and the carry fractions are floats (telemetry /
+// timing state); the snapshot is not part of the determinism hash, so this is honest
+// bookkeeping that the shape grew — no move-path change beyond the rewrite it reflects.
 const SNAPSHOT_SCHEMA = 6;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -154,10 +155,12 @@ function buildSnapshot(state) {
         // for every venture today. Surfaced so the view reads a real engine field
         // beside each producer/consumer and in totals, never inventing its own.
         syndicateCommitment: v.syndicateCommitment || 0,
-        // outputAccumulator: the fractional output carry (§5 rate-based rewrite,
-        // §15.4), in [0, 1). Surfaced so the lens can show why a small line's whole
-        // output appears only every few ticks. Defaults 0 for a fresh venture.
-        outputAccumulator: v.outputAccumulator || 0,
+        // batchCarry: the per-good sub-unit carries (§5 rate-based rewrite corrected
+        // 10-08-26, §15.4) — { [good]: fraction in [0,1) } over every input + output.
+        // Surfaced so the lens can show why a small line's whole units appear only
+        // every few ticks. Copied so the snapshot can't alias into engine state;
+        // defaults {} for a fresh venture.
+        batchCarry: { ...(v.batchCarry || {}) },
         site: site
           ? {
               kind: site.kind,

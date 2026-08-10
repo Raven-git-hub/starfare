@@ -8,8 +8,8 @@
 // (design.md §5 "the resolved numbers come from the engine, never the browser",
 // ruled 07-08-26):
 //   - `stepProduction` (sim/tick.js) APPLIES the report — it deposits each mine's
-//     fresh output, subtracts each line's `consumed`, mints each refinery's whole
-//     output and advances its carry, and is the only place goods actually move.
+//     fresh output, draws each line's whole `drawn` units, mints each refinery's
+//     whole output and writes back its carry, and is the only place goods move.
 //   - `previewProduction` (below) REPORTS the report — a read-only selector the
 //     snapshot carries so the interactive Production view shows engine truth.
 // Because both go through this single function they cannot drift: a preview can
@@ -17,26 +17,30 @@
 //
 // WHAT THE RESOLVER READS (§5 rate-based rewrite, 10-08-26 — supersedes the old
 // floor-batches resolver): the profile (via sim/profile.js), the ventures, their
-// per-venture `outputAccumulator` (the fractional output carry), AND the stockpile
-// pool BALANCE as it stands at the START of this tick's production step (Ruling 3).
-// The pool read is the documented departure from the old resolver's "reads NOTHING
-// from the pool": the stockpile drawdown needs the current balance to know how far
-// a consumer may draw. It is still a PURE, side-effect-free function — it reads
+// per-venture `batchCarry` (the per-good sub-unit carries), AND the stockpile pool
+// BALANCE as it stands at the START of this tick's production step (Ruling 3). The
+// pool read is the documented departure from the old resolver's "reads NOTHING from
+// the pool": the stockpile drawdown needs the current balance to know how far a
+// consumer may draw. It is still a PURE, side-effect-free function — it reads
 // current state and mutates nothing; the balance is start-of-step state, not a
-// mutation observed mid-resolve. This tick's own Gate-1 stockpile deposit and
-// Gate-3 spill land at APPLY (stepProduction) and are drawable NEXT tick.
+// mutation observed mid-resolve. This tick's own Gate-1 stockpile deposit and the
+// undrawn surplus stay in the pool and are drawable NEXT tick.
 //
-// THE MODEL, in one breath (design.md §5 "Engine rewrite — rate-based resolution"
-// and its "Rulings — composition, carry, ordering"): a consuming line runs at a
+// THE MODEL, in one breath (design.md §5 "Engine rewrite — rate-based resolution",
+// its "Rulings — composition, carry, ordering", and the "Correction — the recipe
+// ratio" that supersedes the original balancer): a consuming line runs at a
 // CONTINUOUS rate set by its scarcest input (no `floor(batches)` — so a 67% line
 // genuinely runs at 67%, never stalling at 0). The good's pool that Gate 3 rations
 // is the Downstream fork's fresh take PLUS the drawable stockpile (balance −
 // reserveFloor); one proportional split feeds both fresh and drawn-down shortfall
-// (Ruling 1). Integers stay exact via a balancer — `consumed = round(rate × qty)`,
-// `spill = alloc − consumed` (≥ 0 by construction) — and the whole-unit output is
-// minted through the venture's `outputAccumulator` so a fractional rate never
-// strands output. The one non-integer (the rate) is transient; the one persisted
-// fraction (the accumulator) is fenced in [0, 1) with its own tripwire.
+// (Ruling 1). That one rate then lands on integer piles through a PER-GOOD carry:
+// every good the line touches — each input AND the output — accrues `rate × qty`
+// into its own remainder, `floor` of which is the whole units DRAWN (inputs) or
+// MINTED (output) this tick, the sub-unit part carried on. No independent rounding,
+// no refund — a non-binding input is simply under-drawn (its surplus stays put), so
+// the recipe ratio holds on average (bounded transient). The one non-integer the
+// rate itself is transient; the persisted fractions live in `batchCarry`, each
+// fenced in [0, 1) with its own tripwire.
 
 const { getRecipe } = require('./recipes.js');
 const { getStock } = require('./stock.js');
@@ -50,8 +54,8 @@ const {
 //     mines:      [ { ventureId, good, amount } ],   // each producing mine's fresh deposit
 //     goods:      { [good]: { fresh, demand, fork: { syndicate, downstream, stockpile },
 //                             supplied, drawable, pool } },
-//     lines:      [ { ventureId, good, demand, alloc, consumed, spill } ],  // per consuming line, per input
-//     refineries: [ { ventureId, rate, bottleneckGood, minted, accumulator } ],
+//     lines:      [ { ventureId, good, demand, alloc, drawn } ],  // per consuming line, per input
+//     refineries: [ { ventureId, rate, bottleneckGood, minted, batchCarry } ],
 //   }
 // GOOD-LEVEL integers: `demand` is the Gate-2 naive full-tilt Σ (rated, not
 // throttled — the stable Downstream cap figure); `supplied` is the Downstream
@@ -59,13 +63,15 @@ const {
 // above its reserve floor (start-of-step); `pool` = supplied + drawable is what
 // Gate 3 rations (Ruling 1 — the drawdown folds in here, one split for fresh and
 // drawn-down alike). LINE-LEVEL integers: `demand` = that line's full-tilt draw
-// for the input (rate × input-qty), `alloc` = the integer units Gate 3 handed it,
-// `consumed`/`spill` the balancer split (consumed + spill = alloc, by construction).
-// REFINERY-LEVEL: `rate` is the CONTINUOUS batches/tick the line runs (a float —
-// transient telemetry, never serialized, Ruling 2); `bottleneckGood` is the input
-// that set the min (the scarcest, by definition — no search); `minted` is the
-// whole output units produced this tick; `accumulator` is the venture's NEW
-// outputAccumulator (in [0, 1)) after minting, which stepProduction writes back.
+// for the input (rate × input-qty), `alloc` = the integer units Gate 3 handed it
+// (it bounds the rate — the pool is NOT debited by it), `drawn` = the whole units
+// the line actually pulls this tick (≤ alloc; the surplus of a non-binding input
+// stays in the pool, undrawn). REFINERY-LEVEL: `rate` is the CONTINUOUS batches/tick
+// the line runs (a float — transient telemetry, never serialized); `bottleneckGood`
+// is the input that set the min (the scarcest, by definition — no search); `minted`
+// is the whole output units produced this tick; `batchCarry` is the venture's NEW
+// per-good carry map (every input + the output, each in [0, 1)), which
+// stepProduction writes back onto the venture (§5 Correction, Ruling 2 generalized).
 //
 // The null/undefined system is handled EXACTLY as stepProduction does: a venture
 // with no seat keeps its `systemId` (undefined/null) as its key, and the strict
@@ -225,12 +231,16 @@ function resolveProduction(guild, systemId) {
   }
 
   // --- Refineries: each runs at a CONTINUOUS rate = min(its throttle cap, the
-  // scarcest input's batch capacity alloc/qty). NO floor(batches). The balancer
-  // then makes goods exact per input: consumed = round(rate × qty), spill = alloc −
-  // consumed (≥ 0, since rate ≤ alloc/qty). Output is minted through the venture's
-  // outputAccumulator, so a fractional rate accrues instead of stalling.
+  // scarcest input's batch capacity alloc/qty). NO floor(batches). That one rate
+  // then lands on integer piles through a PER-GOOD carry (§5 "Correction — the
+  // recipe ratio"): for EVERY good the line touches — each input AND the output —
+  //     carry_g += rate × q_g ; whole_g = floor(carry_g) ; carry_g -= whole_g
+  // Inputs DRAW whole_g from the pool; the output MINTS whole_g; the sub-unit
+  // remainder carries to next tick. No independent rounding and no refund, so every
+  // good averages rate × q_g and the recipe ratio holds (bounded transient). This
+  // replaces the old round-input/accrue-output balancer, which broke the ratio.
   const refineries = [];
-  const consumedByLine = {}; // ventureId -> good -> integer units consumed
+  const drawnByLine = {}; // ventureId -> input good -> integer units drawn this tick
   for (const c of refineryVentures) {
     const recipe = getRecipe(c.recipeId);
     if (!recipe) continue;
@@ -247,25 +257,31 @@ function resolveProduction(guild, systemId) {
     }
     const rate = Math.min(throttleCap, inputCap);
 
-    const consumed = {};
-    for (const inp of recipe.inputs) consumed[inp.good] = Math.round(rate * inp.qty);
-    consumedByLine[c.id] = consumed;
+    // Advance a fresh carry map from the venture's stored one (start-of-step, Ruling
+    // 3). One entry per input AND the output. whole_g ≤ alloc_g by construction:
+    // rate ≤ alloc_g / q_g and the carry is < 1, so carry + rate × q_g < 1 + alloc_g
+    // and its floor never exceeds alloc_g — the pool can't go negative.
+    const prev = c.batchCarry || {};
+    const batchCarry = {};
+    const drawn = {};
+    for (const inp of recipe.inputs) {
+      const raw = (prev[inp.good] || 0) + rate * inp.qty;
+      const whole = Math.floor(raw);
+      batchCarry[inp.good] = raw - whole;
+      drawn[inp.good] = whole;
+    }
+    const outRaw = (prev[recipe.output.good] || 0) + rate * recipe.output.qty;
+    const minted = Math.floor(outRaw);
+    batchCarry[recipe.output.good] = outRaw - minted;
 
-    // Mint the whole-unit output; carry the sub-unit remainder in [0, 1).
-    const carry = c.outputAccumulator || 0;
-    const raw = carry + rate * recipe.output.qty;
-    const minted = Math.floor(raw);
-    const accumulator = raw - minted;
-
-    refineries.push({ ventureId: c.id, rate, bottleneckGood, minted, accumulator });
+    drawnByLine[c.id] = drawn;
+    refineries.push({ ventureId: c.id, rate, bottleneckGood, minted, batchCarry });
   }
 
-  // Back-fill each line's consumed/spill from its refinery's resolved rate, so the
-  // report itself carries the balancer identity (consumed + spill = alloc).
+  // Back-fill each line's `drawn` (the whole input units the pool is debited by).
+  // `alloc` only bounded the rate; the pool loses exactly `drawn`, never a refund.
   for (const line of lines) {
-    const consumed = (consumedByLine[line.ventureId] || {})[line.good] || 0;
-    line.consumed = consumed;
-    line.spill = line.alloc - consumed;
+    line.drawn = (drawnByLine[line.ventureId] || {})[line.good] || 0;
   }
 
   return { systemId, mines, goods, lines, refineries };

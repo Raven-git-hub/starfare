@@ -7,11 +7,12 @@
 // (design.md §5 "the resolved numbers come from the engine, never the browser").
 //
 // The rewrite is a DELIBERATE behaviour change (continuous rate + stockpile
-// drawdown + the output-accumulator balancer), so these tests prove the NEW
-// behaviour: the report predicts the exact pool deltas the tick then moves (now
-// via the balancer's `consumed`/`minted`, not floor(batches)), determinism holds
-// with the fractional carry in serialized state, the selector is pure, the report
-// carries the new shape, and the null-system case still resolves.
+// drawdown + per-good `batchCarry` remainders, §5 "Correction — the recipe ratio"),
+// so these tests prove the NEW behaviour: the report predicts the exact pool deltas
+// the tick then moves (via each line's whole `drawn` units and each refinery's
+// `minted`, not floor(batches)), determinism holds with the fractional carries in
+// serialized state, the selector is pure, the report carries the new shape, and the
+// null-system case still resolves.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -66,13 +67,13 @@ function chainState() {
 
 // --- The anti-drift tripwire: the report predicts exactly what the tick does ----
 
-// Predict a tick's per-good pool delta from the report ALONE (the balancer: mines
-// deposit fresh, each line removes `consumed`, each running refinery mints output).
+// Predict a tick's per-good pool delta from the report ALONE: mines deposit fresh,
+// each line draws whole `drawn` units, each running refinery mints its output.
 function predictedDeltas(guild) {
   const report = resolveProduction(guild, SYS);
   const d = {};
   for (const m of report.mines) d[m.good] = (d[m.good] || 0) + m.amount;
-  for (const l of report.lines) d[l.good] = (d[l.good] || 0) - l.consumed;
+  for (const l of report.lines) d[l.good] = (d[l.good] || 0) - l.drawn;
   for (const r of report.refineries) {
     if (r.minted <= 0) continue;
     const out = getRecipe(guild.ventures.find((v) => v.id === r.ventureId).recipeId).output;
@@ -123,9 +124,9 @@ test('purity: previewProduction does not mutate state (hash identical before/aft
   assert.ok(Array.isArray(report) && report.length === 1, 'the preview still returns a real report');
 });
 
-// --- The report shape: fork split + drawdown pool + balancer + rate telemetry ---
+// --- The report shape: fork split + drawdown pool + drawn + rate/carry telemetry -
 
-test('report: a good carries fresh/demand/fork/supplied/drawable/pool and each line its balancer split', () => {
+test('report: a good carries fresh/demand/fork/supplied/drawable/pool and each line its drawn units', () => {
   // fresh silica 10, two consumers demanding 10 each (demand 20), a pre-seeded pile
   // of 5, both throttled (r_a 100 / r_b 50). Gate 1 (default order) supplies
   // min(20, 10)=10 fresh; drawable = 5 - floor(0) = 5; pool = 15. Proportional wants
@@ -154,7 +155,8 @@ test('report: a good carries fresh/demand/fork/supplied/drawable/pool and each l
   const laSilica = report.lines.find((l) => l.good === 'silica' && l.ventureId === 'r_a');
   const lbSilica = report.lines.find((l) => l.good === 'silica' && l.ventureId === 'r_b');
   assert.equal(laSilica.alloc, 10);
-  assert.equal(laSilica.consumed + laSilica.spill, laSilica.alloc, 'balancer identity');
+  assert.equal(laSilica.drawn, 10, 'draws its whole allocation at rate 10 (all inputs qty 1)');
+  assert.ok(laSilica.drawn <= laSilica.alloc, 'never draws more than allocated');
   assert.equal(lbSilica.alloc, 5);
 
   const ra = report.refineries.find((r) => r.ventureId === 'r_a');
@@ -162,7 +164,9 @@ test('report: a good carries fresh/demand/fork/supplied/drawable/pool and each l
   assert.equal(ra.rate, 10);
   assert.equal(ra.minted, 10);
   assert.equal(rb.rate, 5);               // held at its throttle cap (0.5 * 10)
-  assert.ok(ra.accumulator >= 0 && ra.accumulator < 1, 'carry fenced in [0,1)');
+  // batchCarry covers every input and the output, each fenced in [0,1).
+  assert.deepEqual(Object.keys(ra.batchCarry).sort(), ['conductive_material', 'copper', 'silica']);
+  assert.ok(Object.values(ra.batchCarry).every((f) => f >= 0 && f < 1), 'carry entries fenced in [0,1)');
   assert.ok(typeof ra.bottleneckGood === 'string', 'the min input is reported as the bottleneck');
 });
 

@@ -47,7 +47,8 @@ function sysState({ ventures, profile = {}, stockpiles = {} }) {
 const mine = (id, good, rate) => ({ id, ownerGuildId: 'g1', type: 'mining', systemId: SYS, resourceType: good, productionRate: rate });
 const refinery = (id, recipeId, rate) => ({ id, ownerGuildId: 'g1', type: 'refining', systemId: SYS, recipeId, productionRate: rate });
 const held = (s, good) => getStock(s.guilds[0], SYS, good);
-const acc = (s, id) => s.guilds[0].ventures.find((v) => v.id === id).outputAccumulator;
+const carry = (s, id) => s.guilds[0].ventures.find((v) => v.id === id).batchCarry || {};
+const carryInRange = (map) => Object.values(map).every((f) => f >= 0 && f < 1);
 
 // --- default profile reproduces today's behaviour where fresh meets demand ----
 
@@ -188,11 +189,12 @@ test('reconciliation: a new venture the profile is silent about defaults to 100 
 
 // --- the rate-based core: a fractional line runs, it never stalls at 0 ----------
 
-test('rate-1 line at 67%: averages ~0.67 output/tick over many ticks and NEVER stalls at 0', () => {
-  // The bug this rewrite kills: the old floor(batches) resolver computed
-  // floor(1 * 0.67) = 0 for a rate-1 line throttled to 67%, so it produced NOTHING
-  // forever. The rate-based line runs at a continuous 0.67, minting a whole unit
-  // through the output accumulator whenever it crosses 1 — ~67 over 100 ticks.
+test('rate-1 line at 67%: averages ~0.67/tick on the OUTPUT and each INPUT (recipe ratio holds)', () => {
+  // The bug the rewrite kills: the old floor(batches) resolver computed
+  // floor(1 * 0.67) = 0 for a rate-1 line throttled to 67%, producing NOTHING
+  // forever. The recipe-ratio correction goes further: not only does the line run
+  // at a continuous 0.67 (~67 conductive over 100 ticks), it DRAWS ~0.67 copper and
+  // ~0.67 silica per tick too — a 1:1 recipe stays 1:1 (the first fix drew 1/tick).
   let s = sysState({
     ventures: [mine('cu', 'copper', 2), mine('si', 'silica', 2), refinery('r', 'conductive_material', 1)],
     profile: { throttles: { r: 67 } },
@@ -204,7 +206,11 @@ test('rate-1 line at 67%: averages ~0.67 output/tick over many ticks and NEVER s
   const out = held(s, 'conductive_material');
   assert.ok(out >= 66 && out <= 68, `~0.67/tick over 100 ticks => ~67 (got ${out})`);
   assert.ok(out > 0, 'the line never stalled at 0 (the old floor-batches bug)');
-  assert.ok(acc(s, 'r') >= 0 && acc(s, 'r') < 1, 'the carry stays fenced in [0,1)');
+  // Recipe ratio: copper/silica DRAWN (mined - left in pool) match the output 1:1,
+  // NOT ~1/tick (=100) as the round-input model produced.
+  assert.ok(Math.abs((2 * 100 - held(s, 'copper')) - out) < 1, 'copper drawn matches output 1:1');
+  assert.ok(Math.abs((2 * 100 - held(s, 'silica')) - out) < 1, 'silica drawn matches output 1:1');
+  assert.ok(carryInRange(carry(s, 'r')), 'every batchCarry entry stays fenced in [0,1)');
 });
 
 test('rate-5 line at 67% runs at 0.67, not the old floor(batches) 0.60', () => {
@@ -282,46 +288,52 @@ test('reserveFloor: a titanium_alloy line with NO carbon mine runs off the carbo
   assert.equal(held(s, 'titanium_alloy'), 15);
 });
 
-// --- the balancer: over-delivery spills an abundant input back to the pool ------
+// --- under-draw: an abundant non-binding input is simply not drawn (was: spill) --
 
-test('over-delivery: an abundant input spills back; a tier-1 raw good rises from a scarcity on another page', () => {
+test('under-draw: an abundant input is under-drawn (not depleted); a tier-1 raw good rises from a scarcity on another page', () => {
   // titanium_alloy = 3 titanium + 1 carbon; refinery rate 2. Titanium is ABUNDANT
   // (mined 10/tick), carbon is the SCARCE bottleneck (mined 1/tick). The line runs
-  // at the carbon-limited rate 1, so it consumes only 3 titanium of the 6 allocated
-  // — the surplus 3 SPILLS back. Titanium is a tier-1 raw good (a mine makes it from
-  // nothing, so it can never bottleneck at Gate 1) yet it receives spill at Gate 3:
-  // its pile rises from a cause that lives on carbon's page.
+  // at the carbon-limited rate 1, so it DRAWS only 3 titanium of the 6 allocated —
+  // the surplus is never drawn (the recipe-ratio correction retired the draw-then-
+  // refund spill). Titanium is a tier-1 raw good (a mine makes it from nothing, so
+  // it can never bottleneck at Gate 1) yet its pile still rises from a cause that
+  // lives on carbon's page: it is under-drawn.
   const s = sysState({
     ventures: [mine('t', 'titanium', 10), mine('c', 'carbon_products', 1), refinery('r', 'titanium_alloy', 2)],
   });
   const report = resolveProduction(s.guilds[0], SYS);
   const tiLine = report.lines.find((l) => l.good === 'titanium');
-  assert.equal(tiLine.alloc, 6, 'allocated its full-tilt draw (demand 2*3)');
-  assert.equal(tiLine.consumed, 3, 'but consumes only what the carbon-limited rate 1 needs (3)');
-  assert.equal(tiLine.spill, 3, 'the abundant surplus spills back');
-  assert.equal(tiLine.consumed + tiLine.spill, tiLine.alloc, 'balancer identity holds');
+  assert.equal(tiLine.alloc, 6, 'allocated its full-tilt draw (demand 2*3) — this only bounds the rate');
+  assert.equal(tiLine.drawn, 3, 'but draws only what the carbon-limited rate 1 needs (3)');
+  assert.ok(tiLine.drawn < tiLine.alloc, 'the abundant surplus is under-drawn, not drawn-then-refunded');
   const bottleneck = report.refineries.find((r) => r.ventureId === 'r').bottleneckGood;
   assert.equal(bottleneck, 'carbon_products', 'the scarce input is the reported bottleneck');
 
   const after = tick(s);
-  // Titanium pile: 10 fresh - 3 consumed = +7/tick (the 4 not sent downstream + the 3 spill).
-  assert.equal(held(after, 'titanium'), 7, 'the tier-1 raw good accumulates from the spill');
+  // Titanium pile: 10 fresh - 3 drawn = +7/tick (the 4 not sent downstream + the 3 undrawn).
+  assert.equal(held(after, 'titanium'), 7, 'the tier-1 raw good accumulates from the under-draw');
   assert.equal(held(after, 'titanium_alloy'), 1, 'one alloy from the carbon-limited rate');
   assert.deepEqual(checkInvariants(after, after.tick), []);
 });
 
-// --- conservation: consumed + spill = alloc, every input, every tick -----------
+// --- conservation: the pool is debited only by whole units drawn, never negative -
 
-test('conservation: consumed + spill = alloc per input each tick, and every invariant holds', () => {
-  // A contended, multi-input scenario run several ticks. Each tick, the resolver's
-  // report must satisfy the balancer identity for every line, and the tick's own
-  // invariants (incl. galactic-supply consistency and the carry tripwire) must pass.
+test('conservation: the pool is debited only by whole units drawn (<= alloc, <= pool) and never goes negative', () => {
+  // A contended, multi-input scenario run several ticks. Each tick, every line draws
+  // a whole non-negative number of units no greater than its Gate-3 alloc, the total
+  // drawn of a good never exceeds that good's pool, and the tick's own invariants
+  // (non-negativity, galactic-supply consistency, the carry tripwire) all pass.
   let s = twoRefineriesForSilica({ throttles: { r_a: 67, r_b: 33 } }, 7);
   for (let i = 0; i < 12; i += 1) {
     const report = resolveProduction(s.guilds[0], SYS);
+    const drawnPerGood = {};
     for (const line of report.lines) {
-      assert.equal(line.consumed + line.spill, line.alloc, `consumed+spill=alloc for ${line.ventureId}/${line.good}`);
-      assert.ok(line.spill >= 0, 'spill is never negative');
+      assert.ok(Number.isInteger(line.drawn) && line.drawn >= 0, 'drawn is a whole non-negative count');
+      assert.ok(line.drawn <= line.alloc, 'a line never draws more than its allocation');
+      drawnPerGood[line.good] = (drawnPerGood[line.good] || 0) + line.drawn;
+    }
+    for (const [good, total] of Object.entries(drawnPerGood)) {
+      assert.ok(total <= report.goods[good].pool, `total drawn of ${good} (${total}) <= pool (${report.goods[good].pool})`);
     }
     s = tick(s);
     assert.deepEqual(checkInvariants(s, s.tick), []);
@@ -330,21 +342,20 @@ test('conservation: consumed + spill = alloc per input each tick, and every inva
 
 // --- the carry tripwire, and that it actually catches a bad value --------------
 
-test('carry tripwire: 0 <= outputAccumulator < 1 holds every tick, and a bad value is caught', () => {
+test('carry tripwire: every batchCarry entry stays in [0,1) each tick, and a bad value is caught', () => {
   let s = sysState({
     ventures: [mine('cu', 'copper', 5), mine('si', 'silica', 5), refinery('r', 'conductive_material', 5)],
     profile: { throttles: { r: 67 } },
   });
   for (let i = 0; i < 30; i += 1) {
     s = tick(s);
-    const a = acc(s, 'r');
-    assert.ok(a >= 0 && a < 1, `carry fenced in [0,1) (got ${a})`);
+    assert.ok(carryInRange(carry(s, 'r')), 'every carry entry fenced in [0,1)');
     assert.deepEqual(checkInvariants(s, s.tick), []);
   }
-  // Corrupt the carry out of range: the dedicated tripwire must flag it.
-  s.guilds[0].ventures[0].outputAccumulator = 1.5;
+  // Corrupt one carry entry out of range: the dedicated tripwire must flag it.
+  s.guilds[0].ventures[2].batchCarry.conductive_material = 1.5;
   const violations = checkInvariants(s, s.tick);
-  assert.ok(violations.some((v) => v.rule.startsWith('output-accumulator')), 'an out-of-range carry trips the wire');
+  assert.ok(violations.some((v) => v.rule.startsWith('batch-carry')), 'an out-of-range carry entry trips the wire');
 });
 
 // --- determinism (invariant 9) at tick 50, with a fractional carry in state ----
