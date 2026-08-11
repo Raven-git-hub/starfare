@@ -289,6 +289,26 @@ test('a valid syndicate send control stores and reads back through getGoodPolicy
   assert.equal('syndicate' in getGoodPolicy(next.guilds[0], 'sys_0002', 'lead'), false);
 });
 
+// The clear-path: a field sent null is ACCEPTED (not a validation error) and clears the
+// stored key, so the good reverts to its default — the "return to Paced" round-trip.
+test('setProductionProfile accepts syndicate: null and clears back to the paced default', () => {
+  const s = twoGuildState();
+  const set = createSetProductionProfileAction({
+    guildId: 'g1', systemId: 'sys_0002', goods: { titanium: { syndicate: { mode: 'absolute', value: 4 } } },
+  });
+  const afterSet = applyAction(s, set);
+  assert.deepEqual(getGoodPolicy(afterSet.guilds[0], 'sys_0002', 'titanium').syndicate, { mode: 'absolute', value: 4 });
+
+  // null must PASS validation (it is the clear instruction, not a malformed control).
+  const clear = createSetProductionProfileAction({
+    guildId: 'g1', systemId: 'sys_0002', goods: { titanium: { syndicate: null } },
+  });
+  assert.deepEqual(validateAction(afterSet, clear), { valid: true });
+  const afterClear = applyAction(afterSet, clear);
+  assert.equal('syndicate' in getGoodPolicy(afterClear.guilds[0], 'sys_0002', 'titanium'), false,
+    'the send control reverts to the paced required-rate default (key gone)');
+});
+
 test('validateAction rejects a non-integer throttle', () => {
   rejects(
     createSetProductionProfileAction({ guildId: 'g1', systemId: 's1', throttles: { refinery: 33.3 } }),
