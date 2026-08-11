@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Starfare — System Production Console</title>
+<!--
+  The player-facing System Production Console — a THROWAWAY UX PROBE in the Archive
+  style of docs/mockups/console_mock6_1.html, driving the SAME live engine as the
+  testbed (a second window over one in-memory state). It computes NO game number
+  (design.md §5 "the client renders the engine's resolved numbers"): every figure on
+  screen is read VERBATIM from the schema-7 snapshot's `production` block. The mockup's
+  hand-coded data model (a stockpile %/Q fork + a separate reserve floor, a client-side
+  Syndicate pace) is deliberately NOT copied — see docs/mockups/README.md. Controls
+  reuse the existing setProductionProfile / throttles actions (incl. syndicate:null to
+  clear back to Paced); no new action, no new snapshot field, no engine change.
+-->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+  :root{
+    --void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
+    --line:rgba(232,223,200,0.10); --line2:rgba(232,223,200,0.20);
+    --amber:#C9A227; --amber-dim:#7A6420; --amber-ghost:rgba(201,162,39,0.10);
+    --steel:#8B8F9C; --steel-dim:#565B68; --steel-ghost:#1C212B;
+    --ink:#E8DFC8; --ink2:#8B8F9C; --ink3:#565B68;
+    --green:#4E9A87; --red:#C2603A;
+    --fork-syndicate:#C9A227; --fork-production:#6E93B8; --fork-stockpile:#8A9A6B;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+    --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+    --serif:'Cinzel',serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:radial-gradient(1100px 520px at 80% -12%, #15171f 0%, transparent 60%),var(--void);
+    color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.45; padding:22px 26px 46px; min-width:1080px;}
+  .lbl{font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3); font-weight:400}
+  .num{font-family:var(--mono); font-variant-numeric:tabular-nums}
+  .amber{color:var(--amber)} .steel{color:var(--steel)} .green{color:var(--green)} .red{color:var(--red)}
+
+  header{display:flex; align-items:flex-end; gap:18px; margin-bottom:16px; border-bottom:1px solid var(--line); padding-bottom:14px}
+  .brandwrap .eyebrow{font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--amber)}
+  .rtitle{font-family:var(--serif); font-weight:600; font-size:24px; letter-spacing:.02em; margin:4px 0 0}
+  .rtitle .of{color:var(--ink3); font-family:var(--mono); font-size:12px; font-weight:400; letter-spacing:.04em; margin-left:8px; text-transform:uppercase}
+  .ctrls{margin-left:auto; display:flex; align-items:center; gap:8px}
+  .ctrls button, .ctrls select{font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:6px 12px; cursor:pointer; transition:.12s ease}
+  .ctrls button:hover, .ctrls select:hover{border-color:var(--amber); color:var(--amber)}
+  .ctrls button.tick{border-color:var(--amber-dim); color:var(--amber)}
+  /* LIVE view toggle: amber-lit while the client is re-reading the galaxy. */
+  .ctrls button#btnLive.on{border-color:var(--green); color:var(--green)}
+  .sysbadge{font-family:var(--mono); font-size:11px; color:var(--ink2); border:1px solid var(--line); border-radius:6px; padding:6px 12px; background:var(--panel)}
+  .sysbadge b{color:var(--ink); font-weight:500}
+  .status{font-family:var(--mono); font-size:11px; margin:0 0 14px; min-height:16px; color:var(--ink3)}
+  .status.ok{color:var(--green)} .status.error{color:var(--red)} .status.rejected{color:var(--amber)}
+
+  .tiers{display:flex; gap:3px; margin-bottom:8px}
+  .tier{background:var(--panel); border:1px solid var(--line); border-bottom:none; padding:8px 16px 9px; cursor:pointer; border-radius:6px 6px 0 0; color:var(--ink3); font-family:var(--mono); font-size:12px; letter-spacing:.04em; position:relative; top:1px; transition:.12s ease}
+  .tier .n{font-size:15px; font-weight:500; margin-right:8px; color:var(--ink2)}
+  .tier small{display:block; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3)}
+  .tier:hover{color:var(--ink2); border-color:var(--amber)}
+  .tier.on{color:var(--ink); background:var(--panel2); border-color:var(--line); box-shadow:0 -2px 0 var(--amber) inset}
+  .tier.on .n{color:var(--amber)}
+  .tier.dim{opacity:.45; cursor:not-allowed}
+  .tier.dim:hover{border-color:var(--line); color:var(--ink3)}
+  .resbar{display:flex; gap:7px; flex-wrap:wrap; padding:11px; background:var(--panel2); border:1px solid var(--line); border-radius:0 10px 10px 10px; margin-bottom:18px}
+  .res{padding:7px 13px; border:1px solid var(--line); border-radius:6px; cursor:pointer; background:var(--panel); color:var(--ink2); font-family:var(--mono); font-size:12px; letter-spacing:.02em; transition:.12s ease}
+  .res:hover{border-color:var(--amber); color:var(--amber)}
+  .res.on{background:var(--amber-ghost); border-color:var(--amber); color:var(--amber); font-weight:500}
+  .res.idle{color:var(--ink3)}
+
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:10px}
+
+  .reserve{display:grid; grid-template-columns:auto 1fr auto; gap:20px; align-items:center; padding:15px 20px; margin-bottom:16px}
+  .reserve .head{display:flex; align-items:center; gap:13px}
+  .chevs{display:flex; flex-direction:column; gap:1px; font-family:var(--mono); font-size:14px; line-height:.9}
+  .chevs span{opacity:.20}
+  .chevs .up.on{opacity:1; color:var(--green)} .chevs .dn.on{opacity:1; color:var(--red)}
+  .trend{font-family:var(--mono); font-size:13px; font-weight:500}
+  .track{position:relative; height:34px; border-radius:6px; overflow:hidden; cursor:ew-resize; border:1px solid var(--line); background:var(--steel-ghost); user-select:none}
+  .track.disabled{cursor:default; opacity:.5}
+  .track .grey{position:absolute; left:0; top:0; bottom:0; background:repeating-linear-gradient(135deg,rgba(232,223,200,.06) 0 7px,rgba(232,223,200,.02) 7px 14px)}
+  .track .orange{position:absolute; right:0; top:0; bottom:0; background:repeating-linear-gradient(135deg,rgba(201,162,39,.30) 0 7px,rgba(201,162,39,.16) 7px 14px)}
+  .track .handle{position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--ink)}
+  .track .handle::after{content:""; position:absolute; left:50%; top:50%; width:13px; height:13px; transform:translate(-50%,-50%); border-radius:50%; background:var(--ink); border:2px solid var(--void)}
+  .track .cap{position:absolute; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:10px; letter-spacing:.05em; text-transform:uppercase; padding:0 9px; pointer-events:none}
+  .cap.l{left:0; color:var(--ink3)} .cap.r{right:0; color:var(--amber)}
+  .reserve .meta{text-align:right; font-family:var(--mono); font-size:12px; min-width:170px}
+  .reserve .meta b{color:var(--ink); font-size:15px; font-weight:500}
+  .reserve .meta .flo{color:var(--steel)}
+  .reserve .meta input{width:78px; background:var(--void); border:1px solid var(--line); border-radius:5px; color:var(--ink); font-family:var(--mono); font-size:13px; text-align:right; padding:2px 6px}
+  .reserve .meta input:focus{outline:none; border-color:var(--amber)}
+
+  .flow{display:grid; grid-template-columns:180px 78px 460px 70px 1fr; gap:0; align-items:stretch}
+  .col{padding:16px 13px}
+  .col + .col{border-left:1px solid var(--line)}
+  .colhead{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:13px; min-height:20px}
+  .colhead .lbl{white-space:nowrap; color:var(--ink2)}
+  .colhead .hint{font-family:var(--mono); font-size:8.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3)}
+
+  .vent{display:block; width:100%; text-align:left; background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:9px 11px; margin-bottom:8px; color:var(--ink); font-family:inherit}
+  .vent .vid{font-family:var(--mono); font-weight:500; font-size:13px}
+  .vent .vpl{font-size:11px; color:var(--ink3)}
+  .vent .vsub{font-family:var(--mono); font-size:10px; color:var(--ink3); letter-spacing:.08em; text-transform:uppercase; margin-top:2px}
+  .empty{color:var(--ink3); font-size:12px; font-style:italic; padding:14px 6px; border:1px dashed var(--line2); border-radius:10px; text-align:center}
+
+  .pipe{display:flex; align-items:center; justify-content:center; position:relative}
+  .pipe .rail{position:absolute; left:0; right:0; top:50%; height:3px; transform:translateY(-50%); background:linear-gradient(90deg,transparent,var(--amber-dim),var(--amber-dim),transparent); opacity:.6}
+  .pipe .arw{font-family:var(--mono); font-size:22px; color:var(--amber); z-index:1}
+  .pipe .flowlbl{position:absolute; top:6px; left:0; right:0; text-align:center}
+  .pipe .flowlbl .lbl{color:var(--ink3)} .pipe .flowlbl .num{display:block; color:var(--amber); font-weight:500; font-size:15px}
+
+  .gate1{position:relative}
+  .arm{border:1px solid var(--line); border-radius:10px; padding:10px 11px; margin-bottom:10px; background:var(--panel2); transition:border-color .12s ease}
+  .arm.prod{border-color:var(--line2); background:var(--amber-ghost)}
+  .arm .atop{display:flex; align-items:center; gap:7px; margin-bottom:9px}
+  .arm .dir{font-family:var(--mono); font-size:13px; width:16px; text-align:center}
+  .arm.up .dir{color:var(--fork-stockpile)} .arm.prod .dir{color:var(--amber)} .arm.synd .dir{color:var(--fork-syndicate)}
+  .arm .aname{font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; font-weight:500; color:var(--ink2)}
+  .arm.up .aname{color:var(--fork-stockpile)} .arm.prod .aname{color:var(--amber)} .arm.synd .aname{color:var(--fork-syndicate)}
+  .arm .take{margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--ink3); letter-spacing:.04em}
+  .arm .take b{color:var(--ink); font-weight:500}
+  .prank{background:var(--void); color:var(--ink2); border:1px solid var(--line); border-radius:5px; font-family:var(--mono); font-size:11px; padding:2px 3px; cursor:pointer; margin-left:8px}
+  .prank:focus{outline:none; border-color:var(--amber)}
+  .pralbl{font-family:var(--mono); font-size:8px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3)}
+  .arm .fields{display:flex; align-items:center; gap:7px; flex-wrap:wrap}
+  .fld{display:flex; align-items:center; gap:6px; background:var(--void); border:1px solid var(--line); border-radius:6px; padding:4px 7px}
+  .fld label{font-family:var(--mono); font-size:10px; color:var(--ink3)}
+  .fld input, .fld select{background:none; border:none; color:var(--ink); font-family:var(--mono); font-size:13px; text-align:right; padding:0}
+  .fld input{width:52px} .fld select{text-align:left; cursor:pointer}
+  .fld input:focus, .fld select:focus{outline:none} .fld:focus-within{border-color:var(--amber)}
+  .cluenote{font-size:10px; color:var(--ink3); margin-top:6px; font-style:italic; line-height:1.4}
+  .deflt{color:var(--ink3); font-size:9px; font-style:italic; margin-left:4px}
+
+  .cmt{margin-top:8px}
+  .cmt .cbar{position:relative; height:6px; background:var(--void); border:1px solid var(--line); border-radius:4px; overflow:hidden}
+  .cmt .cfill{position:absolute; left:0; top:0; bottom:0; background:linear-gradient(90deg,var(--amber-dim),var(--amber)); border-radius:3px}
+  .cmt .crow{display:flex; justify-content:space-between; align-items:baseline; margin-top:5px; font-family:var(--mono); font-size:11px}
+  .cmt .crow .prog{color:var(--ink)} .cmt .crow .pct{color:var(--amber); font-size:12px}
+  .cmt .pace{font-family:var(--mono); font-size:9.5px; color:var(--ink3); margin-top:3px; display:flex; gap:12px; flex-wrap:wrap}
+  .cmt .pace b{color:var(--ink); font-weight:500}
+  .cmt .status{display:inline; font-size:9.5px; margin:0; letter-spacing:.1em; text-transform:uppercase}
+  .cmt .status.met{color:var(--green)} .cmt .status.breach{color:var(--red)} .cmt .status.accruing{color:var(--ink3)}
+  .cmt .none{font-family:var(--mono); font-size:10.5px; color:var(--ink3); font-style:italic}
+
+  .chip{border:1px solid var(--line); border-radius:10px; padding:10px 11px; margin-bottom:11px; background:var(--void)}
+  .chip .clbl{font-family:var(--mono); font-size:9.5px; letter-spacing:.10em; text-transform:uppercase; color:var(--ink3); font-weight:400}
+  .chip .cval{font-family:var(--mono); font-size:20px; font-weight:500; margin-top:4px; color:var(--ink)}
+  .chip .cnote{font-size:10px; color:var(--ink3); margin-top:3px}
+  .chip.draw .cval{color:var(--steel)}
+
+  .cons{display:flex; align-items:stretch; gap:0; margin-bottom:9px; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--panel2)}
+  .cons .thr{background:var(--void); border-right:1px solid var(--line); padding:7px 9px; text-align:center; min-width:66px; display:flex; flex-direction:column; justify-content:center}
+  .cons .thr .lbl{font-size:8px; margin-bottom:3px}
+  .cons .thr input{width:44px; background:none; border:none; color:var(--amber); font-family:var(--mono); font-size:16px; font-weight:500; text-align:center; padding:0}
+  .cons .thr input:focus{outline:1px solid var(--amber-dim); border-radius:3px}
+  .cons .thr .pc{font-family:var(--mono); font-size:10px; color:var(--ink3)}
+  .cons .body{flex:1; padding:8px 11px}
+  .cons .body .vid{font-family:var(--mono); font-weight:500; font-size:13px}
+  .cons .body .vpl{font-size:11px; color:var(--ink3)}
+  .cons .rate{text-align:right; padding:8px 11px; display:flex; flex-direction:column; justify-content:center; min-width:92px}
+  .cons .rate .rlbl{font-family:var(--mono); font-size:8px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3)}
+  .cons .rate .rval{font-family:var(--mono); font-size:17px; font-weight:500}
+  .rate .rval.full{color:var(--green)} .rate .rval.part{color:var(--amber)}
+  .cons .rate small{font-family:var(--mono); font-size:10px; color:var(--ink3)}
+  .cons.warn{border-color:var(--red)}
+
+  .legend{margin-top:22px; padding:16px 20px; font-size:12.5px; color:var(--ink2); line-height:1.75}
+  .legend b{color:var(--ink); font-weight:500} .legend code{font-family:var(--mono); color:var(--amber); font-size:11.5px}
+  .legend .tag{display:inline-block; font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3); border:1px solid var(--line); border-radius:6px; padding:2px 7px; margin-right:7px}
+
+  /* ---- expanded Syndicate panel (replaces the compact syndicate arm) ---- */
+  .sy-panel{border:1px solid var(--line); border-radius:10px; padding:15px 16px 18px; margin-bottom:10px; background:var(--panel2)}
+  .sy-head{display:flex; align-items:center; gap:8px; margin-bottom:16px}
+  .sy-head .dir{color:var(--fork-syndicate); font-family:var(--mono); font-size:13px}
+  .sy-head .aname{font-family:var(--serif); font-size:16px; font-weight:600; color:var(--ink); letter-spacing:.01em}
+  .sy-head .prank{margin-left:auto}
+  .sy-sendwrap{width:75%; margin:40px auto 6px; position:relative}
+  .sy-track{position:relative; height:30px; border-radius:6px; border:1px solid var(--line); background:repeating-linear-gradient(135deg,rgba(232,223,200,.05) 0 8px,rgba(232,223,200,.015) 8px 16px),var(--void); cursor:ew-resize; user-select:none}
+  .sy-fill{position:absolute; left:0; top:0; bottom:0; background:linear-gradient(90deg,rgba(232,223,200,.10),rgba(232,223,200,.16)); border-radius:5px 0 0 5px; pointer-events:none}
+  .sy-cap{position:absolute; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:9px; letter-spacing:.08em; text-transform:uppercase; padding:0 8px; pointer-events:none}
+  .sy-cap.l{left:0; color:var(--ink3)} .sy-cap.r{right:0; color:var(--ink3)}
+  .sy-handle{position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--ink); pointer-events:none}
+  .sy-handle::after{content:""; position:absolute; left:50%; top:50%; width:12px; height:12px; transform:translate(-50%,-50%); border-radius:50%; background:var(--ink); border:2px solid var(--void)}
+  .sy-panel.locked .sy-handle, .sy-panel.locked .sy-handle::after{background:var(--amber)}
+  .sy-req{position:absolute; top:-15px; bottom:-15px; width:22px; transform:translateX(-50%); cursor:pointer; z-index:3}
+  .sy-req .ln{position:absolute; left:50%; top:15px; bottom:15px; width:2px; transform:translateX(-50%); background:var(--amber)}
+  .sy-req .tri{position:absolute; left:50%; transform:translateX(-50%); width:0; height:0}
+  .sy-req .tri.t{top:0; border-left:6px solid transparent; border-right:6px solid transparent; border-top:8px solid var(--amber)}
+  .sy-req .tri.b{bottom:0; border-left:6px solid transparent; border-right:6px solid transparent; border-bottom:8px solid var(--amber)}
+  .sy-req:hover .tri.t{border-top-color:#e8c24a} .sy-req:hover .tri.b{border-bottom-color:#e8c24a} .sy-req:hover .ln{background:#e8c24a}
+  .sy-reqlabel{position:absolute; transform:translateX(-50%); font-family:var(--mono); font-size:13px; font-weight:500; color:var(--amber); white-space:nowrap; pointer-events:none; font-variant-numeric:tabular-nums}
+  .sy-reqlabel.top{top:-36px} .sy-reqlabel.bot{bottom:-26px}
+  .sy-reqlabel .k{color:var(--amber-dim); font-size:9px; letter-spacing:.08em; text-transform:uppercase}
+  .sy-readout{display:flex; align-items:center; gap:16px; margin:40px 0 18px}
+  .sy-conveyor{display:flex; flex-direction:column; gap:3px; width:22px; align-items:center}
+  .sy-conveyor .cv{width:0; height:0; border-left:7px solid transparent; border-right:7px solid transparent; border-top:8px solid var(--amber); opacity:.18; animation:syflow 1.15s linear infinite}
+  .sy-conveyor .cv:nth-child(2){animation-delay:.38s} .sy-conveyor .cv:nth-child(3){animation-delay:.76s}
+  @keyframes syflow{0%{opacity:.12}25%{opacity:1}60%{opacity:.35}100%{opacity:.12}}
+  .sy-rate{display:flex; align-items:baseline; gap:8px}
+  .sy-rate .c2{font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink2)}
+  .sy-rate input{width:60px; background:var(--void); border:1px solid var(--line); border-radius:6px; color:var(--ink); font-family:var(--mono); font-size:19px; font-weight:500; text-align:right; padding:3px 8px; font-variant-numeric:tabular-nums}
+  .sy-rate input:focus{outline:none; border-color:var(--amber)}
+  .sy-rate .u{font-family:var(--mono); font-size:10px; color:var(--ink3)} .sy-rate .ar{color:var(--ink3); font-family:var(--mono); font-size:15px}
+  .sy-gauge{border-top:1px solid var(--line); padding-top:13px}
+  .sy-grow{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:7px}
+  .sy-grow .c2{font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink2)}
+  .sy-st{font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase}
+  .sy-st.accruing{color:var(--amber)} .sy-st.met{color:var(--green)} .sy-st.breach{color:var(--red)}
+  .sy-bar{position:relative; height:24px; border:1px solid var(--line); border-radius:6px; background:var(--void); overflow:hidden}
+  .sy-lic{position:absolute; left:0; top:0; bottom:0; background:repeating-linear-gradient(135deg,rgba(201,162,39,.42) 0 8px,rgba(201,162,39,.24) 8px 16px); border-right:2px solid var(--amber)}
+  .sy-licpct{position:absolute; top:50%; transform:translate(-50%,-50%); font-family:var(--mono); font-size:11px; font-weight:500; color:var(--ink); text-shadow:0 0 4px var(--void),0 0 4px var(--void)}
+  .sy-foot{display:flex; justify-content:flex-end; margin-top:6px}
+  .sy-foot .tot{font-family:var(--mono); font-size:11.5px; color:var(--ink2)} .sy-foot .tot b{color:var(--amber); font-weight:500; font-size:14px}
+  .sy-none{font-family:var(--mono); font-size:10.5px; color:var(--ink3); font-style:italic; padding:6px 0}
+
+  /* ---- expanded Production panel (mirrors the Syndicate panel) ---- */
+  .pr-panel{border:1px solid var(--line); border-radius:10px; padding:15px 16px 18px; margin-bottom:10px; background:var(--panel2)}
+  .pr-head{display:flex; align-items:center; gap:8px; margin-bottom:16px}
+  .pr-head .dir{color:var(--amber); font-family:var(--mono); font-size:13px}
+  .pr-head .aname{font-family:var(--serif); font-size:16px; font-weight:600; color:var(--ink); letter-spacing:.01em}
+  .pr-head .prank{margin-left:auto}
+  .pr-sendwrap{width:75%; margin:40px auto 6px; position:relative}
+  .pr-track{position:relative; height:30px; border-radius:6px; border:1px solid var(--line); background:repeating-linear-gradient(135deg,rgba(232,223,200,.05) 0 8px,rgba(232,223,200,.015) 8px 16px),var(--void); cursor:ew-resize; user-select:none}
+  .pr-fill{position:absolute; left:0; top:0; bottom:0; background:linear-gradient(90deg,rgba(232,223,200,.10),rgba(232,223,200,.16)); border-radius:5px 0 0 5px; pointer-events:none}
+  .pr-cap{position:absolute; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:9px; letter-spacing:.08em; text-transform:uppercase; padding:0 8px; pointer-events:none}
+  .pr-cap.l{left:0; color:var(--ink3)} .pr-cap.r{right:0; color:var(--ink3)}
+  .pr-handle{position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--ink); pointer-events:none}
+  .pr-handle::after{content:""; position:absolute; left:50%; top:50%; width:12px; height:12px; transform:translate(-50%,-50%); border-radius:50%; background:var(--ink); border:2px solid var(--void)}
+  .pr-lab{position:absolute; transform:translateX(-50%); font-family:var(--mono); font-weight:500; color:var(--ink); white-space:nowrap; pointer-events:none; font-variant-numeric:tabular-nums}
+  .pr-lab.top{top:-30px; font-size:15px}
+  .pr-lab.bot{bottom:-28px; font-size:14px; color:var(--ink2)}
+  .pr-lab .u{color:var(--ink3); font-size:10px; letter-spacing:.05em; margin-left:1px}
+  .pr-readout{display:flex; align-items:center; justify-content:flex-end; gap:16px; margin:40px 0 2px}
+  .pr-conveyor{display:flex; gap:5px}
+  .pr-conveyor i{width:0; height:0; border-top:7px solid transparent; border-bottom:7px solid transparent; border-left:9px solid var(--amber); opacity:.18; animation:prflow 1.15s linear infinite}
+  .pr-conveyor i:nth-child(2){animation-delay:.38s} .pr-conveyor i:nth-child(3){animation-delay:.76s}
+  @keyframes prflow{0%{opacity:.12}25%{opacity:1}60%{opacity:.35}100%{opacity:.12}}
+  .pr-required{display:flex; align-items:baseline; gap:12px}
+  .pr-req-lbl{font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink2)}
+  .pr-req-box{font-family:var(--mono); font-size:21px; font-weight:500; color:var(--ink); background:var(--void); border:1px solid var(--line2); border-radius:6px; padding:5px 13px; cursor:pointer; transition:.12s ease; font-variant-numeric:tabular-nums}
+  .pr-req-box:hover{border-color:var(--amber); color:var(--amber)}
+  .pr-req-box .u{color:var(--ink3); font-size:11px; margin-left:3px}
+
+  /* ---- expanded Stockpile panel (replaces the compact stockpile arm) ---- */
+  .sk-panel{border:1px solid var(--line); border-radius:10px; padding:15px 16px 18px; margin-bottom:10px; background:var(--panel2)}
+  .sk-head{display:flex; align-items:center; gap:8px; margin-bottom:16px}
+  .sk-head .dir{color:var(--amber); font-family:var(--mono); font-size:13px}
+  .sk-head .aname{font-family:var(--serif); font-size:16px; font-weight:600; color:var(--ink); letter-spacing:.01em}
+  .sk-head .prank{margin-left:auto}
+  .sk-sendwrap{width:75%; margin:40px auto 6px; position:relative}
+  .sk-track{position:relative; height:30px; border-radius:6px; border:1px solid var(--line); background:repeating-linear-gradient(135deg,rgba(232,223,200,.05) 0 8px,rgba(232,223,200,.015) 8px 16px),var(--void); cursor:ew-resize; user-select:none}
+  .sk-fill{position:absolute; left:0; top:0; bottom:0; background:linear-gradient(90deg,rgba(232,223,200,.10),rgba(232,223,200,.16)); border-radius:5px 0 0 5px; pointer-events:none}
+  .sk-cap{position:absolute; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:9px; letter-spacing:.08em; text-transform:uppercase; padding:0 8px; pointer-events:none}
+  .sk-cap.l{left:0; color:var(--ink3)} .sk-cap.r{right:0; color:var(--ink3)}
+  .sk-handle{position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--ink); pointer-events:none}
+  .sk-handle::after{content:""; position:absolute; left:50%; top:50%; width:12px; height:12px; transform:translate(-50%,-50%); border-radius:50%; background:var(--ink); border:2px solid var(--void)}
+  .sk-lab{position:absolute; transform:translateX(-50%); font-family:var(--mono); font-weight:500; color:var(--ink); white-space:nowrap; pointer-events:none; font-variant-numeric:tabular-nums; top:-30px; font-size:15px}
+  .sk-lab .u{color:var(--ink3); font-size:10px; letter-spacing:.05em; margin-left:1px}
+  .sk-readout{display:flex; align-items:center; gap:18px; margin:40px 0 2px}
+  .sk-set{display:flex; align-items:baseline; gap:8px}
+  .sk-set-lbl{font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink2)}
+  .sk-set input{width:62px; background:var(--void); border:1px solid var(--line); border-radius:6px; color:var(--ink); font-family:var(--mono); font-size:19px; font-weight:500; text-align:right; padding:3px 8px; font-variant-numeric:tabular-nums}
+  .sk-set input:focus{outline:none; border-color:var(--amber)}
+  .sk-set .u{font-family:var(--mono); font-size:10px; color:var(--ink3)} .sk-set .ar{color:var(--ink3); font-family:var(--mono); font-size:15px}
+  .sk-pulse{position:relative; width:30px; height:30px; flex:none}
+  .sk-pulse i{position:absolute; top:50%; left:50%; width:28px; height:28px; margin:-14px 0 0 -14px; border:2px solid var(--amber); border-radius:50%; opacity:0; animation:skpulse 1.9s ease-in infinite}
+  .sk-pulse i:nth-child(2){animation-delay:.63s} .sk-pulse i:nth-child(3){animation-delay:1.26s}
+  .sk-pulse::after{content:""; position:absolute; top:50%; left:50%; width:6px; height:6px; margin:-3px 0 0 -3px; border-radius:50%; background:var(--amber)}
+  @keyframes skpulse{0%{transform:scale(1.35); opacity:0} 25%{opacity:.85} 100%{transform:scale(.2); opacity:0}}
+  .sk-collapsed{display:flex; align-items:center; gap:18px; padding:8px 0 4px}
+  .sk-in{display:flex; align-items:baseline; gap:11px}
+  .sk-in-lbl{font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink2)}
+  .sk-in-box{font-family:var(--mono); font-size:22px; font-weight:500; color:var(--ink); background:var(--void); border:1px solid var(--line2); border-radius:6px; padding:5px 14px; font-variant-numeric:tabular-nums}
+  .sk-in-box .u{color:var(--ink3); font-size:11px; margin-left:3px}
+  .sk-note{font-family:var(--mono); font-size:9.5px; color:var(--ink3); font-style:italic; margin-left:auto; max-width:210px; text-align:right; line-height:1.45}
+</style>
+</head>
+<body>
+<header>
+  <div class="brandwrap">
+    <div class="eyebrow">Starfare · System Production Console</div>
+    <h1 class="rtitle" id="rtitle">—</h1>
+  </div>
+  <div class="ctrls">
+    <select id="guildSel" title="managed guild"></select>
+    <span class="sysbadge">SYSTEM <b id="sysName">—</b></span>
+    <button class="tick" id="btnTick">Tick ▸</button>
+    <button id="btnLive" title="Live view — the client re-reads the galaxy ~1s. Pausing freezes YOUR screen only; the galaxy keeps turning on the server.">View: —</button>
+    <button id="btnRefresh">Refresh</button>
+    <button id="btnReset">Reset</button>
+  </div>
+</header>
+<div class="status" id="status">reading live state…</div>
+<div class="tiers" id="tiers"></div>
+<div class="resbar" id="resbar"></div>
+<div id="stage"></div>
+<div class="panel legend">
+  <span class="tag">dev UX probe</span>
+  A player-facing read of the <b>same live engine</b> the testbed drives (open <code>/</code> in another tab to found a guild and deploy ventures). Every figure is the engine's <b>resolved</b> value from the snapshot — the browser computes none (design.md §5). Tabs pick a <b>tier</b>, the row below a <b>resource</b>; goods with no local production/consumption show <b>idle</b>. The <b>Syndicate</b> commitment stays <i>“no commitment yet”</i> until the licence layer makes a commitment non-zero — the send control is live and advisory today.
+</div>
+<script>
+'use strict';
+// ---- talking to the server (same origin as the testbed) --------------------
+var statusEl = document.getElementById('status');
+function setStatus(text, kind){ statusEl.textContent = text; statusEl.className = 'status ' + (kind || ''); }
+// ===== MOCK BACKEND (design preview) — DELETE this block to run against the live server;
+// the real api() (a fetch to the same origin as the testbed) is kept just below it. =====
+var MOCK_GOODS = {
+  raw:['ammonia','carbon_products','copper','deuterium','gold','helium','lead','lithium','neodymium','nitrogen','palladium','polymers','silica','silver','titanium','tungsten','xenon'],
+  processed:['battery_cells','carbon_fiber_weave','composite_resin','conductive_material','heat_resistant_alloy','magnetic_assemblies','nanotube_cable','radiation_shielding','refrigerant_fluid','silicon_wafer','titanium_alloy']
+};
+var MOCK_RECIPES = { recipes:[{ id:'titanium_alloy', output:{ good:'titanium_alloy' } }, { id:'silicon_wafer', output:{ good:'silicon_wafer' } }] };
+var MOCK = {
+  tick: 4,
+  ventures: [
+    { id:'mine_ti_1', systemId:'sys_0002', site:{ planetId:'Terran homeworld' } },
+    { id:'mine_ti_2', systemId:'sys_0002', site:{ planetId:'Terran homeworld' } },
+    { id:'mine_c_1',  systemId:'sys_0002', site:{ planetId:'Terran homeworld' } },
+    { id:'refinery_alloy', systemId:'sys_0002', recipeId:'titanium_alloy', site:{ planetId:'settlement A' } }
+  ],
+  guilds: [{ id:'weaver-guild', name:'Weaver Guild', homeSystemId:'sys_0002',
+    stockpilesBySystem:{ sys_0002:{ titanium:0, carbon_products:12, titanium_alloy:8 } },
+    productionProfile:{ sys_0002:{ goods:{ titanium:{ order:['syndicate','downstream','stockpile'], syndicate:{ mode:'absolute', value:5 } } }, throttles:{} } } }],
+  production: [{ guildId:'weaver-guild', systems:[{ systemId:'sys_0002',
+    goods:{ titanium:{ fresh:10, supplied:5, demand:6, pot:10, reserveDelta:0,
+      fork:{ syndicate:5, downstream:5, stockpile:0 },
+      window:{ Q:120, windowStart:1, delivered:40, sendCarry:0, ticksRemaining:16, requiredRate:5, sendThisTick:5, pctAchieved:33.3, status:'accruing' } } },
+    mines:[ { ventureId:'mine_ti_1', good:'titanium', amount:5 }, { ventureId:'mine_ti_2', good:'titanium', amount:5 } ],
+    refineries:[ { ventureId:'refinery_alloy', rate:1.67, minted:1, bottleneckGood:'titanium' } ],
+    lines:[ { ventureId:'refinery_alloy', good:'titanium' } ] }]}]
+};
+function mockDerive(){
+  var g = MOCK.production[0].systems[0].goods.titanium;
+  var pol = MOCK.guilds[0].productionProfile.sys_0002.goods.titanium;
+  var order = pol.order || ['syndicate', 'downstream', 'stockpile'];
+  var send = Math.max(0, Math.min((pol.syndicate ? pol.syndicate.value : 0), g.fresh));
+  var dsPct = pol.downstreamPct != null ? pol.downstreamPct : 100;
+  var resLvl = pol.reserveLevel != null ? pol.reserveLevel : 0;
+  var avail = g.fresh, syn = 0, down = 0;
+  order.forEach(function(f){
+    if (f === 'syndicate'){ syn = Math.min(send, avail); avail -= syn; }
+    else if (f === 'downstream'){ down = Math.min(Math.round(g.demand * dsPct / 100), avail); avail -= down; }
+    else if (f === 'stockpile'){ avail -= Math.min(resLvl, avail); } // reserve its protected cut
+  });
+  var pileIn = g.fresh - syn - down; // all output not sent out / consumed ends up in the pile
+  g.fork = { syndicate: syn, downstream: down, stockpile: pileIn };
+  g.supplied = down; g.pot = g.fresh; g.reserveDelta = pileIn; g.window.sendThisTick = syn;
+  var ref = MOCK.production[0].systems[0].refineries[0]; ref.rate = +(down/3).toFixed(2); ref.minted = Math.floor(down/3);
+}
+function mockTick(){
+  var w = MOCK.production[0].systems[0].goods.titanium.window;
+  if (MOCK.tick >= 24 || w.delivered >= w.Q) return;
+  mockDerive(); w.delivered = Math.min(w.Q, w.delivered + MOCK.production[0].systems[0].goods.titanium.fork.syndicate);
+  MOCK.tick += 1; w.ticksRemaining = 24 - MOCK.tick; w.pctAchieved = +(w.delivered / w.Q * 100).toFixed(1);
+  w.requiredRate = w.ticksRemaining > 0 ? +((w.Q - w.delivered) / w.ticksRemaining).toFixed(2) : 0;
+  w.status = w.delivered >= w.Q ? 'met' : (MOCK.tick >= 24 ? 'breach' : 'accruing'); mockDerive();
+}
+function mockReset(){
+  MOCK.tick = 0; var w = MOCK.production[0].systems[0].goods.titanium.window;
+  w.delivered = 0; w.ticksRemaining = 24; w.pctAchieved = 0; w.requiredRate = 5; w.status = 'accruing';
+  MOCK.guilds[0].productionProfile.sys_0002.goods.titanium.syndicate = { mode:'absolute', value:5 }; mockDerive();
+}
+function mockAction(action){
+  if (action && action.type === 'setProductionProfile' && action.goods){
+    var pol = MOCK.guilds[0].productionProfile.sys_0002.goods;
+    Object.keys(action.goods).forEach(function(good){ pol[good] = pol[good] || {}; var p = action.goods[good];
+      ['order','downstreamPct','reserveLevel','syndicate'].forEach(function(k){ if (k in p) pol[good][k] = p[k]; }); });
+    mockDerive();
+  }
+  return { accepted:true };
+}
+async function api(method, path, body){
+  if (path === '/goods') return { status:200, data: MOCK_GOODS };
+  if (path === '/recipes') return { status:200, data: MOCK_RECIPES };
+  if (path === '/snapshot') return { status:200, data: MOCK };
+  if (path === '/tick'){ mockTick(); return { status:200, data: MOCK }; }
+  if (path === '/reset'){ mockReset(); return { status:200, data: MOCK }; }
+  if (path === '/action'){ var r = mockAction(body); return { status:200, data:{ accepted:r.accepted, reason:null, snapshot: MOCK } }; }
+  return { status:404, data:{ error:'mock: no route ' + path } };
+}
+// ===== end mock backend. The live api() below is disabled while the mock is present. =====
+async function apiLive(method, path, body){
+  var res = await fetch(path, { method: method, headers: body ? { 'Content-Type':'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
+  return { status: res.status, data: await res.json() };
+}
+// GET /snapshot, POST /tick, POST /reset all return a snapshot directly.
+async function refresh(verb, label, path){
+  try { var r = await api(verb, verb === 'GET' ? '/snapshot' : path); }
+  catch (err) { setStatus('network error: ' + err.message, 'error'); return; }
+  if (r.status >= 400) { setStatus((r.data && r.data.error) || 'error', 'error'); return; }
+  render(r.data);
+  if (label) setStatus(label + ' — now at tick ' + r.data.tick, 'ok');
+}
+// POST /action returns { accepted, reason, snapshot } — a rejection is normal (amber).
+async function sendAction(action, verb){
+  var r;
+  try { r = await api('POST', '/action', action); }
+  catch (err) { setStatus('network error: ' + err.message, 'error'); return; }
+  if (r.status >= 500) { setStatus((r.data.error || 'engine error'), 'error'); return; }
+  if (r.status === 400) { setStatus(r.data.error || 'bad request', 'error'); return; }
+  if (r.data.snapshot) render(r.data.snapshot);
+  setStatus(r.data.accepted ? (verb + ' accepted — press TICK to advance') : (verb + ' REJECTED: ' + r.data.reason), r.data.accepted ? 'ok' : 'rejected');
+}
+// setProductionProfile, carrying only the changed field(s) for one (guild, system).
+// Reuses the exact action + clear-path (syndicate:null) the testbed uses.
+function sendProfile(patch){
+  if (!STATE.guildId || !STATE.sysId) return;
+  var action = { type: 'setProductionProfile', guildId: STATE.guildId, systemId: STATE.sysId };
+  if (patch.goods) action.goods = patch.goods;
+  if (patch.throttles) action.throttles = patch.throttles;
+  sendAction(action, 'policy');
+}
+function fieldInt(el){ var n = parseInt(el.value, 10); return Number.isNaN(n) ? null : n; }
+
+// ---- helpers: pure formatting of engine numbers (no game math) -------------
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); }
+function prettyGood(key){ return String(key).split('_').map(function(w){ return w.charAt(0).toUpperCase() + w.slice(1); }).join(' '); }
+function fmt(n){ return (n == null ? '—' : Number(n).toLocaleString()); }
+function fmtRate(x){ if (x == null) return '—'; return Number.isInteger(x) ? String(x) : x.toFixed(2); }
+function fmtPct(x){ if (x == null) return '—'; return (Number.isInteger(x) ? String(x) : x.toFixed(1)) + '%'; }
+
+// ---- profile defaults (§15.4 documented structural constants, NOT invented) -
+var PROFILE_DEFAULTS = { order: ['syndicate','downstream','stockpile'], downstreamPct: 100, reserveLevel: 0, throttle: 100 };
+// The three Gate-1 claimants, keyed by their engine `order` names. Display names map
+// the mockup's forks: stockpile → Reserve (▲), downstream → Production (▶), syndicate (▼).
+var ARM = {
+  stockpile:  { icon:'▲', name:'Reserve',    cls:'up',   forkKey:'stockpile'  },
+  downstream: { icon:'▶', name:'Production',  cls:'prod', forkKey:'downstream' },
+  syndicate:  { icon:'▼', name:'Syndicate',  cls:'synd', forkKey:'syndicate'  },
+};
+
+// ---- live view state -------------------------------------------------------
+var STATE = { snap:null, goods:{raw:[],processed:[]}, guildId:null, sysId:null, tier:1, good:null, vmap:{}, recipeOut:{} };
+
+// The tier vocabulary comes from GET /goods (raw = tier 1, processed = tier 2). Tiers
+// 3-4 have no goods in the engine yet, so they render dim/empty — honest, not faked.
+function tierGoods(t){ if (t === 1) return STATE.goods.raw || []; if (t === 2) return STATE.goods.processed || []; return []; }
+
+// The managed guild's resolved report for the current system (schema-7 `production`).
+function systemReport(){
+  var gp = (STATE.snap.production || []).find(function(p){ return p.guildId === STATE.guildId; });
+  if (!gp) return null;
+  return (gp.systems || []).find(function(s){ return s.systemId === STATE.sysId; }) || null;
+}
+// The guild's stored profile for one good (sparse; §15.4 defaults where unset).
+function goodPolicy(good){
+  var g = STATE.snap.guilds.find(function(x){ return x.id === STATE.guildId; }) || {};
+  var s = (((g.productionProfile || {})[STATE.sysId] || {}).goods || {})[good] || {};
+  return {
+    order: Array.isArray(s.order) ? s.order.slice() : PROFILE_DEFAULTS.order.slice(),
+    downstreamPct: s.downstreamPct != null ? s.downstreamPct : PROFILE_DEFAULTS.downstreamPct,
+    downstreamSet: s.downstreamPct != null,
+    reserveLevel: s.reserveLevel != null ? s.reserveLevel : PROFILE_DEFAULTS.reserveLevel,
+    reserveSet: s.reserveLevel != null,
+    syndicate: s.syndicate != null ? { mode:s.syndicate.mode, value:s.syndicate.value } : null,
+  };
+}
+function throttleOf(good, ventureId){
+  var g = STATE.snap.guilds.find(function(x){ return x.id === STATE.guildId; }) || {};
+  var th = ((g.productionProfile || {})[STATE.sysId] || {}).throttles || {};
+  return { pct: th[ventureId] != null ? th[ventureId] : PROFILE_DEFAULTS.throttle, set: th[ventureId] != null };
+}
+function ventPlanet(ventureId){ var v = STATE.vmap[ventureId]; return (v && v.site && v.site.planetId) || (v && v.systemId) || ''; }
+function onHand(good){
+  var g = STATE.snap.guilds.find(function(x){ return x.id === STATE.guildId; }) || {};
+  return ((g.stockpilesBySystem || {})[STATE.sysId] || {})[good] || 0;
+}
+
+// Producers of a good in this system: raw mines producing it, plus refineries whose
+// recipe OUTPUTS it (a tier-2 good's producers are refineries). Amount = fresh/minted.
+function producersOf(report, good){
+  var out = [];
+  (report.mines || []).forEach(function(m){ if (m.good === good) out.push({ id:m.ventureId, amount:m.amount, kind:'Mine' }); });
+  (report.refineries || []).forEach(function(r){
+    var v = STATE.vmap[r.ventureId];
+    if (v && v.recipeId && STATE.recipeOut[v.recipeId] === good) out.push({ id:r.ventureId, amount:r.minted, kind:'Refinery' });
+  });
+  return out;
+}
+
+// ---- render ----------------------------------------------------------------
+function render(snap){
+  STATE.snap = snap;
+  STATE.vmap = {}; (snap.ventures || []).forEach(function(v){ STATE.vmap[v.id] = v; });
+
+  // Guild picker: default the first guild; keep the selection if it still exists.
+  var guilds = snap.guilds || [];
+  var guildSel = document.getElementById('guildSel');
+  guildSel.innerHTML = guilds.map(function(g){ return '<option value="' + esc(g.id) + '">' + esc(g.name || g.id) + '</option>'; }).join('');
+  if (!guilds.some(function(g){ return g.id === STATE.guildId; })) STATE.guildId = guilds.length ? guilds[0].id : null;
+  guildSel.value = STATE.guildId || '';
+
+  if (!STATE.guildId){
+    document.getElementById('rtitle').textContent = '—';
+    document.getElementById('sysName').textContent = '—';
+    document.getElementById('tiers').innerHTML = '';
+    document.getElementById('resbar').innerHTML = '';
+    document.getElementById('stage').innerHTML = '<div class="panel"><div class="empty" style="margin:20px">No guild founded yet. Open <b>/</b> (the testbed) in another tab, found a guild and deploy a venture, then Refresh here.</div></div>';
+    return;
+  }
+
+  // System: default the guild's home system if it has a production entry, else the
+  // first system the guild produces in. A picker is optional polish (one system today).
+  var gp = (snap.production || []).find(function(p){ return p.guildId === STATE.guildId; });
+  var sysIds = gp ? gp.systems.map(function(s){ return s.systemId; }).filter(function(x){ return x != null; }) : [];
+  var guild = guilds.find(function(g){ return g.id === STATE.guildId; }) || {};
+  if (!sysIds.some(function(id){ return id === STATE.sysId; })){
+    STATE.sysId = (guild.homeSystemId && sysIds.indexOf(guild.homeSystemId) >= 0) ? guild.homeSystemId : (sysIds[0] || guild.homeSystemId || null);
+  }
+  document.getElementById('sysName').textContent = STATE.sysId || '—';
+
+  var report = systemReport();
+
+  // Default the selected good to the first good that has production here, so the
+  // console opens on something with data rather than an arbitrary idle good.
+  if (!STATE.good && report){
+    var firstProd = (report.mines || [])[0] || (report.refineries || [])[0];
+    if (firstProd){
+      var g0 = firstProd.good || (STATE.vmap[firstProd.ventureId] && STATE.recipeOut[STATE.vmap[firstProd.ventureId].recipeId]);
+      if (g0){ STATE.good = g0; STATE.tier = (STATE.goods.processed || []).indexOf(g0) >= 0 ? 2 : 1; }
+    }
+  }
+  if (!STATE.good) STATE.good = (tierGoods(STATE.tier)[0] || tierGoods(1)[0] || null);
+
+  renderTiers();
+  renderResBar(report);
+  renderStage(report);
+}
+
+function renderTiers(){
+  var defs = [[1,'Raw'],[2,'Refined'],[3,'Parts'],[4,'Assets']];
+  document.getElementById('tiers').innerHTML = defs.map(function(d){
+    var t = d[0], has = tierGoods(t).length > 0;
+    var cls = 'tier' + (t === STATE.tier ? ' on' : '') + (has ? '' : ' dim');
+    return '<div class="' + cls + '" data-tier="' + t + '"><span class="n">' + t + '</span><small>' + d[1] + '</small></div>';
+  }).join('');
+}
+
+function renderResBar(report){
+  var active = {};
+  if (report){
+    (report.mines || []).forEach(function(m){ active[m.good] = true; });
+    Object.keys(report.goods || {}).forEach(function(g){ active[g] = true; });
+    (report.lines || []).forEach(function(l){ active[l.good] = true; });
+    (report.refineries || []).forEach(function(r){ var v = STATE.vmap[r.ventureId]; if (v && STATE.recipeOut[v.recipeId]) active[STATE.recipeOut[v.recipeId]] = true; });
+  }
+  document.getElementById('resbar').innerHTML = tierGoods(STATE.tier).map(function(good){
+    var cls = 'res' + (good === STATE.good ? ' on' : '') + (active[good] ? '' : ' idle');
+    return '<div class="' + cls + '" data-good="' + esc(good) + '">' + esc(prettyGood(good)) + '</div>';
+  }).join('') || '<div class="empty" style="width:100%">no goods at this tier yet</div>';
+}
+
+function renderStage(report){
+  var good = STATE.good;
+  document.getElementById('rtitle').innerHTML = esc(prettyGood(good || '—')) + ' <span class="of">Tier ' + STATE.tier + '</span>';
+  var rg = report ? (report.goods || {})[good] : null;       // routed good ⇒ full telemetry
+  var producers = report ? producersOf(report, good) : [];
+  var consumers = report ? (report.lines || []).filter(function(l){ return l.good === good; }) : [];
+
+  var stage = document.getElementById('stage');
+  if (!rg && producers.length === 0 && consumers.length === 0){
+    // Idle good — no production, no consumers, no routing this system. Show on-hand.
+    stage.innerHTML = reservePanelIdle(good) +
+      '<div class="panel flow"><div class="col" style="grid-column:1/-1"><div class="empty" style="margin:8px">' +
+      esc(prettyGood(good)) + ' is idle in ' + esc(STATE.sysId) + ' — nothing mined, refined, or consumed here. On hand: <b class="num">' + fmt(onHand(good)) + '</b>.</div></div></div>';
+    return;
+  }
+  stage.innerHTML =
+    (rg ? reservePanel(good, rg) : reservePanelIdle(good)) +
+    '<div class="panel flow">' +
+      producersCol(producers) +
+      pipeCol('Actual prod', rg ? rg.fresh : sumAmount(producers)) +
+      gate1Col(good, rg) +
+      '<div class="col pipe"><div class="rail"></div><div class="arw">▶</div></div>' +
+      consumersCol(good, rg, consumers, report) +
+    '</div>';
+}
+
+function sumAmount(list){ return list.reduce(function(a, p){ return a + (p.amount || 0); }, 0); }
+
+// --- Reserve panel: the trend + reserveLevel control + resolved telemetry. The ONE
+// control is `reserveLevel` (Slice A); the mockup's floor/available %-of-stockpile
+// arithmetic is gone. `reserveDelta` is the trend; `fork.stockpile` is the resolved
+// hold; `reserve0`/`pot` are engine values. The slider/input SETS reserveLevel.
+function reservePanel(good, rg){
+  var lvl = goodPolicy(good).reserveLevel;
+  var pot = rg.pot, held = rg.fork.stockpile, delta = rg.reserveDelta;
+  var scale = Math.max(pot, lvl, 1);
+  var fpct = Math.max(0, Math.min(100, (lvl / scale) * 100));
+  var trend = delta === 0
+    ? '<span class="steel">— steady</span>'
+    : (delta > 0 ? '<span class="green">▲ +' + fmt(delta) : '<span class="red">▼ ' + fmt(delta)) + '/t</span>';
+  return '<div class="panel reserve">' +
+    '<div class="head">' +
+      '<div class="chevs"><span class="up' + (delta > 0 ? ' on' : '') + '">▲</span><span class="dn' + (delta < 0 ? ' on' : '') + '">▼</span></div>' +
+      '<div><div class="lbl">Reserve · trend</div><div class="trend num">' + trend + '</div></div>' +
+    '</div>' +
+    '<div class="track" id="rtrack" data-scale="' + scale + '">' +
+      '<div class="grey" style="width:' + fpct + '%"></div>' +
+      '<div class="orange" style="left:' + fpct + '%; width:' + (100 - fpct) + '%; right:auto"></div>' +
+      '<div class="cap l">◄ held</div><div class="cap r">flows on ►</div>' +
+      '<div class="handle" style="left:calc(' + fpct + '% - 1px)"></div>' +
+    '</div>' +
+    '<div class="meta">' +
+      '<div class="lbl">reserve level (hold)</div>' +
+      '<div><input class="rlevel" type="number" min="0" value="' + esc(lvl) + '"> <span class="steel lbl" style="letter-spacing:.1em">units</span></div>' +
+      '<div><b class="num">' + fmt(held) + '</b> <span class="steel">held this tick</span></div>' +
+      '<div class="flo">pot <b class="num" style="font-size:12px">' + fmt(pot) + '</b> · on hand ' + fmt(onHand(good)) + '</div>' +
+    '</div>' +
+  '</div>';
+}
+// Idle/unrouted good: no engine reserve telemetry, but reserveLevel is still settable
+// (advisory) and on-hand is real. No trend/pot (the engine routes nothing this tick).
+function reservePanelIdle(good){
+  var lvl = goodPolicy(good).reserveLevel;
+  return '<div class="panel reserve">' +
+    '<div class="head"><div class="chevs"><span class="up">▲</span><span class="dn">▼</span></div>' +
+      '<div><div class="lbl">Reserve · trend</div><div class="trend num"><span class="steel">— not routed</span></div></div></div>' +
+    '<div class="track disabled"><div class="cap l" style="color:var(--ink3)">no flow this tick</div></div>' +
+    '<div class="meta"><div class="lbl">reserve level (hold)</div>' +
+      '<div><input class="rlevel" type="number" min="0" value="' + esc(lvl) + '"> <span class="steel lbl" style="letter-spacing:.1em">units</span></div>' +
+      '<div class="flo">on hand ' + fmt(onHand(good)) + '</div></div>' +
+  '</div>';
+}
+
+function producersCol(producers){
+  var body = producers.length
+    ? producers.map(function(p){ return '<div class="vent"><div class="vid">' + esc(p.id) + '</div><div class="vpl">' + esc(ventPlanet(p.id)) + '</div><div class="vsub">' + esc(p.kind) + ' · ' + fmt(p.amount) + '/tick</div></div>'; }).join('')
+    : '<div class="empty">no production in this system<br><span style="font-size:10px">— supplied from stockpile only —</span></div>';
+  return '<div class="col"><div class="colhead"><span class="lbl">Production</span></div>' + body + '</div>';
+}
+function pipeCol(label, value){
+  return '<div class="col pipe"><div class="rail"></div><div class="flowlbl"><span class="lbl">' + esc(label) + '</span><span class="num">' + fmt(value) + '</span></div><div class="arw">▶</div></div>';
+}
+
+// --- Gate 1: the three claimant arms in the profile's `order`, each with its live
+// control + the engine's resolved take beside it (fork.stockpile/downstream/syndicate).
+function gate1Col(good, rg){
+  var pol = goodPolicy(good);
+  function rankSel(forkName, i){ return '<select class="prank" data-fork="' + forkName + '" title="draw priority">' +
+    [1,2,3].map(function(n){ return '<option value="' + n + '"' + (i === n - 1 ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select>'; }
+  var arms = pol.order.map(function(forkName, i){
+    if (forkName === 'syndicate') return synPanel(good, pol, rg, rankSel('syndicate', i));
+    if (forkName === 'downstream') return prodPanel(good, pol, rg, rankSel('downstream', i));
+    if (forkName === 'stockpile') return skPanel(good, pol, rg, rankSel('stockpile', i), i);
+    var A = ARM[forkName];
+    if (!A) return '';
+    var take = rg ? rg.fork[A.forkKey] : null;
+    var takeLbl = forkName === 'stockpile' ? 'holds' : 'feeds';
+    var takeTxt = take == null ? '' : '<span class="take">' + takeLbl + ' <b>' + fmt(take) + '</b></span>';
+    return '<div class="arm ' + A.cls + '"><div class="atop"><span class="dir">' + A.icon + '</span><span class="aname">' + A.name + '</span>' +
+      takeTxt + rankSel(forkName, i) + '</div>' + armBody(forkName, good, pol, rg) + '</div>';
+  }).join('');
+  return '<div class="col gate1"><div class="colhead"><span class="lbl">Distribution</span><span class="hint">top draws first</span></div>' + arms + '</div>';
+}
+
+// The expanded Syndicate panel (design iteration) — replaces the compact syndicate arm.
+// Reads the SAME snapshot data the old readout did: rg.fresh, rg.fork.syndicate, and the
+// per-good `window` sub-object (Q / delivered / requiredRate / ticksRemaining /
+// pctAchieved / status). The slider SETS the absolute send; the amber marker is the
+// required pace; clicking it snaps the send onto that (ceil to a whole unit).
+function synPanel(good, pol, rg, rank){
+  var fresh = rg ? (rg.fresh || 0) : 0;
+  var w = rg ? rg.window : null;
+  var sendAbs = (pol.syndicate && pol.syndicate.mode === 'absolute') ? pol.syndicate.value
+              : (rg && rg.fork ? rg.fork.syndicate : 0);
+  sendAbs = Math.max(0, Math.min(sendAbs || 0, fresh));
+  var sendPct = fresh > 0 ? (sendAbs / fresh) * 100 : 0;
+  var head = '<div class="sy-head"><span class="dir">▼</span><span class="aname">Syndicate</span>' + rank + '</div>';
+  var req = null;
+  if (w){ var rr = w.requiredRate || 0; req = { reqRate: rr, reqPct: fresh > 0 ? Math.max(0, Math.min(100, (rr / fresh) * 100)) : 0 }; }
+  var body = synSlider(good, fresh, sendPct, req) + '<div class="sy-readout">' + synConveyor() + synRate(sendAbs, sendPct) + '</div>';
+  if (!w){
+    return '<div class="sy-panel">' + head + body + '<div class="sy-none">no commitment yet — the send is advisory until a licence is issued</div></div>';
+  }
+  var pctDone = Math.max(0, Math.min(100, w.pctAchieved || 0));
+  var stTxt = w.status === 'accruing' ? (w.ticksRemaining + ' hours remaining') : (w.status === 'met' ? 'Met' : 'Breach');
+  return '<div class="sy-panel">' + head + body +
+    '<div class="sy-gauge"><div class="sy-grow"><span class="c2">Licence progress</span><span class="sy-st ' + esc(w.status) + '">' + esc(stTxt) + '</span></div>' +
+      '<div class="sy-bar"><div class="sy-lic" style="width:' + pctDone + '%"></div><div class="sy-licpct" style="left:' + Math.max(6, Math.min(94, pctDone)) + '%">' + Math.round(pctDone) + '%</div></div>' +
+      '<div class="sy-foot"><span class="tot">commitment <b>' + fmt(w.Q) + '</b> u</span></div></div></div>';
+}
+function synSlider(good, fresh, sendPct, req){
+  var top = req ? '<div class="sy-reqlabel top" style="left:' + req.reqPct + '%"><span class="k">req</span> ' + Math.round(req.reqPct) + '%</div>' : '';
+  var mark = req ? '<div class="sy-req" data-req="' + fmtRate(req.reqRate) + '" style="left:' + req.reqPct + '%" title="snap to required (lock to pace)"><div class="tri t"></div><div class="ln"></div><div class="tri b"></div></div>' : '';
+  var bot = req ? '<div class="sy-reqlabel bot" style="left:' + req.reqPct + '%">' + fmtRate(req.reqRate) + ' <span class="k">u/hr req</span></div>' : '';
+  return '<div class="sy-sendwrap">' + top +
+    '<div class="sy-track" data-good="' + esc(good) + '" data-fresh="' + fresh + '">' +
+      '<div class="sy-fill" style="width:' + sendPct + '%"></div>' +
+      '<span class="sy-cap l">0 · none</span><span class="sy-cap r">all · 100%</span>' + mark +
+      '<div class="sy-handle" style="left:' + sendPct + '%"></div></div>' + bot + '</div>';
+}
+function synConveyor(){ return '<div class="sy-conveyor"><div class="cv"></div><div class="cv"></div><div class="cv"></div></div>'; }
+function synRate(sendAbs, sendPct){
+  return '<div class="sy-rate"><span class="c2">current rate</span>' +
+    '<input class="sy-rate-in" type="number" min="0" value="' + esc(sendAbs) + '"><span class="u">u/hr</span>' +
+    '<span class="ar">·</span><input class="sy-pct-in" type="number" min="0" max="100" value="' + Math.round(sendPct) + '"><span class="u">%</span></div>';
+}
+
+// The expanded Production panel (design iteration) — replaces the compact downstream arm.
+// One lever: the SELECTED provision, stored as downstreamPct (0-100). REQUIRED = rg.demand
+// (the full-tilt Gate-2 demand — the MAX, unaffected by throttling downstream). The handle's
+// % is provided÷required (= downstreamPct); the absolute u below it shows only when < 100%.
+// Clicking REQUIRED snaps to 100% (provide the full required). This is a SELECTION panel —
+// provided-vs-actual shortfalls are shown elsewhere.
+function prodPanel(good, pol, rg, rank){
+  var required = rg ? (rg.demand || 0) : 0;
+  var dsPct = Math.max(0, Math.min(100, (pol.downstreamPct != null) ? pol.downstreamPct : 100));
+  var provided = Math.round(required * dsPct / 100);
+  var head = '<div class="pr-head"><span class="dir">▷</span><span class="aname">Production</span>' + rank + '</div>';
+  var labL = Math.max(6, Math.min(94, dsPct)); // keep the handle labels off the slider ends
+  var topLab = '<div class="pr-lab top" style="left:' + labL + '%">' + dsPct + '<span class="u">%</span></div>';
+  var botLab = dsPct < 100 ? '<div class="pr-lab bot" style="left:' + labL + '%">' + provided + ' <span class="u">u</span></div>' : '';
+  var slider = '<div class="pr-sendwrap">' + topLab +
+    '<div class="pr-track" data-good="' + esc(good) + '" title="drag to set how much to route to production">' +
+      '<div class="pr-fill" style="width:' + dsPct + '%"></div>' +
+      '<span class="pr-cap l">0 · none</span><span class="pr-cap r">all · 100%</span>' +
+      '<div class="pr-handle" style="left:' + dsPct + '%"></div>' +
+    '</div>' + botLab + '</div>';
+  var readout = '<div class="pr-readout">' +
+    '<div class="pr-required"><span class="pr-req-lbl">Required</span>' +
+      '<div class="pr-req-box" data-good="' + esc(good) + '" title="snap to 100% — provide the full required">' + fmt(required) + '<span class="u">u</span></div>' +
+    '</div>' +
+    '<div class="pr-conveyor" title="flows on to the consumers"><i></i><i></i><i></i></div>' +
+    '</div>';
+  return '<div class="pr-panel">' + head + slider + readout + '</div>';
+}
+
+// The expanded Stockpile panel (design iteration) — replaces the compact stockpile arm.
+// "Put this much of output into the pile, and show how much is going in." Reserve MANAGEMENT
+// (the saved-up buffer / drawdown) is a separate later section. The setting maps to
+// reserveLevel, measured as a % of OUTPUT. When Stockpile is priority 3 (the default and
+// common case) the slider is meaningless — the pile just takes whatever the other two forks
+// leave — so the panel collapses to a single number: how much is flowing in.
+function skPanel(good, pol, rg, rank, idx){
+  var head = '<div class="sk-head"><span class="dir">▲</span><span class="aname">Stockpile</span>' + rank + '</div>';
+  var goingIn = (rg && rg.fork) ? rg.fork.stockpile : 0;
+  var isLast = idx === (pol.order.length - 1); // priority 3 → slider irrelevant
+  if (isLast){
+    return '<div class="sk-panel">' + head +
+      '<div class="sk-collapsed"><div class="sk-pulse"><i></i><i></i><i></i></div>' +
+        '<div class="sk-in"><span class="sk-in-lbl">Going in</span><div class="sk-in-box">' + fmt(goingIn) + '<span class="u">u</span></div></div>' +
+      '</div></div>';
+  }
+  var out = rg ? (rg.fresh || 0) : 0;
+  var lvl = Math.max(0, (pol.reserveLevel != null) ? pol.reserveLevel : 0);
+  var pctRaw = out > 0 ? (lvl / out) * 100 : 0;
+  var pct = Math.round(pctRaw);
+  var handlePct = Math.min(100, pctRaw);
+  var labL = Math.max(6, Math.min(94, handlePct));
+  var topLab = '<div class="sk-lab" style="left:' + labL + '%">' + pct + '<span class="u">%</span></div>';
+  var slider = '<div class="sk-sendwrap">' + topLab +
+    '<div class="sk-track" data-good="' + esc(good) + '" data-out="' + out + '" title="drag to set how much of output to put into the pile">' +
+      '<div class="sk-fill" style="width:' + handlePct + '%"></div>' +
+      '<span class="sk-cap l">0 · none</span><span class="sk-cap r">all · 100%</span>' +
+      '<div class="sk-handle" style="left:' + handlePct + '%"></div>' +
+    '</div></div>';
+  var readout = '<div class="sk-readout">' +
+    '<div class="sk-pulse" title="drawing into the pile"><i></i><i></i><i></i></div>' +
+    '<div class="sk-set"><span class="sk-set-lbl">Into pile</span>' +
+      '<input class="sk-units" type="number" min="0" value="' + esc(lvl) + '"><span class="u">u</span>' +
+      '<span class="ar">·</span><input class="sk-pct" type="number" min="0" max="100" value="' + pct + '"><span class="u">%</span>' +
+    '</div></div>';
+  return '<div class="sk-panel">' + head + slider + readout + '</div>';
+}
+function armBody(forkName, good, pol, rg){
+  if (forkName === 'stockpile'){
+    return '<div class="fields"><div class="fld"><label>hold</label><input class="rlevel-arm" type="number" min="0" value="' + esc(pol.reserveLevel) + '"><label>units</label></div>' +
+      (pol.reserveSet ? '' : '<span class="deflt">(default 0)</span>') + '</div>';
+  }
+  if (forkName === 'downstream'){
+    return '<div class="fields"><div class="fld"><label>cap</label><input class="dscap" type="number" min="0" max="100" value="' + esc(pol.downstreamPct) + '"><label>% of full-tilt</label></div>' +
+      (pol.downstreamSet ? '' : '<span class="deflt">(default 100)</span>') + '</div>';
+  }
+  // syndicate: the send-mode control (Paced|Absolute|Percent) + the commitment readout.
+  var syn = pol.syndicate, mode = syn ? syn.mode : 'paced', val = syn ? syn.value : 0;
+  var opt = function(v, l){ return '<option value="' + v + '"' + (mode === v ? ' selected' : '') + '>' + l + '</option>'; };
+  var vin = mode === 'absolute'
+    ? '<div class="fld"><label>send</label><input class="syn-value" data-mode="absolute" type="number" min="0" value="' + esc(val) + '"><label>u/tick</label></div>'
+    : (mode === 'percent'
+      ? '<div class="fld"><label>send</label><input class="syn-value" data-mode="percent" type="number" min="0" value="' + esc(val) + '"><label>% fresh</label></div>'
+      : '');
+  return '<div class="fields"><div class="fld"><label>mode</label><select class="syn-mode">' + opt('paced','Paced') + opt('absolute','Absolute') + opt('percent','Percent') + '</select></div>' + vin +
+    (syn ? '' : '<span class="deflt">paced required-rate</span>') + '</div>' + commitmentReadout(rg);
+}
+// The Syndicate commitment: render the snapshot's `window` sub-object VERBATIM — the
+// pace AND the resolved send SIDE BY SIDE (§5). No client-side pace/ahead/behind math.
+function commitmentReadout(rg){
+  var w = rg && rg.window;
+  if (!w) return '<div class="cmt"><div class="none">no commitment yet — advisory until a licence is issued</div></div>';
+  var pct = Math.max(0, Math.min(100, w.pctAchieved));
+  return '<div class="cmt">' +
+    '<div class="cbar"><div class="cfill" style="width:' + pct + '%"></div></div>' +
+    '<div class="crow"><span class="prog">' + fmt(w.delivered) + ' / ' + fmt(w.Q) + '</span><span class="pct">' + fmtPct(w.pctAchieved) + '</span></div>' +
+    '<div class="pace"><span>pace <b>' + fmtRate(w.requiredRate) + '</b>/t</span><span>resolved send <b>' + fmt(w.sendThisTick) + '</b>/t</span>' +
+      '<span>' + fmt(w.ticksRemaining) + 't left</span><span class="status ' + esc(w.status) + '">' + esc(w.status) + '</span></div>' +
+  '</div>';
+}
+
+// --- Engine calc: mapped to real telemetry (prompt's remap): supplied / demand /
+// fork.syndicate. Rendered verbatim; the browser derives nothing.
+function calcCol(rg){
+  var supplied = rg ? rg.supplied : 0, demand = rg ? rg.demand : 0, syn = rg ? rg.fork.syndicate : 0;
+  return '<div class="col"><div class="colhead"><span class="lbl">Engine calc</span></div>' +
+    '<div class="chip draw"><div class="clbl">▶ Supplied</div><div class="cval num">' + fmt(supplied) + '</div><div class="cnote">consumer draw cap this tick</div></div>' +
+    '<div class="chip"><div class="clbl">▶ Demand</div><div class="cval num">' + fmt(demand) + '</div><div class="cnote">full-tilt (Gate 2)</div></div>' +
+    '<div class="chip"><div class="clbl">▼ Syndicate draw</div><div class="cval num">' + fmt(syn) + '</div><div class="cnote">delivered to the Syndicate</div></div>' +
+  '</div>';
+}
+
+// --- Consumers: the per-line telemetry (rate, bottleneckGood) + the throttle control.
+function consumersCol(good, rg, consumers, report){
+  if (!consumers.length){
+    return '<div class="col"><div class="colhead"><span class="lbl">Consumption</span></div><div class="empty">no in-system consumers of this resource</div></div>';
+  }
+  var rows = consumers.map(function(l){
+    var ref = (report.refineries || []).find(function(r){ return r.ventureId === l.ventureId; });
+    var rate = ref ? ref.rate : null, bottleneck = ref ? ref.bottleneckGood : null;
+    var thr = throttleOf(good, l.ventureId);
+    var starved = bottleneck && bottleneck !== good;      // held below throttle by a scarce input on another page
+    var rcls = starved ? 'part' : 'full';
+    var note = starved ? '<small class="red">held by ' + esc(prettyGood(bottleneck)) + '</small>' : '<small>at ' + thr.pct + '% throttle</small>';
+    return '<div class="cons' + (starved ? ' warn' : '') + '">' +
+      '<div class="thr"><div class="lbl">throttle</div><input class="throttle" data-vent="' + esc(l.ventureId) + '" type="number" min="0" max="100" value="' + esc(thr.pct) + '"><div class="pc">%' + (thr.set ? '' : ' (def)') + '</div></div>' +
+      '<div class="body"><div class="vid">' + esc(l.ventureId) + '</div><div class="vpl">' + esc(ventPlanet(l.ventureId)) + '</div></div>' +
+      '<div class="rate"><div class="rlbl">eff. rate</div><div class="rval ' + rcls + '">' + fmtRate(rate) + '</div>' + note + '</div>' +
+    '</div>';
+  }).join('');
+  return '<div class="col"><div class="colhead"><span class="lbl">Consumption</span></div>' + rows + '</div>';
+}
+
+// ---- events (delegated) ----------------------------------------------------
+document.getElementById('btnTick').addEventListener('click', function(){ refresh('POST', 'ticked', '/tick'); });
+document.getElementById('btnRefresh').addEventListener('click', function(){ refresh('GET', 'refreshed'); });
+document.getElementById('btnReset').addEventListener('click', function(){ STATE.good = null; refresh('POST', 'reset', '/reset'); });
+
+// ---- LIVE / PAUSE-VIEW: a CLIENT-SIDE refresh toggle, nothing more ----------
+// The console gets NO /autotick control: a player cannot pause a persistent
+// real-time world. This toggle only starts/stops the client's own ~1s /snapshot
+// poll+render (the SAME cadence the testbed watch loop uses). Pausing freezes the
+// SCREEN, not the galaxy — the server keeps ticking; you have just stopped
+// re-drawing. It computes no game number: each poll re-fetches and re-renders.
+var LIVE_POLL_MS = 1000;
+var livePollTimer = null;
+function liveRunning(){ return livePollTimer !== null; }
+function anyControlFocused(){
+  var a = document.activeElement;
+  return !!a && (a.tagName === 'INPUT' || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA');
+}
+function reflectLive(){
+  var b = document.getElementById('btnLive');
+  b.textContent = liveRunning() ? 'View: LIVE' : 'View: PAUSED';
+  b.classList.toggle('on', liveRunning());
+}
+async function livePoll(){
+  if (anyControlFocused()) return;   // don't clobber a control being edited mid-run
+  await refresh('GET', null);         // re-render via the existing path; no status spam
+}
+function startLive(){
+  if (livePollTimer === null) livePollTimer = setInterval(livePoll, LIVE_POLL_MS);
+  reflectLive();
+  setStatus('view LIVE — re-reading the galaxy ~' + LIVE_POLL_MS + ' ms (it turns on the server clock)', 'ok');
+}
+function stopLive(){
+  if (livePollTimer !== null){ clearInterval(livePollTimer); livePollTimer = null; }
+  reflectLive();
+  setStatus('view PAUSED — your screen is frozen; the galaxy keeps turning on the server', '');
+}
+document.getElementById('btnLive').addEventListener('click', function(){ if (liveRunning()) stopLive(); else startLive(); });
+document.getElementById('guildSel').addEventListener('change', function(e){ STATE.guildId = e.target.value; STATE.sysId = null; STATE.good = null; if (STATE.snap) render(STATE.snap); });
+
+document.getElementById('tiers').addEventListener('click', function(e){
+  var t = e.target.closest('.tier'); if (!t || t.classList.contains('dim')) return;
+  STATE.tier = +t.dataset.tier; STATE.good = tierGoods(STATE.tier)[0] || null;
+  if (STATE.snap) render(STATE.snap);
+});
+document.getElementById('resbar').addEventListener('click', function(e){
+  var r = e.target.closest('.res'); if (!r) return;
+  STATE.good = r.dataset.good; if (STATE.snap) render(STATE.snap);
+});
+
+// Controls that mutate the profile. Priority selects + the syndicate mode fire on
+// 'change'; numeric inputs commit on blur/Enter (so a re-render never eats a keystroke).
+document.getElementById('stage').addEventListener('change', function(e){
+  var t = e.target, good = STATE.good;
+  if (t.classList.contains('prank')){
+    // Reorder: move the fork to the chosen rank, POST the new (valid permutation) order.
+    var pol = goodPolicy(good); var order = pol.order.filter(function(f){ return f !== t.dataset.fork; });
+    order.splice((+t.value) - 1, 0, t.dataset.fork);
+    var gp = {}; gp[good] = { order: order }; sendProfile({ goods: gp }); return;
+  }
+  if (t.classList.contains('rlevel') || t.classList.contains('rlevel-arm')){
+    var v = fieldInt(t); if (v === null){ setStatus('reserve level: enter an integer', 'error'); return; }
+    var gr = {}; gr[good] = { reserveLevel: v }; sendProfile({ goods: gr }); return;
+  }
+  if (t.classList.contains('dscap')){
+    var d = fieldInt(t); if (d === null){ setStatus('downstream cap: enter an integer', 'error'); return; }
+    var gd = {}; gd[good] = { downstreamPct: d }; sendProfile({ goods: gd }); return;
+  }
+  if (t.classList.contains('throttle')){
+    var p = fieldInt(t); if (p === null){ setStatus('throttle: enter an integer', 'error'); return; }
+    var tp = {}; tp[t.dataset.vent] = p; sendProfile({ throttles: tp }); return;
+  }
+  if (t.classList.contains('syn-mode')){
+    var gm = {};
+    if (t.value === 'paced'){ gm[good] = { syndicate: null }; }       // clear-path: revert to Paced
+    else {
+      var vEl = t.closest('.fields') ? t.closest('.fields').querySelector('.syn-value') : null;
+      var v0 = vEl ? fieldInt(vEl) : 0; if (v0 === null) v0 = 0;
+      gm[good] = { syndicate: { mode: t.value, value: v0 } };
+    }
+    sendProfile({ goods: gm }); return;
+  }
+  if (t.classList.contains('syn-value')){
+    var sv = fieldInt(t); if (sv === null){ setStatus('syndicate send: enter an integer', 'error'); return; }
+    var gv = {}; gv[good] = { syndicate: { mode: t.dataset.mode, value: sv } }; sendProfile({ goods: gv }); return;
+  }
+  // Expanded Syndicate panel: the send in u/hr (absolute) or % of fresh output.
+  if (t.classList.contains('sy-rate-in')){
+    var sr = fieldInt(t); if (sr === null){ setStatus('send: enter an integer', 'error'); return; }
+    var gsr = {}; gsr[good] = { syndicate: { mode:'absolute', value: sr } }; sendProfile({ goods: gsr }); return;
+  }
+  if (t.classList.contains('sy-pct-in')){
+    var sp = fieldInt(t); if (sp === null){ setStatus('send %: enter an integer', 'error'); return; }
+    var syTrack = document.querySelector('.sy-track'); var fr = syTrack ? (+syTrack.dataset.fresh || 0) : 0;
+    var gsp = {}; gsp[good] = { syndicate: { mode:'absolute', value: Math.round(sp / 100 * fr) } }; sendProfile({ goods: gsp }); return;
+  }
+  // Stockpile panel: the amount into the pile as units (absolute) or % of output.
+  if (t.classList.contains('sk-units')){
+    var su = fieldInt(t); if (su === null){ setStatus('into pile: enter an integer', 'error'); return; }
+    var gsu = {}; gsu[good] = { reserveLevel: su }; sendProfile({ goods: gsu }); return;
+  }
+  if (t.classList.contains('sk-pct')){
+    var skp = fieldInt(t); if (skp === null){ setStatus('into pile %: enter an integer', 'error'); return; }
+    var skTrack = document.querySelector('.sk-track'); var so = skTrack ? (+skTrack.dataset.out || 0) : 0;
+    var gskp = {}; gskp[good] = { reserveLevel: Math.round(skp / 100 * so) }; sendProfile({ goods: gskp }); return;
+  }
+});
+
+// The reserve slider: a control (sets reserveLevel = round(fraction × scale)), NOT a
+// displayed game number — the shown figures are all engine values. scale = the track's
+// data-scale (max of pot / current level), so the handle spans "hold nothing" → "hold
+// the whole pot". Delegated on mousedown so it survives re-render.
+(function(){
+  var dragging = null;
+  function scaleOf(track){ return Math.max(1, +track.dataset.scale || 1); }
+  function setFromEvent(track, e){
+    var r = track.getBoundingClientRect();
+    var f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    var level = Math.round(f * scaleOf(track));
+    var gr = {}; gr[STATE.good] = { reserveLevel: level }; sendProfile({ goods: gr });
+  }
+  document.getElementById('stage').addEventListener('mousedown', function(e){
+    var track = e.target.closest('.track'); if (!track || track.classList.contains('disabled')) return;
+    dragging = track; setFromEvent(track, e); e.preventDefault();
+  });
+  window.addEventListener('mouseup', function(){ dragging = null; });
+  // A single drag can fire many POSTs; that is fine for a dev probe (each is validated
+  // and re-renders). We only commit on the pointer positions the user actually drags to.
+  window.addEventListener('mousemove', function(e){ if (dragging) setFromEvent(dragging, e); });
+})();
+
+// The Syndicate send slider: drag sets the ABSOLUTE send; clicking the amber marker snaps
+// the send onto the required rate (ceil to a whole unit — the integer-goods discipline).
+// Both POST setProductionProfile syndicate {mode:'absolute', value}. Delegated so it
+// survives re-render.
+(function(){
+  var dragging = null;
+  function sendFrom(track, e){
+    var r = track.getBoundingClientRect();
+    var f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    var fresh = Math.max(0, +track.dataset.fresh || 0);
+    var g = {}; g[track.dataset.good] = { syndicate: { mode:'absolute', value: Math.round(f * fresh) } }; sendProfile({ goods: g });
+  }
+  document.getElementById('stage').addEventListener('mousedown', function(e){
+    var reqEl = e.target.closest('.sy-req');
+    if (reqEl){
+      var wrap = reqEl.closest('.sy-sendwrap'); var track = wrap && wrap.querySelector('.sy-track');
+      if (track){ var abs = Math.max(0, Math.ceil(parseFloat(reqEl.dataset.req) || 0));
+        var g = {}; g[track.dataset.good] = { syndicate: { mode:'absolute', value: abs } }; sendProfile({ goods: g }); }
+      e.preventDefault(); return;
+    }
+    var t = e.target.closest('.sy-track'); if (!t) return;
+    dragging = t; sendFrom(t, e); e.preventDefault();
+  });
+  window.addEventListener('mouseup', function(){ dragging = null; });
+  window.addEventListener('mousemove', function(e){ if (dragging) sendFrom(dragging, e); });
+})();
+
+// The Production panel: drag the track to set downstreamPct (the % of required to provide);
+// clicking the REQUIRED box snaps to 100%. Both POST setProductionProfile downstreamPct.
+(function(){
+  var dragging = null;
+  function setFrom(track, e){
+    var r = track.getBoundingClientRect();
+    var f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    var g = {}; g[track.dataset.good] = { downstreamPct: Math.round(f * 100) }; sendProfile({ goods: g });
+  }
+  document.getElementById('stage').addEventListener('mousedown', function(e){
+    var box = e.target.closest('.pr-req-box');
+    if (box){ var g = {}; g[box.dataset.good] = { downstreamPct: 100 }; sendProfile({ goods: g }); e.preventDefault(); return; }
+    var t = e.target.closest('.pr-track'); if (!t) return;
+    dragging = t; setFrom(t, e); e.preventDefault();
+  });
+  window.addEventListener('mouseup', function(){ dragging = null; });
+  window.addEventListener('mousemove', function(e){ if (dragging) setFrom(dragging, e); });
+})();
+
+// The Stockpile panel: drag the track to set reserveLevel as a % of output ("how much of
+// output to put into the pile"). POSTs setProductionProfile reserveLevel.
+(function(){
+  var dragging = null;
+  function setFrom(track, e){
+    var r = track.getBoundingClientRect();
+    var f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    var out = Math.max(0, +track.dataset.out || 0);
+    var g = {}; g[track.dataset.good] = { reserveLevel: Math.round(f * out) }; sendProfile({ goods: g });
+  }
+  document.getElementById('stage').addEventListener('mousedown', function(e){
+    var t = e.target.closest('.sk-track'); if (!t) return;
+    dragging = t; setFrom(t, e); e.preventDefault();
+  });
+  window.addEventListener('mouseup', function(){ dragging = null; });
+  window.addEventListener('mousemove', function(e){ if (dragging) setFrom(dragging, e); });
+})();
+
+// ---- boot ------------------------------------------------------------------
+(async function(){
+  // The goods vocabulary (raw/processed) and the recipe→output map are STATIC engine
+  // config, fetched once (like the testbed): they drive the tiers and identify which
+  // refinery produces which good. Every live figure still comes from /snapshot.
+  try { STATE.goods = (await api('GET', '/goods')).data || STATE.goods; } catch (e) {}
+  try {
+    var recs = (await api('GET', '/recipes')).data.recipes || [];
+    recs.forEach(function(r){ STATE.recipeOut[r.id] = r.output.good; });
+  } catch (e) {}
+  await refresh('GET', null);
+  // Default to LIVE: a player-facing console watches a real-time world, so it
+  // re-reads on the ~1s cadence out of the box. Pause it to freeze your screen
+  // (the galaxy keeps turning); press TICK for a manual step when nothing is auto-
+  // ticking. startLive() sets the status line.
+  startLive();
+})();
+</script>
+</body>
+</html>
