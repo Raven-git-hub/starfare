@@ -1,0 +1,156 @@
+'use strict';
+
+// tools/scenarios/supply_relief.js — the "supply relief" scenario for the
+// lockstep run-recorder (roadmap Phase 1 Stage 2, the licence-layer sequence's
+// step (3)). Player tooling, NOT engine: it only assembles a createState
+// scenario and wires the world + bot drivers. It changes no sim/ file.
+//
+// THE ARC this scenario is built to produce (visible in the JSONL trace):
+//   - OPENING SQUEEZE. One guild on a starter system has a single committed
+//     titanium mine, a plentiful carbon mine, and a titanium_alloy refinery.
+//     The committed mine's titanium rate is sized DELIBERATELY BELOW what the
+//     licence pace (Q/N) and the refinery's full demand (3 titanium/batch × r)
+//     need together, so titanium is squeezed: the licence-first bot serves the
+//     Syndicate on pace and the refinery runs starved (below its rated output).
+//   - RELIEF. At a chosen mid-run tick T the world driver establishes a SECOND
+//     titanium mine on another valid titanium node in the SAME system, so its
+//     output pools with the first (ruling B1, §15.2 — resources are system-
+//     scoped, one pool per system). The squeeze eases; the bot rebalances toward
+//     the factory and the refinery's output rises.
+//
+// ── THE NUMBERS ARE SCENARIO / STRATEGY PARAMETERS, NOT ENGINE TUNING ──────────
+// Every number below (R_t, R_c, r, R_t2, Q, N, K, T, the bot's reserve buffer)
+// is the SCENARIO AUTHOR'S choice — the fed-in dials of a hand-played setup, the
+// same status sim/demo.js's $120 / rate-5 numbers have. They are chosen ONLY to
+// produce the intended squeeze→relief arc; they are NOT game-balance constants
+// and do NOT belong in docs/phase-1-tuning.md. The one genuinely engine-owned
+// number here — the window length N — is fed to the engine through the state's
+// own `windowN` field (a scenario override, exactly as the engine intends), not
+// invented in game logic. No engine constant is chosen anywhere in this file.
+//
+// Why these particular values (the squeeze inequality the arc needs):
+//   titanium the licence pace + the refinery need together = Q/N + 3·r
+//                                                          = 16/8 + 3·2 = 2 + 6 = 8
+//   committed titanium mine rate R_t = 5  <  8   → SQUEEZED at the start.
+//   licence pace alone Q/N = 2  ≤  R_t = 5        → the licence stays FEASIBLE
+//                                                   (fresh always covers the pace).
+//   after relief: R_t + R_t2 = 5 + 5 = 10  ≥  8   → the refinery runs full again,
+//                                                   with a small titanium surplus
+//                                                   the bot banks as reserve.
+
+const { createState } = require('../../sim/state.js');
+const { getTerranHomeworld } = require('../../sim/seed.js');
+const { makeReliefWorld } = require('../world_relief.js');
+const { makeLicenceBot } = require('../licence_bot.js');
+
+// --- Where, in the real seed (grounded, not invented) -------------------------
+// sys_0002 (FEN-6425) is a real starter-eligible system whose Terran homeworld
+// pl_00004 carries two titanium nodes, a carbon_products node, and settlement
+// slots — everything this scenario needs, all in ONE system so the two titanium
+// mines pool together. (Confirmed against data/seed.json via sim/seed.js.)
+const HOME_SYSTEM = 'sys_0002';
+const TITANIUM_NODE_1 = 'pl_00004_n01'; // the committed mine's node
+const TITANIUM_NODE_2 = 'pl_00004_n02'; // the RELIEF mine's node (added at tick T)
+const CARBON_NODE = 'pl_00004_n08'; // carbon_products — the refinery's second input
+const REFINERY_SLOT = 'pl_00004_s01'; // a settlement slot for the titanium_alloy refinery
+
+const GUILD_ID = 'weaver-guild';
+
+// --- The scenario / strategy parameters (author's dials — see the header) ------
+const PARAMS = Object.freeze({
+  R_t: 5, // committed titanium mine rate (below the combined need → squeeze)
+  R_c: 5, // carbon mine rate (plentiful — carbon is never the bottleneck)
+  r: 2, // titanium_alloy refinery rate (batches/tick; each batch = 3 titanium + 1 carbon_products)
+  R_t2: 5, // relief titanium mine rate (added at T → total fresh titanium 10)
+  Q: 16, // per-window Syndicate commitment on the committed mine (paced Q/N = 2/tick)
+  windowN: 8, // Syndicate accrual window length in ticks (fed to state.windowN)
+  ticks: 24, // run length (3 full windows: boundaries at 8, 16, 24)
+  reliefTick: 12, // T — the world driver establishes the second titanium mine here (mid window 2)
+  reserveBuffer: 4, // BOT dial: the modest titanium reserve the bot banks from genuine surplus
+});
+
+// makeState() — a FRESH tick-0 state for one run. Pure and deterministic: the
+// same call always assembles byte-identical state (no Date, no Math.random).
+// Seeds the committed mine's syndicateCommitment via createVenture's own param
+// (no action needed for setup), and N via the state's own windowN field.
+function makeState() {
+  const homePlanetId = getTerranHomeworld(HOME_SYSTEM); // pl_00004 (seed's authority)
+  return createState({
+    guilds: [{
+      id: GUILD_ID,
+      name: 'Weaver Guild',
+      credits: 0, // no market/credits move in this slice — production only
+      fuelHoard: 0,
+      homeSystemId: HOME_SYSTEM,
+      homePlanetId,
+      ventures: [
+        // The committed titanium mine — its syndicateCommitment IS the per-window
+        // target Q the resolver sums into the licence (§5 windowed accrual).
+        {
+          id: 'mine_ti_1', ownerGuildId: GUILD_ID, type: 'mining',
+          siteId: TITANIUM_NODE_1, systemId: HOME_SYSTEM,
+          resourceType: 'titanium', productionRate: PARAMS.R_t,
+          syndicateCommitment: PARAMS.Q,
+        },
+        // The plentiful carbon mine — the refinery's other input, sized so carbon
+        // is never the bottleneck (the titanium squeeze is the whole point).
+        {
+          id: 'mine_carbon', ownerGuildId: GUILD_ID, type: 'mining',
+          siteId: CARBON_NODE, systemId: HOME_SYSTEM,
+          resourceType: 'carbon_products', productionRate: PARAMS.R_c,
+        },
+        // The refinery: titanium_alloy = 3 titanium + 1 carbon_products → 1 alloy.
+        {
+          id: 'refinery_alloy', ownerGuildId: GUILD_ID, type: 'refining',
+          siteId: REFINERY_SLOT, systemId: HOME_SYSTEM,
+          recipeId: 'titanium_alloy', productionRate: PARAMS.r,
+        },
+      ],
+    }],
+    reserve: { reserveLevel: 0 },
+    syndicate: { ledger: 0 },
+    windowN: PARAMS.windowN, // the one engine-owned number, fed through the scenario override
+    // The guild's home ownership claim (the source of truth the guild-home
+    // invariant checks the denormalised home pointer against).
+    claims: [{
+      claimId: `claim_home_${GUILD_ID}`,
+      ownerGuildId: GUILD_ID,
+      landmarkId: HOME_SYSTEM,
+      landmarkKind: 'system',
+      claimedAtTick: 0,
+      contested: false,
+    }],
+  });
+}
+
+// buildScenario() — the full spec the recorder consumes: how to seed state, the
+// two drivers, and the run knobs. Assembled here so the numbers live in exactly
+// one place and the recorder stays a generic, scenario-agnostic loop.
+function buildScenario() {
+  return {
+    name: 'supply_relief',
+    guildId: GUILD_ID,
+    systemId: HOME_SYSTEM,
+    ticks: PARAMS.ticks,
+    makeState,
+    // The world driver: the ONE scheduled perturbation this slice models — a
+    // supply RELIEF event (a second titanium mine) at tick T.
+    world: makeReliefWorld({
+      atTick: PARAMS.reliefTick,
+      guildId: GUILD_ID,
+      ventureId: 'mine_ti_2',
+      siteId: TITANIUM_NODE_2,
+      resourceType: 'titanium',
+      productionRate: PARAMS.R_t2,
+    }),
+    // The bot driver: the licence-first reactive allocator, steering THIS guild.
+    bot: makeLicenceBot({
+      guildId: GUILD_ID,
+      systemId: HOME_SYSTEM,
+      committedGood: 'titanium',
+      reserveBuffer: PARAMS.reserveBuffer,
+    }),
+  };
+}
+
+module.exports = { buildScenario, makeState, PARAMS, GUILD_ID, HOME_SYSTEM };
