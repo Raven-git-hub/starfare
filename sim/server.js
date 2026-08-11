@@ -66,6 +66,11 @@ const DEFAULT_PORT = 7331; // the galaxy seed number, and clear of the host's ot
 // container) without a server restart.
 const TESTBED_HTML = join(__dirname, '..', 'client', 'testbed.html');
 
+// The player-facing System Production Console, served at GET /console. Same read-from-
+// disk-per-request pattern as the testbed, and — like it — ZERO game logic: it drives
+// the SAME live state over the SAME endpoints, only in the player-facing Archive view.
+const CONSOLE_HTML = join(__dirname, '..', 'client', 'console.html');
+
 // --- the single live-state holder -----------------------------------------
 // One `let`, reached only through get/set. This is the seam Phase 2 replaces:
 // swap these two functions for Postgres reads/writes and nothing else in the
@@ -123,6 +128,19 @@ async function handleRequest(req, res) {
       res.end(html);
     } catch (err) {
       sendJson(res, 500, { error: 'could not read client/testbed.html', detail: String(err && err.message || err) });
+    }
+    return;
+  }
+
+  // GET /console -> the player-facing System Production Console (HTML), served exactly
+  // like GET / above. Harness route only — no game logic; it reads the same snapshot.
+  if (method === 'GET' && path === '/console') {
+    try {
+      const html = fs.readFileSync(CONSOLE_HTML);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+      res.end(html);
+    } catch (err) {
+      sendJson(res, 500, { error: 'could not read client/console.html', detail: String(err && err.message || err) });
     }
     return;
   }
