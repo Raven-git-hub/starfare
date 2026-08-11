@@ -962,7 +962,17 @@ function renderProductionView(sysId, snap, guild) {
     if (open) {
       var producers = mines.length
         ? '<div class="prod-line"><span class="pl-h side-prod">PRODUCERS</span> ' +
-            mines.map(function (m) { return esc(m.ventureId) + ' <b>' + esc(m.amount) + '</b>/tick'; }).join(' &nbsp; ') +
+            mines.map(function (m) {
+              // Commitment-injection dev scaffold (design.md §15.4 "Scaffold 11-08-26"):
+              // per mining venture, an input that POSTs setSyndicateCommitment. It reads
+              // its current value back from the snapshot's per-venture syndicateCommitment
+              // (already in the schema — no bump). Sent unclamped so the engine validates
+              // (e.g. rejecting a non-mine or a negative) and the reason surfaces in amber.
+              var mv = byId[m.ventureId] || {};
+              var commit = mv.syndicateCommitment || 0;
+              return esc(m.ventureId) + ' <b>' + esc(m.amount) + '</b>/tick' +
+                ' &middot; commit <input class="syn-commit" data-vent="' + esc(m.ventureId) + '" type="number" min="0" value="' + esc(commit) + '"> units/tick';
+            }).join(' &nbsp; ') +
           '</div>'
         : '';
 
@@ -1040,7 +1050,21 @@ function renderProductionView(sysId, snap, guild) {
       '</div>';
   }
 
-  return reviewBlock + note + sections + throttlePanel;
+  // Commitment-injection dev scaffold (design.md §15.4 "Scaffold 11-08-26"): the
+  // engine-wide accrual window length. It POSTs setWindowN and is DISABLED once the
+  // run has started (snap.tick > 0), since window length is a setup-only knob fixed
+  // before tick 0. Pure setup control — it needs NO snapshot readback (windowN is
+  // deliberately kept out of the snapshot schema), so it shows no value, only the
+  // lock state from the top-level `tick`.
+  var locked = (snap.tick || 0) > 0;
+  var windowPanel =
+    '<div class="gate winpanel">' +
+      '<div class="gate-h">SETUP &middot; accrual window length <span class="hint">engine-wide N (ticks per Syndicate window); a setup-only knob, locked once the run starts</span></div>' +
+      'window <input class="win-n" type="number" min="1"' + (locked ? ' disabled' : '') + ' placeholder="N ticks"> ticks' +
+      (locked ? ' <span class="deflt">(locked — run started at tick ' + esc(snap.tick) + ')</span>' : '') +
+    '</div>';
+
+  return reviewBlock + note + windowPanel + sections + throttlePanel;
 }
 
 // Pure render of the managed guild from the latest snapshot + cached layouts.
@@ -1237,6 +1261,27 @@ document.getElementById('go-body').addEventListener('change', function (e) {
     if (p === null) { setStatus('throttle: enter an integer', 'error'); return; }
     var tp = {}; tp[t.dataset.vent] = p;
     sendProfile(t.dataset.sys, { throttles: tp });
+    return;
+  }
+  // Commitment-injection dev scaffold (design.md §15.4 "Scaffold 11-08-26"): the
+  // per-venture Syndicate commitment. POSTs setSyndicateCommitment (guildId from the
+  // managed overlay). Sent unclamped, so a non-mine / negative is rejected by the
+  // engine and surfaces in amber — the same discipline as the profile controls.
+  if (t.classList.contains('syn-commit')) {
+    var c = fieldInt(t);
+    if (c === null) { setStatus('commitment: enter an integer', 'error'); return; }
+    if (!overlayGuildId) return;
+    sendAction({ type: 'setSyndicateCommitment', guildId: overlayGuildId, ventureId: t.dataset.vent, commitment: c }, 'setSyndicateCommitment');
+    return;
+  }
+  // Commitment-injection dev scaffold: the engine-wide accrual window length. POSTs
+  // setWindowN — a STATE-scoped action (no guildId). Sent unclamped so the engine
+  // rejects windowN < 1 or a tick > 0 attempt (surfaced in amber). The control is
+  // disabled once the run starts, so this fires only at tick 0 in the happy path.
+  if (t.classList.contains('win-n')) {
+    var n = fieldInt(t);
+    if (n === null) { setStatus('window length: enter an integer', 'error'); return; }
+    sendAction({ type: 'setWindowN', windowN: n }, 'setWindowN');
     return;
   }
   // §5 Slice B: the Syndicate send MODE selector. Absolute/Percent POST a

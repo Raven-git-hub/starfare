@@ -88,6 +88,11 @@ test('GET / serves the testbed UI (HTML)', async () => {
   // `review` array; no client-side issue logic).
   assert.match(html, /class="review-issue"/);
   assert.match(html, /class="review-badge"/);
+  // Commitment-injection dev scaffold (§15.4 "Scaffold 11-08-26"): the two testbed
+  // controls — the per-mine commitment input (setSyndicateCommitment) and the
+  // engine-wide window-length input (setWindowN) — are present in the served page.
+  assert.match(html, /class="syn-commit"/);
+  assert.match(html, /class="win-n"/);
 });
 
 test('GET /console serves the player-facing Production Console (HTML)', async () => {

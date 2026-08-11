@@ -6,6 +6,8 @@ const assert = require('node:assert/strict');
 const {
   createPaySyndicateFeeAction,
   createSetProductionProfileAction,
+  createSetSyndicateCommitmentAction,
+  createSetWindowNAction,
   validateAction,
   applyAction,
   intake,
@@ -334,4 +336,132 @@ test('a production-profile action leaves state passing every invariant', () => {
     createSetProductionProfileAction({ guildId: 'g1', systemId: 'sys_0002', goods: { titanium: { downstreamPct: 50 } }, throttles: { v1: 25 } }),
   ]);
   assert.deepEqual(checkInvariants(next, next.tick), []);
+});
+
+// --- setSyndicateCommitment / setWindowN (commitment-injection dev scaffold) ---
+// The two throwaway dev-scaffold actions (design.md §15.4 "Scaffold 11-08-26", §5).
+// A state carrying a mine (resourceType) and a refinery (no resourceType) so both
+// the accept and the fail-loud paths have real ventures to target.
+
+const SYS = 'sysA';
+function ventureState() {
+  return createState({
+    guilds: [{
+      id: 'g1', credits: 0, fuelHoard: 0,
+      ventures: [
+        { id: 'mine_1', ownerGuildId: 'g1', type: 'mining', systemId: SYS, resourceType: 'titanium', productionRate: 10 },
+        { id: 'ref_1', ownerGuildId: 'g1', type: 'refining', systemId: SYS, recipeId: 'titanium_alloy', productionRate: 2 },
+      ],
+    }, {
+      id: 'g2', credits: 0, fuelHoard: 0,
+      ventures: [{ id: 'mine_2', ownerGuildId: 'g2', type: 'mining', systemId: SYS, resourceType: 'carbon_products', productionRate: 10 }],
+    }],
+    reserve: { reserveLevel: 0 },
+    syndicate: { ledger: 0 },
+  });
+}
+const ventureById = (state, guildIdx, ventureId) => state.guilds[guildIdx].ventures.find((v) => v.id === ventureId);
+
+test('createSetSyndicateCommitmentAction requires guildId, ventureId, commitment', () => {
+  assert.throws(() => createSetSyndicateCommitmentAction({ ventureId: 'm', commitment: 1 }), /guildId is required/);
+  assert.throws(() => createSetSyndicateCommitmentAction({ guildId: 'g1', commitment: 1 }), /ventureId is required/);
+  assert.throws(() => createSetSyndicateCommitmentAction({ guildId: 'g1', ventureId: 'm' }), /commitment is required/);
+  assert.deepEqual(createSetSyndicateCommitmentAction({ guildId: 'g1', ventureId: 'mine_1', commitment: 8 }), {
+    type: 'setSyndicateCommitment', guildId: 'g1', ventureId: 'mine_1', commitment: 8,
+  });
+});
+
+test('setSyndicateCommitment sets the venture field, and 0 clears it back to unlicensed', () => {
+  const s = ventureState();
+  const set = createSetSyndicateCommitmentAction({ guildId: 'g1', ventureId: 'mine_1', commitment: 8 });
+  assert.deepEqual(validateAction(s, set), { valid: true });
+  const after = applyAction(s, set);
+  assert.equal(ventureById(after, 0, 'mine_1').syndicateCommitment, 8);
+  // input untouched (applyAction never mutates its argument)
+  assert.equal(ventureById(s, 0, 'mine_1').syndicateCommitment, 0);
+  // 0 clears back to unlicensed — always allowed.
+  const clear = createSetSyndicateCommitmentAction({ guildId: 'g1', ventureId: 'mine_1', commitment: 0 });
+  assert.deepEqual(validateAction(after, clear), { valid: true });
+  assert.equal(ventureById(applyAction(after, clear), 0, 'mine_1').syndicateCommitment, 0);
+});
+
+test('setSyndicateCommitment does NOT set committedFromTick (the fraction==1 tripwire stays green)', () => {
+  const s = ventureState();
+  const after = applyAction(s, createSetSyndicateCommitmentAction({ guildId: 'g1', ventureId: 'mine_1', commitment: 8 }));
+  assert.equal('committedFromTick' in ventureById(after, 0, 'mine_1'), false,
+    'the scaffold must never stamp committedFromTick — that keeps windowFraction == 1');
+});
+
+test('setSyndicateCommitment REJECTS a non-resourceType venture with commitment > 0 (fail loud, state unchanged)', () => {
+  const s = ventureState();
+  const bad = createSetSyndicateCommitmentAction({ guildId: 'g1', ventureId: 'ref_1', commitment: 5 });
+  const r = validateAction(s, bad);
+  assert.equal(r.valid, false);
+  assert.match(r.reason, /no resourceType/);
+  // a rejected action changes nothing (intake leaves the refinery's commitment 0).
+  const { state: next, results } = intake(s, [bad]);
+  assert.equal(results[0].accepted, false);
+  assert.equal(ventureById(next, 0, 'ref_1').syndicateCommitment, 0);
+});
+
+test('setSyndicateCommitment ACCEPTS commitment 0 on a non-resourceType venture (clearing is always legal)', () => {
+  const s = ventureState();
+  assert.deepEqual(validateAction(s, createSetSyndicateCommitmentAction({ guildId: 'g1', ventureId: 'ref_1', commitment: 0 })), { valid: true });
+});
+
+test('setSyndicateCommitment rejects a negative or non-integer commitment', () => {
+  const s = ventureState();
+  assert.equal(validateAction(s, createSetSyndicateCommitmentAction({ guildId: 'g1', ventureId: 'mine_1', commitment: -1 })).valid, false);
+  assert.equal(validateAction(s, createSetSyndicateCommitmentAction({ guildId: 'g1', ventureId: 'mine_1', commitment: 2.5 })).valid, false);
+});
+
+test('setSyndicateCommitment rejects an unknown guild, and a venture not owned by the guild', () => {
+  const s = ventureState();
+  assert.match(validateAction(s, createSetSyndicateCommitmentAction({ guildId: 'ghost', ventureId: 'mine_1', commitment: 1 })).reason, /no guild with id/);
+  // mine_2 exists but belongs to g2, not g1 — must be refused for g1.
+  assert.match(validateAction(s, createSetSyndicateCommitmentAction({ guildId: 'g1', ventureId: 'mine_2', commitment: 1 })).reason, /has no venture with id/);
+  // an id that names no venture at all.
+  assert.match(validateAction(s, createSetSyndicateCommitmentAction({ guildId: 'g1', ventureId: 'nope', commitment: 1 })).reason, /has no venture with id/);
+});
+
+test('a setSyndicateCommitment action leaves state passing every invariant', () => {
+  const s = ventureState();
+  const { state: next } = intake(s, [createSetSyndicateCommitmentAction({ guildId: 'g1', ventureId: 'mine_1', commitment: 8 })]);
+  assert.deepEqual(checkInvariants(next, next.tick), []);
+});
+
+test('createSetWindowNAction requires windowN and carries no guildId (the first state-scoped action)', () => {
+  assert.throws(() => createSetWindowNAction({}), /windowN is required/);
+  const a = createSetWindowNAction({ windowN: 60 });
+  assert.deepEqual(a, { type: 'setWindowN', windowN: 60 });
+  assert.equal('guildId' in a, false);
+});
+
+test('setWindowN sets state.windowN at tick 0', () => {
+  const s = ventureState();
+  assert.equal(s.windowN, undefined, 'no window length until one is set');
+  const set = createSetWindowNAction({ windowN: 60 }); // 60 is the SCENARIO value, never baked into the engine
+  assert.deepEqual(validateAction(s, set), { valid: true });
+  const after = applyAction(s, set);
+  assert.equal(after.windowN, 60);
+  // input untouched
+  assert.equal(s.windowN, undefined);
+});
+
+test('setWindowN rejects windowN < 1 or non-integer', () => {
+  const s = ventureState();
+  assert.equal(validateAction(s, createSetWindowNAction({ windowN: 0 })).valid, false);
+  assert.equal(validateAction(s, createSetWindowNAction({ windowN: -3 })).valid, false);
+  assert.equal(validateAction(s, createSetWindowNAction({ windowN: 4.5 })).valid, false);
+});
+
+test('setWindowN rejects a set once the run has started (tick > 0), leaving state unchanged', () => {
+  const s = ventureState();
+  const ticked = { ...s, tick: 1 }; // pretend the run advanced
+  const r = validateAction(ticked, createSetWindowNAction({ windowN: 60 }));
+  assert.equal(r.valid, false);
+  assert.match(r.reason, /setup-only knob/);
+  const { state: next, results } = intake(ticked, [createSetWindowNAction({ windowN: 60 })]);
+  assert.equal(results[0].accepted, false);
+  assert.equal(next.windowN, undefined, 'a rejected setWindowN leaves state.windowN untouched');
 });

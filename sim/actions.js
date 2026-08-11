@@ -25,6 +25,15 @@ const { setEntry } = require('./profile.js');
 //                         nothing is minted, and it seats + claims the home.
 //   - establishVenture  — seat a NEW mining venture on a real seed node so it
 //                         produces on the next tick (occupancy-guarded).
+//   - setProductionProfile — store a guild's per-system Gate-1/Gate-3 policy.
+//   - setSyndicateCommitment / setWindowN — the THROWAWAY commitment-injection dev
+//                         scaffold (design.md §15.4 "Scaffold 11-08-26", §5): they
+//                         set the windowed-accrual placeholders the engine already
+//                         reads (Venture.syndicateCommitment, state.windowN) so a
+//                         test scenario can light the console's commitment bar and
+//                         give a scripted bot real targets before the real Licence
+//                         entity exists. Explicitly transitional — retired when the
+//                         licence grant becomes syndicateCommitment's source.
 // Every OTHER action design.md eventually needs (placing an order, setting a
 // toll, casting a vote) waits for the module that would give it an effect —
 // inventing them now would mean guessing at economy.js before it exists.
@@ -107,6 +116,37 @@ function createSetProductionProfileAction({ guildId, systemId, goods, throttles 
   if (guildId === undefined) throw new Error('createSetProductionProfileAction: guildId is required');
   if (systemId === undefined) throw new Error('createSetProductionProfileAction: systemId is required');
   return { type: 'setProductionProfile', guildId, systemId, goods, throttles };
+}
+
+// --- Commitment-injection dev scaffold (design.md §15.4 "Scaffold 11-08-26", §5;
+// roadmap Phase 1 Stage 2). Two DELIBERATELY THROWAWAY dev-scaffold actions that
+// set the windowed-accrual placeholders at runtime on the live in-memory server —
+// so a test scenario can light the console's commitment bar and give a scripted
+// bot real targets BEFORE the real Licence entity exists. They only write existing
+// state the windowed engine already reads (Venture.syndicateCommitment, state.
+// windowN); NO engine/resolver/snapshot-schema change, NO fee, NO credits (breach
+// stays status-only). When the real Licence grant lands it becomes
+// syndicateCommitment's source and these setters retire.
+
+// setSyndicateCommitment: write ONE venture's per-tick committed quantity — the
+// venture field the resolver sums into the per-good aggregate target Q (§5). An
+// integer ≥ 0; 0 clears back to unlicensed. It does NOT set committedFromTick (so
+// windowFraction stays 1 and the deferred mid-window pro-rate tripwire stays green)
+// and moves no credits/fuel.
+function createSetSyndicateCommitmentAction({ guildId, ventureId, commitment }) {
+  if (guildId === undefined) throw new Error('createSetSyndicateCommitmentAction: guildId is required');
+  if (ventureId === undefined) throw new Error('createSetSyndicateCommitmentAction: ventureId is required');
+  if (commitment === undefined) throw new Error('createSetSyndicateCommitmentAction: commitment is required');
+  return { type: 'setSyndicateCommitment', guildId, ventureId, commitment };
+}
+
+// setWindowN: set the single engine-wide accrual window length `state.windowN`. The
+// codebase's FIRST state-scoped action — window length is engine-wide state, not a
+// guild's, so there is NO guildId. An integer ≥ 1, settable ONLY before the run
+// starts (setup-only knob, fixed before tick 0).
+function createSetWindowNAction({ windowN }) {
+  if (windowN === undefined) throw new Error('createSetWindowNAction: windowN is required');
+  return { type: 'setWindowN', windowN };
 }
 
 // --- Validation -------------------------------------------------------
@@ -325,6 +365,47 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'setSyndicateCommitment') {
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (typeof action.ventureId !== 'string' || action.ventureId.length === 0) {
+      return { valid: false, reason: 'ventureId must be a non-empty string' };
+    }
+    // The venture must exist AND belong to THIS guild — a commitment is the guild's
+    // promise on its own venture's output, so scan only this guild's ventures.
+    const venture = (guild.ventures || []).find((v) => v.id === action.ventureId);
+    if (!venture) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} has no venture with id ${JSON.stringify(action.ventureId)}` };
+    }
+    if (typeof action.commitment !== 'number' || !Number.isInteger(action.commitment) || action.commitment < 0) {
+      return { valid: false, reason: 'commitment must be a non-negative integer (§15.2)' };
+    }
+    // FAIL LOUD, do not accept a silent no-op: the resolver sums commitment over
+    // MINES only (§5 — `v.resourceType && v.syndicateCommitment`), so a non-zero
+    // commitment on a refinery/typeless venture would never contribute to any Q.
+    // Refuse it rather than store an inert number. commitment === 0 is always
+    // allowed (it clears to unlicensed, meaningful on any venture).
+    if (action.commitment > 0 && !venture.resourceType) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} has no resourceType — commitment is summed over mines only, so a non-zero commitment here would be silently inert` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'setWindowN') {
+    if (typeof action.windowN !== 'number' || !Number.isInteger(action.windowN) || action.windowN < 1) {
+      return { valid: false, reason: 'windowN must be an integer >= 1 (§15.2)' };
+    }
+    // Setup-only knob: the window length is fixed BEFORE the run. Once the galaxy
+    // has advanced (tick > 0) changing it would move the boundary cadence mid-run,
+    // so refuse it — no state change.
+    if (state.tick > 0) {
+      return { valid: false, reason: `windowN is a setup-only knob — state.tick is ${state.tick}, it can only be set before the run starts (tick 0)` };
+    }
+    return { valid: true };
+  }
+
   return { valid: false, reason: `unknown action type: ${action.type}` };
 }
 
@@ -423,6 +504,25 @@ function applyAction(state, action) {
     setEntry(guild, action.systemId, { goods: action.goods, throttles: action.throttles });
     return next;
   }
+  if (action.type === 'setSyndicateCommitment') {
+    // Write the venture's committed quantity — engine-owned state (§5/§15.4). Moves
+    // no credits/fuel. It DELIBERATELY does not set committedFromTick (leaving it
+    // absent keeps windowFraction == 1, the deferred mid-window pro-rate staying
+    // green) and does not stamp updatedAtTick — the sibling owned-state actions
+    // (establishVenture, setProductionProfile) don't stamp the entity they mutate,
+    // and §15.2 says match how the siblings handle it, don't invent a field.
+    const guild = findGuild(next, action.guildId);
+    const venture = guild.ventures.find((v) => v.id === action.ventureId);
+    venture.syndicateCommitment = action.commitment;
+    return next;
+  }
+  if (action.type === 'setWindowN') {
+    // Set the single engine-wide window length. Setup-only (validate refused it once
+    // tick > 0), so this only ever writes tick-0 state. No guild is resolved — this
+    // is the first state-scoped action.
+    next.windowN = action.windowN;
+    return next;
+  }
   // Unreachable if validateAction() was checked first, since every accepted
   // type is handled above — fail loudly rather than silently no-op if not.
   throw new Error(`applyAction: unhandled action type: ${action.type}`);
@@ -465,6 +565,8 @@ module.exports = {
   createFoundGuildAction,
   createEstablishVentureAction,
   createSetProductionProfileAction,
+  createSetSyndicateCommitmentAction,
+  createSetWindowNAction,
   validateAction,
   applyAction,
   intake,
