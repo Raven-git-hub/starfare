@@ -90,6 +90,26 @@ test('GET / serves the testbed UI (HTML)', async () => {
   assert.match(html, /class="review-badge"/);
 });
 
+test('GET /console serves the player-facing Production Console (HTML)', async () => {
+  const res = await fetch(base + '/console');
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type') || '', /text\/html/);
+  const html = await res.text();
+  // The Archive-styled console page (not the testbed, not the JSON probe).
+  assert.match(html, /System Production Console/);
+  // Its driver controls + the live-wired scaffolding are present (a client-render
+  // tripwire mirroring the GET / pin): tick, the resource bar, the Gate-1 arms, the
+  // reserve level control, the syndicate send control, and the commitment readout —
+  // all reading the schema-7 snapshot, computing no game number.
+  assert.match(html, /id="btnTick"/);
+  assert.match(html, /id="resbar"/);
+  assert.match(html, /class="prank"/);        // Gate-1 priority selects
+  assert.match(html, /class="rlevel"/);        // reserveLevel control
+  assert.match(html, /class="syn-mode"/);      // Syndicate send-mode selector (Slice B-ii)
+  assert.match(html, /commitmentReadout/);     // the windowed-accrual readout, from `window`
+  assert.match(html, /systemReport/);          // reads the snapshot production block
+});
+
 test('GET /starters lists the seed\'s startable home systems', async () => {
   const { status, body } = await req('GET', '/starters');
   assert.equal(status, 200);
