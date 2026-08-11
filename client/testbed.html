@@ -42,6 +42,17 @@
   button.warn:hover { background: rgba(224,82,90,0.20); }
   button.tick { font-weight: 700; }
 
+  /* --- auto-tick heartbeat control (server-side playback clock) --- */
+  .autotick { display: inline-flex; align-items: center; gap: 8px; margin-left: 8px; padding-left: 14px; border-left: 1px solid var(--line); }
+  .autotick .at-lbl { font-size: 10px; letter-spacing: 1px; color: var(--text-dim); }
+  .autotick input {
+    width: 62px; font-family: inherit; font-size: 12px; text-align: right;
+    background: #05070d; color: var(--text); border: 1px solid var(--line-bright); border-radius: 2px; padding: 6px 7px;
+  }
+  .autotick input:focus { outline: none; border-color: var(--accent); }
+  /* PLAYING flips the play button to the amber "fuel" hue — the running-clock cue. */
+  #btn-autotick.playing { background: rgba(232,185,58,0.14); border-color: var(--fuel); color: var(--fuel); font-weight: 700; }
+
   .forms { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
   @media (max-width: 820px) { .forms { grid-template-columns: 1fr; } }
   .form { border: 1px solid var(--line); border-radius: 2px; padding: 10px 12px; }
@@ -253,6 +264,12 @@
       <button id="btn-tick" class="tick" type="button">TICK &#9654;</button>
       <button id="btn-refresh" type="button">REFRESH</button>
       <button id="btn-reset" class="warn" type="button">RESET</button>
+      <span class="autotick">
+        <span class="at-lbl">AUTO-TICK every</span>
+        <input id="autotick-interval" value="1000" inputmode="numeric">
+        <span class="at-lbl">ms</span>
+        <button id="btn-autotick" type="button">PLAY &#9654;</button>
+      </span>
     </div>
 
     <div class="forms">
@@ -377,7 +394,102 @@ async function sendAction(action, verb) {
 
 document.getElementById('btn-tick').addEventListener('click', function () { refresh('POST', 'ticked', '/tick'); });
 document.getElementById('btn-refresh').addEventListener('click', function () { refresh('GET', 'refreshed'); });
-document.getElementById('btn-reset').addEventListener('click', function () { refresh('POST', 'reset', '/reset'); });
+document.getElementById('btn-reset').addEventListener('click', function () {
+  // Reset stops the SERVER heartbeat; stop our client poll loop too so the button
+  // and view fall back to manual at once (don't wait for the next health poll).
+  stopAutotickClient();
+  refresh('POST', 'reset', '/reset');
+});
+
+// --- auto-tick: the server heartbeat + a client watch loop -------------------
+// PLAY POSTs /autotick/start so the SERVER advances the galaxy on its own clock;
+// PAUSE POSTs /autotick/stop. Playback speed (the server interval) and refresh
+// speed are SEPARATE: while playing we poll GET /snapshot on a fixed ~1s cadence
+// and re-render through the EXISTING render() path — the client computes no game
+// number, it only re-fetches. We also poll GET /health so the button stays honest
+// and a server-side halt-on-trip surfaces (button flips to paused + amber error).
+var AUTOTICK_POLL_MS = 1000;    // client refresh cadence — independent of the server tick interval
+var autotickPollTimer = null;   // the client's setInterval handle (null = not polling)
+function autotickRunning() { return autotickPollTimer !== null; }
+
+// A poll re-render must not clobber a control the user is actively editing:
+// suspend the re-render while any input/select is focused (so a mid-run throttle
+// tweak isn't eaten). The focused control commits on blur/change as usual.
+function anyControlFocused() {
+  var a = document.activeElement;
+  return !!a && (a.tagName === 'INPUT' || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA');
+}
+
+function reflectAutotick() {
+  var btn = document.getElementById('btn-autotick');
+  if (autotickRunning()) { btn.innerHTML = 'PAUSE &#10073;&#10073;'; btn.classList.add('playing'); }
+  else { btn.innerHTML = 'PLAY &#9654;'; btn.classList.remove('playing'); }
+}
+
+// One client poll: check /health first (so the button stays honest and a halt
+// surfaces), then re-render from /snapshot unless a control is being edited.
+async function autotickPoll() {
+  try {
+    var h = await api('GET', '/health');
+    if (h.status === 200 && h.data && h.data.autotick && !h.data.autotick.running) {
+      // The server stopped the heartbeat under us — a halt-on-trip, or stopped
+      // from elsewhere. Reflect it and surface any recorded error in amber.
+      stopAutotickClient();
+      var le = h.data.autotick.lastError;
+      if (le) setStatus('auto-tick HALTED at tick ' + le.tick + ': ' + le.message, 'rejected');
+      return;
+    }
+  } catch (err) { /* transient — try again on the next poll */ }
+  if (anyControlFocused()) return;       // don't eat a keystroke mid-edit
+  await refresh('GET', null);            // re-render via the existing path; no status spam
+}
+
+function startAutotickClient() {
+  var intervalMs = parseInt(val('autotick-interval'), 10);
+  if (Number.isNaN(intervalMs) || intervalMs < 10) {
+    setStatus('auto-tick: interval must be an integer of at least 10 ms', 'error');
+    return;
+  }
+  api('POST', '/autotick/start', { intervalMs: intervalMs }).then(function (r) {
+    if (!r || r.status >= 400) { setStatus((r && r.data && r.data.error) || 'auto-tick start failed', 'error'); return; }
+    if (autotickPollTimer === null) autotickPollTimer = setInterval(autotickPoll, AUTOTICK_POLL_MS);
+    reflectAutotick();
+    setStatus('auto-tick PLAYING — server ticks every ' + intervalMs + ' ms; view refreshes ~' + AUTOTICK_POLL_MS + ' ms', 'ok');
+  }, function () { setStatus('auto-tick start failed (network)', 'error'); });
+}
+
+// Stop the CLIENT poll loop + reflect the button. Does NOT touch the server clock
+// (used both after a server pause and when the server halted on its own).
+function stopAutotickClient() {
+  if (autotickPollTimer !== null) { clearInterval(autotickPollTimer); autotickPollTimer = null; }
+  reflectAutotick();
+}
+
+// PAUSE: stop the server heartbeat, then the client loop.
+function pauseAutotick() {
+  api('POST', '/autotick/stop').then(function () {
+    stopAutotickClient();
+    setStatus('auto-tick PAUSED', 'info');
+  }, function () { stopAutotickClient(); setStatus('auto-tick stop failed (network) — client loop stopped', 'error'); });
+}
+
+document.getElementById('btn-autotick').addEventListener('click', function () {
+  if (autotickRunning()) pauseAutotick(); else startAutotickClient();
+});
+
+// On boot, adopt an already-running heartbeat (e.g. after a page reload while a
+// galaxy is playing) so the button stays honest and the view live-refreshes,
+// without re-POSTing start.
+async function syncAutotickOnBoot() {
+  try {
+    var h = await api('GET', '/health');
+    if (h.status === 200 && h.data && h.data.autotick && h.data.autotick.running) {
+      if (h.data.autotick.intervalMs != null) document.getElementById('autotick-interval').value = h.data.autotick.intervalMs;
+      if (autotickPollTimer === null) autotickPollTimer = setInterval(autotickPoll, AUTOTICK_POLL_MS);
+    }
+  } catch (err) { /* leave the button on PLAY; the operator can start it */ }
+  reflectAutotick();
+}
 
 function val(id) { return document.getElementById(id).value.trim(); }
 function intOr(id, fallback) { var n = parseInt(val(id), 10); return Number.isNaN(n) ? fallback : n; }
@@ -1374,6 +1486,7 @@ loadStarters();
 loadRecipes();
 loadGoods();
 refresh('GET', null);
+syncAutotickOnBoot();
 </script>
 </body>
 </html>

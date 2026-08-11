@@ -20,29 +20,41 @@
 // and returns the violation as a 500 so the tripwire is visible rather than
 // crashing the process.
 //
-// Manual tick by design: the galaxy advances ONLY when POST /tick is called.
-// Submitting an action (POST /action) applies it to state-as-it-stands but does
-// NOT tick — mirroring §15.7's real server, where actions drain continuously and
-// the tick advances separately. So you can add a guild, add its ventures, then
-// tick once and watch that batch produce.
+// Tick timing by design: submitting an action (POST /action) applies it to
+// state-as-it-stands but does NOT tick — mirroring §15.7's real server, where
+// actions drain continuously and the tick advances separately. So you can add a
+// guild, add its ventures, then advance and watch that batch produce. A tick
+// happens two ways, and BOTH go through the one shared `tickOnce()` so there is
+// structurally one tick path and "no new game logic" holds by construction:
+//   - MANUAL: POST /tick advances exactly one tick (the default drive).
+//   - AUTO (optional): a server-side heartbeat (POST /autotick/start) advances a
+//     tick every intervalMs, so a running galaxy is watchable without clicking.
+//     The interval is a PLAYBACK-SPEED knob, not a game/tuning number, and is
+//     unrelated to the (deferred) per-hour tick-duration mapping. The heartbeat
+//     has no HTTP caller to hand a 500, so if a tick throws it HALTS the timer
+//     and records the error rather than firing into a broken state forever
+//     (halt-on-trip); POST /reset also stops it before returning to zero-state.
 //
 // Endpoints (all JSON; permissive CORS for a local dev rig):
-//   GET  /            -> the testbed UI page (client/testbed.html)
-//   GET  /health      -> liveness JSON + a one-line summary
-//   GET  /snapshot    -> buildSnapshot(state) (the debug lens' data; schema 2)
-//   GET  /starters    -> the seed's starter-eligible systems (the home-system
-//                        picker's source; static, derived from the seed only)
-//   GET  /system/:id  -> one system's static layout: planets, each with its
-//                        resource nodes + settlement slots (seed-only; the UI
-//                        composes live occupancy from the snapshot on top)
-//   GET  /recipes     -> the refining recipe catalog (rules, not state; feeds
-//                        the establish-refinery picker)
-//   GET  /goods       -> the good vocabulary by tier (raw, processed); static
-//                        rules, buckets the galactic-supply display
-//   POST /tick        -> advance one tick (no actions); returns the new snapshot
-//   POST /action      -> intake ONE action object (no tick); returns
-//                        { accepted, reason, snapshot }
-//   POST /reset       -> back to the zero-state; returns the snapshot
+//   GET  /               -> the testbed UI page (client/testbed.html)
+//   GET  /console        -> the player-facing Production Console (client/console.html)
+//   GET  /health         -> liveness JSON + a one-line summary + autotick status
+//   GET  /snapshot       -> buildSnapshot(state) (the debug lens' data)
+//   GET  /starters       -> the seed's starter-eligible systems (the home-system
+//                           picker's source; static, derived from the seed only)
+//   GET  /system/:id     -> one system's static layout: planets, each with its
+//                           resource nodes + settlement slots (seed-only; the UI
+//                           composes live occupancy from the snapshot on top)
+//   GET  /recipes        -> the refining recipe catalog (rules, not state; feeds
+//                           the establish-refinery picker)
+//   GET  /goods          -> the good vocabulary by tier (raw, processed); static
+//                           rules, buckets the galactic-supply display
+//   POST /tick           -> advance one tick (no actions); returns the new snapshot
+//   POST /autotick/start -> { intervalMs }: start/replace the heartbeat; returns status
+//   POST /autotick/stop  -> stop the heartbeat (idempotent); returns status
+//   POST /action         -> intake ONE action object (no tick); returns
+//                           { accepted, reason, snapshot }
+//   POST /reset          -> stop the heartbeat, back to the zero-state; snapshot
 //
 // Run:  node sim/server.js   (listens on $PORT, default 7331 — the galaxy seed)
 
@@ -79,6 +91,86 @@ const CONSOLE_HTML = join(__dirname, '..', 'client', 'console.html');
 let liveState = createZeroState();
 function getState() { return liveState; }
 function setState(s) { liveState = s; }
+
+// tickOnce() — THE one tick path. Both POST /tick and the heartbeat call this,
+// so the server has structurally a single "advance the galaxy one turn" step and
+// carries no game logic of its own: it is exactly `advance(getState(), [])`
+// (no actions = a pure economy tick) piped back through setState. On an invariant
+// violation `advance` throws BEFORE returning, so setState is never reached and
+// the live state is left on its last good value. It does NOT catch — each caller
+// owns its failure mode (POST /tick → a 500; the heartbeat → halt-on-trip).
+function tickOnce() {
+  const { state: next } = advance(getState(), []);
+  setState(next);
+}
+
+// --- the optional auto-tick heartbeat (server state, NOT game state) --------
+// A dev-rig playback clock: when running, it fires tickOnce() every intervalMs so
+// a galaxy advances on its own and is watchable. This is SERVER state — it stays
+// OUT of the snapshot (which is pure game state, schema unchanged) and is exposed
+// only via GET /health. The three fields below are the whole of it.
+
+// DEV-RIG PLUMBING GUARD, not a game/tuning number: a floor on the heartbeat
+// interval so a fat-fingered tiny value can't spin the process into a busy loop.
+// It bounds playback speed only; it is unrelated to any tick-duration constant
+// and does NOT belong in docs/phase-1-tuning.md.
+const AUTOTICK_MIN_INTERVAL_MS = 10;
+
+let autotickTimer = null;        // the setInterval handle, or null when stopped
+let autotickIntervalMs = null;   // the interval it is (was) running at, or null
+let autotickLastError = null;    // { message, tick } of the last halt-on-trip, or null
+
+// The status surfaced on GET /health and returned by the autotick endpoints.
+function getAutotickStatus() {
+  return {
+    running: autotickTimer !== null,
+    intervalMs: autotickIntervalMs,
+    lastError: autotickLastError,
+  };
+}
+
+// Stop the heartbeat. Idempotent (stop-when-stopped is a no-op) and used by the
+// stop endpoint, by reset, and by halt-on-trip. Leaves lastError untouched so a
+// halt's cause survives for the operator to read; a fresh start clears it.
+function stopAutotick() {
+  if (autotickTimer !== null) {
+    clearInterval(autotickTimer);
+    autotickTimer = null;
+  }
+  autotickIntervalMs = null;
+}
+
+// One heartbeat fire: tick, and HALT-ON-TRIP if it throws. There is no HTTP
+// caller here to return a 500 to, so we must not keep firing into a broken state
+// every interval. `advance` threw before setState (tickOnce contract), so the
+// last good state is still live — exactly the POST /tick contract. We stop the
+// timer, record the error and the (last-good) tick it is now stuck on, and log it.
+function autotickFire() {
+  try {
+    tickOnce();
+  } catch (err) {
+    const tickStuckOn = getState().tick;
+    stopAutotick();
+    autotickLastError = { message: String((err && err.message) || err), tick: tickStuckOn };
+    console.error(`autotick HALTED on trip (stuck at tick ${tickStuckOn}): ${autotickLastError.message}`);
+  }
+}
+
+// Start (or replace) the heartbeat at intervalMs. Replacing lets you change speed
+// live: an already-running timer is cleared first, so there is never more than one.
+// The timer is unref()'d so it can never by itself wedge the process from exiting.
+// Assumes intervalMs was validated by the caller (a positive int >= the floor).
+function startAutotick(intervalMs) {
+  stopAutotick();                 // replace any running timer (change speed live)
+  autotickLastError = null;       // a fresh start is a clean slate
+  autotickIntervalMs = intervalMs;
+  autotickTimer = setInterval(autotickFire, intervalMs);
+  autotickTimer.unref();          // never keep the process alive on the heartbeat alone
+}
+
+// Test-only introspection: the raw timer handle (or null), so a test can assert
+// the timer ends stopped and is unref'd (Timeout#hasRef()). Not used at runtime.
+function _getAutotickTimer() { return autotickTimer; }
 
 // --- tiny HTTP helpers ------------------------------------------------------
 
@@ -150,9 +242,11 @@ async function handleRequest(req, res) {
     sendJson(res, 200, {
       ok: true,
       service: 'starfare-testbed',
-      note: 'dev rig — in-memory, ephemeral, manual tick. NOT the Phase-2 server.',
+      note: 'dev rig — in-memory, ephemeral, optional auto-tick. NOT the Phase-2 server.',
       tick: s.tick,
       guilds: s.guilds.length,
+      // SERVER state, not game state — deliberately here and NOT in the snapshot.
+      autotick: getAutotickStatus(),
     });
     return;
   }
@@ -215,19 +309,53 @@ async function handleRequest(req, res) {
 
   if (method === 'POST' && path === '/tick') {
     try {
-      // advance with no actions = a pure tick (intake nothing, run the economy
-      // step, assert). On an invariant violation `advance` throws before
-      // returning, so setState is never reached and the live state is untouched.
-      const { state: next } = advance(getState(), []);
-      setState(next);
-      sendJson(res, 200, buildSnapshot(next));
+      // The SAME shared tick path the heartbeat uses (tickOnce = advance-no-actions
+      // → setState). On an invariant violation `advance` throws before setState, so
+      // the live state is untouched and we surface the violation as a 500.
+      tickOnce();
+      sendJson(res, 200, buildSnapshot(getState()));
     } catch (err) {
       sendJson(res, 500, { error: 'error on tick (invariant violation or engine throw)', detail: String(err && err.message || err) });
     }
     return;
   }
 
+  // Start (or replace) the auto-tick heartbeat. Body: { intervalMs }. intervalMs
+  // must be a positive integer at or above the dev-rig busy-loop floor; anything
+  // else is a 400 (a plumbing guard, not a game rule). Start-while-running clears
+  // and replaces the timer, so you can change playback speed live.
+  if (method === 'POST' && path === '/autotick/start') {
+    let body;
+    try {
+      const raw = await readBody(req);
+      body = JSON.parse(raw || '{}');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"intervalMs":1000}' });
+      return;
+    }
+    const intervalMs = body && body.intervalMs;
+    if (!Number.isInteger(intervalMs) || intervalMs < AUTOTICK_MIN_INTERVAL_MS) {
+      sendJson(res, 400, { error: `intervalMs must be an integer >= ${AUTOTICK_MIN_INTERVAL_MS} (ms)` });
+      return;
+    }
+    startAutotick(intervalMs);
+    sendJson(res, 200, { autotick: getAutotickStatus() });
+    return;
+  }
+
+  // Stop the heartbeat. Idempotent — stop-when-stopped is a 200 no-op.
+  if (method === 'POST' && path === '/autotick/stop') {
+    stopAutotick();
+    sendJson(res, 200, { autotick: getAutotickStatus() });
+    return;
+  }
+
   if (method === 'POST' && path === '/reset') {
+    // Stop the clock BEFORE zeroing the galaxy, so the heartbeat isn't firing
+    // while the operator re-deploys (reset → deploy → set windowN + commitments
+    // at tick 0 → then start). A fresh galaxy also clears a prior halt's error.
+    stopAutotick();
+    autotickLastError = null;
     setState(createZeroState());
     sendJson(res, 200, buildSnapshot(getState()));
     return;
@@ -277,7 +405,10 @@ function makeServer() {
   });
 }
 
-module.exports = { makeServer, getState, setState };
+module.exports = {
+  makeServer, getState, setState,
+  tickOnce, startAutotick, stopAutotick, getAutotickStatus, _getAutotickTimer,
+};
 
 // --- CLI --------------------------------------------------------------------
 if (require.main === module) {
@@ -287,6 +418,7 @@ if (require.main === module) {
     console.log(`starfare testbed listening on http://0.0.0.0:${port}`);
     console.log(`  open the UI at http://<host>:${port}/  (GET /health for JSON liveness)`);
     console.log('  API: GET /snapshot   POST /tick   POST /action   POST /reset');
-    console.log('  dev rig: in-memory, ephemeral, manual tick — NOT the Phase-2 server');
+    console.log('  auto-tick: POST /autotick/start {intervalMs}   POST /autotick/stop   (status on GET /health)');
+    console.log('  dev rig: in-memory, ephemeral, optional auto-tick — NOT the Phase-2 server');
   });
 }

@@ -45,6 +45,8 @@
   .ctrls button, .ctrls select{font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:6px 12px; cursor:pointer; transition:.12s ease}
   .ctrls button:hover, .ctrls select:hover{border-color:var(--amber); color:var(--amber)}
   .ctrls button.tick{border-color:var(--amber-dim); color:var(--amber)}
+  /* LIVE view toggle: amber-lit while the client is re-reading the galaxy. */
+  .ctrls button#btnLive.on{border-color:var(--green); color:var(--green)}
   .sysbadge{font-family:var(--mono); font-size:11px; color:var(--ink2); border:1px solid var(--line); border-radius:6px; padding:6px 12px; background:var(--panel)}
   .sysbadge b{color:var(--ink); font-weight:500}
   .status{font-family:var(--mono); font-size:11px; margin:0 0 14px; min-height:16px; color:var(--ink3)}
@@ -176,6 +178,7 @@
     <select id="guildSel" title="managed guild"></select>
     <span class="sysbadge">SYSTEM <b id="sysName">—</b></span>
     <button class="tick" id="btnTick">Tick ▸</button>
+    <button id="btnLive" title="Live view — the client re-reads the galaxy ~1s. Pausing freezes YOUR screen only; the galaxy keeps turning on the server.">View: —</button>
     <button id="btnRefresh">Refresh</button>
     <button id="btnReset">Reset</button>
   </div>
@@ -535,6 +538,40 @@ function consumersCol(good, rg, consumers, report){
 document.getElementById('btnTick').addEventListener('click', function(){ refresh('POST', 'ticked', '/tick'); });
 document.getElementById('btnRefresh').addEventListener('click', function(){ refresh('GET', 'refreshed'); });
 document.getElementById('btnReset').addEventListener('click', function(){ STATE.good = null; refresh('POST', 'reset', '/reset'); });
+
+// ---- LIVE / PAUSE-VIEW: a CLIENT-SIDE refresh toggle, nothing more ----------
+// The console gets NO /autotick control: a player cannot pause a persistent
+// real-time world. This toggle only starts/stops the client's own ~1s /snapshot
+// poll+render (the SAME cadence the testbed watch loop uses). Pausing freezes the
+// SCREEN, not the galaxy — the server keeps ticking; you have just stopped
+// re-drawing. It computes no game number: each poll re-fetches and re-renders.
+var LIVE_POLL_MS = 1000;
+var livePollTimer = null;
+function liveRunning(){ return livePollTimer !== null; }
+function anyControlFocused(){
+  var a = document.activeElement;
+  return !!a && (a.tagName === 'INPUT' || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA');
+}
+function reflectLive(){
+  var b = document.getElementById('btnLive');
+  b.textContent = liveRunning() ? 'View: LIVE' : 'View: PAUSED';
+  b.classList.toggle('on', liveRunning());
+}
+async function livePoll(){
+  if (anyControlFocused()) return;   // don't clobber a control being edited mid-run
+  await refresh('GET', null);         // re-render via the existing path; no status spam
+}
+function startLive(){
+  if (livePollTimer === null) livePollTimer = setInterval(livePoll, LIVE_POLL_MS);
+  reflectLive();
+  setStatus('view LIVE — re-reading the galaxy ~' + LIVE_POLL_MS + ' ms (it turns on the server clock)', 'ok');
+}
+function stopLive(){
+  if (livePollTimer !== null){ clearInterval(livePollTimer); livePollTimer = null; }
+  reflectLive();
+  setStatus('view PAUSED — your screen is frozen; the galaxy keeps turning on the server', '');
+}
+document.getElementById('btnLive').addEventListener('click', function(){ if (liveRunning()) stopLive(); else startLive(); });
 document.getElementById('guildSel').addEventListener('change', function(e){ STATE.guildId = e.target.value; STATE.sysId = null; STATE.good = null; if (STATE.snap) render(STATE.snap); });
 
 document.getElementById('tiers').addEventListener('click', function(e){
@@ -619,7 +656,11 @@ document.getElementById('stage').addEventListener('change', function(e){
     recs.forEach(function(r){ STATE.recipeOut[r.id] = r.output.good; });
   } catch (e) {}
   await refresh('GET', null);
-  setStatus('live — press TICK to advance the galaxy (manual tick, no polling)', 'ok');
+  // Default to LIVE: a player-facing console watches a real-time world, so it
+  // re-reads on the ~1s cadence out of the box. Pause it to freeze your screen
+  // (the galaxy keeps turning); press TICK for a manual step when nothing is auto-
+  // ticking. startLive() sets the status line.
+  startLive();
 })();
 </script>
 </body>

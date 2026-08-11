@@ -93,6 +93,10 @@ test('GET / serves the testbed UI (HTML)', async () => {
   // engine-wide window-length input (setWindowN) — are present in the served page.
   assert.match(html, /class="syn-commit"/);
   assert.match(html, /class="win-n"/);
+  // Auto-tick watch UI (Phase 1 Stage 2): the play/pause control and the interval
+  // input drive POST /autotick/start|stop and a client poll loop.
+  assert.match(html, /id="btn-autotick"/);
+  assert.match(html, /id="autotick-interval"/);
 });
 
 test('GET /console serves the player-facing Production Console (HTML)', async () => {
@@ -113,6 +117,10 @@ test('GET /console serves the player-facing Production Console (HTML)', async ()
   assert.match(html, /class="syn-mode"/);      // Syndicate send-mode selector (Slice B-ii)
   assert.match(html, /commitmentReadout/);     // the windowed-accrual readout, from `window`
   assert.match(html, /systemReport/);          // reads the snapshot production block
+  // Auto-tick watch UI (Phase 1 Stage 2): the console's LIVE / PAUSE-VIEW toggle —
+  // a client-side refresh freeze only (no /autotick control: a player cannot pause
+  // a persistent real-time world).
+  assert.match(html, /id="btnLive"/);
 });
 
 test('GET /starters lists the seed\'s startable home systems', async () => {
@@ -292,4 +300,105 @@ test('POST /reset returns to the zero-state', async () => {
   assert.equal(body.tick, 0);
   assert.equal(body.guilds.length, 0);
   assert.equal(body.claims.length, 10);
+});
+
+// --- auto-tick heartbeat (Phase 1 Stage 2) ---------------------------------
+// The heartbeat is a real timer, so these tests let a little wall-clock pass.
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Always stop the heartbeat after a heartbeat test so it can't leak into the
+// next one (the server holds one module-level timer). reset() also stops it.
+async function stopAuto() { await req('POST', '/autotick/stop'); }
+
+test('GET /health carries the auto-tick status', async () => {
+  await reset();
+  const { body } = await req('GET', '/health');
+  assert.ok(body.autotick, 'health carries an autotick block');
+  assert.equal(body.autotick.running, false);
+  assert.equal(body.autotick.lastError, null);
+  // It is SERVER state, not game state — it must NOT leak into the snapshot.
+  const snap = await req('GET', '/snapshot');
+  assert.equal(snap.body.autotick, undefined, 'snapshot stays pure game state');
+});
+
+test('POST /autotick/start advances the tick with NO manual /tick', async () => {
+  await reset();
+  await found();
+  await mine();
+  const before = (await req('GET', '/snapshot')).body.tick;
+  assert.equal(before, 0);
+
+  const started = await req('POST', '/autotick/start', { intervalMs: 10 });
+  assert.equal(started.status, 200);
+  assert.equal(started.body.autotick.running, true);
+  assert.equal(started.body.autotick.intervalMs, 10);
+
+  await sleep(80);
+  await stopAuto();
+
+  // The galaxy moved on its own — no POST /tick was sent — and production minted.
+  const snap = (await req('GET', '/snapshot')).body;
+  assert.ok(snap.tick >= 1, `expected the heartbeat to advance the tick, got ${snap.tick}`);
+  assert.equal(snap.guilds[0].stockpiles.titanium, snap.tick * 5, 'titanium tracks the auto-advanced tick');
+});
+
+test('POST /autotick/stop halts the heartbeat (the tick stops moving)', async () => {
+  await reset();
+  await req('POST', '/autotick/start', { intervalMs: 10 });
+  await sleep(50);
+  const stopped = await req('POST', '/autotick/stop');
+  assert.equal(stopped.status, 200);
+  assert.equal(stopped.body.autotick.running, false);
+
+  const t1 = (await req('GET', '/snapshot')).body.tick;
+  await sleep(50);
+  const t2 = (await req('GET', '/snapshot')).body.tick;
+  assert.equal(t1, t2, 'the tick must not advance after stop');
+});
+
+test('POST /autotick/stop is idempotent (stop-when-stopped is a 200 no-op)', async () => {
+  await reset();
+  const r = await req('POST', '/autotick/stop');
+  assert.equal(r.status, 200);
+  assert.equal(r.body.autotick.running, false);
+});
+
+test('start-while-running replaces the interval (change speed live)', async () => {
+  await reset();
+  await req('POST', '/autotick/start', { intervalMs: 10 });
+  const replaced = await req('POST', '/autotick/start', { intervalMs: 40 });
+  assert.equal(replaced.status, 200);
+  assert.equal(replaced.body.autotick.running, true);
+  assert.equal(replaced.body.autotick.intervalMs, 40, 'the new interval replaced the old one');
+  const health = await req('GET', '/health');
+  assert.equal(health.body.autotick.intervalMs, 40);
+  await stopAuto();
+});
+
+test('an invalid intervalMs is rejected (400) and does not start a heartbeat', async () => {
+  await reset();
+  for (const bad of [0, -5, 5 /* below the 10ms floor */, 3.5, 'fast', null]) {
+    const r = await req('POST', '/autotick/start', { intervalMs: bad });
+    assert.equal(r.status, 400, `intervalMs ${JSON.stringify(bad)} must be rejected`);
+  }
+  // A missing body field is a 400 too.
+  const none = await req('POST', '/autotick/start', {});
+  assert.equal(none.status, 400);
+  // None of the rejects started anything.
+  const health = await req('GET', '/health');
+  assert.equal(health.body.autotick.running, false);
+});
+
+test('POST /reset stops a running heartbeat', async () => {
+  await reset();
+  await req('POST', '/autotick/start', { intervalMs: 10 });
+  assert.equal((await req('GET', '/health')).body.autotick.running, true);
+  await reset();
+  const health = await req('GET', '/health');
+  assert.equal(health.body.autotick.running, false, 'reset must stop the clock before zeroing');
+  // Belt-and-braces: the tick genuinely stops moving after the reset.
+  const t1 = (await req('GET', '/snapshot')).body.tick;
+  await sleep(40);
+  const t2 = (await req('GET', '/snapshot')).body.tick;
+  assert.equal(t1, t2);
 });
