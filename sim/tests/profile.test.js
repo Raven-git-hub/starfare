@@ -10,7 +10,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { createGuild } = require('../state.js');
-const { getGoodPolicy, getThrottlePct, setEntry } = require('../profile.js');
+const { getGoodPolicy, getThrottlePct, setEntry, storedPolicyGoods } = require('../profile.js');
 const { advance } = require('../run.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
 const {
@@ -75,6 +75,47 @@ test('a second setEntry merges field-by-field, not wholesale replace', () => {
     downstreamPct: 60,                               // added by the second patch
     reserveLevel: 0,
   });
+});
+
+// --- the tri-state clear-path: a field sent null reverts the good to its default ----
+
+test('setEntry clears a field sent null: the key is deleted and the good reverts to default', () => {
+  const g = createGuild({ id: 'g1', credits: 0, fuelHoard: 0 });
+  setEntry(g, 'sys_0002', { goods: { titanium: { syndicate: { mode: 'absolute', value: 5 } } } });
+  assert.deepEqual(getGoodPolicy(g, 'sys_0002', 'titanium').syndicate, { mode: 'absolute', value: 5 });
+  // Clear it: the syndicate KEY is gone; getGoodPolicy reports the paced default (absent).
+  setEntry(g, 'sys_0002', { goods: { titanium: { syndicate: null } } });
+  assert.equal('syndicate' in getGoodPolicy(g, 'sys_0002', 'titanium'), false, 'syndicate reverts to the paced default (absent)');
+  // A good whose only field was cleared holds no policy at all — truly sparse again.
+  assert.deepEqual(storedPolicyGoods(g, 'sys_0002'), [], 'the emptied good entry is removed, not left as {}');
+});
+
+test('setEntry clear leaves the good\'s OTHER fields intact', () => {
+  const g = createGuild({ id: 'g1', credits: 0, fuelHoard: 0 });
+  setEntry(g, 'sys_0002', { goods: { titanium: { order: ['downstream', 'stockpile', 'syndicate'], reserveLevel: 7, syndicate: { mode: 'percent', value: 40 } } } });
+  setEntry(g, 'sys_0002', { goods: { titanium: { syndicate: null } } });
+  const pol = getGoodPolicy(g, 'sys_0002', 'titanium');
+  assert.deepEqual(pol.order, ['downstream', 'stockpile', 'syndicate'], 'order untouched by the syndicate clear');
+  assert.equal(pol.reserveLevel, 7, 'reserveLevel untouched');
+  assert.equal('syndicate' in pol, false, 'only syndicate was cleared');
+  assert.deepEqual(storedPolicyGoods(g, 'sys_0002'), ['titanium'], 'the good still holds its other policy');
+});
+
+test('setEntry clearing a never-set field is a harmless no-op (still absent)', () => {
+  const g = createGuild({ id: 'g1', credits: 0, fuelHoard: 0 });
+  setEntry(g, 'sys_0002', { goods: { titanium: { syndicate: null } } });
+  assert.equal('syndicate' in getGoodPolicy(g, 'sys_0002', 'titanium'), false);
+  assert.deepEqual(storedPolicyGoods(g, 'sys_0002'), [], 'clearing nothing leaves nothing');
+});
+
+test('setEntry clear generalises to the other per-good fields (order/downstreamPct/reserveLevel)', () => {
+  const g = createGuild({ id: 'g1', credits: 0, fuelHoard: 0 });
+  setEntry(g, 'sys_0002', { goods: { titanium: { order: ['stockpile', 'downstream', 'syndicate'], downstreamPct: 30, reserveLevel: 9 } } });
+  setEntry(g, 'sys_0002', { goods: { titanium: { downstreamPct: null, reserveLevel: null } } });
+  const pol = getGoodPolicy(g, 'sys_0002', 'titanium');
+  assert.deepEqual(pol.order, ['stockpile', 'downstream', 'syndicate'], 'order survives (not cleared)');
+  assert.equal(pol.downstreamPct, 100, 'downstreamPct reverted to its default');
+  assert.equal(pol.reserveLevel, 0, 'reserveLevel reverted to its default');
 });
 
 test('getGoodPolicy returns a fresh object — a caller cannot alias into state', () => {

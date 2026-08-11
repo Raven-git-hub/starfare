@@ -1242,22 +1242,20 @@ document.getElementById('go-body').addEventListener('change', function (e) {
   // §5 Slice B: the Syndicate send MODE selector. Absolute/Percent POST a
   // { syndicate: { mode, value } } patch (value taken from the sibling input if it is
   // already showing, else 0 — the player then dials it). Paced means "no stored
-  // control", but setProductionProfile only MERGES and its validation rejects a null/
-  // empty syndicate — there is no clear-path in the engine (Slice B-i left none), and
-  // this slice must not touch the engine. So re-selecting Paced after a set mode is
-  // surfaced as a flagged deferral rather than a silent no-op; the re-render snaps the
-  // selector back to engine truth. (A tiny clear-path is a fair follow-up engine slice.)
+  // control": it sends `syndicate: null`, the engine's clear-path (setProductionProfile
+  // deletes the key), so the good reverts to the paced required-rate default. The
+  // browser still computes no game number — it just sends the clear.
   if (t.classList.contains('syn-mode')) {
     var mode = t.value;
+    var gm = {};
     if (mode === 'paced') {
-      setStatus('Reverting to Paced needs an engine clear-path (deferred) — the stored send stays. Set Absolute/Percent to override the pace.', 'error');
-      renderGuildOverlay(LAST_SNAP);
-      return;
+      gm[t.dataset.good] = { syndicate: null }; // clear back to the paced default
+    } else {
+      var vEl = t.closest('.fork-amt') ? t.closest('.fork-amt').querySelector('.syn-value') : null;
+      var v0 = vEl ? fieldInt(vEl) : 0;
+      if (v0 === null) v0 = 0;
+      gm[t.dataset.good] = { syndicate: { mode: mode, value: v0 } };
     }
-    var vEl = t.closest('.fork-amt') ? t.closest('.fork-amt').querySelector('.syn-value') : null;
-    var v0 = vEl ? fieldInt(vEl) : 0;
-    if (v0 === null) v0 = 0;
-    var gm = {}; gm[t.dataset.good] = { syndicate: { mode: mode, value: v0 } };
     sendProfile(t.dataset.sys, { goods: gm });
     return;
   }

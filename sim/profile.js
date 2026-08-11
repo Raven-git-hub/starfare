@@ -101,6 +101,19 @@ function storedPolicyGoods(guild, systemId) {
 // the setter the setProductionProfile action applies through; well-formedness of
 // the patch (§15.4's field rules) is the action's job, not this file's — same
 // division of labour as sim/stock.js's addStock (this assembles, invariants judge).
+// Apply one TRI-STATE field of a good's policy onto the merged object (§15.4):
+//   val === undefined → leave untouched (a partial patch doesn't disturb other fields)
+//   val === null      → CLEAR: delete the key so the good reverts to that field's default
+//   otherwise         → set/overwrite (copied where the value is a reference type)
+// The clear-path (null) is what lets a control return to its default while keeping the
+// profile SPARSE — a cleared field is absent, and the resolver already reads absent as
+// the default (e.g. an absent `syndicate` is the paced required-rate).
+function applyField(merged, key, val, copy) {
+  if (val === undefined) return;
+  if (val === null) { delete merged[key]; return; }
+  merged[key] = copy ? copy(val) : val;
+}
+
 function setEntry(guild, systemId, patch) {
   if (!guild.productionProfile) guild.productionProfile = {};
   if (!guild.productionProfile[systemId]) guild.productionProfile[systemId] = {};
@@ -109,13 +122,16 @@ function setEntry(guild, systemId, patch) {
   if (patch && patch.goods) {
     if (!entry.goods) entry.goods = {};
     for (const [good, policy] of Object.entries(patch.goods)) {
-      const current = entry.goods[good] || {};
-      const merged = { ...current };
-      if (policy.order !== undefined) merged.order = [...policy.order];
-      if (policy.downstreamPct !== undefined) merged.downstreamPct = policy.downstreamPct;
-      if (policy.reserveLevel !== undefined) merged.reserveLevel = policy.reserveLevel;
-      if (policy.syndicate !== undefined) merged.syndicate = { ...policy.syndicate };
-      entry.goods[good] = merged;
+      const merged = { ...(entry.goods[good] || {}) };
+      applyField(merged, 'order', policy.order, (v) => [...v]);
+      applyField(merged, 'downstreamPct', policy.downstreamPct);
+      applyField(merged, 'reserveLevel', policy.reserveLevel);
+      applyField(merged, 'syndicate', policy.syndicate, (v) => ({ ...v }));
+      // A good whose every field has been cleared holds no policy — so DELETE the
+      // entry entirely rather than leave an empty `{}`, keeping the profile truly
+      // sparse (storedPolicyGoods / the review flag see it as unset, not "set to {}").
+      if (Object.keys(merged).length === 0) delete entry.goods[good];
+      else entry.goods[good] = merged;
     }
   }
 

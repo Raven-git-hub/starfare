@@ -270,26 +270,29 @@ function validateAction(state, action) {
         if (typeof policy !== 'object' || policy === null || Array.isArray(policy)) {
           return { valid: false, reason: `policy for good ${JSON.stringify(good)} must be an object` };
         }
-        // Each field is validated only WHERE PRESENT — a partial patch (e.g. just
-        // downstreamPct) is legal and merges over the good's stored entry (§15.4).
-        if (policy.order !== undefined && !isValidOrder(policy.order)) {
+        // Each field is TRI-STATE (§15.4 sparse model): ABSENT (undefined) = leave
+        // untouched; a valid VALUE = set; **null = CLEAR** — delete the stored key so
+        // the good reverts to that field's default (e.g. the Syndicate send back to the
+        // paced required-rate). So a field is validated only where PRESENT and NOT null;
+        // null is always accepted as the clear-to-default instruction (setEntry deletes).
+        if (policy.order !== undefined && policy.order !== null && !isValidOrder(policy.order)) {
           return { valid: false, reason: `order for good ${JSON.stringify(good)} must be a permutation of ["syndicate","downstream","stockpile"]` };
         }
-        if (policy.downstreamPct !== undefined && !isIntInRange(policy.downstreamPct, 0, 100)) {
+        if (policy.downstreamPct !== undefined && policy.downstreamPct !== null && !isIntInRange(policy.downstreamPct, 0, 100)) {
           return { valid: false, reason: `downstreamPct for good ${JSON.stringify(good)} must be an integer 0..100 (§15.2)` };
         }
         // reserveLevel (§5 one-pot distribution, Slice A): the quantity the Reserve
         // claimant holds back at its priority slot — an integer ≥ 0. Replaces the
         // old stockpile {mode,value} fork amount and the separate reserveFloor.
-        if (policy.reserveLevel !== undefined
+        if (policy.reserveLevel !== undefined && policy.reserveLevel !== null
             && (typeof policy.reserveLevel !== 'number' || !Number.isInteger(policy.reserveLevel) || policy.reserveLevel < 0)) {
           return { valid: false, reason: `reserveLevel for good ${JSON.stringify(good)} must be a non-negative integer (§15.2)` };
         }
         // syndicate (§5 Slice B): the Syndicate fork's per-tick send control. ABSENT =
-        // the paced required-rate default. When present it is { mode, value } with
-        // mode ∈ {absolute, percent} and value an integer ≥ 0 (percent = share of this
-        // tick's fresh; percent > 100 is legal — it just means "send all fresh, ASAP").
-        if (policy.syndicate !== undefined) {
+        // the paced required-rate default; null CLEARS back to it. When present it is
+        // { mode, value } with mode ∈ {absolute, percent} and value an integer ≥ 0
+        // (percent = share of this tick's fresh; percent > 100 is legal — "send all fresh").
+        if (policy.syndicate !== undefined && policy.syndicate !== null) {
           const syn = policy.syndicate;
           if (typeof syn !== 'object' || syn === null || Array.isArray(syn)) {
             return { valid: false, reason: `syndicate for good ${JSON.stringify(good)} must be an object { mode, value }` };
