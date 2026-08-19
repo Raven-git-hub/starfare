@@ -155,6 +155,7 @@ Rulings needed from the project owner. "Accept proposal" is a valid answer to an
 
 **Goal:** close the tab, come back an hour later, something happened.
 **Entry:** Phase 1 done (the loop being pure and DOM-free is what makes this phase a port, not a rewrite).
+**Persistence/runtime ruling:** in-memory state + per-tick snapshot + action journal (B+); see `docs/persistence-model.md`.
 
 - [ ] Node server hosting the existing `sim/` loop unmodified
 - [ ] Real heartbeat (working assumption: one minute — confirm #5), with the tick as a *checking* clock: due-tick items resolve on their own deadlines
