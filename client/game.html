@@ -1,0 +1,1768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Syndicate // Galaxy Seed Viewer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #030408;
+    --line-bright: #2c3a52;
+    --text: #c7d3e6;
+    --text-dim: #5c6b85;
+    --system: #6fb7e8;
+    --outpost: #e8b93a;
+    --citadel: #f2ce5d;
+    --accent: #43d9c8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', monospace; overflow: hidden; }
+
+  #app { position: relative; width: 100vw; height: 100vh; }
+  canvas { position: absolute; top: 0; left: 0; display: block; cursor: grab; }
+  canvas.dragging { cursor: grabbing; }
+
+  .hud { position: absolute; pointer-events: none; color: var(--text); }
+
+  #topbar {
+    top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 22px; background: linear-gradient(to bottom, rgba(3,4,8,0.92), rgba(3,4,8,0));
+  }
+  #topbar .title { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 20px; letter-spacing: 3px; color: var(--accent); text-shadow: 0 0 12px rgba(67,217,200,0.35); }
+  #topbar .subtitle { font-size: 10px; letter-spacing: 2px; color: var(--text-dim); margin-top: 2px; }
+  #meta { text-align: right; font-size: 11px; color: var(--text-dim); line-height: 1.6; }
+  #meta span { color: var(--text); }
+
+  #hint {
+    position: absolute; top: 68px; left: 22px; font-size: 10px; color: var(--text-dim);
+    letter-spacing: 1px; background: rgba(8,10,16,0.7); border-left: 2px solid var(--line-bright); padding: 6px 10px;
+    line-height: 1.7; display: none;
+  }
+
+  #loadpanel {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    background: rgba(8,10,16,0.95); border: 1px solid var(--line-bright); border-radius: 3px;
+    padding: 28px 34px; pointer-events: auto; text-align: center; min-width: 340px;
+  }
+  #loadpanel .title { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: 2px; color: var(--accent); margin-bottom: 6px; }
+  #loadpanel .sub { font-size: 11px; color: var(--text-dim); margin-bottom: 18px; line-height: 1.6; }
+  #filebtn {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1.5px; background: rgba(67,217,200,0.12);
+    border: 1px solid var(--accent); color: var(--accent); padding: 11px 20px; border-radius: 2px; cursor: pointer;
+  }
+  #filebtn:hover { background: rgba(67,217,200,0.22); }
+  #fileinput { display: none; }
+  #loaderror { color: #e0525a; font-size: 11px; margin-top: 12px; display: none; }
+
+  #legend {
+    position: absolute; left: 22px; bottom: 22px; background: rgba(8,10,16,0.85);
+    border: 1px solid var(--line-bright); border-radius: 2px; padding: 14px 16px; pointer-events: auto; min-width: 190px;
+    display: none;
+  }
+  #legend .heading { font-family: 'Rajdhani', sans-serif; font-size: 11px; letter-spacing: 2px; color: var(--text-dim); margin-bottom: 10px; border-bottom: 1px solid #1c2637; padding-bottom: 6px; }
+  .legend-row { display: flex; align-items: center; gap: 9px; font-size: 11px; padding: 3px 0; }
+  .swatch { width: 12px; height: 12px; flex-shrink: 0; clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%); }
+
+  #controls { position: absolute; right: 22px; bottom: 22px; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: auto; }
+  #zoomreadout { font-size: 11px; color: var(--text-dim); background: rgba(8,10,16,0.85); border: 1px solid var(--line-bright); padding: 6px 10px; border-radius: 2px; letter-spacing: 1px; display: none; }
+  #zoomreadout span { color: var(--accent); }
+  button.hudbtn {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1.5px; background: rgba(8,10,16,0.92);
+    border: 1px solid var(--line-bright); color: var(--text); padding: 9px 14px; border-radius: 2px; cursor: pointer; display: none;
+  }
+  button.hudbtn:hover { border-color: var(--accent); color: var(--accent); }
+  button.hudbtn:disabled { opacity: 0.35; cursor: default; border-color: var(--line-bright); color: var(--text); }
+  #claimsbtn { display: none; }
+  #claimsinput { display: none; }
+
+  #syspanel {
+    position: absolute; right: 22px; top: 84px; width: 230px; background: rgba(8,10,16,0.9);
+    border: 1px solid var(--line-bright); border-radius: 2px; padding: 14px 16px; pointer-events: auto;
+    display: none; font-size: 11px; line-height: 1.7;
+  }
+  #syspanel .heading { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 1px; margin-bottom: 8px; color: var(--system); }
+  #syspanel .row span { color: var(--text-dim); }
+  #syspanel .row b { color: var(--text); font-weight: 500; }
+  #sp-details {
+    width: 100%; margin-top: 12px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1.5px;
+    background: rgba(67,217,200,0.10); border: 1px solid var(--accent); color: var(--accent);
+    padding: 9px 10px; border-radius: 2px; cursor: pointer;
+  }
+  #sp-details:hover { background: rgba(67,217,200,0.2); }
+  #sp-details:disabled { opacity: 0.4; cursor: default; background: rgba(255,255,255,0.04); border-color: var(--line-bright); color: var(--text-dim); }
+
+  /* ============ System View detail screen (ported from the System & Planet Index mockup, since retired) ============
+     The mockup's own component CSS, unchanged. Its custom properties are scoped to
+     #detail-screen (not :root) and its global resets (body, universal and ::selection) are dropped,
+     so nothing here touches the map. */
+  #detail-screen{
+    position:fixed; inset:0; z-index:50;
+    display:none; overflow-y:auto;
+    background:#0B0D12; color:#E8DFC8;
+    font-family:'IBM Plex Sans', sans-serif;
+    --bg-void:#0B0D12;
+    --bg-panel:#12151C;
+    --bg-panel-raised:#171B24;
+    --bg-chip:#1C212B;
+    --ink:#E8DFC8;
+    --ink-muted:#8B8F9C;
+    --ink-faint:#565B68;
+    --brass:#C9A227;
+    --brass-dim:#7A6420;
+    --brass-glow:rgba(201,162,39,0.35);
+    --line:rgba(232,223,200,0.10);
+
+    --c-rocky:#A6673B;        --c-rocky-l:#C79A6E;        --c-rocky-d:#5C3A22;
+    --c-terran:#5C8A4E;       --c-terran-l:#8DBB78;       --c-terran-d:#2F4A27;
+    --c-oceanic:#2A8C9E;      --c-oceanic-l:#57B9C9;      --c-oceanic-d:#12454E;
+    --c-ice:#9FC3D6;          --c-ice-l:#D6EAF3;          --c-ice-d:#5E7E8C;
+    --c-gasGiant:#D69A34;     --c-gasGiant-l:#F0C36A;     --c-gasGiant-d:#8A5C15;
+    --c-molten:#B8402C;       --c-molten-l:#E37152;       --c-molten-d:#5C1A0F;
+    --c-desert:#C9A87E;       --c-desert-l:#E6D2AC;       --c-desert-d:#8A6D48;
+    --c-irradiated:#A8B93E;   --c-irradiated-l:#CBDA6E;   --c-irradiated-d:#616B1E;
+    --c-crystalline:#8862B0;  --c-crystalline-l:#B79EDA;  --c-crystalline-d:#4A3266;
+
+    --panel-w:380px;
+    --hero-r:clamp(200px, 30vh, 380px);
+  }
+  #detail-screen.open{ display:block; }
+  #detail-exit{
+    position:absolute; top:20px; right:22px; z-index:60;
+    font-family:'IBM Plex Mono', monospace; font-size:11px; letter-spacing:0.06em; text-transform:uppercase;
+    color:var(--ink-muted); background:var(--bg-chip); border:1px solid var(--line);
+    padding:8px 14px; border-radius:6px; cursor:pointer;
+  }
+  #detail-exit:hover{ color:var(--brass); border-color:var(--brass); }
+  .app{
+    display:grid;
+    grid-template-columns: var(--panel-w) 1fr;
+    min-height:100vh;
+  }
+  @media (max-width: 780px){
+    .app{ grid-template-columns: 1fr; }
+    .index{ min-height:auto; }
+  }
+
+  /* ---------- Index panel (left) ---------- */
+  .index{
+    position:relative;
+    background:var(--bg-panel);
+    border-right:1px solid var(--line);
+    display:flex;
+    flex-direction:column;
+    min-height:100vh;
+    overflow:hidden;
+  }
+
+  .index-header{
+    padding:28px 24px 18px;
+    border-bottom:1px solid var(--line);
+    flex-shrink:0;
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10.5px;
+    letter-spacing:0.14em;
+    color:var(--brass);
+    text-transform:uppercase;
+    margin:0 0 8px;
+  }
+  .crumb{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    color:var(--ink-muted);
+    display:flex;
+    align-items:center;
+    gap:6px;
+    flex-wrap:wrap;
+  }
+  .crumb button{
+    background:none;border:none;color:var(--ink-muted);
+    font-family:inherit;font-size:inherit;cursor:pointer;padding:2px 4px;
+    border-radius:3px;
+  }
+  .crumb button:hover{ color:var(--brass); background:rgba(201,162,39,0.08); }
+  .crumb .current{ color:var(--ink); }
+  .title-block{ margin-top:14px; }
+  .title-block h1{
+    font-family:'Cinzel', serif;
+    font-weight:600;
+    font-size:22px;
+    letter-spacing:0.02em;
+    margin:0;
+    color:var(--ink);
+  }
+  .title-sub{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    color:var(--ink-faint);
+    margin-top:4px;
+  }
+
+  .back-btn{
+    position:absolute;
+    top:20px; right:20px;
+    z-index:5;
+    display:none;
+    align-items:center;
+    gap:5px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10.5px;
+    letter-spacing:0.05em;
+    text-transform:uppercase;
+    color:var(--ink-muted);
+    background:var(--bg-chip);
+    border:1px solid var(--line);
+    padding:7px 12px;
+    border-radius:6px;
+    cursor:pointer;
+  }
+  .back-btn.visible{ display:inline-flex; }
+  .back-btn:hover{ color:var(--brass); border-color:var(--brass); }
+
+  /* ---------- Orbit stack (scrollable middle) ---------- */
+  .stack-wrap{
+    flex:1 1 auto;
+    overflow-y:auto;
+    position:relative;
+    padding:22px 0 calc(var(--hero-r) * 0.55 + 24px);
+  }
+  .stack{
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    padding:0 24px;
+  }
+
+  .list-row{
+    position:relative;
+    display:flex;
+    background:none;
+    border:none;
+    width:100%;
+    text-align:left;
+    cursor:pointer;
+    border-radius:10px;
+    font-family:inherit;
+    color:inherit;
+  }
+
+  /* .tab — full-tab artwork (or texture placeholder) with bottom-anchored scrim, used
+     for both the planet list (system page) and the node list (planet page) */
+  .list-row.tab{
+    flex-direction:column;
+    justify-content:flex-end;
+    min-height:84px;
+    margin-bottom:10px;
+    padding:12px 14px;
+    overflow:hidden;
+    border:1px solid rgba(232,223,200,0.08);
+    background-size:cover;
+    background-position:center;
+    transition:transform 120ms ease, border-color 120ms ease;
+  }
+  .list-row.tab:hover{ transform:translateY(-1px); border-color:rgba(201,162,39,0.45); }
+  .list-row.tab::before{
+    /* scrim: transparent at top so artwork breathes, opaque at bottom where text sits —
+       guarantees legibility regardless of what the eventual artwork looks like */
+    content:"";
+    position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(11,13,18,0.05) 0%, rgba(11,13,18,0.55) 60%, rgba(11,13,18,0.86) 100%);
+  }
+  .list-row.tab > *{ position:relative; z-index:1; }
+
+  /* archetype textures — real art (committed 05-08-26), one JPEG per archetype,
+     living at assets/planets/. background-size:cover on .list-row.tab already
+     handles arbitrary image aspect ratios. */
+  .tex-rocky{ background-image: url('assets/planets/rocky.jpg'); }
+  .tex-terran{ background-image: url('assets/planets/terran.jpg'); }
+  .tex-oceanic{ background-image: url('assets/planets/oceanic.jpg'); }
+  .tex-ice{ background-image: url('assets/planets/ice.jpg'); }
+  .tex-gasGiant{ background-image: url('assets/planets/gasGiant.jpg'); }
+  .tex-molten{ background-image: url('assets/planets/molten.jpg'); }
+  .tex-desert{ background-image: url('assets/planets/desert.jpg'); }
+  .tex-irradiated{ background-image: url('assets/planets/irradiated.jpg'); }
+  .tex-crystalline{ background-image: url('assets/planets/crystalline.jpg'); }
+  .tex-node{ background:
+    repeating-linear-gradient(135deg, rgba(232,223,200,0.035) 0px, rgba(232,223,200,0.035) 1px, transparent 1px, transparent 12px),
+    var(--bg-chip); }
+
+  .node-meta{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .node-name{ font-size:13.5px; color:var(--ink); font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .node-type{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:0.05em; }
+  .list-row.tab .node-type{ color:rgba(232,223,200,0.65); }
+  .list-row.tab .node-meta{ max-width:calc(100% - 120px); } /* clearance for pip-columns (planet tabs) or the venture button (node tabs) */
+
+  /* pip-columns: an unlabeled 3-column x 5-row tally of a planet's resource nodes,
+     filling from the rightmost column first — right-hugging, no visible column
+     chrome, so it reads as a count at a glance without competing with the tab's text */
+  .list-row.tab .pip-columns{
+    position:absolute;
+    right:12px; bottom:12px;
+    z-index:1;
+    display:flex;
+    align-items:flex-end;
+    gap:4px;
+    pointer-events:none;
+  }
+  .pip-col{
+    display:flex;
+    flex-direction:column-reverse;
+    gap:3px;
+  }
+  .pip{
+    width:7px; height:7px;
+    border-radius:1.5px;
+    background:rgba(232,223,200,0.82);
+    box-shadow:0 0 0 1px rgba(11,13,18,0.45);
+  }
+
+  /* venture-btn: node tabs only — a secondary control on the right edge, independent
+     of the row's own click (which opens the node manifest overlay) */
+  .list-row.tab .venture-btn{
+    position:absolute;
+    top:50%; right:12px;
+    transform:translateY(-50%);
+    z-index:2;
+    max-width:104px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9.5px;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    color:var(--ink-muted);
+    background:rgba(11,13,18,0.55);
+    border:1px solid var(--line);
+    padding:6px 10px;
+    border-radius:6px;
+    cursor:pointer;
+  }
+  .list-row.tab .venture-btn:hover{ border-color:var(--brass); color:var(--brass); }
+  .list-row.tab .venture-btn.occupied{ color:var(--ink); border-color:rgba(201,162,39,0.35); }
+
+  /* node tabs specifically: compact horizontal split rather than the tall,
+     bottom-anchored artwork-tab layout used for planets */
+  .list-row.tab.tex-node{
+    flex-direction:row;
+    align-items:stretch;
+    justify-content:flex-start;
+    min-height:28px;
+    margin-bottom:4px;
+    padding:0;
+  }
+  .list-row.tab.tex-node .node-meta{
+    flex:0 0 33.333%;
+    max-width:33.333%;
+    justify-content:center;
+    padding:0 12px;
+  }
+  .list-row.tab.tex-node .venture-btn{
+    position:static;
+    flex:0 0 66.667%;
+    max-width:66.667%;
+    align-self:stretch;
+    transform:none;
+    border-radius:0;
+    border:none;
+    border-left:1px solid var(--line);
+    padding:0 14px;
+    display:flex;
+    align-items:center;
+    justify-content:flex-start;
+  }
+
+  /* ---------- Hero quarter-segment ---------- */
+  .hero-dock{
+    position:absolute;
+    left:0; bottom:0;
+    width:100%;
+    height:calc(var(--hero-r) * 1.05);
+    pointer-events:none;
+    overflow:hidden;
+  }
+  .hero{
+    position:absolute;
+    left:calc(var(--hero-r) * -1);
+    bottom:calc(var(--hero-r) * -1);
+    width:calc(var(--hero-r) * 2);
+    height:calc(var(--hero-r) * 2);
+    border-radius:50%;
+    border:1px solid rgba(201,162,39,0.35);
+    box-shadow:0 0 0 1px rgba(201,162,39,0.08);
+    animation:hero-in 700ms ease-out both;
+    background-size:cover;
+    background-position:center;
+  }
+  @keyframes hero-in{
+    from{ opacity:0; transform:scale(0.92); }
+    to{ opacity:1; transform:scale(1); }
+  }
+
+  .hero.star{ background-image: url('assets/planets/star.jpg'); }
+  .hero.planet-rocky{ background-image: url('assets/planets/rocky.jpg'); }
+  .hero.planet-terran{ background-image: url('assets/planets/terran.jpg'); }
+  .hero.planet-oceanic{ background-image: url('assets/planets/oceanic.jpg'); }
+  .hero.planet-ice{ background-image: url('assets/planets/ice.jpg'); }
+  .hero.planet-gasGiant{ background-image: url('assets/planets/gasGiant.jpg'); }
+  .hero.planet-molten{ background-image: url('assets/planets/molten.jpg'); }
+  .hero.planet-desert{ background-image: url('assets/planets/desert.jpg'); }
+  .hero.planet-irradiated{ background-image: url('assets/planets/irradiated.jpg'); }
+  .hero.planet-crystalline{ background-image: url('assets/planets/crystalline.jpg'); }
+
+  .hero-ring{
+    position:absolute;
+    inset:14px;
+    border-radius:50%;
+    border:1px dashed rgba(232,223,200,0.25);
+  }
+  /* ---------- Main content (right) ---------- */
+  .main{
+    position:relative;
+    padding:48px 56px;
+    display:flex;
+    flex-direction:column;
+  }
+  .main-header{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    border-bottom:1px solid var(--line);
+    padding-bottom:18px;
+    margin-bottom:0;
+  }
+  .main-header h2{
+    font-family:'Cinzel', serif;
+    font-weight:600;
+    font-size:15px;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:var(--ink-muted);
+    margin:0;
+  }
+  .main-header .stamp{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10.5px;
+    color:var(--brass-dim);
+    letter-spacing:0.08em;
+  }
+  .empty-state{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    gap:10px;
+    color:var(--ink-faint);
+  }
+  .empty-glyph{
+    width:46px; height:46px;
+    border:1px solid var(--line);
+    border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Cinzel', serif;
+    font-size:18px;
+    color:var(--brass-dim);
+    margin-bottom:6px;
+  }
+  .empty-state p{ margin:0; font-size:13px; max-width:320px; line-height:1.6; }
+  .empty-state .empty-title{ font-family:'IBM Plex Mono', monospace; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-muted); }
+
+  /* ---------- Node data overlay (deferred detail panel, stub) ---------- */
+  .overlay{
+    position:fixed; inset:0;
+    background:rgba(6,7,10,0.6);
+    display:flex; align-items:center; justify-content:center;
+    z-index:20;
+    opacity:0; pointer-events:none;
+    transition:opacity 140ms ease;
+  }
+  .overlay.open{ opacity:1; pointer-events:auto; }
+  .overlay-panel{
+    width:min(360px, 86vw);
+    background:var(--bg-panel-raised);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:24px;
+    transform:translateY(6px);
+    transition:transform 140ms ease;
+  }
+  .overlay.open .overlay-panel{ transform:translateY(0); }
+  .overlay-panel .eyebrow{ margin-bottom:10px; }
+  .overlay-panel h3{ font-family:'Cinzel', serif; font-size:17px; margin:0 0 6px; }
+  .overlay-panel p{ font-size:12.5px; color:var(--ink-muted); line-height:1.6; margin:0 0 18px; }
+  .overlay-panel button.close{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px; letter-spacing:0.06em; text-transform:uppercase;
+    background:none; border:1px solid var(--line); color:var(--ink-muted);
+    padding:8px 14px; border-radius:6px; cursor:pointer;
+  }
+  .overlay-panel button.close:hover{ border-color:var(--brass); color:var(--brass); }
+</style>
+
+<style id="shell-css">
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+#topbar{display:none!important;}
+#loadpanel{display:none!important;}
+/* push the map's own HUD chips below the new top bar */
+#hint{top:116px!important;}
+#syspanel{top:116px!important;}
+.shell-screen{position:fixed; inset:0; z-index:1000; display:none; opacity:0; transition:opacity .5s ease;}
+.shell-screen.active{display:grid; opacity:1;}
+#splash{place-items:center; background:radial-gradient(ellipse at 50% 40%, #0a1420 0%, #030408 70%);}
+#splash canvas{position:absolute; inset:0;}
+.splash-inner{position:relative; text-align:center; z-index:2;}
+.wordmark{font-family:'Rajdhani',sans-serif; font-weight:700; font-size:92px; letter-spacing:20px; color:var(--accent); text-shadow:0 0 44px rgba(67,217,200,.45); padding-left:20px;}
+.tagline{font-family:'IBM Plex Mono',monospace; font-size:13px; letter-spacing:5px; text-transform:uppercase; color:var(--text-dim); margin-top:12px;}
+.enter-btn{margin-top:54px; font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; background:rgba(67,217,200,.10); border:1px solid var(--accent); color:var(--accent); padding:14px 46px; border-radius:3px; text-transform:uppercase; cursor:pointer; transition:background .12s;}
+.enter-btn:hover{background:rgba(67,217,200,.22);}
+.build-tag{position:absolute; bottom:24px; left:0; right:0; text-align:center; font-size:10px; letter-spacing:2px; color:var(--text-dim);}
+#connect{place-items:center; background:radial-gradient(ellipse at 50% 30%, #0a1420 0%, #030408 75%);}
+.connect-card{width:520px; background:rgba(8,10,16,.9); border:1px solid var(--line-bright); border-radius:4px; padding:34px 38px; font-family:'JetBrains Mono',monospace;}
+.connect-card .eyebrow{font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin-bottom:6px;}
+.connect-card h2{font-family:'Rajdhani',sans-serif; font-weight:700; font-size:24px; letter-spacing:2px; color:var(--text); margin-bottom:22px;}
+.field-label{font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); margin-bottom:6px;}
+.field{width:100%; background:#05070c; border:1px solid var(--line-bright); color:var(--text); font-family:'JetBrains Mono',monospace; font-size:13px; padding:11px 13px; border-radius:3px; margin-bottom:20px;}
+.galaxy-list{border:1px solid var(--line-bright); border-radius:3px; margin-bottom:22px;}
+.galaxy-row{display:flex; justify-content:space-between; align-items:center; padding:13px 15px; cursor:pointer; border-bottom:1px solid rgba(44,58,82,.4);}
+.galaxy-row:last-child{border-bottom:none;}
+.galaxy-row:hover,.galaxy-row.sel{background:rgba(67,217,200,.08);}
+.galaxy-row .gname{font-family:'Rajdhani',sans-serif; font-weight:600; font-size:15px; letter-spacing:1px; color:var(--system);}
+.galaxy-row .gmeta{font-size:10.5px; letter-spacing:1px; color:var(--text-dim); margin-top:2px;}
+.galaxy-row .gstat{font-size:10px; letter-spacing:1px; color:var(--accent);}
+.connect-btn{width:100%; font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; background:rgba(67,217,200,.12); border:1px solid var(--accent); color:var(--accent); padding:13px; border-radius:3px; text-transform:uppercase; cursor:pointer;}
+.connect-btn:hover{background:rgba(67,217,200,.24);}
+.uplink{margin-top:18px; text-align:center; font-size:11px; letter-spacing:2px; color:var(--text-dim); min-height:16px;}
+
+/* ===== solid top bar (info row + hanging rhombus tabs) ===== */
+#gameTop{position:fixed; top:0; left:0; right:0; height:104px; z-index:500; display:none; flex-direction:column; background:#05070c; border-bottom:1px solid rgba(67,217,200,.25);}
+#gameTop.show{display:flex;}
+.tb-row{height:58px; display:flex; align-items:center; gap:24px; padding:0 22px;}
+.tb-row .brand{font-family:'Rajdhani',sans-serif; font-weight:700; font-size:21px; letter-spacing:5px; color:var(--accent); text-shadow:0 0 12px rgba(67,217,200,.35);}
+.hud-stat{display:flex; flex-direction:column; gap:1px;}
+.hud-stat .k{font-size:9px; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim);}
+.hud-stat .v{font-size:14px; letter-spacing:1px; color:var(--text);}
+.hud-stat .v.gold{color:var(--outpost);}
+.hud-btn{font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; background:rgba(67,217,200,.10); border:1px solid var(--accent); color:var(--accent); padding:8px 14px; border-radius:3px; cursor:pointer;}
+.hud-btn:hover{background:rgba(67,217,200,.22);}
+.hud-btn.off{border-color:var(--line-bright); color:var(--text-dim); background:rgba(255,255,255,.03);}
+.hud-spacer{flex:1;}
+.sector{font-family:'Rajdhani',sans-serif; font-weight:600; font-size:14px; letter-spacing:2px; color:var(--text-dim);}
+.tickno{font-family:'Rajdhani',sans-serif; font-weight:700; font-size:15px; letter-spacing:1px; color:var(--text);}
+.clockbox{display:flex; flex-direction:column; align-items:center; gap:3px;}
+.tickclock{width:30px; height:30px; border-radius:50%; border:1px solid var(--line-bright); position:relative; background:conic-gradient(var(--accent) 0deg, rgba(67,217,200,.10) 0deg);}
+.tickclock::after{content:''; position:absolute; inset:5px; border-radius:50%; background:#05070c;}
+.clocklabel{font-size:8px; letter-spacing:1.2px; text-transform:uppercase; color:var(--text-dim);}
+.tb-tabs{display:flex; gap:8px; padding:0 20px; align-items:flex-end; height:46px;}
+.rtab{font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--text-dim); background:rgba(67,217,200,.05); border:1px solid var(--line-bright); border-top:none; padding:9px 30px 10px; cursor:pointer; clip-path:polygon(0 0, 100% 0, calc(100% - 15px) 100%, 15px 100%); transition:all .12s;}
+.rtab:hover{color:var(--text); background:rgba(67,217,200,.12);}
+.rtab.active{color:var(--accent); background:rgba(67,217,200,.16); border-color:var(--accent);}
+
+/* ===== Archive stub overlay for the non-system tabs ===== */
+#tabPanel{position:fixed; inset:104px 0 0 0; z-index:480; display:none; background:var(--bg-void, #0B0D12); color:#E8DFC8; font-family:'IBM Plex Sans',sans-serif;}
+#tabPanel.show{display:block;}
+#tabPanel .tp-inner{max-width:760px; margin:0 auto; padding:72px 40px;}
+#tabPanel .tp-eyebrow{font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:#C9A227; margin-bottom:12px;}
+#tabPanel h1{font-family:'Cinzel',serif; font-weight:600; font-size:30px; color:#E8DFC8; margin-bottom:18px;}
+#tabPanel .tp-body{font-size:14px; line-height:1.75; color:#8B8F9C; max-width:560px;}
+#tabExit{position:absolute; top:18px; right:24px; font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase; background:#1C212B; border:1px solid rgba(232,223,200,.10); color:#8B8F9C; padding:9px 15px; border-radius:6px; cursor:pointer;}
+#tabExit:hover{border-color:#C9A227; color:#C9A227;}
+
+/* ===== hero: full-panel dock, art fit to HEIGHT, anchored BOTTOM-LEFT (matches the built art) ===== */
+/* drop the detail screen below the top bar so the panel (and its art) fills the visible height */
+#detail-screen{ top:104px!important; }
+#detail-screen .app{ min-height:calc(100vh - 104px)!important; }
+#detail-screen .index{ position:relative; overflow:hidden; min-height:calc(100vh - 104px)!important; }
+/* expand the hero-dock from the short bottom band to the FULL panel height */
+#detail-screen .hero-dock{ top:0!important; height:auto!important; z-index:0!important; }
+#detail-screen .hero{
+  left:0!important; top:0!important; right:0!important; bottom:0!important;
+  width:auto!important; height:auto!important;
+  border:none!important; border-radius:0!important; box-shadow:none!important;
+  background-size:auto 100%!important; background-position:left bottom!important; background-repeat:no-repeat!important;
+  z-index:0!important;
+}
+#detail-screen .hero-ring{ display:none!important; }
+#detail-screen .index-header{ position:relative; z-index:3; }
+#detail-screen .stack-wrap, #detail-screen .stack{ position:relative; z-index:3; }
+#detail-screen .back-btn{ z-index:6!important; }
+
+/* system view: controlling-guild name beside the system name, right-aligned, ~2/3 size */
+#detail-screen .title-row{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+#detail-screen .controller{ font-family:'IBM Plex Mono',monospace; font-size:14px; letter-spacing:.05em; text-transform:uppercase; color:var(--brass); white-space:nowrap; }
+/* system dropdown of the guild's controlled systems */
+#detail-screen .sys-dd{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-muted); background:var(--bg-chip); border:1px solid var(--line); border-radius:6px; padding:6px 10px; margin-bottom:12px; cursor:pointer; max-width:100%; }
+#detail-screen .sys-dd:hover{ border-color:var(--brass); color:var(--brass); }
+/* planet view: RESOURCES / SETTLEMENTS sub-tabs */
+#detail-screen .pv-tabs{ display:flex; gap:8px; padding:14px 24px 2px; position:relative; z-index:3; }
+#detail-screen .pv-tab{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-muted); background:rgba(201,162,39,.05); border:1px solid var(--line); padding:8px 22px 9px; cursor:pointer; clip-path:polygon(0 0,100% 0,calc(100% - 13px) 100%,13px 100%); }
+#detail-screen .pv-tab:hover{ color:var(--ink); }
+#detail-screen .pv-tab.active{ color:var(--brass); border-color:var(--brass-dim); background:rgba(201,162,39,.12); }
+/* settlement pips = triangles, same size as the resource-node squares */
+#detail-screen .list-row.tab .pip-columns{ position:absolute!important; top:12px!important; bottom:auto!important; }
+#detail-screen .list-row.tab .sq-group{ right:14px!important; }   /* resource squares at the edge */
+#detail-screen .list-row.tab .tri-group{ right:52px!important; }  /* settlement triangles inset ~4 columns to their left */
+#detail-screen .pip.tri{ width:0!important; height:0!important; background:transparent!important; border-radius:0!important; box-shadow:none!important; border-left:3.5px solid transparent; border-right:3.5px solid transparent; border-bottom:7px solid rgba(232,223,200,0.82); }
+
+/* volume slider in the top bar */
+#volSlider{ -webkit-appearance:none; appearance:none; width:82px; height:3px; background:var(--line-bright); border-radius:2px; outline:none; cursor:pointer; }
+#volSlider::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:11px; height:11px; border-radius:50%; background:var(--accent); cursor:pointer; box-shadow:0 0 6px rgba(67,217,200,.5); }
+#volSlider::-moz-range-thumb{ width:11px; height:11px; border-radius:50%; background:var(--accent); border:none; cursor:pointer; }
+.volwrap{ display:flex; align-items:center; gap:8px; }
+.volwrap .vico{ font-size:13px; color:var(--text-dim); }
+</style>
+</head>
+<body>
+
+<section id="splash" class="shell-screen active">
+  <canvas id="splashfield"></canvas>
+  <div class="splash-inner">
+    <div class="wordmark">STARFARE</div>
+    <div class="tagline">Bound by need &middot; Divided by ambition</div>
+    <button class="enter-btn" onclick="shellGo('connect'); startMusic();">Enter the Galaxy</button>
+  </div>
+  <div class="build-tag">CLIENT SHELL PROTOTYPE &middot; your galaxy viewer, wrapped &middot; FEN sector demo</div>
+</section>
+<section id="connect" class="shell-screen">
+  <div class="connect-card">
+    <div class="eyebrow">The Syndicate &middot; Uplink</div>
+    <h2>CONNECT TO A GALAXY</h2>
+    <div class="field-label">Server address</div>
+    <input class="field" id="srv" value="galaxy.local:7331" spellcheck="false">
+    <div class="field-label">Known galaxies</div>
+    <div class="galaxy-list">
+      <div class="galaxy-row sel" onclick="shellSelGalaxy(this)"><div><div class="gname">FEN SECTOR</div><div class="gmeta">seed 7331 &middot; inner rim &middot; guild Vanguard seated</div></div><div class="gstat">&#9679; LIVE &middot; tick 1,204</div></div>
+      <div class="galaxy-row" onclick="shellSelGalaxy(this)"><div><div class="gname">CORE REACH</div><div class="gmeta">seed 4020 &middot; 6 guilds &middot; hardcore preset</div></div><div class="gstat">&#9679; LIVE &middot; tick 88,301</div></div>
+    </div>
+    <button class="connect-btn" onclick="shellConnect()">Establish Uplink</button>
+    <div class="uplink" id="uplink"></div>
+  </div>
+</section>
+
+<div id="gameTop">
+  <div class="tb-row">
+    <div class="brand">STARFARE</div>
+    <div class="hud-stat"><span class="k">Guild</span><span class="v">Vanguard</span></div>
+    <div class="hud-stat"><span class="k">Credits</span><span class="v gold" id="hud-cr">4,200</span></div>
+    <button class="hud-btn" onclick="window.__flyTo && window.__flyTo(7,30,9)">&#9678; My System</button>
+    <button class="hud-btn" id="musicBtn" onclick="toggleMusic()">&#9834; Music</button>
+    <div class="volwrap"><span class="vico">&#128266;</span><input type="range" id="volSlider" min="0" max="100" value="55" title="Volume"></div>
+    <div class="hud-spacer"></div>
+    <div class="sector">FEN SECTOR</div>
+    <div class="tickno" id="hud-tick">TICK 1,204</div>
+    <div class="clockbox"><div class="tickclock" id="tickclock"></div><div class="clocklabel">Server Time</div></div>
+  </div>
+  <div class="tb-tabs">
+    <button class="rtab active" onclick="openTab('system', this)">System Manifest</button>
+    <button class="rtab" onclick="openTab('market', this)">Syndicate Marketplace</button>
+    <button class="rtab" onclick="openTab('transport', this)">Transport</button>
+    <button class="rtab" onclick="openTab('guild', this)">Guild Hall</button>
+  </div>
+</div>
+
+<div id="tabPanel">
+  <button id="tabExit" onclick="closeTab()">&#10005; Close</button>
+  <div class="tp-inner">
+    <div class="tp-eyebrow" id="tp-eyebrow">The Syndicate</div>
+    <h1 id="tp-title">&mdash;</h1>
+    <div class="tp-body" id="tp-body"></div>
+  </div>
+</div>
+
+<audio id="bgm" loop preload="auto"><source src="assets/audio/main-title.mp3" type="audio/mpeg"></audio>
+
+<div id="app">
+  <canvas id="map"></canvas>
+
+  <div class="hud" id="topbar">
+    <div>
+      <div class="title">GALAXY SEED VIEWER</div>
+      <div class="subtitle">READS GENERATOR OUTPUT &middot; NO GAMEPLAY STATE</div>
+    </div>
+    <div id="meta"></div>
+  </div>
+
+  <div id="hint" class="hud">
+    DRAG &middot; ORBIT THE VIEW AROUND YOUR FOCUS POINT<br>
+    CLICK A HEX &middot; SET FOCUS &middot; SCROLL TO ZOOM IN<br>
+    CLICK OUTSIDE THE GALAXY &middot; RETURN FOCUS TO CORE
+  </div>
+
+  <div id="loadpanel">
+    <div class="title">LOAD GALAXY SEED</div>
+    <div class="sub">Select a seed.json produced by generate_seed.js.<br>Nothing is generated here — this only renders what's in the file.</div>
+    <button id="filebtn">CHOOSE SEED FILE</button>
+    <input type="file" id="fileinput" accept="application/json">
+    <div id="loaderror"></div>
+  </div>
+
+  <div id="legend" class="hud">
+    <div class="heading">SEED KEY</div>
+    <div class="legend-row"><div class="swatch" style="background:var(--system)"></div> Solar System</div>
+    <div class="legend-row"><div class="swatch" style="background:var(--accent)"></div> Your Guild (test)</div>
+    <div class="legend-row"><div class="swatch" style="background:var(--outpost)"></div> Syndicate Outpost</div>
+    <div class="legend-row"><div class="swatch" style="background:var(--citadel)"></div> The Citadel</div>
+  </div>
+
+  <div id="controls">
+    <div id="zoomreadout">ZOOM <span id="zoomval">1.0×</span></div>
+    <button class="hudbtn" id="claimsbtn">⌘ LOAD TEST CLAIMS</button>
+    <input type="file" id="claimsinput" accept="application/json">
+    <button class="hudbtn" id="recenter" disabled>⊙ RETURN TO CORE</button>
+  </div>
+
+  <div id="syspanel" class="hud" style="pointer-events:auto;">
+    <div class="heading" id="sp-name">—</div>
+    <div class="row"><span>Coords:</span> <b id="sp-coords">—</b></div>
+    <div class="row"><span>Type:</span> <b id="sp-type">—</b></div>
+    <div class="row"><span>Control:</span> <b id="sp-control">—</b></div>
+    <div class="row" id="sp-planets-row" style="display:none"><span>Planets:</span> <b id="sp-planets">—</b></div>
+    <div class="row" id="sp-ring-row" style="display:none"><span>Ring:</span> <b id="sp-ring">—</b></div>
+    <button id="sp-details" disabled title="Placeholder — will open the solar system data guide">OPEN DETAILS</button>
+  </div>
+</div>
+
+
+<div id="detail-screen">
+  <button id="detail-exit" type="button" title="Return to the galaxy map">✕ Back to map</button>
+  <div class="app">
+  <div class="index" id="indexPanel">
+    <button class="back-btn" id="backBtn" type="button">‹ Return to System</button>
+    <div class="index-header">
+      <select class="sys-dd" id="sysDropdown" style="display:none"></select>
+      <div class="title-block">
+        <div class="title-row"><h1 id="titleMain"></h1><span class="controller" id="controllerName"></span></div>
+        <div class="title-sub" id="titleSub"></div>
+      </div>
+    </div>
+    <div class="pv-tabs" id="pvTabs" style="display:none"></div>
+
+    <div class="stack-wrap">
+      <div class="stack" id="stack"></div>
+    </div>
+
+    <div class="hero-dock">
+      <div class="hero" id="hero"></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="main-header">
+      <h2 id="mainHeading">System Manifest</h2>
+    </div>
+    <div class="empty-state">
+      <div class="empty-glyph">§</div>
+      <div class="empty-title">No further survey data</div>
+      <p id="emptyCopy">Territory, tolls, and venture data for this system have not yet been charted. Select a body from the index to continue.</p>
+    </div>
+  </div>
+  </div>
+  <div class="overlay" id="overlay">
+  <div class="overlay-panel">
+    <p class="eyebrow">Node Manifest</p>
+    <h3 id="overlayTitle">Node</h3>
+    <p id="overlayCopy">Extraction data, richness, and claim status for this node are not yet instrumented.</p>
+    <button class="close" id="overlayClose">Dismiss</button>
+  </div>
+</div>
+</div>
+
+<script>
+(function () {
+  const canvas = document.getElementById('map');
+  const ctx = canvas.getContext('2d');
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  let galaxy = null;      // parsed seed JSON
+  let starDots = [];       // computed live, cosmetic only
+  const SQUASH = 0.52;
+
+  let angle = 0, zoom = 1;
+  let focus = { x: 0, y: 0 }, focusTarget = { x: 0, y: 0 };
+  let dragging = false, dragged = false, lastX = 0, lastY = 0;
+  let selected = null, selectedCoords = null, selectedType = null;
+  const VECTOR_ZOOM_THRESHOLD = 4; // below this, only marker dots show; at/above, real hex borders draw around the focus
+  let systemByKey = new Map(), outpostByKey = new Map(); // fast lookup for the live hex layer + click resolution
+
+  // ---------- placeholder guild, for testing "self" territory/labels ----------
+  // There is no live-state layer yet — ownership isn't part of the seed (see galaxy-state-model.md §1a).
+  // To test self-territory highlighting and self-labels ahead of that, list system ids here manually,
+  // e.g. TEST_PLAYER_GUILD.ownedSystemIds = ['sys_0001']. Empty by default: only the Syndicate exists today.
+  const TEST_PLAYER_GUILD = { ownedSystemIds: [] };
+
+  // optional test claims (generate_test_claims.js output) — NOT part of the real architecture,
+  // ownership is live state, never seed data (galaxy-state-model.md §1a). Purely for exercising rendering.
+  let claimsData = null;
+  let systemById = new Map(), guildById = new Map(), systemToGuild = new Map(), guildOutpostByKey = new Map(), gateByKey = new Map();
+
+  const COLOR_RGB = { system: [111,183,232], outpost: [232,185,58], citadel: [242,206,93], player: [67,217,200] };
+  function col(key, a) { const c = COLOR_RGB[key]; return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
+  function rgbaFrom(rgb, a) { return `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`; }
+
+  // all axial hexes within `radius` rings of `center` — used to expand a claim into its territory
+  function hexesInRadius(center, radius) {
+    const out = [];
+    for (let dq = -radius; dq <= radius; dq++) {
+      const rMin = Math.max(-radius, -dq - radius), rMax = Math.min(radius, -dq + radius);
+      for (let dr = rMin; dr <= rMax; dr++) out.push({ q: center.q + dq, r: center.r + dr });
+    }
+    return out;
+  }
+
+  // territory = Syndicate outposts (own hex) + any loaded guilds' claimed systems (their claimRadius)
+  // + guild outposts (own hex) + the placeholder guild's claims, drawn last so it wins overlaps.
+  // Returns "q,r" -> { r, g, b, label } — color AND owner name in one lookup, used by rendering, click, and the panel.
+  function computeTerritoryMap() {
+    const map = new Map();
+    galaxy.outposts.forEach(o => map.set(`${o.coords.q},${o.coords.r}`, { r:232, g:185, b:58, label: 'Syndicate' }));
+
+    if (claimsData) {
+      systemToGuild.forEach((guildId, systemId) => {
+        const sys = systemById.get(systemId);
+        const guild = guildById.get(guildId);
+        if (!sys || !guild) return;
+        hexesInRadius(sys.coords, sys.claimRadius || 1).forEach(h =>
+          map.set(`${h.q},${h.r}`, { r: guild.color.r, g: guild.color.g, b: guild.color.b, label: guild.name }));
+      });
+      claimsData.guildOutposts.forEach(o => {
+        const guild = guildById.get(o.guildId);
+        if (guild) map.set(`${o.coords.q},${o.coords.r}`, { r: guild.color.r, g: guild.color.g, b: guild.color.b, label: guild.name });
+      });
+      // toll gates — own hex only, marked isGate so rendering draws a hollow bold-ring "stargate"
+      // hex instead of a normal filled territory tile. Drawn after outposts so a gate always wins
+      // if a future data source ever put both on the same hex (generation already prevents that).
+      claimsData.tollGates.forEach(gt => {
+        const guild = guildById.get(gt.guildId);
+        if (guild) map.set(`${gt.coords.q},${gt.coords.r}`, { r: guild.color.r, g: guild.color.g, b: guild.color.b, label: guild.name, isGate: true });
+      });
+    }
+
+    TEST_PLAYER_GUILD.ownedSystemIds.forEach(id => {
+      const sys = systemById.get(id);
+      if (!sys) return;
+      hexesInRadius(sys.coords, sys.claimRadius || 1).forEach(h =>
+        map.set(`${h.q},${h.r}`, { r: 67, g: 217, b: 200, label: 'Your Guild (test)' }));
+    });
+
+    return map;
+  }
+
+  function hexCorners(cx, cy, hexSize) {
+    const pts = [];
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI / 180 * (60 * i);
+      pts.push({ x: cx + hexSize * Math.cos(a), y: cy + hexSize * Math.sin(a) });
+    }
+    return pts;
+  }
+
+  // diagonal-line label, ported from galaxy-map-hex.html's drawLabelBox
+  function drawLabelBox(p, lines, colorKey) {
+    const ang = -Math.PI / 4; // fixed diagonal, up-right
+    const lineLen = 28;
+    const ex = p.x + Math.cos(ang) * lineLen;
+    const ey = p.y + Math.sin(ang) * lineLen;
+    ctx.save();
+    ctx.strokeStyle = col(colorKey, 0.8);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+
+    const boxW = 150, boxH = 16 + lines.length * 13;
+    const bx = ex + 3, by = ey - boxH;
+    ctx.fillStyle = 'rgba(6,8,13,0.9)';
+    ctx.fillRect(bx, by, boxW, boxH);
+    ctx.strokeStyle = col(colorKey, 0.6);
+    ctx.strokeRect(bx, by, boxW, boxH);
+
+    ctx.textAlign = 'left';
+    lines.forEach((line, i) => {
+      if (i === 0) { ctx.font = "700 11px 'Rajdhani', sans-serif"; ctx.fillStyle = col(colorKey, 0.95); }
+      else { ctx.font = "10px 'JetBrains Mono', monospace"; ctx.fillStyle = 'rgba(199,211,230,0.85)'; }
+      ctx.fillText(line, bx + 8, by + 16 + i * 13);
+    });
+    ctx.restore();
+  }
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = window.innerWidth * dpr;
+    canvas.height = window.innerHeight * dpr;
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+  }
+
+  // ---------- must match generate_seed.js exactly ----------
+  function mulberry32(seed) {
+    return function () {
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function hexToPixel(q, r, hexSize) {
+    return { x: hexSize * 1.5 * q, y: hexSize * (Math.sqrt(3) / 2 * q + Math.sqrt(3) * r) };
+  }
+
+  // starfield is cosmetic-only and regenerated from the seed number — never stored
+  function genStarDots(seedNum) {
+    const rand = mulberry32(seedNum + 1); // offset so it doesn't correlate 1:1 with system placement
+    const p = galaxy.galaxyParams;
+    const ARMS = p.arms, twist = p.spiralTwist, R = p.radius;
+    const dots = [];
+    const N = 5200;
+    for (let i = 0; i < N; i++) {
+      const t = Math.pow(rand(), 0.55);
+      const r = t * R;
+      const arm = Math.floor(rand() * ARMS);
+      const jitter = (rand() - 0.5) * (0.55 - 0.35 * (r / R));
+      const theta = (Math.PI * 2 / ARMS) * arm + (r / R) * twist * Math.PI + jitter;
+      const x = Math.cos(theta) * r, y = Math.sin(theta) * r;
+      const core = r < 70;
+      dots.push({ x, y, r: core ? (0.8 + rand()*1.3) : (rand()*1.0+0.25), b: core ? 0.9 : (0.25+rand()*0.55) });
+    }
+    return dots;
+  }
+
+  // ---------- transform ----------
+  const cosA = () => Math.cos(angle), sinA = () => Math.sin(angle);
+  function worldToScreen(x, y) {
+    const dx = x - focus.x, dy = y - focus.y;
+    const ca = cosA(), sa = sinA();
+    const rx = dx * ca - dy * sa;
+    const ry = (dx * sa + dy * ca) * SQUASH;
+    return { x: rx * zoom + window.innerWidth / 2, y: ry * zoom + (window.innerHeight + (window.__TOPUI||0)) / 2 };
+  }
+
+  function screenToWorld(sx, sy) {
+    const cx = (sx - window.innerWidth / 2) / zoom;
+    const cy = (sy - (window.innerHeight + (window.__TOPUI||0)) / 2) / zoom / SQUASH;
+    const ca = cosA(), sa = sinA();
+    const dx = cx * ca + cy * sa;
+    const dy = -cx * sa + cy * ca;
+    return { x: dx + focus.x, y: dy + focus.y };
+  }
+  function pixelToAxial(x, y, hexSize) {
+    const q = (2/3 * x) / hexSize;
+    const r = (-1/3 * x + Math.sqrt(3)/3 * y) / hexSize;
+    return roundHex(q, r);
+  }
+  function roundHex(q, r) {
+    let x = q, z = r, y = -x - z;
+    let rx = Math.round(x), ry = Math.round(y), rz = Math.round(z);
+    const dx = Math.abs(rx-x), dy = Math.abs(ry-y), dz = Math.abs(rz-z);
+    if (dx > dy && dx > dz) rx = -ry - rz;
+    else if (dy > dz) ry = -rx - rz;
+    else rz = -rx - ry;
+    return { q: rx, r: rz };
+  }
+
+  function getMinZoom() {
+    const R = galaxy.galaxyParams.radius;
+    const fitX = (window.innerWidth / 2) / R;
+    const fitY = ((window.innerHeight - (window.__TOPUI||0)) / 2) / (R * SQUASH);
+    return Math.min(fitX, fitY) * 0.92;
+  }
+  function getMaxZoom() {
+    return (Math.max(window.innerWidth, window.innerHeight) / (galaxy.galaxyParams.hexSize * 2)) * 5;
+  }
+
+  function render() {
+    if (!galaxy) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    ctx.fillStyle = '#030408';
+    ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+
+    const R = galaxy.galaxyParams.radius;
+    const originScr = worldToScreen(0, 0);
+    const exX = R * zoom, exY = R * zoom * SQUASH;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(originScr.x, originScr.y, exX, exY, 0, 0, Math.PI * 2);
+    ctx.clip();
+
+    // core glow
+    const grad = ctx.createRadialGradient(originScr.x, originScr.y, 0, originScr.x, originScr.y, 140*zoom);
+    grad.addColorStop(0, 'rgba(255,244,214,0.55)');
+    grad.addColorStop(0.4, 'rgba(255,214,150,0.18)');
+    grad.addColorStop(1, 'rgba(255,214,150,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(originScr.x - 300*zoom, originScr.y - 300*zoom, 600*zoom, 600*zoom);
+
+    // starfield
+    starDots.forEach(s => {
+      const p = worldToScreen(s.x, s.y);
+      if (p.x < -5 || p.x > window.innerWidth+5 || p.y < -5 || p.y > window.innerHeight+5) return;
+      ctx.globalAlpha = s.b;
+      ctx.fillStyle = '#eef4ff';
+      const rr = Math.max(0.5, s.r * Math.min(zoom, 1.6));
+      ctx.fillRect(p.x, p.y, rr, rr);
+    });
+    ctx.globalAlpha = 1;
+
+    // Citadel ring (radius only — not enumerated hex-by-hex, drawn as a disc)
+    const cit = galaxy.citadel;
+    const citCenter = worldToScreen(0, 0);
+    const citPxRadius = cit.radius * galaxy.galaxyParams.hexSize * 1.5 * zoom;
+    ctx.beginPath();
+    ctx.ellipse(citCenter.x, citCenter.y, citPxRadius, citPxRadius*SQUASH, 0, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(242,206,93,0.15)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(242,206,93,0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // territory — Syndicate outposts, guild-claimed systems, and guild outposts (if claims loaded).
+    // Runs at EVERY zoom (unlike the vector boundary layer below), so territory stays
+    // legible even zoomed out — a small filled hex per claimed tile.
+    const territoryMap = computeTerritoryMap();
+    const hexSizeT = galaxy.galaxyParams.hexSize;
+    territoryMap.forEach((owner, key) => {
+      const [q, r] = key.split(',').map(Number);
+      const p = hexToPixel(q, r, hexSizeT);
+      const scr = worldToScreen(p.x, p.y);
+      if (scr.x < -40 || scr.x > window.innerWidth+40 || scr.y < -40 || scr.y > window.innerHeight+40) return;
+      const corners = hexCorners(p.x, p.y, hexSizeT).map(c => worldToScreen(c.x, c.y));
+      ctx.beginPath();
+      corners.forEach((c, i) => i === 0 ? ctx.moveTo(c.x, c.y) : ctx.lineTo(c.x, c.y));
+      ctx.closePath();
+      if (owner.isGate) {
+        // toll gate — hollow "stargate" hex: little/no fill, bold guild-colored ring
+        ctx.fillStyle = rgbaFrom(owner, 0.08);
+        ctx.fill();
+        ctx.lineWidth = Math.min(3.2, 1.6 + zoom * 0.05);
+        ctx.strokeStyle = rgbaFrom(owner, 0.95);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = rgbaFrom(owner, 0.35);
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = rgbaFrom(owner, 0.6);
+        ctx.stroke();
+      }
+    });
+
+    // live hex layer — only the patch near the focus, computed on the fly since hexes
+    // aren't stored (§1a of the state model); this is the only place borders are drawn,
+    // exactly mirroring galaxy-map-hex.html's VECTOR_ZOOM_THRESHOLD behavior
+    if (zoom >= VECTOR_ZOOM_THRESHOLD) {
+      const hexSize = galaxy.galaxyParams.hexSize;
+      const citR = galaxy.citadel.radius;
+      const visibleR = (Math.hypot(window.innerWidth, window.innerHeight) / 2) / zoom / SQUASH + hexSize * 4;
+      const visibleR2 = visibleR * visibleR;
+      const centerAxial = pixelToAxial(focus.x, focus.y, hexSize);
+      const hexRange = Math.ceil(visibleR / (hexSize * 1.3)) + 2;
+
+      for (let dq = -hexRange; dq <= hexRange; dq++) {
+        for (let dr = -hexRange; dr <= hexRange; dr++) {
+          const q = centerAxial.q + dq, r = centerAxial.r + dr;
+          const p = hexToPixel(q, r, hexSize);
+          if (Math.hypot(p.x, p.y) > R) continue;              // outside the galaxy disc — no hex here
+          const fdx = p.x - focus.x, fdy = p.y - focus.y;
+          if (fdx * fdx + fdy * fdy > visibleR2) continue;      // outside the visible patch
+
+          const key = `${q},${r}`;
+          let fill, stroke = 'rgba(130,150,180,0.55)', lw = Math.min(2, 0.5 + zoom * 0.02);
+          const owner = territoryMap.get(key);
+          if (hexDistAxial({ q, r }, { q: 0, r: 0 }) <= citR) { fill = 'rgba(242,206,93,0.28)'; stroke = 'rgba(242,206,93,0.7)'; }
+          else if (owner && owner.isGate) { fill = rgbaFrom(owner, 0.08); stroke = rgbaFrom(owner, 0.95); lw = Math.min(3.5, 1.8 + zoom * 0.05); }
+          else if (owner) { fill = rgbaFrom(owner, 0.32); stroke = rgbaFrom(owner, 0.75); }
+          else if (systemByKey.has(key)) { fill = 'rgba(111,183,232,0.28)'; } // unclaimed system
+          else { fill = 'rgba(60,69,96,0.16)'; }
+
+          const corners = hexCorners(p.x, p.y, hexSize).map(c => worldToScreen(c.x, c.y));
+          ctx.beginPath();
+          corners.forEach((c, i) => i === 0 ? ctx.moveTo(c.x, c.y) : ctx.lineTo(c.x, c.y));
+          ctx.closePath();
+          ctx.fillStyle = fill;
+          ctx.fill();
+          ctx.lineWidth = lw;
+          ctx.strokeStyle = stroke;
+          ctx.stroke();
+        }
+      }
+    }
+
+    // toll paths — dashed line between two gates of the same guild, guild-colored. Drawn above 1×
+    // (same threshold as self-labels) and BEFORE markers, so gate/outpost diamonds sit on top of the line.
+    if (claimsData && zoom > 1) {
+      const gateById = new Map(claimsData.tollGates.map(gt => [gt.id, gt]));
+      claimsData.tollPaths.forEach(path => {
+        const a = gateById.get(path.gateAId), b = gateById.get(path.gateBId);
+        const guild = guildById.get(path.guildId);
+        if (!a || !b || !guild) return;
+        const pa = hexToPixel(a.coords.q, a.coords.r, galaxy.galaxyParams.hexSize);
+        const pb = hexToPixel(b.coords.q, b.coords.r, galaxy.galaxyParams.hexSize);
+        const scrA = worldToScreen(pa.x, pa.y), scrB = worldToScreen(pb.x, pb.y);
+        // skip if fully off-screen on both ends
+        const offA = scrA.x<-40||scrA.x>window.innerWidth+40||scrA.y<-40||scrA.y>window.innerHeight+40;
+        const offB = scrB.x<-40||scrB.x>window.innerWidth+40||scrB.y<-40||scrB.y>window.innerHeight+40;
+        if (offA && offB) return;
+        ctx.beginPath();
+        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = rgbaFrom(guild.color, 0.75);
+        ctx.lineWidth = Math.min(2, 0.8 + zoom * 0.03);
+        ctx.moveTo(scrA.x, scrA.y); ctx.lineTo(scrB.x, scrB.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      });
+    }
+
+    // systems
+    const sysRad = Math.min(3.4, 1.2 + zoom * 0.05);
+    galaxy.systems.forEach(sys => {
+      const p = hexToPixel(sys.coords.q, sys.coords.r, galaxy.galaxyParams.hexSize);
+      const scr = worldToScreen(p.x, p.y);
+      if (scr.x < -20 || scr.x > window.innerWidth+20 || scr.y < -20 || scr.y > window.innerHeight+20) return;
+      const guildId = systemToGuild.get(sys.id);
+      const guild = guildId ? guildById.get(guildId) : null;
+      ctx.beginPath();
+      ctx.arc(scr.x, scr.y, sysRad, 0, Math.PI*2);
+      ctx.fillStyle = selected===sys ? '#ffffff' : (guild ? rgbaFrom(guild.color, 0.95) : 'rgba(111,183,232,0.9)');
+      ctx.fill();
+    });
+
+    // outposts (diamond marker) — Syndicate (gold) always; guild outposts (if claims loaded) in their guild's color
+    galaxy.outposts.forEach(o => {
+      const p = hexToPixel(o.coords.q, o.coords.r, galaxy.galaxyParams.hexSize);
+      const scr = worldToScreen(p.x, p.y);
+      if (scr.x < -20 || scr.x > window.innerWidth+20 || scr.y < -20 || scr.y > window.innerHeight+20) return;
+      const s = Math.min(4.5, 1.8 + zoom*0.06);
+      ctx.beginPath();
+      ctx.moveTo(scr.x, scr.y-s); ctx.lineTo(scr.x+s, scr.y); ctx.lineTo(scr.x, scr.y+s); ctx.lineTo(scr.x-s, scr.y);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(232,185,58,0.9)';
+      ctx.fill();
+    });
+    if (claimsData) {
+      claimsData.guildOutposts.forEach(o => {
+        const p = hexToPixel(o.coords.q, o.coords.r, galaxy.galaxyParams.hexSize);
+        const scr = worldToScreen(p.x, p.y);
+        if (scr.x < -20 || scr.x > window.innerWidth+20 || scr.y < -20 || scr.y > window.innerHeight+20) return;
+        const guild = guildById.get(o.guildId);
+        const s = Math.min(4.5, 1.8 + zoom*0.06);
+        ctx.beginPath();
+        ctx.moveTo(scr.x, scr.y-s); ctx.lineTo(scr.x+s, scr.y); ctx.lineTo(scr.x, scr.y+s); ctx.lineTo(scr.x-s, scr.y);
+        ctx.closePath();
+        ctx.fillStyle = guild ? rgbaFrom(guild.color, 0.9) : 'rgba(200,200,200,0.9)';
+        ctx.fill();
+      });
+      // toll gates — SAME diamond marker as an outpost (deliberately identical); the hollow
+      // ring hex drawn above and the "Toll Gate" panel type are what actually distinguish them.
+      claimsData.tollGates.forEach(gt => {
+        const p = hexToPixel(gt.coords.q, gt.coords.r, galaxy.galaxyParams.hexSize);
+        const scr = worldToScreen(p.x, p.y);
+        if (scr.x < -20 || scr.x > window.innerWidth+20 || scr.y < -20 || scr.y > window.innerHeight+20) return;
+        const guild = guildById.get(gt.guildId);
+        const s = Math.min(4.5, 1.8 + zoom*0.06);
+        ctx.beginPath();
+        ctx.moveTo(scr.x, scr.y-s); ctx.lineTo(scr.x+s, scr.y); ctx.lineTo(scr.x, scr.y+s); ctx.lineTo(scr.x-s, scr.y);
+        ctx.closePath();
+        ctx.fillStyle = guild ? rgbaFrom(guild.color, 0.9) : 'rgba(200,200,200,0.9)';
+        ctx.fill();
+      });
+    }
+
+    // labels — diagonal line + name/detail box, ported from galaxy-map-hex.html.
+    // Syndicate outposts label at ALL zooms; the placeholder guild's own systems only above 1×.
+    // Everyone else (rivals, unclaimed) stays unlabeled, same as the original.
+    galaxy.outposts.forEach(o => {
+      const p = hexToPixel(o.coords.q, o.coords.r, galaxy.galaxyParams.hexSize);
+      const scr = worldToScreen(p.x, p.y);
+      if (scr.x < -150 || scr.x > window.innerWidth+150 || scr.y < -150 || scr.y > window.innerHeight+150) return;
+      drawLabelBox(scr, [o.name.toUpperCase(), 'SYNDICATE OUTPOST'], 'outpost');
+    });
+    if (zoom > 1) {
+      TEST_PLAYER_GUILD.ownedSystemIds.forEach(id => {
+        const sys = galaxy.systems.find(s => s.id === id);
+        if (!sys) return;
+        const p = hexToPixel(sys.coords.q, sys.coords.r, galaxy.galaxyParams.hexSize);
+        const scr = worldToScreen(p.x, p.y);
+        if (scr.x < -150 || scr.x > window.innerWidth+150 || scr.y < -150 || scr.y > window.innerHeight+150) return;
+        const planetLabel = sys.planets.length + (sys.planets.length===1 ? ' planet' : ' planets');
+        drawLabelBox(scr, [sys.name.toUpperCase(), planetLabel], 'player');
+      });
+    }
+
+    // selection outline — drawn live for exactly one hex, works for empty hexes too
+    if (selectedCoords) {
+      const p = hexToPixel(selectedCoords.q, selectedCoords.r, galaxy.galaxyParams.hexSize);
+      const corners = hexCorners(p.x, p.y, galaxy.galaxyParams.hexSize).map(c => worldToScreen(c.x, c.y));
+      ctx.beginPath();
+      corners.forEach((c, i) => i === 0 ? ctx.moveTo(c.x, c.y) : ctx.lineTo(c.x, c.y));
+      ctx.closePath();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.stroke();
+    }
+
+    ctx.restore();
+
+    ctx.beginPath();
+    ctx.ellipse(originScr.x, originScr.y, exX, exY, 0, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(90,110,150,0.28)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  function tick() {
+    focus.x += (focusTarget.x - focus.x) * 0.22;
+    focus.y += (focusTarget.y - focus.y) * 0.22;
+    render();
+    requestAnimationFrame(tick);
+  }
+
+  // ---------- interaction ----------
+  canvas.addEventListener('wheel', (e) => {
+    if (!galaxy) return;
+    e.preventDefault();
+    const factor = Math.exp(-e.deltaY * 0.0011);
+    zoom = Math.min(getMaxZoom(), Math.max(getMinZoom(), zoom * factor));
+    document.getElementById('zoomval').textContent = (zoom < 10 ? zoom.toFixed(1) : Math.round(zoom)) + '×';
+  }, { passive: false });
+
+  function screenAngle(sx, sy) { return Math.atan2(sy - window.innerHeight/2, sx - window.innerWidth/2); }
+
+  canvas.addEventListener('mousedown', (e) => {
+    if (!galaxy) return;
+    dragging = true; dragged = false; lastX = e.clientX; lastY = e.clientY;
+    focus.x = focusTarget.x; focus.y = focusTarget.y;
+    canvas.classList.add('dragging');
+  });
+  window.addEventListener('mouseup', (e) => {
+    canvas.classList.remove('dragging');
+    if (dragging && !dragged) handleClick(e);
+    dragging = false;
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (dragging) {
+      if (Math.abs(e.clientX-lastX)+Math.abs(e.clientY-lastY) > 3) dragged = true;
+      const a1 = screenAngle(lastX,lastY), a2 = screenAngle(e.clientX,e.clientY);
+      let d = a2-a1;
+      if (d > Math.PI) d -= Math.PI*2;
+      if (d < -Math.PI) d += Math.PI*2;
+      angle += d;
+      lastX = e.clientX; lastY = e.clientY;
+    }
+  });
+
+  function handleClick(e) {
+    const w = screenToWorld(e.clientX, e.clientY);
+    const hexSize = galaxy.galaxyParams.hexSize;
+    const R = galaxy.galaxyParams.radius;
+
+    // outside the galaxy disc entirely — behaves like clicking empty canvas in the original
+    if (Math.hypot(w.x, w.y) > R) {
+      selected = null; selectedCoords = null; selectedType = null;
+      focusTarget = { x: 0, y: 0 };
+      document.getElementById('syspanel').style.display = 'none';
+      document.getElementById('recenter').disabled = true;
+      return;
+    }
+
+    const ax = pixelToAxial(w.x, w.y, hexSize);
+    const territoryMap = computeTerritoryMap();
+
+    // what's at this hex? system > guild outpost > toll gate > Syndicate outpost > Citadel > claimed empty territory > empty
+    const key = `${ax.q},${ax.r}`;
+    let hit = systemByKey.get(key);
+    let type = 'system';
+    if (!hit) { hit = guildOutpostByKey.get(key); type = 'guildOutpost'; }
+    if (!hit) { hit = gateByKey.get(key); type = 'tollGate'; }
+    if (!hit) { hit = outpostByKey.get(key); type = 'outpost'; }
+    if (!hit && hexDistAxial(ax, {q:0,r:0}) <= galaxy.citadel.radius) { hit = galaxy.citadel; type = 'citadel'; }
+    if (!hit && territoryMap.has(key)) { hit = { coords: ax, owner: territoryMap.get(key) }; type = 'territory'; }
+    if (!hit) { hit = { coords: ax }; type = 'empty'; }
+
+    selected = hit; selectedCoords = ax; selectedType = type;
+    focusTarget = hexToPixel(ax.q, ax.r, hexSize);
+    showSysPanel(hit, type, ax);
+    document.getElementById('recenter').disabled = false;
+  }
+
+  function hexDistAxial(a, b) {
+    return (Math.abs(a.q-b.q) + Math.abs(a.q+a.r-b.q-b.r) + Math.abs(a.r-b.r)) / 2;
+  }
+
+  function showSysPanel(hit, type, ax) {
+    document.getElementById('syspanel').style.display = 'block';
+    const nameEl = document.getElementById('sp-name');
+    const typeEl = document.getElementById('sp-type');
+    const controlEl = document.getElementById('sp-control');
+    const planetsRow = document.getElementById('sp-planets-row');
+    const detailsBtn = document.getElementById('sp-details');
+    const ringRow = document.getElementById('sp-ring-row');
+    ringRow.style.display = 'none'; // shown only for systems that carry a ring
+
+    const coords = (type === 'empty' || type === 'territory') ? ax : hit.coords;
+    document.getElementById('sp-coords').textContent = `q${coords.q} r${coords.r}`;
+
+    if (type === 'system') {
+      nameEl.textContent = hit.name;
+      const guildId = systemToGuild.get(hit.id);
+      const guild = guildId ? guildById.get(guildId) : null;
+      nameEl.style.color = guild ? rgbaFrom(guild.color, 1) : 'var(--system)';
+      typeEl.textContent = 'Solar System';
+      controlEl.textContent = guild ? guild.name : 'Unclaimed';
+      planetsRow.style.display = 'block';
+      document.getElementById('sp-planets').textContent = hit.planets.length;
+      if (hit.ring) { document.getElementById('sp-ring').textContent = hit.ring.toUpperCase(); ringRow.style.display = 'block'; }
+      detailsBtn.disabled = false;
+    } else if (type === 'guildOutpost') {
+      const guild = guildById.get(hit.guildId);
+      nameEl.textContent = hit.name;
+      nameEl.style.color = guild ? rgbaFrom(guild.color, 1) : 'var(--text)';
+      typeEl.textContent = 'Guild Outpost';
+      controlEl.textContent = guild ? guild.name : 'Unknown guild';
+      planetsRow.style.display = 'none';
+      detailsBtn.disabled = true;
+    } else if (type === 'tollGate') {
+      const guild = guildById.get(hit.guildId);
+      nameEl.textContent = hit.name;
+      nameEl.style.color = guild ? rgbaFrom(guild.color, 1) : 'var(--text)';
+      typeEl.textContent = 'Toll Gate';
+      controlEl.textContent = guild ? guild.name : 'Unknown guild';
+      planetsRow.style.display = 'none';
+      detailsBtn.disabled = true;
+    } else if (type === 'outpost') {
+      nameEl.textContent = hit.name;
+      nameEl.style.color = 'var(--outpost)';
+      typeEl.textContent = 'Syndicate Outpost';
+      controlEl.textContent = 'Syndicate';
+      planetsRow.style.display = 'none';
+      detailsBtn.disabled = true;
+    } else if (type === 'citadel') {
+      nameEl.textContent = 'The Citadel';
+      nameEl.style.color = 'var(--citadel)';
+      typeEl.textContent = 'Syndicate Stronghold';
+      controlEl.textContent = 'Syndicate';
+      planetsRow.style.display = 'none';
+      detailsBtn.disabled = true;
+    } else if (type === 'territory') {
+      nameEl.textContent = '<empty space>';
+      nameEl.style.color = rgbaFrom(hit.owner, 1);
+      typeEl.textContent = 'Claimed territory';
+      controlEl.textContent = hit.owner.label;
+      planetsRow.style.display = 'none';
+      detailsBtn.disabled = true;
+    } else {
+      nameEl.textContent = '<empty space>';
+      nameEl.style.color = 'var(--text-dim)';
+      typeEl.textContent = 'Uninhabited hex';
+      controlEl.textContent = 'Unclaimed';
+      planetsRow.style.display = 'none';
+      detailsBtn.disabled = true;
+    }
+  }
+
+  document.getElementById('recenter').addEventListener('click', () => {
+    selected = null; selectedCoords = null; selectedType = null; focusTarget = { x: 0, y: 0 };
+    document.getElementById('syspanel').style.display = 'none';
+    document.getElementById('recenter').disabled = true;
+  });
+
+  // OPEN DETAILS -> the System View screen, fed the clicked system's real seed data
+  document.getElementById('sp-details').addEventListener('click', () => {
+    if (selectedType === 'system' && selected && selected.planets) window.openSystemDetail(selected);
+  });
+  window.addEventListener('resize', () => { resize(); if (galaxy) starDots = genStarDots(galaxy.seed); });
+
+  // ---------- file loading ----------
+  const fileInput = document.getElementById('fileinput');
+  document.getElementById('filebtn').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        if (!parsed.galaxyParams || !parsed.systems) throw new Error('Missing galaxyParams or systems — is this a seed.json from generate_seed.js?');
+        loadGalaxy(parsed);
+      } catch (err) {
+        const el = document.getElementById('loaderror');
+        el.textContent = 'Failed to load: ' + err.message;
+        el.style.display = 'block';
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  const claimsInput = document.getElementById('claimsinput');
+  document.getElementById('claimsbtn').addEventListener('click', () => claimsInput.click());
+  claimsInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        if (!parsed.guilds || !parsed.systemClaims) throw new Error('Missing guilds or systemClaims — is this a test_claims.json from generate_test_claims.js?');
+        loadClaims(parsed);
+      } catch (err) {
+        alert('Failed to load claims: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  function loadClaims(parsed) {
+    claimsData = parsed;
+    guildById = new Map(parsed.guilds.map(g => [g.id, g]));
+    systemToGuild = new Map(Object.entries(parsed.systemClaims));
+    guildOutpostByKey = new Map(parsed.guildOutposts.map(o => [`${o.coords.q},${o.coords.r}`, o]));
+    gateByKey = new Map((parsed.tollGates || []).map(gt => [`${gt.coords.q},${gt.coords.r}`, gt]));
+    document.getElementById('claimsbtn').textContent = `⌘ CLAIMS LOADED (${parsed.guilds.length} guilds)`;
+  }
+
+  function loadGalaxy(parsed) {
+    galaxy = parsed;
+    starDots = genStarDots(galaxy.seed);
+    zoom = getMinZoom();
+    angle = 0; focus = {x:0,y:0}; focusTarget = {x:0,y:0};
+    selected = null; selectedCoords = null; selectedType = null;
+
+    document.getElementById('loadpanel').style.display = 'none';
+    document.getElementById('legend').style.display = 'block';
+    document.getElementById('hint').style.display = 'block';
+    document.getElementById('zoomreadout').style.display = 'block';
+    document.getElementById('recenter').style.display = 'inline-block';
+    document.getElementById('recenter').disabled = true;
+    document.getElementById('zoomval').textContent = zoom.toFixed(1) + '×';
+
+    systemByKey = new Map(galaxy.systems.map(s => [`${s.coords.q},${s.coords.r}`, s]));
+    outpostByKey = new Map(galaxy.outposts.map(o => [`${o.coords.q},${o.coords.r}`, o]));
+    systemById = new Map(galaxy.systems.map(s => [s.id, s]));
+    document.getElementById('claimsbtn').style.display = 'inline-block';
+
+    const s = galaxy.stats || {};
+    document.getElementById('meta').innerHTML =
+      `SEED <span>${galaxy.seed}</span><br>` +
+      `HEXES <span>${(s.totalHexesInGalaxy||0).toLocaleString()}</span> (computed, not stored) &nbsp; SYSTEMS <span>${galaxy.systems.length}</span><br>` +
+      `PLANETS <span>${s.totalPlanets||0}</span> &nbsp; OUTPOSTS <span>${galaxy.outposts.length}</span>`;
+  }
+
+
+  window.__loadGalaxy = loadGalaxy;
+  window.__setOwned = function(ids){ TEST_PLAYER_GUILD.ownedSystemIds = ids; };
+  window.__flyTo = function(q, r, z){
+    if(!galaxy) return;
+    if(window.closeTab) window.closeTab();
+    const sys = galaxy.systems.find(s => s.coords.q===q && s.coords.r===r);
+    focusTarget = hexToPixel(q, r, galaxy.galaxyParams.hexSize);
+    if(z){ zoom = Math.min(getMaxZoom(), Math.max(getMinZoom(), z)); document.getElementById('zoomval').textContent = (zoom<10?zoom.toFixed(1):Math.round(zoom))+'\u00d7'; }
+    if(sys){ selected = sys; selectedCoords = {q:q,r:r}; selectedType = 'system'; showSysPanel(sys, 'system', {q:q,r:r}); document.getElementById('recenter').disabled = false; }
+  };
+
+  resize(); tick();
+})();
+</script>
+
+<script>
+/* ===== System / Planet detail screen (reworked) — window.openSystemDetail(seedSystem) ===== */
+(function () {
+const ARCHETYPE_LABEL = { rocky:'Rocky', terran:'Terran', oceanic:'Oceanic', ice:'Ice', gasGiant:'Gas Giant', molten:'Molten', desert:'Desert', irradiated:'Irradiated', crystalline:'Crystalline' };
+const RESOURCE_LABEL = { titanium:'Titanium', copper:'Copper', lead:'Lead', silica:'Silica', lithium:'Lithium', polymers:'Polymers', carbon_products:'Carbon Products', nitrogen:'Nitrogen', gold:'Gold', silver:'Silver', tungsten:'Tungsten', deuterium:'Deuterium', ammonia:'Ammonia', helium:'Helium', xenon:'Xenon', neodymium:'Neodymium', palladium:'Palladium' };
+const ROMAN = ['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV'];
+function toRoman(n){ return ROMAN[n] || String(n); }
+
+let SYSTEM = null;
+let view = { screen:'system', planetId:null, planetTab:'resources' };
+
+const el = {
+  titleMain: document.getElementById('titleMain'),
+  titleSub: document.getElementById('titleSub'),
+  controller: document.getElementById('controllerName'),
+  dropdown: document.getElementById('sysDropdown'),
+  pvTabs: document.getElementById('pvTabs'),
+  stack: document.getElementById('stack'),
+  hero: document.getElementById('hero'),
+  backBtn: document.getElementById('backBtn'),
+  mainHeading: document.getElementById('mainHeading'),
+  emptyCopy: document.getElementById('emptyCopy'),
+  overlay: document.getElementById('overlay'),
+  overlayTitle: document.getElementById('overlayTitle'),
+  overlayCopy: document.getElementById('overlayCopy'),
+  overlayClose: document.getElementById('overlayClose'),
+};
+
+function adaptSeedSystem(sys){
+  return {
+    name: sys.name, id: sys.id, ring: sys.ring||null, coords: sys.coords||null,
+    controller: (window.__controllerFor ? window.__controllerFor(sys.id) : 'Unclaimed'),
+    planets: (sys.planets||[]).map(function(p,i){ return {
+      id:p.id, order:i+1, roman:toRoman(i+1), archetype:p.archetype,
+      nodes:(p.resourceNodes||[]).map(function(n){return n.resourceType;}),
+      slots:(p.settlementSlots||[]).length
+    };})
+  };
+}
+function planetDesignation(p){ return SYSTEM.name + ' ' + p.roman; }
+
+// pip markup — 3 cols x 5, filling rightmost first; cls 'sq' = resource square, 'tri' = settlement triangle
+function pipColumns(count, cls){
+  const right=Math.min(5,count), mid=Math.min(5,Math.max(0,count-5)), left=Math.min(5,Math.max(0,count-10));
+  const col=function(n){ return '<span class="pip-col">' + ('<span class="pip '+cls+'"></span>').repeat(n) + '</span>'; };
+  return '<span class="pip-columns '+cls+'-group">'+col(left)+col(mid)+col(right)+'</span>';
+}
+
+el.backBtn.addEventListener('click', function(){ view={screen:'system', planetId:null, planetTab:'resources'}; render(); });
+if (el.dropdown){
+  el.dropdown.addEventListener('change', function(){
+    const id=this.value; const seed=(window.__demoSeed && window.__demoSeed.systems.filter(function(s){return s.id===id;})[0]);
+    if(seed) window.openSystemDetail(seed);
+  });
+}
+
+function renderSystemView(){
+  el.titleMain.textContent = SYSTEM.name;
+  el.controller.textContent = SYSTEM.controller;
+  el.controller.style.display = '';
+  const ringBit = SYSTEM.ring ? SYSTEM.ring.toUpperCase()+' RING \u00b7 ' : '';
+  const coordBit = SYSTEM.coords ? ('q'+SYSTEM.coords.q+' r'+SYSTEM.coords.r) : SYSTEM.id;
+  el.titleSub.textContent = SYSTEM.planets.length + ' surveyed bodies \u00b7 ' + ringBit + coordBit;
+
+  if (el.dropdown){
+    let owned = (window.__myGuildSystems||[]).slice();
+    if (!owned.some(function(s){return s.id===SYSTEM.id;})) owned.unshift({id:SYSTEM.id, name:SYSTEM.name});
+    el.dropdown.style.display = owned.length>1 ? '' : 'none';
+    el.dropdown.innerHTML = owned.map(function(s){ return '<option value="'+s.id+'"'+(s.id===SYSTEM.id?' selected':'')+'>'+s.name+'</option>'; }).join('');
+  }
+  el.pvTabs.style.display='none';
+
+  el.stack.innerHTML='';
+  SYSTEM.planets.slice().sort(function(a,b){return b.order-a.order;}).forEach(function(p){
+    const row=document.createElement('button');
+    row.className='list-row tab tex-'+p.archetype;
+    row.innerHTML = pipColumns(p.nodes.length,'sq') + pipColumns(p.slots,'tri') +
+      '<span class="node-meta"><span class="node-name">'+planetDesignation(p)+'</span><span class="node-type">'+ARCHETYPE_LABEL[p.archetype]+'</span></span>';
+    row.addEventListener('click', function(){ view={screen:'planet', planetId:p.id, planetTab:'resources'}; render(); });
+    el.stack.appendChild(row);
+  });
+
+  el.backBtn.classList.remove('visible');
+  el.hero.className='hero star';
+  el.mainHeading.textContent='System Manifest';
+  el.emptyCopy.textContent='Territory, tolls, and venture data for this system have not yet been charted. Select a body from the index to continue.';
+}
+
+function renderPlanetView(){
+  const p = SYSTEM.planets.filter(function(pl){return pl.id===view.planetId;})[0];
+  el.titleMain.textContent = planetDesignation(p);
+  el.controller.style.display='none';
+  el.titleSub.textContent = ARCHETYPE_LABEL[p.archetype] + ' \u00b7 ' + p.id;
+  if (el.dropdown) el.dropdown.style.display='none';
+
+  el.pvTabs.style.display='';
+  el.pvTabs.innerHTML =
+    '<button class="pv-tab'+(view.planetTab==='resources'?' active':'')+'" data-t="resources">Resources</button>' +
+    '<button class="pv-tab'+(view.planetTab==='settlements'?' active':'')+'" data-t="settlements">Settlements</button>';
+  Array.prototype.forEach.call(el.pvTabs.querySelectorAll('.pv-tab'), function(b){
+    b.addEventListener('click', function(){ view.planetTab=this.getAttribute('data-t'); render(); });
+  });
+
+  el.stack.innerHTML='';
+  if (view.planetTab==='resources'){
+    p.nodes.forEach(function(resourceType,i){
+      const row=document.createElement('div'); row.className='list-row tab tex-node';
+      row.innerHTML = '<span class="node-meta"><span class="node-name">'+RESOURCE_LABEL[resourceType]+'</span></span><button type="button" class="venture-btn">VACANT</button>';
+      row.addEventListener('click', function(){ openNodeOverlay('Resource Node '+(i+1), RESOURCE_LABEL[resourceType]); });
+      el.stack.appendChild(row);
+    });
+  } else {
+    for (let i=0;i<p.slots;i++){
+      const row=document.createElement('div'); row.className='list-row tab tex-node';
+      row.innerHTML = '<span class="node-meta"><span class="node-name">Settlement Slot '+(i+1)+'</span></span><button type="button" class="venture-btn">VACANT</button>';
+      (function(idx){ row.addEventListener('click', function(){ openNodeOverlay('Settlement Slot '+idx, 'Vacant'); }); })(i+1);
+      el.stack.appendChild(row);
+    }
+    if (p.slots===0){
+      const none=document.createElement('div'); none.className='list-row tab tex-node'; none.style.opacity='0.5';
+      none.innerHTML='<span class="node-meta"><span class="node-name">No settlement slots on this body</span></span>';
+      el.stack.appendChild(none);
+    }
+  }
+
+  el.backBtn.classList.add('visible');
+  el.hero.className='hero planet-'+p.archetype;
+  el.mainHeading.textContent='Planet Manifest';
+  el.emptyCopy.textContent='Claim status, venture activity, and extraction data for '+planetDesignation(p)+' have not yet been charted.';
+}
+
+function openNodeOverlay(title, label){
+  el.overlayTitle.textContent = title;
+  el.overlayCopy.textContent = label + ' \u2014 extraction rate, claim status, and venture linkage are not yet instrumented.';
+  el.overlay.classList.add('open');
+}
+el.overlayClose.addEventListener('click', function(){ el.overlay.classList.remove('open'); });
+el.overlay.addEventListener('click', function(e){ if(e.target===el.overlay) el.overlay.classList.remove('open'); });
+document.addEventListener('keydown', function(e){
+  if(e.key!=='Escape') return;
+  if(el.overlay.classList.contains('open')) el.overlay.classList.remove('open');
+  else if(document.getElementById('detail-screen').classList.contains('open')) closeDetail();
+});
+
+function render(){ if(view.screen==='system') renderSystemView(); else renderPlanetView(); }
+function closeDetail(){ el.overlay.classList.remove('open'); document.getElementById('detail-screen').classList.remove('open'); }
+document.getElementById('detail-exit').addEventListener('click', closeDetail);
+
+window.openSystemDetail = function(seedSystem){
+  SYSTEM = adaptSeedSystem(seedSystem);
+  view = { screen:'system', planetId:null, planetTab:'resources' };
+  render();
+  document.getElementById('detail-screen').classList.add('open');
+};
+})();
+</script>
+
+
+<script>
+/* ===== STARFARE client shell v3 — top bar, rhombus tabs, tick-clock, music ===== */
+window.__TOPUI = 104;   /* map is squeezed below the top bar via this offset (patched into the engine) */
+
+function shellGo(id){ document.querySelectorAll('.shell-screen').forEach(function(s){s.classList.remove('active');}); var el=document.getElementById(id); if(el) el.classList.add('active'); }
+function shellSelGalaxy(el){ document.querySelectorAll('.galaxy-row').forEach(function(r){r.classList.remove('sel');}); el.classList.add('sel'); }
+function shellConnect(){
+  var u=document.getElementById('uplink');
+  var steps=['\u25e6 resolving galaxy.local\u2026','\u25e6 handshake \u00b7 schema-7 snapshot\u2026','\u25e6 seating guild Vanguard\u2026','\u25cf uplink established'];
+  var i=0; u.textContent='';
+  var t=setInterval(function(){ u.textContent=steps[i]; if(++i>=steps.length){ clearInterval(t); setTimeout(shellEnterGame, 420);} }, 260);
+}
+function shellEnterGame(){
+  document.getElementById('splash').classList.remove('active');
+  document.getElementById('connect').classList.remove('active');
+  document.getElementById('gameTop').classList.add('show');
+  var seed = buildDemoGalaxy();
+  window.__demoSeed = seed;
+  // Vanguard controls the home system + a few others (demo of multi-system control)
+  var owned=['sys_0558'];
+  for(var i=0;i<seed.systems.length && owned.length<4;i++){ if(seed.systems[i].id!=='sys_0558') owned.push(seed.systems[i].id); }
+  window.__ownedSet={}; owned.forEach(function(id){ window.__ownedSet[id]=1; });
+  window.__myGuildSystems = owned.map(function(id){ var s=seed.systems.filter(function(x){return x.id===id;})[0]; return {id:id, name:s?s.name:id}; });
+  window.__controllerFor = function(id){ return window.__ownedSet[id] ? 'Vanguard' : 'Unclaimed'; };
+  if(window.__setOwned) window.__setOwned(owned);
+  if(window.__loadGalaxy) window.__loadGalaxy(seed);
+}
+
+/* ---- tabs ---- */
+var TAB_STUBS = {
+  market:   ['Syndicate Marketplace', 'The Syndicate is the galaxy\u2019s sole market-maker: it posts one computed value per good, always buys and sells, and hides the true galactic supply. Trading, price history, and buy/sell orders live here. (Not yet built \u2014 this is where the Market slice lands.)'],
+  transport:['Transport', 'A live status board of every vehicle you own \u2014 idle, loading, in transit, its route across the hex map, cargo, fuel burn, and ETA. Dispatch and routing controls live here. (Not yet built \u2014 Phase 4, the real map + travel.)'],
+  guild:    ['Guild Hall', 'Your roster, credit ledger, licences, reputation, and lifetime production \u2014 the guild\u2019s own dashboard. (Not yet built.)']
+};
+function openTab(which, btn){
+  document.querySelectorAll('.rtab').forEach(function(t){t.classList.remove('active');});
+  if(btn) btn.classList.add('active');
+  var tp=document.getElementById('tabPanel');
+  if(which==='system'){
+    tp.classList.remove('show');
+    var s = window.__demoSeed && window.__demoSeed.systems.filter(function(x){return x.id==='sys_0558';})[0];
+    if(s && window.openSystemDetail){ window.openSystemDetail(s); }
+    return;
+  }
+  var info = TAB_STUBS[which] || ['\u2014',''];
+  document.getElementById('tp-title').textContent = info[0];
+  document.getElementById('tp-body').textContent = info[1];
+  tp.classList.add('show');
+}
+window.closeTab = function(){
+  document.getElementById('tabPanel').classList.remove('show');
+  document.querySelectorAll('.rtab').forEach(function(t){t.classList.remove('active');});
+  var sysTab=document.querySelector('.rtab'); if(sysTab) sysTab.classList.add('active');
+};
+
+/* ---- radial tick clock (fills over 60s, then the tick advances) ---- */
+var __tickNo=1204, __tickStart=(window.performance&&performance.now)?performance.now():Date.now(), __cr=4200;
+function nowms(){ return (window.performance&&performance.now)?performance.now():Date.now(); }
+(function clockLoop(){
+  var tc=document.getElementById('tickclock');
+  if(tc && document.getElementById('gameTop').classList.contains('show')){
+    var frac=(nowms()-__tickStart)/60000;
+    while(frac>=1){ __tickStart+=60000; frac-=1; __tickNo++; __cr+=50;
+      var tn=document.getElementById('hud-tick'); if(tn) tn.textContent='TICK '+__tickNo.toLocaleString();
+      var cr=document.getElementById('hud-cr'); if(cr) cr.textContent=__cr.toLocaleString(); }
+    var deg=Math.max(0,Math.min(360,frac*360));
+    tc.style.background='conic-gradient(var(--accent) '+deg+'deg, rgba(67,217,200,.10) '+deg+'deg)';
+  }
+  requestAnimationFrame(clockLoop);
+})();
+
+/* ---- background music: real track (Main Title), started on the first user gesture ---- */
+var _musOn=false;
+function startMusic(){
+  var a=document.getElementById('bgm'); if(!a) return;
+  a.volume=0.55;
+  try{ var p=a.play(); if(p&&p.catch) p.catch(function(){}); }catch(e){}
+  setTimeout(function(){ _musOn=!a.paused; updateMusicBtn(); }, 250);
+}
+function toggleMusic(){
+  var a=document.getElementById('bgm'); if(!a) return;
+  if(a.paused){ try{ var p=a.play(); if(p&&p.catch) p.catch(function(){}); }catch(e){} _musOn=true; }
+  else { a.pause(); _musOn=false; }
+  updateMusicBtn();
+}
+function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) return; b.textContent = _musOn?'\u266a Music':'\u266a Muted'; b.classList.toggle('off', !_musOn); }
+(function(){ var vs=document.getElementById('volSlider'); if(vs){ vs.addEventListener('input', function(){ var a=document.getElementById('bgm'); if(a) a.volume=Math.max(0,Math.min(1,this.value/100)); }); } })();
+
+/* ---- splash starfield ---- */
+(function(){
+  var c=document.getElementById('splashfield'); if(!c) return; var x=c.getContext('2d'); var st=[];
+  function fit(){ c.width=innerWidth; c.height=innerHeight; st=[]; for(var i=0;i<220;i++) st.push({x:Math.random()*c.width,y:Math.random()*c.height,r:Math.random()*1.4+.2,a:Math.random()}); }
+  fit(); addEventListener('resize',fit);
+  (function loop(){ var sp=document.getElementById('splash'); if(!sp||!sp.classList.contains('active')){ requestAnimationFrame(loop); return; } x.clearRect(0,0,c.width,c.height); for(var i=0;i<st.length;i++){ var s=st[i]; s.a+=(Math.random()-.5)*.05; s.a=Math.max(.1,Math.min(1,s.a)); x.fillStyle='rgba(120,180,220,'+s.a*.7+')'; x.beginPath(); x.arc(s.x,s.y,s.r,0,7); x.fill(); } requestAnimationFrame(loop); })();
+})();
+
+/* ---- demo galaxy generator (exact seed schema loadGalaxy expects) ---- */
+function shMul(a){ return function(){ a|=0; a=(a+0x6D2B79F5)|0; var t=Math.imul(a^(a>>>15),1|a); t=(t+Math.imul(t^(t>>>7),61|t))^t; return ((t^(t>>>14))>>>0)/4294967296; }; }
+function shRound(q,r){ var x=q,z=r,y=-x-z; var rx=Math.round(x),ry=Math.round(y),rz=Math.round(z); var dx=Math.abs(rx-x),dy=Math.abs(ry-y),dz=Math.abs(rz-z); if(dx>dy&&dx>dz) rx=-ry-rz; else if(dy>dz) ry=-rx-rz; else rz=-rx-ry; return {q:rx,r:rz}; }
+function shDist(a,b){ return (Math.abs(a.q-b.q)+Math.abs(a.q+a.r-b.q-b.r)+Math.abs(a.r-b.r))/2; }
+function buildDemoGalaxy(){
+  var P={radius:2750,hexSize:9.5,citadelRadius:4,arms:4,spiralTwist:2.6};
+  var rand=shMul(7331);
+  var ARCH=['rocky','terran','oceanic','ice','gasGiant','molten','desert','irradiated','crystalline'];
+  var RES=['titanium','copper','lead','silica','lithium','polymers','carbon_products','nitrogen','gold','silver','tungsten','deuterium','ammonia','helium','xenon','neodymium','palladium'];
+  var LET='ABCDEFGHJKLMNPRSTVXZ';
+  function nm(){ var s=''; for(var i=0;i<3;i++) s+=LET[Math.floor(rand()*LET.length)]; return s+'-'+(1000+Math.floor(rand()*8999)); }
+  function p2a(x,y){ var q=x/(P.hexSize*1.5); var r=(y/P.hexSize - Math.sqrt(3)/2*q)/Math.sqrt(3); return shRound(q,r); }
+  var systems=[], used={}, idc=1;
+  for(var i=0;i<2600 && systems.length<820;i++){
+    var t=Math.pow(rand(),0.6); var rad=t*P.radius*0.98+70;
+    var arm=Math.floor(rand()*P.arms); var jit=(rand()-0.5)*(0.55-0.32*t);
+    var th=(Math.PI*2/P.arms)*arm + t*P.spiralTwist*Math.PI + jit;
+    var ax=p2a(Math.cos(th)*rad, Math.sin(th)*rad);
+    var key=ax.q+','+ax.r; if(used[key]) continue;
+    if(shDist(ax,{q:0,r:0})<=P.citadelRadius+1) continue;
+    if(ax.q===7 && ax.r===30) continue;
+    used[key]=1;
+    var ring= rad<P.radius*0.34?'inner':(rad<P.radius*0.67?'mid':'outer');
+    var nP=1+Math.floor(rand()*4); var planets=[];
+    for(var j=0;j<nP;j++){ var nN=1+Math.floor(rand()*6); var nodes=[]; for(var k=0;k<nN;k++) nodes.push({id:'pl_g'+idc+'_'+j+'_n'+k, resourceType:RES[Math.floor(rand()*RES.length)]}); var nS=Math.floor(rand()*8); var slots=[]; for(var si=0;si<nS;si++) slots.push({id:'pl_g'+idc+'_'+j+'_s'+si}); planets.push({id:'pl_g'+idc+'_'+j, archetype:ARCH[Math.floor(rand()*ARCH.length)], resourceNodes:nodes, settlementSlots:slots}); }
+    systems.push({id:'sys_d'+String(idc).padStart(4,'0'), name:nm(), ring:ring, coords:ax, planets:planets}); idc++;
+  }
+  var home={ id:'sys_0558', name:'FEN-6461', ring:'inner', coords:{q:7,r:30}, planets:[
+    {id:'pl_01944', archetype:'molten', resourceNodes:['gold','tungsten','silver','tungsten'].map(function(tt,ii){return {id:'pl_01944_n'+(ii+1),resourceType:tt};}), settlementSlots:[]},
+    {id:'pl_01945', archetype:'terran', resourceNodes:['titanium','titanium','copper','lead','silica','lithium','polymers','carbon_products','nitrogen','gold','silver','tungsten','silver','titanium','polymers'].map(function(tt,ii){return {id:'pl_01945_n'+String(ii+1).padStart(2,'0'),resourceType:tt};}), settlementSlots:Array.from({length:15},function(_,ii){return {id:'pl_01945_s'+String(ii+1).padStart(2,'0')};})},
+    {id:'pl_01946', archetype:'desert', resourceNodes:['silica','silica','silica'].map(function(tt,ii){return {id:'pl_01946_n'+(ii+1),resourceType:tt};}), settlementSlots:Array.from({length:10},function(_,ii){return {id:'pl_01946_s'+(ii+1)};})},
+    {id:'pl_01947', archetype:'molten', resourceNodes:['silver','gold'].map(function(tt,ii){return {id:'pl_01947_n'+(ii+1),resourceType:tt};}), settlementSlots:[]}
+  ]};
+  systems.push(home);
+  var ONAMES=["Waystation's Reach","Drift Exchange","Rim Post","Halcyon Gate","Ember Waystation","Tannhauser Post","Verge Exchange","Cinder Reach","Meridian Post"];
+  var outposts=ONAMES.map(function(n,i){ var t=0.35+rand()*0.6; var rad=t*P.radius; var th=rand()*Math.PI*2; var ax=p2a(Math.cos(th)*rad,Math.sin(th)*rad); return {id:'out_'+i, name:n, coords:ax}; });
+  var tP=0; systems.forEach(function(s){tP+=s.planets.length;});
+  return { seed:7331, galaxyParams:P, citadel:{coords:{q:0,r:0},radius:4}, systems:systems, outposts:outposts, stats:{totalPlanets:tP, totalHexesInGalaxy:0} };
+}
+</script>
+
+</body>
+</html>
