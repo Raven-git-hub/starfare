@@ -1,0 +1,180 @@
+// ===========================================================================
+// STARFARE — empty live-state, ONE guild, tick 0
+// ===========================================================================
+// This is the PERSISTED state — the thing the tick advances and the snapshot is
+// derived FROM. Field names + shapes are taken verbatim from the engine
+// (sim/state.js, sim/profile.js, sim/resources.js), not invented.
+//
+// THE ONE BOUNDARY THAT MATTERS:
+//   • This file holds STORED (player-set, in the determinism hash) + IDENTITY
+//     (stable seed facts) data only.
+//   • The numbers the console actually SHOWS — fresh / demand / supplied /
+//     fork.* / the whole window block — are DERIVED every tick into the
+//     SNAPSHOT and are NOT in here. See the "SNAPSHOT" block at the very bottom
+//     for what those look like (that block is transient, never persisted).
+//
+// "Empty" = a freshly-seated guild at tick 0: it owns its home system and has
+// its two starting ventures placed, but nothing has been produced, traded, or
+// committed yet. Runtime accumulators are 0/{}; structural numbers a STARTING
+// SCENARIO supplies are tagged [SCENARIO] (never invented here — working rule #5).
+// Comments after a value name the console element it feeds and its bucket.
+// Strip the comments and it is valid state JSON.
+
+{
+  "tick": 0,                         // engine clock; every mutation records its tick
+
+  "guilds": [
+    {
+      // ---- identity (IDENTITY) ------------------------------------------------
+      "id": "guild_vanguard",
+      "name": "Vanguard",            // HUD: guild name
+      "isBot": false,
+
+      // ---- economy (STORED, runtime accumulators) ----------------------------
+      "credits": 0,                  // HUD: credits            [SCENARIO sets the real starting number]
+      "fuelHoard": 0,                // refined deuterium_fuel held — NOT a stockpile good; governed by the fuel-conservation law (invariant 1)
+      "influence": 0,
+      "incomeRate": 0,
+      "guildReputation": 0,
+
+      // ---- home (IDENTITY; the OWNERSHIP truth lives in claims[] below) -------
+      "homeSystemId": "sys_0558",    // celestial hero: FEN-6461
+      "homePlanetId": "pl_01945",    // celestial hero: Terran homeworld
+
+      // ---- stockpiles: systemId -> good -> int  (SYSTEM-SCOPED, ruling B1) ----
+      // Feeds: the stockpile strip "on-hand" value + the resource selector.
+      // Sparse in the engine (absent = 0); listed in full here at 0 on purpose
+      // (you wanted every resource visible even at 0). 17 raw + 11 processed.
+      "stockpiles": {
+        "sys_0558": {
+          "ammonia": 0, "carbon_products": 0, "copper": 0, "deuterium": 0,
+          "gold": 0, "helium": 0, "lead": 0, "lithium": 0, "neodymium": 0,
+          "nitrogen": 0, "palladium": 0, "polymers": 0, "silica": 0,
+          "silver": 0, "titanium": 0, "tungsten": 0, "xenon": 0,
+
+          "battery_cells": 0, "carbon_fiber_weave": 0, "composite_resin": 0,
+          "conductive_material": 0, "heat_resistant_alloy": 0,
+          "magnetic_assemblies": 0, "nanotube_cable": 0, "radiation_shielding": 0,
+          "refrigerant_fluid": 0, "silicon_wafer": 0, "titanium_alloy": 0
+        }
+      },
+
+      // ---- productionProfile: systemId -> { goods, throttles }  (STORED) ------
+      // The ENTIRE left+centre of the console writes here (setProductionProfile).
+      // Sparse + advisory: an absent good/field means its default. Shown FULLY
+      // for titanium so every WRITE data point has a visible home.
+      "productionProfile": {
+        "sys_0558": {
+          "goods": {
+            "titanium": {
+              "order": ["syndicate", "downstream", "stockpile"],  // WRITE: the three fork ranks (default order)
+              "downstreamPct": 100,                                // WRITE: Production arm — provision cap % (default 100)
+              "reserveLevel": 0                                    // WRITE: Stockpile arm / strip — reserve floor (default 0)
+              // "syndicate": { "mode": "absolute", "value": 0 }   // WRITE, OPTIONAL: Syndicate arm send. ABSENT = paced required-rate.
+            }
+            // ... other goods absent ⇒ all-defaults policy
+          },
+          "throttles": {
+            "vt_alloy_ref_01": 100    // WRITE: Consumers — per-venture throttle % (default 100)
+          }
+        }
+      },
+
+      // ---- syndicateWindows: systemId -> good -> {windowStart, delivered, sendCarry}
+      // ENGINE-OWNED accrual state (§5). Lazily created ONLY for a committed good,
+      // so an unlicensed guild has NONE — empty here. The console's "window" block
+      // (progress %, hours remaining, met/breach) is DERIVED from this + windowN.
+      "syndicateWindows": {},
+
+      // ---- lifetimeProduced: good -> int (monotonic, engine-owned) -----------
+      "lifetimeProduced": {},        // nothing produced yet
+
+      // ---- ventures (OWNED): a venture on a NODE is the mine, on a SLOT the factory
+      // Feeds: producer/consumer chips + the venture hero. IDENTITY here; the
+      // per-tick rate/minted/bottleneck the console shows are DERIVED (snapshot).
+      "ventures": [
+        {
+          "id": "vt_ti_mine_01",       // hero + chip: venture name
+          "ownerGuildId": "guild_vanguard",
+          "type": "mining",            // 'mining' | 'refining' -> hero "kind" + which art family
+          "siteId": "pl_01945_n01",    // IDENTITY: the seed resource NODE it occupies (titanium node)
+          "systemId": "sys_0558",      // denormalised from the site (the stockpile pool key)
+          "resourceType": "titanium",  // IDENTITY: the raw good this mine extracts
+          "recipeId": null,            // mining ⇒ null
+          "productionRate": 5,         // [SCENARIO/tuning — not invented here]
+          "inputStockpiles": {},       // a mine draws no inputs
+          "syndicateCommitment": 0,    // FUTURE licence layer; 0 = unlicensed (every venture today)
+          "batchCarry": {},            // refinery sub-unit carries; {} for a mine
+          "updatedAtTick": null,       // null until stepProduction first touches it
+          "biome": null                // PROPOSED (cosmetic, optional): art override. null = derive from resourceType. terran+titanium -> Mountain.
+        },
+        {
+          "id": "vt_alloy_ref_01",     // hero + chip: venture name
+          "ownerGuildId": "guild_vanguard",
+          "type": "refining",
+          "siteId": "pl_01945_s01",    // IDENTITY: the seed settlement SLOT it occupies   [slot id shape illustrative]
+          "systemId": "sys_0558",
+          "resourceType": null,        // refining ⇒ null
+          "recipeId": "titanium_alloy",// IDENTITY: recipes.js — 3 titanium + 1 carbon_products -> 1 titanium_alloy
+          "productionRate": 2,         // [SCENARIO/tuning]
+          "inputStockpiles": {},
+          "syndicateCommitment": 0,
+          "batchCarry": {},            // per-good fractional remainders once it runs, e.g. { "titanium": 0.0, "titanium_alloy": 0.0 }
+          "updatedAtTick": null,
+          "biome": null                // refinery art = {Archetype}Manufacture; biome N/A (mono for factories)
+        }
+      ],
+
+      "vehicles": []                   // transport (Phase 4); none yet
+    }
+  ],
+
+  // ===========================================================================
+  // SHARED / GLOBAL — not owned by any one guild
+  // ===========================================================================
+  "reserve":   { "reserveLevel": 30 },   // [SCENARIO] the Syndicate fuel reserve (the fuel utility)
+  "syndicate": { "ledger": 0 },          // credit-conservation balancing account (may go negative)
+  // "windowN": 24,                      // engine-wide Syndicate window length (ticks). PRESENT ONLY once commitments exist.
+  "world":  { "seed": 0 },               // the galaxy IS this seed number (referenced, not copied) [SCENARIO]
+  "claims": [
+    // The guild's home claim — the OWNERSHIP source of truth for homeSystemId.
+    { "claimId": "claim_home_vanguard", "ownerGuildId": "guild_vanguard",
+      "landmarkId": "sys_0558", "landmarkKind": "system", "claimedAtTick": 0, "contested": false }
+  ],
+  "shipments": [],                       // IN-FLIGHT: empty until routes exist
+
+  // ---- engine-owned bookkeeping (re-derived & asserted every tick) ----------
+  "audit": {
+    "totalProduced": 30,                 // = Σ fuelHoard (0) + reserve.reserveLevel (30)
+    "totalConsumed": 0,
+    "expectedCreditTotal": 0             // = Σ credits (0) + syndicate.ledger (0)
+  },
+  "galacticSupply": {                    // DERIVED cache: good -> total across ALL guild stockpiles. All 0 at tick 0.
+    // "titanium": 0, ... every stockpile good ...   (the market's pricing basis; never authored, always re-derived)
+  }
+}
+
+// ===========================================================================
+// NOT PERSISTED — the per-tick SNAPSHOT the console actually renders
+// ===========================================================================
+// Derived fresh each tick from the state above; sent to the client; never saved,
+// never in the determinism hash. Shown here (for titanium, tick 0, nothing
+// produced) so the READ side of the field-map has a concrete home. This block is
+// illustrative — it does NOT belong in the live-state file.
+//
+// snapshot.production["sys_0558"].goods["titanium"] = {
+//   "fresh": 0,            // READ: Production headline (mines' output this tick)
+//   "demand": 0,          // READ: Production arm "Required" (full-tilt Gate-2 max)
+//   "supplied": 0,        // READ: Production arm "provided" (consumer draw cap)
+//   "reserve0": 0,        // READ: stockpile strip on-hand at tick start
+//   "reserveDelta": 0,    // READ: trend chevrons + top-up (pile change this tick)
+//   "pot": 0,
+//   "fork": { "syndicate": 0, "downstream": 0, "stockpile": 0 },  // READ: the three arms' resolved takes
+//   "window": {           // READ: Syndicate arm — DERIVED from syndicateWindows + windowN + commitment
+//     "Q": 0, "delivered": 0, "ticksRemaining": 0, "requiredRate": 0,
+//     "sendThisTick": 0, "pctAchieved": 0, "status": "accruing"
+//   }
+// }
+// snapshot ...mines[]      = [ { "ventureId":"vt_ti_mine_01", "amount":0 } ]                       // producer chips + hero output
+// snapshot ...refineries[] = [ { "ventureId":"vt_alloy_ref_01", "rate":0, "minted":0, "bottleneckGood":null } ]  // consumer chips + hero rate/held-by
+// snapshot ...lines[]      = [ ... per consumer line: good, demand, alloc, drawn ... ]

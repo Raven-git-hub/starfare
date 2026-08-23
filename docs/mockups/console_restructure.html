@@ -25,6 +25,7 @@
     --ink:#E8DFC8; --ink2:#8B8F9C; --ink3:#565B68;
     --green:#4E9A87; --red:#C2603A;
     --fork-syndicate:#C9A227; --fork-production:#6E93B8; --fork-stockpile:#8A9A6B;
+    --good:#7FA96B; --off:#C08A3E;
     --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
     --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
     --serif:'Cinzel',serif;
@@ -106,14 +107,29 @@
   /* the typed reserve field, floating above the bar (follows the line, or pinned right) */
   .rs-fieldwrap{position:absolute; top:-30px; display:inline-flex; align-items:baseline; gap:4px; z-index:5; white-space:nowrap}
   .rs-fieldwrap .k{font-family:var(--mono); font-size:8.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3)}
-  .rs-field{width:52px; background:var(--void); border:1px solid var(--line2); border-radius:6px; color:var(--ink); font-family:var(--mono); font-size:15px; font-weight:500; text-align:right; padding:2px 6px; font-variant-numeric:tabular-nums}
+  .rs-field{width:66px; background:var(--void); border:1px solid var(--line2); border-radius:6px; color:var(--ink); font-family:var(--mono); font-size:15px; font-weight:500; text-align:right; padding:2px 18px 2px 8px; font-variant-numeric:tabular-nums}
   .rs-field:focus{outline:none; border-color:var(--amber)}
+  /* Custom up/down stepper — replaces the native spinner (which can't both hug the box
+     edge and clear the digits). The native spinner is hidden; two chevron buttons are
+     absolutely pinned flush to the input's right edge, and each input's right-padding
+     (set per-input) reserves their lane so the value never sits under them. */
+  input[type=number]{-moz-appearance:textfield}
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none; margin:0}
+  .numwrap{position:relative; display:inline-flex; align-items:center}
+  .numbtns{position:absolute; right:3px; top:50%; transform:translateY(-50%); display:flex; flex-direction:column; gap:1px; z-index:3}
+  .nbtn{width:15px; height:11px; padding:0; margin:0; display:flex; align-items:center; justify-content:center; background:var(--raised); border:1px solid var(--line2); border-radius:3px; color:var(--ink2); font-family:var(--mono); font-size:8px; line-height:1; cursor:pointer; user-select:none}
+  .nbtn:hover{color:var(--amber); border-color:var(--amber-dim); background:var(--amber-ghost)}
+  .nbtn:active{background:var(--amber-dim); color:var(--void)}
   .rs-fieldwrap .u{font-family:var(--mono); font-size:10px; color:var(--ink3)}
   .rs-onhand{text-align:right; min-width:120px}
   .rs-oh-lbl{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3)}
   .rs-oh-val{font-family:var(--mono); font-size:26px; font-weight:500; color:var(--ink); font-variant-numeric:tabular-nums; margin-top:3px}
 
-  .flow{display:grid; grid-template-columns:180px 78px 460px 70px 1fr; gap:0; align-items:stretch}
+  /* Distribution (col 3) is fixed and centred: the two outer columns are equal 1fr
+     (Production left, Consumption right) and the two inner pipe columns are equal, so
+     the whole grid is symmetric about Distribution — it sits dead-centre on screen. */
+  .flow{display:grid; grid-template-columns:minmax(0,1fr) 168px 460px 168px minmax(0,1fr); gap:0; align-items:stretch}
   .col{padding:16px 13px}
   .col + .col{border-left:1px solid var(--line)}
   .colhead{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:13px; min-height:20px}
@@ -153,6 +169,103 @@
   .tu-flow{position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); display:flex; align-items:center; justify-content:center; height:28px}
   .tu-flow .rail{position:absolute; left:0; right:0; top:50%; height:3px; transform:translateY(-50%); background:linear-gradient(90deg,transparent,var(--amber-dim),var(--amber-dim),transparent); opacity:.6}
   .tu-flow .arw{font-family:var(--mono); font-size:22px; color:var(--amber); position:relative; z-index:1}
+
+  /* ---- Trend columns (Production / Consumption sparklines) ----
+     The two inner columns become vertically-centred trend cards: a label, the current
+     engine value (headline), a change-over-time sparkline, and the flow arrow. The
+     series is a client-side rolling buffer of past snapshot values (display-only memory;
+     the browser stores what the engine already sent and computes no game number, §5). */
+  .tcol{position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:11px; padding:14px 9px}
+  .tc-head{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3)}
+  .tc-spark{width:100%; height:auto; display:block; overflow:visible}
+  /* chevrons pinned to the top of the column (out of the centred flow) */
+  .topup.tu-top{position:absolute; top:8px; left:0; right:0; padding:0}
+
+  /* ============================ SYNDICATE MANAGEMENT TAB ============================ */
+  /* right-column tab bar (Consumption | Syndicate) */
+  .rt-tabs{display:flex; gap:2px; margin:-4px 0 14px}
+  .rt-tab{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3); padding:6px 14px 7px; border:1px solid var(--line); border-bottom:none; border-radius:7px 7px 0 0; background:var(--void); cursor:pointer}
+  .rt-tab.on{color:var(--amber); border-color:var(--line2); background:var(--panel2)}
+  .rt-tab:hover:not(.on){color:var(--ink2)}
+  /* MANAGE button on the Syndicate distribution panel */
+  .sy-manage{font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--amber); background:var(--amber-ghost); border:1px solid var(--amber-dim); border-radius:6px; padding:4px 11px; cursor:pointer}
+  .sy-manage:hover{background:var(--amber-dim); color:var(--void)}
+
+  .sm-col{display:flex; flex-direction:column}
+  .sm-wrap{display:flex; flex-direction:column; flex:1; min-height:0; padding-bottom:6px}
+  /* top row: presets (left) + fee summary (right) */
+  .sm-top{display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:14px}
+  .sm-presets{display:flex; flex-direction:column; gap:5px}
+  .sm-plbl{font-family:var(--mono); font-size:8.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3); margin-bottom:1px}
+  .sm-preset{font-family:var(--mono); font-size:10.5px; letter-spacing:.04em; color:var(--ink2); background:var(--void); border:1px solid var(--line); border-radius:6px; padding:4px 10px; cursor:pointer; text-align:left}
+  .sm-preset:hover{border-color:var(--amber-dim); color:var(--ink)}
+  .sm-preset.on{border-color:var(--amber); color:var(--amber); background:var(--amber-ghost)}
+  .sm-fee{text-align:right; font-family:var(--mono)}
+  .sm-fee .row{display:flex; justify-content:flex-end; align-items:baseline; gap:8px; margin-bottom:3px}
+  .sm-fee .k{font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3)}
+  .sm-fee .v{font-size:16px; font-weight:500; color:var(--ink); font-variant-numeric:tabular-nums}
+  .sm-fee .v .u{font-size:9px; color:var(--ink3); margin-left:2px}
+  .sm-fee .v.bad{color:var(--red)}
+  .sm-fee .warn{color:var(--red); font-size:15px; margin-left:2px}
+
+  /* body: thermometer + roster share one vertical scale */
+  /* the stack + thermometer live in a bounded region (not the full column height) so tabs
+     stay a sensible size; min tab = 1/20 of THIS height (the 20-licence cap). */
+  .sm-body{display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden}
+  .sm-main{display:flex; gap:12px; flex:1; min-height:0; overflow:hidden}
+  .sm-therm-col{position:relative; width:118px; flex:none}
+  .sm-therm{position:absolute; right:0; top:0; width:26px; border:1px solid var(--line2); border-radius:6px; background:var(--void); overflow:visible; transition:height .5s ease}
+  .sm-fill{position:absolute; left:0; right:0; top:0; background:repeating-linear-gradient(135deg,rgba(201,162,39,.55) 0 7px,rgba(201,162,39,.28) 7px 14px); transition:height .5s ease}
+  .sm-grey{position:absolute; left:0; right:0; background:repeating-linear-gradient(135deg,rgba(232,223,200,.08) 0 7px,rgba(232,223,200,.03) 7px 14px)}
+  .sm-red{position:absolute; left:0; right:0; bottom:0; background:repeating-linear-gradient(135deg,rgba(194,96,58,.5) 0 7px,rgba(194,96,58,.24) 7px 14px)}
+  .sm-proj{position:absolute; right:0; width:34px; height:0; border-top:2px dashed var(--amber); z-index:3; transition:top .5s ease}
+  .sm-therm-lbl{position:absolute; right:36px; text-align:right; transform:translateY(-50%); font-family:var(--mono); font-size:11px; font-weight:500; white-space:nowrap; z-index:4; font-variant-numeric:tabular-nums; transition:top .5s ease}
+  .sm-therm-lbl.deliv{color:var(--amber)}
+  .sm-therm-lbl.proj{color:var(--ink2)}
+  .sm-therm-lbl.def{color:var(--red)}
+  .sm-therm-lbl .s{display:block; font-size:7.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3)}
+
+  /* roster — one continuous stack of every licence, always filling the fixed height.
+     Rows shrink to keep every venture in frame; min row = 5% (1/20, the 20-licence cap). */
+  .sm-roster{flex:1; display:flex; flex-direction:column; gap:2px; min-width:0; min-height:0; overflow:hidden}
+  .sm-lic{display:flex; align-items:center; gap:8px; padding:3px 9px; border:1px solid var(--line); border-radius:6px; background:var(--panel2); min-height:5%; overflow:hidden}
+  .sm-lic.out{opacity:.62; background:var(--void); border-style:dashed}
+  .sm-lic.pursue{border-left:2px solid var(--amber-dim)}
+  .sm-lic .grip{color:var(--ink3); font-size:11px; cursor:grab; flex:none}
+  .sm-lic .idwrap{flex:1; min-width:0}
+  .sm-lic .sid{font-family:var(--mono); font-size:12px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .sm-lic .pl{font-family:var(--mono); font-size:9px; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .sm-lic .cmt{font-family:var(--mono); font-size:11px; color:var(--ink2); font-variant-numeric:tabular-nums; flex:none}
+  .sm-lic .cmt .u{color:var(--ink3); font-size:8px}
+  .sm-chk{width:15px; height:15px; flex:none; border-radius:4px; border:1px solid var(--line2); background:var(--void); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--amber); font-size:11px; line-height:1}
+  .sm-chk.on{background:var(--amber-ghost); border-color:var(--amber-dim)}
+  /* status dot */
+  .st-dot{width:17px; height:17px; flex:none; display:flex; align-items:center; justify-content:center; font-size:12px; line-height:1}
+  .st-dot.met{color:var(--good)}
+  .st-dot.fail{color:var(--red); font-weight:700}
+  .st-dot.off{color:var(--off)}
+  .st-dot.none{color:var(--ink3)}
+  .st-dot.proj{width:14px; height:14px; border:2px solid var(--amber); border-top-color:transparent; border-radius:50%; animation:spin 0.9s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  /* sub-list: not-pursued + no-commitment, below the thermometer's reach */
+  .sm-sub{margin-top:8px; padding-top:8px; border-top:1px dashed var(--line)}
+  .sm-sub .sm-lic{opacity:.62; background:var(--void)}
+  .sm-sublbl{font-family:var(--mono); font-size:8px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3); margin-bottom:5px}
+
+  /* syndicate top-up controls (chevron column when Syndicate tab active) */
+  .su-col{position:relative; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:14px; padding:118px 6px 14px}
+  .su-ctrl{display:flex; flex-direction:column; gap:8px; align-items:center; margin-top:6px}
+  .su-en{display:flex; align-items:center; gap:7px; font-family:var(--mono); font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink2); cursor:pointer}
+  .su-en .box{width:14px; height:14px; border:1px solid var(--line2); border-radius:4px; background:var(--void); display:flex; align-items:center; justify-content:center; color:var(--amber); font-size:10px}
+  .su-en.on .box{background:var(--amber-ghost); border-color:var(--amber-dim)}
+  .su-lim{display:flex; flex-direction:column; align-items:center; gap:3px}
+  .su-lim .k{font-family:var(--mono); font-size:8px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3)}
+  .su-lim input{width:54px; background:var(--void); border:1px solid var(--line2); border-radius:6px; color:var(--ink); font-family:var(--mono); font-size:14px; text-align:right; padding:2px 18px 2px 6px; font-variant-numeric:tabular-nums}
+  .su-lim input:focus{outline:none; border-color:var(--amber)}
+  .su-note{font-family:var(--mono); font-size:8px; color:var(--ink3); text-align:center; max-width:120px; line-height:1.5}
+  .tc-flow{position:relative; width:100%; height:30px; display:flex; align-items:center; justify-content:center; margin-top:2px}
+  .tc-flow .rail{position:absolute; left:0; right:0; top:50%; height:3px; transform:translateY(-50%); background:linear-gradient(90deg,transparent,var(--amber-dim),var(--amber-dim),transparent); opacity:.6}
+  .tc-flow .arw{font-family:var(--mono); font-size:22px; color:var(--amber); position:relative; z-index:1}
 
   .gate1{position:relative}
   .arm{border:1px solid var(--line); border-radius:10px; padding:10px 11px; margin-bottom:10px; background:var(--panel2); transition:border-color .12s ease}
@@ -194,9 +307,9 @@
   .chip.draw .cval{color:var(--steel)}
 
   .cons{display:flex; align-items:stretch; gap:0; margin-bottom:9px; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--panel2)}
-  .cons .thr{background:var(--void); border-right:1px solid var(--line); padding:7px 9px; text-align:center; min-width:66px; display:flex; flex-direction:column; justify-content:center}
+  .cons .thr{background:var(--void); border-right:1px solid var(--line); padding:7px 9px; text-align:center; min-width:78px; display:flex; flex-direction:column; justify-content:center}
   .cons .thr .lbl{font-size:8px; margin-bottom:3px}
-  .cons .thr input{width:44px; background:none; border:none; color:var(--amber); font-family:var(--mono); font-size:16px; font-weight:500; text-align:center; padding:0}
+  .cons .thr input{width:58px; background:none; border:none; color:var(--amber); font-family:var(--mono); font-size:16px; font-weight:500; text-align:right; padding:0 19px 0 2px}
   .cons .thr input:focus{outline:1px solid var(--amber-dim); border-radius:3px}
   .cons .thr .pc{font-family:var(--mono); font-size:10px; color:var(--ink3)}
   .cons .body{flex:1; padding:8px 11px}
@@ -243,7 +356,7 @@
   @keyframes syflow{0%{opacity:.12}25%{opacity:1}60%{opacity:.35}100%{opacity:.12}}
   .sy-rate{display:flex; align-items:baseline; gap:8px}
   .sy-rate .c2{font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink2)}
-  .sy-rate input{width:60px; background:var(--void); border:1px solid var(--line); border-radius:6px; color:var(--ink); font-family:var(--mono); font-size:19px; font-weight:500; text-align:right; padding:3px 8px; font-variant-numeric:tabular-nums}
+  .sy-rate input{width:76px; background:var(--void); border:1px solid var(--line); border-radius:6px; color:var(--ink); font-family:var(--mono); font-size:19px; font-weight:500; text-align:right; padding:3px 20px 3px 8px; font-variant-numeric:tabular-nums}
   .sy-rate input:focus{outline:none; border-color:var(--amber)}
   .sy-rate .u{font-family:var(--mono); font-size:10px; color:var(--ink3)} .sy-rate .ar{color:var(--ink3); font-family:var(--mono); font-size:15px}
   .sy-gauge{border-top:1px solid var(--line); padding-top:13px}
@@ -304,7 +417,7 @@
   .sk-readout{display:flex; align-items:center; gap:18px; margin:40px 0 2px}
   .sk-set{display:flex; align-items:baseline; gap:8px}
   .sk-set-lbl{font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink2)}
-  .sk-set input{width:62px; background:var(--void); border:1px solid var(--line); border-radius:6px; color:var(--ink); font-family:var(--mono); font-size:19px; font-weight:500; text-align:right; padding:3px 8px; font-variant-numeric:tabular-nums}
+  .sk-set input{width:78px; background:var(--void); border:1px solid var(--line); border-radius:6px; color:var(--ink); font-family:var(--mono); font-size:19px; font-weight:500; text-align:right; padding:3px 20px 3px 8px; font-variant-numeric:tabular-nums}
   .sk-set input:focus{outline:none; border-color:var(--amber)}
   .sk-set .u{font-family:var(--mono); font-size:10px; color:var(--ink3)} .sk-set .ar{color:var(--ink3); font-family:var(--mono); font-size:15px}
   .sk-pulse{position:relative; width:30px; height:30px; flex:none}
@@ -365,11 +478,11 @@ var MOCK = {
   ],
   guilds: [{ id:'weaver-guild', name:'Weaver Guild', homeSystemId:'sys_0002',
     stockpilesBySystem:{ sys_0002:{ titanium:0, carbon_products:12, titanium_alloy:8 } },
-    productionProfile:{ sys_0002:{ goods:{ titanium:{ order:['syndicate','downstream','stockpile'], syndicate:{ mode:'absolute', value:5 } } }, throttles:{} } } }],
+    productionProfile:{ sys_0002:{ goods:{ titanium:{ order:['syndicate','downstream','stockpile'], syndicate:{ mode:'absolute', value:3 } } }, throttles:{} } } }],
   production: [{ guildId:'weaver-guild', systems:[{ systemId:'sys_0002',
     goods:{ titanium:{ fresh:10, supplied:5, demand:6, pot:10, reserveDelta:0,
       fork:{ syndicate:5, downstream:5, stockpile:0 },
-      window:{ Q:120, windowStart:1, delivered:40, sendCarry:0, ticksRemaining:16, requiredRate:5, sendThisTick:5, pctAchieved:33.3, status:'accruing' } } },
+      window:{ Q:120, windowStart:1, delivered:40, sendCarry:0, ticksRemaining:16, requiredRate:5, sendThisTick:3, pctAchieved:33.3, status:'accruing' } } },
     mines:[ { ventureId:'mine_ti_1', good:'titanium', amount:5 }, { ventureId:'mine_ti_2', good:'titanium', amount:5 } ],
     refineries:[ { ventureId:'refinery_alloy', rate:1.67, minted:1, bottleneckGood:'titanium' } ],
     lines:[ { ventureId:'refinery_alloy', good:'titanium' } ] }]}]
@@ -399,17 +512,26 @@ function mockTick(){
   MOCK.tick += 1; w.ticksRemaining = 24 - MOCK.tick; w.pctAchieved = +(w.delivered / w.Q * 100).toFixed(1);
   w.requiredRate = w.ticksRemaining > 0 ? +((w.Q - w.delivered) / w.ticksRemaining).toFixed(2) : 0;
   w.status = w.delivered >= w.Q ? 'met' : (MOCK.tick >= 24 ? 'breach' : 'accruing'); mockDerive();
+  // (the Syndicate-management thermometer reads w.delivered + fork.syndicate directly, so it
+  //  advances with the window — nothing extra to step here.)
 }
 function mockReset(){
   MOCK.tick = 0; var w = MOCK.production[0].systems[0].goods.titanium.window;
   w.delivered = 0; w.ticksRemaining = 24; w.pctAchieved = 0; w.requiredRate = 5; w.status = 'accruing';
-  MOCK.guilds[0].productionProfile.sys_0002.goods.titanium.syndicate = { mode:'absolute', value:5 }; mockDerive();
+  MOCK.guilds[0].productionProfile.sys_0002.goods.titanium.syndicate = { mode:'absolute', value:3 }; mockDerive();
 }
 function mockAction(action){
-  if (action && action.type === 'setProductionProfile' && action.goods){
-    var pol = MOCK.guilds[0].productionProfile.sys_0002.goods;
-    Object.keys(action.goods).forEach(function(good){ pol[good] = pol[good] || {}; var p = action.goods[good];
-      ['order','downstreamPct','reserveLevel','syndicate'].forEach(function(k){ if (k in p) pol[good][k] = p[k]; }); });
+  if (action && action.type === 'setProductionProfile'){
+    var prof = MOCK.guilds[0].productionProfile.sys_0002;
+    if (action.goods){
+      var pol = prof.goods;
+      Object.keys(action.goods).forEach(function(good){ pol[good] = pol[good] || {}; var p = action.goods[good];
+        ['order','downstreamPct','reserveLevel','syndicate'].forEach(function(k){ if (k in p) pol[good][k] = p[k]; }); });
+    }
+    if (action.throttles){
+      prof.throttles = prof.throttles || {};
+      Object.keys(action.throttles).forEach(function(v){ prof.throttles[v] = action.throttles[v]; });
+    }
     mockDerive();
   }
   return { accepted:true };
@@ -417,7 +539,7 @@ function mockAction(action){
 async function api(method, path, body){
   if (path === '/goods') return { status:200, data: MOCK_GOODS };
   if (path === '/recipes') return { status:200, data: MOCK_RECIPES };
-  if (path === '/snapshot') return { status:200, data: MOCK };
+  if (path === '/snapshot'){ mockDerive(); return { status:200, data: MOCK }; }
   if (path === '/tick'){ mockTick(); return { status:200, data: MOCK }; }
   if (path === '/reset'){ mockReset(); return { status:200, data: MOCK }; }
   if (path === '/action'){ var r = mockAction(body); return { status:200, data:{ accepted:r.accepted, reason:null, snapshot: MOCK } }; }
@@ -475,7 +597,61 @@ var ARM = {
 };
 
 // ---- live view state -------------------------------------------------------
-var STATE = { snap:null, goods:{raw:[],processed:[]}, guildId:null, sysId:null, tier:1, good:null, vmap:{}, recipeOut:{} };
+var STATE = { snap:null, goods:{raw:[],processed:[]}, guildId:null, sysId:null, tier:1, good:null, vmap:{}, recipeOut:{}, rightTab:'consumption' };
+
+// --- Syndicate management MOCK (design probe) --------------------------------
+// A fabricated licence set for the selected good, so the thermometer + roster show
+// variety the tiny walking-skeleton state can't. `delivered` is the running window
+// level; on TICK it rises by sendRate and licences flip met as it passes their
+// cumulative marking. Real console: this all comes from engine window telemetry +
+// the stored licence order/pursue flags.
+var SYN = {
+  licences: [
+    { id:'mine_ti_1', planet:'Terran homeworld', commitment:40, fee:132, pursue:true },
+    { id:'mine_ti_2', planet:'Kepler-9b',         commitment:35, fee:96,  pursue:true },
+    { id:'mine_ti_3', planet:'Vega Station',      commitment:25, fee:70,  pursue:true },
+    { id:'mine_ti_4', planet:'Rigel IV',          commitment:20, fee:58,  pursue:true },
+    { id:'mine_ti_5', planet:'Orion Belt',        commitment:15, fee:44,  pursue:false },
+    { id:'mine_ti_6', planet:'Sol Depot',         commitment:0,  fee:0,   pursue:true },
+    { id:'mine_ti_7', planet:'Ceti Alpha',        commitment:0,  fee:0,   pursue:true }
+  ],
+  order: ['mine_ti_1','mine_ti_2','mine_ti_3','mine_ti_4','mine_ti_5','mine_ti_6','mine_ti_7'],
+  mode: 'manual',
+  topupEnabled: false,
+  limit: 40             // shared reserve-floor / top-up limit (mock; = the Stockpile reserve)
+};
+// Resolve the licence set into ordered, status-tagged rows + the thermometer figures.
+function synResolve(){
+  // Delivered / send-rate / time-left are READ FROM THE LIVE WINDOW — the same source the
+  // glance panel's licence-progress bar reads — so the two can never disagree. The projection
+  // is DERIVED: delivered + current per-tick send × ticks left, capped at the checked target.
+  var g = (MOCK.production[0].systems[0].goods || {}).titanium;
+  var w = g ? g.window : null;
+  var delivered = w ? w.delivered : 0;
+  var sendRate = (g && g.fork) ? (g.fork.syndicate || 0) : 0;   // resolved send this tick
+  var ticksRem = w ? w.ticksRemaining : 0;
+
+  var byId = {}; SYN.licences.forEach(function(l){ byId[l.id] = l; });
+  var ordered = SYN.order.map(function(id){ return byId[id]; }).filter(Boolean);
+  var active = ordered.filter(function(l){ return l.pursue && l.commitment > 0; });   // in the plan
+  var out    = ordered.filter(function(l){ return !(l.pursue && l.commitment > 0); }); // not in plan
+  var display = active.concat(out);                                                    // in-play first, one stack
+  var total = active.reduce(function(a, l){ return a + l.commitment; }, 0);
+  var projected = Math.min(total, delivered + sendRate * ticksRem);
+  var cum = 0;
+  active.forEach(function(l){ l._start = cum; cum += l.commitment; l._end = cum;
+    l._status = delivered >= l._end ? 'met' : (projected >= l._end ? 'proj' : 'fail'); });
+  var minFee = active.reduce(function(a, l){ return a + Math.round(l.fee * 0.72); }, 0);
+  var projFee = active.reduce(function(a, l){ return a + (l._status === 'met' || l._status === 'proj' ? Math.round(l.fee * 0.72) : l.fee); }, 0);
+  // the stack always fills a fixed height: min tab = 1/20 of it (max 20 licences), so the
+  // out rows sit at exactly that minimum and the in-play rows share the rest ∝ commitment.
+  // The thermometer bar therefore spans (100 − out×min)% — the in-play block — exactly.
+  var MINPCT = 100 / 20;
+  var barPct = total > 0 ? Math.max(MINPCT, 100 - out.length * MINPCT) : 0;
+  return { ordered: ordered, active: active, out: out, display: display, total: total,
+           delivered: Math.min(delivered, total), projected: projected, deficit: total - projected,
+           minFee: minFee, projFee: projFee, shortfall: projected < total, barPct: barPct };
+}
 
 // The tier vocabulary comes from GET /goods (raw = tier 1, processed = tier 2). Tiers
 // 3-4 have no goods in the engine yet, so they render dim/empty — honest, not faked.
@@ -608,20 +784,281 @@ function renderStage(report){
     stage.innerHTML = reservePanelIdle(good) +
       '<div class="panel flow"><div class="col" style="grid-column:1/-1"><div class="empty" style="margin:8px">' +
       esc(prettyGood(good)) + ' is idle in ' + esc(STATE.sysId) + ' — nothing mined, refined, or consumed here. On hand: <b class="num">' + fmt(onHand(good)) + '</b>.</div></div></div>';
+    decorateSteppers(stage);
     return;
   }
+  // Sample this tick's production (fresh) and consumption (downstream draw) into the
+  // rolling trend buffer before drawing the columns (one sample per tick, see pushTrend).
+  var tickNow = (STATE.snap && STATE.snap.tick != null) ? STATE.snap.tick : 0;
+  var prodNow = rg ? (rg.fresh || 0) : sumAmount(producers);
+  var consNow = (rg && rg.fork) ? (rg.fork.downstream || 0) : 0;
+  pushTrend(good, tickNow, prodNow, consNow);
+
+  var syndTab = STATE.rightTab === 'syndicate';
+  var midCol = syndTab ? syndicateTopupCol(good) : consTrendCol(good, rg);
+  var rightCol = syndTab ? syndicateMgmtCol(good) : consumersCol(good, rg, consumers, report);
   stage.innerHTML =
     (rg ? reservePanel(good, rg) : reservePanelIdle(good)) +
     '<div class="panel flow">' +
       producersCol(producers) +
-      pipeCol('Actual prod', rg ? rg.fresh : sumAmount(producers)) +
+      prodTrendCol(good, rg) +
       gate1Col(good, rg) +
-      topupCol(good, rg) +
-      consumersCol(good, rg, consumers, report) +
+      midCol +
+      rightCol +
     '</div>';
+  decorateSteppers(stage);
 }
 
 function sumAmount(list){ return list.reduce(function(a, p){ return a + (p.amount || 0); }, 0); }
+
+// ===== Syndicate management tab render =======================================
+function rightTabBar(){
+  return '<div class="rt-tabs">' +
+    '<div class="rt-tab' + (STATE.rightTab === 'consumption' ? ' on' : '') + '" data-rtab="consumption">Consumption</div>' +
+    '<div class="rt-tab' + (STATE.rightTab === 'syndicate' ? ' on' : '') + '" data-rtab="syndicate">Syndicate</div>' +
+  '</div>';
+}
+function clampLbl(p){ return Math.max(4, Math.min(96, p)); }
+function presetBtn(key, label){ return '<button class="sm-preset' + (SYN.mode === key ? ' on' : '') + '" data-preset="' + key + '">' + label + '</button>'; }
+function statusDot(st){
+  if (st === 'met')  return '<span class="st-dot met" title="commitment met">✔</span>';
+  if (st === 'proj') return '<span class="st-dot proj" title="on track at current rate"></span>';
+  if (st === 'fail') return '<span class="st-dot fail" title="projected to miss">!</span>';
+  if (st === 'off')  return '<span class="st-dot off" title="not pursued">▲</span>';
+  return '<span class="st-dot none" title="no commitment this window">✔</span>';
+}
+function licRow(l, statusOverride){
+  var st = statusOverride || l._status;
+  var chk = '<div class="sm-chk' + (l.pursue ? ' on' : '') + '" data-lic="' + esc(l.id) + '" title="pursue this licence">' + (l.pursue ? '✔' : '') + '</div>';
+  var cmt = l.commitment > 0 ? '<span class="cmt">' + fmt(l.commitment) + '<span class="u">u</span></span>' : '<span class="cmt" style="color:var(--ink3)">—</span>';
+  // out rows sit at the compact 1/20 minimum → single line (id only) so they read cleanly;
+  // in-play rows are taller and show the planet sub-line.
+  var idwrap = l._out
+    ? '<div class="idwrap"><div class="sid">' + esc(l.id) + '</div></div>'
+    : '<div class="idwrap"><div class="sid">' + esc(l.id) + '</div><div class="pl">◐ ' + esc(l.planet) + '</div></div>';
+  return '<div class="sm-lic' + (l._out ? ' out' : ' pursue') + '" style="flex:' + (l._flex || 1) + ' 1 0">' +
+    '<span class="grip">≡</span>' +
+    statusDot(st) +
+    idwrap +
+    cmt + chk +
+  '</div>';
+}
+function synTherm(R){
+  var total = R.total || 1;
+  var fillPct = R.delivered / total * 100;
+  var projPct = R.projected / total * 100;
+  // the bar spans only the in-play block (barPct of the column, top-anchored); the labels live
+  // inside it so their positions track the same 0→target scale.
+  var inner =
+    '<div class="sm-fill" style="height:' + fillPct + '%"></div>' +
+    '<div class="sm-grey" style="top:' + fillPct + '%; height:' + Math.max(0, projPct - fillPct) + '%"></div>' +
+    (R.shortfall ? '<div class="sm-red" style="height:' + (100 - projPct) + '%"></div>' : '') +
+    '<div class="sm-proj" style="top:' + projPct + '%"></div>' +
+    '<div class="sm-therm-lbl deliv" style="top:' + clampLbl(fillPct) + '%"><span class="s">delivered</span>' + Math.round(fillPct) + '% · ' + fmt(R.delivered) + 'u</div>' +
+    (R.shortfall ? '<div class="sm-therm-lbl proj" style="top:' + clampLbl(projPct) + '%"><span class="s">projected</span>' + Math.round(projPct) + '% · ' + fmt(R.projected) + 'u</div>' : '') +
+    (R.shortfall ? '<div class="sm-therm-lbl def" style="top:' + clampLbl((projPct + 100) / 2) + '%">−' + fmt(R.deficit) + 'u<span class="s">deficit</span></div>' : '');
+  return '<div class="sm-therm-col"><div class="sm-therm" style="height:' + R.barPct + '%">' + inner + '</div></div>';
+}
+// ONE continuous stack of every licence: in-play first (flex-height ∝ commitment, aligned to
+// the thermometer), then not-in-play (compact fixed weight) below — never removed, just outside
+// the bar's reach.
+function synRoster(R){
+  var rows = R.display.map(function(l){
+    var inPlay = l.pursue && l.commitment > 0;
+    l._flex = inPlay ? l.commitment : 1;   // out rows: tiny grow → clamp to the 5% min
+    l._out = !inPlay;
+    return licRow(l, inPlay ? l._status : (l.commitment === 0 ? 'none' : 'off'));
+  }).join('');
+  return '<div class="sm-roster">' + rows + '</div>';
+}
+function syndicateMgmtCol(good){
+  var R = synResolve();
+  var presets = '<div class="sm-presets"><span class="sm-plbl">Order</span>' +
+    presetBtn('manual', 'Manual') + presetBtn('fee', 'Reduce fees') + presetBtn('count', 'Most jobs') + '</div>';
+  var fee = '<div class="sm-fee">' +
+    '<div class="row"><span class="k">Min fee</span><span class="v">' + fmt(R.minFee) + '<span class="u">cr</span></span></div>' +
+    '<div class="row"><span class="k">Projected</span><span class="v' + (R.shortfall ? ' bad' : '') + '">' + fmt(R.projFee) + '<span class="u">cr</span></span>' + (R.shortfall ? '<span class="warn">!</span>' : '') + '</div>' +
+  '</div>';
+  return '<div class="col sm-col">' + rightTabBar() +
+    '<div class="sm-wrap">' +
+      '<div class="sm-top">' + presets + fee + '</div>' +
+      '<div class="sm-body"><div class="sm-main">' + synTherm(R) + synRoster(R) + '</div></div>' +
+    '</div>' +
+  '</div>';
+}
+// The chevron column, Syndicate-tab variant: top-up state + enable + shared limit.
+function syndicateTopupCol(good){
+  var R = synResolve();
+  // mock top-up mode: active if enabled & shortfall & (pretend) excess available; blocked if enabled & shortfall & no excess
+  var mode = !SYN.topupEnabled ? 'idle' : (R.shortfall ? 'active' : 'idle');
+  var glyph = mode === 'active' ? '▼' : '▽';
+  var tris = '<div class="tu-tris">' + ['', '', ''].map(function(){ return '<span class="tu-tri">' + glyph + '</span>'; }).join('') + '</div>';
+  var topup = '<div class="topup tu-top ' + mode + '">' + tris + '</div>';
+  var ctrl = '<div class="su-ctrl">' +
+    '<div class="su-en' + (SYN.topupEnabled ? ' on' : '') + '" data-suen="1"><span class="box">' + (SYN.topupEnabled ? '✔' : '') + '</span>Top-up enabled</div>' +
+    '<div class="su-lim"><span class="k">Limit (shared)</span><input class="su-limit" type="number" min="0" value="' + esc(SYN.limit) + '"></div>' +
+    '<div class="su-note">draws excess stockpile to cover licences · consumers take excess first</div>' +
+  '</div>';
+  return '<div class="col su-col">' + topup + ctrl + '</div>';
+}
+
+// --- Custom number steppers -------------------------------------------------
+// Wrap every number input with two chevron buttons pinned flush to its right edge
+// (the native spinner is hidden in CSS). Run after each render since innerHTML is
+// replaced. Buttons step the value and re-dispatch the input's own 'change' event, so
+// all the existing per-class handlers (reserveLevel / downstreamPct / syndicate / throttle)
+// fire unchanged — the stepper is pure UI sugar over the same actions.
+function decorateSteppers(root){
+  var ins = root.querySelectorAll('input[type=number]');
+  for (var i = 0; i < ins.length; i++){
+    var inp = ins[i];
+    if (inp.parentNode && inp.parentNode.classList.contains('numwrap')) continue;
+    var wrap = document.createElement('span'); wrap.className = 'numwrap';
+    inp.parentNode.insertBefore(wrap, inp); wrap.appendChild(inp);
+    var btns = document.createElement('span'); btns.className = 'numbtns';
+    btns.innerHTML = '<button type="button" class="nbtn up" tabindex="-1">▲</button>' +
+                     '<button type="button" class="nbtn dn" tabindex="-1">▼</button>';
+    wrap.appendChild(btns);
+  }
+}
+document.addEventListener('click', function(e){
+  var b = e.target.closest ? e.target.closest('.nbtn') : null;
+  if (!b) return;
+  var inp = b.closest('.numwrap').querySelector('input[type=number]');
+  if (!inp) return;
+  var v = parseInt(inp.value, 10); if (isNaN(v)) v = 0;
+  v += b.classList.contains('up') ? 1 : -1;
+  if (inp.min !== '' && v < +inp.min) v = +inp.min;
+  if (inp.max !== '' && v > +inp.max) v = +inp.max;
+  inp.value = v;
+  inp.dispatchEvent(new Event('change', { bubbles: true }));
+});
+
+// --- Syndicate management tab interactions -----------------------------------
+function rerenderStage(){ renderStage(systemReport()); }
+function applyPreset(key){
+  SYN.mode = key;
+  if (key === 'manual') return;                       // manual keeps the current order
+  var idx = {}, byId = {}; SYN.licences.forEach(function(l, i){ idx[l.id] = i; byId[l.id] = l; });
+  var ids = SYN.order.slice();
+  var inPlan = ids.filter(function(id){ return byId[id].pursue && byId[id].commitment > 0; });
+  var rest   = ids.filter(function(id){ return !(byId[id].pursue && byId[id].commitment > 0); });
+  inPlan.sort(function(a, b){
+    var A = byId[a], B = byId[b];
+    if (key === 'fee')   return (B.fee - A.fee) || (idx[a] - idx[b]);            // highest fee first
+    if (key === 'count'){ var ca = A.commitment || Infinity, cb = B.commitment || Infinity; return (ca - cb) || (idx[a] - idx[b]); } // smallest first
+    return idx[a] - idx[b];
+  });
+  SYN.order = inPlan.concat(rest);
+}
+document.addEventListener('click', function(e){
+  var t = e.target.closest ? e.target : null; if (!t) return;
+  var tab = t.closest('.rt-tab');       if (tab){ STATE.rightTab = tab.dataset.rtab; rerenderStage(); return; }
+  var mng = t.closest('.sy-manage');    if (mng){ STATE.rightTab = 'syndicate'; rerenderStage(); return; }
+  var chk = t.closest('.sm-chk');       if (chk){ var l = SYN.licences.find(function(x){ return x.id === chk.dataset.lic; }); if (l){ l.pursue = !l.pursue; if (SYN.mode !== 'manual') applyPreset(SYN.mode); rerenderStage(); } return; }
+  var pre = t.closest('.sm-preset');    if (pre){ applyPreset(pre.dataset.preset); rerenderStage(); return; }
+  var suen = t.closest('.su-en');       if (suen){ SYN.topupEnabled = !SYN.topupEnabled; rerenderStage(); return; }
+});
+document.addEventListener('change', function(e){
+  var t = e.target; if (t && t.classList && t.classList.contains('su-limit')){ var v = parseInt(t.value, 10); if (!isNaN(v) && v >= 0){ SYN.limit = v; } }
+});
+
+// --- Trend history (client-side rolling buffer) ------------------------------
+// A trend is change-over-time, which needs HISTORY the one-tick snapshot doesn't carry.
+// We keep it in the browser: each new tick appends the good's production (fresh) and
+// consumption (downstream draw) to a capped ring. This is display-only MEMORY of values
+// the engine already sent — the client stores, it does not compute a game number (§5).
+// (Design-probe seeding: first sight of a good fills a short smooth ramp so the graph
+// reads as a trend immediately; real ticks then extend it. The live console seeds from
+// real history instead.)
+var TREND_N = 24;                       // one window of ticks
+var TREND = {};                          // good -> { tick, prod:[...], cons:[...] }
+function seedSeries(base){
+  // A gentle wave that oscillates around `base` and ends near it, so real ticks extend
+  // it seamlessly (no seam-spike). Amplitude scales with the value (min 1).
+  var a = [], n = 11, amp = Math.max(1, Math.round(base * 0.16));
+  for (var i = 0; i < n; i++){
+    a.push(Math.max(0, base + Math.round(Math.sin(i * 0.7) * amp)));
+  }
+  return a;
+}
+function pushTrend(good, tick, prodVal, consVal){
+  var t = TREND[good];
+  if (!t){ t = TREND[good] = { tick: null, prod: seedSeries(prodVal), cons: seedSeries(consVal) }; }
+  if (t.tick === tick) return;           // one sample per tick, not per re-render
+  t.tick = tick;
+  t.prod.push(Math.max(0, prodVal | 0)); if (t.prod.length > TREND_N) t.prod.shift();
+  t.cons.push(Math.max(0, consVal | 0)); if (t.cons.length > TREND_N) t.cons.shift();
+}
+
+// --- Sparkline: single-series area+line, Archive palette (amber line, ghost fill,
+// recessive baseline, a marked+ringed latest point). No legend (title names it); the
+// headline number is the direct label (dataviz: selective direct labels, not per-point).
+var SPARK_SEQ = 0;
+function trendSpark(values, cls){
+  var W = 150, H = 66, pad = 4;
+  var vs = (values && values.length) ? values : [0];
+  if (vs.length === 1) vs = [vs[0], vs[0]];
+  var lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs);
+  var span = (hi - lo) || 1;
+  var n = vs.length, iw = W - pad * 2, ih = H - pad * 2;
+  var X = function(i){ return pad + (i / (n - 1)) * iw; };
+  var Y = function(v){ return pad + ih - ((v - lo) / span) * ih; };
+  var pts = vs.map(function(v, i){ return X(i) + ',' + Y(v).toFixed(1); });
+  var line = 'M' + pts.join(' L');
+  var area = 'M' + X(0) + ',' + (H - pad) + ' L' + pts.join(' L') + ' L' + X(n - 1) + ',' + (H - pad) + ' Z';
+  var id = 'sg' + (++SPARK_SEQ);
+  var lx = X(n - 1), ly = Y(vs[n - 1]);
+  return '<svg class="tc-spark ' + (cls || '') + '" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img">' +
+    '<defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1">' +
+      '<stop offset="0" stop-color="var(--amber)" stop-opacity="0.28"/>' +
+      '<stop offset="1" stop-color="var(--amber)" stop-opacity="0"/></linearGradient></defs>' +
+    '<line x1="' + pad + '" y1="' + (H - pad) + '" x2="' + (W - pad) + '" y2="' + (H - pad) + '" stroke="var(--line)" stroke-width="1"/>' +
+    '<path d="' + area + '" fill="url(#' + id + ')"/>' +
+    '<path d="' + line + '" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>' +
+    '<circle cx="' + lx.toFixed(1) + '" cy="' + ly.toFixed(1) + '" r="3.4" fill="var(--amber)" stroke="var(--void)" stroke-width="2"/>' +
+  '</svg>';
+}
+function trendDelta(vs){
+  if (!vs || vs.length < 2) return '<span class="tc-delta flat">—</span>';
+  var d = vs[vs.length - 1] - vs[vs.length - 2];
+  if (d === 0) return '<span class="tc-delta flat">— steady</span>';
+  return d > 0 ? '<span class="tc-delta up">▲ +' + fmt(d) + '/hr</span>'
+               : '<span class="tc-delta dn">▼ ' + fmt(d) + '/hr</span>';
+}
+
+// Left inner column — Production trend (mines' fresh output over time). Just the graph
+// (its last point is marked and the value lives in the panels); no numeric readout.
+function prodTrendCol(good, rg){
+  var val = rg ? (rg.fresh || 0) : 0;
+  var vs = (TREND[good] || {}).prod || [val];
+  return '<div class="col tcol">' +
+    '<div class="tc-head">Production</div>' +
+    trendSpark(vs, 'prod') +
+    '<div class="tc-flow"><div class="rail"></div><div class="arw">▶</div></div>' +
+  '</div>';
+}
+// Right inner column — Consumption trend (downstream draw over time) + the three-chevron
+// top-up indicator (stockpile depletion): idle=hollow static, active=amber staggered pulse
+// with the drawdown amount, blocked=red warning pulse. Reuses the .topup animation classes.
+function consTrendCol(good, rg){
+  var val = rg && rg.fork ? (rg.fork.downstream || 0) : 0;
+  var vs = (TREND[good] || {}).cons || [val];
+  var m = topupMode(rg, onHand(good), goodPolicy(good).reserveLevel);
+  var glyph = m.mode === 'active' ? '▼' : '▽';
+  var tris = '<div class="tu-tris">' + ['', '', ''].map(function(){ return '<span class="tu-tri">' + glyph + '</span>'; }).join('') + '</div>';
+  var box = m.mode === 'active' ? '<div class="tu-box">' + fmt(m.amount) + '</div>' : '';
+  // Chevrons hug the TOP of the column (a glance that the stockpile above is being pulled
+  // down into the pipeline); they're taken out of the centred flow so the graph stays
+  // aligned with the Production graph opposite.
+  var topup = '<div class="topup tu-top ' + m.mode + '">' + tris + box + '</div>';
+  return '<div class="col tcol">' +
+    topup +
+    '<div class="tc-head">Consumption</div>' +
+    trendSpark(vs, 'cons') +
+    '<div class="tc-flow"><div class="rail"></div><div class="arw">▶</div></div>' +
+  '</div>';
+}
 
 // --- Top-up (stockpile depletion) indicator, between Distribution and Consumption.
 // When production falls short of what's required, the system may pull EXCESS stockpile
@@ -749,7 +1186,7 @@ function synPanel(good, pol, rg, rank){
   return '<div class="sy-panel">' + head + body +
     '<div class="sy-gauge"><div class="sy-grow"><span class="c2">Licence progress</span><span class="sy-st ' + esc(w.status) + '">' + esc(stTxt) + '</span></div>' +
       '<div class="sy-bar"><div class="sy-lic" style="width:' + pctDone + '%"></div><div class="sy-licpct" style="left:' + Math.max(6, Math.min(94, pctDone)) + '%">' + Math.round(pctDone) + '%</div></div>' +
-      '<div class="sy-foot"><span class="tot">commitment <b>' + fmt(w.Q) + '</b> u</span></div></div></div>';
+      '<div class="sy-foot" style="display:flex; justify-content:space-between; align-items:center"><button class="sy-manage" data-manage="1">Manage ▸</button><span class="tot">commitment <b>' + fmt(w.Q) + '</b> u</span></div></div></div>';
 }
 function synSlider(good, fresh, sendPct, req){
   var top = req ? '<div class="sy-reqlabel top" style="left:' + req.reqPct + '%"><span class="k">req</span> ' + Math.round(req.reqPct) + '%</div>' : '';
@@ -828,7 +1265,7 @@ function skPanel(good, pol, rg, rank, idx){
     '</div></div>';
   var readout = '<div class="sk-readout">' +
     '<div class="sk-pulse" title="drawing into the pile"><i></i><i></i><i></i></div>' +
-    '<div class="sk-set"><span class="sk-set-lbl">Into pile</span>' +
+    '<div class="sk-set">' +
       '<input class="sk-units" type="number" min="0" value="' + esc(lvl) + '"><span class="u">u</span>' +
       '<span class="ar">·</span><input class="sk-pct" type="number" min="0" max="100" value="' + pct + '"><span class="u">%</span>' +
     '</div></div>';
@@ -882,7 +1319,7 @@ function calcCol(rg){
 // --- Consumers: the per-line telemetry (rate, bottleneckGood) + the throttle control.
 function consumersCol(good, rg, consumers, report){
   if (!consumers.length){
-    return '<div class="col"><div class="colhead"><span class="lbl">Consumption</span></div><div class="empty">no in-system consumers of this resource</div></div>';
+    return '<div class="col">' + rightTabBar() + '<div class="empty">no in-system consumers of this resource</div></div>';
   }
   var rows = consumers.map(function(l){
     var ref = (report.refineries || []).find(function(r){ return r.ventureId === l.ventureId; });
@@ -897,7 +1334,7 @@ function consumersCol(good, rg, consumers, report){
       '<div class="rate"><div class="rlbl">eff. rate</div><div class="rval ' + rcls + '">' + fmtRate(rate) + '</div>' + note + '</div>' +
     '</div>';
   }).join('');
-  return '<div class="col"><div class="colhead"><span class="lbl">Consumption</span></div>' + rows + '</div>';
+  return '<div class="col">' + rightTabBar() + '<div class="colhead"><span class="lbl">Consumers</span></div>' + rows + '</div>';
 }
 
 // ---- events (delegated) ----------------------------------------------------
@@ -1094,5 +1531,504 @@ document.getElementById('stage').addEventListener('change', function(e){
   startLive();
 })();
 </script>
+
+<!-- ============================================================================
+     WIDTH-RECLAIM RESTRUCTURE (design mockup, 19-08 → 21-08)
+     Appended override: last global function declaration wins (main script is
+     NOT an IIFE). Drops the two inner trend/top-up columns; folds each graph
+     onto its venture stack as compact clickable chips; moves top-up into the
+     stockpile bar as two permanent squares; adds a right-hero detail panel.
+     Reads the SAME schema-7 fields — no new engine surface.
+============================================================================ -->
+<style id="restructure-css">
+  /* Width lock: the Distribution column (--gate) is the ONE controlling width; the
+     two working flanks are each exactly HALF of it (Production = Consumption = C/2),
+     and the venture hero (the right region in the full game) is also C/2. Change
+     --gate and the whole console rescales in proportion. On a narrow screen, drop
+     --gate at a breakpoint and everything follows from that single number. */
+  /* The console (central column) is now three working columns only — the hero lives
+     OUTSIDE, in a reserved zone. fr units fill the central column edge-to-edge (no
+     fixed px, no centering, no side gaps) while keeping the width relationship:
+     Production .4375 · Distribution .9375 · Consumption .625 → integer ratio 7:15:10.
+     Distribution is still 2× Production; Consumption rides ~25% wider (it carries the
+     licence panel). Change the whole console width by changing the central column. */
+  .flow.flow-r{grid-template-columns:7fr 15fr 10fr; width:auto; margin:0}
+  .stock-row{width:auto; margin:0}
+
+  /* ---- system-manifest 3-zone frame: [celestial] [ console ] [industrial] ---- */
+  .manifest{display:grid; grid-template-columns:var(--hero-w) minmax(0,1fr) var(--hero-w);
+    gap:16px; align-items:start; --hero-w:272px}
+  /* Embed mode (inside the client): the client's detail screen supplies the celestial
+     zone (its .index), so the console carries only [ console ] [industrial]. */
+  .manifest.embed{grid-template-columns:minmax(0,1fr)}
+  @media (max-width:1200px){ .manifest{--hero-w:230px} }
+  .zone{min-width:0}
+  .zone-central{min-width:0}
+  .zone-side{position:sticky; top:12px}
+  .zone-side .zpanel{background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden}
+  .zone-side .zhead{font-family:var(--mono); font-size:9px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--ink3); padding:11px 13px 0}
+
+  /* celestial (left) hero */
+  .cel-art{height:184px; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(140% 100% at 50% 18%, #12202a, #0b0d12 72%); border-bottom:1px solid var(--line)}
+  .cel-svg{width:100%; height:100%; display:block}
+  .cel-info{padding:12px 13px 14px}
+  .cel-name{font-family:var(--display,'Cinzel',serif); font-size:20px; color:var(--ink); letter-spacing:.01em}
+  .cel-sub{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--system,#6fb7e8); margin:2px 0 10px}
+  .cel-row{display:flex; align-items:baseline; justify-content:space-between; padding:5px 0; border-top:1px solid var(--line)}
+  .cel-row .k{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3)}
+  .cel-row .v{font-family:var(--mono); font-size:13px; color:var(--ink)}
+
+  /* industrial (right) hero zone — its inner .vhero is styled below; blank state here */
+  .ind-blank{min-height:300px; display:flex; align-items:center; justify-content:center; text-align:center;
+    background:#14171e; border:1px dashed var(--line2); border-radius:14px; color:var(--ink3)}
+  .ind-blank .bh{font-family:var(--mono); font-size:11px; letter-spacing:.08em; line-height:1.7; padding:0 20px}
+  .ind-blank .bh .ic{display:block; font-size:26px; margin-bottom:9px; opacity:.5}
+
+  /* ---- compact venture chip (replaces the tall .vent tile) ---- */
+  .vstack{display:flex; flex-direction:column; gap:6px; margin-top:2px}
+  .vchip{display:flex; align-items:center; gap:9px; width:100%; text-align:left;
+    background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+    padding:7px 10px; color:var(--ink); font-family:inherit; cursor:pointer;
+    transition:border-color .12s, background .12s}
+  .vchip:hover{border-color:var(--brass); background:#1b2028}
+  .vchip.sel{border-color:var(--amber); background:#1d2230; box-shadow:inset 0 0 0 1px var(--amber)}
+  .vchip .vdot{width:11px; height:11px; border-radius:50%; flex:0 0 auto;
+    box-shadow:0 0 0 1px rgba(0,0,0,.35), 0 0 6px rgba(0,0,0,.25)}
+  .vchip .vname{font-family:var(--mono); font-weight:500; font-size:12.5px; letter-spacing:.02em}
+  .vchip .vtail{margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--ink3);
+    font-variant-numeric:tabular-nums}
+  .vchip.warn{border-color:rgba(200,70,60,.5)}
+  .vchip.warn .vname{color:#e8b0a6}
+
+  /* ---- trend card sitting on TOP of a stack (merges the old colhead) ---- */
+  .tcard{margin-bottom:11px}
+  .tcard .tc-top{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px}
+  .tcard .tc-name{white-space:nowrap; color:var(--ink2)}
+  .tcard .tc-now{font-family:var(--mono); font-size:13px; color:var(--amber); font-weight:500;
+    font-variant-numeric:tabular-nums}
+  .tcard .tc-now .u{font-size:9px; color:var(--ink3); margin-left:2px; letter-spacing:.06em}
+  .tcard .tc-spark{width:100%; height:52px}
+
+  /* ---- stockpile row: strip slides left, two permanent square top-ups beside it ---- */
+  .stock-row{display:flex; gap:12px; align-items:stretch}
+  .stock-row .reserve{flex:1 1 auto; margin:0}
+  .tu-sq{flex:0 0 150px; display:flex; flex-direction:column; background:var(--panel2);
+    border:1px solid var(--line); border-radius:12px; padding:9px 11px}
+  .tu-sq .tu-sq-h{font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--ink3); margin-bottom:4px}
+  .tu-sq .tu-sq-body{flex:1; display:flex; flex-direction:row; align-items:center; justify-content:center;
+    gap:10px; position:static; padding:2px 0; min-height:44px}
+  .tu-sq .tu-tris{flex-direction:row; gap:6px}
+  .tu-sq .tu-tri{font-size:20px}
+  .tu-sq .tu-box{font-size:12px}
+  .tu-sq .tu-idle{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink3)}
+  .tu-sq.blocked .tu-idle{color:var(--red)}
+  .tu-sq .tu-sq-ctrl{margin-top:6px; display:flex; flex-direction:column; gap:5px}
+  .tu-sq .su-en{display:flex; align-items:center; gap:6px; font-size:10px; color:var(--ink3); cursor:pointer}
+  .tu-sq .su-en .box{width:13px; height:13px; border:1px solid var(--line2); border-radius:3px;
+    display:inline-flex; align-items:center; justify-content:center; font-size:9px; color:var(--amber)}
+  .tu-sq .su-en.on{color:var(--ink)} .tu-sq .su-en.on .box{border-color:var(--amber)}
+  .tu-sq .su-lim{display:flex; align-items:center; gap:5px; font-size:10px; color:var(--ink3)}
+  .tu-sq .su-lim input{width:46px; background:var(--void); border:1px solid var(--line2); border-radius:5px;
+    color:var(--ink); font-family:var(--mono); font-size:11px; padding:2px 5px}
+
+  /* ---- right hero (venture detail) ---- */
+  .col.hero{padding:0}
+  .vhero{height:100%; display:flex; flex-direction:column; background:var(--panel2);
+    border:1px solid var(--line); border-radius:12px; overflow:hidden}
+  .vhero.blank{align-items:center; justify-content:center; text-align:center;
+    border-style:dashed; background:#14171e}
+  .vhero.blank .bh{font-family:var(--mono); font-size:11px; letter-spacing:.08em; color:var(--ink3);
+    line-height:1.6; padding:0 18px}
+  .vhero.blank .bh .ic{display:block; font-size:26px; margin-bottom:8px; color:var(--ink3); opacity:.5}
+  .vhero .vh-head{display:flex; align-items:center; gap:9px; padding:12px 13px 11px;
+    border-bottom:1px solid var(--line); background:#181c24}
+  .vhero .vh-dot{width:13px; height:13px; border-radius:50%; flex:0 0 auto; box-shadow:0 0 0 1px rgba(0,0,0,.4)}
+  .vhero .vh-title{font-family:var(--mono); font-weight:600; font-size:14px; color:var(--ink);
+    background:none; border:none; padding:0; cursor:pointer; text-align:left; letter-spacing:.02em}
+  .vhero .vh-title:hover{color:var(--amber)}
+  .vhero .vh-title .chev{color:var(--ink3); font-size:11px; margin-left:5px}
+  .vhero .vh-body{padding:12px 13px; display:flex; flex-direction:column; gap:11px}
+  .vhero .vh-stat{display:flex; align-items:baseline; justify-content:space-between}
+  .vhero .vh-stat .k{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3)}
+  .vhero .vh-stat .v{font-family:var(--mono); font-size:15px; color:var(--ink); font-variant-numeric:tabular-nums}
+  .vhero .vh-stat .v.amber{color:var(--amber)} .vhero .vh-stat .v.red{color:#e8877b}
+  .vhero .vh-thr{margin-top:2px}
+  .vhero .vh-thr .k{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); display:block; margin-bottom:5px}
+  .vhero .vh-thr input{width:70px; background:var(--void); border:1px solid var(--line2); border-radius:6px;
+    color:var(--ink); font-family:var(--mono); font-size:13px; padding:4px 7px}
+  .vhero .vh-thr .u{font-size:11px; color:var(--ink3); margin-left:4px}
+  .vhero .vh-future{margin-top:auto; padding:11px 13px; border-top:1px solid var(--line);
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; color:var(--ink3); line-height:1.5;
+    background:#14171e}
+  .vhero .vh-future b{color:var(--ink2); font-weight:500}
+
+  /* ---- industrial hero: facility art band + facility (future) block + manage button ---- */
+  .vhero .vh-art{position:relative; height:104px; display:flex; align-items:flex-end; justify-content:center;
+    background:#101319; border-bottom:1px solid var(--line); overflow:hidden}
+  .vhero .vh-art .fa-svg{width:100%; height:100%; display:block}
+  .vhero .vh-art .vh-kind{position:absolute; top:9px; right:9px; font-family:var(--mono); font-size:9px;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--ink2); background:rgba(11,13,18,.72);
+    border:1px solid var(--line2); border-radius:20px; padding:2px 8px; backdrop-filter:blur(2px)}
+  .vhero .vh-body .v .us{font-size:10px; color:var(--ink3); letter-spacing:.02em}
+  .vhero .vh-body .v .arrow{color:var(--amber); margin:0 3px}
+  .vhero .vh-stat .tag{font-family:var(--mono); font-size:10px; letter-spacing:.06em; color:var(--ink2);
+    border:1px solid var(--line2); border-radius:20px; padding:1px 8px}
+  .vhero .vh-fac{padding:11px 13px; border-top:1px solid var(--line); background:#14171e;
+    display:flex; flex-direction:column; gap:8px}
+  .vhero .vh-fac-h{font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--ink3); display:flex; align-items:center; gap:8px}
+  .vhero .vh-fac-h .soon{color:var(--brass); opacity:.75; border:1px solid var(--line2); border-radius:20px;
+    padding:1px 7px; letter-spacing:.08em}
+  .vhero .vh-fac-row{display:flex; align-items:center; justify-content:space-between}
+  .vhero .vh-fac-row .k{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3)}
+  .vhero .vh-fac-row .v{font-family:var(--mono); font-size:14px; color:var(--ink); font-variant-numeric:tabular-nums}
+  .vhero .cond{display:flex; align-items:center; gap:7px; font-family:var(--mono); font-size:13px; color:var(--ink)}
+  .vhero .cond .cbar{width:56px; height:5px; border-radius:3px; background:var(--void); overflow:hidden; border:1px solid var(--line2)}
+  .vhero .cond .cbar i{display:block; height:100%}
+  .vhero .cond.ok .cbar i{background:#6b9d5a} .vhero .cond.ok{color:#a7c99a}
+  .vhero .cond.warn .cbar i{background:var(--brass)} .vhero .cond.warn{color:var(--brass)}
+  .vhero .cond.bad .cbar i{background:#c0503f} .vhero .cond.bad{color:#e8877b}
+  .vhero .vh-manage{margin:0; padding:11px 13px; border:none; border-top:1px solid var(--line);
+    background:#181c24; color:var(--brass); font-family:var(--mono); font-size:11px; letter-spacing:.06em;
+    text-align:left; cursor:pointer}
+  .vhero .vh-manage:hover{background:#1d2230; color:var(--amber)}
+</style>
+<script id="restructure-js">
+'use strict';
+// Archetype → dot colour. The mock's ventures are all on the terran homeworld, so
+// they read terran-green; the keyword map is here so real planetIds colour correctly.
+var ARCH_COLOR = { terran:'#5C8A4E', molten:'#B8402C', desert:'#C9A87E', rocky:'#A6673B',
+  oceanic:'#2A8C9E', ice:'#9FC3D6', gasgiant:'#D69A34', irradiated:'#A8B93E', crystalline:'#8862B0' };
+function archColor(planet){
+  var p = String(planet || '').toLowerCase();
+  if (/molten|lava|volcan/.test(p)) return ARCH_COLOR.molten;
+  if (/desert|arid|dune/.test(p))   return ARCH_COLOR.desert;
+  if (/ocean|water|aqua/.test(p))   return ARCH_COLOR.oceanic;
+  if (/\bice|frozen|glaci/.test(p)) return ARCH_COLOR.ice;
+  if (/gas|giant|jovian/.test(p))   return ARCH_COLOR.gasgiant;
+  if (/irradiat|radioact/.test(p))  return ARCH_COLOR.irradiated;
+  if (/crystal/.test(p))            return ARCH_COLOR.crystalline;
+  if (/rock|barren|metal/.test(p))  return ARCH_COLOR.rocky;
+  return ARCH_COLOR.terran; // terran homeworld / settlements default green
+}
+
+// ---- Production column: trend on top, then a compact clickable venture stack ----
+function producersCol2(producers, good, rg){
+  var now = rg ? (rg.fresh || 0) : 0;
+  var vs = (TREND[good] || {}).prod || [now];
+  var trend = '<div class="tcard">' +
+      '<div class="tc-top"><span class="tc-name">Production</span>' +
+        '<span class="tc-now">' + fmt(now) + '<span class="u">u/tick</span></span></div>' +
+      trendSpark(vs, 'prod') + '</div>';
+  var stack = producers.length
+    ? '<div class="vstack">' + producers.map(function(p){ return ventChip(p.id, 'producer', p.amount); }).join('') + '</div>'
+    : '<div class="empty">no production here<br><span style="font-size:10px">— supplied from stockpile only —</span></div>';
+  return '<div class="col">' + trend + stack + '</div>';
+}
+
+// ---- Consumption column: trend on top, then compact clickable consumer stack ----
+function consumersCol2(good, rg, consumers, report){
+  var now = rg && rg.fork ? (rg.fork.downstream || 0) : 0;
+  var vs = (TREND[good] || {}).cons || [now];
+  var trend = '<div class="tcard">' +
+      '<div class="tc-top"><span class="tc-name">Consumption</span>' +
+        '<span class="tc-now">' + fmt(now) + '<span class="u">u/tick</span></span></div>' +
+      trendSpark(vs, 'cons') + '</div>';
+  var body;
+  if (!consumers.length){
+    body = '<div class="empty">no in-system consumers of this resource</div>';
+  } else {
+    body = '<div class="vstack">' + consumers.map(function(l){
+      var ref = (report.refineries || []).find(function(r){ return r.ventureId === l.ventureId; });
+      var bottleneck = ref ? ref.bottleneckGood : null;
+      var starved = bottleneck && bottleneck !== good;
+      return ventChip(l.ventureId, 'consumer', ref ? ref.rate : null, starved);
+    }).join('') + '</div>';
+  }
+  return '<div class="col">' + rightTabBar() + trend + body + '</div>';
+}
+
+// One compact chip: archetype dot + id (+ a light tail figure). Clickable → hero.
+function ventChip(id, role, tail, warn){
+  var sel = STATE.selVenture && STATE.selVenture.id === id;
+  var dot = '<span class="vdot" style="background:' + archColor(ventPlanet(id)) + '"></span>';
+  var tl = tail == null ? '' : '<span class="vtail">' + fmtRate(tail) + '/t</span>';
+  return '<button class="vchip' + (sel ? ' sel' : '') + (warn ? ' warn' : '') +
+    '" data-vent="' + esc(id) + '" data-role="' + role + '">' + dot +
+    '<span class="vname">' + esc(id) + '</span>' + tl + '</button>';
+}
+
+// ---- Facility art (placeholder line-art; the real build swaps in assets/industrial/*) ----
+function mineArt(tint){
+  return '<svg class="fa-svg" viewBox="0 0 220 120" preserveAspectRatio="xMidYMax meet">' +
+    '<line x1="14" y1="99" x2="206" y2="99" stroke="var(--line2)"/>' +
+    '<path d="M66 99 L110 26 L154 99" fill="none" stroke="' + tint + '" stroke-width="2"/>' +
+    '<line x1="83" y1="72" x2="137" y2="72" stroke="' + tint + '" stroke-width="1.4"/>' +
+    '<line x1="93" y1="53" x2="127" y2="53" stroke="' + tint + '" stroke-width="1.4"/>' +
+    '<line x1="110" y1="26" x2="110" y2="99" stroke="var(--line2)"/>' +
+    '<path d="M150 99 q17 -20 34 0" fill="' + tint + '" fill-opacity="0.22" stroke="' + tint + '" stroke-opacity="0.5"/>' +
+    '<circle cx="110" cy="26" r="3" fill="var(--amber)"/></svg>';
+}
+function refineryArt(tint){
+  return '<svg class="fa-svg" viewBox="0 0 220 120" preserveAspectRatio="xMidYMax meet">' +
+    '<line x1="14" y1="99" x2="206" y2="99" stroke="var(--line2)"/>' +
+    '<rect x="58" y="46" width="36" height="53" rx="4" fill="none" stroke="' + tint + '" stroke-width="2"/>' +
+    '<path d="M58 46 q18 -17 36 0" fill="none" stroke="' + tint + '" stroke-width="2"/>' +
+    '<rect x="120" y="30" width="30" height="69" rx="4" fill="none" stroke="' + tint + '" stroke-width="2"/>' +
+    '<ellipse cx="135" cy="30" rx="15" ry="5" fill="none" stroke="' + tint + '" stroke-width="2"/>' +
+    '<path d="M94 68 h26" stroke="var(--amber)" stroke-width="2"/>' +
+    '<path d="M76 68 v18" stroke="var(--amber)" stroke-width="1.4"/>' +
+    '<line x1="70" y1="34" x2="70" y2="46" stroke="var(--line2)"/>' +
+    '<circle cx="135" cy="30" r="2.6" fill="var(--amber)"/></svg>';
+}
+// Stable pseudo-values for the FUTURE facility fields (droids/condition), so the mockup
+// reads consistently. NOT snapshot data — the venture-management slice will own these.
+function vhash(id){ var h = 0; for (var i=0;i<id.length;i++){ h = (h*31 + id.charCodeAt(i)) & 0xffff; } return h; }
+function facilityMock(id, cap){ var h = vhash(id); var droids = 3 + (h % (cap-2)); var cond = 78 + (h >> 3) % 20; return { droids:droids, cap:cap, cond:cond }; }
+
+// ---- Industrial hero: a standalone venture panel for the RIGHT ZONE (outside the
+// console). Blank until a venture is picked. Returns the panel only; the zone frames it.
+function heroPanel(good, report, rg){
+  var sel = STATE.selVenture;
+  var producers = report ? producersOf(report, good) : [];
+  var consumers = report ? (report.lines || []).filter(function(l){ return l.good === good; }) : [];
+  var found = null, role = null;
+  if (sel){
+    var p = producers.find(function(x){ return x.id === sel.id; });
+    if (p){ found = p; role = 'producer'; }
+    else { var c = consumers.find(function(x){ return x.ventureId === sel.id; }); if (c){ found = c; role = 'consumer'; } }
+  }
+  if (!found){
+    return '<div class="ind-blank"><div class="bh"><span class="ic">◎</span>' +
+      'Select a venture<br>to open its facility</div></div>';
+  }
+  var id = role === 'producer' ? found.id : found.ventureId;
+  var planet = ventPlanet(id), tint = archColor(planet);
+  var dot = '<span class="vh-dot" style="background:' + tint + '"></span>';
+  var title = '<button class="vh-title" data-manage-venture="' + esc(id) + '">' + esc(id) + '<span class="chev">▸</span></button>';
+  var art, kind, live, fac;
+
+  if (role === 'producer'){
+    kind = (found.kind || 'Mine');
+    var isRef = kind.toLowerCase().indexOf('refin') >= 0;
+    art = isRef ? refineryArt(tint) : mineArt(tint);
+    live =
+      statRow('Planet', esc(planet)) +
+      statRow('Node', '<span class="tag">rich seam</span>') +
+      statRow('Output', '<span class="v amber">' + fmt(found.amount) + '<span class="us"> u/tick</span></span>');
+    fac = facilityMock(id, isRef ? 12 : 8);
+  } else {
+    var ref = (report.refineries || []).find(function(r){ return r.ventureId === id; });
+    var rate = ref ? ref.rate : null, minted = ref ? ref.minted : null, bottleneck = ref ? ref.bottleneckGood : null;
+    var starved = bottleneck && bottleneck !== good;
+    var thr = throttleOf(good, id);
+    var v = STATE.vmap[id]; var outGood = v && v.recipeId ? STATE.recipeOut[v.recipeId] : null;
+    kind = 'Refinery';
+    art = refineryArt(tint);
+    var recipe = '<span class="v">' + esc(prettyGood(good)) + ' <span class="arrow">→</span> ' + esc(outGood ? prettyGood(outGood) : '—') + '</span>';
+    live =
+      statRow('Planet', esc(planet)) +
+      statRow('Recipe', recipe) +
+      statRow('Eff. rate', '<span class="v ' + (starved ? 'red' : 'amber') + '">' + fmtRate(rate) + '<span class="us"> u/t</span></span>') +
+      statRow('Makes', '<span class="v">' + fmt(minted) + '<span class="us"> u/t</span></span>') +
+      (starved ? statRow('Held by', '<span class="v red">' + esc(prettyGood(bottleneck)) + '</span>') : '') +
+      '<div class="vh-thr"><span class="k">Throttle</span><input class="throttle" data-vent="' + esc(id) + '" type="number" min="0" max="100" value="' + esc(thr.pct) + '"><span class="u">%' + (thr.set ? '' : ' (def)') + '</span></div>';
+    fac = facilityMock(id, 12);
+  }
+
+  // FUTURE block: the venture-management slice (droids/condition) — clearly marked mock.
+  var condCls = fac.cond >= 85 ? 'ok' : (fac.cond >= 70 ? 'warn' : 'bad');
+  var facBlock =
+    '<div class="vh-fac"><div class="vh-fac-h">Facility <span class="soon">venture mgmt · future</span></div>' +
+      '<div class="vh-fac-row"><span class="k">Droids</span><span class="v">' + fac.droids + '<span class="us"> / ' + fac.cap + '</span></span></div>' +
+      '<div class="vh-fac-row"><span class="k">Condition</span><span class="cond ' + condCls + '"><span class="cbar"><i style="width:' + fac.cond + '%"></i></span>' + fac.cond + '%</span></div>' +
+    '</div>';
+
+  return '<div class="vhero">' +
+    '<div class="vh-art" style="background:radial-gradient(120% 80% at 50% 100%, ' + tint + '22, transparent 70%)">' + art +
+      '<span class="vh-kind">' + esc(kind) + '</span></div>' +
+    '<div class="vh-head">' + dot + title + '</div>' +
+    '<div class="vh-body">' + live + '</div>' +
+    facBlock +
+    '<button class="vh-manage" data-manage-venture="' + esc(id) + '">Open venture management ▸</button>' +
+  '</div>';
+}
+function paintIndustrialHero(good, report, rg){
+  var z = document.getElementById('ind-zone'); if (!z) return;
+  z.innerHTML = heroPanel(good, report, rg);
+  decorateSteppers(z);   // the throttle stepper lives in the hero now
+}
+function statRow(k, v){ return '<div class="vh-stat"><span class="k">' + k + '</span>' + (/^</.test(v) ? v : '<span class="v">' + v + '</span>') + '</div>'; }
+
+// ---- Top-up squares (permanent, in the stockpile row) ----
+function consTopupSquare(good, rg){
+  var m = topupMode(rg, onHand(good), goodPolicy(good).reserveLevel);
+  var glyph = m.mode === 'active' ? '▼' : '▽';
+  var tris = '<div class="tu-tris">' + ['','',''].map(function(){ return '<span class="tu-tri">' + glyph + '</span>'; }).join('') + '</div>';
+  var amt = m.mode === 'active' ? '<div class="tu-box">' + fmt(m.amount) + '</div>'
+          : '<div class="tu-idle">' + (m.mode === 'blocked' ? 'blocked' : 'armed') + '</div>';
+  return '<div class="tu-sq ' + m.mode + '"><div class="tu-sq-h">Consumption top-up</div>' +
+    '<div class="topup ' + m.mode + ' tu-sq-body">' + tris + amt + '</div></div>';
+}
+function syndTopupSquare(good){
+  var R = synResolve();
+  var mode = !SYN.topupEnabled ? 'idle' : (R.shortfall ? 'active' : 'idle');
+  var glyph = mode === 'active' ? '▼' : '▽';
+  var tris = '<div class="tu-tris">' + ['','',''].map(function(){ return '<span class="tu-tri">' + glyph + '</span>'; }).join('') + '</div>';
+  return '<div class="tu-sq ' + mode + '"><div class="tu-sq-h">Syndicate top-up</div>' +
+    '<div class="topup ' + mode + ' tu-sq-body">' + tris + '</div>' +
+    '<div class="tu-sq-ctrl">' +
+      '<div class="su-en' + (SYN.topupEnabled ? ' on' : '') + '" data-suen="1"><span class="box">' + (SYN.topupEnabled ? '✔' : '') + '</span>enabled</div>' +
+      '<div class="su-lim"><span class="k">limit</span><input class="su-limit" type="number" min="0" value="' + esc(SYN.limit) + '"></div>' +
+    '</div></div>';
+}
+
+// The stockpile row: the slim strip + the two permanent top-up squares beside it.
+function reservePanel2(good, rg){
+  var strip = stockpileStrip(good, onHand(good), goodPolicy(good).reserveLevel, rg ? rg.reserveDelta : null);
+  return '<div class="stock-row">' + strip + consTopupSquare(good, rg) + syndTopupSquare(good) + '</div>';
+}
+
+// ---- OVERRIDE renderStage: 4-column flow, no inner trend/top-up columns ----
+function renderStage(report){
+  var good = STATE.good;
+  document.getElementById('rtitle').innerHTML = esc(prettyGood(good || '—')) + ' <span class="of">Tier ' + STATE.tier + '</span>';
+  var rg = report ? (report.goods || {})[good] : null;
+  var producers = report ? producersOf(report, good) : [];
+  var consumers = report ? (report.lines || []).filter(function(l){ return l.good === good; }) : [];
+  var stage = document.getElementById('stage');
+
+  if (!rg && producers.length === 0 && consumers.length === 0){
+    stage.innerHTML = reservePanel2(good, null) +
+      '<div class="panel flow flow-r"><div class="col" style="grid-column:1/-1"><div class="empty" style="margin:8px">' +
+      esc(prettyGood(good)) + ' is idle in ' + esc(STATE.sysId) + ' — nothing mined, refined, or consumed here. On hand: <b class="num">' + fmt(onHand(good)) + '</b>.</div></div></div>';
+    decorateSteppers(stage);
+    paintIndustrialHero(good, report, null);
+    return;
+  }
+  var tickNow = (STATE.snap && STATE.snap.tick != null) ? STATE.snap.tick : 0;
+  var prodNow = rg ? (rg.fresh || 0) : sumAmount(producers);
+  var consNow = (rg && rg.fork) ? (rg.fork.downstream || 0) : 0;
+  pushTrend(good, tickNow, prodNow, consNow);
+
+  var syndTab = STATE.rightTab === 'syndicate';
+  var col3 = syndTab ? syndicateMgmtCol(good) : consumersCol2(good, rg, consumers, report);
+  stage.innerHTML =
+    reservePanel2(good, rg) +
+    '<div class="panel flow flow-r">' +
+      producersCol2(producers, good, rg) +
+      gate1Col(good, rg) +
+      col3 +
+    '</div>';
+  decorateSteppers(stage);
+  paintIndustrialHero(good, report, rg);
+}
+
+// ---- venture-chip click → select → re-render (hero populates) ----
+document.addEventListener('click', function(e){
+  var chip = e.target.closest ? e.target.closest('.vchip') : null;
+  if (chip){ STATE.selVenture = { id: chip.dataset.vent, role: chip.dataset.role };
+    postVenture(chip.dataset.vent, chip.dataset.role); rerenderStage(); return; }
+  var mv = e.target.closest ? e.target.closest('[data-manage-venture]') : null;
+  if (mv){ setStatus('venture management screen — future slice (design.md §5 deferred)', ''); return; }
+});
+
+// ---- Celestial (left) hero — the system/planet, mirroring the manifest's hero-dock ----
+function starDots(){
+  var s = [[24,30],[58,18],[150,26],[176,60],[40,150],[168,150],[30,96],[184,110],[92,20]];
+  return s.map(function(p,i){ return '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="'+(i%3===0?1.4:0.9)+'" fill="#cdd6e0" opacity="'+(0.35+(i%3)*0.2)+'"/>'; }).join('');
+}
+function planetArt(){
+  return '<svg viewBox="0 0 200 200" class="cel-svg" preserveAspectRatio="xMidYMid meet">' +
+    '<defs>' +
+      '<radialGradient id="pg" cx="38%" cy="32%" r="78%"><stop offset="0" stop-color="#8fb98f"/>' +
+        '<stop offset="46%" stop-color="#3f7d6a"/><stop offset="100%" stop-color="#153539"/></radialGradient>' +
+      '<radialGradient id="atm" cx="50%" cy="50%" r="50%"><stop offset="82%" stop-color="#43d9c8" stop-opacity="0"/>' +
+        '<stop offset="100%" stop-color="#43d9c8" stop-opacity="0.30"/></radialGradient>' +
+      '<radialGradient id="term" cx="30%" cy="26%" r="82%"><stop offset="52%" stop-color="#000" stop-opacity="0"/>' +
+        '<stop offset="100%" stop-color="#000" stop-opacity="0.74"/></radialGradient>' +
+      '<clipPath id="pc"><circle cx="100" cy="100" r="66"/></clipPath></defs>' +
+    starDots() +
+    '<circle cx="100" cy="100" r="75" fill="url(#atm)"/>' +
+    '<circle cx="100" cy="100" r="66" fill="url(#pg)"/>' +
+    '<g clip-path="url(#pc)" fill="#5C8A4E" fill-opacity="0.5">' +
+      '<path d="M58 72 q24 -8 38 10 q-8 22 -32 18 q-16 -14 -6 -28Z"/>' +
+      '<path d="M112 120 q28 -4 36 16 q-14 22 -40 10 q-8 -18 4 -26Z"/>' +
+      '<ellipse cx="80" cy="134" rx="17" ry="9"/></g>' +
+    '<circle cx="100" cy="100" r="66" fill="url(#term)"/>' +
+    '<circle cx="166" cy="50" r="8.5" fill="#b9c2cc"/><circle cx="162.5" cy="47" r="8.5" fill="#0B0D12" opacity="0.3"/>' +
+  '</svg>';
+}
+function celestialHero(){
+  return '<div class="zhead">System</div>' +
+    '<div class="zpanel"><div class="cel-art">' + planetArt() + '</div>' +
+    '<div class="cel-info">' +
+      '<div class="cel-name">FEN-6461</div>' +
+      '<div class="cel-sub">sys_0002 · inner ring</div>' +
+      '<div class="cel-row"><span class="k">Coords</span><span class="v">q7 · r30</span></div>' +
+      '<div class="cel-row"><span class="k">Controller</span><span class="v">Weaver Guild</span></div>' +
+      '<div class="cel-row"><span class="k">Homeworld</span><span class="v">Terran</span></div>' +
+      '<div class="cel-row"><span class="k">Planets</span><span class="v">6 · 1 settled</span></div>' +
+    '</div></div>';
+}
+
+// ---- Compose the 3-zone manifest frame once: wrap the console (tiers/resbar/stage) in
+// the central column and reserve the celestial (left) + industrial (right) zones. ----
+function composeManifest(){
+  if (document.querySelector('.manifest')) return;
+  var tiers = document.getElementById('tiers');
+  var resbar = document.getElementById('resbar');
+  var stage = document.getElementById('stage');
+  if (!tiers || !stage) return;
+  // Embed mode (inside the client): the client supplies BOTH heroes as its own
+  // side panels (celestial = its .index, industrial = its .ind-hero aside), so the
+  // iframe carries the console alone; venture clicks are posted to the parent.
+  var embed = !!window.__CONSOLE_EMBED;
+  var parent = tiers.parentNode;
+  var manifest = document.createElement('div'); manifest.className = 'manifest' + (embed ? ' embed' : '');
+  var central = document.createElement('div'); central.className = 'zone zone-central';
+  parent.insertBefore(manifest, tiers);
+  if (!embed){ var celest = document.createElement('aside'); celest.className = 'zone zone-side zone-celestial';
+    manifest.appendChild(celest); celest.innerHTML = celestialHero(); }
+  manifest.appendChild(central);
+  if (!embed){ var indz = document.createElement('aside'); indz.className = 'zone zone-side zone-industrial';
+    indz.innerHTML = '<div class="zhead">Venture</div><div id="ind-zone"></div>'; manifest.appendChild(indz); }
+  central.appendChild(tiers); central.appendChild(resbar); central.appendChild(stage);
+}
+
+// Post the selected venture up to the host client (embed mode), which owns the
+// industrial hero panel. Facility class drives the art (mine vs refinery).
+function postVenture(id, role){
+  try{
+    if (!window.parent || window.parent === window) return;
+    var v = STATE.vmap[id]; var facility = (v && v.recipeId) ? 'refinery' : 'mine';
+    window.parent.postMessage({ source:'starfare-console', kind:'venture', name:id, role:role, facility:facility }, '*');
+  }catch(e){}
+}
+
+// The throttle input now lives in the industrial hero (outside #stage) — wire it back to
+// the same action the console's own handler uses.
+document.addEventListener('change', function(e){
+  var t = e.target;
+  if (t && t.classList && t.classList.contains('throttle') && t.closest && t.closest('#ind-zone')){
+    var p = parseInt(t.value, 10); if (isNaN(p) || p < 0) return;
+    var tp = {}; tp[t.dataset.vent] = p; sendProfile({ throttles: tp });
+  }
+});
+
+// Re-render once now that the overrides are installed (boot's first render may have
+// used the pre-override definitions before this script parsed). Default-select the
+// refinery so the mockup opens on a populated industrial hero.
+composeManifest();
+if (!STATE.selVenture) STATE.selVenture = { id:'refinery_alloy', role:'consumer' };
+if (STATE && STATE.snap) rerenderStage();
+// Announce the default selection to the host so its industrial hero opens populated.
+postVenture(STATE.selVenture.id, STATE.selVenture.role);
+</script>
+
 </body>
 </html>
