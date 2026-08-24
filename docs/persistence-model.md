@@ -81,6 +81,21 @@ Raspberry Pi and luxuriously on a real server. The Pi's only real concern is fla
 write-wear (mitigated by an SSD and/or delta-saves); irrelevant on the target
 self-hosted server hardware.
 
+## Status note — a file-based prototype now exists (24-08-26)
+
+The **B+ shape below has a working, opt-in, FILE-backed prototype in the testbed
+dev rig** (roadmap Phase 1 Stage 2): `sim/persist.js` (a full-state snapshot via
+atomic temp-file+rename, plus an append-only action journal) wired into
+`sim/server.js` behind `STARFARE_PERSIST_DIR`. It follows this doc's B+ shape —
+in-memory compute, per-tick snapshot, write-ahead action journal, replay-on-restart
+— against **JSON/JSONL files, not Postgres**, and the pure `sim/` loop runs
+unmodified. It is explicitly the DEV RIG, **not** the Phase-2 production server:
+Postgres, the table schema, multi-galaxy, and auth all remain deferred exactly as
+below. The prototype settled the double-apply/truncation question in practice
+(journal entries carry their apply tick; replay filters `tick >= loadedState.tick`,
+so a **non-truncated** journal is idempotent-safe and truncation stays an optional
+size optimisation — see the last Deferred bullet).
+
 ## Deferred (separate slices — do NOT treat as decided here)
 
 - **The Postgres table schema.** Transcribes the STORED half of the live-state model

@@ -6,10 +6,15 @@
 // production and galacticSupply move, reset.
 //
 // WHAT THIS IS NOT: the Phase-2 game server. This is a DEV RIG —
-//   - in-memory + ephemeral: a restart returns to the zero-state (there is a
-//     Reset endpoint so you don't have to restart to start over);
-//   - single shared state, single user, no auth, no persistence;
-//   - Postgres is deferred to Phase 2 (design.md §14 keeps Phase 1 in-memory).
+//   - single shared state, single user, no auth;
+//   - in-memory by default + ephemeral: a restart returns to the zero-state
+//     (there is a Reset endpoint so you don't have to restart to start over);
+//   - OPT-IN file-backed durability (set STARFARE_PERSIST_DIR): a state snapshot
+//     + action journal so a testbed galaxy survives a restart — the file-backed
+//     B+ prototype from docs/persistence-model.md. This is STILL the dev rig, not
+//     the Phase-2 server: Postgres, multi-galaxy and auth all stay Phase 2. The
+//     durability layer lives in sim/persist.js; this file only WRAPS the loop
+//     with it (the pure engine is unmodified — persistence-model.md's premise).
 //
 // THE RULE THAT KEEPS IT HONEST: this file contains ZERO game logic. Every
 // mutation goes through the SAME sim/ the tests and invariants guard —
@@ -64,8 +69,9 @@ const { join } = require('node:path');
 
 const { createZeroState } = require('./scenarios/zero-state.js');
 const { advance } = require('./run.js');
-const { intake } = require('./actions.js');
+const { validateAction, applyAction } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
+const { saveState, appendJournal, clearJournal, loadOrInit } = require('./persist.js');
 const { buildSnapshot } = require('./snapshot.js');
 const { getStarterSystems, getSystemLayout } = require('./seed.js');
 const { listRecipes } = require('./recipes.js');
@@ -83,12 +89,28 @@ const TESTBED_HTML = join(__dirname, '..', 'client', 'testbed.html');
 // the SAME live state over the SAME endpoints, only in the player-facing Archive view.
 const CONSOLE_HTML = join(__dirname, '..', 'client', 'console.html');
 
+// --- opt-in file-backed durability (dev-rig prototype) ----------------------
+// STARFARE_PERSIST_DIR set  → durability ON: boot restores from disk, ticks
+//                             snapshot, accepted actions are journalled, reset
+//                             and a shutdown hook keep the files honest.
+// STARFARE_PERSIST_DIR unset → today's pure in-memory behaviour, byte-for-byte
+//                             (existing tests and the default run are unchanged).
+// The directory is operator CONFIG (an env var), never a game number. This is
+// the file-backed B+ prototype from docs/persistence-model.md — a DEV RIG, not
+// the Phase-2 server (Postgres/multi-galaxy/auth all stay Phase 2). Read once at
+// module load so the CLI boot and every handler see the same decision.
+const persistDir = process.env.STARFARE_PERSIST_DIR || null;
+
 // --- the single live-state holder -----------------------------------------
 // One `let`, reached only through get/set. This is the seam Phase 2 replaces:
 // swap these two functions for Postgres reads/writes and nothing else in the
 // file — or the engine — changes. Keeping it to one holder now is the whole
 // discipline; no speculative StateStore abstraction is built.
-let liveState = createZeroState();
+//
+// When persisting, boot RESTORES from disk (loadOrInit = last snapshot + replay
+// the journalled actions since it) instead of starting at the zero-state; with
+// the flag unset it is exactly the old `createZeroState()` boot.
+let liveState = persistDir ? loadOrInit(persistDir, createZeroState) : createZeroState();
 function getState() { return liveState; }
 function setState(s) { liveState = s; }
 
@@ -102,6 +124,11 @@ function setState(s) { liveState = s; }
 function tickOnce() {
   const { state: next } = advance(getState(), []);
   setState(next);
+  // Per-tick snapshot cadence (docs/persistence-model.md: default every tick).
+  // Both tick paths (POST /tick and the heartbeat) flow through here, so one
+  // snapshot point covers both. Only `advance` returning cleanly gets us here —
+  // on an invariant violation it throws first and no stale state is saved.
+  if (persistDir) saveState(getState(), persistDir);
 }
 
 // --- the optional auto-tick heartbeat (server state, NOT game state) --------
@@ -357,6 +384,14 @@ async function handleRequest(req, res) {
     stopAutotick();
     autotickLastError = null;
     setState(createZeroState());
+    // Reset the durable files alongside the in-memory galaxy: the old journal
+    // describes a world that no longer exists, so it must not replay on the next
+    // boot. Clear it, then write a fresh zero-state snapshot so disk and memory
+    // agree from tick 0.
+    if (persistDir) {
+      clearJournal(persistDir);
+      saveState(getState(), persistDir);
+    }
     sendJson(res, 200, buildSnapshot(getState()));
     return;
   }
@@ -375,17 +410,30 @@ async function handleRequest(req, res) {
       return;
     }
     try {
-      // intake applies the action against state-as-it-stands WITHOUT ticking. A
-      // rejected action leaves the state unchanged (accepted:false + reason) —
-      // that is a normal 200 outcome, not an error. We still assert: for every
-      // action defined so far the post-intake state is fully valid, so a
-      // violation here would be a real bug, surfaced as a 500 with the live
-      // state left on its last good value.
-      const { state: next, results } = intake(getState(), [action]);
+      // Apply ONE action against state-as-it-stands WITHOUT ticking, in the
+      // write-ahead order the durability model needs: validate FIRST, then (when
+      // persisting) journal the accepted action BEFORE applying it, so the journal
+      // only ever holds actions that took effect and always records them before
+      // the effect — a crash between the append and the apply loses nothing (the
+      // entry replays on restart). A rejected action leaves the state unchanged
+      // (accepted:false + reason) and is NOT journalled — that is a normal 200
+      // outcome, not an error. This is exactly intake's single-action semantics,
+      // spelled out here so the append lands between validate and apply.
+      const before = getState();
+      const { valid, reason } = validateAction(before, action);
+      let next = before;
+      if (valid) {
+        // `tick` = state.tick at apply time (applyAction never advances it).
+        if (persistDir) appendJournal(before.tick, action, persistDir);
+        next = applyAction(before, action);
+      }
+      // We still assert: for every action defined so far the post-apply state is
+      // fully valid, so a violation here would be a real bug, surfaced as a 500
+      // with the live state left on its last good value. (For a rejected action
+      // next === before, already-valid live state.)
       assertInvariants(next, next.tick);
       setState(next);
-      const r = results[0];
-      sendJson(res, 200, { accepted: r.accepted, reason: r.reason || null, snapshot: buildSnapshot(next) });
+      sendJson(res, 200, { accepted: valid, reason: valid ? null : reason, snapshot: buildSnapshot(next) });
     } catch (err) {
       sendJson(res, 500, { error: 'error applying action (invariant violation or engine throw)', detail: String(err && err.message || err) });
     }
@@ -414,11 +462,39 @@ module.exports = {
 if (require.main === module) {
   const port = Number(process.env.PORT) || DEFAULT_PORT;
   const server = makeServer();
+
+  // Graceful-shutdown hook (only when persisting): on a deploy/reboot signal,
+  // save the live state then exit, so a clean stop never depends on the last
+  // per-tick snapshot. A HARD crash (kill -9, power loss) runs no hook — that is
+  // exactly what the journal-replay path recovers on the next boot. Registered
+  // only under the flag so the pure in-memory run adds no process listeners.
+  if (persistDir) {
+    let shuttingDown = false;
+    const shutdown = (signal) => {
+      if (shuttingDown) return; // a second signal shouldn't double-save/exit
+      shuttingDown = true;
+      console.log(`[persist] ${signal} — saving state before exit`);
+      try {
+        saveState(getState(), persistDir);
+      } catch (err) {
+        console.error(`[persist] shutdown save FAILED: ${String((err && err.message) || err)}`);
+      }
+      server.close(() => process.exit(0));
+    };
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+  }
+
   server.listen(port, () => {
     console.log(`starfare testbed listening on http://0.0.0.0:${port}`);
     console.log(`  open the UI at http://<host>:${port}/  (GET /health for JSON liveness)`);
     console.log('  API: GET /snapshot   POST /tick   POST /action   POST /reset');
     console.log('  auto-tick: POST /autotick/start {intervalMs}   POST /autotick/stop   (status on GET /health)');
-    console.log('  dev rig: in-memory, ephemeral, optional auto-tick — NOT the Phase-2 server');
+    if (persistDir) {
+      console.log(`  durability: ON — file-backed state+journal in ${persistDir} (dev-rig B+ prototype)`);
+    } else {
+      console.log('  durability: OFF — in-memory, ephemeral (set STARFARE_PERSIST_DIR to enable)');
+    }
+    console.log('  dev rig: optional auto-tick, opt-in durability — NOT the Phase-2 server');
   });
 }
