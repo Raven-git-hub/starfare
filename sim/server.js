@@ -44,7 +44,8 @@
 //     (halt-on-trip); POST /reset also stops it before returning to zero-state.
 //
 // Endpoints (all JSON; permissive CORS for a local dev rig):
-//   GET  /               -> the testbed UI page (client/testbed.html)
+//   GET  /               -> the PLAYER CLIENT (client/game.html) — the game itself
+//   GET  /assets/<path>  -> static art/audio under client/assets/ (read-only)
 //   GET  /console        -> the player-facing Production Console (client/console.html)
 //   GET  /inspect        -> the OPERATOR watch-only panel (client/inspect.html): a
 //                           live poll of the god's-eye snapshot, zero controls
@@ -72,7 +73,7 @@
 
 const http = require('node:http');
 const fs = require('node:fs');
-const { join } = require('node:path');
+const { join, resolve, sep, extname } = require('node:path');
 
 const { createZeroState } = require('./scenarios/zero-state.js');
 const { advance } = require('./run.js');
@@ -86,10 +87,29 @@ const { RAW_RESOURCES, PROCESSED_GOODS } = require('./resources.js');
 
 const DEFAULT_PORT = 7331; // the galaxy seed number, and clear of the host's other services
 
-// The testbed UI page, served at GET /. Read from disk per request so an HTML
-// edit shows up on the next browser refresh (the repo is volume-mounted into the
+// The PLAYER CLIENT, served at GET / (client-wiring.md Slice 1 — this replaced
+// the deleted dev testbed as the front door; two doors only, §4: `/` is the game,
+// `/inspect` is the operator watcher). Read from disk per request so an HTML edit
+// shows up on the next browser refresh (the repo is volume-mounted into the
 // container) without a server restart.
-const TESTBED_HTML = join(__dirname, '..', 'client', 'testbed.html');
+const GAME_HTML = join(__dirname, '..', 'client', 'game.html');
+
+// The client's art and audio live under client/assets/ and are referenced by
+// relative `assets/...` URLs, so they need a static route. Read-only, and every
+// request is resolved and then checked to still sit INSIDE this directory — the
+// one place this server touches a caller-supplied path.
+const ASSETS_DIR = join(__dirname, '..', 'client', 'assets');
+
+// Content types for what client/assets/ actually holds (jpg, mp3) plus the two
+// formats the art pipeline may add next. Anything else is served as an opaque
+// download rather than guessed at.
+const ASSET_TYPES = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.mp3': 'audio/mpeg',
+};
 
 // The player-facing System Production Console, served at GET /console. Same read-from-
 // disk-per-request pattern as the testbed, and — like it — ZERO game logic: it drives
@@ -260,16 +280,51 @@ async function handleRequest(req, res) {
   // CORS preflight.
   if (method === 'OPTIONS') { sendJson(res, 204, {}); return; }
 
-  // GET / -> the testbed UI (HTML). GET /health -> the JSON liveness probe
+  // GET / -> the PLAYER CLIENT (HTML). GET /health -> the JSON liveness probe
   // (unchanged, so anything scripted against it keeps working).
   if (method === 'GET' && path === '/') {
     try {
-      const html = fs.readFileSync(TESTBED_HTML);
+      const html = fs.readFileSync(GAME_HTML);
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
       res.end(html);
     } catch (err) {
-      sendJson(res, 500, { error: 'could not read client/testbed.html', detail: String(err && err.message || err) });
+      sendJson(res, 500, { error: 'could not read client/game.html', detail: String(err && err.message || err) });
     }
+    return;
+  }
+
+  // GET /assets/<path> -> a file under client/assets/, read-only. The path comes
+  // from the caller, so it is decoded, resolved, and then checked to still start
+  // with ASSETS_DIR + separator: a `..` segment or an absolute path fails that
+  // check and gets a 403 rather than a file. The same check runs again on the
+  // REAL path (symlinks followed), so a link inside the tree cannot point out of
+  // it either. (`path` here is already the URL minus its query string.)
+  if (method === 'GET' && path.startsWith('/assets/')) {
+    let rel;
+    try {
+      rel = decodeURIComponent(path.slice('/assets/'.length));
+    } catch {
+      sendJson(res, 400, { error: 'malformed asset path' });
+      return;
+    }
+    const full = resolve(ASSETS_DIR, rel);
+    if (full !== ASSETS_DIR && !full.startsWith(ASSETS_DIR + sep)) {
+      sendJson(res, 403, { error: 'asset path escapes client/assets/' });
+      return;
+    }
+    let real;
+    let body;
+    try {
+      real = fs.realpathSync(full);          // resolve symlinks before trusting the prefix
+      if (!real.startsWith(ASSETS_DIR + sep)) throw new Error('escapes client/assets/');
+      body = fs.readFileSync(real);
+    } catch {
+      sendJson(res, 404, { error: `no such asset: ${rel}` });
+      return;
+    }
+    const type = ASSET_TYPES[extname(real).toLowerCase()] || 'application/octet-stream';
+    res.writeHead(200, { 'Content-Type': type, 'Access-Control-Allow-Origin': '*' });
+    res.end(body);
     return;
   }
 
@@ -576,7 +631,7 @@ if (require.main === module) {
 
   server.listen(port, () => {
     console.log(`starfare testbed listening on http://0.0.0.0:${port}`);
-    console.log(`  open the UI at http://<host>:${port}/  (GET /health for JSON liveness)`);
+    console.log(`  the game is at http://<host>:${port}/  (operator watcher: /inspect; GET /health for JSON liveness)`);
     console.log('  API: GET /snapshot   POST /tick   POST /action   POST /reset');
     console.log('  auto-tick: POST /autotick/start {intervalMs}   POST /autotick/stop   (status on GET /health)');
     if (persistDir) {

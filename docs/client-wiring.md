@@ -98,7 +98,7 @@ client**, on the real committed seed, against the live persistent engine:
 - **No endpoint serves the whole galaxy.** `/starters` and `/system/:id` return
   ids/archetype/resourceType but **no coordinates**; there is no "full galaxy"
   endpoint. `GET /galaxy` is the one genuinely new read surface this section adds.
-- **The full client is three seams** (`docs/mockups/starfare-client-full.html`):
+- **The full client is three seams** (`docs/mockups/starfare-client-full.html` — **moved to `client/game.html` in Slice 1**):
   the galaxy map is fully data-driven (swap `buildDemoGalaxy()` → fetched seed
   into `window.__loadGalaxy`); HUD/identity is hardcoded literals; the console is
   an iframe from a base64 blob — repoint it at the served `/console` route rather
@@ -136,12 +136,26 @@ not. This list is the working contract; it may be refined as panels are wired
   before the port is bound). The engine, the tick and the snapshot are unmodified.
   `client/state_inspector.html` is untouched — it stays the offline file-load debug
   tool; `/inspect` is its served, live sibling.
-- **Slice 1 — found your guild, through the game.** The connect/uplink screen
+- **Slice 1 — found your guild, through the game. LANDED 24-08-26.** The connect/uplink screen
   becomes a real first-run flow: fresh galaxy → pick a starter (`GET /starters`) →
   `foundGuild` from the client. Galaxy map + HUD go live on the real seed;
   `buildDemoGalaxy()` and the identity literals are **deleted**; the front door
   `/` becomes the player client; **`client/testbed.html` is deleted here** (the
   client can now seed a game). The seed generator's first full-scale test.
+  *As built:* the mockup is now `client/game.html`, served at `/`, with a
+  traversal-safe `GET /assets/<path>` route for its art. The connect screen reads
+  `/snapshot` on entry and either **adopts** the galaxy's existing guild (single-guild
+  dev rig) or shows the found form; founding POSTs `foundGuild` with a name-slug id
+  (suffixed if taken) and **2,000** starting credits (`[FIRST-CUT]`,
+  `phase-1-tuning.md`). Territory comes from `claims[]` (`landmarkKind === 'system'`),
+  the player's own systems in the reserved accent and rivals by a stable per-id hue;
+  the HUD's guild/credits/tick come from the poll, and the radial clock is kept as
+  pure decoration that counts nothing. The **ring vocabulary needed no renderer fix**:
+  `ring` never drove colour or size in this renderer — it is display-only, so the
+  seed's `inner`/`middle`/`outer` all render (verified against a `middle` system).
+  The detail screen's demo "VACANT" labels — an invented *live* claim — were
+  neutralised to a *live data next* placeholder, and the still-mocked console iframe
+  now carries a visible MOCK tag, so nothing on screen reads as live that isn't.
 - **Slice 2 — explore for real.** Galaxy → system → planet drill-down: seed
   geometry (`/system/:id`) overlaid with live `occupancy` (compose-by-id, the
   pattern the retired testbed proved). Navigate to a vacant site.

@@ -10,6 +10,10 @@
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const net = require('node:net');
+const { spawn } = require('node:child_process');
 
 const { makeServer } = require('../server.js');
 
@@ -44,59 +48,51 @@ const mine = (over = {}) => req('POST', '/action', { type: 'establishVenture', g
 
 // --- read endpoints --------------------------------------------------------
 
-test('GET / serves the testbed UI (HTML)', async () => {
+test('GET / serves the PLAYER CLIENT (HTML), not the deleted testbed', async () => {
   const res = await fetch(base + '/');
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type') || '', /text\/html/);
   const html = await res.text();
-  assert.match(html, /SYNDICATE \/\/ TESTBED/); // the page, not the JSON probe
-  assert.match(html, /id="btn-found"/);         // the driver controls are present
-  assert.match(html, /id="btn-tick"/);
-  // The home-system picker replaced the free-text id, and the invented-influence
-  // field is gone (see the /starters slice, 04-08-26).
-  assert.match(html, /<select id="f-home">/);
-  assert.doesNotMatch(html, /id="f-influence"/);
-  // Guild Management overlay scaffolding is present (slice 2, 04-08-26): the
-  // per-card MANAGE affordance, the full-screen overlay, and its guild selector.
-  assert.match(html, /class="manage"/);
-  assert.match(html, /id="guild-overlay"/);
-  assert.match(html, /id="go-guild"/);
-  // The standalone establish form was retired (slice 3, 04-08-26): establishing
-  // now lives in the planet manifest inside the overlay.
-  assert.doesNotMatch(html, /id="btn-venture"/);
-  // The Production view is served: its renderer and the MANIFEST/PRODUCTION toggle.
-  assert.match(html, /renderProductionView/);
-  assert.match(html, /data-sysmode="production"/);
-  // Slice 2b-ii — the INTERACTIVE controls are present: the Gate-1 fork rank
-  // up/down buttons, the downstream-cap input, the Gate-3 per-line throttle input.
-  assert.match(html, /class="fork-move"/);
-  assert.match(html, /class="dscap"/);
-  assert.match(html, /class="throttle"/);
-  // Slice B-ii — the §5 Syndicate windowed-accrual send control (three-way mode
-  // selector + value input) and the windowed readout replace the old "no licences yet"
-  // placeholder. The readout renders the resolved send AND the pace side by side.
-  assert.match(html, /class="syn-mode"/);
-  assert.match(html, /class="syn-value"/);
-  assert.match(html, /class="syn-readout"/);
-  assert.doesNotMatch(html, /no licences yet/);
-  // The naive browser-side recompute + its caption are gone — the view now shows
-  // the engine's resolved allocation, so nothing is captioned "naive".
-  assert.doesNotMatch(html, /class="pc-grid"/);
-  assert.doesNotMatch(html, /do <b>not<\/b> account for throttling/);
-  // Slice 2c-ii — the review flag display: the per-issue list in the Production
-  // view and the issue-count badge on the system header (both render the engine's
-  // `review` array; no client-side issue logic).
-  assert.match(html, /class="review-issue"/);
-  assert.match(html, /class="review-badge"/);
-  // Commitment-injection dev scaffold (§15.4 "Scaffold 11-08-26"): the two testbed
-  // controls — the per-mine commitment input (setSyndicateCommitment) and the
-  // engine-wide window-length input (setWindowN) — are present in the served page.
-  assert.match(html, /class="syn-commit"/);
-  assert.match(html, /class="win-n"/);
-  // Auto-tick watch UI (Phase 1 Stage 2): the play/pause control and the interval
-  // input drive POST /autotick/start|stop and a client poll loop.
-  assert.match(html, /id="btn-autotick"/);
-  assert.match(html, /id="autotick-interval"/);
+  // The player client (client-wiring.md Slice 1: `/` is the game, `/inspect` the watcher).
+  assert.match(html, /<title>STARFARE<\/title>/);
+  assert.match(html, /id="connectBtn"/);          // the real found/adopt flow
+  assert.match(html, /shellConnectInit/);
+  assert.match(html, /id="hud-guild"/);           // identity from the snapshot, not a literal
+  assert.match(html, /__setLiveTerritory/);       // territory from claims[]
+  assert.match(html, /\/galaxy/);                  // the seed comes from the endpoint
+
+  // The testbed is GONE — its file and its driver controls with it.
+  assert.equal(fs.existsSync(path.join(__dirname, '..', '..', 'client', 'testbed.html')), false);
+  for (const marker of ['SYNDICATE // TESTBED', 'id="btn-found"', 'id="btn-tick"', 'id="btn-autotick"']) {
+    assert.ok(!html.includes(marker), `the player client must not carry the testbed's ${marker}`);
+  }
+  // And the demo galaxy + its baked identity are deleted, not bypassed (§6).
+  assert.ok(!html.includes('buildDemoGalaxy'), 'the demo galaxy generator must be gone');
+  assert.ok(!html.includes('Vanguard'), 'the demo guild literal must be gone');
+});
+
+test('GET /assets/<path> serves the client\'s art, and refuses a path that escapes', async () => {
+  // A real file the client references (client/assets/planets/rocky.jpg).
+  const ok = await fetch(base + '/assets/planets/rocky.jpg');
+  assert.equal(ok.status, 200);
+  assert.match(ok.headers.get('content-type') || '', /image\/jpeg/);
+  const bytes = Buffer.from(await ok.arrayBuffer());
+  assert.ok(bytes.length > 0, 'the asset has content');
+  assert.equal(bytes[0], 0xff, 'JPEG magic byte 1');   // it is the file, not an error page
+  assert.equal(bytes[1], 0xd8, 'JPEG magic byte 2');
+
+  // Traversal, in the forms a caller can actually send: a literal `..`, an
+  // encoded one, and an absolute path. None may return a file.
+  for (const bad of ['/assets/../server.js', '/assets/%2e%2e/server.js', '/assets/../../sim/server.js', '/assets//etc/passwd']) {
+    const res = await fetch(base + bad);
+    assert.ok(res.status === 403 || res.status === 404, `${bad} must be refused, got ${res.status}`);
+    const body = await res.text();
+    assert.ok(!body.includes('makeServer'), `${bad} must not return sim/server.js`);
+  }
+
+  // An unknown asset is a 404, not a 500.
+  const miss = await fetch(base + '/assets/planets/nope.jpg');
+  assert.equal(miss.status, 404);
 });
 
 test('GET /console serves the player-facing Production Console (HTML)', async () => {
@@ -449,10 +445,6 @@ test('GET /inspect serves the operator watcher — and it has NO action controls
 // The boot clock lives in the CLI block, so these tests boot sim/server.js as a
 // REAL child process. They are the only tests here that do; everything else drives
 // the in-process server above.
-const { spawn } = require('node:child_process');
-const net = require('node:net');
-const path = require('node:path');
-
 const SERVER_JS = path.join(__dirname, '..', 'server.js');
 
 // Ask the OS for a free port and hand it back. The CLI reads PORT from the env and

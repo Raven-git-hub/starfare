@@ -8,7 +8,7 @@ The spine is the **driver** `run.js`: `advance(state, actions)` = *intake → ti
 
 Goods are three kinds (`resources.js`): **raw** (minable), **processed** (refined into stockpiles — `alloy_ingots` is the first), and the special **fuel** (reserve/hoards, invariant 1). `supply.js` derives the galactic totals from guild stockpiles (a cache the invariant re-derives and checks). `recipes.js` is the fixed recipe catalog (one recipe so far: `titanium_to_alloy` = 3 titanium → 1 alloy ingot). `snapshot.js` builds the read-only debug-lens view.
 
-On top of the pure engine sits a thin **dev harness**: `server.js` holds ONE in-memory state and exposes the engine over HTTP (`GET /snapshot`, `GET /starters`, `GET /system/:id`, `GET /recipes`, `GET /goods`, `POST /tick`, `POST /action`, `POST /reset`) with **manual tick**, serving `client/testbed.html` at `GET /`; a `Dockerfile` containers it. The server carries **zero game logic** — every mutation goes through the same `intake`/`advance` the tests guard, so there is one engine and no unowned seam. `scenarios/zero-state.js` is the guild-less tick-0 galaxy it boots into; `node sim/demo.js` watches a galaxy advance from the CLI.
+On top of the pure engine sits a thin **dev harness**: `server.js` holds ONE in-memory state and exposes the engine over HTTP (`GET /snapshot`, `GET /starters`, `GET /system/:id`, `GET /recipes`, `GET /goods`, `POST /tick`, `POST /action`, `POST /reset`) with an optional boot clock (`STARFARE_TICK_MS`), serving the **player client** `client/game.html` at `GET /`, the operator watcher `client/inspect.html` at `GET /inspect`, the committed seed at `GET /galaxy` and the client's art under `GET /assets/`; a `Dockerfile` containers it. The server carries **zero game logic** — every mutation goes through the same `intake`/`advance` the tests guard, so there is one engine and no unowned seam. `scenarios/zero-state.js` is the guild-less tick-0 galaxy it boots into; `node sim/demo.js` watches a galaxy advance from the CLI.
 
 Still ahead in the walking skeleton: **consumption / fuel burn** (step 2, now that Vehicle exists), the **fuel market** (step 3), a **second (bot) guild** for real SHARED contention, and **tolls/shipping** — plus the per-guild homeworld UI (world-dropdown founding, settlement slots, click-a-site to establish a venture). See `docs/roadmap.md`, Phase 1 Stage 2.
 
@@ -28,7 +28,7 @@ sim/
 ├── snapshot.js       the read-only debug-lens view of state   ✅
 ├── invariants.js     the nine invariants, asserted every tick, halting loudly   ✅
 ├── serialize.js      canonical stable stringify + hashing for determinism checks   ✅
-├── server.js         thin dev-harness HTTP server (in-memory, manual tick, serves testbed.html)   ✅
+├── server.js         thin dev-harness HTTP server (one live state; serves the client + /inspect)  ✅
 ├── demo.js           CLI: watch a galaxy advance   ✅
 ├── economy.js        posted-price market, trades, baseline allocation           (not yet)
 ├── territory.js      ownership / tolls / tariffs / contests — geography-agnostic (not yet)
