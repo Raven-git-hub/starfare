@@ -402,3 +402,138 @@ test('POST /reset stops a running heartbeat', async () => {
   const t2 = (await req('GET', '/snapshot')).body.tick;
   assert.equal(t1, t2);
 });
+
+// --- client-wiring Slice 0: the seed endpoint, the watcher, the boot clock ---
+
+test('GET /galaxy serves the committed seed geometry verbatim (JSON)', async () => {
+  const res = await fetch(base + '/galaxy');
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type') || '', /application\/json/);
+  const body = await res.json();
+
+  // The shape the map (Slice 1) and the detail screens read: systems with
+  // coordinates + ring + planets, the outposts, and the Citadel.
+  assert.ok(Array.isArray(body.systems) && body.systems.length > 0, 'systems present');
+  const s0 = body.systems[0];
+  assert.equal(typeof s0.coords.q, 'number');
+  assert.equal(typeof s0.coords.r, 'number');
+  assert.equal(typeof s0.ring, 'string');
+  assert.ok(Array.isArray(s0.planets), 'a system carries its planets');
+  assert.ok(Array.isArray(body.outposts), 'outposts present');
+  assert.ok(body.citadel, 'the Citadel is present');
+
+  // And it is the COMMITTED seed, not a reshape: byte-for-byte the same file
+  // sim/seed.js reads, so map and detail can never disagree on geometry.
+  assert.deepEqual(body, require('../../data/seed.json'));
+});
+
+test('GET /inspect serves the operator watcher — and it has NO action controls', async () => {
+  const res = await fetch(base + '/inspect');
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type') || '', /text\/html/);
+  const html = await res.text();
+  // The page itself (not the testbed, not the console, not the JSON probe).
+  assert.match(html, /SYNDICATE \/\/ OPERATOR WATCH/);
+  assert.match(html, /id="productionpanel"/);   // it renders the full god's-eye state
+  assert.match(html, /id="occupancypanel"/);
+  assert.match(html, /id="claimpanel"/);
+  assert.match(html, /\/snapshot/);             // it reads the snapshot, live
+
+  // THE WATCH-ONLY GUARANTEE (client-wiring.md §2): the served bytes name no
+  // mutating route at all. If a control ever creeps in, this fails loudly.
+  for (const route of ['/action', '/tick', '/reset', '/autotick']) {
+    assert.ok(!html.includes(route), `/inspect must not reference ${route} — it only watches`);
+  }
+});
+
+// The boot clock lives in the CLI block, so these tests boot sim/server.js as a
+// REAL child process. They are the only tests here that do; everything else drives
+// the in-process server above.
+const { spawn } = require('node:child_process');
+const net = require('node:net');
+const path = require('node:path');
+
+const SERVER_JS = path.join(__dirname, '..', 'server.js');
+
+// Ask the OS for a free port and hand it back. The CLI reads PORT from the env and
+// treats 0 as unset (Number('0') is falsy), so a boot test cannot use the
+// ephemeral-port trick the in-process tests use. The tiny bind race is acceptable.
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.on('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+  });
+}
+
+// Boot the server as its own process with STARFARE_TICK_MS explicitly controlled
+// (deleted, not just unset, so the ambient env can never leak into the OFF case).
+// Returns the child plus accumulating stdout/stderr for the boot log assertions.
+function bootServer(tickMs, port) {
+  const env = { ...process.env, PORT: String(port) };
+  delete env.STARFARE_TICK_MS;
+  delete env.STARFARE_PERSIST_DIR; // the boot clock is what's under test, not durability
+  if (tickMs !== undefined) env.STARFARE_TICK_MS = String(tickMs);
+  const child = spawn(process.execPath, [SERVER_JS], { env });
+  const out = { stdout: '', stderr: '' };
+  child.stdout.on('data', (d) => { out.stdout += d; });
+  child.stderr.on('data', (d) => { out.stderr += d; });
+  return { child, out };
+}
+
+// Poll the liveness probe until the child is answering (or give up loudly).
+async function waitForHealth(port, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/health`);
+      if (res.ok) return res.json();
+    } catch { /* not listening yet */ }
+    if (Date.now() > deadline) throw new Error('the booted server never answered /health');
+    await sleep(25);
+  }
+}
+
+test('STARFARE_TICK_MS set: the clock starts on boot (no manual advance)', async () => {
+  const port = await freePort();
+  const { child, out } = bootServer(50, port);
+  try {
+    const health = await waitForHealth(port);
+    assert.equal(health.autotick.running, true, 'the heartbeat runs from boot');
+    assert.equal(health.autotick.intervalMs, 50);
+    assert.match(out.stdout, /\[clock\] ON — auto-tick every 50 ms/);
+    // And it genuinely turns: the tick climbs with nothing driving it.
+    const t1 = (await (await fetch(`http://127.0.0.1:${port}/snapshot`)).json()).tick;
+    await sleep(250);
+    const t2 = (await (await fetch(`http://127.0.0.1:${port}/snapshot`)).json()).tick;
+    assert.ok(t2 > t1, `expected the galaxy to advance on its own (${t1} -> ${t2})`);
+  } finally {
+    child.kill('SIGKILL');
+  }
+});
+
+test('STARFARE_TICK_MS unset: no heartbeat (today\'s behaviour, unchanged)', async () => {
+  const port = await freePort();
+  const { child, out } = bootServer(undefined, port);
+  try {
+    const health = await waitForHealth(port);
+    assert.equal(health.autotick.running, false, 'unset must mean no clock');
+    assert.equal(health.autotick.intervalMs, null);
+    assert.match(out.stdout, /\[clock\] OFF — no heartbeat/);
+  } finally {
+    child.kill('SIGKILL');
+  }
+});
+
+test('an invalid STARFARE_TICK_MS fails the boot loudly (non-zero exit)', async () => {
+  for (const bad of ['fast', '0', '-5', '5' /* below the floor */, '3.5']) {
+    const port = await freePort();
+    const { child, out } = bootServer(bad, port);
+    const code = await new Promise((resolve) => child.on('exit', resolve));
+    assert.notEqual(code, 0, `STARFARE_TICK_MS=${bad} must fail the boot`);
+    assert.match(out.stderr, /\[clock\] STARFARE_TICK_MS must be an integer/);
+  }
+});

@@ -119,13 +119,23 @@ not. This list is the working contract; it may be refined as panels are wired
 
 ## The walk (five deployable slices — each ends in something real)
 
-- **Slice 0 — plumbing + the watcher.** Add `GET /galaxy` (serves the committed
+- **Slice 0 — plumbing + the watcher. LANDED 24-08-26.** Add `GET /galaxy` (serves the committed
   seed); serve the player client (route TBD-live in Slice 1) and the operator
   `/inspect` watch-only panel (a live ~1 s poll of `/snapshot`, full god's-eye
   render, zero controls); make the clock auto-start on boot via `STARFARE_TICK_MS`.
   Deliverable: deploy and watch the real persistent galaxy's full state live; the
   seed is served. No client rewrite yet; testbed still present as the only seeding
   path until Slice 1.
+  *As built:* `GET /galaxy` serves `data/seed.json` verbatim from a buffer read once
+  at boot (unreshaped, unfiltered — public identity data, not god's-eye);
+  `GET /inspect` serves the new `client/inspect.html`, which renders the whole
+  schema-7 snapshot and fails LOUD (visible error, last good render kept) on a
+  network error, a non-JSON body, or a schema that is not the one it was written
+  against; `STARFARE_TICK_MS` starts the EXISTING heartbeat in the CLI boot block
+  (unset ⇒ off, byte-for-byte the old behaviour; an unusable value exits non-zero
+  before the port is bound). The engine, the tick and the snapshot are unmodified.
+  `client/state_inspector.html` is untouched — it stays the offline file-load debug
+  tool; `/inspect` is its served, live sibling.
 - **Slice 1 — found your guild, through the game.** The connect/uplink screen
   becomes a real first-run flow: fresh galaxy → pick a starter (`GET /starters`) →
   `foundGuild` from the client. Galaxy map + HUD go live on the real seed;

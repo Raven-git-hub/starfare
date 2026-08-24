@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<!--
+  OPERATOR PANEL — GOD'S-EYE, WATCH-ONLY. Served at GET /inspect.
+
+  This page is for the operator, never for a player: it renders every guild's real
+  stockpiles, the true galactic supply and the Syndicate ledger — figures design.md
+  §7 says a player must never see. It is deliberately NOT linked from the player
+  client. Real per-viewer server-side filtering is deferred (client-wiring.md §7);
+  for now the split is client discipline behind Cloudflare Access.
+
+  IT WATCHES AND NOTHING ELSE (client-wiring.md §2). There is no control on this
+  page that mutates the galaxy — no controls at all. It only re-reads GET /snapshot
+  on a ~1 s cadence and re-renders it, and it computes no game number: every figure
+  below is the engine's own resolved value.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Syndicate // Operator Watch (god's-eye)</title>
+<style>
+  :root {
+    --bg: #030408;
+    --panel: rgba(8,10,16,0.92);
+    --line: #1c2637;
+    --line-bright: #2c3a52;
+    --text: #c7d3e6;
+    --text-dim: #5c6b85;
+    --accent: #43d9c8;
+    --fuel: #e8b93a;
+    --warn: #e0525a;
+    --zero: #34405a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  body { padding: 20px 22px 60px; }
+
+  h1 { font-size: 18px; letter-spacing: 3px; color: var(--accent); font-weight: 700; }
+  .warnbar {
+    margin-top: 8px; padding: 8px 12px; border: 1px solid var(--warn); border-radius: 2px;
+    color: var(--warn); font-size: 11px; letter-spacing: 1px; background: rgba(224,82,90,0.08);
+  }
+  .status { margin-top: 10px; font-size: 11px; letter-spacing: 1px; color: var(--text-dim); }
+  .status.ok { color: var(--accent); }
+  .status.error { color: var(--warn); }
+  .meta { margin-top: 12px; font-size: 12px; color: var(--text-dim); }
+  .meta b { color: var(--text); font-weight: 500; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--panel); border: 1px solid var(--line-bright); border-radius: 3px; padding: 14px 16px; }
+  .panel.fuel { border-color: var(--fuel); }
+  .panel h2 {
+    font-size: 12px; letter-spacing: 2px; color: var(--text-dim); font-weight: 500;
+    border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 10px;
+  }
+  .panel.fuel h2 { color: var(--fuel); }
+  .full { grid-column: 1 / -1; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 4px 8px 4px 0; vertical-align: top; }
+  th { color: var(--text-dim); font-weight: 500; border-bottom: 1px solid var(--line); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.zero td { color: var(--zero); }
+
+  .fuelrow { display: flex; gap: 26px; margin-top: 4px; }
+  .fuelrow .k { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; }
+  .fuelrow .v { font-size: 22px; color: var(--fuel); font-variant-numeric: tabular-nums; }
+  .fuelrow .cell.total .v { color: var(--text); }
+
+  .guildcard { border: 1px solid var(--line); border-radius: 2px; padding: 10px 12px; margin-bottom: 10px; }
+  .guildcard:last-child { margin-bottom: 0; }
+  .guildcard .top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .guildcard .gid { color: var(--accent); font-size: 13px; letter-spacing: 1px; }
+  .guildcard .tag { font-size: 10px; letter-spacing: 1px; color: var(--text-dim); border: 1px solid var(--line-bright); padding: 1px 6px; border-radius: 2px; }
+  .guildcard .stats { font-size: 12px; color: var(--text-dim); }
+  .guildcard .stats b { color: var(--text); font-weight: 500; }
+  .stockline { margin-top: 6px; font-size: 12px; }
+  .stockline .none { color: var(--text-dim); }
+  .sub { margin-top: 8px; font-size: 11px; color: var(--text-dim); letter-spacing: 1px; }
+  pre.profile {
+    margin-top: 4px; font-size: 11px; color: var(--text); background: rgba(0,0,0,0.35);
+    border: 1px solid var(--line); border-radius: 2px; padding: 8px; overflow-x: auto; white-space: pre;
+  }
+  .site { color: var(--text-dim); }
+  .site b { color: var(--text); font-weight: 500; }
+  .badsite { color: var(--warn); }
+  .sysblock { border: 1px solid var(--line); border-radius: 2px; padding: 10px 12px; margin-bottom: 10px; }
+  .sysblock .syshead { color: var(--accent); font-size: 12px; letter-spacing: 1px; margin-bottom: 6px; }
+  .review-issue { color: var(--warn); font-size: 11px; }
+  .breach { color: var(--warn); }
+</style>
+</head>
+<body>
+  <h1>SYNDICATE // OPERATOR WATCH</h1>
+  <div class="warnbar">
+    GOD'S-EYE, WATCH-ONLY — the operator read plane. Shows figures players never see
+    (every guild's real stockpiles, the true galactic supply, the Syndicate ledger).
+    It has no controls: it cannot change the galaxy. NOT player UI.
+  </div>
+  <div class="status" id="status">reading live state…</div>
+
+  <div id="content" style="display:none">
+    <div class="meta" id="meta"></div>
+    <div class="grid">
+      <div class="panel fuel full" id="fuelpanel"></div>
+      <div class="panel" id="supplypanel"></div>
+      <div class="panel" id="guildpanel"></div>
+      <div class="panel full" id="productionpanel"></div>
+      <div class="panel full" id="venturepanel"></div>
+      <div class="panel" id="occupancypanel"></div>
+      <div class="panel" id="claimpanel"></div>
+    </div>
+  </div>
+
+<script>
+'use strict';
+
+// The snapshot shape this page is written against (sim/snapshot.js SNAPSHOT_SCHEMA).
+// A server on a different schema is a LOUD refusal, not a half-rendered page.
+var EXPECTED_SCHEMA = 7;
+
+// The re-read cadence, mirroring the console's live poll. A client-side refresh
+// rate only: the galaxy turns on the server's own clock, and this page just
+// re-reads it. It computes no game number.
+var POLL_MS = 1000;
+
+var statusEl = document.getElementById('status');
+function setStatus(text, kind) {
+  statusEl.textContent = text;
+  statusEl.className = 'status ' + (kind || '');
+}
+
+// Escape anything bound for innerHTML. Ids/names are engine-set, but escaping
+// keeps the renderer honest.
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+// Formatting only — floats in the snapshot are engine telemetry (rates, carries).
+function fmt(n) { return n == null ? '—' : (Number.isInteger(n) ? String(n) : Number(n).toFixed(2)); }
+
+// Fail loudly on anything that is not the snapshot this page renders, rather than
+// showing a blank or half-filled page (the courtesy state_inspector.html gives a
+// mis-picked file, kept here for a mis-answering server).
+function validate(snap) {
+  if (!snap || typeof snap !== 'object') throw new Error('not a JSON object');
+  if (typeof snap.schemaVersion !== 'number') {
+    throw new Error('missing schemaVersion — is this the engine snapshot?');
+  }
+  if (snap.schemaVersion !== EXPECTED_SCHEMA) {
+    throw new Error('snapshot schema ' + snap.schemaVersion + ' but this page renders schema ' + EXPECTED_SCHEMA + ' — the page is stale, reload after a deploy');
+  }
+  if (!snap.galacticSupply || !snap.galacticSupply.resources || !snap.galacticSupply.fuel) {
+    throw new Error('missing galacticSupply — is this the engine snapshot?');
+  }
+  if (!Array.isArray(snap.guilds) || !Array.isArray(snap.ventures)) {
+    throw new Error('missing guilds/ventures — is this the engine snapshot?');
+  }
+}
+
+function render(snap) {
+  document.getElementById('content').style.display = 'block';
+
+  document.getElementById('meta').innerHTML =
+    'tick <b>' + esc(snap.tick) + '</b>' +
+    ' &nbsp;·&nbsp; schema <b>' + esc(snap.schemaVersion) + '</b>' +
+    ' &nbsp;·&nbsp; Syndicate ledger <b>' + esc(snap.syndicate ? snap.syndicate.ledger : '?') + '</b>' +
+    ' &nbsp;·&nbsp; guilds <b>' + snap.guilds.length + '</b>' +
+    ' &nbsp;·&nbsp; ventures <b>' + snap.ventures.length + '</b>' +
+    ' &nbsp;·&nbsp; claims <b>' + ((snap.claims || []).length) + '</b>' +
+    ' &nbsp;·&nbsp; occupied sites <b>' + Object.keys(snap.occupancy || {}).length + '</b>';
+
+  renderFuel(snap.galacticSupply.fuel);
+  renderSupply(snap.galacticSupply.resources);
+  renderGuilds(snap.guilds);
+  renderProduction(snap.production || []);
+  renderVentures(snap.ventures);
+  renderOccupancy(snap.occupancy || {});
+  renderClaims(snap.claims || []);
+}
+
+// Fuel gets its own panel because it is the one conserved, finite good — reserve
+// (communal pool) and guildHeld (Σ private hoards) are shown separately because
+// which the fuel price reads is still an open ruling.
+function renderFuel(fuel) {
+  document.getElementById('fuelpanel').innerHTML =
+    '<h2>FUEL POOL (deuterium_fuel — finite, conserved)</h2>' +
+    '<div class="fuelrow">' +
+      '<div class="cell"><div class="k">RESERVE (communal)</div><div class="v">' + esc(fuel.reserve) + '</div></div>' +
+      '<div class="cell"><div class="k">GUILD-HELD (Σ hoards)</div><div class="v">' + esc(fuel.guildHeld) + '</div></div>' +
+      '<div class="cell total"><div class="k">TOTAL IN EXISTENCE</div><div class="v">' + esc(fuel.total) + '</div></div>' +
+    '</div>';
+}
+
+// Every raw good, zeros dimmed, so the full good vocabulary is legible and a good
+// appearing/disappearing is obvious.
+function renderSupply(resources) {
+  var rows = Object.keys(resources).sort().map(function (g) {
+    var qty = resources[g];
+    return '<tr' + (qty === 0 ? ' class="zero"' : '') + '><td>' + esc(g) + '</td><td class="num">' + esc(qty) + '</td></tr>';
+  }).join('');
+  document.getElementById('supplypanel').innerHTML =
+    '<h2>GALACTIC SUPPLY (Σ guild stockpiles)</h2>' +
+    '<table><thead><tr><th>good</th><th class="num">total</th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+// One card per guild: the flat totals a player-facing card would show, plus the
+// two things only the operator sees whole — the per-system stockpile breakdown and
+// the stored (sparse) production profile.
+function renderGuilds(guilds) {
+  var cards = guilds.map(function (g) {
+    var stockKeys = Object.keys(g.stockpiles || {}).filter(function (k) { return g.stockpiles[k] > 0; }).sort();
+    var stock = stockKeys.length
+      ? stockKeys.map(function (k) { return esc(k) + ' ' + esc(g.stockpiles[k]); }).join(', ')
+      : '<span class="none">(empty)</span>';
+
+    var bySys = g.stockpilesBySystem || {};
+    var sysIds = Object.keys(bySys).sort();
+    var sysRows = sysIds.map(function (sid) {
+      var pool = bySys[sid] || {};
+      var goods = Object.keys(pool).filter(function (k) { return pool[k] !== 0; }).sort();
+      var cell = goods.length
+        ? goods.map(function (k) { return esc(k) + ' ' + esc(pool[k]); }).join(', ')
+        : '<span class="none">(empty)</span>';
+      return '<tr><td>' + esc(sid) + '</td><td>' + cell + '</td></tr>';
+    }).join('');
+
+    // The profile is emitted sparse, exactly as stored (absent keys mean their
+    // defaults), so it is shown raw rather than filled in — the operator wants to
+    // see what the player actually set.
+    var profile = g.productionProfile || {};
+    var profileText = Object.keys(profile).length ? JSON.stringify(profile, null, 2) : '{}  (all defaults)';
+
+    return '' +
+      '<div class="guildcard">' +
+        '<div class="top">' +
+          '<span class="gid">' + esc(g.id) + (g.name && g.name !== g.id ? ' <span class="site">(' + esc(g.name) + ')</span>' : '') + '</span>' +
+          '<span class="tag">' + (g.isBot ? 'BOT' : 'HUMAN') + '</span>' +
+        '</div>' +
+        '<div class="stats">credits <b>' + esc(g.credits) + '</b> &nbsp; fuel hoard <b>' + esc(g.fuelHoard) + '</b> &nbsp; influence <b>' + esc(g.influence) + '</b></div>' +
+        '<div class="stats">home <b>' + esc(g.homeSystemId || '—') + '</b> / <b>' + esc(g.homePlanetId || '—') + '</b></div>' +
+        '<div class="stockline">stockpiles (total): ' + stock + '</div>' +
+        '<div class="sub">STOCKPILES BY SYSTEM</div>' +
+        (sysIds.length
+          ? '<table><thead><tr><th>system</th><th>pool</th></tr></thead><tbody>' + sysRows + '</tbody></table>'
+          : '<div class="site">no system pools</div>') +
+        '<div class="sub">PRODUCTION PROFILE (as stored, sparse)</div>' +
+        '<pre class="profile">' + esc(profileText) + '</pre>' +
+      '</div>';
+  }).join('');
+  document.getElementById('guildpanel').innerHTML =
+    '<h2>GUILDS (' + guilds.length + ')</h2>' + (cards || '<div class="site">no guilds (zero-state)</div>');
+}
+
+// The engine's resolved production report, per guild → per system. Every figure
+// here is computed by the SAME resolver the tick applies — this page only lays it
+// out. Empty tables are omitted rather than shown blank.
+function renderProduction(production) {
+  var blocks = production.map(function (p) {
+    var systems = (p.systems || []).map(function (s) {
+      var goodRows = Object.keys(s.goods || {}).sort().map(function (good) {
+        var e = s.goods[good];
+        var w = e.window;
+        var win = w
+          ? 'Q ' + fmt(w.Q) + ' · delivered ' + fmt(w.delivered) + ' · req per tick ' + fmt(w.requiredRate) +
+            ' · send ' + fmt(w.sendThisTick) + ' · left ' + fmt(w.ticksRemaining) +
+            ' · <span class="' + (w.status === 'breach' ? 'breach' : '') + '">' + esc(w.status) + '</span> ' + fmt(w.pctAchieved) + '%'
+          : '<span class="site">—</span>';
+        return '<tr>' +
+          '<td>' + esc(good) + '</td>' +
+          '<td class="num">' + fmt(e.fresh) + '</td>' +
+          '<td class="num">' + fmt(e.demand) + '</td>' +
+          '<td class="num">' + fmt(e.reserve0) + '</td>' +
+          '<td class="num">' + fmt(e.pot) + '</td>' +
+          '<td class="num">' + fmt(e.supplied) + '</td>' +
+          '<td class="num">' + fmt(e.fork ? e.fork.syndicate : null) + '</td>' +
+          '<td class="num">' + fmt(e.fork ? e.fork.downstream : null) + '</td>' +
+          '<td class="num">' + fmt(e.fork ? e.fork.stockpile : null) + '</td>' +
+          '<td class="num">' + fmt(e.reserveDelta) + '</td>' +
+          '<td>' + win + '</td>' +
+        '</tr>';
+      }).join('');
+
+      var mineRows = (s.mines || []).map(function (m) {
+        return '<tr><td>' + esc(m.ventureId) + '</td><td>' + esc(m.good) + '</td><td class="num">' + fmt(m.amount) + '</td></tr>';
+      }).join('');
+
+      var lineRows = (s.lines || []).map(function (l) {
+        return '<tr><td>' + esc(l.ventureId) + '</td><td>' + esc(l.good) + '</td>' +
+          '<td class="num">' + fmt(l.demand) + '</td><td class="num">' + fmt(l.alloc) + '</td><td class="num">' + fmt(l.drawn) + '</td></tr>';
+      }).join('');
+
+      var refRows = (s.refineries || []).map(function (r) {
+        var carry = Object.keys(r.batchCarry || {}).sort().map(function (k) {
+          return esc(k) + ' ' + fmt(r.batchCarry[k]);
+        }).join(', ');
+        return '<tr><td>' + esc(r.ventureId) + '</td><td class="num">' + fmt(r.rate) + '</td>' +
+          '<td>' + esc(r.bottleneckGood || '—') + '</td><td class="num">' + fmt(r.minted) + '</td>' +
+          '<td>' + (carry || '<span class="site">—</span>') + '</td></tr>';
+      }).join('');
+
+      var review = (s.review || []).map(function (i) {
+        return '<div class="review-issue">⚑ ' + esc(i.kind) + ': ' + esc(i.ventureId || i.good) + '</div>';
+      }).join('');
+
+      return '<div class="sysblock">' +
+        '<div class="syshead">' + esc(s.systemId == null ? '(unseated)' : s.systemId) + '</div>' +
+        review +
+        (goodRows
+          ? '<div class="sub">GOODS — the one pot and the three claimants</div>' +
+            '<table><thead><tr><th>good</th><th class="num">fresh</th><th class="num">demand</th><th class="num">reserve0</th>' +
+            '<th class="num">pot</th><th class="num">supplied</th><th class="num">syn</th><th class="num">down</th>' +
+            '<th class="num">held</th><th class="num">Δreserve</th><th>window</th></tr></thead><tbody>' + goodRows + '</tbody></table>'
+          : '') +
+        (mineRows
+          ? '<div class="sub">MINES — fresh output</div>' +
+            '<table><thead><tr><th>venture</th><th>good</th><th class="num">amount</th></tr></thead><tbody>' + mineRows + '</tbody></table>'
+          : '') +
+        (lineRows
+          ? '<div class="sub">LINES — per input allocation</div>' +
+            '<table><thead><tr><th>venture</th><th>input</th><th class="num">demand</th><th class="num">alloc</th><th class="num">drawn</th></tr></thead><tbody>' + lineRows + '</tbody></table>'
+          : '') +
+        (refRows
+          ? '<div class="sub">REFINERIES — rate, bottleneck, minted</div>' +
+            '<table><thead><tr><th>venture</th><th class="num">rate</th><th>bottleneck</th><th class="num">minted</th><th>batch carry</th></tr></thead><tbody>' + refRows + '</tbody></table>'
+          : '') +
+      '</div>';
+    }).join('');
+
+    return '<div class="sub">' + esc(p.guildId) + '</div>' +
+      (systems || '<div class="site">no producing systems</div>');
+  }).join('');
+
+  document.getElementById('productionpanel').innerHTML =
+    '<h2>PRODUCTION (engine-resolved preview of the next tick)</h2>' +
+    (blocks || '<div class="site">no production (no guilds)</div>');
+}
+
+// One row per venture, with its seed site resolved. A dangling/unseated site is
+// shown explicitly rather than hidden, so breakage is visible.
+function renderVentures(ventures) {
+  var rows = ventures.map(function (v) {
+    var where;
+    if (v.site) {
+      var what = v.site.kind === 'resource' ? esc(v.site.resourceType) : esc(v.site.kind);
+      where = '<span class="site"><b>' + esc(v.siteId) + '</b> — ' + what + ' on ' + esc(v.site.planetId) + ' (' + esc(v.site.systemId) + ')</span>';
+    } else if (v.siteId) {
+      where = '<span class="badsite">' + esc(v.siteId) + ' — UNKNOWN SITE</span>';
+    } else {
+      where = '<span class="site">unseated</span>';
+    }
+    var carry = Object.keys(v.batchCarry || {}).sort().map(function (k) {
+      return esc(k) + ' ' + fmt(v.batchCarry[k]);
+    }).join(', ');
+    return '<tr>' +
+      '<td>' + esc(v.id) + '</td>' +
+      '<td>' + esc(v.ownerGuildId) + '</td>' +
+      '<td>' + esc(v.type) + '</td>' +
+      '<td>' + esc(v.recipeId || v.resourceType || '—') + '</td>' +
+      '<td>' + where + '</td>' +
+      '<td class="num">' + fmt(v.productionRate) + '</td>' +
+      '<td class="num">' + fmt(v.syndicateCommitment) + '</td>' +
+      '<td>' + (carry || '<span class="site">—</span>') + '</td>' +
+    '</tr>';
+  }).join('');
+  document.getElementById('venturepanel').innerHTML =
+    '<h2>VENTURES (' + ventures.length + ')</h2>' +
+    (ventures.length
+      ? '<table><thead><tr><th>venture</th><th>owner</th><th>type</th><th>recipe/resource</th><th>site</th>' +
+        '<th class="num">rate</th><th class="num">commitment</th><th>batch carry</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      : '<div class="site">no ventures</div>');
+}
+
+// The derived site → venture map (sim/occupancy.js). Shown whole because "who sits
+// on which node" is exactly the god's-eye fact a player may not have.
+function renderOccupancy(occupancy) {
+  var siteIds = Object.keys(occupancy).sort();
+  var rows = siteIds.map(function (sid) {
+    return '<tr><td>' + esc(sid) + '</td><td>' + esc(occupancy[sid]) + '</td></tr>';
+  }).join('');
+  document.getElementById('occupancypanel').innerHTML =
+    '<h2>OCCUPANCY (' + siteIds.length + ' sites)</h2>' +
+    (siteIds.length
+      ? '<table><thead><tr><th>site</th><th>venture</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      : '<div class="site">no occupied sites</div>');
+}
+
+// Territory claims, with the seed landmark the engine resolved for each. A null
+// landmark is a dangling reference the claim invariant would already be halting
+// on, so it is surfaced rather than hidden.
+function renderClaims(claims) {
+  var rows = claims.map(function (c) {
+    var where = c.landmark
+      ? esc(c.landmark.name || c.landmarkId)
+      : '<span class="badsite">' + esc(c.landmarkId) + ' — UNKNOWN LANDMARK</span>';
+    return '<tr>' +
+      '<td>' + esc(c.claimId) + '</td>' +
+      '<td>' + esc(c.ownerGuildId) + '</td>' +
+      '<td>' + esc(c.landmarkKind) + '</td>' +
+      '<td>' + where + '</td>' +
+      '<td class="num">' + esc(c.claimedAtTick) + '</td>' +
+      '<td>' + (c.contested ? '<span class="breach">contested</span>' : '<span class="site">—</span>') + '</td>' +
+    '</tr>';
+  }).join('');
+  document.getElementById('claimpanel').innerHTML =
+    '<h2>CLAIMS (' + claims.length + ')</h2>' +
+    (claims.length
+      ? '<table><thead><tr><th>claim</th><th>owner</th><th>kind</th><th>landmark</th><th class="num">at tick</th><th>state</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      : '<div class="site">no claims</div>');
+}
+
+// ---- the watch loop --------------------------------------------------------
+// Re-read and re-render, forever. A failure — network, non-JSON, wrong schema —
+// leaves the last good render on screen and says so LOUDLY in the status line,
+// rather than blanking the page or silently showing stale figures as if current.
+async function readOnce() {
+  var res;
+  try {
+    res = await fetch('/snapshot');
+  } catch (err) {
+    setStatus('NETWORK ERROR — ' + err.message + ' (showing the last good read)', 'error');
+    return;
+  }
+  if (res.status >= 400) {
+    setStatus('SERVER ERROR ' + res.status + ' (showing the last good read)', 'error');
+    return;
+  }
+  var snap;
+  try {
+    snap = await res.json();
+    validate(snap);
+  } catch (err) {
+    setStatus('BAD SNAPSHOT — ' + err.message + ' (showing the last good read)', 'error');
+    return;
+  }
+  render(snap);
+  setStatus('WATCHING — tick ' + snap.tick + ', re-read every ' + POLL_MS + ' ms · read-only: this page changes nothing', 'ok');
+}
+
+readOnce();
+setInterval(readOnce, POLL_MS);
+</script>
+</body>
+</html>

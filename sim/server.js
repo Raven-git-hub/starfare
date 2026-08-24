@@ -33,7 +33,10 @@
 // structurally one tick path and "no new game logic" holds by construction:
 //   - MANUAL: POST /tick advances exactly one tick (the default drive).
 //   - AUTO (optional): a server-side heartbeat (POST /autotick/start) advances a
-//     tick every intervalMs, so a running galaxy is watchable without clicking.
+//     tick every intervalMs, so a running galaxy is watchable without clicking. The
+//     SAME heartbeat can be started at BOOT by the operator env var
+//     STARFARE_TICK_MS (see the CLI block) so a deployed galaxy turns on its own
+//     and the watcher at /inspect stays honestly read-only (client-wiring.md §5).
 //     The interval is a PLAYBACK-SPEED knob, not a game/tuning number, and is
 //     unrelated to the (deferred) per-hour tick-duration mapping. The heartbeat
 //     has no HTTP caller to hand a 500, so if a tick throws it HALTS the timer
@@ -43,6 +46,10 @@
 // Endpoints (all JSON; permissive CORS for a local dev rig):
 //   GET  /               -> the testbed UI page (client/testbed.html)
 //   GET  /console        -> the player-facing Production Console (client/console.html)
+//   GET  /inspect        -> the OPERATOR watch-only panel (client/inspect.html): a
+//                           live poll of the god's-eye snapshot, zero controls
+//   GET  /galaxy         -> the committed seed geometry (data/seed.json, served
+//                           verbatim) — the one full-galaxy read the client needs
 //   GET  /health         -> liveness JSON + a one-line summary + autotick status
 //   GET  /snapshot       -> buildSnapshot(state) (the debug lens' data)
 //   GET  /starters       -> the seed's starter-eligible systems (the home-system
@@ -88,6 +95,21 @@ const TESTBED_HTML = join(__dirname, '..', 'client', 'testbed.html');
 // disk-per-request pattern as the testbed, and — like it — ZERO game logic: it drives
 // the SAME live state over the SAME endpoints, only in the player-facing Archive view.
 const CONSOLE_HTML = join(__dirname, '..', 'client', 'console.html');
+
+// The OPERATOR watch-only panel, served at GET /inspect. Same read-from-disk-per-
+// request pattern as the two pages above. It is god's-eye (it renders every
+// guild's real stockpiles and the true galactic supply), so it is deliberately
+// UNLINKED from any player surface; for now the whole site sits behind Cloudflare
+// Access and real per-viewer filtering is deferred (client-wiring.md §7).
+const INSPECT_HTML = join(__dirname, '..', 'client', 'inspect.html');
+
+// The committed seed, served verbatim at GET /galaxy. Read ONCE at module load
+// into a buffer and handed out per request: it is ~5.8 MB, completely static, and
+// re-reading it per hit would be pure waste. These are the SAME bytes sim/seed.js
+// parses, so the map and the per-system detail screens can never disagree on
+// geometry (client-wiring.md §6). This is public identity data — the galaxy every
+// player sees — NOT god's-eye, so serving it openly is fine.
+const SEED_JSON = fs.readFileSync(join(__dirname, '..', 'data', 'seed.json'));
 
 // --- opt-in file-backed durability (dev-rig prototype) ----------------------
 // STARFARE_PERSIST_DIR set  → durability ON: boot restores from disk, ticks
@@ -261,6 +283,36 @@ async function handleRequest(req, res) {
     } catch (err) {
       sendJson(res, 500, { error: 'could not read client/console.html', detail: String(err && err.message || err) });
     }
+    return;
+  }
+
+  // GET /inspect -> the operator watch-only panel (HTML), served exactly like
+  // GET /console above. Watch-only is a property of the PAGE (it has no controls
+  // that POST anything); the server does not enforce it, and a tripwire in
+  // sim/tests/server.test.js asserts the served bytes carry no action route.
+  if (method === 'GET' && path === '/inspect') {
+    try {
+      const html = fs.readFileSync(INSPECT_HTML);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+      res.end(html);
+    } catch (err) {
+      sendJson(res, 500, { error: 'could not read client/inspect.html', detail: String(err && err.message || err) });
+    }
+    return;
+  }
+
+  // The committed seed geometry, verbatim. SEED data, not live state — it never
+  // moves on a tick — so it is served from the buffer read at boot, unreshaped and
+  // unfiltered. The client composes live occupancy from the snapshot on top of it,
+  // exactly as it already does for /system/:id.
+  if (method === 'GET' && path === '/galaxy') {
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    });
+    res.end(SEED_JSON);
     return;
   }
 
@@ -500,6 +552,28 @@ if (require.main === module) {
     process.on('SIGTERM', () => shutdown('SIGTERM'));
   }
 
+  // --- the clock starts itself (client-wiring.md §5) ------------------------
+  // STARFARE_TICK_MS set   -> the EXISTING heartbeat starts on boot at that
+  //                           interval, so a deployed galaxy turns on its own and
+  //                           nobody has to press anything to make time pass.
+  // STARFARE_TICK_MS unset -> today's behaviour byte-for-byte: no heartbeat (the
+  //                           opt-in shape STARFARE_PERSIST_DIR already uses).
+  // This is OPERATOR CONFIG — playback speed — not a game/tuning number, so there
+  // is deliberately NO default: unset means off, and an unusable value is a loud
+  // boot failure rather than a guess. The validation is exactly the endpoint's
+  // (an integer at or above the busy-loop floor); a bad value exits non-zero here,
+  // before the port is bound, so a broken clock can never be left running.
+  let bootTickMs = null;
+  const rawTickMs = process.env.STARFARE_TICK_MS;
+  if (rawTickMs !== undefined && rawTickMs !== '') {
+    const parsed = Number(rawTickMs);
+    if (!Number.isInteger(parsed) || parsed < AUTOTICK_MIN_INTERVAL_MS) {
+      console.error(`[clock] STARFARE_TICK_MS must be an integer >= ${AUTOTICK_MIN_INTERVAL_MS} (ms); got ${JSON.stringify(rawTickMs)}`);
+      process.exit(1);
+    }
+    bootTickMs = parsed;
+  }
+
   server.listen(port, () => {
     console.log(`starfare testbed listening on http://0.0.0.0:${port}`);
     console.log(`  open the UI at http://<host>:${port}/  (GET /health for JSON liveness)`);
@@ -509,6 +583,15 @@ if (require.main === module) {
       console.log(`  durability: ON — file-backed state+journal in ${persistDir} (dev-rig B+ prototype)`);
     } else {
       console.log('  durability: OFF — in-memory, ephemeral (set STARFARE_PERSIST_DIR to enable)');
+    }
+    // Start the clock only once the server is actually listening, so the galaxy
+    // never advances before anything can read it. Same startAutotick() the endpoint
+    // calls — one tick path, no new game logic.
+    if (bootTickMs !== null) {
+      startAutotick(bootTickMs);
+      console.log(`[clock] ON — auto-tick every ${bootTickMs} ms (STARFARE_TICK_MS); the galaxy turns on its own`);
+    } else {
+      console.log('[clock] OFF — no heartbeat (set STARFARE_TICK_MS to an interval in ms to start one on boot)');
     }
     console.log('  dev rig: optional auto-tick, opt-in durability — NOT the Phase-2 server');
   });
