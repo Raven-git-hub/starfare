@@ -347,7 +347,10 @@
   .list-row.tab .venture-btn.occupied{ color:var(--ink); border-color:rgba(201,162,39,0.35); }
   /* Not a control and not a status — a note that this row's LIVE data (who sits on
      the site) is not wired yet. Geometry is real; occupancy arrives next slice. */
-  .list-row.tab .venture-btn.pending{ max-width:none; cursor:default; color:var(--ink-faint); }
+  /* The three states a site can be in, all read from the live snapshot. */
+  .list-row.tab .venture-btn.vacant{ max-width:none; cursor:default; color:var(--ink-faint); }
+  .list-row.tab .venture-btn.own{ max-width:none; cursor:default; color:var(--brass); border-color:rgba(201,162,39,0.55); background:rgba(201,162,39,0.10); }
+  .list-row.tab .venture-btn.rival{ max-width:none; cursor:default; color:var(--ink); border-color:rgba(232,223,200,0.28); }
 
   /* node tabs specifically: compact horizontal split rather than the tall,
      bottom-anchored artwork-tab layout used for planets */
@@ -360,11 +363,15 @@
     padding:0;
   }
   .list-row.tab.tex-node .node-meta{
-    flex:0 0 33.333%;
-    max-width:33.333%;
+    flex:0 0 40%;              /* a little wider than the original third: the site rows
+                                  now carry a status line under the name */
+    max-width:40%;
     justify-content:center;
     padding:0 12px;
   }
+  /* A site id is an identifier you may want to read against /inspect — leave its
+     case alone rather than shouting it like the other meta lines. */
+  .list-row.tab .node-type.siteid{ text-transform:none; letter-spacing:0.02em; }
   .list-row.tab.tex-node .venture-btn{
     position:static;
     flex:0 0 66.667%;
@@ -1559,14 +1566,66 @@ function adaptSeedSystem(sys){
   return {
     name: sys.name, id: sys.id, ring: sys.ring||null, coords: sys.coords||null,
     controller: (window.__controllerFor ? window.__controllerFor(sys.id) : 'Unclaimed'),
+    // Every site keeps its `id` — that id is the JOIN KEY into the snapshot's
+    // occupancy map, so the manifest can say what is actually seated here rather
+    // than guessing. (Slice 2: this used to drop the ids and keep a bare
+    // resource-type / a slot count.)
     planets: (sys.planets||[]).map(function(p,i){ return {
       id:p.id, order:i+1, roman:toRoman(i+1), archetype:p.archetype,
-      nodes:(p.resourceNodes||[]).map(function(n){return n.resourceType;}),
-      slots:(p.settlementSlots||[]).length
+      nodes:(p.resourceNodes||[]).map(function(n){ return { id:n.id, resourceType:n.resourceType }; }),
+      slots:(p.settlementSlots||[]).map(function(sl){ return { id:sl.id }; })
     };})
   };
 }
 function planetDesignation(p){ return SYSTEM.name + ' ' + p.roman; }
+
+// Escape anything bound for innerHTML. Guild names are typed by a player at
+// founding, so this is a real requirement here, not a formality.
+function esc(v){
+  return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+  });
+}
+
+// What the LIVE state says about one site. Everything below renders this and
+// nothing else — a site is vacant only because the engine says no venture sits on
+// it, never because the screen hasn't been wired. Returns:
+//   null                                         -> vacant
+//   { kind:'mine'|'refinery'|'venture', ... }    -> the PLAYER'S own venture
+//   { kind:'other', ownerName }                  -> someone else's: taken, by whom,
+//                                                   and deliberately nothing more (§7)
+function siteState(siteId){
+  if (!siteId) return null;
+  var info = window.__siteInfo ? window.__siteInfo(siteId) : null;
+  if (info) return info;
+  // Occupied per the occupancy map but with no venture row we may read: still
+  // report it as taken rather than showing a free site that isn't.
+  var occ = window.__occupancy ? window.__occupancy(siteId) : null;
+  return occ ? { kind:'other', ownerName:null } : null;
+}
+// Badge + detail line for one site, from its live state. Pure presentation.
+function siteBadge(state){
+  if (!state) return { cls:'vacant', text:'VACANT' };
+  if (state.kind === 'mine') return { cls:'own', text:'YOUR MINE' };
+  if (state.kind === 'refinery') return { cls:'own', text:'YOUR REFINERY' };
+  if (state.kind === 'venture') return { cls:'own', text:'YOUR VENTURE' };
+  return { cls:'rival', text:'OCCUPIED' };
+}
+function siteDetail(state, siteId){
+  if (!state) return siteId;                                   // vacant: name the site
+  if (state.kind === 'mine') return 'MINE \u00b7 ' + state.ventureId;
+  if (state.kind === 'refinery') return 'REFINERY \u00b7 ' + (state.output ? prettyGood(state.output) : (state.recipeId || 'recipe'));
+  if (state.kind === 'venture') return (state.ventureType || 'VENTURE').toUpperCase() + ' \u00b7 ' + state.ventureId;
+  return state.ownerName || 'another guild';   // the badge already says OCCUPIED
+}
+function prettyGood(key){ return String(key).split('_').map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' '); }
+// How many of a planet's sites are worked right now (a count of engine facts).
+function workedCount(p){
+  var n = 0;
+  p.nodes.forEach(function(x){ if (siteState(x.id)) n += 1; });
+  p.slots.forEach(function(x){ if (siteState(x.id)) n += 1; });
+  return n;
+}
 
 // pip markup — 3 cols x 5, filling rightmost first; cls 'sq' = resource square, 'tri' = settlement triangle
 function pipColumns(count, cls){
@@ -1603,8 +1662,10 @@ function renderSystemView(){
   SYSTEM.planets.slice().sort(function(a,b){return b.order-a.order;}).forEach(function(p){
     const row=document.createElement('button');
     row.className='list-row tab tex-'+p.archetype;
-    row.innerHTML = pipColumns(p.nodes.length,'sq') + pipColumns(p.slots,'tri') +
-      '<span class="node-meta"><span class="node-name">'+planetDesignation(p)+'</span><span class="node-type">'+ARCHETYPE_LABEL[p.archetype]+'</span></span>';
+    var worked = workedCount(p);
+    row.innerHTML = pipColumns(p.nodes.length,'sq') + pipColumns(p.slots.length,'tri') +
+      '<span class="node-meta"><span class="node-name">'+planetDesignation(p)+'</span><span class="node-type">'+ARCHETYPE_LABEL[p.archetype]+
+      (worked ? ' \u00b7 '+worked+(worked===1?' site worked':' sites worked') : '')+'</span></span>';
     row.addEventListener('click', function(){ view={screen:'planet', planetId:p.id, planetTab:'resources'}; render(); });
     el.stack.appendChild(row);
   });
@@ -1612,7 +1673,7 @@ function renderSystemView(){
   el.backBtn.classList.remove('visible');
   el.hero.className='hero star';
   el.mainHeading.textContent='System Manifest';
-  el.emptyCopy.textContent='Territory, tolls, and venture data for this system have not yet been charted. Select a body from the index to continue.';
+  el.emptyCopy.textContent='Select a body from the index to see its sites and what is working them. Tolls and trade for this system have not yet been charted.';
   // The console is mounted for a system the player actually controls (live claims).
   mountConsole(window.__isMine ? !!window.__isMine(SYSTEM.id) : false);
 }
@@ -1633,22 +1694,33 @@ function renderPlanetView(){
     b.addEventListener('click', function(){ view.planetTab=this.getAttribute('data-t'); render(); });
   });
 
+  // Every row is seed GEOMETRY joined to LIVE occupancy by the site's id. There is
+  // no establish control here — establishing is the next slice; a vacant site is
+  // reported honestly, not made actionable.
   el.stack.innerHTML='';
   if (view.planetTab==='resources'){
-    p.nodes.forEach(function(resourceType,i){
+    p.nodes.forEach(function(node,i){
+      const state = siteState(node.id);
+      const badge = siteBadge(state);
       const row=document.createElement('div'); row.className='list-row tab tex-node';
-      row.innerHTML = '<span class="node-meta"><span class="node-name">'+RESOURCE_LABEL[resourceType]+'</span></span><span class="venture-btn pending">LIVE DATA NEXT</span>';
-      row.addEventListener('click', function(){ openNodeOverlay('Resource Node '+(i+1), RESOURCE_LABEL[resourceType]); });
+      row.innerHTML = '<span class="node-meta"><span class="node-name">'+RESOURCE_LABEL[node.resourceType]+'</span>' +
+        '<span class="node-type'+(state?'':' siteid')+'">'+esc(siteDetail(state, node.id))+'</span></span>' +
+        '<span class="venture-btn '+badge.cls+'">'+badge.text+'</span>';
+      row.addEventListener('click', function(){ openNodeOverlay('Resource Node '+(i+1), node.id, RESOURCE_LABEL[node.resourceType]); });
       el.stack.appendChild(row);
     });
   } else {
-    for (let i=0;i<p.slots;i++){
+    p.slots.forEach(function(slot,i){
+      const state = siteState(slot.id);
+      const badge = siteBadge(state);
       const row=document.createElement('div'); row.className='list-row tab tex-node';
-      row.innerHTML = '<span class="node-meta"><span class="node-name">Settlement Slot '+(i+1)+'</span></span><span class="venture-btn pending">LIVE DATA NEXT</span>';
-      (function(idx){ row.addEventListener('click', function(){ openNodeOverlay('Settlement Slot '+idx, 'Settlement slot'); }); })(i+1);
+      row.innerHTML = '<span class="node-meta"><span class="node-name">Settlement Slot '+(i+1)+'</span>' +
+        '<span class="node-type'+(state?'':' siteid')+'">'+esc(siteDetail(state, slot.id))+'</span></span>' +
+        '<span class="venture-btn '+badge.cls+'">'+badge.text+'</span>';
+      row.addEventListener('click', function(){ openNodeOverlay('Settlement Slot '+(i+1), slot.id, 'Settlement slot'); });
       el.stack.appendChild(row);
-    }
-    if (p.slots===0){
+    });
+    if (p.slots.length===0){
       const none=document.createElement('div'); none.className='list-row tab tex-node'; none.style.opacity='0.5';
       none.innerHTML='<span class="node-meta"><span class="node-name">No settlement slots on this body</span></span>';
       el.stack.appendChild(none);
@@ -1658,15 +1730,30 @@ function renderPlanetView(){
   el.backBtn.classList.add('visible');
   el.hero.className='hero planet-'+p.archetype;
   el.mainHeading.textContent='Planet Manifest';
-  el.emptyCopy.textContent='Occupancy and venture activity for '+planetDesignation(p)+' are not live on this screen yet — what you see is the seed\u2019s surveyed geometry.';
+  el.emptyCopy.textContent='The index lists every surveyed site on '+planetDesignation(p)+' and what is seated on it right now. Select a site for its detail.';
 }
 
-function openNodeOverlay(title, label){
+function openNodeOverlay(title, siteId, label){
   el.overlayTitle.textContent = title;
-  // Whether a site is TAKEN is live state (the snapshot's occupancy), wired in the
-  // next slice. Until then this screen shows the seed's geometry and says so — it
-  // does not guess a site is free.
-  el.overlayCopy.textContent = label + ' \u2014 seed geometry only. Occupancy and venture linkage go live next.';
+  const state = siteState(siteId);
+  let copy;
+  if (!state){
+    // VACANT is now a live fact (no venture sits on this site), not a placeholder.
+    copy = label + ' \u2014 ' + siteId + '. Vacant: no venture is seated here. Establishing one from this screen arrives with the next slice.';
+  } else if (state.kind === 'mine'){
+    copy = label + ' \u2014 ' + siteId + '. Worked by your mining venture ' + state.ventureId + '.';
+  } else if (state.kind === 'refinery'){
+    copy = label + ' \u2014 ' + siteId + '. Held by your refinery ' + state.ventureId +
+      (state.output ? ', producing ' + prettyGood(state.output) : (state.recipeId ? ', running ' + state.recipeId : '')) + '.';
+  } else if (state.kind === 'venture'){
+    copy = label + ' \u2014 ' + siteId + '. Held by your venture ' + state.ventureId + '.';
+  } else {
+    // Another guild's site: that it is taken, and by whom. Their output, rates and
+    // stockpiles are theirs alone (client-wiring.md §7).
+    copy = label + ' \u2014 ' + siteId + '. Occupied' + (state.ownerName ? ' by ' + state.ownerName : '') +
+      '. What they produce here is not visible to you.';
+  }
+  el.overlayCopy.textContent = copy;
   el.overlay.classList.add('open');
 }
 el.overlayClose.addEventListener('click', function(){ el.overlay.classList.remove('open'); });
@@ -1701,6 +1788,18 @@ window.openSystemDetail = function(seedSystem){
   view = { screen:'system', planetId:null, planetTab:'resources' };
   render();
   document.getElementById('detail-screen').classList.add('open');
+};
+
+// Called by the snapshot poll when occupancy MOVED. Re-adapts the open system from
+// the seed (so the controller line and every site state re-read live) and redraws
+// the screen the player is on, keeping their place in the drill-down.
+window.__refreshDetail = function(){
+  if (!SYSTEM) return;
+  if (!document.getElementById('detail-screen').classList.contains('open')) return;
+  var seed = window.__galaxy && window.__galaxy.systems.filter(function(x){ return x.id === SYSTEM.id; })[0];
+  if (!seed) return;
+  SYSTEM = adaptSeedSystem(seed);
+  render();
 };
 
 // Waystation detail — reuses the detail screen, hero = waystation.jpg
@@ -1761,8 +1860,13 @@ var STARTING_CREDITS = 2000;
 // number: the world turns on the server's own clock (STARFARE_TICK_MS).
 var POLL_MS = 1000;
 
-var GAME = { guildId:null, guildName:null, homeSystemId:null, galaxy:null, pollTimer:null, needFound:false };
-var LIVE = { systemClaims:{}, guildNameById:{} };
+var GAME = { guildId:null, guildName:null, homeSystemId:null, galaxy:null, pollTimer:null, needFound:false, recipeOut:{} };
+// Everything the client holds from the live snapshot. Nothing here is computed:
+//   systemClaims  { systemId: ownerGuildId }   from claims[] (the shared, in-world layer)
+//   guildNameById { guildId: name }            names only — no guild's economics
+//   occupancy     { siteId: ventureId }        verbatim from the snapshot
+//   siteInfo      { siteId: {...} }            the player-safe read of who holds a site
+var LIVE = { systemClaims:{}, guildNameById:{}, occupancy:{}, siteInfo:{}, siteSig:'' };
 
 async function apiGet(path){
   var res = await fetch(path);
@@ -1862,6 +1966,11 @@ async function shellConnect(){
 
 async function shellEnterGame(){
   var galaxy = GAME.galaxy || (GAME.galaxy = await apiGet('/galaxy'));
+  // The recipe catalog is static engine CONFIG, not live state — fetched once (as
+  // the console already does) purely so a refinery reads as what it produces.
+  try {
+    ((await apiGet('/recipes')).recipes || []).forEach(function(r){ GAME.recipeOut[r.id] = r.output.good; });
+  } catch (err) { /* a refinery falls back to its recipe id */ }
   var snap = await apiGet('/snapshot');
   document.getElementById('splash').classList.remove('active');
   document.getElementById('connect').classList.remove('active');
@@ -1895,6 +2004,36 @@ function applySnapshot(snap){
   });
   LIVE.guildNameById = {};
   (snap.guilds || []).forEach(function(g){ LIVE.guildNameById[g.id] = g.name || g.id; });
+
+  // Occupancy: which site holds which venture. This is the shared, in-world fact a
+  // player may see — "that node is taken" — and the join key the manifest renders by.
+  LIVE.occupancy = snap.occupancy || {};
+  LIVE.siteInfo = {};
+  (snap.ventures || []).forEach(function(v){
+    if (!v.siteId) return;
+    if (v.ownerGuildId === GAME.guildId){
+      // The player's OWN venture: they may see what it is and what it runs.
+      if (v.type === 'mining'){
+        LIVE.siteInfo[v.siteId] = { kind:'mine', ventureId:v.id, resourceType:v.resourceType || null };
+      } else if (v.type === 'refining'){
+        LIVE.siteInfo[v.siteId] = { kind:'refinery', ventureId:v.id, recipeId:v.recipeId || null, output: GAME.recipeOut[v.recipeId] || null };
+      } else {
+        LIVE.siteInfo[v.siteId] = { kind:'venture', ventureId:v.id, ventureType:v.type || null };
+      }
+    } else {
+      // ANOTHER guild's venture: that the site is taken, and by whom. Deliberately
+      // nothing else — no rate, no resource, no recipe (client-wiring.md §7).
+      LIVE.siteInfo[v.siteId] = { kind:'other', ownerGuildId:v.ownerGuildId, ownerName: LIVE.guildNameById[v.ownerGuildId] || v.ownerGuildId };
+    }
+  });
+  // Re-render an open detail screen only when occupancy actually MOVED, so a site
+  // seated (or vacated) under the player updates without the list churning — and
+  // without a re-render every second throwing away their scroll position.
+  var sig = Object.keys(LIVE.occupancy).sort().map(function(k){ return k + ':' + LIVE.occupancy[k]; }).join(',');
+  if (sig !== LIVE.siteSig){
+    LIVE.siteSig = sig;
+    if (window.__refreshDetail) window.__refreshDetail();
+  }
   if (window.__setLiveTerritory){
     window.__setLiveTerritory({
       myGuildId: GAME.guildId,
@@ -1916,6 +2055,9 @@ window.__controllerFor = function(id){
   return owner ? (LIVE.guildNameById[owner] || owner) : 'Unclaimed';
 };
 window.__isMine = function(id){ return !!GAME.guildId && LIVE.systemClaims[id] === GAME.guildId; };
+// The live site lookups the detail screen renders from.
+window.__siteInfo = function(siteId){ return LIVE.siteInfo[siteId] || null; };
+window.__occupancy = function(siteId){ return LIVE.occupancy[siteId] || null; };
 
 function systemById(id){
   if (!id || !GAME.galaxy) return null;

@@ -520,6 +520,49 @@ test('STARFARE_TICK_MS unset: no heartbeat (today\'s behaviour, unchanged)', asy
   }
 });
 
+test('POST /reset comes back RUNNING when the boot clock is configured', async () => {
+  // Ruling 24-08-26 (client-wiring.md §5): a deployed galaxy must always turn, so a
+  // reset returns a fresh RUNNING galaxy — it re-arms the boot clock rather than
+  // leaving the world frozen until someone restarts the server.
+  const port = await freePort();
+  const { child } = bootServer(50, port);
+  try {
+    await waitForHealth(port);
+    const reset = await fetch(`http://127.0.0.1:${port}/reset`, { method: 'POST' });
+    assert.equal(reset.status, 200);
+    assert.equal((await reset.json()).tick, 0, 'reset still zeroes the galaxy');
+    const health = await (await fetch(`http://127.0.0.1:${port}/health`)).json();
+    assert.equal(health.autotick.running, true, 'the clock is re-armed after a reset');
+    assert.equal(health.autotick.intervalMs, 50, 'at the interval the operator booted with');
+    // And it genuinely turns again, from zero.
+    await sleep(250);
+    const tick = (await (await fetch(`http://127.0.0.1:${port}/snapshot`)).json()).tick;
+    assert.ok(tick >= 1, `expected the reset galaxy to advance on its own, got ${tick}`);
+  } finally {
+    child.kill('SIGKILL');
+  }
+});
+
+test('POST /reset leaves the clock OFF when no boot clock was configured', async () => {
+  // The manual dev-rig flow is unchanged: with STARFARE_TICK_MS unset there is no
+  // clock to put back, so reset must not invent one.
+  const port = await freePort();
+  const { child } = bootServer(undefined, port);
+  try {
+    await waitForHealth(port);
+    await fetch(`http://127.0.0.1:${port}/autotick/start`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ intervalMs: 10 }),
+    });
+    assert.equal((await (await fetch(`http://127.0.0.1:${port}/health`)).json()).autotick.running, true);
+    await fetch(`http://127.0.0.1:${port}/reset`, { method: 'POST' });
+    const health = await (await fetch(`http://127.0.0.1:${port}/health`)).json();
+    assert.equal(health.autotick.running, false, 'reset stops a hand-started clock and does not re-arm');
+    assert.equal(health.autotick.intervalMs, null);
+  } finally {
+    child.kill('SIGKILL');
+  }
+});
+
 test('an invalid STARFARE_TICK_MS fails the boot loudly (non-zero exit)', async () => {
   for (const bad of ['fast', '0', '-5', '5' /* below the floor */, '3.5']) {
     const port = await freePort();

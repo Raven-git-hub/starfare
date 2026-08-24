@@ -47,6 +47,13 @@ client**, on the real committed seed, against the live persistent engine:
    the interval is *playback speed*, not tick-duration) — it does NOT go to
    `phase-1-tuning.md`. A player cannot pause a persistent world; neither, in
    normal running, does the operator.
+   **Revised 24-08-26 (Slice 2) — `POST /reset` comes back RUNNING.** "Always
+   turns" has to survive a reset too: Slice 0 left a deployed galaxy frozen after a
+   reset until someone restarted the server. Reset now still stops-then-zeroes
+   (nothing fires mid-wipe) and then **re-arms the boot clock** if one was
+   configured. This supersedes §15.7's ruling (3) *for a booted deployment only*:
+   with `STARFARE_TICK_MS` unset there is no clock to put back, so the manual dev-rig
+   flow (reset → deploy at tick 0 → start by hand) is untouched.
 6. **Demos are deleted, not bypassed.** The client only ever loads the real seed
    via a new **`GET /galaxy`** endpoint (which serves the already-committed
    `data/seed.json` — the same seed `sim/seed.js` reads, so map and detail can
@@ -156,9 +163,22 @@ not. This list is the working contract; it may be refined as panels are wired
   The detail screen's demo "VACANT" labels — an invented *live* claim — were
   neutralised to a *live data next* placeholder, and the still-mocked console iframe
   now carries a visible MOCK tag, so nothing on screen reads as live that isn't.
-- **Slice 2 — explore for real.** Galaxy → system → planet drill-down: seed
+- **Slice 2 — explore for real. LANDED 24-08-26.** Galaxy → system → planet drill-down: seed
   geometry (`/system/:id`) overlaid with live `occupancy` (compose-by-id, the
   pattern the retired testbed proved). Navigate to a vacant site.
+  *As built:* no `/system/:id` round-trip was needed — the full geometry is already
+  in memory from `GET /galaxy`, so the drill-down reads it there. `adaptSeedSystem()`
+  now preserves each resource node's and settlement slot's **`id`** — the join key —
+  and every manifest row renders that site's live state: **VACANT** (the engine says
+  no venture sits there), **YOUR MINE / YOUR REFINERY** with the venture id and what
+  it runs, or **OCCUPIED · &lt;guild&gt;** for another guild's site and nothing more.
+  The snapshot poll now also carries `occupancy` verbatim and a **player-safe** venture
+  read: own ventures keep `{id, siteId, type, resourceType, recipeId}`; other guilds'
+  contribute only owner identity — no rate, resource, recipe or any economic internal
+  (§7). The recipe catalog (`GET /recipes`, static rules) is fetched once so a refinery
+  reads as what it produces. An open manifest re-renders only when occupancy actually
+  moves, so a site seated under the player updates without the list churning.
+  A vacant site is reported, **not** made actionable — establishing is Slice 3.
 - **Slice 3 — establish a venture, through the game.** The establishment popup
   (`docs/venture-establishment.md`, `docs/mockups/venture-establishment.html`)
   wired to POST `establishVenture` on the clicked site. Licence terms shown but

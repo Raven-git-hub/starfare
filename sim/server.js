@@ -41,7 +41,8 @@
 //     unrelated to the (deferred) per-hour tick-duration mapping. The heartbeat
 //     has no HTTP caller to hand a 500, so if a tick throws it HALTS the timer
 //     and records the error rather than firing into a broken state forever
-//     (halt-on-trip); POST /reset also stops it before returning to zero-state.
+//     (halt-on-trip); POST /reset stops it, zeroes the galaxy, and — when the
+//     BOOT clock is configured — starts it again (see bootTickMs below).
 //
 // Endpoints (all JSON; permissive CORS for a local dev rig):
 //   GET  /               -> the PLAYER CLIENT (client/game.html) — the game itself
@@ -67,7 +68,8 @@
 //   POST /autotick/stop  -> stop the heartbeat (idempotent); returns status
 //   POST /action         -> intake ONE action object (no tick); returns
 //                           { accepted, reason, snapshot }
-//   POST /reset          -> stop the heartbeat, back to the zero-state; snapshot
+//   POST /reset          -> back to the zero-state; re-arms the boot clock if one
+//                           was configured, so a deployed galaxy keeps turning
 //
 // Run:  node sim/server.js   (listens on $PORT, default 7331 — the galaxy seed)
 
@@ -184,6 +186,16 @@ function tickOnce() {
 // It bounds playback speed only; it is unrelated to any tick-duration constant
 // and does NOT belong in docs/phase-1-tuning.md.
 const AUTOTICK_MIN_INTERVAL_MS = 10;
+
+// The interval the OPERATOR configured at boot (STARFARE_TICK_MS), or null when
+// none was. Set once by the CLI block below and read by POST /reset, which uses it
+// to put the clock back after zeroing — RULING 24-08-26 (client-wiring.md §5): on a
+// persistent deployment the galaxy must always turn, so a reset returns a fresh
+// RUNNING galaxy, not a frozen one. This revises the earlier "reset stops the
+// heartbeat" rule: reset still stops-then-zeroes (nothing fires mid-wipe), and only
+// then re-arms. With no boot clock configured, reset leaves it off exactly as before,
+// so the manual dev-rig flow (reset → deploy at tick 0 → start by hand) is unchanged.
+let bootTickMs = null;
 
 let autotickTimer = null;        // the setInterval handle, or null when stopped
 let autotickIntervalMs = null;   // the interval it is (was) running at, or null
@@ -499,6 +511,10 @@ async function handleRequest(req, res) {
       clearJournal(persistDir);
       saveState(getState(), persistDir);
     }
+    // Put the clock back, if the operator configured one at boot: a deployed galaxy
+    // is never left frozen by a reset (the ruling above). Same startAutotick() the
+    // endpoint and the boot block call — one tick path, no new game logic.
+    if (bootTickMs !== null) startAutotick(bootTickMs);
     sendJson(res, 200, buildSnapshot(getState()));
     return;
   }
@@ -618,7 +634,6 @@ if (require.main === module) {
   // boot failure rather than a guess. The validation is exactly the endpoint's
   // (an integer at or above the busy-loop floor); a bad value exits non-zero here,
   // before the port is bound, so a broken clock can never be left running.
-  let bootTickMs = null;
   const rawTickMs = process.env.STARFARE_TICK_MS;
   if (rawTickMs !== undefined && rawTickMs !== '') {
     const parsed = Number(rawTickMs);
@@ -626,7 +641,7 @@ if (require.main === module) {
       console.error(`[clock] STARFARE_TICK_MS must be an integer >= ${AUTOTICK_MIN_INTERVAL_MS} (ms); got ${JSON.stringify(rawTickMs)}`);
       process.exit(1);
     }
-    bootTickMs = parsed;
+    bootTickMs = parsed;   // module-scoped: POST /reset re-arms from it
   }
 
   server.listen(port, () => {
