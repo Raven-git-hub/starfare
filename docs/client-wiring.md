@@ -179,12 +179,25 @@ not. This list is the working contract; it may be refined as panels are wired
   reads as what it produces. An open manifest re-renders only when occupancy actually
   moves, so a site seated under the player updates without the list churning.
   A vacant site is reported, **not** made actionable — establishing is Slice 3.
-- **Slice 3 — establish a venture, through the game.** The establishment popup
+- **Slice 3 — establish a venture, through the game. LANDED 24-08-26.** The establishment popup
   (`docs/venture-establishment.md`, `docs/mockups/venture-establishment.html`)
   wired to POST `establishVenture` on the clicked site. Licence terms shown but
   **mock** over a real venture (the venture is created for real; fee/equity are
   cosmetic until the licence layer lands — exactly as the establishment brief
   specifies).
+  *As built:* the popup opens from a **vacant** row in the Slice-2 manifest (occupied
+  rows keep their readout) and is re-skinned onto the detail screen's existing tokens
+  and fonts rather than importing the mockup's duplicate stack. The payload is exactly
+  what `sim/actions.js` accepts and nothing more — `{type, guildId, ventureId, siteId,
+  ventureType, resourceType|recipeId, productionRate}`; no `assetId`, fee, commitment,
+  equity or renegotiation window is sent, and `syndicateCommitment` stays 0. The recipe
+  picker is the **live** `GET /recipes` catalog (Tier 3/4 present but disabled per §4).
+  Every economic control carries a visible **MOCK · no engine** tag and a note that
+  none of it is stored, so a player is never misled; the success screen names what was
+  actually recorded beside what was merely shown. `productionRate` is a uniform **5**
+  (`[FIRST-CUT]`, `phase-1-tuning.md`). Establishment is deliberately **ungated** — the
+  popup shows whose territory a site sits in and lets you deploy there anyway, because
+  leasing (§4) is where territory becomes an economic lever.
 - **Slice 4 — run the economy, through the game.** Console un-mocked (iframe →
   the served `/console`): profiles, priorities, throttles on the live, persistent
   galaxy. Preserve the one cross-frame message (`{source:'starfare-console',
