@@ -179,6 +179,56 @@ test('no-op proof: pure engine path (persistence OFF) matches the golden hash', 
   assert.equal(hashState(s), GOLDEN_HASH);
 });
 
+// --- 5. graceful shutdown: the MID-INTERVAL save (no intervening tick) ------
+//
+// The double-apply guard above only exercises a snapshot taken at a tick BOUNDARY
+// (a `tick: true` step sits between the actions and the save, so snapshot @1 >
+// actions @0). The graceful-shutdown hook saves MID-INTERVAL — capturing actions
+// tagged with the CURRENT tick, with the journal still listing them. That is a
+// different, un-covered configuration, and it is the common deploy/reboot path.
+// These two tests pin it: the shutdown FLOW (save + clearJournal) recovers
+// cleanly, and a save WITHOUT the clear fails LOUD (never a silent double-apply).
+
+// Apply actions with NO intervening tick: journalled + applied @tick 0, and
+// state.tick stays 0 — exactly the state the shutdown hook saves.
+function foundMineNoTick(dir) {
+  let state = createZeroState();
+  for (const a of [FOUND, MINE_1]) {
+    appendJournal(state.tick, a, dir); // tick === 0, same tick the snapshot will carry
+    state = applyValid(state, a);
+  }
+  return state; // tick 0, one guild + mine_1
+}
+
+test('graceful shutdown: a mid-interval save + clearJournal recovers without throwing', (t) => {
+  const dir = withTmpDir(t);
+  const control = foundMineNoTick(dir);
+  assert.equal(control.tick, 0);
+
+  // The server's SIGINT/SIGTERM hook: save the authoritative live state, THEN
+  // clear the journal so nothing replays on top of a snapshot that already holds it.
+  saveState(control, dir);
+  clearJournal(dir);
+
+  const recovered = loadOrInit(dir, createZeroState);
+  assert.equal(hashState(recovered), hashState(control)); // single-apply, no double-apply
+  assert.equal(recovered.guilds.length, 1);
+  assert.equal(recovered.guilds[0].ventures.length, 1);
+});
+
+test('mid-interval save with the journal left intact HALTS loudly (why the clear is load-bearing)', (t) => {
+  const dir = withTmpDir(t);
+  const state = foundMineNoTick(dir);
+
+  // Save the mid-interval snapshot @tick 0 (it already contains the @0 actions)
+  // but DO NOT clear the journal. The @0 entries satisfy `tick >= loadedTick`
+  // (0 >= 0), so replay re-applies foundGuild onto a state that already has that
+  // guild. The design refuses to continue — LOUD REPLAY HALT, not a silent
+  // double-apply. This is exactly the corruption the shutdown-hook clear prevents.
+  saveState(state, dir);
+  assert.throws(() => loadOrInit(dir, createZeroState), /REPLAY HALT/);
+});
+
 // --- bonus: no state file → clean init; reset clears the journal -----------
 
 test('loadOrInit with no state file returns a fresh init (opt-in from empty)', (t) => {

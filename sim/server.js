@@ -475,7 +475,22 @@ if (require.main === module) {
       shuttingDown = true;
       console.log(`[persist] ${signal} — saving state before exit`);
       try {
+        // Save the authoritative live state, THEN clear the journal — order and
+        // both steps matter. Unlike the per-tick snapshot (always taken right
+        // after `advance`, at a tick BOUNDARY, before any same-tick action is
+        // applied), this shutdown snapshot is taken MID-INTERVAL: it already
+        // contains this tick's actions, which are still tagged with the current
+        // tick in the journal. loadOrInit's replay filter (tick >= loadedTick)
+        // would re-apply exactly those and HALT on boot, so the journal must not
+        // survive a clean save. Clearing it makes the snapshot solely
+        // authoritative — the same reason /reset clears it.
+        //
+        // deferred: harden — a crash BETWEEN the save and the clear leaves the
+        // fresh snapshot next to a stale same-tick journal, which boots to a loud
+        // REPLAY HALT (never a silent double-apply). Rare and loud-not-silent; a
+        // fully atomic save+clear is a later hardening, unneeded for the dev rig.
         saveState(getState(), persistDir);
+        clearJournal(persistDir);
       } catch (err) {
         console.error(`[persist] shutdown save FAILED: ${String((err && err.message) || err)}`);
       }
