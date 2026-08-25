@@ -235,6 +235,11 @@
   .sm-body{display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden}
   .sm-main{display:flex; gap:12px; flex:1; min-height:0; overflow:hidden}
   .sm-therm-col{position:relative; width:118px; flex:none}
+  /* With nothing committed the bar has no scale to draw: an empty tube and a caption
+     centred in the column, rather than the filled bar's absolutely-placed labels. */
+  .sm-therm-col.empty .sm-therm{opacity:.5}
+  .sm-therm-empty{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    text-align:center; font-family:var(--mono); font-size:10px; letter-spacing:.08em; color:var(--ink3); line-height:1.6}
   .sm-therm{position:absolute; right:0; top:0; width:26px; border:1px solid var(--line2); border-radius:6px; background:var(--void); overflow:visible; transition:height .5s ease}
   .sm-fill{position:absolute; left:0; right:0; top:0; background:repeating-linear-gradient(135deg,rgba(201,162,39,.55) 0 7px,rgba(201,162,39,.28) 7px 14px); transition:height .5s ease}
   .sm-grey{position:absolute; left:0; right:0; background:repeating-linear-gradient(135deg,rgba(232,223,200,.08) 0 7px,rgba(232,223,200,.03) 7px 14px)}
@@ -249,6 +254,11 @@
   /* roster — one continuous stack of every licence, always filling the fixed height.
      Rows shrink to keep every venture in frame; min row = 5% (1/20, the 20-licence cap). */
   .sm-roster{flex:1; display:flex; flex-direction:column; gap:2px; min-width:0; min-height:0; overflow:hidden}
+  .sm-roster.loose{justify-content:flex-start; overflow-y:auto}
+  .sm-roster.loose .sm-lic{min-height:0; flex:0 0 auto; padding:7px 9px}
+  /* the "no commitment" note is the shrinkable half — the venture id is not */
+  .sm-roster.loose .sm-lic .cmt{flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .sm-roster.loose .sm-lic .idwrap{flex:0 1 auto}
   .sm-lic{display:flex; align-items:center; gap:8px; padding:3px 9px; border:1px solid var(--line); border-radius:6px; background:var(--panel2); min-height:5%; overflow:hidden}
   .sm-lic.out{opacity:.62; background:var(--void); border-style:dashed}
   .sm-lic.pursue{border-left:2px solid var(--amber-dim)}
@@ -545,8 +555,11 @@
     display:inline-flex; align-items:center; justify-content:center; font-size:9px; color:var(--amber)}
   .tu-sq .su-en.on{color:var(--ink)} .tu-sq .su-en.on .box{border-color:var(--amber)}
   .tu-sq .su-lim{display:flex; align-items:center; gap:5px; font-size:10px; color:var(--ink3)}
-  .tu-sq .su-lim input{width:46px; background:var(--void); border:1px solid var(--line2); border-radius:5px;
-    color:var(--ink); font-family:var(--mono); font-size:11px; padding:2px 5px}
+  /* Wide enough for its digits, with the number hugging the LEFT so the stepper arrows
+     pinned to the right edge never sit on top of it. */
+  .tu-sq .su-lim input{width:94px; background:var(--void); border:1px solid var(--line2); border-radius:5px;
+    color:var(--ink); font-family:var(--mono); font-size:11px; text-align:left;
+    padding:2px 22px 2px 8px; font-variant-numeric:tabular-nums}
 
   /* ---- right hero (venture detail) ---- */
   .col.hero{padding:0}
@@ -662,9 +675,11 @@
   <b>resolved</b> value from the snapshot — the browser computes none (design.md §5); the two
   trend lines are the only client-side element, a rolling buffer of values the engine really
   sent. Tabs pick a <b>tier</b>, the row below a <b>resource</b>; goods with no local
-  production/consumption show <b>idle</b>. The Syndicate <b>licence roster</b> and the hero's
-  <b>facility</b> block are <b>MOCK</b> — design-ahead of an engine licence layer that does not
-  exist yet; they are tagged on screen and send nothing.
+  production/consumption show <b>idle</b>. The <b>Syndicate</b> tab lists this good's real
+  producing ventures and the commitment the engine holds for each — 0 for all of them until
+  the licence layer is built, so its thermometer reads <i>no commitment yet</i>. The top-up
+  control and the hero's <b>facility</b> block are <b>MOCK</b> — design-ahead of an engine
+  that does not have them; they are tagged on screen and send nothing.
 </div>
 <script>
 'use strict';
@@ -762,54 +777,54 @@ if (STATE.embedded) {
 // controls POST nothing, and no figure in it is read as live. The thermometer's LIVE
 // half (delivered / send rate / ticks remaining) is read from the real window
 // telemetry in synResolve() below — those are engine values.
+// The Syndicate top-up control. ADVISORY ONLY: there is no top-up in the engine, so
+// these two settings live in the browser, are tagged mock on screen and POST nothing.
+// (The fabricated licence roster that used to sit here — seven phantom titanium mines,
+// shown whatever good you were looking at — is DELETED. The roster is built from the
+// selected good's REAL producers in synResolve() below.)
 var SYN = {
-  licences: [
-    { id:'mine_ti_1', planet:'Terran homeworld', commitment:40, fee:132, pursue:true },
-    { id:'mine_ti_2', planet:'Kepler-9b',         commitment:35, fee:96,  pursue:true },
-    { id:'mine_ti_3', planet:'Vega Station',      commitment:25, fee:70,  pursue:true },
-    { id:'mine_ti_4', planet:'Rigel IV',          commitment:20, fee:58,  pursue:true },
-    { id:'mine_ti_5', planet:'Orion Belt',        commitment:15, fee:44,  pursue:false },
-    { id:'mine_ti_6', planet:'Sol Depot',         commitment:0,  fee:0,   pursue:true },
-    { id:'mine_ti_7', planet:'Ceti Alpha',        commitment:0,  fee:0,   pursue:true }
-  ],
-  order: ['mine_ti_1','mine_ti_2','mine_ti_3','mine_ti_4','mine_ti_5','mine_ti_6','mine_ti_7'],
-  mode: 'manual',
   topupEnabled: false,
-  limit: 40             // shared reserve-floor / top-up limit (mock; = the Stockpile reserve)
+  limit: 0
 };
 // Resolve the licence set into ordered, status-tagged rows + the thermometer figures.
+// Everything here is REAL, for the good currently on screen:
+//   the roster  = that good's producers in this system (the SAME list the Production
+//                 column renders), each with the engine's own `syndicateCommitment`;
+//   the target  = the good's window `Q` (the engine's aggregate commitment target);
+//   delivered / send rate / ticks remaining = the good's window telemetry.
+// No licence layer exists yet, so every commitment is 0 and no window is emitted: the
+// honest result is an empty thermometer and rows that read "no commitment". Nothing is
+// fabricated to fill the space, and per-venture delivery is NOT invented — the engine
+// tracks delivery per GOOD, not per venture, so the roster shows each venture's own
+// commitment and the window status belongs to the good.
 function synResolve(){
-  // Delivered / send-rate / time-left are READ FROM THE LIVE WINDOW — the same source the
-  // glance panel's licence-progress bar reads — so the two can never disagree. The projection
-  // is DERIVED: delivered + current per-tick send × ticks left, capped at the checked target.
-  // REAL: the window telemetry for the good on screen, straight from the snapshot.
   var report = systemReport();
-  var g = report ? (report.goods || {})[STATE.good] : null;
+  var good = STATE.good;
+  var g = report ? (report.goods || {})[good] : null;
   var w = g ? g.window : null;
-  var delivered = w ? w.delivered : 0;
+  var delivered = w ? (w.delivered || 0) : 0;
   var sendRate = (g && g.fork) ? (g.fork.syndicate || 0) : 0;   // resolved send this tick
-  var ticksRem = w ? w.ticksRemaining : 0;
+  var ticksRem = w ? (w.ticksRemaining || 0) : 0;
+  var target = w ? (w.Q || 0) : 0;                              // the engine's window target
 
-  var byId = {}; SYN.licences.forEach(function(l){ byId[l.id] = l; });
-  var ordered = SYN.order.map(function(id){ return byId[id]; }).filter(Boolean);
-  var active = ordered.filter(function(l){ return l.pursue && l.commitment > 0; });   // in the plan
-  var out    = ordered.filter(function(l){ return !(l.pursue && l.commitment > 0); }); // not in plan
-  var display = active.concat(out);                                                    // in-play first, one stack
-  var total = active.reduce(function(a, l){ return a + l.commitment; }, 0);
-  var projected = Math.min(total, delivered + sendRate * ticksRem);
-  var cum = 0;
-  active.forEach(function(l){ l._start = cum; cum += l.commitment; l._end = cum;
-    l._status = delivered >= l._end ? 'met' : (projected >= l._end ? 'proj' : 'fail'); });
-  var minFee = active.reduce(function(a, l){ return a + Math.round(l.fee * 0.72); }, 0);
-  var projFee = active.reduce(function(a, l){ return a + (l._status === 'met' || l._status === 'proj' ? Math.round(l.fee * 0.72) : l.fee); }, 0);
-  // the stack always fills a fixed height: min tab = 1/20 of it (max 20 licences), so the
-  // out rows sit at exactly that minimum and the in-play rows share the rest ∝ commitment.
-  // The thermometer bar therefore spans (100 − out×min)% — the in-play block — exactly.
-  var MINPCT = 100 / 20;
-  var barPct = total > 0 ? Math.max(MINPCT, 100 - out.length * MINPCT) : 0;
-  return { ordered: ordered, active: active, out: out, display: display, total: total,
-           delivered: Math.min(delivered, total), projected: projected, deficit: total - projected,
-           minFee: minFee, projFee: projFee, shortfall: projected < total, barPct: barPct };
+  var rows = (report ? producersOf(report, good) : []).map(function(p){
+    var v = STATE.vmap[p.id] || {};
+    return { id: p.id, planet: ventPlanet(p.id), commitment: v.syndicateCommitment || 0 };
+  });
+  var committed = rows.filter(function(l){ return l.commitment > 0; });
+  var uncommitted = rows.filter(function(l){ return l.commitment === 0; });
+  var projected = Math.min(target, delivered + sendRate * ticksRem);
+  return {
+    display: committed.concat(uncommitted),
+    committed: committed, uncommitted: uncommitted,
+    total: target, delivered: Math.min(delivered, target), projected: projected,
+    deficit: Math.max(0, target - projected),
+    windowStatus: w ? w.status : null,
+    shortfall: target > 0 && projected < target,
+    // The bar spans the committed block: with no commitments there is nothing to fill,
+    // and the thermometer reads empty rather than inventing a scale.
+    barPct: target > 0 ? 100 : 0,
+  };
 }
 
 // The tier vocabulary comes from GET /goods (raw = tier 1, processed = tier 2). Tiers
@@ -949,32 +964,38 @@ function rightTabBar(){
   '</div>';
 }
 function clampLbl(p){ return Math.max(4, Math.min(96, p)); }
-function presetBtn(key, label){ return '<button class="sm-preset' + (SYN.mode === key ? ' on' : '') + '" data-preset="' + key + '">' + label + '</button>'; }
+// The dot carries the GOOD's window status (met / accruing / breach) — never a
+// per-venture verdict, which the engine does not track. A venture with no commitment
+// gets a neutral mark, not a tick: nothing has been met.
 function statusDot(st){
-  if (st === 'met')  return '<span class="st-dot met" title="commitment met">✔</span>';
-  if (st === 'proj') return '<span class="st-dot proj" title="on track at current rate"></span>';
-  if (st === 'fail') return '<span class="st-dot fail" title="projected to miss">!</span>';
-  if (st === 'off')  return '<span class="st-dot off" title="not pursued">▲</span>';
-  return '<span class="st-dot none" title="no commitment this window">✔</span>';
+  if (st === 'met')      return '<span class="st-dot met" title="the window\'s commitment was met">✔</span>';
+  if (st === 'accruing' || st === 'proj') return '<span class="st-dot proj" title="the window is accruing"></span>';
+  if (st === 'breach' || st === 'fail')   return '<span class="st-dot fail" title="the window was breached">!</span>';
+  return '<span class="st-dot none" title="no commitment on this venture">–</span>';
 }
-function licRow(l, statusOverride){
-  var st = statusOverride || l._status;
-  var chk = '<div class="sm-chk' + (l.pursue ? ' on' : '') + '" data-lic="' + esc(l.id) + '" title="pursue this licence">' + (l.pursue ? '✔' : '') + '</div>';
-  var cmt = l.commitment > 0 ? '<span class="cmt">' + fmt(l.commitment) + '<span class="u">u</span></span>' : '<span class="cmt" style="color:var(--ink3)">—</span>';
-  // out rows sit at the compact 1/20 minimum → single line (id only) so they read cleanly;
-  // in-play rows are taller and show the planet sub-line.
-  var idwrap = l._out
-    ? '<div class="idwrap"><div class="sid">' + esc(l.id) + '</div></div>'
-    : '<div class="idwrap"><div class="sid">' + esc(l.id) + '</div><div class="pl">◐ ' + esc(l.planet) + '</div></div>';
-  return '<div class="sm-lic' + (l._out ? ' out' : ' pursue') + '" style="flex:' + (l._flex || 1) + ' 1 0">' +
-    '<span class="grip">≡</span>' +
-    statusDot(st) +
-    idwrap +
-    cmt + chk +
+// One roster row = one real venture producing this good, with the commitment the
+// ENGINE holds for it. There is no pursue flag and no fee in the engine, so neither is
+// shown; the status dot carries the GOOD's window status (labelled as such), never an
+// invented per-venture verdict.
+function licRow(l, status){
+  var cmt = l.commitment > 0
+    ? '<span class="cmt">' + fmt(l.commitment) + '<span class="u">u</span></span>'
+    : '<span class="cmt" style="color:var(--ink3)">no commitment</span>';
+  var idwrap = '<div class="idwrap"><div class="sid">' + esc(l.id) + '</div>' +
+    (l.planet ? '<div class="pl">◐ ' + esc(l.planet) + '</div>' : '') + '</div>';
+  var flex = l._flex ? ' style="flex:' + l._flex + ' 1 0"' : '';
+  return '<div class="sm-lic' + (l.commitment > 0 ? ' pursue' : ' out') + '"' + flex + '>' +
+    statusDot(status) + idwrap + cmt +
   '</div>';
 }
 function synTherm(R){
-  var total = R.total || 1;
+  // No commitment anywhere for this good ⇒ no window, no target: an EMPTY thermometer
+  // that says so, rather than a bar drawn against an invented scale.
+  if (!R.total){
+    return '<div class="sm-therm-col empty"><div class="sm-therm" style="height:100%"></div>' +
+      '<div class="sm-therm-empty">no commitment<br>yet</div></div>';
+  }
+  var total = R.total;
   var fillPct = R.delivered / total * 100;
   var projPct = R.projected / total * 100;
   // the bar spans only the in-play block (barPct of the column, top-anchored); the labels live
@@ -993,34 +1014,43 @@ function synTherm(R){
 // the thermometer), then not-in-play (compact fixed weight) below — never removed, just outside
 // the bar's reach.
 function synRoster(R){
+  if (!R.display.length){
+    return '<div class="sm-roster"><div class="empty" style="margin:10px">nothing in this system produces this good</div></div>';
+  }
+  // Committed rows share the bar's height ∝ commitment (so the roster lines up with the
+  // thermometer). With nothing committed there is no bar to line up with, so the rows
+  // stay their natural size and the ids stay readable.
+  var anyCommitted = R.committed.length > 0;
   var rows = R.display.map(function(l){
-    var inPlay = l.pursue && l.commitment > 0;
-    l._flex = inPlay ? l.commitment : 1;   // out rows: tiny grow → clamp to the 5% min
-    l._out = !inPlay;
-    return licRow(l, inPlay ? l._status : (l.commitment === 0 ? 'none' : 'off'));
+    l._flex = anyCommitted ? (l.commitment > 0 ? l.commitment : 1) : 0;
+    return licRow(l, l.commitment > 0 ? (R.windowStatus || 'proj') : 'none');
   }).join('');
-  return '<div class="sm-roster">' + rows + '</div>';
+  return '<div class="sm-roster' + (anyCommitted ? '' : ' loose') + '">' + rows + '</div>';
 }
 function syndicateMgmtCol(good){
   var R = synResolve();
-  var presets = '<div class="sm-presets"><span class="sm-plbl">Order</span>' +
-    presetBtn('manual', 'Manual') + presetBtn('fee', 'Reduce fees') + presetBtn('count', 'Most jobs') + '</div>';
-  var fee = '<div class="sm-fee">' +
-    '<div class="row"><span class="k">Min fee</span><span class="v">' + fmt(R.minFee) + '<span class="u">cr</span></span></div>' +
-    '<div class="row"><span class="k">Projected</span><span class="v' + (R.shortfall ? ' bad' : '') + '">' + fmt(R.projFee) + '<span class="u">cr</span></span>' + (R.shortfall ? '<span class="warn">!</span>' : '') + '</div>' +
+  // Every figure in this column is the engine's: the rows are this good's real
+  // producers, each commitment is the venture's own `syndicateCommitment`, and the
+  // thermometer measures the good's real window (delivered against Q). The licence
+  // ECONOMY — fees, breach, pursue flags, ordering — is not built, so none of it is
+  // shown at all rather than shown as a plausible number.
+  var head = '<div class="sm-top">' +
+    '<div class="sm-presets"><span class="sm-plbl">Commitments · ' + esc(prettyGood(good || '—')) + '</span>' +
+      '<span class="lbl">' + R.display.length + ' producing venture' + (R.display.length === 1 ? '' : 's') +
+      ' · ' + R.committed.length + ' committed</span></div>' +
   '</div>';
-  // The whole licence layer is design-ahead: the roster below, its order, its fees and
-  // its pursue flags have NO engine source, and the thermometer's target is their sum.
-  // Only `delivered`, the send rate and the ticks remaining are real window telemetry.
-  // Tagged here so none of it can be mistaken for live state; nothing here POSTs.
-  var mockNote = '<div class="mocknote"><b>Mock — no engine.</b> The licence roster, its ' +
-    'order, fees and pursue flags are design-ahead: the engine has no licence layer, and every ' +
-    'venture\'s commitment is 0. Real here: <b>delivered</b>, the <b>send rate</b> and the ' +
-    '<b>ticks remaining</b>, read from the good\'s window telemetry. These controls send nothing.</div>';
+  var note = R.total
+    ? '<div class="mocknote">Window target <b>' + fmt(R.total) + 'u</b>, delivered <b>' + fmt(R.delivered) +
+      'u</b> — the engine\'s per-good window. Delivery is tracked per GOOD, not per venture, so each row shows ' +
+      'its own commitment and the status dot is the window\'s.</div>'
+    : '<div class="mocknote">No commitment yet: the <b>licence layer is not built</b>, so every venture\'s ' +
+      'commitment is 0 and the engine emits no window for this good. These are the real producers — the ' +
+      'thermometer fills once commitments exist. The fee, breach and pursue controls the design calls for are ' +
+      'not shown at all, because there is nothing behind them.</div>';
   return '<div class="col sm-col">' + rightTabBar() +
     '<div class="sm-wrap">' +
-      '<div class="sm-top">' + presets + '<span class="mocktag">mock · no engine</span>' + fee + '</div>' +
-      '<div class="sm-body"><div class="sm-main">' + synTherm(R) + synRoster(R) + '</div></div>' + mockNote +
+      head +
+      '<div class="sm-body"><div class="sm-main">' + synTherm(R) + synRoster(R) + '</div></div>' + note +
     '</div>' +
   '</div>';
 }
@@ -1059,27 +1089,10 @@ document.addEventListener('click', function(e){
 
 // --- Syndicate management tab interactions -----------------------------------
 function rerenderStage(){ renderStage(systemReport()); }
-function applyPreset(key){
-  SYN.mode = key;
-  if (key === 'manual') return;                       // manual keeps the current order
-  var idx = {}, byId = {}; SYN.licences.forEach(function(l, i){ idx[l.id] = i; byId[l.id] = l; });
-  var ids = SYN.order.slice();
-  var inPlan = ids.filter(function(id){ return byId[id].pursue && byId[id].commitment > 0; });
-  var rest   = ids.filter(function(id){ return !(byId[id].pursue && byId[id].commitment > 0); });
-  inPlan.sort(function(a, b){
-    var A = byId[a], B = byId[b];
-    if (key === 'fee')   return (B.fee - A.fee) || (idx[a] - idx[b]);            // highest fee first
-    if (key === 'count'){ var ca = A.commitment || Infinity, cb = B.commitment || Infinity; return (ca - cb) || (idx[a] - idx[b]); } // smallest first
-    return idx[a] - idx[b];
-  });
-  SYN.order = inPlan.concat(rest);
-}
 document.addEventListener('click', function(e){
   var t = e.target.closest ? e.target : null; if (!t) return;
   var tab = t.closest('.rt-tab');       if (tab){ STATE.rightTab = tab.dataset.rtab; rerenderStage(); return; }
   var mng = t.closest('.sy-manage');    if (mng){ STATE.rightTab = 'syndicate'; rerenderStage(); return; }
-  var chk = t.closest('.sm-chk');       if (chk){ var l = SYN.licences.find(function(x){ return x.id === chk.dataset.lic; }); if (l){ l.pursue = !l.pursue; if (SYN.mode !== 'manual') applyPreset(SYN.mode); rerenderStage(); } return; }
-  var pre = t.closest('.sm-preset');    if (pre){ applyPreset(pre.dataset.preset); rerenderStage(); return; }
   var suen = t.closest('.su-en');       if (suen){ SYN.topupEnabled = !SYN.topupEnabled; rerenderStage(); return; }
 });
 document.addEventListener('change', function(e){

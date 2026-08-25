@@ -26,6 +26,37 @@ client**, on the real committed seed, against the live persistent engine:
 4. **Produce** — run and tune the economy in the console — from the client.
 5. **Persist** — it survives restarts (already deployed, `persistence-model.md`).
 
+> **Console + manifest polish — 25-08-26 (three fixes on top of the console rebuild).**
+> (1) The Syndicate **top-up limit** field was ~46px with its digits right-aligned under
+> the stepper arrows, so the number was invisible: it is now ~94px, left-aligned, with
+> the right padding keeping the arrows clear. Visual only — `SYN.limit` is unchanged.
+> (2) The **planet-manifest rows** are reformatted: the left is the site TYPE (the
+> resource a node yields, or "Settlement"), the sub-line is the site id (what you check
+> against `/inspect`), and the right is the occupancy — `VACANT`, or the venture id and
+> the guild that owns it (`rev_pl_00004_n03 · Reviewers`), replacing YOUR MINE /
+> OCCUPIED. **Colour: green when the venture is the player's own guild's, yellow when it
+> is another guild's**, vacant neutral. To render a rival's row the client now also
+> keeps that occupant's `ventureId` in `LIVE.siteInfo` — a venture id plus its owner is
+> occupancy-level identity (who holds the site, visible in-world, and already in the
+> snapshot's `occupancy` map), NOT an economic internal, so §7 still holds: no rival
+> rate, resource or recipe is read.
+> **State-model note:** ownership is already in the snapshot (`ownerGuildId` per
+> venture), so the own/other split is fully derivable today — no new live-state field is
+> needed. What yellow currently means is simply "another guild's venture". The richer
+> distinction it anticipates — a **leased** site where the land owner and the venture
+> owner differ — belongs to the Leasing layer (`venture-establishment.md` §4/§5), still
+> deferred; this colour rule is the simple own/other split until leasing refines it.
+> (3) The **Syndicate tab** no longer shows a fabricated licence set. Its roster is built
+> from `producersOf(report, good)` — the selected good's REAL producing ventures in this
+> system, the same list the Production column renders — each with the engine's own
+> `syndicateCommitment`, and its thermometer measures the good's real window (`delivered`
+> against `Q`). With no licence layer every commitment is 0 and no window is emitted, so
+> the honest render is an empty thermometer reading *"no commitment yet"* and rows reading
+> *"no commitment"* — never a fabricated fill. The seven phantom titanium mines that
+> appeared on every good's page are deleted, along with the invented per-licence fees and
+> the order presets that had nothing to order by; the advisory top-up control remains,
+> tagged mock, POSTing nothing.
+
 > **Console rebuilt to the authoritative design — 25-08-26 (follow-up to Slice 4).**
 > Slice 4 pointed the client's iframe at the live `/console`, but `client/console.html`
 > had been built to a *superseded* mockup, so the deployed System Manifest showed the

@@ -348,9 +348,16 @@
   /* Not a control and not a status — a note that this row's LIVE data (who sits on
      the site) is not wired yet. Geometry is real; occupancy arrives next slice. */
   /* The three states a site can be in, all read from the live snapshot. */
+  /* The three site states. GREEN = your own guild's venture; YELLOW = another guild's
+     (today simply "someone else's"; the leasing layer will refine what yellow means).
+     VACANT stays neutral. */
   .list-row.tab .venture-btn.vacant{ max-width:none; cursor:default; color:var(--ink-faint); }
-  .list-row.tab .venture-btn.own{ max-width:none; cursor:default; color:var(--brass); border-color:rgba(201,162,39,0.55); background:rgba(201,162,39,0.10); }
-  .list-row.tab .venture-btn.rival{ max-width:none; cursor:default; color:var(--ink); border-color:rgba(232,223,200,0.28); }
+  /* An occupied badge carries a venture id: leave its case alone, so it reads exactly
+     as the engine holds it and can be checked against /inspect. VACANT stays shouted. */
+  .list-row.tab .venture-btn.own,
+  .list-row.tab .venture-btn.rival{ text-transform:none; letter-spacing:0.02em; }
+  .list-row.tab .venture-btn.own{ max-width:none; cursor:default; color:#8DBB78; border-color:rgba(141,187,120,0.55); background:rgba(92,138,78,0.14); }
+  .list-row.tab .venture-btn.rival{ max-width:none; cursor:default; color:var(--brass); border-color:rgba(201,162,39,0.55); background:rgba(201,162,39,0.10); }
 
   /* node tabs specifically: compact horizontal split rather than the tall,
      bottom-anchored artwork-tab layout used for planets */
@@ -1895,20 +1902,24 @@ function siteState(siteId){
   return occ ? { kind:'other', ownerName:null } : null;
 }
 // Badge + detail line for one site, from its live state. Pure presentation.
-function siteBadge(state){
+// The right of a manifest row: who holds the site. Vacant reads VACANT; occupied reads
+// the venture's id and the guild that owns it — the same sentence whether the venture is
+// the player's or a rival's, because that is occupancy, not economics.
+//   own   (green)  — ownerGuildId === the player's guild
+//   rival (yellow) — any other guild. Today that means simply "someone else's venture";
+//                    the leasing layer (venture-establishment.md §4/§5, deferred) is what
+//                    will later split "their venture" from "their land, your venture".
+function myGuildName(){ return window.__player ? (window.__player().guildName || null) : null; }
+function siteBadge(state, myGuildName){
   if (!state) return { cls:'vacant', text:'VACANT' };
-  if (state.kind === 'mine') return { cls:'own', text:'YOUR MINE' };
-  if (state.kind === 'refinery') return { cls:'own', text:'YOUR REFINERY' };
-  if (state.kind === 'venture') return { cls:'own', text:'YOUR VENTURE' };
-  return { cls:'rival', text:'OCCUPIED' };
+  var mine = state.kind !== 'other';
+  var who = mine ? (myGuildName || 'your guild') : (state.ownerName || 'another guild');
+  var id = state.ventureId || '';
+  return { cls: mine ? 'own' : 'rival', text: (id ? id + ' \u00b7 ' : '') + who };
 }
-function siteDetail(state, siteId){
-  if (!state) return siteId;                                   // vacant: name the site
-  if (state.kind === 'mine') return 'MINE \u00b7 ' + state.ventureId;
-  if (state.kind === 'refinery') return 'REFINERY \u00b7 ' + (state.output ? prettyGood(state.output) : (state.recipeId || 'recipe'));
-  if (state.kind === 'venture') return (state.ventureType || 'VENTURE').toUpperCase() + ' \u00b7 ' + state.ventureId;
-  return state.ownerName || 'another guild';   // the badge already says OCCUPIED
-}
+// The left of a row is the site TYPE (the resource a node yields, or "Settlement"); this
+// sub-line keeps the site's own id, which is what you cross-check against /inspect.
+function siteDetail(state, siteId){ return siteId; }
 function prettyGood(key){ return String(key).split('_').map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' '); }
 // How many of a planet's sites are worked right now (a count of engine facts).
 function workedCount(p){
@@ -1992,11 +2003,11 @@ function renderPlanetView(){
   if (view.planetTab==='resources'){
     p.nodes.forEach(function(node,i){
       const state = siteState(node.id);
-      const badge = siteBadge(state);
+      const badge = siteBadge(state, myGuildName());
       const row=document.createElement('div'); row.className='list-row tab tex-node';
       row.innerHTML = '<span class="node-meta"><span class="node-name">'+RESOURCE_LABEL[node.resourceType]+'</span>' +
-        '<span class="node-type'+(state?'':' siteid')+'">'+esc(siteDetail(state, node.id))+'</span></span>' +
-        '<span class="venture-btn '+badge.cls+'">'+badge.text+'</span>';
+        '<span class="node-type siteid">'+esc(siteDetail(state, node.id))+'</span></span>' +
+        '<span class="venture-btn '+badge.cls+'">'+esc(badge.text)+'</span>';
       row.addEventListener('click', function(){
         if (state) { openNodeOverlay('Resource Node '+(i+1), node.id, RESOURCE_LABEL[node.resourceType]); return; }
         openEstablishFor({ kind:'node', siteId:node.id, nodeLabel:'Resource Node '+(i+1),
@@ -2008,11 +2019,11 @@ function renderPlanetView(){
   } else {
     p.slots.forEach(function(slot,i){
       const state = siteState(slot.id);
-      const badge = siteBadge(state);
+      const badge = siteBadge(state, myGuildName());
       const row=document.createElement('div'); row.className='list-row tab tex-node';
-      row.innerHTML = '<span class="node-meta"><span class="node-name">Settlement Slot '+(i+1)+'</span>' +
-        '<span class="node-type'+(state?'':' siteid')+'">'+esc(siteDetail(state, slot.id))+'</span></span>' +
-        '<span class="venture-btn '+badge.cls+'">'+badge.text+'</span>';
+      row.innerHTML = '<span class="node-meta"><span class="node-name">Settlement</span>' +
+        '<span class="node-type siteid">'+esc(siteDetail(state, slot.id))+'</span></span>' +
+        '<span class="venture-btn '+badge.cls+'">'+esc(badge.text)+'</span>';
       row.addEventListener('click', function(){
         if (state) { openNodeOverlay('Settlement Slot '+(i+1), slot.id, 'Settlement slot'); return; }
         openEstablishFor({ kind:'slot', siteId:slot.id, nodeLabel:'Settlement Slot '+(i+1),
@@ -2745,9 +2756,12 @@ function applySnapshot(snap){
         LIVE.siteInfo[v.siteId] = { kind:'venture', ventureId:v.id, ventureType:v.type || null };
       }
     } else {
-      // ANOTHER guild's venture: that the site is taken, and by whom. Deliberately
-      // nothing else — no rate, no resource, no recipe (client-wiring.md §7).
-      LIVE.siteInfo[v.siteId] = { kind:'other', ownerGuildId:v.ownerGuildId, ownerName: LIVE.guildNameById[v.ownerGuildId] || v.ownerGuildId };
+      // ANOTHER guild's venture: WHICH venture holds the site and WHOSE it is — the
+      // occupancy-level identity that is visible in-world (the same `id` the snapshot's
+      // occupancy map already carries for every site). Deliberately nothing else: no
+      // rate, no resource, no recipe, no economics (client-wiring.md §7).
+      LIVE.siteInfo[v.siteId] = { kind:'other', ventureId:v.id, ownerGuildId:v.ownerGuildId,
+                                  ownerName: LIVE.guildNameById[v.ownerGuildId] || v.ownerGuildId };
     }
   });
   // Re-render an open detail screen only when occupancy actually MOVED, so a site
