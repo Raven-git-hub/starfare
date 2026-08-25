@@ -1396,6 +1396,10 @@ document.getElementById('btnReset').addEventListener('click', function(){ STATE.
 // re-drawing. It computes no game number: each poll re-fetches and re-renders.
 var LIVE_POLL_MS = 1000;
 var livePollTimer = null;
+// Set by the distribution-slider drags (see trackDrag below). A render() mid-drag
+// rebuilds the DOM and detaches the track being dragged, so LIVE holds its redraw
+// until the drag is released; the commit's own response then redraws normally.
+var isDragging = false;
 function liveRunning(){ return livePollTimer !== null; }
 function anyControlFocused(){
   var a = document.activeElement;
@@ -1407,6 +1411,7 @@ function reflectLive(){
   b.classList.toggle('on', liveRunning());
 }
 async function livePoll(){
+  if (isDragging) return;            // never rebuild the DOM under a slider being dragged
   if (anyControlFocused()) return;   // don't clobber a control being edited mid-run
   await refresh('GET', null);         // re-render via the existing path; no status spam
 }
@@ -1495,68 +1500,130 @@ document.getElementById('stage').addEventListener('change', function(e){
 // reserve is set solely by the typed `.rs-field` (handled in the change listener above).
 // No drag handler here by design.
 
-// The Syndicate send slider: drag sets the ABSOLUTE send; clicking the amber marker snaps
-// the send onto the required rate (ceil to a whole unit — the integer-goods discipline).
-// Both POST setProductionProfile syndicate {mode:'absolute', value}. Delegated so it
-// survives re-render.
-(function(){
-  var dragging = null;
-  function sendFrom(track, e){
-    var r = track.getBoundingClientRect();
-    var f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-    var fresh = Math.max(0, +track.dataset.fresh || 0);
-    var g = {}; g[track.dataset.good] = { syndicate: { mode:'absolute', value: Math.round(f * fresh) } }; sendProfile({ goods: g });
+// ---- the three distribution-slider drags (Syndicate / Production / Stockpile) ----
+// One shared mechanism, three value maps. The bug this shape fixes: every mousemove
+// used to POST, and sendAction re-renders on the response — which rebuilt the DOM and
+// DETACHED the very track element the drag was holding. A detached node's
+// getBoundingClientRect() is all zeros, so (clientX - left) / width was Infinity,
+// clamped to 1: every drag pinned to the maximum. The ~1s LIVE poll compounded it.
+// So: capture the rect ONCE at mousedown, paint locally while moving, POST exactly
+// once on release, and hold LIVE's redraw for the duration (see isDragging).
+// The per-track value math is unchanged — only the mechanics moved here.
+//
+// paint(track, f)  — show fraction f on the track; NO network, NO game number.
+// commit(track, f) — the one setProductionProfile POST, on mouseup.
+// snap(e)          — optional: a click on a marker that sets a value directly
+//                    (the Syndicate `req` pin, the Production REQUIRED box).
+//                    Returns true when it handled the event, so no drag begins.
+function trackDrag(selector, paint, commit, snap){
+  var track = null;   // the element under the drag, held from mousedown to mouseup
+  var rect = null;    // its geometry, captured at mousedown and never re-read
+  function fractionAt(e){
+    return Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
   }
   document.getElementById('stage').addEventListener('mousedown', function(e){
-    var reqEl = e.target.closest('.sy-req');
-    if (reqEl){
-      var wrap = reqEl.closest('.sy-sendwrap'); var track = wrap && wrap.querySelector('.sy-track');
-      if (track){ var abs = Math.max(0, Math.ceil(parseFloat(reqEl.dataset.req) || 0));
-        var g = {}; g[track.dataset.good] = { syndicate: { mode:'absolute', value: abs } }; sendProfile({ goods: g }); }
-      e.preventDefault(); return;
-    }
-    var t = e.target.closest('.sy-track'); if (!t) return;
-    dragging = t; sendFrom(t, e); e.preventDefault();
+    if (snap && snap(e)){ e.preventDefault(); return; }
+    var t = e.target.closest(selector); if (!t) return;
+    var r = t.getBoundingClientRect();
+    if (!(r.width > 0)) return;      // a zero-width track would divide by zero
+    track = t; rect = r; isDragging = true;
+    paint(track, fractionAt(e));
+    e.preventDefault();
   });
-  window.addEventListener('mouseup', function(){ dragging = null; });
-  window.addEventListener('mousemove', function(e){ if (dragging) sendFrom(dragging, e); });
+  window.addEventListener('mousemove', function(e){
+    if (!track) return;
+    // Safety net: if the button came up somewhere we never saw the mouseup (released
+    // outside the window), ABANDON the drag rather than commit a position the user
+    // didn't release on — and, crucially, clear isDragging so LIVE starts drawing again.
+    if (e.buttons === 0){ track = null; rect = null; isDragging = false; return; }
+    paint(track, fractionAt(e));
+  });
+  window.addEventListener('mouseup', function(e){
+    if (!track) return;
+    var t = track, f = fractionAt(e);
+    track = null; rect = null; isDragging = false;
+    commit(t, f);   // the single POST per drag — a plain click ends here too
+  });
+}
+// Move a track's fill and handle to a percentage. Both live inside the track itself.
+function paintTrack(track, fillSel, handleSel, pct){
+  var fill = track.querySelector(fillSel); if (fill) fill.style.width = pct + '%';
+  var handle = track.querySelector(handleSel); if (handle) handle.style.left = pct + '%';
+}
+
+// The Syndicate send slider: drag sets the ABSOLUTE send; clicking the amber marker snaps
+// the send onto the required rate (ceil to a whole unit — the integer-goods discipline).
+// Both POST setProductionProfile syndicate {mode:'absolute', value}.
+(function(){
+  function absOf(track, f){ return Math.round(f * Math.max(0, +track.dataset.fresh || 0)); }
+  function paint(track, f){
+    var fresh = Math.max(0, +track.dataset.fresh || 0);
+    var abs = absOf(track, f);
+    var pct = fresh > 0 ? (abs / fresh) * 100 : 0;   // the same split render() draws
+    paintTrack(track, '.sy-fill', '.sy-handle', pct);
+    var panel = track.closest('.sy-panel'); if (!panel) return;
+    var rateIn = panel.querySelector('.sy-rate-in'); if (rateIn) rateIn.value = abs;
+    var pctIn = panel.querySelector('.sy-pct-in'); if (pctIn) pctIn.value = Math.round(pct);
+  }
+  function commit(track, f){
+    var g = {}; g[track.dataset.good] = { syndicate: { mode:'absolute', value: absOf(track, f) } };
+    sendProfile({ goods: g });
+  }
+  function snap(e){
+    var reqEl = e.target.closest('.sy-req'); if (!reqEl) return false;
+    var wrap = reqEl.closest('.sy-sendwrap'); var track = wrap && wrap.querySelector('.sy-track');
+    if (track){ var abs = Math.max(0, Math.ceil(parseFloat(reqEl.dataset.req) || 0));
+      var g = {}; g[track.dataset.good] = { syndicate: { mode:'absolute', value: abs } }; sendProfile({ goods: g }); }
+    return true;
+  }
+  trackDrag('.sy-track', paint, commit, snap);
 })();
 
 // The Production panel: drag the track to set downstreamPct (the % of required to provide);
 // clicking the REQUIRED box snaps to 100%. Both POST setProductionProfile downstreamPct.
 (function(){
-  var dragging = null;
-  function setFrom(track, e){
-    var r = track.getBoundingClientRect();
-    var f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-    var g = {}; g[track.dataset.good] = { downstreamPct: Math.round(f * 100) }; sendProfile({ goods: g });
+  function paint(track, f){
+    var pct = Math.round(f * 100);
+    paintTrack(track, '.pr-fill', '.pr-handle', pct);
+    // Only the % label tracks the cursor: the units label below it is required×pct,
+    // and `required` is a snapshot figure the track doesn't carry. It redraws on release.
+    var lab = track.parentNode.querySelector('.pr-lab.top');
+    if (lab){ lab.style.left = Math.max(6, Math.min(94, pct)) + '%';
+              lab.innerHTML = pct + '<span class="u">%</span>'; }
   }
-  document.getElementById('stage').addEventListener('mousedown', function(e){
-    var box = e.target.closest('.pr-req-box');
-    if (box){ var g = {}; g[box.dataset.good] = { downstreamPct: 100 }; sendProfile({ goods: g }); e.preventDefault(); return; }
-    var t = e.target.closest('.pr-track'); if (!t) return;
-    dragging = t; setFrom(t, e); e.preventDefault();
-  });
-  window.addEventListener('mouseup', function(){ dragging = null; });
-  window.addEventListener('mousemove', function(e){ if (dragging) setFrom(dragging, e); });
+  function commit(track, f){
+    var g = {}; g[track.dataset.good] = { downstreamPct: Math.round(f * 100) };
+    sendProfile({ goods: g });
+  }
+  function snap(e){
+    var box = e.target.closest('.pr-req-box'); if (!box) return false;
+    var g = {}; g[box.dataset.good] = { downstreamPct: 100 }; sendProfile({ goods: g });
+    return true;
+  }
+  trackDrag('.pr-track', paint, commit, snap);
 })();
 
 // The Stockpile panel: drag the track to set reserveLevel as a % of output ("how much of
 // output to put into the pile"). POSTs setProductionProfile reserveLevel.
 (function(){
-  var dragging = null;
-  function setFrom(track, e){
-    var r = track.getBoundingClientRect();
-    var f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  function levelOf(track, f){ return Math.round(f * Math.max(0, +track.dataset.out || 0)); }
+  function paint(track, f){
     var out = Math.max(0, +track.dataset.out || 0);
-    var g = {}; g[track.dataset.good] = { reserveLevel: Math.round(f * out) }; sendProfile({ goods: g });
+    var lvl = levelOf(track, f);
+    var pct = out > 0 ? Math.round((lvl / out) * 100) : 0;   // as render() derives it
+    paintTrack(track, '.sk-fill', '.sk-handle', pct);
+    var lab = track.parentNode.querySelector('.sk-lab');
+    if (lab){ lab.style.left = Math.max(6, Math.min(94, pct)) + '%';
+              lab.innerHTML = pct + '<span class="u">%</span>'; }
+    var panel = track.closest('.sk-panel'); if (!panel) return;
+    var units = panel.querySelector('.sk-units'); if (units) units.value = lvl;
+    var pctIn = panel.querySelector('.sk-pct'); if (pctIn) pctIn.value = pct;
   }
-  document.getElementById('stage').addEventListener('mousedown', function(e){
-    var t = e.target.closest('.sk-track'); if (!t) return;
-    dragging = t; setFrom(t, e); e.preventDefault();
-  });
-  window.addEventListener('mouseup', function(){ dragging = null; });
-  window.addEventListener('mousemove', function(e){ if (dragging) setFrom(dragging, e); });
+  function commit(track, f){
+    var g = {}; g[track.dataset.good] = { reserveLevel: levelOf(track, f) };
+    sendProfile({ goods: g });
+  }
+  trackDrag('.sk-track', paint, commit);
 })();
 
 // ---- boot ------------------------------------------------------------------

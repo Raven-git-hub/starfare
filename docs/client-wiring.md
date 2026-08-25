@@ -392,3 +392,60 @@ Base font sizes are unchanged: name 13.5px, badge 9.5px. One real bug surfaced a
 fixed on the way: `.tex-node`'s two cells were `40% + 66.667%`, which overflowed the row
 — invisible while the badge text hugged the left, but it **clipped `VACANT` to `VACAN`**
 the moment the text moved right. The badge is now `flex:1 1 auto; min-width:0`.
+
+## Revision — the console's three distribution sliders drag properly (25-08-26, bug fix)
+
+Client-only, one file (`client/console.html`). No `sim/` change: engine, server and
+snapshot untouched, schema still 7. The `setProductionProfile` action and each slider's
+**value math are unchanged** — this was drag *mechanics*, not arithmetic, and §5 still
+holds: the console computes no game number.
+
+**The bug.** The three distribution sliders — Production (`.pr-track` → `downstreamPct`),
+Stockpile (`.sk-track` → `reserveLevel`) and Syndicate (`.sy-track` → the `syndicate`
+send) — could not be dragged to a partial value. Every drag pinned to the maximum
+(100% / all): dragging the Production fork 90% → 30% POSTed `90, 84, 100, 100, 100, …`
+and stored 100.
+
+**The root cause is a re-render detaching the dragged element.** Each `mousemove` called
+`sendProfile` → `sendAction`, and `sendAction` re-renders on the POST response
+(`if (r.data.snapshot) render(r.data.snapshot)`). The re-render rebuilds the stage's DOM,
+so the track element the drag was holding in its `dragging` variable was **detached** from
+the document. A detached node's `getBoundingClientRect()` is all zeros, so the fraction
+`f = (e.clientX - r.left) / r.width` was `clientX / 0` = `Infinity`, clamped to `1` — the
+maximum, every time. The ~1 s LIVE poll re-renders too and compounded it, but the
+per-POST re-render alone was enough: it was broken with **View: PAUSED** as well.
+
+**The fix — three parts, one shared `trackDrag(selector, paint, commit, snap)` helper
+used by all three tracks.**
+
+1. **Capture the geometry at `mousedown`.** The track's `getBoundingClientRect()` (and the
+   `data-out` / `data-fresh` it needs) is read once, at `mousedown`, and every subsequent
+   fraction is computed from that captured rect — never re-read from a node that may since
+   have been rebuilt. A captured `width <= 0` starts no drag, so nothing ever divides by zero.
+2. **No POST during the drag; commit once on `mouseup`.** `mousemove` only *paints* — it
+   moves the fill, the handle and the panel's own readouts to the dragged position — and
+   sends nothing. The one `setProductionProfile` POST fires on release. This removes both
+   the per-pixel POST storm (13 POSTs for one drag → **1**) and the per-POST re-render that
+   was orphaning the element. A plain click on a track still sets the clicked position: it
+   commits on the `mouseup` that ends the click.
+3. **Suspend re-render while dragging.** A module-level `isDragging` flag is set on
+   `mousedown` and cleared on `mouseup`; `livePoll` returns early while it is set, so LIVE
+   never rebuilds the DOM under a slider in hand. After release, the commit's own response
+   re-renders normally and the next poll carries on. Because a stuck flag would freeze LIVE,
+   a `mousemove` that arrives with no button held (a `mouseup` released outside the window
+   and never seen) **abandons** the drag — clearing the flag, and deliberately committing
+   nothing rather than POSTing a position the player did not release on.
+
+**What did not change.** Each track's value map is exactly as before — `downstreamPct =
+round(f × 100)`, `reserveLevel = round(f × out)`, syndicate `= { mode:'absolute', value:
+round(f × fresh) }`. The two snap-clicks keep their behaviour (the amber `.sy-req` marker
+→ the required rate, ceil'd; the REQUIRED box → 100%) and now run through `trackDrag`'s
+`snap` hook so they still pre-empt a drag on the same `mousedown`. The native controls
+(priority `select`, the reserve/downstream/throttle number inputs, syndicate mode) are
+untouched — they already commit on `change`. The embed contract is unchanged; the sliders
+live in the central column, which embed mode keeps, and the fix was verified there too.
+
+**One display detail, deliberate.** During a Production drag only the **%** label follows
+the cursor. The units label under it is `required × pct`, and `required` is a snapshot
+figure the track element does not carry — rather than fabricate or re-derive it mid-drag,
+it simply redraws on release with the rest of the panel.
