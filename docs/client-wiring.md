@@ -26,6 +26,28 @@ client**, on the real committed seed, against the live persistent engine:
 4. **Produce** — run and tune the economy in the console — from the client.
 5. **Persist** — it survives restarts (already deployed, `persistence-model.md`).
 
+> **Console rebuilt to the authoritative design — 25-08-26 (follow-up to Slice 4).**
+> Slice 4 pointed the client's iframe at the live `/console`, but `client/console.html`
+> had been built to a *superseded* mockup, so the deployed System Manifest showed the
+> old plain console. It is now rebuilt to `docs/mockups/console_restructure.html` (its
+> appended restructure block): the 3-zone frame `[celestial | console | industrial]`
+> and the 7:15:10 flow — Production │ Distribution │ Consumption/Syndicate — with the
+> trend cards on the venture stacks, the two top-up squares in the stockpile row, the
+> Gate-1 arm panels and the Syndicate thermometer. It is a RE-SKIN, not a new data
+> path: `api`/`refresh`/`sendAction`/`sendProfile`, the ~1 s poll, the `?embed=1&guild=&system=`
+> focus, the operator-drive gating and the venture→hero `postMessage` are all kept, and
+> the design file's mock backend was not carried across. **Three deliberate deviations
+> from the mockup:** the **throttle** lives on the consumer chip in the central column
+> (the mockup puts it in the industrial hero, which embed mode drops — the embedded
+> console *is* the System Manifest, so it must keep its throttle); the trend sparklines
+> are **never seeded** with invented history (empty until two real ticks are observed);
+> and the licence **roster** and the hero's **facility** block carry visible **MOCK**
+> tags, since the engine has no licence layer, droids or assets — only the thermometer's
+> delivered / send-rate / ticks-remaining are real window telemetry. `embed=1` is now
+> the only thing that means "inside the client"; `guild`/`system` are focus alone, so a
+> standalone `/console?guild=&system=` still gets the full three-zone frame.
+> Engine, tick and snapshot untouched; schema still 7; no `sim/` source change.
+
 > **Section COMPLETE — 25-08-26.** All five steps run through the player client at
 > `/` on the live, persistent galaxy, with the operator watching from `/inspect`.
 > Slices 0–4 all landed; what stays deliberately unbuilt is listed under *Out of

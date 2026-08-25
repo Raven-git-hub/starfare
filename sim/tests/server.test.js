@@ -77,7 +77,7 @@ test('GET / serves the PLAYER CLIENT (HTML), not the deleted testbed', async () 
   assert.ok(!html.includes('console-mocktag'), 'the MOCK CONSOLE tag goes with the mock');
   assert.ok(!html.includes('atob('), 'nothing is decoded into a page blob any more');
   assert.match(html, /fr\.src = src/);                       // the iframe is pointed, live
-  assert.match(html, /'\/console\?guild='/);                  // …at /console, with the focus
+  assert.match(html, /'\/console\?embed=1&guild='/);           // …at /console, with the focus
 });
 
 test('GET /assets/<path> serves the client\'s art, and refuses a path that escapes', async () => {
@@ -117,15 +117,41 @@ test('GET /console serves the player-facing Production Console (HTML)', async ()
   // all reading the schema-7 snapshot, computing no game number.
   assert.match(html, /id="btnTick"/);
   assert.match(html, /id="resbar"/);
-  assert.match(html, /class="prank"/);        // Gate-1 priority selects
-  assert.match(html, /class="rlevel"/);        // reserveLevel control
-  assert.match(html, /class="syn-mode"/);      // Syndicate send-mode selector (Slice B-ii)
+  assert.match(html, /class="prank"/);         // Gate-1 priority selects
+  assert.match(html, /rs-field/);              // reserveLevel control (the restructure's field)
+  assert.match(html, /sy-rate-in/);            // Syndicate send control
   assert.match(html, /commitmentReadout/);     // the windowed-accrual readout, from `window`
   assert.match(html, /systemReport/);          // reads the snapshot production block
   // Auto-tick watch UI (Phase 1 Stage 2): the console's LIVE / PAUSE-VIEW toggle —
   // a client-side refresh freeze only (no /autotick control: a player cannot pause
   // a persistent real-time world).
   assert.match(html, /id="btnLive"/);
+});
+
+test('GET /console serves the RESTRUCTURED console (the authoritative design)', async () => {
+  const res = await fetch(base + '/console');
+  assert.equal(res.status, 200);
+  const html = await res.text();
+  // The restructure's frame and columns (docs/mockups/console_restructure.html).
+  assert.match(html, /composeManifest/);           // the 3-zone frame is composed at boot
+  assert.match(html, /zone-celestial/);
+  assert.match(html, /zone-industrial/);
+  assert.match(html, /flow-r/);                    // the 7:15:10 inner flow
+  assert.match(html, /grid-template-columns:7fr 15fr 10fr/);
+  assert.match(html, /producersCol2/);             // trend card + venture stack
+  assert.match(html, /consumersCol2/);
+  assert.match(html, /reservePanel2/);             // stockpile strip + the two top-up squares
+  assert.match(html, /synTherm/);                  // the Syndicate thermometer
+  assert.match(html, /trendSpark/);
+
+  // The design file's mock BACKEND must not have come along for the ride: this page
+  // reads the live engine, and nothing mock may be presented as live.
+  for (const marker of ['MOCK_GOODS', 'mockDerive(', 'mockTick(', 'apiLive', 'seedSeries']) {
+    assert.ok(!html.includes(marker), `the console must not carry the mockup's ${marker}`);
+  }
+  // The two design-ahead panels that DO remain are tagged as mock on screen.
+  assert.match(html, /mocktag/);
+  assert.match(html, /mock · no engine/);
 });
 
 test('GET /starters lists the seed\'s startable home systems', async () => {

@@ -2095,7 +2095,11 @@ function mountConsole(show){
   }
   var fr=document.getElementById('consoleFrame'); if(!fr) return;
   var player = window.__player ? window.__player() : {};
-  var src = '/console?guild=' + encodeURIComponent(player.guildId || '') + '&system=' + encodeURIComponent(SYSTEM.id);
+  // embed=1 tells the console it is inside the client: it pins this focus and drops
+  // its own two side zones, because the client already supplies them — the detail
+  // screen's index panel on the left, and the industrial hero on the right, which the
+  // console drives through the venture postMessage bridge below.
+  var src = '/console?embed=1&guild=' + encodeURIComponent(player.guildId || '') + '&system=' + encodeURIComponent(SYSTEM.id);
   // Re-point (and so reload) only when the focus actually changed, so a re-render of
   // the same system doesn't restart the console mid-edit.
   if (fr.getAttribute('data-src') !== src){ fr.setAttribute('data-src', src); fr.src = src; }
