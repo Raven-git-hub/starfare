@@ -5,9 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Starfare — System Production Console</title>
 <!--
-  The player-facing System Production Console — a THROWAWAY UX PROBE in the Archive
-  style of docs/mockups/console_mock6_1.html, driving the SAME live engine as the
-  testbed (a second window over one in-memory state). It computes NO game number
+  The player-facing System Production Console, in the Archive style of
+  docs/mockups/console_mock6_1.html. As of client-wiring Slice 4 (25-08-26) this is
+  THE console the game client embeds: `client/game.html` mounts it in an iframe at
+  `/console?guild=<id>&system=<id>` for a system the player controls, so what is on
+  screen is this galaxy, not a mock. It is still served standalone at /console for
+  the operator. It computes NO game number
   (design.md §5 "the client renders the engine's resolved numbers"): every figure on
   screen is read VERBATIM from the schema-7 snapshot's `production` block. The mockup's
   hand-coded data model (a stockpile %/Q fork + a separate reserve floor, a client-side
@@ -188,12 +191,12 @@
 <div class="resbar" id="resbar"></div>
 <div id="stage"></div>
 <div class="panel legend">
-  <span class="tag">dev UX probe</span>
-  A player-facing read of the <b>same live engine</b> the testbed drives (open <code>/</code> in another tab to found a guild and deploy ventures). Every figure is the engine's <b>resolved</b> value from the snapshot — the browser computes none (design.md §5). Tabs pick a <b>tier</b>, the row below a <b>resource</b>; goods with no local production/consumption show <b>idle</b>. The <b>Syndicate</b> commitment stays <i>“no commitment yet”</i> until the licence layer makes a commitment non-zero — the send control is live and advisory today.
+  <span class="tag">production console</span>
+  The player's read of the <b>live engine</b>, embedded in the game client at a system you control (and reachable standalone at <code>/console</code>). Every figure is the engine's <b>resolved</b> value from the snapshot — the browser computes none (design.md §5). Tabs pick a <b>tier</b>, the row below a <b>resource</b>; goods with no local production/consumption show <b>idle</b>. The <b>Syndicate</b> commitment stays <i>“no commitment yet”</i> until the licence layer makes a commitment non-zero — the send control is live and advisory today.
 </div>
 <script>
 'use strict';
-// ---- talking to the server (same origin as the testbed) --------------------
+// ---- talking to the server (same origin, embedded or standalone) -----------
 var statusEl = document.getElementById('status');
 function setStatus(text, kind){ statusEl.textContent = text; statusEl.className = 'status ' + (kind || ''); }
 async function api(method, path, body){
@@ -216,10 +219,12 @@ async function sendAction(action, verb){
   if (r.status >= 500) { setStatus((r.data.error || 'engine error'), 'error'); return; }
   if (r.status === 400) { setStatus(r.data.error || 'bad request', 'error'); return; }
   if (r.data.snapshot) render(r.data.snapshot);
-  setStatus(r.data.accepted ? (verb + ' accepted — press TICK to advance') : (verb + ' REJECTED: ' + r.data.reason), r.data.accepted ? 'ok' : 'rejected');
+  setStatus(r.data.accepted
+    ? (verb + ' accepted — ' + (STATE.embedded ? 'it takes effect on the next tick' : 'press TICK to advance'))
+    : (verb + ' REJECTED: ' + r.data.reason), r.data.accepted ? 'ok' : 'rejected');
 }
 // setProductionProfile, carrying only the changed field(s) for one (guild, system).
-// Reuses the exact action + clear-path (syndicate:null) the testbed uses.
+// Reuses the exact action + clear-path (syndicate:null) the engine already accepts.
 function sendProfile(patch){
   if (!STATE.guildId || !STATE.sysId) return;
   var action = { type: 'setProductionProfile', guildId: STATE.guildId, systemId: STATE.sysId };
@@ -247,7 +252,27 @@ var ARM = {
 };
 
 // ---- live view state -------------------------------------------------------
-var STATE = { snap:null, goods:{raw:[],processed:[]}, guildId:null, sysId:null, tier:1, good:null, vmap:{}, recipeOut:{} };
+var STATE = { snap:null, goods:{raw:[],processed:[]}, guildId:null, sysId:null, tier:1, good:null, vmap:{}, recipeOut:{},
+              pinnedSysId:null, embedded:false, heroVentureId:null };
+
+// ---- focus from the query string (client-wiring Slice 4) --------------------
+// The player client embeds this page as `/console?guild=<id>&system=<id>` so the
+// console opens on the system the player drilled into, not on their home. Opened
+// standalone (no params) nothing changes: it self-selects exactly as before.
+(function readFocus(){
+  var q = new URLSearchParams(location.search);
+  var g = q.get('guild'), sys = q.get('system');
+  if (g) { STATE.guildId = g; STATE.embedded = true; }
+  if (sys) { STATE.sysId = sys; STATE.pinnedSysId = sys; STATE.embedded = true; }
+})();
+
+// Embedded in the player client, the two OPERATOR drives are hidden: TICK advances
+// the galaxy by hand and RESET wipes it back to nothing — neither is a player move,
+// and a persistent world is not a player's to step or erase (client-wiring.md §1/§5).
+// Opened standalone at /console they are still there for the operator, unchanged.
+if (STATE.embedded) {
+  ['btnTick','btnReset'].forEach(function(id){ var b = document.getElementById(id); if (b) b.style.display = 'none'; });
+}
 
 // The tier vocabulary comes from GET /goods (raw = tier 1, processed = tier 2). Tiers
 // 3-4 have no goods in the engine yet, so they render dim/empty — honest, not faked.
@@ -295,6 +320,26 @@ function producersOf(report, good){
   return out;
 }
 
+// ---- the venture -> industrial-hero message (client-wiring.md Slice 4) ------
+// The player client mounts this console beside a piece of hero art and listens for
+// exactly one message. It carries no game state — a venture's id and whether it is a
+// mine or a refinery — so the art beside the console shows the venture in hand.
+// Same-origin (the client is served from `/`), so it is targeted at this origin.
+function postVenture(ventureId){
+  if (!ventureId || ventureId === STATE.heroVentureId) return;   // don't re-post on every poll
+  var v = STATE.vmap[ventureId];
+  if (!v) return;
+  STATE.heroVentureId = ventureId;
+  try {
+    window.parent.postMessage({
+      source: 'starfare-console',
+      kind: 'venture',
+      name: ventureId,
+      facility: v.type === 'refining' ? 'refinery' : 'mine',
+    }, window.location.origin);
+  } catch (e) { /* not embedded, or no parent to tell */ }
+}
+
 // ---- render ----------------------------------------------------------------
 function render(snap){
   STATE.snap = snap;
@@ -312,7 +357,7 @@ function render(snap){
     document.getElementById('sysName').textContent = '—';
     document.getElementById('tiers').innerHTML = '';
     document.getElementById('resbar').innerHTML = '';
-    document.getElementById('stage').innerHTML = '<div class="panel"><div class="empty" style="margin:20px">No guild founded yet. Open <b>/</b> (the testbed) in another tab, found a guild and deploy a venture, then Refresh here.</div></div>';
+    document.getElementById('stage').innerHTML = '<div class="panel"><div class="empty" style="margin:20px">No guild founded yet. Open <b>/</b> (the game) to found one and establish a venture; this console then drives it.</div></div>';
     return;
   }
 
@@ -322,7 +367,15 @@ function render(snap){
   var sysIds = gp ? gp.systems.map(function(s){ return s.systemId; }).filter(function(x){ return x != null; }) : [];
   var guild = guilds.find(function(g){ return g.id === STATE.guildId; }) || {};
   if (!sysIds.some(function(id){ return id === STATE.sysId; })){
-    STATE.sysId = (guild.homeSystemId && sysIds.indexOf(guild.homeSystemId) >= 0) ? guild.homeSystemId : (sysIds[0] || guild.homeSystemId || null);
+    // A system pinned by the query string STAYS pinned even when the guild has no
+    // ventures there yet: an embedded console must never quietly show a DIFFERENT
+    // system than the one the player is looking at. With nothing seated it renders
+    // the honest idle state for THIS system instead.
+    if (!STATE.pinnedSysId){
+      STATE.sysId = (guild.homeSystemId && sysIds.indexOf(guild.homeSystemId) >= 0) ? guild.homeSystemId : (sysIds[0] || guild.homeSystemId || null);
+    } else {
+      STATE.sysId = STATE.pinnedSysId;
+    }
   }
   document.getElementById('sysName').textContent = STATE.sysId || '—';
 
@@ -342,6 +395,20 @@ function render(snap){
   renderTiers();
   renderResBar(report);
   renderStage(report);
+
+  // Open the hero on this system's first real producer, so the art beside the console
+  // is never blank and never shows a venture that isn't here. It only fires when
+  // nothing is chosen yet, or when the chosen venture has left this system — a
+  // player's click (below) is never overridden by the next poll.
+  if (report){
+    var here = {};
+    (report.mines || []).forEach(function(m){ here[m.ventureId] = 1; });
+    (report.refineries || []).forEach(function(r){ here[r.ventureId] = 1; });
+    if (!STATE.heroVentureId || !here[STATE.heroVentureId]){
+      var lead = (report.mines || [])[0] || (report.refineries || [])[0];
+      if (lead) postVenture(lead.ventureId);
+    }
+  }
 }
 
 function renderTiers(){
@@ -443,7 +510,7 @@ function reservePanelIdle(good){
 
 function producersCol(producers){
   var body = producers.length
-    ? producers.map(function(p){ return '<div class="vent"><div class="vid">' + esc(p.id) + '</div><div class="vpl">' + esc(ventPlanet(p.id)) + '</div><div class="vsub">' + esc(p.kind) + ' · ' + fmt(p.amount) + '/tick</div></div>'; }).join('')
+    ? producers.map(function(p){ return '<div class="vent" data-vent="' + esc(p.id) + '"><div class="vid">' + esc(p.id) + '</div><div class="vpl">' + esc(ventPlanet(p.id)) + '</div><div class="vsub">' + esc(p.kind) + ' · ' + fmt(p.amount) + '/tick</div></div>'; }).join('')
     : '<div class="empty">no production in this system<br><span style="font-size:10px">— supplied from stockpile only —</span></div>';
   return '<div class="col"><div class="colhead"><span class="lbl">Production</span></div>' + body + '</div>';
 }
@@ -525,7 +592,7 @@ function consumersCol(good, rg, consumers, report){
     var starved = bottleneck && bottleneck !== good;      // held below throttle by a scarce input on another page
     var rcls = starved ? 'part' : 'full';
     var note = starved ? '<small class="red">held by ' + esc(prettyGood(bottleneck)) + '</small>' : '<small>at ' + thr.pct + '% throttle</small>';
-    return '<div class="cons' + (starved ? ' warn' : '') + '">' +
+    return '<div class="cons' + (starved ? ' warn' : '') + '" data-vent="' + esc(l.ventureId) + '">' +
       '<div class="thr"><div class="lbl">throttle</div><input class="throttle" data-vent="' + esc(l.ventureId) + '" type="number" min="0" max="100" value="' + esc(thr.pct) + '"><div class="pc">%' + (thr.set ? '' : ' (def)') + '</div></div>' +
       '<div class="body"><div class="vid">' + esc(l.ventureId) + '</div><div class="vpl">' + esc(ventPlanet(l.ventureId)) + '</div></div>' +
       '<div class="rate"><div class="rlbl">eff. rate</div><div class="rval ' + rcls + '">' + fmtRate(rate) + '</div>' + note + '</div>' +
@@ -542,7 +609,7 @@ document.getElementById('btnReset').addEventListener('click', function(){ STATE.
 // ---- LIVE / PAUSE-VIEW: a CLIENT-SIDE refresh toggle, nothing more ----------
 // The console gets NO /autotick control: a player cannot pause a persistent
 // real-time world. This toggle only starts/stops the client's own ~1s /snapshot
-// poll+render (the SAME cadence the testbed watch loop uses). Pausing freezes the
+// poll+render (the SAME cadence the game client's own HUD poll uses). Pausing freezes the
 // SCREEN, not the galaxy — the server keeps ticking; you have just stopped
 // re-drawing. It computes no game number: each poll re-fetches and re-renders.
 var LIVE_POLL_MS = 1000;
@@ -572,13 +639,24 @@ function stopLive(){
   setStatus('view PAUSED — your screen is frozen; the galaxy keeps turning on the server', '');
 }
 document.getElementById('btnLive').addEventListener('click', function(){ if (liveRunning()) stopLive(); else startLive(); });
-document.getElementById('guildSel').addEventListener('change', function(e){ STATE.guildId = e.target.value; STATE.sysId = null; STATE.good = null; if (STATE.snap) render(STATE.snap); });
+document.getElementById('guildSel').addEventListener('change', function(e){
+  // Choosing a guild by hand releases the URL's focus — an explicit action wins.
+  STATE.guildId = e.target.value; STATE.sysId = null; STATE.pinnedSysId = null; STATE.good = null;
+  if (STATE.snap) render(STATE.snap);
+});
 
 document.getElementById('tiers').addEventListener('click', function(e){
   var t = e.target.closest('.tier'); if (!t || t.classList.contains('dim')) return;
   STATE.tier = +t.dataset.tier; STATE.good = tierGoods(STATE.tier)[0] || null;
   if (STATE.snap) render(STATE.snap);
 });
+// Clicking a venture row moves the industrial hero art onto that venture. It is a
+// pure selection — nothing is sent to the engine.
+document.getElementById('stage').addEventListener('click', function(e){
+  var row = e.target.closest('[data-vent]');
+  if (row) postVenture(row.getAttribute('data-vent'));
+});
+
 document.getElementById('resbar').addEventListener('click', function(e){
   var r = e.target.closest('.res'); if (!r) return;
   STATE.good = r.dataset.good; if (STATE.snap) render(STATE.snap);
@@ -648,7 +726,7 @@ document.getElementById('stage').addEventListener('change', function(e){
 // ---- boot ------------------------------------------------------------------
 (async function(){
   // The goods vocabulary (raw/processed) and the recipe→output map are STATIC engine
-  // config, fetched once (like the testbed): they drive the tiers and identify which
+  // config, fetched once: they drive the tiers and identify which
   // refinery produces which good. Every live figure still comes from /snapshot.
   try { STATE.goods = (await api('GET', '/goods')).data || STATE.goods; } catch (e) {}
   try {

@@ -26,6 +26,13 @@ client**, on the real committed seed, against the live persistent engine:
 4. **Produce** — run and tune the economy in the console — from the client.
 5. **Persist** — it survives restarts (already deployed, `persistence-model.md`).
 
+> **Section COMPLETE — 25-08-26.** All five steps run through the player client at
+> `/` on the live, persistent galaxy, with the operator watching from `/inspect`.
+> Slices 0–4 all landed; what stays deliberately unbuilt is listed under *Out of
+> scope* and *Deferred* below — chiefly the licence economy (the establishment
+> panel's fee/equity/asset controls remain mock), per-viewer snapshot filtering,
+> and real player identity.
+
 ## Governing principles (the rules the build holds to)
 
 1. **The game client is the only way to ACT.** Founding, establishing, tuning —
@@ -198,10 +205,25 @@ not. This list is the working contract; it may be refined as panels are wired
   (`[FIRST-CUT]`, `phase-1-tuning.md`). Establishment is deliberately **ungated** — the
   popup shows whose territory a site sits in and lets you deploy there anyway, because
   leasing (§4) is where territory becomes an economic lever.
-- **Slice 4 — run the economy, through the game.** Console un-mocked (iframe →
+- **Slice 4 — run the economy, through the game. LANDED 25-08-26 — the section is COMPLETE.** Console un-mocked (iframe →
   the served `/console`): profiles, priorities, throttles on the live, persistent
   galaxy. Preserve the one cross-frame message (`{source:'starfare-console',
   kind:'venture', …}` → the industrial hero art).
+  *As built:* `mountConsole` points the iframe at
+  `/console?guild=<id>&system=<id>` — same origin, so the console reads `/snapshot`
+  and POSTs `setProductionProfile` against THIS galaxy — and re-points whenever the
+  focused system changes. The embedded mock blob is **deleted**: the base64 string,
+  the `atob` decode, `URL.createObjectURL` and `window.__consoleBlobUrl`, ~193 KB out
+  of `client/game.html`, and the Slice-1 MOCK tag with them. The console reads the
+  query string on boot and **pins** that system — even one it has no ventures in,
+  where it renders the honest idle state rather than quietly showing a different
+  system; with no params it self-selects exactly as before. The venture → hero
+  message is emitted from the console: on render for the focused system's first
+  producer (so the art is never blank or stale), and on a click of any venture row,
+  which a poll never overrides. The parent's listener and `__VENTURE_ART` are
+  untouched. **One judgement call:** embedded, the console hides its two OPERATOR
+  drives — TICK and RESET. Neither is a player move and a persistent world is not a
+  player's to step or erase (§1); standalone `/console` keeps them for the operator.
 
 Each slice is a separate Claude Code prompt, on its own branch + PR, doc-and-code
 in the same commit, verified by playing the loop and confirming against `/inspect`.

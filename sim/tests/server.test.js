@@ -69,6 +69,15 @@ test('GET / serves the PLAYER CLIENT (HTML), not the deleted testbed', async () 
   // And the demo galaxy + its baked identity are deleted, not bypassed (§6).
   assert.ok(!html.includes('buildDemoGalaxy'), 'the demo galaxy generator must be gone');
   assert.ok(!html.includes('Vanguard'), 'the demo guild literal must be gone');
+
+  // Slice 4: the console is the LIVE one. The embedded mock blob is deleted — its
+  // URL holder, its atob() decode and its MOCK tag — and the iframe points at the
+  // served /console, carrying the player's focus as a query string.
+  assert.ok(!html.includes('__consoleBlobUrl'), 'the mock console blob url must be gone');
+  assert.ok(!html.includes('console-mocktag'), 'the MOCK CONSOLE tag goes with the mock');
+  assert.ok(!html.includes('atob('), 'nothing is decoded into a page blob any more');
+  assert.match(html, /fr\.src = src/);                       // the iframe is pointed, live
+  assert.match(html, /'\/console\?guild='/);                  // …at /console, with the focus
 });
 
 test('GET /assets/<path> serves the client\'s art, and refuses a path that escapes', async () => {
