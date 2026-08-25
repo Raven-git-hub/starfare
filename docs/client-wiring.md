@@ -297,3 +297,7 @@ touched here.
   split; Phase 2/3.
 - `STARFARE_TICK_MS` is **operator config, not a game number** — no ruling needed;
   it does not go to `phase-1-tuning.md`.
+
+## Revision — the admin panel (25-08-26, see `docs/galaxy-lifecycle.md`)
+
+Principle #2 above ("the watcher only watches") is revised: the `/inspect` operator watcher becomes the **admin panel** — it keeps the god's-eye read AND gains the galaxy-lifecycle **operator** controls (Create / Delete Galaxy). What still holds: the **player client (`/`) carries no admin/destructive controls**; operator controls live on the admin panel, operator-only (Cloudflare Access for now). See `docs/galaxy-lifecycle.md`.
