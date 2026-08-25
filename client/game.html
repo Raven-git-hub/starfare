@@ -363,12 +363,23 @@
      (today simply "someone else's"; the leasing layer will refine what yellow means).
      VACANT stays neutral. */
   .list-row.tab .venture-btn.vacant{ max-width:none; cursor:default; color:var(--ink-faint); }
-  /* An occupied badge carries a venture id: leave its case alone, so it reads exactly
-     as the engine holds it and can be checked against /inspect. VACANT stays shouted. */
-  .list-row.tab .venture-btn.own,
-  .list-row.tab .venture-btn.rival{ text-transform:none; letter-spacing:0.02em; }
   .list-row.tab .venture-btn.own{ max-width:none; cursor:default; color:#8DBB78; border-color:rgba(141,187,120,0.55); background:rgba(92,138,78,0.14); }
   .list-row.tab .venture-btn.rival{ max-width:none; cursor:default; color:var(--brass); border-color:rgba(201,162,39,0.55); background:rgba(201,162,39,0.10); }
+  /* An occupied badge is TWO lines: the activity or product on top (a label, shouted like
+     the other meta lines — that is the base .venture-btn treatment, inherited) and the
+     owning guild beneath it. The guild line is smaller and dimmer so the activity leads,
+     and its case is left alone: a guild name is an identity its owner chose, not a label. */
+  .venture-btn .sb-act{ white-space:nowrap; }
+  .venture-btn .sb-guild{
+    max-width:100%;
+    font-size:9px;
+    text-transform:none;
+    letter-spacing:0.02em;
+    opacity:0.72;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
 
   /* node tabs specifically: compact horizontal split rather than the tall,
      bottom-anchored artwork-tab layout used for planets */
@@ -381,19 +392,20 @@
     padding:0;
   }
   .list-row.tab.tex-node .node-meta{
-    flex:0 0 40%;              /* a little wider than the original third: the site rows
-                                  now carry a status line under the name */
+    flex:0 0 40%;              /* the left is the site TYPE alone — one line, with room
+                                  for the longest resource label without truncating */
     max-width:40%;
     justify-content:center;
     padding:0 12px;
   }
-  /* A site id is an identifier you may want to read against /inspect — leave its
-     case alone rather than shouting it like the other meta lines. */
-  .list-row.tab .node-type.siteid{ text-transform:none; letter-spacing:0.02em; }
   .list-row.tab.tex-node .venture-btn{
     position:static;
-    flex:0 0 66.667%;
-    max-width:66.667%;
+    /* Take exactly the space .node-meta leaves. A fixed 66.667% basis plus the meta's
+       40% overflowed the row, and once the badge's text hugs the right edge (below)
+       that overflow CLIPS it — VACANT read "VACAN". */
+    flex:1 1 auto;
+    min-width:0;
+    max-width:none;
     align-self:stretch;
     transform:none;
     border-radius:0;
@@ -403,6 +415,19 @@
     display:flex;
     align-items:center;
     justify-content:flex-start;
+  }
+  /* The site-state badges are the row's RIGHT half: they hug its right edge, so the
+     type reads down the left and the occupancy down the right. (The Trade row's OPEN
+     button carries no state class and keeps the left-hugging default.) */
+  .list-row.tab.tex-node .venture-btn.vacant,
+  .list-row.tab.tex-node .venture-btn.own,
+  .list-row.tab.tex-node .venture-btn.rival{ justify-content:flex-end; text-align:right; }
+  /* Occupied: the two lines stack, still inside the row's existing height. */
+  .list-row.tab.tex-node .venture-btn.stacked{
+    flex-direction:column;
+    align-items:flex-end;
+    justify-content:center;
+    gap:1px;
   }
 
   /* ---------- Hero quarter-segment ---------- */
@@ -1923,25 +1948,40 @@ function siteState(siteId){
   var occ = window.__occupancy ? window.__occupancy(siteId) : null;
   return occ ? { kind:'other', ownerName:null } : null;
 }
-// Badge + detail line for one site, from its live state. Pure presentation.
-// The right of a manifest row: who holds the site. Vacant reads VACANT; occupied reads
-// the venture's id and the guild that owns it — the same sentence whether the venture is
-// the player's or a rival's, because that is occupancy, not economics.
-//   own   (green)  — ownerGuildId === the player's guild
-//   rival (yellow) — any other guild. Today that means simply "someone else's venture";
-//                    the leasing layer (venture-establishment.md §4/§5, deferred) is what
-//                    will later split "their venture" from "their land, your venture".
+// The right of a manifest row, from the site's live state. Pure presentation — every
+// word below is already in LIVE.siteInfo; nothing here is computed or invented.
+// Vacant is one neutral line. An occupied site is TWO stacked lines: what is happening
+// there, over the guild that owns it.
+//   own   (green)  — ownerGuildId === the player's guild. Their own site, so the top
+//                    line may name the activity (MINING) or the real product.
+//   rival (yellow) — any other guild. §7 keeps a rival's recipe and product hidden, so
+//                    the top line says only that the site is worked: IN USE. Whether a
+//                    land owner may ever see a tenant's output is the Leasing layer's
+//                    call (venture-establishment.md §4/§5, deferred) — neutral until then.
 function myGuildName(){ return window.__player ? (window.__player().guildName || null) : null; }
 function siteBadge(state, myGuildName){
-  if (!state) return { cls:'vacant', text:'VACANT' };
-  var mine = state.kind !== 'other';
-  var who = mine ? (myGuildName || 'your guild') : (state.ownerName || 'another guild');
-  var id = state.ventureId || '';
-  return { cls: mine ? 'own' : 'rival', text: (id ? id + ' \u00b7 ' : '') + who };
+  if (!state) return { cls:'vacant', top:'VACANT', sub:null };
+  if (state.kind === 'other') return { cls:'rival', top:'IN USE', sub: state.ownerName || 'another guild' };
+  var who = myGuildName || 'your guild';
+  if (state.kind === 'mine') return { cls:'own', top:'MINING', sub:who };
+  if (state.kind === 'refinery'){
+    // The refinery's REAL output good, already resolved into siteInfo.output. If the
+    // recipe didn't resolve to one, say what the venture IS rather than name a good
+    // we do not have.
+    return { cls:'own', top: state.output ? prettyGood(state.output).toUpperCase() : 'REFINING', sub:who };
+  }
+  // Manufacturing / construction: no output field exists for these yet, so the top
+  // line stays generic rather than inventing one.
+  return { cls:'own', top:'PRODUCTION', sub:who };
 }
-// The left of a row is the site TYPE (the resource a node yields, or "Settlement"); this
-// sub-line keeps the site's own id, which is what you cross-check against /inspect.
-function siteDetail(state, siteId){ return siteId; }
+// The badge markup. The guild line only exists when the site is occupied, and it is the
+// presence of that second line that turns the badge into a stacked, right-aligned block.
+function siteBadgeHtml(badge){
+  return '<span class="venture-btn ' + badge.cls + (badge.sub ? ' stacked' : '') + '">' +
+    '<span class="sb-act">' + esc(badge.top) + '</span>' +
+    (badge.sub ? '<span class="sb-guild">' + esc(badge.sub) + '</span>' : '') +
+    '</span>';
+}
 function prettyGood(key){ return String(key).split('_').map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' '); }
 // How many of a planet's sites are worked right now (a count of engine facts).
 function workedCount(p){
@@ -2027,9 +2067,8 @@ function renderPlanetView(){
       const state = siteState(node.id);
       const badge = siteBadge(state, myGuildName());
       const row=document.createElement('div'); row.className='list-row tab tex-node';
-      row.innerHTML = '<span class="node-meta"><span class="node-name">'+RESOURCE_LABEL[node.resourceType]+'</span>' +
-        '<span class="node-type siteid">'+esc(siteDetail(state, node.id))+'</span></span>' +
-        '<span class="venture-btn '+badge.cls+'">'+esc(badge.text)+'</span>';
+      row.innerHTML = '<span class="node-meta"><span class="node-name">'+RESOURCE_LABEL[node.resourceType]+'</span></span>' +
+        siteBadgeHtml(badge);
       row.addEventListener('click', function(){
         if (state) { openNodeOverlay('Resource Node '+(i+1), node.id, RESOURCE_LABEL[node.resourceType]); return; }
         openEstablishFor({ kind:'node', siteId:node.id, nodeLabel:'Resource Node '+(i+1),
@@ -2043,9 +2082,8 @@ function renderPlanetView(){
       const state = siteState(slot.id);
       const badge = siteBadge(state, myGuildName());
       const row=document.createElement('div'); row.className='list-row tab tex-node';
-      row.innerHTML = '<span class="node-meta"><span class="node-name">Settlement</span>' +
-        '<span class="node-type siteid">'+esc(siteDetail(state, slot.id))+'</span></span>' +
-        '<span class="venture-btn '+badge.cls+'">'+esc(badge.text)+'</span>';
+      row.innerHTML = '<span class="node-meta"><span class="node-name">Settlement</span></span>' +
+        siteBadgeHtml(badge);
       row.addEventListener('click', function(){
         if (state) { openNodeOverlay('Settlement Slot '+(i+1), slot.id, 'Settlement slot'); return; }
         openEstablishFor({ kind:'slot', siteId:slot.id, nodeLabel:'Settlement Slot '+(i+1),

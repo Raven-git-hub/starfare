@@ -40,6 +40,9 @@ client**, on the real committed seed, against the live persistent engine:
 > occupancy-level identity (who holds the site, visible in-world, and already in the
 > snapshot's `occupancy` map), NOT an economic internal, so §7 still holds: no rival
 > rate, resource or recipe is read.
+> **The row FORMAT in this paragraph is superseded** — see *Revision — the planet-manifest
+> row: type left, activity + guild right* at the foot of this doc. The site id and the
+> venture id both left the row; the colour rule below survives unchanged.
 > **State-model note:** ownership is already in the snapshot (`ownerGuildId` per
 > venture), so the own/other split is fully derivable today — no new live-state field is
 > needed. What yellow currently means is simply "another guild's venture". The richer
@@ -333,3 +336,59 @@ decision, not an oversight, and the client computes no galaxy age. Only the FORM
 `DD:HH:MM:SS` let the day field grow without bound, so days now carry up into years —
 `1y 023d 04:17:09`, the year dropped when there is none (`023d 04:17:09`). `/inspect` got
 the identical formatter in the same commit so the two surfaces read the same.
+
+## Revision — the planet-manifest row: type left, activity + guild right (25-08-26, cosmetic)
+
+Client-only, no `sim/` change, server and snapshot untouched, schema still 7. Every word
+the row prints was already in `LIVE.siteInfo` — **no new live-state field**, and the
+client still computes no game number.
+
+**The row is re-cut.** The left is the site TYPE alone — the resource a node yields
+(`Titanium`) or `Settlement`. The **site id is gone from the row**: it is an operator
+detail and stays on `/inspect`, where you cross-check it. The right is now **two stacked
+lines, right-aligned**: what is happening on the site, over the guild that owns it.
+
+| site state | top line | bottom line | colour |
+|---|---|---|---|
+| vacant | `VACANT` | *(none)* | neutral |
+| own mine (`kind:'mine'`) | `MINING` | the player's guild name | green `#8DBB78` |
+| own settlement/refinery (`kind:'refinery'`) | the **real product** — `siteInfo.output`, uppercased (`TITANIUM ALLOY`) | the player's guild name | green |
+| own other venture (`kind:'venture'`) | `PRODUCTION` | the player's guild name | green |
+| a rival's (`kind:'other'`) | `IN USE` | `ownerName` | yellow/brass |
+
+The green/yellow/neutral rule is unchanged from the 25-08-26 polish note above: green =
+your own guild's venture, yellow = another guild's, vacant neutral.
+
+**State-model note — where each line comes from, and what §7 withholds.** An **own**
+site's activity is the venture's own `type`, and a refinery's product is the `output`
+already resolved into `siteInfo` from `GAME.recipeOut[recipeId]` (the static `/recipes`
+catalogue). Nothing is fabricated: a refinery whose recipe does not resolve to a good
+reads `REFINING` — what the venture *is* — rather than naming a good the client does not
+have, and Tier 3/4 ventures (`kind:'venture'`, not reachable in the engine today) read a
+generic `PRODUCTION` because **no output field exists for them yet**.
+
+A **rival's** top line is deliberately the neutral `IN USE`. §7 (the player projection)
+withholds another guild's recipe, rate, resource and product, so the row says only that
+the site is worked and by whom — never what it makes. This also **narrows** what the
+previous format showed: the rival's `ventureId` no longer appears anywhere on the row.
+It remains occupancy-level identity that §7 permits, but the row no longer has a place
+for it, so the client simply does not print it.
+
+**Deferred, not decided:** whether a **land owner** may see a **tenant's** output on a
+leased site. That belongs to the Leasing layer (`venture-establishment.md` §4/§5, still
+deferred). Until it rules, a non-own site's top line stays neutral for everyone.
+
+**Two judgement calls made in the build, worth a look:**
+1. *All three badges are right-aligned*, VACANT included, so the occupancy column reads
+   straight down the row's right edge. Right-aligning only the occupied ones left VACANT
+   hanging in the middle of the row.
+2. *The guild line is 9px*, not the 10.5px `node-type` scale. The badge's own line is
+   9.5px, so 10.5px would have made the guild name **larger** than the activity above it
+   and inverted the hierarchy. It is dimmed (`opacity:.72`) and ellipsed on overflow.
+
+**Size:** the tab did not grow — a node row goes **31px → 28px** (it loses a line on the
+left and gains one on the right, and lands on the existing `min-height:28px` floor).
+Base font sizes are unchanged: name 13.5px, badge 9.5px. One real bug surfaced and was
+fixed on the way: `.tex-node`'s two cells were `40% + 66.667%`, which overflowed the row
+— invisible while the badge text hugged the left, but it **clipped `VACANT` to `VACAN`**
+the moment the text moved right. The badge is now `flex:1 1 auto; min-width:0`.
