@@ -8,10 +8,15 @@
   client. Real per-viewer server-side filtering is deferred (client-wiring.md §7);
   for now the split is client discipline behind Cloudflare Access.
 
-  IT WATCHES AND NOTHING ELSE (client-wiring.md §2). There is no control on this
-  page that mutates the galaxy — no controls at all. It only re-reads GET /snapshot
-  on a ~1 s cadence and re-renders it, and it computes no game number: every figure
-  below is the engine's own resolved value.
+  IT IS THE ADMIN PANEL (galaxy-lifecycle.md, "the admin panel" — which revises
+  client-wiring.md §2's "the watcher only watches"). It watches AND holds the
+  operator's two GALAXY-LIFECYCLE controls: Create Galaxy and Delete Galaxy. It
+  holds no IN-GALAXY controls — it cannot advance, act in, or reset a galaxy — and
+  it computes no game number: every figure below is the engine's own resolved
+  value, re-read from GET /snapshot and GET /health on a ~1 s cadence.
+
+  The player client (GET /) holds NO admin or destructive control. That split is
+  the principle; this page is the only side of it that may destroy anything.
 -->
 <html lang="en">
 <head>
@@ -89,15 +94,70 @@
   .sysblock .syshead { color: var(--accent); font-size: 12px; letter-spacing: 1px; margin-bottom: 6px; }
   .review-issue { color: var(--warn); font-size: 11px; }
   .breach { color: var(--warn); }
+
+  /* the admin panel — the operator's galaxy-lifecycle controls */
+  .admin { margin-top: 12px; border: 1px solid var(--line-bright); border-radius: 3px; background: var(--panel); padding: 10px 14px 12px; }
+  .adminhead { font-size: 11px; letter-spacing: 2px; color: var(--accent); border-bottom: 1px solid var(--line); padding-bottom: 7px; margin-bottom: 9px; }
+  .adminhead .note { color: var(--text-dim); letter-spacing: 1px; margin-left: 8px; }
+  .adminrow { display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-end; }
+  .adminrow + .adminrow { margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--line); }
+  .acell .k { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim); }
+  .acell .v { font-size: 14px; color: var(--text); font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .acell .v.live { color: var(--accent); }
+  .acell .v.none { color: var(--warn); }
+  .afield {
+    background: #05070c; border: 1px solid var(--line-bright); border-radius: 2px; color: var(--text);
+    font-family: inherit; font-size: 13px; padding: 5px 8px; width: 190px;
+  }
+  .afield:focus { outline: none; border-color: var(--accent); }
+  .abtn {
+    background: rgba(67,217,200,0.08); border: 1px solid var(--accent); border-radius: 2px; color: var(--accent);
+    font-family: inherit; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+    padding: 6px 14px; cursor: pointer;
+  }
+  .abtn:hover:not(:disabled) { background: rgba(67,217,200,0.18); }
+  .abtn.danger { background: rgba(224,82,90,0.08); border-color: var(--warn); color: var(--warn); }
+  .abtn.danger:hover:not(:disabled) { background: rgba(224,82,90,0.18); }
+  .abtn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .adminmsg { font-size: 11px; letter-spacing: 1px; color: var(--text-dim); flex: 1 1 220px; }
+  .adminmsg.ok { color: var(--accent); }
+  .adminmsg.error { color: var(--warn); }
 </style>
 </head>
 <body>
   <h1>SYNDICATE // OPERATOR WATCH</h1>
   <div class="warnbar">
-    GOD'S-EYE, WATCH-ONLY — the operator read plane. Shows figures players never see
-    (every guild's real stockpiles, the true galactic supply, the Syndicate ledger).
-    It has no controls: it cannot change the galaxy. NOT player UI.
+    GOD'S-EYE ADMIN PANEL — the operator plane. Shows figures players never see
+    (every guild's real stockpiles, the true galactic supply, the Syndicate ledger)
+    and holds the galaxy-lifecycle controls: CREATE and DELETE destroy or replace
+    the whole galaxy. It cannot advance or act inside one. NOT player UI.
   </div>
+
+  <!-- The admin panel (galaxy-lifecycle.md). Which of the two lifecycle states the
+       server is in, read from GET /health, and the two acts that move between them.
+       Both acts are destructive — Create REPLACES an active galaxy — so both are
+       behind an explicit confirm, and both re-read the server afterwards rather
+       than trusting their own optimism about what happened. -->
+  <div class="admin">
+    <div class="adminhead">ADMIN · GALAXY LIFECYCLE<span class="note">operator-only · create / delete the galaxy</span></div>
+    <div class="adminrow">
+      <div class="acell"><div class="k">Galaxy</div><div class="v" id="adm-state">reading…</div></div>
+      <div class="acell"><div class="k">Tick</div><div class="v" id="adm-tick">—</div></div>
+      <div class="acell"><div class="k">Guilds</div><div class="v" id="adm-guilds">—</div></div>
+      <div class="acell"><div class="k">Server time</div><div class="v" id="adm-time">—</div></div>
+      <div class="acell"><div class="k">Server uptime</div><div class="v" id="adm-uptime">—</div></div>
+    </div>
+    <div class="adminrow">
+      <div class="acell">
+        <label class="k" for="adm-seed">Seed — blank randomises one</label>
+        <input class="afield" id="adm-seed" placeholder="e.g. 4242" spellcheck="false" inputmode="numeric" autocomplete="off">
+      </div>
+      <button class="abtn" id="adm-create" disabled>Create Galaxy</button>
+      <button class="abtn danger" id="adm-delete" disabled>Delete Galaxy</button>
+      <div class="adminmsg" id="adm-msg"></div>
+    </div>
+  </div>
+
   <div class="status" id="status">reading live state…</div>
 
   <div id="content" style="display:none">
@@ -411,6 +471,120 @@ function renderClaims(claims) {
       : '<div class="site">no claims</div>');
 }
 
+// ---- the admin panel: the galaxy lifecycle ---------------------------------
+// Everything here is READ from GET /health — the lifecycle state, the seed number,
+// the wall clock and the uptime. This page invents none of them.
+
+var admState  = document.getElementById('adm-state');
+var admMsg    = document.getElementById('adm-msg');
+var btnCreate = document.getElementById('adm-create');
+var btnDelete = document.getElementById('adm-delete');
+
+function setAdminMsg(text, kind) {
+  admMsg.textContent = text || '';
+  admMsg.className = 'adminmsg ' + (kind || '');
+}
+function setCell(id, text, cls) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'v ' + (cls || '');
+}
+// Formatting only, on the server's OWN uptimeSeconds: DD:HH:MM:SS elapsed.
+function fmtUptime(seconds) {
+  var n = Math.max(0, Math.floor(Number(seconds) || 0));
+  var d = Math.floor(n / 86400), h = Math.floor((n % 86400) / 3600);
+  var m = Math.floor((n % 3600) / 60), sec = n % 60;
+  function p2(x) { return (x < 10 ? '0' : '') + x; }
+  return p2(d) + ':' + p2(h) + ':' + p2(m) + ':' + p2(sec);
+}
+// The server's own wall clock, rendered in the VIEWER's locale — the instant is
+// the server's, the formatting is local (they are usually both UTC here anyway).
+function fmtClock(iso) {
+  var t = new Date(iso);
+  return isNaN(t.getTime()) ? '—' : t.toLocaleTimeString();
+}
+
+// One read of the lifecycle. Returns 'active' | 'no-galaxy' | null (unreachable).
+async function readHealth() {
+  var health;
+  try {
+    var res = await fetch('/health');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    health = await res.json();
+  } catch (err) {
+    setCell('adm-state', 'UNREACHABLE', 'none');
+    setCell('adm-tick', '—'); setCell('adm-guilds', '—');
+    setCell('adm-time', '—'); setCell('adm-uptime', '—');
+    btnCreate.disabled = true; btnDelete.disabled = true;
+    return null;
+  }
+  var active = health.galaxy === 'active';
+  setCell('adm-state', active ? ('ACTIVE — SEED ' + health.seed) : 'NO GALAXY', active ? 'live' : 'none');
+  setCell('adm-tick', health.tick == null ? '—' : String(health.tick));
+  setCell('adm-guilds', String(health.guilds));
+  setCell('adm-time', fmtClock(health.serverTime));
+  setCell('adm-uptime', fmtUptime(health.uptimeSeconds));
+  // Create is offered in BOTH states — over an active galaxy it replaces it, which
+  // is exactly what the confirm below says. Delete is offered only when there is
+  // something to delete.
+  btnCreate.disabled = false;
+  btnDelete.disabled = !active;
+  return active ? 'active' : 'no-galaxy';
+}
+
+// Post one admin act, then re-read the server rather than assume it worked.
+async function adminPost(path, body) {
+  btnCreate.disabled = true; btnDelete.disabled = true;
+  var data;
+  try {
+    var res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+    data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  } catch (err) {
+    setAdminMsg('✕ ' + err.message, 'error');
+    await readHealth();
+    return null;
+  }
+  await readHealth();
+  await readOnce();
+  return data;
+}
+
+btnCreate.addEventListener('click', async function () {
+  var raw = (document.getElementById('adm-seed').value || '').trim();
+  var body = {};
+  if (raw !== '') {
+    if (!/^-?[0-9]+$/.test(raw)) { setAdminMsg('✕ seed must be a whole number (or blank to randomise)', 'error'); return; }
+    body.seed = parseInt(raw, 10);
+  }
+  var what = raw === '' ? 'a randomised seed' : ('seed ' + raw);
+  if (!window.confirm(
+    'CREATE A GALAXY on ' + what + '?\n\n' +
+    'This DESTROYS whatever galaxy is on this server — every guild, venture, claim ' +
+    'and stockpile in it — and builds a new one at tick 0. It cannot be undone.'
+  )) return;
+  setAdminMsg('◦ creating…');
+  var out = await adminPost('/admin/galaxy/new', body);
+  if (out) setAdminMsg('● created — SEED ' + out.seed + ' at tick ' + out.tick, 'ok');
+});
+
+btnDelete.addEventListener('click', async function () {
+  if (!window.confirm(
+    'DELETE THIS GALAXY?\n\n' +
+    'The seed, the live state and the journal are removed from the volume. Every ' +
+    'guild, venture, claim and stockpile goes with them, and players see the ' +
+    'waiting screen until an operator creates a new galaxy. It cannot be undone.'
+  )) return;
+  setAdminMsg('◦ deleting…');
+  var out = await adminPost('/admin/galaxy/delete', {});
+  if (out) setAdminMsg('● deleted — this server now has NO GALAXY', 'ok');
+});
+
 // ---- the watch loop --------------------------------------------------------
 // Re-read and re-render, forever. A failure — network, non-JSON, wrong schema —
 // leaves the last good render on screen and says so LOUDLY in the status line,
@@ -430,17 +604,32 @@ async function readOnce() {
   var snap;
   try {
     snap = await res.json();
+  } catch (err) {
+    setStatus('BAD SNAPSHOT — ' + err.message + ' (showing the last good read)', 'error');
+    return;
+  }
+  // NO GALAXY is a normal answer at HTTP 200, not a failure — and it arrives
+  // BEFORE validate(), which would otherwise reject it as a bad snapshot. The
+  // god's-eye panels are HIDDEN rather than left up: figures from a galaxy that
+  // no longer exists must never sit on screen looking current.
+  if (snap && snap.state === 'no-galaxy') {
+    document.getElementById('content').style.display = 'none';
+    setStatus('NO GALAXY — ' + (snap.reason || 'this server has no galaxy'), 'error');
+    return;
+  }
+  try {
     validate(snap);
   } catch (err) {
     setStatus('BAD SNAPSHOT — ' + err.message + ' (showing the last good read)', 'error');
     return;
   }
   render(snap);
-  setStatus('WATCHING — tick ' + snap.tick + ', re-read every ' + POLL_MS + ' ms · read-only: this page changes nothing', 'ok');
+  setStatus('WATCHING — tick ' + snap.tick + ', re-read every ' + POLL_MS + ' ms · this page never changes a galaxy from the inside', 'ok');
 }
 
+readHealth();
 readOnce();
-setInterval(readOnce, POLL_MS);
+setInterval(function () { readHealth(); readOnce(); }, POLL_MS);
 </script>
 </body>
 </html>

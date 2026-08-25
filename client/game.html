@@ -552,7 +552,7 @@
 .galaxy-row:hover,.galaxy-row.sel{background:rgba(67,217,200,.08);}
 .galaxy-row .gname{font-family:'Rajdhani',sans-serif; font-weight:600; font-size:15px; letter-spacing:1px; color:var(--system);}
 .galaxy-row .gmeta{font-size:10.5px; letter-spacing:1px; color:var(--text-dim); margin-top:2px;}
-.galaxy-row .gstat{font-size:10px; letter-spacing:1px; color:var(--accent);}
+.galaxy-row .gstat{font-size:10px; letter-spacing:1px; color:var(--accent); white-space:nowrap; padding-left:12px;}
 .connect-btn{width:100%; font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; background:rgba(67,217,200,.12); border:1px solid var(--accent); color:var(--accent); padding:13px; border-radius:3px; text-transform:uppercase; cursor:pointer;}
 .connect-btn:hover{background:rgba(67,217,200,.24);}
 .connect-btn:disabled{opacity:.45; cursor:default;}
@@ -578,6 +578,10 @@ select.field{appearance:none; cursor:pointer;}
 /* Shown only when a /snapshot read fails — a stale HUD must SAY it is stale. */
 .linkstate{font-size:9px; letter-spacing:1.5px; color:#e0525a; min-width:0;}
 .clockbox{display:flex; flex-direction:column; align-items:center; gap:3px;}
+.clockval{font-family:'Rajdhani',sans-serif; font-weight:700; font-size:14px; letter-spacing:1.5px; color:var(--text); font-variant-numeric:tabular-nums;}
+.seedtag{font-size:10px; letter-spacing:2px; color:var(--text-dim); border:1px solid var(--line-bright); border-radius:2px; padding:2px 7px;}
+.hud-found{background:rgba(67,217,200,.10); border:1px solid var(--accent); border-radius:2px; color:var(--accent); font-family:inherit; font-size:11px; letter-spacing:1.5px; text-transform:uppercase; padding:3px 9px; cursor:pointer;}
+.hud-found:hover{background:rgba(67,217,200,.20);}
 .tickclock{width:30px; height:30px; border-radius:50%; border:1px solid var(--line-bright); position:relative; background:conic-gradient(var(--accent) 0deg, rgba(67,217,200,.10) 0deg);}
 .tickclock::after{content:''; position:absolute; inset:5px; border-radius:50%; background:#05070c;}
 .clocklabel{font-size:8px; letter-spacing:1.2px; text-transform:uppercase; color:var(--text-dim);}
@@ -848,7 +852,7 @@ select.field{appearance:none; cursor:pointer;}
     <div id="foundForm" style="display:none">
       <div class="field-label">Guild name</div>
       <input class="field" id="guildName" placeholder="Name your guild" spellcheck="false" maxlength="40">
-      <div class="field-label">Home system &mdash; starter-eligible, unclaimed</div>
+      <div class="field-label">Home system &mdash; starter-eligible, unsettled</div>
       <select class="field" id="starterSel"></select>
     </div>
     <button class="connect-btn" id="connectBtn" onclick="shellConnect()">Establish Uplink</button>
@@ -859,7 +863,12 @@ select.field{appearance:none; cursor:pointer;}
 <div id="gameTop">
   <div class="tb-row">
     <div class="brand">STARFARE</div>
-    <div class="hud-stat"><span class="k">Guild</span><span class="v" id="hud-guild">&mdash;</span></div>
+    <!-- Which galaxy this is. The number NAMES the galaxy (same number -> same
+         geometry), and it is read from GET /health, never chosen here. -->
+    <div class="seedtag" id="hud-seed">SEED &mdash;</div>
+    <!-- Identity, with no app login yet (galaxy-lifecycle.md): the player IS their
+         guild, or they have not established one. -->
+    <div class="hud-stat"><span class="k">Player Guild</span><span class="v" id="hud-guild">&mdash;</span></div>
     <div class="hud-stat"><span class="k">Credits</span><span class="v gold" id="hud-cr">&mdash;</span></div>
     <button class="hud-btn" onclick="window.__flyToHome && window.__flyToHome()">&#9678; My System</button>
     <button class="hud-btn" id="musicBtn" onclick="toggleMusic()">&#9834; Music</button>
@@ -868,7 +877,10 @@ select.field{appearance:none; cursor:pointer;}
     <div class="sector" id="hud-sector">&mdash;</div>
     <div class="tickno" id="hud-tick">TICK &mdash;</div>
     <div class="linkstate" id="hud-link"></div>
-    <div class="clockbox"><div class="tickclock" id="tickclock"></div><div class="clocklabel">Server Time</div></div>
+    <!-- The server's own wall clock and how long it has been up. Both are read
+         from GET /health — SERVER state, deliberately not game state. -->
+    <div class="clockbox"><div class="tickclock" id="tickclock"></div><div class="clockval" id="hud-servertime">&mdash;</div><div class="clocklabel">Server Time</div></div>
+    <div class="clockbox"><div class="clockval" id="hud-uptime">&mdash;</div><div class="clocklabel">Server Uptime</div></div>
   </div>
   <div class="tb-tabs">
     <button class="rtab active" onclick="openTab('system', this)">System Manifest</button>
@@ -2617,25 +2629,85 @@ async function apiAction(action){
 }
 function setText(id, text){ var el=document.getElementById(id); if(el) el.textContent = text; }
 
+// GET /health is SERVER state, not game state: which galaxy this server is running
+// (or that it is running none), its wall clock and its uptime. A failed read is a
+// null, not a throw — the server clock going quiet must never take the galaxy read
+// down with it.
+async function readHealth(){
+  try { return await apiGet('/health'); } catch (err) { return null; }
+}
+
+// Formatting only. Every figure below is the server's own — the client computes no
+// number here any more than it does a game one (design.md §5).
+function p2(n){ return (n < 10 ? '0' : '') + n; }
+function fmtServerTime(iso){
+  var t = new Date(iso);
+  if (isNaN(t.getTime())) return '—';
+  return p2(t.getHours()) + ':' + p2(t.getMinutes());
+}
+function fmtUptime(seconds){
+  var n = Math.max(0, Math.floor(Number(seconds) || 0));
+  return p2(Math.floor(n / 86400)) + ':' + p2(Math.floor((n % 86400) / 3600))
+       + ':' + p2(Math.floor((n % 3600) / 60)) + ':' + p2(n % 60);
+}
+function applyServerClock(health){
+  if (!health) return;
+  setText('hud-seed', health.seed == null ? 'NO GALAXY' : ('SEED ' + health.seed));
+  setText('hud-servertime', fmtServerTime(health.serverTime));
+  setText('hud-uptime', fmtUptime(health.uptimeSeconds));
+}
+
+// Identity with no app login (galaxy-lifecycle.md): the player IS their guild, or
+// the slot where the name would sit becomes the way to establish one.
+function setGuildLabel(name){
+  var el = document.getElementById('hud-guild');
+  if (!el) return;
+  if (name){ el.textContent = name; return; }
+  el.textContent = '';
+  var b = document.createElement('button');
+  b.className = 'hud-found';
+  b.textContent = 'Establish Guild';
+  b.onclick = function(){ backToConnect(); };
+  el.appendChild(b);
+}
+
 function shellGo(id){ document.querySelectorAll('.shell-screen').forEach(function(s){s.classList.remove('active');}); var el=document.getElementById(id); if(el) el.classList.add('active'); }
 
 /* ---- the connect screen: a real first-run flow ----------------------------
    Entering it reads the live galaxy. If a guild already exists we ADOPT it (this
    is a single-guild dev rig — real per-player identity is Phase 3, client-wiring.md
    §7); if none does, the found-your-guild form appears. */
+var waitTimer = null;   // the NO-GALAXY re-ask, running only while we are waiting
+
 async function shellConnectInit(){
   var srv = document.getElementById('srv'); if (srv) srv.value = location.host;   // the origin we actually talk to
   var u = document.getElementById('uplink'); u.textContent = '';
   var btn = document.getElementById('connectBtn'); btn.disabled = true;
+  if (waitTimer !== null){ clearInterval(waitTimer); waitTimer = null; }
+
+  // THE LIFECYCLE COMES FIRST (galaxy-lifecycle.md, "the three lifecycle states").
+  // A server with no galaxy is up and healthy — /galaxy and /starters answer 404
+  // by design — so asking /health before anything else is what keeps a normal
+  // state from being reported to the player as a broken uplink.
+  var health = await readHealth();
+  if (!health){
+    u.textContent = '✕ no uplink: the server did not answer';
+    btn.disabled = false;
+    return;
+  }
+  applyServerClock(health);
+  if (health.galaxy !== 'active'){ showWaitingForGalaxy(); return; }
+
+  var snap;
   try {
-    var snap = await apiGet('/snapshot');
+    snap = await apiGet('/snapshot');
     GAME.galaxy = GAME.galaxy || await apiGet('/galaxy');
   } catch (err) {
     u.textContent = '✕ no uplink: ' + err.message;
     btn.disabled = false;
     return;
   }
-  setText('gx-name', 'SEED ' + GAME.galaxy.seed);
+  setText('gx-name', 'SEED ' + health.seed);
   setText('gx-stat', '● LIVE · tick ' + Number(snap.tick).toLocaleString());
   var mine = (snap.guilds || [])[0] || null;      // single-guild dev rig
   if (mine) {
@@ -2646,19 +2718,69 @@ async function shellConnectInit(){
   } else {
     GAME.needFound = true;
     setText('gx-meta', GAME.galaxy.systems.length + ' systems · no guild founded yet');
-    btn.textContent = 'Found your guild';
+    btn.textContent = 'Establish Guild';
     document.getElementById('foundForm').style.display = '';
     try {
-      var starters = (await apiGet('/starters')).starters || [];
-      document.getElementById('starterSel').innerHTML = starters.map(function(s){
-        return '<option value="' + s.id + '">' + s.name + ' · ' + s.ring + ' ring</option>';
-      }).join('');
+      // The menu of homes is the SEED's starter list minus the systems a guild has
+      // already settled — claims[] is the shared, in-world layer, so an already-taken
+      // home is a fact the player may see, and offering one would only earn a refusal
+      // from the engine. Each is labelled by its ring (galaxy-lifecycle.md, onboarding).
+      var claimed = {};
+      (snap.claims || []).forEach(function(c){
+        if (c.landmarkKind === 'system') claimed[c.landmarkId] = 1;
+      });
+      var starters = ((await apiGet('/starters')).starters || []).filter(function(st){
+        return !claimed[st.id];
+      });
+      document.getElementById('starterSel').innerHTML = starters.length
+        ? starters.map(function(st){
+            return '<option value="' + st.id + '">' + st.name + ' · ' + st.ring + ' ring</option>';
+          }).join('')
+        : '<option value="">— every starter system is settled —</option>';
+      if (!starters.length) u.textContent = '✕ no unsettled starter system is left in this galaxy';
     } catch (err) {
       u.textContent = '✕ could not read the starter systems: ' + err.message;
       return;
     }
   }
   btn.disabled = false;
+}
+
+// NO GALAXY, from the player's side: a calm wait, not an error. There is nothing a
+// player can do about it — only an operator creates a galaxy — so the page simply
+// keeps asking, and connects by itself the moment one exists. It deliberately does
+// NOT read /galaxy or /starters while waiting: both are 404 by design here.
+function showWaitingForGalaxy(){
+  var btn = document.getElementById('connectBtn');
+  setText('gx-name', 'NO GALAXY');
+  setText('gx-stat', '○ waiting');
+  setText('gx-meta', 'the operator hasn\u2019t opened a galaxy yet \u2014 this page will connect on its own the moment one exists');
+  document.getElementById('foundForm').style.display = 'none';
+  document.getElementById('uplink').textContent = '';
+  btn.textContent = 'Waiting for a galaxy\u2026';
+  btn.disabled = true;
+  if (waitTimer !== null) return;
+  waitTimer = setInterval(async function(){
+    var h = await readHealth();
+    if (!h){ setText('gx-stat', '○ server unreachable'); return; }
+    applyServerClock(h);
+    setText('gx-stat', '○ waiting');
+    if (h.galaxy === 'active'){
+      clearInterval(waitTimer); waitTimer = null;
+      GAME.galaxy = null;                 // a NEW galaxy: never reuse the old geometry
+      shellConnectInit();
+    }
+  }, POLL_MS);
+}
+
+// Back out of the map to the connect screen, keeping the galaxy but dropping the
+// identity — the path the HUD's Establish Guild affordance takes.
+function backToConnect(){
+  stopLivePoll();
+  GAME.guildId = null; GAME.guildName = null; GAME.homeSystemId = null; GAME.needFound = true;
+  document.getElementById('gameTop').classList.remove('show');
+  shellGo('connect');
+  shellConnectInit();
 }
 
 // A stable guild id from the name: a slug, suffixed if the galaxy already holds it.
@@ -2725,7 +2847,7 @@ function applySnapshot(snap){
     if (me.homeSystemId) GAME.homeSystemId = me.homeSystemId;
   }
   // Identity and credits: the ENGINE's values for the player's own guild.
-  setText('hud-guild', me ? GAME.guildName : '—');
+  setGuildLabel(me ? GAME.guildName : null);
   setText('hud-cr', me ? Number(me.credits).toLocaleString() : '—');
   setText('hud-tick', 'TICK ' + Number(snap.tick).toLocaleString());
   setText('legend-me', me ? GAME.guildName : 'Your Guild');
@@ -2822,13 +2944,35 @@ window.__flyToHome = function(){
 function startLivePoll(){
   if (GAME.pollTimer !== null) return;
   GAME.pollTimer = setInterval(function(){
+    // The server's own clock, seed and uptime. Best effort and separate: SERVER
+    // state going quiet must not look like the galaxy going quiet.
+    readHealth().then(applyServerClock);
     apiGet('/snapshot').then(function(snap){
+      // NO GALAXY arrives here at HTTP 200 as a marker, not an error — the operator
+      // deleted the galaxy out from under us. It is not a snapshot either: applying
+      // it would throw, and leaving the last one on screen would show a galaxy that
+      // no longer exists as though it were live.
+      if (snap && snap.state === 'no-galaxy'){ galaxyClosed(); return; }
       setText('hud-link', '');
       applySnapshot(snap);
     }).catch(function(err){
       setText('hud-link', 'LINK LOST');
     });
   }, POLL_MS);
+}
+function stopLivePoll(){
+  if (GAME.pollTimer !== null){ clearInterval(GAME.pollTimer); GAME.pollTimer = null; }
+}
+
+// The galaxy we were playing is gone. Stop reading it, drop the identity and the
+// geometry that belonged to it, and go back to the calm waiting screen.
+function galaxyClosed(){
+  stopLivePoll();
+  setText('hud-link', 'GALAXY CLOSED');
+  GAME.guildId = null; GAME.guildName = null; GAME.homeSystemId = null; GAME.galaxy = null;
+  document.getElementById('gameTop').classList.remove('show');
+  shellGo('connect');
+  shellConnectInit();
 }
 
 /* ---- tabs ---- */

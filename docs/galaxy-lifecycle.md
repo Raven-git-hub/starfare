@@ -126,6 +126,37 @@ The engine/server half is landed; the admin-panel UI is Slice B. What exists now
 The pure engine is untouched and the snapshot schema stays 7: this slice is seed-source and server
 lifecycle wiring only.
 
+## As built — Slice B (25-08-26)
+
+The client half is landed; the whole lifecycle is now playable through the browser. No `sim/` change.
+
+- **`/inspect` is the admin panel.** Above the god's-eye panels it reads `GET /health` on the same ~1 s
+  cadence as `/snapshot` and shows `ACTIVE — SEED ####` / `NO GALAXY`, tick, guilds, the server's wall
+  clock and `uptimeSeconds` as `DD:HH:MM:SS`. Below that: a seed field (blank randomises) with **Create
+  Galaxy**, and **Delete Galaxy**. Both are behind an explicit confirm naming what is destroyed —
+  **Create is offered in both states**, because creating over an active galaxy replaces it — and both
+  re-read `/health` and `/snapshot` afterwards instead of assuming they worked. A non-integer seed is
+  refused client-side before a request goes out. The watch loop detects the `{state:'no-galaxy'}` body
+  (HTTP 200, a normal answer) *before* `validate()`, and **hides** the god's-eye panels: a deleted
+  galaxy's figures must never sit on screen looking current. The page still names no `/action`,
+  `/tick`, `/reset` or `/autotick` — it may create and delete a galaxy, and still cannot advance one,
+  act inside one, or reset one. Its `<h1>` and the Slice-0 test that pins it still read OPERATOR WATCH;
+  renaming both is a one-line change deliberately left out of a client-only slice.
+- **The player portal holds no admin control** — `/admin/galaxy` appears nowhere in its bytes.
+- **NO GALAXY, from the player's side** is a calm wait, not an error: the connect card reads NO GALAXY /
+  "the operator hasn't opened a galaxy yet — this page will connect on its own the moment one exists",
+  the button is disabled, and `/health` is re-asked until it flips. It fetches **neither `/galaxy` nor
+  `/starters`** while waiting (both are 404 by design there). The live poll treats the same body the
+  same way: if a galaxy is deleted under a player, the map is dropped and they return to the wait.
+- **Onboarding** offers the seed's starter list **minus every system id in the snapshot's `claims[]`**,
+  each labelled by its ring, and says so if none is left. Note that in today's single-guild dev rig the
+  client adopts `guilds[0]`, so the form is only reached when the galaxy has no guild at all — the
+  filter is therefore correct but rarely subtractive until per-player identity lands (Phase 3).
+- **HUD:** `SEED ####`, `Player Guild: <name>` — or an **Establish Guild** button where the name would
+  sit, which returns to the connect screen — `Server Time HH:MM`, and `Server Uptime DD:HH:MM:SS`. All
+  four are read from `/health`; the tick counter still comes from the snapshot. The radial sweep beside
+  the clock stays what it always was: decoration that counts nothing.
+
 ## Runtime read sites to make reloadable (for the build)
 
 Two runtime reads of the seed must serve the ACTIVE (volume) seed and reload on create:
@@ -139,5 +170,4 @@ mention `data/seed.json` are not runtime reads.
 - **Multiple named save slots** — one active galaxy per server for now (Decision 3).
 - **Real admin/role auth** — Phase 3; Cloudflare Access is the interim gate.
 - **Seed-share-by-number UX** beyond displaying the number (the reproducibility is already there).
-- The **HUD server-time / uptime** readout is presentation + a `/health` uptime field; harmless detail,
-  built with the client slice.
+- ~~The **HUD server-time / uptime** readout~~ — built in Slice B, read from `/health`.
