@@ -31,9 +31,29 @@ const path = require('node:path');
 //               terranHomeworldId }   // homeworld = its lowest-id Terran planet
 let _index = null;
 
+// The ACTIVE seed object this module indexes. Null means "nobody has set one",
+// in which case we fall back to the committed data/seed.json — the generator's
+// reference fixture and the default for every non-persistent run, so the tests
+// and the plain `node sim/server.js` path are unchanged by the galaxy lifecycle.
+//
+// A server WITH a persist volume owns the real choice (galaxy-lifecycle.md): it
+// loads the volume's seed and calls setSeed() before anything reads the index.
+// This file does no file IO of its own beyond that default require — it is a pure
+// index over whatever seed it is handed.
+let _seed = null;
+
+// setSeed(seedObject) — make this the active galaxy and drop the cached index, so
+// the next read rebuilds over it. Called by the server on boot (volume seed) and
+// on Create Galaxy, BEFORE the new zero-state is built (the ordering the atomic
+// create depends on: the zero-state plants the Syndicate on THIS seed's landmarks).
+function setSeed(seedObject) {
+  _seed = seedObject || null;
+  _index = null;
+}
+
 function buildIndex() {
   // Resolve relative to this file so it works regardless of cwd.
-  const seed = require(path.join(__dirname, '..', 'data', 'seed.json'));
+  const seed = _seed || require(path.join(__dirname, '..', 'data', 'seed.json'));
 
   const bySite = new Map();
   const bySystem = new Map();
@@ -220,6 +240,7 @@ function getSeedNumber() {
 }
 
 module.exports = {
+  setSeed,
   getSite, isResourceNode, isSettlementSlot, findNodesByResource,
   getCitadel, getSystem, getOutpost, getOutposts, getLandmark,
   isStarterSystem, getTerranHomeworld, getStarterSystems, getSystemLayout, getSeedNumber,

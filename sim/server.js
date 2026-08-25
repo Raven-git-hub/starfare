@@ -81,11 +81,12 @@ const { createZeroState } = require('./scenarios/zero-state.js');
 const { advance } = require('./run.js');
 const { validateAction, applyAction } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
-const { saveState, appendJournal, clearJournal, loadOrInit } = require('./persist.js');
+const { saveState, appendJournal, clearJournal, loadOrInit, saveSeed, loadSeed, deleteGalaxy } = require('./persist.js');
 const { buildSnapshot } = require('./snapshot.js');
-const { getStarterSystems, getSystemLayout } = require('./seed.js');
+const { getStarterSystems, getSystemLayout, setSeed, getSeedNumber } = require('./seed.js');
 const { listRecipes } = require('./recipes.js');
 const { RAW_RESOURCES, PROCESSED_GOODS } = require('./resources.js');
+const { generateGalaxySeed } = require('../tools/generate_seed.js');
 
 const DEFAULT_PORT = 7331; // the galaxy seed number, and clear of the host's other services
 
@@ -125,13 +126,21 @@ const CONSOLE_HTML = join(__dirname, '..', 'client', 'console.html');
 // Access and real per-viewer filtering is deferred (client-wiring.md §7).
 const INSPECT_HTML = join(__dirname, '..', 'client', 'inspect.html');
 
-// The committed seed, served verbatim at GET /galaxy. Read ONCE at module load
-// into a buffer and handed out per request: it is ~5.8 MB, completely static, and
-// re-reading it per hit would be pure waste. These are the SAME bytes sim/seed.js
-// parses, so the map and the per-system detail screens can never disagree on
-// geometry (client-wiring.md §6). This is public identity data — the galaxy every
-// player sees — NOT god's-eye, so serving it openly is fine.
-const SEED_JSON = fs.readFileSync(join(__dirname, '..', 'data', 'seed.json'));
+// The ACTIVE galaxy's geometry, served verbatim at GET /galaxy. Held as one
+// pre-serialised buffer because it is ~5.8 MB, static for the galaxy's whole life,
+// and re-encoding it per hit would be pure waste. These are the SAME bytes
+// sim/seed.js indexes, so the map and the per-system detail screens can never
+// disagree on geometry (client-wiring.md §6). Public identity data — the galaxy
+// every player sees — NOT god's-eye, so serving it openly is fine.
+//
+// It is rebuilt whenever the active seed changes (boot restore, Create Galaxy) and
+// set to null on Delete: null IS the NO-GALAXY answer for this route.
+let seedJsonBuffer = null;
+const BAKED_SEED_PATH = join(__dirname, '..', 'data', 'seed.json');
+function setActiveSeed(seedObj) {
+  setSeed(seedObj);                                   // swap the engine's index
+  seedJsonBuffer = seedObj ? Buffer.from(JSON.stringify(seedObj)) : null;
+}
 
 // --- opt-in file-backed durability (dev-rig prototype) ----------------------
 // STARFARE_PERSIST_DIR set  → durability ON: boot restores from disk, ticks
@@ -154,9 +163,61 @@ const persistDir = process.env.STARFARE_PERSIST_DIR || null;
 // When persisting, boot RESTORES from disk (loadOrInit = last snapshot + replay
 // the journalled actions since it) instead of starting at the zero-state; with
 // the flag unset it is exactly the old `createZeroState()` boot.
-let liveState = persistDir ? loadOrInit(persistDir, createZeroState) : createZeroState();
+//
+// THE GALAXY LIFECYCLE (galaxy-lifecycle.md). With a volume, `liveState` is null
+// when there is NO GALAXY — an empty volume means no galaxy, not the baked default
+// — and the server stays up and answers every route with that state. Without a
+// volume there is no lifecycle at all: the baked seed, a zero-state, exactly as
+// before, so the dev run and every existing test are byte-for-byte unchanged.
+let liveState = null;
+
+function bootLiveState() {
+  if (!persistDir) {
+    // No volume ⇒ no lifecycle: the committed data/seed.json IS the galaxy, exactly
+    // as before. sim/seed.js falls back to it for the index; the buffer is the file's
+    // own bytes, so /galaxy still serves the committed seed verbatim.
+    setSeed(null);
+    seedJsonBuffer = fs.readFileSync(BAKED_SEED_PATH);
+    return createZeroState();
+  }
+  const volumeSeed = loadSeed(persistDir);
+  if (!volumeSeed) {
+    console.log('[galaxy] NO GALAXY — the volume holds no seed; create one at POST /admin/galaxy/new');
+    setActiveSeed(null);                              // /galaxy answers no-galaxy either way
+    return null;
+  }
+  // ACTIVE: index this galaxy BEFORE restoring, so the restore (and every seed
+  // lookup a replayed action makes) resolves against the right geometry.
+  setActiveSeed(volumeSeed);
+  const restored = loadOrInit(persistDir, createZeroState);
+  // Consistency guard (the atomicity this lifecycle turns on): a state whose
+  // world.seed is not this seed's number means a Create was interrupted between
+  // writing the seed and writing the state, so the state on disk still describes
+  // the PREVIOUS galaxy — its ventures point at site ids this geometry does not
+  // have. Never load that pairing: finish the interrupted create instead, with a
+  // fresh zero-state on the active seed, and say so loudly.
+  const activeNumber = getSeedNumber();
+  if (restored.world && restored.world.seed !== activeNumber) {
+    console.error(`[galaxy] INCONSISTENT SAVE: state is for seed ${restored.world.seed} but the active seed is `
+      + `${activeNumber} — a Create was interrupted. Discarding that state and rebuilding a fresh galaxy on `
+      + `seed ${activeNumber}.`);
+    const fresh = createZeroState();
+    saveState(fresh, persistDir);
+    clearJournal(persistDir);
+    return fresh;
+  }
+  console.log(`[galaxy] ACTIVE — seed ${activeNumber} @tick ${restored.tick}`);
+  return restored;
+}
+liveState = bootLiveState();
+
 function getState() { return liveState; }
 function setState(s) { liveState = s; }
+// Is there a galaxy to play at all? Everything that reads or moves the world
+// checks this first, so NO-GALAXY answers cleanly instead of throwing on null.
+function hasGalaxy() { return liveState !== null; }
+// The one no-galaxy body, so every route says the same thing to the client.
+const NO_GALAXY = { state: 'no-galaxy', reason: 'no galaxy on this server — an operator must create one' };
 
 // tickOnce() — THE one tick path. Both POST /tick and the heartbeat call this,
 // so the server has structurally a single "advance the galaxy one turn" step and
@@ -252,6 +313,12 @@ function startAutotick(intervalMs) {
 // Test-only introspection: the raw timer handle (or null), so a test can assert
 // the timer ends stopped and is unref'd (Timeout#hasRef()). Not used at runtime.
 function _getAutotickTimer() { return autotickTimer; }
+
+// A galaxy's NAME, when the operator does not give one. Any integer will do —
+// the generator is a pure function of it (mulberry32), so the number is what makes
+// a galaxy reproducible and shareable. Bounded to a positive 32-bit integer so it
+// stays short enough to read out and type back in.
+function randomSeedNumber() { return Math.floor(Math.random() * 0x7fffffff) + 1; }
 
 // --- tiny HTTP helpers ------------------------------------------------------
 
@@ -373,13 +440,16 @@ async function handleRequest(req, res) {
   // unfiltered. The client composes live occupancy from the snapshot on top of it,
   // exactly as it already does for /system/:id.
   if (method === 'GET' && path === '/galaxy') {
+    // NO GALAXY: say so, rather than hand back a stale or baked geometry the live
+    // state does not correspond to.
+    if (!seedJsonBuffer || !hasGalaxy()) { sendJson(res, 404, NO_GALAXY); return; }
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
     });
-    res.end(SEED_JSON);
+    res.end(seedJsonBuffer);
     return;
   }
 
@@ -389,8 +459,16 @@ async function handleRequest(req, res) {
       ok: true,
       service: 'starfare-testbed',
       note: 'dev rig — in-memory, ephemeral, optional auto-tick. NOT the Phase-2 server.',
-      tick: s.tick,
-      guilds: s.guilds.length,
+      // The galaxy lifecycle, for the admin panel: which of the two states the
+      // server is in, and which galaxy it is. `seed` is null when there is none.
+      galaxy: hasGalaxy() ? 'active' : 'no-galaxy',
+      seed: hasGalaxy() ? getSeedNumber() : null,
+      tick: s ? s.tick : null,
+      guilds: s ? s.guilds.length : 0,
+      // How long this PROCESS has been up, and the wall clock it thinks it is —
+      // server state for the client's HUD, nothing to do with game time.
+      uptimeSeconds: Math.round(process.uptime()),
+      serverTime: new Date().toISOString(),
       // SERVER state, not game state — deliberately here and NOT in the snapshot.
       autotick: getAutotickStatus(),
     });
@@ -398,6 +476,9 @@ async function handleRequest(req, res) {
   }
 
   if (method === 'GET' && path === '/snapshot') {
+    // A marker the client can read, not a crash and not an empty snapshot that
+    // would look like a galaxy with nothing in it.
+    if (!hasGalaxy()) { sendJson(res, 200, NO_GALAXY); return; }
     sendJson(res, 200, buildSnapshot(getState()));
     return;
   }
@@ -409,6 +490,7 @@ async function handleRequest(req, res) {
   // because it is state-independent: the snapshot is the moving galaxy; this is
   // the fixed menu of places a guild may start.
   if (method === 'GET' && path === '/starters') {
+    if (!hasGalaxy()) { sendJson(res, 404, NO_GALAXY); return; }
     const starters = getStarterSystems();
     sendJson(res, 200, { starters, count: starters.length });
     return;
@@ -420,6 +502,7 @@ async function handleRequest(req, res) {
   // the live overlay (who occupies which site) is composed from the snapshot's
   // occupancy client-side. An unknown id is a 404 (the selector returns null).
   if (method === 'GET' && path.startsWith('/system/')) {
+    if (!hasGalaxy()) { sendJson(res, 404, NO_GALAXY); return; }
     const id = decodeURIComponent(path.slice('/system/'.length));
     if (!id) {
       sendJson(res, 400, { error: 'GET /system/:id requires a system id, e.g. /system/sys_0002' });
@@ -454,6 +537,7 @@ async function handleRequest(req, res) {
   }
 
   if (method === 'POST' && path === '/tick') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
     try {
       // The SAME shared tick path the heartbeat uses (tickOnce = advance-no-actions
       // → setState). On an invariant violation `advance` throws before setState, so
@@ -471,6 +555,7 @@ async function handleRequest(req, res) {
   // else is a 400 (a plumbing guard, not a game rule). Start-while-running clears
   // and replaces the timer, so you can change playback speed live.
   if (method === 'POST' && path === '/autotick/start') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
     let body;
     try {
       const raw = await readBody(req);
@@ -491,12 +576,17 @@ async function handleRequest(req, res) {
 
   // Stop the heartbeat. Idempotent — stop-when-stopped is a 200 no-op.
   if (method === 'POST' && path === '/autotick/stop') {
+    // Stopping a clock that cannot be running is harmless; answer the state.
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
     stopAutotick();
     sendJson(res, 200, { autotick: getAutotickStatus() });
     return;
   }
 
   if (method === 'POST' && path === '/reset') {
+    // Reset returns a galaxy to tick 0; with none there is nothing to reset (the
+    // operator wants Create, which is a different, deliberate act).
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
     // Stop the clock BEFORE zeroing the galaxy, so the heartbeat isn't firing
     // while the operator re-deploys (reset → deploy → set windowN + commitments
     // at tick 0 → then start). A fresh galaxy also clears a prior halt's error.
@@ -520,6 +610,7 @@ async function handleRequest(req, res) {
   }
 
   if (method === 'POST' && path === '/action') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
     let action;
     try {
       const raw = await readBody(req);
@@ -563,6 +654,76 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // --- the galaxy lifecycle (galaxy-lifecycle.md) ---------------------------
+  // Two OPERATOR endpoints, namespaced under /admin/. They are as open as the rest
+  // of this dev rig — Cloudflare Access is the external gate and real per-role auth
+  // is Phase 3 — and the player client never surfaces them; the admin panel will.
+  // Both require a persist volume: without one there is no galaxy to own, only the
+  // baked seed and an in-memory zero-state, and that dev path is unchanged.
+
+  // POST /admin/galaxy/new { seed? } — create a galaxy, atomically.
+  if (method === 'POST' && path === '/admin/galaxy/new') {
+    if (!persistDir) {
+      sendJson(res, 409, { error: 'no persist volume — the galaxy lifecycle needs STARFARE_PERSIST_DIR' });
+      return;
+    }
+    let body;
+    try {
+      const raw = await readBody(req);
+      body = JSON.parse(raw || '{}');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"seed":4242}' });
+      return;
+    }
+    // The seed number: the operator's, if they gave a usable one, else randomised.
+    // Not a tuning constant — it NAMES a galaxy (same number ⇒ same geometry), so
+    // it is chosen at runtime and reported back to be displayed and shared.
+    const asked = body && body.seed;
+    if (asked !== undefined && asked !== null && !Number.isInteger(asked)) {
+      sendJson(res, 400, { error: 'seed must be an integer (or omitted, to randomise one)' });
+      return;
+    }
+    const seedNumber = Number.isInteger(asked) ? asked : randomSeedNumber();
+    try {
+      // The sequence is one operation: a new seed must NEVER end up paired with the
+      // old state, whose ventures point at site ids this galaxy does not have.
+      stopAutotick();                                   // 1. stop the clock
+      autotickLastError = null;
+      const seedObj = generateGalaxySeed(seedNumber);    // 2. generate
+      saveSeed(seedObj, persistDir);                     // 3. write it to the volume
+      setActiveSeed(seedObj);                            // 4. reload the index + /galaxy buffer
+      setState(createZeroState());                       // 5. zero-state ON THE NEW SEED
+      saveState(getState(), persistDir);                 // 6. persist, and drop the old history
+      clearJournal(persistDir);
+      if (bootTickMs !== null) startAutotick(bootTickMs);//    the galaxy turns from tick 0
+      console.log(`[galaxy] CREATED — seed ${seedNumber}, tick 0, clock ${bootTickMs !== null ? 'ON' : 'off'}`);
+      sendJson(res, 200, { ok: true, seed: seedNumber, tick: getState().tick, state: 'active' });
+    } catch (err) {
+      sendJson(res, 500, { error: 'could not create the galaxy', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // POST /admin/galaxy/delete — stop the clock, remove the galaxy, NO GALAXY.
+  if (method === 'POST' && path === '/admin/galaxy/delete') {
+    if (!persistDir) {
+      sendJson(res, 409, { error: 'no persist volume — the galaxy lifecycle needs STARFARE_PERSIST_DIR' });
+      return;
+    }
+    try {
+      stopAutotick();
+      autotickLastError = null;
+      deleteGalaxy(persistDir);
+      setState(null);
+      setActiveSeed(null);
+      console.log('[galaxy] DELETED — NO GALAXY');
+      sendJson(res, 200, { ok: true, state: 'no-galaxy' });
+    } catch (err) {
+      sendJson(res, 500, { error: 'could not delete the galaxy', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
   sendJson(res, 404, { error: `no route for ${method} ${path}` });
 }
 
@@ -596,6 +757,11 @@ if (require.main === module) {
     const shutdown = (signal) => {
       if (shuttingDown) return; // a second signal shouldn't double-save/exit
       shuttingDown = true;
+      if (!hasGalaxy()) {
+        console.log(`[persist] ${signal} — no galaxy, nothing to save`);
+        server.close(() => process.exit(0));
+        return;
+      }
       console.log(`[persist] ${signal} — saving state before exit`);
       try {
         // Save the authoritative live state, THEN clear the journal — order and
@@ -657,11 +823,20 @@ if (require.main === module) {
     // Start the clock only once the server is actually listening, so the galaxy
     // never advances before anything can read it. Same startAutotick() the endpoint
     // calls — one tick path, no new game logic.
-    if (bootTickMs !== null) {
+    if (bootTickMs !== null && !hasGalaxy()) {
+      // NO GALAXY: there is nothing to advance. The clock is armed and starts the
+      // moment a galaxy is created (POST /admin/galaxy/new).
+      console.log(`[clock] ARMED at ${bootTickMs} ms — waiting for a galaxy (none on this server yet)`);
+    } else if (bootTickMs !== null) {
       startAutotick(bootTickMs);
       console.log(`[clock] ON — auto-tick every ${bootTickMs} ms (STARFARE_TICK_MS); the galaxy turns on its own`);
     } else {
       console.log('[clock] OFF — no heartbeat (set STARFARE_TICK_MS to an interval in ms to start one on boot)');
+    }
+    if (persistDir) {
+      console.log(hasGalaxy()
+        ? `  galaxy: ACTIVE — seed ${getSeedNumber()} @tick ${getState().tick}`
+        : '  galaxy: NO GALAXY — create one with POST /admin/galaxy/new {"seed":N?}');
     }
     console.log('  dev rig: optional auto-tick, opt-in durability — NOT the Phase-2 server');
   });

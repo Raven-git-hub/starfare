@@ -62,6 +62,15 @@ operation. A crash mid-create can leave the volume with a new seed but no/old st
 that inconsistency and fall back to **NO GALAXY** (loud, re-create required) rather than load a broken
 pairing.
 
+> **As built — amended 25-08-26 (Slice A).** The guard is implemented as specified except for what it
+> falls back TO: rather than dropping to NO GALAXY, the boot **finishes the interrupted Create** — it
+> discards the mismatched state, builds a fresh `createZeroState()` on the seed that is actually in the
+> volume, persists it and clears the journal, logging `INCONSISTENT SAVE` to stderr. The invariant this
+> section exists to protect is unchanged: the broken pairing is **never** loaded. The difference is that
+> the operator's last recorded intent (this seed is the galaxy) is completed instead of thrown away, and
+> the server comes back playable rather than needing a second manual Create for an act already begun.
+> Detected as `state.world.seed !== getSeedNumber()`.
+
 ## Delete Galaxy (admin action)
 
 `Delete Galaxy`: stop the clock → clear `seed.json` + `state.json` + `journal.jsonl` from the volume →
@@ -91,6 +100,31 @@ field; **Establish Guild** → enter the map.
 The clock runs from create/boot regardless of players. The interval is `STARFARE_TICK_MS` (operator
 config, not a game number — design.md §15.7): **production is `60000` (one tick per minute)**; the dev
 default stays unset/manual. Changing it is a deploy-env change, no code.
+
+## As built — Slice A (25-08-26)
+
+The engine/server half is landed; the admin-panel UI is Slice B. What exists now:
+
+- `sim/seed.js` gains **`setSeed(seedObject)`** — swap the active seed, invalidate the cached index.
+  With none set it falls back to the committed `data/seed.json`, so a run without a volume (and every
+  test) is unchanged. The module still does no file IO of its own: the server owns that and hands it a
+  seed object.
+- `sim/persist.js` gains **`saveSeed` / `loadSeed` / `deleteGalaxy`**; `saveSeed` uses the same
+  temp-file + rename atomicity as `saveState`. The active galaxy is the trio in the volume.
+- `sim/server.js` holds the two states: **NO-GALAXY** is `liveState === null`, and every route answers
+  `{state:'no-galaxy', reason}` — `/galaxy`, `/starters`, `/system/:id` as 404; `/snapshot` as a 200
+  marker the client can read; `/tick`, `/action`, `/reset`, `/autotick/*` as a 409 refusal. Nothing
+  throws. With a boot clock configured but no galaxy the clock is **ARMED**, not started, and starts on
+  Create.
+- **`POST /admin/galaxy/new {seed?}`** and **`POST /admin/galaxy/delete`**, open at the server exactly
+  as `/reset` is (Cloudflare Access is the gate; real role auth stays Phase 3), namespaced under
+  `/admin/` so the client can surface them only on the admin panel. Both require a volume — without one
+  there is no galaxy to own and they refuse with a 409.
+- **`/health`** gains `galaxy` (`'active'|'no-galaxy'`), `seed` (the active number or null),
+  `uptimeSeconds` and `serverTime`, which Slice B's HUD reads.
+
+The pure engine is untouched and the snapshot schema stays 7: this slice is seed-source and server
+lifecycle wiring only.
 
 ## Runtime read sites to make reloadable (for the build)
 

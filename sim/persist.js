@@ -40,9 +40,45 @@ const { validateAction, applyAction } = require('./actions.js');
 // var), not a game number; these two names are the fixed layout of that dir.
 const STATE_FILE = 'state.json';
 const JOURNAL_FILE = 'journal.jsonl';
+// The SEED joins the save (galaxy-lifecycle.md): the active galaxy is the trio
+// { seed.json, state.json, journal.jsonl } in the volume, so a galaxy generated at
+// runtime survives a restart and "start a new game" is a button, not a redeploy.
+// data/seed.json stays in the repo as the generator's reference fixture and the
+// default for a run with no volume — it is not the active galaxy.
+const SEED_FILE = 'seed.json';
 
 function statePath(dir) { return join(dir, STATE_FILE); }
 function journalPath(dir) { return join(dir, JOURNAL_FILE); }
+function seedPath(dir) { return join(dir, SEED_FILE); }
+
+// saveSeed(seedObj, dir) — write the generated galaxy geometry to the volume, with
+// the same temp-file + rename atomicity saveState uses: a crash mid-write leaves
+// the previous seed whole rather than a half-file that would fail to parse on boot.
+function saveSeed(seedObj, dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  const tmp = join(dir, `${SEED_FILE}.tmp`);
+  fs.writeFileSync(tmp, JSON.stringify(seedObj));
+  fs.renameSync(tmp, seedPath(dir)); // atomic replace
+  console.log(`[persist] saved seed ${seedObj && seedObj.seed} (${(seedObj.systems || []).length} systems)`);
+}
+
+// loadSeed(dir) -> the active galaxy's seed object, or null when the volume holds
+// none. Null is the NO-GALAXY signal the server boots into: an empty volume means
+// no galaxy, NOT the baked default (galaxy-lifecycle.md, Decision 1).
+function loadSeed(dir) {
+  const sp = seedPath(dir);
+  if (!fs.existsSync(sp)) return null;
+  return JSON.parse(fs.readFileSync(sp, 'utf8'));
+}
+
+// deleteGalaxy(dir) — remove the whole active galaxy: geometry, state and history.
+// Delete is deliberate and total; what is left is an empty volume, i.e. NO-GALAXY.
+function deleteGalaxy(dir) {
+  fs.rmSync(seedPath(dir), { force: true });
+  fs.rmSync(statePath(dir), { force: true });
+  fs.rmSync(journalPath(dir), { force: true });
+  console.log('[persist] deleted galaxy (seed + state + journal)');
+}
 
 // saveState(state, dir) — atomically write the CANONICAL serialization of the
 // full STATE object to <dir>/state.json (invariant 4 / atomicity: a crash
@@ -127,6 +163,7 @@ function loadOrInit(dir, initFn) {
 }
 
 module.exports = {
+  saveSeed, loadSeed, deleteGalaxy,
   saveState,
   appendJournal,
   clearJournal,

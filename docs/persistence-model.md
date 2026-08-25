@@ -96,6 +96,21 @@ below. The prototype settled the double-apply/truncation question in practice
 so a **non-truncated** journal is idempotent-safe and truncation stays an optional
 size optimisation — see the last Deferred bullet).
 
+**The SEED joined the save — 25-08-26 (galaxy-lifecycle Slice A).** The durable unit
+is no longer state+journal alone: the active galaxy is the trio
+`{ seed.json, state.json, journal.jsonl }` in `STARFARE_PERSIST_DIR`. The geometry
+used to be baked into the image (`data/seed.json`, the same galaxy every deploy);
+now a galaxy generated at runtime persists with the state it belongs to, so
+"start a new game" is an operator button rather than a redeploy. `sim/persist.js`
+gained `saveSeed` (same temp-file + rename atomicity as `saveState`), `loadSeed`
+and `deleteGalaxy`. Two consequences for durability: an **empty volume now means
+NO GALAXY**, not the baked default (`docs/galaxy-lifecycle.md`, Decision 1); and
+boot carries a **consistency guard** — a state whose `world.seed` is not the
+volume seed's number is an interrupted Create, never loaded as a pairing (see the
+lifecycle doc's amended Atomicity note for what it does instead).
+`data/seed.json` stays committed as the generator's reference fixture and the
+default for a run with no volume.
+
 ## Deferred (separate slices — do NOT treat as decided here)
 
 - **The Postgres table schema.** Transcribes the STORED half of the live-state model
