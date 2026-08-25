@@ -273,6 +273,17 @@
     position:absolute; inset:0;
     background:linear-gradient(180deg, rgba(11,13,18,0.05) 0%, rgba(11,13,18,0.55) 60%, rgba(11,13,18,0.86) 100%);
   }
+  /* PLANET tabs only (every .tab that is not the node chip). The archetype art is a
+     TALL PORTRAIT image with the planet sitting at the bottom, so a short wide row
+     cropped `center` showed the picture's vertical middle — empty space — under a
+     scrim heavy enough to crush it to black. Only the three brightest archetypes
+     survived that. Crop to the bottom (the planet limb IS the subject) and lighten
+     the scrim to what the label actually needs. The node chip keeps the original
+     crop and scrim: it is a flat gradient with nothing to reveal. */
+  .list-row.tab:not(.tex-node){ background-position:center bottom; }
+  .list-row.tab:not(.tex-node)::before{
+    background:linear-gradient(180deg, rgba(11,13,18,0) 0%, rgba(11,13,18,0.15) 55%, rgba(11,13,18,0.72) 100%);
+  }
   .list-row.tab > *{ position:relative; z-index:1; }
 
   /* archetype textures — real art (committed 05-08-26), one JPEG per archetype,
@@ -573,8 +584,6 @@ select.field{appearance:none; cursor:pointer;}
 .hud-btn:hover{background:rgba(67,217,200,.22);}
 .hud-btn.off{border-color:var(--line-bright); color:var(--text-dim); background:rgba(255,255,255,.03);}
 .hud-spacer{flex:1;}
-.sector{font-family:'Rajdhani',sans-serif; font-weight:600; font-size:14px; letter-spacing:2px; color:var(--text-dim);}
-.tickno{font-family:'Rajdhani',sans-serif; font-weight:700; font-size:15px; letter-spacing:1px; color:var(--text);}
 /* Shown only when a /snapshot read fails — a stale HUD must SAY it is stale. */
 .linkstate{font-size:9px; letter-spacing:1.5px; color:#e0525a; min-width:0;}
 .clockbox{display:flex; flex-direction:column; align-items:center; gap:3px;}
@@ -874,8 +883,9 @@ select.field{appearance:none; cursor:pointer;}
     <button class="hud-btn" id="musicBtn" onclick="toggleMusic()">&#9834; Music</button>
     <div class="volwrap"><span class="vico">&#128266;</span><input type="range" id="volSlider" min="0" max="100" value="55" title="Volume"></div>
     <div class="hud-spacer"></div>
-    <div class="sector" id="hud-sector">&mdash;</div>
-    <div class="tickno" id="hud-tick">TICK &mdash;</div>
+    <!-- No tick and no home-system label here BY DECISION: the tick is an operator
+         detail and lives on /inspect, and `My System` above already goes home. The
+         player's bar carries identity, money and the server's clocks. -->
     <div class="linkstate" id="hud-link"></div>
     <!-- The server's own wall clock and how long it has been up. Both are read
          from GET /health — SERVER state, deliberately not game state. -->
@@ -2640,15 +2650,22 @@ async function readHealth(){
 // Formatting only. Every figure below is the server's own — the client computes no
 // number here any more than it does a game one (design.md §5).
 function p2(n){ return (n < 10 ? '0' : '') + n; }
+function p3(n){ return (n < 10 ? '00' : n < 100 ? '0' : '') + n; }
 function fmtServerTime(iso){
   var t = new Date(iso);
   if (isNaN(t.getTime())) return '—';
   return p2(t.getHours()) + ':' + p2(t.getMinutes());
 }
+// DD:HH:MM:SS let the day field grow without bound, so days carry up into years
+// (365 of them — a display rollover, not a calendar). Years are dropped when there
+// are none, so a young server still reads `023d 04:17:09`.
 function fmtUptime(seconds){
   var n = Math.max(0, Math.floor(Number(seconds) || 0));
-  return p2(Math.floor(n / 86400)) + ':' + p2(Math.floor((n % 86400) / 3600))
-       + ':' + p2(Math.floor((n % 3600) / 60)) + ':' + p2(n % 60);
+  var days = Math.floor(n / 86400);
+  var years = Math.floor(days / 365);
+  var hms = p2(Math.floor((n % 86400) / 3600)) + ':' + p2(Math.floor((n % 3600) / 60)) + ':' + p2(n % 60);
+  var d = p3(days % 365) + 'd ';
+  return (years ? years + 'y ' : '') + d + hms;
 }
 function applyServerClock(health){
   if (!health) return;
@@ -2849,10 +2866,7 @@ function applySnapshot(snap){
   // Identity and credits: the ENGINE's values for the player's own guild.
   setGuildLabel(me ? GAME.guildName : null);
   setText('hud-cr', me ? Number(me.credits).toLocaleString() : '—');
-  setText('hud-tick', 'TICK ' + Number(snap.tick).toLocaleString());
   setText('legend-me', me ? GAME.guildName : 'Your Guild');
-  var home = systemById(GAME.homeSystemId);
-  setText('hud-sector', home ? home.name : ('SEED ' + (GAME.galaxy ? GAME.galaxy.seed : '—')));
 
   // Territory: claims[] carries who owns which system — the shared, in-world layer.
   LIVE.systemClaims = {};

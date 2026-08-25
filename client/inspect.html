@@ -490,13 +490,16 @@ function setCell(id, text, cls) {
   el.textContent = text;
   el.className = 'v ' + (cls || '');
 }
-// Formatting only, on the server's OWN uptimeSeconds: DD:HH:MM:SS elapsed.
+// Formatting only, on the server's OWN uptimeSeconds. Days carry up into years
+// (365 of them — a display rollover, not a calendar) so no segment grows without
+// bound; the year is dropped when there is none. Same format as the player HUD.
 function fmtUptime(seconds) {
   var n = Math.max(0, Math.floor(Number(seconds) || 0));
-  var d = Math.floor(n / 86400), h = Math.floor((n % 86400) / 3600);
-  var m = Math.floor((n % 3600) / 60), sec = n % 60;
+  var days = Math.floor(n / 86400), years = Math.floor(days / 365);
   function p2(x) { return (x < 10 ? '0' : '') + x; }
-  return p2(d) + ':' + p2(h) + ':' + p2(m) + ':' + p2(sec);
+  function p3(x) { return (x < 10 ? '00' : x < 100 ? '0' : '') + x; }
+  var hms = p2(Math.floor((n % 86400) / 3600)) + ':' + p2(Math.floor((n % 3600) / 60)) + ':' + p2(n % 60);
+  return (years ? years + 'y ' : '') + p3(days % 365) + 'd ' + hms;
 }
 // The server's own wall clock, rendered in the VIEWER's locale — the instant is
 // the server's, the formatting is local (they are usually both UTC here anyway).

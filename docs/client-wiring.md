@@ -301,3 +301,35 @@ touched here.
 ## Revision — the admin panel (25-08-26, see `docs/galaxy-lifecycle.md`)
 
 Principle #2 above ("the watcher only watches") is revised: the `/inspect` operator watcher becomes the **admin panel** — it keeps the god's-eye read AND gains the galaxy-lifecycle **operator** controls (Create / Delete Galaxy). What still holds: the **player client (`/`) carries no admin/destructive controls**; operator controls live on the admin panel, operator-only (Cloudflare Access for now). See `docs/galaxy-lifecycle.md`.
+
+## Revision — the player HUD trim + planet-tab art (25-08-26, cosmetic)
+
+Three client-only cosmetic fixes, no `sim/` change, schema still 7.
+
+**1. The planet-tab backgrounds were a CROP-AND-SCRIM bug, not a nomenclature one.**
+Worth recording, because the obvious suspicion was wrong: the archetype→texture wiring
+is and was correct end to end — the nine `/system` archetype strings (`rocky, oceanic,
+ice, desert, terran, gasGiant, molten, irradiated, crystalline`), the nine `.tex-<archetype>`
+rules, the nine `assets/planets/*.jpg` files and `row.className = 'list-row tab tex-' +
+p.archetype` all match exactly, and every texture loaded. What failed was purely visual:
+the art is TALL PORTRAIT with the planet at the bottom, and `.list-row.tab` cropped it
+`background-position:center` — so a short wide row showed the image's empty vertical
+middle — under a scrim that reached `rgba(11,13,18,0.86)` at the bottom. Only the three
+brightest archetypes survived it. Fixed on the planet tabs only (`.list-row.tab:not(.tex-node)`)
+by cropping to `center bottom` — the planet limb IS the subject — and lightening the
+scrim to `0 → 0.15 → 0.72`. The `.tex-node` chip is a flat gradient with nothing to
+reveal and keeps its original crop and scrim.
+
+**2. The player HUD deliberately carries no tick and no home-system label.** Both were
+removed from `/` (element and setter). The **tick is an operator detail and stays on
+`/inspect`**, which shows it in both the admin cell and the meta line; `snap.tick` itself
+is untouched and still drives everything that reads it. The home-system label went
+because `My System` already navigates there. The bar keeps `SEED`, `Player Guild`,
+`Credits`, `My System`, `Music`, `Server Time`, `Server Uptime`.
+
+**3. `Server Uptime` still MEANS server process uptime** — read from `/health.uptimeSeconds`,
+so it resets on every redeploy and is server health, not galaxy age. That meaning is a
+decision, not an oversight, and the client computes no galaxy age. Only the FORMAT changed:
+`DD:HH:MM:SS` let the day field grow without bound, so days now carry up into years —
+`1y 023d 04:17:09`, the year dropped when there is none (`023d 04:17:09`). `/inspect` got
+the identical formatter in the same commit so the two surfaces read the same.
