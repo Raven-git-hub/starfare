@@ -17,11 +17,13 @@ so — a lot of this is already in §5/§7/§8 and must be reconciled, not reinv
 > - **Supersedes §5 (settled):** the Syndicate price **direction** — the value now *rises* with
 >   guild-held stockpile and falls as hoards drain, not "abundance commands worse prices" (a pointer is
 >   added at §5's Exchange). The price **formula + per-tick cadence** fill the empty `stepPriceRecompute`.
-> - **Proposes, pending reconciliation at the licence slice:** a **price-linked basic fee at issuance**
->   (vs §5's flat-per-type, open #56); a **per-tick** commitment sale (vs §5's per-cycle); the
->   **reputation tiers / thresholds / build rates** (a proposed answer to §5's open #61); and a
->   **+10%-per-tier dividend bonus** (new). These are **not yet ruled over §5** — they're the agenda for
->   the licence slice, not settled law.
+> - **Ruled at the licence slice (27-08-26), supersedes §5:** the **basic fee is price-linked at
+>   issuance** — `feeRate × baseline-24h-output × posted price when the licence is signed`, fixed until
+>   renegotiation (answers #56; §5's four-corner commitment×equity grid is unchanged and still discounts
+>   it); and committed output is **auto-sold per tick** at the posted price, not once per cycle. A pointer
+>   is added at §5's Venture Licence Fee.
+> - **Still proposed, pending the reputation slice:** the **reputation tiers / thresholds / build rates**
+>   (a proposed answer to §5's open #61) and the **+10%-per-tier dividend bonus** (new). Not yet ruled.
 
 ## The two governing principles
 - **Pressure over prohibition** (existing) — rules bend, they don't hard-block.
