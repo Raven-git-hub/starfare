@@ -97,6 +97,15 @@ const { PRICED_GOODS, postedPrice } = require('./prices.js');
 // create. No price HISTORY is emitted either: it would mean storing a ring buffer in
 // serialized state for a chart the client already buffers itself (the chart binding is
 // its own slice). `deuterium_fuel` has no row — fuel is never listed (§8).
+// v7 (licence Slice 3a, 26-08-26): ADDITIVE — each guild row gains `syndicateSale`, the
+// record of what the Syndicate last bought from that guild (`{ tick, credited, goods:
+// {good: {units, price, credited}} }`, from `guild.lastSyndicateSale`), plus
+// `thisTick: bool` so a reader can tell "you earned N credits this tick" from a stale
+// record without doing the comparison itself. Each venture row gains `equityPct` (the
+// offered equity share `o`) beside the existing `syndicateCommitment`. No schema bump:
+// nothing existing changed shape. `syndicateSale` is null for a guild that has never
+// sold — the overwhelming majority today, since a commitment only exists where the dev
+// scaffold set one.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -109,6 +118,7 @@ const SNAPSHOT_SCHEMA = 7;
 //     syndicate: { ledger },
 //     prices: { <every non-fuel stockpile good>: <posted value> },  // sim/prices.js
 //     guilds: [ { id, name, isBot, credits, fuelHoard, influence,
+//                 syndicateSale: { tick, thisTick, credited, goods } | null, // Slice 3a
 //                 stockpiles: { good: int },                    // flat guild total
 //                 stockpilesBySystem: { systemId: { good: int } }, // per-system
 //                 productionProfile: { ... } } ],               // §5 profile, sparse as stored
@@ -157,6 +167,24 @@ function buildSnapshot(state) {
     // explicitly-set entry from a defaulted one (mirroring hasThrottle). Absent
     // keys mean their defaults; an all-default guild carries `{}`.
     productionProfile: cloneProfile(g.productionProfile || {}),
+    // What the Syndicate last BOUGHT from this guild under its commitment (Slice 3a) —
+    // the credits it paid, the units it took and the posted price it paid them at, per
+    // good. `thisTick` is the engine answering "is this the current tick's sale?" so the
+    // console can print "you earned N credits from your commitment this tick" without
+    // computing anything (§5's display rule). Deep-copied, like every other block here,
+    // so a consumer mutating the snapshot can't reach back into live state. null for a
+    // guild that has never sold — which is every unlicensed guild.
+    syndicateSale: g.lastSyndicateSale
+      ? {
+          tick: g.lastSyndicateSale.tick,
+          thisTick: g.lastSyndicateSale.tick === state.tick,
+          credited: g.lastSyndicateSale.credited,
+          goods: Object.fromEntries(
+            Object.keys(g.lastSyndicateSale.goods || {}).sort()
+              .map((good) => [good, { ...g.lastSyndicateSale.goods[good] }]),
+          ),
+        }
+      : null,
   }));
 
   // Every venture, flattened out of its owner guild, with its seed site
@@ -185,6 +213,10 @@ function buildSnapshot(state) {
         // for every venture today. Surfaced so the view reads a real engine field
         // beside each producer/consumer and in totals, never inventing its own.
         syndicateCommitment: v.syndicateCommitment || 0,
+        // equityPct: the venture's offered equity share `o` (§5's equity lever, Slice
+        // 3a) — the cut of its commitment-sale income it forfeits. Absent on a venture
+        // that offered none, reported here as the 0 it means.
+        equityPct: v.equityPct || 0,
         // batchCarry: the per-good sub-unit carries (§5 rate-based rewrite corrected
         // 10-08-26, §15.4) — { [good]: fraction in [0,1) } over every input + output.
         // Surfaced so the lens can show why a small line's whole units appear only

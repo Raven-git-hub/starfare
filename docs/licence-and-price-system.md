@@ -17,13 +17,14 @@ so — a lot of this is already in §5/§7/§8 and must be reconciled, not reinv
 > - **Supersedes §5 (settled):** the Syndicate price **direction** — the value now *rises* with
 >   guild-held stockpile and falls as hoards drain, not "abundance commands worse prices" (a pointer is
 >   added at §5's Exchange). The price **formula + per-tick cadence** fill the empty `stepPriceRecompute`.
-> - **Ruled at the licence slice (27-08-26), supersedes §5:** the **basic fee is price-linked at
+> - **Ruled at the licence slice (26–27-08-26), supersedes §5:** the **basic fee is price-linked at
 >   issuance** — `feeRate × baseline-24h-output × posted price when the licence is signed`, fixed until
->   renegotiation (answers #56; §5's four-corner commitment×equity grid is unchanged and still discounts
->   it); and committed output is **auto-sold per tick** at the posted price, not once per cycle. A pointer
->   is added at §5's Venture Licence Fee.
+>   renegotiation (answers #56; §5’s four-corner commitment×equity grid is unchanged and still discounts
+>   it); and committed output is **auto-sold per tick** at the **posted** (2-tick-lagged) price, not once per
+>   cycle (the *sale* only — the fee stays on the 24h cycle, breach at the boundary). The sale is **built**
+>   (Slice 3a); see `docs/commitment-sale.md`. A pointer is added at §5’s Venture Licence Fee.
 > - **Still proposed, pending the reputation slice:** the **reputation tiers / thresholds / build rates**
->   (a proposed answer to §5's open #61) and the **+10%-per-tier dividend bonus** (new). Not yet ruled.
+>   (a proposed answer to §5’s open #61) and the **+10%-per-tier dividend bonus** (new). Not yet ruled.
 
 ## The two governing principles
 - **Pressure over prohibition** (existing) — rules bend, they don't hard-block.
@@ -167,10 +168,20 @@ empty-galaxy no-op proof. **Nothing consumes the price yet** — that is Slice 3
 Still open and NOT invented: per-good base prices, per-resource baselines, whether the level curve stays
 linear, and Part 5's normaliser confirm.
 
-**Slice 3 — Licence + commitment-as-sale + fee (credit side).** Replace the testbed commitment dial with
-a real **licence entity** (commitment %, fee terms **locked at issuance**, 24h window; reserve the
-`equityPct` + cap-table fields now). Committed goods **sold at the posted price → credits/tick**. The 24h
-**breach check** → discounted vs full fee. (Reputation consequences land in Slice 4.)
+**Slice 3 — Licence + commitment-as-sale + fee (credit side).** Split in two.
+
+- **3a — commitment-as-sale. ✅ LANDED 26-08-26** — build note: `docs/commitment-sale.md`. Committed
+  goods are now **sold at the posted price → credits/tick**: the owner is paid `round((1 − o) × units ×
+  posted)` and the Syndicate ledger is debited the same integer, so invariant 2 holds to the credit. The
+  equity lever `o` is live as `Venture.equityPct` (a fraction, ≤ §5's 0.49 ceiling, set at
+  establishment, refused-not-clamped above it); with no investors the `o` share stays in the ledger, so
+  offering equity costs from the first tick exactly as §5 requires. The sale is recorded on the guild
+  (`lastSyndicateSale`) and surfaced in the snapshot. **Charges nothing** — a breaching guild is still
+  paid for what it delivered.
+- **3b — the licence entity + the fee.** Still to build: replace the testbed commitment dial with a real
+  **licence entity** (commitment %, fee terms **locked at issuance**, 24h window; the cap-table fields
+  land with Slice 5's consumer), the price-linked basic fee, and the 24h **breach check** → discounted
+  vs full fee. (Reputation consequences land in Slice 4.)
 
 **Slice 4 — Reputation.** Per-venture score, tiers, the fixed + variable build rates, the breach
 reputation penalty, the per-tier dividend multiplier, guild total. **Reconciled with §5/§7 thresholds.**
