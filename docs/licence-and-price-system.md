@@ -178,10 +178,17 @@ linear, and Part 5's normaliser confirm.
   offering equity costs from the first tick exactly as §5 requires. The sale is recorded on the guild
   (`lastSyndicateSale`) and surfaced in the snapshot. **Charges nothing** — a breaching guild is still
   paid for what it delivered.
-- **3b — the licence entity + the fee.** Still to build: replace the testbed commitment dial with a real
-  **licence entity** (commitment %, fee terms **locked at issuance**, 24h window; the cap-table fields
-  land with Slice 5's consumer), the price-linked basic fee, and the 24h **breach check** → discounted
-  vs full fee. (Reputation consequences land in Slice 4.)
+- **3b — the licence entity + the fee.** Design settled 27-08-26 (design.md §5 "LICENCE FEE MECHANICS —
+  RULED"); split in two to build. Retires `setSyndicateCommitment` as the player commitment path.
+  - **3b-i — the licence entity + fee math (no charge).** An `applyForLicence` action grants an embedded
+    `venture.licence` (committedOutputPct, window in days, and the terms **locked at the posted price at
+    signing**: the full basic fee and the four-corner-discounted fee, both stored), which sources the
+    venture's commitment. The fee is **surfaced** in the snapshot; **nothing is charged** — a provable
+    no-op on credits.
+  - **3b-ii — charge the fee.** At each window boundary (`tick % N == 0`) debit the **discounted** fee if
+    the commitment was met, the **full** basic fee if breached; credits → the Syndicate ledger. A breach
+    fee **may drive credits negative** (guild credits join the ledger as exempt from the non-negativity
+    invariant; invariant 2 stays exact). (Reputation consequences of breach land in Slice 4.)
 
 **Slice 4 — Reputation.** Per-venture score, tiers, the fixed + variable build rates, the breach
 reputation penalty, the per-tier dividend multiplier, guild total. **Reconciled with §5/§7 thresholds.**
