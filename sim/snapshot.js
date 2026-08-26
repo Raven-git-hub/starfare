@@ -106,6 +106,9 @@ const { PRICED_GOODS, postedPrice } = require('./prices.js');
 // nothing existing changed shape. `syndicateSale` is null for a guild that has never
 // sold — the overwhelming majority today, since a commitment only exists where the dev
 // scaffold set one.
+// v7 (licence Slice 3b-ii, 27-08-26): ADDITIVE — each venture row gains
+// `committedFromTick`, the first producing tick under its licence (or null), which is
+// what pro-rates its first window's obligation. No schema bump; nothing changed shape.
 // v7 (licence Slice 3b-i, 27-08-26): ADDITIVE — each venture row gains `licence`, the
 // stored licence object (`committedOutputPct`, `windowDays`, `signedTick`, `lockedPrice`,
 // `basicFee`, `discountedFee`) or null when unlicensed. No schema bump: nothing existing
@@ -133,6 +136,7 @@ const SNAPSHOT_SCHEMA = 7;
 //     ventures: [ { id, ownerGuildId, type, siteId, systemId, resourceType,
 //                   licence: { committedOutputPct, windowDays, signedTick,       // 3b-i
 //                              lockedPrice, basicFee, discountedFee } | null,
+//                   committedFromTick: int | null,                            // 3b-ii
 //                   recipeId, productionRate, syndicateCommitment,
 //                   site: { kind, planetId, systemId, resourceType } | null } ],
 //     occupancy: { <siteId>: <ventureId> },
@@ -230,6 +234,13 @@ function buildSnapshot(state) {
         // thing (§5's display rule). Copied so the snapshot can't alias into engine
         // state. null for an unlicensed venture, which is most of them.
         licence: v.licence ? { ...v.licence } : null,
+        // committedFromTick: the venture's FIRST PRODUCING tick under its licence
+        // (Slice 3b-ii) — the term that pro-rates its first window's obligation (§5's
+        // join ruling). null for an unlicensed venture, and for one committed through
+        // the dev scaffold, both of which owe a full window. Surfaced so the console
+        // can explain a first window that asks for less than the full commitment,
+        // instead of the number appearing to be wrong.
+        committedFromTick: v.committedFromTick == null ? null : v.committedFromTick,
         // batchCarry: the per-good sub-unit carries (§5 rate-based rewrite corrected
         // 10-08-26, §15.4) — { [good]: fraction in [0,1) } over every input + output.
         // Surfaced so the lens can show why a small line's whole units appear only

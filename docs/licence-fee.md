@@ -83,6 +83,12 @@ so `sim/windows.js`'s pro-rate tripwire stays green — see the flag below.
 
 ## ⚠️ Flag for 3b-ii: a mid-window licence breaches its first window
 
+> **RESOLVED — licence Slice 3b-ii (27-08-26), `docs/mid-window-pro-rate.md`.** The pro-rate was built:
+> `applyForLicence` now stamps `committedFromTick`, so the run below meets its pro-rated `Q` instead of
+> breaching. The section stands as the record of the failure and of why the fix was a prerequisite.
+> What is *still* open for the fee slice (now **3b-iii**) is the other half: whether a partial first
+> window's **fee** is pro-rated, free, or full.
+
 Because `windowFraction` is pinned at 1, a venture licensed **partway through** a window owes the
 **whole** window's `Q` but has only the remaining ticks to deliver it. Observed, with `N = 4`, a
 rate-5 mine licensed at tick 2 at 100% commitment (`Q` = 20):
@@ -100,7 +106,8 @@ would pay a penalty they never had a chance to avoid, for a contract they had ju
 **Prerequisite for 3b-ii — one of:** the **mid-window pro-rate** (unpin `windowFraction`, owe only the
 share of the window you were present for — §5's join ruling, Option A, whose deferral this tripwire is
 already guarding), or a **first-window grace** (the window in which a licence is signed is judged but
-never charged). Both are rulings, not build details, so neither is invented here.
+never charged). Both are rulings, not build details, so neither is invented here. *(**Answered:** the
+pro-rate, built in 3b-ii.)*
 
 ## Constants — all `[FIRST-CUT]`, all in `docs/phase-1-tuning.md`
 

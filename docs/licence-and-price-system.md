@@ -191,10 +191,22 @@ linear, and Part 5's normaliser confirm.
     gated on one ruling first:** a licence signed mid-window owes the whole window's `Q` and can breach
     its first window unavoidably — harmless while nothing is charged, unfair the moment the full basic
     fee is. Needs either the mid-window **pro-rate** (§5's join ruling) or a **first-window grace**.
-  - **3b-ii — charge the fee.** At each window boundary (`tick % N == 0`) debit the **discounted** fee if
+  - **3b-ii — the mid-window pro-rate. ✅ LANDED 27-08-26** — build note:
+    `docs/mid-window-pro-rate.md`. The prerequisite 3b-i flagged, and §5's own deferred build (the
+    Option-A join ruling). `applyForLicence` stamps the venture's committed-from tick as `signedTick +
+    1` (its first PRODUCING tick — intake runs before the tick), so a mine licensed part-way through a
+    window owes only `round(commitment × present/N)` for that window and the full `Q` from its first
+    complete one. `Q` is rounded where it is finalised, so pacing and judgement read one integer target;
+    with a full-window fraction that rounding is the identity, so every pre-existing path stays
+    byte-identical. §5's `fraction == 1` deferral tripwire is retired and replaced by a correctness one.
+    Charges nothing.
+  - **3b-iii — charge the fee.** At each window boundary (`tick % N == 0`) debit the **discounted** fee if
     the commitment was met, the **full** basic fee if breached; credits → the Syndicate ledger. A breach
     fee **may drive credits negative** (guild credits join the ledger as exempt from the non-negativity
     invariant; invariant 2 stays exact). (Reputation consequences of breach land in Slice 4.)
+    ⚠️ **Needs one ruling first:** whether a mid-window licence's **partial first window** is charged a
+    pro-rated fee, no fee, or the full fee — the pro-rate settles what it owes in *goods*, not in
+    *credits*.
 
 **Slice 4 — Reputation.** Per-venture score, tiers, the fixed + variable build rates, the breach
 reputation penalty, the per-tier dividend multiplier, guild total. **Reconciled with §5/§7 thresholds.**

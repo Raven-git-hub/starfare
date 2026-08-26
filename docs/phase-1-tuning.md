@@ -113,11 +113,17 @@ open at **#56**.
 | **Renegotiation window — 7–42 days** | as §5 states them | §5's `[FIRST-CUT]` bounds (open question **#64**). Stored on the licence at signing and **inert**: resolving days → a tick, and letting either side reopen the terms once it elapses, is renegotiation, which is not built. |
 | **Equity ceiling — 0.49** | — | **Not** a dial: §5's structural ceiling, what makes the owner's control non-negotiable (they retain 51%). Already in `sim/licence.js` since 3a. |
 
+**Slice 3b-ii (27-08-26) added NO tuning constant.** The mid-window pro-rate is §5's ruled Option-A
+formula (`fraction = ticks-present / N`) and the `Q` rounding is a rule, not a dial: goods are integers
+(§15.2), so the aggregate target is rounded where it is finalised and pacing and judgement read the same
+number. The prerequisite it was flagged as — pro-rate vs first-window grace — is **answered: the
+pro-rate** (`docs/mid-window-pro-rate.md`).
+
 **Still unruled, and deliberately not invented here:** the **breach charge's** shape beyond "the full
-basic fee" (Slice 3b-ii), per-venture breach attribution when several ventures commit one good, and —
-flagged as a **prerequisite** for 3b-ii — whether a licence signed mid-window gets the **pro-rate**
-(§5's join ruling, Option A) or a **first-window grace**. Today it owes the whole window and can breach
-its first one unavoidably; harmless while nothing is charged, unfair the moment it is.
+basic fee" (Slice **3b-iii**), per-venture breach attribution when several ventures commit one good,
+and — the open half of the mid-window question — whether a partial first window's **FEE** is pro-rated,
+free, or full. The pro-rate settles what such a licence owes in *goods*, not what it pays in *credits*;
+a ruling is needed before 3b-iii charges anything.
 
 ### The second good (tolled/shipped raw)
 - **Good** `[FIRST-CUT]`: **Titanium** (a Tier-1 raw; also the onboarding starter-quest good, so it recurs later).

@@ -666,12 +666,28 @@ function applyAction(state, action) {
     // The operative commitment: the share of BASELINE output promised over one window,
     // in whole units. This is the field the §5 accrual sums into `Q` and that 3a's sale
     // is paid on — so granting the licence is what switches the commitment sale on.
-    // DELIBERATELY not setting `committedFromTick`: that would unpin `windowFraction`
-    // from 1 and trip the deferred mid-window pro-rate tripwire (sim/windows.js). A
-    // venture licensed mid-window is therefore treated as committed for the WHOLE
-    // current window — see the build note: harmless while nothing is charged, and a
-    // prerequisite to fix before 3b-ii charges a breach.
     venture.syndicateCommitment = commitmentUnitsFor(action.committedOutputPct, baselineUnitsPerTick, windowN);
+
+    // The MID-WINDOW PRO-RATE (§5's join ruling, Option A; Slice 3b-ii). Stamping this
+    // is what makes `windowFraction` (sim/windows.js) stop returning 1: a venture
+    // licensed part-way through a window owes only the share of `Q` for the ticks it is
+    // actually present, instead of a full window's target it had no chance to deliver.
+    //
+    // WHY `signedTick + 1` AND NOT `signedTick` — the off-by-one is load-bearing.
+    // Intake runs BEFORE the tick (`advance` = intake → tick → assert), so a venture
+    // licensed while `state.tick` is T is committed during intake but first produces —
+    // and therefore first delivers — on the tick that yields state T+1. `windowFraction`
+    // counts `present = windowStart + N − committedFromTick`, which is the number of
+    // producing ticks from `committedFromTick` to the boundary INCLUSIVE. For that count
+    // to equal the ticks the venture actually delivers in, the stamp must be its first
+    // producing tick, which is `signedTick + 1`. Stamping `signedTick` would credit it
+    // with one tick it was never able to produce in, and it would owe a unit it could
+    // not deliver — the same unfairness in miniature that the pro-rate exists to fix.
+    //
+    // Only `applyForLicence` stamps it. An unlicensed venture, or one committed through
+    // the `setSyndicateCommitment` dev scaffold, carries no `committedFromTick` at all,
+    // so `windowFraction` returns 1 for it and its behaviour is exactly as before.
+    venture.committedFromTick = venture.licence.signedTick + 1;
     return next;
   }
 

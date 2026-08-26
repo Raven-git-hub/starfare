@@ -28,6 +28,8 @@
 //   state.prices?    : { <non-fuel good>: { posted, pending: [...] } }
 //                          // the Syndicate value per good (sim/prices.js); floats by
 //                          // design — sanity-checked here, not integer-swept
+//   venture.committedFromTick? : the venture's first PRODUCING tick under its licence
+//                          // (Slice 3b-ii); absent = present since before the window
 //   venture.licence? : { committedOutputPct, windowDays, signedTick, lockedPrice,
 //                        basicFee, discountedFee }   // the terms locked at signing
 //                          // (Slice 3b-i); absent on an unlicensed venture
@@ -55,6 +57,7 @@
 const { isRawResource, isStockpileGood, FUEL_GOOD } = require('./resources.js');
 const { PRICED_GOODS, PRICE_FLOOR, PRICE_CEILING, PUBLISH_LAG } = require('./prices.js');
 const { EQUITY_CEILING, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX, isValidWindowDays } = require('./licence.js');
+const { FIRST_CUT_WINDOW_N, winStartFor, windowFraction } = require('./windows.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { getSite, getLandmark, getSystem, getTerranHomeworld } = require('./seed.js');
 const { getRecipe } = require('./recipes.js');
@@ -256,6 +259,47 @@ function checkLicenceTerms(state) {
       // can never EXCEED the basic fee (the grid's corners top out at 100%); and the
       // terms must stay inside the bounds intake refuses outside of, since a venture
       // built directly by a scenario bypasses intake entirely.
+      // The mid-window pro-rate's join tick (Slice 3b-ii, §5's join ruling). This
+      // REPLACES the deferral guard that used to assert `windowFraction == 1` for every
+      // venture — that guard existed to catch a mid-window join being wired without the
+      // pro-rate, and the pro-rate is now wired. What matters instead is that the
+      // fraction it produces is SANE: a committed venture is present for at least one
+      // tick of any window it is counted in, so its fraction is in (0, 1] — never 0 (it
+      // would owe nothing while still delivering) and never above 1 (it would owe more
+      // than a full window). A fabricated or corrupted `committedFromTick` is exactly
+      // what would break that, silently, in the direction of a target nobody can meet.
+      if (v.committedFromTick !== undefined) {
+        const from = v.committedFromTick;
+        const at = `venture:${v.id}.committedFromTick`;
+        if (!Number.isInteger(from) || from < 1) {
+          out.push({ rule: 'join-tick-is-a-real-tick (§5 join ruling)', where: at, detail: { value: from } });
+        } else if (v.syndicateCommitment) {
+          // The range check. Be honest about what it is: for an integer join tick ≥ 1
+          // the fraction is in (0, 1] BY CONSTRUCTION, so no corrupted datum can trip
+          // this — it is a guard on the MATH, and it goes red if windowFraction's
+          // formula, or the tick the stamp is written at, ever changes in a way that
+          // would hand a venture a target it cannot meet (owing nothing while
+          // delivering, or owing more than a whole window). That is the exact failure
+          // this slice exists to end, so it is worth a standing assertion.
+          //
+          // Checked against the venture's OWN first window — always well-defined — and
+          // deliberately not ONLY against `state.tick`'s window: between intake and the
+          // tick that follows it, `committedFromTick` is legitimately `state.tick + 1`,
+          // so a check keyed on the live window alone would fire spuriously on a licence
+          // signed on a boundary tick. The live window is checked too, once the venture
+          // has actually started producing.
+          const N = state.windowN == null ? FIRST_CUT_WINDOW_N : state.windowN;
+          const windows = [winStartFor(from, N)];
+          if (from <= state.tick) windows.push(winStartFor(state.tick, N));
+          for (const ws of windows) {
+            const f = windowFraction(v, ws, N);
+            if (!(f > 0) || f > 1) {
+              out.push({ rule: 'window-fraction-in-(0,1] (§5 join ruling)', where: at, detail: { committedFromTick: from, windowStart: ws, N, fraction: f } });
+            }
+          }
+        }
+      }
+
       const lic = v.licence;
       if (!lic) continue;
       const at = `venture:${v.id}.licence`;

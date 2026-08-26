@@ -51,13 +51,19 @@ function winStartFor(tick, N) {
 // windowFraction(venture, windowStart, N): the fraction of the current window the
 // venture is committed for — the term in `Q = Σ commitment × fraction` that lets a
 // mid-window joiner owe only a pro-rated share of its first window (§5 join ruling,
-// Option A). Slice B-i PINS this to 1: no action deploys a licensed venture
-// mid-window yet, so every venture is present for the whole window. The pro-rate
-// lands later as an additive change to THIS ONE TERM (fraction stops being 1) — the
-// deferral is guarded by a tripwire that asserts this returns 1 for every venture, so
-// it goes red the instant a mid-window join is wired without the pro-rate (§18 #4).
-// It reads `committedFromTick` (a per-venture join tick the licence layer will add);
-// absent — as it always is today — means "present since before the window opened" → 1.
+// Option A). LIVE as of Slice 3b-ii (27-08-26): `applyForLicence` stamps the venture's
+// `committedFromTick`, so a mine licensed part-way through a window owes only the share
+// of `Q` for the ticks it is actually present — a share it can meet. Before that stamp
+// existed this returned 1 for everything, and a tripwire asserted so; that guard is
+// retired and replaced by the correctness checks in invariants.js (a fraction in
+// (0, 1], never 0, never above 1) — see docs/mid-window-pro-rate.md.
+//
+// The math itself is unchanged from Slice B-i — this was always built, only unreached.
+// `committedFromTick` is the venture's FIRST PRODUCING tick (see actions.js's stamp),
+// so `present` counts the producing ticks from it to the boundary inclusive. Absent —
+// an unlicensed venture, or one committed through the `setSyndicateCommitment` dev
+// scaffold, which deliberately stays full-window — means "present since before the
+// window opened" → 1, so their behaviour is untouched.
 function windowFraction(venture, windowStart, N) {
   const from = venture.committedFromTick;
   if (from == null || from <= windowStart) return 1;

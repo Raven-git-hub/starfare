@@ -48,13 +48,19 @@ function sysState({ ventures, profile = {}, stockpiles = {}, windowN }) {
   });
 }
 
-// --- (a) the fraction==1 deferral guard -----------------------------------------
+// --- (a) the mid-window pro-rate ------------------------------------------------
+//
+// This slot used to hold the DEFERRAL guard — "fraction == 1 for every venture" — whose
+// job was to go red the instant a mid-window join was wired without the pro-rate (§5's
+// join ruling, Option A, build deferred). Slice 3b-ii wires it, so the guard has done
+// its job and is retired: what replaces it is the correctness of the thing it was
+// guarding. The runtime half of the swap lives in invariants.js, which now asserts the
+// fraction is SANE (in (0, 1]) rather than absent. See docs/mid-window-pro-rate.md.
 
-test('(a) fraction == 1 for every venture — the mid-window-join pro-rate is deferred', () => {
-  // Slice B-i builds Q = Σ commitment (fraction pinned to 1); the pro-rate lands later
-  // as an additive change to that one term (§5 join ruling). This guard goes RED the
-  // instant a mid-window join is wired (a venture given a committedFromTick > windowStart)
-  // without the pro-rate — so the deferral cannot silently rot.
+test('(a) a venture present for the whole window still owes the whole window', () => {
+  // The unchanged majority case: no committedFromTick at all (unlicensed, or committed
+  // through the dev scaffold, which stays full-window), or one stamped at/before the
+  // window opened. Both mean "present since before this window" ⇒ fraction 1.
   const N = 6;
   const ventures = [
     mine('t', 'titanium', 10, 8), mine('c', 'carbon_products', 10, 4),
@@ -63,9 +69,25 @@ test('(a) fraction == 1 for every venture — the mid-window-join pro-rate is de
   for (const p of [1, 2, 5, 6, 7, 12]) {
     const ws = winStartFor(p, N);
     for (const v of ventures) {
-      assert.equal(windowFraction(v, ws, N), 1, `venture ${v.id} is present for the whole window (fraction 1) at p=${p}`);
+      assert.equal(windowFraction(v, ws, N), 1, `venture ${v.id} carries no join tick (fraction 1) at p=${p}`);
     }
+    assert.equal(windowFraction({ committedFromTick: ws }, ws, N), 1, 'joined exactly as the window opened');
+    assert.equal(windowFraction({ committedFromTick: ws - 3 }, ws, N), 1, 'joined before it opened');
   }
+});
+
+test('(a) a mid-window joiner owes present/N — down to a single-tick sliver', () => {
+  const N = 4;
+  const ws = winStartFor(3, N); // window 1 spans producing ticks 1..4
+  assert.equal(ws, 1);
+  // First producing tick 2 ⇒ present for ticks 2,3,4 = 3 of 4.
+  assert.equal(windowFraction({ committedFromTick: 2 }, ws, N), 3 / 4);
+  assert.equal(windowFraction({ committedFromTick: 3 }, ws, N), 2 / 4);
+  // First delivering ON the boundary tick: it owes a sliver, and a sliver is still
+  // deliverable — which is the whole point of pro-rating rather than excusing.
+  assert.equal(windowFraction({ committedFromTick: 4 }, ws, N), 1 / 4);
+  // A venture whose first producing tick is past this window contributes nothing to it.
+  assert.equal(windowFraction({ committedFromTick: 5 }, ws, N), 0);
 });
 
 // --- (b) send carry fenced in [0,1) every tick ----------------------------------

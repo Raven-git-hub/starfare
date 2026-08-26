@@ -120,11 +120,14 @@ function resolveProduction(guild, systemId, opts = {}) {
   // --- The per-good aggregate Syndicate commitment target Q (§5 "windowed accrual"):
   // Q = Σ over the MINES producing the good of `syndicateCommitment × windowFraction`
   // (invariant 5 — the venture field is the single source of the target; the window
-  // accumulators live in guild.syndicateWindows, sim/windows.js). fraction is PINNED
-  // to 1 in Slice B-i (no mid-window join exists yet). Refinery-OUTPUT commitment is a
-  // later slice (this sums over mines only). Computed UP FRONT so a committed good
-  // with NO fresh and NO consumer (an idle committed mine) is still routed and still
-  // delivers 0 — fresh-only — rather than being silently skipped.
+  // accumulators live in guild.syndicateWindows, sim/windows.js). As of Slice 3b-ii the
+  // fraction is REAL: a venture licensed mid-window contributes only the share of its
+  // commitment for the ticks it is present (§5's join ruling, Option A). It is still 1
+  // for every venture present the whole window, so this sum is unchanged for every
+  // pre-3b-ii path. Refinery-OUTPUT commitment is a later slice (this sums over mines
+  // only). Computed UP FRONT so a committed good with NO fresh and NO consumer (an idle
+  // committed mine) is still routed and still delivers 0 — fresh-only — rather than
+  // being silently skipped.
   const commitmentQ = {};
   for (const v of ventures) {
     if (v.resourceType && v.syndicateCommitment) {
@@ -166,7 +169,17 @@ function resolveProduction(guild, systemId, opts = {}) {
       const inp = recipe.inputs.find((i) => i.good === good);
       if (inp) consumers.push({ venture: c, qty: inp.qty });
     }
-    const Q = commitmentQ[good] || 0; // the aggregate windowed target (0 = unlicensed)
+    // The aggregate windowed target (0 = unlicensed). ROUNDED to a whole number: the
+    // sum above is `Σ integer commitment × fraction`, and a mid-window fraction makes it
+    // fractional — but `Q` is a quantity of GOODS, which are integers (§15.2), and it is
+    // compared against `delivered` (a whole-unit count) to judge met/breach. Rounding
+    // here, at the single place `Q` is finalised, means the paced required-rate and the
+    // met/breach judgement read the SAME whole number, so pacing can never aim at a
+    // target judgement won't accept. `Math.round`, matching the send carry's own
+    // half-up convention. With a full-window fraction of 1 the sum is already an
+    // integer and rounding is the identity — which is why every pre-3b-ii run is
+    // byte-identical (a golden-hash test pins that).
+    const Q = Math.round(commitmentQ[good] || 0);
 
     // A fresh good nobody consumes AND that carries no commitment: nothing to route —
     // it all stays in the pool (next tick's reserve). No `goods` entry. A good with
