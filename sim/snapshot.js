@@ -31,6 +31,7 @@ const { getSite, getLandmark } = require('./seed.js');
 const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
 const { previewProduction } = require('./production.js');
+const { PRICED_GOODS, postedPrice } = require('./prices.js');
 
 // Bump when the shape below changes so the inspector can refuse a stale file
 // loudly instead of rendering half of it. The inspector checks this.
@@ -87,6 +88,15 @@ const { previewProduction } = require('./production.js');
 // `syndicate {mode,value}`. windowStart/delivered/sendCarry ARE serialized engine state
 // (guild.syndicateWindows, in the determinism hash); the window telemetry here is
 // DERIVED (previewProduction) and is not.
+// v7 (price engine, 26-08-26): ADDITIVE — a top-level `prices` block, the per-good
+// POSTED Syndicate value (sim/prices.js), one float per non-fuel good. No schema bump:
+// nothing existing changed shape, so every current reader keeps working and an older
+// reader simply ignores the new key. Deliberately POSTED ONLY — the EMA memory and the
+// publish pipeline (the not-yet-published values) stay off the lens, because handing
+// out the future price would kill the front-running read the 2-tick lag exists to
+// create. No price HISTORY is emitted either: it would mean storing a ring buffer in
+// serialized state for a chart the client already buffers itself (the chart binding is
+// its own slice). `deuterium_fuel` has no row — fuel is never listed (§8).
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -97,6 +107,7 @@ const SNAPSHOT_SCHEMA = 7;
 //       fuel: { reserve, guildHeld, total },            // total = reserve+guildHeld
 //     },
 //     syndicate: { ledger },
+//     prices: { <every non-fuel stockpile good>: <posted value> },  // sim/prices.js
 //     guilds: [ { id, name, isBot, credits, fuelHoard, influence,
 //                 stockpiles: { good: int },                    // flat guild total
 //                 stockpilesBySystem: { systemId: { good: int } }, // per-system
@@ -222,6 +233,14 @@ function buildSnapshot(state) {
       fuel: { reserve, guildHeld, total: reserve + guildHeld },
     },
     syndicate: { ledger: state.syndicate ? state.syndicate.ledger : 0 },
+    // The posted Syndicate value per non-fuel good — the number the whole economy
+    // will be denominated in (docs/licence-and-price-system.md Part 1). Read through
+    // the one accessor so the publish pipeline's shape stays inside sim/prices.js,
+    // and walked in the module's sorted good order so the emitted bytes are stable.
+    // A state built before this slice (or by hand in a test) simply has no price
+    // rows; postedPrice returns null and the good is reported as such rather than
+    // being given an invented number.
+    prices: Object.fromEntries(PRICED_GOODS.map((good) => [good, postedPrice(state, good)])),
     guilds,
     // The resolved production preview (§5, ruled 07-08-26; rate-based 10-08-26): per
     // guild → per system → this tick's fresh, the Gate-1 fork split, the drawdown

@@ -114,13 +114,27 @@ test('the injected N moves the boundary cadence (the window rolls at tick % N ==
 // ADDS action branches + a testbed control, so any run that calls neither action
 // must reproduce these bytes exactly. If either hash drifts, the engine changed
 // under this slice — which it must not (§5, §18: the unlicensed path stays untouched).
+//
+// PRICE-ENGINE SLICE (26-08-26): state now carries a `prices` block (sim/prices.js),
+// which is real serialized state and therefore legitimately changes the FULL hash. The
+// two goldens below are UNCHANGED: they are now asserted against the state with the
+// price block stripped, which makes them a STRONGER proof than before — the price
+// engine added prices and altered NOTHING else about these runs, byte for byte. The
+// full-state hashes are pinned separately beside them so a future drift in the price
+// numbers themselves is caught too.
 const GOLDEN_UNLICENSED = '682e42e0dd758ce523fea882f6560707802cdd7e7b4def794f323430a4cfcff5';
 const GOLDEN_COMMITTED = 'd5896c9413cd5098eb141976f28a0e6e681e2c931f64c2fca1116c6aaff2e97d';
+const GOLDEN_UNLICENSED_WITH_PRICES = 'ee6856cc520c23b8cc2cfdad996d463ccf35d40bb6b85b35f3a644a46d493647';
+const GOLDEN_COMMITTED_WITH_PRICES = 'ceec3677ddf66a8c96650493616bb5b1b414775b8992e55fe408f8376c8cdbee';
+
+// The state minus its price block — everything the pre-price-engine hash covered.
+const withoutPrices = (state) => { const { prices, ...rest } = state; return rest; };
 
 test('NO-OP PROOF: an unlicensed run (no scaffold action) is byte-identical to pre-change HEAD', () => {
   let s = sysState([mine('t', 'titanium', 10, 0), mine('c', 'carbon_products', 10, 0), refinery('r', 'titanium_alloy', 2)]);
   for (let i = 0; i < 40; i += 1) s = tick(s);
-  assert.equal(hashState(s), GOLDEN_UNLICENSED);
+  assert.equal(hashState(withoutPrices(s)), GOLDEN_UNLICENSED, 'everything but the price block is byte-identical to pre-change HEAD');
+  assert.equal(hashState(s), GOLDEN_UNLICENSED_WITH_PRICES, 'and the price block itself is pinned');
 });
 
 test('NO-OP PROOF: a committed run seeded via createVenture (not the action) matches pre-change HEAD', () => {
@@ -130,5 +144,6 @@ test('NO-OP PROOF: a committed run seeded via createVenture (not the action) mat
   // the intake surface, not the resolution.
   let s = sysState([mine('t', 'titanium', 10, 7), mine('c', 'carbon_products', 10, 5), refinery('r', 'titanium_alloy', 2)], 4);
   for (let i = 0; i < 40; i += 1) s = tick(s);
-  assert.equal(hashState(s), GOLDEN_COMMITTED);
+  assert.equal(hashState(withoutPrices(s)), GOLDEN_COMMITTED, 'everything but the price block is byte-identical to pre-change HEAD');
+  assert.equal(hashState(s), GOLDEN_COMMITTED_WITH_PRICES, 'and the price block itself is pinned');
 });

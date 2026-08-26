@@ -5,13 +5,13 @@
 // time (working practice #3) rather than all at once, so each pillar is a
 // real, individually-tested fact rather than a batch of invented behavior.
 //
-// Landed so far: step 1, production (the simplest possible cut -- see its
-// own comment below for exactly what it does and doesn't do yet). Steps
-// 2-8 are still `identity` — explicit NAMED no-ops — because their real
-// logic needs modules that don't exist yet (economy.js, territory.js,
-// bots.js — see sim/README.md's planned layout). Their seam already sits in
-// the right place, in the right order, instead of being invented ad hoc
-// whenever that module lands.
+// Landed so far: step 1, production (see its own comment below for exactly what
+// it does and doesn't do yet), and step 3, the price recompute (the Syndicate
+// value per good — the formula itself lives in sim/prices.js). Steps 2 and 4-8
+// are still `identity` — explicit NAMED no-ops — because their real logic needs
+// modules that don't exist yet (territory.js, bots.js — see sim/README.md's
+// planned layout). Their seam already sits in the right place, in the right
+// order, instead of being invented ad hoc whenever that module lands.
 //
 // What IS real about this file, even where a step is still a stub:
 //   - the ORDER is fixed and correct per §15.6, so invariant 9 (deterministic
@@ -26,6 +26,7 @@ const { getRecipe } = require('./recipes.js');
 const { addStock } = require('./stock.js');
 const { resolveProduction } = require('./production.js');
 const { setWindow } = require('./windows.js');
+const { recomputePrices } = require('./prices.js');
 
 // Deep-clones state so tick() can never accidentally mutate its input.
 // structuredClone is a plain JS global (Node 17+), not a DOM API.
@@ -69,7 +70,7 @@ function cloneState(state) {
 // DETERMINISM (invariant 9): the iteration order is fixed here — guilds in array
 // order, systems by sorted systemId (the resolver fixes goods/consumer order
 // internally). No plain-object key order feeds any number.
-function stepProduction(state, _actions) {
+function stepProduction(state, _actions, ctx) {
   for (const guild of state.guilds) {
     const ventures = guild.ventures || [];
     // Systems this guild produces in, in a deterministic order. A synthetic test
@@ -80,7 +81,7 @@ function stepProduction(state, _actions) {
     const systemIds = [...new Set(ventures.map((v) => v.systemId))]
       .sort((a, b) => (String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0));
     for (const sys of systemIds) {
-      applyProduction(state, guild, sys);
+      applyProduction(state, guild, sys, ctx);
     }
   }
   return state;
@@ -91,7 +92,7 @@ function stepProduction(state, _actions) {
 // guild's system pool (and each refinery's batchCarry) in place — tick()
 // already cloned state, so this never touches the caller's input. The resolver
 // reads the pool balance + accumulators (start-of-step) and mutates nothing.
-function applyProduction(state, guild, systemId) {
+function applyProduction(state, guild, systemId, ctx) {
   // The producing tick is state.tick + 1 (the tick number of the state this step
   // yields), and the window length is the engine-wide state.windowN — passed so the
   // resolver's windowed-accrual send matches what previewProduction reports for the
@@ -148,6 +149,21 @@ function applyProduction(state, guild, systemId) {
     const w = report.goods[good].window;
     if (w) setWindow(guild, systemId, good, { windowStart: w.windowStart, delivered: w.delivered, sendCarry: w.sendCarry });
   }
+
+  // Accumulate this (guild, system)'s DOWNSTREAM DRAW per good into the tick's
+  // scratch context, for step 3's idleness term. `fork.downstream` is the report's
+  // ACTUAL consumer draw — the same number this step just debited from the pool — so
+  // the price step reads a fact production already established instead of resolving
+  // production a second time. The scratch is per-tick telemetry, never state: it
+  // does not serialize and does not enter the determinism hash. Sorted good order
+  // for determinism (invariant 9), matching the two loops above; a direct
+  // applyProduction call with no ctx (a test) simply skips it.
+  if (ctx) {
+    for (const good of Object.keys(report.goods).sort()) {
+      const drawn = report.goods[good].fork.downstream;
+      if (drawn > 0) ctx.consumed[good] = (ctx.consumed[good] || 0) + drawn;
+    }
+  }
 }
 
 // Step 2 — consumption. SEAM for spacecraft fuel burn against the shared
@@ -158,10 +174,22 @@ function stepConsumption(state, _actions) {
   return state;
 }
 
-// Step 3 — price recompute. Publishes the posted price governing the NEXT
-// action window (§8, decided #42). SEAM: no market/price fields exist on
-// state yet — state.js only carries reserve.reserveLevel so far.
-function stepPriceRecompute(state, _actions) {
+// Step 3 — price recompute. The Syndicate value per non-fuel good, recomputed
+// EVERY tick and published PUBLISH_LAG ticks behind (docs/licence-and-price-system.md
+// Part 1; §8/#42's posted price, now per-tick and lagged rather than per-window).
+// The whole formula — level × idleness, EMA, slew, clamp, the publish pipeline —
+// lives in sim/prices.js; this step is the seam that hands it the two inputs it
+// cannot derive alone and writes the result back:
+//   - the STOCK numerator comes from state.guilds as they stand right now (step 1
+//     has already moved this tick's goods), derived inside recomputePrices via the
+//     one supply selector — NOT from state.galacticSupply, which is the post-steps
+//     cache and is still stale at this point in the tick;
+//   - the CONSUMPTION signal (the idleness term) comes from the scratch context
+//     stepProduction filled from its own report, so no production is re-resolved.
+// Nothing reads the price yet — no sale, no fee, no dividend (licence slice), so
+// this step moves no credits and no goods; it only publishes the number.
+function stepPriceRecompute(state, _actions, ctx) {
+  state.prices = recomputePrices(state, ctx ? ctx.consumed : {});
   return state;
 }
 
@@ -220,9 +248,16 @@ function tick(state, actions = []) {
   if (!state) throw new Error('tick: state is required');
   if (!Array.isArray(actions)) throw new Error('tick: actions must be an array');
 
+  // The per-tick SCRATCH context: within-tick facts one step establishes and a
+  // later step reads (today: the per-good downstream draw stepProduction resolved,
+  // which step 3's idleness term needs). It is deliberately NOT state — it never
+  // serializes, never enters the determinism hash, and starts empty every tick — so
+  // a step can hand a fact forward without a fact getting a second home (invariant 5).
+  const ctx = { consumed: {} };
+
   let next = cloneState(state);
   for (const step of STEPS) {
-    next = step(next, actions);
+    next = step(next, actions, ctx);
   }
   next.tick = state.tick + 1;
 

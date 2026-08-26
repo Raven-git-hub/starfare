@@ -21,6 +21,7 @@ const { computeGalacticSupply } = require('./supply.js');
 const { cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
 const { cloneWindows } = require('./windows.js');
+const { seedPrices } = require('./prices.js');
 
 // --- Entity constructors -----------------------------------------------
 
@@ -316,6 +317,15 @@ function createState(scenario) {
     world: scenario.world || {},
     claims: Array.isArray(scenario.claims) ? scenario.claims : [],
     shipments: [], // IN-FLIGHT: empty until routes exist (walking skeleton has none)
+    // prices: the Syndicate value per non-fuel good (docs/licence-and-price-system.md
+    // Part 1; sim/prices.js owns the shape and the formula). Seeded here at every
+    // good's [FIRST-CUT] base price so a fresh galaxy already posts a value, and
+    // recomputed every tick by step 3. It is SERIALIZED state — it joins the save and
+    // the determinism hash — because the EMA memory and the publish pipeline are real
+    // memory the next tick reads, not derived telemetry that could be recomputed. Fuel
+    // is never listed (design.md §8): `deuterium_fuel` has no row here, ever. Computed
+    // rather than accepted from the scenario, like `audit` and `galacticSupply` below.
+    prices: seedPrices(),
     audit: {
       totalProduced: sumFuelHoards(guilds) + reserve.reserveLevel,
       totalConsumed: 0,

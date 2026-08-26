@@ -25,6 +25,9 @@
 //   state.audit      : { totalProduced, totalConsumed, expectedCreditTotal }
 //   state.galacticSupply : { resources: {good->int}, fuel: {reserve, guildHeld} }
 //                          // DERIVED cache; checked against the live sum here
+//   state.prices?    : { <non-fuel good>: { posted, pending: [...] } }
+//                          // the Syndicate value per good (sim/prices.js); floats by
+//                          // design — sanity-checked here, not integer-swept
 //
 // audit.* are GLOBAL bookkeeping counters, not game numbers — they are the
 // running totals invariants 1 and 2 are literally *defined against*:
@@ -43,7 +46,8 @@
 
 // One violation record shape everywhere: { rule, where, detail }.
 
-const { isRawResource, isStockpileGood } = require('./resources.js');
+const { isRawResource, isStockpileGood, FUEL_GOOD } = require('./resources.js');
+const { PRICED_GOODS, PRICE_FLOOR, PRICE_CEILING, PUBLISH_LAG } = require('./prices.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { getSite, getLandmark, getSystem, getTerranHomeworld } = require('./seed.js');
 const { getRecipe } = require('./recipes.js');
@@ -207,6 +211,49 @@ function checkSyndicateWindows(state) {
   return out;
 }
 
+// Price sanity — the per-good Syndicate value (state.prices, sim/prices.js). Like
+// batchCarry and sendCarry, prices are SANCTIONED NON-INTEGERS fenced off the goods
+// ledger, so the integer sweep above skips them and they get their own tripwire here.
+// A NaN or Infinity price is the exact failure that would rot silently: nothing reads
+// the price yet, but the moment the licence slice denominates credits in it, a poisoned
+// value would spread through the ledger before anyone noticed. So: every priced good
+// present, every value finite and inside the clamp band, the publish pipeline the right
+// depth, and NO row for fuel (never listed, §8). A state with no price block at all is
+// legal (a pre-price-engine save, or a hand-built test fixture); only a present, broken
+// one trips.
+function checkPrices(state) {
+  const out = [];
+  if (!state.prices) return out;
+  const inBand = (v) => typeof v === 'number' && Number.isFinite(v) && v >= PRICE_FLOOR && v <= PRICE_CEILING;
+
+  for (const good of PRICED_GOODS) {
+    const row = state.prices[good];
+    if (!row) {
+      out.push({ rule: 'price-present (price engine)', where: `prices.${good}`, detail: { missing: true } });
+      continue;
+    }
+    if (!inBand(row.posted)) {
+      out.push({ rule: 'price-finite-and-in-band (price engine)', where: `prices.${good}.posted`, detail: { value: row.posted, floor: PRICE_FLOOR, ceiling: PRICE_CEILING } });
+    }
+    if (!Array.isArray(row.pending) || row.pending.length !== PUBLISH_LAG) {
+      out.push({ rule: 'publish-pipeline-depth (price engine)', where: `prices.${good}.pending`, detail: { value: row.pending, expected: PUBLISH_LAG } });
+      continue;
+    }
+    row.pending.forEach((v, i) => {
+      if (!inBand(v)) {
+        out.push({ rule: 'price-finite-and-in-band (price engine)', where: `prices.${good}.pending[${i}]`, detail: { value: v, floor: PRICE_FLOOR, ceiling: PRICE_CEILING } });
+      }
+    });
+  }
+  // A row for a good that is not priced at all — fuel above all — is stale or bogus.
+  for (const good of Object.keys(state.prices)) {
+    if (!PRICED_GOODS.includes(good)) {
+      out.push({ rule: 'priced-good (price engine)', where: `prices.${good}`, detail: { good, fuel: good === FUEL_GOOD } });
+    }
+  }
+  return out;
+}
+
 // Galactic-supply consistency — the derived totals cache (state.galacticSupply)
 // must equal a fresh re-derivation from the guilds' actual stockpiles and the
 // fuel figures. This is a CONSISTENCY check, not a conservation one: non-fuel
@@ -364,6 +411,7 @@ function checkInvariants(state, tick) {
     ...checkNonNegativityAndIntegrality(state),
     ...checkBatchCarry(state),
     ...checkSyndicateWindows(state),
+    ...checkPrices(state),
     ...checkGalacticSupplyConsistency(state),
     ...checkSiteOccupancy(state),
     ...checkClaimIntegrity(state),

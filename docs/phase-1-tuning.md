@@ -55,6 +55,30 @@
 - **Tick duration** — **RULED (24-08-26): 1 tick = 1 minute of real time** → 60 ticks/hour, 1,440 ticks/day. The engine stays per-tick and clock-free; this is the multiplier the per-hour UI display (§5) reads. Full entry below.
 - **Syndicate commitment window length `N` (ticks)** `[FIRST-CUT]` *(Slice B-i, 10-08-26)* — the number of ticks a per-good windowed accrual runs before it resolves met/breach and rolls (§5 "windowed accrual"; the boundary is the GLOBAL cadence `tick % N == 0`). **UNRULED — 24** as a pure first cut (design says a window is ≈24h, and with tick-duration now ruled at 1 min/tick that is **1,440 ticks** — but pending confirmation the window is a full day, 24 stays a guess, not a tuned figure — it is *not* a game-meaningful constant baked into the boundary maths). It is a single **engine-wide** value: the fallback `FIRST_CUT_WINDOW_N` lives flagged in `sim/windows.js`, and every scenario/test overrides it via `state.windowN` (an unlicensed scenario needs no window and sets none). Tick-duration is now fixed (1 min/tick), so ≈24h → **N = 1,440** the moment the 24h window length is confirmed; until that confirmation the placeholder 24 stands and no per-hour window length is invented in code.
 
+### Resource prices *(26-08-26 — the price engine, `sim/prices.js`)*
+
+The Syndicate value per non-fuel good: `target = BASE × (1 + SENSITIVITY × level) × idleness`,
+EMA-smoothed, slew-capped, clamped, and published two ticks behind (`docs/licence-and-price-system.md`
+Part 1 — the **shape** is settled design; every **number** below is `[FIRST-CUT]` and lives here).
+`deuterium_fuel` is never priced (Syndicate-regulated, design.md §8) — a permanent exclusion, not a
+deferral.
+
+| Constant | `[FIRST-CUT]` value | Rationale |
+|---|---|---|
+| **Base price** | **10** credits | The seed value every good starts at and the anchor the curve multiplies. Uniform across all 28 goods: per-good (or tier-aware) bases are **unruled**, so none was invented. |
+| **Level sensitivity** | **0.05** | The level is *ticks of galaxy-wide production held in stockpiles* (`stock ÷ capacity-per-tick`), so this sets the timescale on which hoarding pays: a level of 20 doubles the value; the ceiling needs a level of 380 — a little over **six hours** of wholly unmanaged hoarding at the ruled 1 tick = 1 minute. **Chosen against a live run**: the first value tried (0.6) pinned every hoarded good at the ceiling inside forty ticks, which is a flat line, not a market. |
+| **Idleness weight** | **0.5** | Stock being drawn downstream is *working inventory* and is discounted; static stock is a *hoard* and takes the full level. At 0.5 a pile wholly consumed each tick prices at half. 0 would disable the behavioural term; 1 would make working inventory worthless. |
+| **EMA alpha** | **0.2** | The fraction of the gap to the target closed per tick — the value glides (visibly, ~5 ticks to most of a move) instead of strobing. The EMA memory is also what folds the momentum/trend term in for free. |
+| **Slew cap** | **10% per tick** | Relative, so it scales with the good's own price level. Binding only on shocks: it lets a value double in ~7 ticks, so a single dump can't teleport the price but an honest trend isn't throttled. |
+| **Floor / ceiling** | **2 / 200** | 0.2× and 20× base — the *technical* stop only. The real circuit-breakers are the storyteller (Phase 6) and the destabiliser/counter bots (Slice 7); this band exists so nothing runs away before they exist. |
+| **Publish lag** | **2 ticks** | Straight from the settled design: it breaks the price↔action circular dependency, restores §8/#42's knowable posted price, and creates the front-running read (the stock is visible now, the price catches up later). |
+| **Droidless baseline output** | **5** units/tick per mine, **5** batches/tick per recipe | The capacity denominator needs a venture's *max possible* output, not its throttleable `productionRate`. 5 is the one extraction rate the repo has actually ruled (Titanium 5/tick, 01-08-26) and the client's uniform `ESTABLISH_RATE`. The table in `sim/baseline.js` is written out entry by entry so tuning is a one-file edit; **per-resource differentiation is designed but unruled** ("a gold mine might yield ~1", above) and is deliberately left on the checklist rather than guessed. |
+
+**Open, for the human — not invented here:** per-good base prices (a tier-aware base is the obvious next
+ruling); per-resource/per-recipe baseline outputs; whether the level curve should stay **linear** in the
+level or bend (concave would make the first units of a hoard matter most); and `docs/licence-and-price-system.md`
+Part 5's *normaliser confirm* — live production capacity (what was built) vs. a fixed per-good reference.
+
 ### The second good (tolled/shipped raw)
 - **Good** `[FIRST-CUT]`: **Titanium** (a Tier-1 raw; also the onboarding starter-quest good, so it recurs later).
 - **Market** `[FIRST-CUT]`: reuses the fuel price curve's *shape* (§5) with its own levers — base $3, target reserve 20, sensitivity 0.6, floor $1, ceiling $20.

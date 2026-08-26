@@ -154,11 +154,16 @@ against §5/§7 so there's one story, not two. **Nothing builds until the repo s
 per-venture number; `productionRate` becomes throttle-below / droids-above around it. Small, but the
 commitment and fee math both stand on "the Syndicate knows your max."
 
-**Slice 2 — The price engine.** Fill `stepPriceRecompute`: per-good price fields on state; `level ×
-idleness`; EMA; the 2-tick publish buffer; slew cap; floor/ceiling; fuel excluded. Expose price (+ short
-history) in the snapshot. Tests: rises on hoard, crashes on drain, gentle-common / sharp-rare,
-lag correct, deterministic. **Gate for every credit-denominated mechanic.** The console's price chart can
-now show real numbers.
+**Slice 2 — The price engine. ✅ LANDED 26-08-26** — build note: `docs/price-engine.md`; constants:
+`docs/phase-1-tuning.md`. Filled `stepPriceRecompute`: per-good price rows on state (`posted` + the
+`PUBLISH_LAG`-deep pipeline whose last slot doubles as the EMA memory); `level × idleness`; EMA; the
+2-tick publish buffer; slew cap; floor/ceiling; fuel excluded permanently. The capacity normaliser reads
+a new `[FIRST-CUT]` **droidless baseline** table (`sim/baseline.js`) — *not* `productionRate`, which is
+NOT refactored here. The posted value is in the snapshot (additive, schema still 7); no history on state,
+so the console keeps its ring buffer until the chart-binding slice. Tests as specified, plus the
+empty-galaxy no-op proof. **Nothing consumes the price yet** — that is Slice 3.
+Still open and NOT invented: per-good base prices, per-resource baselines, whether the level curve stays
+linear, and Part 5's normaliser confirm.
 
 **Slice 3 — Licence + commitment-as-sale + fee (credit side).** Replace the testbed commitment dial with
 a real **licence entity** (commitment %, fee terms **locked at issuance**, 24h window; reserve the

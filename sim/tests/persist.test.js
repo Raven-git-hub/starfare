@@ -163,7 +163,18 @@ test('double-apply guard: a snapshot-baked action still in the journal is not re
 // strictly opt-in, so with STARFARE_PERSIST_DIR unset the server runs this exact
 // pure path — this hash is the "before this change" value. If a future edit ever
 // alters the engine's result for this sequence, this tripwire fires.
+//
+// PRICE-ENGINE SLICE (26-08-26): state now carries a `prices` block (sim/prices.js) —
+// real serialized state, so the FULL hash legitimately moved. The golden below is
+// UNCHANGED and is now asserted against the state with the price block stripped, which
+// makes it a stronger statement than before: the price engine added prices and changed
+// nothing else about this sequence, byte for byte. The full-state hash is pinned beside
+// it so a drift in the price numbers themselves is caught too.
 const GOLDEN_HASH = '56401013588519715d15f415334fb2660b1bd9f73881352dc9f48b787a7b564c';
+const GOLDEN_HASH_WITH_PRICES = '53c4f4818b198cbf5000dc7d1ed4e7d8ce0f1e96902291f26575ff6b44b1b212';
+
+// The state minus its price block — exactly what the golden above covered.
+const withoutPrices = (state) => { const { prices, ...rest } = state; return rest; };
 
 test('no-op proof: pure engine path (persistence OFF) matches the golden hash', () => {
   // The SAME scripted moves as above, but driven straight through the engine with
@@ -176,7 +187,8 @@ test('no-op proof: pure engine path (persistence OFF) matches the golden hash', 
   s = advance(s, []).state;
 
   assert.equal(s.tick, 2);
-  assert.equal(hashState(s), GOLDEN_HASH);
+  assert.equal(hashState(withoutPrices(s)), GOLDEN_HASH, 'everything but the price block is byte-identical to pre-price-engine HEAD');
+  assert.equal(hashState(s), GOLDEN_HASH_WITH_PRICES, 'and the price block itself is pinned');
 });
 
 // --- 5. graceful shutdown: the MID-INTERVAL save (no intervening tick) ------
