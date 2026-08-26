@@ -444,6 +444,8 @@ So an LO holding 74% of a venture has **no claim on the VO's machinery** — the
 
 ### The Syndicate Exchange *(merged from the Marketplace thread, 17-07-26)*
 
+> **PRICE DIRECTION SUPERSEDED (26-08-26) — see `docs/licence-and-price-system.md`.** The Syndicate value now **rises as a good accumulates in guild stockpiles** and falls as those hoards drain (the Syndicate's control-scarcity), *not* "abundance commands worse prices." The single value, the two-sided exchange, and price-neutrality vs. the player book are all unchanged; only the supply→price **direction** flips, plus a per-tick recompute (level × idleness, EMA, 2-tick lag). Directional statements in this section are superseded on that point.
+
 The shared market now has a concrete microstructure — a two-sided exchange:
 
 - **The Syndicate as market-maker.** For Tier 1–3 goods it holds effectively inexhaustible stock and will always buy or sell at a single computed **value**, derived from total galactic supply. The real supply figure is hidden; players see only the value and its history. This generalizes the fuel utility's supply-derived pricing to ordinary goods — and the Phase 1 sandbox's "reuse the fuel curve's shape for the second good" proposal is exactly this line, in miniature.
