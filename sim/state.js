@@ -115,6 +115,7 @@ function createVenture({
   productionRate = 0,
   inputStockpiles = {},
   syndicateCommitment = 0,
+  equityPct = 0,
   batchCarry = {},
 }) {
   if (id === undefined) throw new Error('createVenture: id is required');
@@ -168,6 +169,31 @@ function createVenture({
     // carrying it is a behavioural no-op; it exists to give commitment a home
     // everywhere (rows + totals) before slice 3 gives it a function.
     syndicateCommitment,
+    // equityPct: the venture's offered equity share `o` — the cut of its
+    // commitment-SALE income forfeited to outside investors, or (with none, which is
+    // every venture today) kept by the Syndicate ledger (§5 "Equity offered", the
+    // 49% structural ceiling; docs/licence-and-price-system.md Part 2). It is the
+    // venture-level placeholder for §15.4's reserved `Licence.equityOfferedPct`,
+    // exactly as `syndicateCommitment` is the placeholder for `committedOutputPct`:
+    // when the Licence entity lands it becomes the source and these retire. A
+    // FRACTION (0–0.49), not a percentage, and the ONE sanctioned non-integer on a
+    // venture besides batchCarry — it scales credits, it is not credits (§15.2);
+    // the credits it produces are rounded once, in sim/licence.js.
+    //
+    // OMITTED when 0, exactly as `syndicateCommitment`'s sibling `syndicateWindows`
+    // is omitted when empty: a venture that offered no equity carries no key, so an
+    // unlicensed galaxy's serialized state stays byte-identical to pre-Slice-3a and
+    // the determinism-hash no-op proof still means something. Range is refused at
+    // intake (actions.js) and asserted every tick (invariants.js) — this file
+    // assembles, they judge.
+    ...(equityPct ? { equityPct } : {}),
+    // RESERVED, deliberately NOT added here (Slice 3b/5, §15.4): `licenceId` — the
+    // pointer to the OWNED `Licence` entity that will carry the fee terms locked at
+    // issuance, the breach state and the renegotiation window — and `shareholders`,
+    // the investor cap-table Part 2 asks to reserve. They are documented rather than
+    // stubbed because an empty object written onto every venture is not a socket: it
+    // is bytes in every save and in the determinism hash, for a field nothing reads.
+    // The omit-when-default discipline above is what makes adding them additive.
     // batchCarry: the per-good sub-unit carries (§5 rate-based rewrite, corrected
     // 10-08-26 build-review, §15.4). A refinery runs at a CONTINUOUS rate
     // (batches/tick may be fractional), but goods are integers (§15.2). So EVERY

@@ -28,6 +28,9 @@
 //   state.prices?    : { <non-fuel good>: { posted, pending: [...] } }
 //                          // the Syndicate value per good (sim/prices.js); floats by
 //                          // design — sanity-checked here, not integer-swept
+//   guild.lastSyndicateSale? : { tick, credited, goods: {good: {units, price, credited}} }
+//                          // what the Syndicate bought from this guild, last time it
+//                          // bought anything (Slice 3a); absent until a first sale
 //
 // audit.* are GLOBAL bookkeeping counters, not game numbers — they are the
 // running totals invariants 1 and 2 are literally *defined against*:
@@ -48,6 +51,7 @@
 
 const { isRawResource, isStockpileGood, FUEL_GOOD } = require('./resources.js');
 const { PRICED_GOODS, PRICE_FLOOR, PRICE_CEILING, PUBLISH_LAG } = require('./prices.js');
+const { EQUITY_CEILING } = require('./licence.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { getSite, getLandmark, getSystem, getTerranHomeworld } = require('./seed.js');
 const { getRecipe } = require('./recipes.js');
@@ -206,6 +210,57 @@ function checkSyndicateWindows(state) {
           out.push({ rule: 'send-carry-in-[0,1) (§5 Slice B)', where: `${where}.sendCarry`, detail: { value: c } });
         }
       }
+    }
+  }
+  return out;
+}
+
+// Licence terms + the commitment-sale record (Slice 3a, §5 "Output commitment" /
+// "Equity offered"). Two things a tick may now touch that the integer sweep above does
+// not cover:
+//
+//   - `Venture.equityPct` — the offered equity share `o`. A FRACTION, so it is one of
+//     the sanctioned non-integers (it scales credits, it is not credits), and it must
+//     stay inside §5's structural [0, 49%] ceiling: an `o` above it would mean an owner
+//     who no longer controls its own venture, which the design forbids outright. The
+//     establish action refuses one, but a venture built directly (a scenario, an inline
+//     founding venture) bypasses that, so the tick asserts it too. Absent = 0 = legal.
+//   - `Guild.lastSyndicateSale` — the record of what the Syndicate bought this tick.
+//     Its credit figures are real credits and must be whole (§15.2); its `credited`
+//     total must equal the sum of its per-good rows, or the console would report a
+//     number the ledger never moved. Absent (nothing ever sold) is legal.
+//
+// This checks the RECORD's internal consistency, not the credit movement itself — the
+// movement is already covered, exactly, by invariant 2 above: the sale pays the guild
+// and debits the ledger by one identical integer, so any drift between them is a
+// conservation break and fails there first.
+function checkLicenceTerms(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    for (const v of g.ventures || []) {
+      if (v.equityPct === undefined) continue;
+      const o = v.equityPct;
+      if (typeof o !== 'number' || !Number.isFinite(o) || o < 0 || o > EQUITY_CEILING) {
+        out.push({ rule: 'equity-within-ceiling (§5)', where: `venture:${v.id}.equityPct`, detail: { value: o, ceiling: EQUITY_CEILING } });
+      }
+    }
+
+    const sale = g.lastSyndicateSale;
+    if (!sale) continue;
+    const where = `guild:${g.id}.lastSyndicateSale`;
+    checkField(out, sale.tick, `${where}.tick`);
+    checkField(out, sale.credited, `${where}.credited`);
+    let sum = 0;
+    for (const [good, row] of Object.entries(sale.goods || {})) {
+      checkField(out, row.units, `${where}.goods.${good}.units`);
+      checkField(out, row.credited, `${where}.goods.${good}.credited`);
+      if (typeof row.price !== 'number' || !Number.isFinite(row.price)) {
+        out.push({ rule: 'sale-price-finite (Slice 3a)', where: `${where}.goods.${good}.price`, detail: { value: row.price } });
+      }
+      sum += row.credited;
+    }
+    if (sum !== sale.credited) {
+      out.push({ rule: 'sale-total-matches-rows (Slice 3a)', where: `${where}.credited`, detail: { total: sale.credited, sumOfRows: sum } });
     }
   }
   return out;
@@ -412,6 +467,7 @@ function checkInvariants(state, tick) {
     ...checkBatchCarry(state),
     ...checkSyndicateWindows(state),
     ...checkPrices(state),
+    ...checkLicenceTerms(state),
     ...checkGalacticSupplyConsistency(state),
     ...checkSiteOccupancy(state),
     ...checkClaimIntegrity(state),

@@ -26,7 +26,8 @@ const { getRecipe } = require('./recipes.js');
 const { addStock } = require('./stock.js');
 const { resolveProduction } = require('./production.js');
 const { setWindow } = require('./windows.js');
-const { recomputePrices } = require('./prices.js');
+const { recomputePrices, postedPrice } = require('./prices.js');
+const { commitmentSale } = require('./licence.js');
 
 // Deep-clones state so tick() can never accidentally mutate its input.
 // structuredClone is a plain JS global (Node 17+), not a DOM API.
@@ -127,16 +128,48 @@ function applyProduction(state, guild, systemId, ctx) {
     v.updatedAtTick = state.tick;
   }
 
-  // Deliver the Gate-1 Syndicate fork (§5 "Syndicate fork delivery", 10-08-26):
-  // remove each good's committed units from the pool — they leave the guild and sink
-  // into the Syndicate's infinite backend (no receiving entity; invariants.js's
-  // galactic-supply check already treats selling as a sink, not a conservation
-  // break). Instant/per-tick, full commitment, no buffer/fee/breach (licence layer,
-  // later). Goods are iterated in sorted key order for determinism (invariant 9);
-  // fork.syndicate is 0 for every unlicensed venture, so this is a no-op today.
+  // Deliver the Gate-1 Syndicate fork (§5 "Syndicate fork delivery", 10-08-26) — and,
+  // as of Slice 3a, PAY FOR IT. The committed units leave the guild's pool for the
+  // Syndicate's infinite backend exactly as before (invariants.js's galactic-supply
+  // check already treats selling as a sink, not a conservation break); what is new is
+  // the credit leg beside it: the delivery is a SALE, not a tithe
+  // (docs/licence-and-price-system.md Part 2; design.md §5 "Output commitment").
+  //
+  // The whole split lives in sim/licence.js — this is the seam that hands it the
+  // three inputs and applies the one number it returns:
+  //   - the PRICE is the POSTED one (sim/prices.js), the two-ticks-lagged value
+  //     already sitting on state when this step runs. That is the point of the lag:
+  //     the rate a sale executes at was fixed two ticks before the sale.
+  //   - the VENTURES are this system's, so a good's proceeds split by the same
+  //     per-venture commitments that built its aggregate `Q`.
+  //   - the OWNER's integer share moves twice, equal and opposite: into the guild's
+  //     credits, out of the Syndicate ledger (the buyer). The `o` equity share is not
+  //     paid to anyone — no investor exists yet — so it simply never leaves the
+  //     ledger (§5: "or, with none, to the Syndicate ledger"). One rounding, one
+  //     number, both legs: invariant 2 holds to the credit.
+  // Goods are iterated in sorted key order for determinism (invariant 9). For an
+  // unlicensed venture fork.syndicate is 0, so nothing here runs at all and the
+  // credit-free path stays byte-identical.
+  const systemVentures = (guild.ventures || []).filter((v) => v.systemId === systemId);
   for (const good of Object.keys(report.goods).sort()) {
     const delivered = report.goods[good].fork.syndicate;
-    if (delivered > 0) addStock(guild, systemId, good, -delivered);
+    if (delivered <= 0) continue;
+    addStock(guild, systemId, good, -delivered);
+
+    // A committed good with no posted price is not a free delivery — it is a broken
+    // state, and taking the goods anyway would be a silent loss. Halt loudly (§15.5's
+    // "a silent violation is worse than a crash"). Every non-fuel good carries a price
+    // from tick 0 (createState seeds them), and fuel is never committed or sold here,
+    // so this fires only on a state whose price block was removed by hand.
+    const price = postedPrice(state, good);
+    if (price == null) {
+      throw new Error(`applyProduction: guild ${guild.id} delivered ${delivered} ${good} to the Syndicate at tick ${state.tick + 1} but the good has no posted price — refusing to hand over goods for nothing`);
+    }
+
+    const { ownerCredits } = commitmentSale({ ventures: systemVentures, good, delivered, price });
+    guild.credits += ownerCredits;
+    state.syndicate.ledger -= ownerCredits;
+    recordSale(guild, state.tick + 1, good, delivered, price, ownerCredits);
   }
 
   // Write back the §5 windowed-accrual state (guild.syndicateWindows) for each
@@ -164,6 +197,33 @@ function applyProduction(state, guild, systemId, ctx) {
       if (drawn > 0) ctx.consumed[good] = (ctx.consumed[good] || 0) + drawn;
     }
   }
+}
+
+// recordSale(...) — stamp what the Syndicate just bought onto the guild, so the
+// console can say "you earned N credits from your commitment this tick" without the
+// browser recomputing anything (§5's display rule). This is a RECORD OF AN EVENT, not
+// a second copy of a derivable fact (invariant 5): once the tick is over neither the
+// price nor the pile it was sold from can be recovered from state, so there is nowhere
+// else this could be read from.
+//
+// `tick` is the PRODUCING tick — the tick number of the state this step yields — so a
+// reader compares it against `state.tick`/`snapshot.tick` directly, with no off-by-one
+// (the same convention applyProduction already passes to the resolver). The record is
+// REPLACED, not accumulated, when a new tick's first sale lands, and accumulates across
+// a guild's several systems within one tick. It is written LAZILY — only by a real
+// sale — so a guild that has never sold carries no key and the unlicensed path stays
+// byte-identical (the same discipline as guild.syndicateWindows).
+function recordSale(guild, tick, good, units, price, credited) {
+  if (!guild.lastSyndicateSale || guild.lastSyndicateSale.tick !== tick) {
+    guild.lastSyndicateSale = { tick, credited: 0, goods: {} };
+  }
+  const sale = guild.lastSyndicateSale;
+  sale.credited += credited;
+  const row = sale.goods[good] || { units: 0, price, credited: 0 };
+  row.units += units;
+  row.price = price;   // one posted price per good per tick — the same value every system sold at
+  row.credited += credited;
+  sale.goods[good] = row;
 }
 
 // Step 2 — consumption. SEAM for spacecraft fuel burn against the shared

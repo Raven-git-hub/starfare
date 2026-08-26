@@ -79,6 +79,24 @@ ruling); per-resource/per-recipe baseline outputs; whether the level curve shoul
 level or bend (concave would make the first units of a hoard matter most); and `docs/licence-and-price-system.md`
 Part 5's *normaliser confirm* — live production capacity (what was built) vs. a fixed per-good reference.
 
+### Licence — the commitment sale *(26-08-26 — Slice 3a, `sim/licence.js`)*
+
+A committed delivery is now a **sale**: the owner is paid `round((1 − o) × units × posted price)` and the
+Syndicate ledger is debited the same integer (`docs/commitment-sale.md`; design.md §5 "Output
+commitment"). **This slice invented no new tuning number** — that is the entry. What it pinned instead:
+
+| Value | Where it comes from | Tag |
+|---|---|---|
+| **Equity ceiling — 0.49** | design.md §5, "up to the structural **49%** ceiling (the owner keeps control by retaining at least 51%)". A **design** number, not a dial: it is what makes the owner's control non-negotiable. Lives in `sim/licence.js` as `EQUITY_CEILING`. | **not** `[FIRST-CUT]` |
+| **The sale price** | `state.prices[good].posted` — the price engine's posted, two-ticks-lagged value. Nothing here fabricates a rate. | sourced |
+| **Rounding — `Math.round`, once, both legs** | Decision **#43** (already ruled): `round(qty × price)`, *identical both sides*. Realised as one rounding at the end whose single integer is used for both the guild's gain and the ledger's debit, so invariant 2 holds to the credit. | ruled |
+| **Default equity offered — 0** | "no offer", not a balance choice. Omitted from the venture entirely when 0, so an unlicensed galaxy's bytes are unchanged. | n/a |
+| **Sale cadence — per tick** | Ruled at this slice and reconciled into §5 (the *fee* stays on the 24h cycle). Not a number to tune. | ruled |
+
+**Still unruled, and deliberately not invented here** — all of them Slice 3b/4/5, all still open at #56:
+the **per-type basic fee**, the four-corner grid's corner values (100/75/75/0) and its shaping exponent
+`k`, the **0% commitment floor**, the breach charge, and the reputation build/decay rates.
+
 ### The second good (tolled/shipped raw)
 - **Good** `[FIRST-CUT]`: **Titanium** (a Tier-1 raw; also the onboarding starter-quest good, so it recurs later).
 - **Market** `[FIRST-CUT]`: reuses the fuel price curve's *shape* (§5) with its own levers — base $3, target reserve 20, sensitivity 0.6, floor $1, ceiling $20.

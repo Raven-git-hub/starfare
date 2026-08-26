@@ -3,6 +3,7 @@
 const { createGuild, createVenture } = require('./state.js');
 const { isStarterSystem, getTerranHomeworld, getSite } = require('./seed.js');
 const { getRecipe } = require('./recipes.js');
+const { EQUITY_CEILING, isValidEquityPct } = require('./licence.js');
 const { isStockpileGood } = require('./resources.js');
 const { setEntry } = require('./profile.js');
 
@@ -89,7 +90,7 @@ function createFoundGuildAction({
 // rate is ruled; the rest (and refinery throughput) are undecided. Establishing
 // a venture moves no credits or fuel (no licence/site cost yet).
 function createEstablishVentureAction({
-  guildId, ventureId, type = 'mining', siteId, resourceType, recipeId, productionRate,
+  guildId, ventureId, type = 'mining', siteId, resourceType, recipeId, productionRate, equityPct,
 }) {
   if (guildId === undefined) throw new Error('createEstablishVentureAction: guildId is required');
   if (ventureId === undefined) throw new Error('createEstablishVentureAction: ventureId is required');
@@ -101,7 +102,13 @@ function createEstablishVentureAction({
   if (type === 'refining' && recipeId === undefined) throw new Error('createEstablishVentureAction: recipeId is required for a refining venture');
   // `ventureType` (not `type`) in the action object, so it never collides with
   // the action's own discriminator `type: 'establishVenture'`.
-  return { type: 'establishVenture', guildId, ventureId, ventureType: type, siteId, resourceType, recipeId, productionRate };
+  // equityPct (`o`, §5's equity lever) is OPTIONAL and omitted from the action when
+  // not offered, so an establish call that says nothing about equity is byte-identical
+  // to one made before this slice — the venture lands at 0 (no equity offered).
+  return {
+    type: 'establishVenture', guildId, ventureId, ventureType: type, siteId, resourceType, recipeId, productionRate,
+    ...(equityPct === undefined ? {} : { equityPct }),
+  };
 }
 
 // Setting a guild's System Production Profile: storing, for ONE (guildId,
@@ -265,6 +272,15 @@ function validateAction(state, action) {
     }
     if (typeof action.productionRate !== 'number' || !Number.isInteger(action.productionRate) || action.productionRate <= 0) {
       return { valid: false, reason: 'productionRate must be a positive integer (§15.2)' };
+    }
+    // The equity offer `o` (§5, Slice 3a): optional, a FRACTION in [0, 0.49] — the
+    // structural ceiling that keeps the owner in control of its own venture. REFUSED
+    // rather than clamped: a silently-clamped 0.8 would be the engine rewriting the
+    // terms the player agreed to, and terms that are not what you set are worse than
+    // a rejection (pressure over prohibition governs the GAME's rules, not the
+    // engine's honesty about a contract).
+    if (action.equityPct !== undefined && !isValidEquityPct(action.equityPct)) {
+      return { valid: false, reason: `equityPct must be a fraction between 0 and ${EQUITY_CEILING} (§5's 49% ceiling)` };
     }
     // Type-specific placement rules, mirroring the occupancy invariant so a bad
     // request is refused here rather than applied and then halted mid-tick.
@@ -484,6 +500,12 @@ function applyAction(state, action) {
       resourceType: action.resourceType,
       recipeId: action.recipeId,
       productionRate: action.productionRate,
+      // equityPct: the ONE licence term this slice lets the establish path set (§5's
+      // equity lever, validated above). Absent ⇒ createVenture's 0, and the venture
+      // carries no key at all. The rest of the terms — commitment %, the fee locked
+      // at issuance, the renegotiation window — arrive with the real licence entity
+      // (Slice 3b); they are not invented here.
+      equityPct: action.equityPct,
       // syndicateCommitment is NOT taken from the action: it is engine-owned and
       // defaults to 0 (unlicensed) in createVenture. Every venture established
       // today is unlicensed, so the establish path never supplies it — the

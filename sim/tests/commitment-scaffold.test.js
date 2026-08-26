@@ -18,6 +18,7 @@ const { intake, createSetSyndicateCommitmentAction, createSetWindowNAction } = r
 const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { getWindow } = require('../windows.js');
+const { BASE_PRICE } = require('../prices.js');
 const { previewProduction } = require('../production.js');
 
 const SYS = 'sysA';
@@ -69,9 +70,13 @@ test('a set commitment makes Q non-zero and the window accrues, resolving MET at
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
-test('an under-injected commitment BREACHES at the boundary (status flag only, no fee/credits)', () => {
+test('an under-injected commitment BREACHES at the boundary (status flag only, no FEE)', () => {
   // commitment 9 over N=2 with a rate-4 mine: at most 4+4 = 8 fresh can be delivered,
-  // short of Q 9 ⇒ breach. Credits/ledger never move (breach stays status-only).
+  // short of Q 9 ⇒ breach.
+  //
+  // SLICE 3a: a delivery is now a SALE, so the 8 units that DID arrive are bought and
+  // paid for — a breach does not confiscate what was delivered. What is still absent is
+  // the breach FEE (Slice 3b): the only credits that move are the sale's, to the credit.
   let s = sysState([mine('t', 'titanium', 4, 0)]);
   const creditsBefore = s.guilds[0].credits;
   const ledgerBefore = s.syndicate.ledger;
@@ -83,8 +88,13 @@ test('an under-injected commitment BREACHES at the boundary (status flag only, n
   assert.equal(nextWindow(s, 'titanium').status, 'breach', 'p=2 will fall short of Q ⇒ breach');
   s = tick(s); // p=2 boundary
   assert.equal(w(s, 'titanium').delivered, 8, 'only 8 delivered against Q 9 — a breach');
-  assert.equal(s.guilds[0].credits, creditsBefore, 'breach touches no guild credits');
-  assert.equal(s.syndicate.ledger, ledgerBefore, 'breach touches no ledger');
+  // 8 units sold at the posted price, which is still the seeded base at both ticks
+  // (the 2-tick publish lag means nothing computed has been published yet), and no
+  // equity offered ⇒ the owner keeps all of it.
+  const sale = 8 * BASE_PRICE;
+  assert.equal(s.guilds[0].credits - creditsBefore, sale, 'the delivered units were BOUGHT, not confiscated');
+  assert.equal(ledgerBefore - s.syndicate.ledger, sale, 'and the Syndicate paid for them, to the credit');
+  assert.equal(s.guilds[0].credits + s.syndicate.ledger, creditsBefore + ledgerBefore, 'no fee, no fine — nothing but the sale moved (invariant 2)');
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
@@ -117,15 +127,22 @@ test('the injected N moves the boundary cadence (the window rolls at tick % N ==
 //
 // PRICE-ENGINE SLICE (26-08-26): state now carries a `prices` block (sim/prices.js),
 // which is real serialized state and therefore legitimately changes the FULL hash. The
-// two goldens below are UNCHANGED: they are now asserted against the state with the
-// price block stripped, which makes them a STRONGER proof than before — the price
-// engine added prices and altered NOTHING else about these runs, byte for byte. The
-// full-state hashes are pinned separately beside them so a future drift in the price
-// numbers themselves is caught too.
+// goldens below are asserted against the state with the price block stripped, which
+// makes them a STRONGER proof than before — the price engine added prices and altered
+// NOTHING else about these runs, byte for byte. The full-state hashes are pinned
+// separately beside them so a future drift in the price numbers themselves is caught.
+//
+// LICENCE SLICE 3a (26-08-26): the COMMITTED run's pre-change bytes no longer apply,
+// and should not — this slice's whole purpose is that a committed delivery now PAYS
+// (credits, ledger, and the sale record all move). GOLDEN_COMMITTED is therefore
+// retired and its run is pinned on its post-Slice-3a bytes instead, with the credit
+// movement asserted explicitly in the licence tests rather than implied by a hash.
+// The UNLICENSED golden is untouched and is where the no-op proof now lives entirely:
+// with no commitment there is no delivery, so there is no sale, so not one byte of a
+// commitment-free run may move.
 const GOLDEN_UNLICENSED = '682e42e0dd758ce523fea882f6560707802cdd7e7b4def794f323430a4cfcff5';
-const GOLDEN_COMMITTED = 'd5896c9413cd5098eb141976f28a0e6e681e2c931f64c2fca1116c6aaff2e97d';
 const GOLDEN_UNLICENSED_WITH_PRICES = 'ee6856cc520c23b8cc2cfdad996d463ccf35d40bb6b85b35f3a644a46d493647';
-const GOLDEN_COMMITTED_WITH_PRICES = 'ceec3677ddf66a8c96650493616bb5b1b414775b8992e55fe408f8376c8cdbee';
+const GOLDEN_COMMITTED_WITH_PRICES = 'e0255c73292645b5b785d818ec6e045f4bfb80e4b0a12f38814acb74947f8272';
 
 // The state minus its price block — everything the pre-price-engine hash covered.
 const withoutPrices = (state) => { const { prices, ...rest } = state; return rest; };
@@ -137,13 +154,18 @@ test('NO-OP PROOF: an unlicensed run (no scaffold action) is byte-identical to p
   assert.equal(hashState(s), GOLDEN_UNLICENSED_WITH_PRICES, 'and the price block itself is pinned');
 });
 
-test('NO-OP PROOF: a committed run seeded via createVenture (not the action) matches pre-change HEAD', () => {
+test('a committed run seeded via createVenture (not the action) is pinned, and now PAYS', () => {
   // The commitment/windowN are fed in the OLD way (createVenture param + scenario
   // windowN), never through the new actions — so the windowed engine path is
   // exercised yet the bytes are identical to HEAD, proving the actions changed only
   // the intake surface, not the resolution.
   let s = sysState([mine('t', 'titanium', 10, 7), mine('c', 'carbon_products', 10, 5), refinery('r', 'titanium_alloy', 2)], 4);
   for (let i = 0; i < 40; i += 1) s = tick(s);
-  assert.equal(hashState(withoutPrices(s)), GOLDEN_COMMITTED, 'everything but the price block is byte-identical to pre-change HEAD');
-  assert.equal(hashState(s), GOLDEN_COMMITTED_WITH_PRICES, 'and the price block itself is pinned');
+  assert.equal(hashState(s), GOLDEN_COMMITTED_WITH_PRICES, 'the committed run is pinned on its post-Slice-3a bytes');
+  // The bytes moved because the deliveries are now SALES: the guild has been paid and
+  // the ledger has funded it, equal and opposite (invariant 2 is asserted every tick by
+  // the driver; here we simply show the movement is real and is the sale's alone).
+  assert.ok(s.guilds[0].credits > 0, 'the committed run earned credits from its deliveries');
+  assert.equal(s.syndicate.ledger, -s.guilds[0].credits, 'every credit came out of the Syndicate ledger');
+  assert.equal(s.guilds[0].lastSyndicateSale.credited > 0, true, 'and the sale is on the record');
 });
