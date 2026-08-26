@@ -180,11 +180,17 @@ linear, and Part 5's normaliser confirm.
   paid for what it delivered.
 - **3b — the licence entity + the fee.** Design settled 27-08-26 (design.md §5 "LICENCE FEE MECHANICS —
   RULED"); split in two to build. Retires `setSyndicateCommitment` as the player commitment path.
-  - **3b-i — the licence entity + fee math (no charge).** An `applyForLicence` action grants an embedded
-    `venture.licence` (committedOutputPct, window in days, and the terms **locked at the posted price at
-    signing**: the full basic fee and the four-corner-discounted fee, both stored), which sources the
-    venture's commitment. The fee is **surfaced** in the snapshot; **nothing is charged** — a provable
-    no-op on credits.
+  - **3b-i — the licence entity + fee math (no charge). ✅ LANDED 27-08-26** — build note:
+    `docs/licence-fee.md`. An `applyForLicence` action grants an embedded `venture.licence`
+    (committedOutputPct, window in days, and the terms **locked at the posted price at signing**: the
+    full basic fee and the four-corner-discounted fee, both stored), which sources the venture's
+    commitment — so granting a licence is what switches 3a's sale on. The fee is **surfaced** in the
+    snapshot; **nothing is charged** — proven per-tick across a licensed run: the credit change equals
+    the sale exactly, every tick, boundary included. Mines only (the accrual sums `Q` over mines, so a
+    factory licence could never be delivered or judged — refused at intake, deferred). ⚠️ **3b-ii is
+    gated on one ruling first:** a licence signed mid-window owes the whole window's `Q` and can breach
+    its first window unavoidably — harmless while nothing is charged, unfair the moment the full basic
+    fee is. Needs either the mid-window **pro-rate** (§5's join ruling) or a **first-window grace**.
   - **3b-ii — charge the fee.** At each window boundary (`tick % N == 0`) debit the **discounted** fee if
     the commitment was met, the **full** basic fee if breached; credits → the Syndicate ledger. A breach
     fee **may drive credits negative** (guild credits join the ledger as exempt from the non-negativity

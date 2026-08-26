@@ -3,8 +3,14 @@
 const { createGuild, createVenture } = require('./state.js');
 const { isStarterSystem, getTerranHomeworld, getSite } = require('./seed.js');
 const { getRecipe } = require('./recipes.js');
-const { EQUITY_CEILING, isValidEquityPct } = require('./licence.js');
-const { isStockpileGood } = require('./resources.js');
+const {
+  EQUITY_CEILING, isValidEquityPct, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
+  isValidCommitmentPct, isValidWindowDays, licenceFee, commitmentUnitsFor, equityOf,
+} = require('./licence.js');
+const { baselineOutputFor } = require('./baseline.js');
+const { postedPrice } = require('./prices.js');
+const { FIRST_CUT_WINDOW_N } = require('./windows.js');
+const { isStockpileGood, isFuel } = require('./resources.js');
 const { setEntry } = require('./profile.js');
 
 // actions.js — action constructors, and the validate-as-they-arrive intake
@@ -145,6 +151,28 @@ function createSetSyndicateCommitmentAction({ guildId, ventureId, commitment }) 
   if (ventureId === undefined) throw new Error('createSetSyndicateCommitmentAction: ventureId is required');
   if (commitment === undefined) throw new Error('createSetSyndicateCommitmentAction: commitment is required');
   return { type: 'setSyndicateCommitment', guildId, ventureId, commitment };
+}
+
+// applyForLicence: grant ONE mining venture a Syndicate Venture Licence — the real
+// player path the throwaway `setSyndicateCommitment` scaffold above stands in for
+// (design.md §5 "LICENCE FEE MECHANICS — RULED", Slice 3b-i). The player offers a
+// share of the venture's droidless BASELINE output and a renegotiation window in days;
+// the Syndicate does not negotiate — it has fixed terms keyed to what you offer, so
+// everything else (the fee, and the commitment quantity the window machinery reads) is
+// COMPUTED at apply time from the terms plus the posted price at that tick, and stored.
+// The equity lever `o` is not set here: it is a term of the venture, offered at
+// establishment (Slice 3a), and the fee simply reads it.
+//
+// Grants are once-only. Re-applying is RENEGOTIATION — window-gated and, with
+// investors, a 75% majority (§5, #57) — which this slice does not build, so a second
+// application on the same venture is refused rather than quietly re-locking the terms
+// at today's price.
+function createApplyForLicenceAction({ guildId, ventureId, committedOutputPct, windowDays }) {
+  if (guildId === undefined) throw new Error('createApplyForLicenceAction: guildId is required');
+  if (ventureId === undefined) throw new Error('createApplyForLicenceAction: ventureId is required');
+  if (committedOutputPct === undefined) throw new Error('createApplyForLicenceAction: committedOutputPct is required');
+  if (windowDays === undefined) throw new Error('createApplyForLicenceAction: windowDays is required');
+  return { type: 'applyForLicence', guildId, ventureId, committedOutputPct, windowDays };
 }
 
 // setWindowN: set the single engine-wide accrual window length `state.windowN`. The
@@ -409,6 +437,61 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'applyForLicence') {
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (typeof action.ventureId !== 'string' || action.ventureId.length === 0) {
+      return { valid: false, reason: 'ventureId must be a non-empty string' };
+    }
+    // Scan only THIS guild's ventures: a licence is a contract over a venture you own.
+    const venture = (guild.ventures || []).find((v) => v.id === action.ventureId);
+    if (!venture) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} has no venture with id ${JSON.stringify(action.ventureId)}` };
+    }
+    if (venture.licence) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} is already licensed — changing agreed terms is a renegotiation (§5), not a second application, and renegotiation is not built yet`};
+    }
+    // MINES ONLY, for a mechanical reason and not a design one: the §5 window accrual
+    // sums the aggregate target `Q` over ventures with a `resourceType` (production.js),
+    // so a factory's commitment would never accrue, never be delivered, and never be
+    // judged — it would be a licence that silently could not be met. Licensing a
+    // recipe venture needs the accrual extended first (deferred, flagged in the build
+    // note). Refuse it loudly rather than sell terms that cannot be honoured.
+    if (!venture.resourceType) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} is not a mining venture — the §5 window accrual sums commitment over mines only, so a factory licence could never be delivered or judged (deferred, Slice 3b+)` };
+    }
+    // Fuel is a Syndicate MONOPOLY with no guild licence to price (§8, §5 "Fuel is
+    // excluded"). `deuterium_fuel` is not minable so no node can produce it, but the
+    // exclusion is stated here rather than left to be implied elsewhere.
+    if (isFuel(venture.resourceType)) {
+      return { valid: false, reason: `${JSON.stringify(venture.resourceType)} is Syndicate-regulated — fuel carries no venture licence (§8)` };
+    }
+    // The terms. Refused, not clamped — as with 3a's equity offer, a silently-adjusted
+    // term would be the engine rewriting a contract the player agreed to.
+    if (!isValidCommitmentPct(action.committedOutputPct)) {
+      return { valid: false, reason: `committedOutputPct must be a fraction between ${COMMITMENT_FLOOR} and 1 (§5's commitment floor)` };
+    }
+    if (!isValidWindowDays(action.windowDays)) {
+      return { valid: false, reason: `windowDays must be a whole number of days between ${WINDOW_DAYS_MIN} and ${WINDOW_DAYS_MAX} (§5's renegotiation window)` };
+    }
+    // The fee is priced off the POSTED price at signing, so there must be one to lock.
+    // Every non-fuel good carries a price from tick 0; this catches a state whose price
+    // block was removed, rather than locking a licence against `null` forever.
+    if (postedPrice(state, venture.resourceType) == null) {
+      return { valid: false, reason: `${JSON.stringify(venture.resourceType)} has no posted price to lock the fee against` };
+    }
+    // And the venture must have a baseline to price the fee off (sim/baseline.js). A
+    // mine whose resource has no baseline entry is caught by that file's drift guard;
+    // refusing here keeps a fee from being computed against a zero capacity.
+    const baseline = baselineOutputFor(venture);
+    if (!baseline || !(baseline.units > 0)) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} has no droidless baseline output to price a fee against` };
+    }
+    return { valid: true };
+  }
+
   if (action.type === 'setWindowN') {
     if (typeof action.windowN !== 'number' || !Number.isInteger(action.windowN) || action.windowN < 1) {
       return { valid: false, reason: 'windowN must be an integer >= 1 (§15.2)' };
@@ -418,6 +501,15 @@ function validateAction(state, action) {
     // so refuse it — no state change.
     if (state.tick > 0) {
       return { valid: false, reason: `windowN is a setup-only knob — state.tick is ${state.tick}, it can only be set before the run starts (tick 0)` };
+    }
+    // ...and not once any licence has been signed (Slice 3b-i). A licence's fee and
+    // committed quantity are both computed over ONE WINDOW at signing and then locked;
+    // moving `N` afterwards would silently make those locked terms describe a window
+    // that no longer exists. Set the window length first, then license. (Reachable
+    // only at tick 0, where a licence can legitimately already exist.)
+    const licensed = (state.guilds || []).some((g) => (g.ventures || []).some((v) => v.licence));
+    if (licensed) {
+      return { valid: false, reason: 'windowN cannot change once a licence has been signed — its fee and committed quantity are locked over one window of the length in force at signing' };
     }
     return { valid: true };
   }
@@ -538,6 +630,51 @@ function applyAction(state, action) {
     venture.syndicateCommitment = action.commitment;
     return next;
   }
+  if (action.type === 'applyForLicence') {
+    // Grant the licence: compute the terms ONCE, here, and store them. Everything this
+    // reads is state-as-it-stands — the posted price at this tick, the venture's own
+    // equity offer, its type's droidless baseline — so a licence signed at a different
+    // moment is a different contract, which is exactly §5's "rewards reading the market
+    // and timing your lock". Moves NO credits: 3b-ii debits the fee at a boundary.
+    const guild = findGuild(next, action.guildId);
+    const venture = guild.ventures.find((v) => v.id === action.ventureId);
+    const good = venture.resourceType;
+    const lockedPrice = postedPrice(next, good);
+    // The window the terms are measured over: the engine-wide `state.windowN`, or the
+    // flagged fallback the resolver itself uses when a scenario sets none — the same
+    // number, read the same way, so the licence can never be priced over a different
+    // window than the one its commitment accrues in.
+    const windowN = next.windowN == null ? FIRST_CUT_WINDOW_N : next.windowN;
+    const baselineUnitsPerTick = baselineOutputFor(venture).units;
+
+    const { basicFee, discountedFee } = licenceFee({
+      baselineUnitsPerTick,
+      windowN,
+      lockedPrice,
+      committedOutputPct: action.committedOutputPct,
+      equityPct: equityOf(venture),   // the term offered at establishment (Slice 3a)
+    });
+
+    venture.licence = {
+      committedOutputPct: action.committedOutputPct,
+      windowDays: action.windowDays,
+      signedTick: next.tick,          // §15.2: every mutation records its tick
+      lockedPrice,
+      basicFee,
+      discountedFee,
+    };
+    // The operative commitment: the share of BASELINE output promised over one window,
+    // in whole units. This is the field the §5 accrual sums into `Q` and that 3a's sale
+    // is paid on — so granting the licence is what switches the commitment sale on.
+    // DELIBERATELY not setting `committedFromTick`: that would unpin `windowFraction`
+    // from 1 and trip the deferred mid-window pro-rate tripwire (sim/windows.js). A
+    // venture licensed mid-window is therefore treated as committed for the WHOLE
+    // current window — see the build note: harmless while nothing is charged, and a
+    // prerequisite to fix before 3b-ii charges a breach.
+    venture.syndicateCommitment = commitmentUnitsFor(action.committedOutputPct, baselineUnitsPerTick, windowN);
+    return next;
+  }
+
   if (action.type === 'setWindowN') {
     // Set the single engine-wide window length. Setup-only (validate refused it once
     // tick > 0), so this only ever writes tick-0 state. No guild is resolved — this
@@ -588,6 +725,7 @@ module.exports = {
   createEstablishVentureAction,
   createSetProductionProfileAction,
   createSetSyndicateCommitmentAction,
+  createApplyForLicenceAction,
   createSetWindowNAction,
   validateAction,
   applyAction,

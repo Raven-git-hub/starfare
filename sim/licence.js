@@ -23,11 +23,20 @@
 //     owed the guild money between cycles, which is a debt entity nothing has designed.
 //     Recorded in the doc in the same commit, not drifted.
 //
-// WHAT THIS SLICE DOES NOT DO — the fee, the breach check, the four-corner grid, the
-// price-linked basic fee, reputation, and the investor market are all later slices.
-// The sale PAYS; it charges nothing. With no investors in existence, the `o` share
-// simply is not paid out: the Syndicate keeps it (§5's "or, with none, to the
-// Syndicate ledger"), so only the owner's share ever leaves the ledger.
+// WHAT 3a DID NOT DO — the fee, the breach check, the four-corner grid, reputation and
+// the investor market. The sale PAYS; it charges nothing. With no investors in
+// existence, the `o` share simply is not paid out: the Syndicate keeps it (§5's "or,
+// with none, to the Syndicate ledger"), so only the owner's share ever leaves the ledger.
+//
+// ── SLICE 3b-i (27-08-26) adds the FEE MATH below ──────────────────────────────────
+// design.md §5 "LICENCE FEE MECHANICS — RULED": the basic fee is
+//     feeRate × the good's droidless baseline output over one window × the posted
+//     price AT SIGNING
+// discounted by §5's four-corner commitment × equity grid, both amounts computed ONCE
+// at signing and stored on the venture's licence (fixed until renegotiation).
+//
+// STILL NOT CHARGED. 3b-i computes and locks the number; 3b-ii debits it at the window
+// boundary. Nothing in this file moves a credit except `commitmentSale` above.
 
 // The structural equity ceiling — §5: "up to the structural 49% ceiling (the owner
 // keeps control by retaining at least 51%)". This is a DESIGN number, not a tuning
@@ -103,4 +112,134 @@ function commitmentSale({ ventures, good, delivered, price }) {
   return { gross, ownerCredits: Math.round(ownerFraction(ventures, good) * gross) };
 }
 
-module.exports = { EQUITY_CEILING, equityOf, isValidEquityPct, ownerFraction, commitmentSale };
+
+// --- The fee (Slice 3b-i) --------------------------------------------------------
+
+// [FIRST-CUT] the fee RATE: the basic fee is this fraction of what the venture's
+// droidless baseline output over one window is worth, at the price locked at signing.
+// A tenth means the licence's headline cost is a tenth of the thing it licenses,
+// measured on the same window the fee is charged over — visible but survivable, and an
+// easy number to reason from when tuning. It scales with the window: if `N` moves from
+// its own [FIRST-CUT] 24 to the ruled-day 1,440, the fee and the income it is measured
+// against scale together. Recorded in docs/phase-1-tuning.md; open at #56.
+const FEE_RATE = 0.10;
+
+// [FIRST-CUT] §5's four corners, as percentages of the basic fee:
+//                   | offer min | offer max
+//   commit min      |    100    |    75
+//   commit max      |     75    |     0
+// "Each lever alone buys 25 points of relief; together they buy 100 — the last half
+// exists only when both are pulled." The design statement is these four readable
+// numbers, NOT a fitted curve: tuning is editing this table, and making it asymmetric
+// (say 70/80) is free — it says the Syndicate values output over openness, with no
+// change to the formula below.
+const CORNERS = Object.freeze({
+  minCommitMinOffer: 100,
+  minCommitMaxOffer: 75,
+  maxCommitMinOffer: 75,
+  maxCommitMaxOffer: 0,
+});
+
+// [FIRST-CUT] the equity shaping exponent (§5: `o' = o^k`, `k > 1`, first cut 2). Low
+// equity buys proportionally little relief and the payoff ACCELERATES toward the 49%
+// ceiling — deep entanglement is rewarded over toe-dipping. The corners are untouched
+// by it (`0^k = 0`, `1^k = 1`), so the table above still states them exactly and the
+// plain bilinear grid stays the un-shaped reference. Commitment stays LINEAR — its own
+// shaping exponent is an available, unused option (§5).
+const EQUITY_SHAPE_K = 2;
+
+// [FIRST-CUT] the minimum commitment a licence may carry, as a fraction. RULED at 0%
+// (§5's "LICENCE FEE MECHANICS": a licensed venture may commit nothing and simply pay
+// the full fee for the licence's other benefits — which is also what reconciles the
+// grid table's "5%" row header: `c = 0` maps to whatever this floor is). It is kept as
+// a named constant, not inlined, precisely because the grid's `c` axis is normalised
+// against it: move the floor and the whole commitment axis re-normalises for free.
+const COMMITMENT_FLOOR = 0;
+
+// [FIRST-CUT] §5's renegotiation-window bounds, in days (open question #64). Stored on
+// the licence at signing; RESOLVING it to a tick — and letting either side reopen the
+// terms once it elapses — is renegotiation, which this slice does not build.
+const WINDOW_DAYS_MIN = 7;
+const WINDOW_DAYS_MAX = 42;
+
+// feeFraction(c, oNorm) -> the share of the basic fee actually payable, in [0, 1].
+// §5's bilinear interpolation over the four corners, with the equity axis shaped:
+//
+//   fee% = 100·(1−c)(1−o') + 75·c(1−o') + 75·(1−c)·o' + 0·c·o'     where o' = oNorm^k
+//
+// `c` and `oNorm` are the NORMALISED axes (both 0 at the minimum offer, 1 at the
+// maximum) — see licenceFee for how the stored terms map onto them. Pure arithmetic.
+function feeFraction(c, oNorm) {
+  const o = oNorm ** EQUITY_SHAPE_K;
+  const pct = (CORNERS.minCommitMinOffer * (1 - c) * (1 - o))
+    + (CORNERS.maxCommitMinOffer * c * (1 - o))
+    + (CORNERS.minCommitMaxOffer * (1 - c) * o)
+    + (CORNERS.maxCommitMaxOffer * c * o);
+  return pct / 100;
+}
+
+// normalisedTerms({ committedOutputPct, equityPct }) -> { c, oNorm }, the two grid axes.
+// `c` runs from 0 at the commitment FLOOR to 1 at a full commitment; `oNorm` from 0 at
+// no equity to 1 at the 49% ceiling. Both are clamped into [0, 1] as a last resort —
+// the establish and apply actions refuse out-of-range terms outright, and the tick
+// asserts them, so a clamp here should be unreachable; it exists so that a fee can
+// never be computed from a nonsense axis if one ever slips through.
+function normalisedTerms({ committedOutputPct, equityPct }) {
+  const span = 1 - COMMITMENT_FLOOR;
+  const c = span > 0 ? (committedOutputPct - COMMITMENT_FLOOR) / span : 1;
+  return {
+    c: Math.max(0, Math.min(1, c)),
+    oNorm: Math.max(0, Math.min(1, (equityPct || 0) / EQUITY_CEILING)),
+  };
+}
+
+// licenceFee({ baselineUnitsPerTick, windowN, lockedPrice, committedOutputPct, equityPct })
+//   -> { basicFee, discountedFee }, both INTEGER credits (§15.2)
+//
+//   basicFee      = round( FEE_RATE × baseline output over one window × the locked price )
+//   discountedFee = round( basicFee × feeFraction(c, oNorm) )
+//
+// THE BASIS IS THE BASELINE, never `productionRate` (§5, "LICENCE FEE MECHANICS"): the
+// fee is priced off what the venture's TYPE can make droidless (sim/baseline.js), so
+// throttling the mine cannot shrink the fee and droids cannot inflate it. The price is
+// the POSTED one at signing and is stored with the licence, so the fee is fixed until
+// renegotiation however far the market moves afterwards — which is what makes timing
+// your signature a real decision (§5: "rewards reading the market and timing your lock").
+//
+// Rounded twice on purpose, and safely: these are two SEPARATE stored quantities, not
+// two halves of one movement, so unlike the sale's single-rounding rule there is no
+// conservation to preserve here — nothing moves until 3b-ii debits one of them, and
+// whichever it debits is already a whole number of credits.
+function licenceFee({ baselineUnitsPerTick, windowN, lockedPrice, committedOutputPct, equityPct }) {
+  const basicFee = Math.round(FEE_RATE * baselineUnitsPerTick * windowN * lockedPrice);
+  const { c, oNorm } = normalisedTerms({ committedOutputPct, equityPct });
+  return { basicFee, discountedFee: Math.round(basicFee * feeFraction(c, oNorm)) };
+}
+
+// isValidCommitmentPct(value) -> a fraction from the floor up to a full commitment.
+function isValidCommitmentPct(value) {
+  return typeof value === 'number' && Number.isFinite(value)
+    && value >= COMMITMENT_FLOOR && value <= 1;
+}
+
+// isValidWindowDays(value) -> a whole number of days inside §5's renegotiation bounds.
+function isValidWindowDays(value) {
+  return typeof value === 'number' && Number.isInteger(value)
+    && value >= WINDOW_DAYS_MIN && value <= WINDOW_DAYS_MAX;
+}
+
+// commitmentUnitsFor(pct, baselineUnitsPerTick, windowN) -> the venture's committed
+// quantity per window, in whole units — the operative number the §5 window accrual and
+// 3a's sale already read off `Venture.syndicateCommitment`. It is a share of the
+// BASELINE over one window, so it is exactly the quantity a droidless venture running
+// flat out could deliver at `pct` of its capacity.
+function commitmentUnitsFor(pct, baselineUnitsPerTick, windowN) {
+  return Math.round(pct * baselineUnitsPerTick * windowN);
+}
+
+module.exports = {
+  EQUITY_CEILING, equityOf, isValidEquityPct, ownerFraction, commitmentSale,
+  FEE_RATE, CORNERS, EQUITY_SHAPE_K, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
+  feeFraction, normalisedTerms, licenceFee, isValidCommitmentPct, isValidWindowDays,
+  commitmentUnitsFor,
+};

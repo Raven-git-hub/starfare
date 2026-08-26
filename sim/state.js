@@ -116,6 +116,7 @@ function createVenture({
   inputStockpiles = {},
   syndicateCommitment = 0,
   equityPct = 0,
+  licence = null,
   batchCarry = {},
 }) {
   if (id === undefined) throw new Error('createVenture: id is required');
@@ -187,13 +188,36 @@ function createVenture({
     // intake (actions.js) and asserted every tick (invariants.js) — this file
     // assembles, they judge.
     ...(equityPct ? { equityPct } : {}),
-    // RESERVED, deliberately NOT added here (Slice 3b/5, §15.4): `licenceId` — the
-    // pointer to the OWNED `Licence` entity that will carry the fee terms locked at
-    // issuance, the breach state and the renegotiation window — and `shareholders`,
-    // the investor cap-table Part 2 asks to reserve. They are documented rather than
-    // stubbed because an empty object written onto every venture is not a socket: it
-    // is bytes in every save and in the determinism hash, for a field nothing reads.
-    // The omit-when-default discipline above is what makes adding them additive.
+    // licence: the Syndicate Venture Licence this venture runs under (Slice 3b-i;
+    // design.md §5 "LICENCE FEE MECHANICS — RULED", which pins it as an EMBEDDED
+    // object on the venture rather than §15.4's earlier separate-entity-by-`licenceId`
+    // sketch). Granted by the `applyForLicence` action, never by the operator:
+    //
+    //   { committedOutputPct,   // the share of BASELINE output promised, a fraction
+    //     windowDays,           // §5's renegotiation window, in days — stored, inert
+    //                           //   until renegotiation resolves it to a tick
+    //     signedTick,           // when the terms were struck (§15.2: record the tick)
+    //     lockedPrice,          // the POSTED price at signing — what the fee is
+    //                           //   priced off, fixed until renegotiation
+    //     basicFee,             // integer credits: the full fee, the maximum payable
+    //     discountedFee }       // integer credits: after §5's four-corner grid
+    //
+    // The two fees are computed ONCE, at signing, and stored — that is what "terms
+    // locked at issuance" means, and it is why timing your signature is a real
+    // decision. NOTHING IS CHARGED YET: 3b-ii debits one of them at each window
+    // boundary. `syndicateCommitment` above is the operative quantity the window
+    // machinery reads; this block is the contract that set it.
+    //
+    // OMITTED when absent, like `equityPct` and `syndicateWindows`: an unlicensed
+    // venture carries no `licence` key at all, so an unlicensed galaxy's serialized
+    // state is byte-identical to pre-Slice-3b-i. Copied so a caller's object can never
+    // alias into engine state.
+    ...(licence ? { licence: { ...licence } } : {}),
+    // STILL RESERVED, deliberately not stubbed (Slice 5, §15.4): `shareholders`, the
+    // investor cap-table Part 2 asks to reserve. Documented rather than written as an
+    // empty object, because an empty object on every venture is not a socket: it is
+    // bytes in every save and in the determinism hash for a field nothing reads. The
+    // omit-when-default discipline above is what makes adding it additive.
     // batchCarry: the per-good sub-unit carries (§5 rate-based rewrite, corrected
     // 10-08-26 build-review, §15.4). A refinery runs at a CONTINUOUS rate
     // (batches/tick may be fractional), but goods are integers (§15.2). So EVERY

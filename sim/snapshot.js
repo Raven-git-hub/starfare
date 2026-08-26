@@ -106,6 +106,11 @@ const { PRICED_GOODS, postedPrice } = require('./prices.js');
 // nothing existing changed shape. `syndicateSale` is null for a guild that has never
 // sold — the overwhelming majority today, since a commitment only exists where the dev
 // scaffold set one.
+// v7 (licence Slice 3b-i, 27-08-26): ADDITIVE — each venture row gains `licence`, the
+// stored licence object (`committedOutputPct`, `windowDays`, `signedTick`, `lockedPrice`,
+// `basicFee`, `discountedFee`) or null when unlicensed. No schema bump: nothing existing
+// changed shape. The two fees are what was LOCKED at signing, not a live recomputation —
+// they do not move when the market does, which is the point of locking them.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -126,6 +131,8 @@ const SNAPSHOT_SCHEMA = 7;
 //       systems: [ { systemId, mines, goods, lines, refineries,     // resolved per-system
 //                    review: [ { kind, ventureId?|good? } ] } ] } ], // §5 review flag (2c-i)
 //     ventures: [ { id, ownerGuildId, type, siteId, systemId, resourceType,
+//                   licence: { committedOutputPct, windowDays, signedTick,       // 3b-i
+//                              lockedPrice, basicFee, discountedFee } | null,
 //                   recipeId, productionRate, syndicateCommitment,
 //                   site: { kind, planetId, systemId, resourceType } | null } ],
 //     occupancy: { <siteId>: <ventureId> },
@@ -217,6 +224,12 @@ function buildSnapshot(state) {
         // 3a) — the cut of its commitment-sale income it forfeits. Absent on a venture
         // that offered none, reported here as the 0 it means.
         equityPct: v.equityPct || 0,
+        // licence: the venture's Syndicate Venture Licence (Slice 3b-i) — its agreed
+        // terms and the two fee figures LOCKED at signing, so the console can show
+        // "your fee: N (discounted from M), locked at price P" without computing a
+        // thing (§5's display rule). Copied so the snapshot can't alias into engine
+        // state. null for an unlicensed venture, which is most of them.
+        licence: v.licence ? { ...v.licence } : null,
         // batchCarry: the per-good sub-unit carries (§5 rate-based rewrite corrected
         // 10-08-26, §15.4) — { [good]: fraction in [0,1) } over every input + output.
         // Surfaced so the lens can show why a small line's whole units appear only

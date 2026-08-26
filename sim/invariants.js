@@ -28,6 +28,9 @@
 //   state.prices?    : { <non-fuel good>: { posted, pending: [...] } }
 //                          // the Syndicate value per good (sim/prices.js); floats by
 //                          // design — sanity-checked here, not integer-swept
+//   venture.licence? : { committedOutputPct, windowDays, signedTick, lockedPrice,
+//                        basicFee, discountedFee }   // the terms locked at signing
+//                          // (Slice 3b-i); absent on an unlicensed venture
 //   guild.lastSyndicateSale? : { tick, credited, goods: {good: {units, price, credited}} }
 //                          // what the Syndicate bought from this guild, last time it
 //                          // bought anything (Slice 3a); absent until a first sale
@@ -51,7 +54,7 @@
 
 const { isRawResource, isStockpileGood, FUEL_GOOD } = require('./resources.js');
 const { PRICED_GOODS, PRICE_FLOOR, PRICE_CEILING, PUBLISH_LAG } = require('./prices.js');
-const { EQUITY_CEILING } = require('./licence.js');
+const { EQUITY_CEILING, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX, isValidWindowDays } = require('./licence.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { getSite, getLandmark, getSystem, getTerranHomeworld } = require('./seed.js');
 const { getRecipe } = require('./recipes.js');
@@ -215,9 +218,9 @@ function checkSyndicateWindows(state) {
   return out;
 }
 
-// Licence terms + the commitment-sale record (Slice 3a, §5 "Output commitment" /
-// "Equity offered"). Two things a tick may now touch that the integer sweep above does
-// not cover:
+// Licence terms + the commitment-sale record (Slices 3a/3b-i, §5 "Output commitment",
+// "Equity offered", and "LICENCE FEE MECHANICS"). Three things a tick may now touch
+// that the integer sweep above does not cover:
 //
 //   - `Venture.equityPct` — the offered equity share `o`. A FRACTION, so it is one of
 //     the sanctioned non-integers (it scales credits, it is not credits), and it must
@@ -238,10 +241,39 @@ function checkLicenceTerms(state) {
   const out = [];
   for (const g of state.guilds || []) {
     for (const v of g.ventures || []) {
-      if (v.equityPct === undefined) continue;
-      const o = v.equityPct;
-      if (typeof o !== 'number' || !Number.isFinite(o) || o < 0 || o > EQUITY_CEILING) {
-        out.push({ rule: 'equity-within-ceiling (§5)', where: `venture:${v.id}.equityPct`, detail: { value: o, ceiling: EQUITY_CEILING } });
+      if (v.equityPct !== undefined) {
+        const o = v.equityPct;
+        if (typeof o !== 'number' || !Number.isFinite(o) || o < 0 || o > EQUITY_CEILING) {
+          out.push({ rule: 'equity-within-ceiling (§5)', where: `venture:${v.id}.equityPct`, detail: { value: o, ceiling: EQUITY_CEILING } });
+        }
+      }
+
+      // The licence's stored terms (Slice 3b-i). These are LOCKED numbers — computed
+      // once at signing and never recomputed — so nothing downstream will ever
+      // re-derive them and notice they went wrong: if a bad fee is written it simply
+      // stays, and 3b-ii will one day debit it. Hence a tripwire on the stored values
+      // themselves. The fees are real credits and must be whole (§15.2); the discount
+      // can never EXCEED the basic fee (the grid's corners top out at 100%); and the
+      // terms must stay inside the bounds intake refuses outside of, since a venture
+      // built directly by a scenario bypasses intake entirely.
+      const lic = v.licence;
+      if (!lic) continue;
+      const at = `venture:${v.id}.licence`;
+      checkField(out, lic.basicFee, `${at}.basicFee`);
+      checkField(out, lic.discountedFee, `${at}.discountedFee`);
+      checkField(out, lic.signedTick, `${at}.signedTick`);
+      if (lic.discountedFee > lic.basicFee) {
+        out.push({ rule: 'discount-never-exceeds-basic-fee (§5 grid)', where: `${at}.discountedFee`, detail: { discountedFee: lic.discountedFee, basicFee: lic.basicFee } });
+      }
+      if (typeof lic.committedOutputPct !== 'number' || !Number.isFinite(lic.committedOutputPct)
+        || lic.committedOutputPct < 0 || lic.committedOutputPct > 1) {
+        out.push({ rule: 'commitment-is-a-fraction (§5)', where: `${at}.committedOutputPct`, detail: { value: lic.committedOutputPct } });
+      }
+      if (!isValidWindowDays(lic.windowDays)) {
+        out.push({ rule: 'renegotiation-window-in-bounds (§5)', where: `${at}.windowDays`, detail: { value: lic.windowDays, min: WINDOW_DAYS_MIN, max: WINDOW_DAYS_MAX } });
+      }
+      if (typeof lic.lockedPrice !== 'number' || !Number.isFinite(lic.lockedPrice) || lic.lockedPrice <= 0) {
+        out.push({ rule: 'locked-price-is-a-real-price (Slice 3b-i)', where: `${at}.lockedPrice`, detail: { value: lic.lockedPrice } });
       }
     }
 

@@ -97,6 +97,28 @@ commitment"). **This slice invented no new tuning number** — that is the entry
 the **per-type basic fee**, the four-corner grid's corner values (100/75/75/0) and its shaping exponent
 `k`, the **0% commitment floor**, the breach charge, and the reputation build/decay rates.
 
+### Licence — the fee *(27-08-26 — Slice 3b-i, `sim/licence.js`)*
+
+`basicFee = feeRate × baseline-per-tick × N × posted price at signing`, discounted by §5's four-corner
+grid with the equity axis shaped `o' = oNorm^k` (`docs/licence-fee.md`; design.md §5 "LICENCE FEE
+MECHANICS — RULED"). The **shape** is the design; every number below is tuning, and all of them remain
+open at **#56**.
+
+| Constant | `[FIRST-CUT]` value | Rationale |
+|---|---|---|
+| **`FEE_RATE`** | **0.10** | The basic fee is a tenth of what the venture's droidless baseline output over one window is worth at the price locked at signing — the licence's headline cost is a tenth of the thing it licenses, measured on the same window the fee is charged over. Visible but survivable, and an easy number to reason from when tuning. It scales with the window: if `N` moves from its own first-cut 24 to the ruled-day **1,440**, the fee and the income it is measured against scale together, so the *ratio* is the number to tune, not the absolute. |
+| **Four corners — 100 / 75 / 75 / 0** | as §5 states them | Straight from the design table: each lever alone buys 25 points of relief, both together buy 100. The design statement **is** these four readable numbers, not a fitted curve — tuning is editing the table, and making it asymmetric (say 70/80) is free: it says the Syndicate values output over openness, with no change to the formula. |
+| **Equity shaping `k`** | **2** | §5's `o' = o^k`, `k > 1`: low equity buys proportionally little relief and the payoff **accelerates** toward the 49% ceiling — deep entanglement is rewarded over toe-dipping. 2 is the design's own first cut. Corners are untouched (`0^k = 0`, `1^k = 1`), so the grid table stays the un-shaped reference. **Commitment stays linear** — its own shaping exponent is an available, unused option. |
+| **Commitment floor** | **0%** | Ruled in §5's "LICENCE FEE MECHANICS": a licensed venture may commit nothing and simply pay the full fee for the licence's other benefits (this is also what reconciles the grid table's "5%" row header — `c = 0` maps to the floor). Kept as a named constant because the grid's `c` axis is normalised against it: move the floor and the whole axis re-normalises for free. |
+| **Renegotiation window — 7–42 days** | as §5 states them | §5's `[FIRST-CUT]` bounds (open question **#64**). Stored on the licence at signing and **inert**: resolving days → a tick, and letting either side reopen the terms once it elapses, is renegotiation, which is not built. |
+| **Equity ceiling — 0.49** | — | **Not** a dial: §5's structural ceiling, what makes the owner's control non-negotiable (they retain 51%). Already in `sim/licence.js` since 3a. |
+
+**Still unruled, and deliberately not invented here:** the **breach charge's** shape beyond "the full
+basic fee" (Slice 3b-ii), per-venture breach attribution when several ventures commit one good, and —
+flagged as a **prerequisite** for 3b-ii — whether a licence signed mid-window gets the **pro-rate**
+(§5's join ruling, Option A) or a **first-window grace**. Today it owes the whole window and can breach
+its first one unavoidably; harmless while nothing is charged, unfair the moment it is.
+
 ### The second good (tolled/shipped raw)
 - **Good** `[FIRST-CUT]`: **Titanium** (a Tier-1 raw; also the onboarding starter-quest good, so it recurs later).
 - **Market** `[FIRST-CUT]`: reuses the fuel price curve's *shape* (§5) with its own levers — base $3, target reserve 20, sensitivity 0.6, floor $1, ceiling $20.
