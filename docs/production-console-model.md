@@ -67,6 +67,7 @@ default (§15.4).
 | `downstreamPct` | int 0..100 | `100` | share of consumer demand the Production fork is allowed to meet | Production panel slider |
 | `reserveLevel` | int ≥ 0 | `0` | units the Stockpile fork holds back in the pot (the "put this much in if you can" target) | Stockpile panel slider / number |
 | `syndicate` | `{ mode: "absolute"\|"percent", value: int ≥ 0 }` or ABSENT | ABSENT = paced required-rate | the Syndicate fork's per-tick send control. Absent ⇒ engine paces itself to hit `Q` by the deadline; present ⇒ player pins the rate | Syndicate panel slider (writes `{mode:"absolute", value}`) |
+| `pursue` | ordered list of the good's committed venture IDs, or ABSENT | ABSENT = establishment order | the priority the delivered pile fills the good's licences at the boundary — the top licence gets its full commitment first, then the next, until the pile runs out; editable any tick, only the order at the boundary counts | Syndicate roster (drag to reorder) |
 
 Note on `syndicate`: **presence, not value, selects the regime.** Absent means
 "pace yourself." The panel's snap-to-marker writes `{mode:"absolute", value:
@@ -142,13 +143,38 @@ the rest is pure derived telemetry (the client renders it and computes nothing).
 |---|---|---|---|---|
 | `Q` | int | derived (Σ of stored `syndicateCommitment`) | the aggregate window target | Syndicate (the goal) |
 | `windowStart` | int | STORED (echo) | tick the window opened | — |
-| `delivered` | int | STORED (echo, post-apply) | units delivered so far this window | Syndicate (progress) |
+| `delivered` | int | STORED (echo, post-apply) | AGGREGATE units delivered to the Syndicate so far this window (= Σ of the per-venture `delivered` below); the accumulator stays aggregate, the per-venture shares are DERIVED from it | Syndicate (overall progress) |
 | `sendCarry` | float | STORED (echo) | fractional carry | — |
 | `ticksRemaining` | int | DERIVED | ticks left in the window (shown as "hours remaining") | Syndicate |
 | `requiredRate` | float | DERIVED | `remaining / ticksRemaining` — the pace needed to hit `Q` on time (the amber marker) | Syndicate (marker + snap target) |
 | `sendThisTick` | int | DERIVED | the ACTUAL delivery resolved this tick (`= fork.syndicate` for the good) | Syndicate |
 | `pctAchieved` | float | DERIVED | `delivered / Q × 100` | Syndicate (progress %) |
-| `status` | `"accruing"` \| `"met"` \| `"breach"` | DERIVED | resolves met/breach only at the boundary tick (`p % N == 0`); "accruing" mid-window | Syndicate (status pill) — **and the storyteller** |
+| `status` | `"accruing"` \| `"met"` \| `"breach"` | DERIVED (ROLLUP) | the good-level **summary** of the per-venture verdicts below — the real met/breach is per venture (see next section). "accruing" mid-window; at the boundary a rollup (e.g. all-met / some-breached) | Syndicate (overall pill) — **and the storyteller** |
+
+### Per-venture licence outcome — the REAL met/breach *(added 27-08-26)*
+
+Met/breach is fundamentally a **per-licence** fact, not a per-good one: each venture either delivered its whole
+committed quantity or it did not, and that is what the fee (later slice) charges against. The good-level
+`window.status` above is only a rollup of these. **DERIVED** — computed from the aggregate `delivered`, each
+venture's commitment, and the good's `pursue` order; no new stored accumulator (the taxonomy rule:
+recomputable ⇒ derived).
+
+Per licensed venture producing the good, at read time:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `commitment` | int | the venture's target THIS window = `syndicateCommitment × windowFraction` (the mid-window pro-rate, §5 join ruling; = `syndicateCommitment` for a full-window venture) |
+| `delivered` | int | its share of the aggregate `delivered`, allocated by the `pursue` fill: ventures are filled top-of-order first, each to its full `commitment`, until the delivered pile runs out. Mid-window a projection off the delivered-so-far; at the boundary the final allocation |
+| `status` | `"accruing"` \| `"met"` \| `"breach"` | `met` iff `delivered ≥ commitment` (the ENTIRE commitment — one short is `breach`, no partial credit); `accruing` mid-window. Drives the per-venture fee: `met` → discounted, `breach` → full |
+
+The fill is **binary per venture** and **priority-ordered**: in a shortfall the top licences are met in full and
+the tail breaches, exactly as the player ranked them — so a player who cannot meet the aggregate steers the
+goods onto the licences that cost least or need reputation. The good-level `delivered` = Σ these; the
+good-level `status` = their rollup.
+
+**Design-ahead:** the `pursue` control, the per-venture allocation, and per-venture `status` are NOT in the
+engine yet (the window tracks only aggregate `delivered`/`status` today) — this section is the contract the
+licence-distribution slice builds to, and the console roster is already laid out for it.
 
 ## Bridge — control → action, readout → field
 
