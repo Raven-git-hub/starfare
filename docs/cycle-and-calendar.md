@@ -94,6 +94,18 @@ signed in the stub owes `round(commitment × present/N)` for that first window, 
 that already handles a mid-window join. **No new mechanism** — the anchor's stub is just another
 partial window. Confirmed acceptable 27-08-26.
 
+**The stub's window-start is negative — by design.** Because cycles are anchored (§2), the stub
+first cycle's *nominal* window opened before the galaxy existed: `winStartFor(1, N, dayAnchorTick)`
+`= 1 + dayAnchorTick`, which for a mid-day launch (a **negative** anchor) is `≤ 0`. This is not a
+defect to clamp — `windowFraction` measures a venture's presence against that nominal start, which
+is exactly how the pro-rate above sizes the stub's `Q`; clamping the start to `1` would hand a
+stub-cycle licence a full day's target inside a part-day window, the un-meetable obligation the
+pro-rate exists to prevent. So the `windowStart ≥ 1` invariant is loosened to
+**`windowStart ≥ 1 + dayAnchorTick`** (anchor-aware — byte-identical to `≥ 1` at the default anchor
+`0`), and `windowStart` is exempted from the non-negativity sweep: it is a tick *coordinate*, not a
+quantity. (Landed with the Slice-2 build; recorded here so the negative start reads as intended,
+not as a bug to re-clamp.)
+
 ## 5. The calendar layer — derive the day from the tick, never encode it into it
 
 A tempting alternative was floated and **rejected**: pack the day and minute into the tick counter
