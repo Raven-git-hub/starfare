@@ -59,7 +59,7 @@ const {
   storedThrottleIds, storedPolicyGoods, storedPursueGoods, storedPursue,
 } = require('./profile.js');
 const {
-  FIRST_CUT_WINDOW_N, winStartFor, getWindow,
+  DEFAULT_WINDOW_N, winStartFor, getWindow,
 } = require('./windows.js');
 const { committedContribution } = require('./licence.js');
 
@@ -112,8 +112,13 @@ function resolveProduction(guild, systemId, opts = {}) {
   // the window falls to tick 1 of a default-length window — consulted ONLY where a
   // good actually carries a commitment, so an unlicensed resolve never reads them.
   const p = opts.tick == null ? 1 : opts.tick;
-  const windowN = opts.windowN == null ? FIRST_CUT_WINDOW_N : opts.windowN;
-  const curWindowStart = winStartFor(p, windowN);
+  const windowN = opts.windowN == null ? DEFAULT_WINDOW_N : opts.windowN;
+  // The midnight anchor (docs/cycle-and-calendar.md §2), threaded exactly like windowN:
+  // an integer offset from state, defaulting to 0, at which every expression below is
+  // byte-identical to the pre-anchor engine. Never a clock — the one wall-clock read
+  // happens at galaxy creation and is frozen into state from then on.
+  const dayAnchorTick = opts.dayAnchorTick == null ? 0 : opts.dayAnchorTick;
+  const curWindowStart = winStartFor(p, windowN, dayAnchorTick);
 
   // --- Mines: this tick's fresh raw output (the routing basis), per producing
   // mine and aggregated per good. Order is establishment order (ventures order),
@@ -451,7 +456,9 @@ function resolveProduction(guild, systemId, opts = {}) {
     if (plan.win) {
       const w = plan.win;
       const newDelivered = w.delivered + synDraw;
-      const isBoundary = (p % windowN) === 0;
+      // The ANCHORED boundary (§2): `(tick - dayAnchorTick) % N == 0`. At the default
+      // anchor 0 this is exactly the old `p % windowN === 0`.
+      const isBoundary = (((p - dayAnchorTick) % windowN) + windowN) % windowN === 0;
       // The PER-VENTURE verdicts (§5's per-venture met/breach ruling), and the
       // good-level status ROLLED UP from them — the individuals are computed first and
       // the aggregate is derived from them, never the other way round.
@@ -734,7 +741,7 @@ function previewProduction(state) {
   // exactly what applyProduction will do when the tick advances (the anti-drift
   // guarantee). state.windowN may be undefined (no committed scenario has set it) —
   // resolveProduction defaults it, and it is read only for committed goods.
-  const opts = { tick: (state.tick || 0) + 1, windowN: state.windowN };
+  const opts = { tick: (state.tick || 0) + 1, windowN: state.windowN, dayAnchorTick: state.dayAnchorTick };
   return (state.guilds || []).map((guild) => {
     const ventures = guild.ventures || [];
     const systemIds = [...new Set(ventures.map((v) => v.systemId))]

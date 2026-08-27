@@ -25,7 +25,7 @@ const { computeGalacticSupply } = require('./supply.js');
 const { getRecipe } = require('./recipes.js');
 const { addStock } = require('./stock.js');
 const { resolveProduction } = require('./production.js');
-const { setWindow, winStartFor, FIRST_CUT_WINDOW_N } = require('./windows.js');
+const { setWindow, winStartFor, DEFAULT_WINDOW_N } = require('./windows.js');
 const { recomputePrices, postedPrice } = require('./prices.js');
 const { commitmentSale } = require('./licence.js');
 
@@ -98,15 +98,21 @@ function applyProduction(state, guild, systemId, ctx) {
   // yields), and the window length is the engine-wide state.windowN — passed so the
   // resolver's windowed-accrual send matches what previewProduction reports for the
   // same advance (anti-drift). Both are read only for a good carrying a commitment.
-  const report = resolveProduction(guild, systemId, { tick: state.tick + 1, windowN: state.windowN });
+  const report = resolveProduction(guild, systemId, {
+    tick: state.tick + 1, windowN: state.windowN, dayAnchorTick: state.dayAnchorTick,
+  });
   const byId = new Map((guild.ventures || []).map((v) => [v.id, v]));
 
   // The window this tick's delivery falls in, derived from the SAME producing tick and
   // the SAME engine-wide `N` the resolver just used — so the commitment sale below
   // weights its split by each venture's contribution to the very `Q` this report was
   // built against. Pure arithmetic (sim/windows.js), read only by the sale.
-  const windowN = state.windowN == null ? FIRST_CUT_WINDOW_N : state.windowN;
-  const curWindowStart = winStartFor(state.tick + 1, windowN);
+  const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+  // The same anchored cadence the resolver just used (docs/cycle-and-calendar.md §2) —
+  // the sale must weight its split against the very window the report was built on, so
+  // this MUST read the anchor the same way, not fall back to the unanchored cadence.
+  const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
+  const curWindowStart = winStartFor(state.tick + 1, windowN, dayAnchorTick);
 
   // Deposit each mine's fresh output into the pool; stamp the mine's tick.
   for (const m of report.mines) {

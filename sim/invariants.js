@@ -57,7 +57,7 @@
 const { isRawResource, isStockpileGood, FUEL_GOOD } = require('./resources.js');
 const { PRICED_GOODS, PRICE_FLOOR, PRICE_CEILING, PUBLISH_LAG } = require('./prices.js');
 const { EQUITY_CEILING, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX, isValidWindowDays } = require('./licence.js');
-const { FIRST_CUT_WINDOW_N, winStartFor, windowFraction } = require('./windows.js');
+const { DEFAULT_WINDOW_N, winStartFor, windowFraction } = require('./windows.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { getSite, getLandmark, getSystem, getTerranHomeworld } = require('./seed.js');
 const { getRecipe } = require('./recipes.js');
@@ -222,12 +222,29 @@ function checkSyndicateWindows(state) {
       for (const [good, win] of Object.entries(perGood || {})) {
         const where = `guild:${g.id}.syndicateWindows.${systemId}.${good}`;
         checkField(out, win.delivered, `${where}.delivered`);
-        checkField(out, win.windowStart, `${where}.windowStart`);
-        // A window opens on a REAL producing tick, and ticks start at 1 (`winStartFor`
-        // maps window k to `(k−1)·N + 1`), so 0 is not a small window-start — it is a
-        // window that never opened. `checkField`'s non-negativity allows it, hence this.
-        if (Number.isInteger(win.windowStart) && win.windowStart < 1) {
-          out.push({ rule: 'window-start-is-a-real-tick (§5 Slice B)', where: `${where}.windowStart`, detail: { value: win.windowStart } });
+        // `windowStart` is a tick COORDINATE, not a quantity, so it is exempted from
+        // the non-negativity sweep and given the sharper anchor-aware bound below.
+        // `delivered` above keeps it — that one really is a unit count.
+        checkField(out, win.windowStart, `${where}.windowStart`, { nonNegative: false });
+        // A window may not open EARLIER than the anchor allows. Pre-anchor this read
+        // "windowStart ≥ 1": ticks start at 1, so 0 was not a small window-start but a
+        // window that never opened. The midnight anchor (docs/cycle-and-calendar.md §2)
+        // makes that bound anchor-relative rather than absolute: a galaxy created
+        // mid-day has a STUB first cycle whose NOMINAL window opened before the galaxy
+        // existed, so its `windowStart` is legitimately ≤ 0. The earliest start the
+        // anchor permits is exactly `1 + dayAnchorTick` (that is `winStartFor(1, N, a)`
+        // for the negative anchor a that anchoring produces), and at the default anchor
+        // 0 this is `≥ 1` — the original rule, byte-identical.
+        //
+        // The stub is NOT a defect to clamp away: `windowFraction` measures presence
+        // against that nominal start, which is precisely how §4's partial first cycle
+        // gets pro-rated by the machinery that already handles a mid-window join.
+        // Clamping the start to 1 would hand a stub-cycle licence a FULL day's target
+        // inside a part-day window — the un-meetable obligation the pro-rate exists to
+        // prevent.
+        const earliestStart = 1 + (state.dayAnchorTick == null ? 0 : state.dayAnchorTick);
+        if (Number.isInteger(win.windowStart) && win.windowStart < earliestStart) {
+          out.push({ rule: 'window-start-is-a-real-tick (§5 Slice B; anchored §2)', where: `${where}.windowStart`, detail: { value: win.windowStart, earliestStart } });
         }
         // STILL NOT checked here: `delivered ≤ Q` — and the licence-distribution slice
         // (27-08-26), which this note used to point at, deliberately did not add it.
@@ -317,9 +334,13 @@ function checkLicenceTerms(state) {
           // so a check keyed on the live window alone would fire spuriously on a licence
           // signed on a boundary tick. The live window is checked too, once the venture
           // has actually started producing.
-          const N = state.windowN == null ? FIRST_CUT_WINDOW_N : state.windowN;
-          const windows = [winStartFor(from, N)];
-          if (from <= state.tick) windows.push(winStartFor(state.tick, N));
+          const N = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+          // Same anchored cadence the engine resolves on — a window-start computed here
+          // on the UNanchored cadence would disagree with the stored one and make this
+          // guard fire spuriously on an anchored galaxy.
+          const anchor = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
+          const windows = [winStartFor(from, N, anchor)];
+          if (from <= state.tick) windows.push(winStartFor(state.tick, N, anchor));
           for (const ws of windows) {
             const f = windowFraction(v, ws, N);
             if (!(f > 0) || f > 1) {
