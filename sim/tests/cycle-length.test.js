@@ -12,7 +12,7 @@
 // and the boundary cadence the tick engine actually runs.
 //
 // Every one of these runs sets NO `state.windowN` — that is the point. They exercise
-// the engine-wide FALLBACK (`FIRST_CUT_WINDOW_N`), which is what a live, unconfigured
+// the engine-wide FALLBACK (`DEFAULT_WINDOW_N`), which is what a live, unconfigured
 // galaxy runs on. Existing suites all inject their own short `windowN`, so this file
 // is the only place the shipped default is under test.
 //
@@ -25,7 +25,7 @@ const assert = require('node:assert/strict');
 const { tick } = require('../tick.js');
 const { createState } = require('../state.js');
 const { checkInvariants } = require('../invariants.js');
-const { FIRST_CUT_WINDOW_N, winStartFor, getWindow } = require('../windows.js');
+const { DEFAULT_WINDOW_N, winStartFor, getWindow } = require('../windows.js');
 const { commitmentUnitsFor, licenceFee, FEE_RATE } = require('../licence.js');
 const { intake, createApplyForLicenceAction } = require('../actions.js');
 const { MINE_BASELINE } = require('../baseline.js');
@@ -50,7 +50,7 @@ const mine = (extra = {}) => ({
 // --- 1. the number itself ---------------------------------------------------------
 
 test('the engine-wide default window is 1,440 ticks — the RULED cycle length', () => {
-  assert.equal(FIRST_CUT_WINDOW_N, 1440);
+  assert.equal(DEFAULT_WINDOW_N, 1440);
 });
 
 test('1,440 is the DERIVED figure, not a memorable coincidence: 24 h × 60 min/h', () => {
@@ -59,7 +59,7 @@ test('1,440 is the DERIVED figure, not a memorable coincidence: 24 h × 60 min/h
   // arithmetic that ties them to the constant must be re-derived — not patched.
   const HOURS_PER_DAY = 24;
   const TICKS_PER_HOUR = 60; // 1 tick = 1 minute
-  assert.equal(FIRST_CUT_WINDOW_N, HOURS_PER_DAY * TICKS_PER_HOUR);
+  assert.equal(DEFAULT_WINDOW_N, HOURS_PER_DAY * TICKS_PER_HOUR);
 });
 
 // --- 2. what the number is FOR: the licence terms it sizes -------------------------
@@ -68,7 +68,7 @@ test('an unconfigured galaxy sizes a 100% titanium licence at 7,200 units a wind
   // The headline the ruling exists for. A full-commitment titanium mine owes its type
   // baseline over a whole day — 5 × 1,440 — where under the retired placeholder 24 it
   // owed 120, a figure that was a day's promise priced as twenty-four minutes' work.
-  assert.equal(commitmentUnitsFor(1, TITANIUM_BASELINE, FIRST_CUT_WINDOW_N), 7200);
+  assert.equal(commitmentUnitsFor(1, TITANIUM_BASELINE, DEFAULT_WINDOW_N), 7200);
   assert.equal(commitmentUnitsFor(1, TITANIUM_BASELINE, 24), 120, 'the value being retired');
 });
 
@@ -93,8 +93,8 @@ test('the fee re-derives off the same window — the RATIO is what is tuned, not
   // scale together with N, so flipping N must leave the ratio untouched at 1/10th.
   const lockedPrice = 10;
   const terms = { baselineUnitsPerTick: TITANIUM_BASELINE, lockedPrice, committedOutputPct: 1, equityPct: 0 };
-  const { basicFee } = licenceFee({ ...terms, windowN: FIRST_CUT_WINDOW_N });
-  const windowIncome = commitmentUnitsFor(1, TITANIUM_BASELINE, FIRST_CUT_WINDOW_N) * lockedPrice;
+  const { basicFee } = licenceFee({ ...terms, windowN: DEFAULT_WINDOW_N });
+  const windowIncome = commitmentUnitsFor(1, TITANIUM_BASELINE, DEFAULT_WINDOW_N) * lockedPrice;
 
   assert.equal(basicFee, 7200, 'the fee scaled with the window, exactly as the note says it must');
   assert.equal(basicFee / windowIncome, FEE_RATE, 'and the tuned ratio is unmoved at a tenth');
@@ -121,7 +121,7 @@ test('with no windowN set, a committed good runs a 1,440-tick cycle in the live 
 });
 
 test('winStartFor agrees with the engine across three consecutive default cycles', () => {
-  const N = FIRST_CUT_WINDOW_N;
+  const N = DEFAULT_WINDOW_N;
   assert.equal(winStartFor(1, N), 1);
   assert.equal(winStartFor(N, N), 1, 'the boundary tick belongs to the window it closes');
   assert.equal(winStartFor(N + 1, N), N + 1);

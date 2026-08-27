@@ -40,22 +40,33 @@
 // It remains only the FALLBACK, consulted when a scenario/test sets no `state.windowN`;
 // every scenario and test may override it (that is the "overridable in scenarios/tests"
 // requirement), which is why flipping it moves no existing golden. Do NOT bake a
-// game-meaningful length into the boundary maths — the boundary is the GLOBAL cadence
-// `tick % N == 0`, so N enters only as this one dial. (The MIDNIGHT ANCHOR that lines
-// that boundary up with a wall-clock day is Slice 2, not this constant's business.)
+// game-meaningful length into the boundary maths — the boundary is the anchored cadence
+// `(tick - dayAnchorTick) % N == 0`, so N enters only as this one dial. The anchor that
+// lines that boundary up with a wall-clock day is a separate per-galaxy field (below).
 //
-// The name keeps its `FIRST_CUT_` prefix in this slice deliberately: renaming it would
-// touch six files for no behavioural gain and bury the one-line number change under a
-// rename diff. Flagged for a follow-up tidy, not silently widened here.
-const FIRST_CUT_WINDOW_N = 1440;
+// RENAMED `FIRST_CUT_WINDOW_N` -> `DEFAULT_WINDOW_N` in the anchor slice, which had
+// these files open anyway: the value is the ruled default, and had not been a first
+// cut since the number was ruled. Pure rename, no behavioural change.
+const DEFAULT_WINDOW_N = 1440;
 
-// winStartFor(tick, N): the producing tick that opened the window CONTAINING `tick`,
-// under the GLOBAL cadence — the boundary falls when `tick % N == 0`, and that tick
-// is the window's LAST (§5 boundary ruling). So window k spans producing ticks
-// [(k-1)·N + 1, k·N], and this returns its first tick. E.g. N=3: ticks 1,2,3 → 1;
-// 4,5,6 → 4. Pure arithmetic on the tick and N — no per-commitment stopwatch.
-function winStartFor(tick, N) {
-  return tick - ((tick - 1) % N);
+// winStartFor(tick, N, dayAnchorTick): the producing tick that opened the window
+// CONTAINING `tick`, under the ANCHORED cadence — the boundary falls when
+// `(tick - dayAnchorTick) % N == 0`, and that tick is the window's LAST (§5 boundary
+// ruling). So a window spans N producing ticks ending on a boundary, and this returns
+// its first tick. E.g. N=3, anchor 0: ticks 1,2,3 → 1; 4,5,6 → 4. Pure arithmetic on
+// the tick, N and the anchor — no per-commitment stopwatch, and no clock.
+//
+// The anchor (docs/cycle-and-calendar.md §2) is a per-galaxy integer offset that lines
+// cycle boundaries up with server midnight; it defaults to 0, at which this reduces
+// EXACTLY to the pre-anchor `tick - ((tick - 1) % N)` — the byte-identical no-op that
+// keeps every existing scenario, test and golden unchanged (invariant 9).
+//
+// The modulo is the SAFE form. An anchored galaxy's anchor is NEGATIVE (see
+// calendar.js's anchorForCreation for why the sign is deliberate), and JavaScript's `%`
+// keeps the sign of the dividend — so the raw operator would return a negative offset
+// here and hand back a window-start LATER than the tick it contains.
+function winStartFor(tick, N, dayAnchorTick = 0) {
+  return tick - (((tick - 1 - dayAnchorTick) % N + N) % N);
 }
 
 // windowFraction(venture, windowStart, N): the fraction of the current window the
@@ -109,5 +120,5 @@ function cloneWindows(windows) {
 }
 
 module.exports = {
-  FIRST_CUT_WINDOW_N, winStartFor, windowFraction, getWindow, setWindow, cloneWindows,
+  DEFAULT_WINDOW_N, winStartFor, windowFraction, getWindow, setWindow, cloneWindows,
 };

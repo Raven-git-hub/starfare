@@ -9,7 +9,7 @@ const {
 } = require('./licence.js');
 const { baselineOutputFor } = require('./baseline.js');
 const { postedPrice } = require('./prices.js');
-const { FIRST_CUT_WINDOW_N } = require('./windows.js');
+const { DEFAULT_WINDOW_N } = require('./windows.js');
 const { isStockpileGood, isFuel } = require('./resources.js');
 const { setEntry } = require('./profile.js');
 
@@ -664,7 +664,7 @@ function applyAction(state, action) {
     // flagged fallback the resolver itself uses when a scenario sets none — the same
     // number, read the same way, so the licence can never be priced over a different
     // window than the one its commitment accrues in.
-    const windowN = next.windowN == null ? FIRST_CUT_WINDOW_N : next.windowN;
+    const windowN = next.windowN == null ? DEFAULT_WINDOW_N : next.windowN;
     const baselineUnitsPerTick = baselineOutputFor(venture).units;
 
     const { basicFee, discountedFee } = licenceFee({

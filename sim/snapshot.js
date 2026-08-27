@@ -32,6 +32,8 @@ const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
 const { previewProduction } = require('./production.js');
 const { PRICED_GOODS, postedPrice } = require('./prices.js');
+const { DEFAULT_WINDOW_N } = require('./windows.js');
+const { dayOf, minuteOf, format } = require('./calendar.js');
 
 // Bump when the shape below changes so the inspector can refuse a stale file
 // loudly instead of rendering half of it. The inspector checks this.
@@ -106,6 +108,14 @@ const { PRICED_GOODS, postedPrice } = require('./prices.js');
 // nothing existing changed shape. `syndicateSale` is null for a guild that has never
 // sold — the overwhelming majority today, since a commitment only exists where the dev
 // scaffold set one.
+// v7 (the midnight anchor + calendar, 27-08-26): ADDITIVE — a top-level `calendar`
+// block beside `tick`: `{ day, minute, label, windowN, dayAnchorTick }`, the cycle clock
+// derived from the plain tick (docs/cycle-and-calendar.md §5). No schema bump: nothing
+// existing changed shape, and this is DERIVED telemetry — it adds nothing to serialized
+// state and enters no determinism hash. `label` is "DDDD:TTTT" DISPLAY notation and is
+// never parsed back by the engine. Emitted now so the console has a seam to read; the
+// rendering is a later client slice, and per §5's display rule the browser computes no
+// part of it.
 // v7 (licence Slice 3b-ii, 27-08-26): ADDITIVE — each venture row gains
 // `committedFromTick`, the first producing tick under its licence (or null), which is
 // what pro-rates its first window's obligation. No schema bump; nothing changed shape.
@@ -292,9 +302,31 @@ function buildSnapshot(state) {
   const reserve = supply.fuel.reserve;
   const guildHeld = supply.fuel.guildHeld;
 
+  // The cycle length and anchor in force, defaulted the same way every engine reader
+  // defaults them, so the emitted clock matches the boundary the engine actually judges
+  // on rather than a second opinion about it.
+  const calN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+  const calAnchor = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
+
   return {
     schemaVersion: SNAPSHOT_SCHEMA,
     tick: state.tick,
+    // The cycle clock (docs/cycle-and-calendar.md §5) — PURE DERIVED TELEMETRY, computed
+    // from the plain integer tick beside it. It adds nothing to serialized state and
+    // enters no determinism hash; the tick remains the only stored time value, and
+    // `label`'s "DDDD:TTTT" is display notation the engine never parses back.
+    //
+    // Emitted so the console can stop guessing where a cycle begins and ends. Rendering
+    // it is a later client slice; this is the seam it will read, and per §5's display
+    // rule the browser computes no part of it. `dayAnchorTick` rides along so the client
+    // can convert a tick to a real arrival time without a second source of truth.
+    calendar: {
+      day: dayOf(state.tick, calN, calAnchor),
+      minute: minuteOf(state.tick, calN, calAnchor),
+      label: format(state.tick, calN, calAnchor),
+      windowN: calN,
+      dayAnchorTick: calAnchor,
+    },
     galacticSupply: {
       resources: { ...supply.resources },
       // reserve and guildHeld are kept separate on purpose — which one the fuel

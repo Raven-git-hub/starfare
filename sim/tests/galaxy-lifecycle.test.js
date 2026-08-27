@@ -15,6 +15,7 @@ const os = require('node:os');
 const path = require('node:path');
 const net = require('node:net');
 const { spawn } = require('node:child_process');
+const { dayOf, minuteOf } = require('../calendar.js');
 
 const SERVER_JS = path.join(__dirname, '..', 'server.js');
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -369,4 +370,76 @@ test('the admin endpoints refuse when there is no persist volume', async () => {
   } finally {
     child.kill('SIGKILL');
   }
+});
+
+// --- The midnight anchor at the create seam (docs/cycle-and-calendar.md §2) --------
+//
+// The anchor's whole point is that a LIVE galaxy rolls its cycle at server midnight
+// rather than at whatever time of day it was created. The arithmetic is proven in
+// calendar.test.js and day-anchor.test.js; these two prove the WIRING — that creation
+// actually sets it, that it is persisted and reloaded rather than recomputed, and that
+// the two paths which must NOT anchor (reset, restore) still don't.
+
+test('creating a galaxy sets a frozen dayAnchorTick, and the snapshot carries the clock', async () => {
+  const dir = tmpDir();
+  const port = await freePort();
+  const { child } = bootServer({ dir, port });
+  try {
+    await waitForHealth(port);
+    await post(port, '/admin/galaxy/new', { seed: 31337 });
+
+    const snap = await get(port, '/snapshot');
+    const cal = snap.body.calendar;
+    assert.ok(cal, 'the snapshot carries the cycle clock');
+    assert.equal(cal.windowN, 1440, 'a live galaxy runs the ruled cycle length');
+
+    // The anchor is derived from the server's own clock, so the test cannot predict it
+    // — but it CAN pin the property that makes it an anchor: the first producing tick
+    // must read the wall clock's minute-of-day, i.e. anchor ≡ -minuteOfDay (mod N),
+    // which puts it in (-1440, 0].
+    const a = cal.dayAnchorTick;
+    assert.ok(Number.isInteger(a), `dayAnchorTick is an integer, got ${a}`);
+    assert.ok(a <= 0 && a > -1440, `the anchor is the negative representative, got ${a}`);
+
+    // The property that makes it an ANCHOR rather than an arbitrary offset: the galaxy's
+    // first producing tick lands on DAY 0 at the minute-of-day it was created, and its
+    // first boundary is exactly that many minutes short of a full cycle — i.e. the next
+    // midnight. (Whether that minute matches this machine's clock is minuteOfDayFromDate's
+    // unit test; here the server's clock is the input, so re-reading it would only
+    // re-derive the same number and prove nothing.)
+    const impliedMinute = ((-a % 1440) + 1440) % 1440;
+    assert.equal(dayOf(1, 1440, a), 0, 'the creation tick is on day 0');
+    assert.equal(minuteOf(1, 1440, a), impliedMinute, 'reading the minute it was created at');
+    const firstBoundary = 1440 + a; // minutes REMAINING until midnight, not elapsed
+    assert.equal(((firstBoundary - a) % 1440 + 1440) % 1440, 0, 'the first boundary is a real boundary');
+    assert.equal(minuteOf(firstBoundary, 1440, a), 1439, 'and it is the last minute of day 0 — midnight');
+
+    // Frozen: it must survive a restart unchanged (§3, no catch-up).
+    child.kill('SIGKILL');
+    const port2 = await freePort();
+    const second = bootServer({ dir, port: port2 });
+    try {
+      await waitForHealth(port2);
+      const snap2 = await get(port2, '/snapshot');
+      assert.equal(snap2.body.calendar.dayAnchorTick, a,
+        'the reloaded galaxy kept its anchor — nothing re-derived it');
+    } finally { second.child.kill('SIGKILL'); }
+  } finally { child.kill('SIGKILL'); }
+});
+
+test('POST /reset does NOT re-anchor — a reset galaxy runs the unanchored cadence', async () => {
+  const dir = tmpDir();
+  const port = await freePort();
+  const { child } = bootServer({ dir, port });
+  try {
+    await waitForHealth(port);
+    await post(port, '/admin/galaxy/new', { seed: 424242 });
+    const created = await get(port, '/snapshot');
+    assert.ok(created.body.calendar.dayAnchorTick <= 0);
+
+    await post(port, '/reset');
+    const afterReset = await get(port, '/snapshot');
+    assert.equal(afterReset.body.calendar.dayAnchorTick, 0,
+      'reset rebuilds a plain zero-state — anchoring is Create’s job alone');
+  } finally { child.kill('SIGKILL'); }
 });

@@ -373,6 +373,20 @@ function createState(scenario) {
     // state byte-identical to pre-Slice-B (the resolver defaults it via the flagged
     // [FIRST-CUT] in sim/windows.js when a committed good is nonetheless resolved).
     ...(scenario.windowN === undefined ? {} : { windowN: scenario.windowN }),
+    // dayAnchorTick: the per-galaxy offset that lines cycle boundaries up with SERVER
+    // MIDNIGHT (docs/cycle-and-calendar.md §2). The boundary is
+    // `(tick - dayAnchorTick) % N == 0`, so at the default 0 it is exactly the old
+    // `tick % N == 0`. Present ONLY when the scenario sets it — same omit-when-absent
+    // discipline as `windowN` above, and for the same reason: a state with no anchor
+    // serializes byte-identically to pre-anchor, which is the determinism no-op guard
+    // (invariant 9). Every reader defaults it with `== null ? 0`.
+    //
+    // It is FROZEN: set exactly once, from a single wall-clock read at galaxy creation
+    // (sim/server.js), then persisted and never recomputed. Downtime does NOT re-anchor
+    // (§3 — cycles stay exactly N ticks, drift is accepted); re-anchoring is a manual
+    // future operator action. This is the only field in state derived from a clock, and
+    // nothing on the tick path ever reads one.
+    ...(scenario.dayAnchorTick === undefined ? {} : { dayAnchorTick: scenario.dayAnchorTick }),
     // world is an opaque reference the engine carries inert (tick/intake/assert
     // read none of it). The zero-state now sets it to { seed: <number> } — the
     // galaxy IS the seed (§15.3), referenced, not copied — replacing the old

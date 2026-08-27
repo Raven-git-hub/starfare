@@ -86,6 +86,11 @@ const { buildSnapshot } = require('./snapshot.js');
 const { getStarterSystems, getSystemLayout, setSeed, getSeedNumber } = require('./seed.js');
 const { listRecipes } = require('./recipes.js');
 const { RAW_RESOURCES, PROCESSED_GOODS } = require('./resources.js');
+const { DEFAULT_WINDOW_N } = require('./windows.js');
+// The calendar's two creation-seam helpers. `anchorForCreation` is pure arithmetic;
+// `minuteOfDayFromDate` converts a Date the CALLER supplies — the single wall-clock
+// read lives in the create handler below and nowhere else (docs/cycle-and-calendar.md §2).
+const { anchorForCreation, minuteOfDayFromDate } = require('./calendar.js');
 const { generateGalaxySeed } = require('../tools/generate_seed.js');
 
 const DEFAULT_PORT = 7331; // the galaxy seed number, and clear of the host's other services
@@ -692,11 +697,28 @@ async function handleRequest(req, res) {
       const seedObj = generateGalaxySeed(seedNumber);    // 2. generate
       saveSeed(seedObj, persistDir);                     // 3. write it to the volume
       setActiveSeed(seedObj);                            // 4. reload the index + /galaxy buffer
-      setState(createZeroState());                       // 5. zero-state ON THE NEW SEED
+      // 5. THE ONE WALL-CLOCK READ IN THE WHOLE SYSTEM (docs/cycle-and-calendar.md §2).
+      //    It happens here, at the operator seam, exactly like STARFARE_TICK_MS — never
+      //    in advance/tick/resolveProduction, which read only integers already in state.
+      //    The minute-of-day it yields is turned into a frozen `dayAnchorTick` so this
+      //    galaxy's cycle boundaries fall on SERVER MIDNIGHT instead of on whatever time
+      //    of day it happened to be created. After this line the galaxy never consults a
+      //    clock again: downtime does not re-anchor (§3), /reset does not, and the
+      //    restore path loads the persisted anchor rather than recomputing one.
+      const anchorN = DEFAULT_WINDOW_N;                  //    a live galaxy runs the ruled default
+      const dayAnchorTick = anchorForCreation(minuteOfDayFromDate(new Date()), anchorN);
+      setState(createZeroState({ dayAnchorTick }));      //    zero-state ON THE NEW SEED
       saveState(getState(), persistDir);                 // 6. persist, and drop the old history
       clearJournal(persistDir);
       if (bootTickMs !== null) startAutotick(bootTickMs);//    the galaxy turns from tick 0
-      console.log(`[galaxy] CREATED — seed ${seedNumber}, tick 0, clock ${bootTickMs !== null ? 'ON' : 'off'}`);
+      // The first boundary is the first tick at which (tick - anchor) % N == 0, which for
+      // the anchor in (-N, 0] anchoring produces is `N + anchor` — the minutes left until
+      // midnight, not the minutes already elapsed today. (Created at minute 870, the first
+      // boundary is 1440 - 870 = 570 ticks in; created exactly at midnight, anchor 0, it is
+      // a full N.) Logged so an operator can see when this galaxy's first cycle closes
+      // without doing the arithmetic.
+      const firstMidnightTick = anchorN + dayAnchorTick;
+      console.log(`[galaxy] CREATED — seed ${seedNumber}, tick 0, clock ${bootTickMs !== null ? 'ON' : 'off'}, dayAnchorTick ${dayAnchorTick} (first midnight boundary at tick ${firstMidnightTick})`);
       sendJson(res, 200, { ok: true, seed: seedNumber, tick: getState().tick, state: 'active' });
     } catch (err) {
       sendJson(res, 500, { error: 'could not create the galaxy', detail: String((err && err.message) || err) });
