@@ -158,7 +158,10 @@ seven days, after which its terms may be reopened. Keep the two senses distinct 
 
 **Determinism holds.** `dayAnchorTick` defaults to `0`, so every test/scenario/golden is
 byte-identical (`(tick − 0) % N == tick % N`); the number-flip needs **no golden regeneration**
-because every test sets its own `state.windowN` (verified: `437/437` at `N = 1,440`). The single
+because no golden's *bytes* depend on the fallback's value: the committed golden sets its own
+`state.windowN`, and the unlicensed golden reads the fallback but never consults a window (every
+mine has commitment 0), so its hash is invariant to `N` (verified: `444/444` at `N = 1,440`, both
+determinism goldens byte-identical — Slice 1, PR #29). The single
 wall-clock read lives at galaxy creation (`sim/server.js`), never in `advance`/`tick`/`resolve`.
 Invariant 9 and the clock-free rule (§5) are intact.
 
