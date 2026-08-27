@@ -253,21 +253,35 @@
 
   /* roster — one continuous stack of every licence, always filling the fixed height.
      Rows shrink to keep every venture in frame; min row = 5% (1/20, the 20-licence cap). */
+  .sm-rostwrap{flex:1; display:flex; flex-direction:column; gap:4px; min-width:0; min-height:0; overflow:hidden}
   .sm-roster{flex:1; display:flex; flex-direction:column; gap:2px; min-width:0; min-height:0; overflow:hidden}
   .sm-roster.loose{justify-content:flex-start; overflow-y:auto}
   .sm-roster.loose .sm-lic{min-height:0; flex:0 0 auto; padding:7px 9px}
-  /* the "no commitment" note is the shrinkable half — the venture id is not */
-  .sm-roster.loose .sm-lic .cmt{flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .sm-roster.loose .sm-lic .idwrap{flex:0 1 auto}
-  .sm-lic{display:flex; align-items:center; gap:8px; padding:3px 9px; border:1px solid var(--line); border-radius:6px; background:var(--panel2); min-height:5%; overflow:hidden}
+  .sm-lic{display:flex; align-items:center; gap:6px; padding:3px 7px; border:1px solid var(--line); border-radius:6px; background:var(--panel2); min-height:5%; overflow:hidden}
   .sm-lic.out{opacity:.62; background:var(--void); border-style:dashed}
   .sm-lic.pursue{border-left:2px solid var(--amber-dim)}
   .sm-lic .grip{color:var(--ink3); font-size:11px; cursor:grab; flex:none}
   .sm-lic .idwrap{flex:1; min-width:0}
   .sm-lic .sid{font-family:var(--mono); font-size:12px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
   .sm-lic .pl{font-family:var(--mono); font-size:9px; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-  .sm-lic .cmt{font-family:var(--mono); font-size:11px; color:var(--ink2); font-variant-numeric:tabular-nums; flex:none}
+  /* the figures line, stacked under the id (see licRow) — never beside it */
+  .sm-lic .cmt{display:block; font-family:var(--mono); font-size:11px; color:var(--ink2); font-variant-numeric:tabular-nums;
+               white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px}
   .sm-lic .cmt .u{color:var(--ink3); font-size:8px}
+  /* pursue rank + its two movers — the ranking the boundary fill honours. One narrow
+     column so the venture id keeps the row's width (rows are tall; width is the scarce
+     axis here, height is not). */
+  .sm-lic .pu-rank{font-family:var(--mono); font-size:10px; color:var(--amber); text-align:center; line-height:1; font-variant-numeric:tabular-nums}
+  .sm-lic .pu-btns{display:flex; flex-direction:column; align-items:center; gap:2px; flex:none; width:18px}
+  .pu-btn{width:18px; height:14px; padding:0; line-height:1; font-size:8px; cursor:pointer;
+          background:var(--void); color:var(--ink2); border:1px solid var(--line); border-radius:3px}
+  .pu-btn:hover:not(:disabled){border-color:var(--amber); color:var(--amber)}
+  .pu-btn:disabled{opacity:.3; cursor:default}
+  .pu-clear-row{flex:none; display:flex; justify-content:flex-end}
+  .pu-clear{font-family:var(--mono); font-size:9px; letter-spacing:.1em; text-transform:uppercase; cursor:pointer;
+            background:none; color:var(--ink3); border:1px solid var(--line); border-radius:4px; padding:2px 7px}
+  .pu-clear:hover{border-color:var(--amber); color:var(--amber)}
   .sm-chk{width:15px; height:15px; flex:none; border-radius:4px; border:1px solid var(--line2); background:var(--void); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--amber); font-size:11px; line-height:1}
   .sm-chk.on{background:var(--amber-ghost); border-color:var(--amber-dim)}
   /* status dot */
@@ -717,7 +731,10 @@ function sendProfile(patch){
   var action = { type: 'setProductionProfile', guildId: STATE.guildId, systemId: STATE.sysId };
   if (patch.goods) action.goods = patch.goods;
   if (patch.throttles) action.throttles = patch.throttles;
-  sendAction(action, 'policy');
+  // Returned so a caller that must know when the POST's re-render has landed can wait
+  // for it (the pursue reorder holds the LIVE poll until then). Every other caller
+  // ignores it, exactly as before.
+  return sendAction(action, 'policy');
 }
 function fieldInt(el){ var n = parseInt(el.value, 10); return Number.isNaN(n) ? null : n; }
 
@@ -770,33 +787,63 @@ if (STATE.embedded) {
   ['btnTick','btnReset'].forEach(function(id){ var b = document.getElementById(id); if (b) b.style.display = 'none'; });
 }
 
-// --- Syndicate licence ROSTER — DESIGN-AHEAD, NOT ENGINE STATE ---------------
-// There is no licence layer in the engine yet: every venture's `syndicateCommitment`
-// is 0 and no fee, order or pursue flag is stored anywhere. This fabricated set is
-// kept ONLY so the designed panel can be seen; it is tagged MOCK on screen, its
-// controls POST nothing, and no figure in it is read as live. The thermometer's LIVE
-// half (delivered / send rate / ticks remaining) is read from the real window
-// telemetry in synResolve() below — those are engine values.
-// The Syndicate top-up control. ADVISORY ONLY: there is no top-up in the engine, so
-// these two settings live in the browser, are tagged mock on screen and POST nothing.
-// (The fabricated licence roster that used to sit here — seven phantom titanium mines,
-// shown whatever good you were looking at — is DELETED. The roster is built from the
-// selected good's REAL producers in synResolve() below.)
+// --- The Syndicate TOP-UP control — MOCK, and the last mock left in this panel ------
+// ADVISORY ONLY: there is no top-up in the engine, so these two settings live in the
+// browser, are tagged mock on screen and POST nothing.
+//
+// Everything ELSE in the Syndicate tab is now live engine state, and the roster is the
+// part that changed most recently: the fabricated seven-mine licence set that used to
+// sit here was deleted when the roster started reading the good's REAL producers, and
+// as of the console-rewire slice each row also reads its OWN target, delivered and
+// met/breach verdict from the window's `perVenture` block, ranked by the good's stored
+// `pursue` order (which the roster's movers write). The one thing the design calls for
+// and the engine does not have yet is the FEE — so no fee is shown.
 var SYN = {
   topupEnabled: false,
   limit: 0
 };
+// reconcilePursueIds(stored, ids) — the committed rows in the order the engine will fill
+// them at the boundary. It mirrors `reconcilePursue` (sim/production.js) EXACTLY, and
+// must keep mirroring it: drop a ranked id that is not a committed producer of this good
+// any more, honour a duplicate once, then append every committed producer the ranking
+// omits in roster (establishment) order. An absent ranking is therefore plain
+// establishment order.
+//
+// This is PRESENTATION ordering, not a game number (§5's display rule): it decides which
+// row is drawn where, nothing else. Every verdict on the rows comes from the engine's
+// own `perVenture`, which the engine emits in this same reconciled order — so if the two
+// ever disagreed, the roster would visibly mis-rank rows whose statuses came from the
+// engine, which is the sort of divergence you can see rather than the sort that hides.
+function reconcilePursueIds(stored, ids){
+  var live = {}; ids.forEach(function(id){ live[id] = true; });
+  var seen = {}, out = [];
+  (stored || []).forEach(function(id){
+    if (!live[id] || seen[id]) return;
+    seen[id] = true; out.push(id);
+  });
+  ids.forEach(function(id){ if (!seen[id]) out.push(id); });
+  return out;
+}
+
 // Resolve the licence set into ordered, status-tagged rows + the thermometer figures.
 // Everything here is REAL, for the good currently on screen:
 //   the roster  = that good's producers in this system (the SAME list the Production
-//                 column renders), each with the engine's own `syndicateCommitment`;
+//                 column renders), the committed ones ranked in the good's `pursue`
+//                 order, each carrying ITS OWN target / delivered / verdict;
 //   the target  = the good's window `Q` (the engine's aggregate commitment target);
 //   delivered / send rate / ticks remaining = the good's window telemetry.
-// No licence layer exists yet, so every commitment is 0 and no window is emitted: the
-// honest result is an empty thermometer and rows that read "no commitment". Nothing is
-// fabricated to fill the space, and per-venture delivery is NOT invented — the engine
-// tracks delivery per GOOD, not per venture, so the roster shows each venture's own
-// commitment and the window status belongs to the good.
+//
+// PER-VENTURE IS THE REAL VERDICT (§5, the licence-distribution slice). The window's
+// `perVenture` block gives each licence its own `{ commitment, delivered, status }` —
+// its target for THIS window (already pro-rated for a mid-window join), its share of the
+// delivered pile under the pursue fill, and its binary met/breach. The row reads those;
+// the good-level `windowStatus` is kept for the thermometer's overview pill ONLY, because
+// it is a rollup of these rows and no longer the truth about any one of them.
+//
+// A committed row with no `perVenture` entry keeps a neutral mark rather than borrowing
+// the good's status: it means the engine is not filling that venture this window (an
+// uncommitted good emits no window at all, and the accrual sums over MINES, so a
+// committed refinery has no entry). Neutral is the honest reading — nothing was judged.
 function synResolve(){
   var report = systemReport();
   var good = STATE.good;
@@ -806,17 +853,38 @@ function synResolve(){
   var sendRate = (g && g.fork) ? (g.fork.syndicate || 0) : 0;   // resolved send this tick
   var ticksRem = w ? (w.ticksRemaining || 0) : 0;
   var target = w ? (w.Q || 0) : 0;                              // the engine's window target
+  var perVenture = (w && w.perVenture) || {};
 
   var rows = (report ? producersOf(report, good) : []).map(function(p){
     var v = STATE.vmap[p.id] || {};
-    return { id: p.id, planet: ventPlanet(p.id), commitment: v.syndicateCommitment || 0 };
+    var pv = perVenture[p.id] || null;
+    return {
+      id: p.id, planet: ventPlanet(p.id),
+      // LICENSED is the stored fact (the venture's own commitment); COMMITMENT is its
+      // target for THIS window, which is the engine's `qᵢ` where there is one — that is
+      // the number the verdict is judged against, and it can be smaller than the stored
+      // commitment for a mine that joined mid-window (or, on a sliver of a window, 0).
+      licensed: (v.syndicateCommitment || 0) > 0,
+      commitment: pv ? pv.commitment : (v.syndicateCommitment || 0),
+      delivered: pv ? pv.delivered : null,
+      status: pv ? pv.status : null,
+    };
   });
-  var committed = rows.filter(function(l){ return l.commitment > 0; });
-  var uncommitted = rows.filter(function(l){ return l.commitment === 0; });
+  var committed = rows.filter(function(l){ return l.licensed; });
+  var uncommitted = rows.filter(function(l){ return !l.licensed; });
+
+  // Rank the committed block by the stored pursue order; uncommitted producers stay
+  // below it, unranked and unrankable (there is no licence to prioritise).
+  var pol = goodPolicy(good);
+  var byId = {}; committed.forEach(function(l){ byId[l.id] = l; });
+  var ranked = reconcilePursueIds(pol.pursue, committed.map(function(l){ return l.id; }))
+    .map(function(id){ return byId[id]; });
+
   var projected = Math.min(target, delivered + sendRate * ticksRem);
   return {
-    display: committed.concat(uncommitted),
-    committed: committed, uncommitted: uncommitted,
+    display: ranked.concat(uncommitted),
+    committed: ranked, uncommitted: uncommitted,
+    pursueSet: pol.pursueSet,
     total: target, delivered: Math.min(delivered, target), projected: projected,
     deficit: Math.max(0, target - projected),
     windowStatus: w ? w.status : null,
@@ -848,6 +916,12 @@ function goodPolicy(good){
     reserveLevel: s.reserveLevel != null ? s.reserveLevel : PROFILE_DEFAULTS.reserveLevel,
     reserveSet: s.reserveLevel != null,
     syndicate: s.syndicate != null ? { mode:s.syndicate.mode, value:s.syndicate.value } : null,
+    // pursue: the stored ranking the engine fills this good's licences in at the window
+    // boundary (an ordered array of ventureIds, or ABSENT = establishment order). Copied,
+    // and `pursueSet` says whether the player has stored one at all — which is what the
+    // roster's "clear" affordance keys off (there is nothing to clear if it is absent).
+    pursue: Array.isArray(s.pursue) ? s.pursue.slice() : [],
+    pursueSet: Array.isArray(s.pursue),
   };
 }
 function throttleOf(good, ventureId){
@@ -964,28 +1038,58 @@ function rightTabBar(){
   '</div>';
 }
 function clampLbl(p){ return Math.max(4, Math.min(96, p)); }
-// The dot carries the GOOD's window status (met / accruing / breach) — never a
-// per-venture verdict, which the engine does not track. A venture with no commitment
-// gets a neutral mark, not a tick: nothing has been met.
+// The dot carries THIS LICENCE's own verdict (§5: met/breach is judged per venture, not
+// per good). `met` means the engine delivered the venture its ENTIRE target for the
+// window — the test is binary, so one unit short is `breach`, never a part-mark.
+// `accruing` is a window still running: no verdict has been reached yet. A venture with
+// no commitment, or one the engine is not filling this window, gets a neutral mark —
+// nothing has been judged, which is not the same as having failed.
 function statusDot(st){
-  if (st === 'met')      return '<span class="st-dot met" title="the window\'s commitment was met">✔</span>';
-  if (st === 'accruing' || st === 'proj') return '<span class="st-dot proj" title="the window is accruing"></span>';
-  if (st === 'breach' || st === 'fail')   return '<span class="st-dot fail" title="the window was breached">!</span>';
-  return '<span class="st-dot none" title="no commitment on this venture">–</span>';
+  if (st === 'met')      return '<span class="st-dot met" title="MET — this licence was delivered its whole commitment">✔</span>';
+  if (st === 'accruing' || st === 'proj') return '<span class="st-dot proj" title="accruing — the window is still running, no verdict yet"></span>';
+  if (st === 'breach' || st === 'fail')   return '<span class="st-dot fail" title="BREACH — short of this licence\'s commitment (binary: one unit short is a breach)">!</span>';
+  return '<span class="st-dot none" title="no commitment on this venture — nothing to meet or breach">–</span>';
 }
-// One roster row = one real venture producing this good, with the commitment the
-// ENGINE holds for it. There is no pursue flag and no fee in the engine, so neither is
-// shown; the status dot carries the GOOD's window status (labelled as such), never an
-// invented per-venture verdict.
-function licRow(l, status){
-  var cmt = l.commitment > 0
-    ? '<span class="cmt">' + fmt(l.commitment) + '<span class="u">u</span></span>'
-    : '<span class="cmt" style="color:var(--ink3)">no commitment</span>';
+// One roster row = one real venture producing this good, carrying ITS OWN engine
+// figures: the dot is that licence's verdict, and the numbers are its delivered-so-far
+// against its target for this window (`perVenture[id]`, which already carries the
+// mid-window pro-rate). The FEE is deliberately not shown — the charge is not built
+// (licence Slice 3b-iii), and a fee figure that never moves would read as live.
+//
+// `rank` (1-based) is the row's place in the pursue order; it is passed in rather than
+// derived here so the row stays a pure renderer. Only a committed row gets the reorder
+// buttons: an unlicensed producer has no licence to prioritise.
+function licRow(l, rank, total){
+  var cmt;
+  if (!l.licensed) {
+    cmt = '<span class="cmt" style="color:var(--ink3)">no commitment</span>';
+  } else if (l.delivered == null) {
+    // Licensed, but the engine is filling no window for it — show the target alone.
+    cmt = '<span class="cmt">' + fmt(l.commitment) + '<span class="u">u</span></span>';
+  } else {
+    cmt = '<span class="cmt" title="delivered to this licence / its commitment this window">' +
+      fmt(l.delivered) + '<span class="u"> / </span>' + fmt(l.commitment) + '<span class="u">u</span></span>';
+  }
+  // The figures sit UNDER the id, not beside it. Beside it they cost ~30px of a 152px
+  // row and truncate the very venture id the roster exists to name; under it they cost
+  // nothing, because the rows are tall (height ∝ commitment).
   var idwrap = '<div class="idwrap"><div class="sid">' + esc(l.id) + '</div>' +
-    (l.planet ? '<div class="pl">◐ ' + esc(l.planet) + '</div>' : '') + '</div>';
+    (l.planet ? '<div class="pl">◐ ' + esc(l.planet) + '</div>' : '') + cmt + '</div>';
   var flex = l._flex ? ' style="flex:' + l._flex + ' 1 0"' : '';
-  return '<div class="sm-lic' + (l.commitment > 0 ? ' pursue' : ' out') + '"' + flex + '>' +
-    statusDot(status) + idwrap + cmt +
+  // The rank and its two movers, stacked in ONE narrow column: the venture id is the
+  // thing this roster exists to name, so the control is not allowed to squeeze it — the
+  // rows are tall (height ∝ commitment), which is the axis with room to spare. Movers
+  // are disabled at the ends rather than hidden, so the row never re-flows as a licence
+  // travels up and down the order.
+  var rankCtl = l.licensed
+    ? '<span class="pu-btns">' +
+        '<span class="pu-rank" title="pursue rank — the delivered pile fills rank 1 first, to its full commitment, before rank 2 is fed">' + rank + '</span>' +
+        '<button type="button" class="pu-btn pu-up" data-vent="' + esc(l.id) + '"' + (rank <= 1 ? ' disabled' : '') + ' title="pursue this licence sooner">▲</button>' +
+        '<button type="button" class="pu-btn pu-dn" data-vent="' + esc(l.id) + '"' + (rank >= total ? ' disabled' : '') + ' title="pursue this licence later">▼</button>' +
+      '</span>'
+    : '';
+  return '<div class="sm-lic' + (l.licensed ? ' pursue' : ' out') + '"' + flex + '>' +
+    statusDot(l.status) + idwrap + rankCtl +
   '</div>';
 }
 function synTherm(R){
@@ -1010,30 +1114,46 @@ function synTherm(R){
     (R.shortfall ? '<div class="sm-therm-lbl def" style="top:' + clampLbl((projPct + 100) / 2) + '%">−' + fmt(R.deficit) + 'u<span class="s">deficit</span></div>' : '');
   return '<div class="sm-therm-col"><div class="sm-therm" style="height:' + R.barPct + '%">' + inner + '</div></div>';
 }
-// ONE continuous stack of every licence: in-play first (flex-height ∝ commitment, aligned to
-// the thermometer), then not-in-play (compact fixed weight) below — never removed, just outside
-// the bar's reach.
+// ONE continuous stack of every licence, TOP OF THE PURSUE ORDER FIRST: the committed
+// ones ranked (flex-height ∝ commitment, aligned to the thermometer), then the
+// uncommitted producers (compact fixed weight) below — never removed, just outside the
+// bar's reach and outside the ranking. Rank 1 is the licence the boundary fill feeds
+// first, to its full commitment, before rank 2 sees a unit.
 function synRoster(R){
   if (!R.display.length){
-    return '<div class="sm-roster"><div class="empty" style="margin:10px">nothing in this system produces this good</div></div>';
+    return '<div class="sm-rostwrap"><div class="sm-roster"><div class="empty" style="margin:10px">nothing in this system produces this good</div></div></div>';
   }
   // Committed rows share the bar's height ∝ commitment (so the roster lines up with the
   // thermometer). With nothing committed there is no bar to line up with, so the rows
   // stay their natural size and the ids stay readable.
   var anyCommitted = R.committed.length > 0;
+  var n = R.committed.length;
+  var rank = 0;
   var rows = R.display.map(function(l){
     l._flex = anyCommitted ? (l.commitment > 0 ? l.commitment : 1) : 0;
-    return licRow(l, l.commitment > 0 ? (R.windowStatus || 'proj') : 'none');
+    if (l.licensed) rank += 1;
+    return licRow(l, rank, n);
   }).join('');
-  return '<div class="sm-roster' + (anyCommitted ? '' : ' loose') + '">' + rows + '</div>';
+  // The clear-back-to-default affordance, shown only when a ranking is actually stored:
+  // it POSTs `pursue: null`, the engine's own tri-state clear, and the roster reverts to
+  // establishment order. Nothing to clear ⇒ nothing offered.
+  var clear = (anyCommitted && R.pursueSet)
+    ? '<div class="pu-clear-row"><button type="button" class="pu-clear" title="clear the ranking — the pile fills in establishment order again">clear ranking</button></div>'
+    : '';
+  // The roster and its clear affordance are ONE flex column, so the clear row sits under
+  // the stack instead of becoming a third column beside the thermometer.
+  return '<div class="sm-rostwrap">' +
+    '<div class="sm-roster' + (anyCommitted ? '' : ' loose') + '">' + rows + '</div>' + clear +
+  '</div>';
 }
 function syndicateMgmtCol(good){
   var R = synResolve();
   // Every figure in this column is the engine's: the rows are this good's real
-  // producers, each commitment is the venture's own `syndicateCommitment`, and the
-  // thermometer measures the good's real window (delivered against Q). The licence
-  // ECONOMY — fees, breach, pursue flags, ordering — is not built, so none of it is
-  // shown at all rather than shown as a plausible number.
+  // producers, each row's target / delivered / verdict is that licence's own
+  // `perVenture` entry, the ranking is the good's stored `pursue`, and the thermometer
+  // measures the good's real window (delivered against Q). The one part of the licence
+  // ECONOMY still unbuilt is the FEE (Slice 3b-iii) — so no fee is shown at all, rather
+  // than shown as a plausible number that never moves.
   var head = '<div class="sm-top">' +
     '<div class="sm-presets"><span class="sm-plbl">Commitments · ' + esc(prettyGood(good || '—')) + '</span>' +
       '<span class="lbl">' + R.display.length + ' producing venture' + (R.display.length === 1 ? '' : 's') +
@@ -1041,12 +1161,15 @@ function syndicateMgmtCol(good){
   '</div>';
   var note = R.total
     ? '<div class="mocknote">Window target <b>' + fmt(R.total) + 'u</b>, delivered <b>' + fmt(R.delivered) +
-      'u</b> — the engine\'s per-good window. Delivery is tracked per GOOD, not per venture, so each row shows ' +
-      'its own commitment and the status dot is the window\'s.</div>'
-    : '<div class="mocknote">No commitment yet: the <b>licence layer is not built</b>, so every venture\'s ' +
-      'commitment is 0 and the engine emits no window for this good. These are the real producers — the ' +
-      'thermometer fills once commitments exist. The fee, breach and pursue controls the design calls for are ' +
-      'not shown at all, because there is nothing behind them.</div>';
+      'u</b> — the thermometer is the good\'s whole window. Each row is judged <b>on its own</b>: at the ' +
+      'boundary the delivered pile fills the licences <b>top of this list first</b>, each to its full ' +
+      'commitment before the next is fed, so a licence reads <b>met</b> only when it got <b>all</b> of what ' +
+      'it promised — one unit short is a breach. Rank a licence higher to feed it first. ' +
+      'The <b>fee</b> is not shown: the charge is not built yet.</div>'
+    : '<div class="mocknote">No commitment on this good yet — nothing here is licensed, so the engine emits ' +
+      'no window and there is nothing to meet or breach. These are the real producers; the thermometer fills, ' +
+      'and the ranking becomes live, once a licence exists. The <b>fee</b> is not shown even then: the charge ' +
+      'is not built yet.</div>';
   return '<div class="col sm-col">' + rightTabBar() +
     '<div class="sm-wrap">' +
       head +
@@ -1094,6 +1217,57 @@ document.addEventListener('click', function(e){
   var tab = t.closest('.rt-tab');       if (tab){ STATE.rightTab = tab.dataset.rtab; rerenderStage(); return; }
   var mng = t.closest('.sy-manage');    if (mng){ STATE.rightTab = 'syndicate'; rerenderStage(); return; }
   var suen = t.closest('.su-en');       if (suen){ SYN.topupEnabled = !SYN.topupEnabled; rerenderStage(); return; }
+  var mv = t.closest('.pu-btn');        if (mv){ movePursue(mv.dataset.vent, mv.classList.contains('pu-up') ? -1 : 1); return; }
+  var clr = t.closest('.pu-clear');     if (clr){ postPursue(null); return; }
+});
+
+// --- The pursue reorder: rank a licence, POST the new order -------------------------
+// The player ranks the good's licences; the ENGINE fills them in that order at the
+// boundary. The browser re-sequences ids and nothing else — it computes no target, no
+// delivery and no verdict (§5's display rule): every number and every dot on these rows
+// came out of the snapshot's `perVenture`.
+//
+// One move = one `setProductionProfile` POST carrying the whole new order, exactly as
+// the Gate-1 fork rank does (that control also rebuilds and POSTs the complete
+// permutation rather than a delta). `sendAction` re-renders from the response, so the
+// roster you see after a move is the engine's answer, never a local guess.
+function postPursue(ids){
+  var g = {}; g[STATE.good] = { pursue: ids };     // ids === null ⇒ the engine's clear-path
+  holdPoll();                                       // …until the POST's own render lands
+  Promise.resolve(sendProfile({ goods: g })).catch(function(){}).then(releasePoll);
+}
+// Move one licence by one place. The order moved is the RECONCILED one the roster is
+// drawing (`synResolve().committed`), not the raw stored list — so a first drag on a
+// good that has never been ranked stores the establishment order with one swap applied,
+// which is exactly what the player just did on screen.
+function movePursue(ventureId, delta){
+  var ids = synResolve().committed.map(function(l){ return l.id; });
+  var i = ids.indexOf(ventureId);
+  var j = i + delta;
+  if (i < 0 || j < 0 || j >= ids.length) return;    // already at the end it was pushed toward
+  ids[i] = ids[j]; ids[j] = ventureId;
+  postPursue(ids);
+}
+// Hold the LIVE poll across a click-driven control, the same discipline `trackDrag`
+// applies to the sliders and for the same reason: a re-render between mousedown and
+// click detaches the button, and the click then lands on nothing. Held from mousedown
+// until the move's own response has re-rendered. A counter, not a flag, because those
+// two holds overlap; the mouseup release is deferred one turn so the click handler's
+// hold is already counted when it fires (and so a press that never becomes a click —
+// dragged off the button — still releases).
+var pollHold = 0;
+var pressHeld = false;                  // a mousedown's hold, outstanding until its mouseup
+function holdPoll(){ pollHold += 1; }
+function releasePoll(){ pollHold = Math.max(0, pollHold - 1); }
+document.addEventListener('mousedown', function(e){
+  if (e.target.closest && e.target.closest('.pu-btn, .pu-clear')){ pressHeld = true; holdPoll(); }
+});
+// Released on ANY mouseup, not only one over the button: a press dragged off the control
+// never becomes a click, and a hold that outlived its press would freeze LIVE for good.
+window.addEventListener('mouseup', function(){
+  if (!pressHeld) return;
+  pressHeld = false;
+  setTimeout(releasePoll, 0);
 });
 document.addEventListener('change', function(e){
   var t = e.target; if (t && t.classList && t.classList.contains('su-limit')){ var v = parseInt(t.value, 10); if (!isNaN(v) && v >= 0){ SYN.limit = v; } }
@@ -1412,6 +1586,7 @@ function reflectLive(){
 }
 async function livePoll(){
   if (isDragging) return;            // never rebuild the DOM under a slider being dragged
+  if (pollHold > 0) return;          // …nor under a click-driven control mid-interaction
   if (anyControlFocused()) return;   // don't clobber a control being edited mid-run
   await refresh('GET', null);         // re-render via the existing path; no status spam
 }

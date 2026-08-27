@@ -122,6 +122,14 @@ test('GET /console serves the player-facing Production Console (HTML)', async ()
   assert.match(html, /sy-rate-in/);            // Syndicate send control
   assert.match(html, /commitmentReadout/);     // the windowed-accrual readout, from `window`
   assert.match(html, /systemReport/);          // reads the snapshot production block
+  // The Syndicate roster reads the PER-VENTURE licence outcome (§5's real met/breach)
+  // and writes the good's `pursue` ranking — the console-rewire slice. Both are pinned
+  // because both are the whole point of that panel: the row's dot must come from the
+  // venture's own verdict, not the good's rollup, and the ranking must be settable.
+  assert.match(html, /perVenture/);            // the per-licence verdict the rows render
+  assert.match(html, /reconcilePursueIds/);    // display order mirrors the engine's fill order
+  assert.match(html, /class="pu-btn pu-up"/);  // the reorder movers
+  assert.match(html, /pursue: ids/);           // …POSTing setProductionProfile { pursue }
   // Auto-tick watch UI (Phase 1 Stage 2): the console's LIVE / PAUSE-VIEW toggle —
   // a client-side refresh freeze only (no /autotick control: a player cannot pause
   // a persistent real-time world).

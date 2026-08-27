@@ -449,3 +449,106 @@ live in the central column, which embed mode keeps, and the fix was verified the
 the cursor. The units label under it is `required × pct`, and `required` is a snapshot
 figure the track element does not carry — rather than fabricate or re-derive it mid-drag,
 it simply redraws on release with the rest of the panel.
+
+## Revision — the Syndicate roster goes per-venture, and gains the pursue ranking (27-08-26)
+
+Client-only, one file (`client/console.html`) plus four served-page assertions in
+`sim/tests/server.test.js`. **No engine, resolver or snapshot change; schema still 7.**
+The panel now reads data the engine has been emitting since the licence-distribution
+slice and was not yet looking at, and writes the one control that slice added. §5's
+display rule holds throughout: the browser renders engine truth and **computes no game
+number** — every target, every delivered figure and every verdict on these rows arrives
+in the snapshot; the reorder only re-sequences venture ids.
+
+**What was wrong with the panel.** The roster drew the GOOD's window status on *every*
+row — `synRoster` passed the single `R.windowStatus` into each `licRow` — so two mines
+with different fates showed the same dot, and each row showed only its stored commitment
+with no delivery against it. That was honest when the engine tracked delivery per good.
+It stopped being honest the moment met/breach became **per licence** (§5, RULING
+27-08-26): the panel was showing a rollup where the player needed the individual.
+
+**1. Per-row verdict and delivery, from `window.perVenture`.** `synResolve` reads the
+good's `perVenture` block and attaches each venture's own `{ commitment, delivered,
+status }` to its roster row, matched by ventureId. `licRow` renders that row's dot and
+its `delivered / commitment` — where `commitment` is the engine's `qᵢ`, the venture's
+target for **this** window, so a mine licensed mid-window shows the pro-rated figure it
+is actually judged against rather than its full-window commitment. `R.windowStatus` is
+kept, but now only for the thermometer's overview: it is a rollup of these rows and no
+longer the truth about any one of them.
+
+A licensed row with **no** `perVenture` entry keeps the neutral mark rather than
+borrowing the good's status — it means the engine is filling no window for that venture
+(the accrual sums over mines, so a committed refinery has no entry). Nothing was judged,
+which is not the same as having failed.
+
+**2. The pursue ranking — display order plus the reorder control.** The committed rows
+are drawn in the good's stored `pursue` order, reconciled for display by
+`reconcilePursueIds`, which mirrors the engine's `reconcilePursue` rule for rule: drop a
+ranked id that is no longer a committed producer, honour a duplicate once, append every
+committed producer the ranking omits in establishment order. An absent ranking is plain
+establishment order. Uncommitted producers stay below the block, unranked and unrankable
+— there is no licence to prioritise.
+
+Each committed row carries its rank and two movers (`▲` / `▼`), disabled at the ends
+rather than hidden so the row never re-flows as a licence travels. One move POSTs the
+**whole new order** through the existing `sendProfile` → `sendAction` path, exactly as
+the Gate-1 fork rank already POSTs its whole permutation:
+
+```
+{"type":"setProductionProfile","guildId":"g1","systemId":"sys_0002",
+ "goods":{"titanium":{"pursue":["mine-beta","mine-alpha"]}}}
+```
+
+The order moved is the **reconciled** one on screen, not the raw stored list, so a first
+move on a never-ranked good stores establishment order with that one swap applied —
+which is what the player just did. A **clear ranking** button POSTs `pursue: null` (the
+engine's tri-state clear) and is offered only when a ranking is actually stored.
+
+**3. The poll-clobber guard.** `livePoll` re-renders every ~1 s, and a re-render between
+`mousedown` and `click` detaches the button so the click lands on nothing — the same
+failure `trackDrag` fixes for the sliders, in its click-driven form. A `pollHold`
+**counter** (not a flag: the two holds overlap) holds the poll from the mousedown until
+the move's own response has re-rendered; `sendProfile` now returns its promise so the
+release can wait for it. The mouseup release fires on **any** mouseup, not only one over
+the button, so a press dragged off the control still releases instead of freezing LIVE.
+Verified in Chromium with LIVE on and 1.1 s between clicks: **3 of 3 moves landed.**
+
+**4. Layout — the numbers moved under the id.** The rank and movers cost ~30 px of a
+152 px row, which truncated `mine-alpha` to `mine-b…` — unacceptable in a roster whose
+job is to name which licence breached. The `delivered / commitment` line now sits under
+the venture id (with the planet line) instead of beside it, and the rank sits inside the
+movers' 18 px column. Rows are tall (height ∝ commitment), so the vertical axis was free
+and the horizontal one was not. Ids fit at 1440/1600/1920 px.
+
+**5. Copy.** The panel's notes said delivery is tracked per good and that the fee, breach
+and pursue controls "are not shown at all, because there is nothing behind them" — both
+now false. They say instead that each row is judged on its own, that the pile fills top
+of the list first with each licence filled in full before the next is fed, and that a
+licence reads met only when it got **all** of what it promised. The **fee** is still not
+shown, and the note says so: the charge is Slice 3b-iii, and a fee figure that never
+moves would read as live. The stale "Syndicate licence ROSTER — DESIGN-AHEAD" header
+comment is rewritten; the top-up block stays tagged mock, and is now the only mock left
+in the panel.
+
+**Verified in headless Chromium** against a real server: two mines on titanium in one
+system, both licensed (targets 6 and 4, `Q` 10), the send pinned to 2/tick so the window
+ends 8 of 10 — a shortfall the ranking has to resolve.
+
+```
+default (establishment) order     after ▲ on mine-beta        next boundary, ranking held
+ 1 mine-alpha  6 / 6u  ✔ met       1 mine-beta   4 / 4u  ✔      1 mine-beta   4 / 4u  ✔
+ 2 mine-beta   2 / 4u  ! breach    2 mine-alpha  4 / 6u  !      2 mine-alpha  4 / 6u  !
+```
+
+Two different dots on two rows, each with its own delivered-vs-committed; the reorder
+flips which licence is met; the flip survives a window roll; and `clear ranking` POSTs
+`pursue: null` and restores the first column. Mid-window both rows read `accruing`; an
+unlicensed producer reads `no commitment` with a neutral mark and no movers.
+
+**437 tests, zero failures** — the total is unchanged (the four new assertions joined the
+existing served-page test).
+
+**Deferred, not invented:** drag-to-reorder (the movers are the established idiom in this
+panel and one move is one POST; a drag would need the `trackDrag` rect-capture treatment
+for a list rather than a track); and showing *which* rank a licence would need to be met,
+which is a projection the engine does not emit and the browser is not allowed to compute.

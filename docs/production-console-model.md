@@ -67,7 +67,7 @@ default (§15.4).
 | `downstreamPct` | int 0..100 | `100` | share of consumer demand the Production fork is allowed to meet | Production panel slider |
 | `reserveLevel` | int ≥ 0 | `0` | units the Stockpile fork holds back in the pot (the "put this much in if you can" target) | Stockpile panel slider / number |
 | `syndicate` | `{ mode: "absolute"\|"percent", value: int ≥ 0 }` or ABSENT | ABSENT = paced required-rate | the Syndicate fork's per-tick send control. Absent ⇒ engine paces itself to hit `Q` by the deadline; present ⇒ player pins the rate | Syndicate panel slider (writes `{mode:"absolute", value}`) |
-| `pursue` | ordered list of the good's committed venture IDs, or ABSENT | ABSENT = establishment order | the priority the delivered pile fills the good's licences at the boundary — the top licence gets its full commitment first, then the next, until the pile runs out; editable any tick, only the order at the boundary counts | Syndicate roster (drag to reorder) |
+| `pursue` | ordered list of the good's committed venture IDs, or ABSENT | ABSENT = establishment order | the priority the delivered pile fills the good's licences at the boundary — the top licence gets its full commitment first, then the next, until the pile runs out; editable any tick, only the order at the boundary counts | Syndicate roster (per-row ▲/▼ movers) |
 
 Note on `syndicate`: **presence, not value, selects the regime.** Absent means
 "pace yourself." The panel's snap-to-marker writes `{mode:"absolute", value:
@@ -204,10 +204,16 @@ Two behaviours the table above leaves implicit, both settled by §5 and pinned b
   delivered before a mid-window joiner's licence existed. Ranked first, a latecomer can be met on goods an
   earlier venture actually sent, and that earlier venture breaches. Intentional — see §5.
 
-**Still design-ahead:** the console roster renders the GOOD's status dot for every row. Wiring it to
-`perVenture` is a pure client slice — the snapshot shape below is already what `licRow` needs (one row per
-venture, each with its own `commitment`, `delivered` and `status`). The **fee** these verdicts drive is
-Slice 3b-iii; this slice charges nothing.
+**ON SCREEN — console-rewire slice, 27-08-26** (`docs/client-wiring.md`, the Syndicate-roster revision).
+The roster reads `perVenture` directly: each row carries its own dot, its own `delivered / commitment`, and
+its rank, and the committed block is drawn in the good's `pursue` order (reconciled in the browser by
+`reconcilePursueIds`, which mirrors the engine's `reconcilePursue` rule for rule). Two movers per row write
+the ranking back through `setProductionProfile`; a "clear ranking" button POSTs `pursue: null`. The
+good-level `window.status` is kept for the thermometer's overview only — it is a rollup, not the truth about
+any one row. The browser computes no game number: it orders rows and re-sequences ids, nothing else.
+
+**Still not shown:** the **fee**. The charge is Slice 3b-iii, so the panel shows the met/breach dot and says
+in as many words that the fee is not built — rather than printing a figure that never moves.
 
 ## Bridge — control → action, readout → field
 
@@ -226,7 +232,7 @@ setter feeding `Q`, and `setWindowN` is the operator/storyteller knob.
 | Production fork slider | `setProductionProfile` | `goods[good].downstreamPct` |
 | Stockpile level slider / number | `setProductionProfile` | `goods[good].reserveLevel` |
 | Priority rank selectors (all three panels) | `setProductionProfile` | `goods[good].order` (the permutation) |
-| Syndicate roster reorder (drag the licence rows) | `setProductionProfile` | `goods[good].pursue` (an array of ventureIds; `null` clears back to establishment order) |
+| Syndicate roster ▲/▼ movers, and "clear ranking" | `setProductionProfile` | `goods[good].pursue` (an array of ventureIds; `null` clears back to establishment order) |
 | Window length (operator, not a per-guild control) | `setWindowN` | `state.windowN` |
 
 Actions set standing policy and DO NOT advance the galaxy (§15.7): the write
