@@ -123,12 +123,17 @@ test('no investor receives anything — nobody else’s credits move', () => {
   assert.equal(s.guilds[1].lastSyndicateSale, undefined, 'and has no sale record');
 });
 
-test('the split is commitment-weighted when two ventures offer different equity', () => {
-  // Both mines commit equally, one at o = 0 and one at o = 0.4, so the good's proceeds
-  // split half at 100% and half at 60% ⇒ 80% to the owner overall.
+test('the split is contribution-weighted when two ventures offer different equity', () => {
+  // Both mines commit equally and both are present the whole window, so the good's
+  // proceeds split half at 100% and half at 60% ⇒ 80% to the owner overall. The window
+  // is passed explicitly: the weight is each venture's CONTRIBUTION to Q, which for a
+  // full-window venture is its whole commitment (the pro-rated case is pinned in
+  // sim/tests/multi-venture-commitment.test.js).
   const ventures = [mine('a', 'titanium', 10, 4, 0), mine('b', 'titanium', 10, 4, 0.4)];
-  assert.equal(ownerFraction(ventures, 'titanium'), 0.8);
-  assert.equal(commitmentSale({ ventures, good: 'titanium', delivered: 10, price: 10 }).ownerCredits, 80);
+  assert.equal(ownerFraction(ventures, 'titanium', 1, 2), 0.8);
+  assert.equal(commitmentSale({
+    ventures, good: 'titanium', delivered: 10, price: 10, windowStart: 1, windowN: 2,
+  }).ownerCredits, 80);
 
   let s = sysState(ventures);
   s = tick(s);

@@ -35,8 +35,10 @@
 // discounted by §5's four-corner commitment × equity grid, both amounts computed ONCE
 // at signing and stored on the venture's licence (fixed until renegotiation).
 //
-// STILL NOT CHARGED. 3b-i computes and locks the number; 3b-ii debits it at the window
-// boundary. Nothing in this file moves a credit except `commitmentSale` above.
+// STILL NOT CHARGED. 3b-i computes and locks the number; 3b-iii debits it at the window
+// boundary (the fee charge was renumbered when 3b-ii became the mid-window pro-rate). Nothing in this file moves a credit except `commitmentSale` above.
+
+const { windowFraction } = require('./windows.js');
 
 // The structural equity ceiling — §5: "up to the structural 49% ceiling (the owner
 // keeps control by retaining at least 51%)". This is a DESIGN number, not a tuning
@@ -59,44 +61,98 @@ function isValidEquityPct(value) {
     && value >= 0 && value <= EQUITY_CEILING;
 }
 
-// ownerFraction(ventures, good) -> the share of a good's sale proceeds the OWNER
-// keeps, = the commitment-weighted mean of `(1 − o)` over the ventures committing
-// that good in this system.
+// committedContribution(venture, windowStart, N) -> the venture's contribution, in
+// units, to its good's aggregate window target `Q` = `syndicateCommitment ×
+// windowFraction` (§5's windowed accrual + the Option-A join pro-rate).
+//
+// ONE SOURCE OF TRUTH, and that is the whole reason it exists. This quantity has two
+// consumers — `resolveProduction` sums it into `Q` (sim/production.js) and
+// `ownerFraction` below weights the sale's proceeds split by it — and until this slice
+// each computed it for itself. They agreed only while `windowFraction` was pinned to 1;
+// the moment the mid-window pro-rate went live (Slice 3b-ii) they drifted, and the sale
+// paid a split weighted by a target nobody was actually delivering against. Two
+// computations of one quantity is the bug; a second multiplication in the second place
+// would only have been the same bug written twice, so the duplication is what got fixed.
+//
+// A non-positive or absent commitment contributes 0 — the same skip `ownerFraction`
+// has always made, kept HERE so both consumers agree on sign as well as on magnitude.
+// A negative `syndicateCommitment` would otherwise SUBTRACT from its good's aggregate
+// and silently shrink a sibling mine's target; the tick asserts it can't be one
+// (sim/invariants.js), and this is the belt to that braces.
+function committedContribution(venture, windowStart, N) {
+  const commitment = (venture && venture.syndicateCommitment) || 0;
+  if (commitment <= 0) return 0;
+  return commitment * windowFraction(venture, windowStart, N);
+}
+
+// ownerFraction(ventures, good, windowStart, N) -> the share of a good's sale proceeds
+// the OWNER keeps, = the contribution-weighted mean of `(1 − o)` over the ventures
+// committing that good in this system.
 //
 // WHY WEIGHTED: the delivery is per GOOD (the §5 windowed accrual sends toward the
-// per-good aggregate `Q` = Σ `Venture.syndicateCommitment` over the mines producing
-// it), while equity is per VENTURE. So a good's delivered units are, by the same
-// arithmetic that built `Q`, each venture's commitment share of the total — and the
-// proceeds split follows those shares. With one venture (or several sharing an
-// equity offer) this reduces to plain `(1 − o)`.
+// per-good aggregate `Q` = Σ `committedContribution` over the mines producing it),
+// while equity is per VENTURE. So a good's delivered units are, by the same arithmetic
+// that built `Q`, each venture's contribution share of the total — and the proceeds
+// split follows those shares. With one venture (or several sharing an equity offer)
+// this reduces to plain `(1 − o)`.
 //
-// The weight is the raw commitment, which equals its `Q` contribution only while
-// `windowFraction` is pinned to 1 (sim/windows.js). That pin has its own tripwire —
-// if a mid-window join is ever wired without the pro-rate, that tripwire goes red
-// and this weight needs the same fraction applied.
+// THE WEIGHT IS THE CONTRIBUTION, NOT THE RAW COMMITMENT. A mine licensed mid-window
+// owes — and therefore supplies — only its pro-rated share of `Q`, so that share is
+// what its equity terms are entitled to price. Weighting by the raw commitment
+// over-counts a mid-window joiner against its full-window siblings and mis-splits the
+// proceeds, silently: invariant 2 still balances (the guild's gain and the ledger's
+// debit are one number by construction), only the line between the owner's keep and
+// the ledger's `o` share moves. That was the live bug this slice fixes; the fixture
+// that pins it is sim/tests/multi-venture-commitment.test.js.
+//
+// ── TWO ATTRIBUTIONS, TWO CLOCKS — read this before "fixing" the split ─────────────
+// The engine attributes committed goods to ventures in two DIFFERENT places, on two
+// different clocks, and they are not meant to agree (§5):
+//
+//   - THE SALE (here) is PER TICK. Each tick's delivered units are attributed
+//     PROPORTIONALLY, by `committedContribution`, purely to price the equity (`o`)
+//     share — money for goods. It is proportional because the units really are
+//     co-mingled: one pot, one delivery, several contributors.
+//   - THE FEE (the coming distribution slice) is PER WINDOW. At the boundary the
+//     window's whole delivered pile fills the licensed ventures in the player's
+//     PURSUE ORDER, each to its full commitment before the next is fed, and each is
+//     then met (discounted fee) or breached (full fee) — which contracts you
+//     honoured. The N-4 ruling makes that a boundary-total-pile operation.
+//
+// So the proportional weight here is the FINAL answer for the sale. It is not a
+// placeholder for the pursue fill and is not superseded by the distribution slice:
+// making the per-tick sale follow the per-window pursue order would price money-for-
+// goods by a ranking that does not exist until the boundary, and cannot be known on
+// the tick the goods are actually handed over.
 //
 // Delivered units with no committing venture at all cannot happen (`Q` is built from
 // those very commitments), but if they somehow did, the owner keeps the lot rather
 // than the engine quietly pocketing goods it can't attribute.
-function ownerFraction(ventures, good) {
+function ownerFraction(ventures, good, windowStart, N) {
   let weight = 0;
   let ownerWeight = 0;
   for (const v of ventures) {
     if (v.resourceType !== good) continue;
-    const commitment = v.syndicateCommitment || 0;
-    if (commitment <= 0) continue;
-    weight += commitment;
-    ownerWeight += commitment * (1 - equityOf(v));
+    const contribution = committedContribution(v, windowStart, N);
+    if (contribution <= 0) continue;
+    weight += contribution;
+    ownerWeight += contribution * (1 - equityOf(v));
   }
   return weight > 0 ? ownerWeight / weight : 1;
 }
 
-// commitmentSale({ ventures, good, delivered, price }) -> { gross, ownerCredits }
+// commitmentSale({ ventures, good, delivered, price, windowStart, windowN })
+//   -> { gross, ownerCredits }
 //
 //   `gross`        — the full sale value, `delivered × price` (a float: the price is a
 //                    rate, the units are integer). Telemetry only; it never moves.
 //   `ownerCredits` — the INTEGER credits the owner guild is paid, and — identically —
 //                    the integer the Syndicate ledger is debited by.
+//
+// `windowStart`/`windowN` identify the window the delivery happened in — the SAME pair
+// the resolver used to build `Q` that tick (applyProduction passes them from the one
+// producing tick both are derived from), so the split can never be weighted against a
+// different window than the one it is paying for.
 //
 // THE ROUNDING RULE (§15.2 integer credits; #43 "round(qty × price), identical both
 // sides"): round exactly ONCE, at the end, with `Math.round`, and use that single
@@ -107,9 +163,9 @@ function ownerFraction(ventures, good) {
 // the ledger, so it can carry a fraction without anyone's balance doing so.
 //
 // Pure: reads its arguments, mutates nothing.
-function commitmentSale({ ventures, good, delivered, price }) {
+function commitmentSale({ ventures, good, delivered, price, windowStart, windowN }) {
   const gross = delivered * price;
-  return { gross, ownerCredits: Math.round(ownerFraction(ventures, good) * gross) };
+  return { gross, ownerCredits: Math.round(ownerFraction(ventures, good, windowStart, windowN) * gross) };
 }
 
 
@@ -208,7 +264,7 @@ function normalisedTerms({ committedOutputPct, equityPct }) {
 //
 // Rounded twice on purpose, and safely: these are two SEPARATE stored quantities, not
 // two halves of one movement, so unlike the sale's single-rounding rule there is no
-// conservation to preserve here — nothing moves until 3b-ii debits one of them, and
+// conservation to preserve here — nothing moves until 3b-iii debits one of them, and
 // whichever it debits is already a whole number of credits.
 function licenceFee({ baselineUnitsPerTick, windowN, lockedPrice, committedOutputPct, equityPct }) {
   const basicFee = Math.round(FEE_RATE * baselineUnitsPerTick * windowN * lockedPrice);
@@ -238,7 +294,7 @@ function commitmentUnitsFor(pct, baselineUnitsPerTick, windowN) {
 }
 
 module.exports = {
-  EQUITY_CEILING, equityOf, isValidEquityPct, ownerFraction, commitmentSale,
+  EQUITY_CEILING, equityOf, isValidEquityPct, committedContribution, ownerFraction, commitmentSale,
   FEE_RATE, CORNERS, EQUITY_SHAPE_K, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
   feeFraction, normalisedTerms, licenceFee, isValidCommitmentPct, isValidWindowDays,
   commitmentUnitsFor,

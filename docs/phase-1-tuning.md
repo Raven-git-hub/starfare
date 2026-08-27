@@ -127,7 +127,14 @@ a ruling is needed before 3b-iii charges anything.
 
 ### The second good (tolled/shipped raw)
 - **Good** `[FIRST-CUT]`: **Titanium** (a Tier-1 raw; also the onboarding starter-quest good, so it recurs later).
-- **Market** `[FIRST-CUT]`: reuses the fuel price curve's *shape* (§5) with its own levers — base $3, target reserve 20, sensitivity 0.6, floor $1, ceiling $20.
+- **Market** — ~~`[FIRST-CUT]`: reuses the fuel price curve's *shape* (§5) with its own levers — base $3,
+  target reserve 20, sensitivity 0.6, floor $1, ceiling $20.~~ **SUPERSEDED (26-08-26) by the price
+  engine** — see the **Resource prices** table above and `sim/prices.js`. Titanium has no per-good market
+  of its own: every non-fuel good is priced by the one curve (base **10**, level sensitivity **0.05**,
+  idleness weight 0.5, EMA + slew + clamp, published two ticks behind). The struck numbers are the
+  PRE-engine sketch and are dead — the 0.6 sensitivity in particular was **tried and rejected against a
+  live run** (it pinned every hoarded good at the ceiling inside forty ticks), which is exactly why it
+  must not sit here reading as live. The toll/shipping figures in this section are untouched.
 - **Client establish-rate** `[FIRST-CUT]` *(client-wiring Slice 3, 24-08-26)*: the `productionRate` the **game client** sends with every `establishVenture` — a uniform **5**, for every resource and for refineries alike. Given by the human for the slice and explicitly *to change*. It does **not** change the engine's per-resource intent below: `establishVenture` takes whatever rate the caller sends and stores it, so this is the client's single stand-in until the per-resource extraction rates (and a refinery throughput rule) are wired through the establishment panel. Defined once as `ESTABLISH_RATE` in `client/game.html`; a venture seeded by the operator over `POST /action` still carries whatever rate that call names.
 - **Extraction rate** `[FIRST-CUT]`: a **base rate per resource** — a property of the resource mined, *not* a mine 'tier' (mines have no tiers). Titanium **5/tick** (ruled 01-08-26); a common Tier-1 raw yields decently, a scarcer one less (a gold mine might yield ~1). Mines can later be buffed (droids) — out of scope now; the model leaves room, since production reads the base rate and a buff would modify the *effective* rate at step time.
 

@@ -117,6 +117,7 @@ function createVenture({
   syndicateCommitment = 0,
   equityPct = 0,
   licence = null,
+  committedFromTick = null,
   batchCarry = {},
 }) {
   if (id === undefined) throw new Error('createVenture: id is required');
@@ -204,7 +205,7 @@ function createVenture({
     //
     // The two fees are computed ONCE, at signing, and stored — that is what "terms
     // locked at issuance" means, and it is why timing your signature is a real
-    // decision. NOTHING IS CHARGED YET: 3b-ii debits one of them at each window
+    // decision. NOTHING IS CHARGED YET: 3b-iii debits one of them at each window
     // boundary. `syndicateCommitment` above is the operative quantity the window
     // machinery reads; this block is the contract that set it.
     //
@@ -213,6 +214,20 @@ function createVenture({
     // state is byte-identical to pre-Slice-3b-i. Copied so a caller's object can never
     // alias into engine state.
     ...(licence ? { licence: { ...licence } } : {}),
+    // committedFromTick: the venture's FIRST PRODUCING tick under its licence — the
+    // term that pro-rates its first window's obligation (§5's Option-A join ruling;
+    // Slice 3b-ii, `sim/windows.js` `windowFraction`). Stamped by `applyForLicence` as
+    // `signedTick + 1`; carried here so a scenario or a persisted state that HANDS ONE
+    // IN keeps it. Without this line it was silently dropped and the venture reverted
+    // to owing a full window — the pro-rate quietly undone by a field that assembled
+    // fine everywhere else.
+    //
+    // OMITTED when absent, like `equityPct` and `licence` above, so an unlicensed (and
+    // a dev-scaffold-committed) venture carries no key and its serialized state stays
+    // byte-identical. `!= null` rather than truthiness on purpose: a 0 is not "absent",
+    // it is a tick that does not exist, and it should reach the tick's tripwire rather
+    // than be swallowed here (this file assembles, invariants.js judges).
+    ...(committedFromTick != null ? { committedFromTick } : {}),
     // STILL RESERVED, deliberately not stubbed (Slice 5, §15.4): `shareholders`, the
     // investor cap-table Part 2 asks to reserve. Documented rather than written as an
     // empty object, because an empty object on every venture is not a socket: it is

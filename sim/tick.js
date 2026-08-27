@@ -25,7 +25,7 @@ const { computeGalacticSupply } = require('./supply.js');
 const { getRecipe } = require('./recipes.js');
 const { addStock } = require('./stock.js');
 const { resolveProduction } = require('./production.js');
-const { setWindow } = require('./windows.js');
+const { setWindow, winStartFor, FIRST_CUT_WINDOW_N } = require('./windows.js');
 const { recomputePrices, postedPrice } = require('./prices.js');
 const { commitmentSale } = require('./licence.js');
 
@@ -101,6 +101,13 @@ function applyProduction(state, guild, systemId, ctx) {
   const report = resolveProduction(guild, systemId, { tick: state.tick + 1, windowN: state.windowN });
   const byId = new Map((guild.ventures || []).map((v) => [v.id, v]));
 
+  // The window this tick's delivery falls in, derived from the SAME producing tick and
+  // the SAME engine-wide `N` the resolver just used — so the commitment sale below
+  // weights its split by each venture's contribution to the very `Q` this report was
+  // built against. Pure arithmetic (sim/windows.js), read only by the sale.
+  const windowN = state.windowN == null ? FIRST_CUT_WINDOW_N : state.windowN;
+  const curWindowStart = winStartFor(state.tick + 1, windowN);
+
   // Deposit each mine's fresh output into the pool; stamp the mine's tick.
   for (const m of report.mines) {
     addStock(guild, systemId, m.good, m.amount);
@@ -140,8 +147,10 @@ function applyProduction(state, guild, systemId, ctx) {
   //   - the PRICE is the POSTED one (sim/prices.js), the two-ticks-lagged value
   //     already sitting on state when this step runs. That is the point of the lag:
   //     the rate a sale executes at was fixed two ticks before the sale.
-  //   - the VENTURES are this system's, so a good's proceeds split by the same
-  //     per-venture commitments that built its aggregate `Q`.
+  //   - the VENTURES are this system's, and the WINDOW is this tick's, so a good's
+  //     proceeds split by the same per-venture contributions (`committedContribution`,
+  //     sim/licence.js) that built its aggregate `Q` — one function, both consumers,
+  //     so a mid-window joiner's pro-rated share can never be weighted as a full one.
   //   - the OWNER's integer share moves twice, equal and opposite: into the guild's
   //     credits, out of the Syndicate ledger (the buyer). The `o` equity share is not
   //     paid to anyone — no investor exists yet — so it simply never leaves the
@@ -166,7 +175,9 @@ function applyProduction(state, guild, systemId, ctx) {
       throw new Error(`applyProduction: guild ${guild.id} delivered ${delivered} ${good} to the Syndicate at tick ${state.tick + 1} but the good has no posted price — refusing to hand over goods for nothing`);
     }
 
-    const { ownerCredits } = commitmentSale({ ventures: systemVentures, good, delivered, price });
+    const { ownerCredits } = commitmentSale({
+      ventures: systemVentures, good, delivered, price, windowStart: curWindowStart, windowN,
+    });
     guild.credits += ownerCredits;
     state.syndicate.ledger -= ownerCredits;
     recordSale(guild, state.tick + 1, good, delivered, price, ownerCredits);

@@ -155,6 +155,18 @@ function checkNonNegativityAndIntegrality(state) {
             checkField(out, qty, `venture:${ven.id}.inputStockpiles.${good}`);
           }
         }
+        // syndicateCommitment — a per-window committed QUANTITY OF GOODS, so it obeys
+        // §15.2 like any other: a whole number, never negative. Both intake paths guard
+        // it (`setSyndicateCommitment` validates, `applyForLicence` computes it with
+        // `Math.round`), but a venture built DIRECTLY by a scenario or a test bypasses
+        // intake entirely — the case this file exists for — and neither failure is loud
+        // on its own: a FRACTIONAL value hides inside `Q`'s own `Math.round`
+        // (production.js), and a NEGATIVE one SUBTRACTS from its good's aggregate `Q`
+        // and silently shrinks a sibling mine's target, so the sibling breaches a
+        // contract it was meeting. Absent (the unlicensed majority) is legal.
+        if (ven.syndicateCommitment !== undefined) {
+          checkField(out, ven.syndicateCommitment, `venture:${ven.id}.syndicateCommitment`);
+        }
       }
     }
   }
@@ -211,6 +223,16 @@ function checkSyndicateWindows(state) {
         const where = `guild:${g.id}.syndicateWindows.${systemId}.${good}`;
         checkField(out, win.delivered, `${where}.delivered`);
         checkField(out, win.windowStart, `${where}.windowStart`);
+        // A window opens on a REAL producing tick, and ticks start at 1 (`winStartFor`
+        // maps window k to `(k−1)·N + 1`), so 0 is not a small window-start — it is a
+        // window that never opened. `checkField`'s non-negativity allows it, hence this.
+        if (Number.isInteger(win.windowStart) && win.windowStart < 1) {
+          out.push({ rule: 'window-start-is-a-real-tick (§5 Slice B)', where: `${where}.windowStart`, detail: { value: win.windowStart } });
+        }
+        // NOT checked here: `delivered ≤ Q`. `Q` is deliberately NOT stored (invariant
+        // 5 — the venture commitments are its single source), so asserting it would
+        // mean recomputing the per-venture sum inside this sweep. Left to the
+        // distribution slice, which walks the ventures at the boundary anyway.
         const c = win.sendCarry;
         if (typeof c !== 'number' || Number.isNaN(c) || c < 0 || c >= 1) {
           out.push({ rule: 'send-carry-in-[0,1) (§5 Slice B)', where: `${where}.sendCarry`, detail: { value: c } });
@@ -254,7 +276,7 @@ function checkLicenceTerms(state) {
       // The licence's stored terms (Slice 3b-i). These are LOCKED numbers — computed
       // once at signing and never recomputed — so nothing downstream will ever
       // re-derive them and notice they went wrong: if a bad fee is written it simply
-      // stays, and 3b-ii will one day debit it. Hence a tripwire on the stored values
+      // stays, and 3b-iii will one day debit it. Hence a tripwire on the stored values
       // themselves. The fees are real credits and must be whole (§15.2); the discount
       // can never EXCEED the basic fee (the grid's corners top out at 100%); and the
       // terms must stay inside the bounds intake refuses outside of, since a venture
@@ -303,6 +325,31 @@ function checkLicenceTerms(state) {
       const lic = v.licence;
       if (!lic) continue;
       const at = `venture:${v.id}.licence`;
+
+      // A committed, LICENSED venture must carry its join tick. The whole mid-window
+      // pro-rate rests on one assignment in `applyForLicence`, and nothing downstream
+      // notices its absence: `windowFraction` reads a missing stamp as "present since
+      // before the window opened" and returns 1, so a mine that joined yesterday
+      // silently owes a WHOLE window's Q — the exact unfairness Slice 3b-ii exists to
+      // end, back again and invisible. Only a licensed venture is asserted: the
+      // `setSyndicateCommitment` dev scaffold deliberately carries no stamp (it commits
+      // for the whole window by design), and it grants no licence.
+      if (v.syndicateCommitment > 0 && v.committedFromTick === undefined) {
+        out.push({ rule: 'licensed-commitment-carries-a-join-tick (§5 join ruling)', where: `venture:${v.id}.committedFromTick`, detail: { syndicateCommitment: v.syndicateCommitment, signedTick: lic.signedTick } });
+      }
+
+      // And it must be the DOCUMENTED stamp: `signedTick + 1`, the venture's first
+      // PRODUCING tick (actions.js — intake runs before the tick, so a licence signed
+      // while state.tick is T first produces on the tick yielding T+1). The range check
+      // above cannot catch a wrong one: for ANY integer ≥ 1 the fraction it yields is in
+      // (0, 1] by construction, so an off-by-one (`signedTick`, crediting the venture
+      // with a tick it could never produce in) or a far-future stamp (owing almost
+      // nothing) both sail through it. This checks the stamp against the licence that
+      // set it, which is the only thing that can tell them apart.
+      if (v.committedFromTick !== undefined && Number.isInteger(lic.signedTick)
+        && v.committedFromTick !== lic.signedTick + 1) {
+        out.push({ rule: 'join-tick-is-signedTick+1 (§5 join ruling)', where: `venture:${v.id}.committedFromTick`, detail: { committedFromTick: v.committedFromTick, signedTick: lic.signedTick, expected: lic.signedTick + 1 } });
+      }
       checkField(out, lic.basicFee, `${at}.basicFee`);
       checkField(out, lic.discountedFee, `${at}.discountedFee`);
       checkField(out, lic.signedTick, `${at}.signedTick`);

@@ -263,7 +263,7 @@ test('across a licensed run the ONLY credit movement is the sale — no fee is e
   assert.ok(lic.discountedFee > 0, 'there IS a fee on the books — it is simply never charged here');
 
   let earned = 0;
-  // Run well past a window boundary (N = 24), where 3b-ii will one day debit the fee.
+  // Run well past a window boundary (N = 24), where 3b-iii will one day debit the fee.
   for (let i = 0; i < 30; i += 1) {
     const creditsBefore = guild(s).credits;
     s = tick(s);

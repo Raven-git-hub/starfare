@@ -2,7 +2,7 @@
 
 The build note for **3b-i** of `docs/licence-and-price-system.md` Part 4. The contract is `design.md`
 §5's **"LICENCE FEE MECHANICS — RULED"** note and the four-corner grid it discounts with. This slice
-computes and **locks** the fee; **3b-ii charges it**. Companion notes: `docs/commitment-sale.md` (3a,
+computes and **locks** the fee; **3b-iii charges it** (the fee charge was renumbered when 3b-ii became the mid-window pro-rate). Companion notes: `docs/commitment-sale.md` (3a,
 the sale), `docs/price-engine.md` (the posted price the fee locks against).
 
 ## What it does
@@ -79,9 +79,11 @@ both measured *over one window*; moving `N` afterwards would silently make them 
 no longer exists. Set the window length first, then license. (It was already tick-0-only.)
 
 **`windowFraction` stays pinned.** `applyForLicence` deliberately does **not** set `committedFromTick`,
-so `sim/windows.js`'s pro-rate tripwire stays green — see the flag below.
+so `sim/windows.js`'s pro-rate tripwire stays green — see the flag below. *(**Superseded — Slice
+3b-ii:** the stamp is now written and the `fraction == 1` deferral tripwire is retired. Kept as the
+record of what 3b-i shipped.)*
 
-## ⚠️ Flag for 3b-ii: a mid-window licence breaches its first window
+## ⚠️ Flag for the fee charge (3b-iii): a mid-window licence breaches its first window
 
 > **RESOLVED — licence Slice 3b-ii (27-08-26), `docs/mid-window-pro-rate.md`.** The pro-rate was built:
 > `applyForLicence` now stamps `committedFromTick`, so the run below meets its pro-rated `Q` instead of
@@ -100,10 +102,10 @@ tick 5  delivered  5   window 5   status accruing <- from here on it is winnable
 ```
 
 Harmless **today** — nothing is charged, so a first-window breach is a status flag and no more. It is
-**not** harmless the moment 3b-ii debits the full basic fee on breach: a player who signs mid-window
+**not** harmless the moment 3b-iii debits the full basic fee on breach: a player who signs mid-window
 would pay a penalty they never had a chance to avoid, for a contract they had just agreed to.
 
-**Prerequisite for 3b-ii — one of:** the **mid-window pro-rate** (unpin `windowFraction`, owe only the
+**Prerequisite for the fee charge (3b-iii) — one of:** the **mid-window pro-rate** (unpin `windowFraction`, owe only the
 share of the window you were present for — §5's join ruling, Option A, whose deferral this tripwire is
 already guarding), or a **first-window grace** (the window in which a licence is signed is judged but
 never charged). Both are rulings, not build details, so neither is invented here. *(**Answered:** the
@@ -117,7 +119,7 @@ commitment floor (0%) · the renegotiation-window bounds (7–42 days). The 49% 
 
 ## Out of scope
 
-Charging the fee (3b-ii) · **factory/refinery licensing** — the §5 accrual sums `Q` over mines only
+Charging the fee (3b-iii) · **factory/refinery licensing** — the §5 accrual sums `Q` over mines only
 (`production.js`), so a factory's commitment would never accrue, never be delivered and never be
 judged; licensing one needs the accrual extended first, so it is refused at intake rather than sold as
 terms that cannot be honoured · renegotiation, Syndicate-initiated term changes, the 75% investor vote

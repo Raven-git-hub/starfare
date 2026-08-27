@@ -54,8 +54,9 @@ const {
   getGoodPolicy, getThrottlePct, hasThrottle, storedThrottleIds, storedPolicyGoods,
 } = require('./profile.js');
 const {
-  FIRST_CUT_WINDOW_N, winStartFor, windowFraction, getWindow,
+  FIRST_CUT_WINDOW_N, winStartFor, getWindow,
 } = require('./windows.js');
+const { committedContribution } = require('./licence.js');
 
 // resolveProduction(guild, systemId) -> a plain report for that (guild, system):
 //   {
@@ -118,9 +119,16 @@ function resolveProduction(guild, systemId, opts = {}) {
   const refineryVentures = ventures.filter((v) => v.recipeId && v.productionRate);
 
   // --- The per-good aggregate Syndicate commitment target Q (§5 "windowed accrual"):
-  // Q = Σ over the MINES producing the good of `syndicateCommitment × windowFraction`
-  // (invariant 5 — the venture field is the single source of the target; the window
-  // accumulators live in guild.syndicateWindows, sim/windows.js). As of Slice 3b-ii the
+  // Q = Σ over the MINES producing the good of `committedContribution` — that is,
+  // `syndicateCommitment × windowFraction`, computed by the ONE function in
+  // sim/licence.js that the commitment SALE weights its proceeds split by, so the
+  // target and the payment for hitting it can never again be built from two different
+  // arithmetics (invariant 5 — the venture field is the single source of the target;
+  // the window accumulators live in guild.syndicateWindows, sim/windows.js). Behaviour
+  // here is unchanged: this loop already computed exactly that product, inline. A
+  // non-positive commitment contributes 0, so a corrupted negative one can no longer
+  // subtract from a sibling mine's target (the tick asserts it can't be one anyway).
+  // As of Slice 3b-ii the
   // fraction is REAL: a venture licensed mid-window contributes only the share of its
   // commitment for the ticks it is present (§5's join ruling, Option A). It is still 1
   // for every venture present the whole window, so this sum is unchanged for every
@@ -130,10 +138,10 @@ function resolveProduction(guild, systemId, opts = {}) {
   // being silently skipped.
   const commitmentQ = {};
   for (const v of ventures) {
-    if (v.resourceType && v.syndicateCommitment) {
-      commitmentQ[v.resourceType] = (commitmentQ[v.resourceType] || 0)
-        + v.syndicateCommitment * windowFraction(v, curWindowStart, windowN);
-    }
+    if (!v.resourceType) continue;
+    const contribution = committedContribution(v, curWindowStart, windowN);
+    if (contribution <= 0) continue;
+    commitmentQ[v.resourceType] = (commitmentQ[v.resourceType] || 0) + contribution;
   }
 
   // Goods to route: everything mined fresh here PLUS every good some in-system

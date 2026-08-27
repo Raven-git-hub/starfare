@@ -80,6 +80,21 @@ test('createVenture fills in defaults', () => {
   // 0/unlicensed by default, since no licence system exists yet. It is defaulted
   // (never operator-supplied) precisely so the Production view reads a real field.
   assert.equal(v.syndicateCommitment, 0, 'syndicateCommitment defaults to 0 (unlicensed)');
+  assert.equal('committedFromTick' in v, false, 'and carries no join tick — the omit-when-absent discipline');
+});
+
+test('createVenture round-trips committedFromTick, the pro-rate term', () => {
+  // It was silently DROPPED: every other licence field was destructured and this one
+  // was not, so a scenario (or a persisted state) handing one in lost it and the
+  // venture reverted to owing a FULL window (§5's join ruling, sim/windows.js).
+  const v = createVenture({
+    id: 'v1', ownerGuildId: 'g1', type: 'mining', syndicateCommitment: 20, committedFromTick: 7,
+  });
+  assert.equal(v.committedFromTick, 7, 'the join tick survives assembly');
+  // Omitted when absent, so an unlicensed galaxy's bytes are untouched — and a 0 is
+  // carried through to the tick's tripwire rather than swallowed as "absent".
+  assert.equal('committedFromTick' in createVenture({ id: 'v2', ownerGuildId: 'g1', type: 'mining', committedFromTick: null }), false);
+  assert.equal(createVenture({ id: 'v3', ownerGuildId: 'g1', type: 'mining', committedFromTick: 0 }).committedFromTick, 0);
 });
 
 test('createVehicle defaults to a light transport, idle, with no fuel/speed/etc. invented', () => {

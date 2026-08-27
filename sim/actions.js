@@ -143,9 +143,10 @@ function createSetProductionProfileAction({ guildId, systemId, goods, throttles 
 
 // setSyndicateCommitment: write ONE venture's per-tick committed quantity — the
 // venture field the resolver sums into the per-good aggregate target Q (§5). An
-// integer ≥ 0; 0 clears back to unlicensed. It does NOT set committedFromTick (so
-// windowFraction stays 1 and the deferred mid-window pro-rate tripwire stays green)
-// and moves no credits/fuel.
+// integer ≥ 0; 0 clears back to unlicensed. It does NOT set committedFromTick, so a
+// scaffold-committed venture stays FULL-WINDOW by design: windowFraction reads a
+// missing stamp as "present since before the window opened" and returns 1. Moves no
+// credits/fuel.
 function createSetSyndicateCommitmentAction({ guildId, ventureId, commitment }) {
   if (guildId === undefined) throw new Error('createSetSyndicateCommitmentAction: guildId is required');
   if (ventureId === undefined) throw new Error('createSetSyndicateCommitmentAction: ventureId is required');
@@ -620,9 +621,10 @@ function applyAction(state, action) {
   }
   if (action.type === 'setSyndicateCommitment') {
     // Write the venture's committed quantity — engine-owned state (§5/§15.4). Moves
-    // no credits/fuel. It DELIBERATELY does not set committedFromTick (leaving it
-    // absent keeps windowFraction == 1, the deferred mid-window pro-rate staying
-    // green) and does not stamp updatedAtTick — the sibling owned-state actions
+    // no credits/fuel. It DELIBERATELY does not set committedFromTick — leaving it
+    // absent keeps windowFraction at 1, so this scaffold commits for the whole window,
+    // which is the behaviour its tests pin — and does not stamp updatedAtTick; the
+    // sibling owned-state actions
     // (establishVenture, setProductionProfile) don't stamp the entity they mutate,
     // and §15.2 says match how the siblings handle it, don't invent a field.
     const guild = findGuild(next, action.guildId);
@@ -635,7 +637,7 @@ function applyAction(state, action) {
     // reads is state-as-it-stands — the posted price at this tick, the venture's own
     // equity offer, its type's droidless baseline — so a licence signed at a different
     // moment is a different contract, which is exactly §5's "rewards reading the market
-    // and timing your lock". Moves NO credits: 3b-ii debits the fee at a boundary.
+    // and timing your lock". Moves NO credits: 3b-iii debits the fee at a boundary.
     const guild = findGuild(next, action.guildId);
     const venture = guild.ventures.find((v) => v.id === action.ventureId);
     const good = venture.resourceType;
