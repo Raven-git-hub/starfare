@@ -80,6 +80,70 @@ test('GET / serves the PLAYER CLIENT (HTML), not the deleted testbed', async () 
   assert.match(html, /'\/console\?embed=1&guild='/);           // …at /console, with the focus
 });
 
+test('GET / serves the WIRED licence panel — the two real actions, and no mock caveat', async () => {
+  const res = await fetch(base + '/');
+  const html = await res.text();
+
+  // The two-action deploy (client-wiring, licence-panel slice): the establish carries
+  // the equity term, and the licence application follows it with its own two terms.
+  assert.match(html, /type: 'applyForLicence'/);
+  assert.match(html, /committedOutputPct: S\.c/);
+  assert.match(html, /windowDays: S\.rnDays/);
+  assert.match(html, /establish\.equityPct = equityFraction\(\)/);
+  // The receipt reads the venture's STORED terms back off the snapshot.
+  assert.match(html, /__myVenture/);
+  assert.match(html, /v\.licence\.discountedFee/);
+  // The cycle length is the engine's, read live — not a second copy on the client.
+  assert.match(html, /snap\.calendar && snap\.calendar\.windowN/);
+  assert.ok(!html.includes('TICKS_PER_CYCLE'), 'the client must not carry its own cycle length');
+
+  // The mock caveats this slice retired are FALSE now, so they must be gone.
+  for (const dead of [
+    'None of it exists in the engine yet',
+    'the licence economy is not built yet',
+    'The licence economy is not in the engine yet',
+    'every venture is created with a commitment of zero',
+    'no equity is recorded anywhere yet',
+    'No terms are stored yet',
+  ]) {
+    assert.ok(!html.includes(dead), `the wired licence panel must not still say: ${dead}`);
+  }
+  // …and the fee is presented as an estimate before signing, locked after it.
+  assert.match(html, /locked at signing/);
+  assert.match(html, /NOT YET CHARGED/);          // 3b-iii is not built; say so
+});
+
+// The panel MIRRORS four engine constants there is no endpoint to fetch (and pins its
+// sliders to the ranges the engine validates). Duplication is only safe with a
+// tripwire: if any of these move in sim/, this fails instead of the panel quietly
+// showing the old number or offering a term the engine would refuse.
+test('the served licence panel\'s mirrored constants still match the engine', async () => {
+  const html = await (await fetch(base + '/')).text();
+  const licence = require('../licence.js');
+  const { baselineOutputFor } = require('../baseline.js');
+
+  assert.match(html, new RegExp(`EQUITY_CEIL: ${licence.EQUITY_CEILING * 100},`),
+    'the equity slider ceiling must be sim/licence.js EQUITY_CEILING x 100');
+  assert.match(html, new RegExp(`K: ${licence.EQUITY_SHAPE_K},`),
+    'the fee curve must use the engine\'s equity shaping exponent');
+  assert.match(html, new RegExp(
+    `CORNERS: \\{ minCommitMinOffer:${licence.CORNERS.minCommitMinOffer}, `
+    + `minCommitMaxOffer:${licence.CORNERS.minCommitMaxOffer}, `
+    + `maxCommitMinOffer:${licence.CORNERS.maxCommitMinOffer}, `
+    + `maxCommitMaxOffer:${licence.CORNERS.maxCommitMaxOffer} \\}`),
+    'the fee curve must use the engine\'s four corners');
+
+  // The commitment preview is round(pct x BASELINE x N): the baseline is the mirror.
+  const baseline = baselineOutputFor({ type: 'mining', resourceType: 'titanium' }).units;
+  assert.match(html, new RegExp(`BASELINE_RATE: ${baseline},`),
+    'the commitment preview must use the engine\'s droidless mine baseline');
+
+  // The term ranges the sliders can produce are exactly the ones intake accepts.
+  assert.match(html, new RegExp(`id="rnRange" min="${licence.WINDOW_DAYS_MIN}" max="${licence.WINDOW_DAYS_MAX}"`));
+  assert.match(html, new RegExp(`id="oRange" min="0" max="${licence.EQUITY_CEILING * 100}"`));
+  assert.match(html, /id="cRange" min="0" max="100"/);   // commitment: a 0..1 fraction
+});
+
 test('GET /assets/<path> serves the client\'s art, and refuses a path that escapes', async () => {
   // A real file the client references (client/assets/planets/rocky.jpg).
   const ok = await fetch(base + '/assets/planets/rocky.jpg');

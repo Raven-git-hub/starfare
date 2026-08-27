@@ -55,7 +55,11 @@ client**, on the real committed seed, against the live persistent engine:
 > `syndicateCommitment`, and its thermometer measures the good's real window (`delivered`
 > against `Q`). With no licence layer every commitment is 0 and no window is emitted, so
 > the honest render is an empty thermometer reading *"no commitment yet"* and rows reading
-> *"no commitment"* — never a fabricated fill. The seven phantom titanium mines that
+> *"no commitment"* — never a fabricated fill. **Superseded 27-08-26:** the licence layer
+> landed, the console rewire made these rows per-venture, and the licence panel slice at
+> the foot of this doc made a licence reachable from the game — so a venture the player
+> licenses now fills this thermometer for real, and *"no commitment yet"* is what an
+> unlicensed producer reads rather than what everything reads. The seven phantom titanium mines that
 > appeared on every good's page are deleted, along with the invented per-licence fees and
 > the order presets that had nothing to order by; the advisory top-up control remains,
 > tagged mock, POSTing nothing.
@@ -88,6 +92,11 @@ client**, on the real committed seed, against the live persistent engine:
 > scope* and *Deferred* below — chiefly the licence economy (the establishment
 > panel's fee/equity/asset controls remain mock), per-viewer snapshot filtering,
 > and real player identity.
+> **Superseded in part, 27-08-26** — see *Revision — the player's licence panel goes
+> live* at the foot of this doc: the panel's commitment, equity and window controls
+> are now wired to `establishVenture` + `applyForLicence`, and only the ASSET picker
+> (plus the breach fee and reputation readouts) is still mock. The fee is real and
+> locked, but not yet charged (3b-iii).
 
 ## Governing principles (the rules the build holds to)
 
@@ -552,3 +561,124 @@ existing served-page test).
 panel and one move is one POST; a drag would need the `trackDrag` rect-capture treatment
 for a list rather than a track); and showing *which* rank a licence would need to be met,
 which is a projection the engine does not emit and the browser is not allowed to compute.
+
+---
+
+## Revision — the player's licence panel goes live (27-08-26)
+
+> The establishment popup's licence section stops being a labelled mock and calls the
+> engine's real actions. **Client-only:** one file (`client/game.html`) plus two
+> served-page tests in `sim/tests/server.test.js`. No engine, action, resolver or
+> snapshot change; schema still 7; **no new `[FIRST-CUT]` number**.
+
+**What was wrong.** The whole licence economy was built and reachable from the operator
+console and the tests, but never from the game. `doDeploy` sent `establishVenture` alone,
+and the panel said so on screen — *"Mock · no engine"*, *"None of it exists in the engine
+yet"*, *"every venture is created with a commitment of zero, whatever this slider says"*.
+A player who set a commitment and deployed got a bare unlicensed venture, which is why
+the console's Syndicate panel correctly read **no commitment yet** for everything they
+built. This slice is the seam.
+
+**1. A licensed deploy is TWO actions.** `applyForLicence` licenses a venture that must
+already exist, so the order is fixed:
+
+```
+POST /action  {"type":"establishVenture", …, "equityPct":0.25}
+POST /action  {"type":"applyForLicence","guildId":…,"ventureId":…,
+               "committedOutputPct":0.2,"windowDays":21}
+```
+
+Equity rides on the **establish**, because §5 makes it a term of the venture set at
+establishment (Slice 3a), not a term of the licence. An **unlicensed** deploy is
+unchanged: one action, no `equityPct` (the field is optional so its absence stays
+byte-identical), no licence.
+
+**The equity mapping.** The slider is whole percent, `0..EQUITY_CEIL`; the engine takes a
+fraction in `[0, EQUITY_CEILING]`. The client sends `sliderPercent / 100`, which is the
+same quantity as `S.o01 × EQUITY_CEILING` but lands exactly — so engine state records the
+`0.25` the player chose and not `0.25000000000000006`.
+
+**2. The two-step is NOT atomic, and says so.** There is no `establishAndLicence` action.
+If the establish lands and the licence is then refused, the venture exists **unlicensed**,
+and the receipt reports exactly that — the refusal's own `reason`, that nothing is
+committed and nothing is sold, and (when one was offered) that the equity **is** recorded
+on the venture but has no commitment sale to take a share of. It is never reported as a
+success carrying terms the engine did not store. The client keeps every term inside the
+range the engine validates, so this should be rare; rare is exactly when a client lies.
+*Deferred, not built here:* a compound `establishAndLicence` engine action would close
+the gap in one intake.
+
+**3. The fee: an estimate before, the locked figure after.** The engine prices the basic
+fee off the **posted** market price at the signing tick and locks it there, so no
+pre-sign computation can be the number charged. The panel therefore shows only the
+**relief** — §5's four-corner grid as a % of basic, labelled `estimate`, with a note
+saying the credits are priced at signing. The fabricated `120 ¢/cyc` readout is **gone**.
+After signing, the receipt prints the engine's own `discountedFee` / `basicFee` at
+`lockedPrice`, read back off the snapshot, and states plainly that the fee is **locked
+and not yet charged** (the debit is Slice 3b-iii, which is not built).
+*Deferred, not built here:* an engine-side fee-preview endpoint would make the pre-sign
+figure exact.
+
+**4. The commitment preview is the engine's own arithmetic.** `round(pct × baseline × N)`
+is exactly `commitmentUnitsFor`, and `N` is now read **live** off the snapshot's
+`calendar.windowN` rather than mirrored — the client's `TICKS_PER_CYCLE` constant is
+deleted. With no snapshot read the figure shows a dash instead of an invented number.
+
+**5. The receipt reads engine truth.** `showSuccess` no longer echoes the sliders. After
+`__refreshNow()` it looks the new venture up by id through a new `window.__myVenture`
+(own ventures only, §7) and prints the **stored** `syndicateCommitment`, `equityPct`,
+`licence.windowDays` and the locked fee. If the re-read does not bring the venture back
+it says so rather than falling back to the panel's numbers.
+
+**6. Every retired caption, and what replaced it.**
+
+| retired | replaced by |
+|---|---|
+| Licence section `Mock · no engine` | `Real · sent to the engine` (the same tag the Configuration block already carried, now a shared `.mocktag.real` class rather than an inline style) |
+| *"Everything below is the designed licence economy … **None of it exists in the engine yet**, none of it is sent on deploy, and every figure is a **[FIRST-CUT]** placeholder"* | a note saying the commitment, equity and window **are** sent and stored, and that the fee's *amount* is locked at signing while the curve is its designed *shape* |
+| `Licence Summary` **Mock** tag | nothing — the summary is real; Committed / Equity / Renegotiate-in now carry the green `.real` key, and **Breach fee** carries its own inline `mock` marker (breach charging is not built) |
+| fee readout `120 ¢/cyc` | `of basic`, with the graph headed `estimate` and a note that the credits are priced at signing |
+| reputation, silently inside the blanket note | its own caption: design-ahead (#61), no standing recorded |
+| `showSuccess`'s *"the licence terms above are not stored — the licence economy is not built yet"* | the stored terms, read back from the snapshot |
+| adviser reel: *"The licence economy is not in the engine yet"*, *"every venture is created with a commitment of zero"*, *"no equity is recorded anywhere yet"*, *"No terms are stored yet"* | four pages that describe what actually happens now, each naming the one part still missing (the fee **charge**, and renegotiation) |
+
+The **asset** picker is untouched and stays tagged `Mock · no engine` — the asset economy
+is a separate unwired flow (§4, `assetId` reserved) and this slice deliberately does not
+start it.
+
+**7. Four mirrored constants, now tripwired.** The browser has no constants endpoint, so
+the panel mirrors `EQUITY_CEILING`, the fee `CORNERS`, `EQUITY_SHAPE_K` and the mine
+baseline. Duplication is only safe with a tripwire: a new served-page test asserts each
+against `sim/licence.js` / `sim/baseline.js`, and asserts the sliders' own bounds against
+`WINDOW_DAYS_MIN`/`MAX` and the ceiling. If an engine number moves, the test goes red
+instead of the panel quietly showing the old one. `P.CORNERS` is keyed key-for-key with
+the engine's object so the mirror is visible at a glance.
+
+**Verified in headless Chromium** against a real booted server, driving the real
+drill-down (system detail → planet manifest → the vacant node row):
+
+```
+LICENSED    commitment 20%, equity 25%, window 21 days
+  panel     20% – 1,440/cycle · 25% · 86% of basic · locked at signing
+  snapshot  syndicateCommitment 1440  (== commitmentUnitsFor(0.20, 5, 1440))
+            equityPct 0.25 · committedFromTick 1
+            licence { committedOutputPct 0.2, windowDays 21, signedTick 0,
+                      lockedPrice 10, basicFee 7200, discountedFee 6184 }
+UNLICENSED  one action, no equityPct
+  snapshot  syndicateCommitment 0 · licence null
+SYNDICATE   production…goods.titanium.window = { Q 1440, status accruing,
+              perVenture: { …_n01: { commitment 1440, delivered 6, accruing } } }
+              — the licensed mine only; the unlicensed one is not a licence-holder
+PARTIAL     licence step refused: venture established, licence null, commitment 0,
+              and the receipt says REFUSED / UNLICENSED with the reason
+```
+
+The console's Syndicate panel, which read *no commitment yet* before this slice, now
+shows `commitment 1,440 u` and a live licence progress row for the mine established from
+the game client.
+
+**475 tests (+2), zero failures.**
+
+**Out of scope and untouched:** the fee charge (3b-iii, engine), the asset economy, an
+atomic compound action, and the operator console's own display fixes (the "hours"
+mislabel, the preview offset, the icon, the tick-0 label) — a separate console slice.

@@ -752,6 +752,14 @@ select.field{appearance:none; cursor:pointer;}
    engine and is sent nowhere. A player must never read these as live figures. */
 #est-overlay .mocktag{margin-left:auto; font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:var(--amber); border:1px solid rgba(201,162,39,.45); background:rgba(201,162,39,.10); border-radius:5px; padding:3px 8px; white-space:nowrap}
 #est-overlay .mocknote{font-family:var(--mono); font-size:10px; color:var(--ink3); line-height:1.6; margin:-4px 0 12px}
+/* The REAL tag: the same shape as the mock tag in the opposite colour, so a wired
+   block and a design-ahead one can never be mistaken for each other at a glance. */
+#est-overlay .mocktag.real{color:var(--green); border-color:rgba(78,154,135,.45); background:rgba(78,154,135,.12)}
+/* A caption under a WIRED block. Same type as .mocknote; a separate class only so
+   the word "mock" never sits in the markup of something that is now real. */
+#est-overlay .note{font-family:var(--mono); font-size:10px; color:var(--ink3); line-height:1.6; margin:-4px 0 12px}
+/* A design-ahead marker small enough to sit inline, inside a head or a ledger key. */
+#est-overlay .minitag{font-family:var(--mono); font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); opacity:.85}
 
 #est-overlay select.est-select{font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--void); border:1px solid var(--line2); border-radius:8px; padding:11px 34px 11px 12px; cursor:pointer; width:100%; appearance:none; text-overflow:ellipsis;
   background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);
@@ -787,6 +795,7 @@ select.field{appearance:none; cursor:pointer;}
 #est-overlay .fee-graph .gh .read b{font-size:20px; font-weight:600; color:var(--amber)}
 #est-overlay .fee-graph .gh .read .cr{font-size:11px; color:var(--ink2); margin-left:8px}
 #est-overlay .fee-graph svg{display:block; width:100%; height:auto; overflow:visible}
+#est-overlay .fee-graph .gnote{font-family:var(--mono); font-size:9.5px; color:var(--ink3); line-height:1.55; margin-top:8px}
 #est-overlay .rep{display:flex; align-items:center; gap:12px; margin-top:12px; padding-top:12px; border-top:1px solid var(--line)}
 #est-overlay .rep .rlbl{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--green); flex:none; width:96px}
 #est-overlay .rep .bar{flex:1; height:8px; border-radius:5px; background:var(--void); border:1px solid var(--line); overflow:hidden}
@@ -1030,11 +1039,12 @@ select.field{appearance:none; cursor:pointer;}
   </div>
 </div>
 
-<!-- ===== Establish-Venture popup (client-wiring Slice 3) =========================
-     Opened from a VACANT site in the planet manifest. ONE thing here is real: the
-     Deploy button POSTs `establishVenture` to the engine. The whole licence/fee/
-     asset economy is design-ahead (docs/venture-establishment.md §2.4–2.6) — it is
-     tagged MOCK on screen and no part of it is sent. -->
+<!-- ===== Establish-Venture popup (client-wiring Slice 3; licence panel wired) ====
+     Opened from a VACANT site in the planet manifest. The Deploy button POSTs the
+     REAL actions: `establishVenture` (carrying `equityPct` when licensing) and then
+     `applyForLicence` (`committedOutputPct`, `windowDays`). What remains design-ahead
+     — the asset picker, the breach fee and reputation — is tagged MOCK on screen and
+     is sent nowhere (docs/venture-establishment.md §2.4–2.6). -->
 <div id="est-overlay">
   <div class="est">
 
@@ -1067,7 +1077,7 @@ select.field{appearance:none; cursor:pointer;}
           </div>
 
           <div class="blk">
-            <div class="sec-head"><span class="t">Configuration</span><span class="mocktag" style="background:rgba(78,154,135,.12); border-color:rgba(78,154,135,.45); color:#4E9A87">Real · sent to the engine</span></div>
+            <div class="sec-head"><span class="t">Configuration</span><span class="mocktag real">Real · sent to the engine</span></div>
             <div class="cfg">
               <div class="tierbadge" id="tierBadge">TIER 1</div>
               <div class="tier-sel" id="tierSelWrap" style="display:none"><select class="est-select" id="tierSel"></select></div>
@@ -1077,7 +1087,7 @@ select.field{appearance:none; cursor:pointer;}
           </div>
 
           <div class="blk">
-            <div class="sec-head"><span class="t">Licence</span><button class="help" data-reel="licence">?</button><span class="mocktag">Mock · no engine</span></div>
+            <div class="sec-head"><span class="t">Licence</span><button class="help" data-reel="licence">?</button><span class="mocktag real">Real · sent to the engine</span></div>
             <div class="seg">
               <button id="segLic"><span class="mark"></span> Licensed</button>
               <button id="segUn"><span class="mark"></span> Unlicensed</button>
@@ -1085,7 +1095,7 @@ select.field{appearance:none; cursor:pointer;}
           </div>
 
           <div class="blk" id="feeBlock">
-            <div class="mocknote">Everything below is the designed licence economy — fee, commitment, equity, reputation and the renegotiation window. <b class="amber">None of it exists in the engine yet</b> (§5, §2.4–2.6), none of it is sent on deploy, and every figure is a <b class="amber">[FIRST-CUT]</b> placeholder.</div>
+            <div class="note">Choosing <b>Licensed</b> files a real licence: the commitment, the equity and the window below are <b class="green">sent to the engine and stored</b> on the venture (§5). The Syndicate does not negotiate — it locks the fee against the posted market price at the tick you sign, so the <b class="amber">amount</b> is only knowable once signed; the curve below is the designed <b class="amber">shape</b> of that fee, not the figure you will owe.</div>
             <div class="slider">
               <div class="sec-head"><span class="t">Output commitment</span><button class="help" data-reel="commit">?</button>
                 <span class="val" style="margin-left:auto"><b id="cPct">0%</b><span class="q" id="cQty"></span></span>
@@ -1102,15 +1112,17 @@ select.field{appearance:none; cursor:pointer;}
 
             <div class="fee-graph">
               <div class="gh">
-                <span class="lbl">Licence fee — % of basic, across commitment</span>
-                <span class="read"><b id="feePctBig">100%</b><span class="cr" id="feeCr">120 ¢/cyc</span></span>
+                <span class="lbl">Licence fee — % of basic, across commitment <span class="minitag">estimate</span></span>
+                <span class="read"><b id="feePctBig">100%</b><span class="cr">of basic</span></span>
               </div>
               <svg id="feeSvg" viewBox="0 0 320 150" preserveAspectRatio="none" aria-hidden="true"></svg>
+              <div class="gnote">Indicative. The relief above is §5's designed grid; the fee <b>in credits</b> is priced by the engine off the posted price at your signing tick and locked there. The signed figure is on the receipt.</div>
               <div class="rep">
                 <div class="rlbl">Reputation</div>
                 <div class="bar"><div class="fill" id="repFill" style="width:0%"></div></div>
                 <div class="rnum" id="repNum">0</div>
               </div>
+              <div class="gnote">Reputation is design-ahead (#61) — no standing is recorded or moved yet.</div>
             </div>
 
             <div class="slider" style="margin-top:20px">
@@ -1127,18 +1139,18 @@ select.field{appearance:none; cursor:pointer;}
           <div class="art" id="sideArt"></div>
           <div class="scrim"></div>
           <div class="inner">
-            <div class="stitle">Licence Summary <span class="mocktag">Mock</span></div>
+            <div class="stitle">Licence Summary</div>
             <div class="ledger">
               <div class="row"><span class="k">Asset</span><span class="v" id="tAsset">— <span class="mut">none</span></span></div>
               <div class="row real"><span class="k">Site</span><span class="v" id="tSite">—</span></div>
               <div class="row real"><span class="k">Output</span><span class="v" id="tOutput">—</span></div>
               <div class="row real"><span class="k">Rate</span><span class="v" id="tRate">—</span></div>
               <div class="row"><span class="k">Licence</span><span class="v" id="tLic">— <span class="mut">undecided</span></span></div>
-              <div class="row"><span class="k">Committed</span><span class="v" id="tCommit">—</span></div>
-              <div class="row"><span class="k">Equity</span><span class="v" id="tEquity">—</span></div>
+              <div class="row real"><span class="k">Committed</span><span class="v" id="tCommit">—</span></div>
+              <div class="row real"><span class="k">Equity</span><span class="v" id="tEquity">—</span></div>
               <div class="row emph"><span class="k">Fee</span><span class="v" id="tFee">—</span></div>
-              <div class="row breach"><span class="k">Breach fee</span><span class="v" id="tBreach">—</span></div>
-              <div class="row"><span class="k">Renegotiate in</span><span class="v" id="tReneg">—</span></div>
+              <div class="row breach"><span class="k">Breach fee <span class="minitag">mock</span></span><span class="v" id="tBreach">—</span></div>
+              <div class="row real"><span class="k">Renegotiate in</span><span class="v" id="tReneg">—</span></div>
             </div>
             <button class="deploy" id="deployBtn" disabled>Deploy venture</button>
             <div class="deploy-hint" id="deployHint">Select an asset and a licence choice.</div>
@@ -2216,35 +2228,59 @@ window.openWaystationDetail = function(outpost){
 })();
 </script>
 <script>
-/* ===== Establish a venture (client-wiring Slice 3) ==============================
-   The popup ported from docs/mockups/venture-establishment.html, wired to the one
-   action the engine actually has.
+/* ===== Establish a venture (client-wiring Slice 3; the licence panel wired) =====
+   The popup ported from docs/mockups/venture-establishment.html, wired to the actions
+   the engine actually has.
 
-   REAL — reaches the engine:   the site, the venture type, the resource (node) or
-                                the recipe (slot), and the production rate.
-   MOCK — reaches nothing:      the asset picker and inventory, licensed/unlicensed,
-                                output commitment, equity, the licence fee and its
-                                graph, the breach fee, reputation and the
-                                renegotiation window. All of that is design-ahead of
-                                the engine (docs/venture-establishment.md §2.4–2.6,
-                                design.md §5); it is tagged MOCK on screen and it is
-                                NOT part of the payload. Nothing here is faked as live.
+   REAL — reaches the engine:   the site, the venture type, the resource (node) or the
+                                recipe (slot), the production rate, and — when the
+                                player licenses — the EQUITY offered (`equityPct` on
+                                `establishVenture`, §5's term set at establishment) plus
+                                the licence itself (`applyForLicence` with
+                                `committedOutputPct` and `windowDays`).
+   MOCK — reaches nothing:      the asset picker and inventory (§4, `assetId` reserved),
+                                the breach fee, and reputation (#61). Design-ahead of
+                                the engine, tagged on screen, and NOT part of any
+                                payload. Nothing here is faked as live.
+
+   ESTIMATED — shown, never sent: the fee curve. The engine prices the fee off the
+                                POSTED market price at the signing tick and locks it
+                                there, so no number computed before signing can be the
+                                one charged. The panel shows the designed SHAPE (§5's
+                                four-corner grid) and labels it as indicative; the
+                                authoritative figure is read back off the snapshot on
+                                the receipt. An engine-side fee-preview endpoint would
+                                make the pre-sign figure exact — noted, not built here.
 
    The compound action §2.7 describes (consumeAsset → establishVenture →
-   recordLicenceTerms) is a FUTURE shape: only its middle step exists, so only its
-   middle step is sent. */
+   recordLicenceTerms) is still a FUTURE shape: the asset step does not exist, and the
+   two that do are sent as two sequential POSTs. There is no atomic
+   `establishAndLicence`, so a licensed deploy is deliberately NOT atomic and
+   `doDeploy` reports the partial outcome honestly rather than papering over it. */
 (function(){
 
-/* --- the mock economy's placeholder numbers. Every one [FIRST-CUT], carried over
-   from the mockup (decision-checklist #56) and displayed only. --------------- */
+/* --- the panel's constants. The cycle length `N` is NOT here: it is read live off
+   the snapshot's calendar block (`cycleTicks()` below), because the engine owns it.
+   The four that remain and DO describe engine behaviour are MIRRORS — there is no
+   constants endpoint for the browser to read them from — so `sim/tests/server.test.js`
+   asserts the served page against `sim/licence.js` and `sim/baseline.js`. If the
+   engine's ceiling, baseline or fee shape ever moves, that tripwire goes red instead
+   of this panel quietly showing the old one. The last two feed the two readouts that
+   are still design-ahead, and are tagged as such on screen. ------------------ */
 var P = {
-  BASELINE_RATE: 5,        // output/tick baseline (droidless)              [FIRST-CUT]
-  TICKS_PER_CYCLE: 60*24,  // 1 tick = 1 min; cycle = 24 h -> 1440 ticks    [FIRST-CUT]
-  EQUITY_CEIL: 49,         // % structural ceiling (design-settled)
-  K: 2,                    // equity shaping exponent oᵏ                    [FIRST-CUT]
-  BASIC_FEE: { 1:120, 2:240, 3:480, 4:960 }, // per-tier basic (max) fee    [FIRST-CUT]
-  REP_MAX: 100, REP_WC: 0.5, REP_WO: 0.5     // reputation gain model (#61)  [FIRST-CUT]
+  BASELINE_RATE: 5,        // MIRRORS sim/baseline.js MINE_BASELINE, units/tick [FIRST-CUT]
+  EQUITY_CEIL: 49,         // MIRRORS sim/licence.js EQUITY_CEILING x 100 (design-settled)
+  K: 2,                    // MIRRORS sim/licence.js EQUITY_SHAPE_K, o^k       [FIRST-CUT]
+  // MIRRORS sim/licence.js CORNERS, key for key so the mirror is obvious   [FIRST-CUT]
+  CORNERS: { minCommitMinOffer:100, minCommitMaxOffer:75, maxCommitMinOffer:75, maxCommitMaxOffer:0 },
+  BASIC_FEE: { 1:120, 2:240, 3:480, 4:960 }, // MOCK — the breach row only     [FIRST-CUT]
+  REP_MAX: 100, REP_WC: 0.5, REP_WO: 0.5     // reputation gain model (#61)     [FIRST-CUT]
 };
+
+/* The cycle length `N` in force, straight off the snapshot (`calendar.windowN`) —
+   the same number `applyForLicence` measures the commitment over. Null when no
+   snapshot has been read; the panel then shows a dash rather than inventing one. */
+function cycleTicks(){ return window.__windowN ? window.__windowN() : null; }
 var INVENTORY = [                                       // MOCK holdings — no engine
   { id:'AST-114', kind:'miner',   label:'Miner',   condition:100 },
   { id:'AST-118', kind:'miner',   label:'Miner',   condition:96  },
@@ -2266,10 +2302,28 @@ function $(id){ return document.getElementById(id); }
 var S = { site:null, asset:null, tier:1, recipeId:null, outGood:null, outLabel:'—',
           licensed:null, c:0, o01:0, rnDays:14, busy:false };
 
-/* licence fee (design.md §5's four-corner grid): 100 / 75 / 75 / 0, with equity
-   back-loaded by o^K. MOCK — a display curve; the engine holds no fee. */
-function feePct(c, o01){ var O=Math.pow(o01,P.K); return 100*(1-c)*(1-O)+75*c*(1-O)+75*(1-c)*O+0*c*O; }
+/* The fee's SHAPE (design.md §5's four-corner grid): 100 / 75 / 75 / 0, with equity
+   back-loaded by o^K — the same bilinear form as sim/licence.js `feeFraction`. This is
+   a % of basic, and it is the only part of the fee the browser may draw: the basic fee
+   itself is priced off the posted market price at the signing tick, which no pre-sign
+   computation can know. Shown as an ESTIMATE of the relief, never as the amount. */
+/* `c` here is the raw commitment fraction and `o01` the equity normalised against the
+   ceiling — the engine's own two axes (`normalisedTerms`), which coincide with the
+   sliders' values because §5's commitment floor is 0. */
+function feePct(c, o01){
+  var O=Math.pow(o01,P.K), C=P.CORNERS;
+  return C.minCommitMinOffer*(1-c)*(1-O) + C.maxCommitMinOffer*c*(1-O)
+       + C.minCommitMaxOffer*(1-c)*O     + C.maxCommitMaxOffer*c*O;
+}
+/* MOCK — reputation is design-ahead (#61); the engine records no standing. */
 function repGain(c, o01){ return P.REP_MAX*(P.REP_WC*c + P.REP_WO*o01); }
+
+/* The equity term. The slider is whole percent, 0..EQUITY_CEIL; the engine takes a
+   FRACTION of the venture in [0, EQUITY_CEILING]. Dividing the integer percent by 100
+   is the same quantity as `S.o01 * EQUITY_CEILING` but lands exactly, so engine state
+   records the 0.25 the player chose and not 0.25000000000000006. */
+function equityPctInt(){ return Math.round(S.o01 * P.EQUITY_CEIL); }
+function equityFraction(){ return equityPctInt() / 100; }
 
 /* ------------------------------------------------------------------ render */
 function draw(){
@@ -2277,16 +2331,21 @@ function draw(){
   $('oRange').style.backgroundSize=(S.o01*100)+'% 100%';
   $('rnRange').style.backgroundSize=((S.rnDays-7)/35*100)+'% 100%';
 
-  var cQtyCycle = Math.round(S.c * P.BASELINE_RATE * P.TICKS_PER_CYCLE);
+  // The committed quantity per cycle. Not a number the browser owns: it is exactly the
+  // engine's `commitmentUnitsFor` — round(pct x baseline x N) — with N read live off
+  // the snapshot, so the preview is the quantity `applyForLicence` will actually store.
+  var N = cycleTicks();
+  var cQtyCycle = N === null ? null : Math.round(S.c * P.BASELINE_RATE * N);
   $('cPct').textContent = Math.round(S.c*100)+'%';
-  $('cQty').textContent = '– '+fmt(cQtyCycle);
+  $('cQty').textContent = cQtyCycle === null ? '– —' : ('– '+fmt(cQtyCycle)+'/cycle');
 
-  var ePct = Math.round(S.o01*P.EQUITY_CEIL);
+  var ePct = equityPctInt();
   $('oPct').textContent = ePct+'%';
 
-  var basic=P.BASIC_FEE[S.tier], fp=feePct(S.c,S.o01), feeCredits=fp/100*basic;
+  // The fee readout is the RELIEF only (% of basic). No credit figure is shown before
+  // signing — the engine locks that against the posted price and the panel cannot know it.
+  var fp=feePct(S.c,S.o01);
   $('feePctBig').textContent = Math.round(fp)+'%';
-  $('feeCr').textContent = fmt(feeCredits)+' ¢/cyc';
 
   var rg=repGain(S.c,S.o01);
   $('repFill').style.width = rg+'%';
@@ -2294,7 +2353,7 @@ function draw(){
   $('rnDaysVal').textContent = S.rnDays+' days';
 
   drawGraph(fp);
-  drawLedger(fp, feeCredits, cQtyCycle, ePct);
+  drawLedger(fp, cQtyCycle, ePct);
   $('feeBlock').classList.toggle('disabled', S.licensed===false);
   gate();
 }
@@ -2322,7 +2381,7 @@ function drawGraph(fp){
 }
 
 function setRow(id,h){ $(id).innerHTML = h; }
-function drawLedger(fp, feeCredits, cQtyCycle, ePct){
+function drawLedger(fp, cQtyCycle, ePct){
   setRow('tAsset', S.asset ? (S.asset.label+' <span class="mut">'+S.asset.id+' · '+S.asset.condition+'%</span>') : '— <span class="mut">none</span>');
   // The three REAL rows: what the engine will actually be told.
   setRow('tSite', S.site ? esc(S.site.summary) : '—');
@@ -2342,9 +2401,13 @@ function drawLedger(fp, feeCredits, cQtyCycle, ePct){
     return;
   }
   setRow('tLic','<span class="amber">Licensed</span>');
-  setRow('tCommit', cQtyCycle>0 ? (fmt(cQtyCycle)+' '+esc(S.outLabel.toLowerCase())) : '<span class="mut">0 — none</span>');
+  setRow('tCommit', cQtyCycle === null ? '<span class="mut">cycle length unread</span>'
+    : (cQtyCycle>0 ? (fmt(cQtyCycle)+' '+esc(S.outLabel.toLowerCase())+' <span class="mut">/cycle</span>')
+                   : '<span class="mut">0 — none</span>'));
   setRow('tEquity', ePct>0 ? (ePct+'%') : '<span class="mut">none</span>');
-  setRow('tFee','<b>'+fmt(feeCredits)+' ¢</b>');
+  // The relief, not an amount: the credits are locked by the engine at signing and
+  // reported on the receipt.
+  setRow('tFee','<b>'+Math.round(fp)+'%</b> <span class="mut">of basic · locked at signing</span>');
   setRow('tBreach', fmt(P.BASIC_FEE[S.tier])+' ¢');
   setRow('tReneg', S.rnDays+' days');
 }
@@ -2355,8 +2418,9 @@ function esc(v){
   });
 }
 
-/* The deploy gate, as designed: an asset and a licence choice are required even
-   though neither is sent — the panel is teaching the shape of the future contract. */
+/* The deploy gate. The licence choice IS sent now; the asset is still required even
+   though it is sent nowhere — the asset economy is a separate unwired flow (§4), and
+   the gate keeps teaching the shape of the contract it will one day complete. */
 function gate(){
   var configured = S.site && (S.site.kind==='node' || (S.tier===2 && S.recipeId));
   var ok = !!S.asset && S.licensed!==null && configured && !S.busy;
@@ -2380,19 +2444,19 @@ var REELS = {
   licence:{ title:'Licensed or not?', pages:[
     'A <em>licence</em> costs an ongoing maintenance fee, but it opens Syndicate droids to staff the venture and unlocks the two levers that cut the fee. Most guilds licence their core production.',
     'Going <em>unlicensed</em> is allowed — pressure, not prohibition. No fee is owed, but your only labour is guild-produced droids, which fail more often, and it costs you standing over time. A fair start; many licence later.',
-    'The licence economy is not in the engine yet. Whichever you choose here, the venture is created the same way and no fee is charged.' ]},
+    'This choice is real. Licensed files a licence application the moment the venture is stood up, and the Syndicate locks its terms — your commitment, your equity and the fee — against the market at that tick. The fee is recorded and fixed; <em>charging</em> it is the one part still to be built.' ]},
   commit:{ title:'Output commitment', pages:[
     'Commitment is the share of your <em>baseline</em> output auto-sold to the Syndicate each cycle. It pulls the fee straight down — and anything your droids add <em>above</em> baseline stays entirely yours.',
     'It is firm: miss the committed delivery and you pay the full basic fee as breach. You may commit nothing at all and simply pay for the licence’s other benefits.',
-    'Not yet wired: every venture is created with a commitment of zero, whatever this slider says.' ]},
+    'This is wired: the share you set here is filed with the licence, and the Syndicate converts it into a firm quantity of goods per cycle — the figure beside the slider — which the venture then owes.' ]},
   equity:{ title:'Equity offered', pages:[
     'Equity is a stake in this venture’s commitment-sale income offered to investors, up to 49%. It is <em>back-loaded</em>: a little barely moves the fee, but pushed toward the ceiling it swings the whole line down.',
     'It is forfeited whether or not anyone actually buys it — with no buyer the share routes to the Syndicate ledger. Real cost, real lever: cash now against income later.',
-    'The graph beside it is the designed shape, not a live quote — no equity is recorded anywhere yet.' ]},
+    'The equity you offer is recorded on the venture and the fee is discounted for it at signing. The graph is the designed <em>shape</em> of that discount and not a live quote: the fee in credits is priced off the market price at the moment you sign, so only the signed figure is real.' ]},
   reneg:{ title:'Renegotiation window', pages:[
     'This sets when the contract first becomes open to <em>renegotiation</em>, in days. It does not end anything: the venture keeps running on these terms until you choose to renegotiate in venture management.',
     'This window binds <em>both sides equally</em>: until it elapses, neither you nor the Syndicate can reopen the terms. Once it passes, either may — you from venture management, or the Syndicate itself if this venture’s standing has shifted, for better terms or worse.',
-    'No terms are stored yet, so nothing is counting down.' ]}
+    'The window is stored with the licence, in days, exactly as you set it. Renegotiation itself is not built yet, so nothing acts on the window when it elapses.' ]}
 };
 var reelMode='info', reelState={key:null,page:0};
 function openReel(){ $('est-reel').classList.add('open'); }
@@ -2412,12 +2476,18 @@ function renderReel(){
 /* The deploy confirm reuses the reel, with Cancel / Confirm. */
 function reelConfirm(){
   reelMode='confirm';
+  var N = cycleTicks();
+  var cq = N === null ? null : Math.round(S.c * P.BASELINE_RATE * N);
   var lic = S.licensed
-    ? ('<em>licensed</em>, at a fee of '+Math.round(feePct(S.c,S.o01))+'% of basic ('+fmt(feePct(S.c,S.o01)/100*P.BASIC_FEE[S.tier])+' ¢/cycle)')
-    : '<em>unlicensed</em>, with no fee';
+    ? ('<em>licensed</em>, committing '+(cq === null ? 'a share of' : (fmt(cq)+' of its'))+' baseline output each cycle'
+       + (equityPctInt()>0 ? (' and offering '+equityPctInt()+'% equity') : ' with no equity offered')
+       + ', at a fee of about '+Math.round(feePct(S.c,S.o01))+'% of basic')
+    : '<em>unlicensed</em>, with no fee and no commitment';
   var body='<p>You are about to stand up a '+esc(S.outLabel.toLowerCase())+' venture on '+esc(S.site.summary)+' — '+lic+'.</p>'+
-           '<p>This consumes <em>1 '+esc(S.asset.label)+'</em> ('+esc(S.asset.id)+') from your holdings. First output arrives next tick, and the terms are open to renegotiate in '+S.rnDays+' days.</p>'+
-           '<p class="lbl">Of the above, only the site and what it produces are recorded — the licence terms and the asset are not yet built.</p>'+
+           '<p>This consumes <em>1 '+esc(S.asset.label)+'</em> ('+esc(S.asset.id)+') from your holdings. First output arrives next tick'+(S.licensed ? (', and the terms are open to renegotiate in '+S.rnDays+' days') : '')+'.</p>'+
+           (S.licensed
+             ? '<p class="lbl">The licence is filed as a second step, once the venture exists. Its fee is set against the market price at that tick and cannot be quoted before it — the % above is the designed relief, not the amount.</p>'
+             : '<p class="lbl">The asset is not recorded against the venture — the asset economy is not built yet.</p>')+
            '<p>Shall I file the licence?</p>';
   $('reelTitle').textContent='Commit to this venture?';
   $('reelBody').innerHTML=body;
@@ -2428,62 +2498,125 @@ function reelConfirm(){
   openReel();
 }
 
-/* ------------------------------------------------------- the ONE real write */
+/* --------------------------------------------------------- the real writes */
+/* A licensed deploy is TWO actions, in this order, because `applyForLicence` licenses
+   a venture that must ALREADY EXIST. The engine has no compound `establishAndLicence`,
+   so this is deliberately not atomic: the establish can land and the licence then be
+   refused, leaving a real, running, UNLICENSED venture. That case is reported as
+   exactly that — never as a success carrying terms the engine never stored. (A compound
+   action would close the gap; it is noted as a follow-up, not built in this slice.)
+
+   The client keeps every term inside the range the engine validates — commitment
+   0..1 from a 0..100 slider, window 7..42 days, equity 0..EQUITY_CEILING — so a licence
+   refusal should be rare. Rare is not never, and rare is exactly when a client lies. */
 async function doDeploy(){
   var player = window.__player ? window.__player() : null;
   if(!player || !player.guildId){ failHint('No guild — cannot establish.'); closeReel(); return; }
 
-  // Exactly the fields sim/actions.js validates, and nothing else: no assetId,
-  // no fee, no commitment, no equity, no renegotiation window. One venture per
-  // site, so the id is derived from the pair (the occupancy invariant guards it).
-  var action = {
+  // Exactly the fields sim/actions.js validates, and nothing else: no assetId, no fee,
+  // no reputation. One venture per site, so the id is derived from the pair (the
+  // occupancy invariant guards it).
+  var ventureId = player.guildId + '_' + S.site.siteId;
+  var establish = {
     type: 'establishVenture',
     guildId: player.guildId,
-    ventureId: player.guildId + '_' + S.site.siteId,
+    ventureId: ventureId,
     siteId: S.site.siteId,
     ventureType: S.site.kind === 'node' ? 'mining' : 'refining',
     productionRate: ESTABLISH_RATE,
   };
-  if (action.ventureType === 'mining') action.resourceType = S.site.resource;
-  else action.recipeId = S.recipeId;
+  if (establish.ventureType === 'mining') establish.resourceType = S.site.resource;
+  else establish.recipeId = S.recipeId;
+  // Equity (`o`) is a term of the venture, offered AT ESTABLISHMENT (§5, Slice 3a) —
+  // so it rides on this action, not on the licence. Only when licensing: with no
+  // commitment sale there is no income for a share to be a share OF, and the field is
+  // optional precisely so its absence leaves an unlicensed establish byte-identical.
+  if (S.licensed) establish.equityPct = equityFraction();
+
+  var licence = S.licensed ? {
+    type: 'applyForLicence',
+    guildId: player.guildId,
+    ventureId: ventureId,
+    committedOutputPct: S.c,   // the slider's fraction, 0..1 — the engine's own range
+    windowDays: S.rnDays,      // whole days, 7..42 (§5's renegotiation bounds)
+  } : null;
 
   S.busy = true; gate();
   $('reelNext').disabled = true;
   $('deployHint').textContent = 'Filing…';
   var out;
   try {
-    out = await window.__sendAction(action);
+    out = await window.__sendAction(establish);
   } catch (err) {
     S.busy = false; closeReel(); failHint('The Syndicate could not be reached: '+err.message); return;
   }
-  S.busy = false;
-  closeReel();
   if (!out.accepted){
-    // A refusal is a real answer — most likely someone seated this site first.
+    // A refusal is a real answer — most likely someone seated this site first. Nothing
+    // was created, so there is nothing to license.
+    S.busy = false; closeReel();
     failHint('Refused: ' + (out.reason || 'the Syndicate declined'));
     gate();
     return;
   }
-  // Re-read at once so the manifest behind the popup flips without waiting a poll.
+
+  // From here the VENTURE EXISTS. Whatever becomes of the licence, the deploy landed.
+  var licenceRefusal = null;
+  if (licence){
+    $('deployHint').textContent = 'Filing the licence…';
+    try {
+      var lic = await window.__sendAction(licence);
+      if (!lic.accepted) licenceRefusal = lic.reason || 'the Syndicate declined the application';
+    } catch (err) {
+      licenceRefusal = 'the Syndicate could not be reached — ' + err.message;
+    }
+  }
+
+  S.busy = false;
+  closeReel();
+  // Re-read at once so the manifest behind the popup flips without waiting a poll —
+  // and so the receipt reads the venture's STORED terms rather than the panel's offer.
   if (window.__refreshNow) { try { await window.__refreshNow(); } catch (e) {} }
-  showSuccess(action);
+  showSuccess(establish, licenceRefusal);
 }
 function failHint(msg){
   var hint=$('deployHint');
   hint.textContent = msg;
   hint.classList.add('err');
 }
-function showSuccess(action){
-  var msg;
-  if(S.licensed){
-    var cq=Math.round(S.c*P.BASELINE_RATE*P.TICKS_PER_CYCLE), ep=Math.round(S.o01*P.EQUITY_CEIL);
-    msg='Your '+S.asset.label+' now runs a '+S.outLabel.toLowerCase()+' venture — licensed, committing '+fmt(cq)+' '+S.outLabel.toLowerCase()+'/cycle'+(ep>0?(' with '+ep+'% equity offered'):'')+', renegotiable in '+S.rnDays+' days. First output next tick.';
+/* The receipt. Every licence figure on it is read back off the SNAPSHOT — what the
+   engine recorded — not off the panel that proposed it. The sliders are an offer;
+   `applyForLicence` is what turns an offer into a contract, so it is the contract
+   that gets reported (client-wiring.md §7: the browser renders engine truth). */
+function showSuccess(action, licenceRefusal){
+  var v = window.__myVenture ? window.__myVenture(action.ventureId) : null;
+  var good = S.outLabel.toLowerCase();
+  var out = [];
+
+  if (!S.licensed){
+    out.push('Your '+S.asset.label+' now runs a '+good+' venture — unlicensed, at baseline on guild droids. First output next tick.');
+  } else if (licenceRefusal){
+    // The honest partial failure: the venture is real, the licence is not.
+    var offered = Math.round(((v && v.equityPct) || 0) * 100);
+    out.push('Your '+S.asset.label+' now runs a '+good+' venture — but the licence application was REFUSED, so it is running UNLICENSED: nothing is committed, nothing is sold to the Syndicate, and no fee is owed.');
+    out.push('The Syndicate\u2019s reason: '+licenceRefusal);
+    out.push(offered>0
+      ? ('The '+offered+'% equity you offered IS recorded on the venture — it is a term of the venture, not of the licence — but with no commitment sale there is no income for it to take a share of.')
+      : 'No equity was offered, so nothing is recorded against it.');
+    out.push('The venture itself stands and produces. Licensing it is a separate application.');
+  } else if (v && v.licence){
+    var eq = Math.round((v.equityPct || 0) * 100);
+    out.push('Your '+S.asset.label+' now runs a '+good+' venture — licensed, committing '+fmt(v.syndicateCommitment)+' '+good+'/cycle'
+      + (eq>0 ? (' with '+eq+'% equity offered') : ' with no equity offered')
+      + ', renegotiable in '+v.licence.windowDays+' days. First output next tick.');
+    out.push('Fee: '+fmt(v.licence.discountedFee)+' \u00a2 of a '+fmt(v.licence.basicFee)+' \u00a2 basic, locked against a posted price of '
+      + Number(v.licence.lockedPrice).toFixed(2)+' at tick '+v.licence.signedTick+'. It is LOCKED and NOT YET CHARGED — the fee debit is not built (Slice 3b-iii).');
   } else {
-    msg='Your '+S.asset.label+' now runs a '+S.outLabel.toLowerCase()+' venture — unlicensed, at baseline on guild droids. First output next tick.';
+    // Accepted, but the re-read did not bring the venture back. Say so, rather than
+    // printing the panel's own numbers as though they were the stored ones.
+    out.push('Your '+S.asset.label+' now runs a licensed '+good+' venture. Its stored terms could not be read back just now — the next refresh will carry them.');
   }
-  // What was actually recorded, beside what was merely shown.
-  msg += '  Recorded: venture ' + action.ventureId + ' on ' + action.siteId + ' at ' + action.productionRate + '/tick. The licence terms above are not stored — the licence economy is not built yet.';
-  $('successMsg').textContent = msg;
+  out.push('Recorded: venture '+action.ventureId+' on '+action.siteId+' at '+action.productionRate+'/tick.');
+  $('successMsg').textContent = out.join('  ');
   $('estForm').style.display='none';
   $('estSuccess').classList.add('show');
 }
@@ -2660,7 +2793,8 @@ var GAME = { guildId:null, guildName:null, homeSystemId:null, galaxy:null, pollT
 //   guildNameById { guildId: name }            names only — no guild's economics
 //   occupancy     { siteId: ventureId }        verbatim from the snapshot
 //   siteInfo      { siteId: {...} }            the player-safe read of who holds a site
-var LIVE = { systemClaims:{}, guildNameById:{}, occupancy:{}, siteInfo:{}, siteSig:'' };
+var LIVE = { systemClaims:{}, guildNameById:{}, occupancy:{}, siteInfo:{}, siteSig:'',
+             myVentures:{}, windowN:null };
 
 async function apiGet(path){
   var res = await fetch(path);
@@ -2918,7 +3052,24 @@ function applySnapshot(snap){
   // player may see — "that node is taken" — and the join key the manifest renders by.
   LIVE.occupancy = snap.occupancy || {};
   LIVE.siteInfo = {};
+  // The player's OWN ventures, by id, with the licence terms the engine STORED on them
+  // (§5, Slices 3a/3b-i). This is what the establishment receipt reads back after a
+  // deploy, so what it reports is the contract rather than the panel's offer. Own
+  // ventures only — a rival's economics are not the player's to see (client-wiring.md §7).
+  LIVE.myVentures = {};
+  // The cycle length in force, from the snapshot's calendar block — the engine's own
+  // `N`, so the panel's per-cycle figures never come from a second copy of it.
+  LIVE.windowN = (snap.calendar && snap.calendar.windowN != null) ? snap.calendar.windowN : null;
   (snap.ventures || []).forEach(function(v){
+    if (v.ownerGuildId === GAME.guildId){
+      LIVE.myVentures[v.id] = {
+        id: v.id, siteId: v.siteId || null, type: v.type || null,
+        syndicateCommitment: v.syndicateCommitment || 0,
+        equityPct: v.equityPct || 0,
+        licence: v.licence || null,
+        committedFromTick: v.committedFromTick == null ? null : v.committedFromTick,
+      };
+    }
     if (!v.siteId) return;
     if (v.ownerGuildId === GAME.guildId){
       // The player's OWN venture: they may see what it is and what it runs.
@@ -2980,6 +3131,11 @@ window.__recipes = function(){ return GAME.recipes; };
 window.__recipeOutput = function(recipeId){ return GAME.recipeOut[recipeId] || null; };
 window.__sendAction = function(action){ return apiAction(action); };
 window.__refreshNow = function(){ return apiGet('/snapshot').then(applySnapshot); };
+// The stored terms of one of the player's own ventures (or null) — read back by the
+// establishment receipt so the licence it reports is the one the engine recorded.
+window.__myVenture = function(ventureId){ return LIVE.myVentures[ventureId] || null; };
+// The engine's cycle length `N`, for the panel's per-cycle commitment figure.
+window.__windowN = function(){ return LIVE.windowN; };
 
 function systemById(id){
   if (!id || !GAME.galaxy) return null;
