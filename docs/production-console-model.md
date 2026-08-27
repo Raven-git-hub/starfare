@@ -80,10 +80,22 @@ it in this cut.
 
 | Field | Type | Default | Meaning | Set by |
 |---|---|---|---|---|
-| `syndicateCommitment` | int ≥ 0 | `0` (unlicensed) | this mine's aggregate delivery target per window. The good-level target `Q` is Σ of this over the system's producing mines | `setSyndicateCommitment` action — today a dev/licence-layer setter; becomes the licence grant's output later |
+| `syndicateCommitment` | int ≥ 0 | `0` (unlicensed) | this mine's FULL-WINDOW delivery target. Its target for a *particular* window is `qᵢ = round(syndicateCommitment × windowFraction)` — the mid-window pro-rate, `= syndicateCommitment` for a mine present the whole window | `applyForLicence` (the licence grant); `setSyndicateCommitment` remains as the dev/test/bot setter |
 
 This is the *source* of the Syndicate panel's whole target line. The panel reads
 `Q` (the derived sum) but the stored truth is per-mine here.
+
+**The rounding, and why it is per venture:** `Q = Σ qᵢ` — each mine's target is
+rounded **first** and the rounded targets are summed. It is *not*
+`round(Σ contribution)`: those are different integers whenever the window
+fractions don't round the same way, and the difference is not cosmetic. The
+boundary fill hands each venture its own `qᵢ` while the Syndicate fork
+self-terminates at `Q`, so a `Q` below `Σ qᵢ` would leave a licence unable to
+reach a target the pile was never allowed to hold — a **phantom breach** — and a
+`Q` above it would admit a unit no verdict accounts for. Summing the rounded
+targets makes the cap and the verdicts the same integers by construction. (For a
+full-window mine `qᵢ` is just its stored commitment, so every full-window run is
+unaffected, byte for byte.)
 
 ### Per-good window accumulators — `guild.syndicateWindows[systemId][good]`
 
@@ -151,7 +163,9 @@ the rest is pure derived telemetry (the client renders it and computes nothing).
 | `pctAchieved` | float | DERIVED | `delivered / Q × 100` | Syndicate (progress %) |
 | `status` | `"accruing"` \| `"met"` \| `"breach"` | DERIVED (ROLLUP) | the good-level **summary** of the per-venture verdicts below — the real met/breach is per venture (see next section). "accruing" mid-window; at the boundary a rollup (e.g. all-met / some-breached) | Syndicate (overall pill) — **and the storyteller** |
 
-### Per-venture licence outcome — the REAL met/breach *(added 27-08-26)*
+| `perVenture` | `{ [ventureId]: { commitment, delivered, status } }` | DERIVED | the per-licence outcome — see the next section. Keyed by ventureId so the roster reads a row per venture with no reshaping; insertion order IS the reconciled pursue order | Syndicate roster (one row each) |
+
+### Per-venture licence outcome — the REAL met/breach *(added 27-08-26; BUILT 27-08-26)*
 
 Met/breach is fundamentally a **per-licence** fact, not a per-good one: each venture either delivered its whole
 committed quantity or it did not, and that is what the fee (later slice) charges against. The good-level
@@ -172,9 +186,28 @@ the tail breaches, exactly as the player ranked them — so a player who cannot 
 goods onto the licences that cost least or need reputation. The good-level `delivered` = Σ these; the
 good-level `status` = their rollup.
 
-**Design-ahead:** the `pursue` control, the per-venture allocation, and per-venture `status` are NOT in the
-engine yet (the window tracks only aggregate `delivered`/`status` today) — this section is the contract the
-licence-distribution slice builds to, and the console roster is already laid out for it.
+**BUILT — licence distribution slice, 27-08-26** (`docs/licence-distribution.md`). The `pursue` control, the
+per-venture allocation and the per-venture `status` are all live in the engine, exactly as specified above. The
+window still tracks ONE aggregate `delivered` per `(guild, system, good)` — the per-venture shares are derived
+from it at read time, no new stored accumulator — and the good-level `status` is now the rollup.
+
+Where to find each piece: `pursue` is stored/read through `sim/profile.js` (`getGoodPolicy`, `storedPursue`,
+`storedPursueGoods`) and set by `setProductionProfile`; the fill and the rollup are `pursueFill` /
+`rollupStatus` in `sim/production.js`; the outcome is emitted as `…goods[good].window.perVenture` (below).
+
+Two behaviours the table above leaves implicit, both settled by §5 and pinned by tests:
+- **Reconciliation at read time.** A stored ranking naming a venture that no longer produces the good is
+  DROPPED at the boundary and raises a `stale_pursue` **review flag** (the same class as a stale throttle) —
+  the engine never rewrites the player's stored list. A committing venture the ranking omits is APPENDED, in
+  establishment order. An absent ranking is therefore pure establishment order.
+- **No arrival-time fencing (the N-4 ruling).** The fill draws on the window's *whole* pile, including units
+  delivered before a mid-window joiner's licence existed. Ranked first, a latecomer can be met on goods an
+  earlier venture actually sent, and that earlier venture breaches. Intentional — see §5.
+
+**Still design-ahead:** the console roster renders the GOOD's status dot for every row. Wiring it to
+`perVenture` is a pure client slice — the snapshot shape below is already what `licRow` needs (one row per
+venture, each with its own `commitment`, `delivered` and `status`). The **fee** these verdicts drive is
+Slice 3b-iii; this slice charges nothing.
 
 ## Bridge — control → action, readout → field
 
@@ -193,6 +226,7 @@ setter feeding `Q`, and `setWindowN` is the operator/storyteller knob.
 | Production fork slider | `setProductionProfile` | `goods[good].downstreamPct` |
 | Stockpile level slider / number | `setProductionProfile` | `goods[good].reserveLevel` |
 | Priority rank selectors (all three panels) | `setProductionProfile` | `goods[good].order` (the permutation) |
+| Syndicate roster reorder (drag the licence rows) | `setProductionProfile` | `goods[good].pursue` (an array of ventureIds; `null` clears back to establishment order) |
 | Window length (operator, not a per-guild control) | `setWindowN` | `state.windowN` |
 
 Actions set standing policy and DO NOT advance the galaxy (§15.7): the write
@@ -209,12 +243,13 @@ consumes per good (after locating guild → system in the `production` array) is
   fresh, demand, reserve0, pot, supplied, reserveDelta,
   fork:   { syndicate, downstream, stockpile },
   window: { Q, windowStart, delivered, sendCarry,
-            ticksRemaining, requiredRate, sendThisTick, pctAchieved, status }
+            ticksRemaining, requiredRate, sendThisTick, pctAchieved, status,
+            perVenture: { [ventureId]: { commitment, delivered, status } } }
 }
 ```
 
 plus the good's policy echoed back so the controls render their current
-positions: `order`, `downstreamPct`, `reserveLevel`, `syndicate`.
+positions: `order`, `downstreamPct`, `reserveLevel`, `syndicate`, `pursue`.
 
 ## The storyteller lens
 

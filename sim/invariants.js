@@ -229,10 +229,17 @@ function checkSyndicateWindows(state) {
         if (Number.isInteger(win.windowStart) && win.windowStart < 1) {
           out.push({ rule: 'window-start-is-a-real-tick (§5 Slice B)', where: `${where}.windowStart`, detail: { value: win.windowStart } });
         }
-        // NOT checked here: `delivered ≤ Q`. `Q` is deliberately NOT stored (invariant
-        // 5 — the venture commitments are its single source), so asserting it would
-        // mean recomputing the per-venture sum inside this sweep. Left to the
-        // distribution slice, which walks the ventures at the boundary anyway.
+        // STILL NOT checked here: `delivered ≤ Q` — and the licence-distribution slice
+        // (27-08-26), which this note used to point at, deliberately did not add it.
+        // The recompute is no longer the obstacle (`Q = Σ round(commitment × fraction)`
+        // over the good's ventures, against the STORED `windowStart`); the obstacle is
+        // that a window can be legitimately over-delivered. Units are delivered against
+        // the `Q` that stood at the time, so a commitment reduced mid-window would leave
+        // real units in the pile against a smaller recomputed `Q` — and a tripwire is a
+        // HALT, so a wrong guess stops the galaxy on a state that is not broken. What
+        // over-delivery MEANS is a ruling, not a build decision: open question #65
+        // (§19). Nothing can shrink a commitment mid-window today, so the gap is
+        // currently unreachable rather than tolerated.
         const c = win.sendCarry;
         if (typeof c !== 'number' || Number.isNaN(c) || c < 0 || c >= 1) {
           out.push({ rule: 'send-carry-in-[0,1) (§5 Slice B)', where: `${where}.sendCarry`, detail: { value: c } });

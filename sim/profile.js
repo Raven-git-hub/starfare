@@ -50,6 +50,15 @@ function getGoodPolicy(guild, systemId, good) {
     // when set (a fresh copy, no aliasing into engine state), and the returned policy's
     // shape is otherwise unchanged from before this slice.
     ...(stored.syndicate === undefined ? {} : { syndicate: { ...stored.syndicate } }),
+    // pursue (§5 licence distribution): the ORDERED venture ids the good's delivered
+    // pile fills at the window boundary — top licence first, each to its full target
+    // before the next is fed. Sparse in exactly the way `syndicate` is: the key is
+    // included ONLY when the player has stored one, because ABSENT is meaningful —
+    // it means "no ranking, use establishment order", which the fill's reconciliation
+    // (sim/production.js) produces for free by appending every committing venture the
+    // list omits. So an absent list and an empty list behave identically, and callers
+    // read `policy.pursue || []` rather than branching. Copied, never aliased.
+    ...(stored.pursue === undefined ? {} : { pursue: [...stored.pursue] }),
   };
 }
 
@@ -93,6 +102,27 @@ function storedPolicyGoods(guild, systemId) {
   return Object.keys(goods).sort();
 }
 
+// storedPursueGoods(guild, systemId) -> sorted array of goods that have an EXPLICITLY-
+// stored `pursue` list for that system ([] when absent). The sibling of
+// storedThrottleIds/storedPolicyGoods, and it exists for the same reason: the review
+// pass (§5, sim/production.js) needs to find a RANKING that names a venture no longer
+// producing the good — the same class of staleness as a throttle naming a removed
+// venture. Sorted for determinism (invariant 9).
+function storedPursueGoods(guild, systemId) {
+  const goods = ((guild.productionProfile || {})[systemId] || {}).goods || {};
+  return Object.keys(goods).filter((good) => Array.isArray(goods[good].pursue)).sort();
+}
+
+// storedPursue(guild, systemId, good) -> the good's stored `pursue` list as a fresh
+// array ([] when unset). The singular of storedPursueGoods, and the read the review
+// pass walks — so the nested shape stays inside this file even for the flag. The
+// resolver reads the same list through getGoodPolicy, which carries it as part of the
+// good's whole policy; this is for the callers that want just the ranking.
+function storedPursue(guild, systemId, good) {
+  const stored = (((guild.productionProfile || {})[systemId] || {}).goods || {})[good] || {};
+  return Array.isArray(stored.pursue) ? [...stored.pursue] : [];
+}
+
 // setEntry(guild, systemId, { goods?, throttles? }) -> MERGE a patch into the
 // guild's profile for one system, creating the nesting as needed. Merges at the
 // KEY level: each good in `goods` merges its supplied fields over that good's
@@ -127,6 +157,7 @@ function setEntry(guild, systemId, patch) {
       applyField(merged, 'downstreamPct', policy.downstreamPct);
       applyField(merged, 'reserveLevel', policy.reserveLevel);
       applyField(merged, 'syndicate', policy.syndicate, (v) => ({ ...v }));
+      applyField(merged, 'pursue', policy.pursue, (v) => [...v]);
       // A good whose every field has been cleared holds no policy — so DELETE the
       // entry entirely rather than leave an empty `{}`, keeping the profile truly
       // sparse (storedPolicyGoods / the review flag see it as unset, not "set to {}").
@@ -161,6 +192,7 @@ function cloneProfile(profile) {
           ...policy,
           ...(policy.order !== undefined ? { order: [...policy.order] } : {}),
           ...(policy.syndicate !== undefined ? { syndicate: { ...policy.syndicate } } : {}),
+          ...(policy.pursue !== undefined ? { pursue: [...policy.pursue] } : {}),
         };
       }
     }
@@ -170,4 +202,8 @@ function cloneProfile(profile) {
   return out;
 }
 
-module.exports = { getGoodPolicy, getThrottlePct, hasThrottle, storedThrottleIds, storedPolicyGoods, setEntry, cloneProfile };
+module.exports = {
+  getGoodPolicy, getThrottlePct, hasThrottle,
+  storedThrottleIds, storedPolicyGoods, storedPursueGoods, storedPursue,
+  setEntry, cloneProfile,
+};

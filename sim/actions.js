@@ -389,6 +389,24 @@ function validateAction(state, action) {
             return { valid: false, reason: `syndicate.value for good ${JSON.stringify(good)} must be a non-negative integer (§15.2)` };
           }
         }
+        // pursue (§5 licence distribution): the ORDER the good's delivered pile fills
+        // its licensed ventures at the window boundary. An ARRAY of venture ids, or
+        // null to clear back to establishment order. Deliberately NOT checked against
+        // the current ventures — exactly like `throttles` below, and for the same
+        // reason: the profile is standing intent, reconciled at READ time, so ranking
+        // a venture you are about to establish (or one you have just removed) is legal
+        // and simply resolves at the boundary. The review flag surfaces a stale entry
+        // to the player rather than the action refusing it.
+        if (policy.pursue !== undefined && policy.pursue !== null) {
+          if (!Array.isArray(policy.pursue)) {
+            return { valid: false, reason: `pursue for good ${JSON.stringify(good)} must be an array of ventureIds` };
+          }
+          for (const id of policy.pursue) {
+            if (typeof id !== 'string' || id.length === 0) {
+              return { valid: false, reason: `pursue for good ${JSON.stringify(good)} must contain non-empty ventureId strings` };
+            }
+          }
+        }
       }
     }
     if (action.throttles !== undefined) {

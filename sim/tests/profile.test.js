@@ -10,7 +10,10 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { createGuild } = require('../state.js');
-const { getGoodPolicy, getThrottlePct, setEntry, storedPolicyGoods } = require('../profile.js');
+const {
+  getGoodPolicy, getThrottlePct, setEntry, storedPolicyGoods,
+  storedPursue, storedPursueGoods, cloneProfile,
+} = require('../profile.js');
 const { advance } = require('../run.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
 const {
@@ -186,4 +189,46 @@ test('a profile now MOVES production output — the tick reads it (2a-i no-op pr
 
 test('determinism holds with the profile field present — run twice, hashes equal', () => {
   assert.equal(hashState(runScenario([profileAction])), hashState(runScenario([profileAction])));
+});
+
+// --- `pursue` (the licence-distribution slice) -------------------------------------
+//
+// The per-good ranking that the window boundary fills its licences in. It is plumbing
+// here — what it MEANS is pinned in licence-distribution.test.js — so these guard only
+// the two properties this file owns: it survives the accessors, and it never aliases.
+
+test('`pursue` is sparse: absent from the policy until it is set, and gone when cleared', () => {
+  const g = createGuild({ id: 'g1', credits: 0, fuelHoard: 0 });
+  // Absent, exactly like `syndicate` — because ABSENT means "establishment order", a
+  // real default the fill's reconciliation produces, not a value to fill in here.
+  assert.deepEqual(getGoodPolicy(g, 'sys_0002', 'titanium'), DEFAULT_POLICY);
+  assert.deepEqual(storedPursue(g, 'sys_0002', 'titanium'), []);
+  assert.deepEqual(storedPursueGoods(g, 'sys_0002'), []);
+
+  setEntry(g, 'sys_0002', { goods: { titanium: { pursue: ['b', 'a'] } } });
+  assert.deepEqual(getGoodPolicy(g, 'sys_0002', 'titanium').pursue, ['b', 'a']);
+  assert.deepEqual(storedPursueGoods(g, 'sys_0002'), ['titanium']);
+
+  // A good with some OTHER policy set is not a good with a ranking set.
+  setEntry(g, 'sys_0002', { goods: { copper: { downstreamPct: 40 } } });
+  assert.deepEqual(storedPolicyGoods(g, 'sys_0002'), ['copper', 'titanium']);
+  assert.deepEqual(storedPursueGoods(g, 'sys_0002'), ['titanium'], 'only the ranked good');
+
+  setEntry(g, 'sys_0002', { goods: { titanium: { pursue: null } } });
+  assert.equal(getGoodPolicy(g, 'sys_0002', 'titanium').pursue, undefined, 'null clears');
+  assert.deepEqual(storedPursueGoods(g, 'sys_0002'), []);
+});
+
+test('every `pursue` read is a COPY — no caller can reach into engine state', () => {
+  const g = createGuild({ id: 'g1', credits: 0, fuelHoard: 0 });
+  const supplied = ['b', 'a'];
+  setEntry(g, 'sys_0002', { goods: { titanium: { pursue: supplied } } });
+  supplied.push('mutated-after-the-fact');
+  assert.deepEqual(getGoodPolicy(g, 'sys_0002', 'titanium').pursue, ['b', 'a'], 'stored a copy');
+
+  getGoodPolicy(g, 'sys_0002', 'titanium').pursue.push('x');
+  storedPursue(g, 'sys_0002', 'titanium').push('y');
+  cloneProfile(g.productionProfile)['sys_0002'].goods.titanium.pursue.push('z');
+  assert.deepEqual(storedPursue(g, 'sys_0002', 'titanium'), ['b', 'a'],
+    'and hands out copies — the array a caller gets is never the one on state');
 });

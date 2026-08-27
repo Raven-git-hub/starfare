@@ -114,6 +114,18 @@ const { PRICED_GOODS, postedPrice } = require('./prices.js');
 // `basicFee`, `discountedFee`) or null when unlicensed. No schema bump: nothing existing
 // changed shape. The two fees are what was LOCKED at signing, not a live recomputation —
 // they do not move when the market does, which is the point of locking them.
+// v7 (licence distribution, 27-08-26): ADDITIVE — a committed good's `window` block in
+// the `production` block gains `perVenture` = { [ventureId]: { commitment, delivered,
+// status } }, the PER-LICENCE met/breach §5 rules is the real verdict (the good-level
+// `status` beside it is now a rollup of these). Keyed by ventureId so the console's
+// Syndicate roster reads one row per venture with no reshaping — `commitment` is that
+// venture's target this window (`round(syndicateCommitment × windowFraction)`),
+// `delivered` its share of the pile under the good's `pursue` order, `status` its
+// binary verdict. In the carried `productionProfile`, a good's policy may now also
+// carry the `pursue` ranking (an array of ventureIds). No schema bump: nothing existing
+// changed shape and an older reader simply ignores the new keys. DERIVED telemetry —
+// recomputed every read by the same resolver the tick applies, in no serialized state
+// and in no determinism hash.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -133,6 +145,9 @@ const SNAPSHOT_SCHEMA = 7;
 //     production: [ { guildId,                                  // previewProduction(state)
 //       systems: [ { systemId, mines, goods, lines, refineries,     // resolved per-system
 //                    review: [ { kind, ventureId?|good? } ] } ] } ], // §5 review flag (2c-i)
+//       // a committed good also carries goods[good].window = { Q, windowStart, delivered,
+//       // sendCarry, ticksRemaining, requiredRate, sendThisTick, pctAchieved, status,
+//       // perVenture: { ventureId: { commitment, delivered, status } } }  // §5 per-licence
 //     ventures: [ { id, ownerGuildId, type, siteId, systemId, resourceType,
 //                   licence: { committedOutputPct, windowDays, signedTick,       // 3b-i
 //                              lockedPrice, basicFee, discountedFee } | null,

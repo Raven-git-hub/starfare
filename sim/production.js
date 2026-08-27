@@ -34,7 +34,11 @@
 // `min(reserveLevel, available)`, Production offers consumers `min(demand×downstreamPct,
 // available)`, and the Syndicate draws its PACED per-tick send toward the per-good
 // aggregate window target `Q` (Σ commitment over the mines) — FRESH ONLY, never past
-// `Q`, self-terminating at `Q`, resolving met/breach at the `tick % N == 0` boundary
+// `Q`, self-terminating at `Q`, resolving met/breach PER LICENSED VENTURE at the
+// `tick % N == 0` boundary — the window's whole delivered pile is filled down the
+// player's `pursue` order, each venture to its full target `qᵢ` before the next is fed,
+// and `Q = Σ qᵢ` so the pile cap and the verdicts are the same integers (§5's
+// per-venture ruling; the good-level status is a rollup of those verdicts)
 // (the window state lives in guild.syndicateWindows, sim/windows.js; the send lands on
 // integers via a per-good send carry, the same floor-and-carry discipline as batchCarry).
 // A consuming line runs at a CONTINUOUS rate
@@ -51,7 +55,8 @@
 const { getRecipe } = require('./recipes.js');
 const { getStock } = require('./stock.js');
 const {
-  getGoodPolicy, getThrottlePct, hasThrottle, storedThrottleIds, storedPolicyGoods,
+  getGoodPolicy, getThrottlePct, hasThrottle,
+  storedThrottleIds, storedPolicyGoods, storedPursueGoods, storedPursue,
 } = require('./profile.js');
 const {
   FIRST_CUT_WINDOW_N, winStartFor, getWindow,
@@ -67,6 +72,12 @@ const { committedContribution } = require('./licence.js');
 //     lines:      [ { ventureId, good, demand, alloc, drawn } ],  // per consuming line, per input
 //     refineries: [ { ventureId, rate, bottleneckGood, minted, batchCarry } ],
 //   }
+// A good carrying commitment also gets `goods[good].window` = the §5 windowed-accrual
+// telemetry — { Q, windowStart, delivered, sendCarry, ticksRemaining, requiredRate,
+// sendThisTick, pctAchieved, status, perVenture } — where `perVenture` is
+// { [ventureId]: { commitment, delivered, status } }, the per-licence outcome of the
+// boundary fill. All of it DERIVED: only windowStart/delivered/sendCarry echo stored
+// state, and nothing here enters the determinism hash.
 // GOOD-LEVEL integers (§5 one-pot distribution, Slice A): `fresh` = Σ mine output;
 // `demand` = the Gate-2 naive full-tilt Σ (rated, not throttled — the stable draw
 // cap basis); `reserve0` = start-of-step reserve; `pot` = reserve0 + fresh (the one
@@ -136,12 +147,41 @@ function resolveProduction(guild, systemId, opts = {}) {
   // only). Computed UP FRONT so a committed good with NO fresh and NO consumer (an idle
   // committed mine) is still routed and still delivers 0 — fresh-only — rather than
   // being silently skipped.
+  //
+  // ── Q IS BUILT FROM THE PER-VENTURE TARGETS, NOT ROUNDED AFTER THE SUM ──────────
+  // Each committing venture's own target is `qᵢ = round(committedContribution)`, and
+  // `Q = Σ qᵢ`. It used to be `Q = round(Σ contribution)`, which is a DIFFERENT integer
+  // whenever the fractions don't round the same way (two ventures at `×0.25` of an odd
+  // commitment, say). That difference is harmless while met/breach is judged on the
+  // aggregate and fatal once it is judged PER VENTURE (§5, RULING 27-08-26): the
+  // boundary fill hands each venture its own `qᵢ`, while the Syndicate fork
+  // self-terminates at `Q`. If `Q < Σ qᵢ` the pile can never fill the last venture and
+  // it breaches on a window it could not possibly have met — a PHANTOM breach; if
+  // `Q > Σ qᵢ` a unit arrives that no venture's verdict accounts for. Summing the
+  // rounded targets makes the pile cap and the verdicts the same integers, by
+  // construction rather than by luck. `qᵢ` is the ONE per-venture target — this sum and
+  // the fill below both read it, the same single-source discipline `committedContribution`
+  // itself exists for.
+  //
+  // NO-OP where it must be: a full-window venture has `fraction = 1`, so `qᵢ` is its
+  // integer commitment and `Σ round = round(Σ)` exactly — every pre-3b-ii run keeps its
+  // bytes (the committed golden hash pins it).
+  //
+  // `ventureTargets` keeps them in ESTABLISHMENT ORDER (the `ventures` array order),
+  // which is the stable tie-break the pursue reconciliation appends by — the same one
+  // the FCFS throttle default already uses. A `qᵢ` of 0 (a sliver of a window that
+  // rounds away) still gets a row: it is a real licence with a target of zero units,
+  // and it reads `met` because zero units is what it owed.
   const commitmentQ = {};
+  const ventureTargets = {};
   for (const v of ventures) {
     if (!v.resourceType) continue;
     const contribution = committedContribution(v, curWindowStart, windowN);
     if (contribution <= 0) continue;
-    commitmentQ[v.resourceType] = (commitmentQ[v.resourceType] || 0) + contribution;
+    const q = Math.round(contribution);
+    (ventureTargets[v.resourceType] || (ventureTargets[v.resourceType] = []))
+      .push({ ventureId: v.id, q });
+    commitmentQ[v.resourceType] = (commitmentQ[v.resourceType] || 0) + q;
   }
 
   // Goods to route: everything mined fresh here PLUS every good some in-system
@@ -177,17 +217,15 @@ function resolveProduction(guild, systemId, opts = {}) {
       const inp = recipe.inputs.find((i) => i.good === good);
       if (inp) consumers.push({ venture: c, qty: inp.qty });
     }
-    // The aggregate windowed target (0 = unlicensed). ROUNDED to a whole number: the
-    // sum above is `Σ integer commitment × fraction`, and a mid-window fraction makes it
-    // fractional — but `Q` is a quantity of GOODS, which are integers (§15.2), and it is
-    // compared against `delivered` (a whole-unit count) to judge met/breach. Rounding
-    // here, at the single place `Q` is finalised, means the paced required-rate and the
-    // met/breach judgement read the SAME whole number, so pacing can never aim at a
-    // target judgement won't accept. `Math.round`, matching the send carry's own
-    // half-up convention. With a full-window fraction of 1 the sum is already an
-    // integer and rounding is the identity — which is why every pre-3b-ii run is
-    // byte-identical (a golden-hash test pins that).
-    const Q = Math.round(commitmentQ[good] || 0);
+    // The aggregate windowed target (0 = unlicensed). ALREADY a whole number: it is
+    // `Σ qᵢ` over the good's committing ventures, each `qᵢ` rounded where it was built
+    // (above). Goods are integers (§15.2) and `Q` is compared against `delivered` (a
+    // whole-unit count), so the pacing, the fork's self-termination and every
+    // per-venture verdict read the SAME integers — pacing can never aim at a target
+    // the boundary won't accept, and no venture can be asked for a unit the pile is
+    // not allowed to hold.
+    const Q = commitmentQ[good] || 0;
+    const targets = ventureTargets[good] || [];
 
     // A fresh good nobody consumes AND that carries no commitment: nothing to route —
     // it all stays in the pool (next tick's reserve). No `goods` entry. A good with
@@ -248,7 +286,11 @@ function resolveProduction(guild, systemId, opts = {}) {
     goodPlans.push({
       good, fresh: freshG, reserve0, pot, demand: demandTotal,
       order: policy.order, reserveLevel: policy.reserveLevel, consumerPool,
-      Q, intendedSend, win,
+      // `targets` (establishment order) and `pursue` (the player's ranking, absent =
+      // none) are what the finalize pass fills the window's pile with — read HERE, on
+      // the one pass that already reads the good's policy, so the fill never opens the
+      // profile a second time.
+      Q, intendedSend, win, targets, pursue: policy.pursue || [],
     });
 
     // Gate 3 — ration `consumerPool` across consumers into integer per-line allocations.
@@ -402,11 +444,18 @@ function resolveProduction(guild, systemId, opts = {}) {
     // display rule). synDraw is the ACTUAL delivery, so delivered advances by it and
     // NEVER exceeds Q (intendedSend was ≤ Q − delivered). At the boundary tick
     // (p % N == 0 — the window's last), status resolves met/breach AFTER this tick's
-    // apply; otherwise the window is still accruing.
+    // apply; otherwise the window is still accruing. `perVenture` is the REAL verdict
+    // (§5: met/breach is per licence) — pure derived telemetry keyed by ventureId, so
+    // the console roster reads a row per licence without reshaping anything, and the
+    // good-level `status` above it is a rollup of those rows.
     if (plan.win) {
       const w = plan.win;
       const newDelivered = w.delivered + synDraw;
       const isBoundary = (p % windowN) === 0;
+      // The PER-VENTURE verdicts (§5's per-venture met/breach ruling), and the
+      // good-level status ROLLED UP from them — the individuals are computed first and
+      // the aggregate is derived from them, never the other way round.
+      const perVenture = pursueFill(plan.targets, plan.pursue, newDelivered, isBoundary);
       goodEntry.window = {
         Q: plan.Q,
         windowStart: w.windowStart,
@@ -416,7 +465,8 @@ function resolveProduction(guild, systemId, opts = {}) {
         requiredRate: w.requiredRate,
         sendThisTick: synDraw,
         pctAchieved: plan.Q > 0 ? (newDelivered / plan.Q) * 100 : 100,
-        status: isBoundary ? (newDelivered >= plan.Q ? 'met' : 'breach') : 'accruing',
+        status: rollupStatus(perVenture, isBoundary),
+        perVenture,
       };
     }
 
@@ -424,6 +474,85 @@ function resolveProduction(guild, systemId, opts = {}) {
   }
 
   return { systemId, mines, goods, lines, refineries };
+}
+
+// reconcilePursue(targets, pursue) -> the good's committing ventures in the order the
+// boundary fill feeds them, as { ventureId, q } rows.
+//
+// The stored `pursue` list is STANDING INTENT, not a referential key: the player ranks
+// licences and the world moves underneath the ranking. So it is reconciled at READ
+// time, exactly as a stored throttle is (§15.4) — the action never refused a stale
+// entry, and the engine never rewrites the player's stored list:
+//   - an id naming a venture that is NOT committing this good this window is DROPPED
+//     (it was sold, re-sited, or its licence lapsed — the review flag tells the player);
+//   - a committing venture the list OMITS is APPENDED, in ESTABLISHMENT order — the
+//     same stable tie-break Gate 3's FCFS default already uses, not a new one. So a
+//     newly-licensed mine the ranking has never heard of is fed LAST, which is the safe
+//     default: ranking is a privilege you grant, never one you inherit.
+//   - a duplicate id is honoured once, at its first appearance.
+// An ABSENT (or empty) list therefore yields pure establishment order.
+function reconcilePursue(targets, pursue) {
+  const byId = new Map(targets.map((t) => [t.ventureId, t]));
+  const seen = new Set();
+  const out = [];
+  for (const id of pursue) {
+    const t = byId.get(id);
+    if (!t || seen.has(id)) continue;
+    seen.add(id);
+    out.push(t);
+  }
+  for (const t of targets) if (!seen.has(t.ventureId)) out.push(t);
+  return out;
+}
+
+// pursueFill(targets, pursue, delivered, isBoundary) -> { [ventureId]: { commitment,
+// delivered, status } }, the §5 PER-VENTURE licence outcome.
+//
+// The window's WHOLE delivered pile is walked down the reconciled pursue order, each
+// venture taking `min(qᵢ, remaining)` — its full target before the next is fed. Integer
+// subtraction throughout; nothing is rounded here, because `qᵢ` and `delivered` are
+// already the whole units the fill is defined on.
+//
+// BINARY (§5): `met` iff the venture got its ENTIRE target. One unit short is `breach`,
+// with no partial credit — the fee it drives (3b-iii) is a lump, so a half-met licence
+// is not a thing the model can charge for. Mid-window every row reads `accruing`, with
+// `delivered` a projection off the pile as it stands: the ranking is editable until the
+// boundary, so a mid-window verdict would be a guess presented as a fact.
+//
+// NO ARRIVAL-TIME FENCING (§5, RULED 27-08-26). The pile is not fenced by when a unit
+// was delivered or when a licence was signed: a mid-window joiner ranked first draws on
+// units delivered before its licence existed, and the full-window venture that actually
+// sent them then breaches. That is the RULING, not an oversight — pursue is the lever
+// for steering the goods you have onto the licences that cost you least, and the
+// Syndicate receives the same total goods either way; only which licence pays the
+// discounted fee moves. A test asserts this behaviour so it cannot be "fixed" quietly.
+function pursueFill(targets, pursue, delivered, isBoundary) {
+  const out = {};
+  let remaining = delivered;
+  for (const t of reconcilePursue(targets, pursue)) {
+    const got = Math.min(t.q, remaining);
+    remaining -= got;
+    out[t.ventureId] = {
+      commitment: t.q,
+      delivered: got,
+      status: isBoundary ? (got >= t.q ? 'met' : 'breach') : 'accruing',
+    };
+  }
+  return out;
+}
+
+// rollupStatus(perVenture, isBoundary) -> the GOOD-level status, derived from the
+// per-venture verdicts above: `met` only if every licence on the good was met, else
+// `breach`; `accruing` mid-window. The aggregate is a summary of the individuals and
+// nothing reads it to decide a venture's fate — §5's "the aggregate is derived from
+// the individuals, never the reverse". (With `Q = Σ qᵢ` and a greedy fill this is the
+// same verdict the old `delivered >= Q` test gave, which is exactly why the change is
+// byte-identical for the single-venture case — but it is now computed the way the
+// design says it is composed, so a future per-venture rule cannot silently disagree
+// with the dot the console shows.)
+function rollupStatus(perVenture, isBoundary) {
+  if (!isBoundary) return 'accruing';
+  return Object.values(perVenture).every((r) => r.status === 'met') ? 'met' : 'breach';
 }
 
 // resolveWindow(...) -> the §5 per-good windowed-accrual send for ONE tick. Reads the
@@ -500,6 +629,16 @@ function resolveWindow(guild, systemId, good, Q, freshG, control, curWindowStart
 //   (b) stale_good_policy — a stored `goods` policy is for a good S no longer produces.
 //   (c) unmanaged_surplus — a RAW mined good with no in-system consumer AND no policy
 //                           set (the "you have unallocated titanium, go set it" nudge).
+//   (d) stale_pursue      — a stored `pursue` list ranks a venture that no longer
+//                           produces that good in S. The same CLASS of staleness as
+//                           (a): the ranking still stands, the engine silently drops
+//                           the dead entry at the boundary (reconcilePursue), and the
+//                           player is told rather than having their list rewritten.
+//                           It is checked against PRODUCERS of the good, not against
+//                           licence-holders, because an unlicensed producer is a
+//                           legitimate thing to rank ahead of time — it becomes live
+//                           the moment the licence is granted — while a venture that
+//                           has stopped producing the good never will.
 // Deliberately NOT flagged (d): a consumer the player chose to starve (a downstream
 // cap / stockpile floor / throttle) — chosen scarcity is intent, not an oversight.
 // Because (c) fires only for RAW goods, a processed refinery output that nothing
@@ -525,6 +664,20 @@ function reviewSystem(guild, systemId) {
   const producedGoods = new Set([...mineGoods, ...refOutputs]);
   const policyGoods = new Set(storedPolicyGoods(guild, systemId));
 
+  // Which ventures produce each good in S — a mine by its `resourceType`, a refinery by
+  // its recipe's OUTPUT. This is the set a `pursue` entry must name to still be live.
+  const producersOfGood = {};
+  for (const v of ventures) {
+    let good = null;
+    if (v.resourceType) {
+      good = v.resourceType;
+    } else if (v.recipeId) {
+      const recipe = getRecipe(v.recipeId);
+      good = recipe ? recipe.output.good : null;
+    }
+    if (good) (producersOfGood[good] || (producersOfGood[good] = new Set())).add(v.id);
+  }
+
   const issues = [];
   // (a) a throttle for a venture that has since been removed from S.
   for (const id of storedThrottleIds(guild, systemId)) {
@@ -540,12 +693,25 @@ function reviewSystem(guild, systemId) {
       issues.push({ kind: 'unmanaged_surplus', good });
     }
   }
+  // (d) a `pursue` ranking naming a venture that no longer produces that good here.
+  for (const good of storedPursueGoods(guild, systemId)) {
+    const producers = producersOfGood[good] || new Set();
+    const seen = new Set();
+    for (const id of storedPursue(guild, systemId, good)) {
+      if (producers.has(id) || seen.has(id)) continue;
+      seen.add(id); // one flag per dead id, however many times the list repeats it
+      issues.push({ kind: 'stale_pursue', good, ventureId: id });
+    }
+  }
 
-  // Sort by (kind, ventureId|good) so the list is deterministic (invariant 9).
+  // Sort by (kind, good, ventureId) so the list is deterministic (invariant 9). The
+  // three original kinds carry exactly one of `good`/`ventureId`, so for them the
+  // missing half is '' and this is the same ordering as before; `stale_pursue` carries
+  // BOTH, and needs both to be totally ordered.
+  const key = (i) => `${i.kind}\u0000${i.good || ''}\u0000${i.ventureId || ''}`;
   issues.sort((a, b) => {
-    if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
-    const ak = a.ventureId || a.good;
-    const bk = b.ventureId || b.good;
+    const ak = key(a);
+    const bk = key(b);
     return ak < bk ? -1 : ak > bk ? 1 : 0;
   });
   return issues;
