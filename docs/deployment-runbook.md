@@ -1,12 +1,15 @@
 # Starfare — deployment runbook (game container behind starfare-1.online)
 
-> **Updated 2026-08-25.** The container runs the **galaxy-lifecycle** build (create/delete a galaxy at
+> **Updated 2026-08-27.** The container runs the **galaxy-lifecycle** build (create/delete a galaxy at
 > runtime from the admin panel; the seed lives in the volume; a boot clock ticks the world once a
 > minute). Host facts, learned in the field: the repo clone is `~/starfare` and state lives at
 > `~/starfare-state` on the Docker host (`docker@docker`) — substitute your host's actual paths; and
 > **the tunnel connector needs `--protocol http2`** (this network drops QUIC after the handshake). The
 > run command carries **`-e STARFARE_TICK_MS=60000`** (one tick/minute), and every redeploy ends with
 > **`docker image prune -af`** — see **Disk hygiene** (section 11), which a full disk made non-optional.
+> Ops is now a **command, not a paste**: `tools/admin.js` ships in the image, and
+> **`docker exec starfare node tools/admin.js verify-cycle`** is the standard post-redeploy check
+> (section 12).
 
 **What this deploys:** the persistence-capable game container — one galaxy, in-memory compute,
 file-backed durability, runtime create/delete of the galaxy, a self-ticking world — reachable at
@@ -173,6 +176,81 @@ containers, 10 "active"** where only two should run (`starfare`, `starfare-tunne
 containers behind across deploys. Run `docker ps -a`, remove strays (`docker container prune -f` for
 stopped ones; kill/remove unexpected running ones by name), and if they keep reappearing find what
 starts them (a leftover smoke-test `docker run`, a compose file, a duplicate `--name`).
+
+## 12. Operator commands — `tools/admin.js` (added 2026-08-27)
+
+Operating and verifying the live container used to mean pasting a browser-console blob or a hand-rolled
+`curl`/`node` snippet — fragile (it lands in the wrong shell) and unversioned (it lived in a chat
+message). `tools/admin.js` is the committed replacement: a **dependency-free** Node CLI that ships in
+the image and turns each recurring chore into a labelled shell command. It is a **thin HTTP client**
+over the endpoints `sim/server.js` already serves — it drives the running game, it does not embed the
+engine, and it computes no game number.
+
+    docker exec starfare node tools/admin.js <command> [flags]
+
+It runs in the stock `node:22-alpine` image with nothing installed (plain Node + global `fetch`), and
+`--base` defaults to `$STARFARE_BASE` or `http://localhost:7331`, so the same commands work unchanged
+against a local `node sim/server.js`:
+
+    node tools/admin.js verify-cycle --base http://localhost:7331
+
+**Exit codes:** `0` on success, `1` on failure — including a refused action (`{accepted:false}`), a
+`NO GALAXY` server, or a failed `verify-cycle`. Scriptable and CI-able.
+
+| Command | Endpoint(s) it wraps | What it does |
+|---|---|---|
+| `health` | `GET /health` | Liveness, galaxy state + seed, tick, guild count, autotick status. |
+| `snapshot [--json] [--pick a.b.c]` | `GET /snapshot` | Default: a compact summary (tick, the `calendar` block, guild + venture counts). `--json` dumps the whole snapshot; `--pick calendar` extracts one dotted path. |
+| `starters` | `GET /starters` | Every startable system (id, ring, name, Terran homeworld). |
+| `new-galaxy [--seed N]` | `POST /admin/galaxy/new`, then `GET /snapshot` | Creates a galaxy and reads back `calendar.dayAnchorTick` to confirm it is midnight-anchored. **Warns that this REPLACES the active galaxy.** |
+| `seat-demo [--window N]` | `POST /admin/galaxy/new` *or* `POST /reset` + `POST /action`, `GET /starters`, `GET /system/:id`, `POST /action` ×5 | The two-mine 100 %-licence console demo — see below. |
+| `verify-cycle [--seed N]` | `POST /admin/galaxy/new`, `GET /starters`, `GET /system/:id`, `POST /action` ×3, `GET /snapshot` | **The standard post-redeploy check** — see below. |
+| `tick [n]` | `POST /tick` ×n | Manual advance (default 1), for short-window testing when the boot clock is off. |
+
+Flags: `--base <url>`, `--seed N`, `--pick a.b.c`, `--json`, `--window N`, `--help`/`-h`.
+
+### `verify-cycle` — the standard post-redeploy check
+
+Run it after every redeploy (section 9) to prove the ruled commitment cycle is actually live on the
+running container. It creates a fresh galaxy, auto-finds a titanium node in an unclaimed starter,
+founds a guild, establishes a mine, licenses it at 100 %, reads the result back, and asserts three
+things — every figure read back from the server, none computed here:
+
+    docker exec starfare node tools/admin.js verify-cycle
+
+      PASS  venture.syndicateCommitment === 7200       read back 7200
+      PASS  calendar.windowN === 1440                  read back 1440
+      PASS  calendar.dayAnchorTick present             read back -896
+
+      ALL PASS — the 24-hour, midnight-anchored commitment cycle is live on this server.
+
+A `120` commitment or a `24` window means the container is running code from before the `N` 24 → 1,440
+flip; a missing `dayAnchorTick` means it predates the calendar layer. Either way: **the redeploy did
+not take** — check `docker logs starfare` and section 10's "running container is behind the code" row.
+
+> ⚠️ `verify-cycle` and `seat-demo` (without `--window`) both **create a galaxy**, which REPLACES the
+> active one. Run them on a rig, or accept that the live world is being rebuilt. Back the state dir up
+> first if it matters: `cp -a ~/starfare-state ~/starfare-state.$(date +%F)`.
+
+### `seat-demo` — the two-mine licence demo
+
+The generalised, committed form of the old `seat_licence_demo.sh` paste. It founds a guild, seats **two
+titanium mines on one starter system**, and licenses **both at 100 %**, so the system's whole fresh
+titanium pile is spoken for — the contention the Production Console's Syndicate roster renders in
+pursue order. It prints where it seated and the console URL to open:
+
+    docker exec starfare node tools/admin.js seat-demo
+    # → console  https://starfare-1.online/console?guild=seat_demo&system=sys_0002
+
+By default it seats on a **fresh, midnight-anchored galaxy** running the ruled 1,440-tick window, so a
+full cycle takes a real day. For short-cycle console testing, `--window N` instead uses `POST /reset`
+plus a `setWindowN` action — a **tick-0 test galaxy with no midnight anchor**, which is the only place
+a short window is reachable at all (`setWindowN` is a setup-only knob, legal only at tick 0):
+
+    docker exec starfare node tools/admin.js seat-demo --window 24
+    docker exec starfare node tools/admin.js tick 24     # roll a whole short window by hand
+
+`seat_licence_demo.sh` is superseded by `seat-demo`; nothing else in this runbook is retired.
 
 ## Deferred / not in this runbook (by design)
 - **Postgres, multi-user, in-app auth** — Phase 2/3. Cloudflare Access is the interim gate; real
