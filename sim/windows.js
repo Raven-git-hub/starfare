@@ -29,15 +29,25 @@
 // every commitment is 0 never gets a `syndicateWindows` key, so its serialized state
 // is byte-identical to pre-Slice-B (the determinism hash is unchanged).
 
-// [FIRST-CUT] the engine-wide window length in ticks — UNRULED. Recorded here and in
-// docs/phase-1-tuning.md, flagged for a ruling; NEVER invented silently in game
-// logic. It is only the FALLBACK when a scenario/test sets no `state.windowN`; every
-// scenario and test may override it (that is the "overridable in scenarios/tests"
-// requirement). Design says a window is ≈24h once tick-duration is ruled (§5); 24
-// echoes that memorably but is a pure guess — do NOT treat it as tuned, and do NOT
-// bake a game-meaningful length into the boundary maths (the boundary is the GLOBAL
-// cadence `tick % N == 0`, so N enters only as this one dial).
-const FIRST_CUT_WINDOW_N = 24;
+// The engine-wide window length in ticks — RULED 1,440 (27-08-26). This is NOT a
+// first cut and NOT an invented number: it is DERIVED from two things already ruled.
+// A commitment window is one day (§5 "≈24h"), and a tick is one minute (tick-duration,
+// ruled 24-08-26, docs/phase-1-tuning.md) — so 24 h × 60 min/h = 1,440 ticks. See
+// docs/cycle-and-calendar.md §1 for the reasoning and §7 for the slicing. The earlier
+// value 24 was a placeholder standing in for "≈24h" before tick-duration was fixed;
+// it is retired. Do NOT revert it to a memorable-but-wrong number.
+//
+// It remains only the FALLBACK, consulted when a scenario/test sets no `state.windowN`;
+// every scenario and test may override it (that is the "overridable in scenarios/tests"
+// requirement), which is why flipping it moves no existing golden. Do NOT bake a
+// game-meaningful length into the boundary maths — the boundary is the GLOBAL cadence
+// `tick % N == 0`, so N enters only as this one dial. (The MIDNIGHT ANCHOR that lines
+// that boundary up with a wall-clock day is Slice 2, not this constant's business.)
+//
+// The name keeps its `FIRST_CUT_` prefix in this slice deliberately: renaming it would
+// touch six files for no behavioural gain and bury the one-line number change under a
+// rename diff. Flagged for a follow-up tidy, not silently widened here.
+const FIRST_CUT_WINDOW_N = 1440;
 
 // winStartFor(tick, N): the producing tick that opened the window CONTAINING `tick`,
 // under the GLOBAL cadence — the boundary falls when `tick % N == 0`, and that tick
