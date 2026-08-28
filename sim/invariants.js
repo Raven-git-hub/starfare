@@ -58,6 +58,7 @@ const { isRawResource, isStockpileGood, FUEL_GOOD } = require('./resources.js');
 const { PRICED_GOODS, PRICE_FLOOR, PRICE_CEILING, PUBLISH_LAG } = require('./prices.js');
 const { EQUITY_CEILING, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX, isValidWindowDays } = require('./licence.js');
 const { DEFAULT_WINDOW_N, winStartFor, windowFraction } = require('./windows.js');
+const { HISTORY_N } = require('./history.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { getSite, getLandmark, getSystem, getTerranHomeworld } = require('./seed.js');
 const { getRecipe } = require('./recipes.js');
@@ -260,6 +261,54 @@ function checkSyndicateWindows(state) {
         const c = win.sendCarry;
         if (typeof c !== 'number' || Number.isNaN(c) || c < 0 || c >= 1) {
           out.push({ rule: 'send-carry-in-[0,1) (§5 Slice B)', where: `${where}.sendCarry`, detail: { value: c } });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+// The per-(system, good) production/consumption HISTORY buffer (guild.productionHistory,
+// sim/history.js) — the console's trend sparklines, moved out of the browser and into
+// serialized engine state. It is display-depth state, not a ledger, so nothing here can
+// break conservation; what it CAN do is rot silently, and a rotted series draws a lie.
+// Four things are asserted:
+//   - every sample is a whole, non-negative number (§15.2 — they are unit counts);
+//   - neither series is longer than HISTORY_N (a ring that stopped ringing would grow
+//     without bound and quietly bloat every save);
+//   - `prod` and `cons` are the same length (they are pushed in lockstep, so a mismatch
+//     means one of them missed a tick and the two lines no longer share an x-axis);
+//   - the shape is the expected `{ prod: [], cons: [] }` (a missing array is a broken
+//     write, not an empty history).
+// A guild that has produced nothing has no productionHistory field at all — legal, and
+// the byte-identical no-op path.
+function checkProductionHistory(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    if (!g.productionHistory) continue;
+    for (const [systemId, perGood] of Object.entries(g.productionHistory)) {
+      for (const [good, series] of Object.entries(perGood || {})) {
+        const where = `guild:${g.id}.productionHistory.${systemId}.${good}`;
+        if (!series || !Array.isArray(series.prod) || !Array.isArray(series.cons)) {
+          out.push({ rule: 'history-series-shape (sim/history.js)', where, detail: { series } });
+          continue; // the length/value checks below are meaningless without both arrays
+        }
+        if (series.prod.length !== series.cons.length) {
+          out.push({
+            rule: 'history-series-share-an-x-axis (sim/history.js)',
+            where,
+            detail: { prod: series.prod.length, cons: series.cons.length },
+          });
+        }
+        for (const [key, values] of [['prod', series.prod], ['cons', series.cons]]) {
+          if (values.length > HISTORY_N) {
+            out.push({
+              rule: 'history-ring-capped-at-HISTORY_N (sim/history.js)',
+              where: `${where}.${key}`,
+              detail: { length: values.length, cap: HISTORY_N },
+            });
+          }
+          values.forEach((v, i) => checkField(out, v, `${where}.${key}[${i}]`));
         }
       }
     }
@@ -617,6 +666,7 @@ function checkInvariants(state, tick) {
     ...checkNonNegativityAndIntegrality(state),
     ...checkBatchCarry(state),
     ...checkSyndicateWindows(state),
+    ...checkProductionHistory(state),
     ...checkPrices(state),
     ...checkLicenceTerms(state),
     ...checkGalacticSupplyConsistency(state),

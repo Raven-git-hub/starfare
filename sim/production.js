@@ -62,6 +62,7 @@ const {
   DEFAULT_WINDOW_N, winStartFor, getWindow,
 } = require('./windows.js');
 const { committedContribution } = require('./licence.js');
+const { getHistory } = require('./history.js');
 
 // resolveProduction(guild, systemId) -> a plain report for that (guild, system):
 //   {
@@ -746,9 +747,36 @@ function reviewSystem(guild, systemId) {
 // telemetry — adds nothing to serialized state or the determinism hash.
 //
 // Shape (arrays keep their deterministic order through serialize.canonicalize):
-//   [ { guildId, systems: [ { ...<resolveProduction report>, review: [ ...issues ] } ] } ]
+//   [ { guildId, systems: [ { ...<resolveProduction report>,
+//                             review: [ ...issues ],
+//                             history: { [good]: { prod: [...], cons: [...] } } } ] } ]
 // The `review` array is attached HERE, on the read path only — resolveProduction
-// (shared with the move path) stays untouched, so the flag is provably a no-op.
+// (shared with the move path) stays untouched, so the flag is provably a no-op. The
+// `history` map is attached the same way and for the same reason: it is a verbatim
+// echo of the STORED buffer `guild.productionHistory[systemId]` (sim/history.js), so
+// the console draws its trend sparklines from engine state instead of from a browser
+// buffer that emptied on every reload.
+//
+// WHY `history` sits beside `review` at SYSTEM level and not inside `goods`: the
+// `goods` map holds only the goods actually ROUTED this tick (a mined good with no
+// in-system consumer and no commitment is deliberately absent), whereas history exists
+// for every good that has ever moved here. Hanging it off `goods` would silently drop
+// the trend for the commonest case in the game — a mine with no local refinery. One
+// map, keyed by good, is what the console reads: `sysEntry.history[good]`.
+// systemHistory(guild, systemId) -> { [good]: { prod: [...], cons: [...] } } — the
+// stored history for one system, COPIED so a snapshot consumer can never mutate engine
+// state through it (the snapshot is handed out over HTTP; `cloneProfile`/`cloneWindows`
+// take the same care). Goods in sorted order, and `{}` for a system with no history yet.
+function systemHistory(guild, systemId) {
+  const stored = (guild.productionHistory || {})[systemId] || {};
+  const out = {};
+  for (const good of Object.keys(stored).sort()) {
+    const series = getHistory(guild, systemId, good);
+    out[good] = { prod: [...series.prod], cons: [...series.cons] };
+  }
+  return out;
+}
+
 function previewProduction(state) {
   // Preview the NEXT tick's production (state.tick + 1 is the tick it would yield),
   // under the engine-wide window length, so the windowed-accrual telemetry matches
@@ -765,6 +793,7 @@ function previewProduction(state) {
       systems: systemIds.map((sys) => ({
         ...resolveProduction(guild, sys, opts),
         review: reviewSystem(guild, sys),
+        history: systemHistory(guild, sys),
       })),
     };
   });

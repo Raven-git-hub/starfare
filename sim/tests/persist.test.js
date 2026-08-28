@@ -170,11 +170,25 @@ test('double-apply guard: a snapshot-baked action still in the journal is not re
 // makes it a stronger statement than before: the price engine added prices and changed
 // nothing else about this sequence, byte for byte. The full-state hash is pinned beside
 // it so a drift in the price numbers themselves is caught too.
+//
+// PRODUCTION-HISTORY SLICE (28-08-26): the console's trend sparklines moved out of the
+// browser into stored state (`guild.productionHistory`, sim/history.js) — real serialized
+// bytes, so the FULL hash legitimately moved again. Both goldens below are UNCHANGED and
+// are now asserted with the history stripped as well: this slice added a history buffer
+// and changed nothing else about this sequence, byte for byte. The full hash is pinned
+// beside them so a drift in the recorded samples themselves is caught too.
 const GOLDEN_HASH = '56401013588519715d15f415334fb2660b1bd9f73881352dc9f48b787a7b564c';
 const GOLDEN_HASH_WITH_PRICES = '53c4f4818b198cbf5000dc7d1ed4e7d8ce0f1e96902291f26575ff6b44b1b212';
+const GOLDEN_HASH_WITH_HISTORY = '170bedd2c54dbb44b0583f93f1b8acfc8052c8c71d0e2b6e0146d8676f9d4a27';
 
 // The state minus its price block — exactly what the golden above covered.
 const withoutPrices = (state) => { const { prices, ...rest } = state; return rest; };
+// The state minus every guild's production-history buffer — what the two hashes above
+// covered before this slice. Stripped per guild, leaving the rest of the row untouched.
+const withoutHistory = (state) => ({
+  ...state,
+  guilds: (state.guilds || []).map((g) => { const { productionHistory, ...rest } = g; return rest; }),
+});
 
 test('no-op proof: pure engine path (persistence OFF) matches the golden hash', () => {
   // The SAME scripted moves as above, but driven straight through the engine with
@@ -187,8 +201,11 @@ test('no-op proof: pure engine path (persistence OFF) matches the golden hash', 
   s = advance(s, []).state;
 
   assert.equal(s.tick, 2);
-  assert.equal(hashState(withoutPrices(s)), GOLDEN_HASH, 'everything but the price block is byte-identical to pre-price-engine HEAD');
-  assert.equal(hashState(s), GOLDEN_HASH_WITH_PRICES, 'and the price block itself is pinned');
+  assert.equal(hashState(withoutHistory(withoutPrices(s))), GOLDEN_HASH, 'everything but the price block and the history buffer is byte-identical to pre-price-engine HEAD');
+  assert.equal(hashState(withoutHistory(s)), GOLDEN_HASH_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
+  assert.equal(hashState(s), GOLDEN_HASH_WITH_HISTORY, 'and the history buffer itself is pinned');
+  assert.deepEqual(s.guilds[0].productionHistory, { sys_0002: { titanium: { prod: [5, 5], cons: [0, 0] } } },
+    'the stripped-equals-old proof above is only a proof if there was really history to strip');
 });
 
 // --- 5. graceful shutdown: the MID-INTERVAL save (no intervening tick) ------

@@ -111,6 +111,42 @@ the key, keeping serialized state byte-identical to the pre-window path.
 These three ARE serialized and enter the determinism hash. Everything else the
 Syndicate panel shows about the window (below) is recomputed from them.
 
+### Per-good production/consumption history — `guild.productionHistory[systemId][good]`
+
+*(Added 28-08-26 — the persistent-history slice.)* The console's two trend
+sparklines. Minted lazily (`sim/history.js`), one sample per producing tick,
+written in exactly ONE place: `applyProduction`. A guild that has produced
+nothing never gets the key, so an idle galaxy's serialized state is
+byte-identical to the pre-slice path — the same discipline `syndicateWindows`
+follows, and the reason the golden-hash regen is provable rather than blind.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `prod` | int[] ≤ 60 | this good's OUTPUT here per tick — Σ mine fresh **+** Σ refinery `minted`, oldest→newest |
+| `cons` | int[] ≤ 60 | its DOWNSTREAM DRAW per tick (`fork.downstream` — what the lines really took) |
+
+Both ARE serialized and enter the determinism hash. They are the first stored
+state the console reads that is **not** recomputed on read — which is exactly
+why the graph survives a reload and is the same for every viewer. Before this
+slice the buffer lived in the browser: it started EMPTY on every page load, so a
+returning player watched "gathering history…" refill live and no two viewers saw
+the same line.
+
+Two rules worth stating, because a trend line is a claim about time:
+
+- **Contiguous.** Once a good has a series, every tick it is still routed pushes
+  a sample — a `0` on a lull included. A gap would draw a slope between two
+  ticks that are not adjacent.
+- **Never back-filled.** The past was never recorded (the journal holds actions,
+  not per-tick production), so the buffer fills FORWARD from deploy. Nothing is
+  reconstructed and nothing is pruned; a good that stops producing keeps its
+  bounded tail, because "production fell to nothing" is the story the graph is
+  for.
+
+`HISTORY_N = 60` is a **display-depth** constant — how far back the sparkline
+looks. It is not an economy number (it feeds no rate, price or commitment), so
+it is not a `[FIRST-CUT]` and carries no decision-checklist entry.
+
 ### Engine-wide — `state.windowN`
 
 | Field | Type | Default | Meaning |
@@ -124,8 +160,15 @@ All of this comes from `buildSnapshot`'s `production` block
 tick by the SAME `resolveProduction` the tick applies, so the figures are engine
 truth. **None of it is a DB column.** The block is an array — one entry per guild
 `{ guildId, systems: [...] }`, each system `{ systemId, mines, goods, lines,
-refineries, review }` — so the console finds a good by filtering to its guild,
-then its system, then `goods[good]`.
+refineries, review, history }` — so the console finds a good by filtering to its
+guild, then its system, then `goods[good]`.
+
+The one exception is `history`, which is NOT derived: it is the stored buffer
+above, echoed verbatim (copied, so a snapshot consumer cannot mutate engine
+state through it). It sits beside `review` at SYSTEM level rather than inside
+`goods` because `goods` holds only the goods ROUTED this tick — a mined good
+with no in-system consumer and no commitment has no `goods` entry, yet still has
+a trend to draw. The console reads `…systems[…].history[good]`.
 
 ### Per-good, per-system — `…systems[…].goods[good]`
 
@@ -252,6 +295,8 @@ consumes per good (after locating guild → system in the `production` array) is
             ticksRemaining, requiredRate, sendThisTick, pctAchieved, status,
             perVenture: { [ventureId]: { commitment, delivered, status } } }
 }
+
+…systems[systemId].history[good] = { prod: [int], cons: [int] }   // stored, verbatim
 ```
 
 plus the good's policy echoed back so the controls render their current

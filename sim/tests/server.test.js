@@ -228,8 +228,31 @@ test('GET /console serves the legibility pass: durations, place names, one label
   // (4) The trend column's label shares the console's one label font, and its sparkline
   // stands at the height it is drawn at (a single rule owns it now).
   assert.match(html, /\.tcard \.tc-name\{[^}]*font-family:var\(--mono\)/);
-  assert.match(html, /\.tc-spark\{width:100%; height:66px/);
+  // 66 -> 132 with the persistent-history slice: the column was a thin strip and a real
+  // swing read as flat. The viewBox and this height move TOGETHER (that is what keeps the
+  // vertical axis 1:1 under preserveAspectRatio="none"), so both are pinned here.
+  assert.match(html, /\.tc-spark\{width:100%; height:132px/);
+  assert.match(html, /var SPARK_W = 150, SPARK_H = 132;/);
   assert.ok(!html.includes('.tcard .tc-spark{width:100%; height:52px}'), 'the height conflict is gone');
+});
+
+// The persistent-history slice, pinned as SERVED BYTES for the same reason: a silent
+// revert to the browser-side buffer would still render a graph, just a private one that
+// empties on every reload.
+test('GET /console plots the trend from ENGINE history, at the taller undistorted size', async () => {
+  const html = await (await fetch(base + '/console')).text();
+
+  // (1) The series comes off the snapshot's per-system `history` map, not a client ring.
+  assert.match(html, /function trendSeries/);
+  assert.match(html, /report\.history\[good\]/);
+  assert.ok(!html.includes('function pushTrend'), 'the client-side accumulation is gone');
+  assert.ok(!html.includes('var TREND_N'), 'and so is its cap');
+
+  // (2) "gathering history…" is HTML over the box, never <text> inside the
+  // non-uniformly scaled SVG — that is what was stretching the glyphs.
+  assert.match(html, /class="tc-msg">gathering history/);
+  assert.ok(!html.includes('font-family="IBM Plex Mono">gathering history'), 'the distorted in-SVG placeholder is retired');
+  assert.match(html, /\.tc-empty \.tc-msg\{position:absolute/);
 });
 
 test('GET / serves the SYNCED tick ring — the server\'s period, the observed tick\'s phase', async () => {

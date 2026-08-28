@@ -14,13 +14,18 @@
   It computes NO game number (design.md §5): every figure is read VERBATIM from the
   schema-7 snapshot's `production` block, `stockpilesBySystem` and `productionProfile`,
   and every control POSTs the existing setProductionProfile / throttles action. No new
-  action, no new snapshot field, no engine change.
+  action. The one snapshot field this page's own slice added is the per-system
+  `history` map the two sparklines plot — engine-stored, read verbatim like the rest.
 
   THREE KINDS OF NUMBER ON THIS PAGE, and nothing in between:
     REAL   — read straight from one snapshot. Almost everything here.
-    TREND  — the two sparklines: a rolling buffer of values the engine really sent,
-             one sample per tick, kept client-side because a snapshot is one instant.
-             Never seeded, never smoothed, never extrapolated (see pushTrend).
+    TREND  — the two sparklines. As of the persistent-history slice these are REAL
+             too: the engine keeps the last 60 ticks of each good's production and
+             consumption in stored state (`guild.productionHistory`, sim/history.js)
+             and the snapshot hands it over per system as `history[good]`. The
+             browser plots the series verbatim — it no longer accumulates one, so
+             the graph is instant on load, survives a reload, and is the same for
+             every viewer. Never seeded, never smoothed, never extrapolated.
     MOCK   — the Syndicate licence ROSTER and the hero's Facility block. The licence
              economy is not in the engine (every syndicateCommitment is 0) and no
              droid/condition/asset exists. Both carry a visible MOCK tag, POST nothing,
@@ -194,16 +199,28 @@
   /* ---- Trend columns (Production / Consumption sparklines) ----
      The two inner columns become vertically-centred trend cards: a label, the current
      engine value (headline), a change-over-time sparkline, and the flow arrow. The
-     series is a client-side rolling buffer of past snapshot values (display-only memory;
-     the browser stores what the engine already sent and computes no game number, §5). */
+     series is ENGINE state, read verbatim from the snapshot's per-system `history` map
+     (the browser accumulates nothing and computes no game number, §5). */
   .tcol{position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:11px; padding:14px 9px}
   .tc-head{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3)}
   /* The sparkline fills its column's width and stands at its OWN drawn height: the
-     viewBox is 150x66, so 66px renders the vertical axis 1:1 and the horizontal one
+     viewBox is 150x132, so 132px renders the vertical axis 1:1 and the horizontal one
      (a bare index axis) is the only thing `preserveAspectRatio="none"` stretches. The
      old pair — `height:auto` here against a `.tcard` override of 52px — squashed the
-     graph to 79% of its drawn height while stretching it ~140% wide. */
-  .tc-spark{width:100%; height:66px; display:block; overflow:visible}
+     graph to 79% of its drawn height while stretching it ~140% wide.
+     DOUBLED 66 -> 132 (28-08-26): at 66px the columns read as a thin strip and the line
+     had almost no vertical room to move in, so a real swing looked flat. The viewBox and
+     this height move TOGETHER — that is what keeps the vertical axis 1:1. One number,
+     `SPARK_H` in the script below, is the single source; change both or neither. */
+  .tc-spark{width:100%; height:132px; display:block; overflow:visible}
+  /* The "gathering history…" placeholder is HTML laid OVER the box, not text inside the
+     SVG. Inside it, `preserveAspectRatio="none"` stretched the glyphs horizontally along
+     with the index axis and the message rendered visibly distorted. The data polyline
+     still uses `none` — stretching a bare index axis is correct; stretching letterforms
+     is not. */
+  .tc-empty{position:relative}
+  .tc-empty .tc-msg{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-family:var(--mono); font-size:10px; letter-spacing:.06em; color:var(--ink3); pointer-events:none}
   /* chevrons pinned to the top of the column (out of the centred flow) */
   .topup.tu-top{position:absolute; top:8px; left:0; right:0; padding:0}
 
@@ -1073,8 +1090,6 @@ function renderResBar(report){
 }
 
 
-function sumAmount(list){ return list.reduce(function(a, p){ return a + (p.amount || 0); }, 0); }
-
 // ===== Syndicate management tab render =======================================
 function rightTabBar(){
   return '<div class="rt-tabs">' +
@@ -1337,43 +1352,50 @@ document.addEventListener('change', function(e){
   var t = e.target; if (t && t.classList && t.classList.contains('su-limit')){ var v = parseInt(t.value, 10); if (!isNaN(v) && v >= 0){ SYN.limit = v; } }
 });
 
-// --- Trend history (client-side rolling buffer) ------------------------------
-// A trend is change-over-time, which needs HISTORY the one-tick snapshot doesn't carry.
-// We keep it in the browser: each new tick appends the good's production (fresh) and
-// consumption (downstream draw) to a capped ring. This is display-only MEMORY of values
-// the engine already sent — the client stores, it does not compute a game number (§5).
-// (Design-probe seeding: first sight of a good fills a short smooth ramp so the graph
-// reads as a trend immediately; real ticks then extend it. The live console seeds from
-// real history instead.)
-var TREND_N = 24;                       // one window of ticks
-var TREND = {};                          // good -> { tick, prod:[...], cons:[...] }
-// THE ONE CLIENT-DERIVED ELEMENT on this page. A snapshot is a single instant, so a
-// trend line needs history the engine does not carry — this keeps a rolling buffer of
-// values the engine REALLY sent, one sample per tick, capped at TREND_N. It invents
-// nothing: no seeded ramp, no smoothing, no extrapolation. Until two ticks have been
-// observed the sparkline says it is still gathering (see trendSpark).
-function pushTrend(good, tick, prodVal, consVal){
-  var t = TREND[good];
-  if (!t){ t = TREND[good] = { tick: null, prod: [], cons: [] }; }
-  if (t.tick === tick) return;           // one sample per tick, not per re-render
-  t.tick = tick;
-  t.prod.push(Math.max(0, prodVal | 0)); if (t.prod.length > TREND_N) t.prod.shift();
-  t.cons.push(Math.max(0, consVal | 0)); if (t.cons.length > TREND_N) t.cons.shift();
+// --- Trend history (ENGINE state, read verbatim) ------------------------------
+// A trend is change-over-time, which one snapshot cannot carry — so the ENGINE carries
+// it. `guild.productionHistory` (sim/history.js) records, per system per good, the last
+// 60 ticks of production (mine fresh + refinery minted) and consumption (the downstream
+// draw), and the snapshot hands each system's copy over as `history[good]`.
+//
+// This page used to accumulate that buffer itself. It no longer does — and that is the
+// point of the slice: a browser buffer started EMPTY on every page load, so a returning
+// player watched "gathering history…" refill live and no two viewers ever saw the same
+// graph. Reading engine state instead means the line is complete the instant the page
+// paints, survives a reload or a container restart, and is identical for everyone.
+// The client still invents nothing: no seeding, no smoothing, no extrapolation.
+// The series to plot, oldest → newest, or [] when the engine has recorded nothing for
+// this good yet (a brand-new galaxy — see trendSpark's cold-start case).
+function trendSeries(report, good, key){
+  var h = report && report.history && report.history[good];
+  return (h && h[key]) ? h[key] : [];
 }
 
 // --- Sparkline: single-series area+line, Archive palette (amber line, ghost fill,
 // recessive baseline, a marked+ringed latest point). No legend (title names it); the
 // headline number is the direct label (dataviz: selective direct labels, not per-point).
 var SPARK_SEQ = 0;
+// The drawn height, in viewBox units AND in CSS pixels — they must stay equal or the
+// vertical axis stops rendering 1:1 (`preserveAspectRatio="none"` stretches whatever
+// disagrees). Doubled from 66 on 28-08-26: at 66 the column was a thin strip and a real
+// swing in production read as a flat line. The CSS rule `.tc-spark{height:132px}` above
+// carries the same number and points back here.
+var SPARK_W = 150, SPARK_H = 132;
 function trendSpark(values, cls){
-  var W = 150, H = 66, pad = 4;
-  // Fewer than two observed ticks is not a trend — say so rather than draw a line
-  // through a single point (or, worse, through invented history).
+  var W = SPARK_W, H = SPARK_H, pad = 4;
+  // Fewer than two recorded ticks is not a trend — say so rather than draw a line
+  // through a single point (or, worse, through invented history). With the buffer now
+  // in the engine this is the genuine COLD START only: a brand-new galaxy, or a good
+  // in its first couple of ticks. A page reload no longer lands here.
+  //
+  // The message is HTML laid OVER the box, not a <text> inside it: the SVG scales
+  // non-uniformly (that is right for a bare index axis) and it was stretching the
+  // glyphs with it. The baseline rule stays in the SVG, where it should stretch.
   if (!values || values.length < 2){
-    return '<svg class="tc-spark ' + (cls || '') + '" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img">' +
+    return '<div class="tc-empty">' +
+      '<svg class="tc-spark ' + (cls || '') + '" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img">' +
       '<line x1="' + pad + '" y1="' + (H - pad) + '" x2="' + (W - pad) + '" y2="' + (H - pad) + '" stroke="var(--line)" stroke-width="1"/>' +
-      '<text x="' + (W / 2) + '" y="' + (H / 2) + '" text-anchor="middle" fill="#565B68" font-size="9" ' +
-      'font-family="IBM Plex Mono">gathering history…</text></svg>';
+      '</svg><span class="tc-msg">gathering history…</span></div>';
   }
   var vs = values;
   var lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs);
@@ -1907,9 +1929,9 @@ function archColor(planet){
 }
 
 // ---- Production column: trend on top, then a compact clickable venture stack ----
-function producersCol2(producers, good, rg){
+function producersCol2(producers, good, rg, report){
   var now = rg ? (rg.fresh || 0) : 0;
-  var vs = (TREND[good] || {}).prod || [now];
+  var vs = trendSeries(report, good, 'prod');
   var trend = '<div class="tcard">' +
       '<div class="tc-top"><span class="tc-name">Production</span>' +
         '<span class="tc-now">' + fmt(now) + '<span class="u">u/tick</span></span></div>' +
@@ -1923,7 +1945,7 @@ function producersCol2(producers, good, rg){
 // ---- Consumption column: trend on top, then compact clickable consumer stack ----
 function consumersCol2(good, rg, consumers, report){
   var now = rg && rg.fork ? (rg.fork.downstream || 0) : 0;
-  var vs = (TREND[good] || {}).cons || [now];
+  var vs = trendSeries(report, good, 'cons');
   var trend = '<div class="tcard">' +
       '<div class="tc-top"><span class="tc-name">Consumption</span>' +
         '<span class="tc-now">' + fmt(now) + '<span class="u">u/tick</span></span></div>' +
@@ -2115,11 +2137,6 @@ function renderStage(report){
     loadSystemInfo();
     return;
   }
-  var tickNow = (STATE.snap && STATE.snap.tick != null) ? STATE.snap.tick : 0;
-  var prodNow = rg ? (rg.fresh || 0) : sumAmount(producers);
-  var consNow = (rg && rg.fork) ? (rg.fork.downstream || 0) : 0;
-  pushTrend(good, tickNow, prodNow, consNow);
-
   // Open on this system's first real producer so the hero (here or in the host client)
   // is never blank and never shows a venture from elsewhere. A player's chip click is
   // never overridden: this only fires while nothing valid is selected.
@@ -2139,7 +2156,7 @@ function renderStage(report){
   stage.innerHTML =
     reservePanel2(good, rg) +
     '<div class="panel flow flow-r">' +
-      producersCol2(producers, good, rg) +
+      producersCol2(producers, good, rg, report) +
       gate1Col(good, rg) +
       col3 +
     '</div>';

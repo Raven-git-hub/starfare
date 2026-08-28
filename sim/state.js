@@ -21,6 +21,7 @@ const { computeGalacticSupply } = require('./supply.js');
 const { cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
 const { cloneWindows } = require('./windows.js');
+const { cloneHistory } = require('./history.js');
 const { seedPrices } = require('./prices.js');
 
 // --- Entity constructors -----------------------------------------------
@@ -43,6 +44,7 @@ function createGuild({
   stockpiles = {},
   productionProfile = {},
   syndicateWindows = {},
+  productionHistory = {},
   ventures = [],
   vehicles = [],
 }) {
@@ -94,6 +96,15 @@ function createGuild({
     // determinism-hash no-op proof. A caller's non-empty seed is deep-copied so it can
     // never alias into engine state (like stockpiles/productionProfile).
     ...(Object.keys(syndicateWindows).length ? { syndicateWindows: cloneWindows(syndicateWindows) } : {}),
+    // productionHistory: systemId -> good -> { prod: [...], cons: [...] }, the
+    // ENGINE-OWNED per-(system, good) rolling record of the last HISTORY_N ticks'
+    // fresh output and downstream draw (sim/history.js) — NOT player-set. It exists so
+    // the console's two trend sparklines are ENGINE truth that survives a reload and
+    // reads the same for every viewer, instead of a browser buffer that started empty
+    // on every page load. Omitted when empty for the same reason syndicateWindows is:
+    // it is minted LAZILY by applyProduction, only for a good that actually moved, so
+    // a galaxy where nothing is produced carries no key and stays byte-identical.
+    ...(Object.keys(productionHistory).length ? { productionHistory: cloneHistory(productionHistory) } : {}),
     lifetimeProduced: {}, // good -> int; monotonic, only ever increases (§13)
     ventures: ventures.map(createVenture),
     vehicles: vehicles.map(createVehicle),
