@@ -152,6 +152,14 @@
         <label class="k" for="adm-seed">Seed — blank randomises one</label>
         <input class="afield" id="adm-seed" placeholder="e.g. 4242" spellcheck="false" inputmode="numeric" autocomplete="off">
       </div>
+      <!-- WHICH midnight the new galaxy's cycle rolls on (cycle-and-calendar.md §2).
+           In HOURS, because that is how an operator thinks about a timezone; the POST
+           carries minutes. Blank = 0 = UTC. Frozen at creation: it can never be
+           changed on this galaxy afterwards, only chosen for the next one. -->
+      <div class="acell">
+        <label class="k" for="adm-utc-offset">UTC offset, hours — blank is UTC</label>
+        <input class="afield" id="adm-utc-offset" placeholder="e.g. +8 or +5.5" spellcheck="false" autocomplete="off">
+      </div>
       <button class="abtn" id="adm-create" disabled>Create Galaxy</button>
       <button class="abtn danger" id="adm-delete" disabled>Delete Galaxy</button>
       <div class="adminmsg" id="adm-msg"></div>
@@ -501,11 +509,26 @@ function fmtUptime(seconds) {
   var hms = p2(Math.floor((n % 86400) / 3600)) + ':' + p2(Math.floor((n % 3600) / 60)) + ':' + p2(n % 60);
   return (years ? years + 'y ' : '') + p3(days % 365) + 'd ' + hms;
 }
-// The server's own wall clock, rendered in the VIEWER's locale — the instant is
-// the server's, the formatting is local (they are usually both UTC here anyway).
-function fmtClock(iso) {
+// The galaxy's own UTC offset as a label: 'UTC', 'UTC+8', 'UTC+5:30', 'UTC-3:30'.
+function fmtUtcOffset(offsetMinutes) {
+  var m = Number(offsetMinutes) || 0;
+  if (m === 0) return 'UTC';
+  var abs = Math.abs(m), h = Math.floor(abs / 60), r = abs % 60;
+  return 'UTC' + (m < 0 ? '-' : '+') + h + (r ? ':' + (r < 10 ? '0' : '') + r : '');
+}
+// The server's own wall clock at the GALAXY's offset (cycle-and-calendar.md §2) — NOT
+// the viewer's locale, which is what this used to show and which disagreed with the
+// midnight the cycle actually rolls on the moment the operator watched from anywhere
+// else. `serverTime` is a UTC ISO instant, so the UTC getters plus the offset are the
+// whole conversion, and this panel now tells the same time as the player HUD.
+function fmtClock(iso, offsetMinutes) {
   var t = new Date(iso);
-  return isNaN(t.getTime()) ? '—' : t.toLocaleTimeString();
+  if (isNaN(t.getTime())) return '—';
+  function p2(x) { return (x < 10 ? '0' : '') + x; }
+  var mins = (t.getUTCHours() * 60) + t.getUTCMinutes() + (Number(offsetMinutes) || 0);
+  mins = ((mins % 1440) + 1440) % 1440;
+  return p2(Math.floor(mins / 60)) + ':' + p2(mins % 60) + ':' + p2(t.getUTCSeconds())
+    + ' ' + fmtUtcOffset(offsetMinutes);
 }
 
 // One read of the lifecycle. Returns 'active' | 'no-galaxy' | null (unreachable).
@@ -526,7 +549,7 @@ async function readHealth() {
   setCell('adm-state', active ? ('ACTIVE — SEED ' + health.seed) : 'NO GALAXY', active ? 'live' : 'none');
   setCell('adm-tick', health.tick == null ? '—' : String(health.tick));
   setCell('adm-guilds', String(health.guilds));
-  setCell('adm-time', fmtClock(health.serverTime));
+  setCell('adm-time', fmtClock(health.serverTime, health.utcOffsetMinutes));
   setCell('adm-uptime', fmtUptime(health.uptimeSeconds));
   // Create is offered in BOTH states — over an active galaxy it replaces it, which
   // is exactly what the confirm below says. Delete is offered only when there is
@@ -558,6 +581,19 @@ async function adminPost(path, body) {
   return data;
 }
 
+// Hours in, minutes out — the operator types '+8' or '+5.5', the wire carries 480 or
+// 330. Returns null for anything that is not a whole number of minutes in
+// UTC-12:00 .. UTC+14:00, so a typo is refused here rather than anchoring a galaxy to
+// a midnight nobody asked for. (The server validates the same range independently.)
+function utcOffsetMinutesFromHours(raw) {
+  if (!/^[+-]?[0-9]+(\.[0-9]+)?$/.test(raw)) return null;
+  var minutes = Number(raw) * 60;
+  if (Math.abs(minutes - Math.round(minutes)) > 1e-6) return null;
+  minutes = Math.round(minutes);
+  if (minutes < -720 || minutes > 840) return null;
+  return minutes;
+}
+
 btnCreate.addEventListener('click', async function () {
   var raw = (document.getElementById('adm-seed').value || '').trim();
   var body = {};
@@ -565,15 +601,27 @@ btnCreate.addEventListener('click', async function () {
     if (!/^-?[0-9]+$/.test(raw)) { setAdminMsg('✕ seed must be a whole number (or blank to randomise)', 'error'); return; }
     body.seed = parseInt(raw, 10);
   }
+  var rawOffset = (document.getElementById('adm-utc-offset').value || '').trim();
+  var offsetMinutes = 0;
+  if (rawOffset !== '') {
+    offsetMinutes = utcOffsetMinutesFromHours(rawOffset);
+    if (offsetMinutes === null) {
+      setAdminMsg('✕ UTC offset must be hours between -12 and +14, on a whole minute (e.g. +8, +5.5) — or blank for UTC', 'error');
+      return;
+    }
+    body.utcOffsetMinutes = offsetMinutes;
+  }
   var what = raw === '' ? 'a randomised seed' : ('seed ' + raw);
   if (!window.confirm(
-    'CREATE A GALAXY on ' + what + '?\n\n' +
+    'CREATE A GALAXY on ' + what + ', rolling its day at midnight ' + fmtUtcOffset(offsetMinutes) + '?\n\n' +
     'This DESTROYS whatever galaxy is on this server — every guild, venture, claim ' +
-    'and stockpile in it — and builds a new one at tick 0. It cannot be undone.'
+    'and stockpile in it — and builds a new one at tick 0. It cannot be undone.\n\n' +
+    'The offset is FROZEN with the galaxy: it can only be changed by creating another.'
   )) return;
   setAdminMsg('◦ creating…');
   var out = await adminPost('/admin/galaxy/new', body);
-  if (out) setAdminMsg('● created — SEED ' + out.seed + ' at tick ' + out.tick, 'ok');
+  if (out) setAdminMsg('● created — SEED ' + out.seed + ' at tick ' + out.tick
+    + ', day rolls at midnight ' + fmtUtcOffset(out.utcOffsetMinutes), 'ok');
 });
 
 btnDelete.addEventListener('click', async function () {

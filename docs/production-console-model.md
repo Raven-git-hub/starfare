@@ -151,7 +151,7 @@ it is not a `[FIRST-CUT]` and carries no decision-checklist entry.
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `windowN` | int ≥ 1 | `FIRST_CUT_WINDOW_N = 24` | window length in ticks, galaxy-wide. Player-facing copy says "hours," never "ticks." Set by `setWindowN` (an operator/storyteller lever, not a per-guild control) |
+| `windowN` | int ≥ 1 | `DEFAULT_WINDOW_N = 1,440` | window length in ticks, galaxy-wide. **RULED 27-08-26**: a commitment cycle is one 24-hour day = 1,440 one-minute ticks (`docs/cycle-and-calendar.md` §1), which promoted the old `[FIRST-CUT] 24` placeholder this line used to name. Player-facing copy says "hours," never "ticks." Set by `setWindowN` (an operator/storyteller lever, not a per-guild control) |
 
 ## Derived telemetry the console reads
 

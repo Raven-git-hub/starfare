@@ -52,6 +52,33 @@ test('parseArgs: an integer flag refuses a non-integer', () => {
   assert.equal(A.parseArgs(['new-galaxy', '--seed', '-7']).flags.seed, -7, 'a negative integer is still an integer');
 });
 
+// --- the UTC offset flag (docs/cycle-and-calendar.md §2) ---------------------
+
+test('parseArgs: --utc-offset carries HOURS and may be fractional', () => {
+  // The one flag that is not an int: half- and quarter-hour zones are real.
+  assert.equal(A.parseArgs(['new-galaxy', '--utc-offset', '8']).flags['utc-offset'], 8);
+  assert.equal(A.parseArgs(['new-galaxy', '--utc-offset=5.5']).flags['utc-offset'], 5.5);
+  assert.equal(A.parseArgs(['new-galaxy', '--utc-offset', '-3.5']).flags['utc-offset'], -3.5);
+  assert.throws(() => A.parseArgs(['new-galaxy', '--utc-offset', 'east']), /--utc-offset must be a number/);
+  assert.throws(() => A.parseArgs(['new-galaxy', '--utc-offset']), /--utc-offset needs a value/);
+});
+
+test('utcOffsetMinutesFromHours: hours in, whole minutes out — and a typo is refused', () => {
+  assert.equal(A.utcOffsetMinutesFromHours(0), 0, 'the default is UTC');
+  assert.equal(A.utcOffsetMinutesFromHours(8), 480);
+  assert.equal(A.utcOffsetMinutesFromHours(5.5), 330, 'half-hour zones are real');
+  assert.equal(A.utcOffsetMinutesFromHours(5.75), 345, 'and so are quarter-hour ones');
+  assert.equal(A.utcOffsetMinutesFromHours(-3.5), -210);
+  assert.equal(A.utcOffsetMinutesFromHours(-12), -720, 'the far west edge');
+  assert.equal(A.utcOffsetMinutesFromHours(14), 840, 'the far east edge');
+  // A galaxy is anchored ONCE, so these are refused rather than rounded into place.
+  assert.throws(() => A.utcOffsetMinutesFromHours(0.001), /not a whole number of minutes/);
+  assert.throws(() => A.utcOffsetMinutesFromHours(15), /outside UTC-12:00 \.\. UTC\+14:00/);
+  assert.throws(() => A.utcOffsetMinutesFromHours(-13), /outside UTC-12:00 \.\. UTC\+14:00/);
+  assert.throws(() => A.utcOffsetMinutesFromHours('8'), /must be a number of hours/);
+  assert.throws(() => A.utcOffsetMinutesFromHours(NaN), /must be a number of hours/);
+});
+
 // --- pick -------------------------------------------------------------------
 
 test('pick: extracts a dotted path, and returns undefined for a missing one', () => {

@@ -65,15 +65,16 @@ function buildSyndicateClaims() {
 
 // createZeroState() -- assemble the guild-less tick-0 galaxy. Deterministic:
 // the same call always yields byte-identical state (serialize.hashState).
-// createZeroState({ dayAnchorTick }) — the guild-less galaxy a fresh server boots into.
+// createZeroState({ dayAnchorTick, utcOffsetMinutes }) — the guild-less galaxy a fresh
+// server boots into.
 //
-// `dayAnchorTick` is OPTIONAL and, when omitted, is not written to state at all: every
+// Both fields are OPTIONAL and, when omitted, are not written to state at all: every
 // existing caller (the tests, /reset, the restore-init path) keeps producing the exact
-// same bytes it always did. Only the admin panel's Create passes one, computed from the
+// same bytes it always did. Only the admin panel's Create passes them, computed from the
 // single wall-clock read at that seam (docs/cycle-and-calendar.md §2). Passing 0 is the
-// same as omitting it — an anchor of 0 IS the unanchored cadence, so there is nothing
-// to record and nothing to make the bytes differ.
-function createZeroState({ dayAnchorTick } = {}) {
+// same as omitting it — an anchor of 0 IS the unanchored cadence and an offset of 0 IS
+// UTC, so there is nothing to record and nothing to make the bytes differ.
+function createZeroState({ dayAnchorTick, utcOffsetMinutes } = {}) {
   return createState({
     guilds: [], // the whole point: a galaxy with no players yet
     reserve: { reserveLevel: 30 }, // [SHEET]
@@ -81,6 +82,7 @@ function createZeroState({ dayAnchorTick } = {}) {
     world: { seed: getSeedNumber() }, // the galaxy IS this seed (referenced, not copied)
     claims: buildSyndicateClaims(),
     ...(dayAnchorTick ? { dayAnchorTick } : {}),
+    ...(utcOffsetMinutes ? { utcOffsetMinutes } : {}),
   });
 }
 

@@ -2823,10 +2823,25 @@ async function readHealth(){
 // number here any more than it does a game one (design.md §5).
 function p2(n){ return (n < 10 ? '0' : '') + n; }
 function p3(n){ return (n < 10 ? '00' : n < 100 ? '0' : '') + n; }
-function fmtServerTime(iso){
+// The galaxy's own UTC offset as a label: 'UTC', 'UTC+8', 'UTC+5:30', 'UTC-3:30'.
+function fmtUtcOffset(offsetMinutes){
+  var m = Number(offsetMinutes) || 0;
+  if (m === 0) return 'UTC';
+  var abs = Math.abs(m), h = Math.floor(abs / 60), r = abs % 60;
+  return 'UTC' + (m < 0 ? '-' : '+') + h + (r ? ':' + p2(r) : '');
+}
+// The server's wall clock, rendered at the GALAXY's offset (cycle-and-calendar.md §2).
+// `serverTime` is a UTC ISO instant and `utcOffsetMinutes` is which midnight this
+// galaxy's cycle rolls on, so this reads the UTC getters and shifts by the offset —
+// never the LOCAL getters, which would show the player's own timezone and disagree
+// with the boundary the engine actually judges on. The offset is labelled rather than
+// implied, so a player in another zone can see whose clock this is.
+function fmtServerTime(iso, offsetMinutes){
   var t = new Date(iso);
   if (isNaN(t.getTime())) return '—';
-  return p2(t.getHours()) + ':' + p2(t.getMinutes());
+  var mins = (t.getUTCHours() * 60) + t.getUTCMinutes() + (Number(offsetMinutes) || 0);
+  mins = ((mins % 1440) + 1440) % 1440;
+  return p2(Math.floor(mins / 60)) + ':' + p2(mins % 60) + ' ' + fmtUtcOffset(offsetMinutes);
 }
 // DD:HH:MM:SS let the day field grow without bound, so days carry up into years
 // (365 of them — a display rollover, not a calendar). Years are dropped when there
@@ -2846,7 +2861,7 @@ function applyServerClock(health){
   var at = health.autotick || null;
   __tickPeriodMs = (at && Number.isFinite(at.intervalMs) && at.intervalMs > 0) ? at.intervalMs : null;
   setText('hud-seed', health.seed == null ? 'NO GALAXY' : ('SEED ' + health.seed));
-  setText('hud-servertime', fmtServerTime(health.serverTime));
+  setText('hud-servertime', fmtServerTime(health.serverTime, health.utcOffsetMinutes));
   setText('hud-uptime', fmtUptime(health.uptimeSeconds));
 }
 

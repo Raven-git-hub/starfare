@@ -104,8 +104,14 @@ Open **https://starfare-1.online/** → Access login → the player portal. On a
 calm **waiting** state. To open a galaxy:
 1. Go to **https://starfare-1.online/inspect** (the operator **admin panel** — unlinked, Access-gated).
    It shows **NO GALAXY** with a seed field and **CREATE GALAXY** / **DELETE GALAXY**.
-2. Type a seed number (or leave blank to randomise) → **Create Galaxy** → confirm. The strip flips to
-   **ACTIVE — SEED ####**, tick climbing once a minute; the 10 Syndicate claims re-plant on that seed.
+2. Type a seed number (or leave blank to randomise), and — if this galaxy's day should **not** roll
+   at UTC midnight — a **UTC offset in hours** (`+8`, `+5.5`, `-3`; blank is UTC). Then
+   **Create Galaxy** → confirm. The strip flips to **ACTIVE — SEED ####**, tick climbing once a
+   minute; the 10 Syndicate claims re-plant on that seed.
+   The offset is **frozen with the galaxy** (cycle-and-calendar.md §2a): it decides which midnight
+   the commitment cycle rolls on and which local time the HUD and this panel display, and the only
+   way to change it is to create another galaxy. It is a **fixed** offset — it does not follow
+   daylight saving.
 3. Back on `/`, the waiting player connects on its own → onboard onto an unsettled starter.
 
 Prove persistence: `docker kill starfare && docker start starfare` then `docker logs starfare --tail 10`
@@ -202,7 +208,7 @@ against a local `node sim/server.js`:
 | `health` | `GET /health` | Liveness, galaxy state + seed, tick, guild count, autotick status. |
 | `snapshot [--json] [--pick a.b.c]` | `GET /snapshot` | Default: a compact summary (tick, the `calendar` block, guild + venture counts). `--json` dumps the whole snapshot; `--pick calendar` extracts one dotted path. |
 | `starters` | `GET /starters` | Every startable system (id, ring, name, Terran homeworld). |
-| `new-galaxy [--seed N]` | `POST /admin/galaxy/new`, then `GET /snapshot` | Creates a galaxy and reads back `calendar.dayAnchorTick` to confirm it is midnight-anchored. **Warns that this REPLACES the active galaxy.** |
+| `new-galaxy [--seed N] [--utc-offset H]` | `POST /admin/galaxy/new`, then `GET /snapshot` | Creates a galaxy and reads back `calendar.dayAnchorTick` to confirm it is midnight-anchored. `--utc-offset` is in **hours** (default 0 = UTC; `-12`…`+14`, halves allowed) and picks *which* midnight — frozen at creation. **Warns that this REPLACES the active galaxy.** |
 | `seat-demo [--window N]` | `POST /admin/galaxy/new` *or* `POST /reset` + `POST /action`, `GET /starters`, `GET /system/:id`, `POST /action` ×5 | The two-mine 100 %-licence console demo — see below. |
 | `verify-cycle [--seed N]` | `POST /admin/galaxy/new`, `GET /starters`, `GET /system/:id`, `POST /action` ×3, `GET /snapshot` | **The standard post-redeploy check** — see below. |
 | `tick [n]` | `POST /tick` ×n | Manual advance (default 1), for short-window testing when the boot clock is off. |

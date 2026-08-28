@@ -116,6 +116,12 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // never parsed back by the engine. Emitted now so the console has a seam to read; the
 // rendering is a later client slice, and per §5's display rule the browser computes no
 // part of it.
+// v7 (the per-galaxy UTC offset, 28-08-26): ADDITIVE — the `calendar` block gains
+// `utcOffsetMinutes`, WHICH midnight this galaxy's cycle is anchored to (0 = UTC,
+// docs/cycle-and-calendar.md §2). No schema bump: nothing existing changed shape, and
+// it is the same derived-telemetry kind as the rest of the block. It is what lets a
+// wall-clock display (the HUD, /inspect) show the galaxy's own local time rather than
+// the viewer's or the container's.
 // v7 (licence Slice 3b-ii, 27-08-26): ADDITIVE — each venture row gains
 // `committedFromTick`, the first producing tick under its licence (or null), which is
 // what pro-rates its first window's obligation. No schema bump; nothing changed shape.
@@ -335,6 +341,7 @@ function buildSnapshot(state) {
   // on rather than a second opinion about it.
   const calN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
   const calAnchor = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
+  const calOffset = state.utcOffsetMinutes == null ? 0 : state.utcOffsetMinutes;
 
   return {
     schemaVersion: SNAPSHOT_SCHEMA,
@@ -358,6 +365,11 @@ function buildSnapshot(state) {
       label: displayLabel(state.tick, calN, calAnchor),
       windowN: calN,
       dayAnchorTick: calAnchor,
+      // WHICH midnight the anchor is lined up with (§2). 0 = UTC. A display reading a
+      // wall clock (the HUD, /inspect) shifts by this so the clock a player reads and
+      // the boundary the engine judges on are the same time of day; `day`/`minute`
+      // above already carry it implicitly, through the anchor.
+      utcOffsetMinutes: calOffset,
     },
     galacticSupply: {
       resources: { ...supply.resources },

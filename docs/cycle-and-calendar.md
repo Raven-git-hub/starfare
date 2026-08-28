@@ -50,7 +50,8 @@ created. The boot clock (`sim/server.js`) is a plain 60-second interval that kno
 wall-clock time, so a galaxy created at 14:30 rolls its cycle at 14:30 every day — not at
 midnight.
 
-**Ruling.** Cycle boundaries are anchored to **server midnight**. The boundary becomes:
+**Ruling.** Cycle boundaries are anchored to **server midnight** (*which* midnight is itself a
+per-galaxy choice made at creation — see §2a). The boundary becomes:
 
     (tick − dayAnchorTick) % N == 0
 
@@ -66,6 +67,50 @@ rule are preserved: **no `Date.now()` ever enters the tick path.**
 golden that sets no anchor is **byte-identical** to today. Only a live galaxy, created from the
 admin panel, sets a non-zero anchor. (Proven locally: `437/437` with `N = 1,440`, and the
 boundary/`winStartFor` outputs are identical at `anchor = 0` across a spread of ticks.)
+
+### 2a. *Which* midnight — `utcOffsetMinutes` (RULED 28-08-26)
+
+The ruling above says "server midnight" but never pinned the **timezone**, so it defaulted to one
+by accident: the anchor read `date.getHours()` — the *container's* local time — while every display
+of the server clock renders `new Date().toISOString()`, which is UTC. They agreed only because the
+box happens to run with `TZ` unset. Two different answers to "what time is it", one of them a
+property of the deployment rather than of the galaxy.
+
+**Ruling.** *Which* midnight is an explicit **per-galaxy choice, made once at creation**:
+
+    state.utcOffsetMinutes   integer minutes, [-720, 840]  (UTC-12:00 … UTC+14:00), default 0 = UTC
+
+- **Stored and frozen** exactly like `dayAnchorTick`: written once by
+  `POST /admin/galaxy/new`, persisted with the galaxy, never recomputed. Both `/reset` (which
+  rebuilds a plain zero-state) and the restore path leave it entirely alone — the restore reads
+  no clock at all.
+- **Omit-when-0.** A galaxy that chose no offset carries no field, so its serialized bytes are
+  identical to a pre-offset galaxy and every golden holds unchanged. Readers default `== null ? 0`.
+- **The anchor is computed from UTC + offset.** `minuteOfDayFromDate` now reads
+  `getUTCHours()`/`getUTCMinutes()` — the container's timezone no longer enters anywhere — and the
+  creation seam shifts it: `anchorForCreation(((utcMinuteOfDay + offset) mod 1440), N)`. At offset 0
+  on a UTC host this is arithmetically the same number the old local read produced, which is the
+  no-op proof.
+- **It is not an economy number.** The tick path never reads it; `dayOf`/`minuteOf` see only the
+  anchor it produced. It is a creation-time/config field, so it carries no `[FIRST-CUT]` tag and no
+  decision-checklist entry.
+- **Displays honour it.** `utcOffsetMinutes` rides on the snapshot's `calendar` block and on
+  `/health` beside `serverTime`. `serverTime` stays a **UTC ISO instant** — unambiguous on the wire
+  — and each display shifts it, so the player HUD (`11:23 UTC+8`) and the `/inspect` panel show the
+  same time, and it is the time this galaxy's midnight is measured in rather than the viewer's own
+  or the container's.
+
+**Changing the offset affects only galaxies created afterwards.** Re-anchoring a live galaxy stays
+what §3 says it is — a manual, future operator action — so the offset is chosen on the Create form
+(and `tools/admin.js new-galaxy --utc-offset <hours>`), not edited on a running galaxy.
+
+**The limitation, stated rather than discovered later: this is a FIXED numeric offset.** No named
+IANA zones, no tzdata, and therefore **no daylight-saving auto-shift**. A galaxy created at `+8`
+rolls its day at UTC+08:00 forever. For a non-DST zone that is exactly right; for an operator in a
+DST zone the galaxy's midnight will be an hour off their wall clock for half the year, and the fix
+is the same manual re-anchor §3 already describes. Named zones were considered and deliberately
+left out: they would drag tzdata (and a twice-yearly boundary that moves) into the one place the
+system reads a clock.
 
 ## 3. Downtime — no catch-up, drift accepted (RULED)
 
@@ -198,3 +243,9 @@ Two sequential vertical slices (§18 #3):
   anchor from one wall-clock read to the next server midnight; **no catch-up** on reboot. Prove the
   `anchor = 0` no-op (goldens byte-identical) and add the calendar/anchor tests. The `windowDays`
   renegotiation **behaviour** stays #64 — only the `renegotiationDeadline` formula is defined here.
+
+- **Follow-on (landed 28-08-26) — *which* midnight (§2a).** Add the per-galaxy `utcOffsetMinutes`
+  (default `0` = UTC, omit-when-0, frozen and persisted), compute the anchor from **UTC + offset**
+  rather than the container's local time, expose the offset on the snapshot and `/health`, and shift
+  every wall-clock display by it. Same one wall-clock read, same clock-free engine; the offset-0
+  galaxy is byte-identical, which is the no-op proof.

@@ -427,6 +427,92 @@ test('creating a galaxy sets a frozen dayAnchorTick, and the snapshot carries th
   } finally { child.kill('SIGKILL'); }
 });
 
+// --- The per-galaxy UTC offset at the create seam (§2) -----------------------------
+//
+// WHICH midnight the anchor above lines up with. The arithmetic is proven at a known
+// instant in utc-offset.test.js (a live server's clock is not settable); these prove the
+// WIRING — that Create takes the operator's choice, freezes it, serves it on both the
+// snapshot and /health, refuses a bad one, and that neither reset nor restore invents one.
+
+test('a galaxy created with a UTC offset freezes it, serves it, and survives a restart with it', async () => {
+  const dir = tmpDir();
+  const port = await freePort();
+  const { child } = bootServer({ dir, port });
+  try {
+    await waitForHealth(port);
+    // Bracket the create with our own UTC readings: the server's clock is the input, so
+    // the expected minute is whichever of the two the create fell on. (A minute can roll
+    // mid-test; pinning a single reading would make this flake once an hour.)
+    const utcMinuteNow = () => { const d = new Date(); return (d.getUTCHours() * 60) + d.getUTCMinutes(); };
+    const before = utcMinuteNow();
+    const created = await post(port, '/admin/galaxy/new', { seed: 8888, utcOffsetMinutes: 480 });
+    const after = utcMinuteNow();
+    assert.equal(created.body.utcOffsetMinutes, 480, 'Create reports back the offset it took');
+
+    const snap = await get(port, '/snapshot');
+    const cal = snap.body.calendar;
+    assert.equal(cal.utcOffsetMinutes, 480, 'the snapshot calendar carries it');
+
+    // The anchor is the LOCAL minute-of-day, negated — so the minute this galaxy's
+    // tick 1 reads is the UTC+8 minute-of-day, 480 minutes ahead of the UTC one
+    // (mod a day). That is the whole behavioural claim: the offset really did move the
+    // day, and the container's own timezone had no say in it.
+    const local = minuteOf(1, 1440, cal.dayAnchorTick);
+    const shifted = (m) => ((m + 480) % 1440 + 1440) % 1440;
+    assert.ok(local === shifted(before) || local === shifted(after),
+      `tick 1 reads the UTC+8 minute-of-day, not the UTC one (got ${local})`);
+
+    const health = await get(port, '/health');
+    assert.equal(health.body.utcOffsetMinutes, 480, '/health carries it beside serverTime');
+    assert.match(health.body.serverTime, /Z$/, 'and serverTime stays a UTC instant');
+
+    // FROZEN: a restart reloads it rather than re-deriving anything.
+    child.kill('SIGKILL');
+    const port2 = await freePort();
+    const second = bootServer({ dir, port: port2 });
+    try {
+      await waitForHealth(port2);
+      const snap2 = await get(port2, '/snapshot');
+      assert.equal(snap2.body.calendar.utcOffsetMinutes, 480, 'the reloaded galaxy kept its offset');
+      assert.equal(snap2.body.calendar.dayAnchorTick, cal.dayAnchorTick, 'and its anchor');
+    } finally { second.child.kill('SIGKILL'); }
+  } finally { child.kill('SIGKILL'); }
+});
+
+test('an out-of-range or fractional UTC offset is REFUSED, not clamped', async () => {
+  const dir = tmpDir();
+  const port = await freePort();
+  const { child } = bootServer({ dir, port });
+  try {
+    await waitForHealth(port);
+    for (const bad of [841, -721, 90.5, '480']) {
+      const res = await post(port, '/admin/galaxy/new', { seed: 7, utcOffsetMinutes: bad });
+      assert.equal(res.status, 400, `${JSON.stringify(bad)} is refused`);
+      assert.match(res.body.error, /utcOffsetMinutes/);
+    }
+    // …and nothing was created by the refusals.
+    const health = await get(port, '/health');
+    assert.equal(health.body.galaxy, 'no-galaxy', 'a refused create creates nothing');
+    assert.equal(health.body.utcOffsetMinutes, null, 'and with no galaxy there is no offset');
+  } finally { child.kill('SIGKILL'); }
+});
+
+test('omitting the offset is UTC — byte-identical to a pre-offset galaxy', async () => {
+  const dir = tmpDir();
+  const port = await freePort();
+  const { child } = bootServer({ dir, port });
+  try {
+    await waitForHealth(port);
+    await post(port, '/admin/galaxy/new', { seed: 999 });
+    const snap = await get(port, '/snapshot');
+    assert.equal(snap.body.calendar.utcOffsetMinutes, 0, 'no offset asked for reads as UTC');
+    // The state on disk carries NO offset key at all — that omission is what keeps an
+    // unconfigured galaxy's bytes exactly what they were before this slice.
+    const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'));
+    assert.equal('utcOffsetMinutes' in onDisk, false, 'and writes no field to the volume');
+  } finally { child.kill('SIGKILL'); }
+});
+
 test('POST /reset does NOT re-anchor — a reset galaxy runs the unanchored cadence', async () => {
   const dir = tmpDir();
   const port = await freePort();
@@ -441,5 +527,7 @@ test('POST /reset does NOT re-anchor — a reset galaxy runs the unanchored cade
     const afterReset = await get(port, '/snapshot');
     assert.equal(afterReset.body.calendar.dayAnchorTick, 0,
       'reset rebuilds a plain zero-state — anchoring is Create’s job alone');
+    assert.equal(afterReset.body.calendar.utcOffsetMinutes, 0,
+      'and the offset goes with the anchor — choosing one is Create’s job too');
   } finally { child.kill('SIGKILL'); }
 });

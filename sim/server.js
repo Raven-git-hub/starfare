@@ -90,7 +90,8 @@ const { DEFAULT_WINDOW_N } = require('./windows.js');
 // The calendar's two creation-seam helpers. `anchorForCreation` is pure arithmetic;
 // `minuteOfDayFromDate` converts a Date the CALLER supplies — the single wall-clock
 // read lives in the create handler below and nowhere else (docs/cycle-and-calendar.md §2).
-const { anchorForCreation, minuteOfDayFromDate } = require('./calendar.js');
+const { anchorForCreation, minuteOfDayFromDate, localMinuteOfDay, isUtcOffsetMinutes,
+  UTC_OFFSET_MIN_MINUTES, UTC_OFFSET_MAX_MINUTES } = require('./calendar.js');
 const { generateGalaxySeed } = require('../tools/generate_seed.js');
 
 const DEFAULT_PORT = 7331; // the galaxy seed number, and clear of the host's other services
@@ -473,7 +474,13 @@ async function handleRequest(req, res) {
       // How long this PROCESS has been up, and the wall clock it thinks it is —
       // server state for the client's HUD, nothing to do with game time.
       uptimeSeconds: Math.round(process.uptime()),
+      // A UTC ISO instant, always — unambiguous on the wire. The galaxy's own offset
+      // rides beside it so a display can render the LOCAL time this galaxy's midnight
+      // is measured in (docs/cycle-and-calendar.md §2) instead of the viewer's locale
+      // or the container's timezone. Null when there is no galaxy: with none there is
+      // no offset to honour, only the raw instant.
       serverTime: new Date().toISOString(),
+      utcOffsetMinutes: s ? (s.utcOffsetMinutes == null ? 0 : s.utcOffsetMinutes) : null,
       // SERVER state, not game state — deliberately here and NOT in the snapshot.
       autotick: getAutotickStatus(),
     });
@@ -666,7 +673,7 @@ async function handleRequest(req, res) {
   // Both require a persist volume: without one there is no galaxy to own, only the
   // baked seed and an in-memory zero-state, and that dev path is unchanged.
 
-  // POST /admin/galaxy/new { seed? } — create a galaxy, atomically.
+  // POST /admin/galaxy/new { seed?, utcOffsetMinutes? } — create a galaxy, atomically.
   if (method === 'POST' && path === '/admin/galaxy/new') {
     if (!persistDir) {
       sendJson(res, 409, { error: 'no persist volume — the galaxy lifecycle needs STARFARE_PERSIST_DIR' });
@@ -689,6 +696,17 @@ async function handleRequest(req, res) {
       return;
     }
     const seedNumber = Number.isInteger(asked) ? asked : randomSeedNumber();
+    // WHICH midnight this galaxy's cycle rolls on (docs/cycle-and-calendar.md §2). An
+    // operator/config choice made once, here, and frozen with the galaxy — not an
+    // economy number. Omitted means 0 = UTC, which is byte-identical to a pre-offset
+    // galaxy. A bad value is REFUSED rather than clamped: a galaxy whose day rolls at
+    // a time nobody asked for is worse than a failed create.
+    const askedOffset = body && body.utcOffsetMinutes;
+    if (askedOffset !== undefined && askedOffset !== null && !isUtcOffsetMinutes(askedOffset)) {
+      sendJson(res, 400, { error: `utcOffsetMinutes must be a whole number of minutes in [${UTC_OFFSET_MIN_MINUTES}, ${UTC_OFFSET_MAX_MINUTES}] (UTC-12:00 .. UTC+14:00), or omitted for UTC` });
+      return;
+    }
+    const utcOffsetMinutes = isUtcOffsetMinutes(askedOffset) ? askedOffset : 0;
     try {
       // The sequence is one operation: a new seed must NEVER end up paired with the
       // old state, whose ventures point at site ids this galaxy does not have.
@@ -700,14 +718,18 @@ async function handleRequest(req, res) {
       // 5. THE ONE WALL-CLOCK READ IN THE WHOLE SYSTEM (docs/cycle-and-calendar.md §2).
       //    It happens here, at the operator seam, exactly like STARFARE_TICK_MS — never
       //    in advance/tick/resolveProduction, which read only integers already in state.
-      //    The minute-of-day it yields is turned into a frozen `dayAnchorTick` so this
-      //    galaxy's cycle boundaries fall on SERVER MIDNIGHT instead of on whatever time
-      //    of day it happened to be created. After this line the galaxy never consults a
-      //    clock again: downtime does not re-anchor (§3), /reset does not, and the
-      //    restore path loads the persisted anchor rather than recomputing one.
+      //    The read is in UTC, and `utcOffsetMinutes` (above) shifts it to the midnight
+      //    the operator chose: the resulting frozen `dayAnchorTick` makes this galaxy's
+      //    cycle boundaries fall on THAT local midnight instead of on whatever time of
+      //    day it happened to be created — and, unlike the old `getHours()` read, on
+      //    nothing to do with the container's own timezone. After this line the galaxy
+      //    never consults a clock again: downtime does not re-anchor (§3), /reset does
+      //    not, and the restore path loads the persisted anchor rather than recomputing
+      //    one. At offset 0 on a UTC host this is the arithmetic it always was.
       const anchorN = DEFAULT_WINDOW_N;                  //    a live galaxy runs the ruled default
-      const dayAnchorTick = anchorForCreation(minuteOfDayFromDate(new Date()), anchorN);
-      setState(createZeroState({ dayAnchorTick }));      //    zero-state ON THE NEW SEED
+      const localMinute = localMinuteOfDay(minuteOfDayFromDate(new Date()), utcOffsetMinutes);
+      const dayAnchorTick = anchorForCreation(localMinute, anchorN);
+      setState(createZeroState({ dayAnchorTick, utcOffsetMinutes })); //  zero-state ON THE NEW SEED
       saveState(getState(), persistDir);                 // 6. persist, and drop the old history
       clearJournal(persistDir);
       if (bootTickMs !== null) startAutotick(bootTickMs);//    the galaxy turns from tick 0
@@ -718,8 +740,8 @@ async function handleRequest(req, res) {
       // a full N.) Logged so an operator can see when this galaxy's first cycle closes
       // without doing the arithmetic.
       const firstMidnightTick = anchorN + dayAnchorTick;
-      console.log(`[galaxy] CREATED — seed ${seedNumber}, tick 0, clock ${bootTickMs !== null ? 'ON' : 'off'}, dayAnchorTick ${dayAnchorTick} (first midnight boundary at tick ${firstMidnightTick})`);
-      sendJson(res, 200, { ok: true, seed: seedNumber, tick: getState().tick, state: 'active' });
+      console.log(`[galaxy] CREATED — seed ${seedNumber}, tick 0, clock ${bootTickMs !== null ? 'ON' : 'off'}, utcOffsetMinutes ${utcOffsetMinutes}, dayAnchorTick ${dayAnchorTick} (first midnight boundary at tick ${firstMidnightTick})`);
+      sendJson(res, 200, { ok: true, seed: seedNumber, tick: getState().tick, state: 'active', utcOffsetMinutes });
     } catch (err) {
       sendJson(res, 500, { error: 'could not create the galaxy', detail: String((err && err.message) || err) });
     }

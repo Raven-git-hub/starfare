@@ -398,6 +398,19 @@ function createState(scenario) {
     // future operator action. This is the only field in state derived from a clock, and
     // nothing on the tick path ever reads one.
     ...(scenario.dayAnchorTick === undefined ? {} : { dayAnchorTick: scenario.dayAnchorTick }),
+    // utcOffsetMinutes: WHICH midnight the anchor above lines up with — the galaxy's
+    // own UTC offset in minutes (docs/cycle-and-calendar.md §2), chosen once at
+    // creation and defaulting to 0 = UTC. An integer in [-720, 840] (UTC-12:00 ..
+    // UTC+14:00); a FIXED offset, never a named zone, so it does not follow daylight
+    // saving. Present ONLY when the scenario sets it — same omit-when-absent
+    // discipline as `dayAnchorTick` above, and for the same reason: an unconfigured
+    // galaxy serializes byte-identically to pre-offset. Readers default it `== null ? 0`.
+    //
+    // It is FROZEN and persisted with the galaxy, exactly like the anchor: the tick
+    // path never reads it (it is a DISPLAY and CREATION-TIME field, not an economy
+    // one), and changing the offset affects only galaxies created afterwards (§3 —
+    // re-anchoring an existing galaxy stays a manual future action).
+    ...(scenario.utcOffsetMinutes === undefined ? {} : { utcOffsetMinutes: scenario.utcOffsetMinutes }),
     // world is an opaque reference the engine carries inert (tick/intake/assert
     // read none of it). The zero-state now sets it to { seed: <number> } — the
     // galaxy IS the seed (§15.3), referenced, not copied — replacing the old

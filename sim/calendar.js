@@ -106,15 +106,51 @@ function anchorForCreation(minuteOfDayNow, N) {
   return phase === 0 ? 0 : -phase;
 }
 
-// minuteOfDayFromDate(date) -> the wall clock's minute-of-day, 0..1439. The ONE
-// impure input to this module, and it is impure only in its ARGUMENT: the caller
-// supplies the Date. Kept here so the clock-to-calendar conversion is stated once,
-// beside the arithmetic that consumes it, rather than inlined at the server seam.
-// Uses LOCAL server time — "server midnight" in §2 means the server's own midnight.
+// The length of a day in minutes. Not an invented number: the cycle is one 24-hour day
+// and a tick is one minute (§1), so a day is 24 x 60. It is the modulus for wall-clock
+// minute-of-day arithmetic, which is a property of the CLOCK, not of the window length
+// `N` — an operator who shortens `N` for a test galaxy does not shorten the day.
+const MINUTES_PER_DAY = 1440;
+
+// The legal range of a galaxy's `utcOffsetMinutes`: UTC-12:00 .. UTC+14:00, the real
+// span of civil time offsets in use. A FIXED numeric offset by ruling (§2): no named
+// zones, no tzdata, no daylight-saving shift.
+const UTC_OFFSET_MIN_MINUTES = -720;
+const UTC_OFFSET_MAX_MINUTES = 840;
+
+// isUtcOffsetMinutes(v) -> is this a value we would store as a galaxy's offset?
+// Exported so the ONE validating seam (the create endpoint) and the tests agree on the
+// rule instead of each spelling it out.
+function isUtcOffsetMinutes(v) {
+  return Number.isInteger(v) && v >= UTC_OFFSET_MIN_MINUTES && v <= UTC_OFFSET_MAX_MINUTES;
+}
+
+// minuteOfDayFromDate(date) -> the UTC minute-of-day, 0..1439. The ONE impure input to
+// this module, and it is impure only in its ARGUMENT: the caller supplies the Date.
+//
+// UTC, deliberately (28-08-26). It used to read `getHours()`, the CONTAINER's local
+// time, which made "server midnight" whatever timezone the box happened to be set to —
+// an accident of deployment, and one that disagreed with every display, which renders
+// the server clock from a UTC ISO string. The zone is now an explicit per-galaxy choice
+// (`utcOffsetMinutes`, §2), so this function answers in the one frame that needs no
+// configuration, and `localMinuteOfDay` below applies the galaxy's chosen offset to it.
 function minuteOfDayFromDate(date) {
-  return (date.getHours() * 60) + date.getMinutes();
+  return (date.getUTCHours() * 60) + date.getUTCMinutes();
+}
+
+// localMinuteOfDay(utcMinuteOfDay, utcOffsetMinutes) -> the minute-of-day at the
+// galaxy's chosen offset, 0..1439, wrapping across the date line at either end.
+// Pure: it is the shift that turns the UTC read above into the local time whose
+// midnight `anchorForCreation` then anchors the cycle to.
+//
+// At offset 0 it is the identity on an already-in-range minute, which is the whole
+// no-op proof for an unconfigured galaxy.
+function localMinuteOfDay(utcMinuteOfDay, utcOffsetMinutes = 0) {
+  return mod(utcMinuteOfDay + utcOffsetMinutes, MINUTES_PER_DAY);
 }
 
 module.exports = {
   minuteOf, dayOf, tickAt, format, displayLabel, anchorForCreation, minuteOfDayFromDate,
+  localMinuteOfDay, isUtcOffsetMinutes,
+  MINUTES_PER_DAY, UTC_OFFSET_MIN_MINUTES, UTC_OFFSET_MAX_MINUTES,
 };

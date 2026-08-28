@@ -206,6 +206,9 @@ test('the snapshot carries the cycle clock, derived and additive', () => {
   const snap = buildSnapshot(s);
   assert.deepEqual(snap.calendar, {
     day: 0, minute: 870, label: '0000:0870', windowN: N, dayAnchorTick: anchor,
+    // WHICH midnight the anchor lines up with (§2). 0 = UTC on a galaxy that never
+    // chose one — see utc-offset.test.js for the offset's own proofs.
+    utcOffsetMinutes: 0,
   });
   assert.equal(snap.schemaVersion, 7, 'additive — no schema bump');
 });
@@ -261,5 +264,8 @@ test('and server.js reads it in exactly the places it is allowed to', () => {
   // Two, and only two: the /health readout (display), and the anchor at galaxy creation.
   assert.equal(reads.length, 2, `expected 2 clock reads, found ${reads.length}: ${JSON.stringify(reads)}`);
   assert.ok(reads.some((l) => l.includes('serverTime')), 'one is /health’s display clock');
-  assert.ok(reads.some((l) => l.includes('anchorForCreation')), 'the other is the creation anchor');
+  // The creation read now sits on the line that CONVERTS it — the UTC minute-of-day,
+  // shifted to the galaxy's chosen offset — and `anchorForCreation` consumes that
+  // number on the next line, still without a clock of its own.
+  assert.ok(reads.some((l) => l.includes('minuteOfDayFromDate')), 'the other is the creation anchor');
 });

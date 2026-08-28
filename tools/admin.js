@@ -36,6 +36,7 @@ const FLAG_SPEC = Object.freeze({
   seed: 'int',      // new-galaxy / verify-cycle: name the galaxy
   pick: 'string',   // snapshot: extract one dotted path
   window: 'int',    // seat-demo: short-cycle test galaxy via setWindowN
+  'utc-offset': 'number', // new-galaxy: which midnight the cycle rolls on, in HOURS
   json: 'bool',     // snapshot: dump the whole thing
   help: 'bool',
 });
@@ -73,6 +74,13 @@ function parseArgs(argv) {
         const n = Number(raw);
         if (!Number.isInteger(n)) throw new Error(`--${name} must be an integer, got ${JSON.stringify(raw)}`);
         flags[name] = n;
+      } else if (kind === 'number') {
+        // A fractional value is legitimate here and only here: half-hour and
+        // quarter-hour timezones are real (+5.5, +5.75), so `--utc-offset` cannot be
+        // an int. Still refuses anything that is not a finite number.
+        const n = Number(raw);
+        if (raw === '' || !Number.isFinite(n)) throw new Error(`--${name} must be a number, got ${JSON.stringify(raw)}`);
+        flags[name] = n;
       } else {
         flags[name] = raw;
       }
@@ -81,6 +89,28 @@ function parseArgs(argv) {
     if (command === null) command = token; else flags._.push(token);
   }
   return { command, flags };
+}
+
+// utcOffsetMinutesFromHours(hours) -> the galaxy's `utcOffsetMinutes`, or THROWS.
+// The operator says '+8' or '+5.5'; the wire and the engine speak whole minutes
+// (docs/cycle-and-calendar.md §2). Fractions that are not a whole number of minutes,
+// and anything outside UTC-12:00 .. UTC+14:00, are refused rather than rounded: a
+// galaxy is anchored ONCE, so a typo here is not correctable afterwards.
+function utcOffsetMinutesFromHours(hours) {
+  if (typeof hours !== 'number' || !Number.isFinite(hours)) {
+    throw new Error(`--utc-offset must be a number of hours, got ${JSON.stringify(hours)}`);
+  }
+  const exact = hours * 60;
+  const minutes = Math.round(exact);
+  // Floating point: 5.5 * 60 is exactly 330, but 0.1 * 60 is 6.000000000000001, so the
+  // comparison is against a tolerance rather than ===.
+  if (Math.abs(exact - minutes) > 1e-6) {
+    throw new Error(`--utc-offset ${hours} is not a whole number of minutes`);
+  }
+  if (minutes < -720 || minutes > 840) {
+    throw new Error(`--utc-offset ${hours} is outside UTC-12:00 .. UTC+14:00`);
+  }
+  return minutes;
 }
 
 // pick(obj, 'a.b.c') -> the value at that dotted path, or undefined if any step
@@ -170,7 +200,7 @@ function judgeVerify({ venture, calendar } = {}) {
 }
 
 module.exports = {
-  parseArgs, pick, findResourceNodes, pickResourceNode, judgeVerify,
+  parseArgs, pick, findResourceNodes, pickResourceNode, judgeVerify, utcOffsetMinutesFromHours,
   EXPECTED_COMMITMENT, EXPECTED_WINDOW_N,
 };
 
@@ -240,9 +270,18 @@ async function liveSnapshot(base) {
   return snap;
 }
 
+// The galaxy's offset as an operator reads it: 'UTC', 'UTC+8', 'UTC+5:30'.
+function offsetLabel(minutes) {
+  const m = Number(minutes) || 0;
+  if (m === 0) return 'UTC';
+  const abs = Math.abs(m);
+  const rem = abs % 60;
+  return `UTC${m < 0 ? '-' : '+'}${Math.floor(abs / 60)}${rem ? `:${String(rem).padStart(2, '0')}` : ''}`;
+}
+
 function calendarLine(cal) {
   if (!cal) return '(no calendar block — the server is behind this build)';
-  return `day ${cal.day} · minute ${cal.minute} · ${cal.label} · windowN ${cal.windowN} · dayAnchorTick ${cal.dayAnchorTick}`;
+  return `day ${cal.day} · minute ${cal.minute} · ${cal.label} · windowN ${cal.windowN} · dayAnchorTick ${cal.dayAnchorTick} · utcOffsetMinutes ${cal.utcOffsetMinutes == null ? '(absent)' : cal.utcOffsetMinutes}`;
 }
 
 // --- commands ---------------------------------------------------------------
@@ -286,6 +325,11 @@ async function cmdStarters(base) {
 async function cmdNewGalaxy(base, flags) {
   log('!! this REPLACES the active galaxy — its world, ventures and history are dropped.');
   const body = flags.seed === undefined ? {} : { seed: flags.seed };
+  // WHICH midnight the new galaxy rolls its day on. Omitted is 0 = UTC, and the flag
+  // is in HOURS because that is how an operator names a timezone. Frozen at creation.
+  if (flags['utc-offset'] !== undefined) {
+    body.utcOffsetMinutes = utcOffsetMinutesFromHours(flags['utc-offset']);
+  }
   const out = await postJson(base, '/admin/galaxy/new', body);
   const snap = await liveSnapshot(base);
   const cal = snap.calendar || null;
@@ -293,7 +337,7 @@ async function cmdNewGalaxy(base, flags) {
   row('calendar', calendarLine(cal));
   const anchored = cal && Number.isInteger(cal.dayAnchorTick);
   row('anchor', anchored
-    ? `dayAnchorTick ${cal.dayAnchorTick} — midnight-anchored`
+    ? `dayAnchorTick ${cal.dayAnchorTick} — anchored to midnight at ${offsetLabel(cal.utcOffsetMinutes)}`
     : 'MISSING — this server is not running the calendar build');
   if (!anchored) throw new Error('the new galaxy came back without a dayAnchorTick');
   return out;
@@ -441,7 +485,8 @@ Commands
   snapshot [--json] [--pick a.b.c]
                               GET  /snapshot (default: a compact summary)
   starters                    GET  /starters
-  new-galaxy [--seed N]       POST /admin/galaxy/new  — REPLACES the active galaxy
+  new-galaxy [--seed N] [--utc-offset H]
+                              POST /admin/galaxy/new  — REPLACES the active galaxy
   seat-demo [--window N]      the two-mine 100%-licence demo (see the runbook)
   verify-cycle [--seed N]     the post-redeploy self-check; exit 0 only if every check passes
   tick [n]                    POST /tick, n times (default 1)
@@ -452,6 +497,9 @@ Flags
   --pick a.b.c   snapshot: print one dotted path
   --json         snapshot: dump the whole thing
   --window N     seat-demo: a tick-0 short-cycle test galaxy (/reset + setWindowN)
+  --utc-offset H new-galaxy: which midnight the galaxy's day rolls on, in HOURS
+                 (default 0 = UTC; -12 .. +14; halves allowed, e.g. +5.5). FROZEN
+                 at creation — only a new galaxy can carry a different one.
   --help, -h     this text
 `;
 
