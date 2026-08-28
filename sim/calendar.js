@@ -65,6 +65,20 @@ function format(tick, N, anchor = 0) {
   return `${pad4(dayOf(tick, N, anchor))}:${pad4(minuteOf(tick, N, anchor))}`;
 }
 
+// displayLabel(tick, N, anchor) -> what a SCREEN shows for this tick: `format` above for
+// any real, producing tick, and an em-dash for the pre-game `tick 0`.
+//
+// Tick 0 is the initial state and "is never displayed" (the header note above) — but it
+// is reachable on screen the moment a galaxy is created and not yet ticked, and `format`
+// answers it honestly with `00-1:1439` (`00-1:0023` on an anchored galaxy): day -1,
+// because day 0 starts at the FIRST PRODUCING tick. That label is not wrong, it is just not a moment. So the guard is here,
+// at the DISPLAY seam, and `format`/`dayOf` keep answering exactly as before — the
+// arithmetic stays exact and un-clamped (a clamped day would silently corrupt elapsed
+// time, which is the mistake this whole file exists to avoid).
+function displayLabel(tick, N, anchor = 0) {
+  return tick < 1 ? '—' : format(tick, N, anchor);
+}
+
 // anchorForCreation(minuteOfDayNow, N) -> the `dayAnchorTick` that lines this galaxy's
 // cycle boundaries up with server midnight (§2). Pure arithmetic: the caller does the
 // one wall-clock read and passes the minute-of-day in.
@@ -102,5 +116,5 @@ function minuteOfDayFromDate(date) {
 }
 
 module.exports = {
-  minuteOf, dayOf, tickAt, format, anchorForCreation, minuteOfDayFromDate,
+  minuteOf, dayOf, tickAt, format, displayLabel, anchorForCreation, minuteOfDayFromDate,
 };

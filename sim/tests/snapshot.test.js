@@ -103,6 +103,25 @@ test('each seated venture carries its seed site resolved by getSite', () => {
   assert.equal(v.site.resourceType, site.resourceType); // titanium
 });
 
+test('a seated venture carries its site\'s FRIENDLY NAME, derived from the seed', () => {
+  // The console shows this instead of `pl_00001_n02` (28-08-26). It is the seed's own
+  // derivation, copied through — the browser is not allowed to build it (§5's display rule).
+  const s = sampleState();
+  const snap = buildSnapshot(s);
+  const v = snap.ventures.find((x) => x.id === 'mine_1');
+  assert.equal(v.site.name, getSite('pl_00001_n02').name);
+  assert.match(v.site.name, /^\S+ [IVX]+ · Node 2$/, 'system, Roman planet ordinal, node');
+});
+
+test('the pre-game tick 0 shows a blank calendar label, not `00-1:1439`', () => {
+  // A galaxy created and not yet ticked is a state an operator really does look at.
+  // `day`/`minute` stay the exact arithmetic beside it; only the LABEL is blanked.
+  const snap = buildSnapshot(createState({ guilds: [], reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 } }));
+  assert.equal(snap.tick, 0);
+  assert.equal(snap.calendar.label, '—');
+  assert.equal(snap.calendar.day, -1, 'the arithmetic is untouched — only the display is guarded');
+});
+
 test('guild breakdown copies the shown fields and does not alias live state', () => {
   const s = sampleState();
   const snap = buildSnapshot(s);

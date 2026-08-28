@@ -136,6 +136,15 @@ by construction, and can never disagree. The first **producing** tick (engine `t
 is the last tick of the first day." (The raw engine `tick 0` is the pre-game initial state and is
 never displayed.)
 
+**The pre-game tick has no label (28-08-26).** "Never displayed" was an intention, not a guard: a
+galaxy that has been created and not yet ticked sits at `tick 0`, and `format(0)` answers
+`00-1:1439` — day −1, because day 0 begins at the first *producing* tick. The label is arithmetically
+exact and is not a moment anyone should be shown, so the calendar gained **`displayLabel(tick, N,
+anchor)`**: `format` from tick 1 on, and `—` at tick 0. The snapshot's `calendar.label` is now that
+function. The guard is at the **display seam only** — `format`, `dayOf` and `minuteOf` are untouched
+and still answer −1, because clamping the arithmetic is exactly the elapsed-time corruption §5
+refuses. `calendar.day` / `calendar.minute` therefore stay exact beside the blanked label.
+
 **`DDDD:TTTT` is a display notation, never a stored value.** Storage is always the plain integer
 tick; the UI converts to whatever it wants — real arrival times, countdowns, renegotiation
 deadlines — using `dayAnchorTick` plus the server clock at render time (the conversion the UI was

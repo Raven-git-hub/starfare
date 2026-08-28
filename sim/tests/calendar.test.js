@@ -15,7 +15,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-  minuteOf, dayOf, tickAt, format, anchorForCreation, minuteOfDayFromDate,
+  minuteOf, dayOf, tickAt, format, displayLabel, anchorForCreation, minuteOfDayFromDate,
 } = require('../calendar.js');
 const { winStartFor, DEFAULT_WINDOW_N } = require('../windows.js');
 
@@ -137,4 +137,33 @@ test('minuteOfDayFromDate converts a supplied Date — the module reads no clock
   assert.equal(minuteOfDayFromDate(d), 870);
   assert.equal(minuteOfDayFromDate(new Date(2026, 7, 27, 0, 0, 0)), 0);
   assert.equal(minuteOfDayFromDate(new Date(2026, 7, 27, 23, 59, 0)), 1439);
+});
+
+// --- the pre-game tick has no clock to show (console legibility pass, 28-08-26) -----
+//
+// Day 0 starts at the FIRST PRODUCING tick, so `dayOf(0)` is -1 and `format(0)` reads
+// `00-1:1439` — arithmetically exact, and not a moment anyone should be shown. The guard
+// is at the DISPLAY seam only: `displayLabel` blanks it, `format`/`dayOf` are untouched,
+// because clamping the arithmetic is the elapsed-time corruption this file exists to
+// refuse.
+
+test('displayLabel blanks the pre-game tick 0 instead of showing a negative day', () => {
+  assert.equal(displayLabel(0, N), '—');
+  assert.equal(displayLabel(0, SMALL), '—');
+  assert.equal(displayLabel(0, N, -870), '—', 'anchored too — no anchor makes tick 0 a moment');
+  assert.ok(!/-/.test(displayLabel(0, N).replace('—', '')), 'and nothing negative leaks through');
+});
+
+test('displayLabel is exactly `format` from the first producing tick on', () => {
+  assert.equal(displayLabel(1, N), '0000:0000');
+  for (const t of [1, 2, N, N + 1, 5000]) {
+    assert.equal(displayLabel(t, N, -870), format(t, N, -870), `tick ${t}`);
+  }
+});
+
+test('the arithmetic is NOT clamped — dayOf(0) is still -1', () => {
+  // The guard must not have crept into the maths: elapsed time between two ticks stays
+  // exact, including across the pre-game boundary.
+  assert.equal(dayOf(0, N), -1);
+  assert.equal(format(0, N), '00-1:1439');
 });

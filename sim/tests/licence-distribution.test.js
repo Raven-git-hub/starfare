@@ -152,15 +152,62 @@ test('one unit short of its target is a BREACH, not a partial', () => {
   assert.equal(verdict.perVenture.alpha.status, 'met');
 });
 
-test('mid-window every row reads `accruing`, whatever the pile looks like', () => {
+test('mid-window a row SHORT of its target reads `accruing` — never an early breach', () => {
   let s = fixture([mine('alpha', 6), mine('beta', 4)]);
   s = setSend(s, 2);
   s = tick(s);                         // tick 1 — two ticks short of the boundary
   const w = nextWindow(s);             // previews tick 2, mid-window
   assert.equal(w.status, 'accruing');
   assert.deepEqual(statuses(w), { alpha: 'accruing', beta: 'accruing' },
-    'the ranking is editable until the boundary, so a mid-window verdict would be a guess');
+    'the ranking is editable until the boundary, so an early BREACH would be a guess');
   assert.ok(w.perVenture.alpha.delivered > 0, 'but the projection off the delivered-so-far is real');
+});
+
+// --- (2b) the mid-window `met` refinement (console legibility pass, 28-08-26) -------
+//
+// `met` is the one verdict that is SAFE early: `delivered` only grows within a window,
+// and the fill hands a licence its full `qi` before feeding the next, so a licence at
+// its target cannot fall back below it. `breach` stays boundary-only — that one really
+// is a fact about the window's end. Before this, a fully-delivered licence sat on the
+// console's amber "still accruing" spinner for the rest of the day.
+
+test('mid-window a licence already AT its target reads `met`, while a short one still accrues', () => {
+  let s = fixture([mine('alpha', 6), mine('beta', 4)]);   // Q = 10, boundary at tick 4
+  s = setSend(s, 3);
+  s = tick(s);                         // tick 1 — 3 delivered
+  const w = nextWindow(s);             // previews tick 2: 6 delivered, still mid-window
+  assert.equal(w.delivered, 6, 'two ticks at 3 units — 6 of Q 10, the window still running');
+  assert.deepEqual(statuses(w), { alpha: 'met', beta: 'accruing' },
+    'alpha has its whole 6: it is met NOW, not at the boundary. beta has nothing yet');
+  assert.equal(w.perVenture.alpha.delivered, 6);
+  assert.equal(w.status, 'accruing', 'the GOOD is still accruing — beta is not full');
+});
+
+test('the early `met` reaches no stored byte — status is telemetry, not state', () => {
+  // The determinism guard for the refinement above. The stored window carries three
+  // fields and none of them is a verdict, so moving WHEN `met` is reported cannot move
+  // the hash. (The standing proof is the pinned golden in commitment-scaffold.test.js,
+  // which runs a committed chain 40 ticks and is unchanged by this slice; this test
+  // says WHY it is unchanged.)
+  let s = fixture([mine('alpha', 6), mine('beta', 4)]);
+  s = setSend(s, 5);
+  s = tick(s);
+  const before = hashState(s);
+  const w = nextWindow(s);
+  assert.equal(w.status, 'met', 'the preview really does report the early met');
+  assert.deepEqual(Object.keys(win(s)).sort(), ['delivered', 'sendCarry', 'windowStart'],
+    'the stored window holds accumulators only — no status, no perVenture');
+  assert.equal(hashState(s), before, 'and reading the verdict moved nothing');
+});
+
+test('mid-window, once EVERY licence is full the good rolls up to `met` early too', () => {
+  let s = fixture([mine('alpha', 6), mine('beta', 4)]);
+  s = setSend(s, 5);
+  s = tick(s);                         // tick 1 — 5 delivered
+  const w = nextWindow(s);             // previews tick 2: the whole Q, mid-window
+  assert.equal(w.delivered, 10, 'Q reached with two ticks of the window still to run');
+  assert.deepEqual(statuses(w), { alpha: 'met', beta: 'met' });
+  assert.equal(w.status, 'met', 'the pill agrees with the dots beneath it, as a rollup must');
 });
 
 // --- (3) THE F-C ROUNDING FIX: Q = Σ round, never round(Σ) -------------------------

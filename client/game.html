@@ -2841,6 +2841,10 @@ function fmtUptime(seconds){
 }
 function applyServerClock(health){
   if (!health) return;
+  // The tick ring's PERIOD — the operator's own auto-tick interval, never a constant
+  // here. Absent/stopped heartbeat leaves it null and the ring parks (see clockLoop).
+  var at = health.autotick || null;
+  __tickPeriodMs = (at && Number.isFinite(at.intervalMs) && at.intervalMs > 0) ? at.intervalMs : null;
   setText('hud-seed', health.seed == null ? 'NO GALAXY' : ('SEED ' + health.seed));
   setText('hud-servertime', fmtServerTime(health.serverTime));
   setText('hud-uptime', fmtUptime(health.uptimeSeconds));
@@ -3162,6 +3166,8 @@ function startLivePoll(){
       // no longer exists as though it were live.
       if (snap && snap.state === 'no-galaxy'){ galaxyClosed(); return; }
       setText('hud-link', '');
+      // The tick ring's PHASE: the sweep restarts on the tick the poll just observed.
+      noteTick(snap.tick);
       applySnapshot(snap);
     }).catch(function(err){
       setText('hud-link', 'LINK LOST');
@@ -3210,17 +3216,36 @@ window.closeTab = function(){
   var sysTab=document.querySelector('.rtab'); if(sysTab) sysTab.classList.add('active');
 };
 
-/* ---- radial clock — PURE DECORATION ---------------------------------------
-   A 60-second sweep, nothing more. It counts NOTHING: the tick number and the
-   credits beside it are read from /snapshot by the poll above (design.md §5 — the
-   client computes no game number), and the galaxy turns on the server's clock at
-   whatever interval the operator set. */
+/* ---- radial clock — THE TICK RING ------------------------------------------
+   The ring sweeps once per TICK, and it is synced to the real one. It still counts
+   NOTHING itself (design.md §5): both facts it needs come off the server —
+     - the PERIOD is `/health`'s `autotick.intervalMs`, the interval the operator set;
+     - the PHASE is reset whenever the ~1 s poll OBSERVES `snap.tick` increment.
+   So the sweep completes as the tick lands, within the poll's own ~1 s jitter, instead
+   of free-running on a hardcoded 60 s from page load and drifting away from the galaxy
+   within a minute. With no auto-tick running (`intervalMs` null — an operator ticking by
+   hand) there is no period to sweep, so the ring simply parks full rather than inventing
+   a cadence. A frame-perfect ring would need `/health` to expose a `msToNextTick` /
+   `lastTickAtMs`; that is a follow-up, not this pass. */
 var __sweepStart=(window.performance&&performance.now)?performance.now():Date.now();
+var __tickPeriodMs=null;   // from /health autotick.intervalMs; null = no heartbeat
+var __lastSeenTick=null;   // the last tick number the poll read out of /snapshot
 function nowms(){ return (window.performance&&performance.now)?performance.now():Date.now(); }
+// Called by the snapshot poll: a tick number we have not seen before means the tick
+// just landed, so the sweep starts again from here.
+function noteTick(tick){
+  if(typeof tick!=='number') return;
+  if(__lastSeenTick===null || tick!==__lastSeenTick){
+    __lastSeenTick=tick;
+    __sweepStart=nowms();
+  }
+}
 (function clockLoop(){
   var tc=document.getElementById('tickclock');
   if(tc && document.getElementById('gameTop').classList.contains('show')){
-    var frac=((nowms()-__sweepStart)/60000)%1;
+    var period=__tickPeriodMs;
+    // No heartbeat to sweep against: show a full ring rather than a wrong one.
+    var frac=period ? Math.min(1,(nowms()-__sweepStart)/period) : 1;
     var deg=Math.max(0,Math.min(360,frac*360));
     tc.style.background='conic-gradient(var(--accent) '+deg+'deg, rgba(67,217,200,.10) '+deg+'deg)';
   }

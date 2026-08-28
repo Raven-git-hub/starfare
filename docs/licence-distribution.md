@@ -75,9 +75,17 @@ On the read path, for each good carrying commitment (`pursueFill` in `sim/produc
    subtraction. No rounding here — `qᵢ` and `delivered` are already whole units.
 3. **Judge, binary.** `met` iff the venture got its ENTIRE target; one short is `breach`, no partial
    credit (the fee it drives is a lump, so a half-met licence is not a thing the model can charge
-   for). Mid-window every row reads `accruing` with `delivered` a projection off the pile so far —
-   the ranking is editable until the boundary, so a mid-window verdict would be a guess presented as
-   a fact.
+   for). Mid-window a row still SHORT of its target reads `accruing`, with `delivered` a projection
+   off the pile so far — the ranking is editable until the boundary, so calling a shortfall a breach
+   early would be a guess presented as a fact.
+   **Refined 28-08-26 (console legibility pass): `met` is reported EARLY, `breach` is not.** A row
+   already at or past its target reads `met` the moment it is full, mid-window included. The
+   asymmetry is sound rather than convenient: within a window `delivered` only grows, and the fill
+   hands a licence its full `qᵢ` before feeding the next, so a licence at its target cannot fall
+   back below it — no later re-ranking can take units off a row that is already full. `breach`
+   stays boundary-only, because that one really is a fact about the window's END. This is a
+   STATUS-ONLY refinement: no credit moves, no delivery moves, `Q` is unchanged, and status is
+   derived telemetry that reaches no stored byte (the committed golden hash is unmoved).
 
 **No arrival-time fencing (N-4).** The fill is over the window's *whole* pile. A mid-window joiner
 ranked first draws on units delivered before its licence existed, and the venture that actually sent
@@ -89,7 +97,8 @@ unranked counterfactual beside it) so it cannot be quietly "fixed".
 ### 4. The rollup, and the stale-pursue flag
 
 `window.status` is now `rollupStatus(perVenture, isBoundary)`: `met` only if every row is met, else
-`breach`; `accruing` mid-window. The aggregate is derived from the individuals, never the reverse.
+`breach` at the boundary and `accruing` while the window runs — carrying the same early-`met`
+asymmetry as the rows (28-08-26), so the good's pill can never disagree with the dots beneath it. The aggregate is derived from the individuals, never the reverse.
 With `Q = Σ qᵢ` and a greedy fill this is the same verdict `delivered >= Q` gave — which is why the
 change is byte-identical — but it is now *composed* the way the design says it is, so a future
 per-venture rule cannot silently disagree with the dot the console shows.

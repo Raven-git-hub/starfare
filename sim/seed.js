@@ -23,7 +23,8 @@ const path = require('node:path');
 
 // A "site" is anywhere a venture can sit: a resource node (mining) or a
 // settlement slot (refinery/factory/construction). Both share this shape:
-//   { id, kind: 'resource' | 'settlement', planetId, systemId, resourceType? }
+//   { id, kind: 'resource' | 'settlement', planetId, systemId, resourceType?, name }
+// where `name` is the friendly display name derived below ("FEN-6425 I · Node 1").
 // A "landmark" is a claimable/referenceable seed feature:
 //   citadel : { id: 'citadel', kind: 'citadel', coords, radius }
 //   outpost : { id, kind: 'outpost', name, coords }
@@ -41,6 +42,41 @@ let _index = null;
 // This file does no file IO of its own beyond that default require — it is a pure
 // index over whatever seed it is handed.
 let _seed = null;
+
+// --- The friendly site name (DERIVED display telemetry, added 28-08-26) -------
+// The seed names systems (`FEN-6425`) but not planets or sites, so every screen that
+// wanted to say WHERE a venture sits printed a raw id (`pl_00004_n01`). These two pure
+// helpers derive the name the console shows — from seed data alone, so the browser
+// still computes nothing (design.md §5's display rule).
+//
+// Format: "<system name> <planet's Roman ordinal in its system> · <Node|Slot> <number>",
+// e.g. `pl_00004_n01` in FEN-6425 -> "FEN-6425 I · Node 1". The ordinal is the planet's
+// 1-based index in its system's `planets` array (the seed's own deterministic order),
+// which is the only planet identity the seed carries beyond the id.
+
+// Roman numerals, the ordinary subtractive notation. Not a game number — a way of
+// writing one. Only ever called with a small positive planet ordinal; anything else
+// (0, negative, non-integer) is handed back as its plain digits rather than faked.
+const ROMAN = [[10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']];
+function roman(n) {
+  if (!Number.isInteger(n) || n < 1) return String(n);
+  let left = n;
+  let out = '';
+  for (const [value, sym] of ROMAN) {
+    while (left >= value) { out += sym; left -= value; }
+  }
+  return out;
+}
+
+// siteName(siteId, systemName, planetOrdinal) -> the display name, or the site id itself
+// if the id does not carry the seed's `_nNN` / `_sNN` suffix. A weird-looking id beats a
+// plausible-looking invention: an unparseable site says so on screen.
+function siteName(siteId, systemName, planetOrdinal) {
+  const m = /_([ns])(\d+)$/.exec(siteId);
+  if (!m) return siteId;
+  const kind = m[1] === 'n' ? 'Node' : 'Slot';
+  return `${systemName} ${roman(planetOrdinal)} · ${kind} ${parseInt(m[2], 10)}`;
+}
 
 // setSeed(seedObject) — make this the active galaxy and drop the cached index, so
 // the next read rebuilds over it. Called by the server on boot (volume seed) and
@@ -64,7 +100,12 @@ function buildIndex() {
     // The lowest-id Terran planet is the homeworld a guild starts on (§13);
     // null if the system has none (i.e. it is not starter-eligible).
     let terranHomeworldId = null;
+    // The planet's 1-based index in its system's own order — the ordinal `siteName`
+    // turns into a Roman numeral. Counted here, where the seed's order is being
+    // walked anyway, so nothing later has to re-find a planet in its system.
+    let ordinal = 0;
     for (const planet of sys.planets || []) {
+      ordinal += 1;
       if (planet.archetype === 'terran') {
         if (terranHomeworldId === null || planet.id < terranHomeworldId) terranHomeworldId = planet.id;
       }
@@ -72,12 +113,14 @@ function buildIndex() {
         bySite.set(node.id, {
           id: node.id, kind: 'resource', resourceType: node.resourceType,
           planetId: planet.id, systemId: sys.id,
+          name: siteName(node.id, sys.name, ordinal),
         });
       }
       for (const slot of planet.settlementSlots || []) {
         bySite.set(slot.id, {
           id: slot.id, kind: 'settlement',
           planetId: planet.id, systemId: sys.id,
+          name: siteName(slot.id, sys.name, ordinal),
         });
       }
     }
@@ -241,7 +284,7 @@ function getSeedNumber() {
 
 module.exports = {
   setSeed,
-  getSite, isResourceNode, isSettlementSlot, findNodesByResource,
+  getSite, isResourceNode, isSettlementSlot, findNodesByResource, siteName, roman,
   getCitadel, getSystem, getOutpost, getOutposts, getLandmark,
   isStarterSystem, getTerranHomeworld, getStarterSystems, getSystemLayout, getSeedNumber,
 };

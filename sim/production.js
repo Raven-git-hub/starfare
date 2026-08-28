@@ -522,9 +522,19 @@ function reconcilePursue(targets, pursue) {
 //
 // BINARY (§5): `met` iff the venture got its ENTIRE target. One unit short is `breach`,
 // with no partial credit — the fee it drives (3b-iii) is a lump, so a half-met licence
-// is not a thing the model can charge for. Mid-window every row reads `accruing`, with
-// `delivered` a projection off the pile as it stands: the ranking is editable until the
-// boundary, so a mid-window verdict would be a guess presented as a fact.
+// is not a thing the model can charge for.
+//
+// MID-WINDOW (refined 28-08-26): a row still short of its target reads `accruing`, with
+// `delivered` a projection off the pile as it stands — the ranking is editable until the
+// boundary, so calling a shortfall a BREACH mid-window would be a guess presented as a
+// fact. A row already AT or PAST its target is different: `met` is monotone under this
+// fill, because `delivered` only grows within a window and a licence at its target has
+// nothing left to lose to a re-ranking below it. So a fully-delivered licence reads `met`
+// the moment it is full, instead of spinning `accruing` until the boundary while the
+// console shows the amber wait dot on a licence that is visibly done.
+//
+// (Only `met` is early. `breach` is still boundary-only, and stays a fact about the
+// window's END — the whole point of the asymmetry.)
 //
 // NO ARRIVAL-TIME FENCING (§5, RULED 27-08-26). The pile is not fenced by when a unit
 // was delivered or when a licence was signed: a mid-window joiner ranked first draws on
@@ -542,7 +552,7 @@ function pursueFill(targets, pursue, delivered, isBoundary) {
     out[t.ventureId] = {
       commitment: t.q,
       delivered: got,
-      status: isBoundary ? (got >= t.q ? 'met' : 'breach') : 'accruing',
+      status: got >= t.q ? 'met' : (isBoundary ? 'breach' : 'accruing'),
     };
   }
   return out;
@@ -550,16 +560,20 @@ function pursueFill(targets, pursue, delivered, isBoundary) {
 
 // rollupStatus(perVenture, isBoundary) -> the GOOD-level status, derived from the
 // per-venture verdicts above: `met` only if every licence on the good was met, else
-// `breach`; `accruing` mid-window. The aggregate is a summary of the individuals and
-// nothing reads it to decide a venture's fate — §5's "the aggregate is derived from
-// the individuals, never the reverse". (With `Q = Σ qᵢ` and a greedy fill this is the
+// `breach` at the boundary and `accruing` while the window is still running — the same
+// early-`met` asymmetry the rows have (28-08-26), so the good reads `met` as soon as
+// every licence on it is full and the pill never disagrees with the dots beneath it.
+// The aggregate is a summary of the individuals and nothing reads it to decide a
+// venture's fate — §5's "the aggregate is derived from the individuals, never the
+// reverse". (With `Q = Σ qᵢ` and a greedy fill this is the
 // same verdict the old `delivered >= Q` test gave, which is exactly why the change is
 // byte-identical for the single-venture case — but it is now computed the way the
 // design says it is composed, so a future per-venture rule cannot silently disagree
 // with the dot the console shows.)
 function rollupStatus(perVenture, isBoundary) {
-  if (!isBoundary) return 'accruing';
-  return Object.values(perVenture).every((r) => r.status === 'met') ? 'met' : 'breach';
+  const allMet = Object.values(perVenture).every((r) => r.status === 'met');
+  if (allMet) return 'met';
+  return isBoundary ? 'breach' : 'accruing';
 }
 
 // resolveWindow(...) -> the §5 per-good windowed-accrual send for ONE tick. Reads the

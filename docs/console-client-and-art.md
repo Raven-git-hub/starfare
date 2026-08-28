@@ -96,7 +96,7 @@ file has to satisfy. Buckets:
 | Data point | Bucket | Field / source |
 |---|---|---|
 | Venture name | IDENTITY | `ventureId` |
-| Planet | IDENTITY | `ventureId → planetId → planet.name` |
+| Planet | IDENTITY | `venture.site.name` (engine-derived in `sim/seed.js`; "FEN-6425 I · Node 1") — 28-08-26. The seed names systems only, so a planet's identity is its **Roman ordinal within its system**, not a name of its own |
 | **Planet archetype** | IDENTITY | `planet.archetype` (terran/molten/…) — **needed for art; see §3** |
 | Kind (mine / refinery) | IDENTITY | derived from `venture.recipeId` (present ⇒ refinery) |
 | Recipe (in → out) | IDENTITY | `good` → `recipeOut[recipeId]` |

@@ -33,7 +33,7 @@ const { cloneProfile } = require('./profile.js');
 const { previewProduction } = require('./production.js');
 const { PRICED_GOODS, postedPrice } = require('./prices.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
-const { dayOf, minuteOf, format } = require('./calendar.js');
+const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 
 // Bump when the shape below changes so the inspector can refuse a stale file
 // loudly instead of rendering half of it. The inspector checks this.
@@ -136,6 +136,14 @@ const { dayOf, minuteOf, format } = require('./calendar.js');
 // changed shape and an older reader simply ignores the new keys. DERIVED telemetry —
 // recomputed every read by the same resolver the tick applies, in no serialized state
 // and in no determinism hash.
+// v7 (console legibility pass, 28-08-26): ADDITIVE — each seated venture's `site` block
+// gains `name`, the friendly place name derived in sim/seed.js ("FEN-6425 I · Node 1"),
+// so the console can say WHERE a venture sits without printing `pl_00004_n01` at the
+// player. Pure derived telemetry over the immutable seed, and nothing existing changed
+// shape, so NO schema bump — the same call the additive `perVenture` above made. The
+// `calendar.label` guard in the same pass adds no field either: it only changes the
+// string the pre-game tick 0 renders as ('—' rather than the honest but meaningless
+// `00-1:1439`), leaving `calendar.day`/`minute` the exact arithmetic they were.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -278,6 +286,13 @@ function buildSnapshot(state) {
               planetId: site.planetId,
               systemId: site.systemId,
               resourceType: site.resourceType || null,
+              // The friendly name of the place ("FEN-6425 I · Node 1"), derived in
+              // sim/seed.js from seed data alone (28-08-26). It exists so the console
+              // can SAY where a venture sits instead of printing `pl_00004_n01` at the
+              // player — and so the browser still derives nothing itself (§5's display
+              // rule). Pure DERIVED telemetry over the immutable seed: it enters no
+              // determinism hash and adds nothing to serialized state.
+              name: site.name || null,
             }
           : null,
       });
@@ -323,7 +338,11 @@ function buildSnapshot(state) {
     calendar: {
       day: dayOf(state.tick, calN, calAnchor),
       minute: minuteOf(state.tick, calN, calAnchor),
-      label: format(state.tick, calN, calAnchor),
+      // The DISPLAY label, blank ('—') at the pre-game tick 0 rather than the honest but
+      // meaningless `00-1:0023` (28-08-26). `day`/`minute` beside it stay the exact,
+      // un-clamped arithmetic — a reader doing sums gets the truth, a reader printing a
+      // clock gets nothing until there is a clock to print.
+      label: displayLabel(state.tick, calN, calAnchor),
       windowN: calN,
       dayAnchorTick: calAnchor,
     },

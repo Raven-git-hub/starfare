@@ -200,6 +200,49 @@ test('GET /console serves the player-facing Production Console (HTML)', async ()
   assert.match(html, /id="btnLive"/);
 });
 
+// --- the console/HUD legibility pass (28-08-26) -------------------------------------
+// These pin the four client-side fixes as SERVED BYTES, the way every earlier client
+// slice is pinned: a page that silently reverted would still render, so the tripwire has
+// to be on the text itself.
+test('GET /console serves the legibility pass: durations, place names, one label font', async () => {
+  const html = await (await fetch(base + '/console')).text();
+
+  // (1) `ticksRemaining` is a count of MINUTES, said as a duration. The old readout
+  // printed it as hours — 60x wrong — so both the helper and the absence of the old
+  // string are pinned.
+  assert.match(html, /function fmtTicksAsDuration/);
+  assert.ok(!html.includes("' hours remaining'"), 'ticks must never be relabelled as hours');
+  assert.ok(!html.includes('u/hr'), 'a per-TICK rate must not be labelled per hour either');
+
+  // (2) A venture is named by its PLACE, off the snapshot's `site.name` — the console
+  // reads that name, it does not build one (design.md §5's display rule).
+  assert.match(html, /function ventName/);
+  assert.match(html, /v\.site && v\.site\.name/);
+  assert.ok(!html.includes("<div class=\"sid\">' + esc(l.id)"), 'the roster row must not print the raw venture id');
+
+  // (3) The Syndicate panel's footer is three engine figures, not a paragraph.
+  assert.match(html, /function synStats/);
+  assert.match(html, /class="sm-stats"/);
+  assert.ok(!html.includes('the thermometer is the good\'s whole window'), 'the footer prose is retired');
+
+  // (4) The trend column's label shares the console's one label font, and its sparkline
+  // stands at the height it is drawn at (a single rule owns it now).
+  assert.match(html, /\.tcard \.tc-name\{[^}]*font-family:var\(--mono\)/);
+  assert.match(html, /\.tc-spark\{width:100%; height:66px/);
+  assert.ok(!html.includes('.tcard .tc-spark{width:100%; height:52px}'), 'the height conflict is gone');
+});
+
+test('GET / serves the SYNCED tick ring — the server\'s period, the observed tick\'s phase', async () => {
+  const html = await (await fetch(base + '/')).text();
+  // The ring is no longer a free-running 60 s sweep from page load: its period is the
+  // operator's own auto-tick interval off /health, and its phase resets when the poll
+  // observes the tick move. Both facts come from the server; the client counts nothing.
+  assert.match(html, /function noteTick/);
+  assert.match(html, /noteTick\(snap\.tick\)/);
+  assert.match(html, /__tickPeriodMs = \(at && Number\.isFinite\(at\.intervalMs\)/);
+  assert.ok(!html.includes('/60000)%1'), 'the hardcoded 60 s sweep must be gone');
+});
+
 test('GET /console serves the RESTRUCTURED console (the authoritative design)', async () => {
   const res = await fetch(base + '/console');
   assert.equal(res.status, 200);

@@ -198,7 +198,12 @@
      the browser stores what the engine already sent and computes no game number, §5). */
   .tcol{position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:11px; padding:14px 9px}
   .tc-head{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3)}
-  .tc-spark{width:100%; height:auto; display:block; overflow:visible}
+  /* The sparkline fills its column's width and stands at its OWN drawn height: the
+     viewBox is 150x66, so 66px renders the vertical axis 1:1 and the horizontal one
+     (a bare index axis) is the only thing `preserveAspectRatio="none"` stretches. The
+     old pair — `height:auto` here against a `.tcard` override of 52px — squashed the
+     graph to 79% of its drawn height while stretching it ~140% wide. */
+  .tc-spark{width:100%; height:66px; display:block; overflow:visible}
   /* chevrons pinned to the top of the column (out of the centred flow) */
   .topup.tu-top{position:absolute; top:8px; left:0; right:0; padding:0}
 
@@ -264,7 +269,6 @@
   .sm-lic .grip{color:var(--ink3); font-size:11px; cursor:grab; flex:none}
   .sm-lic .idwrap{flex:1; min-width:0}
   .sm-lic .sid{font-family:var(--mono); font-size:12px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-  .sm-lic .pl{font-family:var(--mono); font-size:9px; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
   /* the figures line, stacked under the id (see licRow) — never beside it */
   .sm-lic .cmt{display:block; font-family:var(--mono); font-size:11px; color:var(--ink2); font-variant-numeric:tabular-nums;
                white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px}
@@ -542,11 +546,17 @@
   /* ---- trend card sitting on TOP of a stack (merges the old colhead) ---- */
   .tcard{margin-bottom:11px}
   .tcard .tc-top{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px}
-  .tcard .tc-name{white-space:nowrap; color:var(--ink2)}
+  /* This label MERGED the old `.colhead .lbl` (see the note above), but the markup
+     dropped the `.lbl` class with it — so it inherited the page's sans body font while
+     every other section header on the console ("DISTRIBUTION", "COMMITMENTS · TITANIUM")
+     stayed mono. Restated here as the label it replaced: same family, size, tracking and
+     case as its siblings. */
+  .tcard .tc-name{white-space:nowrap; color:var(--ink2); font-family:var(--mono);
+    font-size:10px; letter-spacing:.14em; text-transform:uppercase}
   .tcard .tc-now{font-family:var(--mono); font-size:13px; color:var(--amber); font-weight:500;
     font-variant-numeric:tabular-nums}
   .tcard .tc-now .u{font-size:9px; color:var(--ink3); margin-left:2px; letter-spacing:.06em}
-  .tcard .tc-spark{width:100%; height:52px}
+  .tcard .tc-spark{width:100%}   /* height comes from .tc-spark — one rule owns it */
 
   /* ---- stockpile row: strip slides left, two permanent square top-ups beside it ---- */
   .stock-row{display:flex; gap:12px; align-items:stretch}
@@ -661,6 +671,17 @@
   .mocknote{font-family:var(--mono); font-size:9.5px; line-height:1.55; color:var(--ink3);
     border-top:1px solid var(--line); margin-top:8px; padding-top:7px}
   .mocknote b{color:var(--amber); font-weight:500}
+  /* The Syndicate panel's footer: three figures, not a paragraph. Each is an engine
+     number the panel already reads (the window's Q, its delivered, and how many of the
+     committed rows the engine has judged `met`). */
+  .sm-stats{display:flex; gap:8px; border-top:1px solid var(--line); margin-top:8px; padding-top:9px}
+  .sm-stats .st{flex:1 1 0; min-width:0}
+  .sm-stats .st .k{display:block; font-family:var(--mono); font-size:8.5px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .sm-stats .st .v{display:block; font-family:var(--mono); font-size:14px; font-weight:500;
+    color:var(--amber); font-variant-numeric:tabular-nums; margin-top:3px}
+  .sm-stats .st .v .u{font-size:9px; color:var(--ink3); margin-left:2px}
+  .sm-foot{font-family:var(--mono); font-size:9px; line-height:1.5; color:var(--ink3); margin-top:8px}
 </style>
 </head>
 <body>
@@ -859,7 +880,9 @@ function synResolve(){
     var v = STATE.vmap[p.id] || {};
     var pv = perVenture[p.id] || null;
     return {
-      id: p.id, planet: ventPlanet(p.id),
+      // `planet` stays the raw planetId (it only feeds the archetype colour); `name` is
+      // what the row actually says.
+      id: p.id, planet: ventPlanet(p.id), name: ventName(p.id),
       // LICENSED is the stored fact (the venture's own commitment); COMMITMENT is its
       // target for THIS window, which is the engine's `qᵢ` where there is one — that is
       // the number the verdict is judged against, and it can be smaller than the stored
@@ -930,6 +953,28 @@ function throttleOf(good, ventureId){
   return { pct: th[ventureId] != null ? th[ventureId] : PROFILE_DEFAULTS.throttle, set: th[ventureId] != null };
 }
 function ventPlanet(ventureId){ var v = STATE.vmap[ventureId]; return (v && v.site && v.site.planetId) || (v && v.systemId) || ''; }
+
+// The venture's PLACE, in words: the snapshot's `site.name` ("FEN-6425 I · Node 1"),
+// derived engine-side in sim/seed.js. The browser only reads it — it does not know how
+// to build one (§5's display rule). No name (an unseated venture, or a server behind
+// this build) falls back to the venture id, which is what every row used to show.
+function ventName(ventureId){
+  var v = STATE.vmap[ventureId];
+  return (v && v.site && v.site.name) || ventureId || '';
+}
+// The PLANET half of that name — everything before the " · Node/Slot n". Pure string
+// display, no second source of truth: it is a slice of the engine's own string.
+function sitePlanet(name){ var i = String(name).indexOf(' · '); return i < 0 ? name : name.slice(0, i); }
+
+// A count of TICKS, said as a duration. The tick is ruled at ONE MINUTE
+// (docs/cycle-and-calendar.md §1 — the same ruling N = 1,440 is derived from), so
+// `ticksRemaining` is minutes and the readout that called it "hours" was 60x wrong.
+// A conversion of the engine's own count, not a number of the client's own.
+function fmtTicksAsDuration(ticks){
+  var m = Math.max(0, Math.round(Number(ticks) || 0));
+  var h = Math.floor(m / 60);
+  return h > 0 ? (h + 'h ' + (m % 60) + 'm') : (m + 'm');
+}
 function onHand(good){
   var g = STATE.snap.guilds.find(function(x){ return x.id === STATE.guildId; }) || {};
   return ((g.stockpilesBySystem || {})[STATE.sysId] || {})[good] || 0;
@@ -1070,11 +1115,14 @@ function licRow(l, rank, total){
     cmt = '<span class="cmt" title="delivered to this licence / its commitment this window">' +
       fmt(l.delivered) + '<span class="u"> / </span>' + fmt(l.commitment) + '<span class="u">u</span></span>';
   }
-  // The figures sit UNDER the id, not beside it. Beside it they cost ~30px of a 152px
-  // row and truncate the very venture id the roster exists to name; under it they cost
+  // The figures sit UNDER the name, not beside it. Beside it they cost ~30px of a 152px
+  // row and truncate the very place the roster exists to name; under it they cost
   // nothing, because the rows are tall (height ∝ commitment).
-  var idwrap = '<div class="idwrap"><div class="sid">' + esc(l.id) + '</div>' +
-    (l.planet ? '<div class="pl">◐ ' + esc(l.planet) + '</div>' : '') + cmt + '</div>';
+  // The row NAMES the venture by its place ("FEN-6425 I · Node 1"), the snapshot's own
+  // `site.name` — not `guild_pl_00004_n01`, an id the player never chose and cannot read.
+  // The id stays on the row's tooltip for anyone who needs it.
+  var idwrap = '<div class="idwrap" title="' + esc(l.id) + '"><div class="sid">' + esc(l.name) + '</div>' +
+    cmt + '</div>';
   var flex = l._flex ? ' style="flex:' + l._flex + ' 1 0"' : '';
   // The rank and its two movers, stacked in ONE narrow column: the venture id is the
   // thing this roster exists to name, so the control is not allowed to squeeze it — the
@@ -1146,6 +1194,32 @@ function synRoster(R){
     '<div class="sm-roster' + (anyCommitted ? '' : ' loose') + '">' + rows + '</div>' + clear +
   '</div>';
 }
+// The panel's footer: THREE FIGURES, replacing the paragraph of explanation that used
+// to sit here. Every one is already on `R` (i.e. already in the snapshot's window block):
+// the window's target `Q`, what has been delivered into it, and how many of the committed
+// rows the engine has judged `met` — counted off the SAME per-venture `status` the dots
+// above render, so the count and the dots cannot disagree. The one line of prose left is
+// the honest disclaimer that the fee is not charged yet (licence Slice 3b-iii).
+function synStats(R){
+  var done = R.committed.filter(function(l){ return l.status === 'met'; }).length;
+  var stat = function(k, v, u){
+    return '<div class="st"><span class="k">' + k + '</span><span class="v">' + v +
+      (u ? '<span class="u">' + u + '</span>' : '') + '</span></div>';
+  };
+  if (!R.total){
+    return '<div class="sm-stats">' + stat('Window target', '—') + stat('Delivered', '—') +
+      stat('Ventures met', '0/' + R.committed.length) + '</div>' +
+      '<div class="sm-foot">No licence on this good yet — the engine emits no window, so there is nothing ' +
+      'to meet or breach.</div>';
+  }
+  return '<div class="sm-stats">' +
+      stat('Window target', fmt(R.total), 'u') +
+      stat('Delivered', fmt(R.delivered), 'u') +
+      stat('Ventures met', done + '/' + R.committed.length) +
+    '</div>' +
+    '<div class="sm-foot">The fee is not charged yet (licence Slice 3b-iii), so none is shown.</div>';
+}
+
 function syndicateMgmtCol(good){
   var R = synResolve();
   // Every figure in this column is the engine's: the rows are this good's real
@@ -1159,17 +1233,7 @@ function syndicateMgmtCol(good){
       '<span class="lbl">' + R.display.length + ' producing venture' + (R.display.length === 1 ? '' : 's') +
       ' · ' + R.committed.length + ' committed</span></div>' +
   '</div>';
-  var note = R.total
-    ? '<div class="mocknote">Window target <b>' + fmt(R.total) + 'u</b>, delivered <b>' + fmt(R.delivered) +
-      'u</b> — the thermometer is the good\'s whole window. Each row is judged <b>on its own</b>: at the ' +
-      'boundary the delivered pile fills the licences <b>top of this list first</b>, each to its full ' +
-      'commitment before the next is fed, so a licence reads <b>met</b> only when it got <b>all</b> of what ' +
-      'it promised — one unit short is a breach. Rank a licence higher to feed it first. ' +
-      'The <b>fee</b> is not shown: the charge is not built yet.</div>'
-    : '<div class="mocknote">No commitment on this good yet — nothing here is licensed, so the engine emits ' +
-      'no window and there is nothing to meet or breach. These are the real producers; the thermometer fills, ' +
-      'and the ranking becomes live, once a licence exists. The <b>fee</b> is not shown even then: the charge ' +
-      'is not built yet.</div>';
+  var note = synStats(R);
   return '<div class="col sm-col">' + rightTabBar() +
     '<div class="sm-wrap">' +
       head +
@@ -1313,10 +1377,15 @@ function trendSpark(values, cls){
   }
   var vs = values;
   var lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs);
+  var flat = hi === lo;                  // a steady series — every point the same value
   var span = (hi - lo) || 1;
   var n = vs.length, iw = W - pad * 2, ih = H - pad * 2;
   var X = function(i){ return pad + (i / (n - 1)) * iw; };
-  var Y = function(v){ return pad + ih - ((v - lo) / span) * ih; };
+  // A flat series has no range to scale against, so it is drawn down the MIDDLE of the
+  // box. Normalising it the usual way put every point on `H - pad` — the same line as
+  // the recessive baseline — so a steady economy rendered as an empty box with a rule
+  // along the floor, indistinguishable from zero.
+  var Y = function(v){ return flat ? pad + ih / 2 : pad + ih - ((v - lo) / span) * ih; };
   var pts = vs.map(function(v, i){ return X(i) + ',' + Y(v).toFixed(1); });
   var line = 'M' + pts.join(' L');
   var area = 'M' + X(0) + ',' + (H - pad) + ' L' + pts.join(' L') + ' L' + X(n - 1) + ',' + (H - pad) + ' Z';
@@ -1336,8 +1405,9 @@ function trendDelta(vs){
   if (!vs || vs.length < 2) return '<span class="tc-delta flat">—</span>';
   var d = vs[vs.length - 1] - vs[vs.length - 2];
   if (d === 0) return '<span class="tc-delta flat">— steady</span>';
-  return d > 0 ? '<span class="tc-delta up">▲ +' + fmt(d) + '/hr</span>'
-               : '<span class="tc-delta dn">▼ ' + fmt(d) + '/hr</span>';
+  // The change since the LAST TICK, so it is per tick — not per hour (1 tick = 1 min).
+  return d > 0 ? '<span class="tc-delta up">▲ +' + fmt(d) + '/t</span>'
+               : '<span class="tc-delta dn">▼ ' + fmt(d) + '/t</span>';
 }
 
 
@@ -1432,7 +1502,8 @@ function synPanel(good, pol, rg, rank){
     return '<div class="sy-panel">' + head + body + '<div class="sy-none">no commitment yet — the send is advisory until a licence is issued</div></div>';
   }
   var pctDone = Math.max(0, Math.min(100, w.pctAchieved || 0));
-  var stTxt = w.status === 'accruing' ? (w.ticksRemaining + ' hours remaining') : (w.status === 'met' ? 'Met' : 'Breach');
+  // `ticksRemaining` is a count of TICKS = minutes; printing it as hours was 60x wrong.
+  var stTxt = w.status === 'accruing' ? (fmtTicksAsDuration(w.ticksRemaining) + ' remaining') : (w.status === 'met' ? 'Met' : 'Breach');
   return '<div class="sy-panel">' + head + body +
     '<div class="sy-gauge"><div class="sy-grow"><span class="c2">Licence progress</span><span class="sy-st ' + esc(w.status) + '">' + esc(stTxt) + '</span></div>' +
       '<div class="sy-bar"><div class="sy-lic" style="width:' + pctDone + '%"></div><div class="sy-licpct" style="left:' + Math.max(6, Math.min(94, pctDone)) + '%">' + Math.round(pctDone) + '%</div></div>' +
@@ -1441,7 +1512,7 @@ function synPanel(good, pol, rg, rank){
 function synSlider(good, fresh, sendPct, req){
   var top = req ? '<div class="sy-reqlabel top" style="left:' + req.reqPct + '%"><span class="k">req</span> ' + Math.round(req.reqPct) + '%</div>' : '';
   var mark = req ? '<div class="sy-req" data-req="' + fmtRate(req.reqRate) + '" style="left:' + req.reqPct + '%" title="snap to required (lock to pace)"><div class="tri t"></div><div class="ln"></div><div class="tri b"></div></div>' : '';
-  var bot = req ? '<div class="sy-reqlabel bot" style="left:' + req.reqPct + '%">' + fmtRate(req.reqRate) + ' <span class="k">u/hr req</span></div>' : '';
+  var bot = req ? '<div class="sy-reqlabel bot" style="left:' + req.reqPct + '%">' + fmtRate(req.reqRate) + ' <span class="k">u/t req</span></div>' : '';
   return '<div class="sy-sendwrap">' + top +
     '<div class="sy-track" data-good="' + esc(good) + '" data-fresh="' + fresh + '">' +
       '<div class="sy-fill" style="width:' + sendPct + '%"></div>' +
@@ -1451,7 +1522,7 @@ function synSlider(good, fresh, sendPct, req){
 function synConveyor(){ return '<div class="sy-conveyor"><div class="cv"></div><div class="cv"></div><div class="cv"></div></div>'; }
 function synRate(sendAbs, sendPct){
   return '<div class="sy-rate"><span class="c2">current rate</span>' +
-    '<input class="sy-rate-in" type="number" min="0" value="' + esc(sendAbs) + '"><span class="u">u/hr</span>' +
+    '<input class="sy-rate-in" type="number" min="0" value="' + esc(sendAbs) + '"><span class="u">u/t</span>' +
     '<span class="ar">·</span><input class="sy-pct-in" type="number" min="0" max="100" value="' + Math.round(sendPct) + '"><span class="u">%</span></div>';
 }
 
@@ -1649,7 +1720,7 @@ document.getElementById('stage').addEventListener('change', function(e){
     var sv = fieldInt(t); if (sv === null){ setStatus('syndicate send: enter an integer', 'error'); return; }
     var gv = {}; gv[good] = { syndicate: { mode: t.dataset.mode, value: sv } }; sendProfile({ goods: gv }); return;
   }
-  // Expanded Syndicate panel: the send in u/hr (absolute) or % of fresh output.
+  // Expanded Syndicate panel: the send in u/t (absolute) or % of fresh output.
   if (t.classList.contains('sy-rate-in')){
     var sr = fieldInt(t); if (sr === null){ setStatus('send: enter an integer', 'error'); return; }
     var gsr = {}; gsr[good] = { syndicate: { mode:'absolute', value: sr } }; sendProfile({ goods: gsr }); return;
@@ -1885,8 +1956,8 @@ function ventChip(id, role, tail, warn){
   var dot = '<span class="vdot" style="background:' + archColor(ventPlanet(id)) + '"></span>';
   var tl = tail == null ? '' : '<span class="vtail">' + fmtRate(tail) + '/t</span>';
   return '<button class="vchip' + (sel ? ' sel' : '') + (warn ? ' warn' : '') +
-    '" data-vent="' + esc(id) + '" data-role="' + role + '">' + dot +
-    '<span class="vname">' + esc(id) + '</span>' + tl + '</button>';
+    '" data-vent="' + esc(id) + '" data-role="' + role + '" title="' + esc(id) + '">' + dot +
+    '<span class="vname">' + esc(ventName(id)) + '</span>' + tl + '</button>';
 }
 
 // ---- Facility art (placeholder line-art; the real build swaps in assets/industrial/*) ----
@@ -1937,8 +2008,9 @@ function heroPanel(good, report, rg){
   }
   var id = role === 'producer' ? found.id : found.ventureId;
   var planet = ventPlanet(id), tint = archColor(planet);
+  var place = ventName(id);
   var dot = '<span class="vh-dot" style="background:' + tint + '"></span>';
-  var title = '<button class="vh-title" data-manage-venture="' + esc(id) + '">' + esc(id) + '<span class="chev">▸</span></button>';
+  var title = '<button class="vh-title" data-manage-venture="' + esc(id) + '" title="' + esc(id) + '">' + esc(place) + '<span class="chev">▸</span></button>';
   var art, kind, live, fac;
 
   if (role === 'producer'){
@@ -1946,7 +2018,7 @@ function heroPanel(good, report, rg){
     var isRef = kind.toLowerCase().indexOf('refin') >= 0;
     art = isRef ? refineryArt(tint) : mineArt(tint);
     live =
-      statRow('Planet', esc(planet)) +
+      statRow('Planet', esc(sitePlanet(place))) +
       // The node's REAL good (the mockup's "rich seam" was an invented node quality —
       // the engine has no node grades, so it is not shown).
       statRow('Node', '<span class="tag">' + esc(prettyGood(found.good || good)) + '</span>') +
@@ -1962,7 +2034,7 @@ function heroPanel(good, report, rg){
     art = refineryArt(tint);
     var recipe = '<span class="v">' + esc(prettyGood(good)) + ' <span class="arrow">→</span> ' + esc(outGood ? prettyGood(outGood) : '—') + '</span>';
     live =
-      statRow('Planet', esc(planet)) +
+      statRow('Planet', esc(sitePlanet(place))) +
       statRow('Recipe', recipe) +
       statRow('Eff. rate', '<span class="v ' + (starved ? 'red' : 'amber') + '">' + fmtRate(rate) + '<span class="us"> u/t</span></span>') +
       statRow('Makes', '<span class="v">' + fmt(minted) + '<span class="us"> u/t</span></span>') +

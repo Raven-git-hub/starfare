@@ -157,11 +157,11 @@ the rest is pure derived telemetry (the client renders it and computes nothing).
 | `windowStart` | int | STORED (echo) | tick the window opened | — |
 | `delivered` | int | STORED (echo, post-apply) | AGGREGATE units delivered to the Syndicate so far this window (= Σ of the per-venture `delivered` below); the accumulator stays aggregate, the per-venture shares are DERIVED from it | Syndicate (overall progress) |
 | `sendCarry` | float | STORED (echo) | fractional carry | — |
-| `ticksRemaining` | int | DERIVED | ticks left in the window (shown as "hours remaining") | Syndicate |
+| `ticksRemaining` | int | DERIVED | ticks left in the window. A tick is ruled at ONE MINUTE, so the console shows it as a **duration** (`23h 14m remaining`) — it was labelled "hours remaining", which was 60x wrong (fixed 28-08-26) | Syndicate |
 | `requiredRate` | float | DERIVED | `remaining / ticksRemaining` — the pace needed to hit `Q` on time (the amber marker) | Syndicate (marker + snap target) |
 | `sendThisTick` | int | DERIVED | the ACTUAL delivery resolved this tick (`= fork.syndicate` for the good) | Syndicate |
 | `pctAchieved` | float | DERIVED | `delivered / Q × 100` | Syndicate (progress %) |
-| `status` | `"accruing"` \| `"met"` \| `"breach"` | DERIVED (ROLLUP) | the good-level **summary** of the per-venture verdicts below — the real met/breach is per venture (see next section). "accruing" mid-window; at the boundary a rollup (e.g. all-met / some-breached) | Syndicate (overall pill) — **and the storyteller** |
+| `status` | `"accruing"` \| `"met"` \| `"breach"` | DERIVED (ROLLUP) | the good-level **summary** of the per-venture verdicts below — the real met/breach is per venture (see next section). `met` as soon as EVERY row is met (mid-window included, 28-08-26); otherwise `accruing` mid-window and `breach` at the boundary | Syndicate (overall pill) — **and the storyteller** |
 
 | `perVenture` | `{ [ventureId]: { commitment, delivered, status } }` | DERIVED | the per-licence outcome — see the next section. Keyed by ventureId so the roster reads a row per venture with no reshaping; insertion order IS the reconciled pursue order | Syndicate roster (one row each) |
 
@@ -179,7 +179,7 @@ Per licensed venture producing the good, at read time:
 |---|---|---|
 | `commitment` | int | the venture's target THIS window = `syndicateCommitment × windowFraction` (the mid-window pro-rate, §5 join ruling; = `syndicateCommitment` for a full-window venture) |
 | `delivered` | int | its share of the aggregate `delivered`, allocated by the `pursue` fill: ventures are filled top-of-order first, each to its full `commitment`, until the delivered pile runs out. Mid-window a projection off the delivered-so-far; at the boundary the final allocation |
-| `status` | `"accruing"` \| `"met"` \| `"breach"` | `met` iff `delivered ≥ commitment` (the ENTIRE commitment — one short is `breach`, no partial credit); `accruing` mid-window. Drives the per-venture fee: `met` → discounted, `breach` → full |
+| `status` | `"accruing"` \| `"met"` \| `"breach"` | `met` iff `delivered ≥ commitment` (the ENTIRE commitment — one short is `breach`, no partial credit), reported **as soon as it is true, mid-window included** (28-08-26: `delivered` only grows within a window and the fill is top-down, so a full licence cannot fall back). A row still short reads `accruing` mid-window, and `breach` only at the boundary. Drives the per-venture fee: `met` → discounted, `breach` → full |
 
 The fill is **binary per venture** and **priority-ordered**: in a shortfall the top licences are met in full and
 the tail breaches, exactly as the player ranked them — so a player who cannot meet the aggregate steers the

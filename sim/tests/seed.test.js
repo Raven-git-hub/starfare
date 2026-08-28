@@ -11,6 +11,7 @@ const assert = require('node:assert/strict');
 const {
   getSite, isResourceNode, isSettlementSlot, findNodesByResource,
   getStarterSystems, isStarterSystem, getTerranHomeworld, getSystemLayout,
+  siteName, roman,
 } = require('../seed.js');
 
 test('getSite resolves a real resource node with its resourceType and location', () => {
@@ -104,4 +105,49 @@ test('getSystemLayout handles a multi-planet system and returns null for a missi
   }
   assert.equal(getSystemLayout('sys_9999'), null);
   assert.equal(getSystemLayout('not-an-id'), null);
+});
+
+// --- the friendly site name (console legibility pass, 28-08-26) --------------------
+//
+// The seed names systems and nothing below them, so every screen that wanted to say
+// WHERE a venture sits printed a raw `pl_00004_n01` at the player. `site.name` is the
+// derivation that fixes that: "<system> <planet's Roman ordinal> · <Node|Slot> <n>".
+// Pure seed data — no live state, nothing invented, nothing hashed.
+
+test('a site carries its friendly name: pl_00004_n01 in FEN-6425 reads "FEN-6425 I · Node 1"', () => {
+  // sys_0002 is FEN-6425 and has exactly ONE planet, pl_00004 — so its ordinal is 1
+  // and its Roman numeral is I. The `_n01` suffix names node 1, with the leading zero
+  // dropped (the id's padding is an id detail, not something to read aloud).
+  const site = getSite('pl_00004_n01');
+  assert.equal(site.systemId, 'sys_0002');
+  assert.equal(site.name, 'FEN-6425 I · Node 1');
+});
+
+test('a settlement slot names its SLOT, and the ordinal follows the planet, not the id', () => {
+  assert.equal(getSite('pl_00004_s03').name, 'FEN-6425 I · Slot 3');
+  // pl_00001 is another system's planet entirely; whatever its ordinal is, the name is
+  // built from that system's name and the planet's place IN it — never from the id digits.
+  const other = getSite('pl_00001_n02');
+  const sys = getSystemLayout(other.systemId);
+  const ordinal = sys.planets.findIndex((p) => p.id === other.planetId) + 1;
+  assert.equal(other.name, `${sys.name} ${roman(ordinal)} · Node 2`);
+});
+
+test('every site in a system carries a name, and the name is stable per planet', () => {
+  // The name is a pure function of (system name, planet ordinal, site suffix), so two
+  // sites on the SAME planet differ only in their trailing "Node/Slot n".
+  const a = getSite('pl_00004_n01');
+  const b = getSite('pl_00004_n02');
+  assert.equal(a.name.replace(/Node 1$/, ''), b.name.replace(/Node 2$/, ''));
+});
+
+test('roman writes the ordinals a system can actually have (1..6 planets)', () => {
+  assert.deepEqual([1, 2, 3, 4, 5, 6].map(roman), ['I', 'II', 'III', 'IV', 'V', 'VI']);
+  // …and keeps working past that if a future seed makes systems bigger.
+  assert.deepEqual([9, 10, 14].map(roman), ['IX', 'X', 'XIV']);
+});
+
+test('an id with no _nNN/_sNN suffix falls back to the id itself, never to a fake name', () => {
+  assert.equal(siteName('pl_00004', 'FEN-6425', 1), 'pl_00004');
+  assert.equal(siteName('weird', 'FEN-6425', 1), 'weird');
 });
