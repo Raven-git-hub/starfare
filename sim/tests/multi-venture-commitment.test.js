@@ -118,9 +118,18 @@ test('F-A: the sale splits by each venture’s CONTRIBUTION to Q, not its raw co
     const gross = delivered * price;
     const expected = Math.round(OWNER_FRACTION * gross);
 
-    assert.equal(guild(s).credits - before.credits, expected,
+    // Slice 3b-iii: tick 4 is the window BOUNDARY, so the licence fee is debited on the
+    // same tick as the sale. Two independent internal transfers, neither folded into the
+    // other — so the sale's own figure is checked against the credit change with the fee
+    // added back, and the fee is read from its own record rather than inferred.
+    const feeRec = guild(s).lastLicenceFee;
+    const feeCharged = feeRec && feeRec.tick === s.tick ? feeRec.charged : 0;
+    assert.equal(feeCharged > 0, expectedTick === N,
+      `tick ${expectedTick}: the fee fires on the boundary tick and only there`);
+
+    assert.equal((guild(s).credits - before.credits) + feeCharged, expected,
       `tick ${expectedTick}: the owner is paid its contribution-weighted share`);
-    assert.equal(before.ledger - s.syndicate.ledger, expected,
+    assert.equal((before.ledger - s.syndicate.ledger) + feeCharged, expected,
       'and the Syndicate ledger funded exactly that (invariant 2, to the credit)');
     assert.notEqual(expected, Math.round(RAW_WEIGHTED_FRACTION * gross),
       `tick ${expectedTick}: the raw-commitment weighting really would pay a DIFFERENT number (this is F-A)`);

@@ -34,6 +34,7 @@
 //                        basicFee, discountedFee }   // the terms locked at signing
 //                          // (Slice 3b-i); absent on an unlicensed venture
 //   guild.lastSyndicateSale? : { tick, credited, goods: {good: {units, price, credited}} }
+//   guild.lastLicenceFee?    : { tick, charged, ventures: {ventureId: {status, owed, basicFee, discountedFee}} }
 //                          // what the Syndicate bought from this guild, last time it
 //                          // bought anything (Slice 3a); absent until a first sale
 //
@@ -130,7 +131,17 @@ function checkNonNegativityAndIntegrality(state) {
   const out = [];
 
   for (const g of state.guilds) {
-    checkField(out, g.credits, `guild:${g.id}.credits`);
+    // Guild credits: an integer like any credits figure (a fractional credit is still a
+    // bug), but EXEMPT from non-negativity — exactly as the Syndicate ledger below is,
+    // and for the same reason. §5 "LICENCE FEE MECHANICS": "a breach fee may drive a
+    // guild's credits negative — guild credits join the Syndicate ledger as exempt from
+    // the non-negativity invariant (invariant 2 stays exact: guild -X, ledger +X)". A
+    // guild in debt is a deferred PRESSURE STATE, not a broken ledger: the fee is charged
+    // in full whether or not the guild can pay, and what debt costs is a later slice
+    // (reputation, #61). Invariant 2 still catches any drift between the two legs, so
+    // nothing about the movement goes unchecked — only the sign of one balance is freed.
+    // Every other field below (hoards, influence, stockpiles, reserves) stays >= 0.
+    checkField(out, g.credits, `guild:${g.id}.credits`, { nonNegative: false });
     checkField(out, g.fuelHoard, `guild:${g.id}.fuelHoard`);
     if (g.influence !== undefined) checkField(out, g.influence, `guild:${g.id}.influence`);
 
@@ -317,7 +328,7 @@ function checkProductionHistory(state) {
 }
 
 // Licence terms + the commitment-sale record (Slices 3a/3b-i, §5 "Output commitment",
-// "Equity offered", and "LICENCE FEE MECHANICS"). Three things a tick may now touch
+// "Equity offered", and "LICENCE FEE MECHANICS"). Four things a tick may now touch
 // that the integer sweep above does not cover:
 //
 //   - `Venture.equityPct` — the offered equity share `o`. A FRACTION, so it is one of
@@ -326,6 +337,8 @@ function checkProductionHistory(state) {
 //     who no longer controls its own venture, which the design forbids outright. The
 //     establish action refuses one, but a venture built directly (a scenario, an inline
 //     founding venture) bypasses that, so the tick asserts it too. Absent = 0 = legal.
+//   - `Guild.lastLicenceFee` — the record of the licence fee charged at a window
+//     boundary (Slice 3b-iii), checked at the foot of this function.
 //   - `Guild.lastSyndicateSale` — the record of what the Syndicate bought this tick.
 //     Its credit figures are real credits and must be whole (§15.2); its `credited`
 //     total must equal the sum of its per-good rows, or the console would report a
@@ -349,7 +362,7 @@ function checkLicenceTerms(state) {
       // The licence's stored terms (Slice 3b-i). These are LOCKED numbers — computed
       // once at signing and never recomputed — so nothing downstream will ever
       // re-derive them and notice they went wrong: if a bad fee is written it simply
-      // stays, and 3b-iii will one day debit it. Hence a tripwire on the stored values
+      // stays, and 3b-iii now debits one of them at every boundary. Hence a tripwire on the stored values
       // themselves. The fees are real credits and must be whole (§15.2); the discount
       // can never EXCEED the basic fee (the grid's corners top out at 100%); and the
       // terms must stay inside the bounds intake refuses outside of, since a venture
@@ -461,6 +474,39 @@ function checkLicenceTerms(state) {
     }
     if (sum !== sale.credited) {
       out.push({ rule: 'sale-total-matches-rows (Slice 3a)', where: `${where}.credited`, detail: { total: sale.credited, sumOfRows: sum } });
+    }
+  }
+
+  // `Guild.lastLicenceFee` — the boundary charge record (Slice 3b-iii). The same shape of
+  // check as the sale's above, for the same reason: its `charged` total is the number that
+  // really left the guild's credits, so if it disagreed with the rows beneath it the
+  // console would explain a debit that never happened. Every figure is real credits and
+  // must be whole (§15.2); every row's `owed` is one of the two LOCKED fees scaled by a
+  // window fraction in [0,1], so it can never EXCEED the basic fee; and a row's status
+  // must be a boundary VERDICT — an `accruing` here would mean the charge fired on a tick
+  // where nothing was judged. Absent (an unlicensed guild, or any non-boundary tick) is
+  // legal. `charged` is exempt from non-negativity only in the sense that credits now are;
+  // it is in fact a sum of non-negative oweds.
+  for (const g of state.guilds || []) {
+    const fee = g.lastLicenceFee;
+    if (!fee) continue;
+    const where = `guild:${g.id}.lastLicenceFee`;
+    checkField(out, fee.tick, `${where}.tick`);
+    checkField(out, fee.charged, `${where}.charged`);
+    let sum = 0;
+    for (const [ventureId, row] of Object.entries(fee.ventures || {})) {
+      const at = `${where}.ventures.${ventureId}`;
+      checkField(out, row.owed, `${at}.owed`);
+      if (row.status !== 'met' && row.status !== 'breach') {
+        out.push({ rule: 'fee-status-is-a-verdict (Slice 3b-iii)', where: `${at}.status`, detail: { value: row.status } });
+      }
+      if (row.owed > row.basicFee) {
+        out.push({ rule: 'owed-never-exceeds-basic-fee (§5 grid)', where: `${at}.owed`, detail: { owed: row.owed, basicFee: row.basicFee } });
+      }
+      sum += row.owed;
+    }
+    if (sum !== fee.charged) {
+      out.push({ rule: 'fee-total-matches-rows (Slice 3b-iii)', where: `${where}.charged`, detail: { total: fee.charged, sumOfRows: sum } });
     }
   }
   return out;

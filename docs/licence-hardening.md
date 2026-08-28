@@ -102,11 +102,12 @@ price engine, so it must not read as live. The toll/shipping figures there are u
 ## Out of scope
 
 The per-venture **pursue-order distribution** and per-venture met/breach (the big rebuild) · the **fee
-charge** (3b-iii — no credits leave a wallet here) · the `delivered ≤ Q` invariant · anything that
-changes how met/breach is computed or touches the aggregate `status` site.
+charge** (3b-iii — no credits leave a wallet here; it has since landed, 28-08-26) · the `delivered ≤ Q`
+invariant · anything that changes how met/breach is computed or touches the aggregate `status` site.
 
 ## Deferred, not invented
 
 Nothing new was chosen. The one judgement recorded rather than settled: whether a partial first window's
-**FEE** is pro-rated, free, or full stays open for 3b-iii (`docs/mid-window-pro-rate.md`), and
-per-venture breach attribution stays with the distribution slice.
+**FEE** is pro-rated, free, or full stays open for 3b-iii (`docs/mid-window-pro-rate.md`) — *(**ruled
+pro-rated** in §5, 27-08-26, and charged that way by Slice 3b-iii, 28-08-26)* — and per-venture breach
+attribution stays with the distribution slice *(landed, `docs/licence-distribution.md`)*.

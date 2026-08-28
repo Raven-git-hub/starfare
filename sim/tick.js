@@ -25,10 +25,12 @@ const { computeGalacticSupply } = require('./supply.js');
 const { getRecipe } = require('./recipes.js');
 const { addStock } = require('./stock.js');
 const { resolveProduction } = require('./production.js');
-const { setWindow, winStartFor, DEFAULT_WINDOW_N } = require('./windows.js');
+const {
+  setWindow, winStartFor, windowFraction, isWindowBoundary, DEFAULT_WINDOW_N,
+} = require('./windows.js');
 const { getHistory, pushHistory } = require('./history.js');
 const { recomputePrices, postedPrice } = require('./prices.js');
-const { commitmentSale } = require('./licence.js');
+const { commitmentSale, feeOwed } = require('./licence.js');
 
 // Deep-clones state so tick() can never accidentally mutate its input.
 // structuredClone is a plain JS global (Node 17+), not a DOM API.
@@ -82,8 +84,44 @@ function stepProduction(state, _actions, ctx) {
     // ("null"/"undefined") without relying on sort's undefined-to-end quirk.
     const systemIds = [...new Set(ventures.map((v) => v.systemId))]
       .sort((a, b) => (String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0));
+    // LAYER 2 of the licence fee (§5, Slice 3b-iii): the VERDICT and the owed amount are
+    // per (system, good) — each system's applyProduction returns the per-venture oweds it
+    // computed from its OWN boundary verdicts — but the CHARGE is guild-level and
+    // system/good-agnostic, because a guild has exactly ONE credit pool. Every window in
+    // the galaxy closes on the same anchored boundary, so a guild's oweds all fall due on
+    // the same tick and sum into ONE lump: one debit, one ledger transfer, one receipt.
+    //
+    // THE TOTAL IS DERIVED FROM THE INDIVIDUALS, never the reverse. Each venture computes
+    // what IT owes from ITS OWN verdict, rounded there (§5 rounds per venture); this only
+    // adds the whole numbers up. There is no (system, good) fee "pot" to split — building
+    // one and dividing it would round a pooled total and hand ventures shares of a number
+    // nobody owed.
+    let lump = 0;
+    const charged = {};
     for (const sys of systemIds) {
-      applyProduction(state, guild, sys, ctx);
+      const fee = applyProduction(state, guild, sys, ctx);
+      if (!fee) continue;
+      lump += fee.owed;
+      Object.assign(charged, fee.ventures);   // keys are venture ids — unique guild-wide
+    }
+
+    // The one movement: credits leave the guild, the same integer lands in the Syndicate
+    // ledger (invariant 2 holds by construction — one number, both legs). The debit MAY
+    // take the guild negative and that is the ruling, not a bug (§5: "a breach fee may
+    // drive a guild's credits negative… a guild in debt is a pressure state whose
+    // consequences are deferred"); guild credits are exempt from invariant 3 exactly as
+    // the ledger already is (sim/invariants.js).
+    //
+    // Written LAZILY, only where a licensed venture was actually judged — so a guild with
+    // no licence, and EVERY non-boundary tick, touches nothing and stays byte-identical
+    // (the same discipline as guild.syndicateWindows and guild.lastSyndicateSale). A lump
+    // of 0 is still a real charge event when there are rows: at the grid's max-commit /
+    // max-equity corner the discounted fee IS 0, and "you were judged and owed nothing" is
+    // a different fact from "you were not judged".
+    if (Object.keys(charged).length > 0) {
+      guild.credits -= lump;
+      state.syndicate.ledger += lump;
+      recordLicenceFee(guild, state.tick + 1, lump, charged);
     }
   }
   return state;
@@ -94,6 +132,12 @@ function stepProduction(state, _actions, ctx) {
 // guild's system pool (and each refinery's batchCarry) in place — tick()
 // already cloned state, so this never touches the caller's input. The resolver
 // reads the pool balance + accumulators (start-of-step) and mutates nothing.
+//
+// RETURNS (Slice 3b-iii) the licence-fee accrual for this system —
+// `{ owed, ventures: { ventureId: { status, owed, basicFee, discountedFee } } }` at a
+// window boundary where this system holds a licensed venture, else `null`. It is a
+// RETURN and not a debit because the charge is guild-level: stepProduction sums a
+// guild's systems and moves the credits once (§5's two layers, spelled out below).
 function applyProduction(state, guild, systemId, ctx) {
   // The producing tick is state.tick + 1 (the tick number of the state this step
   // yields), and the window length is the engine-wide state.windowN — passed so the
@@ -201,6 +245,53 @@ function applyProduction(state, guild, systemId, ctx) {
     if (w) setWindow(guild, systemId, good, { windowStart: w.windowStart, delivered: w.delivered, sendCarry: w.sendCarry });
   }
 
+  // ── LAYER 1 of the licence fee (§5 "LICENCE FEE MECHANICS", Slice 3b-iii) ────────
+  // At the window boundary — and ONLY there — every licensed venture in this system owes
+  //     round((met ? discountedFee : basicFee) × windowFraction)
+  // computed from ITS OWN verdict in ITS OWN (system, good) window. The arithmetic is
+  // `feeOwed` (sim/licence.js); nothing is debited here. This returns the accrual and
+  // stepProduction moves the guild's summed lump once (Layer 2).
+  //
+  // WHY THE VERDICT IS READ HERE and not in a later pass: `status` is DERIVED telemetry
+  // that reaches no stored byte (§5), and at the boundary the window is on the cusp of
+  // rolling — a second pass would have to rebuild the pursue fill from the stored
+  // `delivered` against a window that is about to reset. The verdicts are in hand right
+  // now, on the one tick they are true for.
+  //
+  // WHY THE LOOP IS OVER VENTURES, NOT OVER `perVenture` ROWS — this is the mechanism
+  // choice, and it is load-bearing for §5's 0% commitment floor. A venture that committed
+  // NOTHING has no `Q`, so its good may have no window block and it appears in no
+  // `perVenture` row at all — yet §5 says it is licensed, is `met` (it owed zero units and
+  // delivered zero), and PAYS its discounted fee, which at the `c = 0` corner is the full
+  // basic fee. Driving the loop off the stored LICENCE (the thing being charged) and
+  // looking the verdict UP is what makes that venture visible; driving it off the rows
+  // would silently give every 0% licence a free ride. A missing row therefore means
+  // "owed no units this window" ⇒ `met`, which is the same verdict the fill would give it
+  // (`0 >= 0`), reached without asking the fill to invent a row.
+  //
+  // A venture with a commitment but NO stored licence — the throwaway
+  // `setSyndicateCommitment` dev scaffold — is skipped: it has no `basicFee` to charge,
+  // and the scaffold's whole point is that it costs nothing.
+  const feeVentures = {};
+  let feeOwedHere = 0;
+  if (isWindowBoundary(state.tick + 1, windowN, dayAnchorTick)) {
+    for (const v of systemVentures) {
+      if (!v.licence) continue;
+      const win = (report.goods[v.resourceType] || {}).window;
+      const row = win && win.perVenture ? win.perVenture[v.id] : null;
+      const status = row ? row.status : 'met';
+      // The SAME window the verdict was computed against — `curWindowStart` and `windowN`
+      // are the pair the resolver just used, so the fee can never be pro-rated by a
+      // fraction from a different window than the one it is paying for (§5: one fraction,
+      // applied once to the target and once to the fee).
+      const owed = feeOwed(v.licence, status, windowFraction(v, curWindowStart, windowN));
+      feeOwedHere += owed;
+      feeVentures[v.id] = {
+        status, owed, basicFee: v.licence.basicFee, discountedFee: v.licence.discountedFee,
+      };
+    }
+  }
+
   // Record this tick's per-good sample into the rolling production/consumption
   // HISTORY (guild.productionHistory, sim/history.js) — the engine-owned buffer the
   // console's two trend sparklines are drawn from. Two numbers per good, and they are
@@ -259,6 +350,27 @@ function applyProduction(state, guild, systemId, ctx) {
       if (drawn > 0) ctx.consumed[good] = (ctx.consumed[good] || 0) + drawn;
     }
   }
+
+  // The licence-fee accrual for this (guild, system), or null when there is nothing to
+  // charge — no boundary, or no licensed venture here. The caller applies it.
+  return Object.keys(feeVentures).length > 0
+    ? { owed: feeOwedHere, ventures: feeVentures }
+    : null;
+}
+
+// recordLicenceFee(...) — stamp the boundary charge onto the guild, so a reader can say
+// WHO was charged, HOW MUCH, and met-or-breached without recomputing anything (§5's
+// display rule). Like `recordSale` above this is a RECORD OF AN EVENT, not a second copy
+// of a derivable fact (invariant 5): the verdict is momentary — the moment this tick ends
+// the window rolls, the delivered pile resets and the met/breach that priced the fee is
+// gone, so there is nowhere else it could ever be read from again.
+//
+// `tick` is the PRODUCING tick (the boundary), matching recordSale's convention, so a
+// reader compares it against `state.tick`/`snapshot.tick` with no off-by-one. The record
+// is REPLACED at each boundary, never accumulated across windows, and it is written only
+// where a licensed venture was judged — an unlicensed guild carries no key at all.
+function recordLicenceFee(guild, tick, charged, ventures) {
+  guild.lastLicenceFee = { tick, charged, ventures };
 }
 
 // recordSale(...) — stamp what the Syndicate just bought onto the guild, so the

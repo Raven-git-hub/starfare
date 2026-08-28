@@ -448,7 +448,12 @@ test('the per-venture outcome reaches the snapshot keyed by ventureId', () => {
   assert.equal(w.status, 'breach', 'the good-level block the thermometer reads is still there');
 });
 
-test('the slice CHARGES NOTHING: credits move only by the Slice-3a sale', () => {
+// Slice 3b-iii charges the fee — but ONLY against a stored `venture.licence`. Every
+// venture in this file is committed the dev-scaffold way (`syndicateCommitment` set
+// directly, no licence, no fees), so it is judged met/breach and charged NOTHING, across
+// two whole windows and two boundaries. That is edge case (1) of the charge, and it is
+// why the scaffold's own goldens stayed byte-identical when the fee went live.
+test('a SCAFFOLD-committed (licence-less) venture is judged but never charged', () => {
   let s = fixture([mine('alpha', 6), mine('beta', 4)]);
   s = setSend(s, 2);
   for (let i = 0; i < N * 2; i += 1) {                 // two whole windows, two boundaries
@@ -457,7 +462,9 @@ test('the slice CHARGES NOTHING: credits move only by the Slice-3a sale', () => 
     const sale = guild(s).lastSyndicateSale;
     const saleThisTick = sale && sale.tick === s.tick ? sale.credited : 0;
     assert.equal(guild(s).credits - before, saleThisTick,
-      `tick ${s.tick}: the ONLY credit movement is the sale — no fee is debited (3b-iii)`);
+      `tick ${s.tick}: the ONLY credit movement is the sale — a licence-less venture owes no fee`);
+    assert.equal(guild(s).lastLicenceFee, undefined,
+      'and no charge record is ever minted for it, boundary or not');
     assert.deepEqual(checkInvariants(s, s.tick), []);
   }
   assert.equal(guild(s).credits + s.syndicate.ledger, 0, 'invariant 2, exactly');

@@ -115,17 +115,23 @@ test('three "spend 80" orders on 100 credits: only the first is accepted', () =>
 // --- the tripwire actually FIRES (it is wired, not merely present) ----------
 
 test('advance halts loudly when a resulting state breaks an invariant', () => {
-  // A hand-built state that passes intake (no actions) but whose guild credits
-  // are negative -- the non-negativity tripwire must fire, naming the tick.
+  // A hand-built state that passes intake (no actions) but whose guild credits are
+  // FRACTIONAL -- the §15.2 integer tripwire must fire, naming the tick.
+  //
+  // This fixture used to use NEGATIVE credits, which is no longer a violation: Slice
+  // 3b-iii made guild credits exempt from non-negativity (§5 -- a breach fee may put a
+  // guild in debt), so a negative balance is now a legal pressure state. The integer
+  // rule is untouched and is the cheap, deterministic break this test wants. The credit
+  // TOTAL still matches `expectedCreditTotal`, so ONLY the integer rule breaks.
   const broken = {
     tick: 7,
-    guilds: [{ id: 'g1', credits: -1, fuelHoard: 0 }],
+    guilds: [{ id: 'g1', credits: 0.5, fuelHoard: 0 }],
     reserve: { reserveLevel: 0 },
-    syndicate: { ledger: 1 }, // credit total still 0, so ONLY non-negativity breaks
+    syndicate: { ledger: 0 },
     world: { nodes: [] },
     claims: [],
     shipments: [],
-    audit: { totalProduced: 0, totalConsumed: 0, expectedCreditTotal: 0 },
+    audit: { totalProduced: 0, totalConsumed: 0, expectedCreditTotal: 0.5 },
   };
   assert.throws(() => advance(broken), /Invariant violation at tick 8/);
 });

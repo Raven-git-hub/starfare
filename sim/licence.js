@@ -35,8 +35,11 @@
 // discounted by §5's four-corner commitment × equity grid, both amounts computed ONCE
 // at signing and stored on the venture's licence (fixed until renegotiation).
 //
-// STILL NOT CHARGED. 3b-i computes and locks the number; 3b-iii debits it at the window
-// boundary (the fee charge was renumbered when 3b-ii became the mid-window pro-rate). Nothing in this file moves a credit except `commitmentSale` above.
+// 3b-i computes and locks the number; **Slice 3b-iii (28-08-26) CHARGES it** — `feeOwed`
+// below is the per-venture arithmetic, and sim/tick.js sums a guild's oweds into the one
+// boundary debit (the fee charge was renumbered when 3b-ii became the mid-window
+// pro-rate). This file still moves no credit itself: `commitmentSale` and `feeOwed` both
+// return numbers, and the tick is the only place a balance changes.
 
 const { windowFraction } = require('./windows.js');
 
@@ -272,6 +275,39 @@ function licenceFee({ baselineUnitsPerTick, windowN, lockedPrice, committedOutpu
   return { basicFee, discountedFee: Math.round(basicFee * feeFraction(c, oNorm)) };
 }
 
+// --- The charge (Slice 3b-iii) ---------------------------------------------------
+
+// feeOwed(licence, status, fraction) -> the INTEGER credits ONE licensed venture owes at
+// ONE window boundary. §5 "LICENCE FEE MECHANICS", verbatim:
+//     round((met ? discountedFee : basicFee) × windowFraction)
+//
+// BREACH VOIDS THE DISCOUNT, and it is BINARY: a venture one unit short of its target
+// pays the FULL basic fee, exactly as one that delivered nothing does. There is no
+// partial-delivery credit anywhere in this function, and that absence is the rule.
+//
+// THE FRACTION IS THE SAME ONE THE TARGET WAS PRO-RATED BY (`windowFraction`,
+// sim/windows.js) — §5: "One fraction (time present), applied once to the target and
+// once to the fee." It is 1 for every full window, so only a mid-joiner's FIRST window
+// is scaled, and it is scaled by the very number that decided what it owed in goods.
+// The caller must pass the fraction for the window the verdict was computed against;
+// passing a different window would price a verdict that was never reached.
+//
+// The fees themselves are NOT recomputed here. They are the integers locked on the
+// licence at signing (Slice 3b-i) and stay fixed until renegotiation (#64), so this
+// slice reads and never re-prices — one rounding, over a fraction that is usually 1.
+//
+// A status that is not a boundary verdict THROWS rather than quietly returning 0: a fee
+// is only ever owed at a boundary, so an `accruing` reaching here would mean the charge
+// fired on a tick where nothing was judged — and a silent 0 would under-charge forever
+// without a single test going red (§15.5: a silent violation is worse than a crash).
+function feeOwed(licence, status, fraction) {
+  if (status !== 'met' && status !== 'breach') {
+    throw new Error(`feeOwed: a licence fee is owed only on a boundary verdict — got status "${status}"`);
+  }
+  const due = status === 'met' ? licence.discountedFee : licence.basicFee;
+  return Math.round(due * fraction);
+}
+
 // isValidCommitmentPct(value) -> a fraction from the floor up to a full commitment.
 function isValidCommitmentPct(value) {
   return typeof value === 'number' && Number.isFinite(value)
@@ -296,6 +332,6 @@ function commitmentUnitsFor(pct, baselineUnitsPerTick, windowN) {
 module.exports = {
   EQUITY_CEILING, equityOf, isValidEquityPct, committedContribution, ownerFraction, commitmentSale,
   FEE_RATE, CORNERS, EQUITY_SHAPE_K, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
-  feeFraction, normalisedTerms, licenceFee, isValidCommitmentPct, isValidWindowDays,
+  feeFraction, normalisedTerms, licenceFee, feeOwed, isValidCommitmentPct, isValidWindowDays,
   commitmentUnitsFor,
 };

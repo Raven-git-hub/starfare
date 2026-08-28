@@ -254,29 +254,47 @@ test('licensing switches the commitment sale on, and invariant 2 stays exact', (
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
-// --- 6. NOTHING IS CHARGED --------------------------------------------------------
+// --- 6. THE FEE IS CHARGED — AT THE BOUNDARY, AND NOWHERE ELSE --------------------
 
-test('across a licensed run the ONLY credit movement is the sale — no fee is ever debited', () => {
+// This test shipped with 3b-i as "the ONLY credit movement is the sale — no fee is ever
+// debited". Slice 3b-iii makes that false, on exactly ONE tick in every window, and the
+// flipped assertion is the headline proof of this slice: the credit change is the sale
+// on every ordinary tick, and the sale MINUS the fee on the boundary. Kept as one test,
+// walking the same 30 ticks, so the two halves can never drift apart.
+test('the fee is debited at the boundary and NOWHERE else — every other tick is the sale alone', () => {
   let s = sysState([mine('m', 'titanium', 5, 0.3)]);
   s = grant(s, { committedOutputPct: 0.75, windowDays: 21 });
   const lic = venture(s).licence;
-  assert.ok(lic.discountedFee > 0, 'there IS a fee on the books — it is simply never charged here');
+  assert.ok(lic.discountedFee > 0, 'there IS a fee on the books, and now it is charged');
 
   let earned = 0;
-  // Run well past a window boundary (N = 24), where 3b-iii will one day debit the fee.
+  let charged = 0;
+  let boundaries = 0;
+  // Run well past a window boundary (N = 24), which falls at producing tick 24.
   for (let i = 0; i < 30; i += 1) {
     const creditsBefore = guild(s).credits;
     s = tick(s);
     const sale = guild(s).lastSyndicateSale;
     const soldThisTick = sale && sale.tick === s.tick ? sale.credited : 0;
-    assert.equal(guild(s).credits - creditsBefore, soldThisTick,
-      `tick ${s.tick}: the credit change must equal the sale exactly — nothing else may move`);
+    const fee = guild(s).lastLicenceFee;
+    const feeThisTick = fee && fee.tick === s.tick ? fee.charged : 0;
+
+    if (s.tick % N === 0) {
+      boundaries += 1;
+      assert.ok(feeThisTick > 0, `tick ${s.tick} is a boundary — the fee must fire here`);
+    } else {
+      assert.equal(feeThisTick, 0, `tick ${s.tick} is not a boundary — nothing may be charged`);
+    }
+    assert.equal(guild(s).credits - creditsBefore, soldThisTick - feeThisTick,
+      `tick ${s.tick}: the credit change is the sale minus the fee, and nothing else`);
     earned += soldThisTick;
+    charged += feeThisTick;
   }
+  assert.equal(boundaries, 1, 'the run crossed exactly one boundary (N = 24 over 30 ticks)');
   assert.ok(earned > 0, 'the run really did trade');
-  assert.equal(guild(s).credits, earned, 'no fee, no fine, no deduction of any kind');
-  assert.equal(s.syndicate.ledger, -earned);
-  assert.ok(guild(s).credits > 0, 'and credits never went negative — no debt exists yet');
+  assert.equal(guild(s).credits, earned - charged, 'the guild kept its sales less its one fee');
+  assert.equal(s.syndicate.ledger, charged - earned, 'and the ledger is the exact mirror (invariant 2)');
+  assert.equal(guild(s).credits + s.syndicate.ledger, 0, 'invariant 2, to the credit');
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 

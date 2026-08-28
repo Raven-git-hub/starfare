@@ -86,7 +86,17 @@ still match, untouched, alongside a determinism proof for a pro-rated run and th
 proof. The rounding only ever bites when `fraction < 1`, which is new state that did not exist before
 this slice.
 
-## ⚠️ Still open for 3b-iii: the fee on a partial first window
+## ✅ RESOLVED — the fee on a partial first window is PRO-RATED
+
+> **Ruled in `design.md` §5 (27-08-26, the "Partial first window" clause of the LICENCE FEE MECHANICS
+> note) and BUILT in Slice 3b-iii (28-08-26, `docs/licence-fee.md` §"The charge").** Answer **1**
+> below was taken: the fee is pro-rated by the **same** `windowFraction` that pro-rated the target —
+> "one fraction (time present), applied once to the target and once to the fee". The boundary charge
+> is `round((met ? discountedFee : basicFee) × windowFraction)`, which is 1 for every full window, so
+> the pro-rate touches only a mid-joiner's first window. The section below stands as the record of the
+> three options and why a ruling was needed before anything was charged.
+
+## ~~⚠️ Still open for 3b-iii: the fee on a partial first window~~ *(answered — see above)*
 
 The pro-rate settles what a mid-window licence **owes in goods**. It does not settle what it **pays in
 credits** for that first, partial window. Three defensible answers, and this slice invents none of them:
@@ -97,9 +107,11 @@ credits** for that first, partial window. Three defensible answers, and this sli
 3. **Full fee** — the licence's benefits start immediately, so its cost does too.
 
 A ruling is needed **before 3b-iii charges anything**, because whichever is chosen is the first thing a
-player will notice about signing mid-window.
+player will notice about signing mid-window. *(**Answered: option 1**, §5's own clause — see the box
+above. Pinned by `mid-window-prorate.test.js`, "a mid-window licence pays a PRO-RATED fee at its first
+boundary and the full fee after".)*
 
-## Out of scope
+## Out of scope *(as of 3b-ii — the fee charge has since landed, 28-08-26)*
 
 Charging the fee or the breach debit (**3b-iii** — the fee charge, renumbered from 3b-ii by this
 slice) · the `setSyndicateCommitment` scaffold, which stays full-window · factory/refinery commitment
@@ -115,5 +127,6 @@ meets it · `Q` is a whole number on a fractional window, and pacing reads the s
 the full-window path is byte-identical and deterministic · later windows revert to the full `Q` · a
 licence signed exactly as a window opens is never pro-rated · a broken join tick trips · the fraction
 range holds across a swept `N` × join-tick grid · a long-past join does not cry wolf · determinism ·
-the unlicensed no-op proof · and the credit side is untouched: across 12 ticks the credit change equals
-3a's sale exactly, every tick.
+the unlicensed no-op proof · and the credit side: across 12 ticks the credit change is 3a's sale less
+the boundary fee, and nothing else. *(That last one read "equals 3a's sale exactly, every tick" until
+Slice 3b-iii; it was updated, not dropped, and joined by the pro-rated-fee test named above.)*

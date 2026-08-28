@@ -119,11 +119,14 @@ formula (`fraction = ticks-present / N`) and the `Q` rounding is a rule, not a d
 number. The prerequisite it was flagged as — pro-rate vs first-window grace — is **answered: the
 pro-rate** (`docs/mid-window-pro-rate.md`).
 
-**Still unruled, and deliberately not invented here:** the **breach charge's** shape beyond "the full
-basic fee" (Slice **3b-iii**), per-venture breach attribution when several ventures commit one good,
-and — the open half of the mid-window question — whether a partial first window's **FEE** is pro-rated,
-free, or full. The pro-rate settles what such a licence owes in *goods*, not what it pays in *credits*;
-a ruling is needed before 3b-iii charges anything.
+~~**Still unruled, and deliberately not invented here:**~~ **All three are now answered, and Slice
+3b-iii (28-08-26) charged the fee against them:** the **breach charge** is the full basic fee and
+*nothing else* this slice — no reputation move, no payout (§5; the rest is #61 / Slice 5);
+**per-venture breach attribution** landed with the pursue-order distribution
+(`docs/licence-distribution.md`); and a partial first window's **FEE** is **pro-rated** by the same
+`windowFraction` as its target (§5's "Partial first window" clause, 27-08-26 —
+`docs/mid-window-pro-rate.md`). No new `[FIRST-CUT]` number was authored by the charge: `FEE_RATE`, the
+corners, `k`, the baselines and `N` are all read from where they already live.
 
 ### The second good (tolled/shipped raw)
 - **Good** `[FIRST-CUT]`: **Titanium** (a Tier-1 raw; also the onboarding starter-quest good, so it recurs later).

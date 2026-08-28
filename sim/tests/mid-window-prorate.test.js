@@ -289,23 +289,65 @@ test('NO-OP PROOF: an unlicensed boot+ticks is hash-identical and stamps nothing
   }
 });
 
-// --- the credit side is untouched: this slice charges nothing ---------------------
+// --- the credit side: the pro-rate moves nothing of its own, but it SCALES the fee ---
 
-test('the pro-rate moves no credits of its own — only 3a’s sale does', () => {
+// Shipped with 3b-ii as "the pro-rate moves no credits of its own — only 3a's sale does".
+// Slice 3b-iii charges the fee, so the boundary ticks now move credits too — and the
+// pro-rate is what decides HOW MUCH on the first of them. The walk is unchanged; the
+// assertion now names both movements, so the pro-rate still cannot smuggle in a third.
+test('the pro-rate moves no credits of its OWN — every tick is the sale, less the boundary fee', () => {
   const N = 4;
   let s = sysState([mine('m', 'titanium', 5)], N);
   s = tick(s); s = tick(s);
   s = licenseNow(s);
 
+  let boundaries = 0;
   for (let i = 0; i < 12; i += 1) {
     const before = guild(s).credits;
     s = tick(s);
     const sale = guild(s).lastSyndicateSale;
     const sold = sale && sale.tick === s.tick ? sale.credited : 0;
-    assert.equal(guild(s).credits - before, sold,
-      `tick ${s.tick}: the credit change must equal the sale exactly — no fee is charged yet`);
+    const fee = guild(s).lastLicenceFee;
+    const charged = fee && fee.tick === s.tick ? fee.charged : 0;
+    if (s.tick % N === 0) boundaries += 1; else assert.equal(charged, 0, `tick ${s.tick}: not a boundary, nothing charged`);
+    assert.equal(guild(s).credits - before, sold - charged,
+      `tick ${s.tick}: the credit change is the sale less the boundary fee — nothing else moves`);
   }
+  assert.ok(boundaries >= 2, 'the walk really did cross several boundaries');
   assert.equal(guild(s).credits + s.syndicate.ledger, 0, 'invariant 2 exact');
-  assert.ok(guild(s).credits > 0);
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+// The pro-rate's own credit consequence, stated as arithmetic: the FIRST boundary after
+// a mid-window signature charges `round(fee × windowFraction)`, every later one the whole
+// fee (§5: "one fraction, applied once to the target and once to the fee").
+test('a mid-window licence pays a PRO-RATED fee at its first boundary and the full fee after', () => {
+  const N = 4;
+  let s = sysState([mine('m', 'titanium', 5)], N);
+  s = tick(s); s = tick(s);            // state.tick 2 — mid-window (the window is ticks 1..4)
+  s = licenseNow(s);
+  const lic = venture(s).licence;
+  const from = venture(s).committedFromTick;
+  assert.equal(from, 3, 'first producing tick is signedTick + 1');
+
+  // Present for ticks 3 and 4 of the 4-tick window that opened at tick 1 ⇒ ½ of it.
+  const fraction = windowFraction(venture(s), winStartFor(from, N), N);
+  assert.equal(fraction, 0.5);
+
+  s = tick(s); s = tick(s);            // producing ticks 3 and 4 — tick 4 is the boundary
+  assert.equal(s.tick, 4);
+  const first = guild(s).lastLicenceFee;
+  assert.equal(first.tick, 4);
+  assert.equal(first.ventures.m.status, 'met', 'the pro-rated target is one it can meet — that is 3b-ii');
+  assert.equal(first.charged, Math.round(lic.discountedFee * 0.5),
+    'the first, partial window is charged HALF the fee — the same fraction that halved its target');
+  assert.ok(first.charged < lic.discountedFee, 'and that really is less than a full window’s fee');
+
+  for (let i = 0; i < N; i += 1) s = tick(s);   // the next whole window
+  assert.equal(s.tick, 8);
+  const second = guild(s).lastLicenceFee;
+  assert.equal(second.tick, 8);
+  assert.equal(windowFraction(venture(s), winStartFor(8, N), N), 1, 'a full window from here on');
+  assert.equal(second.charged, lic.discountedFee, 'and the full fee is charged from the second window on');
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });

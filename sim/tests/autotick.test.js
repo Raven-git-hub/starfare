@@ -86,18 +86,19 @@ test('the running heartbeat advances real ticks equivalent to T manual advances;
 // leaving the last good state live (advance threw before setState).
 
 test('halt-on-trip: a tick that throws stops the timer and records lastError, last good state stays live', async () => {
-  // A hand-built broken state (mirrors run.test.js): guild credits negative, but
-  // the credit TOTAL is still 0, so ONLY the non-negativity invariant trips — a
-  // clean, deterministic throw on the tick.
+  // A hand-built broken state (mirrors run.test.js): guild credits FRACTIONAL, but the
+  // credit total still matches `expectedCreditTotal`, so ONLY the §15.2 integer
+  // invariant trips — a clean, deterministic throw on the tick. (It used to use
+  // negative credits; Slice 3b-iii made those legal — see run.test.js for why.)
   const broken = {
     tick: 7,
-    guilds: [{ id: 'g1', credits: -1, fuelHoard: 0 }],
+    guilds: [{ id: 'g1', credits: 0.5, fuelHoard: 0 }],
     reserve: { reserveLevel: 0 },
-    syndicate: { ledger: 1 },
+    syndicate: { ledger: 0 },
     world: { nodes: [] },
     claims: [],
     shipments: [],
-    audit: { totalProduced: 0, totalConsumed: 0, expectedCreditTotal: 0 },
+    audit: { totalProduced: 0, totalConsumed: 0, expectedCreditTotal: 0.5 },
   };
   setState(broken);
 

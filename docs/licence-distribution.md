@@ -9,7 +9,8 @@ REAL met/breach"* section is the data-point spec this builds to. Companion notes
 `docs/licence-hardening.md` (the sale's mis-payment).
 
 **It charges nothing.** The per-venture verdict is computed and surfaced; the fee that reads it is
-Slice 3b-iii. The per-tick **sale** is untouched — that is the other clock (see §5, and the
+Slice 3b-iii. *(**3b-iii LANDED 28-08-26** — `docs/licence-fee.md` §"The charge". The boundary debit
+reads exactly the `perVenture` rows this slice produces; nothing here changed to accommodate it.)* The per-tick **sale** is untouched — that is the other clock (see §5, and the
 two-attributions note in `sim/licence.js`), and this slice deliberately does not make it follow the
 pursue order.
 
@@ -122,8 +123,11 @@ state and in no determinism hash.
 
 ## What this slice did NOT do
 
-- **The fee (3b-iii).** Nothing is debited. Proven per tick over two whole windows: the guild's only
-  credit movement is 3a's sale.
+- **The fee (3b-iii).** Nothing is debited *here*. Proven per tick over two whole windows: the
+  guild's only credit movement is 3a's sale. *(**Landed 28-08-26.** That proof still passes, and now
+  proves something else: every venture in this file is committed the **dev-scaffold** way — a
+  commitment with no stored `licence` — so it is judged and charged **nothing**, which is the
+  licence-less skip the charge is built around. The test is renamed to say so.)*
 - **The console rewire.** The client still renders the good-level dot; the snapshot is shaped for it.
 - **The window-end reserve-backfill** — still a later, separately-designed option (§5).
 - **The `delivered ≤ Q` invariant.** `invariants.js` notes it was "left to the distribution slice";
@@ -158,5 +162,5 @@ pursue = (none — establishment order)      pursue = mine-B > mine-A
 ```
 
 Same goods delivered, same credits earned, same ledger — only *which contract was
-honoured* moves. That is the whole mechanic, and (from 3b-iii) the difference between a
-discounted fee and a full one.
+honoured* moves. That is the whole mechanic, and (as of 3b-iii, 28-08-26) the difference between a
+discounted fee and a full one — a real, charged difference in credits, not a status pill.

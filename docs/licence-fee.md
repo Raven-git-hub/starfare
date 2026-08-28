@@ -2,8 +2,12 @@
 
 The build note for **3b-i** of `docs/licence-and-price-system.md` Part 4. The contract is `design.md`
 §5's **"LICENCE FEE MECHANICS — RULED"** note and the four-corner grid it discounts with. This slice
-computes and **locks** the fee; **3b-iii charges it** (the fee charge was renumbered when 3b-ii became the mid-window pro-rate). Companion notes: `docs/commitment-sale.md` (3a,
-the sale), `docs/price-engine.md` (the posted price the fee locks against).
+computes and **locks** the fee; **3b-iii charges it** (the fee charge was renumbered when 3b-ii became
+the mid-window pro-rate) — **and 3b-iii is now BUILT: see [The charge](#the-charge--licence-slice-3b-iii-28-08-26)
+at the foot of this note.** Companion notes: `docs/commitment-sale.md` (3a, the sale),
+`docs/price-engine.md` (the posted price the fee locks against),
+`docs/licence-distribution.md` (the per-venture verdicts the charge reads),
+`docs/mid-window-pro-rate.md` (the fraction that scales a first, partial window's fee).
 
 ## What it does
 
@@ -30,9 +34,10 @@ feeFraction   = [ 100(1−c)(1−o′) + 75·c(1−o′) + 75(1−c)o′ + 0·c�
   is why *when* you sign is a real decision (§5: "rewards reading the market and timing your lock"). A
   test moves the posted price 9× up and 4× down afterwards; the stored fees do not budge.
 
-**Nothing is charged.** No debit, no breach penalty, no credit movement of any kind beyond 3a's
-commitment sale — which this slice is what *switches on*, because the licence is now what sets
-`syndicateCommitment`.
+**Nothing is charged *by 3b-i*.** No debit, no breach penalty, no credit movement of any kind beyond
+3a's commitment sale — which this slice is what *switches on*, because the licence is now what sets
+`syndicateCommitment`. *(**Superseded by 3b-iii, 28-08-26** — the fees this slice locks are now debited
+at the window boundary. Kept as the record of what 3b-i shipped; the charge is documented below.)*
 
 ## `venture.licence` — the reserved socket, filled
 
@@ -117,7 +122,7 @@ pro-rate, built in 3b-ii.)*
 commitment floor (0%) · the renegotiation-window bounds (7–42 days). The 49% equity ceiling is a
 **design** number, not a dial (§5: the owner keeps control by retaining 51%).
 
-## Out of scope
+## Out of scope *(as of 3b-i — the fee charge has since landed, below)*
 
 Charging the fee (3b-iii) · **factory/refinery licensing** — the §5 accrual sums `Q` over mines only
 (`production.js`), so a factory's commitment would never accrue, never be delivered and never be
@@ -135,7 +140,208 @@ commitment · the licence reads the equity offered at establishment · every inv
 refused and leaves state byte-identical · a factory, fuel, a second application, an unowned and a
 missing venture are each refused · the fees do not move when the market does · signing at a different
 price is a different contract · `setWindowN` is refused after signing · licensing switches the sale on
-with invariant 2 exact · **across 30 ticks the credit change equals the sale exactly, every tick** ·
+with invariant 2 exact · **across 30 ticks the credit change is the sale on every tick and the sale
+MINUS the fee on the one boundary** (this assertion read "equals the sale exactly, every tick" until
+3b-iii; the flip is that slice's headline) ·
 the unlicensed no-op/determinism proof · the snapshot surface (and that it cannot alias into state) ·
 five corrupted-licence tripwire cases · the validators are the ones §5 names · establish-then-license
 end to end, landing on §5's zero-fee deep-entanglement corner.
+
+---
+
+# The charge — licence Slice 3b-iii (28-08-26)
+
+The build note for **3b-iii**, the last bullet of `docs/licence-and-price-system.md` Part 4's fee
+sequence. The contract is the same `design.md` §5 **"LICENCE FEE MECHANICS — RULED"** note this file
+opens with: it ruled every rule and every constant the charge needs, so this slice **authors no new
+mechanic and no new `[FIRST-CUT]` number**. It is the socket, not a new circuit.
+
+Everything it moves was computed by a slice that shipped before it:
+
+| what it reads | where it came from |
+| --- | --- |
+| `basicFee` / `discountedFee` | locked at signing — 3b-i, above |
+| the per-venture `met`/`breach` verdict | the pursue-order fill — `docs/licence-distribution.md` |
+| `windowFraction` | the mid-window join pro-rate — `docs/mid-window-pro-rate.md` |
+| the anchored boundary | the day anchor — `docs/cycle-and-calendar.md` §2 |
+
+## The one line
+
+At each anchored window boundary, every licensed venture owes
+`round((met ? discountedFee : basicFee) × windowFraction)` — its verdict read from the fill that just
+computed it — and a guild's oweds across **all** its systems and goods sum into one lump debited from
+`guild.credits` and credited to `state.syndicate.ledger`.
+
+## Two layers, and the trap between them
+
+- **Layer 1 — the verdict and the owed amount are per `(system, good)`, per VENTURE.** A venture's
+  met/breach is decided inside its own `(system, good)` window, because the Syndicate pile it is judged
+  against belongs to a system and cannot be shared across them. The arithmetic is one small pure
+  function, `feeOwed(licence, status, fraction)` (`sim/licence.js`), so it is unit-testable off a
+  server. **Breach voids the discount and it is binary:** a venture one unit short of its target pays
+  the full basic fee, exactly as one that delivered nothing does.
+- **Layer 2 — the CHARGE is guild-level and system/good-agnostic.** A guild has exactly one credit
+  pool, and every window in the galaxy closes on the same global boundary, so the oweds all fall due
+  together and move once: one debit, one ledger transfer, one receipt.
+- **The trap:** the total is **DERIVED from the individual licensed ventures**. Each venture computes
+  what *it* owes from *its own* verdict and rounds there (§5's `round(…)` is per venture); the guild
+  total is the sum of those whole numbers. There is no `(system, good)` fee *pot* to split among
+  ventures — building one and dividing it would round a pooled total and hand ventures shares of a
+  number nobody owed.
+
+## The mechanism, and why this one
+
+`applyProduction` (`sim/tick.js`) is called once per `(guild, system)` and already holds that system's
+boundary verdicts, so it computes the per-venture oweds there and **returns** the accrual;
+`stepProduction` sums a guild's systems and applies the single debit after its inner loop. Because
+guild credits are one pool, debiting per venture and debiting one summed lump land on the same number —
+so Layer 2 is as much about the record and the conceptual model as the arithmetic, and the ruled model
+is what is built.
+
+The tempting alternative — re-deriving the verdicts in a separate post-production pass — is worse and
+was rejected: `status` is **derived telemetry that reaches no stored byte** (§5), so a second pass would
+have to reconstruct the pursue fill from the stored `delivered`, against a window that is on the cusp of
+rolling. Read the verdict where it is computed, on the one tick it is true for.
+
+**One departure from the obvious loop, and it is load-bearing.** The charge iterates the guild's stored
+**licences** and looks the verdict *up*, rather than iterating the report's `perVenture` rows. §5's **0%
+commitment floor** is why: a venture that committed nothing has no `Q`, so its good may carry no window
+block and appear in no `perVenture` row at all — yet it is licensed, it is `met` (it owed zero units and
+delivered zero), and it **pays**, which at the `c = 0` / no-equity corner is 100% of the basic fee.
+Looping over rows would give every 0% licence a silent free ride. An absent row therefore means "owed no
+units this window" ⇒ `met`, which is the same verdict the fill itself would produce (`0 ≥ 0`).
+
+## The edge cases, and how each is handled
+
+| case | behaviour |
+| --- | --- |
+| a commitment with **no** stored `licence` (the `setSyndicateCommitment` dev scaffold) | **skipped** — no locked fee to charge. This is what keeps the scaffold's goldens byte-identical. |
+| **breach** | the **full** `basicFee`, even at 99% delivered — binary, no partial credit |
+| **`accruing`** | never charged. Charging happens only at a boundary, where every verdict is met or breach; `feeOwed` **throws** on any other status rather than silently returning 0 |
+| the **0% floor** | licensed, always `met`, pays its `discountedFee` — a real charge (100% of basic at no equity, 75% at max equity) |
+| a **mid-window** licence | `round(fee × windowFraction)` at its first boundary, the whole fee at every one after — the SAME `curWindowStart`/`N` the verdict used |
+| a guild licensed across **several systems** | all its ventures' oweds sum into the one guild lump |
+| the debit exceeding the guild's balance | **credits go negative — intended.** See the invariant change below |
+| the per-tick **sale** (3a) | untouched. It runs every tick, boundary included; two independent internal transfers, neither folded into the other |
+
+## The record — so the verdict survives the roll
+
+```js
+guild.lastLicenceFee = {
+  tick,        // the PRODUCING tick — the boundary (recordSale's convention)
+  charged,     // the guild-wide lump actually debited
+  ventures: { [ventureId]: { status, owed, basicFee, discountedFee } },
+};
+```
+
+Written **lazily**, only at a boundary where the guild really holds a licensed venture — so an
+unlicensed guild, and every non-boundary tick, carries no key and stays byte-identical (the same
+discipline as `guild.syndicateWindows` and `guild.lastSyndicateSale`). It **replaces**, never
+accumulates.
+
+It exists for the same reason `recordSale` does (invariant 5): the verdict is **momentary**. The instant
+the boundary tick ends the window rolls, the delivered pile resets, and the met/breach that priced the
+fee is gone from everywhere else — so this is not a second copy of a derivable fact, it is the only copy
+there will ever be. Surfaced additively as the snapshot's per-guild **`licenceFee`**
+(`{ tick, thisTick, charged, ventures }`, schema stays **7**), so a later client slice can show the
+charge without recomputing a thing (§5's display rule).
+
+## The invariant change — a doc contradiction reconciled
+
+§5 already ruled that **"a breach fee may drive a guild's credits negative — guild credits join the
+Syndicate ledger as exempt from the non-negativity invariant (invariant 2 stays exact: guild −X,
+ledger +X)"**. The code and invariant 3's own text had not caught up, and by the time this slice opened
+they contradicted §5 outright. Both are fixed in this commit:
+
+- **`sim/invariants.js`** — `guild.credits` is now checked with `{ nonNegative: false }`, exactly as
+  `state.syndicate.ledger` already was. The **integer** check is untouched: a fractional credit is still
+  a bug, and a test pins that the carve-out freed the *sign* and not the *type*.
+- **`design.md` §15.5, invariant 3** — carves guild credits out beside the ledger and says **why**: the
+  fee is charged in full whether or not the guild can pay, because refusing it (or flooring it at zero)
+  would let a guild escape the cost of a contract it broke by being poor — the opposite of what the fee
+  is for. A guild in debt is a deferred **pressure state** (§5), not a broken ledger.
+
+Invariant 2 is untouched and still exact through the debt: one integer, both legs, so nothing about the
+movement goes unchecked.
+
+## Proof — the "charges nothing" assertions flip, and the goldens do not
+
+Three slices each shipped a *"the only credit movement is the sale"* proof. Those are now **false at the
+boundary tick**, and the flip is the headline evidence. Every one was **updated, not deleted**:
+
+- `licence-fee.test.js` — across 30 ticks the credit change is the sale on every ordinary tick and the
+  sale **minus** the fee on the one boundary, with the fee asserted **> 0** there and **0** everywhere
+  else. Renamed to say so.
+- `mid-window-prorate.test.js` — the same walk, plus a new test that the first, partial window is
+  charged `round(fee × ½)` and every window after it the whole fee.
+- `multi-venture-commitment.test.js` (F-A) — the per-tick sale figure is now checked with the boundary
+  fee added back, so the sale's own attribution stays pinned and the two movements stay separable.
+- `licence-distribution.test.js` and `commitment-scaffold.test.js` still assert *no charge* — and now do
+  so as the **licence-less skip**: every venture in them is scaffold-committed, so it is judged and
+  charged nothing. Renamed to say what they now prove.
+
+**The committed goldens are byte-identical, and that is a result, not an omission.** Neither pinned
+golden run holds a `venture.licence` — the committed one (`commitment-scaffold.test.js`) is
+dev-scaffold shape and `persist.test.js`'s is unlicensed — so nothing in either is charged and the
+boundary-only debit plus the lazy record leave both untouched:
+
+```
+GOLDEN_UNLICENSED             682e42e0…   unchanged
+GOLDEN_UNLICENSED_WITH_PRICES ee6856cc…   unchanged
+GOLDEN_UNLICENSED_WITH_HISTORY fa63aaf4…  unchanged
+GOLDEN_COMMITTED_WITH_PRICES  e0255c73…   unchanged
+GOLDEN_COMMITTED_WITH_HISTORY e145b142…   unchanged
+persist GOLDEN_HASH*          564010…/53c4f4…/170bed…   unchanged
+```
+
+So a **strip-and-prove** was written for a run that *is* licensed, which is the stronger statement a
+re-pinned number could not make. The same fixture is run twice over three windows — once with the
+licence stored (charged) and once with the `licence` object deleted after signing, which is exactly the
+pre-3b-iii engine's behaviour for that run, since every other stored field is untouched:
+
+```
+charged                          1b62d5ef…    credits 614   ledger −614
+uncharged (pre-charge behaviour) 6e8ce686…    credits 659   ledger −659
+expectedLump = discountedFee 15 × 3 boundaries = 45         614 = 659 − 45 ✓
+charged, with lastLicenceFee + licence stripped and the 45 put back:
+                                 6e8ce686…    == uncharged, byte for byte ✓
+```
+
+If this slice moved one other byte — a good, a pool, a window accumulator, a carry, a history sample,
+the sale record — that last line goes red.
+
+## Determinism (invariant 9)
+
+The debit order is fixed: guilds in array order, systems in the sorted order `stepProduction` already
+uses, ventures in establishment order. The charge reads no clock and the lump is a sum, so order does
+not reach the number anyway. The twice-run check is green.
+
+## Out of scope — deferred, not invented
+
+Renegotiation and the `windowDays` deadline (#64) — the charge reads the **locked** fees and re-prices
+nothing · reputation, breach marks, forced closure, investor dividends (§5 / #61 / Slice 5) — a breach
+charges the full fee **and nothing else** · any change to the sale (3a), the verdict computation
+(`pursueFill`), the pro-rate (`windowFraction`) or `Q` — this slice READS their outputs · a fee-preview
+endpoint · an atomic `establishAndLicence` · **the console/HUD fee display** — the record and snapshot
+field are added so a later client slice can show the charge, and until it lands `client/console.html`
+and `client/game.html` still say the fee is *"not charged yet (3b-iii)"*, which is now stale copy in
+two places: `console.html`'s Syndicate-panel footer line (`"The fee is not charged yet (licence Slice
+3b-iii), so none is shown."`) and `game.html`'s licence receipt (`"It is LOCKED and NOT YET CHARGED"`). Flagged here rather
+than fixed, because a client slice is a client slice.
+
+## Tripwires (`sim/tests/licence-fee-charge.test.js`, 15 tests)
+
+met pays the discount at the boundary · breach pays the **full** basic fee · **one unit short of
+twenty** breaches and pays full, with no partial credit · a **0%-commitment** licence is met every
+window and pays its (undiscounted) fee, three boundaries running · a scaffold-committed venture beside a
+licensed one is **not on the bill** · a guild licensed in **two systems** is debited **one lump equal to
+the sum** of its ventures' oweds, one met and one breached so the sum is the only arithmetic that
+produces it · the fee drives credits **negative** with invariant 3 green and invariant 2 exact · the
+counterfactual: a **fractional** credit balance still trips the integer rule, naming the field ·
+the boundary tick runs **both** the sale and the fee, conserving on every tick · the record exists only
+at a charging boundary, survives the window roll, and is **replaced** at the next one · an unlicensed
+guild never grows the key · the snapshot surface, `thisTick` included · `feeOwed` is §5's formula and
+**throws** on a non-verdict status · determinism · **strip-and-prove**. Plus the pro-rated first-window
+charge in `mid-window-prorate.test.js`, where the pro-rate's fixtures live.
+
+**534 tests (+16), zero failures.**

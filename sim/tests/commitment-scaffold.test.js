@@ -75,8 +75,10 @@ test('an under-injected commitment BREACHES at the boundary (status flag only, n
   // short of Q 9 ⇒ breach.
   //
   // SLICE 3a: a delivery is now a SALE, so the 8 units that DID arrive are bought and
-  // paid for — a breach does not confiscate what was delivered. What is still absent is
-  // the breach FEE (Slice 3b): the only credits that move are the sale's, to the credit.
+  // paid for — a breach does not confiscate what was delivered. The breach FEE is live
+  // as of Slice 3b-iii, but it is charged against a stored `venture.licence` and this
+  // venture is committed the SCAFFOLD way — no licence, no fees — so it breaches for
+  // free: the only credits that move are the sale's, to the credit.
   let s = sysState([mine('t', 'titanium', 4, 0)]);
   const creditsBefore = s.guilds[0].credits;
   const ledgerBefore = s.syndicate.ledger;
@@ -95,6 +97,7 @@ test('an under-injected commitment BREACHES at the boundary (status flag only, n
   assert.equal(s.guilds[0].credits - creditsBefore, sale, 'the delivered units were BOUGHT, not confiscated');
   assert.equal(ledgerBefore - s.syndicate.ledger, sale, 'and the Syndicate paid for them, to the credit');
   assert.equal(s.guilds[0].credits + s.syndicate.ledger, creditsBefore + ledgerBefore, 'no fee, no fine — nothing but the sale moved (invariant 2)');
+  assert.equal(s.guilds[0].lastLicenceFee, undefined, 'and the licence-less breach mints no charge record');
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 

@@ -59,7 +59,7 @@ const {
   storedThrottleIds, storedPolicyGoods, storedPursueGoods, storedPursue,
 } = require('./profile.js');
 const {
-  DEFAULT_WINDOW_N, winStartFor, getWindow,
+  DEFAULT_WINDOW_N, winStartFor, isWindowBoundary, getWindow,
 } = require('./windows.js');
 const { committedContribution } = require('./licence.js');
 const { getHistory } = require('./history.js');
@@ -458,8 +458,11 @@ function resolveProduction(guild, systemId, opts = {}) {
       const w = plan.win;
       const newDelivered = w.delivered + synDraw;
       // The ANCHORED boundary (§2): `(tick - dayAnchorTick) % N == 0`. At the default
-      // anchor 0 this is exactly the old `p % windowN === 0`.
-      const isBoundary = (((p - dayAnchorTick) % windowN) + windowN) % windowN === 0;
+      // anchor 0 this is exactly the old `p % windowN === 0`. The formula moved to
+      // sim/windows.js in Slice 3b-iii — the licence-fee charge must fire on exactly the
+      // tick these verdicts are resolved on, and one shared function is the only way to
+      // guarantee that. Same arithmetic, same bytes.
+      const isBoundary = isWindowBoundary(p, windowN, dayAnchorTick);
       // The PER-VENTURE verdicts (§5's per-venture met/breach ruling), and the
       // good-level status ROLLED UP from them — the individuals are computed first and
       // the aggregate is derived from them, never the other way round.

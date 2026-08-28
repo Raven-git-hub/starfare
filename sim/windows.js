@@ -69,6 +69,23 @@ function winStartFor(tick, N, dayAnchorTick = 0) {
   return tick - (((tick - 1 - dayAnchorTick) % N + N) % N);
 }
 
+// isWindowBoundary(tick, N, dayAnchorTick): is this producing tick a window's LAST —
+// the tick the accrual resolves met/breach on (§5 boundary ruling) and, as of Slice
+// 3b-iii, the tick the licence fee is charged on. The ANCHORED cadence
+// (docs/cycle-and-calendar.md §2): `(tick - dayAnchorTick) % N == 0`, written with the
+// same sign-safe double modulo `winStartFor` uses and for the same reason — an anchored
+// galaxy's anchor is NEGATIVE and JavaScript's `%` keeps the DIVIDEND's sign, so the raw
+// operator would never see a boundary in such a galaxy at all. §5 writes the test as
+// `tick % N == 0` for brevity; this IS that, at the default anchor 0.
+//
+// Extracted here (from the inline copy in `resolveProduction`) because the formula now
+// has TWO readers: the resolver, which resolves the verdicts on this tick, and the tick,
+// which charges the fee off them. Two copies of a boundary test is two chances to charge
+// on a tick the verdicts were never resolved on.
+function isWindowBoundary(tick, N, dayAnchorTick = 0) {
+  return (((tick - dayAnchorTick) % N) + N) % N === 0;
+}
+
 // windowFraction(venture, windowStart, N): the fraction of the current window the
 // venture is committed for — the term in `Q = Σ commitment × fraction` that lets a
 // mid-window joiner owe only a pro-rated share of its first window (§5 join ruling,
@@ -120,5 +137,5 @@ function cloneWindows(windows) {
 }
 
 module.exports = {
-  DEFAULT_WINDOW_N, winStartFor, windowFraction, getWindow, setWindow, cloneWindows,
+  DEFAULT_WINDOW_N, winStartFor, isWindowBoundary, windowFraction, getWindow, setWindow, cloneWindows,
 };

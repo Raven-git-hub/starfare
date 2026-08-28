@@ -200,13 +200,20 @@ linear, and Part 5's normaliser confirm.
     with a full-window fraction that rounding is the identity, so every pre-existing path stays
     byte-identical. §5's `fraction == 1` deferral tripwire is retired and replaced by a correctness one.
     Charges nothing.
-  - **3b-iii — charge the fee.** At each window boundary (`tick % N == 0`) debit the **discounted** fee if
-    the commitment was met, the **full** basic fee if breached; credits → the Syndicate ledger. A breach
-    fee **may drive credits negative** (guild credits join the ledger as exempt from the non-negativity
-    invariant; invariant 2 stays exact). (Reputation consequences of breach land in Slice 4.)
-    ⚠️ **Needs one ruling first:** whether a mid-window licence's **partial first window** is charged a
-    pro-rated fee, no fee, or the full fee — the pro-rate settles what it owes in *goods*, not in
-    *credits*.
+  - **3b-iii — charge the fee. ✅ BUILT 28-08-26 (`docs/licence-fee.md` §"The charge").** At each window
+    boundary (the ANCHORED `(tick − dayAnchorTick) % N == 0`) debit the **discounted** fee if the
+    commitment was met, the **full** basic fee if breached; credits → the Syndicate ledger. The verdict
+    is the per-venture one from the pursue fill; the owed amount is
+    `round((met ? discountedFee : basicFee) × windowFraction)`, computed and rounded **per venture**,
+    and a guild's oweds across every system and good sum into **one lump** debited from its one credit
+    pool. A commitment with no stored `licence` (the dev scaffold) is charged nothing; a **0%**
+    commitment is licensed, always met, and pays. A breach fee **may drive credits negative** (guild
+    credits joined the ledger as exempt from the non-negativity invariant — invariant 3 in §15.5 and
+    `sim/invariants.js` were both carved out in the same commit; invariant 2 stays exact). The charge is
+    recorded on `guild.lastLicenceFee` and surfaced as the snapshot's per-guild `licenceFee`.
+    (Reputation consequences of breach land in Slice 4.)
+    ~~⚠️ **Needs one ruling first:**~~ **RULED** (§5, 27-08-26): a mid-window licence's **partial first
+    window** is charged a **pro-rated** fee — the same `windowFraction` that pro-rated its target.
 
 **Slice 4 — Reputation.** Per-venture score, tiers, the fixed + variable build rates, the breach
 reputation penalty, the per-tier dividend multiplier, guild total. **Reconciled with §5/§7 thresholds.**

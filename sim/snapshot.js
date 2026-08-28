@@ -162,6 +162,15 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // with no in-system consumer has no `goods` entry yet still has a trend to draw. No schema
 // bump: nothing existing changed shape and an older reader ignores the new key — the same
 // call the additive `perVenture` and `site.name` made.
+// v7 (licence Slice 3b-iii, 28-08-26): ADDITIVE — each guild row gains `licenceFee`, the
+// record of the fee the Syndicate charged that guild at the last window boundary
+// (`{ tick, thisTick, charged, ventures: { ventureId: { status, owed, basicFee,
+// discountedFee } } }`, from `guild.lastLicenceFee`). No schema bump: nothing existing
+// changed shape, the same additive call `syndicateSale` and `perVenture` made. Unlike the
+// `production` block's live `perVenture` telemetry — recomputed on every read and gone
+// the instant the window rolls — this is STORED state echoed as-is, which is exactly why
+// it can still be read on the ticks AFTER the boundary that produced it. null for a guild
+// that has never been charged.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -175,6 +184,7 @@ const SNAPSHOT_SCHEMA = 7;
 //     prices: { <every non-fuel stockpile good>: <posted value> },  // sim/prices.js
 //     guilds: [ { id, name, isBot, credits, fuelHoard, influence,
 //                 syndicateSale: { tick, thisTick, credited, goods } | null, // Slice 3a
+//                 licenceFee: { tick, thisTick, charged, ventures } | null,   // Slice 3b-iii
 //                 stockpiles: { good: int },                    // flat guild total
 //                 stockpilesBySystem: { systemId: { good: int } }, // per-system
 //                 productionProfile: { ... } } ],               // §5 profile, sparse as stored
@@ -245,6 +255,27 @@ function buildSnapshot(state) {
           goods: Object.fromEntries(
             Object.keys(g.lastSyndicateSale.goods || {}).sort()
               .map((good) => [good, { ...g.lastSyndicateSale.goods[good] }]),
+          ),
+        }
+      : null,
+    // What the Syndicate CHARGED this guild at the last window boundary (Slice 3b-iii) —
+    // the guild-wide lump and, per licensed venture, its boundary verdict and what that
+    // verdict cost it. `thisTick` is the engine answering "did this fire on the current
+    // tick?", the same courtesy `syndicateSale` above does, so the console can say "you
+    // were charged N credits this cycle" without comparing anything itself (§5's display
+    // rule). This is the ONLY place the verdict survives the window roll: the moment the
+    // boundary tick ends, the delivered pile resets and the met/breach that priced the fee
+    // is gone. Deep-copied like every other block here; null for a guild that has never
+    // been charged — which is every unlicensed guild, and every guild before its first
+    // boundary under a licence.
+    licenceFee: g.lastLicenceFee
+      ? {
+          tick: g.lastLicenceFee.tick,
+          thisTick: g.lastLicenceFee.tick === state.tick,
+          charged: g.lastLicenceFee.charged,
+          ventures: Object.fromEntries(
+            Object.keys(g.lastLicenceFee.ventures || {}).sort()
+              .map((id) => [id, { ...g.lastLicenceFee.ventures[id] }]),
           ),
         }
       : null,
