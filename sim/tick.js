@@ -30,7 +30,7 @@ const {
 } = require('./windows.js');
 const { getHistory, pushHistory } = require('./history.js');
 const { recomputePrices, postedPrice } = require('./prices.js');
-const { commitmentSale, feeOwed } = require('./licence.js');
+const { commitmentSale, committedContribution, feeOwed } = require('./licence.js');
 
 // Deep-clones state so tick() can never accidentally mutate its input.
 // structuredClone is a plain JS global (Node 17+), not a DOM API.
@@ -260,14 +260,23 @@ function applyProduction(state, guild, systemId, ctx) {
   //
   // WHY THE LOOP IS OVER VENTURES, NOT OVER `perVenture` ROWS — this is the mechanism
   // choice, and it is load-bearing for §5's 0% commitment floor. A venture that committed
-  // NOTHING has no `Q`, so its good may have no window block and it appears in no
-  // `perVenture` row at all — yet §5 says it is licensed, is `met` (it owed zero units and
-  // delivered zero), and PAYS its discounted fee, which at the `c = 0` corner is the full
-  // basic fee. Driving the loop off the stored LICENCE (the thing being charged) and
-  // looking the verdict UP is what makes that venture visible; driving it off the rows
-  // would silently give every 0% licence a free ride. A missing row therefore means
-  // "owed no units this window" ⇒ `met`, which is the same verdict the fill would give it
-  // (`0 >= 0`), reached without asking the fill to invent a row.
+  // NOTHING has no `Q`, so its good has no window block and it appears in no `perVenture`
+  // row at all — yet §5 says it is licensed, is `met` (it owed zero units and delivered
+  // zero), and PAYS its discounted fee, which at the `c = 0` corner is the full basic fee.
+  // Driving the loop off the stored LICENCE (the thing being charged) and looking the
+  // verdict UP is what makes that venture visible; driving it off the rows would silently
+  // give every 0% licence a free ride.
+  //
+  // AND THE ABSENT ROW IS GUARDED, because "no row ⇒ met" is only true for a venture that
+  // owed NOTHING. `resolveProduction` routes every good whose aggregate `Q` is positive
+  // and emits a target row for every venture with a positive contribution to it, so a
+  // committed licence ALWAYS has a real boundary verdict — a missing one is a broken
+  // state, not a free window. Reading it as `met` would charge the DISCOUNT on a contract
+  // that was never judged: the quietest possible undercharge, invisible in every balance
+  // and every test. So it halts instead, naming the tick and the offending values (§15.5:
+  // a silent violation is worse than a crash). The predicate is `committedContribution` —
+  // the SAME function the resolver builds its targets from, so the guard cannot disagree
+  // with the thing it guards about which ventures were owed a row.
   //
   // A venture with a commitment but NO stored licence — the throwaway
   // `setSyndicateCommitment` dev scaffold — is skipped: it has no `basicFee` to charge,
@@ -279,6 +288,15 @@ function applyProduction(state, guild, systemId, ctx) {
       if (!v.licence) continue;
       const win = (report.goods[v.resourceType] || {}).window;
       const row = win && win.perVenture ? win.perVenture[v.id] : null;
+      if (!row) {
+        // Legal ONLY for a licence that owed zero units this window (§5's 0% floor, or a
+        // fraction that leaves nothing owed). Anything else is a committed licence about
+        // to be charged as met without having been judged — halt.
+        const owedUnits = committedContribution(v, curWindowStart, windowN);
+        if (owedUnits > 0) {
+          throw new Error(`applyProduction: guild ${guild.id}'s licensed venture ${v.id} owed ${owedUnits} units of ${v.resourceType} in the window closing at tick ${state.tick + 1}, but the boundary produced no verdict for it — refusing to charge a committed licence the discounted fee it was never judged for`);
+        }
+      }
       const status = row ? row.status : 'met';
       // The SAME window the verdict was computed against — `curWindowStart` and `windowN`
       // are the pair the resolver just used, so the fee can never be pro-rated by a

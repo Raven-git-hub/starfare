@@ -211,11 +211,22 @@ delivered zero), and it **pays**, which at the `c = 0` / no-equity corner is 100
 Looping over rows would give every 0% licence a silent free ride. An absent row therefore means "owed no
 units this window" ⇒ `met`, which is the same verdict the fill itself would produce (`0 ≥ 0`).
 
+**And that reading is guarded, not assumed.** `resolveProduction` routes every good whose aggregate `Q`
+is positive and emits a target row for every venture with a positive contribution to it — so a
+**committed** licence *always* has a real boundary verdict, and an absent row for one that owed units is
+a broken state, not a free window. Charging it as `met` would apply the **discount** to a contract that
+was never judged: an undercharge that moves a real balance and shows up in no assertion anywhere — the
+quietest failure this slice could have. So the charge **halts** instead, naming the tick and the owed
+quantity (§15.5: a silent violation is worse than a crash). The predicate is `committedContribution`,
+the **same** function the resolver builds its targets from, so the guard cannot disagree with the thing
+it guards about which ventures were owed a row.
+
 ## The edge cases, and how each is handled
 
 | case | behaviour |
 | --- | --- |
 | a commitment with **no** stored `licence` (the `setSyndicateCommitment` dev scaffold) | **skipped** — no locked fee to charge. This is what keeps the scaffold's goldens byte-identical. |
+| a **licensed, committed** venture with no boundary verdict | **halts.** Absent rows are legal only where zero units were owed; anything else is a committed licence about to be charged the discount unjudged |
 | **breach** | the **full** `basicFee`, even at 99% delivered — binary, no partial credit |
 | **`accruing`** | never charged. Charging happens only at a boundary, where every verdict is met or breach; `feeOwed` **throws** on any other status rather than silently returning 0 |
 | the **0% floor** | licensed, always `met`, pays its `discountedFee` — a real charge (100% of basic at no equity, 75% at max equity) |
@@ -329,12 +340,14 @@ two places: `console.html`'s Syndicate-panel footer line (`"The fee is not charg
 3b-iii), so none is shown."`) and `game.html`'s licence receipt (`"It is LOCKED and NOT YET CHARGED"`). Flagged here rather
 than fixed, because a client slice is a client slice.
 
-## Tripwires (`sim/tests/licence-fee-charge.test.js`, 15 tests)
+## Tripwires (`sim/tests/licence-fee-charge.test.js`, 16 tests)
 
 met pays the discount at the boundary · breach pays the **full** basic fee · **one unit short of
 twenty** breaches and pays full, with no partial credit · a **0%-commitment** licence is met every
 window and pays its (undiscounted) fee, three boundaries running · a scaffold-committed venture beside a
-licensed one is **not on the bill** · a guild licensed in **two systems** is debited **one lump equal to
+licensed one is **not on the bill** · a **committed** licence with no boundary verdict **halts** rather
+than reading `met`, naming the owed quantity and the tick — and halts only at the boundary (asserted red
+with the guard removed) · a guild licensed in **two systems** is debited **one lump equal to
 the sum** of its ventures' oweds, one met and one breached so the sum is the only arithmetic that
 produces it · the fee drives credits **negative** with invariant 3 green and invariant 2 exact · the
 counterfactual: a **fractional** credit balance still trips the integer rule, naming the field ·
@@ -344,4 +357,4 @@ guild never grows the key · the snapshot surface, `thisTick` included · `feeOw
 **throws** on a non-verdict status · determinism · **strip-and-prove**. Plus the pro-rated first-window
 charge in `mid-window-prorate.test.js`, where the pro-rate's fixtures live.
 
-**534 tests (+16), zero failures.**
+**535 tests (+17), zero failures.**

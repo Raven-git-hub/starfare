@@ -162,6 +162,37 @@ test('a 0%-commitment licence is MET every window and pays its (undiscounted) fe
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
+test('a COMMITTED licence with no boundary verdict HALTS — it is never read as met', () => {
+  // The counterfactual to the test above, and the guard that makes "absent row ⇒ met"
+  // safe. `resolveProduction` routes every good whose aggregate `Q` is positive and emits
+  // a target row for every venture contributing to it, so a committed licence always has
+  // a real verdict — a missing one is a broken state. Reading it as `met` would charge the
+  // DISCOUNT on a contract that was never judged: an undercharge invisible in every
+  // balance and every other test, which is exactly the silent violation §15.5 forbids.
+  //
+  // Corrupt the state the way the tripwire is aimed at: strip the licensed venture's
+  // `resourceType` after signing, leaving `syndicateCommitment` at its full 20 units. The
+  // resolver skips a venture with no good, so no target, no `Q`, no window block and no
+  // row — while the licence still owes twenty units.
+  let s = licenceAll(fixture([mine('m')]), ['m']);
+  assert.ok(guild(s).ventures[0].syndicateCommitment > 0, 'it really is committed');
+  delete guild(s).ventures[0].resourceType;
+
+  assert.throws(() => runToBoundary(s), (err) => {
+    assert.match(err.message, /owed 20 units/, 'names the offending quantity');
+    assert.match(err.message, new RegExp(`tick ${N}`), 'and the tick it halted on (§15.5)');
+    assert.match(err.message, /never judged/);
+    return true;
+  });
+
+  // And it halts ONLY at the boundary — the ticks before it are untouched, so the guard
+  // cannot be passing for the trivial reason that this fixture breaks everything.
+  let ok = s;
+  for (let i = 1; i < N; i += 1) ok = tick(ok);
+  assert.equal(ok.tick, N - 1);
+  assert.equal(ok.guilds[0].lastLicenceFee, undefined, 'no charge attempted before the boundary');
+});
+
 // --- 3. a licence-less commitment is charged nothing ------------------------------
 
 test('a SCAFFOLD-committed venture beside a licensed one is charged nothing', () => {
