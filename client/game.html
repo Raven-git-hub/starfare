@@ -2608,8 +2608,14 @@ function showSuccess(action, licenceRefusal){
     out.push('Your '+S.asset.label+' now runs a '+good+' venture — licensed, committing '+fmt(v.syndicateCommitment)+' '+good+'/cycle'
       + (eq>0 ? (' with '+eq+'% equity offered') : ' with no equity offered')
       + ', renegotiable in '+v.licence.windowDays+' days. First output next tick.');
+    // The two locked figures, and what now actually happens to them. The rate is LOCKED
+    // at signing (it never moves with the market — that is what timing your signature
+    // buys) and CHARGED at each cycle boundary: the discounted figure if this venture
+    // delivered its whole commitment that cycle, the full basic figure if it fell short —
+    // binary, with no credit for a near miss (§5 "LICENCE FEE MECHANICS", Slice 3b-iii).
     out.push('Fee: '+fmt(v.licence.discountedFee)+' \u00a2 of a '+fmt(v.licence.basicFee)+' \u00a2 basic, locked against a posted price of '
-      + Number(v.licence.lockedPrice).toFixed(2)+' at tick '+v.licence.signedTick+'. It is LOCKED and NOT YET CHARGED — the fee debit is not built (Slice 3b-iii).');
+      + Number(v.licence.lockedPrice).toFixed(2)+' at tick '+v.licence.signedTick+'. The rate is LOCKED at signing and CHARGED at each cycle boundary: '
+      + fmt(v.licence.discountedFee)+' \u00a2 if you deliver your whole commitment that cycle, the full '+fmt(v.licence.basicFee)+' \u00a2 if you fall short.');
   } else {
     // Accepted, but the re-read did not bring the venture back. Say so, rather than
     // printing the panel's own numbers as though they were the stored ones.

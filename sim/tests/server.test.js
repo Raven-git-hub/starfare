@@ -110,7 +110,13 @@ test('GET / serves the WIRED licence panel — the two real actions, and no mock
   }
   // …and the fee is presented as an estimate before signing, locked after it.
   assert.match(html, /locked at signing/);
-  assert.match(html, /NOT YET CHARGED/);          // 3b-iii is not built; say so
+  // This line used to pin `NOT YET CHARGED` — "3b-iii is not built; say so". 3b-iii IS
+  // built, so the tripwire flips rather than being dropped: the receipt must now say the
+  // rate is locked at signing AND charged at the boundary. Kept here, beside the panel's
+  // other receipt assertions, so the two can never drift; the fuller wording checks live
+  // in the fee-charge copy test below.
+  assert.match(html, /LOCKED at signing and CHARGED at each cycle boundary/);
+  assert.ok(!html.includes('NOT YET CHARGED'), 'the charge is built — the old caveat is false');
 });
 
 // The panel MIRRORS four engine constants there is no endpoint to fetch (and pins its
@@ -253,6 +259,63 @@ test('GET /console plots the trend from ENGINE history, at the taller undistorte
   assert.match(html, /class="tc-msg">gathering history/);
   assert.ok(!html.includes('font-family="IBM Plex Mono">gathering history'), 'the distorted in-SVG placeholder is retired');
   assert.match(html, /\.tc-empty \.tc-msg\{position:absolute/);
+});
+
+// --- the fee-charge copy catch-up (licence Slice 3b-iii, client-only) --------------
+//
+// Slice 3b-iii made the engine debit the licence fee at each cycle boundary, which turned
+// two player-facing lines into lies: the console's Syndicate footer said the fee "is not
+// charged yet", and the game's licence receipt said it was "NOT YET CHARGED". Copy that
+// contradicts the engine is worse than copy that says nothing, and it rots quietly — a
+// player believes it and no test goes red. So the new wording is pinned as SERVED BYTES,
+// and the old strings are pinned ABSENT so they cannot creep back in a merge.
+test('GET /console tells the truth about the fee: charged at the boundary, met vs breached', async () => {
+  const html = await (await fetch(base + '/console')).text();
+
+  // The stale claims — the visible footer AND the comments that asserted the charge was
+  // unbuilt — are gone, every one of them.
+  for (const dead of [
+    'The fee is not charged yet',
+    'the fee is not charged yet',
+    'the charge is not built',
+    'still unbuilt is the FEE',
+    'does not have yet is the FEE',
+  ]) {
+    assert.ok(!html.includes(dead), `the console must not still say: ${dead}`);
+  }
+
+  // What it says instead: the mechanic, in §5's terms — a charge at each cycle boundary,
+  // the discounted fee on met and the full basic fee on breach.
+  assert.match(html, /The licence fee is charged at each cycle boundary/);
+  assert.match(html, /the full basic fee if it breached/);
+
+  // And the last charge itself, read off the snapshot's per-guild `licenceFee` record —
+  // labelled GUILD-WIDE, because the lump spans every system and good while this panel is
+  // one good (sim/tick.js Layer 2). The browser computes no part of it.
+  assert.match(html, /function synFeeFoot/);
+  assert.match(html, /g\.licenceFee/);
+  assert.match(html, /across all your licences, guild-wide/);
+  assert.match(html, /Nothing charged yet/);
+  assert.match(html, /esc\(synFeeFoot\(\)\)/);
+});
+
+test('GET / tells the truth on the licence receipt — and leaves the STILL-TRUE caveats alone', async () => {
+  const html = await (await fetch(base + '/')).text();
+  for (const dead of ['NOT YET CHARGED', 'the fee debit is not built']) {
+    assert.ok(!html.includes(dead), `the receipt must not still say: ${dead}`);
+  }
+  assert.match(html, /The rate is LOCKED at signing and CHARGED at each cycle boundary/);
+  assert.match(html, /if you deliver your whole commitment that cycle/);
+  assert.match(html, /if you fall short/);
+
+  // The caveats that are STILL TRUE after 3b-iii stay put. This catch-up corrects what the
+  // charge falsified and NOTHING else — a blanket sweep of every "no fee"/"not built"
+  // mention would have deleted five true statements, so they are pinned present here.
+  assert.match(html, /No fee is owed/);                                  // an unlicensed venture owes none
+  assert.match(html, /with no fee and no commitment/);                   // …said again on the summary
+  assert.match(html, /designed <em>shape<\/em> of that discount/);        // the pre-sign graph is a shape, not a quote
+  assert.match(html, /Renegotiation itself is not built yet/);           // #64
+  assert.match(html, /the asset economy is not built yet/);              // §4
 });
 
 test('GET / serves the SYNCED tick ring — the server\'s period, the observed tick\'s phase', async () => {

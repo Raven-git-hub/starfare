@@ -333,11 +333,10 @@ Renegotiation and the `windowDays` deadline (#64) — the charge reads the **loc
 nothing · reputation, breach marks, forced closure, investor dividends (§5 / #61 / Slice 5) — a breach
 charges the full fee **and nothing else** · any change to the sale (3a), the verdict computation
 (`pursueFill`), the pro-rate (`windowFraction`) or `Q` — this slice READS their outputs · a fee-preview
-endpoint · an atomic `establishAndLicence` · **the console/HUD fee display** — the record and snapshot
-field are added so a later client slice can show the charge, and until it lands `client/console.html`
-and `client/game.html` still say the fee is *"not charged yet (3b-iii)"*, which is now stale copy in
-two places: `console.html`'s Syndicate-panel footer line (`"The fee is not charged yet (licence Slice
-3b-iii), so none is shown."`) and `game.html`'s licence receipt (`"It is LOCKED and NOT YET CHARGED"`). Flagged here rather
+endpoint · an atomic `establishAndLicence`. *(**The client copy caught up in the next commit on this
+branch** — `console.html`'s Syndicate footer and `game.html`'s licence receipt now say the fee is
+charged at each cycle boundary, discounted on met and full on breach, and the footer reports the guild's
+last charge off the snapshot's `licenceFee` record. Client-only; the roadmap entry has the detail.)*. Flagged here rather
 than fixed, because a client slice is a client slice.
 
 ## Tripwires (`sim/tests/licence-fee-charge.test.js`, 16 tests)
