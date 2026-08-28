@@ -867,3 +867,31 @@ test('GET /console serves the SYSTEM INVENTORY panel: the right hero\'s resting 
   // Fuel is guild-wide and is not a stockpile good, so it can never surface here.
   assert.ok(!html.includes('fuelHoard'), 'the console panel must not reach for the fuel hoard');
 });
+
+test('every served response carries Cache-Control: no-cache — a redeploy needs no hard-refresh', async () => {
+  // The client pages carry their JS and CSS INLINE, so a stale shell is a stale
+  // APP. With no directive at all a browser heuristically caches the HTML and
+  // keeps serving the old one after a redeploy. This is the mechanical guard that
+  // the header cannot be dropped in a later refactor and quietly bring that back.
+  for (const route of ['/', '/console', '/inspect']) {
+    const res = await fetch(base + route);
+    assert.equal(res.status, 200, `${route} serves`);
+    assert.match(res.headers.get('cache-control') || '', /no-cache/, `${route} is served no-cache`);
+  }
+
+  // The static branch too: the assets are NOT content-hashed, so a long max-age
+  // would be the same staleness trap. Nothing this server serves may go stale.
+  const asset = await fetch(base + '/assets/planets/rocky.jpg');
+  assert.equal(asset.status, 200);
+  assert.match(asset.headers.get('cache-control') || '', /no-cache/, 'assets are served no-cache');
+
+  // …and the JSON APIs, which are dynamic and should never be cached at all.
+  // /galaxy writes its own header rather than going through sendJson, so it is
+  // checked separately — that is exactly the call site a refactor would miss.
+  await reset();
+  for (const route of ['/health', '/snapshot', '/goods', '/starters', '/galaxy']) {
+    const res = await fetch(base + route);
+    assert.equal(res.status, 200, `${route} serves`);
+    assert.match(res.headers.get('cache-control') || '', /no-cache/, `${route} is served no-cache`);
+  }
+});

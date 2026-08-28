@@ -328,6 +328,33 @@ function randomSeedNumber() { return Math.floor(Math.random() * 0x7fffffff) + 1;
 
 // --- tiny HTTP helpers ------------------------------------------------------
 
+// EVERY response this server sends carries `Cache-Control: no-cache`.
+//
+// `no-cache` does NOT mean "don't store it" — it means "you may keep a copy, but
+// you must REVALIDATE with the server before using it." These responses carry no
+// validator (no ETag, no Last-Modified), so that revalidation is a plain refetch:
+// the caller always ends up with the current bytes.
+//
+// WHY: the client pages carry their JS and CSS INLINE, so a stale game.html or
+// console.html is a stale APP. With no directive at all a browser applies
+// HEURISTIC caching and happily keeps serving the old shell after a redeploy —
+// which is why operating this rig meant a hard-refresh (or an incognito window)
+// every single deploy. One header removes that whole class of confusion.
+// Cloudflare honours it too (it will not edge-cache a `no-cache` origin response),
+// so it covers the CDN path, not only the browser.
+//
+// The ASSETS get it as well. They are not content-hashed, so a long `max-age`
+// would be exactly the staleness trap this removes; at this scale revalidating a
+// handful of images and audio clips costs nothing, and "nothing this server
+// serves can go stale on a deploy" is a simpler rule than a per-file judgement
+// call. The JSON APIs get it because dynamic data should never be cached at all.
+//
+// DEFERRED, deliberately: conditional revalidation (ETag / Last-Modified -> 304)
+// and content-hashed asset filenames. Both are the efficient long-term answer;
+// neither is needed at this size, and the second needs an asset-versioning scheme
+// that does not exist yet.
+const NO_CACHE = 'no-cache';
+
 function sendJson(res, status, obj) {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -337,6 +364,7 @@ function sendJson(res, status, obj) {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
+    'Cache-Control': NO_CACHE,
   });
   res.end(JSON.stringify(obj));
 }
@@ -370,7 +398,7 @@ async function handleRequest(req, res) {
   if (method === 'GET' && path === '/') {
     try {
       const html = fs.readFileSync(GAME_HTML);
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': NO_CACHE });
       res.end(html);
     } catch (err) {
       sendJson(res, 500, { error: 'could not read client/game.html', detail: String(err && err.message || err) });
@@ -408,7 +436,7 @@ async function handleRequest(req, res) {
       return;
     }
     const type = ASSET_TYPES[extname(real).toLowerCase()] || 'application/octet-stream';
-    res.writeHead(200, { 'Content-Type': type, 'Access-Control-Allow-Origin': '*' });
+    res.writeHead(200, { 'Content-Type': type, 'Access-Control-Allow-Origin': '*', 'Cache-Control': NO_CACHE });
     res.end(body);
     return;
   }
@@ -418,7 +446,7 @@ async function handleRequest(req, res) {
   if (method === 'GET' && path === '/console') {
     try {
       const html = fs.readFileSync(CONSOLE_HTML);
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': NO_CACHE });
       res.end(html);
     } catch (err) {
       sendJson(res, 500, { error: 'could not read client/console.html', detail: String(err && err.message || err) });
@@ -433,7 +461,7 @@ async function handleRequest(req, res) {
   if (method === 'GET' && path === '/inspect') {
     try {
       const html = fs.readFileSync(INSPECT_HTML);
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': NO_CACHE });
       res.end(html);
     } catch (err) {
       sendJson(res, 500, { error: 'could not read client/inspect.html', detail: String(err && err.message || err) });
@@ -454,6 +482,7 @@ async function handleRequest(req, res) {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
+      'Cache-Control': NO_CACHE,
     });
     res.end(seedJsonBuffer);
     return;

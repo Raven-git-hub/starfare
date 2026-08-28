@@ -144,6 +144,21 @@ confirm). `POST /reset` still exists but the lifecycle controls are the intended
 
 **Back up the world:** `cp -a ~/starfare-state ~/starfare-state.$(date +%F)`.
 
+**No hard-refresh needed** *(added 2026-08-28)*. The client pages carry their JS
+and CSS inline, so a stale `game.html`/`console.html` was a stale app — and with no
+cache directive a browser heuristically kept serving the old one, which is why this
+loop used to end in Ctrl/Cmd-Shift-R (or an incognito window). Every response the
+server sends now carries **`Cache-Control: no-cache`**: keep a copy if you like, but
+revalidate before using it — and since these responses carry no ETag or
+`Last-Modified`, that revalidation is a plain refetch of the current bytes.
+Cloudflare honours it too, so it covers the tunnel path as well as the browser.
+Verify it on the wire (note `curl -I` sends HEAD, which this rig answers with a 404,
+so dump the headers off a GET instead):
+
+    curl -s -o /dev/null -D - https://<your-host>/console | grep -i cache-control
+    # Cache-Control: no-cache
+
+
 ## 10. Troubleshooting
 
 | Symptom | Fix |
@@ -153,7 +168,7 @@ confirm). `POST /reset` still exists but the lifecycle controls are the intended
 | Tunnel loops on **`control stream … failure`**, no `Registered` lines | Network drops QUIC. Re-create the connector with **`--protocol http2`**. |
 | Tunnel **HEALTHY** but page 502s | App not reachable at `starfare:7331`. Check both containers are on `starfare-net` and the app is up. |
 | `/inspect` shows the OLD console / no CREATE control | The running container is behind the code. Redeploy (section 9) and confirm the boot log matches. |
-| Old planet-tab / HUD after redeploy | Browser cache — hard-refresh (Ctrl/Cmd-Shift-R). |
+| Old planet-tab / HUD after redeploy | **Should no longer happen** — every response the server sends carries `Cache-Control: no-cache` (added 2026-08-28), so a browser must revalidate and an ordinary refresh gets the new shell. If a stale page survives a normal refresh, the container is behind the code, not the browser: check the row above, and confirm with `docker exec starfare sh -c 'grep -c <a-string-from-the-new-code> client/console.html'`. Only as a last resort, hard-refresh (Ctrl/Cmd-Shift-R) — and if that fixes it, the header is missing and `sim/tests/server.test.js`'s no-cache tripwire should have caught it. |
 
 ## 11. Disk hygiene (added 2026-08-25 — a full disk stopped a deploy)
 
