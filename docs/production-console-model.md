@@ -302,6 +302,25 @@ consumes per good (after locating guild → system in the `production` array) is
 plus the good's policy echoed back so the controls render their current
 positions: `order`, `downstreamPct`, `reserveLevel`, `syndicate`, `pursue`.
 
+**The right hero's resting state — the system inventory** *(28-08-26)*. With no
+venture selected, the industrial (right) zone shows every good the engine names,
+grouped `TIER 1` / `TIER 2` / `TIER 3`, each a labelled bar. The quantity is a
+plain per-system read — `guilds[guildId].stockpilesBySystem[systemId][good]`,
+ruling B1's pool, **not** the flat guild-wide `stockpiles` — so a good that is
+fully committed and ships out each tick honestly reads near 0; the trend
+sparklines are where flow is shown, this is holdings. Tier 3's vocabulary is
+`/goods`'s `tier3` (design.md §15.2): three display-only placeholders that always
+read 0, since no recipe makes them yet. **Refined fuel never appears here** — it
+is not a stockpile good and is not in `stockpilesBySystem`; it is guild-wide and
+lives on the HUD. The only arithmetic is the bar fill, `qty ÷ the largest qty in
+that same tier` (per-tier normalised, divide-by-zero guarded) — display math on
+displayed numbers, exactly like the existing thermometer; no game number is
+computed in the browser. Row order is sorted descending by quantity (ties
+alphabetical by id) and then **held**, re-sorting only when the panel opens or the
+system changes, so rows don't dance as quantities cross tick-to-tick. The venture
+chips are single-select **with toggle-off**: clicking the selected chip clears it
+and the hero falls back to this panel.
+
 ## The storyteller lens
 
 The storyteller (design.md, Rimworld-style: targets whoever has grown too

@@ -16,6 +16,7 @@ const net = require('node:net');
 const { spawn } = require('node:child_process');
 
 const { makeServer } = require('../server.js');
+const { STOCKPILE_GOODS } = require('../resources.js');
 
 let server;
 let base;
@@ -417,6 +418,17 @@ test('GET /goods returns the vocabulary by tier', async () => {
   assert.ok(body.raw.includes('titanium'), 'a known raw good is present');
   assert.ok(body.processed.includes('titanium_alloy'), 'a known processed good is present');
   assert.ok(!body.raw.includes('titanium_alloy'), 'processed goods are not in the raw list');
+
+  // Tier 3: the three display-only placeholders, served so the console never has
+  // to type a good name of its own. Additive — raw/processed are untouched above.
+  assert.deepEqual(body.tier3, ['small_reactor_engine', 'medium_reactor_engine', 'heavy_reactor_engine']);
+  // …and they are NOT goods the economy knows: nothing served here may be a
+  // stockpile key. (resources.test.js proves the rest of the isolation.)
+  for (const g of body.tier3) {
+    assert.equal(STOCKPILE_GOODS.includes(g), false, `${g} must never be a stockpile good`);
+    assert.equal(body.raw.includes(g), false);
+    assert.equal(body.processed.includes(g), false);
+  }
 });
 
 test('GET /health reports liveness (JSON)', async () => {
@@ -807,4 +819,51 @@ test('an invalid STARFARE_TICK_MS fails the boot loudly (non-zero exit)', async 
     assert.notEqual(code, 0, `STARFARE_TICK_MS=${bad} must fail the boot`);
     assert.match(out.stderr, /\[clock\] STARFARE_TICK_MS must be an integer/);
   }
+});
+
+test('GET /console serves the SYSTEM INVENTORY panel: the right hero\'s resting state', async () => {
+  const html = await (await fetch(base + '/console')).text();
+
+  // The dead placeholder is GONE — the resting hero is the inventory now.
+  assert.ok(!html.includes('Select a venture'), 'the "Select a venture" blank must be gone');
+  assert.ok(!html.includes('ind-blank'), 'and its markup with it');
+
+  // The panel and its held row order.
+  assert.match(html, /function inventoryPanel/);
+  assert.match(html, /function inventoryOrder/);
+  assert.match(html, /return inventoryPanel\(\);/);          // …wired into heroPanel's no-venture branch
+
+  // It reads the PER-SYSTEM pool for the viewing guild, not a guild-wide total.
+  assert.match(html, /stockpilesBySystem/);
+  assert.match(html, /function onHand\(good\)\{[\s\S]{0,220}stockpilesBySystem/);
+  assert.match(html, /onHand\(b\) - onHand\(a\)/);           // descending by quantity…
+  assert.match(html, /a < b \? -1 : a > b \? 1 : 0/);          // …ties alphabetical by id
+
+  // Three tier groups, each per-tier normalised with the number overlaid on the track.
+  assert.match(html, /\[1,2,3\]\.forEach/);                   // the sort runs over all three
+  assert.match(html, /\[1,2,3\]\.map/);                       // …and so does the render
+  assert.match(html, /<div class="inv-h">Tier ' \+ t \+ '<\/div>/);   // rendered TIER 1/2/3 (CSS uppercases)
+  assert.match(html, /max > 0 \? \(q \/ max\) \* 100 : 0/);      // divide-by-zero guarded
+  assert.match(html, /class="inv-q"/);
+  assert.match(html, /\.inv-q\{position:absolute/);            // the overlay is not clipped by the fill
+
+  // Tier 3's vocabulary comes from the ENGINE (GET /goods), never a client list.
+  assert.match(html, /if \(t === 3\) return STATE\.goods\.tier3 \|\| \[\];/);
+  for (const g of ['small_reactor_engine', 'medium_reactor_engine', 'heavy_reactor_engine']) {
+    assert.ok(!html.includes(g), `the console must not hardcode ${g} — it reads /goods`);
+  }
+
+  // The chip toggle: clicking the selected chip clears the selection, and the
+  // auto-open-on-the-lead-venture respects that clear instead of undoing it.
+  assert.match(html, /STATE\.selVenture = null; STATE\.invCleared = true;/);
+  assert.match(html, /if \(!STATE\.invCleared && \(!STATE\.selVenture/);
+
+  // The Tier-3 names reach the INVENTORY only. The good tabs stay keyed to goods
+  // the engine actually pools, so Tier 3 remains dim and the console never opens
+  // management controls on a good with no producer, policy or pool.
+  assert.match(html, /function isPooledGood/);
+  assert.match(html, /has = tierGoods\(t\)\.some\(isPooledGood\)/);
+
+  // Fuel is guild-wide and is not a stockpile good, so it can never surface here.
+  assert.ok(!html.includes('fuelHoard'), 'the console panel must not reach for the fuel hoard');
 });

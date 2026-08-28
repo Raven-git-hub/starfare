@@ -538,11 +538,33 @@
   .cel-row .k{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3)}
   .cel-row .v{font-family:var(--mono); font-size:13px; color:var(--ink)}
 
-  /* industrial (right) hero zone — its inner .vhero is styled below; blank state here */
-  .ind-blank{min-height:300px; display:flex; align-items:center; justify-content:center; text-align:center;
-    background:#14171e; border:1px dashed var(--line2); border-radius:14px; color:var(--ink3)}
-  .ind-blank .bh{font-family:var(--mono); font-size:11px; letter-spacing:.08em; line-height:1.7; padding:0 20px}
-  .ind-blank .bh .ic{display:block; font-size:26px; margin-bottom:9px; opacity:.5}
+  /* industrial (right) hero zone — its inner .vhero is styled below. Its RESTING
+     state used to be a dead placeholder, deleted along with the branch that
+     rendered it; it is the system inventory now. */
+
+  /* system inventory — the right hero's RESTING state (no venture selected).
+     One labelled track per good; the number rides ON TOP of the track so a
+     nearly-empty bar and a full one are equally readable. */
+  .inv{background:#14171e; border:1px solid var(--line); border-radius:14px; padding:12px 13px 14px}
+  .inv-top{font-family:var(--mono); font-size:9px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--ink3); display:flex; justify-content:space-between; gap:8px; padding-bottom:9px;
+    border-bottom:1px solid var(--line)}
+  .inv-top .sys{color:var(--system,#6fb7e8)}
+  .inv-grp{margin-top:11px}
+  .inv-h{font-family:var(--mono); font-size:9.5px; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--amber); margin-bottom:6px}
+  .inv-row{margin-bottom:7px}
+  .inv-name{font-family:var(--mono); font-size:10px; letter-spacing:.03em; color:var(--ink2);
+    margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .inv-bar{position:relative; height:13px; background:var(--void); border:1px solid var(--line);
+    border-radius:4px; overflow:hidden}
+  .inv-bar i{display:block; height:100%; background:linear-gradient(90deg, var(--amber-dim), var(--amber))}
+  .inv-row.zero .inv-name{color:var(--ink3)}
+  .inv-row.zero .inv-q{color:var(--ink3)}
+  /* the overlay: sits above the fill, never clipped by it */
+  .inv-q{position:absolute; inset:0; display:flex; align-items:center; justify-content:flex-end;
+    padding-right:6px; font-family:var(--mono); font-size:10px; font-variant-numeric:tabular-nums;
+    color:var(--ink); text-shadow:0 0 4px var(--void), 0 0 3px var(--void)}
 
   /* ---- compact venture chip (replaces the tall .vent tile) ---- */
   .vstack{display:flex; flex-direction:column; gap:6px; margin-top:2px}
@@ -794,9 +816,15 @@ var ARM = {
 };
 
 // ---- live view state -------------------------------------------------------
-var STATE = { snap:null, goods:{raw:[],processed:[]}, guildId:null, sysId:null, tier:1, good:null, vmap:{}, recipeOut:{},
+var STATE = { snap:null, goods:{raw:[],processed:[],tier3:[]}, guildId:null, sysId:null, tier:1, good:null, vmap:{}, recipeOut:{},
               rightTab:'consumption', selVenture:null, pinnedSysId:null, embedded:false, heroVentureId:null,
-              sysInfo:null };
+              sysInfo:null,
+              // The inventory panel's view state. `invCleared` — the player toggled
+              // the selected chip OFF; it stops renderStage's open-on-the-lead-venture
+              // from re-selecting one on the very next poll. `invOpen` — whether the
+              // panel is currently showing, so opening it re-sorts. `invOrder` — the
+              // held row order (see inventoryOrder).
+              invCleared:false, invOpen:false, invOrder:null };
 
 // ---- focus from the query string -------------------------------------------
 // The player client embeds this page as `/console?embed=1&guild=<id>&system=<id>` so
@@ -936,9 +964,26 @@ function synResolve(){
   };
 }
 
-// The tier vocabulary comes from GET /goods (raw = tier 1, processed = tier 2). Tiers
-// 3-4 have no goods in the engine yet, so they render dim/empty — honest, not faked.
-function tierGoods(t){ if (t === 1) return STATE.goods.raw || []; if (t === 2) return STATE.goods.processed || []; return []; }
+// The tier vocabulary comes from GET /goods (raw = tier 1, processed = tier 2,
+// tier3 = tier 3 — three display-only placeholder names the engine declares in
+// resources.js). Tier 4 has no goods in the engine yet, so it renders dim/empty —
+// honest, not faked. The browser never types a good name of its own.
+function tierGoods(t){
+  if (t === 1) return STATE.goods.raw || [];
+  if (t === 2) return STATE.goods.processed || [];
+  if (t === 3) return STATE.goods.tier3 || [];
+  return [];
+}
+
+// Is this a good the engine actually POOLS — one that can be produced, policied
+// and held in a system's stockpile? `raw` + `processed` are exactly the engine's
+// stockpile goods; the Tier-3 names are catalog-only. The good TABS key off this,
+// so the console never opens management controls on a good that has no producer,
+// no policy and no pool (the engine would reject the action). The inventory panel
+// lists them regardless — listing a holding of 0 is honest, managing it is not.
+function isPooledGood(good){
+  return (STATE.goods.raw || []).indexOf(good) >= 0 || (STATE.goods.processed || []).indexOf(good) >= 0;
+}
 
 // The managed guild's resolved report for the current system (schema-7 `production`).
 function systemReport(){
@@ -1070,7 +1115,7 @@ function render(snap){
 function renderTiers(){
   var defs = [[1,'Raw'],[2,'Refined'],[3,'Parts'],[4,'Assets']];
   document.getElementById('tiers').innerHTML = defs.map(function(d){
-    var t = d[0], has = tierGoods(t).length > 0;
+    var t = d[0], has = tierGoods(t).some(isPooledGood);
     var cls = 'tier' + (t === STATE.tier ? ' on' : '') + (has ? '' : ' dim');
     return '<div class="' + cls + '" data-tier="' + t + '"><span class="n">' + t + '</span><small>' + d[1] + '</small></div>';
   }).join('');
@@ -2037,8 +2082,60 @@ function refineryArt(tint){
 function vhash(id){ var h = 0; for (var i=0;i<id.length;i++){ h = (h*31 + id.charCodeAt(i)) & 0xffff; } return h; }
 function facilityMock(id, cap){ var h = vhash(id); var droids = 3 + (h % (cap-2)); var cond = 78 + (h >> 3) % 20; return { droids:droids, cap:cap, cond:cond }; }
 
+// ---- System inventory: the right hero's RESTING state -----------------------
+// Row order is SORTED ONCE and then HELD, so a quantity crossing its neighbour
+// mid-poll doesn't make the rows dance. It is recomputed only when the panel
+// opens (heroPanel clears the cache) or when the system changes (the cache is
+// keyed by sysId, so a different system misses it). Between those, the same ids
+// render in the same places and only the numbers and fill widths move.
+function inventoryOrder(){
+  if (STATE.invOrder && STATE.invOrder.sysId === STATE.sysId) return STATE.invOrder.tiers;
+  var tiers = {};
+  [1,2,3].forEach(function(t){
+    tiers[t] = tierGoods(t).slice().sort(function(a, b){
+      // Descending by held quantity; ties alphabetical by id, so the order is
+      // total and two goods at 0 never swap between re-sorts.
+      return onHand(b) - onHand(a) || (a < b ? -1 : a > b ? 1 : 0);
+    });
+  });
+  STATE.invOrder = { sysId: STATE.sysId, tiers: tiers };
+  return tiers;
+}
+
+// Every good the engine names, grouped by tier, with what THIS system's pool
+// holds for the viewing guild (`onHand` — stockpilesBySystem, ruling B1), not a
+// guild-wide total. Goods at 0 are listed too: an empty track is the honest
+// reading, and it is why the Tier-3 placeholders show up at all. Refined fuel is
+// not a stockpile good, so it is absent here by construction — it is guild-wide
+// and lives on the HUD.
+function inventoryPanel(){
+  var order = inventoryOrder();
+  var groups = [1,2,3].map(function(t){
+    var ids = order[t] || [];
+    if (!ids.length) return '';
+    // Per-tier normalisation: one big raw good must not flatten the refined tier.
+    // Pure display math on displayed numbers, exactly like the thermometer — the
+    // quantities themselves are snapshot reads, never computed here.
+    var max = 0;
+    ids.forEach(function(g){ var q = onHand(g); if (q > max) max = q; });
+    var rows = ids.map(function(g){
+      var q = onHand(g);
+      var pct = max > 0 ? (q / max) * 100 : 0;   // a tier holding nothing = empty tracks
+      return '<div class="inv-row' + (q > 0 ? '' : ' zero') + '">' +
+        '<div class="inv-name" title="' + esc(g) + '">' + esc(prettyGood(g)) + '</div>' +
+        '<div class="inv-bar"><i style="width:' + pct.toFixed(2) + '%"></i>' +
+          '<span class="inv-q">' + fmt(q) + '</span></div>' +
+      '</div>';
+    }).join('');
+    return '<div class="inv-grp"><div class="inv-h">Tier ' + t + '</div>' + rows + '</div>';
+  }).join('');
+  return '<div class="inv"><div class="inv-top"><span>System inventory</span>' +
+    '<span class="sys">' + esc(STATE.sysId || '—') + '</span></div>' + groups + '</div>';
+}
+
 // ---- Industrial hero: a standalone venture panel for the RIGHT ZONE (outside the
-// console). Blank until a venture is picked. Returns the panel only; the zone frames it.
+// console). With no venture picked it rests on the system inventory above.
+// Returns the panel only; the zone frames it.
 function heroPanel(good, report, rg){
   var sel = STATE.selVenture;
   var producers = report ? producersOf(report, good) : [];
@@ -2050,9 +2147,12 @@ function heroPanel(good, report, rg){
     else { var c = consumers.find(function(x){ return x.ventureId === sel.id; }); if (c){ found = c; role = 'consumer'; } }
   }
   if (!found){
-    return '<div class="ind-blank"><div class="bh"><span class="ic">◎</span>' +
-      'Select a venture<br>to open its facility</div></div>';
+    // The resting state is no longer a dead placeholder: it is this system's
+    // inventory. Opening it is what re-sorts it (see inventoryOrder).
+    if (!STATE.invOpen){ STATE.invOpen = true; STATE.invOrder = null; }
+    return inventoryPanel();
   }
+  STATE.invOpen = false;
   var id = role === 'producer' ? found.id : found.ventureId;
   var planet = ventPlanet(id), tint = archColor(planet);
   var place = ventName(id);
@@ -2168,7 +2268,10 @@ function renderStage(report){
   var here = {};
   (report.mines || []).forEach(function(m){ here[m.ventureId] = 1; });
   (report.refineries || []).forEach(function(r){ here[r.ventureId] = 1; });
-  if (!STATE.selVenture || !here[STATE.selVenture.id]){
+  // …and never while the player has deliberately toggled the selection off: that
+  // choice is what opens the inventory, so re-selecting here would undo it a
+  // second later, on the next poll.
+  if (!STATE.invCleared && (!STATE.selVenture || !here[STATE.selVenture.id])){
     var lead = (report.mines || [])[0];
     var leadRole = 'producer';
     if (!lead){ lead = (report.refineries || [])[0]; leadRole = 'consumer'; }
@@ -2192,8 +2295,20 @@ function renderStage(report){
 // ---- venture-chip click → select → re-render (hero populates) ----
 document.addEventListener('click', function(e){
   var chip = e.target.closest ? e.target.closest('.vchip') : null;
-  if (chip){ STATE.selVenture = { id: chip.dataset.vent, role: chip.dataset.role };
-    postVenture(chip.dataset.vent, chip.dataset.role); rerenderStage(); return; }
+  if (chip){
+    var vid = chip.dataset.vent;
+    // Single-select WITH toggle-off: clicking the chip that is already selected
+    // clears it and the hero falls back to the system inventory. Clicking a
+    // different chip just switches, exactly as before.
+    if (STATE.selVenture && STATE.selVenture.id === vid){
+      STATE.selVenture = null; STATE.invCleared = true;
+    } else {
+      STATE.selVenture = { id: vid, role: chip.dataset.role };
+      STATE.invCleared = false;
+      postVenture(vid, chip.dataset.role);
+    }
+    rerenderStage(); return;
+  }
   var mv = e.target.closest ? e.target.closest('[data-manage-venture]') : null;
   if (mv){ setStatus('venture management screen — future slice (design.md §5 deferred)', ''); return; }
 });

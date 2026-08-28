@@ -85,7 +85,7 @@ const { saveState, appendJournal, clearJournal, loadOrInit, saveSeed, loadSeed, 
 const { buildSnapshot } = require('./snapshot.js');
 const { getStarterSystems, getSystemLayout, setSeed, getSeedNumber } = require('./seed.js');
 const { listRecipes } = require('./recipes.js');
-const { RAW_RESOURCES, PROCESSED_GOODS } = require('./resources.js');
+const { RAW_RESOURCES, PROCESSED_GOODS, TIER3_GOODS } = require('./resources.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
 // The calendar's two creation-seam helpers. `anchorForCreation` is pure arithmetic;
 // `minuteOfDayFromDate` converts a Date the CALLER supplies — the single wall-clock
@@ -540,11 +540,14 @@ async function handleRequest(req, res) {
 
   // The good vocabulary, categorized (RULES, not state; from resources.js).
   // Static and read-only, so the UI fetches it once to bucket the flat
-  // galactic-supply totals into manufacturing-tree tiers. Manufactured Parts and
-  // Constructed Assets are future tiers with no goods yet, so they aren't here —
-  // the UI renders them as empty placeholders.
+  // galactic-supply totals into manufacturing-tree tiers. `tier3` is the
+  // Manufactured Parts vocabulary — three DISPLAY-ONLY placeholder names with no
+  // recipe, baseline or price yet (resources.js `TIER3_GOODS`); the console
+  // needs them to head a Tier-3 group at all, and reading them from here is what
+  // stops the browser inventing game vocabulary of its own. Tier 4 (Constructed
+  // Assets) still has no goods, so the UI renders it as an empty placeholder.
   if (method === 'GET' && path === '/goods') {
-    sendJson(res, 200, { raw: RAW_RESOURCES, processed: PROCESSED_GOODS });
+    sendJson(res, 200, { raw: RAW_RESOURCES, processed: PROCESSED_GOODS, tier3: TIER3_GOODS });
     return;
   }
 

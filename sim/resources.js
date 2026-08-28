@@ -85,6 +85,28 @@ const STOCKPILE_GOODS = Object.freeze([...RAW_RESOURCES, ...PROCESSED_GOODS].sor
 
 const STOCKPILE_GOOD_SET = new Set(STOCKPILE_GOODS);
 
+// Tier 3 (Manufactured Parts, design.md §15.2) — DISPLAY-ONLY PLACEHOLDERS.
+// The console groups goods by manufacturing tier and could not name a Tier-3
+// group at all without a vocabulary to read; a list typed into the browser
+// would be a SECOND definition of game vocabulary, free to drift. So the three
+// names live here, where every other good's name lives, and the client reads
+// them over GET /goods like the other two tiers.
+//
+// They are deliberately NOT in STOCKPILE_GOODS (nor RAW_RESOURCES /
+// PROCESSED_GOODS): the 2->3 manufacture recipes do not exist yet, so these
+// goods carry no recipe, no baseline (baseline.js), no price (prices.js), and
+// can never appear in a stockpile or in `stockpilesBySystem`. Nothing the tick
+// touches reads this list — it is a catalog entry and nothing else, and the
+// panel renders all three at quantity 0 until real recipes someday make them.
+// A tripwire test asserts exactly that isolation, so they cannot leak into the
+// economy by accident. The ids are placeholders pending the human's Tier-3
+// design; no tuning number is chosen here.
+const TIER3_GOODS = Object.freeze([
+  'small_reactor_engine',
+  'medium_reactor_engine',
+  'heavy_reactor_engine',
+]);
+
 // Is `id` a raw, minable resource — i.e. a legal key for a guild stockpile and
 // a row in the galactic resource totals? (Fuel is not: it is held as fuel, not
 // as a stockpiled resource.)
@@ -108,6 +130,6 @@ function isStockpileGood(id) {
 }
 
 module.exports = {
-  RAW_RESOURCES, PROCESSED_GOODS, STOCKPILE_GOODS, FUEL_GOOD,
+  RAW_RESOURCES, PROCESSED_GOODS, STOCKPILE_GOODS, TIER3_GOODS, FUEL_GOOD,
   isRawResource, isFuel, isProcessedGood, isStockpileGood,
 };

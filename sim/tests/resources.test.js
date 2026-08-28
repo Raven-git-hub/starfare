@@ -8,8 +8,11 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { RAW_RESOURCES, PROCESSED_GOODS, STOCKPILE_GOODS, FUEL_GOOD, isRawResource, isFuel, isProcessedGood, isStockpileGood } = require('../resources.js');
+const { RAW_RESOURCES, PROCESSED_GOODS, STOCKPILE_GOODS, TIER3_GOODS, FUEL_GOOD, isRawResource, isFuel, isProcessedGood, isStockpileGood } = require('../resources.js');
 const { ARCHETYPES } = require('../../tools/generate_seed.js');
+const { RECIPES } = require('../recipes.js');
+const { MINE_BASELINE, REFINERY_BASELINE } = require('../baseline.js');
+const { PRICED_GOODS, seedPrices } = require('../prices.js');
 
 // The union of every archetype pool in the generator — the ground truth for
 // "what is minable."
@@ -86,4 +89,47 @@ test('STOCKPILE_GOODS is raw + processed, sorted and unique', () => {
   assert.equal(new Set(STOCKPILE_GOODS).size, STOCKPILE_GOODS.length, 'no duplicates');
   // fuel is a stockpile good under no interpretation
   assert.equal(isStockpileGood(FUEL_GOOD), false);
+});
+
+// --- Tier 3: the display-only placeholders, fenced off the economy ------------
+// The console needs a Tier-3 vocabulary to head a group with; these three names
+// are it. The tripwire below is the whole reason they can be added safely: it
+// asserts they reach NOTHING the economy reads. If someone later gives one of
+// them a recipe or a price without also promoting it properly, this goes red.
+
+test('TIER3_GOODS is the pinned placeholder vocabulary', () => {
+  assert.deepEqual([...TIER3_GOODS], [
+    'small_reactor_engine',
+    'medium_reactor_engine',
+    'heavy_reactor_engine',
+  ]);
+  assert.equal(new Set(TIER3_GOODS).size, TIER3_GOODS.length, 'no duplicates');
+  assert.ok(Object.isFrozen(TIER3_GOODS), 'the vocabulary is frozen like the others');
+});
+
+test('TRIPWIRE: the Tier-3 placeholders carry no baseline, no price, no recipe, no stockpile', () => {
+  const prices = seedPrices();
+  for (const g of TIER3_GOODS) {
+    // Not in any set the economy iterates.
+    assert.equal(STOCKPILE_GOODS.includes(g), false, `${g} must never be a stockpile key`);
+    assert.equal(RAW_RESOURCES.includes(g), false, `${g} is not raw`);
+    assert.equal(PROCESSED_GOODS.includes(g), false, `${g} is not processed`);
+    // Every predicate says no — so stockpile validation (invariants.js) and the
+    // supply totals cannot admit it.
+    assert.equal(isStockpileGood(g), false);
+    assert.equal(isRawResource(g), false);
+    assert.equal(isProcessedGood(g), false);
+    assert.equal(isFuel(g), false);
+    // No production number: no mine baseline, no refinery baseline, no recipe.
+    assert.equal(Object.prototype.hasOwnProperty.call(MINE_BASELINE, g), false, `${g} has no mine baseline`);
+    assert.equal(Object.prototype.hasOwnProperty.call(REFINERY_BASELINE, g), false, `${g} has no refinery baseline`);
+    assert.equal(Object.prototype.hasOwnProperty.call(RECIPES, g), false, `${g} has no recipe`);
+    for (const r of Object.values(RECIPES)) {
+      assert.notEqual(r.output.good, g, `${g} is the output of no recipe`);
+      assert.equal((r.inputs || []).some((i) => i.good === g), false, `${g} is the input of no recipe`);
+    }
+    // No price: not priced, and no row in a freshly seeded price table.
+    assert.equal(PRICED_GOODS.includes(g), false, `${g} is not priced`);
+    assert.equal(Object.prototype.hasOwnProperty.call(prices, g), false, `${g} has no price row`);
+  }
 });
