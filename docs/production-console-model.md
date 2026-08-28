@@ -321,6 +321,29 @@ system changes, so rows don't dance as quantities cross tick-to-tick. The ventur
 chips are single-select **with toggle-off**: clicking the selected chip clears it
 and the hero falls back to this panel.
 
+**…and embedded, it rides the venture bridge** *(28-08-26)*. In `?embed=1` the
+console builds no side zones — the game shell owns them — so there is no right
+zone here to render the panel into. It is **sent** instead, over the same
+`postMessage` bridge the venture nameplate already uses. Two messages, one per
+hero mode:
+
+```
+{ source:'starfare-console', kind:'venture',   name, role, facility }   // a chip is selected
+{ source:'starfare-console', kind:'inventory', system, rows: [ { tier, good, label, qty, frac } … ] }
+```
+
+`rows` is the panel's OWN data — `inventoryRows()`, the one function both the
+standalone panel and the bridge read, in the held order, with `frac` already
+normalised within its tier. It is posted on every poll while the console is
+resting, so the quantities in the game are as live as the standalone ones, and
+the row order holds identically (it is the same held order). The game shell
+renders what it is sent and computes nothing: it groups the rows by `tier` and
+draws each `frac` as a bar — the same §5 display rule the nameplate follows. It
+also dims its venture art and hides "Open venture management" in that mode, since
+neither means anything over an inventory. This closes the "a toggle-off posts
+nothing" gap left by the panel's first cut, where the host kept showing the last
+venture forever.
+
 ## The storyteller lens
 
 The storyteller (design.md, Rimworld-style: targets whoever has grown too

@@ -843,7 +843,8 @@ test('GET /console serves the SYSTEM INVENTORY panel: the right hero\'s resting 
   assert.match(html, /\[1,2,3\]\.forEach/);                   // the sort runs over all three
   assert.match(html, /\[1,2,3\]\.map/);                       // …and so does the render
   assert.match(html, /<div class="inv-h">Tier ' \+ t \+ '<\/div>/);   // rendered TIER 1/2/3 (CSS uppercases)
-  assert.match(html, /max > 0 \? \(q \/ max\) \* 100 : 0/);      // divide-by-zero guarded
+  assert.match(html, /max > 0 \? q \/ max : 0/);                 // divide-by-zero guarded
+  assert.match(html, /\(r\.frac \* 100\)\.toFixed\(2\)/);            // …and rendered as the track's width
   assert.match(html, /class="inv-q"/);
   assert.match(html, /\.inv-q\{position:absolute/);            // the overlay is not clipped by the fill
 
@@ -866,6 +867,47 @@ test('GET /console serves the SYSTEM INVENTORY panel: the right hero\'s resting 
 
   // Fuel is guild-wide and is not a stockpile good, so it can never surface here.
   assert.ok(!html.includes('fuelHoard'), 'the console panel must not reach for the fuel hoard');
+});
+
+test('the EMBEDDED console\'s inventory rides the venture bridge into the game\'s right zone', async () => {
+  // In `?embed=1` the console builds no side zones — the game shell owns them — so the
+  // inventory panel that #36 added has nothing to render into. It travels the SAME
+  // postMessage bridge the venture nameplate already rides. Two pages, one wire: if
+  // either end is dropped the player silently loses the panel, hence this tripwire.
+  const console_ = await (await fetch(base + '/console')).text();
+  const game = await (await fetch(base + '/')).text();
+
+  // --- the console SENDS it, embed-only, from the resting state -----------------
+  assert.match(console_, /function postInventory/);
+  assert.match(console_, /kind:'inventory'/);
+  assert.match(console_, /rows: inventoryRows\(\)/);       // the rows are the panel's own data…
+  assert.match(console_, /function inventoryRows/);       // …computed ONCE, not forked
+  assert.match(console_, /if \(STATE\.embedded\)\{ if \(!sel\) postInventory\(\); return; \}/);
+  // The venture half is untouched: a selection still posts the nameplate.
+  assert.match(console_, /kind:'venture'/);
+  // …and standalone still renders the panel locally, from the same rows.
+  assert.match(console_, /var rows = inventoryRows\(\);/);
+  assert.match(console_, /return inventoryPanel\(\);/);
+  // Posting the inventory clears the last-sent venture, so re-picking the SAME
+  // venture posts again instead of being swallowed by postVenture's repeat guard.
+  assert.match(console_, /STATE\.heroVentureId = null;[\s\S]{0,200}kind:'inventory'/);
+
+  // --- the game RENDERS it, in its own right zone -------------------------------
+  assert.match(game, /d\.kind === "inventory"/);
+  assert.match(game, /function paintInventoryHero/);
+  assert.match(game, /function paintVentureHero/);
+  assert.match(game, /id="ihInv"/);
+  assert.match(game, /inv-mode/);
+  // It paints what it is SENT — the fill is the console's frac, not a game number.
+  assert.match(game, /Number\(r\.frac\)/);
+  assert.ok(!game.includes('stockpilesBySystem'), 'the game must not re-derive the inventory');
+  // Art dimmed and the manage button gone, so the tiered list reads cleanly.
+  assert.match(game, /\.ind-hero\.inv-mode \.ih-art\{ opacity:0; \}/);
+  assert.match(game, /\.ind-hero\.inv-mode \.ih-manage\{ display:none; \}/);
+  // Tier 3's vocabulary still comes from the engine — neither page names a good.
+  for (const g of ['small_reactor_engine', 'medium_reactor_engine', 'heavy_reactor_engine']) {
+    assert.ok(!game.includes(g), `the game must not hardcode ${g} — the rows arrive named`);
+  }
 });
 
 test('every served response carries Cache-Control: no-cache — a redeploy needs no hard-refresh', async () => {

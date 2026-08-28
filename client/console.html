@@ -2108,51 +2108,76 @@ function inventoryOrder(){
 // reading, and it is why the Tier-3 placeholders show up at all. Refined fuel is
 // not a stockpile good, so it is absent here by construction — it is guild-wide
 // and lives on the HUD.
-function inventoryPanel(){
+//
+// This returns the panel as DATA — one row per good, in the held order, with the
+// bar's fill already worked out. TWO consumers read it: inventoryPanel() below
+// (the standalone right zone) and postInventory() (embed mode, where the host
+// client paints it). The computation lives here ONCE so the embedded view can
+// never drift from the standalone one.
+function inventoryRows(){
   var order = inventoryOrder();
-  var groups = [1,2,3].map(function(t){
+  var rows = [];
+  [1,2,3].forEach(function(t){
     var ids = order[t] || [];
-    if (!ids.length) return '';
     // Per-tier normalisation: one big raw good must not flatten the refined tier.
     // Pure display math on displayed numbers, exactly like the thermometer — the
     // quantities themselves are snapshot reads, never computed here.
     var max = 0;
     ids.forEach(function(g){ var q = onHand(g); if (q > max) max = q; });
-    var rows = ids.map(function(g){
+    ids.forEach(function(g){
       var q = onHand(g);
-      var pct = max > 0 ? (q / max) * 100 : 0;   // a tier holding nothing = empty tracks
-      return '<div class="inv-row' + (q > 0 ? '' : ' zero') + '">' +
-        '<div class="inv-name" title="' + esc(g) + '">' + esc(prettyGood(g)) + '</div>' +
-        '<div class="inv-bar"><i style="width:' + pct.toFixed(2) + '%"></i>' +
-          '<span class="inv-q">' + fmt(q) + '</span></div>' +
+      rows.push({ tier:t, good:g, label:prettyGood(g), qty:q,
+                  frac: max > 0 ? q / max : 0 });   // a tier holding nothing = empty tracks
+    });
+  });
+  return rows;
+}
+
+function inventoryPanel(){
+  var rows = inventoryRows();
+  var groups = [1,2,3].map(function(t){
+    var mine = rows.filter(function(r){ return r.tier === t; });
+    if (!mine.length) return '';
+    var body = mine.map(function(r){
+      return '<div class="inv-row' + (r.qty > 0 ? '' : ' zero') + '">' +
+        '<div class="inv-name" title="' + esc(r.good) + '">' + esc(r.label) + '</div>' +
+        '<div class="inv-bar"><i style="width:' + (r.frac * 100).toFixed(2) + '%"></i>' +
+          '<span class="inv-q">' + fmt(r.qty) + '</span></div>' +
       '</div>';
     }).join('');
-    return '<div class="inv-grp"><div class="inv-h">Tier ' + t + '</div>' + rows + '</div>';
+    return '<div class="inv-grp"><div class="inv-h">Tier ' + t + '</div>' + body + '</div>';
   }).join('');
   return '<div class="inv"><div class="inv-top"><span>System inventory</span>' +
     '<span class="sys">' + esc(STATE.sysId || '—') + '</span></div>' + groups + '</div>';
+}
+
+// WHICH of the two hero modes are we in? A venture is selected and is really here,
+// for this good, in this system → the venture panel; anything else → the resting
+// inventory. Asked in one place because both frames need the answer: the panel
+// below (standalone) and paintIndustrialHero's bridge (embedded).
+function heroSelection(good, report){
+  var sel = STATE.selVenture;
+  if (!sel) return null;
+  var producers = report ? producersOf(report, good) : [];
+  var p = producers.find(function(x){ return x.id === sel.id; });
+  if (p) return { found:p, role:'producer' };
+  var consumers = report ? (report.lines || []).filter(function(l){ return l.good === good; }) : [];
+  var c = consumers.find(function(x){ return x.ventureId === sel.id; });
+  if (c) return { found:c, role:'consumer' };
+  return null;
 }
 
 // ---- Industrial hero: a standalone venture panel for the RIGHT ZONE (outside the
 // console). With no venture picked it rests on the system inventory above.
 // Returns the panel only; the zone frames it.
 function heroPanel(good, report, rg){
-  var sel = STATE.selVenture;
-  var producers = report ? producersOf(report, good) : [];
-  var consumers = report ? (report.lines || []).filter(function(l){ return l.good === good; }) : [];
-  var found = null, role = null;
-  if (sel){
-    var p = producers.find(function(x){ return x.id === sel.id; });
-    if (p){ found = p; role = 'producer'; }
-    else { var c = consumers.find(function(x){ return x.ventureId === sel.id; }); if (c){ found = c; role = 'consumer'; } }
-  }
-  if (!found){
+  var sel = heroSelection(good, report);
+  if (!sel){
     // The resting state is no longer a dead placeholder: it is this system's
-    // inventory. Opening it is what re-sorts it (see inventoryOrder).
-    if (!STATE.invOpen){ STATE.invOpen = true; STATE.invOrder = null; }
+    // inventory. (paintIndustrialHero is what re-sorts it — see inventoryOrder.)
     return inventoryPanel();
   }
-  STATE.invOpen = false;
+  var found = sel.found, role = sel.role;
   var id = role === 'producer' ? found.id : found.ventureId;
   var planet = ventPlanet(id), tint = archColor(planet);
   var place = ventName(id);
@@ -2209,6 +2234,18 @@ function heroPanel(good, report, rg){
   '</div>';
 }
 function paintIndustrialHero(good, report, rg){
+  var sel = heroSelection(good, report);
+  // Entering the resting state re-sorts the rows ONCE; while it stays open the
+  // order is held, so the numbers move and the rows don't (see inventoryOrder).
+  if (sel) STATE.invOpen = false;
+  else if (!STATE.invOpen){ STATE.invOpen = true; STATE.invOrder = null; }
+
+  // Embedded, the host client owns the right zone — there is no #ind-zone to paint
+  // here. The resting inventory rides the same bridge the venture nameplate does,
+  // so the game shell renders the rows THIS console computed. A selected venture
+  // still goes up through postVenture (on the chip click / the auto-open).
+  if (STATE.embedded){ if (!sel) postInventory(); return; }
+
   var z = document.getElementById('ind-zone'); if (!z) return;
   z.innerHTML = heroPanel(good, report, rg);
   decorateSteppers(z);   // the throttle stepper lives in the hero now
@@ -2428,6 +2465,22 @@ function postVenture(id, role){
     var v = STATE.vmap[id]; var facility = (v && v.recipeId) ? 'refinery' : 'mine';
     window.parent.postMessage({ source:'starfare-console', kind:'venture', name:id, role:role, facility:facility },
       window.location.origin);
+  }catch(e){}
+}
+
+// The other half of that bridge: with NO venture selected, post this system's
+// inventory instead, so the host client's right zone shows what the standalone
+// console shows in the same state. Sent on every poll while resting, so the
+// quantities in the game are as live as the ones here — the rows come from
+// inventoryRows(), the single source, in its held order.
+function postInventory(){
+  try{
+    if (!window.parent || window.parent === window) return;
+    // The nameplate is off screen now, so the NEXT selection must post even if it
+    // is the same venture — postVenture skips a repeat of the id it last sent.
+    STATE.heroVentureId = null;
+    window.parent.postMessage({ source:'starfare-console', kind:'inventory',
+      system: STATE.sysId, rows: inventoryRows() }, window.location.origin);
   }catch(e){}
 }
 

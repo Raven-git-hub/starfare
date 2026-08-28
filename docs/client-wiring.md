@@ -290,6 +290,21 @@ not. This list is the working contract; it may be refined as panels are wired
   drives — TICK and RESET. Neither is a player move and a persistent world is not a
   player's to step or erase (§1); standalone `/console` keeps them for the operator.
 
+  **Revision — the bridge carries the system inventory too (28-08-26).** The right
+  zone had exactly one thing it could show: whatever venture was last posted. With
+  no venture selected the embedded console had nothing to say, so the panel it
+  renders in that state standalone (the system inventory) was invisible in the game.
+  It now rides the SAME bridge, as a second message keyed by `kind` — `venture` when
+  a chip is selected, `inventory` when none is. The payload is the console's own row
+  data (`inventoryRows()` — one computation, two consumers: the standalone panel and
+  this send), posted on every poll while resting, so the game's quantities are as
+  live as the console's and the row order is literally the same held order. The game
+  shell groups by `tier` and paints `frac` as a bar; it derives nothing (§5), the
+  same rule the nameplate has always followed. In that mode it also fades its venture
+  art and hides "Open venture management", which have no meaning over an inventory.
+  Client-only: `client/console.html` + `client/game.html`; no endpoint, no engine,
+  schema unchanged. See `production-console-model.md` for the message shape.
+
 Each slice is a separate Claude Code prompt, on its own branch + PR, doc-and-code
 in the same commit, verified by playing the loop and confirming against `/inspect`.
 
