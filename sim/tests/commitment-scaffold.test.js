@@ -140,18 +140,41 @@ test('the injected N moves the boundary cadence (the window rolls at tick % N ==
 // The UNLICENSED golden is untouched and is where the no-op proof now lives entirely:
 // with no commitment there is no delivery, so there is no sale, so not one byte of a
 // commitment-free run may move.
+//
+// PRODUCTION-HISTORY SLICE (28-08-26): the console's trend sparklines moved out of the
+// browser and into stored state (`guild.productionHistory`, sim/history.js), so both
+// runs legitimately gained real serialized bytes and their FULL hashes moved. The three
+// hashes above are UNCHANGED and are now asserted with the history stripped as well —
+// which is the whole proof, and a stronger statement than a re-pinned number: this slice
+// added a history buffer and altered NOTHING else about these runs, byte for byte. The
+// new full-state hashes are pinned beside them so a drift in the recorded samples
+// themselves is caught too. (`GOLDEN_UNLICENSED_WITH_PRICES` is now the price-inclusive,
+// history-stripped hash — i.e. it still covers exactly what it covered before.)
 const GOLDEN_UNLICENSED = '682e42e0dd758ce523fea882f6560707802cdd7e7b4def794f323430a4cfcff5';
 const GOLDEN_UNLICENSED_WITH_PRICES = 'ee6856cc520c23b8cc2cfdad996d463ccf35d40bb6b85b35f3a644a46d493647';
 const GOLDEN_COMMITTED_WITH_PRICES = 'e0255c73292645b5b785d818ec6e045f4bfb80e4b0a12f38814acb74947f8272';
+const GOLDEN_UNLICENSED_WITH_HISTORY = 'fa63aaf4cdaf8f11a38d26545f610605373acb659903fc2bf56c7869ced2dd5d';
+const GOLDEN_COMMITTED_WITH_HISTORY = 'e145b1426637f5c53190c087a7b6727878d158d6d52715f57f879a43d367f30b';
 
 // The state minus its price block — everything the pre-price-engine hash covered.
 const withoutPrices = (state) => { const { prices, ...rest } = state; return rest; };
+// The state minus every guild's production-history buffer — everything the pre-history
+// hashes covered. Stripped per guild (it is guild-level state), leaving the rest of the
+// guild row untouched, so an accidental change ANYWHERE else still fails the assertion.
+const withoutHistory = (state) => ({
+  ...state,
+  guilds: (state.guilds || []).map((g) => { const { productionHistory, ...rest } = g; return rest; }),
+});
 
 test('NO-OP PROOF: an unlicensed run (no scaffold action) is byte-identical to pre-change HEAD', () => {
   let s = sysState([mine('t', 'titanium', 10, 0), mine('c', 'carbon_products', 10, 0), refinery('r', 'titanium_alloy', 2)]);
   for (let i = 0; i < 40; i += 1) s = tick(s);
-  assert.equal(hashState(withoutPrices(s)), GOLDEN_UNLICENSED, 'everything but the price block is byte-identical to pre-change HEAD');
-  assert.equal(hashState(s), GOLDEN_UNLICENSED_WITH_PRICES, 'and the price block itself is pinned');
+  assert.equal(hashState(withoutHistory(withoutPrices(s))), GOLDEN_UNLICENSED, 'everything but the price block and the history buffer is byte-identical to pre-change HEAD');
+  assert.equal(hashState(withoutHistory(s)), GOLDEN_UNLICENSED_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
+  assert.equal(hashState(s), GOLDEN_UNLICENSED_WITH_HISTORY, 'and the history buffer itself is pinned');
+  // The stripped-equals-old assertions above are only a proof if there is really
+  // something to strip: an unlicensed run still MINES, so it still records history.
+  assert.ok(s.guilds[0].productionHistory, 'the unlicensed run really did record history');
 });
 
 test('a committed run seeded via createVenture (not the action) is pinned, and now PAYS', () => {
@@ -161,7 +184,8 @@ test('a committed run seeded via createVenture (not the action) is pinned, and n
   // the intake surface, not the resolution.
   let s = sysState([mine('t', 'titanium', 10, 7), mine('c', 'carbon_products', 10, 5), refinery('r', 'titanium_alloy', 2)], 4);
   for (let i = 0; i < 40; i += 1) s = tick(s);
-  assert.equal(hashState(s), GOLDEN_COMMITTED_WITH_PRICES, 'the committed run is pinned on its post-Slice-3a bytes');
+  assert.equal(hashState(withoutHistory(s)), GOLDEN_COMMITTED_WITH_PRICES, 'with the history buffer stripped, the committed run is byte-identical to its post-Slice-3a bytes');
+  assert.equal(hashState(s), GOLDEN_COMMITTED_WITH_HISTORY, 'and the history buffer itself is pinned');
   // The bytes moved because the deliveries are now SALES: the guild has been paid and
   // the ledger has funded it, equal and opposite (invariant 2 is asserted every tick by
   // the driver; here we simply show the movement is real and is the sale's alone).

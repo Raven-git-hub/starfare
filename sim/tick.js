@@ -26,6 +26,7 @@ const { getRecipe } = require('./recipes.js');
 const { addStock } = require('./stock.js');
 const { resolveProduction } = require('./production.js');
 const { setWindow, winStartFor, DEFAULT_WINDOW_N } = require('./windows.js');
+const { getHistory, pushHistory } = require('./history.js');
 const { recomputePrices, postedPrice } = require('./prices.js');
 const { commitmentSale } = require('./licence.js');
 
@@ -198,6 +199,50 @@ function applyProduction(state, guild, systemId, ctx) {
   for (const good of Object.keys(report.goods).sort()) {
     const w = report.goods[good].window;
     if (w) setWindow(guild, systemId, good, { windowStart: w.windowStart, delivered: w.delivered, sendCarry: w.sendCarry });
+  }
+
+  // Record this tick's per-good sample into the rolling production/consumption
+  // HISTORY (guild.productionHistory, sim/history.js) — the engine-owned buffer the
+  // console's two trend sparklines are drawn from. Two numbers per good, and they are
+  // deliberately the SAME two the browser's old client-side buffer recorded, so the
+  // line the player sees is unchanged and only its SOURCE moved into the engine:
+  //   - produced = this tick's OUTPUT of the good here: Σ the mines' fresh deposits PLUS
+  //     Σ the refineries' `minted` for the good they mint. That sum is exactly what the
+  //     console's producer stack lists under "Production" (`producersOf` in
+  //     client/console.html walks `mines` then `refineries`), and it is what the old
+  //     client buffer recorded through its `sumAmount(producers)` path.
+  //   - consumed = the DOWNSTREAM DRAW (`fork.downstream`, what the lines really took).
+  //
+  // Production is summed from the report's `mines`/`refineries` rather than read off
+  // `report.goods[good].fresh` for two reasons, and the second is a correction: (1) a
+  // mined good with no in-system consumer and no commitment is never routed and has NO
+  // `goods` entry at all — yet it is producing; (2) `fresh` counts MINE output only, so
+  // a refined good that DOES have a `goods` entry (something downstream eats it) would
+  // record 0 production while its refinery visibly mints units. The old client hit
+  // exactly that case and plotted a flat zero under a producing refinery. Every other
+  // case is byte-for-byte the number it recorded.
+  //
+  // SPARSE + CONTIGUOUS: a key is minted only for a good that actually moved this tick,
+  // so a galaxy where nothing is produced writes nothing (the byte-identical no-op that
+  // makes the golden regen provable); but once a good HAS a series, every tick it is
+  // still visible here pushes a sample — a `0` on a lull included — because a gap would
+  // draw a slope between two ticks that are not adjacent. Sorted good order for
+  // determinism (invariant 9), matching the two loops above.
+  const producedByGood = {};
+  for (const m of report.mines) producedByGood[m.good] = (producedByGood[m.good] || 0) + m.amount;
+  for (const r of report.refineries) {
+    if (r.minted <= 0) continue;
+    const recipe = getRecipe(byId.get(r.ventureId).recipeId);
+    const out = recipe.output.good;
+    producedByGood[out] = (producedByGood[out] || 0) + r.minted;
+  }
+  const sampledGoods = [...new Set([...Object.keys(producedByGood), ...Object.keys(report.goods)])].sort();
+  for (const good of sampledGoods) {
+    const produced = producedByGood[good] || 0;
+    const entry = report.goods[good];
+    const consumed = (entry && entry.fork) ? (entry.fork.downstream || 0) : 0;
+    if (produced <= 0 && consumed <= 0 && !getHistory(guild, systemId, good)) continue;
+    pushHistory(guild, systemId, good, produced, consumed);
   }
 
   // Accumulate this (guild, system)'s DOWNSTREAM DRAW per good into the tick's

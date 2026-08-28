@@ -144,6 +144,18 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // `calendar.label` guard in the same pass adds no field either: it only changes the
 // string the pre-game tick 0 renders as ('—' rather than the honest but meaningless
 // `00-1:1439`), leaving `calendar.day`/`minute` the exact arithmetic they were.
+// v7 (persistent production history, 28-08-26): ADDITIVE — each system's entry in the
+// `production` block gains `history` = { [good]: { prod: [...], cons: [...] } }, the last
+// HISTORY_N (60) ticks of that good's fresh output and downstream draw, echoed VERBATIM
+// from the stored buffer `guild.productionHistory` (sim/history.js). This is the first
+// piece of the `production` block that is NOT recomputed on read: it is serialized engine
+// state surfaced as-is, which is exactly why it survives a reload and reads the same for
+// every viewer — the console's two trend sparklines used to be a browser-side buffer that
+// started empty on every page load. It sits beside `review` at SYSTEM level rather than
+// inside `goods` because `goods` holds only the goods routed this tick, and a mined good
+// with no in-system consumer has no `goods` entry yet still has a trend to draw. No schema
+// bump: nothing existing changed shape and an older reader ignores the new key — the same
+// call the additive `perVenture` and `site.name` made.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -162,7 +174,8 @@ const SNAPSHOT_SCHEMA = 7;
 //                 productionProfile: { ... } } ],               // §5 profile, sparse as stored
 //     production: [ { guildId,                                  // previewProduction(state)
 //       systems: [ { systemId, mines, goods, lines, refineries,     // resolved per-system
-//                    review: [ { kind, ventureId?|good? } ] } ] } ], // §5 review flag (2c-i)
+//                    review: [ { kind, ventureId?|good? } ],         // §5 review flag (2c-i)
+//                    history: { good: { prod: [int], cons: [int] } } } ] } ], // stored, sim/history.js
 //       // a committed good also carries goods[good].window = { Q, windowStart, delivered,
 //       // sendCarry, ticksRemaining, requiredRate, sendThisTick, pctAchieved, status,
 //       // perVenture: { ventureId: { commitment, delivered, status } } }  // §5 per-licence

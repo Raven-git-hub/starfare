@@ -100,11 +100,13 @@ test('anti-drift: the preview surfaces the SAME resolved report the tick moves f
   const s = chainState();
   const report = resolveProduction(s.guilds[0], SYS);
   const preview = previewProduction(s);
-  // The preview adds a read-only `review` array (slice 2c-i); everything else is
-  // byte-identical to what the tick resolves from.
-  const { review, ...resolved } = preview[0].systems[0];
+  // The preview adds a read-only `review` array (slice 2c-i) and the stored `history`
+  // buffer (sim/history.js, echoed verbatim for the console's trend lines); everything
+  // else is byte-identical to what the tick resolves from.
+  const { review, history, ...resolved } = preview[0].systems[0];
   assert.deepEqual(resolved, report);
   assert.ok(Array.isArray(review), 'the preview adds a read-only review array');
+  assert.equal(typeof history, 'object', 'the preview adds the stored history map');
 });
 
 // --- Determinism (invariant 9) with the fractional carry now in serialized state -
