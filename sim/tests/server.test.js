@@ -908,6 +908,31 @@ test('the EMBEDDED console\'s inventory rides the venture bridge into the game\'
   for (const g of ['small_reactor_engine', 'medium_reactor_engine', 'heavy_reactor_engine']) {
     assert.ok(!game.includes(g), `the game must not hardcode ${g} — the rows arrive named`);
   }
+
+  // --- the panel's SHAPE, as the operator asked for it (cosmetic, but pinned) ----
+  // One integrated thermometer per row: the name goes INSIDE the bar, beside the
+  // fill and the quantity, not in a column of its own to the left.
+  assert.match(game, /bar\.appendChild\(fill\); bar\.appendChild\(name\); bar\.appendChild\(q\);/);
+  assert.match(game, /row\.appendChild\(bar\);/);
+  // They are flex siblings over the fill, so the number takes the width it needs and
+  // the name truncates against it — the two can never overlap as digits are added.
+  assert.match(game, /\.ih-inv-name\{[^}]*flex:1; min-width:0;/);
+  assert.match(game, /\.ih-inv-name\{[^}]*text-overflow:ellipsis/);
+  assert.match(game, /\.ih-inv-q\{[^}]*flex:none;/);
+  // Roughly doubled from the first cut (10px text on a 14px bar), so the panel reads.
+  assert.match(game, /\.ih-inv-bar\{[^}]*height:28px;/);
+  assert.match(game, /\.ih-inv-name\{[^}]*font-size:19px;/);
+  assert.match(game, /\.ih-inv-q\{[^}]*font-size:19px;/);
+  assert.match(game, /\.ih-inv-h\{[^}]*font-size:17px;/);
+  // Taller rows overflow the zone, and the detail screen's `.app` is min-height, so
+  // it would GROW rather than clip and the list's own scroll would never engage.
+  assert.match(game, /\.ind-hero\.inv-mode\{ height:calc\(100vh - 104px\); \}/);
+  assert.match(game, /\.ih-inv\{[^}]*overflow-y:auto;/);
+  // The raw system id is gone from the header — the eyebrow says it all. The field
+  // is still SENT (the console's payload is unchanged); the game just stops showing it.
+  assert.ok(!/textContent = d\.system/.test(game), 'the inventory header must not print the raw system id');
+  assert.match(game, /\.ind-hero\.inv-mode \.ih-title\{ display:none; \}/);
+  assert.match(console_, /system: STATE\.sysId/);          // …still on the wire
 });
 
 test('every served response carries Cache-Control: no-cache — a redeploy needs no hard-refresh', async () => {

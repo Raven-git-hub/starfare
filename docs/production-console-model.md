@@ -344,6 +344,17 @@ neither means anything over an inventory. This closes the "a toggle-off posts
 nothing" gap left by the panel's first cut, where the host kept showing the last
 venture forever.
 
+**The game's row shape is its own** *(28-08-26)*. The two panels render the same
+rows differently, on purpose. Standalone, the name sits in a column beside the
+bar — that zone is dense and shares the screen with the manifest. In the game the
+row **is** the bar: the name overlaid on the left of the fill and the quantity on
+the right, both riding on the thermometer, at roughly double the type and bar
+height, with the eyebrow as the only header — the raw system id the title used to
+print is already on screen elsewhere in the shell. `system` is still on the bridge
+message; the game simply stops displaying it. The divergence is layout only — the
+rows, the held order and the fills are the same data from the same
+`inventoryRows()`.
+
 ## The storyteller lens
 
 The storyteller (design.md, Rimworld-style: targets whoever has grown too

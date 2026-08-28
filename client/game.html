@@ -3322,15 +3322,30 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
 /* clear of the detail screen's floating BACK TO MAP button, which overhangs this
    zone — the nameplate's 18vh clears it too, an inventory needs the room back */
 .ind-hero.inv-mode .ih-body{ padding-top:56px; }
-.ih-inv{ display:none; margin-top:14px; flex:1; min-height:0; overflow-y:auto; padding-right:4px; }
+/* The detail screen's `.app` is min-height (line ~640), so it GROWS to its tallest
+   child rather than clipping it: at these row heights the list would push the whole
+   shell taller and `.ih-inv`'s own overflow would never engage — the tail of Tier 3
+   would sit below the window with nothing to scroll. Pinning the hero to the same
+   `calc(100vh - 104px)` the detail screen already uses for `.app` and `.index` makes
+   `.ih-body`'s height:100% definite again, which is what hands the scroll back. */
+.ind-hero.inv-mode{ height:calc(100vh - 104px); }
+/* In inventory mode the eyebrow ("System inventory") IS the header — the raw
+   system id the title used to carry says nothing the shell doesn't say already. */
+.ind-hero.inv-mode .ih-title{ display:none; }
+.ih-inv{ display:none; margin-top:16px; flex:1; min-height:0; overflow-y:auto; padding-right:4px; }
 .ind-hero.inv-mode .ih-inv{ display:block; }
-.ih-inv-h{ font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:rgba(232,223,200,0.45); margin:12px 0 5px; }
+.ih-inv-h{ font-family:'IBM Plex Mono',monospace; font-size:17px; letter-spacing:.14em; text-transform:uppercase; color:rgba(232,223,200,0.45); margin:20px 0 8px; }
 .ih-inv-grp:first-child .ih-inv-h{ margin-top:0; }
-.ih-inv-row{ display:flex; align-items:center; gap:8px; margin-bottom:3px; }
-.ih-inv-name{ font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.04em; color:#E8DFC8; width:104px; flex:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.ih-inv-bar{ position:relative; flex:1; height:14px; background:rgba(232,223,200,0.06); border:1px solid rgba(232,223,200,0.10); border-radius:3px; overflow:hidden; }
+.ih-inv-row{ margin-bottom:5px; }
+/* ONE integrated thermometer per row: the bar spans the row, the fill sits behind,
+   and the name and the quantity ride on top of it. They are flex siblings rather
+   than two absolute boxes, so the number takes exactly the width it needs and the
+   name truncates against it — no reserved gutter to guess at, and no overlap when
+   the quantity grows a digit. */
+.ih-inv-bar{ position:relative; height:28px; display:flex; align-items:center; gap:10px; padding:0 9px; background:rgba(232,223,200,0.06); border:1px solid rgba(232,223,200,0.10); border-radius:4px; overflow:hidden; }
 .ih-inv-bar i{ position:absolute; left:0; top:0; bottom:0; background:rgba(201,162,39,0.34); }
-.ih-inv-q{ position:absolute; right:5px; top:0; line-height:14px; font-family:'IBM Plex Mono',monospace; font-size:10px; color:#E8DFC8; }
+.ih-inv-name{ position:relative; z-index:1; flex:1; min-width:0; font-family:'IBM Plex Mono',monospace; font-size:19px; letter-spacing:.02em; color:#E8DFC8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ih-inv-q{ position:relative; z-index:1; flex:none; font-family:'IBM Plex Mono',monospace; font-size:19px; color:#E8DFC8; }
 .ih-inv-row.zero .ih-inv-name, .ih-inv-row.zero .ih-inv-q{ color:rgba(232,223,200,0.34); }
 </style>
 <script id="ind-hero-wire">
@@ -3372,7 +3387,9 @@ function paintInventoryHero(d){
   // clearing it hands the art back to the stylesheet, which fades it out here
   if (a) a.style.opacity = "";
   if (eb) eb.textContent = "System inventory";
-  if (t) t.textContent = d.system || "—";
+  // the title carried the raw system id, which the shell already shows; the eyebrow
+  // is header enough (the CSS hides the empty element so it takes no space either)
+  if (t) t.textContent = "";
 
   inv.textContent = "";
   var rows = Array.isArray(d.rows) ? d.rows : [];
@@ -3393,8 +3410,9 @@ function paintInventoryHero(d){
       fill.style.width = (Math.max(0, Math.min(1, Number(r.frac) || 0)) * 100).toFixed(2) + "%";
       /* integer goods, thousands-separated — the shell's own `fmt` lives inside another IIFE */
       var q = document.createElement("span"); q.className = "ih-inv-q"; q.textContent = qty.toLocaleString("en-US");
-      bar.appendChild(fill); bar.appendChild(q);
-      row.appendChild(name); row.appendChild(bar);
+      // name and quantity go INSIDE the bar, over the fill — the row is one thermometer
+      bar.appendChild(fill); bar.appendChild(name); bar.appendChild(q);
+      row.appendChild(bar);
       grp.appendChild(row);
     });
     inv.appendChild(grp);
