@@ -31,6 +31,7 @@ const {
 const { getHistory, pushHistory } = require('./history.js');
 const { recomputePrices, postedPrice } = require('./prices.js');
 const { commitmentSale, committedContribution, feeOwed } = require('./licence.js');
+const { producedGoodFor } = require('./baseline.js');
 
 // Deep-clones state so tick() can never accidentally mutate its input.
 // structuredClone is a plain JS global (Node 17+), not a DOM API.
@@ -286,7 +287,14 @@ function applyProduction(state, guild, systemId, ctx) {
   if (isWindowBoundary(state.tick + 1, windowN, dayAnchorTick)) {
     for (const v of systemVentures) {
       if (!v.licence) continue;
-      const win = (report.goods[v.resourceType] || {}).window;
+      // The good the licence is judged in is the one the venture PRODUCES — its
+      // `resourceType` for a mine, its recipe's output for a factory (`producedGoodFor`,
+      // sim/baseline.js). This read used to be `v.resourceType`, which was right only
+      // while a factory could not be licensed: after the factory-commitment slice it
+      // would have found no window for a licensed factory, and the guard below would
+      // have halted the tick on a licence that was in fact judged perfectly well.
+      const committedGood = producedGoodFor(v);
+      const win = (report.goods[committedGood] || {}).window;
       const row = win && win.perVenture ? win.perVenture[v.id] : null;
       if (!row) {
         // Legal ONLY for a licence that owed zero units this window (§5's 0% floor, or a
@@ -294,7 +302,7 @@ function applyProduction(state, guild, systemId, ctx) {
         // to be charged as met without having been judged — halt.
         const owedUnits = committedContribution(v, curWindowStart, windowN);
         if (owedUnits > 0) {
-          throw new Error(`applyProduction: guild ${guild.id}'s licensed venture ${v.id} owed ${owedUnits} units of ${v.resourceType} in the window closing at tick ${state.tick + 1}, but the boundary produced no verdict for it — refusing to charge a committed licence the discounted fee it was never judged for`);
+          throw new Error(`applyProduction: guild ${guild.id}'s licensed venture ${v.id} owed ${owedUnits} units of ${committedGood} in the window closing at tick ${state.tick + 1}, but the boundary produced no verdict for it — refusing to charge a committed licence the discounted fee it was never judged for`);
         }
       }
       const status = row ? row.status : 'met';
@@ -325,11 +333,14 @@ function applyProduction(state, guild, systemId, ctx) {
   // Production is summed from the report's `mines`/`refineries` rather than read off
   // `report.goods[good].fresh` for two reasons, and the second is a correction: (1) a
   // mined good with no in-system consumer and no commitment is never routed and has NO
-  // `goods` entry at all — yet it is producing; (2) `fresh` counts MINE output only, so
-  // a refined good that DOES have a `goods` entry (something downstream eats it) would
-  // record 0 production while its refinery visibly mints units. The old client hit
-  // exactly that case and plotted a flat zero under a producing refinery. Every other
-  // case is byte-for-byte the number it recorded.
+  // `goods` entry at all — yet it is producing; (2) `fresh` used to count MINE output
+  // only, so a refined good that DOES have a `goods` entry would record 0 production
+  // while its refinery visibly minted units. The old client hit exactly that case and
+  // plotted a flat zero under a producing refinery. *(Reason (2) is now also fixed at
+  // source — the factory-commitment slice made `fresh` the units produced here this
+  // tick, minted included — but reason (1) stands on its own and this stays the
+  // producer-side sum either way.)* Every other case is byte-for-byte the number it
+  // recorded.
   //
   // SPARSE + CONTIGUOUS: a key is minted only for a good that actually moved this tick,
   // so a galaxy where nothing is produced writes nothing (the byte-identical no-op that

@@ -42,6 +42,7 @@
 // return numbers, and the tick is the only place a balance changes.
 
 const { windowFraction } = require('./windows.js');
+const { producedGoodFor } = require('./baseline.js');
 
 // The structural equity ceiling — §5: "up to the structural 49% ceiling (the owner
 // keeps control by retaining at least 51%)". This is a DESIGN number, not a tuning
@@ -93,7 +94,7 @@ function committedContribution(venture, windowStart, N) {
 // committing that good in this system.
 //
 // WHY WEIGHTED: the delivery is per GOOD (the §5 windowed accrual sends toward the
-// per-good aggregate `Q` = Σ `committedContribution` over the mines producing it),
+// per-good aggregate `Q` = Σ `committedContribution` over the ventures producing it),
 // while equity is per VENTURE. So a good's delivered units are, by the same arithmetic
 // that built `Q`, each venture's contribution share of the total — and the proceeds
 // split follows those shares. With one venture (or several sharing an equity offer)
@@ -131,11 +132,17 @@ function committedContribution(venture, windowStart, N) {
 // Delivered units with no committing venture at all cannot happen (`Q` is built from
 // those very commitments), but if they somehow did, the owner keeps the lot rather
 // than the engine quietly pocketing goods it can't attribute.
+// THE PRODUCER TEST IS `producedGoodFor`, NOT `v.resourceType` (factory-commitment
+// slice, 28-08-26). It used to be the latter, which was right only while commitment was
+// mines-only: a committed FACTORY would match nothing, the weight would sum to 0, and
+// this would return the fallback 1 — the owner silently keeping 100% of a sale whose
+// equity terms said otherwise. It is the SAME function the resolver keys `Q` on, so the
+// split can never be weighted over a different set of ventures than the target it pays.
 function ownerFraction(ventures, good, windowStart, N) {
   let weight = 0;
   let ownerWeight = 0;
   for (const v of ventures) {
-    if (v.resourceType !== good) continue;
+    if (producedGoodFor(v) !== good) continue;
     const contribution = committedContribution(v, windowStart, N);
     if (contribution <= 0) continue;
     weight += contribution;

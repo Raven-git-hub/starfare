@@ -2269,6 +2269,9 @@ window.openWaystationDetail = function(outpost){
    are still design-ahead, and are tagged as such on screen. ------------------ */
 var P = {
   BASELINE_RATE: 5,        // MIRRORS sim/baseline.js MINE_BASELINE, units/tick [FIRST-CUT]
+                           // (and, since a factory can be licensed too, its REFINERY_BASELINE
+                           // x recipe output qty — one number while both are the uniform 5;
+                           // the served-page tripwire goes red if they ever differ)
   EQUITY_CEIL: 49,         // MIRRORS sim/licence.js EQUITY_CEILING x 100 (design-settled)
   K: 2,                    // MIRRORS sim/licence.js EQUITY_SHAPE_K, o^k       [FIRST-CUT]
   // MIRRORS sim/licence.js CORNERS, key for key so the mirror is obvious   [FIRST-CUT]

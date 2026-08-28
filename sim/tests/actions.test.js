@@ -392,16 +392,37 @@ test('setSyndicateCommitment does NOT set committedFromTick (the fraction==1 tri
     'the scaffold must never stamp committedFromTick — that keeps windowFraction == 1');
 });
 
-test('setSyndicateCommitment REJECTS a non-resourceType venture with commitment > 0 (fail loud, state unchanged)', () => {
+// The scaffold ACCEPTS a factory (factory-commitment slice, 28-08-26). It used to refuse
+// one — the §5 accrual summed commitment over mines only, so a factory's number would
+// have sat there inert — and the accrual is producer-general now, keyed on the good the
+// venture produces (its recipe's output for a factory).
+test('setSyndicateCommitment ACCEPTS a factory — its commitment lands on the recipe output', () => {
   const s = ventureState();
-  const bad = createSetSyndicateCommitmentAction({ guildId: 'g1', ventureId: 'ref_1', commitment: 5 });
-  const r = validateAction(s, bad);
+  const act = createSetSyndicateCommitmentAction({ guildId: 'g1', ventureId: 'ref_1', commitment: 5 });
+  assert.deepEqual(validateAction(s, act), { valid: true });
+  const { state: next, results } = intake(s, [act]);
+  assert.equal(results[0].accepted, true);
+  assert.equal(ventureById(next, 0, 'ref_1').syndicateCommitment, 5);
+  // Still a scaffold: it stamps no join tick, so the factory commits for the whole window.
+  assert.equal('committedFromTick' in ventureById(next, 0, 'ref_1'), false);
+});
+
+test('setSyndicateCommitment REJECTS a venture that produces nothing identifiable (fail loud, state unchanged)', () => {
+  // A dangling recipeId resolves to no output good, so a commitment on it could never
+  // contribute to any `Q` — refused rather than stored inert.
+  const s = ventureState();
+  const withDangler = structuredClone(s);
+  withDangler.guilds[0].ventures.push({
+    id: 'ref_x', ownerGuildId: 'g1', type: 'refining', systemId: 'sysA',
+    recipeId: 'no_such_recipe', productionRate: 1,
+  });
+  const bad = createSetSyndicateCommitmentAction({ guildId: 'g1', ventureId: 'ref_x', commitment: 5 });
+  const r = validateAction(withDangler, bad);
   assert.equal(r.valid, false);
-  assert.match(r.reason, /no resourceType/);
-  // a rejected action changes nothing (intake leaves the refinery's commitment 0).
-  const { state: next, results } = intake(s, [bad]);
+  assert.match(r.reason, /produces no identifiable good/);
+  const { state: next, results } = intake(withDangler, [bad]);
   assert.equal(results[0].accepted, false);
-  assert.equal(ventureById(next, 0, 'ref_1').syndicateCommitment, 0);
+  assert.equal(ventureById(next, 0, 'ref_x').syndicateCommitment, undefined);
 });
 
 test('setSyndicateCommitment ACCEPTS commitment 0 on a non-resourceType venture (clearing is always legal)', () => {

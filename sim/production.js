@@ -33,7 +33,8 @@
 // reserve + fresh; three claimants draw from it in the player's `order` — Reserve holds
 // `min(reserveLevel, available)`, Production offers consumers `min(demand×downstreamPct,
 // available)`, and the Syndicate draws its PACED per-tick send toward the per-good
-// aggregate window target `Q` (Σ commitment over the mines) — FRESH ONLY, never past
+// aggregate window target `Q` (Σ commitment over the good's PRODUCERS — mines and
+// factories alike, 28-08-26) — FRESH ONLY, never past
 // `Q`, self-terminating at `Q`, resolving met/breach PER LICENSED VENTURE at the
 // `tick % N == 0` boundary — the window's whole delivered pile is filled down the
 // player's `pursue` order, each venture to its full target `qᵢ` before the next is fed,
@@ -62,6 +63,7 @@ const {
   DEFAULT_WINDOW_N, winStartFor, isWindowBoundary, getWindow,
 } = require('./windows.js');
 const { committedContribution } = require('./licence.js');
+const { producedGoodFor } = require('./baseline.js');
 const { getHistory } = require('./history.js');
 
 // resolveProduction(guild, systemId) -> a plain report for that (guild, system):
@@ -79,7 +81,9 @@ const { getHistory } = require('./history.js');
 // { [ventureId]: { commitment, delivered, status } }, the per-licence outcome of the
 // boundary fill. All of it DERIVED: only windowStart/delivered/sendCarry echo stored
 // state, and nothing here enters the determinism hash.
-// GOOD-LEVEL integers (§5 one-pot distribution, Slice A): `fresh` = Σ mine output;
+// GOOD-LEVEL integers (§5 one-pot distribution, Slice A): `fresh` = the units produced
+// HERE this tick — Σ mine output for a mined good, Σ refinery `minted` for a refined one
+// (28-08-26; a good is one or the other, never both);
 // `demand` = the Gate-2 naive full-tilt Σ (rated, not throttled — the stable draw
 // cap basis); `reserve0` = start-of-step reserve; `pot` = reserve0 + fresh (the one
 // pot the three claimants draw from, in `order`); `supplied` = the consumer draw
@@ -136,7 +140,7 @@ function resolveProduction(guild, systemId, opts = {}) {
   const refineryVentures = ventures.filter((v) => v.recipeId && v.productionRate);
 
   // --- The per-good aggregate Syndicate commitment target Q (§5 "windowed accrual"):
-  // Q = Σ over the MINES producing the good of `committedContribution` — that is,
+  // Q = Σ over the VENTURES producing the good of `committedContribution` — that is,
   // `syndicateCommitment × windowFraction`, computed by the ONE function in
   // sim/licence.js that the commitment SALE weights its proceeds split by, so the
   // target and the payment for hitting it can never again be built from two different
@@ -149,10 +153,20 @@ function resolveProduction(guild, systemId, opts = {}) {
   // fraction is REAL: a venture licensed mid-window contributes only the share of its
   // commitment for the ticks it is present (§5's join ruling, Option A). It is still 1
   // for every venture present the whole window, so this sum is unchanged for every
-  // pre-3b-ii path. Refinery-OUTPUT commitment is a later slice (this sums over mines
-  // only). Computed UP FRONT so a committed good with NO fresh and NO consumer (an idle
-  // committed mine) is still routed and still delivers 0 — fresh-only — rather than
-  // being silently skipped.
+  // pre-3b-ii path. Computed UP FRONT so a committed good with NO fresh and NO consumer
+  // (an idle committed mine) is still routed and still delivers 0 — fresh-only — rather
+  // than being silently skipped.
+  //
+  // ── PRODUCER-GENERAL, NOT MINE-ONLY (factory-commitment slice, 28-08-26) ──────────
+  // This loop used to open with `if (!v.resourceType) continue`, keyed every target on
+  // `v.resourceType`, and so skipped every factory: a refinery's output could carry no
+  // commitment, and `applyForLicence` refused one outright because a factory licence
+  // could never have been delivered or judged. It now counts EVERY committing producer,
+  // keyed on the good it actually produces (`producedGoodFor`, sim/baseline.js — a
+  // mine's `resourceType`, a factory's recipe OUTPUT good). The arithmetic is untouched;
+  // only the gate moved. A venture with commitment ≤ 0 still contributes 0, so every
+  // mine-only run is byte-identical (the committed golden pins it), and Tier 3+ lights
+  // up for free the day a 2→3 recipe exists — there is no tier in this loop.
   //
   // ── Q IS BUILT FROM THE PER-VENTURE TARGETS, NOT ROUNDED AFTER THE SUM ──────────
   // Each committing venture's own target is `qᵢ = round(committedContribution)`, and
@@ -181,13 +195,14 @@ function resolveProduction(guild, systemId, opts = {}) {
   const commitmentQ = {};
   const ventureTargets = {};
   for (const v of ventures) {
-    if (!v.resourceType) continue;
+    const producedGood = producedGoodFor(v);
+    if (!producedGood) continue; // produces nothing committable (a dangling recipeId)
     const contribution = committedContribution(v, curWindowStart, windowN);
     if (contribution <= 0) continue;
     const q = Math.round(contribution);
-    (ventureTargets[v.resourceType] || (ventureTargets[v.resourceType] = []))
+    (ventureTargets[producedGood] || (ventureTargets[producedGood] = []))
       .push({ ventureId: v.id, q });
-    commitmentQ[v.resourceType] = (commitmentQ[v.resourceType] || 0) + q;
+    commitmentQ[producedGood] = (commitmentQ[producedGood] || 0) + q;
   }
 
   // Goods to route: everything mined fresh here PLUS every good some in-system
@@ -354,6 +369,13 @@ function resolveProduction(guild, systemId, opts = {}) {
   // replaces the old round-input/accrue-output balancer, which broke the ratio.
   const refineries = [];
   const drawnByLine = {}; // ventureId -> input good -> integer units drawn this tick
+  // This tick's minted output, aggregated per OUTPUT good — the "fresh" a refined
+  // good's Syndicate fork draws on (see the finalize pass). Built here because this is
+  // where `minted` is computed, and it is computed here — AFTER the routing pass —
+  // because a line's rate is `min(throttleCap, inputCap)`: a factory starved of inputs
+  // mints less, and that smaller number is the real one. Integer adds in establishment
+  // order, so the aggregate is deterministic (invariant 9).
+  const mintedByGood = {};
   for (const c of refineryVentures) {
     const recipe = getRecipe(c.recipeId);
     if (!recipe) continue;
@@ -388,6 +410,9 @@ function resolveProduction(guild, systemId, opts = {}) {
     batchCarry[recipe.output.good] = outRaw - minted;
 
     drawnByLine[c.id] = drawn;
+    if (minted > 0) {
+      mintedByGood[recipe.output.good] = (mintedByGood[recipe.output.good] || 0) + minted;
+    }
     refineries.push({ ventureId: c.id, rate, bottleneckGood, minted, batchCarry });
   }
 
@@ -406,14 +431,44 @@ function resolveProduction(guild, systemId, opts = {}) {
     let consumerDraw = 0;
     for (const line of lines) if (line.good === plan.good) consumerDraw += line.drawn;
 
+    // ── THE GOOD'S COMMITTABLE FRESH (factory-commitment slice, 28-08-26) ───────────
+    // The Syndicate fork is FRESH-ONLY (§5), and "fresh" means the units produced HERE
+    // this tick. For a MINED good that is the mines' deposit (`plan.fresh`, known in the
+    // routing pass). For a REFINED one it is its factories' `minted` — which does not
+    // exist until the refinery loop above has run, because a line's rate is capped by
+    // its scarcest input. So the fresh cap is completed HERE, and that placement is the
+    // whole slice: the fork now sees the factory's REAL, possibly starved, output.
+    //
+    // THE CASCADE FALLS OUT OF THIS, and it is INTENDED (§5 "LICENCE FEE MECHANICS" —
+    // the factory-commitment ruling). Commit a guild's titanium to the Syndicate and the
+    // alloy factory that needed that titanium is starved: lower rate → less `minted` →
+    // a smaller cap here → the fork under-draws → the window under-delivers → breach at
+    // the boundary → the FULL fee. Nothing below codes that; it is what letting the cap
+    // read the true number does. There is deliberately NO floor, no guarantee, no
+    // starvation forgiveness and no double-commit prevention. Do not add one.
+    //
+    // A good is mined XOR refined (raw and processed are disjoint sets,
+    // sim/resources.js), so one of the two is always 0 — HALT rather than pick one if
+    // that ever stops being true, since the fork would otherwise silently draw against
+    // a cap assembled from two unrelated sources (§15.5).
+    const mintedHere = mintedByGood[plan.good] || 0;
+    if (mintedHere > 0 && plan.fresh > 0) {
+      throw new Error(`resolveProduction: ${plan.good} was both mined (${plan.fresh}) and minted (${mintedHere}) in system ${systemId} at tick ${p} — the Syndicate's fresh-only cap has no single source for a good produced two ways`);
+    }
+    const freshHere = plan.fresh + mintedHere;
+    // Minted units land in the pool at apply BEFORE the fork's delivery is subtracted
+    // (sim/tick.js: deposit, draw, MINT, then deliver), exactly as a mine's fresh does,
+    // so they are part of this tick's pot — not next tick's reserve.
+    const potHere = plan.pot + mintedHere;
+
     // Walk the claimant order with the ACTUAL consumer draw. Track `available` (the
     // pot remaining) AND `freshRem` (fresh not yet spoken for): consumers feed on
     // fresh first (the rate-based drawdown), and the Syndicate is FRESH-ONLY, so it is
     // capped at freshRem — which guarantees it NEVER reduces the reserve (§5). If a
     // higher-priority Production claimant consumed the fresh, the Syndicate under-draws
     // and the pace self-corrects (or breaches) — the on-theme competition for fresh.
-    let available = plan.pot;
-    let freshRem = plan.fresh;
+    let available = potHere;
+    let freshRem = freshHere;
     let reserveHeld = 0;
     let synDraw = 0;
     for (const f of plan.order) {
@@ -432,12 +487,12 @@ function resolveProduction(guild, systemId, opts = {}) {
     // Goods left in the pot at tick end become next tick's reserve. reserveHeld STAYS
     // in the pot; only the consumer draw and the syndicate delivery leave. Both are
     // bounded by `available` at their slot, so newReserve ≥ 0 (invariant 3).
-    const newReserve = plan.pot - consumerDraw - synDraw;
+    const newReserve = potHere - consumerDraw - synDraw;
     const goodEntry = {
-      fresh: plan.fresh,
+      fresh: freshHere,
       demand: plan.demand,
       reserve0: plan.reserve0,           // start-of-step reserve (the pot minus fresh)
-      pot: plan.pot,                     // reserve0 + fresh — the whole pot the claimants draw from
+      pot: potHere,                      // reserve0 + fresh — the whole pot the claimants draw from
       supplied: plan.consumerPool,       // the consumer draw CAP this tick (min of demand-cap and what's left above Production)
       fork: { syndicate: synDraw, downstream: consumerDraw, stockpile: reserveHeld },
       reserveDelta: newReserve - plan.reserve0, // this tick's net reserve change — the console's trend arrow
@@ -600,6 +655,18 @@ function rollupStatus(perVenture, isBoundary) {
 //   - "percent":  `value`% of THIS tick's fresh (the Syndicate fork's own mode).
 // That fractional rate lands on integers via the send carry (floor-and-carry, RULED):
 // accrue the intent, deliver the whole part, carry the sub-unit remainder in [0,1).
+//
+// ⚠️ DEFERRED, NOT OVERLOOKED — "percent" mode on a REFINED good (factory-commitment
+// slice, 28-08-26). `freshG` here is the routing pass's figure, and for a refined good
+// that is 0: its real fresh is its factories' `minted`, which does not exist until after
+// the routing pass (the fresh CAP reads it in the finalize walk, which is why the paced
+// and absolute modes are exact for a factory). Threading it into THIS call would mean
+// resolving a good's window in two different places depending on how it is produced, so
+// the honest small change was to leave it: a committed FACTORY under `percent` mode
+// intends 0 every tick and will breach. Paced (the default) and absolute are unaffected.
+// The gap is pinned by a test and recorded on docs/roadmap.md's decision
+// checklist (with the two candidate fixes, both of them rulings) rather than papered
+// over with a guessed stand-in figure.
 function resolveWindow(guild, systemId, good, Q, freshG, control, curWindowStart, windowN, p) {
   const stored = getWindow(guild, systemId, good);
   const roll = !stored || stored.windowStart !== curWindowStart;
@@ -690,16 +757,14 @@ function reviewSystem(guild, systemId) {
   const policyGoods = new Set(storedPolicyGoods(guild, systemId));
 
   // Which ventures produce each good in S — a mine by its `resourceType`, a refinery by
-  // its recipe's OUTPUT. This is the set a `pursue` entry must name to still be live.
+  // its recipe's OUTPUT. This is the set a `pursue` entry must name to still be live, and
+  // it is the SAME identity the commitment target is keyed on (`producedGoodFor`,
+  // sim/baseline.js), which matters now that a factory can be ranked: a review that
+  // disagreed with the target about what a venture produces would flag a live licence as
+  // stale. It used to be an inline copy of the branch; behaviour is unchanged.
   const producersOfGood = {};
   for (const v of ventures) {
-    let good = null;
-    if (v.resourceType) {
-      good = v.resourceType;
-    } else if (v.recipeId) {
-      const recipe = getRecipe(v.recipeId);
-      good = recipe ? recipe.output.good : null;
-    }
+    const good = producedGoodFor(v);
     if (good) (producersOfGood[good] || (producersOfGood[good] = new Set())).add(v.id);
   }
 

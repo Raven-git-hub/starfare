@@ -7,7 +7,7 @@ const {
   EQUITY_CEILING, isValidEquityPct, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
   isValidCommitmentPct, isValidWindowDays, licenceFee, commitmentUnitsFor, equityOf,
 } = require('./licence.js');
-const { baselineOutputFor } = require('./baseline.js');
+const { producedGoodFor, baselineOutputFor } = require('./baseline.js');
 const { postedPrice } = require('./prices.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
 const { isStockpileGood, isFuel } = require('./resources.js');
@@ -445,13 +445,19 @@ function validateAction(state, action) {
     if (typeof action.commitment !== 'number' || !Number.isInteger(action.commitment) || action.commitment < 0) {
       return { valid: false, reason: 'commitment must be a non-negative integer (§15.2)' };
     }
-    // FAIL LOUD, do not accept a silent no-op: the resolver sums commitment over
-    // MINES only (§5 — `v.resourceType && v.syndicateCommitment`), so a non-zero
-    // commitment on a refinery/typeless venture would never contribute to any Q.
-    // Refuse it rather than store an inert number. commitment === 0 is always
-    // allowed (it clears to unlicensed, meaningful on any venture).
-    if (action.commitment > 0 && !venture.resourceType) {
-      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} has no resourceType — commitment is summed over mines only, so a non-zero commitment here would be silently inert` };
+    // FAIL LOUD, do not accept a silent no-op: the resolver sums commitment over the
+    // ventures PRODUCING a good, keyed on `producedGoodFor` (sim/baseline.js), so a
+    // venture that produces nothing identifiable — neither a `resourceType` nor a
+    // resolvable recipe output — would never contribute to any `Q`. Refuse it rather
+    // than store an inert number. commitment === 0 is always allowed (it clears to
+    // unlicensed, meaningful on any venture).
+    //
+    // A FACTORY IS NOW ACCEPTED (factory-commitment slice, 28-08-26). This used to read
+    // `!venture.resourceType` and refuse every refining venture, because the accrual was
+    // mines-only; the accrual is producer-general now, so a factory's commitment lands
+    // on its recipe's OUTPUT good and is delivered, sold and judged like a mine's.
+    if (action.commitment > 0 && !producedGoodFor(venture)) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} produces no identifiable good (no resourceType and no resolvable recipe output), so a non-zero commitment here would be silently inert` };
     }
     return { valid: true };
   }
@@ -472,20 +478,22 @@ function validateAction(state, action) {
     if (venture.licence) {
       return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} is already licensed — changing agreed terms is a renegotiation (§5), not a second application, and renegotiation is not built yet`};
     }
-    // MINES ONLY, for a mechanical reason and not a design one: the §5 window accrual
-    // sums the aggregate target `Q` over ventures with a `resourceType` (production.js),
-    // so a factory's commitment would never accrue, never be delivered, and never be
-    // judged — it would be a licence that silently could not be met. Licensing a
-    // recipe venture needs the accrual extended first (deferred, flagged in the build
-    // note). Refuse it loudly rather than sell terms that cannot be honoured.
-    if (!venture.resourceType) {
-      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} is not a mining venture — the §5 window accrual sums commitment over mines only, so a factory licence could never be delivered or judged (deferred, Slice 3b+)` };
+    // The good this licence is a contract over — a mine's `resourceType`, a FACTORY's
+    // recipe output (`producedGoodFor`, sim/baseline.js). The mines-only refusal that
+    // stood here is GONE (factory-commitment slice, 28-08-26): it existed for a purely
+    // mechanical reason — the §5 accrual summed `Q` over ventures with a `resourceType`,
+    // so a factory licence could never have been delivered or judged — and that accrual
+    // is producer-general now. What remains is the same check with no venture type in
+    // it: a venture that produces nothing identifiable has no good to commit.
+    const committedGood = producedGoodFor(venture);
+    if (!committedGood) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} produces no identifiable good (no resourceType and no resolvable recipe output) — there is nothing for a licence to commit` };
     }
     // Fuel is a Syndicate MONOPOLY with no guild licence to price (§8, §5 "Fuel is
-    // excluded"). `deuterium_fuel` is not minable so no node can produce it, but the
-    // exclusion is stated here rather than left to be implied elsewhere.
-    if (isFuel(venture.resourceType)) {
-      return { valid: false, reason: `${JSON.stringify(venture.resourceType)} is Syndicate-regulated — fuel carries no venture licence (§8)` };
+    // excluded"). `deuterium_fuel` is not minable and no recipe outputs it, so nothing
+    // can produce it, but the exclusion is stated here rather than left to be implied.
+    if (isFuel(committedGood)) {
+      return { valid: false, reason: `${JSON.stringify(committedGood)} is Syndicate-regulated — fuel carries no venture licence (§8)` };
     }
     // The terms. Refused, not clamped — as with 3a's equity offer, a silently-adjusted
     // term would be the engine rewriting a contract the player agreed to.
@@ -498,8 +506,8 @@ function validateAction(state, action) {
     // The fee is priced off the POSTED price at signing, so there must be one to lock.
     // Every non-fuel good carries a price from tick 0; this catches a state whose price
     // block was removed, rather than locking a licence against `null` forever.
-    if (postedPrice(state, venture.resourceType) == null) {
-      return { valid: false, reason: `${JSON.stringify(venture.resourceType)} has no posted price to lock the fee against` };
+    if (postedPrice(state, committedGood) == null) {
+      return { valid: false, reason: `${JSON.stringify(committedGood)} has no posted price to lock the fee against` };
     }
     // And the venture must have a baseline to price the fee off (sim/baseline.js). A
     // mine whose resource has no baseline entry is caught by that file's drift guard;
@@ -658,14 +666,19 @@ function applyAction(state, action) {
     // and timing your lock". Moves NO credits: 3b-iii debits the fee at a boundary.
     const guild = findGuild(next, action.guildId);
     const venture = guild.ventures.find((v) => v.id === action.ventureId);
-    const good = venture.resourceType;
+    // The OUTPUT good — the price engine posts one for every processed good exactly as
+    // it does for a raw one, so a factory's fee is priced off its own product, not its
+    // inputs. `baselineOutputFor` is the single source for both halves of that (the good
+    // and the droidless units/tick), for a mine and a factory alike — no number invented.
+    const baseline = baselineOutputFor(venture);
+    const good = baseline.good;
     const lockedPrice = postedPrice(next, good);
     // The window the terms are measured over: the engine-wide `state.windowN`, or the
     // flagged fallback the resolver itself uses when a scenario sets none — the same
     // number, read the same way, so the licence can never be priced over a different
     // window than the one its commitment accrues in.
     const windowN = next.windowN == null ? DEFAULT_WINDOW_N : next.windowN;
-    const baselineUnitsPerTick = baselineOutputFor(venture).units;
+    const baselineUnitsPerTick = baseline.units;
 
     const { basicFee, discountedFee } = licenceFee({
       baselineUnitsPerTick,

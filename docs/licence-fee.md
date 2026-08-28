@@ -124,10 +124,11 @@ commitment floor (0%) · the renegotiation-window bounds (7–42 days). The 49% 
 
 ## Out of scope *(as of 3b-i — the fee charge has since landed, below)*
 
-Charging the fee (3b-iii) · **factory/refinery licensing** — the §5 accrual sums `Q` over mines only
+Charging the fee (3b-iii) · ~~**factory/refinery licensing** — the §5 accrual sums `Q` over mines only
 (`production.js`), so a factory's commitment would never accrue, never be delivered and never be
 judged; licensing one needs the accrual extended first, so it is refused at intake rather than sold as
-terms that cannot be honoured · renegotiation, Syndicate-initiated term changes, the 75% investor vote
+terms that cannot be honoured~~ *(**DONE — the factory-commitment slice, 28-08-26; see "Factory output
+commits" below.** The accrual was extended, so the refusal is gone.)* · renegotiation, Syndicate-initiated term changes, the 75% investor vote
 (§5, #57) · reputation (Slice 4) · the investor market and dividends (Slice 5) · removing the
 `setSyndicateCommitment` scaffold, which stays for tests, scenarios and the bot.
 
@@ -357,3 +358,84 @@ guild never grows the key · the snapshot surface, `thisTick` included · `feeOw
 charge in `mid-window-prorate.test.js`, where the pro-rate's fixtures live.
 
 **535 tests (+17), zero failures.**
+
+
+---
+
+# Factory output commits — the accrual goes producer-general (28-08-26)
+
+**Design:** `design.md` §5 "LICENCE FEE MECHANICS — RULED", the factory-commitment note.
+**Code:** `sim/production.js`, `sim/baseline.js`, `sim/licence.js`, `sim/actions.js`, `sim/tick.js`.
+**Tests:** `sim/tests/factory-commitment.test.js` (14).
+
+## What was actually wrong
+
+Everything downstream of the commitment — the licence, the per-tick sale, the pursue fill, the boundary
+fee — was already good-agnostic. One gate upstream of all of it was not: the resolver's target loop
+opened `if (!v.resourceType) continue` and keyed every target on `v.resourceType`. So a refinery's
+output could carry no commitment, no licence, no Syndicate-tab row and no fee, and `applyForLicence`
+refused a factory outright — **for that mechanical reason, never a design one**.
+
+## The three touches
+
+**1 — one identity, four readers.** `producedGoodFor(venture)` (`sim/baseline.js`) is the single answer
+to "what does this venture make": a mine's `resourceType`, a factory's recipe **output** good.
+`baselineOutputFor` delegates its `good` half to it, so the two can never drift. Four sites read it and
+they MUST agree, or a factory's commitment accrues under one key and is paid out or judged under
+another: the resolver's `Q`, `ownerFraction`'s equity split (`sim/licence.js` — it matched on
+`resourceType` too, and a committed factory would have matched nothing, summed weight 0, and silently
+handed the owner 100% of a sale its equity terms had already sold a share of), the licence intake
+(`sim/actions.js`) and the boundary charge's verdict lookup (`sim/tick.js`).
+
+**2 — the seam with teeth: a refined good's fresh IS its `minted`.** The Syndicate fork is FRESH-ONLY
+(§5) and for a refined good the mines' `fresh` is 0 — its real fresh is the sum of its factories'
+`minted`, which does not exist until AFTER the routing pass, because a line's rate is
+`min(throttleCap, inputCap)`. So the fork's fresh cap (and the good's `pot`, since minted lands in the
+pool at apply *before* the fork's delivery is subtracted) is completed in the **finalize pass**, from a
+`mintedByGood` aggregate built in the refinery loop. A good is mined XOR refined, so one of the two is
+always 0 and every mined good is byte-identical; if that ever stops being true the resolver **halts**
+rather than assemble one cap from two sources.
+
+**3 — intake opens.** `applyForLicence` prices the fee from `baselineOutputFor(venture)` — batches/tick
+× the recipe's output qty — against the **output good's** posted price (the price engine publishes one
+for every processed good), and sets `syndicateCommitment = commitmentUnitsFor(pct, units, N)`. The
+four-corner grid, the lock-at-signing and the stored `venture.licence` are untouched. The
+`setSyndicateCommitment` dev scaffold drops its "no `resourceType`" rejection and keeps the fail-loud
+for a venture that produces nothing identifiable (a dangling recipeId). **No number was authored**:
+`baselineOutputFor` already held the factory baseline.
+
+`applyProduction` needed **no change** to deliver, sell or charge: it already mints into the pool, then
+subtracts each good's `fork.syndicate` generically, and the sale and the fee read the report. Only the
+verdict *lookup* key moved off `v.resourceType`.
+
+## The cascade is the ruling
+
+The fresh cap now reads the factory's REAL output, so starvation propagates on its own: commit the
+titanium, and the alloy factory that needed it runs slower → mints less → the cap drops → the window
+under-delivers → **breach → the FULL fee**. There is **no double-commit prevention, no input
+reservation and no starvation forgiveness** (§5, RULED 28-08-26). Nothing codes the cascade; it is what
+an honest cap does. The test pins it with the fed counterfactual beside it — same fixture, same
+licence, only the titanium licence differs — so it cannot pass for another reason.
+
+## Deferred, flagged, not guessed
+
+**`percent`-of-fresh send mode on a REFINED good.** The percent control is resolved in the routing
+pass, where a refined good's fresh is still 0; threading `minted` there would mean resolving one good's
+window in two different places depending on how it is produced. So the paced (default) and absolute
+paths are exact for a factory, and `percent` on a refined good intends 0 every tick and will breach.
+Pinned by a test that says so in as many words, and on `docs/roadmap.md`'s decision checklist.
+
+## Tripwires (`sim/tests/factory-commitment.test.js`, 14 tests)
+
+A committed factory contributes `Q` under the good it PRODUCES, not its inputs, with a real per-licence
+row · an **uncommitted** factory triggers none of the new paths (no window state, no routing, no
+credits — the mechanism keeping every golden byte-identical) · the fork's fresh cap **is** the minted
+total, and a starved tick delivers only what was made · a good mined **and** minted halts · **the
+headline**: a licensed factory sells its output every tick (invariant 2 exact each tick) and **meets**
+at the boundary for the discounted fee · an under-sending licence **breaches** for the full fee · **the
+CASCADE**, with its counterfactual · two factories on one good fill in pursue order for per-venture
+met/breach · the equity split reads a factory (the `ownerFraction` regression) · the snapshot carries
+the roster row with no reshaping and no schema bump · the dev scaffold commits a factory and charges
+nothing · the **deferred** percent-mode gap, pinned · determinism over three windows, sorted-good order.
+
+**558 tests (+16 net), zero failures.**

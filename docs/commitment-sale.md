@@ -107,3 +107,20 @@ paid was fixed two ticks earlier · a missing price throws · determinism over a
 integer credits through 30 ticks of fractional equity · the ceiling is refused not clamped · the
 establish action carries and validates the offer · out-of-range equity and a tampered sale record both
 trip the tripwire · the snapshot surface.
+
+
+---
+
+## The sale is producer-general too (28-08-26, factory-commitment slice)
+
+`ownerFraction` weighted the split over ventures matching `v.resourceType === good`. That was right
+only while commitment was mines-only: once a **factory** could commit, a committed factory matched
+nothing, the weight summed to 0 and the fallback handed the owner **100%** of a sale whose equity terms
+had already sold a share of it — invariant 2 still exact, only the line between the owner's keep and
+the ledger's `o` share silently in the wrong place. The predicate is now `producedGoodFor`
+(`sim/baseline.js`), the SAME identity the resolver keys `Q` on, so the split can never be weighted
+over a different set of ventures than the target it is paying for. Everything else about the sale —
+per-tick cadence, the posted price, the single rounding used for both legs — is untouched: a refined
+good's delivery flows through `applyProduction`'s existing generic loop with no change at all. Pinned
+by "the equity split reads a FACTORY too" in `sim/tests/factory-commitment.test.js`; see
+`docs/licence-fee.md` §"Factory output commits" for the slice.

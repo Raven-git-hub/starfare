@@ -144,6 +144,15 @@ test('the served licence panel\'s mirrored constants still match the engine', as
   const baseline = baselineOutputFor({ type: 'mining', resourceType: 'titanium' }).units;
   assert.match(html, new RegExp(`BASELINE_RATE: ${baseline},`),
     'the commitment preview must use the engine\'s droidless mine baseline');
+  // …and since the factory-commitment slice (28-08-26) that ONE mirrored constant is
+  // also what the panel previews a TIER-2 licence with. It is right today only because
+  // every mine and every recipe currently sits on the same uniform [FIRST-CUT] baseline.
+  // The day per-resource / per-recipe baselines differentiate (phase-1-tuning.md), this
+  // goes red — which is the point: the panel must then carry a per-venture baseline
+  // rather than quietly previewing a commitment the engine will not store.
+  const factoryBaseline = baselineOutputFor({ type: 'refining', recipeId: 'titanium_alloy' }).units;
+  assert.equal(factoryBaseline, baseline,
+    'the licence panel mirrors ONE baseline for both tiers — differentiate them and it must gain a second');
 
   // The term ranges the sliders can produce are exactly the ones intake accepts.
   assert.match(html, new RegExp(`id="rnRange" min="${licence.WINDOW_DAYS_MIN}" max="${licence.WINDOW_DAYS_MAX}"`));

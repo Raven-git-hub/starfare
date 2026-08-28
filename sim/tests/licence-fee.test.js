@@ -24,7 +24,8 @@ const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
 const { BASE_PRICE } = require('../prices.js');
-const { MINE_BASELINE } = require('../baseline.js');
+const { MINE_BASELINE, REFINERY_BASELINE } = require('../baseline.js');
+const { getRecipe } = require('../recipes.js');
 const {
   EQUITY_CEILING, FEE_RATE, EQUITY_SHAPE_K, COMMITMENT_FLOOR,
   WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
@@ -36,6 +37,11 @@ const N = 24; // the engine-wide window these fixtures run on
 
 const mine = (id, good, rate, equityPct = 0) => ({
   id, ownerGuildId: 'g1', type: 'mining', systemId: SYS, resourceType: good,
+  productionRate: rate, equityPct,
+});
+
+const factory = (id, recipeId, rate, equityPct = 0) => ({
+  id, ownerGuildId: 'g1', type: 'refining', systemId: SYS, recipeId,
   productionRate: rate, equityPct,
 });
 
@@ -168,11 +174,41 @@ test('every invalid application is refused, and changes nothing', () => {
   }
 });
 
-test('a factory cannot be licensed — its commitment would never accrue', () => {
-  const s = sysState([{ id: 'm', ownerGuildId: 'g1', type: 'refining', systemId: SYS, recipeId: 'titanium_alloy', productionRate: 2 }]);
+// A FACTORY IS LICENSABLE (factory-commitment slice, 28-08-26). This test used to pin
+// the opposite — the refusal existed only because the §5 accrual summed `Q` over mines,
+// so a factory licence could never have been delivered or judged. The accrual is
+// producer-general now, so the licence is granted on the FACTORY'S OUTPUT good, priced
+// off that good's posted price and its recipe's droidless baseline (batches/tick × the
+// recipe's output qty, sim/baseline.js) — no number invented for the factory case.
+test('a FACTORY can be licensed — the terms are priced off its recipe OUTPUT', () => {
+  const s = sysState([factory('m', 'titanium_alloy', 2)]);
+  const granted = grant(s, { committedOutputPct: 0.5, windowDays: 14 });
+  const lic = venture(granted).licence;
+
+  const outUnits = REFINERY_BASELINE.titanium_alloy * getRecipe('titanium_alloy').output.qty;
+  assert.deepEqual(lic, {
+    committedOutputPct: 0.5,
+    windowDays: 14,
+    signedTick: 0,
+    lockedPrice: BASE_PRICE,          // titanium_alloy's posted price, not titanium's
+    ...licenceFee({
+      baselineUnitsPerTick: outUnits, windowN: N, lockedPrice: BASE_PRICE,
+      committedOutputPct: 0.5, equityPct: 0,
+    }),
+  });
+  assert.equal(venture(granted).syndicateCommitment, commitmentUnitsFor(0.5, outUnits, N),
+    'the committed quantity is a share of the FACTORY baseline over one window');
+  assert.equal(venture(granted).committedFromTick, 1, 'and it is stamped like any licence');
+  assert.deepEqual(checkInvariants(granted, granted.tick), []);
+});
+
+test('a venture that produces nothing identifiable still cannot be licensed', () => {
+  // A dangling recipeId — the occupancy invariant already halts on it; the licence path
+  // refuses it rather than pricing a contract over a good that does not exist.
+  const s = sysState([{ id: 'm', ownerGuildId: 'g1', type: 'refining', systemId: SYS, recipeId: 'no_such_recipe', productionRate: 2 }]);
   const { results } = apply(s, { committedOutputPct: 0.5, windowDays: 14 });
   assert.equal(results[0].accepted, false);
-  assert.match(results[0].reason, /not a mining venture/);
+  assert.match(results[0].reason, /produces no identifiable good/);
 });
 
 test('fuel carries no venture licence (§8)', () => {
