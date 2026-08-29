@@ -6,10 +6,11 @@
 // real, individually-tested fact rather than a batch of invented behavior.
 //
 // Landed so far: step 1, production (see its own comment below for exactly what
-// it does and doesn't do yet), and step 3, the price recompute (the Syndicate
-// value per good — the formula itself lives in sim/prices.js). Steps 2 and 4-8
-// are still `identity` — explicit NAMED no-ops — because their real logic needs
-// modules that don't exist yet (territory.js, bots.js — see sim/README.md's
+// it does and doesn't do yet), step 3, the price recompute (the Syndicate value
+// per good — the formula itself lives in sim/prices.js), and step 5, arrivals
+// (Syndicate BUY deliveries landing on their due tick — design.md §6). Steps 2,
+// 4 and 6-8 are still `identity` — explicit NAMED no-ops — because their real
+// logic needs modules that don't exist yet (territory.js, bots.js — see sim/README.md's
 // planned layout). Their seam already sits in the right place, in the right
 // order, instead of being invented ad hoc whenever that module lands.
 //
@@ -24,6 +25,7 @@
 const { computeGalacticSupply } = require('./supply.js');
 const { getRecipe } = require('./recipes.js');
 const { addStock } = require('./stock.js');
+const { guildHolds } = require('./claims.js');
 const { resolveProduction } = require('./production.js');
 const {
   setWindow, winStartFor, windowFraction, isWindowBoundary, DEFAULT_WINDOW_N,
@@ -33,6 +35,12 @@ const { recordPriceSamples } = require('./price-history.js');
 const { recomputePrices, postedPrice } = require('./prices.js');
 const { commitmentSale, committedContribution, feeOwed } = require('./licence.js');
 const { producedGoodFor } = require('./baseline.js');
+
+// A total, deterministic string order for sort keys — used where a tie has to
+// break the same way every run (invariant 9) rather than however sort found it.
+function cmp(a, b) {
+  return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+}
 
 // Deep-clones state so tick() can never accidentally mutate its input.
 // structuredClone is a plain JS global (Node 17+), not a DOM API.
@@ -475,8 +483,78 @@ function stepScheduledEvents(state, _actions) {
 }
 
 // Step 5 — arrivals. Shipments that reach their destination this tick.
-// SEAM: state.shipments is always empty until routes exist (Phase 1 Stage 3+).
+//
+// FILLED 29-08-26 by the Syndicate BUY engine (design.md §6, "Syndicate Delivery
+// — the BUY side"). `buyFromSyndicate` debits the cash and pushes a pending
+// delivery onto `state.shipments`; this is the half that lands it.
+//
+// THE PURE SCHEDULE (§15.6). A delivery that has not arrived costs NOTHING here:
+// the loop reads `arrivalTick` and moves on. There is no per-tick progress to
+// advance, because a straight line at a fixed speed has no state between
+// departure and arrival — its position at any tick is arithmetic nobody needs.
+//
+// `state.tick` is still the PREVIOUS tick's number inside a step (tick() assigns
+// `next.tick` only after all eight have run), so the tick BEING BUILT is
+// `state.tick + 1` — the same convention stepPriceRecompute uses. `<=` rather
+// than `===` so a delivery whose tick has somehow already passed still lands
+// instead of being stranded in the list forever.
 function stepArrivals(state, _actions) {
+  const shipments = state.shipments;
+  if (!Array.isArray(shipments) || shipments.length === 0) return state;
+
+  const thisTick = state.tick + 1;
+  const due = [];
+  const pending = [];
+  for (const ship of shipments) {
+    (ship.arrivalTick <= thisTick ? due : pending).push(ship);
+  }
+  if (due.length === 0) return state;
+
+  // A FIXED order for the deposits (invariant 9). Addition commutes, so no total
+  // depends on this — which is exactly why it must be pinned anyway: the day a
+  // step's outcome DOES depend on order, the order must already be a decision
+  // rather than whatever the array happened to hold. Sort is stable, so equal
+  // keys keep their (deterministic) insertion order.
+  due.sort((a, b) => (
+    a.arrivalTick - b.arrivalTick
+    || cmp(a.destinationSystemId, b.destinationSystemId)
+    || cmp(a.ownerGuildId, b.ownerGuildId)
+  ));
+
+  for (const ship of due) {
+    // THE VANISH CHECK (§6). The same `guildHolds` predicate the purchase was
+    // validated against: if the buying guild no longer holds the destination,
+    // contact with the craft is lost — no deposit, no refund, no divert.
+    //
+    // Conservation-clean by construction: the cargo was never in a stockpile (a
+    // scheduled deposit, not held inventory, so galactic supply never counted
+    // it) and the cash moved to the ledger at purchase (so invariant 2 was
+    // settled ticks ago). Dropping the shipment therefore imbalances nothing —
+    // it is a loss the player owns, not a hole in the books.
+    if (!guildHolds(state, ship.ownerGuildId, ship.destinationSystemId)) continue;
+
+    const guild = (state.guilds || []).find((g) => g.id === ship.ownerGuildId);
+    if (!guild) {
+      // A live claim naming a guild that does not exist is a broken state, not a
+      // lost delivery — halt loudly with the tick rather than quietly vanish
+      // goods for a reason nobody chose (§15.5).
+      throw new Error(`stepArrivals: shipment for guild ${JSON.stringify(ship.ownerGuildId)} arriving at tick ${thisTick} holds a claim on ${JSON.stringify(ship.destinationSystemId)} but no such guild exists`);
+    }
+    // Goods sorted so the sequence of mutations within one cargo is fixed too.
+    for (const good of Object.keys(ship.cargo || {}).sort()) {
+      addStock(guild, ship.destinationSystemId, good, ship.cargo[good]);
+    }
+  }
+
+  // Delivered AND vanished shipments both leave the list — an arrived delivery is
+  // finished either way, and a shipment nobody will ever land is exactly the kind
+  // of record that accumulates forever if "arrived" and "deposited" are conflated.
+  state.shipments = pending;
+  // NO galacticSupply refresh here, deliberately. Unlike sellToSyndicate — an
+  // ACTION, applied by intake with no tick around it, so it must refresh the
+  // cache itself — a tick STEP is followed by tick()'s own end-of-steps derive
+  // pass, which recomputes the cache from whatever the eight steps produced. The
+  // tick owns the cache; a step that re-derived it would be a second opinion.
   return state;
 }
 

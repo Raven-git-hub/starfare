@@ -25,6 +25,13 @@ const { cloneHistory } = require('./history.js');
 const { seedPrices } = require('./prices.js');
 const { clonePriceHistory } = require('./price-history.js');
 
+// cloneShipments(list) -> a deep-enough copy of the IN-FLIGHT rows. `cargo` is the
+// only nested object a shipment carries (§6: no origin, no route, no status), so
+// one level of spread is the whole clone.
+function cloneShipments(list) {
+  return (Array.isArray(list) ? list : []).map((ship) => ({ ...ship, cargo: { ...(ship.cargo || {}) } }));
+}
+
 // --- Entity constructors -----------------------------------------------
 
 // Guild (OWNED, design.md §15.4). `ventures` and `vehicles` are nested here
@@ -420,7 +427,17 @@ function createState(scenario) {
     // carry weight: they reference real seed landmarks, guarded by invariants.js.
     world: scenario.world || {},
     claims: Array.isArray(scenario.claims) ? scenario.claims : [],
-    shipments: [], // IN-FLIGHT: empty until routes exist (walking skeleton has none)
+    // IN-FLIGHT (§15.1). Today's only occupant is the Syndicate BUY delivery
+    // (design.md §6): `{ ownerGuildId, cargo, destinationSystemId, arrivalTick }`
+    // — a pure schedule, deposited by tick.js's stepArrivals on its absolute
+    // arrival tick. ALWAYS PRESENT, even empty: the field has been in every state
+    // (and so in every committed golden hash) since the walking skeleton, so
+    // emitting it unconditionally is what keeps a galaxy with no deliveries
+    // byte-identical — omitting it when empty would move every one of those
+    // hashes. Deep-cloned when a scenario or a restored save supplies one, so a
+    // caller's array can never alias into engine state (the cloneStockpiles
+    // discipline).
+    shipments: cloneShipments(scenario.shipments),
     // prices: the Syndicate value per non-fuel good (docs/licence-and-price-system.md
     // Part 1; sim/prices.js owns the shape and the formula). Seeded here at every
     // good's [FIRST-CUT] base price so a fresh galaxy already posts a value, and

@@ -14,6 +14,8 @@ const { isStockpileGood, isFuel } = require('./resources.js');
 const { setEntry } = require('./profile.js');
 const { getStock, addStock } = require('./stock.js');
 const { computeGalacticSupply } = require('./supply.js');
+const { guildHolds } = require('./claims.js');
+const { nearestWaystation, arrivalTickFor } = require('./transport.js');
 
 // actions.js — action constructors, and the validate-as-they-arrive intake
 // discipline (design.md §15.6). This is the guard against the game's own
@@ -39,6 +41,11 @@ const { computeGalacticSupply } = require('./supply.js');
 //                         posted price (design.md §5 "SELL GOES LIVE", 29-08-26).
 //                         The FIRST action that mutates a stockpile, and so the
 //                         first that has to refresh the galactic-supply cache.
+//   - buyFromSyndicate  — the mirror (design.md §6, "Syndicate Delivery — the BUY
+//                         side", 29-08-26): the cash is debited NOW and the goods
+//                         are SCHEDULED, arriving some ticks later. The first
+//                         action to write the IN-FLIGHT layer (state.shipments);
+//                         tick.js's stepArrivals is the half that lands it.
 //   - setSyndicateCommitment / setWindowN — the THROWAWAY commitment-injection dev
 //                         scaffold (design.md §15.4 "Scaffold 11-08-26", §5): they
 //                         set the windowed-accrual placeholders the engine already
@@ -204,6 +211,27 @@ function createSellToSyndicateAction({ guildId, good, allocations }) {
   if (good === undefined) throw new Error('createSellToSyndicateAction: good is required');
   if (allocations === undefined) throw new Error('createSellToSyndicateAction: allocations is required');
   return { type: 'sellToSyndicate', guildId, good, allocations };
+}
+
+// Buying goods from the Syndicate, for SCHEDULED DELIVERY (design.md §6,
+// "Syndicate Delivery — the BUY side").
+//
+// The deliberate asymmetry with SELL (§5): a sale is instant, so it can be
+// pick-and-mixed across every system that holds the good; a purchase TRAVELS, so
+// it commits to exactly ONE destination — one shipment, one destination, no
+// splitting. Hence a single `destinationSystemId` where the sale takes a list.
+//
+// The destination is a PARAMETER, not something the engine picks: which system a
+// player wants goods delivered to is a supply-chain decision, and there is no
+// defensible default (the home system would be one invention, the largest pile
+// another). The confirm popup that asks for it is the next slice; this action is
+// complete and testable without it.
+function createBuyFromSyndicateAction({ guildId, good, qty, destinationSystemId }) {
+  if (guildId === undefined) throw new Error('createBuyFromSyndicateAction: guildId is required');
+  if (good === undefined) throw new Error('createBuyFromSyndicateAction: good is required');
+  if (qty === undefined) throw new Error('createBuyFromSyndicateAction: qty is required');
+  if (destinationSystemId === undefined) throw new Error('createBuyFromSyndicateAction: destinationSystemId is required');
+  return { type: 'buyFromSyndicate', guildId, good, qty, destinationSystemId };
 }
 
 // --- Validation -------------------------------------------------------
@@ -603,6 +631,54 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'buyFromSyndicate') {
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    // WHAT MAY BE BOUGHT — the same vocabulary a sale uses, for the same reasons.
+    // A single posted price serves both directions (#43, no spread, no transport
+    // fee: the Syndicate charges for control, not carriage — §6), so anything it
+    // will not buy it will not sell either.
+    if (isFuel(action.good)) {
+      return { valid: false, reason: `${JSON.stringify(action.good)} is Syndicate-regulated — fuel is never listed on the Exchange (§8)` };
+    }
+    if (typeof action.good !== 'string' || !PRICED_GOODS.includes(action.good)) {
+      return { valid: false, reason: `${JSON.stringify(action.good)} is not a good the Syndicate posts a price for` };
+    }
+    const price = postedPrice(state, action.good);
+    if (price == null) {
+      return { valid: false, reason: `${JSON.stringify(action.good)} has no posted price to buy at` };
+    }
+    if (typeof action.qty !== 'number' || !Number.isInteger(action.qty) || action.qty <= 0) {
+      return { valid: false, reason: 'qty must be a positive integer (§15.2)' };
+    }
+    if (typeof action.destinationSystemId !== 'string' || action.destinationSystemId.length === 0) {
+      return { valid: false, reason: 'destinationSystemId must be a non-empty string' };
+    }
+    // YOU MAY ONLY BUY INTO A SYSTEM YOU HOLD. `guildHolds` (sim/claims.js) is the
+    // ONE predicate for that question, and stepArrivals asks the SAME one at the
+    // arrival tick — where a `false` is what makes the cargo vanish (§6). Two
+    // different readings of "holds" would mean a delivery legal to schedule and
+    // impossible to land.
+    if (!guildHolds(state, action.guildId, action.destinationSystemId)) {
+      return { valid: false, reason: `guild ${guild.id} does not hold system ${JSON.stringify(action.destinationSystemId)} — a delivery goes only to a system you hold (§6)` };
+    }
+    // ...and there must be a waystation to sail from, and a destination with real
+    // coords to sail to. Refused rather than defaulted: an invented origin would
+    // silently invent an arrival tick.
+    if (!nearestWaystation(action.destinationSystemId)) {
+      return { valid: false, reason: `no Syndicate waystation can reach system ${JSON.stringify(action.destinationSystemId)} — it resolves to no seed coordinates` };
+    }
+    // THE CASH IS DEBITED NOW, in full, at the single posted price with no fee
+    // (§6 step 3). Rounded once on the whole order, exactly as a sale is (#43).
+    const cost = Math.round(action.qty * price);
+    if (guild.credits < cost) {
+      return { valid: false, reason: `guild ${guild.id} holds ${guild.credits} credits, cannot pay ${cost} for ${action.qty} ${action.good}` };
+    }
+    return { valid: true };
+  }
+
   if (action.type === 'setWindowN') {
     if (typeof action.windowN !== 'number' || !Number.isInteger(action.windowN) || action.windowN < 1) {
       return { valid: false, reason: 'windowN must be an integer >= 1 (§15.2)' };
@@ -861,6 +937,59 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'buyFromSyndicate') {
+    // The BUY half of the Exchange (design.md §6). Two things happen here and
+    // nothing else: the cash moves NOW, and a delivery is SCHEDULED. No goods are
+    // deposited — that is stepArrivals' job, `arrivalTick` ticks from now.
+    const guild = findGuild(next, action.guildId);
+    const price = postedPrice(next, action.good);
+    if (price == null) {
+      // Validation refused this, so reaching it means the price block vanished
+      // between validate and apply. Taking the money for goods with no price
+      // would be a silent theft — halt, exactly as the sale's mirror guard does.
+      throw new Error(`applyAction: guild ${guild.id} bought ${action.good} from the Syndicate at tick ${next.tick} but the good has no posted price — refusing to take credits for nothing`);
+    }
+
+    // ROUNDED ONCE, ON THE WHOLE ORDER — #43, and the identical arithmetic the
+    // sale uses, so a good bought and immediately sold back at an unmoved price
+    // costs exactly nothing. There is NO transport fee and NO spread (§5/§6).
+    const cost = Math.round(action.qty * price);
+    // The mirror of paySyndicateFee: credits leave the guild and the same integer
+    // lands in the ledger, so invariant 2 holds to the credit by construction.
+    guild.credits -= cost;
+    next.syndicate.ledger += cost;
+
+    // THE SCHEDULE. Nearest waystation → straight-line hex distance → an ABSOLUTE
+    // arrival tick (§6 steps 1–2). Computed once, here, and never recomputed: a
+    // delivery on an uncontested straight line needs no per-tick work until it
+    // lands (§15.6's "pure schedule"), and an absolute tick is what lets a save
+    // reloaded mid-flight land on the right tick with no special case.
+    const { distance } = nearestWaystation(action.destinationSystemId);
+    if (!Array.isArray(next.shipments)) next.shipments = [];
+    next.shipments.push({
+      ownerGuildId: action.guildId,
+      // `cargo` carries the bought good and NOTHING else — in particular never a
+      // `fuel` key, so invariant 1's fuel-in-transit sum reads 0 for a BUY
+      // delivery (§6's fuel-invariant note). Fuel is refused up front anyway;
+      // this is the shape making that structurally true rather than incidentally.
+      cargo: { [action.good]: action.qty },
+      destinationSystemId: action.destinationSystemId,
+      arrivalTick: arrivalTickFor(next.tick, distance),
+    });
+    // NO origin, NO route, NO status (§6): nothing needs tracking between now and
+    // arrival, and a field nobody reads is a fact with a second home waiting to
+    // drift (invariant 5).
+    //
+    // NO galacticSupply REFRESH, unlike the sale: not one stockpile moved. The
+    // goods are a scheduled deposit, not held inventory (which is also exactly
+    // why losing them later imbalances nothing — §6), so the supply cache still
+    // describes the galaxy correctly and the consistency invariant stays green
+    // between ticks. `audit` is untouched for the same reasons the sale leaves it
+    // alone: its counters are fuel, and this moves credits without changing how
+    // many exist.
+    return next;
+  }
+
   if (action.type === 'setWindowN') {
     // Set the single engine-wide window length. Setup-only (validate refused it once
     // tick > 0), so this only ever writes tick-0 state. No guild is resolved — this
@@ -914,6 +1043,7 @@ module.exports = {
   createApplyForLicenceAction,
   createSetWindowNAction,
   createSellToSyndicateAction,
+  createBuyFromSyndicateAction,
   validateAction,
   applyAction,
   intake,
