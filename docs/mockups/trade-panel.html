@@ -121,6 +121,20 @@
   .syn-body{padding:16px 18px 18px; display:flex; flex-direction:column; gap:15px; flex:1; justify-content:center;}
   .hold{display:flex; align-items:baseline; justify-content:space-between; font-size:12px; color:var(--ink3); padding-bottom:13px; border-bottom:1px dashed var(--line2);}
   .hold b{color:var(--ink); font-weight:600; font-size:15px; font-variant-numeric:tabular-nums;}
+  /* per-system sell allocation */
+  .sellhead{display:flex; align-items:baseline; justify-content:space-between; padding-bottom:11px; border-bottom:1px dashed var(--line2);}
+  .sellhead .sg{font-family:var(--serif); font-size:17px; font-weight:600; color:var(--ink);}
+  .sellhead .sp{font-family:var(--mono); font-size:15px; color:var(--amber2); font-variant-numeric:tabular-nums;}
+  .sellhead .sp .c{font-size:11px; color:var(--amber); margin-right:1px;} .sellhead .sp i{font-style:normal; font-size:10px; color:var(--ink3);}
+  .sysalloc{display:flex; flex-direction:column; gap:8px;}
+  .sysrow{display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:10px;}
+  .sysrow .snm{font-size:13px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .sysrow .snm .sh{display:block; font-size:10px; color:var(--ink3); letter-spacing:.04em; margin-top:1px;}
+  .sysrow .qtybox{width:104px;} .sysrow .qtybox input{font-size:15px; padding:8px 10px;}
+  .sysrow .smax{font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); background:var(--panel); border:1px solid var(--line2); border-radius:5px; padding:8px 10px; cursor:pointer; transition:.12s;}
+  .sysrow .smax:hover{color:var(--ink); border-color:var(--amber-dim);}
+  .selltot{display:flex; justify-content:flex-end; gap:6px; font-size:11px; color:var(--ink3); letter-spacing:.04em;}
+  .selltot b{color:var(--ink2); font-variant-numeric:tabular-nums;}
   .qtyrow{display:flex; align-items:stretch; gap:9px;}
   .qtybox{flex:1; display:flex; align-items:center; border:1px solid var(--line2); border-radius:7px; background:var(--void); overflow:hidden;}
   .qtybox input{flex:1; min-width:0; background:none; border:none; color:var(--ink); font-family:var(--mono); font-size:20px; font-weight:600; padding:11px 14px; outline:none; font-variant-numeric:tabular-nums;}
@@ -247,18 +261,10 @@
           </div>
         </div>
         <div class="syn-body">
-          <div class="hold"><span>GUILD STOCKPILE</span><b>1,420&#8202;u alloy</b></div>
-          <div class="qtyrow">
-            <div class="qtybox">
-              <input id="qty" type="text" value="500" inputmode="numeric" aria-label="Quantity to sell">
-              <span class="u">u</span>
-              <div class="step"><button id="up" aria-label="increase">&#9650;</button><button id="dn" aria-label="decrease">&#9660;</button></div>
-            </div>
-            <button class="maxbtn" id="max">Max</button>
-          </div>
-          <div class="forline"><span class="lbl">You receive</span><span class="amt"><span class="c">&#162;</span><span id="proceeds">11,050</span></span></div>
+          <div class="sellhead"><span class="sg">Titanium Alloy</span><span class="sp"><span class="c">&#162;</span>21.00 <i>/u</i></span></div>
+          <div class="sysalloc" id="sysAlloc"></div>
+          <div class="forline"><span class="lbl">You receive</span><span class="amt"><span class="c">&#162;</span><span id="proceeds">0</span></span></div>
           <button class="exec" id="sellBtn">Sell to Syndicate</button>
-          <div class="fine"></div>
         </div>
       </div>
 
@@ -330,20 +336,31 @@
     b.classList.add("on"); draw(b.dataset.s);
   });
 
-  var qty=document.getElementById("qty"), proceeds=document.getElementById("proceeds"), HOLD=1420;
+  // Per-system sell allocation: the player sets how much of the selected good
+  // comes from EACH system that holds it. Nothing drains automatically.
+  var proceeds=document.getElementById("proceeds"), UNIT=21.00;
+  var SELLSYS=[ ["Kepler Reach",920], ["Vane Drift",500] ];   // held per system (sums 1,420)
   function fmt(n){return Math.round(n).toLocaleString("en-US");}
-  function recalc(){ var q=parseInt((qty.value+"").replace(/[^0-9]/g,""),10); if(isNaN(q))q=0; if(q>HOLD){q=HOLD; qty.value=q;} proceeds.textContent=fmt(q*NOW); }
-  qty.addEventListener("input",recalc);
-  document.getElementById("up").addEventListener("click",function(){ qty.value=(parseInt(qty.value.replace(/[^0-9]/g,""),10)||0)+50; recalc(); });
-  document.getElementById("dn").addEventListener("click",function(){ qty.value=Math.max(0,(parseInt(qty.value.replace(/[^0-9]/g,""),10)||0)-50); recalc(); });
-  document.getElementById("max").addEventListener("click",function(){ qty.value=HOLD; recalc(); });
+  var sa=document.getElementById("sysAlloc"), sh="";
+  SELLSYS.forEach(function(r,i){
+    sh+='<div class="sysrow"><span class="snm">'+r[0]+'<span class="sh">holds '+fmt(r[1])+' u</span></span>'
+      + '<div class="qtybox"><input id="sy'+i+'" type="text" value="0" inputmode="numeric" aria-label="Sell from '+r[0]+'"><span class="u">u</span></div>'
+      + '<button class="smax" data-i="'+i+'">Max</button></div>';
+  });
+  sh+='<div class="selltot">Selling <b id="sellTot">0</b> u</div>';
+  sa.innerHTML=sh;
+  function clampRow(i){ var el=document.getElementById("sy"+i); var v=parseInt((el.value+"").replace(/[^0-9]/g,""),10); if(isNaN(v))v=0; if(v>SELLSYS[i][1])v=SELLSYS[i][1]; el.value=v; return v; }
+  function recalc(){ var tot=0; SELLSYS.forEach(function(r,i){ tot+=clampRow(i); }); document.getElementById("sellTot").textContent=fmt(tot); proceeds.textContent=fmt(tot*UNIT); }
+  SELLSYS.forEach(function(r,i){ document.getElementById("sy"+i).addEventListener("input",recalc); });
+  Array.prototype.forEach.call(document.querySelectorAll(".smax"),function(b){ b.addEventListener("click",function(){ var i=+b.dataset.i; document.getElementById("sy"+i).value=SELLSYS[i][1]; recalc(); }); });
   document.getElementById("synMode").addEventListener("click",function(e){
     var b=e.target.closest(".mbtn"); if(!b||b.classList.contains("na")) return;
     [].forEach.call(this.querySelectorAll(".mbtn"),function(x){x.classList.remove("on");}); b.classList.add("on");
   });
   document.getElementById("sellBtn").addEventListener("click",function(){
-    var q=parseInt(qty.value.replace(/[^0-9]/g,""),10)||0, self=this;
-    self.textContent="Sold "+fmt(q)+"u  -  +c"+fmt(q*NOW); self.style.background="#5fb98a";
+    var tot=0; SELLSYS.forEach(function(r,i){ tot+=clampRow(i); }); var self=this;
+    if(!tot) return;
+    self.textContent="Sold "+fmt(tot)+"u  +&#162;"+fmt(tot*UNIT); self.style.background="#5fb98a";
     setTimeout(function(){ self.textContent="Sell to Syndicate"; self.style.background=""; },1400);
   });
 
