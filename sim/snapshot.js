@@ -185,6 +185,14 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // the instant the window rolls — this is STORED state echoed as-is, which is exactly why
 // it can still be read on the ticks AFTER the boundary that produced it. null for a guild
 // that has never been charged.
+// (29-08-26, the Syndicate BUY engine): top-level `shipments` — the IN-FLIGHT
+// layer (design.md §6 / §15.1), one row per pending Syndicate delivery
+// (`{ ownerGuildId, cargo, destinationSystemId, arrivalTick }`) plus a derived
+// `ticksRemaining` so a later BUY/transport panel can say "arriving in N ticks"
+// without doing arithmetic in the browser (§5's display rule). No schema bump:
+// nothing existing changed shape — the same additive call `syndicateSale`,
+// `perVenture` and `licenceFee` each made. The rows are STORED state echoed
+// as-is; `ticksRemaining` is the one derived field and reaches no stored byte.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -219,6 +227,8 @@ const SNAPSHOT_SCHEMA = 7;
 //     claims: [ { claimId, ownerGuildId, landmarkId, landmarkKind, claimedAtTick,
 //                 contested,
 //                 landmark: { kind, name?, coords?, ... } | null } ],
+//     shipments: [ { ownerGuildId, cargo: { good: int }, destinationSystemId,
+//                    arrivalTick, ticksRemaining } ],   // IN-FLIGHT, design.md §6
 //   }
 function buildSnapshot(state) {
   const supply = computeGalacticSupply(state);
@@ -378,6 +388,20 @@ function buildSnapshot(state) {
     landmark: getLandmark(c.landmarkId, c.landmarkKind) || null,
   }));
 
+  // The IN-FLIGHT layer (§15.1): every pending Syndicate delivery, echoed as
+  // stored. `ticksRemaining` is the ONE derived field — `arrivalTick - tick`,
+  // floored at 0 so a delivery due this very tick reads 0 rather than a negative
+  // — computed here because §5's rule is that the browser renders and never
+  // calculates. `cargo` is spread into a fresh object so a consumer mutating the
+  // snapshot can never reach back into live state.
+  const shipments = (state.shipments || []).map((ship) => ({
+    ownerGuildId: ship.ownerGuildId,
+    cargo: { ...(ship.cargo || {}) },
+    destinationSystemId: ship.destinationSystemId,
+    arrivalTick: ship.arrivalTick,
+    ticksRemaining: Math.max(0, ship.arrivalTick - state.tick),
+  }));
+
   const reserve = supply.fuel.reserve;
   const guildHeld = supply.fuel.guildHeld;
 
@@ -462,6 +486,7 @@ function buildSnapshot(state) {
     ventures,
     occupancy,
     claims,
+    shipments,
   };
 }
 
