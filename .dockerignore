@@ -1,3 +1,14 @@
 # Keep the build context lean and the image reproducible.
 .git
 dev/
+
+# Not served at runtime — design docs and dev-only tooling stay in git but
+# never need to enter the image (they were ~20 MB of build context for nothing).
+docs/
+tools/
+
+# The audio LIBRARY stays in the repo but must not bloat the runtime image: the
+# game embeds its shuffle playlist as base64 in game.html, and only the title
+# track is ever loaded by file. Ship that one; leave the other ~215 MB out.
+client/assets/audio/*
+!client/assets/audio/main-title.mp3
