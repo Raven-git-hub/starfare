@@ -34,12 +34,19 @@ be copied — see each build prompt.
 
 ## Current state (25-08-26)
 
-**trade-panel.html (29-08-26)** is the contract for the market tab, not yet built:
-`client/game.html`'s `openTab('market')` still shows the placeholder stub. The tab is
-the game shell's OWN overlay (`#tabPanel`) — it reads the snapshot the shell already
-polls and posts to `/action`, so it does NOT ride the embedded-console bridge the
-system-inventory panel needed. SELL is the built slice; BUY and the guild-to-guild
-book are deferred (design.md §5, "SELL GOES LIVE").
+**trade-panel.html (29-08-26)** is the contract for the market tab, and `client/game.html`
+**matches it** as of 29-08-26: `openTab('market')` renders the TRADE panel — the tier +
+resource picker, the Holdings hero, the price chart, the Syndicate SELL card's per-system
+allocation table, and the two dimmed placeholders. The tab is the game shell's OWN overlay
+(`#tabPanel`) — it reads the snapshot the shell already polls and posts to `/action`, so it
+does NOT ride the embedded-console bridge the system-inventory panel needed. SELL is the
+built slice; BUY and the guild-to-guild book are deferred (design.md §5, "SELL GOES LIVE"),
+and the Open Market card carries no invented listings. Four deliberate deviations, recorded
+in `docs/client-wiring.md`: the 2×2's rows are not forced equal (the SELL card sizes to its
+allocation table); the chart's scale buttons come from the snapshot's own `priceHistory`
+keys rather than the mock's 3M/1M/2W/3D; the "base ¢10" reference line is not drawn
+(`BASE_PRICE` is not published in the snapshot); and until the price-history engine slice
+lands the chart shows "gathering history…" instead of a curve.
 
 `client/console.html` **matches `console_restructure.html`** (its restructure block):
 the 3-zone frame, the 7:15:10 flow, the trend cards, the top-up squares, the Gate-1

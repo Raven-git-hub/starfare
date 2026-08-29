@@ -697,3 +697,75 @@ the game client.
 **Out of scope and untouched:** the fee charge (3b-iii, engine), the asset economy, an
 atomic compound action, and the operator console's own display fixes (the "hours"
 mislabel, the preview offset, the icon, the tick-0 label) — a separate console slice.
+
+---
+
+## Revision — the TRADE tab goes live, SELL only (29-08-26)
+
+The market tab stops being a stub. `openTab('market')` now renders the **TRADE panel**
+(design.md §5, "SELL GOES LIVE"; look and interactions from
+`docs/mockups/trade-panel.html`), and a guild can sell stockpile goods to the Syndicate
+from it.
+
+**Where it lives — the seam this note exists to pin.** The TRADE tab is the **game
+shell's own overlay** (`#tabPanel`), not the embedded console and not a console hero
+zone. It reads the snapshot `client/game.html` already polls and posts to `/action`
+itself — exactly the licence-deploy path. There is **no `postMessage` bridge, no iframe
+and no `console.html`** anywhere in it; that is the one thing the served-page tripwire in
+`sim/tests/server.test.js` pins by scanning the `trade-tab-wire` block for those calls.
+(The system-inventory hero next door *does* ride the venture bridge; the two are
+deliberately different, and that tripwire is now scoped to the `ind-hero-wire` block so
+the two rules cannot be confused.)
+
+**What it reads (§7's player projection; the browser computes no game number):**
+
+| On screen | Snapshot field |
+|---|---|
+| Holdings hero, grouped by tier | the player guild's `stockpiles` (guild-wide total), bucketed by `GET /goods` |
+| resource chips + the posted value | top-level `prices[good]` (`null` ⇒ chip dimmed, not tradable) |
+| the price chart | `priceHistory[good][resolution]` — **see the gap below** |
+| the per-system sell rows | the player guild's `stockpilesBySystem[systemId][good]` |
+| system names | the committed seed via the shell's own `systemById` |
+
+**What it writes:** one action, built from the non-zero rows —
+
+```
+POST /action { type:'sellToSyndicate', guildId, good,
+               allocations: [ { systemId, qty }, … ] }
+```
+
+There is **no guild-wide quantity box**: §5 makes the sale player-allocated per system,
+so the card is an allocation table with a per-row Max and a running total. "You receive"
+is a **display echo** of decision #43's `round(total × price)`; the authoritative figure
+is read back off the snapshot `POST /action` answers with, and the notification quotes
+that. A `{accepted:false}` is shown as its `reason` in the same small notification — a
+normal outcome, not an error. On success the panel re-reads `/snapshot`, so Holdings,
+the HUD credits and the posted value update in place. Selection (tier + good) is held
+across polls; the rows rebuild only when the system set changes, so a poll never eats a
+half-typed quantity.
+
+**Deferred, and rendered as dimmed placeholders, not faked:** BUY (a shipment to one
+destination — it needs §6's transport), the guild-to-guild **Open Market** book (Phase 3;
+its sort/scroll chrome is cosmetic and carries no invented listings), and Your Listings.
+
+**THE GAP — the price-history engine slice has not landed.** Nothing in `sim/` writes a
+`priceHistory`, and the snapshot carries none, so:
+
+- the chart holds an honest **"gathering history…"** empty state per good (the same
+  convention the console's trend sparklines use) — no history is faked or seeded;
+- the **resolution keys** (the scale buttons) are read from the `priceHistory` block
+  itself rather than named here, so whatever vocabulary that slice settles on is what
+  the panel shows. It renders nothing until there is a block;
+- a sample may be a bare number or a `{posted|price|value}` row — both are read, so the
+  panel does not pin a shape that slice has not chosen;
+- the mockup's dashed **"base ¢10"** reference line is deliberately **not drawn**:
+  `BASE_PRICE` is an engine constant the snapshot does not publish, and the browser may
+  not type a game number of its own. Publishing it is a snapshot question, not this
+  slice's to answer.
+
+**One recorded deviation from the mockup.** The mockup's 2×2 grid forces equal rows; the
+built panel makes the top row flex and the SELL card size to its own content
+(`grid-template-rows: minmax(180px,1fr) auto`), so a guild holding a good in six systems
+gets a card that fits instead of an inner scrollbar the mockup never had.
+
+**575 tests (+17), zero failures.**

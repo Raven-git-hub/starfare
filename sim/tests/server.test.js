@@ -120,6 +120,54 @@ test('GET / serves the WIRED licence panel — the two real actions, and no mock
   assert.ok(!html.includes('NOT YET CHARGED'), 'the charge is built — the old caveat is false');
 });
 
+// The TRADE tab (design.md §5, "SELL GOES LIVE"). A client-render tripwire on the
+// SERVED bytes: if the tab quietly reverted to the old Marketplace stub, or the sell
+// wiring was dropped, the page would still render perfectly and only this fails.
+test('GET / serves the TRADE tab — the renamed tab, the panel, and the sellToSyndicate wiring', async () => {
+  const html = await (await fetch(base + '/')).text();
+
+  // The tab is RENAMED, and the old name is gone.
+  assert.match(html, /<button class="rtab" onclick="openTab\('market', this\)">TRADE<\/button>/);
+  assert.ok(!html.includes('Syndicate Marketplace'), 'the old tab name is gone');
+  // ...and `market` is no longer one of the stub tabs (the two that still are, are).
+  assert.ok(!/TAB_STUBS = \{\s*market:/.test(html), 'market is no longer a stub');
+  assert.ok(!html.includes('this is where the Market slice lands'), 'the stub copy is gone');
+
+  // The panel itself: the picker, the chart, the Holdings hero, the SELL card, and
+  // the two deferred placeholders.
+  assert.match(html, /id="tp-trade"/);
+  assert.match(html, /id="tw-tiers"/);
+  assert.match(html, /id="tw-reslist"/);
+  assert.match(html, /id="tw-chart"/);
+  assert.match(html, /id="tw-inv"/);
+  assert.match(html, /id="tw-sysalloc"/);      // the PER-SYSTEM allocation table
+  assert.match(html, /id="tw-proceeds"/);
+  assert.match(html, /id="tw-sellbtn"/);
+  assert.match(html, />Open Market</);
+  assert.match(html, />Your Listings</);
+
+  // The sale itself: the ruled action shape, posted through the shell's own /action
+  // path. `allocations` is the load-bearing word — a guild-wide qty would be the
+  // rejected design.
+  assert.match(html, /type:'sellToSyndicate'/);
+  assert.match(html, /allocations: r\.rows/);
+  assert.match(html, /window\.__sendAction\(\{ type:'sellToSyndicate'/);
+
+  // BUY is present and DIMMED — it needs the transport system (§5, deferred).
+  assert.match(html, /class="tw-mbtn na"/);
+
+  // THE WIRING SEAM, pinned so it cannot silently move to the console bridge: the tab
+  // reads the shell's own snapshot and posts to /action. No postMessage, no console.
+  assert.match(html, /window\.__snapshot/);
+  const tradeBlock = html.slice(html.indexOf('<script id="trade-tab-wire">'), html.indexOf('<script id="ind-hero-wire">'));
+  assert.ok(tradeBlock.length > 1000, 'the trade wiring block is served');
+  // Checked as CALLS, not as words: the block's own header says "no postMessage
+  // bridge", and a prose mention must not read as a violation.
+  assert.ok(!/\.postMessage\s*\(/.test(tradeBlock), 'the TRADE tab sends no postMessage — it rides no console bridge');
+  assert.ok(!/contentWindow/.test(tradeBlock), 'the TRADE tab talks to no iframe');
+  assert.ok(!/src\s*=\s*['"]?\/?console/.test(tradeBlock), 'the TRADE tab embeds no console');
+});
+
 // The panel MIRRORS four engine constants there is no endpoint to fetch (and pins its
 // sliders to the ranges the engine validates). Duplication is only safe with a
 // tripwire: if any of these move in sim/, this fails instead of the panel quietly
@@ -909,7 +957,15 @@ test('the EMBEDDED console\'s inventory rides the venture bridge into the game\'
   assert.match(game, /inv-mode/);
   // It paints what it is SENT — the fill is the console's frac, not a game number.
   assert.match(game, /Number\(r\.frac\)/);
-  assert.ok(!game.includes('stockpilesBySystem'), 'the game must not re-derive the inventory');
+  // Scoped to the INVENTORY HERO'S OWN wiring block, which is what this rule is
+  // about: that panel paints what the console bridge sends it. It used to be checked
+  // against the whole file, which was only ever a proxy — and became a false positive
+  // when the TRADE tab landed, since design.md §5 requires that tab to read
+  // `stockpilesBySystem` straight off the snapshot for its per-system sell rows. The
+  // failure this was written to catch still fails; a sanctioned read elsewhere no
+  // longer does.
+  const heroBlock = game.slice(game.indexOf('<script id="ind-hero-wire">'));
+  assert.ok(!heroBlock.includes('stockpilesBySystem'), 'the inventory hero must not re-derive the inventory');
   // Art dimmed and the manage button gone, so the tiered list reads cleanly.
   assert.match(game, /\.ind-hero\.inv-mode \.ih-art\{ opacity:0; \}/);
   assert.match(game, /\.ind-hero\.inv-mode \.ih-manage\{ display:none; \}/);

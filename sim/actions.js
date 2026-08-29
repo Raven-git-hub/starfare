@@ -8,10 +8,12 @@ const {
   isValidCommitmentPct, isValidWindowDays, licenceFee, commitmentUnitsFor, equityOf,
 } = require('./licence.js');
 const { producedGoodFor, baselineOutputFor } = require('./baseline.js');
-const { postedPrice } = require('./prices.js');
+const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
 const { isStockpileGood, isFuel } = require('./resources.js');
 const { setEntry } = require('./profile.js');
+const { getStock, addStock } = require('./stock.js');
+const { computeGalacticSupply } = require('./supply.js');
 
 // actions.js — action constructors, and the validate-as-they-arrive intake
 // discipline (design.md §15.6). This is the guard against the game's own
@@ -33,6 +35,10 @@ const { setEntry } = require('./profile.js');
 //   - establishVenture  — seat a NEW mining venture on a real seed node so it
 //                         produces on the next tick (occupancy-guarded).
 //   - setProductionProfile — store a guild's per-system Gate-1/Gate-3 policy.
+//   - sellToSyndicate   — the guild sells stockpile goods to the Syndicate at the
+//                         posted price (design.md §5 "SELL GOES LIVE", 29-08-26).
+//                         The FIRST action that mutates a stockpile, and so the
+//                         first that has to refresh the galactic-supply cache.
 //   - setSyndicateCommitment / setWindowN — the THROWAWAY commitment-injection dev
 //                         scaffold (design.md §15.4 "Scaffold 11-08-26", §5): they
 //                         set the windowed-accrual placeholders the engine already
@@ -183,6 +189,21 @@ function createApplyForLicenceAction({ guildId, ventureId, committedOutputPct, w
 function createSetWindowNAction({ windowN }) {
   if (windowN === undefined) throw new Error('createSetWindowNAction: windowN is required');
   return { type: 'setWindowN', windowN };
+}
+
+// Selling stockpile goods to the Syndicate (design.md §5, "SELL GOES LIVE").
+//
+// The sale is PLAYER-ALLOCATED, PER SYSTEM: `allocations` is a set of
+// `{systemId, qty}` — never one guild-wide quantity. There is no automatic drain
+// and no largest-pile-first rule (that idea is explicitly REJECTED in §5). Which
+// system a sale comes out of is a real supply-chain lever, because a factory
+// draws its inputs from its OWN system's pile, so pulling stock out from under
+// one must be the player's deliberate act.
+function createSellToSyndicateAction({ guildId, good, allocations }) {
+  if (guildId === undefined) throw new Error('createSellToSyndicateAction: guildId is required');
+  if (good === undefined) throw new Error('createSellToSyndicateAction: good is required');
+  if (allocations === undefined) throw new Error('createSellToSyndicateAction: allocations is required');
+  return { type: 'sellToSyndicate', guildId, good, allocations };
 }
 
 // --- Validation -------------------------------------------------------
@@ -519,6 +540,69 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'sellToSyndicate') {
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    // WHAT MAY BE SOLD. `PRICED_GOODS` is the Exchange's own vocabulary (every
+    // stockpile good that is not fuel), so this one check refuses fuel, an unknown
+    // name and a catalog-only Tier-3 placeholder alike. Fuel is called out
+    // separately only so the refusal SAYS why: it is Syndicate-regulated and never
+    // listed (§8, §5 "Fuel is never sold here") — a permanent rule, not a gap.
+    if (isFuel(action.good)) {
+      return { valid: false, reason: `${JSON.stringify(action.good)} is Syndicate-regulated — fuel is never listed on the Exchange (§8)` };
+    }
+    if (typeof action.good !== 'string' || !PRICED_GOODS.includes(action.good)) {
+      return { valid: false, reason: `${JSON.stringify(action.good)} is not a good the Syndicate posts a price for` };
+    }
+    // ...and there must actually BE a posted price to sell at. Every priced good
+    // carries one from tick 0, so this catches a state whose price block was
+    // removed by hand rather than a normal case — refused here so applyAction's
+    // loud guard is the backstop, not the first line.
+    if (postedPrice(state, action.good) == null) {
+      return { valid: false, reason: `${JSON.stringify(action.good)} has no posted price to sell at` };
+    }
+    if (!Array.isArray(action.allocations) || action.allocations.length === 0) {
+      return { valid: false, reason: 'allocations must be a non-empty array of { systemId, qty } (§5: a sale is composed per system)' };
+    }
+    const seen = new Set();
+    for (const alloc of action.allocations) {
+      if (!alloc || typeof alloc !== 'object' || Array.isArray(alloc)) {
+        return { valid: false, reason: 'each allocation must be an object { systemId, qty }' };
+      }
+      if (typeof alloc.systemId !== 'string' || alloc.systemId.length === 0) {
+        return { valid: false, reason: 'each allocation needs a non-empty systemId' };
+      }
+      // A DUPLICATE systemId is refused rather than summed: two rows for one system
+      // is an ambiguous order, and quietly adding them up would be the engine
+      // deciding what the player meant.
+      if (seen.has(alloc.systemId)) {
+        return { valid: false, reason: `allocations name system ${JSON.stringify(alloc.systemId)} twice — one row per system` };
+      }
+      seen.add(alloc.systemId);
+      if (typeof alloc.qty !== 'number' || !Number.isInteger(alloc.qty) || alloc.qty <= 0) {
+        return { valid: false, reason: `qty for system ${JSON.stringify(alloc.systemId)} must be a positive integer (§15.2)` };
+      }
+      // THE OWNERSHIP CHECK IS THE PILE ITSELF. A guild's stockpiles are keyed by
+      // the systems it actually operates in, so "a system the guild owns that holds
+      // the good" and "a system whose pile of this good is non-empty" are the same
+      // question — and the pile is the thing the sale drains, so it is the honest
+      // one to ask. A system the guild does not hold reads as 0 here and is refused
+      // by name.
+      const held = getStock(guild, alloc.systemId, action.good);
+      if (held <= 0) {
+        return { valid: false, reason: `guild ${guild.id} holds no ${action.good} in system ${JSON.stringify(alloc.systemId)}` };
+      }
+      // NO RESERVE GUARD (§5): selling a system's whole pile — or every system's —
+      // is legal. The only ceiling is what is actually there.
+      if (alloc.qty > held) {
+        return { valid: false, reason: `guild ${guild.id} holds ${held} ${action.good} in system ${JSON.stringify(alloc.systemId)}, cannot sell ${alloc.qty}` };
+      }
+    }
+    return { valid: true };
+  }
+
   if (action.type === 'setWindowN') {
     if (typeof action.windowN !== 'number' || !Number.isInteger(action.windowN) || action.windowN < 1) {
       return { valid: false, reason: 'windowN must be an integer >= 1 (§15.2)' };
@@ -724,6 +808,59 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'sellToSyndicate') {
+    // The Syndicate buys, at the POSTED price — the published, 2-tick-lagged value
+    // the player is looking at (§5: "goods sold to the Syndicate execute at the
+    // current price during the tick, end of"). No projection, no sliding.
+    const guild = findGuild(next, action.guildId);
+    const price = postedPrice(next, action.good);
+    if (price == null) {
+      // Validation already refused this, so reaching it means a state whose price
+      // block was removed between validate and apply. Taking the goods anyway would
+      // be a silent loss, so halt loudly — the same guard, and the same reason, as
+      // applyProduction's Syndicate delivery (§15.5).
+      throw new Error(`applyAction: guild ${guild.id} sold ${action.good} to the Syndicate at tick ${next.tick} but the good has no posted price — refusing to hand over goods for nothing`);
+    }
+
+    // Drain EXACTLY what the player specified, and nothing else: each named
+    // system's pile drops by its own qty, and a system not named is untouched.
+    // Sorted by systemId so the sequence of mutations is fixed (invariant 9).
+    const allocations = [...action.allocations].sort((a, b) => (a.systemId < b.systemId ? -1 : a.systemId > b.systemId ? 1 : 0));
+    let totalQty = 0;
+    for (const alloc of allocations) {
+      addStock(guild, alloc.systemId, action.good, -alloc.qty);
+      totalQty += alloc.qty;
+    }
+    // The goods LEAVE THE ECONOMY here — absorbed into the Syndicate's
+    // inexhaustible stock (§5). They are deposited nowhere, which is why nothing
+    // above has a receiving side.
+
+    // ROUNDED ONCE, ON THE TOTAL — decision #43 (`round(qty × price)`), the same
+    // arithmetic `commitmentSale` uses. Rounding per system instead would pay a
+    // different amount for the same goods depending on how the player split them.
+    const credited = Math.round(totalQty * price);
+    // Credit-conservation-clean, the mirror of paySyndicateFee: the ledger FUNDS
+    // the payment, so nothing is minted and invariant 2 holds to the credit.
+    guild.credits += credited;
+    next.syndicate.ledger -= credited;
+
+    // ── THE BETWEEN-TICK SEAM ────────────────────────────────────────────────
+    // This is the first action that mutates a stockpile, and `POST /action`
+    // asserts every invariant immediately after apply — with no tick in between.
+    // `state.galacticSupply` is a CACHE the tick refreshes once after its eight
+    // steps (tick.js), and the galactic-supply-consistency invariant compares that
+    // cache against a live recompute. Draining a pile without refreshing it here
+    // would leave the cache describing goods that no longer exist, and the sale
+    // would trip the invariant instead of landing. Refreshed exactly as the tick
+    // does it, through the same one selector — not a second derivation.
+    next.galacticSupply = computeGalacticSupply(next);
+    // NOTE on `audit`: totalProduced/totalConsumed are FUEL counters (invariant 1)
+    // and fuel is never sold here, so there is nothing for this sale to keep exact
+    // in them. expectedCreditTotal is unchanged too — the sale moves credits
+    // between a guild and the ledger, it does not change how many exist.
+    return next;
+  }
+
   if (action.type === 'setWindowN') {
     // Set the single engine-wide window length. Setup-only (validate refused it once
     // tick > 0), so this only ever writes tick-0 state. No guild is resolved — this
@@ -776,6 +913,7 @@ module.exports = {
   createSetSyndicateCommitmentAction,
   createApplyForLicenceAction,
   createSetWindowNAction,
+  createSellToSyndicateAction,
   validateAction,
   applyAction,
   intake,
