@@ -467,6 +467,18 @@ The shared market now has a concrete microstructure — a two-sided exchange:
 
 UX direction is settled — trading terminal, not storefront: warm near-black base, parchment ledger text, brass reserved exclusively for the Syndicate's reference price so it reads as "the one number that's true," verdigris bids / oxide asks, monospace for all numeric columns, tier-tab navigation, the price chart as the screen's signature element. The working mockup `SyndicateMarketplace.jsx` was built in that thread but never saved — see §16's missing-artifacts list. Open questions raised: #38–41.
 
+**SELL GOES LIVE — the first executable slice of the Exchange *(29-08-26)*.** Everything above is the microstructure; this is the first piece of it the engine actually runs: a guild **selling stockpile goods to the Syndicate**. (BUY is deferred — it needs the transport system, §6 — and the guild-to-guild order book stays Phase 3.)
+
+- **Guild-wide, not per-system.** A sale is placed against the guild's *total* stockpile of a good. The goods drain **largest-pile-first** across the guild's systems (deterministic; ties broken by system id). This is invisible to the player today, but it is a real ruling: it decides which system's per-system pile shrinks, and it must be deterministic (invariant 9).
+- **Immediate, at the current posted price.** The sale executes the moment it is placed, at `postedPrice(good)` — the same published (2-tick-lagged) value the player is looking at. No projection, no averaging across the fill, no sliding (ruling 29-08-26): "goods sold to the Syndicate execute at the current price during the tick, end of."
+- **Credits — the ruled convention, not a new one.** `credited = round(qty × postedPrice)` — decision **#43** (`round(qty × price)`, identical on both sides), the same arithmetic the commitment sale already uses (`commitmentSale`, above). The Syndicate **ledger funds the payment** (`guild.credits += credited; syndicate.ledger -= credited`), so it is credit-conservation-clean — the mirror of `paySyndicateFee`, and invariant 2 holds exactly.
+- **The goods leave the economy.** They are absorbed into the Syndicate's inexhaustible stock; the sale deposits them nowhere.
+- **No reserve guard.** A guild may sell its *entire* stockpile of a good in a single order. The player owns the consequence — there is no floor, no "keep some back" protection.
+- **Market impact is ON, and it falls out for free.** Draining the stockpile lowers the level the price engine reads, so the next recompute lowers the posted value: selling into your own hoard moves the price against you. There is no separate impact code — it is the level-based pricing (`docs/licence-and-price-system.md`) doing its job.
+- **Fuel is never sold here** (never priced, §8): the sell action refuses a fuel good, exactly as the Exchange refuses to list it.
+
+The screen is the **TRADE tab** (renamed from "Syndicate Marketplace"); its visual + interaction contract is `docs/mockups/trade-panel.html`. The price graph reads the multi-resolution `state.priceHistory` (its own prior slice — it ships first so history is already accruing). Holdings on the panel lists only goods the guild actually holds (qty > 0). BUY, the shipment/transport panel, and the guild-to-guild book remain deferred as above.
+
 ---
 
 ## 6. Logistics: Travel Time, Vehicles, and Risk in Transit

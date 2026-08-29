@@ -25,8 +25,21 @@ be copied — see each build prompt.
   for the console.
 - **venture-establishment.html** — the establishment-popup design (the licence
   economy shown here is design-ahead / mock; the real wire is `establishVenture`).
+- **trade-panel.html** — the **TRADE tab** design (the Syndicate Exchange's first
+  screen: tier/resource picker, the price chart, the Syndicate SELL panel, the
+  Holdings hero, and the deferred Open-Market book). Its mock JS (chart walks, the
+  sort demo, the sell feedback) is **not** to be copied — the tab wires to the live
+  snapshot (`prices`, `priceHistory`, the guild's `stockpiles`) and posts a sell
+  action to `/action`. Trader art is `client/assets/mission/Trader.jpg`.
 
 ## Current state (25-08-26)
+
+**trade-panel.html (29-08-26)** is the contract for the market tab, not yet built:
+`client/game.html`'s `openTab('market')` still shows the placeholder stub. The tab is
+the game shell's OWN overlay (`#tabPanel`) — it reads the snapshot the shell already
+polls and posts to `/action`, so it does NOT ride the embedded-console bridge the
+system-inventory panel needed. SELL is the built slice; BUY and the guild-to-guild
+book are deferred (design.md §5, "SELL GOES LIVE").
 
 `client/console.html` **matches `console_restructure.html`** (its restructure block):
 the 3-zone frame, the 7:15:10 flow, the trend cards, the top-up squares, the Gate-1
