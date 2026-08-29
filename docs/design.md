@@ -494,6 +494,8 @@ A rule that spans this whole section and hardens into an invariant in Section 15
 
 ### Syndicate Public Transport
 
+> **SUPERSEDED for the SELL side (29-08-26).** The subsection below describes the Syndicate hauling goods a guild is **selling** — a round trip with a fee, the early-game on-ramp for shipless guilds. That model is **retired**: selling to the Syndicate is now **instant and frictionless** (§5, "SELL GOES LIVE") — the Syndicate collects in place, nothing ships, no fee. Syndicate transport now serves the **BUY** side only (next subsection). The round-trip / fee / Syndicate-Hauler-piracy detail below is kept for history; the interception, tolls, and realized-on-arrival rules it shares with §6's intro remain live for the **guild-owned** transport tier, not the Syndicate one. **Flagged, not resolved:** instant SELL is a "goods move free" case, which §5 (the VO-transport ruling) and §8 lean *against* to protect the fuel market, and it removes the vehicle-gate SELL on-ramp this service provided (§13, open #8) — a live tension to reconcile deliberately, tracked as an open thread.
+
 For guilds without their own fleet, the **Syndicate public goods transport system** will move shipments for a fee. It exists chiefly as an **early-game on-ramp**: new guilds won't yet have the means to get goods to market, and without it the entire trade loop would be gated behind ship acquisition. The terms are now settled:
 
 - **It is a real Shipment, not an abstracted transaction.** The Syndicate dispatches an implicit **Syndicate Hauler** vehicle from its nearest outpost, and it is the same Shipment entity under the same rules as any player's. No bespoke transaction path, no parallel "how do goods move" code path.
@@ -505,6 +507,27 @@ For guilds without their own fleet, the **Syndicate public goods transport syste
 - **It pays no tolls and is exposed to piracy like anything else.** Syndicate shipments are interceptable **exactly like any other shipment** — no blanket immunity. The Syndicate Hauler simply carries a very high defense rating, making a successful hit rare rather than impossible. Because a hit requires a deliberate target choice, it is **attributable human piracy** under the existing rule (Section 10) and carries the usual legality consequences — unlike ambient bot piracy. This keeps "use the safe default" a real, if small, risk decision, consistent with the game's core theme.
 
 The service is naturally outgrown rather than deliberately deprecated: as soon as a guild fields its own transports (or later contracts a player shipper), the round-trip time penalty makes doing so obviously better.
+
+---
+
+### Syndicate Delivery — the BUY side *(29-08-26)*
+
+**Two transport tiers, and they must not be confused.** *Syndicate* transport is a **service** the player does not plan: a **straight line**, hex to hex, at a fixed speed, with **no risk, no tolls, no routing** — the Syndicate has its own ways. This is what BUY uses, and the only transport built in Phase 1. *Guild* transport is a **player skill** — routing your own craft leg by leg through safe space, tolls, and hostile territory — the §6-intro model, **deferred to Phase 4**. The boundary is named so nobody rebuilds the routing engine when Syndicate travel only needs a straight line (the same discipline as the CHOAM→Syndicate consolidation).
+
+**There is no physical shipment to simulate — only a scheduled delivery.** When the player confirms a BUY, the engine:
+
+1. resolves the **nearest Syndicate waystation** to the chosen destination system — hex distance over the seed's axial `coords`;
+2. computes `arrivalTick = currentTick + ceil(hexDistance × CRAFT_SPEED)` (craft speed is `[FIRST-CUT]` in `docs/phase-1-tuning.md`);
+3. **debits the cash now** — `qty × postedPrice`, the *same single price a sale earns* (#43), **no transport fee** (the Syndicate charges for control, not carriage — §5's no-spread rule), credited to `syndicate.ledger` so invariant 2 holds; and
+4. records a **pending delivery** in the IN-FLIGHT layer (`state.shipments`, §15.1): `{ cargo: { [good]: qty }, destinationSystemId, arrivalTick }` — **no origin, no route, no status**, because nothing needs tracking between now and arrival (§15.6's "pure schedule": a delivery on an uncontested straight line needs no per-tick work until it lands).
+
+**Delivery is a tick step:** any pending delivery whose `arrivalTick` has arrived deposits its cargo into the destination system's stockpile and drops off the list. Because the record lives in the save and the arrival is an **absolute** tick, a restart mid-flight reloads it and it still lands on the right tick — **persistence is the mid-flight handling**, no special case.
+
+**One shipment, one destination, no splitting** (§5): a purchase goes to exactly one system, unlike a sale the player splits across sources — the deliberate asymmetry (a sale is instant, so it can pick-and-mix; a delivery travels, so it commits to one place).
+
+**Destination lost in flight → the goods vanish.** If, at the arrival tick, the buying guild no longer holds the destination system, the cargo is **lost — contact with the craft is lost**: no refund, no divert. This is conservation-clean — the goods were never in a stockpile (a scheduled deposit, not held inventory), and the cash already moved to the ledger at purchase, so dropping the delivery imbalances nothing. It is also real pressure: buying into a system you cannot hold is a risk you own. (The precise trigger — what "no longer holds" means against the ownership/claims model — is pinned at build time; the **outcome** is ruled.)
+
+**Fuel invariant note:** a BUY delivery carries **non-fuel** goods, so it must contribute **zero** to the fuel-in-transit sum invariant 1 tracks (§15) — its `cargo` shape carries the bought good, never a spurious `fuel` field.
 
 ---
 
