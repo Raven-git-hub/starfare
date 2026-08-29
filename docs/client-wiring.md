@@ -748,6 +748,12 @@ half-typed quantity.
 destination — it needs §6's transport), the guild-to-guild **Open Market** book (Phase 3;
 its sort/scroll chrome is cosmetic and carries no invented listings), and Your Listings.
 
+> **CLOSED 29-08-26 — the gap below is history.** The price-history engine landed
+> (`sim/price-history.js`) and the chart is finished; see the revision note at the foot of
+> this file for what the chart does now. The section is kept because the *reasons* it gives
+> — read the resolution vocabulary from the data, don't invent a base — are the discipline
+> the finished chart still follows.
+
 **THE GAP — the price-history engine slice has not landed.** Nothing in `sim/` writes a
 `priceHistory`, and the snapshot carries none, so:
 
@@ -769,3 +775,68 @@ built panel makes the top row flex and the SELL card size to its own content
 gets a card that fits instead of an inner scrollbar the mockup never had.
 
 **575 tests (+17), zero failures.**
+
+
+---
+
+## Revision — the TRADE chart is finished (29-08-26)
+
+Client-only. The chart was built before `priceHistory` existed, so three things were
+provisional and one was a bug. All four are closed; no engine, snapshot or action changed.
+
+**1. The scale buttons are the designed 3D / 2W / 1M / 3M.** They used to be the raw ring
+keys read off the snapshot (`fine` / `medium` / `coarse`) — honest at the time, since the
+engine had not named a vocabulary. The mapping is **ruled in `docs/phase-1-tuning.md`** and
+mirrored in the panel verbatim, not re-derived:
+
+| Button | Reads | Window |
+|---|---|---|
+| **3D** | `fine` | all 288 samples |
+| **2W** | `medium` | all 168 samples |
+| **1M** | `coarse` | its most recent **30** samples |
+| **3M** | `coarse` | all 90 samples |
+
+`coarse` serving **both** 1M and 3M, at different windows, is precisely why the buttons
+could not stay as the ring keys — three rings, four buttons.
+
+**Button visibility follows the fill-forward rule.** A button is offered only when its ring
+actually holds samples, because the rings fill forward from deploy and there is no backfill
+(`phase-1-tuning.md`). So a young galaxy shows **3D alone**; **2W** joins once `medium` has
+a sample (~2 hours in), **1M** and **3M** once `coarse` does (~1 day in). Offering a button
+that draws nothing would be the panel promising history the galaxy has not lived. A good
+with no samples at all keeps the "gathering history…" empty state. The selection is held
+across polls and falls back to the **finest available** scale — never to nothing.
+
+**2. The reference line is drawn, from `priceBase`.** The mockup's dashed "base" mark is
+back: `snapshot.priceBase[good]`, read **per good** even though the engine's value is
+uniform today, so the per-good ruling needs no client change. It is folded into the chart's
+y-range, so it cannot be clipped off the moment the price runs away from base. **No base in
+the snapshot ⇒ no line** — the chart degrades exactly as the mockup does, and the browser
+still types no number of its own.
+
+**3. The scale-row / footer collision is fixed.** The chart card is a flex column whose
+chart area is the elastic part (`flex:1 1 0`); the head, scales and foot had the default
+`flex-shrink:1`, so when the column ran short the **scales row was compressed to 16px around
+a ~27px button**, which then painted over the footer. Invisible until PR #42 gave the row
+buttons to hold. All three are `flex:0 0 auto` now — only the chart area gives up space. The
+old `min-height:14px` on the row was never the constraint (it sat below the button's own
+height) and is gone rather than raised.
+
+**4. Full width.** `#tp-trade .tw-wrap` goes `max-width:1440px` → **`max-width:none`**. The
+two hero columns keep their fixed widths and the centre 2×2 absorbs the rest, so a wider
+screen buys chart and allocation room instead of margin. `docs/mockups/trade-panel.html`
+carries the same change in the same commit, so the contract and the build agree.
+
+**Verified** in headless Chromium at 1920×1000 against a 45,000-tick galaxy (all three rings
+populated): the buttons read `3D/2W/1M/3M` with no ring key on screen, 1M drew the last 30
+coarse samples against 3M's 31, the base line sat at `¢10.00` and vanished when `priceBase`
+was removed, the scale row measured 41px with the button inside it and no footer overlap,
+and `.tw-wrap` computed `max-width: none` at 1876px of a 1920px viewport.
+
+**591 tests (+1), zero failures** — client-only, so no golden could move.
+
+**Not done here, and why:** the chart's aspect ratio. Full width makes the chart card wider
+without making it taller, so the plot is flatter than the mockup's. No target ratio is ruled,
+and the top row's height trades directly against the SELL card's (which was sized
+deliberately last slice), so this is a judgement call for the human rather than a silent
+adjustment. BUY, the Open Market book and shipments stay deferred and untouched.

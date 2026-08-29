@@ -658,7 +658,11 @@ select.field{appearance:none; cursor:pointer;}
 #tp-trade .tw-wrap{display:flex; flex-direction:column; flex:1 1 auto; min-height:0;}
 #tp-trade .tw-nav{flex:0 0 auto;}
 #tp-trade *{box-sizing:border-box;}
-#tp-trade .tw-wrap{max-width:1440px; margin:0 auto;}
+/* EDGE TO EDGE — no cap (29-08-26). The two hero columns keep their fixed widths and
+   the centre 2x2 absorbs everything else, so a wider screen buys chart and allocation
+   room rather than empty margin. `docs/mockups/trade-panel.html` carries the same
+   change, so the contract and the build still agree. */
+#tp-trade .tw-wrap{max-width:none; margin:0 auto;}
 
 /* tier + resource nav */
 #tp-trade .tw-nav{margin:0 0 18px;}
@@ -730,7 +734,7 @@ select.field{appearance:none; cursor:pointer;}
 #tp-trade .tw-trade > .tw-card{display:flex; flex-direction:column; min-width:0; min-height:0;}
 
 /* the price chart */
-#tp-trade .tw-g-head{display:flex; align-items:flex-start; justify-content:space-between; padding:15px 18px 6px;}
+#tp-trade .tw-g-head{display:flex; align-items:flex-start; justify-content:space-between; padding:15px 18px 6px; flex:0 0 auto;}
 #tp-trade .tw-g-name{font-family:var(--tw-serif); font-size:21px; font-weight:600; letter-spacing:.02em; color:var(--tw-ink); line-height:1.1;}
 #tp-trade .tw-g-sub{font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--tw-ink3); margin-top:5px;}
 #tp-trade .tw-g-price{text-align:right;}
@@ -741,11 +745,18 @@ select.field{appearance:none; cursor:pointer;}
 #tp-trade .tw-chart-wrap{position:relative; padding:6px 12px 0; flex:1 1 0; display:flex; min-height:120px;}
 #tp-trade svg.tw-chart{display:block; width:100%; height:100%; overflow:visible;}
 #tp-trade .tw-nohist{margin:auto; font-size:11.5px; letter-spacing:.06em; color:var(--tw-ink4); text-align:center; line-height:1.7;}
-#tp-trade .tw-scales{display:flex; gap:6px; padding:8px 18px; justify-content:flex-end; min-height:14px;}
+/* `flex:0 0 auto` is the fix for the scale-row/footer collision: the chart card is a
+   flex column whose chart area is the elastic part (`flex:1 1 0`), and these three
+   rows had the default `flex-shrink:1`, so when the column ran short the SCALES row
+   was compressed to 16px around a ~27px button, which then painted over the footer.
+   Only the chart area gives up space now; the head, the scales and the foot are
+   sized by their content. (The old `min-height:14px` was never the constraint — it
+   was below the button's own height — so it is gone rather than raised.) */
+#tp-trade .tw-scales{display:flex; gap:6px; padding:8px 18px; justify-content:flex-end; flex:0 0 auto;}
 #tp-trade .tw-scale{font-family:var(--tw-mono); font-size:11px; letter-spacing:.08em; color:var(--tw-ink3); padding:5px 13px; border:1px solid var(--tw-line); border-radius:5px; background:var(--tw-panel); cursor:pointer; transition:.12s;}
 #tp-trade .tw-scale:hover{color:var(--tw-ink2); border-color:var(--tw-line2);}
 #tp-trade .tw-scale.on{color:#0d0f14; background:var(--tw-amber); border-color:var(--tw-amber); font-weight:600;}
-#tp-trade .tw-g-foot{font-size:10px; letter-spacing:.04em; color:var(--tw-ink4); padding:0 18px 14px; display:flex; justify-content:space-between;}
+#tp-trade .tw-g-foot{font-size:10px; letter-spacing:.04em; color:var(--tw-ink4); padding:0 18px 14px; display:flex; justify-content:space-between; flex:0 0 auto; gap:12px;}
 
 /* the Syndicate SELL card */
 #tp-trade .tw-mode{display:flex; gap:0;}
@@ -3832,20 +3843,34 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
 
   /* -- the price chart ------------------------------------------------------- */
-  // Reads the multi-resolution `priceHistory` block the price-history slice writes.
-  // The RESOLUTION KEYS come from the snapshot itself — this panel names none of its
-  // own, so whatever vocabulary that slice settles on is what the scale buttons show.
-  // With no block (or no samples for this good) the chart holds an honest
-  // "gathering history…" state, the same convention the console's sparklines use.
-  function historyFor(good){
-    var s = snap();
-    var block = s && s.priceHistory ? s.priceHistory[good] : null;
-    if(!block || typeof block !== 'object') return null;
-    var keys = Object.keys(block).filter(function(k){ return Array.isArray(block[k]) && block[k].length; });
-    return keys.length ? { block:block, keys:keys } : null;
+  // THE SCALE MAPPING (docs/phase-1-tuning.md, "Price history"). The engine stores
+  // three coarsening RINGS per good — `fine` / `medium` / `coarse` — and the design
+  // shows FOUR scale buttons. The mapping is ruled in that doc and mirrored here
+  // verbatim; it is not re-derived, and nothing about it is chosen by the browser:
+  //
+  //     3D -> fine    (all 288 samples,  15-tick cadence,  ~3 days)
+  //     2W -> medium  (all 168 samples, 120-tick cadence, ~14 days)
+  //     1M -> coarse  (its most recent 30 samples,       ~30 days)
+  //     3M -> coarse  (all 90 samples,                   ~90 days)
+  //
+  // `coarse` serving BOTH 1M and 3M, at different windows, is why the buttons cannot
+  // simply be the ring keys — which is what they were until this slice.
+  //
+  // Ordered FINEST FIRST: the default selection is the first available, and "the
+  // finest scale that has data" is exactly the one a new galaxy should open on.
+  var SCALES = [
+    { key:'3D', ring:'fine',   take:0,  label:'last 3 days' },
+    { key:'2W', ring:'medium', take:0,  label:'last 2 weeks' },
+    { key:'1M', ring:'coarse', take:30, label:'last month' },
+    { key:'3M', ring:'coarse', take:0,  label:'last 3 months' }
+  ];
+  function scaleByKey(key){
+    for(var i=0;i<SCALES.length;i++){ if(SCALES[i].key === key) return SCALES[i]; }
+    return null;
   }
-  // One sample -> one number. The engine may store a bare value or a stamped row;
-  // read both rather than assuming, and drop anything that is neither.
+
+  // One sample -> one number. The engine stores a bare number today; a stamped row is
+  // read too rather than assumed against, and anything else is dropped.
   function sampleValue(x){
     if(typeof x === 'number') return x;
     if(x && typeof x === 'object'){
@@ -3855,6 +3880,46 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     }
     return null;
   }
+  // The good's ring block from the snapshot, or null when it has no samples at all
+  // (which is the honest "gathering history…" case).
+  function historyFor(good){
+    var s = snap();
+    var block = (s && s.priceHistory) ? s.priceHistory[good] : null;
+    if(!block || typeof block !== 'object') return null;
+    for(var i=0;i<SCALES.length;i++){
+      var ring = block[SCALES[i].ring];
+      if(Array.isArray(ring) && ring.length) return block;
+    }
+    return null;
+  }
+  // The samples one SCALE shows: its ring, windowed to the scale's depth. `take` is
+  // the most-recent-N window (1M reads the tail of the same ring 3M reads in full);
+  // 0 means the whole ring.
+  function samplesFor(block, scale){
+    var ring = (block || {})[scale.ring];
+    if(!Array.isArray(ring)) return [];
+    var values = ring.map(sampleValue).filter(function(v){ return v != null; });
+    return (scale.take > 0 && values.length > scale.take) ? values.slice(-scale.take) : values;
+  }
+  // Which scales can be OFFERED: only those whose ring actually holds samples. The
+  // rings fill forward from deploy (no backfill — phase-1-tuning.md), so early on a
+  // galaxy shows 3D alone; 2W appears once `medium` has a sample (~2 hours in), and
+  // 1M/3M once `coarse` does (~1 day in). Offering a button that draws nothing would
+  // be the panel promising history the galaxy has not lived yet.
+  function availableScales(block){
+    return SCALES.filter(function(sc){ return samplesFor(block, sc).length > 0; });
+  }
+  // The good's BASE value, straight from the snapshot's `priceBase` — the anchor the
+  // price engine's curve multiplies. The chart draws it as its reference line, and
+  // the browser types no number of its own: absent (or absent for this good) means
+  // NO line, exactly as the mockup degrades. Read per good even though the engine's
+  // value is uniform today, so the per-good ruling needs no client change.
+  function baseOf(good){
+    var s = snap();
+    var v = (s && s.priceBase) ? s.priceBase[good] : null;
+    return (typeof v === 'number' && isFinite(v)) ? v : null;
+  }
+
   function renderChart(){
     var good = T.good;
     var now = good ? priceOf(good) : null;
@@ -3862,11 +3927,11 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     el('tw-gnow').innerHTML = (now == null) ? '&mdash;' : money(now);
     el('tw-gsub').textContent = (now == null) ? 'Not listed on the Exchange' : 'Syndicate posted value';
 
-    var hist = good ? historyFor(good) : null;
+    var block = good ? historyFor(good) : null;
     var scales = el('tw-scales'), wrap = el('tw-chartwrap'), svg = el('tw-chart');
     var old = wrap.querySelector('.tw-nohist'); if(old) old.remove();
 
-    if(!hist){
+    if(!block){
       scales.innerHTML = '';
       svg.innerHTML = '';
       svg.style.display = 'none';
@@ -3880,37 +3945,47 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       return;
     }
     svg.style.display = '';
-    if(!T.scale || hist.keys.indexOf(T.scale) < 0) T.scale = hist.keys[hist.keys.length - 1];
-    scales.innerHTML = hist.keys.map(function(k){
-      return '<button class="tw-scale'+(k===T.scale?' on':'')+'" data-scale="'+k+'">'+k+'</button>';
+
+    // Hold the player's chosen scale across polls; fall back to the FINEST available
+    // one if it has never been set, or if the selected scale's ring somehow empties.
+    var offered = availableScales(block);
+    if(!T.scale || !offered.some(function(sc){ return sc.key === T.scale; })) T.scale = offered[0].key;
+    var scale = scaleByKey(T.scale);
+    scales.innerHTML = offered.map(function(sc){
+      return '<button class="tw-scale'+(sc.key===T.scale?' on':'')+'" data-scale="'+sc.key+'" title="'+sc.label+'">'+sc.key+'</button>';
     }).join('');
 
-    var data = hist.block[T.scale].map(sampleValue).filter(function(v){ return v != null; });
+    var data = samplesFor(block, scale);
     if(now != null) data = data.concat([now]);     // the NOW point is the posted value
+    var base = baseOf(good);
     if(data.length < 2){
       svg.innerHTML = '';
       el('tw-gchg').textContent = '';
+      el('tw-gfoot').textContent = '';
       el('tw-grange').textContent = 'gathering history…';
       return;
     }
-    drawChart(svg, data);
+    drawChart(svg, data, base);
     var first = data[0], last = data[data.length-1];
     if(first > 0){
       var pct = (last - first) / first * 100;
       var up = pct >= 0;
       el('tw-gchg').className = 'chg ' + (up ? 'up' : 'down');
-      el('tw-gchg').innerHTML = (up ? '&#9650; +' : '&#9660; ') + pct.toFixed(1) + '%&nbsp;<span style="color:#454b58">' + T.scale + '</span>';
+      el('tw-gchg').innerHTML = (up ? '&#9650; +' : '&#9660; ') + pct.toFixed(1) + '%&nbsp;<span style="color:#454b58">' + scale.key + '</span>';
     } else { el('tw-gchg').textContent = ''; }
-    el('tw-gfoot').textContent = data.length + ' samples';
+    el('tw-gfoot').textContent = data.length + ' samples · ' + scale.label;
     el('tw-grange').textContent = '¢' + money(Math.min.apply(null,data)) + ' – ¢' + money(Math.max.apply(null,data));
   }
-  // Pure drawing: an amber line, a soft area under it, and the NOW marker. It plots
-  // the numbers it is handed and derives none. (The mockup's dashed "base ¢10"
-  // reference is deliberately NOT drawn: BASE_PRICE is an engine constant the
-  // snapshot does not publish, and the browser may not type a game number of its own.)
-  function drawChart(svg, data){
+  // Pure drawing: an amber line, a soft area under it, the NOW marker, and — when the
+  // snapshot supplies one — the dashed BASE reference line. It plots the numbers it is
+  // handed and derives none: `base` is `priceBase[good]` from the engine, never a
+  // constant typed here. A null base simply draws no line.
+  function drawChart(svg, data, base){
     var W = 620, H = 210, PADT = 12, PADB = 14;
     var lo = Math.min.apply(null, data), hi = Math.max.apply(null, data);
+    // The base line is folded into the y-range, so the reference is always ON the
+    // chart rather than clipped off it the moment the price runs away from base.
+    if(base != null){ lo = Math.min(lo, base); hi = Math.max(hi, base); }
     if(hi === lo){ hi = lo + 1; lo = lo - 1; }
     var span = hi - lo; hi = hi + span * 0.12; lo = lo - span * 0.06;
     var n = data.length;
@@ -3924,11 +3999,18 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       var gy = (PADT + g/4*(H-PADT-PADB)).toFixed(1);
       grid += '<line x1="0" y1="'+gy+'" x2="'+W+'" y2="'+gy+'" stroke="rgba(232,223,200,.05)"/>';
     }
+    var baseMark = '';
+    if(base != null){
+      var by = Y(base).toFixed(1);
+      baseMark = '<line x1="0" y1="'+by+'" x2="'+W+'" y2="'+by+'" stroke="rgba(232,223,200,.18)" stroke-dasharray="3 5"/>'
+        + '<text x="4" y="'+(+by - 5).toFixed(1)+'" fill="#454b58" font-size="9" font-family="monospace">base &#162;'+money(base)+'</text>';
+    }
     var ex = X(n-1).toFixed(1), ey = Y(data[n-1]).toFixed(1);
     svg.innerHTML =
       '<defs><linearGradient id="twfill" x1="0" y1="0" x2="0" y2="1">'
       + '<stop offset="0" stop-color="rgba(201,162,39,.28)"/><stop offset="1" stop-color="rgba(201,162,39,0)"/></linearGradient></defs>'
       + grid
+      + baseMark
       + '<path d="'+area+'" fill="url(#twfill)"/>'
       + '<path d="'+line+'" fill="none" stroke="#C9A227" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>'
       + '<line x1="'+ex+'" y1="'+PADT+'" x2="'+ex+'" y2="'+(H-PADB)+'" stroke="rgba(227,192,74,.35)" stroke-dasharray="2 3"/>'

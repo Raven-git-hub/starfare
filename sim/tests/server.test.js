@@ -168,6 +168,50 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the sellToS
   assert.ok(!/src\s*=\s*['"]?\/?console/.test(tradeBlock), 'the TRADE tab embeds no console');
 });
 
+// The finished TRADE chart (29-08-26). Three things a page could lose silently — it
+// would still render, and only this would fail: the scale buttons reverting to the raw
+// ring keys, the reference line being dropped, and the width cap coming back.
+test('GET / serves the finished TRADE chart — the mapped scales, the priceBase line, full width', async () => {
+  const html = await (await fetch(base + '/')).text();
+  const trade = html.slice(html.indexOf('<script id="trade-tab-wire">'), html.indexOf('<script id="ind-hero-wire">'));
+  const { TIER_KEYS } = require('../price-history.js');
+
+  // THE MAPPING, exactly as docs/phase-1-tuning.md rules it. Pinned as the four
+  // (button, ring, window) triples rather than as loose strings, so a mis-mapped
+  // button — 1M reading `medium`, say — fails here instead of drawing the wrong
+  // fortnight. `take` is the most-recent-N window: 0 = the whole ring.
+  for (const [key, ring, take] of [['3D', 'fine', 0], ['2W', 'medium', 0], ['1M', 'coarse', 30], ['3M', 'coarse', 0]]) {
+    assert.match(
+      trade,
+      new RegExp(`\\{ key:'${key}', +ring:'${ring}', +take:${take}\\b`),
+      `the ${key} button must read the ${ring} ring at window ${take || 'all'}`,
+    );
+  }
+  // ...and the ring names the mapping points at really are the engine's, so a rename
+  // in sim/price-history.js breaks this rather than the chart.
+  for (const ring of TIER_KEYS) assert.match(trade, new RegExp(`ring:'${ring}'`));
+
+  // The buttons are LABELLED by scale, never by ring key. The old rendering built them
+  // straight from the snapshot's keys; if that ever comes back, this fires.
+  assert.match(trade, /data-scale="'\+sc\.key\+'"[^>]*>'\+sc\.key\+'<\/button>/);
+  assert.ok(!/data-scale="'\+k\+'">'\+k\+'</.test(trade), 'the buttons are no longer the raw ring keys');
+  assert.ok(!/hist\.keys/.test(trade), 'and the old "buttons = the snapshot ring keys" reader is gone');
+
+  // The reference line reads the snapshot's priceBase — per good, and drawn only when
+  // there is one (no invented base).
+  assert.match(trade, /s\.priceBase\) \? s\.priceBase\[good\] : null/);
+  assert.match(trade, /function baseOf\(good\)/);
+  assert.match(trade, /base &#162;/, 'the base line carries its own label');
+  assert.match(trade, /if\(base != null\)\{ lo = Math\.min\(lo, base\); hi = Math\.max\(hi, base\); \}/,
+    'and the base is folded into the y-range, so it cannot be clipped off the chart');
+
+  // Full width, and the scale row can no longer be squashed under its own buttons.
+  assert.match(html, /#tp-trade \.tw-wrap\{max-width:none;/);
+  assert.ok(!/#tp-trade \.tw-wrap\{max-width:1440px/.test(html), 'the width cap is gone');
+  assert.match(html, /#tp-trade \.tw-scales\{[^}]*flex:0 0 auto;\}/);
+  assert.ok(!/#tp-trade \.tw-scales\{[^}]*min-height:14px/.test(html), 'the under-size that caused the footer collision is gone');
+});
+
 // The panel MIRRORS four engine constants there is no endpoint to fetch (and pins its
 // sliders to the ranges the engine validates). Duplication is only safe with a
 // tripwire: if any of these move in sim/, this fails instead of the panel quietly

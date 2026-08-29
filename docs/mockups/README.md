@@ -41,12 +41,21 @@ allocation table, and the two dimmed placeholders. The tab is the game shell's O
 (`#tabPanel`) — it reads the snapshot the shell already polls and posts to `/action`, so it
 does NOT ride the embedded-console bridge the system-inventory panel needed. SELL is the
 built slice; BUY and the guild-to-guild book are deferred (design.md §5, "SELL GOES LIVE"),
-and the Open Market card carries no invented listings. Four deliberate deviations, recorded
-in `docs/client-wiring.md`: the 2×2's rows are not forced equal (the SELL card sizes to its
-allocation table); the chart's scale buttons come from the snapshot's own `priceHistory`
-keys rather than the mock's 3M/1M/2W/3D; the "base ¢10" reference line is not drawn
-(`BASE_PRICE` is not published in the snapshot); and until the price-history engine slice
-lands the chart shows "gathering history…" instead of a curve.
+and the Open Market card carries no invented listings.
+
+**The chart is finished (29-08-26)** and three of that day's four recorded deviations are
+now closed: the scale buttons are the designed **3D / 2W / 1M / 3M** (mapped onto the
+engine's three rings per `docs/phase-1-tuning.md` — `coarse` serves both 1M and 3M at
+different windows), the dashed **base reference line IS drawn**, from the snapshot's
+`priceBase`, and the chart draws a real curve rather than "gathering history…". The mock's
+`.wrap` cap was lifted to `max-width:none` in the same commit as the build's, so the
+**full-width** design is the contract on both sides.
+
+**Two deviations stand, both recorded in `docs/client-wiring.md`:** the 2×2's rows are not
+forced equal (the SELL card sizes to its allocation table, so a guild holding a good in six
+systems gets a card that fits); and a scale button appears only once its ring has samples —
+the rings fill forward from deploy, so a young galaxy shows 3D alone and the rest arrive as
+the galaxy lives, where the mock always shows all four.
 
 `client/console.html` **matches `console_restructure.html`** (its restructure block):
 the 3-zone frame, the 7:15:10 flow, the trend cards, the top-up squares, the Gate-1
