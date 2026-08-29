@@ -23,6 +23,7 @@ const { cloneProfile } = require('./profile.js');
 const { cloneWindows } = require('./windows.js');
 const { cloneHistory } = require('./history.js');
 const { seedPrices } = require('./prices.js');
+const { clonePriceHistory } = require('./price-history.js');
 
 // --- Entity constructors -----------------------------------------------
 
@@ -429,6 +430,17 @@ function createState(scenario) {
     // is never listed (design.md §8): `deuterium_fuel` has no row here, ever. Computed
     // rather than accepted from the scenario, like `audit` and `galacticSupply` below.
     prices: seedPrices(),
+    // priceHistory: the rolling per-good rings of PAST posted values
+    // (sim/price-history.js) — the graph's data, top-level beside `prices` because
+    // the posted price is galaxy-wide, not a guild's. OMITTED when there is none,
+    // exactly like `dayAnchorTick` above and for the same reason: a fresh galaxy has
+    // no history (the first sample lands when the fine bucket closes at tick 15), so
+    // it serializes byte-identically to pre-slice state. Deep-cloned when a scenario
+    // or a restored save supplies one, so a caller's object can never alias into
+    // engine state (the cloneStockpiles/cloneHistory discipline).
+    ...(scenario.priceHistory === undefined
+      ? {}
+      : { priceHistory: clonePriceHistory(scenario.priceHistory) }),
     audit: {
       totalProduced: sumFuelHoards(guilds) + reserve.reserveLevel,
       totalConsumed: 0,

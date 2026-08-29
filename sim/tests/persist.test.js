@@ -177,6 +177,14 @@ test('double-apply guard: a snapshot-baked action still in the journal is not re
 // are now asserted with the history stripped as well: this slice added a history buffer
 // and changed nothing else about this sequence, byte for byte. The full hash is pinned
 // beside them so a drift in the recorded samples themselves is caught too.
+// PRICE-HISTORY SLICE (29-08-26): all three goldens below are UNCHANGED and needed NO
+// regen — deliberately, and it is worth saying why rather than leaving it to look like an
+// oversight. `state.priceHistory` (sim/price-history.js) mints nothing until the first
+// fine bucket closes at tick 15, and this sequence ends at tick 2. So a run this short
+// carries no price-history key at all and is byte-identical with nothing stripped, which
+// is the omit-when-empty no-op working exactly as designed. (The 40-tick runs in
+// commitment-scaffold.test.js DO cross the bucket, and were re-pinned there with the
+// strip-and-prove method.)
 const GOLDEN_HASH = '56401013588519715d15f415334fb2660b1bd9f73881352dc9f48b787a7b564c';
 const GOLDEN_HASH_WITH_PRICES = '53c4f4818b198cbf5000dc7d1ed4e7d8ce0f1e96902291f26575ff6b44b1b212';
 const GOLDEN_HASH_WITH_HISTORY = '170bedd2c54dbb44b0583f93f1b8acfc8052c8c71d0e2b6e0146d8676f9d4a27';
@@ -204,6 +212,8 @@ test('no-op proof: pure engine path (persistence OFF) matches the golden hash', 
   assert.equal(hashState(withoutHistory(withoutPrices(s))), GOLDEN_HASH, 'everything but the price block and the history buffer is byte-identical to pre-price-engine HEAD');
   assert.equal(hashState(withoutHistory(s)), GOLDEN_HASH_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
   assert.equal(hashState(s), GOLDEN_HASH_WITH_HISTORY, 'and the history buffer itself is pinned');
+  assert.equal(s.priceHistory, undefined,
+    'a 2-tick run takes no price sample at all (the first fine bucket closes at tick 15), which is why the three goldens above did not move');
   assert.deepEqual(s.guilds[0].productionHistory, { sys_0002: { titanium: { prod: [5, 5], cons: [0, 0] } } },
     'the stripped-equals-old proof above is only a proof if there was really history to strip');
 });

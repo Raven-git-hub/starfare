@@ -79,6 +79,44 @@ ruling); per-resource/per-recipe baseline outputs; whether the level curve shoul
 level or bend (concave would make the first units of a hoard matter most); and `docs/licence-and-price-system.md`
 Part 5's *normaliser confirm* — live production capacity (what was built) vs. a fixed per-good reference.
 
+### Price history — the chart's depth *(29-08-26 — `sim/price-history.js`)*
+
+`state.priceHistory` records the posted value into **three fixed-size rings per good** at
+coarsening cadences, so the TRADE tab's graph can show three months without keeping a
+per-tick sample (~130,000 ticks × ~28 goods would be ~3.6M numbers in the save **and** in
+the determinism hash, every tick). A sample is the **closing price** — the posted value at
+the tick the bucket closes on, point-sampled, never averaged.
+
+Every number here is a **`[FIRST-CUT]` DISPLAY-DEPTH constant, not an economy number**: none
+of it feeds a rate, a price, a fee or a commitment, and changing any of it changes only how
+far back a line on screen reaches. So none of it is a decision-checklist entry either.
+Single-sourced in `sim/price-history.js`; the client never hard-codes a depth.
+
+| Ring | Cadence `[FIRST-CUT]` | Length `[FIRST-CUT]` | Span | Rationale |
+|---|---|---|---|---|
+| **`fine`** | every **15** ticks | **288** | 4,320 ticks ≈ **3 days** | A quarter-hour resolution is fine enough that an intraday move is visible and coarse enough that three days cost 288 numbers. |
+| **`medium`** | every **120** ticks | **168** | 20,160 ticks ≈ **14 days** | Two-hourly over a fortnight — the resolution at which a week-long trend reads as a trend rather than as noise. |
+| **`coarse`** | every **1,440** ticks | **90** | 129,600 ticks ≈ **90 days** | One sample per **cycle** (N = 1,440, `docs/cycle-and-calendar.md`) — the natural daily close, and the only cadence at which a quarter is affordable at all. |
+
+**~546 samples per good, ~15,300 across all 28** — trivial to serialize, which is the whole
+point of the coarsening.
+
+**Tier → scale-button mapping — RECORDED HERE, not implemented.** The engine emits **rings**,
+not scale buttons, and there are three rings for four buttons. The later client slice that
+finishes the chart maps them like this, so the mapping is unambiguous rather than re-derived:
+
+| Scale button | Reads | Window |
+|---|---|---|
+| **3D** | `fine` | all 288 samples |
+| **2W** | `medium` | all 168 samples |
+| **1M** | `coarse` | its most recent ~**30** samples (~30 days) |
+| **3M** | `coarse` | all 90 samples (~90 days) |
+
+**Deferred, not invented:** averaged buckets, candlesticks (open/high/low/close) and min–max
+bands. All would need an accumulator carried in serialized state between bucket closes, for
+no visible gain on a game chart; the close price is what a real daily chart plots. **No
+backfill:** the past was never recorded, so the rings fill forward from deploy.
+
 ### Licence — the commitment sale *(26-08-26 — Slice 3a, `sim/licence.js`)*
 
 A committed delivery is now a **sale**: the owner is paid `round((1 − o) × units × posted price)` and the

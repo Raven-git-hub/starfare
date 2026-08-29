@@ -133,6 +133,18 @@ function postedPrice(state, good) {
   return row ? row.posted : null;
 }
 
+// basePriceFor(good) -> the good's BASE value — the anchor the curve multiplies and
+// the value a fresh galaxy posts — or null for a good that is not priced (fuel).
+//
+// It is UNIFORM across goods today, deliberately: per-good base prices are UNRULED
+// (a tier-aware base is an obvious later ruling, see BASE_PRICE above), so none is
+// invented. The accessor exists so that "what is this good's base?" has ONE answer in
+// ONE file: the snapshot publishes it per good for the chart's reference line, and
+// when the per-good ruling lands it is this function that changes, not the readers.
+function basePriceFor(good) {
+  return PRICED_GOODS.includes(good) ? BASE_PRICE : null;
+}
+
 // productionCapacity(state) -> { good: units/tick } — Σ of the FIXED DROIDLESS
 // BASELINE output (sim/baseline.js) of every venture making the good, across every
 // guild. Deliberately NOT `productionRate`: capacity is what the galaxy COULD make,
@@ -219,6 +231,6 @@ function recomputePrices(state, consumed = {}) {
 module.exports = {
   BASE_PRICE, LEVEL_SENSITIVITY, IDLENESS_WEIGHT, EMA_ALPHA, MAX_SLEW_PCT,
   PRICE_FLOOR, PRICE_CEILING, PUBLISH_LAG, PRICED_GOODS,
-  seedPrices, leadingValue, postedPrice, productionCapacity, priceTarget,
+  seedPrices, leadingValue, postedPrice, basePriceFor, productionCapacity, priceTarget,
   advanceLeading, recomputePrices,
 };

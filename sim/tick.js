@@ -29,6 +29,7 @@ const {
   setWindow, winStartFor, windowFraction, isWindowBoundary, DEFAULT_WINDOW_N,
 } = require('./windows.js');
 const { getHistory, pushHistory } = require('./history.js');
+const { recordPriceSamples } = require('./price-history.js');
 const { recomputePrices, postedPrice } = require('./prices.js');
 const { commitmentSale, committedContribution, feeOwed } = require('./licence.js');
 const { producedGoodFor } = require('./baseline.js');
@@ -449,10 +450,20 @@ function stepConsumption(state, _actions) {
 //     cache and is still stale at this point in the tick;
 //   - the CONSUMPTION signal (the idleness term) comes from the scratch context
 //     stepProduction filled from its own report, so no production is re-resolved.
-// Nothing reads the price yet — no sale, no fee, no dividend (licence slice), so
-// this step moves no credits and no goods; it only publishes the number.
+// This step moves no credits and no goods; it publishes the number, and — since the
+// price-history slice — RECORDS it.
+//
+// THE HISTORY SAMPLE (sim/price-history.js). Once the posted value for this tick is
+// settled, any tier whose bucket closes on this tick takes a point sample of it (the
+// closing price). It goes here, right after the recompute, for one reason: this is
+// the only place in the tick where "the posted price for tick T" exists and is final.
+// The tick argument is the PRODUCING tick — `state.tick + 1`, the tick number of the
+// state being built (`next.tick` is assigned after the steps run) — matching the
+// convention recordSale and the window boundary already use, so a sample's position
+// in the ring lines up with `snapshot.tick` with no off-by-one.
 function stepPriceRecompute(state, _actions, ctx) {
   state.prices = recomputePrices(state, ctx ? ctx.consumed : {});
+  recordPriceSamples(state, state.tick + 1);
   return state;
 }
 

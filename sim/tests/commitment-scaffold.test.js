@@ -153,11 +153,23 @@ test('the injected N moves the boundary cadence (the window rolls at tick % N ==
 // new full-state hashes are pinned beside them so a drift in the recorded samples
 // themselves is caught too. (`GOLDEN_UNLICENSED_WITH_PRICES` is now the price-inclusive,
 // history-stripped hash — i.e. it still covers exactly what it covered before.)
+//
+// PRICE-HISTORY SLICE (29-08-26): `state.priceHistory` (sim/price-history.js) records the
+// posted value into three coarsening rings, so both 40-tick runs cross the fine bucket at
+// ticks 15 and 30 and legitimately gained bytes — their FULL hashes moved again. Same
+// method, and it is the proof: the five hashes above are ALL UNCHANGED and are now
+// asserted with the price history stripped too, so this slice added a price-history ring
+// and altered NOTHING else about these runs, byte for byte. The new full hashes are
+// pinned beside them. (A run SHORTER than 15 ticks takes no sample at all and is byte-
+// identical with nothing stripped — which is why persist.test.js's 2-tick golden did not
+// move and needed no regen.)
 const GOLDEN_UNLICENSED = '682e42e0dd758ce523fea882f6560707802cdd7e7b4def794f323430a4cfcff5';
 const GOLDEN_UNLICENSED_WITH_PRICES = 'ee6856cc520c23b8cc2cfdad996d463ccf35d40bb6b85b35f3a644a46d493647';
 const GOLDEN_COMMITTED_WITH_PRICES = 'e0255c73292645b5b785d818ec6e045f4bfb80e4b0a12f38814acb74947f8272';
 const GOLDEN_UNLICENSED_WITH_HISTORY = 'fa63aaf4cdaf8f11a38d26545f610605373acb659903fc2bf56c7869ced2dd5d';
 const GOLDEN_COMMITTED_WITH_HISTORY = 'e145b1426637f5c53190c087a7b6727878d158d6d52715f57f879a43d367f30b';
+const GOLDEN_UNLICENSED_WITH_PRICE_HISTORY = '2415bafdf6336b48a68d57b3b75e3c0c1cf254c93367a58bc48df82cd963c0c6';
+const GOLDEN_COMMITTED_WITH_PRICE_HISTORY = 'ab265ad191810bf91be169349ef6cc1b5c3c6e8a7bd9de5b64fd6533e80fbc3f';
 
 // The state minus its price block — everything the pre-price-engine hash covered.
 const withoutPrices = (state) => { const { prices, ...rest } = state; return rest; };
@@ -168,16 +180,24 @@ const withoutHistory = (state) => ({
   ...state,
   guilds: (state.guilds || []).map((g) => { const { productionHistory, ...rest } = g; return rest; }),
 });
+// The state minus the price-history rings — everything the three hashes above covered
+// before the price-history slice. Stripped at the TOP level, because unlike the
+// production history this is global state (the posted price is galaxy-wide), and
+// leaving every other top-level key in place so a change anywhere else still fails.
+const withoutPriceHistory = (state) => { const { priceHistory, ...rest } = state; return rest; };
 
 test('NO-OP PROOF: an unlicensed run (no scaffold action) is byte-identical to pre-change HEAD', () => {
   let s = sysState([mine('t', 'titanium', 10, 0), mine('c', 'carbon_products', 10, 0), refinery('r', 'titanium_alloy', 2)]);
   for (let i = 0; i < 40; i += 1) s = tick(s);
-  assert.equal(hashState(withoutHistory(withoutPrices(s))), GOLDEN_UNLICENSED, 'everything but the price block and the history buffer is byte-identical to pre-change HEAD');
-  assert.equal(hashState(withoutHistory(s)), GOLDEN_UNLICENSED_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
-  assert.equal(hashState(s), GOLDEN_UNLICENSED_WITH_HISTORY, 'and the history buffer itself is pinned');
+  assert.equal(hashState(withoutPriceHistory(withoutHistory(withoutPrices(s)))), GOLDEN_UNLICENSED, 'everything but the price block and the two history buffers is byte-identical to pre-change HEAD');
+  assert.equal(hashState(withoutPriceHistory(withoutHistory(s))), GOLDEN_UNLICENSED_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
+  assert.equal(hashState(withoutPriceHistory(s)), GOLDEN_UNLICENSED_WITH_HISTORY, 'and with the production history back in, the ONLY delta from the pre-price-history engine is priceHistory');
+  assert.equal(hashState(s), GOLDEN_UNLICENSED_WITH_PRICE_HISTORY, 'and the price-history rings themselves are pinned');
   // The stripped-equals-old assertions above are only a proof if there is really
-  // something to strip: an unlicensed run still MINES, so it still records history.
+  // something to strip: an unlicensed run still MINES, so it still records history —
+  // and 40 ticks crosses the fine bucket twice, so it really did record prices too.
   assert.ok(s.guilds[0].productionHistory, 'the unlicensed run really did record history');
+  assert.equal(s.priceHistory.titanium.fine.length, 2, 'and the fine ring really has the samples from ticks 15 and 30');
 });
 
 test('a committed run seeded via createVenture (not the action) is pinned, and now PAYS', () => {
@@ -187,8 +207,10 @@ test('a committed run seeded via createVenture (not the action) is pinned, and n
   // the intake surface, not the resolution.
   let s = sysState([mine('t', 'titanium', 10, 7), mine('c', 'carbon_products', 10, 5), refinery('r', 'titanium_alloy', 2)], 4);
   for (let i = 0; i < 40; i += 1) s = tick(s);
-  assert.equal(hashState(withoutHistory(s)), GOLDEN_COMMITTED_WITH_PRICES, 'with the history buffer stripped, the committed run is byte-identical to its post-Slice-3a bytes');
-  assert.equal(hashState(s), GOLDEN_COMMITTED_WITH_HISTORY, 'and the history buffer itself is pinned');
+  assert.equal(hashState(withoutPriceHistory(withoutHistory(s))), GOLDEN_COMMITTED_WITH_PRICES, 'with both history buffers stripped, the committed run is byte-identical to its post-Slice-3a bytes');
+  assert.equal(hashState(withoutPriceHistory(s)), GOLDEN_COMMITTED_WITH_HISTORY, 'and with the production history back in, the ONLY delta is priceHistory');
+  assert.equal(hashState(s), GOLDEN_COMMITTED_WITH_PRICE_HISTORY, 'and the price-history rings themselves are pinned');
+  assert.equal(s.priceHistory.titanium.fine.length, 2, 'the stripped-equals-old proof is only a proof if there were samples to strip');
   // The bytes moved because the deliveries are now SALES: the guild has been paid and
   // the ledger has funded it, equal and opposite (invariant 2 is asserted every tick by
   // the driver; here we simply show the movement is real and is the sale's alone).

@@ -60,6 +60,7 @@ const { PRICED_GOODS, PRICE_FLOOR, PRICE_CEILING, PUBLISH_LAG } = require('./pri
 const { EQUITY_CEILING, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX, isValidWindowDays } = require('./licence.js');
 const { DEFAULT_WINDOW_N, winStartFor, windowFraction } = require('./windows.js');
 const { HISTORY_N } = require('./history.js');
+const { TIERS: PRICE_HISTORY_TIERS, TIER_KEYS } = require('./price-history.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { getSite, getLandmark, getSystem, getTerranHomeworld } = require('./seed.js');
 const { getRecipe } = require('./recipes.js');
@@ -555,6 +556,62 @@ function checkPrices(state) {
   return out;
 }
 
+// Price-history shape (sim/price-history.js). The rings are SERIALIZED state that the
+// TRADE chart draws straight from, so a malformed one would be both a broken graph and
+// a poisoned determinism hash. Three things are checked, and only three:
+//
+//   - the SHAPE: a row exists only for a good the Syndicate actually prices, and it
+//     carries exactly the three declared tier rings, each an array;
+//   - the CAP: no ring exceeds its tier's declared length — the whole point of the
+//     coarsening design is that storage is bounded, so an unbounded ring is the
+//     failure this exists to catch;
+//   - the VALUES: every sample a finite number.
+//
+// The price BAND (PRICE_FLOOR..PRICE_CEILING) is deliberately NOT asserted here, though
+// checkPrices asserts it on the live posted value. History is the PAST: those bounds are
+// [FIRST-CUT] tuning, and narrowing them one day must not make a restored save halt on
+// samples that were perfectly legal when they were taken. Finiteness is the invariant;
+// the band is a policy the live value answers to.
+function checkPriceHistory(state) {
+  const out = [];
+  if (!state.priceHistory) return out;
+  for (const [good, row] of Object.entries(state.priceHistory)) {
+    const where = `priceHistory.${good}`;
+    if (!PRICED_GOODS.includes(good)) {
+      out.push({ rule: 'price-history-priced-good (sim/price-history.js)', where, detail: { good, fuel: good === FUEL_GOOD } });
+      continue;
+    }
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      out.push({ rule: 'price-history-row-shape (sim/price-history.js)', where, detail: { row } });
+      continue;
+    }
+    // Exactly the declared tiers — no missing ring, and no stranger key that would
+    // ride into the hash unchecked.
+    const keys = Object.keys(row).sort();
+    if (keys.length !== TIER_KEYS.length || !TIER_KEYS.every((k) => keys.includes(k))) {
+      out.push({ rule: 'price-history-tiers (sim/price-history.js)', where, detail: { keys, expected: [...TIER_KEYS] } });
+      continue;
+    }
+    for (const tier of PRICE_HISTORY_TIERS) {
+      const ring = row[tier.key];
+      const at = `${where}.${tier.key}`;
+      if (!Array.isArray(ring)) {
+        out.push({ rule: 'price-history-ring-shape (sim/price-history.js)', where: at, detail: { ring } });
+        continue;
+      }
+      if (ring.length > tier.length) {
+        out.push({ rule: 'price-history-ring-capped (sim/price-history.js)', where: at, detail: { length: ring.length, cap: tier.length } });
+      }
+      ring.forEach((v, i) => {
+        if (typeof v !== 'number' || !Number.isFinite(v)) {
+          out.push({ rule: 'price-history-sample-finite (sim/price-history.js)', where: `${at}[${i}]`, detail: { value: v } });
+        }
+      });
+    }
+  }
+  return out;
+}
+
 // Galactic-supply consistency — the derived totals cache (state.galacticSupply)
 // must equal a fresh re-derivation from the guilds' actual stockpiles and the
 // fuel figures. This is a CONSISTENCY check, not a conservation one: non-fuel
@@ -714,6 +771,7 @@ function checkInvariants(state, tick) {
     ...checkSyndicateWindows(state),
     ...checkProductionHistory(state),
     ...checkPrices(state),
+    ...checkPriceHistory(state),
     ...checkLicenceTerms(state),
     ...checkGalacticSupplyConsistency(state),
     ...checkSiteOccupancy(state),

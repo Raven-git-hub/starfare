@@ -31,7 +31,8 @@ const { getSite, getLandmark } = require('./seed.js');
 const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
 const { previewProduction } = require('./production.js');
-const { PRICED_GOODS, postedPrice } = require('./prices.js');
+const { PRICED_GOODS, postedPrice, basePriceFor } = require('./prices.js');
+const { clonePriceHistory } = require('./price-history.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
 const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 
@@ -96,9 +97,22 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // reader simply ignores the new key. Deliberately POSTED ONLY — the EMA memory and the
 // publish pipeline (the not-yet-published values) stay off the lens, because handing
 // out the future price would kill the front-running read the 2-tick lag exists to
-// create. No price HISTORY is emitted either: it would mean storing a ring buffer in
-// serialized state for a chart the client already buffers itself (the chart binding is
-// its own slice). `deuterium_fuel` has no row — fuel is never listed (§8).
+// create. `deuterium_fuel` has no row — fuel is never listed (§8).
+//   PRICE HISTORY (29-08-26) — this note used to end "no price HISTORY is emitted
+//   either", on the reasoning that a ring buffer in serialized state was too much to
+//   pay for a chart the client could buffer itself. That reasoning is retired: a
+//   browser-side buffer starts empty on every reload and no two viewers see the same
+//   curve (the same fault the production sparklines were moved into the engine to fix),
+//   and a 3-month chart is not something a page visit can accumulate. So a top-level
+//   `priceHistory` block IS emitted now — three coarsening rings per good
+//   (sim/price-history.js), ~546 samples, which is what makes it affordable.
+//   Beside it, `priceBase`: the per-good base value, for the chart's reference line.
+//   Both ADDITIVE, and NO schema bump — same call as the price block above and for the
+//   same reason: nothing existing changed shape, so every current reader keeps working
+//   and an older reader ignores the new keys. (The v3/v4 bumps were for growth inside
+//   existing rows; a new top-level key on its own is not that.) Still POSTED ONLY: the
+//   rings record published values, never the pipeline's unpublished ones, so the
+//   front-running read the 2-tick lag exists to create survives.
 // v7 (licence Slice 3a, 26-08-26): ADDITIVE — each guild row gains `syndicateSale`, the
 // record of what the Syndicate last bought from that guild (`{ tick, credited, goods:
 // {good: {units, price, credited}} }`, from `guild.lastSyndicateSale`), plus
@@ -419,6 +433,25 @@ function buildSnapshot(state) {
     // rows; postedPrice returns null and the good is reported as such rather than
     // being given an invented number.
     prices: Object.fromEntries(PRICED_GOODS.map((good) => [good, postedPrice(state, good)])),
+    // The posted-price HISTORY, verbatim from state (sim/price-history.js): per good,
+    // three rings — `fine` / `medium` / `coarse` — of past posted values, oldest →
+    // newest. The chart reads a good's ring for the selected scale with NO reshaping;
+    // which scale button reads which ring (three rings, four buttons — `coarse` serves
+    // both 1M and 3M at different windows) is recorded in docs/phase-1-tuning.md.
+    //
+    // ALWAYS EMITTED, even when empty — unlike the STATE field, which is omitted until
+    // the first sample so a young galaxy hashes byte-identically to pre-slice. The two
+    // differ on purpose: the state field answers to the determinism hash, the snapshot
+    // field answers to a reader, and a stable shape is kinder to a reader than a key
+    // that appears at tick 15. A good with no samples yet simply has no row, and the
+    // chart shows its "gathering history…" state.
+    priceHistory: clonePriceHistory(state.priceHistory),
+    // The per-good BASE value — the anchor the price curve multiplies — so the chart
+    // can draw its reference line without the browser typing a game number of its own
+    // (design.md §5: the client computes no authoritative number). Read through
+    // prices.js's one accessor: it is uniform across goods TODAY because per-good
+    // bases are unruled, and this shape is what that later ruling fills in.
+    priceBase: Object.fromEntries(PRICED_GOODS.map((good) => [good, basePriceFor(good)])),
     guilds,
     // The resolved production preview (§5, ruled 07-08-26; rate-based 10-08-26): per
     // guild → per system → this tick's fresh, the Gate-1 fork split, the drawdown
