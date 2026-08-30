@@ -5,7 +5,8 @@ dev/
 # Not served at runtime — design docs and dev-only tooling stay in git but
 # never need to enter the image (they were ~20 MB of build context for nothing).
 docs/
-tools/
+tools/*
+!tools/generate_seed.js
 
 # The audio LIBRARY stays in the repo but must not bloat the runtime image: the
 # game embeds its shuffle playlist as base64 in game.html, and only the title
