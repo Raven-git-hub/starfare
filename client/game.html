@@ -2516,14 +2516,17 @@ window.openWaystationDetail = function(outpost){
    DESIGN-AHEAD — reaches nothing: the reputation meter (#61). It is the last thing on
                                 this panel the engine records nothing for.
 
-   ESTIMATED — shown, never sent: the fee curve. The engine prices the fee off the
-                                POSTED market price at the signing tick and locks it
-                                there, so no number computed before signing can be the
-                                one charged. The panel shows the designed SHAPE (§5's
-                                four-corner grid) and labels it as indicative; the
-                                authoritative figure is read back off the snapshot on
-                                the receipt. An engine-side fee-preview endpoint would
-                                make the pre-sign figure exact — noted, not built here.
+   QUOTED — read, never sent:   the fee. The engine now PUBLISHES the basic fee in
+                                credits per good (`feeQuote`, sim/snapshot.js) — its own
+                                `licenceFee` output at the posted price and the cycle in
+                                force, pinned equal to what `applyForLicence` charges — so
+                                the ledger shows real credits rather than a percentage.
+                                The panel prices nothing: it multiplies that basic by the
+                                relief the four-corner grid already draws. The quote is
+                                LIVE and firms up at the tick you sign; the receipt then
+                                reports the figure the engine actually locked. (This
+                                retires the note that no pre-sign figure could exist — the
+                                fee-preview seam it wanted is the snapshot field.)
 
    The compound action §2.7 sketched (consumeAsset → establishVenture →
    recordLicenceTerms) never needed its first step: establishing OCCUPIES the named
@@ -2558,6 +2561,18 @@ var P = {
    snapshot has been read; the panel then shows a dash rather than inventing one. */
 function cycleTicks(){ return window.__windowN ? window.__windowN() : null; }
 
+/* The BASIC licence fee in CREDITS for the good this venture will produce — the engine's
+   own `feeQuote[good]` (sim/snapshot.js): `licenceFee`'s basic fee at the posted price
+   and the cycle in force, pinned by a test equal to what `applyForLicence` locks. Read
+   through the same kind of narrow bridge `cycleTicks` uses, so the panel holds no
+   snapshot of its own. null when the snapshot carries no quote for the good — nothing
+   can produce it, or its price row is missing — and the ledger then shows a dash rather
+   than a 0 that would read as "this licence is free". */
+function quotedBasicFee(){
+  var q = (window.__feeQuote && S.outGood) ? window.__feeQuote(S.outGood) : null;
+  return (typeof q === 'number' && isFinite(q)) ? q : null;
+}
+
 /* The one REAL number the client chooses: the rate every venture is established at.
    [FIRST-CUT], given for this slice and recorded in docs/phase-1-tuning.md — a
    uniform placeholder until per-resource extraction rates are wired. The ENGINE has
@@ -2574,9 +2589,10 @@ var S = { site:null, asset:null, tier:1, recipeId:null, outGood:null, outLabel:'
 
 /* The fee's SHAPE (design.md §5's four-corner grid): 100 / 75 / 75 / 0, with equity
    back-loaded by o^K — the same bilinear form as sim/licence.js `feeFraction`. This is
-   a % of basic, and it is the only part of the fee the browser may draw: the basic fee
-   itself is priced off the posted market price at the signing tick, which no pre-sign
-   computation can know. Shown as an ESTIMATE of the relief, never as the amount. */
+   a % of basic: the RELIEF the two levers buy, which is the graph's natural unit and
+   stays a percentage. The basic it is a percentage OF is the engine's, read off the
+   snapshot's `feeQuote` — so the ledger's credit figures are this relief applied to an
+   engine number, never a fee the browser priced. */
 /* `c` here is the raw commitment fraction and `o01` the equity normalised against the
    ceiling — the engine's own two axes (`normalisedTerms`), which coincide with the
    sliders' values because §5's commitment floor is 0. */
@@ -2612,8 +2628,9 @@ function draw(){
   var ePct = equityPctInt();
   $('oPct').textContent = ePct+'%';
 
-  // The fee readout is the RELIEF only (% of basic). No credit figure is shown before
-  // signing — the engine locks that against the posted price and the panel cannot know it.
+  // The big readout stays the RELIEF (% of basic) — the curve's own unit, and the thing
+  // the two sliders actually move. The credit figures live in the ledger below, off the
+  // engine's published quote.
   var fp=feePct(S.c,S.o01);
   $('feePctBig').textContent = Math.round(fp)+'%';
 
@@ -2675,13 +2692,16 @@ function drawLedger(fp, cQtyCycle, ePct){
     : (cQtyCycle>0 ? (fmt(cQtyCycle)+' '+esc(S.outLabel.toLowerCase())+' <span class="mut">/cycle</span>')
                    : '<span class="mut">0 — none</span>'));
   setRow('tEquity', ePct>0 ? (ePct+'%') : '<span class="mut">none</span>');
-  // The relief, not an amount: the credits are locked by the engine at signing and
-  // reported on the receipt.
-  setRow('tFee','<b>'+Math.round(fp)+'%</b> <span class="mut">of basic · locked at signing</span>');
-  // Breach is the FULL basic fee — and the basic fee, like the discounted one, is not
-  // knowable in credits until the engine locks it at signing. So it reads in the same
-  // relative form the Fee row above uses rather than a number the panel made up.
-  setRow('tBreach','<b>100%</b> <span class="mut">of basic · locked at signing</span>');
+  // The fee in CREDITS. `basic` is the ENGINE's figure for this good (`feeQuote`); the
+  // only arithmetic here is the relief the sliders already draw, applied to it — which is
+  // exactly the `discountedFee` the engine will lock if the licence is filed at this
+  // price, down to the same rounding. Moves live as the sliders move.
+  var basic = quotedBasicFee();
+  setRow('tFee', basic === null ? '—' : ('<b>'+fmt(Math.round(basic * fp / 100))+' ¢</b>'));
+  // Breach is the WHOLE basic fee: falling short of the commitment voids the discount
+  // outright (§5), so this row is the un-discounted quote and does NOT move with the
+  // sliders. A dash, never a 0, when the good has no quote.
+  setRow('tBreach', basic === null ? '—' : ('<b>'+fmt(basic)+' ¢</b>'));
   setRow('tReneg', S.rnDays+' days');
 }
 
@@ -2764,7 +2784,7 @@ function reelConfirm(){
   var body='<p>You are about to stand up a '+esc(S.outLabel.toLowerCase())+' venture on '+esc(S.site.summary)+' — '+lic+'.</p>'+
            '<p>It will run your <em>'+esc(S.asset.label)+'</em> ('+esc(S.asset.id)+'). The machine is <em>occupied, not consumed</em>: it stays in your inventory, now referenced by this venture, and no other venture can take it. First output arrives next tick'+(S.licensed ? (', and the terms are open to renegotiate in '+S.rnDays+' days') : '')+'.</p>'+
            (S.licensed
-             ? '<p class="lbl">The licence is filed as a second step, once the venture exists. Its fee is set against the market price at that tick and cannot be quoted before it — the % above is the designed relief, not the amount.</p>'
+             ? '<p class="lbl">The licence is filed as a second step, once the venture exists. The fee in the ledger is the engine\'s quote at the current market price; it is fixed against the price at the tick it is filed, and the receipt reports the figure actually locked.</p>'
              : '<p class="lbl">No licence is filed: nothing is committed, nothing is sold to the Syndicate, and no fee is owed.</p>')+
            '<p>Shall I file the licence?</p>';
   $('reelTitle').textContent='Commit to this venture?';
@@ -3497,6 +3517,14 @@ window.__refreshNow = function(){ return apiGet('/snapshot').then(applySnapshot)
 window.__myVenture = function(ventureId){ return LIVE.myVentures[ventureId] || null; };
 // The engine's cycle length `N`, for the panel's per-cycle commitment figure.
 window.__windowN = function(){ return LIVE.windowN; };
+// The BASIC licence fee in credits for ONE good — the engine's own `feeQuote` row
+// (sim/snapshot.js), so the establish panel can show what a licence costs instead of a
+// percentage of a number nobody published. null when the snapshot carries no quote for
+// that good; the panel shows a dash rather than inventing one.
+window.__feeQuote = function(good){
+  var q = LIVE.snap && LIVE.snap.feeQuote;
+  return (q && typeof q[good] === 'number') ? q[good] : null;
+};
 // The player's own IDLE machines of one kind (§4) — what the establish panel offers in
 // its asset picker, and the list the chosen `assetId` is taken from. "Idle" is the
 // ENGINE's answer (`deployedToVentureId == null`), read, never re-derived here.

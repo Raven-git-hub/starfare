@@ -109,8 +109,14 @@ test('GET / serves the WIRED licence panel — the two real actions, and no mock
   ]) {
     assert.ok(!html.includes(dead), `the wired licence panel must not still say: ${dead}`);
   }
-  // …and the fee is presented as an estimate before signing, locked after it.
-  assert.match(html, /locked at signing/);
+  // The fee used to be presented as a PERCENTAGE before signing ("of basic · locked at
+  // signing"), because the credit figure was not published. It is now (`feeQuote`), so
+  // this pin flips rather than being dropped: the ledger's pre-sign figure is credits off
+  // the engine's quote, and the "% of basic · locked at signing" rows are gone. The
+  // receipt's own "LOCKED at signing" line is asserted below and is unaffected.
+  assert.ok(!html.includes('of basic · locked at signing'),
+    'the ledger fee rows read credits now — the relative form must be gone');
+  assert.match(html, /window\.__feeQuote/);
   // This line used to pin `NOT YET CHARGED` — "3b-iii is not built; say so". 3b-iii IS
   // built, so the tripwire flips rather than being dropped: the receipt must now say the
   // rate is locked at signing AND charged at the boundary. Kept here, beside the panel's
@@ -194,10 +200,11 @@ test('GET / serves the DE-MOCKED establish panel — every retired string, and t
   // The fee-graph label is now just the label.
   assert.match(html, /<span class="lbl">Licence fee<\/span>/);
 
-  // The Breach row is RELATIVE, like the Fee row — never a fabricated credit figure.
-  assert.ok(!html.includes("P.BASIC_FEE"), 'the invented per-tier breach amount is gone');
-  assert.ok(!html.includes('BASIC_FEE: { 1:120'), 'and so is the constant behind it');
-  assert.match(html, /setRow\('tBreach','<b>100%<\/b> <span class="mut">of basic · locked at signing<\/span>'\)/);
+  // The Breach row carries a credit figure again — but the ENGINE's, not a fabricated
+  // per-tier constant. The mock table stays deleted; the number comes from `feeQuote`.
+  assert.ok(!html.includes("P.BASIC_FEE"), 'the invented per-tier breach amount stays gone');
+  assert.ok(!html.includes('BASIC_FEE: { 1:120'), 'and so does the constant behind it');
+  assert.match(html, /setRow\('tBreach', basic === null \? '—' : \('<b>'\+fmt\(basic\)\+' ¢<\/b>'\)\)/);
 
   // OCCUPY, NOT CONSUME — §4's rule, in the copy a player actually reads.
   assert.match(html, /occupied, not consumed/);
@@ -207,6 +214,49 @@ test('GET / serves the DE-MOCKED establish panel — every retired string, and t
     'condition never touches production (§4) — the reel must not say it does');
   assert.match(html, /condition never changes a production rate/);
 });
+
+// --- the fee reaches the player in CREDITS (client-only, 31-08-26) ----------------
+//
+// `feeQuote` (sim/snapshot.js) publishes the basic licence fee in credits per good,
+// pinned equal to what `applyForLicence` charges. The panel used to show the fee as a
+// PERCENTAGE of a basic nobody published, which told a player nothing. These pins are on
+// the SERVED bytes: a page that reverted to the percentage would still render perfectly,
+// and only this would go red.
+test('GET / serves the fee in CREDITS — the ledger reads the engine\'s feeQuote', async () => {
+  const html = await (await fetch(base + '/')).text();
+
+  // The bridge: one narrow read of the snapshot's own row, like `__windowN` beside it.
+  assert.match(html, /window\.__feeQuote = function\(good\)/);
+  assert.match(html, /LIVE\.snap && LIVE\.snap\.feeQuote/);
+  // …and the panel goes through it, keyed on the good the venture will produce.
+  assert.match(html, /window\.__feeQuote\(S\.outGood\)/);
+
+  // Breach = the WHOLE basic fee (the discount is void on a shortfall, §5); Fee = that
+  // basic times the relief the sliders already draw — the client's only arithmetic.
+  assert.match(html, /setRow\('tFee', basic === null \? '—' : \('<b>'\+fmt\(Math\.round\(basic \* fp \/ 100\)\)\+' ¢<\/b>'\)\)/);
+  assert.match(html, /setRow\('tBreach', basic === null \? '—' : \('<b>'\+fmt\(basic\)\+' ¢<\/b>'\)\)/);
+
+  // Graceful absence: a good with no quote shows a dash, never `NaN ¢` and never a 0
+  // that would read as a free licence.
+  assert.match(html, /function quotedBasicFee\(\)/);
+  assert.match(html, /typeof q === 'number' && isFinite\(q\)/);
+
+  // Untouched, deliberately: the unlicensed rows, and the relief graph's own readout —
+  // a percentage is the curve's natural unit, and this slice converts only the ledger.
+  assert.match(html, /setRow\('tFee','<b class="green">0 ¢<\/b>'\); setRow\('tBreach','<span class="mut">n\/a<\/span>'\)/);
+  assert.match(html, /\$\('feePctBig'\)\.textContent = Math\.round\(fp\)\+'%'/);
+
+  // The copy that said no pre-sign figure could exist is FALSE now, and gone with it.
+  for (const dead of [
+    'of basic · locked at signing',
+    'cannot be quoted before it',
+    'the % above is the designed relief, not the amount',
+    'no number computed before signing can be the one charged',
+  ]) {
+    assert.ok(!html.includes(dead), `the fee is quoted now — the panel must not still say: ${dead}`);
+  }
+});
+
 
 // The TRADE tab (design.md §5, "SELL GOES LIVE"). A client-render tripwire on the
 // SERVED bytes: if the tab quietly reverted to the old Marketplace stub, or the sell

@@ -950,3 +950,51 @@ place of, or beside, the `% of basic` line) is the next slice, and it is the pan
 job to apply the player's chosen relief to the published basic.
 
 **657 tests (+11), zero failures.**
+
+## Revision — the Establish-Venture panel shows the fee in real credits *(31-08-26, client-only)*
+
+The snapshot publishes `feeQuote` (the previous revision), so the panel no longer has to
+speak in percentages. **Client-only** — `client/game.html`, the mockup's matching row shape
+and served-page tripwires; **no `sim/` change**, no action change, **schema still 7**, and
+**no new number**.
+
+**The two ledger rows are credits now.**
+
+| row | before | now |
+|---|---|---|
+| **Fee** | `74% of basic · locked at signing` | `5,089 ¢` |
+| **Breach fee** | `100% of basic · locked at signing` | `7,200 ¢` |
+
+- **Breach fee** = `feeQuote[good]` — the whole basic fee, because a shortfall voids the
+  discount outright (§5). It does **not** move with the sliders.
+- **Fee** = `round(feeQuote[good] × fp/100)`, where `fp` is the same four-corner relief the
+  graph already draws — so the number and the curve can never disagree, and the row updates
+  live as the player drags. This is the panel's **only** arithmetic: the basic is the
+  engine's own `licenceFee` output, not a figure the browser priced.
+- Read through a narrow bridge, `window.__feeQuote(good)`, exactly as `__windowN` reads the
+  cycle length — the panel holds no snapshot of its own.
+- **Graceful absence:** no quote for the good (nothing produces it, or no price row) shows
+  **`—`**, never `NaN ¢` and never a `0` that would read as a free licence.
+- Plain numbers, as settled: **no `≈`**, no "at current price", and **no "locked at
+  signing"**. The quote is live and firms up at the tick you sign; the receipt already
+  reports the figure the engine locked.
+
+**Untouched, deliberately:** the unlicensed rows (`0 ¢` / `n/a`), the relief graph and its
+`feePctBig` "% of basic" readout — a percentage is the curve's natural unit — the receipt,
+and every other row.
+
+**One copy fix rode along**, because it became false the moment the rows changed: the deploy
+confirmation said the fee *"cannot be quoted before"* signing. It now says the ledger figure
+is the engine's quote at the current price, fixed against the price at the tick the licence
+is filed. The header block's `ESTIMATED — shown, never sent` note becomes `QUOTED — read,
+never sent` for the same reason (its wished-for "fee-preview endpoint" is the snapshot field).
+
+**Verified** in headless Chromium against a real booted server (seed 4242), driving the real
+drill-down (system → planet → a vacant Titanium node → Establish): Licensed at 0/0 read
+**7,200 ¢ / 7,200 ¢** and matched `window.__snapshot().feeQuote.titanium`; at commitment 60% /
+equity 25% the Fee moved to **5,089 ¢** while Breach stayed 7,200 ¢; unlicensed still read
+`0 ¢` / `n/a`; and **deploying then licensed the venture at exactly those figures** — the
+engine locked `basicFee 7200`, `discountedFee 5089`. No page errors from the panel.
+
+**658 tests (+1), zero failures** — client-only, so no golden could move.
+

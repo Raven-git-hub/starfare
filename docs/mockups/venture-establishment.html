@@ -467,8 +467,12 @@ function drawLedger(fp, feeCredits, cQtyCycle, ePct){
   setRow('tLic','<span class="amber">Licensed</span>');
   setRow('tCommit', cQtyCycle>0 ? (fmt(cQtyCycle)+' '+S.outLabel.toLowerCase()) : '<span class="mut">0 — none</span>');
   setRow('tEquity', ePct>0 ? (ePct+'%') : '<span class="mut">none</span>');
+  // The live panel now reads these two figures off the engine's `feeQuote` (the basic fee
+  // in credits per good, sim/snapshot.js) times the relief the sliders draw; the numbers
+  // here stay the mockup's declared [FIRST-CUT] placeholders, in the same SHAPE — plain
+  // credits, no "% of basic", no "locked at signing".
   setRow('tFee','<b>'+fmt(feeCredits)+' ¢</b>');
-  setRow('tBreach', fmt(P.BASIC_FEE[S.tier])+' ¢');
+  setRow('tBreach','<b>'+fmt(P.BASIC_FEE[S.tier])+' ¢</b>');
   setRow('tReneg', S.rnDays+' days');
 }
 
