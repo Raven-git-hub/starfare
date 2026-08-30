@@ -8,8 +8,10 @@ growing the live galaxy-state model.
 
 Working mockup: `docs/mockups/venture-establishment.html` (Archive style; titanium tier-1 FUE, with
 the factory/slot path generalised). Every number in it is `[FIRST-CUT]` → checklist #56/#63/#64; the
-whole licence economy, the asset inventory, reputation, and renegotiation are **design-ahead** (not
-in the engine — `design.md §5 ~line 337`).
+whole licence economy, reputation, and renegotiation are **design-ahead** (not in the engine —
+`design.md §5 ~line 337`). *(Two of the original four have since landed: the licence economy is real as
+of 27–28-08-26, and the **asset inventory** is real as of 30-08-26 — `design.md` §4's asset-occupancy
+ruling. The mockup's asset picker is still a mock, but it now has engine truth to read.)*
 
 ---
 
@@ -21,7 +23,7 @@ manifest. It is **one reactive page, not a wizard** — everything live; Deploy 
 the venture is fully specified. The FUE is the titanium-mining, Tier-1 case (a new player's literal
 first action); factories are the same page with a tier+recipe picker.
 
-On confirm, one **compound action**: consume the asset from inventory → `establishVenture` (bind the
+On confirm, one **compound action**: pick an idle asset from inventory → `establishVenture` (bind the
 asset to the site) → record the licence terms. The venture produces next tick. After establishment
 the formerly-vacant site button opens the (undesigned) manage-venture tab.
 
@@ -54,8 +56,8 @@ seed/state facts) · **CONFIG** (tunable constants, not per-save state) · **PRE
 ### 2.2 Asset picker
 | Data point | Bucket | Field / source |
 |---|---|---|
-| Selectable assets, filtered by site kind (miner⇢node, factory⇢slot) | **STORED (NEW)** | guild-owned, unbound assets — the asset-inventory entity (§3 below); FUTURE |
-| Asset id / kind / condition (maintenance %) | STORED (NEW) | per-asset record; FUTURE |
+| Selectable assets, filtered by site kind (miner⇢node, factory⇢slot) | **STORED** | guild-owned IDLE assets — snapshot `guilds[].assets` where `deployedToVentureId === null` (BUILT 30-08-26) |
+| Asset id / kind / condition (maintenance %) | STORED | snapshot `guilds[].assets[]` — `{ id, kind, maintenanceCondition }`; condition is carried but INERT until the maintenance slice |
 
 ### 2.3 Configuration
 | Data point | Bucket | Field / source |
@@ -96,9 +98,14 @@ seed/state facts) · **CONFIG** (tunable constants, not per-save state) · **PRE
 | Ticks-per-day / tick-duration constant | CONFIG | `phase-1-tuning.md` (unresolved) — the per-hour/day display seam |
 
 ### 2.7 Deploy — the compound action (not data, the write)
-`consumeAsset(assetId)` → `establishVenture({ assetId, siteId, recipeId|resourceType, productionRate })`
+`establishVenture({ siteId, recipeId|resourceType, productionRate })` — which now OCCUPIES an idle asset
+of the matching kind itself (BUILT 30-08-26), so there is no separate `consumeAsset` step and the client
+sends no `assetId`: the engine picks the lowest idle id, deterministically —
 → `recordLicenceTerms({ licensed, commitment c, equity o, tier/fee basis, renegotiationOpenTick })`.
-Atomic; the venture produces next tick.
+The venture produces next tick. **Not atomic today:** establish and `applyForLicence` are two intake
+actions (see the client-wiring note of 27-08-26), and an *atomic* `establishAndLicence` remains a noted
+follow-up. **The picker may now offer only what the guild really holds** — a deploy with no idle asset of
+the kind is refused by the engine, as is one on a site in a system the guild does not hold.
 
 ### 2.8 Presentation-only (no state)
 Facility art (derived from archetype/kind/biome, `console-client-and-art.md §3`) · Guild Adviser
@@ -112,9 +119,13 @@ engine's DERIVED numbers and computes no game number beyond display ratios, §5)
 Most of the panel is DERIVED/CONFIG/PRESENTATION. It introduces **three genuinely new STORED things**,
 all part of the deferred licence layer — decide each one's shape when that slice is built:
 
-1. **Asset inventory** — guild-owned assets not (yet) bound to a venture: `{ id, kind:'miner'|'factory',
-   condition }`. §4 already says *assets are guild-owned and a venture references one by a nullable
-   `assetId`*; this is the holding side of that. Establishment **consumes** one.
+1. **Asset inventory** — **BUILT 30-08-26** (`design.md` §4's asset-occupancy ruling; `sim/assets.js`,
+   `guild.assets`). Guild-owned assets: `{ id, kind:'miner'|'factory', maintenanceCondition }`, nested on
+   the guild, with a venture referencing one by its nullable `assetId`. Two corrections to the sketch
+   above, from the ruling: establishment **OCCUPIES, it does not consume** — the asset stays in the
+   inventory and the venture's reference is the whole of what "deployed" means — and **"unbound" is
+   DERIVED, never stored**: an asset is idle iff no venture names it, so there is no `isIdle` field
+   (invariant 5). Condition is carried but inert; maintenance is its own later slice.
 2. **Licence record** (per venture) — `{ licensed, commitment c, equity o, tier/fee basis,
    renegotiationOpenTick, reputationAccrual? }`. `venture.syndicateCommitment` is today's fed-in
    placeholder seed of this.

@@ -14,8 +14,11 @@
 // state.js must populate these fields; nothing here invents a game number.
 //
 //   state.guilds     : [{ id, credits, fuelHoard, influence?, stockpiles?,
-//                         ventures? (each: siteId?, resourceType? | recipeId?,
-//                         productionRate?), homeSystemId?, homePlanetId? }]
+//                         ventures? (each: siteId?, assetId?, resourceType? |
+//                         recipeId?, productionRate?),
+//                         assets? ([{ id, kind, maintenanceCondition }] — the
+//                           guild's ground-asset inventory, §4; absent when empty),
+//                         homeSystemId?, homePlanetId? }]
 //   state.claims?    : [{ claimId, ownerGuildId, landmarkId, landmarkKind }]
 //                          // SHARED territory rows; reference real seed landmarks
 //   state.reserve    : { reserveLevel }                    // SHARED fuel reserve
@@ -58,6 +61,7 @@
 const { isRawResource, isStockpileGood, FUEL_GOOD } = require('./resources.js');
 const { PRICED_GOODS, PRICE_FLOOR, PRICE_CEILING, PUBLISH_LAG } = require('./prices.js');
 const { EQUITY_CEILING, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX, isValidWindowDays } = require('./licence.js');
+const { ASSET_CONDITION_NEW, ASSET_CONDITION_MIN, isAssetKind, assetKindForVentureType } = require('./assets.js');
 const { DEFAULT_WINDOW_N, winStartFor, windowFraction } = require('./windows.js');
 const { HISTORY_N } = require('./history.js');
 const { TIERS: PRICE_HISTORY_TIERS, TIER_KEYS } = require('./price-history.js');
@@ -709,6 +713,66 @@ function checkSiteOccupancy(state) {
   return out;
 }
 
+// Asset occupancy / referential integrity — the cousin of checkSiteOccupancy
+// above, for the OTHER thing a venture occupies: its machine (design.md §4,
+// 30-08-26). A site is a place in the static seed; an asset is a live entity in
+// the owner's own inventory, so this check runs entirely within one guild.
+//
+// IT ENFORCES INTEGRITY, NOT PRESENCE — this is the load-bearing distinction. It
+// does NOT require every venture to have an asset: the nullable `assetId` is a
+// real, legal state (§4 — "a venture can outlive its asset"), production does not
+// depend on an asset being present, and demanding one would make every
+// directly-constructed test venture illegal. What it does require is that any
+// reference which IS there is sound. For each guild:
+//   - every asset is well-formed: a known kind, and a maintenanceCondition that is
+//     a finite number inside its scale (the §15.2 field check — the field is inert
+//     in this slice, but a garbage value must still fail loudly rather than sit
+//     there waiting for the maintenance slice to trip over it);
+//   - every non-null venture.assetId names an asset owned by that SAME guild (you
+//     cannot run a machine out of someone else's inventory);
+//   - no asset is referenced by two ventures — one machine runs one venture;
+//   - the referenced asset's kind matches the venture: mining<->miner,
+//     refining<->factory (the analogue of "a mining venture's resourceType must
+//     match its node").
+function checkAssetOccupancy(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    const owned = new Map(); // assetId -> asset, this guild's inventory
+    for (const a of g.assets || []) {
+      if (!isAssetKind(a.kind)) {
+        out.push({ rule: 'asset-kind-known (assets.js)', where: `guild:${g.id}.asset:${a.id}`, detail: { kind: a.kind } });
+      }
+      const cond = a.maintenanceCondition;
+      if (typeof cond !== 'number' || !Number.isFinite(cond) || cond < ASSET_CONDITION_MIN || cond > ASSET_CONDITION_NEW) {
+        out.push({ rule: 'asset-condition-in-range', where: `guild:${g.id}.asset:${a.id}.maintenanceCondition`, detail: { maintenanceCondition: cond, min: ASSET_CONDITION_MIN, max: ASSET_CONDITION_NEW } });
+      }
+      owned.set(a.id, a);
+    }
+
+    const seenBy = new Map(); // assetId -> first ventureId that referenced it
+    for (const v of g.ventures || []) {
+      if (v.assetId == null) continue; // asset-less is LEGAL — see the note above
+
+      const asset = owned.get(v.assetId);
+      if (!asset) {
+        out.push({ rule: 'venture-asset-owned-by-same-guild', where: `venture:${v.id}.assetId`, detail: { assetId: v.assetId, guild: g.id } });
+      } else {
+        const wanted = assetKindForVentureType(v.type);
+        if (wanted !== null && asset.kind !== wanted) {
+          out.push({ rule: 'venture-asset-kind-matches', where: `venture:${v.id}.assetId`, detail: { ventureType: v.type, expected: wanted, assetKind: asset.kind, assetId: v.assetId } });
+        }
+      }
+
+      if (seenBy.has(v.assetId)) {
+        out.push({ rule: 'one-venture-per-asset', where: `asset:${v.assetId}`, detail: { assetId: v.assetId, ventures: [seenBy.get(v.assetId), v.id] } });
+      } else {
+        seenBy.set(v.assetId, v.id);
+      }
+    }
+  }
+  return out;
+}
+
 // Claim integrity — the territory analogue of site occupancy. Every claim in
 // the SHARED territory layer names a seed landmark by (landmarkId, landmarkKind);
 // each must resolve to a real landmark of that exact kind (a citadel-kind claim
@@ -775,6 +839,7 @@ function checkInvariants(state, tick) {
     ...checkLicenceTerms(state),
     ...checkGalacticSupplyConsistency(state),
     ...checkSiteOccupancy(state),
+    ...checkAssetOccupancy(state),
     ...checkClaimIntegrity(state),
     ...checkGuildHome(state),
   ];

@@ -27,6 +27,7 @@
 
 const { computeGalacticSupply } = require('./supply.js');
 const { computeOccupancy } = require('./occupancy.js');
+const { deployedAssetIds } = require('./assets.js');
 const { getSite, getLandmark } = require('./seed.js');
 const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
@@ -209,6 +210,8 @@ const SNAPSHOT_SCHEMA = 7;
 //                 licenceFee: { tick, thisTick, charged, ventures } | null,   // Slice 3b-iii
 //                 stockpiles: { good: int },                    // flat guild total
 //                 stockpilesBySystem: { systemId: { good: int } }, // per-system
+//                 assets: [ { id, kind, maintenanceCondition,      // §4 inventory
+//                             deployedToVentureId: id | null } ],  //   null = IDLE
 //                 productionProfile: { ... } } ],               // §5 profile, sparse as stored
 //     production: [ { guildId,                                  // previewProduction(state)
 //       systems: [ { systemId, mines, goods, lines, refineries,     // resolved per-system
@@ -217,7 +220,7 @@ const SNAPSHOT_SCHEMA = 7;
 //       // a committed good also carries goods[good].window = { Q, windowStart, delivered,
 //       // sendCarry, ticksRemaining, requiredRate, sendThisTick, pctAchieved, status,
 //       // perVenture: { ventureId: { commitment, delivered, status } } }  // §5 per-licence
-//     ventures: [ { id, ownerGuildId, type, siteId, systemId, resourceType,
+//     ventures: [ { id, ownerGuildId, type, siteId, systemId, assetId, resourceType,
 //                   licence: { committedOutputPct, windowDays, signedTick,       // 3b-i
 //                              lockedPrice, basicFee, discountedFee } | null,
 //                   committedFromTick: int | null,                            // 3b-ii
@@ -237,73 +240,93 @@ function buildSnapshot(state) {
   // Guild breakdown: copy the fields the inspector shows. stockpiles is spread
   // into a fresh object so a consumer mutating the snapshot can never reach back
   // into live state.
-  const guilds = (state.guilds || []).map((g) => ({
-    id: g.id,
-    name: g.name,
-    isBot: !!g.isBot,
-    credits: g.credits,
-    fuelHoard: g.fuelHoard,
-    influence: g.influence,
-    homeSystemId: g.homeSystemId || null,
-    homePlanetId: g.homePlanetId || null,
-    // Guild-level holdings = the per-system pools flattened into one { good: int }
-    // (ruling B1, §15.2): the guild's TOTAL across its systems, kept for existing
-    // readers (guild cards, the overlay holdings line) that want one figure.
-    stockpiles: guildTotals(g),
-    // Per-system breakdown (ruling B1): the SAME pools, unflattened —
-    // systemId -> good -> int. Added now that the Production view needs a
-    // system's own holdings (the "add the field when a consumer needs it" case
-    // the roadmap anticipated). A deep-enough copy so the snapshot can never
-    // alias back into live state, exactly like the flat total above is a fresh
-    // object. The engine owns the split; the browser only reads a system's row.
-    stockpilesBySystem: cloneStockpiles(g.stockpiles || {}),
-    // The guild's stored System Production Profile (§5/§15.4), deep-cloned so a
-    // consumer mutating the snapshot can never alias into engine state (same
-    // discipline as stockpiles). Emitted SPARSE — exactly as stored, defaults NOT
-    // filled in — so the interactive controls (slice 2b-ii) can tell an
-    // explicitly-set entry from a defaulted one (mirroring hasThrottle). Absent
-    // keys mean their defaults; an all-default guild carries `{}`.
-    productionProfile: cloneProfile(g.productionProfile || {}),
-    // What the Syndicate last BOUGHT from this guild under its commitment (Slice 3a) —
-    // the credits it paid, the units it took and the posted price it paid them at, per
-    // good. `thisTick` is the engine answering "is this the current tick's sale?" so the
-    // console can print "you earned N credits from your commitment this tick" without
-    // computing anything (§5's display rule). Deep-copied, like every other block here,
-    // so a consumer mutating the snapshot can't reach back into live state. null for a
-    // guild that has never sold — which is every unlicensed guild.
-    syndicateSale: g.lastSyndicateSale
-      ? {
-          tick: g.lastSyndicateSale.tick,
-          thisTick: g.lastSyndicateSale.tick === state.tick,
-          credited: g.lastSyndicateSale.credited,
-          goods: Object.fromEntries(
-            Object.keys(g.lastSyndicateSale.goods || {}).sort()
-              .map((good) => [good, { ...g.lastSyndicateSale.goods[good] }]),
-          ),
-        }
-      : null,
-    // What the Syndicate CHARGED this guild at the last window boundary (Slice 3b-iii) —
-    // the guild-wide lump and, per licensed venture, its boundary verdict and what that
-    // verdict cost it. `thisTick` is the engine answering "did this fire on the current
-    // tick?", the same courtesy `syndicateSale` above does, so the console can say "you
-    // were charged N credits this cycle" without comparing anything itself (§5's display
-    // rule). This is the ONLY place the verdict survives the window roll: the moment the
-    // boundary tick ends, the delivered pile resets and the met/breach that priced the fee
-    // is gone. Deep-copied like every other block here; null for a guild that has never
-    // been charged — which is every unlicensed guild, and every guild before its first
-    // boundary under a licence.
-    licenceFee: g.lastLicenceFee
-      ? {
-          tick: g.lastLicenceFee.tick,
-          thisTick: g.lastLicenceFee.tick === state.tick,
-          charged: g.lastLicenceFee.charged,
-          ventures: Object.fromEntries(
-            Object.keys(g.lastLicenceFee.ventures || {}).sort()
-              .map((id) => [id, { ...g.lastLicenceFee.ventures[id] }]),
-          ),
-        }
-      : null,
-  }));
+  const guilds = (state.guilds || []).map((g) => {
+    // The derivation the asset block below reads: assetId -> the venture running
+    // it. Computed ONCE per guild (sim/assets.js), not per asset row.
+    const deployedTo = deployedAssetIds(g);
+    return {
+      id: g.id,
+      name: g.name,
+      isBot: !!g.isBot,
+      credits: g.credits,
+      fuelHoard: g.fuelHoard,
+      influence: g.influence,
+      homeSystemId: g.homeSystemId || null,
+      homePlanetId: g.homePlanetId || null,
+      // Guild-level holdings = the per-system pools flattened into one { good: int }
+      // (ruling B1, §15.2): the guild's TOTAL across its systems, kept for existing
+      // readers (guild cards, the overlay holdings line) that want one figure.
+      stockpiles: guildTotals(g),
+      // Per-system breakdown (ruling B1): the SAME pools, unflattened —
+      // systemId -> good -> int. Added now that the Production view needs a
+      // system's own holdings (the "add the field when a consumer needs it" case
+      // the roadmap anticipated). A deep-enough copy so the snapshot can never
+      // alias back into live state, exactly like the flat total above is a fresh
+      // object. The engine owns the split; the browser only reads a system's row.
+      stockpilesBySystem: cloneStockpiles(g.stockpiles || {}),
+      // The guild's stored System Production Profile (§5/§15.4), deep-cloned so a
+      // consumer mutating the snapshot can never alias into engine state (same
+      // discipline as stockpiles). Emitted SPARSE — exactly as stored, defaults NOT
+      // filled in — so the interactive controls (slice 2b-ii) can tell an
+      // explicitly-set entry from a defaulted one (mirroring hasThrottle). Absent
+      // keys mean their defaults; an all-default guild carries `{}`.
+      productionProfile: cloneProfile(g.productionProfile || {}),
+      // assets: the guild's ground-asset inventory (design.md §4, 30-08-26), one row
+      // per owned machine. `deployedToVentureId` is the ENGINE answering "is this one
+      // idle?" — the venture whose `assetId` names it, or null — so the client reads
+      // idle-vs-deployed instead of recomputing the derivation itself (§5's display
+      // rule: the browser renders, the engine decides). `maintenanceCondition` rides
+      // along inert, so the surface is already the right shape when the maintenance
+      // slice gives it a meaning. Sorted by id — the deployment pick is id-ordered, so
+      // the panel reads in the order the engine will take them. Fresh objects, so a
+      // consumer mutating the snapshot can never alias into engine state.
+      assets: (g.assets || []).map((a) => ({
+        id: a.id,
+        kind: a.kind,
+        maintenanceCondition: a.maintenanceCondition,
+        deployedToVentureId: deployedTo.get(a.id) || null,
+      })).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+      // What the Syndicate last BOUGHT from this guild under its commitment (Slice 3a) —
+      // the credits it paid, the units it took and the posted price it paid them at, per
+      // good. `thisTick` is the engine answering "is this the current tick's sale?" so the
+      // console can print "you earned N credits from your commitment this tick" without
+      // computing anything (§5's display rule). Deep-copied, like every other block here,
+      // so a consumer mutating the snapshot can't reach back into live state. null for a
+      // guild that has never sold — which is every unlicensed guild.
+      syndicateSale: g.lastSyndicateSale
+        ? {
+            tick: g.lastSyndicateSale.tick,
+            thisTick: g.lastSyndicateSale.tick === state.tick,
+            credited: g.lastSyndicateSale.credited,
+            goods: Object.fromEntries(
+              Object.keys(g.lastSyndicateSale.goods || {}).sort()
+                .map((good) => [good, { ...g.lastSyndicateSale.goods[good] }]),
+            ),
+          }
+        : null,
+      // What the Syndicate CHARGED this guild at the last window boundary (Slice 3b-iii) —
+      // the guild-wide lump and, per licensed venture, its boundary verdict and what that
+      // verdict cost it. `thisTick` is the engine answering "did this fire on the current
+      // tick?", the same courtesy `syndicateSale` above does, so the console can say "you
+      // were charged N credits this cycle" without comparing anything itself (§5's display
+      // rule). This is the ONLY place the verdict survives the window roll: the moment the
+      // boundary tick ends, the delivered pile resets and the met/breach that priced the fee
+      // is gone. Deep-copied like every other block here; null for a guild that has never
+      // been charged — which is every unlicensed guild, and every guild before its first
+      // boundary under a licence.
+      licenceFee: g.lastLicenceFee
+        ? {
+            tick: g.lastLicenceFee.tick,
+            thisTick: g.lastLicenceFee.tick === state.tick,
+            charged: g.lastLicenceFee.charged,
+            ventures: Object.fromEntries(
+              Object.keys(g.lastLicenceFee.ventures || {}).sort()
+                .map((id) => [id, { ...g.lastLicenceFee.ventures[id] }]),
+            ),
+          }
+        : null,
+    };
+  });
 
   // Every venture, flattened out of its owner guild, with its seed site
   // resolved. A null `site` means unseated (no siteId) or — if a siteId is set
@@ -324,6 +347,11 @@ function buildSnapshot(state) {
         // view can group ventures by system without reaching into `site`. Falls
         // back to the resolved site's system if a synthetic venture lacks it.
         systemId: v.systemId || (site ? site.systemId : null),
+        // assetId: the machine this venture runs (§4) — the other half of the
+        // guild's `assets` block above, read from the venture's end. null for an
+        // asset-less venture, which is legal but unreachable through establish or
+        // founding (both always occupy).
+        assetId: v.assetId == null ? null : v.assetId,
         resourceType: v.resourceType || null,
         recipeId: v.recipeId || null,
         productionRate: v.productionRate,

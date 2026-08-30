@@ -28,6 +28,8 @@ const {
 } = require('../actions.js');
 const { hashState } = require('../serialize.js');
 const { saveState, appendJournal, clearJournal, loadOrInit, journalPath } = require('../persist.js');
+const { guildTotals } = require('../stock.js');
+const { STARTER_MINERS, STARTER_FACTORIES } = require('../assets.js');
 
 // A throwaway persist dir per test, cleaned up after. Real filesystem (not a
 // mock) so the atomic temp-file+rename write path is actually exercised.
@@ -185,9 +187,22 @@ test('double-apply guard: a snapshot-baked action still in the journal is not re
 // is the omit-when-empty no-op working exactly as designed. (The 40-tick runs in
 // commitment-scaffold.test.js DO cross the bucket, and were re-pinned there with the
 // strip-and-prove method.)
+//
+// ASSET-OCCUPANCY SLICE (30-08-26): founding now GRANTS a starter asset inventory
+// (15 Miners + 10 Factories, docs/phase-1-tuning.md) and `establishVenture` occupies
+// one, so this sequence — which founds a guild and establishes a mine — legitimately
+// gained real serialized bytes and its FULL hash moved. Same strip-and-prove method,
+// and it is the whole delta proof: the three goldens below are ALL UNCHANGED and are
+// now asserted with the assets stripped too, so this slice added an inventory and one
+// `assetId` and altered NOTHING else about this sequence, byte for byte — no credit,
+// no stockpile, no production number moved. The new full hash is pinned beside them.
+// (A guild built WITHOUT founding carries no `assets` key and no `assetId` at all and
+// is byte-identical with nothing stripped — the omit-when-empty no-op, which is why
+// commitment-scaffold.test.js's five goldens did not move and needed no regen.)
 const GOLDEN_HASH = '56401013588519715d15f415334fb2660b1bd9f73881352dc9f48b787a7b564c';
 const GOLDEN_HASH_WITH_PRICES = '53c4f4818b198cbf5000dc7d1ed4e7d8ce0f1e96902291f26575ff6b44b1b212';
 const GOLDEN_HASH_WITH_HISTORY = '170bedd2c54dbb44b0583f93f1b8acfc8052c8c71d0e2b6e0146d8676f9d4a27';
+const GOLDEN_HASH_WITH_ASSETS = 'c42d88d7b70b6046ca710deda21717daccf58a969125ea9802a01fb82d386ffd';
 
 // The state minus its price block — exactly what the golden above covered.
 const withoutPrices = (state) => { const { prices, ...rest } = state; return rest; };
@@ -196,6 +211,20 @@ const withoutPrices = (state) => { const { prices, ...rest } = state; return res
 const withoutHistory = (state) => ({
   ...state,
   guilds: (state.guilds || []).map((g) => { const { productionHistory, ...rest } = g; return rest; }),
+});
+// The state minus everything the asset slice added — the guild's inventory AND every
+// venture's `assetId` reference. Stripped in both places, because the slice writes in
+// both, and leaving every other byte of the guild and the venture in place is what
+// makes the three unchanged hashes below a proof that ONLY the assets moved.
+const withoutAssets = (state) => ({
+  ...state,
+  guilds: (state.guilds || []).map((g) => {
+    const { assets, ...rest } = g;
+    return {
+      ...rest,
+      ventures: (g.ventures || []).map((v) => { const { assetId, ...vRest } = v; return vRest; }),
+    };
+  }),
 });
 
 test('no-op proof: pure engine path (persistence OFF) matches the golden hash', () => {
@@ -209,13 +238,23 @@ test('no-op proof: pure engine path (persistence OFF) matches the golden hash', 
   s = advance(s, []).state;
 
   assert.equal(s.tick, 2);
-  assert.equal(hashState(withoutHistory(withoutPrices(s))), GOLDEN_HASH, 'everything but the price block and the history buffer is byte-identical to pre-price-engine HEAD');
-  assert.equal(hashState(withoutHistory(s)), GOLDEN_HASH_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
-  assert.equal(hashState(s), GOLDEN_HASH_WITH_HISTORY, 'and the history buffer itself is pinned');
+  assert.equal(hashState(withoutAssets(withoutHistory(withoutPrices(s)))), GOLDEN_HASH, 'everything but the price block, the history buffer and the assets is byte-identical to pre-price-engine HEAD');
+  assert.equal(hashState(withoutAssets(withoutHistory(s))), GOLDEN_HASH_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
+  assert.equal(hashState(withoutAssets(s)), GOLDEN_HASH_WITH_HISTORY, 'and with the history back in, the ONLY delta from the pre-asset engine is the assets');
+  assert.equal(hashState(s), GOLDEN_HASH_WITH_ASSETS, 'and the asset inventory itself is pinned');
   assert.equal(s.priceHistory, undefined,
     'a 2-tick run takes no price sample at all (the first fine bucket closes at tick 15), which is why the three goldens above did not move');
   assert.deepEqual(s.guilds[0].productionHistory, { sys_0002: { titanium: { prod: [5, 5], cons: [0, 0] } } },
     'the stripped-equals-old proof above is only a proof if there was really history to strip');
+  // ...and likewise for the assets: the three unchanged hashes only mean something if
+  // this run really did grant an inventory and occupy one machine out of it.
+  assert.equal(s.guilds[0].assets.length, STARTER_MINERS + STARTER_FACTORIES, 'the run really did receive the starter gift');
+  assert.equal(s.guilds[0].ventures[0].assetId, 'asset_player-guild_miner_01', 'and the mine really is running one of them');
+  // The delta is the assets ALONE — no game number moved with them. Credits are the
+  // founding's 120 (nothing was charged for the gift or the deploy), and the mine's
+  // output is the same 5/tick × 2 ticks it produced before this slice existed.
+  assert.equal(s.guilds[0].credits, 120, 'the gift and the deploy cost nothing');
+  assert.equal(guildTotals(s.guilds[0]).titanium, 10, 'and production is byte-for-byte what it was: occupying an asset changes no game number');
 });
 
 // --- 5. graceful shutdown: the MID-INTERVAL save (no intervening tick) ------

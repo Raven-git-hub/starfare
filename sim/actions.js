@@ -16,6 +16,10 @@ const { getStock, addStock } = require('./stock.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { guildHolds } = require('./claims.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
+const {
+  STARTER_MINERS, STARTER_FACTORIES, starterAssetSpecs, assetKindForVentureType,
+  pickIdleAsset, idleAssets,
+} = require('./assets.js');
 
 // actions.js — action constructors, and the validate-as-they-arrive intake
 // discipline (design.md §15.6). This is the guard against the game's own
@@ -33,9 +37,13 @@ const { nearestWaystation, arrivalTickFor } = require('./transport.js');
 //                         (invariant 2 holds: none minted or destroyed).
 //   - foundGuild        — a guild enters on a starter-eligible home (§13);
 //                         starting credits are debited from the ledger, so
-//                         nothing is minted, and it seats + claims the home.
-//   - establishVenture  — seat a NEW mining venture on a real seed node so it
-//                         produces on the next tick (occupancy-guarded).
+//                         nothing is minted, and it seats + claims the home. It
+//                         also GRANTS the starter asset gift (§4, 30-08-26) —
+//                         engine policy, not an action field.
+//   - establishVenture  — seat a NEW venture on a real seed node so it produces
+//                         on the next tick, OCCUPYING an idle asset of the
+//                         matching kind. Three gates (§4): vacant node, idle
+//                         asset in inventory, and the guild holds the system.
 //   - setProductionProfile — store a guild's per-system Gate-1/Gate-3 policy.
 //   - sellToSyndicate   — the guild sells stockpile goods to the Syndicate at the
 //                         posted price (design.md §5 "SELL GOES LIVE", 29-08-26).
@@ -104,7 +112,12 @@ function createFoundGuildAction({
 //     tick, consuming the recipe's input good from and producing its output good
 //     into the owner's stockpile (throttled by available input — tick.js).
 // Each rule is validated up front, mirroring the occupancy invariant, so a bad
-// request is refused cleanly rather than applied-then-halted. `productionRate` is
+// request is refused cleanly rather than applied-then-halted. Deploying also has
+// THREE gates (design.md §4, 30-08-26) — a vacant node, an idle asset of the
+// matching kind in the guild's inventory, and the guild holding the node's system
+// — and on success the chosen asset is OCCUPIED (the venture's `assetId` points at
+// it); no `assetId` is taken from the action, because which machine is deployed is
+// the engine's deterministic pick, not the caller's. `productionRate` is
 // REQUIRED and operator-supplied — a testbed dial, since only Titanium's mining
 // rate is ruled; the rest (and refinery throughput) are undecided. Establishing
 // a venture moves no credits or fuel (no licence/site cost yet).
@@ -321,6 +334,28 @@ function validateAction(state, action) {
     if ((state.claims || []).some((c) => c.landmarkId === action.homeSystemId)) {
       return { valid: false, reason: `system ${JSON.stringify(action.homeSystemId)} is already claimed` };
     }
+    // INLINE VENTURES OCCUPY TOO (design.md §4, 30-08-26). A founding may carry
+    // ventures directly; in v1 every real create-path attaches an asset, so each
+    // one must take a starter asset of its matching kind out of the very pool this
+    // founding grants. Refused up front if the founding asks for more machines of a
+    // kind than the gift holds — that is a genuine gap and it fails LOUDLY here,
+    // rather than the engine quietly minting extra assets (an invented number) or
+    // seating an asset-less venture (a state the real paths never produce).
+    const inline = Array.isArray(action.ventures) ? action.ventures : [];
+    const wanted = {};
+    for (const v of inline) {
+      const kind = assetKindForVentureType(v && v.type);
+      if (!kind) {
+        return { valid: false, reason: `inline venture ${JSON.stringify(v && v.id)} has ventureType ${JSON.stringify(v && v.type)}, which needs no known asset kind (expected 'mining' or 'refining')` };
+      }
+      wanted[kind] = (wanted[kind] || 0) + 1;
+    }
+    const pool = { miner: STARTER_MINERS, factory: STARTER_FACTORIES };
+    for (const [kind, want] of Object.entries(wanted)) {
+      if (want > pool[kind]) {
+        return { valid: false, reason: `founding carries ${want} ventures needing a ${kind} but the starter gift holds only ${pool[kind]} ${kind} assets (docs/phase-1-tuning.md "Starter asset gift")` };
+      }
+    }
     return { valid: true };
   }
 
@@ -347,6 +382,15 @@ function validateAction(state, action) {
     const occupant = siteOccupant(state, action.siteId);
     if (occupant) {
       return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is already occupied by venture ${JSON.stringify(occupant.id)}` };
+    }
+    // GATE 3 — the guild must HOLD the node's system (design.md §4's deploy
+    // contract, 30-08-26): no building on land you don't own. This closes a real
+    // gap — until now establish checked the site but never the territory, so a
+    // guild could seat a venture anywhere in the galaxy. Same predicate the BUY
+    // side already uses for "you may only buy into a system you hold"
+    // (sim/claims.js), asked the same way, so the two can never disagree.
+    if (!guildHolds(state, action.guildId, site.systemId)) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} does not hold system ${JSON.stringify(site.systemId)} — a venture may only be deployed in a system you hold (§4)` };
     }
     if (typeof action.productionRate !== 'number' || !Number.isInteger(action.productionRate) || action.productionRate <= 0) {
       return { valid: false, reason: 'productionRate must be a positive integer (§15.2)' };
@@ -379,6 +423,17 @@ function validateAction(state, action) {
       }
     } else {
       return { valid: false, reason: `unknown ventureType ${JSON.stringify(ventureType)} (expected 'mining' or 'refining')` };
+    }
+    // GATE 2 — the guild must hold an IDLE asset of the matching kind in its
+    // inventory (design.md §4): a Miner for a resource node, a Factory for a
+    // settlement slot. The asset starts in inventory, not on the node — the deploy
+    // is what takes it out. "Idle" is DERIVED (sim/assets.js): an owned asset no
+    // venture of this guild references. Checked against state-as-it-stands, so two
+    // deploys competing for the LAST free machine in one batch resolve
+    // first-valid-wins exactly as two racing for the same node do.
+    const kind = assetKindForVentureType(ventureType);
+    if (!pickIdleAsset(guild, kind)) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} has no idle ${kind} in its inventory (${(guild.assets || []).filter((a) => a.kind === kind).length} owned, ${idleAssets(guild, kind).length} idle) — a ${ventureType} venture deploys a ${kind} (§4)` };
     }
     return { valid: true };
   }
@@ -719,16 +774,39 @@ function applyAction(state, action) {
     // the ownership claim (the source of truth). The Terran homeworld is the
     // system's lowest-id Terran planet, resolved from the seed.
     const homePlanetId = getTerranHomeworld(action.homeSystemId);
-    // Stamp each inline venture's denormalised systemId from its site (ruling B1,
-    // §15.2) — the pool key production deposits into. This mirrors what
-    // establishVenture does; without it an inline-founded mine would pool its
-    // goods under a `null` system instead of the one its node sits in. (The flat
-    // guild total is unaffected either way — guildTotals sums across pools — but
-    // the per-system breakdown, and any consumer keyed by system, must be right.)
+    // THE STARTER ASSET GIFT (design.md §4, docs/phase-1-tuning.md "Starter asset
+    // gift"): 15 Miners + 10 Factories, idle, in inventory. It is ENGINE POLICY,
+    // not an action field — exactly like `fuelHoard: 0` below — so the action shape
+    // is byte-identical to before this slice and no caller can ask for a different
+    // gift. The counts and the deterministic id scheme both live in sim/assets.js;
+    // nothing is inlined here.
+    const assets = starterAssetSpecs(action.guildId);
+    // The pool each inline venture draws from, split by kind and consumed in order.
+    const unclaimed = { miner: assets.filter((a) => a.kind === 'miner'), factory: assets.filter((a) => a.kind === 'factory') };
+
+    // Two stamps per inline venture:
+    //
+    // 1. Its denormalised systemId, from its site (ruling B1, §15.2) — the pool key
+    //    production deposits into. This mirrors what establishVenture does; without
+    //    it an inline-founded mine would pool its goods under a `null` system
+    //    instead of the one its node sits in. (The flat guild total is unaffected
+    //    either way — guildTotals sums across pools — but the per-system breakdown,
+    //    and any consumer keyed by system, must be right.)
+    // 2. Its `assetId` — INLINE VENTURES OCCUPY TOO (§4, 30-08-26), taking a starter
+    //    asset of their matching kind out of the very pool this founding grants
+    //    (validateAction has already proved the pool is big enough). Deterministic
+    //    by construction: the specs are minted in a fixed order and consumed in the
+    //    founding's own venture order, so two runs of the same scenario attach the
+    //    same machine to the same venture (invariant 9). Any `assetId` a caller put
+    //    on an inline venture is OVERWRITTEN, not honoured: the pool is minted here,
+    //    so a caller's id could only name a machine that does not exist.
     const ventures = (action.ventures || []).map((v) => {
-      if (v.systemId != null || v.siteId == null) return v;
-      const site = getSite(v.siteId);
-      return site ? { ...v, systemId: site.systemId } : v;
+      const site = v.systemId == null && v.siteId != null ? getSite(v.siteId) : null;
+      return {
+        ...v,
+        ...(site ? { systemId: site.systemId } : {}),
+        assetId: unclaimed[assetKindForVentureType(v.type)].shift().id,
+      };
     });
     const guild = createGuild({
       id: action.guildId,
@@ -740,6 +818,7 @@ function applyAction(state, action) {
       incomeRate: action.incomeRate,
       homeSystemId: action.homeSystemId,
       homePlanetId,
+      assets,
       ventures,
     });
     next.guilds.push(guild);
@@ -770,12 +849,20 @@ function applyAction(state, action) {
     // stamp the venture's systemId — the pool key production uses (ruling B1,
     // §15.2). Denormalised from the site, guarded against it by invariants.js.
     const site = getSite(action.siteId);
+    // OCCUPY, NOT CONSUME (design.md §4). Gate 2 already proved an idle asset of
+    // the matching kind is there; take the SAME deterministic pick — the lowest
+    // idle id — and point the new venture at it. The asset is NOT removed from
+    // `guild.assets`: it is still owned, it is simply now referenced, and that
+    // reference is the whole of what "deployed" means. Deploy is one-way in this
+    // slice — nothing returns an asset to idle until cancel-licence exists (§4).
+    const occupied = pickIdleAsset(guild, assetKindForVentureType(action.ventureType || 'mining'));
     guild.ventures.push(createVenture({
       id: action.ventureId,
       ownerGuildId: action.guildId,
       type: action.ventureType || 'mining',
       siteId: action.siteId,
       systemId: site ? site.systemId : null,
+      assetId: occupied ? occupied.id : null,
       resourceType: action.resourceType,
       recipeId: action.recipeId,
       productionRate: action.productionRate,

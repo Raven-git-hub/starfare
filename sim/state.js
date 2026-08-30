@@ -24,6 +24,7 @@ const { cloneWindows } = require('./windows.js');
 const { cloneHistory } = require('./history.js');
 const { seedPrices } = require('./prices.js');
 const { clonePriceHistory } = require('./price-history.js');
+const { ASSET_CONDITION_NEW } = require('./assets.js');
 
 // cloneShipments(list) -> a deep-enough copy of the IN-FLIGHT rows. `cargo` is the
 // only nested object a shipment carries (§6: no origin, no route, no status), so
@@ -53,6 +54,7 @@ function createGuild({
   productionProfile = {},
   syndicateWindows = {},
   productionHistory = {},
+  assets = [],
   ventures = [],
   vehicles = [],
 }) {
@@ -114,6 +116,21 @@ function createGuild({
     // a galaxy where nothing is produced carries no key and stays byte-identical.
     ...(Object.keys(productionHistory).length ? { productionHistory: cloneHistory(productionHistory) } : {}),
     lifetimeProduced: {}, // good -> int; monotonic, only ever increases (§13)
+    // assets: the guild's ground-asset INVENTORY (design.md §4, 30-08-26) — the
+    // Miners and Factories it owns. Nested here, a sibling of `ventures` and
+    // `vehicles`, for the same reason they are: ownership is "the guild whose
+    // array holds it", so there is exactly one place to look and nothing to keep
+    // in sync. An asset in this array is DEPLOYED if one of the guild's own
+    // ventures names it in `assetId`, and IDLE otherwise — derived, never stored
+    // (sim/assets.js; invariant 5). Deep-copied through createAsset so a caller's
+    // object can't alias into engine state, exactly as `ventures` is.
+    //
+    // OMITTED when empty, like `syndicateWindows` and `productionHistory` above:
+    // a guild with no assets — every guild built directly by a test or a scenario,
+    // since only the founding grant mints them — carries no key at all and
+    // serializes byte-identically to pre-asset state, which is what keeps the
+    // determinism goldens meaningful.
+    ...(assets.length ? { assets: assets.map(createAsset) } : {}),
     ventures: ventures.map(createVenture),
     vehicles: vehicles.map(createVehicle),
   };
@@ -129,6 +146,7 @@ function createVenture({
   type,
   siteId = null,
   systemId = null,
+  assetId = null,
   resourceType = null,
   recipeId = null,
   productionRate = 0,
@@ -162,6 +180,21 @@ function createVenture({
     // by invariants.js so the denormalised copy can't silently drift. null for a
     // synthetic venture built directly by a test with no seat.
     systemId,
+    // assetId: the ground ASSET this venture runs (design.md §4, §15.4) — the
+    // machine, as against the operating company around it. NULLABLE BY DESIGN: a
+    // venture can outlive its asset (a breakdown, a future swap-out), so null is a
+    // real, legal state and `checkAssetOccupancy` deliberately does NOT demand one.
+    // It is nonetheless UNREACHABLE at birth in this slice: both real create-paths
+    // (establishVenture, and foundGuild's inline ventures) always occupy an idle
+    // asset, so every venture the game creates has one. A venture built DIRECTLY by
+    // a test may legitimately have none.
+    //
+    // OMITTED when null, the discipline `equityPct` / `licence` / `committedFromTick`
+    // below already follow: a venture with no asset carries no key, so a state built
+    // without the founding grant serializes byte-identically to pre-asset state. The
+    // field and its default still exist here, so the shape is settled and nothing
+    // needs migrating when swap-out and breakdown make null reachable.
+    ...(assetId != null ? { assetId } : {}),
     // resourceType: the RAW good a MINING venture extracts. Its output goes to
     // the owner guild's stockpile (tick.js stepProduction). This DRIVES
     // production; the seed node at siteId is the authority it is checked
@@ -277,6 +310,36 @@ function createVenture({
     // stepProduction first touches this venture -- there's been no
     // mutation to record yet at construction time.
     updatedAtTick: null,
+  };
+}
+
+// Asset (OWNED, design.md §4 "Ventures and Ground Assets" / "Asset occupancy",
+// 30-08-26) — the physical MACHINE a venture runs, as against the venture, which
+// is the operating company around it. Exactly two kinds exist: a `miner` (on a
+// resource node) and a `factory` (on a settlement slot); sim/assets.js pins the
+// vocabulary.
+//
+// There is NO ownerGuildId and NO `isIdle` on purpose. Ownership is "the guild
+// whose `assets` array holds it" (the same fact seen from the other end, §15.4),
+// and idleness is DERIVED from whether any venture names it (invariant 5) — a
+// stored copy of either could drift from the array that really holds it.
+//
+// There is also no `updatedAtTick`: §15.2's "every mutation records its tick"
+// is followed HERE the way its siblings follow it — a venture stamps one because
+// stepProduction mutates it every tick; nothing in this slice ever mutates an
+// asset, so a stamp would be a field with nothing to record. It arrives with the
+// mutation that needs it (decay, in the maintenance slice).
+function createAsset({ id, kind, maintenanceCondition = ASSET_CONDITION_NEW }) {
+  if (id === undefined) throw new Error('createAsset: id is required');
+  if (kind === undefined) throw new Error('createAsset: kind is required');
+  return {
+    id,
+    kind,
+    // maintenanceCondition — a fraction, 1 = new/full, 0 = stopped (sim/assets.js
+    // owns the constant and the scale). DESIGN-AHEAD AND INERT: nothing in this
+    // slice reads it, nothing changes it, and it never reaches production. It is
+    // carried and serialized now so the maintenance slice needs no migration.
+    maintenanceCondition,
   };
 }
 
@@ -479,6 +542,7 @@ function createState(scenario) {
 module.exports = {
   createGuild,
   createVenture,
+  createAsset,
   createVehicle,
   createReserve,
   createSyndicate,

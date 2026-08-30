@@ -40,6 +40,7 @@
 
 const { createState } = require('../../sim/state.js');
 const { getTerranHomeworld } = require('../../sim/seed.js');
+const { starterAssetSpecs } = require('../../sim/assets.js');
 const { makeReliefWorld } = require('../world_relief.js');
 const { makeLicenceBot } = require('../licence_bot.js');
 
@@ -75,6 +76,16 @@ const PARAMS = Object.freeze({
 // (no action needed for setup), and N via the state's own windowN field.
 function makeState() {
   const homePlanetId = getTerranHomeworld(HOME_SYSTEM); // pl_00004 (seed's authority)
+  // The guild's ground-asset inventory (design.md §4, 30-08-26). This scenario
+  // assembles its guild DIRECTLY through createState rather than through the
+  // foundGuild action, so it has to hand itself the same starter gift founding
+  // would have granted — otherwise the relief mine's `establishVenture` at tick T
+  // is refused by deploy gate 2 ("no idle miner in inventory"). Taken from
+  // sim/assets.js so the counts and the id scheme stay in one place; the three
+  // ventures below then occupy one each, exactly as a real founding would.
+  const assets = starterAssetSpecs(GUILD_ID);
+  const minerId = (n) => assets.filter((a) => a.kind === 'miner')[n].id;
+  const factoryId = (n) => assets.filter((a) => a.kind === 'factory')[n].id;
   return createState({
     guilds: [{
       id: GUILD_ID,
@@ -83,12 +94,13 @@ function makeState() {
       fuelHoard: 0,
       homeSystemId: HOME_SYSTEM,
       homePlanetId,
+      assets,
       ventures: [
         // The committed titanium mine — its syndicateCommitment IS the per-window
         // target Q the resolver sums into the licence (§5 windowed accrual).
         {
           id: 'mine_ti_1', ownerGuildId: GUILD_ID, type: 'mining',
-          siteId: TITANIUM_NODE_1, systemId: HOME_SYSTEM,
+          siteId: TITANIUM_NODE_1, systemId: HOME_SYSTEM, assetId: minerId(0),
           resourceType: 'titanium', productionRate: PARAMS.R_t,
           syndicateCommitment: PARAMS.Q,
         },
@@ -96,13 +108,13 @@ function makeState() {
         // is never the bottleneck (the titanium squeeze is the whole point).
         {
           id: 'mine_carbon', ownerGuildId: GUILD_ID, type: 'mining',
-          siteId: CARBON_NODE, systemId: HOME_SYSTEM,
+          siteId: CARBON_NODE, systemId: HOME_SYSTEM, assetId: minerId(1),
           resourceType: 'carbon_products', productionRate: PARAMS.R_c,
         },
         // The refinery: titanium_alloy = 3 titanium + 1 carbon_products → 1 alloy.
         {
           id: 'refinery_alloy', ownerGuildId: GUILD_ID, type: 'refining',
-          siteId: REFINERY_SLOT, systemId: HOME_SYSTEM,
+          siteId: REFINERY_SLOT, systemId: HOME_SYSTEM, assetId: factoryId(0),
           recipeId: 'titanium_alloy', productionRate: PARAMS.r,
         },
       ],
