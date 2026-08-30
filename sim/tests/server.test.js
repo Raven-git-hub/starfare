@@ -120,6 +120,94 @@ test('GET / serves the WIRED licence panel — the two real actions, and no mock
   assert.ok(!html.includes('NOT YET CHARGED'), 'the charge is built — the old caveat is false');
 });
 
+// --- the asset picker goes live (client-only, 31-08-26) ---------------------------
+//
+// The engine has required an explicit `assetId` since f1109d3, and the panel ran on a
+// four-row MOCK inventory that sent nothing — so every deploy from the game client was
+// refused. This slice wires the picker to the guild's real idle assets and strips the
+// copy that said the opposite of what the engine enforces. Both halves are pinned on the
+// SERVED BYTES: a page that quietly reverted would still render perfectly, and only this
+// would go red.
+test('GET / serves the REAL asset picker — the snapshot\'s idle inventory, and the picked assetId on the deploy', async () => {
+  const html = await (await fetch(base + '/')).text();
+
+  // The mock inventory is GONE — array, ids and all.
+  assert.ok(!html.includes('var INVENTORY = ['), 'the mock asset inventory must be deleted, not just unused');
+  for (const fake of ['AST-114', 'AST-118', 'AST-231', 'AST-240']) {
+    assert.ok(!html.includes(fake), `the mock asset id ${fake} must be gone`);
+  }
+
+  // What replaces it: the player's OWN assets off the snapshot, filtered to idle by the
+  // ENGINE's own answer — the browser must not re-derive "is this one deployed?".
+  assert.match(html, /LIVE\.myAssets = \(me && me\.assets\) \|\| \[\]/);
+  assert.match(html, /window\.__myIdleAssets = function\(kind\)/);
+  assert.match(html, /a\.kind === kind && a\.deployedToVentureId == null/);
+  assert.match(html, /window\.__myIdleAssets \? window\.__myIdleAssets\(kind\) : \[\]/);
+  // …and the display is derived from the real fields, not stored beside them.
+  assert.match(html, /Math\.round\(\(a\.maintenanceCondition \|\| 0\) \* 100\)/);
+
+  // The picked machine rides the deploy. This is the whole point of the slice.
+  assert.match(html, /assetId: S\.asset\.id,/);
+  assert.ok(!html.includes('no assetId'), 'the comment claiming the deploy sends no assetId is false now');
+
+  // The empty pool is the CLIENT's message to own: the engine speaks only about the id
+  // it was handed, so "you are out of machines" has no engine refusal behind it.
+  assert.match(html, /no idle '\+kindPlural\(kind\)\+' in inventory/);
+
+  // GATE 3 pre-gated in the browser, with the engine's refusal still the backstop.
+  assert.match(html, /var held = !!\(S\.site && S\.site\.mine\);/);
+  assert.match(html, /var ok = held && !!S\.asset/);
+  assert.match(html, /deploy requires holding it first/);
+  assert.match(html, /only deploy in a system you hold/);
+  assert.match(html, /failHint\('Refused: ' \+ \(out\.reason/);
+});
+
+test('GET / serves the DE-MOCKED establish panel — every retired string, and the honest replacements', async () => {
+  const html = await (await fetch(base + '/')).text();
+
+  // The exact strings this slice removed. Pinned ABSENT so a merge cannot bring back a
+  // caption that contradicts the engine — the failure mode the fee-charge slice named.
+  for (const dead of [
+    '— your own claim.',
+    'Establishing here is allowed; leasing is not built yet.',
+    'Asset inventory is design-ahead (§4 — `assetId` is reserved, not built). Nothing is consumed, and no asset is sent with the deploy.',
+    'the curve below is the designed <b class="amber">shape</b> of that fee, not the figure you will owe.',
+    'Indicative. The relief above is §5\'s designed grid;',
+    'Reputation is design-ahead (#61) — no standing is recorded or moved yet.',
+    'Licence fee — % of basic, across commitment',
+    'it will be consumed to stand this venture up',
+    'the inventory above is a mock, nothing is consumed',
+    'Mock · no engine',
+    'Real · sent to the engine',
+  ]) {
+    assert.ok(!html.includes(dead), `the de-mocked panel must not still say: ${dead}`);
+  }
+  // The tag CLASSES go with the tags: nothing on this panel is a mock any more, and a
+  // "real" badge only means something beside one that says otherwise. The summary
+  // ledger's green "this row is real" key is the same distinction in quieter form and
+  // goes with them — a green subset would now imply the rest is less true.
+  for (const cls of ['mocktag', 'mocknote', 'minitag']) {
+    assert.ok(!html.includes(cls), `the ${cls} class is orphaned — it must go with the tags`);
+  }
+  assert.ok(!html.includes('class="row real"'), 'the ledger\'s real-vs-mock key marker is orphaned too');
+  assert.ok(!html.includes('.ledger .row.real'), 'and so is the CSS behind it');
+  // The fee-graph label is now just the label.
+  assert.match(html, /<span class="lbl">Licence fee<\/span>/);
+
+  // The Breach row is RELATIVE, like the Fee row — never a fabricated credit figure.
+  assert.ok(!html.includes("P.BASIC_FEE"), 'the invented per-tier breach amount is gone');
+  assert.ok(!html.includes('BASIC_FEE: { 1:120'), 'and so is the constant behind it');
+  assert.match(html, /setRow\('tBreach','<b>100%<\/b> <span class="mut">of basic · locked at signing<\/span>'\)/);
+
+  // OCCUPY, NOT CONSUME — §4's rule, in the copy a player actually reads.
+  assert.match(html, /occupied, not consumed/);
+  assert.match(html, /Deploying <em>occupies<\/em> the machine, it does not consume it/);
+  // …and condition is displayed but inert: the reel must not promise it does anything.
+  assert.ok(!html.includes('a well-kept machine runs closer to its rating'),
+    'condition never touches production (§4) — the reel must not say it does');
+  assert.match(html, /condition never changes a production rate/);
+});
+
 // The TRADE tab (design.md §5, "SELL GOES LIVE"). A client-render tripwire on the
 // SERVED bytes: if the tab quietly reverted to the old Marketplace stub, or the sell
 // wiring was dropped, the page would still render perfectly and only this fails.
@@ -417,7 +505,11 @@ test('GET / tells the truth on the licence receipt — and leaves the STILL-TRUE
   assert.match(html, /with no fee and no commitment/);                   // …said again on the summary
   assert.match(html, /designed <em>shape<\/em> of that discount/);        // the pre-sign graph is a shape, not a quote
   assert.match(html, /Renegotiation itself is not built yet/);           // #64
-  assert.match(html, /the asset economy is not built yet/);              // §4
+  // §4 WAS on this list. The asset economy is BUILT and the panel is wired to it
+  // (the asset-picker slice, 31-08-26), so the caveat is false and the assertion
+  // FLIPS rather than being dropped — the same treatment `NOT YET CHARGED` got above.
+  assert.ok(!html.includes('the asset economy is not built yet'),
+    'the asset economy is built and the picker is wired — the old caveat is false');
 });
 
 test('GET / serves the SYNCED tick ring — the server\'s period, the observed tick\'s phase', async () => {

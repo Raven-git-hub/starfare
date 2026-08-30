@@ -104,10 +104,20 @@ step: one action both seats the venture and deploys the machine —
 → `recordLicenceTerms({ licensed, commitment c, equity o, tier/fee basis, renegotiationOpenTick })`.
 The venture produces next tick. **Not atomic today:** establish and `applyForLicence` are two intake
 actions (see the client-wiring note of 27-08-26), and an *atomic* `establishAndLicence` remains a noted
-follow-up. **The picker must now name the machine** — `assetId` is required, and the engine refuses an id
+follow-up. **The picker names the machine** — `assetId` is required, and the engine refuses an id
 it does not own, one already deployed (naming the venture holding it), and one of the wrong kind, as it
-refuses a site in a system the guild does not hold. *(The picker itself is the next client slice; until it
-ships, `client/game.html`'s deploy sends no `assetId` and is refused.)*
+refuses a site in a system the guild does not hold.
+
+**THE PANEL IS WIRED TO IT — BUILT 31-08-26 (client-only; `client/game.html`).** The Asset block was a
+four-row mock (`AST-###`) that sent nothing; it is now the guild's **real idle inventory**, read off the
+snapshot's per-guild `assets` and filtered to `deployedToVentureId == null` of the matching kind — the
+engine answers idle-vs-deployed, the browser only renders it. The machine the player picks rides the
+deploy as `assetId`. **Deployment is gated to systems the guild HOLDS** (§4 gate 3): the deploy button is
+pre-gated and says why, with the engine's own refusal as the backstop. This **overrules** the old panel
+stance that establishing on another guild's claim is allowed — leasing stays the future lever for
+building on someone else's land, but it will be a contract, not the absence of a check. **An exhausted
+pool is the client's message now**: the engine speaks only about the id it was handed, so the picker
+shows a disabled *"no idle {miners|factories} in inventory"* state and the deploy hint says so.
 
 ### 2.8 Presentation-only (no state)
 Facility art (derived from archetype/kind/biome, `console-client-and-art.md §3`) · Guild Adviser
@@ -127,7 +137,9 @@ all part of the deferred licence layer — decide each one's shape when that sli
    above, from the ruling: establishment **OCCUPIES, it does not consume** — the asset stays in the
    inventory and the venture's reference is the whole of what "deployed" means — and **"unbound" is
    DERIVED, never stored**: an asset is idle iff no venture names it, so there is no `isIdle` field
-   (invariant 5). Condition is carried but inert; maintenance is its own later slice.
+   (invariant 5). Condition is carried but inert; maintenance is its own later slice. **The panel reads
+   it live since 31-08-26** (§2.7): the picker is this inventory, and the copy says *occupied, not
+   consumed*.
 2. **Licence record** (per venture) — `{ licensed, commitment c, equity o, tier/fee basis,
    renegotiationOpenTick, reputationAccrual? }`. `venture.syndicateCommitment` is today's fed-in
    placeholder seed of this.

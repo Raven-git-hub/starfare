@@ -19,8 +19,17 @@
   Tier 3/4 "not yet built" per §4. Header fields all map to the galaxy state model
   (node index / resourceType / planet.name / archetype / guild.credits).
   Every placeholder number is [FIRST-CUT] -> decision-checklist #56 (kept in code
-  comments). Licence economy, asset inventory, reputation (#61) & renegotiation are
-  design-ahead / mock.
+  comments). Reputation (#61) & renegotiation are design-ahead / mock.
+
+  UPDATED 31-08-26 (the asset-picker slice): the asset block is WIRED in the shipped
+  client. The list is the guild's real IDLE inventory off the snapshot, the chosen
+  `assetId` rides `establishVenture`, and deploying OCCUPIES the machine rather than
+  consuming it (design.md §4) — the copy here matches. Deployment is also gated to a
+  system the guild HOLDS (§4 gate 3), which is why the panel no longer says otherwise.
+  The sample rows below stay sample rows: this file has no engine to read, but they now
+  carry the engine's own id scheme so the picker looks like what a player will see.
+  The fee figures in credits remain this mockup's declared placeholders; the shipped
+  client shows the relief as a % and reads the signed amount back off the snapshot.
 -->
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
@@ -271,7 +280,7 @@ input[type=range]::-moz-range-thumb{width:16px; height:16px; border-radius:50%; 
 
             <div class="fee-graph">
               <div class="gh">
-                <span class="lbl">Licence fee — % of basic, across commitment</span>
+                <span class="lbl">Licence fee</span>
                 <span class="read"><b id="feePctBig">100%</b><span class="cr" id="feeCr">120 ¢/cyc</span></span>
               </div>
               <svg id="feeSvg" viewBox="0 0 320 150" preserveAspectRatio="none" aria-hidden="true"></svg>
@@ -357,11 +366,14 @@ var P = {
   BASIC_FEE: { 1:120, 2:240, 3:480, 4:960 }, // per-tier basic (max) fee    [FIRST-CUT]
   REP_MAX: 100, REP_WC: 0.5, REP_WO: 0.5     // reputation gain model (#61)  [FIRST-CUT]
 };
+/* Sample rows only — this file has no engine. The ids follow sim/assets.js's real
+   scheme (`asset_<guildId>_<kind>_<NN>`) so the picker reads as it does in the client,
+   where the same list is the guild's real IDLE inventory off the snapshot. */
 var INVENTORY = [
-  { id:'AST-114', kind:'miner',   label:'Miner',   condition:100 },
-  { id:'AST-118', kind:'miner',   label:'Miner',   condition:96  },
-  { id:'AST-231', kind:'factory', label:'Factory', condition:100 },
-  { id:'AST-240', kind:'factory', label:'Factory', condition:88  }
+  { id:'asset_player-guild_miner_01',   kind:'miner',   label:'Miner',   condition:100 },
+  { id:'asset_player-guild_miner_02',   kind:'miner',   label:'Miner',   condition:96  },
+  { id:'asset_player-guild_factory_01', kind:'factory', label:'Factory', condition:100 },
+  { id:'asset_player-guild_factory_02', kind:'factory', label:'Factory', condition:88  }
 ];
 var RECIPES_T2 = [
   ['titanium_alloy','3 titanium + 1 carbon_products'],
@@ -481,8 +493,8 @@ function onSlider(){ S.c=(+document.getElementById('cRange').value)/100; S.o01=(
 /* ---- Guild Adviser reel: info (paginated) + confirm (Cancel/Confirm) ---- */
 var REELS = {
   asset:{ title:'Choosing an asset', pages:[
-    'An <em>asset</em> is the physical machine — guild-owned, and separate from the venture that operates it. A resource node takes a <em>miner</em>; a settlement slot takes a <em>factory</em>. Pick one from your holdings; it will be consumed to stand this venture up.',
-    'The asset can outlive the venture, and the venture can outlive a broken asset — they are two things. Its condition figure is maintenance status; a well-kept machine runs closer to its rating.' ]},
+    'An <em>asset</em> is the physical machine — guild-owned, and separate from the venture that operates it. A resource node takes a <em>miner</em>; a settlement slot takes a <em>factory</em>. The list above is your real inventory: every <em>idle</em> machine of the kind this site takes.',
+    'Deploying <em>occupies</em> the machine, it does not consume it — it stays in your holdings, now referenced by this venture. Its condition figure is maintenance status, carried but inert: condition never changes a production rate.' ]},
   licence:{ title:'Licensed or not?', pages:[
     'A <em>licence</em> costs an ongoing maintenance fee, but it opens Syndicate droids to staff the venture and unlocks the two levers that cut the fee. Most guilds licence their core production.',
     'Going <em>unlicensed</em> is allowed — pressure, not prohibition. No fee is owed, but your only labour is guild-produced droids, which fail more often, and it costs you standing over time. A fair start; many licence later.' ]},
@@ -515,7 +527,7 @@ function reelConfirm(){
   reelMode='confirm';
   var lic = S.licensed ? ('<em>licensed</em>, at a fee of '+Math.round(feePct(S.c,S.o01))+'% of basic ('+fmt(feePct(S.c,S.o01)/100*P.BASIC_FEE[S.tier])+' ¢/cycle)') : '<em>unlicensed</em>, with no fee';
   var body='<p>You are about to stand up a '+S.outLabel.toLowerCase()+' venture on '+ (S.site?S.site.summary:'this site') +' — '+lic+'.</p>'+
-           '<p>This consumes <em>1 '+S.asset.label+'</em> ('+S.asset.id+') from your holdings. First output arrives next tick, and the terms are open to renegotiate in '+S.rnDays+' days.</p>'+
+           '<p>It will run your <em>'+S.asset.label+'</em> ('+S.asset.id+'). The machine is <em>occupied, not consumed</em>: it stays in your inventory, now referenced by this venture. First output arrives next tick, and the terms are open to renegotiate in '+S.rnDays+' days.</p>'+
            '<p>Shall I file the licence?</p>';
   document.getElementById('reelTitle').textContent='Commit to this venture?';
   document.getElementById('reelBody').innerHTML=body;

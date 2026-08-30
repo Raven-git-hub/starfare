@@ -881,9 +881,10 @@ select.field{appearance:none; cursor:pointer;}
    Ported from docs/mockups/venture-establishment.html. It uses the SAME palette,
    fonts and token values the detail screen already declares — no second design
    system, no duplicate font import — just scoped here under the two overlay ids.
-   Everything economic in it (fee, commitment, equity, reputation, renegotiation,
-   the asset inventory) is MOCK: design-ahead of the engine, tagged on screen, and
-   sent nowhere. Only the site, the venture type and the recipe reach the engine. */
+   The asset picker, the site, the venture type, the recipe and the licence terms all
+   reach the engine. What remains design-ahead is the REPUTATION meter (#61) and the
+   renegotiation window's effect (#64); the fee curve is the designed SHAPE, since the
+   amount is priced at signing. Nothing in it is presented as a live figure it isn't. */
 #est-overlay, #est-reel{
   --void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
   --line:rgba(232,223,200,0.10); --line2:rgba(232,223,200,0.20);
@@ -926,18 +927,14 @@ select.field{appearance:none; cursor:pointer;}
 #est-overlay .help{width:18px; height:18px; border-radius:50%; border:1px solid var(--amber-dim); background:none; color:var(--amber); font-family:var(--mono); font-size:10px; line-height:1; cursor:pointer; padding:0}
 #est-overlay .help:hover{background:var(--amber); color:var(--void); border-color:var(--amber)}
 
-/* The MOCK tag: everything under a block carrying this is design-ahead of the
-   engine and is sent nowhere. A player must never read these as live figures. */
-#est-overlay .mocktag{margin-left:auto; font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:var(--amber); border:1px solid rgba(201,162,39,.45); background:rgba(201,162,39,.10); border-radius:5px; padding:3px 8px; white-space:nowrap}
-#est-overlay .mocknote{font-family:var(--mono); font-size:10px; color:var(--ink3); line-height:1.6; margin:-4px 0 12px}
-/* The REAL tag: the same shape as the mock tag in the opposite colour, so a wired
-   block and a design-ahead one can never be mistaken for each other at a glance. */
-#est-overlay .mocktag.real{color:var(--green); border-color:rgba(78,154,135,.45); background:rgba(78,154,135,.12)}
-/* A caption under a WIRED block. Same type as .mocknote; a separate class only so
-   the word "mock" never sits in the markup of something that is now real. */
+/* A caption under a block. The design-ahead / wired tag pair this panel used to carry,
+   its inline variant, and the summary ledger's green "this row is real" key all went
+   together when the asset picker went live: a badge reading "real" is only meaningful
+   beside one reading otherwise, and a green subset of the ledger now implies the rest
+   is somehow less true. Nothing on this panel is a mock, so nothing is labelled one.
+   (It also puts the ledger back in step with docs/mockups/venture-establishment.html,
+   which never carried the marker.) */
 #est-overlay .note{font-family:var(--mono); font-size:10px; color:var(--ink3); line-height:1.6; margin:-4px 0 12px}
-/* A design-ahead marker small enough to sit inline, inside a head or a ledger key. */
-#est-overlay .minitag{font-family:var(--mono); font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); opacity:.85}
 
 #est-overlay select.est-select{font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--void); border:1px solid var(--line2); border-radius:8px; padding:11px 34px 11px 12px; cursor:pointer; width:100%; appearance:none; text-overflow:ellipsis;
   background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);
@@ -992,7 +989,7 @@ select.field{appearance:none; cursor:pointer;}
 #est-overlay .ledger .row .v .mut{color:var(--ink3)}
 #est-overlay .ledger .row.emph .v b{color:var(--amber); font-size:15px}
 #est-overlay .ledger .row.breach .v{color:var(--red)}
-#est-overlay .ledger .row.real .k{color:var(--green)}
+
 #est-overlay .deploy{width:100%; margin-top:auto; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer}
 #est-overlay .deploy:hover{background:#DCB43A}
 #est-overlay .deploy:disabled{background:rgba(28,33,43,.85); color:var(--ink3); cursor:not-allowed; border:1px solid var(--line)}
@@ -1315,10 +1312,11 @@ select.field{appearance:none; cursor:pointer;}
 
 <!-- ===== Establish-Venture popup (client-wiring Slice 3; licence panel wired) ====
      Opened from a VACANT site in the planet manifest. The Deploy button POSTs the
-     REAL actions: `establishVenture` (carrying `equityPct` when licensing) and then
-     `applyForLicence` (`committedOutputPct`, `windowDays`). What remains design-ahead
-     — the asset picker, the breach fee and reputation — is tagged MOCK on screen and
-     is sent nowhere (docs/venture-establishment.md §2.4–2.6). -->
+     REAL actions: `establishVenture` (carrying the picked `assetId`, and `equityPct`
+     when licensing) and then `applyForLicence` (`committedOutputPct`, `windowDays`).
+     The asset picker is the guild's REAL idle inventory off the snapshot, and deploy
+     is gated to systems the guild holds (§4 gate 3). What remains design-ahead is the
+     reputation meter (#61) (docs/venture-establishment.md §2.4–2.7). -->
 <div id="est-overlay">
   <div class="est">
 
@@ -1333,9 +1331,10 @@ select.field{appearance:none; cursor:pointer;}
             <span id="sitePlanet">—</span><span class="sep">·</span>
             <span id="siteArch">—</span>
           </div>
-          <!-- Whose territory this sits in — shown, never enforced. Establishing on
-               another guild's claim is allowed by design (pressure over prohibition);
-               leasing is the future economic lever, not a gate here. -->
+          <!-- Whose territory this sits in. It IS enforced: §4 gate 3 lets a guild
+               deploy only inside a system it holds, and the engine refuses anything
+               else. Leasing stays the future lever for building on someone else's
+               land — but it will be a contract, not the absence of a check. -->
           <div class="terr" id="siteTerr"></div>
         </div>
         <button class="est-close" id="estClose" title="Close (Esc)">✕</button>
@@ -1345,13 +1344,12 @@ select.field{appearance:none; cursor:pointer;}
         <div class="est-main">
 
           <div class="blk">
-            <div class="sec-head"><span class="t">Asset</span><button class="help" data-reel="asset">?</button><span class="mocktag">Mock · no engine</span></div>
+            <div class="sec-head"><span class="t">Asset</span><button class="help" data-reel="asset">?</button></div>
             <select class="est-select" id="assetSel"><option value="">Select asset</option></select>
-            <div class="mocknote">Asset inventory is design-ahead (§4 — `assetId` is reserved, not built). Nothing is consumed, and no asset is sent with the deploy.</div>
           </div>
 
           <div class="blk">
-            <div class="sec-head"><span class="t">Configuration</span><span class="mocktag real">Real · sent to the engine</span></div>
+            <div class="sec-head"><span class="t">Configuration</span></div>
             <div class="cfg">
               <div class="tierbadge" id="tierBadge">TIER 1</div>
               <div class="tier-sel" id="tierSelWrap" style="display:none"><select class="est-select" id="tierSel"></select></div>
@@ -1361,7 +1359,7 @@ select.field{appearance:none; cursor:pointer;}
           </div>
 
           <div class="blk">
-            <div class="sec-head"><span class="t">Licence</span><button class="help" data-reel="licence">?</button><span class="mocktag real">Real · sent to the engine</span></div>
+            <div class="sec-head"><span class="t">Licence</span><button class="help" data-reel="licence">?</button></div>
             <div class="seg">
               <button id="segLic"><span class="mark"></span> Licensed</button>
               <button id="segUn"><span class="mark"></span> Unlicensed</button>
@@ -1369,7 +1367,6 @@ select.field{appearance:none; cursor:pointer;}
           </div>
 
           <div class="blk" id="feeBlock">
-            <div class="note">Choosing <b>Licensed</b> files a real licence: the commitment, the equity and the window below are <b class="green">sent to the engine and stored</b> on the venture (§5). The Syndicate does not negotiate — it locks the fee against the posted market price at the tick you sign, so the <b class="amber">amount</b> is only knowable once signed; the curve below is the designed <b class="amber">shape</b> of that fee, not the figure you will owe.</div>
             <div class="slider">
               <div class="sec-head"><span class="t">Output commitment</span><button class="help" data-reel="commit">?</button>
                 <span class="val" style="margin-left:auto"><b id="cPct">0%</b><span class="q" id="cQty"></span></span>
@@ -1386,17 +1383,15 @@ select.field{appearance:none; cursor:pointer;}
 
             <div class="fee-graph">
               <div class="gh">
-                <span class="lbl">Licence fee — % of basic, across commitment <span class="minitag">estimate</span></span>
+                <span class="lbl">Licence fee</span>
                 <span class="read"><b id="feePctBig">100%</b><span class="cr">of basic</span></span>
               </div>
               <svg id="feeSvg" viewBox="0 0 320 150" preserveAspectRatio="none" aria-hidden="true"></svg>
-              <div class="gnote">Indicative. The relief above is §5's designed grid; the fee <b>in credits</b> is priced by the engine off the posted price at your signing tick and locked there. The signed figure is on the receipt.</div>
               <div class="rep">
                 <div class="rlbl">Reputation</div>
                 <div class="bar"><div class="fill" id="repFill" style="width:0%"></div></div>
                 <div class="rnum" id="repNum">0</div>
               </div>
-              <div class="gnote">Reputation is design-ahead (#61) — no standing is recorded or moved yet.</div>
             </div>
 
             <div class="slider" style="margin-top:20px">
@@ -1416,15 +1411,15 @@ select.field{appearance:none; cursor:pointer;}
             <div class="stitle">Licence Summary</div>
             <div class="ledger">
               <div class="row"><span class="k">Asset</span><span class="v" id="tAsset">— <span class="mut">none</span></span></div>
-              <div class="row real"><span class="k">Site</span><span class="v" id="tSite">—</span></div>
-              <div class="row real"><span class="k">Output</span><span class="v" id="tOutput">—</span></div>
-              <div class="row real"><span class="k">Rate</span><span class="v" id="tRate">—</span></div>
+              <div class="row"><span class="k">Site</span><span class="v" id="tSite">—</span></div>
+              <div class="row"><span class="k">Output</span><span class="v" id="tOutput">—</span></div>
+              <div class="row"><span class="k">Rate</span><span class="v" id="tRate">—</span></div>
               <div class="row"><span class="k">Licence</span><span class="v" id="tLic">— <span class="mut">undecided</span></span></div>
-              <div class="row real"><span class="k">Committed</span><span class="v" id="tCommit">—</span></div>
-              <div class="row real"><span class="k">Equity</span><span class="v" id="tEquity">—</span></div>
+              <div class="row"><span class="k">Committed</span><span class="v" id="tCommit">—</span></div>
+              <div class="row"><span class="k">Equity</span><span class="v" id="tEquity">—</span></div>
               <div class="row emph"><span class="k">Fee</span><span class="v" id="tFee">—</span></div>
-              <div class="row breach"><span class="k">Breach fee <span class="minitag">mock</span></span><span class="v" id="tBreach">—</span></div>
-              <div class="row real"><span class="k">Renegotiate in</span><span class="v" id="tReneg">—</span></div>
+              <div class="row breach"><span class="k">Breach fee</span><span class="v" id="tBreach">—</span></div>
+              <div class="row"><span class="k">Renegotiate in</span><span class="v" id="tReneg">—</span></div>
             </div>
             <button class="deploy" id="deployBtn" disabled>Deploy venture</button>
             <div class="deploy-hint" id="deployHint">Select an asset and a licence choice.</div>
@@ -2391,8 +2386,9 @@ function renderPlanetView(){
 }
 
 // A vacant row hands the establishment popup everything it needs about the site.
-// Territory is passed for DISPLAY only: establishing inside another guild's claim is
-// allowed by design (venture-establishment.md §4 — leasing is the future lever).
+// Territory is passed because it is now a GATE, not just a caption: §4 gate 3 lets a
+// guild deploy only inside a system it holds, so `site.mine` is what the popup's deploy
+// button reads. (Leasing stays the future lever for someone else's land.)
 function openEstablishFor(site, planet){
   if (!window.openEstablish) return;
   site.planet = planetDesignation(planet);
@@ -2512,10 +2508,13 @@ window.openWaystationDetail = function(outpost){
                                 `establishVenture`, §5's term set at establishment) plus
                                 the licence itself (`applyForLicence` with
                                 `committedOutputPct` and `windowDays`).
-   MOCK — reaches nothing:      the asset picker and inventory (§4, `assetId` reserved),
-                                the breach fee, and reputation (#61). Design-ahead of
-                                the engine, tagged on screen, and NOT part of any
-                                payload. Nothing here is faked as live.
+   REAL — reaches the engine:   also the ASSET (§4). The picker lists the guild's own
+                                IDLE machines off the snapshot, and the one chosen rides
+                                the deploy as `assetId` — which the engine now REQUIRES
+                                and validates (owned, idle, matching kind).
+
+   DESIGN-AHEAD — reaches nothing: the reputation meter (#61). It is the last thing on
+                                this panel the engine records nothing for.
 
    ESTIMATED — shown, never sent: the fee curve. The engine prices the fee off the
                                 POSTED market price at the signing tick and locks it
@@ -2526,11 +2525,12 @@ window.openWaystationDetail = function(outpost){
                                 the receipt. An engine-side fee-preview endpoint would
                                 make the pre-sign figure exact — noted, not built here.
 
-   The compound action §2.7 describes (consumeAsset → establishVenture →
-   recordLicenceTerms) is still a FUTURE shape: the asset step does not exist, and the
-   two that do are sent as two sequential POSTs. There is no atomic
-   `establishAndLicence`, so a licensed deploy is deliberately NOT atomic and
-   `doDeploy` reports the partial outcome honestly rather than papering over it. */
+   The compound action §2.7 sketched (consumeAsset → establishVenture →
+   recordLicenceTerms) never needed its first step: establishing OCCUPIES the named
+   asset in the same action, so there is no separate consume. The two that remain are
+   sent as two sequential POSTs — there is no atomic `establishAndLicence`, so a
+   licensed deploy is deliberately NOT atomic and `doDeploy` reports the partial
+   outcome honestly rather than papering over it. */
 (function(){
 
 /* --- the panel's constants. The cycle length `N` is NOT here: it is read live off
@@ -2550,7 +2550,6 @@ var P = {
   K: 2,                    // MIRRORS sim/licence.js EQUITY_SHAPE_K, o^k       [FIRST-CUT]
   // MIRRORS sim/licence.js CORNERS, key for key so the mirror is obvious   [FIRST-CUT]
   CORNERS: { minCommitMinOffer:100, minCommitMaxOffer:75, maxCommitMinOffer:75, maxCommitMaxOffer:0 },
-  BASIC_FEE: { 1:120, 2:240, 3:480, 4:960 }, // MOCK — the breach row only     [FIRST-CUT]
   REP_MAX: 100, REP_WC: 0.5, REP_WO: 0.5     // reputation gain model (#61)     [FIRST-CUT]
 };
 
@@ -2558,12 +2557,6 @@ var P = {
    the same number `applyForLicence` measures the commitment over. Null when no
    snapshot has been read; the panel then shows a dash rather than inventing one. */
 function cycleTicks(){ return window.__windowN ? window.__windowN() : null; }
-var INVENTORY = [                                       // MOCK holdings — no engine
-  { id:'AST-114', kind:'miner',   label:'Miner',   condition:100 },
-  { id:'AST-118', kind:'miner',   label:'Miner',   condition:96  },
-  { id:'AST-231', kind:'factory', label:'Factory', condition:100 },
-  { id:'AST-240', kind:'factory', label:'Factory', condition:88  }
-];
 
 /* The one REAL number the client chooses: the rate every venture is established at.
    [FIRST-CUT], given for this slice and recorded in docs/phase-1-tuning.md — a
@@ -2685,7 +2678,10 @@ function drawLedger(fp, cQtyCycle, ePct){
   // The relief, not an amount: the credits are locked by the engine at signing and
   // reported on the receipt.
   setRow('tFee','<b>'+Math.round(fp)+'%</b> <span class="mut">of basic · locked at signing</span>');
-  setRow('tBreach', fmt(P.BASIC_FEE[S.tier])+' ¢');
+  // Breach is the FULL basic fee — and the basic fee, like the discounted one, is not
+  // knowable in credits until the engine locks it at signing. So it reads in the same
+  // relative form the Fee row above uses rather than a number the panel made up.
+  setRow('tBreach','<b>100%</b> <span class="mut">of basic · locked at signing</span>');
   setRow('tReneg', S.rnDays+' days');
 }
 
@@ -2695,17 +2691,22 @@ function esc(v){
   });
 }
 
-/* The deploy gate. The licence choice IS sent now; the asset is still required even
-   though it is sent nowhere — the asset economy is a separate unwired flow (§4), and
-   the gate keeps teaching the shape of the contract it will one day complete. */
+/* The deploy gate. Every clause here is a rule the ENGINE also enforces — this is a
+   pre-gate so the player is not invited to fill the form and bounce, never the
+   authority. Gate 3 (§4) is the addition: a guild may deploy only inside a system it
+   holds, so an unheld site disables the button and says why. The engine's own refusal
+   stays the backstop, surfaced verbatim by `failHint`. */
 function gate(){
   var configured = S.site && (S.site.kind==='node' || (S.tier===2 && S.recipeId));
-  var ok = !!S.asset && S.licensed!==null && configured && !S.busy;
+  var held = !!(S.site && S.site.mine);
+  var ok = held && !!S.asset && S.licensed!==null && configured && !S.busy;
   var btn=$('deployBtn'), hint=$('deployHint');
   btn.disabled = !ok;
   if(S.busy) return;                                   // the in-flight message stands
   hint.classList.remove('err');
-  if(!S.asset) hint.textContent='Select an asset to continue.';
+  if(!held) hint.textContent='You don\u2019t hold this system \u2014 deploy requires holding it first (\u00a74).';
+  else if(!POOL.length) hint.textContent='No idle '+kindPlural(kindFor(S.site))+' in your inventory \u2014 every one you own is already deployed.';
+  else if(!S.asset) hint.textContent='Select an asset to continue.';
   else if(S.site && S.site.kind==='slot' && S.tier!==2) hint.textContent='Only Tier 2 refining is built (§4).';
   else if(S.site && S.site.kind==='slot' && !S.recipeId) hint.textContent='Pick a recipe to continue.';
   else if(S.licensed===null) hint.textContent='Choose licensed or unlicensed.';
@@ -2715,9 +2716,9 @@ function gate(){
 /* --------------------------------------------------------------- the reel */
 var REELS = {
   asset:{ title:'Choosing an asset', pages:[
-    'An <em>asset</em> is the physical machine — guild-owned, and separate from the venture that operates it. A resource node takes a <em>miner</em>; a settlement slot takes a <em>factory</em>. Pick one from your holdings; it will be consumed to stand this venture up.',
-    'The asset can outlive the venture, and the venture can outlive a broken asset — they are two things. Its condition figure is maintenance status; a well-kept machine runs closer to its rating.',
-    'None of this is built yet: the inventory above is a mock, nothing is consumed, and no asset is recorded against the venture you are about to create.' ]},
+    'An <em>asset</em> is the physical machine — guild-owned, and separate from the venture that operates it. A resource node takes a <em>miner</em>; a settlement slot takes a <em>factory</em>. The list above is your real inventory: every <em>idle</em> machine of the kind this site takes. A machine already at work on another site is not offered, because it cannot be in two places.',
+    'Deploying <em>occupies</em> the machine, it does not consume it. It stays in your holdings — simply now referenced by this venture, which is the whole of what "deployed" means. Nothing returns it to idle yet: there is no teardown, so choose the site you mean.',
+    'The machine you pick is recorded against the venture. Its condition figure is maintenance status, carried but <em>inert</em>: nothing decays it, nothing repairs it, and by design condition never changes a production rate — a machine either runs or is stopped. And you may only deploy inside a system your guild holds; claim the ground first.' ]},
   licence:{ title:'Licensed or not?', pages:[
     'A <em>licence</em> costs an ongoing maintenance fee, but it opens Syndicate droids to staff the venture and unlocks the two levers that cut the fee. Most guilds licence their core production.',
     'Going <em>unlicensed</em> is allowed — pressure, not prohibition. No fee is owed, but your only labour is guild-produced droids, which fail more often, and it costs you standing over time. A fair start; many licence later.',
@@ -2761,10 +2762,10 @@ function reelConfirm(){
        + ', at a fee of about '+Math.round(feePct(S.c,S.o01))+'% of basic')
     : '<em>unlicensed</em>, with no fee and no commitment';
   var body='<p>You are about to stand up a '+esc(S.outLabel.toLowerCase())+' venture on '+esc(S.site.summary)+' — '+lic+'.</p>'+
-           '<p>This consumes <em>1 '+esc(S.asset.label)+'</em> ('+esc(S.asset.id)+') from your holdings. First output arrives next tick'+(S.licensed ? (', and the terms are open to renegotiate in '+S.rnDays+' days') : '')+'.</p>'+
+           '<p>It will run your <em>'+esc(S.asset.label)+'</em> ('+esc(S.asset.id)+'). The machine is <em>occupied, not consumed</em>: it stays in your inventory, now referenced by this venture, and no other venture can take it. First output arrives next tick'+(S.licensed ? (', and the terms are open to renegotiate in '+S.rnDays+' days') : '')+'.</p>'+
            (S.licensed
              ? '<p class="lbl">The licence is filed as a second step, once the venture exists. Its fee is set against the market price at that tick and cannot be quoted before it — the % above is the designed relief, not the amount.</p>'
-             : '<p class="lbl">The asset is not recorded against the venture — the asset economy is not built yet.</p>')+
+             : '<p class="lbl">No licence is filed: nothing is committed, nothing is sold to the Syndicate, and no fee is owed.</p>')+
            '<p>Shall I file the licence?</p>';
   $('reelTitle').textContent='Commit to this venture?';
   $('reelBody').innerHTML=body;
@@ -2790,15 +2791,18 @@ async function doDeploy(){
   var player = window.__player ? window.__player() : null;
   if(!player || !player.guildId){ failHint('No guild — cannot establish.'); closeReel(); return; }
 
-  // Exactly the fields sim/actions.js validates, and nothing else: no assetId, no fee,
-  // no reputation. One venture per site, so the id is derived from the pair (the
-  // occupancy invariant guards it).
+  // Exactly the fields sim/actions.js validates, and nothing else: no fee, no
+  // reputation. One venture per site, so the id is derived from the pair (the
+  // occupancy invariant guards it). `assetId` is the machine the player PICKED — the
+  // engine requires it and re-checks it is owned, idle and of the matching kind, so
+  // the picker is a convenience over that rule, never a substitute for it.
   var ventureId = player.guildId + '_' + S.site.siteId;
   var establish = {
     type: 'establishVenture',
     guildId: player.guildId,
     ventureId: ventureId,
     siteId: S.site.siteId,
+    assetId: S.asset.id,
     ventureType: S.site.kind === 'node' ? 'mining' : 'refining',
     productionRate: ESTABLISH_RATE,
   };
@@ -2947,9 +2951,37 @@ function applySiteMode(){
     $('tierBadge').textContent='TIER 1'; $('cfgRes').textContent=S.site.resLabel;
   }
 }
+/* The asset picker — the guild's REAL inventory (design.md §4). Every option is an
+   IDLE machine of the kind this site takes, read off the snapshot through
+   `__myIdleAssets`; "idle" is the ENGINE's own answer (`deployedToVentureId == null`),
+   not a derivation repeated here. The chosen id is what `establishVenture` deploys.
+
+   The EMPTY POOL is a real state and says so. The engine no longer has a "you have no
+   idle miner" refusal — it speaks only about the id it was handed — so telling the
+   player they are out of machines is this panel's job now. */
+function kindFor(site){ return site && site.kind === 'slot' ? 'factory' : 'miner'; }
+function kindLabel(kind){ return kind === 'factory' ? 'Factory' : 'Miner'; }
+function kindPlural(kind){ return kind === 'factory' ? 'factories' : 'miners'; }
+function conditionPct(a){ return Math.round((a.maintenanceCondition || 0) * 100); }
+
+/* The rows the picker is currently offering, in the engine's own id order. Held so the
+   change handler resolves a selection against exactly what was rendered. */
+var POOL = [];
 function fillAssets(kind){
-  var sel=$('assetSel'); sel.innerHTML='<option value="">Select asset</option>';
-  INVENTORY.filter(function(a){ return a.kind===kind; }).forEach(function(a){
+  var raw = (window.__myIdleAssets ? window.__myIdleAssets(kind) : []) || [];
+  POOL = raw.map(function(a){
+    return { id:a.id, kind:a.kind, label:kindLabel(a.kind), condition:conditionPct(a) };
+  });
+  var sel=$('assetSel'); sel.innerHTML='';
+  if(!POOL.length){
+    var none=document.createElement('option');
+    none.value=''; none.textContent='— no idle '+kindPlural(kind)+' in inventory —';
+    sel.appendChild(none); sel.disabled=true;
+    return;
+  }
+  sel.disabled=false;
+  var first=document.createElement('option'); first.value=''; first.textContent='Select asset'; sel.appendChild(first);
+  POOL.forEach(function(a){
     var o=document.createElement('option'); o.value=a.id; o.textContent=a.label+' · '+a.id+' · '+a.condition+'%'; sel.appendChild(o);
   });
 }
@@ -2962,14 +2994,16 @@ window.openEstablish = function(site){
   $('siteRes').textContent = site.kind==='node' ? site.resLabel : 'Factory';
   $('sitePlanet').textContent = site.planet;
   $('siteArch').textContent = site.arch;
-  // Territory is shown, never enforced (see the markup comment).
+  // Territory, and it IS the gate (§4 gate 3): a guild deploys only inside a system it
+  // holds. The deploy button below is disabled for anything else — the engine refuses
+  // it either way, and being told before filling the form beats being told after.
   var terr = $('siteTerr');
-  if (site.controller && site.controller !== 'Unclaimed'){
-    terr.innerHTML = site.mine
-      ? 'Territory: <b>'+esc(site.controller)+'</b> — your own claim.'
-      : 'Territory: <b>'+esc(site.controller)+'</b> — another guild\'s claim. Establishing here is allowed; leasing is not built yet.';
+  if (site.mine){
+    terr.innerHTML = 'Territory: <b>'+esc(site.controller)+'</b>.';
+  } else if (site.controller && site.controller !== 'Unclaimed'){
+    terr.innerHTML = 'Territory: <b>'+esc(site.controller)+'</b> — you can only deploy in a system you hold (§4).';
   } else {
-    terr.innerHTML = 'Territory: <b>unclaimed</b>.';
+    terr.innerHTML = 'Territory: <b>unclaimed</b> — you can only deploy in a system you hold (§4). Claim it first.';
   }
   // Side art: the site's own planet, served from client/assets (no embedded blob).
   $('sideArt').style.backgroundImage = "url('assets/planets/"+(site.archKey||'rocky')+".jpg')";
@@ -2989,7 +3023,7 @@ $('estClose').addEventListener('click', closeOverlay);
 $('estBack').addEventListener('click', closeOverlay);
 $('est-overlay').addEventListener('click', function(e){ if(e.target===this) closeOverlay(); });
 $('assetSel').addEventListener('change', function(){
-  S.asset = INVENTORY.filter(function(a){ return a.id===this.value; }.bind(this))[0] || null; draw();
+  S.asset = POOL.filter(function(a){ return a.id===this.value; }.bind(this))[0] || null; draw();
 });
 $('tierSel').addEventListener('change', function(){ S.tier=+this.value; buildRecipeList(); draw(); });
 $('recipeSel').addEventListener('change', function(){
@@ -3079,7 +3113,7 @@ var GAME = { guildId:null, guildName:null, homeSystemId:null, galaxy:null, pollT
 //   occupancy     { siteId: ventureId }        verbatim from the snapshot
 //   siteInfo      { siteId: {...} }            the player-safe read of who holds a site
 var LIVE = { systemClaims:{}, guildNameById:{}, occupancy:{}, siteInfo:{}, siteSig:'',
-             myVentures:{}, windowN:null,
+             myVentures:{}, myAssets:[], windowN:null,
              // The last snapshot as it arrived. The TRADE panel reads its prices,
              // priceHistory and the player guild's stockpiles straight off this —
              // no second copy, and nothing the browser computed.
@@ -3349,6 +3383,11 @@ function applySnapshot(snap){
     GAME.guildName = me.name || me.id;
     if (me.homeSystemId) GAME.homeSystemId = me.homeSystemId;
   }
+  // The player's OWN ground-asset inventory (design.md §4), verbatim from the snapshot:
+  // one row per machine, carrying the engine's own `deployedToVentureId` — its answer to
+  // "is this one idle?". The establish panel's picker reads it; the browser never
+  // recomputes the idle derivation (client-wiring.md §7). Own guild only.
+  LIVE.myAssets = (me && me.assets) || [];
   // Identity and credits: the ENGINE's values for the player's own guild.
   setGuildLabel(me ? GAME.guildName : null);
   setText('hud-cr', me ? Number(me.credits).toLocaleString() : '—');
@@ -3458,6 +3497,12 @@ window.__refreshNow = function(){ return apiGet('/snapshot').then(applySnapshot)
 window.__myVenture = function(ventureId){ return LIVE.myVentures[ventureId] || null; };
 // The engine's cycle length `N`, for the panel's per-cycle commitment figure.
 window.__windowN = function(){ return LIVE.windowN; };
+// The player's own IDLE machines of one kind (§4) — what the establish panel offers in
+// its asset picker, and the list the chosen `assetId` is taken from. "Idle" is the
+// ENGINE's answer (`deployedToVentureId == null`), read, never re-derived here.
+window.__myIdleAssets = function(kind){
+  return LIVE.myAssets.filter(function(a){ return a.kind === kind && a.deployedToVentureId == null; });
+};
 
 function systemById(id){
   if (!id || !GAME.galaxy) return null;

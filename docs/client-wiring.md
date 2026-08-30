@@ -840,3 +840,73 @@ without making it taller, so the plot is flatter than the mockup's. No target ra
 and the top row's height trades directly against the SELL card's (which was sized
 deliberately last slice), so this is a judgement call for the human rather than a silent
 adjustment. BUY, the Open Market book and shipments stay deferred and untouched.
+
+---
+
+## The Establish-Venture panel goes real — the asset picker + honest copy *(31-08-26, client-only)*
+
+`sim/actions.js` has required an explicit `assetId` since the named-asset slice, and this
+panel was still running on a four-row **mock** inventory (`AST-114`…) that sent nothing — so
+**every deploy from the game client was being refused**. This slice closes that: **client-only**,
+`client/game.html` plus the mockup and served-page tripwires; **no `sim/` change**, no new
+action, **schema still 7**, and no new number (`ESTABLISH_RATE` and the four mirrored
+constants are untouched).
+
+**1. The picker is the real inventory.** The `INVENTORY` mock is **deleted**. `applySnapshot`
+keeps the player guild's own `assets` rows (`LIVE.myAssets`), and a new bridge
+`window.__myIdleAssets(kind)` returns the ones the engine reports **idle**
+(`deployedToVentureId == null`) of the matching kind — `miner` for a resource node, `factory`
+for a settlement slot. The label comes from `kind` and the condition from
+`Math.round(maintenanceCondition * 100)`: every figure is the engine's, and the browser
+**re-derives nothing** — least of all idle-vs-deployed, which `sim/snapshot.js` already answers
+(§7's display rule). Option shape is unchanged (`Miner · asset_… · 100%`).
+
+**2. The picked machine rides the deploy.** `establishVenture` now carries
+`assetId: S.asset.id`. `gate()` already required a picked asset; it now means something.
+
+**3. Deploy is gated to systems the guild HOLDS.** §4 gate 3 is a real engine rule, so the
+panel stops implying otherwise: the button is **disabled** on an unheld or unclaimed site with
+the reason in `deployHint`, and the territory line says you can only deploy in a system you
+hold. The engine's refusal stays the **backstop** — `failHint('Refused: ' + out.reason)` is
+untouched and surfaces `does not hold system …` verbatim if anything reaches it. This
+**overrules** the old panel stance ("establishing here is allowed; leasing is not built yet"),
+which was written before the gate existed.
+
+**4. The empty pool is the CLIENT's message.** The engine no longer has a "you have no idle
+miner" refusal — it speaks only about the id it was handed — so the panel owns it: a disabled
+`— no idle {miners|factories} in inventory —` option, the deploy button disabled, and a hint
+saying every machine of that kind is already deployed.
+
+**5. Every retired string.** `— your own claim.` · the Asset mocknote · the licence explainer
+note ending *"not the figure you will owe"* · the fee-graph `Indicative.` gnote · the label tail
+*"— % of basic, across commitment"* and its `estimate` tag · the reputation `design-ahead (#61)`
+gnote · **every** `Mock · no engine` tag. Each is pinned **absent** in
+`sim/tests/server.test.js`.
+
+**6. What de-mocking forced us to fix rather than hide.** Removing a tag from something still
+fake would be worse than leaving it, so three things changed with the tags:
+- **The Breach row** carried a `mock` tag and a fabricated credit figure off a client-side
+  `P.BASIC_FEE` table. Breach *is* the full basic fee, and the basic fee is not knowable in
+  credits until the engine locks it at signing — so the row now reads in the same **relative**
+  form the Fee row uses (`100% of basic · locked at signing`) and `P.BASIC_FEE` is deleted.
+- **The `Real · sent to the engine` tags** were only meaningful opposite the mock ones. With
+  the mocks gone they are orphaned noise, so both went together (with their CSS classes) —
+  and so did the summary ledger's green *"this row is real"* key, which is the same
+  distinction in quieter form: with the Asset row real too, a green subset would now imply
+  the rest is somehow less true. It also puts the ledger back in step with the mockup,
+  which never carried that marker.
+- **The asset adviser reel** said the machine "will be consumed", that the inventory was a mock,
+  and that a well-kept machine "runs closer to its rating". All three were false — §4 rules
+  **occupy, not consume**, the inventory is live, and **condition never touches production**.
+  Rewritten to say exactly that, plus the held-system rule.
+
+**Verified** in headless Chromium against a real booted server, driving the real drill-down
+(system detail → planet manifest → a vacant site row): the picker listed the guild's 15 real
+idle Miners with real ids and condition, a settlement slot listed its 10 Factories; picking the
+**fourth** miner POSTed that `assetId`, the venture came back running it, that machine flipped
+to deployed and left the picker while a different idle one stayed; with all ten Factories
+deployed a slot showed the disabled empty state and deploy stayed disabled; on an unheld system
+the button was disabled with its reason and the same deploy forced through the API was refused
+by the engine; and none of the removed strings rendered. No page errors.
+
+**646 tests (+2), zero failures** — client-only, so no golden could move.
