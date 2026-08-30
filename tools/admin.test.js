@@ -217,3 +217,31 @@ test('the expected figures are the ruled ones, quoted not authored', () => {
   assert.equal(A.EXPECTED_COMMITMENT, 7200);
   assert.equal(A.EXPECTED_WINDOW_N, 1440);
 });
+
+// --- pickIdleAssetId --------------------------------------------------------
+
+// A /snapshot guild block, shaped exactly as sim/snapshot.js emits it: every asset
+// carries the engine's own deployed-vs-idle answer, so the CLI derives nothing.
+const SNAP = {
+  guilds: [{
+    id: 'seat_demo',
+    assets: [
+      { id: 'asset_seat_demo_miner_01', kind: 'miner', deployedToVentureId: 'v1' },
+      { id: 'asset_seat_demo_miner_03', kind: 'miner', deployedToVentureId: null },
+      { id: 'asset_seat_demo_miner_02', kind: 'miner', deployedToVentureId: null },
+      { id: 'asset_seat_demo_factory_01', kind: 'factory', deployedToVentureId: null },
+    ],
+  }],
+};
+
+test('pickIdleAssetId: the lowest IDLE id of the asked-for kind', () => {
+  // miner_01 is deployed, so the lowest idle is 02 — and stored order does not decide it.
+  assert.equal(A.pickIdleAssetId(SNAP, 'seat_demo', 'miner'), 'asset_seat_demo_miner_02');
+  assert.equal(A.pickIdleAssetId(SNAP, 'seat_demo', 'factory'), 'asset_seat_demo_factory_01');
+});
+
+test('pickIdleAssetId: no idle machine of that kind throws rather than deploying a wrong one', () => {
+  const allDeployed = { guilds: [{ id: 'g', assets: [{ id: 'a', kind: 'miner', deployedToVentureId: 'v' }] }] };
+  assert.throws(() => A.pickIdleAssetId(allDeployed, 'g', 'miner'), /holds no idle miner/);
+  assert.throws(() => A.pickIdleAssetId(SNAP, 'nobody', 'miner'), /holds no idle miner/);
+});

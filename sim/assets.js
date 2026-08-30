@@ -71,8 +71,9 @@ function assetKindForVentureType(type) {
 // The id scheme is `asset_<guildId>_<kind>_<NN>`, 1-based and zero-padded to two
 // digits. STABLE and DETERMINISTIC (§15.2, invariant 9): two runs of the same
 // scenario mint byte-identical ids. The padding is not decoration — it makes
-// lexicographic order agree with numeric order, which is what lets `pickIdleAsset`
-// below use a plain string comparison as its deterministic tie-break.
+// lexicographic order agree with numeric order, so "the guild's assets in id order"
+// is the same list however it is sorted (a founding consumes this pool in mint
+// order; a deploy now NAMES the asset it wants, sim/actions.js).
 function starterAssetSpecs(guildId) {
   const specs = [];
   for (let n = 1; n <= STARTER_MINERS; n += 1) specs.push({ id: assetId(guildId, MINER, n), kind: MINER });
@@ -104,21 +105,6 @@ function idleAssets(guild, kind) {
   return (guild.assets || []).filter((a) => !deployed.has(a.id) && (kind === undefined || a.kind === kind));
 }
 
-// The one asset a deploy takes: the idle asset of `kind` with the LOWEST id.
-//
-// The rule is arbitrary but it must be PINNED, because "whichever one" would make
-// the same scenario deploy different machines on different runs and invariant 9
-// would catch it as non-determinism. Lowest-id is chosen over stored-array-order
-// because it survives any future reordering of the inventory. Returns undefined
-// when none is free — which is deploy gate 2 failing.
-function pickIdleAsset(guild, kind) {
-  let best;
-  for (const a of idleAssets(guild, kind)) {
-    if (best === undefined || a.id < best.id) best = a;
-  }
-  return best;
-}
-
 module.exports = {
   MINER,
   FACTORY,
@@ -132,5 +118,4 @@ module.exports = {
   starterAssetSpecs,
   deployedAssetIds,
   idleAssets,
-  pickIdleAsset,
 };

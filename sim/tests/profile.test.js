@@ -145,9 +145,9 @@ test('getGoodPolicy returns a fresh object — a caller cannot alias into state'
 function runScenario(profileActions) {
   let s = createZeroState();
   s = advance(s, [createFoundGuildAction({ guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: 'sys_0002' })]).state;
-  s = advance(s, [createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'tmine', siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5 })]).state;
-  s = advance(s, [createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'cmine', siteId: 'pl_00004_n08', resourceType: 'carbon_products', productionRate: 5 })]).state;
-  s = advance(s, [createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'refinery', type: 'refining', siteId: 'pl_00004_s01', recipeId: 'titanium_alloy', productionRate: 2 })]).state;
+  s = advance(s, [createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'tmine', siteId: 'pl_00004_n01', assetId: 'asset_player-guild_miner_01', resourceType: 'titanium', productionRate: 5 })]).state;
+  s = advance(s, [createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'cmine', siteId: 'pl_00004_n08', assetId: 'asset_player-guild_miner_02', resourceType: 'carbon_products', productionRate: 5 })]).state;
+  s = advance(s, [createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'refinery', type: 'refining', siteId: 'pl_00004_s01', assetId: 'asset_player-guild_factory_01', recipeId: 'titanium_alloy', productionRate: 2 })]).state;
   // The profile window: an empty batch in the control run, the setProductionProfile
   // action in the treatment run. One tick either way.
   s = advance(s, profileActions).state;

@@ -551,7 +551,11 @@ if (require.main === module) {
   // A second mine, this time via the establishVenture action (the testbed's
   // "add a venture" path), on the homeworld's other titanium node.
   const secondMine = createEstablishVentureAction({
-    guildId: 'player-guild', ventureId: 'mine_2', siteId: 'pl_00004_n02', resourceType: 'titanium', productionRate: 5, // titanium's ruled rate, matching mine_1 [phase-1-tuning.md]
+    guildId: 'player-guild', ventureId: 'mine_2', siteId: 'pl_00004_n02',
+    // The deploy NAMES its machine (§4, 31-08-26). miner_01 went to the founding's
+    // inline mine_1, so this one takes the next idle Miner out of the starter gift.
+    assetId: 'asset_player-guild_miner_02',
+    resourceType: 'titanium', productionRate: 5, // titanium's ruled rate, matching mine_1 [phase-1-tuning.md]
   });
   state = advance(state, [secondMine]).state;
   for (let i = 0; i < 2; i += 1) state = advance(state, []).state; // two quiet ticks

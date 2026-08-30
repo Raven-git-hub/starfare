@@ -70,6 +70,14 @@ const PARAMS = Object.freeze({
   reserveBuffer: 4, // BOT dial: the modest titanium reserve the bot banks from genuine surplus
 });
 
+// The starter pool's ids, by kind and 0-based position. The SPECS are re-minted
+// inside makeState() so every run gets fresh objects (no state shared between two
+// runs — invariant 9); these two read ids only, so both makeState and the relief
+// mine below can name the same machines without spelling an id out anywhere.
+const nthAssetId = (kind, n) => starterAssetSpecs(GUILD_ID).filter((a) => a.kind === kind)[n].id;
+const minerId = (n) => nthAssetId('miner', n);
+const factoryId = (n) => nthAssetId('factory', n);
+
 // makeState() — a FRESH tick-0 state for one run. Pure and deterministic: the
 // same call always assembles byte-identical state (no Date, no Math.random).
 // Seeds the committed mine's syndicateCommitment via createVenture's own param
@@ -80,12 +88,10 @@ function makeState() {
   // assembles its guild DIRECTLY through createState rather than through the
   // foundGuild action, so it has to hand itself the same starter gift founding
   // would have granted — otherwise the relief mine's `establishVenture` at tick T
-  // is refused by deploy gate 2 ("no idle miner in inventory"). Taken from
+  // is refused by deploy gate 2 (it names a Miner this guild would not own). Taken from
   // sim/assets.js so the counts and the id scheme stay in one place; the three
   // ventures below then occupy one each, exactly as a real founding would.
   const assets = starterAssetSpecs(GUILD_ID);
-  const minerId = (n) => assets.filter((a) => a.kind === 'miner')[n].id;
-  const factoryId = (n) => assets.filter((a) => a.kind === 'factory')[n].id;
   return createState({
     guilds: [{
       id: GUILD_ID,
@@ -152,6 +158,11 @@ function buildScenario() {
       guildId: GUILD_ID,
       ventureId: 'mine_ti_2',
       siteId: TITANIUM_NODE_2,
+      // The deploy NAMES its machine (design.md §4, 31-08-26). The three ventures in
+      // makeState() occupy miners 0 and 1 and factory 0, so the relief mine takes the
+      // third Miner of the same starter pool — read from sim/assets.js's own id
+      // scheme, never spelled out here.
+      assetId: minerId(2),
       resourceType: 'titanium',
       productionRate: PARAMS.R_t2,
     }),

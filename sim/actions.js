@@ -18,7 +18,7 @@ const { guildHolds } = require('./claims.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
 const {
   STARTER_MINERS, STARTER_FACTORIES, starterAssetSpecs, assetKindForVentureType,
-  pickIdleAsset, idleAssets,
+  deployedAssetIds,
 } = require('./assets.js');
 
 // actions.js — action constructors, and the validate-as-they-arrive intake
@@ -113,20 +113,24 @@ function createFoundGuildAction({
 //     into the owner's stockpile (throttled by available input — tick.js).
 // Each rule is validated up front, mirroring the occupancy invariant, so a bad
 // request is refused cleanly rather than applied-then-halted. Deploying also has
-// THREE gates (design.md §4, 30-08-26) — a vacant node, an idle asset of the
-// matching kind in the guild's inventory, and the guild holding the node's system
-// — and on success the chosen asset is OCCUPIED (the venture's `assetId` points at
-// it); no `assetId` is taken from the action, because which machine is deployed is
-// the engine's deterministic pick, not the caller's. `productionRate` is
-// REQUIRED and operator-supplied — a testbed dial, since only Titanium's mining
-// rate is ruled; the rest (and refinery throughput) are undecided. Establishing
-// a venture moves no credits or fuel (no licence/site cost yet).
+// THREE gates (design.md §4, 30-08-26) — a vacant node, the NAMED idle asset of the
+// matching kind in the guild's inventory, and the guild holding the node's system —
+// and on success that named asset is OCCUPIED (the venture's `assetId` points at it).
+// `assetId` is REQUIRED and the CALLER'S choice (31-08-26): which machine goes onto
+// which site is a player decision, not the engine's tie-break, so the deploy names
+// it and validation proves it is owned, idle and of the matching kind. (Founding is
+// unaffected — a `foundGuild`'s inline ventures still draw from the starter pool that
+// same founding mints, where there is no inventory for a caller to name.)
+// `productionRate` is REQUIRED and operator-supplied — a testbed dial, since only
+// Titanium's mining rate is ruled; the rest (and refinery throughput) are undecided.
+// Establishing a venture moves no credits or fuel (no licence/site cost yet).
 function createEstablishVentureAction({
-  guildId, ventureId, type = 'mining', siteId, resourceType, recipeId, productionRate, equityPct,
+  guildId, ventureId, type = 'mining', siteId, assetId, resourceType, recipeId, productionRate, equityPct,
 }) {
   if (guildId === undefined) throw new Error('createEstablishVentureAction: guildId is required');
   if (ventureId === undefined) throw new Error('createEstablishVentureAction: ventureId is required');
   if (siteId === undefined) throw new Error('createEstablishVentureAction: siteId is required');
+  if (assetId === undefined) throw new Error('createEstablishVentureAction: assetId is required');
   if (productionRate === undefined) throw new Error('createEstablishVentureAction: productionRate is required');
   // Type-specific required field: a mining venture names the good it extracts;
   // a refining venture names the recipe it runs.
@@ -138,7 +142,7 @@ function createEstablishVentureAction({
   // not offered, so an establish call that says nothing about equity is byte-identical
   // to one made before this slice — the venture lands at 0 (no equity offered).
   return {
-    type: 'establishVenture', guildId, ventureId, ventureType: type, siteId, resourceType, recipeId, productionRate,
+    type: 'establishVenture', guildId, ventureId, ventureType: type, siteId, assetId, resourceType, recipeId, productionRate,
     ...(equityPct === undefined ? {} : { equityPct }),
   };
 }
@@ -424,16 +428,34 @@ function validateAction(state, action) {
     } else {
       return { valid: false, reason: `unknown ventureType ${JSON.stringify(ventureType)} (expected 'mining' or 'refining')` };
     }
-    // GATE 2 — the guild must hold an IDLE asset of the matching kind in its
-    // inventory (design.md §4): a Miner for a resource node, a Factory for a
-    // settlement slot. The asset starts in inventory, not on the node — the deploy
-    // is what takes it out. "Idle" is DERIVED (sim/assets.js): an owned asset no
-    // venture of this guild references. Checked against state-as-it-stands, so two
-    // deploys competing for the LAST free machine in one batch resolve
-    // first-valid-wins exactly as two racing for the same node do.
+    // GATE 2 — the deploy NAMES the machine, and the named one must be an IDLE asset
+    // of the matching kind in this guild's inventory (design.md §4): a Miner for a
+    // resource node, a Factory for a settlement slot. The asset starts in inventory,
+    // not on the node — the deploy is what takes it out. "Idle" is DERIVED
+    // (sim/assets.js): an owned asset no venture of this guild references.
+    //
+    // Four separate refusals, in this order, because the player needs to know WHICH
+    // way the id was wrong — "no idle asset" would be the same message for a typo, a
+    // rival's machine, a factory sent to a mine and a machine already at work.
+    // Checked against state-as-it-stands, so two deploys naming the SAME idle asset
+    // in one batch resolve first-valid-wins exactly as two racing for the same node
+    // do: the first occupies it, the second is refused as already deployed.
     const kind = assetKindForVentureType(ventureType);
-    if (!pickIdleAsset(guild, kind)) {
-      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} has no idle ${kind} in its inventory (${(guild.assets || []).filter((a) => a.kind === kind).length} owned, ${idleAssets(guild, kind).length} idle) — a ${ventureType} venture deploys a ${kind} (§4)` };
+    if (typeof action.assetId !== 'string' || action.assetId.length === 0) {
+      return { valid: false, reason: 'assetId must be a non-empty string' };
+    }
+    // Ownership is "the guild whose array holds it" (§4), so an asset belonging to
+    // ANOTHER guild fails this same check — it is not in this inventory.
+    const asset = (guild.assets || []).find((a) => a.id === action.assetId);
+    if (!asset) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no asset ${JSON.stringify(action.assetId)}` };
+    }
+    const heldBy = deployedAssetIds(guild).get(action.assetId);
+    if (heldBy !== undefined) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is already deployed to venture ${JSON.stringify(heldBy)}` };
+    }
+    if (asset.kind !== kind) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is a ${asset.kind}; a ${ventureType} venture needs a ${kind} (§4)` };
     }
     return { valid: true };
   }
@@ -849,20 +871,20 @@ function applyAction(state, action) {
     // stamp the venture's systemId — the pool key production uses (ruling B1,
     // §15.2). Denormalised from the site, guarded against it by invariants.js.
     const site = getSite(action.siteId);
-    // OCCUPY, NOT CONSUME (design.md §4). Gate 2 already proved an idle asset of
-    // the matching kind is there; take the SAME deterministic pick — the lowest
-    // idle id — and point the new venture at it. The asset is NOT removed from
-    // `guild.assets`: it is still owned, it is simply now referenced, and that
-    // reference is the whole of what "deployed" means. Deploy is one-way in this
-    // slice — nothing returns an asset to idle until cancel-licence exists (§4).
-    const occupied = pickIdleAsset(guild, assetKindForVentureType(action.ventureType || 'mining'));
+    // OCCUPY, NOT CONSUME (design.md §4). Gate 2 already proved the NAMED asset is
+    // owned by this guild, idle, and of the matching kind, so the apply simply points
+    // the new venture at it — no re-derivation here, and no second opinion about
+    // which machine was meant. The asset is NOT removed from `guild.assets`: it is
+    // still owned, it is simply now referenced, and that reference is the whole of
+    // what "deployed" means. Deploy is one-way in this slice — nothing returns an
+    // asset to idle until cancel-licence exists (§4).
     guild.ventures.push(createVenture({
       id: action.ventureId,
       ownerGuildId: action.guildId,
       type: action.ventureType || 'mining',
       siteId: action.siteId,
       systemId: site ? site.systemId : null,
-      assetId: occupied ? occupied.id : null,
+      assetId: action.assetId,
       resourceType: action.resourceType,
       recipeId: action.recipeId,
       productionRate: action.productionRate,

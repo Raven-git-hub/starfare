@@ -416,7 +416,7 @@ test('establish with an equity offer, then license: the offer is what deepens th
     type: 'foundGuild', guildId: 'g1', name: 'G1', credits: 0, influence: 0, homeSystemId: 'sys_0002', ventures: [],
   }]));
   ({ state: s } = intake(s, [createEstablishVentureAction({
-    guildId: 'g1', ventureId: 'm', siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5, equityPct: 0.49,
+    guildId: 'g1', ventureId: 'm', siteId: 'pl_00004_n01', assetId: 'asset_g1_miner_01', resourceType: 'titanium', productionRate: 5, equityPct: 0.49,
   })]));
   const { state: licensed, results } = intake(s, [createApplyForLicenceAction({
     guildId: 'g1', ventureId: 'm', committedOutputPct: 1, windowDays: 7,

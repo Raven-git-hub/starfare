@@ -199,8 +199,23 @@ function judgeVerify({ venture, calendar } = {}) {
   return { pass: checks.every((k) => k.ok), checks };
 }
 
+// The lowest idle asset of `kind` in a guild's inventory, read straight off the
+// snapshot the server just handed back. Deploying now NAMES its machine (design.md
+// §4, 31-08-26), so this CLI has to CHOOSE one — and it chooses from the engine's own
+// deployed-vs-idle answer (`deployedToVentureId`), deriving nothing itself. Lowest id
+// keeps a scripted seat-demo run reproducible.
+function pickIdleAssetId(snap, guildId, kind) {
+  const guild = (snap.guilds || []).find((g) => g.id === guildId);
+  const idle = ((guild && guild.assets) || [])
+    .filter((a) => a.kind === kind && a.deployedToVentureId == null)
+    .map((a) => a.id)
+    .sort();
+  if (!idle.length) throw new Error(`guild ${guildId} holds no idle ${kind} to deploy — every one it owns is already on a site`);
+  return idle[0];
+}
+
 module.exports = {
-  parseArgs, pick, findResourceNodes, pickResourceNode, judgeVerify, utcOffsetMinutesFromHours,
+  parseArgs, pick, findResourceNodes, pickResourceNode, pickIdleAssetId, judgeVerify, utcOffsetMinutesFromHours,
   EXPECTED_COMMITMENT, EXPECTED_WINDOW_N,
 };
 
@@ -394,19 +409,23 @@ async function cmdSeatDemo(base, flags) {
   const { starter, nodes } = await scanStarters(base, snap, DEMO_GOOD, 2);
 
   const guildId = 'seat_demo';
-  await act(base, {
+  // Each action returns the snapshot it produced, so the inventory this reads is
+  // always post-founding and post-previous-deploy — the second mine cannot name the
+  // machine the first one just took.
+  let live = await act(base, {
     type: 'foundGuild', guildId, name: 'Seat Demo', credits: STARTING_CREDITS, homeSystemId: starter.id,
   });
 
   const seated = [];
   for (const node of nodes) {
     const ventureId = `${guildId}_${node.nodeId}`;
-    await act(base, {
+    live = await act(base, {
       type: 'establishVenture',
       guildId,
       ventureId,
       ventureType: 'mining',
       siteId: node.nodeId,
+      assetId: pickIdleAssetId(live, guildId, 'miner'),
       resourceType: DEMO_GOOD,
       productionRate: ESTABLISH_RATE,
     });
@@ -442,7 +461,7 @@ async function cmdVerifyCycle(base, flags) {
 
   const guildId = 'verify_cycle';
   const ventureId = `${guildId}_${node.nodeId}`;
-  await act(base, {
+  const founded = await act(base, {
     type: 'foundGuild', guildId, name: 'Verify Cycle', credits: STARTING_CREDITS, homeSystemId: starter.id,
   });
   await act(base, {
@@ -451,6 +470,7 @@ async function cmdVerifyCycle(base, flags) {
     ventureId,
     ventureType: 'mining',
     siteId: node.nodeId,
+    assetId: pickIdleAssetId(founded, guildId, 'miner'),
     resourceType: DEMO_GOOD,
     productionRate: ESTABLISH_RATE,
   });

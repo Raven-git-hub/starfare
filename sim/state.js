@@ -185,9 +185,10 @@ function createVenture({
     // venture can outlive its asset (a breakdown, a future swap-out), so null is a
     // real, legal state and `checkAssetOccupancy` deliberately does NOT demand one.
     // It is nonetheless UNREACHABLE at birth in this slice: both real create-paths
-    // (establishVenture, and foundGuild's inline ventures) always occupy an idle
-    // asset, so every venture the game creates has one. A venture built DIRECTLY by
-    // a test may legitimately have none.
+    // occupy an idle asset, so every venture the game creates has one —
+    // `establishVenture` the one its caller NAMED (31-08-26), a `foundGuild`'s inline
+    // ventures one from the starter pool that founding mints. A venture built
+    // DIRECTLY by a test may legitimately have none.
     //
     // OMITTED when null, the discipline `equityPct` / `licence` / `committedFromTick`
     // below already follow: a venture with no asset carries no key, so a state built

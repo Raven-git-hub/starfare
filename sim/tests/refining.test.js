@@ -25,15 +25,18 @@ function playerFounded() {
   const s = createZeroState();
   return advance(s, [createFoundGuildAction({ guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: 'sys_0002' })]).state;
 }
-const tmine = (over = {}) => createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'tmine', siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5, ...over });
-const cmine = (over = {}) => createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'cmine', siteId: 'pl_00004_n08', resourceType: 'carbon_products', productionRate: 5, ...over });
-const refinery = (over = {}) => createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'refinery', type: 'refining', siteId: 'pl_00004_s01', recipeId: 'titanium_alloy', productionRate: 2, ...over });
+// Each helper NAMES the machine it deploys (design.md §4, 31-08-26) — one per venture
+// out of the starter gift founding grants, so the three can be established in any
+// combination without two of them reaching for the same asset.
+const tmine = (over = {}) => createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'tmine', siteId: 'pl_00004_n01', assetId: 'asset_player-guild_miner_01', resourceType: 'titanium', productionRate: 5, ...over });
+const cmine = (over = {}) => createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'cmine', siteId: 'pl_00004_n08', assetId: 'asset_player-guild_miner_02', resourceType: 'carbon_products', productionRate: 5, ...over });
+const refinery = (over = {}) => createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'refinery', type: 'refining', siteId: 'pl_00004_s01', assetId: 'asset_player-guild_factory_01', recipeId: 'titanium_alloy', productionRate: 2, ...over });
 
 // --- constructor guards ----------------------------------------------------
 
 test('a refining action requires a recipeId (not a resourceType)', () => {
   assert.throws(
-    () => createEstablishVentureAction({ guildId: 'g', ventureId: 'v', type: 'refining', siteId: 'pl_00004_s01', productionRate: 1 }),
+    () => createEstablishVentureAction({ guildId: 'g', ventureId: 'v', type: 'refining', siteId: 'pl_00004_s01', assetId: 'a_f', productionRate: 1 }),
     /recipeId is required for a refining venture/,
   );
 });

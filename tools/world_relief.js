@@ -22,21 +22,23 @@
 const { createEstablishVentureAction } = require('../sim/actions.js');
 
 // makeReliefWorld(config) -> a world driver worldDriver(snapshot, producingTick).
-//   config: { atTick, guildId, ventureId, siteId, resourceType, productionRate }
+//   config: { atTick, guildId, ventureId, siteId, assetId, resourceType, productionRate }
 // Returns { actions, events }:
 //   actions: the actions to submit this tick (empty except at `atTick`).
 //   events:  a list of { tick, kind, detail } describing what the world did, for
 //            the trace's `worldEvents` field (so a reader sees the perturbation).
 function makeReliefWorld(config) {
   const {
-    atTick, guildId, ventureId, siteId, resourceType, productionRate,
+    atTick, guildId, ventureId, siteId, assetId, resourceType, productionRate,
   } = config;
 
   return function worldDriver(_snapshot, producingTick) {
     if (producingTick !== atTick) return { actions: [], events: [] };
 
+    // The deploy NAMES the machine it occupies (design.md §4, 31-08-26), so the
+    // scenario that configures this driver says WHICH idle Miner the relief mine runs.
     const action = createEstablishVentureAction({
-      guildId, ventureId, type: 'mining', siteId, resourceType, productionRate,
+      guildId, ventureId, type: 'mining', siteId, assetId, resourceType, productionRate,
     });
     return {
       actions: [action],

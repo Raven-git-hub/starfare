@@ -98,14 +98,16 @@ seed/state facts) · **CONFIG** (tunable constants, not per-save state) · **PRE
 | Ticks-per-day / tick-duration constant | CONFIG | `phase-1-tuning.md` (unresolved) — the per-hour/day display seam |
 
 ### 2.7 Deploy — the compound action (not data, the write)
-`establishVenture({ siteId, recipeId|resourceType, productionRate })` — which now OCCUPIES an idle asset
-of the matching kind itself (BUILT 30-08-26), so there is no separate `consumeAsset` step and the client
-sends no `assetId`: the engine picks the lowest idle id, deterministically —
+`establishVenture({ siteId, assetId, recipeId|resourceType, productionRate })` — which OCCUPIES the asset
+it names (BUILT 30-08-26; `assetId` made **required** 31-08-26), so there is no separate `consumeAsset`
+step: one action both seats the venture and deploys the machine —
 → `recordLicenceTerms({ licensed, commitment c, equity o, tier/fee basis, renegotiationOpenTick })`.
 The venture produces next tick. **Not atomic today:** establish and `applyForLicence` are two intake
 actions (see the client-wiring note of 27-08-26), and an *atomic* `establishAndLicence` remains a noted
-follow-up. **The picker may now offer only what the guild really holds** — a deploy with no idle asset of
-the kind is refused by the engine, as is one on a site in a system the guild does not hold.
+follow-up. **The picker must now name the machine** — `assetId` is required, and the engine refuses an id
+it does not own, one already deployed (naming the venture holding it), and one of the wrong kind, as it
+refuses a site in a system the guild does not hold. *(The picker itself is the next client slice; until it
+ships, `client/game.html`'s deploy sends no `assetId` and is refused.)*
 
 ### 2.8 Presentation-only (no state)
 Facility art (derived from archetype/kind/biome, `console-client-and-art.md §3`) · Guild Adviser

@@ -246,10 +246,10 @@ test('establishVenture carries a valid equity offer and refuses an invalid one',
   ({ state: s } = intake(s, [found]));
 
   const ok = createEstablishVentureAction({
-    guildId: 'g1', ventureId: 'm1', siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5, equityPct: 0.25,
+    guildId: 'g1', ventureId: 'm1', siteId: 'pl_00004_n01', assetId: 'asset_g1_miner_01', resourceType: 'titanium', productionRate: 5, equityPct: 0.25,
   });
   const tooMuch = createEstablishVentureAction({
-    guildId: 'g1', ventureId: 'm2', siteId: 'pl_00004_n02', resourceType: 'titanium', productionRate: 5, equityPct: 0.8,
+    guildId: 'g1', ventureId: 'm2', siteId: 'pl_00004_n02', assetId: 'asset_g1_miner_02', resourceType: 'titanium', productionRate: 5, equityPct: 0.8,
   });
   const { state: after, results } = intake(s, [ok, tooMuch]);
   assert.equal(results[0].accepted, true);
