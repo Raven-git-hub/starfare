@@ -439,3 +439,35 @@ the roster row with no reshaping and no schema bump · the dev scaffold commits 
 nothing · the **deferred** percent-mode gap, pinned · determinism over three windows, sorted-good order.
 
 **558 tests (+16 net), zero failures.**
+
+---
+
+# The fee becomes visible before signing — `feeQuote` *(31-08-26, engine-only)*
+
+Everything above prices a licence **at signing**. Nothing published the figure **before** it,
+so the Establish-Venture panel could speak only in **% of basic**: the credit number is
+`FEE_RATE × the good's droidless baseline × windowN × the posted price`, and the client holds
+none of those pieces — by design, which is why the hardcoded `P.BASIC_FEE` mock was deleted
+rather than corrected.
+
+The snapshot now carries **`feeQuote`**: `{ good → basicFee }` in integer credits, over the
+priced goods, at the **posted** price and the window in force. Three things make it safe:
+
+1. **It is `licenceFee`'s own output, not a second copy of the formula.** `sim/snapshot.js`
+   calls the function this document specifies, over `baselineUnitsForGood` (the per-good
+   inverse of `baselineOutputFor`, which delegates to it rather than re-reading the tables).
+   The tripwire is an equality, not a recomputation: `feeQuote[G]` **equals** the `basicFee`
+   `applyForLicence` locks for a venture producing `G` at the same tick and price — pinned for
+   a mine and for a factory, so if this fee's math ever changes the quote fails unless it
+   follows.
+2. **Basic only.** The four-corner relief is a function of the player's live slider values; a
+   snapshot that guessed them would publish a fee nobody agreed to. The client applies the
+   relief to the published basic — it already draws that curve.
+3. **Live, not locked.** A signed licence keeps its fee whatever the market does (that is the
+   whole point of locking it); `feeQuote` is the cost of the *next* signature and moves with
+   the posted price. Both behaviours are pinned in one test, since blurring them is exactly
+   what a panel showing both would do wrong.
+
+A good with no producible baseline, or no price row, is **omitted** — never quoted at zero,
+which would read as a free licence. Additive; **schema stays 7**; no golden moved (derived
+telemetry, no serialized byte). **657 tests (+11), zero failures.**

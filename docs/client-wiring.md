@@ -190,7 +190,10 @@ The player client reads, for the **player's own guild only**: `tick`; the guild'
 resolved per-system per-good report — forks, reserve, commitment window — as the
 console already renders); its `ventures[]` (and `occupancy`) for its own sites;
 and `claims[]` for **territory control** (who owns which system — visible to all
-in-world). It must **NOT** render `galacticSupply` totals, the `syndicate.ledger`,
+in-world). It also reads the **public Syndicate figures**, which are the same for
+everyone and secret from no one: `prices` / `priceBase` / `priceHistory`, and
+`feeQuote` (the per-good basic licence fee in credits — see the revision at the
+end of this file). It must **NOT** render `galacticSupply` totals, the `syndicate.ledger`,
 or any other guild's `stockpiles`/`stockpilesBySystem`/`production`. Occupancy of
 *other* guilds' sites (a site is taken) is visible; their economic internals are
 not. This list is the working contract; it may be refined as panels are wired
@@ -910,3 +913,40 @@ the button was disabled with its reason and the same deploy forced through the A
 by the engine; and none of the removed strings rendered. No page errors.
 
 **646 tests (+2), zero failures** — client-only, so no golden could move.
+
+## Revision — the licence basic fee reaches the snapshot: `feeQuote` *(31-08-26, engine-only)*
+
+The Establish-Venture panel can say what a licence costs only as a **percentage of basic**,
+because the credit figure is `FEE_RATE × the good's droidless baseline × windowN × the
+posted price` and the client deliberately holds none of those pieces — the discipline that
+retired the old hardcoded `P.BASIC_FEE` mock. So the **engine publishes the number**.
+
+**`feeQuote`** — a new top-level snapshot field, `{ [good]: basicFeeCredits }` over the
+priced goods: the **BASIC (un-discounted) licence fee, in integer credits**, that a venture
+producing that good would be charged if it signed **now**, at the **posted** price and the
+**window in force** (`state.windowN`, defaulted exactly as the licence path defaults it).
+
+- It is computed by **calling `licenceFee` itself** (`sim/licence.js`) over
+  `baselineUnitsForGood` (`sim/baseline.js`, the per-good inverse of the venture-keyed
+  `baselineOutputFor`) — the formula is **not** re-derived in `sim/snapshot.js`. One
+  function produces both the quote and what `applyForLicence` locks, so the display cannot
+  drift from the contract; a test pins that equality for a **mine** and a **factory**.
+- **Basic only.** The commitment × equity relief depends on the player's live slider
+  values, which a snapshot cannot know — the client already draws that curve. Publishing a
+  discounted figure here would be guessing the player's terms.
+- **Live, not locked.** A signed licence keeps the fee it locked however far the market
+  moves (that is what makes timing a signature a decision); `feeQuote` is the price of the
+  *next* signature and moves with the posted price. A panel showing both must not blur them.
+- A good is **omitted** rather than quoted at zero when it has no producible baseline or the
+  state carries no price row for it. Today every priced good has a baseline, so the map is
+  the full 28 — `deuterium_fuel` (§8) and the Tier-3 placeholders are absent because nothing
+  can make them.
+- **Additive; schema stays 7** — a new top-level key changed no existing shape, the same
+  call `prices`, `priceHistory`, `priceBase` and `calendar` each made. Pure derived
+  telemetry: no serialized byte, no determinism hash, so **no golden moved**.
+
+**Engine-only.** No client change ships here — wiring the credits figure into the panel (in
+place of, or beside, the `% of basic` line) is the next slice, and it is the panel's own
+job to apply the player's chosen relief to the published basic.
+
+**657 tests (+11), zero failures.**

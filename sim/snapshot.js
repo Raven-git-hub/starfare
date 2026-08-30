@@ -33,6 +33,8 @@ const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
 const { previewProduction } = require('./production.js');
 const { PRICED_GOODS, postedPrice, basePriceFor } = require('./prices.js');
+const { baselineUnitsForGood } = require('./baseline.js');
+const { licenceFee } = require('./licence.js');
 const { clonePriceHistory } = require('./price-history.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
 const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
@@ -194,6 +196,23 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // nothing existing changed shape — the same additive call `syndicateSale`,
 // `perVenture` and `licenceFee` each made. The rows are STORED state echoed
 // as-is; `ticksRemaining` is the one derived field and reaches no stored byte.
+// (31-08-26, the licence-fee quote): top-level `feeQuote` — per priced good, the BASIC
+// licence fee in integer credits a venture producing that good would be charged if it
+// signed NOW, at the current posted price and the window in force. ADDITIVE, and NO
+// schema bump: nothing existing changed shape, so every current reader keeps working and
+// an older reader ignores the new key — the same call `prices`, `priceHistory`,
+// `priceBase` and `calendar` each made (the v3/v4 bumps were for growth INSIDE existing
+// rows, which this is not). It exists because the fee in CREDITS is not derivable in the
+// browser: it is `FEE_RATE × the good's droidless baseline × windowN × the posted price`,
+// and the client holds none of those pieces — which is why the Establish-Venture panel
+// can only speak in "% of basic" today. Computed by calling the engine's own
+// `licenceFee` (sim/licence.js) over `baselineUnitsForGood` (sim/baseline.js), NOT by
+// re-deriving the formula here: the quote and what `applyForLicence` locks come out of
+// one function, so they cannot drift. BASIC ONLY — the commitment/equity discount
+// depends on the player's live slider values, which a snapshot cannot know, so publishing
+// a discounted figure would be guessing the player's terms. Pure derived telemetry: it
+// reads state as it stands, mutates nothing, enters no serialized byte and no
+// determinism hash.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -205,6 +224,8 @@ const SNAPSHOT_SCHEMA = 7;
 //     },
 //     syndicate: { ledger },
 //     prices: { <every non-fuel stockpile good>: <posted value> },  // sim/prices.js
+//     feeQuote: { <priced good with a baseline>: <basic licence fee, int credits> },
+//       // what a licence signed NOW would cost, per good — sim/licence.js's own licenceFee
 //     guilds: [ { id, name, isBot, credits, fuelHoard, influence,
 //                 syndicateSale: { tick, thisTick, credited, goods } | null, // Slice 3a
 //                 licenceFee: { tick, thisTick, charged, ventures } | null,   // Slice 3b-iii
@@ -440,6 +461,33 @@ function buildSnapshot(state) {
   const calAnchor = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
   const calOffset = state.utcOffsetMinutes == null ? 0 : state.utcOffsetMinutes;
 
+  // The per-good BASIC licence fee, in credits, at the price and window standing right
+  // now — the quote a player reads before signing. Every term is the licence path's own:
+  // the good's droidless baseline (`baselineUnitsForGood`), the window `calN` above (read
+  // exactly as `applyForLicence` reads it), the POSTED price (the same lagged value a
+  // signature locks), and the arithmetic itself, which is `licenceFee` called rather than
+  // copied. Commitment and equity are passed at 0 — `basicFee` does not depend on them
+  // (it is the un-discounted figure by definition), and the DISCOUNTED fee is deliberately
+  // not published: it moves with sliders the player has not yet let go of.
+  //
+  // Walked in PRICED_GOODS' sorted order so the emitted bytes are stable (invariant 9). A
+  // good is OMITTED rather than given an invented number when either half is missing:
+  // nothing can produce it (no baseline), or the state carries no price row for it (a
+  // hand-built test state) — a zero fee there would read as "this licence is free".
+  const feeQuote = {};
+  for (const good of PRICED_GOODS) {
+    const baselineUnitsPerTick = baselineUnitsForGood(good);
+    const lockedPrice = postedPrice(state, good);
+    if (baselineUnitsPerTick == null || lockedPrice == null) continue;
+    feeQuote[good] = licenceFee({
+      baselineUnitsPerTick,
+      windowN: calN,
+      lockedPrice,
+      committedOutputPct: 0,
+      equityPct: 0,
+    }).basicFee;
+  }
+
   return {
     schemaVersion: SNAPSHOT_SCHEMA,
     tick: state.tick,
@@ -504,6 +552,12 @@ function buildSnapshot(state) {
     // prices.js's one accessor: it is uniform across goods TODAY because per-good
     // bases are unruled, and this shape is what that later ruling fills in.
     priceBase: Object.fromEntries(PRICED_GOODS.map((good) => [good, basePriceFor(good)])),
+    // The BASIC licence fee per good, in credits, at the posted price and window in force
+    // (built above). What a licence signed this tick would lock — so the Establish-Venture
+    // panel can show the real number instead of a percentage, and still compute nothing
+    // itself (§5's display rule). Un-discounted: the commitment/equity relief is the
+    // player's own live terms, and the client already draws that curve.
+    feeQuote,
     guilds,
     // The resolved production preview (§5, ruled 07-08-26; rate-based 10-08-26): per
     // guild → per system → this tick's fresh, the Gate-1 fork split, the drawdown

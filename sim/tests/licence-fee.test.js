@@ -23,8 +23,8 @@ const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
-const { BASE_PRICE } = require('../prices.js');
-const { MINE_BASELINE, REFINERY_BASELINE } = require('../baseline.js');
+const { BASE_PRICE, PRICED_GOODS } = require('../prices.js');
+const { MINE_BASELINE, REFINERY_BASELINE, baselineUnitsForGood } = require('../baseline.js');
 const { getRecipe } = require('../recipes.js');
 const {
   EQUITY_CEILING, FEE_RATE, EQUITY_SHAPE_K, COMMITMENT_FLOOR,
@@ -426,4 +426,112 @@ test('establish with an equity offer, then license: the offer is what deepens th
   assert.equal(licensed.guilds[0].ventures[0].licence.discountedFee, 0);
   assert.ok(licensed.guilds[0].ventures[0].licence.basicFee > 0, 'from a real basic fee');
   assert.deepEqual(checkInvariants(licensed, licensed.tick), []);
+});
+
+
+// --- 8. the snapshot's FEE QUOTE — the number the panel shows before you sign --------
+//
+// `feeQuote[good]` is the BASIC fee in credits a licence signed right now would lock, for
+// a venture producing that good. The client cannot derive it (it holds neither the
+// baseline, nor `FEE_RATE`, nor the window), which is why the engine publishes it — and
+// the tests below are the reason it can be TRUSTED: the quote is pinned to what
+// `applyForLicence` actually charges, not merely to the same arithmetic written twice.
+
+const quoteFor = (s, good) => buildSnapshot(s).feeQuote[good];
+
+test('QUOTE == CHARGE (a MINE): the quoted fee is exactly what applying locks, same tick', () => {
+  const s = sysState([mine('m', 'titanium', 5, 0.245)]);
+  const quoted = quoteFor(s, 'titanium');      // read BEFORE the licence exists
+
+  const granted = grant(s, { committedOutputPct: 0.5, windowDays: 14 });
+  assert.equal(venture(granted).licence.basicFee, quoted,
+    'the display can never drift from the contract — both come out of licenceFee');
+  // ...and the discount is the player's own business: the quote is the UN-discounted fee,
+  // which is strictly the larger of the two here.
+  assert.ok(venture(granted).licence.discountedFee < quoted);
+});
+
+test('QUOTE == CHARGE (a FACTORY): priced off the recipe OUTPUT, same equality', () => {
+  const s = sysState([factory('m', 'titanium_alloy', 2)]);
+  const quoted = quoteFor(s, 'titanium_alloy');
+
+  const granted = grant(s, { committedOutputPct: 1, windowDays: 14 });
+  assert.equal(venture(granted).licence.basicFee, quoted);
+  // The quote is the FACTORY's own baseline (batches × the recipe's output qty), not the
+  // titanium it eats — a factory quoted off its inputs would be a different contract.
+  assert.equal(quoted, licenceFee({
+    baselineUnitsPerTick: REFINERY_BASELINE.titanium_alloy * getRecipe('titanium_alloy').output.qty,
+    windowN: N, lockedPrice: BASE_PRICE, committedOutputPct: 0, equityPct: 0,
+  }).basicFee);
+});
+
+test('the equality holds after the market has MOVED — the quote is live, the licence is not', () => {
+  let s = sysState([mine('m', 'titanium', 5)]);
+  s.prices.titanium.posted = BASE_PRICE * 3;
+
+  const quoted = quoteFor(s, 'titanium');
+  const granted = grant(s, { committedOutputPct: 0.25, windowDays: 14 });
+  assert.equal(venture(granted).licence.basicFee, quoted, 'signing at the quoted moment charges the quoted fee');
+
+  // The price moves again: the SIGNED licence stays put (it is a contract) while the
+  // quote for the next signature follows the market. Both behaviours in one place, since
+  // it is exactly the difference a panel showing both must not blur.
+  granted.prices.titanium.posted = BASE_PRICE;
+  assert.equal(venture(granted).licence.basicFee, quoted, 'a locked fee does not re-quote');
+  assert.equal(quoteFor(granted, 'titanium'), quoted / 3, 'but the quote does');
+});
+
+test('the quote tracks the POSTED price, proportionally', () => {
+  const s = sysState([mine('m', 'titanium', 5)]);
+  s.prices.titanium.posted = 10;
+  const at10 = quoteFor(s, 'titanium');
+  s.prices.titanium.posted = 20;
+  const at20 = quoteFor(s, 'titanium');
+
+  assert.ok(at10 > 0);
+  assert.equal(at20, at10 * 2, 'double the price, double the fee');
+  assert.equal(at10, Math.round(FEE_RATE * MINE_BASELINE.titanium * N * 10),
+    'and the figure is §5’s own formula — asserted here once, against the constants');
+  // The scarcity of the good is the price’s business; a good at a different price quotes
+  // differently in the same snapshot.
+  s.prices.gold.posted = 40;
+  assert.equal(quoteFor(s, 'gold'), at10 * 4);
+});
+
+test('the quote tracks the WINDOW — the same scaling the charge takes', () => {
+  const short = sysState([mine('m', 'titanium', 5)], { windowN: 24 });
+  const long = sysState([mine('m', 'titanium', 5)], { windowN: 48 });
+  assert.equal(quoteFor(long, 'titanium'), quoteFor(short, 'titanium') * 2,
+    'the fee is measured over one window, so twice the window is twice the fee');
+  // ...and the charge scales identically, which is the equality restated under a second N.
+  assert.equal(grant(long, { committedOutputPct: 0.5, windowDays: 14 }).guilds[0].ventures[0].licence.basicFee,
+    quoteFor(long, 'titanium'));
+});
+
+test('a state with no window of its own quotes over the same DEFAULT the licence path uses', () => {
+  // `windowN` unset — the fallback both readers consult (sim/windows.js). Reading it two
+  // different ways is exactly the drift this equality exists to catch.
+  const s = createState({
+    guilds: [{ id: 'g1', credits: 0, fuelHoard: 0, ventures: [mine('m', 'titanium', 5)] }],
+    reserve: { reserveLevel: 0 },
+    syndicate: { ledger: 0 },
+  });
+  const quoted = quoteFor(s, 'titanium');
+  assert.equal(grant(s, { committedOutputPct: 0.5, windowDays: 14 }).guilds[0].ventures[0].licence.basicFee, quoted);
+});
+
+test('the per-good baseline is the licence path’s own, and null where nothing makes the good', () => {
+  // The quote's baseline half. It answers for a good the way `baselineOutputFor` answers
+  // for a venture — the mine table for a raw good, batches × output qty for a refined one.
+  assert.equal(baselineUnitsForGood('titanium'), MINE_BASELINE.titanium);
+  assert.equal(baselineUnitsForGood('titanium_alloy'),
+    REFINERY_BASELINE.titanium_alloy * getRecipe('titanium_alloy').output.qty);
+  for (const good of PRICED_GOODS) {
+    assert.ok(baselineUnitsForGood(good) > 0, `${good} is priced, so something must be able to make it`);
+  }
+  // Nothing produces these, so there is no fee to quote and none is invented.
+  assert.equal(baselineUnitsForGood('deuterium_fuel'), null, 'fuel is not a licensable output (§8)');
+  assert.equal(baselineUnitsForGood('small_reactor_engine'), null, 'a Tier-3 placeholder has no recipe yet');
+  assert.equal(baselineUnitsForGood('no_such_good'), null);
+  assert.equal(baselineUnitsForGood(null), null);
 });

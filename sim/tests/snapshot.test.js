@@ -20,6 +20,10 @@ const { computeOccupancy } = require('../occupancy.js');
 const { getSite } = require('../seed.js');
 const { buildSnapshot, SNAPSHOT_SCHEMA } = require('../snapshot.js');
 const { guildTotals } = require('../stock.js');
+const { PRICED_GOODS } = require('../prices.js');
+const { FUEL_GOOD, TIER3_GOODS } = require('../resources.js');
+const { baselineUnitsForGood } = require('../baseline.js');
+const { hashState } = require('../serialize.js');
 
 // A state with two guilds, real stockpiles, fuel in both the reserve and a
 // guild hoard, and one seated titanium mine — enough to exercise every branch.
@@ -304,4 +308,55 @@ test('the production block carries the resolved per-good and per-line numbers', 
   assert.equal(la.alloc, 6);
   assert.equal(sysReport.refineries.find((r) => r.ventureId === 'r_a').rate, 6);
   assert.equal(sysReport.refineries.find((r) => r.ventureId === 'r_b').rate, 0);
+});
+
+
+// --- feeQuote: the per-good BASIC licence fee, in credits -------------------------
+//
+// The shape half of the guarantee. The equality that makes the number TRUSTWORTHY —
+// `feeQuote[G]` is exactly what `applyForLicence` locks for a venture producing G — is
+// pinned in licence-fee.test.js, beside the fee math it must not drift from.
+
+test('feeQuote keys are exactly the priced goods that something can produce', () => {
+  const quote = buildSnapshot(sampleState()).feeQuote;
+  // Today that is EVERY priced good: `BASELINE_KEYS`' drift guard already requires an
+  // entry per raw resource and per recipe, so nothing priced is unproducible. The
+  // omission rule is asserted below on the cases that DO lack a baseline.
+  assert.deepEqual(Object.keys(quote), [...PRICED_GOODS],
+    'one row per priced good, in the module’s sorted order (invariant 9)');
+  for (const [good, fee] of Object.entries(quote)) {
+    assert.ok(Number.isInteger(fee) && fee > 0, `${good}: integer credits (§15.2), got ${fee}`);
+  }
+});
+
+test('nothing unproducible or unpriced is quoted — fuel and the Tier-3 placeholders are absent', () => {
+  const quote = buildSnapshot(sampleState()).feeQuote;
+  // Fuel is never priced (§8) and no venture outputs it, so it has no licence to quote.
+  assert.equal(FUEL_GOOD in quote, false);
+  assert.equal(baselineUnitsForGood(FUEL_GOOD), null);
+  // The Tier-3 catalog entries carry no recipe and no price — a fee quoted for them would
+  // be a number invented for a good nothing can make.
+  for (const good of TIER3_GOODS) {
+    assert.equal(good in quote, false, `${good} has no recipe yet`);
+    assert.equal(baselineUnitsForGood(good), null);
+  }
+});
+
+test('a good with no price row is OMITTED, not quoted at zero', () => {
+  // A hand-built state whose price block lost a row (a fee of 0 there would read as "this
+  // licence is free" — a silent lie, which §15.5 ranks worse than an absent field).
+  const s = sampleState();
+  delete s.prices.gold;
+  const quote = buildSnapshot(s).feeQuote;
+  assert.equal('gold' in quote, false);
+  assert.ok(quote.titanium > 0, 'and every other good still quotes');
+});
+
+test('feeQuote is a pure read — it mutates nothing and serialises deterministically', () => {
+  const s = sampleState();
+  const before = hashState(s);
+  const a = JSON.stringify(buildSnapshot(s).feeQuote);
+  const b = JSON.stringify(buildSnapshot(s).feeQuote);
+  assert.equal(hashState(s), before, 'building a snapshot changes no engine state');
+  assert.equal(a, b, 'same state, byte-identical bytes');
 });

@@ -38,7 +38,7 @@
 // its output units are batches × the recipe's output qty.
 
 const { RAW_RESOURCES, PROCESSED_GOODS } = require('./resources.js');
-const { getRecipe } = require('./recipes.js');
+const { getRecipe, listRecipes } = require('./recipes.js');
 
 // [FIRST-CUT] the uniform baseline every entry below is currently set to.
 const FIRST_CUT_BASELINE = 5;
@@ -126,6 +126,45 @@ function baselineOutputFor(venture) {
   return { good, units: batches * recipe.output.qty };
 }
 
+// baselineUnitsForGood(good) -> the fixed droidless baseline output, in units/tick, of a
+// venture that PRODUCES this good — or null when nothing in the engine can make it.
+//
+// The INVERSE of `baselineOutputFor` above, and it exists because a reader can want the
+// number before any venture exists: the snapshot's per-good licence-fee quote
+// (`feeQuote`, sim/snapshot.js) has to price a licence a player has not signed yet, on a
+// site that may hold nothing. Answering that from the tables directly would be a SECOND
+// definition of "what can a venture of this type make", free to drift from the one the
+// licence path prices off — so this doesn't read the tables at all. It builds the minimal
+// venture shape `baselineOutputFor` recognises (a mine's `resourceType`, a refinery's
+// `recipeId`) and asks IT, then checks the good it answers about is the good asked for.
+// One lookup path, so a quote and a signed licence cannot disagree.
+//
+// A processed good is resolved by finding the recipe whose OUTPUT is that good, rather
+// than assuming the recipe is named after it (it is today — one recipe per processed
+// good — but that is a convention, not a rule). If a good ever had TWO recipes, "the
+// baseline of a venture making it" would have two answers and no ruling says which one
+// prices a licence: this returns null (no quote) rather than pick, and that ambiguity is
+// flagged on the roadmap instead of being decided here.
+function baselineUnitsForGood(good) {
+  if (!good) return null;
+  const venture = Object.prototype.hasOwnProperty.call(MINE_BASELINE, good)
+    ? { resourceType: good }
+    : refineryVentureFor(good);
+  if (!venture) return null;
+  const baseline = baselineOutputFor(venture);
+  // The identity check: if the shape we built produces something else, the assumption
+  // behind it is wrong and no number here would be trustworthy.
+  return baseline && baseline.good === good ? baseline.units : null;
+}
+
+// refineryVentureFor(good) -> the minimal refining-venture shape that makes `good`, or
+// null when no recipe outputs it (a raw good, fuel, a Tier-3 placeholder) or when more
+// than one does (see above).
+function refineryVentureFor(good) {
+  const makers = listRecipes().filter((r) => r.output.good === good);
+  return makers.length === 1 ? { recipeId: makers[0].id } : null;
+}
+
 // The drift guard's material: every raw resource and every recipe must have an
 // entry, so adding a good/recipe without a baseline is a loud test failure rather
 // than a good that silently prices off a zero capacity.
@@ -136,5 +175,5 @@ const BASELINE_KEYS = Object.freeze({
 
 module.exports = {
   FIRST_CUT_BASELINE, MINE_BASELINE, REFINERY_BASELINE, BASELINE_KEYS,
-  producedGoodFor, baselineOutputFor,
+  producedGoodFor, baselineOutputFor, baselineUnitsForGood,
 };
