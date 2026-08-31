@@ -26,7 +26,8 @@
 // the object is assembled in a fixed field order, so its bytes are stable.
 
 const { computeGalacticSupply } = require('./supply.js');
-const { FLAT_FUEL_PRICE_PER_UNIT } = require('./fuel.js');
+const { FLAT_FUEL_PRICE_PER_UNIT, routeFuelCost } = require('./fuel.js');
+const { heldSystemIds } = require('./claims.js');
 const { computeOccupancy } = require('./occupancy.js');
 const { deployedAssetIds } = require('./assets.js');
 const { getSite, getLandmark } = require('./seed.js');
@@ -225,6 +226,18 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // It exists because fuel has NO posted price (design.md §8) — there is no
 // `prices.deuterium_fuel` row for a client to look the rate up in — so a browser
 // that wanted the hoard in credits could only invent the rate. The engine owns it.
+// (31-08-26, fuel Slice 2): each guild row gains `fuelCost` — per system the guild
+// HOLDS, the fuel a Syndicate trade to that system burns and what that fuel is worth
+// (`{ fuelBurn, creditCost }`), from `routeFuelCost` (sim/fuel.js) at the `[FIRST-CUT]`
+// `SYNDICATE_HAULER_BURN_RATE`. ADDITIVE, and NO schema bump: nothing existing changed
+// shape, so every current reader keeps working and an older reader ignores the new key —
+// the same additive call `fuelHoardValue`, `feeQuote`, `shipments`, `licenceFee`,
+// `syndicateSale` and `perVenture` each made. It exists because the burn is
+// `distance x rate` over seed geometry the browser does not hold, and the client must be
+// able to say what a trade costs BEFORE the player commits to it (§5's display rule).
+// Held systems only, because a delivery goes only to a system you hold (§6); keys arrive
+// sorted from `heldSystemIds` (invariant 9). Pure derived telemetry: no serialized byte,
+// no determinism hash, and nothing is deducted — that is Slice 3.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -239,6 +252,7 @@ const SNAPSHOT_SCHEMA = 7;
 //     feeQuote: { <priced good with a baseline>: <basic licence fee, int credits> },
 //       // what a licence signed NOW would cost, per good — sim/licence.js's own licenceFee
 //     guilds: [ { id, name, isBot, credits, fuelHoard, fuelHoardValue, influence,
+//                 fuelCost: { systemId: { fuelBurn, creditCost } }, // held systems, sorted
 //                 syndicateSale: { tick, thisTick, credited, goods } | null, // Slice 3a
 //                 licenceFee: { tick, thisTick, charged, ventures } | null,   // Slice 3b-iii
 //                 stockpiles: { good: int },                    // flat guild total
@@ -291,6 +305,24 @@ function buildSnapshot(state) {
       // for the day that rate stops being a whole number. Pure derived
       // telemetry: no stored byte, no determinism hash, and nothing charges it.
       fuelHoardValue: Math.round(g.fuelHoard * FLAT_FUEL_PRICE_PER_UNIT),
+      // What a Syndicate trade COSTS IN FUEL, per system this guild holds (fuel
+      // Slice 2). Keyed by systemId, each `{ fuelBurn, creditCost }` from the
+      // engine's own `routeFuelCost` (sim/fuel.js) — CALLED, never re-derived, so
+      // the quote the client shows and the burn Slice 3 will deduct come out of
+      // one function and cannot drift.
+      //
+      // HELD SYSTEMS ONLY, because a Syndicate delivery goes only to a system you
+      // hold (§6, enforced by `buyFromSyndicate`'s own `guildHolds` gate) — a quote
+      // for anywhere else would be a price for a trade the engine would refuse.
+      // The list comes from `heldSystemIds`, which reads the same claim rows that
+      // gate through the same predicate, and arrives sorted (invariant 9).
+      //
+      // Pure derived telemetry: reads state as it stands, mutates nothing, enters
+      // no serialized byte and no determinism hash. Nothing is charged — the
+      // deduction is Slice 3.
+      fuelCost: Object.fromEntries(
+        heldSystemIds(state, g.id).map((systemId) => [systemId, routeFuelCost(systemId)]),
+      ),
       influence: g.influence,
       homeSystemId: g.homeSystemId || null,
       homePlanetId: g.homePlanetId || null,

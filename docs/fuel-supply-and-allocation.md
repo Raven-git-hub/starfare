@@ -190,9 +190,13 @@ later. This is the consumption side; everything in §1–§5 is the supply/econo
 - **Slice 1 — Fuel becomes a real, spendable, seeded balance.** ✅ Built (PR #50). `sim/fuel.js` created;
   `GUILD_STARTING_FUEL = 500` and `FLAT_FUEL_PRICE_PER_UNIT = 10` defined. `foundGuild` apply seeds the hoard;
   `totalProduced` seeded to match; `galacticSupply` cache refreshed. `fuelHoardValue` exposed in snapshot.
-- **Slice 2 — The route fuel-cost quote ("define fuel credits on a route").** Not yet built.
-  `SYNDICATE_HAULER_BURN_RATE` and `routeFuelCost(systemId)` to be added to `sim/fuel.js`; `fuelCost` map
-  added to the per-guild snapshot block.
+- **Slice 2 — The route fuel-cost quote ("define fuel credits on a route").** ✅ Built (engine-only).
+  `SYNDICATE_HAULER_BURN_RATE = 0.5` and `routeFuelCost(systemId)` added to `sim/fuel.js`; `fuelCost`
+  map added to the per-guild snapshot block, keyed by **held** systemId and sorted. `routeFuelCost`
+  reads the distance `nearestWaystation` already computed — the same value `buyFromSyndicate` schedules
+  the arrival tick from — so the quote and the flight cannot be priced on different geometries. Quote
+  only: **nothing is deducted**, and `buyFromSyndicate` is untouched (it still derives the route inline;
+  Slice 3 wires it).
   - **Burn model — RULED (31-08-26):** `fuel = distance × craftBurnRate`, **cargo-independent**. Syndicate
     trades fly the one Syndicate hauler; its `[FIRST-CUT]` rate is `SYNDICATE_HAULER_BURN_RATE = 0.5`.
   - **SELL routing — RULED (31-08-26):** SELL uses the same system→nearest-waystation route as BUY.

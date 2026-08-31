@@ -1032,3 +1032,39 @@ were re-pinned; the scenario goldens in `commitment-scaffold.test.js` did **not*
 `createGuild` was deliberately left alone and scenario guilds still pass their own hoards.
 
 **664 tests (+6), zero failures.**
+
+## Revision — what a trade costs in fuel: `fuelCost` *(31-08-26, engine-only)*
+
+Fuel Slice 2 (`docs/fuel-supply-and-allocation.md` §8). Slice 1 gave every guild a real `fuelHoard`;
+this one lets the client say what spending it would cost, **before** the player commits. The burn is
+`distance × rate` over seed geometry the browser does not hold, so — like `feeQuote` before it — the
+number cannot be derived client-side and the engine publishes it.
+
+**`fuelCost`** — one new map on each guild row: `{ [systemId]: { fuelBurn, creditCost } }`.
+
+- **Held systems only.** A Syndicate delivery goes only to a system you hold (`design.md` §6, enforced
+  by `buyFromSyndicate`'s `guildHolds` gate), so a quote for anywhere else would price a trade the
+  engine would refuse. The list comes from `heldSystemIds` (`sim/claims.js`), which reads the same claim
+  rows through the same predicate that gate does — the plural of one question, not a second question.
+- **Keys arrive sorted** (invariant 9). The client renders them in the order given; it should not sort.
+- **`fuelBurn`** is integer fuel units, `Math.ceil`'d so every real route costs **at least 1** — a 1-hex
+  trip is 0.5 fuel and would otherwise truncate to free. **`creditCost`** is `fuelBurn ×
+  FLAT_FUEL_PRICE_PER_UNIT`, the Slice-1 `[FIRST-CUT]` display rate. Both are integers ≥ 0.
+- **`{ fuelBurn: 0, creditCost: 0 }` means NO ROUTE, not a free one** — no waystation can reach that
+  system. The client should read it as unavailable, not as a bargain. (Today no seed system hits this;
+  the shape is honest anyway.)
+- **Cargo-independent, and quoted per route, not per order.** The burn does not move with the good or
+  the quantity, so one row serves every trade into that system. `routeFuelCost` takes a systemId and
+  nothing else, so the client cannot make it depend on cargo even by asking.
+- Computed by **calling `routeFuelCost`** (`sim/fuel.js`), never re-derived here — so what the panel
+  shows and what Slice 3 will deduct come out of one function. A test pins the snapshot's rows equal to
+  the function's output for every held system.
+- **Additive; schema stays 7** — nothing existing changed shape, the same call `fuelHoardValue`,
+  `feeQuote`, `shipments` and `licenceFee` each made. Pure derived telemetry: no serialized byte, no
+  determinism hash, **and nothing is charged** — the deduction is Slice 3, so no golden moved.
+
+**Engine-only.** No client change ships here; the BUY confirm popup wires it when the BUY UI slice
+lands. `buyFromSyndicate` is untouched — it still derives its route inline (`sim/actions.js`), which is
+Slice 3's to wire.
+
+**676 tests (+12), zero failures.**

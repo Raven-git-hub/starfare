@@ -36,6 +36,16 @@ A leg is a straight segment between two **hex anchors**, carrying:
 
 ### 2.1 Length — straight-line (Euclidean), not hex-step
 
+> ⚠ **DOC↔CODE CONTRADICTION, TRACKED NOT RESOLVED (noted 31-08-26, fuel Slice 2).** This section rules
+> Euclidean and calls hex-step "the wrong measure". The engine measures **hex-step**: `hexDistance` in
+> `sim/transport.js` is the axial `(|dq| + |dr| + |dq+dr|) / 2`, and `nearestWaystation` returns it.
+> Every live consumer therefore uses hex-step — `buyFromSyndicate`'s arrival tick, and now
+> `routeFuelCost`'s burn. Slice 2 deliberately used whatever `nearestWaystation` already returned rather
+> than picking a side, so burn and travel time stay derived from **one** geometry and cannot drift while
+> the question is open. Resolving it is a ruling (which measure is right, and whether arrival ticks move),
+> not a quiet code change — it is on the roadmap's decision checklist.
+
+
 A craft that flies a straight line covers the **Euclidean distance between the two hex centres**, not
 the count of hexes crossed. Convert each anchor to the plane and take the hypotenuse:
 
