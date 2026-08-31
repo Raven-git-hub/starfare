@@ -14,6 +14,7 @@
 // state.js must populate these fields; nothing here invents a game number.
 //
 //   state.guilds     : [{ id, credits, fuelHoard, influence?, guildReputation?,
+//                         foundingEndowment?,
 //                         stockpiles?,
 //                         ventures? (each: siteId?, assetId?, resourceType? |
 //                         recipeId?, productionRate?, reputation?),
@@ -161,6 +162,14 @@ function checkNonNegativityAndIntegrality(state) {
     // ventures it totals is a separate check (`checkGuildReputationSum`).
     if (g.guildReputation !== undefined) {
       checkField(out, g.guildReputation, `guild:${g.id}.guildReputation`, { nonNegative: false });
+    }
+    // foundingEndowment — the one-time founding grant that forms part of the total above
+    // (docs/points-and-reputation.md §2.5). Integer, and non-negativity EXEMPT for
+    // consistency with the two RP figures it is summed with rather than because a negative
+    // is expected: it is a GRANT sized from a non-negative Points term, so it is ≥ 0 by
+    // construction. Absent is the common case — only a `foundGuild`-founded guild has one.
+    if (g.foundingEndowment !== undefined) {
+      checkField(out, g.foundingEndowment, `guild:${g.id}.foundingEndowment`, { nonNegative: false });
     }
 
     // Stockpiles (ruling B1, §15.2): a NESTED map systemId -> good -> int. Every
@@ -677,9 +686,9 @@ function checkGalacticSupplyConsistency(state) {
 }
 
 // Guild-reputation sum consistency — `guild.guildReputation` is a DENORMALISED cache of
-// Σ its ventures' `venture.reputation` (docs/points-and-reputation.md §2: "guild RP = Σ
-// its ventures' RP"; §15.2's single-source-of-truth rule, with the VENTURES as the
-// source). This is the guard that makes the denormalisation legal — the same bargain
+// Σ its ventures' `venture.reputation` PLUS its one-time `foundingEndowment`
+// (docs/points-and-reputation.md §2 and §2.5; §15.2's single-source-of-truth rule, with
+// the ventures and the endowment as the two sources). This is the guard that makes the denormalisation legal — the same bargain
 // `homeSystemId` and the denormalised `venture.systemId` already run under, and the same
 // shape as `checkGalacticSupplyConsistency` above: a CONSISTENCY check, not a
 // conservation one. Nothing here says RP is constant — it is minted and destroyed by
@@ -699,12 +708,18 @@ function checkGuildReputationSum(state) {
   const out = [];
   for (const g of state.guilds || []) {
     if (g.guildReputation === undefined) continue;
-    const summed = (g.ventures || []).reduce((n, v) => n + (v.reputation || 0), 0);
+    // GENERALISED 31-08-26 (A′, §2.5): the total is the ventures PLUS the one-time founding
+    // endowment. The endowment is a constant from the moment it is granted — the tick's
+    // per-venture mover adds `after − before` to the total, so a venture delta keeps this
+    // exact without ever needing to know the endowment is there.
+    const ventureSum = (g.ventures || []).reduce((n, v) => n + (v.reputation || 0), 0);
+    const endowment = g.foundingEndowment || 0;
+    const summed = ventureSum + endowment;
     if (g.guildReputation !== summed) {
       out.push({
-        rule: 'guild-reputation-is-the-venture-sum (points-and-reputation.md §2)',
+        rule: 'guild-reputation-is-the-venture-sum-plus-endowment (points-and-reputation.md §2/§2.5)',
         where: `guild:${g.id}.guildReputation`,
-        detail: { stored: g.guildReputation, sumOfVentures: summed },
+        detail: { stored: g.guildReputation, sumOfVentures: ventureSum, foundingEndowment: endowment, expected: summed },
       });
     }
   }

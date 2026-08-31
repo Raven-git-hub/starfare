@@ -486,11 +486,25 @@ test('GET /snapshot carries the mean line per guild, from the engine helpers', a
   assert.equal(g.guildPoints, 18);
   assert.equal(g.expectedReputation, MEANLINE_K * 18);
   assert.equal(g.expectedReputation, 2700);
-  // A brand-new guild has earned no reputation yet, so it sits at the floor — the
-  // punishing-for-ambition lean, visible from the first tick. The starter fuel hoard is
-  // the other half of the safety net (§3), and nothing is granted anyway.
-  assert.equal(g.guildReputation, 0);
-  assert.equal(g.issuanceModifier, ISSUANCE_FLOOR);
+  // ⚠ SUPERSEDED 31-08-26 BY THE FOUNDING ENDOWMENT (A′, points-and-reputation.md §2.5).
+  // This used to assert a brand-new guild sat at the FLOOR with zero reputation — the
+  // punishing-for-ambition lean, visible from the first tick. That was the defect the
+  // endowment exists to fix: the mean line could not tell "just founded, hasn't had a
+  // chance" from "holds territory and does nothing with it", and throttled every newborn
+  // to 30% fuel before it could earn anything.
+  //
+  // Founding now grants `MEANLINE_K × W_SYS` once, neutralising the HOME SYSTEM's bar. So
+  // this guild's 18 GP is its home system (endowed, 1800) plus one established mine
+  // (NOT endowed — ventures earn their own bar), and it sits just below its line rather
+  // than pinned at the floor: the venture it deployed is the part it still has to earn.
+  const { W_SYS } = require('../points.js');
+  assert.equal(g.foundingEndowment, MEANLINE_K * W_SYS);
+  assert.equal(g.foundingEndowment, 1800, 'the home system, neutralised exactly once');
+  assert.equal(g.guildReputation, 1800, 'all of it endowment — the mine has earned nothing yet');
+  assert.ok(g.issuanceModifier > ISSUANCE_FLOOR,
+    'a newborn is no longer pinned at the floor');
+  assert.ok(g.issuanceModifier < 1,
+    'but its un-earned venture still leaves it below its line — ventures are not endowed');
   assert.ok(Number.isFinite(g.issuanceModifier));
 });
 

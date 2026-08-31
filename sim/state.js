@@ -50,6 +50,7 @@ function createGuild({
   incomeRate = 0,
   homeSystemId = null,
   homePlanetId = null,
+  foundingEndowment = 0,
   stockpiles = {},
   productionProfile = {},
   syndicateWindows = {},
@@ -96,6 +97,24 @@ function createGuild({
     // way `venture.reputation` is — for the same reason: the key is already in those
     // goldens, and a guild with no ventures must serialize exactly as it did before.
     guildReputation: 0,
+    // foundingEndowment: the one-time reputation a FOUNDING granted this guild
+    // (docs/points-and-reputation.md §2.5) — `MEANLINE_K × W_SYS × the systems it held at
+    // founding`, which neutralises the home system's bar exactly once so a newborn opens
+    // on its line instead of pinned at the issuance floor. A signed INTEGER, and part of
+    // the guild's reputation total: `guildReputation == Σ venture.reputation +
+    // foundingEndowment`, which `checkGuildReputationSum` asserts every tick.
+    //
+    // SET ONLY BY THE `foundGuild` APPLY, never here — this constructor has no claims to
+    // size it from (the home claim is pushed after the guild is built), and a scenario
+    // guild is not "founded" in the sense the endowment is about. It is CARRIED here for
+    // one reason, the same one `venture.committedFromTick` records: a scenario or a
+    // restored save that HANDS ONE IN must keep it, and without this line it would be
+    // silently dropped and the sum tripwire would fire on the next tick.
+    //
+    // OMITTED when 0, exactly as `venture.reputation` and `assetId` are: every guild not
+    // built by `foundGuild` carries no key at all, so all the determinism goldens whose
+    // guilds come from `createState` stay byte-identical.
+    ...(foundingEndowment !== 0 ? { foundingEndowment } : {}),
     // stockpiles: systemId -> good -> int, the guild's holdings of each RAW
     // resource, SYSTEM-SCOPED per ruling B1 (§15.2) — a separate pool per system
     // it operates in, accessed only via sim/stock.js. Fuel is NOT here — it

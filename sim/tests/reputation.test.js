@@ -611,8 +611,17 @@ test('TRIPWIRE: a guild total that drifts from its ventures is caught', () => {
   drifted.guilds[0].guildReputation += 1;
   const v = checkInvariants(drifted, drifted.tick);
   assert.equal(v.length, 1);
-  assert.equal(v[0].rule, 'guild-reputation-is-the-venture-sum (points-and-reputation.md §2)');
-  assert.deepEqual(v[0].detail, { stored: GAIN_COMMIT_ONLY + 1, sumOfVentures: GAIN_COMMIT_ONLY });
+  // The rule generalised on 31-08-26 (A′, §2.5): the total is the ventures PLUS the
+  // one-time founding endowment. This fixture is a `createState` guild, never founded, so
+  // its endowment is 0 and the sum is still the ventures alone — but the detail now names
+  // both terms, so a future drift says WHICH half moved.
+  assert.equal(v[0].rule, 'guild-reputation-is-the-venture-sum-plus-endowment (points-and-reputation.md §2/§2.5)');
+  assert.deepEqual(v[0].detail, {
+    stored: GAIN_COMMIT_ONLY + 1,
+    sumOfVentures: GAIN_COMMIT_ONLY,
+    foundingEndowment: 0,
+    expected: GAIN_COMMIT_ONLY,
+  });
 });
 
 test('TRIPWIRE: a FRACTIONAL reputation is caught on the venture and on the guild', () => {

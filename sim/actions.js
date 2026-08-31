@@ -14,6 +14,7 @@ const { isStockpileGood, isFuel } = require('./resources.js');
 const { setEntry } = require('./profile.js');
 const { getStock, addStock } = require('./stock.js');
 const { computeGalacticSupply } = require('./supply.js');
+const { foundingEndowmentFor } = require('./meanline.js');
 const { guildHolds } = require('./claims.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
 const { GUILD_STARTING_FUEL, routeFuelCost } = require('./fuel.js');
@@ -890,6 +891,37 @@ function applyAction(state, action) {
       claimedAtTick: next.tick,
       contested: false,
     });
+    // THE FOUNDING ENDOWMENT (docs/points-and-reputation.md §2.5, A′). Set HERE, after the
+    // home claim above, because the amount is sized off the systems the guild holds — and
+    // it holds none until that claim exists.
+    //
+    // WHY A NEWBORN NEEDS IT: Points count held systems, reputation is earned per venture.
+    // A guild founded a moment ago holds its home system (GP 12) and has no ventures — the
+    // starter assets it was just gifted are IDLE INVENTORY and score nothing — so its bar
+    // is 1800 against an RP of 0 and the issuance modifier pins at the FLOOR. Without this
+    // grant every brand-new guild is throttled to 30% fuel before it has had any chance to
+    // earn, at exactly the moment the game wants people founding.
+    //
+    // IT NEUTRALISES THE GRANTED HOME BASE, ONCE, AND NOTHING ELSE. Sized off the SYSTEM
+    // half of Points alone (`foundingEndowmentFor`, sim/meanline.js), so:
+    //   - inline ventures are NOT endowed — even the ones this very founding attaches.
+    //     Ventures earn their own bar (§1.2), so they start below the line and climb;
+    //   - every system claimed AFTER founding raises the bar with no matching grant, so
+    //     sprawl still sinks a guild and density-beats-sprawl is untouched.
+    // It is DERIVED from `MEANLINE_K` and `W_SYS`, both already ruled, so it invents no
+    // number and tracks a retune of either.
+    //
+    // PRECEDENT: founding is already reputation-special in exactly this direction — the
+    // genesis home-claim deliberately withholds the "+20 for an uncontested claim" bonus
+    // just below, because that is for play actions, not founding. Founding is NEUTRAL, not
+    // earned; this is the same instinct, pointed the other way.
+    const endowment = foundingEndowmentFor(next, guild);
+    if (endowment !== 0) guild.foundingEndowment = endowment;
+    // The guild total is the sum the tripwire asserts. Inline ventures normally carry no
+    // reputation, but they are summed rather than assumed away so a scenario that hands one
+    // in cannot silently break `checkGuildReputationSum` on the founding tick.
+    guild.guildReputation = (guild.ventures || []).reduce((n, v) => n + (v.reputation || 0), 0) + endowment;
+
     // The ledger FUNDS the starting credits: credits move Syndicate -> guild,
     // none are created. expectedCreditTotal is unchanged (guild +C, ledger -C
     // => net 0), so invariant 2 still holds. Founding does NOT grant the +20

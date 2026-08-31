@@ -145,9 +145,25 @@ function tierWeight(tier, where) {
 // tripwire, and scoring it 0 is the honest reading: it produces nothing, so it is not a
 // deployed producer. An unknown TIER is different — the venture really does produce
 // something, and the model simply has no ruling for it yet.
+// systemPoints(state, guild) -> the SYSTEM half of a guild's Points: `W_SYS × the systems
+// it holds`. An integer, and non-negative (a count times a positive weight).
+//
+// Extracted so the term exists ONCE. `guildPoints` below is this plus the venture half,
+// and the founding endowment (docs/points-and-reputation.md §2.5) is sized off this half
+// ALONE — the home system a founding grants is all a newborn holds, and its idle starter
+// assets score nothing. Two separate spellings of "W_SYS × held systems" could drift; one
+// cannot, and the endowment must track a retune of `W_SYS` exactly as `guildPoints` does.
+//
+// PURE, like everything else here: reads `state.claims` through the one predicate every
+// caller shares (`heldSystemIds`, sim/claims.js) and mutates nothing.
+function systemPoints(state, guild) {
+  if (!guild) return 0;
+  return W_SYS * heldSystemIds(state, guild.id).length;
+}
+
 function guildPoints(state, guild) {
   if (!guild) return 0;
-  let points = W_SYS * heldSystemIds(state, guild.id).length;
+  let points = systemPoints(state, guild);
   for (const v of guild.ventures || []) {
     const good = producedGoodFor(v);
     if (!good) continue;
@@ -156,4 +172,4 @@ function guildPoints(state, guild) {
   return points;
 }
 
-module.exports = { W_SYS, TIER_WEIGHT, tierOf, tierWeight, guildPoints };
+module.exports = { W_SYS, TIER_WEIGHT, tierOf, tierWeight, systemPoints, guildPoints };

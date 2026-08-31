@@ -40,7 +40,7 @@
 // watchable, and that is deliberately all it is — the same standing GP had when it landed
 // one slice ago.
 
-const { guildPoints } = require('./points.js');
+const { guildPoints, systemPoints } = require('./points.js');
 
 // MEANLINE_K — the reputation expected per Point of size.
 //
@@ -131,7 +131,41 @@ function issuanceModifier(state, guild) {
   return Math.max(ISSUANCE_FLOOR, Math.min(ISSUANCE_CEIL, raw));
 }
 
+// foundingEndowmentFor(state, guild) -> the one-time reputation a founding grants, an
+// integer ≥ 0. `MEANLINE_K × systemPoints(...)` — the RP a guild is expected to have
+// earned for the systems it holds, and nothing else.
+//
+// docs/points-and-reputation.md §2.5 (A′). WHY IT EXISTS: GP counts held systems, RP is
+// earned per venture, and a just-founded guild holds its home system and has no ventures —
+// its starter assets are idle inventory and score nothing. So `expectedRP` is 1800 against
+// an RP of 0 and the modifier pins at the FLOOR, throttling a brand-new guild to 30% fuel
+// before it has had any chance to earn. This is §1.2's passive-asset offset applied at
+// founding: the home system raises the bar and can never earn RP on its own, so it gets a
+// one-time offset — carried on the GUILD rather than on an asset, because a founded guild
+// has no venture to hold it.
+//
+// THE SYSTEM HALF ONLY, and that is the whole of the design's restraint. It is sized off
+// `systemPoints`, NOT `guildPoints`: ventures earn their own bar (§1.2 — productive assets
+// get no offset), so a founding that carries inline ventures endows only the home-system
+// component and those ventures still run the normal lean-then-earn loop. Every system
+// grabbed AFTER founding raises GP with no matching endowment, so sprawl still sinks a
+// guild below its line and density-beats-sprawl is untouched.
+//
+// IT INVENTS NO NUMBER (§18 #5). `MEANLINE_K` and `W_SYS` are both already ruled, and the
+// endowment is their product — so it TRACKS a retune of either instead of drifting from
+// it. There is no `[FIRST-CUT]` here and no tuning row for it.
+//
+// ⚠ IT AUTHORS NOTHING. This is a pure SIZING function: it computes an amount and writes
+// no state. The GRANT is made once, in the `foundGuild` apply (sim/actions.js), which is
+// what keeps §4's seam intact — this module still only ever READS reputation, and the
+// licence layer is still the only thing that MOVES it through play. It lives here rather
+// than in the founding apply because the amount is a point ON the mean line, and putting
+// it here means the founding apply names no constant of its own.
+function foundingEndowmentFor(state, guild) {
+  return MEANLINE_K * systemPoints(state, guild);
+}
+
 module.exports = {
   MEANLINE_K, ISSUANCE_SENSITIVITY, ISSUANCE_FLOOR, ISSUANCE_CEIL,
-  expectedReputation, issuanceModifier,
+  expectedReputation, issuanceModifier, foundingEndowmentFor,
 };
