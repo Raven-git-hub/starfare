@@ -29,6 +29,7 @@
 //                                    placed: 9). Deterministic by construction.
 
 const { createState } = require('../state.js');
+const { POOL_SEED } = require('../issuance.js');
 const { getCitadel, getOutposts, getSeedNumber } = require('../seed.js');
 
 const SYNDICATE_OWNER = 'syndicate'; // sentinel owner for Syndicate assets (not a guild)
@@ -77,7 +78,13 @@ function buildSyndicateClaims() {
 function createZeroState({ dayAnchorTick, utcOffsetMinutes } = {}) {
   return createState({
     guilds: [], // the whole point: a galaxy with no players yet
-    reserve: { reserveLevel: 30 }, // [SHEET]
+    // The Syndicate's communal fuel pool, seeded (§1.3). `POOL_SEED` replaces the
+    // `[SHEET]` placeholder 30 this line carried since the walking skeleton — a number
+    // that predated there being any rule for what the pool was FOR. Now the influx fills
+    // it and issuance draws it down (slice 5a, sim/issuance.js), so its opening balance
+    // is a real tuning number: ~5 cycles of a typical galaxy's draw, a buffer so early
+    // imbalance rations gently rather than instantly.
+    reserve: { reserveLevel: POOL_SEED },
     syndicate: { ledger: 0 },
     world: { seed: getSeedNumber() }, // the galaxy IS this seed (referenced, not copied)
     claims: buildSyndicateClaims(),

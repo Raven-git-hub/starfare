@@ -90,10 +90,14 @@ droids, outposts, exploration — and no field for any of them), and the client 
 Establish-Venture panel's reputation copy is still mock — the engine is now the authority for the same
 arithmetic, but nothing reads it yet).
 
-**GP AND THE MODIFIER ARE PUBLISHED WITH NO CONSUMER.** Slices 3 and 4 compute and show them; nothing reads
-either to decide anything. `fuelGranted = baseGrant × modifier` needs `baseGrant`, the pool/price slice (§8),
-which is **not built** — so no fuel is granted, withheld or moved anywhere in the engine, and a test pins that
-a maximally-buffed guild's hoard does not shift by one unit. *(`MEANLINE_K = 150` now fixes the absolute scale
+**THE MODIFIER NOW HAS A CONSUMER** *(31-08-26 — fuel slice 5a, `fuel-supply-and-allocation.md` §2.1)*. It is
+no longer published-and-unread: at every window boundary the Syndicate grants each guild
+`round(BASE_GRANT_PER_GP × GP × modifier)` from a finite pool, so a guild's reputation-against-size decides how
+much fuel actually arrives. `baseGrant` turned out to be **size-relative** — `BASE_GRANT_PER_GP × GP` — which
+makes GP both the base AND the divisor inside the expected line, exactly §0's "draw sized by
+reputation-against-size". The pool is finite and grants are **rationed proportionally** when it cannot cover
+them, so the modifier decides a SHARE of a real commons rather than a number drawn from nowhere. What is still
+unbuilt is the **price controller** (5b) that would pull draw back under supply. *(`MEANLINE_K = 150` now fixes the absolute scale
 the GP weights are measured on, so those weights are no longer "relative only" in the sense of being
 unanchored — but they and `k` remain a single `[FIRST-CUT]` system, and retuning one means retuning the
 other.)*
@@ -363,5 +367,7 @@ snapshot poll, so RP visibly moves as ticks advance.
    **✅ LANDED 31-08-26 — see §0a.** `sim/meanline.js`, derived and published; `MEANLINE_K` ruled 150 and its
    calibration confirmed against the engine. **It grants no fuel** — that needs `baseGrant`, step 5.
 5. Then issuance, the reserve/flow price controller, the edges (`fuel-supply-and-allocation.md §8`).
+   **✅ ISSUANCE LANDED 31-08-26 (slice 5a)** — the seeded pool, the abstracted influx and size-based grants
+   with proportional rationing (`sim/issuance.js`). The **price controller is 5b** and is not built.
 
 **Prerequisite for bot-testbed cycling: the renegotiation window (#64), §5.**

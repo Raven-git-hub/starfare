@@ -137,7 +137,25 @@ Bigness alone earns nothing — it raises the standard you're held to. This is "
 comfortable" as pure economics, and it cuts both ways: it punishes coasting *and* hands the high-standing a
 reputation buffer they're tempted to gamble (illegal refining, breaking ranks) — both roads to drama.
 
-### 2.1 The issuance mechanic — slice 5a (ruled 31-08-26)
+### 2.1 The issuance mechanic — slice 5a (ruled 31-08-26; **BUILT 31-08-26**)
+
+> **✅ BUILT.** `sim/issuance.js` (the three constants, `grantFor`, `rationGrants`) and step 6 of the tick
+> (`sim/tick.js` `stepBaselineAllocation` — §15.6 names "fuel allocation" as a per-tick shared-resource
+> concern, and step 6 is the allocation step; the eight-step order is unchanged). Published per guild in the
+> snapshot as `fuelGrant` and shown in the operator console beside the pool.
+>
+> **THE POOL IS `state.reserve.reserveLevel` — no new field.** The wording below offers
+> "`state.syndicate.fuelPool` **or equivalent**", and the equivalent already existed: that field has been the
+> communal Syndicate reserve since the walking skeleton, is named as such by `sim/supply.js` and
+> `sim/resources.js`, is the **Fuel Utility** entity of `design.md` §15.4, and was ALREADY a term in invariant 1
+> and in `galacticSupply.fuel`. Minting a second pool beside it would have been two sources of truth for one
+> number — with the conservation law summing one while the code filled the other. All this slice had to add was
+> a real seed (`POOL_SEED`) in place of the `[SHEET]` placeholder 30 the zero-state carried.
+>
+> **What is NOT built:** the price controller (§4, slice 5b) — grants are physical fuel at the flat price, and
+> nothing pushes draw back under supply, so an out-drawing galaxy rations and stays rationed. That is the
+> losable state of §1.2, intended for this cut.
+
 
 *Rules the "how much fuel each guild gets" mechanic; the price CURVE (5b) stays open. Numbers are `[FIRST-CUT]`
 in `phase-1-tuning.md`; this rules the SHAPE.*

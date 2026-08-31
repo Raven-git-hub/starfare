@@ -768,6 +768,14 @@
   .ml-mod .ml-modv.buff{color:var(--green)}
   .ml-mod .ml-modv.throttled{color:var(--red)}
   .ml-mod .ml-modv .pin{font-size:9px; letter-spacing:.1em; color:var(--ink3); margin-left:5px}
+  /* The fuel loop: what the pool holds, and what this guild drew from it. */
+  .fl-row{display:flex; justify-content:space-between; align-items:baseline; margin-top:5px}
+  .fl-row .rp-k{font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3)}
+  .fl-row .fl-v{font-family:var(--mono); font-size:11px; color:var(--ink2)}
+  .fl-row .fl-v b{color:var(--ink); font-weight:600}
+  .fl-row .fl-v .was{color:var(--red)}
+  .fl-grant{margin-top:5px; padding-top:6px; border-top:1px dashed var(--line)}
+  .fl-ration{font-family:var(--mono); font-size:9px; color:var(--red); letter-spacing:.06em; margin-top:3px}
 </style>
 </head>
 <body>
@@ -1330,6 +1338,48 @@ function rpGauge(value, opts){
 // ⚠ IT GRANTS NO FUEL, and the footer says so. `fuelGranted = baseGrant × modifier` needs
 // `baseGrant`, the unbuilt pool slice, so this multiplies nothing today. A panel must not
 // present it as fuel a guild is receiving.
+// THE FUEL LOOP — what the commons holds, and what this guild drew from it (fuel slice 5a,
+// docs/fuel-supply-and-allocation.md §2.1). This is the end of the chain the three figures
+// above build: reputation against size gives a modifier, and the modifier decides how much
+// fuel actually arrives.
+//
+// EVERY NUMBER IS READ, NONE IS COMPUTED. The pool comes off `galacticSupply.fuel.reserve`
+// — the snapshot's existing fuel block, which has carried it since the walking skeleton
+// and which this slice merely made MOVE — and the grant off the guild's own `fuelGrant`
+// record. The console holds no grant constant, no influx and no pool seed, so there is
+// nothing here to mirror and no constant-mirror tripwire to write: it structurally cannot
+// work out what a guild is due.
+//
+// WHEN `granted` IS BELOW `desired`, THE GALAXY RATIONED — the crunch edge (§4.1), the one
+// thing in this block that is not simply arithmetic, so it is called out in words rather
+// than left for a reader to spot by comparing two numbers.
+function fuelLoopBlock(g, snap){
+  var fuel = (snap && snap.galacticSupply && snap.galacticSupply.fuel) || {};
+  var grant = g.fuelGrant;
+  var out = '<div class="fl-grant">' +
+    '<div class="fl-row">' +
+      '<span class="rp-k" title="' + esc('the Syndicate\'s communal fuel pool — the back-end influx fills it '
+        + 'each cycle, every guild\'s grant is drawn from it') + '">Syndicate fuel pool</span>' +
+      '<span class="fl-v"><b>' + fmt(fuel.reserve == null ? 0 : fuel.reserve) + '</b></span>' +
+    '</div>';
+  if (!grant){
+    return out + '<div class="fl-row"><span class="rp-k">Fuel granted</span>' +
+      '<span class="fl-v">— <span style="color:var(--ink3)">no cycle has closed on holdings of yours yet</span></span></div></div>';
+  }
+  out += '<div class="fl-row">' +
+      '<span class="rp-k" title="' + esc('fuel granted at the last cycle boundary: your size x your issuance '
+        + 'modifier, drawn from the pool') + '">Fuel granted</span>' +
+      '<span class="fl-v"><b>' + fmt(grant.granted) + '</b>' +
+        (grant.rationed ? ' <span class="was">of ' + fmt(grant.desired) + ' due</span>' : '') +
+        ' <span style="color:var(--ink3)">@ tick ' + fmt(grant.tick) + '</span></span>' +
+    '</div>';
+  if (grant.rationed){
+    out += '<div class="fl-ration">RATIONED — the cycle\'s grants came to more than the pool held, ' +
+      'so every guild was clipped proportionally and the pool emptied to zero.</div>';
+  }
+  return out + '</div>';
+}
+
 function meanLineBlock(g){
   var exp = g.expectedReputation || 0;
   var mod = g.issuanceModifier;
@@ -1378,13 +1428,16 @@ function rpGuildBlock(){
     rpGauge(rep, { scale: true }) +
     gpBlock(g) +
     meanLineBlock(g) +
+    fuelLoopBlock(g, STATE.snap) +
     '<div class="sm-foot">The sum of this guild\'s ventures\' reputation, moved at each cycle ' +
       'boundary by the same met/breach verdict that charges the fee. The band runs ' + RP.FLOOR +
       ' to about ' + RP.CAP + '; gains taper above ' + RP.KNEE + ', drops never do. The ' +
       RP.FORCED_LEASE + ' and ' + RP.DIVIDEND_MAX + ' marks are scale only — neither consequence is built. ' +
       'Guild points are this guild\'s SIZE (its systems and ventures, tier-weighted); the modifier is its ' +
       'reputation judged against the line expected for that size — below it throttles a future fuel grant, ' +
-      'above it buffs one. NOTHING IS GRANTED YET: the base grant it would multiply is the unbuilt pool slice.</div>' +
+      'above it buffs one — and since the fuel-flows slice it really does: the grant below is that ' +
+      'modifier spent, drawn from the Syndicate pool at each cycle boundary. What the pool cannot cover ' +
+      'is rationed proportionally, so it empties to zero rather than going negative.</div>' +
   '</div>';
 }
 // The dot carries THIS LICENCE's own verdict (§5: met/breach is judged per venture, not

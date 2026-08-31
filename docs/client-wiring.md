@@ -1248,3 +1248,26 @@ bar your size sets) and the **issuance modifier** (the verdict).
 
 **781 tests (+28), zero failures.** The state determinism goldens are untouched — everything here is
 derived and nothing new reaches serialized state.
+
+
+### The fuel loop closes in the console *(31-08-26)* — the pool, and what you drew from it
+
+Ruling: `docs/fuel-supply-and-allocation.md` §2.1. **`client/console.html`** (plus `sim/issuance.js`,
+`sim/tick.js` step 6, `sim/snapshot.js` and tests). The Syndicate footer now carries the whole chain:
+reputation → guild points → expected reputation → issuance modifier → **the fuel that actually arrived**.
+
+- **`galacticSupply.fuel.reserve`** — the Syndicate pool. **Not a new field**: it has been in the snapshot
+  since the walking skeleton, and what changed in this slice is that the number finally MOVES.
+- **`guilds[].fuelGrant`** — `{ tick, thisTick, granted, desired, rationed }`, echoed off the guild's own
+  record. A RECORD OF AN EVENT, not a derivable fact: `granted` depended on how full the pool was and on
+  what every other guild drew that cycle, and that is gone the instant the boundary passes. `null` for a
+  guild that has never been due anything.
+- **`desired` sits beside `granted` on purpose.** When they differ, the galaxy RATIONED — the crunch edge
+  — and the panel says so in words rather than leaving a reader to spot it by comparing two numbers.
+- **The browser computes nothing.** It holds no grant constant, no influx and no pool seed, so unlike the
+  RP band bounds there is nothing to mirror and no constant-mirror tripwire to write: it structurally
+  cannot work out what a guild is due.
+
+**808 tests (+25), zero failures.** The state determinism goldens **did** move here — correctly, and for the
+first time in this sequence — and the change is proven to be exactly the pool, the audit and the granted
+fuel by undoing those and showing the pre-slice hashes come back byte for byte.

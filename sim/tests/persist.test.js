@@ -31,6 +31,7 @@ const { saveState, appendJournal, clearJournal, loadOrInit, journalPath } = requ
 const { guildTotals } = require('../stock.js');
 const { STARTER_MINERS, STARTER_FACTORIES } = require('../assets.js');
 const { GUILD_STARTING_FUEL } = require('../fuel.js');
+const { POOL_SEED } = require('../issuance.js');
 
 // A throwaway persist dir per test, cleaned up after. Real filesystem (not a
 // mock) so the atomic temp-file+rename write path is actually exercised.
@@ -222,10 +223,24 @@ test('double-apply guard: a snapshot-baked action still in the journal is not re
 // statement the strips used to make — this slice seeded a hoard and changed NOTHING
 // else about this sequence — and it fails loudly if a future edit smuggles a second
 // change in behind a re-pin.
-const GOLDEN_HASH = 'ad0f9e70ce5570feea79373096d31768e2b49dd1a8a7e23cd96fcf7c1489154c';
-const GOLDEN_HASH_WITH_PRICES = '787f85935450f55f285f71aa929689decde26da7718ea92111ef26f635b1f28c';
-const GOLDEN_HASH_WITH_HISTORY = 'f85960fc2452569ceba07a33c2c127f0ed6d6e194527e34bf6915603aee59395';
-const GOLDEN_HASH_WITH_ASSETS = '9f8a9a45861f268980d30274eadc0eac07a1d45ae5d7a48085ba0a6bf2f6469b';
+const GOLDEN_HASH = '0c37aeda88fedcbf1a4289ad4c8969be8fd5a23d07ed16bdfc621d8f1985d1c0';
+const GOLDEN_HASH_WITH_PRICES = '7a39ef10180e9865d6f51ad5834989bd2a7bce8b86cd4e84aadbfceaf739eef0';
+const GOLDEN_HASH_WITH_HISTORY = '9d43f1bd3260b0367de9fb635e1818c32e16f3ab6743a9188a40a4324a160f85';
+const GOLDEN_HASH_WITH_ASSETS = 'd744ab2a9f3e4c0ededaee0d70007d39e48f2677604941535d6ba85b0301ebed';
+
+// FUEL SLICE 5a (31-08-26) — the pool got a real seed. The Syndicate reserve
+// (`state.reserve.reserveLevel`) opened on a `[SHEET]` placeholder 30 from the walking
+// skeleton until this slice gave the pool a rule (the influx fills it, issuance draws it
+// down), at which point its opening balance became `POOL_SEED`. That moves three numbers
+// in this canonical sequence — the pool, the audit's `totalProduced` (which seeds from
+// it) and the `galacticSupply.fuel.reserve` cache — so all four goldens above are
+// re-pinned. NOTHING ELSE MOVED, and the proof is below rather than in the re-pinning:
+// this run is 2 ticks on the 1,440-tick default window, so it crosses NO boundary — no
+// influx, no issuance, no grant record. The value the full hash held before this slice,
+// kept so the un-seed proof has something to prove against:
+const GOLDEN_HASH_BEFORE_POOL_SEED = '9f8a9a45861f268980d30274eadc0eac07a1d45ae5d7a48085ba0a6bf2f6469b';
+// What that line seeded before POOL_SEED replaced it.
+const RETIRED_POOL_PLACEHOLDER = 30;
 
 // The pre-fuel-slice full hash, kept so the un-granting proof below has something to
 // prove against. It is the value `GOLDEN_HASH_WITH_ASSETS` held before 31-08-26.
@@ -307,8 +322,51 @@ test('no-op proof: subtract the founding fuel grant and the pre-slice golden com
   ungranted.audit.totalProduced -= GUILD_STARTING_FUEL;
   ungranted.galacticSupply.fuel.guildHeld -= GUILD_STARTING_FUEL;
 
+  // …and un-seed the POOL too (slice 5a), so what comes back is the state as it stood
+  // before EITHER fuel slice touched it. Two slices' worth of fuel undone, one hash.
+  ungranted.reserve.reserveLevel -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
+  ungranted.audit.totalProduced -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
+  ungranted.galacticSupply.fuel.reserve -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
+
   assert.equal(hashState(ungranted), GOLDEN_HASH_BEFORE_FUEL_GRANT,
-    'the fuel grant is the ONLY delta this slice made to the canonical sequence, byte for byte');
+    'the fuel grant and the pool seed are the ONLY deltas the two fuel slices made to the canonical sequence, byte for byte');
+});
+
+// Slice 5a's own delta proof, the same inverted idiom: a changed VALUE cannot be stripped
+// the way an added key can, so subtract the pool seed from the three fields it reaches and
+// the pre-slice hash must come back. This is what makes the four re-pinned goldens above
+// mean something — a re-pinned number on its own proves only that somebody ran the code.
+test('no-op proof: un-seed the pool and the pre-slice-5a golden comes back', () => {
+  let s = createZeroState();
+  s = applyValid(s, FOUND);
+  s = applyValid(s, MINE_1);
+  s = applyValid(s, PROFILE);
+  s = advance(s, []).state;
+  s = advance(s, []).state;
+
+  // The seed really landed — otherwise "subtract it and nothing changed" is vacuous.
+  assert.equal(s.reserve.reserveLevel, POOL_SEED, 'the galaxy really did open on a seeded pool');
+  assert.equal(s.audit.totalProduced, POOL_SEED + GUILD_STARTING_FUEL, 'and the audit counts it as produced');
+  assert.equal(s.galacticSupply.fuel.reserve, POOL_SEED, 'with the supply cache agreeing');
+
+  // NOTHING FLOWED. Two ticks on the 1,440-tick default window cross no boundary, so the
+  // influx never fired and no grant was made — which is itself the "nothing happens off a
+  // boundary" proof, and is why the pool is still exactly its seed.
+  assert.equal(s.guilds[0].lastFuelGrant, undefined, 'no boundary was crossed, so no grant was recorded');
+  assert.equal(s.guilds[0].fuelHoard, GUILD_STARTING_FUEL, 'the hoard is the founding grant alone');
+
+  // INVARIANT 1 by hand: everything minted is accounted for in the pool and the hoards.
+  assert.equal(s.audit.totalProduced - s.audit.totalConsumed,
+    s.reserve.reserveLevel + s.guilds[0].fuelHoard,
+    'conservation: produced − consumed == pool + Σ hoards');
+
+  const unseeded = structuredClone(s);
+  unseeded.reserve.reserveLevel -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
+  unseeded.audit.totalProduced -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
+  unseeded.galacticSupply.fuel.reserve -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
+
+  assert.equal(hashState(unseeded), GOLDEN_HASH_BEFORE_POOL_SEED,
+    'the pool seed is the ONLY delta slice 5a made to this run, byte for byte');
 });
 
 // --- 5. graceful shutdown: the MID-INTERVAL save (no intervening tick) ------
