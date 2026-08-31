@@ -246,6 +246,18 @@ pure consumer sinks by earning nothing against its bar, so buying needs no expli
 - **CEIL saturation is a FEATURE:** when many guilds sit well above their lines (universal cooperation) the buff
   saturates and **price** becomes the real throttle — `fuel-economy.md §2`'s flat-high-price equilibrium.
 
+**Ruled `[FIRST-CUT]` for slice 4 (numbers in `phase-1-tuning.md`; calibrated by model, not guessed):**
+`MEANLINE_K = 150`, `ISSUANCE_SENSITIVITY = 1.5`, `ISSUANCE_FLOOR = 0.3`, `ISSUANCE_CEIL = 1.5`. The floor
+and slope carry the **punishing-for-ambition** lean (31-08-26): a guild that expands its holdings faster
+than its reputation can back them up is thrown toward the floor and stays there until its RP climbs, while a
+guild that has *earned* its size sits on or above its line untouched. The asymmetry (floor 0.3 vs ceil 1.5)
+means falling below the line hurts more than rising above it helps. **Expansion is deliberately lean until
+backed by reputation** — a just-grabbed system or a freshly-deployed venture raises `expectedRP` at once
+(GP jumps) while the RP has not been earned, so the guild draws ~floor for the ~20 cycles it takes to climb;
+the floor and the starter fuel hoard are the safety net (no death spiral). **The modifier is DERIVED and
+watchable, and grants no fuel yet** — `fuelGranted = baseGrant × modifier` needs `baseGrant`, the pool/price
+slice (§8). This slice computes and shows the modifier; nothing consumes it.
+
 ## 4. Ownership & seams (who owns what)
 
 **One reputation, two owners of two different jobs:**
