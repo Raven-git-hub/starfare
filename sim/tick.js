@@ -34,7 +34,7 @@ const { getHistory, pushHistory } = require('./history.js');
 const { recordPriceSamples } = require('./price-history.js');
 const { recomputePrices, postedPrice } = require('./prices.js');
 const {
-  commitmentSale, committedContribution, feeOwed, reputationDelta,
+  commitmentSale, committedContribution, feeOwed, reputationDelta, gainFactor, RP_FLOOR,
 } = require('./licence.js');
 const { producedGoodFor } = require('./baseline.js');
 
@@ -323,7 +323,7 @@ function applyProduction(state, guild, systemId, ctx) {
       // applied once to the target and once to the fee).
       const owed = feeOwed(v.licence, status, windowFraction(v, curWindowStart, windowN));
       feeOwedHere += owed;
-      // ── REPUTATION (RP slice 1, docs/points-and-reputation.md §6 step 1) ──────────
+      // ── REPUTATION (RP slice 2, docs/points-and-reputation.md §2.2) ──────────────
       // The SAME `status`, read from the SAME row, in the SAME loop as the fee — never
       // recomputed. That is the whole mechanism: a venture cannot be charged as breached
       // and credited as met, because there is exactly one verdict and both consumers
@@ -337,21 +337,60 @@ function applyProduction(state, guild, systemId, ctx) {
       // no licensed venture never reaches the body. So there is no separate "have we
       // already done this window?" bookkeeping to get wrong, and none is added.
       //
-      // FLAT, and deliberately so: `reputationDelta` returns +REP_MEET_FLAT or
-      // -REP_BREACH_FLAT with no reference to the venture's terms. The terms-scaled
-      // meet, the inverse-commitment breach, the gain taper, the 1500 soft cap and the
-      // -500 closure are the NEXT slice (§2.2-2.3) and none of them is here — RP is a
-      // running integer with no band and no clamp.
+      // THE ARITHMETIC IS THE LICENCE LAYER'S (§4); this is the four-line COMPOSITION of
+      // it, and each line is a ruled rule rather than a convenience:
       //
-      // The venture's own total and the guild's cached sum move by the SAME delta, in
-      // one place, so `guild.guildReputation == Σ venture.reputation` holds by
-      // construction and `checkGuildReputationSum` (invariants.js) has to catch only a
-      // future writer that forgets this pairing — which is exactly what it is for.
-      // `(v.reputation || 0)` is the one place the omitted-when-0 absence is read as
-      // zero, the same courtesy `equityOf` does for `equityPct`.
-      const repDelta = reputationDelta(status);
-      v.reputation = (v.reputation || 0) + repDelta;
-      guild.guildReputation += repDelta;
+      //   1. `raw` — the pre-taper, pre-clamp delta for this verdict and these TERMS
+      //      (`metGain` / `breachPenalty`, sim/licence.js). Slice 1's flat ±20/−30 is
+      //      gone: what a met cycle is worth now depends on what the venture promised.
+      //   2. THE TAPER SCALES GAINS ONLY (§2.3). A drop is applied at full strength at
+      //      every height, which is precisely what makes the top of the band slow to
+      //      climb and fast to fall. Tapering the drop too would turn a hard-won buffer
+      //      into a safe one and delete the theme.
+      //   3. THE FLOOR IS A HARD CLAMP, THE CAP IS NOT. A drop is untapered, so nothing
+      //      stops it on its own and −500 has to be enforced here; a gain tapers to zero
+      //      before 1500 on its own, so clamping the top would be dead code pretending
+      //      to be a rule. `Math.max` is the whole floor.
+      //   4. THE GUILD SUM MOVES BY THE **ACTUAL** CHANGE (`after - before`), never by
+      //      `applied`. This is the line the clamp makes load-bearing: a venture already
+      //      at −500 that breaches again absorbs a delta the clamp discards, and adding
+      //      `applied` to the guild would silently drift the total below the sum of its
+      //      ventures — exactly what `checkGuildReputationSum` exists to catch, so this
+      //      would trip the tick rather than corrupt quietly. Correct by construction
+      //      here instead.
+      //
+      // ⚠ REACHING −500 IS A PIN, NOT A CLOSURE. Nothing below acts on the threshold:
+      // venture removal, licence revocation and the −300 forced-lease offer are a
+      // separate later slice. A pinned venture keeps producing, keeps being judged, and
+      // can climb back out at full strength (the taper bites only above 800).
+      //
+      // ⚠ THE MET GAIN IS NOT WINDOW-PRO-RATED — ruled, first cut (§2.2). A mid-window
+      // joiner's first window is pro-rated for its TARGET and its FEE (`windowFraction`
+      // above) but not for its reputation, so it earns a full cycle's gain for a partial
+      // cycle met. Deliberate, and flagged here rather than quietly fixed.
+      //
+      // SEAM FOR THE NEXT RP SOURCE: steps 2-4 are the general "how a delta lands"
+      // rule, not something specific to the licence verdict. The moment §2.4's deferred
+      // sources (equity, leasing, the outpost deploy offset) land, they belong behind one
+      // shared applier in sim/licence.js rather than a second copy of these lines.
+      //   5. A ZERO NET CHANGE WRITES NOTHING. Three real cases reach here with
+      //      `after === before`: a 0%-commitment licence (§5's floor — always met, and
+      //      with zero terms worth a zero gain), a venture pinned at the floor absorbing
+      //      another breach, and one at the taper's asymptote where the gain rounds away.
+      //      Assigning anyway would MINT `reputation: 0` on the first, which is a key
+      //      holding its own default — bytes in every save and every determinism hash for
+      //      a venture whose reputation has never moved. So the field's lifecycle is
+      //      exactly "minted by the first verdict that MOVES it, and kept from then on":
+      //      a venture that climbs and falls back to 0 still keeps its key, because that
+      //      last step was a real change.
+      const before = v.reputation || 0;
+      const raw = reputationDelta(status, v);
+      const applied = status === 'met' ? Math.round(raw * gainFactor(before)) : raw;
+      const after = Math.max(RP_FLOOR, before + applied);
+      if (after !== before) {
+        v.reputation = after;
+        guild.guildReputation += after - before;
+      }
       feeVentures[v.id] = {
         status, owed, basicFee: v.licence.basicFee, discountedFee: v.licence.discountedFee,
       };

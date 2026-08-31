@@ -61,7 +61,10 @@
 
 const { isRawResource, isStockpileGood, FUEL_GOOD } = require('./resources.js');
 const { PRICED_GOODS, PRICE_FLOOR, PRICE_CEILING, PUBLISH_LAG } = require('./prices.js');
-const { EQUITY_CEILING, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX, isValidWindowDays } = require('./licence.js');
+const {
+  EQUITY_CEILING, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX, isValidWindowDays,
+  RP_FLOOR, RP_SOFT_CAP,
+} = require('./licence.js');
 const { ASSET_CONDITION_NEW, ASSET_CONDITION_MIN, isAssetKind, assetKindForVentureType } = require('./assets.js');
 const { DEFAULT_WINDOW_N, winStartFor, windowFraction } = require('./windows.js');
 const { HISTORY_N } = require('./history.js');
@@ -708,6 +711,47 @@ function checkGuildReputationSum(state) {
   return out;
 }
 
+// Reputation band — every venture's RP sits inside `[RP_FLOOR, RP_SOFT_CAP]`
+// (docs/points-and-reputation.md §2.1, the −500 … ~1500 band; bounds imported from
+// sim/licence.js, which owns them, rather than re-typed here).
+//
+// THE TWO EDGES ARE HELD DIFFERENTLY, and this checks the OUTCOME of both rather than
+// either mechanism: the floor is a hard clamp in the tick (`Math.max(RP_FLOOR, …)`,
+// because a drop is untapered and nothing else would stop it), while the top is held
+// ORGANICALLY — §2.3's taper shrinks a gain to zero before 1500 is reached, so the cap is
+// approached and never passed (the largest possible gain lands its last unit at 1497).
+// That asymmetry is exactly why the ceiling half of this check is worth having: it is the
+// only thing standing between a future retune of the knee, the cap or `REP_MEET_MAX` and
+// a silent overshoot, since no line of code enforces the top directly.
+//
+// It also catches what the clamp cannot: a venture seeded out of band by a scenario, a
+// test, or a state file written before the band existed.
+//
+// A venture with NO `reputation` key is skipped — the field is omitted when 0, so that is
+// the common case and 0 is trivially in band.
+//
+// NO SEPARATE GUILD BOUND. `guild.guildReputation` is the sum of in-band ventures, so its
+// legal range is a function of how many ventures a guild has, not a constant — and its
+// correctness is already fully covered by `checkGuildReputationSum` against the very rows
+// this check bounds.
+function checkReputationBand(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    for (const v of g.ventures || []) {
+      if (v.reputation === undefined) continue;
+      if (!Number.isFinite(v.reputation)) continue;   // the integer check already speaks for this
+      if (v.reputation < RP_FLOOR || v.reputation > RP_SOFT_CAP) {
+        out.push({
+          rule: 'reputation-in-band (points-and-reputation.md §2.1)',
+          where: `venture:${v.id}.reputation`,
+          detail: { value: v.reputation, floor: RP_FLOOR, softCap: RP_SOFT_CAP },
+        });
+      }
+    }
+  }
+  return out;
+}
+
 // Site occupancy / referential integrity — the first cross-check between live
 // state and the static seed. Only SEATED ventures (those with a siteId) are
 // checked; an unseated venture is legal (production runs off resourceType). For
@@ -892,6 +936,7 @@ function checkInvariants(state, tick) {
     ...checkLicenceTerms(state),
     ...checkGalacticSupplyConsistency(state),
     ...checkGuildReputationSum(state),
+    ...checkReputationBand(state),
     ...checkSiteOccupancy(state),
     ...checkAssetOccupancy(state),
     ...checkClaimIntegrity(state),

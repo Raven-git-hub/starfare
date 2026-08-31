@@ -315,52 +315,171 @@ function feeOwed(licence, status, fraction) {
   return Math.round(due * fraction);
 }
 
-// ── REPUTATION: the flat meet/breach (RP slice 1, 31-08-26) ────────────────────────
+// ── REPUTATION: the band arithmetic (RP slice 2, 31-08-26) ──────────────────────
 //
-// docs/points-and-reputation.md §2 / §6 step 1. Reputation Points are a PER-VENTURE
-// running total (`venture.reputation`) summed into `guild.guildReputation`, and this
-// slice gives them exactly ONE mover: the boundary verdict a licence is already judged
-// on. That is design.md §15.5 invariant 8 made structural — "reputation moves only on
-// measurable events ... never on vibes" — because the only event that can move it is the
-// same `status` the fee is charged on, read from the same row, in the same loop.
+// docs/points-and-reputation.md §2.1 (the band), §2.2 (the two outcomes + the slice-2
+// arithmetic ruling) and §2.3 (the gain taper). Reputation Points are a PER-VENTURE
+// running total (`venture.reputation`) summed into `guild.guildReputation`, and they have
+// exactly ONE mover: the boundary verdict a licence is already judged on. That is
+// design.md §15.5 invariant 8 made structural — "reputation moves only on measurable
+// events ... never on vibes" — because the only event that can move RP is the same
+// `status` the fee is charged on, read from the same row, in the same loop.
 //
-// WHY THE MAGNITUDES LIVE HERE AND NOT IN `sim/fuel.js`. The build prompt named fuel.js;
-// the DESIGN does not, and the doc wins (CLAUDE.md). points-and-reputation.md §4 rules
-// the seam in one line: "the LICENCE LAYER owns how RP MOVES ... the FUEL LAYER ... READS
-// `guild.guildReputation`; it does not author it." meet/breach is how RP moves, so it is
-// licence-layer, and it belongs beside `feeOwed` — the other consumer of the very same
-// verdict. fuel.js's own header states the repo rule these obey: "a constant lives in the
-// module that owns the rule it belongs to". Flagged for the human: a one-line move if the
-// prompt's placement was deliberate.
+// WHY THE MAGNITUDES LIVE HERE. points-and-reputation.md §4 rules the seam in one line:
+// "the LICENCE LAYER owns how RP MOVES ... the FUEL LAYER ... READS `guild.guildReputation`;
+// it does not author it." meet/breach is how RP moves, so it is licence-layer, and it
+// belongs beside `feeOwed` — the other consumer of the very same verdict.
 //
-// `[FIRST-CUT]`, GIVEN BY THE HUMAN (the slice-1 build prompt, 31-08-26) — NOT invented,
-// and deliberately NOT calibrated. They exist to make RP a number that MOVES, the way
-// `GUILD_STARTING_FUEL` made fuel real before anything spent it. The real terms-scaled
-// meet and inverse-commitment breach, the 800-knee gain taper, the 1500 soft cap and the
-// -500 closure floor are all the NEXT slice (§2.2-2.3, `[SHEET]`) and none of them is
-// implemented here: RP is a running integer with no band, no clamp and no floor.
+// SLICE 2 RETIRED THE FLAT PLACEHOLDERS. `REP_MEET_FLAT` = 20 and `REP_BREACH_FLAT` = 30
+// were slice 1's "make it move" stand-ins, explicitly never a first cut at this. They are
+// GONE, not deprecated: nothing reads a flat magnitude any more.
 //
-// BREACH > MEET is the one relationship that is not arbitrary even at first cut: §2.3's
-// "slow to climb, fast to fall" has to be true from the first tick, or the placeholder
-// would teach the opposite of the model it stands in for.
-const REP_MEET_FLAT = 20;
-const REP_BREACH_FLAT = 30;
+// EVERY NUMBER BELOW IS `[FIRST-CUT]` AND RULED, not invented — phase-1-tuning.md
+// §"Points & Reputation", promoted from `[SHEET]` by the 31-08-26 design pass. Tuned in
+// play; each lives here ONCE and is never inlined.
 
-// reputationDelta(status) -> the signed RP a boundary verdict moves.
+// The MET-GAIN model — the deploy meter made real (§2.2; phase-1-tuning §"Points &
+// Reputation"). A met cycle is worth `REP_MEET_MAX` scaled by the TERMS the venture
+// signed: how much output it promised, and how much equity it offered. The weights sum to
+// 1, so full terms score the maximum exactly — +100 a cycle, ten cycles to the +1000
+// dividend-max tier, which is how the licence layer's tier structure falls out of the
+// meter rather than being a second, parallel number.
+//
+// YOU EARN RP FOR CONTRIBUTING, NEVER FOR OWNING (§2). A venture that committed nothing
+// and offered nothing scores 0 for "meeting" a promise of nothing — that falls out of
+// this formula rather than needing a special case, and it is the whole reason the gain is
+// terms-scaled instead of flat.
+//
+// The client's Establish-Venture meter (`repGain` in client/game.html, `[FIRST-CUT]`
+// REP_MAX/REP_WC/REP_WO) is the SAME arithmetic; this slice makes the engine the
+// authority for it. Wiring the panel to read the engine's number is a later UI slice —
+// deliberately NOT done here, so the panel's reputation copy stays mock for now.
+const REP_MEET_MAX = 100;
+const REP_W_COMMIT = 0.5;
+const REP_W_EQUITY = 0.5;
+
+// The BREACH-DROP model — LINEAR and INVERSE to commitment (§2.2). Breaching a *small*
+// commitment hurts MORE than breaching a large one: breaking a token promise is contempt,
+// falling short of an ambitious one is forgivable. −10 at a full commitment, rising
+// toward −100 as the commitment approaches nothing.
+//
+// −100 IS A LIMIT, NEVER PAID: §5's 0% commitment floor means a 0% licence owes zero units
+// and is therefore always `met`, so the c→0 end of this line is approached and never
+// reached. The constant is still the honest endpoint of the formula, not a magic number.
+//
+// The discipline on a high commitment lives in CREDITS and CLOSURE, not here: breaching
+// one is RP-cheap but fee-expensive (the full basic fee, `feeOwed`) and walks the venture
+// toward the −500 floor. *Let the player play how they like.*
+const REP_BREACH_MAX = 100;
+const REP_BREACH_MIN = 10;
+
+// The BAND (§2.1). −500 is the closure threshold and 1500 the organic soft cap; 800 is
+// the knee where gains begin to taper. The band edges ARE the licence layer's reputation
+// tiers (licence-and-price-system.md §5/§7) — one RP on one scale, by construction, not
+// two reputations.
+//
+// ⚠ THE FLOOR IS A PIN, NOT A CONSEQUENCE. Reaching −500 means the venture sits AT the
+// closure threshold; it does not close it. Venture removal, licence revocation and the
+// −300 forced-lease offer are a SEPARATE later slice and none of them is built — nothing
+// in this file or the tick acts on either threshold beyond clamping the number.
+const RP_FLOOR = -500;
+const RP_SOFT_CAP = 1500;
+const RP_TAPER_KNEE = 800;
+
+// repTerms(venture) -> { commit, equityFrac }, the two axes the RP model scales by, both
+// in [0, 1].
+//
+// `equityFrac` REUSES `normalisedTerms`' `oNorm` — the offered equity over the 0.49
+// ceiling — rather than dividing by `EQUITY_CEILING` a second time here. One expression,
+// so the RP meter and the fee grid can never come to disagree about what "offered equity"
+// normalises to, and the defensive clamp that function already carries is inherited.
+//
+// `commit` is the STORED `committedOutputPct`, which is what §2.2 and phase-1-tuning name
+// — deliberately NOT the fee grid's floor-normalised `c`. The two are identical today
+// (`COMMITMENT_FLOOR` is 0, so `c === committedOutputPct`), and binding RP to `c` would
+// mean that moving the floor silently moved the reputation model too. Clamped for the
+// same last-resort reason `normalisedTerms` clamps: intake refuses out-of-range terms and
+// the tick asserts them, so this should be unreachable.
+//
+// A venture with no licence THROWS rather than scoring 0. Every caller reaches this
+// through the tick's fee loop, which has already skipped the licence-less; an unlicensed
+// venture arriving here would mean RP moved for a contract that does not exist, and a
+// quiet 0 would hide it forever (§15.5: a silent violation is worse than a crash).
+function repTerms(venture) {
+  const lic = venture && venture.licence;
+  if (!lic) {
+    throw new Error(`repTerms: reputation is scaled by LICENCE TERMS — venture ${venture && venture.id} has no licence`);
+  }
+  const { oNorm } = normalisedTerms({ committedOutputPct: lic.committedOutputPct, equityPct: venture.equityPct });
+  return {
+    commit: Math.max(0, Math.min(1, lic.committedOutputPct)),
+    equityFrac: oNorm,
+  };
+}
+
+// metGain(venture) -> the PRE-TAPER RP a met cycle is worth, a non-negative integer.
+//
+//     REP_MEET_MAX × (REP_W_COMMIT × commit + REP_W_EQUITY × equityFrac)
+//
+// Rounded here, and rounded AGAIN by the taper at the call site. Two roundings, and
+// unlike the commitment sale's single-rounding rule that is safe: RP is NOT conserved
+// (§2 — minted and destroyed by events, no ledger counterpart), so there is no second leg
+// for a rounding to drift against. The same reasoning `licenceFee` records for its own
+// two roundings.
+function metGain(venture) {
+  const { commit, equityFrac } = repTerms(venture);
+  return Math.round(REP_MEET_MAX * (REP_W_COMMIT * commit + REP_W_EQUITY * equityFrac));
+}
+
+// breachPenalty(venture) -> the RP a breached cycle costs, a NEGATIVE integer.
+//
+//     −( REP_BREACH_MAX − (REP_BREACH_MAX − REP_BREACH_MIN) × commit )
+//
+// The sign is returned, not left to the caller, for the same reason slice 1 put it in one
+// place: no consumer can get "breach subtracts" backwards by writing the arithmetic
+// itself. Equity does NOT appear — §2.2 scales the drop by commitment alone.
+function breachPenalty(venture) {
+  const { commit } = repTerms(venture);
+  return -Math.round(REP_BREACH_MAX - (REP_BREACH_MAX - REP_BREACH_MIN) * commit);
+}
+
+// gainFactor(rp) -> the §2.3 taper: how much of a gain actually lands, given where the
+// venture's reputation already stands.
+//
+//     clamp( (RP_SOFT_CAP − rp) / (RP_SOFT_CAP − RP_TAPER_KNEE), 0, 1 )
+//
+// 1.0 at or below the 800 knee, 0.5 at 1150, 0 at 1500. GAINS ONLY — drops stay linear
+// everywhere, which is what makes the top of the band slow to climb and fast to fall
+// (§2.3's hard-won, fragile buffer). A RECOVERING venture climbs at full strength: the
+// factor is 1 for every negative RP, so a redemption arc out of the closure zone is
+// achievable rather than asymptotically hopeless.
+//
+// THIS IS WHY THE TOP NEEDS NO HARD CLAMP. As `rp` approaches the cap the tapered gain
+// rounds to 0 before the cap is reached — with the largest possible raw gain (100) the
+// last unit lands at 1497 — so 1500 is *approached and never passed*, organically, which
+// is exactly what §2.3 means by an "organic soft cap". The FLOOR, by contrast, is a real
+// clamp: a drop is not tapered, so nothing stops it on its own.
+function gainFactor(rp) {
+  return Math.max(0, Math.min(1, (RP_SOFT_CAP - rp) / (RP_SOFT_CAP - RP_TAPER_KNEE)));
+}
+
+// reputationDelta(status, venture) -> the RAW (pre-taper, pre-clamp) signed RP a boundary
+// verdict moves for this venture.
 //
 // Takes the SAME `status` string `feeOwed` takes, and refuses the same non-verdicts for
 // the same reason: RP moves only at a boundary, so an `accruing` reaching here would mean
 // reputation fired on a tick where nothing was judged. A silent 0 would be the quietest
-// possible bug — a reputation that simply never moved, with no test going red (§15.5: a
-// silent violation is worse than a crash), so it throws instead.
+// possible bug — a reputation that simply never moved, with no test going red — so it
+// throws instead.
 //
-// ONE FUNCTION, so the sign convention lives in one place: `met` ADDS, `breach`
-// SUBTRACTS, and no caller can get that backwards by writing the arithmetic itself.
-function reputationDelta(status) {
+// RAW, and the name of what it is not matters: the taper and the floor clamp are applied
+// by the CALLER (sim/tick.js), because both need the venture's CURRENT reputation and
+// this function is a pure function of the verdict and the terms alone.
+function reputationDelta(status, venture) {
   if (status !== 'met' && status !== 'breach') {
     throw new Error(`reputationDelta: reputation moves only on a boundary verdict — got status "${status}"`);
   }
-  return status === 'met' ? REP_MEET_FLAT : -REP_BREACH_FLAT;
+  return status === 'met' ? metGain(venture) : breachPenalty(venture);
 }
 
 // isValidCommitmentPct(value) -> a fraction from the floor up to a full commitment.
@@ -389,5 +508,7 @@ module.exports = {
   FEE_RATE, CORNERS, EQUITY_SHAPE_K, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
   feeFraction, normalisedTerms, licenceFee, feeOwed, isValidCommitmentPct, isValidWindowDays,
   commitmentUnitsFor,
-  REP_MEET_FLAT, REP_BREACH_FLAT, reputationDelta,
+  REP_MEET_MAX, REP_W_COMMIT, REP_W_EQUITY, REP_BREACH_MAX, REP_BREACH_MIN,
+  RP_FLOOR, RP_SOFT_CAP, RP_TAPER_KNEE,
+  repTerms, metGain, breachPenalty, gainFactor, reputationDelta,
 };

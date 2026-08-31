@@ -238,10 +238,8 @@ Shapes are ruled in `docs/points-and-reputation.md`; these are the values. `vent
 
 | Constant | `[FIRST-CUT]` | Rationale |
 |---|---|---|
-| **`REP_MEET_FLAT`** | **20** | **BUILT 31-08-26, RP slice 1** (`sim/licence.js`). The flat RP a licensed venture gains at a window boundary it MET. **Given by the human, not invented, and deliberately NOT calibrated** — a "make it move" placeholder, exactly as `GUILD_STARTING_FUEL` was for fuel. It is the stand-in for the `[SHEET]` terms-scaled MEET-gain below, and is replaced by it, not tuned into it. |
-| **`REP_BREACH_FLAT`** | **30** | **BUILT 31-08-26, RP slice 1** (`sim/licence.js`). The flat RP a licensed venture loses at a boundary it BREACHED, subtracted (the constant is stored positive; `reputationDelta` owns the sign). Same status as the row above — the stand-in for the `[SHEET]` inverse-commitment BREACH-drop. **The one relationship here that is not arbitrary: breach > meet**, so §2.3's "slow to climb, fast to fall" is true from the first tick rather than arriving with the calibration. |
-| Gain taper knee | **800** | Below it, MEET-gains are full strength; above it they taper toward the cap. |
-| Gain soft cap | **1500** | Organic asymptote: `gainFactor = clamp((1500 − RP)/700, 0, 1)`. RP can bank a buffer past dividend-max but with diminishing returns. |
+| Gain taper knee | **800** | Below it, MEET-gains are full strength; above it they taper toward the cap. **BUILT 31-08-26** as `RP_TAPER_KNEE` (`sim/licence.js` `gainFactor`). Applies to GAINS ONLY — drops land at full strength at every height, which is what makes the top of the band slow to climb and fast to fall. |
+| Gain soft cap | **1500** | Organic asymptote: `gainFactor = clamp((1500 − RP)/700, 0, 1)`. RP can bank a buffer past dividend-max but with diminishing returns. **BUILT 31-08-26** as `RP_SOFT_CAP`. Genuinely organic — **nothing clamps the top**; the tapered gain rounds to zero first, so the largest possible gain lands its last unit at **1497** and 1500 is never reached. `checkReputationBand` is the only guard on that half of the band. |
 | `ISSUANCE_SENSITIVITY` | **1.0** | Slope on `gap/expected` in the fuel modifier. |
 | `ISSUANCE_FLOOR` | **0.5** | A below-line guild still draws half its `baseGrant` — no death spiral. |
 | `ISSUANCE_CEIL` | **1.5** | Caps the buff; protects the finite pool. Saturation under universal cooperation = "price becomes the throttle" (`fuel-economy.md §2`). |
@@ -254,15 +252,17 @@ Shapes are ruled in `docs/points-and-reputation.md`; these are the values. `vent
 | Constant | Tag | Rationale |
 |---|---|---|
 | `MEANLINE_K` | `[SHEET]` | `expectedRP = MEANLINE_K × GP`. Calibrate so a **par** venture's *resting* RP ≈ `MEANLINE_K × its GP`, in the band's units — not a per-cycle value. The earlier `k=5` is retired. |
-| `REP_MEET_MAX` / `REP_W_COMMIT` / `REP_W_EQUITY` | `[FIRST-CUT]` **100 / 0.5 / 0.5** *(RP slice 2)* | Met-cycle gain = `REP_MEET_MAX · (REP_W_COMMIT · committedOutputPct + REP_W_EQUITY · equityFrac)`, where `equityFrac` = offered equity / the 0.49 ceiling — the deploy meter (`repGain`) made real. Full terms → +100/cycle, so +1000 in 10 cycles = the dividend-max tier. Scaled by the gain taper (knee 800 / cap 1500 above) before applying; **not** window-pro-rated at first cut. Supersedes the flat `REP_MEET_FLAT` = 20. |
-| `REP_BREACH_MAX` / `REP_BREACH_MIN` | `[FIRST-CUT]` **100 / 10** *(RP slice 2)* | Breach drop = `−(REP_BREACH_MAX − (REP_BREACH_MAX − REP_BREACH_MIN) · committedOutputPct)` — linear inverse-commitment: −10 at 100% commit, → −100 as commit → 0 (0% can't breach, so −100 is a limit, never paid). **Not** tapered; hard-clamped at the −500 floor. The −300 / −500 closure *consequences* are a separate later slice. Supersedes the flat `REP_BREACH_FLAT` = 30. |
+| `REP_MEET_MAX` / `REP_W_COMMIT` / `REP_W_EQUITY` | `[FIRST-CUT]` **100 / 0.5 / 0.5** *(RP slice 2)* | Met-cycle gain = `REP_MEET_MAX · (REP_W_COMMIT · committedOutputPct + REP_W_EQUITY · equityFrac)`, where `equityFrac` = offered equity / the 0.49 ceiling — the deploy meter (`repGain`) made real. Full terms → +100/cycle RAW. *(**Corrected 31-08-26 when slice 2 built it:** "+1000 in 10 cycles" is the raw arithmetic and ignores this table's own taper. The eighth cycle lands exactly on the 800 knee, after which gains shrink — the real curve is 800 / 900 / **986** at ten cycles, crossing the +1000 dividend-max tier on the **eleventh**. A fine reason to pick 100; not what the engine does, so the engine is pinned on the true figures in `sim/tests/reputation.test.js`.)* Scaled by the gain taper (knee 800 / cap 1500 above) before applying; **not** window-pro-rated at first cut. **BUILT 31-08-26 (RP slice 2)**, `sim/licence.js` `metGain`; supersedes and REMOVES the flat `REP_MEET_FLAT` = 20. |
+| `REP_BREACH_MAX` / `REP_BREACH_MIN` | `[FIRST-CUT]` **100 / 10** *(RP slice 2)* | Breach drop = `−(REP_BREACH_MAX − (REP_BREACH_MAX − REP_BREACH_MIN) · committedOutputPct)` — linear inverse-commitment: −10 at 100% commit, → −100 as commit → 0 (0% can't breach, so −100 is a limit, never paid). **Not** tapered; hard-clamped at the −500 floor. The −300 / −500 closure *consequences* are a separate later slice. **BUILT 31-08-26 (RP slice 2)**, `sim/licence.js` `breachPenalty`; supersedes and REMOVES the flat `REP_BREACH_FLAT` = 30. |
 | GP weights (system / mining / refining, per tier) | `[SHEET]` | Set when the GP-calculator slice lands; tier-scaled, deployed-only, idle = 0. |
 | Outpost deploy RP offset | `[DEFERRED]` | `= MEANLINE_K × (outpost GP)` (bar-neutral, `points-and-reputation.md §1.2`); when outposts are built. |
 
 *Note: the earlier draft's `guild.reputation` field and its flat `+50 / −80` event list are **withdrawn** —
 superseded by `venture.reputation` summed into the existing `guild.guildReputation`, per `points-and-reputation.md`.*
 
-*Built as of 31-08-26 (RP slice 1, `points-and-reputation.md` §6 step 1): the two fields, the guild sum and the
-flat meet/breach at the window boundary. **Nothing else in this section is built** — the taper knee, the soft
-cap and the three issuance constants above are values with no consumer yet, and no code clamps, tapers or floors
-RP today.*
+*Built as of 31-08-26 (RP slices 1 and 2, `points-and-reputation.md` §6 steps 1-2): the two fields, the guild
+sum, the terms-scaled meet, the inverse-commitment breach, the gain taper, and the band clamp — plus
+`RP_FLOOR` = −500 as a hard clamp in the tick. **Still NOT built:** the three `ISSUANCE_*` constants above (no
+consumer — the mean line is unbuilt), `MEANLINE_K`, the GP weights, the outpost offset, and — importantly — the
+−500 / −300 **consequences**. Reaching the floor is a PIN: the venture keeps producing, keeps being judged and
+keeps paying its fee. Closure and forced-lease are a slice of their own.*

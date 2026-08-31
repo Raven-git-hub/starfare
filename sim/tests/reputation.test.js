@@ -1,27 +1,39 @@
 'use strict';
 
-// reputation.test.js — the reputation engine, SLICE 1 (docs/points-and-reputation.md §6
-// step 1). Three things become real and nothing else does: a per-venture
-// `venture.reputation`, its sum in `guild.guildReputation`, and a FLAT meet/breach that
-// moves them at the window boundary.
+// reputation.test.js — the reputation engine (docs/points-and-reputation.md §2).
 //
-// WHAT THIS SLICE IS, AND WHAT THESE TESTS THEREFORE DO NOT ASSERT. RP is a running
-// integer with no band: there is no gain taper, no 800 knee, no 1500 soft cap, no -500
-// closure, no inverse-commitment or terms-scaled magnitude, no GP, no mean line
-// (§2.2-2.3, §3 — all the NEXT slices). The magnitudes are `[FIRST-CUT]` placeholders
-// GIVEN by the human, so no test here pins a balance claim about them; what the tests
-// pin is that the number MOVES, moves by exactly the named constant, moves once, moves
-// only on a measured verdict, and never drifts from the guild sum.
+// SLICE 1 (31-08-26) made RP exist and move: `venture.reputation`, summed into
+// `guild.guildReputation`, moved by the licence's met/breach verdict at the window
+// boundary. SLICE 2 (31-08-26, §2.2's ruled arithmetic) replaced that slice's flat
+// `[FIRST-CUT]` ±20/−30 placeholders with the real dynamics, and this file was rewritten
+// with them:
+//
+//   - the MET gain is TERMS-SCALED — `REP_MEET_MAX × (0.5·commit + 0.5·equityFrac)` — the
+//     deploy meter made real, so what a met cycle is worth depends on what the venture
+//     actually promised. Full terms is +100 a cycle raw — reaching the +1000 tier on the
+//     eleventh cycle rather than the tenth, because the taper below bites first.
+//   - the BREACH drop is LINEAR and INVERSE to commitment — −10 at a full commitment,
+//     toward −100 as the commitment approaches nothing. Breaking a token promise is
+//     contempt; falling short of an ambitious one is forgivable.
+//   - GAINS TAPER above the 800 knee toward the 1500 soft cap; DROPS DO NOT, at any
+//     height. That asymmetry is the "slow to climb, fast to fall" theme, and it is what
+//     makes the top of the band a hard-won, fragile buffer.
+//   - RP is clamped to the band. The FLOOR is a hard clamp in the tick; the CAP is held
+//     organically by the taper, which rounds a gain to zero before 1500 is reached.
+//
+// WHAT THIS SLICE STILL IS NOT. Reaching −500 is a PIN, not a closure: venture removal,
+// licence revocation and the −300 forced-lease offer are a separate later slice and none
+// of them is built. There is no GP, no mean line, no `expectedRP`, and the met gain is
+// deliberately NOT window-pro-rated at this cut. No test below asserts otherwise.
 //
 // THE MECHANISM WORTH TESTING is the shared verdict. RP and the licence fee are moved by
 // the SAME `status`, read from the SAME row, in the SAME loop (sim/tick.js), so a venture
-// can never be charged as breached and credited as met. Several tests below assert the
-// fee and the RP together for exactly that reason — agreement is the property, not a
-// coincidence to be checked separately.
+// can never be charged as breached and credited as met. Several tests assert the fee and
+// the RP together for exactly that reason — agreement is the property, not a coincidence.
 //
 // The fixtures are deliberately the ones licence-fee-charge.test.js already uses (same
-// mine, same short window, same paced/pinned send), because this slice rides that
-// slice's verdict and a second set of fixtures would be a second definition of "met".
+// mine, same short window, same paced/pinned send), because this slice rides that slice's
+// verdict and a second set of fixtures would be a second definition of "met".
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -38,15 +50,27 @@ const { checkInvariants } = require('../invariants.js');
 const { hashState, canonicalStringify } = require('../serialize.js');
 const { buildSnapshot, SNAPSHOT_SCHEMA } = require('../snapshot.js');
 const { saveState, loadOrInit } = require('../persist.js');
-const { REP_MEET_FLAT, REP_BREACH_FLAT, reputationDelta } = require('../licence.js');
+const {
+  EQUITY_CEILING,
+  REP_MEET_MAX, REP_W_COMMIT, REP_W_EQUITY, REP_BREACH_MAX, REP_BREACH_MIN,
+  RP_FLOOR, RP_SOFT_CAP, RP_TAPER_KNEE,
+  metGain, breachPenalty, gainFactor, reputationDelta,
+} = require('../licence.js');
 
 const SYS = 'sysA';
 const SYS_B = 'sysB';
 const GOOD = 'titanium';
 const N = 4;                                  // a short window, so a boundary is 4 ticks away
 
-const mine = (id, { systemId = SYS, productionRate = 10 } = {}) => ({
+// The two terms fixtures reason about, named once. FULL terms = a full commitment AND the
+// structural 49% equity ceiling — the corner the meter scores at its maximum.
+const FULL_EQUITY = EQUITY_CEILING;
+const GAIN_FULL_TERMS = REP_MEET_MAX;                       // 100
+const GAIN_COMMIT_ONLY = REP_MEET_MAX * REP_W_COMMIT;       // 50 — committed all, offered nothing
+
+const mine = (id, { systemId = SYS, productionRate = 10, equityPct } = {}) => ({
   id, ownerGuildId: 'g1', type: 'mining', systemId, resourceType: GOOD, productionRate,
+  ...(equityPct === undefined ? {} : { equityPct }),
 });
 
 function fixture(ventures) {
@@ -62,16 +86,35 @@ const guild = (s) => s.guilds[0];
 const ven = (s, id) => guild(s).ventures.find((v) => v.id === id);
 const rp = (s, id) => ven(s, id).reputation;
 
+// A bare venture-shaped object for the PURE functions, so their arithmetic can be tested
+// without standing a whole galaxy up. The engine tests below use the real tick.
+const terms = (committedOutputPct, equityPct = 0) => ({
+  id: 'terms', equityPct, licence: { committedOutputPct },
+});
+
 // Licence at tick 0, before any window opens, so every window is FULL (`windowFraction`
 // 1) and no pro-rate is in play — the same convention licence-fee-charge.test.js uses.
 const licenceAll = (s, ids, committedOutputPct = 1) => intake(s, ids.map((id) =>
   createApplyForLicenceAction({ guildId: 'g1', ventureId: id, committedOutputPct, windowDays: 7 }))).state;
 
-// Pin the Syndicate send below the pace, so the pile falls short of Q and the licence
-// BREACHES. Without this the paced default converges on Q exactly and everything meets.
-const starve = (s, systemId = SYS) => intake(s, [createSetProductionProfileAction({
-  guildId: 'g1', systemId, goods: { [GOOD]: { syndicate: { mode: 'absolute', value: 1 } } },
+// Pin the Syndicate send, so the pile at the boundary is a fact of the fixture rather than
+// whatever the paced default converges on. `value: 0` sends NOTHING, which breaches any
+// positive commitment — the only way to breach a SMALL one, whose target the paced
+// default would otherwise comfortably fill.
+const send = (s, value, systemId = SYS) => intake(s, [createSetProductionProfileAction({
+  guildId: 'g1', systemId, goods: { [GOOD]: { syndicate: { mode: 'absolute', value } } },
 })]).state;
+const starve = (s, systemId = SYS) => send(s, 0, systemId);
+
+// Put a venture AT a reputation the engine would have taken many cycles to reach, keeping
+// the guild total exact so `checkGuildReputationSum` stays green. Standing in for those
+// cycles, not bypassing a rule: every test using this then drives the REAL tick from
+// there and asserts what the tick does.
+function atRP(s, id, value) {
+  ven(s, id).reputation = value;
+  guild(s).guildReputation = guild(s).ventures.reduce((n, v) => n + (v.reputation || 0), 0);
+  return s;
+}
 
 const runToBoundary = (s) => {
   do { s = tick(s); } while (s.tick % N !== 0);
@@ -89,74 +132,318 @@ function assertSumHolds(s, where) {
   assert.deepEqual(checkInvariants(s, s.tick), [], `${where}: an invariant tripped`);
 }
 
-// --- 1. the two magnitudes, exactly ----------------------------------------------
+// --- 1. the ruled constants ------------------------------------------------------
 
-test('the flat placeholders are the numbers the build prompt gave, and breach outweighs meet', () => {
-  // Pinned here so a silent retune of a `[FIRST-CUT]` number cannot pass unnoticed; the
-  // real calibrated magnitudes arrive with the band-shaping slice and will move these
-  // deliberately, in a commit that also moves docs/phase-1-tuning.md.
-  assert.equal(REP_MEET_FLAT, 20);
-  assert.equal(REP_BREACH_FLAT, 30);
-  // §2.3's "slow to climb, fast to fall" has to hold even at first cut, or the
-  // placeholder teaches the opposite of the model it stands in for.
-  assert.ok(REP_BREACH_FLAT > REP_MEET_FLAT, 'RP must fall faster than it climbs');
+test('the slice-2 constants are the ruled [FIRST-CUT] numbers, and the weights sum to 1', () => {
+  // Pinned so a silent retune cannot pass unnoticed; phase-1-tuning.md is where a
+  // deliberate one is recorded, in the same commit as the code.
+  assert.equal(REP_MEET_MAX, 100);
+  assert.equal(REP_BREACH_MAX, 100);
+  assert.equal(REP_BREACH_MIN, 10);
+  assert.equal(RP_FLOOR, -500);
+  assert.equal(RP_SOFT_CAP, 1500);
+  assert.equal(RP_TAPER_KNEE, 800);
+  // The weights summing to exactly 1 is what makes full terms score REP_MEET_MAX exactly,
+  // which is what puts the +1000 dividend-max tier roughly ten met cycles away — so the
+  // licence layer's tiers fall out of the meter instead of being a second number. (Only
+  // ROUGHLY ten: the taper makes it eleven. See the once-per-boundary test below.)
+  assert.equal(REP_W_COMMIT + REP_W_EQUITY, 1);
+  assert.equal(metGain(terms(1, FULL_EQUITY)), REP_MEET_MAX, 'full terms scores the maximum exactly');
 });
 
-test('reputationDelta is the ONE place the sign convention lives', () => {
-  assert.equal(reputationDelta('met'), REP_MEET_FLAT, 'met ADDS');
-  assert.equal(reputationDelta('breach'), -REP_BREACH_FLAT, 'breach SUBTRACTS');
-  // RP moves only at a boundary. An `accruing` reaching here would mean reputation fired
-  // on a tick where nothing was judged, and a silent 0 would be a reputation that simply
-  // never moved, with nothing going red (§15.5).
-  assert.throws(() => reputationDelta('accruing'), /boundary verdict/);
-  assert.throws(() => reputationDelta(undefined), /boundary verdict/);
+// --- 2. the met gain: terms-scaled -----------------------------------------------
+
+test('metGain is the deploy meter: REP_MEET_MAX × (0.5·commit + 0.5·equityFrac)', () => {
+  assert.equal(metGain(terms(1, FULL_EQUITY)), 100, 'commit everything, offer the ceiling');
+  assert.equal(metGain(terms(1, 0)), 50, 'commit everything, offer nothing — half the meter');
+  assert.equal(metGain(terms(0, FULL_EQUITY)), 50, 'commit nothing, offer the ceiling — the other half');
+  assert.equal(metGain(terms(0.5, FULL_EQUITY / 2)), 50, 'half and half');
+  assert.equal(metGain(terms(0.5, 0)), 25);
+  assert.equal(metGain(terms(0.25, FULL_EQUITY)), Math.round(REP_MEET_MAX * (0.5 * 0.25 + 0.5)),
+    'the two axes are independent — and the gain is a whole number (§15.2), so 62.5 rounds to 63');
+  assert.equal(metGain(terms(0.25, FULL_EQUITY)), 63, 'stated outright, so the rounding is not implied by the formula it is testing');
 });
 
-test('a MET licence gains exactly +REP_MEET_FLAT at the boundary', () => {
-  let s = licenceAll(fixture([mine('m')]), ['m']);
+test('YOU DO NOT EARN RP FOR OWNING: zero terms met scores exactly zero', () => {
+  // §2's headline rule, and it needs no special case — it falls out of the formula. A 0%
+  // licence is always `met` (it owed zero units), so without this the engine would pay a
+  // venture for promising nothing, forever, and RP would measure size instead of
+  // contribution.
+  assert.equal(metGain(terms(0, 0)), 0);
+});
+
+test('the met gain rises MONOTONICALLY with each term', () => {
+  let previous = -1;
+  for (const c of [0, 0.25, 0.5, 0.75, 1]) {
+    const g = metGain(terms(c, 0));
+    assert.ok(g > previous, `commitment ${c} must be worth more than the step below`);
+    previous = g;
+  }
+  previous = -1;
+  for (const o of [0, 0.1, 0.25, 0.4, FULL_EQUITY]) {
+    const g = metGain(terms(0, o));
+    assert.ok(g > previous, `equity ${o} must be worth more than the step below`);
+    previous = g;
+  }
+});
+
+// --- 3. the breach drop: linear, inverse to commitment ---------------------------
+
+test('breachPenalty is linear and INVERSE to commitment — cheap when you promised a lot', () => {
+  assert.equal(breachPenalty(terms(1, 0)), -REP_BREACH_MIN, 'a full commitment breached costs only −10');
+  assert.equal(breachPenalty(terms(0, 0)), -REP_BREACH_MAX, 'the c→0 endpoint is −100');
+  assert.equal(breachPenalty(terms(0.5, 0)), -55, 'linear: the midpoint is the midpoint');
+  assert.equal(breachPenalty(terms(0.25, 0)), -78);
+  // Breaking a token promise is contempt; falling short of an ambitious one is forgivable.
+  assert.ok(breachPenalty(terms(0.1, 0)) < breachPenalty(terms(0.9, 0)),
+    'a small commitment breached must hurt MORE than a large one');
+});
+
+test('the breach drop ignores equity — §2.2 scales it by commitment alone', () => {
+  assert.equal(breachPenalty(terms(0.5, 0)), breachPenalty(terms(0.5, FULL_EQUITY)));
+});
+
+test('the −100 endpoint is a LIMIT, never paid: a 0% licence cannot breach', () => {
+  // §5's 0% commitment floor: a 0% licence owes zero units, so it is `met` every window.
+  // The formula's c→0 end is therefore approached and never reached through play — worth
+  // pinning, because a future change that let a 0% licence breach would quietly make the
+  // harshest penalty in the model the one paid for promising nothing.
+  let s = starve(licenceAll(fixture([mine('m')]), ['m'], 0));
+  s = runToBoundary(s);
+  assert.equal(guild(s).lastLicenceFee.ventures.m.status, 'met', 'owed nothing, delivered nothing, met');
+  // And it earns NOTHING for it (§2: you do not earn RP for owning). The verdict is real
+  // — the fee is charged — but the gain is zero, so no key is minted: a 0%-floor licence
+  // adds not one byte of reputation to the galaxy, however long it runs.
+  assert.equal(ven(s, 'm').reputation, undefined, 'a zero-delta verdict mints nothing');
+  assert.equal(guild(s).guildReputation, 0);
+  for (let w = 0; w < 3; w += 1) s = runToBoundary(s);
+  assert.equal(ven(s, 'm').reputation, undefined, 'and still nothing, four windows in');
+  assert.equal(canonicalStringify(s).includes('"reputation"'), false,
+    'the string "reputation" appears nowhere in a 0%-licensed run’s serialized state');
+  assertSumHolds(s, 'a 0% licence');
+});
+
+// --- 4. the taper -----------------------------------------------------------------
+
+test('gainFactor tapers GAINS between the knee and the cap, and only there', () => {
+  assert.equal(gainFactor(0), 1, 'full strength at rest');
+  assert.equal(gainFactor(RP_TAPER_KNEE), 1, 'full strength right up to the knee');
+  assert.equal(gainFactor(1150), 0.5, 'half way between knee and cap');
+  assert.equal(gainFactor(RP_SOFT_CAP), 0, 'nothing lands at the cap');
+  assert.equal(gainFactor(RP_SOFT_CAP + 500), 0, 'clamped, never negative');
+  // A recovering venture climbs at FULL strength — the taper bites only above the knee —
+  // so a redemption arc out of the closure zone is achievable (§2.3).
+  assert.equal(gainFactor(-499), 1, 'a venture at the floor recovers at full strength');
+  assert.equal(gainFactor(RP_FLOOR), 1);
+});
+
+test('reputationDelta refuses a non-verdict, and refuses a venture with no licence', () => {
+  assert.equal(reputationDelta('met', terms(1, FULL_EQUITY)), 100, 'met returns the gain');
+  assert.equal(reputationDelta('breach', terms(1, 0)), -10, 'breach returns the (negative) drop');
+  // RP moves only at a boundary. A silent 0 would be a reputation that simply never
+  // moved, with nothing going red (§15.5).
+  assert.throws(() => reputationDelta('accruing', terms(1, 0)), /boundary verdict/);
+  assert.throws(() => reputationDelta(undefined, terms(1, 0)), /boundary verdict/);
+  // The gain is scaled by LICENCE TERMS, so a venture without a licence has no terms to
+  // scale by — reaching here would mean RP moved for a contract that does not exist.
+  assert.throws(() => reputationDelta('met', { id: 'x' }), /no licence/);
+});
+
+// --- 5. the engine: what a real boundary actually does ---------------------------
+
+test('a FULL-TERMS met gains exactly +100 at the boundary, below the knee', () => {
+  let s = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
   s = runToBoundary(s);
 
   assert.equal(s.tick, N);
   assert.equal(guild(s).lastLicenceFee.ventures.m.status, 'met',
-    'the fixture really did meet — the RP claim below is about a verdict, not a hope');
-  assert.equal(rp(s, 'm'), REP_MEET_FLAT);
-  assert.equal(guild(s).guildReputation, REP_MEET_FLAT);
-  assertSumHolds(s, 'after one met boundary');
+    'the fixture really did meet — the RP claim is about a verdict, not a hope');
+  assert.equal(rp(s, 'm'), GAIN_FULL_TERMS);
+  assert.equal(guild(s).guildReputation, GAIN_FULL_TERMS);
+  assertSumHolds(s, 'a full-terms met');
 });
 
-test('a BREACHED licence loses exactly REP_BREACH_FLAT at the boundary', () => {
-  let s = starve(licenceAll(fixture([mine('m')]), ['m']));
+test('a PARTIAL-TERMS met gains the weighted value, not the maximum', () => {
+  // Committed everything, offered no equity: half the meter.
+  let s = licenceAll(fixture([mine('m')]), ['m']);
   s = runToBoundary(s);
+  assert.equal(rp(s, 'm'), GAIN_COMMIT_ONLY);
+  assert.equal(rp(s, 'm'), metGain(ven(s, 'm')), 'and it is exactly what metGain says for these terms');
 
-  assert.equal(guild(s).lastLicenceFee.ventures.m.status, 'breach');
-  assert.equal(rp(s, 'm'), -REP_BREACH_FLAT, 'one breach from zero lands BELOW zero');
-  assert.equal(guild(s).guildReputation, -REP_BREACH_FLAT);
-  assertSumHolds(s, 'after one breached boundary');
+  // Committed half, offered half the ceiling: the same 50 by a different route — proof
+  // the two axes really are weighted, not that one of them is being ignored.
+  let t = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY / 2 })]), ['m'], 0.5);
+  t = runToBoundary(t);
+  assert.equal(rp(t, 'm'), 50);
+  assertSumHolds(s, 'partial terms');
+  assertSumHolds(t, 'partial terms, other route');
+});
+
+test('a BREACH at 100% commitment costs only −10; at a small commitment it costs near −100', () => {
+  let big = starve(licenceAll(fixture([mine('m')]), ['m'], 1));
+  big = runToBoundary(big);
+  assert.equal(guild(big).lastLicenceFee.ventures.m.status, 'breach');
+  assert.equal(rp(big, 'm'), -REP_BREACH_MIN, 'the ambitious breacher is forgiven');
+
+  let small = starve(licenceAll(fixture([mine('m')]), ['m'], 0.1));
+  small = runToBoundary(small);
+  assert.equal(guild(small).lastLicenceFee.ventures.m.status, 'breach');
+  assert.equal(rp(small, 'm'), -91, 'the token promise broken is near the −100 endpoint');
+  assert.ok(rp(small, 'm') < rp(big, 'm'), 'and the small commitment is the one that hurts');
+  assertSumHolds(big, 'big commitment breached');
+  assertSumHolds(small, 'small commitment breached');
 });
 
 test('the fee and the reputation are moved by ONE verdict — they can never disagree', () => {
   // The mechanism claim, made mechanical: across four boundaries of a breaching run, the
-  // venture's fee row and its RP movement are read back together, tick by tick. If a
-  // future refactor recomputed the verdict for either consumer, one of these pairs would
-  // come apart.
+  // venture's fee row and its RP movement are read back together. If a future refactor
+  // recomputed the verdict for either consumer, one of these pairs would come apart.
   let s = starve(licenceAll(fixture([mine('m')]), ['m']));
   let previous = 0;
   for (let w = 0; w < 4; w += 1) {
     s = runToBoundary(s);
     const { status } = guild(s).lastLicenceFee.ventures.m;
-    assert.equal(rp(s, 'm') - previous, reputationDelta(status),
+    const expected = reputationDelta(status, ven(s, 'm'));
+    assert.equal(rp(s, 'm') - previous, expected,
       `window ${w + 1}: the RP delta must be the delta OF the verdict the fee was charged on`);
     previous = rp(s, 'm');
   }
 });
 
-// --- 2. it moves ONCE, and only on a boundary ------------------------------------
+// --- 6. the taper, through the engine, and the organic cap -----------------------
+
+test('a met NEAR THE TOP gains a tapered, single-digit amount — not the full 100', () => {
+  let s = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
+  s = atRP(s, 'm', 1490);
+  const before = rp(s, 'm');
+  s = runToBoundary(s);
+
+  assert.equal(guild(s).lastLicenceFee.ventures.m.status, 'met', 'it really did meet, so the gain is tapered — not withheld');
+  const gained = rp(s, 'm') - before;
+  assert.equal(gained, Math.round(GAIN_FULL_TERMS * gainFactor(before)));
+  assert.ok(gained > 0 && gained < 10, `a full-terms met at 1490 must land single digits, got ${gained}`);
+  assert.ok(gained < GAIN_FULL_TERMS / 10, 'and be an order of magnitude below its untapered value');
+  assertSumHolds(s, 'a tapered gain');
+});
+
+test('the same terms gain FULL strength below the knee and taper above it', () => {
+  // The knee is a real boundary in behaviour, not just in arithmetic: one venture, two
+  // starting heights, same licence.
+  const run = (start) => {
+    let s = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
+    s = atRP(s, 'm', start);
+    return runToBoundary(s).guilds[0].ventures[0].reputation - start;
+  };
+  assert.equal(run(0), GAIN_FULL_TERMS, 'at rest: full strength');
+  assert.equal(run(RP_TAPER_KNEE), GAIN_FULL_TERMS, 'right at the knee: still full strength');
+  assert.ok(run(1150) < GAIN_FULL_TERMS, 'above the knee: tapered');
+  assert.equal(run(1150), Math.round(GAIN_FULL_TERMS * 0.5), 'and tapered by exactly the ruled factor');
+});
+
+test('DROPS ARE NEVER TAPERED — a breach high in the band costs full price', () => {
+  // "Slow to climb, fast to fall" (§2.3), and this is the half that is easy to lose: the
+  // taper scales GAINS only, so a venture sitting near the cap — where a met cycle is
+  // worth almost nothing — still pays the whole drop when it breaches. Tapering the drop
+  // as well would turn a hard-won buffer into a safe one and delete the theme, and it is
+  // the one rule here that no other assertion in this file would notice being broken.
+  const HIGH = 1400;
+  let s = starve(licenceAll(fixture([mine('m')]), ['m']));
+  s = atRP(s, 'm', HIGH);
+  s = runToBoundary(s);
+
+  assert.equal(guild(s).lastLicenceFee.ventures.m.status, 'breach');
+  const raw = breachPenalty(ven(s, 'm'));
+  assert.equal(rp(s, 'm'), HIGH + raw, 'the FULL drop landed');
+  assert.notEqual(rp(s, 'm'), HIGH + Math.round(raw * gainFactor(HIGH)),
+    'and it is emphatically NOT the tapered drop — the two really are different numbers here');
+  assertSumHolds(s, 'a breach near the cap');
+
+  // THE ASYMMETRY ITSELF, measured at one height: the gain is discounted for standing
+  // high, the drop is not discounted at all. That is the property — not that the drop is
+  // numerically bigger, which depends on the terms (a full commitment's −10 is
+  // deliberately lenient, and at 1400 a full-terms gain of 14 still beats it).
+  let up = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
+  up = atRP(up, 'm', HIGH);
+  const gained = runToBoundary(up).guilds[0].ventures[0].reputation - HIGH;
+  assert.ok(gained < GAIN_FULL_TERMS * 0.2,
+    `at ${HIGH} a full-terms gain keeps under a fifth of its value (${gained} of ${GAIN_FULL_TERMS})`);
+  assert.equal(rp(s, 'm') - HIGH, raw, 'while the drop keeps ALL of its value at the same height');
+
+  // And they do cross, once high enough: above ~1434 even the most forgiving breach
+  // outruns the best gain the model can produce.
+  let top = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
+  top = atRP(top, 'm', 1450);
+  const gainedAtTop = runToBoundary(top).guilds[0].ventures[0].reputation - 1450;
+  assert.ok(gainedAtTop < Math.abs(raw),
+    `at 1450 the best possible gain (${gainedAtTop}) is finally smaller than the cheapest drop (${Math.abs(raw)})`);
+});
+
+test('RP APPROACHES the soft cap and never reaches it — no hard clamp needed at the top', () => {
+  // The organic cap (§2.3). Driven with the largest gain the model can produce, so this
+  // is the worst case: if anything can pass 1500, this can.
+  let s = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
+  s = atRP(s, 'm', 1490);
+  for (let w = 0; w < 12; w += 1) {
+    s = runToBoundary(s);
+    assert.ok(rp(s, 'm') < RP_SOFT_CAP, `boundary ${w + 1}: RP must stay strictly below the cap, got ${rp(s, 'm')}`);
+  }
+  assert.equal(rp(s, 'm'), 1497, 'it settles at 1497, where the tapered gain first rounds to zero');
+
+  // Settled, not stalled by luck: another twenty met boundaries move it not one point.
+  const settled = rp(s, 'm');
+  for (let w = 0; w < 20; w += 1) s = runToBoundary(s);
+  assert.equal(rp(s, 'm'), settled, 'the asymptote holds — every further met gain rounds to 0');
+  assert.equal(guild(s).lastLicenceFee.ventures.m.status, 'met', 'and it was still MEETING the whole time');
+  assertSumHolds(s, 'at the asymptote');
+});
+
+// --- 7. the floor: a hard clamp, and the guild sum that must follow it ------------
+
+test('a breach that would UNDERSHOOT the floor pins at −500, and the guild sum moves by the ACTUAL change', () => {
+  let s = starve(licenceAll(fixture([mine('m')]), ['m']));
+  s = atRP(s, 'm', -495);
+  assert.equal(guild(s).guildReputation, -495, 'the fixture starts consistent');
+
+  s = runToBoundary(s);
+  assert.equal(guild(s).lastLicenceFee.ventures.m.status, 'breach');
+  assert.equal(breachPenalty(ven(s, 'm')), -10, 'the raw drop would have taken it to −505');
+  assert.equal(rp(s, 'm'), RP_FLOOR, 'but it pins at the floor');
+  // THE LINE THE CLAMP MAKES LOAD-BEARING: the guild moved by −5 (the actual change), not
+  // by the −10 the venture was charged. Adding the raw delta here would drift the total
+  // below the sum of its ventures — silently, but for this assertion and the invariant.
+  assert.equal(guild(s).guildReputation, RP_FLOOR, 'the guild total followed the CLAMPED change, not the raw one');
+  assertSumHolds(s, 'a clamped breach');
+});
+
+test('a venture ALREADY at the floor absorbs further breaches without moving anything', () => {
+  let s = starve(licenceAll(fixture([mine('m')]), ['m']));
+  s = atRP(s, 'm', RP_FLOOR);
+  for (let w = 0; w < 3; w += 1) {
+    s = runToBoundary(s);
+    assert.equal(guild(s).lastLicenceFee.ventures.m.status, 'breach', 'still being judged, and still failing');
+    assert.equal(rp(s, 'm'), RP_FLOOR, `boundary ${w + 1}: pinned`);
+    assertSumHolds(s, `pinned at the floor, boundary ${w + 1}`);
+  }
+  // ⚠ AND IT IS STILL RUNNING. Reaching the floor is a pin, not a closure — the venture
+  // keeps producing, keeps being licensed and keeps being charged. Venture removal and
+  // licence revocation are a LATER slice, and this pins that they are not built.
+  assert.ok(ven(s, 'm').licence, 'the licence is not revoked');
+  assert.ok(guild(s).lastLicenceFee.ventures.m.owed > 0, 'and the fee is still being charged');
+});
+
+test('a venture at the floor CLIMBS BACK at full strength — the redemption arc is real', () => {
+  let s = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
+  s = atRP(s, 'm', RP_FLOOR);
+  s = runToBoundary(s);
+  assert.equal(rp(s, 'm'), RP_FLOOR + GAIN_FULL_TERMS, 'no taper down here — the full gain lands');
+  assertSumHolds(s, 'recovering from the floor');
+});
+
+// --- 8. it moves ONCE, and only on a boundary ------------------------------------
 
 test('a NON-boundary tick moves no reputation at all', () => {
-  let s = licenceAll(fixture([mine('m')]), ['m']);
+  let s = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
 
-  // Every tick strictly inside the first window: RP has not been minted at all, because
-  // there has been no verdict to mint it from.
   for (let i = 1; i < N; i += 1) {
     s = tick(s);
     assert.equal(s.tick % N === 0, false, 'this test is only meaningful off a boundary');
@@ -165,32 +452,40 @@ test('a NON-boundary tick moves no reputation at all', () => {
     assert.equal(guild(s).guildReputation, 0);
   }
 
-  // Now cross one, then run the inside of the NEXT window: the total must sit still.
   s = tick(s);
   assert.equal(s.tick, N);
-  assert.equal(rp(s, 'm'), REP_MEET_FLAT);
+  assert.equal(rp(s, 'm'), GAIN_FULL_TERMS);
   for (let i = 1; i < N; i += 1) {
     s = tick(s);
-    assert.equal(rp(s, 'm'), REP_MEET_FLAT, `tick ${s.tick}: a mid-window tick must move nothing`);
-    assert.equal(guild(s).guildReputation, REP_MEET_FLAT);
+    assert.equal(rp(s, 'm'), GAIN_FULL_TERMS, `tick ${s.tick}: a mid-window tick must move nothing`);
   }
   assertSumHolds(s, 'mid-window');
 });
 
 test('ONCE PER BOUNDARY: four windows of a met licence is exactly four gains', () => {
-  let s = licenceAll(fixture([mine('m')]), ['m']);
+  let s = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
   for (let w = 1; w <= 4; w += 1) {
     s = runToBoundary(s);
-    assert.equal(rp(s, 'm'), w * REP_MEET_FLAT, `after ${w} boundaries`);
+    assert.equal(rp(s, 'm'), w * GAIN_FULL_TERMS, `after ${w} boundaries`);
     assertSumHolds(s, `boundary ${w}`);
   }
+  // THE +1000 TIER, AND THE TAPER THAT MOVES IT. phase-1-tuning's rationale for choosing
+  // REP_MEET_MAX = 100 reads "+100/cycle x 10 = +1000 dividend-max" — true of the RAW
+  // gain, but the taper bites at the 800 knee, which the eighth cycle lands exactly on.
+  // So the real curve is: full strength to 800, then tapering, reaching the dividend-max
+  // tier on the ELEVENTH cycle rather than the tenth. Pinned here as the arithmetic
+  // actually is, with the doc corrected in the same commit — the approximation is a fine
+  // reason to pick 100, but it is not what the engine does.
+  for (let w = 5; w <= 8; w += 1) s = runToBoundary(s);
+  assert.equal(rp(s, 'm'), RP_TAPER_KNEE, 'eight full-strength cycles land exactly on the knee');
+  s = runToBoundary(s); s = runToBoundary(s);
+  assert.equal(rp(s, 'm'), 986, 'the tenth cycle is already tapered — 986, not 1000');
+  s = runToBoundary(s);
+  assert.equal(rp(s, 'm'), 1059, 'and the ELEVENTH crosses the dividend-max tier');
+  assertSumHolds(s, 'eleven full-terms cycles');
 });
 
 test('an UNLICENSED guild is untouched — no key, no total, not one byte', () => {
-  // The no-op proof at fixture scale: a producing, delivering, but licence-less run
-  // crosses two boundaries and comes out byte-identical to itself run before this slice
-  // could have touched it (the pinned goldens in commitment-scaffold.test.js and
-  // persist.test.js are the standing repo-wide version of this claim).
   let s = fixture([mine('m')]);
   for (let i = 0; i < 2 * N; i += 1) s = tick(s);
 
@@ -201,99 +496,123 @@ test('an UNLICENSED guild is untouched — no key, no total, not one byte', () =
   assertSumHolds(s, 'unlicensed run');
 });
 
-// --- 3. several ventures accumulate INDEPENDENTLY, and the sum tracks them --------
+// --- 9. several ventures accumulate INDEPENDENTLY --------------------------------
 
 test('two ventures on opposite verdicts move independently, and the guild total is their sum', () => {
-  // `a` sits in SYS and is starved into breach; `b` sits in SYS_B, whose send is left on
-  // the paced default and therefore meets. One guild, one boundary, two different fates.
-  let s = fixture([mine('a'), mine('b', { systemId: SYS_B })]);
+  // `a` sits in SYS and is starved into breach; `b` sits in SYS_B on the paced default and
+  // meets. One guild, one boundary, two different fates — and two different magnitudes,
+  // because they signed different terms.
+  let s = fixture([mine('a'), mine('b', { systemId: SYS_B, equityPct: FULL_EQUITY })]);
   s = starve(licenceAll(s, ['a', 'b']), SYS);
   s = runToBoundary(s);
 
   const verdicts = guild(s).lastLicenceFee.ventures;
   assert.equal(verdicts.a.status, 'breach');
   assert.equal(verdicts.b.status, 'met');
-  assert.equal(rp(s, 'a'), -REP_BREACH_FLAT, 'the breacher fell on its own');
-  assert.equal(rp(s, 'b'), REP_MEET_FLAT, 'the meeter climbed on its own');
-  assert.equal(guild(s).guildReputation, REP_MEET_FLAT - REP_BREACH_FLAT,
+  assert.equal(rp(s, 'a'), -REP_BREACH_MIN, 'the breacher fell by ITS terms');
+  assert.equal(rp(s, 'b'), GAIN_FULL_TERMS, 'the meeter climbed by ITS terms');
+  assert.equal(guild(s).guildReputation, GAIN_FULL_TERMS - REP_BREACH_MIN,
     'and the guild total is the SUM of the two, not either one');
   assertSumHolds(s, 'two ventures, opposite verdicts');
 
-  // Three more windows: they diverge, and the sum keeps up at every step.
   for (let w = 2; w <= 4; w += 1) {
     s = runToBoundary(s);
-    assert.equal(rp(s, 'a'), -w * REP_BREACH_FLAT);
-    assert.equal(rp(s, 'b'), w * REP_MEET_FLAT);
+    assert.equal(rp(s, 'a'), -w * REP_BREACH_MIN);
+    assert.equal(rp(s, 'b'), w * GAIN_FULL_TERMS);
     assertSumHolds(s, `window ${w}`);
   }
 });
 
 test('a venture licensed LATER starts from zero and does not inherit its sibling’s standing', () => {
-  // The independence claim from the other end: `b` joins after `a` has already banked two
-  // windows, and its own total starts at the flat gain for ITS first verdict.
   let s = licenceAll(fixture([mine('a'), mine('b', { systemId: SYS_B })]), ['a']);
   s = runToBoundary(s);
   s = runToBoundary(s);
-  assert.equal(rp(s, 'a'), 2 * REP_MEET_FLAT);
+  assert.equal(rp(s, 'a'), 2 * GAIN_COMMIT_ONLY);
   assert.equal(ven(s, 'b').reputation, undefined, 'unjudged, so no key');
 
   s = licenceAll(s, ['b']);
   s = runToBoundary(s);
-  assert.equal(rp(s, 'a'), 3 * REP_MEET_FLAT, 'the incumbent kept climbing on its own count');
-  assert.ok(Math.abs(rp(s, 'b')) === REP_MEET_FLAT || Math.abs(rp(s, 'b')) === REP_BREACH_FLAT,
-    'the newcomer moved by exactly one verdict — its FIRST — whichever way it went');
+  assert.equal(rp(s, 'a'), 3 * GAIN_COMMIT_ONLY, 'the incumbent kept climbing on its own count');
+  assert.equal(Math.abs(rp(s, 'b')), Math.abs(reputationDelta(guild(s).lastLicenceFee.ventures.b.status, ven(s, 'b'))),
+    'the newcomer moved by exactly one verdict — its FIRST');
   assertSumHolds(s, 'a late joiner');
 });
 
-// --- 4. integrality, and the negative carve-out -----------------------------------
+// --- 10. integrality and the band ------------------------------------------------
 
-test('reputation stays an INTEGER through a long mixed run (§15.2)', () => {
-  let s = starve(licenceAll(fixture([mine('a'), mine('b', { systemId: SYS_B })]), ['a', 'b']), SYS);
-  for (let i = 0; i < 6 * N; i += 1) {
+test('reputation stays an INTEGER and IN BAND through a long mixed run (§15.2, §2.1)', () => {
+  let s = starve(licenceAll(fixture([
+    mine('a'), mine('b', { systemId: SYS_B, equityPct: FULL_EQUITY }),
+  ]), ['a', 'b']), SYS);
+  for (let i = 0; i < 8 * N; i += 1) {
     s = tick(s);
     for (const v of guild(s).ventures) {
       if (v.reputation === undefined) continue;
       assert.ok(Number.isInteger(v.reputation), `venture ${v.id} went fractional at tick ${s.tick}`);
+      assert.ok(v.reputation >= RP_FLOOR && v.reputation <= RP_SOFT_CAP,
+        `venture ${v.id} left the band at tick ${s.tick}: ${v.reputation}`);
     }
     assert.ok(Number.isInteger(guild(s).guildReputation), `the guild total went fractional at tick ${s.tick}`);
   }
-  assertSumHolds(s, 'after six windows');
+  assertSumHolds(s, 'after eight windows');
 });
 
 test('a venture driven deep NEGATIVE keeps every invariant green — the exemption works', () => {
-  // Five breached windows: -150 at the flat placeholder. Invariant 3's non-negativity
-  // carve-out has to cover both the venture field and the guild total, or the tick would
-  // halt on a venture doing exactly what breaching is designed to do (§2.2).
-  const WINDOWS = 5;
+  // Eight breached windows at a full commitment: −80, comfortably negative and comfortably
+  // inside the band. Invariant 3's non-negativity carve-out has to cover both the venture
+  // field and the guild total, or the tick would halt on a venture doing exactly what
+  // breaching is designed to do.
+  const WINDOWS = 8;
   let s = starve(licenceAll(fixture([mine('m')]), ['m']));
   for (let w = 0; w < WINDOWS; w += 1) s = runToBoundary(s);
 
-  assert.equal(rp(s, 'm'), -WINDOWS * REP_BREACH_FLAT);
+  assert.equal(rp(s, 'm'), -WINDOWS * REP_BREACH_MIN);
   assert.ok(rp(s, 'm') < 0, 'the test is vacuous unless it really went negative');
-  assert.equal(guild(s).guildReputation, -WINDOWS * REP_BREACH_FLAT, 'the guild total is negative too');
-  assert.deepEqual(checkInvariants(s, s.tick), [], 'all nine invariants green on a deeply negative venture');
-
-  // No floor and no clamp in this slice: -500 (closure) and +1500 (the soft cap) are the
-  // NEXT slice's band, so nothing here stops the number at any value.
-  assert.ok(rp(s, 'm') > -500, 'this run has not reached the (unbuilt) closure floor, so nothing was clamped');
+  assert.equal(guild(s).guildReputation, -WINDOWS * REP_BREACH_MIN);
+  assert.deepEqual(checkInvariants(s, s.tick), [], 'all invariants green on a deeply negative venture');
 });
 
-// --- 5. the tripwires fail LOUD (broken on purpose) -------------------------------
+// --- 11. the tripwires fail LOUD (broken on purpose) -----------------------------
 
-test('TRIPWIRE: a guild total that drifts from its ventures is caught', () => {
+test('TRIPWIRE: a venture forced BELOW the floor is caught', () => {
   let s = licenceAll(fixture([mine('m')]), ['m']);
   s = runToBoundary(s);
   assert.deepEqual(checkInvariants(s, s.tick), [], 'green before it is broken');
 
-  // The exact failure the denormalisation risks: a future writer that moves the venture
-  // and forgets the guild (or the reverse). Silent without this check — and the fuel
-  // layer's mean line would later read the lie (§3).
+  const broken = atRP(structuredClone(s), 'm', -600);
+  const v = checkInvariants(broken, broken.tick);
+  assert.equal(v.length, 1);
+  assert.equal(v[0].rule, 'reputation-in-band (points-and-reputation.md §2.1)');
+  assert.deepEqual(v[0].detail, { value: -600, floor: RP_FLOOR, softCap: RP_SOFT_CAP });
+});
+
+test('TRIPWIRE: a venture forced ABOVE the soft cap is caught', () => {
+  // The half of the band NOTHING enforces directly — the top is held only by the taper's
+  // arithmetic, so this check is the sole thing standing between a future retune of the
+  // knee, the cap or REP_MEET_MAX and a silent overshoot.
+  let s = licenceAll(fixture([mine('m')]), ['m']);
+  s = runToBoundary(s);
+
+  const broken = atRP(structuredClone(s), 'm', 1600);
+  const v = checkInvariants(broken, broken.tick);
+  assert.equal(v.length, 1);
+  assert.equal(v[0].rule, 'reputation-in-band (points-and-reputation.md §2.1)');
+  assert.equal(v[0].detail.value, 1600);
+  // Exactly at the cap is legal — the band is inclusive.
+  assert.deepEqual(checkInvariants(atRP(structuredClone(s), 'm', RP_SOFT_CAP), s.tick), []);
+  assert.deepEqual(checkInvariants(atRP(structuredClone(s), 'm', RP_FLOOR), s.tick), []);
+});
+
+test('TRIPWIRE: a guild total that drifts from its ventures is caught', () => {
+  let s = licenceAll(fixture([mine('m')]), ['m']);
+  s = runToBoundary(s);
+
   const drifted = structuredClone(s);
   drifted.guilds[0].guildReputation += 1;
   const v = checkInvariants(drifted, drifted.tick);
   assert.equal(v.length, 1);
   assert.equal(v[0].rule, 'guild-reputation-is-the-venture-sum (points-and-reputation.md §2)');
-  assert.deepEqual(v[0].detail, { stored: REP_MEET_FLAT + 1, sumOfVentures: REP_MEET_FLAT });
+  assert.deepEqual(v[0].detail, { stored: GAIN_COMMIT_ONLY + 1, sumOfVentures: GAIN_COMMIT_ONLY });
 });
 
 test('TRIPWIRE: a FRACTIONAL reputation is caught on the venture and on the guild', () => {
@@ -309,16 +628,11 @@ test('TRIPWIRE: a FRACTIONAL reputation is caught on the venture and on the guil
 });
 
 test('TRIPWIRE: a NEGATIVE reputation is NOT reported — the carve-out is real, not accidental', () => {
-  // The mirror of the two above: prove the exemption by showing a value that WOULD trip
-  // non-negativity on any other field passes here, while the same state's `fuelHoard`
-  // still does not get away with it.
   let s = licenceAll(fixture([mine('m')]), ['m']);
   s = runToBoundary(s);
 
-  const negative = structuredClone(s);
-  negative.guilds[0].ventures[0].reputation = -400;
-  negative.guilds[0].guildReputation = -400;
-  assert.deepEqual(checkInvariants(negative, negative.tick), [], 'negative RP is legal');
+  const negative = atRP(structuredClone(s), 'm', -400);
+  assert.deepEqual(checkInvariants(negative, negative.tick), [], 'negative RP inside the band is legal');
 
   const alsoNegativeHoard = structuredClone(negative);
   alsoNegativeHoard.guilds[0].fuelHoard = -1;
@@ -327,7 +641,7 @@ test('TRIPWIRE: a NEGATIVE reputation is NOT reported — the carve-out is real,
     'a field WITHOUT the carve-out still fails, so the exemption is targeted');
 });
 
-// --- 6. serialization: positive, negative, and omitted-when-0 ---------------------
+// --- 12. serialization: positive, negative, and omitted-when-0 --------------------
 
 test('omitted-when-0: a fresh venture carries no reputation key, a seeded one does', () => {
   const s = createState({
@@ -342,8 +656,8 @@ test('omitted-when-0: a fresh venture carries no reputation key, a seeded one do
 
   assert.equal(Object.prototype.hasOwnProperty.call(ven(s, 'zero'), 'reputation'), false,
     'a 0 carries NO key — this is what keeps an unlicensed galaxy byte-identical');
-  assert.equal(ven(s, 'plus').reputation, 340, 'a positive seed is carried through');
-  assert.equal(ven(s, 'minus').reputation, -260, 'and so is a negative one — the sign is not lost');
+  assert.equal(ven(s, 'plus').reputation, 340);
+  assert.equal(ven(s, 'minus').reputation, -260, 'and the sign is not lost');
 });
 
 test('serialize -> persist -> load round-trips positive, negative and omitted-when-0', (t) => {
@@ -351,9 +665,10 @@ test('serialize -> persist -> load round-trips positive, negative and omitted-wh
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
   // A real run, so the values under test were MOVED by the engine rather than typed in:
-  // `a` breaches its way negative, `b` meets its way positive, `c` is never licensed and
-  // stays keyless.
-  let s = fixture([mine('a'), mine('b', { systemId: SYS_B }), mine('c', { systemId: 'sysC' })]);
+  // `a` breaches its way negative, `b` meets its way positive, `c` is never licensed.
+  let s = fixture([
+    mine('a'), mine('b', { systemId: SYS_B, equityPct: FULL_EQUITY }), mine('c', { systemId: 'sysC' }),
+  ]);
   s = starve(licenceAll(s, ['a', 'b']), SYS);
   for (let w = 0; w < 3; w += 1) s = runToBoundary(s);
 
@@ -378,7 +693,7 @@ test('serialize -> persist -> load round-trips positive, negative and omitted-wh
 
 test('determinism (invariant 9): a run that moves reputation is byte-identical run twice', () => {
   const run = () => {
-    let s = fixture([mine('a'), mine('b', { systemId: SYS_B })]);
+    let s = fixture([mine('a'), mine('b', { systemId: SYS_B, equityPct: FULL_EQUITY })]);
     s = starve(licenceAll(s, ['a', 'b']), SYS);
     for (let w = 0; w < 3; w += 1) s = runToBoundary(s);
     return hashState(s);
@@ -386,10 +701,10 @@ test('determinism (invariant 9): a run that moves reputation is byte-identical r
   assert.equal(run(), run());
 });
 
-// --- 7. the snapshot surface ------------------------------------------------------
+// --- 13. the snapshot surface -----------------------------------------------------
 
 test('the snapshot reports both numbers, ECHOED not re-summed, and needs no schema bump', () => {
-  let s = fixture([mine('a'), mine('b', { systemId: SYS_B })]);
+  let s = fixture([mine('a'), mine('b', { systemId: SYS_B, equityPct: FULL_EQUITY })]);
   s = starve(licenceAll(s, ['a', 'b']), SYS);
   s = runToBoundary(s);
 
@@ -398,11 +713,11 @@ test('the snapshot reports both numbers, ECHOED not re-summed, and needs no sche
   assert.equal(SNAPSHOT_SCHEMA, 7);
 
   const g = snap.guilds.find((x) => x.id === 'g1');
-  assert.equal(g.guildReputation, guild(s).guildReputation, 'the guild total is the STORED number');
   const a = snap.ventures.find((x) => x.id === 'a');
   const b = snap.ventures.find((x) => x.id === 'b');
-  assert.equal(a.reputation, -REP_BREACH_FLAT, 'a negative reaches the client as a negative');
-  assert.equal(b.reputation, REP_MEET_FLAT);
+  assert.equal(g.guildReputation, guild(s).guildReputation, 'the guild total is the STORED number');
+  assert.equal(a.reputation, -REP_BREACH_MIN, 'a negative reaches the client as a negative');
+  assert.equal(b.reputation, GAIN_FULL_TERMS);
   assert.equal(g.guildReputation, a.reputation + b.reputation, 'and the published total really is their sum');
 });
 
