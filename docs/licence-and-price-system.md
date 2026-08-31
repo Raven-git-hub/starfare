@@ -114,6 +114,14 @@ A per-good Syndicate **value**: the "one true number" the whole economy is denom
   ventures' reputations.** *(§5/§7 already make reputation load-bearing for takeover, forced closure,
   share value, payout, and standing — our tiers/thresholds must be reconciled against those, not layered
   on top.)*
+
+  > **RP dynamics now ruled (31-08-26) in `docs/points-and-reputation.md`** — the reconciliation this
+  > bullet asks for is done there. One RP: per-venture, summed into `guild.guildReputation`, moved by
+  > **MEET/BREACH** in a **−500 to approximately 1500 band whose +1000 / −300 / −500 edges ARE these
+  > tiers**, with a gain taper above 800 and linear drops. The guild sum feeds the fuel **mean line**
+  > (`expectedRP = MEANLINE_K × GP`). This section's tiers/dividends are the **licence-side consumer** of
+  > that one RP — not a second reputation. Parking a high-RP venture is deferred to the **renegotiation
+  > window (#64)**; the escalating breach magnitudes remain this layer's to rule (Slice 4).
 - **Fixed output per venture TYPE.** A mine/factory produces a constant baseline (droidless). **Throttle
   goes below**, **droids go above**; the Syndicate accounts only for the **droidless max**. *(This must
   become a real constant table — today `productionRate` is a free per-venture dial.)*

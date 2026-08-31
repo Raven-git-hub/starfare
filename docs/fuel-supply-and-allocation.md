@@ -170,10 +170,14 @@ a **watch-it-in-play** number, not a pre-solve.
 ## 6. Open questions (decide on purpose)
 
 1. **The price curve coefficients** and the flow/level blend (§4) — a sim/spreadsheet pass, like the original.
-2. **The reputation event list** — which Syndicate interactions move reputation, which direction, how much. The
-   big content lump; the whole engine idles without it (`fuel-economy.md §9.1`, invariant-8 rule #61).
-3. **The Points formula** — source weights and the density-over-sprawl shape (`fuel-economy.md §9.2`).
-4. **The mean-line shape** — expected-reputation vs Points, and the position→buff/penalty map.
+2. **The reputation event list** — ✅ **RULED 31-08-26** → see `docs/points-and-reputation.md` §2
+   (per-venture RP, MEET/BREACH, the −500-to-approximately-1500 band, `[DEFERRED]` sources). Spine is
+   licence met/breach; first build slice wires exactly that.
+3. **The Points formula** — ✅ **RULED 31-08-26** → see `docs/points-and-reputation.md` §1 (Guild Points:
+   deployed holdings, tier-scaled, idle = 0; `[DEFERRED]` sources named so Code invents no fields).
+4. **The mean-line shape** — ✅ **RULED 31-08-26** → see `docs/points-and-reputation.md` §3: linear
+   `expectedRP = MEANLINE_K × GP`; position→issuance is a clamped ratio-based modifier
+   `clamp(1 + s·gap/expected, FLOOR, CEIL)`.
 5. **PG bust-cost** (§1.1) — what makes a costless miner economically fail.
 6. **Deuterium's map presence** — confirm which archetypes carry deuterium nodes (terran/oceanic) and that the
    generator places enough for the PG homes and player mining. (Ties to the seed-generator rework.)
@@ -206,9 +210,12 @@ later. This is the consumption side; everything in §1–§5 is the supply/econo
   the burn from `guild.fuelHoard`, adds it to `audit.totalConsumed` (this counter's first writer), and
   refreshes the `galacticSupply` cache the deduction moves. **Reject-whole**: no partial trade, no
   shorter flight. Client: the SELL panel gained a Fuel row reading the snapshot's `fuelCost`, plus a
-  short-fuel pre-gate. **SELL fuel deduction is still deferred** — the per-allocation-row vs total-cost
-  ruling for multi-system sales is unmade, so SELL burns nothing and a test pins that. That ruling and
-  its build are the next slice. ⚠ Note for that slice: the SELL panel's short-fuel *disable* shipped
+  short-fuel pre-gate. **SELL fuel deduction is still deferred** — but the multi-system routing is now
+    **RULED (31-08-26): Σ per allocation row** — a sale split across 3 systems flies 3 routes and burns
+    3 routes' fuel (`routeFuelCost(systemId).fuelBurn` summed over the `allocations` rows), not the max and
+    not one flat route. Same density-beats-sprawl principle as the issuance model
+    (`docs/points-and-reputation.md`): fragmenting a sale across scattered territory costs more. SELL still
+    burns nothing *yet* and a test pins that, but the ruling the deduction slice needs is made. ⚠ Note for that slice: the SELL panel's short-fuel *disable* shipped
   ahead of the deduction, so it currently blocks sales the engine would accept — see
   `docs/client-wiring.md`.
 

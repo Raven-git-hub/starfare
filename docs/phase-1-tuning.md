@@ -228,3 +228,34 @@ corners, `k`, the baselines and `N` are all read from where they already live.
 ---
 
 *When Stage 2/3 runs and these start to feel wrong, change them here. That is the expected workflow, not a failure of planning.*
+
+### Points & Reputation — GP, RP band & the mean line *(31-08-26 — shapes in `docs/points-and-reputation.md`)*
+
+Shapes are ruled in `docs/points-and-reputation.md`; these are the values. `venture.reputation` /
+`guild.guildReputation` are signed **integers**, non-negativity-**exempt**; guild RP = Σ venture RP.
+
+**Ruled now `[FIRST-CUT]`** (structural / dimensionless — safe to pick, expected to move in play):
+
+| Constant | `[FIRST-CUT]` | Rationale |
+|---|---|---|
+| Gain taper knee | **800** | Below it, MEET-gains are full strength; above it they taper toward the cap. |
+| Gain soft cap | **1500** | Organic asymptote: `gainFactor = clamp((1500 − RP)/700, 0, 1)`. RP can bank a buffer past dividend-max but with diminishing returns. |
+| `ISSUANCE_SENSITIVITY` | **1.0** | Slope on `gap/expected` in the fuel modifier. |
+| `ISSUANCE_FLOOR` | **0.5** | A below-line guild still draws half its `baseGrant` — no death spiral. |
+| `ISSUANCE_CEIL` | **1.5** | Caps the buff; protects the finite pool. Saturation under universal cooperation = "price becomes the throttle" (`fuel-economy.md §2`). |
+
+**Band edges — from the licence layer (`licence-and-price-system.md §5/§7`), not new numbers:** `−500` closure,
+`−300` forced-lease, `+1000` dividend-max (10 tiers × +10% dividend). The RP band reuses these by construction.
+
+**`[SHEET]` / `[DEFERRED]` — deferred, calibrate, do NOT invent:**
+
+| Constant | Tag | Rationale |
+|---|---|---|
+| `MEANLINE_K` | `[SHEET]` | `expectedRP = MEANLINE_K × GP`. Calibrate so a **par** venture's *resting* RP ≈ `MEANLINE_K × its GP`, in the band's units — not a per-cycle value. The earlier `k=5` is retired. |
+| MEET-gain magnitude (terms-scaled) | `[SHEET]` | The deploy meter's realised value; set with the band slice. |
+| BREACH-drop magnitude (inverse-commitment) | `[SHEET]` | The escalation curve — "the last real ruling Slice 4 needs" (`licence-and-price-system.md`). Do not invent it here. |
+| GP weights (system / mining / refining, per tier) | `[SHEET]` | Set when the GP-calculator slice lands; tier-scaled, deployed-only, idle = 0. |
+| Outpost deploy RP offset | `[DEFERRED]` | `= MEANLINE_K × (outpost GP)` (bar-neutral, `points-and-reputation.md §1.2`); when outposts are built. |
+
+*Note: the earlier draft's `guild.reputation` field and its flat `+50 / −80` event list are **withdrawn** —
+superseded by `venture.reputation` summed into the existing `guild.guildReputation`, per `points-and-reputation.md`.*
