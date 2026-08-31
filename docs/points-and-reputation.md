@@ -226,6 +226,40 @@ pure consumer sinks by earning nothing against its bar, so buying needs no expli
   (calibrate against the band once a "par" venture's resting RP is known — do **not** invent the escalation
   curve here); the taper knee/cap and the issuance clamp are `[FIRST-CUT]`.
 
+## 6.1 UI wiring — where RP is actually shown
+
+*Added 31-08-26, **by the dev-panel build**, not ahead of it. ⚠ The build prompt for that slice cited a "§6.1"
+that did not exist: the doc had no UI-wiring plan at all. Rather than build against a ruling that was not there
+and leave no trace (`CLAUDE.md`: "the repo is the only memory"), this section records what was BUILT and marks
+everything else as **unruled** — it is a record, not a design pass. The same thing happened once before, with
+fuel Slice 1's citation of a `fuel-supply-and-allocation.md §1.3` that landed later; see the roadmap.*
+
+**Slice 1b — the operator/dev readout. ✅ LANDED 31-08-26. `client/console.html` only.** RP is rendered where
+the met/breach verdict already lives: the Production Console's **Syndicate** tab, which is rebuilt on every
+snapshot poll, so RP visibly moves as ticks advance.
+
+- **Per venture** (roster rows, for any venture under a licence): its `reputation` as a number, plus a compact
+  band gauge. A venture at the floor is labelled **PINNED** — never "closed".
+- **Per guild** (panel footer, beside the guild-wide fee lump it matches in scope and cadence):
+  `guild.guildReputation` with a full gauge and printed scale.
+- **The gauge** spans `RP_FLOOR`…`RP_SOFT_CAP` with the taper zone shaded and marks at −500, −300, 800, 1000.
+- **The browser computes NO game number.** Both figures are echoed off the snapshot; the guild total is *not*
+  re-summed from the venture rows (the engine owns that sum and guards it every tick). The only arithmetic is a
+  bar position, `(value − floor) / (cap − floor)` — presentation over engine-owned bounds.
+- **Constants:** the three band bounds are MIRRORED from `sim/licence.js` with a served-page tripwire, the
+  repo's existing convention for engine constants the client needs. The two **tier marks** (−300, +1000) have
+  **no engine constant to mirror** — nothing in `sim/` names them, because neither consequence is built — so
+  they are pinned against the ruling in §2.1 instead, and labelled "not built" on screen.
+
+**⚠ UNRULED, and deliberately not decided here** — each needs a ruling before its code:
+
+- The **player client** (`client/game.html`): whether the Establish-Venture deploy meter should stop mocking
+  `repGain` and read the engine, and what a player-facing standing display (a "Guild Hall") shows at all. The
+  engine is now the authority for the same arithmetic the meter draws, so the wiring is *possible*; whether the
+  player should see a raw RP number, a band, or only a tier is a design question nobody has answered.
+- What the console should show **once closure exists** — a pinned venture currently just reads PINNED.
+- Whether the **−300 / +1000** tiers should become engine constants. Today they are doc-only marks on a scale.
+
 ## 6. Build order
 
 1. **RP field + meet/breach (slice 1). ✅ LANDED 31-08-26 — see §0a.** Create `venture.reputation`, sum into
