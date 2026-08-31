@@ -87,10 +87,12 @@ function createPaySyndicateFeeAction({ guildId, amount }) {
 // FUEL-GENESIS IS NOW DECIDED (fuel Slice 1). This note used to read "starting
 // fuelHoard is always 0 ... minting fuel into a hoard would need a fuel-genesis
 // rule we have not decided". The rule is decided: a founding guild opens with
-// GUILD_STARTING_FUEL (sim/fuel.js) in its hoard — the early-game STARTER FLOOR
-// ruled in docs/fuel-economy.md §7, anchored on design.md §8's survival floor,
-// which closes the no-fuel -> no-trade -> no-reputation trap a brand-new guild
-// would otherwise be born into.
+// GUILD_STARTING_FUEL (sim/fuel.js) in its hoard — the STARTER FLOOR ruled in
+// docs/fuel-supply-and-allocation.md §1.3, which rules this apply by name. The
+// galaxy opens already supplied because the fiction is that you are joining an
+// ALREADY-RUNNING Syndicate; the trap it closes (a new guild at ~0 reputation
+// with no fuel can never trade its way to any) is recorded a layer down, in
+// fuel-economy.md §7, which §1.3 supersedes.
 //
 // Unlike credits, this fuel is MINTED, not moved: there is no fuel counterpart
 // to the Syndicate ledger to debit (the reserve is a physical pool, not a

@@ -83,14 +83,18 @@ backend": the pool is now **guild deposits + a background minimum floor**.
 
 ## 7. New-guild death spiral — handled by balancing, not structure
 
+**Superseded by `docs/fuel-supply-and-allocation.md` (landed main, 31-08-26)** — the starter floor is now
+ruled there, at §1.3 (bootstrapping), which is the authoritative statement of the rule this section sketched.
+
 A new guild starts at ~0 Guild Points / ~0 reputation; the no-fuel → no-trade → no-reputation trap is
 handled by **early-game balancing / a starter floor** (straightforward with testing), anchored on §8's
 "survival floor" — not a structural redesign.
 
-> **BUILT 31-08-26 — the starter floor, and ONLY the starter floor (fuel Slice 1).** This paragraph is
-> the ruling `foundGuild` now implements: a founding guild opens with `GUILD_STARTING_FUEL`
-> (`[FIRST-CUT]` **500**, `sim/fuel.js`, recorded in `docs/phase-1-tuning.md` §"Guild starts") in its
-> hoard instead of the 0 the apply used to force. Before this, `guild.fuelHoard` was a real, validated,
+> **BUILT 31-08-26 — the starter floor, and ONLY the starter floor (fuel Slice 1).** The rule
+> `foundGuild` implements is now ruled in **`fuel-supply-and-allocation.md` §1.3**, which supersedes this
+> paragraph as its source; what follows is kept because it records *why* the rule exists. A founding guild
+> opens with `GUILD_STARTING_FUEL` (`[FIRST-CUT]` **500**, `sim/fuel.js`, recorded in
+> `docs/phase-1-tuning.md` §"Guild starts") in its hoard instead of the 0 the apply used to force. Before this, `guild.fuelHoard` was a real, validated,
 > snapshot-exposed field that was always zero, because minting fuel needed a fuel-genesis rule that had
 > not been ruled — this is that rule, and nothing more.
 >
