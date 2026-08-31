@@ -29,6 +29,7 @@ const { computeGalacticSupply } = require('./supply.js');
 const { FLAT_FUEL_PRICE_PER_UNIT, routeFuelCost } = require('./fuel.js');
 const { heldSystemIds } = require('./claims.js');
 const { guildPoints } = require('./points.js');
+const { expectedReputation, issuanceModifier } = require('./meanline.js');
 const { computeOccupancy } = require('./occupancy.js');
 const { deployedAssetIds } = require('./assets.js');
 const { getSite, getLandmark } = require('./seed.js');
@@ -261,6 +262,16 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // deliberately none (§1.0 rules GP a helper recomputed on read, like `heldSystemIds`), so
 // it enters no serialized byte and no determinism hash and the state goldens cannot move
 // on its account. Published with no consumer yet — the mean line is the next slice.
+// (31-08-26, mean-line slice 4): each guild row gains `expectedReputation` and
+// `issuanceModifier` — the RP expected for the guild's Points, and its actual RP judged
+// against that (docs/points-and-reputation.md §3), from the engine's own helpers
+// (sim/meanline.js). ADDITIVE, and NO schema bump: nothing existing changed shape — the
+// same additive call `guildPoints`, `guildReputation`, `fuelCost`, `fuelHoardValue`,
+// `feeQuote`, `shipments`, `licenceFee` and `syndicateSale` each made. DERIVED like
+// `guildPoints`: no stored counterpart, no serialized byte, no determinism hash. The
+// modifier is the one FLOAT in this block and is unrounded on purpose. Published with no
+// consumer: no fuel is granted anywhere in the engine, because `baseGrant` is the pool
+// slice (§8) and is not built.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -277,6 +288,7 @@ const SNAPSHOT_SCHEMA = 7;
 //     guilds: [ { id, name, isBot, credits, fuelHoard, fuelHoardValue, influence,
 //                 guildReputation,                              // RP, Σ its ventures'
 //                 guildPoints,                                  // GP, DERIVED per read
+//                 expectedReputation, issuanceModifier,        // the mean line, DERIVED
 //                 fuelCost: { systemId: { fuelBurn, creditCost } }, // held systems, sorted
 //                 syndicateSale: { tick, thisTick, credited, goods } | null, // Slice 3a
 //                 licenceFee: { tick, thisTick, charged, ventures } | null,   // Slice 3b-iii
@@ -373,6 +385,23 @@ function buildSnapshot(state) {
       // (`expectedRP = MEANLINE_K × GP`, §3) is the next slice and is not built; §4 rules
       // that the FUEL layer will own it and merely read this.
       guildPoints: guildPoints(state, g),
+      // THE MEAN LINE (docs/points-and-reputation.md §3), the pair above joined:
+      // `expectedReputation` is the RP a guild this big is expected to have earned
+      // (`MEANLINE_K × guildPoints`), and `issuanceModifier` is `guildReputation` judged
+      // against it — the multiplier a future fuel grant would be scaled by. Both from the
+      // engine's own helpers (sim/meanline.js), never re-derived here.
+      //
+      // DERIVED like `guildPoints` beside them: no stored counterpart, no serialized
+      // byte, no determinism hash. The modifier is a FLOAT and deliberately UNROUNDED —
+      // no precision is ruled, so picking one would be inventing a number; a display
+      // formats it.
+      //
+      // THEY GRANT NOTHING. `fuelGranted = baseGrant × modifier` needs `baseGrant`, the
+      // pool/price slice (§8), which is not built — so this is published and read by
+      // nothing, exactly as `guildPoints` was one slice ago. A modifier of 1.0 on a guild
+      // holding nothing is the ruled empty-guild guard (§3), not a missing value.
+      expectedReputation: expectedReputation(state, g),
+      issuanceModifier: issuanceModifier(state, g),
       homeSystemId: g.homeSystemId || null,
       homePlanetId: g.homePlanetId || null,
       // Guild-level holdings = the per-system pools flattened into one { good: int }

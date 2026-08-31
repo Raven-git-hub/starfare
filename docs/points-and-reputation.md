@@ -7,9 +7,9 @@
 `licence-and-price-system.md`. Where a number is unruled it is called `[FIRST-CUT]`, `[SHEET]` (needs a
 spreadsheet/sim pass) or `[DEFERRED]` — never a silent constant. **§6 steps 1-2 are BUILT (31-08-26) apart from closure; everything else here is NOT.***
 
-## 0a. What is BUILT *(31-08-26 — RP slices 1 and 2, the console readout, and GP slice 3)*
+## 0a. What is BUILT *(31-08-26 — RP slices 1-2, the console readout, GP slice 3, the mean line slice 4)*
 
-Steps 1 and 3 of §6 in full, step 2 **apart from closure**, and the §6.1 dev readout. Read every other
+Steps 1, 3 and 4 of §6 in full, step 2 **apart from closure**, and the §6.1 dev readout. Read every other
 section of this doc as design, not as code.
 
 - **`venture.reputation`** — a signed integer on the venture, omitted from serialized state when `0`,
@@ -59,6 +59,27 @@ section of this doc as design, not as code.
   - **Snapshot** — `guilds[].guildPoints`, computed by that helper. Additive; schema stays 7.
   - **Console** — the number beside reputation in the Syndicate footer. No gauge: GP is unbounded, so a bar
     would need an invented maximum. The browser weighs nothing and holds no Points constant.
+- **THE MEAN LINE (slice 4)** — `sim/meanline.js`, the join of the two halves above:
+  - `expectedReputation(state, guild)` = `MEANLINE_K × guildPoints(...)`, an integer.
+  - `issuanceModifier(state, guild)` = `clamp(1 + ISSUANCE_SENSITIVITY × gap / expected, FLOOR, CEIL)`, a
+    float — one of the sanctioned non-integers, since it SCALES a quantity rather than being one. Unrounded on
+    purpose: no precision is ruled, so a display formats it.
+  - **The empty-guild guard** (`#7`): `expectedRP === 0 → 1.0` exactly, so nothing ever divides by zero and a
+    guild holding nothing is trivially on its own line. `=== 0` is exact because GP — and therefore the
+    expectation — is non-negative by construction.
+  - **DERIVED, never stored**, like GP: no field, no serialized byte, no determinism hash.
+  - **It READS and never writes** (§4): the licence layer authors RP, `sim/points.js` derives GP, and this
+    module only judges one against the other.
+  - **Snapshot** — `guilds[].expectedReputation` and `guilds[].issuanceModifier`. Additive; schema stays 7.
+  - **Console** — both beside RP and GP in the Syndicate footer, the modifier sized and coloured as the payoff
+    number. The console mirrors ONLY the two clamp bounds, to LABEL a pinned modifier, with a served-page
+    tripwire; it deliberately does not carry `MEANLINE_K` or the slope, so it structurally cannot compute the
+    modifier itself.
+  - **CALIBRATION CONFIRMED, by test and in a browser.** The ruling's four claims for `k = 150` all hold on the
+    engine's own numbers: a dense guild (1 system, 3 ventures at rest) reads **0.997**; the same three ventures
+    sprawled over three systems read **0.330**; a just-expanded guild pins at **0.300**; a developed big guild
+    (2 systems, 8 ventures) reads **1.160**. "Par" is about **three ventures per held system** — that one
+    relation is what `k = 150` encodes, and density-beats-sprawl falls straight out of it.
 
 **Explicitly NOT built, and nothing in the code approximates any of it:** the −500 **closure** and −300
 **forced-lease** CONSEQUENCES — venture removal, licence revocation, the stakeholder offer; reaching −500 is a
@@ -69,10 +90,13 @@ droids, outposts, exploration — and no field for any of them), and the client 
 Establish-Venture panel's reputation copy is still mock — the engine is now the authority for the same
 arithmetic, but nothing reads it yet).
 
-**GP IS PUBLISHED WITH NO CONSUMER.** Slice 3 computes and shows it; nothing reads it to decide anything. The
-mean line that judges RP against it (`expectedRP = MEANLINE_K × GP`, §3) is the next slice, and `MEANLINE_K` is
-still `[SHEET]` — which is also why the GP weights are ruled *relative only*: nothing fixes their absolute
-scale until that constant does.
+**GP AND THE MODIFIER ARE PUBLISHED WITH NO CONSUMER.** Slices 3 and 4 compute and show them; nothing reads
+either to decide anything. `fuelGranted = baseGrant × modifier` needs `baseGrant`, the pool/price slice (§8),
+which is **not built** — so no fuel is granted, withheld or moved anywhere in the engine, and a test pins that
+a maximally-buffed guild's hoard does not shift by one unit. *(`MEANLINE_K = 150` now fixes the absolute scale
+the GP weights are measured on, so those weights are no longer "relative only" in the sense of being
+unanchored — but they and `k` remain a single `[FIRST-CUT]` system, and retuning one means retuning the
+other.)*
 
 **Deliberately not this cut:** the met gain is **not window-pro-rated**. A mid-window joiner's first window is
 pro-rated for its target and its fee (`windowFraction`) but not for its reputation, so it earns a full cycle's
@@ -229,9 +253,11 @@ pure consumer sinks by earning nothing against its bar, so buying needs no expli
 
 - **`expectedRP(GP) = MEANLINE_K × GP`. LINEAR** — the null hypothesis, and it matches "a guild of size X should
   have earned about this much." Convex/super-linear stays a later shape ruling if the big coast too easily.
-- **`MEANLINE_K` is `[SHEET]`:** calibrate it so a **par** venture's *resting* RP ≈ `MEANLINE_K × (its GP)` — in
-  the units of the running-total band (−500..1500), **not** a per-cycle figure. *(The earlier per-cycle sketch —
-  `k=5`, `met=+50` — is **retired**; it measured a quantity that no longer exists.)*
+- **`MEANLINE_K` is `[FIRST-CUT]` 150** *(was `[SHEET]`; ruled below and in `phase-1-tuning.md`, and the stale
+  tag corrected 31-08-26 when slice 4 built it)*: calibrated so a **par** venture's *resting* RP ≈
+  `MEANLINE_K × (its GP)` — in the units of the running-total band (−500..1500), **not** a per-cycle figure.
+  *(The earlier per-cycle sketch — `k=5`, `met=+50` — is **retired**; it measured a quantity that no longer
+  exists.)*
 - **Issuance modifier:**
 
       gap      = guildRP − expectedRP(GP)
@@ -334,6 +360,8 @@ snapshot poll, so RP visibly moves as ticks advance.
    general rather than a mining/refining special case. *(The "deployed assets" in this line is superseded by
    §1.0's count-ventures-not-assets ruling: a venture IS its deployed asset.)*
 4. **The mean line + fuel modifier** (§3) — needs `MEANLINE_K` from a sheet pass.
+   **✅ LANDED 31-08-26 — see §0a.** `sim/meanline.js`, derived and published; `MEANLINE_K` ruled 150 and its
+   calibration confirmed against the engine. **It grants no fuel** — that needs `baseGrant`, step 5.
 5. Then issuance, the reserve/flow price controller, the edges (`fuel-supply-and-allocation.md §8`).
 
 **Prerequisite for bot-testbed cycling: the renegotiation window (#64), §5.**
