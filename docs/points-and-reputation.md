@@ -87,6 +87,30 @@ leave possession. Recomputed each tick from state, never accumulated.
   land: **transports** (size-scaled), **tolls**, **droids**, **outposts** (guild-owned — see naming below),
   **exploration**. Do **not** add `guild.tolls`, `guild.scanners`, etc.
 
+### 1.0 The formula (ruled 31-08-26 — slice 3)
+
+    GP(guild) = W_SYS · (held systems) + Σ ventures W_TIER( tier of producedGoodFor(venture) )
+
+**DERIVED, not stored (ruled).** GP is a pure function of *current* holdings, so it is a helper recomputed
+on read (like `heldSystemIds`), exposed in the snapshot, and **never serialized into state** — the
+determinism goldens stay byte-identical by construction, nothing to re-pin. There is no `guild.guildPoints`
+field.
+
+**Count ventures, not assets — idle = 0 (ruled).** A venture *is* its deployed asset (it names the `assetId`
+it runs on), so ventures are counted and idle inventory scores nothing; counting deployed assets *and*
+ventures would double-count the same machine. This **supersedes** the "deployed assets" source line above as
+a separate entry.
+
+**Empty held systems still count `W_SYS` (ruled).** Territory raises the bar whether or not it is developed
+— the anti-sprawl liability (§2's density-beats-sprawl): a held system with no ventures is pure GP with no
+reputation to pay it back.
+
+**Tier is general, via `producedGoodFor`** (raw → T1, processed → T2, …): mining and refining fall out
+today, and higher weights `W_T3`/`W_T4` light up automatically when those goods are real. Weights are
+`[FIRST-CUT]` in `phase-1-tuning.md`, **relative only** — slice 4's `MEANLINE_K` sets the absolute scale, so
+what matters is the ratio (systems Points-heavy, ventures Points-light, higher tier a notch above lower). GP
+is an integer.
+
 ### 1.1 Outpost vs Waystation (naming — resolved)
 
 - **WAYSTATION** = a **Syndicate-owned** trading entity (the 9 waystations, `sim/transport.js`). **Not** guild
