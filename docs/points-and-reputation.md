@@ -119,6 +119,14 @@ every cycle is exactly one of two:
 Breaching a high commitment is **RP-cheap but fee-expensive** (full fee on breach) and risks closure — the
 discipline lives in credits and closure, not in the RP penalty. *Let the player play how they like.*
 
+**Slice-2 arithmetic (ruled `[FIRST-CUT]`; magnitudes in `phase-1-tuning.md`).** The met gain is the deploy
+meter made real (terms-scaled), scaled by the §2.3 taper before it lands and — first cut — **not**
+window-pro-rated. The breach drop is **linear** inverse-commitment and is **not** tapered. RP is
+**hard-clamped to the band**: a breach cannot push it below −500 (the venture pins at the closure threshold,
+awaiting the closure slice), while the taper holds the top; `guild.guildReputation` moves by the *actual*
+post-clamp change, so `checkGuildReputationSum` stays exact. The −500 / −300 closure *consequences* are a
+separate later slice.
+
 ### 2.3 The gain taper (approaching the cap)
 
 - **Below 800:** gains at full strength.

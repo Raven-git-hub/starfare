@@ -254,8 +254,8 @@ Shapes are ruled in `docs/points-and-reputation.md`; these are the values. `vent
 | Constant | Tag | Rationale |
 |---|---|---|
 | `MEANLINE_K` | `[SHEET]` | `expectedRP = MEANLINE_K × GP`. Calibrate so a **par** venture's *resting* RP ≈ `MEANLINE_K × its GP`, in the band's units — not a per-cycle value. The earlier `k=5` is retired. |
-| MEET-gain magnitude (terms-scaled) | `[SHEET]` | The deploy meter's realised value; set with the band slice. **Stood in for today by the flat `REP_MEET_FLAT` = 20 above** — a placeholder, never a first cut at this. |
-| BREACH-drop magnitude (inverse-commitment) | `[SHEET]` | The escalation curve — "the last real ruling Slice 4 needs" (`licence-and-price-system.md`). Do not invent it here. **Stood in for today by the flat `REP_BREACH_FLAT` = 30 above.** |
+| `REP_MEET_MAX` / `REP_W_COMMIT` / `REP_W_EQUITY` | `[FIRST-CUT]` **100 / 0.5 / 0.5** *(RP slice 2)* | Met-cycle gain = `REP_MEET_MAX · (REP_W_COMMIT · committedOutputPct + REP_W_EQUITY · equityFrac)`, where `equityFrac` = offered equity / the 0.49 ceiling — the deploy meter (`repGain`) made real. Full terms → +100/cycle, so +1000 in 10 cycles = the dividend-max tier. Scaled by the gain taper (knee 800 / cap 1500 above) before applying; **not** window-pro-rated at first cut. Supersedes the flat `REP_MEET_FLAT` = 20. |
+| `REP_BREACH_MAX` / `REP_BREACH_MIN` | `[FIRST-CUT]` **100 / 10** *(RP slice 2)* | Breach drop = `−(REP_BREACH_MAX − (REP_BREACH_MAX − REP_BREACH_MIN) · committedOutputPct)` — linear inverse-commitment: −10 at 100% commit, → −100 as commit → 0 (0% can't breach, so −100 is a limit, never paid). **Not** tapered; hard-clamped at the −500 floor. The −300 / −500 closure *consequences* are a separate later slice. Supersedes the flat `REP_BREACH_FLAT` = 30. |
 | GP weights (system / mining / refining, per tier) | `[SHEET]` | Set when the GP-calculator slice lands; tier-scaled, deployed-only, idle = 0. |
 | Outpost deploy RP offset | `[DEFERRED]` | `= MEANLINE_K × (outpost GP)` (bar-neutral, `points-and-reputation.md §1.2`); when outposts are built. |
 
