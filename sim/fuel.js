@@ -14,10 +14,18 @@
 // allowance, and — the boundary that matters — **nothing here spends fuel**. A
 // hoard is seeded at founding, sits, and can now be quoted against a route; the
 // deduction is Slice 3 (docs/fuel-supply-and-allocation.md §8). The real fuel
-// economy (the commons and its reserve, mean-line issuance sized by reputation
-// against Points, and the reserve/flow price controller under it) is designed in
-// that same doc and is NOT built; do not read any constant below as a stand-in
-// for it.
+// economy (the commons and its reserve, and the reserve/flow price controller
+// under it) is designed in that same doc and is NOT built; do not read any
+// constant below as a stand-in for it.
+//
+// ⚠ ONE PIECE OF THAT ECONOMY NOW EXISTS, AND IT IS NOT HERE (31-08-26, slice 4):
+// **mean-line issuance** — the RP-against-Points judgement that will size a grant —
+// lives in its own module, **sim/meanline.js**. §4 of points-and-reputation.md rules
+// it the fuel layer's, and "the fuel layer" is a concept rather than a filename: it
+// reads Points and reputation and no geometry at all, so it is a different rule from
+// the burn and the quote below, and it keeps this file's scope note true. It still
+// grants NOTHING — `fuelGranted = baseGrant × modifier` needs `baseGrant`, which is
+// the unbuilt pool slice.
 
 const { nearestWaystation } = require('./transport.js');
 

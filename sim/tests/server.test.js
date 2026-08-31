@@ -407,6 +407,85 @@ test('the served licence panel\'s mirrored constants still match the engine', as
   assert.match(html, /id="cRange" min="0" max="100"/);   // commitment: a 0..1 fraction
 });
 
+// --- the console's MEAN LINE readout (slice 4, 31-08-26) --------------------------
+//
+// docs/points-and-reputation.md §3. The engine derives `expectedReputation` and
+// `issuanceModifier` (sim/meanline.js); the console renders them and computes neither.
+
+test('the served console reads the mean line off the snapshot and reimplements none of it', async () => {
+  const html = await (await fetch(base + '/console')).text();
+
+  assert.match(html, /function meanLineBlock\(/);
+  assert.match(html, /g\.expectedReputation \|\| 0/, 'the expectation comes off the snapshot');
+  assert.match(html, /var mod = g\.issuanceModifier;/, 'and so does the modifier');
+  assert.match(html, /Expected reputation/);
+  assert.match(html, /Issuance modifier/);
+
+  // THE WHOLE POINT: the browser must not compute the modifier. It carries neither the
+  // slope nor `k`, so it structurally CANNOT — a second derivation here could only ever
+  // disagree with the engine's, and this is the number a future fuel grant is scaled by.
+  const meanline = require('../meanline.js');
+  assert.ok(!/MEANLINE_K|ISSUANCE_SENSITIVITY/.test(html),
+    'the console must not name the slope or k — it never computes the modifier');
+  assert.ok(!new RegExp(`\\b${meanline.MEANLINE_K}\\s*\\*`).test(html),
+    'nor multiply anything by k');
+  assert.ok(!/guildReputation[\s\S]{0,120}expectedReputation[\s\S]{0,120}\//.test(html),
+    'nor divide a gap by an expectation of its own');
+
+  // It hangs off the guild block, which renderStage rebuilds on every snapshot poll, so
+  // the modifier moves as holdings and reputation change.
+  assert.match(html, /gpBlock\(g\) \+\s*\n\s*meanLineBlock\(g\)/,
+    'the mean-line block sits with GP inside rpGuildBlock, rebuilt on every refresh');
+
+  // ⚠ It must not present the modifier as fuel anyone is receiving: nothing is granted.
+  assert.match(html, /NOTHING IS GRANTED YET/);
+
+  // The colour must agree with the PRINTED figure, not with the raw float. A guild
+  // sitting on its line computes to 0.997 and displays as 1.00; colouring that red said
+  // "throttled" about a guild that is exactly on par (caught in a browser, 31-08-26).
+  assert.match(html, /var shown = mod\.toFixed\(2\);/);
+  assert.match(html, /var rounded = Number\(shown\);/);
+  assert.match(html, /rounded < 1 \? ' throttled' : \(rounded > 1 \? ' buff' : ''\)/,
+    'the throttled/buff class branches on the ROUNDED figure the viewer sees');
+  assert.ok(!/mod < 1 \? ' throttled'/.test(html), 'and never on the raw float again');
+});
+
+// The console mirrors the two CLAMP BOUNDS — and only those two — so it can label a
+// pinned modifier FLOOR or CEILING. Duplication is only safe with a tripwire, the same
+// bargain the RP band bounds strike. It does no clamping itself.
+test('the console\'s mirrored issuance clamp bounds still match sim/meanline.js', async () => {
+  const html = await (await fetch(base + '/console')).text();
+  const meanline = require('../meanline.js');
+
+  assert.match(html, new RegExp(`FLOOR: ${meanline.ISSUANCE_FLOOR},`),
+    'the FLOOR label must use sim/meanline.js ISSUANCE_FLOOR');
+  assert.match(html, new RegExp(`CEIL:\\s+${meanline.ISSUANCE_CEIL},`),
+    'the CEILING label must use sim/meanline.js ISSUANCE_CEIL');
+  assert.match(html, /MIRRORS sim\/meanline\.js ISSUANCE_FLOOR/);
+  assert.match(html, /MIRRORS sim\/meanline\.js ISSUANCE_CEIL/);
+});
+
+test('GET /snapshot carries the mean line per guild, from the engine helpers', async () => {
+  await reset();
+  await found();
+  await mine();
+  const { body: snap } = await req('GET', '/snapshot');
+  const g = snap.guilds.find((x) => x.id === 'player-guild');
+  const { MEANLINE_K, ISSUANCE_FLOOR } = require('../meanline.js');
+
+  // One home system + one Tier-1 mine = 18 GP (pinned by the GP slice), so the bar is
+  // 18 × 150 — stated by hand rather than recomputed from the helper under test.
+  assert.equal(g.guildPoints, 18);
+  assert.equal(g.expectedReputation, MEANLINE_K * 18);
+  assert.equal(g.expectedReputation, 2700);
+  // A brand-new guild has earned no reputation yet, so it sits at the floor — the
+  // punishing-for-ambition lean, visible from the first tick. The starter fuel hoard is
+  // the other half of the safety net (§3), and nothing is granted anyway.
+  assert.equal(g.guildReputation, 0);
+  assert.equal(g.issuanceModifier, ISSUANCE_FLOOR);
+  assert.ok(Number.isFinite(g.issuanceModifier));
+});
+
 // --- the console's GUILD POINTS readout (GP slice 3, 31-08-26) --------------------
 //
 // docs/points-and-reputation.md §1/§1.0. GP is DERIVED by the engine (sim/points.js) and

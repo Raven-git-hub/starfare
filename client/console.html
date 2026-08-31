@@ -758,6 +758,16 @@
   .gp-row{display:flex; justify-content:space-between; align-items:baseline; margin-top:8px; padding-top:8px; border-top:1px solid var(--line)}
   .gp-row .rp-k{font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3)}
   .gp-row .gp-v{font-family:var(--mono); font-size:15px; color:var(--ink)}
+  /* The mean line: expected RP, and the modifier it produces. The modifier is the
+     payoff number, so it is the one that gets the size and the colour. */
+  .ml-row{display:flex; justify-content:space-between; align-items:baseline; margin-top:5px}
+  .ml-row .rp-k{font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3)}
+  .ml-row .ml-v{font-family:var(--mono); font-size:11px; color:var(--ink2)}
+  .ml-mod{display:flex; justify-content:space-between; align-items:baseline; margin-top:5px; padding-top:6px; border-top:1px dashed var(--line)}
+  .ml-mod .ml-modv{font-family:var(--mono); font-size:17px; color:var(--ink)}
+  .ml-mod .ml-modv.buff{color:var(--green)}
+  .ml-mod .ml-modv.throttled{color:var(--red)}
+  .ml-mod .ml-modv .pin{font-size:9px; letter-spacing:.1em; color:var(--ink3); margin-left:5px}
 </style>
 </head>
 <body>
@@ -1210,6 +1220,21 @@ function clampLbl(p){ return Math.max(4, Math.min(96, p)); }
 // (client/game.html; the test is in sim/tests/server.test.js). If any of these move in
 // sim/licence.js the served-page test goes red instead of the gauge quietly drawing the
 // old band.
+// The mean line's two CLAMP BOUNDS, and nothing else from that model. The console needs
+// them for one reason only — to LABEL a modifier that has hit an edge as FLOOR or CEILING,
+// so a pinned guild reads as pinned rather than as a coincidence. It does no clamping
+// itself; the engine's number arrives already clamped.
+//
+// MIRRORS, WITH A TRIPWIRE, exactly as the RP band bounds below are: there is no endpoint
+// serving them, and duplication is only safe when a served-page test fails the moment they
+// move in sim/meanline.js. The line's slope and its points-to-reputation constant are
+// deliberately NOT here — the console never computes the modifier, so it must not carry
+// the two numbers that would let it, and a served-page test asserts neither appears.
+var ML = {
+  FLOOR: 0.3,        // MIRRORS sim/meanline.js ISSUANCE_FLOOR   [FIRST-CUT]
+  CEIL:  1.5,        // MIRRORS sim/meanline.js ISSUANCE_CEIL    [FIRST-CUT]
+};
+
 var RP = {
   FLOOR: -500,       // MIRRORS sim/licence.js RP_FLOOR       — the closure threshold  [FIRST-CUT]
   KNEE:   800,       // MIRRORS sim/licence.js RP_TAPER_KNEE  — gains taper above it   [FIRST-CUT]
@@ -1287,6 +1312,50 @@ function rpGauge(value, opts){
 // (§3, NOT BUILT) will read the second against the first. The console already lists this
 // guild's systems and ventures, so the number plus the visible holdings is enough to see
 // why GP is what it is.
+// THE MEAN LINE — the payoff of the whole Points/reputation pair (§3). `expectedReputation`
+// is the RP a guild this size is expected to have earned; `issuanceModifier` is its actual
+// RP judged against that. BOTH ARE READ OFF THE SNAPSHOT: the console does not divide, does
+// not clamp, and holds none of the four constants, so there is nothing here to mirror and
+// no constant-mirror tripwire to write — the same standing the GP number has.
+//
+// THE MODIFIER IS THE NUMBER TO WATCH, so it gets the size and the colour: a throttled
+// guild reads red, a buffed one green, and one sitting on its line reads plain. That is
+// what makes a sprawler visible — hold three ventures across three systems instead of one
+// and this drops to ~0.33 while nothing else on screen changes.
+//
+// FORMATTED, NOT COMPUTED. The engine publishes an unrounded float (no precision is ruled),
+// so the two decimals here are display formatting of the engine's number — the same thing
+// `fmt` and the thermometer's `Math.round(fillPct)` already do — not a calculation.
+//
+// ⚠ IT GRANTS NO FUEL, and the footer says so. `fuelGranted = baseGrant × modifier` needs
+// `baseGrant`, the unbuilt pool slice, so this multiplies nothing today. A panel must not
+// present it as fuel a guild is receiving.
+function meanLineBlock(g){
+  var exp = g.expectedReputation || 0;
+  var mod = g.issuanceModifier;
+  if (mod == null) mod = 1;
+  var pinned = mod <= ML.FLOOR ? 'floor' : (mod >= ML.CEIL ? 'ceiling' : '');
+  // THE COLOUR IS READ OFF THE NUMBER THE VIEWER ACTUALLY SEES, not off the raw float.
+  // A guild sitting essentially on its line computes to 0.997, which DISPLAYS as 1.00 —
+  // and colouring that red said "throttled" about a guild that is exactly on par. This is
+  // not a threshold of the console's own invention: it simply keeps the colour and the
+  // printed figure telling the same story, at the precision the figure is printed to.
+  var shown = mod.toFixed(2);
+  var rounded = Number(shown);
+  var cls = rounded < 1 ? ' throttled' : (rounded > 1 ? ' buff' : '');
+  return '<div class="ml-row">' +
+      '<span class="rp-k" title="' + esc('the reputation a guild of this size is expected to have earned — '
+        + 'the mean line its own reputation is judged against') + '">Expected reputation</span>' +
+      '<span class="ml-v">' + fmt(exp) + '</span>' +
+    '</div>' +
+    '<div class="ml-mod">' +
+      '<span class="rp-k" title="' + esc('this guild\'s reputation judged against the line: below it throttles '
+        + 'a future fuel grant, above it buffs one. Nothing is granted yet.') + '">Issuance modifier</span>' +
+      '<span class="ml-modv' + cls + '">x' + shown +
+        (pinned ? '<span class="pin">' + pinned.toUpperCase() + '</span>' : '') + '</span>' +
+    '</div>';
+}
+
 function gpBlock(g){
   return '<div class="gp-row">' +
     '<span class="rp-k" title="' + esc(
@@ -1308,10 +1377,14 @@ function rpGuildBlock(){
       '<span class="rp-v' + (rep < 0 ? ' neg' : '') + '">' + fmt(rep) + '</span></div>' +
     rpGauge(rep, { scale: true }) +
     gpBlock(g) +
+    meanLineBlock(g) +
     '<div class="sm-foot">The sum of this guild\'s ventures\' reputation, moved at each cycle ' +
       'boundary by the same met/breach verdict that charges the fee. The band runs ' + RP.FLOOR +
       ' to about ' + RP.CAP + '; gains taper above ' + RP.KNEE + ', drops never do. The ' +
-      RP.FORCED_LEASE + ' and ' + RP.DIVIDEND_MAX + ' marks are scale only — neither consequence is built.</div>' +
+      RP.FORCED_LEASE + ' and ' + RP.DIVIDEND_MAX + ' marks are scale only — neither consequence is built. ' +
+      'Guild points are this guild\'s SIZE (its systems and ventures, tier-weighted); the modifier is its ' +
+      'reputation judged against the line expected for that size — below it throttles a future fuel grant, ' +
+      'above it buffs one. NOTHING IS GRANTED YET: the base grant it would multiply is the unbuilt pool slice.</div>' +
   '</div>';
 }
 // The dot carries THIS LICENCE's own verdict (§5: met/breach is judged per venture, not

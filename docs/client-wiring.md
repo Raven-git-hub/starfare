@@ -1220,3 +1220,31 @@ and the mean line that will read the second against the first is the next slice.
 
 **753 tests (+22), zero failures.** The state determinism goldens are untouched — GP is never
 serialized, so they cannot move on its account.
+
+
+### The mean line reaches the console *(31-08-26)* — the payoff number
+
+Ruling: `docs/points-and-reputation.md` §3. **`client/console.html`** (plus `sim/meanline.js`,
+`sim/snapshot.js` and tests). The Syndicate footer now carries the whole model in four figures:
+**reputation** (what you contribute), **guild points** (how big you are), **expected reputation** (the
+bar your size sets) and the **issuance modifier** (the verdict).
+
+- **`guilds[].expectedReputation`** — an integer, `MEANLINE_K × guildPoints`.
+- **`guilds[].issuanceModifier`** — a **float**, already clamped by the engine, and deliberately
+  **unrounded**: no precision is ruled, so the console formats two decimals at the point of display.
+- **The modifier is the number to watch**, so it gets the size and the colour — red throttled, green
+  buffed, plain on the line. Hold three ventures on one system and it reads ~1.00; hold the same three
+  across three systems and it reads ~0.33 with nothing else on screen changing.
+- **The console mirrors ONLY the two clamp bounds** (`ML.FLOOR` / `ML.CEIL`), and only to LABEL a pinned
+  modifier FLOOR or CEILING, with a served-page tripwire against `sim/meanline.js`. It deliberately does
+  **not** carry `MEANLINE_K` or the slope, so it structurally cannot compute the modifier; a test asserts
+  neither number appears in the file.
+- **⚠ It grants no fuel, and the footer says so.** `fuelGranted = baseGrant × modifier` needs
+  `baseGrant`, the unbuilt pool slice, so this multiplies nothing. A panel must never present the
+  modifier as fuel a guild is receiving.
+- **Colour follows the PRINTED figure, not the raw float.** A guild on its line computes to 0.997 and
+  displays as `1.00`; colouring that red said "throttled" about a guild that is exactly on par. Caught
+  in a browser and pinned by a test.
+
+**781 tests (+28), zero failures.** The state determinism goldens are untouched — everything here is
+derived and nothing new reaches serialized state.
