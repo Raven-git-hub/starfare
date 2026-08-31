@@ -173,12 +173,12 @@ An outpost raises your GP (your bar) but delivers nothing to the Syndicate on it
 it would drop you *below* your line and **punish** you for deploying a useful asset. The fix: **any GP asset
 that can't earn RP through use gets a one-time deploy RP bump ≈ `MEANLINE_K × (its GP)`, so deploying it is
 bar-neutral.** Productive assets (mines, refineries) get **no** offset — they earn their bar back by delivering.
-This prevents "deploy traps" for any future passive asset, not just outposts.
+This prevents "deploy traps" for any future passive asset, not just outposts. **Its founding-time instance is the guild founding endowment (§2.5):** the home system a guild is granted at founding is exactly such an asset (raises GP, earns no RP), but because a founded guild has no venture to carry the offset — the starter gift is idle inventory — it lives as a one-time **guild-level** endowment rather than on the asset.
 
 ## 2. Reputation Points (RP) — contribution, VARIABLE, per-venture
 
 A measure of how much a guild uses its size to contribute to the Syndicate. **Variable** — actions move it up
-and down. **Per-venture running total; guild RP = Σ its ventures' RP.**
+and down. **Per-venture running total; guild RP = Σ its ventures' RP** — plus a one-time **founding endowment** set at founding (§2.5), so the guild total is `Σ venture.reputation + foundingEndowment`.
 
 - **Fields:** a new per-venture `venture.reputation` (greenfield — `sim/state.js` currently omits it), summed
   into the **existing** `guild.guildReputation` (present at `sim/state.js:81`, initialised `0`, currently
@@ -252,6 +252,66 @@ no matter how big the guild grows.
 
 **Neutral (ruled 0):** signing a licence (`applyForLicence`); buying from the Syndicate (`buyFromSyndicate`) — a
 pure consumer sinks by earning nothing against its bar, so buying needs no explicit penalty.
+
+### 2.5 The founding endowment — a new guild opens on its line (ruled 31-08-26, A′; **NOT BUILT**)
+
+**The problem the mean line creates for a newborn.** A just-founded guild holds only its **home system**
+(GP `= W_SYS = 12`); the gifted starter assets are **idle inventory** (`phase-1-tuning.md` "Starter asset
+gift") and score **0 GP** until deployed, and founding creates **no ventures**. So `expectedRP = MEANLINE_K ×
+W_SYS = 150 × 12 = 1800` while `guildReputation = 0`, and the issuance modifier pins at the **floor (0.30)**.
+A brand-new guild would be throttled to 30% fuel before it has had any chance to earn — punishing-for-ambition
+aimed at exactly the moment we want players founding and expanding. The mean line cannot, on structure alone,
+tell "just founded, hasn't had a chance" from "holds territory and does nothing with it": both read as
+all-system-GP, zero-venture-RP.
+
+**The ruling (A′).** Founding grants a one-time **guild founding endowment**: a signed-integer RP amount on the
+guild, `guild.foundingEndowment`, set **once at founding** to `MEANLINE_K × (GP of the founding holdings)` —
+which is `MEANLINE_K × W_SYS` (the home system is all a founded guild holds; idle starter assets score 0). A
+guild's total reputation becomes
+
+    guildReputation == Σ venture.reputation + guild.foundingEndowment
+
+and `checkGuildReputationSum` (`sim/invariants.js`) generalises to include the term. So a newborn opens with
+`RP = 1800 = expectedRP` → modifier **1.0**, exactly on its line. This is §1.2's passive-asset offset applied at
+founding: the home system raises the bar but can never earn RP on its own, so it gets a one-time offset —
+carried as a **guild-level** term rather than on the asset, because a founded guild has no venture to hold it
+(the starter gift is idle inventory).
+
+**Sizing is DERIVED — it invents no number.** `MEANLINE_K` (150) and `W_SYS` (12) are both already ruled; the
+endowment is their product and **tracks them** if either retunes. It is NOT a tunable and gets no
+`[FIRST-CUT]`/`[SHEET]` row (`phase-1-tuning.md` records it as derived).
+
+**Density-beats-sprawl is preserved — the endowment neutralises the home base, once, and nothing else.**
+
+- It is set **once at founding and never changes** — not recomputed, not added to on expansion.
+- Every system grabbed **after** founding raises GP by `W_SYS` with **no** matching endowment, so sprawl still
+  sinks a guild below its line — the anti-sprawl liability (§1, §3) is untouched.
+- **Ventures earn their own bar** (§1.2: productive assets get no offset). A freshly-deployed venture — starter
+  or later — raises GP and earns its RP back through commitments; the endowment does **not** seed ventures, so
+  they run the normal lean-then-earn loop (§3). Deploying the starter miners/factories is still the gameplay,
+  and each still climbs from ~floor to its line as it meets commitments.
+- The GP formula and the confirmed `k = 150` calibration (§0a, §3) are **unchanged**: the endowment is purely
+  **additive** and only newly-founded guilds carry it, so every established guild is judged exactly as
+  calibrated.
+
+**Intended consequence — rule it, don't "fix" it.** Because the endowment is permanent, a guild that dismantles
+**all** its ventures but keeps its home system sits at `RP = foundingEndowment = 1800 = expectedRP` → modifier
+**1.0**, NOT the floor. The home base is **permanently floor-protected**; only *extra* territory (sprawl) or
+*un-earned* ventures pull a guild down. This is intended — your granted home is your guaranteed base. *(The
+alternative of distributing the endowment onto starter ventures, so dismantling them dropped you to the floor,
+was considered and rejected: it needs pre-deployed starter ventures, which the idle-inventory starter gift
+rules out.)*
+
+**Precedent.** The genesis home-claim already deliberately withholds the "+20 for an uncontested claim" earn
+bonus (`sim/actions.js`: "that is for play actions, not founding"). Founding is already reputation-special; the
+endowment is the same instinct — founding is **neutral**, not **earned**.
+
+**Build seam (for the slice, not now).** Set `guild.foundingEndowment` in the `foundGuild` apply
+(`sim/actions.js`); generalise `checkGuildReputationSum` (`sim/invariants.js`) and update `design.md §15.5`
+invariant 3 in the **same commit** (doc-and-code together). The mean line already reads `guild.guildReputation`
+(the total) and needs no change. The empty-guild guard (§3: `GP = 0 → modifier 1.0`) is a **separate** case — a
+guild holding literally nothing — and still stands; a founded guild has `GP = 12`, so the endowment, not the
+guard, is what puts it on its line. `venture.reputation` is unchanged.
 
 ## 3. The mean line — expected RP for your GP (fuel issuance)
 
