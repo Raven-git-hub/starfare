@@ -721,6 +721,37 @@
     color:var(--amber); font-variant-numeric:tabular-nums; margin-top:3px}
   .sm-stats .st .v .u{font-size:9px; color:var(--ink3); margin-left:2px}
   .sm-foot{font-family:var(--mono); font-size:9px; line-height:1.5; color:var(--ink3); margin-top:8px}
+  /* --- Reputation band gauge (RP readout) ---------------------------------
+     A horizontal scale spanning the whole band, RP_FLOOR..RP_SOFT_CAP. Every
+     position on it is (value - floor)/(cap - floor) — DISPLAY arithmetic over
+     engine-owned bounds, the same standing as the thermometer's fill %. */
+  .rp-gauge{position:relative; height:6px; border:1px solid var(--line); background:var(--void); border-radius:2px; overflow:hidden}
+  .rp-gauge.tall{height:10px}
+  /* the taper zone (knee..cap): gains shrink here, so the band is visibly
+     harder to climb at the top — "slow to climb" made a picture. */
+  .rp-taper{position:absolute; top:0; bottom:0; background:repeating-linear-gradient(135deg, var(--amber-ghost) 0 3px, transparent 3px 6px)}
+  .rp-tick{position:absolute; top:0; bottom:0; width:1px; background:var(--line2)}
+  .rp-tick.warn{background:var(--red); opacity:.55}
+  .rp-tick.good{background:var(--green); opacity:.55}
+  .rp-val{position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--ink); box-shadow:0 0 4px rgba(232,223,200,.5)}
+  .rp-val.neg{background:var(--red); box-shadow:0 0 4px rgba(194,96,58,.6)}
+  .rp-val.pinned{width:3px; background:var(--red); box-shadow:0 0 6px rgba(194,96,58,.9)}
+  .rp-scale{position:relative; height:11px; font-family:var(--mono); font-size:8px; color:var(--ink3); margin-top:2px}
+  .rp-scale span{position:absolute; transform:translateX(-50%); white-space:nowrap}
+  .rp-scale span.edge0{transform:none; left:0}
+  .rp-scale span.edge1{transform:none; right:0; left:auto}
+  /* the per-row readout: one mono line + a hairline gauge under the commitment */
+  .rp-row{margin-top:3px}
+  .rp-row .rp-n{font-family:var(--mono); font-size:9px; color:var(--ink2); letter-spacing:.06em}
+  .rp-row .rp-n b{color:var(--ink); font-weight:600}
+  .rp-row .rp-n .neg{color:var(--red)}
+  .rp-row .rp-n .pin{color:var(--red); letter-spacing:.1em}
+  /* the guild total block, under the panel stats */
+  .rp-guild{margin-top:10px; padding-top:9px; border-top:1px solid var(--line)}
+  .rp-guild .rp-h{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:5px}
+  .rp-guild .rp-k{font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3)}
+  .rp-guild .rp-v{font-family:var(--mono); font-size:15px; color:var(--ink)}
+  .rp-guild .rp-v.neg{color:var(--red)}
 </style>
 </head>
 <body>
@@ -937,6 +968,14 @@ function synResolve(){
       commitment: pv ? pv.commitment : (v.syndicateCommitment || 0),
       delivered: pv ? pv.delivered : null,
       status: pv ? pv.status : null,
+      // REPUTATION rides along, straight off the snapshot's venture row. Two fields, and
+      // the second is why it is not simply `licensed`: RP moves for anything under a
+      // LICENCE, and `licensed` above means "has a positive commitment" — a 0%-commitment
+      // licence (§5's floor) is licensed in the only sense that matters here while
+      // reading as uncommitted there. `reputation` is absent until the first verdict that
+      // moves it, so it is read as the 0 it means.
+      hasLicence: !!v.licence,
+      reputation: v.reputation || 0,
     };
   });
   var committed = rows.filter(function(l){ return l.licensed; });
@@ -1144,6 +1183,104 @@ function rightTabBar(){
   '</div>';
 }
 function clampLbl(p){ return Math.max(4, Math.min(96, p)); }
+
+// --- REPUTATION: the band readout (RP dev-panel slice, 31-08-26) -------------------
+//
+// docs/points-and-reputation.md §2.1 (the band) and §0a (what is actually built). This
+// renders RP; it decides nothing. Both figures come STRAIGHT off the snapshot —
+// `guild.guildReputation` and `ventures[].reputation`, written by the tick at the window
+// boundary from the licence's own met/breach verdict — and the browser re-sums nothing
+// (§5's display rule, and §15.2's one-source-of-truth: the engine owns the total, and a
+// second addition here could disagree with it).
+//
+// THE ONLY ARITHMETIC BELOW IS A BAR POSITION: `(value - floor) / (cap - floor)`. That is
+// presentation over engine-owned bounds — the same standing as the thermometer's fill
+// percentage — not a game number. Nothing here clamps, tapers or judges RP; the tick has
+// already done all of that by the time a value reaches the snapshot.
+//
+// MIRRORS, WITH A TRIPWIRE. There is no endpoint that serves the band's bounds, so the
+// three engine constants are duplicated here — and duplication is only safe with a
+// tripwire, exactly as the licence panel's P.EQUITY_CEIL / P.K / P.CORNERS are
+// (client/game.html; the test is in sim/tests/server.test.js). If any of these move in
+// sim/licence.js the served-page test goes red instead of the gauge quietly drawing the
+// old band.
+var RP = {
+  FLOOR: -500,       // MIRRORS sim/licence.js RP_FLOOR       — the closure threshold  [FIRST-CUT]
+  KNEE:   800,       // MIRRORS sim/licence.js RP_TAPER_KNEE  — gains taper above it   [FIRST-CUT]
+  CAP:   1500,       // MIRRORS sim/licence.js RP_SOFT_CAP    — the organic soft cap   [FIRST-CUT]
+  // The two TIER MARKS are a different case, and the difference is worth stating rather
+  // than hiding behind the same word. They are ruled by the DOCS
+  // (points-and-reputation.md §2.1, quoting licence-and-price-system.md §5/§7) but have
+  // NO engine constant to mirror — nothing in sim/ reads or names them, because neither
+  // consequence is built. So they are marks on a scale, not thresholds the engine acts
+  // on, and the served-page test pins them against the DOC instead of against sim/.
+  // The day either grows an engine home, it should be mirrored like the three above.
+  FORCED_LEASE: -300,  // docs/points-and-reputation.md §2.1 — forced lease   [NOT BUILT]
+  DIVIDEND_MAX: 1000,  // docs/points-and-reputation.md §2.1 — dividend-max   [NOT BUILT]
+};
+
+// rpPos(v) -> where a reputation sits on the band, 0..100. Clamped so a value outside the
+// band (which the engine's own `checkReputationBand` would already be halting on) still
+// draws ON the bar rather than escaping it — a broken number should look wrong, not
+// vanish.
+function rpPos(v){
+  var pct = (v - RP.FLOOR) / (RP.CAP - RP.FLOOR) * 100;
+  return Math.max(0, Math.min(100, pct));
+}
+
+// rpGauge(value, opts) -> the band as a bar: the taper zone shaded, the four marks, and
+// the value's position on it. `opts.scale` adds the printed scale beneath (used for the
+// guild total, omitted on the cramped roster rows, where the marks carry tooltips).
+//
+// PINNED, NOT CLOSED. A venture at exactly the floor is drawn emphatically — but the
+// label says "pinned", never "closed": reaching -500 is a pin and nothing acts on it.
+// Venture removal, licence revocation and the -300 forced-lease offer are an unbuilt
+// slice (§0a), so this panel must not draw a consequence the engine will not deliver.
+function rpGauge(value, opts){
+  opts = opts || {};
+  var v = value == null ? 0 : value;
+  var pinned = v <= RP.FLOOR;
+  var taperLeft = rpPos(RP.KNEE);
+  var mark = function(at, cls, title){
+    return '<div class="rp-tick ' + cls + '" style="left:' + rpPos(at) + '%" title="' + esc(title) + '"></div>';
+  };
+  var bar = '<div class="rp-gauge' + (opts.scale ? ' tall' : '') + '" title="' + esc(
+      'reputation ' + v + ' on the ' + RP.FLOOR + '…' + RP.CAP + ' band') + '">' +
+    '<div class="rp-taper" style="left:' + taperLeft + '%; right:0" title="' + esc(
+      'taper zone — above ' + RP.KNEE + ' a met cycle gains less, shrinking to nothing at ' + RP.CAP) + '"></div>' +
+    mark(RP.FLOOR, 'warn', RP.FLOOR + ' — closure threshold; a venture here is PINNED (closure itself is not built)') +
+    mark(RP.FORCED_LEASE, 'warn', RP.FORCED_LEASE + ' — forced-lease tier (not built)') +
+    mark(RP.KNEE, '', RP.KNEE + ' — taper knee: gains shrink above this') +
+    mark(RP.DIVIDEND_MAX, 'good', RP.DIVIDEND_MAX + ' — dividend-max tier (not built)') +
+    '<div class="rp-val' + (pinned ? ' pinned' : (v < 0 ? ' neg' : '')) + '" style="left:' + rpPos(v) + '%"></div>' +
+  '</div>';
+  if (!opts.scale) return bar;
+  return bar + '<div class="rp-scale">' +
+    '<span class="edge0">' + RP.FLOOR + '</span>' +
+    '<span style="left:' + rpPos(RP.FORCED_LEASE) + '%">' + RP.FORCED_LEASE + '</span>' +
+    '<span style="left:' + rpPos(RP.KNEE) + '%">' + RP.KNEE + '</span>' +
+    '<span style="left:' + rpPos(RP.DIVIDEND_MAX) + '%">' + RP.DIVIDEND_MAX + '</span>' +
+    '<span class="edge1">' + RP.CAP + '</span>' +
+  '</div>';
+}
+
+// The guild's OWN total, echoed off the snapshot — Σ its ventures' reputation, summed by
+// the ENGINE (and guarded there every tick by `checkGuildReputationSum`). Guild-wide, so
+// it sits with the fee footer, which is the panel's other guild-wide figure, rather than
+// pretending to belong to the good on screen.
+function rpGuildBlock(){
+  var g = ((STATE.snap && STATE.snap.guilds) || []).find(function(x){ return x.id === STATE.guildId; }) || {};
+  var rep = g.guildReputation || 0;
+  return '<div class="rp-guild">' +
+    '<div class="rp-h"><span class="rp-k">Guild reputation</span>' +
+      '<span class="rp-v' + (rep < 0 ? ' neg' : '') + '">' + fmt(rep) + '</span></div>' +
+    rpGauge(rep, { scale: true }) +
+    '<div class="sm-foot">The sum of this guild\'s ventures\' reputation, moved at each cycle ' +
+      'boundary by the same met/breach verdict that charges the fee. The band runs ' + RP.FLOOR +
+      ' to about ' + RP.CAP + '; gains taper above ' + RP.KNEE + ', drops never do. The ' +
+      RP.FORCED_LEASE + ' and ' + RP.DIVIDEND_MAX + ' marks are scale only — neither consequence is built.</div>' +
+  '</div>';
+}
 // The dot carries THIS LICENCE's own verdict (§5: met/breach is judged per venture, not
 // per good). `met` means the engine delivered the venture its ENTIRE target for the
 // window — the test is binary, so one unit short is `breach`, never a part-mark.
@@ -1185,8 +1322,22 @@ function licRow(l, rank, total){
   // The row NAMES the venture by its place ("FEN-6425 I · Node 1"), the snapshot's own
   // `site.name` — not `guild_pl_00004_n01`, an id the player never chose and cannot read.
   // The id stays on the row's tooltip for anyone who needs it.
+  // The RP readout sits under the commitment, on the same "figures live under the name"
+  // principle the row already follows. Only a venture under a LICENCE gets one: nothing
+  // else can move reputation, so a blank gauge on an unlicensed producer would imply a
+  // number that is simply not in play.
+  var repline = '';
+  if (l.hasLicence){
+    var pinned = l.reputation <= RP.FLOOR;
+    var cls = pinned ? 'pin' : (l.reputation < 0 ? 'neg' : '');
+    repline = '<div class="rp-row"><div class="rp-n" title="' +
+        esc('reputation — moved at each cycle boundary by this licence\'s own met/breach verdict') +
+        '">RP <b class="' + cls + '">' + fmt(l.reputation) + '</b>' +
+        (pinned ? ' <span class="pin">PINNED</span>' : '') + '</div>' +
+      rpGauge(l.reputation) + '</div>';
+  }
   var idwrap = '<div class="idwrap" title="' + esc(l.id) + '"><div class="sid">' + esc(l.name) + '</div>' +
-    cmt + '</div>';
+    cmt + repline + '</div>';
   var flex = l._flex ? ' style="flex:' + l._flex + ' 1 0"' : '';
   // The rank and its two movers, stacked in ONE narrow column: the venture id is the
   // thing this roster exists to name, so the control is not allowed to squeeze it — the
@@ -1295,14 +1446,14 @@ function synStats(R){
     return '<div class="sm-stats">' + stat('Window target', '—') + stat('Delivered', '—') +
       stat('Ventures met', '0/' + R.committed.length) + '</div>' +
       '<div class="sm-foot">No licence on this good yet — the engine emits no window, so there is nothing ' +
-      'to meet or breach. ' + esc(synFeeFoot()) + '</div>';
+      'to meet or breach. ' + esc(synFeeFoot()) + '</div>' + rpGuildBlock();
   }
   return '<div class="sm-stats">' +
       stat('Window target', fmt(R.total), 'u') +
       stat('Delivered', fmt(R.delivered), 'u') +
       stat('Ventures met', done + '/' + R.committed.length) +
     '</div>' +
-    '<div class="sm-foot">' + esc(synFeeFoot()) + '</div>';
+    '<div class="sm-foot">' + esc(synFeeFoot()) + '</div>' + rpGuildBlock();
 }
 
 function syndicateMgmtCol(good){

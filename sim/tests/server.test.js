@@ -407,6 +407,104 @@ test('the served licence panel\'s mirrored constants still match the engine', as
   assert.match(html, /id="cRange" min="0" max="100"/);   // commitment: a 0..1 fraction
 });
 
+// --- the console's REPUTATION readout (RP dev-panel slice, 31-08-26) ---------------
+//
+// docs/points-and-reputation.md §2.1. CLIENT-ONLY: the console renders the snapshot's
+// `guild.guildReputation` and `ventures[].reputation`, which RP slices 1 and 2 already
+// put there. These pin that it reads the ENGINE's numbers rather than deriving its own,
+// and that the band it draws them on is the engine's band.
+
+test('the served console reads reputation off the snapshot and never re-sums it', async () => {
+  const html = await (await fetch(base + '/console')).text();
+
+  // The two snapshot fields, read straight — the guild total ECHOED, not recomputed from
+  // the venture rows. A second addition in the browser could disagree with the engine's
+  // own sum (which `checkGuildReputationSum` guards every tick), so §15.2's
+  // one-source-of-truth rule says the panel must read the total it is given.
+  assert.match(html, /g\.guildReputation \|\| 0/, 'the guild total comes off the snapshot');
+  assert.match(html, /reputation: v\.reputation \|\| 0/, 'and each venture row carries its own');
+  assert.ok(!/guildReputation\s*=\s*[^;]*reduce/.test(html),
+    'the console must NOT re-sum the ventures into a guild total of its own');
+
+  // The readout itself: a number, and the band gauge it sits on.
+  assert.match(html, /function rpGauge\(/);
+  assert.match(html, /function rpGuildBlock\(/);
+  assert.match(html, /class="rp-guild"/);
+  assert.match(html, /Guild reputation/);
+
+  // It lives in the Syndicate panel, which re-renders on every snapshot poll — so RP
+  // visibly MOVES as ticks advance, which is the whole point of the slice.
+  assert.match(html, /'<div class="sm-foot">' \+ esc\(synFeeFoot\(\)\) \+ '<\/div>' \+ rpGuildBlock\(\)/,
+    'the guild block hangs off synStats, which renderStage rebuilds on every refresh');
+});
+
+test('the served console draws the band gauge from DISPLAY arithmetic only', async () => {
+  const html = await (await fetch(base + '/console')).text();
+
+  // The ONE calculation the panel is allowed: where a value sits on the bar. That is
+  // presentation over engine-owned bounds, the same standing as the thermometer's fill %.
+  assert.match(html, /\(v - RP\.FLOOR\) \/ \(RP\.CAP - RP\.FLOOR\) \* 100/,
+    'the bar position is (value - floor) / (cap - floor)');
+
+  // The taper zone is SHOWN (so "slow to climb" is visible) but never COMPUTED here:
+  // the console must not reimplement gainFactor, only shade the region it applies to.
+  assert.match(html, /class="rp-taper"/);
+  assert.ok(!/gainFactor/.test(html), 'the console must not reimplement the engine taper');
+  assert.ok(!/metGain|breachPenalty/.test(html), 'nor either magnitude formula');
+
+  // A venture at the floor reads PINNED, never "closed": closure is not built (§0a), so
+  // the panel must not draw a consequence the engine will not deliver.
+  assert.match(html, /PINNED/);
+  assert.ok(!/\bclosed\b/i.test(html.split('function rpGauge(')[1].split('function rpGuildBlock')[0]),
+    'the gauge must not call a pinned venture closed');
+});
+
+// The console MIRRORS the band's three engine constants (there is no endpoint serving
+// them). Duplication is only safe with a tripwire — the same bargain the licence panel's
+// P.EQUITY_CEIL / P.K / P.CORNERS strike above. Move any of these in sim/licence.js and
+// this fails, instead of the gauge quietly drawing yesterday's band.
+test('the console\'s mirrored RP band bounds still match sim/licence.js', async () => {
+  const html = await (await fetch(base + '/console')).text();
+  const licence = require('../licence.js');
+
+  assert.match(html, new RegExp(`FLOOR: ${licence.RP_FLOOR},`),
+    'the gauge floor must be sim/licence.js RP_FLOOR');
+  assert.match(html, new RegExp(`KNEE:\\s+${licence.RP_TAPER_KNEE},`),
+    'the taper zone must start at sim/licence.js RP_TAPER_KNEE');
+  assert.match(html, new RegExp(`CAP:\\s+${licence.RP_SOFT_CAP},`),
+    'the gauge cap must be sim/licence.js RP_SOFT_CAP');
+});
+
+// The two TIER MARKS are a different case and are pinned differently, on purpose. They
+// are ruled by the DOCS but have no engine constant to mirror, because neither
+// consequence is built — so the tripwire is against the ruling itself. If the doc
+// renumbers a tier, this goes red and the console follows it.
+test('the console\'s RP tier marks still match the ruling in points-and-reputation.md', async () => {
+  const html = await (await fetch(base + '/console')).text();
+  const doc = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'points-and-reputation.md'), 'utf8');
+
+  assert.match(html, /FORCED_LEASE: -300,/);
+  assert.match(html, /DIVIDEND_MAX: 1000,/);
+  // §2.1 names all three edges in one phrase. The doc uses a Unicode minus and wraps the
+  // phrase across a line break, so both are normalised away before matching — the tripwire
+  // is on the NUMBERS being ruled, not on how the paragraph happens to be filled.
+  const ruling = doc.replace(/\u2212/g, '-').replace(/\s+/g, ' ');
+  assert.ok(ruling.includes('+1000 dividend-max, -300 forced-lease, -500 closure'),
+    'the tier marks the console draws must still be the ones §2.1 rules');
+
+  // And they must be labelled as scale, not as behaviour: neither is built.
+  assert.match(html, /forced-lease tier \(not built\)/);
+  assert.match(html, /dividend-max tier \(not built\)/);
+
+  // If either ever GROWS an engine constant, this flips red on purpose — that is the
+  // signal to promote it to a real sim/ mirror like the three bounds above.
+  const licence = require('../licence.js');
+  assert.equal(licence.RP_FORCED_LEASE, undefined,
+    'RP_FORCED_LEASE now exists in the engine — mirror it properly instead of quoting the doc');
+  assert.equal(licence.RP_DIVIDEND_MAX, undefined,
+    'RP_DIVIDEND_MAX now exists in the engine — mirror it properly instead of quoting the doc');
+});
+
 test('GET /assets/<path> serves the client\'s art, and refuses a path that escapes', async () => {
   // A real file the client references (client/assets/planets/rocky.jpg).
   const ok = await fetch(base + '/assets/planets/rocky.jpg');

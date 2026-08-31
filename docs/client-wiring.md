@@ -1162,3 +1162,38 @@ a new surface.
 
 **727 tests (+17), zero failures.** The licence-less determinism goldens stayed byte-identical and were
 not regenerated.
+
+
+### The console's reputation readout *(31-08-26)* — the first surface that RENDERS RP
+
+Ruling: `docs/points-and-reputation.md` §2.1 (the band) and §6.1 (the UI-wiring record, written by this
+slice — the prompt cited a §6.1 that did not exist). **`client/console.html` only.** No engine file,
+no action, no new snapshot field, schema still 7.
+
+**What it shows**, both straight off the snapshot RP slices 1–2 already fill:
+
+- **`ventures[].reputation`** — a number and a compact band gauge on each Syndicate-tab roster row, for
+  any venture carrying a `licence`. Note that is `licence`, not the roster's own `licensed` flag: the
+  latter means "has a positive commitment", and a **0%-commitment licence** still accrues RP.
+- **`guilds[].guildReputation`** — with a full gauge and printed scale, in the panel footer beside the
+  guild-wide fee lump, which it matches in scope and in cadence.
+
+**The rules this surface obeys, for whoever wires the next one:**
+
+- **Echo, never re-derive.** The guild total is read, not re-summed from the venture rows. The engine
+  owns that sum and asserts it every tick; a second addition in the browser could only disagree.
+- **The only arithmetic is a bar position** — `(value − floor) / (cap − floor)`. The console does not
+  reimplement `gainFactor`, `metGain` or `breachPenalty`, and a test asserts none of them appear.
+- **Band bounds are MIRRORED with a tripwire** (`RP.FLOOR`/`KNEE`/`CAP` against `sim/licence.js`), the
+  same bargain the licence panel's `P.EQUITY_CEIL`/`P.K`/`P.CORNERS` strike. The **tier marks** (−300,
+  +1000) have no engine constant — neither consequence is built — so they are pinned against §2.1's
+  wording and labelled "not built" on screen.
+- **PINNED, never "closed".** A venture at −500 is at the threshold; nothing acts on it. Do not render a
+  closure state, on this surface or the next one.
+
+**Still unruled, and flagged in §6.1 rather than assumed:** whether `client/game.html`'s deploy meter
+should stop mocking `repGain` and read `venture.reputation` instead, and what a player-facing standing
+display should show at all — a raw number, a band, or only a tier.
+
+**731 tests (+5), zero failures.** No `sim/` engine file changed, so the determinism goldens are
+untouched by construction.
