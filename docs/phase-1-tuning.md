@@ -238,6 +238,8 @@ Shapes are ruled in `docs/points-and-reputation.md`; these are the values. `vent
 
 | Constant | `[FIRST-CUT]` | Rationale |
 |---|---|---|
+| **`REP_MEET_FLAT`** | **20** | **BUILT 31-08-26, RP slice 1** (`sim/licence.js`). The flat RP a licensed venture gains at a window boundary it MET. **Given by the human, not invented, and deliberately NOT calibrated** — a "make it move" placeholder, exactly as `GUILD_STARTING_FUEL` was for fuel. It is the stand-in for the `[SHEET]` terms-scaled MEET-gain below, and is replaced by it, not tuned into it. |
+| **`REP_BREACH_FLAT`** | **30** | **BUILT 31-08-26, RP slice 1** (`sim/licence.js`). The flat RP a licensed venture loses at a boundary it BREACHED, subtracted (the constant is stored positive; `reputationDelta` owns the sign). Same status as the row above — the stand-in for the `[SHEET]` inverse-commitment BREACH-drop. **The one relationship here that is not arbitrary: breach > meet**, so §2.3's "slow to climb, fast to fall" is true from the first tick rather than arriving with the calibration. |
 | Gain taper knee | **800** | Below it, MEET-gains are full strength; above it they taper toward the cap. |
 | Gain soft cap | **1500** | Organic asymptote: `gainFactor = clamp((1500 − RP)/700, 0, 1)`. RP can bank a buffer past dividend-max but with diminishing returns. |
 | `ISSUANCE_SENSITIVITY` | **1.0** | Slope on `gap/expected` in the fuel modifier. |
@@ -252,10 +254,15 @@ Shapes are ruled in `docs/points-and-reputation.md`; these are the values. `vent
 | Constant | Tag | Rationale |
 |---|---|---|
 | `MEANLINE_K` | `[SHEET]` | `expectedRP = MEANLINE_K × GP`. Calibrate so a **par** venture's *resting* RP ≈ `MEANLINE_K × its GP`, in the band's units — not a per-cycle value. The earlier `k=5` is retired. |
-| MEET-gain magnitude (terms-scaled) | `[SHEET]` | The deploy meter's realised value; set with the band slice. |
-| BREACH-drop magnitude (inverse-commitment) | `[SHEET]` | The escalation curve — "the last real ruling Slice 4 needs" (`licence-and-price-system.md`). Do not invent it here. |
+| MEET-gain magnitude (terms-scaled) | `[SHEET]` | The deploy meter's realised value; set with the band slice. **Stood in for today by the flat `REP_MEET_FLAT` = 20 above** — a placeholder, never a first cut at this. |
+| BREACH-drop magnitude (inverse-commitment) | `[SHEET]` | The escalation curve — "the last real ruling Slice 4 needs" (`licence-and-price-system.md`). Do not invent it here. **Stood in for today by the flat `REP_BREACH_FLAT` = 30 above.** |
 | GP weights (system / mining / refining, per tier) | `[SHEET]` | Set when the GP-calculator slice lands; tier-scaled, deployed-only, idle = 0. |
 | Outpost deploy RP offset | `[DEFERRED]` | `= MEANLINE_K × (outpost GP)` (bar-neutral, `points-and-reputation.md §1.2`); when outposts are built. |
 
 *Note: the earlier draft's `guild.reputation` field and its flat `+50 / −80` event list are **withdrawn** —
 superseded by `venture.reputation` summed into the existing `guild.guildReputation`, per `points-and-reputation.md`.*
+
+*Built as of 31-08-26 (RP slice 1, `points-and-reputation.md` §6 step 1): the two fields, the guild sum and the
+flat meet/breach at the window boundary. **Nothing else in this section is built** — the taper knee, the soft
+cap and the three issuance constants above are values with no consumer yet, and no code clamps, tapers or floors
+RP today.*

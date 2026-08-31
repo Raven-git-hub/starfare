@@ -78,6 +78,23 @@ function createGuild({
     // (bypassing the foundGuild action) may legitimately have no home.
     homeSystemId,
     homePlanetId,
+    // guildReputation: the guild's Reputation Points — the SUM of its ventures'
+    // `venture.reputation` (docs/points-and-reputation.md §2, "guild RP = Σ its
+    // ventures' RP"). Signed INTEGER, and non-negativity-EXEMPT like `credits`: a
+    // guild in bad standing is a pressure state, not a broken ledger.
+    //
+    // DENORMALISED, not derived — a decision, not an oversight. §15.2 wants one source
+    // of truth and the ventures ARE it; this is the cached sum, kept in step at the one
+    // place RP moves (the boundary verdict in sim/tick.js) and GUARDED every tick by
+    // `checkGuildReputationSum` (invariants.js), so it can never silently drift from the
+    // rows it totals. That is the same discipline `homeSystemId` and `venture.systemId`
+    // already run under — a denormalised copy is legal here exactly when an invariant
+    // watches it. It is kept STORED rather than derived because deleting the field is
+    // not free: it sits on every guild in every save and in every pinned determinism
+    // golden, so deriving it would move all of those hashes to buy a purity the tripwire
+    // already delivers more cheaply. Written 0 here UNCONDITIONALLY — never omitted the
+    // way `venture.reputation` is — for the same reason: the key is already in those
+    // goldens, and a guild with no ventures must serialize exactly as it did before.
     guildReputation: 0,
     // stockpiles: systemId -> good -> int, the guild's holdings of each RAW
     // resource, SYSTEM-SCOPED per ruling B1 (§15.2) — a separate pool per system
@@ -137,9 +154,11 @@ function createGuild({
 }
 
 // Venture (OWNED, design.md §15.4). Fields not yet needed by the walking
-// skeleton (licenceId, siteId, droidComplement, shareholders, automation,
-// reputation) are left out rather than defaulted to a made-up value —
-// add them when a real consumer needs them, not speculatively.
+// skeleton (licenceId, droidComplement, shareholders, automation) are left out
+// rather than defaulted to a made-up value — add them when a real consumer needs
+// them, not speculatively. `reputation` stopped being one of them on 31-08-26
+// (RP slice 1, docs/points-and-reputation.md §6 step 1): the window boundary is a
+// real consumer, so it is assembled below.
 function createVenture({
   id,
   ownerGuildId,
@@ -155,6 +174,7 @@ function createVenture({
   equityPct = 0,
   licence = null,
   committedFromTick = null,
+  reputation = 0,
   batchCarry = {},
 }) {
   if (id === undefined) throw new Error('createVenture: id is required');
@@ -281,6 +301,32 @@ function createVenture({
     // it is a tick that does not exist, and it should reach the tick's tripwire rather
     // than be swallowed here (this file assembles, invariants.js judges).
     ...(committedFromTick != null ? { committedFromTick } : {}),
+    // reputation: the venture's REPUTATION POINTS — its running contribution score
+    // (docs/points-and-reputation.md §2; design.md §5 "Reputation and Hostile Takeovers",
+    // which is where "ventures carry a fully visible reputation score" comes from). A
+    // SIGNED integer (§15.2), and the sign is the point: it may go NEGATIVE, so it joins
+    // `credits` and the Syndicate ledger in invariant 3's carve-out (invariants.js). A
+    // venture in bad standing is a pressure state — the band's -500 closure floor is what
+    // eventually acts on it (§2.1) — not a broken ledger.
+    //
+    // NON-CONSERVED, like `influence` and unlike `fuelHoard`: RP is MINTED and DESTROYED
+    // by events, so there is no ledger counterpart to balance it against and no
+    // conservation law to keep. What IS kept is the guild SUM (`guild.guildReputation`),
+    // and `checkGuildReputationSum` asserts it every tick.
+    //
+    // MOVED BY EXACTLY ONE THING TODAY: the licence's met/breach verdict at the window
+    // boundary (sim/tick.js, magnitudes in sim/licence.js). That is invariant 8 —
+    // "reputation moves only on measurable events" — held structurally rather than by
+    // convention. The other sources §2.4 lists (equity offered, leasing, the outpost
+    // deploy offset) are `[DEFERRED]` and deliberately not stubbed.
+    //
+    // OMITTED when 0, exactly as `equityPct`, `licence` and `committedFromTick` above
+    // are: a venture that has never been judged carries no key, so an unlicensed galaxy's
+    // serialized state stays byte-identical and the determinism-hash no-op proof keeps
+    // meaning something. Minted LAZILY on the first verdict and kept thereafter — the
+    // same lifecycle `guild.syndicateWindows` has — so a venture that climbs and falls
+    // back to exactly 0 keeps its key rather than un-minting itself mid-run.
+    ...(reputation !== 0 ? { reputation } : {}),
     // STILL RESERVED, deliberately not stubbed (Slice 5, §15.4): `shareholders`, the
     // investor cap-table Part 2 asks to reserve. Documented rather than written as an
     // empty object, because an empty object on every venture is not a socket: it is

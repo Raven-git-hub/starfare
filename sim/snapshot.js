@@ -238,6 +238,18 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // Held systems only, because a delivery goes only to a system you hold (§6); keys arrive
 // sorted from `heldSystemIds` (invariant 9). Pure derived telemetry: no serialized byte,
 // no determinism hash, and nothing is deducted — that is Slice 3.
+// (31-08-26, RP slice 1): each guild row gains `guildReputation` and each venture row
+// gains `reputation` — the guild's Reputation Points and the per-venture running total
+// they are the sum of (docs/points-and-reputation.md §2 / §6 step 1). ADDITIVE, and NO
+// schema bump: nothing existing changed shape, so every current reader keeps working and
+// an older reader ignores the new keys — the same additive call `fuelCost`,
+// `fuelHoardValue`, `feeQuote`, `shipments`, `licenceFee`, `syndicateSale` and
+// `perVenture` each made; the v3/v4 bumps were for growth INSIDE existing rows, which
+// this is not. Both are STORED state ECHOED, not derived: the tick moves them at the
+// window boundary from the licence's own met/breach verdict, and this file re-sums
+// nothing (§5's display rule, and §15.2's one-source-of-truth). They are reported as
+// their 0 when absent, like `equityPct` and `syndicateCommitment`. The band, the taper
+// and the fuel mean line that will READ these are all later slices; nothing here clamps.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -252,6 +264,7 @@ const SNAPSHOT_SCHEMA = 7;
 //     feeQuote: { <priced good with a baseline>: <basic licence fee, int credits> },
 //       // what a licence signed NOW would cost, per good — sim/licence.js's own licenceFee
 //     guilds: [ { id, name, isBot, credits, fuelHoard, fuelHoardValue, influence,
+//                 guildReputation,                              // RP, Σ its ventures'
 //                 fuelCost: { systemId: { fuelBurn, creditCost } }, // held systems, sorted
 //                 syndicateSale: { tick, thisTick, credited, goods } | null, // Slice 3a
 //                 licenceFee: { tick, thisTick, charged, ventures } | null,   // Slice 3b-iii
@@ -268,6 +281,7 @@ const SNAPSHOT_SCHEMA = 7;
 //       // sendCarry, ticksRemaining, requiredRate, sendThisTick, pctAchieved, status,
 //       // perVenture: { ventureId: { commitment, delivered, status } } }  // §5 per-licence
 //     ventures: [ { id, ownerGuildId, type, siteId, systemId, assetId, resourceType,
+//                   reputation,                              // RP running total, signed
 //                   licence: { committedOutputPct, windowDays, signedTick,       // 3b-i
 //                              lockedPrice, basicFee, discountedFee } | null,
 //                   committedFromTick: int | null,                            // 3b-ii
@@ -324,6 +338,14 @@ function buildSnapshot(state) {
         heldSystemIds(state, g.id).map((systemId) => [systemId, routeFuelCost(systemId)]),
       ),
       influence: g.influence,
+      // guildReputation: the guild's Reputation Points — Σ its ventures' `reputation`
+      // (docs/points-and-reputation.md §2), ECHOED as stored, never re-summed here. The
+      // engine owns the sum and an invariant guards it (`checkGuildReputationSum`); a
+      // snapshot that added the ventures up a second time would be a second derivation
+      // of one fact, and the lens and the state could disagree about a number the fuel
+      // layer's mean line will later read (§3). 0 for every guild that has never been
+      // judged at a boundary, which is every unlicensed one.
+      guildReputation: g.guildReputation || 0,
       homeSystemId: g.homeSystemId || null,
       homePlanetId: g.homePlanetId || null,
       // Guild-level holdings = the per-system pools flattened into one { good: int }
@@ -436,6 +458,15 @@ function buildSnapshot(state) {
         // 3a) — the cut of its commitment-sale income it forfeits. Absent on a venture
         // that offered none, reported here as the 0 it means.
         equityPct: v.equityPct || 0,
+        // reputation: the venture's RP running total (docs/points-and-reputation.md §2;
+        // design.md §5 "ventures carry a fully visible reputation score" — this is what
+        // makes it visible). SIGNED: a breaching venture reports a negative number, and
+        // that is the state the band's closure floor eventually acts on, not an error.
+        // Absent on a venture that has never been judged, reported here as the 0 it
+        // means — exactly the courtesy `equityPct` and `syndicateCommitment` above do,
+        // so a client reads a number and never an `undefined`. Echoed as STORED; the
+        // engine decides, the browser renders (§5's display rule).
+        reputation: v.reputation || 0,
         // licence: the venture's Syndicate Venture Licence (Slice 3b-i) — its agreed
         // terms and the two fee figures LOCKED at signing, so the console can show
         // "your fee: N (discounted from M), locked at price P" without computing a

@@ -315,6 +315,54 @@ function feeOwed(licence, status, fraction) {
   return Math.round(due * fraction);
 }
 
+// ── REPUTATION: the flat meet/breach (RP slice 1, 31-08-26) ────────────────────────
+//
+// docs/points-and-reputation.md §2 / §6 step 1. Reputation Points are a PER-VENTURE
+// running total (`venture.reputation`) summed into `guild.guildReputation`, and this
+// slice gives them exactly ONE mover: the boundary verdict a licence is already judged
+// on. That is design.md §15.5 invariant 8 made structural — "reputation moves only on
+// measurable events ... never on vibes" — because the only event that can move it is the
+// same `status` the fee is charged on, read from the same row, in the same loop.
+//
+// WHY THE MAGNITUDES LIVE HERE AND NOT IN `sim/fuel.js`. The build prompt named fuel.js;
+// the DESIGN does not, and the doc wins (CLAUDE.md). points-and-reputation.md §4 rules
+// the seam in one line: "the LICENCE LAYER owns how RP MOVES ... the FUEL LAYER ... READS
+// `guild.guildReputation`; it does not author it." meet/breach is how RP moves, so it is
+// licence-layer, and it belongs beside `feeOwed` — the other consumer of the very same
+// verdict. fuel.js's own header states the repo rule these obey: "a constant lives in the
+// module that owns the rule it belongs to". Flagged for the human: a one-line move if the
+// prompt's placement was deliberate.
+//
+// `[FIRST-CUT]`, GIVEN BY THE HUMAN (the slice-1 build prompt, 31-08-26) — NOT invented,
+// and deliberately NOT calibrated. They exist to make RP a number that MOVES, the way
+// `GUILD_STARTING_FUEL` made fuel real before anything spent it. The real terms-scaled
+// meet and inverse-commitment breach, the 800-knee gain taper, the 1500 soft cap and the
+// -500 closure floor are all the NEXT slice (§2.2-2.3, `[SHEET]`) and none of them is
+// implemented here: RP is a running integer with no band, no clamp and no floor.
+//
+// BREACH > MEET is the one relationship that is not arbitrary even at first cut: §2.3's
+// "slow to climb, fast to fall" has to be true from the first tick, or the placeholder
+// would teach the opposite of the model it stands in for.
+const REP_MEET_FLAT = 20;
+const REP_BREACH_FLAT = 30;
+
+// reputationDelta(status) -> the signed RP a boundary verdict moves.
+//
+// Takes the SAME `status` string `feeOwed` takes, and refuses the same non-verdicts for
+// the same reason: RP moves only at a boundary, so an `accruing` reaching here would mean
+// reputation fired on a tick where nothing was judged. A silent 0 would be the quietest
+// possible bug — a reputation that simply never moved, with no test going red (§15.5: a
+// silent violation is worse than a crash), so it throws instead.
+//
+// ONE FUNCTION, so the sign convention lives in one place: `met` ADDS, `breach`
+// SUBTRACTS, and no caller can get that backwards by writing the arithmetic itself.
+function reputationDelta(status) {
+  if (status !== 'met' && status !== 'breach') {
+    throw new Error(`reputationDelta: reputation moves only on a boundary verdict — got status "${status}"`);
+  }
+  return status === 'met' ? REP_MEET_FLAT : -REP_BREACH_FLAT;
+}
+
 // isValidCommitmentPct(value) -> a fraction from the floor up to a full commitment.
 function isValidCommitmentPct(value) {
   return typeof value === 'number' && Number.isFinite(value)
@@ -341,4 +389,5 @@ module.exports = {
   FEE_RATE, CORNERS, EQUITY_SHAPE_K, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
   feeFraction, normalisedTerms, licenceFee, feeOwed, isValidCommitmentPct, isValidWindowDays,
   commitmentUnitsFor,
+  REP_MEET_FLAT, REP_BREACH_FLAT, reputationDelta,
 };

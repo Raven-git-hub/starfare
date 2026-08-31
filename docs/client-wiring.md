@@ -1108,3 +1108,35 @@ Fuel row read `3 fuel · ≈ ¢30` and matched the snapshot; 166 real BUYs burne
 one through `POST /action`, which asserts all nine invariants after each apply); the 167th was refused
 with *"insufficient fuel: need 3, have 2"*; the panel then disabled with that same message; and a
 completed SELL left `fuelHoard` untouched at 2.
+
+---
+
+## Reputation Slice 1 — two new snapshot fields, and NO client change *(31-08-26)*
+
+Ruling: `docs/points-and-reputation.md` §6 step 1 (§0a lists exactly what is built). **Engine-only** —
+`client/game.html` and `client/console.html` are untouched, no action changed, and the snapshot
+**schema stays 7** because both fields are additive.
+
+For readers of this file, the contract of the two new fields:
+
+- **`guilds[].guildReputation`** — the guild's **Reputation Points**, `Σ` its ventures'
+  `reputation`. A **signed integer**: it may be negative, and a panel must render a minus sign rather
+  than clamp or `Math.abs` it — a venture in bad standing is the state the model is *about*.
+- **`ventures[].reputation`** — the same figure per venture, its running total. Signed, same rules.
+  Reported as **`0`** for a venture that has never been judged (the stored field is omitted when zero),
+  so a reader always gets a number and never an `undefined` — the courtesy `equityPct` and
+  `syndicateCommitment` already do.
+
+**Both are ECHOED, not derived.** The engine owns the sum and an invariant guards it; the browser must
+not add the ventures up itself, and `guildReputation` is not a number to recompute from the venture
+rows on screen — two derivations of one fact are exactly what §5's display rule exists to prevent.
+
+**What a panel must NOT read into these numbers yet.** They move only by a **flat `[FIRST-CUT]`
+±20/−30** at each window boundary, and there is **no band**: nothing clamps RP to the −500…+1500 range
+the design describes, nothing tapers a gain near the top, and nothing closes a venture at −500. The
+Establish-Venture panel's reputation copy therefore stays **mock** — it is design-ahead of the engine
+(`venture-establishment.md` §2.4–2.6) and this slice does not make it true. The band, the taper, the
+closure and the terms-scaled magnitudes are the next slice.
+
+**710 tests (+21), zero failures.** All eleven pinned determinism goldens byte-identical, not
+regenerated.
