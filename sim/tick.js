@@ -33,7 +33,9 @@ const {
 const { getHistory, pushHistory } = require('./history.js');
 const { recordPriceSamples } = require('./price-history.js');
 const { recomputePrices, postedPrice } = require('./prices.js');
-const { commitmentSale, committedContribution, feeOwed } = require('./licence.js');
+const {
+  commitmentSale, committedContribution, feeOwed, reputationDelta,
+} = require('./licence.js');
 const { producedGoodFor } = require('./baseline.js');
 
 // A total, deterministic string order for sort keys — used where a tie has to
@@ -321,6 +323,35 @@ function applyProduction(state, guild, systemId, ctx) {
       // applied once to the target and once to the fee).
       const owed = feeOwed(v.licence, status, windowFraction(v, curWindowStart, windowN));
       feeOwedHere += owed;
+      // ── REPUTATION (RP slice 1, docs/points-and-reputation.md §6 step 1) ──────────
+      // The SAME `status`, read from the SAME row, in the SAME loop as the fee — never
+      // recomputed. That is the whole mechanism: a venture cannot be charged as breached
+      // and credited as met, because there is exactly one verdict and both consumers
+      // take it from this one variable. It also makes design.md §15.5 invariant 8 —
+      // "reputation moves only on measurable events" — structural rather than a promise:
+      // the only thing that can move RP is a boundary this loop reached.
+      //
+      // ONCE PER LICENSED VENTURE PER BOUNDARY, by construction, because that is what
+      // this loop already is — it is the fee loop, guarded by `isWindowBoundary` and
+      // driven off the stored licence. A non-boundary tick never enters it; a guild with
+      // no licensed venture never reaches the body. So there is no separate "have we
+      // already done this window?" bookkeeping to get wrong, and none is added.
+      //
+      // FLAT, and deliberately so: `reputationDelta` returns +REP_MEET_FLAT or
+      // -REP_BREACH_FLAT with no reference to the venture's terms. The terms-scaled
+      // meet, the inverse-commitment breach, the gain taper, the 1500 soft cap and the
+      // -500 closure are the NEXT slice (§2.2-2.3) and none of them is here — RP is a
+      // running integer with no band and no clamp.
+      //
+      // The venture's own total and the guild's cached sum move by the SAME delta, in
+      // one place, so `guild.guildReputation == Σ venture.reputation` holds by
+      // construction and `checkGuildReputationSum` (invariants.js) has to catch only a
+      // future writer that forgets this pairing — which is exactly what it is for.
+      // `(v.reputation || 0)` is the one place the omitted-when-0 absence is read as
+      // zero, the same courtesy `equityOf` does for `equityPct`.
+      const repDelta = reputationDelta(status);
+      v.reputation = (v.reputation || 0) + repDelta;
+      guild.guildReputation += repDelta;
       feeVentures[v.id] = {
         status, owed, basicFee: v.licence.basicFee, discountedFee: v.licence.discountedFee,
       };

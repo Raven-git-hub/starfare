@@ -13,9 +13,10 @@
 // The slice of state this harness reads (full entity shapes: design.md §15.4).
 // state.js must populate these fields; nothing here invents a game number.
 //
-//   state.guilds     : [{ id, credits, fuelHoard, influence?, stockpiles?,
+//   state.guilds     : [{ id, credits, fuelHoard, influence?, guildReputation?,
+//                         stockpiles?,
 //                         ventures? (each: siteId?, assetId?, resourceType? |
-//                         recipeId?, productionRate?),
+//                         recipeId?, productionRate?, reputation?),
 //                         assets? ([{ id, kind, maintenanceCondition }] — the
 //                           guild's ground-asset inventory, §4; absent when empty),
 //                         homeSystemId?, homePlanetId? }]
@@ -149,6 +150,15 @@ function checkNonNegativityAndIntegrality(state) {
     checkField(out, g.credits, `guild:${g.id}.credits`, { nonNegative: false });
     checkField(out, g.fuelHoard, `guild:${g.id}.fuelHoard`);
     if (g.influence !== undefined) checkField(out, g.influence, `guild:${g.id}.influence`);
+    // guildReputation — the guild's RP, Σ its ventures' (docs/points-and-reputation.md
+    // §2). An INTEGER like every other score here, and EXEMPT from non-negativity for
+    // the same reason `credits` above is: the band runs from -500 (closure) to about
+    // +1500 (§2.1), so a negative total is a designed PRESSURE STATE, not a broken
+    // ledger. The carve-out frees the SIGN, never the type. Its agreement with the
+    // ventures it totals is a separate check (`checkGuildReputationSum`).
+    if (g.guildReputation !== undefined) {
+      checkField(out, g.guildReputation, `guild:${g.id}.guildReputation`, { nonNegative: false });
+    }
 
     // Stockpiles (ruling B1, §15.2): a NESTED map systemId -> good -> int. Every
     // value is an integer, non-negative; every good key is a known stockpile good
@@ -183,6 +193,14 @@ function checkNonNegativityAndIntegrality(state) {
         // contract it was meeting. Absent (the unlicensed majority) is legal.
         if (ven.syndicateCommitment !== undefined) {
           checkField(out, ven.syndicateCommitment, `venture:${ven.id}.syndicateCommitment`);
+        }
+        // reputation — the venture's RP running total (docs/points-and-reputation.md §2).
+        // Integer, and non-negativity EXEMPT, mirroring `g.credits` and the guild total
+        // above: breaching drives it down and is MEANT to (§2.2), and -500 is a real
+        // destination (closure), not a corruption. ABSENT is legal and is the common
+        // case — the field is omitted when 0, so every never-judged venture has no key.
+        if (ven.reputation !== undefined) {
+          checkField(out, ven.reputation, `venture:${ven.id}.reputation`, { nonNegative: false });
         }
       }
     }
@@ -655,6 +673,41 @@ function checkGalacticSupplyConsistency(state) {
   return out;
 }
 
+// Guild-reputation sum consistency — `guild.guildReputation` is a DENORMALISED cache of
+// Σ its ventures' `venture.reputation` (docs/points-and-reputation.md §2: "guild RP = Σ
+// its ventures' RP"; §15.2's single-source-of-truth rule, with the VENTURES as the
+// source). This is the guard that makes the denormalisation legal — the same bargain
+// `homeSystemId` and the denormalised `venture.systemId` already run under, and the same
+// shape as `checkGalacticSupplyConsistency` above: a CONSISTENCY check, not a
+// conservation one. Nothing here says RP is constant — it is minted and destroyed by
+// events (§2) — only that the total a reader sees is really the total of the rows.
+//
+// Why it is worth a tick tripwire rather than trust: the sum has exactly ONE writer today
+// (the boundary verdict in sim/tick.js moves the venture and the guild by one shared
+// delta, so they cannot disagree), and the failure mode of a SECOND writer is silent — a
+// guild total that quietly drifts from its ventures would corrupt the fuel layer's mean
+// line (§3), which READS `guildReputation` and would have no way to tell. Every RP source
+// §2.4 defers is such a writer.
+//
+// A guild with no `guildReputation` at all is skipped rather than failed: `createGuild`
+// always writes it, but a state hand-built by a test legitimately may not, and the
+// integer check above already speaks for a field that IS present.
+function checkGuildReputationSum(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    if (g.guildReputation === undefined) continue;
+    const summed = (g.ventures || []).reduce((n, v) => n + (v.reputation || 0), 0);
+    if (g.guildReputation !== summed) {
+      out.push({
+        rule: 'guild-reputation-is-the-venture-sum (points-and-reputation.md §2)',
+        where: `guild:${g.id}.guildReputation`,
+        detail: { stored: g.guildReputation, sumOfVentures: summed },
+      });
+    }
+  }
+  return out;
+}
+
 // Site occupancy / referential integrity — the first cross-check between live
 // state and the static seed. Only SEATED ventures (those with a siteId) are
 // checked; an unseated venture is legal (production runs off resourceType). For
@@ -838,6 +891,7 @@ function checkInvariants(state, tick) {
     ...checkPriceHistory(state),
     ...checkLicenceTerms(state),
     ...checkGalacticSupplyConsistency(state),
+    ...checkGuildReputationSum(state),
     ...checkSiteOccupancy(state),
     ...checkAssetOccupancy(state),
     ...checkClaimIntegrity(state),

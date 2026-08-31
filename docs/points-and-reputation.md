@@ -5,7 +5,39 @@
 **consolidates and supersedes** the scattered reputation notes in `fuel-supply-and-allocation.md §2`,
 `fuel-economy.md §2–4`, `venture-establishment.md §2.5`, and the reputation bullet in
 `licence-and-price-system.md`. Where a number is unruled it is called `[FIRST-CUT]`, `[SHEET]` (needs a
-spreadsheet/sim pass) or `[DEFERRED]` — never a silent constant. **Not built.***
+spreadsheet/sim pass) or `[DEFERRED]` — never a silent constant. **§6 step 1 is BUILT (31-08-26); everything else here is NOT.***
+
+## 0a. What is BUILT *(31-08-26 — RP slice 1)*
+
+Step 1 of §6 and nothing else. Read every other section of this doc as design, not as code.
+
+- **`venture.reputation`** — a signed integer on the venture, omitted from serialized state when `0`,
+  non-negativity-exempt (`design.md` §15.5 invariant 3), non-conserved. `sim/state.js`.
+- **`guild.guildReputation`** — the same signed integer, `Σ` its ventures'. **Denormalised and guarded**, not
+  derived: the ventures are the source of truth, the guild field is the cached sum, moved in the same place and
+  by the same delta, and asserted every tick by `checkGuildReputationSum` (`sim/invariants.js`). *Chosen over
+  deriving it because the field is already present on every guild in every save and every pinned determinism
+  golden — deriving would move all of those hashes to buy a purity a tripwire delivers more cheaply, and it is
+  the bargain `homeSystemId` and `venture.systemId` already run under.*
+- **A FLAT meet/breach at the window boundary** — `sim/tick.js`, in the same per-licensed-venture loop that
+  already resolves `status` for the licence fee, reusing that exact verdict so the fee and the reputation event
+  can never disagree. `met → +REP_MEET_FLAT`, `breach → −REP_BREACH_FLAT`, once per licensed venture per
+  boundary. `[FIRST-CUT]` **20 / 30**, given by the human, in `sim/licence.js` and recorded in
+  `phase-1-tuning.md`.
+- **Snapshot** — `guilds[].guildReputation` and `ventures[].reputation`, echoed as stored (the engine decides,
+  the browser renders). Additive; schema stays 7.
+
+**Explicitly NOT built, and nothing in the code approximates any of it:** the gain taper, the 800 knee, the 1500
+soft cap, the −500 closure and −300 forced-lease behaviour, inverse-commitment or terms-scaled magnitudes, GP in
+any form, the mean line / `expectedRP` / the fuel issuance modifier, `baseGrant`, and every other RP source in
+§2.4. RP is a running integer with no band and no clamp.
+
+**Where the constants live — a deviation from the slice-1 build prompt, flagged for the human.** The prompt put
+`REP_MEET_FLAT` / `REP_BREACH_FLAT` in `sim/fuel.js`; they are in `sim/licence.js` instead, because §4 below
+rules that the **licence layer owns how RP moves** and the fuel layer only reads `guild.guildReputation` — and
+because `sim/fuel.js`'s own header states the repo rule both obey ("a constant lives in the module that owns the
+rule it belongs to"). They sit beside `feeOwed`, the other consumer of the same verdict. A one-line move if the
+prompt's placement was deliberate.
 
 ## 0. The one-line frame
 
@@ -166,10 +198,10 @@ pure consumer sinks by earning nothing against its bar, so buying needs no expli
 
 ## 6. Build order
 
-1. **RP field + meet/breach (slice 1).** Create `venture.reputation`, sum into `guild.guildReputation`, wire a
-   **flat** `[FIRST-CUT]` meet-gain / breach-drop at the window boundary, expose in the snapshot. Makes RP a
-   live, moving, visible number. *(Band shaping and the mean line come after — flat magnitudes here are
-   placeholders to make it move, like `GUILD_STARTING_FUEL` was.)*
+1. **RP field + meet/breach (slice 1). ✅ LANDED 31-08-26 — see §0a.** Create `venture.reputation`, sum into
+   `guild.guildReputation`, wire a **flat** `[FIRST-CUT]` meet-gain / breach-drop at the window boundary, expose
+   in the snapshot. Makes RP a live, moving, visible number. *(Band shaping and the mean line come after — flat
+   magnitudes here are placeholders to make it move, like `GUILD_STARTING_FUEL` was.)*
 2. **Band shaping** (the licence reputation slice): the taper (§2.3), inverse-commitment breach (§2.2), closure
    at −500, and the calibrated magnitudes. Reconciles the `§5/§7` tiers.
 3. **GP calculator** — systems + mining + refining + deployed assets, tier-scaled (§1).

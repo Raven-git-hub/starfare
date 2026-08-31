@@ -33,7 +33,7 @@ const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { MINE_BASELINE } = require('../baseline.js');
 const { BASE_PRICE } = require('../prices.js');
-const { FEE_RATE, feeOwed } = require('../licence.js');
+const { FEE_RATE, feeOwed, REP_MEET_FLAT } = require('../licence.js');
 
 const SYS = 'sysA';
 const SYS_B = 'sysB';
@@ -375,6 +375,13 @@ test('feeOwed is §5’s formula and REFUSES to price a non-verdict', () => {
 // history, the sale) is untouched. Undo the charge on the first — add the lump back to
 // credits, take it back out of the ledger, drop the record and the licence key — and the
 // two states must hash the same. If this slice moved ONE other byte, this goes red.
+//
+// REPUTATION JOINED THE UNDO on 31-08-26 (RP slice 1, docs/points-and-reputation.md §6
+// step 1). RP moves off the SAME boundary verdict the fee is charged on, so a licensed
+// run now also carries `venture.reputation` and the guild sum — two more bytes this test
+// must strip to keep proving what it proves. They are undone the same way the two
+// balances are, and by an amount stated as ARITHMETIC (`WINDOWS × REP_MEET_FLAT`) rather
+// than read back off the state under test, so a drift in the magnitude fails here too.
 test('STRIP-AND-PROVE: the charge moved the two balances and the record, and nothing else', () => {
   const WINDOWS = 3;
   const run = (keepLicence) => {
@@ -398,10 +405,22 @@ test('STRIP-AND-PROVE: the charge moved the two balances and the record, and not
   assert.equal(charged.syndicate.ledger, uncharged.syndicate.ledger + total,
     'ledger: the exact mirror — an internal transfer, so invariant 2 never moved');
 
-  // Undo the charge and drop the two keys the uncharged run cannot have.
+  // The licence met every window, so RP climbed by the flat meet gain each time — the
+  // whole of what this slice adds to a licensed run, stated by hand.
+  const expectedRP = WINDOWS * REP_MEET_FLAT;
+  assert.equal(charged.guilds[0].ventures[0].reputation, expectedRP,
+    'three met boundaries, three flat gains');
+  assert.equal(charged.guilds[0].guildReputation, expectedRP, 'and the guild sum agrees');
+  assert.equal(uncharged.guilds[0].ventures[0].reputation, undefined,
+    'the licence-less run was never judged, so it carries no reputation key at all');
+  assert.equal(uncharged.guilds[0].guildReputation, 0, 'and its guild total never moved');
+
+  // Undo the charge and drop the three keys the uncharged run cannot have.
   const undone = structuredClone(charged);
   delete undone.guilds[0].lastLicenceFee;
   delete undone.guilds[0].ventures[0].licence;
+  delete undone.guilds[0].ventures[0].reputation;
+  undone.guilds[0].guildReputation -= expectedRP;
   undone.guilds[0].credits += total;
   undone.syndicate.ledger -= total;
 
