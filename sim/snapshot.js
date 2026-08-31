@@ -28,6 +28,7 @@
 const { computeGalacticSupply } = require('./supply.js');
 const { FLAT_FUEL_PRICE_PER_UNIT, routeFuelCost } = require('./fuel.js');
 const { heldSystemIds } = require('./claims.js');
+const { guildPoints } = require('./points.js');
 const { computeOccupancy } = require('./occupancy.js');
 const { deployedAssetIds } = require('./assets.js');
 const { getSite, getLandmark } = require('./seed.js');
@@ -250,6 +251,16 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // nothing (§5's display rule, and §15.2's one-source-of-truth). They are reported as
 // their 0 when absent, like `equityPct` and `syndicateCommitment`. The band, the taper
 // and the fuel mean line that will READ these are all later slices; nothing here clamps.
+// (31-08-26, GP slice 3): each guild row gains `guildPoints` — the guild's Guild Points,
+// `W_SYS × held systems + Σ ventures W_TIER(tier)` (docs/points-and-reputation.md §1.0),
+// from the engine's own `guildPoints` (sim/points.js). ADDITIVE, and NO schema bump:
+// nothing existing changed shape, so every current reader keeps working and an older one
+// ignores the new key — the same additive call `guildReputation`, `fuelCost`,
+// `fuelHoardValue`, `feeQuote`, `shipments`, `licenceFee` and `syndicateSale` each made.
+// Unlike `guildReputation` it is DERIVED, not echoed: there is no stored counterpart and
+// deliberately none (§1.0 rules GP a helper recomputed on read, like `heldSystemIds`), so
+// it enters no serialized byte and no determinism hash and the state goldens cannot move
+// on its account. Published with no consumer yet — the mean line is the next slice.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -265,6 +276,7 @@ const SNAPSHOT_SCHEMA = 7;
 //       // what a licence signed NOW would cost, per good — sim/licence.js's own licenceFee
 //     guilds: [ { id, name, isBot, credits, fuelHoard, fuelHoardValue, influence,
 //                 guildReputation,                              // RP, Σ its ventures'
+//                 guildPoints,                                  // GP, DERIVED per read
 //                 fuelCost: { systemId: { fuelBurn, creditCost } }, // held systems, sorted
 //                 syndicateSale: { tick, thisTick, credited, goods } | null, // Slice 3a
 //                 licenceFee: { tick, thisTick, charged, ventures } | null,   // Slice 3b-iii
@@ -346,6 +358,21 @@ function buildSnapshot(state) {
       // layer's mean line will later read (§3). 0 for every guild that has never been
       // judged at a boundary, which is every unlicensed one.
       guildReputation: g.guildReputation || 0,
+      // guildPoints: the guild's Guild Points — how BIG it is
+      // (docs/points-and-reputation.md §1/§1.0): `W_SYS × held systems + Σ ventures
+      // W_TIER(tier)`, computed by the engine's own `guildPoints` (sim/points.js) rather
+      // than re-derived here, so the lens and any future consumer read one function.
+      //
+      // DERIVED, and the ONLY guild figure in this block that is: unlike
+      // `guildReputation` beside it there is nothing stored to echo, because GP is a pure
+      // function of holdings that already exist in state (the claim rows and the venture
+      // array). It reaches no serialized byte and no determinism hash — the same standing
+      // as `fuelCost` and `fuelHoardValue` above.
+      //
+      // It is published and NOTHING READS IT YET. The mean line that judges RP against it
+      // (`expectedRP = MEANLINE_K × GP`, §3) is the next slice and is not built; §4 rules
+      // that the FUEL layer will own it and merely read this.
+      guildPoints: guildPoints(state, g),
       homeSystemId: g.homeSystemId || null,
       homePlanetId: g.homePlanetId || null,
       // Guild-level holdings = the per-system pools flattened into one { good: int }

@@ -752,6 +752,12 @@
   .rp-guild .rp-k{font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3)}
   .rp-guild .rp-v{font-family:var(--mono); font-size:15px; color:var(--ink)}
   .rp-guild .rp-v.neg{color:var(--red)}
+  /* Guild Points sits beside reputation as a PLAIN NUMBER. No bar and no scale, on
+     purpose: GP is unbounded — it grows with every system and venture and has no floor,
+     knee or cap to draw against. A gauge would have to invent a maximum. */
+  .gp-row{display:flex; justify-content:space-between; align-items:baseline; margin-top:8px; padding-top:8px; border-top:1px solid var(--line)}
+  .gp-row .rp-k{font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3)}
+  .gp-row .gp-v{font-family:var(--mono); font-size:15px; color:var(--ink)}
 </style>
 </head>
 <body>
@@ -1264,6 +1270,32 @@ function rpGauge(value, opts){
   '</div>';
 }
 
+// GUILD POINTS — how big this guild is (docs/points-and-reputation.md §1). Read STRAIGHT
+// off the snapshot's `guildPoints`, which the ENGINE derives (`sim/points.js`) from the
+// guild's held systems and its ventures' tiers.
+//
+// THE BROWSER DOES NOT WEIGH ANYTHING. No system weight, no tier table, no counting of
+// systems or ventures — the console holds not one Points constant, and there is therefore
+// nothing here to mirror, which is why this block has no tripwire of the kind the RP band
+// bounds need. A second weighting in the browser could only ever disagree with the
+// engine's, and this is the number slice 4's mean line will judge reputation against. A
+// served-page test asserts the weighting appears nowhere in this file.
+//
+// A PLAIN NUMBER, not a gauge: GP is unbounded — it has no floor, knee or cap — so a bar
+// would need an invented maximum to draw against. It sits beside reputation because the
+// two are one pair: GP is what you HOLD, RP is what you CONTRIBUTE, and the mean line
+// (§3, NOT BUILT) will read the second against the first. The console already lists this
+// guild's systems and ventures, so the number plus the visible holdings is enough to see
+// why GP is what it is.
+function gpBlock(g){
+  return '<div class="gp-row">' +
+    '<span class="rp-k" title="' + esc(
+      'Guild Points — this guild\'s size: its held systems plus its ventures, tier-weighted. '
+      + 'Derived by the engine each read; nothing stores it.') + '">Guild points</span>' +
+    '<span class="gp-v">' + fmt(g.guildPoints || 0) + '</span>' +
+  '</div>';
+}
+
 // The guild's OWN total, echoed off the snapshot — Σ its ventures' reputation, summed by
 // the ENGINE (and guarded there every tick by `checkGuildReputationSum`). Guild-wide, so
 // it sits with the fee footer, which is the panel's other guild-wide figure, rather than
@@ -1275,6 +1307,7 @@ function rpGuildBlock(){
     '<div class="rp-h"><span class="rp-k">Guild reputation</span>' +
       '<span class="rp-v' + (rep < 0 ? ' neg' : '') + '">' + fmt(rep) + '</span></div>' +
     rpGauge(rep, { scale: true }) +
+    gpBlock(g) +
     '<div class="sm-foot">The sum of this guild\'s ventures\' reputation, moved at each cycle ' +
       'boundary by the same met/breach verdict that charges the fee. The band runs ' + RP.FLOOR +
       ' to about ' + RP.CAP + '; gains taper above ' + RP.KNEE + ', drops never do. The ' +

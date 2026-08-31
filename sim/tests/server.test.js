@@ -407,6 +407,64 @@ test('the served licence panel\'s mirrored constants still match the engine', as
   assert.match(html, /id="cRange" min="0" max="100"/);   // commitment: a 0..1 fraction
 });
 
+// --- the console's GUILD POINTS readout (GP slice 3, 31-08-26) --------------------
+//
+// docs/points-and-reputation.md §1/§1.0. GP is DERIVED by the engine (sim/points.js) and
+// published per guild in the snapshot; the console renders the number and nothing else.
+
+test('the served console reads guildPoints off the snapshot and does NOT reimplement the weighting', async () => {
+  const html = await (await fetch(base + '/console')).text();
+  const points = require('../points.js');
+
+  assert.match(html, /function gpBlock\(/);
+  assert.match(html, /g\.guildPoints \|\| 0/, 'the number comes straight off the snapshot');
+  assert.match(html, /Guild points/);
+
+  // THE WHOLE POINT: the browser must weigh nothing. GP is the number slice 4's mean line
+  // will judge reputation against, so a second weighting here could only ever disagree
+  // with the engine's — and unlike the RP band bounds there is NOTHING to mirror, because
+  // the console needs no GP constant at all. That is why this block carries no
+  // constant-mirror tripwire: there is no duplicated constant to guard.
+  assert.ok(!new RegExp(`W_SYS|\\bTIER_WEIGHT\\b|tierWeight|tierOf|guildPoints\\s*\\(`).test(html),
+    'the console must not name or reimplement any part of the GP weighting');
+  for (const n of [points.W_SYS, points.TIER_WEIGHT[1], points.TIER_WEIGHT[2]]) {
+    assert.ok(!new RegExp(`heldSystemIds[\\s\\S]{0,200}${n}`).test(html),
+      'nor count held systems and multiply by a weight of its own');
+  }
+
+  // A plain number, deliberately — GP is unbounded, so a gauge would need an invented
+  // maximum. The RP band gauge beside it is NOT reused for this.
+  assert.ok(!/gpGauge|gp-gauge/.test(html), 'GP gets no band gauge; it has no floor or cap to draw against');
+  assert.match(html, /class="gp-row"/);
+
+  // It sits inside the guild block, which renderStage rebuilds on every snapshot poll, so
+  // GP moves as territory and ventures change.
+  assert.match(html, /rpGauge\(rep, \{ scale: true \}\) \+\s*\n\s*gpBlock\(g\)/,
+    'the GP row hangs off rpGuildBlock, which is rebuilt on every refresh');
+});
+
+test('GET /snapshot carries guildPoints per guild, equal to the engine helper', async () => {
+  await reset();
+  await found();
+  await mine();
+  const { body: snap } = await req('GET', '/snapshot');
+  const g = snap.guilds.find((x) => x.id === 'player-guild');
+
+  const { W_SYS, TIER_WEIGHT } = require('../points.js');
+
+  assert.ok(Number.isInteger(g.guildPoints), 'GP is an integer (§15.2)');
+  // Stated by hand rather than recomputed: founding seats the guild on ONE home system
+  // (its own claim row) and `mine()` establishes ONE titanium mine, so the size of this
+  // galaxy is one system plus one Tier-1 venture and nothing else.
+  assert.equal(g.guildPoints, W_SYS + TIER_WEIGHT[1]);
+  assert.equal(g.guildPoints, 18);
+
+  // DERIVED, so reading it twice cannot accumulate — the failure mode a stored counter
+  // would have, and the reason §1.0 rules GP a helper instead of a field.
+  const { body: again } = await req('GET', '/snapshot');
+  assert.equal(again.guilds[0].guildPoints, g.guildPoints);
+});
+
 // --- the console's REPUTATION readout (RP dev-panel slice, 31-08-26) ---------------
 //
 // docs/points-and-reputation.md §2.1. CLIENT-ONLY: the console renders the snapshot's
