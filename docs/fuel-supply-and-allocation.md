@@ -48,6 +48,35 @@ slice.
 
 ### 1.1 Producer Guilds (PGs) — the seeded supply (supersedes §6's "hidden ticker")
 
+**⚠ REVISED 31-08-26 — read this first; it supersedes the ruling and the bullets below.** The mechanical
+"real mining PG" model below is **retired**. The ruled design is now:
+
+- **Supply is an abstracted back-end deuterium influx into the Syndicate pool** — mechanically, the hidden
+  engine ticker this section originally set aside. One tuned amount per cycle enters the pool; it is **not**
+  computed from any PG's mining. This reverses the "a real miner beats a ticker" argument below, on purpose:
+  the mining connection bought two drama hooks — the PG as an equity **investment target**, and takeover
+  **inheriting** its supply — both Phase-3+ anyway, so they are deferred, not lost.
+- **PGs are narrative / territorial only, MECHANICALLY DECOUPLED from the supply.** Ordinary bot guilds (no
+  new entity) that hold territory and can be conquered later; they do **not** mine-to-pool, trade, pay fees,
+  or draw fuel issuance. The Syndicate sustains them entirely — **no back-end economy to model**, which also
+  **closes §6 open 5 (PG bust-cost):** a Syndicate-sustained PG cannot fail economically; it ends only by
+  **takeover** or the deliberate weaning/collapse.
+- **They home on an OCEANIC world in a NON-TERRAN system** (not the terran+oceanic home below) — a PG's home
+  planet may be non-Terran, the one relaxation of the "home = the lowest-id Terran planet" rule, which keeps
+  PG placement clear of the starter-eligible (Terran) systems players spawn into.
+- **The PG is NOT an investment target** — the equity hook below is removed.
+- **Takeover hook (future):** conquering a PG's system **removes a fixed amount from the back-end deuterium
+  influx** — the clean way to tie the abstracted supply to the PGs when the territory/conquest system lands
+  (Phase 3+). Not "inherit the supply".
+- **PGs are HIDDEN on the map from players** (unlike waystations, which are public), **discoverable by
+  scanner arrays** — a hook into the future exploration / espionage layer.
+- **Deferred, and decoupled from the fuel loop:** placing PGs needs a guild-seeding layer (nothing seats a
+  bot guild at galaxy creation today — the galaxy boots empty) plus the non-Terran-home relaxation, so it is
+  its **own later slice**. The fuel loop (pool + the back-end influx + issuance) needs **no PG at all**.
+
+*The original real-mining-PG design is kept below for the record; where it disagrees with the block above,
+the block above wins.*
+
 `fuel-economy.md §6` left the background deuterium floor's implementation open ("a bot, or a hidden engine
 ticker"). **Ruling: it's a seeded Producer Guild**, and that choice supersedes the hidden-ticker option,
 because a real guild that really mines keeps the commons honest and buys emergent drama a ticker can't.
@@ -178,7 +207,9 @@ a **watch-it-in-play** number, not a pre-solve.
 4. **The mean-line shape** — ✅ **RULED 31-08-26** → see `docs/points-and-reputation.md` §3: linear
    `expectedRP = MEANLINE_K × GP`; position→issuance is a clamped ratio-based modifier
    `clamp(1 + s·gap/expected, FLOOR, CEIL)`.
-5. **PG bust-cost** (§1.1) — what makes a costless miner economically fail.
+5. **PG bust-cost** — ✅ **RESOLVED 31-08-26 (§1.1):** the PG is Syndicate-sustained and mechanically
+   decoupled from the supply, so it has no back-end economy and cannot fail economically — it ends only by
+   takeover or weaning. No bust-cost to design.
 6. **Deuterium's map presence** — confirm which archetypes carry deuterium nodes (terran/oceanic) and that the
    generator places enough for the PG homes and player mining. (Ties to the seed-generator rework.)
 7. **Detection mechanic** for illegal refining / grey-market fuel (§3) — deferred, structure-only now.
