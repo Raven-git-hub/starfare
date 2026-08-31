@@ -65,6 +65,14 @@ Part 1 — the **shape** is settled design; every **number** below is `[FIRST-CU
 `deuterium_fuel` is never priced (Syndicate-regulated, design.md §8) — a permanent exclusion, not a
 deferral.
 
+**The one flat rate that exists anyway** `[FIRST-CUT]` *(fuel Slice 1, 31-08-26)*: because fuel has no
+posted row, a client that wants a guild's hoard **in credits** can only invent a rate — so the engine
+names one instead. **`FLAT_FUEL_PRICE_PER_UNIT` = 10 credits/unit** (`sim/fuel.js`) feeds exactly one
+thing, the snapshot's derived `guild.fuelHoardValue`, and **nothing charges it**: no credit moves
+through it, so invariant 2 cannot see it. It is **not** an answer to `docs/fuel-economy.md` §9's open
+question 4 (reuse the price engine, or a dedicated reserve-based curve?) and it does **not** soften the
+exclusion above — it is a named stand-in so that question has one line to replace.
+
 | Constant | `[FIRST-CUT]` value | Rationale |
 |---|---|---|
 | **Base price** | **10** credits | The seed value every good starts at and the anchor the curve multiplies. Uniform across all 28 goods: per-good (or tier-aware) bases are **unruled**, so none was invented. |
@@ -185,6 +193,7 @@ corners, `k`, the baselines and `N` are all read from where they already live.
 - **Five bot guilds** `[SHEET]`: exactly the spreadsheet roster (Refinery Combine, Vantar Trust, Orun Compact, Dracis Concern, Ilyra Holdings) — their credits, needs, capacities, hoard 0.
 - **Player guild** `[FIRST-CUT]`: deliberately archetype-neutral — credits **$120**, hoard **0**, fuel need **5**, capacity **8**, one **Titanium mine**. Unremarkable on purpose, so no archetype is favoured.
 - **Founding starting credits** `[FIRST-CUT]` *(client-wiring Slice 1, 24-08-26)*: **2,000** — the grant a guild is founded with when a **player** founds it through the game client. Given by the human for the slice, **not** derived from anything: it wants a real ruling once the loop is playable (how long 2,000 keeps a new guild alive is a play question, not a design one). It is **debited from the Syndicate ledger** by the engine, never minted (design.md §14), so the ledger goes negative by design and invariant 2 still holds. Single-sourced in the client as `STARTING_CREDITS` in `client/game.html`; the engine has no default of its own — `foundGuild` takes whatever the caller sends. Distinct from the **$120** scenario figure above, which is the *scripted* walking-skeleton guild, not a player founding.
+- **Founding starting fuel** `[FIRST-CUT]` *(fuel Slice 1, 31-08-26)*: **500** units of `deuterium_fuel` in the new guild's hoard, granted by `foundGuild` to **every** founded guild. Given by the human for the slice, **not** derived from anything. The ruling behind it is `docs/fuel-economy.md` §7 — the early-game **starter floor** that closes the no-fuel → no-trade → no-reputation trap, anchored on design.md §8's survival floor. Unlike the founding credits above it is **ENGINE POLICY, not an action field**: the constant is `GUILD_STARTING_FUEL` in **`sim/fuel.js`** and no caller can ask for a different hoard, exactly like the starter asset gift. Unlike credits it is also **MINTED, not moved** — there is no fuel counterpart to the Syndicate ledger to debit — so the apply records it in `audit.totalProduced`, which is what keeps invariant 1 balanced from tick 0. **It wants retuning after the waystation rebalance** (9 → 96), which changes what 500 units buys in delivery reach; and it cannot be tuned honestly at all until fuel is *spent* (Slice 3), since nothing consumes it yet. **Distinct from the `hoard 0` roster figures above**, which describe *scenario* guilds assembled directly by `createState` — that path passes its own hoard and was deliberately left untouched, so those two bullets stay exactly true.
 
 ### Influence
 - **Starting stock** `[FIRST-CUT]`: **100** per guild (all six). *(This is an onboarding/seeding grant and lives only here. The testbed's Found-guild control does **not** apply it — it founds at the engine default 0 — so the value stays single-sourced in this table rather than duplicated in a debug form; the seeding scenario will apply it. 04-08-26.)*

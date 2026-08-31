@@ -30,6 +30,7 @@ const { guildTotals } = require('../stock.js');
 const {
   STARTER_MINERS, STARTER_FACTORIES, ASSET_CONDITION_NEW, idleAssets, deployedAssetIds,
 } = require('../assets.js');
+const { GUILD_STARTING_FUEL } = require('../fuel.js');
 const {
   intake, validateAction, createFoundGuildAction, createEstablishVentureAction,
 } = require('../actions.js');
@@ -119,7 +120,10 @@ test('occupying an asset changes no game number — production is what it always
   const g = player(s);
   assert.equal(guildTotals(g).titanium, 5, 'output is byte-for-byte the pre-asset baseline');
   assert.equal(g.credits, 120, 'and the deploy moved no credits');
-  assert.equal(g.fuelHoard, 0, 'and no fuel');
+  // The hoard is the founding grant, UNTOUCHED (fuel Slice 1): deploying an asset
+  // burns no fuel — nothing spends fuel at all yet — so this still says what it always
+  // said, that the deploy moved no game number.
+  assert.equal(g.fuelHoard, GUILD_STARTING_FUEL, 'and the fuel hoard is exactly the founding grant, unspent');
 });
 
 test('two deploys take the two machines they NAMED', () => {

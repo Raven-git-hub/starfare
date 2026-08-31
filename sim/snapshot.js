@@ -26,6 +26,7 @@
 // the object is assembled in a fixed field order, so its bytes are stable.
 
 const { computeGalacticSupply } = require('./supply.js');
+const { FLAT_FUEL_PRICE_PER_UNIT } = require('./fuel.js');
 const { computeOccupancy } = require('./occupancy.js');
 const { deployedAssetIds } = require('./assets.js');
 const { getSite, getLandmark } = require('./seed.js');
@@ -213,6 +214,17 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // a discounted figure would be guessing the player's terms. Pure derived telemetry: it
 // reads state as it stands, mutates nothing, enters no serialized byte and no
 // determinism hash.
+// (31-08-26, fuel Slice 1): each guild row gains `fuelHoardValue` — the guild's
+// `fuelHoard` marked to market in integer credits at the `[FIRST-CUT]` flat rate
+// `FLAT_FUEL_PRICE_PER_UNIT` (sim/fuel.js). ADDITIVE, and NO schema bump: nothing
+// existing changed shape — `fuelHoard` itself is untouched and merely stops being
+// zero now that founding seeds a starter hoard — so every current reader keeps
+// working and an older reader ignores the new key. The same additive call
+// `syndicateSale`, `perVenture`, `licenceFee`, `shipments` and `feeQuote` each
+// made; the v3/v4 bumps were for growth INSIDE existing rows, which this is not.
+// It exists because fuel has NO posted price (design.md §8) — there is no
+// `prices.deuterium_fuel` row for a client to look the rate up in — so a browser
+// that wanted the hoard in credits could only invent the rate. The engine owns it.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -226,7 +238,7 @@ const SNAPSHOT_SCHEMA = 7;
 //     prices: { <every non-fuel stockpile good>: <posted value> },  // sim/prices.js
 //     feeQuote: { <priced good with a baseline>: <basic licence fee, int credits> },
 //       // what a licence signed NOW would cost, per good — sim/licence.js's own licenceFee
-//     guilds: [ { id, name, isBot, credits, fuelHoard, influence,
+//     guilds: [ { id, name, isBot, credits, fuelHoard, fuelHoardValue, influence,
 //                 syndicateSale: { tick, thisTick, credited, goods } | null, // Slice 3a
 //                 licenceFee: { tick, thisTick, charged, ventures } | null,   // Slice 3b-iii
 //                 stockpiles: { good: int },                    // flat guild total
@@ -271,6 +283,14 @@ function buildSnapshot(state) {
       isBot: !!g.isBot,
       credits: g.credits,
       fuelHoard: g.fuelHoard,
+      // The hoard marked to market in credits, so the client never multiplies a
+      // game number itself (§5's display rule: the browser renders, the engine
+      // decides). Fuel is the one good the price engine never prices (design.md
+      // §8), so this rides a NAMED [FIRST-CUT] flat rate (sim/fuel.js) rather
+      // than a posted value — and `Math.round` keeps it integer credits (§15.2)
+      // for the day that rate stops being a whole number. Pure derived
+      // telemetry: no stored byte, no determinism hash, and nothing charges it.
+      fuelHoardValue: Math.round(g.fuelHoard * FLAT_FUEL_PRICE_PER_UNIT),
       influence: g.influence,
       homeSystemId: g.homeSystemId || null,
       homePlanetId: g.homePlanetId || null,

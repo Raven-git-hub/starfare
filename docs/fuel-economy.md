@@ -1,9 +1,15 @@
 # Fuel Economy — design-pass handoff (WORK IN PROGRESS)
 
-*Status: **design-in-progress, not a settled spec and not built.** This captures the fuel model as
-sketched on 30-08-26 so a future design pass can resume without re-deriving it. It **refines §8** (the
-Syndicate fuel utility) — where it changes a §8 statement, it says so. Do not turn any of this into a
-build prompt until the open questions (§9) have had a real design pass.*
+*Status: **design-in-progress, not a settled spec, and — with the one exception below — not built.**
+This captures the fuel model as sketched on 30-08-26 so a future design pass can resume without
+re-deriving it. It **refines §8** (the Syndicate fuel utility) — where it changes a §8 statement, it
+says so. Do not turn any of this into a build prompt until the open questions (§9) have had a real
+design pass.*
+
+*The exception, 31-08-26: **§7's starter floor is BUILT** (fuel Slice 1) — a founding guild now opens
+with a baseline hoard, so `fuelHoard` is finally a live number instead of a permanent zero. Nothing
+else here is built: no pool, no allowance, no reputation, no Guild Points, and nothing spends fuel.
+See the BUILT note under §7.*
 
 ## 1. The core idea — fuel is the cost of doing Syndicate business
 
@@ -77,9 +83,35 @@ backend": the pool is now **guild deposits + a background minimum floor**.
 
 ## 7. New-guild death spiral — handled by balancing, not structure
 
+**Superseded by `docs/fuel-supply-and-allocation.md` (landed main, 31-08-26)** — the starter floor is now
+ruled there, at §1.3 (bootstrapping), which is the authoritative statement of the rule this section sketched.
+
 A new guild starts at ~0 Guild Points / ~0 reputation; the no-fuel → no-trade → no-reputation trap is
 handled by **early-game balancing / a starter floor** (straightforward with testing), anchored on §8's
 "survival floor" — not a structural redesign.
+
+> **BUILT 31-08-26 — the starter floor, and ONLY the starter floor (fuel Slice 1).** The rule
+> `foundGuild` implements is now ruled in **`fuel-supply-and-allocation.md` §1.3**, which supersedes this
+> paragraph as its source; what follows is kept because it records *why* the rule exists. A founding guild
+> opens with `GUILD_STARTING_FUEL` (`[FIRST-CUT]` **500**, `sim/fuel.js`, recorded in
+> `docs/phase-1-tuning.md` §"Guild starts") in its hoard instead of the 0 the apply used to force. Before this, `guild.fuelHoard` was a real, validated,
+> snapshot-exposed field that was always zero, because minting fuel needed a fuel-genesis rule that had
+> not been ruled — this is that rule, and nothing more.
+>
+> **What it is NOT.** It is not the §2 allowance: there is no pool, no issuance, no per-cycle top-up, no
+> reputation and no Guild Points behind it. It is a one-off grant at founding and then the hoard simply
+> sits, because **nothing in the engine spends fuel yet**. Every open question in §9 is still open.
+>
+> **The two seams it had to respect**, recorded here because they are where a future fuel change will
+> break: the grant is *minted*, not moved (there is no fuel counterpart to the Syndicate ledger), so the
+> apply adds it to `audit.totalProduced` or **invariant 1** unbalances on the tick a guild is born; and
+> it refreshes the `galacticSupply` cache in the same apply, because `POST /action` asserts every
+> invariant with no tick in between and a stale `fuel.guildHeld` trips **`galactic-supply-consistency`**.
+> Any later code that moves a `fuelHoard` owes both.
+>
+> The snapshot also gained `guild.fuelHoardValue` — the hoard in credits at a flat `[FIRST-CUT]` rate,
+> since §9's question 4 (how fuel is priced) is unanswered and fuel has no posted price (§8). See
+> `docs/client-wiring.md`'s closing revision.
 
 ## 8. HUD (later)
 

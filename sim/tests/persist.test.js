@@ -30,6 +30,7 @@ const { hashState } = require('../serialize.js');
 const { saveState, appendJournal, clearJournal, loadOrInit, journalPath } = require('../persist.js');
 const { guildTotals } = require('../stock.js');
 const { STARTER_MINERS, STARTER_FACTORIES } = require('../assets.js');
+const { GUILD_STARTING_FUEL } = require('../fuel.js');
 
 // A throwaway persist dir per test, cleaned up after. Real filesystem (not a
 // mock) so the atomic temp-file+rename write path is actually exercised.
@@ -204,10 +205,31 @@ test('double-apply guard: a snapshot-baked action still in the journal is not re
 // (A guild built WITHOUT founding carries no `assets` key and no `assetId` at all and
 // is byte-identical with nothing stripped — the omit-when-empty no-op, which is why
 // commitment-scaffold.test.js's five goldens did not move and needed no regen.)
-const GOLDEN_HASH = '56401013588519715d15f415334fb2660b1bd9f73881352dc9f48b787a7b564c';
-const GOLDEN_HASH_WITH_PRICES = '53c4f4818b198cbf5000dc7d1ed4e7d8ce0f1e96902291f26575ff6b44b1b212';
-const GOLDEN_HASH_WITH_HISTORY = '170bedd2c54dbb44b0583f93f1b8acfc8052c8c71d0e2b6e0146d8676f9d4a27';
-const GOLDEN_HASH_WITH_ASSETS = 'c42d88d7b70b6046ca710deda21717daccf58a969125ea9802a01fb82d386ffd';
+//
+// FUEL SLICE 1 (31-08-26) — ALL FOUR GOLDENS RE-PINNED, and this is the first slice
+// that could not preserve one. THE DELTA IS THE FOUNDING FUEL GRANT: `foundGuild` now
+// seeds the new guild's hoard with `GUILD_STARTING_FUEL` (500, sim/fuel.js — the
+// starter floor ruled in docs/fuel-economy.md §7), and the canonical sequence below
+// founds a guild, so it lands in this state. Every previous slice added a NEW key and
+// could be stripped back to its predecessor; this one changes the VALUE of three
+// numbers that already existed, and there is nothing to strip:
+//   guilds[0].fuelHoard             0  ->   500
+//   audit.totalProduced            30  ->   530   (the genesis entry invariant 1 needs)
+//   galacticSupply.fuel.guildHeld   0  ->   500   (the refreshed cache)
+// So the strip-and-prove method is inverted instead of abandoned: the test right below
+// the four hashes SUBTRACTS the grant from exactly those three fields and asserts the
+// result is the OLD `GOLDEN_HASH_WITH_ASSETS`, byte for byte. That is the same
+// statement the strips used to make — this slice seeded a hoard and changed NOTHING
+// else about this sequence — and it fails loudly if a future edit smuggles a second
+// change in behind a re-pin.
+const GOLDEN_HASH = 'ad0f9e70ce5570feea79373096d31768e2b49dd1a8a7e23cd96fcf7c1489154c';
+const GOLDEN_HASH_WITH_PRICES = '787f85935450f55f285f71aa929689decde26da7718ea92111ef26f635b1f28c';
+const GOLDEN_HASH_WITH_HISTORY = 'f85960fc2452569ceba07a33c2c127f0ed6d6e194527e34bf6915603aee59395';
+const GOLDEN_HASH_WITH_ASSETS = '9f8a9a45861f268980d30274eadc0eac07a1d45ae5d7a48085ba0a6bf2f6469b';
+
+// The pre-fuel-slice full hash, kept so the un-granting proof below has something to
+// prove against. It is the value `GOLDEN_HASH_WITH_ASSETS` held before 31-08-26.
+const GOLDEN_HASH_BEFORE_FUEL_GRANT = 'c42d88d7b70b6046ca710deda21717daccf58a969125ea9802a01fb82d386ffd';
 
 // The state minus its price block — exactly what the golden above covered.
 const withoutPrices = (state) => { const { prices, ...rest } = state; return rest; };
@@ -260,6 +282,33 @@ test('no-op proof: pure engine path (persistence OFF) matches the golden hash', 
   // output is the same 5/tick × 2 ticks it produced before this slice existed.
   assert.equal(s.guilds[0].credits, 120, 'the gift and the deploy cost nothing');
   assert.equal(guildTotals(s.guilds[0]).titanium, 10, 'and production is byte-for-byte what it was: occupying an asset changes no game number');
+});
+
+// The fuel slice's own delta proof — the strip-and-prove idiom inverted, because a
+// changed VALUE cannot be stripped the way an added key can. Un-grant the founding
+// fuel from the three fields it touches and the whole state must hash to what it
+// hashed before the slice. If a future edit re-pins the four goldens above while
+// also moving some other number, this is what catches it.
+test('no-op proof: subtract the founding fuel grant and the pre-slice golden comes back', () => {
+  let s = createZeroState();
+  s = applyValid(s, FOUND);
+  s = applyValid(s, MINE_1);
+  s = applyValid(s, PROFILE);
+  s = advance(s, []).state;
+  s = advance(s, []).state;
+
+  // The grant really landed — otherwise "subtract it and nothing changed" is vacuous.
+  assert.equal(s.guilds[0].fuelHoard, GUILD_STARTING_FUEL, 'the founding really did seed a hoard');
+  assert.equal(s.audit.totalProduced, s.reserve.reserveLevel + GUILD_STARTING_FUEL, 'and recorded it as produced');
+  assert.equal(s.galacticSupply.fuel.guildHeld, GUILD_STARTING_FUEL, 'and refreshed the supply cache');
+
+  const ungranted = structuredClone(s);
+  ungranted.guilds[0].fuelHoard -= GUILD_STARTING_FUEL;
+  ungranted.audit.totalProduced -= GUILD_STARTING_FUEL;
+  ungranted.galacticSupply.fuel.guildHeld -= GUILD_STARTING_FUEL;
+
+  assert.equal(hashState(ungranted), GOLDEN_HASH_BEFORE_FUEL_GRANT,
+    'the fuel grant is the ONLY delta this slice made to the canonical sequence, byte for byte');
 });
 
 // --- 5. graceful shutdown: the MID-INTERVAL save (no intervening tick) ------

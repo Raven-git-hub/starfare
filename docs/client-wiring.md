@@ -998,3 +998,37 @@ engine locked `basicFee 7200`, `discountedFee 5089`. No page errors from the pan
 
 **658 tests (+1), zero failures** — client-only, so no golden could move.
 
+
+## Revision — fuel becomes real and gets a credit value: `fuelHoardValue` *(31-08-26, engine-only)*
+
+Fuel Slice 1. Until now `guild.fuelHoard` was a real, validated, snapshot-exposed field
+that was **always zero**, because `foundGuild` forced it there — minting fuel into a hoard
+needed a fuel-genesis rule that had not been ruled. It has been: a founding guild opens with
+a **baseline hoard** (the early-game *starter floor*, `docs/fuel-economy.md` §7, anchored on
+`design.md` §8's survival floor) so a new guild is not born into the no-fuel → no-trade →
+no-reputation trap. `fuelHoard` therefore stops reading `0` on every player card in the
+client, with **no client change and no new snapshot reader** — the field was already wired.
+
+**`fuelHoardValue`** — one new field on each guild row, beside `fuelHoard`: the hoard
+**marked to market in integer credits**, `Math.round(fuelHoard × FLAT_FUEL_PRICE_PER_UNIT)`.
+
+- The rate is a **named `[FIRST-CUT]` constant in `sim/fuel.js`**, not a number inlined in
+  the snapshot. It exists because fuel is the one good the price engine **never** prices
+  (`design.md` §8 — there is no `state.prices.deuterium_fuel` row, ever), so a client that
+  wanted the hoard in credits could only invent the rate. The engine owns it instead (§5's
+  display rule: the browser renders, the engine decides), and the real fuel price controller
+  (`docs/fuel-economy.md` §9, open question 4) replaces this one constant when it lands.
+- **Nothing charges it.** No credit moves through this field — it buys nothing and sells
+  nothing — so invariant 2 cannot see it. Pure derived telemetry: no serialized byte, no
+  determinism hash.
+- **Additive; schema stays 7** — nothing existing changed shape, so every current reader
+  keeps working and an older one ignores the new key. The same call `syndicateSale`,
+  `perVenture`, `licenceFee`, `shipments` and `feeQuote` each made; the v3/v4 bumps were for
+  growth *inside* existing rows, which this is not.
+
+**Engine-only.** No client change ships here. The four `GOLDEN_*` hashes in
+`sim/tests/persist.test.js` **did** move — the canonical dev sequence founds a guild — and
+were re-pinned; the scenario goldens in `commitment-scaffold.test.js` did **not**, because
+`createGuild` was deliberately left alone and scenario guilds still pass their own hoards.
+
+**664 tests (+6), zero failures.**
