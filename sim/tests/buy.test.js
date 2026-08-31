@@ -36,6 +36,7 @@ const { buildSnapshot } = require('../snapshot.js');
 const { postedPrice } = require('../prices.js');
 const { FUEL_GOOD } = require('../resources.js');
 const { guildHolds } = require('../claims.js');
+const { GUILD_STARTING_FUEL, routeFuelCost } = require('../fuel.js');
 const { getTerranHomeworld } = require('../seed.js');
 const {
   CRAFT_SPEED, hexDistance, nearestWaystation, arrivalTickFor,
@@ -75,13 +76,20 @@ const extraClaim = (guildId, systemId) => ({
 
 // A guild homed on DEST, with the ledger funding its credits so invariant 2
 // starts balanced. `holds` is the full set of systems it claims.
-function buyState({ credits = 100000, holds = [DEST], stockpiles = {}, shipments } = {}) {
+// FUEL (Slice 3, 31-08-26): the hoard moved 0 -> GUILD_STARTING_FUEL. Every buy in
+// this file used to fly free; a BUY now burns `routeFuelCost(destination).fuelBurn`
+// and `validateAction` refuses a guild that cannot pay it, so a zero-fuel fixture
+// can no longer buy anything at all. The founding grant is the honest default —
+// it is what a real guild actually holds — and it is far above the burns here
+// (DEST 3, OTHER 4), so no test in this file is near the gate by accident.
+// `fuelHoard` stays a parameter so a test can still pin the empty case.
+function buyState({ credits = 100000, holds = [DEST], stockpiles = {}, shipments, fuelHoard = GUILD_STARTING_FUEL } = {}) {
   const claims = holds.map((sysId, i) => (i === 0 ? homeClaim('g1', sysId) : extraClaim('g1', sysId)));
   return createState({
     guilds: [{
       id: 'g1',
       credits,
-      fuelHoard: 0,
+      fuelHoard,
       homeSystemId: holds[0] === DEST ? DEST : null,
       homePlanetId: holds[0] === DEST ? DEST_HOME_PLANET : null,
       stockpiles,
@@ -361,7 +369,14 @@ test('a BUY delivery contributes ZERO fuel in transit — and the tripwire prove
   });
   const bought = accept(setPosted(s, GOOD, 10), buy('g1', GOOD, 12, DEST));
   assert.equal(bought.shipments[0].cargo.fuel, undefined, 'the cargo carries the bought good and nothing else');
-  assert.deepEqual(checkInvariants(bought), [], 'invariant 1 is untouched by a non-fuel delivery');
+  assert.deepEqual(checkInvariants(bought), [], 'invariant 1 still balances');
+  // Sharpened by fuel Slice 3: the BUY now BURNS fuel, so invariant 1 is no longer
+  // "untouched" — the hoard drops and `totalConsumed` rises to match. What stays
+  // exactly zero is the IN-TRANSIT term, which is what this test is about: fuel is
+  // spent at the moment of purchase, never carried by the delivery.
+  const { fuelBurn } = routeFuelCost(DEST);
+  assert.equal(bought.guilds[0].fuelHoard, 10 - fuelBurn, 'the flight was paid for');
+  assert.equal(bought.audit.totalConsumed, fuelBurn, 'and recorded as consumed');
 
   // The tripwire is real: put fuel in that same cargo and invariant 1 trips.
   const tampered = JSON.parse(JSON.stringify(bought));

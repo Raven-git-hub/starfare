@@ -16,7 +16,7 @@ const { getStock, addStock } = require('./stock.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { guildHolds } = require('./claims.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
-const { GUILD_STARTING_FUEL } = require('./fuel.js');
+const { GUILD_STARTING_FUEL, routeFuelCost } = require('./fuel.js');
 const {
   STARTER_MINERS, STARTER_FACTORIES, starterAssetSpecs, assetKindForVentureType,
   deployedAssetIds,
@@ -769,6 +769,28 @@ function validateAction(state, action) {
     if (guild.credits < cost) {
       return { valid: false, reason: `guild ${guild.id} holds ${guild.credits} credits, cannot pay ${cost} for ${action.qty} ${action.good}` };
     }
+    // THE FUEL GATE — fuel Slice 3, and the moment fuel starts to BITE: no fuel,
+    // no Syndicate BUY (docs/fuel-supply-and-allocation.md §8, Slice 3).
+    //
+    // RUN LAST, ON PURPOSE. Every other gate above answers a different question,
+    // and a trade refused for lacking credits, or for a system the guild does not
+    // hold, must say so rather than blaming fuel — the player would go looking for
+    // the wrong problem. So the fuel refusal is only ever reached by a trade that
+    // is otherwise entirely legal, and it means exactly what it says.
+    //
+    // REJECT-WHOLE (ruled): a guild that cannot pay the full burn does not get a
+    // partial trade or a shorter flight. The order is refused intact.
+    //
+    // `destinationSystemId` is the route — this action has no `systemId` field.
+    // The burn comes from `routeFuelCost` (sim/fuel.js), the SAME function the
+    // snapshot quotes to the client, so what the player was shown and what the
+    // engine charges cannot disagree. A `fuelBurn` of 0 means NO ROUTE, and this
+    // gate passes: there is no cost without a route, and the no-waystation refusal
+    // above has already turned that case away on its own terms.
+    const { fuelBurn } = routeFuelCost(action.destinationSystemId);
+    if (guild.fuelHoard < fuelBurn) {
+      return { valid: false, reason: `guild ${guild.id} holds ${guild.fuelHoard} fuel, cannot burn ${fuelBurn} flying to ${JSON.stringify(action.destinationSystemId)} — insufficient fuel: need ${fuelBurn}, have ${guild.fuelHoard} (fuel-supply-and-allocation.md §8)` };
+    }
     return { valid: true };
   }
 
@@ -1125,13 +1147,45 @@ function applyAction(state, action) {
     // arrival, and a field nobody reads is a fact with a second home waiting to
     // drift (invariant 5).
     //
-    // NO galacticSupply REFRESH, unlike the sale: not one stockpile moved. The
-    // goods are a scheduled deposit, not held inventory (which is also exactly
-    // why losing them later imbalances nothing — §6), so the supply cache still
-    // describes the galaxy correctly and the consistency invariant stays green
-    // between ticks. `audit` is untouched for the same reasons the sale leaves it
-    // alone: its counters are fuel, and this moves credits without changing how
-    // many exist.
+    // THE BURN — fuel Slice 3. The flight scheduled just above costs fuel, and this
+    // is where the guild pays it: `fuel = distance x SYNDICATE_HAULER_BURN_RATE`,
+    // cargo-independent, from the SAME `routeFuelCost` the validate gate checked
+    // against and the snapshot quotes to the client. Called again rather than
+    // threaded through from validate, because apply must be correct on its own
+    // terms — and it is a pure function of the seed, so the two calls cannot
+    // disagree.
+    //
+    // TWO FIELDS MOVE AND NO OTHERS. Fuel LEAVES the galaxy here — it is burned,
+    // not transferred, so there is no counterparty to credit — and invariant 1
+    // (Sum hoards + reserve + inTransit === totalProduced - totalConsumed) balances
+    // only because the hoard going down is matched by `totalConsumed` going up.
+    // This is the first writer of `totalConsumed` in the engine; `createState`
+    // seeds it to 0, so it needs no `|| 0` guard — one would only hide a malformed
+    // state. No tick stamp: the three `audit` counters carry none (see the audit
+    // note in invariants.js), and inventing one here would be a second convention.
+    //
+    // A `fuelBurn` of 0 makes both lines no-ops — the no-route case, already
+    // refused up front by validate's waystation gate.
+    const { fuelBurn } = routeFuelCost(action.destinationSystemId);
+    guild.fuelHoard -= fuelBurn;
+    next.audit.totalConsumed += fuelBurn;
+
+    // ⚠ THIS REPLACES THE OLD "NO galacticSupply REFRESH" NOTE, which read: not one
+    // stockpile moved, so the cache still describes the galaxy correctly. That
+    // reasoning was true for as long as a BUY only moved credits and scheduled
+    // cargo. It STOPS being true the moment the burn above deducts `fuelHoard`,
+    // because `galacticSupply.fuel.guildHeld` is the sum of exactly those hoards.
+    // `POST /action` asserts every invariant right after apply with no tick in
+    // between, so leaving the cache stale would trip `galactic-supply-consistency`
+    // and return a 500 instead of landing the trade — the same between-tick seam
+    // `sellToSyndicate` and `foundGuild` each document. Refreshed through the one
+    // selector the tick uses, not a second derivation.
+    next.galacticSupply = computeGalacticSupply(next);
+    // The GOODS still need no cache refresh: they are a scheduled deposit, not held
+    // inventory (which is also exactly why losing them later imbalances nothing —
+    // §6), so no stockpile moved and the resources half of the cache was already
+    // correct. `expectedCreditTotal` is untouched too: the cash moved between the
+    // guild and the ledger without changing how many credits exist.
     return next;
   }
 

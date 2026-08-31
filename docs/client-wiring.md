@@ -1068,3 +1068,43 @@ lands. `buyFromSyndicate` is untouched — it still derives its route inline (`s
 Slice 3's to wire.
 
 **676 tests (+12), zero failures.**
+
+## Revision — fuel bites, and the SELL panel says what it costs *(31-08-26, engine + client)*
+
+Fuel Slice 3 (`docs/fuel-supply-and-allocation.md` §8). The engine half is BUY-only: a Syndicate BUY
+now burns `routeFuelCost(destinationSystemId).fuelBurn` and refuses a guild that cannot pay it. The
+client half lands in the **SELL panel**, because that is the only live Syndicate trade UI — the BUY
+control is still `class="tw-mbtn na"`, and its confirm popup (with its own fuel row) belongs to the BUY
+UI slice.
+
+**The Fuel row** (`#tw-fuelcost`), between the unit total and the proceeds line:
+
+- Summed across the allocation rows the player has actually filled in, from
+  `guild.fuelCost[systemId]` — the Slice-2 snapshot map. **The browser computes nothing**: it holds no
+  seed geometry and no burn rate, and a served-page tripwire asserts the string
+  `SYNDICATE_HAULER_BURN_RATE` / `hexDistance` / `nearestWaystation` appears nowhere in `game.html`.
+  Both `fuelBurn` and `creditCost` are read off the row; the credit figure is not a multiplication done
+  here.
+- A row whose system carries **no `fuelCost` entry counts 0** rather than throwing — the no-route case,
+  which the engine refuses on its own terms anyway.
+- Short fuel turns the row red (`.tw-fuelline.short`), disables the Sell button, and notes
+  **"Not enough fuel — need X, have Y"** — the same two numbers the engine's own refusal names. It is a
+  **pre-gate, not the gate**: the engine is always the authority, and this only spares a round trip.
+
+> ⚠ **The short-fuel disable is ahead of its engine rule, and blocks sales the engine would accept.**
+> SELL burns nothing in this slice — that deduction is deferred pending the multi-allocation routing
+> ruling — so a guild whose hoard is below the displayed burn is stopped by the panel from a sale the
+> engine would happily take. Worse, nothing refills fuel yet (issuance is unbuilt), so a guild that
+> burns down on BUYs can be left unable to use its only working trade action. Built as specified, and
+> flagged rather than quietly softened: the fix is either to drop `|| short` from the Sell button's
+> `disabled` and keep the row as information, or to land the SELL deduction that makes the gate true.
+> The next slice settles the ruling either way.
+
+**Engine-side**, for readers of this file: `fuelHoard` on the snapshot now *moves*, so a panel showing
+it should re-read after every trade rather than caching it. `fuelCost` is unchanged from Slice 2.
+
+**689 tests (+13), zero failures.** Verified in headless Chromium against a real booted server: the
+Fuel row read `3 fuel · ≈ ¢30` and matched the snapshot; 166 real BUYs burned the hoard 500 → 2 (every
+one through `POST /action`, which asserts all nine invariants after each apply); the 167th was refused
+with *"insufficient fuel: need 3, have 2"*; the panel then disabled with that same message; and a
+completed SELL left `fuelHoard` untouched at 2.

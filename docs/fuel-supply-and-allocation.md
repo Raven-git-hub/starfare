@@ -200,9 +200,17 @@ later. This is the consumption side; everything in §1–§5 is the supply/econo
   - **Burn model — RULED (31-08-26):** `fuel = distance × craftBurnRate`, **cargo-independent**. Syndicate
     trades fly the one Syndicate hauler; its `[FIRST-CUT]` rate is `SYNDICATE_HAULER_BURN_RATE = 0.5`.
   - **SELL routing — RULED (31-08-26):** SELL uses the same system→nearest-waystation route as BUY.
-- **Slice 3 — Deduct it on the Syndicate trade action.** Not yet built. BUY-only in this slice; SELL fuel
-  deduction deferred pending a ruling on per-allocation-row vs total cost for multi-system sales. Reject-whole
-  (no partial trade on short fuel).
+- **Slice 3 — Deduct it on the Syndicate trade action.** ✅ Built (engine + client). **BUY-only**, as
+  scoped: `buyFromSyndicate` gates on `routeFuelCost(destinationSystemId).fuelBurn` — the gate runs
+  **last**, so a trade short on credits or territory is refused on those terms — and the apply deducts
+  the burn from `guild.fuelHoard`, adds it to `audit.totalConsumed` (this counter's first writer), and
+  refreshes the `galacticSupply` cache the deduction moves. **Reject-whole**: no partial trade, no
+  shorter flight. Client: the SELL panel gained a Fuel row reading the snapshot's `fuelCost`, plus a
+  short-fuel pre-gate. **SELL fuel deduction is still deferred** — the per-allocation-row vs total-cost
+  ruling for multi-system sales is unmade, so SELL burns nothing and a test pins that. That ruling and
+  its build are the next slice. ⚠ Note for that slice: the SELL panel's short-fuel *disable* shipped
+  ahead of the deduction, so it currently blocks sales the engine would accept — see
+  `docs/client-wiring.md`.
 
 **Then — the economy that feeds it** (§1–§5, spreadsheet-first for the numbers): pool + deuterium 1:1 supply
 spine with a seeded Producer Guild; simple per-cycle issuance; mean-line issuance (needs Points formula +

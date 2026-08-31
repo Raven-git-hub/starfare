@@ -780,6 +780,10 @@ select.field{appearance:none; cursor:pointer;}
 #tp-trade .tw-sysrow .smax:hover{color:var(--tw-ink); border-color:var(--tw-amber-dim);}
 #tp-trade .tw-selltot{display:flex; justify-content:flex-end; gap:6px; font-size:11px; color:var(--tw-ink3); letter-spacing:.04em;}
 #tp-trade .tw-selltot b{color:var(--tw-ink2); font-variant-numeric:tabular-nums;}
+#tp-trade .tw-fuelline{display:flex; align-items:baseline; justify-content:space-between; margin-top:4px;}
+#tp-trade .tw-fuelline .lbl{font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--tw-ink3);}
+#tp-trade .tw-fuelline .amt{font-size:12px; color:var(--tw-ink2); font-variant-numeric:tabular-nums;}
+#tp-trade .tw-fuelline.short .amt{color:#e06c5a;}
 #tp-trade .tw-qtybox{display:flex; align-items:center; border:1px solid var(--tw-line2); border-radius:7px; background:#0d0f14; overflow:hidden;}
 #tp-trade .tw-qtybox input{flex:1; min-width:0; background:none; border:none; color:var(--tw-ink); font-family:var(--tw-mono); font-size:20px; font-weight:600; padding:11px 14px; outline:none; font-variant-numeric:tabular-nums;}
 #tp-trade .tw-qtybox .u{font-size:11px; color:var(--tw-ink3); padding-right:12px; letter-spacing:.06em;}
@@ -1180,6 +1184,10 @@ select.field{appearance:none; cursor:pointer;}
             <div class="tw-sellhead"><span class="sg" id="tw-sellgood">&mdash;</span><span class="sp" id="tw-sellprice"></span></div>
             <div class="tw-sysalloc" id="tw-sysalloc"></div>
             <div class="tw-selltot">Selling <b id="tw-selltot">0</b> u</div>
+            <!-- Fuel cost of the routes this sale would fly (fuel Slice 3). Read
+                 straight off the snapshot's per-system `fuelCost`; the browser does
+                 no distance or burn arithmetic of its own. -->
+            <div class="tw-fuelline" id="tw-fuelline"><span class="lbl">Fuel</span><span class="amt" id="tw-fuelcost">&mdash;</span></div>
             <div class="tw-forline"><span class="lbl">You receive</span><span class="amt"><span class="c">&#162;</span><span id="tw-proceeds">0</span></span></div>
             <button class="tw-exec" id="tw-sellbtn" type="button" disabled>Sell to Syndicate</button>
             <div class="tw-note" id="tw-note"></div>
@@ -4148,6 +4156,27 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     });
     return { rows: rows, total: total };
   }
+  // The fuel a sale's routes would burn, and what that fuel is worth — READ, never
+  // computed (fuel Slice 3). Every figure comes off the snapshot: `fuelCost` is the
+  // engine's own `routeFuelCost` per system this guild holds, and the credit value
+  // rides `creditCost` from the same row. The browser knows no distance and no burn
+  // rate, which is the point: the number shown is the number the engine would charge.
+  //
+  // A row whose system has NO `fuelCost` entry counts 0 rather than crashing the
+  // panel — that is the no-route case, and the engine refuses such a trade on its
+  // own terms (§6's waystation gate), so the display never has to explain it.
+  function fuelFor(rows){
+    var guild = meGuild();
+    var costs = (guild && guild.fuelCost) || {};
+    var burn = 0, credits = 0;
+    rows.forEach(function(row){
+      var q = costs[row.systemId];
+      if(!q) return;
+      burn += q.fuelBurn || 0;
+      credits += q.creditCost || 0;
+    });
+    return { burn: burn, credits: credits, hoard: (guild && guild.fuelHoard) || 0 };
+  }
   function recalc(){
     var price = T.good ? priceOf(T.good) : null;
     var r = readRows();
@@ -4156,8 +4185,22 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // total exactly as the engine does. The authoritative figure is the credit
     // balance read back off the snapshot after the sale, never this.
     el('tw-proceeds').textContent = (price == null) ? '—' : fmt(Math.round(r.total * price));
+
+    // The Fuel row: summed across the rows the player has actually entered, so it
+    // moves as they type and reads 0 for an empty order.
+    var f = fuelFor(r.rows);
+    var short = f.burn > f.hoard;
+    el('tw-fuelcost').textContent = fmt(f.burn) + ' fuel  ·  ≈ ¢' + fmt(f.credits);
+    el('tw-fuelline').classList.toggle('short', short);
+
     var btn = el('tw-sellbtn');
-    btn.disabled = !(r.total > 0 && price != null);
+    btn.disabled = !(r.total > 0 && price != null) || short;
+    // A PRE-GATE, not the gate. The engine is always the authority on a refusal;
+    // this only spares the player a round trip to be told what the panel already
+    // knew. The message names both numbers, exactly as the engine's own does.
+    if(short){
+      note('Not enough fuel — need ' + fmt(f.burn) + ', have ' + fmt(f.hoard), 'bad');
+    }
     return r;
   }
 
