@@ -133,10 +133,14 @@ test('a galaxy created exactly at midnight needs no anchor at all', () => {
 test('minuteOfDayFromDate converts a supplied Date — the module reads no clock itself', () => {
   // The one impure input, and it is impure only in its ARGUMENT. The caller (the galaxy
   // create handler) does the single wall-clock read; nothing here calls Date.now().
-  const d = new Date(2026, 7, 27, 14, 30, 45); // local 14:30 -> minute 870
+  // Built with Date.UTC so the instant's UTC fields are fixed on ANY machine —
+  // minuteOfDayFromDate reads getUTCHours/getUTCMinutes, so a local-time constructor
+  // made this assert 8h off in UTC+8 (390 != 870). The module's UTC contract, tested
+  // in UTC.
+  const d = new Date(Date.UTC(2026, 7, 27, 14, 30, 45)); // 14:30 UTC -> minute 870
   assert.equal(minuteOfDayFromDate(d), 870);
-  assert.equal(minuteOfDayFromDate(new Date(2026, 7, 27, 0, 0, 0)), 0);
-  assert.equal(minuteOfDayFromDate(new Date(2026, 7, 27, 23, 59, 0)), 1439);
+  assert.equal(minuteOfDayFromDate(new Date(Date.UTC(2026, 7, 27, 0, 0, 0))), 0);
+  assert.equal(minuteOfDayFromDate(new Date(Date.UTC(2026, 7, 27, 23, 59, 0))), 1439);
 });
 
 // --- the pre-game tick has no clock to show (console legibility pass, 28-08-26) -----
