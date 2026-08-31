@@ -9,6 +9,7 @@ const { createZeroState, SYNDICATE_OWNER } = require('../scenarios/zero-state.js
 const { createFoundGuildAction, createPaySyndicateFeeAction } = require('../actions.js');
 const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
+const { GUILD_STARTING_FUEL } = require('../fuel.js');
 
 // --- the driver's guards + purity -----------------------------------------
 
@@ -65,7 +66,9 @@ test('foundGuild inserts the guild and debits its credits from the ledger', () =
   const g = next.guilds[0];
   assert.equal(g.id, 'player-guild');
   assert.equal(g.credits, 120);
-  assert.equal(g.fuelHoard, 0);
+  // The founding fuel grant (fuel Slice 1): a new guild opens with the starter floor
+  // in its hoard (docs/fuel-economy.md §7), not the 0 this used to assert.
+  assert.equal(g.fuelHoard, GUILD_STARTING_FUEL);
   assert.equal(g.influence, 100); // +20 claim bonus does NOT fire at founding
 
   // Home seated (design.md §13): the guild lives on sys_0002's Terran homeworld,

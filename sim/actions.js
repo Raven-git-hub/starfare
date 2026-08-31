@@ -16,6 +16,7 @@ const { getStock, addStock } = require('./stock.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { guildHolds } = require('./claims.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
+const { GUILD_STARTING_FUEL } = require('./fuel.js');
 const {
   STARTER_MINERS, STARTER_FACTORIES, starterAssetSpecs, assetKindForVentureType,
   deployedAssetIds,
@@ -81,10 +82,23 @@ function createPaySyndicateFeeAction({ guildId, amount }) {
 // being on a running galaxy -- the "owner creates their first guild" moment,
 // and later any join. Starting credits are DEBITED from the Syndicate ledger
 // (design.md §8: the ledger is the balancing account that funds guild credits),
-// so nothing is minted and invariant 2 holds. Starting fuelHoard is always 0:
-// every decided roster starts at 0 (docs/phase-1-tuning.md), and minting fuel
-// into a hoard would need a fuel-genesis rule we have not decided -- so this
-// action does not offer a non-zero starting hoard at all.
+// so nothing is minted and invariant 2 holds.
+//
+// FUEL-GENESIS IS NOW DECIDED (fuel Slice 1). This note used to read "starting
+// fuelHoard is always 0 ... minting fuel into a hoard would need a fuel-genesis
+// rule we have not decided". The rule is decided: a founding guild opens with
+// GUILD_STARTING_FUEL (sim/fuel.js) in its hoard — the early-game STARTER FLOOR
+// ruled in docs/fuel-economy.md §7, anchored on design.md §8's survival floor,
+// which closes the no-fuel -> no-trade -> no-reputation trap a brand-new guild
+// would otherwise be born into.
+//
+// Unlike credits, this fuel is MINTED, not moved: there is no fuel counterpart
+// to the Syndicate ledger to debit (the reserve is a physical pool, not a
+// balancing account), so genesis is honest about being genesis and pays for it
+// in the audit — the apply below increments `audit.totalProduced` by exactly the
+// grant, which is how invariant 1 balances from tick 0. It stays ENGINE POLICY,
+// not an action field — exactly like the starter asset gift — so the action
+// shape is unchanged and no caller can ask for a different hoard.
 //
 // homeSystemId (design.md §13, decided 03-08-26): every guild enters ON a
 // starter-eligible system (one holding >=1 Terran planet), so it is REQUIRED.
@@ -798,7 +812,7 @@ function applyAction(state, action) {
     const homePlanetId = getTerranHomeworld(action.homeSystemId);
     // THE STARTER ASSET GIFT (design.md §4, docs/phase-1-tuning.md "Starter asset
     // gift"): 15 Miners + 10 Factories, idle, in inventory. It is ENGINE POLICY,
-    // not an action field — exactly like `fuelHoard: 0` below — so the action shape
+    // not an action field — exactly like the `fuelHoard` grant below — so the action shape
     // is byte-identical to before this slice and no caller can ask for a different
     // gift. The counts and the deterministic id scheme both live in sim/assets.js;
     // nothing is inlined here.
@@ -835,7 +849,7 @@ function applyAction(state, action) {
       name: action.name,
       isBot: action.isBot,
       credits: action.credits,
-      fuelHoard: 0, // always 0 -- see createFoundGuildAction's note
+      fuelHoard: GUILD_STARTING_FUEL, // the starter floor -- see createFoundGuildAction's note
       influence: action.influence,
       incomeRate: action.incomeRate,
       homeSystemId: action.homeSystemId,
@@ -857,6 +871,26 @@ function applyAction(state, action) {
     // => net 0), so invariant 2 still holds. Founding does NOT grant the +20
     // claim bonus (setup, not a play action -- see createFoundGuildAction).
     next.syndicate.ledger -= action.credits;
+
+    // FUEL-GENESIS, and the audit entry that makes it honest. Invariant 1 reads
+    //   Σ guild.fuelHoard + reserve.reserveLevel + inTransit
+    //     === audit.totalProduced - audit.totalConsumed
+    // so a hoard that appears from nowhere must be recorded as PRODUCED, or the
+    // left side grows while the right side does not and the tripwire fires on
+    // the very tick a guild is born. `totalProduced` is a monotonic counter, so
+    // this only ever adds. (createState does the same sum for scenario guilds --
+    // see sim/state.js's `totalProduced: sumFuelHoards(guilds) + reserveLevel`.)
+    next.audit.totalProduced += GUILD_STARTING_FUEL;
+
+    // THE BETWEEN-TICK SEAM, exactly as sellToSyndicate documents it below:
+    // `state.galacticSupply` is a CACHE the tick refreshes once after its eight
+    // steps, and the galactic-supply-consistency invariant compares that cache
+    // against a live recompute. `POST /action` asserts every invariant right
+    // after apply, with no tick in between, so founding a guild with a non-zero
+    // hoard and leaving `fuel.guildHeld` stale would trip that check and return
+    // a 500 instead of landing the founding. Refreshed through the same one
+    // selector the tick uses -- not a second derivation.
+    next.galacticSupply = computeGalacticSupply(next);
     return next;
   }
   if (action.type === 'establishVenture') {
