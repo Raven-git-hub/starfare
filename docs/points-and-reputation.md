@@ -7,10 +7,10 @@
 `licence-and-price-system.md`. Where a number is unruled it is called `[FIRST-CUT]`, `[SHEET]` (needs a
 spreadsheet/sim pass) or `[DEFERRED]` — never a silent constant. **§6 steps 1-2 are BUILT (31-08-26) apart from closure; everything else here is NOT.***
 
-## 0a. What is BUILT *(31-08-26 — RP slices 1 and 2)*
+## 0a. What is BUILT *(31-08-26 — RP slices 1 and 2, the console readout, and GP slice 3)*
 
-Step 1 of §6 in full, and step 2 **apart from closure**. Read every other section of this doc as design,
-not as code.
+Steps 1 and 3 of §6 in full, step 2 **apart from closure**, and the §6.1 dev readout. Read every other
+section of this doc as design, not as code.
 
 - **`venture.reputation`** — a signed integer on the venture, omitted from serialized state when `0`,
   non-negativity-exempt (`design.md` §15.5 invariant 3), non-conserved. `sim/state.js`.
@@ -43,14 +43,36 @@ not as code.
   thing guarding the TOP, since no line of code enforces the cap directly.
 - **Snapshot** — `guilds[].guildReputation` and `ventures[].reputation`, echoed as stored (the engine decides,
   the browser renders). Additive; schema stays 7.
+- **GUILD POINTS (slice 3)** — `sim/points.js`, the whole of §1.0:
+  - `guildPoints(state, guild)` = `W_SYS · heldSystemIds(state, guild.id).length + Σ ventures W_TIER(tier)`,
+    an integer. Weights `[FIRST-CUT]` **12 / 6 / 8** in `phase-1-tuning.md`, **relative only**.
+  - `tierOf(good)` reads the resources vocabulary through its own predicates — raw → 1, processed → 2 — so
+    mining and refining are not special-cased and a higher tier lights up by adding one line to `TIER_WEIGHT`.
+  - **DERIVED, never stored.** No `guild.guildPoints` field, nothing serialized, nothing in any determinism
+    hash — so the state goldens are byte-identical by construction rather than by re-pinning. Pure: computing
+    it moves no byte.
+  - **Ventures, not assets** (a venture IS its deployed asset, so idle inventory scores nothing and no machine
+    is counted twice); **empty held systems still count `W_SYS`** (the anti-sprawl liability, §2).
+  - **An unweighted tier HALTS**, naming the good, the venture, the guild and where to rule the weight.
+    Scoring it 0 would understate a guild's size and quietly lower the bar its reputation is judged against.
+    Unreachable today — a test asserts every mining resource and every recipe output has a ruled weight.
+  - **Snapshot** — `guilds[].guildPoints`, computed by that helper. Additive; schema stays 7.
+  - **Console** — the number beside reputation in the Syndicate footer. No gauge: GP is unbounded, so a bar
+    would need an invented maximum. The browser weighs nothing and holds no Points constant.
 
 **Explicitly NOT built, and nothing in the code approximates any of it:** the −500 **closure** and −300
 **forced-lease** CONSEQUENCES — venture removal, licence revocation, the stakeholder offer; reaching −500 is a
 **pin**, and a pinned venture keeps producing, keeps being judged, keeps being charged its fee, and can climb
-back out at full strength. Also not built: GP in any form, the mean line / `expectedRP` / `MEANLINE_K` / the
-fuel issuance modifier, `baseGrant`, every other RP source in §2.4, and the client deploy-meter wiring (the
+back out at full strength. Also not built: the mean line / `expectedRP` / `MEANLINE_K` / the fuel issuance
+modifier, `baseGrant`, every other RP source in §2.4, the `[DEFERRED]` GP sources of §1 (transports, tolls,
+droids, outposts, exploration — and no field for any of them), and the client deploy-meter wiring (the
 Establish-Venture panel's reputation copy is still mock — the engine is now the authority for the same
 arithmetic, but nothing reads it yet).
+
+**GP IS PUBLISHED WITH NO CONSUMER.** Slice 3 computes and shows it; nothing reads it to decide anything. The
+mean line that judges RP against it (`expectedRP = MEANLINE_K × GP`, §3) is the next slice, and `MEANLINE_K` is
+still `[SHEET]` — which is also why the GP weights are ruled *relative only*: nothing fixes their absolute
+scale until that constant does.
 
 **Deliberately not this cut:** the met gain is **not window-pro-rated**. A mid-window joiner's first window is
 pro-rated for its target and its fee (`windowFraction`) but not for its reputation, so it earns a full cycle's
@@ -296,6 +318,9 @@ snapshot poll, so RP visibly moves as ticks advance.
    inverse-commitment breach and the band clamp are built. **CLOSURE IS NOT**: −500 is a pin, and what happens
    at −500 / −300 is a slice of its own, still to come.
 3. **GP calculator** — systems + mining + refining + deployed assets, tier-scaled (§1).
+   **✅ LANDED 31-08-26 — see §0a and §1.0.** Derived, never stored; tier via `producedGoodFor`, so it is
+   general rather than a mining/refining special case. *(The "deployed assets" in this line is superseded by
+   §1.0's count-ventures-not-assets ruling: a venture IS its deployed asset.)*
 4. **The mean line + fuel modifier** (§3) — needs `MEANLINE_K` from a sheet pass.
 5. Then issuance, the reserve/flow price controller, the edges (`fuel-supply-and-allocation.md §8`).
 

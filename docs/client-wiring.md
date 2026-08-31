@@ -1197,3 +1197,26 @@ display should show at all — a raw number, a band, or only a tier.
 
 **731 tests (+5), zero failures.** No `sim/` engine file changed, so the determinism goldens are
 untouched by construction.
+
+
+### Guild Points reach the console *(31-08-26)* — a number, and deliberately not a gauge
+
+Ruling: `docs/points-and-reputation.md` §1/§1.0. **`client/console.html`** (plus `sim/points.js`,
+`sim/snapshot.js` and tests). The console shows the guild's **GP** beside its reputation in the
+Syndicate footer, because the two are one pair: GP is what a guild HOLDS, RP is what it CONTRIBUTES,
+and the mean line that will read the second against the first is the next slice.
+
+- **`guilds[].guildPoints`** — an integer, new in the snapshot, **DERIVED** by the engine on every read
+  (`sim/points.js`). Unlike `guildReputation` beside it there is no stored counterpart to echo and
+  deliberately none, so it enters no serialized byte and no determinism hash.
+- **A plain number, no gauge.** GP is **unbounded** — no floor, knee or cap — so a bar would need an
+  invented maximum. That is why the RP band gauge is not reused for it, and a test asserts it isn't.
+- **The browser weighs nothing.** The console holds **no Points constant at all**, so unlike the RP band
+  bounds there is nothing here to mirror and no constant-mirror tripwire to write. A served-page test
+  asserts the weighting appears nowhere in the file — GP is the number the mean line will judge
+  reputation against, so a second weighting in the browser could only ever disagree with the engine's.
+- **Seeing WHY GP is what it is** needs no new surface: the console already lists the guild's systems
+  and its ventures, and GP is exactly those two things weighted.
+
+**753 tests (+22), zero failures.** The state determinism goldens are untouched — GP is never
+serialized, so they cannot move on its account.
