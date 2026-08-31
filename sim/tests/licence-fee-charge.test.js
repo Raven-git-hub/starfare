@@ -33,7 +33,9 @@ const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { MINE_BASELINE } = require('../baseline.js');
 const { BASE_PRICE } = require('../prices.js');
-const { FEE_RATE, feeOwed, REP_MEET_FLAT } = require('../licence.js');
+const {
+  FEE_RATE, feeOwed, metGain, gainFactor, RP_FLOOR,
+} = require('../licence.js');
 
 const SYS = 'sysA';
 const SYS_B = 'sysB';
@@ -380,8 +382,14 @@ test('feeOwed is §5’s formula and REFUSES to price a non-verdict', () => {
 // step 1). RP moves off the SAME boundary verdict the fee is charged on, so a licensed
 // run now also carries `venture.reputation` and the guild sum — two more bytes this test
 // must strip to keep proving what it proves. They are undone the same way the two
-// balances are, and by an amount stated as ARITHMETIC (`WINDOWS × REP_MEET_FLAT`) rather
-// than read back off the state under test, so a drift in the magnitude fails here too.
+// balances are, and by an amount RECOMPUTED from the model rather than read back off the
+// state under test, so a drift in the magnitude fails here too.
+//
+// SLICE 2 (31-08-26) made that recomputation real arithmetic instead of a multiplication.
+// The gain is no longer flat: it is `metGain` for THESE terms (a full commitment, no
+// equity offered — half the meter), tapered by `gainFactor` at whatever height the
+// venture had already reached, and floored at `RP_FLOOR`. So the expectation below walks
+// the same curve the tick walks, window by window, off the venture's own stored licence.
 test('STRIP-AND-PROVE: the charge moved the two balances and the record, and nothing else', () => {
   const WINDOWS = 3;
   const run = (keepLicence) => {
@@ -405,9 +413,21 @@ test('STRIP-AND-PROVE: the charge moved the two balances and the record, and not
   assert.equal(charged.syndicate.ledger, uncharged.syndicate.ledger + total,
     'ledger: the exact mirror — an internal transfer, so invariant 2 never moved');
 
-  // The licence met every window, so RP climbed by the flat meet gain each time — the
-  // whole of what this slice adds to a licensed run, stated by hand.
-  const expectedRP = WINDOWS * REP_MEET_FLAT;
+  // The licence met every window, so RP climbed by its TERMS-SCALED gain each time. Walked
+  // out here rather than multiplied, because the gain that lands depends on where the
+  // venture already stood (the §2.3 taper) — three cycles at these terms stay far below
+  // the 800 knee, so this run happens to be linear, and the loop is what proves that
+  // rather than assumes it.
+  const expectedRP = (() => {
+    const v = charged.guilds[0].ventures[0];
+    let acc = 0;
+    for (let w = 0; w < WINDOWS; w += 1) {
+      acc = Math.max(RP_FLOOR, acc + Math.round(metGain(v) * gainFactor(acc)));
+    }
+    return acc;
+  })();
+  assert.equal(expectedRP, WINDOWS * metGain(charged.guilds[0].ventures[0]),
+    'these three windows are all below the taper knee, so the walk is linear here');
   assert.equal(charged.guilds[0].ventures[0].reputation, expectedRP,
     'three met boundaries, three flat gains');
   assert.equal(charged.guilds[0].guildReputation, expectedRP, 'and the guild sum agrees');

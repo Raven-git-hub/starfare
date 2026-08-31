@@ -5,11 +5,12 @@
 **consolidates and supersedes** the scattered reputation notes in `fuel-supply-and-allocation.md §2`,
 `fuel-economy.md §2–4`, `venture-establishment.md §2.5`, and the reputation bullet in
 `licence-and-price-system.md`. Where a number is unruled it is called `[FIRST-CUT]`, `[SHEET]` (needs a
-spreadsheet/sim pass) or `[DEFERRED]` — never a silent constant. **§6 step 1 is BUILT (31-08-26); everything else here is NOT.***
+spreadsheet/sim pass) or `[DEFERRED]` — never a silent constant. **§6 steps 1-2 are BUILT (31-08-26) apart from closure; everything else here is NOT.***
 
-## 0a. What is BUILT *(31-08-26 — RP slice 1)*
+## 0a. What is BUILT *(31-08-26 — RP slices 1 and 2)*
 
-Step 1 of §6 and nothing else. Read every other section of this doc as design, not as code.
+Step 1 of §6 in full, and step 2 **apart from closure**. Read every other section of this doc as design,
+not as code.
 
 - **`venture.reputation`** — a signed integer on the venture, omitted from serialized state when `0`,
   non-negativity-exempt (`design.md` §15.5 invariant 3), non-conserved. `sim/state.js`.
@@ -19,25 +20,46 @@ Step 1 of §6 and nothing else. Read every other section of this doc as design, 
   deriving it because the field is already present on every guild in every save and every pinned determinism
   golden — deriving would move all of those hashes to buy a purity a tripwire delivers more cheaply, and it is
   the bargain `homeSystemId` and `venture.systemId` already run under.*
-- **A FLAT meet/breach at the window boundary** — `sim/tick.js`, in the same per-licensed-venture loop that
-  already resolves `status` for the licence fee, reusing that exact verdict so the fee and the reputation event
-  can never disagree. `met → +REP_MEET_FLAT`, `breach → −REP_BREACH_FLAT`, once per licensed venture per
-  boundary. `[FIRST-CUT]` **20 / 30**, given by the human, in `sim/licence.js` and recorded in
-  `phase-1-tuning.md`.
+- **The meet/breach movement at the window boundary** — `sim/tick.js`, in the same per-licensed-venture loop
+  that already resolves `status` for the licence fee, reusing that exact verdict so the fee and the reputation
+  event can never disagree. Once per licensed venture per boundary.
+- **The §2.2 band arithmetic (slice 2)** — `sim/licence.js`, which owns it per §4. Slice 1's flat `[FIRST-CUT]`
+  ±20/−30 placeholders are **gone**, not deprecated:
+  - `metGain(venture)` = `REP_MEET_MAX · (REP_W_COMMIT · commit + REP_W_EQUITY · equityFrac)` — terms-scaled,
+    the deploy meter made real. `equityFrac` reuses `normalisedTerms`' `oNorm`, so the RP meter and the fee
+    grid cannot come to disagree about what "offered equity" normalises to.
+  - `breachPenalty(venture)` = `−(REP_BREACH_MAX − (REP_BREACH_MAX − REP_BREACH_MIN) · commit)` — linear,
+    inverse to commitment, and independent of equity.
+  - `gainFactor(rp)` — the §2.3 taper, applied to **gains only**. Drops land at full strength at every height.
+  - The **floor is a hard clamp** in the tick; the **cap is not clamped at all** — the taper rounds a gain to
+    zero before 1500 is reached (the largest possible gain lands its last unit at **1497**), which is what §2.3
+    means by an organic soft cap. `guild.guildReputation` moves by the **actual post-clamp change**, so
+    `checkGuildReputationSum` stays exact when a venture pins at the floor.
+  - A verdict worth a **zero net change writes nothing** — a 0%-commitment licence (always met, zero terms,
+    zero gain), a venture already pinned at the floor, or one at the taper's asymptote. So `venture.reputation`
+    is minted by the first verdict that MOVES it, and a 0%-floor licence adds not one byte of reputation to the
+    galaxy however long it runs.
+- **`checkReputationBand`** (`sim/invariants.js`) — every venture's RP sits in `[−500, 1500]`. It is the only
+  thing guarding the TOP, since no line of code enforces the cap directly.
 - **Snapshot** — `guilds[].guildReputation` and `ventures[].reputation`, echoed as stored (the engine decides,
   the browser renders). Additive; schema stays 7.
 
-**Explicitly NOT built, and nothing in the code approximates any of it:** the gain taper, the 800 knee, the 1500
-soft cap, the −500 closure and −300 forced-lease behaviour, inverse-commitment or terms-scaled magnitudes, GP in
-any form, the mean line / `expectedRP` / the fuel issuance modifier, `baseGrant`, and every other RP source in
-§2.4. RP is a running integer with no band and no clamp.
+**Explicitly NOT built, and nothing in the code approximates any of it:** the −500 **closure** and −300
+**forced-lease** CONSEQUENCES — venture removal, licence revocation, the stakeholder offer; reaching −500 is a
+**pin**, and a pinned venture keeps producing, keeps being judged, keeps being charged its fee, and can climb
+back out at full strength. Also not built: GP in any form, the mean line / `expectedRP` / `MEANLINE_K` / the
+fuel issuance modifier, `baseGrant`, every other RP source in §2.4, and the client deploy-meter wiring (the
+Establish-Venture panel's reputation copy is still mock — the engine is now the authority for the same
+arithmetic, but nothing reads it yet).
 
-**Where the constants live — a deviation from the slice-1 build prompt, flagged for the human.** The prompt put
-`REP_MEET_FLAT` / `REP_BREACH_FLAT` in `sim/fuel.js`; they are in `sim/licence.js` instead, because §4 below
-rules that the **licence layer owns how RP moves** and the fuel layer only reads `guild.guildReputation` — and
-because `sim/fuel.js`'s own header states the repo rule both obey ("a constant lives in the module that owns the
-rule it belongs to"). They sit beside `feeOwed`, the other consumer of the same verdict. A one-line move if the
-prompt's placement was deliberate.
+**Deliberately not this cut:** the met gain is **not window-pro-rated**. A mid-window joiner's first window is
+pro-rated for its target and its fee (`windowFraction`) but not for its reputation, so it earns a full cycle's
+gain for a partial cycle met.
+
+**Where the constants live — RESOLVED.** Slice 1 flagged a deviation: its build prompt put the magnitudes in
+`sim/fuel.js`, and they went in `sim/licence.js` instead because §4 rules that the licence layer owns how RP
+moves. The slice-2 prompt confirms that placement in its own words ("constants live in `sim/licence.js` (§4
+ownership)"), so the question is closed and every RP constant lives there beside `feeOwed`.
 
 ## 0. The one-line frame
 
@@ -212,6 +234,9 @@ pure consumer sinks by earning nothing against its bar, so buying needs no expli
    magnitudes here are placeholders to make it move, like `GUILD_STARTING_FUEL` was.)*
 2. **Band shaping** (the licence reputation slice): the taper (§2.3), inverse-commitment breach (§2.2), closure
    at −500, and the calibrated magnitudes. Reconciles the `§5/§7` tiers.
+   **✅ MOSTLY LANDED 31-08-26 (RP slice 2) — see §0a.** The taper, the terms-scaled meet, the
+   inverse-commitment breach and the band clamp are built. **CLOSURE IS NOT**: −500 is a pin, and what happens
+   at −500 / −300 is a slice of its own, still to come.
 3. **GP calculator** — systems + mining + refining + deployed assets, tier-scaled (§1).
 4. **The mean line + fuel modifier** (§3) — needs `MEANLINE_K` from a sheet pass.
 5. Then issuance, the reserve/flow price controller, the edges (`fuel-supply-and-allocation.md §8`).

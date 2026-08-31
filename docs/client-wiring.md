@@ -1140,3 +1140,25 @@ closure and the terms-scaled magnitudes are the next slice.
 
 **710 tests (+21), zero failures.** All eleven pinned determinism goldens byte-identical, not
 regenerated.
+
+### Slice 2 revision *(31-08-26)* — the numbers become real; the panel still does not read them
+
+**No new snapshot field and no client change.** The two fields above keep their exact contract; only
+what the engine puts in them changed, so this section is a REVISION of the paragraph above rather than
+a new surface.
+
+- **The flat ±20/−30 is gone.** A met cycle is now worth `100 × (0.5·commit + 0.5·equityFrac)` — the
+  **same arithmetic as the panel's own mock meter** (`repGain`, with `REP_MAX`/`REP_WC`/`REP_WO`) — and a
+  breach costs `−(100 − 90·commit)`, from −10 at a full commitment toward −100 as it approaches nothing.
+- **There IS a band now**, and the paragraph above is superseded on that point: RP is held in
+  `[−500, 1500]`, gains taper above 800, and drops never taper.
+- **What a panel must still NOT do.** Reaching −500 does **not** close a venture, revoke a licence or
+  trigger the −300 forced-lease offer — none of that is built, and a pinned venture keeps producing and
+  keeps being charged. Do not render a closure state off an RP of −500.
+- **The meter is now design-ahead only in its WIRING, not its arithmetic.** The engine is the authority
+  for the same formula the panel mocks, so the deploy meter can stop being a mock — but that is a UI
+  slice and this is not it. `venture.reputation` in the snapshot is what it should eventually read,
+  rather than recomputing `repGain` in the browser (§5's display rule).
+
+**727 tests (+17), zero failures.** The licence-less determinism goldens stayed byte-identical and were
+not regenerated.

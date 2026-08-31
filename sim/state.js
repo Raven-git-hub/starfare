@@ -323,9 +323,12 @@ function createVenture({
     // OMITTED when 0, exactly as `equityPct`, `licence` and `committedFromTick` above
     // are: a venture that has never been judged carries no key, so an unlicensed galaxy's
     // serialized state stays byte-identical and the determinism-hash no-op proof keeps
-    // meaning something. Minted LAZILY on the first verdict and kept thereafter — the
-    // same lifecycle `guild.syndicateWindows` has — so a venture that climbs and falls
-    // back to exactly 0 keeps its key rather than un-minting itself mid-run.
+    // meaning something. Minted LAZILY by the first verdict that MOVES it, and kept from
+    // then on — the same lifecycle `guild.syndicateWindows` has. Both halves are load-
+    // bearing: a venture that climbs and falls back to exactly 0 KEEPS its key (that last
+    // step was a real change), while a verdict worth a zero delta — a 0%-commitment
+    // licence, a venture pinned at the floor, one at the taper's asymptote — mints
+    // nothing, so a key never holds its own default.
     ...(reputation !== 0 ? { reputation } : {}),
     // STILL RESERVED, deliberately not stubbed (Slice 5, §15.4): `shareholders`, the
     // investor cap-table Part 2 asks to reserve. Documented rather than written as an
