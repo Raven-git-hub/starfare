@@ -294,6 +294,23 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the sellToS
   // BUY is present and DIMMED — it needs the transport system (§5, deferred).
   assert.match(html, /class="tw-mbtn na"/);
 
+  // FUEL SLICE 3: the SELL panel carries a Fuel row, and it READS the engine's
+  // per-system quote rather than pricing a route itself. `guild.fuelCost` is the
+  // load-bearing string — the browser holds no seed geometry and no burn rate, so
+  // a hardcoded number here would be a game figure invented in the client.
+  assert.match(html, /id="tw-fuelcost"/);
+  assert.match(html, /guild\.fuelCost/);
+  assert.match(html, /q\.fuelBurn \|\| 0/);
+  assert.match(html, /q\.creditCost \|\| 0/);
+  // The short-fuel pre-gate, naming both numbers exactly as the engine's refusal does.
+  assert.match(html, /Not enough fuel — need/);
+  assert.ok(!/SYNDICATE_HAULER_BURN_RATE|hexDistance|nearestWaystation/.test(html),
+    'the client must never carry the burn rate or the geometry — it reads fuelCost');
+
+  // ...and BUY stays unwired in this slice: no confirm popup, no buy action posted.
+  assert.ok(!html.includes("type:'buyFromSyndicate'"),
+    'the BUY confirm (with its own fuel row) lands with the BUY UI slice, not here');
+
   // THE WIRING SEAM, pinned so it cannot silently move to the console bridge: the tab
   // reads the shell's own snapshot and posts to /action. No postMessage, no console.
   assert.match(html, /window\.__snapshot/);

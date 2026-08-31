@@ -587,6 +587,25 @@ Scarcity is hybrid-sourced: **Deuterium extraction is territorial** (mining ties
 
 Supporting mechanics under consideration: **shortage consequences beyond price** (reduced fleet capacity, lost route access, reduced influence generation) so scarcity stays existential; and a **survival floor** below which a guild _degrades rather than dies_, so a successful fuel squeeze can't crash weaker guilds entirely out of the game. *(The earlier anti-hoarding shopping list — decay/spoilage, storage costs, use-it-or-lose-it expiry — is **retired**: hoarding is now disincentivised structurally by the **refining monopoly and legality** ("Allocation, the Pool, and the Refining Monopoly" below) — a guild can only legally hold fuel it *bought*, self-limited by allocation sizing. Re-adding spoilage on top would double-charge it.)*
 
+> **BUILT 31-08-26 — FUEL BITES ON BUY (fuel Slice 3).** Nothing in the pool /
+> issuance / price machinery below is built. What IS built is the **consumption**
+> side, which reaches the same place from the other end: a Syndicate **BUY** now
+> costs fuel, and a guild that cannot pay is refused. **No fuel, no Syndicate BUY.**
+> `buyFromSyndicate` charges `routeFuelCost(destinationSystemId).fuelBurn` —
+> `distance x SYNDICATE_HAULER_BURN_RATE`, cargo-independent (`sim/fuel.js`) —
+> deducting it from `guild.fuelHoard` and recording it in `audit.totalConsumed`, the
+> first writer that counter has ever had. Fuel is **destroyed** here, not
+> transferred: it is burned, there is no counterparty, and invariant 1 balances only
+> because those two lines move together. Refusal is **reject-whole** — no partial
+> trade, no shorter flight — and the fuel gate runs **last** in `validateAction`, so
+> a trade short on credits or territory still blames credits or territory.
+>
+> **BUY-ONLY, deliberately.** `sellToSyndicate` is multi-allocation
+> (`allocations: [{systemId, qty}, …]`) and its per-route fuel question — sum every
+> row, take the longest, or charge once — is **unruled**, so SELL burns nothing yet
+> and a test pins that it stays that way. That ruling and its build are the next
+> slice. Sequence and detail: `docs/fuel-supply-and-allocation.md` §8.
+
 ### Allocation, the Pool, and the Refining Monopoly
 
 *Full treatment: `docs/fuel-allocation-model.md`. This is the summary; that file is the source of truth for the detail and its own open questions.*

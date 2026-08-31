@@ -38,7 +38,7 @@ const { guildHolds, heldSystemIds } = require('../claims.js');
 const { nearestWaystation, arrivalTickFor } = require('../transport.js');
 const { postedPrice } = require('../prices.js');
 const {
-  FLAT_FUEL_PRICE_PER_UNIT, SYNDICATE_HAULER_BURN_RATE, routeFuelCost,
+  FLAT_FUEL_PRICE_PER_UNIT, SYNDICATE_HAULER_BURN_RATE, GUILD_STARTING_FUEL, routeFuelCost,
 } = require('../fuel.js');
 const {
   createBuyFromSyndicateAction, validateAction, applyAction,
@@ -70,12 +70,14 @@ const claim = (guildId, systemId, i) => ({
 
 // A guild homed on MID holding `holds`, ledger-funded so invariant 2 starts
 // balanced. `holds[0]` must be MID for the guild-home invariant to be satisfied.
-function quoteState({ credits = 100000, holds = [MID.id], guilds } = {}) {
+function quoteState({ credits = 100000, holds = [MID.id], guilds, fuelHoard = GUILD_STARTING_FUEL } = {}) {
   return createState({
     guilds: guilds || [{
       id: 'g1',
       credits,
-      fuelHoard: 0,
+      // The founding grant, not 0: fuel Slice 3 made a BUY burn fuel, so the seam
+      // test at the foot of this file could not place a purchase from an empty hoard.
+      fuelHoard,
       homeSystemId: MID.id,
       homePlanetId: MID_HOME_PLANET,
     }],
@@ -270,10 +272,15 @@ test('the quote is priced on the same distance the delivery is flown on', () => 
   assert.equal(shipment.arrivalTick, arrivalTickFor(0, distance), 'the flight is timed on this distance...');
   assert.equal(routeFuelCost(MID.id).fuelBurn, Math.ceil(distance * SYNDICATE_HAULER_BURN_RATE), '...and the quote is priced on the same one');
 
-  // Slice 2 QUOTES only: the purchase moved credits and cargo, and NOT one unit of
-  // fuel. This is the boundary assertion — it fails the moment a deduction lands
-  // here instead of in Slice 3 where it belongs.
-  assert.equal(s.guilds[0].fuelHoard, 0, 'nothing is deducted in this slice');
+  // UPDATED BY SLICE 3 (31-08-26). This assertion used to read `fuelHoard === 0,
+  // 'nothing is deducted in this slice'` — the Slice-2 boundary, when the quote was
+  // a display figure and nothing spent it. Slice 3 is exactly the slice that spends
+  // it, so the boundary moves rather than the test being dropped: the purchase must
+  // now burn EXACTLY what the quote said, which is a stronger statement than either
+  // half alone. Quoted, flown and charged on one distance.
+  const quoted = routeFuelCost(MID.id).fuelBurn;
+  assert.equal(s.guilds[0].fuelHoard, GUILD_STARTING_FUEL - quoted, 'the guild paid exactly the quoted burn');
+  assert.equal(s.audit.totalConsumed, quoted, 'and it was recorded as consumed, not lost');
   assert.equal(postedPrice(s, 'titanium'), 10);
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
