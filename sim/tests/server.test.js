@@ -437,8 +437,16 @@ test('the served console reads the mean line off the snapshot and reimplements n
   assert.match(html, /gpBlock\(g\) \+\s*\n\s*meanLineBlock\(g\)/,
     'the mean-line block sits with GP inside rpGuildBlock, rebuilt on every refresh');
 
-  // ⚠ It must not present the modifier as fuel anyone is receiving: nothing is granted.
-  assert.match(html, /NOTHING IS GRANTED YET/);
+  // ⚠ SUPERSEDED BY FUEL SLICE 5a (31-08-26). Until that slice the modifier multiplied
+  // nothing, and this asserted the footer said so. Fuel is now really granted from the
+  // Syndicate pool at each boundary, so the old wording would be a lie; what the panel must
+  // still not do is claim more than the engine does. It now says the modifier IS spent, and
+  // names the one thing that still limits it.
+  assert.match(html, /the grant below is that/);
+  assert.match(html, /modifier spent, drawn from the Syndicate pool at each cycle boundary/,
+    'the footer says the modifier is now actually spent');
+  assert.match(html, /rationed proportionally/,
+    'and names the crunch, which is what still limits a grant');
 
   // The colour must agree with the PRINTED figure, not with the raw float. A guild
   // sitting on its line computes to 0.997 and displays as 1.00; colouring that red said
@@ -592,7 +600,11 @@ test('the served console draws the band gauge from DISPLAY arithmetic only', asy
   // A venture at the floor reads PINNED, never "closed": closure is not built (§0a), so
   // the panel must not draw a consequence the engine will not deliver.
   assert.match(html, /PINNED/);
-  assert.ok(!/\bclosed\b/i.test(html.split('function rpGauge(')[1].split('function rpGuildBlock')[0]),
+  // Scoped to rpGauge's OWN body — the slice used to run to `rpGuildBlock` and swept up
+  // whatever functions were defined between them, which by slice 5a included a fuel block
+  // that legitimately talks about a CYCLE closing. The rule is about this function.
+  const gaugeBody = html.split('function rpGauge(')[1].split('\nfunction ')[0];
+  assert.ok(!/\bclosed\b/i.test(gaugeBody),
     'the gauge must not call a pinned venture closed');
 });
 

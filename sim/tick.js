@@ -37,6 +37,9 @@ const {
   commitmentSale, committedContribution, feeOwed, reputationDelta, gainFactor, RP_FLOOR,
 } = require('./licence.js');
 const { producedGoodFor } = require('./baseline.js');
+const {
+  DEUTERIUM_INFLUX_PER_CYCLE, grantFor, rationGrants,
+} = require('./issuance.js');
 
 // A total, deterministic string order for sort keys — used where a tie has to
 // break the same way every run (invariant 9) rather than however sort found it.
@@ -628,10 +631,92 @@ function stepArrivals(state, _actions) {
   return state;
 }
 
-// Step 6 — baseline allocation. The flat per-guild income (guild.incomeRate).
-// SEAM: needs a ruling on where the credits come from (minted vs. paid from
-// the Syndicate ledger — see invariants.js's comment on expectedCreditTotal).
+// recordFuelGrant(...) — stamp this cycle's fuel grant onto the guild, so a reader can say
+// WHAT it was due and WHAT it actually received without recomputing anything (§5's display
+// rule). Like `recordLicenceFee` and `recordSale` above this is a RECORD OF AN EVENT, not
+// a second copy of a derivable fact (invariant 5): `desired` is a function of the guild's
+// Points and modifier AT THIS BOUNDARY, and `granted` also depends on how full the pool was
+// and on what every other guild drew — a rationing share that is gone the instant the
+// boundary passes. There is nowhere else either number could ever be read from again.
+//
+// `tick` is the PRODUCING tick (the boundary), matching recordSale/recordLicenceFee, so a
+// reader compares it against `state.tick`/`snapshot.tick` with no off-by-one. REPLACED at
+// each boundary, never accumulated. Written only where a guild was actually DUE something,
+// so a galaxy of holdings-less guilds carries no key and stays byte-identical — and a
+// guild rationed down to zero still gets a record, because "due 150, received 0" is the
+// crunch made visible and is exactly what a reader needs.
+function recordFuelGrant(guild, tick, granted, desired) {
+  guild.lastFuelGrant = { tick, granted, desired };
+}
+
+// Step 6 — baseline allocation: THE SYNDICATE'S PER-CYCLE ALLOCATIONS.
+//
+// The CREDITS half (the flat per-guild income, `guild.incomeRate`) is still a SEAM: it
+// needs a ruling on where those credits come from (minted vs. paid from the Syndicate
+// ledger — see invariants.js's comment on expectedCreditTotal).
+//
+// The FUEL half is BUILT (slice 5a, docs/fuel-supply-and-allocation.md §2.1). This is the
+// step §15.6 names for it: "fuel allocation" is listed there among the things that "must
+// be recomputed fresh, every tick" because they touch a SHARED resource, and step 6 is the
+// allocation step. **The eight-step order is unchanged** — no step was added, renamed or
+// reordered; the one that already meant "the Syndicate hands things out" now hands out the
+// thing that has a rule.
+//
+// WHY HERE AND NOT IN STEP 1, where the boundary's met/breach and licence fee resolve: the
+// grant reads the guild's reputation, and step 1 is what MOVES it. Issuing in step 6 means
+// a guild is paid on its standing INCLUDING this cycle's verdict, which is the only
+// reading that makes "meet your commitments and draw more fuel" a live loop rather than a
+// one-cycle-late one. It is also galaxy-level and guild-level, once per boundary, while
+// step 1's boundary block runs per (guild, system) — putting it there would have meant
+// inventing a "have we already done this cycle?" guard that this step does not need.
+//
+// THE ORDER WITHIN THE BOUNDARY IS RULED (§2.1) and is not arbitrary: INFLUX first, then
+// ISSUANCE. This cycle's supply is available to this cycle's grants, so a galaxy is never
+// rationed against a pool that is about to be refilled in the same breath.
+//
+// NOTHING HAPPENS OFF A BOUNDARY. A non-boundary tick returns the state untouched, so the
+// pool holds and no fuel moves — the same discipline the licence fee already follows.
 function stepBaselineAllocation(state, _actions) {
+  const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+  const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
+  if (!isWindowBoundary(state.tick + 1, windowN, dayAnchorTick)) return state;
+
+  // (a) INFLUX — the abstracted back-end supply (§1.1). MINTED, so it records itself in
+  // `audit.totalProduced` in the same breath and invariant 1 balances across the boundary
+  // (§15.5's genesis amendment: created only by an event that records itself).
+  state.reserve.reserveLevel += DEUTERIUM_INFLUX_PER_CYCLE;
+  state.audit.totalProduced += DEUTERIUM_INFLUX_PER_CYCLE;
+
+  // (b) ISSUANCE + (c) RATIONING. Guilds in ARRAY ORDER — a fixed, deterministic order
+  // (invariant 9) that the apportionment's tie-break also leans on.
+  const guilds = state.guilds || [];
+  if (guilds.length === 0) return state;
+
+  const desired = guilds.map((g) => grantFor(state, g));
+  const granted = rationGrants(desired, state.reserve.reserveLevel);
+
+  let moved = 0;
+  guilds.forEach((g, i) => {
+    if (granted[i] > 0) g.fuelHoard += granted[i];
+    moved += granted[i];
+    // Only a guild that was DUE something carries a record — a holdings-less galaxy stays
+    // byte-identical — but a guild rationed to 0 keeps one, because that is the crunch.
+    if (desired[i] > 0) recordFuelGrant(g, state.tick + 1, granted[i], desired[i]);
+  });
+
+  // A TRANSFER, not a mint: what left the pool is exactly what landed in the hoards, and
+  // `audit` is untouched by this half. The conserved total is unchanged.
+  //
+  // THE HARD FLOOR, asserted rather than trusted. `rationGrants` is written so this cannot
+  // fire, which is exactly why it is worth having: if a future edit breaks the
+  // apportionment, a pool driven negative would be a silent breach of invariant 1's
+  // non-negativity — and `tick()` alone (as the tests call it) runs no invariants, so it
+  // would travel a long way before anything noticed (§15.5: a silent violation is worse
+  // than a crash).
+  if (moved > state.reserve.reserveLevel) {
+    throw new Error(`stepBaselineAllocation: fuel issuance at tick ${state.tick + 1} would take the Syndicate pool negative — granting ${moved} from a pool of ${state.reserve.reserveLevel}; rationing failed to clip`);
+  }
+  state.reserve.reserveLevel -= moved;
   return state;
 }
 

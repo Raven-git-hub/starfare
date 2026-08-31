@@ -17,6 +17,7 @@ const { createState } = require('../state.js');
 const { intake, createSetSyndicateCommitmentAction, createSetWindowNAction } = require('../actions.js');
 const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
+const { DEUTERIUM_INFLUX_PER_CYCLE } = require('../issuance.js');
 const { getWindow } = require('../windows.js');
 const { BASE_PRICE } = require('../prices.js');
 const { previewProduction } = require('../production.js');
@@ -163,13 +164,32 @@ test('the injected N moves the boundary cadence (the window rolls at tick % N ==
 // pinned beside them. (A run SHORTER than 15 ticks takes no sample at all and is byte-
 // identical with nothing stripped — which is why persist.test.js's 2-tick golden did not
 // move and needed no regen.)
+// FUEL SLICE 5a (31-08-26): fuel finally MOVES. At every window boundary the abstracted
+// influx MINTS `DEUTERIUM_INFLUX_PER_CYCLE` into the Syndicate pool (recorded in
+// `audit.totalProduced`) and issuance TRANSFERS a grant from that pool into each guild's
+// hoard. The COMMITTED run is on `windowN = 4`, so its 40 ticks cross ten boundaries and
+// its three goldens legitimately moved — the first time a commitment-scaffold golden has
+// moved for anything but its own subject. They are re-pinned above, and the pre-slice
+// values kept beside them, because a re-pinned number on its own proves nothing: the
+// `withoutFuelFlows` test below UNDOES the fuel and asserts the OLD hashes come back, so
+// the delta is proven to be **exactly** the pool, the audit and the granted fuel and
+// nothing else.
+//
+// THE UNLICENSED GOLDENS DID NOT MOVE, AND THAT IS ITSELF A PROOF. `sysState` leaves
+// `windowN` unset, so that run is on the 1,440-tick default and its 40 ticks cross NO
+// boundary — no influx, no issuance, not one byte. Nothing happens off a boundary.
 const GOLDEN_UNLICENSED = '682e42e0dd758ce523fea882f6560707802cdd7e7b4def794f323430a4cfcff5';
 const GOLDEN_UNLICENSED_WITH_PRICES = 'ee6856cc520c23b8cc2cfdad996d463ccf35d40bb6b85b35f3a644a46d493647';
-const GOLDEN_COMMITTED_WITH_PRICES = 'e0255c73292645b5b785d818ec6e045f4bfb80e4b0a12f38814acb74947f8272';
+const GOLDEN_COMMITTED_WITH_PRICES = '7746582b575acf4b1e239e255317dedc9655957e15187cbb7e9e0a6e86e22dbf';
+// The three values the COMMITTED goldens held before fuel slice 5a, kept so the
+// un-flow proof below has something to prove against.
+const COMMITTED_WITH_PRICES_BEFORE_FUEL_FLOWS = 'e0255c73292645b5b785d818ec6e045f4bfb80e4b0a12f38814acb74947f8272';
 const GOLDEN_UNLICENSED_WITH_HISTORY = 'fa63aaf4cdaf8f11a38d26545f610605373acb659903fc2bf56c7869ced2dd5d';
-const GOLDEN_COMMITTED_WITH_HISTORY = 'e145b1426637f5c53190c087a7b6727878d158d6d52715f57f879a43d367f30b';
+const GOLDEN_COMMITTED_WITH_HISTORY = 'd2cbb89b17224e20eb60af7e30d55e4142dd468edef97bc9446bdd1b829eae8c';
+const COMMITTED_WITH_HISTORY_BEFORE_FUEL_FLOWS = 'e145b1426637f5c53190c087a7b6727878d158d6d52715f57f879a43d367f30b';
 const GOLDEN_UNLICENSED_WITH_PRICE_HISTORY = '2415bafdf6336b48a68d57b3b75e3c0c1cf254c93367a58bc48df82cd963c0c6';
-const GOLDEN_COMMITTED_WITH_PRICE_HISTORY = 'ab265ad191810bf91be169349ef6cc1b5c3c6e8a7bd9de5b64fd6533e80fbc3f';
+const GOLDEN_COMMITTED_WITH_PRICE_HISTORY = '33021945d4660c785d2f287ba5a6c9cdb5385d541f9a4912e57fb8966ecf7d9b';
+const COMMITTED_WITH_PRICE_HISTORY_BEFORE_FUEL_FLOWS = 'ab265ad191810bf91be169349ef6cc1b5c3c6e8a7bd9de5b64fd6533e80fbc3f';
 
 // The state minus its price block — everything the pre-price-engine hash covered.
 const withoutPrices = (state) => { const { prices, ...rest } = state; return rest; };
@@ -217,4 +237,45 @@ test('a committed run seeded via createVenture (not the action) is pinned, and n
   assert.ok(s.guilds[0].credits > 0, 'the committed run earned credits from its deliveries');
   assert.equal(s.syndicate.ledger, -s.guilds[0].credits, 'every credit came out of the Syndicate ledger');
   assert.equal(s.guilds[0].lastSyndicateSale.credited > 0, true, 'and the sale is on the record');
+});
+
+// The fuel slice's own delta proof — the strip-and-prove idiom INVERTED, exactly as fuel
+// Slice 1 inverted it, because changed VALUES cannot be stripped the way an added key can.
+// Undo the four things slice 5a moved and the three pre-slice hashes must come back, byte
+// for byte. If this slice moved ONE other number, this goes red.
+test('no-op proof: undo the fuel flows and the pre-slice COMMITTED goldens come back', () => {
+  let s = sysState([mine('t', 'titanium', 10, 7), mine('c', 'carbon_products', 10, 5), refinery('r', 'titanium_alloy', 2)], 4);
+  for (let i = 0; i < 40; i += 1) s = tick(s);
+
+  const g = s.guilds[0];
+  const BOUNDARIES = 40 / 4;
+  const minted = BOUNDARIES * DEUTERIUM_INFLUX_PER_CYCLE;
+
+  // The flows really happened — otherwise "undo them and nothing changed" is vacuous.
+  assert.equal(s.audit.totalProduced, minted, 'ten boundaries minted ten cycles of influx');
+  assert.ok(g.fuelHoard > 0, 'and the guild really was granted fuel');
+  assert.ok(s.reserve.reserveLevel > 0, 'with the rest still in the pool');
+  assert.ok(g.lastFuelGrant, 'and the grant is on the record');
+  // INVARIANT 1, by hand, at the end of the run: everything minted is still somewhere.
+  assert.equal(s.audit.totalProduced - s.audit.totalConsumed, s.reserve.reserveLevel + g.fuelHoard,
+    'conservation: produced − consumed == pool + Σ hoards');
+
+  const granted = g.fuelHoard;
+  const undone = structuredClone(s);
+  undone.reserve.reserveLevel -= minted - granted;      // the pool back to the fixture's 0
+  undone.audit.totalProduced -= minted;                 // the mint un-minted
+  undone.guilds[0].fuelHoard -= granted;                // the transfer un-transferred
+  delete undone.guilds[0].lastFuelGrant;                // the record un-recorded
+  undone.galacticSupply.fuel.reserve -= minted - granted;
+  undone.galacticSupply.fuel.guildHeld -= granted;
+
+  assert.equal(undone.reserve.reserveLevel, 0, 'the undo really does return the fixture pool');
+  assert.equal(undone.audit.totalProduced, 0);
+  assert.equal(undone.guilds[0].fuelHoard, 0);
+
+  assert.equal(hashState(withoutPriceHistory(withoutHistory(undone))), COMMITTED_WITH_PRICES_BEFORE_FUEL_FLOWS,
+    'with the fuel undone, the pre-slice committed bytes come straight back');
+  assert.equal(hashState(withoutPriceHistory(undone)), COMMITTED_WITH_HISTORY_BEFORE_FUEL_FLOWS);
+  assert.equal(hashState(undone), COMMITTED_WITH_PRICE_HISTORY_BEFORE_FUEL_FLOWS,
+    'so the ONLY delta this slice made to this run is the pool, the audit and the granted fuel');
 });

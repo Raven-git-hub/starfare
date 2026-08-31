@@ -272,6 +272,15 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // modifier is the one FLOAT in this block and is unrounded on purpose. Published with no
 // consumer: no fuel is granted anywhere in the engine, because `baseGrant` is the pool
 // slice (§8) and is not built.
+// (31-08-26, fuel slice 5a): each guild row gains `fuelGrant` — what the Syndicate granted
+// it at the last cycle boundary, and what it was due (docs/fuel-supply-and-allocation.md
+// §2.1). ADDITIVE, and NO schema bump: nothing existing changed shape — the same additive
+// call `issuanceModifier`, `guildPoints`, `guildReputation`, `fuelCost`, `fuelHoardValue`,
+// `feeQuote`, `shipments`, `licenceFee` and `syndicateSale` each made. It is a RECORD OF
+// AN EVENT echoed as stored, like `licenceFee`, because a grant is true of one boundary
+// only. THE POOL GAINED NO FIELD, deliberately: it is already published as
+// `galacticSupply.fuel.reserve` and has been since the walking skeleton — what changed in
+// this slice is that the number finally MOVES.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -289,6 +298,7 @@ const SNAPSHOT_SCHEMA = 7;
 //                 guildReputation,                              // RP, Σ its ventures'
 //                 guildPoints,                                  // GP, DERIVED per read
 //                 expectedReputation, issuanceModifier,        // the mean line, DERIVED
+//                 fuelGrant: { tick, thisTick, granted, desired, rationed } | null,
 //                 fuelCost: { systemId: { fuelBurn, creditCost } }, // held systems, sorted
 //                 syndicateSale: { tick, thisTick, credited, goods } | null, // Slice 3a
 //                 licenceFee: { tick, thisTick, charged, ventures } | null,   // Slice 3b-iii
@@ -402,6 +412,35 @@ function buildSnapshot(state) {
       // holding nothing is the ruled empty-guild guard (§3), not a missing value.
       expectedReputation: expectedReputation(state, g),
       issuanceModifier: issuanceModifier(state, g),
+      // What the Syndicate GRANTED this guild at the last cycle boundary (fuel slice 5a,
+      // docs/fuel-supply-and-allocation.md §2.1) — what it was DUE (`desired`, its size ×
+      // its modifier) and what it actually RECEIVED after rationing. `thisTick` is the
+      // engine answering "did this fire on the current tick?", the courtesy
+      // `syndicateSale` and `licenceFee` already do.
+      //
+      // A RECORD OF AN EVENT, echoed as stored, not a derivable fact (invariant 5): both
+      // figures are true of ONE boundary — `desired` moves with the guild's Points and
+      // reputation, and `granted` also depended on how full the pool was and on what every
+      // other guild drew that cycle. Neither could be recovered a tick later.
+      //
+      // WHEN THE TWO DIFFER, THE GALAXY RATIONED. That is the crunch edge (§4.1) made
+      // visible, and it is the whole reason `desired` is carried beside `granted` rather
+      // than left to be inferred. null for a guild that has never been due anything —
+      // every holdings-less guild, and every guild before its first boundary.
+      //
+      // THE POOL ITSELF NEEDS NO NEW FIELD: it is already published as
+      // `galacticSupply.fuel.reserve`, beside `guildHeld` and their `total`. Adding a
+      // second reading of one number to this lens would be exactly the drift
+      // `checkGalacticSupplyConsistency` exists to prevent.
+      fuelGrant: g.lastFuelGrant
+        ? {
+            tick: g.lastFuelGrant.tick,
+            thisTick: g.lastFuelGrant.tick === state.tick,
+            granted: g.lastFuelGrant.granted,
+            desired: g.lastFuelGrant.desired,
+            rationed: g.lastFuelGrant.granted < g.lastFuelGrant.desired,
+          }
+        : null,
       homeSystemId: g.homeSystemId || null,
       homePlanetId: g.homePlanetId || null,
       // Guild-level holdings = the per-system pools flattened into one { good: int }

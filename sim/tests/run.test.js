@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const { advance } = require('../run.js');
 const { createState } = require('../state.js');
 const { createZeroState, SYNDICATE_OWNER } = require('../scenarios/zero-state.js');
+const { POOL_SEED } = require('../issuance.js');
 const { createFoundGuildAction, createPaySyndicateFeeAction } = require('../actions.js');
 const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
@@ -41,7 +42,13 @@ test('the zero-state boots green with no guilds and Syndicate-owned claims', () 
   const s = createZeroState();
   assert.equal(s.tick, 0);
   assert.equal(s.guilds.length, 0);
-  assert.equal(s.reserve.reserveLevel, 30);
+  // The Syndicate's communal fuel pool, seeded at galaxy creation (§1.3). This was a
+  // `[SHEET]` placeholder 30 until slice 5a gave the pool a rule — the influx fills it
+  // and issuance draws it down — at which point its opening balance became a real,
+  // single-sourced tuning number.
+  assert.equal(s.reserve.reserveLevel, POOL_SEED);
+  assert.equal(s.audit.totalProduced, POOL_SEED, 'and the seeded pool pays for itself in the audit');
+  assert.equal(s.galacticSupply.fuel.reserve, POOL_SEED, 'with the supply cache already agreeing');
   assert.equal(s.syndicate.ledger, 0);
   // Citadel + one waystation per seed outpost (9) = 10 Syndicate claims,
   // every one referencing a real seed landmark.
