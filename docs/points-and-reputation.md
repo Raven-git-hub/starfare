@@ -262,7 +262,7 @@ pure consumer sinks by earning nothing against its bar, so buying needs no expli
 
       gap      = guildRP − expectedRP(GP)
       modifier = clamp( 1 + ISSUANCE_SENSITIVITY × gap / expectedRP(GP), ISSUANCE_FLOOR, ISSUANCE_CEIL )
-      fuelGranted = baseGrant × modifier        ← baseGrant is the pool/price slice, later
+      fuelGranted = baseGrant × modifier        ← RULED slice 5a (fuel-supply §2.1): baseGrant = BASE_GRANT_PER_GP × GP
 
   Ratio-based (`gap / expected`) → **scale-invariant**. **FLOOR** stops a below-line guild death-spiralling to
   zero; **CEIL** protects the finite pool at the crunch edge.

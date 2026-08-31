@@ -268,3 +268,18 @@ and the issuance modifier real, derived and watchable. **Still NOT built:** `bas
 reserve/flow price controller — so the modifier scales nothing and **no fuel is issued anywhere**; the outpost
 offset; and — importantly — the −500 / −300 **consequences**. Reaching the floor is a PIN: the venture keeps producing, keeps being judged and
 keeps paying its fee. Closure and forced-lease are a slice of their own.*
+
+### Fuel — the pool & issuance *(31-08-26 — slice 5a; shapes in `fuel-supply-and-allocation.md §2.1`)*
+
+All `[FIRST-CUT]`, and rougher than most — they lean on burn rates still being retuned, which is why 5b's price
+controller exists to self-correct. Modelled only to confirm the *structure* (a balanced galaxy's pool holds; an
+out-drawing one rations), not tuned.
+
+| Constant | `[FIRST-CUT]` | Rationale |
+|---|---|---|
+| `BASE_GRANT_PER_GP` | **5** | Fuel per GP per cycle at modifier 1.0. `fuelGranted = round(BASE_GRANT_PER_GP · GP · modifier)`. A par guild (GP 30, modifier 1.0) draws 150/cycle; a big well-run one more; an over-expanded one its base × 0.3. |
+| `DEUTERIUM_INFLUX_PER_CYCLE` | **800** | The abstracted back-end supply (§1.1). Fixed here, set to roughly balance a typical small galaxy's draw; a solo galaxy over-fills and a large one rations, because the influx is fixed and the draw is not — which is precisely what 5b's demand-relative controller corrects. Wants a proper `[SHEET]` pass with the price curve. |
+| `POOL_SEED` | **4000** | The Syndicate's starting reserve (§1.3) — ~5 cycles of a typical galaxy's draw, a buffer so early imbalance rations gently rather than instantly. Galaxy-scale, not per-guild; `[SHEET]` alongside 5b. |
+
+*`DEUTERIUM_INFLUX_PER_CYCLE` and `POOL_SEED` are galaxy-scale and belong to the same control loop as 5b's
+price coefficients — supply, draw and price are one system, and these get their real values there.*

@@ -137,6 +137,47 @@ Bigness alone earns nothing — it raises the standard you're held to. This is "
 comfortable" as pure economics, and it cuts both ways: it punishes coasting *and* hands the high-standing a
 reputation buffer they're tempted to gamble (illegal refining, breaking ranks) — both roads to drama.
 
+### 2.1 The issuance mechanic — slice 5a (ruled 31-08-26)
+
+*Rules the "how much fuel each guild gets" mechanic; the price CURVE (5b) stays open. Numbers are `[FIRST-CUT]`
+in `phase-1-tuning.md`; this rules the SHAPE.*
+
+**Each cycle, at the window boundary, the Syndicate grants each guild fuel from a finite pool:**
+
+    fuelGranted(guild) = round( BASE_GRANT_PER_GP · GP(guild) · issuanceModifier(guild) )
+
+- **The base is SIZE-RELATIVE (ruled): `BASE_GRANT_PER_GP · GP`.** A guild's base entitlement scales with its
+  Guild Points (`points-and-reputation.md §1.0`) — bigger footprint, bigger base — and the mean-line modifier
+  (§3 there, `[0.3, 1.5]`) scales it by how well it contributes *relative to* that size. GP is both the base and
+  the divisor inside the modifier's expected line, which is exactly "draw sized by reputation-against-size"
+  (§0). *(A demand/consumption-relative base is a possible later refinement, deferred to 5b, which builds the
+  consumption tracking anyway.)*
+- **Integer fuel: `round(…)`.** This is where slice 4's deliberately-unrounded float modifier meets integer
+  fuel (§15.2) — the rounding is ruled HERE, at the point of grant, and nowhere upstream.
+
+**The pool — a finite, conserved Syndicate reserve.**
+
+- New state: a Syndicate-owned fuel store (`state.syndicate.fuelPool` or equivalent), **seeded** at galaxy
+  creation (§1.3, `POOL_SEED`) and **non-negative** — a hard floor (invariant 1's conservation).
+- **Supply IN:** the abstracted **back-end deuterium influx** (§1.1, revised) adds `DEUTERIUM_INFLUX_PER_CYCLE`
+  to the pool each cycle. Fuel is **minted** into the pool here (recorded in `audit.totalProduced`, as the
+  starter hoard is), so invariant 1 balances.
+- **Issuance OUT:** each grant **moves** fuel `pool → guild.fuelHoard` — a transfer, conserved, minting nothing.
+  The pool joins `galacticSupply` as a fuel holder, so the supply invariant sums `pool + Σ hoards`.
+
+**Rationing — the pool can never be over-granted below zero (ruled, §4.1 / invariant 1).** When the cycle's
+total grants exceed what the pool holds, grants are **clipped proportionally** to each guild's share, so the
+pool empties to exactly 0 rather than going negative. Without the price controller (5b) nothing pushes draw
+back under supply, so a galaxy that out-draws its influx **rations, then risks collapse** — the losable state
+of §1.2, correct and intended for this cut.
+
+**Flat price for now.** Grants are fuel units at the flat `FLAT_FUEL_PRICE_PER_UNIT` (fuel Slice 1). The price
+as the credit→fuel *lever* — making the same entitlement buy more or less fuel to pull draw back to supply — is
+the reserve/flow controller, **5b**. This slice grants fuel directly.
+
+**Out of 5a:** the dynamic price controller (5b); the Producer Guilds (their own later slice — the influx is
+abstracted, §1.1); closure; illegal refining; the grey market.
+
 ## 3. Holding fuel — banking, no cap, consume-only
 
 **Issuance is granted as PHYSICAL fuel, not a spendable credit balance.**
