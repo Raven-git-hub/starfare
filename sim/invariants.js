@@ -23,7 +23,9 @@
 //                         homeSystemId?, homePlanetId? }]
 //   state.claims?    : [{ claimId, ownerGuildId, landmarkId, landmarkKind }]
 //                          // SHARED territory rows; reference real seed landmarks
-//   state.reserve    : { reserveLevel }                    // SHARED fuel reserve
+//   state.reserve    : { reserveLevel, fuelPrice }         // SHARED fuel reserve;
+//                          // fuelPrice is the ONE market price of deuterium_fuel —
+//                          // a sanctioned float (§15.2), checked as such below
 //   state.syndicate  : { ledger }         // credits; may be negative (see below)
 //   state.shipments? : [{ cargo: { fuel? } }]   // fuel in transit; none yet in
 //                                               // the walking skeleton
@@ -121,12 +123,17 @@ function checkCreditConservation(state) {
 // Checks one numeric field for the §15.2 conventions and (optionally) invariant
 // 3 non-negativity. Pushes a separate record per broken rule so a report can
 // show everything wrong at once.
-function checkField(out, value, where, { nonNegative = true } = {}) {
+// `integer: false` is the SANCTIONED-FLOAT escape (§15.2), and it is deliberately
+// awkward to reach for: it is only correct for a value that SCALES a quantity rather
+// than counting one — a price, a rate, a modifier — and every use of it names which.
+// The finite-number and non-negativity checks still apply, so a NaN price or a
+// negative one is still caught.
+function checkField(out, value, where, { nonNegative = true, integer = true } = {}) {
   if (typeof value !== 'number' || Number.isNaN(value)) {
     out.push({ rule: 'finite-number (§15.2)', where, detail: { value } });
     return; // further checks are meaningless on a non-number
   }
-  if (!Number.isInteger(value)) {
+  if (integer && !Number.isInteger(value)) {
     out.push({ rule: 'integer credits/goods (§15.2)', where, detail: { value } });
   }
   if (nonNegative && value < 0) {
@@ -219,6 +226,15 @@ function checkNonNegativityAndIntegrality(state) {
   }
 
   checkField(out, state.reserve.reserveLevel, 'reserve.reserveLevel');
+
+  // The galaxy's one fuel price (slice 5b-i, docs/fuel-supply-and-allocation.md §4.2).
+  // A SANCTIONED NON-INTEGER (§15.2): it scales a quantity rather than counting one,
+  // exactly as the issuance modifier does, and the rounding to integer credits happens
+  // where it is USED (`fuelValue`, the grant conversion) rather than here. Still swept
+  // for finiteness and non-negativity — a NaN price would poison every grant and every
+  // valuation in the galaxy silently, which is precisely the failure §15.5 says to
+  // crash on rather than carry.
+  checkField(out, state.reserve.fuelPrice, 'reserve.fuelPrice', { integer: false });
 
   // Syndicate ledger: integer like any credits figure, but exempt from
   // non-negativity — it is the balancing account that funds baseline allocation.

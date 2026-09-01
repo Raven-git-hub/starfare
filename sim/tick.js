@@ -38,7 +38,7 @@ const {
 } = require('./licence.js');
 const { producedGoodFor } = require('./baseline.js');
 const {
-  DEUTERIUM_INFLUX_PER_CYCLE, grantFor, rationGrants,
+  DEUTERIUM_INFLUX_PER_CYCLE, physicalGrantFor, rationGrants,
 } = require('./issuance.js');
 
 // A total, deterministic string order for sort keys — used where a tie has to
@@ -692,7 +692,16 @@ function stepBaselineAllocation(state, _actions) {
   const guilds = state.guilds || [];
   if (guilds.length === 0) return state;
 
-  const desired = guilds.map((g) => grantFor(state, g));
+  // `physicalGrantFor`, not `grantFor` (slice 5b-i, §4.2): what a guild is DUE is its
+  // reputation-sized entitlement CONVERTED to fuel at `reserve.fuelPrice`. Everything
+  // downstream — the rationing, the transfer, the record — is in PHYSICAL FUEL, which is
+  // the only unit the pool is denominated in. At the seed price the conversion is exactly
+  // ×1.0, so this reads identically to 5a until 5b-ii moves the price.
+  //
+  // ⚠ THE PRICE IS READ ONCE PER CYCLE, HERE, AND NOTHING IN THIS STEP WRITES IT. 5b-i
+  // seeds it and holds it; the controller that sets NEXT cycle's price from this cycle's
+  // reserve and flows is 5b-ii, and it is deliberately not built.
+  const desired = guilds.map((g) => physicalGrantFor(state, g));
   const granted = rationGrants(desired, state.reserve.reserveLevel);
 
   let moved = 0;

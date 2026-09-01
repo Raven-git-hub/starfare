@@ -30,7 +30,7 @@ const { hashState } = require('../serialize.js');
 const { saveState, appendJournal, clearJournal, loadOrInit, journalPath } = require('../persist.js');
 const { guildTotals } = require('../stock.js');
 const { STARTER_MINERS, STARTER_FACTORIES } = require('../assets.js');
-const { GUILD_STARTING_FUEL } = require('../fuel.js');
+const { GUILD_STARTING_FUEL, REFERENCE_FUEL_PRICE } = require('../fuel.js');
 const { POOL_SEED } = require('../issuance.js');
 
 // A throwaway persist dir per test, cleaned up after. Real filesystem (not a
@@ -260,6 +260,25 @@ const GOLDEN_HASH_BEFORE_ENDOWMENT = 'd744ab2a9f3e4c0ededaee0d70007d39e48f267760
 // prove against. It is the value `GOLDEN_HASH_WITH_ASSETS` held before 31-08-26.
 const GOLDEN_HASH_BEFORE_FUEL_GRANT = 'c42d88d7b70b6046ca710deda21717daccf58a969125ea9802a01fb82d386ffd';
 
+// FUEL PRICE MEDIATION (01-09-26, slice 5b-i — docs/fuel-supply-and-allocation.md §4.2).
+// The reserve gains `fuelPrice`, the galaxy's ONE market price of `deuterium_fuel`. It is
+// REAL serialized state (5b-ii's controller has to move it cycle to cycle), so the FULL
+// hash legitimately moved — and this time the ordinary strip works, because the slice ADDS
+// a key rather than changing a value: all four goldens above are UNCHANGED and are now
+// asserted with the price stripped, which is the whole proof. This slice added one field
+// and altered NOTHING else about this sequence, byte for byte — no grant, no hoard, no
+// pool, no valuation. The new full hash is pinned beside them so a drift in the price
+// itself is caught too.
+const GOLDEN_HASH_WITH_FUEL_PRICE = '05f1d23b8d25c9e54c6d1942771e597b7e6d090ff6cdb7af69f85446ce5e84da';
+
+// The state minus the reserve's fuel price — everything the four goldens above covered.
+// Stripped inside `reserve`, leaving `reserveLevel` and every other top-level key in
+// place, so a change anywhere else still fails the assertion.
+const withoutFuelPrice = (state) => {
+  const { fuelPrice, ...reserve } = state.reserve;
+  return { ...state, reserve };
+};
+
 // The state minus its price block — exactly what the golden above covered.
 const withoutPrices = (state) => { const { prices, ...rest } = state; return rest; };
 // The state minus every guild's production-history buffer — what the two hashes above
@@ -294,10 +313,13 @@ test('no-op proof: pure engine path (persistence OFF) matches the golden hash', 
   s = advance(s, []).state;
 
   assert.equal(s.tick, 2);
-  assert.equal(hashState(withoutAssets(withoutHistory(withoutPrices(s)))), GOLDEN_HASH, 'everything but the price block, the history buffer and the assets is byte-identical to pre-price-engine HEAD');
-  assert.equal(hashState(withoutAssets(withoutHistory(s))), GOLDEN_HASH_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
-  assert.equal(hashState(withoutAssets(s)), GOLDEN_HASH_WITH_HISTORY, 'and with the history back in, the ONLY delta from the pre-asset engine is the assets');
-  assert.equal(hashState(s), GOLDEN_HASH_WITH_ASSETS, 'and the asset inventory itself is pinned');
+  assert.equal(hashState(withoutFuelPrice(withoutAssets(withoutHistory(withoutPrices(s))))), GOLDEN_HASH, 'everything but the price block, the history buffer, the assets and the fuel price is byte-identical to pre-price-engine HEAD');
+  assert.equal(hashState(withoutFuelPrice(withoutAssets(withoutHistory(s)))), GOLDEN_HASH_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
+  assert.equal(hashState(withoutFuelPrice(withoutAssets(s))), GOLDEN_HASH_WITH_HISTORY, 'and with the history back in, the ONLY delta from the pre-asset engine is the assets');
+  assert.equal(hashState(withoutFuelPrice(s)), GOLDEN_HASH_WITH_ASSETS, 'and with the assets back in, the ONLY delta from the pre-5b-i engine is reserve.fuelPrice');
+  assert.equal(hashState(s), GOLDEN_HASH_WITH_FUEL_PRICE, 'and the fuel price itself is pinned');
+  assert.equal(s.reserve.fuelPrice, REFERENCE_FUEL_PRICE,
+    'the strip above is only a proof if there was really a price to strip — and it opens at the reference');
   assert.equal(s.priceHistory, undefined,
     'a 2-tick run takes no price sample at all (the first fine bucket closes at tick 15), which is why the three goldens above did not move');
   assert.deepEqual(s.guilds[0].productionHistory, { sys_0002: { titanium: { prod: [5, 5], cons: [0, 0] } } },
@@ -346,7 +368,7 @@ test('no-op proof: subtract the founding fuel grant and the pre-slice golden com
   ungranted.audit.totalProduced -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
   ungranted.galacticSupply.fuel.reserve -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
 
-  assert.equal(hashState(ungranted), GOLDEN_HASH_BEFORE_FUEL_GRANT,
+  assert.equal(hashState(withoutFuelPrice(ungranted)), GOLDEN_HASH_BEFORE_FUEL_GRANT,
     'the fuel grant and the pool seed are the ONLY deltas the two fuel slices made to the canonical sequence, byte for byte');
 });
 
@@ -387,7 +409,7 @@ test('no-op proof: un-seed the pool and the pre-slice-5a golden comes back', () 
   unseeded.audit.totalProduced -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
   unseeded.galacticSupply.fuel.reserve -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
 
-  assert.equal(hashState(unseeded), GOLDEN_HASH_BEFORE_POOL_SEED,
+  assert.equal(hashState(withoutFuelPrice(unseeded)), GOLDEN_HASH_BEFORE_POOL_SEED,
     'the pool seed is the ONLY delta slice 5a made to this run, byte for byte');
 });
 
@@ -424,7 +446,7 @@ test('no-op proof: un-endow the founding and the pre-endowment golden comes back
   unendowed.guilds[0].guildReputation -= unendowed.guilds[0].foundingEndowment;
   delete unendowed.guilds[0].foundingEndowment;
 
-  assert.equal(hashState(unendowed), GOLDEN_HASH_BEFORE_ENDOWMENT,
+  assert.equal(hashState(withoutFuelPrice(unendowed)), GOLDEN_HASH_BEFORE_ENDOWMENT,
     'the endowment is the ONLY delta this slice made to the canonical sequence, byte for byte');
 });
 
