@@ -281,6 +281,13 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // only. THE POOL GAINED NO FIELD, deliberately: it is already published as
 // `galacticSupply.fuel.reserve` and has been since the walking skeleton — what changed in
 // this slice is that the number finally MOVES.
+// (31-08-26, the founding endowment A′): each guild row gains `foundingEndowment` — how
+// much of `guildReputation` was granted at founding rather than earned
+// (docs/points-and-reputation.md §2.5). ADDITIVE, and NO schema bump: nothing existing
+// changed shape, so every current reader keeps working — the same additive call
+// `fuelGrant`, `issuanceModifier`, `guildPoints` and the rest each made. Echoed as stored;
+// the mean line and the modifier are untouched, because they already read the TOTAL, which
+// now simply carries the endowment inside it.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -295,7 +302,8 @@ const SNAPSHOT_SCHEMA = 7;
 //     feeQuote: { <priced good with a baseline>: <basic licence fee, int credits> },
 //       // what a licence signed NOW would cost, per good — sim/licence.js's own licenceFee
 //     guilds: [ { id, name, isBot, credits, fuelHoard, fuelHoardValue, influence,
-//                 guildReputation,                              // RP, Σ its ventures'
+//                 guildReputation,                    // RP, Σ ventures' + endowment
+//                 foundingEndowment,                  // of which granted at founding
 //                 guildPoints,                                  // GP, DERIVED per read
 //                 expectedReputation, issuanceModifier,        // the mean line, DERIVED
 //                 fuelGrant: { tick, thisTick, granted, desired, rationed } | null,
@@ -380,6 +388,14 @@ function buildSnapshot(state) {
       // layer's mean line will later read (§3). 0 for every guild that has never been
       // judged at a boundary, which is every unlicensed one.
       guildReputation: g.guildReputation || 0,
+      // foundingEndowment: how much of the total above was GRANTED AT FOUNDING rather than
+      // earned (docs/points-and-reputation.md §2.5) — `MEANLINE_K × W_SYS × the systems held
+      // at founding`, which neutralises the home system's bar exactly once. Echoed as
+      // stored, like `guildReputation` itself. It is what lets a reader see WHY a
+      // ventureless newborn sits on its line rather than at the floor: without it the total
+      // is a number with no visible provenance. 0 for every guild not founded through
+      // `foundGuild`, which is every scenario- and test-built one.
+      foundingEndowment: g.foundingEndowment || 0,
       // guildPoints: the guild's Guild Points — how BIG it is
       // (docs/points-and-reputation.md §1/§1.0): `W_SYS × held systems + Σ ventures
       // W_TIER(tier)`, computed by the engine's own `guildPoints` (sim/points.js) rather

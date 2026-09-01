@@ -223,10 +223,10 @@ test('double-apply guard: a snapshot-baked action still in the journal is not re
 // statement the strips used to make — this slice seeded a hoard and changed NOTHING
 // else about this sequence — and it fails loudly if a future edit smuggles a second
 // change in behind a re-pin.
-const GOLDEN_HASH = '0c37aeda88fedcbf1a4289ad4c8969be8fd5a23d07ed16bdfc621d8f1985d1c0';
-const GOLDEN_HASH_WITH_PRICES = '7a39ef10180e9865d6f51ad5834989bd2a7bce8b86cd4e84aadbfceaf739eef0';
-const GOLDEN_HASH_WITH_HISTORY = '9d43f1bd3260b0367de9fb635e1818c32e16f3ab6743a9188a40a4324a160f85';
-const GOLDEN_HASH_WITH_ASSETS = 'd744ab2a9f3e4c0ededaee0d70007d39e48f2677604941535d6ba85b0301ebed';
+const GOLDEN_HASH = '755f874e8aabc0d4d2599dc92e3e075f1c9f88166c1be07adf819630e071b29b';
+const GOLDEN_HASH_WITH_PRICES = '7c6ca5f43dff99f0252fca8ca6b1026ce33d95589f52037e79efa8d3a22db9f0';
+const GOLDEN_HASH_WITH_HISTORY = 'bdfa2f43969bf51e9a81d9580f902a6471517ec3be5cc1795a158974b1b35ebb';
+const GOLDEN_HASH_WITH_ASSETS = '9ba9497e61fb80e87607c749a9d42367a8754fae64fdfff816027c9cfeaa5897';
 
 // FUEL SLICE 5a (31-08-26) — the pool got a real seed. The Syndicate reserve
 // (`state.reserve.reserveLevel`) opened on a `[SHEET]` placeholder 30 from the walking
@@ -241,6 +241,20 @@ const GOLDEN_HASH_WITH_ASSETS = 'd744ab2a9f3e4c0ededaee0d70007d39e48f26776049415
 const GOLDEN_HASH_BEFORE_POOL_SEED = '9f8a9a45861f268980d30274eadc0eac07a1d45ae5d7a48085ba0a6bf2f6469b';
 // What that line seeded before POOL_SEED replaced it.
 const RETIRED_POOL_PLACEHOLDER = 30;
+
+// THE FOUNDING ENDOWMENT (31-08-26, A′ — docs/points-and-reputation.md §2.5). Founding now
+// grants a one-time guild-level reputation of `MEANLINE_K × W_SYS` so a newborn opens ON
+// ITS LINE instead of pinned at the issuance floor. This canonical sequence FOUNDS A GUILD,
+// so it is one of the runs that legitimately changes: its guild gains a `foundingEndowment`
+// key and its `guildReputation` moves 0 → 1800. All four goldens above are re-pinned, and —
+// as ever — the re-pinning is not the proof: the un-endow test below undoes exactly those
+// two fields and asserts the PRE-SLICE hash comes back byte for byte.
+//
+// NOTHING ELSE MOVED, and the run's shape is why: it is 2 ticks on the 1,440-tick default
+// window, so it crosses NO cycle boundary — no issuance, so the newborn's modifier rising
+// from ×0.30 to ×1.00 changes no fuel in THIS run. (A run that did cross a boundary would
+// also see the grant rise, which is the point of the slice.)
+const GOLDEN_HASH_BEFORE_ENDOWMENT = 'd744ab2a9f3e4c0ededaee0d70007d39e48f2677604941535d6ba85b0301ebed';
 
 // The pre-fuel-slice full hash, kept so the un-granting proof below has something to
 // prove against. It is the value `GOLDEN_HASH_WITH_ASSETS` held before 31-08-26.
@@ -318,6 +332,10 @@ test('no-op proof: subtract the founding fuel grant and the pre-slice golden com
   assert.equal(s.galacticSupply.fuel.guildHeld, GUILD_STARTING_FUEL, 'and refreshed the supply cache');
 
   const ungranted = structuredClone(s);
+  // …and un-endow the founding (A′, 31-08-26), so what comes back is the state as it stood
+  // before ANY of the three slices that have touched founding since.
+  ungranted.guilds[0].guildReputation -= ungranted.guilds[0].foundingEndowment;
+  delete ungranted.guilds[0].foundingEndowment;
   ungranted.guilds[0].fuelHoard -= GUILD_STARTING_FUEL;
   ungranted.audit.totalProduced -= GUILD_STARTING_FUEL;
   ungranted.galacticSupply.fuel.guildHeld -= GUILD_STARTING_FUEL;
@@ -361,12 +379,53 @@ test('no-op proof: un-seed the pool and the pre-slice-5a golden comes back', () 
     'conservation: produced − consumed == pool + Σ hoards');
 
   const unseeded = structuredClone(s);
+  // The endowment landed after this golden was pinned, so it is undone here too — this
+  // test is about the POOL seed being the only delta SLICE 5a made.
+  unseeded.guilds[0].guildReputation -= unseeded.guilds[0].foundingEndowment;
+  delete unseeded.guilds[0].foundingEndowment;
   unseeded.reserve.reserveLevel -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
   unseeded.audit.totalProduced -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
   unseeded.galacticSupply.fuel.reserve -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
 
   assert.equal(hashState(unseeded), GOLDEN_HASH_BEFORE_POOL_SEED,
     'the pool seed is the ONLY delta slice 5a made to this run, byte for byte');
+});
+
+// The founding endowment's own delta proof — the inverted strip-and-prove this repo uses
+// whenever a changed VALUE cannot be stripped the way an added key can. Undo the two fields
+// the endowment touches and the pre-slice hash must come back, byte for byte. Without this,
+// four re-pinned numbers would prove only that somebody ran the code.
+test('no-op proof: un-endow the founding and the pre-endowment golden comes back', () => {
+  let s = createZeroState();
+  s = applyValid(s, FOUND);
+  s = applyValid(s, MINE_1);
+  s = applyValid(s, PROFILE);
+  s = advance(s, []).state;
+  s = advance(s, []).state;
+
+  const g = s.guilds[0];
+  const { MEANLINE_K } = require('../meanline.js');
+  const { W_SYS } = require('../points.js');
+
+  // The endowment really landed, and is DERIVED — not a number typed into the engine.
+  assert.equal(g.foundingEndowment, MEANLINE_K * W_SYS, 'sized from the two ruled constants');
+  assert.equal(g.foundingEndowment, 1800);
+  assert.equal(g.guildReputation, 1800, 'and the guild total carries it');
+  // It endowed the HOME SYSTEM only: the mine this run established is not endowed, so the
+  // guild's Points (18) are above what its reputation covers (12 systems' worth).
+  assert.equal(g.ventures.length, 1, 'the run really did establish a venture');
+  assert.equal(g.ventures[0].reputation, undefined, 'which carries no reputation of its own');
+
+  // NO FUEL MOVED ON ITS ACCOUNT in this run: 2 ticks on the 1,440-tick default window
+  // crosses no boundary, so the newborn's modifier rising to 1.0 granted it nothing here.
+  assert.equal(g.lastFuelGrant, undefined);
+
+  const unendowed = structuredClone(s);
+  unendowed.guilds[0].guildReputation -= unendowed.guilds[0].foundingEndowment;
+  delete unendowed.guilds[0].foundingEndowment;
+
+  assert.equal(hashState(unendowed), GOLDEN_HASH_BEFORE_ENDOWMENT,
+    'the endowment is the ONLY delta this slice made to the canonical sequence, byte for byte');
 });
 
 // --- 5. graceful shutdown: the MID-INTERVAL save (no intervening tick) ------

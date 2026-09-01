@@ -7,7 +7,7 @@
 `licence-and-price-system.md`. Where a number is unruled it is called `[FIRST-CUT]`, `[SHEET]` (needs a
 spreadsheet/sim pass) or `[DEFERRED]` — never a silent constant. **§6 steps 1-2 are BUILT (31-08-26) apart from closure; everything else here is NOT.***
 
-## 0a. What is BUILT *(31-08-26 — RP slices 1-2, the console readout, GP slice 3, the mean line slice 4)*
+## 0a. What is BUILT *(31-08-26 — RP slices 1-2, the console readout, GP slice 3, the mean line slice 4, fuel flows 5a, the founding endowment A′)*
 
 Steps 1, 3 and 4 of §6 in full, step 2 **apart from closure**, and the §6.1 dev readout. Read every other
 section of this doc as design, not as code.
@@ -72,7 +72,21 @@ section of this doc as design, not as code.
     module only judges one against the other.
   - **Snapshot** — `guilds[].expectedReputation` and `guilds[].issuanceModifier`. Additive; schema stays 7.
   - **Console** — both beside RP and GP in the Syndicate footer, the modifier sized and coloured as the payoff
-    number. The console mirrors ONLY the two clamp bounds, to LABEL a pinned modifier, with a served-page
+    number.
+- **THE FOUNDING ENDOWMENT (A′, §2.5)** — `guild.foundingEndowment`, a signed integer omitted from serialised
+  state when 0, granted ONCE by the `foundGuild` apply (`sim/actions.js`):
+  - sized by `foundingEndowmentFor(state, guild)` (`sim/meanline.js`) = `MEANLINE_K × systemPoints(...)` — the
+    SYSTEM half of Points alone, so inline ventures are never endowed and every system claimed after founding
+    raises the bar with nothing to cover it. **DERIVED**: it invents no number and tracks a retune of either
+    `MEANLINE_K` or `W_SYS`.
+  - `systemPoints` (`sim/points.js`) is new and is the system term `guildPoints` already computed, extracted so
+    it exists once rather than in two spellings that could drift.
+  - `checkGuildReputationSum` (`sim/invariants.js`) generalised to
+    `guildReputation == Σ venture.reputation + foundingEndowment`; the endowment also joins the integer check.
+    The tick's per-venture mover is UNCHANGED — the endowment is constant, so venture deltas keep the sum exact.
+  - **Snapshot** — `guilds[].foundingEndowment`, echoed as stored. Additive; schema stays 7. The mean line and
+    the modifier are untouched: they already read the TOTAL, which now carries the endowment inside it.
+  - A bare-founded guild reads `issuanceModifier` **1.0** where it read the floor **0.30**. The console mirrors ONLY the two clamp bounds, to LABEL a pinned modifier, with a served-page
     tripwire; it deliberately does not carry `MEANLINE_K` or the slope, so it structurally cannot compute the
     modifier itself.
   - **CALIBRATION CONFIRMED, by test and in a browser.** The ruling's four claims for `k = 150` all hold on the
@@ -253,7 +267,7 @@ no matter how big the guild grows.
 **Neutral (ruled 0):** signing a licence (`applyForLicence`); buying from the Syndicate (`buyFromSyndicate`) — a
 pure consumer sinks by earning nothing against its bar, so buying needs no explicit penalty.
 
-### 2.5 The founding endowment — a new guild opens on its line (ruled 31-08-26, A′; **NOT BUILT**)
+### 2.5 The founding endowment — a new guild opens on its line (ruled 31-08-26, A′; **BUILT 31-08-26**)
 
 **The problem the mean line creates for a newborn.** A just-founded guild holds only its **home system**
 (GP `= W_SYS = 12`); the gifted starter assets are **idle inventory** (`phase-1-tuning.md` "Starter asset
@@ -306,9 +320,11 @@ rules out.)*
 bonus (`sim/actions.js`: "that is for play actions, not founding"). Founding is already reputation-special; the
 endowment is the same instinct — founding is **neutral**, not **earned**.
 
-**Build seam (for the slice, not now).** Set `guild.foundingEndowment` in the `foundGuild` apply
-(`sim/actions.js`); generalise `checkGuildReputationSum` (`sim/invariants.js`) and update `design.md §15.5`
-invariant 3 in the **same commit** (doc-and-code together). The mean line already reads `guild.guildReputation`
+**Build seam — ✅ DONE 31-08-26, exactly as described.** `guild.foundingEndowment` is set in the `foundGuild`
+apply (`sim/actions.js`), sized by `foundingEndowmentFor` (`sim/meanline.js`) off the new `systemPoints`
+(`sim/points.js` — the system half of GP, extracted so the term exists once and the endowment tracks a `W_SYS`
+retune exactly as `guildPoints` does); `checkGuildReputationSum` (`sim/invariants.js`) is generalised, and
+`design.md §15.5` invariant 3 updated in the same commit. The mean line already reads `guild.guildReputation`
 (the total) and needs no change. The empty-guild guard (§3: `GP = 0 → modifier 1.0`) is a **separate** case — a
 guild holding literally nothing — and still stands; a founded guild has `GP = 12`, so the endowment, not the
 guard, is what puts it on its line. `venture.reputation` is unchanged.
