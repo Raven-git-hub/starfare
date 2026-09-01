@@ -263,7 +263,7 @@ test('no waystation: the waystation gate refuses first, so the burn is never rea
   // a route. But the trade never gets that far: the waystation gate above already
   // refuses it on its own terms. This pins BOTH halves, so a future change that
   // removes the waystation gate cannot quietly let a free flight through.
-  assert.deepEqual(routeFuelCost('sys_nope'), { fuelBurn: 0, creditCost: 0 });
+  assert.deepEqual(routeFuelCost('sys_nope'), { fuelBurn: 0 });
 
   const s = burnState({ fuelHoard: 0 });
   const reason = refuse(s, buy(5, 'sys_nope'));

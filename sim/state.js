@@ -25,6 +25,7 @@ const { cloneHistory } = require('./history.js');
 const { seedPrices } = require('./prices.js');
 const { clonePriceHistory } = require('./price-history.js');
 const { ASSET_CONDITION_NEW } = require('./assets.js');
+const { REFERENCE_FUEL_PRICE } = require('./fuel.js');
 
 // cloneShipments(list) -> a deep-enough copy of the IN-FLIGHT rows. `cargo` is the
 // only nested object a shipment carries (§6: no origin, no route, no status), so
@@ -454,12 +455,26 @@ function createVehicle({
   };
 }
 
-// Fuel Utility reserve (SHARED, design.md §15.4) — the subset the walking
-// skeleton needs. `currentPrice`/`priceBand`/etc. are left out until the
-// market step of tick.js needs them.
-function createReserve({ reserveLevel }) {
+// Fuel Utility reserve (SHARED, design.md §15.4) — the subset the engine needs.
+// `priceBand`/etc. are still left out until something reads them.
+//
+// `fuelPrice` — THE ONE MARKET PRICE of `deuterium_fuel`, in credits per unit
+// (docs/fuel-supply-and-allocation.md §4.2, slice 5b-i). Real, serialized state, not
+// a derivation: 5b-ii's reserve/flow controller sets NEXT cycle's price from THIS
+// cycle's reserve and flows, so it has to survive from one cycle to the next. It is
+// the sanctioned NON-INTEGER (§15.2) — it scales a quantity rather than counting one,
+// exactly as the issuance modifier does — and invariants.js checks it as a float ≥ 0.
+//
+// ⚠ IT DEFAULTS, WHERE `reserveLevel` IS REQUIRED, and the difference is deliberate.
+// A pool level is a galaxy-scale quantity that only a scenario can know, so leaving it
+// out is a mistake worth throwing on. A price is STRUCTURAL: there is exactly one
+// sensible opening value — `REFERENCE_FUEL_PRICE`, the calibration anchor itself
+// (sim/fuel.js) — so a reserve created without one sits at the reference, which is
+// also what 5b-i holds it at. That keeps every existing caller (the zero-state and
+// every fixture, all of which pass `{ reserveLevel }` alone) valid and unchanged.
+function createReserve({ reserveLevel, fuelPrice = REFERENCE_FUEL_PRICE }) {
   if (reserveLevel === undefined) throw new Error('createReserve: reserveLevel is required');
-  return { reserveLevel };
+  return { reserveLevel, fuelPrice };
 }
 
 // The Syndicate's credit-conservation balancing account (design.md invariant

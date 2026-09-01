@@ -12,6 +12,7 @@ const {
   createState,
 } = require('../state.js');
 const { checkInvariants } = require('../invariants.js');
+const { REFERENCE_FUEL_PRICE } = require('../fuel.js');
 
 // A minimal two-guild scenario — NOT the real walking-skeleton numbers
 // (those are a future scenarios/ concern), just enough to prove createState
@@ -156,8 +157,19 @@ test('createGuild nests vehicles the same way it nests ventures', () => {
 test('createReserve and createSyndicate require their one field', () => {
   assert.throws(() => createReserve({}), /reserveLevel is required/);
   assert.throws(() => createSyndicate({}), /ledger is required/);
-  assert.deepEqual(createReserve({ reserveLevel: 30 }), { reserveLevel: 30 });
   assert.deepEqual(createSyndicate({ ledger: -30 }), { ledger: -30 });
+
+  // The reserve now carries TWO fields, and only one of them is required (slice 5b-i).
+  // `reserveLevel` is galaxy-scale — only a scenario can know it, so omitting it throws
+  // above. `fuelPrice` is structural: there is one sensible opening value, so it
+  // DEFAULTS to the reference and every caller that passes `{ reserveLevel }` alone
+  // stays valid, which is every caller in the repo.
+  assert.deepEqual(createReserve({ reserveLevel: 30 }),
+    { reserveLevel: 30, fuelPrice: REFERENCE_FUEL_PRICE },
+    'a reserve created without a price opens at the reference');
+  assert.deepEqual(createReserve({ reserveLevel: 30, fuelPrice: 25 }),
+    { reserveLevel: 30, fuelPrice: 25 },
+    'and an explicit price is taken as given — which is how 5b-ii will move it');
 });
 
 test('createState assembles guilds, ventures, reserve, and syndicate', () => {

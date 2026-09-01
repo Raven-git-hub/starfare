@@ -191,6 +191,27 @@ const GOLDEN_UNLICENSED_WITH_PRICE_HISTORY = '2415bafdf6336b48a68d57b3b75e3c0c1c
 const GOLDEN_COMMITTED_WITH_PRICE_HISTORY = '33021945d4660c785d2f287ba5a6c9cdb5385d541f9a4912e57fb8966ecf7d9b';
 const COMMITTED_WITH_PRICE_HISTORY_BEFORE_FUEL_FLOWS = 'ab265ad191810bf91be169349ef6cc1b5c3c6e8a7bd9de5b64fd6533e80fbc3f';
 
+// FUEL PRICE MEDIATION (01-09-26, slice 5b-i — docs/fuel-supply-and-allocation.md §4.2).
+// The reserve gains `fuelPrice`, the galaxy's ONE market price of `deuterium_fuel` — real
+// serialized state, because 5b-ii's controller has to move it cycle to cycle. So the FULL
+// hashes of both runs moved, and this time the ORDINARY strip works: the slice adds a key
+// rather than changing a value. ALL EIGHT hashes above are UNCHANGED and are now asserted
+// with the price stripped, which is the whole proof and a stronger claim than a re-pin —
+// this slice added one field and moved NOT ONE GAME NUMBER. In particular the COMMITTED
+// run crosses ten boundaries and issues ten cycles of grants, and its granted fuel is
+// byte-identical: the grant now passes through the price, but the price is seeded AT the
+// reference the grant is calibrated at, so the conversion is exactly ×1.0. The two new
+// full-state hashes are pinned below so a drift in the price itself is caught too.
+const GOLDEN_UNLICENSED_WITH_FUEL_PRICE = 'a1ce79e59803fac06442190980983d844cf0aec84143699f86dda7ab4aa73342';
+const GOLDEN_COMMITTED_WITH_FUEL_PRICE = '25698f3110ad93c791d9b01762438d92b0f3b8951036ea8fe94b4a8fe7a69b09';
+
+// The state minus the reserve's fuel price — everything the eight hashes above covered
+// before slice 5b-i. Stripped INSIDE `reserve`, leaving `reserveLevel` in place, so a
+// change to the pool (or to anything else) still fails the assertion.
+const withoutFuelPrice = (state) => {
+  const { fuelPrice, ...reserve } = state.reserve;
+  return { ...state, reserve };
+};
 // The state minus its price block — everything the pre-price-engine hash covered.
 const withoutPrices = (state) => { const { prices, ...rest } = state; return rest; };
 // The state minus every guild's production-history buffer — everything the pre-history
@@ -209,10 +230,11 @@ const withoutPriceHistory = (state) => { const { priceHistory, ...rest } = state
 test('NO-OP PROOF: an unlicensed run (no scaffold action) is byte-identical to pre-change HEAD', () => {
   let s = sysState([mine('t', 'titanium', 10, 0), mine('c', 'carbon_products', 10, 0), refinery('r', 'titanium_alloy', 2)]);
   for (let i = 0; i < 40; i += 1) s = tick(s);
-  assert.equal(hashState(withoutPriceHistory(withoutHistory(withoutPrices(s)))), GOLDEN_UNLICENSED, 'everything but the price block and the two history buffers is byte-identical to pre-change HEAD');
-  assert.equal(hashState(withoutPriceHistory(withoutHistory(s))), GOLDEN_UNLICENSED_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
-  assert.equal(hashState(withoutPriceHistory(s)), GOLDEN_UNLICENSED_WITH_HISTORY, 'and with the production history back in, the ONLY delta from the pre-price-history engine is priceHistory');
-  assert.equal(hashState(s), GOLDEN_UNLICENSED_WITH_PRICE_HISTORY, 'and the price-history rings themselves are pinned');
+  assert.equal(hashState(withoutFuelPrice(withoutPriceHistory(withoutHistory(withoutPrices(s))))), GOLDEN_UNLICENSED, 'everything but the price block, the two history buffers and the fuel price is byte-identical to pre-change HEAD');
+  assert.equal(hashState(withoutFuelPrice(withoutPriceHistory(withoutHistory(s)))), GOLDEN_UNLICENSED_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
+  assert.equal(hashState(withoutFuelPrice(withoutPriceHistory(s))), GOLDEN_UNLICENSED_WITH_HISTORY, 'and with the production history back in, the ONLY delta from the pre-price-history engine is priceHistory');
+  assert.equal(hashState(withoutFuelPrice(s)), GOLDEN_UNLICENSED_WITH_PRICE_HISTORY, 'and with the price-history rings back in, the ONLY delta from the pre-5b-i engine is reserve.fuelPrice');
+  assert.equal(hashState(s), GOLDEN_UNLICENSED_WITH_FUEL_PRICE, 'and the fuel price itself is pinned');
   // The stripped-equals-old assertions above are only a proof if there is really
   // something to strip: an unlicensed run still MINES, so it still records history —
   // and 40 ticks crosses the fine bucket twice, so it really did record prices too.
@@ -227,9 +249,10 @@ test('a committed run seeded via createVenture (not the action) is pinned, and n
   // the intake surface, not the resolution.
   let s = sysState([mine('t', 'titanium', 10, 7), mine('c', 'carbon_products', 10, 5), refinery('r', 'titanium_alloy', 2)], 4);
   for (let i = 0; i < 40; i += 1) s = tick(s);
-  assert.equal(hashState(withoutPriceHistory(withoutHistory(s))), GOLDEN_COMMITTED_WITH_PRICES, 'with both history buffers stripped, the committed run is byte-identical to its post-Slice-3a bytes');
-  assert.equal(hashState(withoutPriceHistory(s)), GOLDEN_COMMITTED_WITH_HISTORY, 'and with the production history back in, the ONLY delta is priceHistory');
-  assert.equal(hashState(s), GOLDEN_COMMITTED_WITH_PRICE_HISTORY, 'and the price-history rings themselves are pinned');
+  assert.equal(hashState(withoutFuelPrice(withoutPriceHistory(withoutHistory(s)))), GOLDEN_COMMITTED_WITH_PRICES, 'with both history buffers and the fuel price stripped, the committed run is byte-identical to its post-Slice-3a bytes');
+  assert.equal(hashState(withoutFuelPrice(withoutPriceHistory(s))), GOLDEN_COMMITTED_WITH_HISTORY, 'and with the production history back in, the ONLY delta is priceHistory');
+  assert.equal(hashState(withoutFuelPrice(s)), GOLDEN_COMMITTED_WITH_PRICE_HISTORY, 'and with the price-history rings back in, the ONLY delta from the pre-5b-i engine is reserve.fuelPrice');
+  assert.equal(hashState(s), GOLDEN_COMMITTED_WITH_FUEL_PRICE, 'and the fuel price itself is pinned');
   assert.equal(s.priceHistory.titanium.fine.length, 2, 'the stripped-equals-old proof is only a proof if there were samples to strip');
   // The bytes moved because the deliveries are now SALES: the guild has been paid and
   // the ledger has funded it, equal and opposite (invariant 2 is asserted every tick by
@@ -273,9 +296,9 @@ test('no-op proof: undo the fuel flows and the pre-slice COMMITTED goldens come 
   assert.equal(undone.audit.totalProduced, 0);
   assert.equal(undone.guilds[0].fuelHoard, 0);
 
-  assert.equal(hashState(withoutPriceHistory(withoutHistory(undone))), COMMITTED_WITH_PRICES_BEFORE_FUEL_FLOWS,
+  assert.equal(hashState(withoutFuelPrice(withoutPriceHistory(withoutHistory(undone)))), COMMITTED_WITH_PRICES_BEFORE_FUEL_FLOWS,
     'with the fuel undone, the pre-slice committed bytes come straight back');
-  assert.equal(hashState(withoutPriceHistory(undone)), COMMITTED_WITH_HISTORY_BEFORE_FUEL_FLOWS);
-  assert.equal(hashState(undone), COMMITTED_WITH_PRICE_HISTORY_BEFORE_FUEL_FLOWS,
+  assert.equal(hashState(withoutFuelPrice(withoutPriceHistory(undone))), COMMITTED_WITH_HISTORY_BEFORE_FUEL_FLOWS);
+  assert.equal(hashState(withoutFuelPrice(undone)), COMMITTED_WITH_PRICE_HISTORY_BEFORE_FUEL_FLOWS,
     'so the ONLY delta this slice made to this run is the pool, the audit and the granted fuel');
 });

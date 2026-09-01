@@ -189,7 +189,7 @@ pool empties to exactly 0 rather than going negative. Without the price controll
 back under supply, so a galaxy that out-draws its influx **rations, then risks collapse** — the losable state
 of §1.2, correct and intended for this cut.
 
-**Price mediation — slice 5b-i (ruled 01-09-26; byte-identical).** The grant now passes through a market fuel **price**. `round(BASE_GRANT_PER_GP · GP · modifier)` is a guild's **entitlement at the reference price** (the existing `grantFor`, unchanged); the physical fuel it receives is `round(entitlement · REFERENCE_FUEL_PRICE / reserve.fuelPrice)`, so the same reputation-sized entitlement buys **less** fuel when the price is high — the lever that pulls draw back under supply. **5b-i holds the price fixed at `REFERENCE_FUEL_PRICE`**, so the ratio is exactly `1.0` and the grant is **byte-identical to 5a** (the plumbing lands with no behaviour change). The controller that **moves** the price each cycle is **5b-ii** (§4.2), where the price state, the retired flat constant and the ratio-vs-rebase choice are ruled.
+**Price mediation — slice 5b-i (ruled 01-09-26; ✅ BUILT 01-09-26; byte-identical).** The grant now passes through a market fuel **price**. `round(BASE_GRANT_PER_GP · GP · modifier)` is a guild's **entitlement at the reference price** (the existing `grantFor`, unchanged); the physical fuel it receives is `round(entitlement · REFERENCE_FUEL_PRICE / reserve.fuelPrice)`, so the same reputation-sized entitlement buys **less** fuel when the price is high — the lever that pulls draw back under supply. **5b-i holds the price fixed at `REFERENCE_FUEL_PRICE`**, so the ratio is exactly `1.0` and the grant is **byte-identical to 5a** (the plumbing lands with no behaviour change). The controller that **moves** the price each cycle is **5b-ii** (§4.2), where the price state, the retired flat constant and the ratio-vs-rebase choice are ruled, and which is **NOT built**.
 
 **Out of 5a:** the dynamic price controller (5b); the Producer Guilds (their own later slice — the influx is
 abstracted, §1.1); closure; illegal refining; the grey market.
@@ -249,8 +249,9 @@ rescue (§1.2) are the same safety layer viewed three ways.
 
 The loop above lands in **two slices**, one module at a time (`design.md` §18 #3).
 
-**5b-i — price mediation (the plumbing; ruled 01-09-26; byte-identical).** Introduces the market price as STATE
-and routes the grant through it, with the price held fixed so nothing about the economy moves yet.
+**5b-i — price mediation (the plumbing; ruled 01-09-26; ✅ BUILT 01-09-26; byte-identical).** Introduces the
+market price as STATE and routes the grant through it, with the price held fixed so nothing about the economy
+moves yet.
 
 - **`reserve.fuelPrice`** — a float, the ONE market price of `deuterium_fuel`, seeded at galaxy creation to
   `REFERENCE_FUEL_PRICE`. It is **serialized** reserve state (it must persist cycle to cycle for 5b-ii to move
@@ -269,6 +270,36 @@ and routes the grant through it, with the price held fixed so nothing about the 
   scarce, which is intended.
 - **Fixed price ⇒ byte-identical.** 5b-i seeds and holds `fuelPrice = REFERENCE_FUEL_PRICE`, so every grant and
   every hoard value is unchanged from 5a; the whole behaviour change belongs to 5b-ii.
+
+**AS BUILT (01-09-26)** — where each of the five rulings above landed, and the two places the build had to decide
+something the ruling did not name:
+
+- `REFERENCE_FUEL_PRICE` = **10** and `fuelValue(units, price)` in **`sim/fuel.js`**; `reserve.fuelPrice` on
+  **`createReserve`** (`sim/state.js`), which **defaults** it — `reserveLevel` stays required, because a pool level
+  is galaxy-scale and only a scenario can know it, while a price has exactly one sensible opening value. So
+  `zero-state.js` and every fixture in the repo pass `{ reserveLevel }` alone and stay valid, unchanged.
+- The conversion is **`physicalGrantFor(state, guild)`** in `sim/issuance.js`, beside the untouched `grantFor`;
+  `tick.js`'s step 6 calls it in place of `grantFor` and everything downstream — the rationing, the transfer, the
+  `lastFuelGrant` record — is in physical fuel, which is the only unit the pool is denominated in.
+- **THE THIRD CONSUMER, which §4.2 did not name.** The retired constant had three readers, not two: the hoard's
+  mark-to-market, the issuance conversion, **and `routeFuelCost`'s `creditCost`**. The same "one price" principle
+  covers it, so the route quote is marked to `reserve.fuelPrice` too — and the function **split**:
+  `routeFuelCost(systemId)` now returns `{ fuelBurn }` alone, because a burn is GEOMETRY and is what the engine
+  actually CHARGES, while what it is WORTH is a valuation at a price that changes every cycle. The valuation moved
+  to the display site (`sim/snapshot.js`), exactly parallel to the hoard's, through the same `fuelValue`. The
+  physical `fuelBurn` is unchanged and every caller's `const { fuelBurn } = routeFuelCost(id)` still reads.
+- ⚠ **A GUARD THE RULING DOES NOT NAME.** `physicalGrantFor` **throws** on a `fuelPrice` that is not finite and
+  `> 0`, rather than dividing by it. Nothing in 5b-i can reach it — the price is seeded and held — which is why it
+  is worth having *now*: 5b-ii's controller is what will start writing the field, and a zero or NaN price would
+  otherwise hand out Infinity or NaN fuel that sails past the rationing and into a hoard before any invariant
+  looks (§15.5: halt and report, never continue quietly). 5b-ii's `floor` is what will make the controller respect
+  it; until then, the guard is what says so.
+- **Exposed:** `galacticSupply.fuel.fuelPrice` in the snapshot (additive, schema stays 7), so the console and the
+  recorder are already watching the number 5b-ii will move.
+- **Proven byte-identical**, not asserted: the determinism goldens gain exactly `reserve.fuelPrice` and nothing
+  else. Every pre-slice hash in `persist.test.js` and `commitment-scaffold.test.js` is **UNCHANGED** and now
+  asserted with that one field stripped — including the committed 40-tick run, which crosses ten cycle boundaries
+  and issues ten cycles of grants. Three new hashes pin the price-inclusive state beside them.
 
 **5b-ii — the controller (the feedback loop; coefficients `[SHEET]`).** Each cycle sets NEXT cycle's
 `fuelPrice` from the **level** term (the reserve curve `clamp(base · (target / reserve)^sensitivity, floor,

@@ -36,7 +36,7 @@ const { createFoundGuildAction, intake } = require('../actions.js');
 const { checkInvariants } = require('../invariants.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { computeGalacticSupply } = require('../supply.js');
-const { GUILD_STARTING_FUEL, FLAT_FUEL_PRICE_PER_UNIT } = require('../fuel.js');
+const { GUILD_STARTING_FUEL, REFERENCE_FUEL_PRICE, fuelValue } = require('../fuel.js');
 
 const found = (guildId, homeSystemId) => createFoundGuildAction({
   guildId, name: guildId, credits: 120, influence: 100, homeSystemId,
@@ -138,10 +138,15 @@ test('the snapshot reports the hoard and its mark-to-market credit value', () =>
   const guild = buildSnapshot(s).guilds[0];
 
   assert.equal(guild.fuelHoard, 500);
-  assert.equal(guild.fuelHoardValue, 5000, '500 units at the [FIRST-CUT] flat 10 ¢/unit');
-  // Stated as the relationship as well as the number, so retuning either constant
-  // moves the pinned figures above and leaves this one honest.
-  assert.equal(guild.fuelHoardValue, guild.fuelHoard * FLAT_FUEL_PRICE_PER_UNIT);
+  // 500 units at the galaxy's opening fuel price. UNCHANGED by slice 5b-i: the mark
+  // used to ride a flat constant and now rides `reserve.fuelPrice`, which is SEEDED
+  // at `REFERENCE_FUEL_PRICE` — the value that constant held — so the number is the
+  // same and the meaning is different. It will move when 5b-ii moves the price.
+  assert.equal(guild.fuelHoardValue, 5000, '500 units at the seeded 10 ¢/unit');
+  assert.equal(s.reserve.fuelPrice, REFERENCE_FUEL_PRICE, 'and a fresh galaxy opens at the reference');
+  // Stated as the relationship as well as the number, so retuning the reference moves
+  // the pinned figure above and leaves this one honest.
+  assert.equal(guild.fuelHoardValue, fuelValue(guild.fuelHoard, s.reserve.fuelPrice));
   assert.ok(Number.isInteger(guild.fuelHoardValue), 'integer credits (§15.2)');
 });
 
@@ -149,9 +154,10 @@ test('fuelHoardValue is derived telemetry — it reaches no stored byte and char
   const s = foundVia(createZeroState(), 'player-guild', 'sys_0002');
 
   assert.equal(s.guilds[0].fuelHoardValue, undefined, 'the value is computed on read, never stored');
-  // Fuel is the one good the price engine never prices (design.md §8), which is the
-  // whole reason the flat rate exists — if a posted row ever appears, this constant
-  // is the thing to delete, and this assertion is the reminder.
+  // Fuel is the one good the price ENGINE never prices (design.md §8), which is the
+  // whole reason it carries a price of its own (`reserve.fuelPrice`) — if a posted row
+  // ever appears there are suddenly two fuel prices, a breach of invariant 5, and this
+  // assertion is the reminder.
   assert.equal(s.prices.deuterium_fuel, undefined, 'fuel still has no posted price');
   // Marking the hoard to market moves no credits: the ledger and every guild balance
   // are exactly what founding left them, so invariant 2 cannot see this field at all.

@@ -4,10 +4,18 @@
 // size-based grants out of it.
 //
 // docs/fuel-supply-and-allocation.md §2.1 (the issuance mechanic — the ruling for this
-// slice), §1.1 (the abstracted influx), §1.3 (the seeded pool), §4.1 (the crunch edge).
-// Numbers in phase-1-tuning.md §"Fuel — the pool & issuance".
+// slice), §1.1 (the abstracted influx), §1.3 (the seeded pool), §4.1 (the crunch edge),
+// §4.2 (price mediation, slice 5b-i). Numbers in phase-1-tuning.md §"Fuel — the pool &
+// issuance".
 //
-//     fuelGranted(guild) = round( BASE_GRANT_PER_GP × GP(guild) × issuanceModifier(guild) )
+//     entitlement(guild) = round( BASE_GRANT_PER_GP × GP(guild) × issuanceModifier(guild) )
+//     fuelGranted(guild) = round( entitlement × REFERENCE_FUEL_PRICE / reserve.fuelPrice )
+//
+// THE SECOND LINE IS SLICE 5b-i (01-09-26) and it is the price lever: an entitlement is
+// what reputation-against-size earns you AT THE REFERENCE PRICE, and what it BUYS depends
+// on what fuel currently costs. 5b-i holds `reserve.fuelPrice` at the reference, so the
+// ratio is exactly 1.0 and the second line is an identity — the plumbing lands with no
+// behaviour change. 5b-ii's controller is what makes the price move.
 //
 // THIS IS WHERE FUEL FINALLY MOVES. Slice 1 seeded a hoard, slice 2 quoted a route, slice
 // 3 burned it on a purchase, and slices 3-4 built the Points/reputation pair that decides
@@ -45,6 +53,7 @@
 
 const { guildPoints } = require('./points.js');
 const { issuanceModifier } = require('./meanline.js');
+const { REFERENCE_FUEL_PRICE } = require('./fuel.js');
 
 // BASE_GRANT_PER_GP — fuel per Guild Point per cycle, at modifier 1.0.
 //
@@ -94,6 +103,45 @@ const POOL_SEED = 4000;
 // PURE: reads Points and the modifier, mutates nothing.
 function grantFor(state, guild) {
   return Math.round(BASE_GRANT_PER_GP * guildPoints(state, guild) * issuanceModifier(state, guild));
+}
+
+// physicalGrantFor(state, guild) -> the PHYSICAL FUEL this guild is due, an integer ≥ 0.
+//
+// THE PRICE MEDIATION (docs/fuel-supply-and-allocation.md §4.2, slice 5b-i). `grantFor`
+// above is the ENTITLEMENT — what a guild is due AT THE REFERENCE PRICE, sized by
+// reputation-against-size and nothing else. This converts that entitlement into fuel at
+// the price the market is actually charging:
+//
+//     physical = round( entitlement × REFERENCE_FUEL_PRICE / reserve.fuelPrice )
+//
+// so the same reputation buys LESS fuel when fuel is expensive. That is the whole lever:
+// 5a had a fixed influx against a draw that answered to nothing, so a galaxy that
+// out-drew its supply rationed forever. Price is what pulls draw back under supply, and
+// 5b-ii's controller does nothing but move this one number.
+//
+// ⚠ THE RATIO FORM, NOT A RE-BASED PRODUCT, and it is not a stylistic preference. The
+// alternative — folding the price into the original product as `round(BASE_GRANT_PER_GP ×
+// GP × modifier / price × REFERENCE)` — is algebraically the same and NUMERICALLY IS NOT:
+// float multiplication does not reassociate, so it lands a unit either side of `grantFor`
+// in about 0.3% of GP/modifier cases. Scaling the ALREADY-ROUNDED entitlement means that
+// at the seed price the factor is exactly 1.0, `round(entitlement × 1)` is the entitlement
+// itself, and 5b-i is byte-identical to 5a — which is the whole claim this slice makes.
+// A test pins the distinction on the cases where the two forms disagree.
+//
+// THE PRICE MUST BE A POSITIVE, FINITE NUMBER, asserted rather than trusted. Nothing in
+// 5b-i can move it off the seed, which is exactly why the guard is worth having now: a
+// zero or negative price would silently hand out Infinity/NaN/negative fuel, and a NaN
+// grant would sail past `rationGrants` and land in a hoard before any invariant looked
+// (§15.5 — a silent violation is worse than a crash). 5b-ii's floor will make the
+// controller respect this; until then, the guard is what says so.
+//
+// PURE: reads the entitlement and the price, mutates nothing.
+function physicalGrantFor(state, guild) {
+  const price = state.reserve.fuelPrice;
+  if (!Number.isFinite(price) || price <= 0) {
+    throw new Error(`physicalGrantFor: reserve.fuelPrice must be a finite number > 0, got ${price}`);
+  }
+  return Math.round(grantFor(state, guild) * REFERENCE_FUEL_PRICE / price);
 }
 
 // rationGrants(desired, pool) -> what each guild ACTUALLY receives, same order, integers.
@@ -146,5 +194,5 @@ function rationGrants(desired, pool) {
 
 module.exports = {
   BASE_GRANT_PER_GP, DEUTERIUM_INFLUX_PER_CYCLE, POOL_SEED,
-  grantFor, rationGrants,
+  grantFor, physicalGrantFor, rationGrants,
 };

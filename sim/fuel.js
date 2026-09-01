@@ -9,23 +9,27 @@
 // is now a system with rules of its own, so it gets a module, and every number
 // it needs lives here ONCE and is never inlined.
 //
-// SCOPE TODAY (fuel Slices 1-2): the founding grant, a flat unit price for
-// display, and the route burn QUOTE. There is no pool, no issuance, no cycle
-// allowance, and — the boundary that matters — **nothing here spends fuel**. A
-// hoard is seeded at founding, sits, and can now be quoted against a route; the
-// deduction is Slice 3 (docs/fuel-supply-and-allocation.md §8). The real fuel
-// economy (the commons and its reserve, and the reserve/flow price controller
-// under it) is designed in that same doc and is NOT built; do not read any
-// constant below as a stand-in for it.
+// SCOPE TODAY: the founding grant, the fuel economy's CALIBRATION price, the route
+// burn, and the one function that marks physical fuel to money. Everything that
+// MOVES fuel lives elsewhere and reads from here — the grant and the pool in
+// sim/issuance.js and tick.js's step 6, the burn's deduction in sim/actions.js.
 //
-// ⚠ ONE PIECE OF THAT ECONOMY NOW EXISTS, AND IT IS NOT HERE (31-08-26, slice 4):
-// **mean-line issuance** — the RP-against-Points judgement that will size a grant —
-// lives in its own module, **sim/meanline.js**. §4 of points-and-reputation.md rules
-// it the fuel layer's, and "the fuel layer" is a concept rather than a filename: it
-// reads Points and reputation and no geometry at all, so it is a different rule from
-// the burn and the quote below, and it keeps this file's scope note true. It still
-// grants NOTHING — `fuelGranted = baseGrant × modifier` needs `baseGrant`, which is
-// the unbuilt pool slice.
+// ⚠ THE MARKET PRICE IS NOT IN THIS FILE, AND THAT IS THE POINT (01-09-26, slice
+// 5b-i). `REFERENCE_FUEL_PRICE` below is a CONSTANT — the anchor the economy was
+// calibrated at. The live price of fuel is `state.reserve.fuelPrice`, serialized
+// galaxy state (sim/state.js), because 5b-ii's controller has to MOVE it cycle to
+// cycle and a constant cannot move. There is exactly one of it (§15.5 invariant 5),
+// it is what `fuelValue` marks against, and 5b-i holds it AT the reference so the
+// whole slice is byte-identical to 5a. The controller that moves it is NOT built;
+// do not read any constant below as a stand-in for it.
+//
+// ⚠ TWO MORE PIECES OF THE FUEL ECONOMY ARE NOT HERE EITHER, deliberately:
+// **mean-line issuance** (the RP-against-Points judgement that SIZES a grant) lives
+// in **sim/meanline.js**, and the pool, the influx and the grant itself live in
+// **sim/issuance.js**. §4 of points-and-reputation.md rules issuance the fuel
+// layer's, and "the fuel layer" is a concept rather than a filename: those modules
+// read Points and reputation and no geometry at all, which is a different rule from
+// the burn and the valuation below.
 
 const { nearestWaystation } = require('./transport.js');
 
@@ -50,20 +54,26 @@ const { nearestWaystation } = require('./transport.js');
 // survival floor, rather than by a structural redesign.
 const GUILD_STARTING_FUEL = 500;
 
-// FLAT_FUEL_PRICE_PER_UNIT — credits per unit of `deuterium_fuel`, for DISPLAY
-// only. `[FIRST-CUT]`, and a deliberate placeholder: fuel is the one good the
-// price engine never prices (design.md §8 — `deuterium_fuel` has no row in
-// state.prices, ever), so a hoard has no posted value to mark against and the
-// client would otherwise have to invent one. A named constant here means the
-// number is in exactly one place when the real fuel price controller replaces it
-// (docs/fuel-supply-and-allocation.md §4: a reserve/flow controller that reads
-// deuterium IN against fuel OUT and moves price to defend the reserve — its
-// coefficients are that doc's open question 1, an explicit SIM job, so nothing
-// here is a first cut at them). §1.3 rules this constant by name too.
+// REFERENCE_FUEL_PRICE — the price at which the fuel economy is CALIBRATED, in
+// credits per unit of `deuterium_fuel`.
 //
-// Nothing CHARGES this. It buys nothing and sells nothing — no credit moves
-// through it — so invariant 2 cannot see it.
-const FLAT_FUEL_PRICE_PER_UNIT = 10;
+// `[FIRST-CUT]` 10, and it invents nothing: it takes the value of the retired
+// `FLAT_FUEL_PRICE_PER_UNIT`, which is why slice 5b-i is byte-identical to 5a
+// (docs/fuel-supply-and-allocation.md §4.2; recorded in phase-1-tuning.md).
+//
+// ⚠ IT IS NOT THE MARKET PRICE. The one market price of fuel is
+// `state.reserve.fuelPrice` — serialized, and the only thing anything ever marks
+// fuel against (§15.5 invariant 5: one fuel price, one home). This constant is the
+// fixed ANCHOR that price is measured from: it is where `BASE_GRANT_PER_GP`'s
+// "5 fuel per Guild Point" was calibrated, so a guild sitting at exactly this price
+// draws its full entitlement, and `reserve.fuelPrice` is seeded here at galaxy
+// creation (state.js `createReserve`).
+//
+// The two therefore mean different things and must never be swapped: the constant is
+// the calibration, the state field is today's price. 5b-i holds the state field AT
+// the constant — the ratio between them is exactly 1.0 and nothing moves — and 5b-ii's
+// reserve/flow controller is what finally makes them differ.
+const REFERENCE_FUEL_PRICE = 10;
 
 // SYNDICATE_HAULER_BURN_RATE — fuel units burned per unit of route distance.
 //
@@ -84,13 +94,12 @@ const FLAT_FUEL_PRICE_PER_UNIT = 10;
 // it replaces, and the replacement is one line because nothing inlines it.
 const SYNDICATE_HAULER_BURN_RATE = 0.5;
 
-// routeFuelCost(systemId) -> { fuelBurn: int, creditCost: int }
+// routeFuelCost(systemId) -> { fuelBurn: int }
 //
 // The fuel a Syndicate trade burns flying between `systemId` and its nearest
-// waystation, and what that fuel is worth at the flat display rate. PURE: it
-// takes no state, reads no state and mutates nothing — the geography is baked
-// into the seed at generation time, which is why `nearestWaystation` takes no
-// state either. ONE ARGUMENT, a system id.
+// waystation. PURE: it takes no state, reads no state and mutates nothing — the
+// geography is baked into the seed at generation time, which is why
+// `nearestWaystation` takes no state either. ONE ARGUMENT, a system id.
 //
 // DISTANCE COMES FROM `nearestWaystation`, NOT FROM A SECOND MEASUREMENT.
 // `near.distance` is the value that function already computed, and it is the very
@@ -107,23 +116,50 @@ const SYNDICATE_HAULER_BURN_RATE = 0.5;
 // seed sits 1 hex out, and 1 x 0.5 = 0.5 would floor to a free trip. Zero is
 // reserved for the one honest case below.
 //
+// ⚠ IT NO LONGER QUOTES A PRICE (slice 5b-i, §4.2). It used to return a `creditCost`
+// beside the burn, computed from the retired flat constant. A burn is GEOMETRY — a
+// distance times a rate — and it is what the engine actually CHARGES; what that burn
+// is WORTH in credits is a valuation at the market price, which is display, changes
+// every cycle once 5b-ii lands, and needs state this pure function must not read. So
+// the two are split: the burn stays here, and the valuation is `fuelValue(fuelBurn,
+// reserve.fuelPrice)` at the display site (sim/snapshot.js), exactly parallel to the
+// hoard's mark-to-market. The RETURN SHAPE STAYS AN OBJECT so every caller's
+// `const { fuelBurn } = routeFuelCost(id)` keeps working untouched.
+//
 // GRACEFUL ABSENCE: when no waystation can reach the system (it does not exist,
-// carries no seed coords, or no outpost has coords) -> `{ fuelBurn: 0,
-// creditCost: 0 }`, never a throw. A quote is a display figure, and the refusal
-// that matters already lives in `validateAction`, which rejects the purchase on
-// this same null. ⚠ Slice 3, which will DEDUCT this, must not read that 0 as
-// "free": it means "no route", and such a trade is refused before fuel is ever
-// considered.
+// carries no seed coords, or no outpost has coords) -> `{ fuelBurn: 0 }`, never a
+// throw. A quote is a display figure, and the refusal that matters already lives in
+// `validateAction`, which rejects the purchase on this same null. ⚠ The DEDUCTION
+// (slice 3, sim/actions.js) must not read that 0 as "free": it means "no route", and
+// such a trade is refused before fuel is ever considered.
 function routeFuelCost(systemId) {
   const near = nearestWaystation(systemId);
-  if (!near) return { fuelBurn: 0, creditCost: 0 };
-  const fuelBurn = Math.ceil(near.distance * SYNDICATE_HAULER_BURN_RATE);
-  return { fuelBurn, creditCost: fuelBurn * FLAT_FUEL_PRICE_PER_UNIT };
+  if (!near) return { fuelBurn: 0 };
+  return { fuelBurn: Math.ceil(near.distance * SYNDICATE_HAULER_BURN_RATE) };
+}
+
+// fuelValue(units, fuelPrice) -> integer credits.
+//
+// THE ONE PLACE PHYSICAL FUEL IS MARKED TO MONEY (§15.5 invariant 5). Both consumers
+// — a guild's hoard and a route's burn — go through this, so there is exactly one
+// answer to "what is this fuel worth", and it moves for both of them together the
+// moment 5b-ii moves the price.
+//
+// `Math.round` because credits are integers (§15.2) and `fuelPrice` is the sanctioned
+// float: it SCALES a quantity, and the rounding belongs where the float meets the
+// integer, which is here.
+//
+// PURE, and it takes the price as an ARGUMENT rather than reading state: this module
+// owns the fuel RULES and knows nothing about where a galaxy keeps its state. The
+// caller passes `state.reserve.fuelPrice` — the only fuel price there is.
+function fuelValue(units, fuelPrice) {
+  return Math.round(units * fuelPrice);
 }
 
 module.exports = {
   GUILD_STARTING_FUEL,
-  FLAT_FUEL_PRICE_PER_UNIT,
+  REFERENCE_FUEL_PRICE,
   SYNDICATE_HAULER_BURN_RATE,
   routeFuelCost,
+  fuelValue,
 };

@@ -26,7 +26,7 @@
 // the object is assembled in a fixed field order, so its bytes are stable.
 
 const { computeGalacticSupply } = require('./supply.js');
-const { FLAT_FUEL_PRICE_PER_UNIT, routeFuelCost } = require('./fuel.js');
+const { REFERENCE_FUEL_PRICE, routeFuelCost, fuelValue } = require('./fuel.js');
 const { heldSystemIds } = require('./claims.js');
 const { guildPoints } = require('./points.js');
 const { expectedReputation, issuanceModifier } = require('./meanline.js');
@@ -288,6 +288,15 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // `fuelGrant`, `issuanceModifier`, `guildPoints` and the rest each made. Echoed as stored;
 // the mean line and the modifier are untouched, because they already read the TOTAL, which
 // now simply carries the endowment inside it.
+// (01-09-26, fuel price mediation — slice 5b-i): `galacticSupply.fuel` gains `fuelPrice`,
+// the galaxy's ONE market price of `deuterium_fuel` (docs/fuel-supply-and-allocation.md
+// §4.2), echoed off `state.reserve.fuelPrice`. ADDITIVE, and NO schema bump: nothing
+// existing changed shape — the same additive call `foundingEndowment`, `fuelGrant`,
+// `issuanceModifier` and the rest each made. TWO EXISTING FIELDS CHANGED WHAT THEY READ
+// WITHOUT CHANGING SHAPE OR VALUE: `guilds[].fuelHoardValue` and each `fuelCost` row's
+// `creditCost` now mark against that price instead of the retired flat constant — the
+// same numbers today, because the price is seeded AT the constant's value, and moving
+// together the moment 5b-ii moves the price.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -295,7 +304,8 @@ const SNAPSHOT_SCHEMA = 7;
 //     schemaVersion, tick,
 //     galacticSupply: {
 //       resources: { <every raw good>: int },          // all 17 keys, zero-filled
-//       fuel: { reserve, guildHeld, total },            // total = reserve+guildHeld
+//       fuel: { reserve, guildHeld, total, fuelPrice }, // total = reserve+guildHeld;
+//                                                       // fuelPrice = the ONE market price
 //     },
 //     syndicate: { ledger },
 //     prices: { <every non-fuel stockpile good>: <posted value> },  // sim/prices.js
@@ -340,6 +350,22 @@ function buildSnapshot(state) {
   const supply = computeGalacticSupply(state);
   const occupancy = computeOccupancy(state);
 
+  // THE ONE FUEL PRICE (§15.5 invariant 5), read ONCE for the whole snapshot — the
+  // hoard's mark-to-market, every route's credit quote, and the headline figure in
+  // `galacticSupply.fuel` are all this same number, so no two rows of one snapshot can
+  // ever be priced differently. Echoed off state, never recomputed here: the engine owns
+  // the price and 5b-ii will own moving it.
+  //
+  // The reserve-less fallback mirrors `computeGalacticSupply`'s (which reads a missing
+  // reserve as a pool of 0) and `createReserve`'s own structural default, so a hand-built
+  // partial state gets the reference rather than a NaN quietly multiplied through every
+  // credit figure on the page. No number is invented here: it is the same named constant
+  // a real galaxy opens at. `createState` always builds a reserve, so this is reachable
+  // only from a fixture.
+  const fuelPrice = state.reserve && state.reserve.fuelPrice !== undefined
+    ? state.reserve.fuelPrice
+    : REFERENCE_FUEL_PRICE;
+
   // Guild breakdown: copy the fields the inspector shows. stockpiles is spread
   // into a fresh object so a consumer mutating the snapshot can never reach back
   // into live state.
@@ -355,17 +381,25 @@ function buildSnapshot(state) {
       fuelHoard: g.fuelHoard,
       // The hoard marked to market in credits, so the client never multiplies a
       // game number itself (§5's display rule: the browser renders, the engine
-      // decides). Fuel is the one good the price engine never prices (design.md
-      // §8), so this rides a NAMED [FIRST-CUT] flat rate (sim/fuel.js) rather
-      // than a posted value — and `Math.round` keeps it integer credits (§15.2)
-      // for the day that rate stops being a whole number. Pure derived
-      // telemetry: no stored byte, no determinism hash, and nothing charges it.
-      fuelHoardValue: Math.round(g.fuelHoard * FLAT_FUEL_PRICE_PER_UNIT),
+      // decides). Fuel is the one good the price ENGINE never prices (design.md
+      // §8) — it has its own price, `state.reserve.fuelPrice`, and since slice
+      // 5b-i (§4.2) that is what this marks against, through the engine's own
+      // `fuelValue`. It used to ride a flat constant, which is now retired: there
+      // is ONE fuel price (§15.5 invariant 5) and this is a reading of it. Pure
+      // derived telemetry: no stored byte, no determinism hash, nothing charged.
+      fuelHoardValue: fuelValue(g.fuelHoard, fuelPrice),
       // What a Syndicate trade COSTS IN FUEL, per system this guild holds (fuel
-      // Slice 2). Keyed by systemId, each `{ fuelBurn, creditCost }` from the
-      // engine's own `routeFuelCost` (sim/fuel.js) — CALLED, never re-derived, so
-      // the quote the client shows and the burn Slice 3 will deduct come out of
+      // Slice 2). Keyed by systemId, each `{ fuelBurn, creditCost }`. The BURN is
+      // the engine's own `routeFuelCost` (sim/fuel.js) — CALLED, never re-derived,
+      // so the quote the client shows and the burn the purchase deducts come out of
       // one function and cannot drift.
+      //
+      // THE `creditCost` IS A VALUATION, NOT A CHARGE, and since slice 5b-i (§4.2)
+      // it is marked to `reserve.fuelPrice` here rather than to a flat constant
+      // inside `routeFuelCost`. The engine charges the PHYSICAL `fuelBurn`, which is
+      // geometry and unchanged; what that burn is worth in credits is today's price,
+      // so it is computed at the display site through the SAME `fuelValue` the hoard
+      // uses. One price, one valuation function, both readings move together.
       //
       // HELD SYSTEMS ONLY, because a Syndicate delivery goes only to a system you
       // hold (§6, enforced by `buyFromSyndicate`'s own `guildHolds` gate) — a quote
@@ -377,7 +411,10 @@ function buildSnapshot(state) {
       // no serialized byte and no determinism hash. Nothing is charged — the
       // deduction is Slice 3.
       fuelCost: Object.fromEntries(
-        heldSystemIds(state, g.id).map((systemId) => [systemId, routeFuelCost(systemId)]),
+        heldSystemIds(state, g.id).map((systemId) => {
+          const { fuelBurn } = routeFuelCost(systemId);
+          return [systemId, { fuelBurn, creditCost: fuelValue(fuelBurn, fuelPrice) }];
+        }),
       ),
       influence: g.influence,
       // guildReputation: the guild's Reputation Points — Σ its ventures' `reputation`
@@ -716,7 +753,15 @@ function buildSnapshot(state) {
       // PRICE reads is an open pricing-time ruling (fuel-allocation-model.md vs
       // the 02-08-26 working rule). `total` is a convenience for the inspector's
       // "how much fuel exists at all" line; it commits to nothing.
-      fuel: { reserve, guildHeld, total: reserve + guildHeld },
+      //
+      // `fuelPrice` — the galaxy's ONE market price of `deuterium_fuel`, echoed off
+      // `state.reserve.fuelPrice` (slice 5b-i, §4.2). ADDITIVE, no schema bump. It is
+      // published now, while it is still pinned at the reference and moves nothing, so
+      // that the console and the recorder are already watching the number 5b-ii's
+      // controller will start to move — the lever arrives with its instrument already
+      // reading. Every credit figure in this snapshot that touches fuel is this price
+      // times a quantity.
+      fuel: { reserve, guildHeld, total: reserve + guildHeld, fuelPrice },
     },
     syndicate: { ledger: state.syndicate ? state.syndicate.ledger : 0 },
     // The posted Syndicate value per non-fuel good — the number the whole economy

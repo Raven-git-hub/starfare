@@ -38,7 +38,8 @@ const { guildHolds, heldSystemIds } = require('../claims.js');
 const { nearestWaystation, arrivalTickFor } = require('../transport.js');
 const { postedPrice } = require('../prices.js');
 const {
-  FLAT_FUEL_PRICE_PER_UNIT, SYNDICATE_HAULER_BURN_RATE, GUILD_STARTING_FUEL, routeFuelCost,
+  REFERENCE_FUEL_PRICE, SYNDICATE_HAULER_BURN_RATE, GUILD_STARTING_FUEL,
+  routeFuelCost, fuelValue,
 } = require('../fuel.js');
 const {
   createBuyFromSyndicateAction, validateAction, applyAction,
@@ -101,14 +102,19 @@ test('the pinned seed distances are what the engine actually measures', () => {
 // --- routeFuelCost: the pure function --------------------------------------
 
 test('burn tracks distance, and credit cost tracks burn', () => {
+  // ⚠ THE QUOTE SPLIT IN TWO AT SLICE 5b-i (§4.2). `routeFuelCost` returns the BURN
+  // alone — geometry, and what the engine actually charges — while what that burn is
+  // WORTH is `fuelValue(burn, reserve.fuelPrice)` at the display site. The burns below
+  // are the SAME numbers this test pinned before the split; the credit figures are
+  // unchanged too, because the price is seeded at the reference the retired flat
+  // constant used to hold.
   for (const sys of [NEAR, MID, ODD, FAR]) {
     const quote = routeFuelCost(sys.id);
-    assert.deepEqual(quote, { fuelBurn: sys.burn, creditCost: sys.burn * FLAT_FUEL_PRICE_PER_UNIT },
-      `${sys.id} at distance ${sys.distance}`);
+    assert.deepEqual(quote, { fuelBurn: sys.burn }, `${sys.id} at distance ${sys.distance}`);
     // Stated as the RELATIONSHIP too, so retuning either constant moves the pinned
     // figures above and leaves this assertion honest rather than stale.
     assert.equal(quote.fuelBurn, Math.ceil(sys.distance * SYNDICATE_HAULER_BURN_RATE));
-    assert.equal(quote.creditCost, quote.fuelBurn * FLAT_FUEL_PRICE_PER_UNIT);
+    assert.equal(fuelValue(quote.fuelBurn, REFERENCE_FUEL_PRICE), sys.burn * REFERENCE_FUEL_PRICE);
   }
 
   // The headline: farther costs strictly more. Monotonic across the whole ladder.
@@ -175,7 +181,7 @@ test('no waystation: a zero quote, not a throw', () => {
   // null (asserted below, so the two halves stay joined).
   for (const missing of ['sys_nope', '', 'out_01', 'pl_02524']) {
     assert.equal(nearestWaystation(missing), null, `${JSON.stringify(missing)} really has no waystation`);
-    assert.deepEqual(routeFuelCost(missing), { fuelBurn: 0, creditCost: 0 });
+    assert.deepEqual(routeFuelCost(missing), { fuelBurn: 0 });
   }
   const s = quoteState();
   const { valid, reason } = validateAction(s, createBuyFromSyndicateAction({
@@ -217,13 +223,18 @@ test('fuelCost values are integer credits and integer fuel, never negative', () 
 });
 
 test('the snapshot quote IS the function — the anti-drift guarantee', () => {
-  // The claim the client depends on: what it renders and what Slice 3 will deduct
+  // The claim the client depends on: what it renders and what the purchase deducts
   // come out of ONE function. If `buildSnapshot` ever grows its own copy of the
-  // arithmetic, this is what catches it.
+  // arithmetic, this is what catches it. Since slice 5b-i there are TWO functions to
+  // hold it to, because the row is two facts: the BURN is `routeFuelCost`'s geometry,
+  // and the `creditCost` is that burn marked at the galaxy's one fuel price through
+  // the same `fuelValue` the hoard uses. Neither half may be re-derived in the lens.
   const s = quoteState({ holds: [MID.id, FAR.id, NEAR.id, ODD.id] });
   const { fuelCost } = buildSnapshot(s).guilds[0];
   for (const systemId of Object.keys(fuelCost)) {
-    assert.deepEqual(fuelCost[systemId], routeFuelCost(systemId), systemId);
+    const { fuelBurn } = routeFuelCost(systemId);
+    assert.deepEqual(fuelCost[systemId],
+      { fuelBurn, creditCost: fuelValue(fuelBurn, s.reserve.fuelPrice) }, systemId);
   }
 });
 
