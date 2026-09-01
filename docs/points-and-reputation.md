@@ -7,10 +7,16 @@
 `licence-and-price-system.md`. Where a number is unruled it is called `[FIRST-CUT]`, `[SHEET]` (needs a
 spreadsheet/sim pass) or `[DEFERRED]` — never a silent constant. **§6 steps 1-2 are BUILT (31-08-26) apart from closure; everything else here is NOT.***
 
-## 0a. What is BUILT *(31-08-26 — RP slices 1-2, the console readout, GP slice 3, the mean line slice 4, fuel flows 5a, the founding endowment A′)*
+## 0a. What is BUILT *(31-08-26 — RP slices 1-2, the console readout **⏪ reverted 01-09-26**, GP slice 3, the mean line slice 4, fuel flows 5a, the founding endowment A′)*
 
-Steps 1, 3 and 4 of §6 in full, step 2 **apart from closure**, and the §6.1 dev readout. Read every other
-section of this doc as design, not as code.
+Steps 1, 3 and 4 of §6 in full, and step 2 **apart from closure**. Read every other section of this doc as
+design, not as code.
+
+**⏪ The player Production Console shows none of this as of 01-09-26.** §6.1's Slice 1b readout was reverted;
+the only rendering that survives is Slice 1c, the operator watcher's guild line in `client/inspect.html`. What
+this section lists as BUILT is the ENGINE, and all of it still is: every field below is computed, serialized
+where it is serialized, guarded, and published in the snapshot exactly as described. Only its display on
+`/console` was withdrawn.
 
 - **`venture.reputation`** — a signed integer on the venture, omitted from serialized state when `0`,
   non-negativity-exempt (`design.md` §15.5 invariant 3), non-conserved. `sim/state.js`.
@@ -398,9 +404,20 @@ and leave no trace (`CLAUDE.md`: "the repo is the only memory"), this section re
 everything else as **unruled** — it is a record, not a design pass. The same thing happened once before, with
 fuel Slice 1's citation of a `fuel-supply-and-allocation.md §1.3` that landed later; see the roadmap.*
 
-**Slice 1b — the operator/dev readout. ✅ LANDED 31-08-26. `client/console.html` only.** RP is rendered where
-the met/breach verdict already lives: the Production Console's **Syndicate** tab, which is rebuilt on every
-snapshot poll, so RP visibly moves as ticks advance.
+**Slice 1b — the operator/dev readout. ✅ LANDED 31-08-26 — ⏪ REVERTED 01-09-26.** *The guild-economy readout
+does not belong on the player Production Console; it is deferred to the player-facing **Guild Hall** (see the
+UNRULED list below, which already names it). `client/console.html` is restored to its pre-readout state; the
+engine, the snapshot fields (`guildReputation`, `venture.reputation`, `guildPoints`, `expectedReputation`,
+`issuanceModifier`, `fuelGrant`) and their tests are unchanged — only the console display and its served-page
+tripwires were removed.*
+
+**↳ WHY THIS RECORD STAYS.** The repo is the only memory (`CLAUDE.md`), so the slice is marked reverted rather
+than deleted: a future session must not read a silent gap as "nobody has tried this" and build it again on the
+same page. It also names what a Guild Hall slice inherits — the readout below is a working design for the
+figures and their bounds, and the seven served-page tests it lost are the tripwires that slice will need to
+write afresh, against its own markup. **What it was, kept verbatim as the historical record:** RP was rendered
+where the met/breach verdict already lives — the Production Console's **Syndicate** tab, rebuilt on every
+snapshot poll, so RP visibly moved as ticks advanced.
 
 - **Per venture** (roster rows, for any venture under a licence): its `reputation` as a number, plus a compact
   band gauge. A venture at the floor is labelled **PINNED** — never "closed".
@@ -431,7 +448,9 @@ This is the operator-view piece of the deferred UI wiring below; the player-faci
   `repGain` and read the engine, and what a player-facing standing display (a "Guild Hall") shows at all. The
   engine is now the authority for the same arithmetic the meter draws, so the wiring is *possible*; whether the
   player should see a raw RP number, a band, or only a tier is a design question nobody has answered.
-- What the console should show **once closure exists** — a pinned venture currently just reads PINNED.
+- What a player-facing readout should show **once closure exists**. (This was a live question for the
+  console, where a pinned venture read PINNED; with Slice 1b reverted it is now the Guild Hall's to
+  answer, and it stays unruled either way.)
 - Whether the **−300 / +1000** tiers should become engine constants. Today they are doc-only marks on a scale.
 
 ## 6. Build order
