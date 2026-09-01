@@ -80,6 +80,9 @@
   .guildcard .tag { font-size: 10px; letter-spacing: 1px; color: var(--text-dim); border: 1px solid var(--line-bright); padding: 1px 6px; border-radius: 2px; }
   .guildcard .stats { font-size: 12px; color: var(--text-dim); }
   .guildcard .stats b { color: var(--text); font-weight: 500; }
+  /* The RP gap is the one figure with a direction: above the mean line or below it. */
+  .guildcard .stats b.above { color: var(--accent); }
+  .guildcard .stats b.below { color: var(--warn); }
   .stockline { margin-top: 6px; font-size: 12px; }
   .stockline .none { color: var(--text-dim); }
   .sub { margin-top: 8px; font-size: 11px; color: var(--text-dim); letter-spacing: 1px; }
@@ -301,13 +304,32 @@ function renderGuilds(guilds) {
     var profile = g.productionProfile || {};
     var profileText = Object.keys(profile).length ? JSON.stringify(profile, null, 2) : '{}  (all defaults)';
 
+    // GP / RP-gap / per-cycle fuel grant — the three figures that say how BIG this guild
+    // is, whether it is above or below the RP its size is judged against, and what the
+    // Syndicate actually granted it last cycle. All read straight off the snapshot row:
+    // the only arithmetic here is the gap subtraction and its sign, because the engine
+    // publishes both sides but not their difference (points-and-reputation.md §6.1).
+    var gp = g.guildPoints || 0;
+    var rpGap = (g.guildReputation || 0) - (g.expectedReputation || 0);
+    // Signed explicitly: an unsigned 0 or 40 reads as an RP total, not a distance from
+    // the mean line. '+' = exceeding its line (a fuel buff), '-' = lagging (throttled).
+    var rpGapText = (rpGap >= 0 ? '+' : '') + rpGap;
+    // `granted/desired` only when the grant was clipped, so a ration is visible at a
+    // glance without printing a second number on every unrationed guild.
+    var fuelPerCycle = g.fuelGrant
+      ? (g.fuelGrant.rationed ? g.fuelGrant.granted + '/' + g.fuelGrant.desired : g.fuelGrant.granted)
+      : 0;
+
     return '' +
       '<div class="guildcard">' +
         '<div class="top">' +
           '<span class="gid">' + esc(g.id) + (g.name && g.name !== g.id ? ' <span class="site">(' + esc(g.name) + ')</span>' : '') + '</span>' +
           '<span class="tag">' + (g.isBot ? 'BOT' : 'HUMAN') + '</span>' +
         '</div>' +
-        '<div class="stats">credits <b>' + esc(g.credits) + '</b> &nbsp; fuel hoard <b>' + esc(g.fuelHoard) + '</b> &nbsp; influence <b>' + esc(g.influence) + '</b></div>' +
+        '<div class="stats">credits <b>' + esc(g.credits) + '</b> &nbsp; fuel hoard <b>' + esc(g.fuelHoard) + '</b>' +
+          ' &nbsp; GP <b>' + esc(gp) + '</b>' +
+          ' &nbsp; RP Δ <b class="' + (rpGap >= 0 ? 'above' : 'below') + '">' + esc(rpGapText) + '</b>' +
+          ' &nbsp; fuel/cyc <b>' + esc(fuelPerCycle) + '</b></div>' +
         '<div class="stats">home <b>' + esc(g.homeSystemId || '—') + '</b> / <b>' + esc(g.homePlanetId || '—') + '</b></div>' +
         '<div class="stockline">stockpiles (total): ' + stock + '</div>' +
         '<div class="sub">STOCKPILES BY SYSTEM</div>' +

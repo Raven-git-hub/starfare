@@ -415,6 +415,16 @@ snapshot poll, so RP visibly moves as ticks advance.
   **no engine constant to mirror** — nothing in `sim/` names them, because neither consequence is built — so
   they are pinned against the ruling in §2.1 instead, and labelled "not built" on screen.
 
+**Slice 1c — the operator panel's guild line. ✅ LANDED 01-09-26. `client/inspect.html` only.** The
+god's-eye guild card's stats line drops the `influence` stub (still on the guild and in the snapshot, but
+set once at founding and moved by no tick) and shows, per guild, **`GP`** (`guildPoints`), **`RP Δ`** —
+`guildReputation − expectedReputation`, printed signed, teal when at or above the mean line and red when
+below — and **`fuel/cyc`** (`fuelGrant.granted`, shown as `granted/desired` when `fuelGrant.rationed`, so a
+clip is visible at a glance). Client-only: no engine, snapshot or schema change — all four fields were
+already published (`snapshot.js`). Like Slice 1b, the browser computes no game number — the sole arithmetic
+is the gap subtraction, because the engine publishes both sides of the mean line but not their difference.
+This is the operator-view piece of the deferred UI wiring below; the player-facing questions stay unruled.
+
 **⚠ UNRULED, and deliberately not decided here** — each needs a ruling before its code:
 
 - The **player client** (`client/game.html`): whether the Establish-Venture deploy meter should stop mocking
