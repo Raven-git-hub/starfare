@@ -23,9 +23,10 @@
 //                         homeSystemId?, homePlanetId? }]
 //   state.claims?    : [{ claimId, ownerGuildId, landmarkId, landmarkKind }]
 //                          // SHARED territory rows; reference real seed landmarks
-//   state.reserve    : { reserveLevel, fuelPrice }         // SHARED fuel reserve;
-//                          // fuelPrice is the ONE market price of deuterium_fuel —
-//                          // a sanctioned float (§15.2), checked as such below
+//   state.reserve    : { reserveLevel, fuelPrice, avgDraw } // SHARED fuel reserve;
+//                          // fuelPrice is the ONE market price of deuterium_fuel and
+//                          // avgDraw the trailing demand average the controller steers
+//                          // against — both sanctioned floats (§15.2), checked as such
 //   state.syndicate  : { ledger }         // credits; may be negative (see below)
 //   state.shipments? : [{ cargo: { fuel? } }]   // fuel in transit; none yet in
 //                                               // the walking skeleton
@@ -235,6 +236,13 @@ function checkNonNegativityAndIntegrality(state) {
   // valuation in the galaxy silently, which is precisely the failure §15.5 says to
   // crash on rather than carry.
   checkField(out, state.reserve.fuelPrice, 'reserve.fuelPrice', { integer: false });
+
+  // The trailing average of galaxy demand the price controller steers against (slice
+  // 5b-ii, §4.2). The SECOND sanctioned non-integer on the reserve: it averages a quantity
+  // rather than counting one, so it is not rounded — but it is still a quantity of fuel,
+  // so a negative one is nonsense and a NaN one would poison the target, the price and
+  // therefore every grant in the galaxy on the very next cycle.
+  checkField(out, state.reserve.avgDraw, 'reserve.avgDraw', { integer: false });
 
   // Syndicate ledger: integer like any credits figure, but exempt from
   // non-negativity — it is the balancing account that funds baseline allocation.

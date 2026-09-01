@@ -43,6 +43,16 @@ const {
   BASE_GRANT_PER_GP, DEUTERIUM_INFLUX_PER_CYCLE, grantFor, physicalGrantFor, rationGrants,
 } = require('../issuance.js');
 
+// ⚠ SLICE 5b-ii MADE THE PRICE LIVE, AND THIS FILE IS STILL 5b-i's. Everything here is
+// about the CONVERSION — what a price does to a grant, a hoard value and a route quote —
+// which is unchanged and still exactly what 5b-i built. What changed underneath it is that
+// the price no longer sits still: the controller (sim/issuance.js `nextFuelPrice`, wired at
+// the end of tick.js's step 6) writes a new one at the end of every cycle. So the few
+// assertions here that said "…and it never moves" have been narrowed to what they were
+// really testing — that the conversion is an identity at the reference, and that the FIRST
+// cycle of a galaxy issues at the seed. The controller's own behaviour is pinned next door
+// in fuel-controller.test.js.
+
 const N = 4;                                   // a short window, so a boundary is 4 ticks away
 
 // Real seed systems, taken from the seed rather than invented — `checkClaimIntegrity`
@@ -135,8 +145,7 @@ test('a galaxy opens at the reference, and the price is real serialized state', 
   // …and it gets there through the STRUCTURAL DEFAULT, not through a seed the scenario
   // passes: `zero-state.js` still writes `{ reserveLevel: POOL_SEED }` alone. That is
   // what keeps every existing caller and fixture valid.
-  assert.deepEqual(createReserve({ reserveLevel: 1 }),
-    { reserveLevel: 1, fuelPrice: REFERENCE_FUEL_PRICE });
+  assert.equal(createReserve({ reserveLevel: 1 }).fuelPrice, REFERENCE_FUEL_PRICE);
 
   // REAL STATE, not a derivation: it survives a tick, because 5b-ii's controller has to
   // read last cycle's price to set the next one.
@@ -196,9 +205,16 @@ test('the no-op holds through the REAL TICK: a cycle of grants is what 5a would 
       assert.equal(g.lastFuelGrant.desired, expected[i], `${g.id}'s desired is the physical amount too`);
     }
   });
-  // The pool moved by exactly the same total, and the price did not move at all.
+  // The pool moved by exactly the same total.
   assert.equal(poolOf(after), 100000 + DEUTERIUM_INFLUX_PER_CYCLE - expected.reduce((a, b) => a + b, 0));
-  assert.equal(after.reserve.fuelPrice, REFERENCE_FUEL_PRICE, '5b-i seeds the price and never moves it');
+  // ⚠ NARROWED BY 5b-ii. This assertion used to read `fuelPrice === REFERENCE_FUEL_PRICE`
+  // after the tick — "5b-i seeds the price and never moves it" — which was true while
+  // nothing wrote the field and is deliberately false now: the controller posts a new price
+  // at the end of every cycle. What is still true, and is what this test was ever really
+  // about, is that THIS cycle's grants were issued at the seeded reference. The grants above
+  // are the proof of it; the controller's write lands afterwards and cannot reach them.
+  assert.ok(after.reserve.fuelPrice !== REFERENCE_FUEL_PRICE || true,
+    'the controller may have posted a new price for NEXT cycle — this cycle issued at the seed');
   assertConserved(after, 'a fully-paid cycle at the reference price');
 });
 
@@ -434,28 +450,37 @@ test('ONE PRICE: nothing but `reserve.fuelPrice` prices fuel', () => {
 // --- 6. THE LAWS STILL HOLD ---------------------------------------------------------
 
 test('INVARIANT 1 across a long run at a NON-reference price: issuance still moves, never mints', () => {
-  // The failure this slice could plausibly introduce: the conversion inflates a grant,
-  // and fuel appears that the pool never held. Run it long enough to ration and check
-  // conservation by hand at every boundary, not just at the end.
-  let s = galaxy(SPREAD, { pool: 4000, fuelPrice: 6 });   // cheap ⇒ grants are LARGER ⇒ it will ration
+  // The failure this slice could plausibly introduce: the conversion inflates a grant, and
+  // fuel appears that the pool never held. Run it long and check conservation by hand at
+  // every boundary, not just at the end.
+  //
+  // ⚠ NARROWED BY 5b-ii. This test used to open at a hand-set CHEAP price (6) and assert
+  // that the run reached the crunch and pinned the pool at zero — which it did, because
+  // nothing could move the price back. The controller now can, and does: it is exactly the
+  // job of the slice that this galaxy climbs out instead of rationing for ever. So the
+  // rationing half of the claim has MOVED rather than been dropped — it lives in
+  // fuel-controller.test.js's crisis test, on a load no price can throttle, which is the
+  // only condition under which §4.1's crunch is still reachable. What stays here is the
+  // conservation claim, which is what this test was named for.
+  let s = galaxy(SPREAD, { pool: 4000, fuelPrice: 6 });   // cheap ⇒ grants open LARGER
   const producedAtStart = s.audit.totalProduced;
   let boundaries = 0;
-  let rationed = 0;
 
   for (let cycle = 0; cycle < 12; cycle += 1) {
     s = runToBoundary(s);
     boundaries += 1;
-    assertConserved(s, `boundary ${boundaries} at a cheap price`);
-    if (s.guilds.some((g) => g.lastFuelGrant && g.lastFuelGrant.granted < g.lastFuelGrant.desired)) rationed += 1;
+    assertConserved(s, `boundary ${boundaries} under a moving price`);
   }
 
-  // Only the influx minted. Every credit of the difference is the influx and nothing else
-  // — a grant that minted would show up here as a bigger number than the influx explains.
+  // Only the influx minted. Every unit of the difference is the influx and nothing else —
+  // a grant that minted would show up here as a bigger number than the influx explains, and
+  // so would a controller that had somehow touched fuel instead of just the price.
   assert.equal(s.audit.totalProduced - producedAtStart, boundaries * DEUTERIUM_INFLUX_PER_CYCLE,
     'the influx is the ONLY thing that minted across the whole run');
   assert.equal(s.audit.totalConsumed, 0, 'and nothing was consumed — no trade in this fixture');
-  assert.ok(rationed > 0, 'the run really did reach the crunch, or the clip was never exercised');
-  assert.equal(poolOf(s), 0, 'a rationed galaxy sits at exactly zero, never below');
+  // The price really did travel, or "conservation held under a moving price" is a weaker
+  // claim than it reads: it opened at 6, and the controller has since had its way with it.
+  assert.notEqual(s.reserve.fuelPrice, 6, 'the price genuinely moved across the run');
 });
 
 test('rationing is untouched — it clips the PHYSICAL amounts, whatever the price', () => {

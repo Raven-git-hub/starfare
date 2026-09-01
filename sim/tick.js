@@ -39,6 +39,7 @@ const {
 const { producedGoodFor } = require('./baseline.js');
 const {
   DEUTERIUM_INFLUX_PER_CYCLE, physicalGrantFor, rationGrants,
+  nextAvgDraw, nextFuelPrice,
 } = require('./issuance.js');
 
 // A total, deterministic string order for sort keys — used where a tie has to
@@ -670,12 +671,16 @@ function recordFuelGrant(guild, tick, granted, desired) {
 // step 1's boundary block runs per (guild, system) — putting it there would have meant
 // inventing a "have we already done this cycle?" guard that this step does not need.
 //
-// THE ORDER WITHIN THE BOUNDARY IS RULED (§2.1) and is not arbitrary: INFLUX first, then
-// ISSUANCE. This cycle's supply is available to this cycle's grants, so a galaxy is never
-// rationed against a pool that is about to be refilled in the same breath.
+// THE ORDER WITHIN THE BOUNDARY IS RULED (§2.1, §4.2) and is not arbitrary: INFLUX, then
+// ISSUANCE, then the PRICE CONTROLLER. This cycle's supply is available to this cycle's
+// grants, so a galaxy is never rationed against a pool that is about to be refilled in the
+// same breath; and the controller runs LAST, on the realised pool, posting the price for
+// the NEXT cycle rather than re-pricing the one it just watched (§8: the price a window
+// trades at was posted the cycle before).
 //
 // NOTHING HAPPENS OFF A BOUNDARY. A non-boundary tick returns the state untouched, so the
-// pool holds and no fuel moves — the same discipline the licence fee already follows.
+// pool holds, no fuel moves and the price does not change — the same discipline the licence
+// fee already follows. The price is a per-CYCLE figure, not a per-tick one.
 function stepBaselineAllocation(state, _actions) {
   const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
   const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
@@ -689,6 +694,14 @@ function stepBaselineAllocation(state, _actions) {
 
   // (b) ISSUANCE + (c) RATIONING. Guilds in ARRAY ORDER — a fixed, deterministic order
   // (invariant 9) that the apportionment's tie-break also leans on.
+  //
+  // ⚠ A GUILD-LESS GALAXY RETURNS HERE, SO THE CONTROLLER NEVER RUNS IN ONE, and that is
+  // deliberate rather than an oversight this early return happens to cause. A galaxy with
+  // no players has no demand to average and nothing that could draw at any price, so
+  // running the curve on it would drive `avgDraw` to 0, the target to 0 and the price to
+  // the floor — a meaningless answer to a question nobody asked, written into serialized
+  // state. Leaving early keeps the price and the average at their seeds, which is also what
+  // keeps a guild-less run byte-identical (the property the zero-state's own tests rest on).
   const guilds = state.guilds || [];
   if (guilds.length === 0) return state;
 
@@ -698,9 +711,11 @@ function stepBaselineAllocation(state, _actions) {
   // the only unit the pool is denominated in. At the seed price the conversion is exactly
   // ×1.0, so this reads identically to 5a until 5b-ii moves the price.
   //
-  // ⚠ THE PRICE IS READ ONCE PER CYCLE, HERE, AND NOTHING IN THIS STEP WRITES IT. 5b-i
-  // seeds it and holds it; the controller that sets NEXT cycle's price from this cycle's
-  // reserve and flows is 5b-ii, and it is deliberately not built.
+  // ⚠ THE PRICE IS READ ONCE PER CYCLE, HERE, AT THE TOP. Issuance runs at the CURRENT
+  // price — the one the controller posted at the END of the previous cycle (§8: the price a
+  // window trades at was posted the cycle before) — and the controller's write at (d) below
+  // cannot reach this cycle's grants. The very first cycle of a galaxy therefore issues at
+  // the seeded reference price, because there was no previous cycle to post one.
   const desired = guilds.map((g) => physicalGrantFor(state, g));
   const granted = rationGrants(desired, state.reserve.reserveLevel);
 
@@ -726,6 +741,37 @@ function stepBaselineAllocation(state, _actions) {
     throw new Error(`stepBaselineAllocation: fuel issuance at tick ${state.tick + 1} would take the Syndicate pool negative — granting ${moved} from a pool of ${state.reserve.reserveLevel}; rationing failed to clip`);
   }
   state.reserve.reserveLevel -= moved;
+
+  // (d) THE PRICE CONTROLLER (slice 5b-ii, §4.2) — the last thing the cycle does, and the
+  // only thing in this step that MOVES NO FUEL. It reads what just happened and posts the
+  // price for NEXT cycle; invariant 1 cannot see it at all.
+  //
+  // ⚠ IT READS Σ DESIRED, NOT `moved`. `desired` is what the galaxy wanted at this cycle's
+  // price; `moved` is what the pool could actually cover. Outside a crunch they are the same
+  // number — which is why this only ever matters at the edge, and why it is worth writing
+  // down rather than leaving to be discovered. Feeding the controller the RATIONED figure
+  // would be a feedback loop pointing the wrong way: a galaxy would report shrinking demand
+  // precisely BECAUSE it was being starved, the demand-relative target would shrink with it,
+  // and the price would come down just as the shortfall was worst. (Concretely, on a pool of
+  // 2000 with true demand averaging 1200: desired gives a target of 3600 and a price of
+  // ~24, granted-at-800 gives 2400 and ~15.7 — and the cheaper price buys MORE fuel out of a
+  // pool that is already short. At the very bottom, pool 0, both readings clamp to the
+  // ceiling and it makes no difference; it is the PARTIAL shortfall, where the price still
+  // has room to move, that the choice decides.) (§4.2 describes this average as "granted per
+  // cycle"; outside the crunch that is the same number, and inside it the desired reading is
+  // the one that keeps the loop pointing the right way — recorded in §4.2's AS BUILT note.)
+  //
+  // ⚠ AND IT READS THE POST-ISSUANCE LEVEL — the line above has already run, so
+  // `reserveLevel` is this cycle's REALISED pool, influx in and grants out. That is what
+  // makes the pool an integrator: an unmet imbalance is still sitting in the level when the
+  // controller looks at it, so the price keeps moving until the imbalance is gone.
+  //
+  // The average is updated FIRST and the price then reads the updated average, so a cycle's
+  // own demand is already in the target it is judged against.
+  const cycleDemand = desired.reduce((sum, d) => sum + d, 0);
+  state.reserve.avgDraw = nextAvgDraw(state.reserve.avgDraw, cycleDemand);
+  state.reserve.fuelPrice = nextFuelPrice(state.reserve.reserveLevel, state.reserve.avgDraw);
+
   return state;
 }
 

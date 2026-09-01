@@ -109,11 +109,23 @@ function guildLine(id, pre, post) {
 // so it is a statement about the CYCLE (did the pool fail to cover the galaxy's draw?)
 // rather than about any one guild. On a non-boundary tick both sigmas are 0 and this is
 // false — nothing was asked for, so nothing was refused.
+//
+// THE CONTROLLER'S OWN THREE NUMBERS (added for slice 5b-ii) ride here too, and every one
+// of them is READ from the snapshot's `galacticSupply.fuel` — this recorder still computes
+// no game number and still imports nothing but `advance` and `buildSnapshot`. `price` is
+// the price the controller posted at the END of this cycle, i.e. the one NEXT cycle will
+// issue at (§8); `target` and `avgDraw` are what it steered by. Read `level` against
+// `target` and the price's direction is no longer a mystery: below ⇒ rising, above ⇒
+// falling, at it ⇒ exactly the reference.
 function reserveLine(post, guildLines) {
   const sigmaDesired = guildLines.reduce((n, g) => n + g.desired, 0);
   const sigmaGranted = guildLines.reduce((n, g) => n + g.granted, 0);
+  const fuel = post.galacticSupply.fuel;
   return {
-    level: post.galacticSupply.fuel.reserve,
+    level: fuel.reserve,
+    price: fuel.fuelPrice,
+    target: fuel.targetReserve,
+    avgDraw: fuel.avgDraw,
     sigmaDesired,
     sigmaGranted,
     rationing: sigmaGranted < sigmaDesired,
@@ -212,14 +224,27 @@ module.exports = { runEconomy };
 
 // --- CLI ---------------------------------------------------------------------
 // `node tools/run_economy.js [outPath]` runs the four-guild mean-line scenario, writes its
-// JSONL trace, and prints the watchable table. The table is the point of the slice: the
-// un-rationed opening, the tick the pool can no longer cover the draw, and the rationed
-// tail should all be readable at a glance.
+// JSONL trace, and prints the watchable table. The table is the point: the pool's dip, the
+// price rising to answer it, and the draw bending back to the influx should be readable at
+// a glance — and, in the crisis run, the cycle the pool can no longer cover the draw and
+// the rationed tail after it.
+//
+// TWO SCENARIOS, chosen by argv (slice 5b-ii): the default four-guild run shows the
+// controller STABILISING a galaxy, and `--crisis` shows the crunch edge that survives it —
+// a galaxy too big for its supply, pinned at the price ceiling and rationing anyway.
+// How many per-guild figures the table prints on a row before it says "…+N more". The
+// JSONL keeps every guild; this is purely how wide the human table is allowed to get.
+const CLUSTER_CAP = 4;
+
 if (require.main === module) {
-  const { buildScenario } = require('./scenarios/economy_meanline.js');
-  const scenario = buildScenario();
-  const outPath = process.argv[2]
-    || path.join(__dirname, '..', 'data', 'runs', 'economy.jsonl');
+  const scenarios = require('./scenarios/economy_meanline.js');
+  const wantsCrisis = process.argv.includes('--crisis');
+  const scenario = wantsCrisis ? scenarios.buildCrisisScenario() : scenarios.buildScenario();
+  // The four-guild run keeps the committed artefact's original name (`economy.jsonl`, which
+  // the roadmap names); the crisis run lands beside it under its own.
+  const defaultFile = wantsCrisis ? 'economy_crisis.jsonl' : 'economy.jsonl';
+  const outPath = process.argv.filter((a) => !a.startsWith('--'))[2]
+    || path.join(__dirname, '..', 'data', 'runs', defaultFile);
 
   const { trace } = runEconomy({ ...scenario, outPath });
 
@@ -246,28 +271,42 @@ if (require.main === module) {
   console.log(`(one row per CYCLE BOUNDARY — ${cycles.length} of ${trace.length} ticks move fuel; the rest are quiet)\n`);
 
   const idsSeen = [...new Set(trace.flatMap((l) => l.guilds.map((g) => g.id)))].sort();
-  console.log(`guilds: ${idsSeen.join(', ')}`);
-  console.log('per-guild cluster is  id:modifier×→granted/desired  (a ✂ marks a clipped grant)\n');
-  console.log('tick |  pool  | influx | Σdesired Σgranted |        | per guild');
-  console.log('-----+--------+--------+-------------------+--------+--------------------------------------');
+  console.log(`guilds (${idsSeen.length}): ${idsSeen.length > 8
+    ? `${idsSeen.slice(0, 8).join(', ')}, …+${idsSeen.length - 8} more`
+    : idsSeen.join(', ')}`);
+  console.log('per-guild cluster is  id:modifier×→granted/desired  (a ✂ marks a clipped grant)');
+  // The controller's own columns (slice 5b-ii). `price` is what the controller posted at the
+  // END of this cycle — the price the NEXT row's grants are issued at (§8) — and `target` is
+  // the demand-relative level it is steering the pool to. The story is in `pool` vs `target`:
+  // pool short of target ⇒ the price rises ⇒ Σdesired falls toward the influx.
+  console.log('price is what the controller POSTED at the end of the cycle — i.e. what the NEXT row issues at\n');
+  console.log('tick |  pool  | target | price | influx | Σdesired Σgranted |        | per guild');
+  console.log('-----+--------+--------+-------+--------+-------------------+--------+------------------------');
 
   let wasRationing = null;
   for (const { line, influx } of cycles) {
     const r = line.reserve;
     if (wasRationing !== null && r.rationing !== wasRationing) {
-      console.log(`     |        |        |                   |        |  ${r.rationing
+      console.log(`     |        |        |       |        |                   |        |  ${r.rationing
         ? '▼▼▼ THE POOL CAN NO LONGER COVER THE DRAW — RATIONING BEGINS ▼▼▼'
         : '▲▲▲ the pool recovers — grants paid in full again ▲▲▲'}`);
     }
     wasRationing = r.rationing;
 
-    const cluster = line.guilds
-      .filter((g) => g.desired > 0 || g.granted > 0)
+    // The per-guild detail, CAPPED so a big galaxy stays readable (slice 5b-ii adds the
+    // 16-guild crisis run, whose full cluster is four screens wide and tells you nothing
+    // the first few rows do not — every wing of it is a copy of the same guild).
+    const drawing = line.guilds.filter((g) => g.desired > 0 || g.granted > 0);
+    const shown = drawing.slice(0, CLUSTER_CAP);
+    const cluster = shown
       .map((g) => `${g.id.slice(0, 4)}:${g.modifier.toFixed(2)}×→${g.granted}/${g.desired}${g.rationed ? '✂' : ''}`)
-      .join('  ');
+      .join('  ')
+      + (drawing.length > shown.length ? `  …+${drawing.length - shown.length} more` : '');
     console.log(
       `${String(line.tick).padStart(4)} `
       + `| ${String(r.level).padStart(6)} `
+      + `| ${r.target.toFixed(0).padStart(6)} `
+      + `| ${r.price.toFixed(2).padStart(5)} `
       + `| ${String(influx === null ? '-' : `+${influx}`).padStart(6)} `
       + `| ${String(r.sigmaDesired).padStart(8)} ${String(r.sigmaGranted).padStart(8)} `
       + `| ${(r.rationing ? 'RATION' : '      ').padEnd(6)} `
