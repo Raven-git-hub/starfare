@@ -255,7 +255,7 @@ Shapes are ruled in `docs/points-and-reputation.md`; these are the values. `vent
 | `REP_MEET_MAX` / `REP_W_COMMIT` / `REP_W_EQUITY` | `[FIRST-CUT]` **10 / 0.5 / 0.5** *(rescaled 01-09-26)* | Met-cycle gain = `REP_MEET_MAX · tierFactor · (REP_W_COMMIT · committedOutputPct + REP_W_EQUITY · equityFrac)`. **Rescaled 100 → 10** (÷10, matching the RP scale) and gains a **`tierFactor = W_TIER / 100`** (T1 = 1, T2 = 1.5, T3 = 3, T4 = 5) so a higher-tier venture earns proportionally more per cycle and *every* tier breaks even in the same **~10 cycles** — higher tiers are a reward (more GP, more earning, bigger dividend), not a heavier bar. Full-terms T1 → **+10/cycle**; a mine (bar 100) breaks even in ~10 cycles ≈ 10 game-days. `equityFrac` unchanged. Shape in `points-and-reputation.md §2.6`. **✅ BUILT 01-09-26** (`sim/licence.js` `metGain`, with `tierFactor` — see the AS-BUILT note below). |
 | `REP_BREACH_MAX` / `REP_BREACH_MIN` | `[FIRST-CUT]` **10 / 2.5** *(rescaled 01-09-26)* | Breach drop = `−(REP_BREACH_MAX − (REP_BREACH_MAX − REP_BREACH_MIN) · committedOutputPct) · tierFactor` — still linear **inverse**-commitment (a high-committer who narrowly fails is barely penalised; the Syndicate does not punish maximum effort, which already costs the guild all its output). **Rescaled 100/10 → 10/2.5:** `MAX` ÷10 with the scale, and `MIN` **lifted from 10% to 25% of MAX** so the gentlest breach (100% commit) is `−2.5·tierFactor` (T1 ≈ −3/cycle), not −1. This blunts the sign-max-grab-the-bump-then-breach exploit (free-boost tail ~100 → ~34 cycles) *without flipping the curve*; the full undiscounted licence fee a breach already pays is the rest of the deterrent. 25%-enough is a playtest question. Shape in `points-and-reputation.md §2.6`. **✅ BUILT 01-09-26** (`sim/licence.js` `breachPenalty`). As built, a tier-1 venture at 100% commitment pays **−3**/cycle (2.5 rounded); at tier 2, −4. |
 | `W_SYS` / `W_T1` / `W_T2` / `W_T3` / `W_T4` (GP weights) | `[FIRST-CUT]` **200 / 100 / 150 / 300 / 500** *(rescaled 01-09-26)* | `GP = W_SYS·(held systems) + Σ ventures W_TIER(tier)`. **Rescaled from 12/6/8** to a small-integer scale where GP = expected RP directly. A held system stays **2× a tier-1 mine** (200 vs 100) — the anti-sprawl bite preserved (empty territory is pure GP with no RP to pay it back). Tier spread widened to a deliberate **1 : 1.5 : 3 : 5** to reward climbing the tree. `W_T3`/`W_T4` are the ruled ratio but stay **`[DEFERRED]`** in code until those goods exist (an unweighted tier still halts). Integer GP; DERIVED, never stored. See `points-and-reputation.md §1.0 / §2.6`. **✅ BUILT 01-09-26** (`sim/points.js` `W_SYS` / `TIER_WEIGHT`; T3/T4 stay out of the map and an unweighted tier still halts). ⚠ **It forced `BASE_GRANT_PER_GP` 5 → 0.3** — see the fuel section's AS-BUILT note. |
-| **Venture signing bump** `[FIRST-CUT]` **`2 · committedOutputPct · W_TIER`** *(new 01-09-26)* | On **signing a licence**, the venture is minted with an instant RP bump = `2 · committedOutputPct · (its GP weight)`. `0%` commit → **0** (flatlines, below its line); `50%` → **1× its GP** (bar-neutral, on its line — the Syndicate's expected deal); `100%` → **2× its GP** (its GP *above* the line, instant fuel buff); linear between. Generalises §1.2's passive-asset offset to **productive** ventures and scales it by negotiated terms, so the deploy slider sets whether a venture launches above / on / below its line. Lives on `venture.reputation` at signing (so `checkGuildReputationSum` covers it, no new term); **supersedes** the old "ventures earn their whole bar from zero." Shape in `points-and-reputation.md §2.6`. **RULED 01-09-26; build pending — DELIBERATELY NOT BUILT by the 01-09-26 rescale (slice 1 of 2).** Slice 1 shipped the constants and the `tierFactor` only, so a signed venture is still minted at 0 RP and earns from there; keeping the bump out is what kept that diff a pure, reviewable retuning. It is slice 2. |
+| **Venture signing bump** `[FIRST-CUT]` **`2 · committedOutputPct · W_TIER`** *(new 01-09-26)* | On **signing a licence**, the venture is minted with an instant RP bump = `2 · committedOutputPct · (its GP weight)`. `0%` commit → **0** (flatlines, below its line); `50%` → **1× its GP** (bar-neutral, on its line — the Syndicate's expected deal); `100%` → **2× its GP** (its GP *above* the line, instant fuel buff); linear between. Generalises §1.2's passive-asset offset to **productive** ventures and scales it by negotiated terms, so the deploy slider sets whether a venture launches above / on / below its line. Lives on `venture.reputation` at signing (so `checkGuildReputationSum` covers it, no new term); **supersedes** the old "ventures earn their whole bar from zero." Shape in `points-and-reputation.md §2.6`. **✅ BUILT 01-09-26 (slice 2 of 2)** — `sim/licence.js` `signingBump`, minted by the `applyForLicence` apply in `sim/actions.js`. Verified at founding scale: a home system + one tier-1 mine is GP 300 / expected 300, and signing that mine at **50%** puts the guild at `endowment 200 + bump 100 = 300` — modifier **exactly 1.00**, on its line; at 100%, RP 200 and above the line; at 0%, no bump and below it. A zero bump mints **no key at all**, exactly as a zero-delta verdict does in the tick. See the AS-BUILT note below for the one sharp edge it surfaced. |
 | Outpost deploy RP offset | `[DEFERRED]` | `= MEANLINE_K × (outpost GP)` (bar-neutral, `points-and-reputation.md §1.2`); when outposts are built. |
 
 **Guild founding endowment — DERIVED, not a constant (ruled 31-08-26, A′; **BUILT 31-08-26**, `sim/meanline.js` `foundingEndowmentFor` off `sim/points.js` `systemPoints`; `docs/points-and-reputation.md §2.5`).** A one-time RP grant set at founding `= MEANLINE_K × (home-system GP)`. **Rescaled automatically 01-09-26** with `MEANLINE_K` (→1) and `W_SYS` (→200): `= 1 × 200 = 200` (was `150 × 12 = 1800`), so a newborn still opens exactly on its line, now at RP 200. It invents **no** number — a function of `MEANLINE_K` and `W_SYS`, both ruled above, and it tracks them. **Not a tunable**; do not add it as a `[FIRST-CUT]`/`[SHEET]` row.
@@ -283,7 +283,8 @@ T2 **−4**. Every tier breaks even in the same **ten** met cycles (bar ÷ earn 
 factor.
 
 **OUT of scope by ruling, and left untouched:** the **venture signing bump** (slice 2 — a signed venture is
-still minted at 0 RP) and the **RP band** (deferred, below). `ISSUANCE_SENSITIVITY` / `FLOOR` / `CEIL`,
+still minted at 0 RP *at the time of this slice*; ⤳ **it landed the same day** — see the slice-2 note below) and
+the **RP band** (still deferred, below). `ISSUANCE_SENSITIVITY` / `FLOOR` / `CEIL`,
 `REFERENCE_FUEL_PRICE`, the five controller coefficients, `DEUTERIUM_INFLUX_PER_CYCLE` and `POOL_SEED` are all
 unchanged. The one constant outside the reputation layer that had to move is `BASE_GRANT_PER_GP` — see its
 AS-BUILT note in the fuel section.
@@ -296,6 +297,9 @@ pre-rescale it rested at 1.66× its bar. The licence layer's tiers no longer fal
 order of magnitude above it. Nothing halts and every value stays inside `[−500, 1500]`, so this is a
 calibration gap, not a break — but it is a real one, it is pinned by tripwire tests in `meanline.test.js` and
 `reputation.test.js` that say so in as many words, and it is what the band's own ruling has to fix.
+⤳ **Slice 2 took the edge off without closing it:** a venture signed at 100% opens 200 RP up, so it reaches the
+knee on cycle **60** and the dividend tier on **84** rather than 80 and 104. The gap is smaller and still an
+order of magnitude wide.
 
 *Note: the earlier draft's `guild.reputation` field and its flat `+50 / −80` event list are **withdrawn** —
 superseded by `venture.reputation` summed into the existing `guild.guildReputation`, per `points-and-reputation.md`.*
@@ -320,6 +324,41 @@ out-drawing one rations), not tuned.
 | `BASE_GRANT_PER_GP` | **0.3** *(re-based 01-09-26; was 5)* | Fuel per GP per cycle at modifier 1.0. `fuelGranted = round(BASE_GRANT_PER_GP · GP · modifier)`. A par guild (GP 500, modifier 1.0) draws ~150/cycle; a big well-run one more; an over-expanded one its base × 0.3. **BUILT 31-08-26 (slice 5a)**, `sim/issuance.js` `grantFor`. Verified: a par guild of GP 500 on its line draws **149**/cycle — the **same 149** it drew at GP 30 before the rescale. **⤳ RE-BASED 01-09-26 by the GP rescale — a RE-DENOMINATION, not a retune. See the AS-BUILT note below; do not read the change as a decision to make issuance meaner or more generous.** |
 | `DEUTERIUM_INFLUX_PER_CYCLE` | **800** | The abstracted back-end supply (§1.1). Fixed here, set to roughly balance a typical small galaxy's draw; a solo galaxy over-fills and a large one rations, because the influx is fixed and the draw is not — which is precisely what 5b's demand-relative controller corrects. Wants a proper `[SHEET]` pass with the price curve. **BUILT 31-08-26 (slice 5a)**, minted into the pool at each boundary and recorded in `audit.totalProduced`. |
 | `POOL_SEED` | **4000** | The Syndicate's starting reserve (§1.3) — ~5 cycles of a typical galaxy's draw, a buffer so early imbalance rations gently rather than instantly. Galaxy-scale, not per-guild; `[SHEET]` alongside 5b. **BUILT 31-08-26 (slice 5a)**: it seeds `state.reserve.reserveLevel` in `sim/scenarios/zero-state.js`, replacing the `[SHEET]` placeholder **30** that line had carried since the walking skeleton. |
+
+### ⚠ AS-BUILT 01-09-26 — the venture signing bump, slice 2 of 2 (`sim/licence.js`, `sim/actions.js`)
+
+**One helper and one mint site.** `signingBump(venture)` = `round(2 · commit · W_TIER)`, exported beside `metGain` and
+`breachPenalty`; `applyForLicence`'s apply mints it onto `venture.reputation` and adds the same amount to
+`guild.guildReputation`, mirroring the tick's RP move exactly so `checkGuildReputationSum` stays exact with no new term
+and no second writer. No new field, no new event, no schema change.
+
+**The weight lookup was extracted, not duplicated.** The bump needs the venture's **absolute** GP tier weight (100 / 150)
+where slice 1's `tierFactor` needs the **ratio** (1 / 1.5). Rather than write the lookup twice, `tierFactor` was split
+into `whereOf` + `ventureTierWeight` + itself — same arithmetic, same halt on an unweighted tier, one weight map still
+living only in `sim/points.js`.
+
+**COMMIT ONLY, NO EQUITY TERM** — the one place the bump parts company with `metGain`. §2.6 sizes it off
+`committedOutputPct` alone: the bump answers "how much of your output have you promised", which is what makes the
+venture's own bar defensible. Equity is a claim on the proceeds and buys a share of the per-cycle *earn*; if it bought the
+opening position too, a guild could buy its way onto its line by giving away shares while promising nothing.
+
+**A ZERO BUMP WRITES NOTHING.** A 0%-commitment licence is legal (§5's floor) and its bump is 0; assigning anyway would
+mint `reputation: 0` — a key holding its own default — into every save and every determinism hash for a venture whose
+reputation has never moved. The tick's rule 5 is mirrored here, so the field's lifecycle stays "minted by the first thing
+that MOVES it", which is now normally signing.
+
+**⚠ THE SHARP EDGE: a 0%-commitment venture can NEVER earn its way back.** No bump, and a 0% licence owes zero units so it
+is `met` every window while `metGain` scores its zero terms at zero. It sits below its line for ever, throttling its
+guild, with no move available inside its contract — and the way out (renegotiation, #64) is not built. That is a **ruling
+question, not a build one** (refuse a 0% signing? give the bump a floor?), so it is on `roadmap.md`'s decision checklist
+and pinned meanwhile by a named test rather than papered over.
+
+**⚠ NO RE-BUMP.** `applyForLicence` refuses a second application, so the bump fires once per venture and cannot be farmed
+by re-signing. Whether renegotiation re-bumps is deliberately **not** ruled and **not** built; it rides with #64.
+
+**Determinism:** no golden moved. Neither `persist.test.js`'s canonical sequence nor `commitment-scaffold.test.js`'s runs
+sign a licence — the scaffold fixtures set `syndicateCommitment` directly — so every pinned hash in the suite is
+structurally untouched, and both committed economy traces regenerate byte-identical.
 
 ### ⚠ AS-BUILT 01-09-26 — `BASE_GRANT_PER_GP` re-based 5 → 0.3 by the reputation rescale
 

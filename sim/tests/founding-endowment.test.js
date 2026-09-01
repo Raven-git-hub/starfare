@@ -154,8 +154,13 @@ test('the sum tripwire holds every tick through a MET boundary and a BREACHED on
   // knows nothing about the endowment — which is safe only because the endowment is
   // constant. This drives a licensed venture through boundaries both ways and re-checks the
   // sum on every single tick.
+  //
+  // ⤳ 01-09-26 (slice 2): signing now MINTS RP too, so the endowment is no longer the only
+  // thing on the guild's books before the first boundary. That makes this test stronger,
+  // not weaker — the sum now has to survive a mint at signing AND a move at every boundary,
+  // through two different writers in two different files.
   const N = 4;
-  const run = (send) => {
+  const run = (send, commitPct = 1) => {
     let s = founded();
     s = applyValid(s, createEstablishVentureAction({
       guildId: 'newborn', ventureId: 'm1', siteId: 'pl_00004_n01',
@@ -163,8 +168,15 @@ test('the sum tripwire holds every tick through a MET boundary and a BREACHED on
     }));
     s.windowN = N;
     s = intake(s, [createApplyForLicenceAction({
-      guildId: 'newborn', ventureId: 'm1', committedOutputPct: 1, windowDays: 7,
+      guildId: 'newborn', ventureId: 'm1', committedOutputPct: commitPct, windowDays: 7,
     })]).state;
+    // The sum must already hold at signing, BEFORE any tick — the mint site's own check.
+    {
+      const g = guild(s);
+      const ventureSum = g.ventures.reduce((n, v) => n + (v.reputation || 0), 0);
+      assert.equal(g.guildReputation, ventureSum + g.foundingEndowment,
+        'at signing: the bump moved the venture and the guild total by the same amount');
+    }
     if (send !== null) {
       s = intake(s, [createSetProductionProfileAction({
         guildId: 'newborn', systemId: HOME, goods: { titanium: { syndicate: { mode: 'absolute', value: send } } },
@@ -185,32 +197,120 @@ test('the sum tripwire holds every tick through a MET boundary and a BREACHED on
   assert.ok(guild(met).ventures[0].reputation > 0, 'the met run really did earn reputation');
   assert.ok(guild(met).guildReputation > guild(met).foundingEndowment, 'so the total rose above the endowment');
 
-  const breached = run(0);                    // send nothing ⇒ breach every window
+  // ⤳ 01-09-26: the breached run signs at 10%, not 100%. A full committer opens on a +200
+  // signing bump and four breached windows (−3 each) leave it comfortably positive, so it
+  // could no longer show what this half of the test is for. A token committer opens on 20
+  // and breaches at −9, so it goes negative — and it is the venture the ruling INTENDS to
+  // end up there ("promise nothing, start behind").
+  const breached = run(0, 0.1);               // send nothing ⇒ breach every window
   assert.ok(guild(breached).ventures[0].reputation < 0, 'the breached run really did lose reputation');
   assert.ok(guild(breached).guildReputation < guild(breached).foundingEndowment,
     'and the total fell below the endowment — the endowment is not a floor on the total');
 });
 
-test('a venture earning its bar lifts the guild back onto its line', () => {
-  // The loop the endowment is meant to leave intact: deploy a venture, start below the
-  // line, earn your way back. Proven end to end rather than argued.
-  const N = 4;
+// THE SIGNING BUMP AT FOUNDING SCALE (§2.6, ruled + BUILT 01-09-26, slice 2 of the
+// rescale) — where the terms a guild signs decide where its first venture opens.
+//
+// ⤳ THIS SECTION REPLACES A TEST WHOSE PREMISE THE SLICE DELETED, and the replacement is
+// the record of what changed. The old test read "a venture earning its bar lifts the guild
+// back onto its line" and opened by asserting `modifier < 1` — *deploying a venture drops
+// you below your line*. That was true, and it was the defect §2.6 exists to remove: the
+// endowment covered the HOME SYSTEM's bar, but every venture deployed after it raised the
+// bar instantly with no reputation to pay for it, so a guild was throttled for doing the
+// thing the game is about. The bump makes that a CHOICE the deploy slider sets, and the
+// three cases below are the whole ruling, end to end through the real actions.
+//
+// The arithmetic behind them: a founded guild holds one home system (GP 200, endowed 200)
+// and this one tier-1 mine (GP 100, weight 100). So the guild's bar is 300, and the mine's
+// bump is `2 × commit × 100` — 0 / 100 / 200 at 0% / 50% / 100%.
+
+const signAt = (commitPct) => {
   let s = founded();
   s = applyValid(s, createEstablishVentureAction({
     guildId: 'newborn', ventureId: 'm1', siteId: 'pl_00004_n01',
     assetId: 'asset_newborn_miner_01', resourceType: 'titanium', productionRate: 10,
   }));
-  s.windowN = N;
-  s = intake(s, [createApplyForLicenceAction({
-    guildId: 'newborn', ventureId: 'm1', committedOutputPct: 1, windowDays: 7,
+  s.windowN = 4;
+  return intake(s, [createApplyForLicenceAction({
+    guildId: 'newborn', ventureId: 'm1', committedOutputPct: commitPct, windowDays: 7,
   })]).state;
+};
 
+test('SIGNING AT 50% LANDS THE VENTURE EXACTLY ON ITS LINE — the founding-drop fix', () => {
+  // §2.6's headline: 50% is the Syndicate's EXPECTED deal and is bar-neutral. The venture
+  // adds 100 GP and mints exactly 100 RP, so the guild's reputation and its bar move by
+  // the same amount and the modifier does not budge off neutral.
+  const s = signAt(0.5);
+  const g = guild(s);
+
+  assert.equal(guildPoints(s, g), 300, 'home system 200 + a tier-1 mine 100');
+  assert.equal(expectedReputation(s, g), 300, 'and at MEANLINE_K = 1 the bar simply IS the GP');
+  assert.equal(g.ventures[0].reputation, 100, 'the bump is 2 x 0.5 x 100 — the mine\'s own GP');
+  assert.equal(g.guildReputation, 300, 'endowment 200 + bump 100');
+  assert.equal(issuanceModifier(s, g), 1, 'so it sits EXACTLY on its line — no gap at all');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('SIGNING AT 100% LAUNCHES IT ABOVE ITS LINE — an instant fuel buff', () => {
+  const s = signAt(1);
+  const g = guild(s);
+  assert.equal(g.ventures[0].reputation, 200, 'twice the mine\'s GP');
+  assert.equal(g.guildReputation, 400);
+  assert.ok(issuanceModifier(s, g) > 1, 'above its line, and drawing more fuel for it');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('SIGNING AT 0% LEAVES IT BELOW ITS LINE — promise nothing, start behind', () => {
+  const s = signAt(0);
+  const g = guild(s);
+  // No bump, and therefore NO KEY: a zero move writes nothing, exactly as a zero-delta
+  // verdict does in the tick. The venture added 100 to the bar and nothing to the credit.
+  assert.equal(g.ventures[0].reputation, undefined, 'a zero bump mints no key at all');
+  assert.equal(g.guildReputation, 200, 'the endowment alone — the venture paid for nothing');
+  assert.ok(issuanceModifier(s, g) < 1, 'below its line, and throttled for it');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('the three terms are ORDERED — the deploy slider really is the lever', () => {
+  const at = (pct) => { const s = signAt(pct); return issuanceModifier(s, guild(s)); };
+  assert.ok(at(0) < at(0.5), 'more commitment is never worse…');
+  assert.ok(at(0.5) < at(1), '…at either step');
+  assert.equal(at(0.5), 1, 'and the middle one is the neutral deal');
+});
+
+test('a below-line venture EARNS its way back — the loop the endowment left intact', () => {
+  // Signed at 20%: a bump of 40 against a bar of 100, so it opens below its line and has
+  // to climb. This is the loop the old pre-bump test proved for EVERY venture; the bump
+  // means only an under-committed one now walks it.
+  let s = signAt(0.2);
   const atStart = issuanceModifier(s, guild(s));
-  assert.ok(atStart < 1, 'deploying a venture drops it below its line…');
-  assert.ok(atStart > ISSUANCE_FLOOR, '…but not to the floor, because the home base is covered');
+  assert.ok(atStart < 1, 'a 20% signing opens below its line');
+  assert.ok(atStart > ISSUANCE_FLOOR, 'but not at the floor — the home base is still covered');
+  for (let i = 0; i < 30 * 4; i += 1) s = tick(s);
+  assert.ok(issuanceModifier(s, guild(s)) > atStart, 'and meeting commitments earns it back up');
+});
 
-  for (let i = 0; i < 30 * N; i += 1) s = tick(s);
-  assert.ok(issuanceModifier(s, guild(s)) > atStart, '…and meeting commitments earns it back up');
+test('⚠ A 0%-COMMITMENT VENTURE CANNOT EARN ITS WAY BACK AT ALL — it is stuck until it renegotiates', () => {
+  // Worth pinning loudly, because it is the sharpest edge the ruling has and it is easy to
+  // read §2.6's "promise nothing, start behind" as merely a slow start. It is not. A 0%
+  // licence owes zero units, so it is `met` every window — but `metGain` is terms-scaled,
+  // and zero terms met scores exactly zero (§2: you do not earn RP for OWNING). So the
+  // venture gets no bump AND no earnings: it sits below its line for ever, throttling its
+  // guild's fuel, with no move available inside the current contract.
+  //
+  // THE WAY OUT IS THE RENEGOTIATION WINDOW (#64), WHICH IS NOT BUILT — so today this is a
+  // genuine trap rather than a choice with a cost. Flagged on the roadmap's decision
+  // checklist rather than softened here: whether signing at 0% should be refused outright,
+  // or the bump should carry a floor, is a ruling and not a build.
+  let s = signAt(0);
+  const atStart = issuanceModifier(s, guild(s));
+  for (let i = 0; i < 30 * 4; i += 1) s = tick(s);
+
+  assert.equal(guild(s).lastLicenceFee.ventures.m1.status, 'met', 'it is judged MET every window…');
+  assert.equal(guild(s).ventures[0].reputation, undefined, '…and earns exactly nothing for it');
+  assert.equal(issuanceModifier(s, guild(s)), atStart, 'thirty cycles later it has not moved one point');
+  assert.ok(atStart < 1, 'and it is below its line the whole time');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
 // --- 5. THE EMPTY-GUILD GUARD IS A SEPARATE PATH ------------------------------------

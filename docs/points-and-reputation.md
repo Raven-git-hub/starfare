@@ -193,7 +193,7 @@ An outpost raises your GP (your bar) but delivers nothing to the Syndicate on it
 it would drop you *below* your line and **punish** you for deploying a useful asset. The fix: **any GP asset
 that can't earn RP through use gets a one-time deploy RP bump ≈ `MEANLINE_K × (its GP)`, so deploying it is
 bar-neutral.** Productive assets (mines, refineries) get **no** offset — they earn their bar back by delivering.
-This prevents "deploy traps" for any future passive asset, not just outposts. **⤳ Extended 01-09-26 (§2.6):** the venture **signing bump** now gives *productive* ventures a terms-scaled version of this same offset — 50% commitment lands a venture on its line, 100% above it — so "productive assets get no offset" is superseded: every venture gets an offset, sized by what it commits. **Its founding-time instance is the guild founding endowment (§2.5):** the home system a guild is granted at founding is exactly such an asset (raises GP, earns no RP), but because a founded guild has no venture to carry the offset — the starter gift is idle inventory — it lives as a one-time **guild-level** endowment rather than on the asset.
+This prevents "deploy traps" for any future passive asset, not just outposts. **⤳ Extended 01-09-26 (§2.6), ✅ BUILT the same day:** the venture **signing bump** now gives *productive* ventures a terms-scaled version of this same offset — 50% commitment lands a venture on its line, 100% above it — so "productive assets get no offset" is superseded: every venture gets an offset, sized by what it commits. **Its founding-time instance is the guild founding endowment (§2.5):** the home system a guild is granted at founding is exactly such an asset (raises GP, earns no RP), but because a founded guild has no venture to carry the offset — the starter gift is idle inventory — it lives as a one-time **guild-level** endowment rather than on the asset.
 
 ## 2. Reputation Points (RP) — contribution, VARIABLE, per-venture
 
@@ -308,7 +308,7 @@ endowment is their product and **tracks them** if either retunes. It is NOT a tu
 - It is set **once at founding and never changes** — not recomputed, not added to on expansion.
 - Every system grabbed **after** founding raises GP by `W_SYS` with **no** matching endowment, so sprawl still
   sinks a guild below its line — the anti-sprawl liability (§1, §3) is untouched.
-- **Ventures earn their own bar** (§1.2: productive assets get no offset). **⤳ Superseded 01-09-26 (§2.6):** deployed ventures now DO get a terms-scaled signing bump (50% = on the line, 100% above). The founding *guild* endowment in this section is unchanged; what changed is that a signed venture is no longer minted at zero RP. A freshly-deployed venture — starter
+- **Ventures earn their own bar** (§1.2: productive assets get no offset). **⤳ Superseded 01-09-26 (§2.6), and ✅ BUILT the same day:** deployed ventures now DO get a terms-scaled signing bump (50% = on the line, 100% above). The founding *guild* endowment in this section is unchanged; what changed is that a signed venture is no longer minted at zero RP. A freshly-deployed venture — starter
   or later — raises GP and earns its RP back through commitments; the endowment does **not** seed ventures, so
   they run the normal lean-then-earn loop (§3). Deploying the starter miners/factories is still the gameplay,
   and each still climbs from ~floor to its line as it meets commitments.
@@ -339,13 +339,15 @@ guard, is what puts it on its line. `venture.reputation` is unchanged.
 
 ### 2.6 The rescale, the signing bump & the breach floor (ruled 01-09-26)
 
-**⤳ BUILD STATUS (01-09-26). Slice 1 of 2 — the CONSTANTS — is ✅ BUILT.** `MEANLINE_K` → 1, the GP weights →
-200 / 100 / 150, `REP_MEET_MAX` → 10, `REP_BREACH_MAX`/`MIN` → 10 / 2.5, and the tier-scaled earn/breach
-(`tierFactor`) are all live in `sim/points.js`, `sim/meanline.js` and `sim/licence.js`. **The signing bump below
-is slice 2 and is NOT built** — a signed venture is still minted at 0 RP and earns from there; keeping it out
-kept slice 1 a pure retuning. **The RP band is still deferred**, as this section rules. As-built figures, the
-`BASE_GRANT_PER_GP` re-base the GP rescale forced, and the measured cost of the deferred band are all in
-`phase-1-tuning.md`'s two AS-BUILT notes.
+**⤳ BUILD STATUS (01-09-26). THIS SECTION IS ✅ FULLY BUILT — both slices.** Slice 1, the CONSTANTS:
+`MEANLINE_K` → 1, the GP weights → 200 / 100 / 150, `REP_MEET_MAX` → 10, `REP_BREACH_MAX`/`MIN` → 10 / 2.5, and
+the tier-scaled earn/breach (`tierFactor`), all live in `sim/points.js`, `sim/meanline.js` and `sim/licence.js`.
+Slice 2, the **SIGNING BUMP**: `signingBump` in `sim/licence.js`, minted by the `applyForLicence` apply in
+`sim/actions.js`. A venture signed at 50% now opens **exactly on its line**, at 100% above it, at 0% below —
+which is the founding-drop fix the whole rescale was for. **The RP band remains deferred**, as this section
+rules. As-built figures, the `BASE_GRANT_PER_GP` re-base the GP rescale forced, the measured cost of the
+deferred band, and the one sharp edge slice 2 surfaced (a 0%-commitment venture can never earn its way back)
+are all in `phase-1-tuning.md`'s AS-BUILT notes and `roadmap.md`'s decision checklist.
 
 
 **The rescale — GP and RP on ONE small scale.** `MEANLINE_K` drops **150 → 1**, so a guild's expected RP now simply
@@ -376,6 +378,27 @@ weight)`.**
 The deploy slider is now the lever that sets whether a venture launches above, on, or below its line, and the fuel-credit
 modifier moves with what the guild promises. The bump lives on `venture.reputation` at signing (so `checkGuildReputationSum`
 covers it with **no** new term) and **supersedes** §2.5's "ventures earn their whole bar."
+
+**⤳ AS BUILT 01-09-26 (slice 2).** `signingBump(venture)` in `sim/licence.js` — `round(2 · commit · W_TIER)`, off the same
+clamped `repTerms().commit` basis `metGain` uses, and off the venture's **absolute** GP tier weight (the numerator of
+slice 1's `tierFactor`, extracted as `ventureTierWeight` so there is still exactly one weight lookup). Minted by the
+`applyForLicence` apply in `sim/actions.js`, mirroring the tick's RP move so the venture's field and the guild's cached
+total change by the same amount in the same place. **Verified end to end at founding scale:** a home system + one tier-1
+mine is GP 300 / expected 300; signing that mine at 50% gives it RP 100 and the guild `200 + 100 = 300` — modifier
+**exactly 1.00**, on its line. At 100%: RP 200, modifier above 1. At 0%: no bump at all and the modifier below 1.
+**A zero bump writes nothing** — no `reputation: 0` key is minted, exactly as a zero-delta verdict writes nothing in the
+tick, so a 0%-commitment venture still adds not one byte of reputation to the galaxy.
+
+**⚠ ONE SHARP EDGE THE BUILD SURFACED, flagged not softened.** A **0%-commitment venture cannot earn its way back.** It
+gets no bump, and because a 0% licence owes zero units it is `met` every window while `metGain` scores its zero terms at
+zero (§2: you do not earn RP for owning). So it sits below its line **for ever**, throttling its guild's fuel, with no
+move available inside its contract — and the way out, the renegotiation window (#64), is not built. Whether signing at 0%
+should be refused outright, or the bump carry a floor, is a **ruling and not a build**: it is on `roadmap.md`'s decision
+checklist, and pinned meanwhile by a test that says so in as many words.
+
+**⚠ NO RE-BUMP ON RENEGOTIATION, and none is ruled.** `applyForLicence` refuses a second application on the same venture,
+so the bump fires exactly once per venture and cannot be farmed by re-signing. Whether renegotiating re-bumps — and on
+what basis, since the venture's GP is already on the guild's books by then — rides with #64.
 
 **Batch-deploy still stings, by design.** Deploying raises GP — and the bar — instantly. A 50%+ venture offsets its *own*
 bar at signing, but a guild that batch-deploys many ventures at low commitment still opens a gap. That gap is the intended

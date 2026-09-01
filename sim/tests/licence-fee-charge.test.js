@@ -34,7 +34,7 @@ const { buildSnapshot } = require('../snapshot.js');
 const { MINE_BASELINE } = require('../baseline.js');
 const { BASE_PRICE } = require('../prices.js');
 const {
-  FEE_RATE, feeOwed, metGain, gainFactor, RP_FLOOR,
+  FEE_RATE, feeOwed, metGain, gainFactor, RP_FLOOR, signingBump,
 } = require('../licence.js');
 
 const SYS = 'sysA';
@@ -413,34 +413,43 @@ test('STRIP-AND-PROVE: the charge moved the two balances and the record, and not
   assert.equal(charged.syndicate.ledger, uncharged.syndicate.ledger + total,
     'ledger: the exact mirror — an internal transfer, so invariant 2 never moved');
 
+  // ⤳ 01-09-26 (slice 2): BOTH runs sign the licence, so BOTH carry the signing bump — the
+  // uncharged one has its licence deleted immediately AFTER signing, which cannot unmint
+  // reputation already minted. That makes the bump common to the two states and it cancels
+  // out of the comparison, which is exactly what this strip-and-prove wants: the DELTA
+  // under test is the fee and the earned gains, and the bump is neither.
+  const BUMP = signingBump(charged.guilds[0].ventures[0]);
+  assert.equal(BUMP, 200, 'a full-commitment tier-1 signing: 2 x 1 x 100');
+  assert.equal(uncharged.guilds[0].ventures[0].reputation, BUMP,
+    'the licence-less run was never JUDGED, so it carries the bump and nothing more');
+  assert.equal(uncharged.guilds[0].guildReputation, BUMP, 'and its guild total is the bump alone');
+
   // The licence met every window, so RP climbed by its TERMS-SCALED gain each time. Walked
   // out here rather than multiplied, because the gain that lands depends on where the
-  // venture already stood (the §2.3 taper) — three cycles at these terms stay far below
-  // the 800 knee, so this run happens to be linear, and the loop is what proves that
-  // rather than assumes it.
-  const expectedRP = (() => {
+  // venture already stood (the §2.3 taper) — three cycles from the bump stay far below the
+  // 800 knee, so this run happens to be linear, and the loop is what proves that rather
+  // than assumes it. The walk starts AT the bump, since that is where the venture stood.
+  const earned = (() => {
     const v = charged.guilds[0].ventures[0];
-    let acc = 0;
+    let acc = BUMP;
     for (let w = 0; w < WINDOWS; w += 1) {
       acc = Math.max(RP_FLOOR, acc + Math.round(metGain(v) * gainFactor(acc)));
     }
-    return acc;
+    return acc - BUMP;
   })();
-  assert.equal(expectedRP, WINDOWS * metGain(charged.guilds[0].ventures[0]),
+  assert.equal(earned, WINDOWS * metGain(charged.guilds[0].ventures[0]),
     'these three windows are all below the taper knee, so the walk is linear here');
-  assert.equal(charged.guilds[0].ventures[0].reputation, expectedRP,
-    'three met boundaries, three flat gains');
-  assert.equal(charged.guilds[0].guildReputation, expectedRP, 'and the guild sum agrees');
-  assert.equal(uncharged.guilds[0].ventures[0].reputation, undefined,
-    'the licence-less run was never judged, so it carries no reputation key at all');
-  assert.equal(uncharged.guilds[0].guildReputation, 0, 'and its guild total never moved');
+  assert.equal(charged.guilds[0].ventures[0].reputation, BUMP + earned,
+    'the signing bump, then three met boundaries of flat gains');
+  assert.equal(charged.guilds[0].guildReputation, BUMP + earned, 'and the guild sum agrees');
 
-  // Undo the charge and drop the three keys the uncharged run cannot have.
+  // Undo the charge and the EARNED reputation — but NOT the bump, which the bare state has
+  // too. The `reputation` key survives in both, so it is decremented rather than deleted.
   const undone = structuredClone(charged);
   delete undone.guilds[0].lastLicenceFee;
   delete undone.guilds[0].ventures[0].licence;
-  delete undone.guilds[0].ventures[0].reputation;
-  undone.guilds[0].guildReputation -= expectedRP;
+  undone.guilds[0].ventures[0].reputation -= earned;
+  undone.guilds[0].guildReputation -= earned;
   undone.guilds[0].credits += total;
   undone.syndicate.ledger -= total;
 
