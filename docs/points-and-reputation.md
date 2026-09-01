@@ -193,7 +193,7 @@ An outpost raises your GP (your bar) but delivers nothing to the Syndicate on it
 it would drop you *below* your line and **punish** you for deploying a useful asset. The fix: **any GP asset
 that can't earn RP through use gets a one-time deploy RP bump ≈ `MEANLINE_K × (its GP)`, so deploying it is
 bar-neutral.** Productive assets (mines, refineries) get **no** offset — they earn their bar back by delivering.
-This prevents "deploy traps" for any future passive asset, not just outposts. **Its founding-time instance is the guild founding endowment (§2.5):** the home system a guild is granted at founding is exactly such an asset (raises GP, earns no RP), but because a founded guild has no venture to carry the offset — the starter gift is idle inventory — it lives as a one-time **guild-level** endowment rather than on the asset.
+This prevents "deploy traps" for any future passive asset, not just outposts. **⤳ Extended 01-09-26 (§2.6):** the venture **signing bump** now gives *productive* ventures a terms-scaled version of this same offset — 50% commitment lands a venture on its line, 100% above it — so "productive assets get no offset" is superseded: every venture gets an offset, sized by what it commits. **Its founding-time instance is the guild founding endowment (§2.5):** the home system a guild is granted at founding is exactly such an asset (raises GP, earns no RP), but because a founded guild has no venture to carry the offset — the starter gift is idle inventory — it lives as a one-time **guild-level** endowment rather than on the asset.
 
 ## 2. Reputation Points (RP) — contribution, VARIABLE, per-venture
 
@@ -275,6 +275,8 @@ pure consumer sinks by earning nothing against its bar, so buying needs no expli
 
 ### 2.5 The founding endowment — a new guild opens on its line (ruled 31-08-26, A′; **BUILT 31-08-26**)
 
+**⤳ Numbers rescaled 01-09-26 (§2.6).** This section's worked figures (`150 × 12 = 1800`) are the OLD scale; post-rescale the same logic gives `1 × 200 = 200`. The mechanic is unchanged — a newborn opens exactly on its line — only the scale shrank.
+
 **The problem the mean line creates for a newborn.** A just-founded guild holds only its **home system**
 (GP `= W_SYS = 12`); the gifted starter assets are **idle inventory** (`phase-1-tuning.md` "Starter asset
 gift") and score **0 GP** until deployed, and founding creates **no ventures**. So `expectedRP = MEANLINE_K ×
@@ -306,7 +308,7 @@ endowment is their product and **tracks them** if either retunes. It is NOT a tu
 - It is set **once at founding and never changes** — not recomputed, not added to on expansion.
 - Every system grabbed **after** founding raises GP by `W_SYS` with **no** matching endowment, so sprawl still
   sinks a guild below its line — the anti-sprawl liability (§1, §3) is untouched.
-- **Ventures earn their own bar** (§1.2: productive assets get no offset). A freshly-deployed venture — starter
+- **Ventures earn their own bar** (§1.2: productive assets get no offset). **⤳ Superseded 01-09-26 (§2.6):** deployed ventures now DO get a terms-scaled signing bump (50% = on the line, 100% above). The founding *guild* endowment in this section is unchanged; what changed is that a signed venture is no longer minted at zero RP. A freshly-deployed venture — starter
   or later — raises GP and earns its RP back through commitments; the endowment does **not** seed ventures, so
   they run the normal lean-then-earn loop (§3). Deploying the starter miners/factories is still the gameplay,
   and each still climbs from ~floor to its line as it meets commitments.
@@ -334,6 +336,55 @@ retune exactly as `guildPoints` does); `checkGuildReputationSum` (`sim/invariant
 (the total) and needs no change. The empty-guild guard (§3: `GP = 0 → modifier 1.0`) is a **separate** case — a
 guild holding literally nothing — and still stands; a founded guild has `GP = 12`, so the endowment, not the
 guard, is what puts it on its line. `venture.reputation` is unchanged.
+
+### 2.6 The rescale, the signing bump & the breach floor (ruled 01-09-26)
+
+**The rescale — GP and RP on ONE small scale.** `MEANLINE_K` drops **150 → 1**, so a guild's expected RP now simply
+*equals* its GP; the GP weights and the RP earn-rate shrink to match — held system `W_SYS` **12 → 200**, tier weights
+**6/8 → 100/150** (spread widened to a deliberate **1 : 1.5 : 3 : 5** = 100/150/300/500, T3/T4 deferred), `REP_MEET_MAX`
+**100 → 10**. Every value now sits in the low hundreds and GP and RP are the same size, legible at a glance. **This
+changes no behaviour that matters:** the fuel modifier is `1 + SENS · gap/expected`, scale-invariant, so par, floor and
+ceiling are exactly as calibrated — only the numbers shrank. The old 150 existed solely to lift RP into the thousands
+while GP sat in the tens; with both on one scale it is redundant. Values in `phase-1-tuning.md`.
+
+**Earn-rate scales with tier.** `metGain` gains a `tierFactor = W_TIER / 100` (T1 = 1 … T4 = 5), so a higher-tier
+venture earns proportionally more RP per cycle. Every tier therefore breaks even in the same **~10 cycles**
+(bar ÷ earn-rate), and the reward for climbing the manufacturing tree is bigger GP, bigger earning and a bigger
+dividend — *not* a heavier bar to fill. Full-terms T1 = +10/cycle.
+
+**The venture signing bump — §1.2's offset, generalised to productive ventures and scaled by terms.** §1.2 gave passive
+assets a bar-neutral offset on deploy but held that *productive* ventures earn their bar from zero. This rescale replaces
+that stance: **on signing a licence, a venture is minted with an instant RP bump `= 2 · committedOutputPct · (its GP
+weight)`.**
+
+- **0% commit → bump 0.** Adds GP with no RP → instantly below its line, throttled. Promise nothing, start behind.
+- **50% commit → bump = 1× its GP.** Lands exactly on its line — bar-neutral. **This is the Syndicate's expectation:** it
+  *expects* a venture negotiated at ~50%, and treats that as the neutral, on-the-line deal.
+- **100% commit → bump = 2× its GP.** Launches its whole GP *above* the line — an instant fuel buff and a head start
+  toward the dividend tier.
+- Linear between.
+
+The deploy slider is now the lever that sets whether a venture launches above, on, or below its line, and the fuel-credit
+modifier moves with what the guild promises. The bump lives on `venture.reputation` at signing (so `checkGuildReputationSum`
+covers it with **no** new term) and **supersedes** §2.5's "ventures earn their whole bar."
+
+**Batch-deploy still stings, by design.** Deploying raises GP — and the bar — instantly. A 50%+ venture offsets its *own*
+bar at signing, but a guild that batch-deploys many ventures at low commitment still opens a gap. That gap is the intended
+"bitten off more than you've delivered on" pressure — only now it sits under the guild's control, via the terms it signs,
+instead of being an unavoidable founding tax.
+
+**The breach floor — lifted, not flipped.** The signing bump creates an exploit: sign 100% (grab the 2× bump and its
+instant fuel buff), then never deliver — a 100%-commit breach costs almost nothing under the old floor. The fix is
+deliberately **not** to make breach proportional to commitment: the Syndicate does **not** punish a guild that commits
+maximally and only just falls short (maximum commitment already costs it all its delivered output), and high commitment
+must stay attractive. Instead the **minimum** breach is lifted from 10% to **25% of `REP_BREACH_MAX`** (`REP_BREACH_MIN`
+1 → 2.5 at the new scale), keeping the inverse-commitment curve but firming its cheapest end — cutting the
+sign-then-breach free-boost tail from ~100 to ~34 cycles. The full undiscounted licence fee a breach already pays (in
+credits, every cycle) is the rest of the deterrent. Whether 25% is enough is a `[FIRST-CUT]` playtest question.
+
+**Deferred — the RP band.** The band bounds (−500 / 800 / 1500) and the gain taper are **left at their old-scale values**
+by this rescale and flagged for their own ruling next (`phase-1-tuning.md`, RP-band deferral). Nothing halts, but the band
+is loose at the new scale; rescaling it carries a global-vs-per-tier sub-choice the wide tier spread forces.
 
 ## 3. The mean line — expected RP for your GP (fuel issuance)
 
