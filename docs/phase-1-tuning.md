@@ -70,7 +70,7 @@ deferral.
 posted row, a client that wants a guild's hoard **in credits** can only invent a rate — so the engine
 names one instead. **`FLAT_FUEL_PRICE_PER_UNIT` = 10 credits/unit** (`sim/fuel.js`) feeds exactly one
 thing, the snapshot's derived `guild.fuelHoardValue`, and **nothing charges it**: no credit moves
-through it, so invariant 2 cannot see it. It is **not** an answer to `docs/fuel-economy.md` §9's open
+through it, so invariant 2 cannot see it. *(**Retired 01-09-26 by slice 5b-i.** The stateful `reserve.fuelPrice` replaces it as the ONE fuel price — used for both the hoard's mark-to-market and the issuance grant conversion — and its value 10 becomes `REFERENCE_FUEL_PRICE`, the price at which `BASE_GRANT_PER_GP` is calibrated. See the fuel section below and `fuel-supply-and-allocation.md §4.2`.)* It is **not** an answer to `docs/fuel-economy.md` §9's open
 question 4 (reuse the price engine, or a dedicated reserve-based curve?) and it does **not** soften the
 exclusion above — it is a named stand-in so that question has one line to replace.
 
@@ -291,3 +291,5 @@ price coefficients — supply, draw and price are one system, and these get thei
 in invariant 1 — not a new field. **Still NOT built:** the reserve/flow **price controller** (5b), which is what
 makes a fixed influx against a variable draw self-correct; until it lands, a small galaxy over-fills and a large
 one rations, exactly as the rationale column says.*
+
+**`REFERENCE_FUEL_PRICE` `[FIRST-CUT]` 10 *(slice 5b-i, 01-09-26)*.** The price at which `BASE_GRANT_PER_GP`'s "5 fuel/GP" is calibrated — a guild draws its full `round(BASE_GRANT_PER_GP · GP · modifier)` entitlement when `reserve.fuelPrice` sits here. It takes the value of the retired `FLAT_FUEL_PRICE_PER_UNIT` (10), so 5b-i is byte-identical; `reserve.fuelPrice` is seeded to it and held there until **5b-ii**'s controller moves it. Physical grant = `round(entitlement · REFERENCE_FUEL_PRICE / reserve.fuelPrice)`; hoard value = `round(fuelHoard · reserve.fuelPrice)` — one price, both uses. The 5b-ii price-curve coefficients (base, target, sensitivity, floor, ceiling, flow weight, window) remain the `[SHEET]` job §4 names.

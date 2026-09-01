@@ -189,9 +189,7 @@ pool empties to exactly 0 rather than going negative. Without the price controll
 back under supply, so a galaxy that out-draws its influx **rations, then risks collapse** — the losable state
 of §1.2, correct and intended for this cut.
 
-**Flat price for now.** Grants are fuel units at the flat `FLAT_FUEL_PRICE_PER_UNIT` (fuel Slice 1). The price
-as the credit→fuel *lever* — making the same entitlement buy more or less fuel to pull draw back to supply — is
-the reserve/flow controller, **5b**. This slice grants fuel directly.
+**Price mediation — slice 5b-i (ruled 01-09-26; byte-identical).** The grant now passes through a market fuel **price**. `round(BASE_GRANT_PER_GP · GP · modifier)` is a guild's **entitlement at the reference price** (the existing `grantFor`, unchanged); the physical fuel it receives is `round(entitlement · REFERENCE_FUEL_PRICE / reserve.fuelPrice)`, so the same reputation-sized entitlement buys **less** fuel when the price is high — the lever that pulls draw back under supply. **5b-i holds the price fixed at `REFERENCE_FUEL_PRICE`**, so the ratio is exactly `1.0` and the grant is **byte-identical to 5a** (the plumbing lands with no behaviour change). The controller that **moves** the price each cycle is **5b-ii** (§4.2), where the price state, the retired flat constant and the ratio-vs-rebase choice are ruled.
 
 **Out of 5a:** the dynamic price controller (5b); the Producer Guilds (their own later slice — the influx is
 abstracted, §1.1); closure; illegal refining; the grey market.
@@ -246,6 +244,38 @@ spikes to the ceiling, and issuance **degrades to rationing-of-what's-left.** Th
 *should* feel like rationing. The only firm requirement it imposes: **the pool can never be over-granted below
 zero** (a hard conservation floor — invariant 1). That floor, the life-support minimum, and the storyteller
 rescue (§1.2) are the same safety layer viewed three ways.
+
+### 4.2 The two build slices — 5b-i (price plumbing) and 5b-ii (the controller)
+
+The loop above lands in **two slices**, one module at a time (`design.md` §18 #3).
+
+**5b-i — price mediation (the plumbing; ruled 01-09-26; byte-identical).** Introduces the market price as STATE
+and routes the grant through it, with the price held fixed so nothing about the economy moves yet.
+
+- **`reserve.fuelPrice`** — a float, the ONE market price of `deuterium_fuel`, seeded at galaxy creation to
+  `REFERENCE_FUEL_PRICE`. It is **serialized** reserve state (it must persist cycle to cycle for 5b-ii to move
+  it), so the determinism goldens gain this one field — proven, as the founding endowment was, by an inverted
+  strip that deletes it and recovers the pre-slice hash byte for byte.
+- **`REFERENCE_FUEL_PRICE` (`[FIRST-CUT]` 10)** — the price at which `BASE_GRANT_PER_GP`'s "5 fuel/GP" is
+  calibrated, taking the value of the **retired** `FLAT_FUEL_PRICE_PER_UNIT`. There is now ONE fuel price
+  (invariant 5): `reserve.fuelPrice` serves both the grant conversion and the hoard's mark-to-market.
+- **The grant — the RATIO form.** `entitlement = round(BASE_GRANT_PER_GP · GP · modifier)` (unchanged);
+  physical = `round(entitlement · REFERENCE_FUEL_PRICE / reserve.fuelPrice)`. Scaling the already-rounded
+  entitlement by `reference / price` is chosen over re-basing the product, because at the seed price the ratio
+  is **exactly `1.0`** and the grant is byte-identical; the re-based `round(50 · GP · mod / 10)` was tested and
+  drifts by a unit in ~0.3% of cases (float reassociation), which would break the no-op.
+- **The hoard tracks the price.** `fuelHoardValue = round(fuelHoard · reserve.fuelPrice)` (was the flat
+  constant) — identical at the seed price; once 5b-ii moves the price, a hoard is worth **more** when fuel is
+  scarce, which is intended.
+- **Fixed price ⇒ byte-identical.** 5b-i seeds and holds `fuelPrice = REFERENCE_FUEL_PRICE`, so every grant and
+  every hoard value is unchanged from 5a; the whole behaviour change belongs to 5b-ii.
+
+**5b-ii — the controller (the feedback loop; coefficients `[SHEET]`).** Each cycle sets NEXT cycle's
+`fuelPrice` from the **level** term (the reserve curve `clamp(base · (target / reserve)^sensitivity, floor,
+ceil)`) plus the **flow** term (deuterium-in vs fuel-out), against a **demand-relative** target (§4). Its
+coefficients — base, target-as-cycles-of-draw, sensitivity, floor, ceiling, flow weight, trailing window — are
+the SIM job §4 names; they are **calibrated against the multi-guild recorder** (`tools/run_economy.js`), never
+invented. NOT built by 5b-i.
 
 ## 5. Who feels the scarcity (left organic — watch one dial)
 
