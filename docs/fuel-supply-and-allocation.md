@@ -220,10 +220,12 @@ abstracted, §1.1); closure; illegal refining; the grey market.
 Because issuance hands out **physical fuel from a finite pool**, price is the lever that keeps total draw in
 line with supply. Each cycle **resolves** and sets the next cycle's fuel price.
 
-- **The controller reads FLOW, not just level.** It compares **deuterium in** (refined into the pool this
-  cycle) against **fuel out** (granted to all guilds), takes the **net change**, and moves price to correct it:
-  reserve draining → raise price (each credit converts to less fuel → smaller grants → draw falls back under
-  production); reserve filling → lower price (credits buy more → guilds trade more → the economy grows).
+- **The controller reads the reserve LEVEL** (flow deferred — see §4.2). When the pool drains below its
+  target, price **rises** (each credit converts to less fuel → smaller grants → draw falls back under
+  production); when it fills above, price **falls** (credits buy more → guilds trade more → the economy grows).
+  *(The original design also read the FLOW — deuterium-in vs fuel-out — as a faster corrective; the 5b-ii
+  modelling (01-09-26) found the level term alone converges cleanly and a naive flow term destabilised it, so
+  flow is **deferred to a possible refinement**, §4.2.)*
 - **The setpoint is demand-relative.** The target reserve scales with **aggregate consumption** ("hold N
   cycles' worth of total draw, plus a buffer"), so the whole loop is scale-invariant — it behaves the same in a
   3-guild galaxy and a 30-guild one.
@@ -231,9 +233,10 @@ line with supply. Each cycle **resolves** and sets the next cycle's fuel price.
   replenishment, calibrated against **average consumption over a trailing window.**
 - **The starting point is already playtested.** §8's port contract carries a reserve-based curve —
   `price = clamp(basePrice × (targetReserve / stockpile)^sensitivity, floor, ceiling)` — that produced the full
-  squeeze signature when five guilds hand-played it. Use it as the level term; add the flow term above. **OPEN:
-  the exact coefficients (base, target, sensitivity, floor, ceiling, the flow weight, the trailing window) are a
-  SIM/spreadsheet job, not a prose job** — do not invent them here.
+  squeeze signature when five guilds hand-played it. Use it as the level term. **RESOLVED by the 5b-ii
+  modelling (01-09-26):** the coefficients are ruled `[FIRST-CUT]` from a simulation validated against the
+  recorder's real integer grants — see §4.2 / 5b-ii and `phase-1-tuning.md`. The flow term is **deferred** (it
+  did not help in the model), so its weight is no longer an open coefficient.
 
 ### 4.1 The crunch edge — where "credit, not share" necessarily bends
 
@@ -301,12 +304,43 @@ something the ruling did not name:
   asserted with that one field stripped — including the committed 40-tick run, which crosses ten cycle boundaries
   and issues ten cycles of grants. Three new hashes pin the price-inclusive state beside them.
 
-**5b-ii — the controller (the feedback loop; coefficients `[SHEET]`).** Each cycle sets NEXT cycle's
-`fuelPrice` from the **level** term (the reserve curve `clamp(base · (target / reserve)^sensitivity, floor,
-ceil)`) plus the **flow** term (deuterium-in vs fuel-out), against a **demand-relative** target (§4). Its
-coefficients — base, target-as-cycles-of-draw, sensitivity, floor, ceiling, flow weight, trailing window — are
-the SIM job §4 names; they are **calibrated against the multi-guild recorder** (`tools/run_economy.js`), never
-invented. NOT built by 5b-i.
+**5b-ii — the controller (level-only; ruled 01-09-26; coefficients `[FIRST-CUT]`, modelled).** Each cycle, AFTER
+issuance, the controller sets NEXT cycle's `reserve.fuelPrice` from the reserve **level** against a
+**demand-relative** target. The pool is its own integrator: draining below target raises the price until draw
+falls back to the influx, so the controller **discovers the equilibrium price for any galaxy without hardcoding
+it** — scale-invariant by construction.
+
+- **The curve:** `nextPrice = clamp(REFERENCE_FUEL_PRICE · (target / max(1, reserveLevel))^PRICE_SENSITIVITY,
+  PRICE_FLOOR, PRICE_CEIL)`. **`basePrice = REFERENCE_FUEL_PRICE`** — no new base-price number; the price sits at
+  the reference exactly when the pool is at target, rises above it when draining, falls below when filling.
+- **The demand-relative target:** `target = TARGET_CYCLES · avgDraw`, where `avgDraw` is a smoothed (EMA) trailing
+  average of the total physical fuel granted per cycle — a new **serialized** field `reserve.avgDraw`, seeded to
+  `DEUTERIUM_INFLUX_PER_CYCLE` (a balanced-galaxy opening assumption). The target scales with consumption, so a
+  3-guild and a 30-guild galaxy behave the same.
+- **`[FIRST-CUT]` coefficients — modelled, then validated against the recorder's REAL integer grants (workings in
+  `phase-1-tuning.md`):** `PRICE_SENSITIVITY = 1.5`, `TARGET_CYCLES = 3`, `DRAW_EMA_ALPHA = 0.22` (≈ an 8-cycle
+  window), `PRICE_FLOOR = 2`, `PRICE_CEIL = 40`. In the discrete simulation the pool converges with **no
+  oscillation and no draw jitter**, and absorbs a 2× demand jump in ~9 cycles; equilibrium prices run ~2–30 across
+  0.2×–3× draw:influx galaxies, which the floor and ceiling bracket.
+- **The 5b-i guard becomes a floor.** `PRICE_FLOOR > 0` is what makes the controller respect `physicalGrantFor`'s
+  divide-by-price guard (§4.2, 5b-i AS BUILT): the price the controller writes can never reach 0.
+- **Ordering (§15.6 step 6; §8 "price posted this cycle governs next"):** issuance runs at the CURRENT price; the
+  controller then reads this cycle's realized draw and the resulting pool level and writes the price for the NEXT
+  cycle. The first cycle uses the seeded reference price.
+- **The recorder is the proof.** With the controller, the recorder scenario's pool **stabilises** instead of
+  bleeding to zero — the headline demonstration. The scenario and its test are updated: normal load now converges
+  (no rationing), and a **genuine-crisis** load — draw exceeding what even `PRICE_CEIL` can throttle — still
+  exercises the rationing edge (§4.1). The committed trace changes to show the stabilisation.
+- **NOT a no-op — this is the behaviour change.** The price moves and draw bends to supply. `reserve.avgDraw` is a
+  new serialized field (strip-proven where no cycle boundary is crossed); runs that cross boundaries re-pin with
+  the new, stabilising trajectory.
+
+**Flow — deferred, not dropped (`[DEFERRED]` → possible 5b-iii).** §4's original design read the FLOW
+(deuterium-in vs fuel-out) as a faster corrective. The 5b-ii modelling found the level term alone converges
+cleanly and a *naive* flow term made things worse — deeper dips, ~5× slower recovery, and at higher weight it
+crashed the pool to zero fighting the level term. So flow is **deferred to a possible later slice** if playtesting
+shows the ~9-cycle recovery from a demand shock feels sluggish; a proper derivative/damping form would be modelled
+to be *stably* faster than level-only before it is built. Its weight is not a `[FIRST-CUT]` coefficient today.
 
 ## 5. Who feels the scarcity (left organic — watch one dial)
 

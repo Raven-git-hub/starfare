@@ -292,7 +292,23 @@ in invariant 1 — not a new field. **Still NOT built:** the reserve/flow **pric
 makes a fixed influx against a variable draw self-correct; until it lands, a small galaxy over-fills and a large
 one rations, exactly as the rationale column says.*
 
-**`REFERENCE_FUEL_PRICE` `[FIRST-CUT]` 10 *(slice 5b-i, 01-09-26; ✅ BUILT 01-09-26, `sim/fuel.js`)*.** The price at which `BASE_GRANT_PER_GP`'s "5 fuel/GP" is calibrated — a guild draws its full `round(BASE_GRANT_PER_GP · GP · modifier)` entitlement when `reserve.fuelPrice` sits here. It takes the value of the retired `FLAT_FUEL_PRICE_PER_UNIT` (10), so 5b-i is byte-identical; `reserve.fuelPrice` is seeded to it and held there until **5b-ii**'s controller moves it. Physical grant = `round(entitlement · REFERENCE_FUEL_PRICE / reserve.fuelPrice)`; hoard value = `round(fuelHoard · reserve.fuelPrice)` — one price, both uses. The 5b-ii price-curve coefficients (base, target, sensitivity, floor, ceiling, flow weight, window) remain the `[SHEET]` job §4 names.
+**`REFERENCE_FUEL_PRICE` `[FIRST-CUT]` 10 *(slice 5b-i, 01-09-26; ✅ BUILT 01-09-26, `sim/fuel.js`)*.** The price at which `BASE_GRANT_PER_GP`'s "5 fuel/GP" is calibrated — a guild draws its full `round(BASE_GRANT_PER_GP · GP · modifier)` entitlement when `reserve.fuelPrice` sits here. It takes the value of the retired `FLAT_FUEL_PRICE_PER_UNIT` (10), so 5b-i is byte-identical; `reserve.fuelPrice` is seeded to it and held there until **5b-ii**'s controller moves it. Physical grant = `round(entitlement · REFERENCE_FUEL_PRICE / reserve.fuelPrice)`; hoard value = `round(fuelHoard · reserve.fuelPrice)` — one price, both uses. **The 5b-ii controller coefficients — `[FIRST-CUT]`, MODELLED (01-09-26; not invented).** Derived from a
+discrete simulation of the pool dynamics and validated against the recorder's REAL integer grants. The level-only
+controller is `nextPrice = clamp(REFERENCE_FUEL_PRICE × (target / max(1, reserveLevel))^PRICE_SENSITIVITY,
+PRICE_FLOOR, PRICE_CEIL)` with `target = TARGET_CYCLES × avgDraw` and `basePrice = REFERENCE_FUEL_PRICE` (so no new
+base-price number).
+
+| Constant | `[FIRST-CUT]` | Rationale (from the model) |
+|---|---|---|
+| `PRICE_SENSITIVITY` | **1.5** | Curve steepness. The pool converges with zero oscillation for s ≤ ~2.0; s ≥ 3 starts to ripple. 1.5 leaves a healthy settled buffer. |
+| `TARGET_CYCLES` | **3** | Target reserve = `3 × avgDraw`. Sets where the pool settles (≈ 2.6 cycles of draw in the recorder galaxy); larger = fatter buffer, smaller = leaner. |
+| `DRAW_EMA_ALPHA` | **0.22** | Smoothing of the trailing draw average (`avgDraw = α·draw + (1−α)·avgDraw`), ≈ an 8-cycle window. `reserve.avgDraw` is seeded to `DEUTERIUM_INFLUX_PER_CYCLE`. |
+| `PRICE_FLOOR` | **2** | Lower price bound — lets an over-supplied galaxy (equilibrium price ~2 at 0.2× draw:influx) cheapen fuel. Also `> 0`, satisfying `physicalGrantFor`'s divide-by-price guard. |
+| `PRICE_CEIL` | **40** | Upper bound — caps the throttle. Equilibrium prices reach ~30 at 3× draw:influx; beyond the ceiling the pool rations (the crunch edge, `fuel-supply-and-allocation.md §4.1`). |
+
+Validated: on the recorder galaxy the pool converges to draw = influx with **no oscillation and no draw jitter**,
+and recovers from a 2× demand jump in ~9 cycles. **The FLOW weight is deliberately NOT here** — the flow term is
+deferred (it destabilised the model); see `fuel-supply-and-allocation.md §4.2`.
 
 ⚠ **IT IS NOT A TUNING DIAL — IT IS A CALIBRATION ANCHOR, and the distinction matters for whoever retunes next.** `REFERENCE_FUEL_PRICE` and `BASE_GRANT_PER_GP` are two halves of ONE number: "5 fuel per Guild Point, at a price of 10". Moving the reference alone does **not** make fuel dearer — it silently rescales every grant in the galaxy by the ratio, because the grant is `entitlement × REFERENCE / price`. To make fuel dearer, move `reserve.fuelPrice` (5b-ii's job); to change how generous issuance is, move `BASE_GRANT_PER_GP`. The reference should move only alongside a deliberate re-denomination of the fuel economy, and when it does, **every determinism golden in the suite moves with it** — which is the honest signal, not a nuisance.
 
