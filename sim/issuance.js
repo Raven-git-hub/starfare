@@ -13,9 +13,22 @@
 //
 // THE SECOND LINE IS SLICE 5b-i (01-09-26) and it is the price lever: an entitlement is
 // what reputation-against-size earns you AT THE REFERENCE PRICE, and what it BUYS depends
-// on what fuel currently costs. 5b-i holds `reserve.fuelPrice` at the reference, so the
-// ratio is exactly 1.0 and the second line is an identity — the plumbing lands with no
-// behaviour change. 5b-ii's controller is what makes the price move.
+// on what fuel currently costs.
+//
+// AND SLICE 5b-ii (01-09-26) MAKES THAT PRICE LIVE — the third line, and the one that
+// closes the loop:
+//
+//     nextPrice = clamp( REFERENCE_FUEL_PRICE × (TARGET_CYCLES·avgDraw / reserveLevel)^s,
+//                        PRICE_FLOOR, PRICE_CEIL )
+//
+// THE POOL IS ITS OWN INTEGRATOR, which is the idea the whole controller rests on. Nobody
+// computes an equilibrium price and nobody could: it depends on how many guilds there are,
+// how big they are and how well they are doing, all of which move. Instead the pool
+// REMEMBERS the imbalance — every cycle that draws more than the influx leaves the level
+// lower, which raises the price, which shrinks next cycle's grants. The loop settles
+// exactly where total draw equals the influx, whatever galaxy it is running in. That is why
+// the target is DEMAND-RELATIVE (`TARGET_CYCLES × avgDraw`) rather than an absolute number
+// of units: a 3-guild galaxy and a 30-guild one behave identically.
 //
 // THIS IS WHERE FUEL FINALLY MOVES. Slice 1 seeded a hoard, slice 2 quoted a route, slice
 // 3 burned it on a purchase, and slices 3-4 built the Points/reputation pair that decides
@@ -89,6 +102,54 @@ const DEUTERIUM_INFLUX_PER_CYCLE = 800;
 // number into the constructor would move every fixture for nothing.
 const POOL_SEED = 4000;
 
+// ── THE PRICE CONTROLLER'S FIVE COEFFICIENTS (slice 5b-ii, §4.2) ─────────────────────
+//
+// `[FIRST-CUT]`, and — unusually for this repo — **MODELLED rather than picked**. They come
+// from a discrete simulation of the pool dynamics validated against the recorder's REAL
+// integer grants, and their workings are in docs/phase-1-tuning.md, which is where a
+// retune reads them from. Nothing here invents a number, and there is deliberately no
+// sixth: `basePrice` is `REFERENCE_FUEL_PRICE` (so the price sits exactly at the reference
+// when the pool is exactly at target) rather than a new base-price constant of its own.
+
+// PRICE_SENSITIVITY — how steeply the price answers a pool that is off target.
+//
+// `[FIRST-CUT]` 1.5. The exponent on the level ratio. The model converges with ZERO
+// oscillation for s ≤ ~2.0 and starts to ripple at s ≥ 3, so this sits with room to spare;
+// it also decides how far the settled pool sits from target (a gentler curve needs a bigger
+// gap to hold the same price).
+const PRICE_SENSITIVITY = 1.5;
+
+// TARGET_CYCLES — the target reserve, in CYCLES OF DRAW rather than units.
+//
+// `[FIRST-CUT]` 3: hold three cycles' worth of what the galaxy actually draws. This is the
+// scale-invariance: the setpoint is demand-relative, so it is the same rule for a galaxy of
+// three guilds and one of thirty. It sets where the pool settles — bigger is a fatter
+// buffer, smaller a leaner one.
+const TARGET_CYCLES = 3;
+
+// DRAW_EMA_ALPHA — how fast the trailing draw average follows the galaxy's real demand.
+//
+// `[FIRST-CUT]` 0.22: `avgDraw = α·draw + (1−α)·avgDraw`, roughly an 8-cycle window. The
+// average is what stops the target chasing one cycle's noise — a guild founding, a venture
+// landing, a modifier stepping — while still tracking a real change in the galaxy's size.
+const DRAW_EMA_ALPHA = 0.22;
+
+// PRICE_FLOOR / PRICE_CEIL — the bounds the curve is clamped to.
+//
+// `[FIRST-CUT]` 2 and 40. Modelled equilibrium prices run ~2–30 across galaxies drawing
+// 0.2×–3× the influx, so the bracket contains the whole healthy band and only bites at the
+// extremes. The CEILING is where the crunch edge lives (§4.1): a galaxy whose demand
+// exceeds what a price of 40 can throttle pins there and rations, which is correct — a fuel
+// crisis SHOULD feel like rationing.
+//
+// ⚠ THE FLOOR IS ALSO A SAFETY PROPERTY, not just a game number. `physicalGrantFor` divides
+// by the price and throws on a price that is not `> 0` (slice 5b-i's guard, written when
+// nothing yet wrote the field). `PRICE_FLOOR > 0` is what makes that guard UNREACHABLE from
+// a controller-written price: the controller cannot produce a zero. The guard stays anyway
+// — it now covers a hand-built fixture or a future writer, not the controller.
+const PRICE_FLOOR = 2;
+const PRICE_CEIL = 40;
+
 // grantFor(state, guild) -> the fuel this guild is DUE this cycle, an integer ≥ 0.
 //
 // `round(BASE_GRANT_PER_GP × GP × modifier)`. THE ROUNDING IS RULED HERE and nowhere else
@@ -144,6 +205,67 @@ function physicalGrantFor(state, guild) {
   return Math.round(grantFor(state, guild) * REFERENCE_FUEL_PRICE / price);
 }
 
+// ── THE CONTROLLER (slice 5b-ii) ─────────────────────────────────────────────────────
+//
+// Three small pure functions, deliberately separate rather than one that takes `state`:
+// each is a single rule, each is testable on its own, and none of them touches state or
+// knows where a galaxy keeps it. The tick step is what wires them together, and it is the
+// only place the order between them is decided.
+
+// targetReserve(avgDraw) -> the reserve level the controller is steering the pool TO.
+//
+// `TARGET_CYCLES × avgDraw` — "hold three cycles' worth of what this galaxy actually
+// draws". THE ONE DEFINITION OF THE TARGET (§15.5 invariant 5): the curve below reads it,
+// the snapshot publishes it, and the recorder shows it, all from here — nobody multiplies
+// by `TARGET_CYCLES` a second time.
+function targetReserve(avgDraw) {
+  return TARGET_CYCLES * avgDraw;
+}
+
+// nextAvgDraw(avgDraw, cycleDemand) -> the updated trailing average of galaxy demand.
+//
+// A plain EMA, `α·demand + (1−α)·avgDraw`. A float by nature (§15.2's sanctioned
+// non-integer: it AVERAGES a quantity, it does not count one), so it is not rounded — the
+// rounding to integer fuel happens where fuel is granted, not here.
+//
+// ⚠ `cycleDemand` IS Σ DESIRED, NOT Σ GRANTED. Granted is clipped by the pool; desired is
+// what the galaxy actually wants at the current price. If the average followed GRANTS, a
+// galaxy in shortfall would report falling demand precisely because it was being starved,
+// the demand-relative target would shrink with it, and the price would ease exactly when the
+// shortfall was worst. Outside a crunch the two readings are identical, so this only ever
+// bites at the edge — and it bites hardest in a PARTIAL shortfall, where the price still has
+// room to move (at a fully empty pool both readings clamp to the ceiling anyway).
+function nextAvgDraw(avgDraw, cycleDemand) {
+  return DRAW_EMA_ALPHA * cycleDemand + (1 - DRAW_EMA_ALPHA) * avgDraw;
+}
+
+// nextFuelPrice(reserveLevel, avgDraw) -> the price NEXT cycle issues at.
+//
+//     clamp( REFERENCE_FUEL_PRICE × (target / reserveLevel)^PRICE_SENSITIVITY,
+//            PRICE_FLOOR, PRICE_CEIL )
+//
+// Pool AT target ⇒ the ratio is 1 ⇒ the price is exactly `REFERENCE_FUEL_PRICE`, which is
+// why the reference doubles as the base price and no new base number was needed. Pool BELOW
+// target (draining) ⇒ ratio > 1 ⇒ the price RISES, so the same entitlement buys less and
+// draw falls. Pool ABOVE target (filling) ⇒ the price FALLS and the economy is allowed to
+// grow. That sign is the feedback; getting it backwards would amplify a crunch instead of
+// easing it, and a test pins it in both directions.
+//
+// `Math.max(1, reserveLevel)` is the divide-by-zero guard, and 1 rather than a tuned
+// epsilon because the pool is INTEGER fuel: 1 is the smallest non-zero level it can
+// actually hold, so this is the pool's own next value up, not a number chosen for the
+// arithmetic. An empty pool therefore reads as "maximally short" and the clamp takes the
+// answer to `PRICE_CEIL`, which is exactly right.
+//
+// PURE, and it takes the level and the average rather than `state`: the same discipline
+// `fuelValue` follows in sim/fuel.js. The CALLER decides which level to pass — the tick
+// passes the POST-issuance pool, this cycle's realised level (§4.2).
+function nextFuelPrice(reserveLevel, avgDraw) {
+  const ratio = targetReserve(avgDraw) / Math.max(1, reserveLevel);
+  const raw = REFERENCE_FUEL_PRICE * (ratio ** PRICE_SENSITIVITY);
+  return Math.min(PRICE_CEIL, Math.max(PRICE_FLOOR, raw));
+}
+
 // rationGrants(desired, pool) -> what each guild ACTUALLY receives, same order, integers.
 //
 // THE CRUNCH EDGE (§4.1, and invariant 1's hard floor). When the cycle's grants come to
@@ -194,5 +316,7 @@ function rationGrants(desired, pool) {
 
 module.exports = {
   BASE_GRANT_PER_GP, DEUTERIUM_INFLUX_PER_CYCLE, POOL_SEED,
+  PRICE_SENSITIVITY, TARGET_CYCLES, DRAW_EMA_ALPHA, PRICE_FLOOR, PRICE_CEIL,
   grantFor, physicalGrantFor, rationGrants,
+  targetReserve, nextAvgDraw, nextFuelPrice,
 };

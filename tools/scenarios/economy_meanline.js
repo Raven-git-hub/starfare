@@ -12,12 +12,16 @@
 //   - ONE GUILD EXPANDS MID-RUN. At tick T the world driver gives Reach a seventh mine.
 //     Its Points rise at once while the reputation to pay for them does not, so its
 //     modifier falls further — and its DRAW FALLS WITH IT. Expanding makes it draw LESS.
-//   - THE POOL BLEEDS, THEN RATIONS. Σdesired is above the fixed influx, so every cycle
-//     takes out more than it puts back. The opening cycles are paid in full; once the pool
-//     can no longer cover the galaxy's draw, `rationGrants` clips everyone proportionally
-//     and the pool sits at exactly 0 from there on. That crossing is the whole point: it is
-//     the fixed-influx-vs-variable-draw drift that slice 5b's price controller exists to
-//     correct, made watchable rather than argued about.
+//   - ⚠ THE POOL STABILISES. **This is what slice 5b-ii changed, and it is the headline.**
+//     Σdesired opens ABOVE the fixed influx, so the first cycle takes out more than it puts
+//     back and the pool dips. Under 5a and 5b-i that drift never reversed: the pool bled to
+//     zero and `rationGrants` clipped everyone from there on, permanently, because nothing
+//     pulled draw back under supply. That was the whole motivation for 5b, and this scenario
+//     existed to make it watchable. With the controller live the price rises as the pool
+//     falls, draw bends down to meet the influx, and the pool CONVERGES on the controller's
+//     demand-relative target instead — no rationing at all. The un-rationed convergence IS
+//     the demonstration now; the rationing edge moved to `buildCrisisScenario` below, which
+//     still exercises it at a load no price can throttle.
 //
 // ── EVERY NUMBER HERE IS A `[FIXTURE]`, NOT A GAME CONSTANT ────────────────────────────
 // The guild shapes, the seeded reputations, the seeded pool and the run length are the
@@ -61,10 +65,13 @@ const FIXTURES = Object.freeze({
   // mean a trace that is almost all quiet ticks.
   windowN: 4,
 
-  // [FIXTURE] Run length: 11 cycle boundaries at N=4. Chosen so the rationing crossing
-  // (cycle 8, below) lands with a clear un-rationed run before it and a clear rationed tail
-  // after it, rather than at either end where it could be missed.
-  ticks: 44,
+  // [FIXTURE] Run length: 20 cycle boundaries at N=4. Lengthened from 44 for slice 5b-ii:
+  // the arc is no longer "bleed, then ration" (which was over in eleven cycles) but "dip,
+  // correct, converge", and a settled TAIL is the part worth seeing — the last several
+  // cycles move the pool by a handful of units and the price by hundredths. Twenty cycles
+  // reaches pool ~2079 / price ~12.20 / draw ~796 against an influx of 800, close enough to
+  // the settled point that the convergence is unmistakable without printing sixty rows.
+  ticks: 80,
 
   // [FIXTURE] The reputation each seeded venture carries at tick 0. This is where a venture
   // that has always met its commitments PARKS — the §2.3 gain taper shrinks its gains to
@@ -74,10 +81,29 @@ const FIXTURES = Object.freeze({
   // rationing as the only things moving in the trace.
   ventureRP: 1497,
 
-  // [FIXTURE] The Syndicate pool at tick 0. Sized (with the shapes below) so roughly seven
-  // cycles are paid in full before the pool can no longer cover the draw. Scenario-local:
-  // it does NOT touch `POOL_SEED`, the galaxy-creation constant the zero-state uses.
+  // [FIXTURE] The Syndicate pool at tick 0. Deliberately BELOW where the controller will
+  // settle it, so the run opens with the pool genuinely off target and the correction is
+  // something the trace shows happening rather than something it starts already having
+  // done. Scenario-local: it does NOT touch `POOL_SEED`, the galaxy-creation constant the
+  // zero-state uses. (Under 5a this number sized how many cycles were paid in full before
+  // the pool bled out; it is kept unchanged so the two traces are comparable.)
   seededPool: 1400,
+
+  // [FIXTURE] The crisis run's dials — see `buildCrisisScenario` below.
+  //
+  // `crisisWings` 5: how many copies of the producing roster the crisis galaxy holds. Five
+  // because Σ entitlement per wing is ~987, and a galaxy pinned at the engine's PRICE_CEIL
+  // still draws `Σ × REFERENCE / CEIL` = Σ/4 — so four wings would only just exceed the
+  // influx, while five (Σ ~4935, ~1234 at the ceiling against 800 in) is a decisive,
+  // unmistakable crunch. Stated as the arithmetic rather than as a magic number, and it is
+  // a FIXTURE: it tunes this scenario's load, not the engine's ceiling.
+  crisisWings: 5,
+  // `crisisTicks` 60: fifteen cycles — enough for a clear un-rationed opening, the crossing,
+  // and a rationed tail, the same three-part shape the 5a trace had.
+  crisisTicks: 60,
+  // `crisisPool` 6000: a fat opening buffer, so the run genuinely starts paid-in-full and
+  // the crossing is something that HAPPENS rather than the state it opens in.
+  crisisPool: 6000,
 
   // [FIXTURE] The tick the world driver gives Reach its seventh mine — early, so most of
   // the run is spent on the post-expansion draw and the fall in Reach's own grant is
@@ -181,26 +207,34 @@ function shapeGuild(spec, systemIds) {
   return ventures;
 }
 
-// makeState() — a FRESH tick-0 state for one run. Pure and deterministic: the same call
-// always assembles byte-identical state (no `Date`, no `Math.random`).
-function makeState() {
+// makeStateFrom(roster, opts) — a FRESH tick-0 state for one run. Pure and deterministic:
+// the same call always assembles byte-identical state (no `Date`, no `Math.random`).
+//
+// TAKES ITS ROSTER AND ITS POOL AS ARGUMENTS (generalised for the crisis scenario, slice
+// 5b-ii) so the four-guild run and the multi-wing crisis run are the SAME assembly code
+// with different fixtures — the crisis is "more of these guilds", not "different guilds",
+// which is exactly the claim it exists to make. `expansionGuildId` is the one guild that
+// must be seated on `EXPANSION_SYSTEM` (the mid-run expansion needs a real node there);
+// pass null when there is no expansion and no system is reserved.
+function makeStateFrom(roster, { seededPool, expansionGuildId }) {
   const claims = [];
   const guilds = [];
   let nextSystem = 0;
 
-  for (const spec of GUILDS) {
-    // Reach is dealt EXPANSION_SYSTEM first so it holds the ground the world driver later
-    // expands onto; every other guild takes the next unused starter systems in seed order.
+  for (const spec of roster) {
+    // The expansion guild is dealt EXPANSION_SYSTEM first so it holds the ground the world
+    // driver later expands onto; every other guild takes the next unused starter systems in
+    // seed order.
     const systemIds = [];
     for (let i = 0; i < spec.systems; i += 1) {
       let sysId;
-      if (spec.id === 'reach-guild' && i === 0) {
+      if (expansionGuildId && spec.id === expansionGuildId && i === 0) {
         sysId = EXPANSION_SYSTEM;
       } else {
         do {
           sysId = STARTER_SYSTEMS[nextSystem % STARTER_SYSTEMS.length];
           nextSystem += 1;
-        } while (sysId === EXPANSION_SYSTEM);
+        } while (expansionGuildId && sysId === EXPANSION_SYSTEM);
       }
       systemIds.push(sysId);
       claims.push({
@@ -231,8 +265,11 @@ function makeState() {
 
   const state = createState({
     guilds,
-    // [FIXTURE] the seeded Syndicate pool — see FIXTURES.seededPool.
-    reserve: { reserveLevel: FIXTURES.seededPool },
+    // [FIXTURE] the seeded Syndicate pool. `fuelPrice` and `avgDraw` are deliberately NOT
+    // passed: `createReserve` opens them at the reference price and the balanced-galaxy
+    // draw assumption, which is where a real galaxy starts, and letting the controller find
+    // its own way from there is the whole demonstration.
+    reserve: { reserveLevel: seededPool },
     syndicate: { ledger: 0 },
     windowN: FIXTURES.windowN,
     claims,
@@ -247,6 +284,15 @@ function makeState() {
     g.guildReputation = (g.ventures || []).reduce((n, v) => n + (v.reputation || 0), 0);
   }
   return state;
+}
+
+// The four-guild scenario's own state: the standard roster, the standard pool, and Reach
+// seated where the mid-run expansion can land.
+function makeState() {
+  return makeStateFrom(GUILDS, {
+    seededPool: FIXTURES.seededPool,
+    expansionGuildId: 'reach-guild',
+  });
 }
 
 // buildScenario() — the full spec the recorder consumes.
@@ -297,4 +343,56 @@ function buildScenario() {
   };
 }
 
-module.exports = { buildScenario, makeState, FIXTURES, GUILDS };
+// ── THE CRISIS SCENARIO (slice 5b-ii) ────────────────────────────────────────────────
+//
+// WHY IT EXISTS. Once the controller is live the four-guild run above stops rationing —
+// which is the win, and which would also quietly retire the only test in this repo that
+// exercises `rationGrants`'s clip through a real multi-cycle run. §4.1's crunch edge is
+// still real and still ruled: a galaxy CAN out-draw what any price can throttle, and when
+// it does, grants are clipped and the pool sits at zero. So the rationing demonstration
+// moves here rather than being lost.
+//
+// ⚠ IT IS THE SAME GUILDS, JUST MORE OF THEM, and that is the point it is shaped to make.
+// Nothing about a guild changes — same footprints, same seeded reputations, same modifiers,
+// same per-guild draw. The galaxy is simply five WINGS of the producing roster instead of
+// one. So the crisis is not "we made a weird guild"; it is "this galaxy is too big for its
+// supply", which is exactly the condition §4.1 describes. It also demonstrates the LIMIT of
+// the controller's scale-invariance honestly: the demand-relative target means the loop
+// behaves the same at any size right up until the price it needs exceeds `PRICE_CEIL`, and
+// past that the clamp bites and rationing takes over — correctly, because a fuel crisis
+// SHOULD feel like rationing.
+//
+// No world driver and no bots: the expansion and the licence bots exist to give the
+// four-guild trace its mean-line story, and this run's subject is the fuel loop alone.
+const CRISIS_GUILDS = Object.freeze(
+  [...Array(FIXTURES.crisisWings)].flatMap((_, wing) => GUILDS
+    .filter((g) => g.mines > 0)                    // the empty guild adds no load; one is kept below
+    .map((g) => ({ ...g, id: `${g.id}-w${wing + 1}`, name: `${g.name} ${wing + 1}` })))
+    // One empty guild, so the empty-guild guard is exercised in the crunch too — the branch
+    // of `rationGrants` that must skip a zero-ask guild rather than hand it a remainder unit
+    // only runs in a rationed cycle, which is a case only this scenario reaches.
+    .concat(GUILDS.filter((g) => g.mines === 0 && g.systems === 0)),
+);
+
+function makeCrisisState() {
+  return makeStateFrom(CRISIS_GUILDS, {
+    seededPool: FIXTURES.crisisPool,
+    expansionGuildId: null,          // no expansion: no system needs reserving
+  });
+}
+
+// buildCrisisScenario() — the crunch-edge spec the recorder consumes.
+function buildCrisisScenario() {
+  return {
+    name: 'economy_crisis',
+    ticks: FIXTURES.crisisTicks,
+    makeState: makeCrisisState,
+    world: null,
+    bots: null,
+  };
+}
+
+module.exports = {
+  buildScenario, makeState, FIXTURES, GUILDS,
+  buildCrisisScenario, makeCrisisState, CRISIS_GUILDS,
+};

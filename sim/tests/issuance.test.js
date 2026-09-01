@@ -28,7 +28,8 @@ const { guildPoints } = require('../points.js');
 const { getStarterSystems } = require('../seed.js');
 const { issuanceModifier } = require('../meanline.js');
 const {
-  BASE_GRANT_PER_GP, DEUTERIUM_INFLUX_PER_CYCLE, POOL_SEED, grantFor, rationGrants,
+  BASE_GRANT_PER_GP, DEUTERIUM_INFLUX_PER_CYCLE, POOL_SEED,
+  grantFor, physicalGrantFor, rationGrants,
 } = require('../issuance.js');
 
 const N = 4;                                   // a short window, so a boundary is 4 ticks away
@@ -298,29 +299,74 @@ test('THE CRUNCH, through the real tick: an out-drawing galaxy rations to exactl
   });
 });
 
-test('a rationed galaxy keeps rationing, and never once goes negative', () => {
+test('a rationed galaxy RECOVERS — and never once goes negative on the way', () => {
+  // ⚠ REWRITTEN BY SLICE 5b-ii, AND THE REWRITE IS THE POINT OF THAT SLICE. This test used
+  // to assert the opposite: `pool === 0` on every one of eight cycles, "an out-drawing
+  // galaxy holds its pool at zero". That was true and correct under 5a, where nothing could
+  // pull draw back under supply, and it was the single clearest statement of the defect 5b
+  // exists to fix. With the controller live it is false by design — the price climbs, draw
+  // falls, and the pool refills. What SURVIVES unchanged is the hard floor: however the
+  // price moves, the pool is never negative and conservation holds every cycle.
+  //
+  // (A galaxy whose demand exceeds what even PRICE_CEIL can throttle DOES still ration
+  // permanently — §4.1's crunch edge is not abolished, only moved out of reach of ordinary
+  // loads. That case is pinned in fuel-controller.test.js, which is where it now belongs.)
   const specs = Array.from({ length: 4 }, (_, i) => ({ id: `g${i}`, systems: 2, mines: 8, rp: 8 * 1494 }));
   let s = galaxy(specs, 0);
-  for (let c = 0; c < 8; c += 1) {
+
+  s = runToBoundary(s);
+  assert.equal(pool(s), 0, 'cycle 1 still rations: the pool opens empty and the price is still the seed');
+  assertConserved(s, 'the opening rationed cycle');
+
+  for (let c = 2; c <= 10; c += 1) {
     s = runToBoundary(s);
-    assert.equal(pool(s), 0, `cycle ${c + 1}: an out-drawing galaxy holds its pool at zero`);
-    assertConserved(s, `rationed cycle ${c + 1}`);
+    assert.ok(pool(s) >= 0, `cycle ${c}: the pool is never negative, whatever the price does`);
+    assertConserved(s, `cycle ${c} under a moving price`);
   }
+  // The recovery really happened, rather than the loop simply not throwing.
+  assert.ok(pool(s) > 0, `the pool climbed back off zero (${pool(s)})`);
+  assert.ok(s.reserve.fuelPrice > 10, 'because fuel got dear — that is what pulled the draw down');
+  const finalDraw = s.guilds.reduce((n, g) => n + physicalGrantFor(s, g), 0);
+  assert.ok(finalDraw <= DEUTERIUM_INFLUX_PER_CYCLE + 20,
+    `and the settled draw ${finalDraw} is back under the influx, which is the whole loop`);
 });
 
-test('a BALANCED galaxy holds its pool across many cycles', () => {
-  // One par guild drawing ~149 a cycle against an 800/cycle influx: the pool grows.
+test('an UNDER-drawing galaxy accumulates, and the controller lets it GROW into the surplus', () => {
+  // ⚠ REWRITTEN BY SLICE 5b-ii, and this is the other half of the loop — the half §4
+  // describes as "reserve filling → lower price → credits buy more → the economy grows".
+  // The old version asserted `pool === previous + influx − due` with `due` a FIXED number,
+  // which is exactly what a static price gives you. It cannot hold now, and should not: a
+  // pool climbing above target makes fuel CHEAPER, so the same entitlement buys more and
+  // the guild's real draw rises cycle after cycle.
+  //
+  // One par guild drawing ~149 a cycle against an 800/cycle influx is a wildly over-supplied
+  // galaxy — the price falls all the way to `PRICE_FLOOR` and stays there, because even at
+  // the floor one small guild cannot spend 800 a cycle. That is the floor doing its job: it
+  // stops a rich galaxy from giving fuel away for nothing.
   let s = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 4482 }], POOL_SEED);
-  const due = grantFor(s, s.guilds[0]);
+  const entitlement = grantFor(s, s.guilds[0]);
   let previous = pool(s);
+  let previousDraw = physicalGrantFor(s, s.guilds[0]);
+  assert.equal(previousDraw, entitlement, 'the first cycle issues at the seeded reference price');
+
   for (let c = 1; c <= 12; c += 1) {
     s = runToBoundary(s);
-    assert.equal(pool(s), previous + DEUTERIUM_INFLUX_PER_CYCLE - due, `cycle ${c}: the pool moved by influx − draw`);
-    assert.ok(pool(s) > previous, 'and a galaxy drawing under its supply ACCUMULATES');
+    assert.ok(pool(s) > previous,
+      `cycle ${c}: a galaxy drawing under its supply still ACCUMULATES (${previous} -> ${pool(s)})`);
+    // Paid in full every cycle — an over-supplied galaxy never rations.
+    assert.equal(s.guilds[0].lastFuelGrant.granted, s.guilds[0].lastFuelGrant.desired,
+      `cycle ${c}: paid in full`);
+    const draw = physicalGrantFor(s, s.guilds[0]);
+    assert.ok(draw >= previousDraw, `cycle ${c}: cheaper fuel means the guild draws MORE, not less`);
     previous = pool(s);
-    assertConserved(s, `balanced cycle ${c}`);
+    previousDraw = draw;
+    assertConserved(s, `over-supplied cycle ${c}`);
   }
-  assert.equal(s.guilds[0].fuelHoard, 12 * due, 'twelve full grants, none rationed');
+  // The entitlement never moved — only what it BUYS did. That separation is the 5b-i design
+  // and it is what this test is really watching the controller exercise.
+  assert.equal(grantFor(s, s.guilds[0]), entitlement, 'reputation-against-size is untouched by price');
+  assert.ok(previousDraw > entitlement * 3, `yet it now draws ${previousDraw} against an entitlement of ${entitlement}`);
+  assert.ok(s.reserve.fuelPrice < 3, `because fuel has fallen to near the floor (${s.reserve.fuelPrice})`);
 });
 
 // --- 6. the hard floor, proven by trying to break it -------------------------------

@@ -27,6 +27,7 @@
 
 const { computeGalacticSupply } = require('./supply.js');
 const { REFERENCE_FUEL_PRICE, routeFuelCost, fuelValue } = require('./fuel.js');
+const { targetReserve, DEUTERIUM_INFLUX_PER_CYCLE } = require('./issuance.js');
 const { heldSystemIds } = require('./claims.js');
 const { guildPoints } = require('./points.js');
 const { expectedReputation, issuanceModifier } = require('./meanline.js');
@@ -297,6 +298,16 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // `creditCost` now mark against that price instead of the retired flat constant — the
 // same numbers today, because the price is seeded AT the constant's value, and moving
 // together the moment 5b-ii moves the price.
+// (01-09-26, the fuel price CONTROLLER — slice 5b-ii): `galacticSupply.fuel` gains
+// `avgDraw` and `targetReserve` — the trailing demand average the controller steers against
+// and the demand-relative level it is steering the pool TO (§4.2). ADDITIVE, and NO schema
+// bump; the same additive call `fuelPrice`, `foundingEndowment` and the rest each made.
+// `avgDraw` is ECHOED off state; `targetReserve` is DERIVED on read through the engine's own
+// `targetReserve` (sim/issuance.js), so a reader never multiplies by `TARGET_CYCLES` itself
+// and there is one definition of the target (invariant 5). Together with `fuelPrice` and
+// `reserve` these are the four numbers that explain any grant in the galaxy — which is what
+// lets the economy recorder show the controller working while importing nothing but the
+// snapshot.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -304,8 +315,10 @@ const SNAPSHOT_SCHEMA = 7;
 //     schemaVersion, tick,
 //     galacticSupply: {
 //       resources: { <every raw good>: int },          // all 17 keys, zero-filled
-//       fuel: { reserve, guildHeld, total, fuelPrice }, // total = reserve+guildHeld;
-//                                                       // fuelPrice = the ONE market price
+//       fuel: { reserve, guildHeld, total,             // total = reserve+guildHeld
+//               fuelPrice,                             // the ONE market price
+//               avgDraw, targetReserve },              // the controller's demand signal
+//                                                      //   and the level it steers to
 //     },
 //     syndicate: { ledger },
 //     prices: { <every non-fuel stockpile good>: <posted value> },  // sim/prices.js
@@ -365,6 +378,12 @@ function buildSnapshot(state) {
   const fuelPrice = state.reserve && state.reserve.fuelPrice !== undefined
     ? state.reserve.fuelPrice
     : REFERENCE_FUEL_PRICE;
+  // The controller's demand signal (slice 5b-ii), read the same defensive way and for the
+  // same reason: a hand-built partial state gets `createReserve`'s own opening assumption
+  // rather than a NaN target propagated through the fuel block.
+  const avgDraw = state.reserve && state.reserve.avgDraw !== undefined
+    ? state.reserve.avgDraw
+    : DEUTERIUM_INFLUX_PER_CYCLE;
 
   // Guild breakdown: copy the fields the inspector shows. stockpiles is spread
   // into a fresh object so a consumer mutating the snapshot can never reach back
@@ -755,13 +774,25 @@ function buildSnapshot(state) {
       // "how much fuel exists at all" line; it commits to nothing.
       //
       // `fuelPrice` — the galaxy's ONE market price of `deuterium_fuel`, echoed off
-      // `state.reserve.fuelPrice` (slice 5b-i, §4.2). ADDITIVE, no schema bump. It is
-      // published now, while it is still pinned at the reference and moves nothing, so
-      // that the console and the recorder are already watching the number 5b-ii's
-      // controller will start to move — the lever arrives with its instrument already
-      // reading. Every credit figure in this snapshot that touches fuel is this price
-      // times a quantity.
-      fuel: { reserve, guildHeld, total: reserve + guildHeld, fuelPrice },
+      // `state.reserve.fuelPrice` (slice 5b-i, §4.2). Every credit figure in this snapshot
+      // that touches fuel is this price times a quantity. Since slice 5b-ii the controller
+      // MOVES it each cycle, which is what the two figures beside it explain.
+      //
+      // `avgDraw` / `targetReserve` — the controller's own two numbers (slice 5b-ii): the
+      // trailing average of what the galaxy DESIRES each cycle, and `TARGET_CYCLES ×` it,
+      // the level the price is steering the pool to. Read them against `reserve` and the
+      // price stops being a mystery: pool below target ⇒ the price is rising, above ⇒
+      // falling, at it ⇒ the price is exactly `REFERENCE_FUEL_PRICE`. `avgDraw` is echoed
+      // off state; `targetReserve` is DERIVED here through the engine's own function, so
+      // the lens never carries a second copy of the rule (invariant 5).
+      fuel: {
+        reserve,
+        guildHeld,
+        total: reserve + guildHeld,
+        fuelPrice,
+        avgDraw,
+        targetReserve: targetReserve(avgDraw),
+      },
     },
     syndicate: { ledger: state.syndicate ? state.syndicate.ledger : 0 },
     // The posted Syndicate value per non-fuel good — the number the whole economy

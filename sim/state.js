@@ -26,6 +26,7 @@ const { seedPrices } = require('./prices.js');
 const { clonePriceHistory } = require('./price-history.js');
 const { ASSET_CONDITION_NEW } = require('./assets.js');
 const { REFERENCE_FUEL_PRICE } = require('./fuel.js');
+const { DEUTERIUM_INFLUX_PER_CYCLE } = require('./issuance.js');
 
 // cloneShipments(list) -> a deep-enough copy of the IN-FLIGHT rows. `cargo` is the
 // only nested object a shipment carries (§6: no origin, no route, no status), so
@@ -472,9 +473,26 @@ function createVehicle({
 // (sim/fuel.js) — so a reserve created without one sits at the reference, which is
 // also what 5b-i holds it at. That keeps every existing caller (the zero-state and
 // every fixture, all of which pass `{ reserveLevel }` alone) valid and unchanged.
-function createReserve({ reserveLevel, fuelPrice = REFERENCE_FUEL_PRICE }) {
+//
+// `avgDraw` — THE DEMAND SIGNAL the price controller steers against (§4.2, slice 5b-ii):
+// a smoothed trailing average of the total physical fuel the galaxy DESIRES each cycle,
+// from which the controller derives its demand-relative target (`targetReserve`). Also
+// real, serialized state, and for the same reason the price is: an EMA is memory, and the
+// controller reads last cycle's average to compute this one's.
+//
+// It DEFAULTS on the same reasoning as the price, and to `DEUTERIUM_INFLUX_PER_CYCLE` —
+// the BALANCED-GALAXY opening assumption. A galaxy at tick 0 has no history to average, so
+// the honest opening guess is "this galaxy draws what the Syndicate supplies", which puts
+// the target at `TARGET_CYCLES × influx` and lets the first few cycles of real demand pull
+// it wherever the galaxy actually sits. It invents no number: it IS the influx constant.
+// Like the price, the default keeps every `{ reserveLevel }` caller valid and unchanged.
+function createReserve({
+  reserveLevel,
+  fuelPrice = REFERENCE_FUEL_PRICE,
+  avgDraw = DEUTERIUM_INFLUX_PER_CYCLE,
+}) {
   if (reserveLevel === undefined) throw new Error('createReserve: reserveLevel is required');
-  return { reserveLevel, fuelPrice };
+  return { reserveLevel, fuelPrice, avgDraw };
 }
 
 // The Syndicate's credit-conservation balancing account (design.md invariant

@@ -304,7 +304,7 @@ something the ruling did not name:
   asserted with that one field stripped — including the committed 40-tick run, which crosses ten cycle boundaries
   and issues ten cycles of grants. Three new hashes pin the price-inclusive state beside them.
 
-**5b-ii — the controller (level-only; ruled 01-09-26; coefficients `[FIRST-CUT]`, modelled).** Each cycle, AFTER
+**5b-ii — the controller (level-only; ruled 01-09-26; ✅ BUILT 01-09-26; coefficients `[FIRST-CUT]`, modelled).** Each cycle, AFTER
 issuance, the controller sets NEXT cycle's `reserve.fuelPrice` from the reserve **level** against a
 **demand-relative** target. The pool is its own integrator: draining below target raises the price until draw
 falls back to the influx, so the controller **discovers the equilibrium price for any galaxy without hardcoding
@@ -335,7 +335,55 @@ it** — scale-invariant by construction.
   new serialized field (strip-proven where no cycle boundary is crossed); runs that cross boundaries re-pin with
   the new, stabilising trajectory.
 
-**Flow — deferred, not dropped (`[DEFERRED]` → possible 5b-iii).** §4's original design read the FLOW
+**AS BUILT (01-09-26)** — where each piece landed, the numbers the real engine produced, and the two places the
+build had to decide something this ruling did not name:
+
+- The five coefficients and three pure functions live in **`sim/issuance.js`**, beside `BASE_GRANT_PER_GP` and the
+  influx: `targetReserve(avgDraw)` (the ONE definition of the target), `nextAvgDraw(avgDraw, cycleDemand)` (the
+  EMA) and `nextFuelPrice(reserveLevel, avgDraw)` (the curve). Three small pure functions rather than one that
+  takes `state`: each is a single rule, each is testable alone, and the tick step is the only place the ORDER
+  between them is decided. `reserve.avgDraw` is on **`createReserve`** (`sim/state.js`), defaulting to
+  `DEUTERIUM_INFLUX_PER_CYCLE` on the same reasoning that let `fuelPrice` default in 5b-i — so every
+  `{ reserveLevel }` fixture in the repo stayed valid and unchanged.
+- **Wired at the END of `stepBaselineAllocation`** (§15.6 step 6): influx → issuance at the CURRENT price →
+  rationing → `reserveLevel -= moved` → the controller. It moves no fuel, so invariant 1 cannot see it.
+- ⚠ **THE ONE PLACE THE RULING'S WORDING AND THE BUILD DIVERGE: `avgDraw` averages Σ DESIRED, not Σ GRANTED.**
+  The bullet above calls it "a trailing average of the total physical fuel granted per cycle". Outside a crunch
+  those are the same number; inside one they are not, and **granted is the reading that breaks the loop** — a
+  galaxy in shortfall would report falling demand precisely *because* it was being starved, the demand-relative
+  target would shrink with it, and the price would ease exactly when the shortfall was worst. Concretely, on a
+  pool of 2000 with true demand averaging 1200: desired gives a target of 3600 and a price of ~24, granted-at-800
+  gives 2400 and ~15.7 — and the cheaper price buys **more** fuel out of a pool already short. So the build reads
+  **Σ desired**, the sum step 6 already computes at the `physicalGrantFor` line before rationing. (At a fully
+  empty pool both readings clamp to the ceiling and it makes no difference; it is the PARTIAL shortfall, where
+  the price still has room to move, that the choice decides.) The wording above is the ruling's; this note is the
+  correction, and a test pins it through the real tick.
+- ⚠ **A GUILD-LESS GALAXY NEVER RUNS THE CONTROLLER.** Step 6's pre-existing `guilds.length === 0` early return
+  sits before it. Deliberate rather than incidental: a galaxy with no players has no demand to average and
+  nothing that could draw at any price, so running the curve would drive `avgDraw` to 0, the target to 0 and the
+  price to the floor — a meaningless answer written into serialized state. It also keeps a guild-less run
+  byte-identical, which the zero-state's own tests rest on.
+- **What the real engine does**, against the model's predictions (`phase-1-tuning.md`): on the recorder galaxy the
+  pool converges to **~2100** and the price to **~12.17**, with draw at **799** against an influx of 800 — beside
+  the modelled 2108 / 12.15 / 800. **No oscillation**: the settled pool is monotone. A galaxy three times the size
+  settles at the same *draw* and the same *target* but a **smaller pool and a dearer price** (~1006 / ~36.8) —
+  worth stating, because "scale-invariant" reads as "identical in every column" and it is not: what is invariant
+  is the outcome, and the buffer is what the curve trades to produce the price that galaxy needs.
+- **The crunch edge survives, and is now the only way to reach rationing.** A galaxy whose demand exceeds what
+  `PRICE_CEIL` can throttle pins at 40 and rations exactly as 5a did. The recorder gained a second scenario for
+  it (`buildCrisisScenario` — five wings of the SAME guilds, so the crisis is "too big for its supply", not "a
+  strange guild"), because the four-guild run no longer rations and would otherwise have retired the repo's only
+  multi-cycle exercise of `rationGrants`'s clip. The ceiling is a **clamp, not a trap**: a galaxy whose load falls
+  climbs back off it, which is tested.
+- **Determinism, enumerated.** Runs that cross NO cycle boundary gained exactly `reserve.avgDraw` and nothing else
+  — every pre-slice hash in `persist.test.js` and the UNLICENSED run in `commitment-scaffold.test.js` is
+  UNCHANGED under a strip of that one field, and both are asserted to still carry the seeded price and average.
+  The COMMITTED run crosses ten boundaries, so the controller ran ten times and its three hashes moved **for the
+  behaviour change**, re-pinned with the pre-controller values kept beside them. Its inverted un-flow proof still
+  recovers the pre-5a bytes even though the amounts moved changed — which is the sharpest evidence that the
+  controller touched the fuel flows and nothing else.
+
+**Flow — deferred, not dropped (`[DEFERRED]` → possible 5b-iii; still deferred as built, 01-09-26).** §4's original design read the FLOW
 (deuterium-in vs fuel-out) as a faster corrective. The 5b-ii modelling found the level term alone converges
 cleanly and a *naive* flow term made things worse — deeper dips, ~5× slower recovery, and at higher weight it
 crashed the pool to zero fighting the level term. So flow is **deferred to a possible later slice** if playtesting

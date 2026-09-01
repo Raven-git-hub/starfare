@@ -2,6 +2,7 @@
 
 const { computeGalacticSupply } = require('../supply.js');
 const { REFERENCE_FUEL_PRICE } = require('../fuel.js');
+const { DEUTERIUM_INFLUX_PER_CYCLE } = require('../issuance.js');
 
 // A minimal, balanced synthetic state used only by the harness's own tests.
 // It is NOT the game's real starting scenario (that arrives with the walking
@@ -22,11 +23,16 @@ function goodState() {
       { id: 'g1', credits: 1000, fuelHoard: 10, influence: 5, stockpiles: {} },
       { id: 'g2', credits: 500, fuelHoard: 0, influence: 5, stockpiles: {} },
     ],
-    // The fuel price is REAL state (slice 5b-i), and this fixture is built by hand
-    // rather than through `createReserve`, so it carries the price explicitly — at the
-    // reference, which is where a galaxy opens. Named, never the literal 10: if the
-    // reference ever retunes, the fixture follows it instead of quietly going stale.
-    reserve: { reserveLevel: 30, fuelPrice: REFERENCE_FUEL_PRICE },
+    // The fuel price and the controller's demand average are REAL state (slices 5b-i and
+    // 5b-ii), and this fixture is built by hand rather than through `createReserve`, so it
+    // carries both explicitly — at the reference price and the balanced-galaxy draw, which
+    // is where a galaxy opens. Named, never the literals: if either retunes, the fixture
+    // follows it instead of quietly going stale.
+    reserve: {
+      reserveLevel: 30,
+      fuelPrice: REFERENCE_FUEL_PRICE,
+      avgDraw: DEUTERIUM_INFLUX_PER_CYCLE,
+    },
     syndicate: { ledger: -1500 },
     shipments: [],
     audit: { totalProduced: 40, totalConsumed: 0, expectedCreditTotal: 0 },

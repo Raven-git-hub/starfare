@@ -18,6 +18,7 @@ const { intake, createSetSyndicateCommitmentAction, createSetWindowNAction } = r
 const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { DEUTERIUM_INFLUX_PER_CYCLE } = require('../issuance.js');
+const { REFERENCE_FUEL_PRICE } = require('../fuel.js');
 const { getWindow } = require('../windows.js');
 const { BASE_PRICE } = require('../prices.js');
 const { previewProduction } = require('../production.js');
@@ -180,15 +181,15 @@ test('the injected N moves the boundary cadence (the window rolls at tick % N ==
 // boundary — no influx, no issuance, not one byte. Nothing happens off a boundary.
 const GOLDEN_UNLICENSED = '682e42e0dd758ce523fea882f6560707802cdd7e7b4def794f323430a4cfcff5';
 const GOLDEN_UNLICENSED_WITH_PRICES = 'ee6856cc520c23b8cc2cfdad996d463ccf35d40bb6b85b35f3a644a46d493647';
-const GOLDEN_COMMITTED_WITH_PRICES = '7746582b575acf4b1e239e255317dedc9655957e15187cbb7e9e0a6e86e22dbf';
+const GOLDEN_COMMITTED_WITH_PRICES = '73c5898fb177a178e936348e52f54a1bafbe40b51e7a14ca1123cf1953e33a15';
 // The three values the COMMITTED goldens held before fuel slice 5a, kept so the
 // un-flow proof below has something to prove against.
 const COMMITTED_WITH_PRICES_BEFORE_FUEL_FLOWS = 'e0255c73292645b5b785d818ec6e045f4bfb80e4b0a12f38814acb74947f8272';
 const GOLDEN_UNLICENSED_WITH_HISTORY = 'fa63aaf4cdaf8f11a38d26545f610605373acb659903fc2bf56c7869ced2dd5d';
-const GOLDEN_COMMITTED_WITH_HISTORY = 'd2cbb89b17224e20eb60af7e30d55e4142dd468edef97bc9446bdd1b829eae8c';
+const GOLDEN_COMMITTED_WITH_HISTORY = 'eefdefba00d449edb36c4574a257f8409749113850690dd21ab9cfe8386a0b94';
 const COMMITTED_WITH_HISTORY_BEFORE_FUEL_FLOWS = 'e145b1426637f5c53190c087a7b6727878d158d6d52715f57f879a43d367f30b';
 const GOLDEN_UNLICENSED_WITH_PRICE_HISTORY = '2415bafdf6336b48a68d57b3b75e3c0c1cf254c93367a58bc48df82cd963c0c6';
-const GOLDEN_COMMITTED_WITH_PRICE_HISTORY = '33021945d4660c785d2f287ba5a6c9cdb5385d541f9a4912e57fb8966ecf7d9b';
+const GOLDEN_COMMITTED_WITH_PRICE_HISTORY = '64dadc24acb9d030aec525f262d96dad054ff80112c0ddff6af58ef5f97bf1f4';
 const COMMITTED_WITH_PRICE_HISTORY_BEFORE_FUEL_FLOWS = 'ab265ad191810bf91be169349ef6cc1b5c3c6e8a7bd9de5b64fd6533e80fbc3f';
 
 // FUEL PRICE MEDIATION (01-09-26, slice 5b-i — docs/fuel-supply-and-allocation.md §4.2).
@@ -203,7 +204,36 @@ const COMMITTED_WITH_PRICE_HISTORY_BEFORE_FUEL_FLOWS = 'ab265ad191810bf91be16934
 // reference the grant is calibrated at, so the conversion is exactly ×1.0. The two new
 // full-state hashes are pinned below so a drift in the price itself is caught too.
 const GOLDEN_UNLICENSED_WITH_FUEL_PRICE = 'a1ce79e59803fac06442190980983d844cf0aec84143699f86dda7ab4aa73342';
-const GOLDEN_COMMITTED_WITH_FUEL_PRICE = '25698f3110ad93c791d9b01762438d92b0f3b8951036ea8fe94b4a8fe7a69b09';
+// (its pre-controller value was 25698f31…, kept in the note above as one of the three)
+const GOLDEN_COMMITTED_WITH_FUEL_PRICE = '7d84fe3902bf72efb0a3bdd503d044783357c374005fd4cf2f16c8c6db0ef1fc';
+
+// ⚠ THE FUEL PRICE CONTROLLER (01-09-26, slice 5b-ii — §4.2). THIS IS THE FIRST SLICE IN
+// THIS FILE'S HISTORY WHOSE COMMITTED GOLDENS MOVED FOR A REAL BEHAVIOUR CHANGE RATHER THAN
+// FOR AN ADDED FIELD, AND THAT IS CORRECT — it is the whole point of the slice. Two things
+// happened at once, and they are pinned separately so they cannot hide behind each other:
+//
+//   1. AN ADDED KEY. The reserve gains `avgDraw`. Like `fuelPrice` before it this is real
+//      serialized state, so both runs' FULL hashes moved for that reason alone, and the
+//      ordinary strip handles it: `withoutControllerState` takes both fields out.
+//   2. A CHANGED TRAJECTORY, on the COMMITTED run only. It runs `windowN` 4, so its 40 ticks
+//      cross TEN cycle boundaries, and at the end of each the controller now posts a new
+//      price. Every grant after the first is therefore a different number, the pool follows
+//      a different path, and the three stripped COMMITTED hashes MOVED. They are re-pinned
+//      below with the pre-controller values kept beside them.
+//
+// ⚠ AND THE UNLICENSED RUN'S FOUR STRIPPED HASHES DID NOT MOVE, WHICH IS ITSELF THE PROOF
+// THAT NOTHING INCIDENTAL CHANGED. `sysState` leaves `windowN` unset, so that run is on the
+// 1,440-tick default and its 40 ticks cross NO boundary: no influx, no issuance, no
+// controller. Not one byte of it moved beyond the added key. A slice that had touched
+// anything outside step 6's boundary block would have shown up there and nowhere else.
+const GOLDEN_UNLICENSED_WITH_CONTROLLER = 'dce841fcc12142222713220f37d068b22a9ca8fb15c013d7dc6518ede74d97dd';
+const GOLDEN_COMMITTED_WITH_CONTROLLER = 'e3a52bbbb16d733a4dd24e9160046bbcb4dcf73dec963ca39dbf036deb19f286';
+// The three values the COMMITTED goldens held under 5b-i — i.e. with the price present but
+// FROZEN at the reference. Kept so the re-pinning above is a comparison rather than an
+// assertion, and so the test below can show the delta is the controller and nothing else.
+const COMMITTED_WITH_PRICES_BEFORE_CONTROLLER = '7746582b575acf4b1e239e255317dedc9655957e15187cbb7e9e0a6e86e22dbf';
+const COMMITTED_WITH_HISTORY_BEFORE_CONTROLLER = 'd2cbb89b17224e20eb60af7e30d55e4142dd468edef97bc9446bdd1b829eae8c';
+const COMMITTED_WITH_PRICE_HISTORY_BEFORE_CONTROLLER = '33021945d4660c785d2f287ba5a6c9cdb5385d541f9a4912e57fb8966ecf7d9b';
 
 // The state minus the reserve's fuel price — everything the eight hashes above covered
 // before slice 5b-i. Stripped INSIDE `reserve`, leaving `reserveLevel` in place, so a
@@ -212,6 +242,13 @@ const withoutFuelPrice = (state) => {
   const { fuelPrice, ...reserve } = state.reserve;
   return { ...state, reserve };
 };
+// …and the controller's demand average, one slice later (5b-ii).
+const withoutAvgDraw = (state) => {
+  const { avgDraw, ...reserve } = state.reserve;
+  return { ...state, reserve };
+};
+// The two together — the whole of what the reserve gained across 5b.
+const withoutControllerState = (state) => withoutAvgDraw(withoutFuelPrice(state));
 // The state minus its price block — everything the pre-price-engine hash covered.
 const withoutPrices = (state) => { const { prices, ...rest } = state; return rest; };
 // The state minus every guild's production-history buffer — everything the pre-history
@@ -230,11 +267,17 @@ const withoutPriceHistory = (state) => { const { priceHistory, ...rest } = state
 test('NO-OP PROOF: an unlicensed run (no scaffold action) is byte-identical to pre-change HEAD', () => {
   let s = sysState([mine('t', 'titanium', 10, 0), mine('c', 'carbon_products', 10, 0), refinery('r', 'titanium_alloy', 2)]);
   for (let i = 0; i < 40; i += 1) s = tick(s);
-  assert.equal(hashState(withoutFuelPrice(withoutPriceHistory(withoutHistory(withoutPrices(s))))), GOLDEN_UNLICENSED, 'everything but the price block, the two history buffers and the fuel price is byte-identical to pre-change HEAD');
-  assert.equal(hashState(withoutFuelPrice(withoutPriceHistory(withoutHistory(s)))), GOLDEN_UNLICENSED_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
-  assert.equal(hashState(withoutFuelPrice(withoutPriceHistory(s))), GOLDEN_UNLICENSED_WITH_HISTORY, 'and with the production history back in, the ONLY delta from the pre-price-history engine is priceHistory');
-  assert.equal(hashState(withoutFuelPrice(s)), GOLDEN_UNLICENSED_WITH_PRICE_HISTORY, 'and with the price-history rings back in, the ONLY delta from the pre-5b-i engine is reserve.fuelPrice');
-  assert.equal(hashState(s), GOLDEN_UNLICENSED_WITH_FUEL_PRICE, 'and the fuel price itself is pinned');
+  assert.equal(hashState(withoutControllerState(withoutPriceHistory(withoutHistory(withoutPrices(s))))), GOLDEN_UNLICENSED, 'everything but the price block, the two history buffers and the fuel price is byte-identical to pre-change HEAD');
+  assert.equal(hashState(withoutControllerState(withoutPriceHistory(withoutHistory(s)))), GOLDEN_UNLICENSED_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
+  assert.equal(hashState(withoutControllerState(withoutPriceHistory(s))), GOLDEN_UNLICENSED_WITH_HISTORY, 'and with the production history back in, the ONLY delta from the pre-price-history engine is priceHistory');
+  assert.equal(hashState(withoutControllerState(s)), GOLDEN_UNLICENSED_WITH_PRICE_HISTORY, 'and with the price-history rings back in, the ONLY delta from the pre-5b-i engine is the two reserve fields');
+  assert.equal(hashState(withoutAvgDraw(s)), GOLDEN_UNLICENSED_WITH_FUEL_PRICE, 'with the price back in, the ONLY delta from the pre-5b-ii engine is reserve.avgDraw');
+  assert.equal(hashState(s), GOLDEN_UNLICENSED_WITH_CONTROLLER, 'and the demand average itself is pinned');
+  // ⚠ THE LOAD-BEARING PART. This run crosses NO boundary, so the controller never ran —
+  // which is why every hash above it held while the committed run's moved. If the price or
+  // the average had moved here, slice 5b-ii would have reached somewhere it must not.
+  assert.equal(s.reserve.fuelPrice, REFERENCE_FUEL_PRICE, 'the price never moved: no boundary, no controller');
+  assert.equal(s.reserve.avgDraw, DEUTERIUM_INFLUX_PER_CYCLE, 'and neither did the demand average');
   // The stripped-equals-old assertions above are only a proof if there is really
   // something to strip: an unlicensed run still MINES, so it still records history —
   // and 40 ticks crosses the fine bucket twice, so it really did record prices too.
@@ -249,10 +292,20 @@ test('a committed run seeded via createVenture (not the action) is pinned, and n
   // the intake surface, not the resolution.
   let s = sysState([mine('t', 'titanium', 10, 7), mine('c', 'carbon_products', 10, 5), refinery('r', 'titanium_alloy', 2)], 4);
   for (let i = 0; i < 40; i += 1) s = tick(s);
-  assert.equal(hashState(withoutFuelPrice(withoutPriceHistory(withoutHistory(s)))), GOLDEN_COMMITTED_WITH_PRICES, 'with both history buffers and the fuel price stripped, the committed run is byte-identical to its post-Slice-3a bytes');
-  assert.equal(hashState(withoutFuelPrice(withoutPriceHistory(s))), GOLDEN_COMMITTED_WITH_HISTORY, 'and with the production history back in, the ONLY delta is priceHistory');
-  assert.equal(hashState(withoutFuelPrice(s)), GOLDEN_COMMITTED_WITH_PRICE_HISTORY, 'and with the price-history rings back in, the ONLY delta from the pre-5b-i engine is reserve.fuelPrice');
-  assert.equal(hashState(s), GOLDEN_COMMITTED_WITH_FUEL_PRICE, 'and the fuel price itself is pinned');
+  assert.equal(hashState(withoutControllerState(withoutPriceHistory(withoutHistory(s)))), GOLDEN_COMMITTED_WITH_PRICES, 'with both history buffers and the controller state stripped, the committed run is pinned on its post-5b-ii bytes');
+  assert.equal(hashState(withoutControllerState(withoutPriceHistory(s))), GOLDEN_COMMITTED_WITH_HISTORY, 'and with the production history back in, the ONLY delta is priceHistory');
+  assert.equal(hashState(withoutControllerState(s)), GOLDEN_COMMITTED_WITH_PRICE_HISTORY, 'and with the price-history rings back in, the deltas are the two reserve fields');
+  assert.equal(hashState(withoutAvgDraw(s)), GOLDEN_COMMITTED_WITH_FUEL_PRICE, 'with the price back in, the remaining delta is reserve.avgDraw');
+  assert.equal(hashState(s), GOLDEN_COMMITTED_WITH_CONTROLLER, 'and the demand average itself is pinned');
+  // ⚠ WHY THESE THREE MOVED, stated rather than left to a re-pinned number. This run crosses
+  // ten cycle boundaries, so the controller ran ten times and posted a new price each time —
+  // every grant after the first is a different number, and the pool followed a different
+  // path. That is the behaviour change 5b-ii exists to make, and it must be visible here.
+  assert.notEqual(hashState(withoutControllerState(withoutPriceHistory(withoutHistory(s)))),
+    COMMITTED_WITH_PRICES_BEFORE_CONTROLLER,
+    'the committed run genuinely changed — it is not a re-pin of the same bytes');
+  assert.notEqual(s.reserve.fuelPrice, REFERENCE_FUEL_PRICE, 'because the price really moved');
+  assert.notEqual(s.reserve.avgDraw, DEUTERIUM_INFLUX_PER_CYCLE, 'and the demand average with it');
   assert.equal(s.priceHistory.titanium.fine.length, 2, 'the stripped-equals-old proof is only a proof if there were samples to strip');
   // The bytes moved because the deliveries are now SALES: the guild has been paid and
   // the ledger has funded it, equal and opposite (invariant 2 is asserted every tick by
@@ -296,9 +349,21 @@ test('no-op proof: undo the fuel flows and the pre-slice COMMITTED goldens come 
   assert.equal(undone.audit.totalProduced, 0);
   assert.equal(undone.guilds[0].fuelHoard, 0);
 
-  assert.equal(hashState(withoutFuelPrice(withoutPriceHistory(withoutHistory(undone)))), COMMITTED_WITH_PRICES_BEFORE_FUEL_FLOWS,
+  assert.equal(hashState(withoutControllerState(withoutPriceHistory(withoutHistory(undone)))), COMMITTED_WITH_PRICES_BEFORE_FUEL_FLOWS,
     'with the fuel undone, the pre-slice committed bytes come straight back');
-  assert.equal(hashState(withoutFuelPrice(withoutPriceHistory(undone))), COMMITTED_WITH_HISTORY_BEFORE_FUEL_FLOWS);
-  assert.equal(hashState(withoutFuelPrice(undone)), COMMITTED_WITH_PRICE_HISTORY_BEFORE_FUEL_FLOWS,
+  assert.equal(hashState(withoutControllerState(withoutPriceHistory(undone))), COMMITTED_WITH_HISTORY_BEFORE_FUEL_FLOWS);
+  assert.equal(hashState(withoutControllerState(undone)), COMMITTED_WITH_PRICE_HISTORY_BEFORE_FUEL_FLOWS,
     'so the ONLY delta this slice made to this run is the pool, the audit and the granted fuel');
+
+  // ⚠ AND IT STILL HOLDS AFTER SLICE 5b-ii, WHICH IS WORTH MORE THAN IT LOOKS. The
+  // controller changed HOW MUCH fuel this run moves — the price falls to the floor here, so
+  // the guild draws several times what it drew under a frozen price — and yet subtracting
+  // exactly the fuel that moved still lands on the pre-5a bytes. That is a strong statement
+  // that the controller touched the fuel FLOWS and nothing else: had it disturbed a
+  // stockpile, a credit, a window or a reputation, no amount of un-granting fuel would
+  // recover this hash. The undo is written against `g.fuelHoard` rather than a pinned
+  // number precisely so it keeps making that claim as the trajectory changes.
+  assert.ok(granted > 300,
+    `the controller really did change the trajectory (${granted} granted, against 300 under a frozen price)`);
+  assert.notEqual(s.reserve.fuelPrice, REFERENCE_FUEL_PRICE, 'because the price moved off the reference');
 });
