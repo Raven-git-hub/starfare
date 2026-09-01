@@ -87,9 +87,9 @@ function galaxy(specs, { pool = 0, fuelPrice, avgDraw } = {}) {
 // influx of 800, so this galaxy opens ABOVE its supply and the controller has real work to
 // do. (Under 5a this exact shape bled to zero and rationed for ever.)
 const SPREAD = [
-  { id: 'forge', systems: 1, mines: 8, rp: 11976 },
-  { id: 'meridian', systems: 2, mines: 6, rp: 8982 },
-  { id: 'reach', systems: 4, mines: 6, rp: 8982 },
+  { id: 'forge', systems: 1, mines: 8, rp: 1331 },
+  { id: 'meridian', systems: 2, mines: 6, rp: 998 },
+  { id: 'reach', systems: 4, mines: 6, rp: 998 },
   { id: 'spark' },
 ];
 
@@ -157,7 +157,7 @@ test('a galaxy opens with a seeded avgDraw, and it is real serialized state', ()
 });
 
 test('avgDraw is the SECOND sanctioned float — fractional passes, NaN and negative do not', () => {
-  const fractional = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 4482 }], { pool: 100, avgDraw: 812.5 });
+  const fractional = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 498 }], { pool: 100, avgDraw: 812.5 });
   assert.deepEqual(checkInvariants(fractional, fractional.tick), [],
     'an EMA is a fractional quantity by nature — it averages fuel, it does not count it');
 

@@ -4,9 +4,9 @@
 // docs/points-and-reputation.md §2.5, the ruling this pins).
 //
 // THE DEFECT IT FIXES. Points count held systems; reputation is earned per venture. A guild
-// founded a moment ago holds its home system (GP 12) and has no ventures — the starter
+// founded a moment ago holds its home system (GP 200) and has no ventures — the starter
 // assets it was just gifted are IDLE INVENTORY and score nothing — so its bar is
-// `MEANLINE_K × W_SYS` = 1800 against an RP of 0, and the issuance modifier pins at the
+// `MEANLINE_K × W_SYS` = 200 against an RP of 0, and the issuance modifier pins at the
 // FLOOR. Every brand-new guild was throttled to 30% fuel before it had any chance to earn.
 // The mean line cannot tell "just founded" from "holds territory and does nothing with it"
 // on structure alone: both read as all-system-Points, zero-venture-reputation.
@@ -14,7 +14,12 @@
 // THE RULING. Founding grants a one-time guild-level `foundingEndowment` sized at
 // `MEANLINE_K × systemPoints`, neutralising the granted home base EXACTLY ONCE. Everything
 // beyond it is still earned, which is what these tests are really for: the endowment must
-// fix the newborn WITHOUT softening density-beats-sprawl or the k = 150 calibration.
+// fix the newborn WITHOUT softening density-beats-sprawl or the k = 1 calibration.
+//
+// ⤳ RESCALED 01-09-26 (200 → 200), points-and-reputation.md §2.6, WITH NO EDIT TO
+// `foundingEndowmentFor`. That is the ruling's own claim made good: the endowment is the
+// product of `MEANLINE_K` (150 → 1) and `W_SYS` (12 → 200), both ruled elsewhere, so it
+// TRACKED the rescale instead of drifting from it. Only the figures pinned below moved.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -78,11 +83,11 @@ test('the endowment is MEANLINE_K × W_SYS × held systems, read from the consta
   const s = founded();
   const g = guild(s);
   // Stated against the constants, so this goes red if either retunes and the endowment
-  // stops tracking it — the whole point of deriving rather than typing 1800 in.
+  // stops tracking it — the whole point of deriving rather than typing 200 in.
   assert.equal(g.foundingEndowment, MEANLINE_K * W_SYS * 1);
   assert.equal(g.foundingEndowment, MEANLINE_K * systemPoints(s, g));
   assert.equal(g.foundingEndowment, foundingEndowmentFor(s, g));
-  assert.equal(g.foundingEndowment, 1800, 'stated outright too, so the arithmetic is checkable by eye');
+  assert.equal(g.foundingEndowment, 200, 'stated outright too, so the arithmetic is checkable by eye');
   assert.ok(Number.isInteger(g.foundingEndowment), 'integer reputation (§15.2)');
   assert.ok(g.foundingEndowment >= 0, 'a grant is never negative');
 });
@@ -242,19 +247,19 @@ test('the field is OMITTED when 0, so an unfounded guild is byte-identical', () 
   // `venture.committedFromTick` documents): a restored save must keep it or the sum
   // tripwire fires on the next tick.
   const carried = createState({
-    guilds: [{ id: 'restored', credits: 0, fuelHoard: 0, ventures: [], foundingEndowment: 1800 }],
+    guilds: [{ id: 'restored', credits: 0, fuelHoard: 0, ventures: [], foundingEndowment: 200 }],
     reserve: { reserveLevel: 0 },
     syndicate: { ledger: 0 },
   });
-  assert.equal(carried.guilds[0].foundingEndowment, 1800);
+  assert.equal(carried.guilds[0].foundingEndowment, 200);
 });
 
 test('a founded guild ROUND-TRIPS through serialisation with its endowment intact', () => {
   const s = founded();
   const restored = JSON.parse(canonicalStringify(s));
   const g = restored.guilds.find((x) => x.id === 'newborn');
-  assert.equal(g.foundingEndowment, 1800);
-  assert.equal(g.guildReputation, 1800);
+  assert.equal(g.foundingEndowment, 200);
+  assert.equal(g.guildReputation, 200);
   assert.deepEqual(checkInvariants(restored, restored.tick), [], 'and the sum still holds after a reload');
 });
 
@@ -269,15 +274,15 @@ test('TRIPWIRE: a total that ignores the endowment is caught', () => {
   const v = checkInvariants(broken, broken.tick);
   assert.equal(v.length, 1);
   assert.equal(v[0].rule, 'guild-reputation-is-the-venture-sum-plus-endowment (points-and-reputation.md §2/§2.5)');
-  assert.deepEqual(v[0].detail, { stored: 0, sumOfVentures: 0, foundingEndowment: 1800, expected: 1800 });
+  assert.deepEqual(v[0].detail, { stored: 0, sumOfVentures: 0, foundingEndowment: 200, expected: 200 });
 });
 
 test('TRIPWIRE: a FRACTIONAL endowment is caught by the integer check', () => {
   const s = founded();
   const broken = structuredClone(s);
   const g = broken.guilds.find((x) => x.id === 'newborn');
-  g.foundingEndowment = 1800.5;
-  g.guildReputation = 1800.5;                 // kept consistent, so ONLY integrality fails
+  g.foundingEndowment = 200.5;
+  g.guildReputation = 200.5;                 // kept consistent, so ONLY integrality fails
   const rules = checkInvariants(broken, broken.tick).map((x) => x.rule);
   assert.deepEqual(rules, ['integer credits/goods (§15.2)', 'integer credits/goods (§15.2)'],
     'both the endowment and the total it feeds are integer-checked, and nothing else tripped');
@@ -287,8 +292,8 @@ test('TRIPWIRE: a FRACTIONAL endowment is caught by the integer check', () => {
 
 test('the snapshot publishes the endowment beside the total it is part of', () => {
   const g = buildSnapshot(founded()).guilds.find((x) => x.id === 'newborn');
-  assert.equal(g.foundingEndowment, 1800);
-  assert.equal(g.guildReputation, 1800);
+  assert.equal(g.foundingEndowment, 200);
+  assert.equal(g.guildReputation, 200);
   assert.equal(g.guildPoints, W_SYS);
   assert.equal(g.expectedReputation, MEANLINE_K * W_SYS);
   assert.equal(g.issuanceModifier, 1, 'the row reads as one story: endowed, on its line');

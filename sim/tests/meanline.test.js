@@ -81,13 +81,21 @@ function restingRP(gain) {
     rp += step;
   }
 }
-const MODERATE_TERMS = metGain({ id: 't', equityPct: 0.245, licence: { committedOutputPct: 0.5 } });
+// ⤳ 01-09-26: this venture now names a `resourceType`. `metGain` is tier-scaled since the
+// rescale (§2.6), so it reads the venture's produced good — a termsless stub would (rightly)
+// halt on an unknown tier rather than quietly earning at the tier-1 rate.
+const MODERATE_TERMS = metGain(
+  { ...mine('t', SYS[0]), equityPct: 0.245, licence: { committedOutputPct: 0.5 } },
+);
 const AT_REST = restingRP(MODERATE_TERMS);
 
 // --- 1. the ruled constants -------------------------------------------------------
 
 test('the mean line uses the ruled [FIRST-CUT] numbers', () => {
-  assert.equal(MEANLINE_K, 150);
+  // ⤳ RESCALED 01-09-26 (§2.6): k = 1, so expected RP simply EQUALS GP. The three
+  // ISSUANCE_* knobs are deliberately UNCHANGED — the modifier is scale-invariant, so the
+  // rescale had nothing to recalibrate in them.
+  assert.equal(MEANLINE_K, 1);
   assert.equal(ISSUANCE_SENSITIVITY, 1.5);
   assert.equal(ISSUANCE_FLOOR, 0.3);
   assert.equal(ISSUANCE_CEIL, 1.5);
@@ -111,7 +119,8 @@ test('expectedReputation is MEANLINE_K × GP, exactly', () => {
   const s = fixture({ systems: 2, mines: 3 });
   assert.equal(guildPoints(s, guild(s)), 2 * W_SYS + 3 * W_T1);
   assert.equal(expected(s), MEANLINE_K * guildPoints(s, guild(s)));
-  assert.equal(expected(s), 150 * 42, 'stated outright, not implied by the formula it tests');
+  assert.equal(expected(s), 700, 'stated outright, not implied by the formula it tests');
+  assert.equal(expected(s), guildPoints(s, guild(s)), 'at k = 1 the line simply IS the GP');
   assert.ok(Number.isInteger(expected(s)));
 });
 
@@ -123,7 +132,7 @@ test('expectedReputation rises with EVERY kind of holding — that is the bar go
   // holdings moves this number and NOT the reputation beside it. The reputation here is
   // chosen so the SMALL guild is unclamped — below ~53% of its line every guild pins at
   // the floor together, and two floored guilds would compare equal and prove nothing.
-  const onTheLine = 150 * (W_SYS + W_T1);                      // 2700: modest sits exactly on its line
+  const onTheLine = MEANLINE_K * (W_SYS + W_T1);               // 300: modest sits exactly on its line
   const grabbed = fixture({ systems: 3, mines: 1, rp: onTheLine });
   const modest = fixture({ systems: 1, mines: 1, rp: onTheLine });
   assert.ok(expected(grabbed) > expected(modest));
@@ -140,11 +149,11 @@ test('a guild holding nothing expects nothing', () => {
 // --- 3. the modifier: the formula and its clamps ----------------------------------
 
 test('the modifier is 1 + SENSITIVITY × gap / expected, unclamped in the middle', () => {
-  // One system, one mine: GP 18, expected 2700. Put RP at 3/4 of the line.
-  const s = fixture({ systems: 1, mines: 1, rp: 2025 });
-  assert.equal(expected(s), 2700);
-  const gap = 2025 - 2700;
-  assert.equal(modifier(s), 1 + ISSUANCE_SENSITIVITY * (gap / 2700));
+  // One system, one mine: GP 300, expected 300. Put RP at 3/4 of the line.
+  const s = fixture({ systems: 1, mines: 1, rp: 225 });
+  assert.equal(expected(s), 300);
+  const gap = 225 - 300;
+  assert.equal(modifier(s), 1 + ISSUANCE_SENSITIVITY * (gap / 300));
   assert.ok(Math.abs(modifier(s) - 0.625) < 1e-12, 'a quarter below the line is 0.625');
   assert.ok(modifier(s) > ISSUANCE_FLOOR && modifier(s) < ISSUANCE_CEIL, 'and it is genuinely unclamped here');
 });
@@ -170,13 +179,15 @@ test('the FLOOR clamps a guild far below its line, and it is a real clamp', () =
 });
 
 test('the CEIL clamps a guild far above its line', () => {
-  const s = fixture({ systems: 1, mines: 1, rp: 1490 * 3 });
+  // Twice its line, then five times it. (Pre-rescale these read 4470 and 4491; the RATIOS
+  // are what the clamp acts on, and they are unchanged — §3's scale invariance.)
+  const s = fixture({ systems: 1, mines: 1, rp: 600 });
   const raw = 1 + ISSUANCE_SENSITIVITY * ((guild(s).guildReputation - expected(s)) / expected(s));
   assert.ok(raw > ISSUANCE_CEIL, `the unclamped value (${raw}) is above the ceiling`);
   assert.equal(modifier(s), ISSUANCE_CEIL);
   // CEIL saturation is a FEATURE (§3): past this point more reputation buys no more fuel,
   // and price becomes the throttle instead.
-  const higher = fixture({ systems: 1, mines: 1, rp: 1497 * 3 });
+  const higher = fixture({ systems: 1, mines: 1, rp: 1500 });
   assert.equal(modifier(higher), ISSUANCE_CEIL, 'more reputation past the ceiling buys nothing further');
 });
 
@@ -249,24 +260,50 @@ test('a guild with an absent reputation total reads it as the 0 it means', () =>
   assert.ok(Number.isFinite(modifier(s)));
 });
 
-// --- 5. THE CALIBRATION — does k = 150 do what the ruling claims? -----------------
+// --- 5. THE CALIBRATION — does k = 1 do what the ruling claims? -------------------
+//
+// ⤳ RE-DERIVED 01-09-26 for the rescale (points-and-reputation.md §2.6), and the way it
+// had to be re-derived is itself worth recording. Pre-rescale, "a venture at par" was read
+// off the §2.3 TAPER: an all-meeting venture parked at ~1494, and `k = 150` was calibrated
+// so three of those paid for one system. **That reading no longer holds, because the
+// rescale deliberately did NOT rescale the band** (§2.6, "Deferred — the RP band"): the
+// bounds are still −500 / 800 / 1500 while a mine's bar fell to 100, so a resting venture
+// now banks ~14× its own bar instead of ~1.66×. The band is LOOSE at the new scale, by
+// ruling, until it gets its own pass.
+//
+// So par is taken from the LINE itself now, not from the taper — `PAR_CARRY` below is the
+// reputation per venture that puts the reference guild exactly on its line, computed from
+// the engine's own `expectedReputation`, not typed in. The four scenarios and the four
+// ratios they assert are UNCHANGED; only where "par" is sourced from moved. When the band
+// is ruled, the taper test below should come back into agreement with this one.
 
-test('CALIBRATION: a venture that always meets rests just under the taper cap', () => {
-  // Everything below rests on this, so it is pinned first: the §2.3 taper parks an
-  // all-meeting venture a hair under 1500 whatever its terms, which is why RP lives in the
-  // thousands while GP lives in the tens — and why k has to be large.
-  assert.equal(MODERATE_TERMS, 50, 'moderate terms: half commitment, half the equity ceiling');
-  assert.equal(AT_REST, 1494);
-  assert.equal(restingRP(100), 1497, 'and full terms rests barely higher — the cap dominates the terms');
+// The reference guild: one system, three producers — §3's "par is about three ventures per
+// held system", which the rescale preserved by keeping W_SYS : W_T1 at 2 : 1.
+const PAR_CARRY = Math.round(expected(fixture({ systems: 1, mines: 3 })) / 3);   // 167
+
+test('CALIBRATION: a venture that always meets rests FAR above its bar — the band is loose', () => {
+  // The taper still parks an all-meeting venture just under the 1500 soft cap, exactly as
+  // it did before — the band was not rescaled. What CHANGED is what that resting figure
+  // MEANS: a tier-1 mine's bar is now 100, so resting at 1431 is ~14× the bar it had to
+  // clear, where pre-rescale 1494 was ~1.66× a bar of 900.
+  //
+  // ⚠ THIS TEST IS THE TRIPWIRE ON A KNOWN, RULED GAP, not a passing grade. §2.6 defers
+  // the band's own rescale to the next ruling, and names the sub-choice it carries (one
+  // global band, or a per-tier band scaled to the 1 : 1.5 : 3 : 5 spread). Do NOT "fix"
+  // these numbers by rescaling the band here — that is a ruling, not a build.
+  assert.equal(MODERATE_TERMS, 5, 'moderate terms: half commitment, half the equity ceiling');
+  assert.equal(AT_REST, 1431);
+  assert.equal(restingRP(10), 1466, 'and full terms rests barely higher — the cap dominates the terms');
+  assert.ok(AT_REST > 10 * W_T1, `a venture rests at ${AT_REST}, more than 10× its ${W_T1}-point bar`);
 });
 
-test('CALIBRATION: a DENSE all-meeting guild sits ≈ on its line', () => {
-  // One system, three ventures at rest. This is what k = 150 was calibrated to: "par" is
+test('CALIBRATION: a DENSE at-par guild sits ≈ on its line', () => {
+  // One system, three ventures each carrying par. This is what k = 1 preserves: "par" is
   // about three producers per held system.
-  const s = fixture({ systems: 1, mines: 3, rp: 3 * AT_REST });
-  assert.equal(guildPoints(s, guild(s)), W_SYS + 3 * W_T1);          // 30
-  assert.equal(expected(s), 4500);
-  assert.equal(guild(s).guildReputation, 4482);
+  const s = fixture({ systems: 1, mines: 3, rp: 3 * PAR_CARRY });
+  assert.equal(guildPoints(s, guild(s)), W_SYS + 3 * W_T1);          // 500
+  assert.equal(expected(s), 500);
+  assert.equal(guild(s).guildReputation, 501);
   const m = modifier(s);
   assert.ok(Math.abs(m - 1) < 0.01, `a dense par guild reads ${m.toFixed(3)} — on its line`);
 });
@@ -274,9 +311,10 @@ test('CALIBRATION: a DENSE all-meeting guild sits ≈ on its line', () => {
 test('CALIBRATION: a SPRAWLER with the SAME production is throttled to ~0.33', () => {
   // The identical three ventures, spread across three systems instead of one. Same output,
   // same reputation, more territory — and the modifier collapses. This is
-  // density-beats-sprawl (§2) as an actual number.
-  const dense = fixture({ systems: 1, mines: 3, rp: 3 * AT_REST });
-  const sprawl = fixture({ systems: 3, mines: 3, rp: 3 * AT_REST });
+  // density-beats-sprawl (§2) as an actual number, and it reads the SAME 0.33 it read
+  // pre-rescale: the modifier is a ratio, so the rescale could not move it.
+  const dense = fixture({ systems: 1, mines: 3, rp: 3 * PAR_CARRY });
+  const sprawl = fixture({ systems: 3, mines: 3, rp: 3 * PAR_CARRY });
   assert.equal(guild(sprawl).guildReputation, guild(dense).guildReputation, 'identical reputation…');
   assert.equal(guild(sprawl).ventures.length, guild(dense).ventures.length, '…and identical production');
   assert.ok(expected(sprawl) > expected(dense), 'but a far higher bar');
@@ -288,10 +326,10 @@ test('CALIBRATION: a SPRAWLER with the SAME production is throttled to ~0.33', (
 test('CALIBRATION: a JUST-EXPANDED guild pins at the floor until its reputation catches up', () => {
   // The punishing-for-ambition case, and the sequence is the point: GP jumps the moment
   // the claims exist, while the RP that would pay for them has not been earned.
-  const before = fixture({ systems: 1, mines: 3, rp: 3 * AT_REST });
+  const before = fixture({ systems: 1, mines: 3, rp: 3 * PAR_CARRY });
   assert.ok(Math.abs(modifier(before) - 1) < 0.01, 'it starts on its line');
 
-  const after = fixture({ systems: 4, mines: 3, rp: 3 * AT_REST });
+  const after = fixture({ systems: 4, mines: 3, rp: 3 * PAR_CARRY });
   assert.equal(guild(after).guildReputation, guild(before).guildReputation, 'not one point of RP was earned');
   assert.equal(modifier(after), ISSUANCE_FLOOR, 'and it drops straight to the floor');
 
@@ -303,12 +341,13 @@ test('CALIBRATION: a JUST-EXPANDED guild pins at the floor until its reputation 
 
 test('CALIBRATION: a DEVELOPED big guild is mildly buffed — earned size is not punished', () => {
   // The other half of the lean, and the half that makes it fair: a guild that really has
-  // earned its size sits above its line. Eight ventures over two systems.
-  const s = fixture({ systems: 2, mines: 8, rp: 8 * AT_REST });
+  // earned its size sits above its line. Eight ventures over two systems — denser than the
+  // three-per-system reference, so it earns a buff for it.
+  const s = fixture({ systems: 2, mines: 8, rp: 8 * PAR_CARRY });
   const m = modifier(s);
   assert.ok(m > 1, `a developed big guild reads ${m.toFixed(3)} — above its line`);
   assert.ok(m < ISSUANCE_CEIL, '…mildly, not saturated');
-  assert.ok(Math.abs(m - 1.16) < 0.01);
+  assert.ok(Math.abs(m - 1.17) < 0.01);
 });
 
 // --- 6. derived, and it grants nothing --------------------------------------------

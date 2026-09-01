@@ -69,9 +69,11 @@ const gp = (s) => guildPoints(s, s.guilds[0]);
 // --- 1. the ruled weights --------------------------------------------------------
 
 test('the GP weights are the ruled [FIRST-CUT] numbers, and every one is a whole number', () => {
-  assert.equal(W_SYS, 12);
-  assert.equal(W_T1, 6);
-  assert.equal(W_T2, 8);
+  // ⤳ RESCALED 01-09-26 (12 / 6 / 8 → 200 / 100 / 150), points-and-reputation.md §2.6.
+  // With MEANLINE_K down to 1 these ARE the RP scale, not a bare ratio numerator.
+  assert.equal(W_SYS, 200);
+  assert.equal(W_T1, 100);
+  assert.equal(W_T2, 150);
   // GP is an integer (§15.2 / §1.0) and it is integral BY CONSTRUCTION — an integer count
   // times an integer weight, summed, with no rounding anywhere. Nothing would round a
   // fractional weight into shape, so the wholeness of the weights is the guarantee.
@@ -82,11 +84,26 @@ test('the GP weights are the ruled [FIRST-CUT] numbers, and every one is a whole
 });
 
 test('the RATIOS are what the weights encode: systems heavy, ventures light, T2 over T1', () => {
-  // The absolute scale is meaningless until slice 4's MEANLINE_K fixes it, so these
-  // relations are the real content of the tuning row — density-beats-sprawl (§2).
+  // These relations are the real content of the tuning row — density-beats-sprawl (§2) —
+  // and the 01-09-26 rescale preserved every one of them while moving the digits.
   assert.ok(W_SYS > W_T1, 'holding a system must cost more Points than putting one mine on it');
   assert.ok(W_SYS > W_T2, '…and more than one refinery');
   assert.ok(W_T2 > W_T1, 'a refinery is a notch above the mine that feeds it');
+  // The two ratios the rescale pinned deliberately (§2.6): a system stays exactly 2× a
+  // tier-1 mine (the anti-sprawl bite, unchanged from 12 : 6), while the TIER spread was
+  // WIDENED from 8 : 6 to the ruled 1 : 1.5 — climbing the tree is a real reward now.
+  assert.equal(W_SYS / W_T1, 2, 'a held system is exactly two mines, as it was at 12 : 6');
+  assert.equal(W_T2 / W_T1, 1.5, 'and the tier spread is the ruled 1 : 1.5 (was 1 : 1.33)');
+});
+
+test('the tier spread is the ruled 1 : 1.5 : 3 : 5, and T3/T4 stay OUT until their goods exist', () => {
+  // §2.6 rules 100 / 150 / 300 / 500. Only the first two are in the map: a tier with no
+  // ruled weight must still HALT (see the tripwire below), never score 0, so the deferred
+  // half of the ruling is deliberately absent from the code rather than pre-loaded.
+  assert.deepEqual(Object.keys(TIER_WEIGHT).map(Number).sort(), [1, 2],
+    'only the tiers whose goods have recipes carry a weight');
+  assert.equal(TIER_WEIGHT[3], undefined, 'W_T3 = 300 is ruled but DEFERRED in code');
+  assert.equal(TIER_WEIGHT[4], undefined, 'W_T4 = 500 is ruled but DEFERRED in code');
 });
 
 // --- 2. tierOf: the general tier lookup ------------------------------------------
@@ -120,10 +137,10 @@ test('every good a REAL venture can produce today has a ruled weight', () => {
 // --- 3. the formula ---------------------------------------------------------------
 
 test('GP is W_SYS × held systems + Σ ventures by tier', () => {
-  // Two systems, two mines and one refinery: 2×12 + 2×6 + 1×8 = 44.
+  // Two systems, two mines and one refinery: 2×200 + 2×100 + 1×150 = 750.
   const s = fixture([mine('m1'), mine('m2', { resourceType: 'silica' }), refinery('r1')], [SYS_A, SYS_B]);
   assert.equal(gp(s), 2 * W_SYS + 2 * W_T1 + W_T2);
-  assert.equal(gp(s), 44, 'stated outright, so the sum is not implied by the formula it is testing');
+  assert.equal(gp(s), 750, 'stated outright, so the sum is not implied by the formula it is testing');
   assert.ok(Number.isInteger(gp(s)));
 });
 

@@ -73,13 +73,24 @@ const FIXTURES = Object.freeze({
   // the settled point that the convergence is unmistakable without printing sixty rows.
   ticks: 80,
 
-  // [FIXTURE] The reputation each seeded venture carries at tick 0. This is where a venture
-  // that has always met its commitments PARKS — the §2.3 gain taper shrinks its gains to
-  // nothing just under the +1500 soft cap — so seeding it here means every guild starts
-  // with a settled, non-trivial reputation instead of climbing for forty ticks first. It
-  // also makes reputation STABLE across the run, which is what leaves the pool and the
-  // rationing as the only things moving in the trace.
-  ventureRP: 1497,
+  // [FIXTURE] The reputation each seeded venture carries at tick 0. Seeding it means every
+  // guild starts with a settled, non-trivial reputation instead of climbing for forty
+  // ticks first, and it makes reputation STABLE across the run — which is what leaves the
+  // pool and the rationing as the only things moving in the trace.
+  //
+  // ⤳ RESCALED 01-09-26 (1497 → 166), points-and-reputation.md §2.6, and the RATIONALE
+  // changed with it. This used to be read off the §2.3 TAPER: where a venture that always
+  // meets its commitments PARKS, just under the 1500 soft cap. That reading is gone,
+  // because the rescale deliberately did NOT rescale the band (§2.6 defers it) — a resting
+  // venture now parks at ~1466 against a mine's bar of 100, some 14× over its line, and
+  // seeding that would pin every guild in the galaxy at the issuance CEILING and flatten
+  // the trace this scenario exists to show.
+  //
+  // So it is sized off the LINE now, not the taper: 166 is the per-venture carry that puts
+  // the reference roster (Meridian, 2 systems and 6 mines) almost exactly on `MEANLINE_K ×
+  // GP`. The four modifiers below are preserved to within a unit of fuel each, which is
+  // the point — the scenario is about the pool and the crossing, not about this number.
+  ventureRP: 166,
 
   // [FIXTURE] The Syndicate pool at tick 0. Deliberately BELOW where the controller will
   // settle it, so the run opens with the pool genuinely off target and the correction is
@@ -92,9 +103,9 @@ const FIXTURES = Object.freeze({
   // [FIXTURE] The crisis run's dials — see `buildCrisisScenario` below.
   //
   // `crisisWings` 5: how many copies of the producing roster the crisis galaxy holds. Five
-  // because Σ entitlement per wing is ~987, and a galaxy pinned at the engine's PRICE_CEIL
+  // because Σ entitlement per wing is ~984, and a galaxy pinned at the engine's PRICE_CEIL
   // still draws `Σ × REFERENCE / CEIL` = Σ/4 — so four wings would only just exceed the
-  // influx, while five (Σ ~4935, ~1234 at the ceiling against 800 in) is a decisive,
+  // influx, while five (Σ ~4920, ~1230 at the ceiling against 800 in) is a decisive,
   // unmistakable crunch. Stated as the arithmetic rather than as a magic number, and it is
   // a FIXTURE: it tunes this scenario's load, not the engine's ceiling.
   crisisWings: 5,
@@ -133,19 +144,24 @@ const FIXTURES = Object.freeze({
 // --- The four guilds -----------------------------------------------------------
 //
 // The shapes are chosen against the engine's own arithmetic, stated here so the intent is
-// checkable rather than magic. With `MEANLINE_K` = 150 and GP weights 12 (system) / 6
-// (Tier-1 venture), and each venture parked at `ventureRP`:
+// checkable rather than magic. ⤳ RESCALED 01-09-26 (§2.6): `MEANLINE_K` = 1 and GP weights
+// 200 (system) / 100 (Tier-1 venture), with each venture parked at `ventureRP` = 166:
 //
-//   guild     systems  mines   GP   expected     RP   ratio   modifier   desired
-//   Forge        1       8      60     9000    11976   1.33     ~1.50       449
-//   Meridian     2       6      60     9000     8982   1.00     ~1.00       299
-//   Reach        4       6      84    12600     8982   0.71     ~0.57       239
-//   Spark        0       0       0        0        0    n/a       1.00         0
-//                                                              Σdesired =   987
+//   guild     systems  mines    GP   expected     RP   ratio   modifier   desired
+//   Forge        1       8     1000     1000    1328   1.33     ~1.50       448
+//   Meridian     2       6     1000     1000     996   1.00     ~1.00       298
+//   Reach        4       6     1400     1400     996   0.71     ~0.57       238
+//   Spark        0       0        0        0       0    n/a       1.00         0
+//                                                              Σdesired =   984
 //
-// Σdesired (987) is ABOVE the engine's fixed influx (800), which is what makes the pool
+// Every RATIO is unchanged from the pre-rescale table (1.33 / 1.00 / 0.71) and every
+// `desired` lands within one unit of what it was (449 / 299 / 239), because
+// `BASE_GRANT_PER_GP` was re-based 5 → 0.3 with the GP weights. That is the whole claim of
+// the rescale made visible in one table: the numbers shrank and the economy did not move.
+//
+// Σdesired (984) is ABOVE the engine's fixed influx (800), which is what makes the pool
 // bleed and the crossing happen at all. Forge and Meridian are deliberately the SAME size
-// (GP 60) with different footprints — that is density-beats-sprawl as one comparison: the
+// (GP 1000) with different footprints — that is density-beats-sprawl as one comparison: the
 // dense guild draws half again what the spread one does, for identical Points.
 const GUILDS = Object.freeze([
   // [FIXTURE] DENSE — everything on one system, so its reputation is spread over few
@@ -170,10 +186,11 @@ const GUILDS = Object.freeze([
 // The obvious way to introduce a newborn is to have the world driver call `foundGuild`
 // partway through. That cannot produce the guild this scenario needs: founding MINTS A
 // HOME CLAIM, so a freshly-founded ventureless guild holds one system and therefore has
-// GP 12 and `expectedReputation` 1800 — it is a floor-pinned newborn, not a size-0 guild,
-// and `expectedReputation === 0` is unreachable through it. (Verified against the engine:
-// found a guild into the zero-state and its snapshot row reads gp 12 / expected 1800 /
-// modifier 0.3.) Since the point of this guild is the EMPTY-GUILD GUARD — the `expected ===
+// GP 200 and `expectedReputation` 200 — it is a NEWBORN, not a size-0 guild, and
+// `expectedReputation === 0` is unreachable through it. (Verified against the engine: found
+// a guild into the zero-state and its snapshot row reads gp 200 / expected 200. ⤳ RESCALED
+// 01-09-26 from gp 12 / expected 1800 / modifier 0.3 — and note the modifier is no longer
+// 0.3 either: the founding endowment, added 31-08-26, now puts a newborn ON its line.) Since the point of this guild is the EMPTY-GUILD GUARD — the `expected ===
 // 0` branch that must return 1.0 rather than divide by zero — it is seeded holding nothing
 // and stays that way, which also means the guard is exercised on every tick of the run
 // instead of one.

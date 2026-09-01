@@ -339,6 +339,15 @@ guard, is what puts it on its line. `venture.reputation` is unchanged.
 
 ### 2.6 The rescale, the signing bump & the breach floor (ruled 01-09-26)
 
+**⤳ BUILD STATUS (01-09-26). Slice 1 of 2 — the CONSTANTS — is ✅ BUILT.** `MEANLINE_K` → 1, the GP weights →
+200 / 100 / 150, `REP_MEET_MAX` → 10, `REP_BREACH_MAX`/`MIN` → 10 / 2.5, and the tier-scaled earn/breach
+(`tierFactor`) are all live in `sim/points.js`, `sim/meanline.js` and `sim/licence.js`. **The signing bump below
+is slice 2 and is NOT built** — a signed venture is still minted at 0 RP and earns from there; keeping it out
+kept slice 1 a pure retuning. **The RP band is still deferred**, as this section rules. As-built figures, the
+`BASE_GRANT_PER_GP` re-base the GP rescale forced, and the measured cost of the deferred band are all in
+`phase-1-tuning.md`'s two AS-BUILT notes.
+
+
 **The rescale — GP and RP on ONE small scale.** `MEANLINE_K` drops **150 → 1**, so a guild's expected RP now simply
 *equals* its GP; the GP weights and the RP earn-rate shrink to match — held system `W_SYS` **12 → 200**, tier weights
 **6/8 → 100/150** (spread widened to a deliberate **1 : 1.5 : 3 : 5** = 100/150/300/500, T3/T4 deferred), `REP_MEET_MAX`
@@ -390,8 +399,8 @@ is loose at the new scale; rescaling it carries a global-vs-per-tier sub-choice 
 
 - **`expectedRP(GP) = MEANLINE_K × GP`. LINEAR** — the null hypothesis, and it matches "a guild of size X should
   have earned about this much." Convex/super-linear stays a later shape ruling if the big coast too easily.
-- **`MEANLINE_K` is `[FIRST-CUT]` 150** *(was `[SHEET]`; ruled below and in `phase-1-tuning.md`, and the stale
-  tag corrected 31-08-26 when slice 4 built it)*: calibrated so a **par** venture's *resting* RP ≈
+- **`MEANLINE_K` is `[FIRST-CUT]` 1** *(⤳ RESCALED 150 → 1 on 01-09-26 by §2.6, ✅ BUILT the same day; the
+  paragraph below is kept as the record of what the 150 was FOR — it bridged two scales that no longer differ)*: calibrated so a **par** venture's *resting* RP ≈
   `MEANLINE_K × (its GP)` — in the units of the running-total band (−500..1500), **not** a per-cycle figure.
   *(The earlier per-cycle sketch — `k=5`, `met=+50` — is **retired**; it measured a quantity that no longer
   exists.)*
@@ -410,7 +419,9 @@ is loose at the new scale; rescaling it carries a global-vs-per-tier sub-choice 
   saturates and **price** becomes the real throttle — `fuel-economy.md §2`'s flat-high-price equilibrium.
 
 **Ruled `[FIRST-CUT]` for slice 4 (numbers in `phase-1-tuning.md`; calibrated by model, not guessed):**
-`MEANLINE_K = 150`, `ISSUANCE_SENSITIVITY = 1.5`, `ISSUANCE_FLOOR = 0.3`, `ISSUANCE_CEIL = 1.5`. The floor
+`MEANLINE_K = 150` *(⤳ now **1**, §2.6)*, `ISSUANCE_SENSITIVITY = 1.5`, `ISSUANCE_FLOOR = 0.3`,
+`ISSUANCE_CEIL = 1.5` *(the three `ISSUANCE_*` knobs are UNCHANGED by the rescale — the modifier divides the gap
+by the expectation, so it is scale-invariant and there was nothing in them to recalibrate)*. The floor
 and slope carry the **punishing-for-ambition** lean (31-08-26): a guild that expands its holdings faster
 than its reputation can back them up is thrown toward the floor and stays there until its RP climbs, while a
 guild that has *earned* its size sits on or above its line untouched. The asymmetry (floor 0.3 vs ceil 1.5)

@@ -70,16 +70,42 @@ const { REFERENCE_FUEL_PRICE } = require('./fuel.js');
 
 // BASE_GRANT_PER_GP — fuel per Guild Point per cycle, at modifier 1.0.
 //
-// `[FIRST-CUT]` 5. The base is SIZE-RELATIVE by ruling (§2.1): a bigger footprint draws a
-// bigger base, and the mean-line modifier then scales it by how well the guild
+// `[FIRST-CUT]` 0.3. The base is SIZE-RELATIVE by ruling (§2.1): a bigger footprint draws
+// a bigger base, and the mean-line modifier then scales it by how well the guild
 // contributes *relative to* that size. GP is therefore both the base AND the divisor
 // inside the modifier's expected line, which is exactly "draw sized by
-// reputation-against-size". A par guild (GP 30, modifier ~1.0) draws ~150 a cycle; an
+// reputation-against-size". A par guild (GP 500, modifier ~1.0) draws ~150 a cycle; an
 // over-expanded one draws its base × 0.3.
+//
+// ⤳ RE-BASED 01-09-26 (5 → 0.3) BY THE GP RESCALE, points-and-reputation.md §2.6, and this
+// is a RE-DENOMINATION, not a retune — the one place the reputation rescale reaches
+// outside the reputation layer, and it had to.
+//
+// WHY IT WAS FORCED. This constant is denominated *per Guild Point*, and §2.6 changed what
+// a Guild Point IS: `W_SYS` went 12 → 200, so an unchanged 5 would have multiplied every
+// guild's entitlement by ~16.7 against an unmoved `DEUTERIUM_INFLUX_PER_CYCLE`. The
+// reference galaxy's draw went to ~16 450 a cycle against a supply of 800, needing a
+// settled price of ~206 to hold it — five times `PRICE_CEIL`. Every galaxy, down to the
+// smallest possible founded guild (GP 300 → 1500 a cycle), would have sat in permanent
+// crunch with the controller pinned and unable to answer. Not a tuning question: the unit
+// moved, so the number denominated in it has to move with it or it means something else.
+//
+// AND IT IS DERIVED, NOT CHOSEN (§18 #5). `0.3 = 5 × (W_SYS_old / W_SYS_new) = 5 × 12/200`
+// — the same ratio, in the new units. Its effect is a NO-OP by construction wherever the
+// GP weights merely re-denominated: a held system still draws exactly 60 fuel a cycle at
+// par (12×5 = 200×0.3) and a tier-1 mine exactly 30 (6×5 = 100×0.3). The one place it is
+// NOT a no-op is tier 2, which draws 45 instead of 40 — and that +12.5% is not drift, it
+// IS §2.6's deliberately widened 1 : 1.5 tier spread arriving in the fuel layer, which is
+// exactly where the ruling wants the reward for climbing the tree to show up.
+//
+// A SANCTIONED FLOAT, on the same footing as `issuanceModifier` beside it: it is a
+// COEFFICIENT that scales a quantity, not itself a count of fuel, and `grantFor` already
+// rounds at the one point where a float meets integer fuel (§15.2). Nothing downstream
+// changed to accommodate it.
 //
 // A demand/consumption-relative base is a possible later refinement, deferred to 5b —
 // which builds the consumption tracking it would need anyway.
-const BASE_GRANT_PER_GP = 5;
+const BASE_GRANT_PER_GP = 0.3;
 
 // DEUTERIUM_INFLUX_PER_CYCLE — the abstracted back-end supply into the pool (§1.1).
 //

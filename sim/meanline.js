@@ -44,21 +44,23 @@ const { guildPoints, systemPoints } = require('./points.js');
 
 // MEANLINE_K — the reputation expected per Point of size.
 //
-// `[FIRST-CUT]` **150**, ruled in phase-1-tuning.md §"Points & Reputation" and
-// CALIBRATED BY MODEL rather than guessed. It is large because the two quantities it
-// bridges live on very different scales: RP rests in the THOUSANDS (the §2.3 taper parks
-// an all-meeting venture just under the 1500 cap — 1494 at moderate terms, 1497 at full)
-// while GP is in the TENS (12 a system, 6–8 a venture). If a rounder `k` is ever wanted,
-// the doc's own note is to scale the GP weights ×10 rather than to bend this.
+// `[FIRST-CUT]` **1**, ruled in phase-1-tuning.md §"Points & Reputation".
 //
-// WHAT 150 ACTUALLY CALIBRATES, and it is worth stating because the number looks
-// arbitrary until you see it: at `k = 150` a system's worth of Points (12 → 1800 expected
-// RP) is paid for by roughly **three ventures at rest** (3 × ~1494 = 4482 against
-// 4500 expected). So "par" is about three ventures per held system, and the whole
-// density-beats-sprawl shape falls out of that one relation: put three producers on a
-// system and you sit on your line; hold the same three across three systems and you are
-// throttled to ~0.33.
-const MEANLINE_K = 150;
+// ⤳ RESCALED 01-09-26 (150 → 1), points-and-reputation.md §2.6. The old 150 existed for
+// exactly one reason: it bridged two quantities on very different scales — RP resting in
+// the THOUSANDS against a GP in the TENS (12 a system, 6–8 a venture). §2.6 removes the
+// need for the bridge instead of tuning it, by moving the GP weights and `REP_MEET_MAX`
+// onto the same small scale RP now lives on (200 a system, 100–150 a venture; a met cycle
+// worth 10). With both halves on ONE scale, `k = 1` and **a guild's expected RP simply
+// EQUALS its GP** — the mean line reads at a glance, and there is no third number to keep
+// in sync.
+//
+// THE SHAPE IS UNTOUCHED, and that is the load-bearing claim: `issuanceModifier` divides
+// the gap by the expectation, so it is SCALE-INVARIANT (see below). Par, floor and ceiling
+// behave exactly as calibrated; only the digits shrank. "Par" is still about three
+// ventures per held system — 3 × 100 against 200 + 3 × 100 — because the RATIO W_SYS :
+// W_T1 was preserved at 2 : 1 across the rescale.
+const MEANLINE_K = 1;
 
 // The modifier's three knobs, all `[FIRST-CUT]` (phase-1-tuning.md).
 //
@@ -137,7 +139,7 @@ function issuanceModifier(state, guild) {
 //
 // docs/points-and-reputation.md §2.5 (A′). WHY IT EXISTS: GP counts held systems, RP is
 // earned per venture, and a just-founded guild holds its home system and has no ventures —
-// its starter assets are idle inventory and score nothing. So `expectedRP` is 1800 against
+// its starter assets are idle inventory and score nothing. So `expectedRP` is 200 against
 // an RP of 0 and the modifier pins at the FLOOR, throttling a brand-new guild to 30% fuel
 // before it has had any chance to earn. This is §1.2's passive-asset offset applied at
 // founding: the home system raises the bar and can never earn RP on its own, so it gets a
@@ -153,7 +155,9 @@ function issuanceModifier(state, guild) {
 //
 // IT INVENTS NO NUMBER (§18 #5). `MEANLINE_K` and `W_SYS` are both already ruled, and the
 // endowment is their product — so it TRACKS a retune of either instead of drifting from
-// it. There is no `[FIRST-CUT]` here and no tuning row for it.
+// it. There is no `[FIRST-CUT]` here and no tuning row for it. ⤳ The 01-09-26 rescale is
+// the proof that works: the endowment moved `150 × 12 = 1800` → `1 × 200 = 200` with NO
+// edit to this function, because it was never a stored constant.
 //
 // ⚠ IT AUTHORS NOTHING. This is a pure SIZING function: it computes an amount and writes
 // no state. The GRANT is made once, in the `foundGuild` apply (sim/actions.js), which is

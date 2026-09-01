@@ -223,10 +223,23 @@ test('double-apply guard: a snapshot-baked action still in the journal is not re
 // statement the strips used to make — this slice seeded a hoard and changed NOTHING
 // else about this sequence — and it fails loudly if a future edit smuggles a second
 // change in behind a re-pin.
-const GOLDEN_HASH = '755f874e8aabc0d4d2599dc92e3e075f1c9f88166c1be07adf819630e071b29b';
-const GOLDEN_HASH_WITH_PRICES = '7c6ca5f43dff99f0252fca8ca6b1026ce33d95589f52037e79efa8d3a22db9f0';
-const GOLDEN_HASH_WITH_HISTORY = 'bdfa2f43969bf51e9a81d9580f902a6471517ec3be5cc1795a158974b1b35ebb';
-const GOLDEN_HASH_WITH_ASSETS = '9ba9497e61fb80e87607c749a9d42367a8754fae64fdfff816027c9cfeaa5897';
+// THE REPUTATION RESCALE (01-09-26, slice 1 of 2 — docs/points-and-reputation.md §2.6).
+// GP and RP moved onto one small integer scale: `MEANLINE_K` 150 → 1, `W_SYS` 12 → 200,
+// tier weights 6/8 → 100/150. This canonical sequence FOUNDS A GUILD, and the founding
+// endowment is `MEANLINE_K × W_SYS` — so its ONE serialized number, `foundingEndowment`
+// (mirrored in `guildReputation`), moved 1800 → 200 and ALL SIX hashes below are re-pinned.
+//
+// NOTHING ELSE MOVED, and again the re-pinning is not the proof: the un-endow test below
+// strips exactly those two fields and asserts `GOLDEN_HASH_BEFORE_ENDOWMENT` comes back
+// byte for byte — and it does, unchanged, which is the statement that this rescale's whole
+// footprint on this sequence is the endowment's value. The run is 2 ticks on the 1,440-tick
+// default window, so it crosses NO cycle boundary: no issuance, so the rescaled GP weights
+// and the re-based `BASE_GRANT_PER_GP` (5 → 0.3) reach no fuel number here. The runs that
+// DO cross a boundary are in commitment-scaffold.test.js.
+const GOLDEN_HASH = '252305d0d8ed39a1b5f59fa8f32600697b42cc66c0d27affb9581736cb099c47';
+const GOLDEN_HASH_WITH_PRICES = 'bcdda635599da199a2de10e4283c2d11c404378f1cd5514b30d63555f08e12a4';
+const GOLDEN_HASH_WITH_HISTORY = 'dc14c1af5d1ebdb559b72d4c0f1796c58ad115b0ab4140ea37913aef75f0fe92';
+const GOLDEN_HASH_WITH_ASSETS = 'd3f6036d885bcdc02891e983ec1e59ab3d0a81ec5b2ba08c3c22d48019c86c68';
 
 // FUEL SLICE 5a (31-08-26) — the pool got a real seed. The Syndicate reserve
 // (`state.reserve.reserveLevel`) opened on a `[SHEET]` placeholder 30 from the walking
@@ -269,7 +282,7 @@ const GOLDEN_HASH_BEFORE_FUEL_GRANT = 'c42d88d7b70b6046ca710deda21717daccf58a969
 // and altered NOTHING else about this sequence, byte for byte — no grant, no hoard, no
 // pool, no valuation. The new full hash is pinned beside them so a drift in the price
 // itself is caught too.
-const GOLDEN_HASH_WITH_FUEL_PRICE = '05f1d23b8d25c9e54c6d1942771e597b7e6d090ff6cdb7af69f85446ce5e84da';
+const GOLDEN_HASH_WITH_FUEL_PRICE = 'e84443c76147c10566578348cc05b95e36caa6b21886c85a0faabdd88ea86e16';
 
 // THE FUEL PRICE CONTROLLER (01-09-26, slice 5b-ii — §4.2). The reserve gains `avgDraw`,
 // the trailing average of galaxy demand the controller steers against. Real serialized
@@ -282,7 +295,7 @@ const GOLDEN_HASH_WITH_FUEL_PRICE = '05f1d23b8d25c9e54c6d1942771e597b7e6d090ff6c
 // crosses NO cycle boundary — so the controller never runs, `avgDraw` is still its seed,
 // `fuelPrice` is still the reference, and the added key is the entire delta. The runs that
 // DO cross a boundary are in commitment-scaffold.test.js, and their hashes moved for real.
-const GOLDEN_HASH_WITH_AVG_DRAW = '89045ad4be1932374a594acad482993702685a6f1007991a86e217c109156d10';
+const GOLDEN_HASH_WITH_AVG_DRAW = '2a7ab973d8c92199204890c2e11a868d2df647bf64ae386ebcb397e988261e7a';
 
 // The state minus the reserve's fuel price — everything the four goldens above covered.
 // Stripped inside `reserve`, leaving `reserveLevel` and every other top-level key in
@@ -453,10 +466,12 @@ test('no-op proof: un-endow the founding and the pre-endowment golden comes back
 
   // The endowment really landed, and is DERIVED — not a number typed into the engine.
   assert.equal(g.foundingEndowment, MEANLINE_K * W_SYS, 'sized from the two ruled constants');
-  assert.equal(g.foundingEndowment, 1800);
-  assert.equal(g.guildReputation, 1800, 'and the guild total carries it');
+  // ⤳ RESCALED 01-09-26 (1800 → 200), points-and-reputation.md §2.6, with NO edit to
+  // `foundingEndowmentFor` — it is the product of two ruled constants and tracked them.
+  assert.equal(g.foundingEndowment, 200);
+  assert.equal(g.guildReputation, 200, 'and the guild total carries it');
   // It endowed the HOME SYSTEM only: the mine this run established is not endowed, so the
-  // guild's Points (18) are above what its reputation covers (12 systems' worth).
+  // guild's Points (300) are above what its reputation covers (200, one system's worth).
   assert.equal(g.ventures.length, 1, 'the run really did establish a venture');
   assert.equal(g.ventures[0].reputation, undefined, 'which carries no reputation of its own');
 

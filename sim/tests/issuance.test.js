@@ -103,32 +103,57 @@ function assertConserved(s, where) {
 // --- 1. the ruled constants -------------------------------------------------------
 
 test('the fuel-flow constants are the ruled [FIRST-CUT] numbers', () => {
-  assert.equal(BASE_GRANT_PER_GP, 5);
+  // ⤳ RE-BASED 01-09-26 (5 → 0.3) BY THE GP RESCALE, points-and-reputation.md §2.6. This
+  // constant is denominated PER GUILD POINT and §2.6 changed what a Guild Point is
+  // (`W_SYS` 12 → 200), so it had to move with its unit or it would have meant something
+  // else: at an unchanged 5 the reference galaxy drew ~16 450 a cycle against an 800
+  // influx, needing a settled price five times `PRICE_CEIL`. DERIVED, not chosen —
+  // `5 × (W_SYS_old / W_SYS_new)` — and asserted as that ratio here, not as a bare 0.3.
+  const { W_SYS } = require('../points.js');
+  assert.equal(BASE_GRANT_PER_GP, 0.3);
+  assert.equal(BASE_GRANT_PER_GP, 5 * (12 / W_SYS), 'the SAME rate, in the new units');
   assert.equal(DEUTERIUM_INFLUX_PER_CYCLE, 800);
   assert.equal(POOL_SEED, 4000);
-  // Integer fuel (§15.2): every one of these is a whole number of units, and the only
-  // rounding in the whole slice is `grantFor`'s, which is ruled at the point of grant.
-  for (const n of [BASE_GRANT_PER_GP, DEUTERIUM_INFLUX_PER_CYCLE, POOL_SEED]) {
+  // The two GALAXY-SCALE constants are counts of fuel and stay whole (§15.2). The base is
+  // not: it is a coefficient that scales GP into fuel, on the same footing as
+  // `issuanceModifier`, and `grantFor` rounds at the one point where the two meet.
+  for (const n of [DEUTERIUM_INFLUX_PER_CYCLE, POOL_SEED]) {
     assert.ok(Number.isInteger(n));
   }
+  assert.ok(Number.isFinite(BASE_GRANT_PER_GP) && BASE_GRANT_PER_GP > 0);
+});
+
+test('the RE-BASE is a NO-OP wherever the GP weights merely re-denominated', () => {
+  // The proof the re-base is arithmetic and not a retune. A held system and a tier-1 mine
+  // draw exactly the fuel they drew before the rescale, to the unit — because their GP
+  // weights and this rate moved by reciprocal factors.
+  const { W_SYS, TIER_WEIGHT } = require('../points.js');
+  assert.equal(BASE_GRANT_PER_GP * W_SYS, 60, 'a held system at par: 12 × 5 = 200 × 0.3');
+  assert.equal(BASE_GRANT_PER_GP * TIER_WEIGHT[1], 30, 'a tier-1 mine at par: 6 × 5 = 100 × 0.3');
+  // The ONE place it is not a no-op, and it is deliberate: tier 2 draws 45 where it drew
+  // 40. That +12.5% IS §2.6's widened 1 : 1.5 tier spread arriving in the fuel layer —
+  // which is exactly where the reward for climbing the tree is supposed to show up.
+  assert.equal(BASE_GRANT_PER_GP * TIER_WEIGHT[2], 45, 'a tier-2 refinery draws 45, up from 40');
 });
 
 // --- 2. the grant formula ---------------------------------------------------------
 
 test('a grant is round(BASE_GRANT_PER_GP × GP × modifier)', () => {
-  const s = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 4482 }]);
+  const s = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 498 }]);
   const g = s.guilds[0];
-  assert.equal(guildPoints(s, g), 30, 'the fixture is a par-shaped guild');
+  assert.equal(guildPoints(s, g), 500, 'the fixture is a par-shaped guild');
   assert.ok(Math.abs(issuanceModifier(s, g) - 1) < 0.01, '…sitting on its line');
   assert.equal(grantFor(s, g), Math.round(BASE_GRANT_PER_GP * guildPoints(s, g) * issuanceModifier(s, g)));
-  assert.equal(grantFor(s, g), 149, 'a par guild of GP 30 draws ~150 a cycle');
+  // ⤳ 01-09-26: the SAME 149 it drew pre-rescale — GP 30 → 500 and the rate 5 → 0.3, and
+  // the two cancel. The re-base is what keeps this number still.
+  assert.equal(grantFor(s, g), 149, 'a par guild of GP 500 draws ~150 a cycle');
 });
 
 test('the grant scales with SIZE and with the MODIFIER, independently', () => {
-  const par = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 4482 }]).guilds[0];
-  const parState = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 4482 }]);
+  const par = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 498 }]).guilds[0];
+  const parState = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 498 }]);
   // Same reputation, more territory ⇒ same base per Point but a throttled modifier.
-  const sprawl = galaxy([{ id: 'g1', systems: 3, mines: 3, rp: 4482 }]);
+  const sprawl = galaxy([{ id: 'g1', systems: 3, mines: 3, rp: 498 }]);
   assert.ok(guildPoints(sprawl, sprawl.guilds[0]) > guildPoints(parState, par), 'the sprawler is bigger…');
   assert.ok(issuanceModifier(sprawl, sprawl.guilds[0]) < 0.4, '…and throttled for it');
   // Bigger base, much smaller multiplier — the sprawler draws LESS despite holding more.
@@ -162,7 +187,7 @@ test('the INFLUX mints into the pool and records itself in the audit', () => {
 });
 
 test('NOTHING happens off a boundary — the pool holds and no fuel moves', () => {
-  let s = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 4482 }], 5000);
+  let s = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 498 }], 5000);
   const before = { p: pool(s), h: hoards(s), prod: s.audit.totalProduced };
   for (let i = 1; i < N; i += 1) {
     s = tick(s);
@@ -179,7 +204,7 @@ test('NOTHING happens off a boundary — the pool holds and no fuel moves', () =
 // --- 4. issuance TRANSFERS --------------------------------------------------------
 
 test('a grant TRANSFERS: the hoard rises by exactly the grant, the pool falls by the total', () => {
-  let s = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 4482, fuelHoard: 500 }], 5000);
+  let s = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 498, fuelHoard: 500 }], 5000);
   const due = grantFor(s, s.guilds[0]);
   const producedBefore = s.audit.totalProduced;
 
@@ -199,8 +224,8 @@ test('a grant TRANSFERS: the hoard rises by exactly the grant, the pool falls by
 
 test('several guilds are each granted their OWN size × their OWN standing', () => {
   const s0 = galaxy([
-    { id: 'par', systems: 1, mines: 3, rp: 4482 },      // on its line
-    { id: 'sprawl', systems: 3, mines: 3, rp: 4482 },   // same output, more land
+    { id: 'par', systems: 1, mines: 3, rp: 498 },      // on its line
+    { id: 'sprawl', systems: 3, mines: 3, rp: 498 },   // same output, more land
     { id: 'empty' },                                    // holds nothing
   ], 100000);
   const due = s0.guilds.map((g) => grantFor(s0, g));
@@ -343,7 +368,7 @@ test('an UNDER-drawing galaxy accumulates, and the controller lets it GROW into 
   // galaxy — the price falls all the way to `PRICE_FLOOR` and stays there, because even at
   // the floor one small guild cannot spend 800 a cycle. That is the floor doing its job: it
   // stops a rich galaxy from giving fuel away for nothing.
-  let s = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 4482 }], POOL_SEED);
+  let s = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 498 }], POOL_SEED);
   const entitlement = grantFor(s, s.guilds[0]);
   let previous = pool(s);
   let previousDraw = physicalGrantFor(s, s.guilds[0]);
@@ -372,7 +397,7 @@ test('an UNDER-drawing galaxy accumulates, and the controller lets it GROW into 
 // --- 6. the hard floor, proven by trying to break it -------------------------------
 
 test('THE POOL FLOOR: invariant 3 catches a negative pool', () => {
-  let s = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 4482 }], 5000);
+  let s = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 498 }], 5000);
   s = runToBoundary(s);
   assert.deepEqual(checkInvariants(s, s.tick), [], 'green before it is broken');
 
@@ -440,14 +465,14 @@ test('THE POOL FLOOR: the tick itself refuses to over-grant, rather than trustin
   }
 
   // …and the real tick is unharmed by the surgery.
-  let ok = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 4482 }], 5000);
+  let ok = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 498 }], 5000);
   ok = runToBoundary(ok);
   assertConserved(ok, 'after restoring the real module');
 });
 
 test('an UNMINTED grant would break invariant 1 — the audit is not optional', () => {
   // The other silent failure: fuel appearing in a hoard that `totalProduced` never saw.
-  let s = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 4482 }], 5000);
+  let s = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 498 }], 5000);
   s = runToBoundary(s);
   const smuggled = structuredClone(s);
   smuggled.guilds[0].fuelHoard += 1;            // one unit from nowhere
@@ -461,7 +486,7 @@ test('an UNMINTED grant would break invariant 1 — the audit is not optional', 
 test('determinism (invariant 9): a galaxy that flows fuel is byte-identical run twice', () => {
   const run = () => {
     const specs = [
-      { id: 'a', systems: 1, mines: 3, rp: 4482 },
+      { id: 'a', systems: 1, mines: 3, rp: 498 },
       { id: 'b', systems: 3, mines: 3, rp: 1000 },
       { id: 'c', systems: 2, mines: 8, rp: 8 * 1494 },
     ];
@@ -475,7 +500,7 @@ test('determinism (invariant 9): a galaxy that flows fuel is byte-identical run 
 // --- 8. the snapshot surface --------------------------------------------------------
 
 test('the snapshot publishes the grant, and the pool it came from', () => {
-  let s = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 4482 }], 5000);
+  let s = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 498 }], 5000);
   const due = grantFor(s, s.guilds[0]);
   s = runToBoundary(s);
 

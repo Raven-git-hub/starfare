@@ -54,13 +54,19 @@ const { isRawResource, isProcessedGood } = require('./resources.js');
 
 // W_SYS — the Points a held system is worth.
 //
-// `[FIRST-CUT]`, ruled in phase-1-tuning.md §"Points & Reputation" (12 / 6 / 8). THE
-// ABSOLUTE SCALE IS MEANINGLESS ON ITS OWN and is not worth tuning here: GP is only ever
-// read through `expectedRP = MEANLINE_K × GP`, and slice 4's `MEANLINE_K` is what fixes
-// the scale. What these numbers encode is the RATIO — systems Points-HEAVY, ventures
-// Points-LIGHT — which is the density-beats-sprawl shape: territory is the expensive
-// thing to hold, and you pay for it by putting ventures on it.
-const W_SYS = 12;
+// `[FIRST-CUT]` **200**, ruled in phase-1-tuning.md §"Points & Reputation"
+// (200 / 100 / 150 / 300 / 500). What these numbers encode is the RATIO — systems
+// Points-HEAVY, ventures Points-LIGHT — which is the density-beats-sprawl shape:
+// territory is the expensive thing to hold, and you pay for it by putting ventures on it.
+// A held system stays exactly 2× a tier-1 mine, as it was at 12 / 6.
+//
+// ⤳ RESCALED 01-09-26 (12 → 200), points-and-reputation.md §2.6. The absolute scale used
+// to be meaningless on its own — GP was only ever read through `expectedRP = MEANLINE_K ×
+// GP`, and `MEANLINE_K = 150` was what fixed it. The rescale drops `MEANLINE_K` to 1, so
+// GP and RP now share ONE small integer scale and a guild's expected RP simply EQUALS its
+// GP. That makes this weight the scale itself rather than an arbitrary ratio numerator:
+// 200 is the RP a held system is expected to have earned.
+const W_SYS = 200;
 
 // TIER_WEIGHT — the Points a venture is worth, by the TIER of the good it produces.
 //
@@ -70,9 +76,15 @@ const W_SYS = 12;
 // with no recipes). When they are, this gains a line and nothing else changes.
 //
 // A tier with NO entry here is a deliberate STOP, not a zero — see `tierWeight`.
+//
+// ⤳ RESCALED 01-09-26 (6 / 8 → 100 / 150), points-and-reputation.md §2.6. Not just a ×
+// re-denomination: the tier SPREAD was deliberately widened, from 6 : 8 (1 : 1.33) to the
+// ruled 1 : 1.5 : 3 : 5 = 100 / 150 / 300 / 500, so climbing the manufacturing tree is a
+// genuine reward. `W_T3` / `W_T4` (300 / 500) are the ruled ratio but stay OUT of this map
+// until tier-3 goods have recipes — an unweighted tier must still halt (see `tierWeight`).
 const TIER_WEIGHT = Object.freeze({
-  1: 6,   // raw — a mine
-  2: 8,   // processed — a refinery, a notch above the mine that feeds it
+  1: 100,  // raw — a mine
+  2: 150,  // processed — a refinery, half again the mine that feeds it
 });
 
 // EVERY WEIGHT ABOVE IS AN INTEGER, and must stay one: GP is an integer (§15.2 / §1.0),
@@ -103,7 +115,13 @@ function tierOf(good) {
 // violation is worse than a crash). A 0 would be the quietest possible bug in this whole
 // model: a guild's tier-3 factories would simply not count toward its size, so its bar
 // would sit below what it actually holds, and slice 4's mean line would hand it fuel it
-// had not earned — with nothing anywhere going red. Halting names the good, the venture
+// had not earned — with nothing anywhere going red.
+//
+// ⤳ IT HAS A SECOND CALLER SINCE 01-09-26: `tierFactor` (sim/licence.js), which scales the
+// RP a met or breached cycle moves by the venture's tier (§2.6). So the same halt now also
+// stops a tier-3 venture EARNING at the tier-1 rate, which would be the same bug wearing
+// reputation's clothes. The message says "GP weight lookup" rather than "guildPoints" for
+// that reason — it is one lookup with two consumers, and it must read honestly from both. Halting names the good, the venture
 // and the guild, so the fix is obvious: rule the weight in phase-1-tuning and add it to
 // `TIER_WEIGHT`. NEVER guess one here.
 function tierWeight(tier, where) {
@@ -111,7 +129,7 @@ function tierWeight(tier, where) {
   if (w === undefined) {
     const at = where || {};
     throw new Error(
-      `guildPoints: no ruled GP weight for tier ${tier === null ? 'UNKNOWN' : tier} — `
+      `GP weight lookup: no ruled GP weight for tier ${tier === null ? 'UNKNOWN' : tier} — `
       + `guild ${at.guildId}'s venture ${at.ventureId} produces "${at.good}", which is in neither `
       + 'RAW_RESOURCES nor PROCESSED_GOODS (sim/resources.js). Rule its weight in '
       + 'docs/phase-1-tuning.md and add it to TIER_WEIGHT — refusing to score it as 0, which '
