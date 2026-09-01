@@ -407,71 +407,17 @@ test('the served licence panel\'s mirrored constants still match the engine', as
   assert.match(html, /id="cRange" min="0" max="100"/);   // commitment: a 0..1 fraction
 });
 
-// --- the console's MEAN LINE readout (slice 4, 31-08-26) --------------------------
+// --- the MEAN LINE, per guild (slice 4, 31-08-26) ---------------------------------
 //
 // docs/points-and-reputation.md §3. The engine derives `expectedReputation` and
-// `issuanceModifier` (sim/meanline.js); the console renders them and computes neither.
-
-test('the served console reads the mean line off the snapshot and reimplements none of it', async () => {
-  const html = await (await fetch(base + '/console')).text();
-
-  assert.match(html, /function meanLineBlock\(/);
-  assert.match(html, /g\.expectedReputation \|\| 0/, 'the expectation comes off the snapshot');
-  assert.match(html, /var mod = g\.issuanceModifier;/, 'and so does the modifier');
-  assert.match(html, /Expected reputation/);
-  assert.match(html, /Issuance modifier/);
-
-  // THE WHOLE POINT: the browser must not compute the modifier. It carries neither the
-  // slope nor `k`, so it structurally CANNOT — a second derivation here could only ever
-  // disagree with the engine's, and this is the number a future fuel grant is scaled by.
-  const meanline = require('../meanline.js');
-  assert.ok(!/MEANLINE_K|ISSUANCE_SENSITIVITY/.test(html),
-    'the console must not name the slope or k — it never computes the modifier');
-  assert.ok(!new RegExp(`\\b${meanline.MEANLINE_K}\\s*\\*`).test(html),
-    'nor multiply anything by k');
-  assert.ok(!/guildReputation[\s\S]{0,120}expectedReputation[\s\S]{0,120}\//.test(html),
-    'nor divide a gap by an expectation of its own');
-
-  // It hangs off the guild block, which renderStage rebuilds on every snapshot poll, so
-  // the modifier moves as holdings and reputation change.
-  assert.match(html, /gpBlock\(g\) \+\s*\n\s*meanLineBlock\(g\)/,
-    'the mean-line block sits with GP inside rpGuildBlock, rebuilt on every refresh');
-
-  // ⚠ SUPERSEDED BY FUEL SLICE 5a (31-08-26). Until that slice the modifier multiplied
-  // nothing, and this asserted the footer said so. Fuel is now really granted from the
-  // Syndicate pool at each boundary, so the old wording would be a lie; what the panel must
-  // still not do is claim more than the engine does. It now says the modifier IS spent, and
-  // names the one thing that still limits it.
-  assert.match(html, /the grant below is that/);
-  assert.match(html, /modifier spent, drawn from the Syndicate pool at each cycle boundary/,
-    'the footer says the modifier is now actually spent');
-  assert.match(html, /rationed proportionally/,
-    'and names the crunch, which is what still limits a grant');
-
-  // The colour must agree with the PRINTED figure, not with the raw float. A guild
-  // sitting on its line computes to 0.997 and displays as 1.00; colouring that red said
-  // "throttled" about a guild that is exactly on par (caught in a browser, 31-08-26).
-  assert.match(html, /var shown = mod\.toFixed\(2\);/);
-  assert.match(html, /var rounded = Number\(shown\);/);
-  assert.match(html, /rounded < 1 \? ' throttled' : \(rounded > 1 \? ' buff' : ''\)/,
-    'the throttled/buff class branches on the ROUNDED figure the viewer sees');
-  assert.ok(!/mod < 1 \? ' throttled'/.test(html), 'and never on the raw float again');
-});
-
-// The console mirrors the two CLAMP BOUNDS — and only those two — so it can label a
-// pinned modifier FLOOR or CEILING. Duplication is only safe with a tripwire, the same
-// bargain the RP band bounds strike. It does no clamping itself.
-test('the console\'s mirrored issuance clamp bounds still match sim/meanline.js', async () => {
-  const html = await (await fetch(base + '/console')).text();
-  const meanline = require('../meanline.js');
-
-  assert.match(html, new RegExp(`FLOOR: ${meanline.ISSUANCE_FLOOR},`),
-    'the FLOOR label must use sim/meanline.js ISSUANCE_FLOOR');
-  assert.match(html, new RegExp(`CEIL:\\s+${meanline.ISSUANCE_CEIL},`),
-    'the CEILING label must use sim/meanline.js ISSUANCE_CEIL');
-  assert.match(html, /MIRRORS sim\/meanline\.js ISSUANCE_FLOOR/);
-  assert.match(html, /MIRRORS sim\/meanline\.js ISSUANCE_CEIL/);
-});
+// `issuanceModifier` (sim/meanline.js) and publishes both per guild in the snapshot.
+//
+// ⏪ THE CONSOLE'S MEAN-LINE READOUT WAS REVERTED 01-09-26 (§6.1, Slice 1b), so the two
+// served-page tripwires that guarded it went with the markup: that /console read the pair
+// off the snapshot and reimplemented neither, and that its mirrored ISSUANCE_FLOOR /
+// ISSUANCE_CEIL labels still matched sim/meanline.js. Both asserted MARKUP; neither
+// touched the engine. The readout is deferred to the player-facing Guild Hall, and the
+// snapshot test below is the standing proof that nothing engine-side moved with it.
 
 test('GET /snapshot carries the mean line per guild, from the engine helpers', async () => {
   await reset();
@@ -508,41 +454,16 @@ test('GET /snapshot carries the mean line per guild, from the engine helpers', a
   assert.ok(Number.isFinite(g.issuanceModifier));
 });
 
-// --- the console's GUILD POINTS readout (GP slice 3, 31-08-26) --------------------
+// --- GUILD POINTS, per guild (GP slice 3, 31-08-26) -------------------------------
 //
 // docs/points-and-reputation.md §1/§1.0. GP is DERIVED by the engine (sim/points.js) and
-// published per guild in the snapshot; the console renders the number and nothing else.
-
-test('the served console reads guildPoints off the snapshot and does NOT reimplement the weighting', async () => {
-  const html = await (await fetch(base + '/console')).text();
-  const points = require('../points.js');
-
-  assert.match(html, /function gpBlock\(/);
-  assert.match(html, /g\.guildPoints \|\| 0/, 'the number comes straight off the snapshot');
-  assert.match(html, /Guild points/);
-
-  // THE WHOLE POINT: the browser must weigh nothing. GP is the number slice 4's mean line
-  // will judge reputation against, so a second weighting here could only ever disagree
-  // with the engine's — and unlike the RP band bounds there is NOTHING to mirror, because
-  // the console needs no GP constant at all. That is why this block carries no
-  // constant-mirror tripwire: there is no duplicated constant to guard.
-  assert.ok(!new RegExp(`W_SYS|\\bTIER_WEIGHT\\b|tierWeight|tierOf|guildPoints\\s*\\(`).test(html),
-    'the console must not name or reimplement any part of the GP weighting');
-  for (const n of [points.W_SYS, points.TIER_WEIGHT[1], points.TIER_WEIGHT[2]]) {
-    assert.ok(!new RegExp(`heldSystemIds[\\s\\S]{0,200}${n}`).test(html),
-      'nor count held systems and multiply by a weight of its own');
-  }
-
-  // A plain number, deliberately — GP is unbounded, so a gauge would need an invented
-  // maximum. The RP band gauge beside it is NOT reused for this.
-  assert.ok(!/gpGauge|gp-gauge/.test(html), 'GP gets no band gauge; it has no floor or cap to draw against');
-  assert.match(html, /class="gp-row"/);
-
-  // It sits inside the guild block, which renderStage rebuilds on every snapshot poll, so
-  // GP moves as territory and ventures change.
-  assert.match(html, /rpGauge\(rep, \{ scale: true \}\) \+\s*\n\s*gpBlock\(g\)/,
-    'the GP row hangs off rpGuildBlock, which is rebuilt on every refresh');
-});
+// published per guild in the snapshot.
+//
+// ⏪ THE CONSOLE'S GP READOUT WAS REVERTED 01-09-26 (§6.1, Slice 1b), taking its one
+// served-page tripwire with it — that /console read `guildPoints` straight and
+// reimplemented no part of the weighting. That guarded markup, not the derivation. The
+// number is unchanged and still published; the test below pins it against the engine
+// helper, as it always did.
 
 test('GET /snapshot carries guildPoints per guild, equal to the engine helper', async () => {
   await reset();
@@ -568,105 +489,21 @@ test('GET /snapshot carries guildPoints per guild, equal to the engine helper', 
 
 // --- the console's REPUTATION readout (RP dev-panel slice, 31-08-26) ---------------
 //
-// docs/points-and-reputation.md §2.1. CLIENT-ONLY: the console renders the snapshot's
-// `guild.guildReputation` and `ventures[].reputation`, which RP slices 1 and 2 already
-// put there. These pin that it reads the ENGINE's numbers rather than deriving its own,
-// and that the band it draws them on is the engine's band.
-
-test('the served console reads reputation off the snapshot and never re-sums it', async () => {
-  const html = await (await fetch(base + '/console')).text();
-
-  // The two snapshot fields, read straight — the guild total ECHOED, not recomputed from
-  // the venture rows. A second addition in the browser could disagree with the engine's
-  // own sum (which `checkGuildReputationSum` guards every tick), so §15.2's
-  // one-source-of-truth rule says the panel must read the total it is given.
-  assert.match(html, /g\.guildReputation \|\| 0/, 'the guild total comes off the snapshot');
-  assert.match(html, /reputation: v\.reputation \|\| 0/, 'and each venture row carries its own');
-  assert.ok(!/guildReputation\s*=\s*[^;]*reduce/.test(html),
-    'the console must NOT re-sum the ventures into a guild total of its own');
-
-  // The readout itself: a number, and the band gauge it sits on.
-  assert.match(html, /function rpGauge\(/);
-  assert.match(html, /function rpGuildBlock\(/);
-  assert.match(html, /class="rp-guild"/);
-  assert.match(html, /Guild reputation/);
-
-  // It lives in the Syndicate panel, which re-renders on every snapshot poll — so RP
-  // visibly MOVES as ticks advance, which is the whole point of the slice.
-  assert.match(html, /'<div class="sm-foot">' \+ esc\(synFeeFoot\(\)\) \+ '<\/div>' \+ rpGuildBlock\(\)/,
-    'the guild block hangs off synStats, which renderStage rebuilds on every refresh');
-});
-
-test('the served console draws the band gauge from DISPLAY arithmetic only', async () => {
-  const html = await (await fetch(base + '/console')).text();
-
-  // The ONE calculation the panel is allowed: where a value sits on the bar. That is
-  // presentation over engine-owned bounds, the same standing as the thermometer's fill %.
-  assert.match(html, /\(v - RP\.FLOOR\) \/ \(RP\.CAP - RP\.FLOOR\) \* 100/,
-    'the bar position is (value - floor) / (cap - floor)');
-
-  // The taper zone is SHOWN (so "slow to climb" is visible) but never COMPUTED here:
-  // the console must not reimplement gainFactor, only shade the region it applies to.
-  assert.match(html, /class="rp-taper"/);
-  assert.ok(!/gainFactor/.test(html), 'the console must not reimplement the engine taper');
-  assert.ok(!/metGain|breachPenalty/.test(html), 'nor either magnitude formula');
-
-  // A venture at the floor reads PINNED, never "closed": closure is not built (§0a), so
-  // the panel must not draw a consequence the engine will not deliver.
-  assert.match(html, /PINNED/);
-  // Scoped to rpGauge's OWN body — the slice used to run to `rpGuildBlock` and swept up
-  // whatever functions were defined between them, which by slice 5a included a fuel block
-  // that legitimately talks about a CYCLE closing. The rule is about this function.
-  const gaugeBody = html.split('function rpGauge(')[1].split('\nfunction ')[0];
-  assert.ok(!/\bclosed\b/i.test(gaugeBody),
-    'the gauge must not call a pinned venture closed');
-});
-
-// The console MIRRORS the band's three engine constants (there is no endpoint serving
-// them). Duplication is only safe with a tripwire — the same bargain the licence panel's
-// P.EQUITY_CEIL / P.K / P.CORNERS strike above. Move any of these in sim/licence.js and
-// this fails, instead of the gauge quietly drawing yesterday's band.
-test('the console\'s mirrored RP band bounds still match sim/licence.js', async () => {
-  const html = await (await fetch(base + '/console')).text();
-  const licence = require('../licence.js');
-
-  assert.match(html, new RegExp(`FLOOR: ${licence.RP_FLOOR},`),
-    'the gauge floor must be sim/licence.js RP_FLOOR');
-  assert.match(html, new RegExp(`KNEE:\\s+${licence.RP_TAPER_KNEE},`),
-    'the taper zone must start at sim/licence.js RP_TAPER_KNEE');
-  assert.match(html, new RegExp(`CAP:\\s+${licence.RP_SOFT_CAP},`),
-    'the gauge cap must be sim/licence.js RP_SOFT_CAP');
-});
-
-// The two TIER MARKS are a different case and are pinned differently, on purpose. They
-// are ruled by the DOCS but have no engine constant to mirror, because neither
-// consequence is built — so the tripwire is against the ruling itself. If the doc
-// renumbers a tier, this goes red and the console follows it.
-test('the console\'s RP tier marks still match the ruling in points-and-reputation.md', async () => {
-  const html = await (await fetch(base + '/console')).text();
-  const doc = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'points-and-reputation.md'), 'utf8');
-
-  assert.match(html, /FORCED_LEASE: -300,/);
-  assert.match(html, /DIVIDEND_MAX: 1000,/);
-  // §2.1 names all three edges in one phrase. The doc uses a Unicode minus and wraps the
-  // phrase across a line break, so both are normalised away before matching — the tripwire
-  // is on the NUMBERS being ruled, not on how the paragraph happens to be filled.
-  const ruling = doc.replace(/\u2212/g, '-').replace(/\s+/g, ' ');
-  assert.ok(ruling.includes('+1000 dividend-max, -300 forced-lease, -500 closure'),
-    'the tier marks the console draws must still be the ones §2.1 rules');
-
-  // And they must be labelled as scale, not as behaviour: neither is built.
-  assert.match(html, /forced-lease tier \(not built\)/);
-  assert.match(html, /dividend-max tier \(not built\)/);
-
-  // If either ever GROWS an engine constant, this flips red on purpose — that is the
-  // signal to promote it to a real sim/ mirror like the three bounds above.
-  const licence = require('../licence.js');
-  assert.equal(licence.RP_FORCED_LEASE, undefined,
-    'RP_FORCED_LEASE now exists in the engine — mirror it properly instead of quoting the doc');
-  assert.equal(licence.RP_DIVIDEND_MAX, undefined,
-    'RP_DIVIDEND_MAX now exists in the engine — mirror it properly instead of quoting the doc');
-});
+// ⏪ REVERTED 01-09-26 (docs/points-and-reputation.md §6.1, Slice 1b). The Production
+// Console's band gauge came off with the rest of the guild-economy block, and its five
+// served-page tripwires came off with it: that the console read `guild.guildReputation`
+// and `ventures[].reputation` straight and never re-summed them; that the gauge's only
+// arithmetic was the bar position; that a floored venture read PINNED and never "closed";
+// that the mirrored RP_FLOOR / RP_TAPER_KNEE / RP_SOFT_CAP still matched sim/licence.js;
+// and that the two tier marks still matched §2.1's ruling.
+//
+// EVERY ONE OF THOSE GUARDED MARKUP. Reputation itself is untouched: sim/licence.js still
+// owns the band, the tick still moves RP off the met/breach verdict, `checkGuildReputationSum`
+// still guards the total every tick, and the snapshot still carries both fields
+// (sim/tests/reputation.test.js, plus the mean-line snapshot test above, which reads
+// `guildReputation` off a founded guild). When the Guild Hall renders RP it gets its own
+// tripwires, including fresh mirrors of those five constants — which, as of this commit,
+// live in no client file at all.
 
 test('GET /assets/<path> serves the client\'s art, and refuses a path that escapes', async () => {
   // A real file the client references (client/assets/planets/rocky.jpg).
