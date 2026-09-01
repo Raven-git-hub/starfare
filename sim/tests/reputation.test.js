@@ -50,11 +50,13 @@ const { checkInvariants } = require('../invariants.js');
 const { hashState, canonicalStringify } = require('../serialize.js');
 const { buildSnapshot, SNAPSHOT_SCHEMA } = require('../snapshot.js');
 const { saveState, loadOrInit } = require('../persist.js');
+const { TIER_WEIGHT } = require('../points.js');
+const W_T1 = TIER_WEIGHT[1];
 const {
   EQUITY_CEILING,
   REP_MEET_MAX, REP_W_COMMIT, REP_W_EQUITY, REP_BREACH_MAX, REP_BREACH_MIN,
   RP_FLOOR, RP_SOFT_CAP, RP_TAPER_KNEE,
-  metGain, breachPenalty, gainFactor, reputationDelta,
+  metGain, breachPenalty, gainFactor, reputationDelta, tierFactor,
 } = require('../licence.js');
 
 const SYS = 'sysA';
@@ -65,8 +67,12 @@ const N = 4;                                  // a short window, so a boundary i
 // The two terms fixtures reason about, named once. FULL terms = a full commitment AND the
 // structural 49% equity ceiling — the corner the meter scores at its maximum.
 const FULL_EQUITY = EQUITY_CEILING;
-const GAIN_FULL_TERMS = REP_MEET_MAX;                       // 100
-const GAIN_COMMIT_ONLY = REP_MEET_MAX * REP_W_COMMIT;       // 50 — committed all, offered nothing
+const GAIN_FULL_TERMS = REP_MEET_MAX;                       // 10 — tier 1, full terms
+const GAIN_COMMIT_ONLY = REP_MEET_MAX * REP_W_COMMIT;       // 5 — committed all, offered nothing
+// What a FULL-commitment breach actually costs, at tier 1: `REP_BREACH_MIN` ROUNDED. The
+// constant is a sanctioned float (2.5) since §2.6 lifted the breach floor to a quarter of
+// MAX, and `breachPenalty` rounds — so fixtures name the landed integer, not the constant.
+const DROP_FULL_COMMIT = Math.round(REP_BREACH_MIN);        // 3
 
 const mine = (id, { systemId = SYS, productionRate = 10, equityPct } = {}) => ({
   id, ownerGuildId: 'g1', type: 'mining', systemId, resourceType: GOOD, productionRate,
@@ -88,8 +94,13 @@ const rp = (s, id) => ven(s, id).reputation;
 
 // A bare venture-shaped object for the PURE functions, so their arithmetic can be tested
 // without standing a whole galaxy up. The engine tests below use the real tick.
+// ⤳ 01-09-26: this stub now names a `resourceType`. Since the rescale (§2.6) `metGain` and
+// `breachPenalty` are TIER-scaled, so they read the venture's produced good — a stub with
+// no output would (rightly) halt on an unknown tier rather than quietly earning at the
+// tier-1 rate. `GOOD` is titanium, so every `terms(...)` below is a TIER-1 venture and its
+// `tierFactor` is exactly 1; the tier-2 cases have their own tests further down.
 const terms = (committedOutputPct, equityPct = 0) => ({
-  id: 'terms', equityPct, licence: { committedOutputPct },
+  id: 'terms', equityPct, resourceType: GOOD, licence: { committedOutputPct },
 });
 
 // Licence at tick 0, before any window opens, so every window is FULL (`windowFraction`
@@ -137,31 +148,35 @@ function assertSumHolds(s, where) {
 test('the slice-2 constants are the ruled [FIRST-CUT] numbers, and the weights sum to 1', () => {
   // Pinned so a silent retune cannot pass unnoticed; phase-1-tuning.md is where a
   // deliberate one is recorded, in the same commit as the code.
-  assert.equal(REP_MEET_MAX, 100);
-  assert.equal(REP_BREACH_MAX, 100);
-  assert.equal(REP_BREACH_MIN, 10);
+  // ⤳ RESCALED 01-09-26 (§2.6): MEET_MAX and BREACH_MAX ÷10 with the RP scale, and
+  // BREACH_MIN lifted from 10% of MAX to 25% of it (so 10 → 2.5, not 10 → 1). The BAND is
+  // deliberately UNCHANGED — §2.6 defers its own rescale to the next ruling.
+  assert.equal(REP_MEET_MAX, 10);
+  assert.equal(REP_BREACH_MAX, 10);
+  assert.equal(REP_BREACH_MIN, 2.5);
+  assert.equal(REP_BREACH_MIN / REP_BREACH_MAX, 0.25, 'the floor is a QUARTER of the max, lifted from a tenth');
   assert.equal(RP_FLOOR, -500);
   assert.equal(RP_SOFT_CAP, 1500);
   assert.equal(RP_TAPER_KNEE, 800);
-  // The weights summing to exactly 1 is what makes full terms score REP_MEET_MAX exactly,
-  // which is what puts the +1000 dividend-max tier roughly ten met cycles away — so the
-  // licence layer's tiers fall out of the meter instead of being a second number. (Only
-  // ROUGHLY ten: the taper makes it eleven. See the once-per-boundary test below.)
+  // The weights summing to exactly 1 is what makes full terms at tier 1 score
+  // REP_MEET_MAX exactly — the venture's whole 100-point bar in ten met cycles (§2.6's
+  // break-even), so the licence layer's tiers fall out of the meter instead of being a
+  // second number.
   assert.equal(REP_W_COMMIT + REP_W_EQUITY, 1);
-  assert.equal(metGain(terms(1, FULL_EQUITY)), REP_MEET_MAX, 'full terms scores the maximum exactly');
+  assert.equal(metGain(terms(1, FULL_EQUITY)), REP_MEET_MAX, 'full terms at tier 1 scores the maximum exactly');
 });
 
 // --- 2. the met gain: terms-scaled -----------------------------------------------
 
 test('metGain is the deploy meter: REP_MEET_MAX × (0.5·commit + 0.5·equityFrac)', () => {
-  assert.equal(metGain(terms(1, FULL_EQUITY)), 100, 'commit everything, offer the ceiling');
-  assert.equal(metGain(terms(1, 0)), 50, 'commit everything, offer nothing — half the meter');
-  assert.equal(metGain(terms(0, FULL_EQUITY)), 50, 'commit nothing, offer the ceiling — the other half');
-  assert.equal(metGain(terms(0.5, FULL_EQUITY / 2)), 50, 'half and half');
-  assert.equal(metGain(terms(0.5, 0)), 25);
+  assert.equal(metGain(terms(1, FULL_EQUITY)), 10, 'commit everything, offer the ceiling');
+  assert.equal(metGain(terms(1, 0)), 5, 'commit everything, offer nothing — half the meter');
+  assert.equal(metGain(terms(0, FULL_EQUITY)), 5, 'commit nothing, offer the ceiling — the other half');
+  assert.equal(metGain(terms(0.5, FULL_EQUITY / 2)), 5, 'half and half');
+  assert.equal(metGain(terms(0.5, 0)), 3, 'a quarter of the meter is 2.5, rounded to 3');
   assert.equal(metGain(terms(0.25, FULL_EQUITY)), Math.round(REP_MEET_MAX * (0.5 * 0.25 + 0.5)),
-    'the two axes are independent — and the gain is a whole number (§15.2), so 62.5 rounds to 63');
-  assert.equal(metGain(terms(0.25, FULL_EQUITY)), 63, 'stated outright, so the rounding is not implied by the formula it is testing');
+    'the two axes are independent — and the gain is a whole number (§15.2), so 6.25 rounds to 6');
+  assert.equal(metGain(terms(0.25, FULL_EQUITY)), 6, 'stated outright, so the rounding is not implied by the formula it is testing');
 });
 
 test('YOU DO NOT EARN RP FOR OWNING: zero terms met scores exactly zero', () => {
@@ -173,27 +188,37 @@ test('YOU DO NOT EARN RP FOR OWNING: zero terms met scores exactly zero', () => 
 });
 
 test('the met gain rises MONOTONICALLY with each term', () => {
+  // ⤳ 01-09-26: the steps are checked NON-strictly now. At the rescaled REP_MEET_MAX = 10
+  // the meter's whole range is ten integers wide, so two nearby terms can round to the
+  // same gain — 0.1 and 0.25 equity both land on 1. That is the rescale's real cost and
+  // it is worth stating rather than papering over: the meter is coarser. It must still
+  // never go DOWN as a term goes up, which is what §2.2's shape actually promises, and it
+  // must still span the full range end to end.
   let previous = -1;
   for (const c of [0, 0.25, 0.5, 0.75, 1]) {
     const g = metGain(terms(c, 0));
-    assert.ok(g > previous, `commitment ${c} must be worth more than the step below`);
+    assert.ok(g >= previous, `commitment ${c} must be worth at least the step below`);
     previous = g;
   }
+  assert.ok(metGain(terms(1, 0)) > metGain(terms(0, 0)), 'and end to end it really does rise');
   previous = -1;
   for (const o of [0, 0.1, 0.25, 0.4, FULL_EQUITY]) {
     const g = metGain(terms(0, o));
-    assert.ok(g > previous, `equity ${o} must be worth more than the step below`);
+    assert.ok(g >= previous, `equity ${o} must be worth at least the step below`);
     previous = g;
   }
+  assert.ok(metGain(terms(0, FULL_EQUITY)) > metGain(terms(0, 0)), 'and end to end it really does rise');
 });
 
 // --- 3. the breach drop: linear, inverse to commitment ---------------------------
 
 test('breachPenalty is linear and INVERSE to commitment — cheap when you promised a lot', () => {
-  assert.equal(breachPenalty(terms(1, 0)), -REP_BREACH_MIN, 'a full commitment breached costs only −10');
-  assert.equal(breachPenalty(terms(0, 0)), -REP_BREACH_MAX, 'the c→0 endpoint is −100');
-  assert.equal(breachPenalty(terms(0.5, 0)), -55, 'linear: the midpoint is the midpoint');
-  assert.equal(breachPenalty(terms(0.25, 0)), -78);
+  // ⤳ RESCALED 01-09-26. The full-commitment end is −3 (2.5 rounded), not −1: §2.6 lifted
+  // REP_BREACH_MIN to a QUARTER of MAX so the sign-at-100%-then-breach tail is not free.
+  assert.equal(breachPenalty(terms(1, 0)), -3, 'a full commitment breached costs only −3');
+  assert.equal(breachPenalty(terms(0, 0)), -REP_BREACH_MAX, 'the c→0 endpoint is −10');
+  assert.equal(breachPenalty(terms(0.5, 0)), -6, 'linear: the midpoint (6.25) is the midpoint');
+  assert.equal(breachPenalty(terms(0.25, 0)), -8);
   // Breaking a token promise is contempt; falling short of an ambitious one is forgivable.
   assert.ok(breachPenalty(terms(0.1, 0)) < breachPenalty(terms(0.9, 0)),
     'a small commitment breached must hurt MORE than a large one');
@@ -223,6 +248,54 @@ test('the −100 endpoint is a LIMIT, never paid: a 0% licence cannot breach', (
   assertSumHolds(s, 'a 0% licence');
 });
 
+// --- 3b. the TIER factor (ruled 01-09-26, §2.6) -----------------------------------
+
+// A tier-2 stub, the refining counterpart of `terms` above. It names a `recipeId`, so
+// `producedGoodFor` resolves to a PROCESSED good and `tierOf` reads 2.
+const tier2Terms = (committedOutputPct, equityPct = 0) => ({
+  id: 'terms2', equityPct, recipeId: 'titanium_alloy', licence: { committedOutputPct },
+});
+
+test('tierFactor is the venture\'s GP weight over the tier-1 weight — 1 at T1, 1.5 at T2', () => {
+  assert.equal(tierFactor(terms(1, 0)), 1, 'a mine is the unit');
+  assert.equal(tierFactor(tier2Terms(1, 0)), 1.5, 'a refinery earns half again as much');
+  // SOURCED FROM `sim/points.js`, not from a literal 100, so it survives a retune of the
+  // absolute GP scale. This is the assertion that would go red if someone re-hardcoded it.
+  assert.equal(tierFactor(tier2Terms(1, 0)), TIER_WEIGHT[2] / TIER_WEIGHT[1]);
+});
+
+test('a HIGHER TIER earns and loses proportionally more — the reward for climbing the tree', () => {
+  // §2.6: the tier scales BOTH directions, so the stake rises with the tier rather than
+  // the bar. Full terms: +10 at tier 1, +15 at tier 2.
+  assert.equal(metGain(terms(1, FULL_EQUITY)), 10);
+  assert.equal(metGain(tier2Terms(1, FULL_EQUITY)), 15);
+  // …and the breach scales the same way: −3 at tier 1, −4 at tier 2 (2.5 × 1.5 = 3.75).
+  assert.equal(breachPenalty(terms(1, 0)), -3);
+  assert.equal(breachPenalty(tier2Terms(1, 0)), -4);
+});
+
+test('EVERY TIER BREAKS EVEN IN THE SAME TEN CYCLES — that is what the factor buys', () => {
+  // The whole point of the ruling (§2.6). A venture's BAR is its GP weight; its earn rate
+  // is `REP_MEET_MAX × tierFactor`. Both scale by the same factor, so the ratio — the
+  // cycles to break even — is identical at every tier. A higher tier is a bigger deal, not
+  // a longer grind.
+  for (const v of [terms(1, FULL_EQUITY), tier2Terms(1, FULL_EQUITY)]) {
+    const bar = TIER_WEIGHT[tierFactor(v) === 1 ? 1 : 2];
+    assert.equal(bar / metGain(v), 10, 'ten full-terms met cycles pay for the venture, at any tier');
+  }
+});
+
+test('an UNWEIGHTED tier HALTS rather than quietly earning at the tier-1 rate', () => {
+  // The same stop `guildPoints` makes (§18 / §15.5). A tier-3 venture scoring the tier-1
+  // earn rate would be the quietest possible bug — it would look like it was working.
+  const t3 = { id: 'x', equityPct: 0, resourceType: 'deuterium_fuel', licence: { committedOutputPct: 1 } };
+  assert.throws(() => metGain(t3), /no ruled GP weight/);
+  assert.throws(() => breachPenalty(t3), /no ruled GP weight/);
+  // And a venture that produces NOTHING at all halts too: RP only moves for a venture the
+  // fee loop already judged, so one arriving here with no output is a contradiction.
+  assert.throws(() => metGain({ id: 'y', licence: { committedOutputPct: 1 } }), /no ruled GP weight/);
+});
+
 // --- 4. the taper -----------------------------------------------------------------
 
 test('gainFactor tapers GAINS between the knee and the cap, and only there', () => {
@@ -238,8 +311,8 @@ test('gainFactor tapers GAINS between the knee and the cap, and only there', () 
 });
 
 test('reputationDelta refuses a non-verdict, and refuses a venture with no licence', () => {
-  assert.equal(reputationDelta('met', terms(1, FULL_EQUITY)), 100, 'met returns the gain');
-  assert.equal(reputationDelta('breach', terms(1, 0)), -10, 'breach returns the (negative) drop');
+  assert.equal(reputationDelta('met', terms(1, FULL_EQUITY)), 10, 'met returns the gain');
+  assert.equal(reputationDelta('breach', terms(1, 0)), -3, 'breach returns the (negative) drop');
   // RP moves only at a boundary. A silent 0 would be a reputation that simply never
   // moved, with nothing going red (§15.5).
   assert.throws(() => reputationDelta('accruing', terms(1, 0)), /boundary verdict/);
@@ -251,7 +324,7 @@ test('reputationDelta refuses a non-verdict, and refuses a venture with no licen
 
 // --- 5. the engine: what a real boundary actually does ---------------------------
 
-test('a FULL-TERMS met gains exactly +100 at the boundary, below the knee', () => {
+test('a FULL-TERMS met gains exactly +10 at the boundary, below the knee', () => {
   let s = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
   s = runToBoundary(s);
 
@@ -270,25 +343,29 @@ test('a PARTIAL-TERMS met gains the weighted value, not the maximum', () => {
   assert.equal(rp(s, 'm'), GAIN_COMMIT_ONLY);
   assert.equal(rp(s, 'm'), metGain(ven(s, 'm')), 'and it is exactly what metGain says for these terms');
 
-  // Committed half, offered half the ceiling: the same 50 by a different route — proof
+  // Committed half, offered half the ceiling: the same 5 by a different route — proof
   // the two axes really are weighted, not that one of them is being ignored.
   let t = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY / 2 })]), ['m'], 0.5);
   t = runToBoundary(t);
-  assert.equal(rp(t, 'm'), 50);
+  assert.equal(rp(t, 'm'), 5);
   assertSumHolds(s, 'partial terms');
   assertSumHolds(t, 'partial terms, other route');
 });
 
-test('a BREACH at 100% commitment costs only −10; at a small commitment it costs near −100', () => {
+test('a BREACH at 100% commitment costs only −3; at a small commitment it costs near −10', () => {
   let big = starve(licenceAll(fixture([mine('m')]), ['m'], 1));
   big = runToBoundary(big);
   assert.equal(guild(big).lastLicenceFee.ventures.m.status, 'breach');
-  assert.equal(rp(big, 'm'), -REP_BREACH_MIN, 'the ambitious breacher is forgiven');
+  // ⤳ 01-09-26: −3, the ROUNDED −REP_BREACH_MIN. The constant is a float (2.5) since the
+  // breach floor was lifted to a quarter of MAX, and the rounding is what keeps the RP
+  // that lands an integer — so this is stated as the landed figure, not as the constant.
+  assert.equal(rp(big, 'm'), -Math.round(REP_BREACH_MIN), 'the ambitious breacher is forgiven');
+  assert.equal(rp(big, 'm'), -3);
 
   let small = starve(licenceAll(fixture([mine('m')]), ['m'], 0.1));
   small = runToBoundary(small);
   assert.equal(guild(small).lastLicenceFee.ventures.m.status, 'breach');
-  assert.equal(rp(small, 'm'), -91, 'the token promise broken is near the −100 endpoint');
+  assert.equal(rp(small, 'm'), -9, 'the token promise broken is near the −10 endpoint');
   assert.ok(rp(small, 'm') < rp(big, 'm'), 'and the small commitment is the one that hurts');
   assertSumHolds(big, 'big commitment breached');
   assertSumHolds(small, 'small commitment breached');
@@ -312,7 +389,7 @@ test('the fee and the reputation are moved by ONE verdict — they can never dis
 
 // --- 6. the taper, through the engine, and the organic cap -----------------------
 
-test('a met NEAR THE TOP gains a tapered, single-digit amount — not the full 100', () => {
+test('a met NEAR THE TOP gains a tapered amount — not the full 10', () => {
   let s = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
   s = atRP(s, 'm', 1490);
   const before = rp(s, 'm');
@@ -321,8 +398,18 @@ test('a met NEAR THE TOP gains a tapered, single-digit amount — not the full 1
   assert.equal(guild(s).lastLicenceFee.ventures.m.status, 'met', 'it really did meet, so the gain is tapered — not withheld');
   const gained = rp(s, 'm') - before;
   assert.equal(gained, Math.round(GAIN_FULL_TERMS * gainFactor(before)));
-  assert.ok(gained > 0 && gained < 10, `a full-terms met at 1490 must land single digits, got ${gained}`);
-  assert.ok(gained < GAIN_FULL_TERMS / 10, 'and be an order of magnitude below its untapered value');
+  assert.equal(gained, 0, 'at 1490 a full-terms met now rounds away entirely — the taper has swallowed it');
+  // ⤳ 01-09-26: pre-rescale this landed a single digit out of 100. The band was NOT
+  // rescaled with the earn rate (§2.6 defers it), so the whole 10-point gain now rounds to
+  // zero this high up. The property under test — a gain near the cap is taper-shrunk, not
+  // withheld — still holds, and it is checked at a height where it is still visible.
+  const midBefore = 1000;
+  let mid = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
+  mid = runToBoundary(atRP(mid, 'm', midBefore));
+  const midGained = rp(mid, 'm') - midBefore;
+  assert.ok(midGained > 0 && midGained < GAIN_FULL_TERMS,
+    `above the knee the gain is shrunk but still lands, got ${midGained}`);
+  assert.equal(midGained, Math.round(GAIN_FULL_TERMS * gainFactor(midBefore)));
   assertSumHolds(s, 'a tapered gain');
 });
 
@@ -338,6 +425,7 @@ test('the same terms gain FULL strength below the knee and taper above it', () =
   assert.equal(run(RP_TAPER_KNEE), GAIN_FULL_TERMS, 'right at the knee: still full strength');
   assert.ok(run(1150) < GAIN_FULL_TERMS, 'above the knee: tapered');
   assert.equal(run(1150), Math.round(GAIN_FULL_TERMS * 0.5), 'and tapered by exactly the ruled factor');
+  assert.equal(run(1150), 5, 'half of 10, stated outright');
 });
 
 test('DROPS ARE NEVER TAPERED — a breach high in the band costs full price', () => {
@@ -381,13 +469,18 @@ test('DROPS ARE NEVER TAPERED — a breach high in the band costs full price', (
 test('RP APPROACHES the soft cap and never reaches it — no hard clamp needed at the top', () => {
   // The organic cap (§2.3). Driven with the largest gain the model can produce, so this
   // is the worst case: if anything can pass 1500, this can.
+  //
+  // ⤳ 01-09-26: started from 1400 rather than 1490, and run for longer. The band was NOT
+  // rescaled with the earn rate (§2.6 defers it), so the tapered gain now rounds away
+  // sooner and lower — a run begun at 1490 would not move at all and would prove nothing.
+  // The property is unchanged: the taper alone holds the top, with no clamp.
   let s = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
-  s = atRP(s, 'm', 1490);
-  for (let w = 0; w < 12; w += 1) {
+  s = atRP(s, 'm', 1400);
+  for (let w = 0; w < 70; w += 1) {
     s = runToBoundary(s);
     assert.ok(rp(s, 'm') < RP_SOFT_CAP, `boundary ${w + 1}: RP must stay strictly below the cap, got ${rp(s, 'm')}`);
   }
-  assert.equal(rp(s, 'm'), 1497, 'it settles at 1497, where the tapered gain first rounds to zero');
+  assert.equal(rp(s, 'm'), 1466, 'it settles at 1466, where the tapered gain first rounds to zero');
 
   // Settled, not stalled by luck: another twenty met boundaries move it not one point.
   const settled = rp(s, 'm');
@@ -400,16 +493,19 @@ test('RP APPROACHES the soft cap and never reaches it — no hard clamp needed a
 // --- 7. the floor: a hard clamp, and the guild sum that must follow it ------------
 
 test('a breach that would UNDERSHOOT the floor pins at −500, and the guild sum moves by the ACTUAL change', () => {
+  // ⤳ 01-09-26: started at −498 rather than −495. A full-commitment breach costs −3 since
+  // the rescale, so −495 no longer undershoots the floor and the test would have stopped
+  // exercising the clamp it exists for.
   let s = starve(licenceAll(fixture([mine('m')]), ['m']));
-  s = atRP(s, 'm', -495);
-  assert.equal(guild(s).guildReputation, -495, 'the fixture starts consistent');
+  s = atRP(s, 'm', -498);
+  assert.equal(guild(s).guildReputation, -498, 'the fixture starts consistent');
 
   s = runToBoundary(s);
   assert.equal(guild(s).lastLicenceFee.ventures.m.status, 'breach');
-  assert.equal(breachPenalty(ven(s, 'm')), -10, 'the raw drop would have taken it to −505');
+  assert.equal(breachPenalty(ven(s, 'm')), -3, 'the raw drop would have taken it to −501');
   assert.equal(rp(s, 'm'), RP_FLOOR, 'but it pins at the floor');
-  // THE LINE THE CLAMP MAKES LOAD-BEARING: the guild moved by −5 (the actual change), not
-  // by the −10 the venture was charged. Adding the raw delta here would drift the total
+  // THE LINE THE CLAMP MAKES LOAD-BEARING: the guild moved by −2 (the actual change), not
+  // by the −3 the venture was charged. Adding the raw delta here would drift the total
   // below the sum of its ventures — silently, but for this assertion and the invariant.
   assert.equal(guild(s).guildReputation, RP_FLOOR, 'the guild total followed the CLAMPED change, not the raw one');
   assertSumHolds(s, 'a clamped breach');
@@ -469,20 +565,29 @@ test('ONCE PER BOUNDARY: four windows of a met licence is exactly four gains', (
     assert.equal(rp(s, 'm'), w * GAIN_FULL_TERMS, `after ${w} boundaries`);
     assertSumHolds(s, `boundary ${w}`);
   }
-  // THE +1000 TIER, AND THE TAPER THAT MOVES IT. phase-1-tuning's rationale for choosing
-  // REP_MEET_MAX = 100 reads "+100/cycle x 10 = +1000 dividend-max" — true of the RAW
-  // gain, but the taper bites at the 800 knee, which the eighth cycle lands exactly on.
-  // So the real curve is: full strength to 800, then tapering, reaching the dividend-max
-  // tier on the ELEVENTH cycle rather than the tenth. Pinned here as the arithmetic
-  // actually is, with the doc corrected in the same commit — the approximation is a fine
-  // reason to pick 100, but it is not what the engine does.
-  for (let w = 5; w <= 8; w += 1) s = runToBoundary(s);
-  assert.equal(rp(s, 'm'), RP_TAPER_KNEE, 'eight full-strength cycles land exactly on the knee');
-  s = runToBoundary(s); s = runToBoundary(s);
-  assert.equal(rp(s, 'm'), 986, 'the tenth cycle is already tapered — 986, not 1000');
-  s = runToBoundary(s);
-  assert.equal(rp(s, 'm'), 1059, 'and the ELEVENTH crosses the dividend-max tier');
-  assertSumHolds(s, 'eleven full-terms cycles');
+  // WHAT TEN MET CYCLES BUY, AND THE BAND THAT NO LONGER MATCHES THEM.
+  //
+  // §2.6's rescale calibrated the earn rate against the venture's OWN BAR: a tier-1 mine
+  // is worth 100 GP, a full-terms met cycle earns +10, so ten met cycles pay for the
+  // venture exactly — the break-even the ruling names, and every tier breaks even in the
+  // same ten because `tierFactor` scales both. That is pinned here.
+  for (let w = 5; w <= 10; w += 1) s = runToBoundary(s);
+  assert.equal(rp(s, 'm'), 10 * GAIN_FULL_TERMS, 'ten full-terms cycles');
+  assert.equal(rp(s, 'm'), W_T1, '…which is exactly the mine\'s 100-point bar — break-even in ten');
+
+  // ⚠ THE BAND, HOWEVER, WAS NOT RESCALED — §2.6 defers it, deliberately, and this is what
+  // that deferral costs in play. The 800 knee is now EIGHTY full-strength cycles away, not
+  // eight, and the +1000 dividend-max tier is ~104 cycles out rather than eleven. The
+  // licence layer's tiers no longer fall out of the meter; they sit an order of magnitude
+  // above it. Pinned as a TRIPWIRE on the known gap, not as an endorsement: the band's own
+  // ruling (and the global-vs-per-tier sub-choice the 1 : 1.5 : 3 : 5 spread forces) is the
+  // next pass, and it should move these two numbers.
+  for (let w = 11; w <= 80; w += 1) s = runToBoundary(s);
+  assert.equal(rp(s, 'm'), RP_TAPER_KNEE, 'eighty full-strength cycles land exactly on the knee');
+  assert.equal(RP_TAPER_KNEE / GAIN_FULL_TERMS, 80, 'the knee is 80 met cycles away, not 8');
+  for (let w = 81; w <= 104; w += 1) s = runToBoundary(s);
+  assert.ok(rp(s, 'm') >= 1000, `the dividend-max tier is not crossed until cycle 104 (${rp(s, 'm')})`);
+  assertSumHolds(s, 'a hundred-odd full-terms cycles');
 });
 
 test('an UNLICENSED guild is untouched — no key, no total, not one byte', () => {
@@ -509,15 +614,15 @@ test('two ventures on opposite verdicts move independently, and the guild total 
   const verdicts = guild(s).lastLicenceFee.ventures;
   assert.equal(verdicts.a.status, 'breach');
   assert.equal(verdicts.b.status, 'met');
-  assert.equal(rp(s, 'a'), -REP_BREACH_MIN, 'the breacher fell by ITS terms');
+  assert.equal(rp(s, 'a'), -DROP_FULL_COMMIT, 'the breacher fell by ITS terms');
   assert.equal(rp(s, 'b'), GAIN_FULL_TERMS, 'the meeter climbed by ITS terms');
-  assert.equal(guild(s).guildReputation, GAIN_FULL_TERMS - REP_BREACH_MIN,
+  assert.equal(guild(s).guildReputation, GAIN_FULL_TERMS - DROP_FULL_COMMIT,
     'and the guild total is the SUM of the two, not either one');
   assertSumHolds(s, 'two ventures, opposite verdicts');
 
   for (let w = 2; w <= 4; w += 1) {
     s = runToBoundary(s);
-    assert.equal(rp(s, 'a'), -w * REP_BREACH_MIN);
+    assert.equal(rp(s, 'a'), -w * DROP_FULL_COMMIT);
     assert.equal(rp(s, 'b'), w * GAIN_FULL_TERMS);
     assertSumHolds(s, `window ${w}`);
   }
@@ -558,7 +663,7 @@ test('reputation stays an INTEGER and IN BAND through a long mixed run (§15.2, 
 });
 
 test('a venture driven deep NEGATIVE keeps every invariant green — the exemption works', () => {
-  // Eight breached windows at a full commitment: −80, comfortably negative and comfortably
+  // Eight breached windows at a full commitment: −24, comfortably negative and comfortably
   // inside the band. Invariant 3's non-negativity carve-out has to cover both the venture
   // field and the guild total, or the tick would halt on a venture doing exactly what
   // breaching is designed to do.
@@ -566,9 +671,9 @@ test('a venture driven deep NEGATIVE keeps every invariant green — the exempti
   let s = starve(licenceAll(fixture([mine('m')]), ['m']));
   for (let w = 0; w < WINDOWS; w += 1) s = runToBoundary(s);
 
-  assert.equal(rp(s, 'm'), -WINDOWS * REP_BREACH_MIN);
+  assert.equal(rp(s, 'm'), -WINDOWS * DROP_FULL_COMMIT);
   assert.ok(rp(s, 'm') < 0, 'the test is vacuous unless it really went negative');
-  assert.equal(guild(s).guildReputation, -WINDOWS * REP_BREACH_MIN);
+  assert.equal(guild(s).guildReputation, -WINDOWS * DROP_FULL_COMMIT);
   assert.deepEqual(checkInvariants(s, s.tick), [], 'all invariants green on a deeply negative venture');
 });
 
@@ -725,7 +830,7 @@ test('the snapshot reports both numbers, ECHOED not re-summed, and needs no sche
   const a = snap.ventures.find((x) => x.id === 'a');
   const b = snap.ventures.find((x) => x.id === 'b');
   assert.equal(g.guildReputation, guild(s).guildReputation, 'the guild total is the STORED number');
-  assert.equal(a.reputation, -REP_BREACH_MIN, 'a negative reaches the client as a negative');
+  assert.equal(a.reputation, -DROP_FULL_COMMIT, 'a negative reaches the client as a negative');
   assert.equal(b.reputation, GAIN_FULL_TERMS);
   assert.equal(g.guildReputation, a.reputation + b.reputation, 'and the published total really is their sum');
 });

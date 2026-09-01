@@ -43,6 +43,7 @@
 
 const { windowFraction } = require('./windows.js');
 const { producedGoodFor } = require('./baseline.js');
+const { tierWeight, tierOf } = require('./points.js');
 
 // The structural equity ceiling — §5: "up to the structural 49% ceiling (the owner
 // keeps control by retaining at least 51%)". This is a DESIGN number, not a tuning
@@ -339,39 +340,55 @@ function feeOwed(licence, status, fraction) {
 // play; each lives here ONCE and is never inlined.
 
 // The MET-GAIN model — the deploy meter made real (§2.2; phase-1-tuning §"Points &
-// Reputation"). A met cycle is worth `REP_MEET_MAX` scaled by the TERMS the venture
-// signed: how much output it promised, and how much equity it offered. The weights sum to
-// 1, so full terms score the maximum exactly — +100 a cycle, ten cycles to the +1000
-// dividend-max tier, which is how the licence layer's tier structure falls out of the
-// meter rather than being a second, parallel number.
+// Reputation"). A met cycle is worth `REP_MEET_MAX`, scaled by the TERMS the venture
+// signed — how much output it promised, and how much equity it offered — and by the TIER
+// it produces at. The terms weights sum to 1, so full terms at tier 1 score the maximum
+// exactly: **+10 a cycle**.
 //
 // YOU EARN RP FOR CONTRIBUTING, NEVER FOR OWNING (§2). A venture that committed nothing
 // and offered nothing scores 0 for "meeting" a promise of nothing — that falls out of
 // this formula rather than needing a special case, and it is the whole reason the gain is
 // terms-scaled instead of flat.
 //
+// ⤳ RESCALED 01-09-26 (100 → 10), points-and-reputation.md §2.6: RP and GP now share one
+// small integer scale (`MEANLINE_K = 1`, sim/meanline.js), so the earn rate shrank ×10
+// with everything else.
+//
 // The client's Establish-Venture meter (`repGain` in client/game.html, `[FIRST-CUT]`
 // REP_MAX/REP_WC/REP_WO) is the SAME arithmetic; this slice makes the engine the
 // authority for it. Wiring the panel to read the engine's number is a later UI slice —
 // deliberately NOT done here, so the panel's reputation copy stays mock for now.
-const REP_MEET_MAX = 100;
+const REP_MEET_MAX = 10;
 const REP_W_COMMIT = 0.5;
 const REP_W_EQUITY = 0.5;
 
 // The BREACH-DROP model — LINEAR and INVERSE to commitment (§2.2). Breaching a *small*
 // commitment hurts MORE than breaching a large one: breaking a token promise is contempt,
-// falling short of an ambitious one is forgivable. −10 at a full commitment, rising
-// toward −100 as the commitment approaches nothing.
+// falling short of an ambitious one is forgivable. At tier 1, −2.5 at a full commitment,
+// rising toward −10 as the commitment approaches nothing.
 //
-// −100 IS A LIMIT, NEVER PAID: §5's 0% commitment floor means a 0% licence owes zero units
+// −10 IS A LIMIT, NEVER PAID: §5's 0% commitment floor means a 0% licence owes zero units
 // and is therefore always `met`, so the c→0 end of this line is approached and never
 // reached. The constant is still the honest endpoint of the formula, not a magic number.
+//
+// ⤳ RESCALED 01-09-26 (100 / 10 → 10 / 2.5), points-and-reputation.md §2.6, and the two
+// halves moved for DIFFERENT reasons. `MAX` fell ×10 with the RP scale, like everything
+// else. `MIN` did not: it was deliberately **lifted from 10% of MAX to 25%**, so the
+// gentlest breach costs −2.5 · tierFactor rather than −1. That firms the cheap end of the
+// curve without flipping it — the Syndicate still does not punish a guild that commits
+// maximally and narrowly falls short (maximum commitment already costs it all its
+// delivered output) — and it is what will blunt the sign-at-100%-grab-the-bump-then-breach
+// exploit the signing bump opens in slice 2. Whether 25% is enough is `[FIRST-CUT]`.
+//
+// `REP_BREACH_MIN` IS A SANCTIONED FLOAT, like `REP_W_COMMIT` beside it: it is a
+// COEFFICIENT in a formula, not a counted quantity, and the `Math.round` in
+// `breachPenalty` is what keeps the RP that actually lands an integer (§15.2).
 //
 // The discipline on a high commitment lives in CREDITS and CLOSURE, not here: breaching
 // one is RP-cheap but fee-expensive (the full basic fee, `feeOwed`) and walks the venture
 // toward the −500 floor. *Let the player play how they like.*
-const REP_BREACH_MAX = 100;
-const REP_BREACH_MIN = 10;
+const REP_BREACH_MAX = 10;
+const REP_BREACH_MIN = 2.5;
 
 // The BAND (§2.1). −500 is the closure threshold and 1500 the organic soft cap; 800 is
 // the knee where gains begin to taper. The band edges ARE the licence layer's reputation
@@ -417,30 +434,76 @@ function repTerms(venture) {
   };
 }
 
+// tierFactor(venture) -> how much more RP this venture's tier moves, relative to tier 1.
+// 1 at tier 1, 1.5 at tier 2 (3 and 5 when tiers 3 and 4 gain weights).
+//
+//     W_TIER( tierOf(producedGoodFor(venture)) ) ÷ W_TIER(1)
+//
+// ⤳ ADDED 01-09-26, points-and-reputation.md §2.6. THE RULING: a higher-tier venture
+// earns proportionally more RP per cycle, so **every tier breaks even in the same ~10
+// cycles** and climbing the manufacturing tree is a reward — bigger GP, bigger earning,
+// bigger dividend — rather than a heavier bar to fill. It scales the breach the same way,
+// for the same reason: the stake rises with the tier, both directions.
+//
+// IT IS A RATIO OF GP WEIGHTS, SOURCED FROM `sim/points.js` — the single source of truth
+// for what a tier is worth — and DIVIDED BY THE TIER-1 WEIGHT rather than by a literal
+// 100. That is what makes it invent no number (§18 #5): the factor is 1 / 1.5 / 3 / 5
+// whatever absolute base the GP weights are later retuned to, and a retune that moved
+// `W_T1` without moving this would otherwise silently change every venture's earn rate.
+//
+// SEAM NOTE — the import direction. licence.js reads points.js, never the reverse
+// (points.js requires only claims / baseline / resources), so there is no cycle and no
+// shared module was extracted. Duplicating the weight map here was the alternative and is
+// exactly the drift §15.2 forbids.
+//
+// AN UNWEIGHTED TIER HALTS, through `tierWeight`'s own throw — the same stop `guildPoints`
+// makes, for the same reason. A tier-3 venture must not quietly earn at the tier-1 rate.
+// A venture producing NOTHING (`producedGoodFor` → null) reaches `tierOf(null)` → null and
+// halts too, which is right here in a way it is not in `guildPoints`: GP scores a broken
+// venture 0 because it produces nothing, but RP only moves for a venture the fee loop has
+// already judged met or breached, so one arriving here with no output is a real
+// contradiction, not an empty row.
+function tierFactor(venture) {
+  const good = producedGoodFor(venture);
+  const where = { good, ventureId: venture && venture.id, guildId: venture && venture.ownerGuildId };
+  return tierWeight(tierOf(good), where) / tierWeight(1, where);
+}
+
 // metGain(venture) -> the PRE-TAPER RP a met cycle is worth, a non-negative integer.
 //
-//     REP_MEET_MAX × (REP_W_COMMIT × commit + REP_W_EQUITY × equityFrac)
+//     REP_MEET_MAX × tierFactor × (REP_W_COMMIT × commit + REP_W_EQUITY × equityFrac)
+//
+// Full terms: **+10 a cycle at tier 1, +15 at tier 2.**
 //
 // Rounded here, and rounded AGAIN by the taper at the call site. Two roundings, and
 // unlike the commitment sale's single-rounding rule that is safe: RP is NOT conserved
 // (§2 — minted and destroyed by events, no ledger counterpart), so there is no second leg
 // for a rounding to drift against. The same reasoning `licenceFee` records for its own
-// two roundings.
+// two roundings. The `tierFactor` is a float (1.5 at tier 2) and this rounding is what
+// keeps the RP that lands an integer, §15.2.
 function metGain(venture) {
   const { commit, equityFrac } = repTerms(venture);
-  return Math.round(REP_MEET_MAX * (REP_W_COMMIT * commit + REP_W_EQUITY * equityFrac));
+  return Math.round(
+    REP_MEET_MAX * tierFactor(venture) * (REP_W_COMMIT * commit + REP_W_EQUITY * equityFrac),
+  );
 }
 
 // breachPenalty(venture) -> the RP a breached cycle costs, a NEGATIVE integer.
 //
-//     −( REP_BREACH_MAX − (REP_BREACH_MAX − REP_BREACH_MIN) × commit )
+//     −( REP_BREACH_MAX − (REP_BREACH_MAX − REP_BREACH_MIN) × commit ) × tierFactor
+//
+// Still LINEAR and INVERSE to commitment — the tier scales the whole curve, it does not
+// bend it. A tier-1 venture at 100% commitment pays **−3** a cycle (2.5 rounded up in
+// magnitude); at tier 2, −4.
 //
 // The sign is returned, not left to the caller, for the same reason slice 1 put it in one
 // place: no consumer can get "breach subtracts" backwards by writing the arithmetic
 // itself. Equity does NOT appear — §2.2 scales the drop by commitment alone.
 function breachPenalty(venture) {
   const { commit } = repTerms(venture);
-  return -Math.round(REP_BREACH_MAX - (REP_BREACH_MAX - REP_BREACH_MIN) * commit);
+  return -Math.round(
+    (REP_BREACH_MAX - (REP_BREACH_MAX - REP_BREACH_MIN) * commit) * tierFactor(venture),
+  );
 }
 
 // gainFactor(rp) -> the §2.3 taper: how much of a gain actually lands, given where the
@@ -510,5 +573,5 @@ module.exports = {
   commitmentUnitsFor,
   REP_MEET_MAX, REP_W_COMMIT, REP_W_EQUITY, REP_BREACH_MAX, REP_BREACH_MIN,
   RP_FLOOR, RP_SOFT_CAP, RP_TAPER_KNEE,
-  repTerms, metGain, breachPenalty, gainFactor, reputationDelta,
+  repTerms, tierFactor, metGain, breachPenalty, gainFactor, reputationDelta,
 };

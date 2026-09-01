@@ -109,10 +109,13 @@ function galaxy(specs, { pool = 0, fuelPrice } = {}) {
 // The four-guild spread the recorder uses, in miniature: one dense guild above its line,
 // one par, one sprawler below it, one holding nothing. Enough shape that "the grant
 // scales with price" is a statement about a real economy rather than about one number.
+// ⤳ RESCALED 01-09-26 (§2.6). The RATIOS are what this fixture is for — one guild pinned
+// at the issuance CEIL, one exactly on its line, one pinned at the FLOOR, and one empty —
+// and all four are preserved. Only the digits moved with the GP/RP scale.
 const SPREAD = [
-  { id: 'forge', systems: 1, mines: 8, rp: 12000 },
-  { id: 'meridian', systems: 2, mines: 6, rp: 9000 },
-  { id: 'reach', systems: 4, mines: 6, rp: 6000 },
+  { id: 'forge', systems: 1, mines: 8, rp: 1400 },    // GP 1000, 1.4× its line -> CEIL
+  { id: 'meridian', systems: 2, mines: 6, rp: 1000 }, // GP 1000, exactly on its line
+  { id: 'reach', systems: 4, mines: 6, rp: 600 },     // GP 1400, 0.43× its line -> FLOOR
   { id: 'spark' },
 ];
 
@@ -157,7 +160,7 @@ test('the price is the SANCTIONED FLOAT (§15.2) — non-integer passes, NaN and
   // It scales a quantity rather than counting one, exactly as the issuance modifier
   // does, so the integer sweep must let a fractional price through — and must still
   // catch the two ways a price can be nonsense.
-  const fractional = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 4482 }], { pool: 100, fuelPrice: 12.5 });
+  const fractional = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 498 }], { pool: 100, fuelPrice: 12.5 });
   assert.deepEqual(checkInvariants(fractional, fractional.tick), [],
     'a fractional price is legal — it is a price, not a count of goods');
 
@@ -219,7 +222,7 @@ test('the no-op holds through the REAL TICK: a cycle of grants is what 5a would 
 });
 
 test('the no-op holds for the two VALUATIONS too — hoard and route quote are unchanged', () => {
-  const s = galaxy([{ id: 'g1', systems: 2, mines: 3, rp: 4482, fuelHoard: GUILD_STARTING_FUEL }],
+  const s = galaxy([{ id: 'g1', systems: 2, mines: 3, rp: 498, fuelHoard: GUILD_STARTING_FUEL }],
     { pool: 1000 });
   const snap = buildSnapshot(s);
   const guild = snap.guilds[0];
@@ -287,7 +290,7 @@ test('THE LEVER through the real tick: a dearer galaxy draws its pool down more 
 
 test('THE LEVER moves the two VALUATIONS as well — one price, every reading', () => {
   const price = 25;
-  const s = galaxy([{ id: 'g1', systems: 2, mines: 3, rp: 4482, fuelHoard: GUILD_STARTING_FUEL }],
+  const s = galaxy([{ id: 'g1', systems: 2, mines: 3, rp: 498, fuelHoard: GUILD_STARTING_FUEL }],
     { pool: 1000, fuelPrice: price });
   const guild = buildSnapshot(s).guilds[0];
 
@@ -331,9 +334,13 @@ test('the re-based form really does drift — the alternative is rejected for a 
   // Establishes that the choice in §4.2 is about a real defect and not a preference. If
   // this ever stops finding drift, the ratio-vs-rebase ruling has become moot and the
   // test below is guarding nothing — which is worth knowing loudly.
+  //
+  // ⤳ 01-09-26: the GP range swept was widened 1–400 → 1–2000. The rescale (§2.6) put a
+  // real guild's GP in the hundreds-to-thousands (the smallest founded one is 300), so the
+  // old ceiling of 400 no longer covered the space the engine can actually reach.
   let cases = 0;
   const drifted = [];
-  for (let gp = 1; gp <= 400; gp += 1) {
+  for (let gp = 1; gp <= 2000; gp += 1) {
     for (let k = 300; k <= 1500; k += 1) {
       const modifier = k / 1000;
       cases += 1;
@@ -357,13 +364,20 @@ test('the re-based form really does drift — the alternative is rejected for a 
 // modifier are DERIVED, so the only honest way to pin the engine on a drift case is to
 // find a galaxy that actually produces one. `entitlement` and `rebased` are what the two
 // forms answer; they differ by exactly one unit, which is the whole defect.
+//
+// ⤳ RE-SWEPT 01-09-26 for the GP rescale (§2.6). These are derived coordinates, not typed
+// numbers — the GP weights moved and `BASE_GRANT_PER_GP` was re-based with them, so the
+// old six stopped landing on drift and had to be found again the same way they were found
+// the first time. Three drift high and three low, so neither direction is assumed. They
+// now also sit INSIDE the RP band (the old set ran to 2970, above the 1500 soft cap — a
+// fixture that could not occur in play), which is a small honesty gain the re-sweep bought.
 const DRIFT_FIXTURES = [
-  { systems: 1, mines: 1, rp: 1530, entitlement: 31, rebased: 32 },
-  { systems: 1, mines: 1, rp: 1650, entitlement: 38, rebased: 37 },
-  { systems: 1, mines: 1, rp: 2050, entitlement: 57, rebased: 58 },
-  { systems: 1, mines: 1, rp: 2510, entitlement: 81, rebased: 80 },
-  { systems: 1, mines: 1, rp: 2850, entitlement: 98, rebased: 97 },
-  { systems: 1, mines: 1, rp: 2970, entitlement: 103, rebased: 104 },
+  { systems: 1, mines: 1, rp: 170, entitlement: 31, rebased: 32 },
+  { systems: 1, mines: 2, rp: 270, entitlement: 61, rebased: 62 },
+  { systems: 1, mines: 4, rp: 430, entitlement: 103, rebased: 104 },
+  { systems: 1, mines: 3, rp: 550, entitlement: 173, rebased: 172 },
+  { systems: 1, mines: 5, rp: 890, entitlement: 296, rebased: 295 },
+  { systems: 1, mines: 7, rp: 510, entitlement: 95, rebased: 94 },
 ];
 
 test('THE FORM BUILT IS THE RATIO — pinned on the very galaxies the re-base would move', () => {
@@ -392,7 +406,7 @@ test('the ratio form is an identity at the reference for EVERY GP/modifier pair'
   // The general statement behind the six fixtures above, swept over the whole space the
   // engine can reach. `round(entitlement x REF / REF)` is the entitlement, always — which
   // is why 5b-i can claim to be byte-identical rather than merely close.
-  for (let gp = 1; gp <= 400; gp += 1) {
+  for (let gp = 1; gp <= 2000; gp += 1) {
     for (let k = 300; k <= 1500; k += 1) {
       const modifier = k / 1000;
       const entitlement = Math.round(BASE_GRANT_PER_GP * gp * modifier);
@@ -512,7 +526,7 @@ test('a zero or negative price HALTS rather than granting nonsense', () => {
   // 5b-ii's controller is what will start writing the field, and a missing floor there
   // would otherwise hand out Infinity fuel silently (§15.5 — halt, don't continue).
   for (const bad of [0, -1, NaN, Infinity]) {
-    const s = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 4482 }], { pool: 1000, fuelPrice: bad });
+    const s = galaxy([{ id: 'g1', systems: 1, mines: 3, rp: 498 }], { pool: 1000, fuelPrice: bad });
     assert.throws(() => physicalGrantFor(s, s.guilds[0]), /reserve\.fuelPrice must be a finite number > 0/,
       `price ${bad} must halt`);
   }

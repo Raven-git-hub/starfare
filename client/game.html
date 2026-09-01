@@ -2561,7 +2561,17 @@ var P = {
   K: 2,                    // MIRRORS sim/licence.js EQUITY_SHAPE_K, o^k       [FIRST-CUT]
   // MIRRORS sim/licence.js CORNERS, key for key so the mirror is obvious   [FIRST-CUT]
   CORNERS: { minCommitMinOffer:100, minCommitMaxOffer:75, maxCommitMinOffer:75, maxCommitMaxOffer:0 },
-  REP_MAX: 100, REP_WC: 0.5, REP_WO: 0.5     // reputation gain model (#61)     [FIRST-CUT]
+  // MIRRORS sim/licence.js REP_MEET_MAX / REP_W_COMMIT / REP_W_EQUITY (#61)     [FIRST-CUT]
+  // ⤳ RESCALED 01-09-26 (100 -> 10) with the engine, docs/points-and-reputation.md §2.6.
+  // The meter would otherwise have gone on promising "+100" for terms the engine now pays
+  // +10 for. Note the bar's fill is a FRACTION of REP_MAX now, not the value itself — the
+  // old code leaned on REP_MAX happening to be 100 and would have drawn a 10%-full bar.
+  // ⚠ STILL A MOCK, and now one step further behind: the engine's gain is also scaled by
+  // the venture's TIER since the rescale (`tierFactor`, 1 / 1.5 / 3 / 5), which this panel
+  // does not mirror — so it is exact for a Tier-1 mine and understates a factory by half
+  // again. Mirroring the tier here would be a third copy of the weight map; the fix is the
+  // deferred UI slice that points this panel at the engine's own `metGain`.
+  REP_MAX: 10, REP_WC: 0.5, REP_WO: 0.5
 };
 
 /* The cycle length `N` in force, straight off the snapshot (`calendar.windowN`) —
@@ -2643,7 +2653,7 @@ function draw(){
   $('feePctBig').textContent = Math.round(fp)+'%';
 
   var rg=repGain(S.c,S.o01);
-  $('repFill').style.width = rg+'%';
+  $('repFill').style.width = (100*rg/P.REP_MAX)+'%';
   $('repNum').textContent = '+'+Math.round(rg);
   $('rnDaysVal').textContent = S.rnDays+' days';
 

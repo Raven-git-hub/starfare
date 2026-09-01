@@ -181,15 +181,15 @@ test('the injected N moves the boundary cadence (the window rolls at tick % N ==
 // boundary — no influx, no issuance, not one byte. Nothing happens off a boundary.
 const GOLDEN_UNLICENSED = '682e42e0dd758ce523fea882f6560707802cdd7e7b4def794f323430a4cfcff5';
 const GOLDEN_UNLICENSED_WITH_PRICES = 'ee6856cc520c23b8cc2cfdad996d463ccf35d40bb6b85b35f3a644a46d493647';
-const GOLDEN_COMMITTED_WITH_PRICES = '73c5898fb177a178e936348e52f54a1bafbe40b51e7a14ca1123cf1953e33a15';
+const GOLDEN_COMMITTED_WITH_PRICES = '3390c1b1fdb87b3c1b19e832c74a7a915c44e102bfca4a1dcfd1f216c7510ff2';
 // The three values the COMMITTED goldens held before fuel slice 5a, kept so the
 // un-flow proof below has something to prove against.
 const COMMITTED_WITH_PRICES_BEFORE_FUEL_FLOWS = 'e0255c73292645b5b785d818ec6e045f4bfb80e4b0a12f38814acb74947f8272';
 const GOLDEN_UNLICENSED_WITH_HISTORY = 'fa63aaf4cdaf8f11a38d26545f610605373acb659903fc2bf56c7869ced2dd5d';
-const GOLDEN_COMMITTED_WITH_HISTORY = 'eefdefba00d449edb36c4574a257f8409749113850690dd21ab9cfe8386a0b94';
+const GOLDEN_COMMITTED_WITH_HISTORY = '06d2071bb5c3c186c2a74e886e1a3448046c375474622548af61d16acfe51da3';
 const COMMITTED_WITH_HISTORY_BEFORE_FUEL_FLOWS = 'e145b1426637f5c53190c087a7b6727878d158d6d52715f57f879a43d367f30b';
 const GOLDEN_UNLICENSED_WITH_PRICE_HISTORY = '2415bafdf6336b48a68d57b3b75e3c0c1cf254c93367a58bc48df82cd963c0c6';
-const GOLDEN_COMMITTED_WITH_PRICE_HISTORY = '64dadc24acb9d030aec525f262d96dad054ff80112c0ddff6af58ef5f97bf1f4';
+const GOLDEN_COMMITTED_WITH_PRICE_HISTORY = 'a1048545e8f7bb78c11b3c5bf1b97491944511c4e6cd0a9c8ab5b67dd150f3e2';
 const COMMITTED_WITH_PRICE_HISTORY_BEFORE_FUEL_FLOWS = 'ab265ad191810bf91be169349ef6cc1b5c3c6e8a7bd9de5b64fd6533e80fbc3f';
 
 // FUEL PRICE MEDIATION (01-09-26, slice 5b-i — docs/fuel-supply-and-allocation.md §4.2).
@@ -205,7 +205,7 @@ const COMMITTED_WITH_PRICE_HISTORY_BEFORE_FUEL_FLOWS = 'ab265ad191810bf91be16934
 // full-state hashes are pinned below so a drift in the price itself is caught too.
 const GOLDEN_UNLICENSED_WITH_FUEL_PRICE = 'a1ce79e59803fac06442190980983d844cf0aec84143699f86dda7ab4aa73342';
 // (its pre-controller value was 25698f31…, kept in the note above as one of the three)
-const GOLDEN_COMMITTED_WITH_FUEL_PRICE = '7d84fe3902bf72efb0a3bdd503d044783357c374005fd4cf2f16c8c6db0ef1fc';
+const GOLDEN_COMMITTED_WITH_FUEL_PRICE = 'a8d5307368073255ed08ccd1ceb1ef2ae0dcacaabcd7a33a5af275b690312637';
 
 // ⚠ THE FUEL PRICE CONTROLLER (01-09-26, slice 5b-ii — §4.2). THIS IS THE FIRST SLICE IN
 // THIS FILE'S HISTORY WHOSE COMMITTED GOLDENS MOVED FOR A REAL BEHAVIOUR CHANGE RATHER THAN
@@ -227,13 +227,38 @@ const GOLDEN_COMMITTED_WITH_FUEL_PRICE = '7d84fe3902bf72efb0a3bdd503d044783357c3
 // controller. Not one byte of it moved beyond the added key. A slice that had touched
 // anything outside step 6's boundary block would have shown up there and nowhere else.
 const GOLDEN_UNLICENSED_WITH_CONTROLLER = 'dce841fcc12142222713220f37d068b22a9ca8fb15c013d7dc6518ede74d97dd';
-const GOLDEN_COMMITTED_WITH_CONTROLLER = 'e3a52bbbb16d733a4dd24e9160046bbcb4dcf73dec963ca39dbf036deb19f286';
+const GOLDEN_COMMITTED_WITH_CONTROLLER = 'adbd78a9978cc5db095033c1de5762fb92de9907ca88b58d5f839dd8c9f8ae8e';
 // The three values the COMMITTED goldens held under 5b-i — i.e. with the price present but
 // FROZEN at the reference. Kept so the re-pinning above is a comparison rather than an
 // assertion, and so the test below can show the delta is the controller and nothing else.
 const COMMITTED_WITH_PRICES_BEFORE_CONTROLLER = '7746582b575acf4b1e239e255317dedc9655957e15187cbb7e9e0a6e86e22dbf';
 const COMMITTED_WITH_HISTORY_BEFORE_CONTROLLER = 'd2cbb89b17224e20eb60af7e30d55e4142dd468edef97bc9446bdd1b829eae8c';
 const COMMITTED_WITH_PRICE_HISTORY_BEFORE_CONTROLLER = '33021945d4660c785d2f287ba5a6c9cdb5385d541f9a4912e57fb8966ecf7d9b';
+
+// ── THE REPUTATION RESCALE (01-09-26, slice 1 of 2 — points-and-reputation.md §2.6) ──
+//
+// ALL FIVE COMMITTED GOLDENS MOVED. ALL SIX UNLICENSED GOLDENS DID NOT — and, exactly as
+// with 5b-ii above, that split is the proof rather than the re-pinning.
+//
+// WHY THE COMMITTED RUN MOVED, AND FOR ONE REASON ONLY: **the tier-2 re-weighting.** The
+// rescale is a re-denomination everywhere else — the GP weights went ×16.67 and
+// `BASE_GRANT_PER_GP` was re-based 5 → 0.3 by exactly the reciprocal, so a held system and
+// a tier-1 mine draw the fuel they always drew, to the unit. What is NOT reciprocal is the
+// deliberately widened tier spread (§2.6: 6 : 8 → 100 : 150). This guild is two mines and
+// ONE REFINERY, so its GP went 2×6 + 8 = 20 → 2×100 + 150 = 350, and its entitlement at
+// par 5×20 = 100 → 0.3×350 = 105. Five more fuel a cycle, all of it the refinery's raise,
+// across ten boundaries — which then walks the pool and the controller's price down a
+// different path, so the whole trajectory differs.
+//
+// NO REPUTATION MOVED IN THIS RUN, which is worth stating because it is the surprising
+// half: these ventures carry a raw `syndicateCommitment` and no `licence`, so the fee loop
+// never judges them and `metGain` / `breachPenalty` are never called. The rescaled RP
+// constants reach this fixture not at all. The runs that DO move reputation are in
+// reputation.test.js, where the numbers are asserted directly rather than hashed.
+//
+// AND THE UNLICENSED RUN IS UNTOUCHED because it crosses no boundary: no issuance, so its
+// identical GP change reaches no byte. A rescale that had leaked outside issuance and the
+// licence layer would have shown up there.
 
 // The state minus the reserve's fuel price — everything the eight hashes above covered
 // before slice 5b-i. Stripped INSIDE `reserve`, leaving `reserveLevel` in place, so a

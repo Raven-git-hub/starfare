@@ -427,11 +427,12 @@ test('GET /snapshot carries the mean line per guild, from the engine helpers', a
   const g = snap.guilds.find((x) => x.id === 'player-guild');
   const { MEANLINE_K, ISSUANCE_FLOOR } = require('../meanline.js');
 
-  // One home system + one Tier-1 mine = 18 GP (pinned by the GP slice), so the bar is
-  // 18 × 150 — stated by hand rather than recomputed from the helper under test.
-  assert.equal(g.guildPoints, 18);
-  assert.equal(g.expectedReputation, MEANLINE_K * 18);
-  assert.equal(g.expectedReputation, 2700);
+  // One home system + one Tier-1 mine = 300 GP (pinned by the GP slice), so the bar is
+  // 300 × 1 — stated by hand rather than recomputed from the helper under test.
+  // ⤳ RESCALED 01-09-26 (§2.6): GP 18 → 300, and at k = 1 the bar simply IS the GP.
+  assert.equal(g.guildPoints, 300);
+  assert.equal(g.expectedReputation, MEANLINE_K * 300);
+  assert.equal(g.expectedReputation, 300);
   // ⚠ SUPERSEDED 31-08-26 BY THE FOUNDING ENDOWMENT (A′, points-and-reputation.md §2.5).
   // This used to assert a brand-new guild sat at the FLOOR with zero reputation — the
   // punishing-for-ambition lean, visible from the first tick. That was the defect the
@@ -440,13 +441,13 @@ test('GET /snapshot carries the mean line per guild, from the engine helpers', a
   // to 30% fuel before it could earn anything.
   //
   // Founding now grants `MEANLINE_K × W_SYS` once, neutralising the HOME SYSTEM's bar. So
-  // this guild's 18 GP is its home system (endowed, 1800) plus one established mine
+  // this guild's 300 GP is its home system (endowed, 200) plus one established mine
   // (NOT endowed — ventures earn their own bar), and it sits just below its line rather
   // than pinned at the floor: the venture it deployed is the part it still has to earn.
   const { W_SYS } = require('../points.js');
   assert.equal(g.foundingEndowment, MEANLINE_K * W_SYS);
-  assert.equal(g.foundingEndowment, 1800, 'the home system, neutralised exactly once');
-  assert.equal(g.guildReputation, 1800, 'all of it endowment — the mine has earned nothing yet');
+  assert.equal(g.foundingEndowment, 200, 'the home system, neutralised exactly once');
+  assert.equal(g.guildReputation, 200, 'all of it endowment — the mine has earned nothing yet');
   assert.ok(g.issuanceModifier > ISSUANCE_FLOOR,
     'a newborn is no longer pinned at the floor');
   assert.ok(g.issuanceModifier < 1,
@@ -479,7 +480,7 @@ test('GET /snapshot carries guildPoints per guild, equal to the engine helper', 
   // (its own claim row) and `mine()` establishes ONE titanium mine, so the size of this
   // galaxy is one system plus one Tier-1 venture and nothing else.
   assert.equal(g.guildPoints, W_SYS + TIER_WEIGHT[1]);
-  assert.equal(g.guildPoints, 18);
+  assert.equal(g.guildPoints, 300);   // ⤳ RESCALED 01-09-26 (§2.6): 12 + 6 → 200 + 100
 
   // DERIVED, so reading it twice cannot accumulate — the failure mode a stored counter
   // would have, and the reason §1.0 rules GP a helper instead of a field.
