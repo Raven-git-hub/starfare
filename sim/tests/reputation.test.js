@@ -56,7 +56,7 @@ const {
   EQUITY_CEILING,
   REP_MEET_MAX, REP_W_COMMIT, REP_W_EQUITY, REP_BREACH_MAX, REP_BREACH_MIN,
   RP_FLOOR, RP_SOFT_CAP, RP_TAPER_KNEE,
-  metGain, breachPenalty, gainFactor, reputationDelta, tierFactor,
+  metGain, breachPenalty, gainFactor, reputationDelta, tierFactor, signingBump, ventureTierWeight,
 } = require('../licence.js');
 
 const SYS = 'sysA';
@@ -78,6 +78,19 @@ const mine = (id, { systemId = SYS, productionRate = 10, equityPct } = {}) => ({
   id, ownerGuildId: 'g1', type: 'mining', systemId, resourceType: GOOD, productionRate,
   ...(equityPct === undefined ? {} : { equityPct }),
 });
+// ── THE SIGNING BUMP (§2.6, ruled + BUILT 01-09-26, slice 2) ────────────────────────
+// Every licensed venture below now OPENS on a bump rather than at 0 — `2 × commit ×
+// W_TIER` minted by `applyForLicence` itself, so signing is the first thing that moves a
+// venture's reputation and the boundary verdicts move it FROM there. That is the whole
+// point of the slice, so it is named once here and every absolute figure below is written
+// as `bump + what the cycles did`, which keeps each test about the thing it was written
+// for. Read from the engine, never typed, so these track the ruling.
+//
+// The fixtures are all TIER-1 mines, so the weight is 100 and the bump is `200 × commit`.
+const bumpAt = (commit) => signingBump({ ...mine('bump-probe'), licence: { committedOutputPct: commit } });
+const BUMP_FULL_COMMIT = bumpAt(1);        // 200 — the `licenceAll` default
+const BUMP_HALF_COMMIT = bumpAt(0.5);      // 100 — exactly the mine's own GP: on its line
+
 
 function fixture(ventures) {
   return createState({
@@ -296,6 +309,79 @@ test('an UNWEIGHTED tier HALTS rather than quietly earning at the tier-1 rate', 
   assert.throws(() => metGain({ id: 'y', licence: { committedOutputPct: 1 } }), /no ruled GP weight/);
 });
 
+// --- 3c. the SIGNING BUMP (ruled + BUILT 01-09-26, §2.6 — slice 2 of the rescale) ---
+
+test('signingBump is 2 x commit x the venture\'s OWN GP weight — 0 / 1x / 2x its GP', () => {
+  // The three cases §2.6 names, at tier 1 (weight 100).
+  assert.equal(signingBump(terms(0, 0)), 0, '0% commit: adds GP, mints nothing — below its line');
+  assert.equal(signingBump(terms(0.5, 0)), 100, '50%: exactly its own GP — bar-neutral, ON its line');
+  assert.equal(signingBump(terms(1, 0)), 200, '100%: twice its GP — launched ABOVE its line');
+  assert.equal(signingBump(terms(0.5, 0)), W_T1, 'the 50% case IS the tier-1 weight, stated against the constant');
+  // Linear between, and an integer at every step (§15.2).
+  for (const c of [0, 0.13, 0.25, 0.5, 0.77, 1]) {
+    const b = signingBump(terms(c, 0));
+    assert.equal(b, Math.round(2 * c * W_T1), `commit ${c}`);
+    assert.ok(Number.isInteger(b) && b >= 0);
+  }
+});
+
+test('the bump scales with TIER, off the ABSOLUTE weight — not the tierFactor ratio', () => {
+  // §2.6 sizes the bump against the venture's OWN GP — the bar it just added to its guild
+  // — so a refinery's bump is 150-based, not 100-based. This is the one place the RP model
+  // wants the weight itself rather than the 1 / 1.5 / 3 / 5 ratio the per-cycle rate uses.
+  assert.equal(signingBump(tier2Terms(1, 0)), 300, 'a T2 refinery at 100%: twice its 150 GP');
+  assert.equal(signingBump(tier2Terms(0.5, 0)), 150, 'and at 50% exactly its own GP — bar-neutral at any tier');
+  assert.equal(signingBump(tier2Terms(0.5, 0)), TIER_WEIGHT[2]);
+  // BAR-NEUTRAL AT 50% IS TIER-INVARIANT, which is the property that matters: whatever a
+  // venture is worth in GP, signing the Syndicate's expected deal covers exactly its own bar.
+  for (const v of [terms(0.5, 0), tier2Terms(0.5, 0)]) {
+    assert.equal(signingBump(v), ventureTierWeight(v), 'a 50% signing covers its own bar, at every tier');
+  }
+});
+
+test('the bump ignores EQUITY — commitment alone buys an opening position', () => {
+  // The one place this parts company with `metGain`, and it is deliberate (§2.6 sizes the
+  // bump off `committedOutputPct` alone). Equity buys a share of the per-cycle EARN; if it
+  // bought the bump too, a guild could buy its way onto its line by giving away shares
+  // while promising no output at all.
+  assert.equal(signingBump(terms(0.5, 0)), signingBump(terms(0.5, FULL_EQUITY)));
+  assert.equal(signingBump(terms(0, FULL_EQUITY)), 0, 'all the equity in the world buys no bump');
+  // …while the same two terms DO move the per-cycle gain, so this is a real difference and
+  // not two functions that happen to agree.
+  assert.notEqual(metGain(terms(0.5, 0)), metGain(terms(0.5, FULL_EQUITY)));
+});
+
+test('the bump refuses a venture with no licence, and halts on an unweighted tier', () => {
+  // It reads `repTerms`, so an unlicensed venture throws for the same reason `metGain`
+  // does: a SIGNING bump minted for a contract that does not exist would be nonsense.
+  assert.throws(() => signingBump({ id: 'x', resourceType: GOOD }), /no licence/);
+  // And an unweighted tier halts rather than quietly minting at the tier-1 rate.
+  assert.throws(
+    () => signingBump({ id: 'x', resourceType: 'deuterium_fuel', licence: { committedOutputPct: 1 } }),
+    /no ruled GP weight/,
+  );
+});
+
+test('signing MINTS the bump once, and re-applying is refused so it cannot be farmed', () => {
+  // The mint happens in `applyForLicence` (sim/actions.js), not in the tick — so it is
+  // there the moment the action lands, before any tick runs.
+  const s = licenceAll(fixture([mine('m')]), ['m']);
+  assert.equal(rp(s, 'm'), BUMP_FULL_COMMIT, 'minted at signing, before the first tick');
+  assert.equal(guild(s).guildReputation, BUMP_FULL_COMMIT, 'and the guild total moved by the same amount');
+  assertSumHolds(s, 'immediately after signing');
+
+  // A SECOND application on the same venture is refused, so there is no re-bump path and
+  // the bump cannot be farmed by re-signing. (Renegotiation is #64 and unbuilt; whether it
+  // re-bumps is deliberately NOT ruled here.)
+  const again = intake(s, [createApplyForLicenceAction({
+    guildId: 'g1', ventureId: 'm', committedOutputPct: 1, windowDays: 7,
+  })]);
+  assert.equal(again.results[0].accepted, false, 'a second application is refused…');
+  assert.match(again.results[0].reason, /already licensed/, '…as an unbuilt RENEGOTIATION, by name');
+  assert.equal(rp(again.state, 'm'), BUMP_FULL_COMMIT, 'and not one further point was minted');
+  assertSumHolds(again.state, 'after a refused re-application');
+});
+
 // --- 4. the taper -----------------------------------------------------------------
 
 test('gainFactor tapers GAINS between the knee and the cap, and only there', () => {
@@ -326,13 +412,20 @@ test('reputationDelta refuses a non-verdict, and refuses a venture with no licen
 
 test('a FULL-TERMS met gains exactly +10 at the boundary, below the knee', () => {
   let s = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
+  // ⤳ 01-09-26 (slice 2): signing already minted the bump, so the venture does not open at
+  // 0 any more. The GAIN is what this test is about, so it is measured as a DELTA across
+  // the boundary — the figure that did not change — with the opening bump pinned beside it
+  // so the absolute is still stated outright.
+  assert.equal(rp(s, 'm'), BUMP_FULL_COMMIT, 'it opens on its signing bump, not at zero');
+  const before = rp(s, 'm');
   s = runToBoundary(s);
 
   assert.equal(s.tick, N);
   assert.equal(guild(s).lastLicenceFee.ventures.m.status, 'met',
     'the fixture really did meet — the RP claim is about a verdict, not a hope');
-  assert.equal(rp(s, 'm'), GAIN_FULL_TERMS);
-  assert.equal(guild(s).guildReputation, GAIN_FULL_TERMS);
+  assert.equal(rp(s, 'm') - before, GAIN_FULL_TERMS, 'the boundary added exactly the full-terms gain');
+  assert.equal(rp(s, 'm'), BUMP_FULL_COMMIT + GAIN_FULL_TERMS);
+  assert.equal(guild(s).guildReputation, BUMP_FULL_COMMIT + GAIN_FULL_TERMS);
   assertSumHolds(s, 'a full-terms met');
 });
 
@@ -340,14 +433,21 @@ test('a PARTIAL-TERMS met gains the weighted value, not the maximum', () => {
   // Committed everything, offered no equity: half the meter.
   let s = licenceAll(fixture([mine('m')]), ['m']);
   s = runToBoundary(s);
-  assert.equal(rp(s, 'm'), GAIN_COMMIT_ONLY);
-  assert.equal(rp(s, 'm'), metGain(ven(s, 'm')), 'and it is exactly what metGain says for these terms');
+  assert.equal(rp(s, 'm') - BUMP_FULL_COMMIT, GAIN_COMMIT_ONLY, 'the GAIN is half the meter…');
+  assert.equal(rp(s, 'm') - BUMP_FULL_COMMIT, metGain(ven(s, 'm')), 'and it is exactly what metGain says for these terms');
 
   // Committed half, offered half the ceiling: the same 5 by a different route — proof
   // the two axes really are weighted, not that one of them is being ignored.
+  //
+  // ⚠ THE BUMPS ARE NOT THE SAME, and that is the slice-2 lesson worth pinning here: the
+  // gain is scaled by commitment AND equity, the signing bump by COMMITMENT ALONE. So a
+  // half-commit venture opens on half the bump (100, not 200) while earning the identical
+  // 5 a cycle. Equity buys per-cycle earning; it does not buy an opening position.
   let t = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY / 2 })]), ['m'], 0.5);
+  assert.equal(rp(t, 'm'), BUMP_HALF_COMMIT, 'half the commitment, half the bump');
+  assert.notEqual(BUMP_HALF_COMMIT, BUMP_FULL_COMMIT);
   t = runToBoundary(t);
-  assert.equal(rp(t, 'm'), 5);
+  assert.equal(rp(t, 'm') - BUMP_HALF_COMMIT, 5, 'the same 5 a cycle by a different route');
   assertSumHolds(s, 'partial terms');
   assertSumHolds(t, 'partial terms, other route');
 });
@@ -359,14 +459,22 @@ test('a BREACH at 100% commitment costs only −3; at a small commitment it cost
   // ⤳ 01-09-26: −3, the ROUNDED −REP_BREACH_MIN. The constant is a float (2.5) since the
   // breach floor was lifted to a quarter of MAX, and the rounding is what keeps the RP
   // that lands an integer — so this is stated as the landed figure, not as the constant.
-  assert.equal(rp(big, 'm'), -Math.round(REP_BREACH_MIN), 'the ambitious breacher is forgiven');
-  assert.equal(rp(big, 'm'), -3);
+  // ⤳ 01-09-26 (slice 2): measured as a DELTA off each venture's own signing bump, because
+  // the two fixtures now open at different heights — the big committer at 200, the token
+  // one at 20. The DROP is what this test is about and neither drop moved.
+  const bigDrop = rp(big, 'm') - BUMP_FULL_COMMIT;
+  assert.equal(bigDrop, -Math.round(REP_BREACH_MIN), 'the ambitious breacher is forgiven');
+  assert.equal(bigDrop, -3);
 
   let small = starve(licenceAll(fixture([mine('m')]), ['m'], 0.1));
   small = runToBoundary(small);
   assert.equal(guild(small).lastLicenceFee.ventures.m.status, 'breach');
-  assert.equal(rp(small, 'm'), -9, 'the token promise broken is near the −10 endpoint');
-  assert.ok(rp(small, 'm') < rp(big, 'm'), 'and the small commitment is the one that hurts');
+  const smallDrop = rp(small, 'm') - bumpAt(0.1);
+  assert.equal(smallDrop, -9, 'the token promise broken is near the −10 endpoint');
+  assert.ok(smallDrop < bigDrop, 'and the small commitment is the one that hurts');
+  // AND THE BUMP COMPOUNDS THE LESSON RATHER THAN SOFTENING IT: the token committer opened
+  // 180 RP lower AND falls further per breach. Promise nothing, start behind, stay behind.
+  assert.ok(rp(small, 'm') < rp(big, 'm'), 'in absolute standing too, not just in the drop');
   assertSumHolds(big, 'big commitment breached');
   assertSumHolds(small, 'small commitment breached');
 });
@@ -376,7 +484,9 @@ test('the fee and the reputation are moved by ONE verdict — they can never dis
   // venture's fee row and its RP movement are read back together. If a future refactor
   // recomputed the verdict for either consumer, one of these pairs would come apart.
   let s = starve(licenceAll(fixture([mine('m')]), ['m']));
-  let previous = 0;
+  // ⤳ 01-09-26 (slice 2): the run starts from the signing bump, not from 0. Every step is
+  // still a pure DELTA check, so the mechanism claim is untouched.
+  let previous = BUMP_FULL_COMMIT;
   for (let w = 0; w < 4; w += 1) {
     s = runToBoundary(s);
     const { status } = guild(s).lastLicenceFee.ventures.m;
@@ -538,22 +648,30 @@ test('a venture at the floor CLIMBS BACK at full strength — the redemption arc
 // --- 8. it moves ONCE, and only on a boundary ------------------------------------
 
 test('a NON-boundary tick moves no reputation at all', () => {
+  // ⤳ RESTATED 01-09-26 (slice 2), and the restatement is the point rather than a repair.
+  // This test used to assert the key did not EXIST until the first boundary — "minted by
+  // the first verdict that moves it". Signing now moves it first, so the field's lifecycle
+  // is "minted by the first thing that moves it, which is normally SIGNING". What the test
+  // was really guarding is unchanged and is what it checks now: RP moves ONLY at a
+  // boundary, and a mid-window tick moves nothing.
   let s = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
+  assert.equal(rp(s, 'm'), BUMP_FULL_COMMIT, 'signing minted the bump, before any tick ran');
 
   for (let i = 1; i < N; i += 1) {
     s = tick(s);
     assert.equal(s.tick % N === 0, false, 'this test is only meaningful off a boundary');
-    assert.equal(ven(s, 'm').reputation, undefined,
-      `tick ${s.tick}: no verdict has been reached, so the key does not exist yet`);
-    assert.equal(guild(s).guildReputation, 0);
+    assert.equal(rp(s, 'm'), BUMP_FULL_COMMIT,
+      `tick ${s.tick}: no verdict has been reached, so nothing has moved since signing`);
+    assert.equal(guild(s).guildReputation, BUMP_FULL_COMMIT);
   }
 
   s = tick(s);
   assert.equal(s.tick, N);
-  assert.equal(rp(s, 'm'), GAIN_FULL_TERMS);
+  assert.equal(rp(s, 'm'), BUMP_FULL_COMMIT + GAIN_FULL_TERMS, 'the boundary is where it moves');
   for (let i = 1; i < N; i += 1) {
     s = tick(s);
-    assert.equal(rp(s, 'm'), GAIN_FULL_TERMS, `tick ${s.tick}: a mid-window tick must move nothing`);
+    assert.equal(rp(s, 'm'), BUMP_FULL_COMMIT + GAIN_FULL_TERMS,
+      `tick ${s.tick}: a mid-window tick must move nothing`);
   }
   assertSumHolds(s, 'mid-window');
 });
@@ -562,32 +680,41 @@ test('ONCE PER BOUNDARY: four windows of a met licence is exactly four gains', (
   let s = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
   for (let w = 1; w <= 4; w += 1) {
     s = runToBoundary(s);
-    assert.equal(rp(s, 'm'), w * GAIN_FULL_TERMS, `after ${w} boundaries`);
+    assert.equal(rp(s, 'm'), BUMP_FULL_COMMIT + w * GAIN_FULL_TERMS, `after ${w} boundaries`);
     assertSumHolds(s, `boundary ${w}`);
   }
-  // WHAT TEN MET CYCLES BUY, AND THE BAND THAT NO LONGER MATCHES THEM.
+  // WHAT TEN MET CYCLES EARN, AND WHERE THE BUMP LEAVES A VENTURE STANDING.
   //
-  // §2.6's rescale calibrated the earn rate against the venture's OWN BAR: a tier-1 mine
-  // is worth 100 GP, a full-terms met cycle earns +10, so ten met cycles pay for the
-  // venture exactly — the break-even the ruling names, and every tier breaks even in the
-  // same ten because `tierFactor` scales both. That is pinned here.
+  // §2.6's rescale calibrated the EARN RATE against the venture's OWN BAR: a tier-1 mine
+  // is worth 100 GP, a full-terms met cycle earns +10, so ten met cycles earn the venture's
+  // whole bar — the break-even the ruling names, and every tier breaks even in the same ten
+  // because `tierFactor` scales both. That is a claim about the RATE, so it is pinned as a
+  // delta, and slice 2's bump did not touch it.
   for (let w = 5; w <= 10; w += 1) s = runToBoundary(s);
-  assert.equal(rp(s, 'm'), 10 * GAIN_FULL_TERMS, 'ten full-terms cycles');
-  assert.equal(rp(s, 'm'), W_T1, '…which is exactly the mine\'s 100-point bar — break-even in ten');
+  assert.equal(rp(s, 'm') - BUMP_FULL_COMMIT, 10 * GAIN_FULL_TERMS, 'ten full-terms cycles EARN');
+  assert.equal(rp(s, 'm') - BUMP_FULL_COMMIT, W_T1, '…exactly the mine\'s 100-point bar — break-even in ten');
+  // ⤳ AND WHAT SLICE 2 CHANGED: this venture signed at 100%, so it was already TWO bars up
+  // before its first cycle. Ten cycles of earning take it to three. "Break-even in ten" is
+  // now the rate at which a venture climbs PAST the line it already opened on, not the
+  // climb up to it — which is the whole point of the bump.
+  assert.equal(BUMP_FULL_COMMIT, 2 * W_T1, 'a 100% signing opens two bars up');
+  assert.equal(rp(s, 'm'), 3 * W_T1);
 
   // ⚠ THE BAND, HOWEVER, WAS NOT RESCALED — §2.6 defers it, deliberately, and this is what
-  // that deferral costs in play. The 800 knee is now EIGHTY full-strength cycles away, not
-  // eight, and the +1000 dividend-max tier is ~104 cycles out rather than eleven. The
-  // licence layer's tiers no longer fall out of the meter; they sit an order of magnitude
-  // above it. Pinned as a TRIPWIRE on the known gap, not as an endorsement: the band's own
-  // ruling (and the global-vs-per-tier sub-choice the 1 : 1.5 : 3 : 5 spread forces) is the
-  // next pass, and it should move these two numbers.
-  for (let w = 11; w <= 80; w += 1) s = runToBoundary(s);
-  assert.equal(rp(s, 'm'), RP_TAPER_KNEE, 'eighty full-strength cycles land exactly on the knee');
-  assert.equal(RP_TAPER_KNEE / GAIN_FULL_TERMS, 80, 'the knee is 80 met cycles away, not 8');
-  for (let w = 81; w <= 104; w += 1) s = runToBoundary(s);
-  assert.ok(rp(s, 'm') >= 1000, `the dividend-max tier is not crossed until cycle 104 (${rp(s, 'm')})`);
-  assertSumHolds(s, 'a hundred-odd full-terms cycles');
+  // that deferral costs in play. At +10 a cycle the 800 knee is EIGHTY full-strength cycles
+  // of earning away (it used to be eight), and the +1000 dividend-max tier a hundred-odd.
+  // The signing bump takes the edge off — a 100%-commit venture starts 200 up, so it
+  // reaches the knee on cycle 60 and the dividend tier on 84 rather than 80 and 104 — but
+  // it does not close the gap: the licence layer's tiers still sit an order of magnitude
+  // above the meter that is supposed to reach them. Pinned as a TRIPWIRE on the known gap,
+  // not as an endorsement: the band's own ruling (and the global-vs-per-tier sub-choice the
+  // 1 : 1.5 : 3 : 5 spread forces) is the next pass, and it should move these numbers.
+  assert.equal(RP_TAPER_KNEE / GAIN_FULL_TERMS, 80, 'the knee is 80 met cycles of EARNING away, not 8');
+  for (let w = 11; w <= 60; w += 1) s = runToBoundary(s);
+  assert.equal(rp(s, 'm'), RP_TAPER_KNEE, 'sixty cycles from a full-commit signing land exactly on the knee');
+  for (let w = 61; w <= 84; w += 1) s = runToBoundary(s);
+  assert.ok(rp(s, 'm') >= 1000, `the dividend-max tier is not crossed until cycle 84 (${rp(s, 'm')})`);
+  assertSumHolds(s, 'eighty-odd full-terms cycles');
 });
 
 test('an UNLICENSED guild is untouched — no key, no total, not one byte', () => {
@@ -614,32 +741,41 @@ test('two ventures on opposite verdicts move independently, and the guild total 
   const verdicts = guild(s).lastLicenceFee.ventures;
   assert.equal(verdicts.a.status, 'breach');
   assert.equal(verdicts.b.status, 'met');
-  assert.equal(rp(s, 'a'), -DROP_FULL_COMMIT, 'the breacher fell by ITS terms');
-  assert.equal(rp(s, 'b'), GAIN_FULL_TERMS, 'the meeter climbed by ITS terms');
-  assert.equal(guild(s).guildReputation, GAIN_FULL_TERMS - DROP_FULL_COMMIT,
+  // ⤳ 01-09-26 (slice 2): both signed at the same full commitment, so both opened on the
+  // same bump and their DIVERGENCE from it is what the verdicts did.
+  assert.equal(rp(s, 'a'), BUMP_FULL_COMMIT - DROP_FULL_COMMIT, 'the breacher fell by ITS terms');
+  assert.equal(rp(s, 'b'), BUMP_FULL_COMMIT + GAIN_FULL_TERMS, 'the meeter climbed by ITS terms');
+  assert.equal(guild(s).guildReputation, 2 * BUMP_FULL_COMMIT + GAIN_FULL_TERMS - DROP_FULL_COMMIT,
     'and the guild total is the SUM of the two, not either one');
   assertSumHolds(s, 'two ventures, opposite verdicts');
 
   for (let w = 2; w <= 4; w += 1) {
     s = runToBoundary(s);
-    assert.equal(rp(s, 'a'), -w * DROP_FULL_COMMIT);
-    assert.equal(rp(s, 'b'), w * GAIN_FULL_TERMS);
+    assert.equal(rp(s, 'a'), BUMP_FULL_COMMIT - w * DROP_FULL_COMMIT);
+    assert.equal(rp(s, 'b'), BUMP_FULL_COMMIT + w * GAIN_FULL_TERMS);
     assertSumHolds(s, `window ${w}`);
   }
 });
 
-test('a venture licensed LATER starts from zero and does not inherit its sibling’s standing', () => {
+test('a venture licensed LATER starts from its OWN bump and inherits no sibling’s standing', () => {
+  // ⤳ RETITLED 01-09-26 (slice 2). "Starts from zero" is no longer true — a late joiner
+  // starts from its own signing bump — but the claim that mattered is untouched and is
+  // what this still checks: it inherits NOTHING from the incumbent's accumulated cycles,
+  // and its first verdict moves it by exactly one verdict's worth.
   let s = licenceAll(fixture([mine('a'), mine('b', { systemId: SYS_B })]), ['a']);
   s = runToBoundary(s);
   s = runToBoundary(s);
-  assert.equal(rp(s, 'a'), 2 * GAIN_COMMIT_ONLY);
-  assert.equal(ven(s, 'b').reputation, undefined, 'unjudged, so no key');
+  assert.equal(rp(s, 'a'), BUMP_FULL_COMMIT + 2 * GAIN_COMMIT_ONLY);
+  assert.equal(ven(s, 'b').reputation, undefined, 'unlicensed, so no key at all');
 
   s = licenceAll(s, ['b']);
+  assert.equal(rp(s, 'b'), BUMP_FULL_COMMIT, 'signing mints its own bump — not a share of its sibling’s');
   s = runToBoundary(s);
-  assert.equal(rp(s, 'a'), 3 * GAIN_COMMIT_ONLY, 'the incumbent kept climbing on its own count');
-  assert.equal(Math.abs(rp(s, 'b')), Math.abs(reputationDelta(guild(s).lastLicenceFee.ventures.b.status, ven(s, 'b'))),
+  assert.equal(rp(s, 'a'), BUMP_FULL_COMMIT + 3 * GAIN_COMMIT_ONLY, 'the incumbent kept climbing on its own count');
+  assert.equal(rp(s, 'b') - BUMP_FULL_COMMIT,
+    reputationDelta(guild(s).lastLicenceFee.ventures.b.status, ven(s, 'b')),
     'the newcomer moved by exactly one verdict — its FIRST');
+  assert.ok(rp(s, 'b') < rp(s, 'a'), 'and it is still behind the venture that has been earning for three cycles');
   assertSumHolds(s, 'a late joiner');
 });
 
@@ -663,17 +799,23 @@ test('reputation stays an INTEGER and IN BAND through a long mixed run (§15.2, 
 });
 
 test('a venture driven deep NEGATIVE keeps every invariant green — the exemption works', () => {
-  // Eight breached windows at a full commitment: −24, comfortably negative and comfortably
-  // inside the band. Invariant 3's non-negativity carve-out has to cover both the venture
-  // field and the guild total, or the tick would halt on a venture doing exactly what
-  // breaching is designed to do.
-  const WINDOWS = 8;
+  // Seventy breached windows at a full commitment: 200 − 210 = −10, comfortably negative
+  // and comfortably inside the band. Invariant 3's non-negativity carve-out has to cover
+  // both the venture field and the guild total, or the tick would halt on a venture doing
+  // exactly what breaching is designed to do.
+  //
+  // ⤳ 01-09-26 (slice 2): this used to take EIGHT windows and now takes seventy — because
+  // a venture that signed at 100% opens 200 RP up and has to burn through its own signing
+  // bump before it can go negative at all. That is the bump working as ruled (maximum
+  // commitment buys a real buffer), not the test being padded: the assertion is still that
+  // it DOES reach negative through the ordinary tick, and that nothing halts when it does.
+  const WINDOWS = 70;
   let s = starve(licenceAll(fixture([mine('m')]), ['m']));
   for (let w = 0; w < WINDOWS; w += 1) s = runToBoundary(s);
 
-  assert.equal(rp(s, 'm'), -WINDOWS * DROP_FULL_COMMIT);
+  assert.equal(rp(s, 'm'), BUMP_FULL_COMMIT - WINDOWS * DROP_FULL_COMMIT);
   assert.ok(rp(s, 'm') < 0, 'the test is vacuous unless it really went negative');
-  assert.equal(guild(s).guildReputation, -WINDOWS * DROP_FULL_COMMIT);
+  assert.equal(guild(s).guildReputation, BUMP_FULL_COMMIT - WINDOWS * DROP_FULL_COMMIT);
   assert.deepEqual(checkInvariants(s, s.tick), [], 'all invariants green on a deeply negative venture');
 });
 
@@ -721,11 +863,12 @@ test('TRIPWIRE: a guild total that drifts from its ventures is caught', () => {
   // its endowment is 0 and the sum is still the ventures alone — but the detail now names
   // both terms, so a future drift says WHICH half moved.
   assert.equal(v[0].rule, 'guild-reputation-is-the-venture-sum-plus-endowment (points-and-reputation.md §2/§2.5)');
+  const standing = BUMP_FULL_COMMIT + GAIN_COMMIT_ONLY;   // the signing bump, then one met cycle
   assert.deepEqual(v[0].detail, {
-    stored: GAIN_COMMIT_ONLY + 1,
-    sumOfVentures: GAIN_COMMIT_ONLY,
+    stored: standing + 1,
+    sumOfVentures: standing,
     foundingEndowment: 0,
-    expected: GAIN_COMMIT_ONLY,
+    expected: standing,
   });
 });
 
@@ -780,10 +923,16 @@ test('serialize -> persist -> load round-trips positive, negative and omitted-wh
 
   // A real run, so the values under test were MOVED by the engine rather than typed in:
   // `a` breaches its way negative, `b` meets its way positive, `c` is never licensed.
+  //
+  // ⤳ 01-09-26 (slice 2): `a` is signed at 10% and `b` at the full 100%, where they used to
+  // share one commitment. That is not a dodge — it is the bump's own arithmetic doing the
+  // work. A token committer opens on a bump of 20 and breaches at −9, so three breached
+  // windows take it to −7; a full committer would have opened 200 up and needed seventy.
+  // "Promise nothing, start behind" is exactly what puts a negative in this fixture.
   let s = fixture([
     mine('a'), mine('b', { systemId: SYS_B, equityPct: FULL_EQUITY }), mine('c', { systemId: 'sysC' }),
   ]);
-  s = starve(licenceAll(s, ['a', 'b']), SYS);
+  s = starve(licenceAll(licenceAll(s, ['a'], 0.1), ['b'], 1), SYS);
   for (let w = 0; w < 3; w += 1) s = runToBoundary(s);
 
   assert.ok(rp(s, 'a') < 0, 'the round trip is only a proof if a negative is present');
@@ -820,6 +969,11 @@ test('determinism (invariant 9): a run that moves reputation is byte-identical r
 test('the snapshot reports both numbers, ECHOED not re-summed, and needs no schema bump', () => {
   let s = fixture([mine('a'), mine('b', { systemId: SYS_B, equityPct: FULL_EQUITY })]);
   s = starve(licenceAll(s, ['a', 'b']), SYS);
+  // ⤳ 01-09-26 (slice 2): `a` opens on a +200 signing bump, so one breached boundary no
+  // longer takes it negative. `atRP` stands in for the breached cycles that would burn the
+  // bump off — the same stand-in the band tests above use — so the snapshot still has a
+  // real negative to echo, which is the claim under test.
+  s = atRP(s, 'a', 0);
   s = runToBoundary(s);
 
   const snap = buildSnapshot(s);
@@ -831,7 +985,7 @@ test('the snapshot reports both numbers, ECHOED not re-summed, and needs no sche
   const b = snap.ventures.find((x) => x.id === 'b');
   assert.equal(g.guildReputation, guild(s).guildReputation, 'the guild total is the STORED number');
   assert.equal(a.reputation, -DROP_FULL_COMMIT, 'a negative reaches the client as a negative');
-  assert.equal(b.reputation, GAIN_FULL_TERMS);
+  assert.equal(b.reputation, BUMP_FULL_COMMIT + GAIN_FULL_TERMS, 'and the bump rides through untouched');
   assert.equal(g.guildReputation, a.reputation + b.reputation, 'and the published total really is their sum');
 });
 

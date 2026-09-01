@@ -6,6 +6,7 @@ const { getRecipe } = require('./recipes.js');
 const {
   EQUITY_CEILING, isValidEquityPct, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
   isValidCommitmentPct, isValidWindowDays, licenceFee, commitmentUnitsFor, equityOf,
+  signingBump,
 } = require('./licence.js');
 const { producedGoodFor, baselineOutputFor } = require('./baseline.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
@@ -1055,6 +1056,38 @@ function applyAction(state, action) {
       basicFee,
       discountedFee,
     };
+    // THE SIGNING BUMP (§2.6, ruled 01-09-26; slice 2 of the rescale). Signing MINTS
+    // reputation: `2 × committedOutputPct × the venture's GP weight`, so the terms the
+    // guild just negotiated decide whether this venture launches above, on, or below its
+    // line. At 50% the bump equals the venture's own GP and it opens exactly ON its line —
+    // which is the point of the whole rescale: deploying no longer opens an instant gap
+    // that throttles the guild's fuel before it has had any chance to earn.
+    //
+    // MINTED HERE, IN THE SIGNING APPLY, and nowhere else — it is part of the same
+    // mutation, not a second event. The amount is `sim/licence.js`'s (§4: the licence
+    // layer owns how RP moves; this file only applies the move it is handed).
+    //
+    // IT MIRRORS THE TICK'S RP MOVE EXACTLY (sim/tick.js's boundary block), on purpose:
+    // the venture's own field and the guild's cached total move by the SAME amount in the
+    // SAME place, so `checkGuildReputationSum` (`guildReputation == Σ venture.reputation +
+    // foundingEndowment`) stays exact with no new term and no second writer.
+    //
+    // ⚠ AND A ZERO BUMP WRITES NOTHING — the tick's rule 5, kept here for the same reason.
+    // A 0%-commitment licence is legal (§5's floor) and its bump is 0; assigning anyway
+    // would MINT `reputation: 0`, a key holding its own default, into every save and every
+    // determinism hash for a venture whose reputation has never moved. The field's
+    // lifecycle stays "minted by the first thing that MOVES it" — which is now signing at
+    // any real commitment, and no longer only the first met boundary.
+    //
+    // The `|| 0` is belt to that brace: re-applying is refused, so a venture reaching here
+    // has never been licensed and cannot already carry RP — but the read is written the
+    // safe way regardless, so it stays correct if renegotiation ever routes through here.
+    const bump = signingBump(venture);
+    if (bump !== 0) {
+      venture.reputation = (venture.reputation || 0) + bump;
+      guild.guildReputation += bump;
+    }
+
     // The operative commitment: the share of BASELINE output promised over one window,
     // in whole units. This is the field the §5 accrual sums into `Q` and that 3a's sale
     // is paid on — so granting the licence is what switches the commitment sale on.

@@ -463,10 +463,77 @@ function repTerms(venture) {
 // venture 0 because it produces nothing, but RP only moves for a venture the fee loop has
 // already judged met or breached, so one arriving here with no output is a real
 // contradiction, not an empty row.
+//
+// ⤳ SPLIT 01-09-26 (slice 2) into `whereOf` + `ventureTierWeight` + this. The signing bump
+// below needs the venture's ABSOLUTE weight — this ratio's numerator — so the lookup was
+// extracted rather than written a second time. Same arithmetic, same halt, one lookup.
+function whereOf(venture) {
+  return {
+    good: producedGoodFor(venture),
+    ventureId: venture && venture.id,
+    guildId: venture && venture.ownerGuildId,
+  };
+}
+
+// ventureTierWeight(venture) -> the venture's OWN absolute GP tier weight: 100 for a
+// tier-1 mine, 150 for a tier-2 refinery. The number `sim/points.js` scores it at in GP,
+// read through that module's own `tierWeight` so there is exactly one weight map.
+//
+// TWO CALLERS, ONE LOOKUP. `tierFactor` divides it by the tier-1 weight to get the RATIO
+// (1 / 1.5 / 3 / 5) that scales the per-cycle earn and breach; `signingBump` uses it
+// ABSOLUTE, because §2.6 sizes the bump against the venture's own GP — the bar it just
+// added to its guild — not against a tier-1 reference.
+function ventureTierWeight(venture) {
+  const where = whereOf(venture);
+  return tierWeight(tierOf(where.good), where);
+}
+
 function tierFactor(venture) {
-  const good = producedGoodFor(venture);
-  const where = { good, ventureId: venture && venture.id, guildId: venture && venture.ownerGuildId };
-  return tierWeight(tierOf(good), where) / tierWeight(1, where);
+  return ventureTierWeight(venture) / tierWeight(1, whereOf(venture));
+}
+
+// signingBump(venture) -> the one-time RP a venture is minted with when its licence is
+// signed. A non-negative integer.
+//
+//     round( 2 × commit × W_TIER(venture) )
+//
+// docs/points-and-reputation.md §2.6, ruled 01-09-26; the number is `phase-1-tuning.md`'s
+// "Venture signing bump" row. **THIS IS THE FIX THE WHOLE RESCALE WAS FOR.** Slice 1 put
+// GP and RP on one scale but left a signed venture minted at 0 RP, so deploying still
+// opened an instant gap — GP rose, the bar with it, and the reputation to pay for it had
+// not been earned. §1.2 already gave PASSIVE assets a bar-neutral offset on deploy while
+// holding that productive ventures earn their bar from zero; §2.6 generalises that offset
+// to productive ventures and SCALES IT BY THE TERMS the guild negotiated:
+//
+//   -   0% commit -> 0.        Adds GP with no RP: instantly below its line, throttled.
+//   -  50% commit -> 1× its GP. Exactly ON its line, bar-neutral — and this is the
+//                               Syndicate's EXPECTED deal, the neutral negotiation.
+//   - 100% commit -> 2× its GP. Its whole GP ABOVE the line: an instant fuel buff.
+//
+// So the deploy slider is now the lever that decides whether a venture launches above, on
+// or below its line — and it supersedes §2.5's "ventures earn their whole bar."
+//
+// COMMIT ONLY — NO EQUITY TERM, and that is the one place this deliberately parts company
+// with `metGain` beside it. §2.6 sizes the bump off `committedOutputPct` alone: the bump
+// answers "how much of your output have you promised the Syndicate", which is what makes
+// the venture's own bar defensible. Equity is a claim on the PROCEEDS and buys a share of
+// the per-cycle EARN (`REP_W_EQUITY`), not the opening position. Adding it here would let
+// a guild buy its way onto its line by giving away shares while promising nothing.
+//
+// The `commit` basis is `repTerms`', not a raw read of the field, so "50%" means exactly
+// what it means to `metGain` and `breachPenalty` — one clamped reading of the terms for
+// the whole RP model. That also inherits `repTerms`' throw: a venture with no licence has
+// no terms to size a SIGNING bump by, and reaching here would mean one was minted for a
+// contract that does not exist.
+//
+// ⚠ ONE-TIME, AND THERE IS NO RE-BUMP. `applyForLicence` refuses a second application on
+// the same venture, so this fires exactly once per venture and cannot be farmed by
+// re-signing. Whether RENEGOTIATION re-bumps (and on what basis, since the venture's GP is
+// already on the guild's books by then) is NOT ruled and NOT built — it rides with the
+// renegotiation window, #64. Do not add a re-bump path here ahead of that ruling.
+function signingBump(venture) {
+  const { commit } = repTerms(venture);
+  return Math.round(2 * commit * ventureTierWeight(venture));
 }
 
 // metGain(venture) -> the PRE-TAPER RP a met cycle is worth, a non-negative integer.
@@ -573,5 +640,5 @@ module.exports = {
   commitmentUnitsFor,
   REP_MEET_MAX, REP_W_COMMIT, REP_W_EQUITY, REP_BREACH_MAX, REP_BREACH_MIN,
   RP_FLOOR, RP_SOFT_CAP, RP_TAPER_KNEE,
-  repTerms, tierFactor, metGain, breachPenalty, gainFactor, reputationDelta,
+  repTerms, tierFactor, ventureTierWeight, signingBump, metGain, breachPenalty, gainFactor, reputationDelta,
 };
