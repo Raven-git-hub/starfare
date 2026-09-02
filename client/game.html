@@ -1486,6 +1486,7 @@ select.field{appearance:none; cursor:pointer;}
   let dragging = false, dragged = false, lastX = 0, lastY = 0;
   let selected = null, selectedCoords = null, selectedType = null;
   const VECTOR_ZOOM_THRESHOLD = 4; // below this, only marker dots show; at/above, real hex borders draw around the focus
+  const WAYSTATION_LABEL_ZOOM = 1.5; // below this, waystation name-tags are hidden (96 of them clutter the zoomed-out galaxy); at/above, they draw
   let systemByKey = new Map(), outpostByKey = new Map(); // fast lookup for the live hex layer + click resolution
 
   // ---------- the player's own guild, from the LIVE snapshot ----------
@@ -1873,14 +1874,16 @@ select.field{appearance:none; cursor:pointer;}
     }
 
     // labels — diagonal line + name/detail box, ported from galaxy-map-hex.html.
-    // Syndicate outposts label at ALL zooms; the placeholder guild's own systems only above 1×.
+    // Syndicate outposts label at WAYSTATION_LABEL_ZOOM (1.5×) and closer; the placeholder guild's own systems only above 1×.
     // Everyone else (rivals, unclaimed) stays unlabeled, same as the original.
-    galaxy.outposts.forEach(o => {
-      const p = hexToPixel(o.coords.q, o.coords.r, galaxy.galaxyParams.hexSize);
-      const scr = worldToScreen(p.x, p.y);
-      if (scr.x < -150 || scr.x > window.innerWidth+150 || scr.y < -150 || scr.y > window.innerHeight+150) return;
-      drawLabelBox(scr, [o.name.toUpperCase(), 'WAYSTATION'], 'outpost');
-    });
+    if (zoom >= WAYSTATION_LABEL_ZOOM) {
+      galaxy.outposts.forEach(o => {
+        const p = hexToPixel(o.coords.q, o.coords.r, galaxy.galaxyParams.hexSize);
+        const scr = worldToScreen(p.x, p.y);
+        if (scr.x < -150 || scr.x > window.innerWidth+150 || scr.y < -150 || scr.y > window.innerHeight+150) return;
+        drawLabelBox(scr, [o.name.toUpperCase(), 'WAYSTATION'], 'outpost');
+      });
+    }
     if (zoom > 1) {
       PLAYER_GUILD.ownedSystemIds.forEach(id => {
         const sys = galaxy.systems.find(s => s.id === id);
