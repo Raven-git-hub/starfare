@@ -49,10 +49,6 @@ Working spec: `docs/prompts/phase-1-sandbox-prompt.md` plus the Stage 1 report (
 
 Design, data-point audit and engine wiring plan: **`docs/guild-hall.md`**; clickable mockup: **`docs/mockups/guild-hall.html`**. The Standing panel is settled. It needs three small **additive** snapshot fields to wire up — `fuelHoardAtCycleStart`, the issuance modifier stamped on `fuelGrant`, and a rolling per-guild modifier history — plus the client panel in `client/game.html`; the fuel loop itself is already built. RP-by-source is derivable from existing fields; the legal/illegal hoard split and the Deuterium/Transport/Council RP sources are deferred with their mechanics. Finance/Ventures/Council/Forum tabs are later.
 
-### Guild Hall — the player's Standing & fuel dashboard *(design captured 02-09-26)*
-
-Design, data-point audit and engine wiring plan: **`docs/guild-hall.md`**; clickable mockup: **`docs/mockups/guild-hall.html`**. The Standing panel is settled. It needs three small **additive** snapshot fields to wire up — `fuelHoardAtCycleStart`, the issuance modifier stamped on `fuelGrant`, and a rolling per-guild modifier history — plus the client panel in `client/game.html`; the fuel loop itself is already built. RP-by-source is derivable from existing fields; the legal/illegal hoard split and the Deuterium/Transport/Council RP sources are deferred with their mechanics. Finance/Ventures/Council/Forum tabs are later.
-
 ### Stage 1 — Read and report ✅
 
 - [x] Reconciliation of documents vs repo (found: stale doc copy in circulation; 15-07 generator work documented but lost; missing artifacts list)
