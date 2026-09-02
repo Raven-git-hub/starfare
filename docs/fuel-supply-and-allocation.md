@@ -193,56 +193,70 @@ of §1.2, correct and intended for this cut.
 **Out of 5a:** the dynamic price controller (5b); the Producer Guilds (their own later slice — the influx is
 abstracted, §1.1); closure; illegal refining; the grey market.
 
-### 2.2 The grant base — contribution confirmed, calibration is the open lever (ruled 02-09-26)
+### 2.2 The grant base — contribution confirmed; the real levers, corrected (ruled 02-09-26, corrected same day post-seed)
 
 §2.1's parenthetical floated a *demand/consumption-relative* base as a later refinement. **Ruled against —
 closed, not deferred.** The grant stays **contribution-relative** (`BASE_GRANT_PER_GP · GP · modifier`, unchanged
-shape). The reason is §2's own thesis: issuance is sized to *what you contribute relative to your size*, never
-*what you took last cycle*. A consumption-relative base would (a) make expansion non-strategic — max out
-transport for one cycle and the grant follows — and (b) be directly exploitable: above the line, churn junk
-trades to inflate your assessed need and the grant returns more fuel than you burned. The GP/RP system exists
-precisely to make expanding a committed, reputation-bearing decision; letting consumption drive the grant would
-route around it. **You get what you contribute, not what you took.**
+shape). §2's own thesis: issuance is sized to *what you contribute relative to your size*, never *what you took
+last cycle*. A consumption-relative base would (a) make expansion non-strategic — max out transport for one
+cycle and the grant follows — and (b) be exploitable: above the line, churn junk trades to inflate your assessed
+need and the grant returns more fuel than you burned. **You get what you contribute, not what you took.** *(This
+half stands.)*
 
-So the *shape* was never wrong. The open problem is the **calibration** of `BASE_GRANT_PER_GP`, and it is real:
-the base bites as a throttle only if an **on-line** guild draws roughly what it *consumes*. Consumption is
-`trades × per-trade fuel`, and per-trade fuel is `ceil(distance-to-nearest-waystation · SYNDICATE_HAULER_BURN_RATE)`
-— pure seed geometry. Measured on the current seed (9 waystations, 02-09-26): mean **~30 fuel/trade** (median 28,
-range 1–78), so a par guild's ~150/cycle grant is **~5 trades/cycle**, and the modifier band `[0.3, 1.5]` reads
-as **~1.5 to ~7.5 trades/cycle** at par size. That band *is* the squeeze, in the game's own units.
+**⚠ CORRECTION — the first cut of this section aimed the fix at the wrong knob, and measuring on the regenerated
+seed proved it.** It claimed you'd set `BASE_GRANT_PER_GP` so an on-line guild draws what it consumes. But
+dropping the base from 0.3 to 0.11 on the recorder **barely moved the physical grants** (Forge 368 → 354,
+Meridian 245 → 236); what it moved was the **price**, 12.2 → 4.6. The engine's own invariant is why: *the pool
+settles exactly where total draw equals the influx*, so the total physical fuel leaving the pool each cycle is
+pinned to the **influx**, and each guild's share is `GP·modifier ÷ Σ(GP·modifier)` — in which
+`BASE_GRANT_PER_GP` **cancels**. The corrected levers:
 
-**Two sub-rulings settle the band's shape:**
+- **`DEUTERIUM_INFLUX_PER_CYCLE`** sets the galaxy's total physical fuel per cycle — the **abundance**, i.e. how
+  many hauls the galaxy can afford.
+- **`BASE_GRANT_PER_GP`** sets the resting **price** (`price = REFERENCE · Σentitlement ÷ influx`), **not** the
+  quantity of fuel.
+- **`GP · modifier`** sets each guild's **share** of the fixed total — so a high-standing guild always draws a
+  bigger slice than a low-standing one. **The throttle *between* guilds rides here** and holds at any abundance:
+  a below-line guild gets a thinner slice of whatever the galaxy has.
 
-- **Thin surplus on the line (ruled).** An on-line guild (modifier 1.0) draws its consumption **plus a small
-  margin** (`[FIRST-CUT]` ~10–15%), so it carries a thin buffer and a real **deficit begins only *below* the
-  line**. Dead-on-the-line-as-break-even was rejected as a knife-edge that starves on a normal price swing.
-- **The war chest is the storyteller's, not the fuel layer's (ruled).** Above-line guilds accumulate a slow,
-  bounded surplus — the intended power structure ("hoarders forcing others out"). Contribution-pegging already
-  caps that growth to *linear and top-tier-only* (a guild's grant plateaus at 1.5× its own consumption). **No
-  fuel-side cap or decay; §3's bank-forever stands.** A guild grown too comfortable is what the Rimworld-style
-  storyteller (Phase 6) is for.
+**Per-trade fuel, measured on the new 96-waystation seed (02-09-26):** mean **~7.6** (median 7, range 1–23) —
+~4× cheaper and far more uniform than the old ~30 (the waystation rebalance did exactly what it was for). So the
+*same* influx now buys ~4× more hauls: an on-line guild in a small galaxy draws ~32 hauls/cycle.
 
-**⚠ The calibration is DOWNSTREAM of the seed, and must not be set before it.** Per-trade fuel cost is entirely
-waystation geometry, and Track G's **waystation rebalance (9 → 96)** rewrites it wholesale — shorter, far more
-uniform routes (density scaling ≈ 1/√density puts the new mean near ~9 fuel/trade and compresses the 1–78
-spread). The current ~30 is *noise about to be deleted*; calibrating against it is wasted work. So the order is
-fixed:
+**⚠ Hauls-per-guild is population-relative under a fixed influx** — one fixed pool split by share, so more guilds
+means a thinner slice each (and a higher price). "~32 hauls" is a *small-galaxy* figure. This is not a bug to
+tune out; it is the **commons** — the Syndicate produces a baseline and the galaxy competes for it.
 
-1. Run the seed v2.0 slices (Track G node + waystation rebalance) first.
-2. On the regenerated seed, **re-measure** the per-trade fuel distribution.
-3. Set `BASE_GRANT_PER_GP` `[FIRST-CUT]` = *(intended trades/cycle for an on-line par guild) × (per-trade fuel,
-   measured) × (1 + thin-surplus margin) ÷ (par GP)*. The one design input is the **intended trade pace**;
-   everything else is measured, not invented.
-4. Validate in playtest and retune — the number is a first cut, not a settled figure.
+**The supply model (ruled).** The influx is a **fixed PG baseline** (the abstracted §1.1 back-end supply) that
+**grows organically as player guilds produce deuterium into the pool** — there is **no mechanical link to
+population**; the influx rises because fuel is actually *made* (licensed deuterium mining, §1.0/§1.1's later
+slice) and falls back toward the baseline when production stops. Fuel abundance is an emergent, player-driven
+quantity sitting on a fixed floor.
 
-**The architecture is sound — this is a number, not a re-plumb.** A conservation audit (02-09-26) confirmed the
-built engine already does the load-bearing things right: grants are rationed against the reserve (`rationGrants`,
-with a hard-floor assert), the price is read off the **post-issuance** pool against a demand-relative target,
-routes burn a **fixed unit** quantity (credits derived at sale, never stored), and the hoard is marked to market
-on read. No unit leak survived the hunt. The only fuel change this ruling implies is the recalibration of
-`BASE_GRANT_PER_GP` (plus the thin-surplus margin), both in `phase-1-tuning.md`. *(`sim/issuance.js`'s comment
-still calls a consumption-relative base "a possible later refinement, deferred to 5b" — reconcile that comment
-to this ruling in the recalibration slice, when code is touched.)*
+**DECISION (02-09-26): leave the baseline loose — no constant change.** `DEUTERIUM_INFLUX_PER_CYCLE` stays
+**800** and `BASE_GRANT_PER_GP` stays **0.3**. On the new seed 0.3 yields a resting price near the reference (~12
+on the recorder galaxy), and 800 is deliberately abundant (~32 baseline hauls for an on-line guild in a small
+galaxy). Fuel is **not a hard throttle at the baseline** right now, by choice: the throttle emerges as a server
+fills (more guilds sharing the fixed baseline) and the tension is meant to be worked by the emergent supply —
+guilds choosing to mine deuterium — not by a tight starting number. The tighter baselines were on the table and
+are recorded as the known knob, not taken: **influx ~175 / base ~0.065 → ~7 on-line hauls**; **influx ~350 /
+base ~0.13 → ~14** (the base moves only to hold the price near reference when the influx moves). Dial in from
+playtest later.
+
+**What stands from the first cut.** The **conservation audit** (02-09-26): the built engine rations against the
+reserve (`rationGrants`, hard-floor assert), reads the price off the **post-issuance** pool against a
+demand-relative target, burns a **fixed unit** quantity per route (credits derived at sale, never stored), and
+marks the hoard to market on read — no unit leak survived, and **the architecture needs no change; this whole
+item resolved to *tune nothing yet*.** The **war chest** stays the storyteller's, not the fuel layer's —
+bank-forever (§3) stands; a guild grown too comfortable is Phase 6's target, and while loose supply lets everyone
+accumulate, the high-standing draw fastest by their larger share. *(`sim/issuance.js`'s comment calling a
+consumption-relative base "a possible later refinement, deferred to 5b" should be reconciled to "ruled against"
+whenever that file is next touched — no code change is otherwise implied.)*
+
+**The next substantive fuel work is the SUPPLY side, not the grant.** The engine that *spends* fuel is done;
+what's unbuilt is what *makes* it — the PG baseline as a real entity and licensed/unlicensed deuterium mining
+that grows the influx (the auto-100%-commit, T4-RP, output-to-Syndicate venture, §1.1). That is where the fuel
+economy gets its teeth, and it is a build of its own.
 
 ## 3. Holding fuel — banking, no cap, consume-only
 
