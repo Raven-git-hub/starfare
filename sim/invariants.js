@@ -72,6 +72,7 @@ const {
 const { ASSET_CONDITION_NEW, ASSET_CONDITION_MIN, isAssetKind, assetKindForVentureType } = require('./assets.js');
 const { DEFAULT_WINDOW_N, winStartFor, windowFraction } = require('./windows.js');
 const { HISTORY_N } = require('./history.js');
+const { MODIFIER_HISTORY_N } = require('./modifier-history.js');
 const { TIERS: PRICE_HISTORY_TIERS, TIER_KEYS } = require('./price-history.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { getSite, getLandmark, getSystem, getTerranHomeworld } = require('./seed.js');
@@ -161,6 +162,14 @@ function checkNonNegativityAndIntegrality(state) {
     // Every other field below (hoards, influence, stockpiles, reserves) stays >= 0.
     checkField(out, g.credits, `guild:${g.id}.credits`, { nonNegative: false });
     checkField(out, g.fuelHoard, `guild:${g.id}.fuelHoard`);
+    // fuelHoardAtCycleStart — the start-of-cycle hoard reference (Guild Hall Slice A,
+    // sim/tick.js step 6). A quantity of fuel like `fuelHoard` beside it, so the same
+    // integer + non-negativity sweep: it is the hoard POST-grant, which is ≥ 0 by
+    // construction, and a fractional one would be as much a bug here as anywhere fuel is
+    // counted. Absent (a guild never due a grant) is the common case and is legal.
+    if (g.fuelHoardAtCycleStart !== undefined) {
+      checkField(out, g.fuelHoardAtCycleStart, `guild:${g.id}.fuelHoardAtCycleStart`);
+    }
     if (g.influence !== undefined) checkField(out, g.influence, `guild:${g.id}.influence`);
     // guildReputation — the guild's RP, Σ its ventures' (docs/points-and-reputation.md
     // §2). An INTEGER like every other score here, and EXEMPT from non-negativity for
@@ -382,6 +391,75 @@ function checkProductionHistory(state) {
         }
       }
     }
+  }
+  return out;
+}
+
+// The fuel grant record (guild.lastFuelGrant, sim/tick.js step 6) — what a guild was
+// granted at the last cycle boundary, what it was DUE, and (the Guild Hall slice, §4 B) the
+// modifier that DROVE it. `tick`, `granted` and `desired` are integer fuel (§15.2; granted
+// and desired are ≥ 0 counts). `modifier` is the SANCTIONED FLOAT the issuance model runs on
+// — it SCALES a grant rather than counting fuel, so the integer sweep skips it and it gets
+// its own tripwire here, exactly as the price and the batch carries do. It is checked FINITE
+// and > 0, not against the [ISSUANCE_FLOOR, ISSUANCE_CEIL] band: a 0 or negative modifier
+// would silently zero or negate a grant (the failure worth crashing on), while the band is
+// [FIRST-CUT] tuning that a stored record is the PAST of — the same reasoning checkPrices
+// applies to the live value but checkPriceHistory does not to a recorded one. A guild that
+// has never been due a grant carries no record and is skipped (the common case); a
+// pre-slice record with no `modifier` key is legal and skips only that field's check.
+function checkFuelGrant(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    const rec = g.lastFuelGrant;
+    if (!rec) continue;
+    const where = `guild:${g.id}.lastFuelGrant`;
+    checkField(out, rec.tick, `${where}.tick`);
+    checkField(out, rec.granted, `${where}.granted`);
+    checkField(out, rec.desired, `${where}.desired`);
+    if (rec.modifier !== undefined) {
+      const m = rec.modifier;
+      if (typeof m !== 'number' || !Number.isFinite(m) || m <= 0) {
+        out.push({ rule: 'grant-modifier-is-a-positive-float (Guild Hall §4 B)', where: `${where}.modifier`, detail: { value: m } });
+      }
+    }
+  }
+  return out;
+}
+
+// The per-guild ISSUANCE-MODIFIER history ring (guild.modifierHistory, sim/modifier-history.js)
+// — the Guild Hall's Performance line (§4 C). Display-depth state, not a ledger, so nothing
+// here can break conservation; what it CAN do is rot silently and draw a lie. Three things,
+// matching checkProductionHistory / checkPriceHistory:
+//   - it is an ARRAY (a broken write that stored something else must fail loudly, not plot);
+//   - it is CAPPED at MODIFIER_HISTORY_N — a ring that stopped ringing would grow without
+//     bound and quietly bloat every save;
+//   - every sample is a FINITE number (the modifier is the sanctioned float, so no integer
+//     sweep; the band is [FIRST-CUT] and a stored sample is the past, so only finiteness —
+//     a NaN would poison the determinism hash — is the invariant, exactly as checkPriceHistory
+//     asserts finiteness but not the price band on its rings).
+// A guild that has never been due a grant carries no `modifierHistory` field at all — legal,
+// and the byte-identical no-op path.
+function checkModifierHistory(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    if (g.modifierHistory === undefined) continue;
+    const where = `guild:${g.id}.modifierHistory`;
+    if (!Array.isArray(g.modifierHistory)) {
+      out.push({ rule: 'modifier-history-is-an-array (sim/modifier-history.js)', where, detail: { value: g.modifierHistory } });
+      continue; // the cap/value checks below are meaningless without an array
+    }
+    if (g.modifierHistory.length > MODIFIER_HISTORY_N) {
+      out.push({
+        rule: 'modifier-history-ring-capped-at-MODIFIER_HISTORY_N (sim/modifier-history.js)',
+        where,
+        detail: { length: g.modifierHistory.length, cap: MODIFIER_HISTORY_N },
+      });
+    }
+    g.modifierHistory.forEach((v, i) => {
+      if (typeof v !== 'number' || !Number.isFinite(v)) {
+        out.push({ rule: 'modifier-history-sample-finite (sim/modifier-history.js)', where: `${where}[${i}]`, detail: { value: v } });
+      }
+    });
   }
   return out;
 }
@@ -970,6 +1048,8 @@ function checkInvariants(state, tick) {
     ...checkBatchCarry(state),
     ...checkSyndicateWindows(state),
     ...checkProductionHistory(state),
+    ...checkFuelGrant(state),
+    ...checkModifierHistory(state),
     ...checkPrices(state),
     ...checkPriceHistory(state),
     ...checkLicenceTerms(state),

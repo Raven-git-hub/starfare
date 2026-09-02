@@ -22,6 +22,7 @@ const { cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
 const { cloneWindows } = require('./windows.js');
 const { cloneHistory } = require('./history.js');
+const { cloneModifierHistory } = require('./modifier-history.js');
 const { seedPrices } = require('./prices.js');
 const { clonePriceHistory } = require('./price-history.js');
 const { ASSET_CONDITION_NEW } = require('./assets.js');
@@ -48,6 +49,7 @@ function createGuild({
   isBot = false,
   credits,
   fuelHoard,
+  fuelHoardAtCycleStart,
   influence = 0,
   incomeRate = 0,
   homeSystemId = null,
@@ -57,6 +59,7 @@ function createGuild({
   productionProfile = {},
   syndicateWindows = {},
   productionHistory = {},
+  modifierHistory = [],
   assets = [],
   ventures = [],
   vehicles = [],
@@ -71,6 +74,16 @@ function createGuild({
     isBot,
     credits,
     fuelHoard,
+    // fuelHoardAtCycleStart: the guild's hoard at the last cycle boundary — POST-grant,
+    // before this cycle's usage (docs/guild-hall.md §4 A, the Guild Hall slice). Stored so
+    // the Standing panel's stockpile bar has its max and its used-this-cycle gap. Stamped
+    // by tick.js's step 6 only for a guild that was DUE a grant, so OMITTED here when absent
+    // (`=== undefined`, not `=== 0` — a hoard that opened the cycle empty is a real 0 the
+    // bar must show), the discipline `committedFromTick` follows: a guild that has never
+    // crossed a boundary carries no key and serializes byte-identically to pre-slice. An
+    // integer quantity of fuel (§15.2); CARRIED here so a scenario or a restored save that
+    // hands one in keeps it, exactly as `foundingEndowment` and `productionHistory` are.
+    ...(fuelHoardAtCycleStart !== undefined ? { fuelHoardAtCycleStart } : {}),
     influence,
     incomeRate,
     // Home (design.md §13): the starter system a guild entered on, and its
@@ -153,6 +166,14 @@ function createGuild({
     // it is minted LAZILY by applyProduction, only for a good that actually moved, so
     // a galaxy where nothing is produced carries no key and stays byte-identical.
     ...(Object.keys(productionHistory).length ? { productionHistory: cloneHistory(productionHistory) } : {}),
+    // modifierHistory: the rolling per-guild record of the issuance modifier at each cycle
+    // boundary (sim/modifier-history.js) — the Guild Hall's Performance line (docs/guild-hall.md
+    // §4 C). ENGINE-OWNED, not player-set. Omitted when empty for the same reason
+    // productionHistory and syndicateWindows are: it is minted LAZILY by tick.js's step 6,
+    // only for a guild that was DUE a grant, so a holdings-less galaxy carries no key and
+    // stays byte-identical to pre-slice. A caller's non-empty seed (a scenario or a restored
+    // save) is copied so it can never alias into engine state.
+    ...(Array.isArray(modifierHistory) && modifierHistory.length ? { modifierHistory: cloneModifierHistory(modifierHistory) } : {}),
     lifetimeProduced: {}, // good -> int; monotonic, only ever increases (§13)
     // assets: the guild's ground-asset INVENTORY (design.md §4, 30-08-26) — the
     // Miners and Factories it owns. Nested here, a sibling of `ventures` and

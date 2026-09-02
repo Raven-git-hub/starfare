@@ -218,8 +218,12 @@ test('a grant TRANSFERS: the hoard rises by exactly the grant, the pool falls by
   assert.equal(s.audit.totalConsumed, 0);
   assertConserved(s, 'after one grant');
 
-  assert.deepEqual(g.lastFuelGrant, { tick: N, granted: due, desired: due },
-    'and the grant is on the record, due and received alike');
+  // The grant record now also carries the modifier that DROVE it (Guild Hall Slice B) —
+  // `issuanceModifier` at the boundary. Reputation does not move for an unlicensed guild, so
+  // it is the same value read here after the boundary as the one stamped during it.
+  const modifier = issuanceModifier(s, g);
+  assert.deepEqual(g.lastFuelGrant, { tick: N, granted: due, desired: due, modifier },
+    'and the grant is on the record, due and received alike, with the modifier that sized it');
 });
 
 test('several guilds are each granted their OWN size × their OWN standing', () => {

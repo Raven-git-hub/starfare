@@ -73,7 +73,8 @@ this tick.**
 
 Grounded against `sim/snapshot.js` at HEAD `bce3a74`. **LIVE** = already in the snapshot;
 **SLICE** = needs a small additive engine field (§4); **DERIVE** = presentation arithmetic on
-live fields; **DEFERRED** = waits on an unbuilt mechanic.
+live fields; **DEFERRED** = waits on an unbuilt mechanic. **BUILT** = the engine field this
+row needed now ships (the A/B/C slice, 02-09-26).
 
 | Data point | Source | Status |
 |---|---|---|
@@ -82,8 +83,8 @@ live fields; **DEFERRED** = waits on an unbuilt mechanic.
 | Founded cycle | *(not exposed)* | SLICE (tiny) or drop |
 | Cycle / day / tick | calendar | LIVE |
 | Predicted modifier (gauge) | `guilds[].issuanceModifier` (recomputed on read = live) | LIVE |
-| Current modifier (gauge) | modifier stamped on the grant | SLICE B |
-| 10-cycle performance line | rolling per-guild modifier history | SLICE C |
+| Current modifier (gauge) | `guilds[].fuelGrant.modifier` — modifier stamped on the grant | BUILT (B) |
+| 10-cycle performance line | `guilds[].modifierHistory` — rolling per-guild modifier history | BUILT (C) |
 | RP total | `guilds[].guildReputation` | LIVE |
 | RP — Ventures | `guildReputation − foundingEndowment` | DERIVE |
 | RP — System holdings | `guilds[].foundingEndowment` | LIVE |
@@ -91,8 +92,8 @@ live fields; **DEFERRED** = waits on an unbuilt mechanic.
 | Fuel price | `galacticSupply.fuel.fuelPrice` | LIVE |
 | Legal remaining (credits) | `guilds[].fuelHoardValue` | LIVE |
 | Illegal (credits) | 0 | DEFERRED |
-| Start-of-cycle max (credits) | boundary hoard × price | SLICE A |
-| Used this cycle (credits) | (start − current) × price | SLICE A (derived) |
+| Start-of-cycle max (credits) | `guilds[].fuelHoardAtCycleStartValue` (boundary hoard × price) | BUILT (A) |
+| Used this cycle (credits) | (`fuelHoardAtCycleStart` − `fuelHoard`) × price | BUILT (A, derived) |
 
 ## 4. Engine wiring — the slices
 
@@ -100,25 +101,39 @@ The fuel loop itself — grant, price, hoard, burn-on-route, deplete — is **al
 `fuel-supply-and-allocation.md`), so once the panel reads these fields the bar depletes live as
 the guild trades. Three small **additive** snapshot fields are needed; all follow the pattern
 every field in `snapshot.js` already documents (additive, no schema bump, DERIVED where there is
-no stored counterpart, tripwire-tested):
+no stored counterpart, tripwire-tested).
 
-- **Slice A — `fuelHoardAtCycleStart`.** Stamp each guild's fuel quantity at the cycle boundary
-  (after the grant is applied, before this cycle's usage) and expose it (plus its marked value).
+**✅ BUILT 02-09-26 (slices A + B + C, engine + snapshot only — the client panel is the next prompt).**
+All three are stamped in `sim/tick.js`'s step 6 (`stepBaselineAllocation`) at the cycle boundary,
+under the **same `desired > 0` sparsity** the grant record already uses — so a holdings-less
+galaxy carries none of them and stays byte-identical. The determinism goldens moved for the
+committed 40-tick run alone (it crosses ten boundaries) and are proven the ONLY delta by an added
+strip (`commitment-scaffold.test.js`); the fuel loop's own numbers are unchanged.
+
+- **Slice A — `fuelHoardAtCycleStart`. ✅ BUILT.** Step 6 stamps `g.fuelHoardAtCycleStart =
+  g.fuelHoard` after the grant is applied (post-grant, before this cycle's usage). Exposed in the
+  snapshot as `fuelHoardAtCycleStart` and its marked value `fuelHoardAtCycleStartValue =
+  fuelValue(…, reserve.fuelPrice)` (parallel to `fuelHoardValue`; null before the first boundary).
   Gives the stockpile bar its **max** and the **used-this-cycle** gap.
-- **Slice B — the grant modifier.** Stamp `issuanceModifier` onto the `fuelGrant` record at the
-  boundary (it carries `{tick, thisTick, granted, desired, rationed}` today — add `modifier`).
-  Gives the **Current** gauge; the live `issuanceModifier` already in the snapshot is the
-  **Predicted**.
-- **Slice C — modifier history.** A rolling per-guild series of the modifier at each boundary,
-  same shape as the existing price history. Gives the **performance line**.
+- **Slice B — the grant modifier. ✅ BUILT.** `recordFuelGrant` now takes and stores the
+  `issuanceModifier(state, g)` read at the boundary — the record is `{tick, granted, desired,
+  modifier}` — exposed as `fuelGrant.modifier`. Gives the **Current** gauge; the live
+  `issuanceModifier` already in the snapshot is the **Predicted**.
+- **Slice C — modifier history. ✅ BUILT.** A new engine-owned module `sim/modifier-history.js`
+  keeps a rolling per-guild ring (`guild.modifierHistory`), one sample per cycle at the boundary,
+  same serialized/sparse/deterministic discipline as `sim/history.js` / `sim/price-history.js` but
+  simpler — ONE small ring, no coarsening. The ring length is a `[FIRST-CUT]` display constant
+  `MODIFIER_HISTORY_N = 12` (≥ the 10 the panel draws, with a two-cycle headroom; recorded in the
+  module and `docs/phase-1-tuning.md`). Exposed as `modifierHistory` (always emitted, `[]` when
+  empty). Gives the **performance line**.
 - **RP-by-source** needs no engine change: Ventures = `guildReputation − foundingEndowment`,
   System holdings = `foundingEndowment` (a presentation subtraction, like the recorder's `gap`).
-- **The client panel** then renders the Standing shape in `client/game.html` from these fields,
-  computing no engine number it cannot mirror (§18).
+- **The client panel** (NEXT prompt) then renders the Standing shape in `client/game.html` from
+  these fields, computing no engine number it cannot mirror (§18).
 
-Slices A and B both stamp a value at the same tick boundary and can ride one prompt; C is its
-own; the client panel is the last. The minimal end-to-end path is **A + the client panel** (the
-stockpile bar working as you trade), with B and C the enrichments.
+Slices A and B both stamp a value at the same tick boundary and rode one prompt with C; the client
+panel is the last. The minimal end-to-end path is **A + the client panel** (the stockpile bar
+working as you trade), with B and C the enrichments.
 
 ## 5. Deferred (with their mechanics, not here)
 

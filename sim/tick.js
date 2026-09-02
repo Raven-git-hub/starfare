@@ -41,6 +41,8 @@ const {
   DEUTERIUM_INFLUX_PER_CYCLE, physicalGrantFor, rationGrants,
   nextAvgDraw, nextFuelPrice,
 } = require('./issuance.js');
+const { issuanceModifier } = require('./meanline.js');
+const { pushModifierSample } = require('./modifier-history.js');
 
 // A total, deterministic string order for sort keys — used where a tie has to
 // break the same way every run (invariant 9) rather than however sort found it.
@@ -646,8 +648,16 @@ function stepArrivals(state, _actions) {
 // so a galaxy of holdings-less guilds carries no key and stays byte-identical — and a
 // guild rationed down to zero still gets a record, because "due 150, received 0" is the
 // crunch made visible and is exactly what a reader needs.
-function recordFuelGrant(guild, tick, granted, desired) {
-  guild.lastFuelGrant = { tick, granted, desired };
+//
+// `modifier` is the issuance modifier that DROVE this cycle's grant (the Guild Hall slice,
+// docs/guild-hall.md §4 B) — read at the boundary and stamped here beside the amounts it
+// sized. It is the panel's CURRENT gauge; the live `issuanceModifier` recomputed on read
+// is its PREDICTED. It belongs on this record for the same reason `granted`/`desired` do
+// (invariant 5): the modifier is a function of the guild's Points and reputation AT THIS
+// boundary, and `issuanceModifier` on a later tick reads a moved reputation, so the value
+// that priced this grant is momentary and lives nowhere else once the boundary passes.
+function recordFuelGrant(guild, tick, granted, desired, modifier) {
+  guild.lastFuelGrant = { tick, granted, desired, modifier };
 }
 
 // Step 6 — baseline allocation: THE SYNDICATE'S PER-CYCLE ALLOCATIONS.
@@ -723,9 +733,27 @@ function stepBaselineAllocation(state, _actions) {
   guilds.forEach((g, i) => {
     if (granted[i] > 0) g.fuelHoard += granted[i];
     moved += granted[i];
-    // Only a guild that was DUE something carries a record — a holdings-less galaxy stays
-    // byte-identical — but a guild rationed to 0 keeps one, because that is the crunch.
-    if (desired[i] > 0) recordFuelGrant(g, state.tick + 1, granted[i], desired[i]);
+    // Only a guild that was DUE something carries these records — a holdings-less galaxy
+    // stays byte-identical — but a guild rationed to 0 keeps them, because that is the
+    // crunch. The three Guild Hall fields (docs/guild-hall.md §4, slices A/B/C) are all
+    // stamped here, under the SAME sparsity as the grant record so the byte-identity holds.
+    if (desired[i] > 0) {
+      // The modifier that DROVE this cycle's grant — `issuanceModifier` read at the
+      // boundary. It is stable through issuance (physicalGrantFor read this exact value to
+      // size `desired[i]`), so it is read ONCE here and handed to all three consumers; the
+      // stored value can never disagree with the one that priced the grant.
+      const modifier = issuanceModifier(state, g);
+      // Slice A — the START-OF-CYCLE hoard reference: the hoard POST-grant, before this
+      // cycle's usage. `g.fuelHoard` has already taken this cycle's grant above, so this is
+      // the stockpile bar's max and the datum the used-this-cycle gap is measured from
+      // (docs/guild-hall.md §2.3). An integer quantity of fuel (§15.2), like `fuelHoard`.
+      g.fuelHoardAtCycleStart = g.fuelHoard;
+      // Slice B — the grant modifier, stamped onto the grant record (the panel's Current).
+      recordFuelGrant(g, state.tick + 1, granted[i], desired[i], modifier);
+      // Slice C — one sample per cycle into the rolling per-guild modifier history (the
+      // panel's Performance line). Co-located with the grant, so the cadence is automatic.
+      pushModifierSample(g, modifier);
+    }
   });
 
   // A TRANSFER, not a mint: what left the pool is exactly what landed in the hoards, and

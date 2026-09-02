@@ -257,6 +257,13 @@ test('double-apply guard: a snapshot-baked action still in the journal is not re
 // sys_0004→sys_0002 / pl_00009→pl_00004 reproduces each OLD golden byte-for-byte, so
 // no engine path and no game number changed, only the home ids. The strip-and-prove
 // tests below still hold (they are id-independent arithmetic), which is the check.
+// GUILD HALL ENGINE FIELDS (02-09-26 — docs/guild-hall.md §4, slices A/B/C): all six goldens
+// below are UNCHANGED and needed NO regen, and it is worth saying why rather than leaving it to
+// look like an oversight. The slice's three fields (`fuelHoardAtCycleStart`, `fuelGrant.modifier`,
+// `modifierHistory`) are stamped ONLY at a cycle boundary, for a guild that was DUE a grant. This
+// canonical sequence is 2 ticks on the 1,440-tick default window, so it crosses NO boundary — no
+// field is minted, and the run is byte-identical with nothing stripped. (The 40-tick committed run
+// in commitment-scaffold.test.js DOES cross ten boundaries and re-pinned there, strip-proven.)
 const GOLDEN_HASH = '55896afecbe70715b35d466a618afbb2dca1fb9cf7718a756083a2f50523c116';
 const GOLDEN_HASH_WITH_PRICES = '4c4ec28fbae0603e7d6352925ec957505c520c2dcda360b7ea9b19de2576c83e';
 const GOLDEN_HASH_WITH_HISTORY = '69138bee66c0a4c019f46b049369bb2e4604099db29b1f5c4d4b5b515af96b1f';

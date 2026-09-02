@@ -128,6 +128,28 @@ bands. All would need an accumulator carried in serialized state between bucket 
 no visible gain on a game chart; the close price is what a real daily chart plots. **No
 backfill:** the past was never recorded, so the rings fill forward from deploy.
 
+### Guild Hall performance line — the modifier history depth *(02-09-26 — `sim/modifier-history.js`)*
+
+`guild.modifierHistory` records the issuance modifier that drove each cycle's grant into **one
+small per-guild ring**, one sample per cycle at the window boundary, so the Guild Hall's
+Performance line (`docs/guild-hall.md` §2.1) has a series to draw. Simpler than the price
+history above on purpose: the modifier is **per-guild** and the panel wants only the recent
+cycles, so there is **one ring and no coarsening** — the three-ring machinery buys nothing here.
+
+Like the price-history depths, this is a **`[FIRST-CUT]` DISPLAY-DEPTH constant, not an economy
+number**: it feeds no rate, price, fee, grant or commitment, and changing it changes only how
+many points the line can draw. So it is **not a decision-checklist entry**. Single-sourced in
+`sim/modifier-history.js`; the client plots what it is sent rather than hard-coding a depth.
+
+| Constant `[FIRST-CUT]` | Value | Rationale |
+|---|---|---|
+| **`MODIFIER_HISTORY_N`** | **12** | The panel draws the **last 10** cycles (`docs/guild-hall.md` §2.1). 12 keeps that plus a **two-cycle headroom**, so a sample the panel is still showing is not dropped the instant a newer boundary lands, while the ring stays trivially small (≤ 12 floats per guild, in the save **and** the determinism hash). |
+
+**Sparse:** a sample is minted only for a guild that was DUE a grant that cycle (`desired > 0`,
+the same condition the grant record uses), so a holdings-less galaxy carries no ring at all and
+stays byte-identical to pre-slice. **No backfill**, the same as the price rings: the past was
+never recorded, so the ring fills forward from the guild's first boundary.
+
 ### Licence — the commitment sale *(26-08-26 — Slice 3a, `sim/licence.js`)*
 
 A committed delivery is now a **sale**: the owner is paid `round((1 − o) × units × posted price)` and the

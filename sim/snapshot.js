@@ -41,6 +41,7 @@ const { PRICED_GOODS, postedPrice, basePriceFor } = require('./prices.js');
 const { baselineUnitsForGood } = require('./baseline.js');
 const { licenceFee } = require('./licence.js');
 const { clonePriceHistory } = require('./price-history.js');
+const { cloneModifierHistory } = require('./modifier-history.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
 const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 
@@ -308,6 +309,28 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // `reserve` these are the four numbers that explain any grant in the galaxy — which is what
 // lets the economy recorder show the controller working while importing nothing but the
 // snapshot.
+// (02-09-26, the Guild Hall engine fields — docs/guild-hall.md §4, slices A/B/C): the
+// three additive fields the Standing panel wires up. ADDITIVE, and NO schema bump: nothing
+// existing changed shape, so every current reader keeps working and an older one ignores
+// the new keys — the same additive call `fuelGrant`, `foundingEndowment` and the rest each
+// made.
+//   - each guild row gains `fuelHoardAtCycleStart` (Slice A) — the hoard at the last cycle
+//     boundary, post-grant, before this cycle's usage — and its marked value
+//     `fuelHoardAtCycleStartValue = fuelValue(…, reserve.fuelPrice)`, exactly parallel to
+//     `fuelHoardValue`. ECHOED off stored state; the pair is the stockpile bar's max and
+//     the datum its used-this-cycle gap is measured from. null (both) for a guild that has
+//     never been due a grant — every holdings-less guild, and every guild before its first
+//     boundary — because the field is stamped only there (§4 A's sparsity).
+//   - each guild's `fuelGrant` gains `modifier` (Slice B) — the issuance modifier that DROVE
+//     that boundary's grant, ECHOED off `lastFuelGrant.modifier`. It is the panel's CURRENT
+//     gauge; the live `issuanceModifier` already in the row is its PREDICTED. A FLOAT and
+//     unrounded, like `issuanceModifier` beside it.
+//   - each guild row gains `modifierHistory` (Slice C) — the rolling per-guild series of the
+//     modifier, one sample per cycle (sim/modifier-history.js), for the Performance line.
+//     ECHOED VERBATIM from the stored ring. ALWAYS EMITTED, even empty (a stable [] for a
+//     guild with none), the same courtesy `priceHistory` extends a reader — unlike the STATE
+//     field, which is omitted until the first sample so a young galaxy hashes byte-identically
+//     to pre-slice.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -324,12 +347,15 @@ const SNAPSHOT_SCHEMA = 7;
 //     prices: { <every non-fuel stockpile good>: <posted value> },  // sim/prices.js
 //     feeQuote: { <priced good with a baseline>: <basic licence fee, int credits> },
 //       // what a licence signed NOW would cost, per good — sim/licence.js's own licenceFee
-//     guilds: [ { id, name, isBot, credits, fuelHoard, fuelHoardValue, influence,
+//     guilds: [ { id, name, isBot, credits, fuelHoard, fuelHoardValue,
+//                 fuelHoardAtCycleStart, fuelHoardAtCycleStartValue,  // Guild Hall A | null
+//                 modifierHistory: [ <modifier>, ... ],               // Guild Hall C, []-safe
+//                 influence,
 //                 guildReputation,                    // RP, Σ ventures' + endowment
 //                 foundingEndowment,                  // of which granted at founding
 //                 guildPoints,                                  // GP, DERIVED per read
 //                 expectedReputation, issuanceModifier,        // the mean line, DERIVED
-//                 fuelGrant: { tick, thisTick, granted, desired, rationed } | null,
+//                 fuelGrant: { tick, thisTick, granted, desired, rationed, modifier } | null,
 //                 fuelCost: { systemId: { fuelBurn, creditCost } }, // held systems, sorted
 //                 syndicateSale: { tick, thisTick, credited, goods } | null, // Slice 3a
 //                 licenceFee: { tick, thisTick, charged, ventures } | null,   // Slice 3b-iii
@@ -407,6 +433,18 @@ function buildSnapshot(state) {
       // is ONE fuel price (§15.5 invariant 5) and this is a reading of it. Pure
       // derived telemetry: no stored byte, no determinism hash, nothing charged.
       fuelHoardValue: fuelValue(g.fuelHoard, fuelPrice),
+      // The hoard at the START of this cycle (Guild Hall Slice A, docs/guild-hall.md §4/§2.3)
+      // — stamped by tick.js's step 6 POST-grant, before this cycle's usage. It is the
+      // stockpile bar's MAX and the datum the used-this-cycle gap ((start − current) × price)
+      // is measured from. ECHOED off stored state, and marked to market through the SAME
+      // `fuelValue`/`fuelPrice` the hoard above uses (invariant 5: one fuel price). SPARSE:
+      // stamped only for a guild that was DUE a grant, so `null` for a holdings-less guild and
+      // for one before its first boundary — a null, not a 0, because a real 0 (a hoard that
+      // opened the cycle empty) is a different, meaningful fact the bar must be able to show.
+      fuelHoardAtCycleStart: g.fuelHoardAtCycleStart == null ? null : g.fuelHoardAtCycleStart,
+      fuelHoardAtCycleStartValue: g.fuelHoardAtCycleStart == null
+        ? null
+        : fuelValue(g.fuelHoardAtCycleStart, fuelPrice),
       // What a Syndicate trade COSTS IN FUEL, per system this guild holds (fuel
       // Slice 2). Keyed by systemId, each `{ fuelBurn, creditCost }`. The BURN is
       // the engine's own `routeFuelCost` (sim/fuel.js) — CALLED, never re-derived,
@@ -511,8 +549,25 @@ function buildSnapshot(state) {
             granted: g.lastFuelGrant.granted,
             desired: g.lastFuelGrant.desired,
             rationed: g.lastFuelGrant.granted < g.lastFuelGrant.desired,
+            // The modifier that DROVE this cycle's grant (Guild Hall Slice B) — the panel's
+            // CURRENT gauge. ECHOED off the stored record, never recomputed here: the live
+            // `issuanceModifier` beside this in the row reads the guild's standing RIGHT NOW
+            // (the panel's PREDICTED), and the whole point is that the two can differ once
+            // this cycle's actions have moved reputation. A FLOAT and unrounded, like the
+            // live one. Reported as its 0-safe value when a pre-slice record carries no
+            // modifier (`?? null`); a real record always has one.
+            modifier: g.lastFuelGrant.modifier == null ? null : g.lastFuelGrant.modifier,
           }
         : null,
+      // The rolling per-guild ISSUANCE-MODIFIER history (Guild Hall Slice C,
+      // sim/modifier-history.js) — one sample per cycle at the boundary, oldest → newest,
+      // for the Standing panel's Performance line (the panel draws the last 10). ECHOED
+      // VERBATIM from the stored ring, copied so the snapshot can never alias into engine
+      // state. ALWAYS EMITTED, even empty: a guild with no history yet gets a stable `[]`
+      // (the panel's "gathering history…" state), the same courtesy `priceHistory` extends —
+      // unlike the STORED field, which is omitted until the first sample so a young galaxy
+      // hashes byte-identically to pre-slice.
+      modifierHistory: cloneModifierHistory(g.modifierHistory),
       homeSystemId: g.homeSystemId || null,
       homePlanetId: g.homePlanetId || null,
       // Guild-level holdings = the per-system pools flattened into one { good: int }
