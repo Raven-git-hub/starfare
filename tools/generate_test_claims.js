@@ -206,10 +206,13 @@ function generateTestClaims(seedFile, claimsSeed) {
   return {
     claimsSeed,
     // No generatedAt/wall-clock field on purpose (ruling 20-07-26, roadmap
-    // Phase 2) — see generate_seed.js. NOTE: `seedFile` below is still an
-    // environment-dependent input path and is a separate open determinism
-    // question (flagged for a ruling), not settled by this one.
-    seedFile,
+    // Phase 2) — see generate_seed.js. Provenance is the seed NUMBER the galaxy was
+    // generated from (`galaxy.seed`), NOT the environment-dependent input path:
+    // storing the path made this file differ across checkouts / invocations (the §16
+    // open determinism question, now RULED — store the number). With that gone, the
+    // output is a pure function of (seed geometry, claimsSeed), so a drift tripwire
+    // can pin it (tools/generate_test_claims.test.js).
+    seed: galaxy.seed,
     guilds,
     systemClaims,
     guildOutposts,
@@ -225,6 +228,11 @@ function generateTestClaims(seedFile, claimsSeed) {
   };
 }
 
+// Exported so the drift tripwire (tools/generate_test_claims.test.js) can drive the
+// generator in-memory. Running the file directly still writes the claims (guarded).
+module.exports = { generateTestClaims };
+
+if (require.main === module) {
 const seedFile = process.argv[2] || './seed.json';
 const claimsSeedArg = parseInt(process.argv[3], 10);
 const claimsSeed = Number.isFinite(claimsSeedArg) ? claimsSeedArg : 4242;
@@ -240,3 +248,4 @@ console.log(`  claimed systems:     ${claims.stats.totalClaimedSystems}`);
 console.log(`  guild outposts:      ${claims.stats.totalGuildOutposts}`);
 console.log(`  toll gates:          ${claims.stats.totalTollGates}`);
 console.log(`  toll paths:          ${claims.stats.totalTollPaths}`);
+}

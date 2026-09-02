@@ -37,13 +37,26 @@ const PARAMS = {
   arms: 4,                 // spiral arms
   spiralTwist: 2.6,
   targetSystems: 1500,
-  numOutposts: 9,
   outpostMinSeparation: 210,  // world units, mirrors the prototype
   planetCountMin: 1,
   planetCountMax: 6,          // design intent (prototype currently caps at 5 — deliberately corrected here)
   systemClaimRadius: 1,        // ring of 6 neighbor hexes claimed alongside the system, per the state model
   rareTierMinPerStarter: 2,    // §2 guarantee: >=2 rare-tier planets within 1/3 radius of every starter system
 };
+
+// Waystation (Syndicate outpost) placement — the segmented scheme (design.md §16
+// step 7). The galaxy is cut into 6 equal 60° angular segments; each segment gets
+// a per-ring FLOOR (>=2 inner / >=4 middle / >=6 outer, 12 pinned) plus 4 FREE
+// (any ring in the segment) = 16, for 6 × 16 = 96 total. These counts are the
+// design's, not tuning knobs. OUTPOST_CELL_BUDGET is the per-cell rejection-sampling
+// retry budget: if a (segment, ring) cell cannot place its floor within it, the
+// generator throws rather than place fewer (§16 forbids a silent shortfall). It is
+// a generous plumbing bound (real fills need a couple of hundred tries), not a
+// design number.
+const OUTPOST_SEGMENTS = 6;
+const OUTPOST_RING_FLOORS = { inner: 2, middle: 4, outer: 6 };
+const OUTPOST_FREE_PER_SEGMENT = 4;
+const OUTPOST_CELL_BUDGET = 50000;
 
 // ---------- hex geometry (flat-top axial — must match galaxy-map-hex.html) ----------
 function hexToPixel(q, r, hexSize) {
@@ -366,7 +379,7 @@ function validateGalaxy(systems, hexSize, radius, min) {
 // ---------- main generation ----------
 function generateGalaxySeed(seed, opts = {}) {
   const rand = mulberry32(seed);
-  const { radius, hexSize, citadelRadius, arms, spiralTwist, targetSystems, numOutposts, outpostMinSeparation, planetCountMin, planetCountMax, systemClaimRadius } = PARAMS;
+  const { radius, hexSize, citadelRadius, arms, spiralTwist, targetSystems, outpostMinSeparation, planetCountMin, planetCountMax, systemClaimRadius } = PARAMS;
   const rareTierMin = opts.rareTierMinPerStarter != null ? opts.rareTierMinPerStarter : PARAMS.rareTierMinPerStarter;
 
   // --- spiral-arm eligibility: systems only sit where the arms are ---
@@ -428,28 +441,49 @@ function generateGalaxySeed(seed, opts = {}) {
     };
   });
 
-  // --- outposts: isolated, in genuinely blank space, away from systems & each other ---
+  // --- waystations (Syndicate outposts): the segmented 6 × 16 = 96 scheme (§16 step 7) ---
+  // Six equal 60° segments; each fills a per-ring floor (>=2 inner / >=4 middle / >=6
+  // outer, 12 pinned) plus 4 free (any ring in the segment) = 16. Per-cell rejection
+  // sampling at the min-separation — an organic scatter, not a lattice — reusing the same
+  // constraints as the old global loop (in 0.92·radius, off the Citadel, off any system
+  // hex, >= minSep from another waystation), and deliberately NOT arm-filtered. If a
+  // (segment, ring) cell cannot fill its floor within the retry budget we THROW: a silent
+  // shortfall would quietly weaken coverage, which §16 step 7 forbids.
+  const minSep = opts.outpostMinSeparation != null ? opts.outpostMinSeparation : outpostMinSeparation;
   const systemHexSet = new Set(systems.map(s => `${s.coords.q},${s.coords.r}`));
   const outposts = [];
-  let tries = 0;
-  const maxTries = 4000;
-  while (outposts.length < numOutposts && tries < maxTries) {
-    tries++;
-    const q = Math.floor((rand() - 0.5) * 2 * range);
-    const r = Math.floor((rand() - 0.5) * 2 * range);
-    const p = hexToPixel(q, r, hexSize);
-    const d = Math.hypot(p.x, p.y);
-    if (d > radius * 0.92) continue;
-    if (hexDist({ q, r }, { q: 0, r: 0 }) <= citadelRadius) continue;
-    if (systemHexSet.has(`${q},${r}`)) continue;
-    const tooClose = outposts.some(o => Math.hypot(o._x - p.x, o._y - p.y) < outpostMinSeparation);
-    if (tooClose) continue;
-    outposts.push({
-      id: `out_${String(outposts.length + 1).padStart(2, '0')}`,
-      coords: { q, r },
-      name: outpostName(rand),
-      _x: p.x, _y: p.y, // internal only, stripped before write
-    });
+  // The 60° segment [0, OUTPOST_SEGMENTS) a world position falls in (angle from +x,
+  // wrapped to [0, 2π)). Same partition idea as systemName's sector index, at 6 not 16.
+  const segmentOf = (x, y) => Math.floor(((Math.atan2(y, x) + Math.PI) / (Math.PI * 2)) * OUTPOST_SEGMENTS) % OUTPOST_SEGMENTS;
+  // Place ONE waystation for target (segment, ring) — ring null means "any ring in the
+  // segment" (a free slot). Draw candidates until one lands in the target cell and clears
+  // every constraint, or throw when the budget is spent.
+  function placeOne(segment, ring, label) {
+    for (let tries = 0; tries < OUTPOST_CELL_BUDGET; tries++) {
+      const q = Math.floor((rand() - 0.5) * 2 * range);
+      const r = Math.floor((rand() - 0.5) * 2 * range);
+      const p = hexToPixel(q, r, hexSize);
+      if (Math.hypot(p.x, p.y) > radius * 0.92) continue;
+      if (hexDist({ q, r }, { q: 0, r: 0 }) <= citadelRadius) continue;
+      if (systemHexSet.has(`${q},${r}`)) continue;
+      if (segmentOf(p.x, p.y) !== segment) continue;
+      if (ring !== null && classifyRing({ q, r }, hexSize, radius) !== ring) continue;
+      if (outposts.some(o => Math.hypot(o._x - p.x, o._y - p.y) < minSep)) continue;
+      outposts.push({
+        id: `out_${String(outposts.length + 1).padStart(2, '0')}`,
+        coords: { q, r },
+        name: outpostName(rand),
+        _x: p.x, _y: p.y, // internal only, stripped before write
+      });
+      return;
+    }
+    throw new Error(`waystation placement: could not fill ${label} within ${OUTPOST_CELL_BUDGET} tries (§16 step 7 forbids a silent shortfall)`);
+  }
+  for (let seg = 0; seg < OUTPOST_SEGMENTS; seg++) {
+    for (const ring of ['inner', 'middle', 'outer']) {
+      for (let i = 0; i < OUTPOST_RING_FLOORS[ring]; i++) placeOne(seg, ring, `segment ${seg} ${ring} floor`);
+    }
+    for (let i = 0; i < OUTPOST_FREE_PER_SEGMENT; i++) placeOne(seg, null, `segment ${seg} free slot`);
   }
   outposts.forEach(o => { delete o._x; delete o._y; });
 

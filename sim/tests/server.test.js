@@ -745,10 +745,10 @@ test('GET /console serves the RESTRUCTURED console (the authoritative design)', 
 test('GET /starters lists the seed\'s startable home systems', async () => {
   const { status, body } = await req('GET', '/starters');
   assert.equal(status, 200);
-  // 394 starter-eligible systems in seed 7331. Pinned on purpose: if this ever
+  // 335 starter-eligible systems in seed 7331. Pinned on purpose: if this ever
   // changes, the seed changed under us and we want to be told loudly.
-  assert.equal(body.count, 394);
-  assert.equal(body.starters.length, 394);
+  assert.equal(body.count, 335);
+  assert.equal(body.starters.length, 335);
   // Shape: each carries what the picker shows plus the homeworld a guild seats on.
   const s0 = body.starters[0];
   assert.deepEqual(Object.keys(s0).sort(), ['id', 'name', 'ring', 'terranHomeworldId']);
@@ -833,7 +833,7 @@ test('GET /snapshot returns the zero-state snapshot (schema 7)', async () => {
   assert.equal(body.schemaVersion, 7); // bumped 6->7 for the §5 Syndicate windowed-accrual telemetry
   assert.equal(body.tick, 0);
   assert.equal(body.guilds.length, 0);
-  assert.equal(body.claims.length, 10); // Citadel + 9 outposts
+  assert.equal(body.claims.length, 97); // Citadel + 96 outposts
 });
 
 test('a founded guild\'s snapshot carries per-system stockpiles and each venture the reserved commitment', async () => {
@@ -930,7 +930,7 @@ test('POST /reset returns to the zero-state', async () => {
   const { body } = await reset();
   assert.equal(body.tick, 0);
   assert.equal(body.guilds.length, 0);
-  assert.equal(body.claims.length, 10);
+  assert.equal(body.claims.length, 97);
 });
 
 // --- auto-tick heartbeat (Phase 1 Stage 2) ---------------------------------

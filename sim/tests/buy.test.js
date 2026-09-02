@@ -38,6 +38,7 @@ const { FUEL_GOOD } = require('../resources.js');
 const { guildHolds } = require('../claims.js');
 const { GUILD_STARTING_FUEL, routeFuelCost } = require('../fuel.js');
 const { getTerranHomeworld } = require('../seed.js');
+const { systemAtDistance, starterHomeAtDistance } = require('./waystation-fixtures.js');
 const {
   CRAFT_SPEED, hexDistance, nearestWaystation, arrivalTickFor,
 } = require('../transport.js');
@@ -46,15 +47,17 @@ const {
 } = require('../actions.js');
 
 // Real seed landmarks, so the claim-integrity and guild-home invariants have
-// something true to check. DEST is the starter-eligible system closest to any
-// waystation on seed 7331 — 6 hexes from out_06 — chosen so the arrival tick is
-// the smallest the real galaxy offers and a full tick-by-tick run stays cheap.
-const DEST = 'sys_0719';
-const DEST_HOME_PLANET = 'pl_02524';
-const DEST_DISTANCE = 6;          // hexes, out_06 -> sys_0719 (asserted below)
-const DEST_WAYSTATION = 'out_06';
+// something true to check. DERIVED (waystation-fixtures.js): DEST is a starter at a
+// small even distance from its nearest waystation, so a guild can home on it and the
+// arrival tick stays cheap for a full tick-by-tick run. All ids follow the seed's
+// regenerated waystations rather than being pinned.
+const DEST_HOME = starterHomeAtDistance(6);
+const DEST = DEST_HOME.id;
+const DEST_HOME_PLANET = DEST_HOME.homePlanet;
+const DEST_DISTANCE = DEST_HOME.distance;   // hexes, DEST_WAYSTATION -> DEST (asserted below)
+const DEST_WAYSTATION = DEST_HOME.waystation;
 // A second held system, for the "one destination, no splitting" side of things.
-const OTHER = 'sys_0509';
+const OTHER = systemAtDistance(7);
 const GOOD = 'titanium';
 
 const homeClaim = (guildId, systemId) => ({

@@ -51,9 +51,9 @@ test('the zero-state boots green with no guilds and Syndicate-owned claims', () 
   assert.equal(s.audit.totalProduced, POOL_SEED, 'and the seeded pool pays for itself in the audit');
   assert.equal(s.galacticSupply.fuel.reserve, POOL_SEED, 'with the supply cache already agreeing');
   assert.equal(s.syndicate.ledger, 0);
-  // Citadel + one waystation per seed outpost (9) = 10 Syndicate claims,
+  // Citadel + one waystation per seed outpost (96) = 97 Syndicate claims,
   // every one referencing a real seed landmark.
-  assert.equal(s.claims.length, 10);
+  assert.equal(s.claims.length, 97);
   assert.ok(s.claims.every((c) => c.ownerGuildId === SYNDICATE_OWNER));
   // The world references the seed the galaxy is built over -- no invented graph.
   assert.equal(s.world.seed, 7331);

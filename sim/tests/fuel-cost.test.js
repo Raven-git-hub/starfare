@@ -44,6 +44,7 @@ const {
 const {
   createBuyFromSyndicateAction, validateAction, applyAction,
 } = require('../actions.js');
+const { systemAtDistance, farthestSystem, starterHomeAtDistance } = require('./waystation-fixtures.js');
 
 // Real systems on seed 7331, with the distance each sits from its nearest
 // waystation. Pinned here so a failure names the geometry that moved, and chosen
@@ -53,11 +54,16 @@ const {
 //   MID   d=6   -> ceil 3, floor 3   an even distance, where rounding cannot show
 //   ODD   d=7   -> ceil 4, floor 3   an odd one, where it must
 //   FAR   d=100 -> ceil 50           far enough that "burn tracks distance" is unmistakable
-const NEAR = { id: 'sys_1053', distance: 1, burn: 1 };
-const MID = { id: 'sys_0719', distance: 6, burn: 3 };
-const ODD = { id: 'sys_0509', distance: 7, burn: 4 };
-const FAR = { id: 'sys_0002', distance: 100, burn: 50 };
-const MID_HOME_PLANET = 'pl_02524'; // sys_0719's Terran homeworld
+// DERIVED (waystation-fixtures.js), so the segmented-scheme regen carries them: the
+// free-trip d=1, an even d=6 (rounding hidden — and a STARTER, for the home guild), an
+// odd d=7 (rounding shown), and the farthest system (magnitude). Burns follow the rate.
+const burnFor = (d) => Math.ceil(d * SYNDICATE_HAULER_BURN_RATE);
+const MID_HOME = starterHomeAtDistance(6);
+const NEAR = { id: systemAtDistance(1), distance: 1, burn: burnFor(1) };
+const MID = { id: MID_HOME.id, distance: MID_HOME.distance, burn: burnFor(MID_HOME.distance) };
+const ODD = { id: systemAtDistance(7), distance: 7, burn: burnFor(7) };
+const FAR = (() => { const f = farthestSystem(); return { id: f.id, distance: f.distance, burn: burnFor(f.distance) }; })();
+const MID_HOME_PLANET = MID_HOME.homePlanet; // MID's Terran homeworld
 const UNHELD = 'sys_0256';          // a real system this guild never claims
 
 const claim = (guildId, systemId, i) => ({
@@ -179,7 +185,7 @@ test('no waystation: a zero quote, not a throw', () => {
   // than blowing up the whole snapshot for one unreachable system; the refusal
   // that matters lives in validateAction, which rejects the purchase on this same
   // null (asserted below, so the two halves stay joined).
-  for (const missing of ['sys_nope', '', 'out_01', 'pl_02524']) {
+  for (const missing of ['sys_nope', '', 'out_01', MID_HOME_PLANET]) {
     assert.equal(nearestWaystation(missing), null, `${JSON.stringify(missing)} really has no waystation`);
     assert.deepEqual(routeFuelCost(missing), { fuelBurn: 0 });
   }

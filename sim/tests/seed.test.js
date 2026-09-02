@@ -58,7 +58,7 @@ test('findNodesByResource returns only that good, sorted, and includes a known n
 
 test('getStarterSystems enumerates every starter, id-sorted, each with a real homeworld', () => {
   const starters = getStarterSystems();
-  assert.equal(starters.length, 394); // seed 7331; pinned so a seed change is loud
+  assert.equal(starters.length, 335); // seed 7331; pinned so a seed change is loud
   // id-sorted and consistent with the single-system helpers it was missing.
   for (let i = 1; i < starters.length; i++) {
     assert.ok(starters[i - 1].id < starters[i].id, 'id-sorted');
@@ -70,7 +70,7 @@ test('getStarterSystems enumerates every starter, id-sorted, each with a real ho
     assert.ok(typeof s.name === 'string' && s.name.length > 0);
     assert.ok(['inner', 'middle', 'outer'].includes(s.ring));
   }
-  assert.equal(starters[0].id, 'sys_0004'); // the known first starter
+  assert.equal(starters[0].id, 'sys_0006'); // the known first starter
 });
 
 test('getSystemLayout returns a system with planets, nodes, and settlement slots', () => {

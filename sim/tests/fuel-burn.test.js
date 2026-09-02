@@ -29,16 +29,21 @@ const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { computeGalacticSupply } = require('../supply.js');
 const { getStock } = require('../stock.js');
-const { routeFuelCost, GUILD_STARTING_FUEL } = require('../fuel.js');
+const { routeFuelCost, GUILD_STARTING_FUEL, SYNDICATE_HAULER_BURN_RATE } = require('../fuel.js');
+const { farthestSystem, starterHomeAtDistance } = require('./waystation-fixtures.js');
 const {
   createBuyFromSyndicateAction, createSellToSyndicateAction,
   validateAction, applyAction, intake,
 } = require('../actions.js');
 
 // Two real seed systems at different distances, so a test can pick a burn.
-const NEAR = 'sys_0719';  // 6 hexes out -> burn 3
-const FAR = 'sys_0002';   // 100 hexes out -> burn 50
-const NEAR_HOME_PLANET = 'pl_02524';
+// DERIVED (waystation-fixtures.js): NEAR is a starter at an even distance (a guild
+// homes on it), FAR the farthest system from any waystation — two burn magnitudes.
+const NEAR_HOME = starterHomeAtDistance(6);
+const NEAR = NEAR_HOME.id;
+const FAR_SYS = farthestSystem();
+const FAR = FAR_SYS.id;
+const NEAR_HOME_PLANET = NEAR_HOME.homePlanet;
 const GOOD = 'titanium';
 
 const BURN_NEAR = routeFuelCost(NEAR).fuelBurn;
@@ -93,8 +98,8 @@ function assertFuelBalances(state, where) {
 }
 
 test('the pinned burns are what the engine actually quotes', () => {
-  assert.equal(BURN_NEAR, 3, `${NEAR}'s route burn`);
-  assert.equal(BURN_FAR, 50, `${FAR}'s route burn`);
+  assert.equal(BURN_NEAR, Math.ceil(NEAR_HOME.distance * SYNDICATE_HAULER_BURN_RATE), `${NEAR}'s route burn`);
+  assert.equal(BURN_FAR, Math.ceil(FAR_SYS.distance * SYNDICATE_HAULER_BURN_RATE), `${FAR}'s route burn`);
 });
 
 // --- the deduction ---------------------------------------------------------
@@ -103,7 +108,7 @@ test('a BUY burns exactly the quoted fuel, and records it as consumed', () => {
   const s = burnState({ fuelHoard: 500 });
   const next = accept(s, buy(5, FAR));
 
-  assert.equal(next.guilds[0].fuelHoard, 450, '500 - 50');
+  assert.equal(next.guilds[0].fuelHoard, 500 - BURN_FAR, `500 - ${BURN_FAR}`);
   assert.equal(next.audit.totalConsumed, BURN_FAR, 'the burn is recorded, not lost');
   assert.equal(next.audit.totalProduced, s.audit.totalProduced, 'and nothing was produced to offset it');
 
@@ -112,7 +117,7 @@ test('a BUY burns exactly the quoted fuel, and records it as consumed', () => {
   assertFuelBalances(next, 'after one BUY');
 
   // The cache the deduction moves — the reason the apply refreshes it at all.
-  assert.equal(next.galacticSupply.fuel.guildHeld, 450);
+  assert.equal(next.galacticSupply.fuel.guildHeld, 500 - BURN_FAR);
   assert.deepEqual(next.galacticSupply, computeGalacticSupply(next), 'galactic-supply-consistency, live');
 
   // The burn is exactly what the client was quoted. One function, one number.
@@ -147,7 +152,7 @@ test('one drop short is refused, whole, and changes nothing', () => {
   const reason = refuse(s, buy(5, FAR));
 
   // Both numbers in the message, so the player can see the gap without arithmetic.
-  assert.match(reason, /insufficient fuel: need 50, have 49/);
+  assert.match(reason, new RegExp(`insufficient fuel: need ${BURN_FAR}, have ${BURN_FAR - 1}`));
   assert.match(reason, /fuel-supply-and-allocation\.md §8/);
 
   // REJECT-WHOLE: no partial trade, no shorter flight, no credits taken.
@@ -157,7 +162,7 @@ test('one drop short is refused, whole, and changes nothing', () => {
 
 test('an empty hoard refuses too, with the same message shape', () => {
   const s = burnState({ fuelHoard: 0 });
-  assert.match(refuse(s, buy(5, NEAR)), /insufficient fuel: need 3, have 0/);
+  assert.match(refuse(s, buy(5, NEAR)), new RegExp(`insufficient fuel: need ${BURN_NEAR}, have 0`));
   // ...and the guild is not otherwise broke: it is fuel, and only fuel, stopping it.
   assert.equal(s.guilds[0].credits, 100000);
 });
@@ -196,7 +201,7 @@ test('two BUYs in one batch: the second is refused on the first\'s burn', () => 
 
   assert.equal(results[0].accepted, true, 'the first trade flies');
   assert.equal(results[1].accepted, false, 'the second cannot');
-  assert.match(results[1].reason, /insufficient fuel: need 50, have 0/);
+  assert.match(results[1].reason, new RegExp(`insufficient fuel: need ${BURN_FAR}, have 0`));
 
   assert.equal(next.guilds[0].fuelHoard, 0);
   assert.equal(next.audit.totalConsumed, BURN_FAR, 'EXACTLY ONE deduction, not two and not none');

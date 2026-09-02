@@ -27,7 +27,7 @@ function hasRule(state, rule) {
 
 test('seed landmark resolvers return the real seed features', () => {
   assert.equal(seed.getCitadel().id, 'citadel');
-  assert.equal(seed.getOutposts().length, 9); // the generator places 9
+  assert.equal(seed.getOutposts().length, 96); // the segmented scheme places 96
   assert.equal(seed.getOutpost('out_01').kind, 'outpost');
   assert.equal(seed.getSystem(HOME_SYSTEM).starterEligible, true);
   assert.equal(seed.isStarterSystem(HOME_SYSTEM), true);

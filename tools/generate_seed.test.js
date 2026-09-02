@@ -173,6 +173,52 @@ test('rocky planets carry the guaranteed floor: >=2 each of titanium, copper, le
   assert.ok(rockyCount > 0, 'the seed actually contains rocky planets to check');
 });
 
+// --- waystation placement — the segmented 6×16 = 96 scheme (design.md §16 step 7) ---
+
+// The 60° segment [0,6) a waystation's world position falls in — mirrors the
+// generator's own segmentOf so the test checks the same partition it placed against.
+function segmentOf(coords, hexSize) {
+  const p = G.hexToPixel(coords.q, coords.r, hexSize);
+  return Math.floor(((Math.atan2(p.y, p.x) + Math.PI) / (Math.PI * 2)) * 6) % 6;
+}
+
+test('waystations: 96 total, 16 per segment, ring floors >=2/>=4/>=6 met in every segment', () => {
+  const g = build();
+  const { hexSize, radius } = g.galaxyParams;
+  assert.equal(g.outposts.length, 96, 'the segmented scheme places 6 × 16 = 96');
+  assert.equal(g.stats.totalOutposts, 96, 'and the stat agrees');
+  const cells = Array.from({ length: 6 }, () => ({ inner: 0, middle: 0, outer: 0 }));
+  for (const o of g.outposts) {
+    cells[segmentOf(o.coords, hexSize)][G.classifyRing(o.coords, hexSize, radius)]++;
+  }
+  for (let seg = 0; seg < 6; seg++) {
+    const c = cells[seg];
+    assert.ok(c.inner >= 2, `segment ${seg} inner ${c.inner} < 2`);
+    assert.ok(c.middle >= 4, `segment ${seg} middle ${c.middle} < 4`);
+    assert.ok(c.outer >= 6, `segment ${seg} outer ${c.outer} < 6`);
+    assert.equal(c.inner + c.middle + c.outer, 16, `segment ${seg} holds exactly 16`);
+  }
+});
+
+test('waystations: every pair is at least outpostMinSeparation apart', () => {
+  const g = build();
+  const { hexSize } = g.galaxyParams;
+  const pts = g.outposts.map((o) => G.hexToPixel(o.coords.q, o.coords.r, hexSize));
+  for (let i = 0; i < pts.length; i++) {
+    for (let j = i + 1; j < pts.length; j++) {
+      const d = Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y);
+      assert.ok(d >= G.PARAMS.outpostMinSeparation, `outposts ${i}/${j} only ${d.toFixed(1)} apart`);
+    }
+  }
+});
+
+test('waystations: an unfillable cell throws rather than placing fewer (§16 step 7)', () => {
+  // A min-separation larger than the whole galaxy makes the second waystation in the
+  // first cell impossible to place, so the per-cell budget is spent and the generator
+  // throws — the silent-shortfall guard firing on demand.
+  assert.throws(() => G.generateGalaxySeed(SEED, { outpostMinSeparation: 1e9 }), /could not fill/);
+});
+
 // Drift tripwire: the COMMITTED data/seed.json is exactly what the CLI writes.
 // data/seed.json is the shared fixture the sim, the viewer, and the tests all read
 // (design.md §16), so it must never silently diverge from the generator. This

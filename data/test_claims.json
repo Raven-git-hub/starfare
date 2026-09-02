@@ -1,6 +1,6 @@
 {
   "claimsSeed": 4242,
-  "seedFile": "data/seed.json",
+  "seed": 7331,
   "guilds": [
     {
       "id": "guild_01",
