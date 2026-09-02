@@ -17,12 +17,12 @@ const { getStarterSystems, getTerranHomeworld } = require('../seed.js');
 
 test('the derived home anchor equals the retired literals on the committed seed', () => {
   // the two seed facts the whole de-couple rests on
-  assert.equal(getStarterSystems()[0].id, 'sys_0002');
-  assert.equal(getTerranHomeworld('sys_0002'), 'pl_00004');
+  assert.equal(getStarterSystems()[0].id, 'sys_0004');
+  assert.equal(getTerranHomeworld('sys_0004'), 'pl_00009');
   // and the fixture exports exactly those, plus the homeworld's first sites
-  assert.equal(HOME_SYSTEM, 'sys_0002');
-  assert.equal(HOME_PLANET, 'pl_00004');
-  assert.equal(HOME_MINE, 'pl_00004_n01');
-  assert.equal(HOME_MINE_2, 'pl_00004_n02');
-  assert.equal(HOME_SLOT, 'pl_00004_s01');
+  assert.equal(HOME_SYSTEM, 'sys_0004');
+  assert.equal(HOME_PLANET, 'pl_00009');
+  assert.equal(HOME_MINE, 'pl_00009_n01');
+  assert.equal(HOME_MINE_2, 'pl_00009_n02');
+  assert.equal(HOME_SLOT, 'pl_00009_s01');
 });

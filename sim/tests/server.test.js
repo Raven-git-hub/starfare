@@ -745,10 +745,10 @@ test('GET /console serves the RESTRUCTURED console (the authoritative design)', 
 test('GET /starters lists the seed\'s startable home systems', async () => {
   const { status, body } = await req('GET', '/starters');
   assert.equal(status, 200);
-  // 368 starter-eligible systems in seed 7331. Pinned on purpose: if this ever
+  // 394 starter-eligible systems in seed 7331. Pinned on purpose: if this ever
   // changes, the seed changed under us and we want to be told loudly.
-  assert.equal(body.count, 368);
-  assert.equal(body.starters.length, 368);
+  assert.equal(body.count, 394);
+  assert.equal(body.starters.length, 394);
   // Shape: each carries what the picker shows plus the homeworld a guild seats on.
   const s0 = body.starters[0];
   assert.deepEqual(Object.keys(s0).sort(), ['id', 'name', 'ring', 'terranHomeworldId']);
@@ -766,8 +766,9 @@ test('GET /system/:id returns a system\'s static layout (planets, nodes, slots)'
   assert.equal(status, 200);
   assert.equal(body.id, HOME_SYSTEM);
   assert.equal(body.terranHomeworldId, HOME_PLANET);
-  assert.equal(body.planets.length, 1);
-  const hw = body.planets[0];
+  // Find the homeworld by id — its position among the system's planets is seed-specific.
+  const hw = body.planets.find((p) => p.id === HOME_PLANET);
+  assert.ok(hw, 'the Terran homeworld appears in the layout');
   assert.equal(hw.archetype, 'terran');
   assert.equal(hw.resourceNodes.length, 15);
   assert.equal(hw.settlementSlots.length, 15); // the Terran slot anchor

@@ -107,23 +107,23 @@ function outpostName(rand) {
 // ---------- planet archetypes & resource pools (design.md §2) ----------
 // Weights sum to 100 (relative frequency, not a literal percentage). Terran is
 // the homeworld archetype: 12 GUARANTEED nodes (incl. gold/silver/tungsten, per
-// §2) + 3 random from the same pool = 15, and the sole exception to the 10-node
+// §2) + 3 random from the same pool = 15, and the sole exception to the 15-node
 // cap. Oceanic guarantees >=2 Deuterium (the galaxy's only fuel source).
 const ARCHETYPES = {
-  rocky:       { weight: 28, nodeRange: [3, 6], pool: ['titanium', 'copper', 'lead', 'silica'] },
-  oceanic:     { weight: 14, nodeRange: [3, 5], pool: ['deuterium', 'carbon_products', 'polymers'], guaranteed: { deuterium: 2 } },
-  ice:         { weight: 14, nodeRange: [3, 5], pool: ['ammonia', 'nitrogen', 'helium'] },
-  desert:      { weight: 14, nodeRange: [2, 3], pool: ['titanium', 'silica'] },
+  rocky:       { weight: 28, nodeRange: [10, 15], pool: ['titanium', 'copper', 'lead', 'silica'], guaranteed: { titanium: 2, copper: 2, lead: 2 } },
+  oceanic:     { weight: 14, nodeRange: [6, 8], pool: ['deuterium', 'carbon_products', 'polymers'], guaranteed: { deuterium: 2 } },
+  ice:         { weight: 14, nodeRange: [8, 10], pool: ['ammonia', 'nitrogen', 'helium'] },
+  desert:      { weight: 14, nodeRange: [5, 6], pool: ['titanium', 'silica'] },
   terran:      { weight: 8,
                  guaranteedList: ['titanium', 'titanium', 'copper', 'lead', 'silica', 'lithium', 'polymers', 'carbon_products', 'nitrogen', 'gold', 'silver', 'tungsten'],
                  randomFill: 3,
                  pool: ['titanium', 'copper', 'lead', 'silica', 'lithium', 'polymers', 'carbon_products', 'nitrogen', 'gold', 'silver', 'tungsten'] },
-  gasGiant:    { weight: 8,  nodeRange: [2, 4], pool: ['xenon', 'helium', 'nitrogen'] },
-  molten:      { weight: 8,  nodeRange: [2, 4], pool: ['gold', 'silver', 'tungsten'] },
-  irradiated:  { weight: 4,  nodeRange: [1, 3], pool: ['neodymium', 'palladium'] },
-  crystalline: { weight: 2,  nodeRange: [1, 3], pool: ['silica', 'neodymium'] },
+  gasGiant:    { weight: 8,  nodeRange: [10, 15], pool: ['xenon', 'helium', 'nitrogen'] },
+  molten:      { weight: 8,  nodeRange: [8, 10], pool: ['gold', 'silver', 'tungsten'] },
+  irradiated:  { weight: 4,  nodeRange: [4, 6], pool: ['neodymium', 'palladium'] },
+  crystalline: { weight: 2,  nodeRange: [4, 6], pool: ['silica', 'neodymium'] },
 };
-const GLOBAL_MAX_NODES_PER_PLANET = 10; // §2 hard cap on randomly-drawn planets
+const GLOBAL_MAX_NODES_PER_PLANET = 15; // §2 hard cap on randomly-drawn planets (raised 10 -> 15, node rebalance 30-08-26)
 
 // Settlement slots: surface spaces where a guild places NON-mining ventures
 // (Refinery / Manufacturing / Construction assets). SEPARATE from the

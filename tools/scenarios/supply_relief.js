@@ -39,21 +39,24 @@
 //                                                   the bot banks as reserve.
 
 const { createState } = require('../../sim/state.js');
-const { getTerranHomeworld } = require('../../sim/seed.js');
+const { getStarterSystems, getTerranHomeworld } = require('../../sim/seed.js');
 const { starterAssetSpecs } = require('../../sim/assets.js');
 const { makeReliefWorld } = require('../world_relief.js');
 const { makeLicenceBot } = require('../licence_bot.js');
 
-// --- Where, in the real seed (grounded, not invented) -------------------------
-// sys_0002 (FEN-6425) is a real starter-eligible system whose Terran homeworld
-// pl_00004 carries two titanium nodes, a carbon_products node, and settlement
-// slots — everything this scenario needs, all in ONE system so the two titanium
-// mines pool together. (Confirmed against data/seed.json via sim/seed.js.)
-const HOME_SYSTEM = 'sys_0002';
-const TITANIUM_NODE_1 = 'pl_00004_n01'; // the committed mine's node
-const TITANIUM_NODE_2 = 'pl_00004_n02'; // the RELIEF mine's node (added at tick T)
-const CARBON_NODE = 'pl_00004_n08'; // carbon_products — the refinery's second input
-const REFINERY_SLOT = 'pl_00004_s01'; // a settlement slot for the titanium_alloy refinery
+// --- Where, in the real seed (DERIVED, not pinned) ----------------------------
+// The first starter system and its Terran homeworld, resolved from the seed. By
+// §2's Terran guarantee that homeworld always carries two titanium nodes (_n01/
+// _n02), a carbon_products node (_n08 — guaranteed-spread position 8) and
+// settlement slots (_s01) — everything this scenario needs, all in ONE system so
+// the two titanium mines pool together. Deriving it (rather than pinning
+// sys_0002/pl_00004) keeps the scenario valid across a seed regen.
+const HOME_SYSTEM = getStarterSystems()[0].id;
+const HOME_PLANET = getTerranHomeworld(HOME_SYSTEM);
+const TITANIUM_NODE_1 = `${HOME_PLANET}_n01`; // the committed mine's node
+const TITANIUM_NODE_2 = `${HOME_PLANET}_n02`; // the RELIEF mine's node (added at tick T)
+const CARBON_NODE = `${HOME_PLANET}_n08`; // carbon_products — the refinery's second input
+const REFINERY_SLOT = `${HOME_PLANET}_s01`; // a settlement slot for the titanium_alloy refinery
 
 const GUILD_ID = 'weaver-guild';
 
@@ -83,7 +86,7 @@ const factoryId = (n) => nthAssetId('factory', n);
 // Seeds the committed mine's syndicateCommitment via createVenture's own param
 // (no action needed for setup), and N via the state's own windowN field.
 function makeState() {
-  const homePlanetId = getTerranHomeworld(HOME_SYSTEM); // pl_00004 (seed's authority)
+  const homePlanetId = HOME_PLANET; // the seed's authority for HOME_SYSTEM's homeworld
   // The guild's ground-asset inventory (design.md §4, 30-08-26). This scenario
   // assembles its guild DIRECTLY through createState rather than through the
   // foundGuild action, so it has to hand itself the same starter gift founding

@@ -134,6 +134,45 @@ test('settlement slots: stats.totalSettlementSlots equals the live sum', () => {
   assert.equal(g.stats.totalSettlementSlots, sum);
 });
 
+// --- node-count rebalance (design.md §2, 30-08-26) ---------------------------
+
+test('node cap is 15: every archetype range is capped at 15 and no drawn planet exceeds it', () => {
+  // The cap is 15 (Terran's fixed count and the System View pip grid's capacity).
+  // Contract side: no archetype's range max may exceed the cap (Terran carries no
+  // range and is the exempt exception). Realized side: no planet on a live galaxy
+  // exceeds 15 nodes, and the ceiling is actually reached (it is a real cap, not
+  // a number the ranges never approach).
+  for (const [name, def] of Object.entries(G.ARCHETYPES)) {
+    if (def.nodeRange) assert.ok(def.nodeRange[1] <= 15, `${name} range max ${def.nodeRange[1]} exceeds 15`);
+  }
+  const g = build();
+  let maxNodes = 0;
+  for (const s of g.systems) {
+    for (const p of s.planets) {
+      assert.ok(p.resourceNodes.length <= 15, `${p.id} (${p.archetype}) has ${p.resourceNodes.length} nodes > 15`);
+      if (p.resourceNodes.length > maxNodes) maxNodes = p.resourceNodes.length;
+    }
+  }
+  assert.equal(maxNodes, 15, 'the 15-node ceiling is actually reached somewhere');
+});
+
+test('rocky planets carry the guaranteed floor: >=2 each of titanium, copper, lead (design.md §2)', () => {
+  const g = build();
+  let rockyCount = 0;
+  for (const s of g.systems) {
+    for (const p of s.planets) {
+      if (p.archetype !== 'rocky') continue;
+      rockyCount++;
+      const counts = {};
+      for (const n of p.resourceNodes) counts[n.resourceType] = (counts[n.resourceType] || 0) + 1;
+      assert.ok((counts.titanium || 0) >= 2, `${p.id} has ${counts.titanium || 0} titanium, want >=2`);
+      assert.ok((counts.copper || 0) >= 2, `${p.id} has ${counts.copper || 0} copper, want >=2`);
+      assert.ok((counts.lead || 0) >= 2, `${p.id} has ${counts.lead || 0} lead, want >=2`);
+    }
+  }
+  assert.ok(rockyCount > 0, 'the seed actually contains rocky planets to check');
+});
+
 // Drift tripwire: the COMMITTED data/seed.json is exactly what the CLI writes.
 // data/seed.json is the shared fixture the sim, the viewer, and the tests all read
 // (design.md §16), so it must never silently diverge from the generator. This

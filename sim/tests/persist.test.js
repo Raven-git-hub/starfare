@@ -237,10 +237,19 @@ test('double-apply guard: a snapshot-baked action still in the journal is not re
 // default window, so it crosses NO cycle boundary: no issuance, so the rescaled GP weights
 // and the re-based `BASE_GRANT_PER_GP` (5 → 0.3) reach no fuel number here. The runs that
 // DO cross a boundary are in commitment-scaffold.test.js.
-const GOLDEN_HASH = '252305d0d8ed39a1b5f59fa8f32600697b42cc66c0d27affb9581736cb099c47';
-const GOLDEN_HASH_WITH_PRICES = 'bcdda635599da199a2de10e4283c2d11c404378f1cd5514b30d63555f08e12a4';
-const GOLDEN_HASH_WITH_HISTORY = 'dc14c1af5d1ebdb559b72d4c0f1796c58ad115b0ab4140ea37913aef75f0fe92';
-const GOLDEN_HASH_WITH_ASSETS = 'd3f6036d885bcdc02891e983ec1e59ab3d0a81ec5b2ba08c3c22d48019c86c68';
+//
+// NODE-COUNT REBALANCE (02-09-26) — ALL NINE GOLDENS BELOW RE-PINNED. The §2 node
+// rebalance regenerated data/seed.json, which reshuffled the archetype layout and
+// MOVED the derived home (sys_0002/pl_00004 → sys_0004/pl_00009, via home-anchor.js).
+// This sequence serializes that home's ids, so every hash legitimately moved. The
+// re-pin is NOT blind: it was proven seed-shift-only — id-swapping the new state's
+// sys_0004→sys_0002 / pl_00009→pl_00004 reproduces each OLD golden byte-for-byte, so
+// no engine path and no game number changed, only the home ids. The strip-and-prove
+// tests below still hold (they are id-independent arithmetic), which is the check.
+const GOLDEN_HASH = '2ec1f200f6f4d92f7463d34f0d4d0c7fe4dc35b7775297fb94235234a0e8686c';
+const GOLDEN_HASH_WITH_PRICES = '49fdc7148e0782af7eb5944ad4d5aded677e0361c62c0de98d9a62926b915e4b';
+const GOLDEN_HASH_WITH_HISTORY = 'e4ac7c767d1a7b3f98d96d3246c448cf1d622758b9a8afb6bb93fec82056af7c';
+const GOLDEN_HASH_WITH_ASSETS = '0831f4f1aaab32a339b01b7d4a0551866c8b6a85dec627db48e0d878cc829b3b';
 
 // FUEL SLICE 5a (31-08-26) — the pool got a real seed. The Syndicate reserve
 // (`state.reserve.reserveLevel`) opened on a `[SHEET]` placeholder 30 from the walking
@@ -252,7 +261,7 @@ const GOLDEN_HASH_WITH_ASSETS = 'd3f6036d885bcdc02891e983ec1e59ab3d0a81ec5b2ba08
 // this run is 2 ticks on the 1,440-tick default window, so it crosses NO boundary — no
 // influx, no issuance, no grant record. The value the full hash held before this slice,
 // kept so the un-seed proof has something to prove against:
-const GOLDEN_HASH_BEFORE_POOL_SEED = '9f8a9a45861f268980d30274eadc0eac07a1d45ae5d7a48085ba0a6bf2f6469b';
+const GOLDEN_HASH_BEFORE_POOL_SEED = '7991d812a6030eaf3d0ab2ffaf8a82c7f0746482cefff99dd7d930dc400705e5';
 // What that line seeded before POOL_SEED replaced it.
 const RETIRED_POOL_PLACEHOLDER = 30;
 
@@ -268,11 +277,11 @@ const RETIRED_POOL_PLACEHOLDER = 30;
 // window, so it crosses NO cycle boundary — no issuance, so the newborn's modifier rising
 // from ×0.30 to ×1.00 changes no fuel in THIS run. (A run that did cross a boundary would
 // also see the grant rise, which is the point of the slice.)
-const GOLDEN_HASH_BEFORE_ENDOWMENT = 'd744ab2a9f3e4c0ededaee0d70007d39e48f2677604941535d6ba85b0301ebed';
+const GOLDEN_HASH_BEFORE_ENDOWMENT = '4c3ced4146bb875ca6da285c413607d4ebb5256aa869a4e72a65c5e6f42f9199';
 
 // The pre-fuel-slice full hash, kept so the un-granting proof below has something to
 // prove against. It is the value `GOLDEN_HASH_WITH_ASSETS` held before 31-08-26.
-const GOLDEN_HASH_BEFORE_FUEL_GRANT = 'c42d88d7b70b6046ca710deda21717daccf58a969125ea9802a01fb82d386ffd';
+const GOLDEN_HASH_BEFORE_FUEL_GRANT = '531038069545757d1d6950cb2fc660f4e0ad95b088089de52feabb78a1995b68';
 
 // FUEL PRICE MEDIATION (01-09-26, slice 5b-i — docs/fuel-supply-and-allocation.md §4.2).
 // The reserve gains `fuelPrice`, the galaxy's ONE market price of `deuterium_fuel`. It is
@@ -283,7 +292,7 @@ const GOLDEN_HASH_BEFORE_FUEL_GRANT = 'c42d88d7b70b6046ca710deda21717daccf58a969
 // and altered NOTHING else about this sequence, byte for byte — no grant, no hoard, no
 // pool, no valuation. The new full hash is pinned beside them so a drift in the price
 // itself is caught too.
-const GOLDEN_HASH_WITH_FUEL_PRICE = 'e84443c76147c10566578348cc05b95e36caa6b21886c85a0faabdd88ea86e16';
+const GOLDEN_HASH_WITH_FUEL_PRICE = '590b2e192407f84a80964b6472811d0d0f861187f3cfbebe5391cd65a6655f19';
 
 // THE FUEL PRICE CONTROLLER (01-09-26, slice 5b-ii — §4.2). The reserve gains `avgDraw`,
 // the trailing average of galaxy demand the controller steers against. Real serialized
@@ -296,7 +305,7 @@ const GOLDEN_HASH_WITH_FUEL_PRICE = 'e84443c76147c10566578348cc05b95e36caa6b2188
 // crosses NO cycle boundary — so the controller never runs, `avgDraw` is still its seed,
 // `fuelPrice` is still the reference, and the added key is the entire delta. The runs that
 // DO cross a boundary are in commitment-scaffold.test.js, and their hashes moved for real.
-const GOLDEN_HASH_WITH_AVG_DRAW = '2a7ab973d8c92199204890c2e11a868d2df647bf64ae386ebcb397e988261e7a';
+const GOLDEN_HASH_WITH_AVG_DRAW = '0414135783cbbc6ba7e3ae0c98451bbd66f2993b1dc7980b610e3a7346f94e39';
 
 // The state minus the reserve's fuel price — everything the four goldens above covered.
 // Stripped inside `reserve`, leaving `reserveLevel` and every other top-level key in
