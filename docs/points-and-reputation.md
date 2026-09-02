@@ -106,9 +106,10 @@ where it is serialized, guarded, and published in the snapshot exactly as descri
 **pin**, and a pinned venture keeps producing, keeps being judged, keeps being charged its fee, and can climb
 back out at full strength. Also not built: the mean line / `expectedRP` / `MEANLINE_K` / the fuel issuance
 modifier, `baseGrant`, every other RP source in §2.4, the `[DEFERRED]` GP sources of §1 (transports, tolls,
-droids, outposts, exploration — and no field for any of them), and the client deploy-meter wiring (the
-Establish-Venture panel's reputation copy is still mock — the engine is now the authority for the same
-arithmetic, but nothing reads it yet).
+droids, outposts, exploration — and no field for any of them). *(The client deploy meter came off this list
+02-09-26: it no longer mocks the arithmetic — see §6.1 Slice 1d. It still SENDS nothing and reads no snapshot,
+because the venture it previews is not signed yet; what it stopped doing is previewing a number the engine
+would not pay.)*
 
 **THE MODIFIER NOW HAS A CONSUMER** *(31-08-26 — fuel slice 5a, `fuel-supply-and-allocation.md` §2.1)*. It is
 no longer published-and-unread: at every window boundary the Syndicate grants each guild
@@ -527,12 +528,24 @@ already published (`snapshot.js`). Like Slice 1b, the browser computes no game n
 is the gap subtraction, because the engine publishes both sides of the mean line but not their difference.
 This is the operator-view piece of the deferred UI wiring below; the player-facing questions stay unruled.
 
+**Slice 1d — the player deploy meter goes tier-accurate. ✅ LANDED 02-09-26. `client/game.html` only.** The
+Establish-Venture panel's reputation meter now mirrors the engine's **`tierFactor`** (`sim/licence.js`), derived
+from a mirrored `TIER_WEIGHT` (`sim/points.js`) with a served-page tripwire like every other `P.*` constant — so
+a **tier-2 venture's earn preview matches the engine** (100% commit / 0 equity now previews **+8**, the
+`metGain` the engine really pays, where it previously understated it as a mine's **+5**, a flat 1.5× short since
+the 01-09-26 rescale added the tier term). A **tier-1 mine is unchanged**, and an unknown tier falls back to
+factor 1. The bar now fills against **that tier's own maximum**, so full terms still read a full bar instead of
+overflowing to 150%. It shows the **per-cycle earn only, not the signing bump** — deliberately: §2.6 makes the
+commitment slider the player's lever and the bump its backend consequence, so the panel teaches one number, not
+two. Client-only: no engine, snapshot or schema change, and the meter still sends nothing.
+
 **⚠ UNRULED, and deliberately not decided here** — each needs a ruling before its code:
 
-- The **player client** (`client/game.html`): whether the Establish-Venture deploy meter should stop mocking
-  `repGain` and read the engine, and what a player-facing standing display (a "Guild Hall") shows at all. The
-  engine is now the authority for the same arithmetic the meter draws, so the wiring is *possible*; whether the
-  player should see a raw RP number, a band, or only a tier is a design question nobody has answered.
+- The **player client** (`client/game.html`): what a player-facing standing display (a "Guild Hall") shows at
+  all — a raw RP number, a band, or only a tier — is a design question nobody has answered. *(The narrower
+  half of this, whether the deploy meter should stop mocking `repGain`, was answered by Slice 1d above: it
+  mirrors the engine's arithmetic tier for tier. It still computes rather than reads, because the venture it
+  previews is not signed and no snapshot carries it.)*
 - What a player-facing readout should show **once closure exists**. (This was a live question for the
   console, where a pinned venture read PINNED; with Slice 1b reverted it is now the Guild Hall's to
   answer, and it stays unruled either way.)
