@@ -11,6 +11,7 @@ const { createFoundGuildAction, createPaySyndicateFeeAction } = require('../acti
 const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { GUILD_STARTING_FUEL } = require('../fuel.js');
+const { HOME_SYSTEM, HOME_PLANET } = require('./home-anchor.js');
 
 // --- the driver's guards + purity -----------------------------------------
 
@@ -32,7 +33,7 @@ test('advance with no actions ticks exactly once and stays green', () => {
 test('advance never mutates its input state', () => {
   const s = createZeroState();
   const before = JSON.stringify(s);
-  advance(s, [createFoundGuildAction({ guildId: 'g1', credits: 120, homeSystemId: 'sys_0002' })]);
+  advance(s, [createFoundGuildAction({ guildId: 'g1', credits: 120, homeSystemId: HOME_SYSTEM })]);
   assert.equal(JSON.stringify(s), before, 'input state must be untouched');
 });
 
@@ -63,7 +64,7 @@ test('the zero-state boots green with no guilds and Syndicate-owned claims', () 
 
 test('foundGuild inserts the guild and debits its credits from the ledger', () => {
   const s = createZeroState();
-  const action = createFoundGuildAction({ guildId: 'player-guild', name: 'Player Guild', credits: 120, influence: 100, homeSystemId: 'sys_0002' });
+  const action = createFoundGuildAction({ guildId: 'player-guild', name: 'Player Guild', credits: 120, influence: 100, homeSystemId: HOME_SYSTEM });
   const { state: next, results } = advance(s, [action]);
 
   assert.equal(results.length, 1);
@@ -78,12 +79,12 @@ test('foundGuild inserts the guild and debits its credits from the ledger', () =
   assert.equal(g.fuelHoard, GUILD_STARTING_FUEL);
   assert.equal(g.influence, 100); // +20 claim bonus does NOT fire at founding
 
-  // Home seated (design.md §13): the guild lives on sys_0002's Terran homeworld,
+  // Home seated (design.md §13): the guild lives on the home system's Terran homeworld,
   // and a matching home claim -- the ownership source of truth -- was added.
-  assert.equal(g.homeSystemId, 'sys_0002');
-  assert.equal(g.homePlanetId, 'pl_00004');
-  const home = next.claims.find((c) => c.landmarkId === 'sys_0002' && c.ownerGuildId === 'player-guild');
-  assert.ok(home, 'a guild-owned home claim on sys_0002 must exist');
+  assert.equal(g.homeSystemId, HOME_SYSTEM);
+  assert.equal(g.homePlanetId, HOME_PLANET);
+  const home = next.claims.find((c) => c.landmarkId === HOME_SYSTEM && c.ownerGuildId === 'player-guild');
+  assert.ok(home, `a guild-owned home claim on ${HOME_SYSTEM} must exist`);
   assert.equal(home.landmarkKind, 'system');
 
   // Credits MOVED, none minted: ledger 0 -> -120, and the credit-conservation
@@ -95,8 +96,8 @@ test('foundGuild inserts the guild and debits its credits from the ledger', () =
 
 test('foundGuild refuses a duplicate guild id (first-valid-wins)', () => {
   const s = createZeroState();
-  const a = createFoundGuildAction({ guildId: 'dup', credits: 50, homeSystemId: 'sys_0002' });
-  const b = createFoundGuildAction({ guildId: 'dup', credits: 999, homeSystemId: 'sys_0002' });
+  const a = createFoundGuildAction({ guildId: 'dup', credits: 50, homeSystemId: HOME_SYSTEM });
+  const b = createFoundGuildAction({ guildId: 'dup', credits: 999, homeSystemId: HOME_SYSTEM });
   const { state: next, results } = advance(s, [a, b]);
   assert.equal(results[0].accepted, true);
   assert.equal(results[1].accepted, false);
@@ -149,7 +150,7 @@ test('advance halts loudly when a resulting state breaks an invariant', () => {
 // --- determinism through the driver ----------------------------------------
 
 test('same zero-state + same actions, run twice, byte-identical at tick 10', () => {
-  const actions = [createFoundGuildAction({ guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: 'sys_0002' })];
+  const actions = [createFoundGuildAction({ guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: HOME_SYSTEM })];
   function run() {
     let s = createZeroState();
     // turn 1 founds the guild; turns 2..10 are quiet ticks.

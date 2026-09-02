@@ -33,7 +33,7 @@ const { guildPoints } = require('./points.js');
 const { expectedReputation, issuanceModifier } = require('./meanline.js');
 const { computeOccupancy } = require('./occupancy.js');
 const { deployedAssetIds } = require('./assets.js');
-const { getSite, getLandmark } = require('./seed.js');
+const { getSite, getLandmark, getStarterSystems, getTerranHomeworld } = require('./seed.js');
 const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
 const { previewProduction } = require('./production.js');
@@ -859,23 +859,26 @@ if (require.main === module) {
   const { createFoundGuildAction, createEstablishVentureAction } = require('./actions.js');
 
   // Mirrors sim/demo.js's scenario (numbers sourced from phase-1-tuning.md):
-  // one Titanium mine seated on a real seed node, $120 / influence 100.
+  // one Titanium mine seated on a real seed node, $120 / influence 100. The home
+  // is DERIVED from the seed (first starter + its Terran homeworld), not hardcoded.
   let state = createZeroState();
+  const homeSystemId = getStarterSystems()[0].id;
+  const homePlanetId = getTerranHomeworld(homeSystemId);
   const found = createFoundGuildAction({
     guildId: 'player-guild',
     name: 'Player Guild',
     credits: 120,
     influence: 100,
-    homeSystemId: 'sys_0002',
+    homeSystemId,
     ventures: [
-      { id: 'mine_1', ownerGuildId: 'player-guild', type: 'mining', siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5 },
+      { id: 'mine_1', ownerGuildId: 'player-guild', type: 'mining', siteId: `${homePlanetId}_n01`, resourceType: 'titanium', productionRate: 5 },
     ],
   });
   state = advance(state, [found]).state; // founding also runs one tick
   // A second mine, this time via the establishVenture action (the testbed's
   // "add a venture" path), on the homeworld's other titanium node.
   const secondMine = createEstablishVentureAction({
-    guildId: 'player-guild', ventureId: 'mine_2', siteId: 'pl_00004_n02',
+    guildId: 'player-guild', ventureId: 'mine_2', siteId: `${homePlanetId}_n02`,
     // The deploy NAMES its machine (§4, 31-08-26). miner_01 went to the founding's
     // inline mine_1, so this one takes the next idle Miner out of the starter gift.
     assetId: 'asset_player-guild_miner_02',

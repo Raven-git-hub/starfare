@@ -11,14 +11,16 @@
 // below says which machine it wants and the gate-2 rejections are the four distinct
 // ways that name can be wrong.
 //
-// Real seed ids used: sys_0002 is a starter-eligible home whose Terran homeworld
-// pl_00004 carries exactly 15 resource nodes (pl_00004_n01..n15) and 15 settlement
-// slots (pl_00004_s01..s15). sys_0003 is NOT starter-eligible, so no founding guild
+// The home is DERIVED from the seed (home-anchor.js): HOME_SYSTEM is the first
+// starter, HOME_PLANET its Terran homeworld — 15 resource nodes (HOME_MINE = _n01 ..
+// _n15) and 15 settlement slots (HOME_SLOT = _s01 .. _s15). sys_0003 is NOT
+// starter-eligible (a seed-7331 fact this file still leans on), so no founding guild
 // ever claims it — pl_00005_n01 (nitrogen) is a real node in a system the player
 // does not hold, which is what gate 3 is tested against.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { HOME_SYSTEM, HOME_PLANET, HOME_MINE, HOME_MINE_2, HOME_SLOT } = require('./home-anchor.js');
 
 const { advance } = require('../run.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
@@ -35,10 +37,10 @@ const {
   intake, validateAction, createFoundGuildAction, createEstablishVentureAction,
 } = require('../actions.js');
 
-// A galaxy with the player founded on sys_0002, no ventures yet.
+// A galaxy with the player founded on the home system, no ventures yet.
 function playerFounded() {
   return advance(createZeroState(), [createFoundGuildAction({
-    guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: 'sys_0002',
+    guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: HOME_SYSTEM,
   })]).state;
 }
 const player = (state) => state.guilds.find((g) => g.id === 'player-guild');
@@ -83,7 +85,7 @@ test('starter asset ids are stable and deterministic across two runs (invariant 
 });
 
 test('the grant is engine policy, not an action field — the action shape is unchanged', () => {
-  const action = createFoundGuildAction({ guildId: 'g', credits: 0, homeSystemId: 'sys_0002' });
+  const action = createFoundGuildAction({ guildId: 'g', credits: 0, homeSystemId: HOME_SYSTEM });
   assert.deepEqual(Object.keys(action).sort(), [
     'credits', 'guildId', 'homeSystemId', 'incomeRate', 'influence', 'isBot', 'name', 'type', 'ventures',
   ], 'no asset field was added to the action (like fuelHoard, the gift is the engine\'s)');
@@ -93,7 +95,7 @@ test('the grant is engine policy, not an action field — the action shape is un
 
 test('establishing a mine occupies an idle miner — it is referenced, NOT removed', () => {
   const before = playerFounded();
-  const { state: s, results } = intake(before, [mineAt('pl_00004_n01')]);
+  const { state: s, results } = intake(before, [mineAt(HOME_MINE)]);
   assert.equal(results[0].accepted, true);
   const g = player(s);
 
@@ -105,7 +107,7 @@ test('establishing a mine occupies an idle miner — it is referenced, NOT remov
 });
 
 test('a refining venture occupies a factory, and the two pools are independent', () => {
-  const { state: s } = intake(playerFounded(), [refineryAt('pl_00004_s01')]);
+  const { state: s } = intake(playerFounded(), [refineryAt(HOME_SLOT)]);
   const g = player(s);
   assert.equal(g.ventures[0].assetId, factoryId(1));
   assert.equal(idleAssets(g, 'factory').length, STARTER_FACTORIES - 1);
@@ -116,7 +118,7 @@ test('a refining venture occupies a factory, and the two pools are independent',
 test('occupying an asset changes no game number — production is what it always was', () => {
   // The pre-slice baseline for this exact venture: establish + the same advance()'s
   // tick extracts one batch of 5 (pinned by establish-venture.test.js since 03-08-26).
-  const s = advance(playerFounded(), [mineAt('pl_00004_n01')]).state;
+  const s = advance(playerFounded(), [mineAt(HOME_MINE)]).state;
   const g = player(s);
   assert.equal(guildTotals(g).titanium, 5, 'output is byte-for-byte the pre-asset baseline');
   assert.equal(g.credits, 120, 'and the deploy moved no credits');
@@ -128,7 +130,7 @@ test('occupying an asset changes no game number — production is what it always
 
 test('two deploys take the two machines they NAMED', () => {
   let s = playerFounded();
-  ({ state: s } = intake(s, [mineAt('pl_00004_n01'), mineAt('pl_00004_n02', { assetId: minerId(2) })]));
+  ({ state: s } = intake(s, [mineAt(HOME_MINE), mineAt(HOME_MINE_2, { assetId: minerId(2) })]));
   const ids = player(s).ventures.map((v) => v.assetId);
   assert.deepEqual(ids, [minerId(1), minerId(2)]);
   assert.deepEqual(checkInvariants(s, s.tick), []);
@@ -138,14 +140,14 @@ test('two deploys take the two machines they NAMED', () => {
 // machine that is NOT the lowest idle id deploys THAT one and leaves the lower ones
 // idle — which is the only way to tell "the caller chose" from "the engine chose".
 test('naming a machine that is not the lowest idle id deploys THAT one', () => {
-  const { state: s, results } = intake(playerFounded(), [mineAt('pl_00004_n01', { assetId: minerId(7) })]);
+  const { state: s, results } = intake(playerFounded(), [mineAt(HOME_MINE, { assetId: minerId(7) })]);
   assert.equal(results[0].accepted, true);
   const g = player(s);
 
   assert.equal(g.ventures[0].assetId, minerId(7), 'the seventh Miner, because that is the one asked for');
   const deployed = deployedAssetIds(g);
   assert.deepEqual([...deployed.keys()], [minerId(7)], 'exactly one machine is deployed');
-  assert.equal(deployed.get(minerId(7)), 'mine_pl_00004_n01', 'and it reports the venture holding it');
+  assert.equal(deployed.get(minerId(7)), `mine_${HOME_MINE}`, 'and it reports the venture holding it');
   assert.ok(idleAssets(g, 'miner').some((a) => a.id === minerId(1)), 'the lowest idle Miner is still idle');
   assert.equal(idleAssets(g, 'miner').length, STARTER_MINERS - 1, 'one machine left the pool, not two');
   assert.equal(g.assets.length, STARTER_MINERS + STARTER_FACTORIES, 'OCCUPY, NOT CONSUME');
@@ -153,8 +155,8 @@ test('naming a machine that is not the lowest idle id deploys THAT one', () => {
 });
 
 test('and the production a named machine mints is what any other would have', () => {
-  const named = advance(playerFounded(), [mineAt('pl_00004_n01', { assetId: minerId(7) })]).state;
-  const lowest = advance(playerFounded(), [mineAt('pl_00004_n01')]).state;
+  const named = advance(playerFounded(), [mineAt(HOME_MINE, { assetId: minerId(7) })]).state;
+  const lowest = advance(playerFounded(), [mineAt(HOME_MINE)]).state;
   assert.equal(guildTotals(player(named)).titanium, 5);
   assert.equal(guildTotals(player(named)).titanium, guildTotals(player(lowest)).titanium,
     'WHICH machine runs a site changes no game number (§4: condition never touches production)');
@@ -163,9 +165,9 @@ test('and the production a named machine mints is what any other would have', ()
 // --- 3. each gate rejects ----------------------------------------------------
 
 test('GATE 1 — an already-occupied node is refused, and the state is untouched', () => {
-  const { state: s } = intake(playerFounded(), [mineAt('pl_00004_n01')]);
+  const { state: s } = intake(playerFounded(), [mineAt(HOME_MINE)]);
   const before = hashState(s);
-  const v = validateAction(s, mineAt('pl_00004_n01', { ventureId: 'other' }));
+  const v = validateAction(s, mineAt(HOME_MINE, { ventureId: 'other' }));
   assert.equal(v.valid, false);
   assert.match(v.reason, /already occupied/);
   assert.equal(hashState(s), before, 'validation is pure — a refusal moves nothing');
@@ -178,9 +180,9 @@ test('GATE 1 — an already-occupied node is refused, and the state is untouched
 test('GATE 2 — a missing assetId is refused (the action constructor will not even build one)', () => {
   const s = playerFounded();
   const before = hashState(s);
-  assert.throws(() => mineAt('pl_00004_n01', { assetId: undefined }), /assetId is required/);
+  assert.throws(() => mineAt(HOME_MINE, { assetId: undefined }), /assetId is required/);
   // ...and a hand-rolled action object that skips the constructor is refused at validation.
-  const v = validateAction(s, { ...mineAt('pl_00004_n01'), assetId: undefined });
+  const v = validateAction(s, { ...mineAt(HOME_MINE), assetId: undefined });
   assert.equal(v.valid, false);
   assert.match(v.reason, /assetId must be a non-empty string/);
   assert.equal(hashState(s), before);
@@ -190,7 +192,7 @@ test('GATE 2 — a non-string (or empty) assetId is refused', () => {
   const s = playerFounded();
   const before = hashState(s);
   for (const bad of ['', 7, null, {}, ['a']]) {
-    const v = validateAction(s, mineAt('pl_00004_n01', { assetId: bad }));
+    const v = validateAction(s, mineAt(HOME_MINE, { assetId: bad }));
     assert.equal(v.valid, false, `assetId ${JSON.stringify(bad)} should be refused`);
     assert.match(v.reason, /assetId must be a non-empty string/);
   }
@@ -200,7 +202,7 @@ test('GATE 2 — a non-string (or empty) assetId is refused', () => {
 test('GATE 2 — an id nobody owns is refused', () => {
   const s = playerFounded();
   const before = hashState(s);
-  const v = validateAction(s, mineAt('pl_00004_n01', { assetId: 'asset_nobody_miner_99' }));
+  const v = validateAction(s, mineAt(HOME_MINE, { assetId: 'asset_nobody_miner_99' }));
   assert.equal(v.valid, false);
   assert.match(v.reason, /owns no asset "asset_nobody_miner_99"/);
   assert.equal(hashState(s), before);
@@ -216,7 +218,7 @@ test('GATE 2 — an id owned by ANOTHER guild is refused (ownership is whose arr
   assert.ok(idleAssets(s.guilds.find((g) => g.id === 'rival'), 'miner').some((a) => a.id === rivalMiner), 'and it is idle — so only ownership can refuse this');
 
   const before = hashState(s);
-  const v = validateAction(s, mineAt('pl_00004_n01', { assetId: rivalMiner }));
+  const v = validateAction(s, mineAt(HOME_MINE, { assetId: rivalMiner }));
   assert.equal(v.valid, false);
   assert.match(v.reason, /guild "player-guild" owns no asset "asset_rival_miner_01"/);
   assert.equal(hashState(s), before);
@@ -224,22 +226,22 @@ test('GATE 2 — an id owned by ANOTHER guild is refused (ownership is whose arr
 });
 
 test('GATE 2 — an already-deployed machine is refused, and the refusal NAMES its venture', () => {
-  const { state: s } = intake(playerFounded(), [mineAt('pl_00004_n01')]);
+  const { state: s } = intake(playerFounded(), [mineAt(HOME_MINE)]);
   const before = hashState(s);
   // A vacant node in the same held system, but the same machine as the mine above.
-  const v = validateAction(s, mineAt('pl_00004_n02'));
+  const v = validateAction(s, mineAt(HOME_MINE_2));
   assert.equal(v.valid, false, 'gate 1 and gate 3 both pass — only the asset is wrong');
-  assert.match(v.reason, /asset "asset_player-guild_miner_01" is already deployed to venture "mine_pl_00004_n01"/);
+  assert.match(v.reason, new RegExp(`asset "asset_player-guild_miner_01" is already deployed to venture "mine_${HOME_MINE}"`));
   assert.equal(hashState(s), before);
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
 test('GATE 2 — with every Factory deployed, an eleventh refinery has no machine left to name', () => {
   let s = playerFounded();
-  // sys_0002 has 15 settlement slots but the starter gift holds only 10 factories,
+  // the homeworld has 15 settlement slots but the starter gift holds only 10 factories,
   // so the machines run out before the slots do — which is the scarcity §4 wants.
   for (let n = 1; n <= STARTER_FACTORIES; n += 1) {
-    const slot = `pl_00004_s${String(n).padStart(2, '0')}`;
+    const slot = `${HOME_PLANET}_s${String(n).padStart(2, '0')}`;
     const { state: next, results } = intake(s, [refineryAt(slot, { assetId: factoryId(n) })]);
     assert.equal(results[0].accepted, true, `refinery ${n} should deploy`);
     s = next;
@@ -250,10 +252,10 @@ test('GATE 2 — with every Factory deployed, an eleventh refinery has no machin
   // A VACANT slot in a HELD system: whichever Factory it names is one of the ten
   // already at work, and an eleventh id does not exist. Exhaustion now reads as
   // those two refusals rather than as a single "no idle factory".
-  const deployed = validateAction(s, refineryAt('pl_00004_s11', { assetId: factoryId(3) }));
+  const deployed = validateAction(s, refineryAt(`${HOME_PLANET}_s11`, { assetId: factoryId(3) }));
   assert.equal(deployed.valid, false);
   assert.match(deployed.reason, /is already deployed to venture/);
-  const eleventh = validateAction(s, refineryAt('pl_00004_s11', { assetId: factoryId(11) }));
+  const eleventh = validateAction(s, refineryAt(`${HOME_PLANET}_s11`, { assetId: factoryId(11) }));
   assert.equal(eleventh.valid, false);
   assert.match(eleventh.reason, /owns no asset/);
   assert.equal(hashState(s), before);
@@ -279,12 +281,12 @@ test('GATE 2 races like GATE 1 does: two deploys NAMING the same machine, first-
   // the first deploy occupies it and the second is refused as already deployed.
   const s = playerFounded();
   const { state: after, results } = intake(s, [
-    mineAt('pl_00004_n01'),
-    mineAt('pl_00004_n02'), // the same default machine as the line above
+    mineAt(HOME_MINE),
+    mineAt(HOME_MINE_2), // the same default machine as the line above
   ]);
   assert.equal(results[0].accepted, true);
   assert.equal(results[1].accepted, false);
-  assert.match(results[1].reason, /asset "asset_player-guild_miner_01" is already deployed to venture "mine_pl_00004_n01"/);
+  assert.match(results[1].reason, new RegExp(`asset "asset_player-guild_miner_01" is already deployed to venture "mine_${HOME_MINE}"`));
 
   const g = player(after);
   assert.equal(g.ventures.length, 1, 'the loser seated nothing');
@@ -296,8 +298,8 @@ test('GATE 2 races like GATE 1 does: two deploys NAMING the same machine, first-
 test('the same two deploys succeed when they name two different machines', () => {
   // The counterfactual, so the refusal above cannot be passing for another reason.
   const { state: after, results } = intake(playerFounded(), [
-    mineAt('pl_00004_n01'),
-    mineAt('pl_00004_n02', { assetId: minerId(2) }),
+    mineAt(HOME_MINE),
+    mineAt(HOME_MINE_2, { assetId: minerId(2) }),
   ]);
   assert.deepEqual(results.map((r) => r.accepted), [true, true]);
   assert.equal(deployedAssetIds(player(after)).size, 2);
@@ -311,18 +313,18 @@ test('GATE 2 — naming a Factory for a mine (and a Miner for a refinery) is ref
   const s = playerFounded();
   const before = hashState(s);
 
-  const mine = validateAction(s, mineAt('pl_00004_n01', { assetId: factoryId(1) }));
+  const mine = validateAction(s, mineAt(HOME_MINE, { assetId: factoryId(1) }));
   assert.equal(mine.valid, false);
   assert.match(mine.reason, /asset "asset_player-guild_factory_01" is a factory; a mining venture needs a miner/,
     'a Factory is not a Miner, however idle it is');
 
-  const ref = validateAction(s, refineryAt('pl_00004_s01', { assetId: minerId(1) }));
+  const ref = validateAction(s, refineryAt(HOME_SLOT, { assetId: minerId(1) }));
   assert.equal(ref.valid, false);
   assert.match(ref.reason, /asset "asset_player-guild_miner_01" is a miner; a refining venture needs a factory/);
 
   // The counterfactual: the SAME two deploys with the kinds the right way round.
-  assert.equal(validateAction(s, mineAt('pl_00004_n01')).valid, true);
-  assert.equal(validateAction(s, refineryAt('pl_00004_s01')).valid, true);
+  assert.equal(validateAction(s, mineAt(HOME_MINE)).valid, true);
+  assert.equal(validateAction(s, refineryAt(HOME_SLOT)).valid, true);
   assert.equal(hashState(s), before, 'four validations, and not a byte moved');
 });
 
@@ -401,11 +403,11 @@ test('an unknown asset kind is caught', () => {
 
 test('a founding\'s inline ventures each occupy a starter asset of their matching kind', () => {
   const s = advance(createZeroState(), [createFoundGuildAction({
-    guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: 'sys_0002',
+    guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: HOME_SYSTEM,
     ventures: [
-      { id: 'tmine', ownerGuildId: 'player-guild', type: 'mining', siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5 },
-      { id: 'cmine', ownerGuildId: 'player-guild', type: 'mining', siteId: 'pl_00004_n08', resourceType: 'carbon_products', productionRate: 5 },
-      { id: 'ref', ownerGuildId: 'player-guild', type: 'refining', siteId: 'pl_00004_s01', recipeId: 'titanium_alloy', productionRate: 2 },
+      { id: 'tmine', ownerGuildId: 'player-guild', type: 'mining', siteId: HOME_MINE, resourceType: 'titanium', productionRate: 5 },
+      { id: 'cmine', ownerGuildId: 'player-guild', type: 'mining', siteId: `${HOME_PLANET}_n08`, resourceType: 'carbon_products', productionRate: 5 },
+      { id: 'ref', ownerGuildId: 'player-guild', type: 'refining', siteId: HOME_SLOT, recipeId: 'titanium_alloy', productionRate: 2 },
     ],
   })]).state;
   const g = player(s);
@@ -422,11 +424,11 @@ test('a founding carrying more ventures of a kind than the gift holds is refused
   for (let n = 1; n <= STARTER_FACTORIES + 1; n += 1) {
     ventures.push({
       id: `ref_${n}`, ownerGuildId: 'g', type: 'refining',
-      siteId: `pl_00004_s${String(n).padStart(2, '0')}`, recipeId: 'titanium_alloy', productionRate: 1,
+      siteId: `${HOME_PLANET}_s${String(n).padStart(2, '0')}`, recipeId: 'titanium_alloy', productionRate: 1,
     });
   }
   const v = validateAction(createZeroState(), createFoundGuildAction({
-    guildId: 'g', credits: 0, homeSystemId: 'sys_0002', ventures,
+    guildId: 'g', credits: 0, homeSystemId: HOME_SYSTEM, ventures,
   }));
   assert.equal(v.valid, false);
   assert.match(v.reason, /starter gift holds only 10 factory assets/);
@@ -435,7 +437,7 @@ test('a founding carrying more ventures of a kind than the gift holds is refused
 // --- 7. snapshot surface -----------------------------------------------------
 
 test('the snapshot reports each asset and whether it is deployed or idle', () => {
-  const { state: s } = intake(playerFounded(), [mineAt('pl_00004_n01')]);
+  const { state: s } = intake(playerFounded(), [mineAt(HOME_MINE)]);
   const g = buildSnapshot(s).guilds[0];
 
   assert.equal(g.assets.length, STARTER_MINERS + STARTER_FACTORIES);
@@ -444,7 +446,7 @@ test('the snapshot reports each asset and whether it is deployed or idle', () =>
     id: 'asset_player-guild_miner_01',
     kind: 'miner',
     maintenanceCondition: ASSET_CONDITION_NEW,
-    deployedToVentureId: 'mine_pl_00004_n01',
+    deployedToVentureId: `mine_${HOME_MINE}`,
   }], 'the engine answers idle-vs-deployed so the client never recomputes it');
   assert.equal(g.assets.filter((a) => a.deployedToVentureId === null).length, STARTER_MINERS + STARTER_FACTORIES - 1);
   // The same fact from the venture's end.
@@ -457,7 +459,7 @@ test('the snapshot reports each asset and whether it is deployed or idle', () =>
 // --- 8. persistence + determinism --------------------------------------------
 
 test('a state with idle AND deployed assets round-trips through serialization unchanged', () => {
-  const { state: s } = intake(playerFounded(), [mineAt('pl_00004_n01'), refineryAt('pl_00004_s01')]);
+  const { state: s } = intake(playerFounded(), [mineAt(HOME_MINE), refineryAt(HOME_SLOT)]);
   const restored = JSON.parse(JSON.stringify(s)); // what persist.js's save/load does
   assert.deepEqual(restored, s);
   assert.equal(hashState(restored), hashState(s));
@@ -467,9 +469,9 @@ test('a state with idle AND deployed assets round-trips through serialization un
 test('a twice-run scenario carrying assets is byte-identical (invariant 9)', () => {
   const run = () => {
     let s = advance(createZeroState(), [createFoundGuildAction({
-      guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: 'sys_0002',
+      guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: HOME_SYSTEM,
     })]).state;
-    s = advance(s, [mineAt('pl_00004_n01'), refineryAt('pl_00004_s01')]).state;
+    s = advance(s, [mineAt(HOME_MINE), refineryAt(HOME_SLOT)]).state;
     return advance(s, []).state;
   };
   assert.equal(hashState(run()), hashState(run()));

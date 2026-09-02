@@ -22,6 +22,10 @@ const assert = require('node:assert/strict');
 const { runScenario } = require('../../tools/run_scenario.js');
 const { makeLicenceBot } = require('../../tools/licence_bot.js');
 const { buildScenario, PARAMS, GUILD_ID, HOME_SYSTEM } = require('../../tools/scenarios/supply_relief.js');
+const { getTerranHomeworld } = require('../seed.js');
+// The homeworld of the scenario's HOME_SYSTEM, from the seed's own authority — so the
+// hand-built copy below carries no pinned planet id (it follows HOME_SYSTEM).
+const HOME_PLANET = getTerranHomeworld(HOME_SYSTEM);
 const { createState } = require('../state.js');
 const { SNAPSHOT_SCHEMA } = require('../snapshot.js');
 
@@ -124,9 +128,9 @@ test('a structurally-infeasible window (paced required-rate > fresh) is flagged 
       guilds: [{
         id: 'g1', credits: 0, fuelHoard: 0, homeSystemId: null,
         ventures: [
-          { id: 'm', ownerGuildId: 'g1', type: 'mining', systemId: HOME_SYSTEM, siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5, syndicateCommitment: 96 },
-          { id: 'c', ownerGuildId: 'g1', type: 'mining', systemId: HOME_SYSTEM, siteId: 'pl_00004_n08', resourceType: 'carbon_products', productionRate: 5 },
-          { id: 'r', ownerGuildId: 'g1', type: 'refining', systemId: HOME_SYSTEM, siteId: 'pl_00004_s01', recipeId: 'titanium_alloy', productionRate: 2 },
+          { id: 'm', ownerGuildId: 'g1', type: 'mining', systemId: HOME_SYSTEM, siteId: `${HOME_PLANET}_n01`, resourceType: 'titanium', productionRate: 5, syndicateCommitment: 96 },
+          { id: 'c', ownerGuildId: 'g1', type: 'mining', systemId: HOME_SYSTEM, siteId: `${HOME_PLANET}_n08`, resourceType: 'carbon_products', productionRate: 5 },
+          { id: 'r', ownerGuildId: 'g1', type: 'refining', systemId: HOME_SYSTEM, siteId: `${HOME_PLANET}_s01`, recipeId: 'titanium_alloy', productionRate: 2 },
         ],
       }],
       reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 }, windowN: 8,

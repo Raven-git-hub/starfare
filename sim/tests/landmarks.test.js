@@ -4,12 +4,14 @@
 //   - sim/seed.js's landmark resolvers (citadel / outpost / system + homeworld);
 //   - the claim-integrity and guild-home invariants in sim/invariants.js;
 //   - foundGuild's home validation + seating in sim/actions.js.
-// Uses real seed ids: sys_0002 is a starter-eligible system whose Terran
-// homeworld is pl_00004; sys_0001 exists but is NOT starter-eligible; out_01 is
-// a Syndicate outpost; 'citadel' is the origin landmark singleton.
+// The home is DERIVED from the seed (home-anchor.js): HOME_SYSTEM is the first
+// starter-eligible system, HOME_PLANET its Terran homeworld. sys_0001 exists but
+// is NOT starter-eligible (a seed-7331 fact still pinned here, like the 9-outpost
+// count); out_01 is a Syndicate outpost; 'citadel' is the origin landmark singleton.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { HOME_SYSTEM, HOME_PLANET } = require('./home-anchor.js');
 
 const { createState } = require('../state.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
@@ -27,10 +29,10 @@ test('seed landmark resolvers return the real seed features', () => {
   assert.equal(seed.getCitadel().id, 'citadel');
   assert.equal(seed.getOutposts().length, 9); // the generator places 9
   assert.equal(seed.getOutpost('out_01').kind, 'outpost');
-  assert.equal(seed.getSystem('sys_0002').starterEligible, true);
-  assert.equal(seed.isStarterSystem('sys_0002'), true);
+  assert.equal(seed.getSystem(HOME_SYSTEM).starterEligible, true);
+  assert.equal(seed.isStarterSystem(HOME_SYSTEM), true);
   assert.equal(seed.isStarterSystem('sys_0001'), false); // exists, not starter
-  assert.equal(seed.getTerranHomeworld('sys_0002'), 'pl_00004');
+  assert.equal(seed.getTerranHomeworld(HOME_SYSTEM), HOME_PLANET);
   assert.equal(seed.getSeedNumber(), 7331);
 });
 
@@ -85,7 +87,7 @@ function stateWithHome({ homeSystemId, homePlanetId, claim = true }) {
 }
 
 test('a correctly seated guild home passes every invariant', () => {
-  const s = stateWithHome({ homeSystemId: 'sys_0002', homePlanetId: 'pl_00004' });
+  const s = stateWithHome({ homeSystemId: HOME_SYSTEM, homePlanetId: HOME_PLANET });
   assert.deepEqual(checkInvariants(s, 0), []);
 });
 
@@ -104,12 +106,12 @@ test('a home on a non-starter system is caught', () => {
 });
 
 test('a homePlanetId that disagrees with the seed homeworld is caught', () => {
-  const s = stateWithHome({ homeSystemId: 'sys_0002', homePlanetId: 'pl_99999' });
+  const s = stateWithHome({ homeSystemId: HOME_SYSTEM, homePlanetId: 'pl_99999' });
   assert.equal(hasRule(s, 'home-planet-matches-seed'), true);
 });
 
 test('a home with no matching ownership claim is caught', () => {
-  const s = stateWithHome({ homeSystemId: 'sys_0002', homePlanetId: 'pl_00004', claim: false });
+  const s = stateWithHome({ homeSystemId: HOME_SYSTEM, homePlanetId: HOME_PLANET, claim: false });
   assert.equal(hasRule(s, 'home-claim-exists'), true);
 });
 
@@ -129,13 +131,13 @@ test('founding on a non-starter system is rejected', () => {
 test('founding seats the guild on its homeworld and claims the system', () => {
   const s = createZeroState();
   const { state: next, results } = intake(s, [
-    createFoundGuildAction({ guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: 'sys_0002' }),
+    createFoundGuildAction({ guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: HOME_SYSTEM }),
   ]);
   assert.equal(results[0].accepted, true);
   const g = next.guilds[0];
-  assert.equal(g.homeSystemId, 'sys_0002');
-  assert.equal(g.homePlanetId, 'pl_00004');
-  const home = next.claims.find((c) => c.landmarkId === 'sys_0002' && c.ownerGuildId === 'player-guild');
+  assert.equal(g.homeSystemId, HOME_SYSTEM);
+  assert.equal(g.homePlanetId, HOME_PLANET);
+  const home = next.claims.find((c) => c.landmarkId === HOME_SYSTEM && c.ownerGuildId === 'player-guild');
   assert.ok(home);
   assert.equal(home.landmarkKind, 'system');
   assert.deepEqual(checkInvariants(next, next.tick), []);
@@ -144,8 +146,8 @@ test('founding seats the guild on its homeworld and claims the system', () => {
 test('two guilds racing for the same home: first-valid-wins', () => {
   const s = createZeroState();
   const { state: next, results } = intake(s, [
-    createFoundGuildAction({ guildId: 'a', credits: 10, homeSystemId: 'sys_0002' }),
-    createFoundGuildAction({ guildId: 'b', credits: 10, homeSystemId: 'sys_0002' }),
+    createFoundGuildAction({ guildId: 'a', credits: 10, homeSystemId: HOME_SYSTEM }),
+    createFoundGuildAction({ guildId: 'b', credits: 10, homeSystemId: HOME_SYSTEM }),
   ]);
   assert.equal(results[0].accepted, true);
   assert.equal(results[1].accepted, false);

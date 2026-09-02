@@ -12,17 +12,16 @@ const { advance } = require('./run.js');
 const { createFoundGuildAction } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
 const { computeOccupancy } = require('./occupancy.js');
-const { getSite } = require('./seed.js');
+const { getSite, getStarterSystems, getTerranHomeworld } = require('./seed.js');
 const { hashState } = require('./serialize.js');
 const { guildTotals } = require('./stock.js');
 
-// A real Titanium resource node from the seed to seat the mine on. Chosen once,
-// here, so the demo shows a venture living on an actual place in the galaxy.
-// The player's home: a real starter-eligible system (sys_0002, FEN-6425), and
-// a titanium node on its Terran homeworld -- so the guild, its homeworld, and
-// its first mine all live in the same place.
-const HOME_SYSTEM = 'sys_0002';
-const MINE_SITE = 'pl_00004_n01'; // titanium node on sys_0002's Terran homeworld pl_00004
+// The player's home, DERIVED from the seed (not hardcoded): the first starter
+// system and a titanium node on its Terran homeworld -- so the guild, its
+// homeworld, and its first mine all live in a real place, whatever seed is loaded.
+// A Terran homeworld's first node is always titanium (§2's guaranteed spread).
+const HOME_SYSTEM = getStarterSystems()[0].id;
+const MINE_SITE = `${getTerranHomeworld(HOME_SYSTEM)}_n01`; // titanium node on the homeworld
 
 // Total Titanium held across all guild stockpiles. Stockpiles are SYSTEM-SCOPED
 // (ruling B1, §15.2): `guild.stockpiles` is a nested systemId->good->int map, so
@@ -73,7 +72,7 @@ console.log(summary(state));
 console.log('  invariants: OK\n');
 
 console.log('=== 2. The owner founds the first guild (one turn) ===');
-console.log('  action: foundGuild player-guild ($120, influence 100, home sys_0002, one mine @ 5 Titanium/tick)');
+console.log(`  action: foundGuild player-guild ($120, influence 100, home ${HOME_SYSTEM}, one mine @ 5 Titanium/tick)`);
 const foundPlayer = createFoundGuildAction({
   guildId: 'player-guild',
   name: 'Player Guild',

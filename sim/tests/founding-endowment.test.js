@@ -23,6 +23,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { HOME_SYSTEM, HOME_MINE } = require('./home-anchor.js');
 
 const { createZeroState } = require('../scenarios/zero-state.js');
 const { createState } = require('../state.js');
@@ -40,7 +41,7 @@ const {
   MEANLINE_K, ISSUANCE_FLOOR, expectedReputation, issuanceModifier, foundingEndowmentFor,
 } = require('../meanline.js');
 
-const HOME = 'sys_0002';
+const HOME = HOME_SYSTEM;
 const OTHER = 'sys_0009';
 
 const applyValid = (state, action) => {
@@ -99,7 +100,7 @@ test('the endowment sizes off the SYSTEM half of Points, never the whole of it',
   const s = founded({
     ventures: [{
       id: 'inline_mine', ownerGuildId: 'newborn', type: 'mining',
-      siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5,
+      siteId: HOME_MINE, resourceType: 'titanium', productionRate: 5,
     }],
   });
   const g = guild(s);
@@ -163,7 +164,7 @@ test('the sum tripwire holds every tick through a MET boundary and a BREACHED on
   const run = (send, commitPct = 1) => {
     let s = founded();
     s = applyValid(s, createEstablishVentureAction({
-      guildId: 'newborn', ventureId: 'm1', siteId: 'pl_00004_n01',
+      guildId: 'newborn', ventureId: 'm1', siteId: HOME_MINE,
       assetId: 'asset_newborn_miner_01', resourceType: 'titanium', productionRate: 10,
     }));
     s.windowN = N;
@@ -227,7 +228,7 @@ test('the sum tripwire holds every tick through a MET boundary and a BREACHED on
 const signAt = (commitPct) => {
   let s = founded();
   s = applyValid(s, createEstablishVentureAction({
-    guildId: 'newborn', ventureId: 'm1', siteId: 'pl_00004_n01',
+    guildId: 'newborn', ventureId: 'm1', siteId: HOME_MINE,
     assetId: 'asset_newborn_miner_01', resourceType: 'titanium', productionRate: 10,
   }));
   s.windowN = 4;

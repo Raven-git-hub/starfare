@@ -29,6 +29,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { HOME_SYSTEM } = require('./home-anchor.js');
 
 const { advance } = require('../run.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
@@ -78,7 +79,7 @@ test('founding seeds the starter hoard, and every invariant still holds at that 
   assert.equal(zero.audit.totalProduced, zero.reserve.reserveLevel);
   assert.equal(zero.audit.totalConsumed, 0);
 
-  const s = foundVia(zero, 'player-guild', 'sys_0002');
+  const s = foundVia(zero, 'player-guild', HOME_SYSTEM);
   const g = s.guilds[0];
 
   assert.equal(g.fuelHoard, GUILD_STARTING_FUEL);
@@ -101,7 +102,7 @@ test('founding seeds the starter hoard, and every invariant still holds at that 
 });
 
 test('a second founding grows the total by exactly one more grant', () => {
-  let s = foundVia(createZeroState(), 'player-guild', 'sys_0002');
+  let s = foundVia(createZeroState(), 'player-guild', HOME_SYSTEM);
   s = foundVia(s, 'rival', 'sys_0009');
 
   assert.equal(s.guilds.length, 2);
@@ -118,7 +119,7 @@ test('a second founding grows the total by exactly one more grant', () => {
 });
 
 test('a tick moves no fuel — the hoard just sits (nothing spends it in this slice)', () => {
-  let s = foundVia(createZeroState(), 'player-guild', 'sys_0002');
+  let s = foundVia(createZeroState(), 'player-guild', HOME_SYSTEM);
   const producedAtFounding = s.audit.totalProduced;
 
   s = advance(s, []).state;
@@ -134,7 +135,7 @@ test('a tick moves no fuel — the hoard just sits (nothing spends it in this sl
 // --- the snapshot field ----------------------------------------------------
 
 test('the snapshot reports the hoard and its mark-to-market credit value', () => {
-  const s = foundVia(createZeroState(), 'player-guild', 'sys_0002');
+  const s = foundVia(createZeroState(), 'player-guild', HOME_SYSTEM);
   const guild = buildSnapshot(s).guilds[0];
 
   assert.equal(guild.fuelHoard, 500);
@@ -151,7 +152,7 @@ test('the snapshot reports the hoard and its mark-to-market credit value', () =>
 });
 
 test('fuelHoardValue is derived telemetry — it reaches no stored byte and charges nothing', () => {
-  const s = foundVia(createZeroState(), 'player-guild', 'sys_0002');
+  const s = foundVia(createZeroState(), 'player-guild', HOME_SYSTEM);
 
   assert.equal(s.guilds[0].fuelHoardValue, undefined, 'the value is computed on read, never stored');
   // Fuel is the one good the price ENGINE never prices (design.md §8), which is the

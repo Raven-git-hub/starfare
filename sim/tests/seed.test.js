@@ -71,23 +71,27 @@ test('getStarterSystems enumerates every starter, id-sorted, each with a real ho
 });
 
 test('getSystemLayout returns a system with planets, nodes, and settlement slots', () => {
-  // sys_0002 is the demo home: a single-planet Terran system.
-  const sys = getSystemLayout('sys_0002');
+  // Seed-general: the first starter's Terran homeworld, whatever seed is loaded.
+  // Its NAME and how many planets share its system are seed-7331 accidents, so
+  // this asserts only what the §2/§13 guarantees make true of ANY such homeworld.
+  const homeSystemId = getStarterSystems()[0].id;
+  const homePlanetId = getTerranHomeworld(homeSystemId);
+  const sys = getSystemLayout(homeSystemId);
   assert.ok(sys);
-  assert.equal(sys.id, 'sys_0002');
-  assert.equal(sys.name, 'FEN-6425');
+  assert.equal(sys.id, homeSystemId);
   assert.equal(sys.starterEligible, true);
-  assert.equal(sys.terranHomeworldId, 'pl_00004');
-  assert.equal(sys.planets.length, 1);
-  const hw = sys.planets[0];
-  assert.equal(hw.id, 'pl_00004');
+  assert.equal(sys.terranHomeworldId, homePlanetId);
+  // Find the homeworld by id — its position in the planet list is seed-specific.
+  const hw = sys.planets.find((p) => p.id === homePlanetId);
+  assert.ok(hw, 'the Terran homeworld appears in its system layout');
   assert.equal(hw.archetype, 'terran');
   assert.equal(hw.resourceNodes.length, 15); // Terran homeworld
   assert.equal(hw.settlementSlots.length, 15); // Terran slot count ([FIRST-CUT])
   // node shape carries id + resourceType; slot shape is id-only (no resourceType).
-  assert.deepEqual(hw.resourceNodes[0], { id: 'pl_00004_n01', resourceType: 'titanium' });
+  // Terran's guaranteed spread always opens titanium (§2), so _n01 is titanium.
+  assert.deepEqual(hw.resourceNodes[0], { id: `${homePlanetId}_n01`, resourceType: 'titanium' });
   assert.deepEqual(Object.keys(hw.settlementSlots[0]), ['id']);
-  assert.equal(hw.settlementSlots[0].id, 'pl_00004_s01');
+  assert.equal(hw.settlementSlots[0].id, `${homePlanetId}_s01`);
 });
 
 test('getSystemLayout handles a multi-planet system and returns null for a missing one', () => {

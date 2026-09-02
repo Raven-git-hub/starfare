@@ -9,6 +9,8 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const G = require('./generate_seed.js');
 
 const SEED = 7331; // the canonical reference seed
@@ -130,4 +132,21 @@ test('settlement slots: stats.totalSettlementSlots equals the live sum', () => {
   let sum = 0;
   for (const s of g.systems) for (const p of s.planets) sum += p.settlementSlots.length;
   assert.equal(g.stats.totalSettlementSlots, sum);
+});
+
+// Drift tripwire: the COMMITTED data/seed.json is exactly what the CLI writes.
+// data/seed.json is the shared fixture the sim, the viewer, and the tests all read
+// (design.md §16), so it must never silently diverge from the generator. This
+// reproduces the CLI write path verbatim (the `require.main` block of
+// generate_seed.js): generate 7331, post-fill the `totalHexesInGalaxy: null` the
+// pure function deliberately leaves for the entrypoint, then stringify with a
+// 2-space indent and NO trailing newline — what fs.writeFileSync receives. If this
+// fails, data/seed.json is stale: regenerate it from tools/generate_seed.js (do not
+// hand-edit). NB: the null/post-fill split is mirrored on purpose, not "fixed" here.
+test('committed data/seed.json is byte-identical to the CLI output (drift tripwire)', () => {
+  const g = G.generateGalaxySeed(SEED);
+  g.stats.totalHexesInGalaxy = G.countTotalHexes(g.galaxyParams.radius, g.galaxyParams.hexSize);
+  const cli = JSON.stringify(g, null, 2); // no trailing newline — matches the CLI writeFileSync
+  const committed = fs.readFileSync(path.join(__dirname, '..', 'data', 'seed.json'), 'utf8');
+  assert.equal(cli, committed, 'data/seed.json is stale — regenerate it from tools/generate_seed.js');
 });

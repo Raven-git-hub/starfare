@@ -12,6 +12,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { HOME_SYSTEM, HOME_MINE } = require('./home-anchor.js');
 
 const { tick } = require('../tick.js');
 const { createState } = require('../state.js');
@@ -413,10 +414,10 @@ test('the terms validators are the ones §5 names', () => {
 test('establish with an equity offer, then license: the offer is what deepens the discount', () => {
   let s = createZeroState();
   ({ state: s } = intake(s, [{
-    type: 'foundGuild', guildId: 'g1', name: 'G1', credits: 0, influence: 0, homeSystemId: 'sys_0002', ventures: [],
+    type: 'foundGuild', guildId: 'g1', name: 'G1', credits: 0, influence: 0, homeSystemId: HOME_SYSTEM, ventures: [],
   }]));
   ({ state: s } = intake(s, [createEstablishVentureAction({
-    guildId: 'g1', ventureId: 'm', siteId: 'pl_00004_n01', assetId: 'asset_g1_miner_01', resourceType: 'titanium', productionRate: 5, equityPct: 0.49,
+    guildId: 'g1', ventureId: 'm', siteId: HOME_MINE, assetId: 'asset_g1_miner_01', resourceType: 'titanium', productionRate: 5, equityPct: 0.49,
   })]));
   const { state: licensed, results } = intake(s, [createApplyForLicenceAction({
     guildId: 'g1', ventureId: 'm', committedOutputPct: 1, windowDays: 7,

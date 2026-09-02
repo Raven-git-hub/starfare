@@ -8,6 +8,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { HOME_SYSTEM, HOME_PLANET, HOME_MINE, HOME_SLOT } = require('./home-anchor.js');
 
 const { createGuild } = require('../state.js');
 const {
@@ -138,16 +139,16 @@ test('getGoodPolicy returns a fresh object — a caller cannot alias into state'
 
 // --- the no-op proof (load-bearing) ---------------------------------------
 
-// A mine (+carbon mine) feeding a refinery on sys_0002, run 50 ticks. Both runs
+// A mine (+carbon mine) feeding a refinery on the home system, run 50 ticks. Both runs
 // tick the SAME number of times; they differ only in whether the profile window
 // carries a setProductionProfile action or an empty batch — so any difference in
 // output could ONLY come from the tick reading the profile, which it must not.
 function runScenario(profileActions) {
   let s = createZeroState();
-  s = advance(s, [createFoundGuildAction({ guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: 'sys_0002' })]).state;
-  s = advance(s, [createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'tmine', siteId: 'pl_00004_n01', assetId: 'asset_player-guild_miner_01', resourceType: 'titanium', productionRate: 5 })]).state;
-  s = advance(s, [createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'cmine', siteId: 'pl_00004_n08', assetId: 'asset_player-guild_miner_02', resourceType: 'carbon_products', productionRate: 5 })]).state;
-  s = advance(s, [createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'refinery', type: 'refining', siteId: 'pl_00004_s01', assetId: 'asset_player-guild_factory_01', recipeId: 'titanium_alloy', productionRate: 2 })]).state;
+  s = advance(s, [createFoundGuildAction({ guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: HOME_SYSTEM })]).state;
+  s = advance(s, [createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'tmine', siteId: HOME_MINE, assetId: 'asset_player-guild_miner_01', resourceType: 'titanium', productionRate: 5 })]).state;
+  s = advance(s, [createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'cmine', siteId: `${HOME_PLANET}_n08`, assetId: 'asset_player-guild_miner_02', resourceType: 'carbon_products', productionRate: 5 })]).state;
+  s = advance(s, [createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'refinery', type: 'refining', siteId: HOME_SLOT, assetId: 'asset_player-guild_factory_01', recipeId: 'titanium_alloy', productionRate: 2 })]).state;
   // The profile window: an empty batch in the control run, the setProductionProfile
   // action in the treatment run. One tick either way.
   s = advance(s, profileActions).state;
@@ -161,7 +162,7 @@ function runScenario(profileActions) {
 // venture, harmlessly ignored — see the reconciliation tests in gates.test.js.)
 const profileAction = createSetProductionProfileAction({
   guildId: 'player-guild',
-  systemId: 'sys_0002',
+  systemId: HOME_SYSTEM,
   goods: {
     titanium: { order: ['stockpile', 'downstream', 'syndicate'], downstreamPct: 10, stockpile: { mode: 'percent', value: 90 } },
   },
@@ -184,7 +185,7 @@ test('a profile now MOVES production output — the tick reads it (2a-i no-op pr
     'throttling the refinery + hoarding its titanium starves alloy production',
   );
   // And the profile really WAS stored.
-  assert.equal(getThrottlePct(treatment.guilds[0], 'sys_0002', 'refinery'), 1);
+  assert.equal(getThrottlePct(treatment.guilds[0], HOME_SYSTEM, 'refinery'), 1);
 });
 
 test('determinism holds with the profile field present — run twice, hashes equal', () => {

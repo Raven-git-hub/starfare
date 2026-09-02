@@ -12,6 +12,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { HOME_SYSTEM, HOME_MINE, HOME_MINE_2 } = require('./home-anchor.js');
 
 const { tick } = require('../tick.js');
 const { createState } = require('../state.js');
@@ -240,16 +241,16 @@ test('the equity ceiling is §5’s 49%, and an offer above it is refused, not c
 
 test('establishVenture carries a valid equity offer and refuses an invalid one', () => {
   const found = {
-    type: 'foundGuild', guildId: 'g1', name: 'G1', credits: 0, influence: 0, homeSystemId: 'sys_0002', ventures: [],
+    type: 'foundGuild', guildId: 'g1', name: 'G1', credits: 0, influence: 0, homeSystemId: HOME_SYSTEM, ventures: [],
   };
   let s = createZeroState();
   ({ state: s } = intake(s, [found]));
 
   const ok = createEstablishVentureAction({
-    guildId: 'g1', ventureId: 'm1', siteId: 'pl_00004_n01', assetId: 'asset_g1_miner_01', resourceType: 'titanium', productionRate: 5, equityPct: 0.25,
+    guildId: 'g1', ventureId: 'm1', siteId: HOME_MINE, assetId: 'asset_g1_miner_01', resourceType: 'titanium', productionRate: 5, equityPct: 0.25,
   });
   const tooMuch = createEstablishVentureAction({
-    guildId: 'g1', ventureId: 'm2', siteId: 'pl_00004_n02', assetId: 'asset_g1_miner_02', resourceType: 'titanium', productionRate: 5, equityPct: 0.8,
+    guildId: 'g1', ventureId: 'm2', siteId: HOME_MINE_2, assetId: 'asset_g1_miner_02', resourceType: 'titanium', productionRate: 5, equityPct: 0.8,
   });
   const { state: after, results } = intake(s, [ok, tooMuch]);
   assert.equal(results[0].accepted, true);

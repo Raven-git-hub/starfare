@@ -3,13 +3,15 @@
 // Tests refining ventures: a venture on a SETTLEMENT SLOT that runs a recipes.js
 // recipe, consuming raw goods and producing a processed good — the first
 // raw->processed conversion. Multi-input as of 04-08-26. Uses real seed ids:
-// pl_00004_n01 is a titanium node and pl_00004_n08 a carbon_products node on
-// sys_0002's homeworld; pl_00004_s01/_s02 are settlement slots.
+// HOME_MINE is a titanium node and `${HOME_PLANET}_n08` a carbon_products node on
+// the home system's Terran homeworld; HOME_SLOT is a settlement slot. All derived
+// from the seed (home-anchor.js), not pinned to seed 7331's ids.
 // Recipe titanium_alloy = 3 titanium + 1 carbon_products -> 1 titanium_alloy
 // per batch ([PLACEHOLDER] ratios).
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { HOME_SYSTEM, HOME_PLANET, HOME_MINE, HOME_MINE_2, HOME_SLOT } = require('./home-anchor.js');
 
 const { advance } = require('../run.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
@@ -23,20 +25,20 @@ const {
 
 function playerFounded() {
   const s = createZeroState();
-  return advance(s, [createFoundGuildAction({ guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: 'sys_0002' })]).state;
+  return advance(s, [createFoundGuildAction({ guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: HOME_SYSTEM })]).state;
 }
 // Each helper NAMES the machine it deploys (design.md §4, 31-08-26) — one per venture
 // out of the starter gift founding grants, so the three can be established in any
 // combination without two of them reaching for the same asset.
-const tmine = (over = {}) => createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'tmine', siteId: 'pl_00004_n01', assetId: 'asset_player-guild_miner_01', resourceType: 'titanium', productionRate: 5, ...over });
-const cmine = (over = {}) => createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'cmine', siteId: 'pl_00004_n08', assetId: 'asset_player-guild_miner_02', resourceType: 'carbon_products', productionRate: 5, ...over });
-const refinery = (over = {}) => createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'refinery', type: 'refining', siteId: 'pl_00004_s01', assetId: 'asset_player-guild_factory_01', recipeId: 'titanium_alloy', productionRate: 2, ...over });
+const tmine = (over = {}) => createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'tmine', siteId: HOME_MINE, assetId: 'asset_player-guild_miner_01', resourceType: 'titanium', productionRate: 5, ...over });
+const cmine = (over = {}) => createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'cmine', siteId: `${HOME_PLANET}_n08`, assetId: 'asset_player-guild_miner_02', resourceType: 'carbon_products', productionRate: 5, ...over });
+const refinery = (over = {}) => createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'refinery', type: 'refining', siteId: HOME_SLOT, assetId: 'asset_player-guild_factory_01', recipeId: 'titanium_alloy', productionRate: 2, ...over });
 
 // --- constructor guards ----------------------------------------------------
 
 test('a refining action requires a recipeId (not a resourceType)', () => {
   assert.throws(
-    () => createEstablishVentureAction({ guildId: 'g', ventureId: 'v', type: 'refining', siteId: 'pl_00004_s01', assetId: 'a_f', productionRate: 1 }),
+    () => createEstablishVentureAction({ guildId: 'g', ventureId: 'v', type: 'refining', siteId: HOME_SLOT, assetId: 'a_f', productionRate: 1 }),
     /recipeId is required for a refining venture/,
   );
 });
@@ -101,13 +103,13 @@ test('a refinery missing ANY input produces nothing (no-op, stays green)', () =>
 // --- rejections ------------------------------------------------------------
 
 test('a refinery on a resource node is rejected', () => {
-  const v = validateAction(playerFounded(), refinery({ siteId: 'pl_00004_n02' }));
+  const v = validateAction(playerFounded(), refinery({ siteId: HOME_MINE_2 }));
   assert.equal(v.valid, false);
   assert.match(v.reason, /not a settlement slot/);
 });
 
 test('a mining venture on a settlement slot is rejected', () => {
-  const v = validateAction(playerFounded(), tmine({ siteId: 'pl_00004_s01' }));
+  const v = validateAction(playerFounded(), tmine({ siteId: HOME_SLOT }));
   assert.equal(v.valid, false);
   assert.match(v.reason, /not a resource node/);
 });
@@ -135,14 +137,14 @@ test('two ventures cannot share a settlement slot', () => {
 // in the site's system pool, and no null-keyed pool is created.
 test('a mine founded via foundGuild inline ventures pools output in the site\'s system, not a null pool (ruling B1)', () => {
   const found = createFoundGuildAction({
-    guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: 'sys_0002',
+    guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: HOME_SYSTEM,
     ventures: [
-      { id: 'mine_1', ownerGuildId: 'player-guild', type: 'mining', siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5 },
+      { id: 'mine_1', ownerGuildId: 'player-guild', type: 'mining', siteId: HOME_MINE, resourceType: 'titanium', productionRate: 5 },
     ],
   });
   const s = advance(createZeroState(), [found]).state; // founding also runs one tick => +5 titanium
   const g = s.guilds[0];
-  const sysId = getSite('pl_00004_n01').systemId; // sys_0002
+  const sysId = getSite(HOME_MINE).systemId; // the home system
   assert.equal(g.ventures[0].systemId, sysId, 'the inline venture must be stamped with its site\'s systemId');
   assert.equal(getStock(g, sysId, 'titanium'), 5, 'output pools in the site\'s system');
   assert.equal(getStock(g, null, 'titanium'), 0, 'nothing pools under a null system');
@@ -155,10 +157,10 @@ test('a mine founded via foundGuild inline ventures pools output in the site\'s 
 // refinery deployed in the same system must actually convert.
 test('an inline-founded mine feeds a same-system refinery (the starvation the null-pool bug caused)', () => {
   const found = createFoundGuildAction({
-    guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: 'sys_0002',
+    guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: HOME_SYSTEM,
     ventures: [
-      { id: 'tmine', ownerGuildId: 'player-guild', type: 'mining', siteId: 'pl_00004_n01', resourceType: 'titanium', productionRate: 5 },
-      { id: 'cmine', ownerGuildId: 'player-guild', type: 'mining', siteId: 'pl_00004_n08', resourceType: 'carbon_products', productionRate: 5 },
+      { id: 'tmine', ownerGuildId: 'player-guild', type: 'mining', siteId: HOME_MINE, resourceType: 'titanium', productionRate: 5 },
+      { id: 'cmine', ownerGuildId: 'player-guild', type: 'mining', siteId: `${HOME_PLANET}_n08`, resourceType: 'carbon_products', productionRate: 5 },
     ],
   });
   let s = advance(createZeroState(), [found]).state; // +5 ti, +5 carbon

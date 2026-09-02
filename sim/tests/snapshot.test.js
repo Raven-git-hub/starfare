@@ -13,6 +13,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { HOME_SYSTEM, HOME_PLANET } = require('./home-anchor.js');
 
 const { createState } = require('../state.js');
 const { computeGalacticSupply } = require('../supply.js');
@@ -36,9 +37,9 @@ function sampleState() {
         credits: 120,
         fuelHoard: 4,
         influence: 100,
-        homeSystemId: 'sys_0002',
-        homePlanetId: 'pl_00004',
-        stockpiles: { sys_0002: { titanium: 15, lead: 3 } },
+        homeSystemId: HOME_SYSTEM,
+        homePlanetId: HOME_PLANET,
+        stockpiles: { [HOME_SYSTEM]: { titanium: 15, lead: 3 } },
         ventures: [
           { id: 'mine_1', ownerGuildId: 'player-guild', type: 'mining', siteId: 'pl_00001_n02', resourceType: 'titanium', productionRate: 5 },
         ],
@@ -49,7 +50,7 @@ function sampleState() {
     syndicate: { ledger: -200 },
     claims: [
       { claimId: 'claim_citadel', ownerGuildId: 'syndicate', landmarkId: 'citadel', landmarkKind: 'citadel', claimedAtTick: 0, contested: false },
-      { claimId: 'claim_home_player-guild', ownerGuildId: 'player-guild', landmarkId: 'sys_0002', landmarkKind: 'system', claimedAtTick: 0, contested: false },
+      { claimId: 'claim_home_player-guild', ownerGuildId: 'player-guild', landmarkId: HOME_SYSTEM, landmarkKind: 'system', claimedAtTick: 0, contested: false },
     ],
   });
 }
@@ -133,8 +134,8 @@ test('guild breakdown copies the shown fields and does not alias live state', ()
   assert.equal(p.credits, 120);
   assert.equal(p.fuelHoard, 4);
   assert.equal(p.influence, 100);
-  assert.equal(p.homeSystemId, 'sys_0002');
-  assert.equal(p.homePlanetId, 'pl_00004');
+  assert.equal(p.homeSystemId, HOME_SYSTEM);
+  assert.equal(p.homePlanetId, HOME_PLANET);
   assert.deepEqual(p.stockpiles, { titanium: 15, lead: 3 });
   // Mutating the snapshot must not reach back into the state's stockpiles.
   p.stockpiles.titanium = 999;
@@ -147,13 +148,13 @@ test('guild carries a per-system stockpile breakdown (ruling B1), beside the fla
   const s = sampleState();
   const snap = buildSnapshot(s);
   const p = snap.guilds.find((g) => g.id === 'player-guild');
-  assert.deepEqual(p.stockpilesBySystem, { sys_0002: { titanium: 15, lead: 3 } });
+  assert.deepEqual(p.stockpilesBySystem, { [HOME_SYSTEM]: { titanium: 15, lead: 3 } });
   // The flat total is still the SUM across systems, unchanged for existing readers.
   assert.deepEqual(p.stockpiles, guildTotals(s.guilds.find((g) => g.id === 'player-guild')));
   const bot = snap.guilds.find((g) => g.id === 'bot_a');
   assert.deepEqual(bot.stockpilesBySystem, { sysB: { titanium: 5 } });
   // A deep-enough copy: mutating the snapshot must not reach into live state.
-  p.stockpilesBySystem.sys_0002.titanium = 999;
+  p.stockpilesBySystem[HOME_SYSTEM].titanium = 999;
   assert.equal(guildTotals(s.guilds.find((g) => g.id === 'player-guild')).titanium, 15);
 });
 
@@ -177,7 +178,7 @@ test('claims carry their seed landmark resolved, in order', () => {
   assert.equal(snap.claims.length, 2);
   const home = snap.claims.find((c) => c.claimId === 'claim_home_player-guild');
   assert.equal(home.ownerGuildId, 'player-guild');
-  assert.equal(home.landmarkId, 'sys_0002');
+  assert.equal(home.landmarkId, HOME_SYSTEM);
   assert.equal(home.landmarkKind, 'system');
   assert.ok(home.landmark, 'the home system landmark must resolve');
   assert.equal(home.landmark.kind, 'system');

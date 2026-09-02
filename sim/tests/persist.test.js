@@ -16,6 +16,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { HOME_SYSTEM, HOME_MINE, HOME_MINE_2 } = require('./home-anchor.js');
 const fs = require('node:fs');
 const os = require('node:os');
 const { join } = require('node:path');
@@ -71,18 +72,18 @@ function runScripted(dir, steps) {
   return state;
 }
 
-// Reusable legal moves against the real seed (same ids the establish-venture
-// tests use): sys_0002 is a starter home; pl_00004_n01/n02 are titanium nodes on
-// its Terran homeworld.
-const FOUND = createFoundGuildAction({ guildId: 'player-guild', name: 'Player', credits: 120, influence: 100, homeSystemId: 'sys_0002' });
+// Reusable legal moves against the real seed, DERIVED via home-anchor.js (same
+// home the establish-venture tests use): HOME_SYSTEM is the first starter,
+// HOME_MINE / HOME_MINE_2 two titanium nodes on its Terran homeworld.
+const FOUND = createFoundGuildAction({ guildId: 'player-guild', name: 'Player', credits: 120, influence: 100, homeSystemId: HOME_SYSTEM });
 // GOLDEN-PRESERVING assetIds (31-08-26): the deploy now NAMES its machine, and these
 // two name exactly the ones the previous auto-pick (lowest idle id) would have taken —
 // so every venture below lands with the same `assetId` it had before, and the four
 // hashes pinned further down do not move. That is the point: this slice changed WHO
 // chooses the machine, not which one these runs end up running.
-const MINE_1 = createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'mine_1', siteId: 'pl_00004_n01', assetId: 'asset_player-guild_miner_01', resourceType: 'titanium', productionRate: 5 });
-const MINE_2 = createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'mine_2', siteId: 'pl_00004_n02', assetId: 'asset_player-guild_miner_02', resourceType: 'titanium', productionRate: 3 });
-const PROFILE = createSetProductionProfileAction({ guildId: 'player-guild', systemId: 'sys_0002', goods: { titanium: { order: ['syndicate', 'downstream', 'stockpile'] } } });
+const MINE_1 = createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'mine_1', siteId: HOME_MINE, assetId: 'asset_player-guild_miner_01', resourceType: 'titanium', productionRate: 5 });
+const MINE_2 = createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'mine_2', siteId: HOME_MINE_2, assetId: 'asset_player-guild_miner_02', resourceType: 'titanium', productionRate: 3 });
+const PROFILE = createSetProductionProfileAction({ guildId: 'player-guild', systemId: HOME_SYSTEM, goods: { titanium: { order: ['syndicate', 'downstream', 'stockpile'] } } });
 
 // --- 1. round-trip determinism (the headline) ------------------------------
 
@@ -357,7 +358,7 @@ test('no-op proof: pure engine path (persistence OFF) matches the golden hash', 
     '…and the demand average at the balanced-galaxy assumption, both untouched because this run crosses no boundary');
   assert.equal(s.priceHistory, undefined,
     'a 2-tick run takes no price sample at all (the first fine bucket closes at tick 15), which is why the three goldens above did not move');
-  assert.deepEqual(s.guilds[0].productionHistory, { sys_0002: { titanium: { prod: [5, 5], cons: [0, 0] } } },
+  assert.deepEqual(s.guilds[0].productionHistory, { [HOME_SYSTEM]: { titanium: { prod: [5, 5], cons: [0, 0] } } },
     'the stripped-equals-old proof above is only a proof if there was really history to strip');
   // ...and likewise for the assets: the three unchanged hashes only mean something if
   // this run really did grant an inventory and occupy one machine out of it.

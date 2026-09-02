@@ -10,6 +10,7 @@
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+const { HOME_SYSTEM, HOME_PLANET, HOME_MINE } = require('./home-anchor.js');
 const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
@@ -44,8 +45,8 @@ async function req(method, path, body) {
   return { status: res.status, body: await res.json() };
 }
 const reset = () => req('POST', '/reset');
-const found = (over = {}) => req('POST', '/action', { type: 'foundGuild', guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: 'sys_0002', ...over });
-const mine = (over = {}) => req('POST', '/action', { type: 'establishVenture', guildId: 'player-guild', ventureId: 'm1', siteId: 'pl_00004_n01', assetId: 'asset_player-guild_miner_01', resourceType: 'titanium', productionRate: 5, ...over });
+const found = (over = {}) => req('POST', '/action', { type: 'foundGuild', guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: HOME_SYSTEM, ...over });
+const mine = (over = {}) => req('POST', '/action', { type: 'establishVenture', guildId: 'player-guild', ventureId: 'm1', siteId: HOME_MINE, assetId: 'asset_player-guild_miner_01', resourceType: 'titanium', productionRate: 5, ...over });
 
 // --- read endpoints --------------------------------------------------------
 
@@ -753,18 +754,18 @@ test('GET /starters lists the seed\'s startable home systems', async () => {
   assert.deepEqual(Object.keys(s0).sort(), ['id', 'name', 'ring', 'terranHomeworldId']);
   // Starter-eligible ⟺ it has a Terran homeworld, so none may be null.
   assert.ok(body.starters.every((s) => typeof s.terranHomeworldId === 'string' && s.terranHomeworldId.length > 0));
-  // Deterministic, id-sorted; sys_0002 is the known first starter (the old form default).
-  assert.equal(s0.id, 'sys_0002');
+  // Deterministic, id-sorted; the endpoint's first starter matches the fixture's HOME_SYSTEM.
+  assert.equal(s0.id, HOME_SYSTEM);
   for (let i = 1; i < body.starters.length; i++) {
     assert.ok(body.starters[i - 1].id < body.starters[i].id, 'starters must be id-sorted');
   }
 });
 
 test('GET /system/:id returns a system\'s static layout (planets, nodes, slots)', async () => {
-  const { status, body } = await req('GET', '/system/sys_0002');
+  const { status, body } = await req('GET', `/system/${HOME_SYSTEM}`);
   assert.equal(status, 200);
-  assert.equal(body.id, 'sys_0002');
-  assert.equal(body.terranHomeworldId, 'pl_00004');
+  assert.equal(body.id, HOME_SYSTEM);
+  assert.equal(body.terranHomeworldId, HOME_PLANET);
   assert.equal(body.planets.length, 1);
   const hw = body.planets[0];
   assert.equal(hw.archetype, 'terran');
@@ -841,12 +842,12 @@ test('a founded guild\'s snapshot carries per-system stockpiles and each venture
   const { body } = await req('POST', '/tick'); // one tick so the mine mints
   const g = body.guilds[0];
   // Per-system breakdown (ruling B1): titanium pooled in the home system.
-  assert.deepEqual(g.stockpilesBySystem, { sys_0002: { titanium: 5 } });
+  assert.deepEqual(g.stockpilesBySystem, { [HOME_SYSTEM]: { titanium: 5 } });
   // Flat total still present and equal to the sum across systems.
   assert.equal(g.stockpiles.titanium, 5);
   // The venture carries its systemId and the reserved commitment placeholder (0).
   const v = body.ventures[0];
-  assert.equal(v.systemId, 'sys_0002');
+  assert.equal(v.systemId, HOME_SYSTEM);
   assert.equal(v.syndicateCommitment, 0);
 });
 

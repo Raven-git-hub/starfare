@@ -10,6 +10,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { HOME_SYSTEM } = require('./home-anchor.js');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -194,7 +195,7 @@ test('POST /admin/galaxy/delete returns the server to NO GALAXY, and nothing cra
     const snap = await get(port, '/snapshot');
     assert.equal(snap.status, 200);
     assert.equal(snap.body.state, 'no-galaxy');
-    for (const p of ['/starters', '/system/sys_0002']) {
+    for (const p of ['/starters', `/system/${HOME_SYSTEM}`]) {
       const r = await get(port, p);
       assert.equal(r.body.state, 'no-galaxy', `${p} answers the state`);
     }
@@ -203,7 +204,7 @@ test('POST /admin/galaxy/delete returns the server to NO GALAXY, and nothing cra
       assert.ok(r.status < 500, `${p} refuses gracefully, got ${r.status}`);
       assert.equal(r.body.state, 'no-galaxy');
     }
-    const act = await post(port, '/action', { type: 'foundGuild', guildId: 'g', credits: 0, homeSystemId: 'sys_0002' });
+    const act = await post(port, '/action', { type: 'foundGuild', guildId: 'g', credits: 0, homeSystemId: HOME_SYSTEM });
     assert.ok(act.status < 500);
     assert.equal(act.body.state, 'no-galaxy');
 
@@ -338,11 +339,11 @@ test('with no persist volume the engine path is unchanged (hash-identical)', () 
 
   assert.equal(getSeedNumber(), 7331, 'the default index is still the committed seed');
   let a = createZeroState();
-  a = advance(a, [createFoundGuildAction({ guildId: 'p', name: 'P', credits: 120, influence: 100, homeSystemId: 'sys_0002' })]).state;
+  a = advance(a, [createFoundGuildAction({ guildId: 'p', name: 'P', credits: 120, influence: 100, homeSystemId: HOME_SYSTEM })]).state;
   a = advance(a, []).state;
 
   let b = createZeroState();
-  b = advance(b, [createFoundGuildAction({ guildId: 'p', name: 'P', credits: 120, influence: 100, homeSystemId: 'sys_0002' })]).state;
+  b = advance(b, [createFoundGuildAction({ guildId: 'p', name: 'P', credits: 120, influence: 100, homeSystemId: HOME_SYSTEM })]).state;
   b = advance(b, []).state;
 
   assert.equal(hashState(a), hashState(b));
