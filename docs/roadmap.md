@@ -285,6 +285,8 @@ Rulings needed from the project owner. "Accept proposal" is a valid answer to an
 - [ ] Decide node **richness/yield** (slice A left it ungenerated — nodes carry only `id` + `resourceType`; a node's richness is an undecided number kept out of the canonical seed until designed)
 - [ ] Decide `Planet.stats`' fate (#33): build or delete
 
+- [ ] **Fuel `BASE_GRANT_PER_GP` recalibration — downstream of the waystation rebalance (ruled 02-09-26, `fuel-supply-and-allocation.md §2.2`).** The grant base is confirmed contribution-relative (not consumption-relative); its *number* must be re-measured on the regenerated seed, because per-trade fuel cost is waystation geometry and the 9 → 96 rebalance rewrites it. Sequence: seed v2.0 → re-measure per-trade fuel → set `BASE_GRANT_PER_GP` `[FIRST-CUT]` from (intended trades/cycle × per-trade fuel × thin-surplus margin ÷ par GP) → validate in play. The waystation slice above unblocks it.
+
 **Exit criteria:** a committed seed regenerable from a published integer, with the galaxy layer visible in at least one client.
 
 ---

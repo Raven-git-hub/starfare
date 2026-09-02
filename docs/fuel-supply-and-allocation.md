@@ -168,8 +168,7 @@ in `phase-1-tuning.md`; this rules the SHAPE.*
   Guild Points (`points-and-reputation.md §1.0`) — bigger footprint, bigger base — and the mean-line modifier
   (§3 there, `[0.3, 1.5]`) scales it by how well it contributes *relative to* that size. GP is both the base and
   the divisor inside the modifier's expected line, which is exactly "draw sized by reputation-against-size"
-  (§0). *(A demand/consumption-relative base is a possible later refinement, deferred to 5b, which builds the
-  consumption tracking anyway.)*
+  (§0). *(demand/consumption-relative base was considered and **ruled against** 02-09-26 (see §2.2): the base stays contribution-relative, and the open lever is the calibration of `BASE_GRANT_PER_GP`, which is downstream of the seed.)*
 - **Integer fuel: `round(…)`.** This is where slice 4's deliberately-unrounded float modifier meets integer
   fuel (§15.2) — the rounding is ruled HERE, at the point of grant, and nowhere upstream.
 
@@ -193,6 +192,57 @@ of §1.2, correct and intended for this cut.
 
 **Out of 5a:** the dynamic price controller (5b); the Producer Guilds (their own later slice — the influx is
 abstracted, §1.1); closure; illegal refining; the grey market.
+
+### 2.2 The grant base — contribution confirmed, calibration is the open lever (ruled 02-09-26)
+
+§2.1's parenthetical floated a *demand/consumption-relative* base as a later refinement. **Ruled against —
+closed, not deferred.** The grant stays **contribution-relative** (`BASE_GRANT_PER_GP · GP · modifier`, unchanged
+shape). The reason is §2's own thesis: issuance is sized to *what you contribute relative to your size*, never
+*what you took last cycle*. A consumption-relative base would (a) make expansion non-strategic — max out
+transport for one cycle and the grant follows — and (b) be directly exploitable: above the line, churn junk
+trades to inflate your assessed need and the grant returns more fuel than you burned. The GP/RP system exists
+precisely to make expanding a committed, reputation-bearing decision; letting consumption drive the grant would
+route around it. **You get what you contribute, not what you took.**
+
+So the *shape* was never wrong. The open problem is the **calibration** of `BASE_GRANT_PER_GP`, and it is real:
+the base bites as a throttle only if an **on-line** guild draws roughly what it *consumes*. Consumption is
+`trades × per-trade fuel`, and per-trade fuel is `ceil(distance-to-nearest-waystation · SYNDICATE_HAULER_BURN_RATE)`
+— pure seed geometry. Measured on the current seed (9 waystations, 02-09-26): mean **~30 fuel/trade** (median 28,
+range 1–78), so a par guild's ~150/cycle grant is **~5 trades/cycle**, and the modifier band `[0.3, 1.5]` reads
+as **~1.5 to ~7.5 trades/cycle** at par size. That band *is* the squeeze, in the game's own units.
+
+**Two sub-rulings settle the band's shape:**
+
+- **Thin surplus on the line (ruled).** An on-line guild (modifier 1.0) draws its consumption **plus a small
+  margin** (`[FIRST-CUT]` ~10–15%), so it carries a thin buffer and a real **deficit begins only *below* the
+  line**. Dead-on-the-line-as-break-even was rejected as a knife-edge that starves on a normal price swing.
+- **The war chest is the storyteller's, not the fuel layer's (ruled).** Above-line guilds accumulate a slow,
+  bounded surplus — the intended power structure ("hoarders forcing others out"). Contribution-pegging already
+  caps that growth to *linear and top-tier-only* (a guild's grant plateaus at 1.5× its own consumption). **No
+  fuel-side cap or decay; §3's bank-forever stands.** A guild grown too comfortable is what the Rimworld-style
+  storyteller (Phase 6) is for.
+
+**⚠ The calibration is DOWNSTREAM of the seed, and must not be set before it.** Per-trade fuel cost is entirely
+waystation geometry, and Track G's **waystation rebalance (9 → 96)** rewrites it wholesale — shorter, far more
+uniform routes (density scaling ≈ 1/√density puts the new mean near ~9 fuel/trade and compresses the 1–78
+spread). The current ~30 is *noise about to be deleted*; calibrating against it is wasted work. So the order is
+fixed:
+
+1. Run the seed v2.0 slices (Track G node + waystation rebalance) first.
+2. On the regenerated seed, **re-measure** the per-trade fuel distribution.
+3. Set `BASE_GRANT_PER_GP` `[FIRST-CUT]` = *(intended trades/cycle for an on-line par guild) × (per-trade fuel,
+   measured) × (1 + thin-surplus margin) ÷ (par GP)*. The one design input is the **intended trade pace**;
+   everything else is measured, not invented.
+4. Validate in playtest and retune — the number is a first cut, not a settled figure.
+
+**The architecture is sound — this is a number, not a re-plumb.** A conservation audit (02-09-26) confirmed the
+built engine already does the load-bearing things right: grants are rationed against the reserve (`rationGrants`,
+with a hard-floor assert), the price is read off the **post-issuance** pool against a demand-relative target,
+routes burn a **fixed unit** quantity (credits derived at sale, never stored), and the hoard is marked to market
+on read. No unit leak survived the hunt. The only fuel change this ruling implies is the recalibration of
+`BASE_GRANT_PER_GP` (plus the thin-surplus margin), both in `phase-1-tuning.md`. *(`sim/issuance.js`'s comment
+still calls a consumption-relative base "a possible later refinement, deferred to 5b" — reconcile that comment
+to this ruling in the recalibration slice, when code is touched.)*
 
 ## 3. Holding fuel — banking, no cap, consume-only
 
