@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Starfare Guild Hall</title>
+<!-- DESIGN MOCKUP - the visual + interaction contract for the GUILD HALL tab (docs/mockups). Not shipped as-is; the game renders this shape inside client/game.html, reading the live snapshot. Council art = client/assets/mission/CouncilChamber.jpg. See docs/guild-hall.md for the data-point audit + wiring plan. -->
+<!-- DESIGN MOCKUP — the Guild Hall tab, matched to docs/mockups/trade-panel.html's language. -->
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --void:#0d0f14; --panel:#14171e; --panel2:#181c24; --panel3:#1c212b;
+    --ink:#E8DFC8; --ink2:#b7b09a; --ink3:#6f7687; --ink4:#454b58;
+    --amber:#C9A227; --amber2:#e3c04a; --amber-dim:rgba(201,162,39,.30);
+    --line:rgba(232,223,200,.10); --line2:rgba(232,223,200,.18);
+    --up:#5fb98a; --down:#e0796b;
+    --mono:'IBM Plex Mono',ui-monospace,'SF Mono',monospace;
+    --serif:'Cinzel',Georgia,serif;
+    --hero:236px; --thero:472px;
+    --council:url("../../client/assets/mission/CouncilChamber.jpg");
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0; background:
+      radial-gradient(120% 80% at 80% -10%, rgba(201,162,39,.06), transparent 60%),
+      var(--void);
+    color:var(--ink); font-family:var(--mono); font-size:14px; line-height:1.45;
+    -webkit-font-smoothing:antialiased; padding:22px;}
+  .wrap{margin:0 auto;}
+
+  /* masthead */
+  .mast{display:flex; align-items:baseline; justify-content:space-between; padding-bottom:14px; margin-bottom:18px; border-bottom:1px solid var(--line);}
+  .mast .brand{font-family:var(--serif); font-weight:600; letter-spacing:.14em; font-size:14px; color:var(--ink2); text-transform:uppercase;}
+  .mast .brand b{color:var(--amber); font-weight:700;}
+  .mast .ctx{font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3);}
+  .mast .ctx b{color:var(--amber2); font-weight:600;}
+
+  /* three-zone body: [ tab rail | centre | council art ] */
+  .body{display:grid; grid-template-columns:var(--hero) minmax(0,1fr) var(--thero); gap:16px; align-items:stretch; min-height:560px;}
+  @media (max-width:1080px){ .body{grid-template-columns:1fr;} .thero{min-height:300px;} }
+
+  .card{background:var(--panel2); border:1px solid var(--line); border-radius:10px;}
+  .card-h{display:flex; align-items:center; justify-content:space-between; padding:13px 16px; border-bottom:1px solid var(--line);}
+  .card-h .t{font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink2); font-weight:600;}
+  .tag{font-size:9px; letter-spacing:.14em; text-transform:uppercase; padding:3px 8px; border-radius:20px; border:1px solid var(--line2); color:var(--ink3);}
+  .tag.soon{color:var(--amber2); border-color:var(--amber-dim);}
+
+  /* hero panels share the card shell */
+  .hero{background:var(--panel2); border:1px solid var(--line); border-radius:10px; overflow:hidden; display:flex; flex-direction:column;}
+  .hero .zhead{font-family:var(--mono); font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3); padding:13px 15px 4px;}
+  .hero .zsub{font-family:var(--serif); font-size:18px; color:var(--ink); padding:0 15px 13px; border-bottom:1px solid var(--line); letter-spacing:.02em;}
+  .hero .zsub .m{display:block; font-family:var(--mono); font-size:10px; color:var(--ink3); letter-spacing:.06em; margin-top:3px; text-transform:uppercase;}
+
+  /* LEFT: the tab rail */
+  .tabs{display:flex; flex-direction:column; padding:11px; gap:3px; flex:1;}
+  .tab{display:flex; align-items:center; gap:11px; width:100%; text-align:left; cursor:pointer;
+    font-family:var(--mono); font-size:12.5px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--ink3); background:var(--panel); border:1px solid var(--line); border-radius:6px;
+    padding:12px 13px; transition:.12s;}
+  .tab .dot{width:6px; height:6px; border-radius:50%; background:var(--ink4); flex:none; transition:.12s;}
+  .tab:hover{color:var(--ink2); border-color:var(--line2);}
+  .tab.on{color:var(--ink); background:#1d2230; border-color:var(--amber); box-shadow:inset 0 0 0 1px var(--amber-dim);}
+  .tab.on .dot{background:var(--amber); box-shadow:0 0 8px var(--amber);}
+  .tab .soon{margin-left:auto; font-size:8px; letter-spacing:.14em; color:var(--ink4); border:1px solid var(--line); border-radius:20px; padding:2px 6px;}
+  .railfoot{padding:12px 15px; border-top:1px solid var(--line); color:var(--ink4); font-size:10px; letter-spacing:.04em; line-height:1.5;}
+
+  /* CENTRE */
+  .centre{display:flex; flex-direction:column; min-width:0; gap:16px;}
+  .phead{display:flex; align-items:baseline; gap:14px;}
+  .phead h1{font-family:var(--serif); font-weight:600; letter-spacing:.03em; font-size:23px; margin:0; color:var(--ink);}
+  .phead .sub{font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3);}
+
+  .cbody{padding:16px 18px 18px;}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+
+  /* the mean-line gauge card */
+  .gauge-top{display:flex; align-items:flex-start; justify-content:space-between; padding:16px 18px 4px;}
+  .gauge-top .lab{font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3); max-width:230px; line-height:1.5;}
+  .gauge-top .mod{text-align:right;}
+  .gauge-top .mod .v{font-family:var(--mono); font-size:30px; font-weight:600; color:var(--up); line-height:1; font-variant-numeric:tabular-nums;}
+  .gauge-top .mod .c{font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3); margin-top:6px;}
+  .bar{position:relative; height:12px; border-radius:4px; background:var(--void); border:1px solid var(--line); margin:14px 18px 0; overflow:visible;}
+  .bar .line{position:absolute; top:-4px; bottom:-4px; left:50%; width:2px; background:var(--ink3);}
+  .bar .fill{position:absolute; top:0; bottom:0; left:50%; border-radius:0 3px 3px 0; background:linear-gradient(90deg, rgba(95,185,138,.10), rgba(95,185,138,.4));}
+  .bar .you{position:absolute; top:-3px; bottom:-3px; width:3px; background:var(--up); box-shadow:0 0 9px var(--up); border-radius:2px;}
+  .scale{display:flex; justify-content:space-between; margin:9px 18px 0; font-size:9px; letter-spacing:.1em; color:var(--ink4); text-transform:uppercase;}
+  .statrow{display:flex; gap:0; margin:16px 0 2px; border-top:1px solid var(--line);}
+  .statrow .st{flex:1; padding:13px 18px; border-right:1px solid var(--line);}
+  .statrow .st:last-child{border-right:none;}
+  .statrow .sv{font-family:var(--serif); font-weight:600; font-size:19px; color:var(--ink); font-variant-numeric:tabular-nums;}
+  .statrow .sv.pos{color:var(--up);} .statrow .sv.neg{color:var(--down);}
+  .statrow .sk{font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink4); margin-top:4px;}
+
+  .k{font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3); margin-bottom:10px;}
+  .big{font-family:var(--serif); font-weight:600; font-size:28px; color:var(--ink); line-height:1; font-variant-numeric:tabular-nums;}
+  .big .u{font-family:var(--mono); font-size:11px; color:var(--ink3); margin-left:7px; font-weight:400; letter-spacing:.04em;}
+  .big .c{color:var(--amber); font-size:18px; margin-right:1px;}
+  .sub2{color:var(--ink3); font-size:11px; margin-top:9px; line-height:1.55;}
+
+  .split{display:flex; margin-top:14px; border:1px solid var(--line); border-radius:6px; overflow:hidden;}
+  .split .seg{flex:1; padding:12px 15px; background:var(--panel);}
+  .split .seg+.seg{border-left:1px solid var(--line);}
+  .split .seg.dim{opacity:.5;}
+  .split .sk{font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3);}
+  .split .sv{font-family:var(--serif); font-weight:600; font-size:18px; margin-top:5px; color:var(--ink);}
+  .split .stag{display:inline-block; margin-top:7px; font-size:8px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink4); border:1px solid var(--line2); border-radius:20px; padding:2px 7px;}
+
+  .ledger{width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums;}
+  .ledger td{padding:11px 4px; border-bottom:1px solid var(--line);}
+  .ledger tr:last-child td{border-bottom:none;}
+  .ledger .lbl{color:var(--ink2);}
+  .ledger .num{text-align:right;}
+  .ledger .num.pos{color:var(--up);} .ledger .num.neg{color:var(--down);}
+  .ledger .tot td{border-top:1px solid var(--line2); padding-top:13px;}
+  .ledger .tot .lbl{color:var(--ink);}
+  .ledger .tot .num{font-family:var(--serif); font-weight:700; font-size:17px; color:var(--up);}
+
+  .vtable{width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums;}
+  .vtable th{text-align:left; font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink4); font-weight:400; padding:0 8px 11px;}
+  .vtable th.r,.vtable td.r{text-align:right;}
+  .vtable td{padding:12px 8px; border-top:1px solid var(--line); color:var(--ink);}
+  .vtable .gname{font-family:var(--serif); font-size:15px; color:var(--ink);}
+  .vtable .sysn{display:block; font-family:var(--mono); font-size:10px; color:var(--ink4); letter-spacing:.04em; margin-top:1px; text-transform:none;}
+  .pill{display:inline-block; font-size:10px; letter-spacing:.04em; padding:3px 9px; border-radius:20px; font-variant-numeric:tabular-nums;}
+  .pill.met{color:var(--up); background:rgba(95,185,138,.12);}
+  .pill.breach{color:var(--down); background:rgba(224,121,107,.12);}
+
+  .soon-panel{display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:44px 20px; color:var(--ink4); gap:14px; flex:1;}
+  .soon-panel .glyph{font-family:var(--serif); font-size:30px; color:var(--ink4);}
+  .soon-panel h2{font-family:var(--serif); font-weight:600; letter-spacing:.04em; color:var(--ink2); margin:0; font-size:19px;}
+  .soon-panel p{max-width:360px; line-height:1.6; font-size:12px; margin:0; color:var(--ink3);}
+  .soon-stub{margin-top:6px; width:100%; max-width:400px; display:flex; flex-direction:column; gap:8px;}
+  .soon-stub .row{height:40px; border:1px solid var(--line); border-radius:6px; background:var(--panel); opacity:.5;}
+
+  /* RIGHT: council chamber art hero */
+  .thero{position:relative; padding:0;}
+  .thero .art{position:absolute; inset:0; z-index:0; background-image:var(--council); background-size:cover; background-position:center; }
+  .thero .scrim{position:absolute; inset:0; z-index:1;
+    background:linear-gradient(180deg, rgba(13,15,20,.72) 0%, rgba(13,15,20,.12) 30%, rgba(13,15,20,.10) 55%, rgba(13,15,20,.92) 100%);}
+  .thero .ttop{position:relative; z-index:2; padding:13px 15px;}
+  .thero .ttop .zhead{padding:0; color:var(--ink3);}
+  .thero .tcenter{position:absolute; z-index:2; inset:0; display:flex; align-items:center; justify-content:center;}
+  .thero .gh{font-family:var(--serif); font-weight:700; letter-spacing:.22em; font-size:34px; color:var(--ink);
+    text-shadow:0 2px 22px rgba(13,15,20,.95), 0 1px 4px rgba(13,15,20,.95);}
+  .thero .assetnote{position:absolute; z-index:2; bottom:11px; left:0; right:0; text-align:center; font-size:9px; letter-spacing:.1em; color:var(--ink4);}
+</style>
+
+<div class="wrap">
+  <div class="mast">
+    <span class="brand"><b>Starfare</b> &middot; Guild Hall</span>
+    <span class="ctx">Cycle <b>0041</b> &middot; Day <b>41</b> &middot; tick <b>59040</b></span>
+  </div>
+
+  <div class="body">
+    <!-- LEFT HERO : tab rail -->
+    <aside class="hero">
+      <div class="zhead">Guild</div>
+      <div class="zsub">Weaver Guild<span class="m">Vega Reach &middot; founded cycle 12</span></div>
+      <div class="tabs" id="tabs">
+        <button class="tab on" data-p="standing"><span class="dot"></span>Standing</button>
+        <button class="tab" data-p="finance"><span class="dot"></span>Finance</button>
+        <button class="tab" data-p="ventures"><span class="dot"></span>Ventures</button>
+        <button class="tab" data-p="council"><span class="dot"></span>Council<span class="soon">Soon</span></button>
+        <button class="tab" data-p="forum"><span class="dot"></span>Forum<span class="soon">Soon</span></button>
+      </div>
+      <div class="railfoot">Standing, treasury &amp; your seat with the Syndicate.</div>
+    </aside>
+
+    <!-- CENTRE : selected panel -->
+    <div class="centre" id="centre"></div>
+
+    <!-- RIGHT HERO : council chamber art -->
+    <aside class="hero thero">
+      <div class="art"></div>
+      <div class="scrim"></div>
+      <div class="tcenter"><div class="gh">GUILD&nbsp;HALL</div></div>
+    </aside>
+  </div>
+</div>
+
+<script>
+  var GH2CSS = ''
+    + '.perf{display:grid;grid-template-columns:1fr 82px 82px;gap:12px;align-items:start;padding:14px 16px 2px;}'
+    + '.perfwrap{position:relative;}'
+    + '.perfsvg{width:100%;height:150px;display:block;}'
+    + '.perfline{fill:none;stroke:var(--ink);stroke-width:2;vector-effect:non-scaling-stroke;}'
+    + '.perfctr{stroke:var(--amber);stroke-dasharray:3 3;opacity:.75;vector-effect:non-scaling-stroke;}'
+    + '.perfx{display:flex;justify-content:space-between;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink4);margin-top:3px;}'
+    + '.vg{display:flex;flex-direction:column;align-items:center;}'
+    + '.vgh{font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink3);margin-bottom:3px;}'
+    + '.vgsvg{width:70px;height:150px;display:block;}'
+    + '.vgtrack{fill:rgba(232,223,200,.05);stroke:var(--line2);}'
+    + '.vgctr{stroke:var(--amber);stroke-width:1.5;}'
+    + '.vgv{font-family:var(--mono);font-size:19px;font-weight:600;margin-top:3px;line-height:1;}'
+    + '.vgs{font-size:8px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink4);text-align:center;line-height:1.3;margin-top:4px;max-width:80px;}'
+    + '.perffoot{padding:9px 16px 15px;font-size:11px;line-height:1.55;color:var(--ink2);}'
+    + '.perffoot b{color:var(--ink);font-weight:500;} .perffoot .dn{color:var(--down);font-weight:600;}'
+    + '.hint{font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink4);}'
+    + '.sparkrow{display:flex;align-items:center;gap:9px;margin-top:9px;}'
+    + '.spark{width:120px;height:30px;} .spark polyline{fill:none;stroke:var(--amber2);stroke-width:1.5;vector-effect:non-scaling-stroke;}'
+    + '.sparklab{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink4);}'
+    + '.minihd{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);margin-bottom:10px;}'
+    + '.perf2{display:flex;flex-direction:column;}'
+    + '.perf2 .perfsvg{height:118px;}'
+    + '.gaugerow{display:flex;justify-content:center;gap:26px;margin-top:8px;}'
+    + '.gaugerow .vgsvg{height:126px;}'
+    + '.donutwrap{display:flex;align-items:center;gap:14px;margin-top:2px;}'
+    + '.donut{width:124px;height:124px;flex:none;}'
+    + '.dc1{fill:var(--ink);font-family:var(--mono);font-size:19px;font-weight:600;text-anchor:middle;}'
+    + '.dc2{fill:var(--ink4);font-size:7.5px;letter-spacing:.14em;text-anchor:middle;text-transform:uppercase;}'
+    + '.rlegend{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0;}'
+    + '.rl{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink2);}'
+    + '.rl.dim{color:var(--ink4);}'
+    + '.rlc{width:9px;height:9px;border-radius:2px;flex:none;}'
+    + '.rll{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'
+    + '.rlv{font-family:var(--mono);color:var(--ink);font-size:11px;}'
+    + '.rl.dim .rlv{color:var(--ink4);}'
+    + '.rlp{font-family:var(--mono);color:var(--ink3);font-size:10px;width:36px;text-align:right;}'
+    + '.topg{align-items:stretch;}'
+    + '.topg > .card{display:flex;flex-direction:column;}'
+    + '.topg > .card > .cbody{display:flex;flex-direction:column;flex:1;min-height:0;}'
+    + '.perfrow{display:grid;grid-template-columns:1fr 54px 54px;gap:6px;align-items:stretch;flex:1;min-height:0;margin-top:2px;}'
+    + '.perfrow .perfwrap{display:flex;flex-direction:column;min-height:0;}'
+    + '.perfrow .perfsvg{flex:1;height:auto;min-height:70px;}'
+    + '.perfrow .vg{min-height:0;}'
+    + '.perfrow .vgsvg{width:54px;flex:1;height:auto;min-height:90px;}'
+    + '.perfrow .vgv{font-size:15px;}'
+    + '.perfrow .vgh{margin-bottom:4px;}'
+    + '.donutwrap2{display:flex;flex-direction:column;align-items:center;gap:15px;margin-top:6px;}'
+    + '.donutwrap2 .donut{width:156px;height:156px;}'
+    + '.rlegend2{display:flex;flex-direction:column;gap:8px;width:100%;}'
+    + '.sbhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:20px;}'
+    + '.sbnote{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink4);}'
+    + '.sb{padding:0 2px;}'
+    + '.sblabels{position:relative;height:26px;margin-bottom:3px;}'
+    + '.sblab{position:absolute;font-family:var(--mono);font-size:14px;font-weight:600;white-space:nowrap;bottom:0;}'
+    + '.sblab .cap{font-size:8px;letter-spacing:.11em;text-transform:uppercase;display:block;line-height:1;margin-bottom:2px;color:var(--ink4);}'
+    + '.sblab.blue{color:#5aa9e6;}'
+    + '.sblab.red{color:var(--down);text-align:right;}'
+    + '.sbtrack{position:relative;height:34px;border-radius:5px;background:rgba(232,223,200,.05);border:1px solid var(--line2);overflow:hidden;}'
+    + '.sbred{position:absolute;left:0;top:0;bottom:0;background:var(--down);opacity:.9;}'
+    + '.sbblue{position:absolute;top:0;bottom:0;background:#4f93d1;opacity:.92;}'
+    + '.sbfoot{display:flex;justify-content:space-between;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink4);margin-top:8px;}';
+
+  function ghPerf(data){
+    var lo=0.30,hi=1.50,ctr=1.00,W=300,H=150,padx=6,pady=12,pw=W-padx*2,ph=H-pady*2;
+    function X(i){return (padx+i*(pw/(data.length-1))).toFixed(1);}
+    function Y(m){return (pady+(hi-m)/(hi-lo)*ph).toFixed(1);}
+    var yc=Y(ctr);
+    var pts=data.map(function(m,i){return X(i)+','+Y(m);});
+    var area='M '+X(0)+','+yc+' L '+pts.join(' L ')+' L '+X(data.length-1)+','+yc+' Z';
+    return '<svg viewBox="0 0 '+W+' '+H+'" class="perfsvg" preserveAspectRatio="none">'
+      + '<defs><clipPath id="cU"><rect x="0" y="0" width="'+W+'" height="'+yc+'"/></clipPath>'
+      + '<clipPath id="cD"><rect x="0" y="'+yc+'" width="'+W+'" height="'+(H-yc)+'"/></clipPath></defs>'
+      + '<path d="'+area+'" fill="var(--up)" opacity=".26" clip-path="url(#cU)"/>'
+      + '<path d="'+area+'" fill="var(--down)" opacity=".26" clip-path="url(#cD)"/>'
+      + '<line x1="0" y1="'+yc+'" x2="'+W+'" y2="'+yc+'" class="perfctr"/>'
+      + '<polyline points="'+pts.join(' ')+'" class="perfline"/></svg>';
+  }
+  function ghVgauge(v,head,sub){
+    var lo=0.30,hi=1.50,ctr=1.00,top=8,bot=142,span=bot-top;
+    function Y(m){return bot-(m-lo)/(hi-lo)*span;}
+    var yc=Y(ctr),ym=Y(v),up=v>=ctr,col=up?'var(--up)':'var(--down)';
+    var fy=Math.min(yc,ym).toFixed(1),fh=Math.abs(ym-yc).toFixed(1);
+    return '<div class="vg"><div class="vgh">'+head+'</div>'
+      + '<svg viewBox="0 0 70 150" class="vgsvg" preserveAspectRatio="none">'
+      +   '<rect x="26" y="'+top+'" width="18" height="'+span+'" rx="3" class="vgtrack"/>'
+      +   '<rect x="26" y="'+fy+'" width="18" height="'+fh+'" fill="'+col+'" opacity=".5"/>'
+      +   '<line x1="19" y1="'+yc.toFixed(1)+'" x2="51" y2="'+yc.toFixed(1)+'" class="vgctr"/>'
+      +   '<rect x="23" y="'+(ym-1.3).toFixed(1)+'" width="24" height="2.6" fill="'+col+'"/>'
+      + '</svg>'
+      + '<div class="vgv" style="color:'+col+'">&times;'+v.toFixed(2)+'</div>'
+      + (sub?'<div class="vgs">'+sub+'</div>':'')+'</div>';
+  }
+  function ghSpark(data){
+    var mn=Math.min.apply(null,data),mx=Math.max.apply(null,data),W=120,H=30,p=3;
+    function X(i){return (p+i*((W-2*p)/(data.length-1))).toFixed(1);}
+    function Y(v){return (p+(mx-v)/((mx-mn)||1)*(H-2*p)).toFixed(1);}
+    var pts=data.map(function(v,i){return X(i)+','+Y(v);});
+    return '<svg viewBox="0 0 '+W+' '+H+'" class="spark" preserveAspectRatio="none"><polyline points="'+pts.join(' ')+'"/></svg>';
+  }
+
+  function ghDonut(segs,cLabel,cSub){
+    var total=segs.reduce(function(s,x){return s+x.value;},0)||1;
+    var R=54,r=32,cx=64,cy=64,a=-Math.PI/2,arcs='';
+    segs.forEach(function(sg){
+      if(sg.value<=0)return;
+      var f=sg.value/total,a2=a+f*2*Math.PI;
+      var x1=(cx+R*Math.cos(a)).toFixed(2),y1=(cy+R*Math.sin(a)).toFixed(2);
+      var x2=(cx+R*Math.cos(a2)).toFixed(2),y2=(cy+R*Math.sin(a2)).toFixed(2);
+      var xi2=(cx+r*Math.cos(a2)).toFixed(2),yi2=(cy+r*Math.sin(a2)).toFixed(2);
+      var xi1=(cx+r*Math.cos(a)).toFixed(2),yi1=(cy+r*Math.sin(a)).toFixed(2);
+      var lg=f>0.5?1:0;
+      arcs+='<path d="M '+x1+' '+y1+' A '+R+' '+R+' 0 '+lg+' 1 '+x2+' '+y2+' L '+xi2+' '+yi2+' A '+r+' '+r+' 0 '+lg+' 0 '+xi1+' '+yi1+' Z" fill="'+sg.color+'"/>';
+      a=a2;
+    });
+    var legend=segs.map(function(sg){
+      var pct=sg.value>0?Math.round(sg.value/total*100)+'%':(sg.tag||'&mdash;');
+      return '<div class="rl'+(sg.value<=0?' dim':'')+'"><span class="rlc" style="background:'+sg.color+'"></span>'
+        +'<span class="rll">'+sg.label+'</span><span class="rlv">'+(sg.value>0?sg.value.toLocaleString():'')+'</span><span class="rlp">'+pct+'</span></div>';
+    }).join('');
+    return '<div class="donutwrap2"><svg viewBox="0 0 128 128" class="donut">'+arcs+'</svg>'
+      +'<div class="rlegend2">'+legend+'</div></div>';
+  }
+
+  function ghStockBar(startTotal, legal, illegal){
+    var fmt=function(v){return '&#162;'+v.toLocaleString();};
+    var pR=illegal/startTotal*100, pB=legal/startTotal*100;
+    var redHead=pR, blueHead=pR+pB;                 // fill grows from the LEFT: [red][blue], empty on the right
+    var out='<div class="sb"><div class="sblabels">';
+    if(illegal>0) out+='<div class="sblab red" style="right:'+(100-redHead).toFixed(2)+'%"><span class="cap">Illegal</span>'+fmt(illegal)+'</div>';
+    out+='<div class="sblab blue" style="right:'+(100-blueHead).toFixed(2)+'%"><span class="cap">Legal remaining</span>'+fmt(legal)+'</div>';
+    out+='</div><div class="sbtrack">';
+    if(illegal>0) out+='<div class="sbred" style="left:0;width:'+pR.toFixed(2)+'%"></div>';
+    out+='<div class="sbblue" style="left:'+pR.toFixed(2)+'%;width:'+pB.toFixed(2)+'%"></div>';
+    out+='</div><div class="sbfoot"><span>0</span><span>start of cycle &#162;'+startTotal.toLocaleString()+'</span></div>';
+    return out+'</div>';
+  }
+
+  var PANELS = {
+    standing: function(){ return ''
+      + '<style>'+GH2CSS+'</style>'
+      + phead('Standing','Where you sit with the Syndicate — and where this cycle is taking you')
+      + '<div class="grid2 topg">'
+      +   '<div class="card"><div class="cbody"><div class="minihd">Performance</div>'
+      +     '<div class="perfrow">'
+      +       '<div class="perfwrap"><div class="vgh" style="visibility:hidden">&middot;</div>'+ghPerf([0.82,0.90,1.04,1.19,1.24,1.12,0.95,0.86,1.01,1.09])+'<div class="perfx"><span>10 ago</span><span>now</span></div></div>'
+      +       ghVgauge(1.09,'Current','')
+      +       ghVgauge(0.75,'Predicted','')
+      +     '</div>'
+      +   '</div></div>'
+      +   '<div class="card"><div class="cbody"><div class="minihd">Reputation sources</div>'
+      +     ghDonut([{label:'Ventures',value:1150,color:'#C9A227'},{label:'System holdings',value:480,color:'#e3c04a'},{label:'Deuterium production',value:220,color:'#5fb98a'},{label:'Transport contracts',value:0,color:'#6f7687',tag:'soon'},{label:'Council &amp; politics',value:0,color:'#8a7aa8',tag:'soon'}])
+      +   '</div></div>'
+      + '</div>'
+      + '<div class="card"><div class="cbody">'
+      +   '<div class="sbhead"><div class="minihd" style="margin-bottom:0">Fuel-credit stockpile &middot; this cycle</div><div class="sbnote">derived at &#162;12.1/q this tick</div></div>'
+      +   ghStockBar(42000, 28000, 6000)
+      + '</div></div>'; },
+
+    finance: function(){ return ''
+      + phead('Finance','Treasury, revenue and running costs this cycle')
+      + '<div class="grid2">'
+      +   simple('Credits on hand','48,210','&#162;','')
+      +   simple('Net this cycle','+1,340','&#162;','Revenue less the fees and fuel you spent this cycle.')
+      + '</div>'
+      + '<div class="card"><div class="card-h"><span class="t">This cycle — revenue &amp; costs</span></div><div class="cbody">'
+      +   '<table class="ledger">'
+      +     lrow('Sales to the Syndicate','+6,820') + lrow('Toll &amp; tariff income','+410')
+      +     + lrow('Licence fees','&#8722;4,900') + lrow('Fuel spent on trade routes','&#8722;990')
+      +     + '<tr class="tot"><td class="lbl">Net</td><td class="num">+&#162;1,340</td></tr>'
+      +   '</table>'
+      + '</div></div>'; },
+
+    ventures: function(){ return ''
+      + phead('Ventures','Your holdings, and how each is moving your reputation')
+      + '<div class="card"><div class="cbody"><table class="vtable">'
+      +   '<tr><th>Venture</th><th>Tier</th><th class="r">Commit</th><th class="r">RP</th><th class="r">This cycle</th></tr>'
+      +   vrow('Battery Cells','Kepler Reach','T2','100%','300','met','+15')
+      +   vrow('Lead','Vega Reach','T1','50%','118','met','+5')
+      +   vrow('Silica','Vega Reach','T1','50%','112','met','+5')
+      +   vrow('Titanium','Vega Reach','T1','0%','0','breach','&#8722;3')
+      +   vrow('Copper','Halcyon','T1','100%','214','met','+10')
+      +   '</table>'
+      +   '<div class="sub2">A venture <b style="color:var(--up)">meets</b> when it delivers its promised share and gains reputation; it <b style="color:var(--down)">breaches</b> when it falls short and loses it. The sum moves next cycle&rsquo;s standing.</div>'
+      + '</div></div>'; },
+
+    council: function(){ return soon('&#9878;','Council','Syndicate council motions and tallies will surface here — and your guild&rsquo;s vote. Pressure over prohibition: the rules are what the council carries, not what the engine forbids.'); },
+    forum: function(){ return soon('&#9993;','Forum','Open channels between guilds — strike deals, issue threats, post to the galaxy. Wired up once the messaging layer lands.'); }
+  };
+
+  function phead(t,s){ return '<div class="phead"><h1>'+t+'</h1><span class="sub">'+s+'</span></div>'; }
+  function simple(k,big,u,sub){ return '<div class="card"><div class="cbody"><div class="k">'+k+'</div>'
+    + '<div class="big">'+(k.indexOf('price')<0&&k.indexOf('Credits')<0&&k.indexOf('Net')<0?'':'<span class="c">'+(u.indexOf('&#162;')>=0?'&#162;':'')+'</span>')+big
+    + '<span class="u">'+u+'</span></div>'+(sub?'<div class="sub2">'+sub+'</div>':'')+'</div></div>'; }
+  function st(v,k,c){ return '<div class="st"><div class="sv'+(c?' '+c:'')+'">'+v+'</div><div class="sk">'+k+'</div></div>'; }
+  function lrow(l,n){ var neg=n.indexOf('&#8722;')===0; return '<tr><td class="lbl">'+l+'</td><td class="num '+(neg?'neg':'pos')+'">'+(neg?'&#8722;&#162;'+n.slice(7):'+&#162;'+n.slice(1))+'</td></tr>'; }
+  function vrow(g,sys,t,c,rp,stt,d){ var neg=d.indexOf('&#8722;')===0;
+    return '<tr><td><span class="gname">'+g+'</span><span class="sysn">'+sys+'</span></td><td>'+t+'</td><td class="r">'+c+'</td><td class="r">'+rp+'</td>'
+      + '<td class="r"><span class="pill '+(stt==='met'?'met':'breach')+'">'+d+'</span></td></tr>'; }
+  function soon(glyph,title,body){ return phead(title,'Not yet built — reserved')
+    + '<div class="card" style="flex:1; display:flex; flex-direction:column;"><div class="soon-panel">'
+    + '<div class="glyph">'+glyph+'</div><h2>'+title+' &mdash; coming soon</h2><p>'+body+'</p>'
+    + '<div class="soon-stub"><div class="row"></div><div class="row"></div><div class="row"></div></div></div></div>'; }
+
+  var centre = document.getElementById('centre');
+  function show(p){ centre.innerHTML = PANELS[p](); }
+  document.getElementById('tabs').addEventListener('click', function(e){
+    var b = e.target.closest('.tab'); if(!b) return;
+    var all = document.querySelectorAll('.tab');
+    for(var i=0;i<all.length;i++) all[i].classList.toggle('on', all[i]===b);
+    show(b.dataset.p);
+  });
+  show('standing');
+</script>
