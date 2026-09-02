@@ -1,9 +1,11 @@
 'use strict';
 
-// Tests sim/seed.js — the engine's read-only window onto data/seed.json. These
-// resolve real ids from the committed seed (deterministic, so the ids are
-// stable): pl_00001 is a rocky planet whose n02 node is titanium and n01 is
-// lead, with settlement slots s01.. (verified against the generated seed).
+// Tests sim/seed.js — the engine's read-only window onto data/seed.json. The
+// resolver examples key off the Terran homeworld (HOME_PLANET, from home-anchor.js):
+// only Terran worlds are stable across a seed regen — guaranteed 15 nodes, 15 slots,
+// n01/n02 titanium (§2) — so those are the only ids these tests can safely pin.
+// Non-home, non-Terran planets (rocky pl_00001, sys_0009's mix) are seed-7331
+// accidents and are deliberately avoided here.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -13,22 +15,23 @@ const {
   getStarterSystems, isStarterSystem, getTerranHomeworld, getSystemLayout,
   siteName, roman,
 } = require('../seed.js');
+const { HOME_SYSTEM, HOME_PLANET, HOME_MINE_2, HOME_SLOT } = require('./home-anchor.js');
 
 test('getSite resolves a real resource node with its resourceType and location', () => {
-  const site = getSite('pl_00001_n02');
-  assert.ok(site, 'pl_00001_n02 should exist');
+  const site = getSite(HOME_MINE_2);
+  assert.ok(site, `${HOME_MINE_2} should exist`);
   assert.equal(site.kind, 'resource');
-  assert.equal(site.resourceType, 'titanium');
-  assert.equal(site.planetId, 'pl_00001');
+  assert.equal(site.resourceType, 'titanium'); // Terran's _n02 is titanium (§2)
+  assert.equal(site.planetId, HOME_PLANET);
   assert.ok(site.systemId, 'carries a systemId');
 });
 
 test('getSite resolves a settlement slot (no resourceType)', () => {
-  const site = getSite('pl_00001_s01');
-  assert.ok(site, 'pl_00001_s01 should exist');
+  const site = getSite(HOME_SLOT);
+  assert.ok(site, `${HOME_SLOT} should exist`);
   assert.equal(site.kind, 'settlement');
   assert.equal(site.resourceType, undefined);
-  assert.equal(site.planetId, 'pl_00001');
+  assert.equal(site.planetId, HOME_PLANET);
 });
 
 test('getSite returns null for a dangling id', () => {
@@ -37,10 +40,10 @@ test('getSite returns null for a dangling id', () => {
 });
 
 test('isResourceNode / isSettlementSlot classify correctly', () => {
-  assert.equal(isResourceNode('pl_00001_n02'), true);
-  assert.equal(isResourceNode('pl_00001_s01'), false);
-  assert.equal(isSettlementSlot('pl_00001_s01'), true);
-  assert.equal(isSettlementSlot('pl_00001_n02'), false);
+  assert.equal(isResourceNode(HOME_MINE_2), true);
+  assert.equal(isResourceNode(HOME_SLOT), false);
+  assert.equal(isSettlementSlot(HOME_SLOT), true);
+  assert.equal(isSettlementSlot(HOME_MINE_2), false);
   assert.equal(isResourceNode('nope'), false);
 });
 
@@ -50,7 +53,7 @@ test('findNodesByResource returns only that good, sorted, and includes a known n
   assert.ok(titanium.every((s) => s.kind === 'resource' && s.resourceType === 'titanium'));
   const ids = titanium.map((s) => s.id);
   assert.deepEqual(ids, [...ids].sort(), 'sorted by id');
-  assert.ok(ids.includes('pl_00001_n02'));
+  assert.ok(ids.includes(HOME_MINE_2));
 });
 
 test('getStarterSystems enumerates every starter, id-sorted, each with a real homeworld', () => {
@@ -95,15 +98,18 @@ test('getSystemLayout returns a system with planets, nodes, and settlement slots
 });
 
 test('getSystemLayout handles a multi-planet system and returns null for a missing one', () => {
-  // sys_0009 has 4 planets (desert / terran / rocky / ice), incl. varying counts.
+  // Shape-only: a real system resolves to a list of planets, each carrying an
+  // archetype from the known set. sys_0009's exact planet mix (which archetypes,
+  // how many) is a seed-7331 accident that regen reshuffles, so pin neither.
+  const ARCHETYPES = new Set([
+    'terran', 'oceanic', 'rocky', 'desert', 'ice', 'crystalline', 'gasGiant', 'molten', 'irradiated',
+  ]);
   const sys = getSystemLayout('sys_0009');
   assert.ok(sys);
-  assert.equal(sys.planets.length, 4);
-  const terran = sys.planets.find((p) => p.archetype === 'terran');
-  assert.ok(terran, 'has a terran planet');
-  assert.equal(terran.settlementSlots.length, 15);
-  // every site id resolves back through getSite — the layout and the site index agree.
+  assert.ok(sys.planets.length >= 2, 'a multi-planet system');
   for (const p of sys.planets) {
+    assert.ok(ARCHETYPES.has(p.archetype), `${p.id} carries a known archetype (got ${p.archetype})`);
+    // every site id resolves back through getSite — the layout and the site index agree.
     for (const n of p.resourceNodes) assert.equal(isResourceNode(n.id), true);
     for (const s of p.settlementSlots) assert.equal(isSettlementSlot(s.id), true);
   }
@@ -129,9 +135,12 @@ test('a site carries its friendly name: pl_00004_n01 in FEN-6425 reads "FEN-6425
 
 test('a settlement slot names its SLOT, and the ordinal follows the planet, not the id', () => {
   assert.equal(getSite('pl_00004_s03').name, 'FEN-6425 I · Slot 3');
-  // pl_00001 is another system's planet entirely; whatever its ordinal is, the name is
-  // built from that system's name and the planet's place IN it — never from the id digits.
-  const other = getSite('pl_00001_n02');
+  // A planet on a DIFFERENT system than home (a second starter's Terran homeworld),
+  // so the resolver is exercised across systems; whatever its ordinal, the name is
+  // built from THAT system's name and the planet's place IN it — never the id digits.
+  const otherPlanet = getStarterSystems()[1].terranHomeworldId;
+  const other = getSite(`${otherPlanet}_n02`);
+  assert.notEqual(other.systemId, HOME_SYSTEM, 'exercises a non-home system');
   const sys = getSystemLayout(other.systemId);
   const ordinal = sys.planets.findIndex((p) => p.id === other.planetId) + 1;
   assert.equal(other.name, `${sys.name} ${roman(ordinal)} · Node 2`);
