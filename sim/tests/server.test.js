@@ -375,6 +375,7 @@ test('the served licence panel\'s mirrored constants still match the engine', as
   const html = await (await fetch(base + '/')).text();
   const licence = require('../licence.js');
   const { baselineOutputFor } = require('../baseline.js');
+  const { TIER_WEIGHT } = require('../points.js');
 
   assert.match(html, new RegExp(`EQUITY_CEIL: ${licence.EQUITY_CEILING * 100},`),
     'the equity slider ceiling must be sim/licence.js EQUITY_CEILING x 100');
@@ -400,6 +401,31 @@ test('the served licence panel\'s mirrored constants still match the engine', as
   const factoryBaseline = baselineOutputFor({ type: 'refining', recipeId: 'titanium_alloy' }).units;
   assert.equal(factoryBaseline, baseline,
     'the licence panel mirrors ONE baseline for both tiers — differentiate them and it must gain a second');
+
+  // The TIER WEIGHTS (02-09-26). The reputation meter previews `metGain`, which the
+  // rescale scaled by `tierFactor` = W_TIER(tier) / W_TIER(1) — so the panel has to hold
+  // the weights to preview a tier-2 licence at the 1.5x the engine really pays. Mirrored
+  // as the WEIGHT MAP, key for key, exactly as CORNERS above is: the panel divides by its
+  // own tier-1 entry the way sim/licence.js divides by `tierWeight(1)`, so a retune that
+  // moves both leaves the preview right and one that moves either alone fails HERE.
+  // Built from sim/points.js' own map, so ADDING a tier (W_T3, when tier-3 goods gain
+  // recipes) goes red too — the panel must then mirror it or stop previewing that tier.
+  const tiers = Object.keys(TIER_WEIGHT).map((t) => `${t}:${TIER_WEIGHT[t]}`).join(', ');
+  assert.match(html, new RegExp(`TIER_WEIGHT: \\{ ${tiers} \\},`),
+    'the reputation meter must mirror sim/points.js TIER_WEIGHT, key for key');
+
+  // …and it is APPLIED: the earn preview carries the tier term, and the call site passes
+  // the tier the panel is deploying at. Without both, the mirror above would sit unread
+  // and a factory would go back to previewing a mine's gain.
+  assert.match(html, /function repGain\(c, o01, tier\)\{ return P\.REP_MAX\*tierFactor\(tier\)\*/,
+    'the earn preview must be scaled by the tier factor');
+  assert.match(html, /repGain\(S\.c,S\.o01,S\.tier\)/,
+    'and the meter must pass the venture\'s own tier');
+
+  // The one-time SIGNING BUMP stays out of the panel BY DESIGN (§2.6: the player's lever
+  // is the commitment slider; the bump is its backend consequence). This pins that
+  // decision rather than leaving a later session to read the absence as an oversight.
+  assert.ok(!/signingBump/.test(html), 'the deploy panel does not preview the signing bump — deliberate, §6.1');
 
   // The term ranges the sliders can produce are exactly the ones intake accepts.
   assert.match(html, new RegExp(`id="rnRange" min="${licence.WINDOW_DAYS_MIN}" max="${licence.WINDOW_DAYS_MAX}"`));
