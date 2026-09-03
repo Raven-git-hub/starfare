@@ -434,6 +434,27 @@ test('the served licence panel\'s mirrored constants still match the engine', as
   assert.match(html, /id="cRange" min="0" max="100"/);   // commitment: a 0..1 fraction
 });
 
+// The GUILD HALL Standing panel (docs/guild-hall.md §2) scales its performance line and
+// its Current/Predicted gauges to the issuance modifier's clamp bounds. That axis CLAIMS
+// to be the engine's bounds, so per design.md §18 the client copy is safe only mirrored
+// with a tripwire: if sim/meanline.js ever re-clamps the modifier, this fails instead of
+// the panel quietly drawing every gauge against the old floor/ceiling.
+test('the served Guild Hall panel\'s mirrored gauge axis still matches the engine', async () => {
+  const html = await (await fetch(base + '/')).text();
+  const { ISSUANCE_FLOOR, ISSUANCE_CEIL } = require('../meanline.js');
+
+  assert.match(html, new RegExp(`GH_FLOOR = ${ISSUANCE_FLOOR};`),
+    'the gauge/line axis floor must be sim/meanline.js ISSUANCE_FLOOR');
+  assert.match(html, new RegExp(`GH_CEIL = ${ISSUANCE_CEIL};`),
+    'the gauge/line axis ceiling must be sim/meanline.js ISSUANCE_CEIL');
+
+  // …and the mirror is APPLIED — the ported gauge helpers read GH_FLOOR/GH_CEIL as their
+  // axis, not a re-typed 0.30…1.50. Without this the constants above could sit unread while
+  // the SVG drew against hardcoded bounds that no tripwire guards.
+  assert.match(html, /var lo=GH_FLOOR, hi=GH_CEIL/,
+    'the gauge helpers must read the mirrored axis constants, not a hardcoded range');
+});
+
 // --- the MEAN LINE, per guild (slice 4, 31-08-26) ---------------------------------
 //
 // docs/points-and-reputation.md §3. The engine derives `expectedReputation` and

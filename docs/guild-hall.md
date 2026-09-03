@@ -71,6 +71,15 @@ this tick.**
 
 ## 3. Data-point audit — every value, its source, its status
 
+> **Correction (client panel build, 02-09-26).** The audit row above originally read
+> Location ← `guilds[].landmark.name`, marked LIVE. Building the panel found that field is
+> **not on the guild row** — `snapshot.js`'s guild block carries `homeSystemId` /
+> `homePlanetId`, never a `landmark`. No engine field was added (the slice is client-only
+> and §18 says STOP-and-report, not invent): the guild's **home system IS its location**,
+> and the panel resolves `homeSystemId` through the shell's existing `__systemName` bridge
+> (the same read the TRADE tab's per-system rows use). Founded-cycle stays dropped, not
+> stubbed. Nothing else in the table changed.
+
 Grounded against `sim/snapshot.js` at HEAD `bce3a74`. **LIVE** = already in the snapshot;
 **SLICE** = needs a small additive engine field (§4); **DERIVE** = presentation arithmetic on
 live fields; **DEFERRED** = waits on an unbuilt mechanic. **BUILT** = the engine field this
@@ -79,8 +88,8 @@ row needed now ships (the A/B/C slice, 02-09-26).
 | Data point | Source | Status |
 |---|---|---|
 | Guild name | `guilds[].name` | LIVE |
-| Location | `guilds[].landmark.name` | LIVE |
-| Founded cycle | *(not exposed)* | SLICE (tiny) or drop |
+| Location | `guilds[].homeSystemId` → the shell's `__systemName` | LIVE *(corrected — see note)* |
+| Founded cycle | *(not exposed)* | DROPPED (not exposed; no engine field added) |
 | Cycle / day / tick | calendar | LIVE |
 | Predicted modifier (gauge) | `guilds[].issuanceModifier` (recomputed on read = live) | LIVE |
 | Current modifier (gauge) | `guilds[].fuelGrant.modifier` — modifier stamped on the grant | BUILT (B) |
@@ -128,12 +137,27 @@ strip (`commitment-scaffold.test.js`); the fuel loop's own numbers are unchanged
   empty). Gives the **performance line**.
 - **RP-by-source** needs no engine change: Ventures = `guildReputation − foundingEndowment`,
   System holdings = `foundingEndowment` (a presentation subtraction, like the recorder's `gap`).
-- **The client panel** (NEXT prompt) then renders the Standing shape in `client/game.html` from
-  these fields, computing no engine number it cannot mirror (§18).
+- **The client panel — ✅ BUILT 02-09-26 (client-only, no engine/snapshot/`sim/` change).**
+  The `guild` tab in `client/game.html` now renders the real Standing panel, following the
+  TRADE tab's pattern exactly: a scoped, `gh-`-prefixed `#tp-guild` overlay with the mockup's
+  palette (`--gh-*`) and the CouncilChamber art by path; `openTab('guild')` shows it and calls
+  `window.__guildOpen()`; a render reads the player's guild row on open and on every poll while
+  open (wired into `applySnapshot` beside the TRADE refresh). The Standing sub-page ports the
+  mockup's four SVG helpers (`ghPerf`, `ghVgauge`, `ghDonut`, `ghStockBar`) and feeds them the
+  snapshot — the Performance line from `modifierHistory` (last 10, "gathering" until ≥2), the
+  Current gauge from `fuelGrant.modifier` and Predicted from the live `issuanceModifier`, the RP
+  donut from the `guildReputation − foundingEndowment` split, and the stockpile bar from the
+  published credit values (`fuelHoardAtCycleStartValue` max, `fuelHoardValue` legal remaining,
+  illegal = 0). Finance / Ventures / Council / Forum are honest "soon" placeholders — no invented
+  figures. **The gauge/line axis** is the one mirrored constant: it claims to be the engine's
+  issuance-modifier clamp, so per §18 the client copy `GH_FLOOR = 0.3` / `GH_CEIL = 1.5` MIRRORS
+  `sim/meanline.js`'s `ISSUANCE_FLOOR` / `ISSUANCE_CEIL` with a served-page tripwire in
+  `sim/tests/server.test.js` (**+1 test → 906, zero failures**). Every other figure is read
+  verbatim or is the one sanctioned RP subtraction; the client computes no other engine number.
 
 Slices A and B both stamp a value at the same tick boundary and rode one prompt with C; the client
-panel is the last. The minimal end-to-end path is **A + the client panel** (the stockpile bar
-working as you trade), with B and C the enrichments.
+panel is the last, and now landed. The minimal end-to-end path is **A + the client panel** (the
+stockpile bar working as you trade), with B and C the enrichments — all four now on screen.
 
 ## 5. Deferred (with their mechanics, not here)
 

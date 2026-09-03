@@ -1271,3 +1271,59 @@ reputation → guild points → expected reputation → issuance modifier → **
 **808 tests (+25), zero failures.** The state determinism goldens **did** move here — correctly, and for the
 first time in this sequence — and the change is proven to be exactly the pool, the audit and the granted
 fuel by undoing those and showing the pre-slice hashes come back byte for byte.
+
+
+---
+
+## Revision — the GUILD HALL tab goes live, the Standing panel (02-09-26)
+
+The guild tab stops being a stub. `openTab('guild')` now renders the **Guild Hall's Standing
+panel** (design `docs/guild-hall.md` §2; look and interactions from
+`docs/mockups/guild-hall.html`), the player's home dashboard: *where the guild stands with the
+Syndicate, and what fuel that standing buys it this cycle.*
+
+**Where it lives — the same seam the TRADE tab pinned.** The Guild Hall is the **game shell's own
+overlay** (`#tabPanel`), not the embedded console and no `postMessage` bridge. It reads the
+snapshot `client/game.html` already polls (`window.__snapshot`) on open and on every poll while
+open (`window.__guildRefresh`, wired into `applySnapshot` beside the TRADE refresh). Everything is
+scoped under `#tp-guild` and prefixed `gh-`, and the palette lives in its own `--gh-*` vars — the
+same discipline that keeps `#tp-trade` from colliding with the shell. The Council Chamber art is
+referenced by path (`assets/mission/CouncilChamber.jpg`), matching the trader-art convention.
+
+**What the Standing sub-page reads (§7's player projection; the browser computes no game number):**
+
+| On screen | Snapshot field |
+|---|---|
+| Header — guild name | the player guild's `name` |
+| Header — location | the player guild's `homeSystemId`, resolved through the shell's `__systemName` |
+| Header — cycle / day / tick | the top-level `calendar.day` (a cycle is one day) and `tick` |
+| Performance line | `modifierHistory` — the last 10, oldest→newest ("gathering" until ≥2 samples) |
+| Current gauge | `fuelGrant.modifier` — the modifier that set this cycle's grant |
+| Predicted gauge | the live `issuanceModifier` — where the guild sits right now |
+| Reputation donut — Ventures | `guildReputation − foundingEndowment` (the one sanctioned subtraction) |
+| Reputation donut — System holdings | `foundingEndowment` |
+| Reputation donut — Deuterium / Transport / Council | 0, shown "soon" |
+| Fuel-credit stockpile — max | `fuelHoardAtCycleStartValue` (null before the first boundary ⇒ empty bar) |
+| Fuel-credit stockpile — legal remaining | `fuelHoardValue` (illegal = 0 in v1; used = max − legal) |
+| Fuel-credit stockpile — price note | `galacticSupply.fuel.fuelPrice` |
+
+**The one mirrored constant — the gauge/line AXIS.** The vertical gauges and the performance line
+are scaled to the issuance modifier's floor and ceiling, and the axis CLAIMS to be the engine's
+clamp bounds (a marker at the top means "at the ceiling"). Per design.md §18 a client copy of an
+engine constant is safe only mirrored with a tripwire, so the panel holds `GH_FLOOR = 0.3` /
+`GH_CEIL = 1.5` as **MIRRORS** of `sim/meanline.js`'s `ISSUANCE_FLOOR` / `ISSUANCE_CEIL`, pinned by
+a served-page tripwire in `sim/tests/server.test.js`. Everything else on screen is read verbatim or
+is the RP subtraction above — no other engine number is computed client-side.
+
+**One correction to the §3 data-point audit.** It listed Location as `guilds[].landmark.name`
+(LIVE), but the guild row publishes no `landmark` — only `homeSystemId` / `homePlanetId`. Rather
+than add an engine field (the slice is client-only; §18 says stop-and-report, not invent), the
+panel treats the guild's **home system as its location** and resolves `homeSystemId` through the
+shell's existing `__systemName`. Founded-cycle stays dropped.
+
+**Deferred, and rendered as honest "soon" placeholders, not faked:** Finance, Ventures, Council and
+Forum (the mockup's soon-panel style — none of its rough fake figures), the illegal/legal hoard
+split (illegal stays 0, no red bar), and the Deuterium/Transport/Council RP sources.
+
+**906 tests (+1 served-page tripwire), zero failures.** No engine, snapshot or `sim/` change — the
+determinism goldens did not move; the only test-count delta is the axis-mirror tripwire.
