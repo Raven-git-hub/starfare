@@ -262,7 +262,7 @@ test('GET / serves the fee in CREDITS — the ledger reads the engine\'s feeQuot
 // The TRADE tab (design.md §5, "SELL GOES LIVE"). A client-render tripwire on the
 // SERVED bytes: if the tab quietly reverted to the old Marketplace stub, or the sell
 // wiring was dropped, the page would still render perfectly and only this fails.
-test('GET / serves the TRADE tab — the renamed tab, the panel, and the sellToSyndicate wiring', async () => {
+test('GET / serves the TRADE tab — the renamed tab, the panel, and the SELL & BUY popup wiring', async () => {
   const html = await (await fetch(base + '/')).text();
 
   // The tab is RENAMED, and the old name is gone.
@@ -289,11 +289,19 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the sellToS
   // path. `allocations` is the load-bearing word — a guild-wide qty would be the
   // rejected design.
   assert.match(html, /type:'sellToSyndicate'/);
-  assert.match(html, /allocations: r\.rows/);
+  assert.match(html, /allocations: allocations/);
   assert.match(html, /window\.__sendAction\(\{ type:'sellToSyndicate'/);
 
-  // BUY is present and DIMMED — it needs the transport system (§5, deferred).
-  assert.match(html, /class="tw-mbtn na"/);
+  // BUY IS NOW LIVE (the transaction-popup slice): the mode toggle is real (neither button
+  // carries `na` any more), and the finalise popup — one .est-style overlay scoped under
+  // #tw-tx-overlay — is served with both panes' confirm buttons.
+  assert.match(html, /id="tw-mode-sell"[^>]*data-mode="sell"/);
+  assert.match(html, /id="tw-mode-buy"[^>]*data-mode="buy"/);
+  assert.ok(!/class="tw-mbtn na"/.test(html), 'Buy is no longer dimmed — the popup slice wires it');
+  assert.match(html, /id="tw-tx-overlay"/);           // the shared finalise popup
+  assert.match(html, /id="tw-tx-confirm"/);           // its single confirm button
+  assert.match(html, /id="tw-buybtn"/);               // the BUY manifest's exec button
+  assert.match(html, /id="tw-buyqty"/);               // …and its quantity ("the prior window")
 
   // FUEL SLICE 3: the SELL panel carries a Fuel row, and it READS the engine's
   // per-system quote rather than pricing a route itself. `guild.fuelCost` is the
@@ -305,12 +313,18 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the sellToS
   assert.match(html, /q\.creditCost \|\| 0/);
   // The short-fuel pre-gate, naming both numbers exactly as the engine's refusal does.
   assert.match(html, /Not enough fuel — need/);
-  assert.ok(!/SYNDICATE_HAULER_BURN_RATE|hexDistance|nearestWaystation/.test(html),
-    'the client must never carry the burn rate or the geometry — it reads fuelCost');
+  // THE ANTI-RECOMPUTE GUARANTEE, now covering the BUY arrival too: the popup reads
+  // `fuelCost[sysId].creditCost` for money and `.travelTicks` for the arrival, formatting the
+  // latter as a duration. It must carry NEITHER the burn rate, NOR the hex geometry, NOR the
+  // craft speed / arrival helper — those would be game numbers invented in the client.
+  assert.ok(!/SYNDICATE_HAULER_BURN_RATE|hexDistance|nearestWaystation|CRAFT_SPEED|arrivalTickFor/.test(html),
+    'the client must never carry the burn rate, the geometry, or the craft speed — it reads fuelCost');
+  assert.match(html, /\.travelTicks/, 'the BUY arrival is read from the snapshot, not recomputed');
 
-  // ...and BUY stays unwired in this slice: no confirm popup, no buy action posted.
-  assert.ok(!html.includes("type:'buyFromSyndicate'"),
-    'the BUY confirm (with its own fuel row) lands with the BUY UI slice, not here');
+  // ...and BUY IS now wired: the confirm popup posts the ruled single-destination action.
+  assert.match(html, /window\.__sendAction\(\{ type:'buyFromSyndicate'/);
+  assert.match(html, /destinationSystemId: TX\.dest/,
+    'BUY is a single order to one destination the popup carries (§6)');
 
   // THE WIRING SEAM, pinned so it cannot silently move to the console bridge: the tab
   // reads the shell's own snapshot and posts to /action. No postMessage, no console.

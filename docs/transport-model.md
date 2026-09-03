@@ -229,6 +229,24 @@ that make the SELL/BUY transaction concrete:
   `arrivalTickFor(tick, distance) = tick + ceil(distance × CRAFT_SPEED)` (`CRAFT_SPEED = 300` ticks/hex,
   a `[FIRST-CUT]`), landing via `stepArrivals` — already stamped on the shipment.
 
+**BUILT (client, 03-09-26): the SELL & BUY finalise-transaction popups** (`client/game.html`, the TRADE
+tab; mockups `docs/mockups/{sell,buy}-to-syndicate.html`). One `.est`-style overlay scoped under
+`#tw-tx-overlay`, opened from the card's SELL/BUY buttons and rendering the right variant. **SELL** is a
+basket carried in from the per-system allocation manifest — a fixed base row plus added rows (a system
+dropdown over the systems that hold the good, a qty slider capped at `stockpilesBySystem[sys][good]`),
+the two-pool ledger (Profit → treasury, Route Fuel Credits from the hoard), and confirm →
+`sellToSyndicate`. **BUY** is a single order: the quantity fixed on the prior card, a destination dropdown
+(the systems the guild holds, defaulting to the operating system; a disabled "controlled outpost — soon"),
+the route fuel and a prominent **ARRIVAL TIME** `XXdXXh`, the cost/treasury/route ledger, and confirm →
+`buyFromSyndicate`. **Every figure is read from the snapshot** — route fuel credits are
+`fuelCost[sys].creditCost`, the arrival is `fuelCost[sys].travelTicks` formatted as a duration — with **no
+geometry, burn rate, or craft speed on the client** (a served-page tripwire forbids all four tokens). The
+reject-whole previews disable confirm on the **engine's own gates** (SELL: Σ `fuelBurn` > hoard; BUY:
+`cost` > credits OR `fuelBurn` > hoard), and the success view reads the applied numbers back off the
+returned snapshot. §8.1's quote-lock is **not** built here — the popups price at confirm. One field the
+snapshot does not publish — the nearest waystation's *name* — is rendered generically ("Syndicate
+waystation"), because naming it would need the "nearest" geometry the client must not compute.
+
 **Naming (tracked, not resolved here):** the seed entity the code calls an `outpost` **is** the
 Syndicate waystation (`nearestWaystation` iterates `getOutposts()`). The design word is *waystation*; a
 future Guild-controlled *outpost* is a different thing (BUY-to-a-controlled-outpost is deferred until it

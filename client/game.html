@@ -1312,21 +1312,37 @@ select.field{appearance:none; cursor:pointer;}
         <div class="tw-card">
           <div class="tw-card-h">
             <span class="t">Syndicate Trade</span>
+            <!-- Sell / Buy now both LIVE. Buy is a single shipment to one destination; its
+                 finalise popup (with the arrival readout) is #tw-tx-overlay above. -->
             <div class="tw-mode">
-              <button class="tw-mbtn on" type="button">Sell</button>
-              <button class="tw-mbtn na" type="button" title="Buying is a shipment to one destination &mdash; it needs the transport system, a later slice">Buy</button>
+              <button class="tw-mbtn on" id="tw-mode-sell" type="button" data-mode="sell">Sell</button>
+              <button class="tw-mbtn" id="tw-mode-buy" type="button" data-mode="buy">Buy</button>
             </div>
           </div>
           <div class="tw-syn-body">
             <div class="tw-sellhead"><span class="sg" id="tw-sellgood">&mdash;</span><span class="sp" id="tw-sellprice"></span></div>
-            <div class="tw-sysalloc" id="tw-sysalloc"></div>
-            <div class="tw-selltot">Selling <b id="tw-selltot">0</b> u</div>
-            <!-- Fuel cost of the routes this sale would fly (fuel Slice 3). Read
-                 straight off the snapshot's per-system `fuelCost`; the browser does
-                 no distance or burn arithmetic of its own. -->
-            <div class="tw-fuelline" id="tw-fuelline"><span class="lbl">Fuel</span><span class="amt" id="tw-fuelcost">&mdash;</span></div>
-            <div class="tw-forline"><span class="lbl">You receive</span><span class="amt"><span class="c">&#162;</span><span id="tw-proceeds">0</span></span></div>
-            <button class="tw-exec" id="tw-sellbtn" type="button" disabled>Sell to Syndicate</button>
+            <!-- SELL manifest: the per-system allocation. Its "Sell to Syndicate" button opens
+                 the finalise popup (#tw-tx-overlay) carrying these rows in as the basket. -->
+            <div id="tw-sell-pane">
+              <div class="tw-sysalloc" id="tw-sysalloc"></div>
+              <div class="tw-selltot">Selling <b id="tw-selltot">0</b> u</div>
+              <!-- Fuel cost of the routes this sale would fly (fuel Slice 3). Read
+                   straight off the snapshot's per-system `fuelCost`; the browser does
+                   no distance or burn arithmetic of its own. -->
+              <div class="tw-fuelline" id="tw-fuelline"><span class="lbl">Fuel</span><span class="amt" id="tw-fuelcost">&mdash;</span></div>
+              <div class="tw-forline"><span class="lbl">You receive</span><span class="amt"><span class="c">&#162;</span><span id="tw-proceeds">0</span></span></div>
+              <button class="tw-exec" id="tw-sellbtn" type="button" disabled>Sell to Syndicate</button>
+            </div>
+            <!-- BUY manifest ("the prior window"): the good is the selection above; here the
+                 player fixes only HOW MANY. The route, destination, fuel and arrival are all
+                 chosen/shown in the finalise popup, because they depend on the destination. -->
+            <div id="tw-buy-pane" style="display:none">
+              <div class="tw-sysrow"><span class="snm">Quantity to buy</span>
+                <div class="tw-qtybox"><input type="text" inputmode="numeric" id="tw-buyqty" value="0" aria-label="Quantity to buy"><span class="u">u</span></div>
+              </div>
+              <div class="tw-forline"><span class="lbl">Cost</span><span class="amt"><span class="c">&#162;</span><span id="tw-buycost">0</span></span></div>
+              <button class="tw-exec" id="tw-buybtn" type="button" disabled>Buy from Syndicate</button>
+            </div>
             <div class="tw-note" id="tw-note"></div>
           </div>
         </div>
@@ -1355,6 +1371,157 @@ select.field{appearance:none; cursor:pointer;}
         </div>
       </aside>
     </div>
+   </div>
+
+   <!-- ===== the SELL & BUY finalise-transaction popups (docs/mockups/{sell,buy}-to-syndicate.html)
+        Ported into the TRADE tab exactly as the Establish-Venture popup was ported (the #est-overlay
+        pattern): ONE .est-style overlay, its own scoped palette, all the mockup's generic classes
+        namespaced under #tw-tx-overlay so nothing collides. It reads the SAME snapshot the trade tab
+        polls and fires the SAME sellToSyndicate / buyFromSyndicate the engine already applies. It
+        computes NO game number (§18): route fuel credits are `fuelCost[sysId].creditCost`, the arrival
+        is `fuelCost[sysId].travelTicks` formatted as a duration — neither is re-derived, and the client
+        holds no distance, no burn rate, and no craft speed. -->
+   <style id="tw-tx-css">
+   #tw-tx-overlay{
+     --void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
+     --line:rgba(232,223,200,0.10); --line2:rgba(232,223,200,0.20);
+     --amber:#C9A227; --amber2:#B79433; --amber-dim:#7A6420; --amber-ghost:rgba(201,162,39,0.10);
+     --ink:#E8DFC8; --ink2:#8B8F9C; --ink3:#565B68; --ink4:#3a3f49;
+     --green:#4E9A87; --red:#C2603A; --blue:#3E82B5; --orange:#D8842E;
+     --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+     --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+     --serif:'Cinzel',serif;
+     /* A modal over the TRADE tab: #tabPanel sits at z-index 480 and top:104px, so the popup
+        sits above the tab's own content and below the game's top chrome, matching #est-overlay. */
+     position:fixed; left:0; right:0; top:104px; bottom:0; z-index:90;
+     background:rgba(6,7,10,.72); backdrop-filter:blur(3px);
+     display:none; align-items:flex-start; justify-content:center; padding:26px 20px; overflow-y:auto;
+     font-family:var(--sans); font-size:14px; line-height:1.45; color:var(--ink);
+   }
+   #tw-tx-overlay.open{display:flex}
+   #tw-tx-overlay *{box-sizing:border-box}
+   #tw-tx-overlay .est{width:100%; max-width:960px; background:linear-gradient(180deg,#12151C,#0F1218); border:1px solid var(--line2); border-radius:14px; box-shadow:0 30px 90px rgba(0,0,0,.6); overflow:hidden; position:relative}
+   #tw-tx-overlay .est-head{display:flex; align-items:center; gap:16px; padding:18px 22px 16px; border-bottom:1px solid var(--line); background:radial-gradient(700px 200px at 85% -40%, rgba(201,162,39,.06), transparent 70%)}
+   #tw-tx-overlay .est-head .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
+   #tw-tx-overlay .est-head h2{font-family:var(--serif); font-weight:600; font-size:22px; margin:4px 0 0; letter-spacing:.02em}
+   #tw-tx-overlay .est-close{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--ink2); border-radius:8px; width:34px; height:34px; font-size:16px; cursor:pointer; flex:none}
+   #tw-tx-overlay .est-close:hover{border-color:var(--red); color:var(--red)}
+   #tw-tx-overlay .est-body{display:grid; grid-template-columns:1fr 340px; gap:0}
+   #tw-tx-overlay .est-main{padding:20px 22px 22px; border-right:1px solid var(--line)}
+   #tw-tx-overlay .blk{margin-bottom:24px} #tw-tx-overlay .blk:last-child{margin-bottom:0}
+   #tw-tx-overlay .sec-head{display:flex; align-items:center; gap:9px; margin-bottom:12px}
+   #tw-tx-overlay .sec-head .t{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2)}
+   #tw-tx-overlay .sec-head .g{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--amber)}
+   #tw-tx-overlay .sec-head .aux{margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--ink3); letter-spacing:.04em}
+   /* SELL basket rows */
+   #tw-tx-overlay .row{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 13px 13px; margin-bottom:9px}
+   #tw-tx-overlay .row.base{border-color:var(--line2); background:var(--panel2)}
+   #tw-tx-overlay .rtop{display:flex; align-items:baseline; gap:12px; margin-bottom:11px}
+   #tw-tx-overlay .rroute{font-family:var(--mono); font-size:13px; color:var(--ink); letter-spacing:.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+   #tw-tx-overlay .rroute .rarr{color:var(--ink3); margin:0 6px}
+   #tw-tx-overlay .rroute .rway{color:var(--amber2)}
+   #tw-tx-overlay .rowsel{font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--void); border:1px solid var(--line2); border-radius:6px; padding:4px 22px 4px 8px; cursor:pointer; appearance:none; letter-spacing:.01em;
+     background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);
+     background-position:calc(100% - 12px) 55%, calc(100% - 8px) 55%; background-size:4px 4px,4px 4px; background-repeat:no-repeat}
+   #tw-tx-overlay .rowsel:focus{outline:none; border-color:var(--amber)}
+   #tw-tx-overlay .rfuelcr{margin-left:auto; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); white-space:nowrap; flex:none}
+   #tw-tx-overlay .rfuelcr b{color:var(--red); font-weight:500; font-size:12px; letter-spacing:0}
+   #tw-tx-overlay .rbody{display:flex; align-items:center; gap:14px}
+   #tw-tx-overlay .rctrl{flex:1; display:flex; align-items:center; min-width:0}
+   #tw-tx-overlay .rctrl .basetag{font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink4)}
+   #tw-tx-overlay .rctrl input[type=range]{-webkit-appearance:none; appearance:none; width:100%; height:6px; border-radius:4px; background:var(--void); border:1px solid var(--line); cursor:ew-resize}
+   #tw-tx-overlay .rctrl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:var(--ink); border:2px solid var(--void); box-shadow:0 0 0 1px var(--amber-dim); cursor:ew-resize}
+   #tw-tx-overlay .rctrl input[type=range]::-moz-range-thumb{width:16px; height:16px; border-radius:50%; background:var(--ink); border:2px solid var(--void); box-shadow:0 0 0 1px var(--amber-dim)}
+   #tw-tx-overlay .qbig{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:21px; font-weight:500; color:var(--amber); text-align:right; min-width:120px; padding-right:16px; flex:none}
+   #tw-tx-overlay .qbig .u{font-size:11px; color:var(--ink3); margin-left:5px; letter-spacing:.08em}
+   #tw-tx-overlay .xslot{width:26px; flex:none; display:flex; justify-content:center}
+   #tw-tx-overlay .xslot button{background:none; border:1px solid var(--line); color:var(--ink3); border-radius:6px; width:24px; height:24px; font-size:12px; cursor:pointer}
+   #tw-tx-overlay .xslot button:hover{border-color:var(--red); color:var(--red)}
+   #tw-tx-overlay .addbtn{width:100%; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); background:var(--amber-ghost); border:1px dashed var(--amber-dim); border-radius:9px; padding:11px; cursor:pointer; margin-top:3px}
+   #tw-tx-overlay .addbtn:hover{background:var(--amber-dim); color:var(--void)}
+   #tw-tx-overlay .addbtn:disabled{color:var(--ink4); border-color:var(--line); background:transparent; cursor:not-allowed}
+   /* BUY destination + readouts */
+   #tw-tx-overlay .destcard{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px}
+   #tw-tx-overlay .dtop{display:flex; align-items:baseline; gap:12px}
+   #tw-tx-overlay .dmeta{margin-left:auto; font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); white-space:nowrap}
+   #tw-tx-overlay .dmeta b{color:var(--red); font-weight:500; font-size:12px; letter-spacing:0}
+   #tw-tx-overlay .readouts{display:flex; gap:48px}
+   #tw-tx-overlay .ro-lbl{font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3); margin-bottom:7px}
+   #tw-tx-overlay .ro-big{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:28px; font-weight:500; color:var(--amber); letter-spacing:.01em; line-height:1}
+   #tw-tx-overlay .ro-big .u{font-size:12px; color:var(--ink3); margin-left:6px; letter-spacing:.08em}
+   /* right hero + ledger */
+   #tw-tx-overlay .est-side{position:relative; background:#0d0f14; display:flex; flex-direction:column; min-height:520px}
+   #tw-tx-overlay .est-side .art{position:absolute; inset:0; background-size:cover; background-position:50% 20%; z-index:0}
+   #tw-tx-overlay .est-side .scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(10,11,15,.34) 0%, rgba(10,11,15,.70) 44%, rgba(10,11,15,.96) 100%); z-index:1}
+   #tw-tx-overlay .est-side .inner{position:relative; z-index:2; padding:20px 18px 20px; display:flex; flex-direction:column; flex:1}
+   #tw-tx-overlay .ledger{font-family:var(--mono); font-size:12px; margin-top:auto}
+   #tw-tx-overlay .ledger .row2{display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:9px 0; border-bottom:1px solid rgba(232,223,200,0.09)}
+   #tw-tx-overlay .ledger .row2 .k{color:var(--ink3); letter-spacing:.06em; text-transform:uppercase; font-size:10px}
+   #tw-tx-overlay .ledger .row2 .v{color:var(--ink); text-align:right; font-variant-numeric:tabular-nums}
+   #tw-tx-overlay .ledger .row2.profit .v b{color:var(--green); font-size:16px; font-weight:600}
+   #tw-tx-overlay .ledger .row2.cost .v b{color:var(--red); font-size:16px; font-weight:600}
+   #tw-tx-overlay .ledger .row2.fuel .v b{color:var(--red); font-size:14px}
+   #tw-tx-overlay .ledger .row2.treasury.short .v{color:var(--orange)}
+   /* fuel-credit bar */
+   #tw-tx-overlay .fcblk{padding-top:13px}
+   #tw-tx-overlay .fcblk .fchead{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px}
+   #tw-tx-overlay .fcblk .fchead .k{color:var(--ink3); letter-spacing:.06em; text-transform:uppercase; font-size:10px; font-family:var(--mono)}
+   #tw-tx-overlay .fcblk .fchead .state{font-family:var(--mono); font-size:10px; letter-spacing:.04em}
+   #tw-tx-overlay .fcblk .fchead .state.ok{color:var(--ink3)}
+   #tw-tx-overlay .fcblk .fchead .state.illegal{color:var(--red)}
+   #tw-tx-overlay .fcblk .fchead .state.bad{color:var(--orange); font-weight:500}
+   #tw-tx-overlay .fcbar{position:relative; height:16px; border-radius:5px; background:var(--void); border:1px solid var(--line); overflow:hidden}
+   #tw-tx-overlay .fcbar .seg{position:absolute; top:0; bottom:0}
+   #tw-tx-overlay .fcbar .fc-red{left:0; background:linear-gradient(180deg, rgba(194,96,58,.85), rgba(194,96,58,.6))}
+   #tw-tx-overlay .fcbar .fc-blue{background:linear-gradient(180deg, rgba(62,130,181,.9), rgba(62,130,181,.62))}
+   #tw-tx-overlay .fcbar .fc-spend{background:repeating-linear-gradient(45deg, rgba(8,9,12,.72), rgba(8,9,12,.72) 4px, rgba(8,9,12,.5) 4px, rgba(8,9,12,.5) 8px)}
+   #tw-tx-overlay .fcbar .fc-marker{position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--ink); box-shadow:0 0 6px rgba(232,223,200,.7); z-index:3}
+   #tw-tx-overlay .fcbar.bad .fc-red,#tw-tx-overlay .fcbar.bad .fc-blue{background:linear-gradient(180deg, rgba(216,132,46,.9), rgba(216,132,46,.6))}
+   #tw-tx-overlay .fcbar.bad .fc-marker{background:var(--orange); box-shadow:0 0 6px rgba(216,132,46,.8)}
+   #tw-tx-overlay .deploy{width:100%; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer; margin-top:16px}
+   #tw-tx-overlay .deploy:hover{background:#DCB43A}
+   #tw-tx-overlay .deploy:disabled{background:rgba(28,33,43,.85); color:var(--ink3); cursor:not-allowed; border:1px solid var(--line)}
+   #tw-tx-overlay .success{display:none; padding:40px 26px; text-align:center}
+   #tw-tx-overlay .success.show{display:block}
+   #tw-tx-overlay .success .tick{width:56px; height:56px; border-radius:50%; border:2px solid var(--green); color:var(--green); display:flex; align-items:center; justify-content:center; font-size:28px; margin:0 auto 16px}
+   #tw-tx-overlay .success h3{font-family:var(--serif); font-weight:600; font-size:22px; margin:0 0 10px}
+   #tw-tx-overlay .success .sled{max-width:440px; margin:14px auto 0; text-align:left; font-family:var(--mono); font-size:12px}
+   #tw-tx-overlay .success .sled div{display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--line)}
+   #tw-tx-overlay .success .sled .k{color:var(--ink3); text-transform:uppercase; font-size:10px; letter-spacing:.05em}
+   #tw-tx-overlay .success .again{margin-top:22px; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); background:var(--amber-ghost); border:1px solid var(--amber-dim); border-radius:9px; padding:11px 22px; cursor:pointer}
+   #tw-tx-overlay .tw-empty{font-size:12px; color:var(--ink3); letter-spacing:.02em; padding:6px 2px}
+   @media(max-width:760px){ #tw-tx-overlay .est-body{grid-template-columns:1fr} #tw-tx-overlay .est-main{border-right:none; border-bottom:1px solid var(--line)} }
+   </style>
+
+   <div id="tw-tx-overlay" role="dialog" aria-modal="true" aria-label="Syndicate transaction">
+     <div class="est">
+       <div id="tw-tx-form">
+         <div class="est-head">
+           <div>
+             <div class="eyebrow">Syndicate Exchange</div>
+             <h2 id="tw-tx-title">&mdash;</h2>
+           </div>
+           <button class="est-close" id="tw-tx-close" type="button" title="Close" aria-label="Close">&#10005;</button>
+         </div>
+         <div class="est-body">
+           <div class="est-main" id="tw-tx-main"></div>
+           <div class="est-side">
+             <div class="art" id="tw-tx-art"></div>
+             <div class="scrim"></div>
+             <div class="inner">
+               <div class="ledger" id="tw-tx-ledger"></div>
+               <button class="deploy" id="tw-tx-confirm" type="button" disabled>&mdash;</button>
+             </div>
+           </div>
+         </div>
+       </div>
+       <div class="success" id="tw-tx-success">
+         <div class="tick">&#10003;</div>
+         <h3 id="tw-tx-successttl">Done</h3>
+         <div class="sled" id="tw-tx-sled"></div>
+         <button class="again" id="tw-tx-again" type="button">New order &#9656;</button>
+       </div>
+     </div>
    </div>
   </div>
 
@@ -4013,6 +4180,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
 
   var T = {
     open:false,
+    mode:'sell',     // 'sell' | 'buy' — which side of the Syndicate Trade card is showing
     tier:1,          // which tier tab is showing
     good:null,       // the selected good — HELD across polls, never reset by a refresh
     scale:null,      // which price-history resolution the chart is drawing
@@ -4449,44 +4617,11 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return r;
   }
 
-  function doSell(){
-    var guild = meGuild(), good = T.good, price = priceOf(good);
-    var player = (window.__player && window.__player()) || {};
-    if(!guild || !good || price == null) return;
-    var r = recalc();
-    if(!r.total) return;
-    var btn = el('tw-sellbtn');
-    var before = guild.credits;
-    btn.disabled = true;
-    note('Selling…');
-    window.__sendAction({ type:'sellToSyndicate', guildId: player.guildId, good: good, allocations: r.rows })
-      .then(function(res){
-        // A REJECTION IS A NORMAL ANSWER the player must see (client-wiring.md), not
-        // an error: show the engine's own reason and leave the rows alone.
-        if(!res || !res.accepted){
-          note(res && res.reason ? res.reason : 'The Syndicate refused the sale.', 'bad');
-          recalc();
-          return;
-        }
-        // READ THE MONEY BACK OFF THE ENGINE. POST /action answers with the
-        // post-action snapshot, so the credited figure the receipt says is the one
-        // the engine actually paid — never the browser's own multiplication.
-        var after = ((res.snapshot && res.snapshot.guilds) || [])
-          .filter(function(g){ return g.id === player.guildId; })[0];
-        var credited = after ? (after.credits - before) : null;
-        T.alloc = {};                      // the sale is placed; the rows reset
-        T.rowSig = '';                     // and rebuild against the new piles
-        note('Sold ' + fmt(r.total) + ' u of ' + pretty(good)
-             + (credited == null ? '' : '  ·  +¢' + fmt(credited)), 'ok');
-        // Re-read so Holdings, credits and the posted price update in place.
-        if(window.__refreshNow) return window.__refreshNow();
-        render();
-      })
-      .catch(function(err){
-        note(String((err && err.message) || err), 'bad');
-        recalc();
-      });
-  }
+  // The SELL sale itself no longer fires from here — the "Sell to Syndicate" button opens the
+  // finalise popup (openTx('sell')), and txConfirm posts the action. `recalc` above stays: the
+  // card is the manifest, and its live fuel/proceeds preview is what the player reads before
+  // committing. The reject-whole preview (short-fuel disable) is duplicated in the popup, so
+  // the button that opens it is only ever the pre-gate the popup then restates against the ledger.
 
   /* -- render + events ------------------------------------------------------- */
   function render(){
@@ -4499,7 +4634,34 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     renderNav();
     renderHoldings();
     renderChart();
-    renderSell();
+    renderSell();       // fills the shared head (good + price) and the sell pane
+    renderMode();       // show the sell pane or the buy pane, light the mode button
+    recalcBuy();        // the buy pane's cost preview + button gate
+  }
+
+  // The Sell / Buy toggle (both LIVE now). Only the pane switches — the good, the chart
+  // and the holdings are shared, so nothing above the card is touched.
+  function renderMode(){
+    var sellOn = T.mode !== 'buy';
+    var sp = el('tw-sell-pane'), bp = el('tw-buy-pane');
+    if(sp) sp.style.display = sellOn ? '' : 'none';
+    if(bp) bp.style.display = sellOn ? 'none' : '';
+    var ms = el('tw-mode-sell'), mb = el('tw-mode-buy');
+    if(ms) ms.classList.toggle('on', sellOn);
+    if(mb) mb.classList.toggle('on', !sellOn);
+  }
+  // The BUY manifest is one number: HOW MANY. Cost is a DISPLAY ECHO of the engine's
+  // round(qty × price) (#43) — the authoritative debit is read back off the snapshot the
+  // purchase returns. The destination, its route fuel and the arrival all live in the
+  // finalise popup, because they depend on WHERE it is going.
+  function recalcBuy(){
+    var q = el('tw-buyqty'); if(!q) return;
+    var price = T.good ? priceOf(T.good) : null;
+    var v = parseInt(String(q.value).replace(/[^0-9]/g,''), 10);
+    if(isNaN(v) || v < 0) v = 0;
+    if(String(v) !== q.value) q.value = String(v);
+    el('tw-buycost').textContent = (price == null) ? '—' : fmt(Math.round(v * price));
+    el('tw-buybtn').disabled = !(v > 0 && price != null);
   }
 
   // Delegated once, on the panel — so every re-render keeps working with no rebinding.
@@ -4529,16 +4691,341 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       recalc();
       return;
     }
-    if(e.target.closest('#tw-sellbtn')){ doSell(); return; }
+    var mbtn = e.target.closest('.tw-mbtn');
+    if(mbtn && mbtn.getAttribute('data-mode')){ T.mode = mbtn.getAttribute('data-mode'); note(''); render(); return; }
+    // The exec buttons no longer post directly — they open the finalise popup, which is
+    // where the ledger, the fuel bar and the confirm live (the transaction contract).
+    if(e.target.closest('#tw-sellbtn')){ openTx('sell'); return; }
+    if(e.target.closest('#tw-buybtn')){ openTx('buy'); return; }
   });
   panel.addEventListener('input', function(e){
-    if(e.target.closest('.tw-sysrow')) recalc();
+    if(e.target.closest('.tw-sysrow') && !e.target.closest('#tw-buy-pane')) recalc();
+    if(e.target.id === 'tw-buyqty') recalcBuy();
   });
+
+  /* ===== the SELL & BUY finalise-transaction popups (#tw-tx-overlay) =============
+     docs/mockups/{sell,buy}-to-syndicate.html, wired to the live snapshot. Reads the SAME
+     helpers this tab already uses (meGuild, priceOf, heldIn, systemsHolding, fuelCost) and
+     fires the SAME actions the engine applies. It COMPUTES NO GAME NUMBER (§18): route fuel
+     credits are `fuelCost[sysId].creditCost`; the arrival is `fuelCost[sysId].travelTicks`
+     formatted as a duration; the ledger figures are display sums/products of those and the
+     posted price. On confirm the ENGINE is authoritative — the success view reads the applied
+     numbers back off the snapshot the action returns, never the popup's preview. */
+  var TX = { open:false, kind:null, good:null, rows:[], qty:0, dest:null, last:null };
+  // Hero art by shipment size (each order is its own Syndicate hauler), referenced by path
+  // exactly as #tp-trade references its own art.
+  var TX_ART = { light:'assets/units/lighttransport.jpg', medium:'assets/units/mediumtransport.jpg', heavy:'assets/units/heavytransport.jpg' };
+  function txHeroClass(qty){ return qty <= 10000 ? 'light' : (qty <= 50000 ? 'medium' : 'heavy'); }
+  // The travel DURATION as `XXdXXh`. 1 tick = 1 game-minute and a day = 1,440 ticks are the
+  // ruled CLOCK (docs/phase-1-tuning.md, docs/cycle-and-calendar.md), the same convention the
+  // shell's wall clock and the Guild Hall already render on — NOT an economy tunable, so this
+  // mirrors no engine constant. `travelTicks` itself is read whole from the snapshot; the
+  // client never sees the craft speed or a distance.
+  function txEta(ticks){
+    var t = Math.max(0, Math.round(ticks || 0));
+    var d = Math.floor(t / 1440), h = Math.floor((t % 1440) / 60);
+    return (d < 10 ? '0' : '') + d + 'd' + (h < 10 ? '0' : '') + h + 'h';
+  }
+  // The route quote for one system, straight off the snapshot: { fuelBurn, creditCost,
+  // travelTicks } or null when the guild does not hold it / it has no route. The GATES read
+  // `fuelBurn` (units, exactly as the engine gates); the bar reads `creditCost`.
+  function txRoute(sysId){ var g = meGuild(); var c = (g && g.fuelCost) || {}; return c[sysId] || null; }
+  // The systems the guild HOLDS — `fuelCost` is keyed by `heldSystemIds`, so its keys ARE the
+  // held set, already sorted (invariant 9). This is the BUY destination set.
+  function txHeldSystems(){ var g = meGuild(); return (g && g.fuelCost) ? Object.keys(g.fuelCost).sort() : []; }
+  // The systems that hold the selected good (SELL basket candidates), and the free ones.
+  function txSellSystems(){ return systemsHolding(meGuild(), TX.good); }
+  function txSellFree(exceptIdx){
+    var used = {}; TX.rows.forEach(function(r, i){ if(i !== exceptIdx) used[r.systemId] = true; });
+    return txSellSystems().filter(function(id){ return !used[id]; });
+  }
+  function txStep(max){ return max >= 1000 ? 100 : (max >= 100 ? 10 : 1); }
+  function txDone(){ var s = el('tw-tx-success'); return !!(s && s.classList.contains('show')); }
+
+  // The fuel-credit bar (both popups) — the Guild Hall stockpile bar shrunk into the ledger.
+  // The whole hoard in credits is `fuelHoardValue` (§8 has no posted fuel price for the client
+  // to multiply by — the engine marks it). v1: the hoard is ALL legal, so `illegal` reads 0;
+  // it is wired to a future `fuelHoardIllegalValue` field so the red segment lights up the day
+  // illegal refining lands, with NO change here. The marker lands at (hoard − route) credits;
+  // when the route burn exceeds the hoard the SAME condition that disables confirm, the bar
+  // goes to its INSUFFICIENT (orange) state with the marker at 0.
+  function txFuelBar(routeCredits, fuelShort){
+    var g = meGuild();
+    var total = (g && g.fuelHoardValue != null) ? g.fuelHoardValue : 0;
+    var illegal = (g && g.fuelHoardIllegalValue) || 0;   // future field; 0 today ⇒ all legal
+    illegal = Math.max(0, Math.min(illegal, total));
+    var remaining = total - routeCredits;
+    var illegalPct = total > 0 ? illegal / total * 100 : 0;
+    var markerPct = fuelShort ? 0 : (total > 0 ? Math.max(0, Math.min(100, remaining / total * 100)) : 0);
+    var intoIllegal = !fuelShort && total > 0 && remaining <= illegal;
+    var stateCls = fuelShort ? 'bad' : (intoIllegal ? 'illegal' : 'ok');
+    var stateTxt = fuelShort ? 'INSUFFICIENT FUEL' : (intoIllegal ? 'using illegal fuel credits' : '');
+    return '<div class="fcblk"><div class="fchead"><span class="k">Fuel Credits Available</span>'
+      + '<span class="state ' + stateCls + '">' + stateTxt + '</span></div>'
+      + '<div class="fcbar' + (fuelShort ? ' bad' : '') + '">'
+      + '<div class="seg fc-red" style="left:0;width:' + illegalPct.toFixed(2) + '%"></div>'
+      + '<div class="seg fc-blue" style="left:' + illegalPct.toFixed(2) + '%;right:0"></div>'
+      + '<div class="seg fc-spend" style="left:' + markerPct.toFixed(2) + '%;right:0"></div>'
+      + '<div class="fc-marker" style="left:' + markerPct.toFixed(2) + '%;display:' + (routeCredits > 0 ? 'block' : 'none') + '"></div>'
+      + '</div></div>';
+  }
+
+  /* -- SELL popup ---------------------------------------------------------------- */
+  // Sum ONLY the rows we will send (qty > 0), so the fuel burn previewed here is exactly the
+  // aggregate the engine gates on (Σ routeFuelCost over the allocations it receives).
+  function txSellTotals(){
+    var guild = meGuild(), good = TX.good, price = priceOf(good);
+    var totalQty = 0, burn = 0, credits = 0, maxQty = 0;
+    TX.rows.forEach(function(r){
+      var held = heldIn(guild, r.systemId, good);
+      r.qty = Math.max(0, Math.min(r.qty, held));      // clamp to the pile behind it
+      if(r.qty > 0){
+        totalQty += r.qty; maxQty = Math.max(maxQty, r.qty);
+        var route = txRoute(r.systemId);
+        if(route){ burn += route.fuelBurn || 0; credits += route.creditCost || 0; }
+      }
+    });
+    // round(total × price), rounded once on the total — the same DISPLAY echo the card uses.
+    var profit = (price == null) ? 0 : Math.round(totalQty * price);
+    return { totalQty:totalQty, profit:profit, burn:burn, credits:credits, maxQty:maxQty };
+  }
+  function txRenderSellMain(){
+    var good = TX.good;
+    var html = '<div class="sec-head"><span class="t">Consignment</span><span class="g">&mdash; ' + pretty(good)
+      + '</span><span class="aux">' + TX.rows.length + ' / ' + txSellSystems().length + ' systems</span></div>';
+    TX.rows.forEach(function(r, i){
+      var route = txRoute(r.systemId), routeCr = route ? (route.creditCost || 0) : 0;
+      var name = (window.__systemName && window.__systemName(r.systemId)) || r.systemId;
+      var held = heldIn(meGuild(), r.systemId, good), shown = Math.min(r.qty, held);
+      var base = (i === 0), head;
+      if(base){ head = '<span>' + name + '</span>'; }
+      else {
+        var opts = txSellFree(i).concat([r.systemId]).sort();
+        head = '<select class="rowsel" data-txsel="' + i + '">' + opts.map(function(id){
+          var nm = (window.__systemName && window.__systemName(id)) || id;
+          return '<option value="' + id + '"' + (id === r.systemId ? ' selected' : '') + '>' + nm + '</option>';
+        }).join('') + '</select>';
+      }
+      html += '<div class="row' + (base ? ' base' : '') + '">'
+        + '<div class="rtop"><span class="rroute">' + head + '<span class="rarr">&#8594;</span><span class="rway">Syndicate waystation</span></span>'
+        + '<span class="rfuelcr">Route fuel credits: <b>&#162;' + fmt(routeCr) + '</b></span></div>'
+        + '<div class="rbody"><div class="rctrl">'
+        + (base ? '<span class="basetag">&#9671; base order &middot; fixed</span>'
+               : '<input type="range" min="0" max="' + held + '" step="' + txStep(held) + '" value="' + shown + '" data-txqty="' + i + '" aria-label="Sell from ' + name + '">')
+        + '</div><div class="qbig"><span class="qn">' + fmt(shown) + '</span><span class="u">u</span></div>'
+        + '<div class="xslot">' + (base ? '' : '<button type="button" data-txrm="' + i + '" title="Remove">&#10005;</button>') + '</div>'
+        + '</div></div>';
+    });
+    html += '<button class="addbtn"' + (txSellFree(-1).length ? '' : ' disabled') + ' data-txadd>+ Add a system</button>';
+    return html;
+  }
+  function txRenderSellLedger(){
+    var t = txSellTotals(), g = meGuild(), hoard = (g && g.fuelHoard) || 0;
+    var fuelShort = t.burn > hoard;                        // the engine's SELL gate, in UNITS
+    el('tw-tx-art').style.backgroundImage = t.totalQty > 0 ? 'url(' + TX_ART[txHeroClass(t.maxQty)] + ')' : 'none';
+    el('tw-tx-ledger').innerHTML =
+        '<div class="row2"><span class="k">Consignment</span><span class="v">'
+      + (t.totalQty > 0 ? pretty(TX.good) + ' <span style="color:var(--ink3)">&times;</span> ' + fmt(t.totalQty) : '&mdash;') + '</span></div>'
+      + '<div class="row2 profit"><span class="k">Profit</span><span class="v"><b>+&#162;' + fmt(t.profit) + '</b></span></div>'
+      + '<div class="row2 fuel"><span class="k">Route Fuel Credits</span><span class="v"><b>&#8722;&#162;' + fmt(t.credits) + '</b></span></div>'
+      + txFuelBar(t.credits, fuelShort);
+    var btn = el('tw-tx-confirm');
+    btn.textContent = 'Sell to Syndicate';
+    btn.disabled = !(t.totalQty > 0 && priceOf(TX.good) != null) || fuelShort;
+    TX.last = { totalQty:t.totalQty, before:{ credits:(g && g.credits) || 0, hoard:hoard } };
+  }
+
+  /* -- BUY popup ----------------------------------------------------------------- */
+  function txRenderBuyMain(){
+    var good = TX.good, dests = txHeldSystems(), dest = TX.dest;
+    var route = txRoute(dest), routeCr = route ? (route.creditCost || 0) : 0;
+    var arr = route ? txEta(route.travelTicks) : '—';
+    var opts = dests.map(function(id){
+      var nm = (window.__systemName && window.__systemName(id)) || id;
+      return '<option value="' + id + '"' + (id === dest ? ' selected' : '') + '>' + nm + '</option>';
+    }).join('') + '<option disabled>&#9670; Controlled outpost &mdash; soon</option>';
+    return '<div class="blk"><div class="sec-head"><span class="t">Deliver to</span></div>'
+      + '<div class="destcard"><div class="dtop">'
+      + '<span class="rroute"><span class="rway">Syndicate waystation</span><span class="rarr">&#8594;</span>'
+      + '<select class="rowsel" id="tw-tx-dest" aria-label="Destination system">' + opts + '</select></span>'
+      + '<span class="dmeta">Route fuel <b>&#162;' + fmt(routeCr) + '</b></span></div></div></div>'
+      + '<div class="blk readouts">'
+      + '<div class="ro"><div class="ro-lbl">Quantity &middot; ' + pretty(good) + '</div><div class="ro-big">' + fmt(TX.qty) + '<span class="u">u</span></div></div>'
+      + '<div class="ro"><div class="ro-lbl">Arrival time</div><div class="ro-big">' + arr + '</div></div>'
+      + '</div>';
+  }
+  function txRenderBuyLedger(){
+    var g = meGuild(), good = TX.good, price = priceOf(good);
+    var cost = (price == null) ? 0 : Math.round(TX.qty * price);
+    var credits = (g && g.credits) || 0, hoard = (g && g.fuelHoard) || 0;
+    var route = txRoute(TX.dest), burn = route ? (route.fuelBurn || 0) : 0, routeCr = route ? (route.creditCost || 0) : 0;
+    var costShort = cost > credits, fuelShort = burn > hoard;   // the engine's TWO BUY gates
+    el('tw-tx-art').style.backgroundImage = 'url(' + TX_ART[txHeroClass(TX.qty)] + ')';
+    el('tw-tx-ledger').innerHTML =
+        '<div class="row2"><span class="k">Purchase</span><span class="v">' + pretty(good) + ' <span style="color:var(--ink3)">&times;</span> ' + fmt(TX.qty) + '</span></div>'
+      + '<div class="row2 cost"><span class="k">Cost</span><span class="v"><b>&#8722;&#162;' + fmt(cost) + '</b></span></div>'
+      + '<div class="row2 treasury' + (costShort ? ' short' : '') + '"><span class="k">Treasury</span><span class="v">&#162;' + fmt(credits)
+      + ' <span style="color:var(--ink3)">&#8594;</span> &#162;' + fmt(credits - cost) + (costShort ? ' &middot; SHORT' : '') + '</span></div>'
+      + '<div class="row2 fuel"><span class="k">Route Fuel Credits</span><span class="v"><b>&#8722;&#162;' + fmt(routeCr) + '</b></span></div>'
+      + txFuelBar(routeCr, fuelShort);
+    var btn = el('tw-tx-confirm');
+    btn.textContent = 'Buy from Syndicate';
+    btn.disabled = !(TX.qty > 0 && price != null && TX.dest) || costShort || fuelShort;
+    TX.last = { qty:TX.qty, arr:route ? route.travelTicks : 0, before:{ credits:credits, hoard:hoard } };
+  }
+
+  /* -- open / render / confirm / close ------------------------------------------- */
+  function openTx(kind){
+    var guild = meGuild(), good = T.good, price = good ? priceOf(good) : null;
+    if(!guild || !good || price == null) return;
+    TX.kind = kind; TX.good = good; TX.open = true;
+    if(kind === 'sell'){
+      var r = readRows();                       // the card's per-system allocation = the manifest
+      if(!r.total) return;
+      TX.rows = r.rows.map(function(x){ return { systemId:x.systemId, qty:x.qty }; });
+    } else {
+      var q = el('tw-buyqty');
+      var v = q ? parseInt(String(q.value).replace(/[^0-9]/g,''), 10) : 0;
+      if(isNaN(v) || v < 0) v = 0;
+      if(!(v > 0)) return;
+      TX.qty = v;
+      var held = txHeldSystems(), home = guild.homeSystemId;
+      TX.dest = (home && held.indexOf(home) >= 0) ? home : (held[0] || null);   // default = operating system
+      if(!TX.dest) return;
+    }
+    txRender();
+    el('tw-tx-overlay').classList.add('open');
+  }
+  function txRender(){
+    if(!TX.open) return;
+    el('tw-tx-form').style.display = '';
+    el('tw-tx-success').classList.remove('show');
+    if(TX.kind === 'sell'){
+      el('tw-tx-title').textContent = 'Sell to Syndicate';
+      el('tw-tx-main').innerHTML = txRenderSellMain();
+      txRenderSellLedger();
+    } else {
+      el('tw-tx-title').textContent = 'Buy from Syndicate';
+      el('tw-tx-main').innerHTML = txRenderBuyMain();
+      txRenderBuyLedger();
+    }
+  }
+  function txSledRow(k, v){ return '<div><span class="k">' + k + '</span><span>' + v + '</span></div>'; }
+  function txConfirm(){
+    var player = (window.__player && window.__player()) || {};
+    var btn = el('tw-tx-confirm');
+    var before = TX.last ? TX.last.before : { credits:0, hoard:0 };
+    var pending;
+    if(TX.kind === 'sell'){
+      // The ruled SELL shape: a basket of per-system allocations for ONE good (§5). Only the
+      // rows with a real quantity are sent — the same rows the fuel preview summed.
+      var allocations = TX.rows.filter(function(r){ return r.qty > 0; }).map(function(r){ return { systemId:r.systemId, qty:r.qty }; });
+      if(!allocations.length) return;
+      btn.disabled = true;
+      pending = window.__sendAction({ type:'sellToSyndicate', guildId: player.guildId, good: TX.good, allocations: allocations });
+    } else {
+      // The ruled BUY shape: a single order to ONE destination (§6). The engine prices it at
+      // apply (§8.1 quote-lock is a later slice); no price is sent.
+      if(!(TX.qty > 0 && TX.dest)) return;
+      btn.disabled = true;
+      pending = window.__sendAction({ type:'buyFromSyndicate', guildId: player.guildId, good: TX.good, qty: TX.qty, destinationSystemId: TX.dest });
+    }
+    pending
+      .then(function(res){ txAfter(res, player.guildId, before); })
+      .catch(function(err){ txError(err); });
+  }
+  // READ THE APPLIED NUMBERS BACK OFF THE ENGINE (§5's display rule): the receipt shows what
+  // POST /action actually did — the credit delta, the fuel actually burned, and for a BUY the
+  // arrival off the engine's own shipment record — never the popup's preview figures.
+  function txAfter(res, guildId, before){
+    if(!res || !res.accepted){ txError(res && res.reason ? res.reason : 'The Syndicate refused the transaction.'); return; }
+    var after = ((res.snapshot && res.snapshot.guilds) || []).filter(function(g){ return g.id === guildId; })[0] || null;
+    var nowFuel = (after && after.fuelHoardValue != null) ? ('&#162;' + fmt(after.fuelHoardValue)) : '&mdash;';
+    var sled;
+    if(TX.kind === 'sell'){
+      var credited = after ? (after.credits - before.credits) : null;
+      var burned = after ? (before.hoard - after.fuelHoard) : null;
+      sled = txSledRow('Sold', pretty(TX.good) + ' &times; ' + fmt(TX.last.totalQty))
+        + txSledRow('Proceeds &#8594; treasury', '<span style="color:var(--green)">+&#162;' + (credited == null ? '&mdash;' : fmt(credited)) + '</span>')
+        + txSledRow('Route fuel burned', '<span style="color:var(--red)">&#8722;' + (burned == null ? '&mdash;' : fmt(burned) + ' fuel') + '</span>')
+        + txSledRow('Fuel credits now', nowFuel);
+      el('tw-tx-successttl').textContent = 'Consignment sold';
+    } else {
+      var spent = after ? (before.credits - after.credits) : null;
+      var burnedB = after ? (before.hoard - after.fuelHoard) : null;
+      var ships = (res.snapshot && res.snapshot.shipments) || [];
+      var mine = ships.filter(function(s){ return s.ownerGuildId === guildId && s.destinationSystemId === TX.dest; });
+      var ship = mine.length ? mine[mine.length - 1] : null;   // shipments arrive sorted; the last match is the one just placed
+      var arr = ship ? txEta(ship.ticksRemaining) : txEta(TX.last.arr);
+      sled = txSledRow('Ordered', pretty(TX.good) + ' &times; ' + fmt(TX.last.qty))
+        + txSledRow('Destination', (window.__systemName && window.__systemName(TX.dest)) || TX.dest)
+        + txSledRow('Cost &#8594; treasury', '<span style="color:var(--red)">&#8722;&#162;' + (spent == null ? '&mdash;' : fmt(spent)) + '</span>')
+        + txSledRow('Route fuel burned', '<span style="color:var(--red)">&#8722;' + (burnedB == null ? '&mdash;' : fmt(burnedB) + ' fuel') + '</span>')
+        + txSledRow('Arrival time', '<span style="color:var(--blue)">' + arr + '</span>');
+      el('tw-tx-successttl').textContent = 'Order dispatched';
+    }
+    el('tw-tx-sled').innerHTML = sled;
+    el('tw-tx-form').style.display = 'none';
+    el('tw-tx-success').classList.add('show');
+    if(window.__refreshNow) window.__refreshNow();   // the card, holdings, credits and hoard update behind the popup
+  }
+  // A rejection is a normal answer (client-wiring.md): surface the engine's own reason on the
+  // card and close the popup so the player sees it, then rebuild the manifest against fresh state.
+  function txError(msg){
+    note(String((msg && msg.message) || msg), 'bad');
+    txClose();
+    render();
+  }
+  function txClose(){
+    TX.open = false;
+    var ov = el('tw-tx-overlay'); if(ov) ov.classList.remove('open');
+    el('tw-tx-form').style.display = '';
+    el('tw-tx-success').classList.remove('show');
+  }
+
+  // Delegated once on the overlay — every re-render keeps working with no rebinding.
+  var ov = el('tw-tx-overlay');
+  ov.addEventListener('click', function(e){
+    if(e.target === ov){ txClose(); return; }                 // click the backdrop
+    if(e.target.closest('#tw-tx-close')){ txClose(); return; }
+    if(e.target.closest('#tw-tx-again')){ txClose(); return; }
+    if(e.target.closest('#tw-tx-confirm')){ txConfirm(); return; }
+    if(e.target.closest('[data-txadd]')){
+      var free = txSellFree(-1);
+      if(free.length){ TX.rows.push({ systemId:free[0], qty:heldIn(meGuild(), free[0], TX.good) }); txRender(); }
+      return;
+    }
+    var rm = e.target.closest('[data-txrm]');
+    if(rm){ TX.rows.splice(+rm.getAttribute('data-txrm'), 1); txRender(); return; }
+  });
+  ov.addEventListener('change', function(e){
+    if(e.target.id === 'tw-tx-dest'){ TX.dest = e.target.value; txRender(); return; }
+    var sel = e.target.closest('[data-txsel]');
+    if(sel){ var i = +sel.getAttribute('data-txsel'); TX.rows[i].systemId = sel.value; TX.rows[i].qty = heldIn(meGuild(), sel.value, TX.good); txRender(); return; }
+  });
+  // Slider drag: patch the row's number and the ledger in place, WITHOUT rebuilding the rows,
+  // so the thumb the player is holding is never yanked out from under them.
+  ov.addEventListener('input', function(e){
+    var sl = e.target.closest('[data-txqty]');
+    if(sl){
+      var i = +sl.getAttribute('data-txqty');
+      TX.rows[i].qty = parseInt(sl.value, 10) || 0;
+      var qn = sl.closest('.row').querySelector('.qn'); if(qn) qn.textContent = fmt(TX.rows[i].qty);
+      txRenderSellLedger();
+    }
+  });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && TX.open) txClose(); });
 
   // The shell drives these three: the tab opening, the tab closing, and every poll.
   window.__tradeOpen = function(){ T.open = true; T.navSig = ''; T.rowSig = ''; render(); };
-  window.__tradeClosed = function(){ T.open = false; note(''); };
-  window.__tradeRefresh = function(){ if(T.open) render(); };
+  window.__tradeClosed = function(){ T.open = false; note(''); txClose(); };
+  // On a poll, refresh the open popup's LEDGER only (gates + fuel bar move with live state)
+  // and leave its inputs — the basket sliders, the destination select — untouched. The
+  // success receipt is left alone once shown.
+  window.__tradeRefresh = function(){
+    if(T.open) render();
+    if(TX.open && !txDone()){ if(TX.kind === 'sell') txRenderSellLedger(); else txRenderBuyLedger(); }
+  };
 })();
 </script>
 

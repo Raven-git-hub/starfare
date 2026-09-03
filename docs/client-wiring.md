@@ -1351,3 +1351,57 @@ field: `{ [systemId]: { fuelBurn, creditCost, travelTicks } }` (`docs/transport-
 
 **Engine-only.** No client change ships here; the BUY confirm popup wires it when the BUY UI slice lands.
 `routeFuelCost`, `fuelBurn`, `creditCost` and the fuel loop are untouched — one derived field added beside them.
+
+## Revision — the SELL & BUY transaction popups *(03-09-26, client-only)*
+
+The TRADE tab's finalise-transaction popups (`docs/transport-model.md` §8.0; mockups
+`docs/mockups/{sell,buy}-to-syndicate.html`). One `.est`-style overlay — its own scoped palette, all the
+mockup's generic classes namespaced under **`#tw-tx-overlay`** — ported the way the Establish-Venture
+popup was, and wired to the SAME snapshot the tab polls and the SAME `/action` path it already posts to.
+No engine, snapshot or `sim/` change.
+
+**The Sell / Buy mode toggle is now live** (both `.tw-mbtn` real; neither `na`). The Syndicate Trade card
+is the **manifest** — SELL keeps its per-system allocation table; BUY shows a single quantity box (`the
+prior window` the mockup speaks of). The card's exec buttons no longer post — they **open the popup**,
+which owns the ledger, the fuel-credit bar and the confirm.
+
+**SELL popup** — a basket for one good: a fixed base row carried in from the manifest, plus added rows
+(a system dropdown over the systems that hold the good, excluding those already in the basket; a qty
+slider capped at `stockpilesBySystem[sys][good]`). Ledger: **Profit** (Σ qty × posted price → treasury)
+and **Route Fuel Credits** (Σ `fuelCost[sys].creditCost`, from the hoard). Confirm →
+`sellToSyndicate { allocations }`.
+
+**BUY popup** — a single order: quantity fixed on the card, a **destination dropdown** (the systems the
+guild holds = `Object.keys(fuelCost)`, defaulting to the operating/home system; a disabled `controlled
+outpost — soon`), the route fuel, and a prominent **ARRIVAL TIME** `XXdXXh` from `fuelCost[sys].travelTicks`
+(the travel *duration*, formatted — never an absolute tick, and never recomputed). Ledger: **Cost**
+(qty × price → treasury), a **Treasury** check, **Route Fuel Credits**. Confirm →
+`buyFromSyndicate { qty, destinationSystemId }`.
+
+- **The fuel-credit bar** (both popups) — the Guild Hall stockpile bar shrunk into the ledger. The whole
+  hoard in credits is `fuelHoardValue`; **illegal = 0** today (wired to a future `fuelHoardIllegalValue`
+  so the red segment lights up when illegal refining lands, with no change here); the marker lands at
+  `hoard − route` credits, and the SAME condition that disables confirm drops it to the orange
+  **INSUFFICIENT** state.
+- **The reject-whole previews are the engine's own gates**, in UNITS where the engine gates in units —
+  SELL: Σ `fuelBurn` > `fuelHoard`; BUY: `cost` > `credits` **OR** `fuelBurn` > `fuelHoard`. A blocked
+  trade posted anyway is refused by the engine with the same numbers (verified live: the popup said
+  *need 8, have 4* and so did `/action`).
+- **The browser computes no game number** (§18): route fuel credits come from `fuelCost.creditCost`, the
+  arrival from `fuelCost.travelTicks`; a served-page tripwire forbids `SYNDICATE_HAULER_BURN_RATE`,
+  `hexDistance`, `nearestWaystation`, `CRAFT_SPEED` and `arrivalTickFor` anywhere in `game.html`. **No new
+  mirrored constant** was needed — the arrival's `XXdXXh` uses the ruled clock (1 tick = 1 minute, a day =
+  1,440 ticks), not an economy tunable.
+- **Confirm reads the engine back.** On `accepted`, the success receipt shows the applied numbers off the
+  returned snapshot (the credit delta, the fuel actually burned, and for BUY the arrival off the engine's
+  own `shipments` record) — never the popup's preview.
+
+**One field expected but absent, handled not invented:** the snapshot's `fuelCost` entry carries no
+waystation *name*, and naming the "nearest" waystation is the geometry the client must not compute — so
+the route reads a generic "Syndicate waystation" label rather than a specific name.
+
+**919 tests, zero failures** (the existing TRADE-tab served-page tripwire updated in place for the live
+BUY wiring — no test added or removed). Verified end to end in headless Chromium against a real booted
+server: both popups render from a live snapshot; the treasury-short and fuel-short gates disable confirm
+and the engine refuses the same trades; a real SELL raised the treasury and burned the route fuel; a real
+BUY debited credits + fuel and scheduled the arrival — every receipt figure the engine's own.
