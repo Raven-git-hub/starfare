@@ -17,9 +17,10 @@
 // deduction also moves `galacticSupply.fuel.guildHeld`, and `POST /action`
 // asserts with no tick in between, so a stale cache is a 500 on a legal trade.
 //
-// SCOPE, asserted at the foot: BUY ONLY. `sellToSyndicate` is multi-allocation
-// and its per-route fuel question (sum per row? max? once?) needs its own ruling,
-// so SELL burns nothing here and a test pins that it stays that way.
+// SCOPE: this file is the BUY burn (fuel Slice 3). SELL's own burn — the summed
+// route fuel of a multi-allocation basket, ruled and built 03-09-26 — lives in
+// sell-fuel-burn.test.js; the two SELL tests at the foot here only flip the old
+// "SELL burns nothing" tripwires to the new truth so this file cannot drift back.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -229,35 +230,39 @@ test('several BUYs in a row keep every invariant green — the cache is refreshe
   assert.equal(s.shipments.length, 5);
 });
 
-// --- SELL is untouched, deliberately ---------------------------------------
+// --- SELL now burns too (the SELL slice, 03-09-26) --------------------------
+//
+// The Slice-3 scope note that used to sit here — "SELL burns NO fuel, deferred to
+// its own slice" — is retired: that slice has landed. SELL burns the SUMMED route
+// fuel of its basket, mirroring BUY. The full basket/sum/reject-whole coverage
+// lives in sell-fuel-burn.test.js; these two flip the old BUY-scope tripwires to
+// the new truth so this file cannot silently drift back.
 
-test('SELL burns NO fuel — a guild with an empty hoard can still sell', () => {
-  // The Slice-3 scope ruling, pinned so it cannot drift in by accident. SELL is
-  // multi-allocation and its per-route fuel question is unruled, so it is deferred
-  // to the next slice. Until then a sale costs nothing to fly.
+test('a SELL from an empty hoard is now REFUSED — fuel bites on the sale too', () => {
+  // The exact inverse of the retired "an empty hoard can still sell": a real route
+  // now costs real fuel, and a hoard of 0 cannot cover it.
   const s = burnState({ fuelHoard: 0, stockpiles: { [NEAR]: { [GOOD]: 40 } } });
+  const before = hashState(s);
   const action = createSellToSyndicateAction({ guildId: 'g1', good: GOOD, allocations: [{ systemId: NEAR, qty: 40 }] });
 
   const { valid, reason } = validateAction(s, action);
-  assert.equal(valid, true, `a sale from an empty hoard must still be legal, got: ${reason}`);
-
-  const next = applyAction(s, action);
-  assert.equal(next.guilds[0].fuelHoard, 0, 'no fuel to take, and none taken');
-  assert.equal(next.audit.totalConsumed, 0, 'SELL records no burn in this slice');
-  assert.ok(next.guilds[0].credits > s.guilds[0].credits, 'and the sale really did happen');
-  assert.equal(getStock(next.guilds[0], NEAR, GOOD), 0);
-  assert.deepEqual(checkInvariants(next, next.tick), []);
+  assert.equal(valid, false, 'a sale that cannot pay its burn is refused');
+  assert.match(reason, new RegExp(`insufficient fuel: need ${BURN_NEAR}, have 0`));
+  assert.equal(hashState(s), before, 'and the refusal leaves the state byte-identical');
 });
 
-test('a SELL with fuel in the hoard leaves it exactly where it was', () => {
-  // The other half: not merely "0 stays 0", but that a real hoard is not touched.
+test('a SELL with fuel in the hoard now burns the summed route fuel', () => {
+  // The other half: a real hoard IS touched now, by exactly the route's burn.
   const s = burnState({ fuelHoard: 500, stockpiles: { [NEAR]: { [GOOD]: 10 } } });
   const next = applyAction(s, createSellToSyndicateAction({
     guildId: 'g1', good: GOOD, allocations: [{ systemId: NEAR, qty: 10 }],
   }));
-  assert.equal(next.guilds[0].fuelHoard, 500);
-  assert.equal(next.audit.totalConsumed, 0);
+  assert.equal(next.guilds[0].fuelHoard, 500 - BURN_NEAR, `500 - ${BURN_NEAR}`);
+  assert.equal(next.audit.totalConsumed, BURN_NEAR, 'sunk into the consumed counter');
+  assert.ok(next.guilds[0].credits > s.guilds[0].credits, 'and the sale really did happen');
+  assert.equal(getStock(next.guilds[0], NEAR, GOOD), 0);
   assert.deepEqual(checkInvariants(next, next.tick), []);
+  assertFuelBalances(next, 'after a SELL that burns');
 });
 
 // --- the no-route passthrough ----------------------------------------------

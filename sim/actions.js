@@ -723,6 +723,30 @@ function validateAction(state, action) {
         return { valid: false, reason: `guild ${guild.id} holds ${held} ${action.good} in system ${JSON.stringify(alloc.systemId)}, cannot sell ${alloc.qty}` };
       }
     }
+    // THE FUEL GATE — SELL burns route fuel too (docs/transport-model.md §8.0,
+    // RULED 03-09-26), mirroring `buyFromSyndicate`'s gate below. Both directions
+    // burn distance-scaled route fuel from the hoard; a SELL ships each named
+    // system's goods to ITS nearest waystation, so the bill COMPOUNDS across the
+    // basket — the summed burn of every row, one aggregate.
+    //
+    // RUN LAST, ON PURPOSE — the same rationale BUY documents. Every gate above
+    // answers a different question (stock, price, a duplicate row), and a sale
+    // refused for one of those must say so rather than blaming fuel. So a sale is
+    // only ever refused for fuel once it is otherwise entirely legal.
+    //
+    // REJECT-WHOLE ON THE AGGREGATE (ruled): a hoard that cannot cover the SUMMED
+    // burn refuses the whole basket — no partial fill, no shortened flight, no
+    // dropped row. `routeFuelCost` is the SAME pure function BUY uses and the
+    // snapshot quotes to the client, so what the player was shown and what the
+    // engine charges cannot disagree. A row on an unreachable system contributes a
+    // 0 burn (no route, no cost); a real route costs at least 1.
+    let totalBurn = 0;
+    for (const alloc of action.allocations) {
+      totalBurn += routeFuelCost(alloc.systemId).fuelBurn;
+    }
+    if (guild.fuelHoard < totalBurn) {
+      return { valid: false, reason: `guild ${guild.id} holds ${guild.fuelHoard} fuel, cannot burn ${totalBurn} shipping this basket to the Syndicate — insufficient fuel: need ${totalBurn}, have ${guild.fuelHoard} (fuel-supply-and-allocation.md §8)` };
+    }
     return { valid: true };
   }
 
@@ -1152,20 +1176,42 @@ function applyAction(state, action) {
     guild.credits += credited;
     next.syndicate.ledger -= credited;
 
+    // THE BURN — SELL burns route fuel too (docs/transport-model.md §8.0). The same
+    // `routeFuelCost` the validate gate checked against, summed over the basket:
+    // each named system ships its goods to ITS nearest waystation, so the burn
+    // COMPOUNDS across allocations. Recomputed here rather than threaded from
+    // validate — apply must be correct on its own terms, and the function is a pure
+    // function of the seed, so the two sums cannot disagree.
+    //
+    // ONE DEDUCTION FOR THE WHOLE BASKET. Fuel LEAVES the galaxy here — burned, not
+    // transferred, no counterparty to credit — so invariant 1 balances only because
+    // the hoard going down is matched by `totalConsumed` going up, exactly as the
+    // BUY burn below. A rejected sale never reaches apply (`POST /action` leaves
+    // state untouched), so reject-whole falls out for free. A basket of unreachable
+    // systems sums to a 0 burn and both lines are no-ops.
+    let totalBurn = 0;
+    for (const alloc of allocations) {
+      totalBurn += routeFuelCost(alloc.systemId).fuelBurn;
+    }
+    guild.fuelHoard -= totalBurn;
+    next.audit.totalConsumed += totalBurn;
+
     // ── THE BETWEEN-TICK SEAM ────────────────────────────────────────────────
     // This is the first action that mutates a stockpile, and `POST /action`
     // asserts every invariant immediately after apply — with no tick in between.
     // `state.galacticSupply` is a CACHE the tick refreshes once after its eight
     // steps (tick.js), and the galactic-supply-consistency invariant compares that
-    // cache against a live recompute. Draining a pile without refreshing it here
-    // would leave the cache describing goods that no longer exist, and the sale
-    // would trip the invariant instead of landing. Refreshed exactly as the tick
-    // does it, through the same one selector — not a second derivation.
+    // cache against a live recompute. Draining a pile — or, now, burning fuel from
+    // a hoard (`galacticSupply.fuel.guildHeld` sums exactly those hoards) — without
+    // refreshing it here would leave the cache describing goods or fuel that no
+    // longer exist, and the sale would trip the invariant instead of landing.
+    // Refreshed AFTER the burn, exactly as the tick does it, through the same one
+    // selector — not a second derivation.
     next.galacticSupply = computeGalacticSupply(next);
-    // NOTE on `audit`: totalProduced/totalConsumed are FUEL counters (invariant 1)
-    // and fuel is never sold here, so there is nothing for this sale to keep exact
-    // in them. expectedCreditTotal is unchanged too — the sale moves credits
-    // between a guild and the ledger, it does not change how many exist.
+    // NOTE on `audit`: expectedCreditTotal is unchanged — the sale moves credits
+    // between a guild and the ledger, it does not change how many exist. The fuel
+    // counters DO move now: the burn above is sunk into `totalConsumed` (invariant
+    // 1), the only audit field a sale touches.
     return next;
   }
 

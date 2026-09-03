@@ -204,8 +204,11 @@ that make the SELL/BUY transaction concrete:
 - **Both BUY and SELL burn route fuel — distance-scaled, from the hoard, in units.** A leg's burn is
   `routeFuelCost(system) = ceil(hexDistance(system → nearest waystation) × SYNDICATE_HAULER_BURN_RATE)`
   units (`SYNDICATE_HAULER_BURN_RATE = 0.5`; the function BUY already uses). **This closes §10 open #2's**
-  "does SELL spend fuel / flat vs distance-scaled": **yes, and distance-scaled.** Today
-  `buyFromSyndicate` burns it and `sellToSyndicate` does NOT — the SELL slice adds the burn.
+  "does SELL spend fuel / flat vs distance-scaled": **yes, and distance-scaled.** BUILT (SELL slice,
+  03-09-26): `buyFromSyndicate` and `sellToSyndicate` both burn it now — `sellToSyndicate` sums
+  `routeFuelCost(row.systemId).fuelBurn` across the basket and deducts the total from the hoard, refused
+  whole when the hoard cannot cover the sum (`sim/actions.js`; the burn is priced at apply, the §8.1
+  quote-lock being its own later slice).
 - **Two pools, both monetary but separate.** Proceeds/cost are **credits** (the treasury); route fuel
   is **units** out of the **fuel hoard**, shown in credit-equivalent for the ledger only. A SELL is
   `+proceeds ¢ to treasury` and `−Σ fuelBurn units from the hoard`; a BUY is `−cost ¢` and
