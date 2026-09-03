@@ -48,26 +48,39 @@ A **donut of RP by source**, legend beneath, no centre number. Sources:
 
 ### 2.3 Fuel-credit stockpile (bottom, full width)
 
-A **horizontal credit bar** — the depleting barometer, mirrored onto the dispatch page so the
-player judges affordability at the point of a trade. **No absolute fuel quantity appears
-anywhere; every figure is credits, derived from the backend quantity × the current fuel price
-this tick.**
+A **horizontal credit bar** — a live readout of the guild's fuel hoard valued in credits,
+mirrored onto the dispatch page so the player judges affordability at the point of a trade.
+**No absolute fuel quantity appears anywhere; every figure is credits — the backend hoard ×
+the current fuel price this tick.**
 
-- **The full length of the track = the guild's total credits at the START of the cycle**
-  (including rollover) — the boundary hoard × the current price.
+The bar is purely presentational: it reads the hoard and draws it. **The engine owns the
+`fuelHoard` number** and moves it — grants drop credits in at the boundary, trade burns take
+them out, and (later) illegal refining adds to it per tick — and the bar just follows. The
+client computes nothing and holds no state.
+
+- **Fill = the live `fuelHoard`, in credits, every tick.** Whatever the engine has put in the
+  hoard is what the bar shows; the client re-reads it each poll.
+- **Max (the full length of the track) = the hoard at the START of the period, in credits** —
+  legal and illegal together (the hoard does not distinguish them for sizing). It is set **at
+  each cycle boundary** to the current (post-grant) `fuelHoard` × price, and **at founding** to
+  the starting hoard — so a newly-founded guild's bar is **full from birth** rather than empty
+  until its first boundary.
+- Within a cycle the max **holds fixed** while the hoard stays at or below it: usage drains the
+  bar from the **right**, and the empty space on the right is **what has been used this cycle**.
 - The fill **grows from the LEFT and is contiguous: `[red illegal][blue legal]`.** Red (illegal
-  fuel) sits at the base, 0 → its credit value; blue (legal fuel) stacks on top of it, up to the
-  current level. The **empty space on the right is what has been used this cycle.**
-- **Depletion eats from the right: blue first.** While the guild spends within its legal
-  allotment, the blue right-edge marches left. **Only once blue is exhausted does the boundary
-  bite into the red** — the visual tell that the guild is now burning **illegal** fuel.
-- The **credit figure sits above each segment's head**, in the segment's colour (blue = legal
-  remaining, red = illegal), spaced so the two never collide.
-- **Producing illegal fuel** grows the red from the left while usage shrinks the blue; the total
-  can hold or rise even as fuel is spent — the "burning less than the Syndicate says" tell, and
-  the natural home for a future **suspicion** marker riding the red.
-- **v1 ships with illegal = 0** (no red bar; the illegal-refining mechanic is deferred). The bar
-  is then simply the blue legal stock depleting from the right against the start-of-cycle max.
+  fuel) sits at the base, 0 → its credit value; blue (legal fuel) stacks on top. **Depletion
+  eats from the right, blue first** — only once blue is exhausted does usage bite into the red,
+  the tell that the guild is burning **illegal** fuel. The **credit figure sits above each
+  segment's head**, in the segment's colour, spaced so the two never collide.
+- **The one case the max changes mid-cycle:** illegal refining is the only thing that raises the
+  hoard within a cycle, ticking `fuelHoard` up and growing the red. When it pushes the live
+  `fuelHoard` **above the current max, the max rises to match the current `fuelHoard`**, and the
+  bar shows an increasing proportion of red (illegal) to blue (legal). The red is the natural
+  home for a future **suspicion** marker.
+- **v1 ships with illegal = 0** (no red bar; the illegal-refining mechanic is deferred). With
+  nothing adding to the hoard mid-cycle, the hoard only ever **falls** within a cycle, so the max
+  stays the start-of-period value and the max-rise case is dormant — the bar is simply the blue
+  legal stock draining from the right against the start-of-period max, refilling at each boundary.
 
 ## 3. Data-point audit — every value, its source, its status
 
@@ -122,7 +135,7 @@ strip (`commitment-scaffold.test.js`); the fuel loop's own numbers are unchanged
 - **Slice A — `fuelHoardAtCycleStart`. ✅ BUILT.** Step 6 stamps `g.fuelHoardAtCycleStart =
   g.fuelHoard` after the grant is applied (post-grant, before this cycle's usage). Exposed in the
   snapshot as `fuelHoardAtCycleStart` and its marked value `fuelHoardAtCycleStartValue =
-  fuelValue(…, reserve.fuelPrice)` (parallel to `fuelHoardValue`; null before the first boundary).
+  fuelValue(…, reserve.fuelPrice)` (parallel to `fuelHoardValue`; null before the first boundary — closed for a freshly-founded guild by Slice A′ below).
   Gives the stockpile bar its **max** and the **used-this-cycle** gap.
 - **Slice B — the grant modifier. ✅ BUILT.** `recordFuelGrant` now takes and stores the
   `issuanceModifier(state, g)` read at the boundary — the record is `{tick, granted, desired,
@@ -155,6 +168,17 @@ strip (`commitment-scaffold.test.js`); the fuel loop's own numbers are unchanged
   `sim/tests/server.test.js` (**+1 test → 906, zero failures**). Every other figure is read
   verbatim or is the one sanctioned RP subtraction; the client computes no other engine number.
 
+- **Slice A′ — stamp `fuelHoardAtCycleStart` at FOUNDING. ⏳ NEXT.** Slice A stamps the
+  reference only at a cycle boundary, so a guild founded mid-cycle carries
+  `fuelHoardAtCycleStart = null` until its first boundary and the bar cannot size itself: 500u of
+  real fuel shows as an EMPTY bar (caught in playtest, 03-09-26). Fix: stamp the reference at guild
+  creation too (= the starting hoard), so the bar is **full from birth** (§2.3) and drains as
+  the guild spends; the existing boundary re-stamp keeps handling every subsequent cycle. It is
+  **engine-only** — the client already reads `fuelHoardAtCycleStartValue` as the max, so no client
+  change — and **additive**, but it adds stored state at creation, so the determinism goldens move:
+  regenerate by strip-and-prove and prove the delta is confined to the new field. Acceptance: a
+  freshly-founded guild's stockpile bar reads **full at its starting fuel**, before any boundary.
+
 Slices A and B both stamp a value at the same tick boundary and rode one prompt with C; the client
 panel is the last, and now landed. The minimal end-to-end path is **A + the client panel** (the
 stockpile bar working as you trade), with B and C the enrichments — all four now on screen.
@@ -163,7 +187,10 @@ stockpile bar working as you trade), with B and C the enrichments — all four n
 
 - **The legal/illegal hoard split** — the whole illegal-refining system. Until it exists,
   `fuelHoard` is entirely legal; the bar shows legal = hoard, illegal = 0, and the red bar and
-  its suspicion marker are dormant.
+  its suspicion marker are dormant. When it lands, illegal production is the only
+  thing that raises the hoard mid-cycle, and per §2.3 the bar's max **rises to match the live
+  `fuelHoard`** when it climbs above the start-of-period level (the one case the max moves mid-cycle);
+  the red/blue rescale and the suspicion marker are designed with it, not before.
 - **Deuterium / Transport contracts / Council & politics RP sources** — each waits on its own
   mechanic (licensed deuterium mining, transport contracts, the political layer).
 - **The other Guild Hall tabs** — Finance, Ventures, Council, Forum.
