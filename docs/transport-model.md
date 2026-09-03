@@ -174,6 +174,8 @@ The interpolation of §2.3 is read by three places, from one primitive:
 and it is the **Phase-1 lightweight stand-in** for §8's allocation-as-purchasing-power — not a new
 system. The full deuterium pool / refining machinery of §8 is explicitly **not built** here.*
 
+**→ §8.0–8.1 (RULED 03-09-26) are the current authority for the Syndicate SELL/BUY transaction; the bullets immediately below are the original Phase-1 framing, kept for history and superseded where they differ.**
+
 - **Doing business with the Syndicate costs fuel credits.** A guild spends a **fuel-credit allowance**
   to get a Syndicate trade done, so trading is not free — fuel still gates activity, exactly what §8's
   allocation model exists to ensure. This is why instant SELL does not undermine the fuel economy: the
@@ -191,6 +193,64 @@ system. The full deuterium pool / refining machinery of §8 is explicitly **not 
   machinery yet. Whether SELL as well as BUY spends fuel credits, the per-transaction cost (flat vs
   distance-scaled), and the replenish formula are all open (§10).
 
+### 8.0 The Syndicate transaction — RULED 03-09-26
+
+The Phase-1 fuel-credit *allowance* above is the built **fuel hoard** (units), granted per cycle by
+the reputation-driven issuance modifier (`fuel-supply-and-allocation.md` §2) and priced by the
+controller (§4 there). A Syndicate trade spends that hoard to move goods, so fuel gates trading
+exactly as this section intended — the mechanism is the hoard, not a separate allowance. The rulings
+that make the SELL/BUY transaction concrete:
+
+- **Both BUY and SELL burn route fuel — distance-scaled, from the hoard, in units.** A leg's burn is
+  `routeFuelCost(system) = ceil(hexDistance(system → nearest waystation) × SYNDICATE_HAULER_BURN_RATE)`
+  units (`SYNDICATE_HAULER_BURN_RATE = 0.5`; the function BUY already uses). **This closes §10 open #2's**
+  "does SELL spend fuel / flat vs distance-scaled": **yes, and distance-scaled.** Today
+  `buyFromSyndicate` burns it and `sellToSyndicate` does NOT — the SELL slice adds the burn.
+- **Two pools, both monetary but separate.** Proceeds/cost are **credits** (the treasury); route fuel
+  is **units** out of the **fuel hoard**, shown in credit-equivalent for the ledger only. A SELL is
+  `+proceeds ¢ to treasury` and `−Σ fuelBurn units from the hoard`; a BUY is `−cost ¢` and
+  `−Σ fuelBurn units`. Fuel is never paid from the treasury, nor credits from the hoard.
+- **The guild always pays the one-way route.** SELL ships goods to the nearest waystation
+  (system → waystation); BUY ships from the waystation to the destination the player picks
+  (waystation → destination). Distance is symmetric, so the fuel is the same either way; only BUY
+  carries a delivery lag (below).
+- **A basket is one good across many systems (`allocations: [{systemId, qty}]`).** The transaction
+  window's ADD button appends a row per system; the `sellToSyndicate` action already carries the array.
+  Each row has its own nearest waystation and thus its own route fuel; the bill **compounds** across rows.
+- **Reject-whole on the aggregate.** The whole order is refused if the hoard cannot cover the **summed**
+  route fuel of every row (and, for BUY, if the treasury cannot cover the summed goods cost) — no partial
+  fill, no shortened flight. Mirrors BUY's existing gate, applied to the basket total.
+- **Settlement: SELL is immediate, BUY lags.** A SELL credits the treasury, burns the fuel, and removes
+  the stock on confirm — the goods "reaching the waystation" is narrative, not a delay. A BUY debits
+  credits and burns fuel on confirm, and the goods **arrive later** at
+  `arrivalTickFor(tick, distance) = tick + ceil(distance × CRAFT_SPEED)` (`CRAFT_SPEED = 300` ticks/hex,
+  a `[FIRST-CUT]`), landing via `stepArrivals` — already stamped on the shipment.
+
+**Naming (tracked, not resolved here):** the seed entity the code calls an `outpost` **is** the
+Syndicate waystation (`nearestWaystation` iterates `getOutposts()`). The design word is *waystation*; a
+future Guild-controlled *outpost* is a different thing (BUY-to-a-controlled-outpost is deferred until it
+exists). The UI says "waystation"; a code rename of the seed `outpost` → `waystation` is its own tidy-up,
+not part of the trade slices. (§2.1's Euclidean-vs-hex-step contradiction is untouched — the burn uses the
+built `hexDistance`.)
+
+### 8.1 The agreed-price quote — RULED 03-09-26 (its own slice, across SELL and BUY)
+
+The price shown when the transaction window opens is the price the player trades at, honoured for a short
+window — a firm **quote**, not a live-repricing feed. Only two numbers move (the resource **posted price**
+every tick; the **fuel price** only at a cycle boundary); distances and fuel-unit burns are seed geometry
+and never move, so the quote just freezes those two prices.
+
+- **The engine owns the quote; the client never sends a price (§18).** The confirm action carries the
+  **issue tick**, not a price. On confirm the engine re-derives the resource posted price and the fuel
+  price **as they were at that tick**, from its own state/history, and applies them. The client cannot pin
+  a favourable rate — it is not sending a rate, only a tick the engine validates.
+- **Expiry — two rules, both required.** The quote is refused if the issue tick is more than
+  **`QUOTE_TTL_TICKS` (`[FIRST-CUT]` = 5)** ticks old, **or** if a **cycle boundary** has passed since it
+  was issued (the fuel price it agreed no longer exists). Past the window the transaction window shows an
+  **expired** state and the player refreshes to re-quote at the current price.
+- **Its own slice, over SELL and BUY both**, built *after* the core SELL transaction (which prices at
+  confirm) closes the loop. Recorded here so it is not re-guessed.
+
 ## 9. The route planner (guild-tier UI, Phase 4)
 
 The leg builder lets the player **see the whole journey's cost, time, and risk**, choose among routes,
@@ -206,8 +266,8 @@ and the direct cousin of the Syndicate's destination-vanish rule.
 
 1. The per-craft **speed table** numbers (§5) and where the Syndicate hauler and normal light
    transport sit.
-2. **Fuel-credits ↔ §8**: subsume / replace / coexist; does SELL spend credits or only BUY; flat vs
-   distance-scaled cost; the reputation→replenish formula (§8).
+2. **Fuel-credits ↔ §8**: subsume / replace / coexist, and the reputation→replenish formula (§8) — still
+   open. *(RESOLVED 03-09-26, §8.0: SELL spends fuel too, and the cost is distance-scaled route fuel.)*
 3. **Toll cost** through a hub — one toll or one per gate touched (leaning per-gate-passed).
 4. **Route re-validation / change-flagging** mechanics (§9).
 5. **Guild-run piracy / seizure** as a later Resistance mission (§7) — deferred, not designed.
