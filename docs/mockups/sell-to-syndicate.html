@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sell to Syndicate — mockup</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+:root{
+  --void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
+  --line:rgba(232,223,200,0.10); --line2:rgba(232,223,200,0.20);
+  --amber:#C9A227; --amber2:#B79433; --amber-dim:#7A6420; --amber-ghost:rgba(201,162,39,0.10);
+  --ink:#E8DFC8; --ink2:#8B8F9C; --ink3:#565B68; --ink4:#3a3f49;
+  --green:#4E9A87; --red:#C2603A; --blue:#3E82B5; --orange:#D8842E;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  --serif:'Cinzel',serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:radial-gradient(1100px 520px at 80% -12%, #15171f 0%, transparent 60%),var(--void); color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.45; min-height:100vh}
+
+.est-overlay{position:fixed; inset:0; background:rgba(6,7,10,.72); backdrop-filter:blur(3px); display:flex; align-items:flex-start; justify-content:center; padding:30px 20px; overflow-y:auto; z-index:50}
+.est{width:100%; max-width:960px; background:linear-gradient(180deg,#12151C,#0F1218); border:1px solid var(--line2); border-radius:14px; box-shadow:0 30px 90px rgba(0,0,0,.6); overflow:hidden; position:relative}
+
+.est-head{display:flex; align-items:center; gap:16px; padding:18px 22px 16px; border-bottom:1px solid var(--line); background:radial-gradient(700px 200px at 85% -40%, rgba(201,162,39,.06), transparent 70%)}
+.est-head .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
+.est-head h2{font-family:var(--serif); font-weight:600; font-size:22px; margin:4px 0 0; letter-spacing:.02em}
+.est-close{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--ink2); border-radius:8px; width:34px; height:34px; font-size:16px; cursor:pointer; flex:none}
+.est-close:hover{border-color:var(--red); color:var(--red)}
+
+.est-body{display:grid; grid-template-columns:1fr 340px; gap:0}
+.est-main{padding:20px 22px 22px; border-right:1px solid var(--line)}
+.sec-head{display:flex; align-items:center; gap:9px; margin-bottom:12px}
+.sec-head .t{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2)}
+.sec-head .g{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--amber)}
+.sec-head .aux{margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--ink3); letter-spacing:.04em}
+
+/* basket rows */
+.row{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 13px 13px; margin-bottom:9px}
+.row.base{border-color:var(--line2); background:var(--panel2)}
+.rtop{display:flex; align-items:baseline; gap:12px; margin-bottom:11px}
+.rroute{font-family:var(--mono); font-size:13px; color:var(--ink); letter-spacing:.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.rroute .rarr{color:var(--ink3); margin:0 6px}
+.rroute .rway{color:var(--amber2)}
+.rowsel{font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--void); border:1px solid var(--line2); border-radius:6px; padding:4px 22px 4px 8px; cursor:pointer; appearance:none; letter-spacing:.01em;
+  background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);
+  background-position:calc(100% - 12px) 55%, calc(100% - 8px) 55%; background-size:4px 4px,4px 4px; background-repeat:no-repeat}
+.rowsel:focus{outline:none; border-color:var(--amber)}
+.rfuelcr{margin-left:auto; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); white-space:nowrap; flex:none}
+.rfuelcr b{color:var(--red); font-weight:500; font-size:12px; letter-spacing:0}
+.rbody{display:flex; align-items:center; gap:14px}
+.rctrl{flex:1; display:flex; align-items:center; min-width:0}
+.rctrl .basetag{font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink4)}
+.rctrl input[type=range]{-webkit-appearance:none; appearance:none; width:100%; height:6px; border-radius:4px; background:var(--void); border:1px solid var(--line); cursor:ew-resize}
+.rctrl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:var(--ink); border:2px solid var(--void); box-shadow:0 0 0 1px var(--amber-dim); cursor:ew-resize}
+.rctrl input[type=range]::-moz-range-thumb{width:16px; height:16px; border-radius:50%; background:var(--ink); border:2px solid var(--void); box-shadow:0 0 0 1px var(--amber-dim)}
+.qbig{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:21px; font-weight:500; color:var(--amber); text-align:right; min-width:120px; padding-right:16px; flex:none}
+.qbig .u{font-size:11px; color:var(--ink3); margin-left:5px; letter-spacing:.08em}
+.xslot{width:26px; flex:none; display:flex; justify-content:center}
+.xslot button{background:none; border:1px solid var(--line); color:var(--ink3); border-radius:6px; width:24px; height:24px; font-size:12px; cursor:pointer}
+.xslot button:hover{border-color:var(--red); color:var(--red)}
+.addbtn{width:100%; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); background:var(--amber-ghost); border:1px dashed var(--amber-dim); border-radius:9px; padding:11px; cursor:pointer; margin-top:3px}
+.addbtn:hover{background:var(--amber-dim); color:var(--void)}
+.addbtn:disabled{color:var(--ink4); border-color:var(--line); background:transparent; cursor:not-allowed}
+
+/* right hero + ledger */
+.est-side{position:relative; background:#0d0f14; display:flex; flex-direction:column; min-height:540px}
+.est-side .art{position:absolute; inset:0; background-size:cover; background-position:50% 20%; z-index:0}
+.est-side .scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(10,11,15,.34) 0%, rgba(10,11,15,.70) 44%, rgba(10,11,15,.96) 100%); z-index:1}
+.est-side .inner{position:relative; z-index:2; padding:20px 18px 20px; display:flex; flex-direction:column; flex:1}
+.ledger{font-family:var(--mono); font-size:12px; margin-top:auto}
+.ledger .row2{display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:9px 0; border-bottom:1px solid rgba(232,223,200,0.09)}
+.ledger .row2 .k{color:var(--ink3); letter-spacing:.06em; text-transform:uppercase; font-size:10px}
+.ledger .row2 .v{color:var(--ink); text-align:right; font-variant-numeric:tabular-nums}
+.ledger .row2.profit .v b{color:var(--green); font-size:16px; font-weight:600}
+.ledger .row2.fuel .v b{color:var(--red); font-size:14px}
+
+/* fuel-credit bar */
+.fcblk{padding-top:13px}
+.fcblk .fchead{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px}
+.fcblk .fchead .k{color:var(--ink3); letter-spacing:.06em; text-transform:uppercase; font-size:10px; font-family:var(--mono)}
+.fcblk .fchead .state{font-family:var(--mono); font-size:10px; letter-spacing:.04em}
+.fcblk .fchead .state.ok{color:var(--ink3)}
+.fcblk .fchead .state.illegal{color:var(--red)}
+.fcblk .fchead .state.bad{color:var(--orange); font-weight:500}
+.fcbar{position:relative; height:16px; border-radius:5px; background:var(--void); border:1px solid var(--line); overflow:hidden}
+.fcbar .seg{position:absolute; top:0; bottom:0}
+.fcbar .fc-red{left:0; background:linear-gradient(180deg, rgba(194,96,58,.85), rgba(194,96,58,.6))}
+.fcbar .fc-blue{background:linear-gradient(180deg, rgba(62,130,181,.9), rgba(62,130,181,.62))}
+.fcbar .fc-spend{background:repeating-linear-gradient(45deg, rgba(8,9,12,.72), rgba(8,9,12,.72) 4px, rgba(8,9,12,.5) 4px, rgba(8,9,12,.5) 8px)}
+.fcbar .fc-marker{position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--ink); box-shadow:0 0 6px rgba(232,223,200,.7); z-index:3}
+.fcbar.bad .fc-red,.fcbar.bad .fc-blue{filter:none; background:linear-gradient(180deg, rgba(216,132,46,.9), rgba(216,132,46,.6))}
+.fcbar.bad .fc-marker{background:var(--orange); box-shadow:0 0 6px rgba(216,132,46,.8)}
+.fcfoot{display:flex; justify-content:space-between; margin-top:6px; font-family:var(--mono); font-size:9.5px; color:var(--ink4); letter-spacing:.06em; text-transform:uppercase}
+
+.deploy{width:100%; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer; margin-top:16px}
+.deploy:hover{background:#DCB43A}
+.deploy:disabled{background:rgba(28,33,43,.85); color:var(--ink3); cursor:not-allowed; border:1px solid var(--line)}
+
+.success{display:none; padding:40px 26px; text-align:center}
+.success.show{display:block}
+.success .tick{width:56px; height:56px; border-radius:50%; border:2px solid var(--green); color:var(--green); display:flex; align-items:center; justify-content:center; font-size:28px; margin:0 auto 16px}
+.success h3{font-family:var(--serif); font-weight:600; font-size:22px; margin:0 0 10px}
+.success .sled{max-width:420px; margin:14px auto 0; text-align:left; font-family:var(--mono); font-size:12px}
+.success .sled div{display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--line)}
+.success .sled .k{color:var(--ink3); text-transform:uppercase; font-size:10px; letter-spacing:.05em}
+.success .again{margin-top:22px; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); background:var(--amber-ghost); border:1px solid var(--amber-dim); border-radius:9px; padding:11px 22px; cursor:pointer}
+.note{max-width:960px; margin:14px auto 0; font-family:var(--mono); font-size:10.5px; color:var(--ink3); line-height:1.6; text-align:center}
+@media(max-width:760px){ .est-body{grid-template-columns:1fr} .est-main{border-right:none; border-bottom:1px solid var(--line)} }
+</style>
+</head>
+<body>
+
+<div class="est-overlay">
+  <div class="est">
+    <div id="formView">
+      <div class="est-head">
+        <div>
+          <div class="eyebrow">Syndicate Exchange</div>
+          <h2>Sell to Syndicate</h2>
+        </div>
+        <button class="est-close" title="Close">✕</button>
+      </div>
+
+      <div class="est-body">
+        <div class="est-main">
+          <div class="sec-head"><span class="t">Consignment</span><span class="g">— Titanium</span><span class="aux" id="rowCount"></span></div>
+          <div id="rows"></div>
+          <button class="addbtn" id="addBtn">+ Add a system</button>
+        </div>
+
+        <div class="est-side">
+          <div class="art" id="heroArt"></div>
+          <div class="scrim"></div>
+          <div class="inner">
+            <div class="ledger">
+              <div class="row2"><span class="k">Consignment</span><span class="v" id="lCons">—</span></div>
+              <div class="row2 profit"><span class="k">Profit</span><span class="v"><b id="lProfit">—</b></span></div>
+              <div class="row2 fuel"><span class="k">Route Fuel Credits</span><span class="v"><b id="lFuel">—</b></span></div>
+
+              <div class="fcblk">
+                <div class="fchead"><span class="k">Fuel Credits Available</span><span class="state ok" id="fcState"></span></div>
+                <div class="fcbar" id="fcbar">
+                  <div class="seg fc-red" id="fcRed"></div>
+                  <div class="seg fc-blue" id="fcBlue"></div>
+                  <div class="seg fc-spend" id="fcSpend"></div>
+                  <div class="fc-marker" id="fcMarker"></div>
+                </div>
+              </div>
+            </div>
+            <button class="deploy" id="sellBtn">Sell to Syndicate</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="success" id="successView">
+      <div class="tick">✓</div>
+      <h3>Consignment sold</h3>
+      <div class="sled" id="sSled"></div>
+      <button class="again" id="againBtn">New order ▸</button>
+    </div>
+  </div>
+</div>
+
+<div class="note">Mockup · static sample data. Hero swaps light / medium / heavy Syndicate transport by total load (&lt;10k · 10k–50k · 50k+). Fuel is per-route (flat per leg), billed once in credits; the bar shows where your fuel credits land after the sale — into blue (legal), red (illegal), or short (orange). Illegal balance is a sample; v1 ships it at 0.</div>
+
+<script>const ART = {
+  light: "../../client/assets/units/lighttransport.jpg",
+  medium: "../../client/assets/units/mediumtransport.jpg",
+  heavy: "../../client/assets/units/heavytransport.jpg",
+};</script>
+<script>
+const FUEL_PRICE = 3.0;
+const GOOD = { label:"Titanium", price:12 };
+// fuel credits on hand (units × price). Illegal is a sample to show the mechanic; v1 = 0.
+const LEGAL_CR = 90, ILLEGAL_CR = 30;
+const TOTAL_CR = LEGAL_CR + ILLEGAL_CR;
+const SYSTEMS = [
+  { name:"Kepler-9c",  way:"Cygnus Waystation",  fuel:10, avail:40000 },
+  { name:"Vega Reach",  way:"Perseus Waystation", fuel:18, avail:30000 },
+  { name:"Tau Ceti",    way:"Orion Waystation",   fuel:25, avail:12000 },
+];
+let basket = [{ sysIdx:0, qty:SYSTEMS[0].avail }]; // first row fixed (from the manifest page)
+
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString("en-US");
+const usedSys = () => new Set(basket.map(b=>b.sysIdx));
+const nextFreeSys = () => { const u=usedSys(); for(let i=0;i<SYSTEMS.length;i++) if(!u.has(i)) return i; return -1; };
+
+function render(){
+  const box = $("rows"); box.innerHTML = "";
+  basket.forEach((b, ri) => {
+    const s = SYSTEMS[b.sysIdx];
+    const first = ri === 0;
+    const routeCr = Math.round(s.fuel * FUEL_PRICE);
+    const usedByOthers = new Set(basket.filter((_,j)=>j!==ri).map(x=>x.sysIdx));
+    const opts = SYSTEMS.map((sy,i)=>`<option value="${i}" ${i===b.sysIdx?'selected':''} ${usedByOthers.has(i)?'disabled':''}>${sy.name}</option>`).join("");
+    const routeHead = first ? `<span class="rsys">${s.name}</span>` : `<select class="rowsel">${opts}</select>`;
+    const el = document.createElement("div"); el.className = "row" + (first ? " base" : "");
+    el.innerHTML = `
+      <div class="rtop">
+        <span class="rroute">${routeHead}<span class="rarr">→</span><span class="rway">${s.way}</span></span>
+        <span class="rfuelcr">Route fuel credits: <b>¢${routeCr}</b></span>
+      </div>
+      <div class="rbody">
+        <div class="rctrl">${ first ? '<span class="basetag">◇ base order · fixed</span>' : `<input type="range" min="0" max="${s.avail}" step="100" value="${b.qty}">` }</div>
+        <div class="qbig">${fmt(b.qty)}<span class="u">u</span></div>
+        <div class="xslot">${ first ? '' : '<button title="Remove">✕</button>' }</div>
+      </div>`;
+    if(!first){
+      el.querySelector(".rowsel").onchange = e => { b.sysIdx = +e.target.value; b.qty = SYSTEMS[b.sysIdx].avail; render(); };
+      el.querySelector("input").oninput = e => { b.qty = +e.target.value; render(); };
+      el.querySelector(".xslot button").onclick = () => { basket.splice(ri,1); render(); };
+    }
+    box.appendChild(el);
+  });
+  $("rowCount").textContent = basket.length + " / " + SYSTEMS.length + " systems";
+  $("addBtn").disabled = nextFreeSys() === -1;
+
+  // totals
+  const active = basket.filter(b=>b.qty>0);
+  const totalQty = active.reduce((a,b)=>a+b.qty,0);
+  const profit = totalQty * GOOD.price;
+  const fuelUnits = active.reduce((a,b)=>a+SYSTEMS[b.sysIdx].fuel,0);
+  const fuelCr = Math.round(fuelUnits * FUEL_PRICE);
+
+  // hero by the LARGEST single order (each order is its own shipment), not the combined total
+  const maxQty = active.length ? Math.max(...active.map(b=>b.qty)) : 0;
+  let cls;
+  if (maxQty <= 10000) cls="light"; else if (maxQty <= 50000) cls="medium"; else cls="heavy";
+  $("heroArt").style.backgroundImage = maxQty>0 ? `url(${ART[cls]})` : "none";
+
+  // ledger
+  $("lCons").innerHTML = totalQty>0 ? `${GOOD.label} <span style="color:var(--ink3)">×</span> ${fmt(totalQty)}` : "—";
+  $("lProfit").textContent = "+¢"+fmt(profit);
+  $("lFuel").textContent = "−¢"+fmt(fuelCr);
+
+  // fuel-credit bar
+  const remaining = TOTAL_CR - fuelCr;
+  const illegalPct = ILLEGAL_CR / TOTAL_CR * 100;
+  const bar = $("fcbar"), st = $("fcState");
+  const insufficient = remaining < 0;
+  const intoIllegal = !insufficient && remaining <= ILLEGAL_CR;
+  const markerPct = Math.max(0, Math.min(100, remaining / TOTAL_CR * 100));
+
+  $("fcRed").style.left = "0"; $("fcRed").style.width = illegalPct + "%";
+  $("fcBlue").style.left = illegalPct + "%"; $("fcBlue").style.right = "0";
+  $("fcSpend").style.left = markerPct + "%"; $("fcSpend").style.right = "0";
+  $("fcMarker").style.left = markerPct + "%";
+  $("fcMarker").style.display = fuelCr>0 ? "block" : "none";
+  bar.classList.toggle("bad", insufficient);
+
+  if (insufficient){ st.className="state bad"; st.textContent="INSUFFICIENT FUEL CREDITS"; }
+  else if (intoIllegal){ st.className="state illegal"; st.textContent="using illegal fuel credits"; }
+  else { st.className="state ok"; st.textContent=""; }
+
+  // button gate
+  const btn = $("sellBtn");
+  btn.disabled = totalQty===0 || insufficient;
+
+  render._last = { totalQty, profit, fuelCr, ways:active.length, remaining };
+}
+
+$("addBtn").onclick = () => { const i = nextFreeSys(); if(i>=0){ basket.push({ sysIdx:i, qty:SYSTEMS[i].avail }); render(); } };
+$("sellBtn").onclick = () => {
+  const d = render._last; if(!d || d.totalQty===0 || d.remaining<0) return;
+  $("sSled").innerHTML = `
+    <div><span class="k">Sold</span><span>${GOOD.label} × ${fmt(d.totalQty)}</span></div>
+    <div><span class="k">Profit → treasury</span><span class="green" style="color:var(--green)">+¢${fmt(d.profit)}</span></div>
+    <div><span class="k">Route fuel credits</span><span style="color:var(--red)">−¢${fmt(d.fuelCr)}</span></div>
+    <div><span class="k">Fuel credits now</span><span>¢${fmt(d.remaining)}</span></div>`;
+  $("formView").style.display="none";
+  $("successView").classList.add("show");
+};
+$("againBtn").onclick = () => { $("successView").classList.remove("show"); $("formView").style.display="block"; basket=[{sysIdx:0, qty:SYSTEMS[0].avail}]; render(); };
+
+render();
+</script>
+</body>
+</html>
