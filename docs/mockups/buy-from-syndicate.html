@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buy from Syndicate &#8212; mockup</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+:root{
+  --void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
+  --line:rgba(232,223,200,0.10); --line2:rgba(232,223,200,0.20);
+  --amber:#C9A227; --amber2:#B79433; --amber-dim:#7A6420; --amber-ghost:rgba(201,162,39,0.10);
+  --ink:#E8DFC8; --ink2:#8B8F9C; --ink3:#565B68; --ink4:#3a3f49;
+  --green:#4E9A87; --red:#C2603A; --blue:#3E82B5; --orange:#D8842E;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  --serif:'Cinzel',serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:radial-gradient(1100px 520px at 80% -12%, #15171f 0%, transparent 60%),var(--void); color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.45; min-height:100vh}
+
+.est-overlay{position:fixed; inset:0; background:rgba(6,7,10,.72); backdrop-filter:blur(3px); display:flex; align-items:flex-start; justify-content:center; padding:30px 20px; overflow-y:auto; z-index:50}
+.est{width:100%; max-width:960px; background:linear-gradient(180deg,#12151C,#0F1218); border:1px solid var(--line2); border-radius:14px; box-shadow:0 30px 90px rgba(0,0,0,.6); overflow:hidden; position:relative}
+
+.est-head{display:flex; align-items:center; gap:16px; padding:18px 22px 16px; border-bottom:1px solid var(--line); background:radial-gradient(700px 200px at 85% -40%, rgba(201,162,39,.06), transparent 70%)}
+.est-head .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
+.est-head h2{font-family:var(--serif); font-weight:600; font-size:22px; margin:4px 0 0; letter-spacing:.02em}
+.est-close{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--ink2); border-radius:8px; width:34px; height:34px; font-size:16px; cursor:pointer; flex:none}
+.est-close:hover{border-color:var(--red); color:var(--red)}
+
+.est-body{display:grid; grid-template-columns:1fr 340px; gap:0}
+.est-main{padding:20px 22px 22px; border-right:1px solid var(--line)}
+.blk{margin-bottom:24px}
+.blk:last-child{margin-bottom:0}
+.sec-head{display:flex; align-items:center; gap:9px; margin-bottom:12px}
+.sec-head .t{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2)}
+
+/* destination */
+.destcard{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px}
+.dtop{display:flex; align-items:baseline; gap:12px}
+.rroute{font-family:var(--mono); font-size:14px; color:var(--ink); letter-spacing:.01em}
+.rroute .rarr{color:var(--ink3); margin:0 7px}
+.rroute .rway{color:var(--amber2)}
+.rowsel{font-family:var(--mono); font-size:14px; color:var(--ink); background:var(--void); border:1px solid var(--line2); border-radius:6px; padding:5px 24px 5px 9px; cursor:pointer; appearance:none; letter-spacing:.01em;
+  background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);
+  background-position:calc(100% - 12px) 55%, calc(100% - 8px) 55%; background-size:5px 5px,5px 5px; background-repeat:no-repeat}
+.rowsel:focus{outline:none; border-color:var(--amber)}
+.dmeta{margin-left:auto; font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); white-space:nowrap}
+.dmeta b{color:var(--red); font-weight:500; font-size:12px; letter-spacing:0}
+
+/* big readouts &#8212; quantity + arrival, left-aligned, price-sized */
+.readouts{display:flex; gap:48px}
+.ro-lbl{font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3); margin-bottom:7px}
+.ro-big{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:28px; font-weight:500; color:var(--amber); letter-spacing:.01em; line-height:1}
+.ro-big .u{font-size:12px; color:var(--ink3); margin-left:6px; letter-spacing:.08em}
+
+.est-side{position:relative; background:#0d0f14; display:flex; flex-direction:column; min-height:520px}
+.est-side .art{position:absolute; inset:0; background-size:cover; background-position:50% 20%; z-index:0}
+.est-side .scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(10,11,15,.34) 0%, rgba(10,11,15,.70) 44%, rgba(10,11,15,.96) 100%); z-index:1}
+.est-side .inner{position:relative; z-index:2; padding:20px 18px 20px; display:flex; flex-direction:column; flex:1}
+.ledger{font-family:var(--mono); font-size:12px; margin-top:auto}
+.ledger .row2{display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:9px 0; border-bottom:1px solid rgba(232,223,200,0.09)}
+.ledger .row2 .k{color:var(--ink3); letter-spacing:.06em; text-transform:uppercase; font-size:10px}
+.ledger .row2 .v{color:var(--ink); text-align:right; font-variant-numeric:tabular-nums}
+.ledger .row2.cost .v b{color:var(--red); font-size:16px; font-weight:600}
+.ledger .row2.fuel .v b{color:var(--red); font-size:14px}
+.ledger .row2.treasury.short .v{color:var(--orange)}
+
+.fcblk{padding-top:13px}
+.fcblk .fchead{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px}
+.fcblk .fchead .k{color:var(--ink3); letter-spacing:.06em; text-transform:uppercase; font-size:10px; font-family:var(--mono)}
+.fcblk .fchead .state{font-family:var(--mono); font-size:10px; letter-spacing:.04em}
+.fcblk .fchead .state.ok{color:var(--ink3)}
+.fcblk .fchead .state.illegal{color:var(--red)}
+.fcblk .fchead .state.bad{color:var(--orange); font-weight:500}
+.fcbar{position:relative; height:16px; border-radius:5px; background:var(--void); border:1px solid var(--line); overflow:hidden}
+.fcbar .seg{position:absolute; top:0; bottom:0}
+.fcbar .fc-red{left:0; background:linear-gradient(180deg, rgba(194,96,58,.85), rgba(194,96,58,.6))}
+.fcbar .fc-blue{background:linear-gradient(180deg, rgba(62,130,181,.9), rgba(62,130,181,.62))}
+.fcbar .fc-spend{background:repeating-linear-gradient(45deg, rgba(8,9,12,.72), rgba(8,9,12,.72) 4px, rgba(8,9,12,.5) 4px, rgba(8,9,12,.5) 8px)}
+.fcbar .fc-marker{position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--ink); box-shadow:0 0 6px rgba(232,223,200,.7); z-index:3}
+.fcbar.bad .fc-red,.fcbar.bad .fc-blue{background:linear-gradient(180deg, rgba(216,132,46,.9), rgba(216,132,46,.6))}
+.fcbar.bad .fc-marker{background:var(--orange); box-shadow:0 0 6px rgba(216,132,46,.8)}
+
+.deploy{width:100%; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer; margin-top:16px}
+.deploy:hover{background:#DCB43A}
+.deploy:disabled{background:rgba(28,33,43,.85); color:var(--ink3); cursor:not-allowed; border:1px solid var(--line)}
+
+.success{display:none; padding:40px 26px; text-align:center}
+.success.show{display:block}
+.success .tick{width:56px; height:56px; border-radius:50%; border:2px solid var(--green); color:var(--green); display:flex; align-items:center; justify-content:center; font-size:28px; margin:0 auto 16px}
+.success h3{font-family:var(--serif); font-weight:600; font-size:22px; margin:0 0 10px}
+.success .sled{max-width:440px; margin:14px auto 0; text-align:left; font-family:var(--mono); font-size:12px}
+.success .sled div{display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--line)}
+.success .sled .k{color:var(--ink3); text-transform:uppercase; font-size:10px; letter-spacing:.05em}
+.success .again{margin-top:22px; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); background:var(--amber-ghost); border:1px solid var(--amber-dim); border-radius:9px; padding:11px 22px; cursor:pointer}
+.note{max-width:960px; margin:14px auto 0; font-family:var(--mono); font-size:10.5px; color:var(--ink3); line-height:1.6; text-align:center}
+@media(max-width:760px){ .est-body{grid-template-columns:1fr} .est-main{border-right:none; border-bottom:1px solid var(--line)} }
+</style>
+</head>
+<body>
+
+<div class="est-overlay">
+  <div class="est">
+    <div id="formView">
+      <div class="est-head">
+        <div>
+          <div class="eyebrow">Syndicate Exchange</div>
+          <h2>Buy from Syndicate</h2>
+        </div>
+        <button class="est-close" title="Close">&#10005;</button>
+      </div>
+
+      <div class="est-body">
+        <div class="est-main">
+          <div class="blk">
+            <div class="sec-head"><span class="t">Deliver to</span></div>
+            <div class="destcard">
+              <div class="dtop">
+                <span class="rroute"><span class="rway" id="dWay">&#8212;</span><span class="rarr">&#8594;</span><select class="rowsel" id="destSel"></select></span>
+                <span class="dmeta">Route fuel <b id="dRoute">&#162;0</b></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="blk readouts">
+            <div class="ro">
+              <div class="ro-lbl">Quantity &#183; Titanium</div>
+              <div class="ro-big"><span id="qVal">20,000</span><span class="u">u</span></div>
+            </div>
+            <div class="ro">
+              <div class="ro-lbl">Arrival time</div>
+              <div class="ro-big" id="dArr">&#8212;</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="est-side">
+          <div class="art" id="heroArt"></div>
+          <div class="scrim"></div>
+          <div class="inner">
+            <div class="ledger">
+              <div class="row2"><span class="k">Purchase</span><span class="v" id="lCons">&#8212;</span></div>
+              <div class="row2 cost"><span class="k">Cost</span><span class="v"><b id="lCost">&#8212;</b></span></div>
+              <div class="row2 treasury" id="treRow"><span class="k">Treasury</span><span class="v" id="lTre">&#8212;</span></div>
+              <div class="row2 fuel"><span class="k">Route Fuel Credits</span><span class="v"><b id="lFuel">&#8212;</b></span></div>
+
+              <div class="fcblk">
+                <div class="fchead"><span class="k">Fuel Credits Available</span><span class="state ok" id="fcState"></span></div>
+                <div class="fcbar" id="fcbar">
+                  <div class="seg fc-red" id="fcRed"></div>
+                  <div class="seg fc-blue" id="fcBlue"></div>
+                  <div class="seg fc-spend" id="fcSpend"></div>
+                  <div class="fc-marker" id="fcMarker"></div>
+                </div>
+              </div>
+            </div>
+            <button class="deploy" id="buyBtn">Buy from Syndicate</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="success" id="successView">
+      <div class="tick">&#10003;</div>
+      <h3>Order dispatched</h3>
+      <div class="sled" id="sSled"></div>
+      <button class="again" id="againBtn">New order &#9656;</button>
+    </div>
+  </div>
+</div>
+
+<div class="note">Mockup &#183; static sample data. One purchase of a quantity fixed on the previous window, to one destination you pick &#8212; goods ship FROM the nearest Syndicate waystation TO that system, arriving after their travel time (arrivalTickFor = ceil(distance &#215; 300) ticks; 1 tick = 1 game-minute). Redirect to another held system, or a controlled outpost once those exist. Two gates: treasury covers the cost, fuel hoard covers the route. Illegal fuel balance is a sample; v1 ships it at 0.</div>
+
+<script>const ART = {
+  light: "../../client/assets/units/lighttransport.jpg",
+  medium: "../../client/assets/units/mediumtransport.jpg",
+  heavy: "../../client/assets/units/heavytransport.jpg",
+};</script>
+<script>
+const FUEL_PRICE = 3.0;
+const GOOD = { label:"Titanium", price:12 };
+const QTY = 20000;                   // fixed on the previous window
+const TREASURY = 500000;             // credits on hand
+const LEGAL_CR = 24, ILLEGAL_CR = 10; // fuel credits (units \u00d7 price); illegal is a sample, v1 = 0
+const TOTAL_CR = LEGAL_CR + ILLEGAL_CR;
+// dist = hexes waystation\u2192destination; fuel = ceil(dist\u00d70.5); arr = ceil(dist\u00d7300) ticks (1 tick = 1 game-min)
+const DESTS = [
+  { name:"Kepler-9c (operating)", way:"Cygnus Waystation",  dist:8  },
+  { name:"Vega Reach",             way:"Perseus Waystation", dist:10 },
+  { name:"Tau Ceti",               way:"Orion Waystation",   dist:18 },
+];
+DESTS.forEach(d => { d.fuel = Math.ceil(d.dist*0.5); d.arr = Math.ceil(d.dist*300); });
+let destIdx = 0;
+
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString("en-US");
+const eta = t => { const dd=Math.floor(t/1440), hh=Math.floor((t%1440)/60); return String(dd).padStart(2,"0")+"d"+String(hh).padStart(2,"0")+"h"; };
+
+$("destSel").innerHTML = DESTS.map((d,i)=>`<option value="${i}">${d.name}</option>`).join("")
+  + `<option disabled>\u25c6 Controlled outpost \u2014 soon</option>`;
+$("destSel").onchange = e => { destIdx = +e.target.value; render(); };
+
+function render(){
+  const d = DESTS[destIdx];
+  const routeCr = Math.round(d.fuel * FUEL_PRICE);
+  $("dWay").textContent = d.way;
+  $("dRoute").textContent = "\u00a2"+routeCr;
+  $("dArr").textContent = eta(d.arr);
+  $("qVal").textContent = fmt(QTY);
+
+  const cost = QTY * GOOD.price;
+  const fuelCr = routeCr;
+
+  // hero by the (fixed) order size
+  let cls; if (QTY <= 10000) cls="light"; else if (QTY <= 50000) cls="medium"; else cls="heavy";
+  $("heroArt").style.backgroundImage = `url(${ART[cls]})`;
+
+  // ledger
+  $("lCons").innerHTML = `${GOOD.label} <span style="color:var(--ink3)">\u00d7</span> ${fmt(QTY)}`;
+  $("lCost").textContent = "\u2212\u00a2"+fmt(cost);
+  const treShort = cost > TREASURY;
+  $("treRow").className = "row2 treasury" + (treShort ? " short" : "");
+  $("lTre").innerHTML = `\u00a2${fmt(TREASURY)} <span style="color:var(--ink3)">\u2192</span> \u00a2${fmt(TREASURY-cost)}` + (treShort ? " \u00b7 SHORT" : "");
+  $("lFuel").textContent = "\u2212\u00a2"+fmt(fuelCr);
+
+  // fuel-credit bar
+  const remaining = TOTAL_CR - fuelCr;
+  const illegalPct = ILLEGAL_CR / TOTAL_CR * 100;
+  const bar = $("fcbar"), st = $("fcState");
+  const fuelShort = remaining < 0;
+  const intoIllegal = !fuelShort && remaining <= ILLEGAL_CR;
+  const markerPct = Math.max(0, Math.min(100, remaining / TOTAL_CR * 100));
+  $("fcRed").style.left = "0"; $("fcRed").style.width = illegalPct + "%";
+  $("fcBlue").style.left = illegalPct + "%"; $("fcBlue").style.right = "0";
+  $("fcSpend").style.left = markerPct + "%"; $("fcSpend").style.right = "0";
+  $("fcMarker").style.left = markerPct + "%";
+  bar.classList.toggle("bad", fuelShort);
+  if (fuelShort){ st.className="state bad"; st.textContent="INSUFFICIENT FUEL CREDITS"; }
+  else if (intoIllegal){ st.className="state illegal"; st.textContent="using illegal fuel credits"; }
+  else { st.className="state ok"; st.textContent=""; }
+
+  $("buyBtn").disabled = treShort || fuelShort;
+  render._last = { cost, fuelCr, arr:d.arr, remaining, treShort, fuelShort, destName:d.name };
+}
+
+$("buyBtn").onclick = () => {
+  const r = render._last; if(!r || r.treShort || r.fuelShort) return;
+  $("sSled").innerHTML = `
+    <div><span class="k">Ordered</span><span>${GOOD.label} \u00d7 ${fmt(QTY)}</span></div>
+    <div><span class="k">Destination</span><span>${r.destName}</span></div>
+    <div><span class="k">Cost \u2192 treasury</span><span style="color:var(--red)">\u2212\u00a2${fmt(r.cost)}</span></div>
+    <div><span class="k">Route fuel credits</span><span style="color:var(--red)">\u2212\u00a2${fmt(r.fuelCr)}</span></div>
+    <div><span class="k">Fuel credits now</span><span>\u00a2${fmt(r.remaining)}</span></div>
+    <div><span class="k">Arrival time</span><span style="color:var(--blue)">${eta(r.arr)}</span></div>`;
+  $("formView").style.display="none";
+  $("successView").classList.add("show");
+};
+$("againBtn").onclick = () => { $("successView").classList.remove("show"); $("formView").style.display="block"; destIdx=0; $("destSel").value=0; render(); };
+
+render();
+</script>
+</body>
+</html>
