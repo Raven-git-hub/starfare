@@ -74,16 +74,18 @@ function createGuild({
     isBot,
     credits,
     fuelHoard,
-    // fuelHoardAtCycleStart: the guild's hoard at the last cycle boundary — POST-grant,
-    // before this cycle's usage (docs/guild-hall.md §4 A, the Guild Hall slice). Stored so
-    // the Standing panel's stockpile bar has its max and its used-this-cycle gap. Stamped
-    // by tick.js's step 6 only for a guild that was DUE a grant, so OMITTED here when absent
-    // (`=== undefined`, not `=== 0` — a hoard that opened the cycle empty is a real 0 the
-    // bar must show), the discipline `committedFromTick` follows: a guild that has never
-    // crossed a boundary carries no key and serializes byte-identically to pre-slice. An
-    // integer quantity of fuel (§15.2); CARRIED here so a scenario or a restored save that
-    // hands one in keeps it, exactly as `foundingEndowment` and `productionHistory` are.
-    ...(fuelHoardAtCycleStart !== undefined ? { fuelHoardAtCycleStart } : {}),
+    // fuelHoardAtCycleStart: the guild's hoard at the START of the current period — the datum
+    // the Standing panel's stockpile bar sizes its track from (docs/guild-hall.md §2.3, §4).
+    // STAMPED AT CREATION (Slice A′, 03-09-26): when the caller supplies none, it DEFAULTS to
+    // the guild's own `fuelHoard` (always present — required above), so a guild founded
+    // mid-cycle carries a real reference from birth and the bar is FULL from its starting fuel
+    // instead of empty until its first boundary. tick.js's step 6 RE-STAMPS it POST-grant at
+    // every cycle boundary the guild is due a grant (unchanged); this founding value is simply
+    // the reference for the first, boundary-less cycle. A real stored field now on EVERY guild
+    // (no longer omitted-when-absent), so it serializes/restores like the boundary-stamped one
+    // and, like `fuelHoard` beside it, is an integer quantity of fuel (§15.2). A scenario or a
+    // restored save that hands one in keeps it, exactly as `foundingEndowment` does.
+    fuelHoardAtCycleStart: fuelHoardAtCycleStart !== undefined ? fuelHoardAtCycleStart : fuelHoard,
     influence,
     incomeRate,
     // Home (design.md §13): the starter system a guild entered on, and its

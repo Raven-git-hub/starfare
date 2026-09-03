@@ -25,7 +25,7 @@ const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { issuanceModifier } = require('../meanline.js');
-const { fuelValue, REFERENCE_FUEL_PRICE } = require('../fuel.js');
+const { fuelValue, REFERENCE_FUEL_PRICE, GUILD_STARTING_FUEL } = require('../fuel.js');
 const {
   MODIFIER_HISTORY_N, getModifierHistory, pushModifierSample, cloneModifierHistory,
 } = require('../modifier-history.js');
@@ -110,11 +110,14 @@ test('after a boundary, the three fields carry exactly the ruled values', () => 
 
 test('the history gains exactly one sample per cycle, at the boundary and nowhere else', () => {
   let s = fixture();
-  // Mid-window ticks add NOTHING — the field is minted only at the boundary.
+  // Mid-window ticks add no HISTORY sample — that is minted only at the boundary. Slice A′
+  // (03-09-26) stamps `fuelHoardAtCycleStart` at FOUNDING (= the fixture's opening hoard, 0
+  // here), so it is already present and holds fixed through the window until the boundary
+  // re-stamp — it does NOT track the boundary the way the history sample does.
   for (let i = 1; i < N; i += 1) {
     s = tick(s);
     assert.equal(s.guilds[0].modifierHistory, undefined, `tick ${s.tick}: nothing off a boundary`);
-    assert.equal(s.guilds[0].fuelHoardAtCycleStart, undefined, `tick ${s.tick}: A off a boundary too`);
+    assert.equal(s.guilds[0].fuelHoardAtCycleStart, 0, `tick ${s.tick}: A holds its founding value off a boundary`);
   }
   s = tick(s); // the boundary
   assert.equal(s.guilds[0].modifierHistory.length, 1, 'one sample at the first boundary');
@@ -136,9 +139,12 @@ test('over many cycles the ring caps at MODIFIER_HISTORY_N and keeps the most re
 
 // --- sparsity: a holdings-less galaxy stays byte-identical -------------------------
 
-test('a guild DUE nothing (holds nothing) is stamped nothing, and the run is byte-identical', () => {
-  // GP 0 ⇒ due 0 ⇒ none of the three fields is minted, so the whole run is byte-identical to
-  // one with the fields' code absent — the sparsity that keeps the goldens honest.
+test('a guild DUE nothing (holds nothing) is stamped nothing AT THE BOUNDARY, and the run is deterministic', () => {
+  // GP 0 ⇒ due 0 ⇒ the boundary re-stamp never fires: none of the boundary-only fields (B and
+  // C, and A's re-stamp) is minted. But Slice A′ stamps `fuelHoardAtCycleStart` at FOUNDING, so
+  // this holdings-less guild carries it from birth — at its opening hoard (7), untouched by the
+  // boundary that never came for it. That founding stamp is exactly the point of A′: a guild's
+  // bar sizes from its starting fuel even if it is never due a grant.
   const empty = () => createState({
     guilds: [{ id: 'g1', credits: 0, fuelHoard: 7 }], // no ventures ⇒ GP 0
     reserve: { reserveLevel: 5000 },
@@ -148,14 +154,14 @@ test('a guild DUE nothing (holds nothing) is stamped nothing, and the run is byt
   let s = empty();
   for (let c = 0; c < 3; c += 1) s = runToBoundary(s);
   const g = s.guilds[0];
-  assert.equal(g.fuelHoardAtCycleStart, undefined, 'A: no key on a holdings-less guild');
-  assert.equal(g.modifierHistory, undefined, 'C: no key either');
+  assert.equal(g.fuelHoardAtCycleStart, 7, 'A′: stamped at founding (= the opening hoard), never re-stamped for a guild due no grant');
+  assert.equal(g.modifierHistory, undefined, 'C: no key — the boundary re-stamp never fired');
   assert.equal(g.lastFuelGrant, undefined, 'and no grant record to carry B');
 
-  // Determinism, and the byte-identity of the empty path — run twice, identical.
+  // Determinism (invariant 9): the same holdings-less run twice is byte-identical.
   let s2 = empty();
   for (let c = 0; c < 3; c += 1) s2 = runToBoundary(s2);
-  assert.equal(hashState(s), hashState(s2), 'a holdings-less run is deterministic and carries no Guild Hall bytes');
+  assert.equal(hashState(s), hashState(s2), 'a holdings-less run is deterministic');
 });
 
 test('determinism (invariant 9): a run that stamps the three fields is byte-identical twice', () => {
@@ -200,13 +206,39 @@ test('the snapshot publishes all three fields, marked and echoed', () => {
   assert.equal(snap.schemaVersion, 7, 'additive — no schema bump');
 });
 
-test('the snapshot reports the cycle-start fields as null, and history as [], before the first boundary', () => {
-  const snap = buildSnapshot(fixture({ fuelHoard: 12 })); // tick 0 — never crossed a boundary
+test('Slice A′: the snapshot sizes the bar from birth — cycle-start == live hoard, before any boundary', () => {
+  // THE ACCEPTANCE OF SLICE A′ (docs/guild-hall.md §4). At tick 0, before any boundary, the
+  // stockpile bar must read FULL at the guild's starting fuel — so `fuelHoardAtCycleStart`
+  // (the bar's max) equals the live `fuelHoard`, and their marked credit values agree at the
+  // opening price. Before A′ both were null and the bar showed 500u of real fuel as empty.
+  const s = fixture({ fuelHoard: 12 }); // tick 0 — never crossed a boundary
+  const snap = buildSnapshot(s);
   const row = snap.guilds[0];
-  assert.equal(row.fuelHoardAtCycleStart, null, 'a null, not a 0 (a real 0 is a meaningful empty hoard)');
-  assert.equal(row.fuelHoardAtCycleStartValue, null);
+  assert.equal(row.fuelHoardAtCycleStart, 12, 'A′: the founding hoard is the bar max from birth (not null)');
+  assert.equal(row.fuelHoardAtCycleStart, row.fuelHoard, 'so the bar reads FULL — max == live hoard at founding');
+  assert.equal(row.fuelHoardAtCycleStartValue, fuelValue(12, s.reserve.fuelPrice), 'marked through the same fuelValue/price');
+  assert.equal(row.fuelHoardAtCycleStartValue, row.fuelHoardValue, 'and the marked max == the marked live value (the acceptance)');
+  assert.notEqual(row.fuelHoardAtCycleStartValue, null, 'a non-null value — the client sizes its track off it');
+  // The two boundary-only fields are still in their pre-boundary state — A′ moved only A.
   assert.deepEqual(row.modifierHistory, [], 'the Performance line gets a stable [] — its "gathering history" state');
   assert.equal(row.fuelGrant, null, 'and no grant record yet');
+});
+
+test('Slice A′: a freshly-created guild carries fuelHoardAtCycleStart == fuelHoard, before any boundary', () => {
+  // The engine-level tripwire behind the snapshot acceptance above: `createGuild` stamps the
+  // reference at creation (= the guild's own fuelHoard) for EVERY creation path. A guild
+  // founded through the real action opens on GUILD_STARTING_FUEL, so its bar sizes off that.
+  const s = createState({
+    guilds: [{ id: 'g1', credits: 0, fuelHoard: GUILD_STARTING_FUEL, ventures: [mine('t', 'titanium', 5)] }],
+    reserve: { reserveLevel: 0 },
+    syndicate: { ledger: 0 },
+    windowN: N,
+  });
+  const g = s.guilds[0];
+  assert.equal(s.tick, 0, 'no boundary has been crossed');
+  assert.equal(g.fuelHoardAtCycleStart, g.fuelHoard, 'stamped at creation, equal to the opening hoard');
+  assert.equal(g.fuelHoardAtCycleStart, GUILD_STARTING_FUEL, 'which for a founded guild is the starter floor (500u)');
+  assert.deepEqual(checkInvariants(s, s.tick), [], 'and the freshly-stamped state is invariant-clean');
 });
 
 // --- the tripwires ----------------------------------------------------------------

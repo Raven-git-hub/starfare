@@ -162,11 +162,14 @@ function checkNonNegativityAndIntegrality(state) {
     // Every other field below (hoards, influence, stockpiles, reserves) stays >= 0.
     checkField(out, g.credits, `guild:${g.id}.credits`, { nonNegative: false });
     checkField(out, g.fuelHoard, `guild:${g.id}.fuelHoard`);
-    // fuelHoardAtCycleStart — the start-of-cycle hoard reference (Guild Hall Slice A,
-    // sim/tick.js step 6). A quantity of fuel like `fuelHoard` beside it, so the same
-    // integer + non-negativity sweep: it is the hoard POST-grant, which is ≥ 0 by
-    // construction, and a fractional one would be as much a bug here as anywhere fuel is
-    // counted. Absent (a guild never due a grant) is the common case and is legal.
+    // fuelHoardAtCycleStart — the start-of-period hoard reference (Guild Hall Slices A/A′,
+    // stamped at founding in state.js and re-stamped at each boundary in sim/tick.js step 6).
+    // A quantity of fuel like `fuelHoard` beside it, so the same integer + non-negativity
+    // sweep: it opens at the founding hoard and is thereafter the hoard POST-grant, both ≥ 0
+    // by construction, and a fractional one would be as much a bug here as anywhere fuel is
+    // counted. Present on every guild since Slice A′ (a founded guild carries it from birth),
+    // but the `!== undefined` guard is KEPT so a legacy save or a synthetic test guild built
+    // without it is skipped rather than failed — exactly the tolerance `guildReputation` gets.
     if (g.fuelHoardAtCycleStart !== undefined) {
       checkField(out, g.fuelHoardAtCycleStart, `guild:${g.id}.fuelHoardAtCycleStart`);
     }

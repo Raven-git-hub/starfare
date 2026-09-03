@@ -256,6 +256,22 @@ const COMMITTED_WITH_PRICE_HISTORY_BEFORE_CONTROLLER = '33021945d4660c785d2f287b
 // the no-op test above). Nothing happens off a boundary.
 const GOLDEN_COMMITTED_WITH_GUILD_HALL = '6efcbecc2ba0c55d6933167e313ad28ce7e346cf2715bca0413ed72dce42d211';
 
+// ── SLICE A′ — STAMP `fuelHoardAtCycleStart` AT FOUNDING (03-09-26 — docs/guild-hall.md §4) ──
+//
+// THE UNLICENSED RUN'S FULL HASH MOVED; THE COMMITTED RUN'S DID NOT — the mirror image of the
+// A/B/C split above, and that inversion is the proof. Slice A now stamps `fuelHoardAtCycleStart`
+// at CREATION too (= the guild's opening `fuelHoard`), not only at a boundary. So:
+//   - The UNLICENSED run crosses NO boundary, so before A′ its guild carried no such key at all;
+//     now it carries `fuelHoardAtCycleStart: 0` (its opening hoard) from creation. That ONE added
+//     key is the whole delta — `withoutGuildHall` strips it and every pre-A′ unlicensed hash
+//     returns byte-for-byte, so its full hash is re-pinned below on its post-A′ bytes.
+//   - The COMMITTED run crosses ten boundaries, so its guild was RE-STAMPED at each — the founding
+//     value (0) is overwritten at the first boundary and the field ends at the same post-grant
+//     hoard it held before A′. Canonical serialization sorts keys, so insertion order does not
+//     matter: `GOLDEN_COMMITTED_WITH_GUILD_HALL` is UNCHANGED and needs no regen (asserted below,
+//     untouched). A′ moved the field's BIRTH, not its boundary value.
+const GOLDEN_UNLICENSED_WITH_GUILD_HALL = 'a4401e956b7efeccaa0fc4289b2ba17a9858d2edf60a4572b415aaf1e40ddeb6';
+
 // ── THE REPUTATION RESCALE (01-09-26, slice 1 of 2 — points-and-reputation.md §2.6) ──
 //
 // ALL FIVE COMMITTED GOLDENS MOVED. ALL SIX UNLICENSED GOLDENS DID NOT — and, exactly as
@@ -330,12 +346,13 @@ const withoutGuildHall = (state) => ({
 test('NO-OP PROOF: an unlicensed run (no scaffold action) is byte-identical to pre-change HEAD', () => {
   let s = sysState([mine('t', 'titanium', 10, 0), mine('c', 'carbon_products', 10, 0), refinery('r', 'titanium_alloy', 2)]);
   for (let i = 0; i < 40; i += 1) s = tick(s);
-  assert.equal(hashState(withoutControllerState(withoutPriceHistory(withoutHistory(withoutPrices(s))))), GOLDEN_UNLICENSED, 'everything but the price block, the two history buffers and the fuel price is byte-identical to pre-change HEAD');
-  assert.equal(hashState(withoutControllerState(withoutPriceHistory(withoutHistory(s)))), GOLDEN_UNLICENSED_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
-  assert.equal(hashState(withoutControllerState(withoutPriceHistory(s))), GOLDEN_UNLICENSED_WITH_HISTORY, 'and with the production history back in, the ONLY delta from the pre-price-history engine is priceHistory');
-  assert.equal(hashState(withoutControllerState(s)), GOLDEN_UNLICENSED_WITH_PRICE_HISTORY, 'and with the price-history rings back in, the ONLY delta from the pre-5b-i engine is the two reserve fields');
-  assert.equal(hashState(withoutAvgDraw(s)), GOLDEN_UNLICENSED_WITH_FUEL_PRICE, 'with the price back in, the ONLY delta from the pre-5b-ii engine is reserve.avgDraw');
-  assert.equal(hashState(s), GOLDEN_UNLICENSED_WITH_CONTROLLER, 'and the demand average itself is pinned');
+  assert.equal(hashState(withoutGuildHall(withoutControllerState(withoutPriceHistory(withoutHistory(withoutPrices(s)))))), GOLDEN_UNLICENSED, 'everything but the price block, the two history buffers, the fuel price and the Guild Hall fields is byte-identical to pre-change HEAD');
+  assert.equal(hashState(withoutGuildHall(withoutControllerState(withoutPriceHistory(withoutHistory(s))))), GOLDEN_UNLICENSED_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
+  assert.equal(hashState(withoutGuildHall(withoutControllerState(withoutPriceHistory(s)))), GOLDEN_UNLICENSED_WITH_HISTORY, 'and with the production history back in, the ONLY delta from the pre-price-history engine is priceHistory');
+  assert.equal(hashState(withoutGuildHall(withoutControllerState(s))), GOLDEN_UNLICENSED_WITH_PRICE_HISTORY, 'and with the price-history rings back in, the ONLY delta from the pre-5b-i engine is the two reserve fields');
+  assert.equal(hashState(withoutGuildHall(withoutAvgDraw(s))), GOLDEN_UNLICENSED_WITH_FUEL_PRICE, 'with the price back in, the ONLY delta from the pre-5b-ii engine is reserve.avgDraw');
+  assert.equal(hashState(withoutGuildHall(s)), GOLDEN_UNLICENSED_WITH_CONTROLLER, 'and with the controller state back in, stripping the Guild Hall fields returns the pre-Guild-Hall bytes');
+  assert.equal(hashState(s), GOLDEN_UNLICENSED_WITH_GUILD_HALL, 'and the full state — with A′\'s founding-stamped fuelHoardAtCycleStart — is pinned');
   // ⚠ THE LOAD-BEARING PART. This run crosses NO boundary, so the controller never ran —
   // which is why every hash above it held while the committed run's moved. If the price or
   // the average had moved here, slice 5b-ii would have reached somewhere it must not.
@@ -346,10 +363,11 @@ test('NO-OP PROOF: an unlicensed run (no scaffold action) is byte-identical to p
   // and 40 ticks crosses the fine bucket twice, so it really did record prices too.
   assert.ok(s.guilds[0].productionHistory, 'the unlicensed run really did record history');
   assert.equal(s.priceHistory.titanium.fine.length, 2, 'and the fine ring really has the samples from ticks 15 and 30');
-  // And the Guild Hall no-op: crossing no boundary, this run was never due a grant, so none of
-  // the three §4 fields was minted — which is why the full hash above held under the pre-slice
-  // golden with nothing to strip.
-  assert.equal(s.guilds[0].fuelHoardAtCycleStart, undefined, 'Slice A minted nothing off a boundary');
+  // And the Guild Hall no-op: crossing no boundary, this run was never due a grant, so the
+  // BOUNDARY-only fields (B, C, and A's re-stamp) were never minted. Slice A′ (03-09-26) does
+  // stamp `fuelHoardAtCycleStart` at CREATION, so it is present at its opening hoard (0) — the
+  // one field the full hash above gained, and exactly what `withoutGuildHall` strips back out.
+  assert.equal(s.guilds[0].fuelHoardAtCycleStart, 0, 'Slice A′ stamped the founding hoard (0) at creation; the boundary never re-stamped it');
   assert.equal(s.guilds[0].modifierHistory, undefined, 'Slice C minted nothing off a boundary');
   assert.equal(s.guilds[0].lastFuelGrant, undefined, 'and there is no grant record to carry Slice B');
 });
