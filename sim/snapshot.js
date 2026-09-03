@@ -27,6 +27,7 @@
 
 const { computeGalacticSupply } = require('./supply.js');
 const { REFERENCE_FUEL_PRICE, routeFuelCost, fuelValue } = require('./fuel.js');
+const { nearestWaystation, arrivalTickFor } = require('./transport.js');
 const { targetReserve, DEUTERIUM_INFLUX_PER_CYCLE } = require('./issuance.js');
 const { heldSystemIds } = require('./claims.js');
 const { guildPoints } = require('./points.js');
@@ -242,6 +243,21 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // Held systems only, because a delivery goes only to a system you hold (§6); keys arrive
 // sorted from `heldSystemIds` (invariant 9). Pure derived telemetry: no serialized byte,
 // no determinism hash, and nothing is deducted — that is Slice 3.
+// (03-09-26, fuel route travel time): each `fuelCost` entry gains `travelTicks` — the
+// route's travel DURATION in ticks, `arrivalTickFor(0, distance)` = `ceil(distance ×
+// CRAFT_SPEED)` over the SAME `systemId → nearest waystation` route `fuelBurn` uses
+// (transport-model.md §8.0). ADDITIVE, and NO schema bump: nothing existing changed shape,
+// so every current reader keeps working and an older one ignores the new key — the same
+// additive-growth-INSIDE-a-row this file makes without a bump. It exists because the BUY
+// transaction popup (a later client slice) must quote an ARRIVAL time before the player
+// commits, and travel time is `distance × CRAFT_SPEED` over seed geometry the browser does
+// not hold — the same reason `fuelBurn` and `creditCost` are published beside it. Computed
+// through the engine's own `nearestWaystation`/`arrivalTickFor` (sim/transport.js), never
+// re-derived here, so the quote flies on the geometry the delivery is timed on (§8's one
+// geometry). Published as the DURATION, never an absolute arrival tick — the client adds it
+// to the current tick — and `0` for a system with no reachable waystation, matching the 0
+// `fuelBurn` reports there. Pure derived telemetry, exactly as the `fuelBurn`/`creditCost`
+// beside it: no serialized byte, no determinism hash, nothing charged.
 // (31-08-26, RP slice 1): each guild row gains `guildReputation` and each venture row
 // gains `reputation` — the guild's Reputation Points and the per-venture running total
 // they are the sum of (docs/points-and-reputation.md §2 / §6 step 1). ADDITIVE, and NO
@@ -356,7 +372,7 @@ const SNAPSHOT_SCHEMA = 7;
 //                 guildPoints,                                  // GP, DERIVED per read
 //                 expectedReputation, issuanceModifier,        // the mean line, DERIVED
 //                 fuelGrant: { tick, thisTick, granted, desired, rationed, modifier } | null,
-//                 fuelCost: { systemId: { fuelBurn, creditCost } }, // held systems, sorted
+//                 fuelCost: { systemId: { fuelBurn, creditCost, travelTicks } }, // held systems, sorted
 //                 syndicateSale: { tick, thisTick, credited, goods } | null, // Slice 3a
 //                 licenceFee: { tick, thisTick, charged, ventures } | null,   // Slice 3b-iii
 //                 stockpiles: { good: int },                    // flat guild total
@@ -446,10 +462,10 @@ function buildSnapshot(state) {
         ? null
         : fuelValue(g.fuelHoardAtCycleStart, fuelPrice),
       // What a Syndicate trade COSTS IN FUEL, per system this guild holds (fuel
-      // Slice 2). Keyed by systemId, each `{ fuelBurn, creditCost }`. The BURN is
-      // the engine's own `routeFuelCost` (sim/fuel.js) — CALLED, never re-derived,
-      // so the quote the client shows and the burn the purchase deducts come out of
-      // one function and cannot drift.
+      // Slice 2). Keyed by systemId, each `{ fuelBurn, creditCost, travelTicks }`.
+      // The BURN is the engine's own `routeFuelCost` (sim/fuel.js) — CALLED, never
+      // re-derived, so the quote the client shows and the burn the purchase deducts
+      // come out of one function and cannot drift.
       //
       // THE `creditCost` IS A VALUATION, NOT A CHARGE, and since slice 5b-i (§4.2)
       // it is marked to `reserve.fuelPrice` here rather than to a flat constant
@@ -457,6 +473,19 @@ function buildSnapshot(state) {
       // geometry and unchanged; what that burn is worth in credits is today's price,
       // so it is computed at the display site through the SAME `fuelValue` the hoard
       // uses. One price, one valuation function, both readings move together.
+      //
+      // THE `travelTicks` IS THE ROUTE'S TRAVEL DURATION — how many ticks a delivery
+      // to this system spends in flight (transport-model.md §8.0). It is
+      // `arrivalTickFor(0, distance)` = `ceil(distance × CRAFT_SPEED)` over the SAME
+      // `systemId → nearest waystation` route the burn uses, so the BUY confirm popup
+      // (a later client slice) can quote an arrival time before the player commits.
+      // Published as the DURATION, never an absolute arrival tick: the browser adds it
+      // to the current tick, so there is nothing to recompute when the tick advances.
+      // Read from `nearestWaystation` and `arrivalTickFor` (sim/transport.js) — CALLED,
+      // never re-derived, exactly as `creditCost` reuses `fuelValue`: the geometry the
+      // quote flies on is the one the delivery is timed on (§8's "one geometry"). A
+      // system with no reachable waystation gets `0`, the same honest no-route value
+      // `fuelBurn` reports there, not a real duration.
       //
       // HELD SYSTEMS ONLY, because a Syndicate delivery goes only to a system you
       // hold (§6, enforced by `buyFromSyndicate`'s own `guildHolds` gate) — a quote
@@ -470,7 +499,14 @@ function buildSnapshot(state) {
       fuelCost: Object.fromEntries(
         heldSystemIds(state, g.id).map((systemId) => {
           const { fuelBurn } = routeFuelCost(systemId);
-          return [systemId, { fuelBurn, creditCost: fuelValue(fuelBurn, fuelPrice) }];
+          // Same route the burn uses; a system with no reachable waystation → 0
+          // travel ticks, matching the 0 `fuelBurn` reports for that no-route case.
+          const near = nearestWaystation(systemId);
+          const travelTicks = near ? arrivalTickFor(0, near.distance) : 0;
+          return [
+            systemId,
+            { fuelBurn, creditCost: fuelValue(fuelBurn, fuelPrice), travelTicks },
+          ];
         }),
       ),
       influence: g.influence,

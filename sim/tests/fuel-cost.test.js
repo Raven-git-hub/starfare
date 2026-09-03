@@ -222,10 +222,43 @@ test('fuelCost covers exactly the systems the guild holds, sorted', () => {
 test('fuelCost values are integer credits and integer fuel, never negative', () => {
   const s = quoteState({ holds: [MID.id, FAR.id, NEAR.id, ODD.id] });
   for (const [systemId, q] of Object.entries(buildSnapshot(s).guilds[0].fuelCost)) {
-    assert.deepEqual(Object.keys(q).sort(), ['creditCost', 'fuelBurn'], `${systemId} row shape`);
+    assert.deepEqual(Object.keys(q).sort(), ['creditCost', 'fuelBurn', 'travelTicks'], `${systemId} row shape`);
     assert.ok(Number.isInteger(q.fuelBurn) && q.fuelBurn >= 0, `${systemId} fuelBurn ${q.fuelBurn}`);
     assert.ok(Number.isInteger(q.creditCost) && q.creditCost >= 0, `${systemId} creditCost ${q.creditCost}`);
+    // travelTicks is a whole number of ticks (§15.2) and never negative — a
+    // duration, floored at nothing.
+    assert.ok(Number.isInteger(q.travelTicks) && q.travelTicks >= 0, `${systemId} travelTicks ${q.travelTicks}`);
   }
+});
+
+test('travelTicks is the route travel duration — arrivalTickFor(0, distance)', () => {
+  // The travel-time slice's tripwire: each held system's `travelTicks` is exactly the
+  // duration the delivery flies for, `arrivalTickFor(0, distance)` over the SAME
+  // distance `nearestWaystation` gives the burn — the number the BUY popup will add to
+  // the current tick to quote an arrival. Derived in the lens would let it drift from
+  // what `buyFromSyndicate` schedules; reusing the engine's own function forbids that.
+  // It is a DURATION, not an absolute tick, so it depends on the distance and nothing
+  // else — the FAR route is strictly the longest flight, monotone with distance.
+  const s = quoteState({ holds: [MID.id, FAR.id, NEAR.id, ODD.id] });
+  const { fuelCost } = buildSnapshot(s).guilds[0];
+  for (const systemId of Object.keys(fuelCost)) {
+    const { distance } = nearestWaystation(systemId);
+    assert.equal(fuelCost[systemId].travelTicks, arrivalTickFor(0, distance), systemId);
+  }
+  assert.ok(fuelCost[FAR.id].travelTicks > fuelCost[NEAR.id].travelTicks,
+    'a farther system is a longer flight');
+
+  // And it is the SAME distance a REAL delivery into MID is scheduled on: the quoted
+  // duration, added to the purchase tick (0 here), is the shipment's own arrival tick —
+  // quote and flight share one geometry, so the popup's arrival time is the truth.
+  let buy = quoteState({ holds: [MID.id] });
+  buy.prices.titanium.posted = 10;
+  buy = applyAction(buy, createBuyFromSyndicateAction({
+    guildId: 'g1', good: 'titanium', qty: 1, destinationSystemId: MID.id,
+  }));
+  const travelTicks = buildSnapshot(buy).guilds[0].fuelCost[MID.id].travelTicks;
+  assert.equal(buy.shipments[0].arrivalTick, buy.tick + travelTicks,
+    'the shipment arrives exactly travelTicks after the purchase');
 });
 
 test('the snapshot quote IS the function — the anti-drift guarantee', () => {
@@ -239,8 +272,14 @@ test('the snapshot quote IS the function — the anti-drift guarantee', () => {
   const { fuelCost } = buildSnapshot(s).guilds[0];
   for (const systemId of Object.keys(fuelCost)) {
     const { fuelBurn } = routeFuelCost(systemId);
-    assert.deepEqual(fuelCost[systemId],
-      { fuelBurn, creditCost: fuelValue(fuelBurn, s.reserve.fuelPrice) }, systemId);
+    // Three facts, each the engine's own function CALLED, never re-derived here: the
+    // burn (`routeFuelCost`), its valuation (`fuelValue` at the one fuel price), and
+    // the travel duration (`arrivalTickFor` over the distance `nearestWaystation` gives).
+    assert.deepEqual(fuelCost[systemId], {
+      fuelBurn,
+      creditCost: fuelValue(fuelBurn, s.reserve.fuelPrice),
+      travelTicks: arrivalTickFor(0, nearestWaystation(systemId).distance),
+    }, systemId);
   }
 });
 

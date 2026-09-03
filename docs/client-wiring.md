@@ -1327,3 +1327,27 @@ split (illegal stays 0, no red bar), and the Deuterium/Transport/Council RP sour
 
 **906 tests (+1 served-page tripwire), zero failures.** No engine, snapshot or `sim/` change — the
 determinism goldens did not move; the only test-count delta is the axis-mirror tripwire.
+
+## Revision — route travel time in the quote: `fuelCost[].travelTicks` *(03-09-26, engine-only)*
+
+The BUY transaction popup (a later client slice) has to quote an **arrival time** before the player
+commits, and travel time is `distance × CRAFT_SPEED` over seed geometry the browser does not hold — the
+same reason `fuelBurn` and `creditCost` are published beside it. So each `fuelCost` entry grows a third
+field: `{ [systemId]: { fuelBurn, creditCost, travelTicks } }` (`docs/transport-model.md` §8.0).
+
+- **`travelTicks`** is the route's **travel DURATION** in integer ticks — `arrivalTickFor(0, distance)` =
+  `ceil(distance × CRAFT_SPEED)` over the **same** `systemId → nearest waystation` route the burn uses.
+  Computed by **calling** `nearestWaystation` / `arrivalTickFor` (`sim/transport.js`), never re-derived —
+  so the duration the popup quotes and the one `buyFromSyndicate` schedules the flight on come out of one
+  geometry and cannot drift.
+- **A duration, not an absolute arrival tick.** The client adds it to the current tick to show "arrives at
+  tick N"; there is nothing to recompute when the tick advances. **The browser computes nothing** — it
+  holds no `CRAFT_SPEED` and no seed distances.
+- **`travelTicks: 0` means NO ROUTE**, not an instant one — no waystation can reach that system, exactly as
+  `fuelBurn` reports 0 there. (Today no seed system a guild holds hits this; the shape is honest anyway.)
+- **Additive; schema stays 7.** Nothing existing changed shape — `fuelBurn` and `creditCost` are byte-for-byte
+  untouched — the same additive call `fuelCost` itself made. Pure derived telemetry: no serialized byte, no
+  determinism hash, nothing charged.
+
+**Engine-only.** No client change ships here; the BUY confirm popup wires it when the BUY UI slice lands.
+`routeFuelCost`, `fuelBurn`, `creditCost` and the fuel loop are untouched — one derived field added beside them.
