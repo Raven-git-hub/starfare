@@ -49,7 +49,7 @@
 // the mean line and merely READS this.
 
 const { heldSystemIds } = require('./claims.js');
-const { producedGoodFor } = require('./baseline.js');
+const { producedGoodFor, isLicensedDeuteriumMine } = require('./baseline.js');
 const { isRawResource, isProcessedGood } = require('./resources.js');
 
 // W_SYS — the Points a held system is worth.
@@ -183,6 +183,13 @@ function guildPoints(state, guild) {
   if (!guild) return 0;
   let points = systemPoints(state, guild);
   for (const v of guild.ventures || []) {
+    // A LICENSED deuterium mine adds NO GP (§1.4 "The Deuterium Cycle",
+    // fuel-supply-and-allocation.md): its output serves the Syndicate, not the guild, so
+    // it is pure reputation, never size. Skipped BEFORE `producedGoodFor` so the exclusion
+    // does not depend on how deuterium happens to tier. An UNLICENSED deuterium mine is
+    // untouched — it still scores as the normal tier-1 mine it is (the illegal path is a
+    // later slice).
+    if (isLicensedDeuteriumMine(v)) continue;
     const good = producedGoodFor(v);
     if (!good) continue;
     points += tierWeight(tierOf(good), { good, ventureId: v.id, guildId: guild.id });

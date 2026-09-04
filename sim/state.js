@@ -217,6 +217,7 @@ function createVenture({
   syndicateCommitment = 0,
   equityPct = 0,
   licence = null,
+  deuteriumLicence = null,
   committedFromTick = null,
   reputation = 0,
   batchCarry = {},
@@ -331,6 +332,26 @@ function createVenture({
     // state is byte-identical to pre-Slice-3b-i. Copied so a caller's object can never
     // alias into engine state.
     ...(licence ? { licence: { ...licence } } : {}),
+    // deuteriumLicence: the WINDOWLESS deuterium licence (§1.4 "The Deuterium Cycle",
+    // fuel-supply-and-allocation.md), granted by the `licenseDeuteriumMine` action:
+    //
+    //   { signedTick }   // when the licence was struck (§15.2: record the tick)
+    //
+    // Deliberately SEPARATE from `licence` above, not a shape of it — the deuterium
+    // licence is 100%-committed, fee-less, window-less and breach-less, so parking it in
+    // `licence` would hand it to the fee/window/breach machinery that reads that field and
+    // be silently misjudged (§1.4: the ordinary and deuterium paths are mutually exclusive,
+    // and intake refuses a venture that already carries either). It carries no terms of its
+    // own beyond the tick: commitment is 100% implicit and equity is whatever the venture
+    // offered at establishment (`equityPct`), untouched by licensing. What it DOES is flip
+    // the venture onto the per-tick auto-sale (sim/tick.js) and out of GP (sim/points.js),
+    // both asking `isLicensedDeuteriumMine` (sim/baseline.js).
+    //
+    // OMITTED when absent, exactly like `licence`, `equityPct` and `committedFromTick`: an
+    // unlicensed venture carries no key, so any galaxy without a deuterium licence is
+    // byte-identical to pre-slice and the determinism-hash no-op proof keeps meaning
+    // something. Copied so a caller's object can never alias into engine state.
+    ...(deuteriumLicence ? { deuteriumLicence: { ...deuteriumLicence } } : {}),
     // committedFromTick: the venture's FIRST PRODUCING tick under its licence — the
     // term that pro-rates its first window's obligation (§5's Option-A join ruling;
     // Slice 3b-ii, `sim/windows.js` `windowFraction`). Stamped by `applyForLicence` as

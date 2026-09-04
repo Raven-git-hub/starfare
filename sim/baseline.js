@@ -37,7 +37,7 @@
 // checklist instead of being guessed. A refinery's baseline is in BATCHES/tick;
 // its output units are batches × the recipe's output qty.
 
-const { RAW_RESOURCES, PROCESSED_GOODS } = require('./resources.js');
+const { RAW_RESOURCES, PROCESSED_GOODS, DEUTERIUM } = require('./resources.js');
 const { getRecipe, listRecipes } = require('./recipes.js');
 
 // [FIRST-CUT] the uniform baseline every entry below is currently set to.
@@ -104,6 +104,25 @@ function producedGoodFor(venture) {
     return recipe ? recipe.output.good : null;
   }
   return null;
+}
+
+// isLicensedDeuteriumMine(venture) -> true iff this venture is a deuterium mine that
+// carries a deuterium licence (§1.4 "The Deuterium Cycle", fuel-supply-and-allocation.md).
+//
+// THE ONE PLACE the two consumers of the deuterium lever ask the question, so they can
+// never disagree about which ventures it governs: the per-tick auto-sale (sim/tick.js,
+// which redirects the mine's output to the Syndicate + the fuel pool instead of the
+// stockpile) and the zero-GP exclusion (sim/points.js, since a licensed deuterium mine's
+// output serves the Syndicate, not the guild, so it scores no size).
+//
+// The deuterium licence is a WINDOWLESS variant granted by `licenseDeuteriumMine`
+// (sim/actions.js) — a `venture.deuteriumLicence` object, deliberately NOT the windowed
+// `venture.licence` the fee/window/breach machinery reads (§1.4: the two paths are
+// mutually exclusive). `resourceType === DEUTERIUM` is belt-and-braces: the action refuses
+// to license anything but a deuterium mine, so a `deuteriumLicence` can only sit on one —
+// but the predicate names its own precondition rather than trusting a field's mere presence.
+function isLicensedDeuteriumMine(venture) {
+  return !!(venture && venture.deuteriumLicence && venture.resourceType === DEUTERIUM);
 }
 
 // baselineOutputFor(venture) -> { good, units } | null
@@ -175,5 +194,5 @@ const BASELINE_KEYS = Object.freeze({
 
 module.exports = {
   FIRST_CUT_BASELINE, MINE_BASELINE, REFINERY_BASELINE, BASELINE_KEYS,
-  producedGoodFor, baselineOutputFor, baselineUnitsForGood,
+  producedGoodFor, baselineOutputFor, baselineUnitsForGood, isLicensedDeuteriumMine,
 };

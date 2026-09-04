@@ -26,6 +26,13 @@
 // the two-goods distinction itself is the settled ruling.
 const FUEL_GOOD = 'deuterium_fuel';
 
+// The raw mined good the fuel cycle runs on (§1.4 "The Deuterium Cycle"). Its own
+// named id, beside FUEL_GOOD, so the deuterium-lever code (the licence predicate in
+// sim/baseline.js, the per-tick auto-sale in sim/tick.js) names the special good in
+// one place rather than sprinkling the literal. It IS a member of RAW_RESOURCES below
+// — this is a label for that one entry, not a second good.
+const DEUTERIUM = 'deuterium';
+
 // The raw, minable resources: the union of every archetype pool in
 // tools/generate_seed.js, sorted for a stable, deterministic order. Kept as a
 // literal (rather than imported from the generator) so sim/ has no runtime
@@ -130,6 +137,6 @@ function isStockpileGood(id) {
 }
 
 module.exports = {
-  RAW_RESOURCES, PROCESSED_GOODS, STOCKPILE_GOODS, TIER3_GOODS, FUEL_GOOD,
+  RAW_RESOURCES, PROCESSED_GOODS, STOCKPILE_GOODS, TIER3_GOODS, FUEL_GOOD, DEUTERIUM,
   isRawResource, isFuel, isProcessedGood, isStockpileGood,
 };

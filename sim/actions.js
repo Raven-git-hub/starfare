@@ -11,7 +11,7 @@ const {
 const { producedGoodFor, baselineOutputFor } = require('./baseline.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
-const { isStockpileGood, isFuel } = require('./resources.js');
+const { isStockpileGood, isFuel, DEUTERIUM } = require('./resources.js');
 const { setEntry } = require('./profile.js');
 const { getStock, addStock } = require('./stock.js');
 const { computeGalacticSupply } = require('./supply.js');
@@ -222,6 +222,27 @@ function createApplyForLicenceAction({ guildId, ventureId, committedOutputPct, w
   if (committedOutputPct === undefined) throw new Error('createApplyForLicenceAction: committedOutputPct is required');
   if (windowDays === undefined) throw new Error('createApplyForLicenceAction: windowDays is required');
   return { type: 'applyForLicence', guildId, ventureId, committedOutputPct, windowDays };
+}
+
+// licenseDeuteriumMine: grant ONE deuterium mining venture the WINDOWLESS deuterium
+// licence (§1.4 "The Deuterium Cycle", docs/fuel-supply-and-allocation.md) — the
+// player-driven supply lever. This is a SEPARATE path from `applyForLicence`, not an
+// option on it: the deuterium licence is 100%-committed, fee-less, window-less and
+// breach-less, so it shares essentially none of that action's mechanics and must not
+// route through the windowed `Venture.licence` the fee/window/breach machinery reads.
+//
+// It takes NO terms. Commitment is 100% implicit (a licensed deuterium mine surrenders
+// all output), there is no fee and no window, and equity is whatever the venture already
+// offered at establishment (`equityPct`) — this action neither sets nor changes it. So
+// the shape is exactly `{ guildId, ventureId }` and nothing more.
+//
+// Grants are once-only and mutually exclusive with the ordinary licence — validateAction
+// refuses a venture that already carries either. RP (the §1.4 T4 weighting) is DEFERRED
+// to a later slice; this action grants the licence and the per-tick auto-sale, no RP.
+function createLicenseDeuteriumMineAction({ guildId, ventureId }) {
+  if (guildId === undefined) throw new Error('createLicenseDeuteriumMineAction: guildId is required');
+  if (ventureId === undefined) throw new Error('createLicenseDeuteriumMineAction: ventureId is required');
+  return { type: 'licenseDeuteriumMine', guildId, ventureId };
 }
 
 // setWindowN: set the single engine-wide accrual window length `state.windowN`. The
@@ -659,6 +680,40 @@ function validateAction(state, action) {
     const baseline = baselineOutputFor(venture);
     if (!baseline || !(baseline.units > 0)) {
       return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} has no droidless baseline output to price a fee against` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'licenseDeuteriumMine') {
+    // REFUSE, NEVER CLAMP — as everywhere in intake, a silently-adjusted request would be
+    // the engine rewriting the player's order (§15.6).
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (typeof action.ventureId !== 'string' || action.ventureId.length === 0) {
+      return { valid: false, reason: 'ventureId must be a non-empty string' };
+    }
+    // Scan only THIS guild's ventures: a licence is a contract over a venture you own.
+    const venture = (guild.ventures || []).find((v) => v.id === action.ventureId);
+    if (!venture) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} has no venture with id ${JSON.stringify(action.ventureId)}` };
+    }
+    // A deuterium licence covers a MINING venture extracting DEUTERIUM and nothing else.
+    // The one check refuses both a non-mining venture (a refinery carries no
+    // `resourceType`) and a mine of any other good (§1.4).
+    if (venture.resourceType !== DEUTERIUM) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} is not a deuterium mine — a deuterium licence covers only a mining venture extracting ${JSON.stringify(DEUTERIUM)} (§1.4)` };
+    }
+    // Once-only.
+    if (venture.deuteriumLicence) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} is already deuterium-licensed — a second grant is not built` };
+    }
+    // Mutually exclusive with the ordinary windowed licence: a deuterium mine is not
+    // eligible for `applyForLicence`, and one that somehow carried both would be judged by
+    // two paths at once (§1.4). Keep the two licences from ever coexisting on a venture.
+    if (venture.licence) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} already holds an ordinary Syndicate licence — a deuterium mine takes the windowless deuterium licence instead, and the two are mutually exclusive (§1.4)` };
     }
     return { valid: true };
   }
@@ -1140,6 +1195,18 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'licenseDeuteriumMine') {
+    // Grant the windowless deuterium licence (§1.4). Moves NO credits — there is no fee —
+    // and sets no terms: commitment is 100% implicit and equity stays whatever the venture
+    // offered at establishment. The ONE thing recorded is the tick (§15.2). From the next
+    // production tick the mine's output is auto-sold to the Syndicate and minted 1:1 into
+    // the fuel pool (sim/tick.js), and it stops counting toward GP (sim/points.js).
+    const guild = findGuild(next, action.guildId);
+    const venture = guild.ventures.find((v) => v.id === action.ventureId);
+    venture.deuteriumLicence = { signedTick: next.tick };
+    return next;
+  }
+
   if (action.type === 'sellToSyndicate') {
     // The Syndicate buys, at the POSTED price — the published, 2-tick-lagged value
     // the player is looking at (§5: "goods sold to the Syndicate execute at the
@@ -1351,6 +1418,7 @@ module.exports = {
   createSetProductionProfileAction,
   createSetSyndicateCommitmentAction,
   createApplyForLicenceAction,
+  createLicenseDeuteriumMineAction,
   createSetWindowNAction,
   createSellToSyndicateAction,
   createBuyFromSyndicateAction,

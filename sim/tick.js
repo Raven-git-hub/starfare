@@ -36,7 +36,7 @@ const { recomputePrices, postedPrice } = require('./prices.js');
 const {
   commitmentSale, committedContribution, feeOwed, reputationDelta, gainFactor, RP_FLOOR,
 } = require('./licence.js');
-const { producedGoodFor } = require('./baseline.js');
+const { producedGoodFor, isLicensedDeuteriumMine } = require('./baseline.js');
 const {
   DEUTERIUM_INFLUX_PER_CYCLE, physicalGrantFor, rationGrants,
   nextAvgDraw, nextFuelPrice,
@@ -178,9 +178,50 @@ function applyProduction(state, guild, systemId, ctx) {
   const curWindowStart = winStartFor(state.tick + 1, windowN, dayAnchorTick);
 
   // Deposit each mine's fresh output into the pool; stamp the mine's tick.
+  //
+  // THE DEUTERIUM CYCLE FORK (§1.4, docs/fuel-supply-and-allocation.md). A LICENSED
+  // deuterium mine (`isLicensedDeuteriumMine`, sim/baseline.js) never stockpiles — its
+  // whole output leaves the guild the moment it is produced. So instead of the normal
+  // stockpile deposit + the windowed commitment below (which never runs for it: the
+  // deuterium licence sets no `syndicateCommitment`, so `report.goods.deuterium.fork
+  // .syndicate` is 0 and the sale loop skips it), its output is REDIRECTED here, in the
+  // per-tick auto-sale that IS the supply lever. `m.amount` is the same quantity the
+  // normal path would have deposited — the mine's `productionRate`, resolved by the same
+  // resolver — so no new production amount is invented; only the destination changes.
+  //
+  // Two movements, each the per-tick mirror of one that already exists in the engine:
+  //   - the SALE — a credit MOVE, exactly the Syndicate-sale mirror of sellToSyndicate /
+  //     the commitment sale below: `credited = round(qty × posted deuterium price)` lands
+  //     in the guild and the same integer leaves the Syndicate ledger, so invariant 2
+  //     holds to the credit (none minted).
+  //   - the POOL MINT — the per-tick mirror of stepBaselineAllocation's boundary influx:
+  //     the deuterium becomes pool fuel 1:1, `reserveLevel` climbs by `qty`, and the mint
+  //     is honest because it records itself in `audit.totalProduced` (invariant 1's
+  //     "created only by an event that records itself in totalProduced"). Deuterium is
+  //     NOT added to `galacticSupply.resources` — it never entered a stockpile; it is
+  //     consumed into fuel at the point of sale.
   for (const m of report.mines) {
-    addStock(guild, systemId, m.good, m.amount);
-    byId.get(m.ventureId).updatedAtTick = state.tick;
+    const v = byId.get(m.ventureId);
+    if (isLicensedDeuteriumMine(v)) {
+      const qty = m.amount;
+      // A committed good with no posted price is a broken state, not a free delivery —
+      // taking the deuterium anyway would be a silent loss. Halt loudly, the same guard
+      // and reason the Syndicate delivery below uses (§15.5). Deuterium carries a posted
+      // price from tick 0 (createState seeds every non-fuel good), so this fires only on a
+      // state whose price block was removed by hand.
+      const price = postedPrice(state, m.good);
+      if (price == null) {
+        throw new Error(`applyProduction: licensed deuterium mine ${v.id} (guild ${guild.id}) produced ${qty} ${m.good} at tick ${state.tick + 1} but the good has no posted price — refusing to sell for nothing`);
+      }
+      const credited = Math.round(qty * price);
+      guild.credits += credited;
+      state.syndicate.ledger -= credited;
+      state.reserve.reserveLevel += qty;
+      state.audit.totalProduced += qty;
+    } else {
+      addStock(guild, systemId, m.good, m.amount);
+    }
+    v.updatedAtTick = state.tick;
   }
 
   // Draw each consuming line's whole `drawn` units from the pool. A non-binding
