@@ -35,6 +35,7 @@ const { recordPriceSamples } = require('./price-history.js');
 const { recomputePrices, postedPrice } = require('./prices.js');
 const {
   commitmentSale, committedContribution, feeOwed, reputationDelta, gainFactor, RP_FLOOR,
+  deuteriumMetGain,
 } = require('./licence.js');
 const { producedGoodFor, isLicensedDeuteriumMine } = require('./baseline.js');
 const {
@@ -755,6 +756,39 @@ function stepBaselineAllocation(state, _actions) {
   // keeps a guild-less run byte-identical (the property the zero-state's own tests rest on).
   const guilds = state.guilds || [];
   if (guilds.length === 0) return state;
+
+  // (a.5) DEUTERIUM RP — the per-cycle automatic MET for every licensed deuterium mine
+  // (§1.4 "The RP accrual", slice 2). A licensed deuterium mine delivers continuously and
+  // can NEVER breach, so every cycle boundary is a guaranteed MET at the full Tier-4 rate
+  // (`deuteriumMetGain` = REP_MEET_MAX · tierFactor(T4) = 50 pre-taper). This is its OWN
+  // cycle-boundary accrual — deliberately NOT routed through applyProduction's windowed
+  // met/breach loop, which is driven by the windowed `licence` a deuterium mine has not got
+  // (§1.4: the deuterium licence is windowless, outside the normal commitment flow).
+  //
+  // APPLIED BEFORE ISSUANCE below, so a guild is paid THIS cycle on a standing that includes
+  // this cycle's deuterium MET — the same reading (§15.6 step 6's comment) that lets the
+  // windowed verdict resolved in step 1 count toward this cycle's grant. The self-limiting
+  // loop still holds (§1.4): this RP becomes fuel only through the modifier, and only for a
+  // guild that also has GP, since a licensed deuterium mine adds none.
+  //
+  // The composition is applyProduction's met exactly: the taper scales the gain (a licensed
+  // mine sits above the 800 knee from its 1000 bump, so it is heavily tapered — a slow
+  // top-up toward the 1500 cap it approaches but never passes); the guild sum moves by the
+  // ACTUAL change; and a zero net change (a mine at the taper's asymptote) writes nothing, so
+  // no `reputation` key is ever minted holding a no-op. The RP_FLOOR clamp is kept for one
+  // shared shape though a gain can never near it. No breach path exists — a met is all there is.
+  for (const g of guilds) {
+    for (const v of g.ventures || []) {
+      if (!isLicensedDeuteriumMine(v)) continue;
+      const before = v.reputation || 0;
+      const applied = Math.round(deuteriumMetGain(v) * gainFactor(before));
+      const after = Math.max(RP_FLOOR, before + applied);
+      if (after !== before) {
+        v.reputation = after;
+        g.guildReputation += after - before;
+      }
+    }
+  }
 
   // `physicalGrantFor`, not `grantFor` (slice 5b-i, §4.2): what a guild is DUE is its
   // reputation-sized entitlement CONVERTED to fuel at `reserve.fuelPrice`. Everything

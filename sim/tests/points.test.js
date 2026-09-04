@@ -96,14 +96,18 @@ test('the RATIOS are what the weights encode: systems heavy, ventures light, T2 
   assert.equal(W_T2 / W_T1, 1.5, 'and the tier spread is the ruled 1 : 1.5 (was 1 : 1.33)');
 });
 
-test('the tier spread is the ruled 1 : 1.5 : 3 : 5, and T3/T4 stay OUT until their goods exist', () => {
-  // §2.6 rules 100 / 150 / 300 / 500. Only the first two are in the map: a tier with no
-  // ruled weight must still HALT (see the tripwire below), never score 0, so the deferred
-  // half of the ruling is deliberately absent from the code rather than pre-loaded.
-  assert.deepEqual(Object.keys(TIER_WEIGHT).map(Number).sort(), [1, 2],
-    'only the tiers whose goods have recipes carry a weight');
-  assert.equal(TIER_WEIGHT[3], undefined, 'W_T3 = 300 is ruled but DEFERRED in code');
-  assert.equal(TIER_WEIGHT[4], undefined, 'W_T4 = 500 is ruled but DEFERRED in code');
+test('the tier spread is the ruled 1 : 1.5 : 3 : 5; T3 stays OUT, T4 is now IN for deuterium RP', () => {
+  // §2.6 rules 100 / 150 / 300 / 500. W_T4 was PULLED IN 04-09-26 (deuterium RP slice 2):
+  // a licensed deuterium mine earns RP at the Tier-4 rate (sim/licence.js), so the T4 weight
+  // now has a real reader. It changes NO GP — tierOf('deuterium') is 1 and a licensed
+  // deuterium mine is skipped in guildPoints (slice 1) — so no GP path reads a tier-4 weight.
+  // W_T3 stays OUT: no tier-3 good exists, and an unweighted tier must still HALT, never 0.
+  assert.deepEqual(Object.keys(TIER_WEIGHT).map(Number).sort((a, b) => a - b), [1, 2, 4],
+    'tiers 1 and 2 (goods with recipes) plus the RP-only tier 4');
+  assert.equal(TIER_WEIGHT[3], undefined, 'W_T3 = 300 is ruled but DEFERRED in code (no tier-3 good)');
+  assert.equal(TIER_WEIGHT[4], 500, 'W_T4 = 500 is now in the map for the deuterium licence RP tier');
+  // The spread of the three present weights is the ruled ratio.
+  assert.equal(TIER_WEIGHT[4] / TIER_WEIGHT[1], 5, 'T4 is 5× T1 (the ruled 1 : 5)');
 });
 
 // --- 2. tierOf: the general tier lookup ------------------------------------------

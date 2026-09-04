@@ -423,11 +423,18 @@ test('the served licence panel\'s mirrored constants still match the engine', as
   // as the WEIGHT MAP, key for key, exactly as CORNERS above is: the panel divides by its
   // own tier-1 entry the way sim/licence.js divides by `tierWeight(1)`, so a retune that
   // moves both leaves the preview right and one that moves either alone fails HERE.
-  // Built from sim/points.js' own map, so ADDING a tier (W_T3, when tier-3 goods gain
-  // recipes) goes red too — the panel must then mirror it or stop previewing that tier.
-  const tiers = Object.keys(TIER_WEIGHT).map((t) => `${t}:${TIER_WEIGHT[t]}`).join(', ');
+  //
+  // ⤳ The panel mirrors only the tiers it can DEPLOY through applyForLicence — a mining
+  // (tier-1) or refining (tier-2) venture. TIER_WEIGHT gained an RP-ONLY tier 4 (04-09-26,
+  // deuterium RP slice 2) that is NOT deployable here: a deuterium mine takes the windowless
+  // deuterium licence, which applyForLicence refuses (§1.4), so the panel deliberately does
+  // not mirror or preview it — exactly as it omits the signing bump below. Adding a
+  // DEPLOYABLE tier (W_T3, when tier-3 goods gain recipes) still goes red and forces the
+  // panel to mirror it; the RP-only tier 4 is excluded here on purpose.
+  const DEPLOYABLE_TIERS = [1, 2];
+  const tiers = DEPLOYABLE_TIERS.map((t) => `${t}:${TIER_WEIGHT[t]}`).join(', ');
   assert.match(html, new RegExp(`TIER_WEIGHT: \\{ ${tiers} \\},`),
-    'the reputation meter must mirror sim/points.js TIER_WEIGHT, key for key');
+    'the reputation meter must mirror sim/points.js TIER_WEIGHT for the deployable tiers, key for key');
 
   // …and it is APPLIED: the earn preview carries the tier term, and the call site passes
   // the tier the panel is deploying at. Without both, the mirror above would sit unread

@@ -42,7 +42,7 @@
 // return numbers, and the tick is the only place a balance changes.
 
 const { windowFraction } = require('./windows.js');
-const { producedGoodFor } = require('./baseline.js');
+const { producedGoodFor, isLicensedDeuteriumMine } = require('./baseline.js');
 const { tierWeight, tierOf } = require('./points.js');
 
 // The structural equity ceiling — §5: "up to the structural 49% ceiling (the owner
@@ -475,9 +475,21 @@ function whereOf(venture) {
   };
 }
 
-// ventureTierWeight(venture) -> the venture's OWN absolute GP tier weight: 100 for a
-// tier-1 mine, 150 for a tier-2 refinery. The number `sim/points.js` scores it at in GP,
-// read through that module's own `tierWeight` so there is exactly one weight map.
+// ventureTierWeight(venture) -> the venture's OWN absolute RP tier weight: 100 for a
+// tier-1 mine, 150 for a tier-2 refinery, 500 (W_T4) for a licensed deuterium mine. The
+// number `sim/points.js` scores a tier at, read through that module's own `tierWeight` so
+// there is exactly one weight map.
+//
+// THE ONE PLACE the deuterium licence's Tier-4 RP rate is decided (§1.4 "The RP accrual").
+// A licensed deuterium mine PRODUCES a tier-1 good (raw deuterium), but its RP is ruled to
+// move at the Tier-4 rate because its output serves the Syndicate, not the guild. Keying
+// that off `isLicensedDeuteriumMine` HERE — rather than in each consumer — is what makes
+// both RP consumers agree without a second special-case: `tierFactor` divides this by the
+// tier-1 weight and so becomes 5, and `signingBump` reads it absolute (500) and so mints
+// `2·1·500 = 1000`. An UNlicensed deuterium mine is untouched — it falls through to its
+// good's real tier (1), earning nothing here and scoring a normal tier-1 GP mine elsewhere.
+// (This diverges from GP on purpose: `guildPoints` skips a licensed deuterium mine entirely,
+// so nothing reads a tier-4 GP weight; this is an RP-only tier.)
 //
 // TWO CALLERS, ONE LOOKUP. `tierFactor` divides it by the tier-1 weight to get the RATIO
 // (1 / 1.5 / 3 / 5) that scales the per-cycle earn and breach; `signingBump` uses it
@@ -485,6 +497,7 @@ function whereOf(venture) {
 // added to its guild — not against a tier-1 reference.
 function ventureTierWeight(venture) {
   const where = whereOf(venture);
+  if (isLicensedDeuteriumMine(venture)) return tierWeight(4, where);
   return tierWeight(tierOf(where.good), where);
 }
 
@@ -532,6 +545,12 @@ function tierFactor(venture) {
 // already on the guild's books by then) is NOT ruled and NOT built — it rides with the
 // renegotiation window, #64. Do not add a re-bump path here ahead of that ruling.
 function signingBump(venture) {
+  // A licensed deuterium mine commits 100% IMPLICITLY and carries no windowed `licence`, so
+  // `repTerms` (which reads `licence.committedOutputPct`) would throw for it. Its bump is the
+  // same formula at a fixed full commit and the T4 weight `ventureTierWeight` already returns
+  // for it: `2 · 1.0 · W_T4` = 1000 (§1.4 "The RP accrual"). This is a DELIBERATE windfall —
+  // a deuterium mine adds zero GP, so the bump offsets no bar; its value IS the reputation.
+  if (isLicensedDeuteriumMine(venture)) return Math.round(2 * 1 * ventureTierWeight(venture));
   const { commit } = repTerms(venture);
   return Math.round(2 * commit * ventureTierWeight(venture));
 }
@@ -553,6 +572,28 @@ function metGain(venture) {
   return Math.round(
     REP_MEET_MAX * tierFactor(venture) * (REP_W_COMMIT * commit + REP_W_EQUITY * equityFrac),
   );
+}
+
+// deuteriumMetGain(venture) -> the PRE-TAPER RP a licensed deuterium mine earns every cycle:
+// the FULL Tier-4 met, `REP_MEET_MAX × tierFactor` = 10 × 5 = 50 (§1.4 "The RP accrual").
+//
+// IT IS NOT `metGain`. `metGain` scales the max by the TERMS a windowed venture negotiated
+// (`REP_W_COMMIT·commit + REP_W_EQUITY·equityFrac`); the deuterium path has no such terms —
+// commitment is implicit 100% and equity is removed (§1.4) — so the gain is the full T4 met
+// with no terms multiplier, which is what "RP is maximised" means. It also can't reuse
+// `repTerms` (no windowed `licence`), and must not: there is no equity term to read.
+//
+// NO BREACH COUNTERPART. A licensed deuterium mine delivers continuously and can never
+// breach, so every cycle is a guaranteed MET — there is no verdict to miss and no
+// `breachPenalty` sibling here.
+//
+// Rounded here; the caller (sim/tick.js) applies the SAME `gainFactor` taper the windowed
+// met uses and rounds again. Two roundings, safe for the same reason `metGain` records: RP
+// is not conserved, so there is no second leg for a fractional drift to break. In practice
+// the 1000 signing bump already sits above the 800 knee, so this per-cycle gain is heavily
+// tapered from its first application — a slow top-up climbing toward the 1500 cap.
+function deuteriumMetGain(venture) {
+  return Math.round(REP_MEET_MAX * tierFactor(venture));
 }
 
 // breachPenalty(venture) -> the RP a breached cycle costs, a NEGATIVE integer.
@@ -640,5 +681,5 @@ module.exports = {
   commitmentUnitsFor,
   REP_MEET_MAX, REP_W_COMMIT, REP_W_EQUITY, REP_BREACH_MAX, REP_BREACH_MIN,
   RP_FLOOR, RP_SOFT_CAP, RP_TAPER_KNEE,
-  repTerms, tierFactor, ventureTierWeight, signingBump, metGain, breachPenalty, gainFactor, reputationDelta,
+  repTerms, tierFactor, ventureTierWeight, signingBump, metGain, deuteriumMetGain, breachPenalty, gainFactor, reputationDelta,
 };

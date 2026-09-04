@@ -30,8 +30,12 @@ const { postedPrice } = require('../prices.js');
 const { guildTotals } = require('../stock.js');
 const { guildPoints, W_SYS, TIER_WEIGHT } = require('../points.js');
 const { hashState } = require('../serialize.js');
+const {
+  signingBump, deuteriumMetGain, tierFactor, gainFactor, RP_SOFT_CAP,
+} = require('../licence.js');
 
 const W_T1 = TIER_WEIGHT[1];
+const W_T4 = TIER_WEIGHT[4];
 const RATE = 5; // the mine's productionRate for these scenarios
 
 // A guild with one deuterium mine, and optionally an ordinary licence / a pre-existing
@@ -278,4 +282,135 @@ test('GP: a deuterium mine contributes 100 GP while unlicensed and 0 once licens
   // untouched (§1.4: a licensed deuterium mine is pure reputation, never size).
   assert.equal(after, W_SYS + W_T1);
   assert.equal(unlicensed - after, W_T1);
+});
+
+// --- 6. RP: the signing bump + per-cycle T4 accrual (slice 2) -------------------------
+//
+// §1.4 "The RP accrual": a licensed deuterium mine gets a one-time 1000 RP signing bump and
+// a per-cycle automatic MET at the full Tier-4 rate (50 pre-taper), both equity-free and
+// breachless, reusing the existing RP arithmetic at the T4 weight.
+
+const WIN = 4; // a short accrual window so a few ticks cross several cycle boundaries
+
+// A licensed-deuterium scenario with a small window. A big reserve and no held systems keep
+// issuance out of the way (GP is 0, so the grant is ~0), leaving RP the only thing moving.
+function rpScenario() {
+  const s = createState({
+    windowN: WIN,
+    guilds: [{
+      id: 'g1', credits: 0, fuelHoard: 0,
+      ventures: [{ id: 'v1', ownerGuildId: 'g1', type: 'mining', systemId: 'sysA', resourceType: 'deuterium', productionRate: RATE }],
+    }],
+    reserve: { reserveLevel: 1_000_000 },
+    syndicate: { ledger: 0 },
+  });
+  return applyAction(s, licenseAction());
+}
+
+test('the RP tier lookups treat a licensed deuterium mine as Tier-4', () => {
+  const s = rpScenario();
+  const v = s.guilds[0].ventures[0];
+  // W_T4 is 500, so the RP tier factor is 5 (500 / W_T1) — the maximum.
+  assert.equal(W_T4, 500);
+  assert.equal(tierFactor(v), 5);
+});
+
+test('licensing a deuterium mine mints exactly 1000 RP onto the venture and the guild', () => {
+  const s = rpScenario();
+  const v = s.guilds[0].ventures[0];
+  // 2 · 1.0 · W_T4 = 1000, the signingBump formula at implicit full commit and the T4 weight.
+  assert.equal(signingBump(v), 1000);
+  assert.equal(v.reputation, 1000);
+  assert.equal(s.guilds[0].guildReputation, 1000);
+});
+
+test('the deuterium per-cycle MET is the full T4 rate, 50 pre-taper', () => {
+  const s = rpScenario();
+  // REP_MEET_MAX · tierFactor(T4) = 10 · 5 = 50, with NO terms multiplier (equity-free).
+  assert.equal(deuteriumMetGain(s.guilds[0].ventures[0]), 50);
+});
+
+test('each cycle boundary adds the TAPERED T4 met; the mine sits above the 800 knee, so it is tapered', () => {
+  let s = rpScenario();
+  // Start: the 1000 bump, already above the 800 taper knee.
+  assert.equal(s.guilds[0].ventures[0].reputation, 1000);
+
+  // First boundary (producing tick WIN): +round(50 · gainFactor(1000)).
+  const firstGain = Math.round(50 * gainFactor(1000));
+  assert.ok(firstGain > 0 && firstGain < 50, 'the gain is tapered — between 0 and the pre-taper 50');
+  for (let i = 0; i < WIN; i += 1) s = tick(s);
+  assert.equal(s.guilds[0].ventures[0].reputation, 1000 + firstGain);
+  assert.equal(s.guilds[0].guildReputation, 1000 + firstGain);
+
+  // Second boundary: tapered again off the NEW, higher reputation, so a smaller step.
+  const before2 = s.guilds[0].ventures[0].reputation;
+  const secondGain = Math.round(50 * gainFactor(before2));
+  for (let i = 0; i < WIN; i += 1) s = tick(s);
+  assert.equal(s.guilds[0].ventures[0].reputation, before2 + secondGain);
+  assert.ok(secondGain <= firstGain, 'the higher the reputation, the smaller the tapered step');
+
+  // A non-boundary tick moves no RP.
+  const restBoundary = s.guilds[0].ventures[0].reputation;
+  s = tick(s); // this advances into a fresh window, not onto a boundary
+  assert.equal(s.guilds[0].ventures[0].reputation, restBoundary, 'RP moves only at the cycle boundary');
+});
+
+test('over a long run RP climbs toward but never exceeds 1500, monotonically, and never breaches', () => {
+  let s = rpScenario();
+  let prev = s.guilds[0].ventures[0].reputation;
+  for (let i = 0; i < 4000; i += 1) {
+    s = tick(s);
+    const rp = s.guilds[0].ventures[0].reputation;
+    assert.ok(rp >= prev, 'a licensed deuterium mine never breaches — RP is monotonically non-decreasing');
+    assert.ok(rp <= RP_SOFT_CAP, 'the taper holds RP at or below the 1500 soft cap');
+    prev = rp;
+  }
+  // It has genuinely climbed off the 1000 bump toward the cap.
+  assert.ok(prev > 1000 && prev <= RP_SOFT_CAP);
+  assert.ok(RP_SOFT_CAP - prev < 10, 'after a long run it sits just under the cap');
+});
+
+test('invariants hold on EVERY tick of a multi-cycle licensed-deuterium scenario (guild-rep sum + band)', () => {
+  // checkInvariants runs the whole sweep, which includes invariant 8 (guildReputation ==
+  // Σ venture.reputation + foundingEndowment) and the reputation-band check — an empty
+  // result is them (and everything else) passing on every tick across many boundaries.
+  let s = rpScenario();
+  for (let i = 0; i < 40; i += 1) {
+    s = tick(s);
+    assert.deepEqual(checkInvariants(s, s.tick), []);
+  }
+});
+
+test('an UNLICENSED deuterium mine earns no RP over many cycles', () => {
+  const s = createState({
+    windowN: WIN,
+    guilds: [{
+      id: 'g1', credits: 0, fuelHoard: 0,
+      ventures: [{ id: 'v1', ownerGuildId: 'g1', type: 'mining', systemId: 'sysA', resourceType: 'deuterium', productionRate: RATE }],
+    }],
+    reserve: { reserveLevel: 1000 },
+    syndicate: { ledger: 0 },
+  });
+  let cur = s;
+  for (let i = 0; i < 20; i += 1) cur = tick(cur);
+  // No signing bump was ever minted, and the per-cycle MET is gated on the licence — so no
+  // reputation key is ever written, and the guild total stays 0.
+  assert.equal(cur.guilds[0].ventures[0].reputation, undefined);
+  assert.equal(cur.guilds[0].guildReputation, 0);
+});
+
+test('the licensed mine still scores ZERO GP after RP accrues (slice-1 regression)', () => {
+  let s = rpScenario();
+  for (let i = 0; i < 3 * WIN; i += 1) s = tick(s); // let RP climb across several cycles
+  assert.ok(s.guilds[0].ventures[0].reputation > 1000, 'RP has grown');
+  assert.equal(guildPoints(s, s.guilds[0]), 0, 'GP is still zero — RP is not size');
+});
+
+test('a licensed-deuterium RP run is deterministic (byte-identical run twice)', () => {
+  const build = () => {
+    let s = rpScenario();
+    for (let i = 0; i < 3 * WIN; i += 1) s = tick(s);
+    return s;
+  };
+  assert.equal(hashState(build()), hashState(build()));
 });

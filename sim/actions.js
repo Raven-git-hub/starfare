@@ -1217,7 +1217,27 @@ function applyAction(state, action) {
     // the fuel pool (sim/tick.js), and it stops counting toward GP (sim/points.js).
     const guild = findGuild(next, action.guildId);
     const venture = guild.ventures.find((v) => v.id === action.ventureId);
+    // Stamp the licence FIRST — `signingBump` recognises a licensed deuterium mine by this
+    // very field (isLicensedDeuteriumMine), so the bump can only read the T4 weight once
+    // it is set.
     venture.deuteriumLicence = { signedTick: next.tick };
+
+    // THE SIGNING BUMP (§1.4 "The RP accrual", slice 2): `2 · 1.0 · W_T4` = 1000 RP, minted
+    // ONCE at licensing — the exact mirror of the ordinary `applyForLicence` bump above, at
+    // the deuterium path's fixed full commit and T4 weight. `signingBump` owns the amount
+    // (§4: the licence layer authors how RP moves); this only applies the move, onto
+    // `venture.reputation` with `guild.guildReputation` tracking it by the SAME amount in the
+    // SAME place, so `checkGuildReputationSum` stays exact with no new term. Unlike an
+    // ordinary bump this offsets NO GP — a deuterium mine adds zero GP — so it is the
+    // deliberate reputation windfall §1.4 rules, landing two-thirds up the [−500, 1500] band.
+    //
+    // Never zero here (2·1·500 = 1000 > 0), so it always mints — but written through the
+    // same `|| 0` / non-zero guard as the ordinary bump, for one consistent RP-minting shape.
+    const bump = signingBump(venture);
+    if (bump !== 0) {
+      venture.reputation = (venture.reputation || 0) + bump;
+      guild.guildReputation += bump;
+    }
     return next;
   }
 

@@ -108,8 +108,15 @@ where it is serialized, guarded, and published in the snapshot exactly as descri
   which goes to the Syndicate rather than the guild, adds **no size** (§1.4 detail in §1.0 above). The predicate
   is the shared question the tick's per-tick auto-sale and this exclusion both ask. **DERIVED, never stored**,
   like the rest of GP — the exclusion moves no serialized byte, and the existing determinism goldens did not
-  move (the new `venture.deuteriumLicence` field is omitted when absent). **RP for it (§1.4's Tier-4 weighting)
-  is `[DEFERRED]`** to the next slice and is neither built nor stubbed.
+  move (the new `venture.deuteriumLicence` field is omitted when absent).
+- **THE LICENSED DEUTERIUM MINE'S RP** *(04-09-26 — deuterium RP slice 2, `fuel-supply-and-allocation.md` §1.4
+  "The RP accrual")* — the Tier-4 RP half, detailed in §2.6. `TIER_WEIGHT[4] = 500` pulled into `sim/points.js`
+  (an RP-only reader — changes no GP); `ventureTierWeight`/`signingBump` special-case `isLicensedDeuteriumMine`
+  in `sim/licence.js` so the RP tier is 4 (`tierFactor` = 5). A **1000 RP signing bump** (`2·1.0·W_T4`) minted in
+  the `licenseDeuteriumMine` apply, and a **+50/cycle pre-taper** equity-free, breachless MET (`deuteriumMetGain`)
+  applied at the cycle boundary in `sim/tick.js`'s step 6 — both through the existing `gainFactor` taper, both
+  landing on `venture.reputation` / `guildReputation` so `checkGuildReputationSum` and `checkReputationBand` cover
+  them with no new term. Only moves RP for licensed deuterium mines, so goldens without one are byte-identical.
 
 **Explicitly NOT built, and nothing in the code approximates any of it:** the −500 **closure** and −300
 **forced-lease** CONSEQUENCES — venture removal, licence revocation, the stakeholder offer; reaching −500 is a
@@ -201,8 +208,9 @@ mines only deuterium has its issuance modifier pinned at the ceiling but a tiny 
 **unlicensed** deuterium mine is untouched — it still scores as the normal tier-1 mine it is (the illegal path
 and its "no GP, no RP" idle-to-the-Syndicate treatment are a later slice). The predicate
 (`isLicensedDeuteriumMine`, `sim/baseline.js`) is the ONE place the tick's auto-sale and this exclusion ask the
-question, so they cannot disagree about which ventures the lever governs. **RP for a licensed deuterium mine —
-§1.4's Tier-4 weighting — is `[DEFERRED]` to the next slice; it earns no RP yet.**
+question, so they cannot disagree about which ventures the lever governs. **Its RP — §1.4's Tier-4 weighting —
+is now BUILT (slice 2), detailed in §2.6 below: a 1000 signing bump and a +50/cycle (pre-taper) equity-free
+MET. GP stays zero; RP is the whole of what a deuterium mine earns.**
 
 ### 1.1 Outpost vs Waystation (naming — resolved)
 
@@ -437,9 +445,37 @@ must stay attractive. Instead the **minimum** breach is lifted from 10% to **25%
 sign-then-breach free-boost tail from ~100 to ~34 cycles. The full undiscounted licence fee a breach already pays (in
 credits, every cycle) is the rest of the deterrent. Whether 25% is enough is a `[FIRST-CUT]` playtest question.
 
+**The deuterium licence RP — the windowless T4 path (ruled `fuel-supply-and-allocation.md` §1.4; BUILT 04-09-26,
+deuterium RP slice 2).** A licensed deuterium mine reuses this same RP arithmetic, at the **Tier-4** rate, on its
+**own cadence** — it does NOT travel the windowed met/breach loop (it has no windowed `licence`; it is windowless):
+
+- **The RP tier is 4, not the good's tier.** A deuterium mine produces a tier-1 good, but its RP is ruled to move at
+  the Tier-4 rate because the output serves the Syndicate. `ventureTierWeight` (`sim/licence.js`) special-cases
+  `isLicensedDeuteriumMine` → `tierWeight(4)` = **`W_T4` = 500** (now in `sim/points.js`' map for this reader), so
+  `tierFactor` → **5** and the signing bump reads 500 absolute. This is the ONE place the T4-for-RP rule lives, so the
+  bump and the per-cycle gain agree. It is an **RP-only** tier: `guildPoints` skips a licensed deuterium mine, so GP
+  reads no tier-4 weight and stays zero.
+- **The signing bump is `2 · 1.0 · W_T4` = 1000 RP**, one-time, minted in the `licenseDeuteriumMine` apply exactly as
+  the ordinary bump is. Commitment is implicit 100% (so `signingBump` fixes `commit = 1` for it rather than reading the
+  windowed terms it lacks) and there is no equity term. Because a deuterium mine adds **zero GP**, this offsets no bar
+  — it is a **deliberate reputation windfall** (§1.4), landing two-thirds up the [−500, 1500] band in one shot.
+- **A per-cycle automatic MET at the full T4 rate: `REP_MEET_MAX · tierFactor(4)` = 10 · 5 = 50 RP/cycle, pre-taper**
+  (`deuteriumMetGain`, `sim/licence.js`), applied at the cycle boundary in `sim/tick.js`'s step 6 (before issuance, so
+  the guild is paid this cycle on a standing that includes it — the same reading the windowed verdict gets). **No terms
+  multiplier and no breach path:** a deuterium mine delivers continuously and can never breach, so every cycle is a
+  guaranteed met at the full met, not `metGain`'s terms-scaled fraction. It passes through the **same `gainFactor`
+  taper** as all RP, and since the 1000 bump already sits above the 800 knee it is heavily tapered from the first
+  application — a slow top-up climbing toward, but never past, the 1500 cap.
+- **Band, taper and floor reused unchanged**, so `checkGuildReputationSum` and `checkReputationBand` cover this RP with
+  no new term, and the §1.4 self-limiting loop still holds: this RP becomes fuel only through the modifier, and only for
+  a guild that also has GP elsewhere. An **unlicensed** deuterium mine earns nothing here (no bump, and the per-cycle
+  gain is gated on the licence). The GP side is untouched — still zero, slice 1.
+
 **Deferred — the RP band.** The band bounds (−500 / 800 / 1500) and the gain taper are **left at their old-scale values**
 by this rescale and flagged for their own ruling next (`phase-1-tuning.md`, RP-band deferral). Nothing halts, but the band
-is loose at the new scale; rescaling it carries a global-vs-per-tier sub-choice the wide tier spread forces.
+is loose at the new scale; rescaling it carries a global-vs-per-tier sub-choice the wide tier spread forces. **The 1000
+deuterium bump lands well inside this loose band and does not change the deferral** — it is a heavy user of the taper, so
+whatever the band rescale decides will retune the deuterium climb along with everything else.
 
 ## 3. The mean line — expected RP for your GP (fuel issuance)
 

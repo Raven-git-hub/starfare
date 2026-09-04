@@ -80,11 +80,19 @@ const W_SYS = 200;
 // ⤳ RESCALED 01-09-26 (6 / 8 → 100 / 150), points-and-reputation.md §2.6. Not just a ×
 // re-denomination: the tier SPREAD was deliberately widened, from 6 : 8 (1 : 1.33) to the
 // ruled 1 : 1.5 : 3 : 5 = 100 / 150 / 300 / 500, so climbing the manufacturing tree is a
-// genuine reward. `W_T3` / `W_T4` (300 / 500) are the ruled ratio but stay OUT of this map
-// until tier-3 goods have recipes — an unweighted tier must still halt (see `tierWeight`).
+// genuine reward.
+//
+// ⤳ W_T4 = 500 PULLED IN 04-09-26 (deuterium RP slice 2), points-and-reputation.md §2.6 /
+// fuel-supply-and-allocation.md §1.4. A licensed deuterium mine earns RP at the Tier-4 rate
+// (`tierFactor` = 5, `ventureTierWeight` = 500, sim/licence.js) — so the T4 weight now has a
+// real reader and belongs in the map. It changes NO GP: `tierOf('deuterium')` is 1, and a
+// licensed deuterium mine is already skipped in `guildPoints` (slice 1), so nothing reads a
+// tier-4 GP weight. `W_T3` (300) still stays OUT — no tier-3 good exists, and an unweighted
+// tier must still HALT (see `tierWeight`), never score 0.
 const TIER_WEIGHT = Object.freeze({
   1: 100,  // raw — a mine
   2: 150,  // processed — a refinery, half again the mine that feeds it
+  4: 500,  // the RP-only Tier-4 weight (deuterium licence); no GP reader — see note above
 });
 
 // EVERY WEIGHT ABOVE IS AN INTEGER, and must stay one: GP is an integer (§15.2 / §1.0),
