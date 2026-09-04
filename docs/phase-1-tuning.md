@@ -128,7 +128,7 @@ bands. All would need an accumulator carried in serialized state between bucket 
 no visible gain on a game chart; the close price is what a real daily chart plots. **No
 backfill:** the past was never recorded, so the rings fill forward from deploy.
 
-### Quote-lock — the agreed-price window *(04-09-26 — `transport-model.md` §8.1; NOT yet built)*
+### Quote-lock — the agreed-price window *(04-09-26 — `transport-model.md` §8.1; ENGINE HALF BUILT 04-09-26, `sim/price-ring.js`)*
 - **`QUOTE_TTL_TICKS`** `[FIRST-CUT]` **5** — a SELL/BUY quote is honoured for at most 5 ticks after its
   issue tick (and additionally voided the instant a cycle boundary passes, since the fuel price it agreed
   no longer exists). Past that, the transaction window shows an expired state and the player refreshes.

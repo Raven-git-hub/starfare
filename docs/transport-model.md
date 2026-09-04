@@ -256,6 +256,13 @@ built `hexDistance`.)
 
 ### 8.1 The agreed-price quote — RULED 03-09-26 (its own slice, across SELL and BUY)
 
+> **ENGINE HALF BUILT 04-09-26 (SELL + BUY).** The per-tick posted-price ring, the optional
+> `issueTick` on `sellToSyndicate` / `buyFromSyndicate`, the re-derive-and-validate on apply
+> (TTL + cycle-boundary expiry), and the ring-shape tripwire are live — see the AS-BUILT note
+> at the foot of this section. The CLIENT half (freezing the quote at popup-open, sending
+> `issueTick`, the expired-state UI, refresh-to-re-quote) is still the next slice; the snapshot
+> already carries `state.tick`, which is all the client needs to send back.
+
 The price shown when the transaction window opens is the price the player trades at, honoured for a short
 window — a firm **quote**, not a live-repricing feed. Only two numbers move (the resource **posted price**
 every tick; the **fuel price** only at a cycle boundary); distances and fuel-unit burns are seed geometry
@@ -284,6 +291,33 @@ and never move, so the quote just freezes those two prices.
   **expired** state and the player refreshes to re-quote at the current price.
 - **Its own slice, over SELL and BUY both**, built *after* the core SELL transaction (which prices at
   confirm) closes the loop. Recorded here so it is not re-guessed.
+
+**AS-BUILT 04-09-26 — the engine half (SELL + BUY).**
+- **The ring** is `state.priceRing: { [good]: [oldest … newest] }` in **`sim/price-ring.js`**, a new
+  top-level field beside `state.prices`. It holds up to `RING_DEPTH` (= `QUOTE_TTL_TICKS + 1` = **6**,
+  DERIVED) of each priced good's most-recent posted values, newest last. It is **seeded at galaxy
+  creation** (`createState`, with the tick-0 posted price) and **appended once per tick** in
+  `stepPriceRecompute`, right after `recomputePrices` and beside `recordPriceSamples` — so its newest slot
+  is always the tick the state is at, and a lookup reads AGE (`state.tick − issueTick`) from the end. It is
+  engine-internal and **NOT** published (the snapshot is unchanged); it is distinct from
+  `sim/price-history.js`'s chart tiers (a coarser, published client contract).
+- **`issueTick`** is an OPTIONAL field on `sellToSyndicate` / `buyFromSyndicate`. Omitted ⇒ the current
+  tick ⇒ age 0 ⇒ today's posted price ⇒ behaviourally identical to the pre-slice trade, so every existing
+  caller and test is unchanged. A past tick drives the lock. `quotedPrice` reads age 0 from the LIVE
+  `postedPrice` (its canonical home) and age ≥ 1 from the ring, which keeps the omitted-tick path
+  byte-identical even against a hand-built fixture whose ring and posted price were poked apart.
+- **Expiry** is a gate run LAST in `validateAction` (after the credits/fuel gates, like the fuel gate),
+  so another failing gate is blamed first. `checkQuote` refuses reject-whole with a distinct reason when
+  the issue tick is in the future, more than `QUOTE_TTL_TICKS` old, or its **fuel-price cycle** has rolled
+  (`cycleIndexOf` = `floor((tick − anchor) / N)`, the partition the fuel price is constant on — the new
+  price is posted AT the boundary tick, so this is deliberately not `calendar.dayOf`). On apply, the
+  resource price is re-derived from the ring at `issueTick`; the fuel BURN is seed geometry and never
+  moves, and the same-cycle check guarantees the current fuel price IS the issue-tick one, so fuel needs
+  no ring.
+- **Goldens moved and were re-pinned**: the always-on `priceRing` is an added serialized field, so the
+  persisted-state / determinism goldens (`persist.test.js`, `commitment-scaffold.test.js`) gained it and
+  are re-pinned; the added-key strip proves the ring is the ONLY delta. A ring-shape tripwire
+  (`checkPriceRing`, `sim/invariants.js`) caps the ring and rejects a fuel row or a non-finite sample.
 
 ## 9. The route planner (guild-tier UI, Phase 4)
 

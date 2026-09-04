@@ -10,6 +10,7 @@ const {
 } = require('./licence.js');
 const { producedGoodFor, baselineOutputFor } = require('./baseline.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
+const { checkQuote, quotedPrice } = require('./price-ring.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
 const { isStockpileGood, isFuel, DEUTERIUM } = require('./resources.js');
 const { setEntry } = require('./profile.js');
@@ -262,11 +263,23 @@ function createSetWindowNAction({ windowN }) {
 // system a sale comes out of is a real supply-chain lever, because a factory
 // draws its inputs from its OWN system's pile, so pulling stock out from under
 // one must be the player's deliberate act.
-function createSellToSyndicateAction({ guildId, good, allocations }) {
+//
+// `issueTick` (§8.1's quote-lock, RULED 04-09-26) is OPTIONAL: the confirm carries the
+// tick the quote was ISSUED at, never a price, and the engine re-derives the resource
+// price from its own per-tick ring at that tick (sim/price-ring.js). OMITTED ⇒ the
+// current tick ⇒ age 0 ⇒ today's posted price ⇒ exactly the pre-quote-lock behaviour, so
+// the action is byte-identical to before and every existing caller is unchanged. A PAST
+// `issueTick` drives the lock; it is validated for expiry (TTL + cycle boundary) at
+// intake. Omitted from the action object when not supplied, so its serialized shape is
+// unchanged too.
+function createSellToSyndicateAction({ guildId, good, allocations, issueTick }) {
   if (guildId === undefined) throw new Error('createSellToSyndicateAction: guildId is required');
   if (good === undefined) throw new Error('createSellToSyndicateAction: good is required');
   if (allocations === undefined) throw new Error('createSellToSyndicateAction: allocations is required');
-  return { type: 'sellToSyndicate', guildId, good, allocations };
+  return {
+    type: 'sellToSyndicate', guildId, good, allocations,
+    ...(issueTick === undefined ? {} : { issueTick }),
+  };
 }
 
 // Buying goods from the Syndicate, for SCHEDULED DELIVERY (design.md §6,
@@ -282,12 +295,21 @@ function createSellToSyndicateAction({ guildId, good, allocations }) {
 // defensible default (the home system would be one invention, the largest pile
 // another). The confirm popup that asks for it is the next slice; this action is
 // complete and testable without it.
-function createBuyFromSyndicateAction({ guildId, good, qty, destinationSystemId }) {
+//
+// `issueTick` (§8.1's quote-lock) is OPTIONAL and behaves exactly as it does on the SELL
+// side: omitted ⇒ the current tick ⇒ today's posted price ⇒ byte-identical to before; a
+// past tick prices the bought good from the ring at that tick, validated for expiry. The
+// route fuel it burns is seed geometry and never moves, so only the resource price is
+// re-derived.
+function createBuyFromSyndicateAction({ guildId, good, qty, destinationSystemId, issueTick }) {
   if (guildId === undefined) throw new Error('createBuyFromSyndicateAction: guildId is required');
   if (good === undefined) throw new Error('createBuyFromSyndicateAction: good is required');
   if (qty === undefined) throw new Error('createBuyFromSyndicateAction: qty is required');
   if (destinationSystemId === undefined) throw new Error('createBuyFromSyndicateAction: destinationSystemId is required');
-  return { type: 'buyFromSyndicate', guildId, good, qty, destinationSystemId };
+  return {
+    type: 'buyFromSyndicate', guildId, good, qty, destinationSystemId,
+    ...(issueTick === undefined ? {} : { issueTick }),
+  };
 }
 
 // --- Validation -------------------------------------------------------
@@ -816,6 +838,17 @@ function validateAction(state, action) {
     if (guild.fuelHoard < totalBurn) {
       return { valid: false, reason: `guild ${guild.id} holds ${guild.fuelHoard} fuel, cannot burn ${totalBurn} shipping this basket to the Syndicate — insufficient fuel: need ${totalBurn}, have ${guild.fuelHoard} (fuel-supply-and-allocation.md §8)` };
     }
+    // THE QUOTE-LOCK GATE (docs/transport-model.md §8.1) — LAST, on purpose, exactly as
+    // the fuel gate is: a sale that also fails a stock, price or fuel gate must blame
+    // THAT, not the quote, so the player fixes the real problem rather than refreshing a
+    // quote that would refuse again anyway. The confirm carries an ISSUE TICK, never a
+    // price (§18); here we only refuse an EXPIRED one — past the TTL, or with a cycle
+    // boundary crossed since issue (the fuel price it agreed is gone). Omitted ⇒ the
+    // current tick ⇒ age 0 ⇒ never expired, so every existing caller is unchanged. Apply
+    // re-derives each named system's price from the ring at this same tick.
+    const issueTick = action.issueTick === undefined ? state.tick : action.issueTick;
+    const quote = checkQuote(state, action.good, issueTick);
+    if (!quote.valid) return quote;
     return { valid: true };
   }
 
@@ -858,9 +891,19 @@ function validateAction(state, action) {
     if (!nearestWaystation(action.destinationSystemId)) {
       return { valid: false, reason: `no Syndicate waystation can reach system ${JSON.stringify(action.destinationSystemId)} — it resolves to no seed coordinates` };
     }
-    // THE CASH IS DEBITED NOW, in full, at the single posted price with no fee
-    // (§6 step 3). Rounded once on the whole order, exactly as a sale is (#43).
-    const cost = Math.round(action.qty * price);
+    // THE CASH IS DEBITED NOW, in full, at the QUOTED price with no fee (§6 step 3;
+    // §8.1's quote-lock). Rounded once on the whole order, exactly as a sale is (#43).
+    // The price is the ring's value at the ISSUE TICK — today's posted value when
+    // `issueTick` is omitted (age 0), a past tick's when the confirm carries one — so the
+    // affordability check is measured against the same price apply will charge, never a
+    // moved one. `?? price` falls back to the current posted value ONLY for a quote that
+    // is not in the ring at all (too old / future): such a trade is refused by the expiry
+    // gate below anyway, and the fallback exists so that a co-occurring credits shortfall
+    // is still blamed FIRST (a problem refreshing the quote would not fix), matching the
+    // "blame the other gate first" discipline the fuel gate documents.
+    const issueTick = action.issueTick === undefined ? state.tick : action.issueTick;
+    const quotedForCost = quotedPrice(state, action.good, issueTick);
+    const cost = Math.round(action.qty * (quotedForCost == null ? price : quotedForCost));
     if (guild.credits < cost) {
       return { valid: false, reason: `guild ${guild.id} holds ${guild.credits} credits, cannot pay ${cost} for ${action.qty} ${action.good}` };
     }
@@ -886,6 +929,15 @@ function validateAction(state, action) {
     if (guild.fuelHoard < fuelBurn) {
       return { valid: false, reason: `guild ${guild.id} holds ${guild.fuelHoard} fuel, cannot burn ${fuelBurn} flying to ${JSON.stringify(action.destinationSystemId)} — insufficient fuel: need ${fuelBurn}, have ${guild.fuelHoard} (fuel-supply-and-allocation.md §8)` };
     }
+    // THE QUOTE-LOCK GATE (docs/transport-model.md §8.1) — LAST, exactly like the fuel
+    // gate above and for the same reason: a purchase that also fails credits, territory
+    // or fuel blames THAT first, so the quote is only ever refused on a trade otherwise
+    // entirely legal. Refuses an EXPIRED issue tick (past the TTL, or with a cycle
+    // boundary crossed since issue). `issueTick` was resolved above for the cost; omitted
+    // ⇒ the current tick ⇒ never expired. Apply prices the bought good from the ring at
+    // this tick.
+    const quote = checkQuote(state, action.good, issueTick);
+    if (!quote.valid) return quote;
     return { valid: true };
   }
 
@@ -1242,17 +1294,23 @@ function applyAction(state, action) {
   }
 
   if (action.type === 'sellToSyndicate') {
-    // The Syndicate buys, at the POSTED price — the published, 2-tick-lagged value
-    // the player is looking at (§5: "goods sold to the Syndicate execute at the
-    // current price during the tick, end of"). No projection, no sliding.
+    // The Syndicate buys at the QUOTED price — the value the ring recorded at the quote's
+    // ISSUE TICK (§8.1's quote-lock). When `issueTick` is omitted this is `next.tick` →
+    // age 0 → exactly `postedPrice`, the published 2-tick-lagged value the player is
+    // looking at, so the omitted-tick path is byte-identical to the pre-quote-lock SELL
+    // (§5: "goods sold execute at the current price during the tick, end of"). A past
+    // `issueTick` prices the whole basket at that tick's value — the ring is per-good and
+    // this action is one good across many systems, so every allocation shares the one
+    // looked-up price.
     const guild = findGuild(next, action.guildId);
-    const price = postedPrice(next, action.good);
+    const issueTick = action.issueTick === undefined ? next.tick : action.issueTick;
+    const price = quotedPrice(next, action.good, issueTick);
     if (price == null) {
-      // Validation already refused this, so reaching it means a state whose price
-      // block was removed between validate and apply. Taking the goods anyway would
-      // be a silent loss, so halt loudly — the same guard, and the same reason, as
-      // applyProduction's Syndicate delivery (§15.5).
-      throw new Error(`applyAction: guild ${guild.id} sold ${action.good} to the Syndicate at tick ${next.tick} but the good has no posted price — refusing to hand over goods for nothing`);
+      // Validation already refused this (expiry gate + the ring guard), so reaching it
+      // means a state whose ring or price block was edited between validate and apply.
+      // Taking the goods anyway would be a silent loss, so halt loudly — the same guard,
+      // and the same reason, as applyProduction's Syndicate delivery (§15.5).
+      throw new Error(`applyAction: guild ${guild.id} sold ${action.good} to the Syndicate at tick ${next.tick} (quote issueTick ${issueTick}) but no posted price is in the ring for that tick — refusing to hand over goods for nothing`);
     }
 
     // Drain EXACTLY what the player specified, and nothing else: each named
@@ -1321,17 +1379,20 @@ function applyAction(state, action) {
     // nothing else: the cash moves NOW, and a delivery is SCHEDULED. No goods are
     // deposited — that is stepArrivals' job, `arrivalTick` ticks from now.
     const guild = findGuild(next, action.guildId);
-    const price = postedPrice(next, action.good);
+    const issueTick = action.issueTick === undefined ? next.tick : action.issueTick;
+    const price = quotedPrice(next, action.good, issueTick);
     if (price == null) {
-      // Validation refused this, so reaching it means the price block vanished
-      // between validate and apply. Taking the money for goods with no price
-      // would be a silent theft — halt, exactly as the sale's mirror guard does.
-      throw new Error(`applyAction: guild ${guild.id} bought ${action.good} from the Syndicate at tick ${next.tick} but the good has no posted price — refusing to take credits for nothing`);
+      // Validation refused this (expiry gate + ring guard), so reaching it means the ring
+      // or price block was edited between validate and apply. Taking the money for goods
+      // with no price would be a silent theft — halt, exactly as the sale's mirror guard.
+      throw new Error(`applyAction: guild ${guild.id} bought ${action.good} from the Syndicate at tick ${next.tick} (quote issueTick ${issueTick}) but no posted price is in the ring for that tick — refusing to take credits for nothing`);
     }
 
-    // ROUNDED ONCE, ON THE WHOLE ORDER — #43, and the identical arithmetic the
-    // sale uses, so a good bought and immediately sold back at an unmoved price
-    // costs exactly nothing. There is NO transport fee and NO spread (§5/§6).
+    // ROUNDED ONCE, ON THE WHOLE ORDER — #43, and the identical arithmetic the sale uses,
+    // so a good bought and immediately sold back at an UNMOVED price costs exactly
+    // nothing. Priced at the QUOTED value (§8.1) — the ring at `issueTick`, which is the
+    // current posted price when omitted — matching the affordability check validate ran.
+    // There is NO transport fee and NO spread (§5/§6).
     const cost = Math.round(action.qty * price);
     // The mirror of paySyndicateFee: credits leave the guild and the same integer
     // lands in the ledger, so invariant 2 holds to the credit by construction.

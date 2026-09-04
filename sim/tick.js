@@ -32,6 +32,7 @@ const {
 } = require('./windows.js');
 const { getHistory, pushHistory } = require('./history.js');
 const { recordPriceSamples } = require('./price-history.js');
+const { recordPriceRing } = require('./price-ring.js');
 const { recomputePrices, postedPrice } = require('./prices.js');
 const {
   commitmentSale, committedContribution, feeOwed, reputationDelta, gainFactor, RP_FLOOR,
@@ -590,6 +591,14 @@ function stepConsumption(state, _actions) {
 function stepPriceRecompute(state, _actions, ctx) {
   state.prices = recomputePrices(state, ctx ? ctx.consumed : {});
   recordPriceSamples(state, state.tick + 1);
+  // THE QUOTE-LOCK RING (sim/price-ring.js, §8.1). Once this tick's posted values are
+  // final, append each good's to the per-tick ring the §8.1 quote-lock re-derives a
+  // SELL/BUY quote from — so a confirm up to QUOTE_TTL_TICKS ticks after its issue tick
+  // can still be priced at what it was quoted. Right here for the same reason the history
+  // sample is: this is the only point in the tick where "the posted price for this tick"
+  // exists and is final. No tick argument — the ring is appended to exactly once per
+  // tick, so its newest slot is always the tick being built and the lookup reads age.
+  recordPriceRing(state);
   return state;
 }
 

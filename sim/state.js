@@ -25,6 +25,7 @@ const { cloneHistory } = require('./history.js');
 const { cloneModifierHistory } = require('./modifier-history.js');
 const { seedPrices } = require('./prices.js');
 const { clonePriceHistory } = require('./price-history.js');
+const { seedPriceRing, clonePriceRing } = require('./price-ring.js');
 const { ASSET_CONDITION_NEW } = require('./assets.js');
 const { REFERENCE_FUEL_PRICE } = require('./fuel.js');
 const { DEUTERIUM_INFLUX_PER_CYCLE } = require('./issuance.js');
@@ -590,6 +591,11 @@ function createState(scenario) {
   const reserve = createReserve(scenario.reserve);
   const syndicate = createSyndicate(scenario.syndicate);
 
+  // The tick-0 price block, built once so both `prices` (below) and the quote-lock ring
+  // seed off the SAME seeded values — the ring's newest slot must equal today's posted
+  // price for the omitted-issueTick no-op to hold (sim/price-ring.js).
+  const seededPrices = seedPrices();
+
   const state = {
     tick: 0,
     guilds,
@@ -655,7 +661,19 @@ function createState(scenario) {
     // memory the next tick reads, not derived telemetry that could be recomputed. Fuel
     // is never listed (design.md §8): `deuterium_fuel` has no row here, ever. Computed
     // rather than accepted from the scenario, like `audit` and `galacticSupply` below.
-    prices: seedPrices(),
+    prices: seededPrices,
+    // priceRing: the per-tick posted-price RING the §8.1 quote-lock re-derives a SELL/BUY
+    // quote from (sim/price-ring.js), top-level beside `prices` because the posted price
+    // is galaxy-wide, not a guild's. UNLIKE `priceHistory` above it is ALWAYS PRESENT —
+    // seeded here at tick 0 with each good's posted price and appended to every tick — so
+    // a trade with `issueTick` OMITTED resolves at age 0 to exactly today's price, the
+    // byte-identical no-op. That always-on serialized state is what MOVES the persisted
+    // goldens when this slice lands. Deep-cloned when a scenario or a restored save
+    // supplies one, so a caller's object can never alias into engine state; otherwise
+    // seeded off the same `seededPrices` the `prices` block was built from.
+    priceRing: scenario.priceRing === undefined
+      ? seedPriceRing(seededPrices)
+      : clonePriceRing(scenario.priceRing),
     // priceHistory: the rolling per-good rings of PAST posted values
     // (sim/price-history.js) — the graph's data, top-level beside `prices` because
     // the posted price is galaxy-wide, not a guild's. OMITTED when there is none,

@@ -74,6 +74,7 @@ const { DEFAULT_WINDOW_N, winStartFor, windowFraction } = require('./windows.js'
 const { HISTORY_N } = require('./history.js');
 const { MODIFIER_HISTORY_N } = require('./modifier-history.js');
 const { TIERS: PRICE_HISTORY_TIERS, TIER_KEYS } = require('./price-history.js');
+const { RING_DEPTH: PRICE_RING_DEPTH } = require('./price-ring.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { getSite, getLandmark, getSystem, getTerranHomeworld } = require('./seed.js');
 const { getRecipe } = require('./recipes.js');
@@ -751,6 +752,45 @@ function checkPriceHistory(state) {
   return out;
 }
 
+// Price-ring shape (sim/price-ring.js) — the per-tick posted-price ring the §8.1
+// quote-lock re-derives a SELL/BUY quote from. Serialized state that a trade prices off,
+// so a malformed one would be both a mispriced trade and a poisoned determinism hash. The
+// same three checks price-history gets, and only three:
+//   - the SHAPE: a row exists only for a good the Syndicate actually prices, and it is an
+//     array (fuel has no ring, ever — §8);
+//   - the CAP: no ring exceeds RING_DEPTH (= QUOTE_TTL_TICKS + 1) — the whole point is a
+//     bounded window of still-valid quote ages, so an unbounded ring is the failure this
+//     catches;
+//   - the VALUES: every sample a finite number.
+// Like price-history, the price BAND is deliberately NOT asserted (it is [FIRST-CUT]
+// tuning, and a restored save may hold samples legal when taken); finiteness is the
+// invariant. A state with no ring at all is legal — a hand-built test fixture — so only a
+// present, broken one trips.
+function checkPriceRing(state) {
+  const out = [];
+  if (!state.priceRing) return out;
+  for (const [good, ring] of Object.entries(state.priceRing)) {
+    const where = `priceRing.${good}`;
+    if (!PRICED_GOODS.includes(good)) {
+      out.push({ rule: 'price-ring-priced-good (sim/price-ring.js)', where, detail: { good, fuel: good === FUEL_GOOD } });
+      continue;
+    }
+    if (!Array.isArray(ring)) {
+      out.push({ rule: 'price-ring-shape (sim/price-ring.js)', where, detail: { ring } });
+      continue;
+    }
+    if (ring.length > PRICE_RING_DEPTH) {
+      out.push({ rule: 'price-ring-capped (sim/price-ring.js)', where, detail: { length: ring.length, cap: PRICE_RING_DEPTH } });
+    }
+    ring.forEach((v, i) => {
+      if (typeof v !== 'number' || !Number.isFinite(v)) {
+        out.push({ rule: 'price-ring-sample-finite (sim/price-ring.js)', where: `${where}[${i}]`, detail: { value: v } });
+      }
+    });
+  }
+  return out;
+}
+
 // Galactic-supply consistency — the derived totals cache (state.galacticSupply)
 // must equal a fresh re-derivation from the guilds' actual stockpiles and the
 // fuel figures. This is a CONSISTENCY check, not a conservation one: non-fuel
@@ -1055,6 +1095,7 @@ function checkInvariants(state, tick) {
     ...checkModifierHistory(state),
     ...checkPrices(state),
     ...checkPriceHistory(state),
+    ...checkPriceRing(state),
     ...checkLicenceTerms(state),
     ...checkGalacticSupplyConsistency(state),
     ...checkGuildReputationSum(state),
