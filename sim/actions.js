@@ -643,6 +643,20 @@ function validateAction(state, action) {
     if (venture.licence) {
       return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} is already licensed — changing agreed terms is a renegotiation (§5), not a second application, and renegotiation is not built yet`};
     }
+    // DEUTERIUM IS NEVER ELIGIBLE FOR THE ORDINARY WINDOWED PATH (§1.4 "The Deuterium
+    // Cycle"). Deuterium is special: it takes ONLY the windowless deuterium licence
+    // (`licenseDeuteriumMine`) — 100%-committed, fee-less, breach-less, zero-GP — so
+    // routing a deuterium mine through here (a fee, a breach, windowed delivery, tier-1
+    // GP) would violate the ruling. This is the reverse of `licenseDeuteriumMine`'s
+    // refusal of a venture that already holds an ordinary licence: with both guards the
+    // two paths are mutually exclusive from either side. Refused EARLY — before any
+    // fee/baseline work — and for EVERY deuterium mine (licensed or not), since no
+    // deuterium mine ever belongs on this path. (`deuterium_fuel` is caught by the fuel
+    // check below; this catches the RAW good, which is not fuel and would otherwise slip
+    // through as a normal tier-1 mine.)
+    if (venture.resourceType === DEUTERIUM) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} mines ${JSON.stringify(DEUTERIUM)}, which is special and takes only the windowless deuterium licence — use licenseDeuteriumMine, not the ordinary Syndicate licence (§1.4)` };
+    }
     // The good this licence is a contract over — a mine's `resourceType`, a FACTORY's
     // recipe output (`producedGoodFor`, sim/baseline.js). The mines-only refusal that
     // stood here is GONE (factory-commitment slice, 28-08-26): it existed for a purely

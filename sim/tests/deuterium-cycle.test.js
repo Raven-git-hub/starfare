@@ -23,7 +23,7 @@ const assert = require('node:assert/strict');
 const { createState } = require('../state.js');
 const { tick } = require('../tick.js');
 const {
-  validateAction, applyAction, createLicenseDeuteriumMineAction,
+  validateAction, applyAction, createLicenseDeuteriumMineAction, createApplyForLicenceAction,
 } = require('../actions.js');
 const { checkInvariants } = require('../invariants.js');
 const { postedPrice } = require('../prices.js');
@@ -126,6 +126,31 @@ test('licenseDeuteriumMine: refused when the mine holds an ORDINARY windowed lic
   const r = validateAction(s, licenseAction());
   assert.equal(r.valid, false);
   assert.match(r.reason, /ordinary Syndicate licence/);
+});
+
+// --- 2b. the exclusion is symmetric: the ordinary path refuses a deuterium mine too ---
+
+test('applyForLicence: refused on a deuterium mine — it takes only the windowless deuterium licence (§1.4)', () => {
+  // The reverse half of the mutual exclusion. Without this guard a player could route a
+  // deuterium mine down the windowed path (fee, breach, tier-1 GP), which §1.4 forbids.
+  // Refused for the raw good, which is NOT fuel and would otherwise slip through as a
+  // normal tier-1 mine.
+  const s = deuteriumMineState();
+  const r = validateAction(s, createApplyForLicenceAction({
+    guildId: 'g1', ventureId: 'v1', committedOutputPct: 0.5, windowDays: 7,
+  }));
+  assert.equal(r.valid, false);
+  assert.match(r.reason, /licenseDeuteriumMine/);
+});
+
+test('the exclusion is symmetric: the same deuterium mine the ordinary path refuses can still be deuterium-licensed', () => {
+  const s = deuteriumMineState();
+  // Ordinary path: refused.
+  assert.equal(validateAction(s, createApplyForLicenceAction({
+    guildId: 'g1', ventureId: 'v1', committedOutputPct: 0.5, windowDays: 7,
+  })).valid, false);
+  // Deuterium path: accepted.
+  assert.deepEqual(validateAction(s, licenseAction()), { valid: true });
 });
 
 // --- 3. apply: grant the licence, move nothing ---------------------------------------
