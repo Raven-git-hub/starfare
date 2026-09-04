@@ -667,8 +667,10 @@ tradeable").
   Syndicate pays credits at the posted rate (a ledger MOVE, invariant 2) and the deuterium is added to the
   pool 1:1 as fuel (MINTED, recorded in `audit.totalProduced`, invariant 1). The pool grows per-tick by
   Σ licensed output + the fixed 800/cycle baseline (§1.1); the price controller (§4/§8) feels it.
-- **RP as a Tier-4 asset, zero GP** for a licensed deuterium venture (output serves the Syndicate, not the
-  guild); **no GP and no RP** for an unlicensed one — a `sim/points.js` special-case, recorded in
+- **RP at the Tier-4 rate, zero GP** for a licensed deuterium venture (output serves the Syndicate, not
+  the guild): zero GP (slice 1, built), plus a **1000 RP signing bump** and a **+50 RP/cycle** automatic
+  MET at the T4 rate — equity-free and breachless (slice 2, ruled 04-09-26; full mechanic in
+  fuel-supply §1.4). **No GP and no RP** for an unlicensed one — a `sim/points.js` special-case, recorded in
   `docs/points-and-reputation.md` with the code that builds it. The loop is **self-limiting**: no GP means
   a tiny fuel grant even at a ceiling modifier, so deuterium-only is a credits + standing play, never a
   fuel shortcut.

@@ -151,10 +151,14 @@ resource pair exempt from B1's system-scoped stockpiles.
 
 **The deuterium licence is a variant** with its own deployment window (a variant of `applyForLicence`):
 - **100% commitment only** — no commitment slider; a licensed deuterium mine surrenders all output.
-- **Equity offered is still variable** — the one lever the player keeps.
+- **No equity.** Equity plays no part in the deuterium licence — there is no fee to discount, no
+  proceeds split, and (ruled 04-09-26) no RP term either, so a variable that modulates nothing is
+  dropped from the deuterium path entirely. *(This REVISES the earlier "equity offered stays
+  variable": with nothing for it to touch, keeping it was just confusion.)*
 - **No licence fee, by default.**
-- **RP weighted as a Tier-4 asset** (`TIER_WEIGHT[4]`, the maximum) — because the output serves the
-  Syndicate, not the guild.
+- **RP at the Tier-4 rate** (`tierFactor` = 5, via `TIER_WEIGHT[4]` = 500 — the ruled `W_T4`, pulled
+  into the map for deuterium) — because the output serves the Syndicate, not the guild. The full
+  accrual is ruled below ("The RP accrual").
 - **Adds NO GP.** Its production goes to the Syndicate rather than the guild, so it is pure reputation.
 - With **no fee and no breach**, there is **no progressive-commitment / windowed accrual to track**
   (contrast §5's windowed licences) — the mine is automatically, permanently 100%. In that sense it sits
@@ -201,10 +205,30 @@ mining is a **credits + standing** play, not a shortcut to a fat fuel allocation
 guild *and* feed the pool to win the big grant. This downside is **intended** (ruled 03-09-26), and it is
 why nothing here runs away.
 
-**Where the GP/RP special-case is recorded.** "T4 RP, zero GP for a licensed deuterium venture; no GP and
-no RP for an unlicensed one" is a `sim/points.js` change. It is **ruled here** and lands in
-`docs/points-and-reputation.md` §1/§2 **in the same commit as the code that implements it** (working rule
-2), so Code reads this block for the ruling and updates the points doc when it builds the slice.
+**The RP accrual — ruled 04-09-26 (slice 2).** The zero-GP half shipped in slice 1 (`sim/points.js` skips a
+licensed deuterium mine). The RP half is now ruled — and because the deuterium licence is **windowless**, it
+does NOT travel the ordinary per-window met/breach path; it reuses the same RP *arithmetic* on its own cadence:
+
+- **A signing bump at licensing: `2 · 1.0 · W_T4` = 1000 RP, one-time.** The existing `signingBump`
+  (`2 · committedOutputPct · ventureTierWeight`) at 100% commit and the T4 weight (500). For an ordinary
+  venture the bump offsets the GP it adds; a deuterium mine adds **zero** GP, so this is **deliberately** a
+  pure reputation windfall — the ruled intent that makes committing a deuterium mine instantly valuable, not
+  an accident of the formula. It lands two-thirds up the `[−500, 1500]` band in one shot.
+- **A per-cycle automatic MET at the full T4 rate: `REP_MEET_MAX · tierFactor(T4)` = 10 · 5 = 50 RP/cycle,
+  pre-taper.** A licensed deuterium mine delivers continuously and **can never breach**, so every cycle is a
+  guaranteed MET — no window, no verdict to miss. **No equity term and no partial-commit term:** the gain is
+  the full T4 met (commitment is implicit 100%, equity is removed), which is what "RP is maximised" means. In
+  practice the 1000 bump already sits above the 800 taper knee, so this per-cycle gain is heavily tapered — a
+  slow top-up on the windfall, climbing toward the 1500 cap.
+- **Band, taper and floor reused unchanged** (`[−500, 1500]`, knee 800). The deuterium RP lands in
+  `venture.reputation` / `guildReputation` like all RP, so `checkGuildReputationSum` and `checkReputationBand`
+  cover it with no new term, and the self-limiting loop above still holds — this RP becomes fuel only if the
+  guild has GP elsewhere.
+
+`TIER_WEIGHT[4]` = 500 (the ruled `W_T4`) is pulled into the map because deuterium now needs the T4 lookups;
+`W_T3` stays out (no tier-3 good) and an unweighted tier still halts. The detailed formulas land in
+`docs/points-and-reputation.md` **in the same commit as the code** (working rule 2); this block is the ruling
+Code builds from.
 
 ## 2. Issuance — the mean line (Points vs Reputation)
 
