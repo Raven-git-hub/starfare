@@ -25,6 +25,13 @@ The pool holds no more than the deuterium someone mined.
 
 ### 1.0 The two goods and the two refining paths (clarified 31-08-26)
 
+**⚠ SUPERSEDED IN PART 03-09-26 — see §1.4 (The Deuterium Cycle).** The lines below that call
+`deuterium` a *tier-1, tradeable* good, and that describe the legal path converting *"at the moment of
+commitment"*, are refined by §1.4: deuterium is a **special** good (its own FUEL tab, out of the tier
+system), is **priced but untradeable** (removed from the TRADE tab and the tier-1 production console),
+and the legal path is a **per-tick auto-sale**, not a discrete commit. The two-goods split and the
+two-paths / legality frame below still stand.
+
 Two distinct goods (the #22 ruling, already in `sim/resources.js`):
 - **`deuterium`** — a **raw, tier-1** resource. Mined (Oceanic planets, §3), lives in stockpiles, tradeable.
 - **`deuterium_fuel`** — the fuel: a **processed "pseudo-tier-2"** good. The recipe is **1 deuterium → 1
@@ -115,6 +122,89 @@ into the guild's `fuelHoard` in the `foundGuild` apply and recorded in `state.au
 invariant 1 closes from tick 0. The flat valuation is `FLAT_FUEL_PRICE_PER_UNIT` (currently `[FIRST-CUT]`
 10 ¢/unit). Both constants live in `sim/fuel.js`. They are tuned after the waystation rebalance lands and
 replaced by the real price controller when the fuel economy is built.
+
+### 1.4 The Deuterium Cycle — the player-driven supply lever (ruled 03-09-26)
+
+This is the mechanic that turns the flat back-end influx (§1.1) into a **living, player-driven supply**.
+It refines §1.0's licensed path and §8's "guilds mine and sell raw deuterium" into a concrete per-tick
+loop, and it settles how the illegal path (§1.0) reaches the stockpile bar's red segment. Where it
+disagrees with the older prose in §1.0 / design.md §8 / resolved open question #22 ("deuterium is a
+normal tradeable good"; conversion "at the moment of commitment"), **this block wins.**
+
+**Deuterium is special — not a tier-1 good.** Hoarding it is illegal, so it does not belong in the normal
+tier-1 system-production console, and it is **not tradeable**: a guild can **never** sell `deuterium` (or
+`deuterium_fuel`) to the Syndicate through the TRADE tab / the SELL–BUY machinery. It is **removed from the
+TRADE tab and from the tier-1 production console** and rehoused in its **own FUEL tab** in the System
+Manifest. Player-to-player open-market trade in deuterium is **deferred, leaning NO** (too public for
+contraband) — see §6 open questions.
+
+**Priced, but not hidden.** Deuterium keeps a **posted price** — the "market rate" the Syndicate pays,
+below — so it is untradeable, not unpriced. That price is **public**: a price + graph in the **Guild Hall**
+section, and again in the **FUEL tab**. Whether the posted price rides the existing commodity price engine
+with deuterium fenced out of the trade UI, or a dedicated fuel-facing quote, is a build decision for the
+slice; the contract is only that the price exists and is shown.
+
+**Guild-wide storage — the one exemption from ruling B1.** `deuterium` and `deuterium_fuel` stockpiles are
+**guild-wide**, not system-scoped. Narrative cover: both are trafficked in ship tanks and refined/used
+ad-hoc, never warehoused — a *reason* to skip per-system storage, not a mechanic. This is the single
+resource pair exempt from B1's system-scoped stockpiles.
+
+**The deuterium licence is a variant** with its own deployment window (a variant of `applyForLicence`):
+- **100% commitment only** — no commitment slider; a licensed deuterium mine surrenders all output.
+- **Equity offered is still variable** — the one lever the player keeps.
+- **No licence fee, by default.**
+- **RP weighted as a Tier-4 asset** (`TIER_WEIGHT[4]`, the maximum) — because the output serves the
+  Syndicate, not the guild.
+- **Adds NO GP.** Its production goes to the Syndicate rather than the guild, so it is pure reputation.
+- With **no fee and no breach**, there is **no progressive-commitment / windowed accrual to track**
+  (contrast §5's windowed licences) — the mine is automatically, permanently 100%. In that sense it sits
+  **outside the normal production / commitment flow.**
+
+**The licensed path is a PER-TICK auto-sale — this is the supply lever.** Every tick, a licensed deuterium
+mine:
+- produces its deuterium, which **leaves the guild immediately** (it never enters a stockpile);
+- the **Syndicate buys it at the posted market rate → credits land in the guild's account that tick** — a
+  credit MOVE from the Syndicate ledger (invariant 2), like any sale;
+- the same deuterium is added to the **galactic pool → 1:1 → pool fuel**, so `reserveLevel` climbs that
+  tick. This fuel is **MINTED**: it records itself in `audit.totalProduced`, exactly as the influx does
+  (invariant 1's "created only by an event that records itself in totalProduced").
+
+So across the galaxy the pool grows each tick by **Σ every licensed mine's output + the fixed back-end
+baseline**, and the price controller (§4) feels it directly: more deuterium mined → pool rises → fuel gets
+cheaper. That is scarcity made player-driven.
+
+**The baseline holds at 800/cycle (fixed) for now.** `DEUTERIUM_INFLUX_PER_CYCLE` stays a lump minted at
+the cycle boundary (§1.1); licensed guild deuterium is **pure addition on top**, streaming per-tick. The
+baseline is left lumpy on purpose — spreading it per-tick would churn the controller's cadence for no
+design gain. Recalibrating the baseline against real PG + player supply at scale is a **deferred tuning
+question** (§6).
+
+**The illegal path = the red bar.** If the player takes an **unlicensed** deuterium mine, it is **idle as
+far as the Syndicate is concerned — no GP, no RP** — and its deuterium stays with the guild (guild-wide,
+above). The guild refines it 1:1 in its **own factory** into `deuterium_fuel` it holds as **contraband**,
+and that held illegal fuel is exactly what fills the **red segment** of the Guild-Hall stockpile bar and
+drives the mid-cycle max-rise the bar is already wired for. Contraband deuterium / fuel can **never be
+laundered** into any galactic / public stockpile — that is what "cannot be added to galactic stockpiles"
+means. The §1.0 build wrinkle still stands (illegal refining is either a special recipe that outputs the
+fuel good, or its own action) — decide in the illegal-path slice.
+
+**The trade-off, stated plainly.** *License it* → per-tick credits at market rate + maximum (T4) RP, but
+you never keep the fuel. *Refine it illegally* → you keep the fuel to burn yourself, but no pay, no
+standing, invisible to the Syndicate, and it sits in the red as fine-bait once the §7 detection / fine
+system lands.
+
+**Self-limiting by design — the feedback loop resolves cleanly.** A fuel grant is
+`BASE_GRANT_PER_GP × GP × modifier` (§2). A deuterium mine gives **RP but zero GP**, so a guild that mines
+*only* deuterium has its modifier pinned at the ceiling but a **tiny GP base → a tiny fuel grant**. The RP
+only converts into real fuel if the guild *also* has GP from territory and other ventures. So deuterium
+mining is a **credits + standing** play, not a shortcut to a fat fuel allocation — you must be a genuine
+guild *and* feed the pool to win the big grant. This downside is **intended** (ruled 03-09-26), and it is
+why nothing here runs away.
+
+**Where the GP/RP special-case is recorded.** "T4 RP, zero GP for a licensed deuterium venture; no GP and
+no RP for an unlicensed one" is a `sim/points.js` change. It is **ruled here** and lands in
+`docs/points-and-reputation.md` §1/§2 **in the same commit as the code that implements it** (working rule
+2), so Code reads this block for the ruling and updates the points doc when it builds the slice.
 
 ## 2. Issuance — the mean line (Points vs Reputation)
 
@@ -479,6 +569,12 @@ a **watch-it-in-play** number, not a pre-solve.
 6. **Deuterium's map presence** — confirm which archetypes carry deuterium nodes (terran/oceanic) and that the
    generator places enough for the PG homes and player mining. (Ties to the seed-generator rework.)
 7. **Detection mechanic** for illegal refining / grey-market fuel (§3) — deferred, structure-only now.
+
+8. **Deuterium influx calibration at scale** — the back-end baseline holds at `DEUTERIUM_INFLUX_PER_CYCLE`
+   = 800/cycle while licensed guild deuterium streams in per-tick (§1.4). Once PGs are seeded (~10 PGs ×
+   ~3 mines × ~1/tick ≈ 30/tick) and the galaxy approaches ~500 working guilds, 800/cycle is unrealistic,
+   and the baseline-vs-PG-vs-player mix wants retuning with evidence. → `phase-1-tuning.md` / the decision
+   checklist; do not invent the number (working rule 5).
 
 ## 8. Build sequence — the mini-roadmap to fuel-on-a-trade
 

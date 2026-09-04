@@ -648,6 +648,35 @@ Levers: base price $5 · target reserve 30 · sensitivity 0.6 · floor $2 · cei
 
 **The squeeze signature** (what any correct port must reproduce): price $5 (T1–4) → 7.03 → 16.75 → **38.48 peak at T7** — the $40 ceiling never actually binds — → 16.75 → ~5.10 (T9–12); Dracis shortfalls 6 / 7 / 2 on T6–8, plus Ilyra clipped for 1 on T7; final credits Refiner ≈ 3,231 vs Vantar ≈ 849 (Vantar also holding 13 fuel, which doesn't close the gap at recovered prices).
 
+### The Deuterium Cycle — player-driven supply (ruled 03-09-26)
+
+*Contract summary; the full mechanic and rationale are in `docs/fuel-supply-and-allocation.md` §1.4, which
+wins on detail.* This refines the older §8 prose ("guilds mine raw Deuterium and **sell** it to the
+Syndicate"; conversion at commitment) and resolved open question #22 ("a normal stockpiled good …
+tradeable").
+
+- **Deuterium is a special good, out of the tier system.** It is **untradeable** — never sold through the
+  TRADE tab / SELL–BUY machinery — and **removed from the TRADE tab and the tier-1 production console**,
+  rehoused in its own **FUEL tab** in the System Manifest. It stays **priced** (the rate the Syndicate
+  pays), and that price is shown publicly (a price + graph in the Guild Hall and the FUEL tab).
+  Open-market player-to-player deuterium trade is deferred, leaning no.
+- **`deuterium` and `deuterium_fuel` stockpiles are guild-wide** — the one pair exempt from ruling B1's
+  system-scoped storage (trafficked in tanks, never warehoused).
+- **Licensed mine = a per-tick auto-sale (the supply lever).** Automatically 100% commitment, variable
+  equity, **no fee, no breach, no windowed accrual**. Each tick its deuterium leaves the guild: the
+  Syndicate pays credits at the posted rate (a ledger MOVE, invariant 2) and the deuterium is added to the
+  pool 1:1 as fuel (MINTED, recorded in `audit.totalProduced`, invariant 1). The pool grows per-tick by
+  Σ licensed output + the fixed 800/cycle baseline (§1.1); the price controller (§4/§8) feels it.
+- **RP as a Tier-4 asset, zero GP** for a licensed deuterium venture (output serves the Syndicate, not the
+  guild); **no GP and no RP** for an unlicensed one — a `sim/points.js` special-case, recorded in
+  `docs/points-and-reputation.md` with the code that builds it. The loop is **self-limiting**: no GP means
+  a tiny fuel grant even at a ceiling modifier, so deuterium-only is a credits + standing play, never a
+  fuel shortcut.
+- **Unlicensed (illegal) mine → contraband.** Idle to the Syndicate; the deuterium is kept and refined 1:1
+  in the guild's own factory into `deuterium_fuel` held guild-wide — the **red segment** of the Guild-Hall
+  stockpile bar. Contraband can never be laundered into a galactic / public stockpile. Detection / fines
+  remain §7, deferred.
+
 ---
 
 ## 9. The Storyteller
@@ -1114,7 +1143,7 @@ Added by the planet-archetype and UI work:
 36. **Art production pipeline** — 9 archetype images plus star art are planned (AI-generated), but production, storage, sizing conventions, and delivery into the client are unspecified. The CSS placeholders are built to be swapped one line at a time, so this is unblocked, not blocking.
 37. **Terran self-sufficiency vs. the pull to expand** — surfaced by the Terran guarantee (Section 2): a guild that never leaves its homeworld has every resource in the game at low volume. Expansion pressure therefore has to come entirely from *scale and specialisation*, not scarcity of type. Whether that pressure is actually strong enough is untested, and won't be knowable until the Phase 1 economy runs.
 
-**Resolved — #22 (Deuterium's identity), 02-08-26.** Two distinct goods that share a root name. `deuterium` is the **raw** resource mined on Oceanic planets — a normal stockpiled good like any other. `deuterium_fuel` is **refined** from it and is what "the fuel" means: the good held in the Syndicate reserve (`reserveLevel`) and in guild fuel hoards (`fuelHoard`), and the only Syndicate-regulated commodity (Section 3, Section 8). The refined good is **not** minable and appears in **no** archetype pool; it comes into being only once refining exists (not yet built), and is tracked by the fuel-conservation law (invariant 1), never as a row in the resource totals. The concrete id string `deuterium_fuel` is a **[FIRST-CUT]** naming choice, open to veto — but the two-goods split itself is the settled ruling. Both are encoded in `sim/resources.js`.
+**Resolved — #22 (Deuterium's identity), 02-08-26.** Two distinct goods that share a root name. `deuterium` is the **raw** resource mined on Oceanic planets — a normal stockpiled good like any other. `deuterium_fuel` is **refined** from it and is what "the fuel" means: the good held in the Syndicate reserve (`reserveLevel`) and in guild fuel hoards (`fuelHoard`), and the only Syndicate-regulated commodity (Section 3, Section 8). The refined good is **not** minable and appears in **no** archetype pool; it comes into being only once refining exists (not yet built), and is tracked by the fuel-conservation law (invariant 1), never as a row in the resource totals. The concrete id string `deuterium_fuel` is a **[FIRST-CUT]** naming choice, open to veto — but the two-goods split itself is the settled ruling. Both are encoded in `sim/resources.js`. **⤳ REFINED 03-09-26 (§8 "The Deuterium Cycle"; `docs/fuel-supply-and-allocation.md` §1.4):** raw `deuterium` is **no longer "a normal stockpiled good like any other", and is NOT tradeable** — it is a special, untradeable-but-priced good in its own FUEL tab, guild-wide-stored, leaving a guild only via the licensed per-tick auto-sale or illegal refining. The two-goods split itself stands.
 
 Added by the Marketplace thread (merged 17-07-26):
 
