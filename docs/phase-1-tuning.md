@@ -128,6 +128,16 @@ bands. All would need an accumulator carried in serialized state between bucket 
 no visible gain on a game chart; the close price is what a real daily chart plots. **No
 backfill:** the past was never recorded, so the rings fill forward from deploy.
 
+### Quote-lock — the agreed-price window *(04-09-26 — `transport-model.md` §8.1; NOT yet built)*
+- **`QUOTE_TTL_TICKS`** `[FIRST-CUT]` **5** — a SELL/BUY quote is honoured for at most 5 ticks after its
+  issue tick (and additionally voided the instant a cycle boundary passes, since the fuel price it agreed
+  no longer exists). Past that, the transaction window shows an expired state and the player refreshes.
+- **Posted-price ring depth** = `QUOTE_TTL_TICKS + 1` = **6** (DERIVED, not a free tunable): one slot per
+  still-valid age 0–5, so a quote confirmed a full 5 ticks after issue can still be priced. A per-tick,
+  engine-internal ring of each good's posted price — distinct from the chart's `price-history` tiers, which
+  sample every 15 ticks (too coarse for a 5-tick window). Serialized, so a quote survives save/load and
+  determinism holds; that always-on state is what moves the persisted goldens when this lands.
+
 ### Guild Hall performance line — the modifier history depth *(02-09-26 — `sim/modifier-history.js`)*
 
 `guild.modifierHistory` records the issuance modifier that drove each cycle's grant into **one

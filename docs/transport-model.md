@@ -265,6 +265,19 @@ and never move, so the quote just freezes those two prices.
   **issue tick**, not a price. On confirm the engine re-derives the resource posted price and the fuel
   price **as they were at that tick**, from its own state/history, and applies them. The client cannot pin
   a favourable rate — it is not sending a rate, only a tick the engine validates.
+- **The re-derivation source is a per-tick posted-price ring (RULED 04-09-26).** "Its own state/history"
+  is made concrete here: the chart's price history (`sim/price-history.js`) samples only every 15 ticks —
+  too coarse for a 5-tick quote — so the engine keeps a SEPARATE, engine-internal **per-tick ring of each
+  good's posted price**, `QUOTE_TTL_TICKS + 1` = 6 deep (one slot per still-valid age, 0 through 5),
+  serialized and updated each tick beside `recomputePrices`. On confirm the resource price is read straight
+  from it at the issue tick; the **fuel price needs no ring** — the cycle-boundary expiry rule guarantees
+  it has not moved, so the current fuel price already IS the issue-tick one. The ring is engine-internal,
+  NOT a fourth chart tier (`fine` / `medium` / `coarse` are a published client contract).
+- **`issueTick` defaults to the current tick.** Omitted ⇒ age 0 ⇒ prices at confirm, which is today's
+  behaviour — so every existing caller and test is behaviourally unchanged, and only a client that sends a
+  PAST `issueTick` gets the lock. Note the ring is always-on serialized state, so this slice MOVES the
+  persisted-state goldens (re-pinned with justification) rather than being a byte-identical no-op; trade
+  behaviour with `issueTick` omitted stays identical, and that equivalence is what the no-op proof shows.
 - **Expiry — two rules, both required.** The quote is refused if the issue tick is more than
   **`QUOTE_TTL_TICKS` (`[FIRST-CUT]` = 5)** ticks old, **or** if a **cycle boundary** has passed since it
   was issued (the fuel price it agreed no longer exists). Past the window the transaction window shows an
