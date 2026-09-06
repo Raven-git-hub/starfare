@@ -1484,6 +1484,13 @@ select.field{appearance:none; cursor:pointer;}
    #tw-tx-overlay .deploy{width:100%; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer; margin-top:16px}
    #tw-tx-overlay .deploy:hover{background:#DCB43A}
    #tw-tx-overlay .deploy:disabled{background:rgba(28,33,43,.85); color:var(--ink3); cursor:not-allowed; border:1px solid var(--line)}
+   /* §8.1 quote-lock — the expired banner and the Refresh control. Hidden until the
+      frozen quote expires; toggled with `.show` exactly like .success above. */
+   #tw-tx-overlay .expired{display:none; margin-top:14px; font-family:var(--mono); font-size:11px; letter-spacing:.04em; color:var(--orange); border:1px solid var(--orange); background:rgba(216,132,46,.08); border-radius:9px; padding:11px 13px; text-align:center}
+   #tw-tx-overlay .expired.show{display:block}
+   #tw-tx-overlay .refresh{display:none; width:100%; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer; margin-top:12px}
+   #tw-tx-overlay .refresh:hover{background:#DCB43A}
+   #tw-tx-overlay .refresh.show{display:block}
    #tw-tx-overlay .success{display:none; padding:40px 26px; text-align:center}
    #tw-tx-overlay .success.show{display:block}
    #tw-tx-overlay .success .tick{width:56px; height:56px; border-radius:50%; border:2px solid var(--green); color:var(--green); display:flex; align-items:center; justify-content:center; font-size:28px; margin:0 auto 16px}
@@ -1513,7 +1520,13 @@ select.field{appearance:none; cursor:pointer;}
              <div class="scrim"></div>
              <div class="inner">
                <div class="ledger" id="tw-tx-ledger"></div>
+               <!-- §8.1 quote-lock: shown only once the frozen quote has expired (older than
+                    QUOTE_TTL_TICKS ticks, or a fuel-price cycle boundary crossed since it was
+                    issued). Confirm is disabled and the player Refreshes to re-quote at the
+                    current price. Both toggle via the `.show` class, like the success view. -->
+               <div class="expired" id="tw-tx-expired">Quote expired &mdash; prices have moved.</div>
                <button class="deploy" id="tw-tx-confirm" type="button" disabled>&mdash;</button>
+               <button class="refresh" id="tw-tx-refresh" type="button">Refresh quote &#8635;</button>
              </div>
            </div>
          </div>
@@ -4701,7 +4714,16 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
      formatted as a duration; the ledger figures are display sums/products of those and the
      posted price. On confirm the ENGINE is authoritative — the success view reads the applied
      numbers back off the snapshot the action returns, never the popup's preview. */
-  var TX = { open:false, kind:null, good:null, rows:[], qty:0, dest:null, last:null };
+  var TX = { open:false, kind:null, good:null, rows:[], qty:0, dest:null, last:null,
+             issueTick:null, frozen:null, rejected:false };
+  // QUOTE_TTL_TICKS — the §8.1 quote-lock window, MIRRORED from the engine's own constant
+  // (sim/price-ring.js). `[FIRST-CUT]` 5 (docs/phase-1-tuning.md "Quote-lock"). §18 makes a
+  // client copy of an engine number safe ONLY mirrored WITH A SERVED-PAGE TRIPWIRE, so
+  // sim/tests/server.test.js pins this to sim/price-ring.js's QUOTE_TTL_TICKS — if the engine
+  // ever retunes the window, that tripwire goes red instead of this timer quietly drifting from
+  // the engine's own checkQuote. This is the ONE number the client half reads; it computes no
+  // price (it freezes a display and sends a tick — the engine re-derives and validates).
+  var QUOTE_TTL_TICKS = 5;   // MIRRORS sim/price-ring.js QUOTE_TTL_TICKS
   // Hero art by shipment size (each order is its own Syndicate hauler), referenced by path
   // exactly as #tp-trade references its own art.
   var TX_ART = { light:'assets/units/lighttransport.jpg', medium:'assets/units/mediumtransport.jpg', heavy:'assets/units/heavytransport.jpg' };
@@ -4731,6 +4753,82 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
   function txStep(max){ return max >= 1000 ? 100 : (max >= 100 ? 10 : 1); }
   function txDone(){ var s = el('tw-tx-success'); return !!(s && s.classList.contains('show')); }
+
+  /* -- the §8.1 quote-lock: freeze at open, mirror the engine's expiry, refresh to re-quote --
+     A quote is a FIRM number, not a live feed. When the popup opens we capture the issue tick
+     and the two prices the popup shows — the resource POSTED PRICE and the FUEL PRICE — and the
+     poll stops re-pricing those figures. The client computes NO price (§18): it freezes a
+     display and sends the tick; the ENGINE re-derives both prices at that tick and validates it.
+     Seed geometry — distances, fuel-unit burns, the BUY arrival readout — never moves, so it
+     stays live. The fuel price the client shows is per-system route fuel CREDITS
+     (`fuelCost[sys].creditCost` = burn × the engine's fuel price); freezing those credit figures
+     freezes the fuel price for display without the client ever seeing a raw price. */
+  function txFreezeQuote(){
+    var s = snap();
+    TX.issueTick = (s && typeof s.tick === 'number') ? s.tick : null;
+    TX.rejected = false;
+    // Freeze the per-system route fuel credits for EVERY candidate system (all the guild holds,
+    // which is a superset of both the SELL basket candidates and the BUY destinations), so a row
+    // the player adds or a destination they switch to already has a firm figure — no live re-read.
+    var g = meGuild(), fc = (g && g.fuelCost) || {}, cc = {};
+    Object.keys(fc).forEach(function(sysId){
+      var r = fc[sysId];
+      if(r && r.creditCost != null) cc[sysId] = r.creditCost;
+    });
+    TX.frozen = { price: priceOf(TX.good), creditCostBySys: cc };
+  }
+  // The frozen resource posted price — the number the popup showed at open, not the live feed.
+  // Falls back to live only if nothing was frozen (defensive; the popup always freezes at open).
+  function txQuotedPrice(){
+    return (TX.frozen && TX.frozen.price != null) ? TX.frozen.price : priceOf(TX.good);
+  }
+  // The frozen route fuel credits for one system (the fuel price, made concrete). Geometry
+  // (fuelBurn units, travelTicks) is NOT frozen — it never moves — and is still read live by the
+  // gates and the arrival readout. A system with no frozen value (not held at open) reads live.
+  function txQuotedCredit(sysId){
+    var f = TX.frozen && TX.frozen.creditCostBySys;
+    if(f && Object.prototype.hasOwnProperty.call(f, sysId)) return f[sysId];
+    var route = txRoute(sysId); return route ? (route.creditCost || 0) : 0;
+  }
+  // The cycle index a tick sits in — MIRRORS sim/price-ring.js cycleIndexOf: floor((tick −
+  // anchor) / N), the partition the fuel price is constant on (NOT calendar.dayOf). Read from
+  // the snapshot's own calendar block, the same three fields the engine resolves it from.
+  function txCycleIndex(tick, N, anchor){ return Math.floor((tick - anchor) / N); }
+  // Has the frozen quote expired? Mirrors the engine's TWO checkQuote rules against the frozen
+  // issue tick: older than QUOTE_TTL_TICKS ticks, OR a fuel-price cycle boundary crossed since
+  // issue. Also true once the engine has rejected a confirm for staleness (a race). The engine
+  // is the enforcer; this timer is the courtesy that flips the popup before the player clicks.
+  function txExpired(){
+    if(TX.rejected) return true;
+    var s = snap();
+    if(!s || TX.issueTick == null || typeof s.tick !== 'number') return false;
+    if(s.tick - TX.issueTick > QUOTE_TTL_TICKS) return true;
+    var cal = s.calendar || {}, N = cal.windowN, anchor = cal.dayAnchorTick;
+    if(typeof N === 'number' && N >= 1 && typeof anchor === 'number'
+       && txCycleIndex(s.tick, N, anchor) !== txCycleIndex(TX.issueTick, N, anchor)) return true;
+    return false;
+  }
+  // Flip the popup into (or out of) its expired state — called at the foot of each ledger render,
+  // so a poll that ages the quote past its window trips it with no extra wiring. When expired the
+  // confirm is forced disabled regardless of the live gates, and the banner + Refresh show.
+  function txApplyExpiry(){
+    var expired = txExpired();
+    var banner = el('tw-tx-expired'), refresh = el('tw-tx-refresh'), btn = el('tw-tx-confirm');
+    if(banner) banner.classList.toggle('show', expired);
+    if(refresh) refresh.classList.toggle('show', expired);
+    if(expired && btn) btn.disabled = true;
+  }
+  // Refresh → re-quote at the current tick: re-freeze the figures and rebuild the popup, which
+  // clears the expired state and re-enables confirm against the fresh (unexpired) quote.
+  function txRefreshQuote(){ txFreezeQuote(); txRender(); }
+  // Was a confirm refused for a STALE/expired quote (the engine's checkQuote reason)? All four
+  // checkQuote refusals name §8.1 and reference the quote/issueTick; a race (the tick advanced
+  // between the last poll and the click) surfaces here, and we show the same expired state rather
+  // than a generic failure. Any OTHER refusal (credits, fuel, territory) is a real error.
+  function txIsQuoteRejection(reason){
+    var r = String(reason || '');
+    return /§8\.1/.test(r) && /quote|issueTick/i.test(r);
+  }
 
   // The fuel-credit bar (both popups) — the Guild Hall stockpile bar shrunk into the ledger.
   // The whole hoard in credits is `fuelHoardValue` (§8 has no posted fuel price for the client
@@ -4764,7 +4862,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // Sum ONLY the rows we will send (qty > 0), so the fuel burn previewed here is exactly the
   // aggregate the engine gates on (Σ routeFuelCost over the allocations it receives).
   function txSellTotals(){
-    var guild = meGuild(), good = TX.good, price = priceOf(good);
+    var guild = meGuild(), good = TX.good, price = txQuotedPrice();   // §8.1: the FROZEN price
     var totalQty = 0, burn = 0, credits = 0, maxQty = 0;
     TX.rows.forEach(function(r){
       var held = heldIn(guild, r.systemId, good);
@@ -4772,7 +4870,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       if(r.qty > 0){
         totalQty += r.qty; maxQty = Math.max(maxQty, r.qty);
         var route = txRoute(r.systemId);
-        if(route){ burn += route.fuelBurn || 0; credits += route.creditCost || 0; }
+        if(route) burn += route.fuelBurn || 0;         // burn (units) is seed geometry — live
+        credits += txQuotedCredit(r.systemId);         // route fuel CREDITS — frozen (§8.1)
       }
     });
     // round(total × price), rounded once on the total — the same DISPLAY echo the card uses.
@@ -4784,7 +4883,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var html = '<div class="sec-head"><span class="t">Consignment</span><span class="g">&mdash; ' + pretty(good)
       + '</span><span class="aux">' + TX.rows.length + ' / ' + txSellSystems().length + ' systems</span></div>';
     TX.rows.forEach(function(r, i){
-      var route = txRoute(r.systemId), routeCr = route ? (route.creditCost || 0) : 0;
+      var routeCr = txQuotedCredit(r.systemId);        // §8.1: the FROZEN route fuel credits
       var name = (window.__systemName && window.__systemName(r.systemId)) || r.systemId;
       var held = heldIn(meGuild(), r.systemId, good), shown = Math.min(r.qty, held);
       var base = (i === 0), head;
@@ -4821,15 +4920,16 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       + txFuelBar(t.credits, fuelShort);
     var btn = el('tw-tx-confirm');
     btn.textContent = 'Sell to Syndicate';
-    btn.disabled = !(t.totalQty > 0 && priceOf(TX.good) != null) || fuelShort;
+    btn.disabled = !(t.totalQty > 0 && txQuotedPrice() != null) || fuelShort;
     TX.last = { totalQty:t.totalQty, before:{ credits:(g && g.credits) || 0, hoard:hoard } };
+    txApplyExpiry();                                   // §8.1: overrides the enable when stale
   }
 
   /* -- BUY popup ----------------------------------------------------------------- */
   function txRenderBuyMain(){
     var good = TX.good, dests = txHeldSystems(), dest = TX.dest;
-    var route = txRoute(dest), routeCr = route ? (route.creditCost || 0) : 0;
-    var arr = route ? txEta(route.travelTicks) : '—';
+    var route = txRoute(dest), routeCr = txQuotedCredit(dest);   // §8.1: FROZEN route fuel credits
+    var arr = route ? txEta(route.travelTicks) : '—';           // arrival is seed geometry — live
     var opts = dests.map(function(id){
       var nm = (window.__systemName && window.__systemName(id)) || id;
       return '<option value="' + id + '"' + (id === dest ? ' selected' : '') + '>' + nm + '</option>';
@@ -4845,10 +4945,11 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       + '</div>';
   }
   function txRenderBuyLedger(){
-    var g = meGuild(), good = TX.good, price = priceOf(good);
+    var g = meGuild(), good = TX.good, price = txQuotedPrice();   // §8.1: the FROZEN price
     var cost = (price == null) ? 0 : Math.round(TX.qty * price);
     var credits = (g && g.credits) || 0, hoard = (g && g.fuelHoard) || 0;
-    var route = txRoute(TX.dest), burn = route ? (route.fuelBurn || 0) : 0, routeCr = route ? (route.creditCost || 0) : 0;
+    var route = txRoute(TX.dest), burn = route ? (route.fuelBurn || 0) : 0;   // burn (units) — live
+    var routeCr = txQuotedCredit(TX.dest);                        // route fuel CREDITS — frozen
     var costShort = cost > credits, fuelShort = burn > hoard;   // the engine's TWO BUY gates
     el('tw-tx-art').style.backgroundImage = 'url(' + TX_ART[txHeroClass(TX.qty)] + ')';
     el('tw-tx-ledger').innerHTML =
@@ -4862,6 +4963,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     btn.textContent = 'Buy from Syndicate';
     btn.disabled = !(TX.qty > 0 && price != null && TX.dest) || costShort || fuelShort;
     TX.last = { qty:TX.qty, arr:route ? route.travelTicks : 0, before:{ credits:credits, hoard:hoard } };
+    txApplyExpiry();                                   // §8.1: overrides the enable when stale
   }
 
   /* -- open / render / confirm / close ------------------------------------------- */
@@ -4883,6 +4985,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       TX.dest = (home && held.indexOf(home) >= 0) ? home : (held[0] || null);   // default = operating system
       if(!TX.dest) return;
     }
+    txFreezeQuote();                                   // §8.1: freeze the two prices + issue tick
     txRender();
     el('tw-tx-overlay').classList.add('open');
   }
@@ -4912,13 +5015,20 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       var allocations = TX.rows.filter(function(r){ return r.qty > 0; }).map(function(r){ return { systemId:r.systemId, qty:r.qty }; });
       if(!allocations.length) return;
       btn.disabled = true;
-      pending = window.__sendAction({ type:'sellToSyndicate', guildId: player.guildId, good: TX.good, allocations: allocations });
+      // §8.1 quote-lock: carry the FROZEN issue tick, never a price — the engine re-derives the
+      // posted price at that tick and validates its expiry. Omitted (no snapshot at open) ⇒ the
+      // engine defaults to the current tick ⇒ today's behaviour.
+      var sellAction = { type:'sellToSyndicate', guildId: player.guildId, good: TX.good, allocations: allocations };
+      if(typeof TX.issueTick === 'number') sellAction.issueTick = TX.issueTick;
+      pending = window.__sendAction(sellAction);
     } else {
-      // The ruled BUY shape: a single order to ONE destination (§6). The engine prices it at
-      // apply (§8.1 quote-lock is a later slice); no price is sent.
+      // The ruled BUY shape: a single order to ONE destination (§6). §8.1 quote-lock: the confirm
+      // carries the frozen issue tick, never a price; the engine re-derives and validates it.
       if(!(TX.qty > 0 && TX.dest)) return;
       btn.disabled = true;
-      pending = window.__sendAction({ type:'buyFromSyndicate', guildId: player.guildId, good: TX.good, qty: TX.qty, destinationSystemId: TX.dest });
+      var buyAction = { type:'buyFromSyndicate', guildId: player.guildId, good: TX.good, qty: TX.qty, destinationSystemId: TX.dest };
+      if(typeof TX.issueTick === 'number') buyAction.issueTick = TX.issueTick;
+      pending = window.__sendAction(buyAction);
     }
     pending
       .then(function(res){ txAfter(res, player.guildId, before); })
@@ -4928,7 +5038,17 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // POST /action actually did — the credit delta, the fuel actually burned, and for a BUY the
   // arrival off the engine's own shipment record — never the popup's preview figures.
   function txAfter(res, guildId, before){
-    if(!res || !res.accepted){ txError(res && res.reason ? res.reason : 'The Syndicate refused the transaction.'); return; }
+    if(!res || !res.accepted){
+      var reason = res && res.reason ? res.reason : 'The Syndicate refused the transaction.';
+      // §8.1: a stale-quote refusal (the tick advanced between the last poll and the click) is not
+      // a generic failure — flip to the expired state + Refresh, keeping the popup open.
+      if(txIsQuoteRejection(reason)){
+        TX.rejected = true;
+        if(TX.kind === 'sell') txRenderSellLedger(); else txRenderBuyLedger();
+        return;
+      }
+      txError(reason); return;
+    }
     var after = ((res.snapshot && res.snapshot.guilds) || []).filter(function(g){ return g.id === guildId; })[0] || null;
     var nowFuel = (after && after.fuelHoardValue != null) ? ('&#162;' + fmt(after.fuelHoardValue)) : '&mdash;';
     var sled;
@@ -4979,6 +5099,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(e.target === ov){ txClose(); return; }                 // click the backdrop
     if(e.target.closest('#tw-tx-close')){ txClose(); return; }
     if(e.target.closest('#tw-tx-again')){ txClose(); return; }
+    if(e.target.closest('#tw-tx-refresh')){ txRefreshQuote(); return; }   // §8.1: re-quote at now
     if(e.target.closest('#tw-tx-confirm')){ txConfirm(); return; }
     if(e.target.closest('[data-txadd]')){
       var free = txSellFree(-1);

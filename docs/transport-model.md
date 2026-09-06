@@ -256,12 +256,15 @@ built `hexDistance`.)
 
 ### 8.1 The agreed-price quote — RULED 03-09-26 (its own slice, across SELL and BUY)
 
-> **ENGINE HALF BUILT 04-09-26 (SELL + BUY).** The per-tick posted-price ring, the optional
+> **BUILT 06-09-26 (SELL + BUY) — BOTH HALVES.** The per-tick posted-price ring, the optional
 > `issueTick` on `sellToSyndicate` / `buyFromSyndicate`, the re-derive-and-validate on apply
-> (TTL + cycle-boundary expiry), and the ring-shape tripwire are live — see the AS-BUILT note
-> at the foot of this section. The CLIENT half (freezing the quote at popup-open, sending
-> `issueTick`, the expired-state UI, refresh-to-re-quote) is still the next slice; the snapshot
-> already carries `state.tick`, which is all the client needs to send back.
+> (TTL + cycle-boundary expiry), and the ring-shape tripwire were the ENGINE half (04-09-26) —
+> see the AS-BUILT engine note at the foot of this section. The CLIENT half is now built too
+> (06-09-26): the SELL/BUY finalise popups freeze the two prices and capture the tick at open,
+> send that `issueTick` on confirm, mirror the two expiry rules to show an expired state, and
+> Refresh to re-quote — see the AS-BUILT client note below. The snapshot needed no change: it
+> already carries `state.tick` and the `calendar.{windowN, dayAnchorTick}` the client mirrors
+> the cycle rule from.
 
 The price shown when the transaction window opens is the price the player trades at, honoured for a short
 window — a firm **quote**, not a live-repricing feed. Only two numbers move (the resource **posted price**
@@ -318,6 +321,34 @@ and never move, so the quote just freezes those two prices.
   persisted-state / determinism goldens (`persist.test.js`, `commitment-scaffold.test.js`) gained it and
   are re-pinned; the added-key strip proves the ring is the ONLY delta. A ring-shape tripwire
   (`checkPriceRing`, `sim/invariants.js`) caps the ring and rejects a fuel row or a non-finite sample.
+
+**AS-BUILT 06-09-26 — the client half (SELL + BUY).** `client/game.html`, the TRADE tab's finalise
+popup (`#tw-tx-overlay`); no `sim/` runtime change, and the snapshot is unchanged.
+- **Freeze at open.** `txFreezeQuote()` (called from `openTx`) captures `issueTick = snapshot.tick` and
+  the two prices the popup shows: the resource **posted price** (`priceOf(good)`) and the **fuel price**,
+  which the client only ever sees as per-system route fuel CREDITS (`fuelCost[sys].creditCost`), frozen for
+  every candidate system so an added SELL row or a switched BUY destination already has a firm figure. The
+  ledger renders read the frozen values (`txQuotedPrice` / `txQuotedCredit`), so the ~1 s poll no longer
+  re-prices the popup. **Seed geometry stays live** — the fuel-unit BURN (the gate reads `fuelBurn`) and
+  BUY's arrival `travelTicks` are read live, because they never move.
+- **Send the tick, never a price (§18).** The confirm payload gains `issueTick: <frozen tick>`; the engine
+  re-derives both prices at that tick and validates it. Omitted (no snapshot at open) ⇒ the engine's
+  current-tick default ⇒ today's behaviour.
+- **Expiry mirrors the engine's two rules.** `txExpired()` trips when `snapshot.tick − issueTick >
+  QUOTE_TTL_TICKS` (the client **mirrors** the `[FIRST-CUT]` 5 with a served-page tripwire pinning it to
+  `sim/price-ring.js`), OR when `cycleIndexOf(tick) = floor((tick − dayAnchorTick) / windowN)` differs
+  between the current and issue ticks — computed off the snapshot's own `calendar` block (deliberately not
+  `calendar.dayOf`, matching the engine). On expiry the confirm is disabled and an expired banner + a
+  **Refresh** show; Refresh re-freezes at the current tick and re-enables confirm.
+- **Engine rejection is belt-and-suspenders.** A confirm that races a stale tick comes back reject-whole;
+  the client recognises `checkQuote`'s §8.1 reason and shows the SAME expired state (keeping the popup
+  open) rather than a generic failure. The engine is the enforcer; the client timer is the courtesy.
+- **No golden moved, no `sim/` runtime file changed** — client-only, plus the served-page tripwire in
+  `sim/tests/server.test.js` (the `QUOTE_TTL_TICKS` mirror, and that both confirms carry `issueTick`).
+  Verified end-to-end in headless Chromium against a real booted server: for SELL and BUY, the frozen
+  price holds across ticks and the engine settles at the frozen tick (not the moved price); past
+  `QUOTE_TTL_TICKS` the popup shows the expired state with confirm disabled, and Refresh re-quotes and
+  re-enables it; and a stale-tick engine refusal surfaces as the expired state.
 
 ## 9. The route planner (guild-tier UI, Phase 4)
 

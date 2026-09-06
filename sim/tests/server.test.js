@@ -290,7 +290,11 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the SELL & 
   // rejected design.
   assert.match(html, /type:'sellToSyndicate'/);
   assert.match(html, /allocations: allocations/);
-  assert.match(html, /window\.__sendAction\(\{ type:'sellToSyndicate'/);
+  // §8.1 quote-lock (CLIENT half): the confirm builds the action and carries the FROZEN issue
+  // tick — never a price (§18) — then posts it. The engine re-derives the price at that tick.
+  assert.match(html, /window\.__sendAction\(sellAction\)/);
+  assert.match(html, /sellAction\.issueTick = TX\.issueTick/,
+    'the SELL confirm must send the frozen issueTick, so the engine prices at the quoted tick');
 
   // BUY IS NOW LIVE (the transaction-popup slice): the mode toggle is real (neither button
   // carries `na` any more), and the finalise popup — one .est-style overlay scoped under
@@ -321,10 +325,31 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the SELL & 
     'the client must never carry the burn rate, the geometry, or the craft speed — it reads fuelCost');
   assert.match(html, /\.travelTicks/, 'the BUY arrival is read from the snapshot, not recomputed');
 
-  // ...and BUY IS now wired: the confirm popup posts the ruled single-destination action.
-  assert.match(html, /window\.__sendAction\(\{ type:'buyFromSyndicate'/);
+  // ...and BUY IS now wired: the confirm popup posts the ruled single-destination action,
+  // carrying the FROZEN issue tick (§8.1) exactly as SELL does.
+  assert.match(html, /window\.__sendAction\(buyAction\)/);
+  assert.match(html, /buyAction\.issueTick = TX\.issueTick/,
+    'the BUY confirm must send the frozen issueTick, so the engine prices at the quoted tick');
   assert.match(html, /destinationSystemId: TX\.dest/,
     'BUY is a single order to one destination the popup carries (§6)');
+
+  // §8.1 QUOTE-LOCK — the client mirrors the engine's TTL as a served constant, so the popup's
+  // courtesy expiry timer and the engine's checkQuote can never silently drift. §18 makes a
+  // client copy of an engine number safe ONLY mirrored WITH THIS TRIPWIRE.
+  const { QUOTE_TTL_TICKS } = require('../price-ring.js');
+  assert.match(html, new RegExp(`QUOTE_TTL_TICKS = ${QUOTE_TTL_TICKS};`),
+    'the client quote-lock TTL must mirror sim/price-ring.js QUOTE_TTL_TICKS');
+  // ...and the mirror is APPLIED — the expiry test reads QUOTE_TTL_TICKS, not a bare 5, and the
+  // client mirrors the fuel-price cycle rule off the snapshot's calendar (windowN / dayAnchorTick).
+  assert.match(html, /s\.tick - TX\.issueTick > QUOTE_TTL_TICKS/,
+    'the client TTL rule must read the mirrored constant, not a hardcoded window');
+  assert.match(html, /txCycleIndex\(s\.tick, N, anchor\) !== txCycleIndex\(TX\.issueTick, N, anchor\)/,
+    'the client must mirror the engine cycle-boundary expiry rule off the snapshot calendar');
+  // The popup FREEZES the two prices at open and stops re-pricing them — it reads the frozen
+  // figures, not the live feed. (Geometry — burn, travelTicks — stays live, tested above.)
+  assert.match(html, /function txFreezeQuote\(\)/);
+  assert.match(html, /price: priceOf\(TX\.good\)/, 'the resource posted price is frozen at open');
+  assert.match(html, /id="tw-tx-refresh"/, 'the expired state offers a Refresh control');
 
   // THE WIRING SEAM, pinned so it cannot silently move to the console bridge: the tab
   // reads the shell's own snapshot and posts to /action. No postMessage, no console.
