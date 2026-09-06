@@ -393,6 +393,37 @@ by re-signing. Whether renegotiation re-bumps is deliberately **not** ruled and 
 sign a licence — the scaffold fixtures set `syndicateCommitment` directly — so every pinned hash in the suite is
 structurally untouched, and both committed economy traces regenerate byte-identical.
 
+### ⚠ AS-BUILT 06-09-26 — the per-cycle earn/breach go TIER-BLIND (`sim/licence.js`, `client/game.html`)
+
+**Two factors removed, nothing added.** `tierFactor` is dropped from `metGain` and `breachPenalty` in `sim/licence.js`:
+`metGain` = `round(REP_MEET_MAX · (REP_W_COMMIT · commit + REP_W_EQUITY · equityFrac))` and `breachPenalty` =
+`−round(REP_BREACH_MAX − (REP_BREACH_MAX − REP_BREACH_MIN) · commit)`. So a market venture's met gain is **+10 at full
+terms** and its 100%-commit breach **−3** at *every* tier — a T2 refinery, which paid +15 / −4 under the 01-09-26 tier
+scaling, now earns and breaches exactly as a T1 mine does. This is the ruling in the REP_MEET_MAX / REP_BREACH rows
+above (RULED-06-09-26): a higher tier's reward is its market price and its bigger bump/GP, not a faster reputation
+climb. No new tunable — a factor was removed, not a number chosen.
+
+**What deliberately KEEPS its tier scaling.** `signingBump` still reads the venture's absolute `ventureTierWeight` (a
+T2 at 100% still mints 300), because the bump is sized to the venture's own GP — a size question, not a reward, so a
+deploy stays bar-neutral at every tier. `deuteriumMetGain` still uses `tierFactor(T4)` = 5 → +50/cycle, deuterium's
+sole reward channel (§1.4). Both keep `tierFactor`/`ventureTierWeight` alive in the module — nothing was deleted.
+
+**No halt where the tier is no longer read.** `metGain`/`breachPenalty` no longer look at the produced good's tier, so
+they no longer throw on an unweighted one — an unweighted tier is not a contradiction for a rate that ignores tiers.
+The halt survives where the weight is genuinely needed (`signingBump`, `guildPoints`), pinned by test.
+
+**Client meter matches.** `client/game.html`'s `repGain` and its bar-fill denominator drop the tier term (a T2/refinery
+licence now previews +10, not +15); the panel's `TIER_WEIGHT` mirror and `tierFactor` helper — unused once the earn is
+tier-blind — are removed, and the served-page tripwire in `sim/tests/server.test.js` is updated to guard the tier-blind
+`repGain` and assert the mirror/helper are gone.
+
+**Determinism: NO golden moved, and that is the whole T1-is-a-no-op point.** `tierFactor` for a tier-1 venture is
+exactly 1, so removing it changes nothing for any T1 venture, and every pinned golden in the suite (`persist.test.js`,
+`commitment-scaffold.test.js`) runs only T1 mines or sets `syndicateCommitment` directly without a licence — so none
+crosses a T2 met/breach RP move. No stored golden runs a licensed T2 market venture through a boundary, so none needed
+re-pinning; `factory-commitment.test.js` does license a T2 factory but pins fee status and `checkInvariants`, not RP
+values, both unaffected. **976 sim tests (+1), zero failures.**
+
 ### ⚠ AS-BUILT 01-09-26 — `BASE_GRANT_PER_GP` re-based 5 → 0.3 by the reputation rescale
 
 **It is denominated PER GUILD POINT, and the reputation rescale (`points-and-reputation.md §2.6`) changed what a

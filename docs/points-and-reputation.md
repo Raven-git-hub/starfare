@@ -373,6 +373,9 @@ guard, is what puts it on its line. `venture.reputation` is unchanged.
 **⤳ BUILD STATUS (01-09-26). THIS SECTION IS ✅ FULLY BUILT — both slices.** Slice 1, the CONSTANTS:
 `MEANLINE_K` → 1, the GP weights → 200 / 100 / 150, `REP_MEET_MAX` → 10, `REP_BREACH_MAX`/`MIN` → 10 / 2.5, and
 the tier-scaled earn/breach (`tierFactor`), all live in `sim/points.js`, `sim/meanline.js` and `sim/licence.js`.
+*(⤳ 06-09-26: the earn/breach tier scaling was RULED away and REMOVED — see the tier-blind ruling in the body
+below; the signing bump's tier scaling stays. `tierFactor` remains in `sim/licence.js` for the deuterium met and
+the bump.)*
 Slice 2, the **SIGNING BUMP**: `signingBump` in `sim/licence.js`, minted by the `applyForLicence` apply in
 `sim/actions.js`. A venture signed at 50% now opens **exactly on its line**, at 100% above it, at 0% below —
 which is the founding-drop fix the whole rescale was for. **The RP band remains deferred**, as this section
@@ -389,10 +392,28 @@ changes no behaviour that matters:** the fuel modifier is `1 + SENS · gap/expec
 ceiling are exactly as calibrated — only the numbers shrank. The old 150 existed solely to lift RP into the thousands
 while GP sat in the tens; with both on one scale it is redundant. Values in `phase-1-tuning.md`.
 
-**Earn-rate scales with tier.** `metGain` gains a `tierFactor = W_TIER / 100` (T1 = 1 … T4 = 5), so a higher-tier
-venture earns proportionally more RP per cycle. Every tier therefore breaks even in the same **~10 cycles**
-(bar ÷ earn-rate), and the reward for climbing the manufacturing tree is bigger GP, bigger earning and a bigger
-dividend — *not* a heavier bar to fill. Full-terms T1 = +10/cycle.
+**Earn-rate scales with tier.** *(⤳ SUPERSEDED 06-09-26 — see the tier-blind ruling directly below; kept as the
+record of what the 01-09-26 rescale did.)* `metGain` gained a `tierFactor = W_TIER / 100` (T1 = 1 … T4 = 5), so a
+higher-tier venture earned proportionally more RP per cycle. Every tier therefore broke even in the same **~10
+cycles** (bar ÷ earn-rate). Full-terms T1 = +10/cycle.
+
+**⤳ RULED + BUILT 06-09-26 — the per-cycle earn and breach are TIER-BLIND.** `tierFactor` is **dropped from
+`metGain` and `breachPenalty`**: every *market* venture earns and breaches on ONE curve whatever its tier —
+`metGain` = `REP_MEET_MAX · (REP_W_COMMIT · commit + REP_W_EQUITY · equityFrac)` (full terms **+10/cycle** at every
+tier) and `breachPenalty` = `−(REP_BREACH_MAX − (REP_BREACH_MAX − REP_BREACH_MIN) · commit)` (a 100%-commit breach
+**−3/cycle** at every tier, was −4 at T2). A higher tier's reward is its **market price** (higher-tier goods sell
+for more) plus its bigger signing bump and GP — **not** a faster reputation climb; reputation is trust earned by
+behaviour, not by size, so the "every tier breaks even in ~10 cycles" rationale above **retires** (a bigger venture
+now takes longer in RP, its earn being flat while its bar is bigger — intended). Because `metGain`/`breachPenalty`
+no longer read the tier, they no longer HALT on an unweighted one; the halt survives where the weight is genuinely
+needed — the **signing bump** (below) and `guildPoints`. **The signing bump KEEPS its tier scaling** — it is sized
+to the venture's own GP (the bar it just added), a size question, not a reward, so a deploy stays bar-neutral at
+every tier. **Deuterium is the deliberate exception** — `deuteriumMetGain` keeps `tierFactor(T4)` = 5 → +50/cycle,
+because deuterium sells nothing and reputation is its only reward channel (§1.4). `tierFactor`/`ventureTierWeight`
+stay in `sim/licence.js` for those two readers. As built: `sim/licence.js` `metGain`/`breachPenalty`; the client
+deploy meter (`client/game.html` `repGain`) mirrors the new tier-blind form and its `TIER_WEIGHT`/`tierFactor`
+mirror + served-page tripwire are removed. Values in `phase-1-tuning.md`'s REP_MEET_MAX / REP_BREACH rows
+(RULED-06-09-26 clauses).
 
 **The venture signing bump — §1.2's offset, generalised to productive ventures and scaled by terms.** §1.2 gave passive
 assets a bar-neutral offset on deploy but held that *productive* ventures earn their bar from zero. This rescale replaces

@@ -341,9 +341,8 @@ function feeOwed(licence, status, fraction) {
 
 // The MET-GAIN model — the deploy meter made real (§2.2; phase-1-tuning §"Points &
 // Reputation"). A met cycle is worth `REP_MEET_MAX`, scaled by the TERMS the venture
-// signed — how much output it promised, and how much equity it offered — and by the TIER
-// it produces at. The terms weights sum to 1, so full terms at tier 1 score the maximum
-// exactly: **+10 a cycle**.
+// signed — how much output it promised, and how much equity it offered. The terms weights
+// sum to 1, so full terms score the maximum exactly: **+10 a cycle, at every market tier**.
 //
 // YOU EARN RP FOR CONTRIBUTING, NEVER FOR OWNING (§2). A venture that committed nothing
 // and offered nothing scores 0 for "meeting" a promise of nothing — that falls out of
@@ -353,6 +352,12 @@ function feeOwed(licence, status, fraction) {
 // ⤳ RESCALED 01-09-26 (100 → 10), points-and-reputation.md §2.6: RP and GP now share one
 // small integer scale (`MEANLINE_K = 1`, sim/meanline.js), so the earn rate shrank ×10
 // with everything else.
+//
+// ⤳ TIER-BLIND 06-09-26 (§2.6; phase-1-tuning REP_MEET_MAX row): the per-cycle earn no
+// longer scales by tier. A `tierFactor` was ADDED to `metGain` in the 01-09-26 rescale and
+// REMOVED here — the earn is tier-blind again, so full terms is +10 at every market tier.
+// A higher tier's reward is its market price and its bigger bump/GP, not a faster climb.
+// Only `deuteriumMetGain` still uses the tier (§1.4's T4-only reward channel).
 //
 // The client's Establish-Venture meter (`repGain` in client/game.html, `[FIRST-CUT]`
 // REP_MAX/REP_WC/REP_WO) is the SAME arithmetic; this slice makes the engine the
@@ -364,17 +369,21 @@ const REP_W_EQUITY = 0.5;
 
 // The BREACH-DROP model — LINEAR and INVERSE to commitment (§2.2). Breaching a *small*
 // commitment hurts MORE than breaching a large one: breaking a token promise is contempt,
-// falling short of an ambitious one is forgivable. At tier 1, −2.5 at a full commitment,
-// rising toward −10 as the commitment approaches nothing.
+// falling short of an ambitious one is forgivable. −2.5 at a full commitment (at every
+// market tier), rising toward −10 as the commitment approaches nothing.
 //
 // −10 IS A LIMIT, NEVER PAID: §5's 0% commitment floor means a 0% licence owes zero units
 // and is therefore always `met`, so the c→0 end of this line is approached and never
 // reached. The constant is still the honest endpoint of the formula, not a magic number.
 //
+// ⤳ TIER-BLIND 06-09-26 (§2.6; phase-1-tuning REP_BREACH row): like the earn side, the
+// breach lost its `tierFactor` — every market venture breaches on one curve, so a 100%
+// commitment costs −3 at every tier (was −4 at tier 2). Deuterium is breachless.
+//
 // ⤳ RESCALED 01-09-26 (100 / 10 → 10 / 2.5), points-and-reputation.md §2.6, and the two
 // halves moved for DIFFERENT reasons. `MAX` fell ×10 with the RP scale, like everything
 // else. `MIN` did not: it was deliberately **lifted from 10% of MAX to 25%**, so the
-// gentlest breach costs −2.5 · tierFactor rather than −1. That firms the cheap end of the
+// gentlest breach costs −2.5 (was −1). That firms the cheap end of the
 // curve without flipping it — the Syndicate still does not punish a guild that commits
 // maximally and narrowly falls short (maximum commitment already costs it all its
 // delivered output) — and it is what will blunt the sign-at-100%-grab-the-bump-then-breach
@@ -439,11 +448,15 @@ function repTerms(venture) {
 //
 //     W_TIER( tierOf(producedGoodFor(venture)) ) ÷ W_TIER(1)
 //
-// ⤳ ADDED 01-09-26, points-and-reputation.md §2.6. THE RULING: a higher-tier venture
-// earns proportionally more RP per cycle, so **every tier breaks even in the same ~10
-// cycles** and climbing the manufacturing tree is a reward — bigger GP, bigger earning,
-// bigger dividend — rather than a heavier bar to fill. It scales the breach the same way,
-// for the same reason: the stake rises with the tier, both directions.
+// ⤳ ADDED 01-09-26, points-and-reputation.md §2.6, to scale the per-cycle earn and breach.
+// ⤳ NARROWED 06-09-26: those two consumers DROPPED it (the earn/breach are now tier-blind,
+// §2.6 RULED 06-09-26), so its **only** remaining caller is `deuteriumMetGain` — a licensed
+// deuterium mine's per-cycle MET is `REP_MEET_MAX · tierFactor(T4)` = 50, because deuterium
+// sells nothing and reputation is its sole reward channel (§1.4). It is kept (not deleted)
+// for exactly that one reader, and `ventureTierWeight` — its numerator — is still read
+// ABSOLUTE by `signingBump`, whose tier scaling §2.6 deliberately KEEPS (the bump is sized
+// to the venture's own GP, a size question, not a reward). So the factor no longer decides
+// any market venture's climb; only the deuterium exception and (via the numerator) the bump.
 //
 // IT IS A RATIO OF GP WEIGHTS, SOURCED FROM `sim/points.js` — the single source of truth
 // for what a tier is worth — and DIVIDED BY THE TIER-1 WEIGHT rather than by a literal
@@ -557,20 +570,34 @@ function signingBump(venture) {
 
 // metGain(venture) -> the PRE-TAPER RP a met cycle is worth, a non-negative integer.
 //
-//     REP_MEET_MAX × tierFactor × (REP_W_COMMIT × commit + REP_W_EQUITY × equityFrac)
+//     REP_MEET_MAX × (REP_W_COMMIT × commit + REP_W_EQUITY × equityFrac)
 //
-// Full terms: **+10 a cycle at tier 1, +15 at tier 2.**
+// Full terms: **+10 a cycle at EVERY market tier.**
+//
+// ⤳ TIER-BLIND 06-09-26 (points-and-reputation.md §2.6; phase-1-tuning.md's REP_MEET_MAX
+// row, "RULED 06-09-26 — tier no longer scales the per-cycle earn"). The `tierFactor` that
+// scaled this since the 01-09-26 rescale is GONE: a market venture's met gain no longer
+// depends on its tier at all, so a refinery earns the same +10 a full-terms mine does. A
+// higher tier's reward is its MARKET PRICE (its goods sell for more), plus its bigger
+// signing bump and GP — NOT a faster reputation climb; reputation is trust earned by
+// behaviour, not by size, so the old "every tier breaks even in ~10 cycles" rationale
+// retires with the scaling. Because this no longer reads the tier, it no longer HALTS on an
+// unweighted one — an unweighted tier is no longer a contradiction for a rate that ignores
+// tiers (the signing bump and GP still halt, where the weight is genuinely needed).
+//
+// DEUTERIUM IS THE DELIBERATE EXCEPTION — `deuteriumMetGain` below KEEPS `tierFactor(T4)`
+// (= 5 → +50/cycle), because a deuterium mine sells nothing and reputation is its only
+// reward channel (§1.4). That is why `tierFactor` stays in this module.
 //
 // Rounded here, and rounded AGAIN by the taper at the call site. Two roundings, and
 // unlike the commitment sale's single-rounding rule that is safe: RP is NOT conserved
 // (§2 — minted and destroyed by events, no ledger counterpart), so there is no second leg
 // for a rounding to drift against. The same reasoning `licenceFee` records for its own
-// two roundings. The `tierFactor` is a float (1.5 at tier 2) and this rounding is what
-// keeps the RP that lands an integer, §15.2.
+// two roundings; this rounding is what keeps the RP that lands an integer, §15.2.
 function metGain(venture) {
   const { commit, equityFrac } = repTerms(venture);
   return Math.round(
-    REP_MEET_MAX * tierFactor(venture) * (REP_W_COMMIT * commit + REP_W_EQUITY * equityFrac),
+    REP_MEET_MAX * (REP_W_COMMIT * commit + REP_W_EQUITY * equityFrac),
   );
 }
 
@@ -598,11 +625,15 @@ function deuteriumMetGain(venture) {
 
 // breachPenalty(venture) -> the RP a breached cycle costs, a NEGATIVE integer.
 //
-//     −( REP_BREACH_MAX − (REP_BREACH_MAX − REP_BREACH_MIN) × commit ) × tierFactor
+//     −( REP_BREACH_MAX − (REP_BREACH_MAX − REP_BREACH_MIN) × commit )
 //
-// Still LINEAR and INVERSE to commitment — the tier scales the whole curve, it does not
-// bend it. A tier-1 venture at 100% commitment pays **−3** a cycle (2.5 rounded up in
-// magnitude); at tier 2, −4.
+// LINEAR and INVERSE to commitment, and — since 06-09-26 — TIER-BLIND, the mirror of the
+// earn side above (phase-1-tuning.md's REP_BREACH row, "RULED 06-09-26 — tier no longer
+// scales breach either"). The `tierFactor` that scaled the whole curve since the 01-09-26
+// rescale is GONE, for symmetry: a bigger venture is not punished harder for the same
+// failure — its stake is already bigger through its GP and its signing bump. A 100%
+// commitment breached costs **−3** a cycle at every market tier (2.5 rounded up in
+// magnitude), where it used to cost −4 at tier 2. Deuterium is breachless, so untouched.
 //
 // The sign is returned, not left to the caller, for the same reason slice 1 put it in one
 // place: no consumer can get "breach subtracts" backwards by writing the arithmetic
@@ -610,7 +641,7 @@ function deuteriumMetGain(venture) {
 function breachPenalty(venture) {
   const { commit } = repTerms(venture);
   return -Math.round(
-    (REP_BREACH_MAX - (REP_BREACH_MAX - REP_BREACH_MIN) * commit) * tierFactor(venture),
+    REP_BREACH_MAX - (REP_BREACH_MAX - REP_BREACH_MIN) * commit,
   );
 }
 

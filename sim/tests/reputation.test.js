@@ -21,6 +21,15 @@
 //   - RP is clamped to the band. The FLOOR is a hard clamp in the tick; the CAP is held
 //     organically by the taper, which rounds a gain to zero before 1500 is reached.
 //
+// ⤳ 01-09-26 (§2.6 rescale) scaled these by tier (`tierFactor`): the raw numbers above are
+// the pre-rescale sketch (+100/−10) — post-rescale full terms was +10 at T1, +15 at T2.
+// ⤳ 06-09-26 (§2.6, RULED) then made the per-cycle earn/breach TIER-BLIND again: `tierFactor`
+// is dropped from `metGain`/`breachPenalty`, so full terms is +10 and a full-commit breach
+// −3 at EVERY market tier. A higher tier's reward is its market price and its bigger signing
+// bump/GP (the bump KEEPS its tier scaling), not a faster reputation climb. Deuterium is the
+// exception (`deuteriumMetGain`, +50/cycle at T4) — see deuterium-cycle.test.js. The tier
+// section (§3b below) is the pin on that change; the T1 tests are all no-ops (tierFactor(T1) = 1).
+//
 // WHAT THIS SLICE STILL IS NOT. Reaching −500 is a PIN, not a closure: venture removal,
 // licence revocation and the −300 forced-lease offer are a separate later slice and none
 // of them is built. There is no GP, no mean line, no `expectedRP`, and the met gain is
@@ -277,36 +286,73 @@ test('tierFactor is the venture\'s GP weight over the tier-1 weight — 1 at T1,
   assert.equal(tierFactor(tier2Terms(1, 0)), TIER_WEIGHT[2] / TIER_WEIGHT[1]);
 });
 
-test('a HIGHER TIER earns and loses proportionally more — the reward for climbing the tree', () => {
-  // §2.6: the tier scales BOTH directions, so the stake rises with the tier rather than
-  // the bar. Full terms: +10 at tier 1, +15 at tier 2.
-  assert.equal(metGain(terms(1, FULL_EQUITY)), 10);
-  assert.equal(metGain(tier2Terms(1, FULL_EQUITY)), 15);
-  // …and the breach scales the same way: −3 at tier 1, −4 at tier 2 (2.5 × 1.5 = 3.75).
-  assert.equal(breachPenalty(terms(1, 0)), -3);
-  assert.equal(breachPenalty(tier2Terms(1, 0)), -4);
+test('THE BEHAVIOUR CHANGE (06-09-26): the per-cycle earn and breach are TIER-BLIND', () => {
+  // ⤳ RULED 06-09-26 (§2.6; phase-1-tuning REP_MEET_MAX / REP_BREACH rows). `tierFactor` is
+  // DROPPED from metGain and breachPenalty: a market venture earns and breaches on ONE curve
+  // whatever its tier. This is the whole slice, so a T2 is asserted explicitly — it was +15
+  // and −4 under the old scaling and is now the mine's own +10 and −3.
+  assert.equal(metGain(terms(1, FULL_EQUITY)), 10, 'a tier-1 mine, full terms: +10');
+  assert.equal(metGain(tier2Terms(1, FULL_EQUITY)), 10, 'a tier-2 refinery, full terms: +10 now, not +15');
+  assert.equal(metGain(terms(1, FULL_EQUITY)), metGain(tier2Terms(1, FULL_EQUITY)),
+    'identical earn, tier for tier');
+  // …and the breach is tier-blind the same way: −3 at BOTH tiers (was −4 at T2).
+  assert.equal(breachPenalty(terms(1, 0)), -3, 'a full-commit breach, tier 1: −3');
+  assert.equal(breachPenalty(tier2Terms(1, 0)), -3, 'a full-commit breach, tier 2: −3 now, not −4');
+  assert.equal(breachPenalty(terms(1, 0)), breachPenalty(tier2Terms(1, 0)),
+    'identical breach, tier for tier');
+  // A higher tier is still a reward — but through its MARKET PRICE and its bigger signing
+  // bump/GP, NOT a faster reputation climb. The bump KEEPS its tier scaling (regression):
+  assert.equal(signingBump(tier2Terms(1, 0)), 300, 'the bump still mints a T2 at 300, not 200 — reward without a faster climb');
 });
 
-test('EVERY TIER BREAKS EVEN IN THE SAME TEN CYCLES — that is what the factor buys', () => {
-  // The whole point of the ruling (§2.6). A venture's BAR is its GP weight; its earn rate
-  // is `REP_MEET_MAX × tierFactor`. Both scale by the same factor, so the ratio — the
-  // cycles to break even — is identical at every tier. A higher tier is a bigger deal, not
-  // a longer grind.
-  for (const v of [terms(1, FULL_EQUITY), tier2Terms(1, FULL_EQUITY)]) {
-    const bar = TIER_WEIGHT[tierFactor(v) === 1 ? 1 : 2];
-    assert.equal(bar / metGain(v), 10, 'ten full-terms met cycles pay for the venture, at any tier');
-  }
+test('a higher tier NO LONGER breaks even faster — same earn, bigger bar (the retired rationale)', () => {
+  // The old ruling made every tier break even in ~10 cycles by scaling the earn with the
+  // bar. 06-09-26 retires that: the earn is flat, so a refinery's 150 GP bar takes 15 met
+  // cycles to cover where a mine's 100 takes 10. Intended — reputation is trust earned by
+  // behaviour, not a climb that speeds up with size.
+  assert.equal(TIER_WEIGHT[1] / metGain(terms(1, FULL_EQUITY)), 10, 'a mine still breaks even in ten');
+  assert.equal(TIER_WEIGHT[2] / metGain(tier2Terms(1, FULL_EQUITY)), 15, 'a refinery takes fifteen — same earn, bigger bar');
 });
 
-test('an UNWEIGHTED tier HALTS rather than quietly earning at the tier-1 rate', () => {
-  // The same stop `guildPoints` makes (§18 / §15.5). A tier-3 venture scoring the tier-1
-  // earn rate would be the quietest possible bug — it would look like it was working.
+test('metGain/breachPenalty no longer read the tier, so an unweighted tier does not halt them', () => {
+  // ⤳ CHANGED 06-09-26. With `tierFactor` gone, the earn/breach are pure functions of the
+  // TERMS and never look at the produced good's tier — so a tier the GP weight map does not
+  // carry is no longer a contradiction for them; they earn the tier-blind rate regardless.
   const t3 = { id: 'x', equityPct: 0, resourceType: 'deuterium_fuel', licence: { committedOutputPct: 1 } };
-  assert.throws(() => metGain(t3), /no ruled GP weight/);
-  assert.throws(() => breachPenalty(t3), /no ruled GP weight/);
-  // And a venture that produces NOTHING at all halts too: RP only moves for a venture the
-  // fee loop already judged, so one arriving here with no output is a contradiction.
-  assert.throws(() => metGain({ id: 'y', licence: { committedOutputPct: 1 } }), /no ruled GP weight/);
+  assert.equal(metGain(t3), 5, 'commit-only earns +5, tier-blind, whatever the (unweighted) tier');
+  assert.equal(breachPenalty(t3), -3, 'a full-commit breach is −3, tier-blind');
+  // A venture with terms but no resolvable output no longer halts here either (it cannot
+  // arise in play — the tick only judges licensed producers).
+  assert.equal(metGain({ id: 'y', equityPct: 0, licence: { committedOutputPct: 1 } }), 5);
+  // The HALT survives where the weight is GENUINELY needed — the signing bump sizes off the
+  // absolute GP weight, which does not exist for tier 3, so it still stops.
+  assert.throws(() => signingBump(t3), /no ruled GP weight/);
+});
+
+test('END TO END: a licensed TIER-2 venture earns the tier-blind +10, invariants holding EVERY tick', () => {
+  // The behaviour change through the real tick, not just the pure function: a fully-supplied
+  // T2 refinery that MEETS at the boundary moves RP by +10 (full terms) — the same a mine
+  // does, where the old tier scaling would have moved it +15. And the two RP invariants
+  // (`checkGuildReputationSum` + `checkReputationBand`, via assertSumHolds) hold on EVERY
+  // tick of a multi-cycle run that includes the licensed T2.
+  let s = fixture([
+    { id: 'tm', ownerGuildId: 'g1', type: 'mining', systemId: SYS, resourceType: 'titanium', productionRate: 15 },
+    { id: 'cm', ownerGuildId: 'g1', type: 'mining', systemId: SYS, resourceType: 'carbon_products', productionRate: 5 },
+    { id: 'fac', ownerGuildId: 'g1', type: 'refining', systemId: SYS, recipeId: 'titanium_alloy', productionRate: 5, equityPct: FULL_EQUITY },
+  ]);
+  // License ONLY the factory at full commitment (the mines feed it, uncommitted), so its
+  // terms are full — 100% commit AND the ceiling equity — and it can meet its target.
+  s = licenceAll(s, ['fac']);
+  assert.equal(rp(s, 'fac'), 300, 'a T2 factory at 100% opens on 2× its 150 GP — the bump KEEPS its tier scaling');
+  assert.equal(signingBump(ven(s, 'fac')), 300);
+
+  for (let t = 0; t < 3 * N; t += 1) {
+    s = tick(s);
+    assertSumHolds(s, `tick ${s.tick}`);
+  }
+  assert.equal(guild(s).lastLicenceFee.ventures.fac.status, 'met', 'the fully-supplied factory really meets');
+  assert.equal(metGain(ven(s, 'fac')), 10, 'a full-terms T2 met earns the tier-blind +10, not +15');
+  assert.equal(rp(s, 'fac'), 300 + 3 * GAIN_FULL_TERMS, 'three met cycles at +10, on top of the 300 T2 bump');
 });
 
 // --- 3c. the SIGNING BUMP (ruled + BUILT 01-09-26, §2.6 — slice 2 of the rescale) ---
@@ -687,9 +733,11 @@ test('ONCE PER BOUNDARY: four windows of a met licence is exactly four gains', (
   //
   // §2.6's rescale calibrated the EARN RATE against the venture's OWN BAR: a tier-1 mine
   // is worth 100 GP, a full-terms met cycle earns +10, so ten met cycles earn the venture's
-  // whole bar — the break-even the ruling names, and every tier breaks even in the same ten
-  // because `tierFactor` scales both. That is a claim about the RATE, so it is pinned as a
-  // delta, and slice 2's bump did not touch it.
+  // whole bar — the break-even the ruling names. (⤳ 06-09-26 made the earn TIER-BLIND, so
+  // this ten-cycle break-even is now a tier-1 fact, not a universal one — a higher tier
+  // takes longer, its earn being flat while its bar is bigger; see the tier tests above.
+  // These assertions are all this T1 mine, so they are unchanged.) It is a claim about the
+  // RATE, pinned as a delta, and slice 2's bump did not touch it.
   for (let w = 5; w <= 10; w += 1) s = runToBoundary(s);
   assert.equal(rp(s, 'm') - BUMP_FULL_COMMIT, 10 * GAIN_FULL_TERMS, 'ten full-terms cycles EARN');
   assert.equal(rp(s, 'm') - BUMP_FULL_COMMIT, W_T1, '…exactly the mine\'s 100-point bar — break-even in ten');

@@ -81,9 +81,10 @@ function restingRP(gain) {
     rp += step;
   }
 }
-// ⤳ 01-09-26: this venture now names a `resourceType`. `metGain` is tier-scaled since the
-// rescale (§2.6), so it reads the venture's produced good — a termsless stub would (rightly)
-// halt on an unknown tier rather than quietly earning at the tier-1 rate.
+// ⤳ 01-09-26: this venture names a `resourceType` so `metGain` can resolve its produced
+// good. (It was tier-scaled from the 01-09-26 rescale until 06-09-26 made the per-cycle earn
+// TIER-BLIND again — see reputation.test.js §3b. This is a tier-1 mine either way, so the
+// value is unaffected; `metGain` is read from the engine rather than typed, so it tracks.)
 const MODERATE_TERMS = metGain(
   { ...mine('t', SYS[0]), equityPct: 0.245, licence: { committedOutputPct: 0.5 } },
 );

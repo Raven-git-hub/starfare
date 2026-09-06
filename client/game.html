@@ -1026,7 +1026,7 @@ select.field{appearance:none; cursor:pointer;}
    The asset picker, the site, the venture type, the recipe and the licence terms all
    reach the engine. The REPUTATION meter (#61) sends nothing, but it is no longer
    design-ahead: it PREVIEWS the engine's own `metGain` arithmetic, mirrored constant for
-   constant, tier included. What remains design-ahead is the renegotiation window's effect
+   constant (tier-blind since 06-09-26, §2.6). What remains design-ahead is the renegotiation window's effect
    (#64); the fee curve is the designed SHAPE, since the amount is priced at signing.
    Nothing in it is presented as a live figure it isn't. */
 #est-overlay, #est-reel{
@@ -2870,9 +2870,10 @@ window.openWaystationDetail = function(outpost){
 
    PREVIEW — computes, sends nothing: the reputation meter (#61). The venture is not
                                 signed yet, so there is nothing to read off a snapshot;
-                                the meter mirrors the engine's `metGain` — REP_MEET_MAX,
-                                the two term weights and the TIER factor — and previews
-                                the per-cycle earn those terms will actually pay. It
+                                the meter mirrors the engine's `metGain` — REP_MEET_MAX
+                                and the two term weights — and previews the per-cycle earn
+                                those terms will actually pay. Since 06-09-26 that earn is
+                                TIER-BLIND (§2.6), so the meter carries no tier term. It
                                 deliberately does NOT preview the one-time signing bump.
 
    QUOTED — read, never sent:   the fee. The engine now PUBLISHES the basic fee in
@@ -2912,22 +2913,17 @@ var P = {
   K: 2,                    // MIRRORS sim/licence.js EQUITY_SHAPE_K, o^k       [FIRST-CUT]
   // MIRRORS sim/licence.js CORNERS, key for key so the mirror is obvious   [FIRST-CUT]
   CORNERS: { minCommitMinOffer:100, minCommitMaxOffer:75, maxCommitMinOffer:75, maxCommitMaxOffer:0 },
-  // MIRRORS sim/points.js TIER_WEIGHT, key for key — the single source of truth for what a
-  // manufacturing TIER is worth. Mirrored as the WEIGHTS rather than as a pre-divided
-  // factor so `tierFactor` below derives the ratio the way sim/licence.js derives its own
-  // (weight ÷ the tier-1 weight): a GP retune that moved both then leaves the meter right,
-  // and one that moved only tier 1 goes red on the tripwire instead of silently rescaling
-  // every preview. A tier with no entry here is not a zero — see `tierFactor`.
-  TIER_WEIGHT: { 1:100, 2:150 },
   // MIRRORS sim/licence.js REP_MEET_MAX / REP_W_COMMIT / REP_W_EQUITY (#61)     [FIRST-CUT]
   // ⤳ RESCALED 01-09-26 (100 -> 10) with the engine, docs/points-and-reputation.md §2.6.
   // The meter would otherwise have gone on promising "+100" for terms the engine now pays
-  // +10 for. Note the bar's fill is a FRACTION of the tier's own maximum, not the value
-  // itself — the old code leaned on REP_MAX happening to be 100 and would have drawn a
-  // 10%-full bar.
-  // ⤳ TIER-ACCURATE 02-09-26. The meter now mirrors the engine's `tierFactor` (above), so
-  // the number it previews EQUALS `metGain` tier for tier — a Tier-2 factory reads the 1.5×
-  // the engine actually pays it, where it used to read a mine's +5.
+  // +10 for. Note the bar's fill is a FRACTION of REP_MAX, not the value itself — the old
+  // code leaned on REP_MAX happening to be 100 and would have drawn a 10%-full bar.
+  // ⤳ TIER-BLIND 06-09-26. The engine dropped `tierFactor` from `metGain` (§2.6 RULED
+  // 06-09-26), so the meter no longer mirrors a tier weight: a full-terms licence previews
+  // +10 at EVERY tier, exactly what `metGain` now pays. The `TIER_WEIGHT` mirror and the
+  // `tierFactor` helper the 02-09-26 slice added are gone with the tier term they fed, and
+  // the served-page tripwire that guarded them went with them (server.test.js). A higher
+  // tier's reward is its market price and its bigger signing bump/GP, not a faster climb.
   // IT IS STILL THE PER-CYCLE EARN ONLY, and that is deliberate, not a gap: the one-time
   // SIGNING BUMP (§2.6, `round(2 × commit × W_TIER)`) is intentionally invisible here. The
   // player's lever is the commitment slider; the bump is that lever's backend consequence,
@@ -2980,25 +2976,17 @@ function feePct(c, o01){
   return C.minCommitMinOffer*(1-c)*(1-O) + C.maxCommitMinOffer*c*(1-O)
        + C.minCommitMaxOffer*(1-c)*O     + C.maxCommitMaxOffer*c*O;
 }
-/* tierFactor(tier) -> how much more RP this venture's tier earns than a tier-1 mine:
-   1 at tier 1, 1.5 at tier 2. MIRRORS sim/licence.js `tierFactor`, and derived from the
-   mirrored weights the same way the engine derives it from its own, so a weight retune
-   carries through instead of being re-hardcoded here.
-   AN UNKNOWN OR MISSING TIER FALLS BACK TO 1 — a mine's behaviour, unchanged. The engine
-   HALTS on an unweighted tier (a tier-3 venture must not quietly earn at the tier-1 rate),
-   but this is a preview drawn before anything is signed: a panel that threw would take the
-   whole deploy screen down over a display number, and the engine still stops the deploy
-   itself. The fallback understates rather than overstating, which is the safe direction. */
-function tierFactor(tier){
-  var w = P.TIER_WEIGHT[tier], w1 = P.TIER_WEIGHT[1];
-  return (w && w1) ? w/w1 : 1;
-}
-
 /* The per-cycle EARN this licence previews — the engine's `metGain` (sim/licence.js),
-   mirrored term for term: REP_MEET_MAX × tierFactor × (W_COMMIT·commit + W_EQUITY·equity).
+   mirrored term for term: REP_MEET_MAX × (W_COMMIT·commit + W_EQUITY·equity).
    Not the signing bump, which stays invisible by design (see P above). Rounded at the
-   readout, as the engine rounds its own. */
-function repGain(c, o01, tier){ return P.REP_MAX*tierFactor(tier)*(P.REP_WC*c + P.REP_WO*o01); }
+   readout, as the engine rounds its own.
+   ⤳ TIER-BLIND 06-09-26 (points-and-reputation.md §2.6): the engine dropped the `tierFactor`
+   the 02-09-26 slice had added here, so the earn no longer depends on the venture's tier —
+   a tier-2 refinery previews the same +10 at full terms as a tier-1 mine, which is exactly
+   what `metGain` now pays. A higher tier's reward is its market price and its bigger bump/GP,
+   not a faster reputation climb; the mirror follows the engine and no longer carries a tier
+   term (so `TIER_WEIGHT`/`tierFactor` are gone from this panel). */
+function repGain(c, o01){ return P.REP_MAX*(P.REP_WC*c + P.REP_WO*o01); }
 
 /* The equity term. The slider is whole percent, 0..EQUITY_CEIL; the engine takes a
    FRACTION of the venture in [0, EQUITY_CEILING]. Dividing the integer percent by 100
@@ -3030,12 +3018,11 @@ function draw(){
   var fp=feePct(S.c,S.o01);
   $('feePctBig').textContent = Math.round(fp)+'%';
 
-  var rg=repGain(S.c,S.o01,S.tier);
-  // The bar fills against THIS TIER's maximum (`REP_MAX × tierFactor`), not the tier-1
-  // one — otherwise a full-terms Tier-2 licence would draw a 150%-wide bar. It reads
-  // "how good are these terms", which is what the two sliders move; the tier's extra
-  // earning shows in the number beside it. Identical at tier 1.
-  $('repFill').style.width = (100*rg/(P.REP_MAX*tierFactor(S.tier)))+'%';
+  var rg=repGain(S.c,S.o01);
+  // The bar fills against `REP_MAX`, the full-terms maximum — the earn is tier-blind now
+  // (§2.6, 06-09-26), so a full-terms licence draws a full bar at every tier. It reads
+  // "how good are these terms", which is exactly what the two sliders move.
+  $('repFill').style.width = (100*rg/P.REP_MAX)+'%';
   $('repNum').textContent = '+'+Math.round(rg);
   $('rnDaysVal').textContent = S.rnDays+' days';
 

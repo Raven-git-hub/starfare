@@ -390,7 +390,6 @@ test('the served licence panel\'s mirrored constants still match the engine', as
   const html = await (await fetch(base + '/')).text();
   const licence = require('../licence.js');
   const { baselineOutputFor } = require('../baseline.js');
-  const { TIER_WEIGHT } = require('../points.js');
 
   assert.match(html, new RegExp(`EQUITY_CEIL: ${licence.EQUITY_CEILING * 100},`),
     'the equity slider ceiling must be sim/licence.js EQUITY_CEILING x 100');
@@ -417,32 +416,22 @@ test('the served licence panel\'s mirrored constants still match the engine', as
   assert.equal(factoryBaseline, baseline,
     'the licence panel mirrors ONE baseline for both tiers — differentiate them and it must gain a second');
 
-  // The TIER WEIGHTS (02-09-26). The reputation meter previews `metGain`, which the
-  // rescale scaled by `tierFactor` = W_TIER(tier) / W_TIER(1) — so the panel has to hold
-  // the weights to preview a tier-2 licence at the 1.5x the engine really pays. Mirrored
-  // as the WEIGHT MAP, key for key, exactly as CORNERS above is: the panel divides by its
-  // own tier-1 entry the way sim/licence.js divides by `tierWeight(1)`, so a retune that
-  // moves both leaves the preview right and one that moves either alone fails HERE.
-  //
-  // ⤳ The panel mirrors only the tiers it can DEPLOY through applyForLicence — a mining
-  // (tier-1) or refining (tier-2) venture. TIER_WEIGHT gained an RP-ONLY tier 4 (04-09-26,
-  // deuterium RP slice 2) that is NOT deployable here: a deuterium mine takes the windowless
-  // deuterium licence, which applyForLicence refuses (§1.4), so the panel deliberately does
-  // not mirror or preview it — exactly as it omits the signing bump below. Adding a
-  // DEPLOYABLE tier (W_T3, when tier-3 goods gain recipes) still goes red and forces the
-  // panel to mirror it; the RP-only tier 4 is excluded here on purpose.
-  const DEPLOYABLE_TIERS = [1, 2];
-  const tiers = DEPLOYABLE_TIERS.map((t) => `${t}:${TIER_WEIGHT[t]}`).join(', ');
-  assert.match(html, new RegExp(`TIER_WEIGHT: \\{ ${tiers} \\},`),
-    'the reputation meter must mirror sim/points.js TIER_WEIGHT for the deployable tiers, key for key');
-
-  // …and it is APPLIED: the earn preview carries the tier term, and the call site passes
-  // the tier the panel is deploying at. Without both, the mirror above would sit unread
-  // and a factory would go back to previewing a mine's gain.
-  assert.match(html, /function repGain\(c, o01, tier\)\{ return P\.REP_MAX\*tierFactor\(tier\)\*/,
-    'the earn preview must be scaled by the tier factor');
-  assert.match(html, /repGain\(S\.c,S\.o01,S\.tier\)/,
-    'and the meter must pass the venture\'s own tier');
+  // The EARN PREVIEW is TIER-BLIND (06-09-26, points-and-reputation.md §2.6). The engine
+  // dropped `tierFactor` from `metGain`, so the meter previews `REP_MEET_MAX × (W_COMMIT·c
+  // + W_EQUITY·o)` — the SAME +10 at full terms for every tier — and no longer mirrors a
+  // tier weight at all. The `TIER_WEIGHT` mirror and the `tierFactor` helper the 02-09-26
+  // slice added are gone with the tier term they fed; this tripwire now guards that the
+  // panel's `repGain` still matches the engine's tier-blind `metGain`, term for term.
+  assert.match(html, /function repGain\(c, o01\)\{ return P\.REP_MAX\*\(P\.REP_WC\*c \+ P\.REP_WO\*o01\); \}/,
+    'the earn preview must mirror the engine\'s tier-blind metGain, term for term');
+  assert.match(html, /repGain\(S\.c,S\.o01\)/,
+    'and the meter must call it without a tier argument');
+  // And the tier term is really GONE, not merely unread — the `TIER_WEIGHT` mirror
+  // declaration and the `tierFactor` helper are both removed, so neither can be silently
+  // reintroduced. (Matched as the code that declares them, not the prose that names them —
+  // the comments still explain why the tier term left.)
+  assert.ok(!/TIER_WEIGHT:/.test(html), 'the deploy panel no longer declares a tier-weight mirror (§2.6, tier-blind earn)');
+  assert.ok(!/function tierFactor/.test(html), 'and its tierFactor helper is gone with the tier term');
 
   // The one-time SIGNING BUMP stays out of the panel BY DESIGN (§2.6: the player's lever
   // is the commitment slider; the bump is its backend consequence). This pins that
