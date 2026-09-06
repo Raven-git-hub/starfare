@@ -23,7 +23,7 @@
 //     fuel price may read one, the other, or their sum (an open pricing-time
 //     decision), and because fuel conservation (invariant 1) is defined on them.
 
-const { STOCKPILE_GOODS } = require('./resources.js');
+const { STOCKPILE_GOODS, DEUTERIUM } = require('./resources.js');
 const { guildTotals } = require('./stock.js');
 
 // computeGalacticSupply(state) — pure. Returns a fresh totals object:
@@ -47,6 +47,14 @@ function computeGalacticSupply(state) {
         resources[good] += qty;
       }
     }
+    // The guild-wide raw `deuterium` store (§1.4's B1 exemption, sim/state.js): an unlicensed
+    // deuterium mine deposits its output HERE, not into a per-system stockpile, so the good's
+    // supply row would understate what the galaxy holds if this were not folded in. `deuterium`
+    // is always a key in `resources` (it is a RAW_RESOURCE, zero-filled above). Counting it for
+    // accounting is NOT laundering it into the tradeable pool — an unlicensed mine has no
+    // sell/pool path in this slice; this is the same "how much of the good exists" total every
+    // other good is summed into, and it is what keeps the goods cache / conservation closing.
+    if (g.deuterium) resources[DEUTERIUM] += g.deuterium;
   }
 
   const guildHeld = guilds.reduce((sum, g) => sum + (g.fuelHoard || 0), 0);

@@ -15,6 +15,7 @@
 //
 //   state.guilds     : [{ id, credits, fuelHoard, influence?, guildReputation?,
 //                         foundingEndowment?,
+//                         deuterium?,   // guild-wide raw deuterium store (§1.4 B1 exemption)
 //                         stockpiles?,
 //                         ventures? (each: siteId?, assetId?, resourceType? |
 //                         recipeId?, productionRate?, reputation?),
@@ -192,6 +193,15 @@ function checkNonNegativityAndIntegrality(state) {
     if (g.foundingEndowment !== undefined) {
       checkField(out, g.foundingEndowment, `guild:${g.id}.foundingEndowment`, { nonNegative: false });
     }
+    // deuterium — the guild-wide raw `deuterium` store (§1.4's B1 exemption, sim/state.js),
+    // where an unlicensed deuterium mine deposits its output. A quantity of goods like a
+    // stockpile cell, so the same full sweep: an INTEGER (§15.2) and NON-NEGATIVE (invariant
+    // 3) — it is a store that only ever grows here (slice 1a has no drawdown; the refinery
+    // that draws it is slice 1b), never a debt, so unlike credits it takes NO carve-out. It is
+    // counted in the galactic-supply cache's deuterium row (sim/supply.js), so a fractional or
+    // negative value would both mis-ledger the good AND poison that cache silently. Absent (no
+    // unlicensed deuterium mined — every guild today) is legal, the omitted-when-0 no-op path.
+    if (g.deuterium !== undefined) checkField(out, g.deuterium, `guild:${g.id}.deuterium`);
 
     // Stockpiles (ruling B1, §15.2): a NESTED map systemId -> good -> int. Every
     // value is an integer, non-negative; every good key is a known stockpile good

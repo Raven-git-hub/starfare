@@ -57,6 +57,7 @@ function createGuild({
   homePlanetId = null,
   foundingEndowment = 0,
   foundingEntitlement = 0,
+  deuterium = 0,
   stockpiles = {},
   productionProfile = {},
   syndicateWindows = {},
@@ -149,6 +150,23 @@ function createGuild({
     // term. OMITTED when 0, exactly as `foundingEndowment` above, so every guild built by
     // `createState` (which never founds) carries no key and stays byte-identical.
     ...(foundingEntitlement !== 0 ? { foundingEntitlement } : {}),
+    // deuterium: the guild-wide RAW `deuterium` store (§1.4 "The Deuterium Cycle",
+    // fuel-supply-and-allocation.md — the illegal-path slice, ruled 06-09-26). An UNLICENSED
+    // deuterium mine mines its raw output HERE instead of into a per-system stockpile: raw
+    // deuterium and its refined fuel are trafficked in ship tanks, never warehoused, so this
+    // pair is the SINGLE exemption from ruling B1's system-scoped stockpiles — a guild-wide
+    // scalar, not a `stockpiles` cell. It piles up inert here until a refinery exists (slice
+    // 1b), a legitimate intermediate state, not a trap. Contraband: it can never be sold or
+    // laundered into a public/galactic stockpile. An INTEGER quantity of goods (§15.2), and
+    // NON-NEGATIVE (a store, never a debt) — asserted every tick by invariants.js. It IS
+    // counted in the galactic-supply cache's deuterium row (sim/supply.js) so the goods
+    // accounting still closes — counted for accounting is not laundered into the tradeable pool.
+    //
+    // OMITTED when 0, exactly as `foundingEndowment` above: a guild that has mined no
+    // unlicensed deuterium (every guild in today's goldens) carries no key at all, so the
+    // serialized state and every determinism golden stay byte-identical. A scenario or a
+    // restored save that HANDS ONE IN keeps it, like `foundingEndowment`.
+    ...(deuterium !== 0 ? { deuterium } : {}),
     // stockpiles: systemId -> good -> int, the guild's holdings of each RAW
     // resource, SYSTEM-SCOPED per ruling B1 (§15.2) — a separate pool per system
     // it operates in, accessed only via sim/stock.js. Fuel is NOT here — it

@@ -38,7 +38,7 @@ const {
   commitmentSale, committedContribution, feeOwed, reputationDelta, gainFactor, RP_FLOOR,
   deuteriumMetGain,
 } = require('./licence.js');
-const { producedGoodFor, isLicensedDeuteriumMine } = require('./baseline.js');
+const { producedGoodFor, isLicensedDeuteriumMine, isDeuteriumMine } = require('./baseline.js');
 const {
   DEUTERIUM_INFLUX_PER_CYCLE, grantFor, physicalGrantFor, rationGrants,
   nextAvgDraw, nextFuelPrice,
@@ -181,8 +181,18 @@ function applyProduction(state, guild, systemId, ctx) {
 
   // Deposit each mine's fresh output into the pool; stamp the mine's tick.
   //
-  // THE DEUTERIUM CYCLE FORK (§1.4, docs/fuel-supply-and-allocation.md). A LICENSED
-  // deuterium mine (`isLicensedDeuteriumMine`, sim/baseline.js) never stockpiles — its
+  // THE DEUTERIUM CYCLE FORK (§1.4, docs/fuel-supply-and-allocation.md) — a THREE-WAY fork:
+  //   1. a LICENSED deuterium mine → the per-tick auto-sale + pool mint below (the supply
+  //      lever, slice 1);
+  //   2. an UNLICENSED deuterium mine → the guild-wide raw `deuterium` store (`guild.deuterium`,
+  //      the illegal-path INPUT half, slice 1a) — NOT a per-system stockpile;
+  //   3. every other good → the normal per-system stockpile deposit (`addStock`).
+  // The licensed case is tested FIRST so the broader `isDeuteriumMine` (sim/baseline.js) only
+  // catches the UNLICENSED mine. Slice 1a builds only case 2's INPUT: the raw deuterium piles
+  // up guild-wide, inert, until the illegal refinery (slice 1b) turns it into contraband fuel.
+  //
+  // THE LICENSED CASE (case 1). A LICENSED deuterium mine (`isLicensedDeuteriumMine`,
+  // sim/baseline.js) never stockpiles — its
   // whole output leaves the guild the moment it is produced. So instead of the normal
   // stockpile deposit + the windowed commitment below (which never runs for it: the
   // deuterium licence sets no `syndicateCommitment`, so `report.goods.deuterium.fork
@@ -220,6 +230,20 @@ function applyProduction(state, guild, systemId, ctx) {
       state.syndicate.ledger -= credited;
       state.reserve.reserveLevel += qty;
       state.audit.totalProduced += qty;
+    } else if (isDeuteriumMine(v)) {
+      // CASE 2 — the UNLICENSED deuterium mine (the illegal-path input half, slice 1a). Its
+      // raw `deuterium` is added to the guild-wide store instead of a per-system stockpile
+      // (the one B1 exemption, §1.4). `m.amount` is the same quantity the normal `addStock`
+      // path would have deposited — the mine's resolved rate — so no production amount is
+      // invented; only the destination changes, from a per-system pile to this scalar. The
+      // key is minted on first deposit (absent ⇒ 0), matching `guild.deuterium`'s
+      // omitted-when-zero shape (sim/state.js). NOTHING sells or mints here: an unlicensed
+      // mine is idle to the Syndicate (zero GP, zero RP), and its deuterium reaches no
+      // stockpile, no ledger and no fuel pool — it simply accumulates, inert, until a
+      // refinery exists (slice 1b). The galactic-supply cache counts it (sim/supply.js) so
+      // the goods accounting still closes — counted for accounting, not laundered into any
+      // tradeable/public pool (there is no sell path here to launder it through).
+      guild.deuterium = (guild.deuterium || 0) + m.amount;
     } else {
       addStock(guild, systemId, m.good, m.amount);
     }

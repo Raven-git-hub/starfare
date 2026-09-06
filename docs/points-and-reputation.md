@@ -101,14 +101,15 @@ where it is serialized, guarded, and published in the snapshot exactly as descri
     (2 systems, 8 ventures) reads **1.160**. "Par" is about **three ventures per held system** — that one
     relation is what `k = 150` encodes, and density-beats-sprawl falls straight out of it.
 
-- **THE LICENSED DEUTERIUM MINE'S ZERO GP** *(03-09-26 — deuterium supply-lever slice 1,
-  `fuel-supply-and-allocation.md` §1.4)* — a `sim/points.js` change, ruled in §1.4 and landing here in the same
-  commit as the code (working rule 2). `guildPoints` skips any venture the predicate `isLicensedDeuteriumMine`
-  (`sim/baseline.js`) recognises — a deuterium mine carrying the windowless `deuteriumLicence` — so its output,
-  which goes to the Syndicate rather than the guild, adds **no size** (§1.4 detail in §1.0 above). The predicate
-  is the shared question the tick's per-tick auto-sale and this exclusion both ask. **DERIVED, never stored**,
-  like the rest of GP — the exclusion moves no serialized byte, and the existing determinism goldens did not
-  move (the new `venture.deuteriumLicence` field is omitted when absent).
+- **EVERY DEUTERIUM MINE'S ZERO GP** *(licensed 03-09-26, deuterium supply-lever slice 1; WIDENED to unlicensed
+  06-09-26, illegal-path slice 1a — `fuel-supply-and-allocation.md` §1.4)* — a `sim/points.js` change, ruled in
+  §1.4 and landing here in the same commit as the code (working rule 2). `guildPoints` skips any venture the
+  predicate `isDeuteriumMine` (`sim/baseline.js`) recognises — ANY deuterium mine, keyed off the mined good, not
+  the licence — so **no** deuterium mine adds size: a licensed one's output goes to the Syndicate, an unlicensed
+  one is idle to the Syndicate with its raw deuterium hoarded guild-wide (§1.4 detail in §1.0 above). Slice 1a
+  widened the skip from `isLicensedDeuteriumMine` to `isDeuteriumMine`. **DERIVED, never stored**, like the rest
+  of GP — the exclusion moves no serialized byte, and the determinism goldens did not move (no golden holds a
+  deuterium mine; the new `guild.deuterium` store is omitted when zero).
 - **THE LICENSED DEUTERIUM MINE'S RP** *(04-09-26 — deuterium RP slice 2, `fuel-supply-and-allocation.md` §1.4
   "The RP accrual")* — the Tier-4 RP half, detailed in §2.6. `TIER_WEIGHT[4] = 500` pulled into `sim/points.js`
   (an RP-only reader — changes no GP); `ventureTierWeight`/`signingBump` special-case `isLicensedDeuteriumMine`
@@ -199,18 +200,23 @@ today, and higher weights `W_T3`/`W_T4` light up automatically when those goods 
 what matters is the ratio (systems Points-heavy, ventures Points-light, higher tier a notch above lower). GP
 is an integer.
 
-**A LICENSED deuterium mine scores ZERO GP (ruled 03-09-26 in `fuel-supply-and-allocation.md` §1.4 "The
-Deuterium Cycle"; BUILT — deuterium supply-lever slice 1).** A deuterium mine that carries the windowless
-deuterium licence (the `licenseDeuteriumMine` action) is skipped entirely in the venture loop: its output
-serves the Syndicate, not the guild — every tick it is auto-sold for credits and minted 1:1 into the fuel pool
-— so it is **pure reputation, never size**. This is the self-limiting property §1.4 rests on: a guild that
-mines only deuterium has its issuance modifier pinned at the ceiling but a tiny GP base, so a tiny grant. An
-**unlicensed** deuterium mine is untouched — it still scores as the normal tier-1 mine it is (the illegal path
-and its "no GP, no RP" idle-to-the-Syndicate treatment are a later slice). The predicate
-(`isLicensedDeuteriumMine`, `sim/baseline.js`) is the ONE place the tick's auto-sale and this exclusion ask the
-question, so they cannot disagree about which ventures the lever governs. **Its RP — §1.4's Tier-4 weighting —
-is now BUILT (slice 2), detailed in §2.6 below: a 1000 signing bump and a +50/cycle (pre-taper) equity-free
-MET. GP stays zero; RP is the whole of what a deuterium mine earns.**
+**EVERY deuterium mine scores ZERO GP — licensed or not (ruled in `fuel-supply-and-allocation.md` §1.4 "The
+Deuterium Cycle"; licensed BUILT slice 1, 03-09-26; the skip WIDENED to unlicensed in the illegal-path slice 1a,
+06-09-26).** A deuterium mine is skipped entirely in the venture loop — `guildPoints` continues past any venture
+`isDeuteriumMine` (`sim/baseline.js`) recognises, keying off the mined good alone, so **neither** path adds size:
+- a **LICENSED** mine's output serves the Syndicate (auto-sold for credits, minted 1:1 into the fuel pool), so it
+  is **pure reputation, never size** — the self-limiting property §1.4 rests on: a guild that mines only deuterium
+  has its issuance modifier pinned at the ceiling but a tiny GP base, so a tiny grant;
+- an **UNLICENSED** mine is **idle to the Syndicate — no GP, no RP** (§1.4's ruled illegal-path treatment): its raw
+  deuterium piles up in the guild-wide contraband store (`guild.deuterium`), invisible to the Syndicate, so it is
+  no more a holding the mean line should reward than the licensed one. Slice 1a widened the GP skip from
+  `isLicensedDeuteriumMine` to `isDeuteriumMine` for exactly this "no GP either".
+
+The predicate widening keeps GP **DERIVED, never stored** — the exclusion moves no serialized byte, and the
+determinism goldens are unmoved (no golden holds a deuterium mine). **RP** — §1.4's Tier-4 weighting — is a
+LICENSED-only reward, BUILT in slice 2 (§2.6 below: a 1000 signing bump and a +50/cycle, pre-taper, equity-free
+MET); an unlicensed mine earns no RP either. So a LICENSED deuterium mine is pure reputation, and an UNLICENSED
+one is neither size nor standing — its only product is the raw contraband awaiting a refinery (slice 1b).
 
 ### 1.1 Outpost vs Waystation (naming — resolved)
 

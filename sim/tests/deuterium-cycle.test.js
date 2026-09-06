@@ -16,6 +16,15 @@
 //
 // RP (the §1.4 T4 weighting) is DEFERRED to a later slice and is deliberately NOT tested
 // or built here.
+//
+// SLICE 1a (the illegal-path INPUT half, ruled 06-09-26 — §1.4 "The illegal path, made
+// concrete") revises the two "unlicensed is untouched" facts above: an UNLICENSED deuterium
+// mine is now ALSO idle to the Syndicate — it earns ZERO GP (widened from the licensed-only
+// skip) and mines its raw `deuterium` into a NEW guild-wide store (`guild.deuterium`, the one
+// B1 exemption) instead of a per-system stockpile, where it piles up inert until the illegal
+// refinery (slice 1b). Its deuterium still reaches no fuel pool and no ledger — no sell path
+// exists for it. The regression tests that pinned the old per-system-stockpile / tier-1-GP
+// behaviour are updated below to the ruled behaviour; the licensed path is UNCHANGED.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -27,7 +36,7 @@ const {
 } = require('../actions.js');
 const { checkInvariants } = require('../invariants.js');
 const { postedPrice } = require('../prices.js');
-const { guildTotals } = require('../stock.js');
+const { guildTotals, getStock } = require('../stock.js');
 const { guildPoints, W_SYS, TIER_WEIGHT } = require('../points.js');
 const { hashState } = require('../serialize.js');
 const {
@@ -238,23 +247,134 @@ test('the licensed-deuterium run is deterministic (byte-identical run twice)', (
   assert.equal(hashState(build()), hashState(build()));
 });
 
-test('an UNLICENSED deuterium mine still stockpiles normally (the illegal path is untouched)', () => {
-  // No licence: the mine behaves exactly as any tier-1 mine — output lands in the stockpile,
-  // nothing is sold, nothing is minted.
+// --- 4a. the UNLICENSED path: mine into the guild-wide store, idle to the Syndicate (slice 1a)
+
+test('an UNLICENSED deuterium mine routes its raw output into the guild-wide store, NOT a per-system stockpile', () => {
+  // No licence: the mine is idle to the Syndicate — its raw deuterium accumulates in the new
+  // guild-wide store (§1.4's B1 exemption), never a per-system stockpile, and nothing is sold,
+  // minted or credited (no sell/pool path exists for it in this slice).
   const s = deuteriumMineState();
   const before = { reserve: s.reserve.reserveLevel, produced: s.audit.totalProduced, credits: s.guilds[0].credits };
   const next = tick(s);
-  assert.equal(guildTotals(next.guilds[0]).deuterium, RATE);
+  // The guild-wide store grew by exactly the mine's resolved rate.
+  assert.equal(next.guilds[0].deuterium, RATE);
+  // NOTHING landed in any per-system stockpile for it.
+  assert.equal(guildTotals(next.guilds[0]).deuterium, undefined);
+  assert.deepEqual(next.guilds[0].stockpiles || {}, {});
+  // It reached no fuel pool and no ledger — reserve, audit and credits are exactly as before.
   assert.equal(next.reserve.reserveLevel, before.reserve);
   assert.equal(next.audit.totalProduced, before.produced);
   assert.equal(next.guilds[0].credits, before.credits);
+  assert.equal(next.syndicate.ledger, s.syndicate.ledger);
+  // The mine's tick is stamped (every mutation records its tick, §15.2).
+  assert.equal(next.guilds[0].ventures[0].updatedAtTick, 0);
+});
+
+test('the guild-wide store grows by the mine\'s rate every tick, and the pool is never touched by it', () => {
+  let s = deuteriumMineState(); // default window (1440) — a short run crosses no boundary
+  for (let i = 1; i <= 10; i += 1) {
+    s = tick(s);
+    assert.equal(s.guilds[0].deuterium, RATE * i, 'the store grows by the resolved rate each tick');
+  }
+  // Across the whole run the raw deuterium reached no per-system stockpile and no fuel pool.
+  assert.equal(guildTotals(s.guilds[0]).deuterium, undefined);
+  assert.equal(s.reserve.reserveLevel, 100, 'reserveLevel is unchanged by the unlicensed mine');
+  assert.equal(s.audit.totalProduced, 100, 'nothing was minted into the pool');
+});
+
+test('an unlicensed deuterium mine mints no `deuterium` key until it actually produces (omitted-when-0)', () => {
+  // The field is omitted when 0, exactly like `licence`/`equityPct`/`foundingEndowment` — a
+  // freshly built guild carries no `deuterium` key, which is why every galaxy with no
+  // unlicensed deuterium mining serializes byte-identically to pre-slice.
+  const s = deuteriumMineState();
+  assert.equal('deuterium' in s.guilds[0], false);
+});
+
+test('a NORMAL (non-deuterium) mine still deposits into its per-system stockpile — unchanged', () => {
+  // The third fork (every non-deuterium good) is untouched: a titanium mine still stockpiles
+  // per-system, and no guild-wide `deuterium` store is created for it.
+  const s = deuteriumMineState({ resourceType: 'titanium' });
+  const next = tick(s);
+  assert.equal(getStock(next.guilds[0], 'sysA', 'titanium'), RATE);
+  assert.equal(next.guilds[0].deuterium, undefined);
+});
+
+test('the unlicensed-deuterium run is deterministic (byte-identical run twice)', () => {
+  const build = () => {
+    let s = deuteriumMineState();
+    for (let i = 0; i < 10; i += 1) s = tick(s);
+    return s;
+  };
+  assert.equal(hashState(build()), hashState(build()));
+});
+
+// --- 4b. invariants over a multi-cycle unlicensed-deuterium run (slice 1a) --------------
+
+// Does the violation list carry a rule whose name starts with `prefix`? (the invariants.test.js
+// convention — the individual check functions are not exported, so specific invariants are
+// asserted by filtering the aggregate `checkInvariants` result.)
+const hasRule = (violations, prefix) => violations.some((v) => v.rule.startsWith(prefix));
+
+test('all invariants pass every tick of a MULTI-CYCLE scenario holding an unlicensed deuterium mine', () => {
+  // A small window so a 20-tick run crosses several cycle boundaries (influx + issuance +
+  // the price controller all run) while the guild-wide deuterium store climbs the whole time.
+  let s = createState({
+    windowN: WIN,
+    guilds: [{
+      id: 'g1', credits: 0, fuelHoard: 0,
+      ventures: [{ id: 'v1', ownerGuildId: 'g1', type: 'mining', systemId: 'sysA', resourceType: 'deuterium', productionRate: RATE }],
+    }],
+    reserve: { reserveLevel: 1000 },
+    syndicate: { ledger: 0 },
+  });
+  for (let i = 0; i < 5 * WIN; i += 1) {
+    s = tick(s);
+    // checkInvariants runs the WHOLE sweep — an empty result is every invariant passing,
+    // including fuel conservation (1), the galactic-supply/goods-cache consistency check, and
+    // the non-negativity/integrality sweep that now covers `guild.deuterium`.
+    assert.deepEqual(checkInvariants(s, s.tick), []);
+  }
+  // The store really did grow across the run — the invariants held over a real, non-trivial
+  // guild-wide deuterium balance, not a zero.
+  assert.equal(s.guilds[0].deuterium, RATE * 5 * WIN);
+  // And the goods-cache's deuterium row counts the guild-wide store exactly (§1.4: counted for
+  // accounting, not laundered — an unlicensed mine has no sell/pool path).
+  assert.equal(s.galacticSupply.resources.deuterium, s.guilds[0].deuterium);
+});
+
+test('the non-negativity/integrality sweep COVERS the new guild-wide store', () => {
+  // Prove the tripwire really reaches `guild.deuterium`: a negative store trips
+  // non-negativity, a fractional one trips the integer convention. Without the new
+  // checkField call these would sail through silently.
+  const negative = deuteriumMineState({}, {});
+  negative.guilds[0].deuterium = -1;
+  assert.ok(hasRule(checkInvariants(negative, 0), 'non-negativity'), 'a negative store trips invariant 3');
+
+  const fractional = deuteriumMineState();
+  fractional.guilds[0].deuterium = 2.5;
+  assert.ok(hasRule(checkInvariants(fractional, 0), 'integer'), 'a fractional store trips the §15.2 integer rule');
+});
+
+test('the goods-cache consistency check COVERS the guild-wide store', () => {
+  // A store the cache does not count is a silent lie about how much deuterium the galaxy holds.
+  // Corrupt the cache away from the live store and the consistency check must catch it.
+  let s = deuteriumMineState();
+  s = tick(s); // stores RATE into guild.deuterium; the cache row now reads RATE
+  assert.equal(s.galacticSupply.resources.deuterium, RATE);
+  assert.deepEqual(checkInvariants(s, s.tick), []); // consistent as produced by tick
+  s.galacticSupply.resources.deuterium = 0; // hand-break the cache
+  assert.ok(hasRule(checkInvariants(s, s.tick), 'galactic-supply-consistency'), 'the cache must count the store');
 });
 
 // --- 5. GP: a licensed deuterium mine scores zero -------------------------------------
 
-test('GP: a deuterium mine contributes 100 GP while unlicensed and 0 once licensed; the rest is unchanged', () => {
-  // A held system (W_SYS) + a titanium mine (W_T1) + a deuterium mine (W_T1). The claim
-  // must name a real seed landmark for the claim-landmark invariant, but GP reads it purely.
+test('GP: a deuterium mine scores ZERO whether licensed or not; only non-deuterium ventures and systems count', () => {
+  // A held system (W_SYS) + a titanium mine (W_T1) + a deuterium mine. The claim must name a
+  // real seed landmark for the claim-landmark invariant, but GP reads it purely.
+  //
+  // SLICE 1a widens the GP skip: an UNLICENSED deuterium mine is idle to the Syndicate and
+  // scores zero too (§1.4), so it contributes nothing here even before it is licensed —
+  // exactly the "no GP either" this slice adds. The system and the titanium mine are all the GP.
   const claims = [{
     claimId: 'c_home', ownerGuildId: 'g1', landmarkId: 'sys_0002',
     landmarkKind: 'system', claimedAtTick: 0, contested: false,
@@ -272,16 +392,37 @@ test('GP: a deuterium mine contributes 100 GP while unlicensed and 0 once licens
     claims,
   });
 
+  // Unlicensed: the deuterium mine already adds NOTHING — system + titanium mine only.
   const unlicensed = guildPoints(s, s.guilds[0]);
-  assert.equal(unlicensed, W_SYS + W_T1 + W_T1); // system + titanium mine + deuterium mine
+  assert.equal(unlicensed, W_SYS + W_T1);
 
+  // Licensing it changes GP by nothing — it was already zero either way.
   const licensed = applyAction(s, createLicenseDeuteriumMineAction({ guildId: 'g1', ventureId: 'vd' }));
   const after = guildPoints(licensed, licensed.guilds[0]);
-
-  // Exactly the deuterium mine's W_T1 has dropped; the system and the titanium mine are
-  // untouched (§1.4: a licensed deuterium mine is pure reputation, never size).
   assert.equal(after, W_SYS + W_T1);
-  assert.equal(unlicensed - after, W_T1);
+  assert.equal(unlicensed - after, 0);
+});
+
+test('RP: an unlicensed deuterium mine earns ZERO RP across a multi-cycle run (idle to the Syndicate)', () => {
+  // §1.4's "idle to the Syndicate" guarantee, stated explicitly: with no licence there is no
+  // signing bump, no windowed met/breach (a mine carries no windowed `licence`), and no
+  // per-cycle deuterium MET (that is gated on `isLicensedDeuteriumMine` in step 6). So across
+  // many cycle boundaries the venture never mints a `reputation` key and the guild total stays 0.
+  let s = createState({
+    windowN: WIN,
+    guilds: [{
+      id: 'g1', credits: 0, fuelHoard: 0,
+      ventures: [{ id: 'v1', ownerGuildId: 'g1', type: 'mining', systemId: 'sysA', resourceType: 'deuterium', productionRate: RATE }],
+    }],
+    reserve: { reserveLevel: 1000 },
+    syndicate: { ledger: 0 },
+  });
+  for (let i = 0; i < 5 * WIN; i += 1) s = tick(s);
+  assert.equal(s.guilds[0].ventures[0].reputation, undefined, 'no RP key is ever minted');
+  assert.equal(s.guilds[0].guildReputation, 0, 'the guild RP total stays zero');
+  assert.equal(guildPoints(s, s.guilds[0]), 0, 'GP is zero too — an unlicensed deuterium mine is neither size nor standing');
+  // And its deuterium really did accumulate guild-wide the whole time.
+  assert.equal(s.guilds[0].deuterium, RATE * 5 * WIN);
 });
 
 // --- 6. RP: the signing bump + per-cycle T4 accrual (slice 2) -------------------------

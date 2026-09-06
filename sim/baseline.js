@@ -125,6 +125,21 @@ function isLicensedDeuteriumMine(venture) {
   return !!(venture && venture.deuteriumLicence && venture.resourceType === DEUTERIUM);
 }
 
+// isDeuteriumMine(venture) -> true iff this venture is a deuterium mine, LICENSED OR NOT
+// (§1.4 "The Deuterium Cycle", fuel-supply-and-allocation.md). The broader sibling of
+// `isLicensedDeuteriumMine` above: it keys off the mined good alone, ignoring the licence.
+//
+// Two consumers ask it, and both apply to EVERY deuterium mine, not only the licensed one:
+//   - GP (sim/points.js): §1.4 rules that an unlicensed deuterium mine is "idle to the
+//     Syndicate — no GP, no RP", so the GP skip widens from the licensed predicate to this;
+//   - the production fork (sim/tick.js): an unlicensed deuterium mine routes its raw output
+//     to the guild-wide contraband store instead of a per-system stockpile (the B1 exemption,
+//     slice 1a). The licensed branch is checked FIRST there, so this only ever catches the
+//     unlicensed mine — but it names "any deuterium mine" honestly, keyed off the good.
+function isDeuteriumMine(venture) {
+  return !!(venture && venture.resourceType === DEUTERIUM);
+}
+
 // baselineOutputFor(venture) -> { good, units } | null
 //   `good`  — the good this venture produces (`producedGoodFor`, above)
 //   `units` — its fixed droidless baseline output of that good, in units/tick
@@ -194,5 +209,6 @@ const BASELINE_KEYS = Object.freeze({
 
 module.exports = {
   FIRST_CUT_BASELINE, MINE_BASELINE, REFINERY_BASELINE, BASELINE_KEYS,
-  producedGoodFor, baselineOutputFor, baselineUnitsForGood, isLicensedDeuteriumMine,
+  producedGoodFor, baselineOutputFor, baselineUnitsForGood,
+  isLicensedDeuteriumMine, isDeuteriumMine,
 };
