@@ -27,7 +27,7 @@ The pool holds no more than the deuterium someone mined.
 
 **⚠ SUPERSEDED IN PART 03-09-26 — see §1.4 (The Deuterium Cycle).** The lines below that call
 `deuterium` a *tier-1, tradeable* good, and that describe the legal path converting *"at the moment of
-commitment"*, are refined by §1.4: deuterium is a **special** good (its own FUEL tab, out of the tier
+commitment"*, are refined by §1.4: deuterium is a **special** good (its own DEUTERIUM tab, out of the tier
 system), is **priced but untradeable** (removed from the TRADE tab and the tier-1 production console),
 and the legal path is a **per-tick auto-sale**, not a discrete commit. The two-goods split and the
 two-paths / legality frame below still stand.
@@ -80,6 +80,15 @@ slice.
 - **Deferred, and decoupled from the fuel loop:** placing PGs needs a guild-seeding layer (nothing seats a
   bot guild at galaxy creation today — the galaxy boots empty) plus the non-Terran-home relaxation, so it is
   its **own later slice**. The fuel loop (pool + the back-end influx + issuance) needs **no PG at all**.
+- **RULED 06-09-26 — a storyteller REVEAL, not a runtime spawn.** Separate the geometry from the reveal:
+  bake a small pool of **hidden PG systems into the seed at generation** (Track G placement — non-Terran
+  oceanic, clear of starter systems), and let the **storyteller control only the REVEAL**. Never conjure
+  systems into a running galaxy — the seed geometry is immutable and runtime creation would fight the
+  determinism model. A guild “gets lucky” and discovers a PG when the storyteller decides. The **first
+  slice is pure information** — the storyteller drops a discovery (“a Producer Guild operating in
+  [system]”); what a guild can DO with it (raid, invest, conquer, wean) rides the territory / conquest /
+  investment systems that are Phase 3+ anyway. So PGs commit almost nothing now: **fixed geometry, ad-hoc
+  reveal, discovery-as-information first, interactions deferred.**
 
 *The original real-mining-PG design is kept below for the record; where it disagrees with the block above,
 the block above wins.*
@@ -134,13 +143,13 @@ normal tradeable good"; conversion "at the moment of commitment"), **this block 
 **Deuterium is special — not a tier-1 good.** Hoarding it is illegal, so it does not belong in the normal
 tier-1 system-production console, and it is **not tradeable**: a guild can **never** sell `deuterium` (or
 `deuterium_fuel`) to the Syndicate through the TRADE tab / the SELL–BUY machinery. It is **removed from the
-TRADE tab and from the tier-1 production console** and rehoused in its **own FUEL tab** in the System
+TRADE tab and from the tier-1 production console** and rehoused in its **own DEUTERIUM tab** in the System
 Manifest. Player-to-player open-market trade in deuterium is **deferred, leaning NO** (too public for
 contraband) — see §6 open questions.
 
 **Priced, but not hidden.** Deuterium keeps a **posted price** — the "market rate" the Syndicate pays,
 below — so it is untradeable, not unpriced. That price is **public**: a price + graph in the **Guild Hall**
-section, and again in the **FUEL tab**. Whether the posted price rides the existing commodity price engine
+section, and again in the **DEUTERIUM tab**. Whether the posted price rides the existing commodity price engine
 with deuterium fenced out of the trade UI, or a dedicated fuel-facing quote, is a build decision for the
 slice; the contract is only that the price exists and is shown.
 
@@ -191,6 +200,34 @@ drives the mid-cycle max-rise the bar is already wired for. Contraband deuterium
 laundered** into any galactic / public stockpile — that is what "cannot be added to galactic stockpiles"
 means. The §1.0 build wrinkle still stands (illegal refining is either a special recipe that outputs the
 fuel good, or its own action) — decide in the illegal-path slice.
+
+**The illegal path, made concrete — RULED 06-09-26 (the illegal-path slice).** The §1.0 build wrinkle is
+resolved and the storage / burn model pinned:
+
+- **Two illegal ventures, both flagged “idle to the Syndicate, running for the guild”** — each draws down
+  an asset, presents as **idle** in every Syndicate-facing view, and earns **zero GP and zero RP**:
+  - an **unlicensed deuterium mine** (on a deuterium node) → mines raw `deuterium` into the guild's store;
+  - an **unlicensed refinery** — a **factory asset on a settlement slot** running the special 1:1
+    `deuterium → deuterium_fuel` conversion at the factory's rate. This **resolves the wrinkle**:
+    `deuterium_fuel` gets its one producer — the illegal refinery — rather than joining the ordinary
+    recipe / tier system. Conversion is **guild-wide** (draws the guild's raw `deuterium`, adds to its
+    `deuterium_fuel`), not per-system.
+- **Three guild-wide quantities** (the B1 exemption): `deuterium` (raw, awaiting refine — shown in the
+  DEUTERIUM tab), `deuterium_fuel` (refined **contraband, burnable**), and the existing legal `fuelHoard`.
+  Raw `deuterium` with no refinery simply piles up, inert, until a refinery exists — a legitimate
+  intermediate state, not a trap.
+- **One fuel bar, two segments: blue = legal `fuelHoard`, red = contraband `deuterium_fuel`.** Route burn
+  draws **legal first, contraband second**, and the route-burn sufficiency gate counts legal + contraband
+  combined — so a guild leaning on illegal fuel watches its bar go red, the visible danger zone.
+- **Burn-legal-first makes contraband STICKY, by design.** A guild that still holds legal fuel never
+  touches its red, so illegal fuel **accumulates** — turning illegal mining into a **fuel-independence
+  hedge** (opt out of depending on the Syndicate for fuel) that grows a visible liability, drawable down
+  only by running legal fuel dry (and, later, fine-bait). “Pressure, not prohibition” on theme — the
+  intended tension, not an accident of the burn order.
+- **Never launderable** — neither raw `deuterium` nor `deuterium_fuel` can reach a public / galactic
+  stockpile or be sold; contraband is spent only by burning it yourself.
+- **Detection and fines stay in §7 (NOT built).** The red bar is a standing liability that nothing yet
+  punishes; the surveillance / fine system is its own later slice.
 
 **The trade-off, stated plainly.** *License it* → per-tick credits at market rate + maximum (T4) RP, but
 you never keep the fuel. *Refine it illegally* → you keep the fuel to burn yourself, but no pay, no
