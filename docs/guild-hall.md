@@ -25,15 +25,27 @@ stockpile bar spans the width beneath them.
 ### 2.1 Performance (top-left)
 
 A **10-cycle line of the guild's issuance modifier**, drawn green where it sits **above** the
-Syndicate's line (modifier > 1.0) and red where **below**. Beside it, two **vertical gauges**
-centred on the expected line (×1.00 always at centre): **Current** (the modifier that set this
-cycle's grant) and **Predicted** (where the guild sits *now* — what next boundary would grant
-if the cycle ended this instant). Each gauge fills from the centre to the marker — **green up,
-red down** — so a Predicted marker in the red is a plain warning that this cycle's actions are
-dropping the guild below its line.
+Syndicate's line (modifier > 1.0) and red where **below**. Beside it, three **vertical gauges**
+centred on ×1.00 (always at centre): **Current** (the modifier that set this cycle's grant),
+**Predicted** (where the guild sits *now* — the modifier next boundary would grant on if the
+cycle ended this instant), and **Fuel Δ** (the expected fuel-credit **change** next cycle). Each
+gauge fills from the centre to the marker — **green up, red down** — so a Predicted marker in the
+red is a plain warning that this cycle's actions are dropping the guild below its line.
 
-**Deliberately NOT shown: raw GP, RP, expected, or the gap.** Those are backend numbers the
-player doesn't reason in. The modifier gauge and the line carry the whole story graphically.
+**The Fuel Δ gauge** is the expected change in the guild's fuel-credit **entitlement** next
+cycle: `predicted-next entitlement ÷ this-cycle entitlement`, a ratio centred on ×1.00 that
+swings with the guild's **growth this cycle** (more GP or a lifted modifier → more entitlement →
+the ratio rises above ×1.00). It divides two entitlements, so the shared fuel price cancels — it
+measures the guild's own growth, **not** the market's price move (the absolute fuel-credit size
+and the price ticker are a separate later panel). It reuses the same gauge as Current/Predicted:
+centred on ×1.00, green up / red down, and **it prints the true `×N.NN`** even when the bar pins
+at the axis clamp (a big-growth cycle shows e.g. `×2.10` with the bar at the top — expected, not
+an error). Before the guild's first grant there is no "current" entitlement to divide from, so
+the gauge renders `—`, exactly as the Current gauge does then.
+
+**Deliberately NOT shown: raw GP, RP, expected, the gap, or any absolute fuel-credit size.**
+Those are backend numbers the player doesn't reason in. The modifier gauges, the Fuel Δ ratio and
+the line carry the whole story graphically.
 
 ### 2.2 Reputation sources (top-right)
 
@@ -106,6 +118,7 @@ row needed now ships (the A/B/C slice, 02-09-26).
 | Cycle / day / tick | calendar | LIVE |
 | Predicted modifier (gauge) | `guilds[].issuanceModifier` (recomputed on read = live) | LIVE |
 | Current modifier (gauge) | `guilds[].fuelGrant.modifier` — modifier stamped on the grant | BUILT (B) |
+| Fuel Δ ratio (gauge) | `guilds[].predictedGrant ÷ guilds[].fuelGrant.entitlement` | BUILT (D, derived) |
 | 10-cycle performance line | `guilds[].modifierHistory` — rolling per-guild modifier history | BUILT (C) |
 | RP total | `guilds[].guildReputation` | LIVE |
 | RP — Ventures | `guildReputation − foundingEndowment` | DERIVE |
@@ -148,6 +161,24 @@ strip (`commitment-scaffold.test.js`); the fuel loop's own numbers are unchanged
   `MODIFIER_HISTORY_N = 12` (≥ the 10 the panel draws, with a two-cycle headroom; recorded in the
   module and `docs/phase-1-tuning.md`). Exposed as `modifierHistory` (always emitted, `[]` when
   empty). Gives the **performance line**.
+- **Slice D — the expected-fuel-change gauge (`predictedGrant` + `fuelGrant.entitlement`).
+  ✅ BUILT 06-09-26.** The Standing panel's THIRD gauge (§2.1 Fuel Δ), added beside
+  Current/Predicted. Two small **additive** snapshot fields, one derived and one serialized:
+  - **`predictedGrant`** — the guild's LIVE fuel-credit entitlement, `grantFor(state, g)` =
+    `round(BASE_GRANT_PER_GP × GP × modifier)` (credits, at the reference price). DERIVED like
+    `guildPoints`/`issuanceModifier` (no stored counterpart, no serialized byte, no determinism
+    impact). The gauge's **numerator**.
+  - **`fuelGrant.entitlement`** — THIS cycle's entitlement, `grantFor` captured at the boundary
+    in `recordFuelGrant` beside the modifier that sized it (the same value `physicalGrantFor`
+    scaled by the price). SERIALIZED, so it appears only after a guild's first boundary (null
+    before), under the same `desired > 0` sparsity the record already uses. The **denominator**.
+
+  The client divides them (`predictedGrant ÷ fuelGrant.entitlement`) for the change ratio — a
+  ratio of two published fields, the one presentation derive this slice adds, the same sanctioned
+  move as the RP donut's subtraction. The client reads no constant and holds no engine number.
+  Because `entitlement` is serialized, the determinism goldens moved for a run that crosses a
+  boundary alone (the committed 40-tick run); proven the ONLY delta by an added strip that
+  recovers the pre-slice golden byte-for-byte. `predictedGrant` moves no golden (snapshot-only).
 - **RP-by-source** needs no engine change: Ventures = `guildReputation − foundingEndowment`,
   System holdings = `foundingEndowment` (a presentation subtraction, like the recorder's `gap`).
 - **The client panel — ✅ BUILT 02-09-26 (client-only, no engine/snapshot/`sim/` change).**

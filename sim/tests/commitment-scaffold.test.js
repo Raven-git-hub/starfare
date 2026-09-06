@@ -264,6 +264,25 @@ const GOLDEN_COMMITTED_WITH_GUILD_HALL = '6efcbecc2ba0c55d6933167e313ad28ce7e346
 const GOLDEN_UNLICENSED_WITH_PRICE_RING = '81c78851173cb82a7bf27d7bb152d292a3f7a709abbe95f9ee91cf76b55dd888';
 const GOLDEN_COMMITTED_WITH_PRICE_RING = 'a55a5efcaa11e6b743011d0c59f79d602dbe61f921fdcdfaebf7be0036068447';
 
+// ── THE EXPECTED-FUEL-CHANGE GAUGE (06-09-26 — docs/guild-hall.md §2.1, Slice D) ──
+//
+// SAME STORY AS THE GUILD HALL A/B/C SLICE: the COMMITTED run's FULL hash moved; every
+// stripped golden above, and every UNLICENSED golden, did NOT — and that split is the proof.
+// The slice adds ONE serialized key, `entitlement`, to the `lastFuelGrant` record (this
+// cycle's fuel-credit entitlement, `grantFor` at the boundary), stamped under the SAME
+// `desired > 0` sparsity the record already uses. (`predictedGrant` is snapshot-only — a
+// derived field — so it moves no golden at all.) Because it is an ADDED KEY, the ordinary
+// strip works: `withoutFuelEntitlement` peels it back out and `GOLDEN_COMMITTED_WITH_PRICE_RING`
+// returns byte-for-byte — this slice touched no grant, no hoard, no pool, no price, no window,
+// no reputation, only this one record field. The new full hash is pinned below.
+//
+// WHY THE COMMITTED RUN GAINED IT AND THE UNLICENSED ONE DID NOT is exactly as before: the
+// committed run crosses ten boundaries and is due a grant at each, so its record carries the
+// key; `sysState` leaves the unlicensed run on the 1,440-tick default, so its 40 ticks cross
+// NO boundary, no grant record exists, and there is nothing to gain — it stays byte-identical
+// (its guild carries no `lastFuelGrant` at all, asserted in the no-op test above).
+const GOLDEN_COMMITTED_WITH_FUEL_ENTITLEMENT = '5520e295ad77111c1557a162c07906b84f8c9372efe9bdbecfefebfd43476f23';
+
 // ── SLICE A′ — STAMP `fuelHoardAtCycleStart` AT FOUNDING (03-09-26 — docs/guild-hall.md §4) ──
 //
 // THE UNLICENSED RUN'S FULL HASH MOVED; THE COMMITTED RUN'S DID NOT — the mirror image of the
@@ -356,6 +375,20 @@ const withoutGuildHall = (state) => ({
 // proof it moved nothing else. Both the unlicensed and committed 40-tick runs fill the
 // ring to its RING_DEPTH (6) of the most recent posted values, deterministically.
 const withoutPriceRing = (state) => { const { priceRing, ...rest } = state; return rest; };
+// The state minus the expected-fuel-change gauge's serialized field (06-09-26, Slice D,
+// docs/guild-hall.md §2.1) — everything the hashes above covered before it. An ADDED key
+// INSIDE `lastFuelGrant`, so the ordinary strip works: per guild, drop `entitlement` from the
+// grant record while keeping the rest (a guild with no record is left untouched). Peel it and
+// GOLDEN_COMMITTED_WITH_PRICE_RING returns byte-for-byte — the proof it moved nothing else.
+// (`predictedGrant` is snapshot-only and never reaches serialized state, so nothing to strip.)
+const withoutFuelEntitlement = (state) => ({
+  ...state,
+  guilds: (state.guilds || []).map((g) => {
+    if (!g.lastFuelGrant) return g;
+    const { entitlement, ...grant } = g.lastFuelGrant;
+    return { ...g, lastFuelGrant: grant };
+  }),
+});
 
 test('NO-OP PROOF: an unlicensed run (no scaffold action) is byte-identical to pre-change HEAD', () => {
   let s = sysState([mine('t', 'titanium', 10, 0), mine('c', 'carbon_products', 10, 0), refinery('r', 'titanium_alloy', 2)]);
@@ -402,20 +435,24 @@ test('a committed run seeded via createVenture (not the action) is pinned, and n
   // delta to this run. `bare` composes that strip with each earlier one, exactly as before.
   // §8.1 (04-09-26): the always-on `priceRing` is the OUTERMOST strip now — `bare` folds it
   // in with the Guild Hall strip so every earlier committed golden returns byte-for-byte.
-  const bare = (x) => withoutPriceRing(withoutGuildHall(x));
-  assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(withoutHistory(s))))), GOLDEN_COMMITTED_WITH_PRICES, 'with the price ring, the Guild Hall fields, both history buffers and the controller state stripped, the committed run is pinned on its post-5b-ii bytes');
+  // SLICE D (06-09-26): `withoutFuelEntitlement` joins it as the outermost strip, so the new
+  // `lastFuelGrant.entitlement` key comes back out too and every earlier golden below holds.
+  const bare = (x) => withoutFuelEntitlement(withoutPriceRing(withoutGuildHall(x)));
+  assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(withoutHistory(s))))), GOLDEN_COMMITTED_WITH_PRICES, 'with the entitlement, price ring, the Guild Hall fields, both history buffers and the controller state stripped, the committed run is pinned on its post-5b-ii bytes');
   assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(s)))), GOLDEN_COMMITTED_WITH_HISTORY, 'and with the production history back in, the ONLY delta is priceHistory');
   assert.equal(hashState(bare(withoutControllerState(s))), GOLDEN_COMMITTED_WITH_PRICE_HISTORY, 'and with the price-history rings back in, the deltas are the two reserve fields');
   assert.equal(hashState(bare(withoutAvgDraw(s))), GOLDEN_COMMITTED_WITH_FUEL_PRICE, 'with the price back in, the remaining delta is reserve.avgDraw');
   assert.equal(hashState(bare(s)), GOLDEN_COMMITTED_WITH_CONTROLLER, 'and with the controller state back in, the ONLY delta from the pre-Guild-Hall engine is the three §4 fields');
-  assert.equal(hashState(withoutPriceRing(s)), GOLDEN_COMMITTED_WITH_GUILD_HALL, 'and with the Guild Hall fields back in, stripping only the price ring returns the pre-quote-lock bytes');
-  assert.equal(hashState(s), GOLDEN_COMMITTED_WITH_PRICE_RING, 'and the full state, price ring included, is pinned');
+  assert.equal(hashState(withoutFuelEntitlement(withoutPriceRing(s))), GOLDEN_COMMITTED_WITH_GUILD_HALL, 'and with the Guild Hall fields back in, stripping the price ring and the entitlement returns the pre-quote-lock bytes');
+  assert.equal(hashState(withoutFuelEntitlement(s)), GOLDEN_COMMITTED_WITH_PRICE_RING, 'and with the price ring back in, stripping only the entitlement returns the pre-Slice-D bytes');
+  assert.equal(hashState(s), GOLDEN_COMMITTED_WITH_FUEL_ENTITLEMENT, 'and the full state, the Slice D entitlement included, is pinned');
   // The strip is only a proof if there was really something to strip: the committed run is due
   // a grant at each of its ten boundaries, so its guild really did gain all three §4 fields.
   const gh = s.guilds[0];
   assert.equal(typeof gh.fuelHoardAtCycleStart, 'number', 'Slice A: the start-of-cycle hoard was stamped');
   assert.equal(typeof gh.lastFuelGrant.modifier, 'number', 'Slice B: the grant carries the modifier that drove it');
   assert.equal(gh.modifierHistory.length, 10, 'Slice C: one modifier sample per boundary, ten boundaries');
+  assert.equal(typeof gh.lastFuelGrant.entitlement, 'number', 'Slice D: the grant carries this cycle\'s fuel-credit entitlement');
   // ⚠ WHY THESE THREE MOVED, stated rather than left to a re-pinned number. This run crosses
   // ten cycle boundaries, so the controller ran ten times and posted a new price each time —
   // every grant after the first is a different number, and the pool followed a different

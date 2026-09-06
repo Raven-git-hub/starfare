@@ -218,12 +218,16 @@ test('a grant TRANSFERS: the hoard rises by exactly the grant, the pool falls by
   assert.equal(s.audit.totalConsumed, 0);
   assertConserved(s, 'after one grant');
 
-  // The grant record now also carries the modifier that DROVE it (Guild Hall Slice B) —
-  // `issuanceModifier` at the boundary. Reputation does not move for an unlicensed guild, so
-  // it is the same value read here after the boundary as the one stamped during it.
+  // The grant record now also carries the modifier that DROVE it (Guild Hall Slice B) and
+  // this cycle's fuel-credit `entitlement` (the expected-fuel-change gauge, Slice D) —
+  // `issuanceModifier` and `grantFor` at the boundary. Reputation does not move for an
+  // unlicensed guild, so both are the same values read here after the boundary as the ones
+  // stamped during it. (At the seed price the entitlement equals `desired`, since the
+  // price factor is exactly ×1.0 on the run's first boundary.)
   const modifier = issuanceModifier(s, g);
-  assert.deepEqual(g.lastFuelGrant, { tick: N, granted: due, desired: due, modifier },
-    'and the grant is on the record, due and received alike, with the modifier that sized it');
+  const entitlement = grantFor(s, g);
+  assert.deepEqual(g.lastFuelGrant, { tick: N, granted: due, desired: due, modifier, entitlement },
+    'and the grant is on the record, due and received alike, with the modifier and entitlement that sized it');
 });
 
 test('several guilds are each granted their OWN size × their OWN standing', () => {
@@ -535,4 +539,78 @@ test('the snapshot flags a RATIONED grant, so the crunch is visible', () => {
 test('the snapshot reports null for a guild that has never been due anything', () => {
   const snap = buildSnapshot(galaxy([{ id: 'g1' }], 5000));
   assert.equal(snap.guilds[0].fuelGrant, null, 'a null, not an absence');
+});
+
+// --- the expected-fuel-change gauge (docs/guild-hall.md §2.1, Slice D) -------------
+//
+// The Standing panel's third gauge is a ratio of two published fuel-credit ENTITLEMENTS:
+// `predictedGrant` (the guild's LIVE entitlement, `grantFor` where it stands now) over
+// `fuelGrant.entitlement` (this cycle's, stamped at the boundary). predictedGrant is derived
+// (snapshot-only, no golden); entitlement rides the serialized grant record.
+
+test('predictedGrant equals grantFor = round(BASE_GRANT_PER_GP × GP × modifier)', () => {
+  // GP 300 (one system 200 + one tier-1 mine 100), RP 300 = expected ⇒ modifier exactly 1.0.
+  const s = galaxy([{ id: 'g1', systems: 1, mines: 1, rp: 300 }], 5000);
+  const g = s.guilds[0];
+  const row = buildSnapshot(s).guilds[0];
+
+  // The gauge's numerator is the engine's own entitlement — not re-derived in the browser.
+  assert.equal(row.predictedGrant, grantFor(s, g), 'predictedGrant IS grantFor, called not copied');
+  // …and that is the ruled formula, pinned independently of grantFor's internals.
+  const expected = Math.round(BASE_GRANT_PER_GP * guildPoints(s, g) * issuanceModifier(s, g));
+  assert.equal(row.predictedGrant, expected, 'round(BASE_GRANT_PER_GP × GP × modifier)');
+  assert.equal(row.predictedGrant, 90, 'GP 300 × modifier 1.0 × 0.3 = 90');
+  assert.ok(Number.isInteger(row.predictedGrant), 'an integer credit — grantFor rounds (§15.2)');
+});
+
+test('predictedGrant RISES when the guild grows — more GP, or a lifted modifier', () => {
+  // Growth by GP, modifier held at 1.0 (RP kept equal to expected in both): GP 300 → 400.
+  const small = buildSnapshot(galaxy([{ id: 'g1', systems: 1, mines: 1, rp: 300 }], 5000)).guilds[0];
+  const bigger = buildSnapshot(galaxy([{ id: 'g1', systems: 1, mines: 2, rp: 400 }], 5000)).guilds[0];
+  assert.equal(small.predictedGrant, 90, 'GP 300 at modifier 1.0');
+  assert.equal(bigger.predictedGrant, 120, 'GP 400 at modifier 1.0 — more Points, more entitlement');
+  assert.ok(bigger.predictedGrant > small.predictedGrant, 'adding GP raises the entitlement');
+
+  // Growth by modifier, GP held at 300 (RP 300 → 360 lifts the modifier 1.0 → 1.3).
+  const par = buildSnapshot(galaxy([{ id: 'g1', systems: 1, mines: 1, rp: 300 }], 5000)).guilds[0];
+  const above = buildSnapshot(galaxy([{ id: 'g1', systems: 1, mines: 1, rp: 360 }], 5000)).guilds[0];
+  assert.equal(above.predictedGrant, 117, 'GP 300 × modifier 1.3 × 0.3 = 117');
+  assert.ok(above.predictedGrant > par.predictedGrant, 'lifting the modifier raises the entitlement');
+});
+
+test('the grant record carries this cycle\'s entitlement after a boundary', () => {
+  const s = runToBoundary(galaxy([{ id: 'g1', systems: 1, mines: 1, rp: 300 }], 5000));
+  const g = s.guilds[0];
+  // Stamped on the serialized record, equal to grantFor at the boundary (an unlicensed guild's
+  // Points and reputation do not move across a boundary, so the after-the-fact read matches).
+  assert.equal(g.lastFuelGrant.entitlement, grantFor(s, g), 'entitlement = grantFor at the boundary');
+  assert.ok(Number.isInteger(g.lastFuelGrant.entitlement) && g.lastFuelGrant.entitlement > 0);
+  // …and echoed onto the snapshot's grant record.
+  assert.equal(buildSnapshot(s).guilds[0].fuelGrant.entitlement, g.lastFuelGrant.entitlement);
+  assert.deepEqual(checkInvariants(s, s.tick), [], 'invariant-clean, entitlement included');
+});
+
+test('the gauge ratio is ≈ 1 idle across a boundary, and > 1 after this cycle\'s growth', () => {
+  // IDLE: an unlicensed guild neither gains GP nor RP across a boundary, so next cycle's
+  // entitlement equals this cycle's — the ratio is exactly 1.0 (the gauge sits at centre).
+  let s = runToBoundary(galaxy([{ id: 'g1', systems: 1, mines: 1, rp: 300 }], 5000));
+  let row = buildSnapshot(s).guilds[0];
+  assert.equal(row.predictedGrant, row.fuelGrant.entitlement, 'idle: next entitlement == this cycle\'s');
+  assert.equal(row.predictedGrant / row.fuelGrant.entitlement, 1, 'so the ratio is exactly ×1.00');
+
+  // GROWTH: lift reputation mid-cycle (no new boundary), keeping the guild's own sum exact.
+  // predictedGrant now reads the higher modifier while the stamped entitlement is unmoved ⇒
+  // the ratio climbs above 1 — the gauge swings green, "this cycle is growing your fuel".
+  s.guilds[0].ventures[0].reputation += 60;
+  s.guilds[0].guildReputation += 60;
+  row = buildSnapshot(s).guilds[0];
+  assert.ok(row.predictedGrant > row.fuelGrant.entitlement, 'grown: next entitlement exceeds this cycle\'s');
+  assert.ok(row.predictedGrant / row.fuelGrant.entitlement > 1, 'so the ratio is above ×1.00');
+  assert.deepEqual(checkInvariants(s, s.tick), [], 'and the grown state is still invariant-clean');
+});
+
+test('predictedGrant is 0 for a holdings-less guild, and its entitlement is null (no grant yet)', () => {
+  const row = buildSnapshot(galaxy([{ id: 'g1' }], 5000)).guilds[0];
+  assert.equal(row.predictedGrant, 0, 'GP 0 ⇒ entitlement 0, the ruled empty-guild answer');
+  assert.equal(row.fuelGrant, null, 'and no grant record, so no "current" to divide from — the gauge reads —');
 });

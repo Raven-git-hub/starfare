@@ -400,9 +400,11 @@ function checkProductionHistory(state) {
 }
 
 // The fuel grant record (guild.lastFuelGrant, sim/tick.js step 6) — what a guild was
-// granted at the last cycle boundary, what it was DUE, and (the Guild Hall slice, §4 B) the
-// modifier that DROVE it. `tick`, `granted` and `desired` are integer fuel (§15.2; granted
-// and desired are ≥ 0 counts). `modifier` is the SANCTIONED FLOAT the issuance model runs on
+// granted at the last cycle boundary, what it was DUE, (the Guild Hall slice, §4 B) the
+// modifier that DROVE it, and (the expected-fuel-change gauge, guild-hall.md §2.1) this
+// cycle's fuel-credit `entitlement`. `tick`, `granted`, `desired` and `entitlement` are
+// integer fuel/credits (§15.2; granted and desired are ≥ 0 counts, entitlement a ≥ 0 credit).
+// `modifier` is the SANCTIONED FLOAT the issuance model runs on
 // — it SCALES a grant rather than counting fuel, so the integer sweep skips it and it gets
 // its own tripwire here, exactly as the price and the batch carries do. It is checked FINITE
 // and > 0, not against the [ISSUANCE_FLOOR, ISSUANCE_CEIL] band: a 0 or negative modifier
@@ -420,6 +422,11 @@ function checkFuelGrant(state) {
     checkField(out, rec.tick, `${where}.tick`);
     checkField(out, rec.granted, `${where}.granted`);
     checkField(out, rec.desired, `${where}.desired`);
+    // `entitlement` (the expected-fuel-change gauge, docs/guild-hall.md §2.1) is this cycle's
+    // fuel-credit entitlement — an integer credit ≥ 0 (`grantFor` rounds; §15.2), on the same
+    // footing as `granted`/`desired`. A pre-slice record with no `entitlement` key is legal
+    // and skips only this field's check, exactly as `modifier` does below.
+    if (rec.entitlement !== undefined) checkField(out, rec.entitlement, `${where}.entitlement`);
     if (rec.modifier !== undefined) {
       const m = rec.modifier;
       if (typeof m !== 'number' || !Number.isFinite(m) || m <= 0) {

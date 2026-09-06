@@ -40,7 +40,7 @@ const {
 } = require('./licence.js');
 const { producedGoodFor, isLicensedDeuteriumMine } = require('./baseline.js');
 const {
-  DEUTERIUM_INFLUX_PER_CYCLE, physicalGrantFor, rationGrants,
+  DEUTERIUM_INFLUX_PER_CYCLE, grantFor, physicalGrantFor, rationGrants,
   nextAvgDraw, nextFuelPrice,
 } = require('./issuance.js');
 const { issuanceModifier } = require('./meanline.js');
@@ -707,8 +707,17 @@ function stepArrivals(state, _actions) {
 // (invariant 5): the modifier is a function of the guild's Points and reputation AT THIS
 // boundary, and `issuanceModifier` on a later tick reads a moved reputation, so the value
 // that priced this grant is momentary and lives nowhere else once the boundary passes.
-function recordFuelGrant(guild, tick, granted, desired, modifier) {
-  guild.lastFuelGrant = { tick, granted, desired, modifier };
+//
+// `entitlement` is THIS CYCLE'S fuel-credit entitlement — `grantFor(state, g)`, the
+// price-INDEPENDENT `round(BASE_GRANT_PER_GP × GP × modifier)` that `physicalGrantFor`
+// scaled by the price to size `desired` (the expected-fuel-change gauge, docs/guild-hall.md
+// §2.1). It rides this record for the same invariant-5 reason the others do: it is a
+// function of the guild's Points and reputation AT THIS boundary, and the panel divides
+// NEXT cycle's live entitlement by this one to draw the change ratio — so the "current"
+// half of that ratio is momentary and must be captured here or it is gone. An integer
+// credit (§15.2; `grantFor` rounds), like `granted`/`desired`.
+function recordFuelGrant(guild, tick, granted, desired, modifier, entitlement) {
+  guild.lastFuelGrant = { tick, granted, desired, modifier, entitlement };
 }
 
 // Step 6 — baseline allocation: THE SYNDICATE'S PER-CYCLE ALLOCATIONS.
@@ -827,13 +836,21 @@ function stepBaselineAllocation(state, _actions) {
       // size `desired[i]`), so it is read ONCE here and handed to all three consumers; the
       // stored value can never disagree with the one that priced the grant.
       const modifier = issuanceModifier(state, g);
+      // This cycle's fuel-credit entitlement — `grantFor` = `round(BASE_GRANT_PER_GP × GP ×
+      // modifier)`, the price-INDEPENDENT number `physicalGrantFor` scaled by the price to
+      // size `desired[i]` above. Read here beside the modifier that sizes it and stamped on
+      // the grant record: it is the "current" half of the expected-fuel-change ratio the
+      // Standing panel's third gauge divides NEXT cycle's live entitlement by
+      // (docs/guild-hall.md §2.1). An integer credit — `grantFor` rounds (§15.2).
+      const entitlement = grantFor(state, g);
       // Slice A — the START-OF-CYCLE hoard reference: the hoard POST-grant, before this
       // cycle's usage. `g.fuelHoard` has already taken this cycle's grant above, so this is
       // the stockpile bar's max and the datum the used-this-cycle gap is measured from
       // (docs/guild-hall.md §2.3). An integer quantity of fuel (§15.2), like `fuelHoard`.
       g.fuelHoardAtCycleStart = g.fuelHoard;
-      // Slice B — the grant modifier, stamped onto the grant record (the panel's Current).
-      recordFuelGrant(g, state.tick + 1, granted[i], desired[i], modifier);
+      // Slice B — the grant modifier, stamped onto the grant record (the panel's Current),
+      // now beside this cycle's fuel-credit entitlement (the fuel-change gauge's divisor).
+      recordFuelGrant(g, state.tick + 1, granted[i], desired[i], modifier, entitlement);
       // Slice C — one sample per cycle into the rolling per-guild modifier history (the
       // panel's Performance line). Co-located with the grant, so the cadence is automatic.
       pushModifierSample(g, modifier);

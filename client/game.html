@@ -892,7 +892,10 @@ select.field{appearance:none; cursor:pointer;}
 #tp-guild .gh-topg{align-items:stretch;}
 #tp-guild .gh-topg > .gh-card{display:flex; flex-direction:column;}
 #tp-guild .gh-topg > .gh-card > .gh-cbody{display:flex; flex-direction:column; flex:1; min-height:0;}
-#tp-guild .gh-perfrow{display:grid; grid-template-columns:1fr 54px 54px; gap:6px; align-items:stretch; flex:1; min-height:0; margin-top:2px;}
+/* THREE gauges now (Current | Predicted | Fuel Δ), so the row carries a third fixed track
+   and the line column (1fr) absorbs the difference. The gauge svg is width:100% (below) so
+   each fills its slightly-narrower track rather than overflowing a fixed width. */
+#tp-guild .gh-perfrow{display:grid; grid-template-columns:1fr 48px 48px 48px; gap:6px; align-items:stretch; flex:1; min-height:0; margin-top:2px;}
 #tp-guild .gh-perfwrap{position:relative; display:flex; flex-direction:column; min-height:0;}
 #tp-guild .gh-perfsvg{width:100%; flex:1; height:auto; min-height:70px; display:block;}
 #tp-guild .gh-perfline{fill:none; stroke:var(--gh-ink); stroke-width:2; vector-effect:non-scaling-stroke;}
@@ -901,7 +904,7 @@ select.field{appearance:none; cursor:pointer;}
 #tp-guild .gh-perfempty{flex:1; display:flex; align-items:center; justify-content:center; text-align:center; color:var(--gh-ink4); font-size:11px; line-height:1.6; letter-spacing:.04em; padding:12px; min-height:70px;}
 #tp-guild .gh-vg{display:flex; flex-direction:column; align-items:center; min-height:0;}
 #tp-guild .gh-vgh{font-size:9px; letter-spacing:.13em; text-transform:uppercase; color:var(--gh-ink3); margin-bottom:4px;}
-#tp-guild .gh-vgsvg{width:54px; flex:1; height:auto; min-height:90px; display:block;}
+#tp-guild .gh-vgsvg{width:100%; flex:1; height:auto; min-height:90px; display:block;}
 #tp-guild .gh-vgtrack{fill:rgba(232,223,200,.05); stroke:var(--gh-line2);}
 #tp-guild .gh-vgctr{stroke:var(--gh-amber); stroke-width:1.5;}
 #tp-guild .gh-vgv{font-family:var(--gh-mono); font-size:15px; font-weight:600; margin-top:3px; line-height:1;}
@@ -5203,6 +5206,15 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var current = (me && me.fuelGrant && me.fuelGrant.modifier != null) ? me.fuelGrant.modifier : null;
     var predicted = (me && typeof me.issuanceModifier === 'number') ? me.issuanceModifier : null;
 
+    // Fuel Δ gauge ← next-cycle entitlement ÷ this-cycle entitlement (docs/guild-hall.md §2.1).
+    // Both are published fuel-credit entitlements; dividing them is the one presentation derive
+    // this gauge adds — the same sanctioned two-field move as the RP donut's subtraction, and
+    // the client still holds no engine number. `cur` is null before the first grant (no cycle
+    // to divide from), so the gauge renders `—` exactly as the Current gauge does then.
+    var cur = (me && me.fuelGrant && me.fuelGrant.entitlement != null) ? me.fuelGrant.entitlement : null;
+    var nxt = (me && me.predictedGrant != null) ? me.predictedGrant : null;
+    var fuelChange = (cur != null && cur > 0 && nxt != null) ? (nxt / cur) : null;
+
     // Reputation donut ← guildReputation split into Ventures (rep − endowment) and System
     // holdings (the founding endowment). The subtraction is presentation on two exposed
     // fields (§3, the sanctioned DERIVE), not an engine number. Deuterium / Transport /
@@ -5236,6 +5248,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       +       '<div class="gh-perfwrap"><div class="gh-vgh" style="visibility:hidden">&middot;</div>'+perf+'<div class="gh-perfx"><span>10 ago</span><span>now</span></div></div>'
       +       ghVgauge(current, 'Current', '')
       +       ghVgauge(predicted, 'Predicted', '')
+      +       ghVgauge(fuelChange, 'Fuel &Delta;', '')
       +     '</div>'
       +   '</div></div>'
       +   '<div class="gh-card"><div class="gh-cbody"><div class="gh-minihd">Reputation sources</div>'

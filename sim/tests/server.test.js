@@ -474,6 +474,15 @@ test('the served Guild Hall panel\'s mirrored gauge axis still matches the engin
   // the SVG drew against hardcoded bounds that no tripwire guards.
   assert.match(html, /var lo=GH_FLOOR, hi=GH_CEIL/,
     'the gauge helpers must read the mirrored axis constants, not a hardcoded range');
+
+  // The expected-fuel-change gauge (docs/guild-hall.md §2.1, Slice D) — the panel's THIRD
+  // gauge, beside Current/Predicted. It reuses the same `ghVgauge` (so the axis tripwire
+  // above already guards its appearance); this pins that the served panel actually draws it,
+  // fed the `nxt ÷ cur` ratio of two published entitlements and nothing else.
+  assert.match(html, /ghVgauge\(fuelChange, 'Fuel &Delta;'/,
+    'the Standing panel must serve the third Fuel Δ gauge');
+  assert.match(html, /fuelChange = \(cur != null && cur > 0 && nxt != null\) \? \(nxt \/ cur\) : null/,
+    'the Fuel Δ value must be the ratio of two published entitlements (the one sanctioned derive)');
 });
 
 // --- the MEAN LINE, per guild (slice 4, 31-08-26) ---------------------------------

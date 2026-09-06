@@ -28,7 +28,7 @@
 const { computeGalacticSupply } = require('./supply.js');
 const { REFERENCE_FUEL_PRICE, routeFuelCost, fuelValue } = require('./fuel.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
-const { targetReserve, DEUTERIUM_INFLUX_PER_CYCLE } = require('./issuance.js');
+const { grantFor, targetReserve, DEUTERIUM_INFLUX_PER_CYCLE } = require('./issuance.js');
 const { heldSystemIds } = require('./claims.js');
 const { guildPoints } = require('./points.js');
 const { expectedReputation, issuanceModifier } = require('./meanline.js');
@@ -347,6 +347,20 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 //     guild with none), the same courtesy `priceHistory` extends a reader — unlike the STATE
 //     field, which is omitted until the first sample so a young galaxy hashes byte-identically
 //     to pre-slice.
+// (06-09-26, the expected-fuel-change gauge — docs/guild-hall.md §2.1): the Standing panel's
+// THIRD gauge (a fuel-credit change ratio beside Current/Predicted). ADDITIVE, and NO schema
+// bump: nothing existing changed shape, so every current reader keeps working and an older one
+// ignores the new keys — the same additive call the Guild Hall A/B/C fields above each made.
+//   - each guild row gains `predictedGrant` — the guild's LIVE fuel-credit entitlement
+//     (`grantFor` = `round(BASE_GRANT_PER_GP × GP × modifier)` where it stands now, in credits
+//     at the reference price). DERIVED like `guildPoints`/`issuanceModifier`: no stored
+//     counterpart, no serialized byte, no determinism hash. It is the NUMERATOR of the gauge's
+//     ratio.
+//   - each guild's `fuelGrant` gains `entitlement` — THIS cycle's stamped entitlement, ECHOED
+//     off `lastFuelGrant.entitlement`. It is the DENOMINATOR. The client divides the two
+//     (`predictedGrant ÷ fuelGrant.entitlement`) for the change ratio — the sanctioned
+//     two-field derive, like the RP donut's subtraction. Unlike `predictedGrant` this rides a
+//     serialized record, so it appears only after a guild's first boundary (null before).
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -371,7 +385,9 @@ const SNAPSHOT_SCHEMA = 7;
 //                 foundingEndowment,                  // of which granted at founding
 //                 guildPoints,                                  // GP, DERIVED per read
 //                 expectedReputation, issuanceModifier,        // the mean line, DERIVED
-//                 fuelGrant: { tick, thisTick, granted, desired, rationed, modifier } | null,
+//                 predictedGrant,                    // live fuel-credit entitlement, DERIVED
+//                 fuelGrant: { tick, thisTick, granted, desired, rationed, modifier,
+//                              entitlement } | null,           // entitlement: this cycle's, echoed
 //                 fuelCost: { systemId: { fuelBurn, creditCost, travelTicks } }, // held systems, sorted
 //                 syndicateSale: { tick, thisTick, credited, goods } | null, // Slice 3a
 //                 licenceFee: { tick, thisTick, charged, ventures } | null,   // Slice 3b-iii
@@ -558,6 +574,20 @@ function buildSnapshot(state) {
       // holding nothing is the ruled empty-guild guard (§3), not a missing value.
       expectedReputation: expectedReputation(state, g),
       issuanceModifier: issuanceModifier(state, g),
+      // predictedGrant: this guild's LIVE fuel-credit entitlement — `grantFor` =
+      // `round(BASE_GRANT_PER_GP × GP × modifier)` at where the guild stands RIGHT NOW, i.e.
+      // what the next boundary would grant it (in credits, at the reference price) if the
+      // cycle ended this instant. The expected-fuel-change gauge (docs/guild-hall.md §2.1)
+      // divides this by `fuelGrant.entitlement` (this cycle's stamped entitlement) to draw a
+      // change ratio centred on ×1.00 — the one presentation derive that slice adds.
+      //
+      // DERIVED like `guildPoints`/`issuanceModifier` beside it: a pure function of holdings
+      // and reputation already in state, no stored counterpart, no serialized byte, no
+      // determinism hash. NOT `physicalGrantFor` — the gauge is a ratio of ENTITLEMENTS
+      // (price-independent), so the shared price cancels and the ratio measures the guild's
+      // GROWTH this cycle, not the market's price move. An integer credit — `grantFor` rounds
+      // (§15.2). A holdings-less guild reads 0 (GP 0), the ruled empty-guild answer.
+      predictedGrant: grantFor(state, g),
       // What the Syndicate GRANTED this guild at the last cycle boundary (fuel slice 5a,
       // docs/fuel-supply-and-allocation.md §2.1) — what it was DUE (`desired`, its size ×
       // its modifier) and what it actually RECEIVED after rationing. `thisTick` is the
@@ -593,6 +623,16 @@ function buildSnapshot(state) {
             // live one. Reported as its 0-safe value when a pre-slice record carries no
             // modifier (`?? null`); a real record always has one.
             modifier: g.lastFuelGrant.modifier == null ? null : g.lastFuelGrant.modifier,
+            // This cycle's fuel-credit ENTITLEMENT (the expected-fuel-change gauge,
+            // docs/guild-hall.md §2.1) — `grantFor` at THIS boundary, the price-independent
+            // number `desired` was scaled from. ECHOED off the stored record, never
+            // recomputed here: the live `predictedGrant` beside this in the row is NEXT
+            // cycle's entitlement, and the panel divides the two (nxt ÷ cur) for the change
+            // ratio, the same sanctioned two-field derive the RP donut's subtraction is. The
+            // client renders `—` before the first grant (no `cur` to divide from), exactly as
+            // the Current gauge already does. Reported as its 0-safe value when a pre-slice
+            // record carries no entitlement (`?? null`); a real record always has one.
+            entitlement: g.lastFuelGrant.entitlement == null ? null : g.lastFuelGrant.entitlement,
           }
         : null,
       // The rolling per-guild ISSUANCE-MODIFIER history (Guild Hall Slice C,
