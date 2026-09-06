@@ -20,7 +20,7 @@ const { foundingEndowmentFor } = require('./meanline.js');
 const { grantFor } = require('./issuance.js');
 const { guildHolds } = require('./claims.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
-const { GUILD_STARTING_FUEL, routeFuelCost } = require('./fuel.js');
+const { GUILD_STARTING_FUEL, routeFuelCost, burnFuel } = require('./fuel.js');
 const {
   STARTER_MINERS, STARTER_FACTORIES, starterAssetSpecs, assetKindForVentureType,
   deployedAssetIds,
@@ -245,6 +245,24 @@ function createLicenseDeuteriumMineAction({ guildId, ventureId }) {
   if (guildId === undefined) throw new Error('createLicenseDeuteriumMineAction: guildId is required');
   if (ventureId === undefined) throw new Error('createLicenseDeuteriumMineAction: ventureId is required');
   return { type: 'licenseDeuteriumMine', guildId, ventureId };
+}
+
+// establishDeuteriumRefinery: seat a new ILLEGAL DEUTERIUM REFINERY — a factory venture on a
+// settlement slot that runs the special 1:1 `deuterium → deuterium_fuel` conversion guild-wide
+// (§1.4 "The illegal path, made concrete", slice 1b). It mirrors `establishVenture` for a
+// factory — it NAMES the idle factory asset it occupies (Gate 2) and a settlement slot the
+// guild holds — but takes NO recipeId: there is no recipe, the conversion is a dedicated tick
+// step. There is no legal guild refinery (the Syndicate's legal conversion is the abstract pool
+// mint), so a guild deuterium refinery is inherently illegal — no licence, no equity, zero GP,
+// zero RP. `productionRate` is the factory's per-tick conversion rate (operator-supplied, as on
+// establishVenture — refinery throughput is unruled). Moves no credits or fuel.
+function createEstablishDeuteriumRefineryAction({ guildId, ventureId, siteId, assetId, productionRate }) {
+  if (guildId === undefined) throw new Error('createEstablishDeuteriumRefineryAction: guildId is required');
+  if (ventureId === undefined) throw new Error('createEstablishDeuteriumRefineryAction: ventureId is required');
+  if (siteId === undefined) throw new Error('createEstablishDeuteriumRefineryAction: siteId is required');
+  if (assetId === undefined) throw new Error('createEstablishDeuteriumRefineryAction: assetId is required');
+  if (productionRate === undefined) throw new Error('createEstablishDeuteriumRefineryAction: productionRate is required');
+  return { type: 'establishDeuteriumRefinery', guildId, ventureId, siteId, assetId, productionRate };
 }
 
 // setWindowN: set the single engine-wide accrual window length `state.windowN`. The
@@ -755,6 +773,64 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'establishDeuteriumRefinery') {
+    // An illegal deuterium refinery is a FACTORY venture on a settlement slot (§1.4 slice 1b),
+    // so this mirrors establishVenture's refining checks — minus the recipe (there is none) and
+    // plus a factory asset. REFUSE, never clamp, throughout.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (typeof action.ventureId !== 'string' || action.ventureId.length === 0) {
+      return { valid: false, reason: 'ventureId must be a non-empty string' };
+    }
+    if (findVenture(state, action.ventureId)) {
+      return { valid: false, reason: `a venture with id ${JSON.stringify(action.ventureId)} already exists` };
+    }
+    if (typeof action.siteId !== 'string' || action.siteId.length === 0) {
+      return { valid: false, reason: 'siteId must be a non-empty string' };
+    }
+    const site = getSite(action.siteId);
+    if (!site) {
+      return { valid: false, reason: `site ${JSON.stringify(action.siteId)} does not exist in the seed` };
+    }
+    // A refinery is a factory — it sits on a SETTLEMENT SLOT, exactly like a refining venture.
+    if (site.kind !== 'settlement') {
+      return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is a ${site.kind} site, not a settlement slot (a deuterium refinery is a factory on a settlement slot)` };
+    }
+    const occupant = siteOccupant(state, action.siteId);
+    if (occupant) {
+      return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is already occupied by venture ${JSON.stringify(occupant.id)}` };
+    }
+    // Deploy only into a system you hold (§4), the same gate establishVenture uses.
+    if (!guildHolds(state, action.guildId, site.systemId)) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} does not hold system ${JSON.stringify(site.systemId)} — a venture may only be deployed in a system you hold (§4)` };
+    }
+    if (typeof action.productionRate !== 'number' || !Number.isInteger(action.productionRate) || action.productionRate <= 0) {
+      return { valid: false, reason: 'productionRate must be a positive integer (§15.2)' };
+    }
+    // GATE 2 — the deploy NAMES the machine, and it must be an IDLE FACTORY in this guild's
+    // inventory (the refinery is a factory venture, `assetKindForVentureType('refining')`). The
+    // same four ordered refusals establishVenture uses, so the player learns WHICH way the id
+    // was wrong.
+    const kind = assetKindForVentureType('refining');
+    if (typeof action.assetId !== 'string' || action.assetId.length === 0) {
+      return { valid: false, reason: 'assetId must be a non-empty string' };
+    }
+    const asset = (guild.assets || []).find((a) => a.id === action.assetId);
+    if (!asset) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no asset ${JSON.stringify(action.assetId)}` };
+    }
+    const heldBy = deployedAssetIds(guild).get(action.assetId);
+    if (heldBy !== undefined) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is already deployed to venture ${JSON.stringify(heldBy)}` };
+    }
+    if (asset.kind !== kind) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is a ${asset.kind}; a deuterium refinery needs a ${kind} (§4)` };
+    }
+    return { valid: true };
+  }
+
   if (action.type === 'sellToSyndicate') {
     const guild = findGuild(state, action.guildId);
     if (!guild) {
@@ -836,8 +912,13 @@ function validateAction(state, action) {
     for (const alloc of action.allocations) {
       totalBurn += routeFuelCost(alloc.systemId).fuelBurn;
     }
-    if (guild.fuelHoard < totalBurn) {
-      return { valid: false, reason: `guild ${guild.id} holds ${guild.fuelHoard} fuel, cannot burn ${totalBurn} shipping this basket to the Syndicate — insufficient fuel: need ${totalBurn}, have ${guild.fuelHoard} (fuel-supply-and-allocation.md §8)` };
+    // COMBINED AVAILABILITY (§1.4 slice 1b): route burn spends legal `fuelHoard` first and
+    // contraband `deuteriumFuel` second (apply, via `burnFuel`), so the sufficiency gate counts
+    // BOTH — a guild with enough combined fuel is not refused, even if its legal hoard alone
+    // could not cover the trip.
+    const availableFuel = guild.fuelHoard + (guild.deuteriumFuel || 0);
+    if (availableFuel < totalBurn) {
+      return { valid: false, reason: `guild ${guild.id} holds ${availableFuel} fuel (legal + contraband), cannot burn ${totalBurn} shipping this basket to the Syndicate — insufficient fuel: need ${totalBurn}, have ${availableFuel} (fuel-supply-and-allocation.md §8)` };
     }
     // THE QUOTE-LOCK GATE (docs/transport-model.md §8.1) — LAST, on purpose, exactly as
     // the fuel gate is: a sale that also fails a stock, price or fuel gate must blame
@@ -927,8 +1008,12 @@ function validateAction(state, action) {
     // gate passes: there is no cost without a route, and the no-waystation refusal
     // above has already turned that case away on its own terms.
     const { fuelBurn } = routeFuelCost(action.destinationSystemId);
-    if (guild.fuelHoard < fuelBurn) {
-      return { valid: false, reason: `guild ${guild.id} holds ${guild.fuelHoard} fuel, cannot burn ${fuelBurn} flying to ${JSON.stringify(action.destinationSystemId)} — insufficient fuel: need ${fuelBurn}, have ${guild.fuelHoard} (fuel-supply-and-allocation.md §8)` };
+    // COMBINED AVAILABILITY (§1.4 slice 1b): legal `fuelHoard` + contraband `deuteriumFuel`,
+    // since apply burns legal-first then contraband (`burnFuel`). Same combined-total gate the
+    // SELL side uses.
+    const availableFuel = guild.fuelHoard + (guild.deuteriumFuel || 0);
+    if (availableFuel < fuelBurn) {
+      return { valid: false, reason: `guild ${guild.id} holds ${availableFuel} fuel (legal + contraband), cannot burn ${fuelBurn} flying to ${JSON.stringify(action.destinationSystemId)} — insufficient fuel: need ${fuelBurn}, have ${availableFuel} (fuel-supply-and-allocation.md §8)` };
     }
     // THE QUOTE-LOCK GATE (docs/transport-model.md §8.1) — LAST, exactly like the fuel
     // gate above and for the same reason: a purchase that also fails credits, territory
@@ -1311,6 +1396,27 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'establishDeuteriumRefinery') {
+    // Seat an illegal deuterium refinery (§1.4 slice 1b). Mirrors establishVenture for a
+    // factory — occupy the NAMED factory asset (Gate 2 proved it owned, idle, a factory), stamp
+    // the settlement slot's system — but marks the venture `deuteriumRefinery` and carries NO
+    // recipeId and NO resourceType, so resolveProduction never touches it; its conversion is the
+    // dedicated guild-wide tick step. Moves no credits/fuel; no licence, no equity, no RP.
+    const guild = findGuild(next, action.guildId);
+    const site = getSite(action.siteId);
+    guild.ventures.push(createVenture({
+      id: action.ventureId,
+      ownerGuildId: action.guildId,
+      type: 'refining', // a factory venture — so assetKindForVentureType wants a factory
+      siteId: action.siteId,
+      systemId: site ? site.systemId : null,
+      assetId: action.assetId,
+      productionRate: action.productionRate,
+      deuteriumRefinery: true,
+    }));
+    return next;
+  }
+
   if (action.type === 'sellToSyndicate') {
     // The Syndicate buys at the QUOTED price — the value the ring recorded at the quote's
     // ISSUE TICK (§8.1's quote-lock). When `issueTick` is omitted this is `next.tick` →
@@ -1370,7 +1476,12 @@ function applyAction(state, action) {
     for (const alloc of allocations) {
       totalBurn += routeFuelCost(alloc.systemId).fuelBurn;
     }
-    guild.fuelHoard -= totalBurn;
+    // LEGAL-FIRST (§1.4 slice 1b): `burnFuel` spends `fuelHoard` first, contraband
+    // `deuteriumFuel` for any remainder — one deduction across both stores. Both are held fuel,
+    // so the whole burn is one consumption event: `totalConsumed += totalBurn` once keeps
+    // invariant 1 closed (held −totalBurn, consumed +totalBurn). The combined-availability gate
+    // in validate guarantees the two stores cover it, so neither is driven negative.
+    burnFuel(guild, totalBurn);
     next.audit.totalConsumed += totalBurn;
 
     // ── THE BETWEEN-TICK SEAM ────────────────────────────────────────────────
@@ -1458,7 +1569,11 @@ function applyAction(state, action) {
     // A `fuelBurn` of 0 makes both lines no-ops — the no-route case, already
     // refused up front by validate's waystation gate.
     const { fuelBurn } = routeFuelCost(action.destinationSystemId);
-    guild.fuelHoard -= fuelBurn;
+    // LEGAL-FIRST (§1.4 slice 1b): `burnFuel` draws `fuelHoard` first, contraband
+    // `deuteriumFuel` for the remainder — the same combined burn the SELL side does. Both are
+    // held fuel, so one consumption event: `totalConsumed += fuelBurn` once, invariant 1 stays
+    // closed. The combined-availability gate covered it, so neither store goes negative.
+    burnFuel(guild, fuelBurn);
     next.audit.totalConsumed += fuelBurn;
 
     // ⚠ THIS REPLACES THE OLD "NO galacticSupply REFRESH" NOTE, which read: not one
@@ -1532,6 +1647,7 @@ module.exports = {
   createSetSyndicateCommitmentAction,
   createApplyForLicenceAction,
   createLicenseDeuteriumMineAction,
+  createEstablishDeuteriumRefineryAction,
   createSetWindowNAction,
   createSellToSyndicateAction,
   createBuyFromSyndicateAction,

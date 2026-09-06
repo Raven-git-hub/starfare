@@ -49,7 +49,7 @@
 // the mean line and merely READS this.
 
 const { heldSystemIds } = require('./claims.js');
-const { producedGoodFor, isDeuteriumMine } = require('./baseline.js');
+const { producedGoodFor, isDeuteriumMine, isIllegalDeuteriumRefinery } = require('./baseline.js');
 const { isRawResource, isProcessedGood } = require('./resources.js');
 
 // W_SYS — the Points a held system is worth.
@@ -199,7 +199,13 @@ function guildPoints(state, guild) {
     // neither is a holding the mean line should reward. Skipped BEFORE `producedGoodFor` so the
     // exclusion does not depend on how deuterium happens to tier — the widening from
     // `isLicensedDeuteriumMine` to `isDeuteriumMine` (slice 1a) is exactly this "no GP either".
-    if (isDeuteriumMine(v)) continue;
+    //
+    // The ILLEGAL DEUTERIUM REFINERY is skipped for the same reason (§1.4, slice 1b): it is
+    // idle to the Syndicate — its whole purpose is contraband fuel the Syndicate cannot see —
+    // so it adds no size either. (It also produces no identifiable good, so `producedGoodFor`
+    // would return null and it would score 0 anyway; the explicit skip states the ruled
+    // intent rather than leaning on that, and keeps it off the tier lookup entirely.)
+    if (isDeuteriumMine(v) || isIllegalDeuteriumRefinery(v)) continue;
     const good = producedGoodFor(v);
     if (!good) continue;
     points += tierWeight(tierOf(good), { good, ventureId: v.id, guildId: guild.id });

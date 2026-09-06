@@ -16,6 +16,7 @@
 //   state.guilds     : [{ id, credits, fuelHoard, influence?, guildReputation?,
 //                         foundingEndowment?,
 //                         deuterium?,   // guild-wide raw deuterium store (§1.4 B1 exemption)
+//                         deuteriumFuel?, // guild-wide contraband fuel store (§1.4 slice 1b)
 //                         stockpiles?,
 //                         ventures? (each: siteId?, assetId?, resourceType? |
 //                         recipeId?, productionRate?, reputation?),
@@ -90,8 +91,13 @@ function sumFuelInTransit(state) {
 }
 
 // Invariant 1 — conservation of fuel.
+//
+// `hoards` sums EVERY held fuel store: legal `fuelHoard` PLUS contraband `deuteriumFuel`
+// (§1.4 slice 1b — refined by an illegal refinery, sim/tick.js). Both are held fuel, so the
+// refinery's mint (held +converted, totalProduced +converted) and a route burn (held −burn,
+// totalConsumed +burn) each keep this equation closed only because contraband is on the LHS.
 function checkFuelConservation(state) {
-  const hoards = state.guilds.reduce((sum, g) => sum + g.fuelHoard, 0);
+  const hoards = state.guilds.reduce((sum, g) => sum + g.fuelHoard + (g.deuteriumFuel || 0), 0);
   const inTransit = sumFuelInTransit(state);
   const lhs = hoards + state.reserve.reserveLevel + inTransit;
   const rhs = state.audit.totalProduced - state.audit.totalConsumed;
@@ -202,6 +208,13 @@ function checkNonNegativityAndIntegrality(state) {
     // negative value would both mis-ledger the good AND poison that cache silently. Absent (no
     // unlicensed deuterium mined — every guild today) is legal, the omitted-when-0 no-op path.
     if (g.deuterium !== undefined) checkField(out, g.deuterium, `guild:${g.id}.deuterium`);
+    // deuteriumFuel — the guild-wide contraband FUEL store (§1.4 slice 1b), minted by an
+    // illegal refinery and drawn by legal-first route burn (sim/fuel.js `burnFuel`). Held fuel
+    // like `fuelHoard`, so the same sweep: an INTEGER (§15.2) and NON-NEGATIVE — `burnFuel`
+    // only ever draws it for a remainder the combined-availability gate already covered, so it
+    // is never driven below 0; a negative or fractional value would corrupt both invariant 1's
+    // conservation sum and the guildHeld cache silently. Absent (no contraband) is legal.
+    if (g.deuteriumFuel !== undefined) checkField(out, g.deuteriumFuel, `guild:${g.id}.deuteriumFuel`);
 
     // Stockpiles (ruling B1, §15.2): a NESTED map systemId -> good -> int. Every
     // value is an integer, non-negative; every good key is a known stockpile good

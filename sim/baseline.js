@@ -140,6 +140,26 @@ function isDeuteriumMine(venture) {
   return !!(venture && venture.resourceType === DEUTERIUM);
 }
 
+// isIllegalDeuteriumRefinery(venture) -> true iff this venture is an illegal deuterium
+// refinery (§1.4 "The illegal path, made concrete", fuel-supply-and-allocation.md — slice 1b).
+//
+// A refinery is a factory venture running the special 1:1 `deuterium → deuterium_fuel`
+// conversion; there is no legal guild refinery (the Syndicate's legal conversion is the
+// abstract pool mint), so a guild deuterium refinery is inherently the illegal path — hence
+// no licence dimension in the predicate, just the `deuteriumRefinery` marker set at deploy
+// (`establishDeuteriumRefinery`, sim/actions.js). It carries neither a `resourceType` nor a
+// `recipeId`, so `producedGoodFor` returns null for it and the ordinary resolveProduction path
+// skips it entirely; the conversion is its own guild-wide step (sim/tick.js).
+//
+// Two consumers ask it, both applying to every illegal refinery:
+//   - the conversion step (sim/tick.js): each tick it draws min(guild.deuterium, its rate)
+//     from the guild's raw store and mints that into the guild's contraband fuel store;
+//   - the GP skip (sim/points.js): idle to the Syndicate, so zero GP (and no RP path reaches
+//     it), like the deuterium mine.
+function isIllegalDeuteriumRefinery(venture) {
+  return !!(venture && venture.deuteriumRefinery);
+}
+
 // baselineOutputFor(venture) -> { good, units } | null
 //   `good`  — the good this venture produces (`producedGoodFor`, above)
 //   `units` — its fixed droidless baseline output of that good, in units/tick
@@ -210,5 +230,5 @@ const BASELINE_KEYS = Object.freeze({
 module.exports = {
   FIRST_CUT_BASELINE, MINE_BASELINE, REFINERY_BASELINE, BASELINE_KEYS,
   producedGoodFor, baselineOutputFor, baselineUnitsForGood,
-  isLicensedDeuteriumMine, isDeuteriumMine,
+  isLicensedDeuteriumMine, isDeuteriumMine, isIllegalDeuteriumRefinery,
 };

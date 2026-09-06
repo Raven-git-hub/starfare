@@ -101,15 +101,16 @@ where it is serialized, guarded, and published in the snapshot exactly as descri
     (2 systems, 8 ventures) reads **1.160**. "Par" is about **three ventures per held system** — that one
     relation is what `k = 150` encodes, and density-beats-sprawl falls straight out of it.
 
-- **EVERY DEUTERIUM MINE'S ZERO GP** *(licensed 03-09-26, deuterium supply-lever slice 1; WIDENED to unlicensed
-  06-09-26, illegal-path slice 1a — `fuel-supply-and-allocation.md` §1.4)* — a `sim/points.js` change, ruled in
-  §1.4 and landing here in the same commit as the code (working rule 2). `guildPoints` skips any venture the
-  predicate `isDeuteriumMine` (`sim/baseline.js`) recognises — ANY deuterium mine, keyed off the mined good, not
-  the licence — so **no** deuterium mine adds size: a licensed one's output goes to the Syndicate, an unlicensed
-  one is idle to the Syndicate with its raw deuterium hoarded guild-wide (§1.4 detail in §1.0 above). Slice 1a
-  widened the skip from `isLicensedDeuteriumMine` to `isDeuteriumMine`. **DERIVED, never stored**, like the rest
-  of GP — the exclusion moves no serialized byte, and the determinism goldens did not move (no golden holds a
-  deuterium mine; the new `guild.deuterium` store is omitted when zero).
+- **EVERY DEUTERIUM VENTURE'S ZERO GP** *(licensed mine 03-09-26, slice 1; unlicensed mine 06-09-26, illegal-path
+  slice 1a; illegal refinery 06-09-26, slice 1b — `fuel-supply-and-allocation.md` §1.4)* — a `sim/points.js`
+  change, ruled in §1.4 and landing here in the same commit as the code (working rule 2). `guildPoints` skips any
+  venture `isDeuteriumMine(v) || isIllegalDeuteriumRefinery(v)` (`sim/baseline.js`) recognises — ANY deuterium
+  mine (keyed off the mined good, not the licence) and the illegal refinery — so **none** of them add size: a
+  licensed mine's output goes to the Syndicate; an unlicensed mine and an illegal refinery are idle to the
+  Syndicate, hoarding contraband guild-wide (§1.4). Slice 1a widened the skip from `isLicensedDeuteriumMine` to
+  `isDeuteriumMine`; slice 1b added the refinery. **DERIVED, never stored**, like the rest of GP — the exclusion
+  moves no serialized byte, and the determinism goldens did not move (no golden holds a deuterium venture; the new
+  `guild.deuterium` / `guild.deuteriumFuel` stores are omitted when zero).
 - **THE LICENSED DEUTERIUM MINE'S RP** *(04-09-26 — deuterium RP slice 2, `fuel-supply-and-allocation.md` §1.4
   "The RP accrual")* — the Tier-4 RP half, detailed in §2.6. `TIER_WEIGHT[4] = 500` pulled into `sim/points.js`
   (an RP-only reader — changes no GP); `ventureTierWeight`/`signingBump` special-case `isLicensedDeuteriumMine`
@@ -212,11 +213,18 @@ Deuterium Cycle"; licensed BUILT slice 1, 03-09-26; the skip WIDENED to unlicens
   no more a holding the mean line should reward than the licensed one. Slice 1a widened the GP skip from
   `isLicensedDeuteriumMine` to `isDeuteriumMine` for exactly this "no GP either".
 
+The **ILLEGAL DEUTERIUM REFINERY scores ZERO GP too (slice 1b, 06-09-26).** The refinery that turns raw
+contraband into burnable `deuterium_fuel` is likewise idle to the Syndicate, so `guildPoints` skips it as well —
+the skip is `isDeuteriumMine(v) || isIllegalDeuteriumRefinery(v)`. (A refinery produces no identifiable good, so
+`producedGoodFor` would return null and it would score 0 regardless; the explicit skip states the ruled intent
+and keeps it off the tier lookup.)
+
 The predicate widening keeps GP **DERIVED, never stored** — the exclusion moves no serialized byte, and the
-determinism goldens are unmoved (no golden holds a deuterium mine). **RP** — §1.4's Tier-4 weighting — is a
-LICENSED-only reward, BUILT in slice 2 (§2.6 below: a 1000 signing bump and a +50/cycle, pre-taper, equity-free
-MET); an unlicensed mine earns no RP either. So a LICENSED deuterium mine is pure reputation, and an UNLICENSED
-one is neither size nor standing — its only product is the raw contraband awaiting a refinery (slice 1b).
+determinism goldens are unmoved (no golden holds a deuterium mine or refinery). **RP** — §1.4's Tier-4 weighting
+— is a LICENSED-mine-only reward, BUILT in slice 2 (§2.6 below: a 1000 signing bump and a +50/cycle, pre-taper,
+equity-free MET); an unlicensed mine and an illegal refinery each earn no RP either. So a LICENSED deuterium
+mine is pure reputation, while an UNLICENSED mine and an illegal refinery are neither size nor standing — the
+mine's only product is raw contraband, the refinery's is the burnable contraband fuel it becomes (slice 1b).
 
 ### 1.1 Outpost vs Waystation (naming — resolved)
 

@@ -156,10 +156,44 @@ function fuelValue(units, fuelPrice) {
   return Math.round(units * fuelPrice);
 }
 
+// burnFuel(guild, amount) -> the amount burned (== `amount`), having MUTATED the guild.
+//
+// LEGAL-FIRST route burn (§1.4 "The illegal path, made concrete", slice 1b). A guild now
+// holds fuel in TWO stores — legal `fuelHoard` (blue) and contraband `deuteriumFuel` (red,
+// refined by an illegal refinery) — and both are burnable. This is the ONE place a burn is
+// split across them, so every route-burn site (SELL + BUY, sim/actions.js) spends them in
+// the same order: `fuelHoard` FIRST, `deuteriumFuel` only for the remainder.
+//
+// Burn-legal-first is DELIBERATE and load-bearing (§1.4): a guild still holding legal fuel
+// never touches its red, so contraband is STICKY — it depletes only once legal fuel is dry —
+// and accumulates as a visible liability rather than being quietly consumed. It is the
+// intended tension, not an accident of order.
+//
+// THE CALLER OWNS THE GATE AND THE COUNTER. This does NOT check sufficiency: the validate
+// gate refuses reject-whole when `fuelHoard + deuteriumFuel < amount`, so by the time apply
+// calls this the combined stores cover it and neither store is driven negative. And this does
+// NOT touch `audit.totalConsumed`: both stores are held fuel, so burning `amount` from either
+// is one consumption event — the caller does `totalConsumed += amount` once, keeping invariant
+// 1 closed (held −amount, consumed +amount). Returning `amount` lets the caller write that in
+// one line without re-summing.
+//
+// `deuteriumFuel` is decremented WITHOUT deleting a resulting 0 — the same discipline
+// `addStock` (a drained stockpile cell stays at 0) and the 1a raw store already follow; a
+// restore normalises a 0 back to absent via createGuild's omit-when-0. It is only ever touched
+// when there is a remainder, so a guild with no contraband never has the key minted.
+function burnFuel(guild, amount) {
+  const fromHoard = Math.min(guild.fuelHoard, amount);
+  guild.fuelHoard -= fromHoard;
+  const remainder = amount - fromHoard;
+  if (remainder > 0) guild.deuteriumFuel = (guild.deuteriumFuel || 0) - remainder;
+  return amount;
+}
+
 module.exports = {
   GUILD_STARTING_FUEL,
   REFERENCE_FUEL_PRICE,
   SYNDICATE_HAULER_BURN_RATE,
   routeFuelCost,
   fuelValue,
+  burnFuel,
 };

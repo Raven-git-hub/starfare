@@ -58,6 +58,7 @@ function createGuild({
   foundingEndowment = 0,
   foundingEntitlement = 0,
   deuterium = 0,
+  deuteriumFuel = 0,
   stockpiles = {},
   productionProfile = {},
   syndicateWindows = {},
@@ -167,6 +168,22 @@ function createGuild({
     // serialized state and every determinism golden stay byte-identical. A scenario or a
     // restored save that HANDS ONE IN keeps it, like `foundingEndowment`.
     ...(deuterium !== 0 ? { deuterium } : {}),
+    // deuteriumFuel: the guild-wide CONTRABAND FUEL store (§1.4 "The illegal path, made
+    // concrete", slice 1b). An illegal refinery (sim/tick.js) converts raw `deuterium` 1:1
+    // into this burnable contraband fuel; it is the RED half of the fuel bar, `fuelHoard`
+    // being the blue/legal half. Held FUEL, not a good: it counts in invariant 1's
+    // conservation (`checkFuelConservation` sums `fuelHoard + deuteriumFuel`) and in the
+    // galactic-supply `guildHeld` total (sim/supply.js), NOT in the goods row. Route-burn
+    // spends `fuelHoard` FIRST and this SECOND (`burnFuel`, sim/fuel.js), so contraband is
+    // sticky — it only depletes once legal fuel is dry — and accumulates as a visible
+    // liability. The second guild-wide store of the pair exempt from ruling B1; an INTEGER
+    // quantity of fuel (§15.2), NON-NEGATIVE (a store, never a debt), asserted every tick.
+    // Never launderable — it can only leave by being burned.
+    //
+    // OMITTED when 0, exactly as `deuterium` above: a guild with no contraband (every guild
+    // in today's goldens) carries no key, so the serialized state and every determinism
+    // golden stay byte-identical. A scenario or a restored save that HANDS ONE IN keeps it.
+    ...(deuteriumFuel !== 0 ? { deuteriumFuel } : {}),
     // stockpiles: systemId -> good -> int, the guild's holdings of each RAW
     // resource, SYSTEM-SCOPED per ruling B1 (§15.2) — a separate pool per system
     // it operates in, accessed only via sim/stock.js. Fuel is NOT here — it
@@ -253,6 +270,7 @@ function createVenture({
   equityPct = 0,
   licence = null,
   deuteriumLicence = null,
+  deuteriumRefinery = false,
   committedFromTick = null,
   reputation = 0,
   batchCarry = {},
@@ -387,6 +405,21 @@ function createVenture({
     // byte-identical to pre-slice and the determinism-hash no-op proof keeps meaning
     // something. Copied so a caller's object can never alias into engine state.
     ...(deuteriumLicence ? { deuteriumLicence: { ...deuteriumLicence } } : {}),
+    // deuteriumRefinery: marks this venture an ILLEGAL DEUTERIUM REFINERY (§1.4 "The illegal
+    // path, made concrete", slice 1b) — a factory asset on a settlement slot running the
+    // special 1:1 `deuterium → deuterium_fuel` conversion at its `productionRate`, granted by
+    // the `establishDeuteriumRefinery` action. There is NO legal guild refinery (the Syndicate's
+    // legal conversion is the abstract pool mint), so a guild deuterium refinery is inherently
+    // illegal — no licence dimension, no equity, and (like the deuterium mine) zero GP and zero
+    // RP. It carries neither a `resourceType` nor a `recipeId`, so the ordinary
+    // resolveProduction / recipe path (per-system stockpile I/O) never touches it — its
+    // conversion is a dedicated guild-wide step in sim/tick.js. A boolean, recognised by
+    // `isIllegalDeuteriumRefinery` (sim/baseline.js), the shared question the conversion step
+    // and the GP skip both ask.
+    //
+    // OMITTED when false, exactly like `deuteriumLicence` above: an ordinary venture carries no
+    // key, so any galaxy without an illegal refinery is byte-identical to pre-slice.
+    ...(deuteriumRefinery ? { deuteriumRefinery: true } : {}),
     // committedFromTick: the venture's FIRST PRODUCING tick under its licence — the
     // term that pro-rates its first window's obligation (§5's Option-A join ruling;
     // Slice 3b-ii, `sim/windows.js` `windowFraction`). Stamped by `applyForLicence` as
@@ -583,9 +616,13 @@ function createSyndicate({ ledger }) {
 
 // --- Assembly -------------------------------------------------------------
 
-// Sum every guild's fuelHoard.
+// Sum every guild's HELD FUEL — legal `fuelHoard` PLUS contraband `deuteriumFuel` (§1.4
+// slice 1b). Both are held fuel and both sit on invariant 1's held side, so the genesis
+// `totalProduced` (below) must count both: a scenario that SEEDS contraband at tick 0 would
+// otherwise open with invariant 1 already broken. This is the same set `checkFuelConservation`
+// sums and `computeGalacticSupply`'s `guildHeld` reports.
 function sumFuelHoards(guilds) {
-  return guilds.reduce((sum, g) => sum + g.fuelHoard, 0);
+  return guilds.reduce((sum, g) => sum + g.fuelHoard + (g.deuteriumFuel || 0), 0);
 }
 
 // Sum every guild's credits.

@@ -57,7 +57,11 @@ function computeGalacticSupply(state) {
     if (g.deuterium) resources[DEUTERIUM] += g.deuterium;
   }
 
-  const guildHeld = guilds.reduce((sum, g) => sum + (g.fuelHoard || 0), 0);
+  // guildHeld sums EVERY held fuel store per guild — legal `fuelHoard` AND contraband
+  // `deuteriumFuel` (§1.4 slice 1b). Contraband is held fuel like any other, so invariant 1's
+  // conservation counts it (checkFuelConservation) and this cache must agree, or a refine (which
+  // mints into `deuteriumFuel`) would trip galactic-supply-consistency on the very next check.
+  const guildHeld = guilds.reduce((sum, g) => sum + (g.fuelHoard || 0) + (g.deuteriumFuel || 0), 0);
   const reserve = state.reserve ? state.reserve.reserveLevel : 0;
 
   return { resources, fuel: { reserve, guildHeld } };

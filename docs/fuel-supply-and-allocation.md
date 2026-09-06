@@ -48,10 +48,12 @@ The same 1:1 conversion has **two paths, and legality is the only difference:**
   Syndicate's usage-meter infers and fines (§3). *"Illegally hoarded deuterium must be refined in an asset
   before it can be used."*
 
-**Build wrinkle (flagged, not solved):** `deuterium_fuel` is currently defined as *not* a processed good and
-*not* any recipe's output, so realising the illegal-refine path means either adding it as a **special recipe**
-that outputs the fuel good, or modelling illegal refining as **its own action**. Decide when it becomes a
-slice.
+**Build wrinkle (flagged, not solved) — ✅ RESOLVED & BUILT 06-09-26 (illegal-path slice 1b).** `deuterium_fuel`
+was defined as *not* a processed good and *not* any recipe's output, so realising the illegal-refine path meant
+either adding it as a **special recipe** or modelling illegal refining as **its own action**. It was taken as
+**its own action**: `establishDeuteriumRefinery` seats an illegal refinery, and a dedicated guild-wide tick step
+converts `guild.deuterium` → `guild.deuteriumFuel` 1:1 outside the recipe/tier system — see §1.4 "The illegal
+path, made concrete" and its AS-BUILT note.
 
 ### 1.1 Producer Guilds (PGs) — the seeded supply (supersedes §6's "hidden ticker")
 
@@ -198,8 +200,8 @@ above). The guild refines it 1:1 in its **own factory** into `deuterium_fuel` it
 and that held illegal fuel is exactly what fills the **red segment** of the Guild-Hall stockpile bar and
 drives the mid-cycle max-rise the bar is already wired for. Contraband deuterium / fuel can **never be
 laundered** into any galactic / public stockpile — that is what "cannot be added to galactic stockpiles"
-means. The §1.0 build wrinkle still stands (illegal refining is either a special recipe that outputs the
-fuel good, or its own action) — decide in the illegal-path slice.
+means. The §1.0 build wrinkle is **RESOLVED & BUILT** (illegal refining is modelled as its own action /
+tick step, not a recipe) — see the AS-BUILT note below.
 
 **The illegal path, made concrete — RULED 06-09-26 (the illegal-path slice).** The §1.0 build wrinkle is
 resolved and the storage / burn model pinned:
@@ -228,6 +230,25 @@ resolved and the storage / burn model pinned:
   stockpile or be sold; contraband is spent only by burning it yourself.
 - **Detection and fines stay in §7 (NOT built).** The red bar is a standing liability that nothing yet
   punishes; the surveillance / fine system is its own later slice.
+
+**AS BUILT — the two illegal ventures, engine only (slice 1a 06-09-26, slice 1b 06-09-26).**
+- **Slice 1a (the unlicensed mine → guild-wide raw store):** `guild.deuterium` (guild-wide integer,
+  omitted-when-zero); an unlicensed deuterium mine (`isDeuteriumMine`, `sim/baseline.js`) routes its raw output
+  there in `applyProduction`'s three-way fork instead of a per-system stockpile; zero GP (the `sim/points.js`
+  skip widened from `isLicensedDeuteriumMine` to `isDeuteriumMine`) and zero RP; counted in the goods-supply
+  cache's deuterium row.
+- **Slice 1b (the refinery + contraband fuel + legal-first burn):** `guild.deuteriumFuel` (guild-wide integer,
+  omitted-when-zero, held FUEL); `establishDeuteriumRefinery` (`sim/actions.js`) seats an illegal refinery — a
+  factory venture on a settlement slot, marked `deuteriumRefinery`, `isIllegalDeuteriumRefinery`
+  (`sim/baseline.js`), carrying no recipe so the recipe/tier resolver never touches it; a **dedicated guild-wide
+  step** in `sim/tick.js` converts `min(guild.deuterium, refinery rate)` → `deuteriumFuel` 1:1 each tick,
+  MINTING the fuel (records `audit.totalProduced`, so invariant 1 stays closed across the goods→fuel crossing);
+  zero GP (the same skip covers the refinery) and zero RP. Route burn spends **legal `fuelHoard` first,
+  contraband `deuteriumFuel` second** (`burnFuel`, `sim/fuel.js`), and every SELL/BUY sufficiency gate counts the
+  combined total. Invariant 1's held side and `computeGalacticSupply`'s `guildHeld` both now sum
+  `fuelHoard + deuteriumFuel`. The **client** (the DEUTERIUM tab, the deploy popup, the blue/red segmented bar,
+  the combined-fuel readout) is **slice 2 (NOT built)**; the SELL/BUY popup still shows `fuelHoard` alone until
+  then, a cosmetic under-count while the engine correctly burns the combined total.
 
 **The trade-off, stated plainly.** *License it* → per-tick credits at market rate + maximum (T4) RP, but
 you never keep the fuel. *Refine it illegally* → you keep the fuel to burn yourself, but no pay, no

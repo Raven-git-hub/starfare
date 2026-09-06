@@ -38,7 +38,9 @@ const {
   commitmentSale, committedContribution, feeOwed, reputationDelta, gainFactor, RP_FLOOR,
   deuteriumMetGain,
 } = require('./licence.js');
-const { producedGoodFor, isLicensedDeuteriumMine, isDeuteriumMine } = require('./baseline.js');
+const {
+  producedGoodFor, isLicensedDeuteriumMine, isDeuteriumMine, isIllegalDeuteriumRefinery,
+} = require('./baseline.js');
 const {
   DEUTERIUM_INFLUX_PER_CYCLE, grantFor, physicalGrantFor, rationGrants,
   nextAvgDraw, nextFuelPrice,
@@ -143,8 +145,55 @@ function stepProduction(state, _actions, ctx) {
       state.syndicate.ledger += lump;
       recordLicenceFee(guild, state.tick + 1, lump, charged);
     }
+
+    // THE ILLEGAL REFINERY CONVERSION (§1.4 "The illegal path, made concrete", slice 1b) —
+    // the goods→fuel seam. Run ONCE PER GUILD, HERE, after the per-system loop above has
+    // deposited this tick's mined raw into `guild.deuterium` (1a's unlicensed-mine fork), so
+    // freshly-mined contraband is available to refine the same tick. It is deliberately NOT
+    // inside applyProduction (which is per-system): the raw store and the refineries are
+    // GUILD-WIDE (§1.4's B1 exemption), so the draw is one guild-wide pool shared by all the
+    // guild's refineries — a per-system call would split that pool by geography. And it is NOT
+    // routed through resolveProduction/recipes: `deuterium_fuel` is not a stockpile good and the
+    // conversion has no recipe.
+    refineDeuterium(state, guild);
   }
   return state;
+}
+
+// refineDeuterium(state, guild) — convert the guild's raw `deuterium` into contraband
+// `deuteriumFuel`, 1:1, once per tick (§1.4 slice 1b). Mutates the guild and state.audit in
+// place; tick() already cloned state.
+//
+// Each illegal refinery converts `min(remaining guild.deuterium, its productionRate)` — the
+// refineries share the ONE guild pool, drawn in venture-array order (deterministic, invariant
+// 9), so a refinery finding the pool already empty converts nothing (no negative, no throw).
+// The rate is the factory's existing `productionRate`; the 1:1 ratio is ruled — no number
+// invented.
+//
+// THE SEAM, stated plainly: a stockpile GOOD is destroyed and FUEL is created in one step.
+//   - `guild.deuterium -= converted` — the raw good leaves (the goods cache follows on the
+//     tick's end-of-steps recompute, which sums `guild.deuterium` into the deuterium row);
+//   - `guild.deuteriumFuel += converted` AND `state.audit.totalProduced += converted` — the
+//     fuel is MINTED, recording itself in totalProduced exactly as the licensed pool-mint and
+//     the cycle influx do (invariant 1: fuel is created only by an event that records itself).
+// So invariant 1 stays closed across the crossing (held fuel +converted, totalProduced
+// +converted) and the goods cache stays closed (raw −converted).
+//
+// A refinery that converts a positive amount stamps its tick (§15.2, matching the mine fork);
+// one that converts nothing did not run, so it is not stamped. A guild with no raw or no
+// refinery does nothing here and stays byte-identical (no key minted).
+function refineDeuterium(state, guild) {
+  for (const v of guild.ventures || []) {
+    if (!isIllegalDeuteriumRefinery(v)) continue;
+    const available = guild.deuterium || 0;
+    if (available <= 0) continue;                       // pool empty — nothing to refine
+    const converted = Math.min(available, v.productionRate || 0);
+    if (converted <= 0) continue;                       // a rate-0 refinery converts nothing
+    guild.deuterium = available - converted;
+    guild.deuteriumFuel = (guild.deuteriumFuel || 0) + converted;
+    state.audit.totalProduced += converted;             // the honest mint (invariant 1)
+    v.updatedAtTick = state.tick;
+  }
 }
 
 // One (guild, system): resolve production, then MOVE the goods to match the
