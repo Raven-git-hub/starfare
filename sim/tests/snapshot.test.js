@@ -172,6 +172,44 @@ test('each venture carries its systemId and the reserved syndicateCommitment (0/
   }
 });
 
+test('the snapshot publishes the deuterium stores and the two venture markers (§1.4 slice 2a)', () => {
+  const { fuelValue, REFERENCE_FUEL_PRICE } = require('../fuel.js');
+  const s = createState({
+    guilds: [{
+      id: 'g1', credits: 0, fuelHoard: 7, deuterium: 12, deuteriumFuel: 9,
+      ventures: [
+        { id: 'lic', ownerGuildId: 'g1', type: 'mining', systemId: 'sysA', resourceType: 'deuterium', productionRate: 5, deuteriumLicence: { signedTick: 0 } },
+        { id: 'unl', ownerGuildId: 'g1', type: 'mining', systemId: 'sysA', resourceType: 'deuterium', productionRate: 5 },
+        { id: 'ref', ownerGuildId: 'g1', type: 'refining', systemId: 'sysA', deuteriumRefinery: true, productionRate: 5 },
+      ],
+    }],
+    reserve: { reserveLevel: 100 },
+    syndicate: { ledger: 0 },
+  });
+  const snap = buildSnapshot(s);
+  const g = snap.guilds.find((x) => x.id === 'g1');
+  // The two guild-wide stores, echoed, plus the contraband marked to the (seed) fuel price.
+  assert.equal(g.deuterium, 12);
+  assert.equal(g.deuteriumFuel, 9);
+  assert.equal(g.deuteriumFuelValue, fuelValue(9, REFERENCE_FUEL_PRICE));
+  // The three ventures are distinguishable by their markers: licensed mine, unlicensed mine,
+  // illegal refinery.
+  const lic = snap.ventures.find((v) => v.id === 'lic');
+  const unl = snap.ventures.find((v) => v.id === 'unl');
+  const ref = snap.ventures.find((v) => v.id === 'ref');
+  assert.deepEqual(lic.deuteriumLicence, { signedTick: 0 });
+  assert.equal(lic.deuteriumRefinery, false);
+  assert.equal(unl.deuteriumLicence, null);
+  assert.equal(unl.deuteriumRefinery, false);
+  assert.equal(ref.deuteriumRefinery, true);
+  assert.equal(ref.deuteriumLicence, null);
+  // A guild with no contraband reports the stores as 0, never undefined.
+  const bot = buildSnapshot(sampleState()).guilds.find((x) => x.id === 'bot_a');
+  assert.equal(bot.deuterium, 0);
+  assert.equal(bot.deuteriumFuel, 0);
+  assert.equal(bot.deuteriumFuelValue, 0);
+});
+
 test('claims carry their seed landmark resolved, in order', () => {
   const s = sampleState();
   const snap = buildSnapshot(s);

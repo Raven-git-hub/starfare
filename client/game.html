@@ -675,7 +675,27 @@ select.field{appearance:none; cursor:pointer;}
 #tp-trade .tw-tier.on{color:var(--tw-ink); background:var(--tw-panel2); box-shadow:0 -2px 0 var(--tw-amber) inset;}
 #tp-trade .tw-tier.on .n{color:var(--tw-amber);}
 #tp-trade .tw-tier.dim{opacity:.4; cursor:not-allowed;}
+/* The DEUTERIUM tab — a special tab beside TIER 1-4 (§1.4). Its own accent so it reads as a
+   different KIND of tab, not a fifth tier of tradeable goods. */
+#tp-trade .tw-tier.deut{margin-left:8px; color:#c98a6a;}
+#tp-trade .tw-tier.deut .n{color:#c98a6a;}
+#tp-trade .tw-tier.deut.on{box-shadow:0 -2px 0 #C2603A inset; color:#e0b299;}
+#tp-trade .tw-tier.deut.on .n{color:#C2603A;}
 #tp-trade .tw-reslist{display:flex; flex-wrap:wrap; gap:7px; padding:13px; background:var(--tw-panel2); border:1px solid var(--tw-line); border-radius:0 8px 8px 8px; min-height:46px;}
+/* The DEUTERIUM tab body (placeholder this slice). */
+#tp-trade .tw-deut{background:var(--tw-panel2); border:1px solid var(--tw-line); border-radius:0 8px 8px 8px; padding:26px 26px 30px;}
+#tp-trade .tw-deut .eyebrow{font-family:var(--tw-mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:#C2603A;}
+#tp-trade .tw-deut h2{font-family:var(--tw-serif,Georgia,serif); font-weight:600; font-size:24px; margin:6px 0 8px; color:var(--tw-ink);}
+#tp-trade .tw-deut .sub{font-size:13px; color:var(--tw-ink2); line-height:1.6; max-width:70ch; margin:0 0 22px;}
+#tp-trade .tw-deut .sub b{color:#e0b299; font-weight:500;}
+#tp-trade .tw-deut-stores{display:flex; gap:14px; flex-wrap:wrap; margin-bottom:22px;}
+#tp-trade .tw-deut-store{flex:1; min-width:200px; background:var(--tw-panel); border:1px solid var(--tw-line); border-radius:10px; padding:16px 18px;}
+#tp-trade .tw-deut-store.red{border-color:rgba(194,96,58,.5); background:rgba(194,96,58,.05);}
+#tp-trade .tw-deut-store .k{font-family:var(--tw-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--tw-ink3);}
+#tp-trade .tw-deut-store .v{font-family:var(--tw-mono); font-size:30px; font-weight:600; color:var(--tw-ink); margin:6px 0 4px; font-variant-numeric:tabular-nums;}
+#tp-trade .tw-deut-store.red .v{color:#d98a66;}
+#tp-trade .tw-deut-store .cap{font-family:var(--tw-mono); font-size:10px; color:var(--tw-ink3); letter-spacing:.02em;}
+#tp-trade .tw-deut-soon{font-family:var(--tw-mono); font-size:11px; color:var(--tw-ink3); font-style:italic; border-top:1px solid var(--tw-line); padding-top:16px;}
 #tp-trade .tw-chip{font-size:12.5px; color:var(--tw-ink2); padding:6px 12px; border:1px solid var(--tw-line);
   border-radius:5px; background:var(--tw-panel); cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:8px; transition:.12s;}
 #tp-trade .tw-chip .dot{width:6px; height:6px; border-radius:50%; background:var(--tw-ink4);}
@@ -1151,6 +1171,47 @@ select.field{appearance:none; cursor:pointer;}
 #est-overlay .est-back{margin-top:22px; font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink2); background:none; border:1px solid var(--line2); border-radius:8px; padding:10px 18px; cursor:pointer}
 #est-overlay .est-back:hover{border-color:var(--amber); color:var(--amber)}
 
+/* ===== #deut-overlay — the DEUTERIUM deploy popup (§1.4 "The Deuterium Cycle" / "The illegal
+   path"). A deliberately SEPARATE, slider-less variant of #est-overlay: deuterium takes no
+   commitment slider, no equity, no fee and no renegotiation window, so none of that machinery is
+   reused. It serves the deuterium MINE (licensed/unlicensed, from a deuterium node) and the
+   illegal REFINERY (from a settlement slot). Kept its own block so it cannot disturb the generic
+   deploy popup, and reads the same palette vars. ===== */
+#deut-overlay{position:fixed; inset:0; z-index:560; display:none; align-items:center; justify-content:center; padding:30px; background:rgba(6,7,10,.78); backdrop-filter:blur(3px)}
+#deut-overlay.open{display:flex}
+#deut-overlay .est{width:100%; max-width:640px; background:linear-gradient(180deg,#12151C,#0F1218); border:1px solid var(--line2); border-radius:14px; box-shadow:0 30px 90px rgba(0,0,0,.6); overflow:hidden}
+#deut-overlay .est-head{display:flex; align-items:flex-start; gap:16px; padding:18px 22px 16px; border-bottom:1px solid var(--line); background:radial-gradient(700px 200px at 85% -40%, rgba(194,96,58,.09), transparent 70%)}
+#deut-overlay .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--red)}
+#deut-overlay h2{font-family:var(--serif); font-weight:600; font-size:22px; margin:5px 0 3px; letter-spacing:.02em}
+#deut-overlay .site{font-family:var(--mono); font-size:11.5px; color:var(--ink2); letter-spacing:.02em}
+#deut-overlay .est-close{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--ink2); border-radius:8px; width:34px; height:34px; font-size:16px; cursor:pointer; flex:none}
+#deut-overlay .est-close:hover{border-color:var(--red); color:var(--red)}
+#deut-overlay .est-main{padding:20px 22px 22px}
+#deut-overlay .blk{margin-bottom:18px}
+#deut-overlay .sec-head{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2); margin-bottom:10px}
+#deut-overlay select.est-select{font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--void); border:1px solid var(--line2); border-radius:8px; padding:11px 12px; cursor:pointer; width:100%}
+#deut-overlay select.est-select:disabled{opacity:.5; cursor:not-allowed}
+#deut-overlay .seg{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+#deut-overlay .seg button{display:flex; align-items:center; gap:10px; background:var(--panel); border:1px solid var(--line2); color:var(--ink2); font-family:var(--mono); font-size:12px; letter-spacing:.06em; border-radius:8px; padding:12px 14px; cursor:pointer}
+#deut-overlay .seg button:hover{border-color:var(--amber-dim)}
+#deut-overlay .seg button.on{border-color:var(--amber); background:var(--amber-ghost); color:var(--ink)}
+#deut-overlay .seg .mark{width:13px; height:13px; border-radius:50%; border:2px solid var(--line2); flex:none}
+#deut-overlay .seg button.on .mark{border-color:var(--amber); background:var(--amber); box-shadow:inset 0 0 0 2px var(--void)}
+#deut-overlay .terms{font-family:var(--mono); font-size:11px; line-height:1.6; color:var(--ink2); background:var(--void); border:1px solid var(--line); border-radius:9px; padding:13px 14px}
+#deut-overlay .terms.illegal{border-color:var(--red); background:rgba(194,96,58,.06); color:var(--ink2)}
+#deut-overlay .terms b{color:var(--amber); font-weight:500}
+#deut-overlay .terms .warn{color:var(--red); font-weight:500}
+#deut-overlay .terms .row{display:flex; justify-content:space-between; gap:12px; padding:3px 0}
+#deut-overlay .terms .row .k{color:var(--ink3); text-transform:uppercase; letter-spacing:.06em; font-size:9.5px}
+#deut-overlay .deploy{width:100%; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer; margin-top:4px}
+#deut-overlay .deploy:hover{background:#DCB43A}
+#deut-overlay .deploy.illegal{background:var(--red); color:#fff}
+#deut-overlay .deploy.illegal:hover{background:#D06E48}
+#deut-overlay .deploy:disabled{background:rgba(28,33,43,.85); color:var(--ink3); cursor:not-allowed; border:1px solid var(--line)}
+#deut-overlay .deploy-hint{font-family:var(--mono); font-size:10px; color:var(--ink3); text-align:center; margin-top:8px; letter-spacing:.04em; min-height:13px}
+#deut-overlay .deploy-hint.err{color:var(--red)}
+#deut-overlay .deploy-hint.ok{color:var(--green)}
+
 #est-reel{position:fixed; inset:0; background:rgba(6,7,10,.80); backdrop-filter:blur(3px); z-index:600; display:none; align-items:center; justify-content:center; padding:26px}
 #est-reel.open{display:flex}
 #est-reel .reel-card{width:100%; max-width:760px; height:min(80vh,600px); display:grid; grid-template-columns:1fr 300px; background:linear-gradient(180deg,#141821,#0F1218); border:1px solid var(--line2); border-radius:14px; overflow:hidden; box-shadow:0 30px 90px rgba(0,0,0,.65)}
@@ -1373,6 +1434,23 @@ select.field{appearance:none; cursor:pointer;}
           <div class="tflav">One posted value, always good for it. Sold goods leave the moment you place them &mdash; no shipment, no waiting.</div>
         </div>
       </aside>
+    </div>
+
+    <!-- The DEUTERIUM tab body (§1.4 "The Deuterium Cycle"). A PLACEHOLDER this slice: deuterium
+         is removed from the tradeable tiers and rehoused here. It shows the guild's two guild-wide
+         stores (published in the snapshot) and reserves the price + graph, the mine/refinery roster
+         and the deploy shortcuts for slice 2b (designed first). -->
+    <div class="tw-deut" id="tw-deut-panel" style="display:none">
+      <div class="tw-deut-head">
+        <div class="eyebrow">The Deuterium Cycle</div>
+        <h2>Deuterium</h2>
+        <p class="sub">Deuterium is special — priced but <b>untradeable</b>, and hoarding it is illegal. It is not sold on the Exchange; it feeds the fuel commons (licensed) or your own contraband refining (illegal). Mines are deployed from a deuterium node in the System Manifest; illegal refineries from a settlement slot.</p>
+      </div>
+      <div class="tw-deut-stores">
+        <div class="tw-deut-store"><div class="k">Raw deuterium held</div><div class="v" id="tw-deut-raw">&mdash;</div><div class="cap">guild-wide · awaiting refine</div></div>
+        <div class="tw-deut-store red"><div class="k">Contraband fuel held</div><div class="v" id="tw-deut-fuel">&mdash;</div><div class="cap">refined · burnable · idle to the Syndicate</div></div>
+      </div>
+      <div class="tw-deut-soon">Price &amp; graph, the mine / refinery roster and per-node deploy shortcuts arrive with the DEUTERIUM dashboard (next slice).</div>
     </div>
    </div>
 
@@ -1731,6 +1809,12 @@ select.field{appearance:none; cursor:pointer;}
             </div>
           </div>
 
+          <!-- A settlement slot can host a legitimate refinery (above) OR an illegal deuterium
+               refinery (§1.4). Shown only for slots; opens the dedicated deuterium popup. -->
+          <div class="blk" id="estDeutRow" style="display:none">
+            <button id="estDeutRefinery" type="button" style="width:100%; font-family:var(--mono); font-size:11px; letter-spacing:.05em; color:var(--red); background:rgba(194,96,58,.06); border:1px solid var(--red); border-radius:8px; padding:11px 12px; cursor:pointer; text-align:left">↦ Deploy an illegal deuterium refinery here instead — contraband, idle to the Syndicate</button>
+          </div>
+
           <div class="blk" id="feeBlock">
             <div class="slider">
               <div class="sec-head"><span class="t">Output commitment</span><button class="help" data-reel="commit">?</button>
@@ -1803,6 +1887,50 @@ select.field{appearance:none; cursor:pointer;}
       <div><button class="est-back" id="estBack">‹ Return to the manifest</button></div>
     </div>
 
+  </div>
+</div>
+
+<!-- The DEUTERIUM deploy popup (§1.4). Slider-less by design: a deuterium mine is 100% committed
+     with no equity/fee/window, and the illegal refinery has no terms at all. It fires the three
+     BUILT actions — establishVenture (unlicensed mine), + licenseDeuteriumMine (licensed mine),
+     or establishDeuteriumRefinery (refinery) — and reads the guild's idle assets off the snapshot
+     exactly as the generic popup does (window.__myIdleAssets). -->
+<div id="deut-overlay">
+  <div class="est">
+    <div id="deutForm">
+      <div class="est-head">
+        <div>
+          <div class="eyebrow" id="deutEyebrow">Deuterium</div>
+          <h2 id="deutTitle">Deploy</h2>
+          <div class="site" id="deutSite">—</div>
+        </div>
+        <button class="est-close" id="deutClose" title="Close (Esc)">✕</button>
+      </div>
+      <div class="est-main">
+        <div class="blk">
+          <div class="sec-head" id="deutAssetLbl">Miner</div>
+          <select class="est-select" id="deutAsset"><option value="">Select asset</option></select>
+        </div>
+        <div class="blk" id="deutLicBlk">
+          <div class="sec-head">Licence</div>
+          <div class="seg">
+            <button id="deutSegLic"><span class="mark"></span> Licensed</button>
+            <button id="deutSegUn"><span class="mark"></span> Unlicensed</button>
+          </div>
+        </div>
+        <div class="blk">
+          <div class="terms" id="deutTerms">—</div>
+        </div>
+        <button class="deploy" id="deutDeploy" disabled>Deploy</button>
+        <div class="deploy-hint" id="deutHint">Select an asset.</div>
+      </div>
+    </div>
+    <div class="success" id="deutSuccess" style="display:none; padding:30px 24px; text-align:center">
+      <div style="width:52px;height:52px;border-radius:50%;border:2px solid var(--green);color:var(--green);display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 14px">✓</div>
+      <h3 style="font-family:var(--serif);font-weight:600;font-size:20px;margin:0 0 6px" id="deutSuccTtl">Deployed</h3>
+      <p style="font-size:13px;color:var(--ink2);max-width:48ch;margin:0 auto 8px;line-height:1.55" id="deutSuccMsg"></p>
+      <button class="est-back" id="deutBack" style="margin-top:18px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);background:none;border:1px solid var(--line2);border-radius:8px;padding:10px 18px;cursor:pointer">‹ Return to the manifest</button>
+    </div>
   </div>
 </div>
 
@@ -2765,6 +2893,13 @@ function openEstablishFor(site, planet){
   site.systemId = SYSTEM.id;
   site.controller = SYSTEM.controller;
   site.mine = window.__isMine ? window.__isMine(SYSTEM.id) : false;
+  // A DEUTERIUM node is special (§1.4): it opens the dedicated deuterium deploy popup
+  // (licensed/unlicensed mine, slider-less) rather than the generic venture popup — deuterium
+  // is not a normal tier-1 mine. The generic popup handles every other node and every slot.
+  if (site.kind === 'node' && site.resource === 'deuterium' && window.openDeut){
+    window.openDeut({ mode:'mine', site:site });
+    return;
+  }
   window.openEstablish(site);
 }
 
@@ -3365,6 +3500,8 @@ function applySiteMode(){
   $('tierSelWrap').style.display = isSlot?'block':'none';
   $('cfgRes').style.display = isSlot?'none':'flex';
   $('recipeWrap').style.display = isSlot?'block':'none';
+  // The illegal-refinery alternative is offered only on a settlement slot (§1.4 slice 1b).
+  $('estDeutRow').style.display = isSlot ? 'block' : 'none';
   if(isSlot){ S.tier=2; buildTierList(); buildRecipeList(); }
   else {
     S.tier=1; S.recipeId=null; S.outGood=S.site.resource; S.outLabel=S.site.resLabel;
@@ -3454,6 +3591,11 @@ $('recipeSel').addEventListener('change', function(){
 });
 $('segLic').addEventListener('click', function(){ setLicensed(true); });
 $('segUn').addEventListener('click', function(){ setLicensed(false); });
+// Switch a settlement-slot deploy from the generic (legitimate factory) popup to the dedicated
+// illegal-refinery popup, carrying the same slot (§1.4 slice 1b — reuse the slot's deploy entry).
+$('estDeutRefinery').addEventListener('click', function(){
+  var site = S.site; closeOverlay(); if(window.openDeut) window.openDeut({ mode:'refinery', site:site });
+});
 function setLicensed(v){ S.licensed=v; $('segLic').classList.toggle('on',v===true); $('segUn').classList.toggle('on',v===false); draw(); }
 ['cRange','oRange','rnRange'].forEach(function(id){
   $(id).addEventListener('input', function(){
@@ -3482,8 +3624,147 @@ $('mgmtBtn').addEventListener('click', function(){
 document.addEventListener('keydown', function(e){
   if(e.key!=='Escape') return;
   if($('est-reel').classList.contains('open')){ closeReel(); return; }
+  if($('deut-overlay').classList.contains('open')){ closeDeut(); e.stopPropagation(); return; }
   if($('est-overlay').classList.contains('open')){ closeOverlay(); e.stopPropagation(); }
 }, true);
+
+/* ============================================================================
+   THE DEUTERIUM DEPLOY POPUP (§1.4 "The Deuterium Cycle" / "The illegal path").
+   A self-contained, slider-less variant of the generic popup above: deuterium takes
+   no commitment slider, no equity, no fee and no window, so none of that machinery is
+   touched. It serves two deploys, both firing BUILT engine actions:
+     - the deuterium MINE (from a deuterium node): licensed → establishVenture +
+       licenseDeuteriumMine; unlicensed → establishVenture alone;
+     - the illegal REFINERY (from a settlement slot): establishDeuteriumRefinery.
+   Idle assets are read off the snapshot through the SAME `window.__myIdleAssets` the
+   generic picker uses, so "idle" stays the engine's own answer. ======================= */
+var D = { site:null, mode:'mine', asset:null, licensed:null, busy:false };
+var DPOOL = [];
+function deutKind(){ return D.mode === 'refinery' ? 'factory' : 'miner'; }
+
+function fillDeutAssets(){
+  var kind = deutKind();
+  var raw = (window.__myIdleAssets ? window.__myIdleAssets(kind) : []) || [];
+  DPOOL = raw.map(function(a){ return { id:a.id, kind:a.kind, label:(kind==='factory'?'Factory':'Miner'), condition:Math.round((a.maintenanceCondition||0)*100) }; });
+  var sel = $('deutAsset'); sel.innerHTML='';
+  if(!DPOOL.length){
+    var none=document.createElement('option'); none.value=''; none.textContent='— no idle '+(kind==='factory'?'factories':'miners')+' in inventory —';
+    sel.appendChild(none); sel.disabled=true; return;
+  }
+  sel.disabled=false;
+  var first=document.createElement('option'); first.value=''; first.textContent='Select asset'; sel.appendChild(first);
+  DPOOL.forEach(function(a){ var o=document.createElement('option'); o.value=a.id; o.textContent=a.label+' · '+a.id+' · '+a.condition+'%'; sel.appendChild(o); });
+}
+
+function deutTermsHtml(){
+  if(D.mode==='refinery'){
+    return '<div class="warn">Illegal deuterium refinery.</div>'
+      + 'Converts your guild-wide raw deuterium into <b>contraband fuel</b> 1:1 each tick, at the factory’s rate. '
+      + 'It is <b>idle to the Syndicate</b> — zero Guild Points, zero reputation — and the fuel it makes is contraband you burn yourself, never sold or laundered. There is no legal guild refinery.';
+  }
+  if(D.licensed===true){
+    return '<div class="row"><span class="k">Commitment</span><span><b>100%</b> · all output</span></div>'
+      + '<div class="row"><span class="k">Equity &amp; fee</span><span>none</span></div>'
+      + '<div class="row"><span class="k">Reputation</span><span><b>Tier‑4</b></span></div>'
+      + '<div style="margin-top:8px">Every tick, all output is sold to the Syndicate at the posted rate and minted into the fuel pool. Maximum standing — you keep no fuel.</div>';
+  }
+  if(D.licensed===false){
+    return '<div class="warn">Unlicensed — illegal.</div>'
+      + 'The mine is <b>idle to the Syndicate</b>: no Guild Points, no reputation. Its raw deuterium is <b>contraband</b> that piles up guild-wide until you refine it yourself. Nothing is sold.';
+  }
+  return 'Choose licensed or unlicensed to see the terms.';
+}
+
+function deutDraw(){
+  $('deutTerms').innerHTML = deutTermsHtml();
+  var illegal = D.mode==='refinery' || D.licensed===false;
+  $('deutTerms').classList.toggle('illegal', illegal);
+  var btn=$('deutDeploy'), hint=$('deutHint');
+  btn.classList.toggle('illegal', illegal);
+  btn.textContent = D.mode==='refinery' ? 'Deploy illegal refinery'
+    : (D.licensed===false ? 'Deploy unlicensed mine'
+      : (D.licensed===true ? 'Deploy licensed mine' : 'Deploy mine'));
+  var held = !!(D.site && D.site.mine);
+  var ok = held && !!D.asset && (D.mode==='refinery' || D.licensed!==null) && !D.busy;
+  btn.disabled = !ok;
+  if(D.busy) return;                                    // the in-flight message stands
+  hint.classList.remove('err','ok');
+  if(!held) hint.textContent='You don’t hold this system — deploy requires holding it first (§4).';
+  else if(!DPOOL.length) hint.textContent='No idle '+(deutKind()==='factory'?'factories':'miners')+' in your inventory.';
+  else if(!D.asset) hint.textContent='Select an asset.';
+  else if(D.mode==='mine' && D.licensed===null) hint.textContent='Choose licensed or unlicensed.';
+  else hint.textContent='Ready — review the terms, then deploy.';
+}
+
+window.openDeut = function(opts){
+  D = { site:opts.site, mode:(opts.mode==='refinery'?'refinery':'mine'), asset:null, licensed:null, busy:false };
+  $('deutForm').style.display=''; $('deutSuccess').style.display='none';
+  $('deutEyebrow').textContent = D.mode==='refinery' ? 'Deuterium · the illegal path' : 'Deuterium · the supply lever';
+  $('deutTitle').textContent = D.mode==='refinery' ? 'Deploy illegal refinery' : 'Deploy deuterium mine';
+  $('deutSite').textContent = (D.site.nodeLabel||'') + (D.site.planet ? ' · '+D.site.planet : '');
+  $('deutAssetLbl').textContent = D.mode==='refinery' ? 'Factory' : 'Miner';
+  $('deutLicBlk').style.display = D.mode==='refinery' ? 'none' : '';
+  $('deutSegLic').classList.remove('on'); $('deutSegUn').classList.remove('on');
+  fillDeutAssets(); deutDraw();
+  $('deut-overlay').classList.add('open');
+};
+function closeDeut(){ $('deut-overlay').classList.remove('open'); }
+
+$('deutClose').addEventListener('click', closeDeut);
+$('deutBack').addEventListener('click', closeDeut);
+$('deut-overlay').addEventListener('click', function(e){ if(e.target===this) closeDeut(); });
+$('deutAsset').addEventListener('change', function(){ var v=this.value; D.asset = DPOOL.filter(function(a){return a.id===v;})[0]||null; deutDraw(); });
+$('deutSegLic').addEventListener('click', function(){ D.licensed=true; $('deutSegLic').classList.add('on'); $('deutSegUn').classList.remove('on'); deutDraw(); });
+$('deutSegUn').addEventListener('click', function(){ D.licensed=false; $('deutSegUn').classList.add('on'); $('deutSegLic').classList.remove('on'); deutDraw(); });
+$('deutDeploy').addEventListener('click', deutDeploy);
+
+async function deutDeploy(){
+  var player = window.__player ? window.__player() : null;
+  if(!player || !player.guildId){ deutFail('No guild — cannot deploy.'); return; }
+  D.busy = true; deutDraw();
+  var hint=$('deutHint'); hint.classList.remove('err','ok'); hint.textContent='Filing…';
+  var ventureId = player.guildId + '_' + D.site.siteId;   // one venture per site (the occupancy invariant guards it)
+  var establish = D.mode==='refinery'
+    ? { type:'establishDeuteriumRefinery', guildId:player.guildId, ventureId:ventureId, siteId:D.site.siteId, assetId:D.asset.id, productionRate:ESTABLISH_RATE }
+    : { type:'establishVenture', guildId:player.guildId, ventureId:ventureId, siteId:D.site.siteId, assetId:D.asset.id, ventureType:'mining', resourceType:'deuterium', productionRate:ESTABLISH_RATE };
+  var out;
+  try { out = await window.__sendAction(establish); }
+  catch(err){ deutFail('The Syndicate could not be reached: '+err.message); return; }
+  if(!out.accepted){ deutFail('Refused: '+(out.reason||'the Syndicate declined')); return; }
+
+  // From here the VENTURE EXISTS. A licensed mine then files the windowless deuterium licence;
+  // like the generic popup this is deliberately two actions, so a licence refusal leaves a real
+  // unlicensed mine and is reported as exactly that.
+  var licRefusal = null;
+  if(D.mode==='mine' && D.licensed===true){
+    hint.textContent='Filing the licence…';
+    try { var lic = await window.__sendAction({ type:'licenseDeuteriumMine', guildId:player.guildId, ventureId:ventureId });
+      if(!lic.accepted) licRefusal = lic.reason || 'the Syndicate declined the application';
+    } catch(err){ licRefusal = 'the Syndicate could not be reached — '+err.message; }
+  }
+  D.busy=false;
+  if(window.__refreshNow){ try{ await window.__refreshNow(); }catch(e){} }
+  deutSuccess(licRefusal);
+}
+function deutFail(msg){ D.busy=false; var h=$('deutHint'); h.classList.remove('ok'); h.classList.add('err'); h.textContent=msg; }
+function deutSuccess(licRefusal){
+  $('deutForm').style.display='none'; $('deutSuccess').style.display='block';
+  var msg;
+  if(D.mode==='refinery'){
+    $('deutSuccTtl').textContent='Illegal refinery running';
+    msg='Your factory now refines raw deuterium into contraband fuel each tick. It is idle to the Syndicate — no standing — and the fuel fills the red segment of your Guild-Hall bar.';
+  } else if(D.licensed===true && !licRefusal){
+    $('deutSuccTtl').textContent='Licensed mine running';
+    msg='Your mine auto-sells all deuterium to the Syndicate each tick for credits and pool fuel, at maximum (Tier‑4) reputation. You keep no fuel.';
+  } else if(D.licensed===true && licRefusal){
+    $('deutSuccTtl').textContent='Mine running — unlicensed';
+    msg='The mine stands, but the licence was REFUSED, so it runs UNLICENSED (' + licRefusal + '). Its output is contraband until it is licensed.';
+  } else {
+    $('deutSuccTtl').textContent='Unlicensed mine running';
+    msg='Your mine accumulates raw contraband deuterium guild-wide each tick — idle to the Syndicate. Refine it in an illegal refinery to make burnable fuel.';
+  }
+  $('deutSuccMsg').textContent = msg;
+}
 
 })();
 </script>
@@ -4185,6 +4466,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     open:false,
     mode:'sell',     // 'sell' | 'buy' — which side of the Syndicate Trade card is showing
     tier:1,          // which tier tab is showing
+    deut:false,      // the DEUTERIUM tab (§1.4) — a placeholder view, not a tradeable tier
     good:null,       // the selected good — HELD across polls, never reset by a refresh
     scale:null,      // which price-history resolution the chart is drawing
     alloc:{},        // systemId -> the qty the player has typed, for the selected good
@@ -4200,13 +4482,27 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(!id) return null;
     return (s.guilds || []).filter(function(g){ return g.id === id; })[0] || null;
   }
+  // Combined HELD FUEL — legal `fuelHoard` + contraband `deuteriumFuel` (§1.4 slice 1b). This
+  // is what a route burn actually spends (the engine burns legal-first, contraband second) and
+  // what its sufficiency gate counts, so the popup's short-fuel check and "burned" readout must
+  // read the combined total, not the legal half alone. Two readings: `heldUnits` (fuel units,
+  // for the gate and the burned figure) and `heldValue` (credit value, for the bar/receipt).
+  function heldUnits(g){ return ((g && g.fuelHoard) || 0) + ((g && g.deuteriumFuel) || 0); }
+  function heldValue(g){ return ((g && g.fuelHoardValue) || 0) + ((g && g.deuteriumFuelValue) || 0); }
   function catalog(){ return (window.__goodsCatalog && window.__goodsCatalog()) || {}; }
+  // DEUTERIUM IS NOT A NORMAL GOOD (§1.4 "The Deuterium Cycle"): it is special and UNTRADEABLE,
+  // removed from the tier-1 lists and the TRADE tab and rehoused in its own DEUTERIUM tab. Its
+  // refined fuel is never a stockpile good at all. `tierGoods` is the ONE source both the TRADE
+  // chips and `tierOf` read, so filtering here keeps deuterium out of every normal good list by
+  // construction — a robust single chokepoint rather than a scatter of per-list guards.
+  var HIDDEN_GOODS = { deuterium: 1, deuterium_fuel: 1 };
   function tierGoods(t){
     var c = catalog();
-    if(t === 1) return c.raw || [];
-    if(t === 2) return c.processed || [];
-    if(t === 3) return c.tier3 || [];
-    return [];                       // Tier 4 has no goods in the engine yet
+    var list = t === 1 ? (c.raw || [])
+      : t === 2 ? (c.processed || [])
+      : t === 3 ? (c.tier3 || [])
+      : [];                          // Tier 4 has no goods in the engine yet
+    return list.filter(function(g){ return !HIDDEN_GOODS[g]; });
   }
   var TIER_NAMES = ['Raw','Processed','Parts','Constructed'];
   function tierOf(good){
@@ -4279,15 +4575,17 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   function renderNav(){
     var tiers = el('tw-tiers'), list = el('tw-reslist');
     var goods = tierGoods(T.tier);
-    var sig = T.tier + '|' + goods.join(',') + '|' + T.good;
+    var sig = T.tier + '|' + goods.join(',') + '|' + T.good + '|' + (T.deut?'D':'');
     if(sig !== T.navSig){
       T.navSig = sig;
       var th = '';
       for(var t=1; t<=4; t++){
         var has = tierGoods(t).length > 0;
-        th += '<div class="tw-tier'+(t===T.tier?' on':'')+(has?'':' dim')+'" data-tier="'+t+'">'
+        th += '<div class="tw-tier'+(!T.deut && t===T.tier?' on':'')+(has?'':' dim')+'" data-tier="'+t+'">'
             + '<span class="n">'+t+'</span>'+TIER_NAMES[t-1]+'</div>';
       }
+      // The DEUTERIUM tab beside the tiers (§1.4) — a special tab, not a fifth tier.
+      th += '<div class="tw-tier deut'+(T.deut?' on':'')+'" data-deut="1"><span class="n">&#9670;</span>Deuterium</div>';
       tiers.innerHTML = th;
       if(!goods.length){
         list.innerHTML = '<span class="tw-empty">The engine declares no goods at this tier yet.</span>';
@@ -4591,7 +4889,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       burn += q.fuelBurn || 0;
       credits += q.creditCost || 0;
     });
-    return { burn: burn, credits: credits, hoard: (guild && guild.fuelHoard) || 0 };
+    // Combined held fuel (legal + contraband, §1.4 1b): the engine's burn spends both, so this
+    // pre-gate must count both or it would block a sale the engine would accept.
+    return { burn: burn, credits: credits, hoard: heldUnits(guild) };
   }
   function recalc(){
     var price = T.good ? priceOf(T.good) : null;
@@ -4630,6 +4930,25 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   function render(){
     if(!T.open) return;
     var guild = meGuild();
+    // The DEUTERIUM tab (§1.4) — a placeholder view. Swap the trade body for the deuterium panel
+    // and render its two published stores. The good-driven body (chips, chart, sell/buy) is hidden
+    // rather than torn down, so switching back to a tier restores it untouched.
+    var body = document.querySelector('#tp-trade .tw-body');
+    var deutPanel = el('tw-deut-panel'), reslist = el('tw-reslist');
+    if(T.deut){
+      renderNav();
+      if(body) body.style.display = 'none';
+      if(reslist) reslist.style.display = 'none';
+      if(deutPanel) deutPanel.style.display = '';
+      var raw = (guild && guild.deuterium) || 0;
+      var fuel = (guild && guild.deuteriumFuel) || 0;
+      el('tw-deut-raw').textContent = fmt(raw) + ' q';
+      el('tw-deut-fuel').textContent = fmt(fuel) + ' q';
+      return;
+    }
+    if(body) body.style.display = '';
+    if(reslist) reslist.style.display = '';
+    if(deutPanel) deutPanel.style.display = 'none';
     if(T.good == null || priceOf(T.good) == null){
       var pick = defaultGood(guild);
       if(pick){ T.good = pick; T.tier = tierOf(pick); }
@@ -4672,8 +4991,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   panel.addEventListener('click', function(e){
     var tier = e.target.closest('.tw-tier');
     if(tier){
+      if(tier.getAttribute('data-deut')){ T.deut = true; T.navSig = ''; render(); return; }
       var t = +tier.getAttribute('data-tier');
-      if(tierGoods(t).length){ T.tier = t; T.navSig = ''; render(); }
+      if(tierGoods(t).length){ T.deut = false; T.tier = t; T.navSig = ''; render(); }
       return;
     }
     var chip = e.target.closest('.tw-chip');
@@ -4831,16 +5151,16 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
 
   // The fuel-credit bar (both popups) — the Guild Hall stockpile bar shrunk into the ledger.
-  // The whole hoard in credits is `fuelHoardValue` (§8 has no posted fuel price for the client
-  // to multiply by — the engine marks it). v1: the hoard is ALL legal, so `illegal` reads 0;
-  // it is wired to a future `fuelHoardIllegalValue` field so the red segment lights up the day
-  // illegal refining lands, with NO change here. The marker lands at (hoard − route) credits;
-  // when the route burn exceeds the hoard the SAME condition that disables confirm, the bar
-  // goes to its INSUFFICIENT (orange) state with the marker at 0.
+  // The whole HELD fuel in credits is legal `fuelHoardValue` + contraband `deuteriumFuelValue`
+  // (§1.4 slice 1b — §8 has no posted fuel price for the client to multiply by; the engine marks
+  // both). The RED segment is the contraband half; it lights up as soon as an illegal refinery
+  // is producing. The marker lands at (held − route) credits; when the route burn exceeds the
+  // combined held fuel — the SAME condition that disables confirm — the bar goes to its
+  // INSUFFICIENT (orange) state with the marker at 0.
   function txFuelBar(routeCredits, fuelShort){
     var g = meGuild();
-    var total = (g && g.fuelHoardValue != null) ? g.fuelHoardValue : 0;
-    var illegal = (g && g.fuelHoardIllegalValue) || 0;   // future field; 0 today ⇒ all legal
+    var total = heldValue(g);                            // legal + contraband, in credits
+    var illegal = (g && g.deuteriumFuelValue) || 0;      // the contraband half — the red segment
     illegal = Math.max(0, Math.min(illegal, total));
     var remaining = total - routeCredits;
     var illegalPct = total > 0 ? illegal / total * 100 : 0;
@@ -4909,8 +5229,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return html;
   }
   function txRenderSellLedger(){
-    var t = txSellTotals(), g = meGuild(), hoard = (g && g.fuelHoard) || 0;
-    var fuelShort = t.burn > hoard;                        // the engine's SELL gate, in UNITS
+    var t = txSellTotals(), g = meGuild(), hoard = heldUnits(g);   // legal + contraband (§1.4 1b)
+    var fuelShort = t.burn > hoard;                        // the engine's SELL gate, in UNITS (combined)
     el('tw-tx-art').style.backgroundImage = t.totalQty > 0 ? 'url(' + TX_ART[txHeroClass(t.maxQty)] + ')' : 'none';
     el('tw-tx-ledger').innerHTML =
         '<div class="row2"><span class="k">Consignment</span><span class="v">'
@@ -4947,10 +5267,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   function txRenderBuyLedger(){
     var g = meGuild(), good = TX.good, price = txQuotedPrice();   // §8.1: the FROZEN price
     var cost = (price == null) ? 0 : Math.round(TX.qty * price);
-    var credits = (g && g.credits) || 0, hoard = (g && g.fuelHoard) || 0;
+    var credits = (g && g.credits) || 0, hoard = heldUnits(g);   // legal + contraband (§1.4 1b)
     var route = txRoute(TX.dest), burn = route ? (route.fuelBurn || 0) : 0;   // burn (units) — live
     var routeCr = txQuotedCredit(TX.dest);                        // route fuel CREDITS — frozen
-    var costShort = cost > credits, fuelShort = burn > hoard;   // the engine's TWO BUY gates
+    var costShort = cost > credits, fuelShort = burn > hoard;   // the engine's TWO BUY gates (fuel combined)
     el('tw-tx-art').style.backgroundImage = 'url(' + TX_ART[txHeroClass(TX.qty)] + ')';
     el('tw-tx-ledger').innerHTML =
         '<div class="row2"><span class="k">Purchase</span><span class="v">' + pretty(good) + ' <span style="color:var(--ink3)">&times;</span> ' + fmt(TX.qty) + '</span></div>'
@@ -5050,11 +5370,14 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       txError(reason); return;
     }
     var after = ((res.snapshot && res.snapshot.guilds) || []).filter(function(g){ return g.id === guildId; })[0] || null;
-    var nowFuel = (after && after.fuelHoardValue != null) ? ('&#162;' + fmt(after.fuelHoardValue)) : '&mdash;';
+    // Combined held fuel (legal + contraband, §1.4 1b): `before.hoard` was captured combined, so
+    // the burn — which draws legal-first then contraband — reads true only against the combined
+    // after-total. `nowFuel` likewise shows the combined credit value the bar draws.
+    var nowFuel = after ? ('&#162;' + fmt(heldValue(after))) : '&mdash;';
     var sled;
     if(TX.kind === 'sell'){
       var credited = after ? (after.credits - before.credits) : null;
-      var burned = after ? (before.hoard - after.fuelHoard) : null;
+      var burned = after ? (before.hoard - heldUnits(after)) : null;
       sled = txSledRow('Sold', pretty(TX.good) + ' &times; ' + fmt(TX.last.totalQty))
         + txSledRow('Proceeds &#8594; treasury', '<span style="color:var(--green)">+&#162;' + (credited == null ? '&mdash;' : fmt(credited)) + '</span>')
         + txSledRow('Route fuel burned', '<span style="color:var(--red)">&#8722;' + (burned == null ? '&mdash;' : fmt(burned) + ' fuel') + '</span>')
@@ -5062,7 +5385,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       el('tw-tx-successttl').textContent = 'Consignment sold';
     } else {
       var spent = after ? (before.credits - after.credits) : null;
-      var burnedB = after ? (before.hoard - after.fuelHoard) : null;
+      var burnedB = after ? (before.hoard - heldUnits(after)) : null;
       var ships = (res.snapshot && res.snapshot.shipments) || [];
       var mine = ships.filter(function(s){ return s.ownerGuildId === guildId && s.destinationSystemId === TX.dest; });
       var ship = mine.length ? mine[mine.length - 1] : null;   // shipments arrive sorted; the last match is the one just placed
@@ -5268,21 +5591,25 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
 
   // The fuel-credit stockpile bar. `startTotal` = start-of-cycle max (credits), `legal` =
-  // legal remaining (credits), `illegal` = 0 in v1. Fills [red illegal][blue legal] from
-  // the left; the empty right is what was used this cycle. `startTotal` falsy (a guild
-  // before its first cycle boundary) draws a graceful empty bar rather than dividing by 0.
+  // legal remaining (blue, credits), `illegal` = contraband held (red, credits — §1.4 1b).
+  // Fills [red illegal][blue legal] from the left; the empty right is what was used this cycle.
+  //
+  // THE DENOMINATOR is `max(startTotal, legal + illegal)`. Legal fuel only ever depletes over a
+  // cycle, so it never exceeds `startTotal`; contraband, though, is minted mid-cycle by an
+  // illegal refinery and accumulates, so `legal + illegal` can run PAST the start-of-cycle max —
+  // the bar then scales to the fuller total so the red segment always fits and "watch it go red"
+  // stays legible. With no start-of-cycle hoard AND no contraband there is nothing to draw.
   function ghStockBar(startTotal, legal, illegal){
     var money = function(v){ return '&#162;'+fmt(v); };
-    if(!startTotal || startTotal <= 0){
+    illegal = Math.max(0, illegal || 0);
+    legal = Math.max(0, legal || 0);
+    var denom = Math.max(startTotal || 0, legal + illegal);
+    if(denom <= 0){
       return '<div class="gh-sb"><div class="gh-sblabels"></div>'
         + '<div class="gh-sbtrack"><div class="gh-sbempty">no cycle-start hoard yet &mdash; the bar fills at the first cycle boundary</div></div>'
         + '<div class="gh-sbfoot"><span>0</span><span>awaiting first boundary</span></div></div>';
     }
-    // Clamp the segments into the track: in v1 the hoard only depletes, so legal ≤ start;
-    // the clamp keeps a rounding wobble or a mid-cycle grant from overrunning the geometry.
-    illegal = Math.max(0, Math.min(illegal, startTotal));
-    legal = Math.max(0, Math.min(legal, startTotal - illegal));
-    var pR = illegal/startTotal*100, pB = legal/startTotal*100;
+    var pR = illegal/denom*100, pB = legal/denom*100;
     var redHead = pR, blueHead = pR + pB;
     var out = '<div class="gh-sb"><div class="gh-sblabels">';
     if(illegal>0) out+='<div class="gh-sblab red" style="right:'+(100-redHead).toFixed(2)+'%"><span class="cap">Illegal</span>'+money(illegal)+'</div>';
@@ -5290,7 +5617,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     out+='</div><div class="gh-sbtrack">';
     if(illegal>0) out+='<div class="gh-sbred" style="left:0;width:'+pR.toFixed(2)+'%"></div>';
     out+='<div class="gh-sbblue" style="left:'+pR.toFixed(2)+'%;width:'+pB.toFixed(2)+'%"></div>';
-    out+='</div><div class="gh-sbfoot"><span>0</span><span>start of cycle &#162;'+fmt(startTotal)+'</span></div>';
+    // The foot shows the start-of-cycle legal max when there is one; a contraband-only guild
+    // (no legal grant yet) has no such datum, so it labels the scale by the fuller total.
+    var footR = startTotal ? ('start of cycle &#162;'+fmt(startTotal)) : ('held &#162;'+fmt(legal+illegal)+' &middot; contraband');
+    out+='</div><div class="gh-sbfoot"><span>0</span><span>'+footR+'</span></div>';
     return out+'</div>';
   }
 
@@ -5344,10 +5674,15 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     ]);
 
     // Fuel-credit stockpile ← the credit values AS PUBLISHED (no unit×price on the client):
-    // max = fuelHoardAtCycleStartValue, legal remaining = fuelHoardValue, illegal = 0.
+    // max = fuelHoardAtCycleStartValue, legal (blue) = fuelHoardValue, illegal (red) =
+    // deuteriumFuelValue (§1.4 1b — the contraband half). The red segment is the "watch it go
+    // red" danger signal: it lights up as soon as an illegal refinery is producing, and (unlike
+    // the legal hoard, which only depletes over a cycle) it can push the bar past its
+    // start-of-cycle max — ghStockBar scales to whichever is larger.
     var s = snap();
     var startTotal = (me && me.fuelHoardAtCycleStartValue != null) ? me.fuelHoardAtCycleStartValue : null;
     var legal = (me && me.fuelHoardValue != null) ? me.fuelHoardValue : 0;
+    var illegal = (me && me.deuteriumFuelValue) || 0;
     var fuelPrice = (s && s.galacticSupply && s.galacticSupply.fuel && s.galacticSupply.fuel.fuelPrice != null)
       ? s.galacticSupply.fuel.fuelPrice : null;
     var priceNote = fuelPrice != null
@@ -5370,7 +5705,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       + '</div>'
       + '<div class="gh-card"><div class="gh-cbody">'
       +   '<div class="gh-sbhead"><div class="gh-minihd" style="margin-bottom:0">Fuel-credit stockpile &middot; this cycle</div><div class="gh-sbnote">'+priceNote+'</div></div>'
-      +   ghStockBar(startTotal, legal, 0)
+      +   ghStockBar(startTotal, legal, illegal)
       + '</div></div>';
   }
 

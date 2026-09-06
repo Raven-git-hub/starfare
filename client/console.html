@@ -968,11 +968,17 @@ function synResolve(){
 // tier3 = tier 3 — three display-only placeholder names the engine declares in
 // resources.js). Tier 4 has no goods in the engine yet, so it renders dim/empty —
 // honest, not faked. The browser never types a good name of its own.
+// DEUTERIUM is special (§1.4 "The Deuterium Cycle"): untradeable, un-consoled, rehoused in the
+// game client's own DEUTERIUM tab. It is never managed here, so it is filtered out of the tier
+// lists at the one chokepoint the good tabs and the resbar read. Its refined fuel is not a
+// stockpile good at all.
+var HIDDEN_GOODS = { deuterium: 1, deuterium_fuel: 1 };
 function tierGoods(t){
-  if (t === 1) return STATE.goods.raw || [];
-  if (t === 2) return STATE.goods.processed || [];
-  if (t === 3) return STATE.goods.tier3 || [];
-  return [];
+  var list = t === 1 ? (STATE.goods.raw || [])
+    : t === 2 ? (STATE.goods.processed || [])
+    : t === 3 ? (STATE.goods.tier3 || [])
+    : [];
+  return list.filter(function(g){ return !HIDDEN_GOODS[g]; });
 }
 
 // Is this a good the engine actually POOLS — one that can be produced, policied
@@ -982,6 +988,7 @@ function tierGoods(t){
 // no policy and no pool (the engine would reject the action). The inventory panel
 // lists them regardless — listing a holding of 0 is honest, managing it is not.
 function isPooledGood(good){
+  if (HIDDEN_GOODS[good]) return false;   // deuterium is never a console-managed pool (§1.4)
   return (STATE.goods.raw || []).indexOf(good) >= 0 || (STATE.goods.processed || []).indexOf(good) >= 0;
 }
 

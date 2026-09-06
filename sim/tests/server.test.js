@@ -363,6 +363,44 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the SELL & 
   assert.ok(!/src\s*=\s*['"]?\/?console/.test(tradeBlock), 'the TRADE tab embeds no console');
 });
 
+// The DEUTERIUM client (§1.4 "The Deuterium Cycle" / "The illegal path") — slice 2a. A
+// client-render tripwire on the SERVED bytes: the deploy popup, the segmented bar, the removal
+// from the normal lists and the placeholder tab would all still render if silently reverted, and
+// only this fails.
+test('GET / serves the DEUTERIUM client — deploy popup, segmented bar, removal, placeholder tab', async () => {
+  const html = await (await fetch(base + '/')).text();
+
+  // 1. THE DEPLOY POPUP fires the three BUILT actions — the load-bearing strings, so a reverted
+  //    popup that stopped calling one is caught. A deuterium node opens the dedicated popup.
+  assert.match(html, /id="deut-overlay"/);
+  assert.match(html, /type:'establishDeuteriumRefinery'/);           // the illegal refinery
+  assert.match(html, /type:'licenseDeuteriumMine'/);                 // the licensed mine's licence
+  assert.match(html, /type:'establishVenture'[\s\S]{0,120}resourceType:'deuterium'/); // the mine itself
+  assert.match(html, /site\.resource === 'deuterium' && window\.openDeut/,
+    'a deuterium node must fork to the dedicated deuterium popup, not the generic one');
+  // The licensed/unlicensed choice and the refinery entry from a settlement slot.
+  assert.match(html, /id="deutSegLic"/);
+  assert.match(html, /id="deutSegUn"/);
+  assert.match(html, /id="estDeutRefinery"/);
+
+  // 2. DEUTERIUM REMOVED from the normal good lists — the one chokepoint filter (§1.4), so it can
+  //    never render as a tradeable tier-1 chip or a console-managed good.
+  assert.match(html, /var HIDDEN_GOODS = \{ deuterium: 1, deuterium_fuel: 1 \};/);
+  assert.match(html, /return list\.filter\(function\(g\)\{ return !HIDDEN_GOODS\[g\]; \}\);/);
+
+  // 3. THE SEGMENTED FUEL BAR reads BOTH stores: the standing bar's red segment is the contraband
+  //    value, and the trade popup's fuel now counts legal + contraband combined (the 1b catch-up).
+  assert.match(html, /me\.deuteriumFuelValue/, 'the standing bar red segment reads the contraband store');
+  assert.match(html, /function heldUnits\(g\)\{ return \(\(g && g\.fuelHoard\) \|\| 0\) \+ \(\(g && g\.deuteriumFuel\) \|\| 0\); \}/);
+  assert.match(html, /function heldValue\(g\)\{ return \(\(g && g\.fuelHoardValue\) \|\| 0\) \+ \(\(g && g\.deuteriumFuelValue\) \|\| 0\); \}/);
+
+  // 4. THE PLACEHOLDER DEUTERIUM TAB exists beside the tier tabs, reading the published stores.
+  assert.match(html, /id="tw-deut-panel"/);
+  assert.match(html, /data-deut="1"/);
+  assert.match(html, /id="tw-deut-raw"/);
+  assert.match(html, /id="tw-deut-fuel"/);
+});
+
 // The finished TRADE chart (29-08-26). Three things a page could lose silently — it
 // would still render, and only this would fail: the scale buttons reverting to the raw
 // ring keys, the reference line being dropped, and the width cap coming back.
@@ -1307,10 +1345,16 @@ test('GET /console serves the SYSTEM INVENTORY panel: the right hero\'s resting 
   assert.match(html, /\.inv-q\{position:absolute/);            // the overlay is not clipped by the fill
 
   // Tier 3's vocabulary comes from the ENGINE (GET /goods), never a client list.
-  assert.match(html, /if \(t === 3\) return STATE\.goods\.tier3 \|\| \[\];/);
+  assert.match(html, /t === 3 \? \(STATE\.goods\.tier3 \|\| \[\]\)/);
   for (const g of ['small_reactor_engine', 'medium_reactor_engine', 'heavy_reactor_engine']) {
     assert.ok(!html.includes(g), `the console must not hardcode ${g} — it reads /goods`);
   }
+
+  // DEUTERIUM is filtered out of the console's tier lists (§1.4 "The Deuterium Cycle"): it is
+  // special, untradeable and un-consoled, so `tierGoods`/`isPooledGood` drop it at one chokepoint.
+  assert.match(html, /var HIDDEN_GOODS = \{ deuterium: 1, deuterium_fuel: 1 \};/);
+  assert.match(html, /return list\.filter\(function\(g\)\{ return !HIDDEN_GOODS\[g\]; \}\);/);
+  assert.match(html, /if \(HIDDEN_GOODS\[good\]\) return false;/);
 
   // The chip toggle: clicking the selected chip clears the selection, and the
   // auto-open-on-the-lead-venture respects that clear instead of undoing it.

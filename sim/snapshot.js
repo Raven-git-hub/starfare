@@ -386,6 +386,7 @@ const SNAPSHOT_SCHEMA = 7;
 //       // what a licence signed NOW would cost, per good — sim/licence.js's own licenceFee
 //     guilds: [ { id, name, isBot, credits, fuelHoard, fuelHoardValue,
 //                 fuelHoardAtCycleStart, fuelHoardAtCycleStartValue,  // Guild Hall A | null
+//                 deuterium, deuteriumFuel, deuteriumFuelValue,       // §1.4 stores (1a/1b)
 //                 modifierHistory: [ <modifier>, ... ],               // Guild Hall C, []-safe
 //                 influence,
 //                 guildReputation,                    // RP, Σ ventures' + endowment
@@ -416,6 +417,8 @@ const SNAPSHOT_SCHEMA = 7;
 //                   licence: { committedOutputPct, windowDays, signedTick,       // 3b-i
 //                              lockedPrice, basicFee, discountedFee } | null,
 //                   committedFromTick: int | null,                            // 3b-ii
+//                   deuteriumLicence: { signedTick } | null,   // §1.4 licensed mine marker
+//                   deuteriumRefinery: bool,                   // §1.4 illegal refinery marker
 //                   recipeId, productionRate, syndicateCommitment,
 //                   site: { kind, planetId, systemId, resourceType } | null } ],
 //     occupancy: { <siteId>: <ventureId> },
@@ -485,6 +488,20 @@ function buildSnapshot(state) {
       fuelHoardAtCycleStartValue: g.fuelHoardAtCycleStart == null
         ? null
         : fuelValue(g.fuelHoardAtCycleStart, fuelPrice),
+      // The two guild-wide DEUTERIUM stores (§1.4 "The illegal path, made concrete", slices
+      // 1a/1b) — the B1 exemption, held guild-wide rather than per-system:
+      //   - `deuterium`: RAW contraband, mined by an unlicensed deuterium mine, awaiting a
+      //     refinery. A goods quantity, not fuel — its posted-price valuation is the DEUTERIUM
+      //     tab's job (slice 2b), so only the raw count is published here.
+      //   - `deuteriumFuel`: CONTRABAND FUEL, refined 1:1 from the raw. Held FUEL, so it is
+      //     marked to `reserve.fuelPrice` through the SAME `fuelValue` as `fuelHoard` — this is
+      //     the RED segment of the Guild-Hall fuel bar (blue = `fuelHoard`, the legal half).
+      // Both ECHOED off stored state (the engine decides, the browser renders), reported as the
+      // 0 they mean when absent so the client reads a number, never an `undefined`. Additive and
+      // DERIVED — no stored counterpart beyond the two scalars, no determinism byte.
+      deuterium: g.deuterium || 0,
+      deuteriumFuel: g.deuteriumFuel || 0,
+      deuteriumFuelValue: fuelValue(g.deuteriumFuel || 0, fuelPrice),
       // What a Syndicate trade COSTS IN FUEL, per system this guild holds (fuel
       // Slice 2). Keyed by systemId, each `{ fuelBurn, creditCost, travelTicks }`.
       // The BURN is the engine's own `routeFuelCost` (sim/fuel.js) — CALLED, never
@@ -787,6 +804,18 @@ function buildSnapshot(state) {
         // thing (§5's display rule). Copied so the snapshot can't alias into engine
         // state. null for an unlicensed venture, which is most of them.
         licence: v.licence ? { ...v.licence } : null,
+        // The two DEUTERIUM markers (§1.4), surfaced so the client can tell a licensed
+        // deuterium mine, an unlicensed one, and an illegal refinery apart — each presents and
+        // deploys differently:
+        //   - `deuteriumLicence`: the windowless deuterium licence ({ signedTick }) — a licensed
+        //     mine that auto-sells to the Syndicate. null on an unlicensed mine.
+        //   - `deuteriumRefinery`: true on an illegal refinery (a factory venture converting raw
+        //     deuterium → contraband fuel). false otherwise.
+        // Both ECHOED off stored state; copied so the snapshot can't alias into engine state.
+        // A plain deuterium MINE carries a `resourceType` of 'deuterium'; the two markers say
+        // what has been done with it.
+        deuteriumLicence: v.deuteriumLicence ? { ...v.deuteriumLicence } : null,
+        deuteriumRefinery: !!v.deuteriumRefinery,
         // committedFromTick: the venture's FIRST PRODUCING tick under its licence
         // (Slice 3b-ii) — the term that pro-rates its first window's obligation (§5's
         // join ruling). null for an unlicensed venture, and for one committed through

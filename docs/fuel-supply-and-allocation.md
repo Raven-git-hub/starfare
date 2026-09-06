@@ -246,9 +246,13 @@ resolved and the storage / burn model pinned:
   zero GP (the same skip covers the refinery) and zero RP. Route burn spends **legal `fuelHoard` first,
   contraband `deuteriumFuel` second** (`burnFuel`, `sim/fuel.js`), and every SELL/BUY sufficiency gate counts the
   combined total. Invariant 1's held side and `computeGalacticSupply`'s `guildHeld` both now sum
-  `fuelHoard + deuteriumFuel`. The **client** (the DEUTERIUM tab, the deploy popup, the blue/red segmented bar,
-  the combined-fuel readout) is **slice 2 (NOT built)**; the SELL/BUY popup still shows `fuelHoard` alone until
-  then, a cosmetic under-count while the engine correctly burns the combined total.
+  `fuelHoard + deuteriumFuel`. The **client** is slice 2 — its first half is **BUILT (slice 2a, 06-09-26):** the
+  snapshot publishes the two stores + the two venture markers; the slider-less deploy popup fires the three
+  actions (mine licensed/unlicensed from a deuterium node, illegal refinery from a settlement slot); the
+  Guild-Hall fuel bar splits blue/red; the SELL/BUY popup's fuel readout counts the combined legal + contraband
+  total (the burn the engine actually makes); deuterium is removed from the tradeable tiers and the production
+  console; and a **placeholder DEUTERIUM tab** is dropped in. The tab's DASHBOARD (price + graph, the raw /
+  contraband readouts in full, the mine / refinery roster) is **slice 2b (NOT built — designed first).**
 
 **The trade-off, stated plainly.** *License it* → per-tick credits at market rate + maximum (T4) RP, but
 you never keep the fuel. *Refine it illegally* → you keep the fuel to burn yourself, but no pay, no
