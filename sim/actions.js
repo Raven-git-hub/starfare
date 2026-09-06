@@ -17,6 +17,7 @@ const { setEntry } = require('./profile.js');
 const { getStock, addStock } = require('./stock.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { foundingEndowmentFor } = require('./meanline.js');
+const { grantFor } = require('./issuance.js');
 const { guildHolds } = require('./claims.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
 const { GUILD_STARTING_FUEL, routeFuelCost } = require('./fuel.js');
@@ -1067,6 +1068,23 @@ function applyAction(state, action) {
     // reputation, but they are summed rather than assumed away so a scenario that hands one
     // in cannot silently break `checkGuildReputationSum` on the founding tick.
     guild.guildReputation = (guild.ventures || []).reduce((n, v) => n + (v.reputation || 0), 0) + endowment;
+
+    // THE FUEL Δ FOUNDING BASELINE (docs/guild-hall.md §2, the expected-fuel-change gauge).
+    // Stamped HERE, after the home claim, the endowment and the reputation total are all in
+    // place — so `grantFor` reads the guild's REAL founding GP (home system + inline ventures)
+    // and the modifier its founding standing earns. It is the credit entitlement the guild
+    // would be granted at this instant, and it is the gauge's DENOMINATOR until the first cycle
+    // boundary records a real `fuelGrant.entitlement`: `predictedGrant` and this are computed
+    // from ONE GP/modifier at founding, so the ratio opens at exactly ×1.00 and swings live as
+    // the guild grows this cycle — no `—` gap before the first boundary.
+    //
+    // AN HONEST DEDICATED BASELINE, mirroring `foundingEndowment` right above — NOT a synthesised
+    // `lastFuelGrant`: no grant happened, so the boundary machinery and the grant tripwires must
+    // never see a phantom one. Integer credits (`grantFor` rounds, §15.2), tick-anchored by the
+    // founding it rides. Omitted when 0 (a zero-GP founding draws nothing, so there is no baseline
+    // to divide from and the gauge honestly reads `—`), exactly as `foundingEndowment` is.
+    const foundingEntitlement = grantFor(next, guild);
+    if (foundingEntitlement !== 0) guild.foundingEntitlement = foundingEntitlement;
 
     // The ledger FUNDS the starting credits: credits move Syndicate -> guild,
     // none are created. expectedCreditTotal is unchanged (guild +C, ledger -C

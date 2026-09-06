@@ -361,6 +361,13 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 //     (`predictedGrant ÷ fuelGrant.entitlement`) for the change ratio — the sanctioned
 //     two-field derive, like the RP donut's subtraction. Unlike `predictedGrant` this rides a
 //     serialized record, so it appears only after a guild's first boundary (null before).
+// (06-09-26, the Fuel Δ founding baseline — docs/guild-hall.md §2): each guild row gains
+// `foundingEntitlement` — the guild's fuel-credit entitlement at founding (`grantFor` captured
+// in the `foundGuild` apply), ECHOED off stored state like `foundingEndowment`. It is the Fuel Δ
+// gauge's DENOMINATOR before the first boundary stamps `fuelGrant.entitlement`, so the gauge
+// reads live (opening ×1.00) from tick 0 instead of `—`. ADDITIVE, NO schema bump. null for a
+// guild not founded through `foundGuild` and for a zero-GP founding — the client falls through
+// to today's behaviour on a null.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -383,6 +390,7 @@ const SNAPSHOT_SCHEMA = 7;
 //                 influence,
 //                 guildReputation,                    // RP, Σ ventures' + endowment
 //                 foundingEndowment,                  // of which granted at founding
+//                 foundingEntitlement,     // fuel-credit entitlement at founding | null
 //                 guildPoints,                                  // GP, DERIVED per read
 //                 expectedReputation, issuanceModifier,        // the mean line, DERIVED
 //                 predictedGrant,                    // live fuel-credit entitlement, DERIVED
@@ -542,6 +550,14 @@ function buildSnapshot(state) {
       // is a number with no visible provenance. 0 for every guild not founded through
       // `foundGuild`, which is every scenario- and test-built one.
       foundingEndowment: g.foundingEndowment || 0,
+      // foundingEntitlement: the guild's fuel-credit ENTITLEMENT at founding (the
+      // expected-fuel-change gauge's baseline, docs/guild-hall.md §2) — `grantFor` captured at
+      // founding, ECHOED as stored like `foundingEndowment` beside it. It is the Fuel Δ gauge's
+      // DENOMINATOR before the first cycle boundary stamps a real `fuelGrant.entitlement`, so
+      // the gauge reads live (opening at ×1.00) from tick 0 instead of `—` until the first
+      // boundary. null for a guild not founded through `foundGuild` (every scenario/test one)
+      // and for a zero-GP founding — a null the client falls through to today's behaviour on.
+      foundingEntitlement: g.foundingEntitlement == null ? null : g.foundingEntitlement,
       // guildPoints: the guild's Guild Points — how BIG it is
       // (docs/points-and-reputation.md §1/§1.0): `W_SYS × held systems + Σ ventures
       // W_TIER(tier)`, computed by the engine's own `guildPoints` (sim/points.js) rather

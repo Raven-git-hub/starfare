@@ -56,6 +56,7 @@ function createGuild({
   homeSystemId = null,
   homePlanetId = null,
   foundingEndowment = 0,
+  foundingEntitlement = 0,
   stockpiles = {},
   productionProfile = {},
   syndicateWindows = {},
@@ -133,6 +134,21 @@ function createGuild({
     // built by `foundGuild` carries no key at all, so all the determinism goldens whose
     // guilds come from `createState` stay byte-identical.
     ...(foundingEndowment !== 0 ? { foundingEndowment } : {}),
+    // foundingEntitlement: the guild's fuel-credit ENTITLEMENT at founding — `grantFor` at the
+    // instant it was founded (the expected-fuel-change gauge's baseline, docs/guild-hall.md §2).
+    // It is the Fuel Δ gauge's DENOMINATOR before the first cycle boundary stamps a real
+    // `fuelGrant.entitlement`, so the gauge reads live from tick 0 (opening at ×1.00, since
+    // `predictedGrant` and this are one GP/modifier at founding) instead of `—` until the first
+    // boundary. An integer credit (`grantFor` rounds, §15.2).
+    //
+    // SET ONLY BY THE `foundGuild` APPLY, never here — this constructor has no claims to size
+    // `grantFor` off (the home claim is pushed after the guild is built). CARRIED here for the
+    // same reason `foundingEndowment` is: a scenario or restored save that HANDS ONE IN keeps
+    // it. It is a pure baseline field, NOT a synthesised grant record — no boundary machinery or
+    // grant tripwire ever sees a phantom grant, so it needs no `checkGuildReputationSum`-style
+    // term. OMITTED when 0, exactly as `foundingEndowment` above, so every guild built by
+    // `createState` (which never founds) carries no key and stays byte-identical.
+    ...(foundingEntitlement !== 0 ? { foundingEntitlement } : {}),
     // stockpiles: systemId -> good -> int, the guild's holdings of each RAW
     // resource, SYSTEM-SCOPED per ruling B1 (§15.2) — a separate pool per system
     // it operates in, accessed only via sim/stock.js. Fuel is NOT here — it

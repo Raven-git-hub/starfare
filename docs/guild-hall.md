@@ -40,8 +40,18 @@ measures the guild's own growth, **not** the market's price move (the absolute f
 and the price ticker are a separate later panel). It reuses the same gauge as Current/Predicted:
 centred on ×1.00, green up / red down, and **it prints the true `×N.NN`** even when the bar pins
 at the axis clamp (a big-growth cycle shows e.g. `×2.10` with the bar at the top — expected, not
-an error). Before the guild's first grant there is no "current" entitlement to divide from, so
-the gauge renders `—`, exactly as the Current gauge does then.
+an error).
+
+**It is live from founding.** The denominator is the entitlement stamped on this cycle's grant
+(`fuelGrant.entitlement`) once the first cycle boundary has recorded one; **before that** it falls
+back to `foundingEntitlement` — the credit entitlement `grantFor` captured at the instant the
+guild was founded (an engine baseline, stamped in the `foundGuild` apply beside `foundingEndowment`
+— **not** a synthesised grant). At founding, `predictedGrant` and `foundingEntitlement` come from
+one GP and modifier, so the gauge opens at exactly **×1.00** and swings up live as the guild grows
+this cycle; at the first boundary `fuelGrant.entitlement` takes over the denominator and the gauge
+rebases with no visible change. So the gauge is honest from tick 0 — it renders `—` only when
+there is genuinely no baseline (a zero-GP founding that draws nothing, or a guild founded before
+the baseline existed, both of which read `null`).
 
 **Deliberately NOT shown: raw GP, RP, expected, the gap, or any absolute fuel-credit size.**
 Those are backend numbers the player doesn't reason in. The modifier gauges, the Fuel Δ ratio and
@@ -118,7 +128,8 @@ row needed now ships (the A/B/C slice, 02-09-26).
 | Cycle / day / tick | calendar | LIVE |
 | Predicted modifier (gauge) | `guilds[].issuanceModifier` (recomputed on read = live) | LIVE |
 | Current modifier (gauge) | `guilds[].fuelGrant.modifier` — modifier stamped on the grant | BUILT (B) |
-| Fuel Δ ratio (gauge) | `guilds[].predictedGrant ÷ guilds[].fuelGrant.entitlement` | BUILT (D, derived) |
+| Fuel Δ ratio (gauge) | `guilds[].predictedGrant ÷ (fuelGrant.entitlement ?? foundingEntitlement)` | BUILT (D, derived) |
+| Fuel Δ founding baseline | `guilds[].foundingEntitlement` — `grantFor` at founding | BUILT (D′) |
 | 10-cycle performance line | `guilds[].modifierHistory` — rolling per-guild modifier history | BUILT (C) |
 | RP total | `guilds[].guildReputation` | LIVE |
 | RP — Ventures | `guildReputation − foundingEndowment` | DERIVE |
@@ -179,6 +190,21 @@ strip (`commitment-scaffold.test.js`); the fuel loop's own numbers are unchanged
   Because `entitlement` is serialized, the determinism goldens moved for a run that crosses a
   boundary alone (the committed 40-tick run); proven the ONLY delta by an added strip that
   recovers the pre-slice golden byte-for-byte. `predictedGrant` moves no golden (snapshot-only).
+- **Slice D′ — the founding baseline (`foundingEntitlement`). ✅ BUILT 06-09-26.** Slice D's
+  denominator (`fuelGrant.entitlement`) is only recorded at a cycle boundary, so the gauge read
+  `—` from creation until a guild's first boundary. This closes that gap: the `foundGuild` apply
+  (`sim/actions.js`) now stamps `guild.foundingEntitlement = grantFor(next, guild)` — the credit
+  entitlement at the instant of founding — beside the `foundingEndowment` stamp it mirrors. It is
+  serialized **omitted-when-absent** (`sim/state.js`, like `foundingEndowment`) and published on
+  the guild row (`sim/snapshot.js`). The client (`standingPanel`) falls the Fuel Δ denominator
+  back to it: `fuelGrant.entitlement ?? foundingEntitlement`. So the gauge opens at ×1.00 at
+  founding (numerator and baseline are one GP/modifier), swings live as the guild grows this
+  cycle, and rebases to `fuelGrant.entitlement` from the first boundary onward — today's
+  behaviour, with no `—` gap at the start. **No new presentation derive** — the same division,
+  only its denominator source widened. **Additive, no backfill**: an old guild founded without the
+  field simply keeps today's behaviour (`null` baseline ⇒ `—` until its next boundary). Goldens:
+  only a scenario that FOUNDS a guild gains the field (a `createState` galaxy never founds), and a
+  `withoutFoundingEntitlement` strip recovers the prior golden byte-for-byte.
 - **RP-by-source** needs no engine change: Ventures = `guildReputation − foundingEndowment`,
   System holdings = `foundingEndowment` (a presentation subtraction, like the recorder's `gap`).
 - **The client panel — ✅ BUILT 02-09-26 (client-only, no engine/snapshot/`sim/` change).**

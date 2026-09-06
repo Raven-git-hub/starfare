@@ -5209,9 +5209,14 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // Fuel Δ gauge ← next-cycle entitlement ÷ this-cycle entitlement (docs/guild-hall.md §2.1).
     // Both are published fuel-credit entitlements; dividing them is the one presentation derive
     // this gauge adds — the same sanctioned two-field move as the RP donut's subtraction, and
-    // the client still holds no engine number. `cur` is null before the first grant (no cycle
-    // to divide from), so the gauge renders `—` exactly as the Current gauge does then.
-    var cur = (me && me.fuelGrant && me.fuelGrant.entitlement != null) ? me.fuelGrant.entitlement : null;
+    // the client still holds no engine number. The denominator is `fuelGrant.entitlement` once
+    // the first cycle boundary has stamped one, and BEFORE that falls back to the engine's
+    // `foundingEntitlement` baseline (stamped at founding) — so the gauge reads live from tick 0
+    // (opening at ×1.00) instead of `—` until the first boundary. Still `—` only when there is
+    // genuinely no baseline (a zero-GP founding, or a pre-baseline guild), where both are null.
+    var cur = (me && me.fuelGrant && me.fuelGrant.entitlement != null)
+      ? me.fuelGrant.entitlement
+      : (me && me.foundingEntitlement != null ? me.foundingEntitlement : null);
     var nxt = (me && me.predictedGrant != null) ? me.predictedGrant : null;
     var fuelChange = (cur != null && cur > 0 && nxt != null) ? (nxt / cur) : null;
 

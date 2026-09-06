@@ -483,6 +483,12 @@ test('the served Guild Hall panel\'s mirrored gauge axis still matches the engin
     'the Standing panel must serve the third Fuel Δ gauge');
   assert.match(html, /fuelChange = \(cur != null && cur > 0 && nxt != null\) \? \(nxt \/ cur\) : null/,
     'the Fuel Δ value must be the ratio of two published entitlements (the one sanctioned derive)');
+  // Slice D′ (docs/guild-hall.md §2): the denominator falls back to the founding baseline, so
+  // the gauge reads live (×1.00) from founding instead of `—` until the first boundary. The
+  // served page must wire that fallback — `fuelGrant.entitlement` first, then
+  // `foundingEntitlement` — or a just-founded guild would still draw `—`.
+  assert.match(html, /me\.fuelGrant\.entitlement[\s\S]{0,120}me\.foundingEntitlement/,
+    'the Fuel Δ denominator must fall back to me.foundingEntitlement before the first boundary');
 });
 
 // --- the MEAN LINE, per guild (slice 4, 31-08-26) ---------------------------------
