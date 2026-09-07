@@ -383,6 +383,20 @@ test('GET / serves the DEUTERIUM client — deploy popup, segmented bar, removal
   assert.match(html, /id="deutSegUn"/);
   assert.match(html, /id="estDeutRefinery"/);
 
+  // 1b. THE POPUP IS THE est-STYLE CARD (rebuilt 07-09-26), not 2a's bespoke narrow box. The
+  //     two-column est shell, the Oceanic mine hero, and the fixed Terms panel (licensed terms +
+  //     illegal caution) would all silently revert to the narrow single-column box, and only this
+  //     fails. The old box was `#deut-overlay .est{ ... max-width:640px }` — assert it is gone.
+  assert.match(html, /#deut-overlay \.est-body\{[^}]*grid-template-columns:1fr 340px/,
+    'the deuterium popup must use the est two-column body');
+  assert.match(html, /#deut-overlay \.est\{[^}]*max-width:980px/,
+    'the deuterium card must be the 980px est shell, not the 640px box');
+  assert.doesNotMatch(html, /#deut-overlay \.est\{[^}]*max-width:640px/,
+    "2a's narrow #deut-overlay card must be gone");
+  assert.match(html, /assets\/industrial\/OceanicMine\.jpg/, 'the popup carries the Oceanic mine hero');
+  assert.match(html, /id="deutTermsLic"/, 'the fixed licensed-terms panel');
+  assert.match(html, /id="deutTermsUn"[\s\S]{0,120}class="chead"/, 'the illegal caution panel');
+
   // 2. DEUTERIUM REMOVED from the normal good lists — the one chokepoint filter (§1.4), so it can
   //    never render as a tradeable tier-1 chip or a console-managed good.
   assert.match(html, /var HIDDEN_GOODS = \{ deuterium: 1, deuterium_fuel: 1 \};/);

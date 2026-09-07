@@ -1172,24 +1172,52 @@ select.field{appearance:none; cursor:pointer;}
 #est-overlay .est-back:hover{border-color:var(--amber); color:var(--amber)}
 
 /* ===== #deut-overlay — the DEUTERIUM deploy popup (§1.4 "The Deuterium Cycle" / "The illegal
-   path"). A deliberately SEPARATE, slider-less variant of #est-overlay: deuterium takes no
-   commitment slider, no equity, no fee and no renegotiation window, so none of that machinery is
-   reused. It serves the deuterium MINE (licensed/unlicensed, from a deuterium node) and the
-   illegal REFINERY (from a settlement slot). Kept its own block so it cannot disturb the generic
-   deploy popup, and reads the same palette vars. ===== */
-#deut-overlay{position:fixed; inset:0; z-index:560; display:none; align-items:center; justify-content:center; padding:30px; background:rgba(6,7,10,.78); backdrop-filter:blur(3px)}
+   path"). REBUILT 07-09-26: it is now visually the #est-overlay card — the 980px two-column shell
+   with the hero side-panel — not 2a's bespoke narrow box. Still slider-less: deuterium takes no
+   commitment/equity/fee/window, so in place of the fee machinery the left column carries a
+   Licensed/Unlicensed toggle over a FIXED Terms panel (the licensed terms, or the illegal
+   caution). The frame rules mirror #est-overlay's but stay SCOPED to #deut-overlay (its own
+   palette block + selectors, the same per-overlay pattern #est-overlay and #tw-tx-overlay use) so
+   nothing collides with the generic popup. It serves the deuterium MINE (from a deuterium node)
+   and, unchanged, the illegal REFINERY (from a settlement slot). Design contract:
+   docs/mockups/deuterium-establish.html. ===== */
+#deut-overlay{
+  --void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
+  --line:rgba(232,223,200,0.10); --line2:rgba(232,223,200,0.20);
+  --amber:#C9A227; --amber-dim:#7A6420; --amber-ghost:rgba(201,162,39,0.10);
+  --ink:#E8DFC8; --ink2:#8B8F9C; --ink3:#565B68;
+  --green:#4E9A87; --red:#C2603A;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;
+  --serif:'Cinzel',serif;
+  position:fixed; left:0; right:0; top:104px; bottom:0;
+  background:rgba(6,7,10,.72); backdrop-filter:blur(3px);
+  display:none; align-items:flex-start; justify-content:center;
+  padding:26px 20px; overflow-y:auto; z-index:560;
+  font-family:var(--sans); font-size:14px; line-height:1.45; color:var(--ink);
+}
 #deut-overlay.open{display:flex}
-#deut-overlay .est{width:100%; max-width:640px; background:linear-gradient(180deg,#12151C,#0F1218); border:1px solid var(--line2); border-radius:14px; box-shadow:0 30px 90px rgba(0,0,0,.6); overflow:hidden}
-#deut-overlay .est-head{display:flex; align-items:flex-start; gap:16px; padding:18px 22px 16px; border-bottom:1px solid var(--line); background:radial-gradient(700px 200px at 85% -40%, rgba(194,96,58,.09), transparent 70%)}
-#deut-overlay .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--red)}
-#deut-overlay h2{font-family:var(--serif); font-weight:600; font-size:22px; margin:5px 0 3px; letter-spacing:.02em}
-#deut-overlay .site{font-family:var(--mono); font-size:11.5px; color:var(--ink2); letter-spacing:.02em}
+#deut-overlay .est{width:100%; max-width:980px; background:linear-gradient(180deg,#12151C,#0F1218); border:1px solid var(--line2); border-radius:14px; box-shadow:0 30px 90px rgba(0,0,0,.6); overflow:hidden; position:relative}
+#deut-overlay .est-head{display:flex; align-items:flex-start; gap:16px; padding:18px 22px 16px; border-bottom:1px solid var(--line); background:radial-gradient(700px 200px at 85% -40%, rgba(201,162,39,.06), transparent 70%)}
+#deut-overlay .est-head .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
+#deut-overlay .est-head h2{font-family:var(--serif); font-weight:600; font-size:22px; margin:5px 0 3px; letter-spacing:.02em}
+#deut-overlay .est-head .site{font-family:var(--mono); font-size:11.5px; color:var(--ink2); letter-spacing:.02em}
+#deut-overlay .est-head .site .sep{color:var(--ink3); margin:0 7px}
+#deut-overlay .est-head .amber{color:var(--amber)}
 #deut-overlay .est-close{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--ink2); border-radius:8px; width:34px; height:34px; font-size:16px; cursor:pointer; flex:none}
 #deut-overlay .est-close:hover{border-color:var(--red); color:var(--red)}
-#deut-overlay .est-main{padding:20px 22px 22px}
-#deut-overlay .blk{margin-bottom:18px}
-#deut-overlay .sec-head{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2); margin-bottom:10px}
-#deut-overlay select.est-select{font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--void); border:1px solid var(--line2); border-radius:8px; padding:11px 12px; cursor:pointer; width:100%}
+#deut-overlay .est-body{display:grid; grid-template-columns:1fr 340px; gap:0}
+#deut-overlay .est-main{padding:22px 22px 24px; border-right:1px solid var(--line)}
+#deut-overlay .blk{margin-bottom:22px}
+#deut-overlay .blk:last-child{margin-bottom:0}
+#deut-overlay .sec-head{display:flex; align-items:center; gap:9px; margin-bottom:11px}
+#deut-overlay .sec-head .t{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2)}
+#deut-overlay .help{width:18px; height:18px; border-radius:50%; border:1px solid var(--amber-dim); background:none; color:var(--amber); font-family:var(--mono); font-size:10px; line-height:1; cursor:pointer; padding:0}
+#deut-overlay .help:hover{background:var(--amber); color:var(--void); border-color:var(--amber)}
+#deut-overlay select.est-select{font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--void); border:1px solid var(--line2); border-radius:8px; padding:11px 34px 11px 12px; cursor:pointer; width:100%; appearance:none; text-overflow:ellipsis;
+  background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);
+  background-position:calc(100% - 18px) 52%, calc(100% - 13px) 52%; background-size:5px 5px,5px 5px; background-repeat:no-repeat}
+#deut-overlay select.est-select:focus{outline:none; border-color:var(--amber)}
 #deut-overlay select.est-select:disabled{opacity:.5; cursor:not-allowed}
 #deut-overlay .seg{display:grid; grid-template-columns:1fr 1fr; gap:8px}
 #deut-overlay .seg button{display:flex; align-items:center; gap:10px; background:var(--panel); border:1px solid var(--line2); color:var(--ink2); font-family:var(--mono); font-size:12px; letter-spacing:.06em; border-radius:8px; padding:12px 14px; cursor:pointer}
@@ -1197,20 +1225,37 @@ select.field{appearance:none; cursor:pointer;}
 #deut-overlay .seg button.on{border-color:var(--amber); background:var(--amber-ghost); color:var(--ink)}
 #deut-overlay .seg .mark{width:13px; height:13px; border-radius:50%; border:2px solid var(--line2); flex:none}
 #deut-overlay .seg button.on .mark{border-color:var(--amber); background:var(--amber); box-shadow:inset 0 0 0 2px var(--void)}
-#deut-overlay .terms{font-family:var(--mono); font-size:11px; line-height:1.6; color:var(--ink2); background:var(--void); border:1px solid var(--line); border-radius:9px; padding:13px 14px}
-#deut-overlay .terms.illegal{border-color:var(--red); background:rgba(194,96,58,.06); color:var(--ink2)}
-#deut-overlay .terms b{color:var(--amber); font-weight:500}
-#deut-overlay .terms .warn{color:var(--red); font-weight:500}
-#deut-overlay .terms .row{display:flex; justify-content:space-between; gap:12px; padding:3px 0}
-#deut-overlay .terms .row .k{color:var(--ink3); text-transform:uppercase; letter-spacing:.06em; font-size:9.5px}
-#deut-overlay .deploy{width:100%; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer; margin-top:4px}
+#deut-overlay .est-side{position:relative; background:#0d0f14; display:flex; flex-direction:column; min-height:100%}
+#deut-overlay .est-side .art{position:absolute; inset:0; background-size:cover; background-position:50% 40%; z-index:0}
+#deut-overlay .est-side .scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(10,11,15,.62) 0%, rgba(10,11,15,.80) 42%, rgba(10,11,15,.94) 100%); z-index:1}
+#deut-overlay .est-side .inner{position:relative; z-index:2; padding:20px 20px 22px; display:flex; flex-direction:column; flex:1}
+#deut-overlay .est-side .stitle{font-family:var(--mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber); margin-bottom:14px; display:flex; align-items:center; gap:8px}
+#deut-overlay .deploy{width:100%; margin-top:auto; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer}
 #deut-overlay .deploy:hover{background:#DCB43A}
-#deut-overlay .deploy.illegal{background:var(--red); color:#fff}
-#deut-overlay .deploy.illegal:hover{background:#D06E48}
 #deut-overlay .deploy:disabled{background:rgba(28,33,43,.85); color:var(--ink3); cursor:not-allowed; border:1px solid var(--line)}
 #deut-overlay .deploy-hint{font-family:var(--mono); font-size:10px; color:var(--ink3); text-align:center; margin-top:8px; letter-spacing:.04em; min-height:13px}
 #deut-overlay .deploy-hint.err{color:var(--red)}
 #deut-overlay .deploy-hint.ok{color:var(--green)}
+#deut-overlay .success{display:none; padding:34px 26px; text-align:center}
+#deut-overlay .success.show{display:block}
+#deut-overlay .est-back{margin-top:22px; font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink2); background:none; border:1px solid var(--line2); border-radius:8px; padding:10px 18px; cursor:pointer}
+#deut-overlay .est-back:hover{border-color:var(--amber); color:var(--amber)}
+
+/* The fixed Terms panel (slider-less): the licensed terms, or the illegal caution. It replaces the
+   fee machinery the est popup carries. Scoped to #deut-overlay exactly like the frame above. */
+#deut-overlay .terms{border:1px solid var(--line); border-radius:10px; background:var(--panel); overflow:hidden}
+#deut-overlay .commit{display:flex; align-items:baseline; gap:12px; padding:15px 15px 6px}
+#deut-overlay .commit .big{font-family:var(--serif); font-size:31px; font-weight:600; color:var(--amber); line-height:1}
+#deut-overlay .commit .cl{font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink2)}
+#deut-overlay .trow{display:flex; justify-content:space-between; align-items:baseline; padding:11px 15px; border-top:1px solid var(--line); font-family:var(--mono); font-size:12px}
+#deut-overlay .trow .k{color:var(--ink2); letter-spacing:.04em}
+#deut-overlay .trow .v{color:var(--ink); font-weight:500}
+#deut-overlay .trow .v.g{color:var(--green)} #deut-overlay .trow .v.a{color:var(--amber)}
+#deut-overlay .terms.caution{border-color:rgba(194,96,58,.45); background:rgba(194,96,58,.06)}
+#deut-overlay .caution .chead{display:flex; align-items:center; gap:9px; padding:14px 15px 8px; color:var(--red); font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.07em; text-transform:uppercase}
+#deut-overlay .caution p{margin:0; padding:2px 15px 12px; font-family:var(--sans); font-size:12.5px; color:var(--ink2); line-height:1.55}
+#deut-overlay .caution p b{color:var(--ink); font-weight:600}
+#deut-overlay .caution .trow{border-top-color:rgba(194,96,58,.25)}
 
 #est-reel{position:fixed; inset:0; background:rgba(6,7,10,.80); backdrop-filter:blur(3px); z-index:600; display:none; align-items:center; justify-content:center; padding:26px}
 #est-reel.open{display:flex}
@@ -1890,39 +1935,74 @@ select.field{appearance:none; cursor:pointer;}
   </div>
 </div>
 
-<!-- The DEUTERIUM deploy popup (§1.4). Slider-less by design: a deuterium mine is 100% committed
-     with no equity/fee/window, and the illegal refinery has no terms at all. It fires the three
-     BUILT actions — establishVenture (unlicensed mine), + licenseDeuteriumMine (licensed mine),
-     or establishDeuteriumRefinery (refinery) — and reads the guild's idle assets off the snapshot
-     exactly as the generic popup does (window.__myIdleAssets). -->
+<!-- The DEUTERIUM deploy popup (§1.4). REBUILT 07-09-26 to the #est-overlay card (two-column, hero
+     side-panel) — see docs/mockups/deuterium-establish.html. Still slider-less: a deuterium mine is
+     100% committed with no equity/fee/window, so the left column is the asset picker + a
+     Licensed/Unlicensed toggle over a FIXED Terms panel (licensed terms, or the illegal caution)
+     rather than the est fee machinery. It fires the same BUILT actions — establishVenture
+     (unlicensed mine) + licenseDeuteriumMine (licensed mine), or establishDeuteriumRefinery
+     (refinery, from a settlement slot, unchanged) — and reads the guild's idle assets off the
+     snapshot exactly as the generic popup does (window.__myIdleAssets). -->
 <div id="deut-overlay">
   <div class="est">
     <div id="deutForm">
       <div class="est-head">
         <div>
-          <div class="eyebrow" id="deutEyebrow">Deuterium</div>
-          <h2 id="deutTitle">Deploy</h2>
+          <div class="eyebrow" id="deutEyebrow">Syndicate Deuterium Licence</div>
+          <h2 id="deutTitle">Establish Deuterium Mine</h2>
+          <!-- node · resource · planet · archetype, built from the seed in openDeut, like #est-overlay -->
           <div class="site" id="deutSite">—</div>
         </div>
         <button class="est-close" id="deutClose" title="Close (Esc)">✕</button>
       </div>
-      <div class="est-main">
-        <div class="blk">
-          <div class="sec-head" id="deutAssetLbl">Miner</div>
-          <select class="est-select" id="deutAsset"><option value="">Select asset</option></select>
-        </div>
-        <div class="blk" id="deutLicBlk">
-          <div class="sec-head">Licence</div>
-          <div class="seg">
-            <button id="deutSegLic"><span class="mark"></span> Licensed</button>
-            <button id="deutSegUn"><span class="mark"></span> Unlicensed</button>
+      <div class="est-body">
+        <div class="est-main">
+          <div class="blk">
+            <div class="sec-head"><span class="t" id="deutAssetLbl">Mining asset</span><button class="help" type="button">?</button></div>
+            <select class="est-select" id="deutAsset"><option value="">Select asset</option></select>
+          </div>
+          <div class="blk" id="deutLicBlk">
+            <div class="sec-head"><span class="t">Licence</span><button class="help" type="button">?</button></div>
+            <div class="seg">
+              <button id="deutSegLic" type="button"><span class="mark"></span> Licensed</button>
+              <button id="deutSegUn" type="button"><span class="mark"></span> Unlicensed</button>
+            </div>
+          </div>
+          <div class="blk">
+            <div class="sec-head"><span class="t">Terms</span></div>
+            <!-- Licensed: the fixed, non-negotiable terms. -->
+            <div class="terms" id="deutTermsLic">
+              <div class="commit"><span class="big">100%</span><span class="cl">Output commitment · fixed, non-negotiable</span></div>
+              <div class="trow"><span class="k">Licence fee</span><span class="v g">None</span></div>
+              <div class="trow"><span class="k">Equity</span><span class="v">None</span></div>
+              <div class="trow"><span class="k">Reputation</span><span class="v a">Tier-4 · maximum</span></div>
+              <div class="trow"><span class="k">Output</span><span class="v">Sold to the Syndicate each tick</span></div>
+            </div>
+            <!-- Unlicensed: the illegal caution. -->
+            <div class="terms caution" id="deutTermsUn" style="display:none">
+              <div class="chead">&#9888; Illegal operation</div>
+              <p><b>Idle to the Syndicate</b> — no Guild Points, no reputation. The mine runs off the books.</p>
+              <p>Its output is <b>contraband deuterium</b>, held guild-wide. Build a refinery to turn it into fuel you can burn — it can never be sold or laundered.</p>
+              <div class="trow"><span class="k">Commitment</span><span class="v">100% · kept</span></div>
+            </div>
+            <!-- Refinery mode (from a settlement slot): the illegal refinery caution. -->
+            <div class="terms caution" id="deutTermsRef" style="display:none">
+              <div class="chead">&#9888; Illegal deuterium refinery</div>
+              <p>Converts your guild-wide <b>contraband deuterium</b> into burnable fuel 1:1 each tick, at the factory’s rate.</p>
+              <p>It is <b>idle to the Syndicate</b> — no Guild Points, no reputation — and the fuel it makes is contraband you burn yourself, never sold or laundered. There is no legal guild refinery.</p>
+              <div class="trow"><span class="k">Conversion</span><span class="v">1 : 1 · each tick</span></div>
+            </div>
           </div>
         </div>
-        <div class="blk">
-          <div class="terms" id="deutTerms">—</div>
+        <div class="est-side">
+          <div class="art" style="background-image:url('assets/industrial/OceanicMine.jpg')"></div>
+          <div class="scrim"></div>
+          <div class="inner">
+            <div class="stitle" id="deutStitle">Deuterium Extraction · Oceanic</div>
+            <button class="deploy" id="deutDeploy" disabled>Establish mine</button>
+            <div class="deploy-hint" id="deutHint">Select a mining asset.</div>
+          </div>
         </div>
-        <button class="deploy" id="deutDeploy" disabled>Deploy</button>
-        <div class="deploy-hint" id="deutHint">Select an asset.</div>
       </div>
     </div>
     <div class="success" id="deutSuccess" style="display:none; padding:30px 24px; text-align:center">
@@ -3656,34 +3736,36 @@ function fillDeutAssets(){
   DPOOL.forEach(function(a){ var o=document.createElement('option'); o.value=a.id; o.textContent=a.label+' · '+a.id+' · '+a.condition+'%'; sel.appendChild(o); });
 }
 
-function deutTermsHtml(){
-  if(D.mode==='refinery'){
-    return '<div class="warn">Illegal deuterium refinery.</div>'
-      + 'Converts your guild-wide raw deuterium into <b>contraband fuel</b> 1:1 each tick, at the factory’s rate. '
-      + 'It is <b>idle to the Syndicate</b> — zero Guild Points, zero reputation — and the fuel it makes is contraband you burn yourself, never sold or laundered. There is no legal guild refinery.';
-  }
-  if(D.licensed===true){
-    return '<div class="row"><span class="k">Commitment</span><span><b>100%</b> · all output</span></div>'
-      + '<div class="row"><span class="k">Equity &amp; fee</span><span>none</span></div>'
-      + '<div class="row"><span class="k">Reputation</span><span><b>Tier‑4</b></span></div>'
-      + '<div style="margin-top:8px">Every tick, all output is sold to the Syndicate at the posted rate and minted into the fuel pool. Maximum standing — you keep no fuel.</div>';
-  }
-  if(D.licensed===false){
-    return '<div class="warn">Unlicensed — illegal.</div>'
-      + 'The mine is <b>idle to the Syndicate</b>: no Guild Points, no reputation. Its raw deuterium is <b>contraband</b> that piles up guild-wide until you refine it yourself. Nothing is sold.';
-  }
-  return 'Choose licensed or unlicensed to see the terms.';
+// The head's site line, built from the seed like #est-overlay's (node · resource · planet ·
+// archetype) — the client reflects the seed, it derives nothing. Parts absent on this site (a
+// settlement slot carries no resource node) are simply dropped.
+function deutSiteLine(s){
+  function esc(t){ var d=document.createElement('div'); d.textContent=t; return d.innerHTML; }
+  var parts = [];
+  if(s.nodeLabel) parts.push('<span>'+esc(s.nodeLabel)+'</span>');
+  if(s.resLabel)  parts.push('<span class="amber">'+esc(s.resLabel)+'</span>');
+  if(s.planet)    parts.push('<span>'+esc(s.planet)+'</span>');
+  if(s.arch)      parts.push('<span>'+esc(s.arch)+'</span>');
+  return parts.length ? parts.join('<span class="sep">·</span>') : '—';
+}
+
+// Which FIXED Terms panel shows: the licensed terms, the unlicensed caution, or — in refinery
+// mode — the refinery caution. Deuterium's terms are non-negotiable, so we swap panels rather
+// than recompute anything (there is no est fee machinery to mirror).
+function deutShowTerms(){
+  var ref = D.mode==='refinery';
+  $('deutTermsRef').style.display = ref ? '' : 'none';
+  $('deutTermsLic').style.display = (!ref && D.licensed===true)  ? '' : 'none';
+  $('deutTermsUn').style.display  = (!ref && D.licensed===false) ? '' : 'none';
 }
 
 function deutDraw(){
-  $('deutTerms').innerHTML = deutTermsHtml();
-  var illegal = D.mode==='refinery' || D.licensed===false;
-  $('deutTerms').classList.toggle('illegal', illegal);
+  deutShowTerms();
   var btn=$('deutDeploy'), hint=$('deutHint');
-  btn.classList.toggle('illegal', illegal);
-  btn.textContent = D.mode==='refinery' ? 'Deploy illegal refinery'
-    : (D.licensed===false ? 'Deploy unlicensed mine'
-      : (D.licensed===true ? 'Deploy licensed mine' : 'Deploy mine'));
+  // The label follows the choice; the danger reads off the red caution panel, so the deploy button
+  // stays the est amber in every state (the approved mockup, 07-09-26).
+  btn.textContent = D.mode==='refinery' ? 'Establish illicit refinery'
+    : (D.licensed===false ? 'Establish illicit mine' : 'Establish mine');
   var held = !!(D.site && D.site.mine);
   var ok = held && !!D.asset && (D.mode==='refinery' || D.licensed!==null) && !D.busy;
   btn.disabled = !ok;
@@ -3691,20 +3773,33 @@ function deutDraw(){
   hint.classList.remove('err','ok');
   if(!held) hint.textContent='You don’t hold this system — deploy requires holding it first (§4).';
   else if(!DPOOL.length) hint.textContent='No idle '+(deutKind()==='factory'?'factories':'miners')+' in your inventory.';
-  else if(!D.asset) hint.textContent='Select an asset.';
-  else if(D.mode==='mine' && D.licensed===null) hint.textContent='Choose licensed or unlicensed.';
-  else hint.textContent='Ready — review the terms, then deploy.';
+  else if(!D.asset) hint.textContent = D.mode==='refinery' ? 'Select a refinery asset.' : 'Select a mining asset.';
+  else if(D.mode==='refinery') hint.textContent='Contraband — refined to fuel you burn yourself.';
+  else if(D.licensed===false) hint.textContent='Unlicensed — contraband, refine it yourself.';
+  else hint.textContent='Licensed — output sold to the Syndicate each tick.';
+}
+
+// The Licensed/Unlicensed toggle: it swaps the fixed Terms panel and re-labels deploy (deutDraw).
+function deutSetLic(v){
+  D.licensed = v;
+  $('deutSegLic').classList.toggle('on', v===true);
+  $('deutSegUn').classList.toggle('on', v===false);
+  deutDraw();
 }
 
 window.openDeut = function(opts){
-  D = { site:opts.site, mode:(opts.mode==='refinery'?'refinery':'mine'), asset:null, licensed:null, busy:false };
+  var isMine = !(opts.mode==='refinery');
+  // A mine opens on the LICENSED terms by default (the approved mockup); a refinery has no licence.
+  D = { site:opts.site, mode:(isMine?'mine':'refinery'), asset:null, licensed:(isMine?true:null), busy:false };
   $('deutForm').style.display=''; $('deutSuccess').style.display='none';
-  $('deutEyebrow').textContent = D.mode==='refinery' ? 'Deuterium · the illegal path' : 'Deuterium · the supply lever';
-  $('deutTitle').textContent = D.mode==='refinery' ? 'Deploy illegal refinery' : 'Deploy deuterium mine';
-  $('deutSite').textContent = (D.site.nodeLabel||'') + (D.site.planet ? ' · '+D.site.planet : '');
-  $('deutAssetLbl').textContent = D.mode==='refinery' ? 'Factory' : 'Miner';
-  $('deutLicBlk').style.display = D.mode==='refinery' ? 'none' : '';
-  $('deutSegLic').classList.remove('on'); $('deutSegUn').classList.remove('on');
+  $('deutEyebrow').textContent = isMine ? 'Syndicate Deuterium Licence' : 'Deuterium · the illegal path';
+  $('deutTitle').textContent   = isMine ? 'Establish Deuterium Mine'    : 'Establish Illicit Refinery';
+  $('deutStitle').textContent  = isMine ? 'Deuterium Extraction · Oceanic' : 'Contraband Refinery · Oceanic';
+  $('deutAssetLbl').textContent = isMine ? 'Mining asset' : 'Refinery asset';
+  $('deutSite').innerHTML = deutSiteLine(D.site);
+  $('deutLicBlk').style.display = isMine ? '' : 'none';
+  $('deutSegLic').classList.toggle('on', isMine);       // licensed default for a mine
+  $('deutSegUn').classList.remove('on');
   fillDeutAssets(); deutDraw();
   $('deut-overlay').classList.add('open');
 };
@@ -3714,8 +3809,8 @@ $('deutClose').addEventListener('click', closeDeut);
 $('deutBack').addEventListener('click', closeDeut);
 $('deut-overlay').addEventListener('click', function(e){ if(e.target===this) closeDeut(); });
 $('deutAsset').addEventListener('change', function(){ var v=this.value; D.asset = DPOOL.filter(function(a){return a.id===v;})[0]||null; deutDraw(); });
-$('deutSegLic').addEventListener('click', function(){ D.licensed=true; $('deutSegLic').classList.add('on'); $('deutSegUn').classList.remove('on'); deutDraw(); });
-$('deutSegUn').addEventListener('click', function(){ D.licensed=false; $('deutSegUn').classList.add('on'); $('deutSegLic').classList.remove('on'); deutDraw(); });
+$('deutSegLic').addEventListener('click', function(){ deutSetLic(true); });
+$('deutSegUn').addEventListener('click', function(){ deutSetLic(false); });
 $('deutDeploy').addEventListener('click', deutDeploy);
 
 async function deutDeploy(){

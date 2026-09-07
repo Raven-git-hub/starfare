@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Starfare — Establish Deuterium Mine (mockup)</title>
+<!--
+  Deuterium-Establishment page — the popup a player uses to stand up a deuterium mine.
+  The design CONTRACT for #deut-overlay (human-approved, 07-09-26): it is visually the
+  #est-overlay card — the 980px two-column shell with the hero side-panel — NOT 2a's
+  bespoke narrow box. It stays slider-less: a deuterium mine is 100% committed with no
+  equity/fee/renegotiation window, so in place of the est fee machinery the left column
+  is the asset picker + a Licensed/Unlicensed toggle over a FIXED Terms panel (the
+  licensed terms, or the illegal caution).
+
+  GROUNDING (repo = truth): design.md §1.4 "The Deuterium Cycle" / "The illegal path";
+  the est card is client/game.html #est-overlay, which this matches frame-for-frame. The
+  fired actions are already BUILT — licensed → establishVenture (node + assetId) then
+  licenseDeuteriumMine; unlicensed → establishVenture alone — this file only renders the
+  UI. The hero art is client/assets/industrial/OceanicMine.jpg (always the Oceanic mine).
+  Static render: no engine to read, so the asset rows and site line are sample data
+  carrying the engine's own id scheme. The toggle below is wired only to swap the two
+  Terms panels + the deploy label, so the two states can be seen.
+-->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+:root{
+  --void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
+  --line:rgba(232,223,200,0.10); --line2:rgba(232,223,200,0.20);
+  --amber:#C9A227; --amber-dim:#7A6420; --amber-ghost:rgba(201,162,39,0.10);
+  --ink:#E8DFC8; --ink2:#8B8F9C; --ink3:#565B68;
+  --green:#4E9A87; --red:#C2603A;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;
+  --serif:'Cinzel',serif;
+}
+*{box-sizing:border-box; margin:0; padding:0}
+body{background:radial-gradient(1200px 700px at 50% -10%, #10131a, #06070a 70%); min-height:100vh;
+  display:flex; align-items:flex-start; justify-content:center; padding:40px 20px;
+  font-family:var(--sans); font-size:14px; line-height:1.45; color:var(--ink)}
+
+/* ===== the est card ===== */
+.est{width:100%; max-width:980px; background:linear-gradient(180deg,#12151C,#0F1218); border:1px solid var(--line2); border-radius:14px; box-shadow:0 30px 90px rgba(0,0,0,.6); overflow:hidden; position:relative}
+.est-head{display:flex; align-items:flex-start; gap:16px; padding:18px 22px 16px; border-bottom:1px solid var(--line); background:radial-gradient(700px 200px at 85% -40%, rgba(201,162,39,.06), transparent 70%)}
+.est-head .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
+.est-head h2{font-family:var(--serif); font-weight:600; font-size:22px; margin:5px 0 3px; letter-spacing:.02em}
+.est-head .site{font-family:var(--mono); font-size:11.5px; color:var(--ink2); letter-spacing:.02em}
+.est-head .site .sep{color:var(--ink3); margin:0 7px}
+.est-head .amber{color:var(--amber)}
+.est-close{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--ink2); border-radius:8px; width:34px; height:34px; font-size:16px; cursor:pointer; flex:none}
+.est-close:hover{border-color:var(--red); color:var(--red)}
+.est-body{display:grid; grid-template-columns:1fr 340px; gap:0}
+.est-main{padding:22px 22px 24px; border-right:1px solid var(--line)}
+.blk{margin-bottom:22px}
+.blk:last-child{margin-bottom:0}
+.sec-head{display:flex; align-items:center; gap:9px; margin-bottom:11px}
+.sec-head .t{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2)}
+.help{width:18px; height:18px; border-radius:50%; border:1px solid var(--amber-dim); background:none; color:var(--amber); font-family:var(--mono); font-size:10px; line-height:1; cursor:pointer; padding:0}
+.help:hover{background:var(--amber); color:var(--void); border-color:var(--amber)}
+select.est-select{font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--void); border:1px solid var(--line2); border-radius:8px; padding:11px 34px 11px 12px; cursor:pointer; width:100%; appearance:none; text-overflow:ellipsis;
+  background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);
+  background-position:calc(100% - 18px) 52%, calc(100% - 13px) 52%; background-size:5px 5px,5px 5px; background-repeat:no-repeat}
+select.est-select:focus{outline:none; border-color:var(--amber)}
+.seg{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+.seg button{display:flex; align-items:center; gap:10px; background:var(--panel); border:1px solid var(--line2); color:var(--ink2); font-family:var(--mono); font-size:12px; letter-spacing:.06em; border-radius:8px; padding:12px 14px; cursor:pointer}
+.seg button:hover{border-color:var(--amber-dim)}
+.seg button.on{border-color:var(--amber); background:var(--amber-ghost); color:var(--ink)}
+.seg .mark{width:13px; height:13px; border-radius:50%; border:2px solid var(--line2); flex:none}
+.seg button.on .mark{border-color:var(--amber); background:var(--amber); box-shadow:inset 0 0 0 2px var(--void)}
+.est-side{position:relative; background:#0d0f14; display:flex; flex-direction:column; min-height:100%}
+.est-side .art{position:absolute; inset:0; background-size:cover; background-position:50% 40%; z-index:0}
+.est-side .scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(10,11,15,.62) 0%, rgba(10,11,15,.80) 42%, rgba(10,11,15,.94) 100%); z-index:1}
+.est-side .inner{position:relative; z-index:2; padding:20px 20px 22px; display:flex; flex-direction:column; flex:1}
+.est-side .stitle{font-family:var(--mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber); margin-bottom:14px; display:flex; align-items:center; gap:8px}
+.deploy{width:100%; margin-top:auto; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer}
+.deploy:hover{background:#DCB43A}
+.deploy-hint{font-family:var(--mono); font-size:10px; color:var(--ink3); text-align:center; margin-top:8px; letter-spacing:.04em; min-height:13px}
+
+/* ===== the fixed Terms panel (the slider-less swap) ===== */
+.terms{border:1px solid var(--line); border-radius:10px; background:var(--panel); overflow:hidden}
+.commit{display:flex; align-items:baseline; gap:12px; padding:15px 15px 6px}
+.commit .big{font-family:var(--serif); font-size:31px; font-weight:600; color:var(--amber); line-height:1}
+.commit .cl{font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink2)}
+.trow{display:flex; justify-content:space-between; align-items:baseline; padding:11px 15px; border-top:1px solid var(--line); font-family:var(--mono); font-size:12px}
+.trow .k{color:var(--ink2); letter-spacing:.04em}
+.trow .v{color:var(--ink); font-weight:500}
+.trow .v.g{color:var(--green)} .trow .v.a{color:var(--amber)}
+.terms.caution{border-color:rgba(194,96,58,.45); background:rgba(194,96,58,.06)}
+.caution .chead{display:flex; align-items:center; gap:9px; padding:14px 15px 8px; color:var(--red); font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.07em; text-transform:uppercase}
+.caution p{margin:0; padding:2px 15px 12px; font-family:var(--sans); font-size:12.5px; color:var(--ink2); line-height:1.55}
+.caution p b{color:var(--ink); font-weight:600}
+.caution .trow{border-top-color:rgba(194,96,58,.25)}
+</style>
+</head>
+<body>
+<div class="est">
+  <div class="est-head">
+    <div>
+      <div class="eyebrow">Syndicate Deuterium Licence</div>
+      <h2>Establish Deuterium Mine</h2>
+      <div class="site">
+        <span>Resource Node 3</span><span class="sep">·</span>
+        <span class="amber">Deuterium</span><span class="sep">·</span>
+        <span>Kepler-22 b</span><span class="sep">·</span>
+        <span>Oceanic</span>
+      </div>
+    </div>
+    <button class="est-close" title="Close (Esc)">&#10005;</button>
+  </div>
+  <div class="est-body">
+    <div class="est-main">
+      <div class="blk">
+        <div class="sec-head"><span class="t">Mining asset</span><button class="help" type="button">?</button></div>
+        <select class="est-select" id="deutAsset">
+          <option value="">Select asset</option>
+          <option value="asset_player-guild_miner_01">Miner · asset_player-guild_miner_01 · 100%</option>
+          <option value="asset_player-guild_miner_02">Miner · asset_player-guild_miner_02 · 92%</option>
+        </select>
+      </div>
+      <div class="blk" id="deutLicBlk">
+        <div class="sec-head"><span class="t">Licence</span><button class="help" type="button">?</button></div>
+        <div class="seg">
+          <button id="deutSegLic" class="on" type="button" onclick="deutSetLic(true)"><span class="mark"></span> Licensed</button>
+          <button id="deutSegUn" type="button" onclick="deutSetLic(false)"><span class="mark"></span> Unlicensed</button>
+        </div>
+      </div>
+      <div class="blk">
+        <div class="sec-head"><span class="t">Terms</span></div>
+        <div class="terms" id="deutTermsLic">
+          <div class="commit"><span class="big">100%</span><span class="cl">Output commitment · fixed, non-negotiable</span></div>
+          <div class="trow"><span class="k">Licence fee</span><span class="v g">None</span></div>
+          <div class="trow"><span class="k">Equity</span><span class="v">None</span></div>
+          <div class="trow"><span class="k">Reputation</span><span class="v a">Tier-4 · maximum</span></div>
+          <div class="trow"><span class="k">Output</span><span class="v">Sold to the Syndicate each tick</span></div>
+        </div>
+        <div class="terms caution" id="deutTermsUn" style="display:none">
+          <div class="chead">&#9888; Illegal operation</div>
+          <p><b>Idle to the Syndicate</b> — no Guild Points, no reputation. The mine runs off the books.</p>
+          <p>Its output is <b>contraband deuterium</b>, held guild-wide. Build a refinery to turn it into fuel you can burn — it can never be sold or laundered.</p>
+          <div class="trow"><span class="k">Commitment</span><span class="v">100% · kept</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="est-side">
+      <div class="art" style="background-image:url('../../client/assets/industrial/OceanicMine.jpg')"></div>
+      <div class="scrim"></div>
+      <div class="inner">
+        <div class="stitle">Deuterium Extraction · Oceanic</div>
+        <button class="deploy" id="deutDeploy" onclick="deutDeploy()">Establish mine</button>
+        <div class="deploy-hint" id="deutHint">Licensed — output sold to the Syndicate each tick.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Mockup-only: the toggle swaps the two Terms panels and re-labels deploy, so both
+// states are visible. The shipped client (client/game.html #deut-overlay) does the same,
+// plus the real asset gating and the two BUILT actions.
+function deutSetLic(licensed){
+  document.getElementById('deutSegLic').classList.toggle('on', licensed);
+  document.getElementById('deutSegUn').classList.toggle('on', !licensed);
+  document.getElementById('deutTermsLic').style.display = licensed ? '' : 'none';
+  document.getElementById('deutTermsUn').style.display  = licensed ? 'none' : '';
+  document.getElementById('deutDeploy').textContent = licensed ? 'Establish mine' : 'Establish illicit mine';
+  document.getElementById('deutHint').textContent = licensed
+    ? 'Licensed — output sold to the Syndicate each tick.'
+    : 'Unlicensed — contraband, refine it yourself.';
+}
+function deutDeploy(){ /* static mockup — the shipped client fires establishVenture (+ licenseDeuteriumMine when licensed). */ }
+</script>
+</body>
+</html>
