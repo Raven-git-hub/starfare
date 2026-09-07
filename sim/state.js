@@ -26,6 +26,7 @@ const { cloneModifierHistory } = require('./modifier-history.js');
 const { cloneFuelBurnHistory } = require('./fuel-burn-history.js');
 const { seedPrices } = require('./prices.js');
 const { clonePriceHistory } = require('./price-history.js');
+const { cloneFuelPriceHistory } = require('./fuel-price-history.js');
 const { seedPriceRing, clonePriceRing } = require('./price-ring.js');
 const { ASSET_CONDITION_NEW } = require('./assets.js');
 const { REFERENCE_FUEL_PRICE } = require('./fuel.js');
@@ -796,6 +797,16 @@ function createState(scenario) {
     ...(scenario.priceHistory === undefined
       ? {}
       : { priceHistory: clonePriceHistory(scenario.priceHistory) }),
+    // fuelPriceHistory: the galaxy-wide fuel-price rolling ring + current-bucket accumulator
+    // (sim/fuel-price-history.js) — the DEUTERIUM tab's smoothed 3-day fuel-price trend,
+    // top-level beside `priceHistory` because the fuel price is galaxy-wide, not a guild's.
+    // OMITTED when there is none, exactly like `priceHistory` above and for the same reason: a
+    // fresh galaxy has taken no sample (the module mints it lazily on the first ticking sample),
+    // so it serializes byte-identically to pre-slice state. Deep-cloned when a scenario or a
+    // restored save supplies one, so a caller's object can never alias into engine state.
+    ...(scenario.fuelPriceHistory === undefined
+      ? {}
+      : { fuelPriceHistory: cloneFuelPriceHistory(scenario.fuelPriceHistory) }),
     audit: {
       totalProduced: sumFuelHoards(guilds) + reserve.reserveLevel,
       totalConsumed: 0,

@@ -182,6 +182,38 @@ look. So it is **not a decision-checklist entry**. Single-sourced in `sim/fuel-b
 OR was DUE a grant (`desired > 0`), so a burn-free, holdings-less galaxy carries no ring at all and
 stays byte-identical to pre-slice. **No backfill**, the same as the modifier ring.
 
+### DEUTERIUM tab price graph — the fuel-price history depth *(07-09-26 — `sim/fuel-price-history.js`)*
+
+`state.fuelPriceHistory` records the GALAXY-WIDE fuel price (`state.reserve.fuelPrice`) as a **smoothed
+3-day trend** for the DEUTERIUM tab's price graph (`docs/guild-hall.md` §4.2): a ring of **completed
+6-hour averages** plus a current-bucket accumulator. Top-level, once, because the fuel price is
+galaxy-wide (§15.5 invariant 5), not a guild's. Unlike `price-history`'s **point-sampled close**, a point
+here is the **true 6-hour average** of the fuel price across the bucket's ticks — the tab wants the
+smoothing, so it pays the accumulator `price-history` deliberately avoided.
+
+Like the price/modifier/burn depths, both numbers are **DISPLAY-DEPTH constants, not economy numbers**:
+they feed no rate, price, fee, grant or commitment, and changing them changes only the graph's reach and
+coarseness. So neither is a decision-checklist entry. Single-sourced in `sim/fuel-price-history.js`.
+
+| Constant `[FIRST-CUT]` | Value | Rationale |
+|---|---|---|
+| **`FUEL_PRICE_HISTORY_N`** | **12** | The graph shows a **3-day** trend, and a point is a **6-hour** average, so 3 days ÷ 6 h = **12** points. No headroom: the ring is exactly the 12 the graph draws (≤ 12 floats galaxy-wide, in the save **and** the determinism hash). |
+| **`FUEL_PRICE_BUCKET_DIVISOR`** | **4** | A day is split into **4** buckets — one per **6 game-hours** (a quarter-day). The bucket LENGTH in ticks is **DERIVED**, `windowN / 4` (= 360 on the standard 1,440-tick day), never hardcoded, so a galaxy on a non-standard day still buckets to quarter-days. |
+
+Averages are **floats** (an average of the float fuel price), stored as such — the sanctioned non-integer
+(§15.2), tolerated by `checkFuelPriceHistory` exactly as the modifier ring's floats are.
+
+**NOT sparse, unlike the rings above** — and this is the one that moves the goldens. Every ticking galaxy
+has a fuel price, so the accumulator advances **every tick**; the field is present from the first ticking
+sample (omit-when-empty applies only to a never-ticked galaxy). So every determinism golden that ticks
+moved, re-pinned with a `withoutFuelPriceHistory` strip that recovers each pre-slice golden byte-for-byte.
+**No backfill**, the same as every ring above: the first ring point lands 6 game-hours in.
+
+Alongside it, the **deuterium production aggregate** (`docs/guild-hall.md` §4.2) — a per-guild snapshot
+derive `deuteriumProduction: { legalPerCycle, contrabandPerCycle }` — invents **no number**: it is the
+Σ per-tick `productionRate` of the licensed mines / illegal refineries × the cycle length `windowN`, both
+existing quantities. A projection (rate × cycle), deliberately raw-unlimited.
+
 ### Licence — the commitment sale *(26-08-26 — Slice 3a, `sim/licence.js`)*
 
 A committed delivery is now a **sale**: the owner is paid `round((1 − o) × units × posted price)` and the

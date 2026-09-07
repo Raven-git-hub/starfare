@@ -32,6 +32,7 @@ const {
 } = require('./windows.js');
 const { getHistory, pushHistory } = require('./history.js');
 const { recordPriceSamples } = require('./price-history.js');
+const { recordFuelPriceSample } = require('./fuel-price-history.js');
 const { recordPriceRing } = require('./price-ring.js');
 const { recomputePrices, postedPrice } = require('./prices.js');
 const {
@@ -1062,6 +1063,20 @@ function tick(state, actions = []) {
     next = step(next, actions, ctx);
   }
   next.tick = state.tick + 1;
+
+  // THE GALAXY-WIDE FUEL-PRICE HISTORY (docs/guild-hall.md §4.2, sim/fuel-price-history.js).
+  // Sample the fuel price EVERY tick and close a 6-hour bucket whenever the quarter-day index
+  // rolls, so the DEUTERIUM tab has a smoothed 3-day trend to draw. It sits HERE, after the
+  // eight steps, and NOT inside step 6 where the price is posted, for one load-bearing reason:
+  // step 6 (`stepBaselineAllocation`) early-returns on every non-boundary tick, so a sample
+  // taken inside it would fire only at boundaries. The price is final for the tick once the
+  // steps are done — step 6 posts next cycle's at a boundary and leaves it untouched otherwise
+  // (steps 7/8 are no-ops that never touch it) — so this is the honest "END of the tick" seam
+  // that runs every tick with the tick's final price. Observation only: it moves no fuel and
+  // invariant 1 never sees it. It is a state MUTATION (serialized), so — like the
+  // galactic-supply refresh below — it is bookkeeping the eight-step contract does not own,
+  // run once here after the contract has produced the tick's state.
+  recordFuelPriceSample(next, next.tick);
 
   // Derive pass, NOT a §15.6 step: refresh the galactic-supply cache from the
   // state the eight steps just produced. Kept out of the STEPS array on purpose

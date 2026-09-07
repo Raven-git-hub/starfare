@@ -304,6 +304,25 @@ const GOLDEN_COMMITTED_WITH_FUEL_ENTITLEMENT = '5520e295ad77111c1557a162c07906b8
 // boundary, no entry is pushed, and its guild carries no `fuelBurnHistory` at all — byte-identical.
 const GOLDEN_COMMITTED_WITH_FUEL_BURN_HISTORY = '0c83ed33492a1a4ce2b2a2e9ac6f9908b1e3d99ccba4b0933ad57279f6c3063a';
 
+// ── THE GALAXY-WIDE FUEL-PRICE HISTORY (07-09-26 — docs/guild-hall.md §4.2) ──
+//
+// UNLIKE EVERY SLICE ABOVE, BOTH FULL HASHES MOVED — and that is the point, not a re-pin. The
+// fuel-price accumulator advances on EVERY tick (every galaxy has a fuel price), so both runs
+// gained the new top-level `fuelPriceHistory` field and both full hashes legitimately moved.
+// Because it is an ADDED top-level key the ordinary strip works: `withoutFuelPriceHistory` peels
+// it and each run's PREVIOUS full hash returns byte-for-byte — the whole delta proof, exactly as
+// the always-on price ring's did. The two new full hashes are pinned below.
+//
+//   - The UNLICENSED run (windowN default 1,440 ⇒ a 360-tick quarter-day bucket) closes NO bucket
+//     in 40 ticks, so its `ring` is still empty — but its accumulator carries all 40 samples, so
+//     the field is present and its full hash moved. Strip it and GOLDEN_UNLICENSED_WITH_PRICE_RING
+//     returns.
+//   - The COMMITTED run (windowN 4 ⇒ a 1-tick bucket) closes a bucket every tick, so its ring
+//     fills and caps at 12 (39 closes, last 12 kept). Strip it and
+//     GOLDEN_COMMITTED_WITH_FUEL_BURN_HISTORY returns.
+const GOLDEN_UNLICENSED_WITH_FUEL_PRICE_HISTORY = '5b34cde01e76e9aaa0e835527208bc3f6c125b273c82e0df83e124588a4a5c2d';
+const GOLDEN_COMMITTED_WITH_FUEL_PRICE_HISTORY = 'bffbc7d4c5b859d071894c13bd41f2f8e4afa629f6249fe353d4a57d13594ac6';
+
 // ── SLICE A′ — STAMP `fuelHoardAtCycleStart` AT FOUNDING (03-09-26 — docs/guild-hall.md §4) ──
 //
 // THE UNLICENSED RUN'S FULL HASH MOVED; THE COMMITTED RUN'S DID NOT — the mirror image of the
@@ -422,21 +441,33 @@ const withoutFuelBurnHistory = (state) => ({
   ...state,
   guilds: (state.guilds || []).map((g) => { const { fuelBurnHistory, ...rest } = g; return rest; }),
 });
+// The state minus the galaxy-wide fuel-price history (07-09-26, the DEUTERIUM tab's engine data,
+// sim/fuel-price-history.js) — everything the hashes above covered before it. An ADDED top-level
+// field, so the ordinary strip works: peel it and every earlier golden returns byte-for-byte, the
+// proof it moved nothing else. UNLIKE the sparse burn/modifier rings this moves EVERY ticking
+// golden — every galaxy has a fuel price, so its accumulator advances every tick — which is why it
+// is the outermost strip on BOTH runs here (the unlicensed run's ring is still empty at 40 ticks on
+// the 1,440-tick window, but its accumulator carries all 40 samples, so its full hash moved too).
+const withoutFuelPriceHistory = (state) => { const { fuelPriceHistory, ...rest } = state; return rest; };
 
 test('NO-OP PROOF: an unlicensed run (no scaffold action) is byte-identical to pre-change HEAD', () => {
   let s = sysState([mine('t', 'titanium', 10, 0), mine('c', 'carbon_products', 10, 0), refinery('r', 'titanium_alloy', 2)]);
   for (let i = 0; i < 40; i += 1) s = tick(s);
   // §8.1 (04-09-26): the always-on `priceRing` is the OUTERMOST strip now — `bare` folds it
   // in with the Guild Hall strip so every earlier golden returns byte-for-byte.
-  const bare = (x) => withoutPriceRing(withoutGuildHall(x));
-  assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(withoutHistory(withoutPrices(s)))))), GOLDEN_UNLICENSED, 'everything but the price block, the two history buffers, the fuel price, the Guild Hall fields and the price ring is byte-identical to pre-change HEAD');
+  // FUEL-PRICE HISTORY (07-09-26): the always-on `fuelPriceHistory` accumulator advances every
+  // tick, so it moved this run's full hash too and is now the OUTERMOST strip — `bare` folds it in
+  // with the price ring and Guild Hall strips so every earlier golden returns byte-for-byte.
+  const bare = (x) => withoutFuelPriceHistory(withoutPriceRing(withoutGuildHall(x)));
+  assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(withoutHistory(withoutPrices(s)))))), GOLDEN_UNLICENSED, 'everything but the price block, the two history buffers, the fuel price, the Guild Hall fields, the price ring and the fuel-price history is byte-identical to pre-change HEAD');
   assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(withoutHistory(s))))), GOLDEN_UNLICENSED_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
   assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(s)))), GOLDEN_UNLICENSED_WITH_HISTORY, 'and with the production history back in, the ONLY delta from the pre-price-history engine is priceHistory');
   assert.equal(hashState(bare(withoutControllerState(s))), GOLDEN_UNLICENSED_WITH_PRICE_HISTORY, 'and with the price-history rings back in, the ONLY delta from the pre-5b-i engine is the two reserve fields');
   assert.equal(hashState(bare(withoutAvgDraw(s))), GOLDEN_UNLICENSED_WITH_FUEL_PRICE, 'with the price back in, the ONLY delta from the pre-5b-ii engine is reserve.avgDraw');
-  assert.equal(hashState(bare(s)), GOLDEN_UNLICENSED_WITH_CONTROLLER, 'and with the controller state back in, stripping the Guild Hall fields and the price ring returns the pre-Guild-Hall bytes');
-  assert.equal(hashState(withoutPriceRing(s)), GOLDEN_UNLICENSED_WITH_GUILD_HALL, 'and with the Guild Hall fields back in, stripping only the price ring returns the pre-quote-lock bytes');
-  assert.equal(hashState(s), GOLDEN_UNLICENSED_WITH_PRICE_RING, 'and the full state — with the §8.1 quote-lock ring — is pinned');
+  assert.equal(hashState(bare(s)), GOLDEN_UNLICENSED_WITH_CONTROLLER, 'and with the controller state back in, stripping the fuel-price history, the Guild Hall fields and the price ring returns the pre-Guild-Hall bytes');
+  assert.equal(hashState(withoutFuelPriceHistory(withoutPriceRing(s))), GOLDEN_UNLICENSED_WITH_GUILD_HALL, 'and with the Guild Hall fields back in, stripping the fuel-price history and the price ring returns the pre-quote-lock bytes');
+  assert.equal(hashState(withoutFuelPriceHistory(s)), GOLDEN_UNLICENSED_WITH_PRICE_RING, 'and with the price ring back in, stripping only the fuel-price history returns the pre-fuel-price-history bytes');
+  assert.equal(hashState(s), GOLDEN_UNLICENSED_WITH_FUEL_PRICE_HISTORY, 'and the full state — with the galaxy-wide fuel-price history — is pinned');
   // ⚠ THE LOAD-BEARING PART. This run crosses NO boundary, so the controller never ran —
   // which is why every hash above it held while the committed run's moved. If the price or
   // the average had moved here, slice 5b-ii would have reached somewhere it must not.
@@ -447,6 +478,11 @@ test('NO-OP PROOF: an unlicensed run (no scaffold action) is byte-identical to p
   // and 40 ticks crosses the fine bucket twice, so it really did record prices too.
   assert.ok(s.guilds[0].productionHistory, 'the unlicensed run really did record history');
   assert.equal(s.priceHistory.titanium.fine.length, 2, 'and the fine ring really has the samples from ticks 15 and 30');
+  // And the fuel-price history really is there to strip: on the 1,440-tick window a 40-tick run
+  // closes NO 6-hour (360-tick) bucket, so the ring is still empty — but the accumulator has
+  // sampled every one of the 40 ticks, which is what moved the full hash the strip recovers.
+  assert.equal(s.fuelPriceHistory.ring.length, 0, 'no 6-hour bucket closes in 40 ticks on the 1,440-tick window');
+  assert.equal(s.fuelPriceHistory.acc.count, 40, 'but the accumulator sampled every tick — the state the strip proves is the only delta');
   // And the Guild Hall no-op: crossing no boundary, this run was never due a grant, so the
   // BOUNDARY-only fields (B, C, and A's re-stamp) were never minted. Slice A′ (03-09-26) does
   // stamp `fuelHoardAtCycleStart` at CREATION, so it is present at its opening hoard (0) — the
@@ -477,16 +513,20 @@ test('a committed run seeded via createVenture (not the action) is pinned, and n
   // `lastFuelGrant.entitlement` key comes back out too and every earlier golden below holds.
   // FUEL-BURN HISTORY (07-09-26): `withoutFuelBurnHistory` is now the OUTERMOST strip, so the new
   // `fuelBurnHistory` ring comes back out too and every earlier golden below returns byte-for-byte.
-  const bare = (x) => withoutFuelBurnHistory(withoutFuelEntitlement(withoutPriceRing(withoutGuildHall(x))));
-  assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(withoutHistory(s))))), GOLDEN_COMMITTED_WITH_PRICES, 'with the burn history, entitlement, price ring, the Guild Hall fields, both history buffers and the controller state stripped, the committed run is pinned on its post-5b-ii bytes');
+  // FUEL-PRICE HISTORY (07-09-26): `withoutFuelPriceHistory` is now the OUTERMOST strip, so the new
+  // top-level `fuelPriceHistory` (which moves EVERY ticking run) comes back out too and every
+  // earlier golden below returns byte-for-byte.
+  const bare = (x) => withoutFuelPriceHistory(withoutFuelBurnHistory(withoutFuelEntitlement(withoutPriceRing(withoutGuildHall(x)))));
+  assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(withoutHistory(s))))), GOLDEN_COMMITTED_WITH_PRICES, 'with the fuel-price history, burn history, entitlement, price ring, the Guild Hall fields, both history buffers and the controller state stripped, the committed run is pinned on its post-5b-ii bytes');
   assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(s)))), GOLDEN_COMMITTED_WITH_HISTORY, 'and with the production history back in, the ONLY delta is priceHistory');
   assert.equal(hashState(bare(withoutControllerState(s))), GOLDEN_COMMITTED_WITH_PRICE_HISTORY, 'and with the price-history rings back in, the deltas are the two reserve fields');
   assert.equal(hashState(bare(withoutAvgDraw(s))), GOLDEN_COMMITTED_WITH_FUEL_PRICE, 'with the price back in, the remaining delta is reserve.avgDraw');
   assert.equal(hashState(bare(s)), GOLDEN_COMMITTED_WITH_CONTROLLER, 'and with the controller state back in, the ONLY delta from the pre-Guild-Hall engine is the three §4 fields');
-  assert.equal(hashState(withoutFuelBurnHistory(withoutFuelEntitlement(withoutPriceRing(s)))), GOLDEN_COMMITTED_WITH_GUILD_HALL, 'and with the Guild Hall fields back in, stripping the burn history, price ring and entitlement returns the pre-quote-lock bytes');
-  assert.equal(hashState(withoutFuelBurnHistory(withoutFuelEntitlement(s))), GOLDEN_COMMITTED_WITH_PRICE_RING, 'and with the price ring back in, stripping the burn history and entitlement returns the pre-Slice-D bytes');
-  assert.equal(hashState(withoutFuelBurnHistory(s)), GOLDEN_COMMITTED_WITH_FUEL_ENTITLEMENT, 'and with the entitlement back in, stripping only the burn history returns the pre-burn-history bytes');
-  assert.equal(hashState(s), GOLDEN_COMMITTED_WITH_FUEL_BURN_HISTORY, 'and the full state, the fuel-burn history ring included, is pinned');
+  assert.equal(hashState(withoutFuelPriceHistory(withoutFuelBurnHistory(withoutFuelEntitlement(withoutPriceRing(s))))), GOLDEN_COMMITTED_WITH_GUILD_HALL, 'and with the Guild Hall fields back in, stripping the fuel-price history, burn history, price ring and entitlement returns the pre-quote-lock bytes');
+  assert.equal(hashState(withoutFuelPriceHistory(withoutFuelBurnHistory(withoutFuelEntitlement(s)))), GOLDEN_COMMITTED_WITH_PRICE_RING, 'and with the price ring back in, stripping the fuel-price history, burn history and entitlement returns the pre-Slice-D bytes');
+  assert.equal(hashState(withoutFuelPriceHistory(withoutFuelBurnHistory(s))), GOLDEN_COMMITTED_WITH_FUEL_ENTITLEMENT, 'and with the entitlement back in, stripping the fuel-price history and burn history returns the pre-burn-history bytes');
+  assert.equal(hashState(withoutFuelPriceHistory(s)), GOLDEN_COMMITTED_WITH_FUEL_BURN_HISTORY, 'and with the burn history back in, stripping only the fuel-price history returns the pre-fuel-price-history bytes');
+  assert.equal(hashState(s), GOLDEN_COMMITTED_WITH_FUEL_PRICE_HISTORY, 'and the full state, the galaxy-wide fuel-price history included, is pinned');
   // The strip is only a proof if there was really something to strip: the committed run is due
   // a grant at each of its ten boundaries, so its guild really did gain all three §4 fields.
   const gh = s.guilds[0];
@@ -503,6 +543,11 @@ test('a committed run seeded via createVenture (not the action) is pinned, and n
   assert.ok(gh.fuelBurnHistory.every((e) => e.burn === 0 && e.contrabandBurned === 0), 'this run issues no SELL/BUY, so nothing burned — burn and contrabandBurned are 0 every cycle');
   assert.equal(gh.fuelBurnedThisCycle, undefined, 'the accumulator is omit-when-0 (nothing burned) and was reset at the boundary');
   assert.equal(gh.deuteriumFuelAtCycleStart, undefined, 'no contraband, so the red baseline is never stamped');
+  // The fuel-price history really is there to strip: windowN 4 ⇒ a 1-tick 6-hour bucket, so a
+  // bucket closes every tick and the ring caps at 12 over this 40-tick (>3-day) run (39 closes,
+  // last 12 kept), with the current bucket's single sample sitting in the accumulator.
+  assert.equal(s.fuelPriceHistory.ring.length, 12, 'the ring caps at 12 over a >3-day run (oldest dropped)');
+  assert.equal(s.fuelPriceHistory.acc.count, 1, 'and the in-progress bucket holds this tick alone');
   // ⚠ WHY THESE THREE MOVED, stated rather than left to a re-pinned number. This run crosses
   // ten cycle boundaries, so the controller ran ten times and posted a new price each time —
   // every grant after the first is a different number, and the pool followed a different
@@ -562,7 +607,10 @@ test('no-op proof: undo the fuel flows and the pre-slice COMMITTED goldens come 
   // that predates none of the pre-5a goldens, so it comes back out with the rest.
   // The fuel-burn history ring (07-09-26) is stripped here too — another added field pushed at
   // every boundary, predating none of the pre-5a goldens, so it comes back out with the rest.
-  const bare = (x) => withoutFuelBurnHistory(withoutPriceRing(withoutGuildHall(x)));
+  // The galaxy-wide fuel-price history (07-09-26) is stripped here too — an added top-level field
+  // that moves every ticking run and predates none of the pre-5a goldens, so it comes back out
+  // with the rest (the undo above touches only the fuel FLOWS, never this observation-only ring).
+  const bare = (x) => withoutFuelPriceHistory(withoutFuelBurnHistory(withoutPriceRing(withoutGuildHall(x))));
   assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(withoutHistory(undone))))), COMMITTED_WITH_PRICES_BEFORE_FUEL_FLOWS,
     'with the fuel, the Guild Hall fields and the price ring undone, the pre-slice committed bytes come straight back');
   assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(undone)))), COMMITTED_WITH_HISTORY_BEFORE_FUEL_FLOWS);

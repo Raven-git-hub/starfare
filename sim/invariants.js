@@ -77,6 +77,7 @@ const { HISTORY_N } = require('./history.js');
 const { MODIFIER_HISTORY_N } = require('./modifier-history.js');
 const { FUEL_BURN_HISTORY_N } = require('./fuel-burn-history.js');
 const { TIERS: PRICE_HISTORY_TIERS, TIER_KEYS } = require('./price-history.js');
+const { FUEL_PRICE_HISTORY_N } = require('./fuel-price-history.js');
 const { RING_DEPTH: PRICE_RING_DEPTH } = require('./price-ring.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { getSite, getLandmark, getSystem, getTerranHomeworld } = require('./seed.js');
@@ -870,6 +871,62 @@ function checkPriceRing(state) {
   return out;
 }
 
+// Fuel-price-history shape (sim/fuel-price-history.js) — the galaxy-wide fuel-price ring +
+// current-bucket accumulator, SERIALIZED state the DEUTERIUM tab's price graph draws from, so a
+// malformed one would be both a broken graph and a poisoned determinism hash. Unlike the sparse
+// per-guild rings this is top-level and moves EVERY ticking tick, but the checks are the same
+// family as checkPriceHistory / checkModifierHistory:
+//   - the SHAPE: a plain object carrying the ring and the accumulator;
+//   - the ring is an ARRAY capped at FUEL_PRICE_HISTORY_N (12) — a ring that stopped ringing
+//     would grow without bound and bloat every save;
+//   - each average is a FINITE, NON-NEGATIVE number — a FLOAT here (an average of the float fuel
+//     price), so NO integer sweep, exactly as checkModifierHistory tolerates its sanctioned
+//     floats; the [FIRST-CUT] price band is deliberately NOT asserted, as checkPriceHistory does
+//     not assert it on a recorded sample (history is the past; finiteness is the invariant);
+//   - the accumulator's `sum` (a float sum ≥ 0) and `count` (a whole tick count ≥ 0) are finite
+//     and non-negative, and `bucket` is a finite INTEGER quarter-day COORDINATE (non-negativity-
+//     exempt like a windowStart — an anchored stub can nominally precede day 0), asserted only so
+//     a NaN can never ride into the determinism hash.
+// A galaxy that has never taken a sample carries no `fuelPriceHistory` at all — legal, the
+// omit-when-empty no-op path.
+function checkFuelPriceHistory(state) {
+  const out = [];
+  const fph = state.fuelPriceHistory;
+  if (fph === undefined) return out;
+  const where = 'fuelPriceHistory';
+  if (!fph || typeof fph !== 'object' || Array.isArray(fph)) {
+    out.push({ rule: 'fuel-price-history-shape (sim/fuel-price-history.js)', where, detail: { fph } });
+    return out;
+  }
+  if (!Array.isArray(fph.ring)) {
+    out.push({ rule: 'fuel-price-history-ring-is-an-array (sim/fuel-price-history.js)', where: `${where}.ring`, detail: { ring: fph.ring } });
+  } else {
+    if (fph.ring.length > FUEL_PRICE_HISTORY_N) {
+      out.push({ rule: 'fuel-price-history-ring-capped (sim/fuel-price-history.js)', where: `${where}.ring`, detail: { length: fph.ring.length, cap: FUEL_PRICE_HISTORY_N } });
+    }
+    fph.ring.forEach((v, i) => {
+      if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) {
+        out.push({ rule: 'fuel-price-history-sample-finite-non-negative (sim/fuel-price-history.js)', where: `${where}.ring[${i}]`, detail: { value: v } });
+      }
+    });
+  }
+  const acc = fph.acc;
+  if (!acc || typeof acc !== 'object' || Array.isArray(acc)) {
+    out.push({ rule: 'fuel-price-history-accumulator-shape (sim/fuel-price-history.js)', where: `${where}.acc`, detail: { acc } });
+  } else {
+    if (typeof acc.sum !== 'number' || !Number.isFinite(acc.sum) || acc.sum < 0) {
+      out.push({ rule: 'fuel-price-history-acc-sum-finite-non-negative (sim/fuel-price-history.js)', where: `${where}.acc.sum`, detail: { value: acc.sum } });
+    }
+    if (typeof acc.count !== 'number' || !Number.isInteger(acc.count) || acc.count < 0) {
+      out.push({ rule: 'fuel-price-history-acc-count-whole-non-negative (sim/fuel-price-history.js)', where: `${where}.acc.count`, detail: { value: acc.count } });
+    }
+    if (typeof acc.bucket !== 'number' || !Number.isInteger(acc.bucket)) {
+      out.push({ rule: 'fuel-price-history-acc-bucket-is-a-coordinate (sim/fuel-price-history.js)', where: `${where}.acc.bucket`, detail: { value: acc.bucket } });
+    }
+  }
+  return out;
+}
+
 // Galactic-supply consistency — the derived totals cache (state.galacticSupply)
 // must equal a fresh re-derivation from the guilds' actual stockpiles and the
 // fuel figures. This is a CONSISTENCY check, not a conservation one: non-fuel
@@ -1175,6 +1232,7 @@ function checkInvariants(state, tick) {
     ...checkFuelBurnHistory(state),
     ...checkPrices(state),
     ...checkPriceHistory(state),
+    ...checkFuelPriceHistory(state),
     ...checkPriceRing(state),
     ...checkLicenceTerms(state),
     ...checkGalacticSupplyConsistency(state),

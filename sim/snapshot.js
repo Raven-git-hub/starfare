@@ -39,9 +39,10 @@ const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
 const { previewProduction } = require('./production.js');
 const { PRICED_GOODS, postedPrice, basePriceFor } = require('./prices.js');
-const { baselineUnitsForGood } = require('./baseline.js');
+const { baselineUnitsForGood, isLicensedDeuteriumMine, isIllegalDeuteriumRefinery } = require('./baseline.js');
 const { licenceFee } = require('./licence.js');
 const { clonePriceHistory } = require('./price-history.js');
+const { getFuelPriceRing } = require('./fuel-price-history.js');
 const { cloneModifierHistory } = require('./modifier-history.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
 const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
@@ -368,6 +369,18 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // reads live (opening ×1.00) from tick 0 instead of `—`. ADDITIVE, NO schema bump. null for a
 // guild not founded through `foundGuild` and for a zero-GP founding — the client falls through
 // to today's behaviour on a null.
+// (07-09-26, the DEUTERIUM tab's engine data — docs/guild-hall.md §4.2): the two remaining feeds
+// the tab needs. ADDITIVE, and NO schema bump: nothing existing changed shape, so every current
+// reader keeps working and an older one ignores the new keys.
+//   - a top-level `fuelPriceHistory` — the galaxy-wide fuel-price trend, the ring of the last ≤12
+//     COMPLETED 6-hour averages, oldest → newest (12 = 3 days), for the tab's price graph
+//     (sim/fuel-price-history.js). A plain array, ALWAYS EMITTED (a stable [] before the first
+//     bucket closes), the same courtesy `priceHistory` extends. The partial current-bucket
+//     accumulator is NOT published — the live tip is `galacticSupply.fuel.fuelPrice`.
+//   - each guild row gains `deuteriumProduction: { legalPerCycle, contrabandPerCycle }` — the
+//     tab's Production readout, the guild's deuterium output per cycle in fuel-quantity units
+//     (Σ licensed-mine / illegal-refinery `productionRate` × the cycle length). DERIVED, a
+//     projection (rate × cycle, deliberately raw-unlimited), no stored byte, no determinism hash.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -382,11 +395,13 @@ const SNAPSHOT_SCHEMA = 7;
 //     },
 //     syndicate: { ledger },
 //     prices: { <every non-fuel stockpile good>: <posted value> },  // sim/prices.js
+//     fuelPriceHistory: [ <6h avg>, ... ],   // galaxy-wide fuel-price trend, ≤12, []-safe
 //     feeQuote: { <priced good with a baseline>: <basic licence fee, int credits> },
 //       // what a licence signed NOW would cost, per good — sim/licence.js's own licenceFee
 //     guilds: [ { id, name, isBot, credits, fuelHoard, fuelHoardValue,
 //                 fuelHoardAtCycleStart, fuelHoardAtCycleStartValue,  // Guild Hall A | null
 //                 deuterium, deuteriumFuel, deuteriumFuelValue,       // §1.4 stores (1a/1b)
+//                 deuteriumProduction: { legalPerCycle, contrabandPerCycle }, // §4.2, units/cycle
 //                 modifierHistory: [ <modifier>, ... ],               // Guild Hall C, []-safe
 //                 influence,
 //                 guildReputation,                    // RP, Σ ventures' + endowment
@@ -453,6 +468,11 @@ function buildSnapshot(state) {
   const avgDraw = state.reserve && state.reserve.avgDraw !== undefined
     ? state.reserve.avgDraw
     : DEUTERIUM_INFLUX_PER_CYCLE;
+
+  // The cycle length in ticks, defaulted the way every engine reader defaults it — the
+  // multiplier that turns a per-tick production RATE into a per-cycle projection for the
+  // deuterium Production readout below (and the cycle clock further down reuses it as `calN`).
+  const cycleN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
 
   // Guild breakdown: copy the fields the inspector shows. stockpiles is spread
   // into a fresh object so a consumer mutating the snapshot can never reach back
@@ -522,6 +542,26 @@ function buildSnapshot(state) {
         : fuelValue(g.deuteriumFuelAtCycleStart, fuelPrice),
       fuelBurnedThisCycle: g.fuelBurnedThisCycle || 0,
       fuelBurnHistory: g.fuelBurnHistory || [],
+      // The DEUTERIUM tab's Production readout — the guild's deuterium output PER CYCLE, in
+      // fuel-quantity UNITS (not credits), split legal / contraband. A pure DERIVED read: it is
+      // the engine deciding the number so the client renders rather than computes it (§5), with
+      // no stored counterpart and no determinism byte.
+      //   - `legalPerCycle`      = Σ (`productionRate` of the guild's LICENSED deuterium mines —
+      //     `isLicensedDeuteriumMine`, i.e. `resourceType === 'deuterium'` + a `deuteriumLicence`)
+      //     × the cycle length `cycleN`.
+      //   - `contrabandPerCycle` = Σ (`productionRate` of the guild's ILLEGAL refineries —
+      //     `isIllegalDeuteriumRefinery`, i.e. the `deuteriumRefinery` marker) × `cycleN`.
+      // Deliberately a PROJECTION, not an exact figure: rate × cycle length. A refinery is
+      // raw-limited in reality (it converts only as much as `guild.deuterium` holds); this ignores
+      // that, as designed — the readout shows the guild's committed CAPACITY per cycle, not its
+      // realised throughput. `cycleN` (= `windowN`, the galaxy's real cycle) is used, never a
+      // hardcoded 1,440, so the projection tracks a non-standard cycle.
+      deuteriumProduction: {
+        legalPerCycle: (g.ventures || []).reduce(
+          (sum, v) => sum + (isLicensedDeuteriumMine(v) ? v.productionRate * cycleN : 0), 0),
+        contrabandPerCycle: (g.ventures || []).reduce(
+          (sum, v) => sum + (isIllegalDeuteriumRefinery(v) ? v.productionRate * cycleN : 0), 0),
+      },
       // What a Syndicate trade COSTS IN FUEL, per system this guild holds (fuel
       // Slice 2). Keyed by systemId, each `{ fuelBurn, creditCost, travelTicks }`.
       // The BURN is the engine's own `routeFuelCost` (sim/fuel.js) — CALLED, never
@@ -903,7 +943,7 @@ function buildSnapshot(state) {
   // The cycle length and anchor in force, defaulted the same way every engine reader
   // defaults them, so the emitted clock matches the boundary the engine actually judges
   // on rather than a second opinion about it.
-  const calN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+  const calN = cycleN;
   const calAnchor = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
   const calOffset = state.utcOffsetMinutes == null ? 0 : state.utcOffsetMinutes;
 
@@ -1012,6 +1052,15 @@ function buildSnapshot(state) {
     // that appears at tick 15. A good with no samples yet simply has no row, and the
     // chart shows its "gathering history…" state.
     priceHistory: clonePriceHistory(state.priceHistory),
+    // The galaxy-wide FUEL-PRICE history (sim/fuel-price-history.js) — the ring of the last ≤12
+    // COMPLETED 6-hour averages, oldest → newest (12 points = a 3-day trend), a plain array the
+    // DEUTERIUM tab's price graph draws with no reshaping. Copied so the snapshot can't alias
+    // into engine state; a galaxy that has closed no bucket yet emits `[]` (the graph shows its
+    // "gathering history…" state), always a stable shape for the reader — the same courtesy
+    // `priceHistory` extends. The partial current-bucket accumulator is deliberately NOT
+    // published: the live "now" tip is already `galacticSupply.fuel.fuelPrice` above, so the
+    // client tips the line with the live price and the ring carries only closed averages.
+    fuelPriceHistory: [...(getFuelPriceRing(state) || [])],
     // The per-good BASE value — the anchor the price curve multiplies — so the chart
     // can draw its reference line without the browser typing a game number of its own
     // (design.md §5: the client computes no authoritative number). Read through

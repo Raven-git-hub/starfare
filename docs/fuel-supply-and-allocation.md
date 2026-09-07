@@ -260,6 +260,13 @@ resolved and the storage / burn model pinned:
   contrabandBurned }` series, integer fuel quantities so it stays comparable across price moves),
   recorded at the cycle boundary before the new grant lands. No fuel behaviour changes; see
   `docs/guild-hall.md` §4.1 for the fields, units, and boundary-ordering rule.
+  The tab's **remaining two data feeds** are now **BUILT too (07-09-26, engine + snapshot only):** a
+  galaxy-wide **fuel-price history** (`state.fuelPriceHistory`, a 3-day trend of 6-hour averages) for the
+  tab's price graph, and a per-guild **deuterium production aggregate** (`deuteriumProduction:
+  { legalPerCycle, contrabandPerCycle }`, units per cycle) for its Production readout — both observation
+  only, no fuel behaviour changed. The tab's price graph is the **FUEL price**, not the raw-deuterium
+  price (which keeps its own `state.priceHistory`, untouched). See `docs/guild-hall.md` §4.2. The tab's
+  CLIENT dashboard itself remains slice 2b.
   **The refinery's deploy surface (client contract) — REVISED 07-09-26.** The illegal refinery is **no longer a
   separate settlement-slot button** routing to the deuterium popup; it is configured as the **FUEL product on a
   factory venture** — a **FUEL tier** in the factory Establish popup's Configuration dropdown that locks the lone

@@ -298,6 +298,84 @@ added strip in `commitment-scaffold.test.js`; no fuel number moved.
 lighting up §2.3's Guild-Hall bar red segment (this slice is the data, the tab consumes it); §7
 detection / fines (`contrabandBurned` is a recorded statistic, nothing punishes it yet).
 
+### 4.2 The DEUTERIUM tab's engine data — the fuel-price history + the production aggregate *(07-09-26 — engine + snapshot only)*
+
+The **DEUTERIUM tab** (`fuel-supply-and-allocation.md` §1.4, slice 2b) is a guild-wide monitoring
+dashboard; most of what it draws is already LIVE (the stockpile values, the two cycle-start baselines,
+the fuel-burn graph of §4.1, the refinery list off `ventures[]`). This slice adds the **two remaining
+data feeds** it needs, then stops — engine + snapshot only, **no client work**. **Observation only:** no
+existing fuel behaviour (burn, grant, price) changes; the fuel price is read, never moved.
+
+**1. A galaxy-wide fuel-price history — a 3-day trend of 6-hour averages — for the tab's price graph.**
+A new top-level field `state.fuelPriceHistory` (a sibling of `state.priceHistory`, in a new module
+`sim/fuel-price-history.js`), because the fuel price is **galaxy-wide** — one value for the whole galaxy
+(§15.5 invariant 5), not a guild's — so its history lives ONCE, top-level, never hung off a guild:
+
+```
+state.fuelPriceHistory: { ring: [ <avg>, … ], acc: { sum, count, bucket } }
+```
+
+- **`ring`** — the last **12** COMPLETED 6-hour averages, oldest → newest (12 points = 3 days).
+- **`acc`** — the 6-hour bucket in progress: `{ sum, count }` of this bucket's fuel prices, plus
+  `bucket`, the quarter-day index it is accumulating.
+
+Unlike `price-history`'s **point-sampled close**, a point here is the **true 6-hour average** of the fuel
+price across the bucket's ticks — the tab wants a smoothed trend, so this pays the accumulator
+`price-history` deliberately avoided. Averages are **floats** (an average of the float fuel price), stored
+as such — the sanctioned non-integer (§15.2), tolerated by `checkFuelPriceHistory` exactly as the modifier
+ring's floats are. `FUEL_PRICE_HISTORY_N = 12` and `FUEL_PRICE_BUCKET_DIVISOR = 4` are DISPLAY-DEPTH
+constants (`docs/phase-1-tuning.md`); the bucket LENGTH is DERIVED — `windowN / 4` (= 360 on the standard
+1,440-tick day) — never hardcoded, so a non-standard day still buckets to quarter-days.
+
+**The mechanic (`sim/tick.js`, once per tick, after the eight steps).** The fuel price is sampled EVERY
+tick with the tick's FINAL price. It sits after the step loop, NOT inside step 6 where the controller
+posts the price, for one load-bearing reason: step 6 (`stepBaselineAllocation`) early-returns on every
+non-boundary tick, so a sample taken inside it would fire only at boundaries. If the tick opens a new
+6-hour bucket (the quarter-day index rolled) and the accumulator has samples, its true average
+(`sum / count`) is pushed onto the ring (oldest dropped past 12) and the accumulator resets; then this
+tick's price is added. **Buckets align to the calendar day** exactly as `isWindowBoundary` aligns cycle
+boundaries (`bucketIndexOf` is built from `sim/calendar.js`'s `dayOf`/`minuteOf`, the same `(tick-1)`
+phase and anchor), so a day boundary is always a bucket boundary — no galaxy-tick-1 drift. A fresh galaxy
+has an empty ring and its first point lands 6 game-hours in; "not yet" is empty, not a failure.
+
+**Snapshot.** Published top-level as `fuelPriceHistory` — the ring of ≤12 closed averages, a plain array
+the client draws with no reshaping, ALWAYS emitted (a stable `[]` before the first bucket closes). The
+partial accumulator is **not** published: the live "now" tip is already `galacticSupply.fuel.fuelPrice`,
+so the client tips the line with the live price.
+
+**2. A per-guild deuterium production aggregate — for the tab's Production readout.** A snapshot derive on
+each guild row, in fuel-quantity UNITS per cycle (not credits):
+
+```
+deuteriumProduction: { legalPerCycle, contrabandPerCycle }
+```
+
+- **`legalPerCycle`** = Σ (`productionRate` of the guild's LICENSED deuterium mines — `resourceType ===
+  'deuterium'` and a `deuteriumLicence`, i.e. `isLicensedDeuteriumMine`) × `windowN`.
+- **`contrabandPerCycle`** = Σ (`productionRate` of the guild's ILLEGAL refineries — the `deuteriumRefinery`
+  marker, i.e. `isIllegalDeuteriumRefinery`) × `windowN`.
+
+A pure DERIVED read in `buildSnapshot` — no stored state, nothing in the determinism hash — the engine
+deciding the number so the client renders rather than computes it (§5). Deliberately a **projection, not
+exact**: rate × cycle length, ignoring that a refinery is raw-limited in reality (as designed — it shows
+committed capacity per cycle, not realised throughput). `windowN` (the galaxy's real cycle), never a
+hardcoded 1,440, so it tracks a non-standard cycle.
+
+**Determinism.** Unlike the sparse §4.1 rings, `fuelPriceHistory` accumulates in **every ticking galaxy**
+(every galaxy has a fuel price), so **every determinism golden that ticks moved** — re-pinned in
+`persist.test.js` and `commitment-scaffold.test.js` with a `withoutFuelPriceHistory` strip that recovers
+each pre-slice golden byte-for-byte (the field proven the ONLY delta). The production aggregate is a
+snapshot derive and moves **no golden**. New tripwire `checkFuelPriceHistory` (`sim/invariants.js`): the
+ring is an array capped at 12 with finite non-negative float samples; the accumulator's `sum`/`count` are
+finite and non-negative and `bucket` a finite integer coordinate.
+
+**No new game number:** the two depths are display constants, and the production aggregate is rate × cycle,
+both existing quantities.
+
+**OUT of scope:** all client work (the tab, donut, graphs, refinery tree — slice 2b); the suspicion gauge
+/ §7 detection; the raw-deuterium price (the tab's price graph is the FUEL price — this new history; the
+raw-deuterium price keeps its own `priceHistory`, untouched).
+
 ## 5. Deferred (with their mechanics, not here)
 
 - **The legal/illegal hoard split** — the whole illegal-refining system. Until it exists,
