@@ -247,12 +247,20 @@ resolved and the storage / burn model pinned:
   contraband `deuteriumFuel` second** (`burnFuel`, `sim/fuel.js`), and every SELL/BUY sufficiency gate counts the
   combined total. Invariant 1's held side and `computeGalacticSupply`'s `guildHeld` both now sum
   `fuelHoard + deuteriumFuel`. The **client** is slice 2 — its first half is **BUILT (slice 2a, 06-09-26):** the
-  snapshot publishes the two stores + the two venture markers; the slider-less deploy popup fires the three
-  actions (mine licensed/unlicensed from a deuterium node, illegal refinery from a settlement slot); the
+  snapshot publishes the two stores + the two venture markers; the slider-less deuterium deploy popup fires the
+  mine actions (licensed/unlicensed, from a deuterium node); the
   Guild-Hall fuel bar splits blue/red; the SELL/BUY popup's fuel readout counts the combined legal + contraband
   total (the burn the engine actually makes); deuterium is removed from the tradeable tiers and the production
   console; and a **placeholder DEUTERIUM tab** is dropped in. The tab's DASHBOARD (price + graph, the raw /
   contraband readouts in full, the mine / refinery roster) is **slice 2b (NOT built — designed first).**
+  **The refinery's deploy surface (client contract) — REVISED 07-09-26.** The illegal refinery is **no longer a
+  separate settlement-slot button** routing to the deuterium popup; it is configured as the **FUEL product on a
+  factory venture** — a **FUEL tier** in the factory Establish popup's Configuration dropdown that locks the lone
+  Deuterium Fuel recipe and deploys the same built `establishDeuteriumRefinery`. This is the **single entry
+  point**, so the deuterium popup is now **mine-only** (licensed / unlicensed). The FUEL tier reads neutral (no
+  red, no "illegal" label); the illegality is surfaced only by the Guild Adviser confirm reel that gates the
+  deploy — "pressure, not prohibition" (decisions, human 07-09-26). Client-only; no engine change (the deploy
+  still fires the built action).
 
 **The trade-off, stated plainly.** *License it* → per-tick credits at market rate + maximum (T4) RP, but
 you never keep the fuel. *Refine it illegally* → you keep the fuel to burn yourself, but no pay, no

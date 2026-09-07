@@ -5,21 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Starfare — Deuterium Establish · Adviser confirm (mockup)</title>
 <!--
-  Deuterium-Establish CONFIRM flow — the Guild Adviser confirm reel that now gates the
-  deuterium deploy, matching the normal Establish-Venture popup. The design CONTRACT for
-  #deut-overlay → #est-reel (human-approved, 07-09-26): clicking the deploy button no
-  longer fires the actions directly; it opens the shared Adviser card (#est-reel) in a
-  deuterium confirm mode, one page of Adviser spiel per case, and only Confirm ▸ fires the
-  real deploy. Cancel backs out to the popup with nothing deployed.
+  Deuterium-Establish CONFIRM flow — the Guild Adviser confirm reel that gates the deploy,
+  matching the normal Establish-Venture popup. The design CONTRACT for the deploy →
+  #est-reel confirm (human-approved, 07-09-26): clicking a deploy button no longer fires the
+  actions directly; it opens the shared Adviser card (#est-reel), one page of Adviser spiel
+  per case, and only Confirm ▸ fires the real deploy. Cancel backs out with nothing deployed.
+
+  ⚠ WHERE EACH CASE FIRES FROM — REVISED 07-09-26 (the FUEL-tier fold). The refinery is no
+  longer deployed from the deuterium popup: it is configured as the FUEL product on a factory
+  venture — a FUEL tier in the FACTORY Establish popup (#est-overlay), the single entry point —
+  and its confirm now fires from that popup's reelConfirm() FUEL branch. The deuterium popup
+  (#deut-overlay) is MINE-ONLY (licensed / unlicensed). This mockup still RENDERS all three
+  confirm cards for reference, but the "Refinery" card below represents the factory popup's FUEL
+  confirm, NOT a deuterium-popup mode — the confirm COPY is unchanged and remains the contract.
 
   GROUNDING (repo = truth): design.md §1.4 "The Deuterium Cycle" / "The illegal path"; the
-  shipped machinery is client/game.html — #deut-overlay (the popup), #est-reel (the shared
-  Adviser card, reused as-is), deutReelConfirm() (mode reelMode='deutConfirm'), and the
-  deutConfirm branch of the reelNext handler that fires the already-BUILT deutDeploy()
-  (licensed → establishVenture then licenseDeuteriumMine; unlicensed → establishVenture
-  alone; refinery → establishDeuteriumRefinery). This file only RENDERS the flow: popup →
-  Adviser confirm card for each of the three cases → receipt. Static render, no engine —
-  the asset rows and site line are sample data carrying the engine's own id scheme.
+  shipped machinery is client/game.html — #deut-overlay (the MINE popup) with deutReelConfirm()
+  (mode reelMode='deutConfirm', licensed/unlicensed only), and #est-overlay's reelConfirm() whose
+  FUEL branch carries the refinery spiel; both open the shared #est-reel card and only Confirm ▸
+  fires the built actions (mine: establishVenture [+ licenseDeuteriumMine]; refinery, FUEL tier:
+  establishDeuteriumRefinery). Static render, no engine — the asset rows and site line are sample
+  data carrying the engine's own id scheme.
 
   Hero art client/assets/industrial/OceanicMine.jpg; Adviser art
   client/assets/characters/advisor.jpg. The three confirm scripts are the settled,
@@ -139,9 +145,10 @@ select.est-select:focus{outline:none; border-color:var(--amber)}
 <div class="cases">
   <button id="caseLic" class="on" type="button" onclick="setCase('licensed')">Licensed mine</button>
   <button id="caseUn" type="button" onclick="setCase('unlicensed')">Unlicensed mine</button>
-  <button id="caseRef" type="button" onclick="setCase('refinery')">Refinery</button>
+  <button id="caseRef" type="button" onclick="setCase('refinery')">Refinery (FUEL tier)</button>
 </div>
 <div class="hint-note">Click <b>Establish</b> → the Adviser confirm card for this case → Confirm ▸ for the receipt. Cancel backs out.</div>
+<div class="hint-note">Note (07-09-26): the <b>Refinery</b> confirm now fires from the FACTORY popup's <b>FUEL tier</b>, the single entry point — not the deuterium popup, which is mine-only. The confirm copy below is unchanged and remains the contract.</div>
 
 <div class="est">
   <div id="deutForm">

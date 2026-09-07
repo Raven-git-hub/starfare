@@ -370,18 +370,21 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the SELL & 
 test('GET / serves the DEUTERIUM client — deploy popup, segmented bar, removal, placeholder tab', async () => {
   const html = await (await fetch(base + '/')).text();
 
-  // 1. THE DEPLOY POPUP fires the three BUILT actions — the load-bearing strings, so a reverted
+  // 1. THE DEPLOY POPUP fires the BUILT actions — the load-bearing strings, so a reverted
   //    popup that stopped calling one is caught. A deuterium node opens the dedicated popup.
+  //    (The refinery action moved to the factory popup's FUEL tier — asserted in the FUEL-tier
+  //    test below — but its string is still served, so we assert it there, not here.)
   assert.match(html, /id="deut-overlay"/);
-  assert.match(html, /type:'establishDeuteriumRefinery'/);           // the illegal refinery
   assert.match(html, /type:'licenseDeuteriumMine'/);                 // the licensed mine's licence
   assert.match(html, /type:'establishVenture'[\s\S]{0,120}resourceType:'deuterium'/); // the mine itself
   assert.match(html, /site\.resource === 'deuterium' && window\.openDeut/,
     'a deuterium node must fork to the dedicated deuterium popup, not the generic one');
-  // The licensed/unlicensed choice and the refinery entry from a settlement slot.
+  // The licensed/unlicensed choice. The refinery is no longer reached from this popup — the old
+  // red "illegal refinery instead" button (#estDeutRefinery) must be GONE (§1.4, one entry point).
   assert.match(html, /id="deutSegLic"/);
   assert.match(html, /id="deutSegUn"/);
-  assert.match(html, /id="estDeutRefinery"/);
+  assert.doesNotMatch(html, /id="estDeutRefinery"/,
+    'the bolt-on refinery button is retired — the FUEL tier is the single entry point');
 
   // 1a2. THE DEPLOY BUTTON IS GATED BY THE GUILD ADVISER CONFIRM REEL (07-09-26), like the normal
   //      popup: clicking #deutDeploy opens #est-reel in a distinct deuterium confirm mode, and only
@@ -393,10 +396,10 @@ test('GET / serves the DEUTERIUM client — deploy popup, segmented bar, removal
   assert.match(html, /if\(reelMode==='deutConfirm'\)\{ closeReel\(\); deutDeploy\(\); return; \}/,
     'the shared reelNext handler must fire deutDeploy() on the deuterium confirm');
   // The settled, human-approved Adviser copy (07-09-26) is served — a stable, distinctive fragment
-  // of each of the three cases, so a paraphrase or a dropped case is caught.
+  // of each of the TWO mine cases, so a paraphrase or a dropped case is caught. (The refinery
+  // confirm now fires from the factory popup's FUEL tier — asserted in the FUEL-tier test below.)
   assert.match(html, /which ought to trouble you more than it does/, 'the licensed-mine confirm spiel');
   assert.match(html, /I am not in the room\./, 'the unlicensed-mine confirm spiel');
-  assert.match(html, /return to my <em>alibi<\/em>/, 'the refinery confirm spiel');
 
   // 1b. THE POPUP IS THE est-STYLE CARD (rebuilt 07-09-26), not 2a's bespoke narrow box. The
   //     two-column est shell, the Oceanic mine hero, and the fixed Terms panel (licensed terms +
@@ -428,6 +431,38 @@ test('GET / serves the DEUTERIUM client — deploy popup, segmented bar, removal
   assert.match(html, /data-deut="1"/);
   assert.match(html, /id="tw-deut-raw"/);
   assert.match(html, /id="tw-deut-fuel"/);
+});
+
+// The illegal refinery as a FUEL TIER on the factory Establish popup (§1.4, 07-09-26) — the
+// single entry point. This tripwire pins the fold: the FUEL option in the config, the deploy
+// firing establishDeuteriumRefinery, the Adviser confirm as the sole caution migrated into the
+// factory popup, and the two retired surfaces (the red button — asserted gone above — and the
+// deut popup's refinery mode). Any silent revert to the bolt-on button drops one of these.
+test('GET / serves the illegal refinery as the FUEL tier — single entry point, refinery mode retired', async () => {
+  const html = await (await fetch(base + '/')).text();
+
+  // 1. THE FUEL OPTION is in the factory config tier dropdown, neutral (no red / no "illegal"),
+  //    and locks the lone Deuterium Fuel recipe by a sentinel that is never a number.
+  assert.match(html, /f\.value='fuel'; f\.textContent='Fuel · Refine'/, 'the FUEL tier option in the config');
+  assert.match(html, /S\.tier==='fuel'/, 'the FUEL sentinel drives the config/deploy branches');
+  assert.match(html, /S\.outGood='deuterium_fuel'; S\.outLabel=label\('deuterium_fuel'\)/, 'FUEL locks the Deuterium Fuel output');
+
+  // 2. THE DEPLOY fires the BUILT establishDeuteriumRefinery from the factory popup — no
+  //    establishVenture, no licence — in doDeploy's FUEL branch.
+  assert.match(html, /if\(S\.tier==='fuel'\)\{ await deployRefinery\(player, ventureId\); return; \}/,
+    'doDeploy must branch to the refinery deploy on the FUEL tier');
+  assert.match(html, /type: 'establishDeuteriumRefinery'/, 'the FUEL deploy fires the built refinery action');
+
+  // 3. THE ADVISER CONFIRM is the SOLE caution — the refinery spiel migrated verbatim into
+  //    reelConfirm()'s FUEL branch (title + the settled closing line), gating the deploy.
+  assert.match(html, /Build the refinery\?/, 'the refinery confirm title, now on the factory popup');
+  assert.match(html, /return to my <em>alibi<\/em>/, 'the settled refinery confirm spiel, migrated verbatim');
+
+  // 4. THE DEUT POPUP NO LONGER CARRIES A REFINERY MODE — the caution panel and the confirm
+  //    entry are gone, so the popup is mine-only (licensed / unlicensed).
+  assert.doesNotMatch(html, /id="deutTermsRef"/, "the deut popup's refinery caution panel is retired");
+  assert.doesNotMatch(html, /DEUT_CONFIRM\.refinery/, "the deut popup's refinery confirm is retired");
+  assert.doesNotMatch(html, /mode:'refinery'/, 'no refinery mode is routed to the deut popup any more');
 });
 
 // The finished TRADE chart (29-08-26). Three things a page could lose silently — it

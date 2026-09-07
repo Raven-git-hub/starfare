@@ -1846,18 +1846,14 @@ select.field{appearance:none; cursor:pointer;}
             </div>
           </div>
 
-          <div class="blk">
+          <!-- Hidden when the FUEL tier is chosen: an illegal refinery has no licence
+               dimension, so the whole licence/fee machinery collapses (§1.4, applyFuelCollapse). -->
+          <div class="blk" id="licBlk">
             <div class="sec-head"><span class="t">Licence</span><button class="help" data-reel="licence">?</button></div>
             <div class="seg">
               <button id="segLic"><span class="mark"></span> Licensed</button>
               <button id="segUn"><span class="mark"></span> Unlicensed</button>
             </div>
-          </div>
-
-          <!-- A settlement slot can host a legitimate refinery (above) OR an illegal deuterium
-               refinery (§1.4). Shown only for slots; opens the dedicated deuterium popup. -->
-          <div class="blk" id="estDeutRow" style="display:none">
-            <button id="estDeutRefinery" type="button" style="width:100%; font-family:var(--mono); font-size:11px; letter-spacing:.05em; color:var(--red); background:rgba(194,96,58,.06); border:1px solid var(--red); border-radius:8px; padding:11px 12px; cursor:pointer; text-align:left">↦ Deploy an illegal deuterium refinery here instead — contraband, idle to the Syndicate</button>
           </div>
 
           <div class="blk" id="feeBlock">
@@ -1902,7 +1898,7 @@ select.field{appearance:none; cursor:pointer;}
           <div class="art" id="sideArt"></div>
           <div class="scrim"></div>
           <div class="inner">
-            <div class="stitle">Licence Summary</div>
+            <div class="stitle" id="summaryTitle">Licence Summary</div>
             <div class="ledger">
               <div class="row"><span class="k">Asset</span><span class="v" id="tAsset">— <span class="mut">none</span></span></div>
               <div class="row"><span class="k">Site</span><span class="v" id="tSite">—</span></div>
@@ -1924,7 +1920,7 @@ select.field{appearance:none; cursor:pointer;}
 
     <div class="success" id="estSuccess">
       <div class="tick">✓</div>
-      <h3>Venture established</h3>
+      <h3 id="estSuccTitle">Venture established</h3>
       <p id="successMsg"></p>
       <p class="lbl" style="letter-spacing:.1em">The formerly-vacant site now opens venture management.</p>
       <button class="mgmt" id="mgmtBtn">Open venture management ▸</button>
@@ -1935,14 +1931,15 @@ select.field{appearance:none; cursor:pointer;}
   </div>
 </div>
 
-<!-- The DEUTERIUM deploy popup (§1.4). REBUILT 07-09-26 to the #est-overlay card (two-column, hero
-     side-panel) — see docs/mockups/deuterium-establish.html. Still slider-less: a deuterium mine is
-     100% committed with no equity/fee/window, so the left column is the asset picker + a
-     Licensed/Unlicensed toggle over a FIXED Terms panel (licensed terms, or the illegal caution)
-     rather than the est fee machinery. It fires the same BUILT actions — establishVenture
-     (unlicensed mine) + licenseDeuteriumMine (licensed mine), or establishDeuteriumRefinery
-     (refinery, from a settlement slot, unchanged) — and reads the guild's idle assets off the
-     snapshot exactly as the generic popup does (window.__myIdleAssets). -->
+<!-- The DEUTERIUM deploy popup (§1.4) — MINE-ONLY. REBUILT 07-09-26 to the #est-overlay card
+     (two-column, hero side-panel) — see docs/mockups/deuterium-establish.html. Still slider-less:
+     a deuterium mine is 100% committed with no equity/fee/window, so the left column is the asset
+     picker + a Licensed/Unlicensed toggle over a FIXED Terms panel (licensed terms, or the illegal
+     caution) rather than the est fee machinery. It fires the BUILT mine actions — establishVenture
+     (unlicensed mine) + licenseDeuteriumMine (licensed mine). The illegal refinery is no longer
+     reached here: it is configured as the FUEL tier on the factory Establish popup (#est-overlay,
+     the single entry point, §1.4). Reads the guild's idle assets off the snapshot exactly as the
+     generic popup does (window.__myIdleAssets). -->
 <div id="deut-overlay">
   <div class="est">
     <div id="deutForm">
@@ -1984,13 +1981,6 @@ select.field{appearance:none; cursor:pointer;}
               <p><b>Idle to the Syndicate</b> — no Guild Points, no reputation. The mine runs off the books.</p>
               <p>Its output is <b>contraband deuterium</b>, held guild-wide. Build a refinery to turn it into fuel you can burn — it can never be sold or laundered.</p>
               <div class="trow"><span class="k">Commitment</span><span class="v">100% · kept</span></div>
-            </div>
-            <!-- Refinery mode (from a settlement slot): the illegal refinery caution. -->
-            <div class="terms caution" id="deutTermsRef" style="display:none">
-              <div class="chead">&#9888; Illegal deuterium refinery</div>
-              <p>Converts your guild-wide <b>contraband deuterium</b> into burnable fuel 1:1 each tick, at the factory’s rate.</p>
-              <p>It is <b>idle to the Syndicate</b> — no Guild Points, no reputation — and the fuel it makes is contraband you burn yourself, never sold or laundered. There is no legal guild refinery.</p>
-              <div class="trow"><span class="k">Conversion</span><span class="v">1 : 1 · each tick</span></div>
             </div>
           </div>
         </div>
@@ -3257,7 +3247,24 @@ function draw(){
   drawGraph(fp);
   drawLedger(fp, cQtyCycle, ePct);
   $('feeBlock').classList.toggle('disabled', S.licensed===false);
+  applyFuelCollapse();
   gate();
+}
+
+/* FUEL folds the illegal refinery into the factory config (§1.4): a refinery has no licence
+   dimension — no commitment, equity, fee or window — so selecting it COLLAPSES the licence
+   machinery: the Licence toggle, the whole fee block, and the licence-specific ledger rows all
+   hide, leaving a plain refinery summary (Asset · Site · Output · Rate). There is NO red caution
+   panel — the config stays visually calm; the Adviser confirm is the sole caution (decision 2,
+   07-09-26). Reversible: switching back to a numeric tier restores everything. */
+function applyFuelCollapse(){
+  var fuel = S.tier==='fuel';
+  $('licBlk').style.display   = fuel ? 'none' : '';
+  $('feeBlock').style.display = fuel ? 'none' : '';
+  $('summaryTitle').textContent = fuel ? 'Refinery Summary' : 'Licence Summary';
+  ['tLic','tCommit','tEquity','tFee','tBreach','tReneg'].forEach(function(id){
+    var row=$(id).closest('.row'); if(row) row.style.display = fuel ? 'none' : '';
+  });
 }
 
 /* The hinge graph, ported intact: the amber line is the fee across commitment at
@@ -3332,9 +3339,12 @@ function esc(v){
    holds, so an unheld site disables the button and says why. The engine's own refusal
    stays the backstop, surfaced verbatim by `failHint`. */
 function gate(){
-  var configured = S.site && (S.site.kind==='node' || (S.tier===2 && S.recipeId));
+  // FUEL (the illegal refinery) has no licence dimension, so it needs neither a recipe pick nor
+  // a licence choice — the locked recipe and the confirm reel stand in for both (§1.4).
+  var isFuel = S.tier==='fuel';
+  var configured = S.site && (S.site.kind==='node' || (S.tier===2 && S.recipeId) || isFuel);
   var held = !!(S.site && S.site.mine);
-  var ok = held && !!S.asset && S.licensed!==null && configured && !S.busy;
+  var ok = held && !!S.asset && (isFuel || S.licensed!==null) && configured && !S.busy;
   var btn=$('deployBtn'), hint=$('deployHint');
   btn.disabled = !ok;
   if(S.busy) return;                                   // the in-flight message stands
@@ -3342,9 +3352,9 @@ function gate(){
   if(!held) hint.textContent='You don\u2019t hold this system \u2014 deploy requires holding it first (\u00a74).';
   else if(!POOL.length) hint.textContent='No idle '+kindPlural(kindFor(S.site))+' in your inventory \u2014 every one you own is already deployed.';
   else if(!S.asset) hint.textContent='Select an asset to continue.';
-  else if(S.site && S.site.kind==='slot' && S.tier!==2) hint.textContent='Only Tier 2 refining is built (§4).';
-  else if(S.site && S.site.kind==='slot' && !S.recipeId) hint.textContent='Pick a recipe to continue.';
-  else if(S.licensed===null) hint.textContent='Choose licensed or unlicensed.';
+  else if(S.site && S.site.kind==='slot' && !isFuel && S.tier!==2) hint.textContent='Only Tier 2 refining is built (§4).';
+  else if(S.site && S.site.kind==='slot' && !isFuel && !S.recipeId) hint.textContent='Pick a recipe to continue.';
+  else if(!isFuel && S.licensed===null) hint.textContent='Choose licensed or unlicensed.';
   else hint.textContent='Ready — review the terms, then deploy.';
 }
 
@@ -3389,6 +3399,25 @@ function renderReel(){
 /* The deploy confirm reuses the reel, with Cancel / Confirm. */
 function reelConfirm(){
   reelMode='confirm';
+  // FUEL — the illegal refinery. This Adviser confirm is the SOLE caution (decision 2, 07-09-26):
+  // the tier dropdown is neutral, and the illegality is surfaced only here, at the moment of
+  // commit. Copy migrated VERBATIM from the retired deut-popup refinery confirm — the settled
+  // 07-09-26 text, not paraphrased. Confirm ▸ runs doDeploy(), which fires the refinery action
+  // in its own FUEL branch.
+  if(S.tier==='fuel'){
+    $('reelTitle').textContent='Build the refinery?';
+    $('reelBody').innerHTML =
+      '<p>This is where the contraband deuterium becomes fuel you can burn &mdash; one unit in, one out, and officially this factory is <em>doing nothing at all</em>.</p>'+
+      '<p>Just keep a close watch on how much fuel you&rsquo;re using. If you start to creep over our <em>allotted fuel credits</em>, then the Syndicate might start getting suspicious. We&rsquo;re pretty good at hiding it because deuterium all looks the same in a spacecraft tank, but trust me &mdash; Syndicate accountants can be&hellip; <em>officious</em>, if they want to.</p>'+
+      '<p>Officially, I have no part in this. You understand. I have to think about my future if this all goes&hellip; <em>sub-optimal</em>.</p>'+
+      '<p>If you don&rsquo;t mind, Guildmaster, I&rsquo;ll return to my <em>alibi</em>.</p>';
+    $('reelDots').style.display='none'; $('reelDots').innerHTML='';
+    $('reelCancel').textContent='Cancel';
+    $('reelNext').textContent='Confirm ▸';
+    $('reelNext').disabled=false;
+    openReel();
+    return;
+  }
   var N = cycleTicks();
   var cq = N === null ? null : Math.round(S.c * P.BASELINE_RATE * N);
   var lic = S.licensed
@@ -3426,12 +3455,19 @@ async function doDeploy(){
   var player = window.__player ? window.__player() : null;
   if(!player || !player.guildId){ failHint('No guild — cannot establish.'); closeReel(); return; }
 
+  // One venture per site, so the id is derived from the pair (the occupancy invariant guards it).
+  var ventureId = player.guildId + '_' + S.site.siteId;
+
+  // FUEL — the illegal deuterium refinery (§1.4). It fires the BUILT establishDeuteriumRefinery
+  // ALONE (no establishVenture, no applyForLicence): the factory is simply configured to make
+  // fuel, and this is the same call the retired deut-popup refinery mode fired. Every numeric
+  // tier below is unchanged.
+  if(S.tier==='fuel'){ await deployRefinery(player, ventureId); return; }
+
   // Exactly the fields sim/actions.js validates, and nothing else: no fee, no
-  // reputation. One venture per site, so the id is derived from the pair (the
-  // occupancy invariant guards it). `assetId` is the machine the player PICKED — the
+  // reputation. `assetId` is the machine the player PICKED — the
   // engine requires it and re-checks it is owned, idle and of the matching kind, so
   // the picker is a convenience over that rule, never a substitute for it.
-  var ventureId = player.guildId + '_' + S.site.siteId;
   var establish = {
     type: 'establishVenture',
     guildId: player.guildId,
@@ -3494,6 +3530,49 @@ async function doDeploy(){
   if (window.__refreshNow) { try { await window.__refreshNow(); } catch (e) {} }
   showSuccess(establish, licenceRefusal);
 }
+/* The FUEL deploy — the illegal deuterium refinery (§1.4). A SINGLE built action
+   (establishDeuteriumRefinery), so no two-step licence dance: the refinery has no licence.
+   Mirrors doDeploy's busy/refusal/refresh flow, and lands on the refinery receipt. */
+async function deployRefinery(player, ventureId){
+  var action = {
+    type: 'establishDeuteriumRefinery',
+    guildId: player.guildId,
+    ventureId: ventureId,
+    siteId: S.site.siteId,
+    assetId: S.asset.id,
+    productionRate: ESTABLISH_RATE,
+  };
+  S.busy = true; gate();
+  $('reelNext').disabled = true;
+  $('deployHint').textContent = 'Filing…';
+  var out;
+  try {
+    out = await window.__sendAction(action);
+  } catch (err) {
+    S.busy = false; closeReel(); failHint('The Syndicate could not be reached: '+err.message); return;
+  }
+  if (!out.accepted){
+    S.busy = false; closeReel();
+    failHint('Refused: ' + (out.reason || 'the Syndicate declined'));
+    gate();
+    return;
+  }
+  S.busy = false;
+  closeReel();
+  if (window.__refreshNow) { try { await window.__refreshNow(); } catch (e) {} }
+  showRefinerySuccess(action);
+}
+/* The refinery receipt — reads as it did in the retired deut popup ("Illegal refinery running",
+   contraband → the red bar). No licence figures: a refinery has none. */
+function showRefinerySuccess(action){
+  $('estSuccTitle').textContent = 'Illegal refinery running';
+  var out = [];
+  out.push('Your '+S.asset.label+' now refines raw deuterium into contraband fuel each tick — one unit in, one out. It is idle to the Syndicate — no standing — and the fuel fills the red segment of your Guild-Hall bar.');
+  out.push('Recorded: venture '+action.ventureId+' on '+action.siteId+' at '+action.productionRate+'/tick.');
+  $('successMsg').textContent = out.join('  ');
+  $('estForm').style.display='none';
+  $('estSuccess').classList.add('show');
+}
 function failHint(msg){
   var hint=$('deployHint');
   hint.textContent = msg;
@@ -3504,6 +3583,7 @@ function failHint(msg){
    `applyForLicence` is what turns an offer into a contract, so it is the contract
    that gets reported (client-wiring.md §7: the browser renders engine truth). */
 function showSuccess(action, licenceRefusal){
+  $('estSuccTitle').textContent = 'Venture established';   // reset (the FUEL path sets it to the refinery title)
   var v = window.__myVenture ? window.__myVenture(action.ventureId) : null;
   var good = S.outLabel.toLowerCase();
   var out = [];
@@ -3552,11 +3632,29 @@ function buildTierList(){
     o.disabled = t[0] > 2;                       // §4: only Tier 2 exists
     sel.appendChild(o);
   });
+  // FUEL — the illegal deuterium refinery, folded into the factory config as a product option
+  // (§1.4). It is the SINGLE entry point for a refinery: it locks a lone Deuterium Fuel recipe
+  // and deploys establishDeuteriumRefinery. Presented in the same neutral style as the tiers —
+  // no red, no "(illegal)" — because the Guild Adviser confirm reel is the sole caution
+  // (decision 2, 07-09-26). Sentinel value 'fuel', not a number.
+  var f=document.createElement('option'); f.value='fuel'; f.textContent='Fuel · Refine'; sel.appendChild(f);
   sel.value=String(S.tier);
 }
 // The recipe list is REAL: the live catalog the client fetched from GET /recipes.
 function buildRecipeList(){
   var sel=$('recipeSel'); sel.innerHTML='';
+  if(S.tier==='fuel'){
+    // FUEL locks a single recipe: the fixed 1:1 deuterium → deuterium_fuel refinery step (§1.4).
+    // There is no other fuel recipe, so the option is selected AND disabled — it cannot be
+    // changed. Its sentinel is NEVER sent as a recipeId; the deploy fires establishDeuteriumRefinery
+    // (doDeploy's FUEL branch), which carries no recipe. Output is presented like the real recipes.
+    $('tierBadge').textContent='FUEL';
+    var f=document.createElement('option'); f.value='fuel';
+    f.textContent = label('deuterium_fuel')+'  ·  1 deuterium → 1';
+    sel.appendChild(f); sel.value='fuel'; sel.disabled=true;
+    S.recipeId='fuel'; S.outGood='deuterium_fuel'; S.outLabel=label('deuterium_fuel');
+    return;
+  }
   $('tierBadge').textContent='TIER '+S.tier;
   if(S.tier===2){
     var recipes = (window.__recipes ? window.__recipes() : []) || [];
@@ -3580,8 +3678,6 @@ function applySiteMode(){
   $('tierSelWrap').style.display = isSlot?'block':'none';
   $('cfgRes').style.display = isSlot?'none':'flex';
   $('recipeWrap').style.display = isSlot?'block':'none';
-  // The illegal-refinery alternative is offered only on a settlement slot (§1.4 slice 1b).
-  $('estDeutRow').style.display = isSlot ? 'block' : 'none';
   if(isSlot){ S.tier=2; buildTierList(); buildRecipeList(); }
   else {
     S.tier=1; S.recipeId=null; S.outGood=S.site.resource; S.outLabel=S.site.resLabel;
@@ -3662,7 +3758,7 @@ $('est-overlay').addEventListener('click', function(e){ if(e.target===this) clos
 $('assetSel').addEventListener('change', function(){
   S.asset = POOL.filter(function(a){ return a.id===this.value; }.bind(this))[0] || null; draw();
 });
-$('tierSel').addEventListener('change', function(){ S.tier=+this.value; buildRecipeList(); draw(); });
+$('tierSel').addEventListener('change', function(){ S.tier = this.value==='fuel' ? 'fuel' : +this.value; buildRecipeList(); draw(); });
 $('recipeSel').addEventListener('change', function(){
   S.recipeId = this.value || null;
   if(this.value){ var out=(window.__recipeOutput?window.__recipeOutput(this.value):null); S.outGood=out||this.value; S.outLabel=label(S.outGood); }
@@ -3671,11 +3767,6 @@ $('recipeSel').addEventListener('change', function(){
 });
 $('segLic').addEventListener('click', function(){ setLicensed(true); });
 $('segUn').addEventListener('click', function(){ setLicensed(false); });
-// Switch a settlement-slot deploy from the generic (legitimate factory) popup to the dedicated
-// illegal-refinery popup, carrying the same slot (§1.4 slice 1b — reuse the slot's deploy entry).
-$('estDeutRefinery').addEventListener('click', function(){
-  var site = S.site; closeOverlay(); if(window.openDeut) window.openDeut({ mode:'refinery', site:site });
-});
 function setLicensed(v){ S.licensed=v; $('segLic').classList.toggle('on',v===true); $('segUn').classList.toggle('on',v===false); draw(); }
 ['cRange','oRange','rnRange'].forEach(function(id){
   $(id).addEventListener('input', function(){
@@ -3710,26 +3801,24 @@ document.addEventListener('keydown', function(e){
 }, true);
 
 /* ============================================================================
-   THE DEUTERIUM DEPLOY POPUP (§1.4 "The Deuterium Cycle" / "The illegal path").
-   A self-contained, slider-less variant of the generic popup above: deuterium takes
+   THE DEUTERIUM DEPLOY POPUP (§1.4 "The Deuterium Cycle" / "The illegal path") — MINE-ONLY.
+   A self-contained, slider-less variant of the generic popup above: a deuterium mine takes
    no commitment slider, no equity, no fee and no window, so none of that machinery is
-   touched. It serves two deploys, both firing BUILT engine actions:
-     - the deuterium MINE (from a deuterium node): licensed → establishVenture +
-       licenseDeuteriumMine; unlicensed → establishVenture alone;
-     - the illegal REFINERY (from a settlement slot): establishDeuteriumRefinery.
+   touched. It serves ONE deploy — the deuterium MINE (from a deuterium node) — firing BUILT
+   engine actions: licensed → establishVenture + licenseDeuteriumMine; unlicensed →
+   establishVenture alone. The illegal refinery is NOT reached here any more: it is the FUEL
+   tier on the factory Establish popup (#est-overlay), the single entry point (§1.4).
    Idle assets are read off the snapshot through the SAME `window.__myIdleAssets` the
    generic picker uses, so "idle" stays the engine's own answer. ======================= */
-var D = { site:null, mode:'mine', asset:null, licensed:null, busy:false };
+var D = { site:null, asset:null, licensed:null, busy:false };
 var DPOOL = [];
-function deutKind(){ return D.mode === 'refinery' ? 'factory' : 'miner'; }
 
 function fillDeutAssets(){
-  var kind = deutKind();
-  var raw = (window.__myIdleAssets ? window.__myIdleAssets(kind) : []) || [];
-  DPOOL = raw.map(function(a){ return { id:a.id, kind:a.kind, label:(kind==='factory'?'Factory':'Miner'), condition:Math.round((a.maintenanceCondition||0)*100) }; });
+  var raw = (window.__myIdleAssets ? window.__myIdleAssets('miner') : []) || [];
+  DPOOL = raw.map(function(a){ return { id:a.id, kind:a.kind, label:'Miner', condition:Math.round((a.maintenanceCondition||0)*100) }; });
   var sel = $('deutAsset'); sel.innerHTML='';
   if(!DPOOL.length){
-    var none=document.createElement('option'); none.value=''; none.textContent='— no idle '+(kind==='factory'?'factories':'miners')+' in inventory —';
+    var none=document.createElement('option'); none.value=''; none.textContent='— no idle miners in inventory —';
     sel.appendChild(none); sel.disabled=true; return;
   }
   sel.disabled=false;
@@ -3750,14 +3839,12 @@ function deutSiteLine(s){
   return parts.length ? parts.join('<span class="sep">·</span>') : '—';
 }
 
-// Which FIXED Terms panel shows: the licensed terms, the unlicensed caution, or — in refinery
-// mode — the refinery caution. Deuterium's terms are non-negotiable, so we swap panels rather
-// than recompute anything (there is no est fee machinery to mirror).
+// Which FIXED Terms panel shows: the licensed terms or the unlicensed caution. Deuterium's terms
+// are non-negotiable, so we swap panels rather than recompute anything (there is no est fee
+// machinery to mirror).
 function deutShowTerms(){
-  var ref = D.mode==='refinery';
-  $('deutTermsRef').style.display = ref ? '' : 'none';
-  $('deutTermsLic').style.display = (!ref && D.licensed===true)  ? '' : 'none';
-  $('deutTermsUn').style.display  = (!ref && D.licensed===false) ? '' : 'none';
+  $('deutTermsLic').style.display = D.licensed===true  ? '' : 'none';
+  $('deutTermsUn').style.display  = D.licensed===false ? '' : 'none';
 }
 
 function deutDraw(){
@@ -3765,17 +3852,15 @@ function deutDraw(){
   var btn=$('deutDeploy'), hint=$('deutHint');
   // The label follows the choice; the danger reads off the red caution panel, so the deploy button
   // stays the est amber in every state (the approved mockup, 07-09-26).
-  btn.textContent = D.mode==='refinery' ? 'Establish illicit refinery'
-    : (D.licensed===false ? 'Establish illicit mine' : 'Establish mine');
+  btn.textContent = D.licensed===false ? 'Establish illicit mine' : 'Establish mine';
   var held = !!(D.site && D.site.mine);
-  var ok = held && !!D.asset && (D.mode==='refinery' || D.licensed!==null) && !D.busy;
+  var ok = held && !!D.asset && D.licensed!==null && !D.busy;
   btn.disabled = !ok;
   if(D.busy) return;                                    // the in-flight message stands
   hint.classList.remove('err','ok');
   if(!held) hint.textContent='You don’t hold this system — deploy requires holding it first (§4).';
-  else if(!DPOOL.length) hint.textContent='No idle '+(deutKind()==='factory'?'factories':'miners')+' in your inventory.';
-  else if(!D.asset) hint.textContent = D.mode==='refinery' ? 'Select a refinery asset.' : 'Select a mining asset.';
-  else if(D.mode==='refinery') hint.textContent='Contraband — refined to fuel you burn yourself.';
+  else if(!DPOOL.length) hint.textContent='No idle miners in your inventory.';
+  else if(!D.asset) hint.textContent='Select a mining asset.';
   else if(D.licensed===false) hint.textContent='Unlicensed — contraband, refine it yourself.';
   else hint.textContent='Licensed — output sold to the Syndicate each tick.';
 }
@@ -3789,17 +3874,16 @@ function deutSetLic(v){
 }
 
 window.openDeut = function(opts){
-  var isMine = !(opts.mode==='refinery');
-  // A mine opens on the LICENSED terms by default (the approved mockup); a refinery has no licence.
-  D = { site:opts.site, mode:(isMine?'mine':'refinery'), asset:null, licensed:(isMine?true:null), busy:false };
+  // Mine-only (§1.4): a deuterium node, licensed or unlicensed. It opens on the LICENSED terms by
+  // default (the approved mockup). The refinery lives on the factory popup's FUEL tier now.
+  D = { site:opts.site, asset:null, licensed:true, busy:false };
   $('deutForm').style.display=''; $('deutSuccess').style.display='none';
-  $('deutEyebrow').textContent = isMine ? 'Syndicate Deuterium Licence' : 'Deuterium · the illegal path';
-  $('deutTitle').textContent   = isMine ? 'Establish Deuterium Mine'    : 'Establish Illicit Refinery';
-  $('deutStitle').textContent  = isMine ? 'Deuterium Extraction · Oceanic' : 'Contraband Refinery · Oceanic';
-  $('deutAssetLbl').textContent = isMine ? 'Mining asset' : 'Refinery asset';
+  $('deutEyebrow').textContent = 'Syndicate Deuterium Licence';
+  $('deutTitle').textContent   = 'Establish Deuterium Mine';
+  $('deutStitle').textContent  = 'Deuterium Extraction · Oceanic';
+  $('deutAssetLbl').textContent = 'Mining asset';
   $('deutSite').innerHTML = deutSiteLine(D.site);
-  $('deutLicBlk').style.display = isMine ? '' : 'none';
-  $('deutSegLic').classList.toggle('on', isMine);       // licensed default for a mine
+  $('deutSegLic').classList.add('on');       // licensed default
   $('deutSegUn').classList.remove('on');
   fillDeutAssets(); deutDraw();
   $('deut-overlay').classList.add('open');
@@ -3829,21 +3913,14 @@ var DEUT_CONFIRM = {
     title:'Off the books?',
     body:'<p>Off the books. As far as the Syndicate knows, this mine doesn&rsquo;t exist &mdash; and what it pulls is contraband, stacking up in a hold only you can see. Worthless until you refine it into fuel, and it&rsquo;ll never sell nor launder.</p>'+
          '<p>Just be aware &mdash; if we get caught, well&hellip; just know there&rsquo;ll be <em>no paper trail back to me</em>. Your call, Guildmaster. <em>I am not in the room.</em></p>'
-  },
-  refinery:{
-    title:'Build the refinery?',
-    body:'<p>This is where the contraband deuterium becomes fuel you can burn &mdash; one unit in, one out, and officially this factory is <em>doing nothing at all</em>.</p>'+
-         '<p>Just keep a close watch on how much fuel you&rsquo;re using. If you start to creep over our <em>allotted fuel credits</em>, then the Syndicate might start getting suspicious. We&rsquo;re pretty good at hiding it because deuterium all looks the same in a spacecraft tank, but trust me &mdash; Syndicate accountants can be&hellip; <em>officious</em>, if they want to.</p>'+
-         '<p>Officially, I have no part in this. You understand. I have to think about my future if this all goes&hellip; <em>sub-optimal</em>.</p>'+
-         '<p>If you don&rsquo;t mind, Guildmaster, I&rsquo;ll return to my <em>alibi</em>.</p>'
   }
 };
 /* Mirror of reelConfirm(): a deuterium sibling in reelMode='deutConfirm'. Picks the copy
-   off the current case in D, fills the shared card, hides the dots, sets Cancel/Confirm. */
+   off the current case in D, fills the shared card, hides the dots, sets Cancel/Confirm.
+   (The refinery confirm migrated to reelConfirm()'s FUEL branch — the single entry point, §1.4.) */
 function deutReelConfirm(){
   reelMode='deutConfirm';
-  var copy = D.mode==='refinery' ? DEUT_CONFIRM.refinery
-    : (D.licensed===false ? DEUT_CONFIRM.unlicensed : DEUT_CONFIRM.licensed);
+  var copy = D.licensed===false ? DEUT_CONFIRM.unlicensed : DEUT_CONFIRM.licensed;
   $('reelTitle').textContent = copy.title;
   $('reelBody').innerHTML = copy.body;
   $('reelDots').style.display='none'; $('reelDots').innerHTML='';
@@ -3859,9 +3936,7 @@ async function deutDeploy(){
   D.busy = true; deutDraw();
   var hint=$('deutHint'); hint.classList.remove('err','ok'); hint.textContent='Filing…';
   var ventureId = player.guildId + '_' + D.site.siteId;   // one venture per site (the occupancy invariant guards it)
-  var establish = D.mode==='refinery'
-    ? { type:'establishDeuteriumRefinery', guildId:player.guildId, ventureId:ventureId, siteId:D.site.siteId, assetId:D.asset.id, productionRate:ESTABLISH_RATE }
-    : { type:'establishVenture', guildId:player.guildId, ventureId:ventureId, siteId:D.site.siteId, assetId:D.asset.id, ventureType:'mining', resourceType:'deuterium', productionRate:ESTABLISH_RATE };
+  var establish = { type:'establishVenture', guildId:player.guildId, ventureId:ventureId, siteId:D.site.siteId, assetId:D.asset.id, ventureType:'mining', resourceType:'deuterium', productionRate:ESTABLISH_RATE };
   var out;
   try { out = await window.__sendAction(establish); }
   catch(err){ deutFail('The Syndicate could not be reached: '+err.message); return; }
@@ -3871,7 +3946,7 @@ async function deutDeploy(){
   // like the generic popup this is deliberately two actions, so a licence refusal leaves a real
   // unlicensed mine and is reported as exactly that.
   var licRefusal = null;
-  if(D.mode==='mine' && D.licensed===true){
+  if(D.licensed===true){
     hint.textContent='Filing the licence…';
     try { var lic = await window.__sendAction({ type:'licenseDeuteriumMine', guildId:player.guildId, ventureId:ventureId });
       if(!lic.accepted) licRefusal = lic.reason || 'the Syndicate declined the application';
@@ -3885,10 +3960,7 @@ function deutFail(msg){ D.busy=false; var h=$('deutHint'); h.classList.remove('o
 function deutSuccess(licRefusal){
   $('deutForm').style.display='none'; $('deutSuccess').style.display='block';
   var msg;
-  if(D.mode==='refinery'){
-    $('deutSuccTtl').textContent='Illegal refinery running';
-    msg='Your factory now refines raw deuterium into contraband fuel each tick. It is idle to the Syndicate — no standing — and the fuel fills the red segment of your Guild-Hall bar.';
-  } else if(D.licensed===true && !licRefusal){
+  if(D.licensed===true && !licRefusal){
     $('deutSuccTtl').textContent='Licensed mine running';
     msg='Your mine auto-sells all deuterium to the Syndicate each tick for credits and pool fuel, at maximum (Tier‑4) reputation. You keep no fuel.';
   } else if(D.licensed===true && licRefusal){
