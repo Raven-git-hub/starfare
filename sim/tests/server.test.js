@@ -383,6 +383,21 @@ test('GET / serves the DEUTERIUM client — deploy popup, segmented bar, removal
   assert.match(html, /id="deutSegUn"/);
   assert.match(html, /id="estDeutRefinery"/);
 
+  // 1a2. THE DEPLOY BUTTON IS GATED BY THE GUILD ADVISER CONFIRM REEL (07-09-26), like the normal
+  //      popup: clicking #deutDeploy opens #est-reel in a distinct deuterium confirm mode, and only
+  //      Confirm ▸ fires the real deutDeploy(). If the button ever reverts to calling deutDeploy()
+  //      directly (skipping the Adviser), the wiring and the branch below both vanish and only this
+  //      fails. The deuterium confirm must NOT be routed through the normal popup's doDeploy().
+  assert.match(html, /deutReelConfirm\(\)/, 'the deploy button must open the deuterium confirm reel');
+  assert.match(html, /reelMode='deutConfirm'/, "deutReelConfirm must set its own reel mode");
+  assert.match(html, /if\(reelMode==='deutConfirm'\)\{ closeReel\(\); deutDeploy\(\); return; \}/,
+    'the shared reelNext handler must fire deutDeploy() on the deuterium confirm');
+  // The settled, human-approved Adviser copy (07-09-26) is served — a stable, distinctive fragment
+  // of each of the three cases, so a paraphrase or a dropped case is caught.
+  assert.match(html, /which ought to trouble you more than it does/, 'the licensed-mine confirm spiel');
+  assert.match(html, /I am not in the room\./, 'the unlicensed-mine confirm spiel');
+  assert.match(html, /return to my <em>alibi<\/em>/, 'the refinery confirm spiel');
+
   // 1b. THE POPUP IS THE est-STYLE CARD (rebuilt 07-09-26), not 2a's bespoke narrow box. The
   //     two-column est shell, the Oceanic mine hero, and the fixed Terms panel (licensed terms +
   //     illegal caution) would all silently revert to the narrow single-column box, and only this

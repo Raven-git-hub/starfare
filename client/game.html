@@ -3688,7 +3688,8 @@ Array.prototype.forEach.call(document.querySelectorAll('#est-overlay .help'), fu
 $('deployBtn').addEventListener('click', reelConfirm);
 $('reelCancel').addEventListener('click', closeReel);
 $('reelNext').addEventListener('click', function(){
-  if(reelMode==='confirm'){ doDeploy(); return; }
+  if(reelMode==='confirm'){ doDeploy(); return; }                    // normal popup
+  if(reelMode==='deutConfirm'){ closeReel(); deutDeploy(); return; }  // deuterium popup
   var r=REELS[reelState.key];
   if(reelState.page < r.pages.length-1){ reelState.page++; renderReel(); } else { closeReel(); }
 });
@@ -3811,7 +3812,46 @@ $('deut-overlay').addEventListener('click', function(e){ if(e.target===this) clo
 $('deutAsset').addEventListener('change', function(){ var v=this.value; D.asset = DPOOL.filter(function(a){return a.id===v;})[0]||null; deutDraw(); });
 $('deutSegLic').addEventListener('click', function(){ deutSetLic(true); });
 $('deutSegUn').addEventListener('click', function(){ deutSetLic(false); });
-$('deutDeploy').addEventListener('click', deutDeploy);
+$('deutDeploy').addEventListener('click', function(){ if($('deutDeploy').disabled) return; deutReelConfirm(); });
+
+/* The deuterium deploy runs through the SAME Guild Adviser confirm card as the normal
+   popup (#est-reel), just in a distinct mode so the shared reelNext handler can tell the
+   two apart. Copy is the settled, human-approved Adviser spiel (07-09-26), one page per
+   case — do not paraphrase. The bodies are trusted static markup (<em> highlights only),
+   set as innerHTML exactly like reelConfirm(). Only Confirm ▸ fires the real deutDeploy(). */
+var DEUT_CONFIRM = {
+  licensed:{
+    title:'Commit to this mine?',
+    body:'<p>On the books, then. Every unit goes to the Syndicate the moment it surfaces &mdash; nothing to negotiate, nothing to hold back &mdash; and they&rsquo;ll adore you for it: <em>no licence fee</em>, a <em>huge reputation boost</em>, raw deuterium minted into the pool with your name on it.</p>'+
+         '<p>The catch is that there&rsquo;s no catch, which ought to trouble you more than it does. Shall I file the licence?</p>'
+  },
+  unlicensed:{
+    title:'Off the books?',
+    body:'<p>Off the books. As far as the Syndicate knows, this mine doesn&rsquo;t exist &mdash; and what it pulls is contraband, stacking up in a hold only you can see. Worthless until you refine it into fuel, and it&rsquo;ll never sell nor launder.</p>'+
+         '<p>Just be aware &mdash; if we get caught, well&hellip; just know there&rsquo;ll be <em>no paper trail back to me</em>. Your call, Guildmaster. <em>I am not in the room.</em></p>'
+  },
+  refinery:{
+    title:'Build the refinery?',
+    body:'<p>This is where the contraband deuterium becomes fuel you can burn &mdash; one unit in, one out, and officially this factory is <em>doing nothing at all</em>.</p>'+
+         '<p>Just keep a close watch on how much fuel you&rsquo;re using. If you start to creep over our <em>allotted fuel credits</em>, then the Syndicate might start getting suspicious. We&rsquo;re pretty good at hiding it because deuterium all looks the same in a spacecraft tank, but trust me &mdash; Syndicate accountants can be&hellip; <em>officious</em>, if they want to.</p>'+
+         '<p>Officially, I have no part in this. You understand. I have to think about my future if this all goes&hellip; <em>sub-optimal</em>.</p>'+
+         '<p>If you don&rsquo;t mind, Guildmaster, I&rsquo;ll return to my <em>alibi</em>.</p>'
+  }
+};
+/* Mirror of reelConfirm(): a deuterium sibling in reelMode='deutConfirm'. Picks the copy
+   off the current case in D, fills the shared card, hides the dots, sets Cancel/Confirm. */
+function deutReelConfirm(){
+  reelMode='deutConfirm';
+  var copy = D.mode==='refinery' ? DEUT_CONFIRM.refinery
+    : (D.licensed===false ? DEUT_CONFIRM.unlicensed : DEUT_CONFIRM.licensed);
+  $('reelTitle').textContent = copy.title;
+  $('reelBody').innerHTML = copy.body;
+  $('reelDots').style.display='none'; $('reelDots').innerHTML='';
+  $('reelCancel').textContent='Cancel';
+  $('reelNext').textContent='Confirm ▸';
+  $('reelNext').disabled=false;
+  openReel();
+}
 
 async function deutDeploy(){
   var player = window.__player ? window.__player() : null;
