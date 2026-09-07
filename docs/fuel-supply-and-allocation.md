@@ -260,6 +260,17 @@ resolved and the storage / burn model pinned:
   click is a venture-management stub (§2.7, undesigned); the suspicion gauge is an inert concept
   placeholder (§7, unbuilt). No `sim/` change — every number is already in the snapshot. Design contract:
   `docs/mockups/deuterium-tab.html`.
+  **Client-contract correction — ✅ MOVED 07-09-26 (client-only):** slice 2b first shipped the dashboard
+  as a **sub-tab inside the TRADE panel** (a `.tw-tier.deut` entry beside RAW / PROCESSED / PARTS /
+  CONSTRUCTED, rendered into the trade tab's scrolling body). That was wrong on two counts, and both are
+  now fixed: (1) **wrong place** — deuterium is untradeable, so it never belonged among the TRADE tiers;
+  the DASHBOARD is now its **own top-level tab**, a peer of System Manifest · TRADE · Transport · Guild
+  Hall (its own `#tp-deut` panel, opened / closed / polled through `__deutOpen` / `__deutClosed` /
+  `__deutRefresh`, exactly as the Guild Hall is wired). (2) **wrong size** — inside the trade scroll body
+  it sat at its natural height; it now **fills the viewport** like the Guild Hall panel (`#tabPanel.deut`
+  is `overflow:hidden`, `#tp-deut.show` is a flex column, and the three-panel grid owns the height). The
+  dashboard's content, data wiring and SVG builders are unchanged — only its container and its tab
+  plumbing moved, and the in-TRADE sub-tab is deleted (the TRADE tier nav is back to its four tiers).
   Its DATA LAYER is now **BUILT (fuel-burn-history slice, 07-09-26, engine + snapshot only):** three
   observed per-guild statistics the tab's two fuel visuals need — `fuelBurnedThisCycle` (the per-cycle
   burn total), `deuteriumFuelAtCycleStart` (the donut's contraband/red start-of-cycle baseline, marked

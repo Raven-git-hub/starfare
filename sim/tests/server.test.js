@@ -367,7 +367,7 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the SELL & 
 // client-render tripwire on the SERVED bytes: the deploy popup, the segmented bar, the removal
 // from the normal lists and the placeholder tab would all still render if silently reverted, and
 // only this fails.
-test('GET / serves the DEUTERIUM client — deploy popup, segmented bar, removal, placeholder tab', async () => {
+test('GET / serves the DEUTERIUM client — deploy popup, segmented bar, removal, top-level dashboard tab', async () => {
   const html = await (await fetch(base + '/')).text();
 
   // 1. THE DEPLOY POPUP fires the BUILT actions — the load-bearing strings, so a reverted
@@ -426,13 +426,24 @@ test('GET / serves the DEUTERIUM client — deploy popup, segmented bar, removal
   assert.match(html, /function heldUnits\(g\)\{ return \(\(g && g\.fuelHoard\) \|\| 0\) \+ \(\(g && g\.deuteriumFuel\) \|\| 0\); \}/);
   assert.match(html, /function heldValue\(g\)\{ return \(\(g && g\.fuelHoardValue\) \|\| 0\) \+ \(\(g && g\.deuteriumFuelValue\) \|\| 0\); \}/);
 
-  // 4. THE DEUTERIUM TAB is now the guild-wide monitoring DASHBOARD (slice 2b), no longer the 2a
-  //    placeholder. The tab still lives beside the tier tabs (`data-deut="1"`) in the same panel
-  //    (`#tw-deut-panel`); its body is the three-panel dashboard. Assert the shell is present — the
-  //    glance donut, the two charts (fuel-price + burn-habits), the refinery-tree container — and
-  //    the four SVG builders + the render seam, so a silent revert to the placeholder is caught.
-  assert.match(html, /id="tw-deut-panel"/);
-  assert.match(html, /data-deut="1"/);
+  // 4. THE DEUTERIUM TAB is now a TOP-LEVEL tab (its own #tp-deut panel, a peer of TRADE and the
+  //    Guild Hall), NOT a sub-tab inside TRADE — deuterium is untradeable, so it never belonged among
+  //    the trade tiers, and inside the trade scroll body it could not fill the screen. Assert the
+  //    top-level tab exists: the .rtab button (openTab('deuterium')) and the #tp-deut panel that fills
+  //    #tabPanel like #tp-guild. Its body is the three-panel dashboard — the glance donut, the two
+  //    charts (fuel-price + burn-habits), the refinery-tree container — plus the four SVG builders and
+  //    the render seam, so a silent revert to the placeholder is caught.
+  assert.match(html, /onclick="openTab\('deuterium', this\)"/, 'the DEUTERIUM top-level tab button');
+  assert.match(html, /id="tp-deut"/, 'the DEUTERIUM top-level panel');
+  assert.match(html, /if \(which === 'deuterium'\)/, "openTab must have a 'deuterium' branch");
+  assert.match(html, /#tabPanel\.deut\{overflow:hidden;\}/, 'the fill-screen recipe (like #tp-guild)');
+  assert.match(html, /#tp-deut\.show\{display:flex; flex-direction:column;\}/, 'the panel is a flex column');
+  // 4z. THE OLD IN-TRADE SUB-TAB IS GONE — deuterium no longer rides the trade tier nav. The `.tw-tier
+  //     deut` chip, its `data-deut="1"` hook, and the trade tab's `T.deut` state/branch must all be
+  //     removed, or the dashboard was not actually lifted out of TRADE.
+  assert.doesNotMatch(html, /class="tw-tier deut/, 'the in-TRADE deuterium tier chip must be gone');
+  assert.doesNotMatch(html, /data-deut="1"/, 'the in-TRADE deuterium tier hook must be gone');
+  assert.doesNotMatch(html, /T\.deut\b/, "the trade tab's T.deut state/branch must be gone");
   assert.match(html, /id="tw-deut-donut"/, 'the glance donut container');
   assert.match(html, /id="tw-deut-pricechart"/, 'the fuel-price graph container');
   assert.match(html, /id="tw-deut-burnchart"/, 'the burn-habits graph container');

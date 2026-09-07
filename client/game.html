@@ -675,116 +675,7 @@ select.field{appearance:none; cursor:pointer;}
 #tp-trade .tw-tier.on{color:var(--tw-ink); background:var(--tw-panel2); box-shadow:0 -2px 0 var(--tw-amber) inset;}
 #tp-trade .tw-tier.on .n{color:var(--tw-amber);}
 #tp-trade .tw-tier.dim{opacity:.4; cursor:not-allowed;}
-/* The DEUTERIUM tab — a special tab beside TIER 1-4 (§1.4). Its own accent so it reads as a
-   different KIND of tab, not a fifth tier of tradeable goods. */
-#tp-trade .tw-tier.deut{margin-left:8px; color:#c98a6a;}
-#tp-trade .tw-tier.deut .n{color:#c98a6a;}
-#tp-trade .tw-tier.deut.on{box-shadow:0 -2px 0 #C2603A inset; color:#e0b299;}
-#tp-trade .tw-tier.deut.on .n{color:#C2603A;}
 #tp-trade .tw-reslist{display:flex; flex-wrap:wrap; gap:7px; padding:13px; background:var(--tw-panel2); border:1px solid var(--tw-line); border-radius:0 8px 8px 8px; min-height:46px;}
-/* ===== The DEUTERIUM tab body — the guild-wide monitoring DASHBOARD (§1.4 slice 2b).
-   The design contract is docs/mockups/deuterium-tab.html; this renders that shape live from the
-   snapshot. A Guild Hall three-panel layout (refinery rail | centre 1fr | Oceanic hero), scoped
-   under #tp-trade so nothing collides with the real Guild Hall tab. The four SVG builders' internal
-   classes (deut-donut / dn-* / pl-* / bb-* / gg-* / deut-empty) are the mockup's verbatim, styled
-   here under #tp-trade; the layout classes are tw-deut- prefixed. Legal = blue #4f93d1, contraband
-   = red (--tw-down), amber accent — no new colours (all already in the palette / the guild bar). */
-#tp-trade .tw-deut{background:transparent; border:none; border-radius:0; padding:0;
-  --dblue:#4f93d1; --dred:var(--tw-down); --dgreen:var(--tw-up); --ddeut:#C2603A; --ddeut2:#e0b299;
-  --d-hero:250px; --d-thero:340px;}
-#tp-trade .tw-deut-body{display:grid; grid-template-columns:var(--d-hero) minmax(0,1fr) var(--d-thero); gap:16px; align-items:stretch; min-height:620px;}
-@media (max-width:1080px){ #tp-trade .tw-deut-body{grid-template-columns:1fr;} }
-#tp-trade .tw-deut-card{background:var(--tw-panel2); border:1px solid var(--tw-line); border-radius:10px;}
-#tp-trade .tw-deut-minihd{font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--tw-ink3); margin-bottom:12px;}
-#tp-trade .tw-deut-cbody{padding:15px 17px 17px;}
-
-/* LEFT: the refinery tree */
-#tp-trade .tw-deut-rail{background:var(--tw-panel2); border:1px solid var(--tw-line); border-radius:10px; overflow:hidden; display:flex; flex-direction:column;}
-#tp-trade .tw-deut-rail .zhead{font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--tw-ink3); padding:13px 15px 4px;}
-#tp-trade .tw-deut-rail .zsub{font-family:var(--tw-serif); font-size:17px; color:var(--tw-ink); padding:0 15px 13px; border-bottom:1px solid var(--tw-line);}
-#tp-trade .tw-deut-tree{padding:9px; overflow-y:auto; flex:1;}
-#tp-trade .tw-deut-sys{margin-bottom:5px;}
-#tp-trade .tw-deut-sysrow{display:flex; align-items:center; gap:8px; cursor:pointer; padding:9px 10px;
-  background:var(--tw-panel); border:1px solid var(--tw-line); border-radius:6px; color:var(--tw-ink2); font-size:12px; letter-spacing:.04em;}
-#tp-trade .tw-deut-sysrow:hover{border-color:var(--tw-line2); color:var(--tw-ink);}
-#tp-trade .tw-deut-sysrow .caret{color:var(--tw-ink3); width:12px; flex:none;}
-#tp-trade .tw-deut-sysrow .nm{flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-#tp-trade .tw-deut-sysrow .ct{font-size:10px; color:var(--tw-ink4);}
-#tp-trade .tw-deut-kids{padding:4px 0 4px 14px;}
-#tp-trade .tw-deut-refrow{display:flex; align-items:center; gap:8px; cursor:pointer; padding:8px 10px; margin-top:4px;
-  background:rgba(232,223,200,.03); border:1px solid var(--tw-line); border-radius:5px; color:var(--tw-ink2); font-size:11.5px;}
-#tp-trade .tw-deut-refrow:hover{border-color:var(--ddeut); color:var(--tw-ink); background:rgba(194,96,58,.06);}
-#tp-trade .tw-deut-refrow .dot{width:6px; height:6px; border-radius:50%; background:var(--ddeut); flex:none;}
-#tp-trade .tw-deut-refrow .nm{flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-#tp-trade .tw-deut-treeempty{color:var(--tw-ink4); font-size:11px; line-height:1.6; letter-spacing:.03em; padding:16px 12px; text-align:center;}
-#tp-trade .tw-deut-railfoot{padding:12px 15px; border-top:1px solid var(--tw-line); color:var(--tw-ink4); font-size:10px; letter-spacing:.04em; line-height:1.5;}
-
-/* CENTRE: Stockpile / Production / Consumption */
-#tp-trade .tw-deut-centre{display:flex; flex-direction:column; min-width:0; gap:16px;}
-#tp-trade .tw-deut-stock{display:grid; grid-template-columns:150px 1fr; gap:20px; align-items:center;}
-#tp-trade .deut-donut{width:150px; height:150px; display:block;}
-#tp-trade .dn-track{fill:none; stroke:rgba(232,223,200,.11); stroke-width:15;}
-#tp-trade .dn-red{stroke:var(--dred); stroke-width:15; fill:none;}
-#tp-trade .dn-blue{stroke:var(--dblue); stroke-width:15; fill:none;}
-#tp-trade .tw-deut-stat{display:flex; flex-direction:column; gap:12px;}
-#tp-trade .tw-deut-stat .row{display:flex; align-items:baseline; justify-content:space-between; gap:14px;}
-#tp-trade .tw-deut-stat .k{font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--tw-ink3); display:flex; align-items:center; gap:8px;}
-#tp-trade .tw-deut-stat .k .sw{width:9px; height:9px; border-radius:2px; flex:none;}
-#tp-trade .tw-deut-stat .v{font-size:20px; font-weight:600; color:var(--tw-ink); font-variant-numeric:tabular-nums;}
-#tp-trade .tw-deut-stat .v.blue{color:var(--dblue);} #tp-trade .tw-deut-stat .v.red{color:var(--dred);}
-#tp-trade .tw-deut-stat .row.total{border-top:1px solid var(--tw-line); padding-top:12px;}
-#tp-trade .tw-deut-stat .row.total .v{font-size:24px;}
-
-#tp-trade .tw-deut-prod{display:grid; grid-template-columns:1fr 1.9fr; gap:18px; align-items:stretch;}
-#tp-trade .tw-deut-tiles{display:flex; flex-direction:column; gap:12px; justify-content:center;}
-#tp-trade .tw-deut-tile{background:var(--tw-panel); border:1px solid var(--tw-line); border-radius:8px; padding:12px 14px;}
-#tp-trade .tw-deut-tile.red{border-color:rgba(224,121,107,.4); background:rgba(224,121,107,.05);}
-#tp-trade .tw-deut-tile .k{font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--tw-ink3); display:flex; align-items:center; gap:7px;}
-#tp-trade .tw-deut-tile .k .sw{width:8px; height:8px; border-radius:2px; flex:none;}
-#tp-trade .tw-deut-tile .v{font-size:26px; font-weight:600; color:var(--tw-ink); margin-top:5px; font-variant-numeric:tabular-nums;}
-#tp-trade .tw-deut-tile.blue .v{color:var(--dblue);} #tp-trade .tw-deut-tile.red .v{color:var(--dred);}
-#tp-trade .tw-deut-tile .u{font-size:9.5px; color:var(--tw-ink4); letter-spacing:.08em; text-transform:uppercase;}
-
-#tp-trade .tw-deut-chartwrap{position:relative; min-height:130px; display:flex; flex-direction:column;}
-#tp-trade .tw-deut-chart{position:relative; flex:1; min-height:120px;}
-#tp-trade .tw-deut-chart svg{position:absolute; inset:0; width:100%; height:100%; display:block;}
-#tp-trade .deut-empty{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-  text-align:center; color:var(--tw-ink4); font-size:11px; letter-spacing:.06em; font-style:italic;}
-#tp-trade .pl-line{fill:none; stroke:var(--tw-amber); stroke-width:2; vector-effect:non-scaling-stroke;}
-#tp-trade .pl-area{fill:var(--tw-amber); opacity:.12;}
-#tp-trade .pl-grid{stroke:var(--tw-line); stroke-width:1; vector-effect:non-scaling-stroke;}
-#tp-trade .tw-deut-tip{position:absolute; width:8px; height:8px; border-radius:50%; background:var(--tw-amber2);
-  box-shadow:0 0 8px var(--tw-amber); transform:translate(-50%,-50%);}
-#tp-trade .tw-deut-nowlab{position:absolute; transform:translate(-50%,-140%); font-size:11px; font-weight:600;
-  color:var(--tw-amber2); white-space:nowrap; font-variant-numeric:tabular-nums;}
-#tp-trade .tw-deut-chartx{display:flex; justify-content:space-between; font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--tw-ink4); margin-top:4px;}
-
-#tp-trade .bb-grid{stroke:var(--tw-line); stroke-width:1; vector-effect:non-scaling-stroke;}
-#tp-trade .bb-blue{fill:var(--dblue); opacity:.9;}
-#tp-trade .bb-red{fill:var(--dred); opacity:.92;}
-#tp-trade .bb-grant{fill:none; stroke:var(--tw-amber); stroke-width:1.6; stroke-dasharray:4 3; vector-effect:non-scaling-stroke;}
-#tp-trade .tw-deut-legend{display:flex; gap:16px; flex-wrap:wrap; font-size:10px; color:var(--tw-ink3); margin-top:10px; letter-spacing:.04em;}
-#tp-trade .tw-deut-legend span{display:flex; align-items:center; gap:6px;}
-#tp-trade .tw-deut-legend .sw{width:9px; height:9px; border-radius:2px;}
-#tp-trade .tw-deut-legend .sw.line{width:14px; height:0; border-top:2px dashed var(--tw-amber);}
-
-#tp-trade .tw-deut-cons{display:grid; grid-template-columns:200px 1fr; gap:18px; align-items:stretch;}
-#tp-trade .tw-deut-gauge{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;}
-#tp-trade .deut-gauge{width:180px; height:104px; display:block;}
-#tp-trade .tw-deut-gauge .tag{font-size:8.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--ddeut2); border:1px solid var(--ddeut); border-radius:20px; padding:2px 9px;}
-#tp-trade .tw-deut-gauge .cap{font-size:9.5px; color:var(--tw-ink4); letter-spacing:.05em; text-align:center; line-height:1.5; max-width:170px;}
-#tp-trade .gg-arc{fill:none; stroke-width:13;}
-#tp-trade .gg-needle{stroke:var(--tw-ink); stroke-width:2.5; stroke-linecap:round;}
-#tp-trade .gg-hub{fill:var(--tw-ink);}
-
-/* RIGHT: the Oceanic hero */
-#tp-trade .tw-deut-hero{position:relative; border:1px solid var(--tw-line); border-radius:10px; overflow:hidden; min-height:300px;}
-#tp-trade .tw-deut-hero .art{position:absolute; inset:0; z-index:0; background-image:url("assets/industrial/OceanicMine.jpg"); background-size:cover; background-position:center;}
-#tp-trade .tw-deut-hero .scrim{position:absolute; inset:0; z-index:1;
-  background:linear-gradient(180deg, rgba(13,15,20,.55) 0%, rgba(13,15,20,.10) 32%, rgba(13,15,20,.12) 55%, rgba(13,15,20,.85) 100%);}
-#tp-trade .tw-deut-hero .word{position:absolute; z-index:2; inset:0; display:flex; align-items:center; justify-content:center;
-  font-family:var(--tw-serif); font-weight:700; letter-spacing:.20em; font-size:30px; color:var(--tw-ink);
-  text-shadow:0 2px 22px rgba(13,15,20,.95), 0 1px 4px rgba(13,15,20,.95);}
 #tp-trade .tw-chip{font-size:12.5px; color:var(--tw-ink2); padding:6px 12px; border:1px solid var(--tw-line);
   border-radius:5px; background:var(--tw-panel); cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:8px; transition:.12s;}
 #tp-trade .tw-chip .dot{width:6px; height:6px; border-radius:50%; background:var(--tw-ink4);}
@@ -1061,6 +952,127 @@ select.field{appearance:none; cursor:pointer;}
   background:linear-gradient(180deg, rgba(13,15,20,.72) 0%, rgba(13,15,20,.12) 30%, rgba(13,15,20,.10) 55%, rgba(13,15,20,.92) 100%);}
 #tp-guild .gh-thero .tcenter{position:absolute; z-index:2; inset:0; display:flex; align-items:center; justify-content:center;}
 #tp-guild .gh-thero .gh{font-family:var(--gh-serif); font-weight:700; letter-spacing:.22em; font-size:34px; color:var(--gh-ink);
+  text-shadow:0 2px 22px rgba(13,15,20,.95), 0 1px 4px rgba(13,15,20,.95);}
+
+/* ===== the DEUTERIUM tab — the guild-wide monitoring DASHBOARD (§1.4 slice 2b), now a TOP-LEVEL
+   tab (a peer of TRADE / the Guild Hall), NOT a sub-tab inside TRADE: deuterium is untradeable, so it
+   never belonged among the trade tiers. The design contract is docs/mockups/deuterium-tab.html; this
+   renders that shape live from the snapshot. A Guild Hall three-panel layout (refinery rail | centre
+   1fr | Oceanic hero), scoped under #tp-deut so nothing collides with the real Guild Hall or TRADE
+   tabs. It FILLS THE VIEWPORT exactly like #tp-guild: the panel is a flex column (height:100% on the
+   overlay) and .tw-deut-body owns the vertical space (flex:1 1 auto), rather than sitting at its
+   natural height in a scroll body — the sizing fix. The four SVG builders' internal classes
+   (deut-donut / dn-* / pl-* / bb-* / gg-* / deut-empty) are the mockup's verbatim; the layout classes
+   are tw-deut- prefixed. Legal = blue #4f93d1, contraband = red (--tw-down), amber accent — no new
+   colours (all already in the palette / the guild bar). ===== */
+#tabPanel.deut{overflow:hidden;}
+#tp-deut{--tw-panel:#14171e; --tw-panel2:#181c24; --tw-panel3:#1c212b;
+  --tw-ink:#E8DFC8; --tw-ink2:#b7b09a; --tw-ink3:#6f7687; --tw-ink4:#454b58;
+  --tw-amber:#C9A227; --tw-amber2:#e3c04a; --tw-amber-dim:rgba(201,162,39,.30);
+  --tw-line:rgba(232,223,200,.10); --tw-line2:rgba(232,223,200,.18);
+  --tw-up:#5fb98a; --tw-down:#e0796b;
+  --tw-mono:'IBM Plex Mono',ui-monospace,monospace; --tw-serif:'Cinzel',Georgia,serif;
+  --dblue:#4f93d1; --dred:var(--tw-down); --dgreen:var(--tw-up); --ddeut:#C2603A; --ddeut2:#e0b299;
+  --d-hero:250px; --d-thero:340px;
+  display:none; font-family:var(--tw-mono); font-size:14px; line-height:1.45; color:var(--tw-ink);
+  padding:22px; background:radial-gradient(120% 80% at 80% -10%, rgba(201,162,39,.06), transparent 60%);
+  height:100%; overflow-y:auto;}
+#tp-deut.show{display:flex; flex-direction:column;}
+#tp-deut *{box-sizing:border-box;}
+/* The three-panel grid owns the panel's height (flex:1 1 auto), so the dashboard fills the screen
+   like #tp-guild's gh-body — not the natural height it had inside the trade scroll body. */
+#tp-deut .tw-deut-body{display:grid; grid-template-columns:var(--d-hero) minmax(0,1fr) var(--d-thero); gap:16px; align-items:stretch; flex:1 1 auto; min-height:620px;}
+@media (max-width:1080px){ #tp-deut .tw-deut-body{grid-template-columns:1fr;} }
+#tp-deut .tw-deut-card{background:var(--tw-panel2); border:1px solid var(--tw-line); border-radius:10px;}
+#tp-deut .tw-deut-minihd{font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--tw-ink3); margin-bottom:12px;}
+#tp-deut .tw-deut-cbody{padding:15px 17px 17px;}
+
+/* LEFT: the refinery tree */
+#tp-deut .tw-deut-rail{background:var(--tw-panel2); border:1px solid var(--tw-line); border-radius:10px; overflow:hidden; display:flex; flex-direction:column;}
+#tp-deut .tw-deut-rail .zhead{font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--tw-ink3); padding:13px 15px 4px;}
+#tp-deut .tw-deut-rail .zsub{font-family:var(--tw-serif); font-size:17px; color:var(--tw-ink); padding:0 15px 13px; border-bottom:1px solid var(--tw-line);}
+#tp-deut .tw-deut-tree{padding:9px; overflow-y:auto; flex:1;}
+#tp-deut .tw-deut-sys{margin-bottom:5px;}
+#tp-deut .tw-deut-sysrow{display:flex; align-items:center; gap:8px; cursor:pointer; padding:9px 10px;
+  background:var(--tw-panel); border:1px solid var(--tw-line); border-radius:6px; color:var(--tw-ink2); font-size:12px; letter-spacing:.04em;}
+#tp-deut .tw-deut-sysrow:hover{border-color:var(--tw-line2); color:var(--tw-ink);}
+#tp-deut .tw-deut-sysrow .caret{color:var(--tw-ink3); width:12px; flex:none;}
+#tp-deut .tw-deut-sysrow .nm{flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+#tp-deut .tw-deut-sysrow .ct{font-size:10px; color:var(--tw-ink4);}
+#tp-deut .tw-deut-kids{padding:4px 0 4px 14px;}
+#tp-deut .tw-deut-refrow{display:flex; align-items:center; gap:8px; cursor:pointer; padding:8px 10px; margin-top:4px;
+  background:rgba(232,223,200,.03); border:1px solid var(--tw-line); border-radius:5px; color:var(--tw-ink2); font-size:11.5px;}
+#tp-deut .tw-deut-refrow:hover{border-color:var(--ddeut); color:var(--tw-ink); background:rgba(194,96,58,.06);}
+#tp-deut .tw-deut-refrow .dot{width:6px; height:6px; border-radius:50%; background:var(--ddeut); flex:none;}
+#tp-deut .tw-deut-refrow .nm{flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+#tp-deut .tw-deut-treeempty{color:var(--tw-ink4); font-size:11px; line-height:1.6; letter-spacing:.03em; padding:16px 12px; text-align:center;}
+#tp-deut .tw-deut-railfoot{padding:12px 15px; border-top:1px solid var(--tw-line); color:var(--tw-ink4); font-size:10px; letter-spacing:.04em; line-height:1.5;}
+
+/* CENTRE: Stockpile / Production / Consumption */
+#tp-deut .tw-deut-centre{display:flex; flex-direction:column; min-width:0; gap:16px;}
+#tp-deut .tw-deut-stock{display:grid; grid-template-columns:150px 1fr; gap:20px; align-items:center;}
+#tp-deut .deut-donut{width:150px; height:150px; display:block;}
+#tp-deut .dn-track{fill:none; stroke:rgba(232,223,200,.11); stroke-width:15;}
+#tp-deut .dn-red{stroke:var(--dred); stroke-width:15; fill:none;}
+#tp-deut .dn-blue{stroke:var(--dblue); stroke-width:15; fill:none;}
+#tp-deut .tw-deut-stat{display:flex; flex-direction:column; gap:12px;}
+#tp-deut .tw-deut-stat .row{display:flex; align-items:baseline; justify-content:space-between; gap:14px;}
+#tp-deut .tw-deut-stat .k{font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--tw-ink3); display:flex; align-items:center; gap:8px;}
+#tp-deut .tw-deut-stat .k .sw{width:9px; height:9px; border-radius:2px; flex:none;}
+#tp-deut .tw-deut-stat .v{font-size:20px; font-weight:600; color:var(--tw-ink); font-variant-numeric:tabular-nums;}
+#tp-deut .tw-deut-stat .v.blue{color:var(--dblue);} #tp-deut .tw-deut-stat .v.red{color:var(--dred);}
+#tp-deut .tw-deut-stat .row.total{border-top:1px solid var(--tw-line); padding-top:12px;}
+#tp-deut .tw-deut-stat .row.total .v{font-size:24px;}
+
+#tp-deut .tw-deut-prod{display:grid; grid-template-columns:1fr 1.9fr; gap:18px; align-items:stretch;}
+#tp-deut .tw-deut-tiles{display:flex; flex-direction:column; gap:12px; justify-content:center;}
+#tp-deut .tw-deut-tile{background:var(--tw-panel); border:1px solid var(--tw-line); border-radius:8px; padding:12px 14px;}
+#tp-deut .tw-deut-tile.red{border-color:rgba(224,121,107,.4); background:rgba(224,121,107,.05);}
+#tp-deut .tw-deut-tile .k{font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--tw-ink3); display:flex; align-items:center; gap:7px;}
+#tp-deut .tw-deut-tile .k .sw{width:8px; height:8px; border-radius:2px; flex:none;}
+#tp-deut .tw-deut-tile .v{font-size:26px; font-weight:600; color:var(--tw-ink); margin-top:5px; font-variant-numeric:tabular-nums;}
+#tp-deut .tw-deut-tile.blue .v{color:var(--dblue);} #tp-deut .tw-deut-tile.red .v{color:var(--dred);}
+#tp-deut .tw-deut-tile .u{font-size:9.5px; color:var(--tw-ink4); letter-spacing:.08em; text-transform:uppercase;}
+
+#tp-deut .tw-deut-chartwrap{position:relative; min-height:130px; display:flex; flex-direction:column;}
+#tp-deut .tw-deut-chart{position:relative; flex:1; min-height:120px;}
+#tp-deut .tw-deut-chart svg{position:absolute; inset:0; width:100%; height:100%; display:block;}
+#tp-deut .deut-empty{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  text-align:center; color:var(--tw-ink4); font-size:11px; letter-spacing:.06em; font-style:italic;}
+#tp-deut .pl-line{fill:none; stroke:var(--tw-amber); stroke-width:2; vector-effect:non-scaling-stroke;}
+#tp-deut .pl-area{fill:var(--tw-amber); opacity:.12;}
+#tp-deut .pl-grid{stroke:var(--tw-line); stroke-width:1; vector-effect:non-scaling-stroke;}
+#tp-deut .tw-deut-tip{position:absolute; width:8px; height:8px; border-radius:50%; background:var(--tw-amber2);
+  box-shadow:0 0 8px var(--tw-amber); transform:translate(-50%,-50%);}
+#tp-deut .tw-deut-nowlab{position:absolute; transform:translate(-50%,-140%); font-size:11px; font-weight:600;
+  color:var(--tw-amber2); white-space:nowrap; font-variant-numeric:tabular-nums;}
+#tp-deut .tw-deut-chartx{display:flex; justify-content:space-between; font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--tw-ink4); margin-top:4px;}
+
+#tp-deut .bb-grid{stroke:var(--tw-line); stroke-width:1; vector-effect:non-scaling-stroke;}
+#tp-deut .bb-blue{fill:var(--dblue); opacity:.9;}
+#tp-deut .bb-red{fill:var(--dred); opacity:.92;}
+#tp-deut .bb-grant{fill:none; stroke:var(--tw-amber); stroke-width:1.6; stroke-dasharray:4 3; vector-effect:non-scaling-stroke;}
+#tp-deut .tw-deut-legend{display:flex; gap:16px; flex-wrap:wrap; font-size:10px; color:var(--tw-ink3); margin-top:10px; letter-spacing:.04em;}
+#tp-deut .tw-deut-legend span{display:flex; align-items:center; gap:6px;}
+#tp-deut .tw-deut-legend .sw{width:9px; height:9px; border-radius:2px;}
+#tp-deut .tw-deut-legend .sw.line{width:14px; height:0; border-top:2px dashed var(--tw-amber);}
+
+#tp-deut .tw-deut-cons{display:grid; grid-template-columns:200px 1fr; gap:18px; align-items:stretch;}
+#tp-deut .tw-deut-gauge{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;}
+#tp-deut .deut-gauge{width:180px; height:104px; display:block;}
+#tp-deut .tw-deut-gauge .tag{font-size:8.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--ddeut2); border:1px solid var(--ddeut); border-radius:20px; padding:2px 9px;}
+#tp-deut .tw-deut-gauge .cap{font-size:9.5px; color:var(--tw-ink4); letter-spacing:.05em; text-align:center; line-height:1.5; max-width:170px;}
+#tp-deut .gg-arc{fill:none; stroke-width:13;}
+#tp-deut .gg-needle{stroke:var(--tw-ink); stroke-width:2.5; stroke-linecap:round;}
+#tp-deut .gg-hub{fill:var(--tw-ink);}
+
+/* RIGHT: the Oceanic hero */
+#tp-deut .tw-deut-hero{position:relative; border:1px solid var(--tw-line); border-radius:10px; overflow:hidden; min-height:300px;}
+#tp-deut .tw-deut-hero .art{position:absolute; inset:0; z-index:0; background-image:url("assets/industrial/OceanicMine.jpg"); background-size:cover; background-position:center;}
+#tp-deut .tw-deut-hero .scrim{position:absolute; inset:0; z-index:1;
+  background:linear-gradient(180deg, rgba(13,15,20,.55) 0%, rgba(13,15,20,.10) 32%, rgba(13,15,20,.12) 55%, rgba(13,15,20,.85) 100%);}
+#tp-deut .tw-deut-hero .word{position:absolute; z-index:2; inset:0; display:flex; align-items:center; justify-content:center;
+  font-family:var(--tw-serif); font-weight:700; letter-spacing:.20em; font-size:30px; color:var(--tw-ink);
   text-shadow:0 2px 22px rgba(13,15,20,.95), 0 1px 4px rgba(13,15,20,.95);}
 
 /* ===== hero: full-panel dock, art fit to HEIGHT, anchored BOTTOM-LEFT (matches the built art) ===== */
@@ -1443,6 +1455,7 @@ select.field{appearance:none; cursor:pointer;}
   <div class="tb-tabs">
     <button class="rtab active" onclick="openTab('system', this)">System Manifest</button>
     <button class="rtab" onclick="openTab('market', this)">TRADE</button>
+    <button class="rtab" onclick="openTab('deuterium', this)">Deuterium</button>
     <button class="rtab" onclick="openTab('transport', this)">Transport</button>
     <button class="rtab" onclick="openTab('guild', this)">Guild Hall</button>
   </div>
@@ -1570,69 +1583,6 @@ select.field{appearance:none; cursor:pointer;}
       </aside>
     </div>
 
-    <!-- The DEUTERIUM tab body (§1.4 "The Deuterium Cycle", slice 2b). The guild-wide monitoring
-         DASHBOARD — a Guild Hall three-panel layout (refinery rail | centre | Oceanic hero). Every
-         figure is a published snapshot field; the client renders, computes no game number (§18/§5).
-         The design contract is docs/mockups/deuterium-tab.html; the render seam fills the empty
-         containers below on open and on every poll (deutRender). -->
-    <div class="tw-deut" id="tw-deut-panel" style="display:none">
-      <div class="tw-deut-body">
-        <!-- LEFT: the refinery tree (refineries only, grouped by system) -->
-        <aside class="tw-deut-rail">
-          <div class="zhead">Your ventures</div>
-          <div class="zsub">Refineries</div>
-          <div class="tw-deut-tree" id="tw-deut-tree"></div>
-          <div class="tw-deut-railfoot">Illegal refineries only. Mines are managed from their node in the System Manifest.</div>
-        </aside>
-
-        <!-- CENTRE: Stockpile / Production / Consumption -->
-        <div class="tw-deut-centre">
-          <div class="tw-deut-card"><div class="tw-deut-cbody">
-            <div class="tw-deut-minihd">Stockpile &middot; fuel credits</div>
-            <div class="tw-deut-stock">
-              <div id="tw-deut-donut"></div>
-              <div class="tw-deut-stat" id="tw-deut-stockstat"></div>
-            </div>
-          </div></div>
-
-          <div class="tw-deut-card"><div class="tw-deut-cbody">
-            <div class="tw-deut-minihd">Production &middot; per cycle</div>
-            <div class="tw-deut-prod">
-              <div class="tw-deut-tiles" id="tw-deut-prodtiles"></div>
-              <div>
-                <div class="tw-deut-chartwrap"><div class="tw-deut-chart" id="tw-deut-pricechart"></div></div>
-                <div class="tw-deut-chartx"><span>fuel price</span><span id="tw-deut-pricenow"></span></div>
-              </div>
-            </div>
-          </div></div>
-
-          <div class="tw-deut-card"><div class="tw-deut-cbody">
-            <div class="tw-deut-minihd">Consumption &middot; burn habits</div>
-            <div class="tw-deut-cons">
-              <div class="tw-deut-gauge">
-                <div id="tw-deut-suspicion"></div>
-                <div class="tag">Concept</div>
-                <div class="cap">Suspicion &mdash; surveillance is not yet modelled (&sect;7).</div>
-              </div>
-              <div>
-                <div class="tw-deut-chartwrap"><div class="tw-deut-chart" id="tw-deut-burnchart"></div></div>
-                <div class="tw-deut-legend">
-                  <span><span class="sw" style="background:#4f93d1"></span>Legal burn</span>
-                  <span><span class="sw" style="background:var(--tw-down)"></span>Contraband burn</span>
-                  <span><span class="sw line"></span>Granted</span>
-                </div>
-              </div>
-            </div>
-          </div></div>
-        </div>
-
-        <!-- RIGHT: the Oceanic hero -->
-        <aside class="tw-deut-hero">
-          <div class="art"></div><div class="scrim"></div>
-          <div class="word">DEUTERIUM</div>
-        </aside>
-      </div>
-    </div>
    </div>
 
    <!-- ===== the SELL & BUY finalise-transaction popups (docs/mockups/{sell,buy}-to-syndicate.html)
@@ -1798,6 +1748,72 @@ select.field{appearance:none; cursor:pointer;}
        </div>
      </div>
    </div>
+  </div>
+
+  <!-- The DEUTERIUM tab (§1.4 "The Deuterium Cycle", slice 2b) — a TOP-LEVEL tab, a peer of TRADE
+       and the Guild Hall, NOT a sub-tab inside TRADE (deuterium is untradeable, so it never belonged
+       among the trade tiers). The guild-wide monitoring DASHBOARD — a Guild Hall three-panel layout
+       (refinery rail | centre | Oceanic hero). Every figure is a published snapshot field; the client
+       renders, computes no game number (§18/§5). The design contract is docs/mockups/deuterium-tab.html;
+       the render seam (deutRender, in the deuterium-tab-wire block) fills the empty containers below on
+       open and on every poll. It fills the viewport exactly like #tp-guild. -->
+  <div id="tp-deut">
+    <div class="tw-deut-body">
+      <!-- LEFT: the refinery tree (refineries only, grouped by system) -->
+      <aside class="tw-deut-rail">
+        <div class="zhead">Your ventures</div>
+        <div class="zsub">Refineries</div>
+        <div class="tw-deut-tree" id="tw-deut-tree"></div>
+        <div class="tw-deut-railfoot">Illegal refineries only. Mines are managed from their node in the System Manifest.</div>
+      </aside>
+
+      <!-- CENTRE: Stockpile / Production / Consumption -->
+      <div class="tw-deut-centre">
+        <div class="tw-deut-card"><div class="tw-deut-cbody">
+          <div class="tw-deut-minihd">Stockpile &middot; fuel credits</div>
+          <div class="tw-deut-stock">
+            <div id="tw-deut-donut"></div>
+            <div class="tw-deut-stat" id="tw-deut-stockstat"></div>
+          </div>
+        </div></div>
+
+        <div class="tw-deut-card"><div class="tw-deut-cbody">
+          <div class="tw-deut-minihd">Production &middot; per cycle</div>
+          <div class="tw-deut-prod">
+            <div class="tw-deut-tiles" id="tw-deut-prodtiles"></div>
+            <div>
+              <div class="tw-deut-chartwrap"><div class="tw-deut-chart" id="tw-deut-pricechart"></div></div>
+              <div class="tw-deut-chartx"><span>fuel price</span><span id="tw-deut-pricenow"></span></div>
+            </div>
+          </div>
+        </div></div>
+
+        <div class="tw-deut-card"><div class="tw-deut-cbody">
+          <div class="tw-deut-minihd">Consumption &middot; burn habits</div>
+          <div class="tw-deut-cons">
+            <div class="tw-deut-gauge">
+              <div id="tw-deut-suspicion"></div>
+              <div class="tag">Concept</div>
+              <div class="cap">Suspicion &mdash; surveillance is not yet modelled (&sect;7).</div>
+            </div>
+            <div>
+              <div class="tw-deut-chartwrap"><div class="tw-deut-chart" id="tw-deut-burnchart"></div></div>
+              <div class="tw-deut-legend">
+                <span><span class="sw" style="background:#4f93d1"></span>Legal burn</span>
+                <span><span class="sw" style="background:var(--tw-down)"></span>Contraband burn</span>
+                <span><span class="sw line"></span>Granted</span>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- RIGHT: the Oceanic hero -->
+      <aside class="tw-deut-hero">
+        <div class="art"></div><div class="scrim"></div>
+        <div class="word">DEUTERIUM</div>
+      </aside>
+    </div>
   </div>
 
   <!-- The GUILD HALL tab (docs/guild-hall.md §2). Shape and look follow
@@ -4512,6 +4528,9 @@ function applySnapshot(snap){
   // An open GUILD HALL re-reads too, so the Standing panel's stockpile bar depletes and
   // its gauges move as the guild trades (docs/guild-hall.md §2.3).
   if (window.__guildRefresh) window.__guildRefresh();
+  // An open DEUTERIUM dashboard re-reads too, so the donut drains, the fuel-price line extends and
+  // the rings fill as ticks pass (§1.4 slice 2b) — its own panel's lifecycle, like the Guild Hall's.
+  if (window.__deutRefresh) window.__deutRefresh();
 }
 
 // Who controls a system, for the detail screen's header. Reads the live claims —
@@ -4620,12 +4639,16 @@ var TAB_STUBS = {
 function hideOverlayPanels(tp){
   var trade = document.getElementById('tp-trade');
   var guild = document.getElementById('tp-guild');
+  var deut = document.getElementById('tp-deut');
   if (trade) trade.classList.remove('show');
   if (guild) guild.classList.remove('show');
+  if (deut) deut.classList.remove('show');
   tp.classList.remove('trade');
   tp.classList.remove('guild');
+  tp.classList.remove('deut');
   if (window.__tradeClosed) window.__tradeClosed();
   if (window.__guildClosed) window.__guildClosed();
+  if (window.__deutClosed) window.__deutClosed();
 }
 function openTab(which, btn){
   document.querySelectorAll('.rtab').forEach(function(t){t.classList.remove('active');});
@@ -4658,6 +4681,19 @@ function openTab(which, btn){
     tp.classList.add('guild');
     tp.classList.add('show');
     if (window.__guildOpen) window.__guildOpen();
+    return;
+  }
+  // The DEUTERIUM dashboard (§1.4 "The Deuterium Cycle") — a TOP-LEVEL tab, a peer of TRADE and
+  // the Guild Hall, NOT a sub-tab inside TRADE: deuterium is untradeable, so it never belonged among
+  // the trade tiers. Same overlay pattern as the Guild Hall — it fills the viewport and re-reads the
+  // snapshot on open and on every poll while open.
+  if (which === 'deuterium'){
+    hideOverlayPanels(tp);
+    stub.style.display = 'none';
+    document.getElementById('tp-deut').classList.add('show');
+    tp.classList.add('deut');
+    tp.classList.add('show');
+    if (window.__deutOpen) window.__deutOpen();
     return;
   }
   hideOverlayPanels(tp);
@@ -4809,12 +4845,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     open:false,
     mode:'sell',     // 'sell' | 'buy' — which side of the Syndicate Trade card is showing
     tier:1,          // which tier tab is showing
-    deut:false,      // the DEUTERIUM tab (§1.4 slice 2b) — the guild-wide monitoring dashboard
     good:null,       // the selected good — HELD across polls, never reset by a refresh
     scale:null,      // which price-history resolution the chart is drawing
     alloc:{},        // systemId -> the qty the player has typed, for the selected good
-    deutOpen:{},     // the DEUTERIUM tree's per-system open/closed state (survives polls)
-    deutTreeSig:'',  // rebuild the tree only when the set of refineries changes
     navSig:'', rowSig:'',
     noteTimer:null
   };
@@ -4920,17 +4953,15 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   function renderNav(){
     var tiers = el('tw-tiers'), list = el('tw-reslist');
     var goods = tierGoods(T.tier);
-    var sig = T.tier + '|' + goods.join(',') + '|' + T.good + '|' + (T.deut?'D':'');
+    var sig = T.tier + '|' + goods.join(',') + '|' + T.good;
     if(sig !== T.navSig){
       T.navSig = sig;
       var th = '';
       for(var t=1; t<=4; t++){
         var has = tierGoods(t).length > 0;
-        th += '<div class="tw-tier'+(!T.deut && t===T.tier?' on':'')+(has?'':' dim')+'" data-tier="'+t+'">'
+        th += '<div class="tw-tier'+(t===T.tier?' on':'')+(has?'':' dim')+'" data-tier="'+t+'">'
             + '<span class="n">'+t+'</span>'+TIER_NAMES[t-1]+'</div>';
       }
-      // The DEUTERIUM tab beside the tiers (§1.4) — a special tab, not a fifth tier.
-      th += '<div class="tw-tier deut'+(T.deut?' on':'')+'" data-deut="1"><span class="n">&#9670;</span>Deuterium</div>';
       tiers.innerHTML = th;
       if(!goods.length){
         list.innerHTML = '<span class="tw-empty">The engine declares no goods at this tier yet.</span>';
@@ -5271,228 +5302,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // committing. The reject-whole preview (short-fuel disable) is duplicated in the popup, so
   // the button that opens it is only ever the pre-gate the popup then restates against the ledger.
 
-  /* ===== The DEUTERIUM dashboard (§1.4 slice 2b) ==================================
-     The guild-wide monitoring panel. The four SVG builders below are docs/mockups/deuterium-tab.html
-     VERBATIM (the design contract); deutRender feeds them LIVE snapshot fields in place of the
-     mockup's sample arrays. The client renders — it computes no game number (§18/§5): every figure
-     is a published field, and the only derives are sanctioned presentation (a sum of two published
-     credit values, an arc length, a bar height). ============================================ */
-  function esc(s){ return String(s == null ? '' : s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-  function deutC(n){ return '&#162;' + fmt(n); }   // credits: ¢ then an integer
-
-  // 1. THE GLANCE DONUT — blue legal + red contraband against the cycle-start ring, the hollow
-  //    (dim track showing through) = used this cycle. NO numbers or text inside it. `ring` is the
-  //    cycle-start total ALREADY resolved by the caller (per-component null fallback to the current
-  //    value — "full from birth"); donutMax = max(ring, current) so mid-cycle refining never
-  //    overflows. Arc order red → blue → hollow, so legal-first depletion eats blue before red.
-  function deutDonut(legalNow, contrabandNow, ring){
-    var current = legalNow + contrabandNow;
-    var donutMax = Math.max(ring, current) || 1;
-    var R = 58, C = 2 * Math.PI * R, cx = 72, cy = 72;
-    var red  = (contrabandNow / donutMax) * C;
-    var blue = (legalNow / donutMax) * C;
-    return '<svg viewBox="0 0 144 144" class="deut-donut">'
-      + '<g transform="rotate(-90 ' + cx + ' ' + cy + ')">'
-      +   '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" class="dn-track"/>'
-      +   '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" class="dn-red" '
-      +     'stroke-dasharray="' + red.toFixed(2) + ' ' + (C - red).toFixed(2) + '" stroke-dashoffset="0"/>'
-      +   '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" class="dn-blue" '
-      +     'stroke-dasharray="' + blue.toFixed(2) + ' ' + (C - blue).toFixed(2) + '" stroke-dashoffset="' + (-red).toFixed(2) + '"/>'
-      + '</g></svg>';
-  }
-
-  // 2. THE FUEL-PRICE LINE — a polyline (+ soft area fill) over `hist` (oldest→newest) with the live
-  //    price appended as the trailing point; min/max auto-scaled with a small pad. Fewer than two
-  //    points (an empty history before the first bucket closes) → the quiet "gathering history…"
-  //    state. Returns { svg, tip } — `tip` is the last point's {x,y} as fractions, for the HTML
-  //    "now" marker (kept out of the SVG so preserveAspectRatio="none" never distorts a round dot).
-  function deutPriceLine(hist, live){
-    var pts = hist.slice();
-    if(live != null) pts = pts.concat([live]);
-    if(pts.length < 2) return { svg:'<div class="deut-empty">gathering history&hellip;</div>', tip:null };
-    var W = 340, H = 120, padx = 4, padT = 12, padB = 8, pw = W - padx*2, ph = H - padT - padB;
-    var lo = Math.min.apply(null, pts), hi = Math.max.apply(null, pts);
-    var pad = (hi - lo) * 0.15 || (hi * 0.1) || 1; lo -= pad; hi += pad;
-    var X = function(i){ return padx + i * (pw / (pts.length - 1)); };
-    var Y = function(v){ return padT + (hi - v) / (hi - lo) * ph; };
-    var line = pts.map(function(v,i){ return X(i).toFixed(1) + ',' + Y(v).toFixed(1); });
-    var area = 'M ' + X(0).toFixed(1) + ',' + (padT+ph).toFixed(1) + ' L ' + line.join(' L ')
-             + ' L ' + X(pts.length-1).toFixed(1) + ',' + (padT+ph).toFixed(1) + ' Z';
-    var grid = '';
-    for(var k = 1; k <= 2; k++){ var gy = (padT + k*ph/3).toFixed(1); grid += '<line class="pl-grid" x1="0" y1="'+gy+'" x2="'+W+'" y2="'+gy+'"/>'; }
-    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
-      + grid
-      + '<path class="pl-area" d="' + area + '"/>'
-      + '<polyline class="pl-line" points="' + line.join(' ') + '"/></svg>';
-    var last = pts.length - 1;
-    return { svg:svg, tip:{ x:X(last)/W, y:Y(pts[last])/H, v:pts[last] } };
-  }
-
-  // 3. THE BURN-HABITS BARS — stacked bars per cycle: blue (burn − contrabandBurned = legal burn) at
-  //    the base, red (contrabandBurned) on top; an amber dashed `granted` polyline over them; a
-  //    3-line y-grid. `hist` = [{ burn, granted, contrabandBurned }], oldest→newest. Empty → the
-  //    quiet "gathering history…" state.
-  function deutBurnBars(hist){
-    if(!hist || !hist.length) return '<div class="deut-empty">gathering history&hellip;</div>';
-    var data = hist.slice(-10);
-    var maxV = 0;
-    data.forEach(function(d){ maxV = Math.max(maxV, d.burn || 0, d.granted || 0); });
-    maxV = maxV || 1;
-    var W = 340, H = 120, padx = 6, padT = 8, padB = 8, pw = W - padx*2, ph = H - padT - padB;
-    var n = data.length, slot = pw / n, bw = Math.min(slot * 0.6, 26);
-    var Y = function(v){ return padT + (1 - v / maxV) * ph; };
-    var base = padT + ph;
-    var grid = '';
-    for(var k = 1; k <= 3; k++){ var gy = (padT + k*ph/3).toFixed(1); grid += '<line class="bb-grid" x1="0" y1="'+gy+'" x2="'+W+'" y2="'+gy+'"/>'; }
-    var bars = '', grantPts = [];
-    data.forEach(function(d, i){
-      var cx = padx + slot*i + slot/2, x = cx - bw/2;
-      var legal = Math.max(0, (d.burn || 0) - (d.contrabandBurned || 0));
-      var contra = Math.max(0, d.contrabandBurned || 0);
-      var yBlue = Y(legal), hBlue = base - yBlue;
-      var yRed = Y(legal + contra), hRed = Y(legal) - yRed;
-      if(hBlue > 0) bars += '<rect class="bb-blue" x="'+x.toFixed(1)+'" y="'+yBlue.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hBlue.toFixed(1)+'"/>';
-      if(hRed  > 0) bars += '<rect class="bb-red" x="'+x.toFixed(1)+'" y="'+yRed.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hRed.toFixed(1)+'"/>';
-      grantPts.push(cx.toFixed(1) + ',' + Y(d.granted || 0).toFixed(1));
-    });
-    return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
-      + grid + bars
-      + '<polyline class="bb-grant" points="' + grantPts.join(' ') + '"/></svg>';
-  }
-
-  // 4. THE SUSPICION GAUGE — a 180° arc with a red→amber→green gradient and a STATIC needle. Inert
-  //    concept only (§7 detection is unbuilt): the needle never moves and reads no field.
-  function deutSuspicion(){
-    var cx = 90, cy = 92, R = 74;
-    function pt(deg){ var a = Math.PI * (1 - deg/180); return [ (cx + R*Math.cos(a)).toFixed(1), (cy - R*Math.sin(a)).toFixed(1) ]; }
-    function seg(d0, d1, col){
-      var p0 = pt(d0), p1 = pt(d1);
-      return '<path class="gg-arc" stroke="'+col+'" d="M '+p0[0]+' '+p0[1]+' A '+R+' '+R+' 0 0 1 '+p1[0]+' '+p1[1]+'"/>';
-    }
-    var na = Math.PI * (1 - 34/180), nx = (cx + (R-16)*Math.cos(na)).toFixed(1), ny = (cy - (R-16)*Math.sin(na)).toFixed(1);
-    return '<svg viewBox="0 0 180 104" class="deut-gauge">'
-      + seg(0, 60, 'var(--dgreen)') + seg(60, 120, 'var(--tw-amber)') + seg(120, 180, 'var(--dred)')
-      + '<line class="gg-needle" x1="'+cx+'" y1="'+cy+'" x2="'+nx+'" y2="'+ny+'"/>'
-      + '<circle class="gg-hub" cx="'+cx+'" cy="'+cy+'" r="4"/></svg>';
-  }
-
-  // The refinery-row click target (§2.7). Venture management is UNDESIGNED, so this is a stub — it
-  // reports "coming soon" and logs the venture id; it fires no action.
-  function openVentureManagement(ventureId){
-    try{ console.log('openVentureManagement (stub, §2.7):', ventureId); }catch(e){}
-    note('Venture management — coming soon (undesigned, §2.7)');
-  }
-
-  // The refinery tree (left rail). The guild's ventures where deuteriumRefinery === true — MINES
-  // never appear — grouped by systemId (name via the shell's __systemName bridge). Rebuilt only when
-  // the set of refineries changes (a signature), so a poll never throws away the open/closed state or
-  // scroll; the open state lives in T.deutOpen and the sysrow/refrow clicks are handled by the
-  // panel's delegated listener.
-  function deutRenderTree(guild, s){
-    var host = el('tw-deut-tree'); if(!host) return;
-    var myId = guild && guild.id;
-    var ventures = (s && Array.isArray(s.ventures)) ? s.ventures : [];
-    var refs = ventures.filter(function(v){ return v.ownerGuildId === myId && v.deuteriumRefinery === true; });
-    var groups = {};
-    refs.forEach(function(v){ var sid = v.systemId || 'unknown'; (groups[sid] = groups[sid] || []).push(v); });
-    var sysIds = Object.keys(groups).sort();
-    var sig = sysIds.map(function(sid){ return sid + ':' + groups[sid].map(function(v){ return v.id; }).sort().join(','); }).join('|');
-    if(sig === T.deutTreeSig) return;
-    T.deutTreeSig = sig;
-    if(!sysIds.length){
-      host.innerHTML = '<div class="tw-deut-treeempty">No refineries.<br>Deploy one from a settlement slot (FUEL tier).</div>';
-      return;
-    }
-    var out = '';
-    sysIds.forEach(function(sid){
-      var name = (window.__systemName && window.__systemName(sid)) || sid;
-      var list = groups[sid], open = T.deutOpen[sid] !== false;   // default open
-      out += '<div class="tw-deut-sys" data-sys="'+esc(sid)+'">'
-        + '<div class="tw-deut-sysrow" data-toggle="'+esc(sid)+'"><span class="caret">'+(open?'&#9661;':'&#9655;')+'</span>'
-        +   '<span class="nm">'+esc(name)+'</span><span class="ct">'+list.length+'</span></div>'
-        + '<div class="tw-deut-kids"'+(open?'':' style="display:none"')+'>'
-        + list.map(function(v){
-            var tail = v.assetId ? String(v.assetId).split('_').slice(-1)[0] : (v.id || '');
-            return '<div class="tw-deut-refrow" data-open="'+esc(v.id)+'"><span class="dot"></span>'
-              + '<span class="nm">Refinery'+(tail ? ' &middot; '+esc(tail) : '')+'</span></div>';
-          }).join('')
-        + '</div></div>';
-    });
-    host.innerHTML = out;
-  }
-
-  // The whole dashboard, run on open and on every poll (from render() when T.deut). Every figure
-  // re-reads the snapshot, so the donut drains, the price line extends and the rings fill live.
-  function deutRender(guild){
-    var s = snap();
-
-    // --- Stockpile: the glance donut + the credit readout (total / legal / contraband) ---
-    var legal  = (guild && guild.fuelHoardValue != null) ? guild.fuelHoardValue : 0;
-    var contra = (guild && guild.deuteriumFuelValue) || 0;
-    // Ring = the cycle-start total; per-component fallback to the CURRENT value when a *AtCycleStart
-    // baseline is null (guild not yet due a grant → donut full, no hollow — "full from birth").
-    var ringLegal  = (guild && guild.fuelHoardAtCycleStartValue != null) ? guild.fuelHoardAtCycleStartValue : legal;
-    var ringContra = (guild && guild.deuteriumFuelAtCycleStartValue != null) ? guild.deuteriumFuelAtCycleStartValue : contra;
-    el('tw-deut-donut').innerHTML = deutDonut(legal, contra, ringLegal + ringContra);
-    el('tw-deut-stockstat').innerHTML =
-        '<div class="row"><span class="k"><span class="sw" style="background:#4f93d1"></span>Legal</span><span class="v blue">'+deutC(legal)+'</span></div>'
-      + '<div class="row"><span class="k"><span class="sw" style="background:var(--tw-down)"></span>Contraband</span><span class="v red">'+deutC(contra)+'</span></div>'
-      + '<div class="row total"><span class="k">Total held</span><span class="v">'+deutC(legal + contra)+'</span></div>';
-
-    // --- Production: legal / contraband units-per-cycle + the fuel-price line ---
-    var prod = (guild && guild.deuteriumProduction) || { legalPerCycle:0, contrabandPerCycle:0 };
-    el('tw-deut-prodtiles').innerHTML =
-        '<div class="tw-deut-tile blue"><div class="k"><span class="sw" style="background:#4f93d1"></span>Legal</div><div class="v">'+fmt(prod.legalPerCycle||0)+'</div><div class="u">units / cycle</div></div>'
-      + '<div class="tw-deut-tile red"><div class="k"><span class="sw" style="background:var(--tw-down)"></span>Contraband</div><div class="v">'+fmt(prod.contrabandPerCycle||0)+'</div><div class="u">units / cycle</div></div>';
-    var hist = (s && Array.isArray(s.fuelPriceHistory)) ? s.fuelPriceHistory : [];
-    var live = (s && s.galacticSupply && s.galacticSupply.fuel && s.galacticSupply.fuel.fuelPrice != null)
-      ? s.galacticSupply.fuel.fuelPrice : null;
-    var pl = deutPriceLine(hist, live);
-    var host = el('tw-deut-pricechart'); host.innerHTML = pl.svg;
-    var now = el('tw-deut-pricenow');
-    if(pl.tip){
-      var tip = document.createElement('div'); tip.className = 'tw-deut-tip';
-      tip.style.left = (pl.tip.x*100)+'%'; tip.style.top = (pl.tip.y*100)+'%'; host.appendChild(tip);
-      var lab = document.createElement('div'); lab.className = 'tw-deut-nowlab';
-      lab.style.left = (pl.tip.x*100)+'%'; lab.style.top = (pl.tip.y*100)+'%';
-      lab.innerHTML = '&#162;' + money(pl.tip.v) + '/q'; host.appendChild(lab);
-      now.innerHTML = 'now &#162;' + money(pl.tip.v) + '/q';
-    } else {
-      now.textContent = 'gathering…';
-    }
-
-    // --- Consumption: the inert suspicion gauge + the burn-habits bars ---
-    el('tw-deut-suspicion').innerHTML = deutSuspicion();
-    var burn = (guild && Array.isArray(guild.fuelBurnHistory)) ? guild.fuelBurnHistory : [];
-    el('tw-deut-burnchart').innerHTML = deutBurnBars(burn);
-
-    // --- Left: the refinery tree ---
-    deutRenderTree(guild, s);
-  }
-
   /* -- render + events ------------------------------------------------------- */
   function render(){
     if(!T.open) return;
     var guild = meGuild();
-    // The DEUTERIUM tab (§1.4 slice 2b) — the guild-wide monitoring DASHBOARD. Swap the trade body
-    // for the deuterium panel and render it live from the snapshot (deutRender). The good-driven
-    // body (chips, chart, sell/buy) is hidden rather than torn down, so switching back to a tier
-    // restores it untouched. This runs on every poll (via __tradeRefresh), so the donut drains, the
-    // price line extends and the rings fill as ticks pass.
-    var body = document.querySelector('#tp-trade .tw-body');
-    var deutPanel = el('tw-deut-panel'), reslist = el('tw-reslist');
-    if(T.deut){
-      renderNav();
-      if(body) body.style.display = 'none';
-      if(reslist) reslist.style.display = 'none';
-      if(deutPanel) deutPanel.style.display = '';
-      deutRender(guild);
-      return;
-    }
-    if(body) body.style.display = '';
-    if(reslist) reslist.style.display = '';
-    if(deutPanel) deutPanel.style.display = 'none';
     if(T.good == null || priceOf(T.good) == null){
       var pick = defaultGood(guild);
       if(pick){ T.good = pick; T.tier = tierOf(pick); }
@@ -5535,26 +5348,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   panel.addEventListener('click', function(e){
     var tier = e.target.closest('.tw-tier');
     if(tier){
-      if(tier.getAttribute('data-deut')){ T.deut = true; T.navSig = ''; render(); return; }
       var t = +tier.getAttribute('data-tier');
-      if(tierGoods(t).length){ T.deut = false; T.tier = t; T.navSig = ''; render(); }
+      if(tierGoods(t).length){ T.tier = t; T.navSig = ''; render(); }
       return;
     }
-    // The DEUTERIUM refinery tree: a system row toggles its refinery list open/closed; a refinery
-    // row opens the venture-management stub (§2.7). The open state is remembered in T.deutOpen so a
-    // poll's signature-guarded rebuild honours it.
-    var tog = e.target.closest('.tw-deut-sysrow');
-    if(tog){
-      var sid = tog.getAttribute('data-toggle');
-      var kids = tog.parentNode.querySelector('.tw-deut-kids');
-      var isOpen = kids.style.display !== 'none';
-      kids.style.display = isOpen ? 'none' : '';
-      tog.querySelector('.caret').innerHTML = isOpen ? '&#9655;' : '&#9661;';
-      T.deutOpen[sid] = !isOpen;
-      return;
-    }
-    var refrow = e.target.closest('.tw-deut-refrow');
-    if(refrow){ openVentureManagement(refrow.getAttribute('data-open')); return; }
     var chip = e.target.closest('.tw-chip');
     if(chip){
       if(chip.classList.contains('dim')) return;   // unpriced: not tradable
@@ -6019,6 +5816,269 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(T.open) render();
     if(TX.open && !txDone()){ if(TX.kind === 'sell') txRenderSellLedger(); else txRenderBuyLedger(); }
   };
+})();
+</script>
+
+<!-- ===== the DEUTERIUM tab — the guild-wide monitoring DASHBOARD (§1.4 "The Deuterium Cycle",
+   slice 2b) ==========================================================================
+   A TOP-LEVEL tab, a peer of TRADE and the Guild Hall, rendered in the SHELL'S OWN overlay exactly
+   like them: it reads the snapshot the shell already polls (window.__snapshot) and computes NO engine
+   number (§18) — every figure is a published field, and the only derives are sanctioned presentation
+   (a sum of two published credit values, an arc length, a bar height).
+
+   This block was LIFTED WHOLESALE out of the TRADE tab's IIFE, where the dashboard first shipped as a
+   sub-tab beside the trade tiers. Deuterium is untradeable, so it never belonged among the trade tiers
+   — and inside the trade scroll body it could not fill the screen. It is now its own #tp-deut panel,
+   opened / closed / polled through its own lifecycle (__deutOpen / __deutClosed / __deutRefresh), the
+   same seam the Guild Hall uses. The four SVG builders are docs/mockups/deuterium-tab.html VERBATIM;
+   the render logic is unchanged from the trade build — only its scope (its own IIFE, its own helpers,
+   its own #tp-deut delegated listener) moved. ===== -->
+<script id="deuterium-tab-wire">
+(function(){
+  "use strict";
+
+  var D = {
+    open: false,
+    deutOpen: {},     // the refinery tree's per-system open/closed state (survives polls)
+    deutTreeSig: ''   // rebuild the tree only when the set of refineries changes
+  };
+
+  // Own helpers — copies of the Guild Hall panel's (the trade IIFE's are no longer in scope). They
+  // read LIVE.snap via window.__snapshot and the player's guild row, exactly as before.
+  function el(id){ return document.getElementById(id); }
+  function snap(){ return (window.__snapshot && window.__snapshot()) || null; }
+  function meGuild(){
+    var s = snap(); if(!s) return null;
+    var id = (window.__player && window.__player().guildId) || null;
+    if(!id) return null;
+    return (s.guilds || []).filter(function(g){ return g.id === id; })[0] || null;
+  }
+  function fmt(n){ return Math.round(n).toLocaleString('en-US'); }
+  function money(n){ return Number(n).toFixed(2); }
+  function esc(s){ return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function deutC(n){ return '&#162;' + fmt(n); }   // credits: ¢ then an integer
+
+  /* ===== The four SVG builders — docs/mockups/deuterium-tab.html VERBATIM (the design contract);
+     deutRender feeds them LIVE snapshot fields in place of the mockup's sample arrays. ============ */
+
+  // 1. THE GLANCE DONUT — blue legal + red contraband against the cycle-start ring, the hollow
+  //    (dim track showing through) = used this cycle. NO numbers or text inside it. `ring` is the
+  //    cycle-start total ALREADY resolved by the caller (per-component null fallback to the current
+  //    value — "full from birth"); donutMax = max(ring, current) so mid-cycle refining never
+  //    overflows. Arc order red → blue → hollow, so legal-first depletion eats blue before red.
+  function deutDonut(legalNow, contrabandNow, ring){
+    var current = legalNow + contrabandNow;
+    var donutMax = Math.max(ring, current) || 1;
+    var R = 58, C = 2 * Math.PI * R, cx = 72, cy = 72;
+    var red  = (contrabandNow / donutMax) * C;
+    var blue = (legalNow / donutMax) * C;
+    return '<svg viewBox="0 0 144 144" class="deut-donut">'
+      + '<g transform="rotate(-90 ' + cx + ' ' + cy + ')">'
+      +   '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" class="dn-track"/>'
+      +   '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" class="dn-red" '
+      +     'stroke-dasharray="' + red.toFixed(2) + ' ' + (C - red).toFixed(2) + '" stroke-dashoffset="0"/>'
+      +   '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" class="dn-blue" '
+      +     'stroke-dasharray="' + blue.toFixed(2) + ' ' + (C - blue).toFixed(2) + '" stroke-dashoffset="' + (-red).toFixed(2) + '"/>'
+      + '</g></svg>';
+  }
+
+  // 2. THE FUEL-PRICE LINE — a polyline (+ soft area fill) over `hist` (oldest→newest) with the live
+  //    price appended as the trailing point; min/max auto-scaled with a small pad. Fewer than two
+  //    points (an empty history before the first bucket closes) → the quiet "gathering history…"
+  //    state. Returns { svg, tip } — `tip` is the last point's {x,y} as fractions, for the HTML
+  //    "now" marker (kept out of the SVG so preserveAspectRatio="none" never distorts a round dot).
+  function deutPriceLine(hist, live){
+    var pts = hist.slice();
+    if(live != null) pts = pts.concat([live]);
+    if(pts.length < 2) return { svg:'<div class="deut-empty">gathering history&hellip;</div>', tip:null };
+    var W = 340, H = 120, padx = 4, padT = 12, padB = 8, pw = W - padx*2, ph = H - padT - padB;
+    var lo = Math.min.apply(null, pts), hi = Math.max.apply(null, pts);
+    var pad = (hi - lo) * 0.15 || (hi * 0.1) || 1; lo -= pad; hi += pad;
+    var X = function(i){ return padx + i * (pw / (pts.length - 1)); };
+    var Y = function(v){ return padT + (hi - v) / (hi - lo) * ph; };
+    var line = pts.map(function(v,i){ return X(i).toFixed(1) + ',' + Y(v).toFixed(1); });
+    var area = 'M ' + X(0).toFixed(1) + ',' + (padT+ph).toFixed(1) + ' L ' + line.join(' L ')
+             + ' L ' + X(pts.length-1).toFixed(1) + ',' + (padT+ph).toFixed(1) + ' Z';
+    var grid = '';
+    for(var k = 1; k <= 2; k++){ var gy = (padT + k*ph/3).toFixed(1); grid += '<line class="pl-grid" x1="0" y1="'+gy+'" x2="'+W+'" y2="'+gy+'"/>'; }
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
+      + grid
+      + '<path class="pl-area" d="' + area + '"/>'
+      + '<polyline class="pl-line" points="' + line.join(' ') + '"/></svg>';
+    var last = pts.length - 1;
+    return { svg:svg, tip:{ x:X(last)/W, y:Y(pts[last])/H, v:pts[last] } };
+  }
+
+  // 3. THE BURN-HABITS BARS — stacked bars per cycle: blue (burn − contrabandBurned = legal burn) at
+  //    the base, red (contrabandBurned) on top; an amber dashed `granted` polyline over them; a
+  //    3-line y-grid. `hist` = [{ burn, granted, contrabandBurned }], oldest→newest. Empty → the
+  //    quiet "gathering history…" state.
+  function deutBurnBars(hist){
+    if(!hist || !hist.length) return '<div class="deut-empty">gathering history&hellip;</div>';
+    var data = hist.slice(-10);
+    var maxV = 0;
+    data.forEach(function(d){ maxV = Math.max(maxV, d.burn || 0, d.granted || 0); });
+    maxV = maxV || 1;
+    var W = 340, H = 120, padx = 6, padT = 8, padB = 8, pw = W - padx*2, ph = H - padT - padB;
+    var n = data.length, slot = pw / n, bw = Math.min(slot * 0.6, 26);
+    var Y = function(v){ return padT + (1 - v / maxV) * ph; };
+    var base = padT + ph;
+    var grid = '';
+    for(var k = 1; k <= 3; k++){ var gy = (padT + k*ph/3).toFixed(1); grid += '<line class="bb-grid" x1="0" y1="'+gy+'" x2="'+W+'" y2="'+gy+'"/>'; }
+    var bars = '', grantPts = [];
+    data.forEach(function(d, i){
+      var cx = padx + slot*i + slot/2, x = cx - bw/2;
+      var legal = Math.max(0, (d.burn || 0) - (d.contrabandBurned || 0));
+      var contra = Math.max(0, d.contrabandBurned || 0);
+      var yBlue = Y(legal), hBlue = base - yBlue;
+      var yRed = Y(legal + contra), hRed = Y(legal) - yRed;
+      if(hBlue > 0) bars += '<rect class="bb-blue" x="'+x.toFixed(1)+'" y="'+yBlue.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hBlue.toFixed(1)+'"/>';
+      if(hRed  > 0) bars += '<rect class="bb-red" x="'+x.toFixed(1)+'" y="'+yRed.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hRed.toFixed(1)+'"/>';
+      grantPts.push(cx.toFixed(1) + ',' + Y(d.granted || 0).toFixed(1));
+    });
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
+      + grid + bars
+      + '<polyline class="bb-grant" points="' + grantPts.join(' ') + '"/></svg>';
+  }
+
+  // 4. THE SUSPICION GAUGE — a 180° arc with a red→amber→green gradient and a STATIC needle. Inert
+  //    concept only (§7 detection is unbuilt): the needle never moves and reads no field.
+  function deutSuspicion(){
+    var cx = 90, cy = 92, R = 74;
+    function pt(deg){ var a = Math.PI * (1 - deg/180); return [ (cx + R*Math.cos(a)).toFixed(1), (cy - R*Math.sin(a)).toFixed(1) ]; }
+    function seg(d0, d1, col){
+      var p0 = pt(d0), p1 = pt(d1);
+      return '<path class="gg-arc" stroke="'+col+'" d="M '+p0[0]+' '+p0[1]+' A '+R+' '+R+' 0 0 1 '+p1[0]+' '+p1[1]+'"/>';
+    }
+    var na = Math.PI * (1 - 34/180), nx = (cx + (R-16)*Math.cos(na)).toFixed(1), ny = (cy - (R-16)*Math.sin(na)).toFixed(1);
+    return '<svg viewBox="0 0 180 104" class="deut-gauge">'
+      + seg(0, 60, 'var(--dgreen)') + seg(60, 120, 'var(--tw-amber)') + seg(120, 180, 'var(--dred)')
+      + '<line class="gg-needle" x1="'+cx+'" y1="'+cy+'" x2="'+nx+'" y2="'+ny+'"/>'
+      + '<circle class="gg-hub" cx="'+cx+'" cy="'+cy+'" r="4"/></svg>';
+  }
+
+  // The refinery-row click target (§2.7). Venture management is UNDESIGNED, so this is a stub — it
+  // logs the venture id and fires no action. (The trade build also flashed a "coming soon" note into
+  // the trade tab's note line; this panel has no such surface, so the stub just logs.)
+  function openVentureManagement(ventureId){
+    try{ console.log('openVentureManagement (stub, §2.7):', ventureId); }catch(e){}
+  }
+
+  // The refinery tree (left rail). The guild's ventures where deuteriumRefinery === true — MINES
+  // never appear — grouped by systemId (name via the shell's __systemName bridge). Rebuilt only when
+  // the set of refineries changes (a signature), so a poll never throws away the open/closed state or
+  // scroll; the open state lives in D.deutOpen and the sysrow/refrow clicks are handled by the
+  // panel's delegated listener.
+  function deutRenderTree(guild, s){
+    var host = el('tw-deut-tree'); if(!host) return;
+    var myId = guild && guild.id;
+    var ventures = (s && Array.isArray(s.ventures)) ? s.ventures : [];
+    var refs = ventures.filter(function(v){ return v.ownerGuildId === myId && v.deuteriumRefinery === true; });
+    var groups = {};
+    refs.forEach(function(v){ var sid = v.systemId || 'unknown'; (groups[sid] = groups[sid] || []).push(v); });
+    var sysIds = Object.keys(groups).sort();
+    var sig = sysIds.map(function(sid){ return sid + ':' + groups[sid].map(function(v){ return v.id; }).sort().join(','); }).join('|');
+    if(sig === D.deutTreeSig) return;
+    D.deutTreeSig = sig;
+    if(!sysIds.length){
+      host.innerHTML = '<div class="tw-deut-treeempty">No refineries.<br>Deploy one from a settlement slot (FUEL tier).</div>';
+      return;
+    }
+    var out = '';
+    sysIds.forEach(function(sid){
+      var name = (window.__systemName && window.__systemName(sid)) || sid;
+      var list = groups[sid], open = D.deutOpen[sid] !== false;   // default open
+      out += '<div class="tw-deut-sys" data-sys="'+esc(sid)+'">'
+        + '<div class="tw-deut-sysrow" data-toggle="'+esc(sid)+'"><span class="caret">'+(open?'&#9661;':'&#9655;')+'</span>'
+        +   '<span class="nm">'+esc(name)+'</span><span class="ct">'+list.length+'</span></div>'
+        + '<div class="tw-deut-kids"'+(open?'':' style="display:none"')+'>'
+        + list.map(function(v){
+            var tail = v.assetId ? String(v.assetId).split('_').slice(-1)[0] : (v.id || '');
+            return '<div class="tw-deut-refrow" data-open="'+esc(v.id)+'"><span class="dot"></span>'
+              + '<span class="nm">Refinery'+(tail ? ' &middot; '+esc(tail) : '')+'</span></div>';
+          }).join('')
+        + '</div></div>';
+    });
+    host.innerHTML = out;
+  }
+
+  // The whole dashboard, run on open and on every poll (while open). Every figure re-reads the
+  // snapshot, so the donut drains, the price line extends and the rings fill live.
+  function deutRender(guild){
+    var s = snap();
+
+    // --- Stockpile: the glance donut + the credit readout (total / legal / contraband) ---
+    var legal  = (guild && guild.fuelHoardValue != null) ? guild.fuelHoardValue : 0;
+    var contra = (guild && guild.deuteriumFuelValue) || 0;
+    // Ring = the cycle-start total; per-component fallback to the CURRENT value when a *AtCycleStart
+    // baseline is null (guild not yet due a grant → donut full, no hollow — "full from birth").
+    var ringLegal  = (guild && guild.fuelHoardAtCycleStartValue != null) ? guild.fuelHoardAtCycleStartValue : legal;
+    var ringContra = (guild && guild.deuteriumFuelAtCycleStartValue != null) ? guild.deuteriumFuelAtCycleStartValue : contra;
+    el('tw-deut-donut').innerHTML = deutDonut(legal, contra, ringLegal + ringContra);
+    el('tw-deut-stockstat').innerHTML =
+        '<div class="row"><span class="k"><span class="sw" style="background:#4f93d1"></span>Legal</span><span class="v blue">'+deutC(legal)+'</span></div>'
+      + '<div class="row"><span class="k"><span class="sw" style="background:var(--tw-down)"></span>Contraband</span><span class="v red">'+deutC(contra)+'</span></div>'
+      + '<div class="row total"><span class="k">Total held</span><span class="v">'+deutC(legal + contra)+'</span></div>';
+
+    // --- Production: legal / contraband units-per-cycle + the fuel-price line ---
+    var prod = (guild && guild.deuteriumProduction) || { legalPerCycle:0, contrabandPerCycle:0 };
+    el('tw-deut-prodtiles').innerHTML =
+        '<div class="tw-deut-tile blue"><div class="k"><span class="sw" style="background:#4f93d1"></span>Legal</div><div class="v">'+fmt(prod.legalPerCycle||0)+'</div><div class="u">units / cycle</div></div>'
+      + '<div class="tw-deut-tile red"><div class="k"><span class="sw" style="background:var(--tw-down)"></span>Contraband</div><div class="v">'+fmt(prod.contrabandPerCycle||0)+'</div><div class="u">units / cycle</div></div>';
+    var hist = (s && Array.isArray(s.fuelPriceHistory)) ? s.fuelPriceHistory : [];
+    var live = (s && s.galacticSupply && s.galacticSupply.fuel && s.galacticSupply.fuel.fuelPrice != null)
+      ? s.galacticSupply.fuel.fuelPrice : null;
+    var pl = deutPriceLine(hist, live);
+    var host = el('tw-deut-pricechart'); host.innerHTML = pl.svg;
+    var now = el('tw-deut-pricenow');
+    if(pl.tip){
+      var tip = document.createElement('div'); tip.className = 'tw-deut-tip';
+      tip.style.left = (pl.tip.x*100)+'%'; tip.style.top = (pl.tip.y*100)+'%'; host.appendChild(tip);
+      var lab = document.createElement('div'); lab.className = 'tw-deut-nowlab';
+      lab.style.left = (pl.tip.x*100)+'%'; lab.style.top = (pl.tip.y*100)+'%';
+      lab.innerHTML = '&#162;' + money(pl.tip.v) + '/q'; host.appendChild(lab);
+      now.innerHTML = 'now &#162;' + money(pl.tip.v) + '/q';
+    } else {
+      now.textContent = 'gathering…';
+    }
+
+    // --- Consumption: the inert suspicion gauge + the burn-habits bars ---
+    el('tw-deut-suspicion').innerHTML = deutSuspicion();
+    var burn = (guild && Array.isArray(guild.fuelBurnHistory)) ? guild.fuelBurnHistory : [];
+    el('tw-deut-burnchart').innerHTML = deutBurnBars(burn);
+
+    // --- Left: the refinery tree ---
+    deutRenderTree(guild, s);
+  }
+
+  // Delegated once, on the deuterium panel — so every re-render keeps working with no rebinding. A
+  // system row toggles its refinery list open/closed; a refinery row opens the venture-management
+  // stub (§2.7). The open state is remembered in D.deutOpen so a poll's signature-guarded rebuild
+  // honours it.
+  var panel = el('tp-deut');
+  if(panel) panel.addEventListener('click', function(e){
+    var tog = e.target.closest('.tw-deut-sysrow');
+    if(tog){
+      var sid = tog.getAttribute('data-toggle');
+      var kids = tog.parentNode.querySelector('.tw-deut-kids');
+      var isOpen = kids.style.display !== 'none';
+      kids.style.display = isOpen ? 'none' : '';
+      tog.querySelector('.caret').innerHTML = isOpen ? '&#9655;' : '&#9661;';
+      D.deutOpen[sid] = !isOpen;
+      return;
+    }
+    var refrow = e.target.closest('.tw-deut-refrow');
+    if(refrow){ openVentureManagement(refrow.getAttribute('data-open')); return; }
+  });
+
+  // The shell drives these three: the tab opening, the tab closing, and every poll — mirroring the
+  // Guild Hall's __guildOpen / __guildClosed / __guildRefresh. So the dashboard renders on open and
+  // re-renders every poll while open (the donut drains, the price line extends, the rings fill),
+  // driven by its own panel's lifecycle instead of the trade tab's.
+  window.__deutOpen = function(){ D.open = true; D.deutTreeSig = ''; deutRender(meGuild()); };
+  window.__deutClosed = function(){ D.open = false; };
+  window.__deutRefresh = function(){ if(D.open) deutRender(meGuild()); };
 })();
 </script>
 

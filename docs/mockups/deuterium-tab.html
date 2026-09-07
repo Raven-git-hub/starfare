@@ -4,8 +4,10 @@
 <title>Starfare — Deuterium Tab (mockup)</title>
 <!-- ============================================================================================
   DESIGN MOCKUP — the DEUTERIUM tab's guild-wide monitoring dashboard (docs/mockups). Not shipped
-  as-is; the game renders THIS SHAPE inside client/game.html's TRADE tab (the #tw-deut-panel body),
-  reading the LIVE snapshot — the same rule the trade + guild-hall mockups follow.
+  as-is; the game renders THIS SHAPE as a TOP-LEVEL tab in client/game.html (its own #tp-deut panel, a
+  peer of System Manifest · TRADE · Transport · Guild Hall), reading the LIVE snapshot — the same rule
+  the trade + guild-hall mockups follow. Deuterium is untradeable, so the tab is NOT inside TRADE; it
+  fills the viewport like the Guild Hall panel, not boxed in the trade tab's scroll body.
 
   It is a Guild Hall three-panel layout (left rail | centre 1fr | right hero), matched to the TRADE
   tab's visual language (amber/Cinzel/IBM-Plex on the void palette). Left → right:
@@ -69,14 +71,12 @@
     color:var(--ink); font-family:var(--mono); font-size:14px; line-height:1.45;
     -webkit-font-smoothing:antialiased; padding:22px;}
 
-  /* nav (the tier rail, DEUTERIUM tab selected) — context only, so the mockup reads like the tab */
+  /* nav (the TOP-LEVEL tab rail, DEUTERIUM selected) — context only, so the mockup reads like the
+     standalone tab it now is: a peer of the other top-level tabs, NOT a tier inside TRADE. */
   .nav{display:flex; gap:2px; margin-bottom:14px;}
-  .tier{font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3);
-    padding:7px 16px 8px; border:1px solid var(--line); border-bottom:none; border-radius:6px 6px 0 0;
-    background:var(--panel);}
-  .tier .n{color:var(--ink2); font-weight:600; margin-right:7px;}
-  .tier.deut{margin-left:8px; color:var(--deut2); background:var(--panel2); box-shadow:0 -2px 0 var(--deut) inset;}
-  .tier.deut .n{color:var(--deut);}
+  .rtab{font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink3);
+    padding:9px 22px 10px; border:1px solid var(--line); background:var(--panel);}
+  .rtab.on{color:var(--deut2); background:var(--panel2); border-color:var(--deut); box-shadow:0 -2px 0 var(--deut) inset;}
 
   /* three-zone body: [ refinery rail | centre | oceanic art ] — mirrors the Guild Hall gh-body */
   .body{display:grid; grid-template-columns:var(--hero) minmax(0,1fr) var(--thero); gap:16px; align-items:stretch; min-height:620px;}
@@ -184,11 +184,11 @@
 </style>
 
 <div class="nav">
-  <div class="tier"><span class="n">1</span>Raw</div>
-  <div class="tier"><span class="n">2</span>Processed</div>
-  <div class="tier"><span class="n">3</span>Parts</div>
-  <div class="tier"><span class="n">4</span>Constructed</div>
-  <div class="tier deut"><span class="n">&#9670;</span>Deuterium</div>
+  <div class="rtab">System Manifest</div>
+  <div class="rtab">Trade</div>
+  <div class="rtab on">&#9670; Deuterium</div>
+  <div class="rtab">Transport</div>
+  <div class="rtab">Guild Hall</div>
 </div>
 
 <div class="body">
