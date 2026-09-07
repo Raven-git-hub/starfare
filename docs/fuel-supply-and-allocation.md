@@ -253,6 +253,13 @@ resolved and the storage / burn model pinned:
   total (the burn the engine actually makes); deuterium is removed from the tradeable tiers and the production
   console; and a **placeholder DEUTERIUM tab** is dropped in. The tab's DASHBOARD (price + graph, the raw /
   contraband readouts in full, the mine / refinery roster) is **slice 2b (NOT built — designed first).**
+  Its DATA LAYER is now **BUILT (fuel-burn-history slice, 07-09-26, engine + snapshot only):** three
+  observed per-guild statistics the tab's two fuel visuals need — `fuelBurnedThisCycle` (the per-cycle
+  burn total), `deuteriumFuelAtCycleStart` (the donut's contraband/red start-of-cycle baseline, marked
+  to credits in the snapshot), and `fuelBurnHistory` (a rolling 10-cycle `{ burn, granted,
+  contrabandBurned }` series, integer fuel quantities so it stays comparable across price moves),
+  recorded at the cycle boundary before the new grant lands. No fuel behaviour changes; see
+  `docs/guild-hall.md` §4.1 for the fields, units, and boundary-ordering rule.
   **The refinery's deploy surface (client contract) — REVISED 07-09-26.** The illegal refinery is **no longer a
   separate settlement-slot button** routing to the deuterium popup; it is configured as the **FUEL product on a
   factory venture** — a **FUEL tier** in the factory Establish popup's Configuration dropdown that locks the lone

@@ -181,11 +181,21 @@ function fuelValue(units, fuelPrice) {
 // `addStock` (a drained stockpile cell stays at 0) and the 1a raw store already follow; a
 // restore normalises a 0 back to absent via createGuild's omit-when-0. It is only ever touched
 // when there is a remainder, so a guild with no contraband never has the key minted.
+//
+// THE BURN COUNTER (the fuel-burn-history slice, docs/guild-hall.md). Every route burn funnels
+// through here, so this is the one place to accumulate the cycle's TOTAL burn — legal AND
+// contraband together — for the DEUTERIUM tab's burn-habits graph. `fuelBurnedThisCycle` is a
+// STATISTIC, never held fuel: it is NOT summed by invariant 1's conservation nor by
+// `computeGalacticSupply`'s `guildHeld` (both count only the two hoards), and it is RESET at
+// each cycle boundary (tick.js step 6) after the closing cycle's entry is recorded. Minted
+// only when a burn actually happens (`+= amount` on a real burn), so a guild that never burns
+// carries no key — omit-when-0, like the two stores above.
 function burnFuel(guild, amount) {
   const fromHoard = Math.min(guild.fuelHoard, amount);
   guild.fuelHoard -= fromHoard;
   const remainder = amount - fromHoard;
   if (remainder > 0) guild.deuteriumFuel = (guild.deuteriumFuel || 0) - remainder;
+  if (amount > 0) guild.fuelBurnedThisCycle = (guild.fuelBurnedThisCycle || 0) + amount;
   return amount;
 }
 

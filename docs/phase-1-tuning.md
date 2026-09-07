@@ -160,6 +160,28 @@ the same condition the grant record uses), so a holdings-less galaxy carries no 
 stays byte-identical to pre-slice. **No backfill**, the same as the price rings: the past was
 never recorded, so the ring fills forward from the guild's first boundary.
 
+### DEUTERIUM tab burn-habits graph — the fuel-burn history depth *(07-09-26 — `sim/fuel-burn-history.js`)*
+
+`guild.fuelBurnHistory` records, one entry per cycle at the window boundary, the closing cycle's
+`{ burn, granted, contrabandBurned }` — the total fuel burned set against the legal fuel granted,
+so the DEUTERIUM tab's "fuel-burn habits" graph (`docs/guild-hall.md`, the fuel-burn-history
+subsection) has a series to draw. A direct sibling of the modifier ring above: **one small
+per-guild ring, one entry per cycle, no coarsening** — but the entry is an OBJECT of three integer
+fuel QUANTITIES (deliberately not credits, so the burn/allotment series stays comparable across
+price moves), not a single float.
+
+Like the modifier depth, this is a **DISPLAY-DEPTH constant, not an economy number**: it feeds no
+rate, price, fee, grant or commitment, and changing it changes only how far back the graph can
+look. So it is **not a decision-checklist entry**. Single-sourced in `sim/fuel-burn-history.js`.
+
+| Constant | Value | Rationale |
+|---|---|---|
+| **`FUEL_BURN_HISTORY_N`** | **10** | The graph draws the **last 10** cycles — the same 10-cycle window the Standing panel's Performance line shows. Unlike the modifier ring's two-cycle headroom, this keeps **exactly** the 10 the graph draws: a burn entry has no second consumer that would want the extra, so the ring is the minimum that serves the one reader (≤ 10 small objects per guild, in the save **and** the determinism hash). |
+
+**Sparse:** an entry is pushed only for a guild that BURNED this cycle (`fuelBurnedThisCycle > 0`)
+OR was DUE a grant (`desired > 0`), so a burn-free, holdings-less galaxy carries no ring at all and
+stays byte-identical to pre-slice. **No backfill**, the same as the modifier ring.
+
 ### Licence — the commitment sale *(26-08-26 — Slice 3a, `sim/licence.js`)*
 
 A committed delivery is now a **sale**: the owner is paid `round((1 − o) × units × posted price)` and the

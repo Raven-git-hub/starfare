@@ -75,6 +75,7 @@ const { ASSET_CONDITION_NEW, ASSET_CONDITION_MIN, isAssetKind, assetKindForVentu
 const { DEFAULT_WINDOW_N, winStartFor, windowFraction } = require('./windows.js');
 const { HISTORY_N } = require('./history.js');
 const { MODIFIER_HISTORY_N } = require('./modifier-history.js');
+const { FUEL_BURN_HISTORY_N } = require('./fuel-burn-history.js');
 const { TIERS: PRICE_HISTORY_TIERS, TIER_KEYS } = require('./price-history.js');
 const { RING_DEPTH: PRICE_RING_DEPTH } = require('./price-ring.js');
 const { computeGalacticSupply } = require('./supply.js');
@@ -215,6 +216,18 @@ function checkNonNegativityAndIntegrality(state) {
     // is never driven below 0; a negative or fractional value would corrupt both invariant 1's
     // conservation sum and the guildHeld cache silently. Absent (no contraband) is legal.
     if (g.deuteriumFuel !== undefined) checkField(out, g.deuteriumFuel, `guild:${g.id}.deuteriumFuel`);
+    // deuteriumFuelAtCycleStart — the contraband store at the START of the cycle (the fuel-burn-
+    // history slice, docs/guild-hall.md), the donut's RED baseline. Stamped at each boundary in
+    // tick.js step 6 to `g.deuteriumFuel`, so a quantity of fuel like `deuteriumFuel` itself: the
+    // same integer + non-negativity sweep. Absent (no contraband — omit-when-0) is the common case.
+    if (g.deuteriumFuelAtCycleStart !== undefined) checkField(out, g.deuteriumFuelAtCycleStart, `guild:${g.id}.deuteriumFuelAtCycleStart`);
+    // fuelBurnedThisCycle — the running per-cycle burn total (sim/fuel.js `burnFuel`, reset at the
+    // boundary). A STATISTIC, not held fuel, so it is deliberately ABSENT from invariant 1's
+    // conservation sum and from `computeGalacticSupply`'s `guildHeld` (both count only the two
+    // hoards) — but it is still a quantity of fuel and must be a NON-NEGATIVE INTEGER (§15.2): a
+    // fractional or negative counter would be a bug and would draw a lie on the burn graph. Absent
+    // (no burn this cycle — omit-when-0) is legal.
+    if (g.fuelBurnedThisCycle !== undefined) checkField(out, g.fuelBurnedThisCycle, `guild:${g.id}.fuelBurnedThisCycle`);
 
     // Stockpiles (ruling B1, §15.2): a NESTED map systemId -> good -> int. Every
     // value is an integer, non-negative; every good key is a known stockpile good
@@ -493,6 +506,42 @@ function checkModifierHistory(state) {
       if (typeof v !== 'number' || !Number.isFinite(v)) {
         out.push({ rule: 'modifier-history-sample-finite (sim/modifier-history.js)', where: `${where}[${i}]`, detail: { value: v } });
       }
+    });
+  }
+  return out;
+}
+
+// The per-guild FUEL-BURN history ring (guild.fuelBurnHistory, sim/fuel-burn-history.js) — the
+// DEUTERIUM tab's burn-habits graph (docs/guild-hall.md). Display-depth state, not a ledger, so
+// nothing here can break conservation; what it CAN do is rot silently and draw a lie. It mirrors
+// checkModifierHistory but its samples are OBJECTS of three integer fuel quantities, not floats:
+//   - it is an ARRAY (a broken write that stored something else must fail loudly, not plot);
+//   - it is CAPPED at FUEL_BURN_HISTORY_N — a ring that stopped ringing would grow without bound;
+//   - every entry's `burn`, `granted`, `contrabandBurned` is a NON-NEGATIVE INTEGER fuel quantity
+//     (§15.2) — unlike the modifier ring's sanctioned floats, these are counts and a fractional or
+//     negative one is a bug, so the full integer sweep applies (via checkField).
+// A guild that has never burned and was never due a grant carries no `fuelBurnHistory` at all —
+// legal, the byte-identical no-op path.
+function checkFuelBurnHistory(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    if (g.fuelBurnHistory === undefined) continue;
+    const where = `guild:${g.id}.fuelBurnHistory`;
+    if (!Array.isArray(g.fuelBurnHistory)) {
+      out.push({ rule: 'fuel-burn-history-is-an-array (sim/fuel-burn-history.js)', where, detail: { value: g.fuelBurnHistory } });
+      continue; // the cap/value checks below are meaningless without an array
+    }
+    if (g.fuelBurnHistory.length > FUEL_BURN_HISTORY_N) {
+      out.push({
+        rule: 'fuel-burn-history-ring-capped-at-FUEL_BURN_HISTORY_N (sim/fuel-burn-history.js)',
+        where,
+        detail: { length: g.fuelBurnHistory.length, cap: FUEL_BURN_HISTORY_N },
+      });
+    }
+    g.fuelBurnHistory.forEach((e, i) => {
+      checkField(out, e && e.burn, `${where}[${i}].burn`);
+      checkField(out, e && e.granted, `${where}[${i}].granted`);
+      checkField(out, e && e.contrabandBurned, `${where}[${i}].contrabandBurned`);
     });
   }
   return out;
@@ -1123,6 +1172,7 @@ function checkInvariants(state, tick) {
     ...checkProductionHistory(state),
     ...checkFuelGrant(state),
     ...checkModifierHistory(state),
+    ...checkFuelBurnHistory(state),
     ...checkPrices(state),
     ...checkPriceHistory(state),
     ...checkPriceRing(state),

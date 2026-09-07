@@ -137,7 +137,8 @@ row needed now ships (the A/B/C slice, 02-09-26).
 | RP — Deuterium / Transport / Council | 0 | DEFERRED |
 | Fuel price | `galacticSupply.fuel.fuelPrice` | LIVE |
 | Legal remaining (credits) | `guilds[].fuelHoardValue` | LIVE |
-| Illegal (credits) | 0 | DEFERRED |
+| Illegal remaining (credits) | `guilds[].deuteriumFuelValue` | LIVE *(illegal refining now exists — slice 1b)* |
+| Illegal start-of-cycle max (credits) | `guilds[].deuteriumFuelAtCycleStartValue` (boundary contraband × price) | BUILT (fuel-burn-history slice, §4) |
 | Start-of-cycle max (credits) | `guilds[].fuelHoardAtCycleStartValue` (boundary hoard × price) | BUILT (A) |
 | Used this cycle (credits) | (`fuelHoardAtCycleStart` − `fuelHoard`) × price | BUILT (A, derived) |
 
@@ -241,6 +242,61 @@ strip (`commitment-scaffold.test.js`); the fuel loop's own numbers are unchanged
 Slices A and B both stamp a value at the same tick boundary and rode one prompt with C; the client
 panel is the last, and now landed. The minimal end-to-end path is **A + the client panel** (the
 stockpile bar working as you trade), with B and C the enrichments — all four now on screen.
+
+### 4.1 The fuel-burn-history slice — per-guild burn history + the contraband start-of-cycle datum *(07-09-26 — engine + snapshot only)*
+
+The **DEUTERIUM tab** (`fuel-supply-and-allocation.md` §1.4, slice 2b) will show two fuel visuals:
+a **donut** of the guild's held fuel depleting over the cycle (mirroring §2.3's stockpile bar, with
+a `[red illegal][blue legal]` fill), and a **10-cycle "fuel-burn habits" graph** superimposing each
+cycle's total burn against the legal fuel it was granted. Both need data the engine did not store.
+This slice adds **only that data layer** — three new per-guild fields, stamped in the tick, published
+in the snapshot, guarded by invariants and tests. **Observation only:** no existing fuel behaviour
+(burn, grant, price) changes — we only observe them — and **invariant 1 is untouched** (the burn
+accumulator is a statistic, not held fuel).
+
+Three fields, all **integer fuel QUANTITIES — deliberately NOT credits**, so the burn/allotment
+series stays comparable across price moves (the snapshot marks the start-of-cycle data to credits
+for the donut, exactly as §2.3 does, but the stored series is quantities):
+
+- **`fuelBurnedThisCycle`** — the running per-cycle burn TOTAL (legal + contraband together),
+  accumulated in `burnFuel` (`sim/fuel.js`, the one choke point every route burn passes through)
+  and **reset at each cycle boundary** once the closing cycle's history entry is recorded. A
+  **counter, never held fuel:** it is NOT summed by invariant 1's conservation nor by
+  `computeGalacticSupply`'s `guildHeld`. Omit-when-0.
+- **`deuteriumFuelAtCycleStart`** — the **contraband held at the START of the cycle** — the donut's
+  **RED baseline**, exactly as `fuelHoardAtCycleStart` (Slice A) is the blue one. Stamped at each
+  boundary to `g.deuteriumFuel`; the contraband store is **not granted**, so its start-of-cycle
+  value is simply whatever is held at the boundary (no `+= grant` the way the legal hoard takes one).
+  Published marked to `reserve.fuelPrice` as `deuteriumFuelAtCycleStartValue`, parallel to
+  `fuelHoardAtCycleStartValue`. Omit-when-0 (a guild with no contraband has no red baseline — the
+  donut reads `null`, not a real 0), UNLIKE the blue datum which always carries a value so the bar
+  is full from birth. *(This is the datum §2.3's audit rows deferred as "Illegal (credits) | 0 |
+  DEFERRED" when illegal refining did not yet exist — now BUILT.)*
+- **`fuelBurnHistory`** — a rolling **last-10-cycle** ring of `{ burn, granted, contrabandBurned }`,
+  oldest → newest (position is the cycle; no tick field, matching `modifierHistory`). One entry per
+  boundary for the closing cycle. `granted` is the **legal fuel actually received (post-rationing)**
+  that FUNDED that cycle — the PREVIOUS boundary's grant. `contrabandBurned` is the red half of the
+  burn (`max(0, burn − legalBurned)`; legal-first `burnFuel` only touches the red once legal is dry).
+  Depth `FUEL_BURN_HISTORY_N = 10` is a display constant (`docs/phase-1-tuning.md`), matching the
+  Standing panel's 10-cycle line. Omit-when-empty.
+
+**⚠ THE BOUNDARY ORDER IS LOAD-BEARING** (`sim/tick.js` step 6). The closing cycle's entry is
+computed **BEFORE** the new grant is applied and before `fuelHoardAtCycleStart` is overwritten,
+because it reads both: `legalBurned = (OLD fuelHoardAtCycleStart − current, pre-new-grant
+fuelHoard)` — nothing but the boundary grant ever adds legal fuel, so the drop from the cycle's
+start to now is exactly the legal burn — and `granted` from the still-unoverwritten `lastFuelGrant`.
+Recording after the grant would measure burn against a hoard that had already taken next cycle's
+fuel, and read the wrong grant.
+
+**Sparsity holds the byte-identity:** an entry is pushed only when the guild BURNED this cycle
+(`fuelBurnedThisCycle > 0`) OR was DUE a grant (`desired > 0`); a completely inert guild carries none
+of these keys. The determinism goldens moved for the committed run alone (it crosses ten boundaries
+and is due a grant at each, so it gains the `fuelBurnHistory` ring), proven the ONLY delta by an
+added strip in `commitment-scaffold.test.js`; no fuel number moved.
+
+**OUT of scope (later slices):** the DEUTERIUM tab / donut / graph themselves (client, slice 2b);
+lighting up §2.3's Guild-Hall bar red segment (this slice is the data, the tab consumes it); §7
+detection / fines (`contrabandBurned` is a recorded statistic, nothing punishes it yet).
 
 ## 5. Deferred (with their mechanics, not here)
 

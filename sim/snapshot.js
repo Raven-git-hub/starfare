@@ -502,6 +502,26 @@ function buildSnapshot(state) {
       deuterium: g.deuterium || 0,
       deuteriumFuel: g.deuteriumFuel || 0,
       deuteriumFuelValue: fuelValue(g.deuteriumFuel || 0, fuelPrice),
+      // The three FUEL-BURN-HISTORY fields the DEUTERIUM tab (slice 2b) reads — the donut's
+      // RED baseline, the live burn counter, and the burn-habits series (docs/guild-hall.md,
+      // the fuel-burn-history subsection; fuel-supply-and-allocation.md §1.4). All ECHOED off
+      // stored state — the engine decides, the browser renders — additive and DERIVED, no
+      // determinism byte of their own.
+      //   - `deuteriumFuelAtCycleStart` + its marked `…Value`: the contraband held at the START
+      //     of this cycle, and that marked to `reserve.fuelPrice` through the SAME `fuelValue`
+      //     the blue baseline uses (invariant 5: one fuel price) — so the donut has a RED max in
+      //     credits exactly parallel to `fuelHoardAtCycleStartValue`. SPARSE like the blue datum:
+      //     `null` for a guild with no contraband, so the donut reads "no red", not a real 0.
+      //   - `fuelBurnedThisCycle`: the live total burned this cycle (the counter, `|| 0`).
+      //   - `fuelBurnHistory`: the rolling last-10-cycle `{ burn, granted, contrabandBurned }`
+      //     series, in integer fuel QUANTITIES (deliberately not credits, so the burn/allotment
+      //     series stays comparable across price moves), the array as stored (`|| []`).
+      deuteriumFuelAtCycleStart: g.deuteriumFuelAtCycleStart == null ? null : g.deuteriumFuelAtCycleStart,
+      deuteriumFuelAtCycleStartValue: g.deuteriumFuelAtCycleStart == null
+        ? null
+        : fuelValue(g.deuteriumFuelAtCycleStart, fuelPrice),
+      fuelBurnedThisCycle: g.fuelBurnedThisCycle || 0,
+      fuelBurnHistory: g.fuelBurnHistory || [],
       // What a Syndicate trade COSTS IN FUEL, per system this guild holds (fuel
       // Slice 2). Keyed by systemId, each `{ fuelBurn, creditCost, travelTicks }`.
       // The BURN is the engine's own `routeFuelCost` (sim/fuel.js) — CALLED, never

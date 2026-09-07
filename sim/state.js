@@ -23,6 +23,7 @@ const { cloneProfile } = require('./profile.js');
 const { cloneWindows } = require('./windows.js');
 const { cloneHistory } = require('./history.js');
 const { cloneModifierHistory } = require('./modifier-history.js');
+const { cloneFuelBurnHistory } = require('./fuel-burn-history.js');
 const { seedPrices } = require('./prices.js');
 const { clonePriceHistory } = require('./price-history.js');
 const { seedPriceRing, clonePriceRing } = require('./price-ring.js');
@@ -59,11 +60,14 @@ function createGuild({
   foundingEntitlement = 0,
   deuterium = 0,
   deuteriumFuel = 0,
+  deuteriumFuelAtCycleStart,
+  fuelBurnedThisCycle = 0,
   stockpiles = {},
   productionProfile = {},
   syndicateWindows = {},
   productionHistory = {},
   modifierHistory = [],
+  fuelBurnHistory = [],
   assets = [],
   ventures = [],
   vehicles = [],
@@ -184,6 +188,33 @@ function createGuild({
     // in today's goldens) carries no key, so the serialized state and every determinism
     // golden stay byte-identical. A scenario or a restored save that HANDS ONE IN keeps it.
     ...(deuteriumFuel !== 0 ? { deuteriumFuel } : {}),
+    // deuteriumFuelAtCycleStart: the CONTRABAND store at the START of the current period — the
+    // RED baseline of the DEUTERIUM tab's fuel donut, exactly as `fuelHoardAtCycleStart` is the
+    // blue one (docs/guild-hall.md, the fuel-burn-history subsection). STAMPED at each cycle
+    // boundary in tick.js step 6 to `g.deuteriumFuel` (the contraband store is not granted, so
+    // its start-of-cycle value is simply whatever is held at the boundary — there is no "+= grant"
+    // the way the legal hoard takes one). An INTEGER quantity of fuel (§15.2), like `deuteriumFuel`.
+    //
+    // OMITTED when absent/0, UNLIKE `fuelHoardAtCycleStart` beside it: that field defaults to the
+    // opening hoard so the stockpile bar is full from birth, but a guild with no contraband has no
+    // red baseline to show, and a 0 is the honest "no red" the donut already reads from `deuteriumFuel`
+    // being absent. Kept only when a caller hands a real one in, so a contraband-free galaxy (every
+    // guild in today's goldens) carries no key and stays byte-identical.
+    ...(deuteriumFuelAtCycleStart !== undefined && deuteriumFuelAtCycleStart !== 0
+      ? { deuteriumFuelAtCycleStart }
+      : {}),
+    // fuelBurnedThisCycle: the running TOTAL fuel burned this cycle — legal + contraband together
+    // — accumulated in `burnFuel` (sim/fuel.js) on every route burn and RESET at each cycle boundary
+    // (tick.js step 6) once the closing cycle's burn-history entry is recorded. A STATISTIC, never
+    // held fuel: it is NOT part of invariant 1's conservation sum nor of `computeGalacticSupply`'s
+    // `guildHeld` (both count only the two hoards). An INTEGER quantity of fuel (§15.2), NON-NEGATIVE
+    // (a counter that only ever grows within a cycle).
+    //
+    // OMITTED when 0, exactly as `deuterium`/`deuteriumFuel` above: a guild that has burned nothing
+    // this cycle (every guild in today's goldens — the golden runs issue no SELL/BUY, so nothing
+    // burns) carries no key and stays byte-identical. A scenario or a restored save that HANDS ONE IN
+    // keeps it, mid-cycle, like the two stores.
+    ...(fuelBurnedThisCycle !== 0 ? { fuelBurnedThisCycle } : {}),
     // stockpiles: systemId -> good -> int, the guild's holdings of each RAW
     // resource, SYSTEM-SCOPED per ruling B1 (§15.2) — a separate pool per system
     // it operates in, accessed only via sim/stock.js. Fuel is NOT here — it
@@ -228,6 +259,15 @@ function createGuild({
     // stays byte-identical to pre-slice. A caller's non-empty seed (a scenario or a restored
     // save) is copied so it can never alias into engine state.
     ...(Array.isArray(modifierHistory) && modifierHistory.length ? { modifierHistory: cloneModifierHistory(modifierHistory) } : {}),
+    // fuelBurnHistory: the rolling per-guild record of the last 10 cycles' fuel burn set against
+    // the legal fuel granted — the DEUTERIUM tab's "fuel-burn habits" graph (sim/fuel-burn-history.js,
+    // docs/guild-hall.md). ENGINE-OWNED, not player-set. Each entry is `{ burn, granted,
+    // contrabandBurned }`, all integer fuel QUANTITIES, oldest → newest. Omitted when empty for the
+    // same reason modifierHistory is: it is minted LAZILY by tick.js's step 6, only for a guild that
+    // burned this cycle or was due a grant, so a holdings-less, burn-free galaxy carries no key and
+    // stays byte-identical. A caller's non-empty seed (a scenario or a restored save) is DEEP-copied,
+    // entry by entry, so it can never alias into engine state.
+    ...(Array.isArray(fuelBurnHistory) && fuelBurnHistory.length ? { fuelBurnHistory: cloneFuelBurnHistory(fuelBurnHistory) } : {}),
     lifetimeProduced: {}, // good -> int; monotonic, only ever increases (§13)
     // assets: the guild's ground-asset INVENTORY (design.md §4, 30-08-26) — the
     // Miners and Factories it owns. Nested here, a sibling of `ventures` and

@@ -47,6 +47,7 @@ const {
 } = require('./issuance.js');
 const { issuanceModifier } = require('./meanline.js');
 const { pushModifierSample } = require('./modifier-history.js');
+const { pushFuelBurnEntry } = require('./fuel-burn-history.js');
 
 // A total, deterministic string order for sort keys — used where a tie has to
 // break the same way every run (invariant 9) rather than however sort found it.
@@ -897,6 +898,35 @@ function stepBaselineAllocation(state, _actions) {
 
   let moved = 0;
   guilds.forEach((g, i) => {
+    // THE FUEL-BURN-HISTORY RECORDING PASS (docs/guild-hall.md, the fuel-burn-history
+    // subsection). ⚠ ORDER IS LOAD-BEARING: the closing cycle's entry is computed HERE,
+    // BEFORE the new grant is applied below and before `fuelHoardAtCycleStart` is
+    // overwritten, because it reads BOTH — the OLD start-of-cycle datum and the current,
+    // pre-new-grant hoard. Recording it after the grant would measure the burn against a
+    // hoard that had already taken next cycle's fuel, and read the wrong grant.
+    //   - `burn`: total fuel burned this closing cycle (legal + contraband), the accumulator.
+    //   - `legalBurned`: legal fuel burned = the OLD start-of-cycle hoard minus the current
+    //     (pre-new-grant) hoard. Nothing but the boundary grant ever ADDS legal fuel, so the
+    //     drop from the cycle's start to now is exactly the legal burn. Clamped ≥ 0.
+    //   - `contrabandBurned`: the red burn = `max(0, burn − legalBurned)`. Legal-first `burnFuel`
+    //     only touches contraband after legal is dry, so this is ≥ 0 and ≤ burn by construction.
+    //   - `granted`: the grant that FUNDED this closing cycle — the PREVIOUS boundary's, recorded
+    //     on `lastFuelGrant` and not yet overwritten (that happens in the `desired > 0` block
+    //     below); 0 before a guild's first grant.
+    // SPARSITY (holds the byte-identity): push only when the guild BURNED this cycle
+    // (`fuelBurnedThisCycle > 0`) OR was DUE a grant (`desired > 0`) — so a completely inert
+    // guild pushes nothing and carries none of these keys, and a burn-free, holdings-less galaxy
+    // stays byte-identical. Then reset the accumulator (omit the key) for the opening cycle.
+    const burn = g.fuelBurnedThisCycle || 0;
+    if (burn > 0 || desired[i] > 0) {
+      const startHoard = g.fuelHoardAtCycleStart == null ? g.fuelHoard : g.fuelHoardAtCycleStart;
+      const legalBurned = Math.max(0, startHoard - g.fuelHoard);
+      const contrabandBurned = Math.max(0, burn - legalBurned);
+      const grantedLast = g.lastFuelGrant ? g.lastFuelGrant.granted : 0;
+      pushFuelBurnEntry(g, { burn, granted: grantedLast, contrabandBurned });
+    }
+    delete g.fuelBurnedThisCycle; // reset for the opening cycle (no-op when absent)
+
     if (granted[i] > 0) g.fuelHoard += granted[i];
     moved += granted[i];
     // Only a guild that was DUE something carries these records — a holdings-less galaxy
@@ -921,6 +951,14 @@ function stepBaselineAllocation(state, _actions) {
       // the stockpile bar's max and the datum the used-this-cycle gap is measured from
       // (docs/guild-hall.md §2.3). An integer quantity of fuel (§15.2), like `fuelHoard`.
       g.fuelHoardAtCycleStart = g.fuelHoard;
+      // The CONTRABAND start-of-cycle datum (the fuel-burn-history slice, docs/guild-hall.md)
+      // — the donut's RED baseline, exactly as `fuelHoardAtCycleStart` above is the blue one.
+      // The contraband store is NOT granted, so its start-of-cycle value is simply whatever is
+      // held at the boundary — no "+= grant". OMIT-WHEN-ZERO: stamped only when the guild holds
+      // contraband, cleared otherwise (a guild that burned its red dry has no baseline to show),
+      // unlike the blue datum which always carries a value so the bar is full from birth.
+      if (g.deuteriumFuel) g.deuteriumFuelAtCycleStart = g.deuteriumFuel;
+      else delete g.deuteriumFuelAtCycleStart;
       // Slice B — the grant modifier, stamped onto the grant record (the panel's Current),
       // now beside this cycle's fuel-credit entitlement (the fuel-change gauge's divisor).
       recordFuelGrant(g, state.tick + 1, granted[i], desired[i], modifier, entitlement);
