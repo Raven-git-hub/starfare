@@ -252,7 +252,14 @@ resolved and the storage / burn model pinned:
   Guild-Hall fuel bar splits blue/red; the SELL/BUY popup's fuel readout counts the combined legal + contraband
   total (the burn the engine actually makes); deuterium is removed from the tradeable tiers and the production
   console; and a **placeholder DEUTERIUM tab** is dropped in. The tab's DASHBOARD (price + graph, the raw /
-  contraband readouts in full, the mine / refinery roster) is **slice 2b (NOT built — designed first).**
+  contraband readouts in full, the mine / refinery roster) shipped as **slice 2b — ✅ BUILT 07-09-26
+  (client-only):** the placeholder gives way to the guild-wide monitoring dashboard, a Guild Hall
+  three-panel layout (refineries-by-system rail | Stockpile / Production / Consumption centre | Oceanic
+  hero) rendered live from the fields the slices below published — the glance donut and the fuel-price +
+  fuel-burn-habits graphs, the legal/contraband production readout, and the refinery tree. The refinery
+  click is a venture-management stub (§2.7, undesigned); the suspicion gauge is an inert concept
+  placeholder (§7, unbuilt). No `sim/` change — every number is already in the snapshot. Design contract:
+  `docs/mockups/deuterium-tab.html`.
   Its DATA LAYER is now **BUILT (fuel-burn-history slice, 07-09-26, engine + snapshot only):** three
   observed per-guild statistics the tab's two fuel visuals need — `fuelBurnedThisCycle` (the per-cycle
   burn total), `deuteriumFuelAtCycleStart` (the donut's contraband/red start-of-cycle baseline, marked
@@ -266,7 +273,7 @@ resolved and the storage / burn model pinned:
   { legalPerCycle, contrabandPerCycle }`, units per cycle) for its Production readout — both observation
   only, no fuel behaviour changed. The tab's price graph is the **FUEL price**, not the raw-deuterium
   price (which keeps its own `state.priceHistory`, untouched). See `docs/guild-hall.md` §4.2. The tab's
-  CLIENT dashboard itself remains slice 2b.
+  CLIENT dashboard that consumes both feeds is **now BUILT (slice 2b, above).**
   **The refinery's deploy surface (client contract) — REVISED 07-09-26.** The illegal refinery is **no longer a
   separate settlement-slot button** routing to the deuterium popup; it is configured as the **FUEL product on a
   factory venture** — a **FUEL tier** in the factory Establish popup's Configuration dropdown that locks the lone

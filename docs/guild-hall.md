@@ -294,9 +294,12 @@ of these keys. The determinism goldens moved for the committed run alone (it cro
 and is due a grant at each, so it gains the `fuelBurnHistory` ring), proven the ONLY delta by an
 added strip in `commitment-scaffold.test.js`; no fuel number moved.
 
-**OUT of scope (later slices):** the DEUTERIUM tab / donut / graph themselves (client, slice 2b);
-lighting up §2.3's Guild-Hall bar red segment (this slice is the data, the tab consumes it); §7
-detection / fines (`contrabandBurned` is a recorded statistic, nothing punishes it yet).
+**Consumed by (later slices):** the DEUTERIUM tab / donut / graph themselves — **now BUILT (client
+slice 2b, 07-09-26; `docs/mockups/deuterium-tab.html`):** the donut reads the two `*AtCycleStartValue`
+baselines + the two live values, and the burn-habits graph reads `fuelBurnHistory`. Still OUT of scope:
+lighting up §2.3's Guild-Hall bar red segment beyond what slice 1b already did; §7 detection / fines
+(`contrabandBurned` is a recorded statistic, nothing punishes it yet — the tab's suspicion gauge is an
+inert concept placeholder).
 
 ### 4.2 The DEUTERIUM tab's engine data — the fuel-price history + the production aggregate *(07-09-26 — engine + snapshot only)*
 
@@ -372,9 +375,12 @@ finite and non-negative and `bucket` a finite integer coordinate.
 **No new game number:** the two depths are display constants, and the production aggregate is rate × cycle,
 both existing quantities.
 
-**OUT of scope:** all client work (the tab, donut, graphs, refinery tree — slice 2b); the suspicion gauge
-/ §7 detection; the raw-deuterium price (the tab's price graph is the FUEL price — this new history; the
-raw-deuterium price keeps its own `priceHistory`, untouched).
+**Consumed by:** all client work (the tab, donut, graphs, refinery tree) — **now BUILT (client slice 2b,
+07-09-26; `docs/mockups/deuterium-tab.html`):** the tab's price graph draws this `fuelPriceHistory`
+(tipped with the live `galacticSupply.fuel.fuelPrice`), and the Production readout draws
+`deuteriumProduction`. Still OUT of scope: the suspicion gauge's maths / §7 detection (the gauge ships as
+an inert concept placeholder); the raw-deuterium price (the tab's price graph is the FUEL price — this
+history; the raw-deuterium price keeps its own `priceHistory`, untouched).
 
 ## 5. Deferred (with their mechanics, not here)
 

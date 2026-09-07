@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Starfare — Deuterium Tab (mockup)</title>
+<!-- ============================================================================================
+  DESIGN MOCKUP — the DEUTERIUM tab's guild-wide monitoring dashboard (docs/mockups). Not shipped
+  as-is; the game renders THIS SHAPE inside client/game.html's TRADE tab (the #tw-deut-panel body),
+  reading the LIVE snapshot — the same rule the trade + guild-hall mockups follow.
+
+  It is a Guild Hall three-panel layout (left rail | centre 1fr | right hero), matched to the TRADE
+  tab's visual language (amber/Cinzel/IBM-Plex on the void palette). Left → right:
+
+    • LEFT   — the guild's REFINERIES only (not mines), grouped by system, each system row
+               expand/collapse, each refinery row clickable → venture management (a stub).
+    • CENTRE — three stacked sections:
+                 Stockpile   — fuel-credit totals + a glance donut (blue legal / red contraband
+                               against the cycle-start ring, the hollow = used this cycle).
+                 Production  — legal / contraband units-per-cycle + the fuel-price graph.
+                 Consumption — a suspicion gauge (an INERT concept placeholder) + the
+                               fuel-burn-habits graph.
+    • RIGHT  — the hero image (OceanicMine.jpg) with the word DEUTERIUM, nothing else.
+
+  Every number the live tab draws is ALREADY in the snapshot — the client renders, never computes a
+  game number (§18 / §5). The data map, field by field:
+
+    Stockpile (credits) : total = fuelHoardValue + deuteriumFuelValue;
+                          Legal = fuelHoardValue; Contraband = deuteriumFuelValue.
+    Donut (glance)      : legalNow = fuelHoardValue, contrabandNow = deuteriumFuelValue;
+                          ring = fuelHoardAtCycleStartValue + deuteriumFuelAtCycleStartValue
+                          (per-component fallback to the current value when a *AtCycleStart is null —
+                          "full from birth"); donutMax = max(ring, current) so mid-cycle refining
+                          never overflows; hollow (used) = max(0, ring − current). Arc order
+                          red → blue → hollow, so legal-first depletion eats blue before red.
+    Production (u/cy)   : Legal = deuteriumProduction.legalPerCycle;
+                          Contraband = deuteriumProduction.contrabandPerCycle.
+    Fuel-price graph    : line = snap.fuelPriceHistory (≤12 closed 6h averages, oldest→newest),
+                          tipped with the live price galacticSupply.fuel.fuelPrice; [] → "gathering".
+    Burn-habits graph   : meGuild().fuelBurnHistory ({ burn, granted, contrabandBurned }, ≤10,
+                          oldest→newest): blue = burn − contrabandBurned, red = contrabandBurned,
+                          amber dashed line = granted; [] → "gathering".
+    Refinery tree       : the guild's ventures where deuteriumRefinery === true, grouped by systemId.
+    Suspicion gauge     : NO data — a fixed needle + a "concept" tag; wired to nothing (§7).
+
+  The four SVG builders below (deutDonut / deutPriceLine / deutBurnBars / deutSuspicion) are the exact
+  draw logic the client reuses, fed live fields in place of the sample arrays here.
+  Hero art: client/assets/industrial/OceanicMine.jpg. See docs/guild-hall.md §4.1/§4.2 +
+  docs/fuel-supply-and-allocation.md §1.4 for the fields, units and boundary rules.
+============================================================================================ -->
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --void:#0d0f14; --panel:#14171e; --panel2:#181c24; --panel3:#1c212b;
+    --ink:#E8DFC8; --ink2:#b7b09a; --ink3:#6f7687; --ink4:#454b58;
+    --amber:#C9A227; --amber2:#e3c04a; --amber-dim:rgba(201,162,39,.30);
+    --line:rgba(232,223,200,.10); --line2:rgba(232,223,200,.18);
+    --blue:#4f93d1; --red:#e0796b; --green:#5fb98a;
+    --mono:'IBM Plex Mono',ui-monospace,'SF Mono',monospace;
+    --serif:'Cinzel',Georgia,serif;
+    --hero:250px; --thero:340px;
+    --deut:#C2603A; --deut2:#e0b299;
+    --oceanic:url("../../client/assets/industrial/OceanicMine.jpg");
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0; background:
+      radial-gradient(120% 80% at 80% -10%, rgba(194,96,58,.06), transparent 60%),
+      var(--void);
+    color:var(--ink); font-family:var(--mono); font-size:14px; line-height:1.45;
+    -webkit-font-smoothing:antialiased; padding:22px;}
+
+  /* nav (the tier rail, DEUTERIUM tab selected) — context only, so the mockup reads like the tab */
+  .nav{display:flex; gap:2px; margin-bottom:14px;}
+  .tier{font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3);
+    padding:7px 16px 8px; border:1px solid var(--line); border-bottom:none; border-radius:6px 6px 0 0;
+    background:var(--panel);}
+  .tier .n{color:var(--ink2); font-weight:600; margin-right:7px;}
+  .tier.deut{margin-left:8px; color:var(--deut2); background:var(--panel2); box-shadow:0 -2px 0 var(--deut) inset;}
+  .tier.deut .n{color:var(--deut);}
+
+  /* three-zone body: [ refinery rail | centre | oceanic art ] — mirrors the Guild Hall gh-body */
+  .body{display:grid; grid-template-columns:var(--hero) minmax(0,1fr) var(--thero); gap:16px; align-items:stretch; min-height:620px;}
+  @media (max-width:1080px){ .body{grid-template-columns:1fr;} }
+
+  .card{background:var(--panel2); border:1px solid var(--line); border-radius:10px;}
+  .minihd{font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3); margin-bottom:12px;}
+
+  /* ---- LEFT: the refinery tree -------------------------------------------------------------- */
+  .rail{background:var(--panel2); border:1px solid var(--line); border-radius:10px; overflow:hidden; display:flex; flex-direction:column;}
+  .rail .zhead{font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3); padding:13px 15px 4px;}
+  .rail .zsub{font-family:var(--serif); font-size:17px; color:var(--ink); padding:0 15px 13px; border-bottom:1px solid var(--line);}
+  .tree{padding:9px; overflow-y:auto; flex:1;}
+  .sys{margin-bottom:5px;}
+  .sysrow{display:flex; align-items:center; gap:8px; cursor:pointer; padding:9px 10px;
+    background:var(--panel); border:1px solid var(--line); border-radius:6px; color:var(--ink2);
+    font-size:12px; letter-spacing:.04em;}
+  .sysrow:hover{border-color:var(--line2); color:var(--ink);}
+  .sysrow .caret{color:var(--ink3); width:12px; flex:none;}
+  .sysrow .nm{flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .sysrow .ct{font-size:10px; color:var(--ink4);}
+  .kids{padding:4px 0 4px 14px;}
+  .refrow{display:flex; align-items:center; gap:8px; cursor:pointer; padding:8px 10px; margin-top:4px;
+    background:rgba(232,223,200,.03); border:1px solid var(--line); border-radius:5px; color:var(--ink2); font-size:11.5px;}
+  .refrow:hover{border-color:var(--deut); color:var(--ink); background:rgba(194,96,58,.06);}
+  .refrow .dot{width:6px; height:6px; border-radius:50%; background:var(--deut); flex:none;}
+  .refrow .nm{flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .treeempty{color:var(--ink4); font-size:11px; line-height:1.6; letter-spacing:.03em; padding:16px 12px; text-align:center;}
+  .railfoot{padding:12px 15px; border-top:1px solid var(--line); color:var(--ink4); font-size:10px; letter-spacing:.04em; line-height:1.5;}
+
+  /* ---- CENTRE: three stacked sections ------------------------------------------------------- */
+  .centre{display:flex; flex-direction:column; min-width:0; gap:16px;}
+  .cbody{padding:15px 17px 17px;}
+
+  /* Stockpile: donut (glance) + credit readout */
+  .stock{display:grid; grid-template-columns:150px 1fr; gap:20px; align-items:center;}
+  .deut-donut{width:150px; height:150px; display:block;}
+  .dn-track{fill:none; stroke:rgba(232,223,200,.11); stroke-width:15;}
+  .dn-red{stroke:var(--red); stroke-width:15;}
+  .dn-blue{stroke:var(--blue); stroke-width:15;}
+  .stat{display:flex; flex-direction:column; gap:12px;}
+  .stat .row{display:flex; align-items:baseline; justify-content:space-between; gap:14px;}
+  .stat .k{font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); display:flex; align-items:center; gap:8px;}
+  .stat .k .sw{width:9px; height:9px; border-radius:2px; flex:none;}
+  .stat .v{font-size:20px; font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums;}
+  .stat .v.blue{color:var(--blue);} .stat .v.red{color:var(--red);}
+  .stat .row.total{border-top:1px solid var(--line); padding-top:12px;}
+  .stat .row.total .v{font-size:24px;}
+
+  /* Production: two u/cy tiles + the fuel-price graph */
+  .prod{display:grid; grid-template-columns:1fr 1.9fr; gap:18px; align-items:stretch;}
+  .tiles{display:flex; flex-direction:column; gap:12px; justify-content:center;}
+  .tile{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px 14px;}
+  .tile.red{border-color:rgba(224,121,107,.4); background:rgba(224,121,107,.05);}
+  .tile .k{font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); display:flex; align-items:center; gap:7px;}
+  .tile .k .sw{width:8px; height:8px; border-radius:2px; flex:none;}
+  .tile .v{font-size:26px; font-weight:600; color:var(--ink); margin-top:5px; font-variant-numeric:tabular-nums;}
+  .tile.blue .v{color:var(--blue);} .tile.red .v{color:var(--red);}
+  .tile .u{font-size:9.5px; color:var(--ink4); letter-spacing:.08em; text-transform:uppercase;}
+
+  .chartwrap{position:relative; min-height:130px; display:flex; flex-direction:column;}
+  .chart{position:relative; flex:1; min-height:120px;}
+  .chart svg{position:absolute; inset:0; width:100%; height:100%; display:block;}
+  .deut-empty{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    text-align:center; color:var(--ink4); font-size:11px; letter-spacing:.06em; font-style:italic;}
+  .pl-line{fill:none; stroke:var(--amber); stroke-width:2; vector-effect:non-scaling-stroke;}
+  .pl-area{fill:var(--amber); opacity:.12;}
+  .pl-grid{stroke:var(--line); stroke-width:1; vector-effect:non-scaling-stroke;}
+  .tip{position:absolute; width:8px; height:8px; border-radius:50%; background:var(--amber2);
+    box-shadow:0 0 8px var(--amber); transform:translate(-50%,-50%);}
+  .nowlab{position:absolute; transform:translate(-50%,-140%); font-size:11px; font-weight:600;
+    color:var(--amber2); white-space:nowrap; font-variant-numeric:tabular-nums;}
+  .chartx{display:flex; justify-content:space-between; font-size:9px; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--ink4); margin-top:4px;}
+
+  /* Burn-habits stacked bars */
+  .bb-grid{stroke:var(--line); stroke-width:1; vector-effect:non-scaling-stroke;}
+  .bb-blue{fill:var(--blue); opacity:.9;}
+  .bb-red{fill:var(--red); opacity:.92;}
+  .bb-grant{fill:none; stroke:var(--amber); stroke-width:1.6; stroke-dasharray:4 3; vector-effect:non-scaling-stroke;}
+  .legend{display:flex; gap:16px; flex-wrap:wrap; font-size:10px; color:var(--ink3); margin-top:10px; letter-spacing:.04em;}
+  .legend span{display:flex; align-items:center; gap:6px;}
+  .legend .sw{width:9px; height:9px; border-radius:2px;}
+  .legend .sw.line{width:14px; height:0; border-top:2px dashed var(--amber);}
+
+  /* Consumption: suspicion gauge + burn-habits */
+  .cons{display:grid; grid-template-columns:200px 1fr; gap:18px; align-items:stretch;}
+  .gauge{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;}
+  .deut-gauge{width:180px; height:104px; display:block;}
+  .gauge .tag{font-size:8.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--deut2);
+    border:1px solid var(--deut); border-radius:20px; padding:2px 9px;}
+  .gauge .cap{font-size:9.5px; color:var(--ink4); letter-spacing:.05em; text-align:center; line-height:1.5; max-width:170px;}
+  .gg-arc{fill:none; stroke-width:13;}
+  .gg-needle{stroke:var(--ink); stroke-width:2.5; stroke-linecap:round;}
+  .gg-hub{fill:var(--ink);}
+
+  /* ---- RIGHT: the Oceanic hero -------------------------------------------------------------- */
+  .hero{position:relative; border:1px solid var(--line); border-radius:10px; overflow:hidden; min-height:300px;}
+  .hero .art{position:absolute; inset:0; z-index:0; background-image:var(--oceanic); background-size:cover; background-position:center;}
+  .hero .scrim{position:absolute; inset:0; z-index:1;
+    background:linear-gradient(180deg, rgba(13,15,20,.55) 0%, rgba(13,15,20,.10) 32%, rgba(13,15,20,.12) 55%, rgba(13,15,20,.85) 100%);}
+  .hero .word{position:absolute; z-index:2; inset:0; display:flex; align-items:center; justify-content:center;
+    font-family:var(--serif); font-weight:700; letter-spacing:.20em; font-size:30px; color:var(--ink);
+    text-shadow:0 2px 22px rgba(13,15,20,.95), 0 1px 4px rgba(13,15,20,.95);}
+</style>
+
+<div class="nav">
+  <div class="tier"><span class="n">1</span>Raw</div>
+  <div class="tier"><span class="n">2</span>Processed</div>
+  <div class="tier"><span class="n">3</span>Parts</div>
+  <div class="tier"><span class="n">4</span>Constructed</div>
+  <div class="tier deut"><span class="n">&#9670;</span>Deuterium</div>
+</div>
+
+<div class="body">
+  <!-- LEFT: refinery tree (rendered by JS below from the sample ventures) -->
+  <aside class="rail">
+    <div class="zhead">Your ventures</div>
+    <div class="zsub">Refineries</div>
+    <div class="tree" id="tree"></div>
+    <div class="railfoot">Illegal refineries only. Mines are managed from their node in the System Manifest.</div>
+  </aside>
+
+  <!-- CENTRE: Stockpile / Production / Consumption -->
+  <div class="centre">
+    <div class="card"><div class="cbody">
+      <div class="minihd">Stockpile &middot; fuel credits</div>
+      <div class="stock">
+        <div id="donut"></div>
+        <div class="stat" id="stockstat"></div>
+      </div>
+    </div></div>
+
+    <div class="card"><div class="cbody">
+      <div class="minihd">Production &middot; per cycle</div>
+      <div class="prod">
+        <div class="tiles" id="prodtiles"></div>
+        <div>
+          <div class="chartwrap"><div class="chart" id="pricechart"></div></div>
+          <div class="chartx"><span>fuel price</span><span id="pricenow"></span></div>
+        </div>
+      </div>
+    </div></div>
+
+    <div class="card"><div class="cbody">
+      <div class="minihd">Consumption &middot; burn habits</div>
+      <div class="cons">
+        <div class="gauge">
+          <div id="gauge"></div>
+          <div class="tag">Concept</div>
+          <div class="cap">Suspicion &mdash; surveillance is not yet modelled (&sect;7).</div>
+        </div>
+        <div>
+          <div class="chartwrap"><div class="chart" id="burnchart"></div></div>
+          <div class="legend">
+            <span><span class="sw" style="background:var(--blue)"></span>Legal burn</span>
+            <span><span class="sw" style="background:var(--red)"></span>Contraband burn</span>
+            <span><span class="sw line"></span>Granted</span>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- RIGHT: the Oceanic hero -->
+  <aside class="hero">
+    <div class="art"></div><div class="scrim"></div>
+    <div class="word">DEUTERIUM</div>
+  </aside>
+</div>
+
+<script>
+/* ============================================================================================
+   THE FOUR SVG BUILDERS — the exact draw logic the client reuses (fed live snapshot fields in
+   place of the sample arrays here). Each returns an HTML/SVG string. They compute only sanctioned
+   PRESENTATION derives (a sum of two published credit values, an arc length, a bar height) — never
+   a game number.
+============================================================================================ */
+function fmtC(n){ return '¢' + Math.round(n).toLocaleString('en-US'); }
+function fmtU(n){ return Math.round(n).toLocaleString('en-US'); }
+
+/* 1. THE GLANCE DONUT — blue legal + red contraband against the cycle-start ring, the hollow
+   (dim track showing through) = used this cycle. NO numbers or text inside it.
+   `ring` is the cycle-start total ALREADY resolved by the caller (per-component null fallback to
+   the current value — "full from birth"); donutMax = max(ring, current) so mid-cycle refining
+   never overflows. Arc order red → blue → hollow, so legal-first depletion eats blue before red. */
+function deutDonut(legalNow, contrabandNow, ring){
+  var current = legalNow + contrabandNow;
+  var donutMax = Math.max(ring, current) || 1;
+  var R = 58, C = 2 * Math.PI * R, cx = 72, cy = 72;
+  var red  = (contrabandNow / donutMax) * C;
+  var blue = (legalNow / donutMax) * C;
+  return '<svg viewBox="0 0 144 144" class="deut-donut">'
+    + '<g transform="rotate(-90 ' + cx + ' ' + cy + ')">'
+    +   '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" class="dn-track"/>'
+    +   '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" class="dn-red" '
+    +     'stroke-dasharray="' + red.toFixed(2) + ' ' + (C - red).toFixed(2) + '" stroke-dashoffset="0"/>'
+    +   '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" class="dn-blue" '
+    +     'stroke-dasharray="' + blue.toFixed(2) + ' ' + (C - blue).toFixed(2) + '" stroke-dashoffset="' + (-red).toFixed(2) + '"/>'
+    + '</g></svg>';
+}
+
+/* 2. THE FUEL-PRICE LINE — a polyline (+ soft area fill) over `hist` (oldest→newest) with the live
+   price appended as the trailing point; min/max auto-scaled with a small pad. Fewer than two points
+   (an empty history before the first bucket closes) → the quiet "gathering history…" state.
+   Returns { svg, tip } — `tip` is the last point's {x,y} as fractions, for the HTML "now" marker
+   (kept out of the SVG so preserveAspectRatio="none" never distorts a round dot). */
+function deutPriceLine(hist, live){
+  var pts = hist.slice();
+  if(live != null) pts = pts.concat([live]);
+  if(pts.length < 2) return { svg:'<div class="deut-empty">gathering history&hellip;</div>', tip:null };
+  var W = 340, H = 120, padx = 4, padT = 12, padB = 8, pw = W - padx*2, ph = H - padT - padB;
+  var lo = Math.min.apply(null, pts), hi = Math.max.apply(null, pts);
+  var pad = (hi - lo) * 0.15 || (hi * 0.1) || 1; lo -= pad; hi += pad;
+  var X = function(i){ return padx + i * (pw / (pts.length - 1)); };
+  var Y = function(v){ return padT + (hi - v) / (hi - lo) * ph; };
+  var line = pts.map(function(v,i){ return X(i).toFixed(1) + ',' + Y(v).toFixed(1); });
+  var area = 'M ' + X(0).toFixed(1) + ',' + (padT+ph).toFixed(1) + ' L ' + line.join(' L ')
+           + ' L ' + X(pts.length-1).toFixed(1) + ',' + (padT+ph).toFixed(1) + ' Z';
+  var grid = '';
+  for(var k = 1; k <= 2; k++){ var gy = (padT + k*ph/3).toFixed(1); grid += '<line class="pl-grid" x1="0" y1="'+gy+'" x2="'+W+'" y2="'+gy+'"/>'; }
+  var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
+    + grid
+    + '<path class="pl-area" d="' + area + '"/>'
+    + '<polyline class="pl-line" points="' + line.join(' ') + '"/></svg>';
+  var last = pts.length - 1;
+  return { svg:svg, tip:{ x:X(last)/W, y:Y(pts[last])/H, v:pts[last] } };
+}
+
+/* 3. THE BURN-HABITS BARS — stacked bars per cycle: blue (burn − contrabandBurned = legal burn) at
+   the base, red (contrabandBurned) on top; an amber dashed `granted` polyline over them; a 3-line
+   y-grid; x labels −(n−1) … now. `hist` = [{ burn, granted, contrabandBurned }], oldest→newest.
+   Empty → the quiet "gathering history…" state. */
+function deutBurnBars(hist){
+  if(!hist || !hist.length) return '<div class="deut-empty">gathering history&hellip;</div>';
+  var data = hist.slice(-10);
+  var maxV = 0;
+  data.forEach(function(d){ maxV = Math.max(maxV, d.burn || 0, d.granted || 0); });
+  maxV = maxV || 1;
+  var W = 340, H = 120, padx = 6, padT = 8, padB = 8, pw = W - padx*2, ph = H - padT - padB;
+  var n = data.length, slot = pw / n, bw = Math.min(slot * 0.6, 26);
+  var Y = function(v){ return padT + (1 - v / maxV) * ph; };
+  var base = padT + ph;
+  var grid = '';
+  for(var k = 1; k <= 3; k++){ var gy = (padT + k*ph/3).toFixed(1); grid += '<line class="bb-grid" x1="0" y1="'+gy+'" x2="'+W+'" y2="'+gy+'"/>'; }
+  var bars = '', grantPts = [];
+  data.forEach(function(d, i){
+    var cx = padx + slot*i + slot/2, x = cx - bw/2;
+    var legal = Math.max(0, (d.burn || 0) - (d.contrabandBurned || 0));
+    var contra = Math.max(0, d.contrabandBurned || 0);
+    var yBlue = Y(legal), hBlue = base - yBlue;
+    var yRed = Y(legal + contra), hRed = Y(legal) - yRed;
+    if(hBlue > 0) bars += '<rect class="bb-blue" x="'+x.toFixed(1)+'" y="'+yBlue.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hBlue.toFixed(1)+'"/>';
+    if(hRed  > 0) bars += '<rect class="bb-red" x="'+x.toFixed(1)+'" y="'+yRed.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hRed.toFixed(1)+'"/>';
+    grantPts.push(cx.toFixed(1) + ',' + Y(d.granted || 0).toFixed(1));
+  });
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
+    + grid + bars
+    + '<polyline class="bb-grant" points="' + grantPts.join(' ') + '"/></svg>';
+}
+
+/* 4. THE SUSPICION GAUGE — a 180° arc with a red→amber→green gradient and a STATIC needle. Inert
+   concept only (§7 detection is unbuilt): the needle never moves and reads no field. */
+function deutSuspicion(){
+  var cx = 90, cy = 92, R = 74;
+  // A semicircle split into three coloured arcs, green (left/calm) → amber → red (right/alarm).
+  function pt(deg){ var a = Math.PI * (1 - deg/180); return [ (cx + R*Math.cos(a)).toFixed(1), (cy - R*Math.sin(a)).toFixed(1) ]; }
+  function seg(d0, d1, col){
+    var p0 = pt(d0), p1 = pt(d1);
+    return '<path class="gg-arc" stroke="'+col+'" d="M '+p0[0]+' '+p0[1]+' A '+R+' '+R+' 0 0 1 '+p1[0]+' '+p1[1]+'"/>';
+  }
+  // Fixed needle low in the green zone — a concept resting state, not a reading.
+  var na = Math.PI * (1 - 34/180), nx = (cx + (R-16)*Math.cos(na)).toFixed(1), ny = (cy - (R-16)*Math.sin(na)).toFixed(1);
+  return '<svg viewBox="0 0 180 104" class="deut-gauge">'
+    + seg(0, 60, 'var(--green)') + seg(60, 120, 'var(--amber)') + seg(120, 180, 'var(--red)')
+    + '<line class="gg-needle" x1="'+cx+'" y1="'+cy+'" x2="'+nx+'" y2="'+ny+'"/>'
+    + '<circle class="gg-hub" cx="'+cx+'" cy="'+cy+'" r="4"/></svg>';
+}
+
+/* ============================================================================================
+   SAMPLE DATA — stands in for the live snapshot fields the client feeds the builders.
+============================================================================================ */
+var SAMPLE = {
+  // Stockpile / donut (credits)
+  fuelHoardValue: 3200,                 // legal now (blue)
+  deuteriumFuelValue: 900,              // contraband now (red)
+  fuelHoardAtCycleStartValue: 4800,     // blue cycle-start baseline
+  deuteriumFuelAtCycleStartValue: 600,  // red cycle-start baseline (null when no contraband)
+  // Production (units per cycle)
+  deuteriumProduction: { legalPerCycle: 720, contrabandPerCycle: 300 },
+  // Fuel-price history (≤12 closed 6h averages, oldest→newest) + the live tip
+  fuelPriceHistory: [4.6, 4.7, 4.55, 4.8, 5.1, 5.0, 4.9, 5.2, 5.35, 5.2, 5.05, 5.15],
+  liveFuelPrice: 5.28,
+  // Burn habits (≤10 cycles, oldest→newest)
+  fuelBurnHistory: [
+    { burn: 420, granted: 500, contrabandBurned: 0 },
+    { burn: 480, granted: 500, contrabandBurned: 0 },
+    { burn: 520, granted: 500, contrabandBurned: 40 },
+    { burn: 460, granted: 520, contrabandBurned: 0 },
+    { burn: 540, granted: 520, contrabandBurned: 80 },
+    { burn: 610, granted: 540, contrabandBurned: 120 },
+    { burn: 500, granted: 560, contrabandBurned: 0 },
+    { burn: 580, granted: 560, contrabandBurned: 60 },
+    { burn: 640, granted: 580, contrabandBurned: 160 },
+    { burn: 560, granted: 600, contrabandBurned: 30 }
+  ],
+  // Refineries — the guild's ventures where deuteriumRefinery === true, grouped by systemId
+  refineries: [
+    { id: 'v_ref_01', systemId: 'sys_helion',  name: 'Refinery &middot; Helion Yard' },
+    { id: 'v_ref_02', systemId: 'sys_helion',  name: 'Refinery &middot; Helion Deep' },
+    { id: 'v_ref_03', systemId: 'sys_orrus',   name: 'Refinery &middot; Orrus Flats' }
+  ],
+  systemNames: { sys_helion: 'Helion', sys_orrus: 'Orrus' }
+};
+
+/* ============================================================================================
+   RENDER — the same shape the client's render seam runs each snapshot.
+============================================================================================ */
+function openVentureManagement(id){ alert('Venture management is undesigned (§2.7). Coming soon: ' + id); }
+
+// Stockpile: donut + credit readout.
+(function(){
+  var legal = SAMPLE.fuelHoardValue, contra = SAMPLE.deuteriumFuelValue;
+  // Ring = cycle-start total; per-component fallback to the current value when a baseline is null.
+  var ringLegal  = SAMPLE.fuelHoardAtCycleStartValue      != null ? SAMPLE.fuelHoardAtCycleStartValue      : legal;
+  var ringContra = SAMPLE.deuteriumFuelAtCycleStartValue  != null ? SAMPLE.deuteriumFuelAtCycleStartValue  : contra;
+  document.getElementById('donut').innerHTML = deutDonut(legal, contra, ringLegal + ringContra);
+  document.getElementById('stockstat').innerHTML =
+      '<div class="row"><span class="k"><span class="sw" style="background:var(--blue)"></span>Legal</span><span class="v blue">'+fmtC(legal)+'</span></div>'
+    + '<div class="row"><span class="k"><span class="sw" style="background:var(--red)"></span>Contraband</span><span class="v red">'+fmtC(contra)+'</span></div>'
+    + '<div class="row total"><span class="k">Total held</span><span class="v">'+fmtC(legal + contra)+'</span></div>';
+})();
+
+// Production: tiles + fuel-price line.
+(function(){
+  var p = SAMPLE.deuteriumProduction;
+  document.getElementById('prodtiles').innerHTML =
+      '<div class="tile blue"><div class="k"><span class="sw" style="background:var(--blue)"></span>Legal</div><div class="v">'+fmtU(p.legalPerCycle)+'</div><div class="u">units / cycle</div></div>'
+    + '<div class="tile red"><div class="k"><span class="sw" style="background:var(--red)"></span>Contraband</div><div class="v">'+fmtU(p.contrabandPerCycle)+'</div><div class="u">units / cycle</div></div>';
+  var pl = deutPriceLine(SAMPLE.fuelPriceHistory, SAMPLE.liveFuelPrice);
+  var host = document.getElementById('pricechart');
+  host.innerHTML = pl.svg;
+  var now = document.getElementById('pricenow');
+  if(pl.tip){
+    var tip = document.createElement('div'); tip.className = 'tip';
+    tip.style.left = (pl.tip.x*100)+'%'; tip.style.top = (pl.tip.y*100)+'%';
+    host.appendChild(tip);
+    var lab = document.createElement('div'); lab.className = 'nowlab';
+    lab.style.left = (pl.tip.x*100)+'%'; lab.style.top = (pl.tip.y*100)+'%';
+    lab.textContent = fmtC(SAMPLE.liveFuelPrice) + '/q';
+    host.appendChild(lab);
+    now.textContent = 'now ' + fmtC(SAMPLE.liveFuelPrice) + '/q';
+  } else {
+    now.textContent = 'gathering…';
+  }
+})();
+
+// Consumption: suspicion gauge + burn-habits bars.
+(function(){
+  document.getElementById('gauge').innerHTML = deutSuspicion();
+  document.getElementById('burnchart').innerHTML = deutBurnBars(SAMPLE.fuelBurnHistory);
+})();
+
+// Refinery tree: group by systemId, each system row expand/collapse, each refinery row clickable.
+(function(){
+  var groups = {};
+  SAMPLE.refineries.forEach(function(r){ (groups[r.systemId] = groups[r.systemId] || []).push(r); });
+  var sysIds = Object.keys(groups).sort();
+  var host = document.getElementById('tree');
+  if(!sysIds.length){ host.innerHTML = '<div class="treeempty">No refineries.<br>Deploy one from a settlement slot (FUEL tier).</div>'; return; }
+  var html = '';
+  sysIds.forEach(function(sid){
+    var name = SAMPLE.systemNames[sid] || sid, refs = groups[sid];
+    html += '<div class="sys" data-sys="'+sid+'">'
+      + '<div class="sysrow" data-toggle="'+sid+'"><span class="caret">&#9661;</span><span class="nm">'+name+'</span><span class="ct">'+refs.length+'</span></div>'
+      + '<div class="kids">'
+      + refs.map(function(r){ return '<div class="refrow" data-open="'+r.id+'"><span class="dot"></span><span class="nm">'+r.name+'</span></div>'; }).join('')
+      + '</div></div>';
+  });
+  host.innerHTML = html;
+  host.addEventListener('click', function(e){
+    var tog = e.target.closest('[data-toggle]');
+    if(tog){ var sys = tog.parentNode, kids = sys.querySelector('.kids'), open = kids.style.display !== 'none';
+      kids.style.display = open ? 'none' : ''; tog.querySelector('.caret').innerHTML = open ? '&#9655;' : '&#9661;'; return; }
+    var row = e.target.closest('[data-open]');
+    if(row){ openVentureManagement(row.getAttribute('data-open')); }
+  });
+})();
+</script>

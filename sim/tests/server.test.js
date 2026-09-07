@@ -426,11 +426,37 @@ test('GET / serves the DEUTERIUM client — deploy popup, segmented bar, removal
   assert.match(html, /function heldUnits\(g\)\{ return \(\(g && g\.fuelHoard\) \|\| 0\) \+ \(\(g && g\.deuteriumFuel\) \|\| 0\); \}/);
   assert.match(html, /function heldValue\(g\)\{ return \(\(g && g\.fuelHoardValue\) \|\| 0\) \+ \(\(g && g\.deuteriumFuelValue\) \|\| 0\); \}/);
 
-  // 4. THE PLACEHOLDER DEUTERIUM TAB exists beside the tier tabs, reading the published stores.
+  // 4. THE DEUTERIUM TAB is now the guild-wide monitoring DASHBOARD (slice 2b), no longer the 2a
+  //    placeholder. The tab still lives beside the tier tabs (`data-deut="1"`) in the same panel
+  //    (`#tw-deut-panel`); its body is the three-panel dashboard. Assert the shell is present — the
+  //    glance donut, the two charts (fuel-price + burn-habits), the refinery-tree container — and
+  //    the four SVG builders + the render seam, so a silent revert to the placeholder is caught.
   assert.match(html, /id="tw-deut-panel"/);
   assert.match(html, /data-deut="1"/);
-  assert.match(html, /id="tw-deut-raw"/);
-  assert.match(html, /id="tw-deut-fuel"/);
+  assert.match(html, /id="tw-deut-donut"/, 'the glance donut container');
+  assert.match(html, /id="tw-deut-pricechart"/, 'the fuel-price graph container');
+  assert.match(html, /id="tw-deut-burnchart"/, 'the burn-habits graph container');
+  assert.match(html, /id="tw-deut-tree"/, 'the refinery-tree container');
+  assert.match(html, /id="tw-deut-suspicion"/, 'the inert suspicion-gauge container');
+  assert.match(html, /function deutDonut\(/, 'the donut builder');
+  assert.match(html, /function deutPriceLine\(/, 'the fuel-price line builder');
+  assert.match(html, /function deutBurnBars\(/, 'the burn-habits bars builder');
+  assert.match(html, /function deutSuspicion\(/, 'the suspicion-gauge builder');
+  assert.match(html, /function deutRender\(/, 'the dashboard render seam');
+  // The refinery tree reads the guild's refineries only (deuteriumRefinery === true), grouped by
+  // systemId, each row a stub → venture management (§2.7, undesigned).
+  assert.match(html, /v\.deuteriumRefinery === true/, 'the tree filters to refineries');
+  assert.match(html, /function openVentureManagement\(/, 'the refinery-row venture-management stub');
+  // The Oceanic hero + the word DEUTERIUM (right panel), nothing else.
+  assert.match(html, /assets\/industrial\/OceanicMine\.jpg/, 'the DEUTERIUM tab hero art');
+  // 4a. THE 2a PLACEHOLDER IS GONE — the two raw/contraband store readouts, the "next slice" soon
+  //     line, and its `tw-deut-soon` class must all have been removed, or the dashboard was not
+  //     actually built over the placeholder.
+  assert.doesNotMatch(html, /id="tw-deut-raw"/, "the placeholder's raw-store readout is gone");
+  assert.doesNotMatch(html, /id="tw-deut-fuel"/, "the placeholder's contraband-store readout is gone");
+  assert.doesNotMatch(html, /tw-deut-soon/, "the placeholder's 'soon' block is gone");
+  assert.doesNotMatch(html, /the mine \/ refinery roster and per-node deploy shortcuts arrive/,
+    "the placeholder's 'next slice' dashboard-deferral copy is gone");
 });
 
 // The illegal refinery as a FUEL TIER on the factory Establish popup (§1.4, 07-09-26) — the
