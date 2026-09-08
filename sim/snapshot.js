@@ -39,8 +39,8 @@ const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
 const { previewProduction } = require('./production.js');
 const { PRICED_GOODS, postedPrice, basePriceFor } = require('./prices.js');
-const { baselineUnitsForGood, isLicensedDeuteriumMine, isIllegalDeuteriumRefinery, producedGoodFor } = require('./baseline.js');
-const { licenceFee, teardownSettlement, licenceEndTick } = require('./licence.js');
+const { baselineUnitsForGood, baselineOutputFor, isLicensedDeuteriumMine, isIllegalDeuteriumRefinery, producedGoodFor } = require('./baseline.js');
+const { licenceFee, teardownSettlement, licenceEndTick, ventureStanding, renegotiationFee } = require('./licence.js');
 const { clonePriceHistory } = require('./price-history.js');
 const { getFuelPriceRing } = require('./fuel-price-history.js');
 const { cloneModifierHistory } = require('./modifier-history.js');
@@ -411,6 +411,20 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 //     postedPrice(good))`, the `o`-share of the commitment sale at the current price. A projection
 //     (rate × cycle, raw-unlimited) like `deuteriumProduction`; 0 when unlicensed, no equity, or
 //     deuterium (no posted price). The engine decides it so the browser renders it (§5).
+// (08-09-26, licence renegotiation #64 Slice 1 — docs/renegotiation.md, design.md §5): two additive
+// per-venture fields, present ONLY on a licensed non-deuterium venture (SPREAD in, so an unlicensed
+// venture and a deuterium mine carry NEITHER key). ADDITIVE, NO schema bump — nothing existing
+// changed shape. Both DERIVED on read: no serialized byte, no determinism hash, so no state golden
+// moves, and they invent no number (the four `[FIRST-CUT]` renegotiation constants live in
+// sim/licence.js, sourced from phase-1-tuning.md). See renegotiationFieldsFor.
+//   - each licensed non-deuterium venture row gains `standing` — its `ventureStanding` band
+//     ('atRisk' | 'subPar' | 'steady' | 'strong'), a read of `venture.reputation`, present always.
+//   - and `renegotiationOffer` — the terms the player would accept, present (non-null) only once the
+//     committed window has elapsed (reusing `contractWindow.expired`): the new `committedOutputPct`,
+//     the re-locked `basicFee`/`discountedFee` at the CURRENT posted price (Strong-band discount
+//     applied if strong), and a `feeDiscountApplied` flag — from the SAME `renegotiationFee` the
+//     `renegotiateLicence` apply locks (sim/licence.js), so the offer shown and the terms taken
+//     cannot disagree. null before the window elapses.
 const SNAPSHOT_SCHEMA = 7;
 
 // contractWindowForVenture(state, venture) -> the venture's licence window in CYCLES, or null.
@@ -468,6 +482,52 @@ function equityPerCycleForVenture(state, venture) {
   if (!price) return 0;
   const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
   return Math.round(lic.committedOutputPct * venture.productionRate * windowN * equityPct * price);
+}
+
+// renegotiationFieldsFor(state, venture) -> the licence-renegotiation read model for one
+// venture (design.md §5 "Licence renegotiation — the terms function & venture standing";
+// #64 Slice 1). Returns an object to SPREAD into the venture row, so a venture that owns
+// neither field gets NEITHER key:
+//
+//   {}                                — unlicensed, and the windowless deuterium-licensed
+//                                       mine: both carry no ordinary `licence`, so there is
+//                                       no standing or offer (a deuterium mine carries
+//                                       neither field, as §1.4 requires).
+//   { standing, renegotiationOffer }  — a licensed, non-deuterium venture:
+//       standing            — its `ventureStanding` band, ALWAYS (just a read of RP).
+//       renegotiationOffer  — the terms the player would accept, ONLY once the committed
+//                             window has elapsed (reusing `contractWindow.expired`): the
+//                             new `committedOutputPct`, the re-locked `basicFee`/
+//                             `discountedFee` at the CURRENT posted price (Strong-band
+//                             discount applied if strong), and a `feeDiscountApplied` flag.
+//                             null before the window elapses.
+//
+// This is the seam the client RENEGOTIATE button reads (client half, next slice). It is
+// the SAME `renegotiationFee` the `renegotiateLicence` apply locks, so the offer shown and
+// the terms taken cannot disagree. Pure DERIVED telemetry: reads state as it stands,
+// mutates nothing, enters no serialized byte and no determinism hash; invents no number.
+function renegotiationFieldsFor(state, venture) {
+  const lic = venture && venture.licence;
+  if (!lic) return {};   // unlicensed, or the windowless deuterium mine — neither field
+  const standing = ventureStanding(venture);
+  const cw = contractWindowForVenture(state, venture);
+  let renegotiationOffer = null;
+  if (cw && cw.expired) {
+    const baseline = baselineOutputFor(venture);
+    const lockedPrice = baseline && postedPrice(state, baseline.good);
+    // A licensed non-deuterium venture always has both (its good was priced at signing);
+    // guard anyway so a preview is never computed against a missing baseline or price.
+    if (baseline && baseline.units > 0 && lockedPrice != null) {
+      const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+      renegotiationOffer = renegotiationFee({
+        venture,
+        baselineUnitsPerTick: baseline.units,
+        windowN,
+        lockedPrice,
+      });
+    }
+  }
+  return { standing, renegotiationOffer };
 }
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -997,6 +1057,14 @@ function buildSnapshot(state) {
         // equity, or deuterium (no posted price). The engine decides the figure so the browser renders
         // it (§5); DERIVED on read, no serialized byte, no determinism hash.
         equityPerCycle: equityPerCycleForVenture(state, v),
+        // standing + renegotiationOffer: the licence-renegotiation read model (#64 Slice
+        // 1, design.md §5). SPREAD so an unlicensed venture and a deuterium mine carry
+        // NEITHER key: `standing` (the ventureStanding band) is present for every licensed
+        // non-deuterium venture; `renegotiationOffer` (the new terms + re-locked fee the
+        // player would accept, from the SAME renegotiationFee the apply locks) only once
+        // the committed window has elapsed, null before. DERIVED on read: no serialized
+        // byte, no determinism hash, invents no number. See renegotiationFieldsFor.
+        ...renegotiationFieldsFor(state, v),
         // batchCarry: the per-good sub-unit carries (§5 rate-based rewrite corrected
         // 10-08-26, §15.4) — { [good]: fraction in [0,1) } over every input + output.
         // Surfaced so the lens can show why a small line's whole units appear only

@@ -769,6 +769,127 @@ function commitmentUnitsFor(pct, baselineUnitsPerTick, windowN) {
   return Math.round(pct * baselineUnitsPerTick * windowN);
 }
 
+// ── LICENCE RENEGOTIATION (#64, Slice 1) ─────────────────────────────────────────
+//
+// design.md §5 "Licence renegotiation — the terms function & venture standing"
+// (08-09-26): at a licence's window-end the Syndicate reads the venture's STANDING off
+// its RP and sets the new terms — the player authors only the FIRST licence, every
+// renegotiation after is the Syndicate's. Slice 1 is the engine truth for that seam:
+// the band classifier, the terms function, and the fee the top band re-locks at. No
+// timers, no auto-lapse — the `renegotiateLicence` action (sim/actions.js) is player-
+// pull only, and the client button is a later slice.
+//
+// The four numbers below are `[FIRST-CUT]`, read from docs/phase-1-tuning.md
+// §"Licence renegotiation — venture-standing bands & terms function (08-09-26 — #64)".
+// Each is cited, none is invented here (§0 / CLAUDE.md).
+
+// The venture-standing band cut-points, on `venture.reputation` read at window-end
+// (phase-1-tuning §"…venture-standing bands…": −300 / 0 / 500). −300 is the existing
+// forced-lease mark; 0 is the bump-floor property (a venture only crosses below it by
+// demonstrated breaching, `signingBump` ≥ 0 above); 500 sits below the ~720 a flawless
+// market venture reaches in six weeks, so Strong is reachable but earned.
+const STANDING_CUT_AT_RISK = -300;   // rp <= this            -> atRisk
+const STANDING_CUT_STEADY = 0;       // this <= rp < STRONG   -> steady; below (down to AT_RISK) -> subPar
+const STANDING_CUT_STRONG = 500;     // rp >= this            -> strong
+
+// The Strong-band fee discount (phase-1-tuning: −10% of the fee for an above-500
+// venture on renegotiation). The fee NEVER rises — this is the only band that moves it
+// (it replaces the retired 24-08-26 surcharge). A fraction of the locked fee, applied
+// in the apply/preview; it creates no new credit flow (the Syndicate collects less).
+const STRONG_FEE_DISCOUNT = 0.10;
+
+// The commitment step the Syndicate demands by band (phase-1-tuning: Steady +0.10,
+// Sub-par +0.25, At-risk → 1.0). A monotonic ladder — the weaker the standing, the
+// harder the Syndicate leans — with Strong exempt (no demand). At-risk is a JUMP to
+// full commitment, not a step; Steady/Sub-par are additive steps, clamped at 1.0.
+const COMMITMENT_STEP_STEADY = 0.10;
+const COMMITMENT_STEP_SUB_PAR = 0.25;
+
+// ventureStanding(venture) -> 'atRisk' | 'subPar' | 'steady' | 'strong'.
+// A single-number band read straight off `venture.reputation` (a missing field is 0,
+// the same courtesy the snapshot reports it as). Pure, no mutation. The exact edges
+// (design.md §5's table): rp ≤ −300 atRisk; −300 < rp < 0 subPar; 0 ≤ rp < 500 steady;
+// rp ≥ 500 strong.
+function ventureStanding(venture) {
+  const rp = (venture && venture.reputation) || 0;
+  if (rp <= STANDING_CUT_AT_RISK) return 'atRisk';
+  if (rp < STANDING_CUT_STEADY) return 'subPar';
+  if (rp < STANDING_CUT_STRONG) return 'steady';
+  return 'strong';
+}
+
+// renegotiationTerms(venture) -> { committedOutputPct, windowDays, feeDiscount }
+// The whole "terms function" design.md §5 describes: a small, obviously-correct read of
+// the venture's standing into the three outputs the Syndicate offers. Pure, no mutation.
+//
+//   committedOutputPct — the current committed pct stepped up by band, clamped to 1.0:
+//                        strong keeps it (may coast); steady +0.10; subPar +0.25; atRisk
+//                        set to full (1.0), a jump not a step.
+//   windowDays         — carried UNCHANGED. Window is not a lever this cut (§5): the
+//                        Syndicate's right to dictate it is retained for a later cut.
+//   feeDiscount        — STRONG_FEE_DISCOUNT for strong, else 0. The fee only ever falls,
+//                        and only at Strong.
+//
+// Equity is NOT a term here — the player set it once at establishment and it carries from
+// the venture, untouched (§5: "Equity is never dictated"). A venture with no ordinary
+// licence THROWS rather than scoring a nonsense read: there are no terms to renegotiate.
+function renegotiationTerms(venture) {
+  const lic = venture && venture.licence;
+  if (!lic) {
+    throw new Error(`renegotiationTerms: a venture must hold an ordinary licence to renegotiate — venture ${venture && venture.id} has none`);
+  }
+  const standing = ventureStanding(venture);
+  const current = lic.committedOutputPct;
+  let committedOutputPct;
+  if (standing === 'strong') {
+    committedOutputPct = current;                                     // keep — may coast
+  } else if (standing === 'steady') {
+    committedOutputPct = Math.min(1, current + COMMITMENT_STEP_STEADY);
+  } else if (standing === 'subPar') {
+    committedOutputPct = Math.min(1, current + COMMITMENT_STEP_SUB_PAR);
+  } else { // atRisk
+    committedOutputPct = 1;                                          // jump to full
+  }
+  return {
+    committedOutputPct,
+    windowDays: lic.windowDays,                                      // carried unchanged
+    feeDiscount: standing === 'strong' ? STRONG_FEE_DISCOUNT : 0,
+  };
+}
+
+// renegotiationFee({ venture, baselineUnitsPerTick, windowN, lockedPrice })
+//   -> { committedOutputPct, basicFee, discountedFee, feeDiscountApplied }
+//
+// The ONE place a re-locked licence's fee is priced, read by BOTH the `renegotiateLicence`
+// apply (which stores it) and the snapshot's `renegotiationOffer` (which previews it) —
+// the same one-source-of-truth pattern as `teardownSettlement`, so the offer the player
+// is shown and the terms the engine locks cannot disagree.
+//
+// The fee is recomputed EXACTLY as `applyForLicence` does — `licenceFee` at the CURRENT
+// posted price, over the same baseline and window, with the NEW committed pct and the
+// venture's carried equity — then the Strong-band discount is baked into the locked fees
+// (design.md §5): `round(fee × (1 − feeDiscount))`, integer credits (§15.2). `feeDiscount`
+// is 0 off Strong, so the multiply is a no-op there and the fee is unchanged. Baking it in
+// means NO new licence field — the boundary charge and `teardownSettlement` read
+// `basicFee`/`discountedFee` unchanged. Pure: reads its arguments, mutates nothing.
+function renegotiationFee({ venture, baselineUnitsPerTick, windowN, lockedPrice }) {
+  const terms = renegotiationTerms(venture);
+  const raw = licenceFee({
+    baselineUnitsPerTick,
+    windowN,
+    lockedPrice,
+    committedOutputPct: terms.committedOutputPct,
+    equityPct: equityOf(venture),   // the term offered at establishment, carried untouched
+  });
+  const factor = 1 - terms.feeDiscount;
+  return {
+    committedOutputPct: terms.committedOutputPct,
+    basicFee: Math.round(raw.basicFee * factor),
+    discountedFee: Math.round(raw.discountedFee * factor),
+    feeDiscountApplied: terms.feeDiscount > 0,
+  };
+}
+
 module.exports = {
   EQUITY_CEILING, equityOf, isValidEquityPct, committedContribution, ownerFraction, commitmentSale,
   FEE_RATE, CORNERS, EQUITY_SHAPE_K, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
@@ -777,4 +898,7 @@ module.exports = {
   REP_MEET_MAX, REP_W_COMMIT, REP_W_EQUITY, REP_BREACH_MAX, REP_BREACH_MIN,
   RP_FLOOR, RP_SOFT_CAP, RP_TAPER_KNEE,
   repTerms, tierFactor, ventureTierWeight, signingBump, metGain, deuteriumMetGain, breachPenalty, gainFactor, reputationDelta,
+  STANDING_CUT_AT_RISK, STANDING_CUT_STEADY, STANDING_CUT_STRONG,
+  STRONG_FEE_DISCOUNT, COMMITMENT_STEP_STEADY, COMMITMENT_STEP_SUB_PAR,
+  ventureStanding, renegotiationTerms, renegotiationFee,
 };

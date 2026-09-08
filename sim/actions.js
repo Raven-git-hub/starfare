@@ -6,7 +6,7 @@ const { getRecipe } = require('./recipes.js');
 const {
   EQUITY_CEILING, isValidEquityPct, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
   isValidCommitmentPct, isValidWindowDays, licenceFee, commitmentUnitsFor, equityOf,
-  signingBump, teardownSettlement,
+  signingBump, teardownSettlement, licenceEndTick, renegotiationFee,
 } = require('./licence.js');
 const { producedGoodFor, baselineOutputFor, isLicensedDeuteriumMine } = require('./baseline.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
@@ -224,6 +224,24 @@ function createApplyForLicenceAction({ guildId, ventureId, committedOutputPct, w
   if (committedOutputPct === undefined) throw new Error('createApplyForLicenceAction: committedOutputPct is required');
   if (windowDays === undefined) throw new Error('createApplyForLicenceAction: windowDays is required');
   return { type: 'applyForLicence', guildId, ventureId, committedOutputPct, windowDays };
+}
+
+// renegotiateLicence: accept the Syndicate's new terms for a licensed venture whose
+// committed window has ELAPSED, and re-lock the licence in place (design.md §5 "Licence
+// renegotiation — the terms function & venture standing"; #64 Slice 1). The near-mirror
+// of `applyForLicence`, with three deliberate differences: the terms are the Syndicate's
+// (read off the venture's standing, `renegotiationTerms`), not the player's; the fee
+// re-locks at TODAY's posted price with the Strong-band discount baked in; and there is
+// NO signing bump — the venture's RP carries untouched (§5 "On accept").
+//
+// The player authors no terms here — after the first signing they never offer terms
+// (§5) — so the action carries only which venture to renegotiate. It is player-PULL:
+// invoked explicitly, no timer initiates it and nothing lapses if it is not invoked
+// (both Slice 2).
+function createRenegotiateLicenceAction({ guildId, ventureId }) {
+  if (guildId === undefined) throw new Error('createRenegotiateLicenceAction: guildId is required');
+  if (ventureId === undefined) throw new Error('createRenegotiateLicenceAction: ventureId is required');
+  return { type: 'renegotiateLicence', guildId, ventureId };
 }
 
 // licenseDeuteriumMine: grant ONE deuterium mining venture the WINDOWLESS deuterium
@@ -728,7 +746,7 @@ function validateAction(state, action) {
       return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} has no venture with id ${JSON.stringify(action.ventureId)}` };
     }
     if (venture.licence) {
-      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} is already licensed — changing agreed terms is a renegotiation (§5), not a second application, and renegotiation is not built yet`};
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} is already licensed — changing agreed terms is a renegotiation (§5): use renegotiateLicence once its committed window has elapsed, not a second application`};
     }
     // DEUTERIUM IS NEVER ELIGIBLE FOR THE ORDINARY WINDOWED PATH (§1.4 "The Deuterium
     // Cycle"). Deuterium is special: it takes ONLY the windowless deuterium licence
@@ -781,6 +799,45 @@ function validateAction(state, action) {
     const baseline = baselineOutputFor(venture);
     if (!baseline || !(baseline.units > 0)) {
       return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} has no droidless baseline output to price a fee against` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'renegotiateLicence') {
+    // The near-mirror of applyForLicence's validate — a licence is a contract over a
+    // venture you own, so scan only THIS guild's ventures, exactly as it does.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (typeof action.ventureId !== 'string' || action.ventureId.length === 0) {
+      return { valid: false, reason: 'ventureId must be a non-empty string' };
+    }
+    const venture = (guild.ventures || []).find((v) => v.id === action.ventureId);
+    if (!venture) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} has no venture with id ${JSON.stringify(action.ventureId)}` };
+    }
+    // DEUTERIUM IS EXEMPT (§1.4): a deuterium mine is windowless — it takes only the
+    // windowless deuterium licence, which never renegotiates. Refused EARLY and for
+    // every deuterium mine, so the reason is the specific exemption rather than the
+    // generic "no licence" below (a deuterium mine carries a `deuteriumLicence`, never
+    // an ordinary `licence`, so the next check would otherwise catch it less clearly).
+    if (venture.resourceType === DEUTERIUM) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} mines ${JSON.stringify(DEUTERIUM)}, which is windowless and exempt from renegotiation — the deuterium licence has no terms to reopen (§1.4)` };
+    }
+    // The OPPOSITE of applyForLicence's "already licensed" refusal: renegotiation needs
+    // an EXISTING ordinary licence to reopen. An unlicensed venture signs a fresh one
+    // (applyForLicence); it does not renegotiate.
+    if (!venture.licence) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} has no licence to renegotiate — sign one with applyForLicence first (§5)` };
+    }
+    // And the committed window must have ELAPSED — terms reopen only at window-end (§5).
+    // Read `windowN` the SAME way applyForLicence does, and compare against the SAME
+    // end-of-term tick teardownSettlement and the snapshot use (`licenceEndTick`), so a
+    // renegotiation cannot open a tick before the panel says the window is up.
+    const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+    if (state.tick < licenceEndTick(venture.licence, windowN)) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)}'s committed window has not elapsed (ends at tick ${licenceEndTick(venture.licence, windowN)}, now ${state.tick}) — terms reopen only at window-end (§5)` };
     }
     return { valid: true };
   }
@@ -1449,6 +1506,63 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'renegotiateLicence') {
+    // Accept the Syndicate's new terms and re-lock the licence IN PLACE — the near-mirror
+    // of applyForLicence's apply, with three deliberate differences (the Syndicate-set
+    // terms, no signing bump, and a window that resets). Everything is priced against
+    // state-as-it-stands at THIS tick, exactly as a first signing is.
+    const guild = findGuild(next, action.guildId);
+    const venture = guild.ventures.find((v) => v.id === action.ventureId);
+    // The OUTPUT good, its droidless baseline and this tick's posted price — read the
+    // SAME way applyForLicence reads them (`baselineOutputFor` is the single source for
+    // both the good and the units/tick, for a mine and a factory alike; no number
+    // invented). The window is the engine-wide `windowN` (or the resolver's fallback).
+    const baseline = baselineOutputFor(venture);
+    const good = baseline.good;
+    const lockedPrice = postedPrice(next, good);
+    const windowN = next.windowN == null ? DEFAULT_WINDOW_N : next.windowN;
+    const baselineUnitsPerTick = baseline.units;
+    const windowDays = venture.licence.windowDays;   // carried unchanged (§5)
+
+    // The Syndicate's new terms + the re-locked fee, from the ONE helper the snapshot's
+    // renegotiationOffer also reads (sim/licence.js), so the offer previewed and the
+    // terms locked cannot disagree. `renegotiationFee` reads the venture's standing for
+    // the committed step, prices the fee at `lockedPrice`, and bakes in the Strong-band
+    // discount (a no-op off Strong).
+    const { committedOutputPct, basicFee, discountedFee } = renegotiationFee({
+      venture,
+      baselineUnitsPerTick,
+      windowN,
+      lockedPrice,
+    });
+
+    // Re-lock in place. `windowDays` carries; `signedTick = next.tick` RESETS the window
+    // (the terms lock afresh for another `windowDays`); the fee re-locks at this tick's
+    // price. Equity is NOT a licence field (it lives on the venture) and is untouched.
+    venture.licence = {
+      committedOutputPct,
+      windowDays,
+      signedTick: next.tick,          // §15.2: every mutation records its tick, and resets the window
+      lockedPrice,
+      basicFee,
+      discountedFee,
+    };
+
+    // NO SIGNING BUMP — the load-bearing difference from applyForLicence. `signingBump`
+    // is once-per-venture at FIRST licence (docs/points-and-reputation.md §2.6); a
+    // renegotiation never re-applies it, so `venture.reputation` is untouched and the
+    // guild's cached sum does not move (design.md §5 "On accept": RP carries). We do not
+    // call it here at all.
+
+    // Recompute the operative commitment at the new pct, and re-stamp the pro-rate anchor
+    // to this window's first producing tick — the SAME `signedTick + 1` reasoning as
+    // applyForLicence: a re-locked venture is "present from" its first producing tick of
+    // the new window, so its first (reset) window is pro-rated for the tick it re-signed on.
+    venture.syndicateCommitment = commitmentUnitsFor(committedOutputPct, baselineUnitsPerTick, windowN);
+    venture.committedFromTick = venture.licence.signedTick + 1;
+    return next;
+  }
+
   if (action.type === 'licenseDeuteriumMine') {
     // Grant the windowless deuterium licence (§1.4). Moves NO credits — there is no fee —
     // and sets no terms: commitment is 100% implicit and equity stays whatever the venture
@@ -1783,6 +1897,7 @@ module.exports = {
   createSetProductionProfileAction,
   createSetSyndicateCommitmentAction,
   createApplyForLicenceAction,
+  createRenegotiateLicenceAction,
   createLicenseDeuteriumMineAction,
   createEstablishDeuteriumRefineryAction,
   createDecommissionVentureAction,
