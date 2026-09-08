@@ -129,9 +129,82 @@ and the snapshot offer is derived, so no serialized byte moves and determinism (
 `0.7 → 0.8`, a chain `0.5 → 0.6 → 0.7 → 0.8`, and a Sub-par step `0.7 → 0.95` are exact;
 that an already-clean value is unchanged; and that At-risk returns exactly `1`.
 
+## Slice 1b (08-09-26) — delivery UI + the lapse action ✅
+
+**Scope.** Deliver the offer Slice 1 derives to the player, and add the REJECT half. The
+ruling is design.md §5 ("Accept or lapse" + "Message delivery" + "Slice split (revised)");
+no design number is chosen here (there are none — lapse has no constant, and the offer's
+figures are Slice 1's `[FIRST-CUT]` constants).
+
+### `sim/actions.js` — the `lapseLicence` action
+
+- **`lapseLicence`** action `{ type, guildId, ventureId }`, creator `createLapseLicenceAction`
+  beside `createRenegotiateLicenceAction`, both exported. It is the LAPSE-to-unlicensed
+  operation (§5 "Accept or lapse") — the outcome of a player REJECT, and the same action
+  Slice 2's acceptance-window timeout will reuse to auto-lapse.
+  - **Validate:** the EXACT same gate as `renegotiateLicence` (you can only lapse a licence
+    that is up for renegotiation) — guild owns the venture; not a deuterium mine (windowless,
+    exempt, refused early); holds an ordinary `licence`; and the committed window has ELAPSED
+    (`state.tick >= licenceEndTick(licence, windowN)`, `windowN` read as the other actions read
+    it). Same order, same reasons.
+  - **Apply:** mirrors `decommissionVenture`'s two licence-shedding moves — the RP forfeit and
+    the commitment-clear — but KEEPS the venture in place (decommission removes it). It
+    subtracts `venture.reputation` from `guild.guildReputation` and `delete`s the venture's
+    reputation (back to the omit-when-0 unlicensed state — invariant 8 stays exact), deletes
+    `venture.licence`, sets `syndicateCommitment = 0` and deletes `committedFromTick` (the
+    exact shape `establishVenture` leaves). **No fee, no node lockout, no signing bump** — at
+    window-end teardown's settlement is only the RP forfeit (§5). The venture, its node and its
+    asset all survive; the guild may sign a fresh licence later. Forfeiting a **negative** RP
+    RAISES the guild sum — the deliberate asymmetric escape valve (§5), asserted in tests.
+
+### `sim/snapshot.js` — the `attention` derive (read-only, schema stays 7)
+
+- **`attention: { renegotiations: [ { guildId, ventureId, ventureName, standing, offer } ] }`**
+  — a top-level, read-only aggregation of the guild's open action-items (§5 "attention derive")
+  so the MESSAGES panel and the tab badge read one place. For this slice that is exactly the
+  ventures carrying a non-null `renegotiationOffer` (a pure aggregation of `renegotiationFieldsFor`),
+  scanned across every guild and tagged with `guildId` (the snapshot is multi-guild; the client
+  filters to its own). `offer` is the same `renegotiationOffer` the venture row publishes;
+  `ventureName` is the venture's SEED site name (engine-owned display text — the client adds its
+  own type label, as it does everywhere). Shaped as a list under `renegotiations` so a later
+  slice's event-log notices join the same object. DERIVED on read: no serialized byte, no
+  determinism hash, no golden moved, invariant 9 holds.
+
+### `client/game.html` — the MESSAGES panel, the popup, the two entry points
+
+Built to `docs/mockups/guild-hall-messages.html` (see `docs/guild-hall.md` §6). A MESSAGES rail
+entry (amber badge + pulsing dot while `attention.renegotiations` is non-empty) and panel (the
+pinned "Needs a decision" section from the attention derive; the Notices section is an honest
+empty stub — the event log is Slice 2+); the top-level Guild Hall tab lights an amber pip on
+every poll while an offer is open. The renegotiation popup (`#reneg-overlay`) is opened from a
+Messages row AND from the VM "Renegotiate ▸" button (shown once the window has elapsed) — ACCEPT
+→ `renegotiateLicence` (built), REJECT → the shared adviser confirm → `lapseLicence`. Every term
+shown is a published snapshot field; the adviser voice is presentation keyed on the emitted
+`standing` band (one Syndicate-liaison voice). No countdown — the "respond in N days" grace window
+is Slice 2; rows say "window elapsed".
+
+### Tests
+
+`sim/tests/renegotiation.test.js` (+14): `lapseLicence`'s rejections (before window-end,
+unlicensed, not-owned, deuterium); its apply (licence gone, RP forfeited and removed, guild sum
+dropped by exactly the forfeit — and RAISED for a negative-RP venture, the escape valve —
+`syndicateCommitment`/`committedFromTick` cleared, venture still present, no credit moved, no
+lockout, all invariants hold); re-licensing the lapsed venture mints a fresh bump; and the
+attention derive (an expired venture surfaces, a not-yet-expired / unlicensed / deuterium one does
+not, ACCEPT and LAPSE both clear it, the derive is byte-identical read-only).
+`sim/tests/server.test.js` (+1 test, tripwire): the served page carries the Messages rail entry,
+the panel, the popup, both entry points, and the "window elapsed" marker (no countdown); the
+retired "Renegotiation itself is not built yet" caveat flips. **Full suite green:** `node --test`
+from `sim/` — 1113 tests, 0 failures. No golden run contains `lapseLicence` and the attention
+derive is read-only, so every existing golden is byte-identical. Verified end-to-end in headless
+Chromium (real server + real client): the Messages tab highlights and lists both offers, the popup
+opens from a Messages row and the VM button, ACCEPT re-locks (0.5→0.6), REJECT → confirm → the
+venture goes unlicensed (kept) and drops off the list.
+
 ### Deferred (Slice 2, per §5), not invented here
 
 Timers / the fixed acceptance window / auto-lapse to unlicensed; the variable grace window;
 window as a demand lever; equity changes; the −300 forced-lease / −500 closure consequences;
 the #57 investor vote; dividends; counter-offers; the resource-sale premium/discount; and
-the client button + the ad-hoc-events presentation of the offer. Deuterium stays exempt.
+the event log / notices / `messagesSeenTick` unread mechanic (the Notices section is an empty
+stub this slice), plus the parked domain-character adviser split. Deuterium stays exempt.

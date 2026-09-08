@@ -30,7 +30,8 @@ const { createState } = require('../state.js');
 const {
   intake,
   createFoundGuildAction, createEstablishVentureAction, createApplyForLicenceAction,
-  createLicenseDeuteriumMineAction, createRenegotiateLicenceAction, createSetWindowNAction,
+  createLicenseDeuteriumMineAction, createRenegotiateLicenceAction, createLapseLicenceAction,
+  createSetWindowNAction,
 } = require('../actions.js');
 const {
   licenceFee, licenceEndTick,
@@ -384,4 +385,190 @@ test('snapshot — a DEUTERIUM mine carries neither field (windowless, §1.4)', 
   const row = rowOf(s, 'deut_1');
   assert.ok(!('standing' in row), 'no standing on a deuterium mine');
   assert.ok(!('renegotiationOffer' in row), 'no offer on a deuterium mine');
+});
+
+// ─── the lapseLicence action (REJECT → unlicensed) ───────────────────────────────
+// The OTHER end of a reopened licence (§5 "Accept or lapse"): drop the licence and forfeit
+// the venture's RP, keeping the venture in place. Same gate as renegotiateLicence; apply
+// mirrors decommissionVenture's RP-forfeit + commitment-clear minus the removal.
+
+const lapse = (s, ventureId = 'mine_1', guildId = GUILD) =>
+  intake(s, [createLapseLicenceAction({ guildId, ventureId })]);
+
+test('lapse — rejects BEFORE the committed window has elapsed', () => {
+  const s = licensedMine({ windowDays: 7 });        // far short of window-end
+  const before = hashState(s);
+  const { results } = lapse(s);
+  assert.equal(results[0].accepted, false);
+  assert.match(results[0].reason, /window has not elapsed/);
+  assert.equal(hashState(s), before, 'a rejected action moves nothing');
+});
+
+test('lapse — rejects an UNLICENSED venture (nothing to lapse)', () => {
+  const s = advance(founded(), [
+    createEstablishVentureAction({
+      guildId: GUILD, ventureId: 'mine_1', siteId: HOME_MINE, assetId: M1,
+      resourceType: 'titanium', productionRate: 5,
+    }),
+  ]).state;
+  const { results } = lapse(s);
+  assert.equal(results[0].accepted, false);
+  assert.match(results[0].reason, /no licence to lapse/);
+});
+
+test('lapse — rejects a venture the guild does NOT own', () => {
+  const s = elapse(licensedMine());
+  const { results, state } = lapse(s, 'no-such-venture');
+  assert.equal(results[0].accepted, false);
+  assert.match(results[0].reason, /has no venture with id/);
+  assert.equal(hashState(state), hashState(s), 'no-op');
+});
+
+test('lapse — rejects a DEUTERIUM mine (windowless, §1.4)', () => {
+  const s = createState({
+    guilds: [{
+      id: GUILD, credits: 0, fuelHoard: 0,
+      ventures: [{
+        id: 'deut_1', ownerGuildId: GUILD, type: 'mining', systemId: HOME_SYSTEM,
+        resourceType: 'deuterium', productionRate: 5,
+        deuteriumLicence: { signedTick: 0 }, reputation: 1000,
+      }],
+    }],
+    reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 }, windowN: N,
+  });
+  const { results } = lapse(s, 'deut_1');
+  assert.equal(results[0].accepted, false);
+  assert.match(results[0].reason, /windowless and exempt/);
+});
+
+test('lapse — reverts to unlicensed, forfeits the venture RP, keeps the venture, moves no credit', () => {
+  const s = elapse(licensedMine({ committedOutputPct: 0.5, windowDays: 7, equityPct: 0 }));
+  setReputation(s, 'mine_1', 200);                  // a positive standing to forfeit
+  const guildRpBefore = guildOf(s).guildReputation;
+  const creditsBefore = guildOf(s).credits;
+  const ledgerBefore = s.syndicate.ledger;
+
+  const { results, state } = lapse(s);
+  assert.equal(results[0].accepted, true);
+
+  const v = ventureOf(state, 'mine_1');
+  assert.ok(v, 'the venture SURVIVES the lapse (unlicensed, not removed)');
+  assert.ok(!v.licence, 'the licence is gone');
+  assert.ok(!('reputation' in v), 'the venture returns to the no-reputation state (RP forfeited)');
+  assert.equal(v.syndicateCommitment, 0, 'windowed commitment cleared to the unlicensed value');
+  assert.ok(!('committedFromTick' in v), 'the pro-rate anchor is cleared');
+
+  // The guild sum dropped by EXACTLY the forfeited amount.
+  assert.equal(guildOf(state).guildReputation, guildRpBefore - 200, 'guild RP dropped by the forfeit');
+
+  // No fee, no credit moved anywhere.
+  assert.equal(guildOf(state).credits, creditsBefore, 'no fee charged to the guild');
+  assert.equal(state.syndicate.ledger, ledgerBefore, 'nothing moved to the Syndicate ledger');
+
+  // No node lockout written (unlike a mid-term teardown) — lapse is a window-end settlement.
+  assert.ok(!Array.isArray(state.nodeLockouts) || state.nodeLockouts.length === 0, 'no node lockout on lapse');
+
+  // Every invariant holds (checkGuildReputationSum among them).
+  assert.equal(checkInvariants(state).length, 0);
+});
+
+test('lapse — forfeiting a NEGATIVE RP RAISES the guild sum (the asymmetric escape valve, §5)', () => {
+  const s = elapse(licensedMine({ committedOutputPct: 0.3, windowDays: 7 }));
+  setReputation(s, 'mine_1', STANDING_CUT_AT_RISK - 100);   // −400: a ruined venture
+  const guildRpBefore = guildOf(s).guildReputation;
+
+  const { results, state } = lapse(s);
+  assert.equal(results[0].accepted, true);
+
+  const v = ventureOf(state, 'mine_1');
+  assert.ok(!('reputation' in v), 'the negative RP is shed');
+  // guildReputation -= (−400) ⇒ it RISES by 400. The escape-hatch is deliberately asymmetric.
+  assert.equal(guildOf(state).guildReputation, guildRpBefore + 400, 'shedding a negative RP raises the guild sum');
+  assert.equal(checkInvariants(state).length, 0);
+});
+
+test('lapse then RE-LICENSE — applyForLicence works on the lapsed venture and mints a FRESH bump', () => {
+  const s = elapse(licensedMine({ committedOutputPct: 0.5, windowDays: 7, equityPct: 0 }));
+  setReputation(s, 'mine_1', 200);
+  const { state: lapsed } = lapse(s);
+  assert.ok(!ventureOf(lapsed, 'mine_1').licence, 'unlicensed after lapse');
+
+  // A fresh licence on the now-unlicensed venture is admissible and mints a new signing bump
+  // (RP climbs from 0 again), exactly as a first signing does.
+  const { results, state } = intake(lapsed, [
+    createApplyForLicenceAction({ guildId: GUILD, ventureId: 'mine_1', committedOutputPct: 0.5, windowDays: 7 }),
+  ]);
+  assert.equal(results[0].accepted, true, 're-licensing the lapsed venture is admissible');
+  const v = ventureOf(state, 'mine_1');
+  assert.ok(v.licence, 'a fresh licence is in place');
+  assert.ok((v.reputation || 0) > 0, 'a fresh signing bump was minted');
+  assert.equal(checkInvariants(state).length, 0);
+});
+
+// ─── the attention derive (snapshot aggregation) ─────────────────────────────────
+
+const attentionOf = (s) => buildSnapshot(s).attention;
+
+test('attention — an expired-window venture surfaces in attention.renegotiations', () => {
+  const s = elapse(licensedMine({ committedOutputPct: 0.5, windowDays: 7, equityPct: 0 }));
+  setReputation(s, 'mine_1', 0);                    // Steady
+  const att = attentionOf(s);
+  assert.ok(att && Array.isArray(att.renegotiations), 'attention.renegotiations is a list');
+  assert.equal(att.renegotiations.length, 1, 'the one open offer is surfaced');
+  const entry = att.renegotiations[0];
+  assert.equal(entry.guildId, GUILD);
+  assert.equal(entry.ventureId, 'mine_1');
+  assert.equal(entry.standing, 'steady');
+  assert.ok(typeof entry.ventureName === 'string' && entry.ventureName.length > 0, 'a display name is carried');
+  // The offer is the SAME structure the venture row publishes.
+  const row = rowOf(s, 'mine_1');
+  assert.deepEqual(entry.offer, row.renegotiationOffer, 'the entry offer == the row offer');
+});
+
+test('attention — a NOT-yet-expired venture is NOT surfaced', () => {
+  const s = licensedMine({ committedOutputPct: 0.5, windowDays: 7 });   // window far from end
+  setReputation(s, 'mine_1', 0);
+  assert.equal(attentionOf(s).renegotiations.length, 0, 'no offer before the window elapses');
+});
+
+test('attention — an UNLICENSED venture is NOT surfaced', () => {
+  const s = advance(founded(), [
+    createEstablishVentureAction({
+      guildId: GUILD, ventureId: 'mine_1', siteId: HOME_MINE, assetId: M1,
+      resourceType: 'titanium', productionRate: 5,
+    }),
+  ]).state;
+  assert.equal(attentionOf(s).renegotiations.length, 0, 'an unlicensed venture is no action-item');
+});
+
+test('attention — a DEUTERIUM mine is NOT surfaced (windowless, §1.4)', () => {
+  const s = createState({
+    guilds: [{
+      id: GUILD, credits: 0, fuelHoard: 0,
+      ventures: [{
+        id: 'deut_1', ownerGuildId: GUILD, type: 'mining', systemId: HOME_SYSTEM,
+        resourceType: 'deuterium', productionRate: 5,
+        deuteriumLicence: { signedTick: 0 }, reputation: 1000,
+      }],
+    }],
+    reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 }, windowN: N,
+  });
+  assert.equal(attentionOf(s).renegotiations.length, 0, 'a deuterium mine is windowless — never an action-item');
+});
+
+test('attention — after ACCEPT the offer clears; after LAPSE it clears too', () => {
+  // ACCEPT re-locks (window resets) → no longer expired → drops off attention.
+  const accepted = renegotiate(elapse(licensedMine({ windowDays: 7 }))).state;
+  assert.equal(attentionOf(accepted).renegotiations.length, 0, 'accepting re-locks and clears the offer');
+
+  // LAPSE unlicenses → no licence → drops off attention.
+  const lapsed = lapse(elapse(licensedMine({ windowDays: 7 }))).state;
+  assert.equal(attentionOf(lapsed).renegotiations.length, 0, 'lapsing unlicenses and clears the offer');
+});
+
+test('attention — the derive is read-only: byte-identical hash before and after buildSnapshot', () => {
+  const s = elapse(licensedMine({ windowDays: 7 }));
+  const before = hashState(s);
+  buildSnapshot(s);   // building the read model must mutate NOTHING (invariant 9 read-model rule)
+  assert.equal(hashState(s), before, 'the attention derive moves no serialized byte');
 });

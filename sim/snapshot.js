@@ -530,6 +530,46 @@ function renegotiationFieldsFor(state, venture) {
   return { standing, renegotiationOffer };
 }
 
+// computeAttention(state) -> { renegotiations: [ { guildId, ventureId, ventureName, standing,
+//                                                  offer } ] }
+// The guild's open ACTION-ITEMS, aggregated top-level so the MESSAGES panel and the tab badge
+// read ONE place rather than re-scanning every venture (design.md §5 "attention derive"). For
+// this slice the only action-item is the renegotiation offer, so this is a pure aggregation of
+// the per-venture `renegotiationFieldsFor` above: it emits exactly the ventures that carry a
+// non-null `renegotiationOffer` (a licensed, non-deuterium venture whose committed window has
+// elapsed) and nothing else.
+//
+// Scanned across EVERY guild and tagged with `guildId`, because the snapshot is multi-guild —
+// the client filters to its own guild's rows, the same way it filters `ventures[]`. Each entry
+// carries what a MESSAGES row needs: the venture's id (to open the popup), a display
+// `ventureName` (the venture's SEED site name — engine-owned display text, the same string the
+// venture row publishes; the client adds its own type label, as it does everywhere), the
+// `standing` band (for the adviser one-liner + the chip), and the full `offer` (so a row and
+// the popup it opens read one structure). Shaped as a list under `renegotiations` so a later
+// slice's event-log notices can join the same `attention` object without reshaping it.
+//
+// Pure DERIVED telemetry: recomputes from state on read, mutates nothing, enters no serialized
+// byte and no determinism hash, and invents no game number — every term inside `offer` is the
+// SAME `renegotiationFee` the apply locks.
+function computeAttention(state) {
+  const renegotiations = [];
+  for (const g of (state.guilds || [])) {
+    for (const v of (g.ventures || [])) {
+      const { renegotiationOffer, standing } = renegotiationFieldsFor(state, v);
+      if (!renegotiationOffer) continue;   // no open offer → not an action-item
+      const site = v.siteId ? getSite(v.siteId) : null;
+      renegotiations.push({
+        guildId: g.id,
+        ventureId: v.id,
+        ventureName: (site && site.name) || v.siteId || v.id,
+        standing,
+        offer: renegotiationOffer,
+      });
+    }
+  }
+  return { renegotiations };
+}
+
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
 //   {
 //     schemaVersion, tick,
@@ -593,6 +633,10 @@ function renegotiationFieldsFor(state, venture) {
 //     shipments: [ { ownerGuildId, cargo: { good: int }, destinationSystemId,
 //                    arrivalTick, ticksRemaining } ],   // IN-FLIGHT, design.md §6
 //     nodeLockouts: [ { siteId, releaseTick, lockedAtTick, ticksRemaining } ], // teardown §3.3
+//     attention: { renegotiations: [ { guildId, ventureId, ventureName, standing, offer } ] },
+//       // §5 attention derive (#64 Slice 1b): the guild's open action-items, aggregated so
+//       // the MESSAGES panel + tab badge read one place. `offer` == the venture row's
+//       // renegotiationOffer. Multi-guild; the client filters to its own guildId.
 //   }
 function buildSnapshot(state) {
   const supply = computeGalacticSupply(state);
@@ -1279,6 +1323,13 @@ function buildSnapshot(state) {
       lockedAtTick: l.lockedAtTick,
       ticksRemaining: Math.max(0, l.releaseTick - state.tick),
     })),
+    // The ATTENTION derive (design.md §5 "attention derive", #64 Slice 1b) — the guild's open
+    // action-items, aggregated top-level so the Guild Hall MESSAGES panel and its tab badge read
+    // one place. For this slice that is exactly the open renegotiation offers, under
+    // `renegotiations`; a later slice's event-log notices join the same object. Pure DERIVED
+    // read-model: recomputed from state, mutates nothing, no serialized byte and no determinism
+    // hash. See computeAttention.
+    attention: computeAttention(state),
   };
 }
 

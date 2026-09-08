@@ -907,7 +907,13 @@ test('GET / tells the truth on the licence receipt — and leaves the STILL-TRUE
   assert.match(html, /No fee is owed/);                                  // an unlicensed venture owes none
   assert.match(html, /with no fee and no commitment/);                   // …said again on the summary
   assert.match(html, /designed <em>shape<\/em> of that discount/);        // the pre-sign graph is a shape, not a quote
-  assert.match(html, /Renegotiation itself is not built yet/);           // #64
+  // The "Renegotiation itself is not built yet" caveat WAS here (#64). The delivery UI + the
+  // lapse action ship this slice (#64 Slice 1b), so the caveat is FALSE and the assertion
+  // FLIPS rather than being dropped — the treatment NOT YET CHARGED / the asset economy got.
+  assert.ok(!html.includes('Renegotiation itself is not built yet'),
+    'renegotiation is built (accept + lapse, reached at window-end) — the old caveat is false');
+  assert.match(html, /accept<\/em> the Syndicate’s terms and re-lock, or <em>reject<\/em> and let the licence lapse/,
+    'the reneg-window help now describes the shipped accept/lapse decision');
   // §4 WAS on this list. The asset economy is BUILT and the panel is wired to it
   // (the asset-picker slice, 31-08-26), so the caveat is false and the assertion
   // FLIPS rather than being dropped — the same treatment `NOT YET CHARGED` got above.
@@ -1609,7 +1615,14 @@ test('GET / serves the Venture Management popup shell, wired to the published fi
   assert.match(html, /id="vmLedger"/, 'the agreed-terms ledger');
   assert.match(html, /id="vmWindow"/, 'the contract-window block');
   assert.match(html, /id="vmCloseBtn"/, 'the Close-venture action');
-  assert.match(html, /id="vmReneg"/, 'the Renegotiate stub (expired only)');
+  assert.match(html, /id="vmReneg"/, 'the Renegotiate control (expired only)');
+  // #64 Slice 1b: the Renegotiate button is WIRED now (was a "coming soon" stub) — it opens the
+  // shared renegotiation popup for the venture the VM popup is managing, the SECOND entry point.
+  assert.ok(!html.includes('Renegotiation is coming soon'), 'the Renegotiate stub note is gone — it is wired');
+  assert.match(html, /window\.__openRenegotiation\(player\.guildId, VM\.ventureId\)/,
+    'VM Renegotiate opens the shared popup (§5 entry point 2)');
+  assert.match(html, /reneg\.style\.display = \(cw && cw\.expired\) \? '' : 'none'/,
+    'the Renegotiate control shows only once the window has elapsed');
   // The explicit, irregular art filenames — a distinctive mine and a distinctive factory entry, plus
   // the documented gasfactory.jpg-is-a-gas-mine placeholder — so the table cannot silently reshuffle.
   assert.match(html, /crystalline:'crystallinemine\.jpg'/, 'a distinctive mine-art entry');
@@ -1648,6 +1661,53 @@ test('GET / serves the Venture Management popup shell, wired to the published fi
   assert.match(html, /openNodeOverlay\('Settlement Slot '/, 'a rival Settlement slot keeps the read-only overlay');
 });
 
+// #64 Slice 1b: the Guild Hall MESSAGES panel, the renegotiation popup, and the two entry points.
+// Both halves are pinned on the SERVED BYTES — a page that quietly reverted would still render and
+// only this would go red — the same discipline the VM and asset-picker tripwires follow.
+test('GET / serves the MESSAGES panel + the renegotiation popup, wired to the attention derive', async () => {
+  const html = await (await fetch(base + '/')).text();
+
+  // 1. THE MESSAGES RAIL ENTRY at the top of the Guild Hall tab list, with its count badge.
+  assert.match(html, /<button class="gh-tab" data-p="messages">/, 'the Messages rail entry');
+  assert.match(html, /id="gh-msgbadge"/, 'the Messages count badge');
+  // The rail entry + the top-level Guild Hall tab both light from attention.renegotiations.
+  assert.match(html, /id="rtab-guild"/, 'the top-level Guild Hall tab is identifiable');
+  assert.match(html, /id="rtabGuildAttn"/, 'the top-level tab attention pip');
+  assert.match(html, /function myRenegotiations\(s\)\{/, 'the player-guild filter over the attention derive');
+  assert.match(html, /s\.attention && Array\.isArray\(s\.attention\.renegotiations\)/, 'reads the snapshot attention derive');
+
+  // 2. THE MESSAGES PANEL renders the open offers as the pinned "Needs a decision" section, and
+  //    stubs the Notices section (the event log is Slice 2+ — no invented notices).
+  assert.match(html, /function messagesPanel\(me\)\{/, 'the Messages panel renderer');
+  assert.match(html, /Needs a decision/, 'the pinned action-item section');
+  assert.match(html, /No notices yet\./, 'the Notices section is an honest empty stub this slice');
+  assert.match(html, /data-reneg="/, 'a Messages row carries its venture id for the popup');
+  // The window-elapsed marker, NOT a countdown — the grace-window timer is Slice 2 (§5).
+  assert.match(html, /window elapsed/, 'rows say the window elapsed, with no "respond in N days" countdown');
+  assert.ok(!html.includes('respond in '), 'no grace-window countdown this slice (Slice 2)');
+
+  // 3. THE POPUP exists (same modal shape as the venture popups) with the Syndicate-liaison voice,
+  //    the four term rows, and ACCEPT / REJECT.
+  assert.match(html, /id="reneg-overlay"/, 'the renegotiation popup overlay');
+  assert.match(html, /Syndicate Liaison/, 'the one Syndicate-liaison adviser voice (no domain characters)');
+  assert.match(html, /id="renegAccept"/, 'the ACCEPT action');
+  assert.match(html, /id="renegReject"/, 'the REJECT action');
+  // ACCEPT fires the built renegotiateLicence; REJECT confirms then fires the new lapseLicence.
+  assert.match(html, /type:'renegotiateLicence', guildId:g, ventureId:id/, 'ACCEPT → renegotiateLicence (built)');
+  assert.match(html, /type:'lapseLicence', guildId:g, ventureId:id/, 'REJECT → lapseLicence (the new action)');
+  assert.match(html, /window\.__adviserConfirm/, 'REJECT routes through the shared Adviser confirm');
+  // The popup reads the terms off the snapshot — the venture's licence and its published offer —
+  // and computes no game number itself (§5).
+  assert.match(html, /v\.renegotiationOffer/, 'the popup reads the published renegotiationOffer');
+  assert.match(html, /offer\.committedOutputPct/, 'the offered commitment comes from the snapshot');
+  assert.match(html, /offer\.discountedFee/, 'the offered fee comes from the snapshot');
+
+  // 4. THE ONE POPUP, TWO ENTRY POINTS — a Messages row and the VM Renegotiate button both call it.
+  assert.match(html, /window\.__openRenegotiation = open/, 'the single popup entry point is exposed');
+  assert.match(html, /window\.__openRenegotiation\(guildId, ventureId\)/, 'entry point 1: a Messages row');
+  assert.match(html, /window\.__openRenegotiation\(player\.guildId, VM\.ventureId\)/, 'entry point 2: the VM Renegotiate button');
+});
+
 // The two Venture Management snapshot derives are PUBLISHED on the venture row a licensed venture
 // produces (docs/venture-management.md §7 / Part 1) — so the client renders them rather than
 // computing a game number. This drives the live server end-to-end: found, establish, license, tick.
@@ -1675,4 +1735,11 @@ test('a licensed venture publishes contractWindow (cycles) and equityPerCycle on
   assert.equal(typeof v.equityPerCycle, 'number');
   assert.ok(Number.isInteger(v.equityPerCycle), 'equityPerCycle is integer credits (§15.2)');
   assert.ok(v.equityPerCycle > 0, 'a 40% equity offer projects a real per-cycle payout');
+
+  // #64 Slice 1b: the attention derive is published top-level as a stable shape. The window is
+  // NOT yet elapsed here, so the list is empty — but the key is always present (the read model's
+  // stable-shape courtesy, like nodeLockouts). The offer-surfacing itself is engine-tested.
+  assert.ok(snap.attention && Array.isArray(snap.attention.renegotiations),
+    'attention.renegotiations is published as an array');
+  assert.equal(snap.attention.renegotiations.length, 0, 'no open offer before the window elapses');
 });

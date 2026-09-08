@@ -623,6 +623,12 @@ select.field{appearance:none; cursor:pointer;}
 .rtab{font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--text-dim); background:rgba(67,217,200,.05); border:1px solid var(--line-bright); border-top:none; padding:9px 30px 10px; cursor:pointer; clip-path:polygon(0 0, 100% 0, calc(100% - 15px) 100%, 15px 100%); transition:all .12s;}
 .rtab:hover{color:var(--text); background:rgba(67,217,200,.12);}
 .rtab.active{color:var(--accent); background:rgba(67,217,200,.16); border-color:var(--accent);}
+/* The Guild Hall tab lights an amber attention pip while a guild action-item is open (#64
+   Slice 1b — the snapshot's attention.renegotiations). Amber, not the teal --accent, so it
+   reads as "the Syndicate wants a decision" rather than "this tab is selected". */
+.rtab .rtab-attn{display:inline-block; width:6px; height:6px; border-radius:50%; background:#C9A227; margin-left:8px; vertical-align:middle; box-shadow:0 0 7px #C9A227; animation:rtabPulse 1.8s ease-in-out infinite;}
+.rtab.attn{border-color:#C9A227; color:var(--text);}
+@keyframes rtabPulse{0%,100%{opacity:1;} 50%{opacity:.3;}}
 
 /* ===== Archive stub overlay for the non-system tabs ===== */
 #tabPanel{position:fixed; inset:104px 0 0 0; z-index:480; display:none; background:var(--bg-void, #0B0D12); color:#E8DFC8; font-family:'IBM Plex Sans',sans-serif;}
@@ -877,7 +883,32 @@ select.field{appearance:none; cursor:pointer;}
 #tp-guild .gh-tab.on{color:var(--gh-ink); background:#1d2230; border-color:var(--gh-amber); box-shadow:inset 0 0 0 1px var(--gh-amber-dim);}
 #tp-guild .gh-tab.on .dot{background:var(--gh-amber); box-shadow:0 0 8px var(--gh-amber);}
 #tp-guild .gh-tab .soon{margin-left:auto; font-size:8px; letter-spacing:.14em; color:var(--gh-ink4); border:1px solid var(--gh-line); border-radius:20px; padding:2px 6px;}
+/* MESSAGES rail entry (#64 Slice 1b) — an amber count badge and a pulsing dot while an
+   action-item is open (attention.renegotiations non-empty). Lifted from the mock. */
+#tp-guild .gh-tab .badge{margin-left:auto; font-size:9px; font-weight:600; letter-spacing:.04em; color:var(--gh-void); background:var(--gh-amber); border-radius:20px; min-width:17px; text-align:center; padding:1px 6px;}
+#tp-guild .gh-tab.attn .dot{background:var(--gh-amber); box-shadow:0 0 8px var(--gh-amber); animation:ghPulse 1.8s ease-in-out infinite;}
+@keyframes ghPulse{0%,100%{opacity:1;} 50%{opacity:.35;}}
 #tp-guild .gh-railfoot{padding:12px 15px; border-top:1px solid var(--gh-line); color:var(--gh-ink4); font-size:10px; letter-spacing:.04em; line-height:1.5;}
+
+/* MESSAGES panel (#64 Slice 1b) — the two-section list from docs/mockups/guild-hall-messages.html. */
+#tp-guild .gh-seclab{font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--gh-ink4); padding:14px 16px 6px;}
+#tp-guild .msg{display:flex; align-items:flex-start; gap:12px; padding:13px 16px; border-top:1px solid var(--gh-line); cursor:pointer; transition:.12s;}
+#tp-guild .msg:hover{background:#1b2029;}
+#tp-guild .msg .ic{width:26px; height:26px; border-radius:6px; flex:none; display:flex; align-items:center; justify-content:center; font-size:13px; margin-top:1px;}
+#tp-guild .msg .body{flex:1; min-width:0;}
+#tp-guild .msg .t{font-size:12.5px; color:var(--gh-ink); letter-spacing:.02em; margin-bottom:3px;}
+#tp-guild .msg .t .who{color:var(--gh-ink3);}
+#tp-guild .msg .adv{font-size:11.5px; color:var(--gh-ink2); line-height:1.5;}
+#tp-guild .msg .meta{display:flex; flex-direction:column; align-items:flex-end; gap:5px; flex:none; text-align:right;}
+#tp-guild .chip{font-size:8px; letter-spacing:.12em; text-transform:uppercase; padding:2px 7px; border-radius:20px; border:1px solid var(--gh-line2); color:var(--gh-ink3); white-space:nowrap;}
+#tp-guild .chip.strong{color:var(--gh-up); border-color:rgba(95,185,138,.4);}
+#tp-guild .chip.steady{color:var(--gh-amber2); border-color:var(--gh-amber-dim);}
+#tp-guild .chip.subpar{color:#e0b26b; border-color:rgba(224,178,107,.4);}
+#tp-guild .chip.atrisk{color:var(--gh-down); border-color:rgba(224,121,107,.45);}
+#tp-guild .msg .elapsed{font-size:9.5px; letter-spacing:.06em; color:var(--gh-ink3);}
+#tp-guild .msg.action{background:rgba(201,162,39,.045);}
+#tp-guild .msg.action .ic{background:var(--gh-amber-dim); color:var(--gh-amber2);}
+#tp-guild .gh-msg-empty{padding:16px; color:var(--gh-ink4); font-size:11.5px; letter-spacing:.03em;}
 
 /* CENTRE */
 #tp-guild .gh-centre{display:flex; flex-direction:column; min-width:0; gap:16px;}
@@ -1454,6 +1485,43 @@ select.field{appearance:none; cursor:pointer;}
 #vm-overlay .vm-note{font-family:var(--mono); font-size:10px; color:var(--ink3); text-align:center; margin-top:9px; letter-spacing:.03em; line-height:1.5; min-height:12px}
 @media(max-width:820px){ #vm-overlay .est-body{grid-template-columns:1fr} #vm-overlay .est-main{border-right:none; border-bottom:1px solid var(--line)} #vm-overlay .vm-sub{grid-template-columns:1fr} }
 
+/* ===== #reneg-overlay — the LICENCE RENEGOTIATION popup (#64 Slice 1b, design.md §5). Same modal
+   shape as the venture popups; built to docs/mockups/guild-hall-messages.html. Every term shown is
+   a PUBLISHED snapshot field (the venture's licence + its renegotiationOffer); the adviser voice is
+   presentation keyed on the emitted `standing` band. The client computes no game number (§5). ===== */
+#reneg-overlay{position:fixed; inset:0; background:rgba(6,7,10,.7); backdrop-filter:blur(2px); display:none; align-items:center; justify-content:center; z-index:620; padding:20px}
+#reneg-overlay.open{display:flex}
+#reneg-overlay .pop{width:min(560px,100%); background:#181c24; border:1px solid var(--line2); border-radius:12px; overflow:hidden; box-shadow:0 24px 80px rgba(0,0,0,.6)}
+#reneg-overlay .pop-h{display:flex; align-items:center; justify-content:space-between; padding:16px 18px; border-bottom:1px solid var(--line)}
+#reneg-overlay .pop-h .t{font-family:var(--serif); font-size:17px; letter-spacing:.04em; color:var(--ink)}
+#reneg-overlay .pop-h .x{cursor:pointer; color:var(--ink3); font-size:18px; border:none; background:none}
+#reneg-overlay .pop-b{padding:18px}
+#reneg-overlay .adviser{display:flex; gap:13px; align-items:flex-start; padding:14px; border:1px solid var(--line); border-radius:9px; background:#14171e; margin-bottom:18px}
+#reneg-overlay .adviser .mono{width:40px; height:40px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; font-family:var(--serif); font-size:17px; color:var(--void); background:linear-gradient(160deg,#e3c04a,#C9A227)}
+#reneg-overlay .adviser .say{font-size:12.5px; line-height:1.55; color:var(--ink2)}
+#reneg-overlay .adviser .say .name{display:block; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3); margin-bottom:4px}
+#reneg-overlay .terms{border:1px solid var(--line); border-radius:9px; overflow:hidden; margin-bottom:18px}
+#reneg-overlay .terms .row{display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:center; padding:11px 15px; border-top:1px solid var(--line); font-size:12.5px}
+#reneg-overlay .terms .row:first-child{border-top:none}
+#reneg-overlay .terms .k{color:var(--ink3); letter-spacing:.08em; text-transform:uppercase; font-size:10px}
+#reneg-overlay .terms .from{color:var(--ink3)}
+#reneg-overlay .terms .to{color:var(--ink); font-weight:600; text-align:right; min-width:74px}
+#reneg-overlay .terms .to.up{color:#e3c04a}
+#reneg-overlay .terms .to.same{color:var(--ink2); font-weight:400}
+#reneg-overlay .terms .to.good{color:var(--green)}
+#reneg-overlay .terms .chip{font-size:8px; letter-spacing:.12em; text-transform:uppercase; padding:2px 7px; border-radius:20px; border:1px solid var(--line2); color:var(--ink3); white-space:nowrap}
+#reneg-overlay .terms .chip.strong{color:var(--green); border-color:rgba(95,185,138,.4)}
+#reneg-overlay .terms .chip.steady{color:#e3c04a; border-color:rgba(201,162,39,.30)}
+#reneg-overlay .terms .chip.subpar{color:#e0b26b; border-color:rgba(224,178,107,.4)}
+#reneg-overlay .terms .chip.atrisk{color:var(--red); border-color:rgba(224,121,107,.45)}
+#reneg-overlay .pop-acts{display:flex; gap:10px}
+#reneg-overlay .btn{flex:1; padding:13px; border-radius:8px; font-family:var(--mono); font-size:12px; letter-spacing:.12em; text-transform:uppercase; cursor:pointer; border:1px solid var(--line2); transition:.12s; background:transparent; color:var(--ink2)}
+#reneg-overlay .btn.accept{background:var(--amber); color:var(--void); border-color:var(--amber); font-weight:600}
+#reneg-overlay .btn.accept:hover{background:#e3c04a}
+#reneg-overlay .btn.reject:hover{border-color:var(--red); color:var(--red)}
+#reneg-overlay .rejnote{font-size:10px; color:var(--ink4,var(--ink3)); line-height:1.5; text-align:center; margin-top:11px; letter-spacing:.03em}
+#reneg-overlay .reneg-note{font-family:var(--mono); font-size:10px; color:var(--ink3); text-align:center; margin-top:9px; letter-spacing:.03em; line-height:1.5; min-height:12px}
+
 #est-reel{position:fixed; inset:0; background:rgba(6,7,10,.80); backdrop-filter:blur(3px); z-index:600; display:none; align-items:center; justify-content:center; padding:26px}
 #est-reel.open{display:flex}
 #est-reel .reel-card{width:100%; max-width:760px; height:min(80vh,600px); display:grid; grid-template-columns:1fr 300px; background:linear-gradient(180deg,#141821,#0F1218); border:1px solid var(--line2); border-radius:14px; overflow:hidden; box-shadow:0 30px 90px rgba(0,0,0,.65)}
@@ -1553,7 +1621,7 @@ select.field{appearance:none; cursor:pointer;}
     <button class="rtab" onclick="openTab('market', this)">TRADE</button>
     <button class="rtab" onclick="openTab('deuterium', this)">Deuterium</button>
     <button class="rtab" onclick="openTab('transport', this)">Transport</button>
-    <button class="rtab" onclick="openTab('guild', this)">Guild Hall</button>
+    <button class="rtab" id="rtab-guild" onclick="openTab('guild', this)">Guild Hall<span class="rtab-attn" id="rtabGuildAttn" hidden></span></button>
   </div>
 </div>
 
@@ -1928,6 +1996,7 @@ select.field{appearance:none; cursor:pointer;}
         <div class="zhead">Guild</div>
         <div class="zsub" id="gh-guildname">&mdash;<span class="m" id="gh-guildsub"></span></div>
         <div class="gh-tabs" id="gh-tabs">
+          <button class="gh-tab" data-p="messages"><span class="dot"></span>Messages<span class="badge" id="gh-msgbadge" hidden></span></button>
           <button class="gh-tab on" data-p="standing"><span class="dot"></span>Standing</button>
           <button class="gh-tab" data-p="finance"><span class="dot"></span>Finance</button>
           <button class="gh-tab" data-p="ventures"><span class="dot"></span>Ventures</button>
@@ -2306,6 +2375,36 @@ select.field{appearance:none; cursor:pointer;}
           </div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- The LICENCE RENEGOTIATION popup (#64 Slice 1b) — one modal, two entry points (a Messages row
+     and the VM "Renegotiate ▸" button). ACCEPT → renegotiateLicence; REJECT → confirm → lapseLicence.
+     Every term is read from the snapshot; the adviser voice is keyed on the emitted standing band. -->
+<div id="reneg-overlay">
+  <div class="pop">
+    <div class="pop-h">
+      <span class="t">Licence Renegotiation</span>
+      <button class="x" id="renegClose" type="button">&times;</button>
+    </div>
+    <div class="pop-b">
+      <div class="adviser">
+        <div class="mono">S</div>
+        <div class="say"><span class="name">Syndicate Liaison</span><span id="renegAdv"></span></div>
+      </div>
+      <div class="terms">
+        <div class="row"><span class="k">Standing</span><span></span><span class="to" id="renegStanding"></span></div>
+        <div class="row"><span class="k">Commitment</span><span class="from" id="renegCFrom"></span><span class="to" id="renegCTo"></span></div>
+        <div class="row"><span class="k">Window</span><span class="from" id="renegWFrom"></span><span class="to same" id="renegWTo"></span></div>
+        <div class="row"><span class="k">Fee / cycle</span><span class="from" id="renegFFrom"></span><span class="to" id="renegFTo"></span></div>
+      </div>
+      <div class="pop-acts">
+        <button class="btn accept" id="renegAccept" type="button">Accept terms</button>
+        <button class="btn reject" id="renegReject" type="button">Reject</button>
+      </div>
+      <div class="rejnote">Rejecting reverts this venture to <b>unlicensed</b> &mdash; you keep the mine, but forfeit its standing (RP). You can sign a fresh licence later on your own terms.</div>
+      <div class="reneg-note" id="renegNote"></div>
     </div>
   </div>
 </div>
@@ -3692,8 +3791,8 @@ var REELS = {
     'The equity you offer is recorded on the venture and the fee is discounted for it at signing. The graph is the designed <em>shape</em> of that discount and not a live quote: the fee in credits is priced off the market price at the moment you sign, so only the signed figure is real.' ]},
   reneg:{ title:'Renegotiation window', pages:[
     'This sets when the contract first becomes open to <em>renegotiation</em>, in days. It does not end anything: the venture keeps running on these terms until you choose to renegotiate in venture management.',
-    'This window binds <em>both sides equally</em>: until it elapses, neither you nor the Syndicate can reopen the terms. Once it passes, either may — you from venture management, or the Syndicate itself if this venture’s standing has shifted, for better terms or worse.',
-    'The window is stored with the licence, in days, exactly as you set it. Renegotiation itself is not built yet, so nothing acts on the window when it elapses.' ]}
+    'Until it elapses, the terms are locked — neither you nor the Syndicate can reopen them. Once it passes, the <em>Syndicate</em> sets the new terms, reading this venture’s standing: a steadier venture is leaned on less, a slipping one more, and only a Strong one earns a trimmed fee. You author the terms once, here; every renegotiation after is theirs to offer.',
+    'When the window elapses you get one decision, in the Guild Hall’s Messages or in venture management: <em>accept</em> the Syndicate’s terms and re-lock, or <em>reject</em> and let the licence lapse — the venture goes unlicensed (you keep it, but forfeit the standing it built). The window is stored with the licence, in days, exactly as you set it.' ]}
 };
 var reelMode='info', reelState={key:null,page:0};
 function openReel(){ $('est-reel').classList.add('open'); }
@@ -4716,6 +4815,12 @@ function applySnapshot(snap){
   // An open GUILD HALL re-reads too, so the Standing panel's stockpile bar depletes and
   // its gauges move as the guild trades (docs/guild-hall.md §2.3).
   if (window.__guildRefresh) window.__guildRefresh();
+  // The top-level Guild Hall tab's attention pip updates on EVERY poll, open or not, so an
+  // opened renegotiation window surfaces from anywhere in the shell (#64 Slice 1b).
+  if (window.__guildAttentionRefresh) window.__guildAttentionRefresh();
+  // A stale renegotiation popup (its venture just lapsed / re-locked, or the window moved) is
+  // reconciled against the fresh snapshot on every poll.
+  if (window.__renegRefresh) window.__renegRefresh();
   // An open DEUTERIUM dashboard re-reads too, so the donut drains, the fuel-price line extends and
   // the rings fill as ticks pass (§1.4 slice 2b) — its own panel's lifecycle, like the Guild Hall's.
   if (window.__deutRefresh) window.__deutRefresh();
@@ -6535,8 +6640,81 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     forum:    ['&#9993;', 'Forum', 'Open channels between guilds &mdash; strike deals, issue threats, post to the galaxy. Wired up once the messaging layer lands.']
   };
 
+  // --- MESSAGES panel (#64 Slice 1b, design.md §5) ---------------------------------
+  // The band → { label, chip-class, row one-liner } presentation table. The one-liner is
+  // the terse Syndicate-liaison voice for a row; the popup carries the fuller voice. Keyed
+  // on the standing band the engine emits ('strong' | 'steady' | 'subPar' | 'atRisk'); the
+  // client adds no game number, only this copy.
+  var MSG_BAND = {
+    strong: { label:'Strong', cls:'strong', line:"Good news — they've trimmed the fee and would renew on the same terms." },
+    steady: { label:'Steady', cls:'steady', line:"A fair offer. They'd like a little more commitment this time." },
+    subPar: { label:'Sub-par', cls:'subpar', line:"A firm offer — they want a good deal more commitment to keep the licence." },
+    atRisk: { label:'At risk', cls:'atrisk', line:"A hard offer — they're demanding full commitment. This venture's on thin ice." }
+  };
+
+  // The venture's display label for a row: its type title (client presentation, from the
+  // joined venture row's resourceType/type — the same split the VM popup follows) followed
+  // by the engine-emitted seed name the attention entry carries. Falls back gracefully.
+  function prettyGood(g){ return String(g||'').replace(/_/g,' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); }); }
+  function ventureTypeTitle(v){
+    if(!v) return 'Venture';
+    if(v.deuteriumRefinery) return 'Deuterium Refinery';
+    var good = v.resourceType || (window.__recipeOutput && window.__recipeOutput(v.recipeId)) || null;
+    if(v.type === 'mining') return (good ? prettyGood(good) : 'Resource') + ' Mine';
+    return (good ? prettyGood(good) : 'Refining') + ' Refinery';
+  }
+  function ventureRow(s, id){ return (s && Array.isArray(s.ventures)) ? s.ventures.filter(function(v){ return v.id === id; })[0] : null; }
+
+  // The open renegotiation offers for the player's guild, off the top-level attention derive.
+  function myRenegotiations(s){
+    var id = (window.__player && window.__player().guildId) || null;
+    var list = (s && s.attention && Array.isArray(s.attention.renegotiations)) ? s.attention.renegotiations : [];
+    return id ? list.filter(function(r){ return r.guildId === id; }) : [];
+  }
+
+  function messagesPanel(me){
+    var s = snap();
+    var offers = myRenegotiations(s);
+    var head = phead('Messages', 'Decisions the Syndicate is waiting on &mdash; and word from the galaxy');
+
+    var rows = '';
+    if(offers.length){
+      rows += '<div class="gh-seclab">Needs a decision</div>';
+      offers.forEach(function(r){
+        var band = MSG_BAND[r.standing] || MSG_BAND.steady;
+        var v = ventureRow(s, r.ventureId);
+        var who = esc(ventureTypeTitle(v)) + ' &middot; ' + esc(r.ventureName || r.ventureId);
+        rows += '<div class="msg action" data-reneg="'+esc(r.ventureId)+'">'
+          + '<div class="ic">&#9878;</div>'
+          + '<div class="body">'
+          +   '<div class="t">Licence renegotiation &mdash; <span class="who">'+who+'</span></div>'
+          +   '<div class="adv">'+esc(band.line)+'</div>'
+          + '</div>'
+          + '<div class="meta">'
+          +   '<span class="chip '+band.cls+'">'+esc(band.label)+'</span>'
+          +   '<span class="elapsed">window elapsed</span>'
+          + '</div>'
+          + '</div>';
+      });
+    }
+    // The Notices section is a stub this slice — the event log is Slice 2+ (§5). Show a muted
+    // line, never an invented notice.
+    rows += '<div class="gh-seclab">Notices</div>'
+      + '<div class="gh-msg-empty">No notices yet.</div>';
+
+    if(!offers.length){
+      // No open decision — keep the section header honest with a muted line above Notices.
+      rows = '<div class="gh-seclab">Needs a decision</div>'
+        + '<div class="gh-msg-empty">Nothing needs a decision right now.</div>'
+        + rows;
+    }
+
+    return head + '<div class="gh-card">' + rows + '</div>';
+  }
+
   function centreFor(sub, me){
     if(sub === 'standing') return standingPanel(me);
+    if(sub === 'messages') return messagesPanel(me);
     var d = SOON[sub];
     return d ? soonPanel(d[0], d[1], d[2]) : standingPanel(me);
   }
@@ -6570,7 +6748,20 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var tabs = document.querySelectorAll('#gh-tabs .gh-tab');
     for(var i=0;i<tabs.length;i++){ tabs[i].classList.toggle('on', tabs[i].getAttribute('data-p') === G.sub); }
 
+    // Messages rail entry: badge + pulsing dot while an action-item is open (#64 Slice 1b).
+    paintMessagesRail();
+
     el('gh-centre').innerHTML = centreFor(G.sub, me);
+  }
+
+  // Update the Messages rail entry (its count badge + attention class) from the live snapshot.
+  // Split out so it can run on every render while the hall is open.
+  function paintMessagesRail(){
+    var n = myRenegotiations(snap()).length;
+    var tab = document.querySelector('#gh-tabs .gh-tab[data-p="messages"]');
+    if(tab) tab.classList.toggle('attn', n > 0);
+    var badge = el('gh-msgbadge');
+    if(badge){ badge.textContent = n > 0 ? String(n) : ''; badge.hidden = n === 0; }
   }
 
   // Delegated once, on the rail — so every re-render keeps working with no rebinding.
@@ -6584,10 +6775,36 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     });
   }
 
-  // The shell drives these three: the tab opening, the tab closing, and every poll.
+  // A Messages "needs a decision" row opens the renegotiation popup for its venture (§5's
+  // first of two entry points). Delegated on the centre so it survives every re-render.
+  var centreEl = el('gh-centre');
+  if(centreEl){
+    centreEl.addEventListener('click', function(e){
+      var row = e.target.closest('.msg[data-reneg]'); if(!row) return;
+      var ventureId = row.getAttribute('data-reneg');
+      var guildId = (window.__player && window.__player().guildId) || null;
+      if(ventureId && guildId && window.__openRenegotiation){ window.__openRenegotiation(guildId, ventureId); }
+    });
+  }
+
+  // The TOP-LEVEL Guild Hall tab's attention pip (#64 Slice 1b) — lit whenever the player's
+  // guild has an open action-item, WHETHER OR NOT the hall is open, so the invitation shows
+  // from anywhere. Driven by the shell's poll (applySnapshot), which owns no guild state.
+  function paintTopLevelAttn(){
+    var n = myRenegotiations(snap()).length;
+    var tab = document.getElementById('rtab-guild');
+    var pip = document.getElementById('rtabGuildAttn');
+    if(tab) tab.classList.toggle('attn', n > 0);
+    if(pip) pip.hidden = n === 0;
+  }
+
+  // The shell drives these: the tab opening, the tab closing, every poll (while open), and the
+  // top-level attention pip on every poll regardless of whether the hall is open.
   window.__guildOpen = function(){ G.open = true; render(); };
   window.__guildClosed = function(){ G.open = false; };
   window.__guildRefresh = function(){ if(G.open) render(); };
+  window.__guildAttentionRefresh = function(){ paintTopLevelAttn(); };
+  paintTopLevelAttn();
 })();
 </script>
 
@@ -6934,7 +7151,147 @@ function paintInventoryHero(d){
   $('vmClose').addEventListener('click', closeVM);
   $('vm-overlay').addEventListener('click', function(e){ if(e.target === this) closeVM(); });
   $('vmCloseBtn').addEventListener('click', function(){ if(!$('vmCloseBtn').disabled) onCloseVenture(); });
-  $('vmReneg').addEventListener('click', function(){ $('vmNote').textContent = 'Renegotiation is coming soon (#64) — not built this slice.'; });
+  // The VM "Renegotiate ▸" control (shown only once the window has elapsed) is the SECOND
+  // entry point to the shared renegotiation popup (#64 Slice 1b, §5). It opens the same popup
+  // the Messages row opens, for the venture the VM popup is managing.
+  $('vmReneg').addEventListener('click', function(){
+    var player = window.__player ? window.__player() : null;
+    if(!player || !player.guildId || !VM.ventureId || !window.__openRenegotiation){ return; }
+    window.__openRenegotiation(player.guildId, VM.ventureId);
+  });
+})();
+</script>
+
+<script>
+/* ============================================================================
+   THE LICENCE RENEGOTIATION POPUP (#64 Slice 1b, design.md §5 "Accept or lapse").
+   One modal, two entry points: a Messages "needs a decision" row and the Venture
+   Management "Renegotiate ▸" button. It reads the venture off the live snapshot —
+   its current licence terms and its published `renegotiationOffer` — shows the
+   Syndicate-liaison voice keyed on the emitted `standing` band, and fires one of
+   two built actions: ACCEPT → renegotiateLicence (re-lock), REJECT → confirm →
+   lapseLicence (revert to unlicensed, forfeit RP). The client computes NO game
+   number (§5): every term shown is a snapshot field, the adviser text is copy.
+   ============================================================================ */
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function snap(){ return (window.__snapshot && window.__snapshot()) || null; }
+  function fmt(n){ return Math.round(n).toLocaleString('en-US'); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  var R = { open:false, guildId:null, ventureId:null };
+
+  // The band → { chip label, chip class, adviser voice } table. Presentation only, keyed on the
+  // standing band the engine emits ('strong' | 'steady' | 'subPar' | 'atRisk'). ONE Syndicate-
+  // liaison voice this slice (the domain-character split is parked, §5).
+  var BAND = {
+    strong: { label:'Strong', cls:'strong',
+      say:"Good news — this venture's earned the Syndicate's confidence. They're happy to renew on the same terms, and they've trimmed the fee as a thank-you." },
+    steady: { label:'Steady', cls:'steady',
+      say:"A licence has come up for renegotiation and the Syndicate has sent an offer. It's a fair one — this venture's been holding its own, and they'd just like a little more commitment this time." },
+    subPar: { label:'Sub-par', cls:'subpar',
+      say:"The Syndicate's offer is a firm one. This venture has been slipping in their books, and they want a good deal more commitment to keep the licence." },
+    atRisk: { label:'At risk', cls:'atrisk',
+      say:"The Syndicate's offer is a hard one. This venture has been underdelivering, and they're demanding full commitment to keep the licence. Meet it, or walk." }
+  };
+
+  function findVenture(s, id){ return (s && Array.isArray(s.ventures)) ? s.ventures.filter(function(v){ return v.id === id; })[0] : null; }
+
+  // Is this venture still up for renegotiation? Only a licensed venture carrying a live offer.
+  function offerFor(v){ return (v && v.licence && v.renegotiationOffer) ? v.renegotiationOffer : null; }
+
+  function pct(x){ return Math.round((x || 0) * 100) + '%'; }
+
+  function render(){
+    if(!R.open) return;
+    var v = findVenture(snap(), R.ventureId);
+    var offer = offerFor(v);
+    if(!v || !offer){ close(); return; }   // lapsed, re-locked, or gone — nothing to renegotiate
+    var lic = v.licence;
+    var band = BAND[v.standing] || BAND.steady;
+
+    $('renegAdv').textContent = band.say;
+
+    // Standing chip.
+    $('renegStanding').innerHTML = '<span class="chip '+band.cls+'">'+esc(band.label)+'</span>';
+
+    // Commitment: current → offered. Amber ("up") when the Syndicate leans harder; unchanged
+    // reads "same" (a Strong venture may coast).
+    var cFrom = lic.committedOutputPct, cTo = offer.committedOutputPct;
+    $('renegCFrom').textContent = pct(cFrom);
+    var cToEl = $('renegCTo'); cToEl.textContent = pct(cTo);
+    cToEl.className = 'to ' + (cTo > cFrom ? 'up' : 'same');
+
+    // Window: carried unchanged this cut (§5) — both sides read the same figure.
+    var wDays = lic.windowDays;
+    $('renegWFrom').textContent = wDays + ' days';
+    $('renegWTo').textContent = wDays + ' days';
+
+    // Fee / cycle: the actual charged (discounted) fee, current → offered — the same figure the
+    // VM ledger heads with. The offer RE-PRICES at today's posted price (as a first signing does),
+    // so it can move either way with the market; the terms function itself never adds a surcharge
+    // — more commitment lowers the fee fraction, and only Strong adds a discount (§5). Coloured by
+    // the actual direction: green if it fell, amber if it rose, muted if it held.
+    var fFrom = lic.discountedFee, fTo = offer.discountedFee;
+    $('renegFFrom').textContent = fmt(fFrom) + ' cr';
+    var fToEl = $('renegFTo'); fToEl.textContent = fmt(fTo) + ' cr';
+    fToEl.className = 'to ' + (fTo < fFrom ? 'good' : (fTo > fFrom ? 'up' : 'same'));
+  }
+
+  function open(guildId, ventureId){
+    if(!guildId || !ventureId) return;
+    R.open = true; R.guildId = guildId; R.ventureId = ventureId;
+    $('renegNote').textContent = '';
+    render();
+    if(!R.open) return;   // render() may have closed it (no live offer)
+    $('reneg-overlay').classList.add('open');
+  }
+  function close(){ R.open = false; R.guildId = null; R.ventureId = null; $('reneg-overlay').classList.remove('open'); }
+
+  // ACCEPT → renegotiateLicence (built). Re-locks the venture on the Syndicate's terms.
+  async function accept(){
+    if(!R.guildId || !R.ventureId) return;
+    var g = R.guildId, id = R.ventureId, note = $('renegNote');
+    note.textContent = 'Accepting…';
+    var out;
+    try { out = await window.__sendAction({ type:'renegotiateLicence', guildId:g, ventureId:id }); }
+    catch(err){ note.textContent = 'The Syndicate could not be reached: ' + err.message; return; }
+    if(!out || !out.accepted){ note.textContent = 'Refused: ' + ((out && out.reason) || 'the Syndicate declined'); return; }
+    if(window.__refreshNow){ try{ await window.__refreshNow(); }catch(e){} }
+    close();
+  }
+
+  // REJECT → confirm (the shared Guild Adviser reel), then lapseLicence (built). Reverts the
+  // venture to unlicensed and forfeits its standing.
+  function reject(){
+    var v = findVenture(snap(), R.ventureId);
+    if(!v){ close(); return; }
+    var g = R.guildId, id = R.ventureId;
+    var rp = v.reputation || 0;
+    var body = '<p>Reject the Syndicate’s terms and this venture goes <em>unlicensed</em>. You keep the venture, its node and its machine — but the '
+      + fmt(rp) + ' points of standing it built leave with the licence, and it earns nothing until you sign again.</p>'
+      + '<p>You can sign a fresh licence later on your own terms — a new window, a new bump. Your call, Guildmaster.</p>';
+    var doLapse = async function(){
+      var note = $('renegNote'); note.textContent = 'Lapsing…';
+      var out;
+      try { out = await window.__sendAction({ type:'lapseLicence', guildId:g, ventureId:id }); }
+      catch(err){ note.textContent = 'The Syndicate could not be reached: ' + err.message; return; }
+      if(!out || !out.accepted){ note.textContent = 'Refused: ' + ((out && out.reason) || 'the Syndicate declined'); return; }
+      if(window.__refreshNow){ try{ await window.__refreshNow(); }catch(e){} }
+      close();
+      if(window.__vmClose) window.__vmClose();   // if the VM popup was the entry point, it is now stale
+    };
+    if(!window.__adviserConfirm){ doLapse(); return; }
+    window.__adviserConfirm({ title:'Let this licence lapse?', body:body, confirmLabel:'Reject & lapse ▸', onConfirm:doLapse });
+  }
+
+  window.__openRenegotiation = open;                 // the ONE entry point both call sites use
+  window.__renegRefresh = function(){ if(R.open) render(); };
+
+  $('renegClose').addEventListener('click', close);
+  $('reneg-overlay').addEventListener('click', function(e){ if(e.target === this) close(); });
+  $('renegAccept').addEventListener('click', function(){ accept(); });
+  $('renegReject').addEventListener('click', function(){ reject(); });
 })();
 </script>
 </body>
