@@ -6,7 +6,7 @@ const { getRecipe } = require('./recipes.js');
 const {
   EQUITY_CEILING, isValidEquityPct, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
   isValidCommitmentPct, isValidWindowDays, licenceFee, commitmentUnitsFor, equityOf,
-  signingBump, teardownSettlement, licenceEndTick, renegotiationFee,
+  signingBump, teardownSettlement, licenceEndTick, renegotiationFee, applyLapse,
 } = require('./licence.js');
 const { producedGoodFor, baselineOutputFor, isLicensedDeuteriumMine } = require('./baseline.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
@@ -1622,40 +1622,14 @@ function applyAction(state, action) {
 
   if (action.type === 'lapseLicence') {
     // LAPSE TO UNLICENSED (§5 "Accept or lapse"): revert the venture to unlicensed and forfeit
-    // its RP, keeping the venture, its node and its assets in place. This mirrors
-    // `decommissionVenture`'s two licence-shedding moves — the RP forfeit and the
-    // commitment-clear — but does NOT splice the venture out of the array. No fee, no node
-    // lockout, no signing bump: teardown's settlement evaluated at window-end is exactly the
-    // RP forfeit and nothing else (§5), so lapse writes only that.
+    // its RP, keeping the venture, its node and its asset in place. The whole effect is the
+    // shared `applyLapse` (sim/licence.js) — the RP forfeit + licence-drop + commitment-clear —
+    // which the auto-lapse tick step (#64 Slice 2) calls too, so a chosen REJECT and a
+    // timed-out lapse cannot diverge. No fee, no node lockout, no signing bump; the venture
+    // survives, and the guild may sign a fresh licence later on its own terms.
     const guild = findGuild(next, action.guildId);
     const venture = guild.ventures.find((v) => v.id === action.ventureId);
-
-    // 1. RP FORFEIT — the venture returns to the unlicensed no-reputation state (invariant 8
-    //    stays exact). The guild total and the venture row it totals move by the SAME amount,
-    //    in the SAME place — the exact shape decommissionVenture uses (its step 2), minus the
-    //    removal — so `checkGuildReputationSum` holds with no new term. `delete` (not `= 0`)
-    //    returns the venture to the omit-when-0 shape a never-judged venture carries.
-    //
-    //    Forfeiting a NEGATIVE reputation RAISES the guild sum — the deliberate asymmetric
-    //    escape valve (§5): shedding a ruined venture's standing and re-signing clean is a
-    //    real, slow strategy, intended, not a bug.
-    guild.guildReputation -= (venture.reputation || 0);
-    delete venture.reputation;
-
-    // 2. DROP THE LICENCE AND CLEAR THE WINDOWED COMMITMENT — back to the exact unlicensed
-    //    shape `establishVenture` leaves: no `licence` key, `syndicateCommitment` reset to 0
-    //    (the field is always present, defaulted 0 by createVenture), and no
-    //    `committedFromTick` (omit-when-null). The venture's commitment simply LEAVES the
-    //    good's aggregate window `Q` from the next tick — no clawback, no new window
-    //    bookkeeping — exactly as decommissionVenture leaves it (§5).
-    delete venture.licence;
-    venture.syndicateCommitment = 0;
-    delete venture.committedFromTick;
-
-    // 3. THE NODE, ASSET AND VENTURE ALL SURVIVE (§5) — nothing else to do. The venture stays
-    //    in the array, its site stays occupied, its asset stays deployed; the guild may sign a
-    //    fresh licence later on its own terms (a new bump, a new window). No node lockout is
-    //    written (unlike a mid-term teardown): at window-end there is no remaining term to bar.
+    applyLapse(guild, venture);
     return next;
   }
 

@@ -44,6 +44,7 @@
 const { windowFraction, DEFAULT_WINDOW_N } = require('./windows.js');
 const { producedGoodFor, isLicensedDeuteriumMine } = require('./baseline.js');
 const { tierWeight, tierOf } = require('./points.js');
+const { dayOf, tickAt } = require('./calendar.js');
 
 // The structural equity ceiling — §5: "up to the structural 49% ceiling (the owner
 // keeps control by retaining at least 51%)". This is a DESIGN number, not a tuning
@@ -900,6 +901,96 @@ function renegotiationFee({ venture, baselineUnitsPerTick, windowN, lockedPrice 
   };
 }
 
+// ── RENEGOTIATION TIMERS (#64 Slice 2, design.md §5 "Renegotiation timers — grace,
+//    acceptance, auto-lapse"; numbers in phase-1-tuning §"Licence renegotiation timers") ──
+//
+// The window-end no longer opens the offer instantly (Slice 1b). Three day-aligned phases
+// follow the committed window: a GRACE window (the venture runs on old terms, nothing is
+// offered), then the Syndicate ACTS (the offer appears with a fixed acceptance countdown),
+// then AUTO-LAPSE if still unaccepted. All three deadlines are computed here, in ONE place,
+// read by the snapshot (the offer gate + countdown) AND the tick (the auto-lapse step), so
+// the offer shown and the auto-lapse cannot disagree — the teardownSettlement/renegotiationFee
+// single-source pattern.
+
+// GRACE — how many days after window-end the Syndicate waits before acting, keyed on the
+// contract's `windowDays` (phase-1-tuning: 1 / 3 / 4 / 5 at cutoffs 14 / 21 / 28). A short
+// contract gets a short grace, a long one a long grace — `windowDays` becomes the player's
+// engagement-cadence dial (§5). NOT band-keyed (that was rejected, §5). The `[FIRST-CUT]`
+// values and cutoffs are named here and cited to the tuning doc; nothing is invented.
+const GRACE_CUT_MED = 14;    // windowDays < this -> GRACE_DAYS_MIN
+const GRACE_CUT_LONG = 21;   // < this            -> GRACE_DAYS_SHORT
+const GRACE_CUT_MAX = 28;    // < this            -> GRACE_DAYS_MED; >= this -> GRACE_DAYS_LONG
+const GRACE_DAYS_MIN = 1;
+const GRACE_DAYS_SHORT = 3;
+const GRACE_DAYS_MED = 4;
+const GRACE_DAYS_LONG = 5;
+
+// The fixed acceptance window (phase-1-tuning: 5 days) — how long the offer stands before it
+// auto-lapses. One number for every band this cut; the variable-by-standing acceptance is not
+// built (§5).
+const ACCEPTANCE_WINDOW_DAYS = 5;
+
+// graceDaysFor(windowDays) -> the grace length in days. Pure step function over the named
+// cutoffs above. Exact edges (phase-1-tuning): 13->1, 14->3, 20->3, 21->4, 27->4, 28->5, 42->5.
+function graceDaysFor(windowDays) {
+  if (windowDays < GRACE_CUT_MED) return GRACE_DAYS_MIN;    // < 14
+  if (windowDays < GRACE_CUT_LONG) return GRACE_DAYS_SHORT; // < 21
+  if (windowDays < GRACE_CUT_MAX) return GRACE_DAYS_MED;    // < 28
+  return GRACE_DAYS_LONG;                                    // >= 28
+}
+
+// renegotiationSchedule(licence, windowN, dayAnchorTick) -> { windowEndTick, actsTick,
+// lapseTick } — the three DAY-ALIGNED ticks of a licence's renegotiation timeline, all built
+// on the calendar (`dayOf`/`tickAt`) off the SAME base day, so they cannot diverge:
+//
+//   windowEndTick — the day-aligned window-end (the calendar `renegotiationDeadline`,
+//                   docs/cycle-and-calendar.md): the first tick of the day `windowDays` days
+//                   after the day the licence was signed. This is the reconciliation of
+//                   Slice 1's raw `licenceEndTick` onto the calendar basis; for a licence
+//                   signed at a day boundary (the persistent-server norm) the two coincide.
+//   actsTick      — windowEndTick + graceDaysFor(windowDays) days: grace ends, the Syndicate
+//                   acts, the offer appears. Nothing is offered before this.
+//   lapseTick     — actsTick + ACCEPTANCE_WINDOW_DAYS days: the auto-lapse deadline. If the
+//                   player has neither accepted nor rejected by here, the tick lapses it.
+//
+// Pure: reads only the licence's `signedTick`/`windowDays` and the galaxy's cadence/anchor.
+function renegotiationSchedule(licence, windowN, dayAnchorTick = 0) {
+  const signDay = dayOf(licence.signedTick, windowN, dayAnchorTick);
+  const endDay = signDay + licence.windowDays;
+  const actsDay = endDay + graceDaysFor(licence.windowDays);
+  const lapseDay = actsDay + ACCEPTANCE_WINDOW_DAYS;
+  return {
+    windowEndTick: tickAt(endDay, 0, windowN, dayAnchorTick),
+    actsTick: tickAt(actsDay, 0, windowN, dayAnchorTick),
+    lapseTick: tickAt(lapseDay, 0, windowN, dayAnchorTick),
+  };
+}
+
+// applyLapse(guild, venture) -> MUTATES the guild + venture to the lapse-to-unlicensed state
+// (design.md §5 "Accept or lapse"). THE ONE lapse effect, shared by two callers: the
+// `lapseLicence` action's apply (a player REJECT) and the auto-lapse tick step (the timeout,
+// Slice 2), so a chosen lapse and a timed-out one cannot diverge.
+//
+//   1. RP forfeit — subtract the venture's reputation from the guild sum and delete it,
+//      returning the venture to the unlicensed no-reputation state (invariant 8 stays exact:
+//      the guild total and the row it totals move by the same amount, in the same place).
+//      Forfeiting a NEGATIVE reputation RAISES the guild sum — the deliberate asymmetric
+//      escape valve (§5), not a bug.
+//   2. Drop the licence and clear the windowed-commitment bookkeeping — back to the exact
+//      unlicensed shape `establishVenture` leaves (no `licence`, `syndicateCommitment` 0, no
+//      `committedFromTick`). The venture's commitment simply leaves the good's aggregate
+//      window from the next tick (no clawback), exactly as decommissionVenture leaves it.
+//
+// No fee, no node lockout, no signing bump. The venture, its node and its asset all survive.
+// Returns nothing; the mutation IS the effect (both callers already hold a mutable `next`).
+function applyLapse(guild, venture) {
+  guild.guildReputation -= (venture.reputation || 0);
+  delete venture.reputation;
+  delete venture.licence;
+  venture.syndicateCommitment = 0;
+  delete venture.committedFromTick;
+}
+
 module.exports = {
   EQUITY_CEILING, equityOf, isValidEquityPct, committedContribution, ownerFraction, commitmentSale,
   FEE_RATE, CORNERS, EQUITY_SHAPE_K, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
@@ -911,4 +1002,7 @@ module.exports = {
   STANDING_CUT_AT_RISK, STANDING_CUT_STEADY, STANDING_CUT_STRONG,
   STRONG_FEE_DISCOUNT, COMMITMENT_STEP_STEADY, COMMITMENT_STEP_SUB_PAR,
   ventureStanding, renegotiationTerms, renegotiationFee,
+  GRACE_CUT_MED, GRACE_CUT_LONG, GRACE_CUT_MAX,
+  GRACE_DAYS_MIN, GRACE_DAYS_SHORT, GRACE_DAYS_MED, GRACE_DAYS_LONG,
+  ACCEPTANCE_WINDOW_DAYS, graceDaysFor, renegotiationSchedule, applyLapse,
 };

@@ -40,7 +40,7 @@ const { cloneProfile } = require('./profile.js');
 const { previewProduction } = require('./production.js');
 const { PRICED_GOODS, postedPrice, basePriceFor } = require('./prices.js');
 const { baselineUnitsForGood, baselineOutputFor, isLicensedDeuteriumMine, isIllegalDeuteriumRefinery, producedGoodFor } = require('./baseline.js');
-const { licenceFee, teardownSettlement, licenceEndTick, ventureStanding, renegotiationFee } = require('./licence.js');
+const { licenceFee, teardownSettlement, licenceEndTick, ventureStanding, renegotiationFee, renegotiationSchedule } = require('./licence.js');
 const { clonePriceHistory } = require('./price-history.js');
 const { getFuelPriceRing } = require('./fuel-price-history.js');
 const { cloneModifierHistory } = require('./modifier-history.js');
@@ -451,14 +451,21 @@ function contractWindowForVenture(state, venture) {
   const lic = venture && venture.licence;
   if (!lic) return null;
   const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
-  const endTick = licenceEndTick(lic, windowN);
-  const elapsedCycles = Math.floor((state.tick - lic.signedTick) / windowN);
-  const cyclesRemaining = Math.max(0, lic.windowDays - elapsedCycles);
+  const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
+  // DAY-ALIGNED onto the calendar window-end (#64 Slice 2 reconciliation, design.md §5): the
+  // panel's "window elapsed", the grace, and the acceptance clock now share ONE basis — the
+  // schedule's `windowEndTick` — rather than Slice 1's raw `licenceEndTick`. For a licence
+  // signed at a day boundary (the persistent-server norm) the two coincide, so teardown's
+  // raw `lockoutUntilTick` still agrees there; they diverge only for a mid-day signing, which
+  // is teardown's own basis to keep (out of scope this slice). Field SHAPE is unchanged.
+  const endTick = renegotiationSchedule(lic, windowN, dayAnchorTick).windowEndTick;
+  const endCycle = dayOf(endTick, windowN, dayAnchorTick);
+  const cyclesRemaining = Math.max(0, endCycle - dayOf(state.tick, windowN, dayAnchorTick));
   return {
     endTick,
-    endCycle: Math.floor(endTick / windowN),
+    endCycle,
     cyclesRemaining,
-    expired: cyclesRemaining === 0,
+    expired: state.tick >= endTick,
   };
 }
 
@@ -495,36 +502,52 @@ function equityPerCycleForVenture(state, venture) {
 //                                       neither field, as §1.4 requires).
 //   { standing, renegotiationOffer }  — a licensed, non-deuterium venture:
 //       standing            — its `ventureStanding` band, ALWAYS (just a read of RP).
-//       renegotiationOffer  — the terms the player would accept, ONLY once the committed
-//                             window has elapsed (reusing `contractWindow.expired`): the
-//                             new `committedOutputPct`, the re-locked `basicFee`/
-//                             `discountedFee` at the CURRENT posted price (Strong-band
-//                             discount applied if strong), and a `feeDiscountApplied` flag.
-//                             null before the window elapses.
+//       renegotiationOffer  — the terms the player would accept, present ONLY once GRACE HAS
+//                             PASSED and the Syndicate has acted (`renegotiationSchedule`'s
+//                             `actsTick`, #64 Slice 2), NOT at window-end: the new
+//                             `committedOutputPct`, the re-locked `basicFee`/`discountedFee`
+//                             at the CURRENT posted price (Strong-band discount if strong),
+//                             a `feeDiscountApplied` flag, and the acceptance countdown
+//                             `lapseTick` + `daysToLapse`. null during grace and before.
 //
-// This is the seam the client RENEGOTIATE button reads (client half, next slice). It is
-// the SAME `renegotiationFee` the `renegotiateLicence` apply locks, so the offer shown and
-// the terms taken cannot disagree. Pure DERIVED telemetry: reads state as it stands,
-// mutates nothing, enters no serialized byte and no determinism hash; invents no number.
+// The terms are the SAME `renegotiationFee` the `renegotiateLicence` apply locks, so the
+// offer shown and the terms taken cannot disagree; the schedule is the SAME one the tick's
+// auto-lapse step reads, so the countdown shown and the auto-lapse cannot disagree. Pure
+// DERIVED telemetry: reads state as it stands, mutates nothing, enters no serialized byte
+// and no determinism hash; invents no number.
 function renegotiationFieldsFor(state, venture) {
   const lic = venture && venture.licence;
   if (!lic) return {};   // unlicensed, or the windowless deuterium mine — neither field
   const standing = ventureStanding(venture);
-  const cw = contractWindowForVenture(state, venture);
+  const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+  const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
+  const sched = renegotiationSchedule(lic, windowN, dayAnchorTick);
   let renegotiationOffer = null;
-  if (cw && cw.expired) {
+  // #64 Slice 2: the offer appears only once GRACE HAS PASSED and the Syndicate has ACTED
+  // (`actsTick`), NOT at window-end. During grace the venture carries `standing` but no offer,
+  // so MESSAGES stays quiet and the VM shows the normal Close-venture control (§5 phase B).
+  // This supersedes Slice 1b's window-end (`contractWindow.expired`) gate.
+  if (state.tick >= sched.actsTick) {
     const baseline = baselineOutputFor(venture);
     const lockedPrice = baseline && postedPrice(state, baseline.good);
     // A licensed non-deuterium venture always has both (its good was priced at signing);
     // guard anyway so a preview is never computed against a missing baseline or price.
     if (baseline && baseline.units > 0 && lockedPrice != null) {
-      const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
-      renegotiationOffer = renegotiationFee({
+      const fee = renegotiationFee({
         venture,
         baselineUnitsPerTick: baseline.units,
         windowN,
         lockedPrice,
       });
+      // Carry the acceptance countdown so the client can show "respond in N days" without
+      // computing a game number: `lapseTick` is the auto-lapse deadline, `daysToLapse` the
+      // whole calendar days from now to it, floored at 0. The auto-lapse tick step removes the
+      // offer at `lapseTick`, so `daysToLapse` is always ≥ 1 while the offer is visible.
+      const daysToLapse = Math.max(
+        0,
+        dayOf(sched.lapseTick, windowN, dayAnchorTick) - dayOf(state.tick, windowN, dayAnchorTick),
+      );
+      renegotiationOffer = { ...fee, lapseTick: sched.lapseTick, daysToLapse };
     }
   }
   return { standing, renegotiationOffer };

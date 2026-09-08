@@ -201,10 +201,96 @@ Chromium (real server + real client): the Messages tab highlights and lists both
 opens from a Messages row and the VM button, ACCEPT re-locks (0.5→0.6), REJECT → confirm → the
 venture goes unlicensed (kept) and drops off the list.
 
-### Deferred (Slice 2, per §5), not invented here
+## Slice 2 (08-09-26) — the timers ✅
 
-Timers / the fixed acceptance window / auto-lapse to unlicensed; the variable grace window;
-window as a demand lever; equity changes; the −300 forced-lease / −500 closure consequences;
-the #57 investor vote; dividends; counter-offers; the resource-sale premium/discount; and
-the event log / notices / `messagesSeenTick` unread mechanic (the Notices section is an empty
-stub this slice), plus the parked domain-character adviser split. Deuterium stays exempt.
+**Scope.** The final piece of #64: a grace window after the committed window ends (nothing is
+offered), then the Syndicate acts (the offer appears with a fixed acceptance countdown), then
+auto-lapse to unlicensed if still unanswered. All deadlines day-aligned and derived — no new
+stored state. Ruling: design.md §5 "Renegotiation timers — grace, acceptance, auto-lapse";
+numbers in `docs/phase-1-tuning.md` §"Licence renegotiation timers". *(Both the §5 subsection and
+the phase-1-tuning numbers were **added in this commit** — the ruling and the constants the human
+gave for this slice were not yet recorded in the repo; the code reads named constants, invents
+nothing, and cites both docs.)*
+
+### `sim/licence.js` — the derived schedule + the shared lapse
+
+- **Named `[FIRST-CUT]` constants**, each citing phase-1-tuning: the grace cutoffs
+  `GRACE_CUT_MED/LONG/MAX = 14 / 21 / 28` and values `GRACE_DAYS_MIN/SHORT/MED/LONG = 1 / 3 / 4 / 5`;
+  the fixed `ACCEPTANCE_WINDOW_DAYS = 5`.
+- **`graceDaysFor(windowDays)`** — pure step function over the cutoffs (`< 14 → 1`, `< 21 → 3`,
+  `< 28 → 4`, else `5`); grace is `windowDays`-keyed, NOT band-keyed (§5).
+- **`renegotiationSchedule(licence, windowN, dayAnchorTick)`** — the ONE place the timeline is
+  computed, returning the three DAY-ALIGNED ticks off the calendar (`dayOf`/`tickAt`) so they
+  cannot diverge: `windowEndTick` (the calendar `renegotiationDeadline`), `actsTick` (+ grace
+  days), `lapseTick` (+ acceptance days). Read by both the snapshot and the tick — the
+  `teardownSettlement`/`renegotiationFee` single-source pattern.
+- **`applyLapse(guild, venture)`** — the `lapseLicence` apply body, EXTRACTED to a shared mutating
+  helper (RP forfeit + licence drop + commitment clear, keeping the venture). Called by
+  `lapseLicence`'s apply (a player REJECT) AND the auto-lapse tick step (the timeout), so a
+  chosen lapse and a timed-out one cannot diverge. No behaviour change to the action.
+
+### `sim/snapshot.js` — gate shift + countdown (derived, schema unchanged)
+
+- **`contractWindow`** day-aligns onto `renegotiationSchedule(...).windowEndTick` (was Slice 1's
+  raw `licenceEndTick`), so "window elapsed", grace and acceptance share one basis. Field shape
+  unchanged; `endTick`/`endCycle`/`cyclesRemaining`/`expired` recomputed off the calendar. It
+  coincides with teardown's raw lockout for a day-aligned signing (they diverge only mid-day,
+  teardown's own basis to keep — out of scope).
+- **`renegotiationFieldsFor`** gates the offer on **`state.tick >= actsTick`** (after grace), not
+  window-end — superseding Slice 1b's window-end gate. During grace the venture carries `standing`
+  but no offer, so MESSAGES stays quiet and the VM shows CLOSE VENTURE (§5 phase B). The offer now
+  carries the countdown: `lapseTick` and a derived `daysToLapse` (whole calendar days to the
+  deadline, floored at 0). `computeAttention` follows automatically.
+
+### `sim/tick.js` — the auto-lapse step
+
+- **`stepAutoLapse`**, appended to `STEPS` (now 9) — the FIRST tick-driven licence mutation on a
+  TIMER (not a boundary verdict). Runs LAST, after all boundary/accrual/grant work, scanning
+  guilds → ventures deterministically; a venture with an ordinary (non-deuterium) licence whose
+  `state.tick + 1 >= lapseTick` is lapsed via the shared `applyLapse`. Fires the player's absence
+  into the same lapse the REJECT button does; produces no notice (event log is later).
+
+### `client/game.html` — the countdown (small)
+
+The MESSAGES row and the VM RENEGOTIATE control already key off `renegotiationOffer`/`attention`,
+so they now appear only after grace with no wiring change beyond one: the VM control keys off the
+**offer** (`v.renegotiationOffer`) rather than `cw.expired`, so it stays hidden during grace. The
+Slice 1b static "window elapsed" is replaced by the live countdown (`deadlineLabel(offer)` reads
+the engine-derived `daysToLapse` → "respond in N days"; the last day is amber). The client
+computes no game number.
+
+### Tests
+
+`sim/tests/renegotiation.test.js` (+7): `graceDaysFor` at every cutoff edge (13→1 … 42→5); the
+schedule's three day-aligned ticks; the offer gated on `actsTick` (quiet in grace, live after,
+`daysToLapse` counting 5→1); and auto-lapse — an unanswered licence lapses at `lapseTick` via the
+exact `applyLapse` effect (venture survives, RP forfeited, guild sum exact, off attention), an
+ACCEPTED venture never reaches it (the schedule moved), a REJECTED one is already unlicensed, and
+a deuterium mine is never touched. The Slice 1b offer/attention tests moved to the grace-shifted
+gate (`elapse` now jumps to `actsTick`). `sim/tests/server.test.js` tripwire flipped: the "no
+countdown" pin becomes the live-countdown pins, and the VM control pin keys off the offer.
+`sim/tests/tick.test.js` pins the 9-step order with `stepAutoLapse` last.
+
+**Existing accrual tests kept engaged.** Auto-lapse is a new global behaviour: a licence left
+untouched past its deadline lapses. Four pre-existing RP/modifier tests ran a licence untouched
+for dozens of cycles (`reputation.test.js` ×3, `founding-endowment.test.js` ×1) and now model the
+player staying engaged — a `keepEngaged` helper ACCEPTs the renegotiation the moment one is
+admissible, resetting the schedule; for a full-commitment venture the re-terms keep commitment at
+1.0 so the per-cycle RP is unchanged, and it runs the REAL action so every invariant holds.
+
+**Determinism / goldens.** `stepAutoLapse` mutates only at a computed deadline no golden run
+reaches, and the schedule/offer/countdown are derived — so every committed golden is
+byte-identical and invariant 9 holds (the whole suite, determinism runs included, stays green).
+Day-aligning `contractWindow` shifts no pinned golden (the goldens don't exercise an elapsed
+licence); the one snapshot-value test that signed at the pre-game tick 0 now signs at a day-
+aligned tick so its raw-vs-day-aligned end still coincides. **Full suite: 1120 tests, 0 failures.**
+Verified end-to-end in headless Chromium (real server + client): grace is quiet, the offer appears
+with the countdown, and an unanswered venture auto-lapses off MESSAGES.
+
+### Still deferred (per §5), not invented here
+
+The **event log / notices** and the `messagesSeenTick` unread mechanic (auto-lapse writes no
+notice — the Notices section stays an empty stub); the parked domain-character adviser split;
+window as a demand lever; equity changes; the −300 forced-lease / −500 closure consequences; the
+#57 investor vote; dividends; counter-offers; the resource-sale premium/discount. Deuterium stays
+exempt. With this slice, #64 (licence renegotiation) is complete but for the event log.

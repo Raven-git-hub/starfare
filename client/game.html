@@ -905,7 +905,8 @@ select.field{appearance:none; cursor:pointer;}
 #tp-guild .chip.steady{color:var(--gh-amber2); border-color:var(--gh-amber-dim);}
 #tp-guild .chip.subpar{color:#e0b26b; border-color:rgba(224,178,107,.4);}
 #tp-guild .chip.atrisk{color:var(--gh-down); border-color:rgba(224,121,107,.45);}
-#tp-guild .msg .elapsed{font-size:9.5px; letter-spacing:.06em; color:var(--gh-ink3);}
+#tp-guild .msg .deadline{font-size:9.5px; letter-spacing:.06em; color:var(--gh-ink3);}
+#tp-guild .msg .deadline.hot{color:var(--gh-down);}
 #tp-guild .msg.action{background:rgba(201,162,39,.045);}
 #tp-guild .msg.action .ic{background:var(--gh-amber-dim); color:var(--gh-amber2);}
 #tp-guild .gh-msg-empty{padding:16px; color:var(--gh-ink4); font-size:11.5px; letter-spacing:.03em;}
@@ -6665,6 +6666,17 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
   function ventureRow(s, id){ return (s && Array.isArray(s.ventures)) ? s.ventures.filter(function(v){ return v.id === id; })[0] : null; }
 
+  // The acceptance-countdown label for a Messages row (#64 Slice 2) — read straight from the
+  // offer's engine-derived `daysToLapse`. The last day is amber ("hot"); the client types no
+  // day count of its own. `null` days (an offer without the Slice-2 field) falls back quietly.
+  function deadlineLabel(offer){
+    var n = offer && typeof offer.daysToLapse === 'number' ? offer.daysToLapse : null;
+    if(n == null) return { text:'window elapsed', hot:false };
+    if(n <= 0) return { text:'respond today', hot:true };
+    if(n === 1) return { text:'respond in 1 day', hot:true };
+    return { text:'respond in '+n+' days', hot:false };
+  }
+
   // The open renegotiation offers for the player's guild, off the top-level attention derive.
   function myRenegotiations(s){
     var id = (window.__player && window.__player().guildId) || null;
@@ -6684,6 +6696,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
         var band = MSG_BAND[r.standing] || MSG_BAND.steady;
         var v = ventureRow(s, r.ventureId);
         var who = esc(ventureTypeTitle(v)) + ' &middot; ' + esc(r.ventureName || r.ventureId);
+        // The live acceptance countdown (#64 Slice 2) — rendered from the offer's daysToLapse,
+        // which the engine derives; the client computes no game number. The last day is amber.
+        var deadline = deadlineLabel(r.offer);
         rows += '<div class="msg action" data-reneg="'+esc(r.ventureId)+'">'
           + '<div class="ic">&#9878;</div>'
           + '<div class="body">'
@@ -6692,7 +6707,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
           + '</div>'
           + '<div class="meta">'
           +   '<span class="chip '+band.cls+'">'+esc(band.label)+'</span>'
-          +   '<span class="elapsed">window elapsed</span>'
+          +   '<span class="deadline'+(deadline.hot?' hot':'')+'">'+esc(deadline.text)+'</span>'
           + '</div>'
           + '</div>';
       });
@@ -7079,7 +7094,16 @@ function paintInventoryHero(d){
     if(lic && cw){
       if(cw.expired){
         W.className = 'vm-window expired';
-        W.innerHTML = '<div class="wlbl">Term elapsed · rolling · open to renegotiation</div>';
+        // #64 Slice 2: once the term elapses there is a GRACE window before the Syndicate acts.
+        // During grace the venture runs on unchanged; when the offer opens, show the countdown.
+        if(v.renegotiationOffer){
+          var dl = (typeof v.renegotiationOffer.daysToLapse === 'number')
+            ? (v.renegotiationOffer.daysToLapse <= 1 ? 'respond now' : 'respond within '+v.renegotiationOffer.daysToLapse+' days')
+            : 'open to renegotiation';
+          W.innerHTML = '<div class="wlbl">Term elapsed · the Syndicate has reopened the terms · '+esc(dl)+'</div>';
+        } else {
+          W.innerHTML = '<div class="wlbl">Term elapsed · running on · the Syndicate will send new terms shortly</div>';
+        }
       } else {
         W.className = 'vm-window';
         var filled = Math.max(0, Math.min(1, cw.cyclesRemaining / (lic.windowDays || 1))) * 100;
@@ -7097,7 +7121,10 @@ function paintInventoryHero(d){
     } else {
       closeBtn.disabled = false;
       if(note.textContent.indexOf('deuterium') !== -1) note.textContent = '';
-      reneg.style.display = (cw && cw.expired) ? '' : 'none';
+      // #64 Slice 2: Renegotiate shows only once the Syndicate has ACTED — i.e. an OFFER is live
+      // (`renegotiationOffer`), not merely once the window has elapsed. During grace the offer is
+      // null, so this stays hidden and the normal Close-venture control shows (§5 phase B).
+      reneg.style.display = v.renegotiationOffer ? '' : 'none';
     }
   }
 

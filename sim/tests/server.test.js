@@ -1621,8 +1621,8 @@ test('GET / serves the Venture Management popup shell, wired to the published fi
   assert.ok(!html.includes('Renegotiation is coming soon'), 'the Renegotiate stub note is gone — it is wired');
   assert.match(html, /window\.__openRenegotiation\(player\.guildId, VM\.ventureId\)/,
     'VM Renegotiate opens the shared popup (§5 entry point 2)');
-  assert.match(html, /reneg\.style\.display = \(cw && cw\.expired\) \? '' : 'none'/,
-    'the Renegotiate control shows only once the window has elapsed');
+  assert.match(html, /reneg\.style\.display = v\.renegotiationOffer \? '' : 'none'/,
+    '#64 Slice 2: the Renegotiate control shows only once an OFFER is live (after grace), not merely at window-end');
   // The explicit, irregular art filenames — a distinctive mine and a distinctive factory entry, plus
   // the documented gasfactory.jpg-is-a-gas-mine placeholder — so the table cannot silently reshuffle.
   assert.match(html, /crystalline:'crystallinemine\.jpg'/, 'a distinctive mine-art entry');
@@ -1682,9 +1682,13 @@ test('GET / serves the MESSAGES panel + the renegotiation popup, wired to the at
   assert.match(html, /Needs a decision/, 'the pinned action-item section');
   assert.match(html, /No notices yet\./, 'the Notices section is an honest empty stub this slice');
   assert.match(html, /data-reneg="/, 'a Messages row carries its venture id for the popup');
-  // The window-elapsed marker, NOT a countdown — the grace-window timer is Slice 2 (§5).
-  assert.match(html, /window elapsed/, 'rows say the window elapsed, with no "respond in N days" countdown');
-  assert.ok(!html.includes('respond in '), 'no grace-window countdown this slice (Slice 2)');
+  // #64 Slice 2: the static "window elapsed" marker is REPLACED by the live acceptance countdown,
+  // rendered from the offer's engine-derived daysToLapse (the client types no day count). The
+  // last day is amber ("hot"). This flips the Slice-1b "no countdown" pin.
+  assert.match(html, /function deadlineLabel\(offer\)\{/, 'the countdown label reads the offer');
+  assert.match(html, /offer\.daysToLapse/, 'the countdown comes from the snapshot, not the client');
+  assert.match(html, /'respond in '\+n\+' days'/, 'the row shows "respond in N days"');
+  assert.match(html, /respond in 1 day/, 'the last day is phrased accordingly');
 
   // 3. THE POPUP exists (same modal shape as the venture popups) with the Syndicate-liaison voice,
   //    the four term rows, and ACCEPT / REJECT.
@@ -1717,6 +1721,11 @@ test('a licensed venture publishes contractWindow (cycles) and equityPerCycle on
   await req('POST', '/action', { type: 'setWindowN', windowN: 4 });
   await found({ credits: 500 });
   await mine({ ventureId: 'vm1', equityPct: 0.4 });
+  // Tick once BEFORE signing so the licence is signed at a DAY-ALIGNED tick (tick 1, the first
+  // tick of day 0). #64 Slice 2 day-aligns contractWindow onto the calendar window-end; at a
+  // day-aligned signing that coincides with teardown's raw licenceEndTick, so the endTick ==
+  // lockoutUntilTick agreement below still holds (they diverge only for a mid-day signing).
+  await req('POST', '/tick');
   await req('POST', '/action', { type: 'applyForLicence', guildId: 'player-guild', ventureId: 'vm1', committedOutputPct: 1, windowDays: 7 });
   await req('POST', '/tick');
 

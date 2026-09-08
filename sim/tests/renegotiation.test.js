@@ -38,7 +38,9 @@ const {
   STANDING_CUT_AT_RISK, STANDING_CUT_STEADY, STANDING_CUT_STRONG,
   STRONG_FEE_DISCOUNT, COMMITMENT_STEP_STEADY, COMMITMENT_STEP_SUB_PAR,
   ventureStanding, renegotiationTerms,
+  graceDaysFor, ACCEPTANCE_WINDOW_DAYS, renegotiationSchedule, applyLapse,
 } = require('../licence.js');
+const { tick: tickOnce } = require('../tick.js');
 const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
@@ -197,10 +199,14 @@ function setReputation(s, ventureId, rp) {
   v.reputation = rp;
 }
 
-// Jump the clock to the licence's window-end so a renegotiation is admissible, WITHOUT
-// running ticks (which would move prices/RP and cloud what each test is asserting).
+// Jump the clock to the licence's ACTS tick — past window-end AND past the grace window, so
+// the Syndicate has acted and the offer is open (#64 Slice 2). WITHOUT running ticks (which
+// would move prices/RP and cloud what each test is asserting). `actsTick` is ≥ the raw
+// `licenceEndTick` the action gate uses, so the accept/reject/lapse actions are admissible too.
 function elapse(s, ventureId = 'mine_1') {
-  s.tick = licenceEndTick(ventureOf(s, ventureId).licence, N);
+  const lic = ventureOf(s, ventureId).licence;
+  const anchor = s.dayAnchorTick == null ? 0 : s.dayAnchorTick;
+  s.tick = renegotiationSchedule(lic, N, anchor).actsTick;
   return s;
 }
 
@@ -571,4 +577,130 @@ test('attention — the derive is read-only: byte-identical hash before and afte
   const before = hashState(s);
   buildSnapshot(s);   // building the read model must mutate NOTHING (invariant 9 read-model rule)
   assert.equal(hashState(s), before, 'the attention derive moves no serialized byte');
+});
+
+// ─── #64 Slice 2 — the timers ────────────────────────────────────────────────────
+
+// graceDaysFor at every cutoff edge (phase-1-tuning: 1 / 3 / 4 / 5 at 14 / 21 / 28).
+test('graceDaysFor — the exact cutoff edges', () => {
+  const table = [[13, 1], [14, 3], [20, 3], [21, 4], [27, 4], [28, 5], [42, 5]];
+  for (const [windowDays, expected] of table) {
+    assert.equal(graceDaysFor(windowDays), expected, `windowDays ${windowDays}`);
+  }
+});
+
+// The schedule's three DAY-ALIGNED ticks for a sample licence, all off the calendar.
+test('renegotiationSchedule — three day-aligned ticks for a sample licence (signed day-aligned)', () => {
+  // signedTick 1 = the first tick of day 0 (day-aligned). windowN 4, windowDays 7, grace(7)=1.
+  const sched = renegotiationSchedule({ signedTick: 1, windowDays: 7 }, 4, 0);
+  assert.equal(sched.windowEndTick, 29, 'window ends at the first tick of day 7 (tickAt(7,0)=29)');
+  assert.equal(sched.actsTick, 33, 'the Syndicate acts one grace day later (day 8, tickAt(8,0)=33)');
+  assert.equal(sched.lapseTick, 53, 'auto-lapse five acceptance days after that (day 13, tickAt(13,0)=53)');
+  // The gaps are exactly the ruled day counts × windowN.
+  assert.equal(sched.actsTick - sched.windowEndTick, graceDaysFor(7) * 4, 'grace gap = graceDays × N');
+  assert.equal(sched.lapseTick - sched.actsTick, ACCEPTANCE_WINDOW_DAYS * 4, 'acceptance gap = 5 days × N');
+});
+
+// The OFFER is absent DURING grace and present FROM actsTick, and the countdown ticks down.
+test('offer is gated on actsTick — quiet during grace, live after, with daysToLapse counting down', () => {
+  const base = licensedMine({ committedOutputPct: 0.5, windowDays: 7, equityPct: 0 });
+  const lic = ventureOf(base, 'mine_1').licence;
+  const sched = renegotiationSchedule(lic, N, 0);
+
+  // Just before window-end, and DURING grace (window-end .. actsTick): standing but NO offer.
+  for (const t of [sched.windowEndTick - 1, sched.windowEndTick, sched.actsTick - 1]) {
+    const s = { ...base, tick: t };
+    const row = rowOf(s, 'mine_1');
+    assert.equal(row.standing, 'steady', `tick ${t}: standing is still read`);
+    assert.equal(row.renegotiationOffer, null, `tick ${t}: no offer before the Syndicate acts (grace)`);
+    assert.equal(attentionOf(s).renegotiations.length, 0, `tick ${t}: MESSAGES stays quiet during grace`);
+  }
+
+  // At actsTick the offer appears with the full acceptance countdown, and it counts DOWN by day.
+  const atActs = rowOf({ ...base, tick: sched.actsTick }, 'mine_1');
+  assert.ok(atActs.renegotiationOffer, 'the offer is live from actsTick');
+  assert.equal(atActs.renegotiationOffer.lapseTick, sched.lapseTick, 'the offer carries its auto-lapse deadline');
+  assert.equal(atActs.renegotiationOffer.daysToLapse, ACCEPTANCE_WINDOW_DAYS, 'respond in 5 days on the day it appears');
+  // One day later → 4; the last day before lapse → 1.
+  assert.equal(rowOf({ ...base, tick: sched.actsTick + N }, 'mine_1').renegotiationOffer.daysToLapse, 4, 'a day later, 4');
+  assert.equal(rowOf({ ...base, tick: sched.lapseTick - 1 }, 'mine_1').renegotiationOffer.daysToLapse, 1, 'the last day reads 1');
+});
+
+// Tick a state forward until its clock reaches (or passes) `toTick`.
+function runTo(s, toTick) {
+  while (s.tick < toTick) s = tickOnce(s);
+  return s;
+}
+
+// AUTO-LAPSE: a licence left unanswered past its lapseTick lapses on the tick, via the exact
+// `applyLapse` effect — RP forfeited, guild sum exact, licence dropped, the venture SURVIVES.
+test('auto-lapse — an unanswered licence lapses at lapseTick, keeping the venture (applyLapse effect)', () => {
+  let s = licensedMine({ committedOutputPct: 0.5, windowDays: 7, equityPct: 0 });
+  const lic = ventureOf(s, 'mine_1').licence;
+  const lapseTick = renegotiationSchedule(lic, N, 0).lapseTick;
+  const endowment = guildOf(s).foundingEndowment || 0;
+
+  // One tick BEFORE the deadline: still licensed (the offer is still standing).
+  s = runTo(s, lapseTick - 1);
+  assert.ok(ventureOf(s, 'mine_1').licence, `still licensed at tick ${s.tick} (before lapseTick ${lapseTick})`);
+  assert.ok(rowOf(s, 'mine_1').renegotiationOffer, 'the offer is still open within the acceptance window');
+
+  // Tick onto the deadline: the auto-lapse step fires.
+  s = runTo(s, lapseTick);
+  const v = ventureOf(s, 'mine_1');
+  assert.ok(v, 'the venture SURVIVES the auto-lapse (unlicensed, not removed)');
+  assert.ok(!v.licence, 'the licence is dropped');
+  assert.ok(!('reputation' in v), 'its RP is forfeited (back to the no-reputation state)');
+  assert.equal(v.syndicateCommitment, 0, 'windowed commitment cleared');
+  assert.ok(!('committedFromTick' in v), 'the pro-rate anchor cleared');
+  assert.ok(!rowOf(s, 'mine_1').renegotiationOffer, 'and the offer is gone — it dropped off MESSAGES');
+  assert.equal(attentionOf(s).renegotiations.length, 0, 'the lapsed venture is off the attention list');
+  // The guild sum is exactly the endowment now (the one venture forfeited all its RP).
+  assert.equal(guildOf(s).guildReputation, endowment, 'guild RP sum is exact after the forfeit');
+  assert.equal(checkInvariants(s).length, 0, 'every invariant holds after auto-lapse');
+});
+
+test('auto-lapse — an ACCEPTED venture never reaches it (accepting resets the schedule)', () => {
+  const base = licensedMine({ committedOutputPct: 0.5, windowDays: 7, equityPct: 0 });
+  const origLapse = renegotiationSchedule(ventureOf(base, 'mine_1').licence, N, 0).lapseTick;
+  // Accept once the offer is open (at actsTick), which re-locks and pushes the whole schedule out.
+  const accepted = renegotiate(elapse(base)).state;
+  const newLapse = renegotiationSchedule(ventureOf(accepted, 'mine_1').licence, N, 0).lapseTick;
+  assert.ok(newLapse > origLapse, 'accepting pushed the auto-lapse deadline forward');
+  // Tick past the ORIGINAL deadline: still licensed, because the schedule moved with the accept.
+  const s = runTo(accepted, origLapse + 1);
+  assert.ok(ventureOf(s, 'mine_1').licence, 'a re-locked venture is not auto-lapsed at the old deadline');
+});
+
+test('auto-lapse — a REJECTED venture is already unlicensed; ticking past the deadline is a no-op', () => {
+  const base = licensedMine({ committedOutputPct: 0.5, windowDays: 7, equityPct: 0 });
+  const lapseTick = renegotiationSchedule(ventureOf(base, 'mine_1').licence, N, 0).lapseTick;
+  const rejected = lapse(elapse(base)).state;   // REJECT → unlicensed immediately
+  assert.ok(!ventureOf(rejected, 'mine_1').licence, 'unlicensed the moment it is rejected');
+  const s = runTo(rejected, lapseTick + 1);
+  assert.ok(ventureOf(s, 'mine_1'), 'the venture is still present past the old deadline');
+  assert.ok(!ventureOf(s, 'mine_1').licence, 'and still unlicensed — nothing to auto-lapse');
+  assert.equal(checkInvariants(s).length, 0);
+});
+
+test('auto-lapse — a DEUTERIUM mine is never auto-lapsed (windowless, §1.4)', () => {
+  const s = createState({
+    guilds: [{
+      id: GUILD, credits: 0, fuelHoard: 0,
+      ventures: [{
+        id: 'deut_1', ownerGuildId: GUILD, type: 'mining', systemId: HOME_SYSTEM,
+        resourceType: 'deuterium', productionRate: 5,
+        deuteriumLicence: { signedTick: 0 }, reputation: 1000,
+      }],
+    }],
+    reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 }, windowN: N,
+  });
+  let t = s;
+  for (let i = 0; i < 60; i += 1) t = tickOnce(t);
+  const v = ventureOf(t, 'deut_1');
+  assert.ok(v.deuteriumLicence, 'still deuterium-licensed after 60 ticks — no ordinary licence to lapse');
+  assert.ok(!v.licence, 'it never carried an ordinary licence, so the auto-lapse step never touched it');
+  // A licensed deuterium mine EARNS RP each cycle (deuteriumMetGain), so its RP is not forfeited —
+  // it climbs. The point is that it was never auto-lapsed: its standing survives and grows.
+  assert.ok(v.reputation >= 1000, 'its RP survives (and accrues) rather than being forfeited');
 });

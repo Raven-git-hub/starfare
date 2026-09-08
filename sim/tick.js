@@ -37,7 +37,7 @@ const { recordPriceRing } = require('./price-ring.js');
 const { recomputePrices, postedPrice } = require('./prices.js');
 const {
   commitmentSale, committedContribution, feeOwed, reputationDelta, gainFactor, RP_FLOOR,
-  deuteriumMetGain,
+  deuteriumMetGain, renegotiationSchedule, applyLapse,
 } = require('./licence.js');
 const {
   producedGoodFor, isLicensedDeuteriumMine, isDeuteriumMine, isIllegalDeuteriumRefinery,
@@ -1028,6 +1028,39 @@ function stepVoteClosures(state, _actions) {
   return state;
 }
 
+// Step 9 — RENEGOTIATION AUTO-LAPSE (#64 Slice 2, design.md §5 "Renegotiation timers").
+//
+// THE FIRST TICK-DRIVEN LICENCE MUTATION ON A TIMER — not a window-boundary verdict (that is
+// stepProduction's accrual work, above), but a deadline the calendar reaches. A renegotiation
+// offer stands for a fixed acceptance window after the Syndicate acts; if the player has
+// neither ACCEPTed (`renegotiateLicence`, which resets `signedTick` and pushes the whole
+// schedule forward) nor REJECTed (`lapseLicence`, which drops the licence) by the offer's
+// `lapseTick`, their absence lapses it here — the same `applyLapse` the REJECT button fires,
+// so a chosen lapse and a timed-out one are byte-identical.
+//
+// Runs LAST, after all the boundary/accrual/grant work, so a venture that also took its final
+// window verdict this tick earns/breaches that RP first and forfeits it here — and the cycle's
+// fuel grant (stepBaselineAllocation) still reads the venture's standing before it is shed.
+// Deterministic: guilds then ventures in array order; `applyLapse` keeps `checkGuildReputationSum`
+// exact. Reads `state.tick + 1` (the tick BEING built — tick() assigns `next.tick` only after
+// all steps), the same convention stepArrivals/stepPriceRecompute use, so the deadline it
+// compares against matches the finished tick the snapshot then reads.
+function stepAutoLapse(state, _actions) {
+  const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+  const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
+  const thisTick = state.tick + 1;
+  for (const guild of state.guilds || []) {
+    for (const venture of guild.ventures || []) {
+      // Only an ORDINARY licence renegotiates; a deuterium mine carries `deuteriumLicence`
+      // (windowless, §1.4) and has no `licence`, so it is skipped by this very test.
+      if (!venture.licence) continue;
+      const { lapseTick } = renegotiationSchedule(venture.licence, windowN, dayAnchorTick);
+      if (thisTick >= lapseTick) applyLapse(guild, venture);
+    }
+  }
+  return state;
+}
+
 // The fixed order itself — the one piece of this file design.md actually
 // requires to be correct FROM THE START, even while every step above is
 // still a stub. Changing this array's order is changing the tick contract
@@ -1041,6 +1074,7 @@ const STEPS = [
   stepBaselineAllocation,
   stepStoryteller,
   stepVoteClosures,
+  stepAutoLapse,
 ];
 
 // tick(state, actions) — pure. Returns a NEW state; never mutates `state`.
