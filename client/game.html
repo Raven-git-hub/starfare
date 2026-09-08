@@ -3229,7 +3229,7 @@ function renderPlanetView(){
       row.innerHTML = '<span class="node-meta"><span class="node-name">'+RESOURCE_LABEL[node.resourceType]+'</span></span>' +
         siteBadgeHtml(badge);
       row.addEventListener('click', function(){
-        if (isOwnSite(state)) { window.__openVentureManagement(state.ventureId); return; }
+        if (isOwnSite(state) && window.__openVentureManagement) { window.__openVentureManagement(state.ventureId); return; }
         if (state) { openNodeOverlay('Resource Node '+(i+1), node.id, RESOURCE_LABEL[node.resourceType]); return; }
         openEstablishFor({ kind:'node', siteId:node.id, nodeLabel:'Resource Node '+(i+1),
           resource:node.resourceType, resLabel:RESOURCE_LABEL[node.resourceType],
@@ -3245,7 +3245,7 @@ function renderPlanetView(){
       row.innerHTML = '<span class="node-meta"><span class="node-name">Settlement</span></span>' +
         siteBadgeHtml(badge);
       row.addEventListener('click', function(){
-        if (isOwnSite(state)) { window.__openVentureManagement(state.ventureId); return; }
+        if (isOwnSite(state) && window.__openVentureManagement) { window.__openVentureManagement(state.ventureId); return; }
         if (state) { openNodeOverlay('Settlement Slot '+(i+1), slot.id, 'Settlement slot'); return; }
         openEstablishFor({ kind:'slot', siteId:slot.id, nodeLabel:'Settlement Slot '+(i+1),
           summary:'Slot '+(i+1)+' · Factory' }, p);

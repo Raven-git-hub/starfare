@@ -1635,8 +1635,8 @@ test('GET / serves the Venture Management popup shell, wired to the published fi
   //    node-row handlers are pinned so a revert to "occupied → overlay for everyone" goes red here.
   assert.match(html, /function isOwnSite\(state\)\{ return !!\(state && state\.kind !== 'other' && state\.ventureId\); \}/,
     'the own/rival classification that gates the manifest → VM route');
-  assert.match(html, /if \(isOwnSite\(state\)\) \{ window\.__openVentureManagement\(state\.ventureId\); return; \}/,
-    'an own occupied manifest node opens VM for its seated venture');
+  assert.match(html, /if \(isOwnSite\(state\) && window\.__openVentureManagement\) \{ window\.__openVentureManagement\(state\.ventureId\); return; \}/,
+    'an own occupied manifest node opens VM for its seated venture (guarding the hook like the sibling call sites)');
   // Both node-row handlers still fork to the read-only overlay for a RIVAL and to establishment
   // when vacant — so the own → VM branch is an addition, not a replacement of the other two paths.
   assert.match(html, /openNodeOverlay\('Resource Node '/, 'a rival Resource node keeps the read-only overlay');
