@@ -1458,9 +1458,14 @@ test('GET /console serves the SYSTEM INVENTORY panel: the right hero\'s resting 
   assert.match(html, /if \(HIDDEN_GOODS\[good\]\) return false;/);
 
   // The chip toggle: clicking the selected chip clears the selection, and the
-  // auto-open-on-the-lead-venture respects that clear instead of undoing it.
+  // auto-open-on-the-lead-venture respects that clear instead of undoing it. The
+  // auto-open is keyed on the good ON SCREEN (its lead is a producer of that good, and
+  // it fires only while nothing valid FOR THIS GOOD is selected), never on
+  // report.mines[0] blind — that latched the hero onto this system's first venture even
+  // when it was a HIDDEN deuterium mine (console-hero-venture.test.js).
   assert.match(html, /STATE\.selVenture = null; STATE\.invCleared = true;/);
-  assert.match(html, /if \(!STATE\.invCleared && \(!STATE\.selVenture/);
+  assert.match(html, /if \(!STATE\.invCleared && !heroSelection\(good, report\)\)\{/);
+  assert.match(html, /producersOf\(report, good\)\[0\]/);
 
   // The Tier-3 names reach the INVENTORY only. The good tabs stay keyed to goods
   // the engine actually pools, so Tier 3 remains dim and the console never opens

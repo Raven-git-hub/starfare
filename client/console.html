@@ -1104,13 +1104,15 @@ function render(snap){
   var report = systemReport();
 
   // Default the selected good to the first good that has production here, so the
-  // console opens on something with data rather than an arbitrary idle good.
+  // console opens on something with data rather than an arbitrary idle good — but
+  // SKIP HIDDEN goods (deuterium is un-consoled, §1.4/HIDDEN_GOODS). Without the skip a
+  // guild whose first-established venture is a deuterium mine would default the whole
+  // console onto a good it never surfaces, and its hero onto that deuterium mine.
   if (!STATE.good && report){
-    var firstProd = (report.mines || [])[0] || (report.refineries || [])[0];
-    if (firstProd){
-      var g0 = firstProd.good || (STATE.vmap[firstProd.ventureId] && STATE.recipeOut[STATE.vmap[firstProd.ventureId].recipeId]);
-      if (g0){ STATE.good = g0; STATE.tier = (STATE.goods.processed || []).indexOf(g0) >= 0 ? 2 : 1; }
-    }
+    var goodOf = function(v){ return v.good || (STATE.vmap[v.ventureId] && STATE.recipeOut[STATE.vmap[v.ventureId].recipeId]); };
+    var prodGoods = (report.mines || []).map(goodOf).concat((report.refineries || []).map(goodOf));
+    var g0 = prodGoods.find(function(g){ return g && !HIDDEN_GOODS[g]; });
+    if (g0){ STATE.good = g0; STATE.tier = (STATE.goods.processed || []).indexOf(g0) >= 0 ? 2 : 1; }
   }
   if (!STATE.good) STATE.good = (tierGoods(STATE.tier)[0] || tierGoods(1)[0] || null);
 
@@ -2306,20 +2308,24 @@ function renderStage(report){
     loadSystemInfo();
     return;
   }
-  // Open on this system's first real producer so the hero (here or in the host client)
-  // is never blank and never shows a venture from elsewhere. A player's chip click is
-  // never overridden: this only fires while nothing valid is selected.
-  var here = {};
-  (report.mines || []).forEach(function(m){ here[m.ventureId] = 1; });
-  (report.refineries || []).forEach(function(r){ here[r.ventureId] = 1; });
-  // …and never while the player has deliberately toggled the selection off: that
-  // choice is what opens the inventory, so re-selecting here would undo it a
-  // second later, on the next poll.
-  if (!STATE.invCleared && (!STATE.selVenture || !here[STATE.selVenture.id])){
-    var lead = (report.mines || [])[0];
-    var leadRole = 'producer';
-    if (!lead){ lead = (report.refineries || [])[0]; leadRole = 'consumer'; }
-    if (lead){ STATE.selVenture = { id: lead.ventureId, role: leadRole }; postVenture(lead.ventureId, leadRole); }
+  // Open on the first producer OF THE GOOD ON SCREEN so the hero (here or in the host
+  // client) is never blank and never shows a venture from elsewhere. It MUST be keyed
+  // on the current good, not on report.mines[0] (this system's first-established mine,
+  // whatever it produces): deuterium is a HIDDEN good (§1.4, HIDDEN_GOODS), so a guild
+  // whose first venture is a deuterium mine would otherwise default the console — and
+  // its hero, and so the "Open venture management ▸" button — onto that deuterium mine,
+  // an un-consoled venture the player never chose. producersOf() is already good-scoped.
+  //
+  // A player's chip click is never overridden: this fires only while nothing valid FOR
+  // THIS GOOD is selected — heroSelection() is the SAME producer/consumer test the hero
+  // itself uses, so a selection for a different good (a stale one left after a good
+  // switch) does not count as valid here and is replaced by this good's own lead rather
+  // than leaving the hero resting on it. It never fires while the player has toggled the
+  // selection off (invCleared): that choice opens the inventory, and re-selecting would
+  // undo it a second later, on the next poll.
+  if (!STATE.invCleared && !heroSelection(good, report)){
+    var lead = producersOf(report, good)[0];
+    if (lead){ STATE.selVenture = { id: lead.id, role: 'producer' }; postVenture(lead.id, 'producer'); }
   }
   loadSystemInfo();
 

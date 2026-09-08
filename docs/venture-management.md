@@ -28,6 +28,36 @@ one `window.__openVentureManagement(ventureId)` entry point, no second popup:
 A **rival's** occupied node stays the read-only overlay — §7 hides a rival's venture and VM is built
 from your OWN ventures, so it is own-only. A **vacant** node is unchanged (establishment).
 
+### Fixed (08-09-26) — the console hero opened the WRONG venture (a deuterium mine)
+
+Call site 5's "verified end-to-end (no new code)" was too generous: the earlier check only proved a popup
+**opened** from the console hero, never that it opened the venture the player **selected**. It didn't. In
+the live game the industrial hero's manage button opened a **deuterium mine** regardless of the chip
+selected. Reproduced in headless Chromium and root-caused to `client/console.html` (client-only; the popup
+and the Planet-Manifest path (4) were correct and untouched):
+
+- The default-good picker set `STATE.good` to `report.mines[0].good` — this system's **first-established**
+  venture's good — with no regard for whether the console surfaces it. **Deuterium is a HIDDEN good**
+  (§1.4, `HIDDEN_GOODS`), so a guild whose first venture is a deuterium mine opened the whole console on an
+  un-consoled good.
+- The hero **auto-open** then selected `report.mines[0]` (the system's first mine, **any** good) as the
+  "lead" rather than the first producer of the good **on screen**, and posted that deuterium mine up the
+  venture `postMessage` bridge — painting the hero and pinning the parent's `window.__vmHeroVenture` (what
+  `#ihManage` opens) to the deuterium mine. A stale cross-good selection also **blocked** the auto-open from
+  ever opening on the correct good's producer after a good switch, leaving the hero resting while
+  `__vmHeroVenture` still pointed at the deuterium lead.
+
+Both are now keyed on the **visible** good: the default-good picker skips `HIDDEN_GOODS`, and the auto-open
+opens on `producersOf(report, good)[0]` **only while nothing valid for that good is selected** —
+`!heroSelection(good, report)`, the same producer/consumer test the hero itself uses, so a deliberate chip
+click (producer **or** consumer) is never overridden and a stale selection for another good is replaced by
+this good's own lead instead of leaving a wrong id on the bridge. Toggle-off (`invCleared`) still opens the
+resting inventory. The missing correctness check is now a tripwire: `sim/tests/console-hero-venture.test.js`
+pins the served-page wiring (and that the good-blind `report.mines[0]` lead is gone), and the behavioural
+end-to-end (headless Chromium: producer chip, consumer chip, and the Planet-Manifest path all open their own
+venture, and the console never opens its hero on a deuterium mine) was re-run against a real booted server.
+No engine, snapshot, schema or golden change.
+
 ## 1. The two snapshot derives (engine; `sim/snapshot.js`, pure)
 
 Both are **per-venture, DERIVED on read** — no stored byte, no determinism hash, so **no state golden
