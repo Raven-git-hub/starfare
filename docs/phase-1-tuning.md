@@ -405,8 +405,17 @@ keeps paying its fee. Closure and forced-lease are a slice of their own.*
 The **shapes** are ruled in `design.md` §5 ("Licence renegotiation — the terms function & venture standing"); every number here is `[FIRST-CUT]`, pure invention expected to move in play, and the build reads these named constants rather than choosing any.
 
 - **Venture-standing band cut-points** `[FIRST-CUT]`: **−300 / 0 / 500** (on `venture.reputation`, read at window-end) → At risk (≤ −300) / Sub-par (−300…0) / Steady (0…500) / Strong (≥ 500). −300 is not new — it is the existing forced-lease mark (above); 0 is the bump-floor property (a venture only crosses it by demonstrated breaching); 500 sits below the **~720** a flawless market venture reaches in six weeks (measured against the built accrual, so Strong is reachable but earned). Tune in play.
-- **Strong-band fee discount** `[FIRST-CUT]`: **−10%** of the licence fee for an above-500 venture on renegotiation — a pure placeholder. The fee **never rises**; this is the only band that moves it. Reuses the existing fee grid (`sim/licence.js`) and creates no new credit flow (the Syndicate simply collects less).
+- **Strong-band fee discount** `[FIRST-CUT]`: **−10%** of the licence fee for an above-500 venture on renegotiation — a pure placeholder. This is the only *deliberate* fee lever, and it only moves the fee DOWN — the Syndicate never raises the fee as a penalty; but the whole fee re-prices at the current posted price on re-lock (like a fresh signing), so market movement can carry the underlying fee either way for any band (design.md §5). Reuses the existing fee grid (`sim/licence.js`) and creates no new credit flow (the Syndicate simply collects less).
 - **Commitment step by band** `[FIRST-CUT]`: the increase the Syndicate demands to `committedOutputPct` (a 0–1 fraction, capped at 1.0) on renegotiation, scaling with standing — **Steady +0.10, Sub-par +0.25, At risk → 1.0** (smallest → largest; At-risk jumps to full commitment). Strong is **exempt** (no demand). Placeholders; the *shape* — a monotonic ladder with Strong exempt — is the design, the numbers are tuning. Equity is never touched; window carries unchanged.
+
+### Licence renegotiation timers *(08-09-26 — #64 Slice 2)*
+
+The grace + acceptance clock (design.md §5 "Renegotiation timers"). Both `[FIRST-CUT]`, tunable; keyed on the licence's `windowDays` (a stored, stable term), so the whole timeline is derivable with **no new state**.
+
+- **Grace window** `[FIRST-CUT]`: the days a venture runs on its OLD terms after its committed window elapses, before the Syndicate acts — keyed on the just-ended contract's `windowDays`: **< 14 days → 1, < 21 → 3, < 28 → 4, ≥ 28 → 5**. The grace *values* **1 / 3 / 4 / 5** are ruled; the weekly **cutoffs (14 / 21 / 28)** are the `[FIRST-CUT]` bucketing, open to a tune. Short contract → short grace (the Syndicate is keen to re-lock an eager player); long contract → longer grace. Performance-keyed (band) grace was **rejected** (design.md §5) — it would need new stored state.
+- **Acceptance window** `[FIRST-CUT]`: **5 days**. Once the Syndicate acts (grace elapsed), the offer is live in MESSAGES with a 5-day countdown; an unaccepted offer **auto-lapses to unlicensed** at day 5 (design.md §5). Fixed — keyed on nothing.
+
+Full timeline from window-end is therefore **grace (1–5) + 5** = **6 to 10 days**, all day-aligned via `renegotiationDeadline` (`docs/cycle-and-calendar.md`).
 
 ### Fuel — the pool & issuance *(31-08-26 — slice 5a; shapes in `fuel-supply-and-allocation.md §2.1`)*
 
