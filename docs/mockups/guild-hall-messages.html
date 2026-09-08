@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guild Hall — Messages mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Palette + type lifted verbatim from client/game.html #tp-guild, so this reads as the real page. */
+:root{
+  --gh-void:#0d0f14; --gh-panel:#14171e; --gh-panel2:#181c24; --gh-panel3:#1c212b;
+  --gh-ink:#E8DFC8; --gh-ink2:#b7b09a; --gh-ink3:#6f7687; --gh-ink4:#454b58;
+  --gh-amber:#C9A227; --gh-amber2:#e3c04a; --gh-amber-dim:rgba(201,162,39,.30);
+  --gh-line:rgba(232,223,200,.10); --gh-line2:rgba(232,223,200,.18);
+  --gh-up:#5fb98a; --gh-down:#e0796b;
+  --gh-mono:'IBM Plex Mono',ui-monospace,monospace; --gh-serif:'Cinzel',Georgia,serif;
+  --gh-hero:236px; --gh-thero:472px;
+}
+*{box-sizing:border-box;}
+body{margin:0; background:#07080b; color:var(--gh-ink); font-family:var(--gh-mono);}
+.wrap{max-width:1240px; margin:0 auto;}
+.mocknote{font-family:var(--gh-mono); font-size:11px; color:var(--gh-ink3); letter-spacing:.04em;
+  padding:10px 22px; border-bottom:1px solid var(--gh-line); background:#0a0c10;}
+.mocknote b{color:var(--gh-amber2);}
+
+/* ===== the Guild Hall panel (mirror of #tp-guild) ===== */
+.gh{font-family:var(--gh-mono); font-size:14px; line-height:1.45; color:var(--gh-ink);
+  padding:22px; background:var(--gh-void); background-image:radial-gradient(120% 80% at 80% -10%, rgba(201,162,39,.06), transparent 60%);
+  display:flex; flex-direction:column; min-height:660px;}
+
+.gh-mast{display:flex; align-items:baseline; justify-content:space-between; padding-bottom:14px; margin-bottom:18px; border-bottom:1px solid var(--gh-line);}
+.gh-brand{font-family:var(--gh-serif); font-weight:600; letter-spacing:.14em; font-size:14px; color:var(--gh-ink2); text-transform:uppercase;}
+.gh-brand b{color:var(--gh-amber); font-weight:700;}
+.gh-ctx{font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--gh-ink3);}
+.gh-ctx b{color:var(--gh-amber2); font-weight:600;}
+
+.gh-body{display:grid; grid-template-columns:var(--gh-hero) minmax(0,1fr) var(--gh-thero); gap:16px; align-items:stretch; flex:1 1 auto; min-height:560px;}
+@media (max-width:1080px){ .gh-body{grid-template-columns:1fr;} }
+
+/* LEFT: tab rail */
+.gh-hero{background:var(--gh-panel2); border:1px solid var(--gh-line); border-radius:10px; overflow:hidden; display:flex; flex-direction:column;}
+.gh-hero .zhead{font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--gh-ink3); padding:13px 15px 10px;}
+.gh-tabs{display:flex; flex-direction:column; padding:11px; gap:3px; flex:1;}
+.gh-tab{display:flex; align-items:center; gap:11px; width:100%; text-align:left; cursor:pointer;
+  font-family:var(--gh-mono); font-size:12.5px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--gh-ink3); background:var(--gh-panel); border:1px solid var(--gh-line); border-radius:6px;
+  padding:12px 13px; transition:.12s;}
+.gh-tab .dot{width:6px; height:6px; border-radius:50%; background:var(--gh-ink4); flex:none; transition:.12s;}
+.gh-tab:hover{color:var(--gh-ink2); border-color:var(--gh-line2);}
+.gh-tab.on{color:var(--gh-ink); background:#1d2230; border-color:var(--gh-amber); box-shadow:inset 0 0 0 1px var(--gh-amber-dim);}
+.gh-tab.on .dot{background:var(--gh-amber); box-shadow:0 0 8px var(--gh-amber);}
+.gh-tab .soon{margin-left:auto; font-size:8px; letter-spacing:.14em; color:var(--gh-ink4); border:1px solid var(--gh-line); border-radius:20px; padding:2px 6px;}
+/* NEW: the unread/attention count on the Messages tab */
+.gh-tab .badge{margin-left:auto; font-size:9px; font-weight:600; letter-spacing:.04em; color:var(--gh-void);
+  background:var(--gh-amber); border-radius:20px; min-width:17px; text-align:center; padding:1px 6px;}
+.gh-tab.attn .dot{background:var(--gh-amber); box-shadow:0 0 8px var(--gh-amber); animation:pulse 1.8s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1;} 50%{opacity:.35;}}
+.gh-railfoot{padding:12px 15px; border-top:1px solid var(--gh-line); color:var(--gh-ink4); font-size:10px; letter-spacing:.04em; line-height:1.5;}
+
+/* CENTRE */
+.gh-centre{display:flex; flex-direction:column; min-width:0; gap:16px;}
+.gh-phead{display:flex; align-items:baseline; gap:14px;}
+.gh-phead h1{font-family:var(--gh-serif); font-weight:600; letter-spacing:.03em; font-size:23px; margin:0; color:var(--gh-ink);}
+.gh-phead .sub{font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--gh-ink3);}
+.gh-card{background:var(--gh-panel2); border:1px solid var(--gh-line); border-radius:10px;}
+
+.gh-seclab{font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--gh-ink4); padding:14px 16px 6px;}
+
+/* a message row */
+.msg{display:flex; align-items:flex-start; gap:12px; padding:13px 16px; border-top:1px solid var(--gh-line); cursor:pointer; transition:.12s;}
+.msg:hover{background:#1b2029;}
+.msg .ic{width:26px; height:26px; border-radius:6px; flex:none; display:flex; align-items:center; justify-content:center; font-size:13px; margin-top:1px;}
+.msg .body{flex:1; min-width:0;}
+.msg .t{font-size:12.5px; color:var(--gh-ink); letter-spacing:.02em; margin-bottom:3px;}
+.msg .t .who{color:var(--gh-ink3);}
+.msg .adv{font-size:11.5px; color:var(--gh-ink2); line-height:1.5;}
+.msg .meta{display:flex; flex-direction:column; align-items:flex-end; gap:5px; flex:none; text-align:right;}
+.chip{font-size:8px; letter-spacing:.12em; text-transform:uppercase; padding:2px 7px; border-radius:20px; border:1px solid var(--gh-line2); color:var(--gh-ink3); white-space:nowrap;}
+.chip.strong{color:var(--gh-up); border-color:rgba(95,185,138,.4);}
+.chip.steady{color:var(--gh-amber2); border-color:var(--gh-amber-dim);}
+.chip.subpar{color:#e0b26b; border-color:rgba(224,178,107,.4);}
+.chip.atrisk{color:var(--gh-down); border-color:rgba(224,121,107,.45);}
+.deadline{font-size:9.5px; letter-spacing:.06em; color:var(--gh-ink3);}
+.deadline.hot{color:var(--gh-down);}
+/* action-required rows are pinned + amber-edged; notifications are calmer */
+.msg.action{background:rgba(201,162,39,.045);}
+.msg.action .ic{background:var(--gh-amber-dim); color:var(--gh-amber2);}
+.msg.note .ic{background:rgba(232,223,200,.06); color:var(--gh-ink3);}
+.msg.note .t, .msg.note .adv{color:var(--gh-ink3);}
+.unreaddot{width:6px;height:6px;border-radius:50%;background:var(--gh-amber);flex:none;margin-top:8px;}
+
+/* RIGHT: council chamber art hero (faked with a gradient since the jpg lives in the repo) */
+.gh-thero{position:relative; padding:0; border-radius:10px; overflow:hidden; border:1px solid var(--gh-line);
+  background:
+    radial-gradient(90% 60% at 50% 12%, rgba(201,162,39,.18), transparent 55%),
+    linear-gradient(180deg,#20242e 0%, #14171e 45%, #0d0f14 100%);}
+.gh-thero .pillars{position:absolute; inset:0; z-index:0; opacity:.35;
+  background-image:repeating-linear-gradient(90deg, transparent 0 46px, rgba(232,223,200,.06) 46px 60px);}
+.gh-thero .scrim{position:absolute; inset:0; z-index:1;
+  background:linear-gradient(180deg, rgba(13,15,20,.72) 0%, rgba(13,15,20,.12) 30%, rgba(13,15,20,.10) 55%, rgba(13,15,20,.92) 100%);}
+.gh-thero .tcenter{position:absolute; z-index:2; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;}
+.gh-thero .ghlabel{font-family:var(--gh-serif); font-weight:700; letter-spacing:.22em; font-size:34px; color:var(--gh-ink);
+  text-shadow:0 2px 22px rgba(13,15,20,.95), 0 1px 4px rgba(13,15,20,.95);}
+.gh-thero .ghsub{font-size:9px; letter-spacing:.2em; text-transform:uppercase; color:var(--gh-ink4);}
+
+/* ===== the renegotiation popup (same modal style as the venture popups) ===== */
+.scrimfull{position:fixed; inset:0; background:rgba(6,7,10,.7); backdrop-filter:blur(2px); display:none; align-items:center; justify-content:center; z-index:50; padding:20px;}
+.scrimfull.show{display:flex;}
+.pop{width:min(560px,100%); background:var(--gh-panel2); border:1px solid var(--gh-line2); border-radius:12px; overflow:hidden; box-shadow:0 24px 80px rgba(0,0,0,.6);}
+.pop-h{display:flex; align-items:center; justify-content:space-between; padding:16px 18px; border-bottom:1px solid var(--gh-line);}
+.pop-h .t{font-family:var(--gh-serif); font-size:17px; letter-spacing:.04em; color:var(--gh-ink);}
+.pop-h .x{cursor:pointer; color:var(--gh-ink3); font-size:18px; border:none; background:none;}
+.pop-b{padding:18px;}
+.adviser{display:flex; gap:13px; align-items:flex-start; padding:14px; border:1px solid var(--gh-line); border-radius:9px; background:var(--gh-panel); margin-bottom:18px;}
+.adviser .mono{width:40px; height:40px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center;
+  font-family:var(--gh-serif); font-size:17px; color:var(--gh-void); background:linear-gradient(160deg,var(--gh-amber2),var(--gh-amber));}
+.adviser .say{font-size:12.5px; line-height:1.55; color:var(--gh-ink2);}
+.adviser .say .name{display:block; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--gh-ink4); margin-bottom:4px;}
+.terms{border:1px solid var(--gh-line); border-radius:9px; overflow:hidden; margin-bottom:18px;}
+.terms .row{display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:center; padding:11px 15px; border-top:1px solid var(--gh-line); font-size:12.5px;}
+.terms .row:first-child{border-top:none;}
+.terms .k{color:var(--gh-ink3); letter-spacing:.08em; text-transform:uppercase; font-size:10px;}
+.terms .from{color:var(--gh-ink3);}
+.terms .arw{color:var(--gh-ink4);}
+.terms .to{color:var(--gh-ink); font-weight:600; text-align:right; min-width:74px;}
+.terms .to.up{color:var(--gh-amber2);}
+.terms .to.same{color:var(--gh-ink2); font-weight:400;}
+.terms .to.good{color:var(--gh-up);}
+.pop-acts{display:flex; gap:10px;}
+.btn{flex:1; padding:13px; border-radius:8px; font-family:var(--gh-mono); font-size:12px; letter-spacing:.12em; text-transform:uppercase; cursor:pointer; border:1px solid var(--gh-line2); transition:.12s;}
+.btn.accept{background:var(--gh-amber); color:var(--gh-void); border-color:var(--gh-amber); font-weight:600;}
+.btn.accept:hover{background:var(--gh-amber2);}
+.btn.reject{background:transparent; color:var(--gh-ink2);}
+.btn.reject:hover{border-color:var(--gh-down); color:var(--gh-down);}
+.rejnote{font-size:10px; color:var(--gh-ink4); line-height:1.5; text-align:center; margin-top:11px; letter-spacing:.03em;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="mocknote">MOCKUP — Guild Hall with a new <b>MESSAGES</b> rail entry (top of the list). Click a message to see the renegotiation popup. Council-chamber art is faked with a gradient (the real jpg lives in the repo). Not wired to the engine.</div>
+
+  <div class="gh">
+    <!-- masthead -->
+    <div class="gh-mast">
+      <span class="gh-brand"><b>Starfare</b> &middot; Guild Hall</span>
+      <span class="gh-ctx">Cycle <b>0004</b> &middot; Day <b>4</b> &middot; Tick <b>5760</b></span>
+    </div>
+
+    <div class="gh-body">
+      <!-- LEFT: tab rail, with MESSAGES added at the top -->
+      <div class="gh-hero">
+        <div class="zhead">Guild</div>
+        <div class="gh-tabs">
+          <button class="gh-tab on attn" data-p="messages"><span class="dot"></span>Messages<span class="badge">2</span></button>
+          <button class="gh-tab" data-p="standing"><span class="dot"></span>Standing</button>
+          <button class="gh-tab" data-p="finance"><span class="dot"></span>Finance</button>
+          <button class="gh-tab" data-p="ventures"><span class="dot"></span>Ventures</button>
+          <button class="gh-tab" data-p="council"><span class="dot"></span>Council<span class="soon">Soon</span></button>
+          <button class="gh-tab" data-p="forum"><span class="dot"></span>Forum<span class="soon">Soon</span></button>
+        </div>
+        <div class="gh-railfoot">Standing, treasury &amp; your seat with the Syndicate.</div>
+      </div>
+
+      <!-- CENTRE: the Messages panel -->
+      <div class="gh-centre">
+        <div class="gh-phead">
+          <h1>Messages</h1>
+          <span class="sub">2 need a decision &middot; 2 new</span>
+        </div>
+
+        <div class="gh-card">
+          <div class="gh-seclab">Needs a decision</div>
+
+          <div class="msg action" onclick="openReneg('steady')">
+            <div class="ic">&#9878;</div>
+            <div class="body">
+              <div class="t">Licence renegotiation &mdash; <span class="who">Titanium Mine · pl_00048_n01</span></div>
+              <div class="adv">A fair offer. They'd like a little more commitment this time.</div>
+            </div>
+            <div class="meta">
+              <span class="chip steady">Steady</span>
+              <span class="deadline">respond in 3 days</span>
+            </div>
+          </div>
+
+          <div class="msg action" onclick="openReneg('atrisk')">
+            <div class="ic">&#9878;</div>
+            <div class="body">
+              <div class="t">Licence renegotiation &mdash; <span class="who">Gold Mine · pl_00048_n10</span></div>
+              <div class="adv">A hard offer &mdash; they're demanding full commitment. This venture's on thin ice with the Syndicate.</div>
+            </div>
+            <div class="meta">
+              <span class="chip atrisk">At risk</span>
+              <span class="deadline hot">respond in 1 day</span>
+            </div>
+          </div>
+
+          <div class="gh-seclab">Notices</div>
+
+          <div class="msg note">
+            <div class="unreaddot"></div>
+            <div class="ic">&#9889;</div>
+            <div class="body">
+              <div class="t">Fuel entitlement rose this cycle</div>
+              <div class="adv">Your standing lifted the Syndicate's grant &mdash; +18 units on last cycle.</div>
+            </div>
+            <div class="meta"><span class="deadline">Cycle 0004</span></div>
+          </div>
+
+          <div class="msg note">
+            <div class="unreaddot"></div>
+            <div class="ic">&#128737;</div>
+            <div class="body">
+              <div class="t">A rival bought a stake in a neighbouring venture</div>
+              <div class="adv">Copper Refinery, two hops out, changed hands. Worth watching.</div>
+            </div>
+            <div class="meta"><span class="deadline">Cycle 0003</span></div>
+          </div>
+
+          <div class="msg note" style="opacity:.6;">
+            <div class="ic">&#128172;</div>
+            <div class="body">
+              <div class="t">Licence renewed &mdash; <span class="who">Silica Mine</span></div>
+              <div class="adv">You accepted the Syndicate's terms. Commitment held at 50%.</div>
+            </div>
+            <div class="meta"><span class="deadline">Cycle 0002</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: council chamber art hero -->
+      <div class="gh-thero">
+        <div class="pillars"></div>
+        <div class="scrim"></div>
+        <div class="tcenter">
+          <div class="ghlabel">GUILD HALL</div>
+          <div class="ghsub">seat of the Syndicate</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== renegotiation popup ===== -->
+<div class="scrimfull" id="scrim" onclick="if(event.target===this)close_()">
+  <div class="pop">
+    <div class="pop-h">
+      <span class="t">Licence Renegotiation</span>
+      <button class="x" onclick="close_()">&times;</button>
+    </div>
+    <div class="pop-b">
+      <div class="adviser">
+        <div class="mono">S</div>
+        <div class="say"><span class="name">Syndicate Liaison</span><span id="advtext"></span></div>
+      </div>
+      <div class="terms">
+        <div class="row"><span class="k">Standing</span><span></span><span class="to" id="t-standing"></span></div>
+        <div class="row"><span class="k">Commitment</span><span class="from" id="t-cfrom"></span><span class="to" id="t-cto"></span></div>
+        <div class="row"><span class="k">Window</span><span class="from">14 days</span><span class="to same">14 days</span></div>
+        <div class="row"><span class="k">Fee / cycle</span><span class="from" id="t-ffrom"></span><span class="to" id="t-fto"></span></div>
+      </div>
+      <div class="pop-acts">
+        <button class="btn accept">Accept terms</button>
+        <button class="btn reject">Reject</button>
+      </div>
+      <div class="rejnote">Rejecting reverts this venture to <b>unlicensed</b> — you keep the mine, but forfeit its standing (RP). You can sign a fresh licence later on your own terms.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+var COPY = {
+  steady:{ adv:"A licence has come up for renegotiation and the Syndicate has sent an offer. It's a fair one — this venture's been holding its own, and they'd just like a little more commitment this time.",
+           standing:'Steady', scls:'steady', cfrom:'50%', cto:'60%', ccls:'up', ffrom:'31 cr', fto:'31 cr', fcls:'same' },
+  atrisk:{ adv:"The Syndicate's offer is a hard one. This venture has been underdelivering, and they're demanding full commitment to keep the licence. Meet it, or walk.",
+           standing:'At risk', scls:'atrisk', cfrom:'70%', cto:'100%', ccls:'up', ffrom:'71 cr', fto:'71 cr', fcls:'same' },
+  strong:{ adv:"Good news — this venture's earned the Syndicate's confidence. They're happy to renew on the same terms, and they've trimmed the fee as a thank-you.",
+           standing:'Strong', scls:'strong', cfrom:'60%', cto:'60%', ccls:'same', ffrom:'21 cr', fto:'19 cr', fcls:'good' }
+};
+function openReneg(band){
+  var c = COPY[band];
+  document.getElementById('advtext').textContent = c.adv;
+  var st = document.getElementById('t-standing'); st.textContent = c.standing; st.className = 'to '+ (c.scls==='atrisk'?'':'') ; st.style.color='';
+  st.className='to'; st.innerHTML='<span class="chip '+c.scls+'">'+c.standing+'</span>';
+  document.getElementById('t-cfrom').textContent = c.cfrom;
+  var cto=document.getElementById('t-cto'); cto.textContent=c.cto; cto.className='to '+c.ccls;
+  document.getElementById('t-ffrom').textContent = c.ffrom;
+  var fto=document.getElementById('t-fto'); fto.textContent=c.fto; fto.className='to '+c.fcls;
+  document.getElementById('scrim').classList.add('show');
+}
+function close_(){ document.getElementById('scrim').classList.remove('show'); }
+// simple tab visual toggle (mock only)
+document.querySelectorAll('.gh-tab').forEach(function(b){
+  b.addEventListener('click', function(){
+    document.querySelectorAll('.gh-tab').forEach(function(x){x.classList.remove('on');});
+    b.classList.add('on');
+  });
+});
+</script>
+</body>
+</html>
