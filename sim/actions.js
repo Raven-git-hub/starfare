@@ -6,9 +6,9 @@ const { getRecipe } = require('./recipes.js');
 const {
   EQUITY_CEILING, isValidEquityPct, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
   isValidCommitmentPct, isValidWindowDays, licenceFee, commitmentUnitsFor, equityOf,
-  signingBump,
+  signingBump, teardownSettlement,
 } = require('./licence.js');
-const { producedGoodFor, baselineOutputFor } = require('./baseline.js');
+const { producedGoodFor, baselineOutputFor, isLicensedDeuteriumMine } = require('./baseline.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { checkQuote, quotedPrice } = require('./price-ring.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
@@ -265,6 +265,20 @@ function createEstablishDeuteriumRefineryAction({ guildId, ventureId, siteId, as
   return { type: 'establishDeuteriumRefinery', guildId, ventureId, siteId, assetId, productionRate };
 }
 
+// decommissionVenture: CLOSE a venture the guild owns (docs/venture-teardown.md §1). The
+// mirror image of establishVenture — that one seats a venture and occupies an asset; this
+// removes one and frees its site and asset (both DERIVED, so for free — §0). The settlement
+// is COMPUTED by the engine, never passed in — the same discipline the licence fee follows —
+// so the shape is exactly `{ guildId, ventureId }` and nothing more. What it costs depends on
+// what the venture was (§3): an unlicensed venture closes clean; an ordinary-licensed one
+// forfeits its RP (automatic), pays out its remaining contract fee, and locks its node to the
+// owner until the term ends. A licensed deuterium mine is refused this slice (§6).
+function createDecommissionVentureAction({ guildId, ventureId }) {
+  if (guildId === undefined) throw new Error('createDecommissionVentureAction: guildId is required');
+  if (ventureId === undefined) throw new Error('createDecommissionVentureAction: ventureId is required');
+  return { type: 'decommissionVenture', guildId, ventureId };
+}
+
 // setWindowN: set the single engine-wide accrual window length `state.windowN`. The
 // codebase's FIRST state-scoped action — window length is engine-wide state, not a
 // guild's, so there is NO guildId. An integer ≥ 1, settable ONLY before the run
@@ -372,6 +386,29 @@ function siteOccupant(state, siteId) {
   return undefined;
 }
 
+// The LIVE node lockout on a site, if any (docs/venture-teardown.md §3.3). A lockout is
+// written when an ordinary-licensed venture is torn down with contract time left, barring
+// ANY re-establish on that node — the owner's included — until its abandoned term ends. An
+// entry with `state.tick >= releaseTick` has EXPIRED: lazy expiry (§3.3) treats it as free
+// here (this returns undefined for it) and the establish apply prunes the dead entry when the
+// site is next built on. Returns the live entry, or undefined when the site is free.
+function activeLockout(state, siteId) {
+  return (state.nodeLockouts || []).find((l) => l.siteId === siteId && state.tick < l.releaseTick);
+}
+
+// pruneLockout(state, siteId) — LAZY EXPIRY (docs/venture-teardown.md §3.3): drop any node
+// lockout on a site that is being established on. Validate only lets an establish through
+// once its lockout has released (`activeLockout` returns undefined), so any entry still here
+// for this site is dead and this is where it is swept. The key is DELETED when the last entry
+// goes, keeping `state.nodeLockouts` omit-when-empty so a galaxy with no live lockouts stays
+// byte-identical to one that never had any (the determinism no-op). A mutator on the already-
+// cloned `next`; a no-op when there is no lockouts array or none for this site.
+function pruneLockout(state, siteId) {
+  if (!Array.isArray(state.nodeLockouts)) return;
+  state.nodeLockouts = state.nodeLockouts.filter((l) => l.siteId !== siteId);
+  if (state.nodeLockouts.length === 0) delete state.nodeLockouts;
+}
+
 // Validates ONE action against state-as-it-stands. Never mutates `state`.
 // Returns { valid: true } or { valid: false, reason }.
 function validateAction(state, action) {
@@ -466,6 +503,15 @@ function validateAction(state, action) {
     const occupant = siteOccupant(state, action.siteId);
     if (occupant) {
       return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is already occupied by venture ${JSON.stringify(occupant.id)}` };
+    }
+    // THE NODE-LOCKOUT GATE (docs/venture-teardown.md §3.3). A node whose former
+    // ordinary-licensed venture was torn down with contract time left is locked to the
+    // owner until that term elapses — self-denial, and it gates ANY establish, the owner's
+    // included (only the owner could build on their own territory anyway). A vacant site
+    // clears the occupant check above and is refused HERE while its lockout is live.
+    const lock = activeLockout(state, action.siteId);
+    if (lock) {
+      return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is locked after a venture teardown until tick ${lock.releaseTick} (state.tick is ${state.tick}) — the abandoned contract term must elapse before re-establishing (docs/venture-teardown.md §3.3)` };
     }
     // GATE 3 — the guild must HOLD the node's system (design.md §4's deploy
     // contract, 30-08-26): no building on land you don't own. This closes a real
@@ -802,6 +848,14 @@ function validateAction(state, action) {
     if (occupant) {
       return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is already occupied by venture ${JSON.stringify(occupant.id)}` };
     }
+    // THE NODE-LOCKOUT GATE (docs/venture-teardown.md §3.3), the same refusal establishVenture
+    // makes: a site whose former licensed venture was torn down mid-term is barred from ANY
+    // re-establish until the term elapses. A refinery seats a venture like any other, so it
+    // gates here too.
+    const lock = activeLockout(state, action.siteId);
+    if (lock) {
+      return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is locked after a venture teardown until tick ${lock.releaseTick} (state.tick is ${state.tick}) — the abandoned contract term must elapse before re-establishing (docs/venture-teardown.md §3.3)` };
+    }
     // Deploy only into a system you hold (§4), the same gate establishVenture uses.
     if (!guildHolds(state, action.guildId, site.systemId)) {
       return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} does not hold system ${JSON.stringify(site.systemId)} — a venture may only be deployed in a system you hold (§4)` };
@@ -827,6 +881,36 @@ function validateAction(state, action) {
     }
     if (asset.kind !== kind) {
       return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is a ${asset.kind}; a deuterium refinery needs a ${kind} (§4)` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'decommissionVenture') {
+    // Close a venture the guild owns (docs/venture-teardown.md §1), validated in intake
+    // order: the guild exists; the venture exists AND belongs to this guild; and — this
+    // slice — it is not a licensed deuterium mine (§6).
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (typeof action.ventureId !== 'string' || action.ventureId.length === 0) {
+      return { valid: false, reason: 'ventureId must be a non-empty string' };
+    }
+    // Scan ONLY this guild's ventures: closing is an act on a venture you OWN (§1). A
+    // venture belonging to another guild is not found here and is refused by name, exactly
+    // as applyForLicence and setSyndicateCommitment scope their lookups.
+    const venture = (guild.ventures || []).find((v) => v.id === action.ventureId);
+    if (!venture) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} has no venture with id ${JSON.stringify(action.ventureId)}` };
+    }
+    // DEFERRED THIS SLICE (§6): a licensed deuterium mine is windowless, so "remaining
+    // cycles" and "contract end" — what the §3.2 fee and §3.3 lockout compute from — are
+    // undefined for it. Its real deterrent is already automatic (tearing it down vaporises
+    // ~1000 RP with no GP to offset), so refusing it costs nothing but the hardening it waits
+    // on. An UNLICENSED deuterium mine is NOT refused: it carries no deuterium licence, so it
+    // tears down clean like any unlicensed venture (§4).
+    if (isLicensedDeuteriumMine(venture)) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} is a licensed deuterium mine — its teardown is deferred to the deuterium hardening slice (docs/venture-teardown.md §6) and cannot be decommissioned yet` };
     }
     return { valid: true };
   }
@@ -1238,6 +1322,7 @@ function applyAction(state, action) {
       // today is unlicensed, so the establish path never supplies it — the
       // reserved placeholder shape (design.md §15.4, §5) lands at 0.
     }));
+    pruneLockout(next, action.siteId);
     return next;
   }
   if (action.type === 'setProductionProfile') {
@@ -1414,6 +1499,58 @@ function applyAction(state, action) {
       productionRate: action.productionRate,
       deuteriumRefinery: true,
     }));
+    pruneLockout(next, action.siteId);
+    return next;
+  }
+
+  if (action.type === 'decommissionVenture') {
+    // Close the venture (docs/venture-teardown.md §1), in the §1 order. Everything here reads
+    // `teardownSettlement` — the SAME pure helper the snapshot previews with — so the cost the
+    // player was shown and the cost charged cannot disagree (§7).
+    const guild = findGuild(next, action.guildId);
+    const idx = guild.ventures.findIndex((v) => v.id === action.ventureId);
+    const venture = guild.ventures[idx];
+    const { settlementFee, lockoutUntilTick } = teardownSettlement(next, guild, venture);
+
+    // 1. THE SETTLEMENT FEE (§3.2) — ordinary-licensed only, 0 past the term, so this moves
+    //    nothing for an unlicensed venture. The paySyndicateFee shape exactly: guild −fee,
+    //    ledger +fee, so invariant 2 stays exact. It MAY drive the guild's credits NEGATIVE —
+    //    the same non-negativity carve-out §5's breach fee runs under — and is charged in full
+    //    whether or not the guild can pay; there is deliberately no affordability gate (§3.2).
+    if (settlementFee > 0) {
+      guild.credits -= settlementFee;
+      next.syndicate.ledger += settlementFee;
+    }
+
+    // 2. RP FORFEIT + REMOVAL (§3.1) — the ONLY reputation bookkeeping teardown does, in one
+    //    mutation: the venture's RP leaves the guild total as the venture leaves the array.
+    //    This mirrors the tick's boundary RP mover in reverse — the guild total and the row it
+    //    totals move by the same amount, in the same place — so `checkGuildReputationSum`
+    //    (guildReputation == Σ venture.reputation + foundingEndowment) stays exact with no new
+    //    term. The mean line does the rest of the "punishment": the venture's GP leaves too,
+    //    because GP is derived (§2), so the gap moves by (GP_v − RP_v) with no special rule.
+    guild.guildReputation -= (venture.reputation || 0);
+    guild.ventures.splice(idx, 1);
+
+    // 3. FREE THE SITE AND ASSET (§0) — NOTHING TO DO. Occupancy and idleness are both DERIVED
+    //    (sim/occupancy.js, sim/assets.js): the venture is gone, so its site reads vacant and
+    //    its asset reads idle for free. This step is the whole point of teardown, and it is a
+    //    no-op precisely because those two facts were never stored.
+
+    // 4. THE NODE LOCKOUT (§3.3) — written iff `teardownSettlement` returned a release tick
+    //    (an ordinary-licensed venture with contract time left; null when unlicensed or past
+    //    the term, so no lockout there). `state.nodeLockouts` is created LAZILY here — the only
+    //    writer — so a galaxy that has torn nothing down carries no key (omit-when-empty). The
+    //    node stays the owner's TERRITORY; the lockout is pure self-denial, barring re-establish
+    //    on this very site until `releaseTick`. `lockedAtTick` records the mutation's tick (§15.2).
+    if (lockoutUntilTick != null) {
+      if (!Array.isArray(next.nodeLockouts)) next.nodeLockouts = [];
+      next.nodeLockouts.push({
+        siteId: venture.siteId,
+        releaseTick: lockoutUntilTick,
+        lockedAtTick: next.tick,
+      });
+    }
     return next;
   }
 
@@ -1648,6 +1785,7 @@ module.exports = {
   createApplyForLicenceAction,
   createLicenseDeuteriumMineAction,
   createEstablishDeuteriumRefineryAction,
+  createDecommissionVentureAction,
   createSetWindowNAction,
   createSellToSyndicateAction,
   createBuyFromSyndicateAction,

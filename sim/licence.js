@@ -41,7 +41,7 @@
 // pro-rate). This file still moves no credit itself: `commitmentSale` and `feeOwed` both
 // return numbers, and the tick is the only place a balance changes.
 
-const { windowFraction } = require('./windows.js');
+const { windowFraction, DEFAULT_WINDOW_N } = require('./windows.js');
 const { producedGoodFor, isLicensedDeuteriumMine } = require('./baseline.js');
 const { tierWeight, tierOf } = require('./points.js');
 
@@ -314,6 +314,58 @@ function feeOwed(licence, status, fraction) {
   }
   const due = status === 'met' ? licence.discountedFee : licence.basicFee;
   return Math.round(due * fraction);
+}
+
+// --- Venture teardown (docs/venture-teardown.md) ---------------------------------
+
+// teardownSettlement(state, guild, venture) -> { settlementFee, lockoutUntilTick, rpForfeit }
+// The ONE place the cost of closing a venture is computed (§7). It reads; it never writes.
+// Its whole reason to exist is that TWO consumers need the same three numbers — the
+// `decommissionVenture` apply CHARGES exactly what this returns, and the snapshot PREVIEWS
+// it — so the settlement the player is shown and the one the engine takes cannot disagree.
+//
+// Teardown INVENTS NO NUMBER (§0): every figure below is built from terms already ruled and
+// stored — the venture's own `reputation`, the licence's `discountedFee`/`windowDays`, and
+// the engine-wide `windowN`.
+//
+//   rpForfeit       — the venture's whole earned standing, which leaves the guild sum when
+//                     the venture is removed (§3.1). Not a flat penalty: it is the row's own
+//                     RP, and the mean line converts its loss (with the GP the venture also
+//                     takes with it) into the actual fuel swing (§2).
+//   settlementFee   — the remaining contract obligation, ORDINARY-LICENSED ONLY (§3.2):
+//                       remainingCycles = max(0, windowDays − floor((tick − signedTick)/windowN))
+//                       settlementFee   = remainingCycles × discountedFee
+//                     the negotiated (discounted) rate, the deal the player signed. The
+//                     current partial cycle counts WHOLE (the floor), a deliberate first cut
+//                     that keeps the arithmetic a plain integer product. Past the contract
+//                     term this is 0 — teardown is free in the rolling state (§3.2), which
+//                     falls straight out of the formula. An unlicensed venture owes nothing.
+//   lockoutUntilTick— the tick the node's self-denial lockout releases on (§3.3),
+//                     `signedTick + windowDays × windowN` — the end of the abandoned term —
+//                     or null when there is nothing to lock (unlicensed, or already past the
+//                     term so `remainingCycles` is 0). The apply writes a lockout iff this is
+//                     non-null, so the fee and the lockout switch off together at term-end.
+//
+// A licensed DEUTERIUM mine never reaches the charge — `decommissionVenture` refuses it this
+// slice (§6) — so this helper is only asked to preview it: it carries no windowed `licence`,
+// so it falls into the unlicensed branch (fee 0, no lockout, rpForfeit = its RP), an honest
+// preview of the RP it would surrender even though the action is deferred.
+function teardownSettlement(state, guild, venture) {
+  const rpForfeit = (venture && venture.reputation) || 0;
+  const lic = venture && venture.licence;
+  if (!lic) return { settlementFee: 0, lockoutUntilTick: null, rpForfeit };
+
+  // A cycle is a day is `windowN` ticks — read the engine-wide value the same way the
+  // signing apply and the resolver read it, so the settlement is priced over the very
+  // window the licence's terms were locked against (sim/windows.js).
+  const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+  const elapsedCycles = Math.floor((state.tick - lic.signedTick) / windowN);
+  const remainingCycles = Math.max(0, lic.windowDays - elapsedCycles);
+  const settlementFee = remainingCycles * lic.discountedFee;
+  const lockoutUntilTick = remainingCycles > 0
+    ? lic.signedTick + lic.windowDays * windowN
+    : null;
+  return { settlementFee, lockoutUntilTick, rpForfeit };
 }
 
 // ── REPUTATION: the band arithmetic (RP slice 2, 31-08-26) ──────────────────────
@@ -708,7 +760,7 @@ function commitmentUnitsFor(pct, baselineUnitsPerTick, windowN) {
 module.exports = {
   EQUITY_CEILING, equityOf, isValidEquityPct, committedContribution, ownerFraction, commitmentSale,
   FEE_RATE, CORNERS, EQUITY_SHAPE_K, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
-  feeFraction, normalisedTerms, licenceFee, feeOwed, isValidCommitmentPct, isValidWindowDays,
+  feeFraction, normalisedTerms, licenceFee, feeOwed, teardownSettlement, isValidCommitmentPct, isValidWindowDays,
   commitmentUnitsFor,
   REP_MEET_MAX, REP_W_COMMIT, REP_W_EQUITY, REP_BREACH_MAX, REP_BREACH_MIN,
   RP_FLOOR, RP_SOFT_CAP, RP_TAPER_KNEE,

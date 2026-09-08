@@ -765,6 +765,19 @@ function createState(scenario) {
     // caller's array can never alias into engine state (the cloneStockpiles
     // discipline).
     shipments: cloneShipments(scenario.shipments),
+    // nodeLockouts: the self-denial bars written when an ordinary-licensed venture is torn
+    // down mid-term (docs/venture-teardown.md §3.3, sim/actions.js). Top-level, beside
+    // `shipments`/`claims`, because a lockout is a galaxy fact about a seed site, not a guild's.
+    // OMITTED when there is none, exactly like `dayAnchorTick`/`priceHistory` above and for the
+    // same reason: the `decommissionVenture` apply is its only writer and creates it lazily, so
+    // a galaxy that has torn nothing down carries no key and serializes byte-identically to
+    // pre-slice — the determinism no-op (invariant 9). A scenario or a restored save that HANDS
+    // ONE IN keeps it, DEEP-copied entry by entry so a caller's array can never alias into
+    // engine state (the cloneShipments discipline). `releaseTick` is ABSOLUTE, so it survives a
+    // save/reload like a shipment's `arrivalTick`.
+    ...(Array.isArray(scenario.nodeLockouts) && scenario.nodeLockouts.length
+      ? { nodeLockouts: scenario.nodeLockouts.map((l) => ({ ...l })) }
+      : {}),
     // prices: the Syndicate value per non-fuel good (docs/licence-and-price-system.md
     // Part 1; sim/prices.js owns the shape and the formula). Seeded here at every
     // good's [FIRST-CUT] base price so a fresh galaxy already posts a value, and

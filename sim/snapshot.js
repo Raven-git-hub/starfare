@@ -40,7 +40,7 @@ const { cloneProfile } = require('./profile.js');
 const { previewProduction } = require('./production.js');
 const { PRICED_GOODS, postedPrice, basePriceFor } = require('./prices.js');
 const { baselineUnitsForGood, isLicensedDeuteriumMine, isIllegalDeuteriumRefinery } = require('./baseline.js');
-const { licenceFee } = require('./licence.js');
+const { licenceFee, teardownSettlement } = require('./licence.js');
 const { clonePriceHistory } = require('./price-history.js');
 const { getFuelPriceRing } = require('./fuel-price-history.js');
 const { cloneModifierHistory } = require('./modifier-history.js');
@@ -381,6 +381,20 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 //     tab's Production readout, the guild's deuterium output per cycle in fuel-quantity units
 //     (Σ licensed-mine / illegal-refinery `productionRate` × the cycle length). DERIVED, a
 //     projection (rate × cycle, deliberately raw-unlimited), no stored byte, no determinism hash.
+// (07-09-26, venture teardown — docs/venture-teardown.md §7): two additive fields for the
+// coming decommission client. ADDITIVE, and NO schema bump: nothing existing changed shape, so
+// every current reader keeps working and an older one ignores the new keys — the same additive
+// call the DEUTERIUM tab feeds and all the rows above each made.
+//   - a top-level `nodeLockouts` — the sites barred from re-establishment after a licensed
+//     teardown, `[ { siteId, releaseTick, lockedAtTick, ticksRemaining } ]`, ECHOED off
+//     `state.nodeLockouts` with the one derived `ticksRemaining` (like a shipment's). ALWAYS
+//     EMITTED as an array (a stable [] when none), the same courtesy `shipments` extends —
+//     unlike the STATE field, which is omitted-when-empty for the determinism hash.
+//   - each venture row gains `teardownSettlement: { settlementFee, lockoutUntilTick, rpForfeit }`
+//     — what closing it would cost right now, from the engine's own `teardownSettlement`
+//     (sim/licence.js), the SAME helper the decommission apply charges, so the previewed cost
+//     and the charged cost are one number by construction (§7). DERIVED on read: no stored byte,
+//     no determinism hash.
 const SNAPSHOT_SCHEMA = 7;
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -435,6 +449,7 @@ const SNAPSHOT_SCHEMA = 7;
 //                   deuteriumLicence: { signedTick } | null,   // §1.4 licensed mine marker
 //                   deuteriumRefinery: bool,                   // §1.4 illegal refinery marker
 //                   recipeId, productionRate, syndicateCommitment,
+//                   teardownSettlement: { settlementFee, lockoutUntilTick, rpForfeit }, // §7
 //                   site: { kind, planetId, systemId, resourceType } | null } ],
 //     occupancy: { <siteId>: <ventureId> },
 //     claims: [ { claimId, ownerGuildId, landmarkId, landmarkKind, claimedAtTick,
@@ -442,6 +457,7 @@ const SNAPSHOT_SCHEMA = 7;
 //                 landmark: { kind, name?, coords?, ... } | null } ],
 //     shipments: [ { ownerGuildId, cargo: { good: int }, destinationSystemId,
 //                    arrivalTick, ticksRemaining } ],   // IN-FLIGHT, design.md §6
+//     nodeLockouts: [ { siteId, releaseTick, lockedAtTick, ticksRemaining } ], // teardown §3.3
 //   }
 function buildSnapshot(state) {
   const supply = computeGalacticSupply(state);
@@ -883,6 +899,15 @@ function buildSnapshot(state) {
         // can explain a first window that asks for less than the full commitment,
         // instead of the number appearing to be wrong.
         committedFromTick: v.committedFromTick == null ? null : v.committedFromTick,
+        // teardownSettlement: what decommissioning this venture would cost RIGHT NOW
+        // (docs/venture-teardown.md §7) — `{ settlementFee, lockoutUntilTick, rpForfeit }`,
+        // computed by the SAME pure helper the decommission apply charges, so the confirm the
+        // client shows and the cost the engine takes cannot disagree (§7). A later client slice
+        // reads this; the field is additive telemetry, computed on read, no serialized byte.
+        // For a licensed deuterium mine (whose teardown is deferred, §6) it previews the
+        // unlicensed shape (fee 0, no lockout, its RP forfeited) — an honest preview even
+        // though the action refuses it this slice.
+        teardownSettlement: teardownSettlement(state, g, v),
         // batchCarry: the per-good sub-unit carries (§5 rate-based rewrite corrected
         // 10-08-26, §15.4) — { [good]: fraction in [0,1) } over every input + output.
         // Surfaced so the lens can show why a small line's whole units appear only
@@ -1084,6 +1109,19 @@ function buildSnapshot(state) {
     occupancy,
     claims,
     shipments,
+    // The node lockouts (docs/venture-teardown.md §3.3) — sites barred from re-establishment
+    // until `releaseTick` after an ordinary-licensed teardown. Echoed as stored, with the one
+    // derived `ticksRemaining` (`releaseTick - tick`, floored at 0) computed here so the
+    // browser renders and never calculates — exactly the courtesy `shipments` above extends.
+    // ALWAYS EMITTED as an array (a stable [] when a galaxy holds none), unlike the STATE field
+    // which is omitted-when-empty for the determinism hash: the snapshot answers to a reader, a
+    // stable shape is kinder than a key that appears only after the first teardown.
+    nodeLockouts: (state.nodeLockouts || []).map((l) => ({
+      siteId: l.siteId,
+      releaseTick: l.releaseTick,
+      lockedAtTick: l.lockedAtTick,
+      ticksRemaining: Math.max(0, l.releaseTick - state.tick),
+    })),
   };
 }
 

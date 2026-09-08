@@ -1185,6 +1185,44 @@ function checkClaimIntegrity(state) {
   return out;
 }
 
+// Node lockouts — the self-denial bars written when an ordinary-licensed venture is torn
+// down mid-term (state.nodeLockouts, docs/venture-teardown.md §3.3). The FIRST "this site is
+// unavailable with no venture on it" fact in the engine, so it gets its own tripwire. Each
+// entry must be sound:
+//   - `siteId` names a REAL seed site (a dangling lock would bar or free a node that does not
+//     exist — the same referential guard site occupancy makes for a venture's siteId);
+//   - `lockedAtTick` is a whole tick ≥ 0 (§15.2 — the mutation's tick, and ticks start at 0);
+//   - `releaseTick` is a whole tick STRICTLY AFTER `lockedAtTick` — a lockout is only ever
+//     written with contract time left (`remainingCycles > 0`), so a release at or before it
+//     would be a zero-or-negative-length bar, i.e. a corrupt entry the apply cannot produce.
+// A galaxy that has torn nothing down carries no `nodeLockouts` key (omit-when-empty) — legal,
+// the byte-identical no-op path; an empty array (a scenario could hand one in) trips nothing.
+// Only a present, out-of-shape entry trips. It does NOT check for expiry: an entry with
+// `state.tick ≥ releaseTick` is a legitimately-dead lockout awaiting lazy pruning (§3.3), not
+// a corruption.
+function checkNodeLockouts(state) {
+  const out = [];
+  const locks = state.nodeLockouts;
+  if (locks === undefined) return out;
+  if (!Array.isArray(locks)) {
+    out.push({ rule: 'node-lockouts-is-an-array (venture-teardown §3.3)', where: 'nodeLockouts', detail: { value: locks } });
+    return out;
+  }
+  locks.forEach((l, i) => {
+    const where = `nodeLockouts[${i}]`;
+    if (typeof l.siteId !== 'string' || !getSite(l.siteId)) {
+      out.push({ rule: 'node-lockout-site-exists (seed.js)', where: `${where}.siteId`, detail: { siteId: l && l.siteId } });
+    }
+    if (!Number.isInteger(l.lockedAtTick) || l.lockedAtTick < 0) {
+      out.push({ rule: 'node-lockout-lockedAtTick-is-a-tick (venture-teardown §3.3)', where: `${where}.lockedAtTick`, detail: { value: l && l.lockedAtTick } });
+    }
+    if (!Number.isInteger(l.releaseTick) || !(l.releaseTick > l.lockedAtTick)) {
+      out.push({ rule: 'node-lockout-releaseTick-after-lockedAtTick (venture-teardown §3.3)', where: `${where}.releaseTick`, detail: { releaseTick: l && l.releaseTick, lockedAtTick: l && l.lockedAtTick } });
+    }
+  });
+  return out;
+}
+
 // Guild home integrity — a guild's homeSystemId/homePlanetId is a DENORMALISED
 // pointer; this guards it against the seed and against the ownership source of
 // truth (its claim), the same discipline that lets a mining venture's
@@ -1241,6 +1279,7 @@ function checkInvariants(state, tick) {
     ...checkSiteOccupancy(state),
     ...checkAssetOccupancy(state),
     ...checkClaimIntegrity(state),
+    ...checkNodeLockouts(state),
     ...checkGuildHome(state),
   ];
   return violations.map((v) => ({ ...v, tick }));
