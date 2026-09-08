@@ -400,6 +400,14 @@ reserve/flow price controller — so the modifier scales nothing and **no fuel i
 offset; and — importantly — the −500 / −300 **consequences**. Reaching the floor is a PIN: the venture keeps producing, keeps being judged and
 keeps paying its fee. Closure and forced-lease are a slice of their own.*
 
+### Licence renegotiation — venture-standing bands & terms function *(08-09-26 — #64)*
+
+The **shapes** are ruled in `design.md` §5 ("Licence renegotiation — the terms function & venture standing"); every number here is `[FIRST-CUT]`, pure invention expected to move in play, and the build reads these named constants rather than choosing any.
+
+- **Venture-standing band cut-points** `[FIRST-CUT]`: **−300 / 0 / 500** (on `venture.reputation`, read at window-end) → At risk (≤ −300) / Sub-par (−300…0) / Steady (0…500) / Strong (≥ 500). −300 is not new — it is the existing forced-lease mark (above); 0 is the bump-floor property (a venture only crosses it by demonstrated breaching); 500 sits below the **~720** a flawless market venture reaches in six weeks (measured against the built accrual, so Strong is reachable but earned). Tune in play.
+- **Strong-band fee discount** `[FIRST-CUT]`: **−10%** of the licence fee for an above-500 venture on renegotiation — a pure placeholder. The fee **never rises**; this is the only band that moves it. Reuses the existing fee grid (`sim/licence.js`) and creates no new credit flow (the Syndicate simply collects less).
+- **Commitment step by band** `[FIRST-CUT]`: the increase the Syndicate demands to `committedOutputPct` (a 0–1 fraction, capped at 1.0) on renegotiation, scaling with standing — **Steady +0.10, Sub-par +0.25, At risk → 1.0** (smallest → largest; At-risk jumps to full commitment). Strong is **exempt** (no demand). Placeholders; the *shape* — a monotonic ladder with Strong exempt — is the design, the numbers are tuning. Equity is never touched; window carries unchanged.
+
 ### Fuel — the pool & issuance *(31-08-26 — slice 5a; shapes in `fuel-supply-and-allocation.md §2.1`)*
 
 All `[FIRST-CUT]`, and rougher than most — they lean on burn rates still being retuned, which is why 5b's price
