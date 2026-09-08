@@ -39,8 +39,8 @@ const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
 const { previewProduction } = require('./production.js');
 const { PRICED_GOODS, postedPrice, basePriceFor } = require('./prices.js');
-const { baselineUnitsForGood, isLicensedDeuteriumMine, isIllegalDeuteriumRefinery } = require('./baseline.js');
-const { licenceFee, teardownSettlement } = require('./licence.js');
+const { baselineUnitsForGood, isLicensedDeuteriumMine, isIllegalDeuteriumRefinery, producedGoodFor } = require('./baseline.js');
+const { licenceFee, teardownSettlement, licenceEndTick } = require('./licence.js');
 const { clonePriceHistory } = require('./price-history.js');
 const { getFuelPriceRing } = require('./fuel-price-history.js');
 const { cloneModifierHistory } = require('./modifier-history.js');
@@ -395,7 +395,80 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 //     (sim/licence.js), the SAME helper the decommission apply charges, so the previewed cost
 //     and the charged cost are one number by construction (§7). DERIVED on read: no stored byte,
 //     no determinism hash.
+// (08-09-26, the Venture Management popup — docs/venture-management.md §7): two additive per-venture
+// fields the popup reads. ADDITIVE, and NO schema bump: nothing existing changed shape, so every
+// current reader keeps working and an older one ignores the new keys — the same additive call the
+// teardown fields above and all the rows before them each made. Both DERIVED on read: no serialized
+// byte, no determinism hash, so no state golden moves on their account.
+//   - each venture row gains `contractWindow: { endTick, endCycle, cyclesRemaining, expired }` — the
+//     licence's committed window expressed in CYCLES, or null for an unlicensed venture and the
+//     windowless deuterium-licensed mine. `endTick` is the SAME value teardownSettlement's
+//     `lockoutUntilTick` uses (both through `licenceEndTick`, sim/licence.js), and `cyclesRemaining`
+//     the SAME remaining-cycles the §3.2 settlement fee is priced on, so the panel's window and the
+//     charged settlement cannot disagree.
+//   - each venture row gains `equityPerCycle` — the investor (equity) payout PROJECTION for one
+//     cycle in integer credits, `round(committedOutputPct × productionRate × windowN × equityPct ×
+//     postedPrice(good))`, the `o`-share of the commitment sale at the current price. A projection
+//     (rate × cycle, raw-unlimited) like `deuteriumProduction`; 0 when unlicensed, no equity, or
+//     deuterium (no posted price). The engine decides it so the browser renders it (§5).
 const SNAPSHOT_SCHEMA = 7;
+
+// contractWindowForVenture(state, venture) -> the venture's licence window in CYCLES, or null.
+// The Venture Management popup's contract-window ledger (docs/venture-management.md). A cycle is
+// a day is `windowN` ticks (sim/windows.js), so this speaks in cycles where teardownSettlement
+// speaks in ticks — the two share ONLY the end-of-term tick, through `licenceEndTick`, so they
+// cannot disagree about when the window ends.
+//
+//   null  for an unlicensed venture and for a deuterium-LICENSED mine (windowless, §1.4) — both
+//         carry no ordinary `licence`, so there is no window to price.
+//   else  { endTick, endCycle, cyclesRemaining, expired } where:
+//     endTick         = licenceEndTick(licence, windowN)  — the SAME tick teardownSettlement's
+//                       `lockoutUntilTick` uses when the term still has cycles left.
+//     endCycle        = floor(endTick / windowN)          — the calendar cycle the term ends on.
+//     cyclesRemaining = max(0, windowDays − floor((tick − signedTick)/windowN)) — the same
+//                       remaining-cycles arithmetic the §3.2 settlement fee is priced on, so the
+//                       count the panel shows and the cycles the fee charges for are one number.
+//     expired         = cyclesRemaining === 0             — past the term, the licence rolls (§5).
+//
+// Pure derived telemetry: reads state as it stands, mutates nothing, enters no serialized byte
+// and no determinism hash. Invents NO number — every term (`windowDays`, `signedTick`, `windowN`)
+// is already ruled and stored.
+function contractWindowForVenture(state, venture) {
+  const lic = venture && venture.licence;
+  if (!lic) return null;
+  const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+  const endTick = licenceEndTick(lic, windowN);
+  const elapsedCycles = Math.floor((state.tick - lic.signedTick) / windowN);
+  const cyclesRemaining = Math.max(0, lic.windowDays - elapsedCycles);
+  return {
+    endTick,
+    endCycle: Math.floor(endTick / windowN),
+    cyclesRemaining,
+    expired: cyclesRemaining === 0,
+  };
+}
+
+// equityPerCycleForVenture(state, venture) -> the investor (equity) payout PROJECTION for one
+// cycle, in INTEGER credits (§15.2) — the `o`-share of the commitment sale at the CURRENT posted
+// price (docs/venture-management.md). It is the ENGINE deciding the number so the client renders
+// it (§5), rather than the browser multiplying five fields:
+//
+//   round( committedOutputPct × productionRate × windowN × equityPct × postedPrice(good) )
+//
+// Deliberately a PROJECTION (rate × cycle, raw-unlimited, like `deuteriumProduction` beside it) —
+// what the equity share would be worth over a cycle at the current price, NOT a realised payout
+// (there is no investor market yet; the `o` share still routes to the Syndicate ledger). 0 when
+// unlicensed (no `licence`, hence no committedOutputPct), no equity offered, or the good has no
+// posted price (deuterium/fuel, §8). Pure derived telemetry: no serialized byte, no hash.
+function equityPerCycleForVenture(state, venture) {
+  const lic = venture && venture.licence;
+  const equityPct = (venture && venture.equityPct) || 0;
+  if (!lic || equityPct <= 0) return 0;
+  const price = postedPrice(state, producedGoodFor(venture));
+  if (!price) return 0;
+  const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+  return Math.round(lic.committedOutputPct * venture.productionRate * windowN * equityPct * price);
+}
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
 //   {
@@ -450,6 +523,8 @@ const SNAPSHOT_SCHEMA = 7;
 //                   deuteriumRefinery: bool,                   // §1.4 illegal refinery marker
 //                   recipeId, productionRate, syndicateCommitment,
 //                   teardownSettlement: { settlementFee, lockoutUntilTick, rpForfeit }, // §7
+//                   contractWindow: { endTick, endCycle, cyclesRemaining, expired } | null, // VM popup
+//                   equityPerCycle: int,                       // equity payout projection, VM popup
 //                   site: { kind, planetId, systemId, resourceType } | null } ],
 //     occupancy: { <siteId>: <ventureId> },
 //     claims: [ { claimId, ownerGuildId, landmarkId, landmarkKind, claimedAtTick,
@@ -908,6 +983,20 @@ function buildSnapshot(state) {
         // unlicensed shape (fee 0, no lockout, its RP forfeited) — an honest preview even
         // though the action refuses it this slice.
         teardownSettlement: teardownSettlement(state, g, v),
+        // contractWindow: the licence's committed window in CYCLES (docs/venture-management.md §7)
+        // — { endTick, endCycle, cyclesRemaining, expired } or null for an unlicensed venture and a
+        // windowless deuterium-licensed mine. The Venture Management popup's hero speaks the window
+        // in cycles, never ticks; `endTick` is the SAME value teardownSettlement's `lockoutUntilTick`
+        // carries (through `licenceEndTick`), so the panel and the settlement cannot disagree about
+        // the term's end. DERIVED on read: no serialized byte, no determinism hash.
+        contractWindow: contractWindowForVenture(state, v),
+        // equityPerCycle: the investor (equity) payout PROJECTION for one cycle, integer credits —
+        // `round(committedOutputPct × productionRate × windowN × equityPct × postedPrice(good))`
+        // (docs/venture-management.md §7). The `o`-share of the commitment sale at the current price,
+        // deliberately raw-unlimited (rate × cycle) like `deuteriumProduction`. 0 when unlicensed, no
+        // equity, or deuterium (no posted price). The engine decides the figure so the browser renders
+        // it (§5); DERIVED on read, no serialized byte, no determinism hash.
+        equityPerCycle: equityPerCycleForVenture(state, v),
         // batchCarry: the per-good sub-unit carries (§5 rate-based rewrite corrected
         // 10-08-26, §15.4) — { [good]: fraction in [0,1) } over every input + output.
         // Surfaced so the lens can show why a small line's whole units appear only

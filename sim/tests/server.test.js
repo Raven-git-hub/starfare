@@ -1573,3 +1573,88 @@ test('every served response carries Cache-Control: no-cache — a redeploy needs
     assert.match(res.headers.get('cache-control') || '', /no-cache/, `${route} is served no-cache`);
   }
 });
+
+// The VENTURE MANAGEMENT popup (docs/venture-management.md) — the real destination of
+// openVentureManagement, the mirror of the Establishment popup. This tripwire pins the shell
+// (the RP band gauge, the production donut, the two sub-panels, the hero ledger + contract
+// window + Close action), the mirrored RP band constants, the biome×type art table, the wiring
+// of all three call sites, and that the two snapshot derives the panel reads are published. A
+// silent revert to the logging stub drops one of these.
+test('GET / serves the Venture Management popup shell, wired to the published fields', async () => {
+  const html = await (await fetch(base + '/')).text();
+
+  // 1. THE SUPERIMPOSED PANEL exists, headed "Venture Management".
+  assert.match(html, /id="vm-overlay"/, 'the venture-management overlay');
+  assert.match(html, /class="eyebrow">Venture Management</, 'the popup eyebrow');
+
+  // 2. THE LEFT DATA — the RP gauge, the production donut, and the two sub-panels.
+  assert.match(html, /id="vmRpNum"/, 'the big reputation grade');
+  assert.match(html, /id="vmBand"/, 'the RP band gauge');
+  assert.match(html, /id="vmDonutWrap"/, 'the production donut');
+  assert.match(html, /id="vmEqBig"/, 'the equity / cycle figure');
+  assert.match(html, /id="vmInvList"/, 'the investor list placeholder');
+  assert.match(html, /function donutSvg\(/, 'the donut builder');
+
+  // 3. THE RP BAND CONSTANTS are MIRRORED from sim/licence.js — pinned so they cannot drift and
+  //    let the band lie about where a venture sits (as the reverted console readout was).
+  assert.match(html, /RP_FLOOR = -500, RP_SOFT_CAP = 1500/, 'the RP band edges mirror the engine');
+
+  // 4. THE HERO — the biome×type art table, the agreed-terms ledger, the contract window, actions.
+  assert.match(html, /id="vmArt"/, 'the hero art element');
+  assert.match(html, /id="vmLedger"/, 'the agreed-terms ledger');
+  assert.match(html, /id="vmWindow"/, 'the contract-window block');
+  assert.match(html, /id="vmCloseBtn"/, 'the Close-venture action');
+  assert.match(html, /id="vmReneg"/, 'the Renegotiate stub (expired only)');
+  // The explicit, irregular art filenames — a distinctive mine and a distinctive factory entry, plus
+  // the documented gasfactory.jpg-is-a-gas-mine placeholder — so the table cannot silently reshuffle.
+  assert.match(html, /crystalline:'crystallinemine\.jpg'/, 'a distinctive mine-art entry');
+  assert.match(html, /terran:'TerranManufacture\.jpg'/, 'a distinctive factory-art entry');
+  assert.match(html, /gasGiant:'gasfactory\.jpg'/, 'the mislabelled gas-mine placeholder');
+  // The licensed-deuterium-mine Close is disabled with the §6 note.
+  assert.match(html, /does not let go of deuterium/, 'the deferred-deuterium Close note (§6)');
+
+  // 5. THE CLOSE CONFIRM fires the built decommissionVenture through the shared Adviser reel.
+  assert.match(html, /type:'decommissionVenture'/, 'Close fires the decommission action');
+  assert.match(html, /window\.__adviserConfirm/, 'Close opens the shared Guild Adviser reel');
+  assert.match(html, /I am not in the room/, 'the settled Adviser closing line');
+
+  // 6. THE PANEL READS THE TWO SNAPSHOT DERIVES — contractWindow (in cycles) and equityPerCycle.
+  assert.match(html, /v\.contractWindow/, 'the popup reads contractWindow');
+  assert.match(html, /v\.equityPerCycle/, 'the popup reads equityPerCycle');
+
+  // 7. ALL THREE CALL SITES are wired to the one entry point.
+  assert.match(html, /window\.__openVentureManagement = openVM/, 'the single entry point is exposed');
+  assert.match(html, /if\(window\.__openVentureManagement\)\{ window\.__openVentureManagement\(ventureId\); return; \}/,
+    'call site 3: the DEUTERIUM refinery row delegates to the real popup');
+  assert.match(html, /closest\("#ihManage"\)/, 'call site 2: the inspect-hero manage button');
+  assert.match(html, /S\.deployedVentureId/, 'call site 1: the post-establish button knows the venture');
+});
+
+// The two Venture Management snapshot derives are PUBLISHED on the venture row a licensed venture
+// produces (docs/venture-management.md §7 / Part 1) — so the client renders them rather than
+// computing a game number. This drives the live server end-to-end: found, establish, license, tick.
+test('a licensed venture publishes contractWindow (cycles) and equityPerCycle on /snapshot', async () => {
+  await reset();
+  // A short cycle so the term is legible; found, establish a titanium mine with equity, license it.
+  await req('POST', '/action', { type: 'setWindowN', windowN: 4 });
+  await found({ credits: 500 });
+  await mine({ ventureId: 'vm1', equityPct: 0.4 });
+  await req('POST', '/action', { type: 'applyForLicence', guildId: 'player-guild', ventureId: 'vm1', committedOutputPct: 1, windowDays: 7 });
+  await req('POST', '/tick');
+
+  const snap = (await req('GET', '/snapshot')).body;
+  const v = (snap.ventures || []).find((row) => row.id === 'vm1');
+  assert.ok(v, 'the licensed venture is on the snapshot');
+
+  // contractWindow is present and in CYCLES, its endTick agreeing with the settlement's lockout.
+  assert.ok(v.contractWindow, 'contractWindow is published for a licensed venture');
+  assert.equal(v.contractWindow.cyclesRemaining, 7, 'a fresh 7-day term has 7 cycles left');
+  assert.equal(v.contractWindow.expired, false);
+  assert.equal(v.contractWindow.endTick, v.teardownSettlement.lockoutUntilTick,
+    'the window end and the settlement lockout are one tick');
+
+  // equityPerCycle is a positive integer for a real equity offer.
+  assert.equal(typeof v.equityPerCycle, 'number');
+  assert.ok(Number.isInteger(v.equityPerCycle), 'equityPerCycle is integer credits (§15.2)');
+  assert.ok(v.equityPerCycle > 0, 'a 40% equity offer projects a real per-cycle payout');
+});

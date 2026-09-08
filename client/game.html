@@ -1358,6 +1358,102 @@ select.field{appearance:none; cursor:pointer;}
 #deut-overlay .caution p b{color:var(--ink); font-weight:600}
 #deut-overlay .caution .trow{border-top-color:rgba(194,96,58,.25)}
 
+/* ===== #vm-overlay — the VENTURE MANAGEMENT popup (docs/venture-management.md). The MIRROR of the
+   Establishment popup (#est-overlay): the same 980px two-column card — left = live data (reputation,
+   production, investors), right = the hero with the agreed terms, the biome art, the contract window
+   and the Close action. It is the real home of `openVentureManagement`. Like #deut-overlay it carries
+   its own scoped palette + frame rules so nothing collides with the generic popup, reusing the est
+   card/hero/ledger language. Every number it shows is a PUBLISHED snapshot field — the RP, the two
+   derives (`contractWindow`, `equityPerCycle`), the `teardownSettlement`; the client renders and
+   computes no game number (§5), only sanctioned presentation (a bar width, an arc length, a cycle
+   label). ===== */
+#vm-overlay{
+  --void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
+  --line:rgba(232,223,200,0.10); --line2:rgba(232,223,200,0.20);
+  --amber:#C9A227; --amber-dim:#7A6420; --amber-ghost:rgba(201,162,39,0.10);
+  --ink:#E8DFC8; --ink2:#8B8F9C; --ink3:#565B68;
+  --green:#4E9A87; --red:#C2603A;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;
+  --serif:'Cinzel',serif;
+  position:fixed; left:0; right:0; top:104px; bottom:0;
+  background:rgba(6,7,10,.72); backdrop-filter:blur(3px);
+  display:none; align-items:flex-start; justify-content:center;
+  padding:26px 20px; overflow-y:auto; z-index:570;
+  font-family:var(--sans); font-size:14px; line-height:1.45; color:var(--ink);
+}
+#vm-overlay.open{display:flex}
+#vm-overlay .est{width:100%; max-width:980px; background:linear-gradient(180deg,#12151C,#0F1218); border:1px solid var(--line2); border-radius:14px; box-shadow:0 30px 90px rgba(0,0,0,.6); overflow:hidden; position:relative}
+#vm-overlay .est-head{display:flex; align-items:flex-start; gap:16px; padding:18px 22px 16px; border-bottom:1px solid var(--line); background:radial-gradient(700px 200px at 85% -40%, rgba(201,162,39,.06), transparent 70%)}
+#vm-overlay .est-head .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
+#vm-overlay .est-head h2{font-family:var(--serif); font-weight:600; font-size:22px; margin:5px 0 3px; letter-spacing:.02em}
+#vm-overlay .est-head .site{font-family:var(--mono); font-size:11.5px; color:var(--ink2); letter-spacing:.02em}
+#vm-overlay .est-head .site .sep{color:var(--ink3); margin:0 7px}
+#vm-overlay .est-close{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--ink2); border-radius:8px; width:34px; height:34px; font-size:16px; cursor:pointer; flex:none}
+#vm-overlay .est-close:hover{border-color:var(--red); color:var(--red)}
+#vm-overlay .est-body{display:grid; grid-template-columns:1fr 340px; gap:0}
+#vm-overlay .est-main{padding:22px 22px 24px; border-right:1px solid var(--line)}
+
+/* Reputation — the big signed grade, coloured by zone, over a band gauge across [−500, 1500]. */
+#vm-overlay .vm-rep{display:flex; align-items:center; gap:16px; margin-bottom:8px}
+#vm-overlay .vm-rp-num{font-family:var(--serif); font-weight:600; font-size:46px; line-height:1; letter-spacing:.01em; font-variant-numeric:tabular-nums}
+#vm-overlay .vm-rp-num.z-danger{color:var(--red)} #vm-overlay .vm-rp-num.z-mid{color:var(--ink)} #vm-overlay .vm-rp-num.z-good{color:var(--green)}
+#vm-overlay .vm-grade{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3)}
+#vm-overlay .vm-band{position:relative; height:8px; margin:22px 6px 30px; border-radius:5px; background:var(--void); border:1px solid var(--line)}
+#vm-overlay .vm-band .needle{position:absolute; top:-5px; bottom:-5px; width:2px; background:var(--amber); box-shadow:0 0 6px rgba(201,162,39,.7)}
+#vm-overlay .vm-band .mark{position:absolute; top:-4px; bottom:-4px; width:1px; background:var(--line2)}
+#vm-overlay .vm-band .mlbl{position:absolute; top:14px; transform:translateX(-50%); font-family:var(--mono); font-size:8.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); white-space:nowrap}
+
+/* The two equal sub-panels: Production (donut) and Investors. */
+#vm-overlay .vm-sub{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:6px}
+#vm-overlay .vm-panel{background:var(--void); border:1px solid var(--line); border-radius:10px; padding:14px; display:flex; flex-direction:column}
+#vm-overlay .vm-panel .ph{font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2); margin-bottom:12px}
+#vm-overlay .vm-donut-wrap{position:relative; width:150px; height:150px; margin:2px auto 4px}
+#vm-overlay .vm-donut{width:150px; height:150px; display:block}
+#vm-overlay .vm-donut .dn-track{fill:none; stroke:var(--raised); stroke-width:13}
+#vm-overlay .vm-donut .dn-arc{fill:none; stroke:var(--green); stroke-width:13; stroke-linecap:butt}
+#vm-overlay .vm-donut .dn-arc.behind{stroke:var(--red)}
+#vm-overlay .vm-donut-mid{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center}
+#vm-overlay .vm-donut-mid .pct{font-family:var(--serif); font-size:24px; font-weight:600; color:var(--ink); line-height:1}
+#vm-overlay .vm-donut-mid .cap{font-family:var(--mono); font-size:8.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); margin-top:4px}
+#vm-overlay .vm-donut-sub{text-align:center; font-family:var(--mono); font-size:11px; color:var(--ink2); margin-top:6px; font-variant-numeric:tabular-nums}
+#vm-overlay .vm-eq-big{font-family:var(--serif); font-size:26px; font-weight:600; color:var(--amber); line-height:1; font-variant-numeric:tabular-nums}
+#vm-overlay .vm-eq-lbl{font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); margin-top:4px; margin-bottom:12px}
+#vm-overlay .vm-inv-list{flex:1; overflow-y:auto; max-height:120px}
+#vm-overlay .vm-inv-row{display:flex; justify-content:space-between; align-items:baseline; padding:6px 0; border-bottom:1px solid rgba(232,223,200,.07); font-family:var(--mono); font-size:12px}
+#vm-overlay .vm-inv-empty{font-family:var(--mono); font-size:11px; color:var(--ink3); line-height:1.6}
+#vm-overlay .vm-inv-empty code{color:var(--amber); font-style:normal}
+
+/* The hero side — the est-side pattern verbatim. */
+#vm-overlay .est-side{position:relative; background:#0d0f14; display:flex; flex-direction:column; min-height:100%}
+#vm-overlay .est-side .art{position:absolute; inset:0; background-size:cover; background-position:50% 40%; z-index:0}
+#vm-overlay .est-side .scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(10,11,15,.62) 0%, rgba(10,11,15,.80) 42%, rgba(10,11,15,.94) 100%); z-index:1}
+#vm-overlay .est-side .inner{position:relative; z-index:2; padding:20px 20px 22px; display:flex; flex-direction:column; flex:1}
+#vm-overlay .est-side .stitle{font-family:var(--mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber); margin-bottom:14px; display:flex; align-items:center; gap:8px}
+#vm-overlay .ledger{font-family:var(--mono); font-size:12px}
+#vm-overlay .ledger .row{display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:9px 0; border-bottom:1px solid rgba(232,223,200,0.09)}
+#vm-overlay .ledger .row .k{color:var(--ink3); letter-spacing:.05em; text-transform:uppercase; font-size:10px}
+#vm-overlay .ledger .row .v{color:var(--ink); text-align:right; font-variant-numeric:tabular-nums}
+#vm-overlay .ledger .row .v .mut{color:var(--ink3)}
+#vm-overlay .ledger .row.emph .v b{color:var(--amber); font-size:15px}
+#vm-overlay .vm-terms-note{font-family:var(--mono); font-size:11px; color:var(--ink2); line-height:1.6; padding:12px 0; border-bottom:1px solid rgba(232,223,200,.09)}
+/* The contract window — a cycle bar under the ledger. */
+#vm-overlay .vm-window{margin-top:16px}
+#vm-overlay .vm-window .wlbl{font-family:var(--mono); font-size:10px; letter-spacing:.06em; color:var(--ink2); margin-bottom:7px; line-height:1.5}
+#vm-overlay .vm-window .wlbl b{color:var(--ink)}
+#vm-overlay .vm-winbar{height:6px; border-radius:4px; background:var(--void); border:1px solid var(--line); overflow:hidden}
+#vm-overlay .vm-winfill{height:100%; background:linear-gradient(90deg,rgba(201,162,39,.5),var(--amber)); border-radius:4px}
+#vm-overlay .vm-window.expired .wlbl{color:var(--ink3)}
+/* Actions, pinned to the bottom of the hero. */
+#vm-overlay .vm-actions{margin-top:auto; padding-top:18px}
+#vm-overlay .vm-close{width:100%; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--red); background:rgba(194,96,58,.10); border:1px solid rgba(194,96,58,.45); border-radius:9px; padding:14px; cursor:pointer}
+#vm-overlay .vm-close:hover{background:rgba(194,96,58,.20); color:#E8DFC8}
+#vm-overlay .vm-close:disabled{color:var(--ink3); background:rgba(28,33,43,.6); border-color:var(--line); cursor:not-allowed}
+#vm-overlay .vm-reneg{width:100%; margin-top:10px; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); background:var(--amber-ghost); border:1px solid var(--amber-dim); border-radius:8px; padding:11px; cursor:pointer}
+#vm-overlay .vm-reneg:hover{background:var(--amber-dim); color:var(--void)}
+#vm-overlay .vm-note{font-family:var(--mono); font-size:10px; color:var(--ink3); text-align:center; margin-top:9px; letter-spacing:.03em; line-height:1.5; min-height:12px}
+@media(max-width:820px){ #vm-overlay .est-body{grid-template-columns:1fr} #vm-overlay .est-main{border-right:none; border-bottom:1px solid var(--line)} #vm-overlay .vm-sub{grid-template-columns:1fr} }
+
 #est-reel{position:fixed; inset:0; background:rgba(6,7,10,.80); backdrop-filter:blur(3px); z-index:600; display:none; align-items:center; justify-content:center; padding:26px}
 #est-reel.open{display:flex}
 #est-reel .reel-card{width:100%; max-width:760px; height:min(80vh,600px); display:grid; grid-template-columns:1fr 300px; background:linear-gradient(180deg,#141821,#0F1218); border:1px solid var(--line2); border-radius:14px; overflow:hidden; box-shadow:0 30px 90px rgba(0,0,0,.65)}
@@ -2155,6 +2251,64 @@ select.field{appearance:none; cursor:pointer;}
     </div>
   </div>
 </div>
+</div><!-- /#detail-screen — the Venture Management popup and the shared Adviser reel are TOP-LEVEL modals below, so they open over ANY tab (the DEUTERIUM tab, the inspect hero), not only the manifest. -->
+
+<!-- The VENTURE MANAGEMENT popup (docs/venture-management.md) — the mirror of #est-overlay and the
+     real destination of openVentureManagement. Left = live data (reputation gauge, production donut,
+     investors); right = the hero with the agreed terms over the biome art, the contract window in
+     cycles, and the Close-venture action (which opens the shared Adviser reel). Every element is
+     wired to a PUBLISHED snapshot field; the shell here is inert markup the venture-management-wire
+     IIFE fills on open and on every poll. -->
+<div id="vm-overlay">
+  <div class="est">
+    <div class="est-head">
+      <div>
+        <div class="eyebrow">Venture Management</div>
+        <h2 id="vmName">—</h2>
+        <div class="site"><span id="vmSite">—</span><span class="sep">·</span><span id="vmSys">—</span></div>
+      </div>
+      <button class="est-close" id="vmClose" title="Close (Esc)">✕</button>
+    </div>
+    <div class="est-body">
+      <div class="est-main">
+        <!-- Reputation: the big signed grade over the [−500, 1500] band gauge (marks + needle in JS). -->
+        <div class="vm-rep">
+          <div class="vm-rp-num z-mid" id="vmRpNum">0</div>
+          <div class="vm-grade">Grade</div>
+        </div>
+        <div class="vm-band" id="vmBand"></div>
+        <!-- two equal sub-panels: Production (donut) and Investors -->
+        <div class="vm-sub">
+          <div class="vm-panel">
+            <div class="ph">Production</div>
+            <div class="vm-donut-wrap" id="vmDonutWrap"></div>
+            <div class="vm-donut-sub" id="vmDonutSub">—</div>
+          </div>
+          <div class="vm-panel">
+            <div class="ph">Investors</div>
+            <div class="vm-eq-big" id="vmEqBig">—</div>
+            <div class="vm-eq-lbl">Equity / cycle · cr</div>
+            <div class="vm-inv-list" id="vmInvList"></div>
+          </div>
+        </div>
+      </div>
+      <div class="est-side">
+        <div class="art" id="vmArt"></div>
+        <div class="scrim"></div>
+        <div class="inner">
+          <div class="stitle">Agreed Terms</div>
+          <div class="ledger" id="vmLedger"></div>
+          <div class="vm-window" id="vmWindow"></div>
+          <div class="vm-actions">
+            <button class="vm-close" id="vmCloseBtn" type="button">Close venture</button>
+            <button class="vm-reneg" id="vmReneg" type="button" style="display:none">Renegotiate ▸</button>
+            <div class="vm-note" id="vmNote"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- The adviser reel: the help pages AND the deploy confirm share this card. -->
 <div id="est-reel">
@@ -2173,7 +2327,6 @@ select.field{appearance:none; cursor:pointer;}
     </div>
     <div class="reel-art" style="background-image:url('assets/characters/advisor.jpg')"></div>
   </div>
-</div>
 </div>
 
 <script>
@@ -3718,6 +3871,7 @@ async function deployRefinery(player, ventureId){
    contraband → the red bar). No licence figures: a refinery has none. */
 function showRefinerySuccess(action){
   $('estSuccTitle').textContent = 'Illegal refinery running';
+  S.deployedVentureId = action.ventureId;                  // so "Open venture management ▸" knows which venture
   var out = [];
   out.push('Your '+S.asset.label+' now refines raw deuterium into contraband fuel each tick — one unit in, one out. It is idle to the Syndicate — no standing — and the fuel fills the red segment of your Guild-Hall bar.');
   out.push('Recorded: venture '+action.ventureId+' on '+action.siteId+' at '+action.productionRate+'/tick.');
@@ -3736,6 +3890,7 @@ function failHint(msg){
    that gets reported (client-wiring.md §7: the browser renders engine truth). */
 function showSuccess(action, licenceRefusal){
   $('estSuccTitle').textContent = 'Venture established';   // reset (the FUEL path sets it to the refinery title)
+  S.deployedVentureId = action.ventureId;                  // so "Open venture management ▸" knows which venture
   var v = window.__myVenture ? window.__myVenture(action.ventureId) : null;
   var good = S.outLabel.toLowerCase();
   var out = [];
@@ -3933,21 +4088,45 @@ $('reelCancel').addEventListener('click', closeReel);
 $('reelNext').addEventListener('click', function(){
   if(reelMode==='confirm'){ doDeploy(); return; }                    // normal popup
   if(reelMode==='deutConfirm'){ closeReel(); deutDeploy(); return; }  // deuterium popup
+  if(reelMode==='generic'){ closeReel(); var f=__adviserOnConfirm; __adviserOnConfirm=null; if(f) f(); return; } // venture management etc.
   var r=REELS[reelState.key];
   if(reelState.page < r.pages.length-1){ reelState.page++; renderReel(); } else { closeReel(); }
 });
+
+/* A GENERIC one-page Adviser confirm on the shared reel card, for callers OUTSIDE this IIFE
+   (the Venture Management popup's Close-venture confirm). It fills the same card reelConfirm()
+   uses — one static page, no dots, Cancel / Confirm — and runs `onConfirm` when Confirm ▸ is
+   pressed. `body` is trusted static markup (the caller builds it with escaped values), set as
+   innerHTML exactly like reelConfirm()'s. Kept here so the reel machinery lives in ONE place. */
+var __adviserOnConfirm = null;
+window.__adviserConfirm = function(opts){
+  opts = opts || {};
+  reelMode = 'generic';
+  __adviserOnConfirm = (typeof opts.onConfirm === 'function') ? opts.onConfirm : null;
+  $('reelTitle').textContent = opts.title || 'Confirm';
+  $('reelBody').innerHTML = opts.body || '';
+  $('reelDots').style.display='none'; $('reelDots').innerHTML='';
+  $('reelCancel').textContent = opts.cancelLabel || 'Cancel';
+  $('reelNext').textContent = opts.confirmLabel || 'Confirm ▸';
+  $('reelNext').disabled = false;
+  openReel();
+};
 $('reelDots').addEventListener('click', function(e){
   var d=e.target.closest('span[data-page]'); if(!d) return;
   reelState.page = +d.getAttribute('data-page'); renderReel();
 });
 $('mgmtBtn').addEventListener('click', function(){
-  // The post-establishment destination is undesigned (§2.7) — the button is a stub.
-  $('mgmtBtn').textContent = 'Venture management is not built yet';
-  $('mgmtBtn').disabled = true;
+  // Venture Management is now BUILT: hand the just-established venture to the popup and close the
+  // establish overlay behind it (docs/venture-management.md). Call site 1 of 3.
+  var id = S.deployedVentureId;
+  if(!id || !window.__openVentureManagement){ return; }
+  closeOverlay();
+  window.__openVentureManagement(id);
 });
 document.addEventListener('keydown', function(e){
   if(e.key!=='Escape') return;
   if($('est-reel').classList.contains('open')){ closeReel(); return; }
+  if($('vm-overlay') && $('vm-overlay').classList.contains('open')){ if(window.__vmClose) window.__vmClose(); e.stopPropagation(); return; }
   if($('deut-overlay').classList.contains('open')){ closeDeut(); e.stopPropagation(); return; }
   if($('est-overlay').classList.contains('open')){ closeOverlay(); e.stopPropagation(); }
 }, true);
@@ -4531,6 +4710,9 @@ function applySnapshot(snap){
   // An open DEUTERIUM dashboard re-reads too, so the donut drains, the fuel-price line extends and
   // the rings fill as ticks pass (§1.4 slice 2b) — its own panel's lifecycle, like the Guild Hall's.
   if (window.__deutRefresh) window.__deutRefresh();
+  // An open VENTURE MANAGEMENT popup re-reads too, so its RP gauge, production donut and contract
+  // window move as ticks pass (docs/venture-management.md) — the same open/refresh lifecycle.
+  if (window.__vmRefresh) window.__vmRefresh();
 }
 
 // Who controls a system, for the detail screen's header. Reads the live claims —
@@ -5958,11 +6140,12 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       + '<circle class="gg-hub" cx="'+cx+'" cy="'+cy+'" r="4"/></svg>';
   }
 
-  // The refinery-row click target (§2.7). Venture management is UNDESIGNED, so this is a stub — it
-  // logs the venture id and fires no action. (The trade build also flashed a "coming soon" note into
-  // the trade tab's note line; this panel has no such surface, so the stub just logs.)
+  // The refinery-row click target — call site 3 of 3. Venture Management is now BUILT
+  // (docs/venture-management.md): hand the venture id to the real popup, which reads it off the
+  // snapshot. Falls back to a log only if the popup wire somehow did not load.
   function openVentureManagement(ventureId){
-    try{ console.log('openVentureManagement (stub, §2.7):', ventureId); }catch(e){}
+    if(window.__openVentureManagement){ window.__openVentureManagement(ventureId); return; }
+    try{ console.log('openVentureManagement (popup not loaded):', ventureId); }catch(e){}
   }
 
   // The refinery tree (left rail). The guild's ventures where deuteriumRefinery === true — MINES
@@ -6423,7 +6606,18 @@ function paintVentureHero(d){
   if (eb) eb.textContent = "Venture";
   if (t) t.textContent = d.name + " ›";
   if (a){ var s = window.__VENTURE_ART[d.facility] || window.__VENTURE_ART.mine; a.style.backgroundImage = "url(\"" + s + "\")"; a.style.opacity = "1"; }
+  // The bridge sends `name:id` (the venture id), so remember it for the "Open venture management ▸"
+  // button below — call site 2 of 3 (docs/venture-management.md).
+  window.__vmHeroVenture = d.name;
 }
+// The inspect-hero manage button — delegated, because #indHero is (re)inserted into the manifest
+// and a direct bind would be lost on the next insert. Opens the venture the hero last painted.
+document.addEventListener("click", function(e){
+  var btn = e.target && e.target.closest && e.target.closest("#ihManage");
+  if (!btn) return;
+  var id = window.__vmHeroVenture;
+  if (id && window.__openVentureManagement) window.__openVentureManagement(id);
+});
 
 /* d.rows are ready to draw: {tier, good, label, qty, frac} in the console's own
    held order, with frac already normalised WITHIN its tier. We group, we don't
@@ -6470,6 +6664,269 @@ function paintInventoryHero(d){
     inv.appendChild(grp);
   });
 }
+</script>
+
+<script>
+/* ============================================================================
+   THE VENTURE MANAGEMENT POPUP (docs/venture-management.md) — the mirror of the
+   Establishment popup, and the real destination of openVentureManagement. It finds
+   the venture in the live snapshot, opens the superimposed #vm-overlay, and
+   re-renders on every poll while open (the donut drains, the cycles tick down) — the
+   Guild Hall / DEUTERIUM lifecycle. Every number is a PUBLISHED snapshot field; the
+   client computes NO game number (§5), only presentation (a needle position, an arc
+   length, a bar width, a cycle label).
+   ============================================================================ */
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function snap(){ return (window.__snapshot && window.__snapshot()) || null; }
+  function fmt(n){ return Math.round(n).toLocaleString('en-US'); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  // Mirror of RP_FLOOR / RP_SOFT_CAP (sim/licence.js §"THE BAND"; docs/points-and-reputation.md §2.1).
+  // If these drift from the engine's, the band lies about where a venture sits — so the served-page
+  // tripwire (sim/tests/server.test.js) pins both, as the reverted console readout did. The closure /
+  // forced-lease / dividend EFFECTS are designed, not built; these marks are structure, not mechanics.
+  var RP_FLOOR = -500, RP_SOFT_CAP = 1500;
+
+  var VM = { open:false, ventureId:null };
+
+  // --- biome × type hero art (client-only, docs/venture-management.md Part 3) ------------------
+  // EXPLICIT tables — the filenames are irregular; do NOT derive them. Keyed biome → file.
+  var MINE_ART = {
+    rocky:'RockyMine.jpg', oceanic:'OceanicMine.jpg', ice:'icemine.jpg', desert:'desertmine.jpg',
+    crystalline:'crystallinemine.jpg', molten:'moltenmine.jpg', irradiated:'irradiatedmine.jpg',
+    terran:'TerranMountain.jpg',        // Terran has other art, but Mountain for every Terran mine this slice
+    gasGiant:'gasfactory.jpg'           // gasfactory.jpg is a MISLABELLED gas mine — use it for the gas-giant mine
+  };
+  var FACTORY_ART = {
+    terran:'TerranManufacture.jpg', desert:'desertfactory.jpg', ice:'icefactory.jpg',
+    crystalline:'crystalfactory.jpg',
+    rocky:'RockyMine.jpg', oceanic:'OceanicMine.jpg'   // TEMPORARY: those two factory artworks do not exist yet
+  };
+  var FALLBACK_ART = 'TerranMountain.jpg';             // unreachable biome/type → a real image, never broken
+  function artFor(biome, type){
+    var table = (type === 'mine') ? MINE_ART : FACTORY_ART;
+    return 'assets/industrial/' + (table[biome] || FALLBACK_ART);
+  }
+
+  // Resolve a venture's BIOME (planet archetype) from its site via the client's OWN embedded seed —
+  // the same window.__galaxy the manifest/establish flow reads. Archetype is never added to the
+  // snapshot (Part 3): systemId + planetId → the seed planet's archetype.
+  function biomeOf(site){
+    if(!site || !window.__galaxy) return null;
+    var sys = (window.__galaxy.systems || []).filter(function(s){ return s.id === site.systemId; })[0];
+    if(!sys) return null;
+    var pl = (sys.planets || []).filter(function(p){ return p.id === site.planetId; })[0];
+    return pl ? pl.archetype : null;
+  }
+
+  // --- snapshot lookups -----------------------------------------------------------------------
+  function findVenture(s, id){
+    if(!s || !Array.isArray(s.ventures)) return null;
+    return s.ventures.filter(function(v){ return v.id === id; })[0] || null;
+  }
+  function producedGood(v){ return (v && v.resourceType) || (window.__recipeOutput && window.__recipeOutput(v && v.recipeId)) || null; }
+  function windowNOf(s){ return (s && s.calendar && s.calendar.windowN) || (window.__windowN && window.__windowN()) || null; }
+  // The good-level windowed-accrual view (previewProduction), and this venture's per-licence row in it.
+  function goodWindow(s, v){
+    if(!s || !Array.isArray(s.production)) return null;
+    var pg = s.production.filter(function(p){ return p.guildId === v.ownerGuildId; })[0]; if(!pg) return null;
+    var sy = (pg.systems || []).filter(function(x){ return x.systemId === v.systemId; })[0]; if(!sy) return null;
+    var good = producedGood(v); if(!good) return null;
+    var ge = sy.goods && sy.goods[good]; if(!ge || !ge.window) return null;
+    return ge.window;
+  }
+  function perVentureFor(s, v){ var w = goodWindow(s, v); return (w && w.perVenture) ? (w.perVenture[v.id] || null) : null; }
+
+  function prettyGood(g){ return String(g||'').replace(/_/g,' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); }); }
+  function ventureTitle(v){
+    if(v.deuteriumRefinery) return 'Deuterium Refinery';
+    var good = producedGood(v);
+    if(v.type === 'mining') return (good ? prettyGood(good) : 'Resource') + ' Mine';
+    return (good ? prettyGood(good) : 'Refining') + ' Refinery';
+  }
+
+  // --- render ---------------------------------------------------------------------------------
+  function renderVM(){
+    if(!VM.open || !VM.ventureId) return;
+    var s = snap(); if(!s) return;
+    var v = findVenture(s, VM.ventureId);
+    if(!v){ closeVM(); return; }   // the venture is gone (e.g. just decommissioned) — nothing to manage
+
+    $('vmName').textContent = ventureTitle(v);
+    $('vmSite').textContent = (v.site && v.site.name) || v.siteId || '';
+    $('vmSys').textContent = (window.__systemName && window.__systemName(v.systemId)) || v.systemId || '';
+
+    renderRep(v);
+    renderDonut(s, v);
+    renderInvestors(v);
+    renderHero(s, v);
+  }
+
+  function renderRep(v){
+    var rp = v.reputation || 0;
+    var num = $('vmRpNum');
+    num.textContent = (rp > 0 ? '+' : '') + fmt(rp);   // signed; fmt already carries a negative sign
+    num.className = 'vm-rp-num ' + (rp <= -300 ? 'z-danger' : (rp >= 800 ? 'z-good' : 'z-mid'));
+    // the band: needle at RP, structural marks at the four band edges (docs/points-and-reputation.md §2.1)
+    function pos(x){ return (Math.max(RP_FLOOR, Math.min(RP_SOFT_CAP, x)) - RP_FLOOR) / (RP_SOFT_CAP - RP_FLOOR) * 100; }
+    var marks = [ {x:RP_FLOOR,label:'Closure'}, {x:-300,label:null}, {x:800,label:null}, {x:1000,label:'Dividend'} ];
+    var html = '';
+    marks.forEach(function(m){
+      var p = pos(m.x).toFixed(1);
+      html += '<div class="mark" style="left:'+p+'%"></div>';
+      if(m.label) html += '<div class="mlbl" style="left:'+p+'%">'+esc(m.label)+'</div>';
+    });
+    html += '<div class="needle" style="left:'+pos(rp).toFixed(1)+'%"></div>';
+    $('vmBand').innerHTML = html;
+  }
+
+  // The production donut. R=48 over a 120-box, rotated so it fills from 12 o'clock.
+  function donutSvg(frac, behind){
+    var R=48, C=2*Math.PI*R, cx=60, cy=60;
+    var arc = Math.max(0, Math.min(1, frac)) * C;
+    return '<svg viewBox="0 0 120 120" class="vm-donut"><g transform="rotate(-90 '+cx+' '+cy+')">'
+      + '<circle cx="'+cx+'" cy="'+cy+'" r="'+R+'" class="dn-track"/>'
+      + '<circle cx="'+cx+'" cy="'+cy+'" r="'+R+'" class="dn-arc'+(behind?' behind':'')+'" '
+      +   'stroke-dasharray="'+arc.toFixed(2)+' '+(C-arc).toFixed(2)+'"/>'
+      + '</g></svg>';
+  }
+  function renderDonut(s, v){
+    var wrap = $('vmDonutWrap'), sub = $('vmDonutSub');
+    var windowN = windowNOf(s);
+    // Committed licensed venture → delivered / committed this cycle, from the published window view.
+    if((v.syndicateCommitment || 0) > 0){
+      var pv = perVentureFor(s, v);
+      if(pv && pv.commitment > 0){
+        var frac = pv.delivered / pv.commitment;
+        var behind = false;
+        var w = goodWindow(s, v);
+        if(w && windowN && w.ticksRemaining != null){
+          var elapsedFrac = (windowN - w.ticksRemaining) / windowN;   // pace: only published fields
+          behind = frac < elapsedFrac - 0.001;
+        }
+        wrap.innerHTML = donutSvg(frac, behind)
+          + '<div class="vm-donut-mid"><div class="pct">'+Math.round(Math.min(1,frac)*100)+'%</div><div class="cap">this cycle</div></div>';
+        sub.textContent = fmt(pv.delivered) + ' / ' + fmt(pv.commitment);
+        return;
+      }
+    }
+    // Unlicensed / deuterium / no commitment → a full ring, the per-cycle output.
+    var perCycle = (v.productionRate || 0) * (windowN || 1);
+    wrap.innerHTML = donutSvg(1, false)
+      + '<div class="vm-donut-mid"><div class="pct">'+fmt(perCycle)+'</div><div class="cap">per cycle</div></div>';
+    sub.textContent = v.deuteriumLicence ? 'auto-sold to fuel' : 'kept · off books';
+  }
+
+  function renderInvestors(v){
+    var hasEquity = (v.equityPct || 0) > 0;
+    $('vmEqBig').textContent = hasEquity ? fmt(v.equityPerCycle || 0) : '—';
+    // No investor market exists yet: the o% share routes to the Syndicate ledger (§5). The list is a
+    // placeholder, and equityPerCycle is a projection — nothing is paid out.
+    $('vmInvList').innerHTML = hasEquity
+      ? '<div class="vm-inv-empty">No investor guilds yet — the <code>o</code>% share goes to the Syndicate ledger.</div>'
+      : '<div class="vm-inv-empty">No equity offered.</div>';
+  }
+
+  function ledRow(k, val){ return '<div class="row"><span class="k">'+esc(k)+'</span><span class="v">'+esc(val)+'</span></div>'; }
+  function renderHero(s, v){
+    // Hero art by biome × type (Part 3).
+    var biome = biomeOf(v.site);
+    var type = (v.type === 'mining') ? 'mine' : 'factory';
+    $('vmArt').style.backgroundImage = "url('" + artFor(biome, type) + "')";
+
+    // Agreed terms.
+    var lic = v.licence, L = $('vmLedger');
+    if(lic){
+      L.innerHTML = ledRow('Committed', Math.round((lic.committedOutputPct || 0) * 100) + '%')
+        + ledRow('Equity', (v.equityPct > 0 ? Math.round(v.equityPct * 100) + '%' : 'None'))
+        + '<div class="row emph"><span class="k">Fee / cycle</span><span class="v"><b>'+fmt(lic.discountedFee)+'</b> &#162; <span class="mut">of '+fmt(lic.basicFee)+'</span></span></div>'
+        + ledRow('Locked price', Number(lic.lockedPrice).toFixed(2));
+    } else if(v.deuteriumLicence){
+      L.innerHTML = '<div class="vm-terms-note">100% · windowless · no fee.</div>';
+    } else {
+      L.innerHTML = '<div class="vm-terms-note">No licence — output kept, no fee, earns no standing.</div>';
+    }
+
+    // Contract window (in CYCLES, never ticks). Only an ordinary-licensed venture has one.
+    var cw = v.contractWindow, W = $('vmWindow');
+    if(lic && cw){
+      if(cw.expired){
+        W.className = 'vm-window expired';
+        W.innerHTML = '<div class="wlbl">Term elapsed · rolling · open to renegotiation</div>';
+      } else {
+        W.className = 'vm-window';
+        var filled = Math.max(0, Math.min(1, cw.cyclesRemaining / (lic.windowDays || 1))) * 100;
+        W.innerHTML = '<div class="wlbl">Window · ends cycle <b>'+fmt(cw.endCycle)+'</b> · '+cw.cyclesRemaining+' of '+lic.windowDays+' cycles left</div>'
+          + '<div class="vm-winbar"><div class="vm-winfill" style="width:'+filled.toFixed(1)+'%"></div></div>';
+      }
+    } else { W.className = 'vm-window'; W.innerHTML = ''; }
+
+    // Actions. A licensed deuterium mine cannot be closed this slice (§6); Renegotiate is a stub (#64).
+    var closeBtn = $('vmCloseBtn'), reneg = $('vmReneg'), note = $('vmNote');
+    if(v.deuteriumLicence){
+      closeBtn.disabled = true;
+      note.textContent = 'The Syndicate does not let go of deuterium — teardown deferred (§6).';
+      reneg.style.display = 'none';
+    } else {
+      closeBtn.disabled = false;
+      if(note.textContent.indexOf('deuterium') !== -1) note.textContent = '';
+      reneg.style.display = (cw && cw.expired) ? '' : 'none';
+    }
+  }
+
+  // --- the Close-venture confirm (the shared Guild Adviser reel) -------------------------------
+  function onCloseVenture(){
+    var s = snap(); if(!s) return;
+    var v = findVenture(s, VM.ventureId); if(!v || v.deuteriumLicence) return;
+    var ts = v.teardownSettlement || { settlementFee:0, lockoutUntilTick:null, rpForfeit:0 };
+    var cw = v.contractWindow, lic = v.licence, body;
+    if(!lic){
+      body = '<p>Nothing owed. No licence, no contract, nothing to settle. The site falls quiet, the machine returns to your inventory, and the Syndicate does not look up from its ledger.</p>'
+           + '<p>Your call, Guildmaster. <em>I am not in the room.</em></p>';
+    } else if(cw && cw.expired){
+      body = '<p>They never came back. Your term elapsed and the Syndicate never reopened the terms &mdash; nothing left to pay, no bar on the node. Walk clean; only the <em>'+fmt(ts.rpForfeit)+'</em> points you earned here go with you.</p>';
+    } else {
+      body = '<p>The Syndicate keeps its appointments. You promised <em>'+(cw ? cw.cyclesRemaining : 0)+'</em> more cycles, and it will take the <em>'+fmt(ts.settlementFee)+'</em> credits for them whether the machine turns or not. The node stays your ground but shut to you until the term ends at cycle <em>'+(cw ? fmt(cw.endCycle) : '—')+'</em>, and the <em>'+fmt(ts.rpForfeit)+'</em> points of standing you built here leave with the venture.</p>'
+           + '<p>Your call, Guildmaster &mdash; <em>I am not in the room.</em></p>';
+    }
+    if(!window.__adviserConfirm){ doDecommission(v.id); return; }
+    var id = v.id;
+    window.__adviserConfirm({ title:'Close this venture?', body:body, confirmLabel:'Close venture ▸', onConfirm:function(){ doDecommission(id); } });
+  }
+
+  async function doDecommission(id){
+    var player = window.__player ? window.__player() : null;
+    if(!player || !player.guildId){ $('vmNote').textContent = 'No guild — cannot close.'; return; }
+    var note = $('vmNote'); note.textContent = 'Closing…';
+    var out;
+    try { out = await window.__sendAction({ type:'decommissionVenture', guildId:player.guildId, ventureId:id }); }
+    catch(err){ note.textContent = 'The Syndicate could not be reached: '+err.message; return; }
+    if(!out || !out.accepted){ note.textContent = 'Refused: ' + ((out && out.reason) || 'the Syndicate declined'); return; }
+    // The venture is gone. Close the popup and let the poll refresh the manifest / dashboards.
+    if(window.__refreshNow){ try{ await window.__refreshNow(); }catch(e){} }
+    closeVM();
+  }
+
+  // --- open / close / lifecycle ---------------------------------------------------------------
+  function openVM(id){
+    if(!id) return;
+    VM.open = true; VM.ventureId = id;
+    $('vmNote').textContent = '';
+    renderVM();
+    $('vm-overlay').classList.add('open');
+  }
+  function closeVM(){ VM.open = false; VM.ventureId = null; $('vm-overlay').classList.remove('open'); }
+
+  window.__openVentureManagement = openVM;   // the ONE entry point the three call sites use
+  window.__vmRefresh = function(){ if(VM.open) renderVM(); };
+  window.__vmClose = closeVM;
+
+  $('vmClose').addEventListener('click', closeVM);
+  $('vm-overlay').addEventListener('click', function(e){ if(e.target === this) closeVM(); });
+  $('vmCloseBtn').addEventListener('click', function(){ if(!$('vmCloseBtn').disabled) onCloseVenture(); });
+  $('vmReneg').addEventListener('click', function(){ $('vmNote').textContent = 'Renegotiation is coming soon (#64) — not built this slice.'; });
+})();
 </script>
 </body>
 </html>

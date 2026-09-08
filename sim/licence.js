@@ -350,6 +350,18 @@ function feeOwed(licence, status, fraction) {
 // slice (§6) — so this helper is only asked to preview it: it carries no windowed `licence`,
 // so it falls into the unlicensed branch (fee 0, no lockout, rpForfeit = its RP), an honest
 // preview of the RP it would surrender even though the action is deferred.
+
+// licenceEndTick(licence, windowN) -> the tick a licence's committed window ends on:
+// `signedTick + windowDays × windowN`. FACTORED OUT because two lifecycle numbers are this
+// exact value and must not be able to disagree: teardownSettlement's `lockoutUntilTick` — the
+// node's self-denial release when the term still has cycles left (§3.3) — and the snapshot's
+// `contractWindow.endTick`, the Venture Management popup's contract-window ledger. One
+// expression, so the settlement the engine charges and the window the panel shows are anchored
+// to the same end-of-term tick by construction.
+function licenceEndTick(licence, windowN) {
+  return licence.signedTick + licence.windowDays * windowN;
+}
+
 function teardownSettlement(state, guild, venture) {
   const rpForfeit = (venture && venture.reputation) || 0;
   const lic = venture && venture.licence;
@@ -363,7 +375,7 @@ function teardownSettlement(state, guild, venture) {
   const remainingCycles = Math.max(0, lic.windowDays - elapsedCycles);
   const settlementFee = remainingCycles * lic.discountedFee;
   const lockoutUntilTick = remainingCycles > 0
-    ? lic.signedTick + lic.windowDays * windowN
+    ? licenceEndTick(lic, windowN)
     : null;
   return { settlementFee, lockoutUntilTick, rpForfeit };
 }
@@ -760,7 +772,7 @@ function commitmentUnitsFor(pct, baselineUnitsPerTick, windowN) {
 module.exports = {
   EQUITY_CEILING, equityOf, isValidEquityPct, committedContribution, ownerFraction, commitmentSale,
   FEE_RATE, CORNERS, EQUITY_SHAPE_K, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
-  feeFraction, normalisedTerms, licenceFee, feeOwed, teardownSettlement, isValidCommitmentPct, isValidWindowDays,
+  feeFraction, normalisedTerms, licenceFee, feeOwed, teardownSettlement, licenceEndTick, isValidCommitmentPct, isValidWindowDays,
   commitmentUnitsFor,
   REP_MEET_MAX, REP_W_COMMIT, REP_W_EQUITY, REP_BREACH_MAX, REP_BREACH_MIN,
   RP_FLOOR, RP_SOFT_CAP, RP_TAPER_KNEE,
