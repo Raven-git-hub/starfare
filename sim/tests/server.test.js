@@ -1622,12 +1622,25 @@ test('GET / serves the Venture Management popup shell, wired to the published fi
   assert.match(html, /v\.contractWindow/, 'the popup reads contractWindow');
   assert.match(html, /v\.equityPerCycle/, 'the popup reads equityPerCycle');
 
-  // 7. ALL THREE CALL SITES are wired to the one entry point.
+  // 7. THE CALL SITES are wired to the one entry point.
   assert.match(html, /window\.__openVentureManagement = openVM/, 'the single entry point is exposed');
   assert.match(html, /if\(window\.__openVentureManagement\)\{ window\.__openVentureManagement\(ventureId\); return; \}/,
     'call site 3: the DEUTERIUM refinery row delegates to the real popup');
-  assert.match(html, /closest\("#ihManage"\)/, 'call site 2: the inspect-hero manage button');
+  assert.match(html, /closest\("#ihManage"\)/, 'call site 2: the inspect-hero manage button (the Production Console hero, embed mode)');
   assert.match(html, /S\.deployedVentureId/, 'call site 1: the post-establish button knows the venture');
+
+  // 8. THE PLANET MANIFEST occupied-OWN node (this slice — venture-management.md entry point 4).
+  //    An own occupied site routes the manifest-row click to the popup for its seated venture; a
+  //    rival's site is left to openNodeOverlay (VM is own-only, §7). The classification and both
+  //    node-row handlers are pinned so a revert to "occupied → overlay for everyone" goes red here.
+  assert.match(html, /function isOwnSite\(state\)\{ return !!\(state && state\.kind !== 'other' && state\.ventureId\); \}/,
+    'the own/rival classification that gates the manifest → VM route');
+  assert.match(html, /if \(isOwnSite\(state\)\) \{ window\.__openVentureManagement\(state\.ventureId\); return; \}/,
+    'an own occupied manifest node opens VM for its seated venture');
+  // Both node-row handlers still fork to the read-only overlay for a RIVAL and to establishment
+  // when vacant — so the own → VM branch is an addition, not a replacement of the other two paths.
+  assert.match(html, /openNodeOverlay\('Resource Node '/, 'a rival Resource node keeps the read-only overlay');
+  assert.match(html, /openNodeOverlay\('Settlement Slot '/, 'a rival Settlement slot keeps the read-only overlay');
 });
 
 // The two Venture Management snapshot derives are PUBLISHED on the venture row a licensed venture

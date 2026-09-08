@@ -11,9 +11,22 @@ panel reads. It **invents no number**: every figure is a published/ruled term.*
 `openVentureManagement(ventureId)` was a stub that only logged (design.md §2.7). It is now the real
 **Venture Management popup**: a guild opens it on a venture it owns to see that venture's live
 **reputation, production, investors and agreed terms**, and to **Close** the venture (through the Guild
-Adviser confirm reel, firing the built `decommissionVenture`). Three existing buttons open it — the
-post-establish "Open venture management ▸", the inspect-hero "Open venture management ▸", and the
-DEUTERIUM tab's refinery-row click.
+Adviser confirm reel, firing the built `decommissionVenture`). **Five call sites** open it — all the
+one `window.__openVentureManagement(ventureId)` entry point, no second popup:
+
+1. the post-establish "Open venture management ▸";
+2. the industrial-hero "Open venture management ▸" (the SYSTEM MANIFEST's Production Console selects a
+   venture chip → the parent `#indHero` → its `#ihManage` button);
+3. the DEUTERIUM tab's refinery-row click;
+4. **(this slice)** an **own occupied Planet-Manifest node** (Resources or Settlements) — the row that
+   used to open the read-only overlay now opens VM when the seated venture is the player's own;
+5. **(this slice)** the Production Console venture-hero's manage button — which, in the embedded
+   manifest view, IS the same parent `#ihManage` as (2): embed mode drops the console's own `.vhero`
+   zone, so the chip selection rides the venture `postMessage` bridge up to the shell's hero. It was
+   already wired; this slice verified it end-to-end (no new code, no cross-frame bridge needed).
+
+A **rival's** occupied node stays the read-only overlay — §7 hides a rival's venture and VM is built
+from your OWN ventures, so it is own-only. A **vacant** node is unchanged (establishment).
 
 ## 1. The two snapshot derives (engine; `sim/snapshot.js`, pure)
 

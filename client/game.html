@@ -3134,6 +3134,13 @@ function siteBadgeHtml(badge){
     (badge.sub ? '<span class="sb-guild">' + esc(badge.sub) + '</span>' : '') +
     '</span>';
 }
+// An occupied site the player OWNS routes a manifest-row click to the Venture Management
+// popup for its seated venture (venture-management.md entry point 4 — the popup lives in
+// this shell, so the click goes straight to __openVentureManagement). A RIVAL's occupied
+// site is not ours: §7 hides a rival's venture and VM is built from your OWN ventures, so
+// it stays the read-only overlay. This is the same own/rival line siteBadge draws off
+// `state.kind === 'other'`; siteState seats the ventureId on every own kind.
+function isOwnSite(state){ return !!(state && state.kind !== 'other' && state.ventureId); }
 function prettyGood(key){ return String(key).split('_').map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' '); }
 // How many of a planet's sites are worked right now (a count of engine facts).
 function workedCount(p){
@@ -3222,6 +3229,7 @@ function renderPlanetView(){
       row.innerHTML = '<span class="node-meta"><span class="node-name">'+RESOURCE_LABEL[node.resourceType]+'</span></span>' +
         siteBadgeHtml(badge);
       row.addEventListener('click', function(){
+        if (isOwnSite(state)) { window.__openVentureManagement(state.ventureId); return; }
         if (state) { openNodeOverlay('Resource Node '+(i+1), node.id, RESOURCE_LABEL[node.resourceType]); return; }
         openEstablishFor({ kind:'node', siteId:node.id, nodeLabel:'Resource Node '+(i+1),
           resource:node.resourceType, resLabel:RESOURCE_LABEL[node.resourceType],
@@ -3237,6 +3245,7 @@ function renderPlanetView(){
       row.innerHTML = '<span class="node-meta"><span class="node-name">Settlement</span></span>' +
         siteBadgeHtml(badge);
       row.addEventListener('click', function(){
+        if (isOwnSite(state)) { window.__openVentureManagement(state.ventureId); return; }
         if (state) { openNodeOverlay('Settlement Slot '+(i+1), slot.id, 'Settlement slot'); return; }
         openEstablishFor({ kind:'slot', siteId:slot.id, nodeLabel:'Settlement Slot '+(i+1),
           summary:'Slot '+(i+1)+' · Factory' }, p);
