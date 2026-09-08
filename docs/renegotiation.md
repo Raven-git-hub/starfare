@@ -96,6 +96,39 @@ expired carries none; unlicensed and deuterium carry neither).
 21). No `renegotiateLicence` appears in any golden run and the new snapshot fields are
 derived, so every existing golden (unlicensed and licensed-but-untouched) is byte-identical.
 
+## Tidy (08-09-26) — 2 dp normalisation of renegotiated commitment ✅
+
+**Bug.** `renegotiationTerms` stepped commitment with plain float addition (`current +
+COMMITMENT_STEP_*`), so `0.7 + 0.10` yielded `0.7999999999999999`. That creep flowed into
+the snapshot offer and, on accept, into the stored `licence.committedOutputPct`, and it
+**compounded** across successive renegotiations. Not a correctness break (commitment is a
+fraction, not a §15.2 integer, and `commitmentUnitsFor` rounds it to whole units
+downstream), but ugly, accumulating, and it would render badly in the client.
+
+**Fix.** `renegotiationTerms` now rounds the returned `committedOutputPct` to 2 dp once,
+on the final value (`Math.round(x * 100) / 100`) — covering the Steady/Sub-par steps, the
+carried Strong value (self-healing any creep a prior renegotiation left on it), and
+At-risk's `1.0` (a no-op). The `Math.min(1, …)` clamps are preserved. **Precision ruling:**
+2 dp, chosen because every commitment value and step already lives at 2 dp (`0.5`, the
+live `0.51`, `+0.10`, `+0.25`) and the client presents commitment as a whole-number
+percentage, so 2 dp is lossless for every legitimate value. Slice-local minor ruling (it
+rides this note, §0); not a game-balance number, and `design.md` §5/§15.2 are left to
+state (or not) a commitment-precision convention — the note is judged enough.
+
+**Scope.** Renegotiation only. Establishment is NOT touched, so a licence whose
+establishment commitment carried finer than 2 dp (e.g. `0.333`, which `isValidCommitmentPct`
+permits) is normalised to 2 dp the FIRST time it is renegotiated — acceptable, since
+renegotiation re-locks the Syndicate's terms anyway, and called out here rather than left
+silent.
+
+**No golden/snapshot-schema/client change.** `renegotiationTerms` appears in no golden run
+and the snapshot offer is derived, so no serialized byte moves and determinism (invariant
+9) holds. No client change.
+
+**Test.** `sim/tests/renegotiation.test.js` — strict-`===` assertions that a Steady step
+`0.7 → 0.8`, a chain `0.5 → 0.6 → 0.7 → 0.8`, and a Sub-par step `0.7 → 0.95` are exact;
+that an already-clean value is unchanged; and that At-risk returns exactly `1`.
+
 ### Deferred (Slice 2, per §5), not invented here
 
 Timers / the fixed acceptance window / auto-lapse to unlicensed; the variable grace window;

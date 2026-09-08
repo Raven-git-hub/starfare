@@ -128,6 +128,44 @@ test('renegotiationTerms — a venture with no ordinary licence throws (nothing 
   assert.throws(() => renegotiationTerms({ id: 'm', reputation: 100 }), /no ordinary licence|has none/);
 });
 
+// ─── float-creep normalisation (2 dp) ────────────────────────────────────────────
+// Plain float addition creeps: `0.7 + 0.10 === 0.7999999999999999`, which flows into the
+// stored licence pct and compounds across renegotiations. `renegotiationTerms` normalises
+// the returned commitment to 2 dp. Strict `===` here so the assertions FAIL on the creepy
+// value — a tolerant `assert.ok(Math.abs(...) < 1e-9)` would pass on `0.7999…` and miss
+// the whole point of the fix.
+
+test('renegotiationTerms — a Steady step 0.7 → 0.8 is EXACT (no float creep)', () => {
+  // `0.7 + COMMITMENT_STEP_STEADY` is `0.7999999999999999` before normalisation.
+  const t = renegotiationTerms(licVenture(0, 0.7));   // Steady (0 ≤ rp < 500)
+  assert.strictEqual(t.committedOutputPct, 0.8);
+});
+
+test('renegotiationTerms — a Steady CHAIN 0.5 → 0.6 → 0.7 → 0.8 stays exact at each step', () => {
+  // Each accepted step re-locks the licence at the stepped pct; feed that back in and
+  // renegotiate again, exactly as successive window-ends would. Creep would accumulate.
+  let commit = 0.5;
+  for (const expected of [0.6, 0.7, 0.8]) {
+    commit = renegotiationTerms(licVenture(0, commit)).committedOutputPct;
+    assert.strictEqual(commit, expected);
+  }
+});
+
+test('renegotiationTerms — a Sub-par step 0.7 → 0.95 is EXACT', () => {
+  const t = renegotiationTerms(licVenture(-100, 0.7));   // Sub-par (−300 < rp < 0)
+  assert.strictEqual(t.committedOutputPct, 0.95);
+});
+
+test('renegotiationTerms — an already-clean value is unchanged (Strong coasts at exactly 0.5)', () => {
+  const t = renegotiationTerms(licVenture(STANDING_CUT_STRONG, 0.5));
+  assert.strictEqual(t.committedOutputPct, 0.5);
+});
+
+test('renegotiationTerms — At-risk returns exactly 1', () => {
+  const t = renegotiationTerms(licVenture(STANDING_CUT_AT_RISK - 1, 0.3));
+  assert.strictEqual(t.committedOutputPct, 1);
+});
+
 // ─── the renegotiateLicence action ───────────────────────────────────────────────
 
 function founded() {

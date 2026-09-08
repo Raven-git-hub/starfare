@@ -850,6 +850,16 @@ function renegotiationTerms(venture) {
   } else { // atRisk
     committedOutputPct = 1;                                          // jump to full
   }
+  // Normalise to 2 dp — plain float addition creeps (`0.7 + 0.10 = 0.7999999999999999`),
+  // and that creep flows into the stored licence pct and COMPOUNDS across successive
+  // renegotiations. 2 dp is lossless for every legitimate commitment value: every value
+  // and step the system speaks in is already 2 dp (`0.5`, `0.51`, `+0.10`, `+0.25`) and
+  // the client presents commitment as a whole-number percentage. Done ONCE on the final
+  // value so it covers every branch — the Steady/Sub-par steps, the carried Strong value
+  // (self-healing any creep a prior renegotiation left on it), and At-risk's 1.0 (a no-op).
+  // Slice-local precision ruling (rides this build note, per §0's minor-ruling rule); not a
+  // balance number. The Math.min(1, …) clamps above are preserved.
+  committedOutputPct = Math.round(committedOutputPct * 100) / 100;
   return {
     committedOutputPct,
     windowDays: lic.windowDays,                                      // carried unchanged
