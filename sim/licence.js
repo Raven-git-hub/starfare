@@ -469,10 +469,12 @@ const REP_BREACH_MIN = 2.5;
 // tiers (licence-and-price-system.md §5/§7) — one RP on one scale, by construction, not
 // two reputations.
 //
-// ⚠ THE FLOOR IS A PIN, NOT A CONSEQUENCE. Reaching −500 means the venture sits AT the
-// closure threshold; it does not close it. Venture removal, licence revocation and the
-// −300 forced-lease offer are a SEPARATE later slice and none of them is built — nothing
-// in this file or the tick acts on either threshold beyond clamping the number.
+// ⚠ THE FLOOR NOW CLOSES THE VENTURE (docs/forced-closure.md, 09-09-26). Reaching −500 at a
+// boundary is the CLOSURE trigger: the clamp still pins the number here, and the tick then
+// force-closes the venture that a breach drove to the floor (sim/tick.js — the boundary RP
+// move detects it, `applyVentureClosure` above removes it). Only a BREACH can reach the floor
+// (a met gain climbs), so closure is always a breach outcome, and a venture can never persist
+// at −500. The −300 forced-lease offer remains a separate deferred slice (it needs leasing).
 const RP_FLOOR = -500;
 const RP_SOFT_CAP = 1500;
 const RP_TAPER_KNEE = 800;
@@ -991,6 +993,49 @@ function applyLapse(guild, venture) {
   delete venture.committedFromTick;
 }
 
+// applyVentureClosure(state, guild, venture) -> MUTATES state + guild to REMOVE the venture,
+// forfeiting its RP and quarantining its node (docs/venture-teardown.md §3.1/§3.3). THE ONE
+// closure effect, shared by two callers so a player teardown and a Syndicate forced closure
+// cannot diverge on removal — the `applyLapse` precedent above:
+//   - the `decommissionVenture` action's apply (a player TEARDOWN, sim/actions.js), which
+//     charges the settlement fee (§3.2) around this call; and
+//   - the −500 forced-closure path in the tick (docs/forced-closure.md §3, sim/tick.js), which
+//     charges NO fee (§3.4: the breach that triggered it already paid the full basic fee this
+//     cycle at the boundary).
+//
+// It does exactly what those two share, and no more:
+//   1. RP FORFEIT + REMOVAL (§3.1) — subtract the venture's reputation from the guild sum in
+//      the SAME mutation that splices it out, so `checkGuildReputationSum` (guildReputation ==
+//      Σ venture.reputation + endowment) stays exact with no new term. The venture's GP leaves
+//      with it (derived), so the mean line does the rest of the "punishment" (§2). The site goes
+//      vacant and the asset returns to idle for free — both derived (§0) — so there is nothing
+//      to write for them.
+//   2. THE NODE LOCKOUT (§3.3) — written iff `teardownSettlement` returns a release tick (an
+//      ordinary-licensed venture with contract time left: `releaseTick > state.tick`; null when
+//      unlicensed or past the term). `state.nodeLockouts` is created lazily — the only writer of
+//      it besides the action — so a galaxy that has closed nothing carries no key. `lockedAtTick`
+//      records the mutation's tick (§15.2). The lockout gates ANY guild's re-establish, the
+//      owner's included, via the `siteId`-keyed establish gate (§3.3).
+//
+// THE SETTLEMENT FEE IS DELIBERATELY NOT HERE: it is the one thing teardown and forced closure
+// disagree on (§3.4), so its caller charges it. This reads `teardownSettlement` — the single
+// source of truth for the lockout tick — so the fee's caller and this cannot compute a term the
+// other would not. Returns nothing; the mutation IS the effect (both callers hold a mutable
+// `state`/`next`).
+function applyVentureClosure(state, guild, venture) {
+  const { lockoutUntilTick } = teardownSettlement(state, guild, venture);
+  guild.guildReputation -= (venture.reputation || 0);
+  guild.ventures.splice(guild.ventures.indexOf(venture), 1);
+  if (lockoutUntilTick != null) {
+    if (!Array.isArray(state.nodeLockouts)) state.nodeLockouts = [];
+    state.nodeLockouts.push({
+      siteId: venture.siteId,
+      releaseTick: lockoutUntilTick,
+      lockedAtTick: state.tick,
+    });
+  }
+}
+
 module.exports = {
   EQUITY_CEILING, equityOf, isValidEquityPct, committedContribution, ownerFraction, commitmentSale,
   FEE_RATE, CORNERS, EQUITY_SHAPE_K, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
@@ -1004,5 +1049,5 @@ module.exports = {
   ventureStanding, renegotiationTerms, renegotiationFee,
   GRACE_CUT_MED, GRACE_CUT_LONG, GRACE_CUT_MAX,
   GRACE_DAYS_MIN, GRACE_DAYS_SHORT, GRACE_DAYS_MED, GRACE_DAYS_LONG,
-  ACCEPTANCE_WINDOW_DAYS, graceDaysFor, renegotiationSchedule, applyLapse,
+  ACCEPTANCE_WINDOW_DAYS, graceDaysFor, renegotiationSchedule, applyLapse, applyVentureClosure,
 };

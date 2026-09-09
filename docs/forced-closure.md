@@ -153,3 +153,27 @@ The build slice and its prompt live outside this doc; **this is the ruling the b
 Doc-and-code move together (working rule #2): the build flips `design.md` §15.4's "PIN, NOT A
 CLOSURE" note and `licence-and-price-system.md` §5/§7's "forced closure … not built" to **built**
 in the same commit.
+
+> **BUILT — the −500 engine slice (09-09-26; `sim/tick.js`, `sim/licence.js`, `sim/actions.js`;
+> tripwires `sim/tests/forced-closure.test.js`).** Implemented verbatim and **authored no new
+> number** (§0). Three things worth recording here rather than only in code:
+> - **The shared closure mutation** is `applyVentureClosure(state, guild, venture)` (`sim/licence.js`),
+>   beside `applyLapse`: it does the RP forfeit + removal (§3.1) and the node lockout (§3.3), reading
+>   `teardownSettlement` for the lockout tick. `decommissionVenture`'s apply now wraps it with the
+>   settlement fee (§3.2); the tick's forced-closure path calls it bare (no fee, §3.4) — so a player
+>   teardown and a Syndicate closure **cannot diverge on removal**, the `applyLapse` precedent.
+> - **The trigger** is in `applyProduction`'s boundary RP move: a venture whose reputation is `RP_FLOOR`
+>   after the verdict is **collected** (never removed mid-loop, §5); `stepProduction` closes the
+>   collected ventures **after** the guild's whole fee lump is charged, so each cratering breach still
+>   pays its full basic fee this cycle (§1/§3.4).
+> - **Pending renegotiation state needs no explicit discard** (§2): the offer, the attention derive and
+>   the auto-lapse step (`stepAutoLapse`, step 9 — still ahead in the same tick) all read the LIVE
+>   `guild.ventures` array and the venture's licence, so removing the venture in step 1 discards all of
+>   it with no stored timer left to fire. Verified by a test that ticks well past any lapse deadline.
+>
+> **Out of scope, unchanged (§4):** the −300 forced-lease, the investor payout + §7 anti-tanking mark
+> (#57/#59), the closure notice (event log), and deuterium (unreachable — a test asserts it never
+> force-closes). **Determinism:** no golden run drives a venture to −500 and `nodeLockouts` stays
+> omitted-when-empty, so every committed golden is byte-identical (the whole suite, determinism runs
+> included, stays green). No decision was DEFERRED that this slice needed — the ruling invents no
+> number and none surfaced in the build.

@@ -30,10 +30,12 @@
 // exception (`deuteriumMetGain`, +50/cycle at T4) — see deuterium-cycle.test.js. The tier
 // section (§3b below) is the pin on that change; the T1 tests are all no-ops (tierFactor(T1) = 1).
 //
-// WHAT THIS SLICE STILL IS NOT. Reaching −500 is a PIN, not a closure: venture removal,
-// licence revocation and the −300 forced-lease offer are a separate later slice and none
-// of them is built. There is no GP, no mean line, no `expectedRP`, and the met gain is
-// deliberately NOT window-pro-rated at this cut. No test below asserts otherwise.
+// WHAT THIS SLICE STILL IS NOT. There is no GP, no mean line, no `expectedRP`, and the met
+// gain is deliberately NOT window-pro-rated at this cut. No test below asserts otherwise.
+// ⤳ 09-09-26 (docs/forced-closure.md): reaching −500 is no longer a pin — it now FORCE-CLOSES
+// the venture (see §7 below and forced-closure.test.js). The clamp still holds the floor value;
+// the tick removes the venture that a breach drives to it. The −300 forced-lease offer stays a
+// separate deferred slice (it needs leasing).
 //
 // THE MECHANISM WORTH TESTING is the shared verdict. RP and the licence fee are moved by
 // the SAME `status`, read from the SAME row, in the SAME loop (sim/tick.js), so a venture
@@ -671,42 +673,17 @@ test('RP APPROACHES the soft cap and never reaches it — no hard clamp needed a
   assertSumHolds(s, 'at the asymptote');
 });
 
-// --- 7. the floor: a hard clamp, and the guild sum that must follow it ------------
-
-test('a breach that would UNDERSHOOT the floor pins at −500, and the guild sum moves by the ACTUAL change', () => {
-  // ⤳ 01-09-26: started at −498 rather than −495. A full-commitment breach costs −3 since
-  // the rescale, so −495 no longer undershoots the floor and the test would have stopped
-  // exercising the clamp it exists for.
-  let s = starve(licenceAll(fixture([mine('m')]), ['m']));
-  s = atRP(s, 'm', -498);
-  assert.equal(guild(s).guildReputation, -498, 'the fixture starts consistent');
-
-  s = runToBoundary(s);
-  assert.equal(guild(s).lastLicenceFee.ventures.m.status, 'breach');
-  assert.equal(breachPenalty(ven(s, 'm')), -3, 'the raw drop would have taken it to −501');
-  assert.equal(rp(s, 'm'), RP_FLOOR, 'but it pins at the floor');
-  // THE LINE THE CLAMP MAKES LOAD-BEARING: the guild moved by −2 (the actual change), not
-  // by the −3 the venture was charged. Adding the raw delta here would drift the total
-  // below the sum of its ventures — silently, but for this assertion and the invariant.
-  assert.equal(guild(s).guildReputation, RP_FLOOR, 'the guild total followed the CLAMPED change, not the raw one');
-  assertSumHolds(s, 'a clamped breach');
-});
-
-test('a venture ALREADY at the floor absorbs further breaches without moving anything', () => {
-  let s = starve(licenceAll(fixture([mine('m')]), ['m']));
-  s = atRP(s, 'm', RP_FLOOR);
-  for (let w = 0; w < 3; w += 1) {
-    s = runToBoundary(s);
-    assert.equal(guild(s).lastLicenceFee.ventures.m.status, 'breach', 'still being judged, and still failing');
-    assert.equal(rp(s, 'm'), RP_FLOOR, `boundary ${w + 1}: pinned`);
-    assertSumHolds(s, `pinned at the floor, boundary ${w + 1}`);
-  }
-  // ⚠ AND IT IS STILL RUNNING. Reaching the floor is a pin, not a closure — the venture
-  // keeps producing, keeps being licensed and keeps being charged. Venture removal and
-  // licence revocation are a LATER slice, and this pins that they are not built.
-  assert.ok(ven(s, 'm').licence, 'the licence is not revoked');
-  assert.ok(guild(s).lastLicenceFee.ventures.m.owed > 0, 'and the fee is still being charged');
-});
+// --- 7. the floor: a hard clamp that now TRIGGERS forced closure -----------------
+//
+// ⤳ 09-09-26 (docs/forced-closure.md): reaching −500 at a boundary is no longer a PIN — a
+// venture a breach drives to the floor is FORCE-CLOSED on the same tick. The clamp (`Math.max`)
+// still holds the floor value; it is now the closure trigger rather than a resting place. The
+// closure OUTCOME — the venture removed, its RP forfeited with the guild sum staying exact, the
+// node lockout, the redeployable asset, the deuterium exemption, and a hand-seeded floor venture
+// closing on its next verdict — is pinned in forced-closure.test.js against real seeded sites
+// (the synthetic fixtures here carry no `siteId`, which a real closure's lockout needs). What
+// stays RP-layer, and is pinned below, is the ONE floor case that is NOT a closure: a venture at
+// the floor that MEETS climbs back out (only a breach reaches the floor, so a met is never closed).
 
 test('a venture at the floor CLIMBS BACK at full strength — the redemption arc is real', () => {
   let s = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);

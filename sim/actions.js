@@ -6,7 +6,7 @@ const { getRecipe } = require('./recipes.js');
 const {
   EQUITY_CEILING, isValidEquityPct, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
   isValidCommitmentPct, isValidWindowDays, licenceFee, commitmentUnitsFor, equityOf,
-  signingBump, teardownSettlement, licenceEndTick, renegotiationFee, applyLapse,
+  signingBump, teardownSettlement, licenceEndTick, renegotiationFee, applyLapse, applyVentureClosure,
 } = require('./licence.js');
 const { producedGoodFor, baselineOutputFor, isLicensedDeuteriumMine } = require('./baseline.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
@@ -1692,49 +1692,29 @@ function applyAction(state, action) {
     // `teardownSettlement` — the SAME pure helper the snapshot previews with — so the cost the
     // player was shown and the cost charged cannot disagree (§7).
     const guild = findGuild(next, action.guildId);
-    const idx = guild.ventures.findIndex((v) => v.id === action.ventureId);
-    const venture = guild.ventures[idx];
-    const { settlementFee, lockoutUntilTick } = teardownSettlement(next, guild, venture);
+    const venture = guild.ventures.find((v) => v.id === action.ventureId);
+    const { settlementFee } = teardownSettlement(next, guild, venture);
 
     // 1. THE SETTLEMENT FEE (§3.2) — ordinary-licensed only, 0 past the term, so this moves
     //    nothing for an unlicensed venture. The paySyndicateFee shape exactly: guild −fee,
     //    ledger +fee, so invariant 2 stays exact. It MAY drive the guild's credits NEGATIVE —
     //    the same non-negativity carve-out §5's breach fee runs under — and is charged in full
     //    whether or not the guild can pay; there is deliberately no affordability gate (§3.2).
+    //    This is the ONE thing a player teardown does that a Syndicate forced closure does NOT
+    //    (docs/forced-closure.md §3.4), which is exactly why it lives HERE, around the shared
+    //    closure below, rather than inside it.
     if (settlementFee > 0) {
       guild.credits -= settlementFee;
       next.syndicate.ledger += settlementFee;
     }
 
-    // 2. RP FORFEIT + REMOVAL (§3.1) — the ONLY reputation bookkeeping teardown does, in one
-    //    mutation: the venture's RP leaves the guild total as the venture leaves the array.
-    //    This mirrors the tick's boundary RP mover in reverse — the guild total and the row it
-    //    totals move by the same amount, in the same place — so `checkGuildReputationSum`
-    //    (guildReputation == Σ venture.reputation + foundingEndowment) stays exact with no new
-    //    term. The mean line does the rest of the "punishment": the venture's GP leaves too,
-    //    because GP is derived (§2), so the gap moves by (GP_v − RP_v) with no special rule.
-    guild.guildReputation -= (venture.reputation || 0);
-    guild.ventures.splice(idx, 1);
-
-    // 3. FREE THE SITE AND ASSET (§0) — NOTHING TO DO. Occupancy and idleness are both DERIVED
-    //    (sim/occupancy.js, sim/assets.js): the venture is gone, so its site reads vacant and
-    //    its asset reads idle for free. This step is the whole point of teardown, and it is a
-    //    no-op precisely because those two facts were never stored.
-
-    // 4. THE NODE LOCKOUT (§3.3) — written iff `teardownSettlement` returned a release tick
-    //    (an ordinary-licensed venture with contract time left; null when unlicensed or past
-    //    the term, so no lockout there). `state.nodeLockouts` is created LAZILY here — the only
-    //    writer — so a galaxy that has torn nothing down carries no key (omit-when-empty). The
-    //    node stays the owner's TERRITORY; the lockout is pure self-denial, barring re-establish
-    //    on this very site until `releaseTick`. `lockedAtTick` records the mutation's tick (§15.2).
-    if (lockoutUntilTick != null) {
-      if (!Array.isArray(next.nodeLockouts)) next.nodeLockouts = [];
-      next.nodeLockouts.push({
-        siteId: venture.siteId,
-        releaseTick: lockoutUntilTick,
-        lockedAtTick: next.tick,
-      });
-    }
+    // 2-4. RP FORFEIT + REMOVAL (§3.1), FREE THE SITE AND ASSET (§0, derived — nothing to do),
+    //    and THE NODE LOCKOUT (§3.3) — all in `applyVentureClosure` (sim/licence.js), the SAME
+    //    shared mutation the −500 forced-closure path in the tick calls, so a player teardown
+    //    and a Syndicate closure cannot diverge on removal (the `applyLapse` precedent). It
+    //    reads the same `teardownSettlement` for the lockout tick, so its term and the fee's
+    //    above are the one number.
+    applyVentureClosure(next, guild, venture);
     return next;
   }
 

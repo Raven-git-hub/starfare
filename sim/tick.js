@@ -37,7 +37,7 @@ const { recordPriceRing } = require('./price-ring.js');
 const { recomputePrices, postedPrice } = require('./prices.js');
 const {
   commitmentSale, committedContribution, feeOwed, reputationDelta, gainFactor, RP_FLOOR,
-  deuteriumMetGain, renegotiationSchedule, applyLapse,
+  deuteriumMetGain, renegotiationSchedule, applyLapse, applyVentureClosure,
 } = require('./licence.js');
 const {
   producedGoodFor, isLicensedDeuteriumMine, isDeuteriumMine, isIllegalDeuteriumRefinery,
@@ -122,11 +122,16 @@ function stepProduction(state, _actions, ctx) {
     // nobody owed.
     let lump = 0;
     const charged = {};
+    // Ventures a breach drove to the −500 floor this boundary, across all this guild's systems —
+    // force-closed AFTER the charge below (docs/forced-closure.md §1). Collected here rather than
+    // closed inside applyProduction so each breach's full basic fee is still charged this cycle.
+    const toClose = [];
     for (const sys of systemIds) {
       const fee = applyProduction(state, guild, sys, ctx);
       if (!fee) continue;
       lump += fee.owed;
       Object.assign(charged, fee.ventures);   // keys are venture ids — unique guild-wide
+      if (fee.forceClose) toClose.push(...fee.forceClose);
     }
 
     // The one movement: credits leave the guild, the same integer lands in the Syndicate
@@ -147,6 +152,18 @@ function stepProduction(state, _actions, ctx) {
       state.syndicate.ledger += lump;
       recordLicenceFee(guild, state.tick + 1, lump, charged);
     }
+
+    // FORCED CLOSURE (docs/forced-closure.md §1/§3) — now that the boundary's whole fee lump is
+    // charged (so each cratering breach paid its full basic fee this cycle, §3.4), remove every
+    // venture the floor claimed. `applyVentureClosure` (sim/licence.js) is the SAME mutation the
+    // player-driven `decommissionVenture` uses, minus the settlement fee — it forfeits the RP,
+    // splices the venture out (freeing site and asset, both derived) and quarantines the node.
+    // Removing them HERE, after the per-system loop, is what keeps the ventures array stable
+    // through iteration (§5). Any pending renegotiation state for a closed venture is derived
+    // from its now-gone licence — the snapshot offer, the attention derive and stepAutoLapse
+    // (step 9, still ahead this tick) all read the live ventures array — so removal discards it
+    // with no orphaned timer left to fire (§2). Deterministic: array order within toClose.
+    for (const v of toClose) applyVentureClosure(state, guild, v);
 
     // THE ILLEGAL REFINERY CONVERSION (§1.4 "The illegal path, made concrete", slice 1b) —
     // the goods→fuel seam. Run ONCE PER GUILD, HERE, after the per-system loop above has
@@ -419,6 +436,10 @@ function applyProduction(state, guild, systemId, ctx) {
   // and the scaffold's whole point is that it costs nothing.
   const feeVentures = {};
   let feeOwedHere = 0;
+  // Ventures a breach drove to the −500 floor this boundary (docs/forced-closure.md §1). COLLECTED
+  // in the RP loop below and returned; stepProduction force-closes them AFTER this guild's whole
+  // fee loop finishes — never mid-loop (§5), so each breach's full-basic-fee row is still charged.
+  const boundaryClosures = [];
   if (isWindowBoundary(state.tick + 1, windowN, dayAnchorTick)) {
     for (const v of systemVentures) {
       if (!v.licence) continue;
@@ -483,10 +504,11 @@ function applyProduction(state, guild, systemId, ctx) {
       //      would trip the tick rather than corrupt quietly. Correct by construction
       //      here instead.
       //
-      // ⚠ REACHING −500 IS A PIN, NOT A CLOSURE. Nothing below acts on the threshold:
-      // venture removal, licence revocation and the −300 forced-lease offer are a
-      // separate later slice. A pinned venture keeps producing, keeps being judged, and
-      // can climb back out at full strength (the taper bites only above 800).
+      // ⚠ REACHING −500 IS THE CLOSURE TRIGGER (docs/forced-closure.md §1). The clamp still
+      // pins the number here (step 3); the venture a breach drove to the floor is then COLLECTED
+      // below and force-closed by stepProduction after this guild's fee loop finishes — so the
+      // breach still pays its full basic fee this cycle (§3.4) before the venture is removed.
+      // The −300 forced-lease offer remains a separate deferred slice (it needs leasing).
       //
       // ⚠ THE MET GAIN IS NOT WINDOW-PRO-RATED — ruled, first cut (§2.2). A mid-window
       // joiner's first window is pro-rated for its TARGET and its FEE (`windowFraction`
@@ -515,6 +537,14 @@ function applyProduction(state, guild, systemId, ctx) {
         v.reputation = after;
         guild.guildReputation += after - before;
       }
+      // FORCED CLOSURE (docs/forced-closure.md §1). A venture whose reputation is AT the floor
+      // after this verdict is force-closed. Only a breach can reach it (a met climbs), so this is
+      // always a breach outcome; a hand-seeded venture already at −500 also closes on its next
+      // verdict (§5, benign — it cannot arise from normal play once closure exists). Detected
+      // here, the one place RP moves, but COLLECTED not applied — removing it now would corrupt
+      // this loop's iteration and rob the breach of the full-fee row set just below. The `owed`
+      // above is charged by stepProduction; the closure fires there too, after the charge.
+      if (after === RP_FLOOR) boundaryClosures.push(v);
       feeVentures[v.id] = {
         status, owed, basicFee: v.licence.basicFee, discountedFee: v.licence.discountedFee,
       };
@@ -583,11 +613,18 @@ function applyProduction(state, guild, systemId, ctx) {
     }
   }
 
-  // The licence-fee accrual for this (guild, system), or null when there is nothing to
-  // charge — no boundary, or no licensed venture here. The caller applies it.
-  return Object.keys(feeVentures).length > 0
-    ? { owed: feeOwedHere, ventures: feeVentures }
-    : null;
+  // The licence-fee accrual for this (guild, system), plus any ventures this boundary drove to
+  // the −500 floor for stepProduction to force-close after the charge (docs/forced-closure.md
+  // §1). Null when there is nothing to report — no boundary, or no licensed venture here. A
+  // collected closure always came with a breach verdict, so `feeVentures` is non-empty whenever
+  // `forceClose` is; the `forceClose` key is still omitted when empty so the common return is
+  // unchanged.
+  if (Object.keys(feeVentures).length === 0 && boundaryClosures.length === 0) return null;
+  return {
+    owed: feeOwedHere,
+    ventures: feeVentures,
+    ...(boundaryClosures.length > 0 ? { forceClose: boundaryClosures } : {}),
+  };
 }
 
 // recordLicenceFee(...) — stamp the boundary charge onto the guild, so a reader can say
