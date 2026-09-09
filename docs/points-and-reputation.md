@@ -392,7 +392,7 @@ below; the signing bump's tier scaling stays. `tierFactor` remains in `sim/licen
 the bump.)*
 Slice 2, the **SIGNING BUMP**: `signingBump` in `sim/licence.js`, minted by the `applyForLicence` apply in
 `sim/actions.js`. A venture signed at 50% now opens **exactly on its line**, at 100% above it, at 0% below —
-which is the founding-drop fix the whole rescale was for. **The RP band remains deferred**, as this section
+which is the founding-drop fix the whole rescale was for. **The RP band was deferred by this rescale and is now RULED below (§2.6, 09-09-26): one global band, kept on purpose**, as this section
 rules. As-built figures, the `BASE_GRANT_PER_GP` re-base the GP rescale forced, the measured cost of the
 deferred band, and the one sharp edge slice 2 surfaced (a 0%-commitment venture can never earn its way back)
 are all in `phase-1-tuning.md`'s AS-BUILT notes and `roadmap.md`'s decision checklist.
@@ -506,11 +506,7 @@ deuterium RP slice 2).** A licensed deuterium mine reuses this same RP arithmeti
   a guild that also has GP elsewhere. An **unlicensed** deuterium mine earns nothing here (no bump, and the per-cycle
   gain is gated on the licence). The GP side is untouched — still zero, slice 1.
 
-**Deferred — the RP band.** The band bounds (−500 / 800 / 1500) and the gain taper are **left at their old-scale values**
-by this rescale and flagged for their own ruling next (`phase-1-tuning.md`, RP-band deferral). Nothing halts, but the band
-is loose at the new scale; rescaling it carries a global-vs-per-tier sub-choice the wide tier spread forces. **The 1000
-deuterium bump lands well inside this loose band and does not change the deferral** — it is a heavy user of the taper, so
-whatever the band rescale decides will retune the deuterium climb along with everything else.
+**RP band — RULED 09-09-26 (supersedes the 01-09-26 deferral).** One **global** band, not per-tier. The band bounds (−500 / 800 / 1500) and the gain taper **stand as they are**; the loose fit at the new scale — a full-terms tier-1 venture resting well above its own bar — is **intended, not a gap to calibrate away**: a deliberate lean toward smaller / lower-tier guilds, who earn more fuel-per-promise early, with the counterweight for larger guilds coming later from other (not-yet-designed) ways of earning trust. A per-tier band was weighed and rejected — the issuance modifier is a per-guild, clamped ratio, so the skew is bounded and cannot be farmed, and scaling the band per-tier buys a large blast radius (the −500 / −300 tiers stop being single numbers, the RP invariant and every RP golden move) for a modest, bounded gain. **The band numbers stay `[FIRST-CUT]`** (`phase-1-tuning.md`), tunable in the sandbox, but their *shape* is settled: global. **The 1000 deuterium bump lands well inside this band and is unaffected.**
 
 ## 3. The mean line — expected RP for your GP (fuel issuance)
 
