@@ -412,7 +412,7 @@ built from the attention derive: the venture's label (a client type title like "
 the same split the VM popup follows, plus the engine-emitted `ventureName` seed site name), a
 band-keyed adviser one-liner, a standing chip, and a **"window elapsed"** marker (NOT a "respond
 in N days" countdown — the grace-window timer is Slice 2, §5). Below it a **Notices** section is an
-honest empty stub ("No notices yet.") — the event log is Slice 2+, and no notice is invented. The
+honest empty stub ("No notices yet.") — the event-log ENGINE is built but the client Notices panel is a following slice, so no notice is rendered here yet. The
 client computes no game number: every figure traces to `attention` / the venture row; the adviser
 copy is presentation keyed on the emitted `standing`.
 
@@ -437,6 +437,4 @@ Management: once a venture's window has elapsed (its row carries `contractWindow
 Close-venture confirm; before the window elapses `#vmCloseBtn` (Close venture) is unchanged. The
 single entry point is `window.__openRenegotiation(guildId, ventureId)`.
 
-**Deferred (Slice 2+, §5):** the 1–5 day grace window and the auto-lapse-on-timeout (no countdown
-this slice); the event log / notices / `messagesSeenTick` unread mechanic (the Notices section is
-an empty stub); the domain-character adviser split.
+**Since built / still deferred (§5).** The 1–5 day grace window and auto-lapse-on-timeout are now **BUILT** (renegotiation Slice 2, with the live countdown). The event log / notices **engine is BUILT** — per-notice `readTick` acknowledgement, superseding the sketched `messagesSeenTick` (`docs/event-log.md`); the one piece still deferred is the **client Notices panel** that renders the surfaced notices (the section stays an empty stub until then, a following slice). The **domain-character adviser split** stays deferred.

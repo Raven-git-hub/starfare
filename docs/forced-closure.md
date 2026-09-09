@@ -115,8 +115,7 @@ tick, RP/GP forfeit and removal, but charges **no additional fee**.
 - **Investor payout on closure** (no shareholders yet; `design.md` §7 + open #59). When #57/#59
   land, closure gains the payout leg **and** the §7 anti-tanking **guild-reputation mark** that
   guards *payout* manipulation — a different concern from §3.1's fuel swing.
-- **The closure NOTICE** a returning player sees — deferred to the event log / Notices surface
-  (the renegotiation-notices item); closure is a future **writer** of that log.
+- **The closure NOTICE** a returning player sees — closure **now writes** a `venture_closed` notice to the event log (`docs/event-log.md`, the event-log engine slice); the **client Notices surface** that renders it for a returning player is a following slice.
 - **Licensed deuterium mine** — cannot reach −500 (breachless, opens +1000), so nothing to do.
 
 ## 5. Failure modes hunted (working rule #7)
