@@ -45,6 +45,8 @@ const { windowFraction, DEFAULT_WINDOW_N } = require('./windows.js');
 const { producedGoodFor, isLicensedDeuteriumMine } = require('./baseline.js');
 const { tierWeight, tierOf } = require('./points.js');
 const { dayOf, tickAt } = require('./calendar.js');
+const { getSite } = require('./seed.js');
+const { recordEvent, LICENCE_LAPSED, VENTURE_CLOSED } = require('./events.js');
 
 // The structural equity ceiling — §5: "up to the structural 49% ceiling (the owner
 // keeps control by retaining at least 51%)". This is a DESIGN number, not a tuning
@@ -968,11 +970,26 @@ function renegotiationSchedule(licence, windowN, dayAnchorTick = 0) {
   };
 }
 
-// applyLapse(guild, venture) -> MUTATES the guild + venture to the lapse-to-unlicensed state
-// (design.md §5 "Accept or lapse"). THE ONE lapse effect, shared by two callers: the
-// `lapseLicence` action's apply (a player REJECT) and the auto-lapse tick step (the timeout,
-// Slice 2), so a chosen lapse and a timed-out one cannot diverge.
+// ventureName(venture) -> the venture's display name, the SAME string the renegotiation
+// attention entry carries (sim/snapshot.js's computeAttention): its SEED site name, falling
+// back to the raw siteId and then the venture id. Read here so the event payload is
+// self-contained — the notice names the venture even after it is removed and its seat freed,
+// and the client renders it without re-resolving anything (the venture may no longer exist).
+function ventureName(venture) {
+  const site = venture && venture.siteId ? getSite(venture.siteId) : null;
+  return (site && site.name) || (venture && venture.siteId) || (venture && venture.id);
+}
+
+// applyLapse(guild, venture, cause, tick) -> MUTATES the guild + venture to the
+// lapse-to-unlicensed state (design.md §5 "Accept or lapse"). THE ONE lapse effect, shared by
+// two callers: the `lapseLicence` action's apply (a player REJECT → cause 'rejected') and the
+// auto-lapse tick step (the timeout → cause 'timeout', Slice 2), so a chosen lapse and a
+// timed-out one cannot diverge.
 //
+//   0. RECORD THE NOTICE FIRST (docs/event-log.md §2), before anything is forfeited: a
+//      `licence_lapsed` event with a SELF-CONTAINED payload — the cause, the venture's id and
+//      display name, the committed good, and its system — so the Notices panel can render
+//      "your licence on X lapsed" after the venture has gone unlicensed and its RP is gone.
 //   1. RP forfeit — subtract the venture's reputation from the guild sum and delete it,
 //      returning the venture to the unlicensed no-reputation state (invariant 8 stays exact:
 //      the guild total and the row it totals move by the same amount, in the same place).
@@ -984,8 +1001,21 @@ function renegotiationSchedule(licence, windowN, dayAnchorTick = 0) {
 //      window from the next tick (no clawback), exactly as decommissionVenture leaves it.
 //
 // No fee, no node lockout, no signing bump. The venture, its node and its asset all survive.
-// Returns nothing; the mutation IS the effect (both callers already hold a mutable `next`).
-function applyLapse(guild, venture) {
+//
+// THE `tick` IS PASSED, not read from any state: applyLapse carries no `state`, and the two
+// callers know DIFFERENT correct ticks — the action apply passes `next.tick` (the current
+// tick), the tick step passes `state.tick + 1` (the tick being built, the producing-tick
+// convention recordSale/recordLicenceFee already use). Recording the event with the caller's
+// producing tick keeps the notice's "when" honest at both call sites (§15.2). Returns nothing;
+// the mutation IS the effect (both callers already hold a mutable `next`/`state`).
+function applyLapse(guild, venture, cause, tick) {
+  recordEvent(guild, tick, LICENCE_LAPSED, {
+    cause,
+    ventureId: venture.id,
+    ventureName: ventureName(venture),
+    good: producedGoodFor(venture) || null,
+    systemId: venture.systemId || null,
+  });
   guild.guildReputation -= (venture.reputation || 0);
   delete venture.reputation;
   delete venture.licence;
@@ -993,17 +1023,24 @@ function applyLapse(guild, venture) {
   delete venture.committedFromTick;
 }
 
-// applyVentureClosure(state, guild, venture) -> MUTATES state + guild to REMOVE the venture,
-// forfeiting its RP and quarantining its node (docs/venture-teardown.md §3.1/§3.3). THE ONE
-// closure effect, shared by two callers so a player teardown and a Syndicate forced closure
-// cannot diverge on removal — the `applyLapse` precedent above:
-//   - the `decommissionVenture` action's apply (a player TEARDOWN, sim/actions.js), which
-//     charges the settlement fee (§3.2) around this call; and
-//   - the −500 forced-closure path in the tick (docs/forced-closure.md §3, sim/tick.js), which
-//     charges NO fee (§3.4: the breach that triggered it already paid the full basic fee this
-//     cycle at the boundary).
+// applyVentureClosure(state, guild, venture, cause, tick) -> MUTATES state + guild to REMOVE
+// the venture, forfeiting its RP and quarantining its node (docs/venture-teardown.md §3.1/§3.3).
+// THE ONE closure effect, shared by two callers so a player teardown and a Syndicate forced
+// closure cannot diverge on removal — the `applyLapse` precedent above:
+//   - the `decommissionVenture` action's apply (a player TEARDOWN → cause 'teardown',
+//     sim/actions.js), which charges the settlement fee (§3.2) around this call; and
+//   - the −500 forced-closure path in the tick (docs/forced-closure.md §3, sim/tick.js →
+//     cause 'forced'), which charges NO fee (§3.4: the breach that triggered it already paid
+//     the full basic fee this cycle at the boundary).
 //
 // It does exactly what those two share, and no more:
+//   0. RECORD THE NOTICE FIRST (docs/event-log.md §2), before the venture is spliced out: a
+//      `venture_closed` event with a SELF-CONTAINED payload — the cause, the venture's id and
+//      display name, its good, its system, and (only when one was written) the node
+//      `lockoutUntilTick`. Recorded here, off `teardownSettlement`'s already-computed release
+//      tick, so the notice cannot disagree with the lockout the very next lines write. The
+//      venture is about to be removed, so nothing downstream could re-derive this — which is
+//      exactly why it is a discrete EVENT and not a standing condition (§5).
 //   1. RP FORFEIT + REMOVAL (§3.1) — subtract the venture's reputation from the guild sum in
 //      the SAME mutation that splices it out, so `checkGuildReputationSum` (guildReputation ==
 //      Σ venture.reputation + endowment) stays exact with no new term. The venture's GP leaves
@@ -1017,13 +1054,27 @@ function applyLapse(guild, venture) {
 //      records the mutation's tick (§15.2). The lockout gates ANY guild's re-establish, the
 //      owner's included, via the `siteId`-keyed establish gate (§3.3).
 //
+// THE `tick` IS PASSED for the same reason applyLapse's is: the notice's producing tick differs
+// between the action apply (`next.tick`) and the tick step (`state.tick + 1`), and only the
+// caller knows which. It is distinct from `state.tick` — which this function still reads for the
+// settlement/lockout arithmetic — so the notice follows the recordSale producing-tick
+// convention while `lockedAtTick` keeps its own long-standing `state.tick` basis (unchanged).
+//
 // THE SETTLEMENT FEE IS DELIBERATELY NOT HERE: it is the one thing teardown and forced closure
 // disagree on (§3.4), so its caller charges it. This reads `teardownSettlement` — the single
 // source of truth for the lockout tick — so the fee's caller and this cannot compute a term the
 // other would not. Returns nothing; the mutation IS the effect (both callers hold a mutable
 // `state`/`next`).
-function applyVentureClosure(state, guild, venture) {
+function applyVentureClosure(state, guild, venture, cause, tick) {
   const { lockoutUntilTick } = teardownSettlement(state, guild, venture);
+  recordEvent(guild, tick, VENTURE_CLOSED, {
+    cause,
+    ventureId: venture.id,
+    ventureName: ventureName(venture),
+    good: producedGoodFor(venture) || null,
+    systemId: venture.systemId || null,
+    ...(lockoutUntilTick != null ? { lockoutUntilTick } : {}),
+  });
   guild.guildReputation -= (venture.reputation || 0);
   guild.ventures.splice(guild.ventures.indexOf(venture), 1);
   if (lockoutUntilTick != null) {

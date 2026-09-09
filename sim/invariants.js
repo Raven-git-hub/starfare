@@ -79,6 +79,7 @@ const { FUEL_BURN_HISTORY_N } = require('./fuel-burn-history.js');
 const { TIERS: PRICE_HISTORY_TIERS, TIER_KEYS } = require('./price-history.js');
 const { FUEL_PRICE_HISTORY_N } = require('./fuel-price-history.js');
 const { RING_DEPTH: PRICE_RING_DEPTH } = require('./price-ring.js');
+const { EVENT_TYPES, isEventType } = require('./events.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { getSite, getLandmark, getSystem, getTerranHomeworld } = require('./seed.js');
 const { getRecipe } = require('./recipes.js');
@@ -432,6 +433,51 @@ function checkProductionHistory(state) {
         }
       }
     }
+  }
+  return out;
+}
+
+// The per-guild EVENT LOG (guild.events, sim/events.js — docs/event-log.md §2/§4). An
+// append-only feed of discrete notices; nothing here can break conservation, but a rotted row
+// draws a wrong notice or, worse, a duplicate id makes an acknowledge stamp the wrong one. Four
+// things are asserted when the field is present (a guild that has recorded none has no key at
+// all — legal, the byte-identical no-op path):
+//   - it is an array (a non-array is a broken write, not an empty log);
+//   - each row's `id` is UNIQUE within the guild (the id addresses a notice for acknowledge, so
+//     a collision would let one ack hit two — the `eventSeq` monotonic counter guarantees this,
+//     and this is the tripwire that proves the counter is doing its job);
+//   - each row's `tick` is a whole number ≥ 0 (§15.2 — it is a tick coordinate the retention
+//     window measures from);
+//   - each row's `type` is one of the known vocabulary types (a stray type would render as an
+//     unknown notice); and
+//   - `readTick`, WHEN PRESENT, is a whole number ≥ the row's `tick` (you cannot read a notice
+//     before it happened — the read retention window would be nonsense otherwise).
+function checkEventLog(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    if (g.events === undefined) continue;
+    const where = `guild:${g.id}.events`;
+    if (!Array.isArray(g.events)) {
+      out.push({ rule: 'event-log-is-an-array (sim/events.js)', where, detail: { events: g.events } });
+      continue;   // the per-row checks below are meaningless without an array
+    }
+    const seen = new Set();
+    g.events.forEach((e, i) => {
+      const at = `${where}[${i}]`;
+      if (typeof e.id !== 'number' || seen.has(e.id)) {
+        out.push({ rule: 'event-id-unique-within-guild (sim/events.js)', where: `${at}.id`, detail: { id: e.id } });
+      }
+      seen.add(e.id);
+      if (!Number.isInteger(e.tick) || e.tick < 0) {
+        out.push({ rule: 'event-tick-is-a-whole-non-negative-tick (§15.2)', where: `${at}.tick`, detail: { tick: e.tick } });
+      }
+      if (!isEventType(e.type)) {
+        out.push({ rule: 'event-type-in-vocabulary (docs/event-log.md §2)', where: `${at}.type`, detail: { type: e.type, known: EVENT_TYPES } });
+      }
+      if (e.readTick !== undefined && (!Number.isInteger(e.readTick) || e.readTick < e.tick)) {
+        out.push({ rule: 'event-readTick-is-a-whole-tick-at-or-after-tick (docs/event-log.md §3)', where: `${at}.readTick`, detail: { readTick: e.readTick, tick: e.tick } });
+      }
+    });
   }
   return out;
 }
@@ -1265,6 +1311,7 @@ function checkInvariants(state, tick) {
     ...checkBatchCarry(state),
     ...checkSyndicateWindows(state),
     ...checkProductionHistory(state),
+    ...checkEventLog(state),
     ...checkFuelGrant(state),
     ...checkModifierHistory(state),
     ...checkFuelBurnHistory(state),

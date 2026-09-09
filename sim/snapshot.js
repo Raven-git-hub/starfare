@@ -44,6 +44,7 @@ const { licenceFee, teardownSettlement, licenceEndTick, ventureStanding, renegot
 const { clonePriceHistory } = require('./price-history.js');
 const { getFuelPriceRing } = require('./fuel-price-history.js');
 const { cloneModifierHistory } = require('./modifier-history.js');
+const { liveEvents } = require('./events.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
 const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 
@@ -554,28 +555,35 @@ function renegotiationFieldsFor(state, venture) {
 }
 
 // computeAttention(state) -> { renegotiations: [ { guildId, ventureId, ventureName, standing,
-//                                                  offer } ] }
-// The guild's open ACTION-ITEMS, aggregated top-level so the MESSAGES panel and the tab badge
-// read ONE place rather than re-scanning every venture (design.md §5 "attention derive"). For
-// this slice the only action-item is the renegotiation offer, so this is a pure aggregation of
-// the per-venture `renegotiationFieldsFor` above: it emits exactly the ventures that carry a
-// non-null `renegotiationOffer` (a licensed, non-deuterium venture whose committed window has
-// elapsed) and nothing else.
+//                                                  offer } ],
+//                              notices: [ { guildId, id, tick, type, payload } ] }
+// The guild's open ACTION-ITEMS and unread NOTICES, aggregated top-level so the MESSAGES panel
+// and the tab badge read ONE place rather than re-scanning every venture and the event log
+// (design.md §5 "attention derive"). Two lists, the join the renegotiation slice left room for:
 //
-// Scanned across EVERY guild and tagged with `guildId`, because the snapshot is multi-guild —
-// the client filters to its own guild's rows, the same way it filters `ventures[]`. Each entry
-// carries what a MESSAGES row needs: the venture's id (to open the popup), a display
-// `ventureName` (the venture's SEED site name — engine-owned display text, the same string the
-// venture row publishes; the client adds its own type label, as it does everywhere), the
-// `standing` band (for the adviser one-liner + the chip), and the full `offer` (so a row and
-// the popup it opens read one structure). Shaped as a list under `renegotiations` so a later
-// slice's event-log notices can join the same `attention` object without reshaping it.
+//   - `renegotiations` — the derived open renegotiation offers (a standing condition): a pure
+//     aggregation of the per-venture `renegotiationFieldsFor` above, exactly the ventures that
+//     carry a non-null `renegotiationOffer` (a licensed, non-deuterium venture past grace).
+//     Each entry carries what a MESSAGES row needs: the venture id (to open the popup), a
+//     display `ventureName` (the SEED site name — engine-owned display text, the same string
+//     the venture row publishes), the `standing` band, and the full `offer`.
+//   - `notices` — the guild's UNREAD live event-log notices (a discrete event, docs/event-log.md
+//     §2/§3): the `licence_lapsed` / `venture_closed` rows still within their unread retention
+//     window and not yet acknowledged. This is the source of the panel's unread badge; a READ
+//     notice still shows in the full Notices list (`guilds[].events`) but is not an open
+//     action-item, so it drops out here.
+//
+// BOTH scanned across EVERY guild and tagged with `guildId`, because the snapshot is multi-guild
+// — the client filters to its own guild's rows, the same way it filters `ventures[]`. Notices
+// are newest-first (via `liveEvents`), so the freshest is first in the aggregate too.
 //
 // Pure DERIVED telemetry: recomputes from state on read, mutates nothing, enters no serialized
-// byte and no determinism hash, and invents no game number — every term inside `offer` is the
-// SAME `renegotiationFee` the apply locks.
+// byte and no determinism hash, and invents no game number — the offers are the SAME
+// `renegotiationFee` the apply locks, and the notices are the guild's own stored `events`
+// filtered by the SAME `isEventLive` the write-time prune uses.
 function computeAttention(state) {
   const renegotiations = [];
+  const notices = [];
   for (const g of (state.guilds || [])) {
     for (const v of (g.ventures || [])) {
       const { renegotiationOffer, standing } = renegotiationFieldsFor(state, v);
@@ -589,8 +597,15 @@ function computeAttention(state) {
         offer: renegotiationOffer,
       });
     }
+    // Unread live notices — the ones an "attention" badge counts. `liveEvents` already
+    // newest-first and retention-filtered; keep only the UNREAD (no `readTick`). Deep-copied
+    // (payload spread) so the snapshot can never alias into engine state.
+    for (const e of liveEvents(g, state.tick)) {
+      if (e.readTick != null) continue;
+      notices.push({ guildId: g.id, id: e.id, tick: e.tick, type: e.type, payload: { ...e.payload } });
+    }
   }
-  return { renegotiations };
+  return { renegotiations, notices };
 }
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -625,6 +640,7 @@ function computeAttention(state) {
 //                 fuelCost: { systemId: { fuelBurn, creditCost, travelTicks } }, // held systems, sorted
 //                 syndicateSale: { tick, thisTick, credited, goods } | null, // Slice 3a
 //                 licenceFee: { tick, thisTick, charged, ventures } | null,   // Slice 3b-iii
+//                 events: [ { id, tick, type, payload, readTick? } ],  // event log, live, newest-first
 //                 stockpiles: { good: int },                    // flat guild total
 //                 stockpilesBySystem: { systemId: { good: int } }, // per-system
 //                 assets: [ { id, kind, maintenanceCondition,      // §4 inventory
@@ -656,10 +672,13 @@ function computeAttention(state) {
 //     shipments: [ { ownerGuildId, cargo: { good: int }, destinationSystemId,
 //                    arrivalTick, ticksRemaining } ],   // IN-FLIGHT, design.md §6
 //     nodeLockouts: [ { siteId, releaseTick, lockedAtTick, ticksRemaining } ], // teardown §3.3
-//     attention: { renegotiations: [ { guildId, ventureId, ventureName, standing, offer } ] },
-//       // §5 attention derive (#64 Slice 1b): the guild's open action-items, aggregated so
-//       // the MESSAGES panel + tab badge read one place. `offer` == the venture row's
-//       // renegotiationOffer. Multi-guild; the client filters to its own guildId.
+//     attention: { renegotiations: [ { guildId, ventureId, ventureName, standing, offer } ],
+//                  notices: [ { guildId, id, tick, type, payload } ] },
+//       // §5 attention derive (#64 Slice 1b + event-log Slice): the guild's open action-items,
+//       // aggregated so the MESSAGES panel + tab badge read one place. `renegotiations`' `offer`
+//       // == the venture row's renegotiationOffer; `notices` are the UNREAD live event-log
+//       // notices (docs/event-log.md), newest-first. Multi-guild; the client filters to its own
+//       // guildId.
 //   }
 function buildSnapshot(state) {
   const supply = computeGalacticSupply(state);
@@ -1029,6 +1048,19 @@ function buildSnapshot(state) {
             ),
           }
         : null,
+      // events: the guild's live event-log notices (docs/event-log.md, sim/events.js) — the
+      // engine-owned append-only Notices feed, surfaced read-only for the Guild Hall Notices
+      // panel (the client renders it in a following slice). LIVE-FILTERED via `isEventLive` and
+      // NEWEST-FIRST (`liveEvents`), so an aged-out notice never reaches the panel and the freshest
+      // sits at the top; each row carries `{ id, tick, type, payload, readTick? }` — `readTick`
+      // present once acknowledged. This is the `productionHistory → history` pattern: engine-owned
+      // stored state surfaced verbatim, deep-copied (payload spread) so the snapshot never aliases
+      // into engine state. ALWAYS EMITTED as an array (a stable [] for a guild that has recorded
+      // none), unlike the STORED `guild.events` which is omitted-when-empty for the determinism
+      // hash — the snapshot answers to a reader, and a stable shape is kinder than a key that
+      // appears only after the first lapse/closure. Its UNREAD subset is aggregated top-level in
+      // `attention.notices` for the panel's badge.
+      events: liveEvents(g, state.tick).map((e) => ({ ...e, payload: { ...e.payload } })),
     };
   });
 

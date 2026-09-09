@@ -248,7 +248,10 @@ nothing, and cites both docs.)*
   TIMER (not a boundary verdict). Runs LAST, after all boundary/accrual/grant work, scanning
   guilds → ventures deterministically; a venture with an ordinary (non-deuterium) licence whose
   `state.tick + 1 >= lapseTick` is lapsed via the shared `applyLapse`. Fires the player's absence
-  into the same lapse the REJECT button does; produces no notice (event log is later).
+  into the same lapse the REJECT button does. *(**Superseded — the event-log slice.** `applyLapse`
+  now WRITES a `licence_lapsed` notice (cause `timeout` here, `rejected` from the REJECT button) —
+  see `docs/event-log.md`. The engine records and surfaces it in the snapshot; the client Notices
+  panel renders it in the following slice.)*
 
 ### `client/game.html` — the countdown (small)
 
@@ -289,8 +292,13 @@ with the countdown, and an unanswered venture auto-lapses off MESSAGES.
 
 ### Still deferred (per §5), not invented here
 
-The **event log / notices** and the `messagesSeenTick` unread mechanic (auto-lapse writes no
-notice — the Notices section stays an empty stub); the parked domain-character adviser split;
-window as a demand lever; equity changes; the −300 forced-lease / −500 closure consequences; the
-#57 investor vote; dividends; counter-offers; the resource-sale premium/discount. Deuterium stays
-exempt. With this slice, #64 (licence renegotiation) is complete but for the event log.
+The parked domain-character adviser split; window as a demand lever; equity changes; the −300
+forced-lease consequence; the #57 investor vote; dividends; counter-offers; the resource-sale
+premium/discount. Deuterium stays exempt. *(The **event log / notices** are **no longer deferred** —
+the ENGINE half is BUILT: `docs/event-log.md` rules the append-only per-guild log, its four
+writers, `acknowledgeEvent`, and retention, with a per-notice `readTick` **replacing** the
+sketched per-guild `messagesSeenTick`. Auto-lapse and lapse **now write a `licence_lapsed`
+notice**; the −500 forced closure writes `venture_closed` (`docs/forced-closure.md`). The client
+Notices panel that renders the surfaced notices is the following slice; its "No notices yet."
+stub stands until then.)* With this slice, #64 (licence renegotiation) is complete, and the event
+log's engine writers are live.

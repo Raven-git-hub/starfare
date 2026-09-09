@@ -263,6 +263,19 @@ function createLapseLicenceAction({ guildId, ventureId }) {
   return { type: 'lapseLicence', guildId, ventureId };
 }
 
+// acknowledgeEvent: mark ONE event-log notice READ (docs/event-log.md §3). The player's
+// "I've seen this" on a Notices row — it does not delete the notice, it stamps `readTick`,
+// which shortens the notice's remaining display life (RETENTION_READ_TICKS, sim/events.js §4)
+// and drops it from the unread badge. Shape is `{ guildId, eventId }`; `eventId` is the
+// per-guild counter id `recordEvent` assigned. It is PLAYER-SET state — the tick never reads
+// `readTick` to compute a game number (invariant 8 untouched: this moves no reputation, no
+// credits, no goods).
+function createAcknowledgeEventAction({ guildId, eventId }) {
+  if (guildId === undefined) throw new Error('createAcknowledgeEventAction: guildId is required');
+  if (eventId === undefined) throw new Error('createAcknowledgeEventAction: eventId is required');
+  return { type: 'acknowledgeEvent', guildId, eventId };
+}
+
 // licenseDeuteriumMine: grant ONE deuterium mining venture the WINDOWLESS deuterium
 // licence (§1.4 "The Deuterium Cycle", docs/fuel-supply-and-allocation.md) — the
 // player-driven supply lever. This is a SEPARATE path from `applyForLicence`, not an
@@ -895,6 +908,20 @@ function validateAction(state, action) {
     const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
     if (state.tick < licenceEndTick(venture.licence, windowN)) {
       return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)}'s committed window has not elapsed (ends at tick ${licenceEndTick(venture.licence, windowN)}, now ${state.tick}) — terms reopen only at window-end, so there is nothing to lapse yet (§5)` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'acknowledgeEvent') {
+    // Validate ONLY the guild (docs/event-log.md §3). A MISSING `eventId` is a valid no-op,
+    // NOT a rejection: a notice can age out of the log (retention) between the tick the client
+    // rendered it and the tick the player clicks it, and the acknowledge for a since-pruned
+    // notice must not fail — it simply finds nothing to stamp (the apply is a no-op). Rejecting
+    // it would surface a spurious error for a perfectly ordinary race. So the only hard
+    // requirement is that the guild exists.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
     }
     return { valid: true };
   }
@@ -1629,7 +1656,22 @@ function applyAction(state, action) {
     // survives, and the guild may sign a fresh licence later on its own terms.
     const guild = findGuild(next, action.guildId);
     const venture = guild.ventures.find((v) => v.id === action.ventureId);
-    applyLapse(guild, venture);
+    // cause 'rejected' (the player chose to lapse); the notice's tick is `next.tick`, the
+    // current tick this apply runs on (docs/event-log.md §2).
+    applyLapse(guild, venture, 'rejected', next.tick);
+    return next;
+  }
+
+  if (action.type === 'acknowledgeEvent') {
+    // Stamp `readTick` on the named notice, iff it is present AND still unread (docs/event-log.md
+    // §3). A no-op — valid, changes nothing — when the id is absent (it aged out between render
+    // and click) or already read (acknowledged twice), so an acknowledge is idempotent and never
+    // resets an earlier read's retention clock. `next.tick` is when the player read it — the datum
+    // the READ retention window (RETENTION_READ_TICKS) counts from. This is player-set display
+    // state: no reputation, no credits, no goods move.
+    const guild = findGuild(next, action.guildId);
+    const event = (guild.events || []).find((e) => e.id === action.eventId);
+    if (event && event.readTick == null) event.readTick = next.tick;
     return next;
   }
 
@@ -1713,8 +1755,9 @@ function applyAction(state, action) {
     //    shared mutation the −500 forced-closure path in the tick calls, so a player teardown
     //    and a Syndicate closure cannot diverge on removal (the `applyLapse` precedent). It
     //    reads the same `teardownSettlement` for the lockout tick, so its term and the fee's
-    //    above are the one number.
-    applyVentureClosure(next, guild, venture);
+    //    above are the one number. cause 'teardown'; the notice's tick is `next.tick`, the
+    //    current tick this apply runs on (docs/event-log.md §2).
+    applyVentureClosure(next, guild, venture, 'teardown', next.tick);
     return next;
   }
 
@@ -1949,6 +1992,7 @@ module.exports = {
   createApplyForLicenceAction,
   createRenegotiateLicenceAction,
   createLapseLicenceAction,
+  createAcknowledgeEventAction,
   createLicenseDeuteriumMineAction,
   createEstablishDeuteriumRefineryAction,
   createDecommissionVentureAction,

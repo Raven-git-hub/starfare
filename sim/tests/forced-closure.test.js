@@ -108,6 +108,18 @@ test('a breach that drives a venture to −500 force-closes it: removed, licence
   // it lands on (the same pre-increment convention the tick's venture `updatedAtTick` stamps use).
   assert.equal(s.nodeLockouts.length, 1);
   assert.deepEqual(s.nodeLockouts[0], { siteId: HOME_MINE, releaseTick: expectedRelease, lockedAtTick: s.tick - 1 });
+  // A `venture_closed` NOTICE was written (docs/event-log.md §2), cause 'forced', with a
+  // self-contained payload and born UNREAD. The venture is gone, so the notice must carry its
+  // own display name/good/system — the client cannot re-resolve them off a removed venture.
+  const notice = guildOf(s).events.find((e) => e.type === 'venture_closed');
+  assert.ok(notice, 'a venture_closed notice was recorded');
+  assert.equal(notice.payload.cause, 'forced', 'a Syndicate forced closure');
+  assert.equal(notice.payload.ventureId, 'mine_1');
+  assert.ok(typeof notice.payload.ventureName === 'string' && notice.payload.ventureName.length > 0, 'a display name is carried');
+  assert.equal(notice.payload.good, 'titanium', 'the committed good is carried');
+  assert.equal(notice.payload.systemId, HOME_SYSTEM, 'the system is carried');
+  assert.equal(notice.payload.lockoutUntilTick, expectedRelease, 'the node lockout tick is carried (one was written)');
+  assert.equal(notice.readTick, undefined, 'born unread');
   // The RP forfeit removed the venture's −500 as it left the array, so the guild is back to just
   // its founding endowment — the "windfall" of shedding the wreck (§3.1) — and the sum is exact.
   assert.equal(guildOf(s).guildReputation, endowment, 'the floored venture\'s RP left with it');
@@ -203,6 +215,10 @@ test('a venture cratering PAST its term is closed but writes no lockout', () => 
   s = runToBoundary(s);
   assert.equal(ventureOf(s, 'mine_1'), undefined, 'closed all the same');
   assert.equal(s.nodeLockouts, undefined, 'but no lockout — the term had already rolled past (§3.3)');
+  // The notice omits `lockoutUntilTick` exactly when no lockout was written (§2 self-contained).
+  const notice = guildOf(s).events.find((e) => e.type === 'venture_closed');
+  assert.equal(notice.payload.cause, 'forced');
+  assert.ok(!('lockoutUntilTick' in notice.payload), 'no lockout tick in the payload — none was written');
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 

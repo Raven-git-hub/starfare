@@ -474,6 +474,18 @@ test('lapse — reverts to unlicensed, forfeits the venture RP, keeps the ventur
   // No node lockout written (unlike a mid-term teardown) — lapse is a window-end settlement.
   assert.ok(!Array.isArray(state.nodeLockouts) || state.nodeLockouts.length === 0, 'no node lockout on lapse');
 
+  // A `licence_lapsed` NOTICE was written (docs/event-log.md §2), cause 'rejected' (the player
+  // chose to lapse), self-contained payload, born UNREAD. The venture survives but is unlicensed,
+  // so the notice still carries its own name/good/system for the panel.
+  const notice = guildOf(state).events.find((e) => e.type === 'licence_lapsed');
+  assert.ok(notice, 'a licence_lapsed notice was recorded');
+  assert.equal(notice.payload.cause, 'rejected', 'a player REJECT');
+  assert.equal(notice.payload.ventureId, 'mine_1');
+  assert.ok(typeof notice.payload.ventureName === 'string' && notice.payload.ventureName.length > 0, 'a display name is carried');
+  assert.equal(notice.payload.good, 'titanium', 'the committed good is carried');
+  assert.equal(notice.payload.systemId, HOME_SYSTEM, 'the system is carried');
+  assert.equal(notice.readTick, undefined, 'born unread');
+
   // Every invariant holds (checkGuildReputationSum among them).
   assert.equal(checkInvariants(state).length, 0);
 });
@@ -655,6 +667,18 @@ test('auto-lapse — an unanswered licence lapses at lapseTick, keeping the vent
   assert.ok(!('committedFromTick' in v), 'the pro-rate anchor cleared');
   assert.ok(!rowOf(s, 'mine_1').renegotiationOffer, 'and the offer is gone — it dropped off MESSAGES');
   assert.equal(attentionOf(s).renegotiations.length, 0, 'the lapsed venture is off the attention list');
+  // A `licence_lapsed` NOTICE was written by the tick (docs/event-log.md §2), cause 'timeout'
+  // (the offer expired unanswered), stamped with the tick it fired on — the producing-tick
+  // convention (`state.tick + 1`), so the recorded tick equals the finished tick the snapshot reads.
+  const notice = guildOf(s).events.find((e) => e.type === 'licence_lapsed');
+  assert.ok(notice, 'the auto-lapse recorded a licence_lapsed notice');
+  assert.equal(notice.payload.cause, 'timeout', 'a timed-out auto-lapse, not a chosen reject');
+  assert.equal(notice.payload.ventureId, 'mine_1');
+  assert.equal(notice.tick, lapseTick, 'stamped with the tick the auto-lapse landed on (no off-by-one)');
+  assert.equal(notice.readTick, undefined, 'born unread');
+  // And it surfaces as an unread notice in the attention aggregate (the panel's badge).
+  assert.ok(attentionOf(s).notices.some((n) => n.type === 'licence_lapsed' && n.payload.cause === 'timeout'),
+    'the timeout notice is aggregated into attention.notices, unread');
   // The guild sum is exactly the endowment now (the one venture forfeited all its RP).
   assert.equal(guildOf(s).guildReputation, endowment, 'guild RP sum is exact after the forfeit');
   assert.equal(checkInvariants(s).length, 0, 'every invariant holds after auto-lapse');

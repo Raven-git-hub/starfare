@@ -163,7 +163,9 @@ function stepProduction(state, _actions, ctx) {
     // from its now-gone licence — the snapshot offer, the attention derive and stepAutoLapse
     // (step 9, still ahead this tick) all read the live ventures array — so removal discards it
     // with no orphaned timer left to fire (§2). Deterministic: array order within toClose.
-    for (const v of toClose) applyVentureClosure(state, guild, v);
+    // cause 'forced', and the notice's producing tick is state.tick + 1 (the tick being
+    // built — the same convention recordSale/recordLicenceFee use above).
+    for (const v of toClose) applyVentureClosure(state, guild, v, 'forced', state.tick + 1);
 
     // THE ILLEGAL REFINERY CONVERSION (§1.4 "The illegal path, made concrete", slice 1b) —
     // the goods→fuel seam. Run ONCE PER GUILD, HERE, after the per-system loop above has
@@ -1092,7 +1094,9 @@ function stepAutoLapse(state, _actions) {
       // (windowless, §1.4) and has no `licence`, so it is skipped by this very test.
       if (!venture.licence) continue;
       const { lapseTick } = renegotiationSchedule(venture.licence, windowN, dayAnchorTick);
-      if (thisTick >= lapseTick) applyLapse(guild, venture);
+      // cause 'timeout' (the player let the offer expire); the notice's tick is `thisTick`,
+      // the tick being built — the deadline this step just reached (docs/event-log.md §2).
+      if (thisTick >= lapseTick) applyLapse(guild, venture, 'timeout', thisTick);
     }
   }
   return state;
