@@ -917,6 +917,17 @@ select.field{appearance:none; cursor:pointer;}
 #tp-guild .msg .deadline.hot{color:var(--gh-down);}
 #tp-guild .msg.action{background:rgba(201,162,39,.045);}
 #tp-guild .msg.action .ic{background:var(--gh-amber-dim); color:var(--gh-amber2);}
+/* Notice rows (docs/event-log.md, the CLIENT slice) — calmer than an action row (the mock's
+   .msg.note): a muted icon, an unread dot + ACKNOWLEDGE while unread, dimmed once read. */
+#tp-guild .msg.note{cursor:default;}
+#tp-guild .msg.note .ic{background:rgba(232,223,200,.06); color:var(--gh-ink3);}
+#tp-guild .msg.note .t, #tp-guild .msg.note .adv{color:var(--gh-ink3);}
+#tp-guild .msg.note.read{opacity:.6;}
+#tp-guild .unreaddot{width:6px; height:6px; border-radius:50%; background:var(--gh-amber); flex:none; margin-top:8px;}
+#tp-guild .msg .ack{font-family:var(--gh-mono); font-size:8px; letter-spacing:.12em; text-transform:uppercase; cursor:pointer;
+  padding:2px 8px; border-radius:20px; border:1px solid var(--gh-line2); background:none; color:var(--gh-ink3); transition:.12s;}
+#tp-guild .msg .ack:hover{color:var(--gh-amber2); border-color:var(--gh-amber-dim);}
+#tp-guild .msg .ack:disabled{opacity:.5; cursor:default;}
 #tp-guild .gh-msg-empty{padding:16px; color:var(--gh-ink4); font-size:11.5px; letter-spacing:.03em;}
 
 /* CENTRE */
@@ -6710,6 +6721,45 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return { text:'respond in '+n+' days', hot:false };
   }
 
+  // --- Notices (docs/event-log.md §5, the CLIENT slice) ---------------------------------------
+  // The client renders the published event-log rows and computes NO game number (§18): the "when"
+  // is the notice's own recorded `tick`, and the node-held line stays qualitative — a precise
+  // "unlock in N days" would need a snapshot derive (off payload.lockoutUntilTick) and is out of
+  // scope, exactly as the reneg countdown's daysToLapse is engine-derived for the same reason.
+
+  // Per-type icon — muted, calmer than an action row's scales. ⚖ for a licence matter, 🔒 for a
+  // closed venture whose node is held. Illustrative (the mockup's own note icons are), not data.
+  var NOTICE_ICON = { licence_lapsed:'⚖', venture_closed:'🔒' };
+
+  // noticeCopy(n) -> { title, detail }, keyed on type + payload.cause (the four writers, §2).
+  // Plain Syndicate-liaison log lines — the domain-character adviser voices are parked (§5), so
+  // one calm tone. Pure client copy, tuned at review; it names no number.
+  function noticeCopy(n){
+    var p = (n && n.payload) || {};
+    var name = p.ventureName || p.ventureId || 'a venture';
+    var subject = p.good ? ('your ' + prettyGood(p.good) + ' venture') : 'your venture';
+    if(n.type === 'licence_lapsed'){
+      var why = p.cause === 'timeout'
+        ? "You didn't answer the Syndicate's renegotiation in time; the licence on " + subject + " lapsed. It runs on, unlicensed."
+        : "You let the licence on " + subject + " lapse. It runs on, unlicensed.";
+      return { title:'Licence lapsed — ' + name, detail:why };
+    }
+    // venture_closed
+    var how = p.cause === 'forced'
+      ? "Its standing hit the floor and the Syndicate closed it; its node is held for the rest of the term."
+      : "You closed it; its node is held for the rest of the term.";
+    return { title:'Venture closed — ' + name, detail:how };
+  }
+
+  // The player guild's UNREAD live notices, off the top-level attention derive (§5) — the count
+  // the tab pip and the Messages badge add to the open offers. Filtered to the player's OWN guild,
+  // exactly as myRenegotiations filters the offers.
+  function myUnreadNotices(s){
+    var id = (window.__player && window.__player().guildId) || null;
+    var list = (s && s.attention && Array.isArray(s.attention.notices)) ? s.attention.notices : [];
+    return id ? list.filter(function(n){ return n.guildId === id; }) : [];
+  }
+
   // The open renegotiation offers for the player's guild, off the top-level attention derive.
   function myRenegotiations(s){
     var id = (window.__player && window.__player().guildId) || null;
@@ -6745,10 +6795,34 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
           + '</div>';
       });
     }
-    // The Notices section is a stub this slice — the event log is Slice 2+ (§5). Show a muted
-    // line, never an invented notice.
-    rows += '<div class="gh-seclab">Notices</div>'
-      + '<div class="gh-msg-empty">No notices yet.</div>';
+    // Notices (docs/event-log.md §5, this slice): the player guild's live event-log notices,
+    // read + unread, rendered in the order the snapshot publishes them (guilds[].events — the
+    // engine sorts newest-first). "No notices yet." only when that list is empty. An unread
+    // notice (no readTick, §3) shows the unread dot and an ACKNOWLEDGE control; a read one is
+    // dimmed with neither. The client renders these rows and computes no game number.
+    var notices = (me && Array.isArray(me.events)) ? me.events : [];
+    rows += '<div class="gh-seclab">Notices</div>';
+    if(!notices.length){
+      rows += '<div class="gh-msg-empty">No notices yet.</div>';
+    } else {
+      notices.forEach(function(n){
+        var c = noticeCopy(n);
+        var unread = n.readTick == null;   // born unread; acknowledgeEvent stamps readTick (§3)
+        var icon = NOTICE_ICON[n.type] || '⚖';
+        rows += '<div class="msg note'+(unread ? '' : ' read')+'">'
+          + (unread ? '<div class="unreaddot"></div>' : '')
+          + '<div class="ic">'+icon+'</div>'
+          + '<div class="body">'
+          +   '<div class="t">'+esc(c.title)+'</div>'
+          +   '<div class="adv">'+esc(c.detail)+'</div>'
+          + '</div>'
+          + '<div class="meta">'
+          +   '<span class="deadline">tick '+esc(n.tick)+'</span>'
+          +   (unread ? '<button class="ack" data-ack="'+esc(n.id)+'">Acknowledge</button>' : '')
+          + '</div>'
+          + '</div>';
+      });
+    }
 
     if(!offers.length){
       // No open decision — keep the section header honest with a muted line above Notices.
@@ -6805,7 +6879,11 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // Update the Messages rail entry (its count badge + attention class) from the live snapshot.
   // Split out so it can run on every render while the hall is open.
   function paintMessagesRail(){
-    var n = myRenegotiations(snap()).length;
+    // The badge counts the open offers AND the player's own unread notices; the tab lights while
+    // either is non-zero (design.md §5 — "highlights while any action-item is open OR any notice
+    // is unread").
+    var s = snap();
+    var n = myRenegotiations(s).length + myUnreadNotices(s).length;
     var tab = document.querySelector('#gh-tabs .gh-tab[data-p="messages"]');
     if(tab) tab.classList.toggle('attn', n > 0);
     var badge = el('gh-msgbadge');
@@ -6828,6 +6906,22 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   var centreEl = el('gh-centre');
   if(centreEl){
     centreEl.addEventListener('click', function(e){
+      // A Notices ACKNOWLEDGE control marks that one notice read (docs/event-log.md §3) — the
+      // ONLY new action this slice dispatches. `eventId` is the notice's per-guild numeric id,
+      // sent as a Number (the engine matches by strict === on e.id); the apply no-ops on an id
+      // that has since aged out of the log, so a stale click is harmless.
+      var ackBtn = e.target.closest('.msg .ack');
+      if(ackBtn){
+        var eventId = Number(ackBtn.getAttribute('data-ack'));
+        var ackGuild = (window.__player && window.__player().guildId) || null;
+        if(ackGuild != null && window.__sendAction){
+          ackBtn.disabled = true;   // no double-fire before the poll re-renders the row read
+          Promise.resolve(window.__sendAction({ type:'acknowledgeEvent', guildId:ackGuild, eventId:eventId }))
+            .then(function(){ if(window.__refreshNow) return window.__refreshNow(); })
+            .catch(function(){ ackBtn.disabled = false; });
+        }
+        return;
+      }
       var row = e.target.closest('.msg[data-reneg]'); if(!row) return;
       var ventureId = row.getAttribute('data-reneg');
       var guildId = (window.__player && window.__player().guildId) || null;
@@ -6835,11 +6929,13 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     });
   }
 
-  // The TOP-LEVEL Guild Hall tab's attention pip (#64 Slice 1b) — lit whenever the player's
-  // guild has an open action-item, WHETHER OR NOT the hall is open, so the invitation shows
-  // from anywhere. Driven by the shell's poll (applySnapshot), which owns no guild state.
+  // The TOP-LEVEL Guild Hall tab's attention pip (#64 Slice 1b) — lit whenever the player's guild
+  // has an open action-item OR an unread notice (design.md §5), WHETHER OR NOT the hall is open,
+  // so the invitation shows from anywhere. Driven by the shell's poll (applySnapshot), which owns
+  // no guild state.
   function paintTopLevelAttn(){
-    var n = myRenegotiations(snap()).length;
+    var s = snap();
+    var n = myRenegotiations(s).length + myUnreadNotices(s).length;
     var tab = document.getElementById('rtab-guild');
     var pip = document.getElementById('rtabGuildAttn');
     if(tab) tab.classList.toggle('attn', n > 0);

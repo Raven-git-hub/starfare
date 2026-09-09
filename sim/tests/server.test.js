@@ -1677,11 +1677,42 @@ test('GET / serves the MESSAGES panel + the renegotiation popup, wired to the at
   assert.match(html, /s\.attention && Array\.isArray\(s\.attention\.renegotiations\)/, 'reads the snapshot attention derive');
 
   // 2. THE MESSAGES PANEL renders the open offers as the pinned "Needs a decision" section, and
-  //    stubs the Notices section (the event log is Slice 2+ — no invented notices).
+  //    (the event-log CLIENT slice) the NOTICES below — read + unread — off the player guild's
+  //    guilds[].events. "No notices yet." is now the EMPTY-log case only, not a permanent stub.
   assert.match(html, /function messagesPanel\(me\)\{/, 'the Messages panel renderer');
   assert.match(html, /Needs a decision/, 'the pinned action-item section');
-  assert.match(html, /No notices yet\./, 'the Notices section is an honest empty stub this slice');
   assert.match(html, /data-reneg="/, 'a Messages row carries its venture id for the popup');
+  // The Notices section renders the published rows; "No notices yet." shows ONLY when the log is
+  // empty (gated on notices.length now, not printed unconditionally as the Slice-1b stub was).
+  assert.match(html, /var notices = \(me && Array\.isArray\(me\.events\)\) \? me\.events : \[\];/,
+    'Notices come from the player guild\'s live event-log rows (guilds[].events)');
+  assert.match(html, /if\(!notices\.length\)\{\s*rows \+= '<div class="gh-msg-empty">No notices yet\.<\/div>';/,
+    '"No notices yet." is the empty-log case only, no longer a hard stub');
+  assert.match(html, /class="msg note'\+\(unread \? '' : ' read'\)\+'"/,
+    'a notice row is a .msg.note, dimmed .read once acknowledged');
+  assert.match(html, /var unread = n\.readTick == null;/, 'unread is the ABSENCE of readTick (event-log.md §3)');
+  assert.match(html, /<div class="unreaddot">/, 'an unread notice shows the unread dot');
+  // The per-cause copy (event-log.md §2) and the QUALITATIVE node-held line — no lockout number
+  // derived from payload.lockoutUntilTick (§18, the client computes no game number).
+  assert.match(html, /function noticeCopy\(n\)\{/, 'the per-notice copy is keyed on type + cause');
+  assert.match(html, /'Licence lapsed — '/, 'the licence_lapsed title');
+  assert.match(html, /'Venture closed — '/, 'the venture_closed title');
+  assert.match(html, /its node is held for the rest of the term/,
+    'the node-held line is qualitative — no lockout duration derived (§18)');
+  // The ACKNOWLEDGE control + its wiring: only unread rows carry it, and it dispatches the
+  // EXISTING acknowledgeEvent { guildId, eventId } for that notice's numeric id.
+  assert.match(html, /<button class="ack" data-ack="'\+esc\(n\.id\)\+'">Acknowledge<\/button>/,
+    'an unread notice carries an ACKNOWLEDGE control with its event id');
+  assert.match(html, /type:'acknowledgeEvent', guildId:ackGuild, eventId:eventId/,
+    'ACKNOWLEDGE dispatches the existing acknowledgeEvent action');
+  assert.match(html, /Number\(ackBtn\.getAttribute\('data-ack'\)\)/,
+    'the event id is sent as a Number (the engine matches by strict ===)');
+  // The tab pip + the Messages badge light for an unread notice too (design.md §5 — highlights
+  // while any offer is open OR any notice is unread), the count adding unread notices to offers.
+  assert.match(html, /function myUnreadNotices\(s\)\{/, 'the player-guild unread-notice filter over attention.notices');
+  assert.match(html, /s\.attention && Array\.isArray\(s\.attention\.notices\)/, 'reads the snapshot attention.notices derive');
+  assert.match(html, /myRenegotiations\(s\)\.length \+ myUnreadNotices\(s\)\.length/,
+    'the badge/pip count adds the player\'s unread notices to the open offers');
   // #64 Slice 2: the static "window elapsed" marker is REPLACED by the live acceptance countdown,
   // rendered from the offer's engine-derived daysToLapse (the client types no day count). The
   // last day is amber ("hot"). This flips the Slice-1b "no countdown" pin.

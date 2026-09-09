@@ -31,9 +31,9 @@ Design.md §5 draws the line the whole delivery model rests on:
 
 This document rules that log. The surface is the Guild Hall's MESSAGES panel: it renders a
 **union** of the derived open action-items (renegotiation offers, pinned to the top) and the
-event-log **notices** below, newest first. This slice builds the ENGINE half of the notices —
-the log, the writers, acknowledgement, retention, and the snapshot surfacing. The client
-Notices panel that renders them is a following slice.
+event-log **notices** below, newest first. The ENGINE half of the notices — the log, the
+writers, acknowledgement, retention, and the snapshot surfacing — shipped first (see the
+roadmap). The **client Notices panel** that renders them shipped next (§8).
 
 ## 1. The log — append-only, per guild
 
@@ -134,10 +134,34 @@ from the vocabulary**, and **`readTick` (if present) an integer `≥ tick`**. Th
 row is the tripwire that proves `eventSeq` is doing its job — an acknowledge addresses a notice
 by id, so a collision would let one ack hit two.
 
-## 7. Out of scope (this slice)
+## 7. Out of scope (the ENGINE slice)
 
-- **No client work** — no Notices rendering, no ACKNOWLEDGE button. Following slice (mockup
-  `docs/mockups/guild-hall-messages.html`).
+- **No client work** — no Notices rendering, no ACKNOWLEDGE button. That was the following
+  slice, now built (§8; mockup `docs/mockups/guild-hall-messages.html`).
 - **No storyteller / rival / disaster writers** — future; they add their own types here.
 - The `messagesSeenTick` per-guild "unread" flag design.md §5 sketched is **superseded** by the
   per-notice `readTick` and is deliberately **not** added.
+
+## 8. The client Notices panel (the CLIENT slice) — AS BUILT
+
+The Guild Hall MESSAGES panel (`client/game.html`) now renders the notices below the pinned
+open offers, to the mockup's `.msg.note` style (`docs/mockups/guild-hall-messages.html`).
+**Client only** — no engine / snapshot / `sim/` runtime change; it renders the published rows
+and dispatches exactly one new action (`acknowledgeEvent`).
+
+- **The list** is the player guild's `guilds[].events` (read + unread), rendered in the
+  snapshot's own newest-first order (§5). "No notices yet." shows only on an empty log.
+- **The copy** is keyed on `type` + `payload.cause` (§2), in one plain Syndicate-liaison tone
+  (the domain-character adviser voices are parked, §5). It names `ventureName` and `good`; the
+  node-held line is **qualitative** — no lockout duration is derived from `payload.lockoutUntilTick`
+  (§18: the client computes no game number; a precise "unlock in N days" would need a snapshot
+  derive and is out of scope). The row's **"when"** is the notice's own recorded `tick` — the
+  published field, not a derived calendar day, for the same reason.
+- **Read / unread** follows the mockup: an unread notice (no `readTick`, §3) shows the unread
+  dot and an **ACKNOWLEDGE** control; a read one is dimmed with neither.
+- **ACKNOWLEDGE** dispatches the existing `acknowledgeEvent { guildId, eventId }` for that
+  notice's id (sent as a Number — the apply matches by `===`); on the next poll the row renders
+  read. The engine already no-ops an aged-out id (§3), so a stale click is harmless.
+- **The pip + badge** (the top-level Guild Hall tab and the Messages rail entry) light while any
+  offer is open **or** any notice is unread (design.md §5), the count adding the player's own
+  `attention.notices` to the open offers.
