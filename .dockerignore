@@ -6,7 +6,12 @@ dev/
 # never need to enter the image (they were ~20 MB of build context for nothing).
 docs/
 tools/*
+# generate_seed.js builds the seed; admin.js is the operator CLI (deployment-runbook.md §12).
+# Both are dependency-free and MUST ship — do not re-exclude either, or
+# `docker exec … tools/admin.js` breaks with MODULE_NOT_FOUND. (admin.js added 09-09-26, having
+# been excluded since it landed — §12's commands had never worked in the container.)
 !tools/generate_seed.js
+!tools/admin.js
 
 # The audio LIBRARY stays in the repo but must not bloat the runtime image: the
 # game embeds its shuffle playlist as base64 in game.html, and only the title
