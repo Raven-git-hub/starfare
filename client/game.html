@@ -3014,7 +3014,7 @@ select.field{appearance:none; cursor:pointer;}
           const cp = worldToScreen(wx, wy);
           // the gold chevron, rotated to the leg's SCREEN angle (post-projection) with a soft glow
           const theta = Math.atan2(B.y - A.y, B.x - A.x);
-          const cs = 10 * Math.min(6.5, 3.5 + zoom * 0.06); // 10x — a bold, at-a-glance craft marker
+          const cs = 2 * Math.min(6.5, 3.5 + zoom * 0.06); // 2x — a clear, restrained craft marker
           ctx.save();
           ctx.translate(cp.x, cp.y);
           ctx.rotate(theta);
