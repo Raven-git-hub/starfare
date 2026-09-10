@@ -176,7 +176,7 @@ and dispatches exactly one new action (`acknowledgeEvent`).
 *Status: **RULED** 10-09-26. Supersedes §8's inline notice rows. Build pending, in two slices —
 an **engine field-slice** (the three additive fields below) then a **client slice** (the inbox +
 popups). Each moves doc + code together; §2 / §5 / §8 fold in the new fields / AS-BUILT as their
-slice ships. Visual contract: `docs/mockups/guild-hall-messages.html` (updated this commit).*
+slice ships. Visual contract: `docs/mockups/guild-hall-messages.html` (updated to the redesign).*
 
 The MESSAGES panel becomes an **email inbox**. Every row — the pinned action-items **and** the
 notices below — is a **clickable subject line**: an icon, a one-line title, a "when" (or, for an
