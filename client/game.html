@@ -2633,8 +2633,11 @@ select.field{appearance:none; cursor:pointer;}
   }
 
   // diagonal-line label, ported from galaxy-map-hex.html's drawLabelBox
-  function drawLabelBox(p, lines, colorKey) {
-    const ang = -Math.PI / 4; // fixed diagonal, up-right
+  function drawLabelBox(p, lines, colorKey, downLeft) {
+    // `downLeft` flips the diagonal to the OPPOSITE quadrant for the transport tag,
+    // so it doesn't collide with the up-right system/waystation tags. Default
+    // (undefined) keeps the original up-right placement for every other caller.
+    const ang = downLeft ? (3 * Math.PI / 4) : (-Math.PI / 4); // down-left when flagged, else up-right
     const lineLen = 28;
     const ex = p.x + Math.cos(ang) * lineLen;
     const ey = p.y + Math.sin(ang) * lineLen;
@@ -2647,7 +2650,10 @@ select.field{appearance:none; cursor:pointer;}
     ctx.stroke();
 
     const boxW = 150, boxH = 16 + lines.length * 13;
-    const bx = ex + 3, by = ey - boxH;
+    // up-right: box sits right-of / above the leader end; down-left: mirror it to
+    // left-of / below, so the box hangs on the same side the leader points.
+    const bx = downLeft ? (ex - 3 - boxW) : (ex + 3);
+    const by = downLeft ? ey : (ey - boxH);
     ctx.fillStyle = 'rgba(6,8,13,0.9)';
     ctx.fillRect(bx, by, boxW, boxH);
     ctx.strokeStyle = col(colorKey, 0.6);
@@ -3008,7 +3014,7 @@ select.field{appearance:none; cursor:pointer;}
           const cp = worldToScreen(wx, wy);
           // the gold chevron, rotated to the leg's SCREEN angle (post-projection) with a soft glow
           const theta = Math.atan2(B.y - A.y, B.x - A.x);
-          const cs = Math.min(6.5, 3.5 + zoom * 0.06);
+          const cs = 10 * Math.min(6.5, 3.5 + zoom * 0.06); // 10x — a bold, at-a-glance craft marker
           ctx.save();
           ctx.translate(cp.x, cp.y);
           ctx.rotate(theta);
@@ -3029,7 +3035,7 @@ select.field{appearance:none; cursor:pointer;}
           // 'Syndicate' (transport-model.md §3 — a faceless service, no per-craft id this
           // tier); the time is the engine's `ticksRemaining`, formatted (never recomputed).
           if (zoom > 1) {
-            drawLabelBox(cp, ['Syndicate', fmtETA(ship.ticksRemaining)], 'outpost');
+            drawLabelBox(cp, ['Syndicate', fmtETA(ship.ticksRemaining)], 'outpost', true); // down-left, opposite the system/waystation tags
           }
         });
       }
