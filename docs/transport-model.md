@@ -105,6 +105,8 @@ A single leg: **nearest waystation → the destination system/outpost the player
 purchase; goods deposit on `arrivalTick`; destination lost in flight → the cargo vanishes (design.md
 §6 "Syndicate Delivery"). This is `legTicks(euclideanLength, SYNDICATE_SPEED, false)` and nothing more.
 
+**What the map shows for a delivery (RULED 10-09-26).** An in-flight Syndicate delivery draws as a craft sliding along its single leg — the client re-derives the position each frame (§2.3/§6) from the leg endpoints and the two ticks the engine surfaces; the engine publishes no progress fraction. Its map **tag** is the **carrier** — the constant word **“Syndicate”** for this tier, because the Syndicate is a faceless service with no per-craft identity to show — plus the **time remaining** to arrival. **No transport-ship id appears in this tier:** there is no player-owned craft to name (transport ships are the guild tier's deployable assets, §4/§5, `design.md` §"asset categories"). Each delivery is nonetheless a unique *trip*, and a unique **trip id** is the identifier that lands **with the guild tier (Phase 4)** — when a player selects a *specific* craft and needs to refer to that specific journey. Until something reads it, the shipment record deliberately carries **no id** (a field nobody reads is a second home waiting to drift, §15.5 / the `actions.js` shipment-shape comment).
+
 ## 4. The guild tier — gate-anchored routing on a graph (Phase 4)
 
 **Routes are gate-anchored.** A craft may only change direction at a gate or a toll-outpost. That
