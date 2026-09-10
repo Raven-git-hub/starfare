@@ -82,6 +82,39 @@ test('GET / serves the PLAYER CLIENT (HTML), not the deleted testbed', async () 
   assert.match(html, /'\/console\?embed=1&guild='/);           // …at /console, with the focus
 });
 
+test('GET / serves the TRANSPORT-VISIBILITY overlay — own in-flight legs, tweened off engine ticks', async () => {
+  const res = await fetch(base + '/');
+  const html = await res.text();
+
+  // The overlay's live-data door, wired beside __setLiveTerritory from the same poll.
+  assert.match(html, /__setLiveShipments/);
+  assert.match(html, /window\.__setLiveShipments\(\{/);        // called from applySnapshot
+
+  // OWN shipments only — a rival's logistics are not free intel (slice-local ruling).
+  assert.match(html, /\.filter\(\(s\) => s\.ownerGuildId === mine\)/);
+
+  // The draw reads the engine's LEG endpoints: the surfaced origin, and the seed-resolved
+  // destination coords (the engine surfaces originCoords, NOT the destination's).
+  assert.match(html, /ship\.originCoords\.q/);
+  assert.match(html, /systemById\.get\(ship\.destinationSystemId\)/);
+
+  // legProgress is derived from the engine's TWO ticks — departureTick + arrivalTick.
+  assert.match(html, /ship\.departureTick/);
+  assert.match(html, /ship\.arrivalTick - ship\.departureTick/);
+
+  // The tag: the CONSTANT carrier 'Syndicate' (no per-craft id this tier) + the engine's
+  // own ticksRemaining, formatted. The number the player reads is the engine's.
+  assert.match(html, /\['Syndicate', fmtETA\(ship\.ticksRemaining\)\]/);
+
+  // ONE timing source — the fractional tick exposed off the clock ring, not a second clock.
+  assert.match(html, /window\.__fractionalTick/);
+
+  // NEGATIVE PIN: the ETA text must never be recomputed from the tweened legProgress (`f`)
+  // or wall-clock — it is the engine's ticksRemaining, formatted (transport-model.md §3).
+  assert.ok(!html.includes('fmtETA(f)'), 'the ETA must not be derived from legProgress');
+  assert.ok(!html.includes('fmtETA(Tf'), 'the ETA must not be derived from the fractional tick');
+});
+
 test('GET / serves the WIRED licence panel — the two real actions, and no mock caveat', async () => {
   const res = await fetch(base + '/');
   const html = await res.text();

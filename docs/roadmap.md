@@ -109,6 +109,18 @@ boundary so the later hex-map swap doesn't touch it.
   progress fraction. *The galaxy-map / Transport-tab CLIENT half that reads these and interpolates is
   the following slice.*
 
+- **Transport visibility (client half)** — the galaxy-map overlay in `client/game.html`. Each poll
+  pushes the player's OWN in-flight Syndicate deliveries (filtered `ownerGuildId === myGuildId`;
+  rivals' deliveries are not drawn — a slice-local ruling, espionage is later) through a new
+  `__setLiveShipments`, and `render()` draws each as a dashed brass leg (nearest waystation →
+  destination), a gold craft chevron tweened along it at `legProgress` (transport-model.md §2.3) off
+  the engine's two ticks, tagged with the carrier (`'Syndicate'`) + `fmtETA(ticksRemaining)` above 1×
+  zoom. One timing source — the clock ring's fractional tick (`__fractionalTick`); no heartbeat ⇒ the
+  craft parks at its integer tick. CLIENT only — no engine/snapshot/sim change, so determinism holds;
+  proven end-to-end in headless Chromium (leg + craft + tag draw, ETA decrements and the craft advances
+  toward the destination as ticks step, a rival's shipment does not draw). *The Transport-tab board
+  stays Phase 4.*
+
 - **2.0 — Two guilds, the fuel contest proven.** Seat a second guild (inert or lightly scripted);
   run the existing mean-line / issuance as an actual multi-guild contest; confirm density-beats-sprawl
   tension is real between two actors. *No new mechanic — the oldest walking-skeleton line, closed.*

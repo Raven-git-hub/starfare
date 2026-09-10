@@ -2563,6 +2563,12 @@ select.field{appearance:none; cursor:pointer;}
   // Rival territory, in the same shape the renderer already consumed: guild rows
   // with a colour, and systemId -> ownerGuildId. Null until the first snapshot.
   let claimsData = null;
+
+  // The player's own in-flight Syndicate deliveries, pushed by __setLiveShipments from
+  // each poll's snapshot. [] until the first snapshot. PRESENTATION-ONLY: the map draws
+  // each as a leg + a craft tweened along it (transport-model.md §3/§6), computing no game
+  // number — legProgress and fmtETA are derives off engine-surfaced ticks (design.md §5).
+  let liveShipments = [];
   let systemById = new Map(), guildById = new Map(), systemToGuild = new Map(), guildOutpostByKey = new Map(), gateByKey = new Map();
 
   const COLOR_RGB = { system: [111,183,232], outpost: [232,185,58], citadel: [242,206,93], player: [67,217,200] };
@@ -2654,6 +2660,21 @@ select.field{appearance:none; cursor:pointer;}
       ctx.fillText(line, bx + 8, by + 16 + i * 13);
     });
     ctx.restore();
+  }
+
+  // ticks -> a compact ETA string ("12m" / "11h 58m" / "1d 04h"), the same tick->time
+  // transform the trade/clock UI already does (1 tick = 1 minute, N=1440 = 24h). This is
+  // PRESENTATION of the engine's own `ticksRemaining` — never a figure recomputed from
+  // legProgress or wall-clock (transport-model.md §3: the number the player reads is the
+  // engine's; only the craft's position tweens sub-tick).
+  function fmtETA(ticks) {
+    const t = Math.max(0, Math.round(ticks || 0));
+    const d = Math.floor(t / 1440);
+    const h = Math.floor((t % 1440) / 60);
+    const m = t % 60;
+    if (d > 0) return d + 'd ' + (h < 10 ? '0' : '') + h + 'h';
+    if (h > 0) return h + 'h ' + (m < 10 ? '0' : '') + m + 'm';
+    return m + 'm';
   }
 
   function resize() {
@@ -2938,6 +2959,82 @@ select.field{appearance:none; cursor:pointer;}
       });
     }
 
+    // in-flight Syndicate deliveries — the player's own, drawn after the systems/outposts
+    // markers and with the label layer (mirrors the mockup's ordering). Each is one dashed
+    // brass leg (nearest waystation → destination), a gold craft chevron tweened along it,
+    // and a carrier+ETA tag. PRESENTATION ONLY (design.md §5/§18): the engine surfaces each
+    // leg's start endpoint (`originCoords`) and its two ticks (`departureTick`/`arrivalTick`);
+    // the client resolves the destination's coords from the seed like any system, and
+    // re-derives the smooth position between ticks (transport-model.md §2.3/§6) — exactly as
+    // the clock ring animates off an engine period/phase. It invents no game number.
+    if (liveShipments.length) {
+      const hsT = galaxy.galaxyParams.hexSize;
+      // ONE timing source: the absolute fractional tick from the clock ring (§6 — the same
+      // machinery the sweep uses, not a second clock). Null before the first snapshot sets a
+      // tick — nothing to place, so skip the overlay this frame.
+      const Tf = window.__fractionalTick ? window.__fractionalTick() : null;
+      if (Tf !== null) {
+        liveShipments.forEach((ship) => {
+          const dest = systemById.get(ship.destinationSystemId);
+          if (!dest) return; // destination not in the seed — nothing to anchor the leg to
+          const oPix = hexToPixel(ship.originCoords.q, ship.originCoords.r, hsT);
+          const dPix = hexToPixel(dest.coords.q, dest.coords.r, hsT);
+          const A = worldToScreen(oPix.x, oPix.y);
+          const B = worldToScreen(dPix.x, dPix.y);
+          const offA = A.x < -60 || A.x > window.innerWidth + 60 || A.y < -60 || A.y > window.innerHeight + 60;
+          const offB = B.x < -60 || B.x > window.innerWidth + 60 || B.y < -60 || B.y > window.innerHeight + 60;
+          if (offA && offB) return; // whole leg off-screen
+
+          // the leg — dashed brass line A→B
+          ctx.save();
+          ctx.beginPath();
+          ctx.setLineDash([4, 6]);
+          ctx.strokeStyle = 'rgba(232,185,58,0.5)';
+          ctx.lineWidth = 1.4;
+          ctx.moveTo(A.x, A.y);
+          ctx.lineTo(B.x, B.y);
+          ctx.stroke();
+          ctx.restore();
+
+          // legProgress (transport-model.md §2.3): fraction elapsed in TIME == fraction
+          // covered in SPACE, because speed is constant along the leg. A zero-length schedule
+          // (departure == arrival) reads as landed rather than dividing by zero.
+          const span = ship.arrivalTick - ship.departureTick;
+          const f = span > 0 ? Math.min(1, Math.max(0, (Tf - ship.departureTick) / span)) : 1;
+          // the craft — lerp in WORLD space then project, so it rides the same straight line
+          // the leg draws under any rotation/zoom.
+          const wx = oPix.x + f * (dPix.x - oPix.x);
+          const wy = oPix.y + f * (dPix.y - oPix.y);
+          const cp = worldToScreen(wx, wy);
+          // the gold chevron, rotated to the leg's SCREEN angle (post-projection) with a soft glow
+          const theta = Math.atan2(B.y - A.y, B.x - A.x);
+          const cs = Math.min(6.5, 3.5 + zoom * 0.06);
+          ctx.save();
+          ctx.translate(cp.x, cp.y);
+          ctx.rotate(theta);
+          ctx.shadowColor = 'rgba(242,206,93,0.9)';
+          ctx.shadowBlur = 8;
+          ctx.fillStyle = '#f2ce5d';
+          ctx.beginPath();
+          ctx.moveTo(cs, 0);
+          ctx.lineTo(-cs, -cs * 0.8);
+          ctx.lineTo(-cs * 0.45, 0);
+          ctx.lineTo(-cs, cs * 0.8);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+
+          // the tag — carrier + ETA, only above 1× (the same threshold the map's own system
+          // labels use; the leg + craft draw at all zooms). The carrier is the CONSTANT word
+          // 'Syndicate' (transport-model.md §3 — a faceless service, no per-craft id this
+          // tier); the time is the engine's `ticksRemaining`, formatted (never recomputed).
+          if (zoom > 1) {
+            drawLabelBox(cp, ['Syndicate', fmtETA(ship.ticksRemaining)], 'outpost');
+          }
+        });
+      }
+    }
+
     // labels — diagonal line + name/detail box, ported from galaxy-map-hex.html.
     // Syndicate outposts label at WAYSTATION_LABEL_ZOOM (1.5×) and closer; the placeholder guild's own systems only above 1×.
     // Everyone else (rivals, unclaimed) stays unlabeled, same as the original.
@@ -3208,6 +3305,28 @@ select.field{appearance:none; cursor:pointer;}
     PLAYER_GUILD.ownedSystemIds = Object.keys(claims).filter((id) => claims[id] === live.myGuildId);
     PLAYER_GUILD.name = live.myGuildName || 'Your Guild';
     loadClaims({ guilds, systemClaims: claims });
+  };
+
+  // The sibling door for the IN-FLIGHT layer: the player's own Syndicate deliveries, pushed
+  // from the same poll beside __setLiveTerritory. Filters to the player's own shipments
+  // (`ownerGuildId === myGuildId`) — a rival's logistics are not free intel (a slice-local
+  // ruling; espionage is a later phase). Drops any row the engine surfaced WITHOUT its leg
+  // geometry (an unresolvable destination — no waystation, no leg to draw): the engine omits
+  // the fields defensively and the map mirrors that by skipping the row. Keeps only what the
+  // draw reads; the map computes nothing else from it.
+  window.__setLiveShipments = function (live) {
+    const rows = (live && live.shipments) || [];
+    const mine = live ? live.myGuildId : null;
+    liveShipments = rows
+      .filter((s) => s.ownerGuildId === mine)
+      .filter((s) => s.originCoords && typeof s.departureTick === 'number')
+      .map((s) => ({
+        originCoords: { q: s.originCoords.q, r: s.originCoords.r },
+        destinationSystemId: s.destinationSystemId,
+        departureTick: s.departureTick,
+        arrivalTick: s.arrivalTick,
+        ticksRemaining: s.ticksRemaining,
+      }));
   };
 
   // A stable colour per rival guild id. PRESENTATION ONLY — a hue, not a game
@@ -4913,6 +5032,14 @@ function applySnapshot(snap){
       systemClaims: LIVE.systemClaims,
     });
   }
+  // The IN-FLIGHT transport overlay reads from the same poll: the player's own deliveries
+  // and their leg fields, filtered/derived inside the map scope (transport-model.md §3/§6).
+  if (window.__setLiveShipments){
+    window.__setLiveShipments({
+      myGuildId: GAME.guildId,
+      shipments: snap.shipments || [],
+    });
+  }
   // The systems the player controls, for the detail screen's system picker.
   var mineIds = Object.keys(LIVE.systemClaims).filter(function(id){ return LIVE.systemClaims[id] === GAME.guildId; });
   window.__ownedSet = {}; mineIds.forEach(function(id){ window.__ownedSet[id] = 1; });
@@ -5140,6 +5267,20 @@ function noteTick(tick){
     __sweepStart=nowms();
   }
 }
+// The absolute FRACTIONAL tick, for consumers that tween between ticks (the galaxy-map
+// transport overlay). Built from the SAME two facts the ring sweeps on — the last observed
+// tick and how far we are into the current period: Tf = tick + phase. No heartbeat (period
+// null — an operator hand-ticking) ⇒ phase 0 ⇒ the integer tick, so a craft parks at its
+// tick position rather than inventing motion (the ring's own honest degradation; the ring
+// parks FULL, a craft parks in PLACE). It counts nothing itself (design.md §5): both facts
+// are the server's. Null until the first snapshot sets a tick, so a caller can tell "no tick
+// yet" apart from tick 0. One timing source, exposed once — not duplicated per consumer.
+window.__fractionalTick=function(){
+  if(__lastSeenTick===null) return null;
+  var period=__tickPeriodMs;
+  var frac=period ? Math.min(1,Math.max(0,(nowms()-__sweepStart)/period)) : 0;
+  return __lastSeenTick+frac;
+};
 (function clockLoop(){
   var tc=document.getElementById('tickclock');
   if(tc && document.getElementById('gameTop').classList.contains('show')){
