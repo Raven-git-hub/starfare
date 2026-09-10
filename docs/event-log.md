@@ -33,7 +33,7 @@ This document rules that log. The surface is the Guild Hall's MESSAGES panel: it
 **union** of the derived open action-items (renegotiation offers, pinned to the top) and the
 event-log **notices** below, newest first. The ENGINE half of the notices — the log, the
 writers, acknowledgement, retention, and the snapshot surfacing — shipped first (see the
-roadmap). The **client Notices panel** that renders them shipped next (§8).
+roadmap). The **client Notices panel** that renders them shipped next (§8) and is being **redesigned** into an email-style inbox + per-type popup (§9).
 
 ## 1. The log — append-only, per guild
 
@@ -144,6 +144,11 @@ by id, so a collision would let one ack hit two.
 
 ## 8. The client Notices panel (the CLIENT slice) — AS BUILT
 
+> **⤳ SUPERSEDED by §9 (the Notices redesign, ruled 10-09-26).** This section
+> records the FIRST client slice — inline notice rows with an inline ACKNOWLEDGE. §9 rules
+> the email-style inbox + per-type popup that replaces it; the client-rebuild slice rewrites
+> this section AS-BUILT when it ships.
+
 The Guild Hall MESSAGES panel (`client/game.html`) now renders the notices below the pinned
 open offers, to the mockup's `.msg.note` style (`docs/mockups/guild-hall-messages.html`).
 **Client only** — no engine / snapshot / `sim/` runtime change; it renders the published rows
@@ -165,3 +170,66 @@ and dispatches exactly one new action (`acknowledgeEvent`).
 - **The pip + badge** (the top-level Guild Hall tab and the Messages rail entry) light while any
   offer is open **or** any notice is unread (design.md §5), the count adding the player's own
   `attention.notices` to the open offers.
+
+## 9. The Notices surface, redesigned — an email-style inbox + per-type popup
+
+*Status: **RULED** 10-09-26. Supersedes §8's inline notice rows. Build pending, in two slices —
+an **engine field-slice** (the three additive fields below) then a **client slice** (the inbox +
+popups). Each moves doc + code together; §2 / §5 / §8 fold in the new fields / AS-BUILT as their
+slice ships. Visual contract: `docs/mockups/guild-hall-messages.html` (updated this commit).*
+
+The MESSAGES panel becomes an **email inbox**. Every row — the pinned action-items **and** the
+notices below — is a **clickable subject line**: an icon, a one-line title, a "when" (or, for an
+offer, its status/countdown), and, for an unread notice, the amber unread dot. The full detail no
+longer renders inline; clicking a row opens a **popup**. This replaces §8's fat notice rows
+(inline title + detail + inline ACKNOWLEDGE).
+
+**Read = opening the message.** Opening a notice's popup dispatches `acknowledgeEvent` for its id,
+so the row renders read on the next poll (dimmed, dot gone). This **supersedes the earlier
+"read = the player clicks ACKNOWLEDGE" trigger** — the engine action (§3) is **unchanged**; only
+the client's *trigger* moves from a button to the open. A notice popup therefore carries **no
+ACKNOWLEDGE button**, only a single **Dismiss** (close). An action-item popup is unchanged — its
+Accept / Reject resolve the offer as before.
+
+**The popup wears the adviser-reel card** — the two-column hero card of `client/game.html`'s
+`#reneg-overlay` (eyebrow, serif title, body, footer). Its hero panel is the **guild-adviser
+portrait** (`assets/characters/advisor.jpg`), **uniform across every notice type**: a
+Syndicate-specific portrait is the parked domain-character-advisers decision (§5), and no per-type
+art accent is used — one calm Syndicate tone.
+
+**Per-type popup content — every value is read from the surfaced event; the client types none and
+computes no game number (§18):**
+
+- **Title** — `Venture closed — {label}` / `Licence lapsed — {label}`, where `{label}` is
+  `prettyGood(payload.good)` + the venture kind word (`mining → "Mine"`, `refining → "Refinery"`).
+  This is why the payload must carry the kind (below): `ventureName` alone is a *location*, not a
+  "{Good} Mine" name.
+- **Body** — one static line per `type` + `payload.cause` (the four writers, §2), one plain
+  Syndicate tone. The **node-held sentence appears only when `payload.lockoutUntilTick` is
+  present** — a forced closure always writes a lockout, an *unlicensed* teardown never does, so the
+  popup must not claim a held node where none is held.
+- **Facts block** — `Location` = `payload.ventureName` (the seed site name, e.g.
+  "Kessic Reach IV · Node 3"); the event day (`Closed` / `Lapsed`) = the new `whenDay`; and, for a
+  closure carrying a lockout, `Node held until` = the new `unlockDay`.
+
+**The three additive engine fields this needs** (an engine slice; all additive, every determinism
+golden byte-identical, invariant 9 holds):
+
+1. **`payload.ventureType`** — the live venture's `v.type` (`'mining'` / `'refining'`), captured by
+   `applyLapse` / `applyVentureClosure` **at write time** (the venture is gone by render), recorded
+   in the self-contained payload beside `good` (§2). A captured entity field, not a tuning number.
+2. **`event.whenDay`** — a snapshot derive on each surfaced event: `dayOf(event.tick, windowN,
+   dayAnchorTick)`, the calendar day the notice was written. Derived on read (the `daysToLapse`
+   precedent), no stored byte.
+3. **`event.unlockDay`** — a snapshot derive on a `venture_closed` event **that carries a
+   `lockoutUntilTick`**: `dayOf(lockoutUntilTick, …)`, the calendar day its node frees. Absent
+   otherwise.
+
+Both day fields exist **because the client computes no game number** (§18): a past tick's calendar
+day is a derived figure, so — exactly as the renegotiation countdown's `daysToLapse` is — the
+engine derives it and the client renders it verbatim.
+
+**The inbox structure and the attention signals are otherwise §8's:** the two sections stay
+(design.md §5's union — action-items pinned on top, notices below, newest-first); the top-level
+Guild Hall pip and the Messages badge light while any offer is open **or** any notice is unread,
+counting the player's own `attention.notices` beside the open offers.
