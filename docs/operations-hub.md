@@ -96,6 +96,40 @@ recall any time, time to re-availability). ID + Type buttons → the transport-m
 
 - **Now — Phase 2 (this slice, the transport-visibility list companion):** the OPERATIONS frame + the
   rename + **IN TRANSIT live**; DEPLOYED / IDLE / LEASED as empty scaffolds; alert slot reserved.
+
+  **AS-BUILT 10-09-26 (CLIENT half, Phase 2).** Built in `client/game.html` — CLIENT only, no
+  engine/snapshot/sim change (determinism goldens byte-identical; the sim test count rose only by the
+  one new served-page tripwire in `sim/tests/server.test.js`). The old **Transport** tab (button +
+  its `TAB_STUBS` coming-soon entry) is **renamed to OPERATIONS**, now a top-level rendered panel
+  (`#tp-ops`) and a peer of TRADE / the Guild Hall / Deuterium — the same `openTab` + overlay pattern
+  as the Deuterium dashboard: `openTab('operations')` hides the other overlays, shows `#tp-ops` and
+  calls `window.__opsOpen()`; `window.__opsRefresh()` runs from `applySnapshot` beside the other
+  panels' refreshers, so an open panel re-reads each poll. The panel is the three-column Guild-Hall
+  layout (§2): **LEFT hero — LEASED**, **CENTRE** (IN TRANSIT on top, DEPLOYED + IDLE below), **RIGHT
+  hero — the pilot** (`client/assets/characters/pilot.jpg`, "Operations / Chief Pilot"). Every panel is
+  fixed-height with internal scroll (the flex `min-height:0` chain + `overflow-y:auto` on the list
+  bodies), so expanding a row never resizes a panel.
+
+  **IN TRANSIT is live** (§4): from `window.__snapshot().shipments`, the player's own
+  (`ownerGuildId === myGuildId`), dropping any row missing its leg fields, sorted ascending by
+  `ticksRemaining` (soonest first). Each row is `origin waystation · progress bar · [reserved alert] ·
+  time remaining · destination system` — names resolved off the seed the client holds (`__systemName`
+  and a new sibling shell bridge `__outpostName`, the same way the map resolves them); the progress
+  bar is `legProgress` (transport-model.md §2.3) off the engine's two ticks; the time is
+  `fmtETA(ticksRemaining)`, the engine's own number, **never** recomputed from `legProgress`. Clicking
+  a row expands a manifest: the identity line `Carrier: Syndicate` (no craft id this tier, §3) and the
+  cargo itemised `Good: Nu` (a Syndicate BUY is single-good → one line; the list takes more). The
+  **alert slot is built but unwired** (§4 — its one real trigger stays dormant until territory is
+  contestable). **LEASED / DEPLOYED / IDLE are empty scaffolds** (§7): section headers + calm empty
+  states ("No transports leased" / "Nothing deployed yet" / "Nothing idle"), no rows and no Manage
+  popups — their entities don't exist yet.
+
+  Proven end-to-end in headless Chromium against a booted server: two BUYs to systems the player holds
+  at different distances list soonest-first with origin, progress, ETA and destination; expanding the
+  top one shows its manifest; the DEPLOYED / IDLE / LEASED sections show their empty states; and a
+  rival-owned shipment does not appear. **Deferred, not invented:** the §9 LEASED-panel-when-empty
+  question (plain empty state vs interim summary) — built as the plain empty state, the interim-summary
+  option deferred to the leasing slice (Phase 4).
 - **2.1 (build yard):** idle assets + the **Manage popup** + deploy; DEPLOYED / IDLE populate.
 - **2.3 (tolls):** toll gates active; toll-route management.
 - **Phase 4 (guild transport + leasing):** guild craft fly trips (Craft IDs + craft-stats in IN

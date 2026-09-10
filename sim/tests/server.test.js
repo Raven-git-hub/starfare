@@ -115,6 +115,72 @@ test('GET / serves the TRANSPORT-VISIBILITY overlay — own in-flight legs, twee
   assert.ok(!html.includes('fmtETA(Tf'), 'the ETA must not be derived from the fractional tick');
 });
 
+// The OPERATIONS tab (docs/operations-hub.md) — renamed from Transport, the list-and-hub companion
+// to the galaxy-map transport overlay above. IN TRANSIT is live off the snapshot; LEASED / DEPLOYED
+// / IDLE are empty scaffolds this slice (§7). Pinned on the SERVED BYTES: a page that quietly reverted
+// the rename, dropped the poll refresher, or recomputed the ETA from the tweened bar would still
+// render perfectly, and only this would go red.
+test('GET / serves the OPERATIONS tab — the rename, the #tp-ops panel, IN TRANSIT live, the scaffolds', async () => {
+  const html = await (await fetch(base + '/')).text();
+
+  // The tab is RENAMED, and the old Transport tab (button + coming-soon stub) is gone.
+  assert.match(html, /<button class="rtab" onclick="openTab\('operations', this\)">Operations<\/button>/);
+  assert.ok(!html.includes(">Transport</button>"), 'the old Transport tab button is gone');
+  assert.ok(!html.includes("openTab('transport'"), 'the old transport tab key is gone');
+  assert.ok(!/TAB_STUBS = \{\s*transport:/.test(html), 'transport is no longer a stub');
+  assert.ok(!html.includes('A live status board of every vehicle you own'), 'the old Transport stub copy is gone');
+
+  // A TOP-LEVEL panel, a peer of #tp-deut: the fill-screen recipe + the flex-column show state,
+  // the openTab('operations') branch, and the panel element itself.
+  assert.match(html, /#tabPanel\.ops\{overflow:hidden;\}/, 'the fill-screen recipe (like #tp-guild / #tp-deut)');
+  assert.match(html, /#tp-ops\.show\{display:flex; flex-direction:column;\}/, 'the panel is a flex column');
+  assert.match(html, /if \(which === 'operations'\)/, "openTab must have an 'operations' branch");
+  assert.match(html, /id="tp-ops"/, 'the OPERATIONS top-level panel');
+
+  // The lifecycle mirrors the Deuterium dashboard's: opener + poll refresher, and the refresher IS
+  // called from applySnapshot so an open panel re-reads every poll (§4).
+  assert.match(html, /window\.__opsOpen = function/);
+  assert.match(html, /window\.__opsRefresh = function/);
+  assert.match(html, /if \(window\.__opsRefresh\) window\.__opsRefresh\(\);/, '__opsRefresh is called from the poll');
+
+  // IN TRANSIT reads the snapshot's shipments, the player's OWN only, and sorts soonest-first —
+  // dropping any row missing its leg geometry (an unresolvable waystation).
+  assert.match(html, /\(s && s\.shipments\) \|\| \[\]/);
+  assert.match(html, /sh\.ownerGuildId === myId/);
+  assert.match(html, /typeof sh\.departureTick === 'number' && typeof sh\.arrivalTick === 'number'/);
+  assert.match(html, /a\.ticksRemaining - b\.ticksRemaining/, 'ascending ticksRemaining — soonest arrival first');
+
+  // The expanded manifest: the carrier identity line (Syndicate, no craft id this tier — §3) and
+  // the cargo itemised `Good: Nu`.
+  assert.match(html, /Carrier: <b>Syndicate<\/b>/);
+  assert.match(html, /fmt\(cargo\[g\]\) \+ ' Nu/, 'the manifest itemises the cargo');
+
+  // Names resolved off the seed the client holds, exactly as the map resolves them — the new
+  // waystation bridge beside __systemName.
+  assert.match(html, /window\.__outpostName = function/);
+
+  // The progress bar is legProgress off the engine's TWO ticks (transport-model.md §2.3) — the same
+  // sanctioned derive the map tweens.
+  assert.match(html, /\(Tf - sh\.departureTick\) \/ span/);
+
+  // The ETA is the engine's own ticksRemaining, formatted — NEVER recomputed from the tweened bar.
+  assert.match(html, /fmtETA\(sh\.ticksRemaining\)/);
+  assert.ok(!html.includes('fmtETA(f)'), 'the ops ETA must not be derived from legProgress');
+  assert.ok(!html.includes('fmtETA(Tf'), 'the ops ETA must not be derived from the fractional tick');
+
+  // The reserved, unwired alert slot is built (dark, no trigger this slice — §4).
+  assert.match(html, /class="ops-alert"/);
+
+  // LEASED / DEPLOYED / IDLE ship as calm empty states — no rows, no Manage popups (§7).
+  assert.match(html, /No transports leased/);
+  assert.match(html, /Nothing deployed yet/);
+  assert.match(html, /Nothing idle/);
+  assert.match(html, /Nothing in transit/);
+
+  // The pilot hero art (§2).
+  assert.match(html, /assets\/characters\/pilot\.jpg/);
+});
+
 test('GET / serves the WIRED licence panel — the two real actions, and no mock caveat', async () => {
   const res = await fetch(base + '/');
   const html = await res.text();

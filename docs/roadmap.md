@@ -121,6 +121,21 @@ boundary so the later hex-map swap doesn't touch it.
   toward the destination as ticks step, a rival's shipment does not draw). *The Transport-tab board
   stays Phase 4.*
 
+- **The OPERATIONS tab (client)** — the list-and-hub companion to the galaxy-map overlay
+  (`docs/operations-hub.md`). The Transport tab is renamed **OPERATIONS** and becomes a top-level
+  rendered panel (`#tp-ops`, a peer of TRADE / Guild Hall / Deuterium) in the Guild-Hall visual
+  language: a three-column frame (LEASED hero | IN TRANSIT + DEPLOYED + IDLE | pilot hero), every panel
+  fixed-height with internal scroll. **IN TRANSIT is live** — the player's own in-flight Syndicate
+  deliveries off the snapshot (`ownerGuildId === myGuildId`, soonest-arrival first), each row an origin
+  waystation · progress bar (`legProgress`) · reserved alert slot · ETA (`fmtETA` of the engine's
+  `ticksRemaining`, never recomputed from the bar) · destination system, expandable to a
+  `Carrier: Syndicate` line + the cargo manifest. **LEASED / DEPLOYED / IDLE ship as empty scaffolds**
+  (their entities don't exist yet). CLIENT only — no engine/snapshot/sim change, determinism holds;
+  proven end-to-end in headless Chromium (two BUYs at different distances list soonest-first with
+  origin/progress/ETA/destination, the top row's manifest expands, the scaffolds show their empty
+  states, a rival's shipment does not appear). *The guild-craft / leasing board (LEASED, craft ids in
+  IN TRANSIT) stays Phase 4.*
+
 - **2.0 — Two guilds, the fuel contest proven.** Seat a second guild (inert or lightly scripted);
   run the existing mean-line / issuance as an actual multi-guild contest; confirm density-beats-sprawl
   tension is real between two actors. *No new mechanic — the oldest walking-skeleton line, closed.*
