@@ -670,7 +670,13 @@ function computeAttention(state) {
 //                 contested,
 //                 landmark: { kind, name?, coords?, ... } | null } ],
 //     shipments: [ { ownerGuildId, cargo: { good: int }, destinationSystemId,
-//                    arrivalTick, ticksRemaining } ],   // IN-FLIGHT, design.md §6
+//                    arrivalTick, ticksRemaining,
+//                    originOutpostId, originCoords: {q,r}, departureTick } ],
+//       // IN-FLIGHT, design.md §6. The last three are the LEG the client draws
+//       // (transport-model.md §2.3/§6): leg origin (nearest waystation) + the
+//       // departure tick, so the client re-derives legProgress and tweens the
+//       // craft between departureTick and arrivalTick. Omitted for a row whose
+//       // nearestWaystation is null (defensive; should not happen in flight).
 //     nodeLockouts: [ { siteId, releaseTick, lockedAtTick, ticksRemaining } ], // teardown §3.3
 //     attention: { renegotiations: [ { guildId, ventureId, ventureName, standing, offer } ],
 //                  notices: [ { guildId, id, tick, type, payload } ] },
@@ -1230,18 +1236,50 @@ function buildSnapshot(state) {
   }));
 
   // The IN-FLIGHT layer (§15.1): every pending Syndicate delivery, echoed as
-  // stored. `ticksRemaining` is the ONE derived field — `arrivalTick - tick`,
-  // floored at 0 so a delivery due this very tick reads 0 rather than a negative
-  // — computed here because §5's rule is that the browser renders and never
-  // calculates. `cargo` is spread into a fresh object so a consumer mutating the
-  // snapshot can never reach back into live state.
-  const shipments = (state.shipments || []).map((ship) => ({
-    ownerGuildId: ship.ownerGuildId,
-    cargo: { ...(ship.cargo || {}) },
-    destinationSystemId: ship.destinationSystemId,
-    arrivalTick: ship.arrivalTick,
-    ticksRemaining: Math.max(0, ship.arrivalTick - state.tick),
-  }));
+  // stored. `ticksRemaining` is the ONE counter derived field — `arrivalTick -
+  // tick`, floored at 0 so a delivery due this very tick reads 0 rather than a
+  // negative — computed here because §5's rule is that the browser renders and
+  // never calculates. `cargo` is spread into a fresh object so a consumer
+  // mutating the snapshot can never reach back into live state.
+  //
+  // The LEG the client draws (transport-model.md §2.3/§6): the Syndicate tier is
+  // a single straight leg, nearest-waystation → destination. The destination
+  // endpoint is `destinationSystemId` (the client resolves its coords like any
+  // system on the map); we add the START endpoint (`originOutpostId` /
+  // `originCoords`) and the leg's `departureTick` — the second of §2.3's two
+  // ticks, with `arrivalTick` already surfaced. Together the two ticks let the
+  // client re-derive `legProgress = clamp01((T − departureTick)/(arrivalTick −
+  // departureTick))` and tween the craft's position between them; the engine
+  // publishes endpoints + ticks, NOT a progress fraction (§6 — the client owns
+  // the smooth tween, like the clock ring off an engine-given period).
+  //
+  // All three are DERIVED on read from `destinationSystemId` + `arrivalTick` +
+  // the seed geometry — no stored byte on `state.shipments` (the record
+  // deliberately stores only destination + arrivalTick; a stored copy is a
+  // second home that drifts, §15.5). `departureTick = arrivalTick −
+  // arrivalTickFor(0, distance)`: `arrivalTickFor(0, distance)` is the leg's
+  // DURATION (`legTicks`, §2.2), so subtracting it from the arrival recovers the
+  // departure. `originCoords` is spread into a fresh object for the same no-alias
+  // discipline `cargo` gets. Defensive: if `nearestWaystation` returns null (no
+  // resolvable waystation — should not happen for a valid in-flight shipment),
+  // the three leg fields are omitted rather than throwing; the row still
+  // surfaces with its cargo + ticks.
+  const shipments = (state.shipments || []).map((ship) => {
+    const row = {
+      ownerGuildId: ship.ownerGuildId,
+      cargo: { ...(ship.cargo || {}) },
+      destinationSystemId: ship.destinationSystemId,
+      arrivalTick: ship.arrivalTick,
+      ticksRemaining: Math.max(0, ship.arrivalTick - state.tick),
+    };
+    const near = nearestWaystation(ship.destinationSystemId);
+    if (near) {
+      row.originOutpostId = near.outpost.id;
+      row.originCoords = { ...near.outpost.coords };
+      row.departureTick = ship.arrivalTick - arrivalTickFor(0, near.distance);
+    }
+    return row;
+  });
 
   const reserve = supply.fuel.reserve;
   const guildHeld = supply.fuel.guildHeld;

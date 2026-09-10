@@ -107,6 +107,26 @@ purchase; goods deposit on `arrivalTick`; destination lost in flight → the car
 
 **What the map shows for a delivery (RULED 10-09-26).** An in-flight Syndicate delivery draws as a craft sliding along its single leg — the client re-derives the position each frame (§2.3/§6) from the leg endpoints and the two ticks the engine surfaces; the engine publishes no progress fraction. Its map **tag** is the **carrier** — the constant word **“Syndicate”** for this tier, because the Syndicate is a faceless service with no per-craft identity to show — plus the **time remaining** to arrival. **No transport-ship id appears in this tier:** there is no player-owned craft to name (transport ships are the guild tier's deployable assets, §4/§5, `design.md` §"asset categories"). Each delivery is nonetheless a unique *trip*, and a unique **trip id** is the identifier that lands **with the guild tier (Phase 4)** — when a player selects a *specific* craft and needs to refer to that specific journey. Until something reads it, the shipment record deliberately carries **no id** (a field nobody reads is a second home waiting to drift, §15.5 / the `actions.js` shipment-shape comment).
 
+**AS-BUILT 10-09-26 — the leg the snapshot surfaces (engine half, `sim/snapshot.js`).** Each in-flight
+shipment row now carries its **leg origin** and **departure tick** alongside the existing
+`{ ownerGuildId, cargo, destinationSystemId, arrivalTick, ticksRemaining }`:
+- `originOutpostId` / `originCoords` — the leg's START endpoint, `nearestWaystation(destinationSystemId).outpost`'s
+  `id` and `coords`. The END endpoint is the already-present `destinationSystemId` (the client resolves
+  its coords like any system on the map), so between them the client has the whole leg.
+- `departureTick` = `arrivalTick − arrivalTickFor(0, distance)` — the second of §2.3's two ticks
+  (`arrivalTickFor(0, distance)` is the leg's DURATION, `legTicks`). With `arrivalTick`, the pair
+  brackets the flight, and the client re-derives `legProgress = clamp01((T − departureTick)/(arrivalTick −
+  departureTick))` to interpolate the craft's position (§2.3) — **the engine publishes no progress
+  fraction** (§6: the client owns the smooth tween, like the clock ring off an engine-given period).
+
+All three are **DERIVED on read** from `destinationSystemId` + `arrivalTick` + the seed geometry — **no
+stored field** on `state.shipments` (the record still stores only destination + arrivalTick; a stored
+copy is a second home that drifts, §15.5). Defensive: a row whose `nearestWaystation` returns null
+(should not happen for a valid in-flight shipment) **omits** the three leg fields rather than throwing,
+still surfacing its cargo + ticks. Read-only derive: no persisted/determinism golden moved. The
+galaxy-map / Transport-tab **CLIENT** half — which reads these fields and tweens — is the FOLLOWING
+slice.
+
 ## 4. The guild tier — gate-anchored routing on a graph (Phase 4)
 
 **Routes are gate-anchored.** A craft may only change direction at a gate or a toll-outpost. That

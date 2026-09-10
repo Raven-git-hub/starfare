@@ -488,12 +488,19 @@ test('the snapshot surfaces in-transit deliveries with a derived ticksRemaining'
 
   const snap = buildSnapshot(flown);
   assert.equal(snap.shipments.length, 1);
+  // The LEG the client draws (transport-model.md §2.3/§6): origin = nearest
+  // waystation, departureTick = arrivalTick − legTicks. DERIVED from the engine's
+  // own functions, not pinned, so retuned geometry cannot drift this assertion.
+  const near = nearestWaystation(DEST);
   assert.deepEqual(snap.shipments[0], {
     ownerGuildId: 'g1',
     cargo: { [GOOD]: 40 },
     destinationSystemId: DEST,
     arrivalTick: 1800,
     ticksRemaining: 1800 - 4,
+    originOutpostId: near.outpost.id,
+    originCoords: near.outpost.coords,
+    departureTick: 1800 - arrivalTickFor(0, near.distance),
   });
   // Derived telemetry only — mutating the snapshot cannot reach live state.
   snap.shipments[0].cargo[GOOD] = 999;

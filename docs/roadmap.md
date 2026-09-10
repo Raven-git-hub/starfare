@@ -98,6 +98,17 @@ Built in dependency order. Two keystones: the **asset economy** (upstream of eve
 and **territory** (upstream of tolls, exploration, espionage). All of it sits behind the world
 boundary so the later hex-map swap doesn't touch it.
 
+**Built so far:**
+
+- **Transport visibility (engine half)** — the snapshot now surfaces, on every in-flight Syndicate
+  shipment, the leg the client draws: `originOutpostId` / `originCoords` (the nearest waystation, the
+  leg's start endpoint) and `departureTick` (the second of transport-model.md §2.3's two ticks;
+  `arrivalTick` was already surfaced). All three are DERIVED on read from `destinationSystemId` +
+  `arrivalTick` + seed geometry — no stored field — so the client can re-derive `legProgress` and
+  tween the craft along its leg (§2.3/§6); the engine publishes endpoints + the two ticks, never a
+  progress fraction. *The galaxy-map / Transport-tab CLIENT half that reads these and interpolates is
+  the following slice.*
+
 - **2.0 — Two guilds, the fuel contest proven.** Seat a second guild (inert or lightly scripted);
   run the existing mean-line / issuance as an actual multi-guild contest; confirm density-beats-sprawl
   tension is real between two actors. *No new mechanic — the oldest walking-skeleton line, closed.*
