@@ -125,7 +125,7 @@ where it is serialized, guarded, and published in the snapshot exactly as descri
 **pin**, and a pinned venture keeps producing, keeps being judged, keeps being charged its fee, and can climb
 back out at full strength. Also not built: the mean line / `expectedRP` / `MEANLINE_K` / the fuel issuance
 modifier, `baseGrant`, every other RP source in §2.4, the `[DEFERRED]` GP sources of §1 (transports, tolls,
-droids, outposts, exploration — and no field for any of them). *(The client deploy meter came off this list
+outposts, exploration — droids are RULED **not** a GP source (§1) — and no field for any of them). *(The client deploy meter came off this list
 02-09-26: it no longer mocks the arithmetic — see §6.1 Slice 1d. It still SENDS nothing and reads no snapshot,
 because the venture it previews is not signed yet; what it stopped doing is previewing a number the engine
 would not pay.)*
@@ -174,8 +174,9 @@ leave possession. Recomputed each tick from state, never accumulated.
 - **Sources countable TODAY** (repo reality, `a96fcb8`): **systems held** (`sim/claims.js`), **mining
   ventures**, **refining ventures**, **deployed assets** (`sim/assets.js`). Tier-scaled.
 - **`[DEFERRED]` sources — named so Claude Code does NOT invent fields.** Not built; wire in when their systems
-  land: **transports** (size-scaled), **tolls**, **droids**, **outposts** (guild-owned — see naming below),
+  land: **transports** (size-scaled), **tolls**, **outposts** (guild-owned — see naming below),
   **exploration**. Do **not** add `guild.tolls`, `guild.scanners`, etc.
+- **Droids are NOT a GP source — RULED 10-09-26, not merely deferred.** A droid is a *production multiplier on an existing venture*, not a holding: it raises a venture's **output**, not the guild's **footprint**. GP measures size (systems held, ventures deployed) and sets the expected-RP bar; productivity is a different axis, so droids **never count toward GP and never raise the mean line**. This is deliberate — droids are **pure benefit on the RP/mean-line axis, paid for on the credit axis** (build cost, ongoing maintenance spend, the exponential curve's hard cap), which keeps size/standing and productivity cleanly separate and makes droids a lever players *want* to invest in. Because droids add no GP, §1.2's passive-asset offset does not apply to them (nothing to offset). *(`sim/points.js`'s comment still lists droids among its `[DEFERRED]` sources; that comment is reconciled — droids → ruled-out — the next time code touches `points.js`, e.g. the droid build slice.)*
 
 ### 1.0 The formula (ruled 31-08-26 — slice 3)
 
