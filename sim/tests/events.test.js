@@ -18,6 +18,7 @@ const { createState } = require('../state.js');
 const { intake, createAcknowledgeEventAction } = require('../actions.js');
 const { checkInvariants } = require('../invariants.js');
 const { buildSnapshot } = require('../snapshot.js');
+const { dayOf } = require('../calendar.js');
 
 // A minimal valid galaxy — one guild, the shared fuel/syndicate/window scaffolding
 // checkInvariants needs — so a test can inject events and assert only the event log.
@@ -112,21 +113,22 @@ test('liveEvents on a guild with no log is []', () => {
 
 test('applyLapse writes licence_lapsed with the caller\'s cause and a self-contained payload', () => {
   for (const cause of ['rejected', 'timeout']) {
-    const venture = { id: 'v', ownerGuildId: 'g', resourceType: 'titanium', systemId: 'sysA', reputation: 50, licence: { committedOutputPct: 0.5, windowDays: 7, signedTick: 0 } };
+    const venture = { id: 'v', ownerGuildId: 'g', type: 'mining', resourceType: 'titanium', systemId: 'sysA', reputation: 50, licence: { committedOutputPct: 0.5, windowDays: 7, signedTick: 0 } };
     const guild = { id: 'g', guildReputation: 50, ventures: [venture] };
     applyLapse(guild, venture, cause, 42);
     const e = guild.events[0];
     assert.equal(e.type, 'licence_lapsed', `${cause}: type`);
     assert.equal(e.tick, 42, `${cause}: tick is the passed producing tick`);
     assert.equal(e.readTick, undefined, `${cause}: unread`);
-    assert.deepEqual(e.payload, { cause, ventureId: 'v', ventureName: 'v', good: 'titanium', systemId: 'sysA' });
+    // The payload now carries the captured venture KIND beside `good` (docs/event-log.md §9).
+    assert.deepEqual(e.payload, { cause, ventureId: 'v', ventureName: 'v', good: 'titanium', ventureType: 'mining', systemId: 'sysA' });
     assert.ok(!venture.licence && !('reputation' in venture), `${cause}: and the lapse effect still happened`);
   }
 });
 
 test('applyVentureClosure writes venture_closed with the caller\'s cause; lockoutUntilTick present iff written', () => {
   // 'forced', licensed with term left → the payload carries the node lockout tick.
-  const licVenture = { id: 'v', ownerGuildId: 'g', siteId: 's', resourceType: 'titanium', systemId: 'sysA', reputation: 10, licence: { committedOutputPct: 1, windowDays: 7, signedTick: 0, discountedFee: 3 } };
+  const licVenture = { id: 'v', ownerGuildId: 'g', type: 'mining', siteId: 's', resourceType: 'titanium', systemId: 'sysA', reputation: 10, licence: { committedOutputPct: 1, windowDays: 7, signedTick: 0, discountedFee: 3 } };
   const licGuild = { id: 'g', guildReputation: 10, ventures: [licVenture] };
   const state = { tick: 0, windowN: 4 };
   applyVentureClosure(state, licGuild, licVenture, 'forced', 9);
@@ -135,17 +137,19 @@ test('applyVentureClosure writes venture_closed with the caller\'s cause; lockou
   assert.equal(forced.payload.cause, 'forced');
   assert.equal(forced.tick, 9, 'the passed producing tick');
   assert.equal(forced.payload.good, 'titanium');
+  assert.equal(forced.payload.ventureType, 'mining', 'the captured venture kind rides the notice');
   assert.equal(forced.payload.systemId, 'sysA');
   assert.equal(forced.payload.lockoutUntilTick, 7 * 4, 'a lockout was written, so the tick rides the notice');
   assert.equal(licGuild.ventures.length, 0, 'the venture was removed');
 
   // 'teardown', UNLICENSED → no lockout, so no lockoutUntilTick key.
-  const unlicVenture = { id: 'u', ownerGuildId: 'g', resourceType: 'copper', systemId: 'sysB' };
+  const unlicVenture = { id: 'u', ownerGuildId: 'g', type: 'mining', resourceType: 'copper', systemId: 'sysB' };
   const unlicGuild = { id: 'g', guildReputation: 0, ventures: [unlicVenture] };
   applyVentureClosure({ tick: 0, windowN: 4 }, unlicGuild, unlicVenture, 'teardown', 3);
   const teardown = unlicGuild.events[0];
   assert.equal(teardown.payload.cause, 'teardown');
   assert.equal(teardown.payload.good, 'copper');
+  assert.equal(teardown.payload.ventureType, 'mining', 'the captured venture kind rides the notice');
   assert.ok(!('lockoutUntilTick' in teardown.payload), 'no lockout written → no lockout tick in the payload');
 });
 
@@ -215,6 +219,50 @@ test('the snapshot drops an AGED-OUT event from the live feed', () => {
   const snap = buildSnapshot(s);
   assert.deepEqual(snap.guilds.find((g) => g.id === 'g').events, [], 'the aged-out row is not surfaced');
   assert.equal(snap.attention.notices.length, 0, 'and it is not an action-item either');
+});
+
+// ─── snapshot surfacing: the derived calendar days (docs/event-log.md §9) ──────────
+//
+// The engine derives each surfaced notice's calendar day(s) ON READ (the `daysToLapse`
+// precedent), because the client computes no game number (§18). `baseState` runs `windowN`
+// 4 and the default anchor 0; the expected day is `dayOf` over that same cadence/anchor, the
+// same fallback the snapshot reads.
+
+// The cadence/anchor a snapshot of `s` derives days over — the exact defensive read the
+// surfacing uses, so a test never hard-codes a day the engine didn't actually compute.
+const dayFieldsBasis = (s) => [s.windowN == null ? 4 : s.windowN, s.dayAnchorTick == null ? 0 : s.dayAnchorTick];
+
+test('a surfaced venture_closed WITH a lockout carries whenDay AND unlockDay, each the calendar day of its own tick', () => {
+  const s = baseState({
+    events: [{ id: 0, tick: 8, type: 'venture_closed', payload: { cause: 'forced', lockoutUntilTick: 20 } }],
+    eventSeq: 1,
+  });
+  s.tick = 10;
+  const [N, anchor] = dayFieldsBasis(s);
+  const row = buildSnapshot(s).guilds.find((g) => g.id === 'g').events[0];
+  assert.equal(row.whenDay, dayOf(8, N, anchor), 'whenDay is the calendar day of the event tick');
+  assert.equal(row.unlockDay, dayOf(20, N, anchor), 'unlockDay is the calendar day the lockout releases');
+  // And the two are genuinely different days here — whenDay tracks `tick`, unlockDay the lockout.
+  assert.notEqual(row.whenDay, row.unlockDay);
+});
+
+test('a surfaced licence_lapsed and an unlicensed-teardown closure carry whenDay and NO unlockDay', () => {
+  const s = baseState({
+    events: [
+      { id: 0, tick: 5, type: 'licence_lapsed', payload: { cause: 'rejected' } },               // a lapse holds no node
+      { id: 1, tick: 9, type: 'venture_closed', payload: { cause: 'teardown' } },                // unlicensed teardown, no lockout
+    ],
+    eventSeq: 2,
+  });
+  s.tick = 12;
+  const [N, anchor] = dayFieldsBasis(s);
+  const rows = buildSnapshot(s).guilds.find((g) => g.id === 'g').events;
+  const lapsed = rows.find((e) => e.id === 0);
+  const teardown = rows.find((e) => e.id === 1);
+  assert.equal(lapsed.whenDay, dayOf(5, N, anchor), 'the lapse carries its whenDay');
+  assert.ok(!('unlockDay' in lapsed), 'a lapse holds no node → no unlockDay');
+  assert.equal(teardown.whenDay, dayOf(9, N, anchor), 'the unlicensed teardown carries its whenDay');
+  assert.ok(!('unlockDay' in teardown), 'an unlicensed teardown wrote no lockout → no unlockDay');
 });
 
 // ─── checkEventLog invariant ──────────────────────────────────────────────────────

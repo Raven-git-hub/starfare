@@ -79,6 +79,10 @@ The **payload** is built by the writer, before it forfeits/removes, and is self-
   renegotiation attention entry carries), falling back to the raw `siteId` then the id. Carried
   because the venture may be gone (closure) or unlicensed (lapse) by the time the client reads it.
 - `good` — the venture's committed good (`producedGoodFor`).
+- `ventureType` — the venture's kind, `v.type` (`'mining'` / `'refining'`), captured at write
+  time because the venture is gone/unlicensed by the time the client renders the notice. The
+  redesigned popup (§9) builds its title `prettyGood(good) + " Mine"/" Refinery"` from it —
+  `ventureName` alone is a *location*, not a kind. A captured entity field, not a tuning number.
 - `systemId` — the venture's system.
 - `lockoutUntilTick` — **`venture_closed` only, and only when a node lockout was written** (an
   ordinary-licensed venture closed with contract time left, `docs/venture-teardown.md` §3.3).
@@ -125,6 +129,18 @@ pattern — and extends `computeAttention` with **`attention.notices`**, the gui
 live notices, beside `attention.renegotiations` (the join the renegotiation slice left room for).
 Both are **derived on read**: no serialized byte beyond `Guild.events` / `Guild.eventSeq`
 themselves, no determinism hash, invariant 9 holds.
+
+Each surfaced `guilds[].events` row also carries two **derived calendar days** (the redesign,
+§9) beside the copied `{ ...e, payload: { ...e.payload } }` — computed on read over the galaxy's
+`windowN` / `dayAnchorTick`, exactly as the renegotiation countdown's `daysToLapse` is:
+
+- **`whenDay`** — `dayOf(e.tick, …)`, the calendar day the notice was written (the popup's
+  "Closed" / "Lapsed" date and the inbox row's "when"). On every surfaced row.
+- **`unlockDay`** — `dayOf(e.payload.lockoutUntilTick, …)`, the calendar day a node frees, **only
+  on a `venture_closed` carrying a `lockoutUntilTick`**; absent on a lapse or an unlicensed
+  teardown, which hold no node. These are derived-on-read too — no stored byte, invariant 9
+  holds — and `attention.notices` is **unchanged** (it is the unread badge count; the day fields
+  ride `guilds[].events`).
 
 ## 6. Invariant
 
@@ -173,10 +189,11 @@ and dispatches exactly one new action (`acknowledgeEvent`).
 
 ## 9. The Notices surface, redesigned — an email-style inbox + per-type popup
 
-*Status: **RULED** 10-09-26. Supersedes §8's inline notice rows. Build pending, in two slices —
-an **engine field-slice** (the three additive fields below) then a **client slice** (the inbox +
-popups). Each moves doc + code together; §2 / §5 / §8 fold in the new fields / AS-BUILT as their
-slice ships. Visual contract: `docs/mockups/guild-hall-messages.html` (updated to the redesign).*
+*Status: **RULED** 10-09-26. Supersedes §8's inline notice rows. Built in two slices — the
+**engine field-slice** (the three additive fields below) is **BUILT** (the three fields ship, §2
+and §5 folded in above); the **client slice** (the inbox + popups) stays **pending**. Each moves
+doc + code together; §2 / §5 / §8 fold in the new fields / AS-BUILT as their slice ships. Visual
+contract: `docs/mockups/guild-hall-messages.html` (updated to the redesign).*
 
 The MESSAGES panel becomes an **email inbox**. Every row — the pinned action-items **and** the
 notices below — is a **clickable subject line**: an icon, a one-line title, a "when" (or, for an
@@ -212,8 +229,8 @@ computes no game number (§18):**
   "Kessic Reach IV · Node 3"); the event day (`Closed` / `Lapsed`) = the new `whenDay`; and, for a
   closure carrying a lockout, `Node held until` = the new `unlockDay`.
 
-**The three additive engine fields this needs** (an engine slice; all additive, every determinism
-golden byte-identical, invariant 9 holds):
+**The three additive engine fields this needs** — **BUILT** (the engine field-slice; all additive,
+every determinism golden byte-identical, invariant 9 holds):
 
 1. **`payload.ventureType`** — the live venture's `v.type` (`'mining'` / `'refining'`), captured by
    `applyLapse` / `applyVentureClosure` **at write time** (the venture is gone by render), recorded

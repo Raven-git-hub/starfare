@@ -718,6 +718,12 @@ function buildSnapshot(state) {
     // The derivation the asset block below reads: assetId -> the venture running
     // it. Computed ONCE per guild (sim/assets.js), not per asset row.
     const deployedTo = deployedAssetIds(g);
+    // The calendar cadence + anchor, read the same defensive way `renegotiationFieldsFor`
+    // and the top-level `calendar` block do (sim/calendar.js) — so each surfaced notice's
+    // derived `whenDay` / `unlockDay` lands on the SAME calendar day as every other derived
+    // day in the snapshot (docs/event-log.md §9). Derived on read, no stored byte.
+    const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+    const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
     return {
       id: g.id,
       name: g.name,
@@ -1060,7 +1066,26 @@ function buildSnapshot(state) {
       // hash — the snapshot answers to a reader, and a stable shape is kinder than a key that
       // appears only after the first lapse/closure. Its UNREAD subset is aggregated top-level in
       // `attention.notices` for the panel's badge.
-      events: liveEvents(g, state.tick).map((e) => ({ ...e, payload: { ...e.payload } })),
+      //
+      // Each row also gains two DERIVED calendar days (docs/event-log.md §9), computed on
+      // read exactly as the renegotiation countdown's `daysToLapse` is — the client computes
+      // no game number (§18), so a past tick's calendar day is the engine's to hand over:
+      //   - `whenDay`   — the calendar day the notice was written (`e.tick`), the popup's
+      //                   "Closed" / "Lapsed" date and the inbox row's "when".
+      //   - `unlockDay` — ONLY on a `venture_closed` carrying a node lockout
+      //                   (`payload.lockoutUntilTick`): the day the node frees. Absent
+      //                   otherwise (a lapse, or an unlicensed teardown, holds no node — the
+      //                   popup must not show a "Node held until" it doesn't have).
+      // The deep-copy discipline (`payload: { ...e.payload }`) is kept so the snapshot never
+      // aliases engine state.
+      events: liveEvents(g, state.tick).map((e) => ({
+        ...e,
+        payload: { ...e.payload },
+        whenDay: dayOf(e.tick, windowN, dayAnchorTick),
+        ...(e.payload.lockoutUntilTick != null
+          ? { unlockDay: dayOf(e.payload.lockoutUntilTick, windowN, dayAnchorTick) }
+          : {}),
+      })),
     };
   });
 

@@ -117,6 +117,7 @@ test('a breach that drives a venture to −500 force-closes it: removed, licence
   assert.equal(notice.payload.ventureId, 'mine_1');
   assert.ok(typeof notice.payload.ventureName === 'string' && notice.payload.ventureName.length > 0, 'a display name is carried');
   assert.equal(notice.payload.good, 'titanium', 'the committed good is carried');
+  assert.equal(notice.payload.ventureType, 'mining', 'the captured venture kind is carried (event-log.md §9)');
   assert.equal(notice.payload.systemId, HOME_SYSTEM, 'the system is carried');
   assert.equal(notice.payload.lockoutUntilTick, expectedRelease, 'the node lockout tick is carried (one was written)');
   assert.equal(notice.readTick, undefined, 'born unread');
@@ -218,6 +219,7 @@ test('a venture cratering PAST its term is closed but writes no lockout', () => 
   // The notice omits `lockoutUntilTick` exactly when no lockout was written (§2 self-contained).
   const notice = guildOf(s).events.find((e) => e.type === 'venture_closed');
   assert.equal(notice.payload.cause, 'forced');
+  assert.equal(notice.payload.ventureType, 'mining', 'the captured venture kind is still carried');
   assert.ok(!('lockoutUntilTick' in notice.payload), 'no lockout tick in the payload — none was written');
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });

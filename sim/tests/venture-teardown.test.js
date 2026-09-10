@@ -123,6 +123,7 @@ test('decommissioning a licensed venture: fee charged, site free, asset idle, lo
   assert.ok(notice, 'a venture_closed notice was recorded');
   assert.equal(notice.payload.cause, 'teardown', 'a player teardown');
   assert.equal(notice.payload.ventureId, 'mine_1');
+  assert.equal(notice.payload.ventureType, 'mining', 'the captured venture kind is carried (event-log.md §9)');
   assert.equal(notice.payload.lockoutUntilTick, want.lockoutUntilTick, 'the lockout tick is carried');
   assert.equal(notice.tick, after.tick, 'stamped with the tick the teardown ran on');
   assert.equal(notice.readTick, undefined, 'born unread');
@@ -190,6 +191,7 @@ test('an unlicensed venture tears down with no fee and no lockout, and its node 
   const notice = guildOf(after).events.find((e) => e.type === 'venture_closed');
   assert.equal(notice.payload.cause, 'teardown');
   assert.equal(notice.payload.ventureId, 'mine_u');
+  assert.equal(notice.payload.ventureType, 'mining', 'the captured venture kind is still carried');
   assert.ok(!('lockoutUntilTick' in notice.payload), 'no lockout tick — an unlicensed teardown writes none');
   // The node is free at once — a fresh establish is accepted with no wait.
   assert.equal(validateAction(after, createEstablishVentureAction({

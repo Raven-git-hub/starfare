@@ -483,6 +483,7 @@ test('lapse — reverts to unlicensed, forfeits the venture RP, keeps the ventur
   assert.equal(notice.payload.ventureId, 'mine_1');
   assert.ok(typeof notice.payload.ventureName === 'string' && notice.payload.ventureName.length > 0, 'a display name is carried');
   assert.equal(notice.payload.good, 'titanium', 'the committed good is carried');
+  assert.equal(notice.payload.ventureType, 'mining', 'the captured venture kind is carried (event-log.md §9)');
   assert.equal(notice.payload.systemId, HOME_SYSTEM, 'the system is carried');
   assert.equal(notice.readTick, undefined, 'born unread');
 
@@ -674,6 +675,7 @@ test('auto-lapse — an unanswered licence lapses at lapseTick, keeping the vent
   assert.ok(notice, 'the auto-lapse recorded a licence_lapsed notice');
   assert.equal(notice.payload.cause, 'timeout', 'a timed-out auto-lapse, not a chosen reject');
   assert.equal(notice.payload.ventureId, 'mine_1');
+  assert.equal(notice.payload.ventureType, 'mining', 'the captured venture kind is carried (event-log.md §9)');
   assert.equal(notice.tick, lapseTick, 'stamped with the tick the auto-lapse landed on (no off-by-one)');
   assert.equal(notice.readTick, undefined, 'born unread');
   // And it surfaces as an unread notice in the attention aggregate (the panel's badge).

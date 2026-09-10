@@ -1014,6 +1014,10 @@ function applyLapse(guild, venture, cause, tick) {
     ventureId: venture.id,
     ventureName: ventureName(venture),
     good: producedGoodFor(venture) || null,
+    // The venture KIND ('mining' / 'refining'), captured at write time because the venture
+    // may be unlicensed/gone by render — the client builds the notice title "{Good} Mine/
+    // Refinery" from it, and `ventureName` alone is a location, not a kind (event-log.md §9).
+    ventureType: venture.type || null,
     systemId: venture.systemId || null,
   });
   guild.guildReputation -= (venture.reputation || 0);
@@ -1072,6 +1076,10 @@ function applyVentureClosure(state, guild, venture, cause, tick) {
     ventureId: venture.id,
     ventureName: ventureName(venture),
     good: producedGoodFor(venture) || null,
+    // The venture KIND ('mining' / 'refining'), captured here because the venture is about
+    // to be spliced out — the client builds the title "{Good} Mine/Refinery" from it, and
+    // the name alone is a location, not a kind (event-log.md §9). Beside `good`, as §2 rules.
+    ventureType: venture.type || null,
     systemId: venture.systemId || null,
     ...(lockoutUntilTick != null ? { lockoutUntilTick } : {}),
   });
