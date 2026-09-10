@@ -1661,10 +1661,11 @@ test('GET / serves the Venture Management popup shell, wired to the published fi
   assert.match(html, /openNodeOverlay\('Settlement Slot '/, 'a rival Settlement slot keeps the read-only overlay');
 });
 
-// #64 Slice 1b: the Guild Hall MESSAGES panel, the renegotiation popup, and the two entry points.
-// Both halves are pinned on the SERVED BYTES — a page that quietly reverted would still render and
-// only this would go red — the same discipline the VM and asset-picker tripwires follow.
-test('GET / serves the MESSAGES panel + the renegotiation popup, wired to the attention derive', async () => {
+// The Guild Hall MESSAGES panel — the email-style inbox (event-log.md §9): the renegotiation popup,
+// the two reneg entry points, and the redesigned Notices (subject-line rows + a per-type notice
+// popup, read on open). Pinned on the SERVED BYTES — a page that quietly reverted would still render
+// and only this would go red — the same discipline the VM and asset-picker tripwires follow.
+test('GET / serves the MESSAGES inbox + the renegotiation and notice popups, wired to the attention derive', async () => {
   const html = await (await fetch(base + '/')).text();
 
   // 1. THE MESSAGES RAIL ENTRY at the top of the Guild Hall tab list, with its count badge.
@@ -1676,12 +1677,13 @@ test('GET / serves the MESSAGES panel + the renegotiation popup, wired to the at
   assert.match(html, /function myRenegotiations\(s\)\{/, 'the player-guild filter over the attention derive');
   assert.match(html, /s\.attention && Array\.isArray\(s\.attention\.renegotiations\)/, 'reads the snapshot attention derive');
 
-  // 2. THE MESSAGES PANEL renders the open offers as the pinned "Needs a decision" section, and
-  //    (the event-log CLIENT slice) the NOTICES below — read + unread — off the player guild's
-  //    guilds[].events. "No notices yet." is now the EMPTY-log case only, not a permanent stub.
+  // 2. THE MESSAGES PANEL renders the open offers as the pinned "Needs a decision" section (each a
+  //    subject-line row opening the reneg popup), and (event-log.md §9) the NOTICES below — read +
+  //    unread — off the player guild's guilds[].events. "No notices yet." is the EMPTY-log case only.
   assert.match(html, /function messagesPanel\(me\)\{/, 'the Messages panel renderer');
   assert.match(html, /Needs a decision/, 'the pinned action-item section');
-  assert.match(html, /data-reneg="/, 'a Messages row carries its venture id for the popup');
+  assert.match(html, /data-reneg="/, 'an action-item row carries its venture id for the reneg popup');
+  assert.match(html, /data-note="/, 'a notice row carries its event id for the notice popup');
   // The Notices section renders the published rows; "No notices yet." shows ONLY when the log is
   // empty (gated on notices.length now, not printed unconditionally as the Slice-1b stub was).
   assert.match(html, /var notices = \(me && Array\.isArray\(me\.events\)\) \? me\.events : \[\];/,
@@ -1691,22 +1693,42 @@ test('GET / serves the MESSAGES panel + the renegotiation popup, wired to the at
   assert.match(html, /class="msg note'\+\(unread \? '' : ' read'\)\+'"/,
     'a notice row is a .msg.note, dimmed .read once acknowledged');
   assert.match(html, /var unread = n\.readTick == null;/, 'unread is the ABSENCE of readTick (event-log.md §3)');
-  assert.match(html, /<div class="unreaddot">/, 'an unread notice shows the unread dot');
-  // The per-cause copy (event-log.md §2) and the QUALITATIVE node-held line — no lockout number
-  // derived from payload.lockoutUntilTick (§18, the client computes no game number).
-  assert.match(html, /function noticeCopy\(n\)\{/, 'the per-notice copy is keyed on type + cause');
+  assert.match(html, /<span class="unreaddot"><\/span>/, 'an unread notice shows the amber unread dot (CSS hides it once read)');
+  // 2b. THE REDESIGN (event-log.md §9): a notice row is a SUBJECT LINE that opens a per-type popup.
+  //     Its title is built from payload.good + the venture kind (payload.ventureType), and its
+  //     "when" is the engine-derived whenDay ("Day N") — rendered verbatim, no game number typed.
+  assert.match(html, /var KIND_WORD = \{ mining:'Mine', refining:'Refinery' \};/,
+    'the title kind word comes from payload.ventureType (§2)');
+  assert.match(html, /function noticeLabel\(p\)\{/, 'the "{Good} {Kind}" title label (degrades gracefully)');
+  assert.match(html, /function noticeTitle\(n\)\{/, 'the popup title builder');
   assert.match(html, /'Licence lapsed — '/, 'the licence_lapsed title');
   assert.match(html, /'Venture closed — '/, 'the venture_closed title');
-  assert.match(html, /its node is held for the rest of the term/,
-    'the node-held line is qualitative — no lockout duration derived (§18)');
-  // The ACKNOWLEDGE control + its wiring: only unread rows carry it, and it dispatches the
-  // EXISTING acknowledgeEvent { guildId, eventId } for that notice's numeric id.
-  assert.match(html, /<button class="ack" data-ack="'\+esc\(n\.id\)\+'">Acknowledge<\/button>/,
-    'an unread notice carries an ACKNOWLEDGE control with its event id');
-  assert.match(html, /type:'acknowledgeEvent', guildId:ackGuild, eventId:eventId/,
-    'ACKNOWLEDGE dispatches the existing acknowledgeEvent action');
-  assert.match(html, /Number\(ackBtn\.getAttribute\('data-ack'\)\)/,
-    'the event id is sent as a Number (the engine matches by strict ===)');
+  assert.match(html, /function noticeRowTitle\(n\)\{/, 'the subject-line row title (label in the muted .who span)');
+  assert.match(html, /\('Day ' \+ n\.whenDay\)/, 'the row "when" is the engine-derived whenDay (§9), rendered verbatim');
+  // 2c. THE NOTICE POPUP (§9) — the adviser-reel card, its own overlay + its own opener, filled from
+  //     the row's event by id. Uniform Syndicate tone (one eyebrow, no per-type accent). A single
+  //     Dismiss — NO ACKNOWLEDGE button. The body is static per (type + cause); the node-held
+  //     sentence and the "Node held until" fact are gated on payload.lockoutUntilTick / unlockDay.
+  assert.match(html, /id="notice-overlay"/, 'the notice popup overlay');
+  assert.match(html, /Syndicate Notice/, 'the uniform Syndicate-notice eyebrow (no per-type accent, §9)');
+  assert.match(html, /id="noticeTitle"/, 'the popup title slot');
+  assert.match(html, /id="noticeBody"/, 'the popup body slot');
+  assert.match(html, /id="noticeFacts"/, 'the popup facts block');
+  assert.match(html, /id="noticeDismiss"[^>]*>Dismiss</, 'a single Dismiss control — no ACKNOWLEDGE button (§9)');
+  assert.match(html, /function noticeBody\(n\)\{/, 'the popup body is keyed on type + cause (the four writers, §2)');
+  assert.match(html, /Its node stays held under the Syndicate's lockout/, 'the node-held sentence is present …');
+  assert.match(html, /if\(p\.lockoutUntilTick != null\)\{\s*base \+=/,
+    '… and gated on payload.lockoutUntilTick — a lapse / unlicensed teardown claims no node (§9)');
+  assert.match(html, /facts\.push\(\['Node held until', 'Day ' \+ n\.unlockDay, true\]\);/,
+    'the facts block shows "Node held until" = unlockDay, only on a closure carrying a lockout');
+  assert.match(html, /window\.__openNotice = openNotice/, 'the notice popup single entry point is exposed (§9)');
+  // 2d. READ = OPENING (§9): a notice row click opens the popup, which dispatches the EXISTING
+  //     acknowledgeEvent for the row's id (as a Number). There is NO inline ACKNOWLEDGE control.
+  assert.ok(!/class="ack" data-ack=/.test(html), 'the inline ACKNOWLEDGE button is gone (read = opening, §9)');
+  assert.match(html, /openNotice\(Number\(noteRow\.getAttribute\('data-note'\)\)\)/,
+    'a notice row click opens the popup with its id sent as a Number');
+  assert.match(html, /type:'acknowledgeEvent', guildId:guildId, eventId:eventId/,
+    'opening a notice dispatches the existing acknowledgeEvent action');
   // The tab pip + the Messages badge light for an unread notice too (design.md §5 — highlights
   // while any offer is open OR any notice is unread), the count adding unread notices to offers.
   assert.match(html, /function myUnreadNotices\(s\)\{/, 'the player-guild unread-notice filter over attention.notices');
