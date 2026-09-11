@@ -564,3 +564,31 @@ deferred (it destabilised the model); see `fuel-supply-and-allocation.md §4.2`.
 ✅ **`reserve.fuelPrice` NOW HAS ITS FLOOR — ANSWERED 01-09-26 by slice 5b-ii.** 5b-i flagged that nothing bounded the price away from **zero**, which the grant conversion divides by, and closed the gap the only way that invented no number: `physicalGrantFor` **throws** on a price that is not finite and `> 0`. `PRICE_FLOOR = 2` is the answer, and it makes that guard **unreachable from a controller-written price** — a clamped curve cannot produce a zero. The guard stays anyway, now covering a hand-built fixture or a future writer rather than the controller, and a test sweeps the extremes to show no pool level and no demand average can defeat the clamp. *(Original note, for the record: the invariants sweep the price for finiteness and non-negativity, but nothing bounded it away from zero; the floor/ceiling that make the controller respect that were two of the coefficients above, and were not a first cut taken in 5b-i.)*
 
 ⚠ **`reserve.avgDraw` IS THE SECOND SANCTIONED FLOAT ON THE RESERVE (slice 5b-ii).** It averages a quantity of fuel rather than counting one, so it is not rounded — the rounding to integer fuel happens at the point of grant, where it always has. The invariants sweep it for finiteness and non-negativity like the price. It is seeded to `DEUTERIUM_INFLUX_PER_CYCLE`, which invents nothing: it IS the influx constant, used as the honest opening guess that a galaxy with no history draws what the Syndicate supplies.
+
+
+## Tier-3 modules & Tier-4 asset recipes (first cut)
+
+*(11-09-26, the 2.1 asset-economy thread. The full recipe vocabulary and input
+sets live in `docs/asset-recipes.md`; this entry records their tuning status.)*
+
+**Every quantity in the module catalog and the Tier-4 asset bills is
+`[FIRST-CUT]`** — chosen so each recipe FUNCTIONS and can be tested, not because
+it is balanced. Andy will retune after physical tests; the figures themselves are
+in `docs/asset-recipes.md` today and move into `sim/recipes.js` /
+`sim/resources.js` when the 2.1a catalog engine slice lands.
+
+**Magnitude rationale (so the numbers are not noise):** structural-bulk inputs
+(titanium_alloy, radiation_shielding) sit at 2–3; electronics/optics
+(silicon_wafer, luminite_glass) at 1–2; gases/fluids at 1–2; every module batch
+outputs 1. Reactor engines *escalate* by size (small < medium < heavy, not
+"3 small = 1 heavy") so a Heavy is its own demanding bill. Tier-4 module counts
+carry the per-asset multipliers in the bills.
+
+**`luminite_glass`** `[FIRST-CUT]`: 2 silica · 1 carbon_products · 1 xenon → 1 —
+one new Tier-2 processed good (optics/viewports). Lands in `PROCESSED_GOODS` +
+`recipes.js` with the catalog.
+
+**Watch (survival rule 7):** `magnetic_assemblies` feeds ~14 of the 25 modules
+and is the tree's dominant chokepoint. Intended pressure, but if a live run shows
+the tree bottlenecks one-dimensionally on it, rebalance a few counts onto
+`conductive_material`. A retune call, not a first-cut error.

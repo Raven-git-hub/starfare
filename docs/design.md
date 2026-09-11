@@ -142,6 +142,8 @@ Raw materials play three structurally different roles as they climb the tree, wh
 
 **Tier 2 → 3 (Processed → Manufactured Parts):**
 
+> **SUPERSEDED / EXTENDED (11-09-26, the 2.1 asset-economy thread).** Tier 3 is now the **module** catalog — tradable subsystem goods, each manufactured in one 2→3 step from Tier-2 goods — and Tier-4 assets are constructed from 4–8 modules. The eight-part sketch below is kept for history; the live Tier-3 vocabulary (25 modules + the new Tier-2 good `luminite_glass`), the full 2→3 recipe sets, and every Tier-4 asset bill live in **`docs/asset-recipes.md`**. The three inert `*_reactor_engine` placeholders in `resources.js` are superseded there by real module recipes. First-cut quantities: `docs/phase-1-tuning.md`.
+
 |Manufactured Part|Built From|
 |---|---|
 |Engine Components|Titanium Alloy + Heat-Resistant Alloy|
@@ -228,6 +230,8 @@ Droids decay only while deployed (never idle in storage), with decay slowed by a
 The recipe uses only existing Phase 3 parts — Motors/Generators (mobility), Computers (autonomy), Microchips/Sensors (perception), Power Storage Units (power), Structural Frame Sections (chassis). Notably there is no weapon component (security is an assignment, not a build variant) and no Life Support (droids are non-organic).
 
 ### Ships
+
+> **SUPERSEDED (11-09-26, the 2.1 asset-economy thread).** The Light/Medium draft below is history. All four ship classes (Light · Medium · Heavy · Spy), plus every ground / installation asset (miner, factory, outpost-as-depot, deep-scan array, toll gate, droid), are now specified as **module bills** in **`docs/asset-recipes.md`**, built from the Tier-3 module catalog defined there. Weapons are deliberately absent from the game; a `defence_system` module is the only protective part. Quantities are first-cut (`docs/phase-1-tuning.md`).
 
 **All spaceships run on Deuterium reactors** as standard equipment across every class. Two transport classes are drafted:
 
