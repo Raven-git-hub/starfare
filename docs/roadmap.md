@@ -18,7 +18,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
-| 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,147 tests, deterministic) |
+| 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,157 tests, deterministic) |
 | 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **Next** — nothing of the inter-guild contest is built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
@@ -45,9 +45,13 @@ contest is Phase 2. Grouped record:
 - **Harness & determinism** — pure `tick(state, actions)`, the eight §15.6 steps as named functions,
   invariant checks (conservation of fuel/credits, non-negativity, determinism), canonical
   serialization + state hashing, validate-as-it-arrives action intake, the driver.
-- **Resources & the production tree** — resource vocabulary, 11 recipes, the multi-input recipe
-  engine, rate-based resolution with stockpile drawdown + per-good batch carry, production profiles
-  as owned state, the production resolver + preview, engine-computed review flags.
+- **Resources & the production tree** — resource vocabulary, the multi-input recipe engine,
+  rate-based resolution with stockpile drawdown + per-good batch carry, production profiles as owned
+  state, the production resolver + preview, engine-computed review flags. The recipe catalog is 37:
+  12 Tier-2 refines (raw→processed, incl. `luminite_glass`) + the 25 Tier-3 **module** manufactures
+  (processed→module, 2.1a — `docs/asset-recipes.md`), all run by the one tier-blind engine. Tier-4
+  construct + the build yard are 2.1b (not built; the module *outputs* are catalog, the picker still
+  greys Tier-3 in the client).
 - **Commitment & the Syndicate fork** — commitment-as-sale (committed goods earn credits),
   one-pot priority-ordered distribution, windowed accrual, per-venture met/breach via the
   pursue-order fill, factory output commits producer-general.

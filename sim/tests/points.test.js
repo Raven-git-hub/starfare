@@ -126,15 +126,33 @@ test('tierOf returns null for a good in NEITHER list — fuel, a Tier-3 placehol
   assert.equal(tierOf(undefined), null);
 });
 
-test('every good a REAL venture can produce today has a ruled weight', () => {
-  // The reachability claim behind "the halt is unreachable today": every mining
-  // resourceType and every recipe output resolves to a weighted tier. If a recipe is ever
-  // added whose output does not, this goes red BEFORE a guild's size silently understates.
+test('every Tier-1/Tier-2 producible good has a ruled weight; Tier-3 modules are the deferred set', () => {
+  // Every mining resourceType and every Tier-2 refine output resolves to a weighted tier —
+  // if a NEW raw good or a NEW processed recipe is ever added without a weight, this goes
+  // red BEFORE a guild's size silently understates.
   for (const good of RAW_RESOURCES) assert.ok(TIER_WEIGHT[tierOf(good)] !== undefined, good);
   const { RECIPES } = require('../recipes.js');
+  const { isRawResource, isProcessedGood } = require('../resources.js');
   for (const r of Object.values(RECIPES || {})) {
     const out = r.output.good;
-    assert.ok(TIER_WEIGHT[tierOf(out)] !== undefined, `recipe output ${out} must have a ruled GP weight`);
+    if (isRawResource(out) || isProcessedGood(out)) {
+      assert.ok(TIER_WEIGHT[tierOf(out)] !== undefined, `Tier-1/2 recipe output ${out} must have a ruled GP weight`);
+    }
+  }
+  // 2.1a: the module recipes' outputs are the KNOWN, DELIBERATE exception. `W_T3` = 300 is
+  // ruled in docs/phase-1-tuning.md but stays DEFERRED in code (points.js `TIER_WEIGHT`),
+  // so `tierOf(module)` is null and a venture producing a module would HALT in guildPoints
+  // (the documented "rule the weight before you score it" tripwire). That halt is
+  // unreachable in play — the client's recipe picker greys Tier-3 out (2.1a is engine-only,
+  // catalog) — so no guild deploys a module venture yet. Un-deferring W_T3 (adding the
+  // tier-3 line to TIER_WEIGHT + tierOf) is the deploy-side ruling for a later slice, left
+  // for the human. Pinned here so the deferral is a conscious, visible state, not a gap.
+  const { TIER3_GOODS } = require('../resources.js');
+  for (const m of TIER3_GOODS) {
+    const r = RECIPES[m];
+    assert.ok(r, `${m} has a recipe`);
+    assert.equal(tierOf(r.output.good), null, `${m} is a Tier-3 module: no ruled GP weight yet (W_T3 deferred)`);
+    assert.equal(TIER_WEIGHT[tierOf(r.output.good)], undefined, `${m} would HALT in guildPoints — the deferred-weight tripwire`);
   }
 });
 

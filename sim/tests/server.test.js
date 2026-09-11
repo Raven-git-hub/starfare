@@ -17,7 +17,7 @@ const net = require('node:net');
 const { spawn } = require('node:child_process');
 
 const { makeServer } = require('../server.js');
-const { STOCKPILE_GOODS } = require('../resources.js');
+const { STOCKPILE_GOODS, TIER3_GOODS } = require('../resources.js');
 
 let server;
 let base;
@@ -1121,15 +1121,16 @@ test('GET /goods returns the vocabulary by tier', async () => {
   assert.ok(body.processed.includes('titanium_alloy'), 'a known processed good is present');
   assert.ok(!body.raw.includes('titanium_alloy'), 'processed goods are not in the raw list');
 
-  // Tier 3: the three display-only placeholders, served so the console never has
-  // to type a good name of its own. Additive — raw/processed are untouched above.
-  assert.deepEqual(body.tier3, ['small_reactor_engine', 'medium_reactor_engine', 'heavy_reactor_engine']);
-  // …and they are NOT goods the economy knows: nothing served here may be a
-  // stockpile key. (resources.test.js proves the rest of the isolation.)
+  // Tier 3 (2.1a): the 25 real module goods, served so the console never has to type a
+  // good name of its own. Additive — raw/processed are untouched above.
+  assert.deepEqual(body.tier3, [...TIER3_GOODS]);
+  assert.equal(body.tier3.length, 25, 'the 25 modules');
+  // As of 2.1a a module IS a stockpile good (it is manufactured, held and priced), but
+  // it is still its own tier — never listed among raw (tier 1) or processed (tier 2).
   for (const g of body.tier3) {
-    assert.equal(STOCKPILE_GOODS.includes(g), false, `${g} must never be a stockpile good`);
-    assert.equal(body.raw.includes(g), false);
-    assert.equal(body.processed.includes(g), false);
+    assert.equal(STOCKPILE_GOODS.includes(g), true, `${g} is a stockpile good now`);
+    assert.equal(body.raw.includes(g), false, `${g} is not a raw good`);
+    assert.equal(body.processed.includes(g), false, `${g} is not a processed good`);
   }
 });
 

@@ -37,7 +37,7 @@
 // checklist instead of being guessed. A refinery's baseline is in BATCHES/tick;
 // its output units are batches × the recipe's output qty.
 
-const { RAW_RESOURCES, PROCESSED_GOODS, DEUTERIUM } = require('./resources.js');
+const { RAW_RESOURCES, PROCESSED_GOODS, TIER3_GOODS, DEUTERIUM } = require('./resources.js');
 const { getRecipe, listRecipes } = require('./recipes.js');
 
 // [FIRST-CUT] the uniform baseline every entry below is currently set to.
@@ -64,19 +64,49 @@ const MINE_BASELINE = Object.freeze({
   xenon: 5,
 });
 
-// Refining ventures: baseline BATCHES/tick, keyed by recipeId.
+// Refining/manufacturing ventures: baseline BATCHES/tick, keyed by recipeId. Both the
+// Tier-2 refines and (as of 2.1a) the 25 Tier-3 module manufactures sit here at the one
+// ruled uniform droidless baseline, FIRST_CUT_BASELINE (= 5) — a module is quoted and
+// its capacity summed by the same path as a processed good (docs/phase-1-tuning.md).
 const REFINERY_BASELINE = Object.freeze({
   battery_cells: 5,
   carbon_fiber_weave: 5,
   composite_resin: 5,
   conductive_material: 5,
   heat_resistant_alloy: 5,
+  luminite_glass: 5,
   magnetic_assemblies: 5,
   nanotube_cable: 5,
   radiation_shielding: 5,
   refrigerant_fluid: 5,
   silicon_wafer: 5,
   titanium_alloy: 5,
+  // Tier-3 modules (recipeId === module good id), alphabetical, all at FIRST_CUT_BASELINE.
+  cargo_handling_system: 5,
+  cargo_module: 5,
+  chassis: 5,
+  claim_beacon: 5,
+  comms_array: 5,
+  control_module: 5,
+  deep_scan_mast: 5,
+  defence_system: 5,
+  drive_module: 5,
+  droid_components: 5,
+  extraction_head: 5,
+  fabrication_line: 5,
+  fuel_tank: 5,
+  habitation_module: 5,
+  heavy_reactor_engine: 5,
+  hull_plating: 5,
+  interdiction_projector: 5,
+  life_support_module: 5,
+  medium_reactor_engine: 5,
+  photovoltaic_array: 5,
+  power_cells: 5,
+  reactor_housing: 5,
+  sensor_suite: 5,
+  small_reactor_engine: 5,
+  stealth_module: 5,
 });
 
 // producedGoodFor(venture) -> the good this venture's output lands as, or null when it
@@ -212,8 +242,9 @@ function baselineUnitsForGood(good) {
 }
 
 // refineryVentureFor(good) -> the minimal refining-venture shape that makes `good`, or
-// null when no recipe outputs it (a raw good, fuel, a Tier-3 placeholder) or when more
-// than one does (see above).
+// null when no recipe outputs it (a raw good, fuel) or when more than one does (see
+// above). Since 2.1a a Tier-3 module DOES have a recipe, so it resolves here like a
+// processed good — it is no longer an example of the no-recipe case.
 function refineryVentureFor(good) {
   const makers = listRecipes().filter((r) => r.output.good === good);
   return makers.length === 1 ? { recipeId: makers[0].id } : null;
@@ -224,7 +255,9 @@ function refineryVentureFor(good) {
 // than a good that silently prices off a zero capacity.
 const BASELINE_KEYS = Object.freeze({
   mines: Object.freeze([...RAW_RESOURCES]),
-  recipes: Object.freeze([...PROCESSED_GOODS]), // recipeId === its output good, one per processed good
+  // recipeId === its output good: one per processed good (Tier 2) AND one per module
+  // (Tier 3, 2.1a). Both must carry a baseline or the drift guard fails loudly.
+  recipes: Object.freeze([...PROCESSED_GOODS, ...TIER3_GOODS]),
 });
 
 module.exports = {

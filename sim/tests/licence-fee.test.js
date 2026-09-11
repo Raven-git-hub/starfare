@@ -530,9 +530,12 @@ test('the per-good baseline is the licence path’s own, and null where nothing 
   for (const good of PRICED_GOODS) {
     assert.ok(baselineUnitsForGood(good) > 0, `${good} is priced, so something must be able to make it`);
   }
+  // 2.1a: a Tier-3 module now HAS a recipe and a baseline, so it resolves like any
+  // refined good — a venture manufacturing it is quotable (5 batches × output qty 1).
+  assert.equal(baselineUnitsForGood('small_reactor_engine'),
+    REFINERY_BASELINE.small_reactor_engine * getRecipe('small_reactor_engine').output.qty);
   // Nothing produces these, so there is no fee to quote and none is invented.
   assert.equal(baselineUnitsForGood('deuterium_fuel'), null, 'fuel is not a licensable output (§8)');
-  assert.equal(baselineUnitsForGood('small_reactor_engine'), null, 'a Tier-3 placeholder has no recipe yet');
   assert.equal(baselineUnitsForGood('no_such_good'), null);
   assert.equal(baselineUnitsForGood(null), null);
 });

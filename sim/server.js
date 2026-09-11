@@ -570,11 +570,11 @@ async function handleRequest(req, res) {
   // The good vocabulary, categorized (RULES, not state; from resources.js).
   // Static and read-only, so the UI fetches it once to bucket the flat
   // galactic-supply totals into manufacturing-tree tiers. `tier3` is the
-  // Manufactured Parts vocabulary — three DISPLAY-ONLY placeholder names with no
-  // recipe, baseline or price yet (resources.js `TIER3_GOODS`); the console
-  // needs them to head a Tier-3 group at all, and reading them from here is what
-  // stops the browser inventing game vocabulary of its own. Tier 4 (Constructed
-  // Assets) still has no goods, so the UI renders it as an empty placeholder.
+  // Manufactured Parts vocabulary — as of 2.1a the 25 real module goods
+  // (resources.js `TIER3_GOODS`), each with a 2->3 recipe, a baseline and a
+  // price; the console reads them from here so the browser never invents game
+  // vocabulary of its own. Tier 4 (Constructed Assets) still has no goods, so
+  // the UI renders it as an empty placeholder.
   if (method === 'GET' && path === '/goods') {
     sendJson(res, 200, { raw: RAW_RESOURCES, processed: PROCESSED_GOODS, tier3: TIER3_GOODS });
     return;

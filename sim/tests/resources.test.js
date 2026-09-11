@@ -61,13 +61,14 @@ test('titanium_alloy is a processed, stockpile good — not raw, not fuel', () =
 // Phase-2 (raw -> processed) layer; every entry has a recipe (recipes.js). Adding
 // or removing a processed good MUST update this list, so vocabulary changes are
 // always conscious. Each must be a processed stockpile good and never raw/fuel.
-test('the processed-goods vocabulary is exactly the Phase-2 set', () => {
+test('the processed-goods vocabulary is exactly the Phase-2 set (+ luminite_glass, 2.1a)', () => {
   assert.deepEqual([...PROCESSED_GOODS], [
     'battery_cells',
     'carbon_fiber_weave',
     'composite_resin',
     'conductive_material',
     'heat_resistant_alloy',
+    'luminite_glass', // 2.1a: the new Tier-2 good the module catalog needs (optics/viewports)
     'magnetic_assemblies',
     'nanotube_cable',
     'radiation_shielding',
@@ -83,53 +84,78 @@ test('the processed-goods vocabulary is exactly the Phase-2 set', () => {
   }
 });
 
-test('STOCKPILE_GOODS is raw + processed, sorted and unique', () => {
-  const expected = [...RAW_RESOURCES, ...PROCESSED_GOODS].sort();
+test('STOCKPILE_GOODS is raw + processed + tier3, sorted and unique', () => {
+  // 2.1a: the Tier-3 modules JOINED the stockpile vocabulary — they are manufactured,
+  // held and priced like any other good, so they are legal stockpile keys now.
+  const expected = [...RAW_RESOURCES, ...PROCESSED_GOODS, ...TIER3_GOODS].sort();
   assert.deepEqual([...STOCKPILE_GOODS], expected);
   assert.equal(new Set(STOCKPILE_GOODS).size, STOCKPILE_GOODS.length, 'no duplicates');
   // fuel is a stockpile good under no interpretation
   assert.equal(isStockpileGood(FUEL_GOOD), false);
 });
 
-// --- Tier 3: the display-only placeholders, fenced off the economy ------------
-// The console needs a Tier-3 vocabulary to head a group with; these three names
-// are it. The tripwire below is the whole reason they can be added safely: it
-// asserts they reach NOTHING the economy reads. If someone later gives one of
-// them a recipe or a price without also promoting it properly, this goes red.
+// --- Tier 3: the 25 real module goods (2.1a) ----------------------------------
+// Pre-2.1a these were three display-only `*_reactor_engine` placeholders fenced off
+// the economy. As of 2.1a they are the 25 real modules: each is a full stockpile good
+// with a 2->3 recipe, a baseline and a price. The tripwire below is INVERTED from what
+// it once asserted — it now proves the promotion is COMPLETE (every module reaches the
+// recipe, baseline and price tables), so a module can never be half-wired.
 
-test('TIER3_GOODS is the pinned placeholder vocabulary', () => {
+test('TIER3_GOODS is the pinned module vocabulary (the 25 modules, 2.1a)', () => {
   assert.deepEqual([...TIER3_GOODS], [
-    'small_reactor_engine',
-    'medium_reactor_engine',
+    'cargo_handling_system',
+    'cargo_module',
+    'chassis',
+    'claim_beacon',
+    'comms_array',
+    'control_module',
+    'deep_scan_mast',
+    'defence_system',
+    'drive_module',
+    'droid_components',
+    'extraction_head',
+    'fabrication_line',
+    'fuel_tank',
+    'habitation_module',
     'heavy_reactor_engine',
+    'hull_plating',
+    'interdiction_projector',
+    'life_support_module',
+    'medium_reactor_engine',
+    'photovoltaic_array',
+    'power_cells',
+    'reactor_housing',
+    'sensor_suite',
+    'small_reactor_engine',
+    'stealth_module',
   ]);
+  assert.equal(TIER3_GOODS.length, 25, 'exactly the 25 modules from docs/asset-recipes.md');
   assert.equal(new Set(TIER3_GOODS).size, TIER3_GOODS.length, 'no duplicates');
   assert.ok(Object.isFrozen(TIER3_GOODS), 'the vocabulary is frozen like the others');
 });
 
-test('TRIPWIRE: the Tier-3 placeholders carry no baseline, no price, no recipe, no stockpile', () => {
+test('TRIPWIRE: every Tier-3 module IS a fully-wired stockpile good — recipe, baseline, price', () => {
   const prices = seedPrices();
   for (const g of TIER3_GOODS) {
-    // Not in any set the economy iterates.
-    assert.equal(STOCKPILE_GOODS.includes(g), false, `${g} must never be a stockpile key`);
+    // A module is a legal stockpile key now — so stockpile validation (invariants.js)
+    // and the supply totals admit it, and it can sit in a guild's stockpiles.
+    assert.equal(STOCKPILE_GOODS.includes(g), true, `${g} is a stockpile good now`);
+    assert.equal(isStockpileGood(g), true);
+    // But it is NEITHER raw NOR processed — Tier 3 is its own vocabulary. It is not
+    // minable, and `isProcessedGood` names only the Tier-2 refines.
     assert.equal(RAW_RESOURCES.includes(g), false, `${g} is not raw`);
     assert.equal(PROCESSED_GOODS.includes(g), false, `${g} is not processed`);
-    // Every predicate says no — so stockpile validation (invariants.js) and the
-    // supply totals cannot admit it.
-    assert.equal(isStockpileGood(g), false);
     assert.equal(isRawResource(g), false);
     assert.equal(isProcessedGood(g), false);
     assert.equal(isFuel(g), false);
-    // No production number: no mine baseline, no refinery baseline, no recipe.
-    assert.equal(Object.prototype.hasOwnProperty.call(MINE_BASELINE, g), false, `${g} has no mine baseline`);
-    assert.equal(Object.prototype.hasOwnProperty.call(REFINERY_BASELINE, g), false, `${g} has no refinery baseline`);
-    assert.equal(Object.prototype.hasOwnProperty.call(RECIPES, g), false, `${g} has no recipe`);
-    for (const r of Object.values(RECIPES)) {
-      assert.notEqual(r.output.good, g, `${g} is the output of no recipe`);
-      assert.equal((r.inputs || []).some((i) => i.good === g), false, `${g} is the input of no recipe`);
-    }
-    // No price: not priced, and no row in a freshly seeded price table.
-    assert.equal(PRICED_GOODS.includes(g), false, `${g} is not priced`);
-    assert.equal(Object.prototype.hasOwnProperty.call(prices, g), false, `${g} has no price row`);
+    // It is manufactured, not mined: no mine baseline, but it HAS a refinery baseline
+    // and a recipe whose output is the module itself.
+    assert.equal(Object.prototype.hasOwnProperty.call(MINE_BASELINE, g), false, `${g} has no mine baseline (it is not mined)`);
+    assert.equal(Object.prototype.hasOwnProperty.call(REFINERY_BASELINE, g), true, `${g} has a refinery/manufacture baseline`);
+    assert.equal(Object.prototype.hasOwnProperty.call(RECIPES, g), true, `${g} has a recipe`);
+    assert.equal(RECIPES[g].output.good, g, `${g}'s recipe outputs the module itself`);
+    // And it is priced: a fresh price table carries a row for it, and it is a priced good.
+    assert.equal(PRICED_GOODS.includes(g), true, `${g} is priced`);
+    assert.equal(Object.prototype.hasOwnProperty.call(prices, g), true, `${g} has a price row`);
   }
 });
