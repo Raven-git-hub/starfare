@@ -37,10 +37,11 @@
 //    pay for it, so it raises the guild's bar and delivers nothing — claiming space you
 //    cannot use is meant to cost.
 //
-// 4. TIER COMES FROM `producedGoodFor`, GENERALLY. Mining and refining are not special-
-//    cased; the venture's produced good is looked up and its tier decides the weight. So
-//    the day tier-3 recipes are real, they score through this same line — the only edit
-//    is a new entry in `TIER_WEIGHT`.
+// 4. TIER COMES FROM `producedGoodFor`, GENERALLY. Mining, refining and (as of 2.1a)
+//    module manufacture are not special-cased; the venture's produced good is looked up
+//    and its tier decides the weight. When the Tier-3 recipes became real (2.1a) they
+//    scored through this same line — the only edit was the new `3: 300` entry in
+//    `TIER_WEIGHT`, exactly as this note anticipated.
 //
 // WHAT IS NOT HERE, deliberately (§1's `[DEFERRED]` sources): transports, tolls, droids,
 // outposts and exploration. None of their systems exist, and the doc names them precisely
@@ -50,7 +51,7 @@
 
 const { heldSystemIds } = require('./claims.js');
 const { producedGoodFor, isDeuteriumMine, isIllegalDeuteriumRefinery } = require('./baseline.js');
-const { isRawResource, isProcessedGood } = require('./resources.js');
+const { isRawResource, isProcessedGood, isTier3Good } = require('./resources.js');
 
 // W_SYS — the Points a held system is worth.
 //
@@ -70,10 +71,9 @@ const W_SYS = 200;
 
 // TIER_WEIGHT — the Points a venture is worth, by the TIER of the good it produces.
 //
-// A MAP, not two named constants, because ruling 4 is that tier is general: a higher tier
-// scores more, and `W_T3` / `W_T4` are `[DEFERRED]` in phase-1-tuning only because those
-// goods are not real yet (sim/resources.js `TIER3_GOODS` are display-only placeholders
-// with no recipes). When they are, this gains a line and nothing else changes.
+// A MAP, not named constants, because ruling 4 is that tier is general: a higher tier
+// scores more. `W_T3` (300) went LIVE in 2.1a (below); `W_T4` stays deferred as a GP
+// weight — no Tier-4 good exists, its only reader is the deuterium-licence RP path.
 //
 // A tier with NO entry here is a deliberate STOP, not a zero — see `tierWeight`.
 //
@@ -87,11 +87,20 @@ const W_SYS = 200;
 // (`tierFactor` = 5, `ventureTierWeight` = 500, sim/licence.js) — so the T4 weight now has a
 // real reader and belongs in the map. It changes NO GP: `tierOf('deuterium')` is 1, and a
 // licensed deuterium mine is already skipped in `guildPoints` (slice 1), so nothing reads a
-// tier-4 GP weight. `W_T3` (300) still stays OUT — no tier-3 good exists, and an unweighted
-// tier must still HALT (see `tierWeight`), never score 0.
+// tier-4 GP weight.
+//
+// ⤳ W_T3 = 300 PULLED IN 2.1a (docs/asset-recipes.md; docs/phase-1-tuning.md GP-weights row).
+// The 25 Tier-3 module goods are now real and producible, so `tierOf` resolves a module to 3
+// and a venture manufacturing one MUST score its GP rather than HALT. The number is the ruled
+// 1 : 1.5 : 3 : 5 ladder's third rung — not invented here, only un-deferred now that the goods
+// it weighs exist. This closes a latent cross-system halt: `guildPoints`, the issuance grant
+// (∝ GP), the mean line / founding endowment (∝ GP) and the licence signing bump (tier-scaled)
+// all read this weight, and every one of them would have thrown on a module venture the instant
+// the client's Tier-3 grey-out (a UI guard, removed next slice) stopped hiding it.
 const TIER_WEIGHT = Object.freeze({
   1: 100,  // raw — a mine
   2: 150,  // processed — a refinery, half again the mine that feeds it
+  3: 300,  // Tier-3 module — a factory manufacturing a module (2.1a; the ruled 3× the mine)
   4: 500,  // the RP-only Tier-4 weight (deuterium licence); no GP reader — see note above
 });
 
@@ -101,19 +110,21 @@ const TIER_WEIGHT = Object.freeze({
 // shape, so a non-integer here would silently produce a non-integer GP; a test pins that
 // the weights are whole numbers rather than leaving it to be noticed downstream.
 
-// tierOf(good) -> 1 | 2 | null. Which manufacturing tier a good belongs to (design.md
-// §15.2: Tier 1 Raw → Tier 2 Processed → …), answered by the resources vocabulary through
-// its OWN predicates rather than by re-reading the arrays here, so this cannot come to
-// disagree with what the rest of the engine considers raw or processed.
+// tierOf(good) -> 1 | 2 | 3 | null. Which manufacturing tier a good belongs to (design.md
+// §15.2: Tier 1 Raw → Tier 2 Processed → Tier 3 Module → …), answered by the resources
+// vocabulary through its OWN predicates rather than by re-reading the arrays here, so this
+// cannot come to disagree with what the rest of the engine considers raw, processed or module.
 //
-// `null` = a good in NEITHER list. Today that is reachable only for `deuterium_fuel`
-// (fuel is in no stockpile list, and no recipe outputs it) and the `TIER3_GOODS`
-// placeholders (no 2→3 recipe exists, so no venture can produce one). It is a "this tier
-// has no ruled weight yet" signal, and the caller HALTS on it — it is never a 0.
+// `null` = a good in NONE of the three lists. Today that is reachable only for `deuterium_fuel`
+// (fuel is in no stockpile list, and no recipe outputs it). Since 2.1a the Tier-3 modules ARE
+// weighted (tier 3), so a module no longer returns null — a venture producing one scores 300
+// rather than halting. `null` remains a "this good has no ruled tier weight" signal on which
+// the caller HALTS — never a 0.
 function tierOf(good) {
   if (!good) return null;
   if (isRawResource(good)) return 1;
   if (isProcessedGood(good)) return 2;
+  if (isTier3Good(good)) return 3;
   return null;
 }
 

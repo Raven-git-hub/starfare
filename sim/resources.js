@@ -138,6 +138,7 @@ const TIER3_GOODS = Object.freeze([
 const STOCKPILE_GOODS = Object.freeze([...RAW_RESOURCES, ...PROCESSED_GOODS, ...TIER3_GOODS].sort());
 
 const STOCKPILE_GOOD_SET = new Set(STOCKPILE_GOODS);
+const TIER3_GOOD_SET = new Set(TIER3_GOODS);
 
 // Is `id` a raw, minable resource — i.e. a legal key for a guild stockpile and
 // a row in the galactic resource totals? (Fuel is not: it is held as fuel, not
@@ -156,12 +157,21 @@ function isProcessedGood(id) {
   return PROCESSED_GOOD_SET.has(id);
 }
 
-// Is `id` a legal stockpile key / galactic-supply row (raw OR processed, not fuel)?
+// Is `id` a Tier-3 module (manufactured 2->3, held in stockpiles like a processed good)?
+// The Tier-3 sibling of `isProcessedGood`, so `tierOf` (sim/points.js) and any other
+// reader can ask "which tier" through the vocabulary's OWN predicate rather than
+// re-reading the array.
+function isTier3Good(id) {
+  return TIER3_GOOD_SET.has(id);
+}
+
+// Is `id` a legal stockpile key / galactic-supply row (raw OR processed OR Tier-3 module,
+// not fuel)?
 function isStockpileGood(id) {
   return STOCKPILE_GOOD_SET.has(id);
 }
 
 module.exports = {
   RAW_RESOURCES, PROCESSED_GOODS, STOCKPILE_GOODS, TIER3_GOODS, FUEL_GOOD, DEUTERIUM,
-  isRawResource, isFuel, isProcessedGood, isStockpileGood,
+  isRawResource, isFuel, isProcessedGood, isTier3Good, isStockpileGood,
 };

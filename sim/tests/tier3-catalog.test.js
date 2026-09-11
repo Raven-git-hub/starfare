@@ -34,6 +34,7 @@ const {
 const { TIER3_GOODS } = require('../resources.js');
 const { getRecipe } = require('../recipes.js');
 const { REFINERY_BASELINE, baselineOutputFor } = require('../baseline.js');
+const { guildPoints, tierOf, TIER_WEIGHT } = require('../points.js');
 
 const SYS = 'sysA';
 const mine = (id, good, rate) => ({ id, ownerGuildId: 'g1', type: 'mining', systemId: SYS, resourceType: good, productionRate: rate });
@@ -123,6 +124,27 @@ test('at rest: with no module venture, every module sits at base price, zero sto
     assert.equal(baselineOutputFor({ recipeId: m }).units, REFINERY_BASELINE[m] * getRecipe(m).output.qty,
       `${m} has a resolvable droidless baseline`);
   }
+});
+
+test('GP scores a module venture at the ruled W_T3 = 300 — the halt is now a score (2.1a)', () => {
+  // Before 2.1a un-deferred W_T3, guildPoints would THROW on a module-producing venture
+  // (tierOf(module) was null → tierWeight halts). That halt had four reachable readers
+  // (GP, issuance ∝ GP, the mean line ∝ GP, the tier-scaled signing bump) the moment the
+  // client's Tier-3 grey-out stopped hiding it. It is now a real score.
+  assert.equal(tierOf('power_cells'), 3, 'a module resolves to tier 3');
+  assert.equal(TIER_WEIGHT[3], 300, 'tier 3 is the ruled 300');
+  const s = createState({
+    guilds: [{
+      id: 'g1', credits: 0, fuelHoard: 0,
+      ventures: [{ id: 'f', ownerGuildId: 'g1', type: 'refining', systemId: SYS, recipeId: 'power_cells', productionRate: 2 }],
+    }],
+    reserve: { reserveLevel: 0 },
+    syndicate: { ledger: 0 },
+  });
+  let gp;
+  assert.doesNotThrow(() => { gp = guildPoints(s, s.guilds[0]); }, 'a module venture no longer halts guildPoints');
+  // No claims (0 held systems), so GP is exactly the one module venture's weight.
+  assert.equal(gp, 300, 'the module venture scores W_T3 = 300, not a halt and not a 0');
 });
 
 test('determinism (invariant 9): a module-manufacturing scenario runs byte-identical twice', () => {
