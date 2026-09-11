@@ -17,7 +17,7 @@ const net = require('node:net');
 const { spawn } = require('node:child_process');
 
 const { makeServer } = require('../server.js');
-const { STOCKPILE_GOODS } = require('../resources.js');
+const { STOCKPILE_GOODS, TIER3_GOODS } = require('../resources.js');
 
 let server;
 let base;
@@ -80,6 +80,105 @@ test('GET / serves the PLAYER CLIENT (HTML), not the deleted testbed', async () 
   assert.ok(!html.includes('atob('), 'nothing is decoded into a page blob any more');
   assert.match(html, /fr\.src = src/);                       // the iframe is pointed, live
   assert.match(html, /'\/console\?embed=1&guild='/);           // …at /console, with the focus
+});
+
+test('GET / serves the TRANSPORT-VISIBILITY overlay — own in-flight legs, tweened off engine ticks', async () => {
+  const res = await fetch(base + '/');
+  const html = await res.text();
+
+  // The overlay's live-data door, wired beside __setLiveTerritory from the same poll.
+  assert.match(html, /__setLiveShipments/);
+  assert.match(html, /window\.__setLiveShipments\(\{/);        // called from applySnapshot
+
+  // OWN shipments only — a rival's logistics are not free intel (slice-local ruling).
+  assert.match(html, /\.filter\(\(s\) => s\.ownerGuildId === mine\)/);
+
+  // The draw reads the engine's LEG endpoints: the surfaced origin, and the seed-resolved
+  // destination coords (the engine surfaces originCoords, NOT the destination's).
+  assert.match(html, /ship\.originCoords\.q/);
+  assert.match(html, /systemById\.get\(ship\.destinationSystemId\)/);
+
+  // legProgress is derived from the engine's TWO ticks — departureTick + arrivalTick.
+  assert.match(html, /ship\.departureTick/);
+  assert.match(html, /ship\.arrivalTick - ship\.departureTick/);
+
+  // The tag: the CONSTANT carrier 'Syndicate' (no per-craft id this tier) + the engine's
+  // own ticksRemaining, formatted. The number the player reads is the engine's.
+  assert.match(html, /\['Syndicate', fmtETA\(ship\.ticksRemaining\)\]/);
+
+  // ONE timing source — the fractional tick exposed off the clock ring, not a second clock.
+  assert.match(html, /window\.__fractionalTick/);
+
+  // NEGATIVE PIN: the ETA text must never be recomputed from the tweened legProgress (`f`)
+  // or wall-clock — it is the engine's ticksRemaining, formatted (transport-model.md §3).
+  assert.ok(!html.includes('fmtETA(f)'), 'the ETA must not be derived from legProgress');
+  assert.ok(!html.includes('fmtETA(Tf'), 'the ETA must not be derived from the fractional tick');
+});
+
+// The OPERATIONS tab (docs/operations-hub.md) — renamed from Transport, the list-and-hub companion
+// to the galaxy-map transport overlay above. IN TRANSIT is live off the snapshot; LEASED / DEPLOYED
+// / IDLE are empty scaffolds this slice (§7). Pinned on the SERVED BYTES: a page that quietly reverted
+// the rename, dropped the poll refresher, or recomputed the ETA from the tweened bar would still
+// render perfectly, and only this would go red.
+test('GET / serves the OPERATIONS tab — the rename, the #tp-ops panel, IN TRANSIT live, the scaffolds', async () => {
+  const html = await (await fetch(base + '/')).text();
+
+  // The tab is RENAMED, and the old Transport tab (button + coming-soon stub) is gone.
+  assert.match(html, /<button class="rtab" onclick="openTab\('operations', this\)">Operations<\/button>/);
+  assert.ok(!html.includes(">Transport</button>"), 'the old Transport tab button is gone');
+  assert.ok(!html.includes("openTab('transport'"), 'the old transport tab key is gone');
+  assert.ok(!/TAB_STUBS = \{\s*transport:/.test(html), 'transport is no longer a stub');
+  assert.ok(!html.includes('A live status board of every vehicle you own'), 'the old Transport stub copy is gone');
+
+  // A TOP-LEVEL panel, a peer of #tp-deut: the fill-screen recipe + the flex-column show state,
+  // the openTab('operations') branch, and the panel element itself.
+  assert.match(html, /#tabPanel\.ops\{overflow:hidden;\}/, 'the fill-screen recipe (like #tp-guild / #tp-deut)');
+  assert.match(html, /#tp-ops\.show\{display:flex; flex-direction:column;\}/, 'the panel is a flex column');
+  assert.match(html, /if \(which === 'operations'\)/, "openTab must have an 'operations' branch");
+  assert.match(html, /id="tp-ops"/, 'the OPERATIONS top-level panel');
+
+  // The lifecycle mirrors the Deuterium dashboard's: opener + poll refresher, and the refresher IS
+  // called from applySnapshot so an open panel re-reads every poll (§4).
+  assert.match(html, /window\.__opsOpen = function/);
+  assert.match(html, /window\.__opsRefresh = function/);
+  assert.match(html, /if \(window\.__opsRefresh\) window\.__opsRefresh\(\);/, '__opsRefresh is called from the poll');
+
+  // IN TRANSIT reads the snapshot's shipments, the player's OWN only, and sorts soonest-first —
+  // dropping any row missing its leg geometry (an unresolvable waystation).
+  assert.match(html, /\(s && s\.shipments\) \|\| \[\]/);
+  assert.match(html, /sh\.ownerGuildId === myId/);
+  assert.match(html, /typeof sh\.departureTick === 'number' && typeof sh\.arrivalTick === 'number'/);
+  assert.match(html, /a\.ticksRemaining - b\.ticksRemaining/, 'ascending ticksRemaining — soonest arrival first');
+
+  // The expanded manifest: the carrier identity line (Syndicate, no craft id this tier — §3) and
+  // the cargo itemised `Good: Nu`.
+  assert.match(html, /Carrier: <b>Syndicate<\/b>/);
+  assert.match(html, /fmt\(cargo\[g\]\) \+ ' Nu/, 'the manifest itemises the cargo');
+
+  // Names resolved off the seed the client holds, exactly as the map resolves them — the new
+  // waystation bridge beside __systemName.
+  assert.match(html, /window\.__outpostName = function/);
+
+  // The progress bar is legProgress off the engine's TWO ticks (transport-model.md §2.3) — the same
+  // sanctioned derive the map tweens.
+  assert.match(html, /\(Tf - sh\.departureTick\) \/ span/);
+
+  // The ETA is the engine's own ticksRemaining, formatted — NEVER recomputed from the tweened bar.
+  assert.match(html, /fmtETA\(sh\.ticksRemaining\)/);
+  assert.ok(!html.includes('fmtETA(f)'), 'the ops ETA must not be derived from legProgress');
+  assert.ok(!html.includes('fmtETA(Tf'), 'the ops ETA must not be derived from the fractional tick');
+
+  // The reserved, unwired alert slot is built (dark, no trigger this slice — §4).
+  assert.match(html, /class="ops-alert"/);
+
+  // LEASED / DEPLOYED / IDLE ship as calm empty states — no rows, no Manage popups (§7).
+  assert.match(html, /No transports leased/);
+  assert.match(html, /Nothing deployed yet/);
+  assert.match(html, /Nothing idle/);
+  assert.match(html, /Nothing in transit/);
+
+  // The pilot hero art (§2).
+  assert.match(html, /assets\/characters\/pilot\.jpg/);
 });
 
 test('GET / serves the WIRED licence panel — the two real actions, and no mock caveat', async () => {
@@ -907,7 +1006,13 @@ test('GET / tells the truth on the licence receipt — and leaves the STILL-TRUE
   assert.match(html, /No fee is owed/);                                  // an unlicensed venture owes none
   assert.match(html, /with no fee and no commitment/);                   // …said again on the summary
   assert.match(html, /designed <em>shape<\/em> of that discount/);        // the pre-sign graph is a shape, not a quote
-  assert.match(html, /Renegotiation itself is not built yet/);           // #64
+  // The "Renegotiation itself is not built yet" caveat WAS here (#64). The delivery UI + the
+  // lapse action ship this slice (#64 Slice 1b), so the caveat is FALSE and the assertion
+  // FLIPS rather than being dropped — the treatment NOT YET CHARGED / the asset economy got.
+  assert.ok(!html.includes('Renegotiation itself is not built yet'),
+    'renegotiation is built (accept + lapse, reached at window-end) — the old caveat is false');
+  assert.match(html, /accept<\/em> the Syndicate’s terms and re-lock, or <em>reject<\/em> and let the licence lapse/,
+    'the reneg-window help now describes the shipped accept/lapse decision');
   // §4 WAS on this list. The asset economy is BUILT and the panel is wired to it
   // (the asset-picker slice, 31-08-26), so the caveat is false and the assertion
   // FLIPS rather than being dropped — the same treatment `NOT YET CHARGED` got above.
@@ -1016,15 +1121,16 @@ test('GET /goods returns the vocabulary by tier', async () => {
   assert.ok(body.processed.includes('titanium_alloy'), 'a known processed good is present');
   assert.ok(!body.raw.includes('titanium_alloy'), 'processed goods are not in the raw list');
 
-  // Tier 3: the three display-only placeholders, served so the console never has
-  // to type a good name of its own. Additive — raw/processed are untouched above.
-  assert.deepEqual(body.tier3, ['small_reactor_engine', 'medium_reactor_engine', 'heavy_reactor_engine']);
-  // …and they are NOT goods the economy knows: nothing served here may be a
-  // stockpile key. (resources.test.js proves the rest of the isolation.)
+  // Tier 3 (2.1a): the 25 real module goods, served so the console never has to type a
+  // good name of its own. Additive — raw/processed are untouched above.
+  assert.deepEqual(body.tier3, [...TIER3_GOODS]);
+  assert.equal(body.tier3.length, 25, 'the 25 modules');
+  // As of 2.1a a module IS a stockpile good (it is manufactured, held and priced), but
+  // it is still its own tier — never listed among raw (tier 1) or processed (tier 2).
   for (const g of body.tier3) {
-    assert.equal(STOCKPILE_GOODS.includes(g), false, `${g} must never be a stockpile good`);
-    assert.equal(body.raw.includes(g), false);
-    assert.equal(body.processed.includes(g), false);
+    assert.equal(STOCKPILE_GOODS.includes(g), true, `${g} is a stockpile good now`);
+    assert.equal(body.raw.includes(g), false, `${g} is not a raw good`);
+    assert.equal(body.processed.includes(g), false, `${g} is not a processed good`);
   }
 });
 
@@ -1609,7 +1715,14 @@ test('GET / serves the Venture Management popup shell, wired to the published fi
   assert.match(html, /id="vmLedger"/, 'the agreed-terms ledger');
   assert.match(html, /id="vmWindow"/, 'the contract-window block');
   assert.match(html, /id="vmCloseBtn"/, 'the Close-venture action');
-  assert.match(html, /id="vmReneg"/, 'the Renegotiate stub (expired only)');
+  assert.match(html, /id="vmReneg"/, 'the Renegotiate control (expired only)');
+  // #64 Slice 1b: the Renegotiate button is WIRED now (was a "coming soon" stub) — it opens the
+  // shared renegotiation popup for the venture the VM popup is managing, the SECOND entry point.
+  assert.ok(!html.includes('Renegotiation is coming soon'), 'the Renegotiate stub note is gone — it is wired');
+  assert.match(html, /window\.__openRenegotiation\(player\.guildId, VM\.ventureId\)/,
+    'VM Renegotiate opens the shared popup (§5 entry point 2)');
+  assert.match(html, /reneg\.style\.display = v\.renegotiationOffer \? '' : 'none'/,
+    '#64 Slice 2: the Renegotiate control shows only once an OFFER is live (after grace), not merely at window-end');
   // The explicit, irregular art filenames — a distinctive mine and a distinctive factory entry, plus
   // the documented gasfactory.jpg-is-a-gas-mine placeholder — so the table cannot silently reshuffle.
   assert.match(html, /crystalline:'crystallinemine\.jpg'/, 'a distinctive mine-art entry');
@@ -1648,6 +1761,110 @@ test('GET / serves the Venture Management popup shell, wired to the published fi
   assert.match(html, /openNodeOverlay\('Settlement Slot '/, 'a rival Settlement slot keeps the read-only overlay');
 });
 
+// The Guild Hall MESSAGES panel — the email-style inbox (event-log.md §9): the renegotiation popup,
+// the two reneg entry points, and the redesigned Notices (subject-line rows + a per-type notice
+// popup, read on open). Pinned on the SERVED BYTES — a page that quietly reverted would still render
+// and only this would go red — the same discipline the VM and asset-picker tripwires follow.
+test('GET / serves the MESSAGES inbox + the renegotiation and notice popups, wired to the attention derive', async () => {
+  const html = await (await fetch(base + '/')).text();
+
+  // 1. THE MESSAGES RAIL ENTRY at the top of the Guild Hall tab list, with its count badge.
+  assert.match(html, /<button class="gh-tab" data-p="messages">/, 'the Messages rail entry');
+  assert.match(html, /id="gh-msgbadge"/, 'the Messages count badge');
+  // The rail entry + the top-level Guild Hall tab both light from attention.renegotiations.
+  assert.match(html, /id="rtab-guild"/, 'the top-level Guild Hall tab is identifiable');
+  assert.match(html, /id="rtabGuildAttn"/, 'the top-level tab attention pip');
+  assert.match(html, /function myRenegotiations\(s\)\{/, 'the player-guild filter over the attention derive');
+  assert.match(html, /s\.attention && Array\.isArray\(s\.attention\.renegotiations\)/, 'reads the snapshot attention derive');
+
+  // 2. THE MESSAGES PANEL renders the open offers as the pinned "Needs a decision" section (each a
+  //    subject-line row opening the reneg popup), and (event-log.md §9) the NOTICES below — read +
+  //    unread — off the player guild's guilds[].events. "No notices yet." is the EMPTY-log case only.
+  assert.match(html, /function messagesPanel\(me\)\{/, 'the Messages panel renderer');
+  assert.match(html, /Needs a decision/, 'the pinned action-item section');
+  assert.match(html, /data-reneg="/, 'an action-item row carries its venture id for the reneg popup');
+  assert.match(html, /data-note="/, 'a notice row carries its event id for the notice popup');
+  // The Notices section renders the published rows; "No notices yet." shows ONLY when the log is
+  // empty (gated on notices.length now, not printed unconditionally as the Slice-1b stub was).
+  assert.match(html, /var notices = \(me && Array\.isArray\(me\.events\)\) \? me\.events : \[\];/,
+    'Notices come from the player guild\'s live event-log rows (guilds[].events)');
+  assert.match(html, /if\(!notices\.length\)\{\s*rows \+= '<div class="gh-msg-empty">No notices yet\.<\/div>';/,
+    '"No notices yet." is the empty-log case only, no longer a hard stub');
+  assert.match(html, /class="msg note'\+\(unread \? '' : ' read'\)\+'"/,
+    'a notice row is a .msg.note, dimmed .read once acknowledged');
+  assert.match(html, /var unread = n\.readTick == null;/, 'unread is the ABSENCE of readTick (event-log.md §3)');
+  assert.match(html, /<span class="unreaddot"><\/span>/, 'an unread notice shows the amber unread dot (CSS hides it once read)');
+  // 2b. THE REDESIGN (event-log.md §9): a notice row is a SUBJECT LINE that opens a per-type popup.
+  //     Its title is built from payload.good + the venture kind (payload.ventureType), and its
+  //     "when" is the engine-derived whenDay ("Day N") — rendered verbatim, no game number typed.
+  assert.match(html, /var KIND_WORD = \{ mining:'Mine', refining:'Refinery' \};/,
+    'the title kind word comes from payload.ventureType (§2)');
+  assert.match(html, /function noticeLabel\(p\)\{/, 'the "{Good} {Kind}" title label (degrades gracefully)');
+  assert.match(html, /function noticeTitle\(n\)\{/, 'the popup title builder');
+  assert.match(html, /'Licence lapsed — '/, 'the licence_lapsed title');
+  assert.match(html, /'Venture closed — '/, 'the venture_closed title');
+  assert.match(html, /function noticeRowTitle\(n\)\{/, 'the subject-line row title (label in the muted .who span)');
+  assert.match(html, /\('Day ' \+ n\.whenDay\)/, 'the row "when" is the engine-derived whenDay (§9), rendered verbatim');
+  // 2c. THE NOTICE POPUP (§9) — the adviser-reel card, its own overlay + its own opener, filled from
+  //     the row's event by id. Uniform Syndicate tone (one eyebrow, no per-type accent). A single
+  //     Dismiss — NO ACKNOWLEDGE button. The body is static per (type + cause); the node-held
+  //     sentence and the "Node held until" fact are gated on payload.lockoutUntilTick / unlockDay.
+  assert.match(html, /id="notice-overlay"/, 'the notice popup overlay');
+  assert.match(html, /Syndicate Notice/, 'the uniform Syndicate-notice eyebrow (no per-type accent, §9)');
+  assert.match(html, /id="noticeTitle"/, 'the popup title slot');
+  assert.match(html, /id="noticeBody"/, 'the popup body slot');
+  assert.match(html, /id="noticeFacts"/, 'the popup facts block');
+  assert.match(html, /id="noticeDismiss"[^>]*>Dismiss</, 'a single Dismiss control — no ACKNOWLEDGE button (§9)');
+  assert.match(html, /function noticeBody\(n\)\{/, 'the popup body is keyed on type + cause (the four writers, §2)');
+  assert.match(html, /Its node stays held under the Syndicate's lockout/, 'the node-held sentence is present …');
+  assert.match(html, /if\(p\.lockoutUntilTick != null\)\{\s*base \+=/,
+    '… and gated on payload.lockoutUntilTick — a lapse / unlicensed teardown claims no node (§9)');
+  assert.match(html, /facts\.push\(\['Node held until', 'Day ' \+ n\.unlockDay, true\]\);/,
+    'the facts block shows "Node held until" = unlockDay, only on a closure carrying a lockout');
+  assert.match(html, /window\.__openNotice = openNotice/, 'the notice popup single entry point is exposed (§9)');
+  // 2d. READ = OPENING (§9): a notice row click opens the popup, which dispatches the EXISTING
+  //     acknowledgeEvent for the row's id (as a Number). There is NO inline ACKNOWLEDGE control.
+  assert.ok(!/class="ack" data-ack=/.test(html), 'the inline ACKNOWLEDGE button is gone (read = opening, §9)');
+  assert.match(html, /openNotice\(Number\(noteRow\.getAttribute\('data-note'\)\)\)/,
+    'a notice row click opens the popup with its id sent as a Number');
+  assert.match(html, /type:'acknowledgeEvent', guildId:guildId, eventId:eventId/,
+    'opening a notice dispatches the existing acknowledgeEvent action');
+  // The tab pip + the Messages badge light for an unread notice too (design.md §5 — highlights
+  // while any offer is open OR any notice is unread), the count adding unread notices to offers.
+  assert.match(html, /function myUnreadNotices\(s\)\{/, 'the player-guild unread-notice filter over attention.notices');
+  assert.match(html, /s\.attention && Array\.isArray\(s\.attention\.notices\)/, 'reads the snapshot attention.notices derive');
+  assert.match(html, /myRenegotiations\(s\)\.length \+ myUnreadNotices\(s\)\.length/,
+    'the badge/pip count adds the player\'s unread notices to the open offers');
+  // #64 Slice 2: the static "window elapsed" marker is REPLACED by the live acceptance countdown,
+  // rendered from the offer's engine-derived daysToLapse (the client types no day count). The
+  // last day is amber ("hot"). This flips the Slice-1b "no countdown" pin.
+  assert.match(html, /function deadlineLabel\(offer\)\{/, 'the countdown label reads the offer');
+  assert.match(html, /offer\.daysToLapse/, 'the countdown comes from the snapshot, not the client');
+  assert.match(html, /'respond in '\+n\+' days'/, 'the row shows "respond in N days"');
+  assert.match(html, /respond in 1 day/, 'the last day is phrased accordingly');
+
+  // 3. THE POPUP exists (same modal shape as the venture popups) with the Syndicate-liaison voice,
+  //    the four term rows, and ACCEPT / REJECT.
+  assert.match(html, /id="reneg-overlay"/, 'the renegotiation popup overlay');
+  assert.match(html, /Syndicate Liaison/, 'the one Syndicate-liaison adviser voice (no domain characters)');
+  assert.match(html, /id="renegAccept"/, 'the ACCEPT action');
+  assert.match(html, /id="renegReject"/, 'the REJECT action');
+  // ACCEPT fires the built renegotiateLicence; REJECT confirms then fires the new lapseLicence.
+  assert.match(html, /type:'renegotiateLicence', guildId:g, ventureId:id/, 'ACCEPT → renegotiateLicence (built)');
+  assert.match(html, /type:'lapseLicence', guildId:g, ventureId:id/, 'REJECT → lapseLicence (the new action)');
+  assert.match(html, /window\.__adviserConfirm/, 'REJECT routes through the shared Adviser confirm');
+  // The popup reads the terms off the snapshot — the venture's licence and its published offer —
+  // and computes no game number itself (§5).
+  assert.match(html, /v\.renegotiationOffer/, 'the popup reads the published renegotiationOffer');
+  assert.match(html, /offer\.committedOutputPct/, 'the offered commitment comes from the snapshot');
+  assert.match(html, /offer\.discountedFee/, 'the offered fee comes from the snapshot');
+
+  // 4. THE ONE POPUP, TWO ENTRY POINTS — a Messages row and the VM Renegotiate button both call it.
+  assert.match(html, /window\.__openRenegotiation = open/, 'the single popup entry point is exposed');
+  assert.match(html, /window\.__openRenegotiation\(guildId, ventureId\)/, 'entry point 1: a Messages row');
+  assert.match(html, /window\.__openRenegotiation\(player\.guildId, VM\.ventureId\)/, 'entry point 2: the VM Renegotiate button');
+});
+
 // The two Venture Management snapshot derives are PUBLISHED on the venture row a licensed venture
 // produces (docs/venture-management.md §7 / Part 1) — so the client renders them rather than
 // computing a game number. This drives the live server end-to-end: found, establish, license, tick.
@@ -1657,6 +1874,11 @@ test('a licensed venture publishes contractWindow (cycles) and equityPerCycle on
   await req('POST', '/action', { type: 'setWindowN', windowN: 4 });
   await found({ credits: 500 });
   await mine({ ventureId: 'vm1', equityPct: 0.4 });
+  // Tick once BEFORE signing so the licence is signed at a DAY-ALIGNED tick (tick 1, the first
+  // tick of day 0). #64 Slice 2 day-aligns contractWindow onto the calendar window-end; at a
+  // day-aligned signing that coincides with teardown's raw licenceEndTick, so the endTick ==
+  // lockoutUntilTick agreement below still holds (they diverge only for a mid-day signing).
+  await req('POST', '/tick');
   await req('POST', '/action', { type: 'applyForLicence', guildId: 'player-guild', ventureId: 'vm1', committedOutputPct: 1, windowDays: 7 });
   await req('POST', '/tick');
 
@@ -1675,4 +1897,11 @@ test('a licensed venture publishes contractWindow (cycles) and equityPerCycle on
   assert.equal(typeof v.equityPerCycle, 'number');
   assert.ok(Number.isInteger(v.equityPerCycle), 'equityPerCycle is integer credits (§15.2)');
   assert.ok(v.equityPerCycle > 0, 'a 40% equity offer projects a real per-cycle payout');
+
+  // #64 Slice 1b: the attention derive is published top-level as a stable shape. The window is
+  // NOT yet elapsed here, so the list is empty — but the key is always present (the read model's
+  // stable-shape courtesy, like nodeLockouts). The offer-surfacing itself is engine-tested.
+  assert.ok(snap.attention && Array.isArray(snap.attention.renegotiations),
+    'attention.renegotiations is published as an array');
+  assert.equal(snap.attention.renegotiations.length, 0, 'no open offer before the window elapses');
 });

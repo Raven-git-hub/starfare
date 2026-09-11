@@ -393,3 +393,48 @@ history; the raw-deuterium price keeps its own `priceHistory`, untouched).
 - **Deuterium / Transport contracts / Council & politics RP sources** — each waits on its own
   mechanic (licensed deuterium mining, transport contracts, the political layer).
 - **The other Guild Hall tabs** — Finance, Ventures, Council, Forum.
+
+## 6. The MESSAGES panel — licence-renegotiation delivery (#64 Slice 1b, 08-09-26)
+
+The authoritative ruling is `design.md` §5 ("Message delivery — standing conditions vs discrete
+events" and "Two entry points, one popup"); the visual contract is
+`docs/mockups/guild-hall-messages.html`. This section records only what is BUILT.
+
+**Where it lives.** A new **MESSAGES** rail entry at the TOP of the Guild Hall tab list
+(`#tp-guild .gh-tabs`), above Standing. It carries an amber count badge and a pulsing dot while
+the player's guild has an open action-item, and the **top-level Guild Hall tab** (`#rtab-guild`)
+lights an amber pip from anywhere in the shell — both driven, on every poll, by the snapshot's
+**`attention.renegotiations`** filtered to the player's guild (`myRenegotiations`). The panel is
+`centreFor('messages', …)` → `messagesPanel`.
+
+**What it shows.** A pinned **"Needs a decision"** section — one row per open renegotiation offer,
+built from the attention derive: the venture's label (a client type title like "Titanium Mine",
+the same split the VM popup follows, plus the engine-emitted `ventureName` seed site name), a
+band-keyed adviser one-liner, a standing chip, and a **"window elapsed"** marker (NOT a "respond
+in N days" countdown — the grace-window timer is Slice 2, §5). Below it a **Notices** section is an
+honest empty stub ("No notices yet.") — the event-log ENGINE is built but the client Notices panel is a following slice, so no notice is rendered here yet. The
+client computes no game number: every figure traces to `attention` / the venture row; the adviser
+copy is presentation keyed on the emitted `standing`.
+
+**The renegotiation popup** (`#reneg-overlay`) — the same modal shape as the venture popups. One
+Syndicate-liaison adviser voice (keyed on the `standing` band; the domain-character split is
+parked, §5), the terms read straight from the snapshot (the venture's `licence` for the current
+side, its `renegotiationOffer` for the offered side — commitment, carried window, and the
+re-priced fee), and ACCEPT / REJECT:
+- **ACCEPT** → `window.__sendAction({ type:'renegotiateLicence', … })` (built, Slice 1) — re-locks
+  the licence.
+- **REJECT** → the shared Adviser confirm (`__adviserConfirm`) → `window.__sendAction({
+  type:'lapseLicence', … })` (the new action) — reverts the venture to unlicensed and forfeits its
+  standing.
+
+The fee row is coloured by the actual direction: the offer re-prices at today's posted price (as a
+first signing does), so it can move either way with the market — the terms function itself never
+adds a surcharge (more commitment lowers the fee fraction; only Strong adds a discount, §5).
+
+**Two entry points, one popup.** The popup opens from a "Needs a decision" row AND from Venture
+Management: once a venture's window has elapsed (its row carries `contractWindow.expired` / a live
+`renegotiationOffer`), the VM **"Renegotiate ▸"** control shows and opens this popup instead of the
+Close-venture confirm; before the window elapses `#vmCloseBtn` (Close venture) is unchanged. The
+single entry point is `window.__openRenegotiation(guildId, ventureId)`.
+
+**Since built / still deferred (§5).** The 1–5 day grace window and auto-lapse-on-timeout are now **BUILT** (renegotiation Slice 2, with the live countdown). The event log / notices **engine is BUILT** — per-notice `readTick` acknowledgement, superseding the sketched `messagesSeenTick` (`docs/event-log.md`); the one piece still deferred is the **client Notices panel** that renders the surfaced notices (the section stays an empty stub until then, a following slice). The **domain-character adviser split** stays deferred.

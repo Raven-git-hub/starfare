@@ -39,11 +39,12 @@ const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
 const { previewProduction } = require('./production.js');
 const { PRICED_GOODS, postedPrice, basePriceFor } = require('./prices.js');
-const { baselineUnitsForGood, isLicensedDeuteriumMine, isIllegalDeuteriumRefinery, producedGoodFor } = require('./baseline.js');
-const { licenceFee, teardownSettlement, licenceEndTick } = require('./licence.js');
+const { baselineUnitsForGood, baselineOutputFor, isLicensedDeuteriumMine, isIllegalDeuteriumRefinery, producedGoodFor } = require('./baseline.js');
+const { licenceFee, teardownSettlement, licenceEndTick, ventureStanding, renegotiationFee, renegotiationSchedule } = require('./licence.js');
 const { clonePriceHistory } = require('./price-history.js');
 const { getFuelPriceRing } = require('./fuel-price-history.js');
 const { cloneModifierHistory } = require('./modifier-history.js');
+const { liveEvents } = require('./events.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
 const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 
@@ -411,6 +412,20 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 //     postedPrice(good))`, the `o`-share of the commitment sale at the current price. A projection
 //     (rate × cycle, raw-unlimited) like `deuteriumProduction`; 0 when unlicensed, no equity, or
 //     deuterium (no posted price). The engine decides it so the browser renders it (§5).
+// (08-09-26, licence renegotiation #64 Slice 1 — docs/renegotiation.md, design.md §5): two additive
+// per-venture fields, present ONLY on a licensed non-deuterium venture (SPREAD in, so an unlicensed
+// venture and a deuterium mine carry NEITHER key). ADDITIVE, NO schema bump — nothing existing
+// changed shape. Both DERIVED on read: no serialized byte, no determinism hash, so no state golden
+// moves, and they invent no number (the four `[FIRST-CUT]` renegotiation constants live in
+// sim/licence.js, sourced from phase-1-tuning.md). See renegotiationFieldsFor.
+//   - each licensed non-deuterium venture row gains `standing` — its `ventureStanding` band
+//     ('atRisk' | 'subPar' | 'steady' | 'strong'), a read of `venture.reputation`, present always.
+//   - and `renegotiationOffer` — the terms the player would accept, present (non-null) only once the
+//     committed window has elapsed (reusing `contractWindow.expired`): the new `committedOutputPct`,
+//     the re-locked `basicFee`/`discountedFee` at the CURRENT posted price (Strong-band discount
+//     applied if strong), and a `feeDiscountApplied` flag — from the SAME `renegotiationFee` the
+//     `renegotiateLicence` apply locks (sim/licence.js), so the offer shown and the terms taken
+//     cannot disagree. null before the window elapses.
 const SNAPSHOT_SCHEMA = 7;
 
 // contractWindowForVenture(state, venture) -> the venture's licence window in CYCLES, or null.
@@ -437,14 +452,21 @@ function contractWindowForVenture(state, venture) {
   const lic = venture && venture.licence;
   if (!lic) return null;
   const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
-  const endTick = licenceEndTick(lic, windowN);
-  const elapsedCycles = Math.floor((state.tick - lic.signedTick) / windowN);
-  const cyclesRemaining = Math.max(0, lic.windowDays - elapsedCycles);
+  const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
+  // DAY-ALIGNED onto the calendar window-end (#64 Slice 2 reconciliation, design.md §5): the
+  // panel's "window elapsed", the grace, and the acceptance clock now share ONE basis — the
+  // schedule's `windowEndTick` — rather than Slice 1's raw `licenceEndTick`. For a licence
+  // signed at a day boundary (the persistent-server norm) the two coincide, so teardown's
+  // raw `lockoutUntilTick` still agrees there; they diverge only for a mid-day signing, which
+  // is teardown's own basis to keep (out of scope this slice). Field SHAPE is unchanged.
+  const endTick = renegotiationSchedule(lic, windowN, dayAnchorTick).windowEndTick;
+  const endCycle = dayOf(endTick, windowN, dayAnchorTick);
+  const cyclesRemaining = Math.max(0, endCycle - dayOf(state.tick, windowN, dayAnchorTick));
   return {
     endTick,
-    endCycle: Math.floor(endTick / windowN),
+    endCycle,
     cyclesRemaining,
-    expired: cyclesRemaining === 0,
+    expired: state.tick >= endTick,
   };
 }
 
@@ -468,6 +490,122 @@ function equityPerCycleForVenture(state, venture) {
   if (!price) return 0;
   const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
   return Math.round(lic.committedOutputPct * venture.productionRate * windowN * equityPct * price);
+}
+
+// renegotiationFieldsFor(state, venture) -> the licence-renegotiation read model for one
+// venture (design.md §5 "Licence renegotiation — the terms function & venture standing";
+// #64 Slice 1). Returns an object to SPREAD into the venture row, so a venture that owns
+// neither field gets NEITHER key:
+//
+//   {}                                — unlicensed, and the windowless deuterium-licensed
+//                                       mine: both carry no ordinary `licence`, so there is
+//                                       no standing or offer (a deuterium mine carries
+//                                       neither field, as §1.4 requires).
+//   { standing, renegotiationOffer }  — a licensed, non-deuterium venture:
+//       standing            — its `ventureStanding` band, ALWAYS (just a read of RP).
+//       renegotiationOffer  — the terms the player would accept, present ONLY once GRACE HAS
+//                             PASSED and the Syndicate has acted (`renegotiationSchedule`'s
+//                             `actsTick`, #64 Slice 2), NOT at window-end: the new
+//                             `committedOutputPct`, the re-locked `basicFee`/`discountedFee`
+//                             at the CURRENT posted price (Strong-band discount if strong),
+//                             a `feeDiscountApplied` flag, and the acceptance countdown
+//                             `lapseTick` + `daysToLapse`. null during grace and before.
+//
+// The terms are the SAME `renegotiationFee` the `renegotiateLicence` apply locks, so the
+// offer shown and the terms taken cannot disagree; the schedule is the SAME one the tick's
+// auto-lapse step reads, so the countdown shown and the auto-lapse cannot disagree. Pure
+// DERIVED telemetry: reads state as it stands, mutates nothing, enters no serialized byte
+// and no determinism hash; invents no number.
+function renegotiationFieldsFor(state, venture) {
+  const lic = venture && venture.licence;
+  if (!lic) return {};   // unlicensed, or the windowless deuterium mine — neither field
+  const standing = ventureStanding(venture);
+  const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+  const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
+  const sched = renegotiationSchedule(lic, windowN, dayAnchorTick);
+  let renegotiationOffer = null;
+  // #64 Slice 2: the offer appears only once GRACE HAS PASSED and the Syndicate has ACTED
+  // (`actsTick`), NOT at window-end. During grace the venture carries `standing` but no offer,
+  // so MESSAGES stays quiet and the VM shows the normal Close-venture control (§5 phase B).
+  // This supersedes Slice 1b's window-end (`contractWindow.expired`) gate.
+  if (state.tick >= sched.actsTick) {
+    const baseline = baselineOutputFor(venture);
+    const lockedPrice = baseline && postedPrice(state, baseline.good);
+    // A licensed non-deuterium venture always has both (its good was priced at signing);
+    // guard anyway so a preview is never computed against a missing baseline or price.
+    if (baseline && baseline.units > 0 && lockedPrice != null) {
+      const fee = renegotiationFee({
+        venture,
+        baselineUnitsPerTick: baseline.units,
+        windowN,
+        lockedPrice,
+      });
+      // Carry the acceptance countdown so the client can show "respond in N days" without
+      // computing a game number: `lapseTick` is the auto-lapse deadline, `daysToLapse` the
+      // whole calendar days from now to it, floored at 0. The auto-lapse tick step removes the
+      // offer at `lapseTick`, so `daysToLapse` is always ≥ 1 while the offer is visible.
+      const daysToLapse = Math.max(
+        0,
+        dayOf(sched.lapseTick, windowN, dayAnchorTick) - dayOf(state.tick, windowN, dayAnchorTick),
+      );
+      renegotiationOffer = { ...fee, lapseTick: sched.lapseTick, daysToLapse };
+    }
+  }
+  return { standing, renegotiationOffer };
+}
+
+// computeAttention(state) -> { renegotiations: [ { guildId, ventureId, ventureName, standing,
+//                                                  offer } ],
+//                              notices: [ { guildId, id, tick, type, payload } ] }
+// The guild's open ACTION-ITEMS and unread NOTICES, aggregated top-level so the MESSAGES panel
+// and the tab badge read ONE place rather than re-scanning every venture and the event log
+// (design.md §5 "attention derive"). Two lists, the join the renegotiation slice left room for:
+//
+//   - `renegotiations` — the derived open renegotiation offers (a standing condition): a pure
+//     aggregation of the per-venture `renegotiationFieldsFor` above, exactly the ventures that
+//     carry a non-null `renegotiationOffer` (a licensed, non-deuterium venture past grace).
+//     Each entry carries what a MESSAGES row needs: the venture id (to open the popup), a
+//     display `ventureName` (the SEED site name — engine-owned display text, the same string
+//     the venture row publishes), the `standing` band, and the full `offer`.
+//   - `notices` — the guild's UNREAD live event-log notices (a discrete event, docs/event-log.md
+//     §2/§3): the `licence_lapsed` / `venture_closed` rows still within their unread retention
+//     window and not yet acknowledged. This is the source of the panel's unread badge; a READ
+//     notice still shows in the full Notices list (`guilds[].events`) but is not an open
+//     action-item, so it drops out here.
+//
+// BOTH scanned across EVERY guild and tagged with `guildId`, because the snapshot is multi-guild
+// — the client filters to its own guild's rows, the same way it filters `ventures[]`. Notices
+// are newest-first (via `liveEvents`), so the freshest is first in the aggregate too.
+//
+// Pure DERIVED telemetry: recomputes from state on read, mutates nothing, enters no serialized
+// byte and no determinism hash, and invents no game number — the offers are the SAME
+// `renegotiationFee` the apply locks, and the notices are the guild's own stored `events`
+// filtered by the SAME `isEventLive` the write-time prune uses.
+function computeAttention(state) {
+  const renegotiations = [];
+  const notices = [];
+  for (const g of (state.guilds || [])) {
+    for (const v of (g.ventures || [])) {
+      const { renegotiationOffer, standing } = renegotiationFieldsFor(state, v);
+      if (!renegotiationOffer) continue;   // no open offer → not an action-item
+      const site = v.siteId ? getSite(v.siteId) : null;
+      renegotiations.push({
+        guildId: g.id,
+        ventureId: v.id,
+        ventureName: (site && site.name) || v.siteId || v.id,
+        standing,
+        offer: renegotiationOffer,
+      });
+    }
+    // Unread live notices — the ones an "attention" badge counts. `liveEvents` already
+    // newest-first and retention-filtered; keep only the UNREAD (no `readTick`). Deep-copied
+    // (payload spread) so the snapshot can never alias into engine state.
+    for (const e of liveEvents(g, state.tick)) {
+      if (e.readTick != null) continue;
+      notices.push({ guildId: g.id, id: e.id, tick: e.tick, type: e.type, payload: { ...e.payload } });
+    }
+  }
+  return { renegotiations, notices };
 }
 
 // buildSnapshot(state) -> a plain, JSON-serialisable object:
@@ -502,6 +640,7 @@ function equityPerCycleForVenture(state, venture) {
 //                 fuelCost: { systemId: { fuelBurn, creditCost, travelTicks } }, // held systems, sorted
 //                 syndicateSale: { tick, thisTick, credited, goods } | null, // Slice 3a
 //                 licenceFee: { tick, thisTick, charged, ventures } | null,   // Slice 3b-iii
+//                 events: [ { id, tick, type, payload, readTick? } ],  // event log, live, newest-first
 //                 stockpiles: { good: int },                    // flat guild total
 //                 stockpilesBySystem: { systemId: { good: int } }, // per-system
 //                 assets: [ { id, kind, maintenanceCondition,      // §4 inventory
@@ -531,8 +670,21 @@ function equityPerCycleForVenture(state, venture) {
 //                 contested,
 //                 landmark: { kind, name?, coords?, ... } | null } ],
 //     shipments: [ { ownerGuildId, cargo: { good: int }, destinationSystemId,
-//                    arrivalTick, ticksRemaining } ],   // IN-FLIGHT, design.md §6
+//                    arrivalTick, ticksRemaining,
+//                    originOutpostId, originCoords: {q,r}, departureTick } ],
+//       // IN-FLIGHT, design.md §6. The last three are the LEG the client draws
+//       // (transport-model.md §2.3/§6): leg origin (nearest waystation) + the
+//       // departure tick, so the client re-derives legProgress and tweens the
+//       // craft between departureTick and arrivalTick. Omitted for a row whose
+//       // nearestWaystation is null (defensive; should not happen in flight).
 //     nodeLockouts: [ { siteId, releaseTick, lockedAtTick, ticksRemaining } ], // teardown §3.3
+//     attention: { renegotiations: [ { guildId, ventureId, ventureName, standing, offer } ],
+//                  notices: [ { guildId, id, tick, type, payload } ] },
+//       // §5 attention derive (#64 Slice 1b + event-log Slice): the guild's open action-items,
+//       // aggregated so the MESSAGES panel + tab badge read one place. `renegotiations`' `offer`
+//       // == the venture row's renegotiationOffer; `notices` are the UNREAD live event-log
+//       // notices (docs/event-log.md), newest-first. Multi-guild; the client filters to its own
+//       // guildId.
 //   }
 function buildSnapshot(state) {
   const supply = computeGalacticSupply(state);
@@ -572,6 +724,12 @@ function buildSnapshot(state) {
     // The derivation the asset block below reads: assetId -> the venture running
     // it. Computed ONCE per guild (sim/assets.js), not per asset row.
     const deployedTo = deployedAssetIds(g);
+    // The calendar cadence + anchor, read the same defensive way `renegotiationFieldsFor`
+    // and the top-level `calendar` block do (sim/calendar.js) — so each surfaced notice's
+    // derived `whenDay` / `unlockDay` lands on the SAME calendar day as every other derived
+    // day in the snapshot (docs/event-log.md §9). Derived on read, no stored byte.
+    const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+    const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
     return {
       id: g.id,
       name: g.name,
@@ -902,6 +1060,38 @@ function buildSnapshot(state) {
             ),
           }
         : null,
+      // events: the guild's live event-log notices (docs/event-log.md, sim/events.js) — the
+      // engine-owned append-only Notices feed, surfaced read-only for the Guild Hall Notices
+      // panel (the client renders it in a following slice). LIVE-FILTERED via `isEventLive` and
+      // NEWEST-FIRST (`liveEvents`), so an aged-out notice never reaches the panel and the freshest
+      // sits at the top; each row carries `{ id, tick, type, payload, readTick? }` — `readTick`
+      // present once acknowledged. This is the `productionHistory → history` pattern: engine-owned
+      // stored state surfaced verbatim, deep-copied (payload spread) so the snapshot never aliases
+      // into engine state. ALWAYS EMITTED as an array (a stable [] for a guild that has recorded
+      // none), unlike the STORED `guild.events` which is omitted-when-empty for the determinism
+      // hash — the snapshot answers to a reader, and a stable shape is kinder than a key that
+      // appears only after the first lapse/closure. Its UNREAD subset is aggregated top-level in
+      // `attention.notices` for the panel's badge.
+      //
+      // Each row also gains two DERIVED calendar days (docs/event-log.md §9), computed on
+      // read exactly as the renegotiation countdown's `daysToLapse` is — the client computes
+      // no game number (§18), so a past tick's calendar day is the engine's to hand over:
+      //   - `whenDay`   — the calendar day the notice was written (`e.tick`), the popup's
+      //                   "Closed" / "Lapsed" date and the inbox row's "when".
+      //   - `unlockDay` — ONLY on a `venture_closed` carrying a node lockout
+      //                   (`payload.lockoutUntilTick`): the day the node frees. Absent
+      //                   otherwise (a lapse, or an unlicensed teardown, holds no node — the
+      //                   popup must not show a "Node held until" it doesn't have).
+      // The deep-copy discipline (`payload: { ...e.payload }`) is kept so the snapshot never
+      // aliases engine state.
+      events: liveEvents(g, state.tick).map((e) => ({
+        ...e,
+        payload: { ...e.payload },
+        whenDay: dayOf(e.tick, windowN, dayAnchorTick),
+        ...(e.payload.lockoutUntilTick != null
+          ? { unlockDay: dayOf(e.payload.lockoutUntilTick, windowN, dayAnchorTick) }
+          : {}),
+      })),
     };
   });
 
@@ -997,6 +1187,14 @@ function buildSnapshot(state) {
         // equity, or deuterium (no posted price). The engine decides the figure so the browser renders
         // it (§5); DERIVED on read, no serialized byte, no determinism hash.
         equityPerCycle: equityPerCycleForVenture(state, v),
+        // standing + renegotiationOffer: the licence-renegotiation read model (#64 Slice
+        // 1, design.md §5). SPREAD so an unlicensed venture and a deuterium mine carry
+        // NEITHER key: `standing` (the ventureStanding band) is present for every licensed
+        // non-deuterium venture; `renegotiationOffer` (the new terms + re-locked fee the
+        // player would accept, from the SAME renegotiationFee the apply locks) only once
+        // the committed window has elapsed, null before. DERIVED on read: no serialized
+        // byte, no determinism hash, invents no number. See renegotiationFieldsFor.
+        ...renegotiationFieldsFor(state, v),
         // batchCarry: the per-good sub-unit carries (§5 rate-based rewrite corrected
         // 10-08-26, §15.4) — { [good]: fraction in [0,1) } over every input + output.
         // Surfaced so the lens can show why a small line's whole units appear only
@@ -1038,18 +1236,50 @@ function buildSnapshot(state) {
   }));
 
   // The IN-FLIGHT layer (§15.1): every pending Syndicate delivery, echoed as
-  // stored. `ticksRemaining` is the ONE derived field — `arrivalTick - tick`,
-  // floored at 0 so a delivery due this very tick reads 0 rather than a negative
-  // — computed here because §5's rule is that the browser renders and never
-  // calculates. `cargo` is spread into a fresh object so a consumer mutating the
-  // snapshot can never reach back into live state.
-  const shipments = (state.shipments || []).map((ship) => ({
-    ownerGuildId: ship.ownerGuildId,
-    cargo: { ...(ship.cargo || {}) },
-    destinationSystemId: ship.destinationSystemId,
-    arrivalTick: ship.arrivalTick,
-    ticksRemaining: Math.max(0, ship.arrivalTick - state.tick),
-  }));
+  // stored. `ticksRemaining` is the ONE counter derived field — `arrivalTick -
+  // tick`, floored at 0 so a delivery due this very tick reads 0 rather than a
+  // negative — computed here because §5's rule is that the browser renders and
+  // never calculates. `cargo` is spread into a fresh object so a consumer
+  // mutating the snapshot can never reach back into live state.
+  //
+  // The LEG the client draws (transport-model.md §2.3/§6): the Syndicate tier is
+  // a single straight leg, nearest-waystation → destination. The destination
+  // endpoint is `destinationSystemId` (the client resolves its coords like any
+  // system on the map); we add the START endpoint (`originOutpostId` /
+  // `originCoords`) and the leg's `departureTick` — the second of §2.3's two
+  // ticks, with `arrivalTick` already surfaced. Together the two ticks let the
+  // client re-derive `legProgress = clamp01((T − departureTick)/(arrivalTick −
+  // departureTick))` and tween the craft's position between them; the engine
+  // publishes endpoints + ticks, NOT a progress fraction (§6 — the client owns
+  // the smooth tween, like the clock ring off an engine-given period).
+  //
+  // All three are DERIVED on read from `destinationSystemId` + `arrivalTick` +
+  // the seed geometry — no stored byte on `state.shipments` (the record
+  // deliberately stores only destination + arrivalTick; a stored copy is a
+  // second home that drifts, §15.5). `departureTick = arrivalTick −
+  // arrivalTickFor(0, distance)`: `arrivalTickFor(0, distance)` is the leg's
+  // DURATION (`legTicks`, §2.2), so subtracting it from the arrival recovers the
+  // departure. `originCoords` is spread into a fresh object for the same no-alias
+  // discipline `cargo` gets. Defensive: if `nearestWaystation` returns null (no
+  // resolvable waystation — should not happen for a valid in-flight shipment),
+  // the three leg fields are omitted rather than throwing; the row still
+  // surfaces with its cargo + ticks.
+  const shipments = (state.shipments || []).map((ship) => {
+    const row = {
+      ownerGuildId: ship.ownerGuildId,
+      cargo: { ...(ship.cargo || {}) },
+      destinationSystemId: ship.destinationSystemId,
+      arrivalTick: ship.arrivalTick,
+      ticksRemaining: Math.max(0, ship.arrivalTick - state.tick),
+    };
+    const near = nearestWaystation(ship.destinationSystemId);
+    if (near) {
+      row.originOutpostId = near.outpost.id;
+      row.originCoords = { ...near.outpost.coords };
+      row.departureTick = ship.arrivalTick - arrivalTickFor(0, near.distance);
+    }
+    return row;
+  });
 
   const reserve = supply.fuel.reserve;
   const guildHeld = supply.fuel.guildHeld;
@@ -1211,6 +1441,13 @@ function buildSnapshot(state) {
       lockedAtTick: l.lockedAtTick,
       ticksRemaining: Math.max(0, l.releaseTick - state.tick),
     })),
+    // The ATTENTION derive (design.md §5 "attention derive", #64 Slice 1b) — the guild's open
+    // action-items, aggregated top-level so the Guild Hall MESSAGES panel and its tab badge read
+    // one place. For this slice that is exactly the open renegotiation offers, under
+    // `renegotiations`; a later slice's event-log notices join the same object. Pure DERIVED
+    // read-model: recomputed from state, mutates nothing, no serialized byte and no determinism
+    // hash. See computeAttention.
+    attention: computeAttention(state),
   };
 }
 

@@ -31,8 +31,9 @@ const { tick } = require('../tick.js');
 const {
   intake, validateAction, applyAction,
   createFoundGuildAction, createEstablishVentureAction, createApplyForLicenceAction,
-  createSetProductionProfileAction,
+  createSetProductionProfileAction, createRenegotiateLicenceAction,
 } = require('../actions.js');
+const { licenceEndTick } = require('../licence.js');
 const { checkInvariants } = require('../invariants.js');
 const { canonicalStringify } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
@@ -58,6 +59,24 @@ function founded(over = {}) {
   }));
 }
 const guild = (s) => s.guilds.find((g) => g.id === 'newborn');
+
+// #64 Slice 2 added the renegotiation AUTO-LAPSE: a licence left untouched past its deadline
+// (window-end + grace + a 5-day acceptance window) lapses. A test that runs a licensed venture
+// for many cycles to watch its RP/modifier evolve assumes it stays LICENSED. `keepEngaged`
+// models the player staying engaged: it ACCEPTs the renegotiation the moment one is admissible
+// (`state.tick >= licenceEndTick`), resetting the schedule so the venture never auto-lapses. It
+// runs the REAL action, keeping every invariant satisfied. Call it each boundary in a long run.
+function keepEngaged(s) {
+  const windowN = s.windowN;
+  for (const g of s.guilds) {
+    for (const v of (g.ventures || [])) {
+      if (v.licence && s.tick >= licenceEndTick(v.licence, windowN)) {
+        s = intake(s, [createRenegotiateLicenceAction({ guildId: g.id, ventureId: v.id })]).state;
+      }
+    }
+  }
+  return s;
+}
 
 // --- 1. THE ACCEPTANCE TEST -------------------------------------------------------
 
@@ -287,7 +306,8 @@ test('a below-line venture EARNS its way back — the loop the endowment left in
   const atStart = issuanceModifier(s, guild(s));
   assert.ok(atStart < 1, 'a 20% signing opens below its line');
   assert.ok(atStart > ISSUANCE_FLOOR, 'but not at the floor — the home base is still covered');
-  for (let i = 0; i < 30 * 4; i += 1) s = tick(s);
+  // Kept engaged each boundary so the licence rolls the full run (#64 Slice 2, see keepEngaged).
+  for (let i = 0; i < 30 * 4; i += 1) { s = tick(s); if (s.tick % 4 === 0) s = keepEngaged(s); }
   assert.ok(issuanceModifier(s, guild(s)) > atStart, 'and meeting commitments earns it back up');
 });
 

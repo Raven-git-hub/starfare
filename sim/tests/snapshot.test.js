@@ -368,16 +368,17 @@ test('feeQuote keys are exactly the priced goods that something can produce', ()
   }
 });
 
-test('nothing unproducible or unpriced is quoted — fuel and the Tier-3 placeholders are absent', () => {
+test('fuel is never quoted; a Tier-3 module now IS quotable (2.1a)', () => {
   const quote = buildSnapshot(sampleState()).feeQuote;
   // Fuel is never priced (§8) and no venture outputs it, so it has no licence to quote.
   assert.equal(FUEL_GOOD in quote, false);
   assert.equal(baselineUnitsForGood(FUEL_GOOD), null);
-  // The Tier-3 catalog entries carry no recipe and no price — a fee quoted for them would
-  // be a number invented for a good nothing can make.
+  // As of 2.1a a module HAS a 2->3 recipe, a baseline and a price, so a venture that
+  // manufactures one is licensable — every module carries a fee row now, exactly as a
+  // processed good does. (Pre-2.1a they were absent, as unmakeable placeholders.)
   for (const good of TIER3_GOODS) {
-    assert.equal(good in quote, false, `${good} has no recipe yet`);
-    assert.equal(baselineUnitsForGood(good), null);
+    assert.equal(good in quote, true, `${good} is quotable now`);
+    assert.ok(baselineUnitsForGood(good) > 0, `${good} has a baseline`);
   }
 });
 

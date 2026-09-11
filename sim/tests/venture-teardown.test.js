@@ -117,6 +117,17 @@ test('decommissioning a licensed venture: fee charged, site free, asset idle, lo
     siteId: HOME_MINE, releaseTick: want.lockoutUntilTick, lockedAtTick: after.tick,
   });
 
+  // A `venture_closed` NOTICE was written (docs/event-log.md §2), cause 'teardown', with a
+  // self-contained payload (carrying the lockout tick, since one was written) and born UNREAD.
+  const notice = guildOf(after).events.find((e) => e.type === 'venture_closed');
+  assert.ok(notice, 'a venture_closed notice was recorded');
+  assert.equal(notice.payload.cause, 'teardown', 'a player teardown');
+  assert.equal(notice.payload.ventureId, 'mine_1');
+  assert.equal(notice.payload.ventureType, 'mining', 'the captured venture kind is carried (event-log.md §9)');
+  assert.equal(notice.payload.lockoutUntilTick, want.lockoutUntilTick, 'the lockout tick is carried');
+  assert.equal(notice.tick, after.tick, 'stamped with the tick the teardown ran on');
+  assert.equal(notice.readTick, undefined, 'born unread');
+
   // The teardown state is clean — checkGuildReputationSum included.
   assert.deepEqual(checkInvariants(after, after.tick), []);
 });
@@ -175,6 +186,13 @@ test('an unlicensed venture tears down with no fee and no lockout, and its node 
   assert.equal(guildOf(after).credits, creditsBefore, 'no fee off an absent licence');
   assert.equal(after.syndicate.ledger, ledgerBefore);
   assert.equal(after.nodeLockouts, undefined, 'no lockout, no key');
+  // The notice was still written — an unlicensed teardown is a closure too — but its payload
+  // carries NO `lockoutUntilTick`, since none was written (§2 self-contained).
+  const notice = guildOf(after).events.find((e) => e.type === 'venture_closed');
+  assert.equal(notice.payload.cause, 'teardown');
+  assert.equal(notice.payload.ventureId, 'mine_u');
+  assert.equal(notice.payload.ventureType, 'mining', 'the captured venture kind is still carried');
+  assert.ok(!('lockoutUntilTick' in notice.payload), 'no lockout tick — an unlicensed teardown writes none');
   // The node is free at once — a fresh establish is accepted with no wait.
   assert.equal(validateAction(after, createEstablishVentureAction({
     guildId: GUILD, ventureId: 'mine_u2', siteId: HOME_MINE, assetId: M1, resourceType: 'titanium', productionRate: 5,

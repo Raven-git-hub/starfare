@@ -44,6 +44,9 @@
 const { windowFraction, DEFAULT_WINDOW_N } = require('./windows.js');
 const { producedGoodFor, isLicensedDeuteriumMine } = require('./baseline.js');
 const { tierWeight, tierOf } = require('./points.js');
+const { dayOf, tickAt } = require('./calendar.js');
+const { getSite } = require('./seed.js');
+const { recordEvent, LICENCE_LAPSED, VENTURE_CLOSED } = require('./events.js');
 
 // The structural equity ceiling — §5: "up to the structural 49% ceiling (the owner
 // keeps control by retaining at least 51%)". This is a DESIGN number, not a tuning
@@ -468,10 +471,12 @@ const REP_BREACH_MIN = 2.5;
 // tiers (licence-and-price-system.md §5/§7) — one RP on one scale, by construction, not
 // two reputations.
 //
-// ⚠ THE FLOOR IS A PIN, NOT A CONSEQUENCE. Reaching −500 means the venture sits AT the
-// closure threshold; it does not close it. Venture removal, licence revocation and the
-// −300 forced-lease offer are a SEPARATE later slice and none of them is built — nothing
-// in this file or the tick acts on either threshold beyond clamping the number.
+// ⚠ THE FLOOR NOW CLOSES THE VENTURE (docs/forced-closure.md, 09-09-26). Reaching −500 at a
+// boundary is the CLOSURE trigger: the clamp still pins the number here, and the tick then
+// force-closes the venture that a breach drove to the floor (sim/tick.js — the boundary RP
+// move detects it, `applyVentureClosure` above removes it). Only a BREACH can reach the floor
+// (a met gain climbs), so closure is always a breach outcome, and a venture can never persist
+// at −500. The −300 forced-lease offer remains a separate deferred slice (it needs leasing).
 const RP_FLOOR = -500;
 const RP_SOFT_CAP = 1500;
 const RP_TAPER_KNEE = 800;
@@ -769,6 +774,327 @@ function commitmentUnitsFor(pct, baselineUnitsPerTick, windowN) {
   return Math.round(pct * baselineUnitsPerTick * windowN);
 }
 
+// ── LICENCE RENEGOTIATION (#64, Slice 1) ─────────────────────────────────────────
+//
+// design.md §5 "Licence renegotiation — the terms function & venture standing"
+// (08-09-26): at a licence's window-end the Syndicate reads the venture's STANDING off
+// its RP and sets the new terms — the player authors only the FIRST licence, every
+// renegotiation after is the Syndicate's. Slice 1 is the engine truth for that seam:
+// the band classifier, the terms function, and the fee the top band re-locks at. No
+// timers, no auto-lapse — the `renegotiateLicence` action (sim/actions.js) is player-
+// pull only, and the client button is a later slice.
+//
+// The four numbers below are `[FIRST-CUT]`, read from docs/phase-1-tuning.md
+// §"Licence renegotiation — venture-standing bands & terms function (08-09-26 — #64)".
+// Each is cited, none is invented here (§0 / CLAUDE.md).
+
+// The venture-standing band cut-points, on `venture.reputation` read at window-end
+// (phase-1-tuning §"…venture-standing bands…": −300 / 0 / 500). −300 is the existing
+// forced-lease mark; 0 is the bump-floor property (a venture only crosses below it by
+// demonstrated breaching, `signingBump` ≥ 0 above); 500 sits below the ~720 a flawless
+// market venture reaches in six weeks, so Strong is reachable but earned.
+const STANDING_CUT_AT_RISK = -300;   // rp <= this            -> atRisk
+const STANDING_CUT_STEADY = 0;       // this <= rp < STRONG   -> steady; below (down to AT_RISK) -> subPar
+const STANDING_CUT_STRONG = 500;     // rp >= this            -> strong
+
+// The Strong-band fee discount (phase-1-tuning: −10% of the fee for an above-500
+// venture on renegotiation). The fee NEVER rises — this is the only band that moves it
+// (it replaces the retired 24-08-26 surcharge). A fraction of the locked fee, applied
+// in the apply/preview; it creates no new credit flow (the Syndicate collects less).
+const STRONG_FEE_DISCOUNT = 0.10;
+
+// The commitment step the Syndicate demands by band (phase-1-tuning: Steady +0.10,
+// Sub-par +0.25, At-risk → 1.0). A monotonic ladder — the weaker the standing, the
+// harder the Syndicate leans — with Strong exempt (no demand). At-risk is a JUMP to
+// full commitment, not a step; Steady/Sub-par are additive steps, clamped at 1.0.
+const COMMITMENT_STEP_STEADY = 0.10;
+const COMMITMENT_STEP_SUB_PAR = 0.25;
+
+// ventureStanding(venture) -> 'atRisk' | 'subPar' | 'steady' | 'strong'.
+// A single-number band read straight off `venture.reputation` (a missing field is 0,
+// the same courtesy the snapshot reports it as). Pure, no mutation. The exact edges
+// (design.md §5's table): rp ≤ −300 atRisk; −300 < rp < 0 subPar; 0 ≤ rp < 500 steady;
+// rp ≥ 500 strong.
+function ventureStanding(venture) {
+  const rp = (venture && venture.reputation) || 0;
+  if (rp <= STANDING_CUT_AT_RISK) return 'atRisk';
+  if (rp < STANDING_CUT_STEADY) return 'subPar';
+  if (rp < STANDING_CUT_STRONG) return 'steady';
+  return 'strong';
+}
+
+// renegotiationTerms(venture) -> { committedOutputPct, windowDays, feeDiscount }
+// The whole "terms function" design.md §5 describes: a small, obviously-correct read of
+// the venture's standing into the three outputs the Syndicate offers. Pure, no mutation.
+//
+//   committedOutputPct — the current committed pct stepped up by band, clamped to 1.0:
+//                        strong keeps it (may coast); steady +0.10; subPar +0.25; atRisk
+//                        set to full (1.0), a jump not a step.
+//   windowDays         — carried UNCHANGED. Window is not a lever this cut (§5): the
+//                        Syndicate's right to dictate it is retained for a later cut.
+//   feeDiscount        — STRONG_FEE_DISCOUNT for strong, else 0. The fee only ever falls,
+//                        and only at Strong.
+//
+// Equity is NOT a term here — the player set it once at establishment and it carries from
+// the venture, untouched (§5: "Equity is never dictated"). A venture with no ordinary
+// licence THROWS rather than scoring a nonsense read: there are no terms to renegotiate.
+function renegotiationTerms(venture) {
+  const lic = venture && venture.licence;
+  if (!lic) {
+    throw new Error(`renegotiationTerms: a venture must hold an ordinary licence to renegotiate — venture ${venture && venture.id} has none`);
+  }
+  const standing = ventureStanding(venture);
+  const current = lic.committedOutputPct;
+  let committedOutputPct;
+  if (standing === 'strong') {
+    committedOutputPct = current;                                     // keep — may coast
+  } else if (standing === 'steady') {
+    committedOutputPct = Math.min(1, current + COMMITMENT_STEP_STEADY);
+  } else if (standing === 'subPar') {
+    committedOutputPct = Math.min(1, current + COMMITMENT_STEP_SUB_PAR);
+  } else { // atRisk
+    committedOutputPct = 1;                                          // jump to full
+  }
+  // Normalise to 2 dp — plain float addition creeps (`0.7 + 0.10 = 0.7999999999999999`),
+  // and that creep flows into the stored licence pct and COMPOUNDS across successive
+  // renegotiations. 2 dp is lossless for every legitimate commitment value: every value
+  // and step the system speaks in is already 2 dp (`0.5`, `0.51`, `+0.10`, `+0.25`) and
+  // the client presents commitment as a whole-number percentage. Done ONCE on the final
+  // value so it covers every branch — the Steady/Sub-par steps, the carried Strong value
+  // (self-healing any creep a prior renegotiation left on it), and At-risk's 1.0 (a no-op).
+  // Slice-local precision ruling (rides this build note, per §0's minor-ruling rule); not a
+  // balance number. The Math.min(1, …) clamps above are preserved.
+  committedOutputPct = Math.round(committedOutputPct * 100) / 100;
+  return {
+    committedOutputPct,
+    windowDays: lic.windowDays,                                      // carried unchanged
+    feeDiscount: standing === 'strong' ? STRONG_FEE_DISCOUNT : 0,
+  };
+}
+
+// renegotiationFee({ venture, baselineUnitsPerTick, windowN, lockedPrice })
+//   -> { committedOutputPct, basicFee, discountedFee, feeDiscountApplied }
+//
+// The ONE place a re-locked licence's fee is priced, read by BOTH the `renegotiateLicence`
+// apply (which stores it) and the snapshot's `renegotiationOffer` (which previews it) —
+// the same one-source-of-truth pattern as `teardownSettlement`, so the offer the player
+// is shown and the terms the engine locks cannot disagree.
+//
+// The fee is recomputed EXACTLY as `applyForLicence` does — `licenceFee` at the CURRENT
+// posted price, over the same baseline and window, with the NEW committed pct and the
+// venture's carried equity — then the Strong-band discount is baked into the locked fees
+// (design.md §5): `round(fee × (1 − feeDiscount))`, integer credits (§15.2). `feeDiscount`
+// is 0 off Strong, so the multiply is a no-op there and the fee is unchanged. Baking it in
+// means NO new licence field — the boundary charge and `teardownSettlement` read
+// `basicFee`/`discountedFee` unchanged. Pure: reads its arguments, mutates nothing.
+function renegotiationFee({ venture, baselineUnitsPerTick, windowN, lockedPrice }) {
+  const terms = renegotiationTerms(venture);
+  const raw = licenceFee({
+    baselineUnitsPerTick,
+    windowN,
+    lockedPrice,
+    committedOutputPct: terms.committedOutputPct,
+    equityPct: equityOf(venture),   // the term offered at establishment, carried untouched
+  });
+  const factor = 1 - terms.feeDiscount;
+  return {
+    committedOutputPct: terms.committedOutputPct,
+    basicFee: Math.round(raw.basicFee * factor),
+    discountedFee: Math.round(raw.discountedFee * factor),
+    feeDiscountApplied: terms.feeDiscount > 0,
+  };
+}
+
+// ── RENEGOTIATION TIMERS (#64 Slice 2, design.md §5 "Renegotiation timers — grace,
+//    acceptance, auto-lapse"; numbers in phase-1-tuning §"Licence renegotiation timers") ──
+//
+// The window-end no longer opens the offer instantly (Slice 1b). Three day-aligned phases
+// follow the committed window: a GRACE window (the venture runs on old terms, nothing is
+// offered), then the Syndicate ACTS (the offer appears with a fixed acceptance countdown),
+// then AUTO-LAPSE if still unaccepted. All three deadlines are computed here, in ONE place,
+// read by the snapshot (the offer gate + countdown) AND the tick (the auto-lapse step), so
+// the offer shown and the auto-lapse cannot disagree — the teardownSettlement/renegotiationFee
+// single-source pattern.
+
+// GRACE — how many days after window-end the Syndicate waits before acting, keyed on the
+// contract's `windowDays` (phase-1-tuning: 1 / 3 / 4 / 5 at cutoffs 14 / 21 / 28). A short
+// contract gets a short grace, a long one a long grace — `windowDays` becomes the player's
+// engagement-cadence dial (§5). NOT band-keyed (that was rejected, §5). The `[FIRST-CUT]`
+// values and cutoffs are named here and cited to the tuning doc; nothing is invented.
+const GRACE_CUT_MED = 14;    // windowDays < this -> GRACE_DAYS_MIN
+const GRACE_CUT_LONG = 21;   // < this            -> GRACE_DAYS_SHORT
+const GRACE_CUT_MAX = 28;    // < this            -> GRACE_DAYS_MED; >= this -> GRACE_DAYS_LONG
+const GRACE_DAYS_MIN = 1;
+const GRACE_DAYS_SHORT = 3;
+const GRACE_DAYS_MED = 4;
+const GRACE_DAYS_LONG = 5;
+
+// The fixed acceptance window (phase-1-tuning: 5 days) — how long the offer stands before it
+// auto-lapses. One number for every band this cut; the variable-by-standing acceptance is not
+// built (§5).
+const ACCEPTANCE_WINDOW_DAYS = 5;
+
+// graceDaysFor(windowDays) -> the grace length in days. Pure step function over the named
+// cutoffs above. Exact edges (phase-1-tuning): 13->1, 14->3, 20->3, 21->4, 27->4, 28->5, 42->5.
+function graceDaysFor(windowDays) {
+  if (windowDays < GRACE_CUT_MED) return GRACE_DAYS_MIN;    // < 14
+  if (windowDays < GRACE_CUT_LONG) return GRACE_DAYS_SHORT; // < 21
+  if (windowDays < GRACE_CUT_MAX) return GRACE_DAYS_MED;    // < 28
+  return GRACE_DAYS_LONG;                                    // >= 28
+}
+
+// renegotiationSchedule(licence, windowN, dayAnchorTick) -> { windowEndTick, actsTick,
+// lapseTick } — the three DAY-ALIGNED ticks of a licence's renegotiation timeline, all built
+// on the calendar (`dayOf`/`tickAt`) off the SAME base day, so they cannot diverge:
+//
+//   windowEndTick — the day-aligned window-end (the calendar `renegotiationDeadline`,
+//                   docs/cycle-and-calendar.md): the first tick of the day `windowDays` days
+//                   after the day the licence was signed. This is the reconciliation of
+//                   Slice 1's raw `licenceEndTick` onto the calendar basis; for a licence
+//                   signed at a day boundary (the persistent-server norm) the two coincide.
+//   actsTick      — windowEndTick + graceDaysFor(windowDays) days: grace ends, the Syndicate
+//                   acts, the offer appears. Nothing is offered before this.
+//   lapseTick     — actsTick + ACCEPTANCE_WINDOW_DAYS days: the auto-lapse deadline. If the
+//                   player has neither accepted nor rejected by here, the tick lapses it.
+//
+// Pure: reads only the licence's `signedTick`/`windowDays` and the galaxy's cadence/anchor.
+function renegotiationSchedule(licence, windowN, dayAnchorTick = 0) {
+  const signDay = dayOf(licence.signedTick, windowN, dayAnchorTick);
+  const endDay = signDay + licence.windowDays;
+  const actsDay = endDay + graceDaysFor(licence.windowDays);
+  const lapseDay = actsDay + ACCEPTANCE_WINDOW_DAYS;
+  return {
+    windowEndTick: tickAt(endDay, 0, windowN, dayAnchorTick),
+    actsTick: tickAt(actsDay, 0, windowN, dayAnchorTick),
+    lapseTick: tickAt(lapseDay, 0, windowN, dayAnchorTick),
+  };
+}
+
+// ventureName(venture) -> the venture's display name, the SAME string the renegotiation
+// attention entry carries (sim/snapshot.js's computeAttention): its SEED site name, falling
+// back to the raw siteId and then the venture id. Read here so the event payload is
+// self-contained — the notice names the venture even after it is removed and its seat freed,
+// and the client renders it without re-resolving anything (the venture may no longer exist).
+function ventureName(venture) {
+  const site = venture && venture.siteId ? getSite(venture.siteId) : null;
+  return (site && site.name) || (venture && venture.siteId) || (venture && venture.id);
+}
+
+// applyLapse(guild, venture, cause, tick) -> MUTATES the guild + venture to the
+// lapse-to-unlicensed state (design.md §5 "Accept or lapse"). THE ONE lapse effect, shared by
+// two callers: the `lapseLicence` action's apply (a player REJECT → cause 'rejected') and the
+// auto-lapse tick step (the timeout → cause 'timeout', Slice 2), so a chosen lapse and a
+// timed-out one cannot diverge.
+//
+//   0. RECORD THE NOTICE FIRST (docs/event-log.md §2), before anything is forfeited: a
+//      `licence_lapsed` event with a SELF-CONTAINED payload — the cause, the venture's id and
+//      display name, the committed good, and its system — so the Notices panel can render
+//      "your licence on X lapsed" after the venture has gone unlicensed and its RP is gone.
+//   1. RP forfeit — subtract the venture's reputation from the guild sum and delete it,
+//      returning the venture to the unlicensed no-reputation state (invariant 8 stays exact:
+//      the guild total and the row it totals move by the same amount, in the same place).
+//      Forfeiting a NEGATIVE reputation RAISES the guild sum — the deliberate asymmetric
+//      escape valve (§5), not a bug.
+//   2. Drop the licence and clear the windowed-commitment bookkeeping — back to the exact
+//      unlicensed shape `establishVenture` leaves (no `licence`, `syndicateCommitment` 0, no
+//      `committedFromTick`). The venture's commitment simply leaves the good's aggregate
+//      window from the next tick (no clawback), exactly as decommissionVenture leaves it.
+//
+// No fee, no node lockout, no signing bump. The venture, its node and its asset all survive.
+//
+// THE `tick` IS PASSED, not read from any state: applyLapse carries no `state`, and the two
+// callers know DIFFERENT correct ticks — the action apply passes `next.tick` (the current
+// tick), the tick step passes `state.tick + 1` (the tick being built, the producing-tick
+// convention recordSale/recordLicenceFee already use). Recording the event with the caller's
+// producing tick keeps the notice's "when" honest at both call sites (§15.2). Returns nothing;
+// the mutation IS the effect (both callers already hold a mutable `next`/`state`).
+function applyLapse(guild, venture, cause, tick) {
+  recordEvent(guild, tick, LICENCE_LAPSED, {
+    cause,
+    ventureId: venture.id,
+    ventureName: ventureName(venture),
+    good: producedGoodFor(venture) || null,
+    // The venture KIND ('mining' / 'refining'), captured at write time because the venture
+    // may be unlicensed/gone by render — the client builds the notice title "{Good} Mine/
+    // Refinery" from it, and `ventureName` alone is a location, not a kind (event-log.md §9).
+    ventureType: venture.type || null,
+    systemId: venture.systemId || null,
+  });
+  guild.guildReputation -= (venture.reputation || 0);
+  delete venture.reputation;
+  delete venture.licence;
+  venture.syndicateCommitment = 0;
+  delete venture.committedFromTick;
+}
+
+// applyVentureClosure(state, guild, venture, cause, tick) -> MUTATES state + guild to REMOVE
+// the venture, forfeiting its RP and quarantining its node (docs/venture-teardown.md §3.1/§3.3).
+// THE ONE closure effect, shared by two callers so a player teardown and a Syndicate forced
+// closure cannot diverge on removal — the `applyLapse` precedent above:
+//   - the `decommissionVenture` action's apply (a player TEARDOWN → cause 'teardown',
+//     sim/actions.js), which charges the settlement fee (§3.2) around this call; and
+//   - the −500 forced-closure path in the tick (docs/forced-closure.md §3, sim/tick.js →
+//     cause 'forced'), which charges NO fee (§3.4: the breach that triggered it already paid
+//     the full basic fee this cycle at the boundary).
+//
+// It does exactly what those two share, and no more:
+//   0. RECORD THE NOTICE FIRST (docs/event-log.md §2), before the venture is spliced out: a
+//      `venture_closed` event with a SELF-CONTAINED payload — the cause, the venture's id and
+//      display name, its good, its system, and (only when one was written) the node
+//      `lockoutUntilTick`. Recorded here, off `teardownSettlement`'s already-computed release
+//      tick, so the notice cannot disagree with the lockout the very next lines write. The
+//      venture is about to be removed, so nothing downstream could re-derive this — which is
+//      exactly why it is a discrete EVENT and not a standing condition (§5).
+//   1. RP FORFEIT + REMOVAL (§3.1) — subtract the venture's reputation from the guild sum in
+//      the SAME mutation that splices it out, so `checkGuildReputationSum` (guildReputation ==
+//      Σ venture.reputation + endowment) stays exact with no new term. The venture's GP leaves
+//      with it (derived), so the mean line does the rest of the "punishment" (§2). The site goes
+//      vacant and the asset returns to idle for free — both derived (§0) — so there is nothing
+//      to write for them.
+//   2. THE NODE LOCKOUT (§3.3) — written iff `teardownSettlement` returns a release tick (an
+//      ordinary-licensed venture with contract time left: `releaseTick > state.tick`; null when
+//      unlicensed or past the term). `state.nodeLockouts` is created lazily — the only writer of
+//      it besides the action — so a galaxy that has closed nothing carries no key. `lockedAtTick`
+//      records the mutation's tick (§15.2). The lockout gates ANY guild's re-establish, the
+//      owner's included, via the `siteId`-keyed establish gate (§3.3).
+//
+// THE `tick` IS PASSED for the same reason applyLapse's is: the notice's producing tick differs
+// between the action apply (`next.tick`) and the tick step (`state.tick + 1`), and only the
+// caller knows which. It is distinct from `state.tick` — which this function still reads for the
+// settlement/lockout arithmetic — so the notice follows the recordSale producing-tick
+// convention while `lockedAtTick` keeps its own long-standing `state.tick` basis (unchanged).
+//
+// THE SETTLEMENT FEE IS DELIBERATELY NOT HERE: it is the one thing teardown and forced closure
+// disagree on (§3.4), so its caller charges it. This reads `teardownSettlement` — the single
+// source of truth for the lockout tick — so the fee's caller and this cannot compute a term the
+// other would not. Returns nothing; the mutation IS the effect (both callers hold a mutable
+// `state`/`next`).
+function applyVentureClosure(state, guild, venture, cause, tick) {
+  const { lockoutUntilTick } = teardownSettlement(state, guild, venture);
+  recordEvent(guild, tick, VENTURE_CLOSED, {
+    cause,
+    ventureId: venture.id,
+    ventureName: ventureName(venture),
+    good: producedGoodFor(venture) || null,
+    // The venture KIND ('mining' / 'refining'), captured here because the venture is about
+    // to be spliced out — the client builds the title "{Good} Mine/Refinery" from it, and
+    // the name alone is a location, not a kind (event-log.md §9). Beside `good`, as §2 rules.
+    ventureType: venture.type || null,
+    systemId: venture.systemId || null,
+    ...(lockoutUntilTick != null ? { lockoutUntilTick } : {}),
+  });
+  guild.guildReputation -= (venture.reputation || 0);
+  guild.ventures.splice(guild.ventures.indexOf(venture), 1);
+  if (lockoutUntilTick != null) {
+    if (!Array.isArray(state.nodeLockouts)) state.nodeLockouts = [];
+    state.nodeLockouts.push({
+      siteId: venture.siteId,
+      releaseTick: lockoutUntilTick,
+      lockedAtTick: state.tick,
+    });
+  }
+}
+
 module.exports = {
   EQUITY_CEILING, equityOf, isValidEquityPct, committedContribution, ownerFraction, commitmentSale,
   FEE_RATE, CORNERS, EQUITY_SHAPE_K, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
@@ -777,4 +1103,10 @@ module.exports = {
   REP_MEET_MAX, REP_W_COMMIT, REP_W_EQUITY, REP_BREACH_MAX, REP_BREACH_MIN,
   RP_FLOOR, RP_SOFT_CAP, RP_TAPER_KNEE,
   repTerms, tierFactor, ventureTierWeight, signingBump, metGain, deuteriumMetGain, breachPenalty, gainFactor, reputationDelta,
+  STANDING_CUT_AT_RISK, STANDING_CUT_STEADY, STANDING_CUT_STRONG,
+  STRONG_FEE_DISCOUNT, COMMITMENT_STEP_STEADY, COMMITMENT_STEP_SUB_PAR,
+  ventureStanding, renegotiationTerms, renegotiationFee,
+  GRACE_CUT_MED, GRACE_CUT_LONG, GRACE_CUT_MAX,
+  GRACE_DAYS_MIN, GRACE_DAYS_SHORT, GRACE_DAYS_MED, GRACE_DAYS_LONG,
+  ACCEPTANCE_WINDOW_DAYS, graceDaysFor, renegotiationSchedule, applyLapse, applyVentureClosure,
 };

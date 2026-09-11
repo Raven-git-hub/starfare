@@ -623,6 +623,20 @@ select.field{appearance:none; cursor:pointer;}
 .rtab{font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--text-dim); background:rgba(67,217,200,.05); border:1px solid var(--line-bright); border-top:none; padding:9px 30px 10px; cursor:pointer; clip-path:polygon(0 0, 100% 0, calc(100% - 15px) 100%, 15px 100%); transition:all .12s;}
 .rtab:hover{color:var(--text); background:rgba(67,217,200,.12);}
 .rtab.active{color:var(--accent); background:rgba(67,217,200,.16); border-color:var(--accent);}
+/* The Guild Hall tab lights an amber attention pip while a guild action-item is open (#64
+   Slice 1b — the snapshot's attention.renegotiations). Amber, not the teal --accent, so it
+   reads as "the Syndicate wants a decision" rather than "this tab is selected".
+   The .attn class on the tab is the SINGLE source of truth (mirrors the Messages rail's
+   .gh-tab.attn .dot pattern): the pip defaults to display:none and is revealed + pulsed only
+   when the tab carries .attn. paintTopLevelAttn() already toggles .attn off n > 0, so the pip
+   appears and pulses only when there is something to action and vanishes at n === 0. This is
+   the fix for the pip flashing at rest: there is no global [hidden]{display:none} rule in this
+   file, so the old display:inline-block base won the pip's hidden attribute and it showed
+   regardless (the JS pip.hidden line stays as harmless belt-and-suspenders). */
+.rtab .rtab-attn{display:none; width:6px; height:6px; border-radius:50%; background:#C9A227; margin-left:8px; vertical-align:middle; box-shadow:0 0 7px #C9A227;}
+.rtab.attn{border-color:#C9A227; color:var(--text);}
+.rtab.attn .rtab-attn{display:inline-block; animation:rtabPulse 1.8s ease-in-out infinite;}
+@keyframes rtabPulse{0%,100%{opacity:1;} 50%{opacity:.3;}}
 
 /* ===== Archive stub overlay for the non-system tabs ===== */
 #tabPanel{position:fixed; inset:104px 0 0 0; z-index:480; display:none; background:var(--bg-void, #0B0D12); color:#E8DFC8; font-family:'IBM Plex Sans',sans-serif;}
@@ -877,7 +891,43 @@ select.field{appearance:none; cursor:pointer;}
 #tp-guild .gh-tab.on{color:var(--gh-ink); background:#1d2230; border-color:var(--gh-amber); box-shadow:inset 0 0 0 1px var(--gh-amber-dim);}
 #tp-guild .gh-tab.on .dot{background:var(--gh-amber); box-shadow:0 0 8px var(--gh-amber);}
 #tp-guild .gh-tab .soon{margin-left:auto; font-size:8px; letter-spacing:.14em; color:var(--gh-ink4); border:1px solid var(--gh-line); border-radius:20px; padding:2px 6px;}
+/* MESSAGES rail entry (#64 Slice 1b) — an amber count badge and a pulsing dot while an
+   action-item is open (attention.renegotiations non-empty). Lifted from the mock. */
+#tp-guild .gh-tab .badge{margin-left:auto; font-size:9px; font-weight:600; letter-spacing:.04em; color:var(--gh-void); background:var(--gh-amber); border-radius:20px; min-width:17px; text-align:center; padding:1px 6px;}
+#tp-guild .gh-tab.attn .dot{background:var(--gh-amber); box-shadow:0 0 8px var(--gh-amber); animation:ghPulse 1.8s ease-in-out infinite;}
+@keyframes ghPulse{0%,100%{opacity:1;} 50%{opacity:.35;}}
 #tp-guild .gh-railfoot{padding:12px 15px; border-top:1px solid var(--gh-line); color:var(--gh-ink4); font-size:10px; letter-spacing:.04em; line-height:1.5;}
+
+/* MESSAGES panel — the email-style inbox (docs/mockups/guild-hall-messages.html, the §9 redesign).
+   Every row is a one-line SUBJECT LINE: icon + title + a "when"/status in .meta, and — a notice —
+   the amber unread dot. The full detail no longer renders inline; clicking a row opens a per-type
+   popup. Both action-items and notices share this row shape. */
+#tp-guild .gh-seclab{font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--gh-ink4); padding:14px 16px 6px;}
+#tp-guild .msg{display:flex; align-items:center; gap:12px; padding:12px 16px; border-top:1px solid var(--gh-line); cursor:pointer; transition:.12s;}
+#tp-guild .msg:hover{background:#1b2029;}
+#tp-guild .msg .ic{width:26px; height:26px; border-radius:6px; flex:none; display:flex; align-items:center; justify-content:center; font-size:13px;}
+#tp-guild .msg .body{flex:1; min-width:0;}
+#tp-guild .msg .t{font-size:12.5px; color:var(--gh-ink); letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+#tp-guild .msg .t .who{color:var(--gh-ink3);}
+#tp-guild .msg .meta{display:flex; align-items:center; gap:10px; flex:none; text-align:right;}
+#tp-guild .chip{font-size:8px; letter-spacing:.12em; text-transform:uppercase; padding:2px 7px; border-radius:20px; border:1px solid var(--gh-line2); color:var(--gh-ink3); white-space:nowrap;}
+#tp-guild .chip.strong{color:var(--gh-up); border-color:rgba(95,185,138,.4);}
+#tp-guild .chip.steady{color:var(--gh-amber2); border-color:var(--gh-amber-dim);}
+#tp-guild .chip.subpar{color:#e0b26b; border-color:rgba(224,178,107,.4);}
+#tp-guild .chip.atrisk{color:var(--gh-down); border-color:rgba(224,121,107,.45);}
+#tp-guild .msg .deadline{font-size:9.5px; letter-spacing:.06em; color:var(--gh-ink3); white-space:nowrap;}
+#tp-guild .msg .deadline.hot{color:var(--gh-down);}
+/* action-required rows are pinned + amber-edged; notices are calmer */
+#tp-guild .msg.action{background:rgba(201,162,39,.045);}
+#tp-guild .msg.action .ic{background:var(--gh-amber-dim); color:var(--gh-amber2);}
+#tp-guild .msg.note .ic{background:rgba(232,223,200,.06); color:var(--gh-ink3);}
+#tp-guild .msg.note .t{color:var(--gh-ink2);}
+/* an unread notice: the amber dot on the left. read = dimmed, dot hidden. */
+#tp-guild .msg .unreaddot{width:6px; height:6px; border-radius:50%; background:var(--gh-amber); flex:none;}
+#tp-guild .msg.read{opacity:.55;}
+#tp-guild .msg.read .unreaddot{visibility:hidden;}
+#tp-guild .msg.read.note .t{color:var(--gh-ink3);}
+#tp-guild .gh-msg-empty{padding:16px; color:var(--gh-ink4); font-size:11.5px; letter-spacing:.03em;}
 
 /* CENTRE */
 #tp-guild .gh-centre{display:flex; flex-direction:column; min-width:0; gap:16px;}
@@ -953,6 +1003,105 @@ select.field{appearance:none; cursor:pointer;}
 #tp-guild .gh-thero .tcenter{position:absolute; z-index:2; inset:0; display:flex; align-items:center; justify-content:center;}
 #tp-guild .gh-thero .gh{font-family:var(--gh-serif); font-weight:700; letter-spacing:.22em; font-size:34px; color:var(--gh-ink);
   text-shadow:0 2px 22px rgba(13,15,20,.95), 0 1px 4px rgba(13,15,20,.95);}
+
+/* ===== the OPERATIONS tab — the out-of-system operations hub (docs/operations-hub.md §2), a
+   TOP-LEVEL tab renamed from Transport. A Guild-Hall three-column layout (LEASED hero | centre |
+   pilot hero) scoped under #tp-ops so nothing collides with the other tabs. It FILLS THE VIEWPORT
+   like #tp-guild / #tp-deut: the panel is a flex column (height:100% on the overlay) and .ops-body
+   owns the vertical space (flex:1 1 auto). EVERY panel is fixed-height with internal scroll — the
+   flex `min-height:0` chain plus `overflow-y:auto` on each list body means expanding a row (or a
+   future group) scrolls WITHIN its panel and never resizes it (§2, load-bearing). IN TRANSIT is the
+   only live section this slice; LEASED/DEPLOYED/IDLE are empty scaffolds (§7). Palette + chrome are
+   the shared Guild-Hall language (no new colours), namespaced with the --ops-/ops- prefix. ===== */
+#tabPanel.ops{overflow:hidden;}
+#tp-ops{--ops-void:#0d0f14; --ops-panel:#14171e; --ops-panel2:#181c24; --ops-panel3:#1c212b;
+  --ops-ink:#E8DFC8; --ops-ink2:#b7b09a; --ops-ink3:#6f7687; --ops-ink4:#454b58;
+  --ops-amber:#C9A227; --ops-amber2:#e3c04a; --ops-amber-dim:rgba(201,162,39,.30);
+  --ops-line:rgba(232,223,200,.10); --ops-line2:rgba(232,223,200,.18);
+  --ops-up:#5fb98a; --ops-down:#e0796b;
+  --ops-mono:'IBM Plex Mono',ui-monospace,monospace; --ops-serif:'Cinzel',Georgia,serif;
+  --ops-hero:250px; --ops-thero:442px;
+  display:none; font-family:var(--ops-mono); font-size:14px; line-height:1.45; color:var(--ops-ink);
+  padding:22px; background:radial-gradient(120% 80% at 80% -10%, rgba(201,162,39,.06), transparent 60%);
+  height:100%; overflow-y:auto;}
+#tp-ops.show{display:flex; flex-direction:column;}
+#tp-ops *{box-sizing:border-box;}
+
+/* three-zone body: [ LEASED hero | centre | pilot hero ] — fills the panel, min-height:0 so its
+   columns can hand their internal scroll to the list bodies rather than growing the panel. */
+#tp-ops .ops-body{display:grid; grid-template-columns:var(--ops-hero) minmax(0,1fr) var(--ops-thero);
+  gap:16px; align-items:stretch; flex:1 1 auto; min-height:0;}
+@media (max-width:1080px){ #tp-ops .ops-body{grid-template-columns:1fr;} #tp-ops .ops-thero{min-height:300px;} }
+
+#tp-ops .ops-card{background:var(--ops-panel2); border:1px solid var(--ops-line); border-radius:10px;}
+#tp-ops .ops-card-h{display:flex; align-items:center; justify-content:space-between; padding:13px 16px; border-bottom:1px solid var(--ops-line); flex:0 0 auto;}
+#tp-ops .ops-card-h .t{font-family:var(--ops-mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--ops-ink2); font-weight:600;}
+#tp-ops .ops-tag{font-size:9px; letter-spacing:.14em; text-transform:uppercase; padding:3px 8px; border-radius:20px; border:1px solid var(--ops-line2); color:var(--ops-ink3);}
+#tp-ops .ops-tag.live{color:var(--ops-up); border-color:rgba(95,185,138,.4);}
+
+/* hero panels (LEASED left, pilot right) share the card shell + own a fixed-height scroll body */
+#tp-ops .ops-hero{background:var(--ops-panel2); border:1px solid var(--ops-line); border-radius:10px; overflow:hidden; display:flex; flex-direction:column; min-height:0;}
+#tp-ops .ops-hero .zhead{font-family:var(--ops-mono); font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ops-ink3); padding:13px 15px 4px; flex:0 0 auto;}
+#tp-ops .ops-hero .zsub{font-family:var(--ops-serif); font-size:18px; color:var(--ops-ink); padding:0 15px 13px; border-bottom:1px solid var(--ops-line); letter-spacing:.02em; flex:0 0 auto;}
+#tp-ops .ops-hero .zsub .m{display:block; font-family:var(--ops-mono); font-size:10px; color:var(--ops-ink3); letter-spacing:.06em; margin-top:3px; text-transform:uppercase;}
+#tp-ops .ops-hero .ops-herobody{flex:1 1 auto; min-height:0; overflow-y:auto; display:flex; flex-direction:column;}
+
+/* CENTRE: IN TRANSIT on top (grows + scrolls), DEPLOYED + IDLE side by side below (scaffolds) */
+#tp-ops .ops-centre{display:flex; flex-direction:column; min-width:0; min-height:0; gap:16px;}
+#tp-ops .ops-transit{display:flex; flex-direction:column; flex:1 1 auto; min-height:0;}
+#tp-ops .ops-list{flex:1 1 auto; min-height:0; overflow-y:auto; padding:12px 14px;}
+#tp-ops .ops-grid2{display:grid; grid-template-columns:1fr 1fr; gap:16px; flex:0 0 auto;}
+#tp-ops .ops-grid2 .ops-card{display:flex; flex-direction:column; min-height:180px; max-height:34vh;}
+#tp-ops .ops-grid2 .ops-list{padding:0;}
+
+/* an IN TRANSIT row: origin waystation · progress bar · [alert] · time remaining · destination.
+   Clicking it expands the manifest (carrier + cargo). The row never resizes the panel — the list
+   body scrolls instead. */
+#tp-ops .ops-row{border:1px solid var(--ops-line); border-radius:6px; background:var(--ops-panel); margin-bottom:8px; cursor:pointer; transition:border-color .12s;}
+#tp-ops .ops-row:last-child{margin-bottom:0;}
+#tp-ops .ops-row:hover{border-color:var(--ops-line2);}
+#tp-ops .ops-row.open{border-color:var(--ops-amber-dim);}
+#tp-ops .ops-rowhead{display:flex; align-items:center; gap:12px; padding:11px 13px;}
+#tp-ops .ops-origin{font-size:12px; color:var(--ops-ink2); letter-spacing:.02em; flex:0 0 auto; max-width:130px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+#tp-ops .ops-bar{position:relative; flex:1 1 auto; min-width:48px; height:6px; border-radius:4px; background:var(--ops-void); border:1px solid var(--ops-line); overflow:hidden;}
+#tp-ops .ops-fill{position:absolute; left:0; top:0; bottom:0; border-radius:3px; background:linear-gradient(90deg, var(--ops-amber-dim), var(--ops-amber2)); transition:width .3s linear;}
+/* the alert slot — reserved + dark + UNWIRED this slice (§4: the one real trigger, destination
+   lost in flight, stays dormant until territory is contestable). Built so the row layout is final. */
+#tp-ops .ops-alert{width:16px; height:16px; border-radius:4px; background:rgba(6,8,13,.55); border:1px solid var(--ops-line); flex:0 0 auto;}
+#tp-ops .ops-eta{font-family:var(--ops-mono); font-size:12px; color:var(--ops-ink); font-variant-numeric:tabular-nums; flex:0 0 auto; min-width:52px; text-align:right;}
+#tp-ops .ops-dest{font-family:var(--ops-serif); font-size:14px; color:var(--ops-ink); flex:0 0 auto; max-width:130px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+#tp-ops .ops-dest:before{content:'\2192'; color:var(--ops-ink4); margin-right:7px; font-family:var(--ops-mono); font-size:12px;}
+/* the expanded manifest — carrier identity line + the itemised cargo */
+#tp-ops .ops-manifest{display:none; padding:12px 14px 13px; border-top:1px solid var(--ops-line); background:rgba(232,223,200,.02);}
+#tp-ops .ops-row.open .ops-manifest{display:block;}
+#tp-ops .ops-idline{font-size:11px; color:var(--ops-ink3); letter-spacing:.03em; margin-bottom:11px;}
+#tp-ops .ops-idline b{color:var(--ops-ink); font-weight:600;}
+#tp-ops .ops-manhd{font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ops-ink4); margin-bottom:8px;}
+#tp-ops .ops-manrow{display:flex; align-items:baseline; justify-content:space-between; gap:14px; padding:6px 0; border-top:1px solid var(--ops-line); font-variant-numeric:tabular-nums;}
+#tp-ops .ops-manrow:first-of-type{border-top:none;}
+#tp-ops .ops-manrow .g{color:var(--ops-ink2); text-transform:capitalize;}
+#tp-ops .ops-manrow .q{color:var(--ops-ink); font-weight:600;}
+#tp-ops .ops-manempty{color:var(--ops-ink4);}
+
+/* the calm empty states — IN TRANSIT when idle, and the LEASED/DEPLOYED/IDLE scaffolds. The
+   soon-panel idiom from guild-hall.html (a centred glyph + line), muted so a populated section
+   later reads as the arrival of something, not the fixing of an error. */
+#tp-ops .ops-empty{display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; flex:1 1 auto; min-height:120px; padding:34px 18px; color:var(--ops-ink4); gap:12px;}
+#tp-ops .ops-empty .glyph{font-family:var(--ops-serif); font-size:26px; color:var(--ops-ink4);}
+#tp-ops .ops-empty h3{font-family:var(--ops-serif); font-weight:600; letter-spacing:.03em; color:var(--ops-ink2); margin:0; font-size:15px;}
+#tp-ops .ops-empty p{max-width:320px; line-height:1.6; font-size:11.5px; margin:0; color:var(--ops-ink3);}
+
+/* RIGHT: the pilot hero (client/assets/characters/pilot.jpg under the Guild-Hall scrim) */
+#tp-ops .ops-thero{position:relative; padding:0; overflow:hidden; min-height:0; border:1px solid var(--ops-line); border-radius:10px;}
+#tp-ops .ops-thero .art{position:absolute; inset:0; z-index:0; background-image:url("assets/characters/pilot.jpg"); background-size:cover; background-position:right bottom;}
+#tp-ops .ops-thero .scrim{position:absolute; inset:0; z-index:1;
+  background:linear-gradient(180deg, rgba(13,15,20,.72) 0%, rgba(13,15,20,.12) 30%, rgba(13,15,20,.10) 55%, rgba(13,15,20,.92) 100%);}
+#tp-ops .ops-thero .ttop{position:relative; z-index:2; padding:13px 15px;}
+#tp-ops .ops-thero .ttop .zhead{font-family:var(--ops-mono); font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ops-ink3);}
+#tp-ops .ops-thero .tcenter{position:absolute; z-index:2; top:25%; left:0; right:0; display:flex; justify-content:center;}
+#tp-ops .ops-thero .word{font-family:var(--ops-serif); font-weight:700; letter-spacing:.20em; font-size:30px; color:var(--ops-ink);
+  text-shadow:0 2px 22px rgba(13,15,20,.95), 0 1px 4px rgba(13,15,20,.95);}
+#tp-ops .ops-thero .role{position:absolute; z-index:2; bottom:13px; left:0; right:0; text-align:center; font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ops-ink3);}
 
 /* ===== the DEUTERIUM tab — the guild-wide monitoring DASHBOARD (§1.4 slice 2b), now a TOP-LEVEL
    tab (a peer of TRADE / the Guild Hall), NOT a sub-tab inside TRADE: deuterium is untradeable, so it
@@ -1454,6 +1603,96 @@ select.field{appearance:none; cursor:pointer;}
 #vm-overlay .vm-note{font-family:var(--mono); font-size:10px; color:var(--ink3); text-align:center; margin-top:9px; letter-spacing:.03em; line-height:1.5; min-height:12px}
 @media(max-width:820px){ #vm-overlay .est-body{grid-template-columns:1fr} #vm-overlay .est-main{border-right:none; border-bottom:1px solid var(--line)} #vm-overlay .vm-sub{grid-template-columns:1fr} }
 
+/* ===== #reneg-overlay — the LICENCE RENEGOTIATION popup (#64 Slice 1b, design.md §5; restyled in
+   the Slice 2 client-polish pass to wear the adviser-reel look — the same two-column hero card as
+   #est-reel). It stays its OWN overlay with its own id and its own JS: it is deliberately NOT merged
+   into #est-reel, because REJECT itself opens #est-reel as the "let this licence lapse?" confirm, so
+   reusing one element for both would collide. z-index 620 is unchanged, so the ACCEPT / REJECT→confirm
+   layering behaves exactly as before. This is CSS + a markup reshuffle only — every id is preserved,
+   the driving IIFE is untouched, and the client still computes no game number: every term shown is a
+   PUBLISHED snapshot field (the venture's licence + its renegotiationOffer) and the adviser voice is
+   presentation keyed on the emitted `standing` band (§5). The .terms / .chip styling is carried over
+   verbatim — it already themes correctly against a dark card and reads well on the reel gradient. ===== */
+#reneg-overlay{position:fixed; inset:0; background:rgba(6,7,10,.80); backdrop-filter:blur(3px); display:none; align-items:center; justify-content:center; z-index:620; padding:26px}
+#reneg-overlay.open{display:flex}
+#reneg-overlay .reel-card{position:relative; width:100%; max-width:760px; height:min(80vh,600px); display:grid; grid-template-columns:1fr 300px; background:linear-gradient(180deg,#141821,#0F1218); border:1px solid var(--line2); border-radius:14px; overflow:hidden; box-shadow:0 30px 90px rgba(0,0,0,.65)}
+#reneg-overlay .reel-text{display:flex; flex-direction:column; padding:30px 30px 26px; min-width:0}
+#reneg-overlay .reel-eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--amber); margin-bottom:12px}
+#reneg-overlay .reel-title{font-family:var(--serif); font-weight:600; font-size:25px; color:var(--ink); letter-spacing:.01em; margin-bottom:18px; line-height:1.2}
+#reneg-overlay .reel-body{flex:1; overflow-y:auto; font-size:15px; color:var(--ink); line-height:1.75}
+#reneg-overlay .reel-body p{margin:0 0 16px}
+/* The reel has no header bar, so the close control (renegClose) lives in the card corner. */
+#reneg-overlay .reel-close{position:absolute; top:14px; right:14px; z-index:2; width:28px; height:28px; padding:0; border:none; background:none; color:var(--ink3); font-size:20px; line-height:1; cursor:pointer}
+#reneg-overlay .reel-close:hover{color:var(--ink)}
+#reneg-overlay .terms{border:1px solid var(--line); border-radius:9px; overflow:hidden; margin-bottom:16px}
+#reneg-overlay .terms .row{display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:center; padding:11px 15px; border-top:1px solid var(--line); font-size:12.5px}
+#reneg-overlay .terms .row:first-child{border-top:none}
+#reneg-overlay .terms .k{color:var(--ink3); letter-spacing:.08em; text-transform:uppercase; font-size:10px}
+#reneg-overlay .terms .from{color:var(--ink3)}
+#reneg-overlay .terms .to{color:var(--ink); font-weight:600; text-align:right; min-width:74px}
+#reneg-overlay .terms .to.up{color:#e3c04a}
+#reneg-overlay .terms .to.same{color:var(--ink2); font-weight:400}
+#reneg-overlay .terms .to.good{color:var(--green)}
+#reneg-overlay .terms .chip{font-size:8px; letter-spacing:.12em; text-transform:uppercase; padding:2px 7px; border-radius:20px; border:1px solid var(--line2); color:var(--ink3); white-space:nowrap}
+#reneg-overlay .terms .chip.strong{color:var(--green); border-color:rgba(95,185,138,.4)}
+#reneg-overlay .terms .chip.steady{color:#e3c04a; border-color:rgba(201,162,39,.30)}
+#reneg-overlay .terms .chip.subpar{color:#e0b26b; border-color:rgba(224,178,107,.4)}
+#reneg-overlay .terms .chip.atrisk{color:var(--red); border-color:rgba(224,121,107,.45)}
+/* The static reject footnote — a muted line under the table, inside the scrolling body. */
+#reneg-overlay .rejnote{font-size:11px; color:var(--ink3); line-height:1.6; letter-spacing:.03em; margin:0}
+/* Foot mirrors .reel-foot: renegNote sits where the reel's dots would (left), actions on the right. */
+#reneg-overlay .reel-foot{display:flex; align-items:center; justify-content:space-between; gap:14px; padding-top:20px; margin-top:14px; border-top:1px solid var(--line)}
+#reneg-overlay .reel-actions{display:flex; gap:12px; align-items:center; margin-left:auto}
+#reneg-overlay .reneg-note{font-family:var(--mono); font-size:10px; color:var(--ink3); letter-spacing:.03em; line-height:1.5; min-height:12px}
+/* Both actions wear the reel button shape. ACCEPT is the amber primary (like .reel-next). REJECT is
+   its RED analogue: the amber-ghost / amber-dim tokens have no red counterpart in the palette, so the
+   literal rgba values below are derived from --red (#C2603A) — NOT new sourced numbers, just the red
+   twins of amber-ghost (0.10 fill) and amber-dim (border). Equal weight, side by side. */
+#reneg-overlay .btn{font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; border-radius:8px; padding:9px 18px; cursor:pointer; transition:.12s}
+#reneg-overlay .btn.accept{color:var(--amber); background:var(--amber-ghost); border:1px solid var(--amber-dim)}
+#reneg-overlay .btn.accept:hover{background:var(--amber-dim); color:var(--void)}
+#reneg-overlay .btn.reject{color:var(--red); background:rgba(194,96,58,0.10); border:1px solid rgba(194,96,58,0.55)}
+#reneg-overlay .btn.reject:hover{background:var(--red); color:var(--void)}
+/* The hero art panel — same asset, cover fit and left-edge fade as the reel's .reel-art. */
+#reneg-overlay .reel-art{position:relative; overflow:hidden; background:#0d0f14; background-size:cover; background-position:50% 12%}
+#reneg-overlay .reel-art::before{content:""; position:absolute; inset:0; background:linear-gradient(90deg, #141821 0%, rgba(20,24,33,0) 26%)}
+@media(max-width:820px){ #reneg-overlay .reel-card{grid-template-columns:1fr} #reneg-overlay .reel-art{display:none} }
+
+/* ===== #notice-overlay — the per-type NOTICE popup (docs/event-log.md §9, the Notices redesign).
+   A discrete-event notice (a lapse / a closure) opens here as the SAME adviser-reel card as
+   #reneg-overlay — its own overlay id + its own opener, deliberately not merged. Uniform Syndicate
+   tone: one eyebrow ("Syndicate Notice"), one portrait (the guild adviser, the SAME asset the reneg
+   popup uses), no per-type art accent (§9). A notice carries no Accept/Reject — only a single
+   Dismiss — and read-on-open is the client's trigger (§9); the engine action is unchanged. The
+   reel styling mirrors #reneg-overlay (the codebase already carries the reel look per-overlay, as
+   #est-reel does); the .facts block is the notice's own detail — label → value, two columns. ===== */
+#notice-overlay{position:fixed; inset:0; background:rgba(6,7,10,.80); backdrop-filter:blur(3px); display:none; align-items:center; justify-content:center; z-index:620; padding:26px}
+#notice-overlay.open{display:flex}
+#notice-overlay .reel-card{position:relative; width:100%; max-width:760px; height:min(80vh,600px); display:grid; grid-template-columns:1fr 300px; background:linear-gradient(180deg,#141821,#0F1218); border:1px solid var(--line2); border-radius:14px; overflow:hidden; box-shadow:0 30px 90px rgba(0,0,0,.65)}
+#notice-overlay .reel-text{display:flex; flex-direction:column; padding:30px 30px 26px; min-width:0}
+#notice-overlay .reel-eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--amber); margin-bottom:12px}
+#notice-overlay .reel-title{font-family:var(--serif); font-weight:600; font-size:25px; color:var(--ink); letter-spacing:.01em; margin-bottom:18px; line-height:1.2}
+#notice-overlay .reel-body{flex:1; overflow-y:auto; font-size:15px; color:var(--ink); line-height:1.75}
+#notice-overlay .reel-body p{margin:0 0 16px}
+#notice-overlay .reel-close{position:absolute; top:14px; right:14px; z-index:2; width:28px; height:28px; padding:0; border:none; background:none; color:var(--ink3); font-size:20px; line-height:1; cursor:pointer}
+#notice-overlay .reel-close:hover{color:var(--ink)}
+/* facts — the notice's detail block: label -> value, two columns. */
+#notice-overlay .facts{border:1px solid var(--line); border-radius:9px; overflow:hidden; margin-bottom:16px}
+#notice-overlay .facts .row{display:grid; grid-template-columns:auto 1fr; gap:12px; align-items:center; padding:10px 15px; border-top:1px solid var(--line); font-size:12.5px}
+#notice-overlay .facts .row:first-child{border-top:none}
+#notice-overlay .facts .k{color:var(--ink3); letter-spacing:.08em; text-transform:uppercase; font-size:10px}
+#notice-overlay .facts .v{color:var(--ink); text-align:right; justify-self:end}
+#notice-overlay .facts .v.held{color:#e3c04a}
+#notice-overlay .reel-foot{display:flex; align-items:center; justify-content:space-between; gap:14px; padding-top:20px; margin-top:14px; border-top:1px solid var(--line)}
+#notice-overlay .reel-actions{display:flex; gap:12px; align-items:center; margin-left:auto}
+#notice-overlay .reneg-note{font-family:var(--mono); font-size:10px; color:var(--ink3); letter-spacing:.03em; line-height:1.5; min-height:12px}
+#notice-overlay .btn{font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; border-radius:8px; padding:9px 18px; cursor:pointer; transition:.12s}
+#notice-overlay .btn.accept{color:var(--amber); background:var(--amber-ghost); border:1px solid var(--amber-dim)}
+#notice-overlay .btn.accept:hover{background:var(--amber-dim); color:var(--void)}
+#notice-overlay .reel-art{position:relative; overflow:hidden; background:#0d0f14; background-size:cover; background-position:50% 12%}
+#notice-overlay .reel-art::before{content:""; position:absolute; inset:0; background:linear-gradient(90deg, #141821 0%, rgba(20,24,33,0) 26%)}
+@media(max-width:820px){ #notice-overlay .reel-card{grid-template-columns:1fr} #notice-overlay .reel-art{display:none} }
+
 #est-reel{position:fixed; inset:0; background:rgba(6,7,10,.80); backdrop-filter:blur(3px); z-index:600; display:none; align-items:center; justify-content:center; padding:26px}
 #est-reel.open{display:flex}
 #est-reel .reel-card{width:100%; max-width:760px; height:min(80vh,600px); display:grid; grid-template-columns:1fr 300px; background:linear-gradient(180deg,#141821,#0F1218); border:1px solid var(--line2); border-radius:14px; overflow:hidden; box-shadow:0 30px 90px rgba(0,0,0,.65)}
@@ -1552,8 +1791,8 @@ select.field{appearance:none; cursor:pointer;}
     <button class="rtab active" onclick="openTab('system', this)">System Manifest</button>
     <button class="rtab" onclick="openTab('market', this)">TRADE</button>
     <button class="rtab" onclick="openTab('deuterium', this)">Deuterium</button>
-    <button class="rtab" onclick="openTab('transport', this)">Transport</button>
-    <button class="rtab" onclick="openTab('guild', this)">Guild Hall</button>
+    <button class="rtab" onclick="openTab('operations', this)">Operations</button>
+    <button class="rtab" id="rtab-guild" onclick="openTab('guild', this)">Guild Hall<span class="rtab-attn" id="rtabGuildAttn" hidden></span></button>
   </div>
 </div>
 
@@ -1912,6 +2151,70 @@ select.field{appearance:none; cursor:pointer;}
     </div>
   </div>
 
+  <!-- The OPERATIONS tab (docs/operations-hub.md §2) — the out-of-system operations hub, renamed
+       from Transport. A Guild-Hall three-column layout: LEASED hero (left) | IN TRANSIT + DEPLOYED
+       + IDLE (centre) | the pilot hero (right). IN TRANSIT is LIVE — the operations-tab-wire block
+       fills #ops-transit-list from the player's own snapshot shipments on open and every poll (§4).
+       LEASED / DEPLOYED / IDLE are EMPTY SCAFFOLDS this slice (§7): their entities (leased craft,
+       deployed structures, idle kits) don't exist yet, so they carry only a section header + a calm
+       empty state — no rows, no Manage popups. It fills the viewport exactly like #tp-deut. -->
+  <div id="tp-ops">
+    <div class="ops-body">
+      <!-- LEFT HERO: LEASED (empty scaffold — leasing is Phase 4, §6) -->
+      <aside class="ops-hero">
+        <div class="zhead">Fleet</div>
+        <div class="zsub">Leased<span class="m">On Syndicate contract</span></div>
+        <div class="ops-herobody">
+          <div class="ops-empty">
+            <div class="glyph">&#9673;</div>
+            <h3>No transports leased</h3>
+            <p>Transports you lease to the Syndicate wait here, ready to recall. Leasing arrives with guild transport (Phase&nbsp;4).</p>
+          </div>
+        </div>
+      </aside>
+
+      <!-- CENTRE: IN TRANSIT (live) on top; DEPLOYED + IDLE (scaffolds) below -->
+      <div class="ops-centre">
+        <div class="ops-card ops-transit">
+          <div class="ops-card-h"><span class="t">In Transit</span><span class="ops-tag live">Live</span></div>
+          <!-- filled by operations-tab-wire: the player's own Syndicate deliveries, soonest first -->
+          <div class="ops-list" id="ops-transit-list"></div>
+        </div>
+
+        <div class="ops-grid2">
+          <div class="ops-card">
+            <div class="ops-card-h"><span class="t">Deployed</span></div>
+            <div class="ops-list">
+              <div class="ops-empty">
+                <div class="glyph">&#9633;</div>
+                <h3>Nothing deployed yet</h3>
+                <p>Outposts, toll gates and scan arrays you place on the map will list here (from the build yard, 2.1).</p>
+              </div>
+            </div>
+          </div>
+          <div class="ops-card">
+            <div class="ops-card-h"><span class="t">Idle</span></div>
+            <div class="ops-list">
+              <div class="ops-empty">
+                <div class="glyph">&#9675;</div>
+                <h3>Nothing idle</h3>
+                <p>Assets in the yard waiting to deploy or lease will list here (from the build yard, 2.1).</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT HERO: the pilot -->
+      <aside class="ops-hero ops-thero">
+        <div class="art"></div><div class="scrim"></div>
+        <div class="ttop"><div class="zhead">Operations</div></div>
+        <div class="tcenter"><div class="word">OPERATIONS</div></div>
+        <div class="role">Chief Pilot</div>
+      </aside>
+    </div>
+  </div>
+
   <!-- The GUILD HALL tab (docs/guild-hall.md §2). Shape and look follow
        docs/mockups/guild-hall.html; every figure on the Standing panel is read from the
        snapshot the shell polls (window.__snapshot), the same rule the TRADE tab follows.
@@ -1928,6 +2231,7 @@ select.field{appearance:none; cursor:pointer;}
         <div class="zhead">Guild</div>
         <div class="zsub" id="gh-guildname">&mdash;<span class="m" id="gh-guildsub"></span></div>
         <div class="gh-tabs" id="gh-tabs">
+          <button class="gh-tab" data-p="messages"><span class="dot"></span>Messages<span class="badge" id="gh-msgbadge" hidden></span></button>
           <button class="gh-tab on" data-p="standing"><span class="dot"></span>Standing</button>
           <button class="gh-tab" data-p="finance"><span class="dot"></span>Finance</button>
           <button class="gh-tab" data-p="ventures"><span class="dot"></span>Ventures</button>
@@ -2310,6 +2614,72 @@ select.field{appearance:none; cursor:pointer;}
   </div>
 </div>
 
+<!-- The LICENCE RENEGOTIATION popup (#64 Slice 1b) — one modal, two entry points (a Messages row
+     and the VM "Renegotiate ▸" button). ACCEPT → renegotiateLicence; REJECT → confirm → lapseLicence.
+     Every term is read from the snapshot; the adviser voice is keyed on the emitted standing band. -->
+<!-- The renegotiation popup, wearing the adviser-reel look (#64 Slice 2 client-polish). Its own
+     overlay + id + JS (NOT #est-reel — REJECT opens #est-reel as the lapse confirm). CSS + markup
+     reshuffle only: every id below is the one the driving IIFE already wires, unchanged. -->
+<div id="reneg-overlay">
+  <div class="reel-card">
+    <button class="reel-close" id="renegClose" type="button" aria-label="Close">&times;</button>
+    <div class="reel-text">
+      <div class="reel-eyebrow">Syndicate Liaison</div>
+      <div class="reel-title">Licence Renegotiation</div>
+      <div class="reel-body">
+        <p id="renegAdv"></p>
+        <div class="terms">
+          <div class="row"><span class="k">Standing</span><span></span><span class="to" id="renegStanding"></span></div>
+          <div class="row"><span class="k">Commitment</span><span class="from" id="renegCFrom"></span><span class="to" id="renegCTo"></span></div>
+          <div class="row"><span class="k">Window</span><span class="from" id="renegWFrom"></span><span class="to same" id="renegWTo"></span></div>
+          <div class="row"><span class="k">Fee / cycle</span><span class="from" id="renegFFrom"></span><span class="to" id="renegFTo"></span></div>
+        </div>
+        <div class="rejnote">Rejecting reverts this venture to <b>unlicensed</b> &mdash; you keep the mine, but forfeit its standing (RP). You can sign a fresh licence later on your own terms.</div>
+      </div>
+      <div class="reel-foot">
+        <div class="reneg-note" id="renegNote"></div>
+        <div class="reel-actions">
+          <button class="btn accept" id="renegAccept" type="button">Accept terms</button>
+          <button class="btn reject" id="renegReject" type="button">Reject</button>
+        </div>
+      </div>
+    </div>
+    <!-- Same hero asset the adviser reel uses, so the two popups match exactly. The voice is the
+         "Syndicate Liaison" but the only portrait is the guild adviser — a Syndicate-specific
+         portrait is the parked domain-character-advisers decision (§5); no new asset added here. -->
+    <div class="reel-art" style="background-image:url('assets/characters/advisor.jpg')"></div>
+  </div>
+</div>
+
+<!-- ===== #notice-overlay — the per-type NOTICE popup (docs/event-log.md §9). A discrete-event
+     notice (a lapse / a closure) opens here: the adviser-reel card with a per-type body + a facts
+     block + a single Dismiss. Every value is a PUBLISHED snapshot field (the client types none and
+     computes no game number, §18). Uniform Syndicate tone — one eyebrow, one portrait, no per-type
+     accent (§9) — and the SAME advisor.jpg the reneg popup uses. Opening a row dispatches the
+     existing acknowledgeEvent (read = opening, §9); there is no ACKNOWLEDGE button here. ===== -->
+<div id="notice-overlay">
+  <div class="reel-card">
+    <button class="reel-close" id="noticeClose" type="button" aria-label="Close">&times;</button>
+    <div class="reel-text">
+      <div class="reel-eyebrow">Syndicate Notice</div>
+      <div class="reel-title" id="noticeTitle"></div>
+      <div class="reel-body">
+        <p id="noticeBody"></p>
+        <div class="facts" id="noticeFacts"></div>
+      </div>
+      <div class="reel-foot">
+        <div class="reneg-note"></div>
+        <div class="reel-actions">
+          <button class="btn accept" id="noticeDismiss" type="button">Dismiss</button>
+        </div>
+      </div>
+    </div>
+    <!-- The uniform guild-adviser portrait — the same asset the reneg popup uses, no per-type
+         accent (§9). A Syndicate-specific portrait is the parked domain-character decision (§5). -->
+    <div class="reel-art" style="background-image:url('assets/characters/advisor.jpg')"></div>
+  </div>
+</div>
+
 <!-- The adviser reel: the help pages AND the deploy confirm share this card. -->
 <div id="est-reel">
   <div class="reel-card">
@@ -2356,6 +2726,12 @@ select.field{appearance:none; cursor:pointer;}
   // Rival territory, in the same shape the renderer already consumed: guild rows
   // with a colour, and systemId -> ownerGuildId. Null until the first snapshot.
   let claimsData = null;
+
+  // The player's own in-flight Syndicate deliveries, pushed by __setLiveShipments from
+  // each poll's snapshot. [] until the first snapshot. PRESENTATION-ONLY: the map draws
+  // each as a leg + a craft tweened along it (transport-model.md §3/§6), computing no game
+  // number — legProgress and fmtETA are derives off engine-surfaced ticks (design.md §5).
+  let liveShipments = [];
   let systemById = new Map(), guildById = new Map(), systemToGuild = new Map(), guildOutpostByKey = new Map(), gateByKey = new Map();
 
   const COLOR_RGB = { system: [111,183,232], outpost: [232,185,58], citadel: [242,206,93], player: [67,217,200] };
@@ -2420,8 +2796,11 @@ select.field{appearance:none; cursor:pointer;}
   }
 
   // diagonal-line label, ported from galaxy-map-hex.html's drawLabelBox
-  function drawLabelBox(p, lines, colorKey) {
-    const ang = -Math.PI / 4; // fixed diagonal, up-right
+  function drawLabelBox(p, lines, colorKey, downLeft) {
+    // `downLeft` flips the diagonal to the OPPOSITE quadrant for the transport tag,
+    // so it doesn't collide with the up-right system/waystation tags. Default
+    // (undefined) keeps the original up-right placement for every other caller.
+    const ang = downLeft ? (3 * Math.PI / 4) : (-Math.PI / 4); // down-left when flagged, else up-right
     const lineLen = 28;
     const ex = p.x + Math.cos(ang) * lineLen;
     const ey = p.y + Math.sin(ang) * lineLen;
@@ -2434,7 +2813,10 @@ select.field{appearance:none; cursor:pointer;}
     ctx.stroke();
 
     const boxW = 150, boxH = 16 + lines.length * 13;
-    const bx = ex + 3, by = ey - boxH;
+    // up-right: box sits right-of / above the leader end; down-left: mirror it to
+    // left-of / below, so the box hangs on the same side the leader points.
+    const bx = downLeft ? (ex - 3 - boxW) : (ex + 3);
+    const by = downLeft ? ey : (ey - boxH);
     ctx.fillStyle = 'rgba(6,8,13,0.9)';
     ctx.fillRect(bx, by, boxW, boxH);
     ctx.strokeStyle = col(colorKey, 0.6);
@@ -2447,6 +2829,21 @@ select.field{appearance:none; cursor:pointer;}
       ctx.fillText(line, bx + 8, by + 16 + i * 13);
     });
     ctx.restore();
+  }
+
+  // ticks -> a compact ETA string ("12m" / "11h 58m" / "1d 04h"), the same tick->time
+  // transform the trade/clock UI already does (1 tick = 1 minute, N=1440 = 24h). This is
+  // PRESENTATION of the engine's own `ticksRemaining` — never a figure recomputed from
+  // legProgress or wall-clock (transport-model.md §3: the number the player reads is the
+  // engine's; only the craft's position tweens sub-tick).
+  function fmtETA(ticks) {
+    const t = Math.max(0, Math.round(ticks || 0));
+    const d = Math.floor(t / 1440);
+    const h = Math.floor((t % 1440) / 60);
+    const m = t % 60;
+    if (d > 0) return d + 'd ' + (h < 10 ? '0' : '') + h + 'h';
+    if (h > 0) return h + 'h ' + (m < 10 ? '0' : '') + m + 'm';
+    return m + 'm';
   }
 
   function resize() {
@@ -2731,6 +3128,82 @@ select.field{appearance:none; cursor:pointer;}
       });
     }
 
+    // in-flight Syndicate deliveries — the player's own, drawn after the systems/outposts
+    // markers and with the label layer (mirrors the mockup's ordering). Each is one dashed
+    // brass leg (nearest waystation → destination), a gold craft chevron tweened along it,
+    // and a carrier+ETA tag. PRESENTATION ONLY (design.md §5/§18): the engine surfaces each
+    // leg's start endpoint (`originCoords`) and its two ticks (`departureTick`/`arrivalTick`);
+    // the client resolves the destination's coords from the seed like any system, and
+    // re-derives the smooth position between ticks (transport-model.md §2.3/§6) — exactly as
+    // the clock ring animates off an engine period/phase. It invents no game number.
+    if (liveShipments.length) {
+      const hsT = galaxy.galaxyParams.hexSize;
+      // ONE timing source: the absolute fractional tick from the clock ring (§6 — the same
+      // machinery the sweep uses, not a second clock). Null before the first snapshot sets a
+      // tick — nothing to place, so skip the overlay this frame.
+      const Tf = window.__fractionalTick ? window.__fractionalTick() : null;
+      if (Tf !== null) {
+        liveShipments.forEach((ship) => {
+          const dest = systemById.get(ship.destinationSystemId);
+          if (!dest) return; // destination not in the seed — nothing to anchor the leg to
+          const oPix = hexToPixel(ship.originCoords.q, ship.originCoords.r, hsT);
+          const dPix = hexToPixel(dest.coords.q, dest.coords.r, hsT);
+          const A = worldToScreen(oPix.x, oPix.y);
+          const B = worldToScreen(dPix.x, dPix.y);
+          const offA = A.x < -60 || A.x > window.innerWidth + 60 || A.y < -60 || A.y > window.innerHeight + 60;
+          const offB = B.x < -60 || B.x > window.innerWidth + 60 || B.y < -60 || B.y > window.innerHeight + 60;
+          if (offA && offB) return; // whole leg off-screen
+
+          // the leg — dashed brass line A→B
+          ctx.save();
+          ctx.beginPath();
+          ctx.setLineDash([4, 6]);
+          ctx.strokeStyle = 'rgba(232,185,58,0.5)';
+          ctx.lineWidth = 1.4;
+          ctx.moveTo(A.x, A.y);
+          ctx.lineTo(B.x, B.y);
+          ctx.stroke();
+          ctx.restore();
+
+          // legProgress (transport-model.md §2.3): fraction elapsed in TIME == fraction
+          // covered in SPACE, because speed is constant along the leg. A zero-length schedule
+          // (departure == arrival) reads as landed rather than dividing by zero.
+          const span = ship.arrivalTick - ship.departureTick;
+          const f = span > 0 ? Math.min(1, Math.max(0, (Tf - ship.departureTick) / span)) : 1;
+          // the craft — lerp in WORLD space then project, so it rides the same straight line
+          // the leg draws under any rotation/zoom.
+          const wx = oPix.x + f * (dPix.x - oPix.x);
+          const wy = oPix.y + f * (dPix.y - oPix.y);
+          const cp = worldToScreen(wx, wy);
+          // the gold chevron, rotated to the leg's SCREEN angle (post-projection) with a soft glow
+          const theta = Math.atan2(B.y - A.y, B.x - A.x);
+          const cs = 2 * Math.min(6.5, 3.5 + zoom * 0.06); // 2x — a clear, restrained craft marker
+          ctx.save();
+          ctx.translate(cp.x, cp.y);
+          ctx.rotate(theta);
+          ctx.shadowColor = 'rgba(242,206,93,0.9)';
+          ctx.shadowBlur = 8;
+          ctx.fillStyle = '#f2ce5d';
+          ctx.beginPath();
+          ctx.moveTo(cs, 0);
+          ctx.lineTo(-cs, -cs * 0.8);
+          ctx.lineTo(-cs * 0.45, 0);
+          ctx.lineTo(-cs, cs * 0.8);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+
+          // the tag — carrier + ETA, only above 1× (the same threshold the map's own system
+          // labels use; the leg + craft draw at all zooms). The carrier is the CONSTANT word
+          // 'Syndicate' (transport-model.md §3 — a faceless service, no per-craft id this
+          // tier); the time is the engine's `ticksRemaining`, formatted (never recomputed).
+          if (zoom > 1) {
+            drawLabelBox(cp, ['Syndicate', fmtETA(ship.ticksRemaining)], 'outpost', true); // down-left, opposite the system/waystation tags
+          }
+        });
+      }
+    }
+
     // labels — diagonal line + name/detail box, ported from galaxy-map-hex.html.
     // Syndicate outposts label at WAYSTATION_LABEL_ZOOM (1.5×) and closer; the placeholder guild's own systems only above 1×.
     // Everyone else (rivals, unclaimed) stays unlabeled, same as the original.
@@ -3001,6 +3474,28 @@ select.field{appearance:none; cursor:pointer;}
     PLAYER_GUILD.ownedSystemIds = Object.keys(claims).filter((id) => claims[id] === live.myGuildId);
     PLAYER_GUILD.name = live.myGuildName || 'Your Guild';
     loadClaims({ guilds, systemClaims: claims });
+  };
+
+  // The sibling door for the IN-FLIGHT layer: the player's own Syndicate deliveries, pushed
+  // from the same poll beside __setLiveTerritory. Filters to the player's own shipments
+  // (`ownerGuildId === myGuildId`) — a rival's logistics are not free intel (a slice-local
+  // ruling; espionage is a later phase). Drops any row the engine surfaced WITHOUT its leg
+  // geometry (an unresolvable destination — no waystation, no leg to draw): the engine omits
+  // the fields defensively and the map mirrors that by skipping the row. Keeps only what the
+  // draw reads; the map computes nothing else from it.
+  window.__setLiveShipments = function (live) {
+    const rows = (live && live.shipments) || [];
+    const mine = live ? live.myGuildId : null;
+    liveShipments = rows
+      .filter((s) => s.ownerGuildId === mine)
+      .filter((s) => s.originCoords && typeof s.departureTick === 'number')
+      .map((s) => ({
+        originCoords: { q: s.originCoords.q, r: s.originCoords.r },
+        destinationSystemId: s.destinationSystemId,
+        departureTick: s.departureTick,
+        arrivalTick: s.arrivalTick,
+        ticksRemaining: s.ticksRemaining,
+      }));
   };
 
   // A stable colour per rival guild id. PRESENTATION ONLY — a hue, not a game
@@ -3692,8 +4187,8 @@ var REELS = {
     'The equity you offer is recorded on the venture and the fee is discounted for it at signing. The graph is the designed <em>shape</em> of that discount and not a live quote: the fee in credits is priced off the market price at the moment you sign, so only the signed figure is real.' ]},
   reneg:{ title:'Renegotiation window', pages:[
     'This sets when the contract first becomes open to <em>renegotiation</em>, in days. It does not end anything: the venture keeps running on these terms until you choose to renegotiate in venture management.',
-    'This window binds <em>both sides equally</em>: until it elapses, neither you nor the Syndicate can reopen the terms. Once it passes, either may — you from venture management, or the Syndicate itself if this venture’s standing has shifted, for better terms or worse.',
-    'The window is stored with the licence, in days, exactly as you set it. Renegotiation itself is not built yet, so nothing acts on the window when it elapses.' ]}
+    'Until it elapses, the terms are locked — neither you nor the Syndicate can reopen them. Once it passes, the <em>Syndicate</em> sets the new terms, reading this venture’s standing: a steadier venture is leaned on less, a slipping one more, and only a Strong one earns a trimmed fee. You author the terms once, here; every renegotiation after is theirs to offer.',
+    'When the window elapses you get one decision, in the Guild Hall’s Messages or in venture management: <em>accept</em> the Syndicate’s terms and re-lock, or <em>reject</em> and let the licence lapse — the venture goes unlicensed (you keep it, but forfeit the standing it built). The window is stored with the licence, in days, exactly as you set it.' ]}
 };
 var reelMode='info', reelState={key:null,page:0};
 function openReel(){ $('est-reel').classList.add('open'); }
@@ -4706,6 +5201,14 @@ function applySnapshot(snap){
       systemClaims: LIVE.systemClaims,
     });
   }
+  // The IN-FLIGHT transport overlay reads from the same poll: the player's own deliveries
+  // and their leg fields, filtered/derived inside the map scope (transport-model.md §3/§6).
+  if (window.__setLiveShipments){
+    window.__setLiveShipments({
+      myGuildId: GAME.guildId,
+      shipments: snap.shipments || [],
+    });
+  }
   // The systems the player controls, for the detail screen's system picker.
   var mineIds = Object.keys(LIVE.systemClaims).filter(function(id){ return LIVE.systemClaims[id] === GAME.guildId; });
   window.__ownedSet = {}; mineIds.forEach(function(id){ window.__ownedSet[id] = 1; });
@@ -4716,9 +5219,19 @@ function applySnapshot(snap){
   // An open GUILD HALL re-reads too, so the Standing panel's stockpile bar depletes and
   // its gauges move as the guild trades (docs/guild-hall.md §2.3).
   if (window.__guildRefresh) window.__guildRefresh();
+  // The top-level Guild Hall tab's attention pip updates on EVERY poll, open or not, so an
+  // opened renegotiation window surfaces from anywhere in the shell (#64 Slice 1b).
+  if (window.__guildAttentionRefresh) window.__guildAttentionRefresh();
+  // A stale renegotiation popup (its venture just lapsed / re-locked, or the window moved) is
+  // reconciled against the fresh snapshot on every poll.
+  if (window.__renegRefresh) window.__renegRefresh();
   // An open DEUTERIUM dashboard re-reads too, so the donut drains, the fuel-price line extends and
   // the rings fill as ticks pass (§1.4 slice 2b) — its own panel's lifecycle, like the Guild Hall's.
   if (window.__deutRefresh) window.__deutRefresh();
+  // An open OPERATIONS hub re-reads too, so IN TRANSIT stays live — new deliveries appear, each
+  // progress bar advances and each ETA decrements as ticks pass (docs/operations-hub.md §4); its
+  // own panel lifecycle, exactly like the Deuterium dashboard's.
+  if (window.__opsRefresh) window.__opsRefresh();
   // An open VENTURE MANAGEMENT popup re-reads too, so its RP gauge, production donut and contract
   // window move as ticks pass (docs/venture-management.md) — the same open/refresh lifecycle.
   if (window.__vmRefresh) window.__vmRefresh();
@@ -4748,6 +5261,15 @@ window.__sendAction = function(action){ return apiAction(action); };
 window.__snapshot = function(){ return LIVE.snap; };
 window.__goodsCatalog = function(){ return GAME.goods; };
 window.__systemName = function(id){ var s = systemById(id); return (s && s.name) ? s.name : id; };
+// The waystation (Syndicate outpost) display name for an id — the OPERATIONS hub's IN TRANSIT
+// list resolves each delivery's `originOutpostId` to a name the same way the map resolves a
+// system: off the seed the client already holds (GAME.galaxy.outposts), never a stored byte.
+// Falls back to the raw id if the seed has no such outpost (defensive; should not happen).
+window.__outpostName = function(id){
+  if (!id || !GAME.galaxy || !GAME.galaxy.outposts) return id;
+  var o = GAME.galaxy.outposts.filter(function(x){ return x.id === id; })[0];
+  return (o && o.name) ? o.name : id;
+};
 window.__refreshNow = function(){ return apiGet('/snapshot').then(applySnapshot); };
 // The stored terms of one of the player's own ventures (or null) — read back by the
 // establishment receipt so the licence it reports is the one the engine recorded.
@@ -4820,9 +5342,10 @@ function galaxyClosed(){
 /* ---- tabs ---- */
 // The tabs that are still stubs. `market` is NOT among them any more: it renders the
 // TRADE panel (design.md §5, "SELL GOES LIVE") from the live snapshot.
-var TAB_STUBS = {
-  transport:['Transport', 'A live status board of every vehicle you own \u2014 idle, loading, in transit, its route across the hex map, cargo, fuel burn, and ETA. Dispatch and routing controls live here. (Not yet built \u2014 Phase 4, the real map + travel.)']
-};
+// `transport` is gone too - it is now OPERATIONS, a top-level rendered panel (#tp-ops,
+// its own branch below), the list-and-hub companion to the galaxy-map transport overlay
+// (docs/operations-hub.md). No stubs remain.
+var TAB_STUBS = {};
 // The two rendered panels that ride the shell's OWN overlay (not stubs, not the console
 // bridge): TRADE and the GUILD HALL. Each reads the snapshot this page already polls and
 // is hidden whenever another tab opens. Kept in one list so a new rendered panel only has
@@ -4831,15 +5354,19 @@ function hideOverlayPanels(tp){
   var trade = document.getElementById('tp-trade');
   var guild = document.getElementById('tp-guild');
   var deut = document.getElementById('tp-deut');
+  var ops = document.getElementById('tp-ops');
   if (trade) trade.classList.remove('show');
   if (guild) guild.classList.remove('show');
   if (deut) deut.classList.remove('show');
+  if (ops) ops.classList.remove('show');
   tp.classList.remove('trade');
   tp.classList.remove('guild');
   tp.classList.remove('deut');
+  tp.classList.remove('ops');
   if (window.__tradeClosed) window.__tradeClosed();
   if (window.__guildClosed) window.__guildClosed();
   if (window.__deutClosed) window.__deutClosed();
+  if (window.__opsClosed) window.__opsClosed();
 }
 function openTab(which, btn){
   document.querySelectorAll('.rtab').forEach(function(t){t.classList.remove('active');});
@@ -4887,6 +5414,19 @@ function openTab(which, btn){
     if (window.__deutOpen) window.__deutOpen();
     return;
   }
+  // OPERATIONS — the out-of-system operations hub (docs/operations-hub.md), a TOP-LEVEL tab
+  // and a peer of TRADE / the Guild Hall / Deuterium, renamed from the old Transport stub. Same
+  // overlay pattern as the Deuterium dashboard: it fills the viewport and re-reads the snapshot
+  // on open and on every poll while open (IN TRANSIT is live; LEASED/DEPLOYED/IDLE are scaffolds).
+  if (which === 'operations'){
+    hideOverlayPanels(tp);
+    stub.style.display = 'none';
+    document.getElementById('tp-ops').classList.add('show');
+    tp.classList.add('ops');
+    tp.classList.add('show');
+    if (window.__opsOpen) window.__opsOpen();
+    return;
+  }
   hideOverlayPanels(tp);
   stub.style.display = '';
   var info = TAB_STUBS[which] || ['\u2014',''];
@@ -4927,6 +5467,20 @@ function noteTick(tick){
     __sweepStart=nowms();
   }
 }
+// The absolute FRACTIONAL tick, for consumers that tween between ticks (the galaxy-map
+// transport overlay). Built from the SAME two facts the ring sweeps on — the last observed
+// tick and how far we are into the current period: Tf = tick + phase. No heartbeat (period
+// null — an operator hand-ticking) ⇒ phase 0 ⇒ the integer tick, so a craft parks at its
+// tick position rather than inventing motion (the ring's own honest degradation; the ring
+// parks FULL, a craft parks in PLACE). It counts nothing itself (design.md §5): both facts
+// are the server's. Null until the first snapshot sets a tick, so a caller can tell "no tick
+// yet" apart from tick 0. One timing source, exposed once — not duplicated per consumer.
+window.__fractionalTick=function(){
+  if(__lastSeenTick===null) return null;
+  var period=__tickPeriodMs;
+  var frac=period ? Math.min(1,Math.max(0,(nowms()-__sweepStart)/period)) : 0;
+  return __lastSeenTick+frac;
+};
 (function clockLoop(){
   var tc=document.getElementById('tickclock');
   if(tc && document.getElementById('gameTop').classList.contains('show')){
@@ -6274,6 +6828,169 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
 })();
 </script>
 
+<!-- ===== the OPERATIONS tab — the out-of-system operations hub (docs/operations-hub.md) =========
+   The list-and-hub companion to the galaxy-map transport overlay (transport-model.md §3/§6): the
+   map draws WHERE a delivery is; this is the LIST, the detail, and — later — the actions. It reads
+   the same snapshot the shell polls (window.__snapshot) and computes NO engine number (design.md
+   §5/§18): the ETA is the engine's own `ticksRemaining`, formatted; the progress bar is `legProgress`
+   (transport-model.md §2.3), the same sanctioned presentation derive the map tweens — a fraction off
+   the engine's two ticks, never a figure the client invents. Names are resolved off the seed the
+   client already holds (__systemName / __outpostName), exactly as the map resolves them.
+
+   Its own open/close/poll lifecycle mirrors the Deuterium dashboard's (__opsOpen / __opsClosed /
+   __opsRefresh). IN TRANSIT is the only LIVE section this slice; LEASED / DEPLOYED / IDLE are empty
+   scaffolds whose entities don't exist yet (§7) — their markup is static above, nothing to wire. ==== -->
+<script id="operations-tab-wire">
+(function(){
+  "use strict";
+
+  var O = {
+    open: false,
+    transitSig: '',   // rebuild the IN TRANSIT row structure only when the set of deliveries changes
+    expanded: {}      // which rows are expanded (by ship key) — survives a poll's re-render
+  };
+
+  // Own helpers — copies of the Deuterium panel's (its IIFE's are not in scope). They read
+  // LIVE.snap via window.__snapshot and the player's own guild row, exactly as before.
+  function el(id){ return document.getElementById(id); }
+  function snap(){ return (window.__snapshot && window.__snapshot()) || null; }
+  function meGuild(){
+    var s = snap(); if(!s) return null;
+    var id = (window.__player && window.__player().guildId) || null;
+    if(!id) return null;
+    return (s.guilds || []).filter(function(g){ return g.id === id; })[0] || null;
+  }
+  function fmt(n){ return Number(n).toLocaleString('en-US'); }
+  function esc(s){ return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  // ticks -> a compact ETA string — a COPY of the map slice's fmtETA (transport-model.md §3; 1 tick
+  // = 1 minute, N=1440 = 24h). PRESENTATION of the engine's own `ticksRemaining`; the number the
+  // player reads is the engine's, NEVER recomputed from legProgress or wall-clock.
+  function fmtETA(ticks){
+    var t = Math.max(0, Math.round(ticks || 0));
+    var d = Math.floor(t / 1440);
+    var h = Math.floor((t % 1440) / 60);
+    var m = t % 60;
+    if(d > 0) return d + 'd ' + (h < 10 ? '0' : '') + h + 'h';
+    if(h > 0) return h + 'h ' + (m < 10 ? '0' : '') + m + 'm';
+    return m + 'm';
+  }
+
+  // Name resolution off the seed, via the shell's bridges — the same seed the map reads.
+  function outpostName(id){ return (window.__outpostName && window.__outpostName(id)) || id; }
+  function systemName(id){ return (window.__systemName && window.__systemName(id)) || id; }
+
+  // A stable key per in-flight Syndicate leg: origin + destination + the absolute arrival tick.
+  // There is no craft id this tier (transport-model.md §3), so this identifies the delivery for the
+  // expand-state map and the structure signature.
+  function shipKey(sh){ return sh.originOutpostId + '>' + sh.destinationSystemId + '@' + sh.arrivalTick; }
+
+  // The player's OWN in-flight deliveries with their leg geometry, soonest-arrival first. Same two
+  // filters the map's __setLiveShipments applies: own only (ownerGuildId === myGuildId — a rival's
+  // logistics are not free intel, a slice-local ruling; espionage is later), and drop any row the
+  // engine surfaced WITHOUT its leg fields (an unresolvable waystation). Sorted ascending by the
+  // engine's `ticksRemaining`.
+  function myTransit(guild, s){
+    var myId = guild && guild.id;
+    return ((s && s.shipments) || [])
+      .filter(function(sh){ return sh.ownerGuildId === myId; })
+      .filter(function(sh){ return sh.originCoords && typeof sh.departureTick === 'number' && typeof sh.arrivalTick === 'number'; })
+      .slice()
+      .sort(function(a, b){ return a.ticksRemaining - b.ticksRemaining; });
+  }
+
+  // One IN TRANSIT row (collapsed head + the hidden manifest). Row order per §4:
+  //   origin waystation · progress bar · [reserved alert] · time remaining · destination system
+  // The manifest carries the carrier identity line (Syndicate — no craft id, §3) and the cargo,
+  // itemised `Good: Nu`. A Syndicate BUY is single-good, so today it is one line; the loop keeps
+  // the list ready for the mixed cargo a guild transport carries (Phase 4).
+  function rowHtml(sh){
+    var key = shipKey(sh);
+    var open = O.expanded[key] === true;
+    var cargo = sh.cargo || {};
+    var manRows = Object.keys(cargo).sort().map(function(g){
+      return '<div class="ops-manrow"><span class="g">' + esc(g) + '</span><span class="q">' + fmt(cargo[g]) + ' Nu</span></div>';
+    }).join('') || '<div class="ops-manrow ops-manempty">No cargo listed.</div>';
+    return '<div class="ops-row' + (open ? ' open' : '') + '" data-key="' + esc(key) + '">'
+      + '<div class="ops-rowhead">'
+      +   '<span class="ops-origin">' + esc(outpostName(sh.originOutpostId)) + '</span>'
+      +   '<span class="ops-bar"><span class="ops-fill"></span></span>'
+      +   '<span class="ops-alert" aria-hidden="true"></span>'
+      +   '<span class="ops-eta"></span>'
+      +   '<span class="ops-dest">' + esc(systemName(sh.destinationSystemId)) + '</span>'
+      + '</div>'
+      + '<div class="ops-manifest">'
+      +   '<div class="ops-idline">Carrier: <b>Syndicate</b></div>'
+      +   '<div class="ops-manhd">Manifest</div>'
+      +   manRows
+      + '</div>'
+      + '</div>';
+  }
+
+  // The live IN TRANSIT list. The STRUCTURE is rebuilt only when the set of deliveries changes (a
+  // signature), so a poll never throws away the reader's scroll or an expanded manifest; within a
+  // stable set every delivery's ticksRemaining falls by one each tick, so their order never changes.
+  // Then, EVERY poll, the two mutable bits are updated in place: the progress-bar width (legProgress)
+  // and the ETA text. legProgress (transport-model.md §2.3) = clamp01((T - departureTick) / (arrivalTick
+  // - departureTick)); T is the fractional tick off the clock ring (the map's one timing source),
+  // falling back to the snapshot's integer tick before the first sweep. The ETA is fmtETA of the
+  // engine's ticksRemaining — the two are computed from DIFFERENT sources on purpose: the bar tweens,
+  // the number is the engine's.
+  function renderTransit(guild, s){
+    var host = el('ops-transit-list'); if(!host) return;
+    var mine = myTransit(guild, s);
+
+    var sig = mine.map(shipKey).join('|');
+    if(sig !== O.transitSig){
+      O.transitSig = sig;
+      // prune the expand-state map to the deliveries still in flight
+      var keep = {};
+      mine.forEach(function(sh){ var k = shipKey(sh); if(O.expanded[k]) keep[k] = true; });
+      O.expanded = keep;
+      host.innerHTML = mine.length
+        ? mine.map(rowHtml).join('')
+        : '<div class="ops-empty"><div class="glyph">&#10022;</div><h3>Nothing in transit</h3>'
+          + '<p>A Syndicate delivery appears here the moment you buy goods to a system you hold.</p></div>';
+    }
+
+    if(mine.length){
+      var Tf = window.__fractionalTick ? window.__fractionalTick() : null;
+      if(Tf === null || Tf === undefined) Tf = (s && typeof s.tick === 'number') ? s.tick : 0;
+      var domRows = host.querySelectorAll('.ops-row');
+      mine.forEach(function(sh, i){
+        var row = domRows[i]; if(!row) return;   // dom order matches `mine` (structure built from it)
+        var span = sh.arrivalTick - sh.departureTick;
+        var f = span > 0 ? Math.min(1, Math.max(0, (Tf - sh.departureTick) / span)) : 1;
+        var fill = row.querySelector('.ops-fill'); if(fill) fill.style.width = (f * 100).toFixed(1) + '%';
+        var eta = row.querySelector('.ops-eta'); if(eta) eta.textContent = fmtETA(sh.ticksRemaining);
+      });
+    }
+  }
+
+  // The whole hub, run on open and on every poll while open. Only IN TRANSIT is live; the
+  // LEASED / DEPLOYED / IDLE scaffolds are static markup, so there is nothing else to re-read.
+  function render(){ renderTransit(meGuild(), snap()); }
+
+  // Delegated once on the panel: clicking a transit row toggles its manifest. The open state is
+  // recorded in O.expanded (by ship key) so a signature-guarded structure rebuild honours it.
+  var panel = el('tp-ops');
+  if(panel) panel.addEventListener('click', function(e){
+    var row = e.target.closest('.ops-row'); if(!row) return;
+    var key = row.getAttribute('data-key');
+    var isOpen = row.classList.toggle('open');
+    if(key) O.expanded[key] = isOpen;
+  });
+
+  // The shell drives these three, mirroring the Deuterium dashboard's lifecycle: open, close, and
+  // every poll — so an open hub re-reads each snapshot (new deliveries appear, bars advance, ETAs
+  // decrement) driven by its own panel's lifecycle.
+  window.__opsOpen = function(){ O.open = true; O.transitSig = ''; render(); };
+  window.__opsClosed = function(){ O.open = false; };
+  window.__opsRefresh = function(){ if(O.open) render(); };
+})();
+</script>
+
 <!-- ===== the GUILD HALL tab — the Standing panel (docs/guild-hall.md §2) ============
    The player's home dashboard, rendered in the SHELL'S OWN overlay exactly like the
    TRADE tab: it reads the snapshot the shell already polls (window.__snapshot) and
@@ -6535,8 +7252,220 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     forum:    ['&#9993;', 'Forum', 'Open channels between guilds &mdash; strike deals, issue threats, post to the galaxy. Wired up once the messaging layer lands.']
   };
 
+  // --- MESSAGES panel (design.md §5) ------------------------------------------------
+  // The band → { label, chip-class } presentation table for an offer row's standing chip. Keyed
+  // on the standing band the engine emits ('strong' | 'steady' | 'subPar' | 'atRisk'); the client
+  // adds no game number, only this label. (The §9 redesign drops the inline one-liner — the offer
+  // row is now a subject line and the fuller voice lives in the reneg popup.)
+  var MSG_BAND = {
+    strong: { label:'Strong', cls:'strong' },
+    steady: { label:'Steady', cls:'steady' },
+    subPar: { label:'Sub-par', cls:'subpar' },
+    atRisk: { label:'At risk', cls:'atrisk' }
+  };
+
+  // The venture's display label for a row: its type title (client presentation, from the
+  // joined venture row's resourceType/type — the same split the VM popup follows) followed
+  // by the engine-emitted seed name the attention entry carries. Falls back gracefully.
+  function prettyGood(g){ return String(g||'').replace(/_/g,' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); }); }
+  function ventureTypeTitle(v){
+    if(!v) return 'Venture';
+    if(v.deuteriumRefinery) return 'Deuterium Refinery';
+    var good = v.resourceType || (window.__recipeOutput && window.__recipeOutput(v.recipeId)) || null;
+    if(v.type === 'mining') return (good ? prettyGood(good) : 'Resource') + ' Mine';
+    return (good ? prettyGood(good) : 'Refining') + ' Refinery';
+  }
+  function ventureRow(s, id){ return (s && Array.isArray(s.ventures)) ? s.ventures.filter(function(v){ return v.id === id; })[0] : null; }
+
+  // The acceptance-countdown label for a Messages row (#64 Slice 2) — read straight from the
+  // offer's engine-derived `daysToLapse`. The last day is amber ("hot"); the client types no
+  // day count of its own. `null` days (an offer without the Slice-2 field) falls back quietly.
+  function deadlineLabel(offer){
+    var n = offer && typeof offer.daysToLapse === 'number' ? offer.daysToLapse : null;
+    if(n == null) return { text:'window elapsed', hot:false };
+    if(n <= 0) return { text:'respond today', hot:true };
+    if(n === 1) return { text:'respond in 1 day', hot:true };
+    return { text:'respond in '+n+' days', hot:false };
+  }
+
+  // --- Notices (docs/event-log.md §9, the redesigned CLIENT slice) ----------------------------
+  // The inbox row is a subject line; the detail opens in a per-type popup (openNotice, below).
+  // Every value is a PUBLISHED snapshot field — the client types none and computes no game number
+  // (§18): the row "when" and the popup facts are the engine-derived `whenDay` / `unlockDay`, and
+  // the popup body is static copy keyed on `type` + `payload.cause` (the four writers, §2).
+
+  // Per-type icon — muted, calmer than an action row's scales. ⚖ for a licence matter, 🔒 for a
+  // closed venture whose node is held. Illustrative (the mockup's own note icons are), not data.
+  var NOTICE_ICON = { licence_lapsed:'⚖', venture_closed:'🔒' };
+
+  // The venture kind word for the title label — the payload carries the kind (§2) because
+  // `ventureName` alone is a *location*, not a "{Good} Mine" name.
+  var KIND_WORD = { mining:'Mine', refining:'Refinery' };
+
+  // The "{Good} {Kind}" label — e.g. "Gold Mine". Degrades gracefully: a missing good drops to the
+  // bare kind ("Mine"), a missing/unknown kind drops to "Venture" (never a leading space or "null").
+  function noticeLabel(p){
+    var good = p.good ? prettyGood(p.good) : '';
+    var kind = KIND_WORD[p.ventureType] || 'Venture';
+    return good ? (good + ' ' + kind) : kind;
+  }
+  // The popup title (plain text): "Venture closed — Gold Mine" / "Licence lapsed — Copper Mine".
+  function noticeTitle(n){
+    var p = (n && n.payload) || {};
+    return (n.type === 'venture_closed' ? 'Venture closed — ' : 'Licence lapsed — ') + noticeLabel(p);
+  }
+  // The subject-line row title: the same prefix, with the label in the muted `.who` span.
+  function noticeRowTitle(n){
+    var p = (n && n.payload) || {};
+    var prefix = n.type === 'venture_closed' ? 'Venture closed' : 'Licence lapsed';
+    return esc(prefix) + ' &mdash; <span class="who">' + esc(noticeLabel(p)) + '</span>';
+  }
+  // The popup body — one static line per `type` + `payload.cause` (§2), one plain Syndicate tone
+  // (the domain-character voices are parked, §5). The node-held sentence is appended ONLY when a
+  // lockout was written (`payload.lockoutUntilTick`, §9) — a lapse or an unlicensed teardown holds
+  // no node, so the body must not claim one. The precise day rides the facts block (`unlockDay`),
+  // not this prose, so the body stays static and the client renders no game number here.
+  function noticeBody(n){
+    var p = (n && n.payload) || {};
+    var base;
+    if(n.type === 'licence_lapsed'){
+      base = p.cause === 'timeout'
+        ? "The Syndicate's renegotiation window closed without an answer, so the licence lapsed. The venture reverts to unlicensed — it keeps running, but has forfeited its standing (RP). You can sign a fresh licence later."
+        : "You let this licence lapse. The venture reverts to unlicensed — you keep the mine, but it has forfeited its standing (RP). You can sign a fresh licence later on your own terms.";
+    } else {
+      base = p.cause === 'forced'
+        ? "This venture's standing fell to the Syndicate's floor, and they closed it."
+        : "You closed this venture.";
+    }
+    if(p.lockoutUntilTick != null){
+      base += " Its node stays held under the Syndicate's lockout — no one may re-establish there until the term clears.";
+    }
+    return base;
+  }
+
+  // The player guild's UNREAD live notices, off the top-level attention derive (§5) — the count
+  // the tab pip and the Messages badge add to the open offers. Filtered to the player's OWN guild,
+  // exactly as myRenegotiations filters the offers.
+  function myUnreadNotices(s){
+    var id = (window.__player && window.__player().guildId) || null;
+    var list = (s && s.attention && Array.isArray(s.attention.notices)) ? s.attention.notices : [];
+    return id ? list.filter(function(n){ return n.guildId === id; }) : [];
+  }
+
+  // The open renegotiation offers for the player's guild, off the top-level attention derive.
+  function myRenegotiations(s){
+    var id = (window.__player && window.__player().guildId) || null;
+    var list = (s && s.attention && Array.isArray(s.attention.renegotiations)) ? s.attention.renegotiations : [];
+    return id ? list.filter(function(r){ return r.guildId === id; }) : [];
+  }
+
+  function messagesPanel(me){
+    var s = snap();
+    var offers = myRenegotiations(s);
+    var head = phead('Messages', 'Decisions the Syndicate is waiting on &mdash; and word from the galaxy');
+
+    var rows = '';
+    if(offers.length){
+      rows += '<div class="gh-seclab">Needs a decision</div>';
+      offers.forEach(function(r){
+        var band = MSG_BAND[r.standing] || MSG_BAND.steady;
+        var v = ventureRow(s, r.ventureId);
+        var who = esc(ventureTypeTitle(v)) + ' &middot; ' + esc(r.ventureName || r.ventureId);
+        // The live acceptance countdown (#64 Slice 2) — rendered from the offer's daysToLapse,
+        // which the engine derives; the client computes no game number. The last day is amber.
+        var deadline = deadlineLabel(r.offer);
+        // A subject-line row (§9): icon + title + status/countdown. The teaser detail is gone —
+        // clicking opens the reneg popup. The chip + countdown stay in .meta.
+        rows += '<div class="msg action" data-reneg="'+esc(r.ventureId)+'">'
+          + '<div class="ic">&#9878;</div>'
+          + '<div class="body">'
+          +   '<div class="t">Licence renegotiation &mdash; <span class="who">'+who+'</span></div>'
+          + '</div>'
+          + '<div class="meta">'
+          +   '<span class="chip '+band.cls+'">'+esc(band.label)+'</span>'
+          +   '<span class="deadline'+(deadline.hot?' hot':'')+'">'+esc(deadline.text)+'</span>'
+          + '</div>'
+          + '</div>';
+      });
+    }
+    // Notices (docs/event-log.md §9): the player guild's live event-log rows, read + unread, in the
+    // order the snapshot publishes them (guilds[].events — the engine sorts newest-first). Each is a
+    // subject-line row that OPENS a per-type popup (openNotice) on click; there is no inline detail
+    // and no ACKNOWLEDGE button — opening a row is what marks it read (§9). An unread notice (no
+    // readTick, §3) shows the amber dot; a read one is dimmed. The "when" is the engine's `whenDay`
+    // ("Day N"), rendered verbatim — the client computes no game number. "No notices yet." shows
+    // only on an empty log.
+    var notices = (me && Array.isArray(me.events)) ? me.events : [];
+    rows += '<div class="gh-seclab">Notices</div>';
+    if(!notices.length){
+      rows += '<div class="gh-msg-empty">No notices yet.</div>';
+    } else {
+      notices.forEach(function(n){
+        var unread = n.readTick == null;   // born unread; acknowledgeEvent stamps readTick (§3)
+        var icon = NOTICE_ICON[n.type] || '⚖';
+        var whenTxt = (n.whenDay != null) ? ('Day ' + n.whenDay) : '';
+        rows += '<div class="msg note'+(unread ? '' : ' read')+'" data-note="'+esc(n.id)+'">'
+          + '<span class="unreaddot"></span>'
+          + '<div class="ic">'+icon+'</div>'
+          + '<div class="body">'
+          +   '<div class="t">'+noticeRowTitle(n)+'</div>'
+          + '</div>'
+          + '<div class="meta">'
+          +   '<span class="deadline">'+esc(whenTxt)+'</span>'
+          + '</div>'
+          + '</div>';
+      });
+    }
+
+    if(!offers.length){
+      // No open decision — keep the section header honest with a muted line above Notices.
+      rows = '<div class="gh-seclab">Needs a decision</div>'
+        + '<div class="gh-msg-empty">Nothing needs a decision right now.</div>'
+        + rows;
+    }
+
+    return head + '<div class="gh-card">' + rows + '</div>';
+  }
+
+  // The per-type NOTICE popup (docs/event-log.md §9) — the reneg popup's shape, its own overlay +
+  // its own opener (the `window.__openRenegotiation` pattern). Filled from the row's event in
+  // meGuild().events by id, every value a PUBLISHED field. Opening marks it read (§9): it dispatches
+  // the EXISTING acknowledgeEvent { guildId, eventId } (id as a Number — the engine matches by
+  // strict ===), so the row renders read on the next poll. The engine no-ops an aged-out id, and a
+  // reopened (already-read) notice re-dispatches nothing — read-on-open only fires while unread.
+  function openNotice(eventId){
+    var me = meGuild();
+    var events = (me && Array.isArray(me.events)) ? me.events : [];
+    var n = null;
+    for(var i=0;i<events.length;i++){ if(events[i].id === eventId){ n = events[i]; break; } }
+    if(!n) return;
+    var p = n.payload || {};
+    el('noticeTitle').textContent = noticeTitle(n);
+    el('noticeBody').textContent = noticeBody(n);
+    // Facts: Location (payload.ventureName); the event day (Closed / Lapsed = whenDay); and — a
+    // closure carrying a lockout only — Node held until (unlockDay). The unlock row is gated on the
+    // published unlockDay, so a lapse or an unlicensed teardown never shows a held node (§9).
+    var facts = [['Location', p.ventureName || p.ventureId || '—', false]];
+    if(n.whenDay != null){ facts.push([n.type === 'venture_closed' ? 'Closed' : 'Lapsed', 'Day ' + n.whenDay, false]); }
+    if(n.type === 'venture_closed' && n.unlockDay != null){ facts.push(['Node held until', 'Day ' + n.unlockDay, true]); }
+    el('noticeFacts').innerHTML = facts.map(function(f){
+      return '<div class="row"><span class="k">'+esc(f[0])+'</span><span class="v'+(f[2]?' held':'')+'">'+esc(f[1])+'</span></div>';
+    }).join('');
+    el('notice-overlay').classList.add('open');
+    // Read = opening (§9). Only dispatch while the notice is still unread — a reopen is a no-op.
+    var guildId = (window.__player && window.__player().guildId) || null;
+    if(guildId != null && n.readTick == null && window.__sendAction){
+      Promise.resolve(window.__sendAction({ type:'acknowledgeEvent', guildId:guildId, eventId:eventId }))
+        .then(function(){ if(window.__refreshNow) return window.__refreshNow(); })
+        .catch(function(){});
+    }
+  }
+  function closeNotice(){ el('notice-overlay').classList.remove('open'); }
+  window.__openNotice = openNotice;   // the notice popup's single entry point (§9)
+
   function centreFor(sub, me){
     if(sub === 'standing') return standingPanel(me);
+    if(sub === 'messages') return messagesPanel(me);
     var d = SOON[sub];
     return d ? soonPanel(d[0], d[1], d[2]) : standingPanel(me);
   }
@@ -6570,7 +7499,24 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var tabs = document.querySelectorAll('#gh-tabs .gh-tab');
     for(var i=0;i<tabs.length;i++){ tabs[i].classList.toggle('on', tabs[i].getAttribute('data-p') === G.sub); }
 
+    // Messages rail entry: badge + pulsing dot while an action-item is open (#64 Slice 1b).
+    paintMessagesRail();
+
     el('gh-centre').innerHTML = centreFor(G.sub, me);
+  }
+
+  // Update the Messages rail entry (its count badge + attention class) from the live snapshot.
+  // Split out so it can run on every render while the hall is open.
+  function paintMessagesRail(){
+    // The badge counts the open offers AND the player's own unread notices; the tab lights while
+    // either is non-zero (design.md §5 — "highlights while any action-item is open OR any notice
+    // is unread").
+    var s = snap();
+    var n = myRenegotiations(s).length + myUnreadNotices(s).length;
+    var tab = document.querySelector('#gh-tabs .gh-tab[data-p="messages"]');
+    if(tab) tab.classList.toggle('attn', n > 0);
+    var badge = el('gh-msgbadge');
+    if(badge){ badge.textContent = n > 0 ? String(n) : ''; badge.hidden = n === 0; }
   }
 
   // Delegated once, on the rail — so every re-render keeps working with no rebinding.
@@ -6584,10 +7530,53 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     });
   }
 
-  // The shell drives these three: the tab opening, the tab closing, and every poll.
+  // A Messages row opens its popup — the two entry points a Messages row drives. Delegated on the
+  // centre so it survives every re-render.
+  var centreEl = el('gh-centre');
+  if(centreEl){
+    centreEl.addEventListener('click', function(e){
+      // A NOTICE row opens the per-type notice popup (§9), which also marks it read on open (the
+      // ONLY action a notice row dispatches, the existing acknowledgeEvent). `eventId` is the
+      // notice's per-guild numeric id, sent as a Number by openNotice (the engine matches by strict
+      // === on e.id); the apply no-ops on an aged-out id, so a stale click is harmless.
+      var noteRow = e.target.closest('.msg[data-note]');
+      if(noteRow){
+        openNotice(Number(noteRow.getAttribute('data-note')));
+        return;
+      }
+      // An action-item row opens the renegotiation popup for its venture (§5's first entry point).
+      var row = e.target.closest('.msg[data-reneg]'); if(!row) return;
+      var ventureId = row.getAttribute('data-reneg');
+      var guildId = (window.__player && window.__player().guildId) || null;
+      if(ventureId && guildId && window.__openRenegotiation){ window.__openRenegotiation(guildId, ventureId); }
+    });
+  }
+
+  // The notice popup's own close wiring (a single Dismiss; the × ; a scrim click).
+  var noticeDismiss = el('noticeDismiss'); if(noticeDismiss){ noticeDismiss.addEventListener('click', closeNotice); }
+  var noticeCloseX = el('noticeClose'); if(noticeCloseX){ noticeCloseX.addEventListener('click', closeNotice); }
+  var noticeOverlay = el('notice-overlay'); if(noticeOverlay){ noticeOverlay.addEventListener('click', function(e){ if(e.target === this) closeNotice(); }); }
+
+  // The TOP-LEVEL Guild Hall tab's attention pip (#64 Slice 1b) — lit whenever the player's guild
+  // has an open action-item OR an unread notice (design.md §5), WHETHER OR NOT the hall is open,
+  // so the invitation shows from anywhere. Driven by the shell's poll (applySnapshot), which owns
+  // no guild state.
+  function paintTopLevelAttn(){
+    var s = snap();
+    var n = myRenegotiations(s).length + myUnreadNotices(s).length;
+    var tab = document.getElementById('rtab-guild');
+    var pip = document.getElementById('rtabGuildAttn');
+    if(tab) tab.classList.toggle('attn', n > 0);
+    if(pip) pip.hidden = n === 0;
+  }
+
+  // The shell drives these: the tab opening, the tab closing, every poll (while open), and the
+  // top-level attention pip on every poll regardless of whether the hall is open.
   window.__guildOpen = function(){ G.open = true; render(); };
   window.__guildClosed = function(){ G.open = false; };
   window.__guildRefresh = function(){ if(G.open) render(); };
+  window.__guildAttentionRefresh = function(){ paintTopLevelAttn(); };
+  paintTopLevelAttn();
 })();
 </script>
 
@@ -6862,7 +7851,16 @@ function paintInventoryHero(d){
     if(lic && cw){
       if(cw.expired){
         W.className = 'vm-window expired';
-        W.innerHTML = '<div class="wlbl">Term elapsed · rolling · open to renegotiation</div>';
+        // #64 Slice 2: once the term elapses there is a GRACE window before the Syndicate acts.
+        // During grace the venture runs on unchanged; when the offer opens, show the countdown.
+        if(v.renegotiationOffer){
+          var dl = (typeof v.renegotiationOffer.daysToLapse === 'number')
+            ? (v.renegotiationOffer.daysToLapse <= 1 ? 'respond now' : 'respond within '+v.renegotiationOffer.daysToLapse+' days')
+            : 'open to renegotiation';
+          W.innerHTML = '<div class="wlbl">Term elapsed · the Syndicate has reopened the terms · '+esc(dl)+'</div>';
+        } else {
+          W.innerHTML = '<div class="wlbl">Term elapsed · running on · the Syndicate will send new terms shortly</div>';
+        }
       } else {
         W.className = 'vm-window';
         var filled = Math.max(0, Math.min(1, cw.cyclesRemaining / (lic.windowDays || 1))) * 100;
@@ -6880,7 +7878,10 @@ function paintInventoryHero(d){
     } else {
       closeBtn.disabled = false;
       if(note.textContent.indexOf('deuterium') !== -1) note.textContent = '';
-      reneg.style.display = (cw && cw.expired) ? '' : 'none';
+      // #64 Slice 2: Renegotiate shows only once the Syndicate has ACTED — i.e. an OFFER is live
+      // (`renegotiationOffer`), not merely once the window has elapsed. During grace the offer is
+      // null, so this stays hidden and the normal Close-venture control shows (§5 phase B).
+      reneg.style.display = v.renegotiationOffer ? '' : 'none';
     }
   }
 
@@ -6934,7 +7935,147 @@ function paintInventoryHero(d){
   $('vmClose').addEventListener('click', closeVM);
   $('vm-overlay').addEventListener('click', function(e){ if(e.target === this) closeVM(); });
   $('vmCloseBtn').addEventListener('click', function(){ if(!$('vmCloseBtn').disabled) onCloseVenture(); });
-  $('vmReneg').addEventListener('click', function(){ $('vmNote').textContent = 'Renegotiation is coming soon (#64) — not built this slice.'; });
+  // The VM "Renegotiate ▸" control (shown only once the window has elapsed) is the SECOND
+  // entry point to the shared renegotiation popup (#64 Slice 1b, §5). It opens the same popup
+  // the Messages row opens, for the venture the VM popup is managing.
+  $('vmReneg').addEventListener('click', function(){
+    var player = window.__player ? window.__player() : null;
+    if(!player || !player.guildId || !VM.ventureId || !window.__openRenegotiation){ return; }
+    window.__openRenegotiation(player.guildId, VM.ventureId);
+  });
+})();
+</script>
+
+<script>
+/* ============================================================================
+   THE LICENCE RENEGOTIATION POPUP (#64 Slice 1b, design.md §5 "Accept or lapse").
+   One modal, two entry points: a Messages "needs a decision" row and the Venture
+   Management "Renegotiate ▸" button. It reads the venture off the live snapshot —
+   its current licence terms and its published `renegotiationOffer` — shows the
+   Syndicate-liaison voice keyed on the emitted `standing` band, and fires one of
+   two built actions: ACCEPT → renegotiateLicence (re-lock), REJECT → confirm →
+   lapseLicence (revert to unlicensed, forfeit RP). The client computes NO game
+   number (§5): every term shown is a snapshot field, the adviser text is copy.
+   ============================================================================ */
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function snap(){ return (window.__snapshot && window.__snapshot()) || null; }
+  function fmt(n){ return Math.round(n).toLocaleString('en-US'); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  var R = { open:false, guildId:null, ventureId:null };
+
+  // The band → { chip label, chip class, adviser voice } table. Presentation only, keyed on the
+  // standing band the engine emits ('strong' | 'steady' | 'subPar' | 'atRisk'). ONE Syndicate-
+  // liaison voice this slice (the domain-character split is parked, §5).
+  var BAND = {
+    strong: { label:'Strong', cls:'strong',
+      say:"Good news — this venture's earned the Syndicate's confidence. They're happy to renew on the same terms, and they've trimmed the fee as a thank-you." },
+    steady: { label:'Steady', cls:'steady',
+      say:"A licence has come up for renegotiation and the Syndicate has sent an offer. It's a fair one — this venture's been holding its own, and they'd just like a little more commitment this time." },
+    subPar: { label:'Sub-par', cls:'subpar',
+      say:"The Syndicate's offer is a firm one. This venture has been slipping in their books, and they want a good deal more commitment to keep the licence." },
+    atRisk: { label:'At risk', cls:'atrisk',
+      say:"The Syndicate's offer is a hard one. This venture has been underdelivering, and they're demanding full commitment to keep the licence. Meet it, or walk." }
+  };
+
+  function findVenture(s, id){ return (s && Array.isArray(s.ventures)) ? s.ventures.filter(function(v){ return v.id === id; })[0] : null; }
+
+  // Is this venture still up for renegotiation? Only a licensed venture carrying a live offer.
+  function offerFor(v){ return (v && v.licence && v.renegotiationOffer) ? v.renegotiationOffer : null; }
+
+  function pct(x){ return Math.round((x || 0) * 100) + '%'; }
+
+  function render(){
+    if(!R.open) return;
+    var v = findVenture(snap(), R.ventureId);
+    var offer = offerFor(v);
+    if(!v || !offer){ close(); return; }   // lapsed, re-locked, or gone — nothing to renegotiate
+    var lic = v.licence;
+    var band = BAND[v.standing] || BAND.steady;
+
+    $('renegAdv').textContent = band.say;
+
+    // Standing chip.
+    $('renegStanding').innerHTML = '<span class="chip '+band.cls+'">'+esc(band.label)+'</span>';
+
+    // Commitment: current → offered. Amber ("up") when the Syndicate leans harder; unchanged
+    // reads "same" (a Strong venture may coast).
+    var cFrom = lic.committedOutputPct, cTo = offer.committedOutputPct;
+    $('renegCFrom').textContent = pct(cFrom);
+    var cToEl = $('renegCTo'); cToEl.textContent = pct(cTo);
+    cToEl.className = 'to ' + (cTo > cFrom ? 'up' : 'same');
+
+    // Window: carried unchanged this cut (§5) — both sides read the same figure.
+    var wDays = lic.windowDays;
+    $('renegWFrom').textContent = wDays + ' days';
+    $('renegWTo').textContent = wDays + ' days';
+
+    // Fee / cycle: the actual charged (discounted) fee, current → offered — the same figure the
+    // VM ledger heads with. The offer RE-PRICES at today's posted price (as a first signing does),
+    // so it can move either way with the market; the terms function itself never adds a surcharge
+    // — more commitment lowers the fee fraction, and only Strong adds a discount (§5). Coloured by
+    // the actual direction: green if it fell, amber if it rose, muted if it held.
+    var fFrom = lic.discountedFee, fTo = offer.discountedFee;
+    $('renegFFrom').textContent = fmt(fFrom) + ' cr';
+    var fToEl = $('renegFTo'); fToEl.textContent = fmt(fTo) + ' cr';
+    fToEl.className = 'to ' + (fTo < fFrom ? 'good' : (fTo > fFrom ? 'up' : 'same'));
+  }
+
+  function open(guildId, ventureId){
+    if(!guildId || !ventureId) return;
+    R.open = true; R.guildId = guildId; R.ventureId = ventureId;
+    $('renegNote').textContent = '';
+    render();
+    if(!R.open) return;   // render() may have closed it (no live offer)
+    $('reneg-overlay').classList.add('open');
+  }
+  function close(){ R.open = false; R.guildId = null; R.ventureId = null; $('reneg-overlay').classList.remove('open'); }
+
+  // ACCEPT → renegotiateLicence (built). Re-locks the venture on the Syndicate's terms.
+  async function accept(){
+    if(!R.guildId || !R.ventureId) return;
+    var g = R.guildId, id = R.ventureId, note = $('renegNote');
+    note.textContent = 'Accepting…';
+    var out;
+    try { out = await window.__sendAction({ type:'renegotiateLicence', guildId:g, ventureId:id }); }
+    catch(err){ note.textContent = 'The Syndicate could not be reached: ' + err.message; return; }
+    if(!out || !out.accepted){ note.textContent = 'Refused: ' + ((out && out.reason) || 'the Syndicate declined'); return; }
+    if(window.__refreshNow){ try{ await window.__refreshNow(); }catch(e){} }
+    close();
+  }
+
+  // REJECT → confirm (the shared Guild Adviser reel), then lapseLicence (built). Reverts the
+  // venture to unlicensed and forfeits its standing.
+  function reject(){
+    var v = findVenture(snap(), R.ventureId);
+    if(!v){ close(); return; }
+    var g = R.guildId, id = R.ventureId;
+    var rp = v.reputation || 0;
+    var body = '<p>Reject the Syndicate’s terms and this venture goes <em>unlicensed</em>. You keep the venture, its node and its machine — but the '
+      + fmt(rp) + ' points of standing it built leave with the licence, and it earns nothing until you sign again.</p>'
+      + '<p>You can sign a fresh licence later on your own terms — a new window, a new bump. Your call, Guildmaster.</p>';
+    var doLapse = async function(){
+      var note = $('renegNote'); note.textContent = 'Lapsing…';
+      var out;
+      try { out = await window.__sendAction({ type:'lapseLicence', guildId:g, ventureId:id }); }
+      catch(err){ note.textContent = 'The Syndicate could not be reached: ' + err.message; return; }
+      if(!out || !out.accepted){ note.textContent = 'Refused: ' + ((out && out.reason) || 'the Syndicate declined'); return; }
+      if(window.__refreshNow){ try{ await window.__refreshNow(); }catch(e){} }
+      close();
+      if(window.__vmClose) window.__vmClose();   // if the VM popup was the entry point, it is now stale
+    };
+    if(!window.__adviserConfirm){ doLapse(); return; }
+    window.__adviserConfirm({ title:'Let this licence lapse?', body:body, confirmLabel:'Reject & lapse ▸', onConfirm:doLapse });
+  }
+
+  window.__openRenegotiation = open;                 // the ONE entry point both call sites use
+  window.__renegRefresh = function(){ if(R.open) render(); };
+
+  $('renegClose').addEventListener('click', close);
+  $('reneg-overlay').addEventListener('click', function(e){ if(e.target === this) close(); });
+  $('renegAccept').addEventListener('click', function(){ accept(); });
+  $('renegReject').addEventListener('click', function(){ reject(); });
 })();
 </script>
 </body>

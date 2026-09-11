@@ -30,10 +30,12 @@
 // exception (`deuteriumMetGain`, +50/cycle at T4) — see deuterium-cycle.test.js. The tier
 // section (§3b below) is the pin on that change; the T1 tests are all no-ops (tierFactor(T1) = 1).
 //
-// WHAT THIS SLICE STILL IS NOT. Reaching −500 is a PIN, not a closure: venture removal,
-// licence revocation and the −300 forced-lease offer are a separate later slice and none
-// of them is built. There is no GP, no mean line, no `expectedRP`, and the met gain is
-// deliberately NOT window-pro-rated at this cut. No test below asserts otherwise.
+// WHAT THIS SLICE STILL IS NOT. There is no GP, no mean line, no `expectedRP`, and the met
+// gain is deliberately NOT window-pro-rated at this cut. No test below asserts otherwise.
+// ⤳ 09-09-26 (docs/forced-closure.md): reaching −500 is no longer a pin — it now FORCE-CLOSES
+// the venture (see §7 below and forced-closure.test.js). The clamp still holds the floor value;
+// the tick removes the venture that a breach drives to it. The −300 forced-lease offer stays a
+// separate deferred slice (it needs leasing).
 //
 // THE MECHANISM WORTH TESTING is the shared verdict. RP and the licence fee are moved by
 // the SAME `status`, read from the SAME row, in the SAME loop (sim/tick.js), so a venture
@@ -53,7 +55,7 @@ const { join } = require('node:path');
 const { tick } = require('../tick.js');
 const { createState } = require('../state.js');
 const {
-  intake, createApplyForLicenceAction, createSetProductionProfileAction,
+  intake, createApplyForLicenceAction, createSetProductionProfileAction, createRenegotiateLicenceAction,
 } = require('../actions.js');
 const { checkInvariants } = require('../invariants.js');
 const { hashState, canonicalStringify } = require('../serialize.js');
@@ -66,6 +68,7 @@ const {
   REP_MEET_MAX, REP_W_COMMIT, REP_W_EQUITY, REP_BREACH_MAX, REP_BREACH_MIN,
   RP_FLOOR, RP_SOFT_CAP, RP_TAPER_KNEE,
   metGain, breachPenalty, gainFactor, reputationDelta, tierFactor, signingBump, ventureTierWeight,
+  licenceEndTick,
 } = require('../licence.js');
 
 const SYS = 'sysA';
@@ -153,6 +156,30 @@ const runToBoundary = (s) => {
   do { s = tick(s); } while (s.tick % N !== 0);
   return s;
 };
+
+// #64 Slice 2 added the renegotiation AUTO-LAPSE: a licence left untouched past its
+// renegotiation deadline (window-end + grace + a 5-day acceptance window) lapses on the tick.
+// These accrual tests predate it and run a licensed venture for many cycles to exercise the
+// per-cycle RP verdict — a scenario that assumes the venture stays LICENSED the whole way.
+// `keepEngaged` models the player staying engaged: it ACCEPTs the renegotiation (`renegotiateLicence`)
+// the moment one is admissible (`state.tick >= licenceEndTick`, the action's own gate), which
+// resets the schedule so the venture never auto-lapses. For a FULL-commitment venture the
+// Syndicate's re-terms keep commitment at 1.0 (the ladder clamps), and re-signing lands exactly
+// at a window boundary (committedFromTick = the next window start), so every subsequent window is
+// full — the per-cycle RP gain is unchanged. It runs the REAL action, so the join invariant and
+// `checkGuildReputationSum` stay satisfied. Called each boundary in the long runs.
+function keepEngaged(s) {
+  const windowN = s.windowN;
+  for (const g of s.guilds) {
+    for (const v of (g.ventures || [])) {
+      if (v.licence && s.tick >= licenceEndTick(v.licence, windowN)) {
+        s = intake(s, [createRenegotiateLicenceAction({ guildId: g.id, ventureId: v.id })]).state;
+      }
+    }
+  }
+  return s;
+}
+const runEngaged = (s) => keepEngaged(runToBoundary(s));
 
 // The guild sum must equal Σ its ventures after EVERY tick this file runs — the property
 // `checkGuildReputationSum` exists for. Asserted by hand as well as through the invariant
@@ -633,55 +660,30 @@ test('RP APPROACHES the soft cap and never reaches it — no hard clamp needed a
   let s = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
   s = atRP(s, 'm', 1400);
   for (let w = 0; w < 70; w += 1) {
-    s = runToBoundary(s);
+    s = runEngaged(s);   // #64 Slice 2: keep it licensed the whole run (see keepEngaged)
     assert.ok(rp(s, 'm') < RP_SOFT_CAP, `boundary ${w + 1}: RP must stay strictly below the cap, got ${rp(s, 'm')}`);
   }
   assert.equal(rp(s, 'm'), 1466, 'it settles at 1466, where the tapered gain first rounds to zero');
 
   // Settled, not stalled by luck: another twenty met boundaries move it not one point.
   const settled = rp(s, 'm');
-  for (let w = 0; w < 20; w += 1) s = runToBoundary(s);
+  for (let w = 0; w < 20; w += 1) s = runEngaged(s);
   assert.equal(rp(s, 'm'), settled, 'the asymptote holds — every further met gain rounds to 0');
   assert.equal(guild(s).lastLicenceFee.ventures.m.status, 'met', 'and it was still MEETING the whole time');
   assertSumHolds(s, 'at the asymptote');
 });
 
-// --- 7. the floor: a hard clamp, and the guild sum that must follow it ------------
-
-test('a breach that would UNDERSHOOT the floor pins at −500, and the guild sum moves by the ACTUAL change', () => {
-  // ⤳ 01-09-26: started at −498 rather than −495. A full-commitment breach costs −3 since
-  // the rescale, so −495 no longer undershoots the floor and the test would have stopped
-  // exercising the clamp it exists for.
-  let s = starve(licenceAll(fixture([mine('m')]), ['m']));
-  s = atRP(s, 'm', -498);
-  assert.equal(guild(s).guildReputation, -498, 'the fixture starts consistent');
-
-  s = runToBoundary(s);
-  assert.equal(guild(s).lastLicenceFee.ventures.m.status, 'breach');
-  assert.equal(breachPenalty(ven(s, 'm')), -3, 'the raw drop would have taken it to −501');
-  assert.equal(rp(s, 'm'), RP_FLOOR, 'but it pins at the floor');
-  // THE LINE THE CLAMP MAKES LOAD-BEARING: the guild moved by −2 (the actual change), not
-  // by the −3 the venture was charged. Adding the raw delta here would drift the total
-  // below the sum of its ventures — silently, but for this assertion and the invariant.
-  assert.equal(guild(s).guildReputation, RP_FLOOR, 'the guild total followed the CLAMPED change, not the raw one');
-  assertSumHolds(s, 'a clamped breach');
-});
-
-test('a venture ALREADY at the floor absorbs further breaches without moving anything', () => {
-  let s = starve(licenceAll(fixture([mine('m')]), ['m']));
-  s = atRP(s, 'm', RP_FLOOR);
-  for (let w = 0; w < 3; w += 1) {
-    s = runToBoundary(s);
-    assert.equal(guild(s).lastLicenceFee.ventures.m.status, 'breach', 'still being judged, and still failing');
-    assert.equal(rp(s, 'm'), RP_FLOOR, `boundary ${w + 1}: pinned`);
-    assertSumHolds(s, `pinned at the floor, boundary ${w + 1}`);
-  }
-  // ⚠ AND IT IS STILL RUNNING. Reaching the floor is a pin, not a closure — the venture
-  // keeps producing, keeps being licensed and keeps being charged. Venture removal and
-  // licence revocation are a LATER slice, and this pins that they are not built.
-  assert.ok(ven(s, 'm').licence, 'the licence is not revoked');
-  assert.ok(guild(s).lastLicenceFee.ventures.m.owed > 0, 'and the fee is still being charged');
-});
+// --- 7. the floor: a hard clamp that now TRIGGERS forced closure -----------------
+//
+// ⤳ 09-09-26 (docs/forced-closure.md): reaching −500 at a boundary is no longer a PIN — a
+// venture a breach drives to the floor is FORCE-CLOSED on the same tick. The clamp (`Math.max`)
+// still holds the floor value; it is now the closure trigger rather than a resting place. The
+// closure OUTCOME — the venture removed, its RP forfeited with the guild sum staying exact, the
+// node lockout, the redeployable asset, the deuterium exemption, and a hand-seeded floor venture
+// closing on its next verdict — is pinned in forced-closure.test.js against real seeded sites
+// (the synthetic fixtures here carry no `siteId`, which a real closure's lockout needs). What
+// stays RP-layer, and is pinned below, is the ONE floor case that is NOT a closure: a venture at
+// the floor that MEETS climbs back out (only a breach reaches the floor, so a met is never closed).
 
 test('a venture at the floor CLIMBS BACK at full strength — the redemption arc is real', () => {
   let s = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
@@ -725,7 +727,7 @@ test('a NON-boundary tick moves no reputation at all', () => {
 test('ONCE PER BOUNDARY: four windows of a met licence is exactly four gains', () => {
   let s = licenceAll(fixture([mine('m', { equityPct: FULL_EQUITY })]), ['m']);
   for (let w = 1; w <= 4; w += 1) {
-    s = runToBoundary(s);
+    s = runEngaged(s);   // #64 Slice 2: keep the venture licensed across windows (see keepEngaged)
     assert.equal(rp(s, 'm'), BUMP_FULL_COMMIT + w * GAIN_FULL_TERMS, `after ${w} boundaries`);
     assertSumHolds(s, `boundary ${w}`);
   }
@@ -738,7 +740,7 @@ test('ONCE PER BOUNDARY: four windows of a met licence is exactly four gains', (
   // takes longer, its earn being flat while its bar is bigger; see the tier tests above.
   // These assertions are all this T1 mine, so they are unchanged.) It is a claim about the
   // RATE, pinned as a delta, and slice 2's bump did not touch it.
-  for (let w = 5; w <= 10; w += 1) s = runToBoundary(s);
+  for (let w = 5; w <= 10; w += 1) s = runEngaged(s);
   assert.equal(rp(s, 'm') - BUMP_FULL_COMMIT, 10 * GAIN_FULL_TERMS, 'ten full-terms cycles EARN');
   assert.equal(rp(s, 'm') - BUMP_FULL_COMMIT, W_T1, '…exactly the mine\'s 100-point bar — break-even in ten');
   // ⤳ AND WHAT SLICE 2 CHANGED: this venture signed at 100%, so it was already TWO bars up
@@ -758,9 +760,9 @@ test('ONCE PER BOUNDARY: four windows of a met licence is exactly four gains', (
   // not as an endorsement: the band's own ruling (and the global-vs-per-tier sub-choice the
   // 1 : 1.5 : 3 : 5 spread forces) is the next pass, and it should move these numbers.
   assert.equal(RP_TAPER_KNEE / GAIN_FULL_TERMS, 80, 'the knee is 80 met cycles of EARNING away, not 8');
-  for (let w = 11; w <= 60; w += 1) s = runToBoundary(s);
+  for (let w = 11; w <= 60; w += 1) s = runEngaged(s);
   assert.equal(rp(s, 'm'), RP_TAPER_KNEE, 'sixty cycles from a full-commit signing land exactly on the knee');
-  for (let w = 61; w <= 84; w += 1) s = runToBoundary(s);
+  for (let w = 61; w <= 84; w += 1) s = runEngaged(s);
   assert.ok(rp(s, 'm') >= 1000, `the dividend-max tier is not crossed until cycle 84 (${rp(s, 'm')})`);
   assertSumHolds(s, 'eighty-odd full-terms cycles');
 });
@@ -859,7 +861,7 @@ test('a venture driven deep NEGATIVE keeps every invariant green — the exempti
   // it DOES reach negative through the ordinary tick, and that nothing halts when it does.
   const WINDOWS = 70;
   let s = starve(licenceAll(fixture([mine('m')]), ['m']));
-  for (let w = 0; w < WINDOWS; w += 1) s = runToBoundary(s);
+  for (let w = 0; w < WINDOWS; w += 1) s = runEngaged(s);   // #64 Slice 2: kept licensed (see keepEngaged)
 
   assert.equal(rp(s, 'm'), BUMP_FULL_COMMIT - WINDOWS * DROP_FULL_COMMIT);
   assert.ok(rp(s, 'm') < 0, 'the test is vacuous unless it really went negative');

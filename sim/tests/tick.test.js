@@ -48,8 +48,12 @@ test('tick increments the tick counter by exactly 1', () => {
   assert.equal(nextNext.tick, 2);
 });
 
-test('the eight steps run in the exact §15.6 order', () => {
-  assert.equal(STEPS.length, 8);
+test('the tick steps run in the exact §15.6 order', () => {
+  // #64 Slice 2 appended stepAutoLapse — the first tick-driven licence mutation on a TIMER
+  // (a renegotiation deadline the calendar reaches), not a window-boundary verdict. It runs
+  // LAST, after all the boundary/accrual/grant work, so a venture takes its final window
+  // verdict (and the cycle's fuel grant reads its standing) before its RP is forfeited.
+  assert.equal(STEPS.length, 9);
   assert.deepEqual(
     STEPS.map((fn) => fn.name),
     [
@@ -61,6 +65,7 @@ test('the eight steps run in the exact §15.6 order', () => {
       'stepBaselineAllocation',
       'stepStoryteller',
       'stepVoteClosures',
+      'stepAutoLapse',
     ]
   );
 });

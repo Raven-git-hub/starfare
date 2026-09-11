@@ -105,6 +105,30 @@ A single leg: **nearest waystation → the destination system/outpost the player
 purchase; goods deposit on `arrivalTick`; destination lost in flight → the cargo vanishes (design.md
 §6 "Syndicate Delivery"). This is `legTicks(euclideanLength, SYNDICATE_SPEED, false)` and nothing more.
 
+**What the map shows for a delivery (RULED 10-09-26).** An in-flight Syndicate delivery draws as a craft sliding along its single leg — the client re-derives the position each frame (§2.3/§6) from the leg endpoints and the two ticks the engine surfaces; the engine publishes no progress fraction. Its map **tag** is the **carrier** — the constant word **“Syndicate”** for this tier, because the Syndicate is a faceless service with no per-craft identity to show — plus the **time remaining** to arrival. **No transport-ship id appears in this tier:** there is no player-owned craft to name (transport ships are the guild tier's deployable assets, §4/§5, `design.md` §"asset categories"). Each delivery is nonetheless a unique *trip*, and a unique **trip id** is the identifier that lands **with the guild tier (Phase 4)** — when a player selects a *specific* craft and needs to refer to that specific journey. Until something reads it, the shipment record deliberately carries **no id** (a field nobody reads is a second home waiting to drift, §15.5 / the `actions.js` shipment-shape comment).
+
+**AS-BUILT 10-09-26 — the galaxy-map overlay (CLIENT half of the transport-visibility slice, Phase 2).** The overlay above is built in `client/game.html` (the map IIFE) — CLIENT only, no engine/snapshot/sim change; it consumes the leg fields the engine slice surfaces (`originCoords`, `departureTick`, alongside `destinationSystemId`/`arrivalTick`/`ticksRemaining`). Each poll pushes the player's own in-flight deliveries through a new `window.__setLiveShipments` (beside `__setLiveTerritory`), filtered `ownerGuildId === myGuildId` — **a rival's deliveries are not drawn** (their logistics are not free intel; a slice-local ruling, espionage is a later phase — flagged to the human). A row the engine surfaced without leg geometry (an unresolvable destination) is dropped, mirroring the engine's own omission. `render()` draws, per shipment: a **dashed brass leg** (nearest waystation → destination, the destination's coords resolved client-side from the seed like any system); a **gold craft chevron** tweened along it at `legProgress = clamp01((T − departureTick)/(arrivalTick − departureTick))` (§2.3), rotated to the leg's screen angle; and — only above 1× zoom, the same threshold the map's own system labels use — the **tag** `['Syndicate', fmtETA(ticksRemaining)]`. The current tick `T` is the **absolute fractional tick** off the clock ring's single timing source (a new `window.__fractionalTick`, `T = lastSeenTick + phase`) — no second clock; with no heartbeat the phase is 0 and the craft **parks** at its integer-tick position (the ring's own honest degradation). `fmtETA` formats the engine's `ticksRemaining`; the ETA text is **never** recomputed from `legProgress` or wall-clock (the position tweens sub-tick, but the number the player reads is the engine's). No trip id is minted or shown (§3). Proven client-only (determinism goldens byte-identical, test count unchanged +1 for the new served-page tripwire in `sim/tests/server.test.js`) and end-to-end in headless Chromium against a real booted server: a placed BUY draws a craft on its leg with the carrier+ETA tag, the ETA decrements and the craft advances along the straight leg toward the destination as ticks step, and a rival-owned shipment does not draw. **The tab's guild-vehicle board stays Phase 4** — but its **IN TRANSIT list** is now built beside this overlay (BUILT 10-09-26, Phase 2): the Transport tab is renamed **OPERATIONS** and its IN TRANSIT section reads the same own-shipment fields into a list (origin waystation · progress bar · ETA · destination, expandable to the Syndicate carrier line + cargo manifest), the list companion to this map overlay. See `docs/operations-hub.md` §7. LEASED / DEPLOYED / IDLE and craft ids in IN TRANSIT remain Phase 4 / later slices.
+
+**AS-BUILT 10-09-26 — the leg the snapshot surfaces (engine half, `sim/snapshot.js`).** Each in-flight
+shipment row now carries its **leg origin** and **departure tick** alongside the existing
+`{ ownerGuildId, cargo, destinationSystemId, arrivalTick, ticksRemaining }`:
+- `originOutpostId` / `originCoords` — the leg's START endpoint, `nearestWaystation(destinationSystemId).outpost`'s
+  `id` and `coords`. The END endpoint is the already-present `destinationSystemId` (the client resolves
+  its coords like any system on the map), so between them the client has the whole leg.
+- `departureTick` = `arrivalTick − arrivalTickFor(0, distance)` — the second of §2.3's two ticks
+  (`arrivalTickFor(0, distance)` is the leg's DURATION, `legTicks`). With `arrivalTick`, the pair
+  brackets the flight, and the client re-derives `legProgress = clamp01((T − departureTick)/(arrivalTick −
+  departureTick))` to interpolate the craft's position (§2.3) — **the engine publishes no progress
+  fraction** (§6: the client owns the smooth tween, like the clock ring off an engine-given period).
+
+All three are **DERIVED on read** from `destinationSystemId` + `arrivalTick` + the seed geometry — **no
+stored field** on `state.shipments` (the record still stores only destination + arrivalTick; a stored
+copy is a second home that drifts, §15.5). Defensive: a row whose `nearestWaystation` returns null
+(should not happen for a valid in-flight shipment) **omits** the three leg fields rather than throwing,
+still surfacing its cargo + ticks. Read-only derive: no persisted/determinism golden moved. The
+galaxy-map / Transport-tab **CLIENT** half — which reads these fields and tweens — is the FOLLOWING
+slice.
+
 ## 4. The guild tier — gate-anchored routing on a graph (Phase 4)
 
 **Routes are gate-anchored.** A craft may only change direction at a gate or a toll-outpost. That
@@ -143,8 +167,49 @@ guild tier lands:
 
 Ancient variants outrun their normal counterparts; a deploying asset is the slowest thing on the map.
 The **Syndicate hauler** is its own row (its speed is the `SYNDICATE_SPEED` we tune independently).
-**Cargo capacity per craft is out of scope for the route model** (parked — it belongs to cargo
-selection, not routing).
+**Guild-craft capacity stays out of the route model** (parked — it belongs to cargo selection, not
+routing, and lands with the guild tier, Phase 4). The **Syndicate hauler's** capacity, though, is now
+ruled — see §5.1.
+
+### 5.1 The Syndicate hauler — capacity & burn tiers (RULED 11-09-26)
+
+The Syndicate hauler is not one flat craft: it comes in **three tiers**, and a delivery is flown by the
+smallest tier that fits its load. The tier is chosen by the **total units on the leg** — Σqty summed
+across **all** goods in that leg's cargo (integer goods; measured as a total, not per-good) — and it
+sets two things: the **capacity cap** (the hauler's cargo hold) and the **per-hex burn rate**. **Speed
+is unchanged across tiers** — every tier flies at `SYNDICATE_SPEED`, so the tier moves fuel, never
+arrival time (§3, §2.2).
+
+| Tier | Capacity (Σqty units) | Burn rate (fuel / hex) |
+|------|-----------------------|------------------------|
+| Light | ≤ 10,000 | 0.5 |
+| Medium | ≤ 50,000 | 0.6 |
+| Heavy | ≤ 200,000 *(the cap)* | 0.7 |
+
+The values are the ruled `[FIRST-CUT]` numbers and live in `phase-1-tuning.md`'s Syndicate-hauler
+burn-rate entry — the design here is the **shape**, the tuning file is the **authority on the values**.
+Load-bearing properties:
+
+- **A step function, keyed to the map/popup art.** The tiers ARE the light/medium/heavy split the client
+  already draws (`txHeroClass`, `game.html`), so the picture the player sees is the hauler they pay for.
+  Burn is flat within a tier and rises per hex as the tier rises; the boundaries (`10,000` / `50,000`),
+  once cosmetic, are now **economic numbers** and are ruled as such.
+- **Economies of scale come from the cap, not the rate.** Burn is charged per *trip*, so letting one trip
+  carry far more is what rewards consolidation — even though the bigger hauler is *thirstier per hex*: a
+  full heavy (200,000 units) over a 10-hex leg burns `ceil(10 × 0.7) = 7`, versus the same load split
+  across twenty lights at `20 × ceil(10 × 0.5) = 100` (four mediums: `4 × ceil(10 × 0.6) = 24`). The
+  rising rate (**Option C**, ruled 11-09-26) keeps big haulers burning real fuel — fuel is the activity
+  throttle (§8), so consolidation must not collapse total demand — while still making one big trip far
+  cheaper per unit. Per-hex burn rises monotonically with the tier, so there is **no cliff** where adding
+  a unit lowers the absolute burn.
+- **Over the heavy cap → reject-whole.** A leg whose total units exceed the heavy cap (`200,000`) is
+  refused at validation with a split-the-order message — the hauler physically cannot carry more (§8.0's
+  reject-whole gate). Not auto-split into multiple trips: one order, one hauler.
+- **Every Syndicate leg is tiered, by its own units.** A **BUY** consolidates a multi-good cart onto one
+  leg to one destination → its tier is the whole cart's Σqty. A **SELL** basket's rows are each their own
+  single-good leg (system → its nearest waystation) → each row tiers by *its* own qty, and the bill
+  compounds across rows exactly as §8.0's summed route fuel already does. One hauler model, one
+  `routeFuelCost`, applied per leg.
 
 ## 6. legProgress serves three consumers
 
@@ -152,10 +217,15 @@ The interpolation of §2.3 is read by three places, from one primitive:
 
 - **The storyteller / events** (engine, §7) — affects state, so it is computed **in the engine,
   deterministically**.
-- **The transport tab** and **the galaxy-map overlay** (client) — every active craft draws as a dot
-  sliding along its leg. The client **re-derives** the smooth position between ticks for rendering
-  (exactly as the clock ring animates off an engine-given period/phase); the engine exposes each
-  active shipment's current leg endpoints and its two ticks, and the client tweens.
+- **The OPERATIONS tab** (renamed from Transport) and **the galaxy-map overlay** (client) — every
+  active craft draws as a dot sliding along its leg (the map) or a progress bar advancing along its
+  row (the tab). The client **re-derives** the smooth position between ticks for rendering (exactly as
+  the clock ring animates off an engine-given period/phase); the engine exposes each active shipment's
+  current leg endpoints and its two ticks, and the client tweens. *(BUILT 10-09-26, Phase 2 — the
+  **galaxy-map overlay** for the player's own in-flight Syndicate deliveries; see the AS-BUILT note in
+  §3. BUILT 10-09-26, Phase 2 — the **OPERATIONS tab's IN TRANSIT section**, the list companion that
+  reads the same fields into a progress bar + ETA per row; see `docs/operations-hub.md` §7. The tab's
+  **guild-craft / leasing board** — LEASED, and craft ids in IN TRANSIT — stays Phase 4.)*
 
 ## 7. Piracy, risk, and interception (Phase 1: storyteller-only)
 
@@ -202,8 +272,12 @@ exactly as this section intended — the mechanism is the hoard, not a separate 
 that make the SELL/BUY transaction concrete:
 
 - **Both BUY and SELL burn route fuel — distance-scaled, from the hoard, in units.** A leg's burn is
-  `routeFuelCost(system) = ceil(hexDistance(system → nearest waystation) × SYNDICATE_HAULER_BURN_RATE)`
-  units (`SYNDICATE_HAULER_BURN_RATE = 0.5`; the function BUY already uses). **This closes §10 open #2's**
+  `ceil(hexDistance(system → nearest waystation) × BURN_RATE[tier])`, where the tier is the Syndicate
+  hauler's tier for that leg's **total units** and `BURN_RATE` is its per-hex rate (**§5.1**, RULED
+  11-09-26). The light-tier rate is the original flat `SYNDICATE_HAULER_BURN_RATE = 0.5`, so a small leg
+  (≤ light cap) is byte-identical to today; a bigger leg steps to the medium/heavy rate. `routeFuelCost`
+  gains the leg's unit count so it can pick the tier (the exact signature is the build's to choose).
+  **REFINED 11-09-26 — was one flat rate, now a step function by leg units (§5.1).** **This closes §10 open #2's**
   "does SELL spend fuel / flat vs distance-scaled": **yes, and distance-scaled.** BUILT (SELL slice,
   03-09-26): `buyFromSyndicate` and `sellToSyndicate` both burn it now — `sellToSyndicate` sums
   `routeFuelCost(row.systemId).fuelBurn` across the basket and deducts the total from the hoard, refused
@@ -222,7 +296,10 @@ that make the SELL/BUY transaction concrete:
   Each row has its own nearest waystation and thus its own route fuel; the bill **compounds** across rows.
 - **Reject-whole on the aggregate.** The whole order is refused if the hoard cannot cover the **summed**
   route fuel of every row (and, for BUY, if the treasury cannot cover the summed goods cost) — no partial
-  fill, no shortened flight. Mirrors BUY's existing gate, applied to the basket total.
+  fill, no shortened flight. Mirrors BUY's existing gate, applied to the basket total. **A third gate,
+  RULED 11-09-26:** any leg whose **total units** exceed the Syndicate hauler's **heavy cap** (§5.1) is
+  refused with a split-the-order message — the hauler cannot carry more; no auto-split. For a BUY that is
+  the cart's Σqty; for a SELL it is each row's own qty.
 - **Settlement: SELL is immediate, BUY lags.** A SELL credits the treasury, burns the fuel, and removes
   the stock on confirm — the goods "reaching the waystation" is narrative, not a delay. A BUY debits
   credits and burns fuel on confirm, and the goods **arrive later** at

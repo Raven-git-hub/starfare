@@ -125,7 +125,7 @@ where it is serialized, guarded, and published in the snapshot exactly as descri
 **pin**, and a pinned venture keeps producing, keeps being judged, keeps being charged its fee, and can climb
 back out at full strength. Also not built: the mean line / `expectedRP` / `MEANLINE_K` / the fuel issuance
 modifier, `baseGrant`, every other RP source in §2.4, the `[DEFERRED]` GP sources of §1 (transports, tolls,
-droids, outposts, exploration — and no field for any of them). *(The client deploy meter came off this list
+outposts, exploration — droids are RULED **not** a GP source (§1) — and no field for any of them). *(The client deploy meter came off this list
 02-09-26: it no longer mocks the arithmetic — see §6.1 Slice 1d. It still SENDS nothing and reads no snapshot,
 because the venture it previews is not signed yet; what it stopped doing is previewing a number the engine
 would not pay.)*
@@ -174,8 +174,9 @@ leave possession. Recomputed each tick from state, never accumulated.
 - **Sources countable TODAY** (repo reality, `a96fcb8`): **systems held** (`sim/claims.js`), **mining
   ventures**, **refining ventures**, **deployed assets** (`sim/assets.js`). Tier-scaled.
 - **`[DEFERRED]` sources — named so Claude Code does NOT invent fields.** Not built; wire in when their systems
-  land: **transports** (size-scaled), **tolls**, **droids**, **outposts** (guild-owned — see naming below),
+  land: **transports** (size-scaled), **tolls**, **outposts** (guild-owned — see naming below),
   **exploration**. Do **not** add `guild.tolls`, `guild.scanners`, etc.
+- **Droids are NOT a GP source — RULED 10-09-26, not merely deferred.** A droid is a *production multiplier on an existing venture*, not a holding: it raises a venture's **output**, not the guild's **footprint**. GP measures size (systems held, ventures deployed) and sets the expected-RP bar; productivity is a different axis, so droids **never count toward GP and never raise the mean line**. This is deliberate — droids are **pure benefit on the RP/mean-line axis, paid for on the credit axis** (build cost, ongoing maintenance spend, the exponential curve's hard cap), which keeps size/standing and productivity cleanly separate and makes droids a lever players *want* to invest in. Because droids add no GP, §1.2's passive-asset offset does not apply to them (nothing to offset). *(`sim/points.js`'s comment still lists droids among its `[DEFERRED]` sources; that comment is reconciled — droids → ruled-out — the next time code touches `points.js`, e.g. the droid build slice.)*
 
 ### 1.0 The formula (ruled 31-08-26 — slice 3)
 
@@ -392,7 +393,7 @@ below; the signing bump's tier scaling stays. `tierFactor` remains in `sim/licen
 the bump.)*
 Slice 2, the **SIGNING BUMP**: `signingBump` in `sim/licence.js`, minted by the `applyForLicence` apply in
 `sim/actions.js`. A venture signed at 50% now opens **exactly on its line**, at 100% above it, at 0% below —
-which is the founding-drop fix the whole rescale was for. **The RP band remains deferred**, as this section
+which is the founding-drop fix the whole rescale was for. **The RP band was deferred by this rescale and is now RULED below (§2.6, 09-09-26): one global band, kept on purpose**, as this section
 rules. As-built figures, the `BASE_GRANT_PER_GP` re-base the GP rescale forced, the measured cost of the
 deferred band, and the one sharp edge slice 2 surfaced (a 0%-commitment venture can never earn its way back)
 are all in `phase-1-tuning.md`'s AS-BUILT notes and `roadmap.md`'s decision checklist.
@@ -506,11 +507,7 @@ deuterium RP slice 2).** A licensed deuterium mine reuses this same RP arithmeti
   a guild that also has GP elsewhere. An **unlicensed** deuterium mine earns nothing here (no bump, and the per-cycle
   gain is gated on the licence). The GP side is untouched — still zero, slice 1.
 
-**Deferred — the RP band.** The band bounds (−500 / 800 / 1500) and the gain taper are **left at their old-scale values**
-by this rescale and flagged for their own ruling next (`phase-1-tuning.md`, RP-band deferral). Nothing halts, but the band
-is loose at the new scale; rescaling it carries a global-vs-per-tier sub-choice the wide tier spread forces. **The 1000
-deuterium bump lands well inside this loose band and does not change the deferral** — it is a heavy user of the taper, so
-whatever the band rescale decides will retune the deuterium climb along with everything else.
+**RP band — RULED 09-09-26 (supersedes the 01-09-26 deferral).** One **global** band, not per-tier. The band bounds (−500 / 800 / 1500) and the gain taper **stand as they are**; the loose fit at the new scale — a full-terms tier-1 venture resting well above its own bar — is **intended, not a gap to calibrate away**: a deliberate lean toward smaller / lower-tier guilds, who earn more fuel-per-promise early, with the counterweight for larger guilds coming later from other (not-yet-designed) ways of earning trust. A per-tier band was weighed and rejected — the issuance modifier is a per-guild, clamped ratio, so the skew is bounded and cannot be farmed, and scaling the band per-tier buys a large blast radius (the −500 / −300 tiers stop being single numbers, the RP invariant and every RP golden move) for a modest, bounded gain. **The band numbers stay `[FIRST-CUT]`** (`phase-1-tuning.md`), tunable in the sandbox, but their *shape* is settled: global. **The 1000 deuterium bump lands well inside this band and is unaffected.**
 
 ## 3. The mean line — expected RP for your GP (fuel issuance)
 

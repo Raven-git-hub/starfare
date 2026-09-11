@@ -30,6 +30,7 @@ const {
 const { hashState } = require('../serialize.js');
 const { saveState, appendJournal, clearJournal, loadOrInit, journalPath } = require('../persist.js');
 const { guildTotals } = require('../stock.js');
+const { TIER3_GOODS } = require('../resources.js');
 const { STARTER_MINERS, STARTER_FACTORIES } = require('../assets.js');
 const { GUILD_STARTING_FUEL, REFERENCE_FUEL_PRICE } = require('../fuel.js');
 const { POOL_SEED, DEUTERIUM_INFLUX_PER_CYCLE } = require('../issuance.js');
@@ -365,6 +366,18 @@ const GOLDEN_HASH_WITH_FOUNDING_ENTITLEMENT = '3d74908042156768a4c28409e0344cfb9
 // back out and GOLDEN_HASH_WITH_FOUNDING_ENTITLEMENT returns byte-for-byte — the whole delta proof.
 const GOLDEN_HASH_WITH_FUEL_PRICE_HISTORY = '59647f6b076b115c6941bf7b14fc6486c8648d8b48bdae9d4331e8e625aa8c91';
 
+// THE TIER-3 MODULE CATALOG (2.1a — docs/asset-recipes.md). The slice added 26 goods to
+// the priced/stockpile vocabulary (luminite_glass + 25 modules), so this sequence's FULL
+// hash moved: galacticSupply gained 26 zero rows, and prices/priceRing each gained 26
+// base-price rows (no venture here manufactures a module, so every new good is at rest).
+// ADDED VOCABULARY, not an added field — but the strip idiom still applies: `withoutTier3`
+// removes exactly those 26 keys from prices, priceRing, priceHistory and galacticSupply,
+// and GOLDEN_HASH_WITH_FUEL_PRICE_HISTORY returns byte-for-byte (asserted above), which is
+// the whole delta proof. This full hash is pinned so a drift in the new goods' at-rest
+// prices is caught too. (This 2-tick run takes no price sample, so priceHistory is absent;
+// commitment-scaffold.test.js's 40-tick runs cross the fine bucket and carry the 26 rings.)
+const GOLDEN_HASH_WITH_TIER3_CATALOG = 'fe087b7610ad0a78920d80117c7ba4baf2c6b4fc7e0eda736fd296a196bd9b11';
+
 // The state minus the reserve's fuel price — everything the four goldens above covered.
 // Stripped inside `reserve`, leaving `reserveLevel` and every other top-level key in
 // place, so a change anywhere else still fails the assertion.
@@ -430,6 +443,36 @@ const withoutFoundingEntitlement = (state) => ({
 // ticks — so the full hash moved and the ordinary strip recovers the pre-slice golden byte-for-byte.
 const withoutFuelPriceHistory = (state) => { const { fuelPriceHistory, ...rest } = state; return rest; };
 
+// TIER-3 CATALOG (2.1a — docs/asset-recipes.md). The slice added 26 goods to the
+// priced/stockpile vocabulary: the new Tier-2 good `luminite_glass` + the 25 Tier-3
+// modules. On a run that MANUFACTURES no module (every sequence here does), they enter
+// the serialized state ONLY as "the new vocabulary at rest": a price row (base 10, since
+// productionCapacity is 0 → priceTarget rests it at base), a galactic-supply zero row, a
+// quote-lock ring entry, and — on runs past the first fine bucket — a priceHistory ring
+// sampling that flat base. NO existing good's price, stock or production number moves.
+//
+// So the FULL hash of every sequence moved (galacticSupply, which no earlier strip
+// touches, gained 26 zero rows; prices/priceRing/priceHistory gained 26 rows each). This
+// strip removes exactly those 26 keys from exactly those four places, and the remainder
+// must hash to the PRE-2.1a golden byte-for-byte — the whole delta proof, the same idiom
+// withoutPrices/withoutAssets use, now for an added VOCABULARY rather than an added field.
+const TIER3_VOCAB_2_1A = new Set(['luminite_glass', ...TIER3_GOODS]);
+const stripTier3Keys = (obj) => {
+  const out = {};
+  for (const [k, v] of Object.entries(obj || {})) if (!TIER3_VOCAB_2_1A.has(k)) out[k] = v;
+  return out;
+};
+const withoutTier3 = (state) => {
+  const next = { ...state };
+  if (next.prices) next.prices = stripTier3Keys(next.prices);
+  if (next.priceRing) next.priceRing = stripTier3Keys(next.priceRing);
+  if (next.priceHistory) next.priceHistory = stripTier3Keys(next.priceHistory);
+  if (next.galacticSupply && next.galacticSupply.resources) {
+    next.galacticSupply = { ...next.galacticSupply, resources: stripTier3Keys(next.galacticSupply.resources) };
+  }
+  return next;
+};
+
 test('no-op proof: pure engine path (persistence OFF) matches the golden hash', () => {
   // The SAME scripted moves as above, but driven straight through the engine with
   // ZERO persist calls — modelling a boot + action/tick sequence with the flag unset.
@@ -453,17 +496,24 @@ test('no-op proof: pure engine path (persistence OFF) matches the golden hash', 
   // FUEL-PRICE HISTORY (07-09-26): the always-on `fuelPriceHistory` accumulator advances every
   // tick, so it moved this sequence's full hash too and is the OUTERMOST strip now — `bare` folds
   // it in with the rest so every earlier golden returns byte-for-byte.
-  const bare = (x) => withoutFuelPriceHistory(withoutFoundingEntitlement(withoutPriceRing(withoutGuildHall(withoutAvgDraw(withoutFuelPrice(x))))));
-  assert.equal(hashState(bare(withoutAssets(withoutHistory(withoutPrices(s))))), GOLDEN_HASH, 'everything but the price block, the history buffer, the assets, the two reserve fields, the Guild Hall field, the price ring, the founding baseline and the fuel-price history is byte-identical to pre-price-engine HEAD');
+  // 2.1a: the Tier-3 module catalog added 26 goods to the priced/stockpile vocabulary,
+  // so galacticSupply, prices, priceRing (and, on longer runs, priceHistory) each gained
+  // 26 "at rest" rows and this sequence's FULL hash moved. `withoutTier3` is the newest,
+  // OUTERMOST strip now — peel the 26 new-vocabulary rows and every earlier golden returns
+  // byte-for-byte, the proof the catalog's only footprint here is the new goods sitting
+  // idle. `bare` folds it in with the rest.
+  const bare = (x) => withoutTier3(withoutFuelPriceHistory(withoutFoundingEntitlement(withoutPriceRing(withoutGuildHall(withoutAvgDraw(withoutFuelPrice(x)))))));
+  assert.equal(hashState(bare(withoutAssets(withoutHistory(withoutPrices(s))))), GOLDEN_HASH, 'everything but the price block, the history buffer, the assets, the two reserve fields, the Guild Hall field, the price ring, the founding baseline, the fuel-price history and the Tier-3 vocabulary is byte-identical to pre-price-engine HEAD');
   assert.equal(hashState(bare(withoutAssets(withoutHistory(s)))), GOLDEN_HASH_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
   assert.equal(hashState(bare(withoutAssets(s))), GOLDEN_HASH_WITH_HISTORY, 'and with the history back in, the ONLY delta from the pre-asset engine is the assets');
   assert.equal(hashState(bare(s)), GOLDEN_HASH_WITH_ASSETS, 'and with the assets back in, the ONLY delta from the pre-5b-i engine is the two reserve fields');
-  assert.equal(hashState(withoutFuelPriceHistory(withoutFoundingEntitlement(withoutPriceRing(withoutGuildHall(withoutAvgDraw(s)))))), GOLDEN_HASH_WITH_FUEL_PRICE, 'with the price back in, the ONLY delta from the pre-5b-ii engine is reserve.avgDraw');
-  assert.equal(hashState(withoutFuelPriceHistory(withoutFoundingEntitlement(withoutPriceRing(withoutGuildHall(s))))), GOLDEN_HASH_WITH_AVG_DRAW, 'and with the controller state back in, stripping the fuel-price history, the Guild Hall field, the price ring and the founding baseline returns the pre-Guild-Hall bytes');
-  assert.equal(hashState(withoutFuelPriceHistory(withoutFoundingEntitlement(withoutPriceRing(s)))), GOLDEN_HASH_WITH_GUILD_HALL, 'and with the Guild Hall field back in, stripping the fuel-price history, the price ring and the founding baseline returns the pre-quote-lock bytes');
-  assert.equal(hashState(withoutFuelPriceHistory(withoutFoundingEntitlement(s))), GOLDEN_HASH_WITH_PRICE_RING, 'and with the price ring back in, stripping the fuel-price history and the founding baseline returns the pre-Slice-D′ bytes');
-  assert.equal(hashState(withoutFuelPriceHistory(s)), GOLDEN_HASH_WITH_FOUNDING_ENTITLEMENT, 'and with the founding baseline back in, stripping only the fuel-price history returns the pre-fuel-price-history bytes');
-  assert.equal(hashState(s), GOLDEN_HASH_WITH_FUEL_PRICE_HISTORY, 'and the full state — with the galaxy-wide fuel-price history — is pinned');
+  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(withoutFoundingEntitlement(withoutPriceRing(withoutGuildHall(withoutAvgDraw(s))))))), GOLDEN_HASH_WITH_FUEL_PRICE, 'with the price back in, the ONLY delta from the pre-5b-ii engine is reserve.avgDraw');
+  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(withoutFoundingEntitlement(withoutPriceRing(withoutGuildHall(s)))))), GOLDEN_HASH_WITH_AVG_DRAW, 'and with the controller state back in, stripping the Tier-3 vocabulary, the fuel-price history, the Guild Hall field, the price ring and the founding baseline returns the pre-Guild-Hall bytes');
+  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(withoutFoundingEntitlement(withoutPriceRing(s))))), GOLDEN_HASH_WITH_GUILD_HALL, 'and with the Guild Hall field back in, stripping the Tier-3 vocabulary, the fuel-price history, the price ring and the founding baseline returns the pre-quote-lock bytes');
+  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(withoutFoundingEntitlement(s)))), GOLDEN_HASH_WITH_PRICE_RING, 'and with the price ring back in, stripping the Tier-3 vocabulary, the fuel-price history and the founding baseline returns the pre-Slice-D′ bytes');
+  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(s))), GOLDEN_HASH_WITH_FOUNDING_ENTITLEMENT, 'and with the founding baseline back in, stripping the Tier-3 vocabulary and the fuel-price history returns the pre-fuel-price-history bytes');
+  assert.equal(hashState(withoutTier3(s)), GOLDEN_HASH_WITH_FUEL_PRICE_HISTORY, 'and with the fuel-price history back in, stripping only the Tier-3 vocabulary returns the pre-2.1a bytes — the whole catalog delta proof');
+  assert.equal(hashState(s), GOLDEN_HASH_WITH_TIER3_CATALOG, 'and the full state — with the 26-good Tier-3 module catalog — is pinned');
   // A′: the founded guild carries the field from birth, at its starting fuel (the bar sizes
   // off it immediately). This 2-tick run crosses no boundary, so it is never re-stamped.
   assert.equal(s.guilds[0].fuelHoardAtCycleStart, GUILD_STARTING_FUEL, 'A′: stamped at founding = the starter floor, and held (no boundary)');
@@ -530,8 +580,8 @@ test('no-op proof: subtract the founding fuel grant and the pre-slice golden com
   ungranted.audit.totalProduced -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
   ungranted.galacticSupply.fuel.reserve -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
 
-  assert.equal(hashState(withoutFuelPriceHistory(withoutPriceRing(withoutGuildHall(withoutAvgDraw(withoutFuelPrice(ungranted)))))), GOLDEN_HASH_BEFORE_FUEL_GRANT,
-    'the fuel grant and the pool seed are the ONLY deltas the two fuel slices made to the canonical sequence, byte for byte (the later A′ field, the price ring and the fuel-price history stripped)');
+  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(withoutPriceRing(withoutGuildHall(withoutAvgDraw(withoutFuelPrice(ungranted))))))), GOLDEN_HASH_BEFORE_FUEL_GRANT,
+    'the fuel grant and the pool seed are the ONLY deltas the two fuel slices made to the canonical sequence, byte for byte (the later A′ field, the price ring, the fuel-price history and the Tier-3 vocabulary stripped)');
 });
 
 // Slice 5a's own delta proof, the same inverted idiom: a changed VALUE cannot be stripped
@@ -572,8 +622,8 @@ test('no-op proof: un-seed the pool and the pre-slice-5a golden comes back', () 
   unseeded.audit.totalProduced -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
   unseeded.galacticSupply.fuel.reserve -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
 
-  assert.equal(hashState(withoutFuelPriceHistory(withoutPriceRing(withoutGuildHall(withoutAvgDraw(withoutFuelPrice(unseeded)))))), GOLDEN_HASH_BEFORE_POOL_SEED,
-    'the pool seed is the ONLY delta slice 5a made to this run, byte for byte (the later A′ field, the price ring and the fuel-price history stripped)');
+  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(withoutPriceRing(withoutGuildHall(withoutAvgDraw(withoutFuelPrice(unseeded))))))), GOLDEN_HASH_BEFORE_POOL_SEED,
+    'the pool seed is the ONLY delta slice 5a made to this run, byte for byte (the later A′ field, the price ring, the fuel-price history and the Tier-3 vocabulary stripped)');
 });
 
 // The founding endowment's own delta proof — the inverted strip-and-prove this repo uses
@@ -612,8 +662,8 @@ test('no-op proof: un-endow the founding and the pre-endowment golden comes back
   delete unendowed.guilds[0].foundingEndowment;
   delete unendowed.guilds[0].foundingEntitlement; // Slice D′, a later founding-stamped key this golden predates
 
-  assert.equal(hashState(withoutFuelPriceHistory(withoutPriceRing(withoutGuildHall(withoutAvgDraw(withoutFuelPrice(unendowed)))))), GOLDEN_HASH_BEFORE_ENDOWMENT,
-    'the endowment is the ONLY delta this slice made to the canonical sequence, byte for byte (the later A′ field, the price ring and the fuel-price history stripped)');
+  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(withoutPriceRing(withoutGuildHall(withoutAvgDraw(withoutFuelPrice(unendowed))))))), GOLDEN_HASH_BEFORE_ENDOWMENT,
+    'the endowment is the ONLY delta this slice made to the canonical sequence, byte for byte (the later A′ field, the price ring, the fuel-price history and the Tier-3 vocabulary stripped)');
 });
 
 // --- 5. graceful shutdown: the MID-INTERVAL save (no intervening tick) ------

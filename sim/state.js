@@ -72,6 +72,8 @@ function createGuild({
   assets = [],
   ventures = [],
   vehicles = [],
+  events = [],
+  eventSeq = 0,
 }) {
   if (id === undefined) throw new Error('createGuild: id is required');
   if (credits === undefined) throw new Error('createGuild: credits is required');
@@ -285,6 +287,17 @@ function createGuild({
     // serializes byte-identically to pre-asset state, which is what keeps the
     // determinism goldens meaningful.
     ...(assets.length ? { assets: assets.map(createAsset) } : {}),
+    // events / eventSeq: the append-only event log and its per-guild id counter
+    // (sim/events.js; docs/event-log.md). ENGINE-OWNED — written only by the two licence
+    // removers (applyLapse / applyVentureClosure) through `recordEvent`, never player-set
+    // except for the `readTick` an acknowledge stamps. Both OMITTED when empty, exactly like
+    // `syndicateWindows` / `productionHistory` / `assets` above: a guild that has recorded no
+    // notice carries NEITHER key and serializes byte-identically to pre-slice state (the
+    // determinism no-op proof). CARRIED here so a scenario or a restored save that hands them
+    // in keeps them; the events are DEEP-copied (a fresh array of fresh row objects) so a
+    // caller's array can never alias into engine state, the same discipline the maps above use.
+    ...(Array.isArray(events) && events.length ? { events: events.map((e) => ({ ...e, payload: { ...e.payload } })) } : {}),
+    ...(eventSeq ? { eventSeq } : {}),
     ventures: ventures.map(createVenture),
     vehicles: vehicles.map(createVehicle),
   };

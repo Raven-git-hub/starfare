@@ -6,7 +6,7 @@ const { getRecipe } = require('./recipes.js');
 const {
   EQUITY_CEILING, isValidEquityPct, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
   isValidCommitmentPct, isValidWindowDays, licenceFee, commitmentUnitsFor, equityOf,
-  signingBump, teardownSettlement,
+  signingBump, teardownSettlement, licenceEndTick, renegotiationFee, applyLapse, applyVentureClosure,
 } = require('./licence.js');
 const { producedGoodFor, baselineOutputFor, isLicensedDeuteriumMine } = require('./baseline.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
@@ -224,6 +224,56 @@ function createApplyForLicenceAction({ guildId, ventureId, committedOutputPct, w
   if (committedOutputPct === undefined) throw new Error('createApplyForLicenceAction: committedOutputPct is required');
   if (windowDays === undefined) throw new Error('createApplyForLicenceAction: windowDays is required');
   return { type: 'applyForLicence', guildId, ventureId, committedOutputPct, windowDays };
+}
+
+// renegotiateLicence: accept the Syndicate's new terms for a licensed venture whose
+// committed window has ELAPSED, and re-lock the licence in place (design.md §5 "Licence
+// renegotiation — the terms function & venture standing"; #64 Slice 1). The near-mirror
+// of `applyForLicence`, with three deliberate differences: the terms are the Syndicate's
+// (read off the venture's standing, `renegotiationTerms`), not the player's; the fee
+// re-locks at TODAY's posted price with the Strong-band discount baked in; and there is
+// NO signing bump — the venture's RP carries untouched (§5 "On accept").
+//
+// The player authors no terms here — after the first signing they never offer terms
+// (§5) — so the action carries only which venture to renegotiate. It is player-PULL:
+// invoked explicitly, no timer initiates it and nothing lapses if it is not invoked
+// (both Slice 2).
+function createRenegotiateLicenceAction({ guildId, ventureId }) {
+  if (guildId === undefined) throw new Error('createRenegotiateLicenceAction: guildId is required');
+  if (ventureId === undefined) throw new Error('createRenegotiateLicenceAction: ventureId is required');
+  return { type: 'renegotiateLicence', guildId, ventureId };
+}
+
+// lapseLicence: the OTHER end of a reopened licence (design.md §5 "Accept or lapse") — the
+// LAPSE-TO-UNLICENSED operation the player reaches by REJECTing a renegotiation. It shares
+// `renegotiateLicence`'s gate exactly (you can only lapse a licence that is up for
+// renegotiation: an ordinary, non-deuterium licence whose committed window has elapsed), and
+// its apply mirrors `decommissionVenture`'s RP-forfeit + commitment-clear — but KEEPS the
+// venture, its node and its assets in place (decommission removes the venture; lapse reverts
+// it to unlicensed). No fee, no node lockout, no signing bump.
+//
+// This is a deliberate strategic escape (§5), not an exploit: the least-painful way out from
+// under Syndicate terms a guild no longer wants, paid for in forfeited standing. Slice 2's
+// acceptance-window timeout will reuse this SAME action to auto-lapse; here it is only the
+// player-PULL half (the explicit REJECT). Shape is `{ guildId, ventureId }` — the player
+// authors no terms (§5).
+function createLapseLicenceAction({ guildId, ventureId }) {
+  if (guildId === undefined) throw new Error('createLapseLicenceAction: guildId is required');
+  if (ventureId === undefined) throw new Error('createLapseLicenceAction: ventureId is required');
+  return { type: 'lapseLicence', guildId, ventureId };
+}
+
+// acknowledgeEvent: mark ONE event-log notice READ (docs/event-log.md §3). The player's
+// "I've seen this" on a Notices row — it does not delete the notice, it stamps `readTick`,
+// which shortens the notice's remaining display life (RETENTION_READ_TICKS, sim/events.js §4)
+// and drops it from the unread badge. Shape is `{ guildId, eventId }`; `eventId` is the
+// per-guild counter id `recordEvent` assigned. It is PLAYER-SET state — the tick never reads
+// `readTick` to compute a game number (invariant 8 untouched: this moves no reputation, no
+// credits, no goods).
+function createAcknowledgeEventAction({ guildId, eventId }) {
+  if (guildId === undefined) throw new Error('createAcknowledgeEventAction: guildId is required');
+  if (eventId === undefined) throw new Error('createAcknowledgeEventAction: eventId is required');
+  return { type: 'acknowledgeEvent', guildId, eventId };
 }
 
 // licenseDeuteriumMine: grant ONE deuterium mining venture the WINDOWLESS deuterium
@@ -728,7 +778,7 @@ function validateAction(state, action) {
       return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} has no venture with id ${JSON.stringify(action.ventureId)}` };
     }
     if (venture.licence) {
-      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} is already licensed — changing agreed terms is a renegotiation (§5), not a second application, and renegotiation is not built yet`};
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} is already licensed — changing agreed terms is a renegotiation (§5): use renegotiateLicence once its committed window has elapsed, not a second application`};
     }
     // DEUTERIUM IS NEVER ELIGIBLE FOR THE ORDINARY WINDOWED PATH (§1.4 "The Deuterium
     // Cycle"). Deuterium is special: it takes ONLY the windowless deuterium licence
@@ -781,6 +831,97 @@ function validateAction(state, action) {
     const baseline = baselineOutputFor(venture);
     if (!baseline || !(baseline.units > 0)) {
       return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} has no droidless baseline output to price a fee against` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'renegotiateLicence') {
+    // The near-mirror of applyForLicence's validate — a licence is a contract over a
+    // venture you own, so scan only THIS guild's ventures, exactly as it does.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (typeof action.ventureId !== 'string' || action.ventureId.length === 0) {
+      return { valid: false, reason: 'ventureId must be a non-empty string' };
+    }
+    const venture = (guild.ventures || []).find((v) => v.id === action.ventureId);
+    if (!venture) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} has no venture with id ${JSON.stringify(action.ventureId)}` };
+    }
+    // DEUTERIUM IS EXEMPT (§1.4): a deuterium mine is windowless — it takes only the
+    // windowless deuterium licence, which never renegotiates. Refused EARLY and for
+    // every deuterium mine, so the reason is the specific exemption rather than the
+    // generic "no licence" below (a deuterium mine carries a `deuteriumLicence`, never
+    // an ordinary `licence`, so the next check would otherwise catch it less clearly).
+    if (venture.resourceType === DEUTERIUM) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} mines ${JSON.stringify(DEUTERIUM)}, which is windowless and exempt from renegotiation — the deuterium licence has no terms to reopen (§1.4)` };
+    }
+    // The OPPOSITE of applyForLicence's "already licensed" refusal: renegotiation needs
+    // an EXISTING ordinary licence to reopen. An unlicensed venture signs a fresh one
+    // (applyForLicence); it does not renegotiate.
+    if (!venture.licence) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} has no licence to renegotiate — sign one with applyForLicence first (§5)` };
+    }
+    // And the committed window must have ELAPSED — terms reopen only at window-end (§5).
+    // Read `windowN` the SAME way applyForLicence does, and compare against the SAME
+    // end-of-term tick teardownSettlement and the snapshot use (`licenceEndTick`), so a
+    // renegotiation cannot open a tick before the panel says the window is up.
+    const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+    if (state.tick < licenceEndTick(venture.licence, windowN)) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)}'s committed window has not elapsed (ends at tick ${licenceEndTick(venture.licence, windowN)}, now ${state.tick}) — terms reopen only at window-end (§5)` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'lapseLicence') {
+    // The EXACT SAME gate as renegotiateLicence — lapse and accept are the two ends of one
+    // reopened licence (§5 "Accept or lapse"), so you can only lapse what you could
+    // renegotiate: an ordinary, non-deuterium licence whose committed window has elapsed. The
+    // checks are kept in the same order and with the same reasons so the two actions refuse
+    // identically.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (typeof action.ventureId !== 'string' || action.ventureId.length === 0) {
+      return { valid: false, reason: 'ventureId must be a non-empty string' };
+    }
+    const venture = (guild.ventures || []).find((v) => v.id === action.ventureId);
+    if (!venture) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} has no venture with id ${JSON.stringify(action.ventureId)}` };
+    }
+    // Deuterium is exempt (§1.4): a windowless deuterium licence has no terms to reopen, so
+    // there is nothing to lapse. Refused EARLY with the specific exemption, exactly as
+    // renegotiateLicence does.
+    if (venture.resourceType === DEUTERIUM) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} mines ${JSON.stringify(DEUTERIUM)}, which is windowless and exempt from renegotiation — a deuterium licence has no terms to lapse (§1.4)` };
+    }
+    // Lapse needs an EXISTING ordinary licence to drop: an unlicensed venture is already in
+    // the state lapse would return it to.
+    if (!venture.licence) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} has no licence to lapse — it is already unlicensed (§5)` };
+    }
+    // And the committed window must have ELAPSED — the licence is only up for renegotiation
+    // (accept OR lapse) at window-end (§5). `windowN` and `licenceEndTick` read the SAME way
+    // renegotiateLicence reads them.
+    const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+    if (state.tick < licenceEndTick(venture.licence, windowN)) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)}'s committed window has not elapsed (ends at tick ${licenceEndTick(venture.licence, windowN)}, now ${state.tick}) — terms reopen only at window-end, so there is nothing to lapse yet (§5)` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'acknowledgeEvent') {
+    // Validate ONLY the guild (docs/event-log.md §3). A MISSING `eventId` is a valid no-op,
+    // NOT a rejection: a notice can age out of the log (retention) between the tick the client
+    // rendered it and the tick the player clicks it, and the acknowledge for a since-pruned
+    // notice must not fail — it simply finds nothing to stamp (the apply is a no-op). Rejecting
+    // it would surface a spurious error for a perfectly ordinary race. So the only hard
+    // requirement is that the guild exists.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
     }
     return { valid: true };
   }
@@ -1449,6 +1590,91 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'renegotiateLicence') {
+    // Accept the Syndicate's new terms and re-lock the licence IN PLACE — the near-mirror
+    // of applyForLicence's apply, with three deliberate differences (the Syndicate-set
+    // terms, no signing bump, and a window that resets). Everything is priced against
+    // state-as-it-stands at THIS tick, exactly as a first signing is.
+    const guild = findGuild(next, action.guildId);
+    const venture = guild.ventures.find((v) => v.id === action.ventureId);
+    // The OUTPUT good, its droidless baseline and this tick's posted price — read the
+    // SAME way applyForLicence reads them (`baselineOutputFor` is the single source for
+    // both the good and the units/tick, for a mine and a factory alike; no number
+    // invented). The window is the engine-wide `windowN` (or the resolver's fallback).
+    const baseline = baselineOutputFor(venture);
+    const good = baseline.good;
+    const lockedPrice = postedPrice(next, good);
+    const windowN = next.windowN == null ? DEFAULT_WINDOW_N : next.windowN;
+    const baselineUnitsPerTick = baseline.units;
+    const windowDays = venture.licence.windowDays;   // carried unchanged (§5)
+
+    // The Syndicate's new terms + the re-locked fee, from the ONE helper the snapshot's
+    // renegotiationOffer also reads (sim/licence.js), so the offer previewed and the
+    // terms locked cannot disagree. `renegotiationFee` reads the venture's standing for
+    // the committed step, prices the fee at `lockedPrice`, and bakes in the Strong-band
+    // discount (a no-op off Strong).
+    const { committedOutputPct, basicFee, discountedFee } = renegotiationFee({
+      venture,
+      baselineUnitsPerTick,
+      windowN,
+      lockedPrice,
+    });
+
+    // Re-lock in place. `windowDays` carries; `signedTick = next.tick` RESETS the window
+    // (the terms lock afresh for another `windowDays`); the fee re-locks at this tick's
+    // price. Equity is NOT a licence field (it lives on the venture) and is untouched.
+    venture.licence = {
+      committedOutputPct,
+      windowDays,
+      signedTick: next.tick,          // §15.2: every mutation records its tick, and resets the window
+      lockedPrice,
+      basicFee,
+      discountedFee,
+    };
+
+    // NO SIGNING BUMP — the load-bearing difference from applyForLicence. `signingBump`
+    // is once-per-venture at FIRST licence (docs/points-and-reputation.md §2.6); a
+    // renegotiation never re-applies it, so `venture.reputation` is untouched and the
+    // guild's cached sum does not move (design.md §5 "On accept": RP carries). We do not
+    // call it here at all.
+
+    // Recompute the operative commitment at the new pct, and re-stamp the pro-rate anchor
+    // to this window's first producing tick — the SAME `signedTick + 1` reasoning as
+    // applyForLicence: a re-locked venture is "present from" its first producing tick of
+    // the new window, so its first (reset) window is pro-rated for the tick it re-signed on.
+    venture.syndicateCommitment = commitmentUnitsFor(committedOutputPct, baselineUnitsPerTick, windowN);
+    venture.committedFromTick = venture.licence.signedTick + 1;
+    return next;
+  }
+
+  if (action.type === 'lapseLicence') {
+    // LAPSE TO UNLICENSED (§5 "Accept or lapse"): revert the venture to unlicensed and forfeit
+    // its RP, keeping the venture, its node and its asset in place. The whole effect is the
+    // shared `applyLapse` (sim/licence.js) — the RP forfeit + licence-drop + commitment-clear —
+    // which the auto-lapse tick step (#64 Slice 2) calls too, so a chosen REJECT and a
+    // timed-out lapse cannot diverge. No fee, no node lockout, no signing bump; the venture
+    // survives, and the guild may sign a fresh licence later on its own terms.
+    const guild = findGuild(next, action.guildId);
+    const venture = guild.ventures.find((v) => v.id === action.ventureId);
+    // cause 'rejected' (the player chose to lapse); the notice's tick is `next.tick`, the
+    // current tick this apply runs on (docs/event-log.md §2).
+    applyLapse(guild, venture, 'rejected', next.tick);
+    return next;
+  }
+
+  if (action.type === 'acknowledgeEvent') {
+    // Stamp `readTick` on the named notice, iff it is present AND still unread (docs/event-log.md
+    // §3). A no-op — valid, changes nothing — when the id is absent (it aged out between render
+    // and click) or already read (acknowledged twice), so an acknowledge is idempotent and never
+    // resets an earlier read's retention clock. `next.tick` is when the player read it — the datum
+    // the READ retention window (RETENTION_READ_TICKS) counts from. This is player-set display
+    // state: no reputation, no credits, no goods move.
+    const guild = findGuild(next, action.guildId);
+    const event = (guild.events || []).find((e) => e.id === action.eventId);
+    if (event && event.readTick == null) event.readTick = next.tick;
+    return next;
+  }
+
   if (action.type === 'licenseDeuteriumMine') {
     // Grant the windowless deuterium licence (§1.4). Moves NO credits — there is no fee —
     // and sets no terms: commitment is 100% implicit and equity stays whatever the venture
@@ -1508,49 +1734,30 @@ function applyAction(state, action) {
     // `teardownSettlement` — the SAME pure helper the snapshot previews with — so the cost the
     // player was shown and the cost charged cannot disagree (§7).
     const guild = findGuild(next, action.guildId);
-    const idx = guild.ventures.findIndex((v) => v.id === action.ventureId);
-    const venture = guild.ventures[idx];
-    const { settlementFee, lockoutUntilTick } = teardownSettlement(next, guild, venture);
+    const venture = guild.ventures.find((v) => v.id === action.ventureId);
+    const { settlementFee } = teardownSettlement(next, guild, venture);
 
     // 1. THE SETTLEMENT FEE (§3.2) — ordinary-licensed only, 0 past the term, so this moves
     //    nothing for an unlicensed venture. The paySyndicateFee shape exactly: guild −fee,
     //    ledger +fee, so invariant 2 stays exact. It MAY drive the guild's credits NEGATIVE —
     //    the same non-negativity carve-out §5's breach fee runs under — and is charged in full
     //    whether or not the guild can pay; there is deliberately no affordability gate (§3.2).
+    //    This is the ONE thing a player teardown does that a Syndicate forced closure does NOT
+    //    (docs/forced-closure.md §3.4), which is exactly why it lives HERE, around the shared
+    //    closure below, rather than inside it.
     if (settlementFee > 0) {
       guild.credits -= settlementFee;
       next.syndicate.ledger += settlementFee;
     }
 
-    // 2. RP FORFEIT + REMOVAL (§3.1) — the ONLY reputation bookkeeping teardown does, in one
-    //    mutation: the venture's RP leaves the guild total as the venture leaves the array.
-    //    This mirrors the tick's boundary RP mover in reverse — the guild total and the row it
-    //    totals move by the same amount, in the same place — so `checkGuildReputationSum`
-    //    (guildReputation == Σ venture.reputation + foundingEndowment) stays exact with no new
-    //    term. The mean line does the rest of the "punishment": the venture's GP leaves too,
-    //    because GP is derived (§2), so the gap moves by (GP_v − RP_v) with no special rule.
-    guild.guildReputation -= (venture.reputation || 0);
-    guild.ventures.splice(idx, 1);
-
-    // 3. FREE THE SITE AND ASSET (§0) — NOTHING TO DO. Occupancy and idleness are both DERIVED
-    //    (sim/occupancy.js, sim/assets.js): the venture is gone, so its site reads vacant and
-    //    its asset reads idle for free. This step is the whole point of teardown, and it is a
-    //    no-op precisely because those two facts were never stored.
-
-    // 4. THE NODE LOCKOUT (§3.3) — written iff `teardownSettlement` returned a release tick
-    //    (an ordinary-licensed venture with contract time left; null when unlicensed or past
-    //    the term, so no lockout there). `state.nodeLockouts` is created LAZILY here — the only
-    //    writer — so a galaxy that has torn nothing down carries no key (omit-when-empty). The
-    //    node stays the owner's TERRITORY; the lockout is pure self-denial, barring re-establish
-    //    on this very site until `releaseTick`. `lockedAtTick` records the mutation's tick (§15.2).
-    if (lockoutUntilTick != null) {
-      if (!Array.isArray(next.nodeLockouts)) next.nodeLockouts = [];
-      next.nodeLockouts.push({
-        siteId: venture.siteId,
-        releaseTick: lockoutUntilTick,
-        lockedAtTick: next.tick,
-      });
-    }
+    // 2-4. RP FORFEIT + REMOVAL (§3.1), FREE THE SITE AND ASSET (§0, derived — nothing to do),
+    //    and THE NODE LOCKOUT (§3.3) — all in `applyVentureClosure` (sim/licence.js), the SAME
+    //    shared mutation the −500 forced-closure path in the tick calls, so a player teardown
+    //    and a Syndicate closure cannot diverge on removal (the `applyLapse` precedent). It
+    //    reads the same `teardownSettlement` for the lockout tick, so its term and the fee's
+    //    above are the one number. cause 'teardown'; the notice's tick is `next.tick`, the
+    //    current tick this apply runs on (docs/event-log.md §2).
+    applyVentureClosure(next, guild, venture, 'teardown', next.tick);
     return next;
   }
 
@@ -1783,6 +1990,9 @@ module.exports = {
   createSetProductionProfileAction,
   createSetSyndicateCommitmentAction,
   createApplyForLicenceAction,
+  createRenegotiateLicenceAction,
+  createLapseLicenceAction,
+  createAcknowledgeEventAction,
   createLicenseDeuteriumMineAction,
   createEstablishDeuteriumRefineryAction,
   createDecommissionVentureAction,

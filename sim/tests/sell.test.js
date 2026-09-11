@@ -208,9 +208,11 @@ test('fuel is never sold on the Exchange, and the refusal says why', () => {
 test('a good the Syndicate posts no price for is refused', () => {
   const state = sellState();
   reject(state, sell('g1', 'not_a_good', [{ systemId: A, qty: 1 }]), /is not a good the Syndicate posts a price for/);
-  // A Tier-3 catalog placeholder is display-only vocabulary: no price, no sale.
-  assert.ok(!PRICED_GOODS.includes('small_reactor_engine'), 'the Tier-3 names are catalog-only');
-  reject(state, sell('g1', 'small_reactor_engine', [{ systemId: A, qty: 1 }]), /posts a price for/);
+  // 2.1a: a Tier-3 module is now a real priced good, so it is NOT refused for being
+  // unpriced (the old "catalog-only, no sale" case retired when modules joined the
+  // economy). The unpriced-refusal path is still exercised by `not_a_good` above and
+  // the hand-deleted price row below.
+  assert.ok(PRICED_GOODS.includes('small_reactor_engine'), 'a module is priced now');
   // ...and a priced good whose price row was removed by hand is refused rather
   // than sold for nothing.
   const priceless = sellState();

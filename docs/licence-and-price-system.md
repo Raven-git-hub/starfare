@@ -108,7 +108,8 @@ A per-good Syndicate **value**: the "one true number" the whole economy is denom
   tiers**, each tier granting **+10% dividend to all shareholders** (owner included), printed by the
   Syndicate — the long-game cash-cow that makes high-rep shares valuable. Falls to **−500 in tiers of
   100**: at **−300** the venture is **forced-lease-eligible** (offered to the biggest stakeholder), at
-  **−500** it's **closed and the licence revoked** (+ possible node lockout). Builds two ways: a **fixed
+  **−500** it's **closed and the licence revoked** (+ possible node lockout) — **the −500 closure is BUILT
+  (09-09-26, `docs/forced-closure.md`); the −300 forced-lease is not**. Builds two ways: a **fixed
   rate** just for holding a licence, and a **variable rate** rewarding meeting targets (more for bigger
   commitments) and punishing misses (more for *smaller* commitments). **Guild reputation = Σ of its
   ventures' reputations.** *(§5/§7 already make reputation load-bearing for takeover, forced closure,
@@ -147,7 +148,10 @@ A per-good Syndicate **value**: the "one true number" the whole economy is denom
 - **Fuel** is a conserved pool (`fuelHoard` + communal `reserve` + in-transit) with a hard conservation
   invariant, and a fully-designed **allocation-as-purchasing-power** model (`fuel-allocation-model.md`,
   §8 501–515). Excluded from pricing and the fee.
-- **Reputation / leasing / takeover / forced closure:** extensively designed in **§5/§7** — not built.
+- **Reputation / leasing / takeover:** extensively designed in **§5/§7** — not built. **Forced closure
+  at −500 is now BUILT** (09-09-26, `docs/forced-closure.md`): a boundary breach to the floor revokes the
+  licence, removes the venture, forfeits its RP and locks its node. The **−300 forced-lease** tier stays
+  unbuilt (it needs leasing).
 - **The console** (just repaired): Syndicate tab, MOCK licence roster + thermometer, the distribution
   sliders (now working), the price chart (currently a client-side ring buffer). All waiting to bind to
   real state.

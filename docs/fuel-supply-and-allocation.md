@@ -722,6 +722,11 @@ later. This is the consumption side; everything in §1–§5 is the supply/econo
   Slice 3 wires it).
   - **Burn model — RULED (31-08-26):** `fuel = distance × craftBurnRate`, **cargo-independent**. Syndicate
     trades fly the one Syndicate hauler; its `[FIRST-CUT]` rate is `SYNDICATE_HAULER_BURN_RATE = 0.5`.
+    **⤳ REFINED 11-09-26:** the one hauler becomes **three capacity+burn tiers** (light/medium/heavy),
+    chosen by the leg's **total units** (Σqty). Burn stays **cargo-independent *within* a tier**, but the
+    tier — and so the per-hex rate — steps with the load, and a leg over the heavy cap is reject-whole.
+    The rate stays 0.5 at the light tier (unchanged for small legs). Mechanic + numbers:
+    `transport-model.md` §5.1 / §8.0 and `phase-1-tuning.md`'s Syndicate-hauler burn-rate entry.
   - **SELL routing — RULED (31-08-26):** SELL uses the same system→nearest-waystation route as BUY.
 - **Slice 3 — Deduct it on the Syndicate trade action.** ✅ Built (engine + client). **BUY-only**, as
   scoped: `buyFromSyndicate` gates on `routeFuelCost(destinationSystemId).fuelBurn` — the gate runs

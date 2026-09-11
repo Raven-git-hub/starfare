@@ -22,6 +22,7 @@ const { REFERENCE_FUEL_PRICE } = require('../fuel.js');
 const { getWindow } = require('../windows.js');
 const { BASE_PRICE } = require('../prices.js');
 const { previewProduction } = require('../production.js');
+const { TIER3_GOODS } = require('../resources.js');
 
 const SYS = 'sysA';
 const mine = (id, good, rate, commitment = 0) => ({
@@ -323,6 +324,16 @@ const GOLDEN_COMMITTED_WITH_FUEL_BURN_HISTORY = '0c83ed33492a1a4ce2b2a2e9ac6f990
 const GOLDEN_UNLICENSED_WITH_FUEL_PRICE_HISTORY = '5b34cde01e76e9aaa0e835527208bc3f6c125b273c82e0df83e124588a4a5c2d';
 const GOLDEN_COMMITTED_WITH_FUEL_PRICE_HISTORY = 'bffbc7d4c5b859d071894c13bd41f2f8e4afa629f6249fe353d4a57d13594ac6';
 
+// THE TIER-3 MODULE CATALOG (2.1a — docs/asset-recipes.md). BOTH runs' FULL hashes moved:
+// the 26 new goods (luminite_glass + 25 modules) each gained a base-price row, a
+// galactic-supply zero row, a quote-lock ring entry and a priceHistory ring (both runs cross
+// the fine bucket). NEITHER run manufactures a module, so the delta is the new vocabulary at
+// rest and nothing else — proven by `withoutTier3` recovering GOLDEN_*_WITH_FUEL_PRICE_HISTORY
+// byte-for-byte above. These full hashes are pinned so a drift in the new goods' at-rest
+// prices (or in an existing good's, which would leak past the strip) is caught too.
+const GOLDEN_UNLICENSED_WITH_TIER3_CATALOG = 'c464ab57b6d38003337c9bf2c431594fc8ba231fd0b4519a9f423bdfa17b5c82';
+const GOLDEN_COMMITTED_WITH_TIER3_CATALOG = 'ae382bc11b9e1942ddd576830125a10344f9fd824d9e427ea2c52a28ef634513';
+
 // ── SLICE A′ — STAMP `fuelHoardAtCycleStart` AT FOUNDING (03-09-26 — docs/guild-hall.md §4) ──
 //
 // THE UNLICENSED RUN'S FULL HASH MOVED; THE COMMITTED RUN'S DID NOT — the mirror image of the
@@ -449,6 +460,31 @@ const withoutFuelBurnHistory = (state) => ({
 // is the outermost strip on BOTH runs here (the unlicensed run's ring is still empty at 40 ticks on
 // the 1,440-tick window, but its accumulator carries all 40 samples, so its full hash moved too).
 const withoutFuelPriceHistory = (state) => { const { fuelPriceHistory, ...rest } = state; return rest; };
+// The state minus the 26 goods 2.1a added to the priced/stockpile vocabulary — the new
+// Tier-2 good `luminite_glass` + the 25 Tier-3 modules (docs/asset-recipes.md). NEITHER run
+// here MANUFACTURES a module (they mine + refine titanium/alloy), so the new goods enter the
+// serialized state ONLY as "the new vocabulary at rest": a base-price row (capacity 0), a
+// galactic-supply zero row, a quote-lock ring entry, and — because both runs cross the fine
+// bucket (ticks 15, 30) — a priceHistory ring sampling that flat base. So each run's FULL
+// hash moved; this strip removes exactly those 26 keys from prices, priceRing, priceHistory
+// and galacticSupply.resources, and every earlier golden returns byte-for-byte — the whole
+// catalog-delta proof, the strip idiom applied to an added VOCABULARY rather than a field.
+const TIER3_VOCAB_2_1A = new Set(['luminite_glass', ...TIER3_GOODS]);
+const stripTier3Keys = (obj) => {
+  const out = {};
+  for (const [k, v] of Object.entries(obj || {})) if (!TIER3_VOCAB_2_1A.has(k)) out[k] = v;
+  return out;
+};
+const withoutTier3 = (state) => {
+  const next = { ...state };
+  if (next.prices) next.prices = stripTier3Keys(next.prices);
+  if (next.priceRing) next.priceRing = stripTier3Keys(next.priceRing);
+  if (next.priceHistory) next.priceHistory = stripTier3Keys(next.priceHistory);
+  if (next.galacticSupply && next.galacticSupply.resources) {
+    next.galacticSupply = { ...next.galacticSupply, resources: stripTier3Keys(next.galacticSupply.resources) };
+  }
+  return next;
+};
 
 test('NO-OP PROOF: an unlicensed run (no scaffold action) is byte-identical to pre-change HEAD', () => {
   let s = sysState([mine('t', 'titanium', 10, 0), mine('c', 'carbon_products', 10, 0), refinery('r', 'titanium_alloy', 2)]);
@@ -458,16 +494,21 @@ test('NO-OP PROOF: an unlicensed run (no scaffold action) is byte-identical to p
   // FUEL-PRICE HISTORY (07-09-26): the always-on `fuelPriceHistory` accumulator advances every
   // tick, so it moved this run's full hash too and is now the OUTERMOST strip — `bare` folds it in
   // with the price ring and Guild Hall strips so every earlier golden returns byte-for-byte.
-  const bare = (x) => withoutFuelPriceHistory(withoutPriceRing(withoutGuildHall(x)));
-  assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(withoutHistory(withoutPrices(s)))))), GOLDEN_UNLICENSED, 'everything but the price block, the two history buffers, the fuel price, the Guild Hall fields, the price ring and the fuel-price history is byte-identical to pre-change HEAD');
+  // 2.1a: the Tier-3 module catalog added 26 goods to the priced/stockpile vocabulary, so
+  // this run's FULL hash moved (galacticSupply, prices, priceRing and priceHistory each
+  // gained 26 at-rest rows). `withoutTier3` is the newest, OUTERMOST strip — `bare` folds it
+  // in with the rest so every earlier golden returns byte-for-byte.
+  const bare = (x) => withoutTier3(withoutFuelPriceHistory(withoutPriceRing(withoutGuildHall(x))));
+  assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(withoutHistory(withoutPrices(s)))))), GOLDEN_UNLICENSED, 'everything but the price block, the two history buffers, the fuel price, the Guild Hall fields, the price ring, the fuel-price history and the Tier-3 vocabulary is byte-identical to pre-change HEAD');
   assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(withoutHistory(s))))), GOLDEN_UNLICENSED_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
   assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(s)))), GOLDEN_UNLICENSED_WITH_HISTORY, 'and with the production history back in, the ONLY delta from the pre-price-history engine is priceHistory');
   assert.equal(hashState(bare(withoutControllerState(s))), GOLDEN_UNLICENSED_WITH_PRICE_HISTORY, 'and with the price-history rings back in, the ONLY delta from the pre-5b-i engine is the two reserve fields');
   assert.equal(hashState(bare(withoutAvgDraw(s))), GOLDEN_UNLICENSED_WITH_FUEL_PRICE, 'with the price back in, the ONLY delta from the pre-5b-ii engine is reserve.avgDraw');
-  assert.equal(hashState(bare(s)), GOLDEN_UNLICENSED_WITH_CONTROLLER, 'and with the controller state back in, stripping the fuel-price history, the Guild Hall fields and the price ring returns the pre-Guild-Hall bytes');
-  assert.equal(hashState(withoutFuelPriceHistory(withoutPriceRing(s))), GOLDEN_UNLICENSED_WITH_GUILD_HALL, 'and with the Guild Hall fields back in, stripping the fuel-price history and the price ring returns the pre-quote-lock bytes');
-  assert.equal(hashState(withoutFuelPriceHistory(s)), GOLDEN_UNLICENSED_WITH_PRICE_RING, 'and with the price ring back in, stripping only the fuel-price history returns the pre-fuel-price-history bytes');
-  assert.equal(hashState(s), GOLDEN_UNLICENSED_WITH_FUEL_PRICE_HISTORY, 'and the full state — with the galaxy-wide fuel-price history — is pinned');
+  assert.equal(hashState(bare(s)), GOLDEN_UNLICENSED_WITH_CONTROLLER, 'and with the controller state back in, stripping the Tier-3 vocabulary, the fuel-price history, the Guild Hall fields and the price ring returns the pre-Guild-Hall bytes');
+  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(withoutPriceRing(s)))), GOLDEN_UNLICENSED_WITH_GUILD_HALL, 'and with the Guild Hall fields back in, stripping the Tier-3 vocabulary, the fuel-price history and the price ring returns the pre-quote-lock bytes');
+  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(s))), GOLDEN_UNLICENSED_WITH_PRICE_RING, 'and with the price ring back in, stripping the Tier-3 vocabulary and the fuel-price history returns the pre-fuel-price-history bytes');
+  assert.equal(hashState(withoutTier3(s)), GOLDEN_UNLICENSED_WITH_FUEL_PRICE_HISTORY, 'and with the fuel-price history back in, stripping only the Tier-3 vocabulary returns the pre-2.1a bytes — the whole catalog delta proof');
+  assert.equal(hashState(s), GOLDEN_UNLICENSED_WITH_TIER3_CATALOG, 'and the full state — with the 26-good Tier-3 module catalog — is pinned');
   // ⚠ THE LOAD-BEARING PART. This run crosses NO boundary, so the controller never ran —
   // which is why every hash above it held while the committed run's moved. If the price or
   // the average had moved here, slice 5b-ii would have reached somewhere it must not.
@@ -516,17 +557,21 @@ test('a committed run seeded via createVenture (not the action) is pinned, and n
   // FUEL-PRICE HISTORY (07-09-26): `withoutFuelPriceHistory` is now the OUTERMOST strip, so the new
   // top-level `fuelPriceHistory` (which moves EVERY ticking run) comes back out too and every
   // earlier golden below returns byte-for-byte.
-  const bare = (x) => withoutFuelPriceHistory(withoutFuelBurnHistory(withoutFuelEntitlement(withoutPriceRing(withoutGuildHall(x)))));
-  assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(withoutHistory(s))))), GOLDEN_COMMITTED_WITH_PRICES, 'with the fuel-price history, burn history, entitlement, price ring, the Guild Hall fields, both history buffers and the controller state stripped, the committed run is pinned on its post-5b-ii bytes');
+  // 2.1a: the Tier-3 module catalog added 26 at-rest goods, so this committed run's FULL hash
+  // moved too. `withoutTier3` is the newest, OUTERMOST strip — `bare` folds it in with the rest
+  // so every earlier committed golden returns byte-for-byte.
+  const bare = (x) => withoutTier3(withoutFuelPriceHistory(withoutFuelBurnHistory(withoutFuelEntitlement(withoutPriceRing(withoutGuildHall(x))))));
+  assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(withoutHistory(s))))), GOLDEN_COMMITTED_WITH_PRICES, 'with the Tier-3 vocabulary, fuel-price history, burn history, entitlement, price ring, the Guild Hall fields, both history buffers and the controller state stripped, the committed run is pinned on its post-5b-ii bytes');
   assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(s)))), GOLDEN_COMMITTED_WITH_HISTORY, 'and with the production history back in, the ONLY delta is priceHistory');
   assert.equal(hashState(bare(withoutControllerState(s))), GOLDEN_COMMITTED_WITH_PRICE_HISTORY, 'and with the price-history rings back in, the deltas are the two reserve fields');
   assert.equal(hashState(bare(withoutAvgDraw(s))), GOLDEN_COMMITTED_WITH_FUEL_PRICE, 'with the price back in, the remaining delta is reserve.avgDraw');
   assert.equal(hashState(bare(s)), GOLDEN_COMMITTED_WITH_CONTROLLER, 'and with the controller state back in, the ONLY delta from the pre-Guild-Hall engine is the three §4 fields');
-  assert.equal(hashState(withoutFuelPriceHistory(withoutFuelBurnHistory(withoutFuelEntitlement(withoutPriceRing(s))))), GOLDEN_COMMITTED_WITH_GUILD_HALL, 'and with the Guild Hall fields back in, stripping the fuel-price history, burn history, price ring and entitlement returns the pre-quote-lock bytes');
-  assert.equal(hashState(withoutFuelPriceHistory(withoutFuelBurnHistory(withoutFuelEntitlement(s)))), GOLDEN_COMMITTED_WITH_PRICE_RING, 'and with the price ring back in, stripping the fuel-price history, burn history and entitlement returns the pre-Slice-D bytes');
-  assert.equal(hashState(withoutFuelPriceHistory(withoutFuelBurnHistory(s))), GOLDEN_COMMITTED_WITH_FUEL_ENTITLEMENT, 'and with the entitlement back in, stripping the fuel-price history and burn history returns the pre-burn-history bytes');
-  assert.equal(hashState(withoutFuelPriceHistory(s)), GOLDEN_COMMITTED_WITH_FUEL_BURN_HISTORY, 'and with the burn history back in, stripping only the fuel-price history returns the pre-fuel-price-history bytes');
-  assert.equal(hashState(s), GOLDEN_COMMITTED_WITH_FUEL_PRICE_HISTORY, 'and the full state, the galaxy-wide fuel-price history included, is pinned');
+  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(withoutFuelBurnHistory(withoutFuelEntitlement(withoutPriceRing(s)))))), GOLDEN_COMMITTED_WITH_GUILD_HALL, 'and with the Guild Hall fields back in, stripping the Tier-3 vocabulary, fuel-price history, burn history, price ring and entitlement returns the pre-quote-lock bytes');
+  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(withoutFuelBurnHistory(withoutFuelEntitlement(s))))), GOLDEN_COMMITTED_WITH_PRICE_RING, 'and with the price ring back in, stripping the Tier-3 vocabulary, fuel-price history, burn history and entitlement returns the pre-Slice-D bytes');
+  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(withoutFuelBurnHistory(s)))), GOLDEN_COMMITTED_WITH_FUEL_ENTITLEMENT, 'and with the entitlement back in, stripping the Tier-3 vocabulary, fuel-price history and burn history returns the pre-burn-history bytes');
+  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(s))), GOLDEN_COMMITTED_WITH_FUEL_BURN_HISTORY, 'and with the burn history back in, stripping the Tier-3 vocabulary and the fuel-price history returns the pre-fuel-price-history bytes');
+  assert.equal(hashState(withoutTier3(s)), GOLDEN_COMMITTED_WITH_FUEL_PRICE_HISTORY, 'and with the fuel-price history back in, stripping only the Tier-3 vocabulary returns the pre-2.1a bytes — the whole catalog delta proof');
+  assert.equal(hashState(s), GOLDEN_COMMITTED_WITH_TIER3_CATALOG, 'and the full state — with the 26-good Tier-3 module catalog — is pinned');
   // The strip is only a proof if there was really something to strip: the committed run is due
   // a grant at each of its ten boundaries, so its guild really did gain all three §4 fields.
   const gh = s.guilds[0];
@@ -610,9 +655,12 @@ test('no-op proof: undo the fuel flows and the pre-slice COMMITTED goldens come 
   // The galaxy-wide fuel-price history (07-09-26) is stripped here too — an added top-level field
   // that moves every ticking run and predates none of the pre-5a goldens, so it comes back out
   // with the rest (the undo above touches only the fuel FLOWS, never this observation-only ring).
-  const bare = (x) => withoutFuelPriceHistory(withoutFuelBurnHistory(withoutPriceRing(withoutGuildHall(x))));
+  // The Tier-3 catalog (2.1a) is stripped here too — an added at-rest vocabulary that predates
+  // none of the pre-5a goldens, so it comes back out with the rest (the fuel undo above touches
+  // only the fuel FLOWS, never the new goods' at-rest rows).
+  const bare = (x) => withoutTier3(withoutFuelPriceHistory(withoutFuelBurnHistory(withoutPriceRing(withoutGuildHall(x)))));
   assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(withoutHistory(undone))))), COMMITTED_WITH_PRICES_BEFORE_FUEL_FLOWS,
-    'with the fuel, the Guild Hall fields and the price ring undone, the pre-slice committed bytes come straight back');
+    'with the fuel, the Guild Hall fields, the price ring and the Tier-3 vocabulary undone, the pre-slice committed bytes come straight back');
   assert.equal(hashState(bare(withoutControllerState(withoutPriceHistory(undone)))), COMMITTED_WITH_HISTORY_BEFORE_FUEL_FLOWS);
   assert.equal(hashState(bare(withoutControllerState(undone))), COMMITTED_WITH_PRICE_HISTORY_BEFORE_FUEL_FLOWS,
     'so the ONLY delta these slices made to this run is the pool, the audit, the granted fuel, the three §4 fields and the price ring');

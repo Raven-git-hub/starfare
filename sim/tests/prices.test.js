@@ -22,7 +22,7 @@ const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { previewProduction } = require('../production.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
-const { RAW_RESOURCES, PROCESSED_GOODS, FUEL_GOOD } = require('../resources.js');
+const { RAW_RESOURCES, PROCESSED_GOODS, TIER3_GOODS, FUEL_GOOD } = require('../resources.js');
 const { RECIPES } = require('../recipes.js');
 const {
   BASE_PRICE, EMA_ALPHA, MAX_SLEW_PCT, PRICE_FLOOR, PRICE_CEILING, PUBLISH_LAG,
@@ -262,12 +262,15 @@ test('deuterium_fuel never gets a price', () => {
   assert.equal(FUEL_GOOD in buildSnapshot(ticked).prices, false, 'nor does the snapshot');
 });
 
-test('every other stockpile good — raw and processed — is priced', () => {
+test('every other stockpile good — raw, processed and Tier-3 module — is priced', () => {
+  // 2.1a: PRICED_GOODS = STOCKPILE_GOODS − fuel, and the Tier-3 modules joined
+  // STOCKPILE_GOODS, so every module now carries a price row for free (capacity 0 rests
+  // it at base until a venture makes it — the "new vocabulary at rest").
   const s = sysState();
-  for (const good of [...RAW_RESOURCES, ...PROCESSED_GOODS]) {
+  for (const good of [...RAW_RESOURCES, ...PROCESSED_GOODS, ...TIER3_GOODS]) {
     assert.equal(typeof s.prices[good].posted, 'number', `${good} must carry a price`);
   }
-  assert.equal(Object.keys(s.prices).length, RAW_RESOURCES.length + PROCESSED_GOODS.length);
+  assert.equal(Object.keys(s.prices).length, RAW_RESOURCES.length + PROCESSED_GOODS.length + TIER3_GOODS.length);
 });
 
 // --- 7. determinism (invariant 9) + the no-op / back-compat proof -------------
