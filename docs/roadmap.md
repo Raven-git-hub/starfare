@@ -49,9 +49,12 @@ contest is Phase 2. Grouped record:
   rate-based resolution with stockpile drawdown + per-good batch carry, production profiles as owned
   state, the production resolver + preview, engine-computed review flags. The recipe catalog is 37:
   12 Tier-2 refines (raw→processed, incl. `luminite_glass`) + the 25 Tier-3 **module** manufactures
-  (processed→module, 2.1a — `docs/asset-recipes.md`), all run by the one tier-blind engine. Tier-4
-  construct + the build yard are 2.1b (not built; the module *outputs* are catalog, the picker still
-  greys Tier-3 in the client).
+  (processed→module, 2.1a — `docs/asset-recipes.md`), all run by the one tier-blind engine. The
+  Establish-Venture overlay's picker now opens Tier 3 too (2.1a client): the tier list filters the
+  one real catalog by each recipe's OUTPUT tier, so Tier 2 lists only the 12 refines and Tier 3 lists
+  the 25 module manufactures, and a Tier-3 factory deploys as the same `refining` venture the engine
+  already accepts. Tier-4 construct + the build yard are 2.1b (not built; the picker still greys
+  Tier-4 out).
 - **Commitment & the Syndicate fork** — commitment-as-sale (committed goods earn credits),
   one-pot priority-ordered distribution, windowed accrual, per-venture met/breach via the
   pursue-order fill, factory output commits producer-general.

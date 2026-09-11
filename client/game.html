@@ -4151,7 +4151,7 @@ function gate(){
   // FUEL (the illegal refinery) has no licence dimension, so it needs neither a recipe pick nor
   // a licence choice — the locked recipe and the confirm reel stand in for both (§1.4).
   var isFuel = S.tier==='fuel';
-  var configured = S.site && (S.site.kind==='node' || (S.tier===2 && S.recipeId) || isFuel);
+  var configured = S.site && (S.site.kind==='node' || ((S.tier===2 || S.tier===3) && S.recipeId) || isFuel);
   var held = !!(S.site && S.site.mine);
   var ok = held && !!S.asset && (isFuel || S.licensed!==null) && configured && !S.busy;
   var btn=$('deployBtn'), hint=$('deployHint');
@@ -4161,7 +4161,7 @@ function gate(){
   if(!held) hint.textContent='You don\u2019t hold this system \u2014 deploy requires holding it first (\u00a74).';
   else if(!POOL.length) hint.textContent='No idle '+kindPlural(kindFor(S.site))+' in your inventory \u2014 every one you own is already deployed.';
   else if(!S.asset) hint.textContent='Select an asset to continue.';
-  else if(S.site && S.site.kind==='slot' && !isFuel && S.tier!==2) hint.textContent='Only Tier 2 refining is built (§4).';
+  else if(S.site && S.site.kind==='slot' && !isFuel && S.tier!==2 && S.tier!==3) hint.textContent='Only Tier 2 refining and Tier 3 manufacture are built (§4).';
   else if(S.site && S.site.kind==='slot' && !isFuel && !S.recipeId) hint.textContent='Pick a recipe to continue.';
   else if(!isFuel && S.licensed===null) hint.textContent='Choose licensed or unlicensed.';
   else hint.textContent='Ready — review the terms, then deploy.';
@@ -4439,8 +4439,8 @@ function buildTierList(){
   var sel=$('tierSel'); sel.innerHTML='';
   [[2,'Tier 2 · Refine'],[3,'Tier 3 · Manufacture'],[4,'Tier 4 · Construct']].forEach(function(t){
     var o=document.createElement('option'); o.value=t[0];
-    o.textContent = t[1] + (t[0]>2 ? ' (not yet built)' : '');
-    o.disabled = t[0] > 2;                       // §4: only Tier 2 exists
+    o.textContent = t[1] + (t[0]>3 ? ' (not yet built)' : '');
+    o.disabled = t[0] > 3;                       // Tiers 2–3 built; Tier 4 (construct) is 2.1b
     sel.appendChild(o);
   });
   // FUEL — the illegal deuterium refinery, folded into the factory config as a product option
@@ -4467,8 +4467,17 @@ function buildRecipeList(){
     return;
   }
   $('tierBadge').textContent='TIER '+S.tier;
-  if(S.tier===2){
-    var recipes = (window.__recipes ? window.__recipes() : []) || [];
+  // A recipe belongs to the selected tier when its OUTPUT good does. The client already
+  // holds the good vocabulary by tier (GET /goods: `processed` = Tier 2, `tier3` = the 25
+  // module goods) and each recipe's output, so the picker filters the one real catalog on
+  // that. This both FIXES the Tier-2 over-listing — `__recipes()` is unfiltered and now
+  // returns all 37, module recipes included — and OPENS Tier 3 (the module manufactures),
+  // the two run by the one tier-blind engine (a module recipe is a `refining` venture too).
+  if(S.tier===2 || S.tier===3){
+    var goods = (window.__goodsCatalog && window.__goodsCatalog()) || {};
+    var outGoods = (S.tier===2 ? goods.processed : goods.tier3) || [];
+    var all = (window.__recipes ? window.__recipes() : []) || [];
+    var recipes = all.filter(function(r){ return outGoods.indexOf(r.output.good) >= 0; });
     var d=document.createElement('option'); d.value=''; d.textContent = recipes.length ? 'Select recipe' : 'Recipe catalog unavailable'; sel.appendChild(d);
     recipes.forEach(function(r){
       var o=document.createElement('option'); o.value=r.id;
@@ -4478,6 +4487,8 @@ function buildRecipeList(){
     });
     sel.disabled = recipes.length === 0;
   } else {
+    // Tier 4 (construct) is unreachable — disabled in the tier picker — so this is only a
+    // safe fallback for a tier with no recipes.
     var o=document.createElement('option'); o.value=''; o.textContent='Tier '+S.tier+' recipes not yet built (§4)'; sel.appendChild(o);
     sel.disabled=true;
   }
