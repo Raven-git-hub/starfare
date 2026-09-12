@@ -378,6 +378,12 @@ const GOLDEN_HASH_WITH_FUEL_PRICE_HISTORY = '59647f6b076b115c6941bf7b14fc6486c86
 // commitment-scaffold.test.js's 40-tick runs cross the fine bucket and carry the 26 rings.)
 const GOLDEN_HASH_WITH_TIER3_CATALOG = 'fe087b7610ad0a78920d80117c7ba4baf2c6b4fc7e0eda736fd296a196bd9b11';
 
+// ASSET SYSTEMID (2.1b, 12-09-26): the full hash with a `systemId` on every asset row —
+// the 25 founding-granted starter machines plus the one the mine occupies, all at the
+// guild's home system. The delta from GOLDEN_HASH_WITH_TIER3_CATALOG is that single
+// per-asset key, proven by asserting `withoutAssetSystemId(s)` returns the value above.
+const GOLDEN_HASH_WITH_ASSET_SYSTEMID = '75d87973cf270c9bfe7eb49948f557b5691704ad68739b2382774d29a9bf768a';
+
 // The state minus the reserve's fuel price — everything the four goldens above covered.
 // Stripped inside `reserve`, leaving `reserveLevel` and every other top-level key in
 // place, so a change anywhere else still fails the assertion.
@@ -472,6 +478,23 @@ const withoutTier3 = (state) => {
   }
   return next;
 };
+// ASSET SYSTEMID (2.1b — design.md §4/§15.4, 12-09-26). Every asset now carries a
+// `systemId` — its physical location, stamped at founding to the guild's home system.
+// This canonical sequence founds a guild (25 idle starter machines) and establishes a
+// mine (occupying one), so 25 asset rows each gained one key, moving the FULL hash. It
+// is an ADDED FIELD, so the ordinary strip works: drop `systemId` from every asset row
+// (leaving `withoutAssets` — which removes the whole array — untouched, since the runs
+// that use it never see this key) and the pre-2.1b golden returns byte-for-byte, the
+// whole delta proof. On a guild with no assets this is a no-op, so a run that founds
+// nothing is byte-identical with nothing stripped.
+const withoutAssetSystemId = (state) => ({
+  ...state,
+  guilds: (state.guilds || []).map((g) => (
+    g.assets
+      ? { ...g, assets: g.assets.map((a) => { const { systemId, ...rest } = a; return rest; }) }
+      : g
+  )),
+});
 
 test('no-op proof: pure engine path (persistence OFF) matches the golden hash', () => {
   // The SAME scripted moves as above, but driven straight through the engine with
@@ -506,14 +529,19 @@ test('no-op proof: pure engine path (persistence OFF) matches the golden hash', 
   assert.equal(hashState(bare(withoutAssets(withoutHistory(withoutPrices(s))))), GOLDEN_HASH, 'everything but the price block, the history buffer, the assets, the two reserve fields, the Guild Hall field, the price ring, the founding baseline, the fuel-price history and the Tier-3 vocabulary is byte-identical to pre-price-engine HEAD');
   assert.equal(hashState(bare(withoutAssets(withoutHistory(s)))), GOLDEN_HASH_WITH_PRICES, 'and with prices back in, the ONLY delta from the pre-history engine is productionHistory');
   assert.equal(hashState(bare(withoutAssets(s))), GOLDEN_HASH_WITH_HISTORY, 'and with the history back in, the ONLY delta from the pre-asset engine is the assets');
-  assert.equal(hashState(bare(s)), GOLDEN_HASH_WITH_ASSETS, 'and with the assets back in, the ONLY delta from the pre-5b-i engine is the two reserve fields');
-  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(withoutFoundingEntitlement(withoutPriceRing(withoutGuildHall(withoutAvgDraw(s))))))), GOLDEN_HASH_WITH_FUEL_PRICE, 'with the price back in, the ONLY delta from the pre-5b-ii engine is reserve.avgDraw');
-  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(withoutFoundingEntitlement(withoutPriceRing(withoutGuildHall(s)))))), GOLDEN_HASH_WITH_AVG_DRAW, 'and with the controller state back in, stripping the Tier-3 vocabulary, the fuel-price history, the Guild Hall field, the price ring and the founding baseline returns the pre-Guild-Hall bytes');
-  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(withoutFoundingEntitlement(withoutPriceRing(s))))), GOLDEN_HASH_WITH_GUILD_HALL, 'and with the Guild Hall field back in, stripping the Tier-3 vocabulary, the fuel-price history, the price ring and the founding baseline returns the pre-quote-lock bytes');
-  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(withoutFoundingEntitlement(s)))), GOLDEN_HASH_WITH_PRICE_RING, 'and with the price ring back in, stripping the Tier-3 vocabulary, the fuel-price history and the founding baseline returns the pre-Slice-D′ bytes');
-  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(s))), GOLDEN_HASH_WITH_FOUNDING_ENTITLEMENT, 'and with the founding baseline back in, stripping the Tier-3 vocabulary and the fuel-price history returns the pre-fuel-price-history bytes');
-  assert.equal(hashState(withoutTier3(s)), GOLDEN_HASH_WITH_FUEL_PRICE_HISTORY, 'and with the fuel-price history back in, stripping only the Tier-3 vocabulary returns the pre-2.1a bytes — the whole catalog delta proof');
-  assert.equal(hashState(s), GOLDEN_HASH_WITH_TIER3_CATALOG, 'and the full state — with the 26-good Tier-3 module catalog — is pinned');
+  // 2.1b: every asset gained a `systemId`, so every hash below that keeps the assets present
+  // (from here down) moved. `withoutAssetSystemId` is the newest, OUTERMOST strip now — peel
+  // that one key off each asset row and every earlier golden returns byte-for-byte, the proof
+  // its only footprint here is the location stamped on the 25 idle machines + the one deployed.
+  assert.equal(hashState(bare(withoutAssetSystemId(s))), GOLDEN_HASH_WITH_ASSETS, 'and with the assets back in (their systemId stripped), the ONLY delta from the pre-5b-i engine is the two reserve fields');
+  assert.equal(hashState(withoutAssetSystemId(withoutTier3(withoutFuelPriceHistory(withoutFoundingEntitlement(withoutPriceRing(withoutGuildHall(withoutAvgDraw(s)))))))), GOLDEN_HASH_WITH_FUEL_PRICE, 'with the price back in, the ONLY delta from the pre-5b-ii engine is reserve.avgDraw');
+  assert.equal(hashState(withoutAssetSystemId(withoutTier3(withoutFuelPriceHistory(withoutFoundingEntitlement(withoutPriceRing(withoutGuildHall(s))))))), GOLDEN_HASH_WITH_AVG_DRAW, 'and with the controller state back in, stripping the asset systemId, the Tier-3 vocabulary, the fuel-price history, the Guild Hall field, the price ring and the founding baseline returns the pre-Guild-Hall bytes');
+  assert.equal(hashState(withoutAssetSystemId(withoutTier3(withoutFuelPriceHistory(withoutFoundingEntitlement(withoutPriceRing(s)))))), GOLDEN_HASH_WITH_GUILD_HALL, 'and with the Guild Hall field back in, stripping the asset systemId, the Tier-3 vocabulary, the fuel-price history, the price ring and the founding baseline returns the pre-quote-lock bytes');
+  assert.equal(hashState(withoutAssetSystemId(withoutTier3(withoutFuelPriceHistory(withoutFoundingEntitlement(s))))), GOLDEN_HASH_WITH_PRICE_RING, 'and with the price ring back in, stripping the asset systemId, the Tier-3 vocabulary, the fuel-price history and the founding baseline returns the pre-Slice-D′ bytes');
+  assert.equal(hashState(withoutAssetSystemId(withoutTier3(withoutFuelPriceHistory(s)))), GOLDEN_HASH_WITH_FOUNDING_ENTITLEMENT, 'and with the founding baseline back in, stripping the asset systemId, the Tier-3 vocabulary and the fuel-price history returns the pre-fuel-price-history bytes');
+  assert.equal(hashState(withoutAssetSystemId(withoutTier3(s))), GOLDEN_HASH_WITH_FUEL_PRICE_HISTORY, 'and with the fuel-price history back in, stripping the asset systemId and the Tier-3 vocabulary returns the pre-2.1a bytes');
+  assert.equal(hashState(withoutAssetSystemId(s)), GOLDEN_HASH_WITH_TIER3_CATALOG, 'and with the Tier-3 vocabulary back in, stripping only the asset systemId returns the pre-2.1b bytes — the whole systemId delta proof');
+  assert.equal(hashState(s), GOLDEN_HASH_WITH_ASSET_SYSTEMID, 'and the full state — with a systemId on every asset — is pinned');
   // A′: the founded guild carries the field from birth, at its starting fuel (the bar sizes
   // off it immediately). This 2-tick run crosses no boundary, so it is never re-stamped.
   assert.equal(s.guilds[0].fuelHoardAtCycleStart, GUILD_STARTING_FUEL, 'A′: stamped at founding = the starter floor, and held (no boundary)');
@@ -580,8 +608,8 @@ test('no-op proof: subtract the founding fuel grant and the pre-slice golden com
   ungranted.audit.totalProduced -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
   ungranted.galacticSupply.fuel.reserve -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
 
-  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(withoutPriceRing(withoutGuildHall(withoutAvgDraw(withoutFuelPrice(ungranted))))))), GOLDEN_HASH_BEFORE_FUEL_GRANT,
-    'the fuel grant and the pool seed are the ONLY deltas the two fuel slices made to the canonical sequence, byte for byte (the later A′ field, the price ring, the fuel-price history and the Tier-3 vocabulary stripped)');
+  assert.equal(hashState(withoutAssetSystemId(withoutTier3(withoutFuelPriceHistory(withoutPriceRing(withoutGuildHall(withoutAvgDraw(withoutFuelPrice(ungranted)))))))), GOLDEN_HASH_BEFORE_FUEL_GRANT,
+    'the fuel grant and the pool seed are the ONLY deltas the two fuel slices made to the canonical sequence, byte for byte (the later asset systemId, the A′ field, the price ring, the fuel-price history and the Tier-3 vocabulary stripped)');
 });
 
 // Slice 5a's own delta proof, the same inverted idiom: a changed VALUE cannot be stripped
@@ -622,8 +650,8 @@ test('no-op proof: un-seed the pool and the pre-slice-5a golden comes back', () 
   unseeded.audit.totalProduced -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
   unseeded.galacticSupply.fuel.reserve -= POOL_SEED - RETIRED_POOL_PLACEHOLDER;
 
-  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(withoutPriceRing(withoutGuildHall(withoutAvgDraw(withoutFuelPrice(unseeded))))))), GOLDEN_HASH_BEFORE_POOL_SEED,
-    'the pool seed is the ONLY delta slice 5a made to this run, byte for byte (the later A′ field, the price ring, the fuel-price history and the Tier-3 vocabulary stripped)');
+  assert.equal(hashState(withoutAssetSystemId(withoutTier3(withoutFuelPriceHistory(withoutPriceRing(withoutGuildHall(withoutAvgDraw(withoutFuelPrice(unseeded)))))))), GOLDEN_HASH_BEFORE_POOL_SEED,
+    'the pool seed is the ONLY delta slice 5a made to this run, byte for byte (the later asset systemId, the A′ field, the price ring, the fuel-price history and the Tier-3 vocabulary stripped)');
 });
 
 // The founding endowment's own delta proof — the inverted strip-and-prove this repo uses
@@ -662,8 +690,8 @@ test('no-op proof: un-endow the founding and the pre-endowment golden comes back
   delete unendowed.guilds[0].foundingEndowment;
   delete unendowed.guilds[0].foundingEntitlement; // Slice D′, a later founding-stamped key this golden predates
 
-  assert.equal(hashState(withoutTier3(withoutFuelPriceHistory(withoutPriceRing(withoutGuildHall(withoutAvgDraw(withoutFuelPrice(unendowed))))))), GOLDEN_HASH_BEFORE_ENDOWMENT,
-    'the endowment is the ONLY delta this slice made to the canonical sequence, byte for byte (the later A′ field, the price ring, the fuel-price history and the Tier-3 vocabulary stripped)');
+  assert.equal(hashState(withoutAssetSystemId(withoutTier3(withoutFuelPriceHistory(withoutPriceRing(withoutGuildHall(withoutAvgDraw(withoutFuelPrice(unendowed)))))))), GOLDEN_HASH_BEFORE_ENDOWMENT,
+    'the endowment is the ONLY delta this slice made to the canonical sequence, byte for byte (the later asset systemId, the A′ field, the price ring, the fuel-price history and the Tier-3 vocabulary stripped)');
 });
 
 // --- 5. graceful shutdown: the MID-INTERVAL save (no intervening tick) ------

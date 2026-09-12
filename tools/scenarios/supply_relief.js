@@ -77,7 +77,7 @@ const PARAMS = Object.freeze({
 // inside makeState() so every run gets fresh objects (no state shared between two
 // runs — invariant 9); these two read ids only, so both makeState and the relief
 // mine below can name the same machines without spelling an id out anywhere.
-const nthAssetId = (kind, n) => starterAssetSpecs(GUILD_ID).filter((a) => a.kind === kind)[n].id;
+const nthAssetId = (kind, n) => starterAssetSpecs(GUILD_ID, HOME_SYSTEM).filter((a) => a.kind === kind)[n].id;
 const minerId = (n) => nthAssetId('miner', n);
 const factoryId = (n) => nthAssetId('factory', n);
 
@@ -93,8 +93,11 @@ function makeState() {
   // would have granted — otherwise the relief mine's `establishVenture` at tick T
   // is refused by deploy gate 2 (it names a Miner this guild would not own). Taken from
   // sim/assets.js so the counts and the id scheme stay in one place; the three
-  // ventures below then occupy one each, exactly as a real founding would.
-  const assets = starterAssetSpecs(GUILD_ID);
+  // ventures below then occupy one each, exactly as a real founding would. Every
+  // starter machine sits at HOME_SYSTEM (design.md §4, 12-09-26) — the guild's home —
+  // which is where all three ventures and the tick-T relief mine deploy, so the
+  // same-system deploy gate is satisfied.
+  const assets = starterAssetSpecs(GUILD_ID, HOME_SYSTEM);
   return createState({
     guilds: [{
       id: GUILD_ID,

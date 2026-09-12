@@ -143,6 +143,14 @@ boundary so the later hex-map swap doesn't touch it.
   states, a rival's shipment does not appear). *The guild-craft / leasing board (LEASED, craft ids in
   IN TRANSIT) stays Phase 4.*
 
+- **Asset inventory is per-system (2.1b groundwork, engine + snapshot).** Every `Asset` now carries a
+  `systemId` — its physical location — required at construction, stamped at founding to the guild's
+  `homeSystemId`, and immutable this slice. `establishVenture` / `establishDeuteriumRefinery` Gate 2
+  gains a same-system clause (deploy from that system's inventory only), the occupancy invariant
+  gains `asset-system-present` + `deployed-asset-system-matches-venture`, and the snapshot's asset
+  rows surface `systemId` so the client can group inventory by system. A **no-op** on today's
+  one-system galaxies; cross-system redeploy + the `inTransit` state stay deferred to 2.2 (design.md
+  §4). *Upstream of the build yard (each built asset lands at the building system) and of territory.*
 - **2.0 — Two guilds, the fuel contest proven.** Seat a second guild (inert or lightly scripted);
   run the existing mean-line / issuance as an actual multi-guild contest; confirm density-beats-sprawl
   tension is real between two actors. *No new mechanic — the oldest walking-skeleton line, closed.*

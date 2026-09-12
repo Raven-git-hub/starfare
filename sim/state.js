@@ -566,12 +566,25 @@ function createVenture({
 // stepProduction mutates it every tick; nothing in this slice ever mutates an
 // asset, so a stamp would be a field with nothing to record. It arrives with the
 // mutation that needs it (decay, in the maintenance slice).
-function createAsset({ id, kind, maintenanceCondition = ASSET_CONDITION_NEW }) {
+//
+// `systemId` (12-09-26, roadmap 2.1b, the asset-economy inventory slice — design.md
+// §4 / §15.4) is the system the machine physically SITS in: its inventory location.
+// It is REQUIRED — no default, throw if missing, exactly as `kind` does — because an
+// asset with no location is the guild-wide-inventory model this slice retires, and a
+// silent default would put a machine somewhere nobody chose. Set at creation (founding
+// → the guild's `homeSystemId`; a Dockyard build → the building system) and IMMUTABLE
+// in this slice, since the only thing that would move it — cross-system redeploy — is
+// deferred to 2.2 (§4). idle/deployed stay DERIVED (invariant 5); the asset stores no
+// status of its own, only this location.
+function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITION_NEW }) {
   if (id === undefined) throw new Error('createAsset: id is required');
   if (kind === undefined) throw new Error('createAsset: kind is required');
+  if (systemId === undefined) throw new Error('createAsset: systemId is required');
   return {
     id,
     kind,
+    // systemId — the machine's physical location, always present (see the note above).
+    systemId,
     // maintenanceCondition — a fraction, 1 = new/full, 0 = stopped (sim/assets.js
     // owns the constant and the scale). DESIGN-AHEAD AND INERT: nothing in this
     // slice reads it, nothing changes it, and it never reaches production. It is

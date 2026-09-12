@@ -274,8 +274,13 @@ function makeStateFrom(roster, { seededPool, expansionGuildId }) {
       // through the `foundGuild` action — without it the mid-run expansion's
       // `establishVenture` would be refused for naming a Miner the guild does not own.
       // The seeded ventures deliberately occupy NONE of them, so every machine is idle and
-      // the expansion can take the first.
-      assets: starterAssetSpecs(spec.id),
+      // the expansion can take the first. Every starter machine sits at the guild's HOME
+      // system (design.md §4, 12-09-26) — its first held system, `systemIds[0]` — which for
+      // the expansion guild is EXPANSION_SYSTEM, so the mid-run `establishVenture` there
+      // satisfies the same-system deploy gate. A guild that holds NO system (the empty-guild
+      // guard's spark) gets NO gift — located inventory needs a location, and it never
+      // deploys anything anyway, so this stays an omitted key rather than an invented home.
+      ...(systemIds.length ? { assets: starterAssetSpecs(spec.id, systemIds[0]) } : {}),
       ventures: shapeGuild(spec, systemIds),
     });
   }
