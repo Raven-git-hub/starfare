@@ -151,6 +151,20 @@ boundary so the later hex-map swap doesn't touch it.
   rows surface `systemId` so the client can group inventory by system. A **no-op** on today's
   one-system galaxies; cross-system redeploy + the `inTransit` state stay deferred to 2.2 (design.md
   §4). *Upstream of the build yard (each built asset lands at the building system) and of territory.*
+- **The OPERATIONS hub's IDLE section is live (2.1b client).** The IDLE `ops-card` (`#ops-idle-list`)
+  now lists the guild's uncommitted ground assets off the snapshot — the founding **15 miners + 10
+  factories**, idle from turn one, finally on screen. Membership is the engine's one rule read verbatim
+  (`deployedToVentureId == null`, guild-wide), **grouped by system** (`Asset.systemId`, resolved to its
+  name) then **by kind** under collapsible Miners / Factories headers; each machine row is its ID + kind
+  descriptor. Filled by the same operations-tab-wire as IN TRANSIT — on open and every poll — so it
+  stays live as machines deploy (leave) and ventures tear down (return); a signature guard preserves the
+  reader's collapse state across polls; an all-deployed guild keeps a calm empty state. Read-only this
+  slice — no Manage popup / deploy-from-hub (`operations-hub.md` §8), no same-system picker filter (2.2).
+  CLIENT only — no engine/snapshot/sim change, determinism holds; the one served-page tripwire in
+  `sim/tests/server.test.js` was updated in place to pin the live IDLE contract. Proven end-to-end in
+  headless Chromium (fresh founding → one system group, 15/10 subgroups; deploy one miner → it drops out
+  of IDLE next poll; tear the venture down → it returns). *DEPLOYED / LEASED stay empty scaffolds (their
+  entities don't exist yet).*
 - **2.0 — Two guilds, the fuel contest proven.** Seat a second guild (inert or lightly scripted);
   run the existing mean-line / issuance as an actual multi-guild contest; confirm density-beats-sprawl
   tension is real between two actors. *No new mechanic — the oldest walking-skeleton line, closed.*

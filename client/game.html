@@ -1091,6 +1091,41 @@ select.field{appearance:none; cursor:pointer;}
 #tp-ops .ops-empty h3{font-family:var(--ops-serif); font-weight:600; letter-spacing:.03em; color:var(--ops-ink2); margin:0; font-size:15px;}
 #tp-ops .ops-empty p{max-width:320px; line-height:1.6; font-size:11.5px; margin:0; color:var(--ops-ink3);}
 
+/* IDLE — the guild's uncommitted ground assets (§5), grouped by SYSTEM then by KIND under
+   collapsible headers (the same tree idiom the Deuterium rail uses, ops-prefixed). Both header
+   levels toggle a `collapsed` class on their container; CSS alone hides the body and rotates the
+   caret, so the click handler only flips the class (no re-render). Read-only this slice — the
+   machine rows are plain (no Manage popup, that is §8). */
+#tp-ops #ops-idle-list{padding:10px;}
+#tp-ops .ops-idle-sys{margin-bottom:8px;}
+#tp-ops .ops-idle-sys:last-child{margin-bottom:0;}
+#tp-ops .ops-idle-syshd,
+#tp-ops .ops-idle-kindhd{display:flex; align-items:center; gap:8px; cursor:pointer;}
+#tp-ops .ops-idle-syshd{padding:9px 10px; background:var(--ops-panel); border:1px solid var(--ops-line); border-radius:6px; color:var(--ops-ink2);}
+#tp-ops .ops-idle-syshd:hover{border-color:var(--ops-line2); color:var(--ops-ink);}
+#tp-ops .ops-idle-syshd .nm{flex:1; font-size:12px; letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+#tp-ops .ops-idle-syshd .ct{font-size:10px; color:var(--ops-ink4); letter-spacing:.06em; text-transform:uppercase; flex:0 0 auto;}
+/* the caret: one triangle, rotated by CSS when its group is collapsed */
+#tp-ops .ops-idle-caret{width:11px; flex:0 0 auto; color:var(--ops-ink3); font-size:9px; transition:transform .12s; transform:rotate(0deg);}
+#tp-ops .ops-idle-sys.collapsed > .ops-idle-syshd .ops-idle-caret,
+#tp-ops .ops-idle-kind.collapsed > .ops-idle-kindhd .ops-idle-caret{transform:rotate(-90deg);}
+#tp-ops .ops-idle-sysbody{padding:6px 0 2px 12px;}
+#tp-ops .ops-idle-sys.collapsed > .ops-idle-sysbody{display:none;}
+#tp-ops .ops-idle-kind{margin-top:4px;}
+#tp-ops .ops-idle-kind:first-child{margin-top:0;}
+#tp-ops .ops-idle-kindhd{padding:6px 8px; color:var(--ops-ink3);}
+#tp-ops .ops-idle-kindhd:hover{color:var(--ops-ink2);}
+#tp-ops .ops-idle-kindhd .knm{flex:1; font-size:9px; letter-spacing:.16em; text-transform:uppercase;}
+#tp-ops .ops-idle-kindhd .kct{font-size:10px; color:var(--ops-ink4); font-variant-numeric:tabular-nums; flex:0 0 auto;}
+#tp-ops .ops-idle-kindbody{padding:2px 0 4px 12px;}
+#tp-ops .ops-idle-kind.collapsed > .ops-idle-kindbody{display:none;}
+/* a machine row — ID (stable, unique) + its kind descriptor. Not a button this slice. */
+#tp-ops .ops-idle-machine{display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+  padding:6px 8px; margin-top:4px; background:rgba(232,223,200,.03); border:1px solid var(--ops-line); border-radius:5px;}
+#tp-ops .ops-idle-machine:first-child{margin-top:0;}
+#tp-ops .ops-idle-machine .mid{font-family:var(--ops-mono); font-size:11px; color:var(--ops-ink2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+#tp-ops .ops-idle-machine .mkind{font-size:10px; color:var(--ops-ink4); letter-spacing:.03em; text-transform:capitalize; flex:0 0 auto;}
+
 /* RIGHT: the pilot hero (client/assets/characters/pilot.jpg under the Guild-Hall scrim) */
 #tp-ops .ops-thero{position:relative; padding:0; overflow:hidden; min-height:0; border:1px solid var(--ops-line); border-radius:10px;}
 #tp-ops .ops-thero .art{position:absolute; inset:0; z-index:0; background-image:url("assets/characters/pilot.jpg"); background-size:cover; background-position:right bottom;}
@@ -2153,11 +2188,12 @@ select.field{appearance:none; cursor:pointer;}
 
   <!-- The OPERATIONS tab (docs/operations-hub.md §2) — the out-of-system operations hub, renamed
        from Transport. A Guild-Hall three-column layout: LEASED hero (left) | IN TRANSIT + DEPLOYED
-       + IDLE (centre) | the pilot hero (right). IN TRANSIT is LIVE — the operations-tab-wire block
-       fills #ops-transit-list from the player's own snapshot shipments on open and every poll (§4).
-       LEASED / DEPLOYED / IDLE are EMPTY SCAFFOLDS this slice (§7): their entities (leased craft,
-       deployed structures, idle kits) don't exist yet, so they carry only a section header + a calm
-       empty state — no rows, no Manage popups. It fills the viewport exactly like #tp-deut. -->
+       + IDLE (centre) | the pilot hero (right). IN TRANSIT and IDLE are LIVE — the operations-tab-wire
+       block fills #ops-transit-list (own snapshot shipments, §4) and #ops-idle-list (the guild's idle
+       ground assets, grouped by system then kind, §5) on open and every poll. LEASED / DEPLOYED are
+       EMPTY SCAFFOLDS this slice (§7): their entities (leased craft, deployed structures) don't exist
+       yet, so they carry only a section header + a calm empty state — no rows, no Manage popups. It
+       fills the viewport exactly like #tp-deut. -->
   <div id="tp-ops">
     <div class="ops-body">
       <!-- LEFT HERO: LEASED (empty scaffold — leasing is Phase 4, §6) -->
@@ -2193,14 +2229,10 @@ select.field{appearance:none; cursor:pointer;}
             </div>
           </div>
           <div class="ops-card">
-            <div class="ops-card-h"><span class="t">Idle</span></div>
-            <div class="ops-list">
-              <div class="ops-empty">
-                <div class="glyph">&#9675;</div>
-                <h3>Nothing idle</h3>
-                <p>Assets in the yard waiting to deploy or lease will list here (from the build yard, 2.1).</p>
-              </div>
-            </div>
+            <div class="ops-card-h"><span class="t">Idle</span><span class="ops-tag live">Live</span></div>
+            <!-- filled by operations-tab-wire: the guild's idle ground assets (deployedToVentureId
+                 == null), grouped by system then kind — the founding miners/factories, live (§5). -->
+            <div class="ops-list" id="ops-idle-list"></div>
           </div>
         </div>
       </div>
@@ -6858,7 +6890,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   var O = {
     open: false,
     transitSig: '',   // rebuild the IN TRANSIT row structure only when the set of deliveries changes
-    expanded: {}      // which rows are expanded (by ship key) — survives a poll's re-render
+    expanded: {},     // which rows are expanded (by ship key) — survives a poll's re-render
+    idleSig: null,    // last rendered idle signature; null forces a rebuild ('' is a real, empty sig)
+    idleCollapsed: {} // which IDLE groups are collapsed (by group key) — survives a poll's re-render
   };
 
   // Own helpers — copies of the Deuterium panel's (its IIFE's are not in scope). They read
@@ -6979,14 +7013,133 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     }
   }
 
-  // The whole hub, run on open and on every poll while open. Only IN TRANSIT is live; the
-  // LEASED / DEPLOYED / IDLE scaffolds are static markup, so there is nothing else to re-read.
-  function render(){ renderTransit(meGuild(), snap()); }
+  // ---- IDLE (§5): the guild's uncommitted ground assets, grouped by system then kind ----------
+  // Membership is the engine's own one rule (operations-hub.md §5): an asset with
+  // `deployedToVentureId == null`, guild-wide. The browser only reads it — it never re-derives
+  // "idle" (design.md §18: the engine decides). The guild row's `assets` block is the same
+  // `me.assets` the shell caches as LIVE.myAssets; reading it off the polled snapshot here keeps
+  // the section live as machines deploy (leave) and ventures tear down (return).
+  var KIND_ORDER = ['miner', 'factory'];   // the two ground-asset kinds that exist this slice
+  var KIND_PLURAL = { miner: 'Miners', factory: 'Factories' };
+  function kindPlural(k){ return KIND_PLURAL[k] || (esc(k) + 's'); }
 
-  // Delegated once on the panel: clicking a transit row toggles its manifest. The open state is
-  // recorded in O.expanded (by ship key) so a signature-guarded structure rebuild honours it.
+  function myIdle(guild){
+    return ((guild && guild.assets) || []).filter(function(a){ return a.deployedToVentureId == null; });
+  }
+
+  // Order the kinds present in a system: the known kinds first (miner, factory), then any other
+  // kind alphabetically — so idle transports/kits slot in predictably when those slices land.
+  function kindsOf(assets){
+    var seen = {};
+    assets.forEach(function(a){ seen[a.kind] = true; });
+    var known = KIND_ORDER.filter(function(k){ return seen[k]; });
+    var extra = Object.keys(seen).filter(function(k){ return KIND_ORDER.indexOf(k) < 0; }).sort();
+    return known.concat(extra);
+  }
+
+  function machineHtml(a){
+    return '<div class="ops-idle-machine">'
+      +   '<span class="mid">' + esc(a.id) + '</span>'
+      +   '<span class="mkind">' + esc(a.kind) + '</span>'
+      + '</div>';
+  }
+
+  function kindHtml(sysId, kind, assets){
+    var key = 'kind:' + sysId + ':' + kind;
+    var collapsed = O.idleCollapsed[key] === true;
+    var rows = assets.slice()
+      .sort(function(x, y){ return x.id < y.id ? -1 : (x.id > y.id ? 1 : 0); })
+      .map(machineHtml).join('');
+    return '<div class="ops-idle-kind' + (collapsed ? ' collapsed' : '') + '" data-idle-key="' + esc(key) + '">'
+      +   '<div class="ops-idle-kindhd">'
+      +     '<span class="ops-idle-caret">&#9660;</span>'
+      +     '<span class="knm">' + kindPlural(kind) + '</span>'
+      +     '<span class="kct">' + assets.length + '</span>'
+      +   '</div>'
+      +   '<div class="ops-idle-kindbody">' + rows + '</div>'
+      + '</div>';
+  }
+
+  function systemHtml(sysId, assets){
+    var key = 'sys:' + sysId;
+    var collapsed = O.idleCollapsed[key] === true;
+    var kinds = kindsOf(assets);
+    var body = kinds.map(function(k){
+      return kindHtml(sysId, k, assets.filter(function(a){ return a.kind === k; }));
+    }).join('');
+    return '<div class="ops-idle-sys' + (collapsed ? ' collapsed' : '') + '" data-idle-key="' + esc(key) + '">'
+      +   '<div class="ops-idle-syshd">'
+      +     '<span class="ops-idle-caret">&#9660;</span>'
+      +     '<span class="nm">' + esc(systemName(sysId)) + '</span>'
+      +     '<span class="ct">' + assets.length + ' idle</span>'
+      +   '</div>'
+      +   '<div class="ops-idle-sysbody">' + body + '</div>'
+      + '</div>';
+  }
+
+  // Rebuild the tree only when the idle set (id + where each sits) changes, so a poll never
+  // discards the reader's collapse state — the same signature guard IN TRANSIT uses. A machine
+  // deploying (it drops out) or a venture tearing down (it returns) shifts the signature and
+  // rebuilds; collapse state for groups that still exist is preserved via O.idleCollapsed.
+  function renderIdle(guild){
+    var host = el('ops-idle-list'); if(!host) return;
+    var idle = myIdle(guild);
+
+    var sig = idle.map(function(a){ return a.id + '@' + a.systemId; }).sort().join('|');
+    if(sig === O.idleSig) return;   // nothing changed — keep the DOM and its live collapse state
+    O.idleSig = sig;
+
+    if(!idle.length){
+      O.idleCollapsed = {};
+      host.innerHTML = '<div class="ops-empty"><div class="glyph">&#9675;</div>'
+        + '<h3>Nothing idle</h3>'
+        + '<p>Every asset is deployed. Idle miners and factories &mdash; and, later, transports and kits &mdash; wait here, ready to send out.</p></div>';
+      return;
+    }
+
+    // group by system, ordered by resolved system name (one system pre-2.2 → one group)
+    var bySys = {};
+    idle.forEach(function(a){ (bySys[a.systemId] = bySys[a.systemId] || []).push(a); });
+    var sysIds = Object.keys(bySys).sort(function(x, y){
+      var nx = String(systemName(x)), ny = String(systemName(y));
+      return nx < ny ? -1 : (nx > ny ? 1 : 0);
+    });
+
+    // prune collapse state to the groups that still exist, then render
+    var keep = {};
+    sysIds.forEach(function(sid){
+      var sk = 'sys:' + sid;
+      if(O.idleCollapsed[sk]) keep[sk] = true;
+      kindsOf(bySys[sid]).forEach(function(k){
+        var kk = 'kind:' + sid + ':' + k;
+        if(O.idleCollapsed[kk]) keep[kk] = true;
+      });
+    });
+    O.idleCollapsed = keep;
+
+    host.innerHTML = sysIds.map(function(sid){ return systemHtml(sid, bySys[sid]); }).join('');
+  }
+
+  // The whole hub, run on open and on every poll while open. IN TRANSIT and IDLE are live; the
+  // LEASED / DEPLOYED scaffolds are static markup, so there is nothing else to re-read.
+  function render(){ var g = meGuild(); renderTransit(g, snap()); renderIdle(g); }
+
+  // Delegated once on the panel. Two independent toggles:
+  //  - an IN TRANSIT row expands its manifest (state in O.expanded, by ship key);
+  //  - an IDLE group header collapses its body (state in O.idleCollapsed, by group key).
+  // Both record state so a signature-guarded structure rebuild honours it. The IDLE header check
+  // comes first because a kind header sits inside a system group's DOM; closest() on the clicked
+  // header element itself resolves to the right group either way.
   var panel = el('tp-ops');
   if(panel) panel.addEventListener('click', function(e){
+    var hd = e.target.closest('.ops-idle-syshd, .ops-idle-kindhd');
+    if(hd){
+      var grp = hd.closest('.ops-idle-sys, .ops-idle-kind'); if(!grp) return;
+      var gkey = grp.getAttribute('data-idle-key');
+      var isCollapsed = grp.classList.toggle('collapsed');
+      if(gkey){ if(isCollapsed) O.idleCollapsed[gkey] = true; else delete O.idleCollapsed[gkey]; }
+      return;
+    }
     var row = e.target.closest('.ops-row'); if(!row) return;
     var key = row.getAttribute('data-key');
     var isOpen = row.classList.toggle('open');
@@ -6996,7 +7149,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // The shell drives these three, mirroring the Deuterium dashboard's lifecycle: open, close, and
   // every poll — so an open hub re-reads each snapshot (new deliveries appear, bars advance, ETAs
   // decrement) driven by its own panel's lifecycle.
-  window.__opsOpen = function(){ O.open = true; O.transitSig = ''; render(); };
+  window.__opsOpen = function(){ O.open = true; O.transitSig = ''; O.idleSig = null; render(); };
   window.__opsClosed = function(){ O.open = false; };
   window.__opsRefresh = function(){ if(O.open) render(); };
 })();
