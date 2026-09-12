@@ -116,11 +116,11 @@ test('GET / serves the TRANSPORT-VISIBILITY overlay — own in-flight legs, twee
 });
 
 // The OPERATIONS tab (docs/operations-hub.md) — renamed from Transport, the list-and-hub companion
-// to the galaxy-map transport overlay above. IN TRANSIT is live off the snapshot; LEASED / DEPLOYED
-// / IDLE are empty scaffolds this slice (§7). Pinned on the SERVED BYTES: a page that quietly reverted
-// the rename, dropped the poll refresher, or recomputed the ETA from the tweened bar would still
-// render perfectly, and only this would go red.
-test('GET / serves the OPERATIONS tab — the rename, the #tp-ops panel, IN TRANSIT live, the scaffolds', async () => {
+// to the galaxy-map transport overlay above. IN TRANSIT and IDLE are live off the snapshot (§4/§5);
+// LEASED / DEPLOYED are empty scaffolds this slice (§7). Pinned on the SERVED BYTES: a page that
+// quietly reverted the rename, dropped the poll refresher, recomputed the ETA from the tweened bar,
+// or reverted IDLE to a scaffold would still render perfectly, and only this would go red.
+test('GET / serves the OPERATIONS tab — the rename, the #tp-ops panel, IN TRANSIT + IDLE live, the scaffolds', async () => {
   const html = await (await fetch(base + '/')).text();
 
   // The tab is RENAMED, and the old Transport tab (button + coming-soon stub) is gone.
@@ -171,11 +171,22 @@ test('GET / serves the OPERATIONS tab — the rename, the #tp-ops panel, IN TRAN
   // The reserved, unwired alert slot is built (dark, no trigger this slice — §4).
   assert.match(html, /class="ops-alert"/);
 
-  // LEASED / DEPLOYED / IDLE ship as calm empty states — no rows, no Manage popups (§7).
+  // LEASED / DEPLOYED ship as calm empty states — no rows, no Manage popups (§7).
   assert.match(html, /No transports leased/);
   assert.match(html, /Nothing deployed yet/);
-  assert.match(html, /Nothing idle/);
   assert.match(html, /Nothing in transit/);
+
+  // IDLE is LIVE this slice (§5): its own list id, filled from the guild's assets filtered to the
+  // engine's one membership rule (deployedToVentureId == null), grouped by system then kind. A calm
+  // empty state ("Nothing idle") is kept for the all-deployed case. The client computes no game
+  // number — it reads the engine's answer (design.md §18).
+  assert.match(html, /id="ops-idle-list"/, 'the IDLE list has its own id, filled live');
+  assert.match(html, /window\.__opsRefresh = function\(\)\{ if\(O\.open\) render\(\); \}/, 'IDLE re-reads on every poll via render()');
+  assert.match(html, /function renderIdle\(guild\)/, 'the IDLE section has its own renderer');
+  assert.match(html, /a\.deployedToVentureId == null/, 'IDLE membership is the engine rule (deployedToVentureId == null)');
+  assert.match(html, /class="ops-idle-sys/, 'idle assets are grouped by system');
+  assert.match(html, /class="ops-idle-kind/, 'each system group splits into kind groups (miners / factories)');
+  assert.match(html, /Nothing idle/, 'the all-deployed empty state is kept');
 
   // The pilot hero art (§2).
   assert.match(html, /assets\/characters\/pilot\.jpg/);

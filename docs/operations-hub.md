@@ -126,6 +126,27 @@ recall any time, time to re-availability). ID + Type buttons → the transport-m
   rival-owned shipment does not appear. **Deferred, not invented:** the §9 LEASED-panel-when-empty
   question (plain empty state vs interim summary) — built as the plain empty state, the interim-summary
   option deferred to the leasing slice (Phase 4).
+
+  **AS-BUILT 12-09-26 (2.1b CLIENT — IDLE goes live).** **IDLE is now live** off the snapshot (§5),
+  CLIENT only — no engine/snapshot/sim change (determinism goldens byte-identical; the sim test count
+  is unchanged — the one served-page tripwire in `sim/tests/server.test.js` was updated in place to
+  pin the live IDLE contract instead of the old scaffold). The IDLE `ops-card` gained its own list id
+  (`#ops-idle-list`) and is filled by the same operations-tab-wire that fills IN TRANSIT — on hub open
+  and every poll while open (`__opsRefresh` → `render()`), so it stays live as machines deploy (leave)
+  and ventures tear down (return). Membership is the engine's one rule read verbatim
+  (`deployedToVentureId == null`, guild-wide, off the guild's `assets` block — the same rows the shell
+  caches as `LIVE.myAssets`); the browser computes no game number (§18). Rows are **grouped by system**
+  (`Asset.systemId`, resolved to the system name via the shell's `__systemName` bridge) then **by kind**
+  under collapsible headers (Miners / Factories), each header carrying a count; each machine row is its
+  **ID + kind descriptor** — read-only, no Manage popup (that is §8). A signature guard (the idle set +
+  where each sits) rebuilds the tree only when it changes, so a poll never discards the reader's
+  collapse state; the all-deployed case keeps a calm empty state. On a fresh founding this renders the
+  starter **15 miners + 10 factories, all idle, at the home system** — the payoff. Proven end-to-end in
+  headless Chromium against a booted server: a fresh founding shows one system group with 15-miner /
+  10-factory subgroups; deploying one miner (`establishVenture`) drops it out of IDLE on the next poll
+  (24 idle / 14 miners); tearing the venture down returns it (25 idle / 15 miners). **Deferred, not
+  invented:** the Manage popup / deploy-from-hub (§8, future), the same-system deploy-picker filter
+  (2.2, design.md §4), and idle transports / build kits (their slices).
 - **2.1 (build yard):** idle assets + the **Manage popup** + deploy; DEPLOYED / IDLE populate.
 - **2.3 (tolls):** toll gates active; toll-route management.
 - **Phase 4 (guild transport + leasing):** guild craft fly trips (Craft IDs + craft-stats in IN
