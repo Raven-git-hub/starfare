@@ -1,4 +1,4 @@
-# Operations — the out-of-system operations hub (design-ahead)
+# Operations — the operations & dispatch hub (design-ahead)
 
 *Design-ahead, like `transport-model.md`: it states the settled shape and flags the open questions;
 most of it is built by later slices. The repo wins over this doc. The visual + interaction contract is
@@ -8,7 +8,7 @@ dashboards and speaks their language (`docs/mockups/guild-hall.html`).*
 ## 1. What it is
 
 The **OPERATIONS** tab — renamed from *Transport* (the name undersold it) — is the hub for every asset a
-guild has **beyond its own systems**: a delivery in flight, a structure deployed on the map, an idle
+guild has **that is uncommitted or in motion — the point from which you send assets out-of-system, or commit them:** a delivery in flight, a structure deployed on the map, an idle
 asset in the yard waiting to be sent out, or a transport leased away to the Syndicate. It is where the
 player checks their status, opens each asset's management, and — later — dispatches missions.
 
@@ -41,9 +41,7 @@ the panel and never resizes it. This is load-bearing: without it the panels jump
     in flight ──▶ IN TRANSIT
 
 **Transports** are the only craft that fly, lease, and (later) run missions. **Outposts, toll gates,
-deep-scan arrays** deploy to a hex and stay — they do **not** lease. A guild's in-system ground assets
-(mining/refining machines for ventures) are **not** shown here — they belong to the venture/asset
-system, not to out-of-system operations.
+deep-scan arrays** deploy to a hex and stay — they do **not** lease. A guild's in-system ground assets (mining/refining machines) appear here **only while idle**: an idle machine is a dispatch candidate — deploy it here, or (from 2.2) ship it to another system — which is exactly what this hub is for. The instant it works a venture it is **deployed** and drops out of the hub, belonging to the venture/asset system until it is torn down and idle again. *(**REVERSED 12-09-26**: this once read that in-system ground assets are never shown here; the §1 reframe — from "out-of-system operations" to "the point from which you send things out-of-system, or commit them" — is what flips it: an idle ground asset belongs, a working one does not.)*
 
 ## 4. IN TRANSIT — the section built now
 
@@ -80,11 +78,9 @@ each entry an **ID + descriptor button → the Manage popup**.
 - **DEPLOYED** — outposts, toll gates, deep-scan arrays (built at 2.1, placed on territory 2.2/2.3).
   **Each entry's descriptor is the asset's HEX COORDINATE — its position on the map. [RULED 10-09-26.]**
   Expanding an outpost shows its stored manifest.
-- **IDLE · deployable** — idle transports and unbuilt kits in the yard. Manage → **deploy** (any type)
-  or **lease to the Syndicate** (transports only).
+- **IDLE · deployable** — every asset the guild holds **uncommitted**: idle **mining/refining machines** (miners, factories — live from founding), idle transports, and (later) unbuilt kits. **Membership is one rule:** an asset with `deployedToVentureId == null` (`sim/snapshot.js`), guild-wide, **grouped by the system it sits in** (`Asset.systemId`, design.md §4). Idle assets arrive three ways — the **founding grant** (the starter miners/factories, idle from turn one), a **self-build** at the yard (2.1b), or a **Syndicate commission** for credits (2.1d, delivered in) — with the **open market** later (2.1e). Manage → **deploy** (any type, onto a site in that system) or **lease to the Syndicate** (transports only); relocation to another system arrives with 2.2. A machine leaves this list the instant it starts a venture.
 
-None of these entities exist today, so the sections ship as **empty scaffolds** and populate as their
-slices land.
+DEPLOYED's entities (map structures) don't exist yet, so it stays an **empty scaffold**; **IDLE goes live with the ground-asset inventory (2.1b client)** — founding-granted miners/factories exist from turn one — and gains idle transports and kits as those slices land.
 
 ## 6. LEASED — future (Phase 4)
 
