@@ -207,9 +207,9 @@ test('RULING 2 — an IDLE asset adds nothing; only ventures score', () => {
   // §1's "deployed only, idle = 0". An idle asset is precisely one that no venture names,
   // so this falls out of counting ventures rather than needing a filter.
   const idle = [
-    { id: 'asset_g1_miner_01', kind: 'miner', maintenanceCondition: 1 },
-    { id: 'asset_g1_miner_02', kind: 'miner', maintenanceCondition: 1 },
-    { id: 'asset_g1_factory_01', kind: 'factory', maintenanceCondition: 1 },
+    { id: 'asset_g1_miner_01', kind: 'miner', systemId: SYS_A, maintenanceCondition: 1 },
+    { id: 'asset_g1_miner_02', kind: 'miner', systemId: SYS_A, maintenanceCondition: 1 },
+    { id: 'asset_g1_factory_01', kind: 'factory', systemId: SYS_A, maintenanceCondition: 1 },
   ];
   const withInventory = fixture([], [SYS_A], { assets: idle });
   assert.equal(withInventory.guilds[0].assets.length, 3, 'the fixture really does hold an inventory');
@@ -219,7 +219,7 @@ test('RULING 2 — an IDLE asset adds nothing; only ventures score', () => {
 test('RULING 2 — a DEPLOYED asset is scored ONCE, through its venture', () => {
   // The double-count this ruling exists to prevent: the venture names the asset it runs,
   // so counting assets as well as ventures would score one machine twice.
-  const assets = [{ id: 'asset_g1_miner_01', kind: 'miner', maintenanceCondition: 1 }];
+  const assets = [{ id: 'asset_g1_miner_01', kind: 'miner', systemId: SYS_A, maintenanceCondition: 1 }];
   const deployed = fixture(
     [{ ...mine('m1'), assetId: 'asset_g1_miner_01' }], [SYS_A], { assets },
   );

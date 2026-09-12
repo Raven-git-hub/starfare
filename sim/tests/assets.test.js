@@ -335,13 +335,15 @@ function assetState() {
   return createState({
     guilds: [{
       id: 'g1', credits: 0, fuelHoard: 0,
-      assets: [{ id: 'a_mine', kind: 'miner' }, { id: 'a_fact', kind: 'factory' }],
+      // Both machines sit in sysA — the deployed one MUST share its venture's system
+      // (§4, 12-09-26), the idle one only needs a location at all.
+      assets: [{ id: 'a_mine', kind: 'miner', systemId: 'sysA' }, { id: 'a_fact', kind: 'factory', systemId: 'sysA' }],
       ventures: [{
         id: 'v1', ownerGuildId: 'g1', type: 'mining', systemId: 'sysA',
         resourceType: 'titanium', productionRate: 5, assetId: 'a_mine',
       }],
     }, {
-      id: 'g2', credits: 0, fuelHoard: 0, assets: [{ id: 'a_other', kind: 'miner' }],
+      id: 'g2', credits: 0, fuelHoard: 0, assets: [{ id: 'a_other', kind: 'miner', systemId: 'sysA' }],
     }],
     reserve: { reserveLevel: 0 },
     syndicate: { ledger: 0 },
@@ -445,6 +447,7 @@ test('the snapshot reports each asset and whether it is deployed or idle', () =>
   assert.deepEqual(deployed, [{
     id: 'asset_player-guild_miner_01',
     kind: 'miner',
+    systemId: HOME_SYSTEM,
     maintenanceCondition: ASSET_CONDITION_NEW,
     deployedToVentureId: `mine_${HOME_MINE}`,
   }], 'the engine answers idle-vs-deployed so the client never recomputes it');
@@ -484,7 +487,67 @@ test('a guild with NO assets carries no key at all (the omit-when-empty no-op)',
     syndicate: { ledger: 0 },
   });
   assert.equal('assets' in bare.guilds[0], false, 'no assets key => byte-identical to pre-slice state');
-  assert.equal(createAsset({ id: 'a', kind: 'miner' }).maintenanceCondition, ASSET_CONDITION_NEW);
-  assert.throws(() => createAsset({ kind: 'miner' }), /id is required/);
-  assert.throws(() => createAsset({ id: 'a' }), /kind is required/);
+  assert.equal(createAsset({ id: 'a', kind: 'miner', systemId: 'sysA' }).maintenanceCondition, ASSET_CONDITION_NEW);
+  assert.throws(() => createAsset({ kind: 'miner', systemId: 'sysA' }), /id is required/);
+  assert.throws(() => createAsset({ id: 'a', systemId: 'sysA' }), /kind is required/);
+  // systemId is required exactly as id and kind are — a machine with no location is
+  // the guild-wide-inventory model this slice retires (§4, 12-09-26).
+  assert.throws(() => createAsset({ id: 'a', kind: 'miner' }), /systemId is required/);
+});
+
+// --- 9. per-system inventory: Asset.systemId (2.1b, design.md §4/§15.4, 12-09-26) ----
+
+test('every founding-granted asset sits at the guild\'s home system', () => {
+  const g = player(playerFounded());
+  assert.ok(g.assets.length > 0, 'the founding really did grant an inventory');
+  assert.ok(g.assets.every((a) => a.systemId === HOME_SYSTEM),
+    'the whole starter gift is idle AT homeSystemId — the inventory is system-defined');
+  // Determinism (invariant 9): the same founding mints the same locations twice.
+  assert.deepEqual(
+    player(playerFounded()).assets.map((a) => a.systemId),
+    g.assets.map((a) => a.systemId),
+    'the locations are byte-identical across runs',
+  );
+});
+
+test('GATE 2 same-system — an idle asset in ANOTHER system is refused, even when owned, idle and the right kind', () => {
+  // Every other gate passes: HOME_MINE is a vacant node in HOME_SYSTEM (held), and the
+  // named Miner is owned, idle and of the matching kind. Only its LOCATION is wrong —
+  // relocate it to a different system and the same-system clause is the sole refusal.
+  const s = playerFounded();
+  const away = player(s).assets.find((a) => a.id === minerId(1));
+  away.systemId = 'sys_elsewhere';
+  const before = hashState(s);
+
+  const v = validateAction(s, mineAt(HOME_MINE, { assetId: minerId(1) }));
+  assert.equal(v.valid, false, 'the machine is real, free and the right kind — only its system is wrong');
+  assert.match(v.reason, /sits in system "sys_elsewhere" but site .* is in system/);
+  assert.match(v.reason, /deploys only within its own system/);
+  assert.equal(hashState(s), before, 'validation is pure — a refusal moves nothing');
+
+  // The counterfactual: put it back at home and the very same deploy is accepted.
+  away.systemId = HOME_SYSTEM;
+  assert.equal(validateAction(s, mineAt(HOME_MINE, { assetId: minerId(1) })).valid, true);
+});
+
+test('the deployed-asset-system-matches invariant fires on a deliberately corrupted mismatch', () => {
+  // A legal deployed state — the mine runs miner_01, both in HOME_SYSTEM — passes clean.
+  const { state: s } = intake(playerFounded(), [mineAt(HOME_MINE)]);
+  assert.deepEqual(checkInvariants(s, s.tick), [], 'the honest state is clean');
+
+  // Now move the DEPLOYED machine out from under its venture. Nothing in this slice can
+  // do this — a deployed asset never moves — so it is corruption, and the invariant is
+  // the backstop that catches it with both ids.
+  const deployed = player(s).assets.find((a) => a.id === minerId(1));
+  deployed.systemId = 'sys_elsewhere';
+  assert.ok(ruleNames(s).includes('deployed-asset-system-matches-venture'),
+    'a deployed asset whose system diverges from its venture is caught');
+});
+
+test('a missing/blank asset systemId is caught as a field-level violation', () => {
+  for (const bad of [undefined, '', 7, null]) {
+    const s = assetState();
+    s.guilds[0].assets[1].systemId = bad; // the idle factory
+    assert.ok(ruleNames(s).includes('asset-system-present'), `systemId ${String(bad)} should be caught`);
+  }
 });

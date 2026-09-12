@@ -643,7 +643,8 @@ function computeAttention(state) {
 //                 events: [ { id, tick, type, payload, readTick? } ],  // event log, live, newest-first
 //                 stockpiles: { good: int },                    // flat guild total
 //                 stockpilesBySystem: { systemId: { good: int } }, // per-system
-//                 assets: [ { id, kind, maintenanceCondition,      // §4 inventory
+//                 assets: [ { id, kind, systemId,                 // §4 inventory
+//                             maintenanceCondition,                //   systemId = location
 //                             deployedToVentureId: id | null } ],  //   null = IDLE
 //                 productionProfile: { ... } } ],               // §5 profile, sparse as stored
 //     production: [ { guildId,                                  // previewProduction(state)
@@ -1010,7 +1011,9 @@ function buildSnapshot(state) {
       // per owned machine. `deployedToVentureId` is the ENGINE answering "is this one
       // idle?" — the venture whose `assetId` names it, or null — so the client reads
       // idle-vs-deployed instead of recomputing the derivation itself (§5's display
-      // rule: the browser renders, the engine decides). `maintenanceCondition` rides
+      // rule: the browser renders, the engine decides). `systemId` is the machine's
+      // physical location (§4/§15.4, 12-09-26), so the client can group inventory by
+      // system — the next slice's panel reads it. `maintenanceCondition` rides
       // along inert, so the surface is already the right shape when the maintenance
       // slice gives it a meaning. Sorted by id — the deployment pick is id-ordered, so
       // the panel reads in the order the engine will take them. Fresh objects, so a
@@ -1018,6 +1021,7 @@ function buildSnapshot(state) {
       assets: (g.assets || []).map((a) => ({
         id: a.id,
         kind: a.kind,
+        systemId: a.systemId,
         maintenanceCondition: a.maintenanceCondition,
         deployedToVentureId: deployedTo.get(a.id) || null,
       })).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),

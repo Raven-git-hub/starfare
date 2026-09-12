@@ -65,8 +65,13 @@ function assetKindForVentureType(type) {
   return null;
 }
 
-// The starter grant as plain SPECS ({ id, kind }), ready for createAsset. Kept as
-// data rather than built entities so this file never has to require state.js.
+// The starter grant as plain SPECS ({ id, kind, systemId }), ready for createAsset.
+// Kept as data rather than built entities so this file never has to require state.js.
+//
+// Every starter asset sits at the guild's HOME SYSTEM (design.md §4, 12-09-26): the
+// founding-granted inventory is idle AT `homeSystemId`, so the caller passes it in and
+// it stamps onto each spec. `systemId` is required for the same reason createAsset
+// requires it — a machine with no location is the model this slice retires.
 //
 // The id scheme is `asset_<guildId>_<kind>_<NN>`, 1-based and zero-padded to two
 // digits. STABLE and DETERMINISTIC (§15.2, invariant 9): two runs of the same
@@ -74,10 +79,10 @@ function assetKindForVentureType(type) {
 // lexicographic order agree with numeric order, so "the guild's assets in id order"
 // is the same list however it is sorted (a founding consumes this pool in mint
 // order; a deploy now NAMES the asset it wants, sim/actions.js).
-function starterAssetSpecs(guildId) {
+function starterAssetSpecs(guildId, systemId) {
   const specs = [];
-  for (let n = 1; n <= STARTER_MINERS; n += 1) specs.push({ id: assetId(guildId, MINER, n), kind: MINER });
-  for (let n = 1; n <= STARTER_FACTORIES; n += 1) specs.push({ id: assetId(guildId, FACTORY, n), kind: FACTORY });
+  for (let n = 1; n <= STARTER_MINERS; n += 1) specs.push({ id: assetId(guildId, MINER, n), kind: MINER, systemId });
+  for (let n = 1; n <= STARTER_FACTORIES; n += 1) specs.push({ id: assetId(guildId, FACTORY, n), kind: FACTORY, systemId });
   return specs;
 }
 

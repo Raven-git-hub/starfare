@@ -633,6 +633,16 @@ function validateAction(state, action) {
     if (asset.kind !== kind) {
       return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is a ${asset.kind}; a ${ventureType} venture needs a ${kind} (§4)` };
     }
+    // DEPLOY IS SAME-SYSTEM (design.md §4, 12-09-26). The idle inventory is now
+    // per-system: the named asset must ALSO sit in the very system the node is in —
+    // you deploy from THAT system's inventory only. Its own fail-loud refusal, after
+    // the owned / idle / matching-kind checks, so the player learns the machine is
+    // real and free but in the wrong place. Pre-2.2 a guild holds one system, so this
+    // is always satisfied and deploy behaviour is unchanged; it is the correct model
+    // now, needing no migration when a second held system exists.
+    if (asset.systemId !== site.systemId) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} sits in system ${JSON.stringify(asset.systemId)} but site ${JSON.stringify(action.siteId)} is in system ${JSON.stringify(site.systemId)} — an asset deploys only within its own system (§4)` };
+    }
     return { valid: true };
   }
 
@@ -1023,6 +1033,12 @@ function validateAction(state, action) {
     if (asset.kind !== kind) {
       return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is a ${asset.kind}; a deuterium refinery needs a ${kind} (§4)` };
     }
+    // DEPLOY IS SAME-SYSTEM (design.md §4, 12-09-26), the same clause establishVenture
+    // makes: the named idle factory must sit in the settlement slot's own system. A
+    // refinery deploys from that system's inventory only.
+    if (asset.systemId !== site.systemId) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} sits in system ${JSON.stringify(asset.systemId)} but site ${JSON.stringify(action.siteId)} is in system ${JSON.stringify(site.systemId)} — an asset deploys only within its own system (§4)` };
+    }
     return { valid: true };
   }
 
@@ -1297,8 +1313,10 @@ function applyAction(state, action) {
     // not an action field — exactly like the `fuelHoard` grant below — so the action shape
     // is byte-identical to before this slice and no caller can ask for a different
     // gift. The counts and the deterministic id scheme both live in sim/assets.js;
-    // nothing is inlined here.
-    const assets = starterAssetSpecs(action.guildId);
+    // nothing is inlined here. Every starter asset is granted AT THE GUILD'S HOME
+    // SYSTEM (design.md §4, 12-09-26) — its idle inventory location — so the home
+    // id passes straight through to each spec's `systemId`.
+    const assets = starterAssetSpecs(action.guildId, action.homeSystemId);
     // The pool each inline venture draws from, split by kind and consumed in order.
     const unclaimed = { miner: assets.filter((a) => a.kind === 'miner'), factory: assets.filter((a) => a.kind === 'factory') };
 

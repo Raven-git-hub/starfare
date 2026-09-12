@@ -20,8 +20,8 @@
 //                         stockpiles?,
 //                         ventures? (each: siteId?, assetId?, resourceType? |
 //                         recipeId?, productionRate?, reputation?),
-//                         assets? ([{ id, kind, maintenanceCondition }] — the
-//                           guild's ground-asset inventory, §4; absent when empty),
+//                         assets? ([{ id, kind, systemId, maintenanceCondition }] —
+//                           the guild's ground-asset inventory, §4; absent when empty),
 //                         homeSystemId?, homePlanetId? }]
 //   state.claims?    : [{ claimId, ownerGuildId, landmarkId, landmarkKind }]
 //                          // SHARED territory rows; reference real seed landmarks
@@ -1163,16 +1163,20 @@ function checkSiteOccupancy(state) {
 // depend on an asset being present, and demanding one would make every
 // directly-constructed test venture illegal. What it does require is that any
 // reference which IS there is sound. For each guild:
-//   - every asset is well-formed: a known kind, and a maintenanceCondition that is
-//     a finite number inside its scale (the §15.2 field check — the field is inert
+//   - every asset is well-formed: a known kind, a maintenanceCondition that is a
+//     finite number inside its scale (the §15.2 field check — the field is inert
 //     in this slice, but a garbage value must still fail loudly rather than sit
-//     there waiting for the maintenance slice to trip over it);
+//     there waiting for the maintenance slice to trip over it), and a `systemId`
+//     present (the machine's physical location, §4/§15.4 — 12-09-26);
 //   - every non-null venture.assetId names an asset owned by that SAME guild (you
 //     cannot run a machine out of someone else's inventory);
 //   - no asset is referenced by two ventures — one machine runs one venture;
 //   - the referenced asset's kind matches the venture: mining<->miner,
 //     refining<->factory (the analogue of "a mining venture's resourceType must
-//     match its node").
+//     match its node");
+//   - a DEPLOYED asset's `systemId` equals its venture's system (§4, 12-09-26):
+//     Gate 2 deploys same-system and nothing moves a deployed asset, so a mismatch
+//     is corruption.
 function checkAssetOccupancy(state) {
   const out = [];
   for (const g of state.guilds || []) {
@@ -1184,6 +1188,12 @@ function checkAssetOccupancy(state) {
       const cond = a.maintenanceCondition;
       if (typeof cond !== 'number' || !Number.isFinite(cond) || cond < ASSET_CONDITION_MIN || cond > ASSET_CONDITION_NEW) {
         out.push({ rule: 'asset-condition-in-range', where: `guild:${g.id}.asset:${a.id}.maintenanceCondition`, detail: { maintenanceCondition: cond, min: ASSET_CONDITION_MIN, max: ASSET_CONDITION_NEW } });
+      }
+      // systemId — the machine's physical location (design.md §4/§15.4, 12-09-26),
+      // stored and always present. A missing or non-string location is corruption the
+      // same way a bad kind is: fail loud rather than let a placeless asset drift.
+      if (typeof a.systemId !== 'string' || a.systemId.length === 0) {
+        out.push({ rule: 'asset-system-present', where: `guild:${g.id}.asset:${a.id}.systemId`, detail: { systemId: a.systemId } });
       }
       owned.set(a.id, a);
     }
@@ -1199,6 +1209,14 @@ function checkAssetOccupancy(state) {
         const wanted = assetKindForVentureType(v.type);
         if (wanted !== null && asset.kind !== wanted) {
           out.push({ rule: 'venture-asset-kind-matches', where: `venture:${v.id}.assetId`, detail: { ventureType: v.type, expected: wanted, assetKind: asset.kind, assetId: v.assetId } });
+        }
+        // A DEPLOYED asset's system must EQUAL its venture's (design.md §4, 12-09-26).
+        // Gate 2 deploys same-system and nothing in this slice moves a deployed asset,
+        // so the two coincide by construction — a mismatch is corruption, caught here
+        // with both ids. Guarded on the venture having a system (a synthetic unseated
+        // test venture has none), exactly as `venture-system-matches-site` above.
+        if (v.systemId != null && asset.systemId !== v.systemId) {
+          out.push({ rule: 'deployed-asset-system-matches-venture', where: `venture:${v.id}.assetId`, detail: { assetId: v.assetId, assetSystem: asset.systemId, ventureSystem: v.systemId } });
         }
       }
 
