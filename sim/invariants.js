@@ -72,6 +72,8 @@ const {
   RP_FLOOR, RP_SOFT_CAP,
 } = require('./licence.js');
 const { ASSET_CONDITION_NEW, ASSET_CONDITION_MIN, isAssetKind, assetKindForVentureType } = require('./assets.js');
+const { isDockyard } = require('./baseline.js');
+const { BUILDABLE_ASSET_KINDS, BUILD_TICKS } = require('./asset-recipes.js');
 const { DEFAULT_WINDOW_N, winStartFor, windowFraction } = require('./windows.js');
 const { HISTORY_N } = require('./history.js');
 const { MODIFIER_HISTORY_N } = require('./modifier-history.js');
@@ -1230,6 +1232,111 @@ function checkAssetOccupancy(state) {
   return out;
 }
 
+// Build-queue integrity — the structural guard for the dockyard's commission queue
+// (docs/build-yard.md §3/§6, roadmap 2.1b slice 1). The reserve-and-wait build (sim/tick.js
+// `buildDockyards`) and the commission/cancel actions (sim/actions.js) MAINTAIN the single-slot /
+// strict-FIFO / id-integrity properties; this ASSERTS them mechanically, so a future slice, a
+// save-reload, or a client bug that breaks single-slot is caught by the harness rather than a
+// review pass (rule 4). A pure read — mutates nothing, changes no determinism hash.
+//
+// It follows the checkBatchCarry / checkSyndicateWindows convention: an ABSENT field is legal (the
+// omit-when-not-a-dockyard discipline in createVenture is the no-op path); only a PRESENT-and-wrong
+// value trips. Each violation names the offending `venture:<id>.buildQueue[<i>]` (or
+// `.nextCommissionId`) with the value in `detail`.
+function checkBuildQueues(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    for (const v of g.ventures || []) {
+      const where = `venture:${v.id}`;
+
+      if (!isDockyard(v)) {
+        // The omit discipline: a non-dockyard venture carries NEITHER key. A present one is
+        // corruption (a queue on a machine that can't build, or a live id counter with nothing
+        // to count) — exactly the drift the omit-when-not-a-dockyard block is meant to prevent.
+        if (v.buildQueue !== undefined) {
+          out.push({ rule: 'build-queue-only-on-dockyard (build-yard.md §2)', where: `${where}.buildQueue`, detail: { buildQueue: v.buildQueue } });
+        }
+        if (v.nextCommissionId !== undefined) {
+          out.push({ rule: 'build-queue-only-on-dockyard (build-yard.md §2)', where: `${where}.nextCommissionId`, detail: { nextCommissionId: v.nextCommissionId } });
+        }
+        continue;
+      }
+
+      // A dockyard MUST carry a queue array and an integer nextCommissionId (both always present
+      // on a dockyard, per createVenture).
+      if (!Array.isArray(v.buildQueue)) {
+        out.push({ rule: 'dockyard-has-a-build-queue (build-yard.md §3)', where: `${where}.buildQueue`, detail: { buildQueue: v.buildQueue } });
+        // Without an array there is nothing more to check on this venture's queue.
+        if (!Number.isInteger(v.nextCommissionId) || v.nextCommissionId < 0) {
+          out.push({ rule: 'dockyard-nextCommissionId-non-negative-int (build-yard.md §3)', where: `${where}.nextCommissionId`, detail: { nextCommissionId: v.nextCommissionId } });
+        }
+        continue;
+      }
+      if (!Number.isInteger(v.nextCommissionId) || v.nextCommissionId < 0) {
+        out.push({ rule: 'dockyard-nextCommissionId-non-negative-int (build-yard.md §3)', where: `${where}.nextCommissionId`, detail: { nextCommissionId: v.nextCommissionId } });
+      }
+
+      const seenIds = new Set();
+      let maxId = -1;
+      let startedCount = 0;
+      let startedIndex = -1;
+      v.buildQueue.forEach((entry, i) => {
+        const at = `${where}.buildQueue[${i}]`;
+
+        // assetKind must be buildable.
+        if (!BUILDABLE_ASSET_KINDS.includes(entry.assetKind)) {
+          out.push({ rule: 'build-entry-kind-buildable (build-yard.md §1)', where: `${at}.assetKind`, detail: { assetKind: entry.assetKind } });
+        }
+
+        // commissionId: a non-negative integer, unique within the venture.
+        if (!Number.isInteger(entry.commissionId) || entry.commissionId < 0) {
+          out.push({ rule: 'build-entry-commissionId-non-negative-int (build-yard.md §3)', where: `${at}.commissionId`, detail: { commissionId: entry.commissionId } });
+        } else {
+          if (seenIds.has(entry.commissionId)) {
+            out.push({ rule: 'build-entry-commissionId-unique (build-yard.md §3)', where: `${at}.commissionId`, detail: { commissionId: entry.commissionId } });
+          }
+          seenIds.add(entry.commissionId);
+          if (entry.commissionId > maxId) maxId = entry.commissionId;
+        }
+
+        // remainingTicks: null (not started) OR a non-negative integer ≤ BUILD_TICKS[kind]
+        // (building — never more ticks left than the build takes). The cap is read only when the
+        // kind is buildable; a bad kind already tripped above and has no BUILD_TICKS entry.
+        const rt = entry.remainingTicks;
+        if (rt === null || rt === undefined) {
+          // not started — fine
+        } else {
+          startedCount += 1;
+          if (startedIndex === -1) startedIndex = i;
+          const cap = BUILD_TICKS[entry.assetKind];
+          if (!Number.isInteger(rt) || rt < 0) {
+            out.push({ rule: 'build-entry-remainingTicks-null-or-non-negative-int (build-yard.md §3)', where: `${at}.remainingTicks`, detail: { remainingTicks: rt } });
+          } else if (cap !== undefined && rt > cap) {
+            out.push({ rule: 'build-entry-remainingTicks-within-BUILD_TICKS (build-yard.md §3)', where: `${at}.remainingTicks`, detail: { remainingTicks: rt, cap, assetKind: entry.assetKind } });
+          }
+        }
+      });
+
+      // THE SINGLE-SLOT RULE (the load-bearing one): at most one started entry, and if one is
+      // started it is the head (index 0) — the structural form of "single active build, strict
+      // FIFO, no skip-ahead" (build-yard.md §3). A started entry off the head, or two started, is
+      // corruption.
+      if (startedCount > 1) {
+        out.push({ rule: 'build-queue-single-active-build (build-yard.md §3)', where: `${where}.buildQueue`, detail: { startedCount } });
+      } else if (startedCount === 1 && startedIndex !== 0) {
+        out.push({ rule: 'build-queue-started-is-head (build-yard.md §3)', where: `${where}.buildQueue[${startedIndex}]`, detail: { startedIndex } });
+      }
+
+      // Id integrity: the next id must be strictly above every live one, so a fresh commission can
+      // never reuse an id still in the queue.
+      if (Number.isInteger(v.nextCommissionId) && v.nextCommissionId <= maxId) {
+        out.push({ rule: 'build-queue-nextCommissionId-above-live-ids (build-yard.md §3)', where: `${where}.nextCommissionId`, detail: { nextCommissionId: v.nextCommissionId, maxCommissionId: maxId } });
+      }
+    }
+  }
+  return out;
+}
+
 // Claim integrity — the territory analogue of site occupancy. Every claim in
 // the SHARED territory layer names a seed landmark by (landmarkId, landmarkKind);
 // each must resolve to a real landmark of that exact kind (a citadel-kind claim
@@ -1343,6 +1450,7 @@ function checkInvariants(state, tick) {
     ...checkReputationBand(state),
     ...checkSiteOccupancy(state),
     ...checkAssetOccupancy(state),
+    ...checkBuildQueues(state),
     ...checkClaimIntegrity(state),
     ...checkNodeLockouts(state),
     ...checkGuildHome(state),
