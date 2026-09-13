@@ -220,6 +220,8 @@ the skip is `isDeuteriumMine(v) || isIllegalDeuteriumRefinery(v)`. (A refinery p
 `producedGoodFor` would return null and it would score 0 regardless; the explicit skip states the ruled intent
 and keeps it off the tier lookup.)
 
+**THE DOCKYARD IS THE TIER-4 COUNTERPART (design-ahead, 13-09-26; ruled in `docs/build-yard.md` §5, roadmap 2.1b — NOT built yet).** A build yard (a factory in construct mode, `isDockyard`) is the *other* Tier-4 venture, and it is treated as the **mirror** of the deuterium mine, not a copy: where a deuterium mine is **special-SKIPPED** to 0 GP, a dockyard is **special-COUNTED at Tier 4** (`TIER_WEIGHT[4]`) — it is real footprint and *raises* the bar — **and** it earns a **held Tier-4 RP signing bump** (below the mine's 1000, no per-cycle accrual), granted on establish and removed on teardown. The mine keeps its unique 0-GP advantage; the numbers are tuned so the net benefit orders **deuterium mine > dockyard > a Tier-1/2/3 venture**. Full ruling + the tuning invariant: `docs/build-yard.md §5`.
+
 The predicate widening keeps GP **DERIVED, never stored** — the exclusion moves no serialized byte, and the
 determinism goldens are unmoved (no golden holds a deuterium mine or refinery). **RP** — §1.4's Tier-4 weighting
 — is a LICENSED-mine-only reward, BUILT in slice 2 (§2.6 below: a 1000 signing bump and a +50/cycle, pre-taper,
