@@ -113,7 +113,7 @@ mine**, but not identically — the deuterium mine's 0-GP is its *unique* advant
   is asserted by the harness on every tick, not left to a review pass.
 
 ## 7. Suggested slicing (readable at merge)
-1. **Engine — the Tier-4 build core.** `sim/asset-recipes.js` catalog; the dockyard establish path;
+1. **Engine — the Tier-4 build core.** ✅ **BUILT 13-09-26 (PR #72).** `sim/asset-recipes.js` catalog; the dockyard establish path;
    `commissionBuild` / `cancelCommission`; the reserve-and-wait build step; emit miner/factory
    idle-at-system; teardown drops the queue. Dockyard is **GP/RP-neutral in this slice** (0/0 by the
    recipe-less default) — no points change yet.
@@ -123,7 +123,21 @@ mine**, but not identically — the deuterium mine's 0-GP is its *unique* advant
    tuned in `phase-1-tuning.md` and pinned in `sim/tests/dockyard-points.test.js`. Its own slice
    because it touches a different module (`points.js`/`licence.js`/mean line) and carries the tuning
    invariant. Engine only — no client.
-3. **Client — the commission menu + queue** in the OPERATIONS hub (a later client slice).
+3. **Client — establish (the deploy picker).** Enable the deploy overlay's existing greyed-out
+   **“Tier 4 · Construct”** option (reached from a vacant settlement slot in the **System Manifest**):
+   pick an idle **factory** in that system → `establishDockyard`, showing the +500 GP / +900 RP
+   (net +400) standing effect + the shared confirm reel. Ships **`GET /asset-recipes`** (the bills +
+   `BUILD_TICKS` from `sim/asset-recipes.js`, mirroring `GET /recipes`), which slice 4 reads.
+4. **Client — the Tier 4 Production tab (System Manifest).** A per-system tab, sibling to the
+   Production Console, listing that system's dockyards; per dockyard: the commission control
+   (miner / factory → `commissionBuild`, capped at `MAX_QUEUE`), the FIFO queue (building → a
+   countdown + bar off `remainingTicks` / `BUILD_TICKS`; waiting → the module **shortfall** from
+   `stockpilesBySystem` vs the bill; queued), and cancel on **unstarted** entries
+   (`cancelCommission` by `commissionId`; a started build is stopped only by teardown). The UI
+   renders the snapshot and computes no game number.
+   **Venture Management (the dockyard's slot click) stays stats + teardown ONLY** — its teardown
+   confirm warns that teardown drops the queue, the in-progress build, and the consumed modules —
+   and carries **no** queue controls; commissioning / cancelling live only in the Tier 4 tab.
 
 Then, out of this arc: Syndicate-commission for credits (2.1d), the open market (2.1e), and the
 ship/droid/installation outputs (their entity slices).
