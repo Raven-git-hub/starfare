@@ -1,3 +1,7 @@
 # Throwaway developer artifacts — regenerated on demand, never committed.
 # The state inspector's snapshot (node sim/snapshot.js) lands here by default.
 /dev/
+
+# Paste-in doc-commit / fix helper scripts get run from the repo root but never
+# belong to the game repo. Keep `git add -A` from sweeping them in again.
+/*.sh
