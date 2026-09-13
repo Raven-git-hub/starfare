@@ -42,7 +42,7 @@
 // return numbers, and the tick is the only place a balance changes.
 
 const { windowFraction, DEFAULT_WINDOW_N } = require('./windows.js');
-const { producedGoodFor, isLicensedDeuteriumMine } = require('./baseline.js');
+const { producedGoodFor, isLicensedDeuteriumMine, isDockyard } = require('./baseline.js');
 const { tierWeight, tierOf } = require('./points.js');
 const { dayOf, tickAt } = require('./calendar.js');
 const { getSite } = require('./seed.js');
@@ -587,6 +587,24 @@ function tierFactor(venture) {
   return ventureTierWeight(venture) / tierWeight(1, whereOf(venture));
 }
 
+// [FIRST-CUT] the DOCKYARD's held Tier-4 RP signing bump (docs/build-yard.md §5, roadmap
+// 2.1b slice 2; recorded in docs/phase-1-tuning.md §"Points & Reputation"). A flat 900 RP
+// minted ONCE when a dockyard is established — the Tier-4 counterpart of the deuterium mine's
+// 1000, but DELIBERATELY BELOW it, because the dockyard is not the mine's twin: the mine's
+// 0-GP is its unique advantage, so its whole 1000 is net standing, while the dockyard also
+// adds 500 GP (it raises its own bar). With MEANLINE_K = 1 that +500 GP lifts the guild's
+// expected RP by 500, so the dockyard's NET standing benefit is 900 − 500 = +400 — set so the
+// net benefit orders deuterium mine (+1000) > dockyard (+400) > the best Tier-1/2/3 production
+// venture (tier-3 at 100% commit → +300 net). The relation, not the lone number, is the
+// ruling; both live in docs/phase-1-tuning.md so neither is invented in isolation.
+//
+// A FLAT MAGNITUDE, not `2 · commit · W_T4`: a dockyard carries no windowed licence and no
+// committedOutputPct (it commits nothing — it exists), so there is no `commit` to size a bump
+// by. It is a held standing value for holding Tier-4 build capability, one-time and removed on
+// teardown (the venture's RP forfeits, §7), so it is not farmable. Lives HERE beside the other
+// bump logic because points-and-reputation.md §4 rules the LICENCE LAYER owns how RP moves.
+const DOCKYARD_SIGNING_BUMP = 900;
+
 // signingBump(venture) -> the one-time RP a venture is minted with when its licence is
 // signed. A non-negative integer.
 //
@@ -633,6 +651,13 @@ function signingBump(venture) {
   // for it: `2 · 1.0 · W_T4` = 1000 (§1.4 "The RP accrual"). This is a DELIBERATE windfall —
   // a deuterium mine adds zero GP, so the bump offsets no bar; its value IS the reputation.
   if (isLicensedDeuteriumMine(venture)) return Math.round(2 * 1 * ventureTierWeight(venture));
+  // A DOCKYARD carries no windowed `licence` either, so `repTerms` would throw for it (the same
+  // reason the deuterium case sits before that call). Its held Tier-4 bump is a flat magnitude,
+  // not a terms-scaled one — it commits nothing, it exists (docs/build-yard.md §5). A venture is
+  // at most one of {licensed-deuterium-mine, dockyard, ordinary}, so the special-cases can't
+  // interact. This is the ONLY RP path a dockyard reaches: it has no licence and no per-cycle
+  // accrual, so `tierFactor` / `metGain` / `deuteriumMetGain` are never called on it.
+  if (isDockyard(venture)) return DOCKYARD_SIGNING_BUMP;
   const { commit } = repTerms(venture);
   return Math.round(2 * commit * ventureTierWeight(venture));
 }
@@ -1102,7 +1127,7 @@ module.exports = {
   commitmentUnitsFor,
   REP_MEET_MAX, REP_W_COMMIT, REP_W_EQUITY, REP_BREACH_MAX, REP_BREACH_MIN,
   RP_FLOOR, RP_SOFT_CAP, RP_TAPER_KNEE,
-  repTerms, tierFactor, ventureTierWeight, signingBump, metGain, deuteriumMetGain, breachPenalty, gainFactor, reputationDelta,
+  repTerms, tierFactor, ventureTierWeight, signingBump, DOCKYARD_SIGNING_BUMP, metGain, deuteriumMetGain, breachPenalty, gainFactor, reputationDelta,
   STANDING_CUT_AT_RISK, STANDING_CUT_STEADY, STANDING_CUT_STRONG,
   STRONG_FEE_DISCOUNT, COMMITMENT_STEP_STEADY, COMMITMENT_STEP_SUB_PAR,
   ventureStanding, renegotiationTerms, renegotiationFee,

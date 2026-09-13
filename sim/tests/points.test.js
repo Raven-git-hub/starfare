@@ -100,12 +100,14 @@ test('the tier spread is the ruled 1 : 1.5 : 3 : 5; T3 went live in 2.1a, T4 is 
   // §2.6 rules 100 / 150 / 300 / 500. W_T3 = 300 WENT LIVE in 2.1a: the 25 Tier-3 module goods
   // are real and producible, so a module venture scores its GP (300) instead of halting.
   // W_T4 was PULLED IN 04-09-26 (deuterium RP slice 2): a licensed deuterium mine earns RP at
-  // the Tier-4 rate (sim/licence.js). It changes NO GP — tierOf('deuterium') is 1 and a
-  // licensed deuterium mine is skipped in guildPoints — so no GP path reads a tier-4 weight.
+  // the Tier-4 rate (sim/licence.js). It gained its FIRST GP reader in 2.1b slice 2: the DOCKYARD
+  // is special-COUNTed at Tier 4 in guildPoints (docs/build-yard.md §5). No Tier-4 GOOD exists —
+  // tierOf never returns 4 — so the tier-4 weight is read only by the dockyard's explicit count
+  // (GP) and the deuterium licence's RP path, never by the general tierOf → tierWeight fallthrough.
   assert.deepEqual(Object.keys(TIER_WEIGHT).map(Number).sort((a, b) => a - b), [1, 2, 3, 4],
-    'tiers 1, 2 and 3 (goods with recipes) plus the RP-only tier 4');
+    'tiers 1, 2 and 3 (goods with recipes) plus tier 4 (the dockyard GP count + deuterium RP)');
   assert.equal(TIER_WEIGHT[3], 300, 'W_T3 = 300 is now in the map (2.1a — the Tier-3 module goods are real)');
-  assert.equal(TIER_WEIGHT[4], 500, 'W_T4 = 500 is in the map for the deuterium licence RP tier');
+  assert.equal(TIER_WEIGHT[4], 500, 'W_T4 = 500 is in the map for the dockyard GP count + deuterium licence RP tier');
   // The spread of the four present weights is the ruled ratio 1 : 1.5 : 3 : 5.
   assert.equal(TIER_WEIGHT[3] / TIER_WEIGHT[1], 3, 'T3 is 3× T1 (the ruled 1 : 3)');
   assert.equal(TIER_WEIGHT[4] / TIER_WEIGHT[1], 5, 'T4 is 5× T1 (the ruled 1 : 5)');

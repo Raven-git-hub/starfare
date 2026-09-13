@@ -180,8 +180,21 @@ boundary so the later hex-map swap doesn't touch it.
   0 GP by the recipe-less default and no RP (the §5 special-COUNT / held Tier-4 RP bump are slice 2). The
   snapshot surfaces `dockyard` + `buildQueue`. Determinism holds; a non-dockyard venture is byte-identical
   to before (the new fields are omitted unless `dockyard`). Proven by `sim/tests/dockyard.test.js`
-  (31 tests; full suite 1,193 green). *Slice 2 (GP/RP), the Syndicate-commission-for-credits (2.1d), the
-  open market (2.1e) and the ship/outpost/scanner/toll-gate/droid outputs stay ahead.*
+  (31 tests; full suite 1,193 green). *The Syndicate-commission-for-credits (2.1d), the open market
+  (2.1e) and the ship/outpost/scanner/toll-gate/droid outputs stay ahead.*
+- **The dockyard is a full Tier-4 venture in the mean-line economy (2.1b slice 2, engine only).** The
+  build core's GP/RP-neutral placeholder is retired: `guildPoints` now **special-COUNTs a dockyard at
+  Tier 4** (`isDockyard` → `TIER_WEIGHT[4]` = **500**, the mirror of the deuterium special-skip and its
+  first GP reader — a dockyard produces no good, so the count is explicit), and establishing one mints a
+  **held Tier-4 RP signing bump of 900** (`DOCKYARD_SIGNING_BUMP`, a flat magnitude via `signingBump`
+  special-cased on `isDockyard`, applied in the `establishDockyard` apply onto `venture.reputation` with
+  `guild.guildReputation` tracking it). With `MEANLINE_K` = 1 the +500 GP raises the bar 500, so the net
+  standing benefit is **+400**, tuned so the net-benefit ordering is **deuterium mine (+1000) > dockyard
+  (+400) > a Tier-1/2/3 venture (tier-3 at 100 % commit, +300)** — the tuning invariant recorded in
+  `docs/phase-1-tuning.md`. **Held while it stands, forfeited on teardown → not farmable**; no per-cycle
+  accrual; `checkGuildReputationSum` stays exact. GP is derived so no serialized byte and no determinism
+  golden moves. Proven by `sim/tests/dockyard-points.test.js` (9 tests; full suite 1,216 green). *The
+  commission menu + queue UI (2.1b client) and the ladder outputs stay ahead.*
 - **2.0 — Two guilds, the fuel contest proven.** Seat a second guild (inert or lightly scripted);
   run the existing mean-line / issuance as an actual multi-guild contest; confirm density-beats-sprawl
   tension is real between two actors. *No new mechanic — the oldest walking-skeleton line, closed.*
