@@ -190,6 +190,21 @@ function isIllegalDeuteriumRefinery(venture) {
   return !!(venture && venture.deuteriumRefinery);
 }
 
+// isDockyard(venture) -> true iff this venture is a Tier-4 build yard (docs/build-yard.md §2,
+// roadmap 2.1b). The analogue of `isIllegalDeuteriumRefinery` above: a plain marker predicate,
+// keyed off the `dockyard` boolean set at deploy (`establishDockyard`, sim/actions.js).
+//
+// A dockyard is a FACTORY venture (type 'refining') in construct mode — it carries neither a
+// `resourceType` nor a `recipeId`, so `producedGoodFor` returns null and resolveProduction skips
+// it entirely; its output (finished assets) is emitted by a dedicated guild-wide build step
+// (sim/tick.js `buildDockyards`). It is INDEPENDENT of `isIllegalDeuteriumRefinery`, which keys
+// off `deuteriumRefinery`: a venture is at most one of the two, and neither marker implies the
+// other. GP/RP-NEUTRAL this slice (a dockyard scores 0 GP by the recipe-less default, no RP);
+// the §5 special-COUNT for GP and the held Tier-4 RP bump are slice 2, so nothing here reads it yet.
+function isDockyard(venture) {
+  return !!(venture && venture.dockyard);
+}
+
 // baselineOutputFor(venture) -> { good, units } | null
 //   `good`  — the good this venture produces (`producedGoodFor`, above)
 //   `units` — its fixed droidless baseline output of that good, in units/tick
@@ -263,5 +278,5 @@ const BASELINE_KEYS = Object.freeze({
 module.exports = {
   FIRST_CUT_BASELINE, MINE_BASELINE, REFINERY_BASELINE, BASELINE_KEYS,
   producedGoodFor, baselineOutputFor, baselineUnitsForGood,
-  isLicensedDeuteriumMine, isDeuteriumMine, isIllegalDeuteriumRefinery,
+  isLicensedDeuteriumMine, isDeuteriumMine, isIllegalDeuteriumRefinery, isDockyard,
 };

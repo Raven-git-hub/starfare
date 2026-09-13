@@ -102,6 +102,11 @@ mine**, but not identically — the deuterium mine's 0-GP is its *unique* advant
   stable order; queue is an ordered list; fixed scenario builds byte-identically.
 - **GP/RP sums stay exact** — the dockyard's Tier-4 GP count and RP bump keep `checkGuildReputationSum`
   and the galactic-supply/GP derivations consistent.
+- **Structural guard (slice 1)** — `checkBuildQueues` (`sim/invariants.js`) is the mechanical tripwire for
+  the properties above: only a dockyard carries a queue; each entry's `assetKind`/`commissionId`/`remainingTicks`
+  is well-formed and within `BUILD_TICKS`; **at most one started build and it is the head** (the single-slot /
+  strict-FIFO form); and `commissionId`s are unique with `nextCommissionId` above every live id. So single-slot
+  is asserted by the harness on every tick, not left to a review pass.
 
 ## 7. Suggested slicing (readable at merge)
 1. **Engine — the Tier-4 build core.** `sim/asset-recipes.js` catalog; the dockyard establish path;

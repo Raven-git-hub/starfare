@@ -90,6 +90,34 @@ function assetId(guildId, kind, n) {
   return `asset_${guildId}_${kind}_${String(n).padStart(2, '0')}`;
 }
 
+// assetNumberOf(id) -> the trailing numeric suffix of an id minted by `assetId` above
+// (`asset_<guild>_<kind>_NN` -> the integer NN), or null when the id carries none. Reads only
+// the last `_NN` group, so a guildId containing an underscore does not confuse it.
+function assetNumberOf(id) {
+  const m = /_(\d+)$/.exec(String(id));
+  return m ? parseInt(m[1], 10) : null;
+}
+
+// nextAssetNumber(guild, kind) -> the next free per-(guild, kind) asset NUMBER: one above the
+// highest suffix among this guild's assets of that kind (0 -> 1 when it owns none). The Dockyard
+// mints a built asset's id from this (docs/build-yard.md §4), CONTINUING the per-(guild, kind)
+// sequence above the founding grant's `01..STARTER_*` range.
+//
+// DETERMINISTIC and MONOTONIC (invariant 9): assets are NEVER deleted (teardown frees an asset to
+// idle, it does not remove it — sim/licence.js), so the max only ever grows and a minted id can
+// never collide with the founding gift or an earlier build. Two emissions in one tick get distinct
+// ids because the build step pushes each emitted asset into `guild.assets` BEFORE minting the next,
+// so the second read sees the first and returns a higher number.
+function nextAssetNumber(guild, kind) {
+  let max = 0;
+  for (const a of (guild.assets || [])) {
+    if (a.kind !== kind) continue;
+    const n = assetNumberOf(a.id);
+    if (n != null && n > max) max = n;
+  }
+  return max + 1;
+}
+
 // deployedAssetIds(guild) -> Map<assetId, ventureId>. The DERIVATION everything
 // else here rests on: an asset is deployed iff some venture of this guild names
 // it. If two ventures somehow name the same asset, last-writer-wins in this map —
@@ -121,6 +149,9 @@ module.exports = {
   isAssetKind,
   assetKindForVentureType,
   starterAssetSpecs,
+  assetId,
+  assetNumberOf,
+  nextAssetNumber,
   deployedAssetIds,
   idleAssets,
 };
