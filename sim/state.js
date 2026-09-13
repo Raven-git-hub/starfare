@@ -327,6 +327,9 @@ function createVenture({
   deuteriumRefinery = false,
   committedFromTick = null,
   reputation = 0,
+  dockyard = false,
+  buildQueue = [],
+  nextCommissionId = 0,
   batchCarry = {},
 }) {
   if (id === undefined) throw new Error('createVenture: id is required');
@@ -474,6 +477,39 @@ function createVenture({
     // OMITTED when false, exactly like `deuteriumLicence` above: an ordinary venture carries no
     // key, so any galaxy without an illegal refinery is byte-identical to pre-slice.
     ...(deuteriumRefinery ? { deuteriumRefinery: true } : {}),
+    // dockyard + buildQueue + nextCommissionId: the Tier-4 CONSTRUCT venture (docs/build-yard.md
+    // §2, roadmap 2.1b slice 1). A Dockyard is a FACTORY venture (type 'refining', so it occupies
+    // a factory asset and `checkAssetOccupancy` wants one) in construct mode: it carries NO
+    // recipeId and NO resourceType — so `producedGoodFor` returns null and resolveProduction skips
+    // it (a dedicated build step advances its queue instead) — and NO licence/equity/RP (§2). It is
+    // marked by `dockyard: true` and recognised by `isDockyard` (sim/baseline.js), the analogue of
+    // the `deuteriumRefinery` marker; the two are INDEPENDENT (a dockyard is not an illegal refinery).
+    //
+    //   - buildQueue: the single-slot, strict-FIFO commission queue (§3). Each entry is
+    //     `{ commissionId, assetKind, remainingTicks }` — `remainingTicks === null` means "not yet
+    //     started" (the head waits for parts), a positive integer means "building, this many ticks
+    //     left". The build step (sim/tick.js) acts on the HEAD only.
+    //   - nextCommissionId: a per-venture MONOTONIC counter stamped onto each commission at
+    //     commission time (sim/actions.js), so a commission is addressed by a STABLE id rather than
+    //     an array index that shifts when the head is consumed off. Serialized so the id sequence
+    //     survives a save/reload and stays unique within the venture.
+    //
+    // ALL THREE are keyed on `dockyard` and OMITTED on an ordinary venture, exactly like
+    // `deuteriumRefinery` above: a non-dockyard venture carries none of these keys and serializes
+    // byte-identically to pre-slice state (the determinism no-op). A dockyard ALWAYS carries all
+    // three (buildQueue present even when empty), so the later client slice can render its queue.
+    // The queue entries are copied so a caller's array can never alias into engine state.
+    ...(dockyard
+      ? {
+          dockyard: true,
+          buildQueue: buildQueue.map((e) => ({
+            commissionId: e.commissionId,
+            assetKind: e.assetKind,
+            remainingTicks: e.remainingTicks === undefined ? null : e.remainingTicks,
+          })),
+          nextCommissionId,
+        }
+      : {}),
     // committedFromTick: the venture's FIRST PRODUCING tick under its licence — the
     // term that pro-rates its first window's obligation (§5's Option-A join ruling;
     // Slice 3b-ii, `sim/windows.js` `windowFraction`). Stamped by `applyForLicence` as

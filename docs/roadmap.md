@@ -165,6 +165,23 @@ boundary so the later hex-map swap doesn't touch it.
   headless Chromium (fresh founding → one system group, 15/10 subgroups; deploy one miner → it drops out
   of IDLE next poll; tear the venture down → it returns). *DEPLOYED / LEASED stay empty scaffolds (their
   entities don't exist yet).*
+- **The build yard's Tier-4 build core is live (2.1b slice 1, engine + snapshot).** A **dockyard** —
+  a factory venture in construct mode (`isDockyard`, the analogue of the deuterium-refinery marker;
+  established via `establishDockyard`, which mirrors the refinery's occupancy gates minus recipe/rate) —
+  carries a **single-slot, strict-FIFO commission queue** (`commissionBuild` / `cancelCommission`, capped
+  at `MAX_QUEUE` = 5) that turns modules **drawn from its own system's stockpile** into finished
+  **miner / factory** assets. The **reserve-and-wait build step** (`buildDockyards`, a per-guild sub-step
+  beside `refineDeuterium`) waits with no reservation until a head's whole bill is present, consumes it
+  atomically, counts down `BUILD_TICKS` (miner 4,320 / factory 7,200), then **emits one asset idle at the
+  dockyard's system**, its id continuing the per-(guild,kind) sequence above the founding grant. The
+  Tier-4 bills live in `sim/asset-recipes.js` (lifted from `docs/asset-recipes.md`, with a load-time
+  tripwire that every module is a real Tier-3 good); teardown reuses `decommissionVenture` (queue gone,
+  factory freed to idle, consumed modules not refunded). **GP/RP-neutral this slice** — a dockyard scores
+  0 GP by the recipe-less default and no RP (the §5 special-COUNT / held Tier-4 RP bump are slice 2). The
+  snapshot surfaces `dockyard` + `buildQueue`. Determinism holds; a non-dockyard venture is byte-identical
+  to before (the new fields are omitted unless `dockyard`). Proven by `sim/tests/dockyard.test.js`
+  (31 tests; full suite 1,193 green). *Slice 2 (GP/RP), the Syndicate-commission-for-credits (2.1d), the
+  open market (2.1e) and the ship/outpost/scanner/toll-gate/droid outputs stay ahead.*
 - **2.0 — Two guilds, the fuel contest proven.** Seat a second guild (inert or lightly scripted);
   run the existing mean-line / issuance as an actual multi-guild contest; confirm density-beats-sprawl
   tension is real between two actors. *No new mechanic — the oldest walking-skeleton line, closed.*

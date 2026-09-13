@@ -24,7 +24,10 @@
 
 const { computeGalacticSupply } = require('./supply.js');
 const { getRecipe } = require('./recipes.js');
-const { addStock } = require('./stock.js');
+const { addStock, getStock } = require('./stock.js');
+const { createAsset } = require('./state.js');
+const { assetId, nextAssetNumber } = require('./assets.js');
+const { assetBill, BUILD_TICKS } = require('./asset-recipes.js');
 const { guildHolds } = require('./claims.js');
 const { resolveProduction } = require('./production.js');
 const {
@@ -40,7 +43,7 @@ const {
   deuteriumMetGain, renegotiationSchedule, applyLapse, applyVentureClosure,
 } = require('./licence.js');
 const {
-  producedGoodFor, isLicensedDeuteriumMine, isDeuteriumMine, isIllegalDeuteriumRefinery,
+  producedGoodFor, isLicensedDeuteriumMine, isDeuteriumMine, isIllegalDeuteriumRefinery, isDockyard,
 } = require('./baseline.js');
 const {
   DEUTERIUM_INFLUX_PER_CYCLE, grantFor, physicalGrantFor, rationGrants,
@@ -177,6 +180,15 @@ function stepProduction(state, _actions, ctx) {
     // routed through resolveProduction/recipes: `deuterium_fuel` is not a stockpile good and the
     // conversion has no recipe.
     refineDeuterium(state, guild);
+
+    // THE DOCKYARD BUILD STEP (docs/build-yard.md §3/§7 slice 1, roadmap 2.1b) — the
+    // modules→asset seam. Run ONCE PER GUILD, HERE, right after refineDeuterium, mirroring it:
+    // both are guild-wide sub-steps of production that the per-system applyProduction /
+    // resolveProduction path deliberately does not touch. A dockyard consumes from its own
+    // system's stockpile (that draw IS per-system) but iterates the guild's dockyards in stable
+    // array order and emits into the guild's asset inventory, so a guild sub-step is the honest
+    // home — the same reasoning that puts refineDeuterium here rather than inside applyProduction.
+    buildDockyards(state, guild);
   }
   return state;
 }
@@ -214,6 +226,70 @@ function refineDeuterium(state, guild) {
     guild.deuteriumFuel = (guild.deuteriumFuel || 0) + converted;
     state.audit.totalProduced += converted;             // the honest mint (invariant 1)
     v.updatedAtTick = state.tick;
+  }
+}
+
+// buildDockyards(state, guild) — advance each of the guild's dockyards' commission queues by
+// one tick (docs/build-yard.md §3, the reserve-and-wait build). Mutates the guild (its ventures'
+// queues and its asset inventory) and state.audit in place; tick() already cloned state.
+//
+// DETERMINISM (invariant 9): the guild's dockyard ventures are iterated in stable array order,
+// one ACTIVE build per dockyard, acting on the HEAD of `buildQueue` only (single-slot, strict
+// FIFO, no skip-ahead). Two states with the same ventures build byte-identically.
+//
+// THE HEAD, and only the head, is one of two things each tick:
+//   (a) NOT STARTED (`remainingTicks === null`): if EVERY module in its bill is present in the
+//       dockyard's OWN system stockpile, consume the whole bill ATOMICALLY and set the countdown
+//       — otherwise the head waits, untouched (no partial consume, NO reservation, so the modules
+//       stay spendable and a build can be starved; intended, §6). Non-negativity (invariant 3)
+//       holds by construction: the consume happens only after the all-present check.
+//   (b) BUILDING (`remainingTicks > 0`): decrement by 1; at 0, EMIT one asset — idle at the
+//       dockyard's system, referenced by no venture — and shift the head off the queue.
+//
+// Start and count-down are SEPARATE ticks: the tick that consumes the bill sets `remainingTicks`
+// and does NOT also decrement, so emission lands exactly BUILD_TICKS ticks after the consume tick.
+function buildDockyards(state, guild) {
+  for (const venture of guild.ventures || []) {
+    if (!isDockyard(venture)) continue;
+    const queue = venture.buildQueue || [];
+    const head = queue[0];
+    if (!head) continue; // empty queue — nothing to advance
+
+    if (head.remainingTicks === null || head.remainingTicks === undefined) {
+      // (a) The head is waiting to START. Only begin if the WHOLE bill is present.
+      const bill = assetBill(head.assetKind);
+      if (!bill) continue; // a non-buildable kind never reaches here (commission refuses it)
+      const allPresent = Object.entries(bill)
+        .every(([module, qty]) => getStock(guild, venture.systemId, module) >= qty);
+      if (!allPresent) continue; // starved — leave the modules spendable, wait
+
+      // Consume the whole bill atomically from the dockyard's own system pool, then start.
+      for (const [module, qty] of Object.entries(bill)) {
+        addStock(guild, venture.systemId, module, -qty);
+      }
+      head.remainingTicks = BUILD_TICKS[head.assetKind];
+      venture.updatedAtTick = state.tick; // §15.2: this venture moved goods this tick
+    } else if (head.remainingTicks > 0) {
+      // (b) The head is building. Count down; emit at 0.
+      head.remainingTicks -= 1;
+      venture.updatedAtTick = state.tick;
+      if (head.remainingTicks === 0) {
+        // Continue the per-(guild, kind) id sequence above the founding range (§4). Deterministic
+        // and collision-free — assets are never deleted, so nextAssetNumber only grows.
+        const id = assetId(guild.id, head.assetKind, nextAssetNumber(guild, head.assetKind));
+        // MECHANICAL TRIPWIRE (rule 4): a minted id must never duplicate an existing asset. It
+        // cannot by construction (max + 1 is above every suffix), so this halts loudly only if
+        // the id scheme itself has been corrupted — better a crash than two machines sharing an id.
+        if (!Array.isArray(guild.assets)) guild.assets = [];
+        if (guild.assets.some((a) => a.id === id)) {
+          throw new Error(`buildDockyards: guild ${guild.id} minted duplicate asset id ${id} — id sequence corrupted`);
+        }
+        // Emit the finished asset IDLE at the dockyard's own system (§4): pushed into the guild's
+        // inventory, referenced by no venture (idle is derived, invariant 5).
+        guild.assets.push(createAsset({ id, kind: head.assetKind, systemId: venture.systemId }));
+        queue.shift();
+      }
+    }
   }
 }
 

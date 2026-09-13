@@ -8,7 +8,8 @@ const {
   isValidCommitmentPct, isValidWindowDays, licenceFee, commitmentUnitsFor, equityOf,
   signingBump, teardownSettlement, licenceEndTick, renegotiationFee, applyLapse, applyVentureClosure,
 } = require('./licence.js');
-const { producedGoodFor, baselineOutputFor, isLicensedDeuteriumMine } = require('./baseline.js');
+const { producedGoodFor, baselineOutputFor, isLicensedDeuteriumMine, isDockyard } = require('./baseline.js');
+const { BUILDABLE_ASSET_KINDS, MAX_QUEUE } = require('./asset-recipes.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { checkQuote, quotedPrice } = require('./price-ring.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
@@ -327,6 +328,47 @@ function createDecommissionVentureAction({ guildId, ventureId }) {
   if (guildId === undefined) throw new Error('createDecommissionVentureAction: guildId is required');
   if (ventureId === undefined) throw new Error('createDecommissionVentureAction: ventureId is required');
   return { type: 'decommissionVenture', guildId, ventureId };
+}
+
+// establishDockyard: seat a new TIER-4 BUILD YARD (docs/build-yard.md §2, roadmap 2.1b slice 1) —
+// a factory venture on a settlement slot in CONSTRUCT mode, turning modules into finished assets
+// via its commission queue. It mirrors `establishDeuteriumRefinery` for a factory — it NAMES the
+// idle factory asset it occupies (Gate 2) and a settlement slot the guild holds — but takes NO
+// `recipeId` AND NO `productionRate`: a dockyard does not produce continuously (the `createVenture`
+// default rate 0, which resolveProduction skips), it builds via its queue. No licence, no equity,
+// no RP this slice (GP/RP-neutral). Moves no credits or fuel. Shape is exactly
+// `{ guildId, ventureId, siteId, assetId }`.
+function createEstablishDockyardAction({ guildId, ventureId, siteId, assetId }) {
+  if (guildId === undefined) throw new Error('createEstablishDockyardAction: guildId is required');
+  if (ventureId === undefined) throw new Error('createEstablishDockyardAction: ventureId is required');
+  if (siteId === undefined) throw new Error('createEstablishDockyardAction: siteId is required');
+  if (assetId === undefined) throw new Error('createEstablishDockyardAction: assetId is required');
+  return { type: 'establishDockyard', guildId, ventureId, siteId, assetId };
+}
+
+// commissionBuild: append a build of `assetKind` to a dockyard's queue (docs/build-yard.md §3).
+// NO COST at commission — the modules are consumed only when the build actually starts (the
+// reserve-and-wait step, sim/tick.js). Validated: the venture is a dockyard the guild owns, the
+// kind is buildable, and the queue is not already full (MAX_QUEUE). Shape is exactly
+// `{ guildId, ventureId, assetKind }`.
+function createCommissionBuildAction({ guildId, ventureId, assetKind }) {
+  if (guildId === undefined) throw new Error('createCommissionBuildAction: guildId is required');
+  if (ventureId === undefined) throw new Error('createCommissionBuildAction: ventureId is required');
+  if (assetKind === undefined) throw new Error('createCommissionBuildAction: assetKind is required');
+  return { type: 'commissionBuild', guildId, ventureId, assetKind };
+}
+
+// cancelCommission: remove a commission that HAS NOT STARTED from a dockyard's queue
+// (docs/build-yard.md §3) — a pending one, or the head still waiting for parts. Addressed by the
+// stable `commissionId` stamped at commission time, NOT an array index (an index shifts when the
+// head is consumed off). A build that has STARTED (parts consumed, ticking) cannot be cancelled —
+// only tearing down the dockyard stops it. Nothing was consumed for an unstarted commission, so
+// nothing is refunded. Shape is exactly `{ guildId, ventureId, commissionId }`.
+function createCancelCommissionAction({ guildId, ventureId, commissionId }) {
+  if (guildId === undefined) throw new Error('createCancelCommissionAction: guildId is required');
+  if (ventureId === undefined) throw new Error('createCancelCommissionAction: ventureId is required');
+  if (commissionId === undefined) throw new Error('createCancelCommissionAction: commissionId is required');
+  return { type: 'cancelCommission', guildId, ventureId, commissionId };
 }
 
 // setWindowN: set the single engine-wide accrual window length `state.windowN`. The
@@ -1042,6 +1084,128 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'establishDockyard') {
+    // A Dockyard is a FACTORY venture on a settlement slot in construct mode (docs/build-yard.md
+    // §2). This mirrors establishDeuteriumRefinery's checks EXACTLY — same occupancy gates, same
+    // ordered Gate-2 refusals — minus the recipe (there is none) and minus the `productionRate`
+    // check (a dockyard builds via its queue, not a continuous rate). REFUSE, never clamp.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (typeof action.ventureId !== 'string' || action.ventureId.length === 0) {
+      return { valid: false, reason: 'ventureId must be a non-empty string' };
+    }
+    if (findVenture(state, action.ventureId)) {
+      return { valid: false, reason: `a venture with id ${JSON.stringify(action.ventureId)} already exists` };
+    }
+    if (typeof action.siteId !== 'string' || action.siteId.length === 0) {
+      return { valid: false, reason: 'siteId must be a non-empty string' };
+    }
+    const site = getSite(action.siteId);
+    if (!site) {
+      return { valid: false, reason: `site ${JSON.stringify(action.siteId)} does not exist in the seed` };
+    }
+    // A dockyard is a factory — it sits on a SETTLEMENT SLOT, exactly like a refining venture.
+    if (site.kind !== 'settlement') {
+      return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is a ${site.kind} site, not a settlement slot (a dockyard is a factory on a settlement slot)` };
+    }
+    const occupant = siteOccupant(state, action.siteId);
+    if (occupant) {
+      return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is already occupied by venture ${JSON.stringify(occupant.id)}` };
+    }
+    // THE NODE-LOCKOUT GATE (docs/venture-teardown.md §3.3), the same refusal every establish makes.
+    const lock = activeLockout(state, action.siteId);
+    if (lock) {
+      return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is locked after a venture teardown until tick ${lock.releaseTick} (state.tick is ${state.tick}) — the abandoned contract term must elapse before re-establishing (docs/venture-teardown.md §3.3)` };
+    }
+    // Deploy only into a system you hold (§4).
+    if (!guildHolds(state, action.guildId, site.systemId)) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} does not hold system ${JSON.stringify(site.systemId)} — a venture may only be deployed in a system you hold (§4)` };
+    }
+    // GATE 2 — the deploy NAMES the machine, an IDLE FACTORY in this guild's inventory
+    // (a dockyard is a factory venture, `assetKindForVentureType('refining')`). The same four
+    // ordered refusals establishVenture / establishDeuteriumRefinery use.
+    const kind = assetKindForVentureType('refining');
+    if (typeof action.assetId !== 'string' || action.assetId.length === 0) {
+      return { valid: false, reason: 'assetId must be a non-empty string' };
+    }
+    const asset = (guild.assets || []).find((a) => a.id === action.assetId);
+    if (!asset) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no asset ${JSON.stringify(action.assetId)}` };
+    }
+    const heldBy = deployedAssetIds(guild).get(action.assetId);
+    if (heldBy !== undefined) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is already deployed to venture ${JSON.stringify(heldBy)}` };
+    }
+    if (asset.kind !== kind) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is a ${asset.kind}; a dockyard needs a ${kind} (§4)` };
+    }
+    // DEPLOY IS SAME-SYSTEM (design.md §4, 12-09-26): the named idle factory must sit in the
+    // settlement slot's own system.
+    if (asset.systemId !== site.systemId) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} sits in system ${JSON.stringify(asset.systemId)} but site ${JSON.stringify(action.siteId)} is in system ${JSON.stringify(site.systemId)} — an asset deploys only within its own system (§4)` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'commissionBuild') {
+    // Append a build to a dockyard's queue (docs/build-yard.md §3). REFUSE, never clamp.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (typeof action.ventureId !== 'string' || action.ventureId.length === 0) {
+      return { valid: false, reason: 'ventureId must be a non-empty string' };
+    }
+    // Scan only THIS guild's ventures: commissioning is an act on a dockyard you own.
+    const venture = (guild.ventures || []).find((v) => v.id === action.ventureId);
+    if (!venture) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} has no venture with id ${JSON.stringify(action.ventureId)}` };
+    }
+    if (!isDockyard(venture)) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} is not a dockyard — only a dockyard can be commissioned to build (docs/build-yard.md §3)` };
+    }
+    if (!BUILDABLE_ASSET_KINDS.includes(action.assetKind)) {
+      return { valid: false, reason: `assetKind ${JSON.stringify(action.assetKind)} is not buildable — a dockyard builds one of ${JSON.stringify(BUILDABLE_ASSET_KINDS)} this slice (docs/build-yard.md §1)` };
+    }
+    // Single-slot queue capped at MAX_QUEUE — a commission over the cap is refused loudly (§3).
+    const queueLen = (venture.buildQueue || []).length;
+    if (queueLen >= MAX_QUEUE) {
+      return { valid: false, reason: `dockyard ${JSON.stringify(action.ventureId)}'s build queue is full (${queueLen}/${MAX_QUEUE}) — cancel or wait for a build before commissioning another (docs/build-yard.md §3)` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'cancelCommission') {
+    // Cancel an UNSTARTED commission (docs/build-yard.md §3). REFUSE, never clamp.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (typeof action.ventureId !== 'string' || action.ventureId.length === 0) {
+      return { valid: false, reason: 'ventureId must be a non-empty string' };
+    }
+    const venture = (guild.ventures || []).find((v) => v.id === action.ventureId);
+    if (!venture) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} has no venture with id ${JSON.stringify(action.ventureId)}` };
+    }
+    if (!isDockyard(venture)) {
+      return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} is not a dockyard (docs/build-yard.md §3)` };
+    }
+    // The entry must EXIST (addressed by its stable commissionId, not an index) …
+    const entry = (venture.buildQueue || []).find((e) => e.commissionId === action.commissionId);
+    if (!entry) {
+      return { valid: false, reason: `dockyard ${JSON.stringify(action.ventureId)} has no commission with id ${JSON.stringify(action.commissionId)}` };
+    }
+    // … and must NOT have started: a started build (parts consumed, ticking) is stopped only by
+    // tearing down the dockyard (§3). `remainingTicks === null` is "not yet started".
+    if (entry.remainingTicks !== null && entry.remainingTicks !== undefined) {
+      return { valid: false, reason: `commission ${JSON.stringify(action.commissionId)} on dockyard ${JSON.stringify(action.ventureId)} has already started (${entry.remainingTicks} ticks left) — a started build cannot be cancelled, only the dockyard's teardown stops it (docs/build-yard.md §3)` };
+    }
+    return { valid: true };
+  }
+
   if (action.type === 'decommissionVenture') {
     // Close a venture the guild owns (docs/venture-teardown.md §1), validated in intake
     // order: the guild exists; the venture exists AND belongs to this guild; and — this
@@ -1747,6 +1911,54 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'establishDockyard') {
+    // Seat a Tier-4 build yard (docs/build-yard.md §2). Mirrors establishDeuteriumRefinery for a
+    // factory — occupy the NAMED factory asset (Gate 2 proved it owned, idle, a factory), stamp
+    // the settlement slot's system — but marks the venture `dockyard` (not `deuteriumRefinery`),
+    // carries an empty `buildQueue`, and takes NO recipeId / NO resourceType / NO productionRate,
+    // so resolveProduction never touches it; the build step advances its queue. Moves no
+    // credits/fuel; no licence, equity, or RP (GP/RP-neutral this slice).
+    const guild = findGuild(next, action.guildId);
+    const site = getSite(action.siteId);
+    guild.ventures.push(createVenture({
+      id: action.ventureId,
+      ownerGuildId: action.guildId,
+      type: 'refining', // a factory venture — so assetKindForVentureType wants a factory
+      siteId: action.siteId,
+      systemId: site ? site.systemId : null,
+      assetId: action.assetId,
+      dockyard: true,
+      buildQueue: [],
+    }));
+    pruneLockout(next, action.siteId);
+    return next;
+  }
+
+  if (action.type === 'commissionBuild') {
+    // Append a build to the dockyard's queue (docs/build-yard.md §3). NO COST at commission —
+    // the bill is consumed only when the build starts (sim/tick.js). Each entry gets the venture's
+    // current `nextCommissionId`, which is then bumped: a per-venture monotonic, serialized id, so
+    // the commission is addressed by a stable id rather than a shifting array index. `remainingTicks`
+    // opens null ("not yet started").
+    const guild = findGuild(next, action.guildId);
+    const venture = guild.ventures.find((v) => v.id === action.ventureId);
+    const commissionId = venture.nextCommissionId || 0;
+    venture.buildQueue.push({ commissionId, assetKind: action.assetKind, remainingTicks: null });
+    venture.nextCommissionId = commissionId + 1;
+    return next;
+  }
+
+  if (action.type === 'cancelCommission') {
+    // Remove an UNSTARTED commission (validate proved it exists and has not started). Addressed
+    // by commissionId, not index. Nothing was consumed for an unstarted commission, so there is
+    // nothing to refund (docs/build-yard.md §3).
+    const guild = findGuild(next, action.guildId);
+    const venture = guild.ventures.find((v) => v.id === action.ventureId);
+    const idx = venture.buildQueue.findIndex((e) => e.commissionId === action.commissionId);
+    venture.buildQueue.splice(idx, 1);
+    return next;
+  }
+
   if (action.type === 'decommissionVenture') {
     // Close the venture (docs/venture-teardown.md §1), in the §1 order. Everything here reads
     // `teardownSettlement` — the SAME pure helper the snapshot previews with — so the cost the
@@ -2014,6 +2226,9 @@ module.exports = {
   createLicenseDeuteriumMineAction,
   createEstablishDeuteriumRefineryAction,
   createDecommissionVentureAction,
+  createEstablishDockyardAction,
+  createCommissionBuildAction,
+  createCancelCommissionAction,
   createSetWindowNAction,
   createSellToSyndicateAction,
   createBuyFromSyndicateAction,

@@ -426,6 +426,13 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 //     applied if strong), and a `feeDiscountApplied` flag — from the SAME `renegotiationFee` the
 //     `renegotiateLicence` apply locks (sim/licence.js), so the offer shown and the terms taken
 //     cannot disagree. null before the window elapses.
+//
+// (13-09-26, the build yard's Tier-4 build core — docs/build-yard.md §7 slice 1): two additive
+// per-venture fields, `dockyard` (bool, echoed off stored state like `deuteriumRefinery`) and
+// `buildQueue` (each entry { commissionId, assetKind, remainingTicks }, copied). ADDITIVE, NO
+// schema bump — nothing existing changed shape, and both are read straight off the venture, so no
+// state golden moves. Present on every venture row (`dockyard: false` / `buildQueue: []` for a
+// non-dockyard) so the later client slice can render a dockyard's queue.
 const SNAPSHOT_SCHEMA = 7;
 
 // contractWindowForVenture(state, venture) -> the venture's licence window in CYCLES, or null.
@@ -661,6 +668,8 @@ function computeAttention(state) {
 //                   committedFromTick: int | null,                            // 3b-ii
 //                   deuteriumLicence: { signedTick } | null,   // §1.4 licensed mine marker
 //                   deuteriumRefinery: bool,                   // §1.4 illegal refinery marker
+//                   dockyard: bool,                            // build-yard.md §2 Tier-4 marker
+//                   buildQueue: [ { commissionId, assetKind, remainingTicks } ], // §3 commission queue
 //                   recipeId, productionRate, syndicateCommitment,
 //                   teardownSettlement: { settlementFee, lockoutUntilTick, rpForfeit }, // §7
 //                   contractWindow: { endTick, endCycle, cyclesRemaining, expired } | null, // VM popup
@@ -1161,6 +1170,19 @@ function buildSnapshot(state) {
         // what has been done with it.
         deuteriumLicence: v.deuteriumLicence ? { ...v.deuteriumLicence } : null,
         deuteriumRefinery: !!v.deuteriumRefinery,
+        // The DOCKYARD marker + its commission queue (docs/build-yard.md §2/§3, roadmap 2.1b) —
+        // surfaced so the later client slice can render the queue. `dockyard` is true on a Tier-4
+        // build yard, false otherwise (echoed off stored state like `deuteriumRefinery`).
+        // `buildQueue` is each commission's { commissionId, assetKind, remainingTicks } in FIFO
+        // order (remainingTicks === null = waiting for parts, a positive integer = building);
+        // empty for a non-dockyard venture and a dockyard with nothing queued. Copied entry by
+        // entry so the snapshot can't alias into engine state.
+        dockyard: !!v.dockyard,
+        buildQueue: (v.buildQueue || []).map((e) => ({
+          commissionId: e.commissionId,
+          assetKind: e.assetKind,
+          remainingTicks: e.remainingTicks === undefined ? null : e.remainingTicks,
+        })),
         // committedFromTick: the venture's FIRST PRODUCING tick under its licence
         // (Slice 3b-ii) — the term that pro-rates its first window's obligation (§5's
         // join ruling). null for an unlicensed venture, and for one committed through
