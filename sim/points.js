@@ -50,7 +50,7 @@
 // the mean line and merely READS this.
 
 const { heldSystemIds } = require('./claims.js');
-const { producedGoodFor, isDeuteriumMine, isIllegalDeuteriumRefinery } = require('./baseline.js');
+const { producedGoodFor, isDeuteriumMine, isIllegalDeuteriumRefinery, isDockyard } = require('./baseline.js');
 const { isRawResource, isProcessedGood, isTier3Good } = require('./resources.js');
 
 // W_SYS — the Points a held system is worth.
@@ -72,8 +72,10 @@ const W_SYS = 200;
 // TIER_WEIGHT — the Points a venture is worth, by the TIER of the good it produces.
 //
 // A MAP, not named constants, because ruling 4 is that tier is general: a higher tier
-// scores more. `W_T3` (300) went LIVE in 2.1a (below); `W_T4` stays deferred as a GP
-// weight — no Tier-4 good exists, its only reader is the deuterium-licence RP path.
+// scores more. `W_T3` (300) went LIVE in 2.1a (below); `W_T4` (500) has its FIRST GP reader
+// as of 2.1b slice 2 — the DOCKYARD, special-COUNTed at Tier 4 in `guildPoints` (it produces
+// no good, so nothing tiers into T4; the reader counts it explicitly). The deuterium licence
+// remains its RP reader (sim/licence.js).
 //
 // A tier with NO entry here is a deliberate STOP, not a zero — see `tierWeight`.
 //
@@ -84,10 +86,14 @@ const W_SYS = 200;
 //
 // ⤳ W_T4 = 500 PULLED IN 04-09-26 (deuterium RP slice 2), points-and-reputation.md §2.6 /
 // fuel-supply-and-allocation.md §1.4. A licensed deuterium mine earns RP at the Tier-4 rate
-// (`tierFactor` = 5, `ventureTierWeight` = 500, sim/licence.js) — so the T4 weight now has a
-// real reader and belongs in the map. It changes NO GP: `tierOf('deuterium')` is 1, and a
-// licensed deuterium mine is already skipped in `guildPoints` (slice 1), so nothing reads a
-// tier-4 GP weight.
+// (`tierFactor` = 5, `ventureTierWeight` = 500, sim/licence.js) — so the T4 weight had its
+// first (RP) reader and belonged in the map. It changed NO GP: `tierOf('deuterium')` is 1, and a
+// licensed deuterium mine is skipped in `guildPoints`, so nothing read a tier-4 GP weight.
+//
+// ⤳ W_T4 GAINED ITS FIRST GP READER 2.1b slice 2 (docs/build-yard.md §5): the DOCKYARD is
+// special-COUNTed at Tier 4 in `guildPoints` below (`isDockyard` → `tierWeight(4, …)`). Unlike
+// the deuterium mine (skipped to 0 GP), a dockyard is real Tier-4 footprint and scores 500 GP.
+// No new number — it reuses this existing `TIER_WEIGHT[4]`; the count is the only change.
 //
 // ⤳ W_T3 = 300 PULLED IN 2.1a (docs/asset-recipes.md; docs/phase-1-tuning.md GP-weights row).
 // The 25 Tier-3 module goods are now real and producible, so `tierOf` resolves a module to 3
@@ -101,7 +107,7 @@ const TIER_WEIGHT = Object.freeze({
   1: 100,  // raw — a mine
   2: 150,  // processed — a refinery, half again the mine that feeds it
   3: 300,  // Tier-3 module — a factory manufacturing a module (2.1a; the ruled 3× the mine)
-  4: 500,  // the RP-only Tier-4 weight (deuterium licence); no GP reader — see note above
+  4: 500,  // Tier-4 — deuterium licence's RP rate, and (2.1b) the dockyard's GP count — see note above
 });
 
 // EVERY WEIGHT ABOVE IS AN INTEGER, and must stay one: GP is an integer (§15.2 / §1.0),
@@ -217,6 +223,15 @@ function guildPoints(state, guild) {
     // would return null and it would score 0 anyway; the explicit skip states the ruled
     // intent rather than leaning on that, and keeps it off the tier lookup entirely.)
     if (isDeuteriumMine(v) || isIllegalDeuteriumRefinery(v)) continue;
+    // THE DOCKYARD IS THE MIRROR OF THE DEUTERIUM SKIP (docs/build-yard.md §5, roadmap 2.1b
+    // slice 2). Where a deuterium mine is skipped to 0 GP, a Tier-4 build yard is explicitly
+    // COUNTED at Tier 4 — it is real footprint that raises the guild's bar. A dockyard produces
+    // no good (`producedGoodFor` returns null, so it would otherwise score 0 by the empty-venture
+    // default below), so the count must be explicit; keyed on `isDockyard` exactly as the skip is
+    // keyed on `isDeuteriumMine`. This is the FIRST GP reader of `TIER_WEIGHT[4]`; the deuterium
+    // licence remains its RP reader (sim/licence.js). Placed BEFORE `producedGoodFor` so the count
+    // does not depend on how a dockyard happens to tier — it has no produced good to tier at all.
+    if (isDockyard(v)) { points += tierWeight(4, { ventureId: v.id, guildId: guild.id, dockyard: true }); continue; }
     const good = producedGoodFor(v);
     if (!good) continue;
     points += tierWeight(tierOf(good), { good, ventureId: v.id, guildId: guild.id });

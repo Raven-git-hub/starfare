@@ -199,8 +199,10 @@ function isIllegalDeuteriumRefinery(venture) {
 // it entirely; its output (finished assets) is emitted by a dedicated guild-wide build step
 // (sim/tick.js `buildDockyards`). It is INDEPENDENT of `isIllegalDeuteriumRefinery`, which keys
 // off `deuteriumRefinery`: a venture is at most one of the two, and neither marker implies the
-// other. GP/RP-NEUTRAL this slice (a dockyard scores 0 GP by the recipe-less default, no RP);
-// the §5 special-COUNT for GP and the held Tier-4 RP bump are slice 2, so nothing here reads it yet.
+// other. Since 2.1b slice 2 the dockyard is a FULL Tier-4 venture in the mean-line economy: GP
+// special-COUNTs it at Tier 4 (`isDockyard` → `TIER_WEIGHT[4]` = 500, sim/points.js) and it takes
+// a held Tier-4 RP signing bump on establish (`signingBump` special-cased on `isDockyard`, 900,
+// sim/licence.js). This predicate is the single keyed question both readers ask (docs/build-yard.md §5).
 function isDockyard(venture) {
   return !!(venture && venture.dockyard);
 }

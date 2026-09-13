@@ -1917,7 +1917,8 @@ function applyAction(state, action) {
     // the settlement slot's system — but marks the venture `dockyard` (not `deuteriumRefinery`),
     // carries an empty `buildQueue`, and takes NO recipeId / NO resourceType / NO productionRate,
     // so resolveProduction never touches it; the build step advances its queue. Moves no
-    // credits/fuel; no licence, equity, or RP (GP/RP-neutral this slice).
+    // credits/fuel; no licence, no equity, no per-cycle RP. It DOES take a one-time RP bump — the
+    // held Tier-4 signing bump (§5, slice 2), applied below.
     const guild = findGuild(next, action.guildId);
     const site = getSite(action.siteId);
     guild.ventures.push(createVenture({
@@ -1930,6 +1931,24 @@ function applyAction(state, action) {
       dockyard: true,
       buildQueue: [],
     }));
+
+    // THE HELD TIER-4 RP SIGNING BUMP (docs/build-yard.md §5, slice 2): 900 RP, minted ONCE at
+    // establish — establishing the dockyard IS the grant (there is no separate licence step, so
+    // unlike an ordinary venture the bump fires here, not at `applyForLicence`). The exact mirror
+    // of the `licenseDeuteriumMine` bump above: `signingBump` owns the amount (§4 — the licence
+    // layer authors how RP moves; it special-cases `isDockyard` to a flat 900), and this only
+    // applies the move — onto `venture.reputation` with `guild.guildReputation` tracking it by the
+    // SAME amount in the SAME place, so `checkGuildReputationSum` stays exact with no new term.
+    // Held while the dockyard stands; forfeited on teardown (`applyVentureClosure` subtracts
+    // `venture.reputation`), so it is not farmable. Written through the same `|| 0` / non-zero
+    // guard as the other bumps for one consistent RP-minting shape (900 > 0, so it always mints).
+    const venture = guild.ventures.find((v) => v.id === action.ventureId);
+    const bump = signingBump(venture);
+    if (bump !== 0) {
+      venture.reputation = (venture.reputation || 0) + bump;
+      guild.guildReputation += bump;
+    }
+
     pruneLockout(next, action.siteId);
     return next;
   }

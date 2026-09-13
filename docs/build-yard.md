@@ -69,22 +69,26 @@ The dockyard interacts with the mean-line economy as the **Tier-4 counterpart of
 mine**, but not identically — the deuterium mine's 0-GP is its *unique* advantage:
 
 - **GP: a Tier-4 gain (a size increase).** Unlike the deuterium mine (which is *skipped* -> 0 GP),
-  a dockyard is a **special-COUNT**: `guildPoints` counts it at **Tier 4** (the existing
-  `TIER_WEIGHT[4]`, `[FIRST-CUT]`), the mirror of the deuterium special-skip and keyed the same way
+  a dockyard is a **special-COUNT**: `guildPoints` counts it at **Tier 4** — `TIER_WEIGHT[4]` =
+  **500** (`[FIRST-CUT]`; the existing constant, reused, no new number — authority in
+  `docs/phase-1-tuning.md`), the mirror of the deuterium special-skip and keyed the same way
   (`isDockyard(v)`). A dockyard produces no *good*, so without this it would score 0 by default; the
   explicit count states the ruled intent. It reflects real footprint and **raises the guild's bar**.
 - **RP: a held Tier-4 bump.** On establish the dockyard venture is granted a **Tier-4 RP signing
-  bump** (`[FIRST-CUT]`, **below** the deuterium mine's 1000), reusing the deuterium bump machinery
-  (`signingBump`/`ventureTierWeight` special-cased on `isDockyard`), landing on `venture.reputation`
+  bump of 900** (`DOCKYARD_SIGNING_BUMP`, `[FIRST-CUT]`, **below** the deuterium mine's 1000 —
+  authority in `docs/phase-1-tuning.md`), through the deuterium bump machinery
+  (`signingBump` special-cased on `isDockyard`, a flat magnitude — a dockyard commits nothing and
+  carries no windowed licence, so it is not `2·commit·W_T4`), landing on `venture.reputation`
   / `guildReputation` so `checkGuildReputationSum` + `checkReputationBand` cover it. **Held while it
   stands, removed on teardown** (like all venture RP) -> **not farmable** (you can't establish/tear
   down to bank it). **NO per-cycle accrual** — per-cycle is the deuterium mine's reward for *ongoing
   contribution*; a dockyard doesn't contribute per cycle, it *exists*, so its reputation is a fixed
   standing value that offsets its standing GP.
 - **The tuning invariant (not a lone number):** the GP weight and the RP bump are set **together**
-  so the net benefit orders **deuterium mine (0 GP + big RP) > dockyard (Tier-4 GP + Tier-4 RP,
-  net-positive) > a Tier-1/2/3 production venture**. Recorded as the relation the `[FIRST-CUT]`
-  numbers must satisfy, so none is invented in isolation.
+  so the net benefit (`bump − GP`, since `MEANLINE_K` = 1) orders **deuterium mine (0 GP + 1000 RP
+  → +1000) > dockyard (+500 GP + 900 RP → +400) > a Tier-1/2/3 production venture (tier-3 at 100 %
+  commit → +300)**. Recorded as the relation the `[FIRST-CUT]` numbers must satisfy — with its
+  numbers in `docs/phase-1-tuning.md` — so none is invented in isolation.
 - **No double-count:** this rewards the dockyard's *existence* (holding Tier-4 capability). The
   miners/factories it builds earn their **own** RP (once deployed + licensed) and GP (footprint) —
   a separate channel.
@@ -113,9 +117,12 @@ mine**, but not identically — the deuterium mine's 0-GP is its *unique* advant
    `commissionBuild` / `cancelCommission`; the reserve-and-wait build step; emit miner/factory
    idle-at-system; teardown drops the queue. Dockyard is **GP/RP-neutral in this slice** (0/0 by the
    recipe-less default) — no points change yet.
-2. **Points — the Tier-4 GP/RP treatment (§5).** `isDockyard` special-COUNT for GP; the held Tier-4
-   RP bump; the net-benefit ordering tuned in `phase-1-tuning.md`. Its own slice because it touches a
-   different module (`points.js`/`licence.js`/mean line) and carries the tuning invariant.
+2. **Points — the Tier-4 GP/RP treatment (§5).** ✅ **BUILT 13-09-26.** `isDockyard` special-COUNT for
+   GP (`sim/points.js`, +500 = `TIER_WEIGHT[4]`); the held Tier-4 RP bump (`sim/licence.js`
+   `signingBump` = 900, applied in `sim/actions.js` `establishDockyard`); the net-benefit ordering
+   tuned in `phase-1-tuning.md` and pinned in `sim/tests/dockyard-points.test.js`. Its own slice
+   because it touches a different module (`points.js`/`licence.js`/mean line) and carries the tuning
+   invariant. Engine only — no client.
 3. **Client — the commission menu + queue** in the OPERATIONS hub (a later client slice).
 
 Then, out of this arc: Syndicate-commission for credits (2.1d), the open market (2.1e), and the

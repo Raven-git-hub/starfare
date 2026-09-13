@@ -434,25 +434,36 @@ test('teardown of a dockyard mid-build: queue gone, factory freed to idle, modul
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════════════
-// 5. GP/RP-NEUTRAL, NO-OP, DETERMINISM
+// 5. GP: THE TIER-4 SPECIAL-COUNT, NO PER-CYCLE RP, NO-OP, DETERMINISM
 // ════════════════════════════════════════════════════════════════════════════════════════════
+//
+// ⤳ SLICE 2 (docs/build-yard.md §5) turned the two GP/RP-neutral tests below live: a dockyard is
+// no longer neutral. It is a Tier-4 GP special-COUNT (+500) and takes a held +900 RP signing bump
+// at establish. The full delta proof — the exact +500 GP / +900 RP, the net-benefit ordering, and
+// the not-farmable teardown — lives in dockyard-points.test.js; here we pin only that this file's
+// slice-1 core still holds under the new treatment. What survives unchanged: commissioning a build
+// moves no further GP (GP is the venture's existence, not its queue), and a dockyard accrues NO
+// per-cycle RP across a build run (the bump is one-time at establish, never per tick).
 
-test('GP-neutral: establishing a dockyard and commissioning builds changes guildPoints by 0', () => {
+test('GP: establishing a dockyard adds exactly TIER_WEIGHT[4] (500); commissioning adds none', () => {
   const founded = playerFounded();
   const gp0 = guildPoints(founded, founded.guilds[0]);
   const seated = applyAction(founded, dockyardAction());
-  assert.equal(guildPoints(seated, seated.guilds[0]), gp0, 'a dockyard scores 0 GP by the recipe-less default');
+  assert.equal(guildPoints(seated, seated.guilds[0]), gp0 + 500, 'a dockyard is special-COUNTed at Tier 4 (+500 GP)');
   const commissioned = applyAction(seated, createCommissionBuildAction({ guildId: 'player-guild', ventureId: 'yard1', assetKind: 'miner' }));
-  assert.equal(guildPoints(commissioned, commissioned.guilds[0]), gp0, 'commissioning changes no GP');
+  assert.equal(guildPoints(commissioned, commissioned.guilds[0]), gp0 + 500, 'commissioning changes no further GP — GP rewards existence, not the queue');
 });
 
-test('RP-neutral: a dockyard never mints an RP key over a multi-tick build run', () => {
+test('no per-cycle RP: a dockyard never mints an RP key over a multi-tick build run', () => {
+  // `dockState` seats the dockyard DIRECTLY (no establish action), so the one-time bump is never
+  // applied — this isolates the per-cycle question: does ticking a build alone move any RP? It must
+  // not (the bump is at establish; there is no per-cycle accrual, unlike the deuterium mine).
   const bill = assetBill('miner');
   const s = dockState({ stock: bill, assets: starterMiners() });
   let cur = s;
   for (let i = 0; i < 20; i += 1) cur = tick(cur);
-  assert.equal(cur.guilds[0].ventures[0].reputation, undefined, 'no RP key minted');
-  assert.equal(cur.guilds[0].guildReputation, 0, 'the guild RP total stays zero');
+  assert.equal(cur.guilds[0].ventures[0].reputation, undefined, 'no per-cycle RP key minted');
+  assert.equal(cur.guilds[0].guildReputation, 0, 'the guild RP total stays at its seated value (0 here)');
 });
 
 test('no-op: a non-dockyard venture carries no dockyard/buildQueue/nextCommissionId keys', () => {
