@@ -63,6 +63,9 @@
 //                           the establish-refinery picker)
 //   GET  /goods          -> the good vocabulary by tier (raw, processed); static
 //                           rules, buckets the galactic-supply display
+//   GET  /asset-recipes  -> the Tier-4 asset-bill catalog (bills + build ticks + queue
+//                           cap + buildable kinds) from sim/asset-recipes.js; RULES, not
+//                           state (like /recipes), read by the Tier-4 Production tab
 //   POST /tick           -> advance one tick (no actions); returns the new snapshot
 //   POST /autotick/start -> { intervalMs }: start/replace the heartbeat; returns status
 //   POST /autotick/stop  -> stop the heartbeat (idempotent); returns status
@@ -85,6 +88,7 @@ const { saveState, appendJournal, clearJournal, loadOrInit, saveSeed, loadSeed, 
 const { buildSnapshot } = require('./snapshot.js');
 const { getStarterSystems, getSystemLayout, setSeed, getSeedNumber } = require('./seed.js');
 const { listRecipes } = require('./recipes.js');
+const { ASSET_BILLS, BUILD_TICKS, MAX_QUEUE, BUILDABLE_ASSET_KINDS } = require('./asset-recipes.js');
 const { RAW_RESOURCES, PROCESSED_GOODS, TIER3_GOODS } = require('./resources.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
 // The calendar's two creation-seam helpers. `anchorForCreation` is pure arithmetic;
@@ -577,6 +581,16 @@ async function handleRequest(req, res) {
   // the UI renders it as an empty placeholder.
   if (method === 'GET' && path === '/goods') {
     sendJson(res, 200, { raw: RAW_RESOURCES, processed: PROCESSED_GOODS, tier3: TIER3_GOODS });
+    return;
+  }
+
+  // The Tier-4 ASSET-BILL catalog — RULES, not state (sim/asset-recipes.js is the one
+  // source of truth, like /recipes for the refining catalog). Static and read-only, so
+  // the client fetches it once; the Tier-4 Production tab (build-yard.md §7 slice B) reads
+  // the bills + BUILD_TICKS to render each dockyard's queue and the module shortfall.
+  // Changing a bill means editing asset-recipes.js + restarting, never a live mutation.
+  if (method === 'GET' && path === '/asset-recipes') {
+    sendJson(res, 200, { bills: ASSET_BILLS, buildTicks: BUILD_TICKS, maxQueue: MAX_QUEUE, buildable: BUILDABLE_ASSET_KINDS });
     return;
   }
 
