@@ -145,9 +145,17 @@ mine**, but not identically — the deuterium mine's 0-GP is its *unique* advant
    renders the snapshot + the static `GET /asset-recipes` catalog and computes no game number (§5).
    - **B1 (built):** the read-only render above. The "+ Add commission" button and the per-entry
      cancels RENDER (per the mockup) but are **inert** — no action posted.
-   - **B2 (next):** the Add-commission popup (`docs/mockups/dockyard-commission.html`, fires
-     `commissionBuild`, greys at `MAX_QUEUE`) and cancel on **unstarted** entries
-     (`cancelCommission` by `commissionId`; a started build is stopped only by teardown).
+   - **B2 (built 14-09-26, the LAST slice — dockyard now end-to-end):** the tab goes LIVE. The Add
+     button opens the Add-commission **est-card overlay** (`docs/mockups/dockyard-commission.html`) —
+     a build-type dropdown (`STATE.assetRecipes.buildable`) drives the hero art, the requirement
+     panel (days = `buildTicks / 1,440`, module count, readiness) and the module bill (the catalog
+     vs `dockStock`) — whose Commission button fires `commissionBuild { guildId, ventureId, assetKind }`
+     (no cost; parts are consumed at build START). It **greys at `MAX_QUEUE`** (the popup only opens
+     with room). Each **unstarted** entry's cancel fires `cancelCommission` by its stable
+     `commissionId`; a **started** build's cancel stays locked (teardown only). The client fires only
+     the actions — every check (queue cap, buildability, exists-and-unstarted) is the engine's, and
+     its refusal is surfaced, never pre-guessed (§5). Client only (`client/console.html`); no `sim/`
+     change. **The dockyard is now end-to-end: establish → commission → build → deploy.**
    **Venture Management (the dockyard's slot click) stays stats + teardown ONLY** — its teardown
    confirm warns that teardown drops the queue, the in-progress build, and the consumed modules —
    and carries **no** queue controls; commissioning / cancelling live only in the Tier 4 tab.
