@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Starfare — Commission a Build (dockyard mockup)</title>
+<!--
+  Add-Commission popup — the est-card a player uses to queue a Tier-4 build at a dockyard.
+  Matches docs/mockups/deuterium-establish.html frame-for-frame: the 980px two-column est
+  shell with the hero side-panel. LEFT column = a BUILD-TYPE dropdown + a fixed Requirement
+  panel + the module bill; RIGHT column = the hero art for the SELECTED recipe (miner and
+  factory share client/assets/industrial/factoryConstruction.jpg; other assets use their own
+  unit art later) with the Commission button pinned at the bottom.
+  GROUNDING: docs/build-yard.md §3; the fired action is commissionBuild {ventureId, assetKind}
+  (BUILT). No cost at commission — modules are consumed at build START (reserve-and-wait). This
+  file only renders the UI; the dropdown swaps the art / bill / labels so both types can be seen.
+-->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+:root{
+  --void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
+  --line:rgba(232,223,200,0.10); --line2:rgba(232,223,200,0.20);
+  --amber:#C9A227; --amber-dim:#7A6420; --amber-ghost:rgba(201,162,39,0.10);
+  --ink:#E8DFC8; --ink2:#8B8F9C; --ink3:#565B68;
+  --green:#4E9A87; --red:#C2603A;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;
+  --serif:'Cinzel',serif;
+}
+*{box-sizing:border-box; margin:0; padding:0}
+body{background:radial-gradient(1200px 700px at 50% -10%, #10131a, #06070a 70%); min-height:100vh;
+  display:flex; align-items:flex-start; justify-content:center; padding:40px 20px;
+  font-family:var(--sans); font-size:14px; line-height:1.45; color:var(--ink)}
+.est{width:100%; max-width:980px; background:linear-gradient(180deg,#12151C,#0F1218); border:1px solid var(--line2); border-radius:14px; box-shadow:0 30px 90px rgba(0,0,0,.6); overflow:hidden; position:relative}
+.est-head{display:flex; align-items:flex-start; gap:16px; padding:18px 22px 16px; border-bottom:1px solid var(--line); background:radial-gradient(700px 200px at 85% -40%, rgba(201,162,39,.06), transparent 70%)}
+.est-head .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
+.est-head h2{font-family:var(--serif); font-weight:600; font-size:22px; margin:5px 0 3px; letter-spacing:.02em}
+.est-head .site{font-family:var(--mono); font-size:11.5px; color:var(--ink2); letter-spacing:.02em}
+.est-head .site .sep{color:var(--ink3); margin:0 7px}
+.est-head .amber{color:var(--amber)}
+.est-close{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--ink2); border-radius:8px; width:34px; height:34px; font-size:16px; cursor:pointer; flex:none}
+.est-close:hover{border-color:var(--red); color:var(--red)}
+.est-body{display:grid; grid-template-columns:1fr 340px; gap:0}
+.est-main{padding:22px 22px 24px; border-right:1px solid var(--line)}
+.blk{margin-bottom:22px}
+.blk:last-child{margin-bottom:0}
+.sec-head{display:flex; align-items:center; gap:9px; margin-bottom:11px}
+.sec-head .t{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2)}
+.help{width:18px; height:18px; border-radius:50%; border:1px solid var(--amber-dim); background:none; color:var(--amber); font-family:var(--mono); font-size:10px; line-height:1; cursor:pointer; padding:0}
+.help:hover{background:var(--amber); color:var(--void); border-color:var(--amber)}
+select.est-select{font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--void); border:1px solid var(--line2); border-radius:8px; padding:11px 34px 11px 12px; cursor:pointer; width:100%; appearance:none; text-overflow:ellipsis;
+  background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);
+  background-position:calc(100% - 18px) 52%, calc(100% - 13px) 52%; background-size:5px 5px,5px 5px; background-repeat:no-repeat}
+select.est-select:focus{outline:none; border-color:var(--amber)}
+.est-side{position:relative; background:#0d0f14; display:flex; flex-direction:column; min-height:100%}
+.est-side .art{position:absolute; inset:0; background-size:cover; background-position:50% 30%; z-index:0}
+.est-side .scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(10,11,15,.62) 0%, rgba(10,11,15,.80) 42%, rgba(10,11,15,.94) 100%); z-index:1}
+.est-side .inner{position:relative; z-index:2; padding:20px 20px 22px; display:flex; flex-direction:column; flex:1}
+.est-side .stitle{font-family:var(--mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber); margin-bottom:14px}
+.deploy{width:100%; margin-top:auto; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer}
+.deploy:hover{background:#DCB43A}
+.deploy-hint{font-family:var(--mono); font-size:10px; color:var(--ink3); text-align:center; margin-top:8px; letter-spacing:.04em; min-height:13px}
+/* Requirement panel (the deuterium 'Terms' analogue) */
+.terms{border:1px solid var(--line); border-radius:10px; background:var(--panel); overflow:hidden}
+.commit{display:flex; align-items:baseline; gap:12px; padding:15px 15px 6px}
+.commit .big{font-family:var(--serif); font-size:31px; font-weight:600; color:var(--amber); line-height:1}
+.commit .cl{font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink2)}
+.trow{display:flex; justify-content:space-between; align-items:baseline; padding:11px 15px; border-top:1px solid var(--line); font-family:var(--mono); font-size:12px}
+.trow .k{color:var(--ink2); letter-spacing:.04em}
+.trow .v{color:var(--ink); font-weight:500}
+.trow .v.g{color:var(--green)} .trow .v.a{color:var(--amber)}
+/* module bill list */
+.bill{border:1px solid var(--line); border-radius:10px; background:var(--panel); overflow:hidden; max-height:210px; overflow-y:auto}
+.brow{display:flex; align-items:center; gap:10px; padding:8px 13px; border-top:1px solid var(--line); font-family:var(--mono); font-size:11.5px}
+.brow:first-child{border-top:none}
+.brow .bn{flex:1 1 auto; color:var(--ink2); text-transform:capitalize; letter-spacing:.02em}
+.bbar{position:relative; width:70px; height:6px; border-radius:4px; background:var(--void); border:1px solid var(--line); overflow:hidden; flex:none}
+.bfill{position:absolute; left:0; top:0; bottom:0; border-radius:3px; background:var(--amber-dim)}
+.bfill.ok{background:var(--green)}
+.brow .bq{color:var(--ink); font-variant-numeric:tabular-nums; width:44px; text-align:right; flex:none}
+.brow .bi{width:14px; text-align:center; flex:none}
+.brow .bi.ok{color:var(--green)} .brow .bi.no{color:var(--amber)}
+</style>
+</head>
+<body>
+<div class="est">
+  <div class="est-head">
+    <div>
+      <div class="eyebrow">Dockyard · Tier-4 Construction</div>
+      <h2>Commission a Build</h2>
+      <div class="site">
+        <span>FEN-6425 II</span><span class="sep">·</span>
+        <span class="amber">Slot 1</span><span class="sep">·</span>
+        <span>Build queue 3 / 5</span>
+      </div>
+    </div>
+    <button class="est-close" title="Close (Esc)">&#10005;</button>
+  </div>
+  <div class="est-body">
+    <div class="est-main">
+      <div class="blk">
+        <div class="sec-head"><span class="t">Build type</span><button class="help" type="button">?</button></div>
+        <select class="est-select" id="kindSel" onchange="onKind()">
+          <option value="miner">Miner &nbsp;·&nbsp; 3 days</option>
+          <option value="factory">Factory &nbsp;·&nbsp; 5 days</option>
+        </select>
+      </div>
+      <div class="blk">
+        <div class="sec-head"><span class="t">Requirement</span></div>
+        <div class="terms">
+          <div class="commit"><span class="big" id="bigDays">3</span><span class="cl">Days to construct · <span id="modCount">9</span> modules</span></div>
+          <div class="trow"><span class="k">Cost</span><span class="v g">Parts only — no credits</span></div>
+          <div class="trow"><span class="k">Parts on hand</span><span class="v" id="onhand">9 / 9</span></div>
+          <div class="trow"><span class="k">Status</span><span class="v" id="statusV">Ready to build</span></div>
+        </div>
+      </div>
+      <div class="blk">
+        <div class="sec-head"><span class="t">Module bill</span><button class="help" type="button">?</button></div>
+        <div class="bill" id="bill"></div>
+      </div>
+    </div>
+    <div class="est-side">
+      <div class="art" id="art" style="background-image:url('../../client/assets/industrial/factoryConstruction.jpg')"></div>
+      <div class="scrim"></div>
+      <div class="inner">
+        <div class="stitle" id="stitle">Tier-4 Construction · Miner</div>
+        <button class="deploy" id="go" onclick="commit()">Commission miner</button>
+        <div class="deploy-hint" id="hint">No cost now — modules are consumed when the build starts.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var FACTORY_BILL=[['chassis',3],['reactor_housing',1],['photovoltaic_array',2],['power_cells',2],['control_module',1],['fabrication_line',2],['sensor_suite',1],['cargo_handling_system',1],['defence_system',1]];
+var MINER_BILL=[['chassis',2],['reactor_housing',1],['photovoltaic_array',1],['power_cells',1],['control_module',1],['extraction_head',1],['cargo_module',1],['cargo_handling_system',1],['defence_system',1]];
+var ONHAND={chassis:3,reactor_housing:1,photovoltaic_array:2,power_cells:1,control_module:1,fabrication_line:0,sensor_suite:1,cargo_handling_system:1,defence_system:1,extraction_head:1,cargo_module:1};
+var KINDS={miner:{label:'Miner',days:3,bill:MINER_BILL},factory:{label:'Factory',days:5,bill:FACTORY_BILL}};
+// miner + factory share this art; other assets would map to their own unit art here.
+var ART={miner:'../../client/assets/industrial/factoryConstruction.jpg',factory:'../../client/assets/industrial/factoryConstruction.jpg'};
+function fmtName(n){return n.replace(/_/g,' ');}
+
+function onKind(){
+  var k=KINDS[document.getElementById('kindSel').value];
+  document.getElementById('bigDays').textContent=k.days;
+  document.getElementById('modCount').textContent=k.bill.length;
+  document.getElementById('stitle').textContent='Tier-4 Construction · '+k.label;
+  document.getElementById('go').textContent='Commission '+k.label.toLowerCase();
+  document.getElementById('art').style.backgroundImage="url('"+ART[document.getElementById('kindSel').value]+"')";
+  var met=0, bl=document.getElementById('bill'); bl.innerHTML='';
+  k.bill.forEach(function(p){
+    var need=p[1], have=Math.min(ONHAND[p[0]]||0,need), ok=have>=need; if(ok)met++;
+    var row=document.createElement('div'); row.className='brow';
+    row.innerHTML='<span class="bn">'+fmtName(p[0])+'</span>'+
+      '<span class="bbar"><span class="bfill'+(ok?' ok':'')+'" style="width:'+Math.round(100*have/need)+'%"></span></span>'+
+      '<span class="bq">'+have+' / '+need+'</span><span class="bi '+(ok?'ok':'no')+'">'+(ok?'✓':'○')+'</span>';
+    bl.appendChild(row);
+  });
+  var short=k.bill.length-met;
+  document.getElementById('onhand').textContent=met+' / '+k.bill.length;
+  var sv=document.getElementById('statusV');
+  if(short===0){ sv.textContent='Ready to build'; sv.className='v g'; }
+  else{ sv.textContent='Short '+short+' module'+(short>1?'s':'')+' — will wait'; sv.className='v a'; }
+}
+function commit(){ /* static mockup — the shipped client fires commissionBuild {ventureId, assetKind}. */ }
+onKind();
+</script>
+</body>
+</html>

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Starfare — Tier 4 Production tab (dockyard mockup)</title>
+<!--
+  The Tier 4 Production tab — a per-system tab in the System Manifest, sibling to the
+  Production Console (docs/build-yard.md §7 slice "Client — the Tier 4 Production tab").
+  Human-approved 14-09-26. Four panels:
+    - QUEUE (left): the selected dockyard's single-slot FIFO commission queue. Current build
+      at top; queued below; each UNSTARTED entry has a live cancel (a started build's cancel
+      is LOCKED — a started build stops only by tearing the yard down, in Venture Management).
+      "+ Add commission" opens the est-card in docs/mockups/dockyard-commission.html
+      (fires commissionBuild); greys at MAX_QUEUE (5).
+    - CENTRE: a Dockyard DROPDOWN over the build-progress card. The dropdown lists the guild's
+      dockyards IN THIS SYSTEM, each labelled by its venture name (the site-derived
+      `ventureName`, e.g. "FEN-6425 II · Slot 1"). The donut fills as the build progresses
+      (elapsed / BUILD_TICKS) with a time-remaining readout; "PENDING" when the head waits on
+      parts; "IDLE" when there is no commission. Below it the parts tracker: green when met,
+      amber ○ when short (from stockpilesBySystem vs the bill). Every panel holds the SAME size
+      across states; the parts list scrolls if a bill outgrows it.
+    - BUILDING art: the construction art for the current job — miner + factory share
+      factoryConstruction.jpg; other assets use their own unit art. Dims when idle.
+    - DOCKYARD art: buildyard.jpg with the OPERATIONS-hero title treatment.
+  GROUNDING: snapshot carries dockyard + buildQueue[{commissionId,assetKind,remainingTicks}] +
+  stockpilesBySystem. Slice B must ALSO surface the dockyard venture's site name on the venture
+  block so the dropdown can label it. The UI renders the snapshot and computes no game number.
+  Static render: the four dockyards + the dropdown are sample data to show every state.
+-->
+<style>
+  :root{
+    --void:#0d0f14; --panel:#14171e; --panel2:#181c24; --panel3:#1c212b;
+    --line:rgba(232,223,200,.10); --line2:rgba(232,223,200,.18);
+    --ink:#E8DFC8; --ink2:#b8b09c; --ink3:#8a8474; --ink4:#5a5648;
+    --amber:#C9A227; --amber2:#E4C24A; --amber-dim:rgba(201,162,39,.55);
+    --up:#5FB98A; --red:#C56;
+    --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,monospace;
+    --serif:'IBM Plex Serif',Georgia,serif;
+    --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:#07080b;color:var(--ink);font-family:var(--sans);}
+  .wrap{max-width:1320px;margin:0 auto;padding:18px 16px 40px;}
+  .ctx{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px;color:var(--ink3);font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;}
+  .ctx .sys{color:var(--ink);}
+  .tabbar{display:flex;gap:2px;margin:12px 0 16px;border-bottom:1px solid var(--line);}
+  .tabbar button{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);background:none;border:none;padding:9px 15px;cursor:pointer;border-bottom:2px solid transparent;}
+  .tabbar button.on{color:var(--amber2);border-bottom-color:var(--amber);}
+  .body{display:grid;grid-template-columns:210px minmax(0,1fr) 170px 250px;gap:14px;height:500px;align-items:stretch;}
+  @media(max-width:1000px){.body{grid-template-columns:1fr 1fr;height:auto;}}
+  @media(max-width:640px){.body{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden;height:100%;}
+  .card-h{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-bottom:1px solid var(--line);flex:0 0 auto;}
+  .card-h .t{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink2);font-weight:600;}
+  .card-h .n{font-family:var(--mono);font-size:10px;color:var(--ink3);font-variant-numeric:tabular-nums;}
+  .centrecol{display:flex;flex-direction:column;gap:12px;min-height:0;height:100%;}
+  .yardsel{flex:0 0 auto;position:relative;}
+  .yardsel select{width:100%;appearance:none;-webkit-appearance:none;background:var(--panel2);color:var(--ink);border:1px solid var(--line2);border-radius:9px;font-family:var(--serif);font-size:16px;letter-spacing:.02em;padding:12px 40px 12px 15px;cursor:pointer;}
+  .yardsel select:focus{outline:none;border-color:var(--amber-dim);}
+  .yardsel .car{position:absolute;right:15px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--ink3);font-size:11px;}
+  .yardsel .lbl{position:absolute;left:15px;top:-7px;background:#07080b;padding:0 6px;font-family:var(--mono);font-size:8px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink4);}
+  .queue{padding:10px;flex:1 1 auto;overflow-y:auto;display:flex;flex-direction:column;gap:8px;min-height:0;}
+  .qitem{border:1px solid var(--line);border-radius:7px;background:var(--panel2);padding:10px 11px;display:flex;align-items:center;gap:9px;flex:0 0 auto;}
+  .qitem.cur{border-color:var(--amber-dim);background:rgba(201,162,39,.06);}
+  .qitem .kind{font-family:var(--serif);font-size:14px;color:var(--ink);flex:1 1 auto;}
+  .qitem .sub{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3);margin-top:2px;}
+  .qitem.cur .sub{color:var(--amber2);}
+  .qitem .pos{font-family:var(--mono);font-size:10px;color:var(--ink4);width:16px;text-align:center;flex:0 0 auto;}
+  .x{width:22px;height:22px;border-radius:5px;border:1px solid var(--line2);background:none;color:var(--ink3);cursor:pointer;font-size:13px;line-height:1;flex:0 0 auto;}
+  .x:hover{color:var(--red);border-color:var(--red);}
+  .x.lock{opacity:.32;cursor:not-allowed;}
+  .addbtn{margin:10px;flex:0 0 auto;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--void);background:var(--amber);border:none;border-radius:8px;padding:11px;cursor:pointer;font-weight:600;}
+  .addbtn:disabled{background:var(--panel3);color:var(--ink4);cursor:not-allowed;}
+  .qempty{color:var(--ink4);font-size:11.5px;text-align:center;padding:26px 12px;line-height:1.6;margin:auto 0;}
+  .prog{flex:1 1 auto;display:flex;flex-direction:column;align-items:center;padding:16px 16px 0;min-height:0;}
+  .donutwrap{position:relative;width:158px;height:158px;flex:0 0 auto;}
+  .donutwrap svg{transform:rotate(-90deg);}
+  .donut-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
+  .donut-c .big{font-family:var(--mono);font-size:27px;font-variant-numeric:tabular-nums;letter-spacing:.02em;color:var(--ink);line-height:1;}
+  .donut-c .big.grey{color:var(--ink4);font-size:18px;letter-spacing:.22em;}
+  .donut-c .u{font-family:var(--mono);font-size:8.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink4);margin-top:6px;}
+  .donut-c .pct{font-family:var(--mono);font-size:10px;color:var(--amber2);margin-top:5px;}
+  .parts{width:100%;margin-top:14px;flex:1 1 auto;display:flex;flex-direction:column;min-height:0;}
+  .parts-h{font-family:var(--mono);font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink4);display:flex;justify-content:space-between;flex:0 0 auto;border-top:1px solid var(--line);padding:11px 0 8px;}
+  .partslist{flex:1 1 auto;overflow-y:auto;min-height:0;padding-bottom:12px;}
+  .prow{display:flex;align-items:center;gap:10px;padding:5px 0;}
+  .prow .pn{font-family:var(--mono);font-size:10.5px;color:var(--ink2);width:150px;flex:0 0 auto;text-transform:capitalize;letter-spacing:.02em;}
+  .pbar{position:relative;flex:1 1 auto;height:7px;border-radius:4px;background:var(--void);border:1px solid var(--line);overflow:hidden;}
+  .pfill{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:linear-gradient(90deg,var(--amber-dim),var(--amber2));}
+  .pfill.done{background:linear-gradient(90deg,rgba(95,185,138,.6),var(--up));}
+  .pq{font-family:var(--mono);font-size:9.5px;color:var(--ink3);width:48px;text-align:right;flex:0 0 auto;font-variant-numeric:tabular-nums;}
+  .pic{width:16px;text-align:center;flex:0 0 auto;font-size:12px;}
+  .pic.ok{color:var(--up);} .pic.wait{color:var(--amber);}
+  .hero{position:relative;overflow:hidden;}
+  .hero .art{position:absolute;inset:0;z-index:0;background-size:cover;background-position:center 30%;}
+  .hero .scrim{position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,rgba(13,15,20,.72) 0%,rgba(13,15,20,.12) 30%,rgba(13,15,20,.10) 55%,rgba(13,15,20,.92) 100%);}
+  .hero .ttop{position:relative;z-index:2;padding:13px 15px;}
+  .hero .ttop .zhead{font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink3);}
+  .hero .tcenter{position:absolute;z-index:2;top:25%;left:0;right:0;display:flex;justify-content:center;padding:0 8px;}
+  .hero .word{font-family:var(--serif);font-weight:700;letter-spacing:.20em;font-size:24px;color:var(--ink);text-align:center;text-shadow:0 2px 22px rgba(13,15,20,.95),0 1px 4px rgba(13,15,20,.95);}
+  .hero .role{position:absolute;z-index:2;bottom:14px;left:0;right:0;text-align:center;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink3);}
+  .hero.dim .art{filter:grayscale(.8) brightness(.38);}
+</style></head>
+<body><div class="wrap">
+  <div class="ctx"><span>System Manifest</span> &middot; <span class="sys">FEN-6425</span> &middot; <span>your holdings</span></div>
+  <div class="tabbar"><button>Distribution &middot; Console</button><button class="on">Tier 4 &middot; Production</button></div>
+  <div class="body">
+    <div class="card">
+      <div class="card-h"><span class="t">Commission Queue</span><span class="n" id="qcount">3 / 5</span></div>
+      <div class="queue" id="queue"></div>
+      <!-- opens docs/mockups/dockyard-commission.html in the client; greys at MAX_QUEUE -->
+      <button class="addbtn" id="addbtn">+ Add commission</button>
+    </div>
+    <div class="centrecol">
+      <div class="yardsel"><span class="lbl">Dockyard</span><select id="yardsel"></select><span class="car">&#9660;</span></div>
+      <div class="card">
+        <div class="card-h"><span class="t">Current Build</span><span class="n" id="progtag">&mdash;</span></div>
+        <div class="prog">
+          <div class="donutwrap">
+            <svg width="158" height="158" viewBox="0 0 158 158">
+              <circle cx="79" cy="79" r="68" fill="none" stroke="rgba(232,223,200,.08)" stroke-width="11"/>
+              <circle id="ring" cx="79" cy="79" r="68" fill="none" stroke="var(--amber)" stroke-width="11" stroke-linecap="round" stroke-dasharray="427" stroke-dashoffset="427"/>
+            </svg>
+            <div class="donut-c"><div class="big" id="clock">89:47</div><div class="u" id="clocku">hrs : min left</div><div class="pct" id="pct">28%</div></div>
+          </div>
+          <div class="parts"><div class="parts-h"><span>Parts</span><span id="partscount">&mdash;</span></div><div class="partslist" id="partslist"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card hero" id="buildhero">
+      <div class="art" style="background-image:url('../../client/assets/industrial/factoryConstruction.jpg')"></div><div class="scrim"></div>
+      <div class="ttop"><div class="zhead">Building</div></div><div class="role" id="buildrole">Factory</div>
+    </div>
+    <div class="card hero">
+      <div class="art" style="background-image:url('../../client/assets/industrial/buildyard.jpg')"></div><div class="scrim"></div>
+      <div class="tcenter"><div class="word">BUILDYARD</div></div>
+    </div>
+  </div>
+</div>
+<script>
+var FACTORY_BILL=[['chassis',3],['reactor_housing',1],['photovoltaic_array',2],['power_cells',2],['control_module',1],['fabrication_line',2],['sensor_suite',1],['cargo_handling_system',1],['defence_system',1]];
+var MINER_BILL=[['chassis',2],['reactor_housing',1],['photovoltaic_array',1],['power_cells',1],['control_module',1],['extraction_head',1],['cargo_module',1],['cargo_handling_system',1],['defence_system',1]];
+var ONHAND={chassis:3,reactor_housing:1,photovoltaic_array:2,power_cells:1,control_module:1,fabrication_line:0,sensor_suite:1,cargo_handling_system:1,defence_system:1,extraction_head:1,cargo_module:1};
+function fmtName(n){return n.replace(/_/g,' ');}
+var YARDS=[
+  {id:'y1',name:'FEN-6425 II · Slot 1',progtag:'ticking',clock:'89:47',clocku:'hrs : min left',pct:'28%',ring:0.28,role:'Factory',dim:false,
+    queue:[{k:'Factory',s:'building',cancel:false,pos:'▶'},{k:'Miner',s:'queued',cancel:true,pos:'2'},{k:'Miner',s:'queued',cancel:true,pos:'3'}],qcount:'3 / 5',parts:'full',bill:FACTORY_BILL},
+  {id:'y2',name:'FEN-6425 II · Slot 3',progtag:'ticking',clock:'47:12',clocku:'hrs : min left',pct:'34%',ring:0.34,role:'Miner',dim:false,
+    queue:[{k:'Miner',s:'building',cancel:false,pos:'▶'},{k:'Factory',s:'queued',cancel:true,pos:'2'}],qcount:'2 / 5',parts:'full',bill:MINER_BILL},
+  {id:'y3',name:'FEN-6425 V · Slot 2',progtag:'waiting',clock:'PENDING',clocku:'',pct:'',ring:0,grey:true,role:'Factory',dim:false,
+    queue:[{k:'Factory',s:'waiting on parts',cancel:true,pos:'▶'},{k:'Miner',s:'queued',cancel:true,pos:'2'}],qcount:'2 / 5',parts:'track',bill:FACTORY_BILL},
+  {id:'y4',name:'FEN-6425 IX · Slot 4',progtag:'—',clock:'IDLE',clocku:'',pct:'',ring:0,grey:true,role:'—',dim:true,
+    queue:[],qcount:'0 / 5',parts:'none',bill:FACTORY_BILL}
+];
+function render(id){
+  var S=YARDS.filter(function(y){return y.id===id;})[0];
+  document.getElementById('progtag').textContent=S.progtag;
+  var clock=document.getElementById('clock'); clock.textContent=S.clock; clock.className='big'+(S.grey?' grey':'');
+  document.getElementById('clocku').textContent=S.clocku;
+  document.getElementById('pct').textContent=S.pct;
+  document.getElementById('ring').setAttribute('stroke-dashoffset',String(427*(1-S.ring)));
+  document.getElementById('qcount').textContent=S.qcount;
+  document.getElementById('buildrole').textContent=S.role;
+  document.getElementById('buildhero').classList.toggle('dim',!!S.dim);
+  var q=document.getElementById('queue'); q.innerHTML='';
+  if(!S.queue.length){q.innerHTML='<div class="qempty">No commissions.<br>Add one to start building.</div>';}
+  S.queue.forEach(function(it){
+    var row=document.createElement('div'); row.className='qitem'+(it.pos==='▶'?' cur':'');
+    row.innerHTML='<span class="pos">'+it.pos+'</span><span class="kind">'+it.k+'<span class="sub">'+it.s+'</span></span>'+
+      (it.cancel?'<button class="x" title="cancel">✕</button>':'<button class="x lock" title="a started build is stopped only by teardown">✕</button>');
+    q.appendChild(row);
+  });
+  document.getElementById('addbtn').disabled=(S.queue.length>=5);
+  var pl=document.getElementById('partslist'); pl.innerHTML=''; var pc=document.getElementById('partscount');
+  if(S.parts==='none'){pc.textContent='';}
+  else{var met=0;S.bill.forEach(function(p){
+    var need=p[1],have,ok; if(S.parts==='full'){have=need;ok=true;}else{have=Math.min(ONHAND[p[0]]||0,need);ok=have>=need;} if(ok)met++;
+    var row=document.createElement('div'); row.className='prow';
+    row.innerHTML='<span class="pn">'+fmtName(p[0])+'</span><span class="pbar"><span class="pfill'+(ok?' done':'')+'" style="width:'+Math.round(100*have/need)+'%"></span></span><span class="pq">'+have+' / '+need+'</span><span class="pic '+(ok?'ok':'wait')+'">'+(ok?'✓':'○')+'</span>';
+    pl.appendChild(row);
+  }); pc.textContent = S.parts==='full' ? 'secured' : (met+' / '+S.bill.length+' met');}
+}
+var sel=document.getElementById('yardsel');
+YARDS.forEach(function(y){var o=document.createElement('option');o.value=y.id;o.textContent=y.name;sel.appendChild(o);});
+sel.addEventListener('change',function(){render(sel.value);});
+render('y1');
+</script></body></html>
