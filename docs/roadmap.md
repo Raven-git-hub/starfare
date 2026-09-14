@@ -311,7 +311,7 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   formula (parts cost ± what margin/discount?). Do founding asset grants survive, or must everything
   be built?
 - **Transport:** recall-time vs renegotiation-window for Syndicate contracts (leaning recall); the
-  maintenance return threshold (5%); the location/route bonus mechanic.
+  maintenance return threshold (5%); the location/route bonus mechanic; **the craft-speed shape** — 150 ticks/hex `[FIRST-CUT]` (halved 14-09-26) is still ~0.6–16 real-days on the seed, so the durable fix is a much smaller ticks-per-hex or a non-raw-hex distance (log / per-ring band).
 - **Investment:** are shares tradable (leaning no)? The share-price formula specifics and the RP-boost
   ratio. **The RP-band reconciliation** (forced-lease −300 vs forced-closure −500 vs renegotiation
   bands; continuous-threshold vs window-end trigger; forced-lease as a new venture-transfer ending).

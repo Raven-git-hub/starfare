@@ -153,11 +153,11 @@ test('nearestWaystation picks the closest OUTPOST, deterministically, and refuse
 });
 
 test('CRAFT_SPEED is the one ruled number, and the arrival tick is ceil(distance × speed) from now', () => {
-  assert.equal(CRAFT_SPEED, 300);                       // [FIRST-CUT], docs/phase-1-tuning.md
-  assert.equal(arrivalTickFor(0, DEST_DISTANCE), 1800);
-  assert.equal(arrivalTickFor(40, 2), 640);
+  assert.equal(CRAFT_SPEED, 150);                       // [FIRST-CUT], docs/phase-1-tuning.md
+  assert.equal(arrivalTickFor(0, DEST_DISTANCE), 900);
+  assert.equal(arrivalTickFor(40, 2), 340);
   // ceil, not round: a part-tick of travel is a whole tick of waiting.
-  assert.equal(arrivalTickFor(0, 0.5), 150);
+  assert.equal(arrivalTickFor(0, 0.5), 75);
 });
 
 // --- 2. the purchase: cash now, goods scheduled -------------------------------
@@ -187,7 +187,7 @@ test('a buy debits round(qty × price) to the ledger and schedules ONE delivery 
   assert.deepEqual(ship.cargo, { [GOOD]: qty });
   assert.equal(ship.destinationSystemId, DEST);
   assert.equal(ship.arrivalTick, after.tick + Math.ceil(DEST_DISTANCE * CRAFT_SPEED));
-  assert.equal(ship.arrivalTick, 1800);
+  assert.equal(ship.arrivalTick, 900);
 
   // NOTHING is deposited at purchase — the goods are in flight, and in-flight
   // cargo has no realized value until delivered (invariant 7).
@@ -496,11 +496,11 @@ test('the snapshot surfaces in-transit deliveries with a derived ticksRemaining'
     ownerGuildId: 'g1',
     cargo: { [GOOD]: 40 },
     destinationSystemId: DEST,
-    arrivalTick: 1800,
-    ticksRemaining: 1800 - 4,
+    arrivalTick: 900,
+    ticksRemaining: 900 - 4,
     originOutpostId: near.outpost.id,
     originCoords: near.outpost.coords,
-    departureTick: 1800 - arrivalTickFor(0, near.distance),
+    departureTick: 900 - arrivalTickFor(0, near.distance),
   });
   // Derived telemetry only — mutating the snapshot cannot reach live state.
   snap.shipments[0].cargo[GOOD] = 999;

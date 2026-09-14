@@ -303,7 +303,7 @@ that make the SELL/BUY transaction concrete:
 - **Settlement: SELL is immediate, BUY lags.** A SELL credits the treasury, burns the fuel, and removes
   the stock on confirm — the goods "reaching the waystation" is narrative, not a delay. A BUY debits
   credits and burns fuel on confirm, and the goods **arrive later** at
-  `arrivalTickFor(tick, distance) = tick + ceil(distance × CRAFT_SPEED)` (`CRAFT_SPEED = 300` ticks/hex,
+  `arrivalTickFor(tick, distance) = tick + ceil(distance × CRAFT_SPEED)` (`CRAFT_SPEED = 150` ticks/hex,
   a `[FIRST-CUT]`), landing via `stepArrivals` — already stamped on the shipment.
 
 **BUILT (client, 03-09-26): the SELL & BUY finalise-transaction popups** (`client/game.html`, the TRADE

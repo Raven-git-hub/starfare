@@ -18,11 +18,11 @@ const { getOutposts, getSystem } = require('./seed.js');
 
 // CRAFT_SPEED — ticks per hex for a Syndicate delivery craft. `[FIRST-CUT]`,
 // RULED 29-08-26 and recorded in docs/phase-1-tuning.md §"World shape"
-// ("Syndicate craft speed: 300 ticks per hex"). It lives here ONCE and is never
+// ("Syndicate craft speed: 150 ticks per hex"). It lives here ONCE and is never
 // inlined, so retuning it is that one doc line plus this one constant.
 //
-// At the ruled 1 tick = 1 minute, 300 ticks is 5 hours per hex.
-const CRAFT_SPEED = 300;
+// At the ruled 1 tick = 1 minute, 150 ticks is 2.5 hours per hex.
+const CRAFT_SPEED = 150;
 
 // hexDistance(a, b) — the standard axial-coordinate hex distance:
 //   (|dq| + |dr| + |dq + dr|) / 2
