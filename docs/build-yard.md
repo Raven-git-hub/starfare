@@ -123,11 +123,14 @@ mine**, but not identically — the deuterium mine's 0-GP is its *unique* advant
    tuned in `phase-1-tuning.md` and pinned in `sim/tests/dockyard-points.test.js`. Its own slice
    because it touches a different module (`points.js`/`licence.js`/mean line) and carries the tuning
    invariant. Engine only — no client.
-3. **Client — establish (the deploy picker).** Enable the deploy overlay's existing greyed-out
-   **“Tier 4 · Construct”** option (reached from a vacant settlement slot in the **System Manifest**):
-   pick an idle **factory** in that system → `establishDockyard`, showing the +500 GP / +900 RP
-   (net +400) standing effect + the shared confirm reel. Ships **`GET /asset-recipes`** (the bills +
-   `BUILD_TICKS` from `sim/asset-recipes.js`, mirroring `GET /recipes`), which slice 4 reads.
+3. **Client — establish (the deploy picker).** ✅ **BUILT 14-09-26 (client slice A).** Enabled the deploy
+   overlay's greyed-out **“Tier 4 · Construct”** option (reached from a vacant settlement slot in the
+   **System Manifest**): picking it collapses the recipe + licence machinery (as FUEL does), picks an idle
+   **factory** in that system, shows the +500 GP / +900 RP (net +400) standing effect as static
+   `phase-1-tuning.md` copy + the shared confirm reel, and fires `establishDockyard` alone (no `recipeId`,
+   no licence) in `doDeploy`'s Tier-4 branch (`client/game.html`). Ships **`GET /asset-recipes`** (the bills,
+   `BUILD_TICKS`, `MAX_QUEUE`, `BUILDABLE_ASSET_KINDS` from `sim/asset-recipes.js`, mirroring `GET /recipes`),
+   which slice 4 reads — the client does NOT consume it yet.
 4. **Client — the Tier 4 Production tab (System Manifest).** A per-system tab, sibling to the
    Production Console, listing that system's dockyards; per dockyard: the commission control
    (miner / factory → `commissionBuild`, capped at `MAX_QUEUE`), the FIFO queue (building → a

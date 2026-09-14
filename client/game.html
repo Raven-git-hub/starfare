@@ -2395,8 +2395,8 @@ select.field{appearance:none; cursor:pointer;}
     <div id="estForm">
       <div class="est-head">
         <div>
-          <div class="eyebrow">Syndicate Venture Licence</div>
-          <h2>Establish Venture</h2>
+          <div class="eyebrow" id="estEyebrow">Syndicate Venture Licence</div>
+          <h2 id="estTitle">Establish Venture</h2>
           <div class="site">
             <span id="siteNode">—</span><span class="sep">·</span>
             <span class="amber" id="siteRes">—</span><span class="sep">·</span>
@@ -2494,6 +2494,16 @@ select.field{appearance:none; cursor:pointer;}
               <div class="row emph"><span class="k">Fee</span><span class="v" id="tFee">—</span></div>
               <div class="row breach"><span class="k">Breach fee</span><span class="v" id="tBreach">—</span></div>
               <div class="row"><span class="k">Renegotiate in</span><span class="v" id="tReneg">—</span></div>
+              <!-- TIER 4 · Construct — the dockyard's STANDING EFFECT panel (build-yard.md §5),
+                   shown in place of the licence rows above (applyDockyardCollapse). A dockyard
+                   carries no licence, so the figures are a fixed standing effect, not terms. Every
+                   number here is STATIC display copy from docs/phase-1-tuning.md (the +500 GP
+                   Tier-4 special-COUNT, the 900 RP signing bump, net 900−500 = +400) — the UI
+                   computes no game number (§5). Hidden by default; the collapse toggles them. -->
+              <div class="row dockrow" style="display:none"><span class="k">Guild points</span><span class="v"><b class="amber">+500 GP</b> <span class="mut">Tier 4</span></span></div>
+              <div class="row dockrow" style="display:none"><span class="k">Reputation</span><span class="v"><b class="green">+900 RP</b> <span class="mut">standing</span></span></div>
+              <div class="row dockrow emph" style="display:none"><span class="k">Net benefit</span><span class="v"><b>+400</b></span></div>
+              <div class="row dockrow" style="display:none"><span class="k">Licence</span><span class="v"><span class="mut">none · no fee · no equity · no per-cycle</span></span></div>
             </div>
             <button class="deploy" id="deployBtn" disabled>Deploy venture</button>
             <div class="deploy-hint" id="deployHint">Select an asset and a licence choice.</div>
@@ -4089,6 +4099,7 @@ function draw(){
   drawLedger(fp, cQtyCycle, ePct);
   $('feeBlock').classList.toggle('disabled', S.licensed===false);
   applyFuelCollapse();
+  applyDockyardCollapse();
   gate();
 }
 
@@ -4106,6 +4117,40 @@ function applyFuelCollapse(){
   ['tLic','tCommit','tEquity','tFee','tBreach','tReneg'].forEach(function(id){
     var row=$(id).closest('.row'); if(row) row.style.display = fuel ? 'none' : '';
   });
+}
+
+/* TIER 4 · CONSTRUCT folds the dockyard establish into the factory config (build-yard.md §2),
+   the way FUEL folds in the refinery. A dockyard carries NO recipe and NO licence — it builds
+   any buildable kind later via its commission queue, and its standing effect is a FIXED panel,
+   not licence terms (§5). Selecting Tier 4 therefore collapses the recipe picker AND the whole
+   licence machinery, hides the output/rate rows (a dockyard produces via its queue, not a good
+   per tick), shows the standing-effect rows, and re-titles the card. Runs AFTER applyFuelCollapse
+   so its Tier-4 overrides win. The figures are STATIC copy from docs/phase-1-tuning.md — the UI
+   invents no game number (§5). Reversible: switching back to Tier 2/3 restores everything. */
+function applyDockyardCollapse(){
+  var dock = S.tier===4;
+  // No recipe picker — a dockyard builds via its queue, so hide it (like a mining deploy shows
+  // none). For a slot on any other tier the recipe picker stays; on a node it is already hidden.
+  if(S.site && S.site.kind==='slot') $('recipeWrap').style.display = dock ? 'none' : 'block';
+  if(dock){ $('licBlk').style.display='none'; $('feeBlock').style.display='none'; }
+  // Output/Rate: a dockyard has neither. Hide on Tier 4, restore otherwise (the refinery
+  // summary shows both), so a switch back to Tier 2/3 does not leave them hidden.
+  ['tOutput','tRate'].forEach(function(id){
+    var row=$(id).closest('.row'); if(row) row.style.display = dock ? 'none' : '';
+  });
+  // The licence rows: hide on Tier 4 only. Otherwise applyFuelCollapse owns their visibility,
+  // so leave them alone here (touching them would fight the refinery collapse for FUEL).
+  if(dock){ ['tLic','tCommit','tEquity','tFee','tBreach','tReneg'].forEach(function(id){
+    var row=$(id).closest('.row'); if(row) row.style.display='none';
+  }); }
+  Array.prototype.forEach.call(document.querySelectorAll('#est-overlay .dockrow'), function(r){
+    r.style.display = dock ? '' : 'none';
+  });
+  if(dock) $('summaryTitle').textContent = 'Dockyard Summary';
+  // Card copy — the dockyard voice on Tier 4, the licence defaults otherwise.
+  $('estEyebrow').textContent = dock ? 'Tier 4 · Construct' : 'Syndicate Venture Licence';
+  $('estTitle').textContent   = dock ? 'Establish Dockyard'  : 'Establish Venture';
+  $('deployBtn').textContent  = dock ? 'Establish dockyard'  : 'Deploy venture';
 }
 
 /* The hinge graph, ported intact: the amber line is the fee across commitment at
@@ -4180,12 +4225,14 @@ function esc(v){
    holds, so an unheld site disables the button and says why. The engine's own refusal
    stays the backstop, surfaced verbatim by `failHint`. */
 function gate(){
-  // FUEL (the illegal refinery) has no licence dimension, so it needs neither a recipe pick nor
-  // a licence choice — the locked recipe and the confirm reel stand in for both (§1.4).
+  // FUEL (the illegal refinery) and TIER 4 (the dockyard) have no licence dimension, and the
+  // dockyard has no recipe either — it builds via its queue. So neither needs a recipe pick nor
+  // a licence choice: the confirm reel (and, for FUEL, the locked recipe) stand in (§1.4 / §2).
   var isFuel = S.tier==='fuel';
-  var configured = S.site && (S.site.kind==='node' || ((S.tier===2 || S.tier===3) && S.recipeId) || isFuel);
+  var isDock = S.tier===4;
+  var configured = S.site && (S.site.kind==='node' || ((S.tier===2 || S.tier===3) && S.recipeId) || isFuel || isDock);
   var held = !!(S.site && S.site.mine);
-  var ok = held && !!S.asset && (isFuel || S.licensed!==null) && configured && !S.busy;
+  var ok = held && !!S.asset && (isFuel || isDock || S.licensed!==null) && configured && !S.busy;
   var btn=$('deployBtn'), hint=$('deployHint');
   btn.disabled = !ok;
   if(S.busy) return;                                   // the in-flight message stands
@@ -4193,9 +4240,10 @@ function gate(){
   if(!held) hint.textContent='You don\u2019t hold this system \u2014 deploy requires holding it first (\u00a74).';
   else if(!POOL.length) hint.textContent='No idle '+kindPlural(kindFor(S.site))+' in your inventory \u2014 every one you own is already deployed.';
   else if(!S.asset) hint.textContent='Select an asset to continue.';
-  else if(S.site && S.site.kind==='slot' && !isFuel && S.tier!==2 && S.tier!==3) hint.textContent='Only Tier 2 refining and Tier 3 manufacture are built (§4).';
-  else if(S.site && S.site.kind==='slot' && !isFuel && !S.recipeId) hint.textContent='Pick a recipe to continue.';
-  else if(!isFuel && S.licensed===null) hint.textContent='Choose licensed or unlicensed.';
+  else if(S.site && S.site.kind==='slot' && !isFuel && !isDock && S.tier!==2 && S.tier!==3) hint.textContent='Only Tier 2 refining and Tier 3 manufacture are built (§4).';
+  else if(S.site && S.site.kind==='slot' && !isFuel && !isDock && !S.recipeId) hint.textContent='Pick a recipe to continue.';
+  else if(!isFuel && !isDock && S.licensed===null) hint.textContent='Choose licensed or unlicensed.';
+  else if(isDock) hint.textContent='Ready — a dockyard adds +500 GP / +900 RP (net +400) while it stands.';
   else hint.textContent='Ready — review the terms, then deploy.';
 }
 
@@ -4259,6 +4307,24 @@ function reelConfirm(){
     openReel();
     return;
   }
+  // TIER 4 — the dockyard (build-yard.md §2/§5). No licence, no fee, no per-cycle: the Adviser
+  // states what a dockyard IS and its fixed standing effect, then Confirm ▸ runs doDeploy(),
+  // which fires establishDockyard in its own Tier-4 branch. The figures are the ruled
+  // phase-1-tuning.md values (+500 GP / +900 RP → net +400), not recomputed here.
+  if(S.tier===4){
+    $('reelTitle').textContent='Establish the dockyard?';
+    $('reelBody').innerHTML =
+      '<p>A <em>dockyard</em> is a factory turned to construction: it takes the modules your guild stockpiles in this system and builds whole <em>miners and factories</em> from them, one at a time, through a commission queue you fill later. Nothing is spent to stand it up &mdash; the parts are consumed only when a build actually starts.</p>'+
+      '<p>It will run your <em>'+esc(S.asset.label)+'</em> ('+esc(S.asset.id)+') on '+esc(S.site.summary)+'. The machine is <em>occupied, not consumed</em>: it stays in your inventory, now referenced by this dockyard.</p>'+
+      '<p>Standing up a dockyard is a Tier-4 <em>size increase</em>: it adds <em>+500 GP</em> and a held <em>+900 RP</em> while it stands &mdash; a net <em>+400</em> to your standing. There is no licence, no fee, no equity and no per-cycle commitment; the reputation is forfeited if you ever tear it down.</p>'+
+      '<p>Shall I stand up the dockyard, Guildmaster?</p>';
+    $('reelDots').style.display='none'; $('reelDots').innerHTML='';
+    $('reelCancel').textContent='Cancel';
+    $('reelNext').textContent='Confirm ▸';
+    $('reelNext').disabled=false;
+    openReel();
+    return;
+  }
   var N = cycleTicks();
   var cq = N === null ? null : Math.round(S.c * P.BASELINE_RATE * N);
   var lic = S.licensed
@@ -4304,6 +4370,11 @@ async function doDeploy(){
   // fuel, and this is the same call the retired deut-popup refinery mode fired. Every numeric
   // tier below is unchanged.
   if(S.tier==='fuel'){ await deployRefinery(player, ventureId); return; }
+
+  // TIER 4 — the dockyard (build-yard.md §2). It fires the BUILT establishDockyard ALONE (no
+  // establishVenture, no applyForLicence, no recipeId, no productionRate): the factory is seated
+  // in construct mode and builds via its queue. Mirrors the FUEL branch above.
+  if(S.tier===4){ await deployDockyard(player, ventureId); return; }
 
   // Exactly the fields sim/actions.js validates, and nothing else: no fee, no
   // reputation. `assetId` is the machine the player PICKED — the
@@ -4415,6 +4486,51 @@ function showRefinerySuccess(action){
   $('estForm').style.display='none';
   $('estSuccess').classList.add('show');
 }
+/* The TIER-4 deploy — the dockyard (build-yard.md §2). A SINGLE built action (establishDockyard),
+   so no two-step licence dance and no recipe: a dockyard has neither. Mirrors deployRefinery's
+   busy/refusal/refresh flow, and lands on the dockyard receipt. */
+async function deployDockyard(player, ventureId){
+  var action = {
+    type: 'establishDockyard',
+    guildId: player.guildId,
+    ventureId: ventureId,
+    siteId: S.site.siteId,
+    assetId: S.asset.id,
+  };
+  S.busy = true; gate();
+  $('reelNext').disabled = true;
+  $('deployHint').textContent = 'Filing…';
+  var out;
+  try {
+    out = await window.__sendAction(action);
+  } catch (err) {
+    S.busy = false; closeReel(); failHint('The Syndicate could not be reached: '+err.message); return;
+  }
+  if (!out.accepted){
+    S.busy = false; closeReel();
+    failHint('Refused: ' + (out.reason || 'the Syndicate declined'));
+    gate();
+    return;
+  }
+  S.busy = false;
+  closeReel();
+  if (window.__refreshNow) { try { await window.__refreshNow(); } catch (e) {} }
+  showDockyardSuccess(action);
+}
+/* The dockyard receipt. No licence figures (a dockyard has none) and no per-tick output — it
+   builds via a queue, commissioned from the Tier 4 Production tab (a later slice). The standing
+   figures are the ruled phase-1-tuning.md values (§5), stated as labels, not recomputed. */
+function showDockyardSuccess(action){
+  $('estSuccTitle').textContent = 'Dockyard established';
+  S.deployedVentureId = action.ventureId;                  // so "Open venture management ▸" knows which venture
+  var out = [];
+  out.push('Your '+S.asset.label+' now stands as a dockyard on '+S.site.summary+' — a Tier-4 build yard, ready to turn this system’s modules into finished miners and factories through its commission queue.');
+  out.push('It adds +500 GP and a held +900 RP (net +400) to your standing while it stands. No licence, no fee, no equity, no per-cycle commitment. First commission the builds from the system’s Tier 4 Production tab.');
+  out.push('Recorded: dockyard '+action.ventureId+' on '+action.siteId+'.');
+  $('successMsg').textContent = out.join('  ');
+  $('estForm').style.display='none';
+  $('estSuccess').classList.add('show');
+}
 function failHint(msg){
   var hint=$('deployHint');
   hint.textContent = msg;
@@ -4471,8 +4587,7 @@ function buildTierList(){
   var sel=$('tierSel'); sel.innerHTML='';
   [[2,'Tier 2 · Refine'],[3,'Tier 3 · Manufacture'],[4,'Tier 4 · Construct']].forEach(function(t){
     var o=document.createElement('option'); o.value=t[0];
-    o.textContent = t[1] + (t[0]>3 ? ' (not yet built)' : '');
-    o.disabled = t[0] > 3;                       // Tiers 2–3 built; Tier 4 (construct) is 2.1b
+    o.textContent = t[1];                        // Tiers 2–4 all built; Tier 4 = the dockyard (2.1b)
     sel.appendChild(o);
   });
   // FUEL — the illegal deuterium refinery, folded into the factory config as a product option
@@ -4498,6 +4613,15 @@ function buildRecipeList(){
     S.recipeId='fuel'; S.outGood='deuterium_fuel'; S.outLabel=label('deuterium_fuel');
     return;
   }
+  if(S.tier===4){
+    // TIER 4 · CONSTRUCT — a dockyard takes NO recipe (build-yard.md §2): it builds any
+    // buildable kind later via its commission queue, so there is nothing to pick here. Like
+    // a mining deploy, no recipe is chosen; applyDockyardCollapse hides the (empty) picker.
+    // Output is the dockyard itself, not a stockpile good, so there is no output good/label.
+    $('tierBadge').textContent='TIER 4';
+    S.recipeId=null; S.outGood=null; S.outLabel='dockyard';
+    return;
+  }
   $('tierBadge').textContent='TIER '+S.tier;
   // A recipe belongs to the selected tier when its OUTPUT good does. The client already
   // holds the good vocabulary by tier (GET /goods: `processed` = Tier 2, `tier3` = the 25
@@ -4519,8 +4643,8 @@ function buildRecipeList(){
     });
     sel.disabled = recipes.length === 0;
   } else {
-    // Tier 4 (construct) is unreachable — disabled in the tier picker — so this is only a
-    // safe fallback for a tier with no recipes.
+    // Tier 4 (the dockyard) returns above with no recipe, and FUEL is handled at the top, so
+    // this is only a safe fallback for a tier with no recipes.
     var o=document.createElement('option'); o.value=''; o.textContent='Tier '+S.tier+' recipes not yet built (§4)'; sel.appendChild(o);
     sel.disabled=true;
   }

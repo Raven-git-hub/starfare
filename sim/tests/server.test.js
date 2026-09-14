@@ -612,6 +612,42 @@ test('GET / serves the illegal refinery as the FUEL tier — single entry point,
   assert.doesNotMatch(html, /mode:'refinery'/, 'no refinery mode is routed to the deut popup any more');
 });
 
+test('GET / serves the TIER-4 dockyard establish — the enabled picker + establishDockyard, no recipe/licence', async () => {
+  const html = await (await fetch(base + '/')).text();
+
+  // 1. THE TIER PICKER offers Tier 4 · Construct ENABLED — the grey-out and the "(not yet built)"
+  //    suffix are gone (build-yard.md §7 slice A), so a player can select it.
+  assert.match(html, /\[\[2,'Tier 2 · Refine'\],\[3,'Tier 3 · Manufacture'\],\[4,'Tier 4 · Construct'\]\]/,
+    'the three tiers are still listed');
+  assert.doesNotMatch(html, /o\.disabled = t\[0\] > 3/, 'Tier 4 is no longer disabled in the picker');
+  assert.doesNotMatch(html, /t\[1\] \+ \(t\[0\]>3 \? ' \(not yet built\)'/, 'and the tier picker\'s "(not yet built)" suffix is gone');
+
+  // 2. A DOCKYARD TAKES NO RECIPE — Tier 4 clears the recipe and applyDockyardCollapse hides the
+  //    picker, exactly as a mining deploy shows none.
+  assert.match(html, /if\(S\.tier===4\)\{[\s\S]*?S\.recipeId=null; S\.outGood=null; S\.outLabel='dockyard';/,
+    'Tier 4 carries no recipe');
+  assert.match(html, /function applyDockyardCollapse\(\)/, 'the Tier-4 collapse exists');
+
+  // 3. THE DEPLOY fires the BUILT establishDockyard from the factory popup — no establishVenture,
+  //    no applyForLicence, no recipeId, no productionRate — in doDeploy's Tier-4 branch.
+  assert.match(html, /if\(S\.tier===4\)\{ await deployDockyard\(player, ventureId\); return; \}/,
+    "doDeploy must branch to the dockyard deploy on Tier 4");
+  assert.match(html, /type: 'establishDockyard'/, 'the Tier-4 deploy fires the built dockyard action');
+  // The action shape is exactly the four fields the engine validates — assert the dockyard
+  // deploy carries no recipeId or productionRate.
+  const dockDeploy = html.slice(html.indexOf('async function deployDockyard'), html.indexOf('function showDockyardSuccess'));
+  assert.ok(dockDeploy.length > 0, 'the deployDockyard function is present');
+  assert.doesNotMatch(dockDeploy, /recipeId/, 'the dockyard deploy carries no recipeId');
+  assert.doesNotMatch(dockDeploy, /productionRate/, 'the dockyard deploy carries no productionRate');
+
+  // 4. THE STANDING EFFECT is the ruled phase-1-tuning.md copy (+500 GP / +900 RP → net +400),
+  //    stated as static labels — the UI computes no game number (§5).
+  assert.match(html, /\+500 GP/, 'the +500 GP standing figure');
+  assert.match(html, /\+900 RP/, 'the +900 RP standing figure');
+  assert.match(html, /Establish dockyard/, 'the Tier-4 deploy button copy');
+  assert.match(html, /Establish the dockyard\?/, 'the dockyard Adviser confirm title');
+});
+
 // The finished TRADE chart (29-08-26). Three things a page could lose silently — it
 // would still render, and only this would fail: the scale buttons reverting to the raw
 // ring keys, the reference line being dropped, and the width cap coming back.
@@ -1143,6 +1179,23 @@ test('GET /goods returns the vocabulary by tier', async () => {
     assert.equal(body.raw.includes(g), false, `${g} is not a raw good`);
     assert.equal(body.processed.includes(g), false, `${g} is not a processed good`);
   }
+});
+
+test('GET /asset-recipes returns the Tier-4 asset-bill catalog, matching sim/asset-recipes.js', async () => {
+  // RULES, not state (like /recipes): no galaxy is founded first, and the route answers
+  // 200 regardless. This is the tripwire that the served catalog never drifts from the
+  // engine's own — a bill typo or a retuned BUILD_TICKS/MAX_QUEUE would fail here.
+  const { ASSET_BILLS, BUILD_TICKS, MAX_QUEUE, BUILDABLE_ASSET_KINDS } = require('../asset-recipes.js');
+  const { status, body } = await req('GET', '/asset-recipes');
+  assert.equal(status, 200);
+  // Byte-for-byte on the values (JSON round-trips the frozen objects/arrays as-is).
+  assert.deepEqual(body.bills, ASSET_BILLS);
+  assert.deepEqual(body.buildTicks, BUILD_TICKS);
+  assert.equal(body.maxQueue, MAX_QUEUE);
+  assert.deepEqual(body.buildable, [...BUILDABLE_ASSET_KINDS]);
+  // And a spot-check on the two buildable kinds, so the shape is asserted, not just equality.
+  assert.deepEqual(body.buildable, ['miner', 'factory']);
+  assert.ok(body.bills.miner && body.bills.factory, 'both buildable bills served');
 });
 
 test('GET /health reports liveness (JSON)', async () => {
