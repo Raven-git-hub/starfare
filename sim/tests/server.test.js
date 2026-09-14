@@ -1818,19 +1818,25 @@ test('GET /console serves the TIER-4 Add-commission overlay + LIVE commission/ca
   assert.match(html, /if \(e\.key === 'Escape' && commissionOverlayOpen\(\)\) closeCommission\(\)/);
 });
 
-// The 2.1b dockyard client PLAYTEST FIXES for the console (docs/build-yard.md §7): the "4 · Assets"
-// tab's two hero panels sit SIDE BY SIDE (a 4-column .dk-body grid with the panels as siblings,
-// no .dk-heroes column wrapper — matching docs/mockups/dockyard-tab.html), and the "3 · Parts" tab
-// LIGHTS UP now that Tier-3 modules are pooled goods. A reverted layout or a stale gate would still
-// render, so the tripwire is on the served bytes.
+// The 2.1b dockyard tab ADAPTIVE layout for the console (docs/build-yard.md §7): the "4 · Assets"
+// tab fills the detail-area height and its two art panels GROW with the panel width — fr-weighted
+// minmax() columns (art tracks minmax(290px,1fr)) above a calc(100vh - …) min-height, the centre
+// build card flex-grown, four-across from ~1836px windows up and stacking below the 1120px
+// breakpoint. The panels stay siblings of .dk-body (no .dk-heroes column wrapper — the mockup's
+// fixed height:500px / 170px-250px art columns are superseded), and the "3 · Parts" tab LIGHTS UP
+// now that Tier-3 modules are pooled goods. A reverted layout or a stale gate would still render, so
+// the tripwire is on the served bytes.
 test('GET /console serves the dockyard-tab layout + tier-3 pooling fixes', async () => {
   const html = await (await fetch(base + '/console')).text();
 
-  // 1. .dk-body is a 4-COLUMN grid (queue | centre | building-art | dockyard-art), and the
-  //    responsive collapse survives: 2-up at 1100px, single-column at 640px.
-  assert.match(html, /\.dk-body\{display:grid; grid-template-columns:200px minmax\(0,1fr\) 170px 210px;/);
-  assert.match(html, /@media \(max-width:1100px\)\{ \.dk-body\{grid-template-columns:1fr 1fr\} \}/);
-  assert.match(html, /@media \(max-width:640px\)\{ \.dk-body\{grid-template-columns:1fr\} \}/);
+  // 1. .dk-body is an ADAPTIVE 4-column grid: fixed queue, fr-weighted centre, and the two art
+  //    panels track minmax(290px,1fr) so they grow with the panel; it fills the detail height via
+  //    calc(100vh - 250px). The centre build card flex-grows into the taller column. The collapse
+  //    survives: 2-up at 1120px, single-column at 640px, the fill reset to natural height in both.
+  assert.match(html, /\.dk-body\{display:grid;\s*grid-template-columns:200px minmax\(300px,0\.6fr\) minmax\(290px,1fr\) minmax\(290px,1fr\);\s*gap:12px; align-items:stretch; min-height:calc\(100vh - 250px\)\}/);
+  assert.match(html, /\.dk-centre > \.dk-card\{flex:1 1 auto; min-height:0\}/);
+  assert.match(html, /@media \(max-width:1120px\)\{ \.dk-body\{grid-template-columns:1fr 1fr; min-height:0\} \}/);
+  assert.match(html, /@media \(max-width:640px\)\{ \.dk-body\{grid-template-columns:1fr; min-height:0\} \}/);
 
   // 2. The two .dk-hero panels are DIRECT children of .dk-body — the .dk-heroes column wrapper is
   //    gone from BOTH the CSS and the render, so they no longer stack in one column.

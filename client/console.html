@@ -727,9 +727,24 @@
      read-only. Four panels mirroring the approved mockup (queue | build progress | building
      art | dockyard art), scoped `dk-` so nothing collides with the good-tab render. B2 wires
      the Add-commission popup and the cancel controls; here they render but do nothing. */
-  .dk-body{display:grid; grid-template-columns:200px minmax(0,1fr) 170px 210px; gap:12px; align-items:stretch; min-height:440px}
-  @media (max-width:1100px){ .dk-body{grid-template-columns:1fr 1fr} }
-  @media (max-width:640px){ .dk-body{grid-template-columns:1fr} }
+  /* Four-across, filling the detail height. The console is a same-origin iframe
+     (game.html .console-frame{height:100%}), so 100vh here IS the detail-area height;
+     250px is the MEASURED chrome above .dk-body in embed mode (~230px header/status/
+     tier-tabs/resbar + the 20px body.embed bottom padding), so the body lands one
+     padding-width above the iframe edge with no scrollbar.
+     The queue is fixed; the centre and the two art panels share free space by fr-weight,
+     so the ART GROWS with the monitor (≈290px each at a ~1836px window up to ~590px at
+     2560px) above a 290px floor, while the centre grows only modestly above its 300px floor. */
+  .dk-body{display:grid;
+    grid-template-columns:200px minmax(300px,0.6fr) minmax(290px,1fr) minmax(290px,1fr);
+    gap:12px; align-items:stretch; min-height:calc(100vh - 250px)}
+  /* The centre column is dropdown + build card; the build card grows to fill the taller
+     column (its donut/parts already flex + scroll, so the parts list just gets more room). */
+  .dk-centre > .dk-card{flex:1 1 auto; min-height:0}
+  /* Below ~1120px panel (windows under ~1826px): stack to 2-up, natural height (no forced
+     fill), art panels below the queue/centre. Smaller screens are deliberately not optimised. */
+  @media (max-width:1120px){ .dk-body{grid-template-columns:1fr 1fr; min-height:0} }
+  @media (max-width:640px){ .dk-body{grid-template-columns:1fr; min-height:0} }
   .dk-card{background:var(--panel); border:1px solid var(--line); border-radius:10px; display:flex; flex-direction:column; min-height:0; min-width:0; overflow:hidden}
   .dk-h{display:flex; align-items:center; justify-content:space-between; padding:11px 14px; border-bottom:1px solid var(--line); flex:0 0 auto}
   .dk-h .t{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink2); font-weight:600}
