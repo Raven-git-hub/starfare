@@ -159,6 +159,22 @@ mine**, but not identically — the deuterium mine's 0-GP is its *unique* advant
    **Venture Management (the dockyard's slot click) stays stats + teardown ONLY** — its teardown
    confirm warns that teardown drops the queue, the in-progress build, and the consumed modules —
    and carries **no** queue controls; commissioning / cancelling live only in the Tier 4 tab.
+   - **Client playtest fixes ✅ (14-09-26, `client/game.html` + `client/console.html`; no `sim/`
+     change).** Four bugs found on the live game: (1) a dockyard now reads and renders **as a
+     dockyard**, not a "Refining Refinery" — the Planet-Manifest join maps it to a `dockyard` site
+     kind (keyed off the snapshot's `dockyard` flag, ahead of the `refining` branch), its manifest
+     badge reads **CONSTRUCT**, and both `ventureTitle`/`ventureTypeTitle` return **"Dockyard"**; its
+     **VM popup** is honest — a calm "Build Yard" readout (no false "0 · per cycle · kept · off
+     books") pointing to the console's "4 · Assets" tab, the terms ledger showing its held **+500 GP
+     / +900 RP** standing (build-yard.md §5, static doc-sourced labels), and a teardown confirm that
+     names the forfeited standing (RP from the engine's own `teardownSettlement.rpForfeit`) and the
+     dropped queue/build/modules. (2) The Tier-4 establish confirm is trimmed to one sentence so its
+     Confirm button stays on-screen. (3) The "4 · Assets" tab's two hero panels sit **side by side**
+     (a 4-column `.dk-body` grid, no `.dk-heroes` column wrapper — per `docs/mockups/dockyard-tab.html`)
+     with the responsive 2-up / single-column collapse intact. (4) The **"3 · Parts" tier tab lights
+     up**: `isPooledGood` now matches the engine's stockpile vocabulary (raw ∪ processed ∪ tier3),
+     since Tier-3 modules became full stockpile goods in 2.1a. Client display only — no game number is
+     recomputed (§5); every figure is a snapshot field or a doc-sourced label.
 
 Then, out of this arc: Syndicate-commission for credits (2.1d), the open market (2.1e), and the
 ship/droid/installation outputs (their entity slices).

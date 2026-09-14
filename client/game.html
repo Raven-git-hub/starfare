@@ -3653,6 +3653,10 @@ function siteBadge(state, myGuildName){
   if (state.kind === 'other') return { cls:'rival', top:'IN USE', sub: state.ownerName || 'another guild' };
   var who = myGuildName || 'your guild';
   if (state.kind === 'mine') return { cls:'own', top:'MINING', sub:who };
+  // A dockyard (build-yard.md §2) builds assets from stockpiled modules — the top line
+  // names the activity, mirroring MINING. A rival's dockyard stays the neutral `other`
+  // badge above (§7 hides rival internals), so this only fires on the player's own.
+  if (state.kind === 'dockyard') return { cls:'own', top:'CONSTRUCT', sub:who };
   if (state.kind === 'refinery'){
     // The refinery's REAL output good, already resolved into siteInfo.output. If the
     // recipe didn't resolve to one, say what the venture IS rather than name a good
@@ -4313,11 +4317,12 @@ function reelConfirm(){
   // phase-1-tuning.md values (+500 GP / +900 RP → net +400), not recomputed here.
   if(S.tier===4){
     $('reelTitle').textContent='Establish the dockyard?';
+    // One sentence, so the reel fits and the Confirm button stays on-screen (the four-paragraph
+    // spiel overflowed it in playtesting). Andy refines the final copy later; the figures are the
+    // ruled phase-1-tuning.md standing effect (+500 GP / +900 RP → net +400), static labels — the
+    // UI computes no game number (§5).
     $('reelBody').innerHTML =
-      '<p>A <em>dockyard</em> is a factory turned to construction: it takes the modules your guild stockpiles in this system and builds whole <em>miners and factories</em> from them, one at a time, through a commission queue you fill later. Nothing is spent to stand it up &mdash; the parts are consumed only when a build actually starts.</p>'+
-      '<p>It will run your <em>'+esc(S.asset.label)+'</em> ('+esc(S.asset.id)+') on '+esc(S.site.summary)+'. The machine is <em>occupied, not consumed</em>: it stays in your inventory, now referenced by this dockyard.</p>'+
-      '<p>Standing up a dockyard is a Tier-4 <em>size increase</em>: it adds <em>+500 GP</em> and a held <em>+900 RP</em> while it stands &mdash; a net <em>+400</em> to your standing. There is no licence, no fee, no equity and no per-cycle commitment; the reputation is forfeited if you ever tear it down.</p>'+
-      '<p>Shall I stand up the dockyard, Guildmaster?</p>';
+      '<p>A <em>dockyard</em> turns this factory to construction &mdash; it builds <em>miners and factories</em> from the modules you stockpile in this system, and adds <em>+500 GP</em> / <em>+900 RP</em> (a net <em>+400</em>) to your standing while it stands.</p>';
     $('reelDots').style.display='none'; $('reelDots').innerHTML='';
     $('reelCancel').textContent='Cancel';
     $('reelNext').textContent='Confirm ▸';
@@ -5327,6 +5332,7 @@ function applySnapshot(snap){
     if (v.ownerGuildId === GAME.guildId){
       LIVE.myVentures[v.id] = {
         id: v.id, siteId: v.siteId || null, type: v.type || null,
+        dockyard: !!v.dockyard,   // a Tier-4 construct venture (build-yard.md §2) — read as a dockyard, not a refinery
         syndicateCommitment: v.syndicateCommitment || 0,
         equityPct: v.equityPct || 0,
         licence: v.licence || null,
@@ -5336,7 +5342,12 @@ function applySnapshot(snap){
     if (!v.siteId) return;
     if (v.ownerGuildId === GAME.guildId){
       // The player's OWN venture: they may see what it is and what it runs.
-      if (v.type === 'mining'){
+      // A dockyard is a `type:'refining'` venture carrying `dockyard:true` and no recipe
+      // (build-yard.md §2), so it is keyed FIRST — otherwise it falls into the refinery
+      // branch and shows as a "Refining Refinery".
+      if (v.dockyard){
+        LIVE.siteInfo[v.siteId] = { kind:'dockyard', ventureId:v.id };
+      } else if (v.type === 'mining'){
         LIVE.siteInfo[v.siteId] = { kind:'mine', ventureId:v.id, resourceType:v.resourceType || null };
       } else if (v.type === 'refining'){
         LIVE.siteInfo[v.siteId] = { kind:'refinery', ventureId:v.id, recipeId:v.recipeId || null, output: GAME.recipeOut[v.recipeId] || null };
@@ -7559,6 +7570,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   function ventureTypeTitle(v){
     if(!v) return 'Venture';
     if(v.deuteriumRefinery) return 'Deuterium Refinery';
+    if(v.dockyard) return 'Dockyard';   // a Tier-4 construct venture, not a "Refining Refinery" (build-yard.md §2)
     var good = v.resourceType || (window.__recipeOutput && window.__recipeOutput(v.recipeId)) || null;
     if(v.type === 'mining') return (good ? prettyGood(good) : 'Resource') + ' Mine';
     return (good ? prettyGood(good) : 'Refining') + ' Refinery';
@@ -8027,6 +8039,7 @@ function paintInventoryHero(d){
   function prettyGood(g){ return String(g||'').replace(/_/g,' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); }); }
   function ventureTitle(v){
     if(v.deuteriumRefinery) return 'Deuterium Refinery';
+    if(v.dockyard) return 'Dockyard';   // a Tier-4 construct venture, not a "Refining Refinery" (build-yard.md §2)
     var good = producedGood(v);
     if(v.type === 'mining') return (good ? prettyGood(good) : 'Resource') + ' Mine';
     return (good ? prettyGood(good) : 'Refining') + ' Refinery';
@@ -8080,6 +8093,18 @@ function paintInventoryHero(d){
   function renderDonut(s, v){
     var wrap = $('vmDonutWrap'), sub = $('vmDonutSub');
     var windowN = windowNOf(s);
+    // A dockyard has no per-cycle production and pools no good (build-yard.md §5), so the
+    // production donut would read a false "0 · per cycle · kept · off books". Draw a calm,
+    // neutral readout instead (an empty ring, no arc), and point to where its commissions
+    // actually live — the console's "4 · Assets" tab, not this popup (stats + teardown only).
+    if(v.dockyard){
+      var qn = (v.buildQueue || []).length;
+      wrap.innerHTML = donutSvg(0, false)
+        + '<div class="vm-donut-mid"><div class="pct">Build<br>Yard</div>'
+        + '<div class="cap">' + (qn ? (qn + ' in queue') : 'no builds queued') + '</div></div>';
+      sub.textContent = 'commissions run in the Production Console · 4 · Assets';
+      return;
+    }
     // Committed licensed venture → delivered / committed this cycle, from the published window view.
     if((v.syndicateCommitment || 0) > 0){
       var pv = perVentureFor(s, v);
@@ -8130,6 +8155,13 @@ function paintInventoryHero(d){
         + ledRow('Locked price', Number(lic.lockedPrice).toFixed(2));
     } else if(v.deuteriumLicence){
       L.innerHTML = '<div class="vm-terms-note">100% · windowless · no fee.</div>';
+    } else if(v.dockyard){
+      // A dockyard is a full Tier-4 venture: it holds a standing effect while it stands
+      // (build-yard.md §5 / phase-1-tuning.md), NOT "earns no standing". These are static
+      // doc-sourced labels — the client recomputes no game number (§5).
+      L.innerHTML = ledRow('Guild points', '+500 GP')
+        + ledRow('Reputation', '+900 RP held')
+        + '<div class="vm-terms-note">Standing held while the dockyard stands; forfeited on teardown. No licence, fee or equity.</div>';
     } else {
       L.innerHTML = '<div class="vm-terms-note">No licence — output kept, no fee, earns no standing.</div>';
     }
@@ -8179,7 +8211,18 @@ function paintInventoryHero(d){
     var v = findVenture(s, VM.ventureId); if(!v || v.deuteriumLicence) return;
     var ts = v.teardownSettlement || { settlementFee:0, lockoutUntilTick:null, rpForfeit:0 };
     var cw = v.contractWindow, lic = v.licence, body;
-    if(!lic){
+    if(v.dockyard){
+      // A dockyard has no licence, so the plain !lic copy would apply — but that says
+      // "nothing to settle", which is not true for a dockyard: teardown drops its whole
+      // commission queue and any in-progress build, the consumed modules do not return, and
+      // its held standing leaves (build-yard.md §5/§7). The RP figure is the engine's own
+      // teardownSettlement.rpForfeit (the venture's reputation, published); +500 GP is the
+      // same static doc-sourced standing figure the establish reel and ledger show (§5) —
+      // no number is invented here.
+      body = '<p>Stand the dockyard down and it stops being a dockyard. Its commission queue is discarded, any build now under way is abandoned, and the modules already consumed for it are <em>gone</em> &mdash; nothing is refunded. The factory returns to your inventory.</p>'
+           + '<p>Its standing leaves with it: the <em>'+fmt(ts.rpForfeit)+'</em> reputation this dockyard holds is forfeited, and its <em>+500</em> guild points fall away. There is no fee to settle and no bar on the slot.</p>'
+           + '<p>Your call, Guildmaster. <em>I am not in the room.</em></p>';
+    } else if(!lic){
       body = '<p>Nothing owed. No licence, no contract, nothing to settle. The site falls quiet, the machine returns to your inventory, and the Syndicate does not look up from its ledger.</p>'
            + '<p>Your call, Guildmaster. <em>I am not in the room.</em></p>';
     } else if(cw && cw.expired){

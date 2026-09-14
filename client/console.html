@@ -727,8 +727,9 @@
      read-only. Four panels mirroring the approved mockup (queue | build progress | building
      art | dockyard art), scoped `dk-` so nothing collides with the good-tab render. B2 wires
      the Add-commission popup and the cancel controls; here they render but do nothing. */
-  .dk-body{display:grid; grid-template-columns:200px minmax(0,1fr) 210px; gap:12px; align-items:stretch; min-height:440px}
+  .dk-body{display:grid; grid-template-columns:200px minmax(0,1fr) 170px 210px; gap:12px; align-items:stretch; min-height:440px}
   @media (max-width:1100px){ .dk-body{grid-template-columns:1fr 1fr} }
+  @media (max-width:640px){ .dk-body{grid-template-columns:1fr} }
   .dk-card{background:var(--panel); border:1px solid var(--line); border-radius:10px; display:flex; flex-direction:column; min-height:0; min-width:0; overflow:hidden}
   .dk-h{display:flex; align-items:center; justify-content:space-between; padding:11px 14px; border-bottom:1px solid var(--line); flex:0 0 auto}
   .dk-h .t{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink2); font-weight:600}
@@ -785,8 +786,9 @@
   .dk-hero .word{font-family:var(--serif); font-weight:700; letter-spacing:.20em; font-size:22px; color:var(--ink); text-align:center; text-shadow:0 2px 22px rgba(13,15,20,.95),0 1px 4px rgba(13,15,20,.95)}
   .dk-hero .role{position:absolute; z-index:2; bottom:14px; left:0; right:0; text-align:center; font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3); text-transform:capitalize}
   .dk-hero.dim .art{filter:grayscale(.8) brightness(.38)}
-  .dk-heroes{display:flex; flex-direction:column; gap:12px; min-height:0}
-  .dk-heroes .dk-hero{flex:1 1 0}
+  /* The two hero panels are direct children of the 4-column .dk-body grid (queue | centre |
+     building-art | dockyard-art), matching docs/mockups/dockyard-tab.html — no column wrapper,
+     so they sit side by side and stretch to the row height rather than stacking. */
   .dk-empty{font-family:var(--mono); font-size:12px; line-height:1.7; color:var(--ink3); text-align:center; padding:60px 24px}
   .dk-empty b{color:var(--ink2); font-weight:500}
 
@@ -1160,14 +1162,19 @@ function tierGoods(t){
 }
 
 // Is this a good the engine actually POOLS — one that can be produced, policied
-// and held in a system's stockpile? `raw` + `processed` are exactly the engine's
-// stockpile goods; the Tier-3 names are catalog-only. The good TABS key off this,
-// so the console never opens management controls on a good that has no producer,
-// no policy and no pool (the engine would reject the action). The inventory panel
-// lists them regardless — listing a holding of 0 is honest, managing it is not.
+// and held in a system's stockpile? The engine's stockpile vocabulary is
+// raw ∪ processed ∪ tier3 (sim/resources.js STOCKPILE_GOODS), still excluding
+// HIDDEN_GOODS. As of 2.1a the Tier-3 module goods are full stockpile members — the
+// engine manufactures, prices, pools and manages them (setProductionProfile validates
+// them via isStockpileGood) — so they are no longer catalog-only. The good TABS key off
+// this, so the console opens management controls exactly on the goods the engine accepts.
+// The inventory panel lists all of them regardless — listing a holding of 0 is honest,
+// managing an un-pooled good is not.
 function isPooledGood(good){
   if (HIDDEN_GOODS[good]) return false;   // deuterium is never a console-managed pool (§1.4)
-  return (STATE.goods.raw || []).indexOf(good) >= 0 || (STATE.goods.processed || []).indexOf(good) >= 0;
+  return (STATE.goods.raw || []).indexOf(good) >= 0
+    || (STATE.goods.processed || []).indexOf(good) >= 0
+    || (STATE.goods.tier3 || []).indexOf(good) >= 0;
 }
 
 // The managed guild's resolved report for the current system (schema-7 `production`).
@@ -2732,21 +2739,22 @@ function renderDockyardTab(){
 
   var centre = '<div class="dk-centre">' + dropdown + buildCard + '</div>';
 
-  // --- the art: current-build construction art (dims when idle) + the dockyard art ---
+  // --- the art: current-build construction art (dims when idle) + the dockyard art.
+  //     The two hero panels are SIBLINGS in the 4-column .dk-body grid (no .dk-heroes column
+  //     wrapper), so they sit side by side per docs/mockups/dockyard-tab.html. ---
   var role = headState === 'idle' ? '&mdash;' : esc(head.assetKind);
-  var heroes =
-    '<div class="dk-heroes">' +
-      '<div class="dk-card dk-hero' + (headState === 'idle' ? ' dim' : '') + '">' +
-        '<div class="art" style="background-image:url(\'assets/industrial/factoryConstruction.jpg\')"></div><div class="scrim"></div>' +
-        '<div class="ttop"><div class="zhead">Building</div></div><div class="role">' + role + '</div>' +
-      '</div>' +
-      '<div class="dk-card dk-hero">' +
-        '<div class="art" style="background-image:url(\'assets/industrial/buildyard.jpg\')"></div><div class="scrim"></div>' +
-        '<div class="tcenter"><div class="word">BUILDYARD</div></div>' +
-      '</div>' +
+  var buildingHero =
+    '<div class="dk-card dk-hero' + (headState === 'idle' ? ' dim' : '') + '">' +
+      '<div class="art" style="background-image:url(\'assets/industrial/factoryConstruction.jpg\')"></div><div class="scrim"></div>' +
+      '<div class="ttop"><div class="zhead">Building</div></div><div class="role">' + role + '</div>' +
+    '</div>';
+  var yardHero =
+    '<div class="dk-card dk-hero">' +
+      '<div class="art" style="background-image:url(\'assets/industrial/buildyard.jpg\')"></div><div class="scrim"></div>' +
+      '<div class="tcenter"><div class="word">BUILDYARD</div></div>' +
     '</div>';
 
-  stage.innerHTML = '<div class="dk-body">' + queueCard + centre + heroes + '</div>';
+  stage.innerHTML = '<div class="dk-body">' + queueCard + centre + buildingHero + yardHero + '</div>';
 }
 
 // ============================================================================
