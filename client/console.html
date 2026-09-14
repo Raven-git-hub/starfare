@@ -789,9 +789,112 @@
   .dk-heroes .dk-hero{flex:1 1 0}
   .dk-empty{font-family:var(--mono); font-size:12px; line-height:1.7; color:var(--ink3); text-align:center; padding:60px 24px}
   .dk-empty b{color:var(--ink2); font-weight:500}
+
+  /* ---- B2: the Add-commission est-card overlay (docs/mockups/dockyard-commission.html) ----
+     The console has no modal pattern, so this is one: a dim backdrop over the whole console
+     with the est-card centred. The mockup's est palette IS the console's :root palette (same
+     --void/--panel/--amber/--ink tokens), so the tokens are reused; only the est-card's own
+     structural classes are scoped with a `dkc-` prefix so they can't collide with the console's
+     (`.terms`, `.bill`, `.help`, `.art`, `.scrim`, … all live elsewhere on the page). */
+  .dkc-back{position:fixed; inset:0; z-index:200; display:none; align-items:flex-start; justify-content:center;
+    padding:40px 20px; overflow-y:auto; background:rgba(6,7,10,.72)}
+  .dkc-back.open{display:flex}
+  .dkc-card{width:100%; max-width:980px; background:linear-gradient(180deg,#12151C,#0F1218); border:1px solid var(--line2); border-radius:14px; box-shadow:0 30px 90px rgba(0,0,0,.6); overflow:hidden; position:relative}
+  .dkc-head{display:flex; align-items:flex-start; gap:16px; padding:18px 22px 16px; border-bottom:1px solid var(--line); background:radial-gradient(700px 200px at 85% -40%, rgba(201,162,39,.06), transparent 70%)}
+  .dkc-head .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
+  .dkc-head h2{font-family:var(--serif); font-weight:600; font-size:22px; margin:5px 0 3px; letter-spacing:.02em}
+  .dkc-head .site{font-family:var(--mono); font-size:11.5px; color:var(--ink2); letter-spacing:.02em}
+  .dkc-head .site .sep{color:var(--ink3); margin:0 7px}
+  .dkc-head .amber{color:var(--amber)}
+  .dkc-close{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--ink2); border-radius:8px; width:34px; height:34px; font-size:16px; cursor:pointer; flex:none}
+  .dkc-close:hover{border-color:var(--red); color:var(--red)}
+  .dkc-body{display:grid; grid-template-columns:1fr 340px; gap:0}
+  .dkc-main{padding:22px 22px 24px; border-right:1px solid var(--line)}
+  .dkc-blk{margin-bottom:22px}
+  .dkc-blk:last-child{margin-bottom:0}
+  .dkc-sec{display:flex; align-items:center; gap:9px; margin-bottom:11px}
+  .dkc-sec .t{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2)}
+  select.dkc-select{font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--void); border:1px solid var(--line2); border-radius:8px; padding:11px 34px 11px 12px; cursor:pointer; width:100%; appearance:none; -webkit-appearance:none; text-overflow:ellipsis;
+    background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);
+    background-position:calc(100% - 18px) 52%, calc(100% - 13px) 52%; background-size:5px 5px,5px 5px; background-repeat:no-repeat}
+  select.dkc-select:focus{outline:none; border-color:var(--amber)}
+  .dkc-side{position:relative; background:#0d0f14; display:flex; flex-direction:column; min-height:100%}
+  .dkc-side .art{position:absolute; inset:0; background-size:cover; background-position:50% 30%; z-index:0}
+  .dkc-side .scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(10,11,15,.62) 0%, rgba(10,11,15,.80) 42%, rgba(10,11,15,.94) 100%); z-index:1}
+  .dkc-side .inner{position:relative; z-index:2; padding:20px 20px 22px; display:flex; flex-direction:column; flex:1}
+  .dkc-side .stitle{font-family:var(--mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber); margin-bottom:14px}
+  .dkc-go{width:100%; margin-top:auto; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer}
+  .dkc-go:hover{background:#DCB43A}
+  .dkc-hint{font-family:var(--mono); font-size:10px; color:var(--ink3); text-align:center; margin-top:8px; letter-spacing:.04em; min-height:13px}
+  .dkc-terms{border:1px solid var(--line); border-radius:10px; background:var(--panel); overflow:hidden}
+  .dkc-commit{display:flex; align-items:baseline; gap:12px; padding:15px 15px 6px}
+  .dkc-commit .big{font-family:var(--serif); font-size:31px; font-weight:600; color:var(--amber); line-height:1}
+  .dkc-commit .cl{font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink2)}
+  .dkc-trow{display:flex; justify-content:space-between; align-items:baseline; padding:11px 15px; border-top:1px solid var(--line); font-family:var(--mono); font-size:12px}
+  .dkc-trow .k{color:var(--ink2); letter-spacing:.04em}
+  .dkc-trow .v{color:var(--ink); font-weight:500}
+  .dkc-trow .v.g{color:var(--green)} .dkc-trow .v.a{color:var(--amber)}
+  .dkc-bill{border:1px solid var(--line); border-radius:10px; background:var(--panel); overflow:hidden; max-height:210px; overflow-y:auto}
+  .dkc-brow{display:flex; align-items:center; gap:10px; padding:8px 13px; border-top:1px solid var(--line); font-family:var(--mono); font-size:11.5px}
+  .dkc-brow:first-child{border-top:none}
+  .dkc-brow .bn{flex:1 1 auto; color:var(--ink2); text-transform:capitalize; letter-spacing:.02em}
+  .dkc-bbar{position:relative; width:70px; height:6px; border-radius:4px; background:var(--void); border:1px solid var(--line); overflow:hidden; flex:none}
+  .dkc-bfill{position:absolute; left:0; top:0; bottom:0; border-radius:3px; background:var(--amber-dim)}
+  .dkc-bfill.ok{background:var(--green)}
+  .dkc-brow .bq{color:var(--ink); font-variant-numeric:tabular-nums; width:44px; text-align:right; flex:none}
+  .dkc-brow .bi{width:14px; text-align:center; flex:none}
+  .dkc-brow .bi.ok{color:var(--green)} .dkc-brow .bi.no{color:var(--amber)}
 </style>
 </head>
 <body>
+<!-- B2: the Add-commission est-card overlay. A hidden shell here; renderCommissionOverlay()
+     fills the dynamic regions (site line, build-type dropdown, requirement panel, module bill,
+     hero art, button label) off STATE.activeDockyard + STATE.assetRecipes, and openCommission()
+     shows it. The UI computes no game number (design.md §5): the days / bill / readiness are all
+     display derivations from the static catalog vs dockStock(); the only thing posted is the
+     commissionBuild action, on the Commission button. -->
+<div class="dkc-back" id="dkc-back">
+  <div class="dkc-card">
+    <div class="dkc-head">
+      <div>
+        <div class="eyebrow">Dockyard · Tier-4 Construction</div>
+        <h2>Commission a Build</h2>
+        <div class="site" id="dkc-site"></div>
+      </div>
+      <button class="dkc-close" id="dkc-close" title="Close (Esc)">&#10005;</button>
+    </div>
+    <div class="dkc-body">
+      <div class="dkc-main">
+        <div class="dkc-blk">
+          <div class="dkc-sec"><span class="t">Build type</span></div>
+          <select class="dkc-select" id="dkc-kind"></select>
+        </div>
+        <div class="dkc-blk">
+          <div class="dkc-sec"><span class="t">Requirement</span></div>
+          <div class="dkc-terms">
+            <div class="dkc-commit"><span class="big" id="dkc-days">—</span><span class="cl">Days to construct · <span id="dkc-modcount">—</span> modules</span></div>
+            <div class="dkc-trow"><span class="k">Cost</span><span class="v g">Parts only — no credits</span></div>
+            <div class="dkc-trow"><span class="k">Parts on hand</span><span class="v" id="dkc-onhand">—</span></div>
+            <div class="dkc-trow"><span class="k">Status</span><span class="v" id="dkc-status">—</span></div>
+          </div>
+        </div>
+        <div class="dkc-blk">
+          <div class="dkc-sec"><span class="t">Module bill</span></div>
+          <div class="dkc-bill" id="dkc-billlist"></div>
+        </div>
+      </div>
+      <div class="dkc-side">
+        <div class="art" id="dkc-art"></div>
+        <div class="scrim"></div>
+        <div class="inner">
+          <div class="stitle" id="dkc-stitle"></div>
+          <button class="dkc-go" id="dkc-go">Commission</button>
+          <div class="dkc-hint">No cost now — modules are consumed when the build starts.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 <header>
   <div class="brandwrap">
     <div class="eyebrow">Starfare · System Production Console</div>
@@ -1475,6 +1578,11 @@ document.addEventListener('click', function(e){
   var suen = t.closest('.su-en');       if (suen){ SYN.topupEnabled = !SYN.topupEnabled; rerenderStage(); return; }
   var mv = t.closest('.pu-btn');        if (mv){ movePursue(mv.dataset.vent, mv.classList.contains('pu-up') ? -1 : 1); return; }
   var clr = t.closest('.pu-clear');     if (clr){ postPursue(null); return; }
+  // Tier-4 dockyard tab (B2). The Add button opens the Add-commission est-card (which POSTs
+  // commissionBuild); a per-entry cancel POSTs cancelCommission for that entry's commissionId.
+  // The started-head cancel is `.dk-x.lock disabled` and carries no data-cancel, so it never fires.
+  var add = t.closest('.dk-add');       if (add){ if (!add.disabled) openCommission(); return; }
+  var xcl = t.closest('[data-cancel]');  if (xcl){ sendAction({ type: 'cancelCommission', guildId: STATE.guildId, ventureId: STATE.activeDockyard, commissionId: Number(xcl.getAttribute('data-cancel')) }, 'cancel'); return; }
 });
 
 // --- The pursue reorder: rank a licence, POST the new order -------------------------
@@ -2545,12 +2653,13 @@ function renderDockyardTab(){
         : 'waiting on parts';
       var pos = isHead ? '&#9654;' : String(i + 1);
       // A STARTED build (head, building) can only be stopped by teardown → its cancel is
-      // locked. Every unstarted entry shows an active cancel — but it is INERT this slice
-      // (B2 wires cancelCommission); no handler is attached, so a click does nothing.
+      // locked. Every unstarted entry carries a LIVE cancel keyed by its stable commissionId
+      // (B2): the #stage click handler fires cancelCommission with that id. The engine re-checks
+      // that the commission exists and has not started, and sendAction re-renders on the answer.
       var locked = isHead && headState === 'building';
       var x = locked
         ? '<button class="dk-x lock" title="a started build is stopped only by tearing the dockyard down" disabled>&#10005;</button>'
-        : '<button class="dk-x" title="cancel (wired in the next slice)" data-cancel-inert="1">&#10005;</button>';
+        : '<button class="dk-x" title="cancel this commission" data-cancel="' + esc(e.commissionId) + '">&#10005;</button>';
       return '<div class="dk-qitem' + (isHead ? ' cur' : '') + '">' +
         '<span class="pos">' + pos + '</span>' +
         '<span class="kind">' + esc(e.assetKind) + '<span class="sub">' + sub + '</span></span>' + x +
@@ -2562,8 +2671,9 @@ function renderDockyardTab(){
     '<div class="dk-card">' +
       '<div class="dk-h"><span class="t">Commission Queue</span><span class="n">' + queue.length + ' / ' + maxQueue + '</span></div>' +
       '<div class="dk-queue">' + queueHtml + '</div>' +
-      // INERT this slice — B2 opens the Add-commission popup. No handler attached.
-      '<button class="dk-add" data-add-inert="1"' + addDisabled + '>+ Add commission</button>' +
+      // LIVE (B2): the #stage click handler opens the Add-commission est-card, which fires
+      // commissionBuild. Stays disabled at maxQueue — the popup only opens when there's room.
+      '<button class="dk-add"' + addDisabled + '>+ Add commission</button>' +
     '</div>';
 
   // --- the donut: fill + readout, all derived from remainingTicks / BUILD_TICKS ---
@@ -2638,6 +2748,121 @@ function renderDockyardTab(){
 
   stage.innerHTML = '<div class="dk-body">' + queueCard + centre + heroes + '</div>';
 }
+
+// ============================================================================
+// B2 · the Add-commission est-card overlay (docs/mockups/dockyard-commission.html)
+// ----------------------------------------------------------------------------
+// Opened from the "4 · Assets" tab's Add button, it targets STATE.activeDockyard (the yard the
+// tab is showing). A build-type dropdown (STATE.assetRecipes.buildable) drives the hero art, the
+// requirement panel (days = buildTicks/1440, module count, readiness) and the module bill (the
+// catalog's bill vs dockStock — met/short). ALL of it is display derivation (§5): the UI computes
+// no game number. The only thing it POSTs is the commissionBuild action, on the Commission button;
+// the engine re-checks the queue cap and buildability, and sendAction surfaces any refusal.
+
+// Per-kind hero art. Miner + factory share the construction art (their entities exist this
+// slice); other kinds slot in their own unit art here as they become buildable.
+var DKC_ART = { miner: 'assets/industrial/factoryConstruction.jpg', factory: 'assets/industrial/factoryConstruction.jpg' };
+// 1,440 ticks/day (docs/cycle-and-calendar.md) — the same conversion the catalog's comment uses;
+// the mockup's "3 days / 5 days" are buildTicks/1440. Not a game number of ours: a display unit.
+var DKC_TICKS_PER_DAY = 1440;
+
+// The overlay's current selection (which dockyard it targets, which kind is picked). Set on open;
+// the kind changes as the dropdown changes. Nothing here is POSTed until Commission.
+var DKC = { ventureId: null, kind: null };
+
+// Fill the est-card off the active dockyard + the catalog + the selected kind. Pure render — no
+// network, no game math: days/bill/readiness are derived from the static catalog vs dockStock().
+function renderCommissionOverlay(){
+  var cat = STATE.assetRecipes || {};
+  var yards = dockyardsHere();
+  var yard = yards.find(function(y){ return y.id === DKC.ventureId; });
+  if (!yard) return;
+  var queue = yard.buildQueue || [];
+  var maxQueue = cat.maxQueue || 0;
+
+  // Header: which dockyard, and its current queue count (N / maxQueue).
+  document.getElementById('dkc-site').innerHTML =
+    '<span>' + esc(yard.ventureName || yard.id) + '</span><span class="sep">·</span>' +
+    '<span class="amber">Build queue ' + queue.length + ' / ' + maxQueue + '</span>';
+
+  var kind = DKC.kind;
+  var bill = (cat.bills || {})[kind] || {};
+  var modules = Object.keys(bill);
+  var buildTicks = (cat.buildTicks || {})[kind] || 0;
+  var days = DKC_TICKS_PER_DAY > 0 ? buildTicks / DKC_TICKS_PER_DAY : 0;
+
+  document.getElementById('dkc-days').textContent = fmtRate(days);
+  document.getElementById('dkc-modcount').textContent = modules.length;
+  document.getElementById('dkc-stitle').textContent = 'Tier-4 Construction · ' + prettyGood(kind);
+  document.getElementById('dkc-go').textContent = 'Commission ' + prettyGood(kind);
+  document.getElementById('dkc-art').style.backgroundImage =
+    "url('" + (DKC_ART[kind] || DKC_ART.miner) + "')";
+
+  // The module bill: on-hand (capped at need) vs required, green when met / amber ○ when short.
+  var met = 0, rows = '';
+  modules.forEach(function(mod){
+    var need = bill[mod];
+    var have = Math.min(dockStock(mod), need), ok = dockStock(mod) >= need;
+    if (ok) met += 1;
+    var w = need > 0 ? Math.round(100 * have / need) : 0;
+    rows += '<div class="dkc-brow">' +
+      '<span class="bn">' + esc(prettyGood(mod)) + '</span>' +
+      '<span class="dkc-bbar"><span class="dkc-bfill' + (ok ? ' ok' : '') + '" style="width:' + w + '%"></span></span>' +
+      '<span class="bq">' + have + ' / ' + need + '</span>' +
+      '<span class="bi ' + (ok ? 'ok' : 'no') + '">' + (ok ? '✓' : '○') + '</span>' +
+    '</div>';
+  });
+  document.getElementById('dkc-billlist').innerHTML = rows;
+  document.getElementById('dkc-onhand').textContent = met + ' / ' + modules.length;
+
+  // Readiness: all met → parts ready; else short N — will wait (reserve-and-wait, build-yard.md §3).
+  var short = modules.length - met;
+  var sv = document.getElementById('dkc-status');
+  if (short === 0){ sv.textContent = 'Parts ready — builds at once'; sv.className = 'v g'; }
+  else { sv.textContent = 'Short ' + short + ' module' + (short > 1 ? 's' : '') + ' — will wait'; sv.className = 'v a'; }
+}
+
+// Open the est-card on the active dockyard. The Add button is already disabled at maxQueue, so
+// this only fires with room; guard anyway, and bail if the catalog has no buildable kinds yet.
+function openCommission(){
+  var cat = STATE.assetRecipes || {};
+  var buildable = cat.buildable || [];
+  if (!buildable.length){ setStatus('no buildable asset kinds in the catalog yet', 'error'); return; }
+  var yards = dockyardsHere();
+  var yard = yards.find(function(y){ return y.id === STATE.activeDockyard; });
+  if (!yard) return;
+  if ((yard.buildQueue || []).length >= (cat.maxQueue || 0)) return;   // full — nothing to open
+
+  DKC.ventureId = yard.id;
+  DKC.kind = buildable[0];
+  // (Re)build the dropdown from the buildable kinds each open, so a catalog change is reflected.
+  document.getElementById('dkc-kind').innerHTML = buildable.map(function(k){
+    return '<option value="' + esc(k) + '">' + esc(prettyGood(k)) + '</option>';
+  }).join('');
+  document.getElementById('dkc-kind').value = DKC.kind;
+  renderCommissionOverlay();
+  document.getElementById('dkc-back').classList.add('open');
+}
+
+// Close without posting (Cancel button, backdrop click, or Esc).
+function closeCommission(){ document.getElementById('dkc-back').classList.remove('open'); }
+function commissionOverlayOpen(){ return document.getElementById('dkc-back').classList.contains('open'); }
+
+// Confirm → POST commissionBuild for the picked kind, then close. sendAction re-renders on the
+// returned snapshot and surfaces a rejection as amber (e.g. a queue that filled between open and
+// confirm), so we don't pre-empt the engine's refusal — we just fire and close. No cost field:
+// commission is free; modules are consumed at build START (build-yard.md §3).
+function confirmCommission(){
+  sendAction({ type: 'commissionBuild', guildId: STATE.guildId, ventureId: STATE.activeDockyard, assetKind: DKC.kind }, 'commission');
+  closeCommission();
+}
+
+// Overlay wiring: the dropdown re-renders the card; Commission fires; Cancel / backdrop / Esc close.
+document.getElementById('dkc-kind').addEventListener('change', function(e){ DKC.kind = e.target.value; renderCommissionOverlay(); });
+document.getElementById('dkc-go').addEventListener('click', confirmCommission);
+document.getElementById('dkc-close').addEventListener('click', closeCommission);
+document.getElementById('dkc-back').addEventListener('click', function(e){ if (e.target === this) closeCommission(); });
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && commissionOverlayOpen()) closeCommission(); });
 
 // ---- venture-chip click → select → re-render (hero populates) ----
 document.addEventListener('click', function(e){

@@ -1707,18 +1707,70 @@ test('GET /console serves the TIER-4 dockyard tab — dropdown/queue/donut/parts
   assert.match(html, /assets\/industrial\/buildyard\.jpg/);
   assert.match(html, /BUILDYARD/);
 
-  // 8. The Add-commission button + per-entry cancels RENDER (per the mockup) but are INERT this
-  //    slice: NO commission/cancel action is posted (B2 wires them). The started-head cancel is
-  //    locked; Add greys at maxQueue.
+  // 8. The Add-commission button + per-entry cancels RENDER (per the mockup). The started-head
+  //    cancel is locked; Add greys at maxQueue. (B2 wires the two actions — pinned separately, in
+  //    the B2 test below; here we just guard that the controls still render.)
   assert.match(html, /class="dk-add"/);
   assert.match(html, /queue\.length >= maxQueue \? ' disabled' : ''/);
   assert.match(html, /class="dk-x lock"/);
-  assert.ok(!html.includes("type: 'commissionBuild'"), 'B1 posts no commissionBuild — that is B2');
-  assert.ok(!html.includes("type: 'cancelCommission'"), 'B1 posts no cancelCommission — that is B2');
 
   // 9. The calm empty state replaces the old placeholder when the guild holds no dockyard here.
   assert.match(html, /No dockyard in /);
   assert.match(html, /Establish one from a settlement slot/);
+});
+
+// B2 (the LAST 2.1b dockyard slice, docs/build-yard.md §7 slice 4): the "4 · Assets" tab goes
+// LIVE. The Add button opens the Add-commission est-card overlay (docs/mockups/dockyard-commission.html),
+// whose Commission button fires commissionBuild { guildId, ventureId: activeDockyard, assetKind }
+// (no cost field); a queue entry's cancel fires cancelCommission by its stable commissionId; the
+// started-head cancel stays locked and posts nothing. The UI still computes no game number (§5):
+// the popup's days/bill/readiness are display derivations; the engine re-checks and refuses, and
+// sendAction surfaces that as amber. A page that silently reverted the wiring would still render,
+// so the tripwire is on the served bytes.
+test('GET /console serves the TIER-4 Add-commission overlay + LIVE commission/cancel wiring (B2)', async () => {
+  const html = await (await fetch(base + '/console')).text();
+
+  // 1. The est-card overlay markup exists as a hidden modal shell (the console had no modal
+  //    pattern — B2 adds one), scoped `dkc-` so its est classes can't collide with the console's.
+  assert.match(html, /class="dkc-back" id="dkc-back"/);
+  assert.match(html, /id="dkc-kind"/);          // build-type dropdown
+  assert.match(html, /id="dkc-go"/);            // Commission button
+  assert.match(html, /id="dkc-close"/);         // close (X)
+  assert.match(html, /Commission a Build/);
+
+  // 2. The Add button (no longer inert) opens the overlay; it stays disabled at maxQueue, so the
+  //    popup only opens when there's room. The old inert markers are gone.
+  assert.match(html, /t\.closest\('\.dk-add'\)/);
+  assert.match(html, /if \(!add\.disabled\) openCommission\(\)/);
+  assert.match(html, /function openCommission/);
+  assert.ok(!html.includes('data-add-inert'), 'the Add button is wired now — the inert marker is gone');
+  assert.ok(!html.includes('data-cancel-inert'), 'the cancels are wired now — the inert marker is gone');
+
+  // 3. The overlay is DISPLAY-only until Commission (§5): days = buildTicks / 1,440, the bill is
+  //    the catalog vs dockStock(), readiness is met vs short. No game number invented.
+  assert.match(html, /function renderCommissionOverlay/);
+  assert.match(html, /buildTicks \/ DKC_TICKS_PER_DAY/);
+  assert.match(html, /DKC_TICKS_PER_DAY = 1440/);
+  assert.match(html, /var have = Math\.min\(dockStock\(mod\), need\)/);
+  assert.match(html, /— will wait/);
+
+  // 4. Commission → POST commissionBuild with exactly { guildId, ventureId: activeDockyard,
+  //    assetKind } and NO cost field, then close. It targets STATE.activeDockyard (the shown yard).
+  assert.match(html, /function confirmCommission/);
+  assert.match(html, /type: 'commissionBuild', guildId: STATE\.guildId, ventureId: STATE\.activeDockyard, assetKind: DKC\.kind \}, 'commission'\)/);
+  const commissionCall = html.slice(html.indexOf("type: 'commissionBuild'"), html.indexOf("type: 'commissionBuild'") + 160);
+  assert.ok(!/cost/i.test(commissionCall), 'the commission action carries no cost field — commission is free (build-yard.md §3)');
+
+  // 5. A queue entry carries its stable commissionId, and its cancel POSTs cancelCommission by
+  //    that id (NOT an array index). The started-head cancel is `.dk-x.lock disabled` with no
+  //    data-cancel, so it fires nothing.
+  assert.match(html, /data-cancel="' \+ esc\(e\.commissionId\)/);
+  assert.match(html, /t\.closest\('\[data-cancel\]'\)/);
+  assert.match(html, /type: 'cancelCommission', guildId: STATE\.guildId, ventureId: STATE\.activeDockyard, commissionId: Number\(xcl\.getAttribute\('data-cancel'\)\) \}, 'cancel'\)/);
+
+  // 6. Cancel / backdrop / Esc close the overlay WITHOUT posting.
+  assert.match(html, /function closeCommission/);
+  assert.match(html, /if \(e\.key === 'Escape' && commissionOverlayOpen\(\)\) closeCommission\(\)/);
 });
 
 test('the EMBEDDED console\'s inventory rides the venture bridge into the game\'s right zone', async () => {
