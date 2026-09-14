@@ -648,6 +648,51 @@ test('GET / serves the TIER-4 dockyard establish — the enabled picker + establ
   assert.match(html, /Establish the dockyard\?/, 'the dockyard Adviser confirm title');
 });
 
+// The 2.1b dockyard client PLAYTEST FIXES (docs/build-yard.md §7): a dockyard is a
+// `type:'refining'` venture carrying `dockyard:true` and no recipe, so before this it read as a
+// "Refining Refinery" across the Planet Manifest and its VM popup, and the Tier-4 establish
+// confirm's four paragraphs pushed the Confirm button off-screen. A page that reverted any of
+// these would still render — so the tripwire is on the served bytes.
+test('GET / serves the dockyard client fixes — manifest badge, VM popup honesty, trimmed confirm', async () => {
+  const html = await (await fetch(base + '/')).text();
+
+  // 1. The venture join maps the player's OWN `dockyard` venture to a `dockyard` SITE KIND,
+  //    keyed BEFORE the refining branch (else a dockyard falls into `refinery`), and carries
+  //    `dockyard` onto myVentures so the VM popup can read it.
+  assert.match(html, /if \(v\.dockyard\)\{\s*LIVE\.siteInfo\[v\.siteId\] = \{ kind:'dockyard', ventureId:v\.id \};/);
+  assert.match(html, /dockyard: !!v\.dockyard,/);
+
+  // 2. siteBadge renders CONSTRUCT for a dockyard (mirroring MINING), placed before the refinery
+  //    case; a rival's dockyard stays the neutral `other` badge (§7) — untouched.
+  assert.match(html, /if \(state\.kind === 'dockyard'\) return \{ cls:'own', top:'CONSTRUCT', sub:who \};/);
+
+  // 3. BOTH venture-title helpers return "Dockyard", not "Refining Refinery".
+  assert.equal((html.match(/if\(v\.dockyard\) return 'Dockyard';/g) || []).length, 2,
+    'both ventureTitle and ventureTypeTitle key off v.dockyard');
+
+  // 4. The VM popup is HONEST for a dockyard. renderDonut branches on v.dockyard and returns a
+  //    calm "Build Yard" readout BEFORE the per-cycle "kept · off books" line ever runs.
+  const donutFn = html.slice(html.indexOf('function renderDonut'), html.indexOf('function renderInvestors'));
+  assert.match(donutFn, /if\(v\.dockyard\)\{/);
+  assert.ok(donutFn.indexOf('if(v.dockyard){') < donutFn.indexOf("'kept · off books';"),
+    'the dockyard donut branch returns before the per-cycle "kept · off books" line');
+  assert.match(html, /commissions run in the Production Console · 4 · Assets/);
+  //    The terms ledger shows the +500 GP / +900 RP standing effect, not "earns no standing".
+  assert.match(html, /Standing held while the dockyard stands; forfeited on teardown/);
+  //    The teardown confirm references the engine's own published rpForfeit (no invented number).
+  assert.match(html, /reputation this dockyard holds is forfeited/);
+  assert.match(html, /'<p>Stand the dockyard down/);
+
+  // 5. The Tier-4 establish confirm body is ONE sentence (a single <p>), so the Confirm button
+  //    stays visible — the four-paragraph spiel is gone, but the standing figures remain.
+  const reelStart = html.indexOf("Establish the dockyard?");
+  const reel = html.slice(reelStart, html.indexOf("$('reelDots')", reelStart));
+  assert.equal((reel.match(/<p>/g) || []).length, 1, 'the Tier-4 confirm body is a single <p>');
+  assert.match(reel, /turns this factory to construction/);
+  assert.match(reel, /\+500 GP/);
+  assert.match(reel, /\+900 RP/);
+});
+
 // The finished TRADE chart (29-08-26). Three things a page could lose silently — it
 // would still render, and only this would fail: the scale buttons reverting to the raw
 // ring keys, the reference line being dropped, and the width cap coming back.
@@ -1771,6 +1816,34 @@ test('GET /console serves the TIER-4 Add-commission overlay + LIVE commission/ca
   // 6. Cancel / backdrop / Esc close the overlay WITHOUT posting.
   assert.match(html, /function closeCommission/);
   assert.match(html, /if \(e\.key === 'Escape' && commissionOverlayOpen\(\)\) closeCommission\(\)/);
+});
+
+// The 2.1b dockyard client PLAYTEST FIXES for the console (docs/build-yard.md §7): the "4 · Assets"
+// tab's two hero panels sit SIDE BY SIDE (a 4-column .dk-body grid with the panels as siblings,
+// no .dk-heroes column wrapper — matching docs/mockups/dockyard-tab.html), and the "3 · Parts" tab
+// LIGHTS UP now that Tier-3 modules are pooled goods. A reverted layout or a stale gate would still
+// render, so the tripwire is on the served bytes.
+test('GET /console serves the dockyard-tab layout + tier-3 pooling fixes', async () => {
+  const html = await (await fetch(base + '/console')).text();
+
+  // 1. .dk-body is a 4-COLUMN grid (queue | centre | building-art | dockyard-art), and the
+  //    responsive collapse survives: 2-up at 1100px, single-column at 640px.
+  assert.match(html, /\.dk-body\{display:grid; grid-template-columns:200px minmax\(0,1fr\) 170px 210px;/);
+  assert.match(html, /@media \(max-width:1100px\)\{ \.dk-body\{grid-template-columns:1fr 1fr\} \}/);
+  assert.match(html, /@media \(max-width:640px\)\{ \.dk-body\{grid-template-columns:1fr\} \}/);
+
+  // 2. The two .dk-hero panels are DIRECT children of .dk-body — the .dk-heroes column wrapper is
+  //    gone from BOTH the CSS and the render, so they no longer stack in one column.
+  assert.ok(!/class="dk-heroes"/.test(html), 'the .dk-heroes render wrapper is gone');
+  assert.ok(!/\.dk-heroes\{/.test(html), 'the .dk-heroes CSS rule is gone');
+  assert.match(html, /stage\.innerHTML = '<div class="dk-body">' \+ queueCard \+ centre \+ buildingHero \+ yardHero \+ '<\/div>';/);
+
+  // 3. isPooledGood now recognizes STATE.goods.tier3 — the engine's stockpile vocabulary is
+  //    raw ∪ processed ∪ tier3 as of 2.1a (setProductionProfile validates via isStockpileGood) —
+  //    so the "3 · Parts" tab lights up and its chips open the management the engine accepts. The
+  //    tier-4 branch still keys off dockyardsHere() (untouched).
+  assert.match(html, /\(STATE\.goods\.tier3 \|\| \[\]\)\.indexOf\(good\) >= 0/);
+  assert.match(html, /t === 4 \? hasDock : tierGoods\(t\)\.some\(isPooledGood\)/);
 });
 
 test('the EMBEDDED console\'s inventory rides the venture bridge into the game\'s right zone', async () => {
