@@ -662,6 +662,7 @@ function computeAttention(state) {
 //       // sendCarry, ticksRemaining, requiredRate, sendThisTick, pctAchieved, status,
 //       // perVenture: { ventureId: { commitment, delivered, status } } }  // §5 per-licence
 //     ventures: [ { id, ownerGuildId, type, siteId, systemId, assetId, resourceType,
+//                   ventureName,                             // seed site name → siteId → id (dropdown label)
 //                   reputation,                              // RP running total, signed
 //                   licence: { committedOutputPct, windowDays, signedTick,       // 3b-i
 //                              lockedPrice, basicFee, discountedFee } | null,
@@ -1127,6 +1128,16 @@ function buildSnapshot(state) {
         // view can group ventures by system without reaching into `site`. Falls
         // back to the resolved site's system if a synthetic venture lacks it.
         systemId: v.systemId || (site ? site.systemId : null),
+        // ventureName: the venture's friendly display label — the SEED site name
+        // ("FEN-6425 II · Slot 1"), falling back to the siteId then the id, EXACTLY
+        // computeAttention's `(site && site.name) || v.siteId || v.id` (the precedent
+        // for engine-owned venture display text, §5's display rule). Surfaced top-level
+        // so the Tier-4 dockyard tab (build-yard.md §7 slice B) can LABEL each dockyard
+        // in its dropdown without reaching into `site` (which is null for an unseated
+        // venture). Pure DERIVED telemetry over the immutable seed — like `site.name`
+        // and `teardownSettlement`/`contractWindow` beside it: no serialized byte, no
+        // schema bump, no determinism hash. The browser reads it, never builds it.
+        ventureName: (site && site.name) || v.siteId || v.id,
         // assetId: the machine this venture runs (§4) — the other half of the
         // guild's `assets` block above, read from the venture's end. null for an
         // asset-less venture, which is legal but unreachable through establish or

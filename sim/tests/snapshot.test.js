@@ -13,7 +13,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { HOME_SYSTEM, HOME_PLANET } = require('./home-anchor.js');
+const { HOME_SYSTEM, HOME_PLANET, HOME_SLOT } = require('./home-anchor.js');
 
 const { createState } = require('../state.js');
 const { computeGalacticSupply } = require('../supply.js');
@@ -116,6 +116,48 @@ test('a seated venture carries its site\'s FRIENDLY NAME, derived from the seed'
   const v = snap.ventures.find((x) => x.id === 'mine_1');
   assert.equal(v.site.name, getSite('pl_00001_n02').name);
   assert.match(v.site.name, /^\S+ [IVX]+ · Node 2$/, 'system, Roman planet ordinal, node');
+});
+
+test('a dockyard venture carries ventureName — the seed site name, exactly computeAttention\'s expression', () => {
+  // The Tier-4 dockyard tab's dropdown labels each dockyard by this name (build-yard.md §7
+  // slice B). It is the SAME derivation computeAttention already uses for the renegotiation
+  // read-model: `(site && site.name) || v.siteId || v.id` — engine-owned display text, so
+  // the browser reads a label and never builds one (§5). Surfaced top-level because a
+  // dropdown option needs a string even for an unseated venture (site === null).
+  const s = createState({
+    guilds: [
+      {
+        id: 'player-guild', name: 'Player Guild', credits: 0, fuelHoard: 0,
+        homeSystemId: HOME_SYSTEM, homePlanetId: HOME_PLANET,
+        stockpiles: { [HOME_SYSTEM]: {} },
+        ventures: [
+          // A dockyard: a factory venture in construct mode, seated on a settlement slot.
+          {
+            id: 'yard1', ownerGuildId: 'player-guild', type: 'refining', siteId: HOME_SLOT,
+            dockyard: true, buildQueue: [{ commissionId: 0, assetKind: 'miner', remainingTicks: null }],
+          },
+          // An UNSEATED venture (no siteId) — its label must fall back to the id, not undefined.
+          { id: 'yard2', ownerGuildId: 'player-guild', type: 'refining', dockyard: true, buildQueue: [] },
+        ],
+      },
+    ],
+    reserve: { reserveLevel: 0 },
+    syndicate: { ledger: 0 },
+  });
+  const snap = buildSnapshot(s);
+  const seated = snap.ventures.find((x) => x.id === 'yard1');
+  const site = getSite(HOME_SLOT);
+  // The seated dockyard is labelled by its seed site name — matching computeAttention exactly.
+  assert.equal(seated.ventureName, (site && site.name) || HOME_SLOT || 'yard1');
+  assert.equal(seated.ventureName, site.name, 'a seated dockyard shows the seed slot name');
+  // The unseated one falls back to the venture id (site is null), never leaving the label blank.
+  const unseated = snap.ventures.find((x) => x.id === 'yard2');
+  assert.equal(unseated.ventureName, 'yard2');
+  // The field is DERIVED on read: building the snapshot moves no serialized byte (the state
+  // hash is untouched), and a venture with no site name still carries a usable label.
+  const before = hashState(s);
+  buildSnapshot(s);
+  assert.equal(hashState(s), before, 'the derived ventureName changes no engine state');
 });
 
 test('the pre-game tick 0 shows a blank calendar label, not `00-1:1439`', () => {
