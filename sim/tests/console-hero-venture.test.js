@@ -121,3 +121,19 @@ test('GET /console keys the default good and the hero auto-open on the VISIBLE g
   // `kind:'venture', name:<id>` (the parent stores it as __vmHeroVenture and #ihManage opens it).
   assert.match(html, /kind\s*:\s*'venture'\s*,\s*name\s*:\s*id/);
 });
+
+// THE BUG THIS GUARDS (reported 14-09-26): clicking the "4 · Assets" tier tab on a system with
+// active production bounced straight back to tier 1. The tab handler sets STATE.tier = 4 and
+// STATE.good = null (Assets has no good chips), and the good-defaulting block above then saw
+// STATE.good null with a truthy report and RE-DERIVED STATE.tier from a production good — undoing
+// the tier-4 selection on the very next render. The fix guards the whole good-defaulting on
+// `STATE.tier !== 4`, so an explicit Assets selection is never overwritten. Pinned as served bytes
+// so a future edit that drops the guard fails loudly here (the behavioural end-to-end lives in the
+// build-yard smoke). See build-yard.md.
+test('GET /console guards the good-defaulting so tier 4 (Assets) is never re-derived', async () => {
+  const html = await (await fetch(base + '/console')).text();
+
+  // Both good-defaulting statements skip tier 4: the re-deriving block and the fallback pick.
+  assert.match(html, /if\s*\(\s*STATE\.tier\s*!==\s*4\s*&&\s*!STATE\.good\s*&&\s*report\s*\)/);
+  assert.match(html, /if\s*\(\s*STATE\.tier\s*!==\s*4\s*&&\s*!STATE\.good\s*\)\s*STATE\.good\s*=/);
+});

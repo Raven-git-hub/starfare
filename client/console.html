@@ -1309,13 +1309,17 @@ function render(snap){
   // SKIP HIDDEN goods (deuterium is un-consoled, §1.4/HIDDEN_GOODS). Without the skip a
   // guild whose first-established venture is a deuterium mine would default the whole
   // console onto a good it never surfaces, and its hero onto that deuterium mine.
-  if (!STATE.good && report){
+  // EXCLUDE tier 4 (Assets): it carries no good, so the good-defaulting has nothing to
+  // default AND must not re-derive a tier from a production good — doing so would clobber an
+  // explicit "4 · Assets" selection every render on a producing system, bouncing the user off
+  // the dockyard view. STATE.good stays cleanly null on the Assets tab (tierGoods(4) is []).
+  if (STATE.tier !== 4 && !STATE.good && report){
     var goodOf = function(v){ return v.good || (STATE.vmap[v.ventureId] && STATE.recipeOut[STATE.vmap[v.ventureId].recipeId]); };
     var prodGoods = (report.mines || []).map(goodOf).concat((report.refineries || []).map(goodOf));
     var g0 = prodGoods.find(function(g){ return g && !HIDDEN_GOODS[g]; });
     if (g0){ STATE.good = g0; STATE.tier = (STATE.goods.processed || []).indexOf(g0) >= 0 ? 2 : 1; }
   }
-  if (!STATE.good) STATE.good = (tierGoods(STATE.tier)[0] || tierGoods(1)[0] || null);
+  if (STATE.tier !== 4 && !STATE.good) STATE.good = (tierGoods(STATE.tier)[0] || tierGoods(1)[0] || null);
 
   renderTiers();
   renderResBar(report);
