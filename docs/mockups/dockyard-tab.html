@@ -2,8 +2,10 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Starfare — Tier 4 Production tab (dockyard mockup)</title>
 <!--
-  The Tier 4 Production tab — a per-system tab in the System Manifest, sibling to the
-  Production Console (docs/build-yard.md §7 slice "Client — the Tier 4 Production tab").
+  The Tier 4 Production view — the Production Console's own "4 · Assets" tier tab
+  (client/console.html `renderTiers`: [[1,'Raw'],[2,'Refined'],[3,'Parts'],[4,'Assets']]),
+  which today renders empty ("Tier 4 has no goods"). This is what replaces that placeholder
+  when the guild holds a dockyard in the system (docs/build-yard.md §7 slice B).
   Human-approved 14-09-26. Four panels:
     - QUEUE (left): the selected dockyard's single-slot FIFO commission queue. Current build
       at top; queued below; each UNSTARTED entry has a live cancel (a started build's cancel
@@ -41,9 +43,13 @@
   .wrap{max-width:1320px;margin:0 auto;padding:18px 16px 40px;}
   .ctx{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px;color:var(--ink3);font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;}
   .ctx .sys{color:var(--ink);}
-  .tabbar{display:flex;gap:2px;margin:12px 0 16px;border-bottom:1px solid var(--line);}
-  .tabbar button{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);background:none;border:none;padding:9px 15px;cursor:pointer;border-bottom:2px solid transparent;}
-  .tabbar button.on{color:var(--amber2);border-bottom-color:var(--amber);}
+  /* the Production Console's own tier tabs (client/console.html) — this is the "4 · Assets" tab */
+  .tiers{display:flex;gap:3px;margin:12px 0;border-bottom:1px solid var(--line);}
+  .tier{background:var(--panel);border:1px solid var(--line);border-bottom:none;padding:8px 16px 9px;cursor:pointer;border-radius:6px 6px 0 0;color:var(--ink3);font-family:var(--mono);font-size:12px;letter-spacing:.04em;position:relative;top:1px;}
+  .tier .n{font-size:15px;font-weight:500;margin-right:8px;color:var(--ink2);}
+  .tier small{display:block;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);}
+  .tier.on{color:var(--ink);background:var(--panel2);border-color:var(--line);box-shadow:0 -2px 0 var(--amber) inset;}
+  .tier.on .n{color:var(--amber);}
   .body{display:grid;grid-template-columns:210px minmax(0,1fr) 170px 250px;gap:14px;height:500px;align-items:stretch;}
   @media(max-width:1000px){.body{grid-template-columns:1fr 1fr;height:auto;}}
   @media(max-width:640px){.body{grid-template-columns:1fr;}}
@@ -101,7 +107,12 @@
 </style></head>
 <body><div class="wrap">
   <div class="ctx"><span>System Manifest</span> &middot; <span class="sys">FEN-6425</span> &middot; <span>your holdings</span></div>
-  <div class="tabbar"><button>Distribution &middot; Console</button><button class="on">Tier 4 &middot; Production</button></div>
+  <div class="tiers">
+    <div class="tier"><span class="n">1</span><small>Raw</small></div>
+    <div class="tier"><span class="n">2</span><small>Refined</small></div>
+    <div class="tier"><span class="n">3</span><small>Parts</small></div>
+    <div class="tier on"><span class="n">4</span><small>Assets</small></div>
+  </div>
   <div class="body">
     <div class="card">
       <div class="card-h"><span class="t">Commission Queue</span><span class="n" id="qcount">3 / 5</span></div>
