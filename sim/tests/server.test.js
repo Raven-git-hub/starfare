@@ -1819,9 +1819,10 @@ test('GET /console serves the TIER-4 Add-commission overlay + LIVE commission/ca
 });
 
 // The 2.1b dockyard tab ADAPTIVE layout for the console (docs/build-yard.md §7): the "4 · Assets"
-// tab fills the detail-area height and its two art panels GROW with the panel width — fr-weighted
-// minmax() columns (art tracks minmax(290px,1fr)) above a calc(100vh - …) min-height, the centre
-// build card flex-grown, four-across from ~1836px windows up and stacking below the 1120px
+// tab fills the detail-area height and its panels are fr-weighted minmax() columns above a
+// calc(100vh - …) min-height: the centre "Current Build" card is the widest (minmax(340px,1.3fr)),
+// the BUILDYARD hero tracks minmax(280px,1fr), and the "Building" thumbnail is ~half of it
+// (minmax(150px,0.55fr)); four-across from ~1836px windows up and stacking below the 1120px
 // breakpoint. The panels stay siblings of .dk-body (no .dk-heroes column wrapper — the mockup's
 // fixed height:500px / 170px-250px art columns are superseded), and the "3 · Parts" tab LIGHTS UP
 // now that Tier-3 modules are pooled goods. A reverted layout or a stale gate would still render, so
@@ -1829,11 +1830,12 @@ test('GET /console serves the TIER-4 Add-commission overlay + LIVE commission/ca
 test('GET /console serves the dockyard-tab layout + tier-3 pooling fixes', async () => {
   const html = await (await fetch(base + '/console')).text();
 
-  // 1. .dk-body is an ADAPTIVE 4-column grid: fixed queue, fr-weighted centre, and the two art
-  //    panels track minmax(290px,1fr) so they grow with the panel; it fills the detail height via
+  // 1. .dk-body is an ADAPTIVE 4-column grid: fixed queue, a wide fr-weighted centre (the widest
+  //    panel, minmax(340px,1.3fr)), the BUILDYARD hero at minmax(280px,1fr), and the "Building"
+  //    thumbnail ~half of it at minmax(150px,0.55fr); it fills the detail height via
   //    calc(100vh - 250px). The centre build card flex-grows into the taller column. The collapse
   //    survives: 2-up at 1120px, single-column at 640px, the fill reset to natural height in both.
-  assert.match(html, /\.dk-body\{display:grid;\s*grid-template-columns:200px minmax\(300px,0\.6fr\) minmax\(290px,1fr\) minmax\(290px,1fr\);\s*gap:12px; align-items:stretch; min-height:calc\(100vh - 250px\)\}/);
+  assert.match(html, /\.dk-body\{display:grid;\s*grid-template-columns:200px minmax\(340px,1\.3fr\) minmax\(150px,0\.55fr\) minmax\(280px,1fr\);\s*gap:12px; align-items:stretch; min-height:calc\(100vh - 250px\)\}/);
   assert.match(html, /\.dk-centre > \.dk-card\{flex:1 1 auto; min-height:0\}/);
   assert.match(html, /@media \(max-width:1120px\)\{ \.dk-body\{grid-template-columns:1fr 1fr; min-height:0\} \}/);
   assert.match(html, /@media \(max-width:640px\)\{ \.dk-body\{grid-template-columns:1fr; min-height:0\} \}/);

@@ -176,15 +176,17 @@ mine**, but not identically — the deuterium mine's 0-GP is its *unique* advant
      since Tier-3 modules became full stockpile goods in 2.1a. Client display only — no game number is
      recomputed (§5); every figure is a snapshot field or a doc-sourced label.
    - **Adaptive tab layout ✅ (`client/console.html` only; no markup/JS, no `sim/` change).** The
-     "4 · Assets" tab now **fills the detail-area height** and its two art panels are **adaptive** —
+     "4 · Assets" tab now **fills the detail-area height** and its art panels are **adaptive** —
      they grow with the panel width instead of sitting at a fixed size. `.dk-body` fills the height
      via `min-height:calc(100vh - 250px)` (the console is a same-origin iframe — `game.html`
      `.console-frame{height:100%}` — so `100vh` here is the detail-area height; `250px` is the
      measured chrome above `.dk-body` in embed mode, ~230px header/status/tier-tabs/resbar + the 20px
-     `body.embed` bottom padding). Its columns are `200px minmax(300px,0.6fr) minmax(290px,1fr)
-     minmax(290px,1fr)`: the queue is fixed, and the centre and the two art panels share free space by
-     fr-weight, so the art grows with the monitor (≈290px each at a ~1836px window up to ~590px at
-     2560px) above a 290px floor while the centre grows modestly above its 300px floor; the centre
+     `body.embed` bottom padding). Its columns are `200px minmax(340px,1.3fr) minmax(150px,0.55fr)
+     minmax(280px,1fr)`: the queue is fixed, and the centre and the two art panels share free space by
+     fr-weight. The centre **Current Build card is the widest panel** (1.3fr, floor 340px) so the
+     donut and part bars get the room; the col-4 **BUILDYARD art stays the hero** (1fr, floor 280px);
+     and the col-3 **"Building" thumbnail is ~half the BUILDYARD hero** (0.55fr, floor 150px) at every
+     width — it's the small current-build image, not a second hero. The centre
      build card is `flex:1 1 auto` so it reaches the taller column (its donut/parts already flex +
      scroll). **Four-across holds from ~1836px windows up** (the console panel is ~viewport − 706px:
      a 380px index panel + a 326px `.ind-hero` flank it) and **stacks to 2-up below the 1120px panel
