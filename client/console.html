@@ -721,6 +721,74 @@
     color:var(--amber); font-variant-numeric:tabular-nums; margin-top:3px}
   .sm-stats .st .v .u{font-size:9px; color:var(--ink3); margin-left:2px}
   .sm-foot{font-family:var(--mono); font-size:9px; line-height:1.5; color:var(--ink3); margin-top:8px}
+
+  /* ---- Tier 4 · Assets — the dockyard tab (docs/mockups/dockyard-tab.html, slice B1) ------
+     The Production Console's "4 · Assets" tier tab: a guild's dockyards in this system,
+     read-only. Four panels mirroring the approved mockup (queue | build progress | building
+     art | dockyard art), scoped `dk-` so nothing collides with the good-tab render. B2 wires
+     the Add-commission popup and the cancel controls; here they render but do nothing. */
+  .dk-body{display:grid; grid-template-columns:200px minmax(0,1fr) 210px; gap:12px; align-items:stretch; min-height:440px}
+  @media (max-width:1100px){ .dk-body{grid-template-columns:1fr 1fr} }
+  .dk-card{background:var(--panel); border:1px solid var(--line); border-radius:10px; display:flex; flex-direction:column; min-height:0; min-width:0; overflow:hidden}
+  .dk-h{display:flex; align-items:center; justify-content:space-between; padding:11px 14px; border-bottom:1px solid var(--line); flex:0 0 auto}
+  .dk-h .t{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink2); font-weight:600}
+  .dk-h .n{font-family:var(--mono); font-size:10px; color:var(--ink3); font-variant-numeric:tabular-nums}
+  .dk-centre{display:flex; flex-direction:column; gap:12px; min-height:0}
+  .dk-yardsel{position:relative; flex:0 0 auto}
+  .dk-yardsel select{width:100%; appearance:none; -webkit-appearance:none; background:var(--panel2);
+    color:var(--ink); border:1px solid var(--line2); border-radius:9px; font-family:var(--serif);
+    font-size:16px; letter-spacing:.02em; padding:12px 40px 12px 15px; cursor:pointer}
+  .dk-yardsel select:hover, .dk-yardsel select:focus{outline:none; border-color:var(--amber)}
+  .dk-yardsel .car{position:absolute; right:15px; top:50%; transform:translateY(-50%); pointer-events:none; color:var(--ink3); font-size:11px}
+  .dk-yardsel .lbl{position:absolute; left:15px; top:-7px; background:var(--void); padding:0 6px;
+    font-family:var(--mono); font-size:8px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3)}
+  .dk-queue{padding:10px; flex:1 1 auto; overflow-y:auto; display:flex; flex-direction:column; gap:8px; min-height:0}
+  .dk-qitem{border:1px solid var(--line); border-radius:7px; background:var(--panel2); padding:10px 11px; display:flex; align-items:center; gap:9px; flex:0 0 auto}
+  .dk-qitem.cur{border-color:var(--amber-dim); background:var(--amber-ghost)}
+  .dk-qitem .kind{font-family:var(--serif); font-size:14px; color:var(--ink); flex:1 1 auto; text-transform:capitalize}
+  .dk-qitem .sub{display:block; font-family:var(--mono); font-size:8.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3); margin-top:2px}
+  .dk-qitem.cur .sub{color:var(--amber)}
+  .dk-qitem .pos{font-family:var(--mono); font-size:10px; color:var(--ink3); width:16px; text-align:center; flex:0 0 auto}
+  .dk-x{width:22px; height:22px; border-radius:5px; border:1px solid var(--line2); background:none; color:var(--ink3); cursor:pointer; font-size:13px; line-height:1; flex:0 0 auto}
+  .dk-x:hover{color:var(--red); border-color:var(--red)}
+  .dk-x.lock{opacity:.32; cursor:not-allowed}
+  .dk-add{margin:10px; flex:0 0 auto; font-family:var(--mono); font-size:11px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:8px; padding:11px; cursor:pointer; font-weight:600}
+  .dk-add:disabled{background:var(--raised); color:var(--ink3); cursor:not-allowed}
+  .dk-qempty{color:var(--ink3); font-size:11.5px; text-align:center; padding:26px 12px; line-height:1.6; margin:auto 0}
+  .dk-prog{flex:1 1 auto; display:flex; flex-direction:column; align-items:center; padding:16px 16px 0; min-height:0}
+  .dk-donutwrap{position:relative; width:158px; height:158px; flex:0 0 auto}
+  .dk-donutwrap svg{transform:rotate(-90deg)}
+  .dk-donut-c{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center}
+  .dk-donut-c .big{font-family:var(--mono); font-size:27px; font-variant-numeric:tabular-nums; letter-spacing:.02em; color:var(--ink); line-height:1}
+  .dk-donut-c .big.grey{color:var(--ink3); font-size:18px; letter-spacing:.22em}
+  .dk-donut-c .u{font-family:var(--mono); font-size:8.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--ink3); margin-top:6px}
+  .dk-donut-c .pct{font-family:var(--mono); font-size:10px; color:var(--amber); margin-top:5px}
+  .dk-parts{width:100%; margin-top:14px; flex:1 1 auto; display:flex; flex-direction:column; min-height:0}
+  .dk-parts-h{font-family:var(--mono); font-size:9px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink3);
+    display:flex; justify-content:space-between; flex:0 0 auto; border-top:1px solid var(--line); padding:11px 0 8px}
+  .dk-partslist{flex:1 1 auto; overflow-y:auto; min-height:0; padding-bottom:12px}
+  .dk-prow{display:flex; align-items:center; gap:10px; padding:5px 0}
+  .dk-prow .pn{font-family:var(--mono); font-size:10.5px; color:var(--ink2); width:150px; flex:0 0 auto; text-transform:capitalize; letter-spacing:.02em}
+  .dk-pbar{position:relative; flex:1 1 auto; height:7px; border-radius:4px; background:var(--void); border:1px solid var(--line); overflow:hidden}
+  .dk-pfill{position:absolute; left:0; top:0; bottom:0; border-radius:3px; background:linear-gradient(90deg,var(--amber-dim),var(--amber))}
+  .dk-pfill.done{background:linear-gradient(90deg,rgba(95,185,138,.6),var(--green))}
+  .dk-pq{font-family:var(--mono); font-size:9.5px; color:var(--ink3); width:48px; text-align:right; flex:0 0 auto; font-variant-numeric:tabular-nums}
+  .dk-pic{width:16px; text-align:center; flex:0 0 auto; font-size:12px}
+  .dk-pic.ok{color:var(--green)} .dk-pic.wait{color:var(--amber)}
+  .dk-hero{position:relative; overflow:hidden; min-height:210px}
+  .dk-hero .art{position:absolute; inset:0; z-index:0; background-size:cover; background-position:center 30%}
+  .dk-hero .scrim{position:absolute; inset:0; z-index:1; background:linear-gradient(180deg,rgba(13,15,20,.72) 0%,rgba(13,15,20,.12) 30%,rgba(13,15,20,.10) 55%,rgba(13,15,20,.92) 100%)}
+  .dk-hero .ttop{position:relative; z-index:2; padding:13px 15px}
+  .dk-hero .ttop .zhead{font-family:var(--mono); font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3)}
+  .dk-hero .tcenter{position:absolute; z-index:2; top:25%; left:0; right:0; display:flex; justify-content:center; padding:0 8px}
+  .dk-hero .word{font-family:var(--serif); font-weight:700; letter-spacing:.20em; font-size:22px; color:var(--ink); text-align:center; text-shadow:0 2px 22px rgba(13,15,20,.95),0 1px 4px rgba(13,15,20,.95)}
+  .dk-hero .role{position:absolute; z-index:2; bottom:14px; left:0; right:0; text-align:center; font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3); text-transform:capitalize}
+  .dk-hero.dim .art{filter:grayscale(.8) brightness(.38)}
+  .dk-heroes{display:flex; flex-direction:column; gap:12px; min-height:0}
+  .dk-heroes .dk-hero{flex:1 1 0}
+  .dk-empty{font-family:var(--mono); font-size:12px; line-height:1.7; color:var(--ink3); text-align:center; padding:60px 24px}
+  .dk-empty b{color:var(--ink2); font-weight:500}
 </style>
 </head>
 <body>
@@ -819,6 +887,13 @@ var ARM = {
 var STATE = { snap:null, goods:{raw:[],processed:[],tier3:[]}, guildId:null, sysId:null, tier:1, good:null, vmap:{}, recipeOut:{},
               rightTab:'consumption', selVenture:null, pinnedSysId:null, embedded:false, heroVentureId:null,
               sysInfo:null,
+              // The Tier-4 asset-bill catalog from GET /asset-recipes (static RULES): { bills,
+              // buildTicks, maxQueue, buildable }. Read by the dockyard tab to size the donut
+              // and list a bill; empty until the boot fetch lands (the tab degrades gracefully).
+              assetRecipes:{ bills:{}, buildTicks:{}, maxQueue:0, buildable:[] },
+              // The dockyard tab's console-local selection — which dockyard the dropdown shows.
+              // Nothing is POSTed; it just picks which venture's queue/donut/parts render.
+              activeDockyard:null,
               // The inventory panel's view state. `invCleared` — the player toggled
               // the selected chip OFF; it stops renderStage's open-on-the-lead-venture
               // from re-selecting one on the very next poll. `invOpen` — whether the
@@ -1121,16 +1196,39 @@ function render(snap){
   renderStage(report);
 }
 
+// The guild's dockyards in the CURRENT system, stably ordered so the dropdown and the
+// tier-4 tab pick the same one every render. A dockyard is a venture the snapshot marks
+// `dockyard === true` (build-yard.md §2); the tab lists only those the managed guild owns
+// in STATE.sysId. Ordered by ventureName (the dropdown label), the id breaking ties —
+// deterministic, never the snapshot's incidental order.
+function dockyardsHere(){
+  var vs = ((STATE.snap && STATE.snap.ventures) || []).filter(function(v){
+    return v.dockyard && v.ownerGuildId === STATE.guildId && v.systemId === STATE.sysId;
+  });
+  vs.sort(function(a, b){
+    var an = a.ventureName || a.id, bn = b.ventureName || b.id;
+    if (an !== bn) return an < bn ? -1 : 1;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+  return vs;
+}
+
 function renderTiers(){
   var defs = [[1,'Raw'],[2,'Refined'],[3,'Parts'],[4,'Assets']];
+  // Tier 4 has no stockpile goods (its output is an ASSET, not a pooled good), so it can't
+  // key off isPooledGood like 1–3. It lights up when the guild holds a dockyard in this
+  // system — otherwise it stays dim, an honest "nothing here" rather than a faked tab.
+  var hasDock = dockyardsHere().length > 0;
   document.getElementById('tiers').innerHTML = defs.map(function(d){
-    var t = d[0], has = tierGoods(t).some(isPooledGood);
+    var t = d[0], has = t === 4 ? hasDock : tierGoods(t).some(isPooledGood);
     var cls = 'tier' + (t === STATE.tier ? ' on' : '') + (has ? '' : ' dim');
     return '<div class="' + cls + '" data-tier="' + t + '"><span class="n">' + t + '</span><small>' + d[1] + '</small></div>';
   }).join('');
 }
 
 function renderResBar(report){
+  // Tier 4 · Assets has no good chips — its dockyard dropdown lives in the stage below.
+  if (STATE.tier === 4){ document.getElementById('resbar').innerHTML = ''; return; }
   var active = {};
   if (report){
     (report.mines || []).forEach(function(m){ active[m.good] = true; });
@@ -1776,8 +1874,13 @@ document.getElementById('btnLive').addEventListener('click', function(){ if (liv
 document.getElementById('guildSel').addEventListener('change', function(e){ STATE.guildId = e.target.value; STATE.sysId = null; STATE.good = null; if (STATE.snap) render(STATE.snap); });
 
 document.getElementById('tiers').addEventListener('click', function(e){
-  var t = e.target.closest('.tier'); if (!t || t.classList.contains('dim')) return;
-  STATE.tier = +t.dataset.tier; STATE.good = tierGoods(STATE.tier)[0] || null;
+  var t = e.target.closest('.tier'); if (!t) return;
+  var tier = +t.dataset.tier;
+  // Tiers 1–3 dim = no goods pooled there, nothing to manage → not clickable. Tier 4 is
+  // always reachable: dim there just means "no dockyard in this system yet", and the
+  // Assets tab says so (its calm empty state), rather than being a dead tab.
+  if (tier !== 4 && t.classList.contains('dim')) return;
+  STATE.tier = tier; STATE.good = tierGoods(STATE.tier)[0] || null;
   if (STATE.snap) render(STATE.snap);
 });
 document.getElementById('resbar').addEventListener('click', function(e){
@@ -1789,6 +1892,9 @@ document.getElementById('resbar').addEventListener('click', function(e){
 // 'change'; numeric inputs commit on blur/Enter (so a re-render never eats a keystroke).
 document.getElementById('stage').addEventListener('change', function(e){
   var t = e.target, good = STATE.good;
+  // The dockyard dropdown (Tier 4) — pure console-local UI: pick which dockyard the tab
+  // shows. Nothing is POSTed; just re-render the stage with the new selection.
+  if (t.id === 'dk-yardsel'){ STATE.activeDockyard = t.value; rerenderStage(); return; }
   if (t.classList.contains('prank')){
     // Reorder: move the fork to the chosen rank, POST the new (valid permutation) order.
     var pol = goodPolicy(good); var order = pol.order.filter(function(f){ return f !== t.dataset.fork; });
@@ -1983,6 +2089,12 @@ function paintTrack(track, fillSel, handleSel, pct){
     var recs = (await api('GET', '/recipes')).data.recipes || [];
     recs.forEach(function(r){ STATE.recipeOut[r.id] = r.output.good; });
   } catch (e) {}
+  // The Tier-4 ASSET-BILL catalog (bills + build ticks + queue cap + buildable kinds) —
+  // STATIC RULES from sim/asset-recipes.js, served by slice A's GET /asset-recipes, fetched
+  // once like /goods and /recipes. The dockyard tab reads it to size the donut (BUILD_TICKS
+  // per kind) and list the bill (build-yard.md §7 slice B). Every live figure still comes
+  // from /snapshot; this file never changes with the tick.
+  try { STATE.assetRecipes = (await api('GET', '/asset-recipes')).data || STATE.assetRecipes; } catch (e) {}
   await refresh('GET', null);
   // Default to LIVE: a player-facing console watches a real-time world, so it
   // re-reads on the ~1s cadence out of the box. Pause it to freeze your screen
@@ -2292,6 +2404,8 @@ function reservePanel2(good, rg){
 
 // ---- OVERRIDE renderStage: 4-column flow, no inner trend/top-up columns ----
 function renderStage(report){
+  // Tier 4 · Assets renders the dockyard view (its own layout + data), not the good pipeline.
+  if (STATE.tier === 4){ renderDockyardTab(); return; }
   var good = STATE.good;
   document.getElementById('rtitle').innerHTML = esc(prettyGood(good || '—')) + ' <span class="of">Tier ' + STATE.tier + '</span>';
   var rg = report ? (report.goods || {})[good] : null;
@@ -2340,6 +2454,189 @@ function renderStage(report){
     '</div>';
   decorateSteppers(stage);
   paintIndustrialHero(good, report, rg);
+}
+
+// ============================================================================
+// Tier 4 · Assets — the dockyard tab (docs/mockups/dockyard-tab.html, slice B1)
+// ----------------------------------------------------------------------------
+// READ-ONLY: renders the guild's dockyards in this system — the dropdown, the FIFO
+// commission queue, the build-progress donut, the parts tracker and the two art
+// panels — off the snapshot + the static /asset-recipes catalog. The UI computes NO
+// game number (§5): the donut fill, the H:M readout and the parts shortfall are display
+// derivations from `remainingTicks` / `BUILD_TICKS` / `stockpilesBySystem` + the bill.
+// The "+ Add commission" button and the per-entry cancels render (per the mockup) but
+// are INERT this slice — B2 wires commissionBuild / cancelCommission.
+// ============================================================================
+
+// The dockyard's own-system stock of one module (build-yard.md §3: consumption is local).
+function dockStock(good){
+  var g = (STATE.snap.guilds || []).find(function(x){ return x.id === STATE.guildId; }) || {};
+  return ((g.stockpilesBySystem || {})[STATE.sysId] || {})[good] || 0;
+}
+
+// remainingTicks (minutes, the tick is one minute — docs/cycle-and-calendar.md) said as the
+// mockup's H:MM clock. A CONVERSION of the engine's own countdown, never a number of ours.
+function fmtBuildClock(mins){
+  var m = Math.max(0, Math.round(Number(mins) || 0));
+  var h = Math.floor(m / 60), mm = m % 60;
+  return h + ':' + (mm < 10 ? '0' + mm : String(mm));
+}
+
+// The head commission's state, read straight off the snapshot's buildQueue (§3): a positive
+// `remainingTicks` is BUILDING, `null` is WAITING for parts, no head at all is IDLE.
+function dockHeadState(head){
+  if (!head) return 'idle';
+  return (head.remainingTicks != null && head.remainingTicks > 0) ? 'building' : 'waiting';
+}
+
+// Choose which dockyard the tab shows: keep the player's selection if it still exists,
+// else default to the first that WANTS ATTENTION (idle, or its head waiting on parts),
+// falling back to the first. Stores the choice so the dropdown and the panel agree.
+function pickActiveDockyard(yards){
+  var cur = yards.find(function(y){ return y.id === STATE.activeDockyard; });
+  if (cur) return cur;
+  var attn = yards.find(function(y){
+    var head = (y.buildQueue || [])[0] || null;
+    return dockHeadState(head) !== 'building';
+  });
+  return attn || yards[0];
+}
+
+function renderDockyardTab(){
+  document.getElementById('rtitle').innerHTML = 'Assets <span class="of">Tier 4 · Dockyards</span>';
+  var stage = document.getElementById('stage');
+  var yards = dockyardsHere();
+
+  // Empty state — no dockyard in this system. A calm pointer to how you'd build one, NOT
+  // the old "Tier 4 has no goods" placeholder.
+  if (!yards.length){
+    STATE.activeDockyard = null;
+    stage.innerHTML =
+      '<div class="panel"><div class="dk-empty">No dockyard in ' + esc(STATE.sysId || 'this system') + '.<br>' +
+      '<b>Establish one from a settlement slot</b> — open the System Manifest, pick a vacant slot, and deploy a Tier 4 · Construct venture.</div></div>';
+    return;
+  }
+
+  var active = pickActiveDockyard(yards);
+  STATE.activeDockyard = active.id;
+  var queue = active.buildQueue || [];
+  var head = queue[0] || null;
+  var headState = dockHeadState(head);
+  var cat = STATE.assetRecipes || {};
+  var maxQueue = cat.maxQueue || 0;
+
+  // --- the dropdown: every dockyard here, labelled by its venture (site) name ---
+  var options = yards.map(function(y){
+    return '<option value="' + esc(y.id) + '"' + (y.id === active.id ? ' selected' : '') + '>' + esc(y.ventureName || y.id) + '</option>';
+  }).join('');
+  var dropdown =
+    '<div class="dk-yardsel"><span class="lbl">Dockyard</span>' +
+    '<select id="dk-yardsel">' + options + '</select><span class="car">&#9660;</span></div>';
+
+  // --- the queue: head = current build, rest queued; each entry its kind + state ---
+  var queueHtml;
+  if (!queue.length){
+    queueHtml = '<div class="dk-qempty">No commissions.<br>Add one to start building.</div>';
+  } else {
+    queueHtml = queue.map(function(e, i){
+      var isHead = i === 0;
+      var sub = !isHead ? 'queued'
+        : headState === 'building' ? 'building'
+        : 'waiting on parts';
+      var pos = isHead ? '&#9654;' : String(i + 1);
+      // A STARTED build (head, building) can only be stopped by teardown → its cancel is
+      // locked. Every unstarted entry shows an active cancel — but it is INERT this slice
+      // (B2 wires cancelCommission); no handler is attached, so a click does nothing.
+      var locked = isHead && headState === 'building';
+      var x = locked
+        ? '<button class="dk-x lock" title="a started build is stopped only by tearing the dockyard down" disabled>&#10005;</button>'
+        : '<button class="dk-x" title="cancel (wired in the next slice)" data-cancel-inert="1">&#10005;</button>';
+      return '<div class="dk-qitem' + (isHead ? ' cur' : '') + '">' +
+        '<span class="pos">' + pos + '</span>' +
+        '<span class="kind">' + esc(e.assetKind) + '<span class="sub">' + sub + '</span></span>' + x +
+      '</div>';
+    }).join('');
+  }
+  var addDisabled = queue.length >= maxQueue ? ' disabled' : '';
+  var queueCard =
+    '<div class="dk-card">' +
+      '<div class="dk-h"><span class="t">Commission Queue</span><span class="n">' + queue.length + ' / ' + maxQueue + '</span></div>' +
+      '<div class="dk-queue">' + queueHtml + '</div>' +
+      // INERT this slice — B2 opens the Add-commission popup. No handler attached.
+      '<button class="dk-add" data-add-inert="1"' + addDisabled + '>+ Add commission</button>' +
+    '</div>';
+
+  // --- the donut: fill + readout, all derived from remainingTicks / BUILD_TICKS ---
+  var RING = 427; // 2·π·68, matching the mockup's stroke-dasharray
+  var fill = 0, big = 'IDLE', bigCls = ' grey', clockU = '', pct = '', progtag = '&mdash;';
+  if (headState === 'building'){
+    var bt = (cat.buildTicks || {})[head.assetKind] || 0;
+    fill = bt > 0 ? Math.max(0, Math.min(1, (bt - head.remainingTicks) / bt)) : 0;
+    big = fmtBuildClock(head.remainingTicks); bigCls = '';
+    clockU = 'hrs : min left'; pct = Math.round(100 * fill) + '%'; progtag = 'building';
+  } else if (headState === 'waiting'){
+    big = 'PENDING'; progtag = 'waiting on parts';
+  }
+  var donutOffset = Math.round(RING * (1 - fill));
+  var donut =
+    '<div class="dk-donutwrap">' +
+      '<svg width="158" height="158" viewBox="0 0 158 158">' +
+        '<circle cx="79" cy="79" r="68" fill="none" stroke="rgba(232,223,200,.08)" stroke-width="11"/>' +
+        '<circle cx="79" cy="79" r="68" fill="none" stroke="var(--amber)" stroke-width="11" stroke-linecap="round" stroke-dasharray="' + RING + '" stroke-dashoffset="' + donutOffset + '"/>' +
+      '</svg>' +
+      '<div class="dk-donut-c"><div class="big' + bigCls + '">' + big + '</div>' +
+        '<div class="u">' + clockU + '</div><div class="pct">' + pct + '</div></div>' +
+    '</div>';
+
+  // --- the parts tracker: bill vs own-system stock. Building = secured (all green);
+  //     waiting = the shortfall (green when met, amber ○ when short); idle = empty ---
+  var partsRows = '', partsCount = '';
+  if (headState !== 'idle'){
+    var bill = (cat.bills || {})[head.assetKind] || {};
+    var modules = Object.keys(bill);
+    var met = 0;
+    partsRows = modules.map(function(mod){
+      var need = bill[mod];
+      var have, ok;
+      if (headState === 'building'){ have = need; ok = true; }        // consumed → secured
+      else { have = Math.min(dockStock(mod), need); ok = dockStock(mod) >= need; }
+      if (ok) met += 1;
+      var w = need > 0 ? Math.round(100 * have / need) : 0;
+      return '<div class="dk-prow">' +
+        '<span class="pn">' + esc(prettyGood(mod)) + '</span>' +
+        '<span class="dk-pbar"><span class="dk-pfill' + (ok ? ' done' : '') + '" style="width:' + w + '%"></span></span>' +
+        '<span class="dk-pq">' + have + ' / ' + need + '</span>' +
+        '<span class="dk-pic ' + (ok ? 'ok' : 'wait') + '">' + (ok ? '✓' : '○') + '</span>' +
+      '</div>';
+    }).join('');
+    partsCount = headState === 'building' ? 'secured' : (met + ' / ' + modules.length + ' met');
+  }
+  var buildCard =
+    '<div class="dk-card">' +
+      '<div class="dk-h"><span class="t">Current Build</span><span class="n">' + progtag + '</span></div>' +
+      '<div class="dk-prog">' + donut +
+        '<div class="dk-parts"><div class="dk-parts-h"><span>Parts</span><span>' + partsCount + '</span></div>' +
+        '<div class="dk-partslist">' + partsRows + '</div></div>' +
+      '</div>' +
+    '</div>';
+
+  var centre = '<div class="dk-centre">' + dropdown + buildCard + '</div>';
+
+  // --- the art: current-build construction art (dims when idle) + the dockyard art ---
+  var role = headState === 'idle' ? '&mdash;' : esc(head.assetKind);
+  var heroes =
+    '<div class="dk-heroes">' +
+      '<div class="dk-card dk-hero' + (headState === 'idle' ? ' dim' : '') + '">' +
+        '<div class="art" style="background-image:url(\'assets/industrial/factoryConstruction.jpg\')"></div><div class="scrim"></div>' +
+        '<div class="ttop"><div class="zhead">Building</div></div><div class="role">' + role + '</div>' +
+      '</div>' +
+      '<div class="dk-card dk-hero">' +
+        '<div class="art" style="background-image:url(\'assets/industrial/buildyard.jpg\')"></div><div class="scrim"></div>' +
+        '<div class="tcenter"><div class="word">BUILDYARD</div></div>' +
+      '</div>' +
+    '</div>';
+
+  stage.innerHTML = '<div class="dk-body">' + queueCard + centre + heroes + '</div>';
 }
 
 // ---- venture-chip click → select → re-render (hero populates) ----

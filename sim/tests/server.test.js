@@ -1639,12 +1639,86 @@ test('GET /console serves the SYSTEM INVENTORY panel: the right hero\'s resting 
 
   // The Tier-3 names reach the INVENTORY only. The good tabs stay keyed to goods
   // the engine actually pools, so Tier 3 remains dim and the console never opens
-  // management controls on a good with no producer, policy or pool.
+  // management controls on a good with no producer, policy or pool. Tier 4 is the one
+  // exception (its output is an ASSET, not a pooled good), so it keys off a dockyard.
   assert.match(html, /function isPooledGood/);
-  assert.match(html, /has = tierGoods\(t\)\.some\(isPooledGood\)/);
+  assert.match(html, /t === 4 \? hasDock : tierGoods\(t\)\.some\(isPooledGood\)/);
 
   // Fuel is guild-wide and is not a stockpile good, so it can never surface here.
   assert.ok(!html.includes('fuelHoard'), 'the console panel must not reach for the fuel hoard');
+});
+
+// The Tier-4 · Assets tab renders the guild's dockyards, READ-ONLY (docs/build-yard.md §7
+// slice B1, docs/mockups/dockyard-tab.html). A page that silently reverted tier 4 to the old
+// empty placeholder, or dropped the /asset-recipes fetch, would still render — so the tripwire
+// is on the served bytes: the fetch, the tier-4 branch, the four panels, the derivations from
+// snapshot + catalog, the calm empty state, and the INERT commission controls (B2 wires them).
+test('GET /console serves the TIER-4 dockyard tab — dropdown/queue/donut/parts + art, read-only', async () => {
+  const html = await (await fetch(base + '/console')).text();
+
+  // 1. The static asset-bill catalog is fetched once at boot, beside /goods and /recipes,
+  //    into STATE.assetRecipes ({ bills, buildTicks, maxQueue, buildable }).
+  assert.match(html, /api\('GET', '\/asset-recipes'\)/);
+  assert.match(html, /STATE\.assetRecipes = /);
+
+  // 2. Tier 4 renders the dockyard view, not the good pipeline — renderStage branches to it,
+  //    and the resbar (good chips) is empty for tier 4 (the dropdown replaces it).
+  assert.match(html, /if \(STATE\.tier === 4\)\{ renderDockyardTab\(\); return; \}/);
+  assert.match(html, /if \(STATE\.tier === 4\)\{ document\.getElementById\('resbar'\)\.innerHTML = ''; return; \}/);
+  assert.match(html, /function renderDockyardTab/);
+  assert.match(html, /function dockyardsHere/);
+
+  // 3. The dockyards in THIS system: this guild's ventures marked `dockyard`, in STATE.sysId.
+  assert.match(html, /v\.dockyard && v\.ownerGuildId === STATE\.guildId && v\.systemId === STATE\.sysId/);
+  // The dropdown lists them by ventureName (the seed site name the snapshot now carries), and
+  // selecting one is console-local UI — nothing is POSTed.
+  assert.match(html, /id="dk-yardsel"/);
+  assert.match(html, /y\.ventureName \|\| y\.id/);
+  assert.match(html, /if \(t\.id === 'dk-yardsel'\)\{ STATE\.activeDockyard = t\.value; rerenderStage\(\); return; \}/);
+
+  // 4. The queue (the active dockyard's buildQueue, FIFO): head = current build, rest queued;
+  //    the head's state is read straight off remainingTicks (building / waiting / idle).
+  assert.match(html, /var queue = active\.buildQueue \|\| \[\];/);
+  assert.match(html, /function dockHeadState/);
+  assert.match(html, /head\.remainingTicks != null && head\.remainingTicks > 0/);
+  assert.match(html, /class="dk-queue"/);
+
+  // 5. The donut is a DISPLAY derivation, no game number invented: fill = elapsed / BUILD_TICKS
+  //    from the static catalog + the snapshot's remainingTicks; PENDING when waiting; IDLE when
+  //    the queue is empty. A minute-count said as the mockup's H:MM.
+  assert.match(html, /class="dk-donutwrap"/);
+  assert.match(html, /\(bt - head\.remainingTicks\) \/ bt/);
+  assert.match(html, /cat\.buildTicks \|\| \{\}\)\[head\.assetKind\]/);
+  assert.match(html, /function fmtBuildClock/);
+  assert.match(html, /big = 'PENDING'/);
+  assert.match(html, /big = 'IDLE'/);
+
+  // 6. The parts tracker: the bill (from the catalog) vs the dockyard's OWN-SYSTEM stock
+  //    (stockpilesBySystem), green when met and amber ○ when short; a building head is all
+  //    secured (bill consumed). Idle = empty.
+  assert.match(html, /class="dk-partslist"/);
+  assert.match(html, /cat\.bills \|\| \{\}\)\[head\.assetKind\]/);
+  assert.match(html, /function dockStock/);
+  assert.match(html, /stockpilesBySystem/);
+  assert.match(html, /'secured'/);
+
+  // 7. The art: the current-build construction art (dims when idle) + the dockyard art.
+  assert.match(html, /assets\/industrial\/factoryConstruction\.jpg/);
+  assert.match(html, /assets\/industrial\/buildyard\.jpg/);
+  assert.match(html, /BUILDYARD/);
+
+  // 8. The Add-commission button + per-entry cancels RENDER (per the mockup) but are INERT this
+  //    slice: NO commission/cancel action is posted (B2 wires them). The started-head cancel is
+  //    locked; Add greys at maxQueue.
+  assert.match(html, /class="dk-add"/);
+  assert.match(html, /queue\.length >= maxQueue \? ' disabled' : ''/);
+  assert.match(html, /class="dk-x lock"/);
+  assert.ok(!html.includes("type: 'commissionBuild'"), 'B1 posts no commissionBuild — that is B2');
+  assert.ok(!html.includes("type: 'cancelCommission'"), 'B1 posts no cancelCommission — that is B2');
+
+  // 9. The calm empty state replaces the old placeholder when the guild holds no dockyard here.
+  assert.match(html, /No dockyard in /);
+  assert.match(html, /Establish one from a settlement slot/);
 });
 
 test('the EMBEDDED console\'s inventory rides the venture bridge into the game\'s right zone', async () => {

@@ -131,13 +131,23 @@ mine**, but not identically — the deuterium mine's 0-GP is its *unique* advant
    no licence) in `doDeploy`'s Tier-4 branch (`client/game.html`). Ships **`GET /asset-recipes`** (the bills,
    `BUILD_TICKS`, `MAX_QUEUE`, `BUILDABLE_ASSET_KINDS` from `sim/asset-recipes.js`, mirroring `GET /recipes`),
    which slice 4 reads — the client does NOT consume it yet.
-4. **Client — the Tier 4 Production tab (System Manifest).** A per-system tab, sibling to the
-   Production Console, listing that system's dockyards; per dockyard: the commission control
-   (miner / factory → `commissionBuild`, capped at `MAX_QUEUE`), the FIFO queue (building → a
-   countdown + bar off `remainingTicks` / `BUILD_TICKS`; waiting → the module **shortfall** from
-   `stockpilesBySystem` vs the bill; queued), and cancel on **unstarted** entries
-   (`cancelCommission` by `commissionId`; a started build is stopped only by teardown). The UI
-   renders the snapshot and computes no game number.
+4. **Client — the Production Console's "4 · Assets" tier tab.** 🔶 **B1 BUILT 14-09-26 (read-only
+   render).** Reframed from "a sibling tab" to the **Production Console's own Tier-4 tier tab**
+   (`client/console.html` `renderTiers` `[[1,'Raw'],[2,'Refined'],[3,'Parts'],[4,'Assets']]`), per
+   the human-approved mockup reframe (`docs/mockups/dockyard-tab.html`, 14-09-26). The tab lists
+   this system's dockyards; per dockyard: the FIFO queue (building → a countdown + donut off
+   `remainingTicks` / `BUILD_TICKS`; waiting on parts → "PENDING" + the module **shortfall** from
+   `stockpilesBySystem` vs the bill; queued; a building head all-**secured**), the build-progress
+   donut, the parts tracker, and the two art panels (`factoryConstruction.jpg` / `buildyard.jpg`).
+   The dockyard **dropdown** labels each yard by its `ventureName` — the seed site name the
+   snapshot now surfaces on every venture row (derived-on-read, `(site && site.name) || siteId ||
+   id`, exactly `computeAttention`'s expression; no serialized byte, no golden move). The UI
+   renders the snapshot + the static `GET /asset-recipes` catalog and computes no game number (§5).
+   - **B1 (built):** the read-only render above. The "+ Add commission" button and the per-entry
+     cancels RENDER (per the mockup) but are **inert** — no action posted.
+   - **B2 (next):** the Add-commission popup (`docs/mockups/dockyard-commission.html`, fires
+     `commissionBuild`, greys at `MAX_QUEUE`) and cancel on **unstarted** entries
+     (`cancelCommission` by `commissionId`; a started build is stopped only by teardown).
    **Venture Management (the dockyard's slot click) stays stats + teardown ONLY** — its teardown
    confirm warns that teardown drops the queue, the in-progress build, and the consumed modules —
    and carries **no** queue controls; commissioning / cancelling live only in the Tier 4 tab.

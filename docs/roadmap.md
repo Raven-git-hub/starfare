@@ -194,7 +194,8 @@ boundary so the later hex-map swap doesn't touch it.
   `docs/phase-1-tuning.md`. **Held while it stands, forfeited on teardown → not farmable**; no per-cycle
   accrual; `checkGuildReputationSum` stays exact. GP is derived so no serialized byte and no determinism
   golden moves. Proven by `sim/tests/dockyard-points.test.js` (9 tests; full suite 1,216 green). *The
-  commission menu + queue UI (2.1b client) and the ladder outputs stay ahead.*
+  queue UI's read-only render is the 2.1b client tab (B1, built — see `build-yard.md §7`); the
+  commission menu + cancel (B2) and the ladder outputs stay ahead.*
 - **2.0 — Two guilds, the fuel contest proven.** Seat a second guild (inert or lightly scripted);
   run the existing mean-line / issuance as an actual multi-guild contest; confirm density-beats-sprawl
   tension is real between two actors. *No new mechanic — the oldest walking-skeleton line, closed.*
