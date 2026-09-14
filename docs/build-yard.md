@@ -175,6 +175,24 @@ mine**, but not identically — the deuterium mine's 0-GP is its *unique* advant
      up**: `isPooledGood` now matches the engine's stockpile vocabulary (raw ∪ processed ∪ tier3),
      since Tier-3 modules became full stockpile goods in 2.1a. Client display only — no game number is
      recomputed (§5); every figure is a snapshot field or a doc-sourced label.
+   - **Adaptive tab layout ✅ (`client/console.html` only; no markup/JS, no `sim/` change).** The
+     "4 · Assets" tab now **fills the detail-area height** and its two art panels are **adaptive** —
+     they grow with the panel width instead of sitting at a fixed size. `.dk-body` fills the height
+     via `min-height:calc(100vh - 250px)` (the console is a same-origin iframe — `game.html`
+     `.console-frame{height:100%}` — so `100vh` here is the detail-area height; `250px` is the
+     measured chrome above `.dk-body` in embed mode, ~230px header/status/tier-tabs/resbar + the 20px
+     `body.embed` bottom padding). Its columns are `200px minmax(300px,0.6fr) minmax(290px,1fr)
+     minmax(290px,1fr)`: the queue is fixed, and the centre and the two art panels share free space by
+     fr-weight, so the art grows with the monitor (≈290px each at a ~1836px window up to ~590px at
+     2560px) above a 290px floor while the centre grows modestly above its 300px floor; the centre
+     build card is `flex:1 1 auto` so it reaches the taller column (its donut/parts already flex +
+     scroll). **Four-across holds from ~1836px windows up** (the console panel is ~viewport − 706px:
+     a 380px index panel + a 326px `.ind-hero` flank it) and **stacks to 2-up below the 1120px panel
+     breakpoint** (single-column below 640px), the fill reset to natural height when stacked;
+     sub-1120px is deliberately left to flow (the game targets standard-to-wide monitors here). This
+     **supersedes** the mockup's fixed `height:500px` / `170px-250px` art columns in
+     `docs/mockups/dockyard-tab.html` (the mockup stays the content/structure reference). Layout only —
+     no game number (§5); pinned on the served bytes by `sim/tests/server.test.js`.
 
 Then, out of this arc: Syndicate-commission for credits (2.1d), the open market (2.1e), and the
 ship/droid/installation outputs (their entity slices).
