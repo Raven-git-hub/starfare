@@ -723,7 +723,7 @@ later. This is the consumption side; everything in §1–§5 is the supply/econo
   - **Burn model — RULED (31-08-26):** `fuel = distance × craftBurnRate`, **cargo-independent**. Syndicate
     trades fly the one Syndicate hauler; its `[FIRST-CUT]` rate is `SYNDICATE_HAULER_BURN_RATE = 0.5`.
     **⤳ REFINED 11-09-26:** the one hauler becomes **three capacity+burn tiers** (light/medium/heavy),
-    chosen by the leg's **total units** (Σqty). Burn stays **cargo-independent *within* a tier**, but the
+    chosen by the leg's **total cargo space** (`Σ qty × per-tier volume`; REVISED 14-09-26 — was unit-count, `transport-model.md` §5.1). Burn stays **cargo-independent *within* a tier**, but the
     tier — and so the per-hex rate — steps with the load, and a leg over the heavy cap is reject-whole.
     The rate stays 0.5 at the light tier (unchanged for small legs). Mechanic + numbers:
     `transport-model.md` §5.1 / §8.0 and `phase-1-tuning.md`'s Syndicate-hauler burn-rate entry.

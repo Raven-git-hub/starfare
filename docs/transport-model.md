@@ -171,45 +171,79 @@ The **Syndicate hauler** is its own row (its speed is the `SYNDICATE_SPEED` we t
 routing, and lands with the guild tier, Phase 4). The **Syndicate hauler's** capacity, though, is now
 ruled — see §5.1.
 
-### 5.1 The Syndicate hauler — capacity & burn tiers (RULED 11-09-26)
+### 5.1 The Syndicate hauler — cargo space & burn tiers (RULED 11-09-26; REVISED 14-09-26 — capacity is space, not unit-count)
 
-The Syndicate hauler is not one flat craft: it comes in **three tiers**, and a delivery is flown by the
-smallest tier that fits its load. The tier is chosen by the **total units on the leg** — Σqty summed
-across **all** goods in that leg's cargo (integer goods; measured as a total, not per-good) — and it
-sets two things: the **capacity cap** (the hauler's cargo hold) and the **per-hex burn rate**. **Speed
-is unchanged across tiers** — every tier flies at `SYNDICATE_SPEED`, so the tier moves fuel, never
-arrival time (§3, §2.2).
+The Syndicate hauler comes in **three tiers**, and a shipment flies on the **smallest tier whose hold
+fits its load**. Two things vary by tier — the **hold** (its capacity) and the **per-hex burn rate** —
+and nothing else: speed is identical across tiers (every tier flies at `SYNDICATE_SPEED`, so the tier
+moves fuel, never arrival time; §3, §2.2).
 
-| Tier | Capacity (Σqty units) | Burn rate (fuel / hex) |
-|------|-----------------------|------------------------|
-| Light | ≤ 10,000 | 0.5 |
-| Medium | ≤ 50,000 | 0.6 |
-| Heavy | ≤ 200,000 *(the cap)* | 0.7 |
+**Capacity is measured in cargo SPACE, not raw unit-count (REVISED 14-09-26).** A lump of ore and a
+finished module are each "one unit" but do not take the same room in a hold, so a load's size is
+`Σ (qty × volume)`, where a good's **volume is a function of its manufacturing tier ONLY** (`tierOf`,
+`sim/points.js` — not per-good; two Tier-3 modules take the same room):
 
-The values are the ruled `[FIRST-CUT]` numbers and live in `phase-1-tuning.md`'s Syndicate-hauler
-burn-rate entry — the design here is the **shape**, the tuning file is the **authority on the values**.
+| Manufacturing tier | Volume / unit |
+|--------------------|---------------|
+| T1 — raw resource | 1 |
+| T2 — processed good | 100 |
+| T3 — module | 60,000 |
+| T4 — non-movable asset (an outpost, a rig) | 6,000,000 (a whole heavy hold) |
+
+and the three holds, in the same space unit:
+
+| Hauler tier | Hold (space) | Burn rate (fuel / hex) |
+|-------------|--------------|------------------------|
+| Light | 10,000 | 0.5 |
+| Medium | 50,000 | 0.6 |
+| Heavy | 6,000,000 | 0.7 |
+
+All `[FIRST-CUT]`: the human's anchors fixed the ratios (T1 = 1; 100 T2 fill a light; a T3 will not fit a
+medium; 100 T3 fill a heavy; a non-movable T4 fills a heavy hold), the scale is provisional, and the
+numbers live in `phase-1-tuning.md` (the authority on the values — this section is the authority on the
+shape). Rates are unchanged from the 11-09 ruling: **Option C**, rising per hex with the tier.
+
 Load-bearing properties:
 
-- **A step function, keyed to the map/popup art.** The tiers ARE the light/medium/heavy split the client
-  already draws (`txHeroClass`, `game.html`), so the picture the player sees is the hauler they pay for.
-  Burn is flat within a tier and rises per hex as the tier rises; the boundaries (`10,000` / `50,000`),
-  once cosmetic, are now **economic numbers** and are ruled as such.
-- **Economies of scale come from the cap, not the rate.** Burn is charged per *trip*, so letting one trip
-  carry far more is what rewards consolidation — even though the bigger hauler is *thirstier per hex*: a
-  full heavy (200,000 units) over a 10-hex leg burns `ceil(10 × 0.7) = 7`, versus the same load split
-  across twenty lights at `20 × ceil(10 × 0.5) = 100` (four mediums: `4 × ceil(10 × 0.6) = 24`). The
-  rising rate (**Option C**, ruled 11-09-26) keeps big haulers burning real fuel — fuel is the activity
-  throttle (§8), so consolidation must not collapse total demand — while still making one big trip far
-  cheaper per unit. Per-hex burn rises monotonically with the tier, so there is **no cliff** where adding
-  a unit lowers the absolute burn.
-- **Over the heavy cap → reject-whole.** A leg whose total units exceed the heavy cap (`200,000`) is
-  refused at validation with a split-the-order message — the hauler physically cannot carry more (§8.0's
-  reject-whole gate). Not auto-split into multiple trips: one order, one hauler.
-- **Every Syndicate leg is tiered, by its own units.** A **BUY** consolidates a multi-good cart onto one
-  leg to one destination → its tier is the whole cart's Σqty. A **SELL** basket's rows are each their own
-  single-good leg (system → its nearest waystation) → each row tiers by *its* own qty, and the bill
-  compounds across rows exactly as §8.0's summed route fuel already does. One hauler model, one
-  `routeFuelCost`, applied per leg.
+- **The tier→hauler restrictions fall out of the volumes — there are NO separate rules.** "Smallest hold
+  that fits" is the whole rule. A T3 module (volume 60,000) already exceeds a medium hold (50,000), so it
+  can only ever fly heavy; a non-movable T4 asset fills a heavy hold exactly, so it flies heavy, alone,
+  with no room left beside it (you cannot ship a rig **and** a cargo of ore). Deliberate: a heavy
+  transport is a genuinely different beast — the only hauler that moves modules or assets — while light
+  and medium are for bulk raw and processed goods. A heavy hold is ~100× a medium's; **lopsided on
+  purpose.**
+- **A step function keyed to the map/popup art.** The three tiers are the light/medium/heavy hauler the
+  client already pictures, so the picture the player sees is the hauler they pay for. (The art currently
+  keys off raw qty via `txHeroClass`; the build re-keys it to the space tier.)
+- **Economies of scale come from the hold, not the rate.** Burn is charged per *trip* and is
+  load-independent within a tier, so consolidating onto a bigger hold rewards the player even though the
+  bigger hauler is *thirstier per hex* — fuel is the activity throttle (§8), so consolidation must not
+  collapse total demand. Per-hex burn rises monotonically with the tier: no cliff where adding to a load
+  lowers the absolute burn.
+- **Over the heavy hold → reject-whole.** A load whose total space exceeds the heavy hold (6,000,000) is
+  refused at validation with a split-the-order message — no auto-split; one shipment, one hauler
+  (§8.0's reject-whole gate).
+- **One shipment model, both directions.** A **BUY** is a multi-good cart delivered to **one destination**
+  system; its tier is the cart's total space. A **SELL** is a multi-good load shipped from **one origin**
+  system to its nearest waystation — the mirror of BUY (REVISED 14-09-26: SELL was one good across many
+  systems; it is now one system, many goods). Each is a **single leg**, one tiered burn, sized by its own
+  total space.
+
+**The client manifest (built by the client slice).** The trade tab assembles a shipment as a manifest —
+*Add to Buy/Sell Shipment* appends a good+qty line, *Finalise Shipment* reviews and confirms in one
+action. The manifest is a throwaway client draft; prices stay live while it is built and freeze only at
+Finalise (the §8.1 quote-lock, unchanged — no manifest-level timeout). The engine still owns every number
+(§18): it publishes each good's volume and the hold sizes; the client sums `qty × volume` for the running
+total and reads the tiered burn back, computing no burn or geometry itself.
+
+**Scope, and the T4 asset (14-09-26).** The volumes and holds for **T1/T2/T3 goods** are live for the
+Syndicate BUY/SELL. The **T4 non-movable-asset** volume already has a live consumer: **buying a Tier-4
+asset from the Syndicate** (2.1d — `buyAssetFromSyndicate`, `docs/asset-purchase.md`) ships the finished
+asset on the §6 delivery rails, and **this ruling sets that delivery's hauler tier** — a T4 asset fills a
+**heavy** hold, so its delivery burns the **heavy rate (0.7/hex)**, superseding asset-purchase.md's
+`[FIRST-CUT]` light-rate placeholder (which explicitly deferred the asset→tier mapping to this ruling).
+The same T4 volume also governs future guild-tier asset **relocation** transport (the "moving asset", §5)
+when that lands.
 
 ## 6. legProgress serves three consumers
 
@@ -271,9 +305,15 @@ controller (§4 there). A Syndicate trade spends that hoard to move goods, so fu
 exactly as this section intended — the mechanism is the hoard, not a separate allowance. The rulings
 that make the SELL/BUY transaction concrete:
 
+**⤳ REVISED 14-09-26 — capacity, and the shipment shape.** Capacity is now measured in **cargo space**, not
+unit-count, and both directions carry **multi-good** loads on a **single leg**: a BUY cart to one
+destination, a SELL load from one origin. The full model — volumes, holds, why — is **§5.1**. The bullets
+below are updated where they set the burn and the gate; the built multi-system SELL / single-good BUY they
+describe stand as the record of what is deployed until the rebuild slice lands.
+
 - **Both BUY and SELL burn route fuel — distance-scaled, from the hoard, in units.** A leg's burn is
   `ceil(hexDistance(system → nearest waystation) × BURN_RATE[tier])`, where the tier is the Syndicate
-  hauler's tier for that leg's **total units** and `BURN_RATE` is its per-hex rate (**§5.1**, RULED
+  hauler's tier for that leg's **total cargo space** (`Σ qty × per-tier volume`, §5.1) and `BURN_RATE` is its per-hex rate (**§5.1**, RULED
   11-09-26). The light-tier rate is the original flat `SYNDICATE_HAULER_BURN_RATE = 0.5`, so a small leg
   (≤ light cap) is byte-identical to today; a bigger leg steps to the medium/heavy rate. `routeFuelCost`
   gains the leg's unit count so it can pick the tier (the exact signature is the build's to choose).
@@ -291,15 +331,16 @@ that make the SELL/BUY transaction concrete:
   (system → waystation); BUY ships from the waystation to the destination the player picks
   (waystation → destination). Distance is symmetric, so the fuel is the same either way; only BUY
   carries a delivery lag (below).
-- **A basket is one good across many systems (`allocations: [{systemId, qty}]`).** The transaction
+- **A basket is one good across many systems (`allocations: [{systemId, qty}]`) — BUILT, but SUPERSEDED 14-09-26 by §5.1's single-origin multi-good load** (SELL becomes the mirror of BUY: one system, many goods, one leg, one tiered burn — multi-system dropped). What follows is the shape deployed **today**, standing until the rebuild slice: The transaction
   window's ADD button appends a row per system; the `sellToSyndicate` action already carries the array.
   Each row has its own nearest waystation and thus its own route fuel; the bill **compounds** across rows.
 - **Reject-whole on the aggregate.** The whole order is refused if the hoard cannot cover the **summed**
   route fuel of every row (and, for BUY, if the treasury cannot cover the summed goods cost) — no partial
   fill, no shortened flight. Mirrors BUY's existing gate, applied to the basket total. **A third gate,
-  RULED 11-09-26:** any leg whose **total units** exceed the Syndicate hauler's **heavy cap** (§5.1) is
-  refused with a split-the-order message — the hauler cannot carry more; no auto-split. For a BUY that is
-  the cart's Σqty; for a SELL it is each row's own qty.
+  RULED 11-09-26:** any load whose **total cargo space** exceeds the Syndicate hauler's **heavy hold** (§5.1) is
+  refused with a split-the-order message — the hauler cannot carry more; no auto-split. One leg either
+  way: a BUY's multi-good cart to one destination, a SELL's multi-good load from one origin (REVISED
+  14-09-26).
 - **Settlement: SELL is immediate, BUY lags.** A SELL credits the treasury, burns the fuel, and removes
   the stock on confirm — the goods "reaching the waystation" is narrative, not a delay. A BUY debits
   credits and burns fuel on confirm, and the goods **arrive later** at
