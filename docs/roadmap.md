@@ -310,6 +310,15 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
 - **Build yard:** sell assets to the Syndicate outright, or lease-only? The Syndicate purchase price
   formula (parts cost ± what margin/discount?). Do founding asset grants survive, or must everything
   be built?
+- **Dockyard "4 · Assets" tab collapse breakpoint (client layout, from the 14-09-26 fill/widen
+  polish).** The embedded console iframe is ~`viewport − 706px` wide (a 380px index panel + a 326px
+  industrial hero flank it in the detail screen), so the 4-column fill layout only engages at
+  ≥1300px iframe width (≈2560px+ windows); at 1440–1920px windows the detail area is 734–1214px, so
+  the tab renders the 2-up collapse — and at 1920px the taller stacked 2-up slightly overflows the
+  iframe (a scrollbar). The `1300px` breakpoint is the value in the build prompt, chosen so the
+  4-column layout isn't cramped. **Open:** lower the breakpoint (~1180px) so a 1920px window keeps the
+  filled 4-up at the cost of a tighter centre column, or accept 2-up as the default and only widen
+  monitors get the fill? Not invented here — flagged for a human ruling.
 - **Transport:** recall-time vs renegotiation-window for Syndicate contracts (leaning recall); the
   maintenance return threshold (5%); the location/route bonus mechanic.
 - **Investment:** are shares tradable (leaning no)? The share-price formula specifics and the RP-boost

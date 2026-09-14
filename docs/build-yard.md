@@ -175,6 +175,23 @@ mine**, but not identically — the deuterium mine's 0-GP is its *unique* advant
      up**: `isPooledGood` now matches the engine's stockpile vocabulary (raw ∪ processed ∪ tier3),
      since Tier-3 modules became full stockpile goods in 2.1a. Client display only — no game number is
      recomputed (§5); every figure is a snapshot field or a doc-sourced label.
+   - **Client layout polish ✅ (14-09-26, `client/console.html` only; no `sim/` change).** The
+     "4 · Assets" tab now **fills the detail-area height** and its art panels are **widened**. The
+     `.dk-body` grid gained a `min-height:calc(100vh - 250px)` — the console is a same-origin iframe
+     (`game.html .console-frame{height:100%}`), so `100vh` here IS the detail-area height; the `250px`
+     is the MEASURED chrome above `.dk-body` in embed mode (~230px header/status/tier-tabs/resbar +
+     the 20px `body.embed` bottom padding), verified headless so the tab fills with no iframe
+     scrollbar. The centre build card is set to `flex:1 1 auto` so it grows with the taller column
+     (queue card + art panels already stretch as grid children), and the two art columns were
+     ~doubled (`170px/210px → 340px/420px`). The collapse breakpoint was raised `1100px → 1300px`
+     (the wider 4-column layout needs more room), and the fill `min-height` **resets to 0** in the
+     2-up (`≤1300px`) and single-column (`≤640px`) stacked layouts so no empty column is forced.
+     **This supersedes the mockup's fixed `height:500px` and `170px/250px` art columns in
+     `docs/mockups/dockyard-tab.html`** — the mockup stays the content/structure reference, but these
+     two dimensions are now set by the console for the live embed. Layout values, not game numbers
+     (§5). *Note: the real detail area is ~`viewport − 706px` wide (a 380px index + 326px industrial
+     hero flank the iframe), so the 4-column fill engages on wide displays (≥~2560px windows) and
+     narrower detail areas render the 2-up collapse — see the roadmap decision checklist.*
 
 Then, out of this arc: Syndicate-commission for credits (2.1d), the open market (2.1e), and the
 ship/droid/installation outputs (their entity slices).

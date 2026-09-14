@@ -1818,19 +1818,28 @@ test('GET /console serves the TIER-4 Add-commission overlay + LIVE commission/ca
   assert.match(html, /if \(e\.key === 'Escape' && commissionOverlayOpen\(\)\) closeCommission\(\)/);
 });
 
-// The 2.1b dockyard client PLAYTEST FIXES for the console (docs/build-yard.md §7): the "4 · Assets"
+// The 2.1b dockyard client layout for the console (docs/build-yard.md §7): the "4 · Assets"
 // tab's two hero panels sit SIDE BY SIDE (a 4-column .dk-body grid with the panels as siblings,
-// no .dk-heroes column wrapper — matching docs/mockups/dockyard-tab.html), and the "3 · Parts" tab
-// LIGHTS UP now that Tier-3 modules are pooled goods. A reverted layout or a stale gate would still
-// render, so the tripwire is on the served bytes.
+// no .dk-heroes column wrapper — matching docs/mockups/dockyard-tab.html); the tab FILLS the
+// detail-area height (calc(100vh) min-height) with the two art columns ~doubled and the centre
+// build card flex-grown; and the "3 · Parts" tab LIGHTS UP now that Tier-3 modules are pooled
+// goods. A reverted layout or a stale gate would still render, so the tripwire is on the served bytes.
 test('GET /console serves the dockyard-tab layout + tier-3 pooling fixes', async () => {
   const html = await (await fetch(base + '/console')).text();
 
-  // 1. .dk-body is a 4-COLUMN grid (queue | centre | building-art | dockyard-art), and the
-  //    responsive collapse survives: 2-up at 1100px, single-column at 640px.
-  assert.match(html, /\.dk-body\{display:grid; grid-template-columns:200px minmax\(0,1fr\) 170px 210px;/);
-  assert.match(html, /@media \(max-width:1100px\)\{ \.dk-body\{grid-template-columns:1fr 1fr\} \}/);
-  assert.match(html, /@media \(max-width:640px\)\{ \.dk-body\{grid-template-columns:1fr\} \}/);
+  // 1. .dk-body is a 4-COLUMN grid (queue | centre | building-art | dockyard-art). The two art
+  //    columns are ~doubled (170/210 -> 340/420) and the body FILLS the detail-area height via a
+  //    calc(100vh - Npx) min-height (the console is a same-origin iframe, so 100vh == the detail
+  //    area). The responsive collapse survives with the raised breakpoint: 2-up below 1300px,
+  //    single-column below 640px — and the fill min-height RESETS to 0 in both stacked layouts.
+  assert.match(html, /\.dk-body\{display:grid; grid-template-columns:200px minmax\(0,1fr\) 340px 420px;/);
+  assert.match(html, /\.dk-body\{[\s\S]*?min-height:calc\(100vh - \d+px\)\}/);
+  assert.match(html, /@media \(max-width:1300px\)\{ \.dk-body\{grid-template-columns:1fr 1fr; min-height:0\} \}/);
+  assert.match(html, /@media \(max-width:640px\)\{ \.dk-body\{grid-template-columns:1fr; min-height:0\} \}/);
+
+  // 1b. The centre column's build card grows to fill the now-taller column (the queue card and the
+  //     two art panels already stretch as direct grid children; only the build card needed it).
+  assert.match(html, /\.dk-centre > \.dk-card\{flex:1 1 auto; min-height:0\}/);
 
   // 2. The two .dk-hero panels are DIRECT children of .dk-body — the .dk-heroes column wrapper is
   //    gone from BOTH the CSS and the render, so they no longer stack in one column.

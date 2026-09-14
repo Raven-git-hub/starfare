@@ -727,14 +727,25 @@
      read-only. Four panels mirroring the approved mockup (queue | build progress | building
      art | dockyard art), scoped `dk-` so nothing collides with the good-tab render. B2 wires
      the Add-commission popup and the cancel controls; here they render but do nothing. */
-  .dk-body{display:grid; grid-template-columns:200px minmax(0,1fr) 170px 210px; gap:12px; align-items:stretch; min-height:440px}
-  @media (max-width:1100px){ .dk-body{grid-template-columns:1fr 1fr} }
-  @media (max-width:640px){ .dk-body{grid-template-columns:1fr} }
+  .dk-body{display:grid; grid-template-columns:200px minmax(0,1fr) 340px 420px; gap:12px;
+    align-items:stretch; min-height:calc(100vh - 250px)}
+  /* Fill the detail-area height: the console is a same-origin iframe (game.html
+     .console-frame{height:100%}), so 100vh here IS the detail-area height. 250px is the
+     MEASURED chrome above .dk-body in embed mode — ~230px of header/status/tier-tabs/resbar
+     plus the 20px body.embed bottom padding — so the body's bottom lands one padding-width
+     above the iframe edge with no scrollbar. Verified headless at 2560/3440-wide (the widths
+     that reach the 4-column layout; narrower detail areas collapse to 2-up below). */
+  @media (max-width:1300px){ .dk-body{grid-template-columns:1fr 1fr; min-height:0} }
+  @media (max-width:640px){ .dk-body{grid-template-columns:1fr; min-height:0} }
   .dk-card{background:var(--panel); border:1px solid var(--line); border-radius:10px; display:flex; flex-direction:column; min-height:0; min-width:0; overflow:hidden}
   .dk-h{display:flex; align-items:center; justify-content:space-between; padding:11px 14px; border-bottom:1px solid var(--line); flex:0 0 auto}
   .dk-h .t{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink2); font-weight:600}
   .dk-h .n{font-family:var(--mono); font-size:10px; color:var(--ink3); font-variant-numeric:tabular-nums}
   .dk-centre{display:flex; flex-direction:column; gap:12px; min-height:0}
+  /* The centre column is a flex column of dropdown + build card; the dropdown stays its own
+     height and the build card grows to fill the now-taller column (the donut/parts inside
+     already flex + scroll, so the parts list simply gets more room). */
+  .dk-centre > .dk-card{flex:1 1 auto; min-height:0}
   .dk-yardsel{position:relative; flex:0 0 auto}
   .dk-yardsel select{width:100%; appearance:none; -webkit-appearance:none; background:var(--panel2);
     color:var(--ink); border:1px solid var(--line2); border-radius:9px; font-family:var(--serif);
