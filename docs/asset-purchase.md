@@ -123,4 +123,26 @@ Recorded in `docs/phase-1-tuning.md` (the authority on the values), living once 
 
 Both tunable in that one file; both currently place the price at the flat floor.
 
+## As built — ENGINE slice 1 (2.1d, engine-first)
+
+✅ **BUILT — the engine half of this ruling.** Sliced engine-first (see "Reuse vs new"): the data
+now exists, the client renders it next slice.
+- **Price + constants** — `ASSET_PURCHASE_FLOOR` / `ASSET_PURCHASE_REDUCTION` / `priceAssetForPurchase`
+  in `sim/asset-recipes.js` (beside the dockyard build-core constants), off the same quote-lock ring
+  (`quotedPrice`) the goods BUY uses. The floor binds at today's parts scale.
+- **The action** — `buyAssetFromSyndicate` (`sim/actions.js`), the asset analogue of `buyFromSyndicate`:
+  same gate structure and quote-lock, minus the `guildHolds` gate (presence not required). Apply debits
+  credits → `syndicate.ledger` (invariant 2) and burns the light-hauler route fuel up front (invariant 1),
+  then records a build order on the new top-level `state.syndicateBuilds` (omit-when-empty, so an unbought
+  galaxy stays byte-identical).
+- **Two-phase build→deliver** — `stepSyndicateBuilds` (`sim/tick.js` step 4, scheduled events) promotes a
+  build at its absolute `buildDoneTick` to a standard §6 delivery shipment carrying an `assetKind` marker;
+  `stepArrivals` mints one idle asset (the dockyard's exact `assetId`/`nextAssetNumber`/`createAsset`
+  pattern) at the destination on arrival, guarding a vanished owner by dropping the shipment.
+- **Snapshot** — additive, derived-on-read: `snapshot.syndicateBuilds` (the on-order indicator) + an
+  `assetKind` field on an asset shipment's transit row. No serialized byte, no golden move.
+
+**Deferred to the client slice (unbuilt):** the TRADE-tab section, the confirm popup, the Operations
+"on order" rendering, and the map label — this slice only makes the data exist.
+
 <!-- asset-purchase-doc-sentinel v1 -->

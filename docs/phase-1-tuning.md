@@ -65,6 +65,13 @@ this table is the authority on the values. A Syndicate asset purchase is priced
 `price = max(ASSET_PURCHASE_FLOOR, round(partsCost × ASSET_PURCHASE_REDUCTION))`, with
 `partsCost = Σ(bill module qty × posted price)` at the quote's issue tick — the full mechanic
 (two-phase build→deliver, the delivery manifest, cost timing, failure modes) is `docs/asset-purchase.md`.
+✅ **WIRED — ENGINE slice 1 (2.1d, engine-first).** Both constants + `priceAssetForPurchase` live in
+`sim/asset-recipes.js`; the `buyAssetFromSyndicate` action (`sim/actions.js`) charges credits + fuel up
+front and records a build order on `state.syndicateBuilds`; `stepSyndicateBuilds` (in `sim/tick.js`'s
+step 4, scheduled events) promotes a finished build to a standard delivery shipment, which mints an idle
+asset on arrival (`stepArrivals`). The snapshot publishes the on-order list + an `assetKind` marker on the
+transit row. The floor binds at today's parts scale (a miner/factory costs a flat 12M). NO client yet —
+that is the next slice. Retune in play — a Syndicate asset purchase has never been felt.
 - **Asset purchase floor `ASSET_PURCHASE_FLOOR`** `[FIRST-CUT]` — **12,000,000 credits**. The minimum a
   bought asset costs; deliberately high (assets are meant to be hard to get). At today's economy scale a
   miner/factory's parts are worth only ~100–2,800 credits, so the floor binds and a purchase is

@@ -36,7 +36,22 @@ const { DEUTERIUM_INFLUX_PER_CYCLE } = require('./issuance.js');
 // only nested object a shipment carries (§6: no origin, no route, no status), so
 // one level of spread is the whole clone.
 function cloneShipments(list) {
-  return (Array.isArray(list) ? list : []).map((ship) => ({ ...ship, cargo: { ...(ship.cargo || {}) } }));
+  return (Array.isArray(list) ? list : []).map((ship) => ({
+    ...ship,
+    // Spread `cargo` only when the shipment carries one: a goods delivery always does (unchanged,
+    // byte-identical), but a Syndicate ASSET delivery (docs/asset-purchase.md) carries an
+    // `assetKind` marker and NO cargo — injecting an empty `{}` there would be a phantom field.
+    ...(ship.cargo ? { cargo: { ...ship.cargo } } : {}),
+  }));
+}
+
+// cloneSyndicateBuilds(list) -> a deep-enough copy of the PENDING-BUILD orders — a Tier-4 asset
+// bought from the Syndicate and under central construction, before it promotes to a delivery
+// shipment (docs/asset-purchase.md; stepSyndicateBuilds in sim/tick.js). Each entry is flat
+// scalars (no nested object, §6-style — no origin, no route), so one level of spread is the
+// whole clone: the cloneShipments discipline for a sibling in-flight-adjacent list.
+function cloneSyndicateBuilds(list) {
+  return (Array.isArray(list) ? list : []).map((b) => ({ ...b }));
 }
 
 // --- Entity constructors -----------------------------------------------
@@ -839,6 +854,20 @@ function createState(scenario) {
     // save/reload like a shipment's `arrivalTick`.
     ...(Array.isArray(scenario.nodeLockouts) && scenario.nodeLockouts.length
       ? { nodeLockouts: scenario.nodeLockouts.map((l) => ({ ...l })) }
+      : {}),
+    // syndicateBuilds: the pending Syndicate asset builds (docs/asset-purchase.md) — a bought
+    // Tier-4 asset under CENTRAL CONSTRUCTION, before it promotes to a delivery shipment
+    // (sim/tick.js stepSyndicateBuilds). Top-level beside `shipments`/`nodeLockouts` because a
+    // build order is a galaxy-level schedule, not a guild's inventory. OMITTED when there is
+    // none — exactly like `nodeLockouts` above and for the same reason: the buyAssetFromSyndicate
+    // apply is its only writer and creates it lazily, so a galaxy that has bought nothing carries
+    // no key and serializes byte-identically to pre-slice (the determinism no-op, invariant 9). A
+    // scenario or a restored save that HANDS ONE IN keeps it, DEEP-copied so a caller's array can
+    // never alias into engine state. `buildDoneTick` is ABSOLUTE, so it survives save/reload like
+    // a shipment's `arrivalTick` — a save reloaded mid-construction lands the asset on the right
+    // tick with no special case.
+    ...(Array.isArray(scenario.syndicateBuilds) && scenario.syndicateBuilds.length
+      ? { syndicateBuilds: cloneSyndicateBuilds(scenario.syndicateBuilds) }
       : {}),
     // prices: the Syndicate value per non-fuel good (docs/licence-and-price-system.md
     // Part 1; sim/prices.js owns the shape and the formula). Seeded here at every

@@ -13,6 +13,7 @@
 
 const { MINER, FACTORY } = require('./assets.js');
 const { isTier3Good } = require('./resources.js');
+const { quotedPrice } = require('./price-ring.js');
 
 // The two buildable bills — quantities lifted VERBATIM from docs/asset-recipes.md's two
 // `buildable` rows (all `[FIRST-CUT]`). Each entry is `module -> integer count` (§15.2:
@@ -96,6 +97,52 @@ const BUILD_TICKS = Object.freeze({
   [FACTORY]: 7200, // 5 days × 1,440 ticks/day
 });
 
+// ── BUYING A TIER-4 ASSET FROM THE SYNDICATE (2.1d) ─────────────────────────────────────────
+// `[FIRST-CUT]`, RULED 14-09-26 (docs/asset-purchase.md; docs/phase-1-tuning.md "buying a
+// Tier-4 asset from the Syndicate"). AS-BUILT (engine slice 1): the two constants + the price
+// function live here ONCE beside the dockyard build-core numbers and are imported, never
+// inlined (working practice #5). A Syndicate purchase is the mirror of a dockyard build — pay
+// CREDITS (+ fuel) instead of parts — priced off the SAME posted prices the economy already
+// uses (the quote-lock ring), then built over the SAME BUILD_TICKS a dockyard counts down.
+
+// ASSET_PURCHASE_FLOOR — the minimum a bought asset costs. At today's economy scale a
+// miner/factory's parts are worth only ~100–2,800 credits, far below this, so the floor binds
+// and a purchase is effectively a flat 12M (docs/asset-purchase.md "Price"). Retune in play.
+const ASSET_PURCHASE_FLOOR = 12_000_000;
+
+// ASSET_PURCHASE_REDUCTION — the multiplier on live parts cost (a 20% Syndicate discount) that
+// governs the price ONCE `partsCost × 0.8` exceeds the floor. Inert while the floor dominates;
+// kept LIVE in the formula (not dead code) so the model is tuned by editing this number, never
+// the code (docs/asset-purchase.md "Price").
+const ASSET_PURCHASE_REDUCTION = 0.8;
+
+// priceAssetForPurchase(state, assetKind, issueTick) -> the integer credit price of buying
+// `assetKind` from the Syndicate, or null when it cannot be priced.
+//
+//   partsCost = Σ over the kind's bill of ( module qty × that module's quoted price )
+//   price     = max( ASSET_PURCHASE_FLOOR , round( partsCost × ASSET_PURCHASE_REDUCTION ) )
+//
+// Rounded ONCE on the whole order (#43), exactly as a goods buy rounds `qty × price`. The
+// module price is the SAME `quotedPrice` the goods buy uses (§8.1 quote-lock): today's posted
+// value when `issueTick` is the current tick, a past tick's from the ring otherwise — so the
+// price cannot shift between opening the confirm and confirming.
+//
+// RETURNS null (the caller then refuses) in two cases, each a deliberate refusal rather than a
+// guessed price: an assetKind with no bill (not buildable), or ANY module with no quoted price
+// at `issueTick` (the ring guard — the quote is too old/future to price that part). Mirrors the
+// goods-buy guard exactly: never price off a missing ring.
+function priceAssetForPurchase(state, assetKind, issueTick) {
+  const bill = assetBill(assetKind);
+  if (!bill) return null;
+  let partsCost = 0;
+  for (const [module, qty] of Object.entries(bill)) {
+    const price = quotedPrice(state, module, issueTick);
+    if (price == null) return null; // ring guard — refuse rather than price off a missing part
+    partsCost += qty * price;
+  }
+  return Math.max(ASSET_PURCHASE_FLOOR, Math.round(partsCost * ASSET_PURCHASE_REDUCTION));
+}
+
 module.exports = {
   ASSET_BILLS,
   BUILDABLE_ASSET_KINDS,
@@ -103,4 +150,7 @@ module.exports = {
   assertBillModulesAreTier3,
   MAX_QUEUE,
   BUILD_TICKS,
+  ASSET_PURCHASE_FLOOR,
+  ASSET_PURCHASE_REDUCTION,
+  priceAssetForPurchase,
 };

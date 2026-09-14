@@ -1,7 +1,7 @@
 'use strict';
 
 const { createGuild, createVenture } = require('./state.js');
-const { isStarterSystem, getTerranHomeworld, getSite } = require('./seed.js');
+const { isStarterSystem, getTerranHomeworld, getSite, getSystem } = require('./seed.js');
 const { getRecipe } = require('./recipes.js');
 const {
   EQUITY_CEILING, isValidEquityPct, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
@@ -9,7 +9,9 @@ const {
   signingBump, teardownSettlement, licenceEndTick, renegotiationFee, applyLapse, applyVentureClosure,
 } = require('./licence.js');
 const { producedGoodFor, baselineOutputFor, isLicensedDeuteriumMine, isDockyard } = require('./baseline.js');
-const { BUILDABLE_ASSET_KINDS, MAX_QUEUE } = require('./asset-recipes.js');
+const {
+  BUILDABLE_ASSET_KINDS, MAX_QUEUE, BUILD_TICKS, assetBill, priceAssetForPurchase,
+} = require('./asset-recipes.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { checkQuote, quotedPrice } = require('./price-ring.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
@@ -433,6 +435,27 @@ function createBuyFromSyndicateAction({ guildId, good, qty, destinationSystemId,
   if (destinationSystemId === undefined) throw new Error('createBuyFromSyndicateAction: destinationSystemId is required');
   return {
     type: 'buyFromSyndicate', guildId, good, qty, destinationSystemId,
+    ...(issueTick === undefined ? {} : { issueTick }),
+  };
+}
+
+// Buying a Tier-4 ASSET from the Syndicate (docs/asset-purchase.md, roadmap 2.1d) — the asset
+// analogue of `buyFromSyndicate` above. Same shape, same gates, same quote-lock, same up-front
+// fuel burn; only the price basis (a parts bill, not `qty × posted`) and the payload (an asset,
+// not goods) differ. A purchase pays credits + fuel now, the Syndicate builds the asset centrally
+// over `BUILD_TICKS`, then it ships as a standard delivery and mints an idle asset on arrival.
+//
+// `assetKind` is the machine to build (miner / factory — the only kinds with a buildable entity).
+// `destinationSystemId` is where it lands: unlike the goods buy, presence is NOT required (an
+// idle asset is guild inventory located at a system, like a dockyard's output — asset-purchase.md
+// "Destination"). `issueTick` (§8.1 quote-lock) is OPTIONAL and behaves exactly as on the goods
+// buy: omitted ⇒ current tick ⇒ today's posted parts prices.
+function createBuyAssetFromSyndicateAction({ guildId, assetKind, destinationSystemId, issueTick }) {
+  if (guildId === undefined) throw new Error('createBuyAssetFromSyndicateAction: guildId is required');
+  if (assetKind === undefined) throw new Error('createBuyAssetFromSyndicateAction: assetKind is required');
+  if (destinationSystemId === undefined) throw new Error('createBuyAssetFromSyndicateAction: destinationSystemId is required');
+  return {
+    type: 'buyAssetFromSyndicate', guildId, assetKind, destinationSystemId,
     ...(issueTick === undefined ? {} : { issueTick }),
   };
 }
@@ -1432,6 +1455,67 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'buyAssetFromSyndicate') {
+    // The asset analogue of buyFromSyndicate above — mirrors its gate STRUCTURE (docs/asset-
+    // purchase.md "Failure modes"). The two differences: the vocabulary is buildable asset KINDS
+    // (not priced goods), and there is NO guildHolds gate — an asset lands idle at any real
+    // system, presence not required (asset-purchase.md "Destination").
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    // WHAT MAY BE BOUGHT — only kinds with a buildable entity (miner / factory). The same
+    // vocabulary the dockyard commission uses, for the same reason: no entity, no asset to mint.
+    if (typeof action.assetKind !== 'string' || !BUILDABLE_ASSET_KINDS.includes(action.assetKind)) {
+      return { valid: false, reason: `${JSON.stringify(action.assetKind)} is not a Syndicate-buildable asset kind (miner / factory)` };
+    }
+    if (typeof action.destinationSystemId !== 'string' || action.destinationSystemId.length === 0) {
+      return { valid: false, reason: 'destinationSystemId must be a non-empty string' };
+    }
+    // A REAL system to deliver to — but NO guildHolds gate (asset-purchase.md "Destination"): an
+    // idle asset is guild inventory located at a system, like a dockyard's output, so it may land
+    // in any system that exists. Refused (not defaulted) when the system is unknown or no
+    // waystation can reach it: an invented origin would silently invent an arrival tick, exactly
+    // as the goods buy refuses.
+    if (!getSystem(action.destinationSystemId)) {
+      return { valid: false, reason: `system ${JSON.stringify(action.destinationSystemId)} is not a system on the seed` };
+    }
+    if (!nearestWaystation(action.destinationSystemId)) {
+      return { valid: false, reason: `no Syndicate waystation can reach system ${JSON.stringify(action.destinationSystemId)} — it resolves to no seed coordinates` };
+    }
+    // THE PRICE — `max(FLOOR, round(partsCost × 0.8))`, priced at the ISSUE TICK's quoted parts
+    // prices (§8.1 quote-lock), so the affordability check is measured against the same price
+    // apply will charge. `priceAssetForPurchase` is null when a module has no quoted price at the
+    // issue tick (the ring guard); `?? today's price` falls back to the current posted parts cost
+    // ONLY so a co-occurring credits shortfall is still blamed FIRST — the "blame the other gate
+    // first" discipline the goods buy documents. An expired quote is refused by the gate below.
+    const issueTick = action.issueTick === undefined ? state.tick : action.issueTick;
+    const quotedForCost = priceAssetForPurchase(state, action.assetKind, issueTick);
+    const price = quotedForCost == null ? priceAssetForPurchase(state, action.assetKind, state.tick) : quotedForCost;
+    if (price != null && guild.credits < price) {
+      return { valid: false, reason: `guild ${guild.id} holds ${guild.credits} credits, cannot pay ${price} for a ${action.assetKind}` };
+    }
+    // THE FUEL GATE — the delivery flight burns route fuel (light hauler, cargo-independent),
+    // charged UP FRONT (asset-purchase.md "Cost timing and fuel"). RUN LAST, like the goods buy,
+    // so a trade refused for credits / kind / destination says so rather than blaming fuel. The
+    // burn is the SAME `routeFuelCost` the goods buy uses and the snapshot quotes; a 0 means no
+    // route, already turned away by the waystation gate above.
+    const { fuelBurn } = routeFuelCost(action.destinationSystemId);
+    const availableFuel = guild.fuelHoard + (guild.deuteriumFuel || 0);
+    if (availableFuel < fuelBurn) {
+      return { valid: false, reason: `guild ${guild.id} holds ${availableFuel} fuel (legal + contraband), cannot burn ${fuelBurn} flying a ${action.assetKind} to ${JSON.stringify(action.destinationSystemId)} — insufficient fuel: need ${fuelBurn}, have ${availableFuel}` };
+    }
+    // THE QUOTE-LOCK GATE (§8.1) — LAST, exactly like the goods buy and for the same reason: a
+    // purchase that also fails credits, kind or fuel blames THAT first. The expiry rules (future,
+    // too-old, cycle-boundary) are good-independent; a bill's modules all ride ONE per-tick ring
+    // (recordPriceRing appends every priced good together), so a representative module answers the
+    // ring guard for the whole bill — and priceAssetForPurchase has already refused above if ANY
+    // module was unpriced at the issue tick.
+    const quote = checkQuote(state, Object.keys(assetBill(action.assetKind))[0], issueTick);
+    if (!quote.valid) return quote;
+    return { valid: true };
+  }
+
   if (action.type === 'setWindowN') {
     if (typeof action.windowN !== 'number' || !Number.isInteger(action.windowN) || action.windowN < 1) {
       return { valid: false, reason: 'windowN must be an integer >= 1 (§15.2)' };
@@ -2188,6 +2272,62 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'buyAssetFromSyndicate') {
+    // The BUY-AN-ASSET half (docs/asset-purchase.md). TWO costs move NOW and a build order is
+    // RECORDED — nothing else (the goods buy's discipline). No shipment yet, no asset yet:
+    // construction is a WAIT that stepSyndicateBuilds promotes to a delivery on completion.
+    const guild = findGuild(next, action.guildId);
+    const issueTick = action.issueTick === undefined ? next.tick : action.issueTick;
+    const price = priceAssetForPurchase(next, action.assetKind, issueTick);
+    if (price == null) {
+      // Validation refused this (expiry gate + ring guard via priceAssetForPurchase), so
+      // reaching it means the ring or a price row was edited between validate and apply. Taking
+      // the money for an asset with no priced parts would be a silent theft — halt, exactly as
+      // the goods buy's mirror guard.
+      throw new Error(`applyAction: guild ${guild.id} bought a ${action.assetKind} from the Syndicate at tick ${next.tick} (quote issueTick ${issueTick}) but its bill has no quoted parts price at that tick — refusing to take credits for nothing`);
+    }
+
+    // CREDITS — the mirror of the goods buy: the price leaves the guild and the same integer
+    // lands in the ledger, so invariant 2 holds to the credit by construction. Priced at the
+    // QUOTED value (§8.1), matching the affordability check validate ran.
+    guild.credits -= price;
+    next.syndicate.ledger += price;
+
+    // FUEL — the delivery flight burns route fuel UP FRONT (asset-purchase.md "Cost timing and
+    // fuel"): charging it now removes the failure mode where construction finishes but the guild
+    // can no longer afford the flight. Fuel LEAVES the galaxy (burned, not transferred), so
+    // invariant 1 balances only because `totalConsumed` rises to match the hoard falling. Same
+    // legal-first `burnFuel` and the SAME `routeFuelCost` the goods buy uses; a 0 is a no-op (no
+    // route, refused up front). The combined-availability gate covered it, so neither store goes
+    // negative.
+    const { fuelBurn } = routeFuelCost(action.destinationSystemId);
+    burnFuel(guild, fuelBurn);
+    next.audit.totalConsumed += fuelBurn;
+
+    // THE BUILD ORDER — construction is a wait (asset-purchase.md "The two phases"). No shipment
+    // and no asset are created here; the order sits on `syndicateBuilds` until stepSyndicateBuilds
+    // promotes it at `buildDoneTick`. `buildDoneTick` is ABSOLUTE (`tick + BUILD_TICKS[kind]`, the
+    // SAME build time the dockyard counts down) so a save reloaded mid-construction lands on the
+    // right tick with no special case. `boughtTick` records the mutation's tick (§15.2 — every
+    // mutation records its tick). Created lazily so a galaxy that buys no asset carries no key
+    // (the omit-when-empty no-op, byte-identical goldens).
+    if (!Array.isArray(next.syndicateBuilds)) next.syndicateBuilds = [];
+    next.syndicateBuilds.push({
+      ownerGuildId: action.guildId,
+      assetKind: action.assetKind,
+      destinationSystemId: action.destinationSystemId,
+      buildDoneTick: next.tick + BUILD_TICKS[action.assetKind],
+      boughtTick: next.tick,
+    });
+
+    // The SAME galacticSupply refresh the goods buy makes, and for the same reason: the burn
+    // above deducted `fuelHoard`, which `galacticSupply.fuel.guildHeld` sums, and `POST /action`
+    // asserts every invariant with no tick between. No goods moved (nothing to refresh there) and
+    // `expectedCreditTotal` is untouched (credits moved guild↔ledger without changing the total).
+    next.galacticSupply = computeGalacticSupply(next);
+    return next;
+  }
+
   if (action.type === 'setWindowN') {
     // Set the single engine-wide window length. Setup-only (validate refused it once
     // tick > 0), so this only ever writes tick-0 state. No guild is resolved — this
@@ -2251,6 +2391,7 @@ module.exports = {
   createSetWindowNAction,
   createSellToSyndicateAction,
   createBuyFromSyndicateAction,
+  createBuyAssetFromSyndicateAction,
   validateAction,
   applyAction,
   intake,
