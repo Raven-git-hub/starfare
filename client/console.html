@@ -732,11 +732,12 @@
      250px is the MEASURED chrome above .dk-body in embed mode (~230px header/status/
      tier-tabs/resbar + the 20px body.embed bottom padding), so the body lands one
      padding-width above the iframe edge with no scrollbar.
-     The queue is fixed; the centre and the two art panels share free space by fr-weight,
-     so the ART GROWS with the monitor (≈290px each at a ~1836px window up to ~590px at
-     2560px) above a 290px floor, while the centre grows only modestly above its 300px floor. */
+     The queue is fixed; the centre and the two art panels share free space by fr-weight.
+     The centre "Current Build" card is now the widest panel (1.3fr, ≥340px) — the donut and
+     part bars get the room. The BUILDYARD art (col 4, 1fr, ≥280px) stays the hero; the
+     "Building" thumbnail (col 3, 0.55fr, ≥150px) is deliberately ~half of it at every width. */
   .dk-body{display:grid;
-    grid-template-columns:200px minmax(300px,0.6fr) minmax(290px,1fr) minmax(290px,1fr);
+    grid-template-columns:200px minmax(340px,1.3fr) minmax(150px,0.55fr) minmax(280px,1fr);
     gap:12px; align-items:stretch; min-height:calc(100vh - 250px)}
   /* The centre column is dropdown + build card; the build card grows to fill the taller
      column (its donut/parts already flex + scroll, so the parts list just gets more room). */
