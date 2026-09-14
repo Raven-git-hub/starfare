@@ -28,6 +28,7 @@ const { addStock, getStock } = require('./stock.js');
 const { createAsset } = require('./state.js');
 const { assetId, nextAssetNumber } = require('./assets.js');
 const { assetBill, BUILD_TICKS } = require('./asset-recipes.js');
+const { nearestWaystation, arrivalTickFor } = require('./transport.js');
 const { guildHolds } = require('./claims.js');
 const { resolveProduction } = require('./production.js');
 const {
@@ -792,11 +793,80 @@ function stepPriceRecompute(state, _actions, ctx) {
   return state;
 }
 
-// Step 4 — scheduled events. Anything with a due-tick (contest-window
-// closures now; the change calculator's interceptions later, §15.6).
-// SEAM: no scheduled events exist yet — no territory/contests built.
-function stepScheduledEvents(state, _actions) {
+// stepSyndicateBuilds(state) — promote every FINISHED Syndicate asset build to a delivery
+// (docs/asset-purchase.md "The two phases"). A bought asset builds centrally over BUILD_TICKS:
+// the buyAssetFromSyndicate apply recorded a `{ ownerGuildId, assetKind, destinationSystemId,
+// buildDoneTick }` order on `state.syndicateBuilds`, and when construction completes that order
+// becomes a STANDARD Syndicate delivery shipment (§6 / the `shipments` layer) — it travels the
+// nearest-waystation → destination leg and mints an idle asset on arrival (stepArrivals below).
+//
+// `state.tick` is still the PREVIOUS tick's number inside a step (tick() assigns `next.tick`
+// only after all steps run), so the tick BEING BUILT is `state.tick + 1` — the SAME `thisTick`
+// convention stepArrivals uses, shared on purpose so both steps judge one tick number and a
+// delivery promoted here is seen by stepArrivals in the same pass. `<=` (not `===`) so a build
+// whose done-tick has somehow already passed still promotes rather than stranding forever.
+//
+// Scheduling the delivery from `thisTick` makes the full timeline `buyTick + BUILD_TICKS +
+// ceil(hexDistance × craftSpeed)` — the asset-purchase.md formula, arrivalTick end to end.
+//
+// NO FUEL is burned here — the delivery flight's fuel was charged UP FRONT at BUY.
+function stepSyndicateBuilds(state) {
+  const builds = state.syndicateBuilds;
+  if (!Array.isArray(builds) || builds.length === 0) return state;
+
+  const thisTick = state.tick + 1;
+  const done = [];
+  const pending = [];
+  for (const b of builds) {
+    (b.buildDoneTick <= thisTick ? done : pending).push(b);
+  }
+  if (done.length === 0) return state;
+
+  // A FIXED promotion order (invariant 9): stable sort, so equal keys keep their (deterministic)
+  // insertion order. No total depends on this — a shipment push commutes — which is exactly why
+  // it is pinned anyway, the same discipline stepArrivals' deposit order follows.
+  done.sort((a, b) => (
+    a.buildDoneTick - b.buildDoneTick
+    || cmp(a.destinationSystemId, b.destinationSystemId)
+    || cmp(a.ownerGuildId, b.ownerGuildId)
+    || cmp(a.assetKind, b.assetKind)
+  ));
+
+  if (!Array.isArray(state.shipments)) state.shipments = [];
+  for (const b of done) {
+    // Nearest waystation → straight-line hex distance → an ABSOLUTE arrival tick, exactly as the
+    // goods buy schedules (§6). A build with no resolvable waystation cannot arise from a real
+    // purchase (validate required one), but guard defensively — keep it pending rather than throw
+    // or silently drop it on a hand-built state.
+    const near = nearestWaystation(b.destinationSystemId);
+    if (!near) { pending.push(b); continue; }
+    state.shipments.push({
+      ownerGuildId: b.ownerGuildId,
+      // The ASSET marker (not a goods `cargo`) — this is what lets stepArrivals and the snapshot
+      // tell an asset delivery from a goods one (asset-purchase.md "Delivery").
+      assetKind: b.assetKind,
+      destinationSystemId: b.destinationSystemId,
+      arrivalTick: arrivalTickFor(thisTick, near.distance),
+    });
+  }
+
+  // The promoted builds leave the list; a defensively-kept (unroutable) build stays. DELETE the
+  // key when it empties, keeping `syndicateBuilds` omit-when-empty so a galaxy whose last build
+  // has shipped serializes byte-identically to one that never bought (the pruneLockout discipline).
+  if (pending.length === 0) delete state.syndicateBuilds;
+  else state.syndicateBuilds = pending;
   return state;
+}
+
+// Step 4 — scheduled events. Anything with a due-tick (§15.6): contest-window closures and the
+// change calculator's interceptions later, and NOW its first live occupant — a finished
+// Syndicate asset build promoting to a delivery (docs/asset-purchase.md, roadmap 2.1d). A build
+// reaching its absolute `buildDoneTick` is exactly a due-tick event, and this step runs
+// immediately BEFORE step 5 arrivals, so a build finishing and its delivery resolve in one
+// deterministic pass. The eight-step order is UNCHANGED — step 4 already existed as the named
+// home for due-tick work; it simply gained its first occupant.
+function stepScheduledEvents(state, _actions) {
+  return stepSyndicateBuilds(state);
 }
 
 // Step 5 — arrivals. Shipments that reach their destination this tick.
@@ -839,6 +909,40 @@ function stepArrivals(state, _actions) {
   ));
 
   for (const ship of due) {
+    const guild = (state.guilds || []).find((g) => g.id === ship.ownerGuildId);
+
+    // AN ASSET DELIVERY (docs/asset-purchase.md "Delivery") — a shipment carrying an `assetKind`
+    // marker instead of a goods `cargo`. It MINTS an idle asset rather than depositing goods, and
+    // it is guarded DIFFERENTLY from a goods delivery: presence is NOT required (asset-purchase.md
+    // "Destination"), so there is NO `guildHolds` vanish check — an idle asset lands at the
+    // destination like a dockyard's output, whether or not the guild holds it. The ONE guard is a
+    // MISSING OWNER (torn down mid-flight): mint nothing and drop the shipment. Unlike a goods
+    // delivery this is TOLERATED, not a throw, because an asset purchase never took a claim, so a
+    // torn-down owner leaves no claim behind and its absence is the doc's expected failure mode,
+    // not a broken state. Conservation-clean: credits moved to the ledger at buy and the asset was
+    // never in inventory, so dropping it imbalances nothing.
+    if (ship.assetKind) {
+      if (!guild) continue;
+      // The dockyard's EXACT mint (buildDockyards): a fresh stable per-(guild, kind) id continuing
+      // the founding sequence, createAsset IDLE at the destination system (referenced by no
+      // venture — idle is derived, invariant 5), pushed into the guild's inventory. The mint's
+      // tick is `thisTick`; like the dockyard, the asset carries no birth-tick field of its own —
+      // the asset shape is shared and immutable, so stamping one here would diverge it (invariant
+      // 5), and the emission tick lives in the step, not on the entity.
+      const id = assetId(guild.id, ship.assetKind, nextAssetNumber(guild, ship.assetKind));
+      if (!Array.isArray(guild.assets)) guild.assets = [];
+      // The same tripwire the dockyard build carries (rule 4): a minted id cannot duplicate an
+      // existing one (max + 1 is above every suffix), so this halts only if the id scheme is
+      // corrupted — better a crash than two machines sharing an id.
+      if (guild.assets.some((a) => a.id === id)) {
+        throw new Error(`stepArrivals: guild ${guild.id} minted duplicate asset id ${id} at tick ${thisTick} — id sequence corrupted`);
+      }
+      guild.assets.push(createAsset({ id, kind: ship.assetKind, systemId: ship.destinationSystemId }));
+      continue;
+    }
+
+    // A GOODS DELIVERY — the existing path, UNTOUCHED.
+    //
     // THE VANISH CHECK (§6). The same `guildHolds` predicate the purchase was
     // validated against: if the buying guild no longer holds the destination,
     // contact with the craft is lost — no deposit, no refund, no divert.
@@ -850,7 +954,6 @@ function stepArrivals(state, _actions) {
     // it is a loss the player owns, not a hole in the books.
     if (!guildHolds(state, ship.ownerGuildId, ship.destinationSystemId)) continue;
 
-    const guild = (state.guilds || []).find((g) => g.id === ship.ownerGuildId);
     if (!guild) {
       // A live claim naming a guild that does not exist is a broken state, not a
       // lost delivery — halt loudly with the tick rather than quietly vanish
@@ -1239,4 +1342,4 @@ function tick(state, actions = []) {
   return next;
 }
 
-module.exports = { tick, STEPS };
+module.exports = { tick, STEPS, stepSyndicateBuilds };

@@ -681,14 +681,18 @@ function computeAttention(state) {
 //                 contested,
 //                 landmark: { kind, name?, coords?, ... } | null } ],
 //     shipments: [ { ownerGuildId, cargo: { good: int }, destinationSystemId,
-//                    arrivalTick, ticksRemaining,
+//                    arrivalTick, ticksRemaining, assetKind?,
 //                    originOutpostId, originCoords: {q,r}, departureTick } ],
 //       // IN-FLIGHT, design.md §6. The last three are the LEG the client draws
 //       // (transport-model.md §2.3/§6): leg origin (nearest waystation) + the
 //       // departure tick, so the client re-derives legProgress and tweens the
 //       // craft between departureTick and arrivalTick. Omitted for a row whose
 //       // nearestWaystation is null (defensive; should not happen in flight).
+//       // `assetKind` marks a Syndicate ASSET delivery (asset-purchase.md) — the
+//       // manifest labels it "Miner"/"Factory"; a goods delivery carries none.
 //     nodeLockouts: [ { siteId, releaseTick, lockedAtTick, ticksRemaining } ], // teardown §3.3
+//     syndicateBuilds: [ { ownerGuildId, assetKind, destinationSystemId,       // asset-purchase.md
+//                          buildDoneTick, ticksRemaining } ],                  // "on order" indicator
 //     attention: { renegotiations: [ { guildId, ventureId, ventureName, standing, offer } ],
 //                  notices: [ { guildId, id, tick, type, payload } ] },
 //       // §5 attention derive (#64 Slice 1b + event-log Slice): the guild's open action-items,
@@ -1309,6 +1313,12 @@ function buildSnapshot(state) {
       arrivalTick: ship.arrivalTick,
       ticksRemaining: Math.max(0, ship.arrivalTick - state.tick),
     };
+    // AN ASSET DELIVERY (docs/asset-purchase.md) carries an `assetKind` marker instead of goods:
+    // surfaced additively so the client's transit manifest can label the row "Miner" / "Factory"
+    // rather than a cargo. An ordinary goods delivery has none, so the field is present only on
+    // an asset shipment — the same distinction stepArrivals reads to mint instead of deposit. The
+    // distance-derived leg fields below are unchanged (an asset flies the same Syndicate leg).
+    if (ship.assetKind) row.assetKind = ship.assetKind;
     const near = nearestWaystation(ship.destinationSystemId);
     if (near) {
       row.originOutpostId = near.outpost.id;
@@ -1477,6 +1487,22 @@ function buildSnapshot(state) {
       releaseTick: l.releaseTick,
       lockedAtTick: l.lockedAtTick,
       ticksRemaining: Math.max(0, l.releaseTick - state.tick),
+    })),
+    // The PENDING SYNDICATE BUILDS (docs/asset-purchase.md "The two phases") — assets bought and
+    // still under central construction, before they promote to a delivery shipment. Published so
+    // the client can show the calm "on order — arriving day X" indicator during construction (the
+    // order is NOT a shipment yet and does not appear on the map). Echoed as stored, with the one
+    // derived `ticksRemaining` (`buildDoneTick - tick`, floored at 0) computed here so the browser
+    // renders and never calculates — exactly the courtesy `shipments`/`nodeLockouts` above extend.
+    // ALWAYS EMITTED as an array (a stable [] when none), unlike the omit-when-empty STATE field:
+    // the snapshot answers to a reader, and this is additive derived-on-read telemetry — no
+    // serialized byte, no golden move.
+    syndicateBuilds: (state.syndicateBuilds || []).map((b) => ({
+      ownerGuildId: b.ownerGuildId,
+      assetKind: b.assetKind,
+      destinationSystemId: b.destinationSystemId,
+      buildDoneTick: b.buildDoneTick,
+      ticksRemaining: Math.max(0, b.buildDoneTick - state.tick),
     })),
     // The ATTENTION derive (design.md §5 "attention derive", #64 Slice 1b) — the guild's open
     // action-items, aggregated top-level so the Guild Hall MESSAGES panel and its tab badge read

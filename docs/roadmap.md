@@ -107,6 +107,27 @@ boundary so the later hex-map swap doesn't touch it.
 
 **Built so far:**
 
+- **Buy a Tier-4 asset from the Syndicate (2.1d, ENGINE slice 1 — `docs/asset-purchase.md`).** The
+  BUY side of the asset economy, engine + snapshot only (NO client — the next slice). A guild pays
+  **credits + fuel up front** and the Syndicate builds the asset centrally, then ships it and mints an
+  idle asset at the destination. **Price** — `max(ASSET_PURCHASE_FLOOR 12M, round(partsCost × 0.8))` off
+  the same quote-lock ring the goods BUY uses (`priceAssetForPurchase`, `sim/asset-recipes.js`); the
+  floor binds at today's parts scale, so a miner/factory costs a flat 12M. **Action** —
+  `buyAssetFromSyndicate` (`sim/actions.js`), the asset analogue of `buyFromSyndicate`: same gates +
+  §8.1 quote-lock, minus the `guildHolds` gate (an idle asset lands anywhere — presence not required).
+  Apply debits credits → `syndicate.ledger` (invariant 2) and burns the light-hauler route fuel
+  (invariant 1), and records a build order on the new top-level **`state.syndicateBuilds`**
+  (omit-when-empty, so an unbought galaxy is byte-identical). **Two phases** — `stepSyndicateBuilds`
+  (tick **step 4**, scheduled events — the eight-step order is unchanged, step 4 simply gained its first
+  occupant) promotes a build at its absolute `buildDoneTick` to a standard §6 delivery shipment carrying
+  an `assetKind` marker; `stepArrivals` mints one idle asset (the dockyard's exact id/`createAsset`
+  pattern) at the destination on arrival, dropping the shipment if the owner is gone. **Snapshot** —
+  additive derived-on-read: `syndicateBuilds` (the on-order indicator) + an `assetKind` field on an
+  asset transit row; no serialized byte, no golden move. Proven by `sim/tests/asset-purchase.test.js`
+  (16 tests incl. a headless found→buy→build→deliver→mint; full suite 1,239 green, goldens
+  byte-identical). *Deferred to the client slice: the TRADE-tab section, confirm popup, Operations
+  "on order" render, and the map label. Sell-to-Syndicate / lease and the other asset kinds stay ahead.*
+
 - **Transport visibility (engine half)** — the snapshot now surfaces, on every in-flight Syndicate
   shipment, the leg the client draws: `originOutpostId` / `originCoords` (the nearest waystation, the
   leg's start endpoint) and `departureTick` (the second of transport-model.md §2.3's two ticks;
