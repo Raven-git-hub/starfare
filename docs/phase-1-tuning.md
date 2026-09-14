@@ -58,6 +58,25 @@ The dockyard's build core carries exactly two new numbers, both `[FIRST-CUT]` an
 - **Commission-queue cap `MAX_QUEUE`** `[FIRST-CUT]` — **5**. The most commissions a single dockyard may hold at once; a 6th is refused loudly at intake (`commissionBuild`). The queue is single-slot / strict-FIFO (one active build), so this bounds only how far a player may queue *ahead*. `build-yard.md` §3.
 - **Build times `BUILD_TICKS` (ticks per kind)** `[FIRST-CUT]` — **miner 4,320** (3 days), **factory 7,200** (5 days), at the ruled 1,440 ticks/day (`docs/cycle-and-calendar.md`). Counted down *after* the whole module bill is consumed atomically (reserve-and-wait, `build-yard.md` §3): the consume tick sets the countdown, and the finished asset is emitted exactly `BUILD_TICKS` ticks later, idle at the dockyard's system. Only the two buildable kinds have a value; the ship / outpost / scanner / toll-gate / droid ladder (`build-yard.md` §3 notes "light transport shortest → outpost / deep-scanner longest") is deferred with those outputs. The **module BILLS** themselves are not numbers ruled here — they are lifted verbatim from `docs/asset-recipes.md`'s two `buildable` rows into `sim/asset-recipes.js`, and a load-time tripwire halts if any bill names a good that is not a real Tier-3 module.
 
+### The build yard — buying a Tier-4 asset from the Syndicate (2.1d) *(14-09-26 — `docs/asset-purchase.md`)*
+Two new numbers, both `[FIRST-CUT]` and RULED this design session (14-09-26). They live once in
+`sim/asset-recipes.js` (beside the dockyard build-core constants) and are imported, never inlined;
+this table is the authority on the values. A Syndicate asset purchase is priced
+`price = max(ASSET_PURCHASE_FLOOR, round(partsCost × ASSET_PURCHASE_REDUCTION))`, with
+`partsCost = Σ(bill module qty × posted price)` at the quote's issue tick — the full mechanic
+(two-phase build→deliver, the delivery manifest, cost timing, failure modes) is `docs/asset-purchase.md`.
+- **Asset purchase floor `ASSET_PURCHASE_FLOOR`** `[FIRST-CUT]` — **12,000,000 credits**. The minimum a
+  bought asset costs; deliberately high (assets are meant to be hard to get). At today's economy scale a
+  miner/factory's parts are worth only ~100–2,800 credits, so the floor binds and a purchase is
+  effectively a flat 12M; the `partsCost × REDUCTION` branch stays live for when tuning raises parts
+  toward the floor. Retune in play — a Syndicate asset purchase has never been felt.
+- **Asset purchase reduction `ASSET_PURCHASE_REDUCTION`** `[FIRST-CUT]` — **0.8**. The multiplier on live
+  parts cost (a 20% Syndicate discount) that governs the price once `partsCost × 0.8` exceeds the floor.
+  Inert while the floor dominates; ruled now so the formula is complete.
+- **Delivery fuel** reuses the existing Syndicate hauler burn (light tier, above): an asset is a single
+  indivisible payload with no good-unit count, so it burns at the light rate over the hex distance.
+  `[FIRST-CUT]` choice — an asset-mass → hauler-tier mapping is a later ruling, not invented here.
+
 ### Production flow *(10-08-26)*
 - **Starved-line warn threshold** `[FIRST-CUT]` — a consuming line is flagged "starved" (the §5 pulsing box / future Plant-Manager cue) only when its effective rate is below this fraction of its own throttle, so a rounding wobble near 100% doesn't cry wolf. **95%** — pure first-cut, tune in play.
 - **Tick duration** — **RULED (24-08-26): 1 tick = 1 minute of real time** → 60 ticks/hour, 1,440 ticks/day. The engine stays per-tick and clock-free; this is the multiplier the per-hour UI display (§5) reads. Full entry below.

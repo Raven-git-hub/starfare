@@ -307,9 +307,11 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
 
 **Phase 2 — new, from the design notes (need rulings before their slice becomes a build prompt):**
 
-- **Build yard:** sell assets to the Syndicate outright, or lease-only? The Syndicate purchase price
-  formula (parts cost ± what margin/discount?). Do founding asset grants survive, or must everything
-  be built?
+- **Build yard:** *Purchase price* — **RULED 14-09-26** (`docs/asset-purchase.md` + `phase-1-tuning.md`):
+  `price = max(12,000,000 floor, round(partsCost × 0.8))` `[FIRST-CUT]`; a buy pays credits + fuel up
+  front, the Syndicate builds centrally (`BUILD_TICKS`) then ships a standard delivery manifest, and an
+  idle asset is minted at the destination. **Still open:** sell assets to the Syndicate outright vs
+  lease-only; do founding asset grants survive, or must everything be built?
 - **Transport:** recall-time vs renegotiation-window for Syndicate contracts (leaning recall); the
   maintenance return threshold (5%); the location/route bonus mechanic; **the craft-speed shape** — 150 ticks/hex `[FIRST-CUT]` (halved 14-09-26) is still ~0.6–16 real-days on the seed, so the durable fix is a much smaller ticks-per-hex or a non-raw-hex distance (log / per-ring band).
 - **Investment:** are shares tradable (leaning no)? The share-price formula specifics and the RP-boost
