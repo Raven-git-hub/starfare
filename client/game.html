@@ -830,6 +830,78 @@ select.field{appearance:none; cursor:pointer;}
 #tp-trade .tw-ph-note{font-size:11px; color:var(--tw-ink4); line-height:1.5; border-top:1px solid var(--tw-line); padding-top:11px; margin-top:auto;}
 #tp-trade .tw-ph-note b{color:var(--tw-amber2); font-weight:500;}
 
+/* ===== the TRADE tab's tier-4 "Constructed" view (docs/mockups/trade-4constructed.html,
+   roadmap 2.1d client slice A — the Syndicate asset-commission buy floor). The dockyard tab's
+   .dk-* styling ported here and scoped under #tw-cn so nothing collides with the goods floor;
+   the .am-* (commission menu), .ip-* (in-progress) and .cn-body grid are the additions. #tw-cn
+   carries its OWN palette (the mockup's un-prefixed tokens) exactly as #tw-tx-overlay does, so
+   the ported rules read the values the mockup wrote them against. ===== */
+#tw-cn{--void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
+  --line:rgba(232,223,200,0.10); --line2:rgba(232,223,200,0.20);
+  --amber:#C9A227; --amber2:#e3c04a; --amber-dim:#7A6420; --amber-ghost:rgba(201,162,39,0.10);
+  --ink:#E8DFC8; --ink2:#8B8F9C; --ink3:#565B68; --green:#4E9A87; --red:#C2603A;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace; --serif:'Cinzel',Georgia,serif;
+  /* 5-panel body: commission menu | in-progress | current build | building art | buildyard hero.
+     The Building (inner right) hero is ~2x the dockyard's; the Current Build column is squeezed. */
+  grid-template-columns:224px 188px minmax(190px,1fr) 312px 300px; gap:12px; align-items:stretch;
+  min-height:560px;}
+#tw-cn.cn-body{display:grid;}
+#tw-cn *{box-sizing:border-box;}
+@media (max-width:1120px){ #tw-cn{grid-template-columns:1fr 1fr; min-height:0;} }
+@media (max-width:640px){ #tw-cn{grid-template-columns:1fr; min-height:0;} }
+#tw-cn .dk-card{background:var(--panel); border:1px solid var(--line); border-radius:10px; display:flex; flex-direction:column; min-height:0; min-width:0; overflow:hidden;}
+#tw-cn .dk-h{display:flex; align-items:center; justify-content:space-between; padding:11px 14px; border-bottom:1px solid var(--line); flex:0 0 auto;}
+#tw-cn .dk-h .t{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink2); font-weight:600;}
+#tw-cn .dk-h .n{font-family:var(--mono); font-size:10px; color:var(--ink3); font-variant-numeric:tabular-nums;}
+#tw-cn .dk-centre{display:flex; flex-direction:column; gap:12px; min-height:0;}
+#tw-cn .dk-centre > .dk-card{flex:1 1 auto; min-height:0;}
+#tw-cn .dk-queue{padding:10px; flex:1 1 auto; overflow-y:auto; display:flex; flex-direction:column; gap:8px; min-height:0;}
+#tw-cn .dk-qempty{color:var(--ink3); font-size:11.5px; text-align:center; padding:26px 12px; line-height:1.6; margin:auto 0;}
+#tw-cn .dk-prog{flex:1 1 auto; display:flex; flex-direction:column; align-items:center; padding:16px 16px 0; min-height:0;}
+#tw-cn .dk-donutwrap{position:relative; width:158px; height:158px; flex:0 0 auto;}
+#tw-cn .dk-donutwrap svg{transform:rotate(-90deg);}
+#tw-cn .dk-donut-c{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;}
+#tw-cn .dk-donut-c .big{font-family:var(--mono); font-size:27px; font-variant-numeric:tabular-nums; letter-spacing:.02em; color:var(--ink); line-height:1;}
+#tw-cn .dk-donut-c .big.grey{color:var(--ink3); font-size:18px; letter-spacing:.22em;}
+#tw-cn .dk-donut-c .u{font-family:var(--mono); font-size:8.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--ink3); margin-top:6px;}
+#tw-cn .dk-donut-c .pct{font-family:var(--mono); font-size:10px; color:var(--amber); margin-top:5px;}
+#tw-cn .dk-note{margin-top:20px; text-align:center; font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3);}
+#tw-cn .dk-note.small{margin-top:7px; font-size:9px; letter-spacing:.1em;}
+#tw-cn .dk-hero{position:relative; overflow:hidden; min-height:210px;}
+#tw-cn .dk-hero .art{position:absolute; inset:0; z-index:0; background-size:cover; background-position:center 30%;}
+#tw-cn .dk-hero .scrim{position:absolute; inset:0; z-index:1; background:linear-gradient(180deg,rgba(13,15,20,.72) 0%,rgba(13,15,20,.12) 30%,rgba(13,15,20,.10) 55%,rgba(13,15,20,.92) 100%);}
+#tw-cn .dk-hero .ttop{position:relative; z-index:2; padding:13px 15px;}
+#tw-cn .dk-hero .ttop .zhead{font-family:var(--mono); font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3);}
+#tw-cn .dk-hero .tcenter{position:absolute; z-index:2; top:25%; left:0; right:0; display:flex; justify-content:center; padding:0 8px;}
+#tw-cn .dk-hero .word{font-family:var(--serif); font-weight:700; letter-spacing:.20em; font-size:23px; line-height:1.12; color:var(--ink); text-align:center; text-shadow:0 2px 22px rgba(13,15,20,.95),0 1px 4px rgba(13,15,20,.95);}
+#tw-cn .dk-hero .role{position:absolute; z-index:2; bottom:14px; left:0; right:0; text-align:center; font-size:10px; letter-spacing:.16em; text-transform:capitalize; color:var(--ink3);}
+#tw-cn .dk-hero.dim .art{filter:grayscale(.8) brightness(.38);}
+/* commission-asset menu (replaces the dockyard queue's leftmost slot) */
+#tw-cn .am-h{padding:11px 14px; border-bottom:1px solid var(--line);}
+#tw-cn .am-h .t{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink2); font-weight:600;}
+#tw-cn .am-h small{display:block; font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); margin-top:3px;}
+#tw-cn .am-list{padding:10px; display:flex; flex-direction:column; gap:9px;}
+#tw-cn .am-item{border:1px solid var(--line2); border-radius:9px; background:var(--panel); padding:12px 12px 11px; cursor:pointer;}
+#tw-cn .am-item.open{border-color:var(--amber); background:linear-gradient(180deg,var(--amber-ghost),transparent 55%),var(--panel);}
+#tw-cn .am-item .anm{font-family:var(--serif); font-size:16px; color:var(--ink); text-transform:capitalize;}
+#tw-cn .am-item .asub{font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); margin-top:1px;}
+#tw-cn .am-item .apr{font-family:var(--mono); font-size:14px; color:var(--amber2); margin-top:9px; font-variant-numeric:tabular-nums;}
+#tw-cn .am-item .apr .c{font-size:11px; color:var(--amber); margin-right:1px;}
+#tw-cn .am-item .abuildt{font-size:10px; color:var(--ink3); margin-top:3px;}
+#tw-cn .am-item .abuildt b{color:var(--ink2); font-weight:500;}
+#tw-cn .am-add{margin-top:11px; width:100%; font-family:var(--mono); font-size:10.5px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:7px; padding:9px; cursor:pointer;}
+/* in-progress commissions (parallel; the dockyard queue look) */
+#tw-cn .ip-item{border:1px solid var(--line); border-radius:7px; background:var(--panel2); padding:10px 11px; display:flex; align-items:center; gap:9px; flex:0 0 auto;}
+#tw-cn .ip-item.cur{border-color:var(--amber-dim); background:var(--amber-ghost);}
+#tw-cn .ip-item .k{font-family:var(--serif); font-size:14px; color:var(--ink); flex:1; text-transform:capitalize;}
+#tw-cn .ip-item .k .sub{display:block; font-family:var(--mono); font-size:8.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3); margin-top:2px;}
+#tw-cn .ip-item.cur .k .sub{color:var(--amber);}
+#tw-cn .ip-item .eta{font-family:var(--mono); font-size:10px; color:var(--ink3); text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums;}
+/* the Constructed view's status line (engine refusal / commission-placed), under the menu */
+#tw-cn .cn-note{margin:0 10px 10px; font-size:11px; line-height:1.4; letter-spacing:.02em; color:var(--ink3); text-align:center;}
+#tw-cn .cn-note.ok{color:var(--green);}
+#tw-cn .cn-note.bad{color:var(--red);}
+
 /* ===== the GUILD HALL tab — the Standing panel (docs/guild-hall.md §2; look =
    docs/mockups/guild-hall.html). Rendered in the SHELL'S OWN overlay exactly like the
    TRADE tab: it reads the snapshot this page already polls (window.__snapshot) and
@@ -1849,7 +1921,7 @@ select.field{appearance:none; cursor:pointer;}
       <div class="tw-reslist" id="tw-reslist"></div>
     </div>
 
-    <div class="tw-body">
+    <div class="tw-body" id="tw-body-host">
       <!-- LEFT HERO: what the guild actually holds, galaxy-wide -->
       <aside class="tw-hero">
         <div class="zhead">Holdings</div>
@@ -1952,6 +2024,12 @@ select.field{appearance:none; cursor:pointer;}
         </div>
       </aside>
     </div>
+
+    <!-- The tier-4 "Constructed" view (docs/mockups/trade-4constructed.html, roadmap 2.1d client
+         slice A). Shown IN PLACE OF .tw-body when T.tier === 4; the Syndicate asset-commission
+         floor (commission menu | in-progress | current-build donut | building art | buildyard
+         hero). Rendered by renderConstructed(). Empty until then; it fills from the snapshot. -->
+    <div class="cn-body" id="tw-cn" style="display:none"></div>
 
    </div>
 
@@ -5771,6 +5849,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     good:null,       // the selected good — HELD across polls, never reset by a refresh
     scale:null,      // which price-history resolution the chart is drawing
     alloc:{},        // systemId -> the qty the player has typed, for the selected good
+    cnOpen:null,     // tier-4 Constructed view: which commission-menu asset kind is expanded
+    cnNote:'', cnNoteKind:'', cnNoteTimer:null,   // the Constructed view's own status line (held in
+                                                  // state so it survives the ~1s poll re-render)
     navSig:'', rowSig:'',
     noteTimer:null
   };
@@ -5810,6 +5891,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     for(var t=1; t<=3; t++){ if(tierGoods(t).indexOf(good) >= 0) return t; }
     return 1;
   }
+  // Which tier tabs are LIVE. Tiers 1–3 light up only when the engine declares goods at that
+  // tier; tier 4 ("Constructed") is ALWAYS live — an asset is bought from the Syndicate, not
+  // held as a good, so it never depends on a goods catalog or a dockyard (roadmap 2.1d).
+  function tierEnabled(t){ return t === 4 || tierGoods(t).length > 0; }
   // The posted value, verbatim from the snapshot. `null` for anything the Syndicate
   // does not price (fuel, the Tier-3 catalog names) — which is exactly the set the
   // engine refuses a sale of, so the panel and the action agree by construction.
@@ -5875,13 +5960,16 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   /* -- the tier tabs + the resource chips ------------------------------------ */
   function renderNav(){
     var tiers = el('tw-tiers'), list = el('tw-reslist');
+    // The Constructed view has no goods chips (mockup), so the resource-chip row is hidden on
+    // tier 4 and shown on tiers 1–3.
+    list.style.display = (T.tier === 4) ? 'none' : '';
     var goods = tierGoods(T.tier);
     var sig = T.tier + '|' + goods.join(',') + '|' + T.good;
     if(sig !== T.navSig){
       T.navSig = sig;
       var th = '';
       for(var t=1; t<=4; t++){
-        var has = tierGoods(t).length > 0;
+        var has = tierEnabled(t);
         th += '<div class="tw-tier'+(t===T.tier?' on':'')+(has?'':' dim')+'" data-tier="'+t+'">'
             + '<span class="n">'+t+'</span>'+TIER_NAMES[t-1]+'</div>';
       }
@@ -6229,11 +6317,24 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   function render(){
     if(!T.open) return;
     var guild = meGuild();
-    if(T.good == null || priceOf(T.good) == null){
+    // Default-good picking is a TIER 1–3 concern only. On tier 4 (Constructed) there is no good,
+    // so picking one here would silently bounce the tab back to the good's tier (the bug the
+    // console's "4 · Assets" tab hit — guard it the same way).
+    if(T.tier !== 4 && (T.good == null || priceOf(T.good) == null)){
       var pick = defaultGood(guild);
       if(pick){ T.good = pick; T.tier = tierOf(pick); }
     }
     renderNav();
+    var body = el('tw-body-host'), cn = el('tw-cn');
+    if(T.tier === 4){
+      // Show the Constructed view in place of the goods floor.
+      if(body) body.style.display = 'none';
+      if(cn) cn.style.display = 'grid';
+      renderConstructed();
+      return;
+    }
+    if(body) body.style.display = '';
+    if(cn) cn.style.display = 'none';
     renderHoldings();
     renderChart();
     renderSell();       // fills the shared head (good + price) and the sell pane
@@ -6266,15 +6367,210 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     el('tw-buybtn').disabled = !(v > 0 && price != null);
   }
 
+  /* ===== the tier-4 "Constructed" view (docs/mockups/trade-4constructed.html, roadmap 2.1d
+     client slice A). The Syndicate asset-commission floor: a Commission-Assets menu (Add →
+     __adviserConfirm → buyAssetFromSyndicate), an In Progress list + Current Build donut off
+     `syndicateBuilds`, and the two art heroes. It COMPUTES NO GAME NUMBER (§5): every price is
+     `assetPurchaseQuote[kind].price`, every duration is a display formatting of `buildTicks`
+     (from the quote) and the destination's `fuelCost[dest].travelTicks` (the delivery leg the
+     goods buy already reads), and each %/countdown is derived from `syndicateBuilds`. The only
+     thing posted is the action; the engine's refusal is surfaced, never pre-guessed. ===== */
+
+  // A compact human duration. 1 tick = 1 game-minute, 1,440 ticks = 1 day (the ruled CLOCK —
+  // docs/cycle-and-calendar.md — the same convention the HUD clock and txEta render on; NOT an
+  // economy tunable, so this mirrors no engine constant). The client only FORMATS a duration the
+  // snapshot hands it — it derives no build time and no travel distance.
+  function cnDur(ticks){
+    var t = Math.max(0, Math.round(ticks || 0));
+    var d = Math.floor(t / 1440), h = Math.floor((t % 1440) / 60);
+    if(d && h) return d + 'd ' + h + 'h';
+    if(d) return d + 'd';
+    if(h) return h + 'h';
+    return '<1h';
+  }
+  function cnPad(n){ return (n < 10 ? '0' : '') + n; }
+  // The descriptive sub-line for each kind — presentation copy lifted from the approved mockup,
+  // not a game value. A kind the mockup did not name falls back to a generic label.
+  var CN_SUB = { miner:'Resource node asset', factory:'Settlement slot asset' };
+  // The delivery leg's travel duration to a system, read WHOLE from the per-system route quote
+  // the goods buy already uses (`fuelCost[sysId].travelTicks`); 0 (→ "<1h") when the guild holds
+  // no route to it. The client never sees a distance or a craft speed.
+  function cnDeliveryTicks(guild, sysId){
+    var fc = (guild && guild.fuelCost) || {};
+    var r = sysId ? fc[sysId] : null;
+    return (r && typeof r.travelTicks === 'number') ? r.travelTicks : 0;
+  }
+  // The Constructed view's own status line (engine refusal / commission-placed), held in T so it
+  // survives the ~1s poll re-render. `ok` notes self-clear after a few seconds, like the goods note.
+  function cnNote(text, kind){
+    T.cnNote = text || ''; T.cnNoteKind = kind || '';
+    if(T.cnNoteTimer){ clearTimeout(T.cnNoteTimer); T.cnNoteTimer = null; }
+    if(text && kind === 'ok'){ T.cnNoteTimer = setTimeout(function(){ T.cnNote=''; T.cnNoteKind=''; if(T.tier===4) renderConstructed(); }, 6000); }
+  }
+
+  function renderConstructed(){
+    var cn = el('tw-cn'); if(!cn) return;
+    var s = snap(), guild = meGuild();
+    var quote = (s && s.assetPurchaseQuote) || {};
+    var kinds = Object.keys(quote);
+    if(!T.cnOpen || kinds.indexOf(T.cnOpen) < 0) T.cnOpen = kinds[0] || null;
+
+    var dest = guild ? guild.homeSystemId : null;
+    var homeDelivery = cnDeliveryTicks(guild, dest);
+
+    // This guild's in-progress builds (parallel, not a queue), each with a derived arrival
+    // (build remaining + its own delivery leg), ordered soonest-arrival first.
+    var builds = ((s && s.syndicateBuilds) || [])
+      .filter(function(b){ return guild && b.ownerGuildId === guild.id; })
+      .map(function(b){
+        var bt = (quote[b.assetKind] && quote[b.assetKind].buildTicks) || 0;
+        var deliver = cnDeliveryTicks(guild, b.destinationSystemId);
+        return { kind:b.assetKind, remaining:b.ticksRemaining, buildTicks:bt,
+                 deliver:deliver, arrive:(b.ticksRemaining || 0) + deliver };
+      });
+    builds.sort(function(a, b){ return a.arrive - b.arrive; });
+    var soonest = builds[0] || null;
+
+    // ---- panel 1: Commission Assets menu ----
+    var menu = kinds.map(function(kind){
+      var q = quote[kind] || {}, open = kind === T.cnOpen;
+      var price = q.price, buildT = q.buildTicks || 0, arrive = buildT + homeDelivery;
+      return '<div class="am-item' + (open ? ' open' : '') + '" data-kind="' + kind + '">'
+        + '<div class="anm">' + pretty(kind) + '</div>'
+        + '<div class="asub">' + (CN_SUB[kind] || 'Syndicate-built asset') + '</div>'
+        + '<div class="apr"><span class="c">&#162;</span>' + (price == null ? '&mdash;' : fmt(price)) + '</div>'
+        + '<div class="abuildt">Build ' + cnDur(buildT) + ' &middot; Delivery ~' + cnDur(homeDelivery)
+          + ' &middot; <b>arrives ~' + cnDur(arrive) + '</b></div>'
+        + (open ? '<button class="am-add" data-kind="' + kind + '">+ Add commission</button>' : '')
+        + '</div>';
+    }).join('');
+    var noteHtml = T.cnNote
+      ? '<div class="cn-note' + (T.cnNoteKind ? ' ' + T.cnNoteKind : '') + '">' + T.cnNote + '</div>' : '';
+    var p1 = '<div class="dk-card">'
+      + '<div class="am-h"><span class="t">Commission Assets</span><small>Buy from the Syndicate</small></div>'
+      + '<div class="am-list">' + menu + '</div>' + noteHtml + '</div>';
+
+    // ---- panel 2: In Progress ----
+    var ipRows;
+    if(builds.length){
+      ipRows = builds.map(function(b, i){
+        var bt = b.buildTicks || 0;
+        var pct = bt > 0 ? Math.round(Math.max(0, Math.min(1, (bt - b.remaining) / bt)) * 100) : 0;
+        return '<div class="ip-item' + (i === 0 ? ' cur' : '') + '">'
+          + '<span class="k">' + pretty(b.kind) + '<span class="sub">arrives in ' + cnDur(b.arrive) + '</span></span>'
+          + '<span class="eta">' + pct + '%</span></div>';
+      }).join('');
+    } else {
+      ipRows = '<div class="dk-qempty">No commissions in progress.<br>Buy an asset from the Syndicate to begin.</div>';
+    }
+    var p2 = '<div class="dk-card"><div class="dk-h"><span class="t">In Progress</span>'
+      + '<span class="n">' + (builds.length ? builds.length + ' building' : 'idle') + '</span></div>'
+      + '<div class="dk-queue">' + ipRows + '</div></div>';
+
+    // ---- panel 3: Current Build (donut on the soonest build's BUILD countdown; no parts, no
+    //      pending state — a Syndicate build never waits on parts; IDLE when nothing builds) ----
+    var C = 2 * Math.PI * 52, donut, sub, hn;
+    if(soonest){
+      var bt = soonest.buildTicks || 0, rem = soonest.remaining || 0;
+      var fill = bt > 0 ? Math.max(0, Math.min(1, (bt - rem) / bt)) : 0;
+      var pct = Math.round(fill * 100);
+      var hh = Math.floor(rem / 60), mm = rem % 60;
+      donut = '<svg viewBox="0 0 120 120" width="158" height="158">'
+        + '<circle cx="60" cy="60" r="52" fill="none" stroke="#1C212B" stroke-width="13"/>'
+        + '<circle cx="60" cy="60" r="52" fill="none" stroke="#C9A227" stroke-width="13" stroke-dasharray="'
+          + (fill * C).toFixed(1) + ' ' + ((1 - fill) * C).toFixed(1) + '"/></svg>'
+        + '<div class="dk-donut-c"><div class="big">' + cnPad(hh) + ':' + cnPad(mm) + '</div>'
+          + '<div class="u">hrs : min left</div><div class="pct">' + pct + '%</div></div>';
+      sub = '<div class="dk-note">Building at the Syndicate foundry</div>'
+        + '<div class="dk-note small">then ~' + cnDur(soonest.deliver) + ' delivery &middot; arrives in ' + cnDur(soonest.arrive) + '</div>';
+      hn = pretty(soonest.kind) + ' &middot; soonest';
+    } else {
+      donut = '<svg viewBox="0 0 120 120" width="158" height="158">'
+        + '<circle cx="60" cy="60" r="52" fill="none" stroke="#1C212B" stroke-width="13"/></svg>'
+        + '<div class="dk-donut-c"><div class="big grey">IDLE</div><div class="u">no build running</div></div>';
+      sub = '<div class="dk-note">The Syndicate foundry is idle</div>';
+      hn = 'idle';
+    }
+    var p3 = '<div class="dk-centre"><div class="dk-card">'
+      + '<div class="dk-h"><span class="t">Current Build</span><span class="n">' + hn + '</span></div>'
+      + '<div class="dk-prog" style="justify-content:center; padding:16px">'
+      + '<div class="dk-donutwrap">' + donut + '</div>' + sub + '</div></div></div>';
+
+    // ---- panel 4: Building art (follows the soonest build; dimmed/blank when idle) ----
+    var p4 = '<div class="dk-card dk-hero' + (soonest ? '' : ' dim') + '">'
+      + '<div class="art" style="background-image:url(\'assets/industrial/factoryConstruction.jpg\')"></div>'
+      + '<div class="scrim"></div><div class="ttop"><div class="zhead">Building</div></div>'
+      + '<div class="role">' + (soonest ? pretty(soonest.kind) : 'Idle') + '</div></div>';
+
+    // ---- panel 5: SYNDICATE BUILDYARD hero ----
+    var p5 = '<div class="dk-card dk-hero">'
+      + '<div class="art" style="background-image:url(\'assets/industrial/buildyard.jpg\')"></div>'
+      + '<div class="scrim"></div><div class="tcenter"><div class="word">SYNDICATE<br>BUILDYARD</div></div></div>';
+
+    cn.innerHTML = p1 + p2 + p3 + p4 + p5;
+  }
+
+  // Add a commission: the confirm popup restates the ¢ cost + build/delivery/arrival breakdown
+  // (all display derivations of the quote + route travelTicks — the UI computes nothing), and on
+  // confirm fires buyAssetFromSyndicate to the guild's home system (no destination picker this
+  // slice — multi-system is 2.2), carrying the quote's issue tick for the §8.1 quote-lock.
+  function cnCommission(kind){
+    var s = snap(), guild = meGuild();
+    if(!guild || !kind) return;
+    var quote = (s && s.assetPurchaseQuote) || {};
+    var q = quote[kind]; if(!q) return;
+    var dest = guild.homeSystemId;
+    var deliver = cnDeliveryTicks(guild, dest);
+    var buildT = q.buildTicks || 0, price = q.price;
+    var issueTick = (s && typeof s.tick === 'number') ? s.tick : null;
+    var destName = (window.__systemName && window.__systemName(dest)) || dest;
+    var body = 'Commission a ' + pretty(kind) + ' from the Syndicate for '
+      + '<b>&#162;' + (price == null ? '&mdash;' : fmt(price)) + '</b> (paid up front, with the delivery '
+      + 'fuel). It builds in ~' + cnDur(buildT) + ', then ~' + cnDur(deliver) + ' delivery to '
+      + destName + ' &mdash; arrives in ~' + cnDur(buildT + deliver) + '.';
+    var fire = function(){ cnPostCommission(kind, dest, issueTick); };
+    if(!window.__adviserConfirm){ fire(); return; }
+    window.__adviserConfirm({
+      title: 'Commission a ' + pretty(kind) + '?',
+      body: body,
+      confirmLabel: 'Commission ▸',
+      onConfirm: fire
+    });
+  }
+  function cnPostCommission(kind, dest, issueTick){
+    var player = (window.__player && window.__player()) || {};
+    if(!player.guildId || !dest || !kind) return;
+    var action = { type:'buyAssetFromSyndicate', guildId: player.guildId, assetKind: kind, destinationSystemId: dest };
+    if(typeof issueTick === 'number') action.issueTick = issueTick;
+    // The SAME action-post path the goods buy uses; the engine's refusal surfaces as an amber
+    // note (never pre-guessed), and a success refreshes so the new build appears In Progress.
+    window.__sendAction(action)
+      .then(function(res){
+        if(!res || !res.accepted){
+          cnNote(String((res && res.reason) || 'The Syndicate refused the commission.'), 'bad');
+          if(T.tier === 4) renderConstructed();
+          return;
+        }
+        cnNote('Commission placed — ' + pretty(kind) + ' is now building.', 'ok');
+        if(window.__refreshNow) window.__refreshNow(); else if(T.tier === 4) renderConstructed();
+      })
+      .catch(function(err){ cnNote(String((err && err.message) || err), 'bad'); if(T.tier === 4) renderConstructed(); });
+  }
+
   // Delegated once, on the panel — so every re-render keeps working with no rebinding.
   var panel = el('tp-trade');
   panel.addEventListener('click', function(e){
     var tier = e.target.closest('.tw-tier');
     if(tier){
       var t = +tier.getAttribute('data-tier');
-      if(tierGoods(t).length){ T.tier = t; T.navSig = ''; render(); }
+      if(tierEnabled(t)){ T.tier = t; T.navSig = ''; render(); }
       return;
     }
+    // The Constructed view's own controls (delegated on the same panel).
+    var amItem = e.target.closest('.am-item');
+    if(amItem && !e.target.closest('.am-add')){ T.cnOpen = amItem.getAttribute('data-kind'); renderConstructed(); return; }
+    var amAdd = e.target.closest('.am-add');
+    if(amAdd){ cnCommission(amAdd.getAttribute('data-kind')); return; }
     var chip = e.target.closest('.tw-chip');
     if(chip){
       if(chip.classList.contains('dim')) return;   // unpriced: not tradable

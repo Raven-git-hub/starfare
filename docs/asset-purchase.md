@@ -145,4 +145,35 @@ now exists, the client renders it next slice.
 **Deferred to the client slice (unbuilt):** the TRADE-tab section, the confirm popup, the Operations
 "on order" rendering, and the map label — this slice only makes the data exist.
 
+## As built — CLIENT slice A (2.1d, the TRADE-tab buy view)
+
+✅ **BUILT — the buy view half of the client.** The TRADE tab's "4 · Constructed" tier tab is now
+live and renders the Syndicate asset-commission view (`client/game.html`, built to
+`docs/mockups/trade-4constructed.html`).
+- **Snapshot quote** — additive, derived-on-read: `snapshot.assetPurchaseQuote` = `{ <kind>:
+  { price, buildTicks } }` for each `BUILDABLE_ASSET_KINDS`, off the engine's own
+  `priceAssetForPurchase(state, kind, state.tick)` + `BUILD_TICKS[kind]`. No serialized byte, no
+  schema bump, no golden move — an unbought galaxy still serializes byte-identically. The client
+  renders the price and build time; it prices nothing (§5). The delivery leg of the arrival estimate
+  is NOT added here — the client reads it from the same per-system route quote the goods buy uses
+  (`guilds[].fuelCost[dest].travelTicks`).
+- **The view** — tier 4 is always live (an asset is bought, not held, so it needs no goods or
+  dockyard); `T.tier === 4` renders the five panels in place of the goods floor and hides the
+  resource-chip row. Commission-Assets menu (per kind: price + Build/Delivery/arrival stat, Add →
+  the confirm popup) · In Progress (this guild's `syndicateBuilds`, parallel, soonest-arrival first,
+  a % complete each) · Current Build donut (the soonest build's BUILD countdown + %, no parts and no
+  pending state, IDLE when nothing builds) · Building art (follows the soonest build) · SYNDICATE
+  BUILDYARD hero. Every price/day-count/%/arrival is a display derivation of `assetPurchaseQuote` /
+  `syndicateBuilds` / the route quote.
+- **Add → confirm → buy** — the menu's Add opens `window.__adviserConfirm` (the `#est-reel` adviser
+  card) restating the ¢ cost + build/delivery/arrival; onConfirm fires `buyAssetFromSyndicate`
+  (`{ guildId, assetKind, destinationSystemId: <home>, issueTick }`) via the SAME action-post path
+  the goods buy uses. Destination is the single home system (no picker this slice — multi-system is
+  2.2). The engine's refusal surfaces as an amber note; it is never pre-guessed.
+
+**Deferred to CLIENT slice B (unbuilt):** the Operations "on order" indicator and the in-flight
+transit manifest's "Miner"/"Factory" label. This slice's In Progress shows only the BUILD phase
+(`syndicateBuilds`); once a build completes it leaves that list and becomes a delivery shown
+elsewhere (slice B).
+
 <!-- asset-purchase-doc-sentinel v1 -->

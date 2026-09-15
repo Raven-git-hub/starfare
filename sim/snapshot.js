@@ -34,6 +34,7 @@ const { guildPoints } = require('./points.js');
 const { expectedReputation, issuanceModifier } = require('./meanline.js');
 const { computeOccupancy } = require('./occupancy.js');
 const { deployedAssetIds } = require('./assets.js');
+const { BUILDABLE_ASSET_KINDS, BUILD_TICKS, priceAssetForPurchase } = require('./asset-recipes.js');
 const { getSite, getLandmark, getStarterSystems, getTerranHomeworld } = require('./seed.js');
 const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
@@ -693,6 +694,11 @@ function computeAttention(state) {
 //     nodeLockouts: [ { siteId, releaseTick, lockedAtTick, ticksRemaining } ], // teardown §3.3
 //     syndicateBuilds: [ { ownerGuildId, assetKind, destinationSystemId,       // asset-purchase.md
 //                          buildDoneTick, ticksRemaining } ],                  // "on order" indicator
+//     assetPurchaseQuote: { <assetKind>: { price, buildTicks } },              // asset-purchase.md
+//       // Per Syndicate-buildable kind (miner, factory): the current-tick credit `price`
+//       // (priceAssetForPurchase) and the `buildTicks` (BUILD_TICKS[kind]). The TRADE tab's
+//       // "4 · Constructed" buy view reads these; the delivery leg of the arrival estimate
+//       // comes from fuelCost[dest].travelTicks, not from here. Derived-on-read, no stored byte.
 //     attention: { renegotiations: [ { guildId, ventureId, ventureName, standing, offer } ],
 //                  notices: [ { guildId, id, tick, type, payload } ] },
 //       // §5 attention derive (#64 Slice 1b + event-log Slice): the guild's open action-items,
@@ -1504,6 +1510,23 @@ function buildSnapshot(state) {
       buildDoneTick: b.buildDoneTick,
       ticksRemaining: Math.max(0, b.buildDoneTick - state.tick),
     })),
+    // The ASSET-PURCHASE QUOTE (docs/asset-purchase.md "Price") — for each Syndicate-buildable
+    // asset kind, the credit price a purchase would cost right now and the ticks it builds over.
+    // Published so the TRADE tab's "4 · Constructed" buy view can SHOW the price and the build
+    // time without the browser ever pricing an asset or knowing a build duration (§5: the client
+    // renders the snapshot, computes no game number). The price is the engine's own
+    // `priceAssetForPurchase` at the CURRENT tick (the same quote-lock ring the goods buy uses);
+    // `buildTicks` is `BUILD_TICKS[kind]`, the same count the dockyard and the construction step
+    // count down. The delivery leg of the arrival estimate is NOT here — the client reads that
+    // from the per-system `fuelCost[dest].travelTicks` above, exactly as the goods-buy popup does.
+    // Additive DERIVED-ON-READ telemetry like `syndicateBuilds` above: no serialized byte, no
+    // schema bump, no golden move — a galaxy that buys nothing serializes byte-identically.
+    assetPurchaseQuote: Object.fromEntries(
+      BUILDABLE_ASSET_KINDS.map((kind) => [
+        kind,
+        { price: priceAssetForPurchase(state, kind, state.tick), buildTicks: BUILD_TICKS[kind] },
+      ]),
+    ),
     // The ATTENTION derive (design.md §5 "attention derive", #64 Slice 1b) — the guild's open
     // action-items, aggregated top-level so the Guild Hall MESSAGES panel and its tab badge read
     // one place. For this slice that is exactly the open renegotiation offers, under
