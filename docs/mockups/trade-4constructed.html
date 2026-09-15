@@ -1,0 +1,220 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<!--
+  docs/mockups/trade-4constructed.html — the TRADE tab's tier-4 "Constructed" view
+  (roadmap 2.1d, Syndicate Asset Commission). The dockyard "4 · Assets" tab
+  (client/console.html renderDockyardTab) transplanted into the TRADE tab and adapted for
+  BUYING from the Syndicate rather than building. Reuses the dockyard's .dk-* styling
+  (copied from console.html) so the look matches; the .tw-tier nav + .am-*/.ip-*/.cn-*
+  classes are the additions. Data shown is illustrative.
+
+  Deltas from the dockyard tab (approved 15-09-26):
+   - No resource-chip row; the tier nav sits over the panel (1 Raw / 2 Processed / 3 Parts /
+     4 Constructed active).
+   - LEFT: a "Commission Assets" menu (replaces Holdings) — Miner/Factory, each a button
+     showing the ¢12M price; the open one reveals "+ Add commission" → the confirm popup
+     (docs/mockups/deuterium-establish-confirm.html structure) → confirm queues it.
+   - The rest is the dockyard tab MINUS: the system dropdown, the parts tracker, the
+     "+ Add Commission" button.
+   - Syndicate builds run in PARALLEL (each its own countdown), so the queue panel is
+     "In Progress" (concurrent commissions by soonest arrival) and the donut shows the
+     soonest — and has NO pending mode (a Syndicate build never waits on parts).
+   - Building hero art follows what's building (blank when idle); the far-right hero reads
+     SYNDICATE / BUILDYARD on two lines; the Building (inner) hero is ~2x the dockyard width,
+     the Current Build column squeezed to suit.
+-->
+<title>Starfare — Trade / 4 Constructed (Syndicate Asset Commission) mockup</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+  :root{
+    --void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
+    --line:rgba(232,223,200,0.10); --line2:rgba(232,223,200,0.20);
+    --amber:#C9A227; --amber-dim:#7A6420; --amber-ghost:rgba(201,162,39,0.10);
+    --steel:#8B8F9C; --steel-dim:#565B68; --steel-ghost:#1C212B;
+    --ink:#E8DFC8; --ink2:#8B8F9C; --ink3:#565B68;
+    --green:#4E9A87; --red:#C2603A;
+    --fork-syndicate:#C9A227; --fork-production:#6E93B8; --fork-stockpile:#8A9A6B;
+    --good:#7FA96B; --off:#C08A3E;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+    --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+    --serif:'Cinzel',serif;
+    /* Referenced by the restructure block without being declared there. --brass and
+       --display match the client's detail-screen tokens; --system is the map's system
+       blue, so the console's system line reads the same colour as the map's. */
+    --brass:#C9A227; --display:'Cinzel',serif; --system:#6fb7e8;
+  }
+  *{box-sizing:border-box}
+
+  /* ---- Tier 4 · Assets — the dockyard tab (docs/mockups/dockyard-tab.html, slice B1) ------
+     The Production Console's "4 · Assets" tier tab: a guild's dockyards in this system,
+     read-only. Four panels mirroring the approved mockup (queue | build progress | building
+     art | dockyard art), scoped `dk-` so nothing collides with the good-tab render. B2 wires
+     the Add-commission popup and the cancel controls; here they render but do nothing. */
+  /* Four-across, filling the detail height. The console is a same-origin iframe
+     (game.html .console-frame{height:100%}), so 100vh here IS the detail-area height;
+     250px is the MEASURED chrome above .dk-body in embed mode (~230px header/status/
+     tier-tabs/resbar + the 20px body.embed bottom padding), so the body lands one
+     padding-width above the iframe edge with no scrollbar.
+     The queue is fixed; the centre and the two art panels share free space by fr-weight.
+     The centre "Current Build" card is now the widest panel (1.3fr, ≥340px) — the donut and
+     part bars get the room. The BUILDYARD art (col 4, 1fr, ≥280px) stays the hero; the
+     "Building" thumbnail (col 3, 0.55fr, ≥150px) is deliberately ~half of it at every width. */
+  .dk-body{display:grid;
+    grid-template-columns:200px minmax(340px,1.3fr) minmax(150px,0.55fr) minmax(280px,1fr);
+    gap:12px; align-items:stretch; min-height:calc(100vh - 250px)}
+  /* The centre column is dropdown + build card; the build card grows to fill the taller
+     column (its donut/parts already flex + scroll, so the parts list just gets more room). */
+  .dk-centre > .dk-card{flex:1 1 auto; min-height:0}
+  /* Below ~1120px panel (windows under ~1826px): stack to 2-up, natural height (no forced
+     fill), art panels below the queue/centre. Smaller screens are deliberately not optimised. */
+  @media (max-width:1120px){ .dk-body{grid-template-columns:1fr 1fr; min-height:0} }
+  @media (max-width:640px){ .dk-body{grid-template-columns:1fr; min-height:0} }
+  .dk-card{background:var(--panel); border:1px solid var(--line); border-radius:10px; display:flex; flex-direction:column; min-height:0; min-width:0; overflow:hidden}
+  .dk-h{display:flex; align-items:center; justify-content:space-between; padding:11px 14px; border-bottom:1px solid var(--line); flex:0 0 auto}
+  .dk-h .t{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink2); font-weight:600}
+  .dk-h .n{font-family:var(--mono); font-size:10px; color:var(--ink3); font-variant-numeric:tabular-nums}
+  .dk-centre{display:flex; flex-direction:column; gap:12px; min-height:0}
+  .dk-yardsel{position:relative; flex:0 0 auto}
+  .dk-yardsel select{width:100%; appearance:none; -webkit-appearance:none; background:var(--panel2);
+    color:var(--ink); border:1px solid var(--line2); border-radius:9px; font-family:var(--serif);
+    font-size:16px; letter-spacing:.02em; padding:12px 40px 12px 15px; cursor:pointer}
+  .dk-yardsel select:hover, .dk-yardsel select:focus{outline:none; border-color:var(--amber)}
+  .dk-yardsel .car{position:absolute; right:15px; top:50%; transform:translateY(-50%); pointer-events:none; color:var(--ink3); font-size:11px}
+  .dk-yardsel .lbl{position:absolute; left:15px; top:-7px; background:var(--void); padding:0 6px;
+    font-family:var(--mono); font-size:8px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3)}
+  .dk-queue{padding:10px; flex:1 1 auto; overflow-y:auto; display:flex; flex-direction:column; gap:8px; min-height:0}
+  .dk-qitem{border:1px solid var(--line); border-radius:7px; background:var(--panel2); padding:10px 11px; display:flex; align-items:center; gap:9px; flex:0 0 auto}
+  .dk-qitem.cur{border-color:var(--amber-dim); background:var(--amber-ghost)}
+  .dk-qitem .kind{font-family:var(--serif); font-size:14px; color:var(--ink); flex:1 1 auto; text-transform:capitalize}
+  .dk-qitem .sub{display:block; font-family:var(--mono); font-size:8.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3); margin-top:2px}
+  .dk-qitem.cur .sub{color:var(--amber)}
+  .dk-qitem .pos{font-family:var(--mono); font-size:10px; color:var(--ink3); width:16px; text-align:center; flex:0 0 auto}
+  .dk-x{width:22px; height:22px; border-radius:5px; border:1px solid var(--line2); background:none; color:var(--ink3); cursor:pointer; font-size:13px; line-height:1; flex:0 0 auto}
+  .dk-x:hover{color:var(--red); border-color:var(--red)}
+  .dk-x.lock{opacity:.32; cursor:not-allowed}
+  .dk-add{margin:10px; flex:0 0 auto; font-family:var(--mono); font-size:11px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:8px; padding:11px; cursor:pointer; font-weight:600}
+  .dk-add:disabled{background:var(--raised); color:var(--ink3); cursor:not-allowed}
+  .dk-qempty{color:var(--ink3); font-size:11.5px; text-align:center; padding:26px 12px; line-height:1.6; margin:auto 0}
+  .dk-prog{flex:1 1 auto; display:flex; flex-direction:column; align-items:center; padding:16px 16px 0; min-height:0}
+  .dk-donutwrap{position:relative; width:158px; height:158px; flex:0 0 auto}
+  .dk-donutwrap svg{transform:rotate(-90deg)}
+  .dk-donut-c{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center}
+  .dk-donut-c .big{font-family:var(--mono); font-size:27px; font-variant-numeric:tabular-nums; letter-spacing:.02em; color:var(--ink); line-height:1}
+  .dk-donut-c .big.grey{color:var(--ink3); font-size:18px; letter-spacing:.22em}
+  .dk-donut-c .u{font-family:var(--mono); font-size:8.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--ink3); margin-top:6px}
+  .dk-donut-c .pct{font-family:var(--mono); font-size:10px; color:var(--amber); margin-top:5px}
+  .dk-parts{width:100%; margin-top:14px; flex:1 1 auto; display:flex; flex-direction:column; min-height:0}
+  .dk-parts-h{font-family:var(--mono); font-size:9px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink3);
+    display:flex; justify-content:space-between; flex:0 0 auto; border-top:1px solid var(--line); padding:11px 0 8px}
+  .dk-partslist{flex:1 1 auto; overflow-y:auto; min-height:0; padding-bottom:12px}
+  .dk-prow{display:flex; align-items:center; gap:10px; padding:5px 0}
+  .dk-prow .pn{font-family:var(--mono); font-size:10.5px; color:var(--ink2); width:150px; flex:0 0 auto; text-transform:capitalize; letter-spacing:.02em}
+  .dk-pbar{position:relative; flex:1 1 auto; height:7px; border-radius:4px; background:var(--void); border:1px solid var(--line); overflow:hidden}
+  .dk-pfill{position:absolute; left:0; top:0; bottom:0; border-radius:3px; background:linear-gradient(90deg,var(--amber-dim),var(--amber))}
+  .dk-pfill.done{background:linear-gradient(90deg,rgba(95,185,138,.6),var(--green))}
+  .dk-pq{font-family:var(--mono); font-size:9.5px; color:var(--ink3); width:48px; text-align:right; flex:0 0 auto; font-variant-numeric:tabular-nums}
+  .dk-pic{width:16px; text-align:center; flex:0 0 auto; font-size:12px}
+  .dk-pic.ok{color:var(--green)} .dk-pic.wait{color:var(--amber)}
+  .dk-hero{position:relative; overflow:hidden; min-height:210px}
+  .dk-hero .art{position:absolute; inset:0; z-index:0; background-size:cover; background-position:center 30%}
+  .dk-hero .scrim{position:absolute; inset:0; z-index:1; background:linear-gradient(180deg,rgba(13,15,20,.72) 0%,rgba(13,15,20,.12) 30%,rgba(13,15,20,.10) 55%,rgba(13,15,20,.92) 100%)}
+  .dk-hero .ttop{position:relative; z-index:2; padding:13px 15px}
+  .dk-hero .ttop .zhead{font-family:var(--mono); font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3)}
+  .dk-hero .tcenter{position:absolute; z-index:2; top:25%; left:0; right:0; display:flex; justify-content:center; padding:0 8px}
+  .dk-hero .word{font-family:var(--serif); font-weight:700; letter-spacing:.20em; font-size:22px; color:var(--ink); text-align:center; text-shadow:0 2px 22px rgba(13,15,20,.95),0 1px 4px rgba(13,15,20,.95)}
+  .dk-hero .role{position:absolute; z-index:2; bottom:14px; left:0; right:0; text-align:center; font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3); text-transform:capitalize}
+  .dk-hero.dim .art{filter:grayscale(.8) brightness(.38)}
+  /* The two hero panels are direct children of the 4-column .dk-body grid (queue | centre |
+     building-art | dockyard-art), matching docs/mockups/dockyard-tab.html — no column wrapper,
+     so they sit side by side and stretch to the row height rather than stacking. */
+  .dk-empty{font-family:var(--mono); font-size:12px; line-height:1.7; color:var(--ink3); text-align:center; padding:60px 24px}
+  .dk-empty b{color:var(--ink2); font-weight:500}
+
+
+  *{box-sizing:border-box; margin:0}
+  html,body{margin:0}
+  body{background:radial-gradient(1100px 520px at 78% -10%, #15171f 0%, transparent 60%),var(--void);
+    color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.45; padding:24px 28px 36px; min-width:1180px}
+  .eyebrow2{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber); margin-bottom:14px}
+  .tw-tiers{display:flex; gap:2px; margin-bottom:16px}
+  .tw-tier{font-family:var(--mono); font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); background:var(--panel); border:1px solid var(--line); border-bottom:none; padding:9px 18px; border-radius:7px 7px 0 0; position:relative; top:1px}
+  .tw-tier .n{color:var(--ink2); font-weight:600; margin-right:7px}
+  .tw-tier.on{color:var(--ink); background:var(--panel2); box-shadow:0 -2px 0 var(--amber) inset}
+  .tw-tier.on .n{color:var(--amber)}
+  /* 5-panel body: commission-asset menu | in-progress | current build | building art | syndicate buildyard.
+     The Building (inner right) hero is ~2x the width the dockyard's is; the Current Build column is squeezed. */
+  .cn-body{display:grid; grid-template-columns:224px 188px minmax(190px,1fr) 312px 300px; gap:12px; align-items:stretch; min-height:calc(100vh - 190px)}
+  /* commission-asset menu (replaces the dockyard queue's leftmost slot) */
+  .am-h{padding:11px 14px; border-bottom:1px solid var(--line)}
+  .am-h .t{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink2); font-weight:600}
+  .am-h small{display:block; font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); margin-top:3px}
+  .am-list{padding:10px; display:flex; flex-direction:column; gap:9px}
+  .am-item{border:1px solid var(--line2); border-radius:9px; background:var(--panel); padding:12px 12px 11px; cursor:pointer}
+  .am-item.open{border-color:var(--amber); background:linear-gradient(180deg,var(--amber-ghost),transparent 55%),var(--panel)}
+  .am-item .anm{font-family:var(--serif); font-size:16px; color:var(--ink)}
+  .am-item .asub{font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); margin-top:1px}
+  .am-item .apr{font-family:var(--mono); font-size:14px; color:var(--amber2); margin-top:9px}
+  .am-item .apr .c{font-size:11px; color:var(--amber); margin-right:1px}
+  .am-item .abuildt{font-size:10px; color:var(--ink3); margin-top:3px}
+  .am-add{margin-top:11px; width:100%; font-family:var(--mono); font-size:10.5px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:7px; padding:9px; cursor:pointer}
+  /* in-progress commissions (parallel; the dockyard queue look) */
+  .ip-item{border:1px solid var(--line); border-radius:7px; background:var(--panel2); padding:10px 11px; display:flex; align-items:center; gap:9px}
+  .ip-item.cur{border-color:var(--amber-dim); background:var(--amber-ghost)}
+  .ip-item .k{font-family:var(--serif); font-size:14px; color:var(--ink); flex:1; text-transform:capitalize}
+  .ip-item .k .sub{display:block; font-family:var(--mono); font-size:8.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--amber); margin-top:2px}
+  .ip-item.q .k .sub{color:var(--ink3)}
+  .ip-item .eta{font-family:var(--mono); font-size:10px; color:var(--ink3); text-align:right; white-space:nowrap}
+
+</style></head><body>
+
+<div class="eyebrow2">Starfare &middot; Trade &middot; Syndicate Asset Commission</div>
+<div class="tw-tiers">
+  <div class="tw-tier"><span class="n">1</span>Raw</div>
+  <div class="tw-tier"><span class="n">2</span>Processed</div>
+  <div class="tw-tier"><span class="n">3</span>Parts</div>
+  <div class="tw-tier on"><span class="n">4</span>Constructed</div>
+</div>
+<div class="cn-body">
+  <!-- commission-asset menu -->
+  <div class="dk-card">
+    <div class="am-h"><span class="t">Commission Assets</span><small>Buy from the Syndicate</small></div>
+    <div class="am-list">
+      <div class="am-item open">
+        <div class="anm">Miner</div><div class="asub">Resource node asset</div>
+        <div class="apr"><span class="c">&#162;</span>12,000,000</div>
+        <div class="abuildt">Build 3d &middot; Delivery ~1d &middot; <b style="color:var(--ink2)">arrives ~4d</b></div>
+        <button class="am-add">+ Add commission</button>
+      </div>
+      <div class="am-item">
+        <div class="anm">Factory</div><div class="asub">Settlement slot asset</div>
+        <div class="apr"><span class="c">&#162;</span>12,000,000</div>
+        <div class="abuildt">Build 5d &middot; Delivery ~1d &middot; <b style="color:var(--ink2)">arrives ~6d</b></div>
+      </div>
+    </div>
+  </div>
+  <!-- in-progress commissions (parallel) -->
+  <div class="dk-card"><div class="dk-h"><span class="t">In Progress</span><span class="n">2 building</span></div>
+    <div class="dk-queue">
+      <div class="ip-item cur"><span class="k">Miner<span class="sub">arrives in 2d 4h</span></span><span class="eta">61%</span></div>
+      <div class="ip-item"><span class="k">Factory<span class="sub">arrives in 4d 9h</span></span><span class="eta">18%</span></div>
+      <div class="ip-item q"><span class="k">Miner<span class="sub">arrives in 3d 1h</span></span><span class="eta">34%</span></div>
+    </div></div>
+  <!-- current build: donut only, no parts, no pending -->
+  <div class="dk-centre"><div class="dk-card">
+    <div class="dk-h"><span class="t">Current Build</span><span class="n">Miner &middot; soonest</span></div>
+    <div class="dk-prog" style="justify-content:center; padding:16px">
+      <div class="dk-donutwrap"><svg viewBox="0 0 120 120" width="158" height="158">
+        <circle cx="60" cy="60" r="52" fill="none" stroke="#1C212B" stroke-width="13"/>
+        <circle cx="60" cy="60" r="52" fill="none" stroke="#C9A227" stroke-width="13" stroke-dasharray="199 128"/></svg>
+        <div class="dk-donut-c"><div class="big">52:18</div><div class="u">hrs : min left</div><div class="pct">61%</div></div></div>
+      <div style="margin-top:20px; text-align:center; font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3)">Building at the Syndicate foundry</div>
+      <div style="margin-top:7px; text-align:center; font-family:var(--mono); font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3)">then ~1d delivery &middot; arrives in 2d 4h</div>
+    </div></div></div>
+  <!-- building art (by what is being built; blank when idle) -->
+  <div class="dk-card dk-hero"><div class="art" style="background-image:url('../../client/assets/industrial/factoryConstruction.jpg')"></div><div class="scrim"></div>
+    <div class="ttop"><div class="zhead">Building</div></div><div class="role">Miner</div></div>
+  <!-- syndicate buildyard hero -->
+  <div class="dk-card dk-hero"><div class="art" style="background-image:url('../../client/assets/industrial/buildyard.jpg')"></div><div class="scrim"></div>
+    <div class="tcenter"><div class="word" style="font-size:23px; line-height:1.12">SYNDICATE<br>BUILDYARD</div></div></div>
+</div>
+</body></html>
