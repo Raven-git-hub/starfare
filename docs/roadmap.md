@@ -107,6 +107,18 @@ boundary so the later hex-map swap doesn't touch it.
 
 **Built so far:**
 
+- **Buy a Tier-4 asset from the Syndicate (2.1d, CLIENT slice A — `docs/asset-purchase.md`).** The
+  TRADE tab's "4 · Constructed" tier tab is now LIVE and renders the Syndicate asset-commission BUY
+  view (`client/game.html`, built to `docs/mockups/trade-4constructed.html`): a Commission-Assets
+  menu (per kind — price + Build/Delivery/arrival — Add → `__adviserConfirm` → `buyAssetFromSyndicate`
+  to the home system), an In Progress list + Current Build donut off `syndicateBuilds` (parallel
+  builds, soonest first; no parts, no pending state), and the two art heroes. The client PRICES
+  NOTHING (§5): a new additive, derived-on-read snapshot block **`assetPurchaseQuote`** = `{ <kind>:
+  { price, buildTicks } }` (off `priceAssetForPurchase` + `BUILD_TICKS`) supplies the price and build
+  time; the delivery leg of the arrival is read from the goods buy's own `fuelCost[dest].travelTicks`.
+  No serialized byte, no schema bump, goldens byte-identical. *Deferred to CLIENT slice B: the
+  Operations "on order" indicator and the in-flight manifest's Miner/Factory label.*
+
 - **Buy a Tier-4 asset from the Syndicate (2.1d, ENGINE slice 1 — `docs/asset-purchase.md`).** The
   BUY side of the asset economy, engine + snapshot only (NO client — the next slice). A guild pays
   **credits + fuel up front** and the Syndicate builds the asset centrally, then ships it and mints an

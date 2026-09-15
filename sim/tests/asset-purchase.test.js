@@ -38,7 +38,8 @@ const { GUILD_STARTING_FUEL, routeFuelCost } = require('../fuel.js');
 const { nearestWaystation, arrivalTickFor } = require('../transport.js');
 const { QUOTE_TTL_TICKS } = require('../price-ring.js');
 const {
-  ASSET_BILLS, ASSET_PURCHASE_FLOOR, ASSET_PURCHASE_REDUCTION, BUILD_TICKS, priceAssetForPurchase,
+  ASSET_BILLS, ASSET_PURCHASE_FLOOR, ASSET_PURCHASE_REDUCTION, BUILD_TICKS, BUILDABLE_ASSET_KINDS,
+  priceAssetForPurchase,
 } = require('../asset-recipes.js');
 const { MINER, FACTORY, idleAssets } = require('../assets.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
@@ -334,6 +335,40 @@ test('determinism: a bought galaxy run through construction twice is byte-identi
     return ticks(s, 30); // deep into construction, well before completion
   };
   assert.equal(hashState(build()), hashState(build()));
+});
+
+// --- 8b. the snapshot asset-purchase quote (CLIENT slice A) --------------------
+// The client renders the price and build time; it computes neither (§5). The snapshot publishes
+// `assetPurchaseQuote[kind].{price,buildTicks}` off the engine's own `priceAssetForPurchase`
+// (quote-lock ring) and `BUILD_TICKS`, so the TRADE tab's "4 · Constructed" view can show them.
+
+test('snapshot: assetPurchaseQuote publishes the engine price + build ticks for every buildable kind', () => {
+  const s = buyState();
+  const snap = buildSnapshot(s);
+  assert.deepEqual(Object.keys(snap.assetPurchaseQuote).sort(), [...BUILDABLE_ASSET_KINDS].sort());
+  for (const kind of BUILDABLE_ASSET_KINDS) {
+    const q = snap.assetPurchaseQuote[kind];
+    assert.equal(q.price, priceAssetForPurchase(s, kind, s.tick), `${kind} price == priceAssetForPurchase`);
+    assert.equal(q.buildTicks, BUILD_TICKS[kind], `${kind} buildTicks == BUILD_TICKS`);
+  }
+  // At today's parts scale the floor binds, so the published price is the flat 12M floor.
+  assert.equal(snap.assetPurchaseQuote[MINER].price, ASSET_PURCHASE_FLOOR);
+  assert.equal(snap.assetPurchaseQuote[FACTORY].price, ASSET_PURCHASE_FLOOR);
+});
+
+test('snapshot: the quote is DERIVED-on-read — a galaxy with no purchase serializes byte-identically', () => {
+  const s = buyState();
+  const before = canonicalStringify(s);
+  const hashBefore = hashState(s);
+  buildSnapshot(s); // building the quote must move no serialized byte
+  assert.equal(canonicalStringify(s), before, 'building the snapshot mutates no state');
+  assert.equal(hashState(s), hashBefore, 'and moves no determinism byte');
+  assert.ok(!before.includes('assetPurchaseQuote'), 'the quote is never a serialized field');
+  // Same state, byte-identical quote bytes on a re-read.
+  assert.equal(
+    JSON.stringify(buildSnapshot(s).assetPurchaseQuote),
+    JSON.stringify(buildSnapshot(s).assetPurchaseQuote),
+  );
 });
 
 // --- 9. a headless end-to-end -------------------------------------------------
