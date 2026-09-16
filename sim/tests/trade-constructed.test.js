@@ -64,6 +64,22 @@ test('the delivery leg + build time are DISPLAY derivations, never computed pric
   assert.match(html, /q\.buildTicks/);
 });
 
+test('each commission menu item is two lines — name, then price + build time — no descriptor/arrival row', () => {
+  // The compact .apr row carries the price in .amt and the build time in .abt (right-hugged by flex).
+  assert.match(html, /class="apr"><span class="amt"><span class="c">&#162;<\/span>/);
+  assert.match(html, /<span class="abt">' \+ cnDur\(buildT\) \+ '<\/span>/);
+  // The .apr becomes a space-between flex row so .abt hugs the right edge; .amt holds the amber price.
+  assert.match(html, /#tw-cn \.am-item \.apr\{display:flex; align-items:baseline; justify-content:space-between;[^}]*\}/);
+  assert.match(html, /#tw-cn \.am-item \.apr \.abt\{[^}]*\}/);
+  // The dropped descriptor and build/delivery/arrival lines are gone from both markup and CSS.
+  assert.doesNotMatch(html, /class="asub"/);
+  assert.doesNotMatch(html, /class="abuildt"/);
+  assert.doesNotMatch(html, /#tw-cn \.am-item \.asub\{/);
+  assert.doesNotMatch(html, /#tw-cn \.am-item \.abuildt\{/);
+  // The now-dead CN_SUB descriptor map is removed too (no orphaned local).
+  assert.doesNotMatch(html, /var CN_SUB =/);
+});
+
 test('the Constructed grid fills the tab like the goods floor — #tw-cn grows as a flex child', () => {
   // #tw-cn and .tw-body are sibling flex children of .tw-wrap; both must carry `flex:1 1 auto`
   // so they grow to fill the panel height. Without it #tw-cn stops at min-height:560px and leaves
