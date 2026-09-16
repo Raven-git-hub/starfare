@@ -4,6 +4,10 @@
 // the BUY side", 29-08-26): `buyFromSyndicate` debits the cash NOW and schedules
 // the goods, and tick step 5 (`stepArrivals`) lands them some ticks later.
 //
+// The BUY is the held-order finalise (docs/syndicate-orders.md §5): a `buyOrder` is built line by
+// line (addOrderLine) then finalised to a destination. The inline `cart`/`good` intake was RETIRED
+// with the client slice (§8), so these tests build the order first (the `buildBuy`/`buyOne` helpers).
+//
 // The tripwires, one per ruling:
 //   - the cash moves at purchase: `round(qty × postedPrice)` (#43), the SINGLE
 //     posted price a sale earns, no fee and no spread — guild down, ledger up,
@@ -43,7 +47,7 @@ const {
   CRAFT_SPEED, hexDistance, nearestWaystation, arrivalTickFor,
 } = require('../transport.js');
 const {
-  createBuyFromSyndicateAction, validateAction, applyAction, intake,
+  createAddOrderLineAction, createBuyFromSyndicateAction, validateAction, applyAction, intake,
 } = require('../actions.js');
 
 // Real seed landmarks, so the claim-integrity and guild-home invariants have
@@ -112,7 +116,6 @@ function setPosted(state, good, value) {
   return state;
 }
 
-const buy = (guildId, good, qty, destinationSystemId) => createBuyFromSyndicateAction({ guildId, good, qty, destinationSystemId });
 const accept = (state, action) => {
   const { valid, reason } = validateAction(state, action);
   assert.equal(valid, true, `expected accepted, got: ${reason}`);
@@ -129,6 +132,20 @@ const ticks = (state, n) => {
   for (let i = 0; i < n; i += 1) s = tick(s, []);
   return s;
 };
+
+// The BUY is now the held-order finalise (docs/syndicate-orders.md §5): build a `buyOrder` line by
+// line with addOrderLine, then finalise it to a destination. The inline `cart`/`good` intake was
+// RETIRED with the client slice (§8). These helpers build the order and finalise it.
+const add = (guildId, good, qty) => createAddOrderLineAction({ guildId, side: 'buy', good, qty });
+const buildBuy = (state, guildId, lines) => {
+  let s = state;
+  for (const { good, qty } of lines) s = accept(s, add(guildId, good, qty));
+  return s;
+};
+const finalise = (guildId, destinationSystemId) => createBuyFromSyndicateAction({ guildId, destinationSystemId });
+// The common single-line case: build a one-good order then finalise it in one step.
+const buyOne = (state, guildId, good, qty, destinationSystemId) =>
+  accept(buildBuy(state, guildId, [{ good, qty }]), finalise(guildId, destinationSystemId));
 
 // --- 1. the geometry and the ruled speed --------------------------------------
 
@@ -168,7 +185,7 @@ test('a buy debits round(qty × price) to the ledger and schedules ONE delivery 
   const qty = 40;
   const cost = Math.round(qty * price);
 
-  const after = accept(before, buy('g1', GOOD, qty, DEST));
+  const after = buyOne(before, 'g1', GOOD, qty, DEST);
 
   // The cash moved, and ONLY moved: guild down, ledger up, by the same integer.
   assert.equal(after.guilds[0].credits, before.guilds[0].credits - cost);
@@ -204,10 +221,10 @@ test('a buy debits round(qty × price) to the ledger and schedules ONE delivery 
   assert.deepEqual(checkInvariants(after), []);
 });
 
-test('the cost is rounded ONCE on the whole order (#43), the same arithmetic a sale credits', () => {
+test('the cost is rounded ONCE per line (#43), the same arithmetic a sale credits', () => {
   const before = setPosted(buyState({ credits: 5000 }), GOOD, 12.5);
-  const after = accept(before, buy('g1', GOOD, 7, DEST));
-  // 7 × 12.5 = 87.5 -> 88, one rounding, not seven.
+  const after = buyOne(before, 'g1', GOOD, 7, DEST);
+  // 7 × 12.5 = 87.5 -> 88, one rounding on the line, not seven.
   assert.equal(before.guilds[0].credits - after.guilds[0].credits, 88);
   assert.equal(Number.isInteger(after.guilds[0].credits), true);
   assert.equal(Number.isInteger(after.syndicate.ledger), true);
@@ -215,8 +232,8 @@ test('the cost is rounded ONCE on the whole order (#43), the same arithmetic a s
 
 test('two buys are two independent shipments — one shipment, one destination, no merging or splitting', () => {
   let s = setPosted(buyState({ credits: 5000, holds: [DEST, OTHER] }), GOOD, 10);
-  s = accept(s, buy('g1', GOOD, 10, DEST));
-  s = accept(s, buy('g1', GOOD, 3, OTHER));
+  s = buyOne(s, 'g1', GOOD, 10, DEST);
+  s = buyOne(s, 'g1', GOOD, 3, OTHER);
   assert.equal(s.shipments.length, 2);
   assert.deepEqual(s.shipments.map((x) => x.destinationSystemId), [DEST, OTHER]);
   assert.deepEqual(s.shipments.map((x) => x.cargo), [{ [GOOD]: 10 }, { [GOOD]: 3 }]);
@@ -230,7 +247,7 @@ test('two buys are two independent shipments — one shipment, one destination, 
 // --- 3. arrival ---------------------------------------------------------------
 
 test('the delivery lands on its arrival tick and NOT the tick before, and the shipment is gone', () => {
-  const bought = accept(setPosted(buyState({ credits: 5000 }), GOOD, 12), buy('g1', GOOD, 40, DEST));
+  const bought = buyOne(setPosted(buyState({ credits: 5000 }), GOOD, 12), 'g1', GOOD, 40, DEST);
   const arrivalTick = bought.shipments[0].arrivalTick;
 
   // Tick to arrivalTick − 1: still in flight, nothing deposited.
@@ -260,7 +277,7 @@ test('the delivery lands on its arrival tick and NOT the tick before, and the sh
 test('a delivery lands into the DESTINATION system pool, not the guild home or a flat pile', () => {
   // Homed on DEST, buying into OTHER: the goods must appear in OTHER's pool.
   let s = setPosted(buyState({ credits: 5000, holds: [DEST, OTHER] }), GOOD, 10);
-  s = accept(s, buy('g1', GOOD, 9, OTHER));
+  s = buyOne(s, 'g1', GOOD, 9, OTHER);
   const arrivalTick = s.shipments[0].arrivalTick;
   s.tick = arrivalTick - 1;   // a save from the eve of arrival (the absolute tick is the record)
   const landed = tick(s, []);
@@ -338,7 +355,7 @@ test('a shipment already past its arrival tick still lands rather than being str
 // --- 5. persistence IS the mid-flight handling --------------------------------
 
 test('a save round-tripped mid-flight still lands on the right ABSOLUTE tick', () => {
-  const bought = accept(setPosted(buyState({ credits: 5000 }), GOOD, 12), buy('g1', GOOD, 40, DEST));
+  const bought = buyOne(setPosted(buyState({ credits: 5000 }), GOOD, 12), 'g1', GOOD, 40, DEST);
   const arrivalTick = bought.shipments[0].arrivalTick;
 
   // Fly a few ticks, then serialize and deserialize exactly as persist.js does
@@ -370,7 +387,7 @@ test('a BUY delivery contributes ZERO fuel in transit — and the tripwire prove
     syndicate: { ledger: -5000 },
     claims: [homeClaim('g1', DEST)],
   });
-  const bought = accept(setPosted(s, GOOD, 10), buy('g1', GOOD, 12, DEST));
+  const bought = buyOne(setPosted(s, GOOD, 10), 'g1', GOOD, 12, DEST);
   assert.equal(bought.shipments[0].cargo.fuel, undefined, 'the cargo carries the bought good and nothing else');
   assert.deepEqual(checkInvariants(bought), [], 'invariant 1 still balances');
   // Sharpened by fuel Slice 3: the BUY now BURNS fuel, so invariant 1 is no longer
@@ -445,28 +462,33 @@ test('a galaxy with no deliveries is untouched: stepArrivals moves nothing and a
 
 test('a refused buy changes nothing at all', () => {
   const s = setPosted(buyState({ credits: 100 }), GOOD, 10);
-  const before = hashState(s);
+  const pristine = hashState(s);
 
-  reject(s, buy('nobody', GOOD, 1, DEST), /no guild with id/);
-  reject(s, buy('g1', FUEL_GOOD, 1, DEST), /Syndicate-regulated/);
-  reject(s, buy('g1', 'not_a_good', 1, DEST), /not a good the Syndicate posts a price for/);
-  reject(s, buy('g1', GOOD, 0, DEST), /positive integer/);
-  reject(s, buy('g1', GOOD, -5, DEST), /positive integer/);
-  reject(s, buy('g1', GOOD, 2.5, DEST), /positive integer/);
-  reject(s, buy('g1', GOOD, 1, ''), /non-empty string/);
-  reject(s, buy('g1', GOOD, 1, OTHER), /does not hold system/);
-  reject(s, buy('g1', GOOD, 1, 'sys_not_real'), /does not hold system/);
-  // 100 credits, 11 × 10 = 110 owed.
-  reject(s, buy('g1', GOOD, 11, DEST), /cannot pay 110/);
+  // Build-time refusals (addOrderLine): pure, and they never touch the guild's order.
+  reject(s, add('g1', FUEL_GOOD, 1), /Syndicate-regulated/);
+  reject(s, add('g1', 'not_a_good', 1), /not a good the Syndicate posts a price for/);
+  reject(s, add('g1', GOOD, 0), /positive integer/);
+  reject(s, add('g1', GOOD, -5), /positive integer/);
+  reject(s, add('g1', GOOD, 2.5), /positive integer/);
+  assert.equal(hashState(s), pristine, 'a refused add leaves the state byte-identical');
 
-  assert.equal(hashState(s), before, 'validation is pure — a refusal leaves the state byte-identical');
-  assert.deepEqual(s.shipments, []);
+  // Finalise-time refusals: build a draft (11 × 10 = 110 owed, treasury 100), then each refusal
+  // leaves that built draft byte-identical — validation is pure.
+  const built = buildBuy(s, 'g1', [{ good: GOOD, qty: 11 }]);
+  const beforeFinalise = hashState(built);
+  reject(built, finalise('nobody', DEST), /no guild with id/);
+  reject(built, finalise('g1', ''), /non-empty string/);
+  reject(built, finalise('g1', OTHER), /does not hold system/);
+  reject(built, finalise('g1', 'sys_not_real'), /does not hold system/);
+  reject(built, finalise('g1', DEST), /cannot pay 110/);
+  assert.equal(hashState(built), beforeFinalise, 'a refused finalise leaves the built draft byte-identical');
+  assert.deepEqual(built.shipments, []);
 });
 
 test('a guild may buy exactly what it can afford, and not one credit more', () => {
   const s = setPosted(buyState({ credits: 100 }), GOOD, 10);
-  reject(s, buy('g1', GOOD, 11, DEST), /cannot pay/);
-  const after = accept(s, buy('g1', GOOD, 10, DEST));
+  reject(buildBuy(s, 'g1', [{ good: GOOD, qty: 11 }]), finalise('g1', DEST), /cannot pay/);
+  const after = buyOne(s, 'g1', GOOD, 10, DEST);
   assert.equal(after.guilds[0].credits, 0);
   assert.equal(after.shipments.length, 1);
   assert.deepEqual(checkInvariants(after), []);
@@ -474,10 +496,17 @@ test('a guild may buy exactly what it can afford, and not one credit more', () =
 
 test('intake applies buys sequentially against state-as-it-stands — the second is refused on the first\'s spend', () => {
   const s = setPosted(buyState({ credits: 100 }), GOOD, 10);
-  const { state: after, results } = intake(s, [buy('g1', GOOD, 8, DEST), buy('g1', GOOD, 8, DEST)]);
-  assert.equal(results[0].accepted, true);
-  assert.equal(results[1].accepted, false);
-  assert.match(results[1].reason, /cannot pay/);
+  // Each finalise clears the held order, so the batch rebuilds it before the second finalise. The
+  // first finalise spends 80 (8 × 10), leaving 20; the second 8-unit order then cannot be paid for.
+  const { state: after, results } = intake(s, [
+    add('g1', GOOD, 8), finalise('g1', DEST),
+    add('g1', GOOD, 8), finalise('g1', DEST),
+  ]);
+  assert.equal(results[0].accepted, true, 'first add');
+  assert.equal(results[1].accepted, true, 'first finalise');
+  assert.equal(results[2].accepted, true, 'second add');
+  assert.equal(results[3].accepted, false, 'second finalise refused on the first\'s spend');
+  assert.match(results[3].reason, /cannot pay/);
   assert.equal(after.guilds[0].credits, 20);
   assert.equal(after.shipments.length, 1);
 });
@@ -485,7 +514,7 @@ test('intake applies buys sequentially against state-as-it-stands — the second
 // --- 9. the snapshot surface ---------------------------------------------------
 
 test('the snapshot surfaces in-transit deliveries with a derived ticksRemaining', () => {
-  const bought = accept(setPosted(buyState({ credits: 5000 }), GOOD, 12), buy('g1', GOOD, 40, DEST));
+  const bought = buyOne(setPosted(buyState({ credits: 5000 }), GOOD, 12), 'g1', GOOD, 40, DEST);
   const flown = ticks(bought, 4);
 
   const snap = buildSnapshot(flown);

@@ -14,9 +14,11 @@
 //   - finalise from the held order: BUY → one shipment with all goods, Σ cost, space-tiered burn,
 //     buyOrder cleared; SELL → Σ proceeds, stock removed, sellOrder cleared; empty refused; each
 //     reject-whole leaves the order untouched;
-//   - backward-compat: the legacy inline BUY and multi-system SELL behave exactly as before;
 //   - snapshot: buyOrder/sellOrder publish lines[].space, totalSpace, haulerTier, overCap; absent
 //     for a guild with no order.
+//
+// (The legacy inline `cart`/`good` BUY and multi-system `allocations` SELL were RETIRED with the
+// client slice — docs/syndicate-orders.md §8; the finalise now has one path, the held order.)
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -25,7 +27,6 @@ const { createState, createGuild } = require('../state.js');
 const { checkInvariants } = require('../invariants.js');
 const { hashState, canonicalStringify } = require('../serialize.js');
 const { getStock } = require('../stock.js');
-const { nearestWaystation } = require('../transport.js');
 const { buildSnapshot } = require('../snapshot.js');
 const {
   GUILD_STARTING_FUEL, routeFuelCost, volumeOf, haulerTierForSpace, HEAVY_HOLD,
@@ -336,31 +337,6 @@ test('a SELL held order over the heavy hold is reject-wholed', () => {
   s = accept(s, add('g1', 'sell', MODULE, 101));
   reject(s, createSellToSyndicateAction({ guildId: 'g1', originSystemId: SYS }),
     /exceeds the Syndicate heavy hold/);
-});
-
-// --- backward compatibility ------------------------------------------------
-
-test('the legacy inline single-good BUY behaves exactly as before', () => {
-  const s = orderState();
-  const before = s.guilds[0];
-  const legacy = accept(s, createBuyFromSyndicateAction({ guildId: 'g1', good: RAW, qty: 12, destinationSystemId: SYS }));
-  assert.deepEqual(legacy.shipments[0].cargo, { [RAW]: 12 });
-  const { distance } = nearestWaystation(SYS);
-  assert.equal(before.fuelHoard - legacy.guilds[0].fuelHoard, Math.ceil(distance * 0.5), 'a light-hold leg burns the light rate');
-  assert.equal(before.credits - legacy.guilds[0].credits, 120);
-  assert.equal('buyOrder' in legacy.guilds[0], false, 'a legacy BUY never touches a held order');
-});
-
-test('the legacy multi-system SELL behaves exactly as before', () => {
-  const s = orderState({ stock: { [RAW]: 100 } });
-  const before = s.guilds[0];
-  const legacy = accept(s, createSellToSyndicateAction({
-    guildId: 'g1', good: RAW, allocations: [{ systemId: SYS, qty: 40 }],
-  }));
-  assert.equal(legacy.guilds[0].credits - before.credits, Math.round(40 * 10), 'proceeds at posted price');
-  assert.equal(getStock(legacy.guilds[0], SYS, RAW), 60, 'only the allocated qty drained');
-  assert.equal('sellOrder' in legacy.guilds[0], false, 'a legacy SELL never touches a held order');
-  assert.deepEqual(checkInvariants(legacy, legacy.tick), []);
 });
 
 // --- snapshot --------------------------------------------------------------

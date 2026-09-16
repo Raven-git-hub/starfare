@@ -84,18 +84,21 @@ already carries. The trade-floor gauge and the finalise popup render these; they
 
 ## 5. Finalise (commit the order)
 
-> **AS-BUILT (engine slice, Phase 2).** BUILT in `sim/actions.js`, DUAL-MODE for backward-compat.
-> `buyFromSyndicate`: an action carrying an inline `cart`/`good` takes the legacy path unchanged
-> (the deployed client); one carrying NEITHER reads `guild.buyOrder.lines`, delivers to
-> `destinationSystemId` on one space-tiered leg, and clears `buyOrder` on success. `sellToSyndicate`:
-> an action carrying `allocations` takes the legacy multi-system path unchanged; one carrying
-> `originSystemId` reads `guild.sellOrder.lines`, sells them from that one origin on ONE space-tiered
-> leg (origin → nearest waystation), credits Σ `round(qty × quotedPrice)` per line, removes the
-> stock, and clears `sellOrder` — immediate settlement, no shipment. Both new paths reject-whole on
+> **AS-BUILT (engine slice, Phase 2; legacy paths RETIRED in the cleanup slice).** BUILT in
+> `sim/actions.js`, now SINGLE-PATH — the held-order finalise. `buyFromSyndicate({ guildId,
+> destinationSystemId, issueTick })` reads `guild.buyOrder.lines`, delivers to `destinationSystemId`
+> on one space-tiered leg, and clears `buyOrder` on success. `sellToSyndicate({ guildId,
+> originSystemId, issueTick })` reads `guild.sellOrder.lines`, sells them from that one origin on ONE
+> space-tiered leg (origin → nearest waystation), credits Σ `round(qty × quotedPrice)` per line,
+> removes the stock, and clears `sellOrder` — immediate settlement, no shipment. Both reject-whole on
 > the aggregate: capacity (total space > `HEAVY_HOLD`), credits (BUY), fuel hoard (both), destination
 > held (BUY), origin holds each line's stock (SELL, naming short lines), and the §8.1 quote-lock. An
-> empty held order is refused; a reject-whole leaves the draft untouched (never reaches apply). The
-> legacy branches are marked TRANSITIONAL — retired with the client slice (§8).
+> empty held order is refused; a reject-whole leaves the draft untouched (never reaches apply).
+> **RETIRED (cleanup slice):** the transitional dual-mode intake — the inline `cart`/`good` BUY and
+> the `allocations` multi-system SELL, kept for backward-compat through the client slice — is GONE,
+> along with its `createBuyFromSyndicateAction`/`createSellToSyndicateAction` legacy parameters and
+> the `buyIsHeldOrder`/inline-`cart` helpers. The held-order behaviour above is byte-for-byte
+> unchanged; only the dead intake was removed (§8).
 
 The transaction popup's confirm **finalises the held order** — this is the permanent shape of
 `buyFromSyndicate` / `sellToSyndicate`, replacing PR #89's inline-cart BUY and the multi-system SELL:
@@ -139,11 +142,12 @@ The transaction popup's confirm **finalises the held order** — this is the per
 >   end-to-end (build a two-good buy order → manifest + tier + route fuel + arrival → confirm →
 >   order empties; a one-origin sell; an over-cap build with confirm disabled).
 >
-> STILL REMAINING (unchanged from §8): (1) **retiring the legacy engine paths** — the inline
-> `cart`/`good` BUY and the `allocations` SELL stay for backward-compat; the client no longer sends
-> them, so a later cleanup slice removes them. (2) The **SELL origin-picker helper** (§7) — this
-> slice offers every held system and lets the engine's stock gate reject-whole with the named
-> shortfall; offering only systems that hold every line (or per-line availability) is a later refinement.
+> STILL REMAINING (unchanged from §8): (1) **retiring the legacy engine paths** — DONE (cleanup
+> slice): the inline `cart`/`good` BUY and the `allocations` SELL have been removed; the finalise is
+> single-path (the held order) and the client already sent only that. (2) The **SELL origin-picker
+> helper** (§7) — this slice offers every held system and lets the engine's stock gate reject-whole
+> with the named shortfall; offering only systems that hold every line (or per-line availability) is
+> a later refinement.
 > The client computes no game number (§18): space, tier, fuel, cost and arrival are all read from the snapshot.
 
 - **Syndicate Trade card:** the Sell/Buy toggle's action button becomes **Add to Sell Order** /
@@ -178,15 +182,22 @@ The transaction popup's confirm **finalises the held order** — this is the per
 
 Engine slice first — the `buyOrder`/`sellOrder` state + the three build actions + finalise reading the held
 order + the snapshot publish + the SELL re-axe (single origin). The deployed single-good BUY / multi-system
-SELL keep working through the engine slice (backward-compat) and are retired when the client switches. Then
+SELL kept working through the engine slice (backward-compat) and were retired once the client switched. Then
 the **client slice** — the Add-to-Order wiring, the two hero buttons, and the adjusted popups. Both spelled
 out in their build prompts; the mockups land in `docs/mockups/` with the client slice as its visual contract.
+Finally the **cleanup slice** — the transitional legacy paths removed (DONE, see below).
 
-> **AS-BUILT (engine slice, Phase 2 — DONE).** The engine slice above is built and green (state,
-> the three build actions, both dual-mode finalises incl. the single-origin SELL re-axe, the
-> snapshot publish, the `checkOrders` tripwire; `sim/tests/syndicate-orders.test.js`, 27 tests;
-> full suite green, goldens byte-identical). STILL REMAINING: (1) the **client slice** — the
-> Add-to-Order wiring, the two "Syndicate Exchange" hero buttons, the adjusted finalise popups, and
-> the origin-picker help (§6/§7), with the mockups; (2) **retiring the legacy paths** — the inline
-> `cart`/`good` BUY and the `allocations` SELL stay for backward-compat and are removed once the
-> client no longer sends them.
+> **AS-BUILT (engine slice, Phase 2 — DONE; client + cleanup slices — DONE).** The engine slice is
+> built and green (state, the three build actions, the finalise incl. the single-origin SELL re-axe,
+> the snapshot publish, the `checkOrders` tripwire). The **client slice** landed (§6). The **cleanup
+> slice** is now DONE: the transitional legacy finalise paths — the inline `cart`/`good` BUY and the
+> multi-system `allocations` SELL — have been **RETIRED** from `sim/actions.js` (the dual-mode
+> branches, the legacy creator parameters, and the `buyIsHeldOrder`/inline-`cart` helpers are gone),
+> the finalise is single-path (the held order), and the tests that drove behaviour through the
+> retired shapes were migrated onto the held-order path (`sim/tests/`: `sell.test.js`,
+> `cargo-space.test.js`, `buy.test.js`, `fuel-burn.test.js`, `sell-fuel-burn.test.js`,
+> `quote-lock.test.js`, `fuel-cost.test.js`, `transport-visibility.test.js`,
+> `deuterium-refinery.test.js`; the two legacy-parity tests in `syndicate-orders.test.js` removed).
+> The held-order behaviour is byte-for-byte unchanged; the full suite is green and every
+> determinism/persist golden is byte-identical. NOTHING REMAINING for the order model except the
+> optional origin-picker refinement flagged in §6/§7.

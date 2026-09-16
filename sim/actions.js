@@ -461,12 +461,11 @@ function createSetWindowNAction({ windowN }) {
 
 // Selling stockpile goods to the Syndicate (design.md §5, "SELL GOES LIVE").
 //
-// The sale is PLAYER-ALLOCATED, PER SYSTEM: `allocations` is a set of
-// `{systemId, qty}` — never one guild-wide quantity. There is no automatic drain
-// and no largest-pile-first rule (that idea is explicitly REJECTED in §5). Which
-// system a sale comes out of is a real supply-chain lever, because a factory
-// draws its inputs from its OWN system's pile, so pulling stock out from under
-// one must be the player's deliberate act.
+// The sale finalises the guild's HELD sell order from ONE origin (docs/syndicate-orders.md §5):
+// many goods, one origin, one space-tiered leg. Which system a sale comes out of is a real
+// supply-chain lever, because a factory draws its inputs from its OWN system's pile, so pulling
+// stock out from under one must be the player's deliberate act — hence the finalise-time
+// `originSystemId`, not an engine-picked default.
 //
 // `issueTick` (§8.1's quote-lock, RULED 04-09-26) is OPTIONAL: the confirm carries the
 // tick the quote was ISSUED at, never a price, and the engine re-derives the resource
@@ -476,24 +475,15 @@ function createSetWindowNAction({ windowN }) {
 // `issueTick` drives the lock; it is validated for expiry (TTL + cycle boundary) at
 // intake. Omitted from the action object when not supplied, so its serialized shape is
 // unchanged too.
-// DUAL-MODE (docs/syndicate-orders.md §5). The LEGACY form takes `good` + `allocations` (one good
-// across many systems) — the deployed client's, retired with the client slice (§8). The HELD-ORDER
-// form takes an `originSystemId` and no allocations: it finalises the guild's `sellOrder` (many
-// goods) from that one origin on one space-tiered leg. This creator emits whichever form the caller
-// gives, so the legacy action's serialized shape is unchanged.
-function createSellToSyndicateAction({ guildId, good, allocations, originSystemId, issueTick }) {
+// HELD-ORDER finalise (docs/syndicate-orders.md §5). Takes an `originSystemId`: it finalises the
+// guild's `sellOrder` (many goods) from that one origin on one space-tiered leg. This is the only
+// path — the legacy `good` + `allocations` multi-system form was RETIRED with the client slice (§8),
+// as the deployed client sends only this shape.
+function createSellToSyndicateAction({ guildId, originSystemId, issueTick }) {
   if (guildId === undefined) throw new Error('createSellToSyndicateAction: guildId is required');
-  if (allocations === undefined) {
-    // The held-order finalise — origin + the guild's own sellOrder lines (§5).
-    if (originSystemId === undefined) throw new Error('createSellToSyndicateAction: originSystemId is required (or pass good + allocations for the legacy path)');
-    return {
-      type: 'sellToSyndicate', guildId, originSystemId,
-      ...(issueTick === undefined ? {} : { issueTick }),
-    };
-  }
-  if (good === undefined) throw new Error('createSellToSyndicateAction: good is required for the legacy allocations path');
+  if (originSystemId === undefined) throw new Error('createSellToSyndicateAction: originSystemId is required');
   return {
-    type: 'sellToSyndicate', guildId, good, allocations,
+    type: 'sellToSyndicate', guildId, originSystemId,
     ...(issueTick === undefined ? {} : { issueTick }),
   };
 }
@@ -512,41 +502,21 @@ function createSellToSyndicateAction({ guildId, good, allocations, originSystemI
 // another). The confirm popup that asks for it is the next slice; this action is
 // complete and testable without it.
 //
-// A MULTI-GOOD CART, backward-compatible (⤳ REVISED 14-09-26, transport-model.md §5.1). A BUY
-// may carry a `cart: [{ good, qty }, …]` — several goods to ONE destination on ONE hauler,
-// sized by the cart's total cargo space. The legacy single-good `{ good, qty }` form still
-// works and is what the deployed client sends; validate + apply normalize it to a one-line
-// cart, so a single-good BUY is byte-identical to before. This creator emits WHICHEVER form the
-// caller gives — a `cart` (no `good`/`qty` keys) or the legacy pair — so the legacy action's
-// serialized shape is unchanged. `destinationSystemId` is always required.
+// A MULTI-GOOD CART from the HELD BUY ORDER (docs/syndicate-orders.md §5). The finalise reads
+// `guild.buyOrder.lines` as the cart — several goods to ONE destination on ONE hauler, sized by
+// the order's total cargo space (§5.1). This is the only path — the legacy inline `cart` and the
+// single-good `{ good, qty }` forms were RETIRED with the client slice (§8), as the deployed
+// client sends only this shape. `destinationSystemId` is always required.
 //
 // `issueTick` (§8.1's quote-lock) is OPTIONAL and behaves exactly as it does on the SELL
-// side: omitted ⇒ the current tick ⇒ today's posted price ⇒ byte-identical to before; a
-// past tick prices EACH good in the cart from the ring at that one tick, validated for expiry.
-// The route fuel it burns is seed geometry and moves only with the cart's total-space tier.
-//
-// A THIRD, HELD-ORDER form (docs/syndicate-orders.md §5): passing neither a `cart` nor a `good`
-// finalises the guild's `buyOrder` — the engine reads `guild.buyOrder.lines` as the cart. Retired
-// with the client slice (§8). `destinationSystemId` is required in every form.
-function createBuyFromSyndicateAction({ guildId, good, qty, destinationSystemId, cart, issueTick }) {
+// side: omitted ⇒ the current tick ⇒ today's posted price; a past tick prices EACH good in the
+// order from the ring at that one tick, validated for expiry. The route fuel it burns is seed
+// geometry and moves only with the order's total-space tier.
+function createBuyFromSyndicateAction({ guildId, destinationSystemId, issueTick }) {
   if (guildId === undefined) throw new Error('createBuyFromSyndicateAction: guildId is required');
   if (destinationSystemId === undefined) throw new Error('createBuyFromSyndicateAction: destinationSystemId is required');
-  if (cart !== undefined) {
-    return {
-      type: 'buyFromSyndicate', guildId, cart, destinationSystemId,
-      ...(issueTick === undefined ? {} : { issueTick }),
-    };
-  }
-  if (good === undefined) {
-    // The held-order finalise — no cart, no good: the engine reads the guild's buyOrder (§5).
-    return {
-      type: 'buyFromSyndicate', guildId, destinationSystemId,
-      ...(issueTick === undefined ? {} : { issueTick }),
-    };
-  }
-  if (qty === undefined) throw new Error('createBuyFromSyndicateAction: qty is required (or pass a cart)');
   return {
-    type: 'buyFromSyndicate', guildId, good, qty, destinationSystemId,
+    type: 'buyFromSyndicate', guildId, destinationSystemId,
     ...(issueTick === undefined ? {} : { issueTick }),
   };
 }
@@ -610,15 +580,6 @@ function createClearOrderAction({ guildId, side }) {
 
 // --- Validation -------------------------------------------------------
 
-// buyCartLines(action) -> the BUY's cart as an array of { good, qty } lines. Normalizes
-// the legacy single-good `{ good, qty }` action (no `cart`) to a one-line cart, so the
-// deployed single-good client keeps working and a one-good cart is byte-identical to it
-// (transport-model.md §5.1). Called from BOTH validate and apply so they read one shape;
-// the per-line and dup/empty checks live in validate, this only picks the array.
-function buyCartLines(action) {
-  return Array.isArray(action.cart) ? action.cart : [{ good: action.good, qty: action.qty }];
-}
-
 // orderFieldFor(side) -> the guild field a `side` names ('buyOrder' | 'sellOrder'), or null for a
 // bad side. The one place `buy`/`sell` maps to a field, so the three build actions and the two
 // finalises can never disagree (docs/syndicate-orders.md §2).
@@ -634,23 +595,13 @@ function compareGood(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-// buyIsHeldOrder(action) -> true when a `buyFromSyndicate` finalises the guild's HELD buy order
-// rather than an inline cart. TRANSITIONAL: the deployed client sends an inline `cart` (or the
-// legacy `good`/`qty`); the new held-order path carries neither and reads `guild.buyOrder.lines`
-// (docs/syndicate-orders.md §5). Retired with the client slice (§8).
-function buyIsHeldOrder(action) {
-  return action.cart === undefined && action.good === undefined;
-}
-
-// buyFinalizeCart(state, action) -> the { good, qty } lines a BUY finalise ships: the guild's held
-// buy order when neither inline form is present, else the normalized inline cart. Called from BOTH
-// validate and apply so they read one source (the buyCartLines discipline).
+// buyFinalizeCart(state, action) -> the { good, qty } lines a BUY finalise ships: the guild's HELD
+// buy order (`guild.buyOrder.lines`, docs/syndicate-orders.md §5). Called from BOTH validate and
+// apply so they read one source. The inline `cart`/`good` intake was RETIRED with the client
+// slice (§8).
 function buyFinalizeCart(state, action) {
-  if (buyIsHeldOrder(action)) {
-    const guild = findGuild(state, action.guildId);
-    return (guild && guild.buyOrder && guild.buyOrder.lines) || [];
-  }
-  return buyCartLines(action);
+  const guild = findGuild(state, action.guildId);
+  return (guild && guild.buyOrder && guild.buyOrder.lines) || [];
 }
 
 // A Gate-1 `order` is a PERMUTATION of exactly these three fork names (§15.4):
@@ -1513,184 +1464,66 @@ function validateAction(state, action) {
     if (!guild) {
       return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
     }
-    // DUAL-MODE (docs/syndicate-orders.md §5). An action carrying `allocations` is the LEGACY
-    // multi-system path — one good across many systems, per-row space-tiered — kept working
-    // unchanged for the deployed client (retired with the client slice, §8). Anything else reads
-    // the guild's HELD sell order (`originSystemId` + `guild.sellOrder.lines`): many goods, ONE
-    // origin, ONE space-tiered leg.
-    if (action.allocations === undefined) {
-      // ── HELD single-origin order (§5) ──
-      if (typeof action.originSystemId !== 'string' || action.originSystemId.length === 0) {
-        return { valid: false, reason: 'originSystemId must be a non-empty string (or pass allocations for the legacy multi-system path)' };
-      }
-      const lines = (guild.sellOrder && guild.sellOrder.lines) || [];
-      // An EMPTY (or absent) held order cannot be finalised (§5).
-      if (lines.length === 0) {
-        return { valid: false, reason: `guild ${guild.id} has no sell order to finalise` };
-      }
-      // PER LINE — the goods are guaranteed priced + positive-int by addOrderLine and by
-      // checkOrders, but re-checked here so apply's loud guard is the backstop, not the first line
-      // (the discipline the legacy path already follows). ORIGIN HOLDS THE STOCK (§5/§7): the one
-      // origin must carry every line's qty. The pile is the ownership check, exactly as the legacy
-      // path's per-system check is. Short lines are named so the player can trim and retry (§7).
-      const short = [];
-      for (const line of lines) {
-        if (typeof line.good !== 'string' || !PRICED_GOODS.includes(line.good)) {
-          return { valid: false, reason: `${JSON.stringify(line.good)} is not a good the Syndicate posts a price for` };
-        }
-        if (postedPrice(state, line.good) == null) {
-          return { valid: false, reason: `${JSON.stringify(line.good)} has no posted price to sell at` };
-        }
-        if (typeof line.qty !== 'number' || !Number.isInteger(line.qty) || line.qty <= 0) {
-          return { valid: false, reason: `qty for ${JSON.stringify(line.good)} must be a positive integer (§15.2)` };
-        }
-        const held = getStock(guild, action.originSystemId, line.good);
-        if (held < line.qty) {
-          short.push(`${line.good} (need ${line.qty}, hold ${held})`);
-        }
-      }
-      if (short.length > 0) {
-        return { valid: false, reason: `guild ${guild.id} does not hold enough stock in system ${JSON.stringify(action.originSystemId)} for this sell order: ${short.join('; ')} (docs/syndicate-orders.md §7)` };
-      }
-      // THE CAPACITY GATE (§5.1 / §8.0) — the WHOLE order flies from the one origin on ONE hauler,
-      // so a load whose total cargo space (`Σ qty × volumeOf(good)`) exceeds the heavy hold is
-      // reject-wholed with a split-the-order message. Every good is priced above, so `volumeOf`
-      // never throws.
-      const totalSpace = lines.reduce((sum, line) => sum + (line.qty * volumeOf(line.good)), 0);
-      if (haulerTierForSpace(totalSpace) === null) {
-        return { valid: false, reason: `this sell order's total cargo space ${totalSpace} exceeds the Syndicate heavy hold (${HEAVY_HOLD}) — split the order into smaller shipments (transport-model.md §5.1)` };
-      }
-      // THE FUEL GATE — one leg (origin → its nearest waystation) at the total-space tier, the SAME
-      // `routeFuelCost` the BUY side uses and the snapshot quotes. RUN LATE, on purpose: a sale
-      // refused for stock or capacity says so rather than blaming fuel. Over-cap space cannot reach
-      // here (the capacity gate above reject-wholed it); an unreachable origin contributes 0 burn.
-      const { fuelBurn } = routeFuelCost(action.originSystemId, totalSpace);
-      const availableFuel = guild.fuelHoard + (guild.deuteriumFuel || 0);
-      if (availableFuel < fuelBurn) {
-        return { valid: false, reason: `guild ${guild.id} holds ${availableFuel} fuel (legal + contraband), cannot burn ${fuelBurn} shipping this sell order from ${JSON.stringify(action.originSystemId)} — insufficient fuel: need ${fuelBurn}, have ${availableFuel} (fuel-supply-and-allocation.md §8)` };
-      }
-      // THE QUOTE-LOCK GATE (§8.1) — LAST, exactly as on the legacy path and the BUY: refuse an
-      // EXPIRED issue tick (past the TTL, or a cycle boundary crossed since issue). The expiry rules
-      // are good-independent but the ring guard is per-good, so every line is checked; apply
-      // re-derives each line's price from the ring at this same tick.
-      const issueTick = action.issueTick === undefined ? state.tick : action.issueTick;
-      for (const line of lines) {
-        const quote = checkQuote(state, line.good, issueTick);
-        if (!quote.valid) return quote;
-      }
-      return { valid: true };
+    // HELD single-origin order (docs/syndicate-orders.md §5): `originSystemId` + the guild's own
+    // `sellOrder.lines` — many goods, ONE origin, ONE space-tiered leg. (The legacy `good` +
+    // `allocations` multi-system path was RETIRED with the client slice, §8.)
+    if (typeof action.originSystemId !== 'string' || action.originSystemId.length === 0) {
+      return { valid: false, reason: 'originSystemId must be a non-empty string' };
     }
-    // ── LEGACY multi-system path (TRANSITIONAL — the deployed client's; retired with the client
-    //    slice, syndicate-orders.md §8) ──
-    // WHAT MAY BE SOLD. `PRICED_GOODS` is the Exchange's own vocabulary (every
-    // stockpile good that is not fuel), so this one check refuses fuel, an unknown
-    // name and a catalog-only Tier-3 placeholder alike. Fuel is called out
-    // separately only so the refusal SAYS why: it is Syndicate-regulated and never
-    // listed (§8, §5 "Fuel is never sold here") — a permanent rule, not a gap.
-    if (isFuel(action.good)) {
-      return { valid: false, reason: `${JSON.stringify(action.good)} is Syndicate-regulated — fuel is never listed on the Exchange (§8)` };
+    const lines = (guild.sellOrder && guild.sellOrder.lines) || [];
+    // An EMPTY (or absent) held order cannot be finalised (§5).
+    if (lines.length === 0) {
+      return { valid: false, reason: `guild ${guild.id} has no sell order to finalise` };
     }
-    if (typeof action.good !== 'string' || !PRICED_GOODS.includes(action.good)) {
-      return { valid: false, reason: `${JSON.stringify(action.good)} is not a good the Syndicate posts a price for` };
-    }
-    // ...and there must actually BE a posted price to sell at. Every priced good
-    // carries one from tick 0, so this catches a state whose price block was
-    // removed by hand rather than a normal case — refused here so applyAction's
-    // loud guard is the backstop, not the first line.
-    if (postedPrice(state, action.good) == null) {
-      return { valid: false, reason: `${JSON.stringify(action.good)} has no posted price to sell at` };
-    }
-    if (!Array.isArray(action.allocations) || action.allocations.length === 0) {
-      return { valid: false, reason: 'allocations must be a non-empty array of { systemId, qty } (§5: a sale is composed per system)' };
-    }
-    const seen = new Set();
-    for (const alloc of action.allocations) {
-      if (!alloc || typeof alloc !== 'object' || Array.isArray(alloc)) {
-        return { valid: false, reason: 'each allocation must be an object { systemId, qty }' };
+    // PER LINE — the goods are guaranteed priced + positive-int by addOrderLine and by
+    // checkOrders, but re-checked here so apply's loud guard is the backstop, not the first line.
+    // ORIGIN HOLDS THE STOCK (§5/§7): the one origin must carry every line's qty. The pile is the
+    // ownership check. Short lines are named so the player can trim and retry (§7).
+    const short = [];
+    for (const line of lines) {
+      if (typeof line.good !== 'string' || !PRICED_GOODS.includes(line.good)) {
+        return { valid: false, reason: `${JSON.stringify(line.good)} is not a good the Syndicate posts a price for` };
       }
-      if (typeof alloc.systemId !== 'string' || alloc.systemId.length === 0) {
-        return { valid: false, reason: 'each allocation needs a non-empty systemId' };
+      if (postedPrice(state, line.good) == null) {
+        return { valid: false, reason: `${JSON.stringify(line.good)} has no posted price to sell at` };
       }
-      // A DUPLICATE systemId is refused rather than summed: two rows for one system
-      // is an ambiguous order, and quietly adding them up would be the engine
-      // deciding what the player meant.
-      if (seen.has(alloc.systemId)) {
-        return { valid: false, reason: `allocations name system ${JSON.stringify(alloc.systemId)} twice — one row per system` };
+      if (typeof line.qty !== 'number' || !Number.isInteger(line.qty) || line.qty <= 0) {
+        return { valid: false, reason: `qty for ${JSON.stringify(line.good)} must be a positive integer (§15.2)` };
       }
-      seen.add(alloc.systemId);
-      if (typeof alloc.qty !== 'number' || !Number.isInteger(alloc.qty) || alloc.qty <= 0) {
-        return { valid: false, reason: `qty for system ${JSON.stringify(alloc.systemId)} must be a positive integer (§15.2)` };
-      }
-      // THE OWNERSHIP CHECK IS THE PILE ITSELF. A guild's stockpiles are keyed by
-      // the systems it actually operates in, so "a system the guild owns that holds
-      // the good" and "a system whose pile of this good is non-empty" are the same
-      // question — and the pile is the thing the sale drains, so it is the honest
-      // one to ask. A system the guild does not hold reads as 0 here and is refused
-      // by name.
-      const held = getStock(guild, alloc.systemId, action.good);
-      if (held <= 0) {
-        return { valid: false, reason: `guild ${guild.id} holds no ${action.good} in system ${JSON.stringify(alloc.systemId)}` };
-      }
-      // NO RESERVE GUARD (§5): selling a system's whole pile — or every system's —
-      // is legal. The only ceiling is what is actually there.
-      if (alloc.qty > held) {
-        return { valid: false, reason: `guild ${guild.id} holds ${held} ${action.good} in system ${JSON.stringify(alloc.systemId)}, cannot sell ${alloc.qty}` };
-      }
-      // THE PER-ROW CAPACITY GATE (§5.1 / §8.0) — each row is its own leg on ONE hauler, so
-      // a row whose cargo space (`qty × volumeOf(good)`) exceeds the heavy hold cannot be
-      // carried: reject-whole naming that system. A T3-module SELL now caps at 100/row (100 ×
-      // 60,000 = the heavy hold); a 101st needs a second row. `action.good` is validated
-      // priced above, so `volumeOf` never throws here.
-      const rowSpace = alloc.qty * volumeOf(action.good);
-      if (haulerTierForSpace(rowSpace) === null) {
-        return { valid: false, reason: `${alloc.qty} ${action.good} in system ${JSON.stringify(alloc.systemId)} is ${rowSpace} cargo space, over the Syndicate heavy hold (${HEAVY_HOLD}) — split this row into smaller shipments (transport-model.md §5.1)` };
+      const held = getStock(guild, action.originSystemId, line.good);
+      if (held < line.qty) {
+        short.push(`${line.good} (need ${line.qty}, hold ${held})`);
       }
     }
-    // THE FUEL GATE — SELL burns route fuel too (docs/transport-model.md §8.0,
-    // RULED 03-09-26), mirroring `buyFromSyndicate`'s gate below. Both directions
-    // burn distance-scaled route fuel from the hoard; a SELL ships each named
-    // system's goods to ITS nearest waystation, so the bill COMPOUNDS across the
-    // basket — the summed burn of every row, one aggregate.
-    //
-    // RUN LAST, ON PURPOSE — the same rationale BUY documents. Every gate above
-    // answers a different question (stock, price, a duplicate row), and a sale
-    // refused for one of those must say so rather than blaming fuel. So a sale is
-    // only ever refused for fuel once it is otherwise entirely legal.
-    //
-    // REJECT-WHOLE ON THE AGGREGATE (ruled): a hoard that cannot cover the SUMMED
-    // burn refuses the whole basket — no partial fill, no shortened flight, no
-    // dropped row. `routeFuelCost` is the SAME pure function BUY uses and the
-    // snapshot quotes to the client, so what the player was shown and what the
-    // engine charges cannot disagree. A row on an unreachable system contributes a
-    // 0 burn (no route, no cost); a real route costs at least 1.
-    //
-    // SPACE-TIERED PER ROW (⤳ REVISED 14-09-26, §5.1): each row is its own leg, so its
-    // burn is at the hauler tier its OWN cargo space (`qty × volumeOf(good)`) selects — a
-    // heavier row on a thirstier tier. The per-row capacity gate above has already
-    // reject-wholed any row over the heavy hold, so `routeFuelCost` never sees over-cap space.
-    let totalBurn = 0;
-    for (const alloc of action.allocations) {
-      totalBurn += routeFuelCost(alloc.systemId, alloc.qty * volumeOf(action.good)).fuelBurn;
+    if (short.length > 0) {
+      return { valid: false, reason: `guild ${guild.id} does not hold enough stock in system ${JSON.stringify(action.originSystemId)} for this sell order: ${short.join('; ')} (docs/syndicate-orders.md §7)` };
     }
-    // COMBINED AVAILABILITY (§1.4 slice 1b): route burn spends legal `fuelHoard` first and
-    // contraband `deuteriumFuel` second (apply, via `burnFuel`), so the sufficiency gate counts
-    // BOTH — a guild with enough combined fuel is not refused, even if its legal hoard alone
-    // could not cover the trip.
+    // THE CAPACITY GATE (§5.1 / §8.0) — the WHOLE order flies from the one origin on ONE hauler,
+    // so a load whose total cargo space (`Σ qty × volumeOf(good)`) exceeds the heavy hold is
+    // reject-wholed with a split-the-order message. Every good is priced above, so `volumeOf`
+    // never throws.
+    const totalSpace = lines.reduce((sum, line) => sum + (line.qty * volumeOf(line.good)), 0);
+    if (haulerTierForSpace(totalSpace) === null) {
+      return { valid: false, reason: `this sell order's total cargo space ${totalSpace} exceeds the Syndicate heavy hold (${HEAVY_HOLD}) — split the order into smaller shipments (transport-model.md §5.1)` };
+    }
+    // THE FUEL GATE — one leg (origin → its nearest waystation) at the total-space tier, the SAME
+    // `routeFuelCost` the BUY side uses and the snapshot quotes. RUN LATE, on purpose: a sale
+    // refused for stock or capacity says so rather than blaming fuel. Over-cap space cannot reach
+    // here (the capacity gate above reject-wholed it); an unreachable origin contributes 0 burn.
+    const { fuelBurn } = routeFuelCost(action.originSystemId, totalSpace);
     const availableFuel = guild.fuelHoard + (guild.deuteriumFuel || 0);
-    if (availableFuel < totalBurn) {
-      return { valid: false, reason: `guild ${guild.id} holds ${availableFuel} fuel (legal + contraband), cannot burn ${totalBurn} shipping this basket to the Syndicate — insufficient fuel: need ${totalBurn}, have ${availableFuel} (fuel-supply-and-allocation.md §8)` };
+    if (availableFuel < fuelBurn) {
+      return { valid: false, reason: `guild ${guild.id} holds ${availableFuel} fuel (legal + contraband), cannot burn ${fuelBurn} shipping this sell order from ${JSON.stringify(action.originSystemId)} — insufficient fuel: need ${fuelBurn}, have ${availableFuel} (fuel-supply-and-allocation.md §8)` };
     }
-    // THE QUOTE-LOCK GATE (docs/transport-model.md §8.1) — LAST, on purpose, exactly as
-    // the fuel gate is: a sale that also fails a stock, price or fuel gate must blame
-    // THAT, not the quote, so the player fixes the real problem rather than refreshing a
-    // quote that would refuse again anyway. The confirm carries an ISSUE TICK, never a
-    // price (§18); here we only refuse an EXPIRED one — past the TTL, or with a cycle
-    // boundary crossed since issue (the fuel price it agreed is gone). Omitted ⇒ the
-    // current tick ⇒ age 0 ⇒ never expired, so every existing caller is unchanged. Apply
-    // re-derives each named system's price from the ring at this same tick.
+    // THE QUOTE-LOCK GATE (§8.1) — LAST, exactly as on the BUY: refuse an EXPIRED issue tick
+    // (past the TTL, or a cycle boundary crossed since issue). The expiry rules are
+    // good-independent but the ring guard is per-good, so every line is checked; apply
+    // re-derives each line's price from the ring at this same tick.
     const issueTick = action.issueTick === undefined ? state.tick : action.issueTick;
-    const quote = checkQuote(state, action.good, issueTick);
-    if (!quote.valid) return quote;
+    for (const line of lines) {
+      const quote = checkQuote(state, line.good, issueTick);
+      if (!quote.valid) return quote;
+    }
     return { valid: true };
   }
 
@@ -1699,23 +1532,18 @@ function validateAction(state, action) {
     if (!guild) {
       return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
     }
-    // THE CART — DUAL-MODE (docs/syndicate-orders.md §5). An action carrying an inline `cart` or the
-    // legacy `good`/`qty` is the deployed client's path (⤳ REVISED 14-09-26, §5.1), normalized to a
-    // cart and byte-identical to before. Anything else finalises the guild's HELD buy order, reading
-    // `guild.buyOrder.lines` (TRANSITIONAL: the inline forms are retired with the client slice, §8).
+    // THE CART — the guild's HELD buy order, reading `guild.buyOrder.lines` (docs/syndicate-orders.md
+    // §5). (The inline `cart` / legacy `good`/`qty` intake was RETIRED with the client slice, §8.)
     const cart = buyFinalizeCart(state, action);
     if (!Array.isArray(cart) || cart.length === 0) {
-      // An EMPTY (or absent) held order cannot be finalised (§5); an inline BUY with no line is the
-      // same refusal the deployed client already gets.
-      return buyIsHeldOrder(action)
-        ? { valid: false, reason: `guild ${guild.id} has no buy order to finalise` }
-        : { valid: false, reason: 'a BUY cart must carry at least one { good, qty } line' };
+      // An EMPTY (or absent) held order cannot be finalised (§5).
+      return { valid: false, reason: `guild ${guild.id} has no buy order to finalise` };
     }
     // EACH LINE, and no duplicate good. `PRICED_GOODS` is the same vocabulary a sale uses
     // (#43: one posted price serves both directions, no spread, no transport fee — §6), so
-    // anything the Syndicate will not buy it will not sell. A DUPLICATE good is refused
-    // rather than summed — two lines for one good is an ambiguous order, exactly as SELL
-    // refuses a duplicate system.
+    // anything the Syndicate will not buy it will not sell. `addOrderLine` already keeps the held
+    // order one-line-per-good; this is the backstop, refusing a DUPLICATE good rather than summing
+    // it — two lines for one good is an ambiguous order.
     const seenGoods = new Set();
     for (const line of cart) {
       if (!line || typeof line !== 'object' || Array.isArray(line)) {
@@ -2599,141 +2427,55 @@ function applyAction(state, action) {
   }
 
   if (action.type === 'sellToSyndicate') {
-    // DUAL-MODE (docs/syndicate-orders.md §5). No `allocations` ⇒ finalise the guild's HELD sell
-    // order: many goods from ONE origin on ONE space-tiered leg, settled immediately (no shipment —
-    // "sold goods leave the moment you place them"), then clear the order. Everything else is the
-    // LEGACY multi-system path below (TRANSITIONAL — the deployed client's; retired with the client
-    // slice, §8), unchanged.
-    if (action.allocations === undefined) {
-      const guild = findGuild(next, action.guildId);
-      const issueTick = action.issueTick === undefined ? next.tick : action.issueTick;
-      // Read the held lines, sorted by good so the mutation sequence and the Σ are fixed (invariant
-      // 9). Each good is priced PER LINE (#43's `round(qty × price)`) — a multi-good order at
-      // several prices, unlike the legacy one-good path that rounds once on the total.
-      const lines = [...guild.sellOrder.lines].sort((a, b) => compareGood(a.good, b.good));
-      let totalProceeds = 0;
-      for (const line of lines) {
-        const price = quotedPrice(next, line.good, issueTick);
-        if (price == null) {
-          // Validation refused this (expiry + ring guard); reaching it means the ring/price block
-          // was edited between validate and apply. Taking the goods for nothing would be a silent
-          // loss, so halt loudly — the legacy path's mirror guard.
-          throw new Error(`applyAction: guild ${guild.id} sold ${line.good} to the Syndicate at tick ${next.tick} (quote issueTick ${issueTick}) but no posted price is in the ring for that tick — refusing to hand over goods for nothing`);
-        }
-        // Remove the stock from the one origin; the goods LEAVE THE ECONOMY (absorbed into the
-        // Syndicate's inexhaustible stock, §5) — deposited nowhere.
-        addStock(guild, action.originSystemId, line.good, -line.qty);
-        totalProceeds += Math.round(line.qty * price);
-      }
-      // Credit-conservation-clean, the mirror of the legacy path: the ledger FUNDS the payment, so
-      // nothing is minted and invariant 2 holds to the credit.
-      guild.credits += totalProceeds;
-      next.syndicate.ledger -= totalProceeds;
-
-      // THE BURN — ONE leg (origin → its nearest waystation) at the total-space tier, the SAME
-      // `routeFuelCost` validate checked. Fuel LEAVES the galaxy (burned, no counterparty), so
-      // invariant 1 balances only because `totalConsumed` rises to match the hoard falling. One
-      // deduction across both stores (legal-first `burnFuel`), so one consumption event. A 0 is the
-      // no-route case (unreachable origin), a no-op.
-      const totalSpace = lines.reduce((sum, line) => sum + (line.qty * volumeOf(line.good)), 0);
-      const { fuelBurn } = routeFuelCost(action.originSystemId, totalSpace);
-      burnFuel(guild, fuelBurn);
-      next.audit.totalConsumed += fuelBurn;
-
-      // CLEAR THE HELD ORDER on a successful finalise (§5), keeping it omit-when-empty (§2). A
-      // reject-whole never reaches apply, so the draft is left untouched on refusal for free.
-      delete guild.sellOrder;
-
-      // THE BETWEEN-TICK SEAM (as the legacy SELL documents): a stockpile drained and fuel burned,
-      // and `POST /action` asserts every invariant with no tick between, so refresh the derived
-      // cache through the SAME one selector the tick uses — not a second derivation. Credits moved
-      // guild↔ledger without changing the total, so `expectedCreditTotal` is untouched.
-      next.galacticSupply = computeGalacticSupply(next);
-      return next;
-    }
-    // ── LEGACY multi-system path (unchanged) ──
-    // The Syndicate buys at the QUOTED price — the value the ring recorded at the quote's
-    // ISSUE TICK (§8.1's quote-lock). When `issueTick` is omitted this is `next.tick` →
-    // age 0 → exactly `postedPrice`, the published 2-tick-lagged value the player is
-    // looking at, so the omitted-tick path is byte-identical to the pre-quote-lock SELL
-    // (§5: "goods sold execute at the current price during the tick, end of"). A past
-    // `issueTick` prices the whole basket at that tick's value — the ring is per-good and
-    // this action is one good across many systems, so every allocation shares the one
-    // looked-up price.
+    // HELD single-origin finalise (docs/syndicate-orders.md §5): many goods from ONE origin on ONE
+    // space-tiered leg, settled immediately (no shipment — "sold goods leave the moment you place
+    // them"), then clear the order. (The legacy `good` + `allocations` multi-system path was RETIRED
+    // with the client slice, §8.)
     const guild = findGuild(next, action.guildId);
     const issueTick = action.issueTick === undefined ? next.tick : action.issueTick;
-    const price = quotedPrice(next, action.good, issueTick);
-    if (price == null) {
-      // Validation already refused this (expiry gate + the ring guard), so reaching it
-      // means a state whose ring or price block was edited between validate and apply.
-      // Taking the goods anyway would be a silent loss, so halt loudly — the same guard,
-      // and the same reason, as applyProduction's Syndicate delivery (§15.5).
-      throw new Error(`applyAction: guild ${guild.id} sold ${action.good} to the Syndicate at tick ${next.tick} (quote issueTick ${issueTick}) but no posted price is in the ring for that tick — refusing to hand over goods for nothing`);
+    // Read the held lines, sorted by good so the mutation sequence and the Σ are fixed (invariant
+    // 9). Each good is priced PER LINE (#43's `round(qty × price)`) — a multi-good order at
+    // several prices.
+    const lines = [...guild.sellOrder.lines].sort((a, b) => compareGood(a.good, b.good));
+    let totalProceeds = 0;
+    for (const line of lines) {
+      const price = quotedPrice(next, line.good, issueTick);
+      if (price == null) {
+        // Validation refused this (expiry + ring guard); reaching it means the ring/price block
+        // was edited between validate and apply. Taking the goods for nothing would be a silent
+        // loss, so halt loudly — the same guard, and reason, as applyProduction's Syndicate
+        // delivery (§15.5).
+        throw new Error(`applyAction: guild ${guild.id} sold ${line.good} to the Syndicate at tick ${next.tick} (quote issueTick ${issueTick}) but no posted price is in the ring for that tick — refusing to hand over goods for nothing`);
+      }
+      // Remove the stock from the one origin; the goods LEAVE THE ECONOMY (absorbed into the
+      // Syndicate's inexhaustible stock, §5) — deposited nowhere.
+      addStock(guild, action.originSystemId, line.good, -line.qty);
+      totalProceeds += Math.round(line.qty * price);
     }
+    // Credit-conservation-clean, the mirror of paySyndicateFee: the ledger FUNDS the payment, so
+    // nothing is minted and invariant 2 holds to the credit.
+    guild.credits += totalProceeds;
+    next.syndicate.ledger -= totalProceeds;
 
-    // Drain EXACTLY what the player specified, and nothing else: each named
-    // system's pile drops by its own qty, and a system not named is untouched.
-    // Sorted by systemId so the sequence of mutations is fixed (invariant 9).
-    const allocations = [...action.allocations].sort((a, b) => (a.systemId < b.systemId ? -1 : a.systemId > b.systemId ? 1 : 0));
-    let totalQty = 0;
-    for (const alloc of allocations) {
-      addStock(guild, alloc.systemId, action.good, -alloc.qty);
-      totalQty += alloc.qty;
-    }
-    // The goods LEAVE THE ECONOMY here — absorbed into the Syndicate's
-    // inexhaustible stock (§5). They are deposited nowhere, which is why nothing
-    // above has a receiving side.
+    // THE BURN — ONE leg (origin → its nearest waystation) at the total-space tier, the SAME
+    // `routeFuelCost` validate checked. Fuel LEAVES the galaxy (burned, no counterparty), so
+    // invariant 1 balances only because `totalConsumed` rises to match the hoard falling. One
+    // deduction across both stores (legal-first `burnFuel`), so one consumption event. A 0 is the
+    // no-route case (unreachable origin), a no-op.
+    const totalSpace = lines.reduce((sum, line) => sum + (line.qty * volumeOf(line.good)), 0);
+    const { fuelBurn } = routeFuelCost(action.originSystemId, totalSpace);
+    burnFuel(guild, fuelBurn);
+    next.audit.totalConsumed += fuelBurn;
 
-    // ROUNDED ONCE, ON THE TOTAL — decision #43 (`round(qty × price)`), the same
-    // arithmetic `commitmentSale` uses. Rounding per system instead would pay a
-    // different amount for the same goods depending on how the player split them.
-    const credited = Math.round(totalQty * price);
-    // Credit-conservation-clean, the mirror of paySyndicateFee: the ledger FUNDS
-    // the payment, so nothing is minted and invariant 2 holds to the credit.
-    guild.credits += credited;
-    next.syndicate.ledger -= credited;
+    // CLEAR THE HELD ORDER on a successful finalise (§5), keeping it omit-when-empty (§2). A
+    // reject-whole never reaches apply, so the draft is left untouched on refusal for free.
+    delete guild.sellOrder;
 
-    // THE BURN — SELL burns route fuel too (docs/transport-model.md §8.0). The same
-    // `routeFuelCost` the validate gate checked against, summed over the basket:
-    // each named system ships its goods to ITS nearest waystation, so the burn
-    // COMPOUNDS across allocations. Recomputed here rather than threaded from
-    // validate — apply must be correct on its own terms, and the function is a pure
-    // function of the seed, so the two sums cannot disagree.
-    //
-    // ONE DEDUCTION FOR THE WHOLE BASKET. Fuel LEAVES the galaxy here — burned, not
-    // transferred, no counterparty to credit — so invariant 1 balances only because
-    // the hoard going down is matched by `totalConsumed` going up, exactly as the
-    // BUY burn below. A rejected sale never reaches apply (`POST /action` leaves
-    // state untouched), so reject-whole falls out for free. A basket of unreachable
-    // systems sums to a 0 burn and both lines are no-ops.
-    let totalBurn = 0;
-    for (const alloc of allocations) {
-      totalBurn += routeFuelCost(alloc.systemId, alloc.qty * volumeOf(action.good)).fuelBurn;
-    }
-    // LEGAL-FIRST (§1.4 slice 1b): `burnFuel` spends `fuelHoard` first, contraband
-    // `deuteriumFuel` for any remainder — one deduction across both stores. Both are held fuel,
-    // so the whole burn is one consumption event: `totalConsumed += totalBurn` once keeps
-    // invariant 1 closed (held −totalBurn, consumed +totalBurn). The combined-availability gate
-    // in validate guarantees the two stores cover it, so neither is driven negative.
-    burnFuel(guild, totalBurn);
-    next.audit.totalConsumed += totalBurn;
-
-    // ── THE BETWEEN-TICK SEAM ────────────────────────────────────────────────
-    // This is the first action that mutates a stockpile, and `POST /action`
-    // asserts every invariant immediately after apply — with no tick in between.
-    // `state.galacticSupply` is a CACHE the tick refreshes once after its eight
-    // steps (tick.js), and the galactic-supply-consistency invariant compares that
-    // cache against a live recompute. Draining a pile — or, now, burning fuel from
-    // a hoard (`galacticSupply.fuel.guildHeld` sums exactly those hoards) — without
-    // refreshing it here would leave the cache describing goods or fuel that no
-    // longer exist, and the sale would trip the invariant instead of landing.
-    // Refreshed AFTER the burn, exactly as the tick does it, through the same one
-    // selector — not a second derivation.
+    // THE BETWEEN-TICK SEAM: a stockpile drained and fuel burned, and `POST /action` asserts every
+    // invariant with no tick between, so refresh the derived cache through the SAME one selector the
+    // tick uses — not a second derivation. Credits moved guild↔ledger without changing the total, so
+    // `expectedCreditTotal` is untouched.
     next.galacticSupply = computeGalacticSupply(next);
-    // NOTE on `audit`: expectedCreditTotal is unchanged — the sale moves credits
-    // between a guild and the ledger, it does not change how many exist. The fuel
-    // counters DO move now: the burn above is sunk into `totalConsumed` (invariant
-    // 1), the only audit field a sale touches.
     return next;
   }
 
@@ -2743,8 +2485,8 @@ function applyAction(state, action) {
     // deposited — that is stepArrivals' job, `arrivalTick` ticks from now.
     const guild = findGuild(next, action.guildId);
     const issueTick = action.issueTick === undefined ? next.tick : action.issueTick;
-    // THE CART — DUAL-MODE (§5): the guild's HELD buy order when the action carries neither inline
-    // form, else the normalized inline cart (byte-identical to the pre-cart BUY for a single good).
+    // THE CART — the guild's HELD buy order (`guild.buyOrder.lines`, §5). (The inline `cart` /
+    // legacy `good`/`qty` intake was RETIRED with the client slice, §8.)
     const cart = buyFinalizeCart(next, action);
 
     // ROUNDED PER GOOD then summed — #43's `round(qty × price)` per line, so a good bought
@@ -2817,10 +2559,9 @@ function applyAction(state, action) {
     burnFuel(guild, fuelBurn);
     next.audit.totalConsumed += fuelBurn;
 
-    // CLEAR THE HELD ORDER on a successful finalise (§5). Only the held-order path touches it — an
-    // inline BUY never had one — and deleting the key keeps it OMIT-WHEN-EMPTY (§2). A reject-whole
-    // never reaches apply, so the draft is left untouched on refusal for free (§5).
-    if (buyIsHeldOrder(action)) delete guild.buyOrder;
+    // CLEAR THE HELD ORDER on a successful finalise (§5). Deleting the key keeps it OMIT-WHEN-EMPTY
+    // (§2). A reject-whole never reaches apply, so the draft is left untouched on refusal for free.
+    delete guild.buyOrder;
 
     // ⚠ THIS REPLACES THE OLD "NO galacticSupply REFRESH" NOTE, which read: not one
     // stockpile moved, so the cache still describes the galaxy correctly. That

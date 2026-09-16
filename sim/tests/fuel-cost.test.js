@@ -40,7 +40,7 @@ const {
   volumeOf, haulerTierForSpace, HAULER_TIERS, HEAVY_HOLD, ASSET_CARGO_VOLUME,
 } = require('../fuel.js');
 const {
-  createBuyFromSyndicateAction, validateAction, applyAction,
+  createAddOrderLineAction, createBuyFromSyndicateAction, validateAction, applyAction,
 } = require('../actions.js');
 const { systemAtDistance, farthestSystem, starterHomeAtDistance } = require('./waystation-fixtures.js');
 
@@ -199,9 +199,10 @@ test('no waystation: a zero quote at any space, not a throw', () => {
     assert.deepEqual(routeFuelCost(missing, HEAVY_HOLD + 1), { fuelBurn: 0 });
     assert.deepEqual(routeFuelBurnByTier(missing), { light: 0, medium: 0, heavy: 0 });
   }
-  const s = quoteState();
+  // A held buyOrder (docs/syndicate-orders.md §5) finalised to a no-waystation system.
+  const s = applyAction(quoteState(), createAddOrderLineAction({ guildId: 'g1', side: 'buy', good: 'titanium', qty: 1 }));
   const { valid, reason } = validateAction(s, createBuyFromSyndicateAction({
-    guildId: 'g1', good: 'titanium', qty: 1, destinationSystemId: 'sys_nope',
+    guildId: 'g1', destinationSystemId: 'sys_nope',
   }));
   assert.equal(valid, false, 'the engine refuses the trade a zero quote describes');
   assert.match(reason, /does not hold system|no Syndicate waystation/);
@@ -314,7 +315,9 @@ test('the quote is priced on the same distance the delivery is flown on', () => 
   let s = quoteState({ holds: [MID.id] });
   s.prices.titanium.posted = 10;
 
-  const action = createBuyFromSyndicateAction({ guildId: 'g1', good: 'titanium', qty: 5, destinationSystemId: MID.id });
+  // Build the held buyOrder (docs/syndicate-orders.md §5), then finalise it to MID.
+  s = applyAction(s, createAddOrderLineAction({ guildId: 'g1', side: 'buy', good: 'titanium', qty: 5 }));
+  const action = createBuyFromSyndicateAction({ guildId: 'g1', destinationSystemId: MID.id });
   const { valid, reason } = validateAction(s, action);
   assert.equal(valid, true, `expected accepted, got: ${reason}`);
   s = applyAction(s, action);

@@ -326,10 +326,17 @@ that make the SELL/BUY transaction concrete:
 **⤳ REVISED 14-09-26 — capacity, and the shipment shape.** Capacity is now measured in **cargo space**, not
 unit-count, and both directions carry **multi-good** loads on a **single leg**: a BUY cart to one
 destination, a SELL load from one origin. The full model — volumes, holds, why — is **§5.1**. The bullets
-below are updated where they set the burn and the gate; the built multi-system SELL / single-good BUY they
-describe stand as the record of what is deployed until the rebuild slice lands.
+below are updated where they set the burn and the gate; the multi-system SELL / single-good BUY they
+describe are the **record of the transitional slices** — those legacy intake paths have since been
+**RETIRED** (see the held-order note directly below), and the finalise is single-path.
 
-**The transaction is now placed as a held ORDER (RULED 16-09-26).** The guild assembles a buy/sell order line by line on the trade floor and finalises it here; `buyFromSyndicate` / `sellToSyndicate` read the guild's **held order** (`guild.buyOrder` / `guild.sellOrder`) rather than an inline cart. The order model — entity, actions, finalise, the adjusted popups — is `docs/syndicate-orders.md`.
+**The transaction is now placed as a held ORDER (RULED 16-09-26); the legacy intake is RETIRED.** The
+guild assembles a buy/sell order line by line on the trade floor and finalises it here; `buyFromSyndicate`
+/ `sellToSyndicate` read the guild's **held order** (`guild.buyOrder` / `guild.sellOrder`) — the ONLY
+path. The transitional dual-mode intake the bullets below describe — the inline `cart`/`good` BUY and the
+`allocations` multi-system SELL, kept for backward-compat through the client slice — has been removed from
+`sim/actions.js` (cleanup slice); the held-order behaviour is byte-for-byte unchanged. The order model —
+entity, actions, finalise, the adjusted popups — is `docs/syndicate-orders.md`.
 
 **⤳ AS-BUILT (shipment rebuild slice 1, ENGINE) — the space-based burn and the reject-whole gate are built.**
 The burn (both directions) is now `ceil(hexDistance × rate[tier])` where the tier is `haulerTierForSpace`

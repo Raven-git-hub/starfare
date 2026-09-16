@@ -30,7 +30,7 @@ const { isIllegalDeuteriumRefinery } = require('../baseline.js');
 const {
   validateAction, applyAction,
   createFoundGuildAction, createEstablishDeuteriumRefineryAction,
-  createLicenseDeuteriumMineAction, createBuyFromSyndicateAction,
+  createLicenseDeuteriumMineAction, createBuyFromSyndicateAction, createAddOrderLineAction,
 } = require('../actions.js');
 const { HOME_SYSTEM, HOME_MINE, HOME_SLOT } = require('./home-anchor.js');
 const { farthestSystem, starterHomeAtDistance } = require('./waystation-fixtures.js');
@@ -69,7 +69,7 @@ function refineryState({ deuterium = 0, refineries = [{ id: 'r1', rate: RATE }],
 const NEAR_HOME = starterHomeAtDistance(6);
 const NEAR = NEAR_HOME.id;
 const FAR = farthestSystem().id;
-// Every buy here is buy(5, FAR): 5 titanium (volume 1) = 5 cargo space, a light-hold leg (§5.1),
+// Every buy here is buy(FAR): 5 titanium (volume 1) = 5 cargo space, a light-hold leg (§5.1),
 // so its burn is the light rate — the same number this file always used.
 const BURN_FAR = routeFuelBurnByTier(FAR).light;
 const GOOD = 'titanium';
@@ -80,8 +80,15 @@ const claim = (systemId, i) => ({
   claimedAtTick: 0, contested: false,
 });
 
+// The BUY is the held-order finalise (docs/syndicate-orders.md §5): build a 5-titanium buyOrder,
+// then finalise it to a destination. The inline `cart`/`good` intake was RETIRED with the client
+// slice (§8). `addBuyLine` builds the order; `buy(dest)` finalises whatever the guild holds.
+const addBuyLine = (qty) => createAddOrderLineAction({ guildId: 'g1', side: 'buy', good: GOOD, qty });
+const buy = (dest) => createBuyFromSyndicateAction({ guildId: 'g1', destinationSystemId: dest });
+
 // A guild homed on NEAR, holding NEAR and FAR, with the two fuel stores set independently so a
-// test can put a burn across the legal/contraband boundary.
+// test can put a burn across the legal/contraband boundary. It carries a built 5-titanium buyOrder
+// ready to finalise (the burn subject of these tests).
 function burnState({ fuelHoard = 0, deuteriumFuel = 0, credits = 100000 } = {}) {
   const s = createState({
     guilds: [{
@@ -93,10 +100,8 @@ function burnState({ fuelHoard = 0, deuteriumFuel = 0, credits = 100000 } = {}) 
     claims: [claim(NEAR, 0), claim(FAR, 1)],
   });
   s.prices[GOOD].posted = 10;
-  return s;
+  return applyAction(s, addBuyLine(5));
 }
-
-const buy = (qty, dest) => createBuyFromSyndicateAction({ guildId: 'g1', good: GOOD, qty, destinationSystemId: dest });
 
 // Invariant 1 restated by hand, INCLUDING contraband — so a failure names the term. This is
 // the slice's whole point: `deuteriumFuel` is held fuel and belongs on the LHS.
@@ -298,7 +303,7 @@ test('burnFuel: with no contraband, an all-legal burn never mints a deuteriumFue
 
 test('a real BUY drains legal fuel first, leaving contraband whole when the hoard covers it', () => {
   const s = burnState({ fuelHoard: 500, deuteriumFuel: 100 });
-  const next = applyAction(s, buy(5, FAR));
+  const next = applyAction(s, buy(FAR));
   assert.equal(next.guilds[0].fuelHoard, 500 - BURN_FAR, 'legal fuel took the whole burn');
   assert.equal(next.guilds[0].deuteriumFuel, 100, 'contraband is sticky — untouched');
   assert.equal(next.audit.totalConsumed, BURN_FAR);
@@ -308,9 +313,9 @@ test('a real BUY drains legal fuel first, leaving contraband whole when the hoar
 
 test('a guild with ONLY contraband can still fly — the burn comes out of the red', () => {
   const s = burnState({ fuelHoard: 0, deuteriumFuel: 500 });
-  const { valid } = validateAction(s, buy(5, FAR));
+  const { valid } = validateAction(s, buy(FAR));
   assert.equal(valid, true, 'combined availability lets it fly');
-  const next = applyAction(s, buy(5, FAR));
+  const next = applyAction(s, buy(FAR));
   assert.equal(next.guilds[0].fuelHoard, 0);
   assert.equal(next.guilds[0].deuteriumFuel, 500 - BURN_FAR, 'contraband paid the burn');
   assert.equal(next.audit.totalConsumed, BURN_FAR);
@@ -323,8 +328,8 @@ test('the sufficiency gate counts the COMBINED total — legal + contraband', ()
   const legal = Math.floor(BURN_FAR / 2);
   const contraband = BURN_FAR - legal;
   const s = burnState({ fuelHoard: legal, deuteriumFuel: contraband });
-  assert.equal(validateAction(s, buy(5, FAR)).valid, true, 'combined == burn is enough');
-  const next = applyAction(s, buy(5, FAR));
+  assert.equal(validateAction(s, buy(FAR)).valid, true, 'combined == burn is enough');
+  const next = applyAction(s, buy(FAR));
   assert.equal(next.guilds[0].fuelHoard, 0, 'legal spent first, to zero');
   assert.equal(next.guilds[0].deuteriumFuel, 0, 'then contraband for the rest, to zero');
   assert.deepEqual(checkInvariants(next, next.tick), []);
@@ -334,7 +339,7 @@ test('the sufficiency gate counts the COMBINED total — legal + contraband', ()
 test('a burn exceeding BOTH stores is refused reject-whole, and changes nothing', () => {
   const s = burnState({ fuelHoard: 1, deuteriumFuel: BURN_FAR - 2 }); // combined = BURN_FAR - 1
   const before = hashState(s);
-  const { valid, reason } = validateAction(s, buy(5, FAR));
+  const { valid, reason } = validateAction(s, buy(FAR));
   assert.equal(valid, false);
   assert.match(reason, new RegExp(`need ${BURN_FAR}, have ${BURN_FAR - 1}`));
   assert.match(reason, /legal \+ contraband/);
@@ -343,7 +348,7 @@ test('a burn exceeding BOTH stores is refused reject-whole, and changes nothing'
 
 test('the fuel gate still runs LAST — a trade short on credits AND fuel blames credits', () => {
   const s = burnState({ credits: 1, fuelHoard: 0, deuteriumFuel: 0 });
-  const { reason } = validateAction(s, buy(5, FAR));
+  const { reason } = validateAction(s, buy(FAR));
   assert.match(reason, /cannot pay/, 'credits is blamed');
   assert.doesNotMatch(reason, /insufficient fuel/, 'not fuel');
 });
@@ -416,9 +421,11 @@ test('mine → refine → burn: invariant 1 holds after the refine AND after the
   assertFuelBalances(refined, 'after the refine');
 
   // Now burn a far route. fuelHoard is 3; BURN_FAR is larger, so it dips into the fresh
-  // contraband — a legal-first burn across the boundary. Validate first, as the server does.
-  assert.equal(validateAction(refined, buy(5, FAR)).valid, true, 'combined fuel covers the burn');
-  const burned = applyAction(refined, buy(5, FAR));
+  // contraband — a legal-first burn across the boundary. Build the buyOrder, then validate first,
+  // as the server does.
+  const refinedWithOrder = applyAction(refined, addBuyLine(5));
+  assert.equal(validateAction(refinedWithOrder, buy(FAR)).valid, true, 'combined fuel covers the burn');
+  const burned = applyAction(refinedWithOrder, buy(FAR));
   const g = burned.guilds[0];
   assert.equal(g.fuelHoard, 0, 'the 3 legal fuel went first');
   assert.equal(g.deuteriumFuel, bigRate - (BURN_FAR - 3), 'contraband covered the remainder');

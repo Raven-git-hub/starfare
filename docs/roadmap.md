@@ -126,6 +126,29 @@ boundary so the later hex-map swap doesn't touch it.
   §4, "occupying an asset changes no game number"), so coupling asset-presence to output is a broad new
   rule on the decision checklist below, not this steward slice's to bolt on.*
 
+- **Retiring the transitional Syndicate-trade paths (Phase 2, ENGINE cleanup — `docs/syndicate-orders.md`
+  §5/§8).** Engine + tests only (`sim/`), NO client change and NO new behaviour — a deletion of dead
+  intake. The client slice landed and the deployed client sends only the held-order finalise, so the
+  transitional dual-mode branches are dead code and are now removed. `sim/actions.js`: `buyFromSyndicate`
+  drops the inline `cart` / legacy `good`/`qty` acceptance (it always reads `guild.buyOrder.lines`),
+  `sellToSyndicate` drops the `good` + `allocations` multi-system path (it always reads
+  `guild.sellOrder.lines` from one `originSystemId`), the two creators lose their legacy parameters, and
+  the `buyIsHeldOrder` / inline-`cart` helpers are deleted — each finalise is now SINGLE-PATH, the
+  held-order finalise, byte-for-byte unchanged in behaviour. Tests that drove behaviour through the
+  retired shapes were **migrated onto the held-order path** (build the order with `addOrderLine`, then
+  finalise), preserving their coverage: `sell.test.js`, `cargo-space.test.js`, `buy.test.js`,
+  `fuel-burn.test.js`, `sell-fuel-burn.test.js`, `quote-lock.test.js`, `fuel-cost.test.js`,
+  `transport-visibility.test.js`, `deuterium-refinery.test.js`; the two legacy-parity tests in
+  `syndicate-orders.test.js` were removed (their assertion — the retired shapes still work — is now false
+  by design), and `server.test.js` keeps its no-`allocations`/no-`cart` negative plus the held-order
+  BUY/SELL pins. Only retired-mechanic assertions were dropped (per-system rounding across allocations,
+  cross-system split-invariance, the multi-system burn SUM, malformed/duplicate-allocation rejection);
+  the single-origin behaviour is proved intact. Full suite **1,310 green** (was 1,315 — the net −5 is
+  retired tests), every determinism/persist golden **byte-identical** (the held-order path was
+  untouched), and `grep` finds no acceptance of `cart`/`allocations`/`buyIsHeldOrder` outside
+  comments/history. *Nothing remaining for the order model except the optional SELL origin-picker
+  refinement (§6/§7).*
+
 - **The Syndicate order trade UI (Phase 2, CLIENT — `docs/syndicate-orders.md` §6).** Client-only
   (`client/game.html`, the `trade-tab-wire` block) — NO `sim/` change, so every determinism/persisted
   golden is byte-identical and the suite is unchanged (**1,298 green**). The trade floor now BUILDS
@@ -145,10 +168,10 @@ boundary so the later hex-map swap doesn't touch it.
   fuel, cost and arrival are all read from the snapshot (§18). Verified by the served-bytes tripwire
   (`sim/tests/server.test.js`) and a headless-Chromium end-to-end (two-good buy order → manifest, tier,
   route fuel, arrival → confirm → order empties; a one-origin sell; an over-cap build, confirm disabled).
-  *Deferred, not invented: RETIRING the legacy engine paths (inline `cart`/`good` BUY, `allocations`
-  SELL — the client no longer sends them, a later cleanup removes them) and the SELL origin-picker
-  helper (§7 — this slice offers every held system and lets the engine's stock gate reject-whole with
-  the named shortfall; only-systems-that-hold-every-line is a later refinement).*
+  *RETIRING the legacy engine paths (inline `cart`/`good` BUY, `allocations` SELL) is now DONE — see the
+  cleanup slice entry above. Still deferred, not invented: the SELL origin-picker helper (§7 — this slice
+  offers every held system and lets the engine's stock gate reject-whole with the named shortfall;
+  only-systems-that-hold-every-line is a later refinement).*
 
 - **The Syndicate order model (Phase 2, ENGINE — `docs/syndicate-orders.md`).** Engine + snapshot
   only (NO client — the next slice), all backward-compatible so the deployed single-good BUY / multi-
@@ -171,8 +194,8 @@ boundary so the later hex-map swap doesn't touch it.
   when the order exists. **Invariant** — `checkOrders` (`sim/invariants.js`): lines sorted, unique,
   priced-and-not-fuel, positive-int. No serialized byte from the snapshot, no schema bump, goldens
   byte-identical; `sim/tests/syndicate-orders.test.js` (27 tests), full suite **1,298 green**.
-  *The CLIENT half is now BUILT (the row above). Still deferred to a later slice: RETIRING the legacy
-  inline BUY / multi-system SELL (kept for backward-compat until confirmed no client sends them) and
+  *The CLIENT half is now BUILT (the row above), and RETIRING the legacy inline BUY / multi-system SELL
+  is now DONE (the cleanup slice entry above) — the finalise is single-path. Still deferred:
   the SELL origin-picker help. One decision deferred, not invented: the held order stores NO tick —
   §2/§4 pin its shape with no field for one — flagged rather than adding a field that would move the
   snapshot/persist shape.*

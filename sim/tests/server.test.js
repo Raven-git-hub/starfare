@@ -405,6 +405,7 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the SELL & 
   // The old per-system SELL basket is RETIRED (§6) — its table and its guild-wide-qty markup are gone.
   assert.ok(!/id="tw-sysalloc"/.test(html), 'the per-system SELL allocation table is retired');
   assert.ok(!/allocations: allocations/.test(html), 'the client no longer sends the legacy multi-system SELL');
+  assert.ok(!/\bcart:/.test(html), 'the client no longer sends the legacy inline-cart BUY (retired, §8)');
 
   // THE TWO HERO ORDER BUTTONS on the Syndicate Exchange hero (.tw-thero), badged from the snapshot's
   // buyOrder/sellOrder and opening the finalise popup for that side.

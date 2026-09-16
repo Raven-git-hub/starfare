@@ -1,23 +1,26 @@
 'use strict';
 
-// sell.test.js — the `sellToSyndicate` action (design.md §5, "SELL GOES LIVE",
-// 29-08-26): a guild sells stockpile goods to the Syndicate at the posted price,
-// choosing how much comes out of EACH system that holds them.
+// sell.test.js — the `sellToSyndicate` finalise (design.md §5, "SELL GOES LIVE";
+// docs/syndicate-orders.md §5): a guild builds a held SELL order line by line, then finalises it
+// from ONE origin. The Syndicate settles it at the posted price, immediately, with no shipment.
+//
+// The retired multi-system `allocations` intake (one good spread across many systems) went away
+// with the client slice (§8); a sale is now the held single-origin order. What that changed for
+// this file: proceeds round PER LINE (§5, round(qty × price) per good), the origin holds every
+// line's stock, and there is no per-allocation composition to order or duplicate. The
+// multi-system-only coverage (per-system rounding, cross-system split-invariance, malformed /
+// duplicate allocations) is dropped as a retired mechanic; everything else is migrated.
 //
 // The tripwires, one per ruling:
-//   - the sale is PLAYER-ALLOCATED: exactly the named systems drain, by exactly the
-//     quantities named, and a system not named is untouched (no auto-spill, no
-//     largest-pile-first — that idea is explicitly rejected in §5);
-//   - the credits are `round(totalQty × price)`, ROUNDED ONCE on the total (#43) —
-//     the same arithmetic `commitmentSale` uses, and provably not per-system;
-//   - the ledger funds it, so invariant 2 holds exactly;
-//   - THE SEAM: this is the first action to mutate a stockpile between ticks, so it
-//     must refresh the galactic-supply cache or the consistency invariant trips the
-//     moment `POST /action` asserts — asserted explicitly, before any tick;
-//   - no reserve guard: a whole pile, or every pile, may be sold;
+//   - the order drains exactly its lines from the origin, and nothing else;
+//   - proceeds are `round(qty × price)` PER LINE (§5), funded by the ledger, so invariant 2 holds;
+//   - THE SEAM: this is the first action to mutate a stockpile between ticks, so it must refresh
+//     the galactic-supply cache or the consistency invariant trips the moment `POST /action`
+//     asserts — asserted explicitly, before any tick;
+//   - no reserve guard: a whole pile may be sold;
 //   - fuel is never sold, and neither is anything the Syndicate posts no price for;
 //   - market impact falls out of level-based pricing: the drained hoard prices lower;
-//   - determinism (invariant 9), and the no-op proof that the action introduces no
+//   - single-origin determinism (invariant 9), and the no-op proof that the finalise introduces no
 //     serialized field — which is why every committed golden hash is untouched.
 
 const { test } = require('node:test');
@@ -33,13 +36,16 @@ const { postedPrice, leadingValue, PUBLISH_LAG, PRICED_GOODS } = require('../pri
 const { FUEL_GOOD } = require('../resources.js');
 const { baselineOutputFor } = require('../baseline.js');
 const {
-  createSellToSyndicateAction, validateAction, applyAction, intake,
+  createAddOrderLineAction, createSellToSyndicateAction, validateAction, applyAction, intake,
 } = require('../actions.js');
 
-const A = 'sysA';
-const B = 'sysB';
-const C = 'sysC';
-const GOOD = 'titanium';
+// One origin, many goods — the held single-origin order (§5). The synthetic systems carry no seed
+// coordinates, so `routeFuelCost` reads 0 burn from them (as the pre-retirement sell tests relied
+// on), which keeps the fuel invariant balanced with an empty hoard; the fuel burn itself is proved
+// against real waystation geometry in sell-fuel-burn.test.js.
+const ORIGIN = 'sysA';
+const GOOD = 'titanium';        // T1, volume 1
+const GOOD2 = 'battery_cells';  // T2, volume 100
 
 // Seatless synthetic ventures, exactly as the other engine tests build them, so the
 // occupancy invariant has no siteId to resolve against the seed.
@@ -47,13 +53,11 @@ const mine = (id, systemId, good, rate) => ({
   id, ownerGuildId: 'g1', type: 'mining', systemId, resourceType: good, productionRate: rate,
 });
 
-// A guild holding `good` in three systems, with the ledger funding its credits so
-// invariant 2 starts balanced (expectedCreditTotal is derived by createState).
-function sellState({ stock = { [A]: 900, [B]: 500, [C]: 40 }, credits = 1000, ventures = [] } = {}) {
-  const stockpiles = {};
-  for (const [systemId, qty] of Object.entries(stock)) stockpiles[systemId] = { [GOOD]: qty };
+// A guild holding the given goods at ORIGIN, with the ledger funding its credits so invariant 2
+// starts balanced (expectedCreditTotal is derived by createState).
+function sellState({ stock = { [GOOD]: 900, [GOOD2]: 500 }, credits = 1000, ventures = [] } = {}) {
   return createState({
-    guilds: [{ id: 'g1', credits, fuelHoard: 0, ventures, stockpiles }],
+    guilds: [{ id: 'g1', credits, fuelHoard: 0, ventures, stockpiles: { [ORIGIN]: { ...stock } } }],
     reserve: { reserveLevel: 0 },
     syndicate: { ledger: -credits },
   });
@@ -67,7 +71,6 @@ function setPosted(state, good, value) {
   return state;
 }
 
-const sell = (guildId, good, allocations) => createSellToSyndicateAction({ guildId, good, allocations });
 const accept = (state, action) => {
   const { valid, reason } = validateAction(state, action);
   assert.equal(valid, true, `expected accepted, got: ${reason}`);
@@ -80,24 +83,34 @@ const reject = (state, action, match) => {
   return reason;
 };
 
-// --- 1. the player-allocated drain, the credits, and the seam -----------------
+const add = (side, good, qty) => createAddOrderLineAction({ guildId: 'g1', side, good, qty });
+// Build a held sell order from a list of { good, qty } lines.
+const buildSell = (state, lines) => {
+  let s = state;
+  for (const { good, qty } of lines) s = accept(s, add('sell', good, qty));
+  return s;
+};
+const sellFrom = (guildId, originSystemId) => createSellToSyndicateAction({ guildId, originSystemId });
 
-test('a two-system sale drains exactly the systems named, pays round(total × price) once, and leaves every invariant green BEFORE any tick', () => {
-  const before = setPosted(sellState(), GOOD, 12);
-  const price = postedPrice(before, GOOD);
-  const nA = 300;
-  const nB = 125;
+// --- 1. the drain, the per-line proceeds, and the seam ------------------------
 
-  const after = accept(before, sell('g1', GOOD, [{ systemId: A, qty: nA }, { systemId: B, qty: nB }]));
+test('a multi-good order drains exactly its lines from the origin, pays Σ round(qty × price) per line, and leaves every invariant green BEFORE any tick', () => {
+  let before = setPosted(setPosted(sellState(), GOOD, 12), GOOD2, 12);
+  const price = 12;
+  const nGood = 300;
+  const nGood2 = 125;
+  before = buildSell(before, [{ good: GOOD, qty: nGood }, { good: GOOD2, qty: nGood2 }]);
+
+  const after = accept(before, sellFrom('g1', ORIGIN));
   const g = after.guilds[0];
 
-  // The drain: exactly the named systems, by exactly the named quantities.
-  assert.equal(getStock(g, A, GOOD), 900 - nA, 'system A dropped by exactly its allocation');
-  assert.equal(getStock(g, B, GOOD), 500 - nB, 'system B dropped by exactly its allocation');
-  assert.equal(getStock(g, C, GOOD), 40, 'the third system is UNTOUCHED — nothing spills');
+  // The drain: exactly the ordered lines, by exactly the ordered quantities.
+  assert.equal(getStock(g, ORIGIN, GOOD), 900 - nGood, 'the raw line dropped by exactly its qty');
+  assert.equal(getStock(g, ORIGIN, GOOD2), 500 - nGood2, 'the processed line dropped by exactly its qty');
+  assert.equal(g.sellOrder, undefined, 'the held order is cleared on success');
 
-  // The credits: rounded ONCE on the total (#43), funded by the ledger.
-  const credited = Math.round((nA + nB) * price);
+  // The proceeds: rounded PER LINE (§5), funded by the ledger.
+  const credited = Math.round(nGood * price) + Math.round(nGood2 * price);
   assert.equal(g.credits, before.guilds[0].credits + credited);
   assert.equal(after.syndicate.ledger, before.syndicate.ledger - credited);
   assert.equal(
@@ -118,7 +131,7 @@ test('a two-system sale drains exactly the systems named, pays round(total × pr
   );
   assert.equal(
     after.galacticSupply.resources[GOOD],
-    before.galacticSupply.resources[GOOD] - (nA + nB),
+    before.galacticSupply.resources[GOOD] - nGood,
     'and the refreshed cache shows the sold goods gone from the galaxy',
   );
 });
@@ -127,8 +140,8 @@ test('the supply cache is what would trip — the same state without the refresh
   // Proves the seam is load-bearing rather than incidental: take the sold state and
   // put the pre-sale cache back, and the invariant the sale would otherwise have
   // tripped fires by name.
-  const before = setPosted(sellState(), GOOD, 12);
-  const after = accept(before, sell('g1', GOOD, [{ systemId: A, qty: 300 }]));
+  const before = buildSell(setPosted(sellState(), GOOD, 12), [{ good: GOOD, qty: 300 }]);
+  const after = accept(before, sellFrom('g1', ORIGIN));
   const stale = structuredClone(after);
   stale.galacticSupply = structuredClone(before.galacticSupply);
 
@@ -140,115 +153,89 @@ test('the supply cache is what would trip — the same state without the refresh
   );
 });
 
-test('the credits are rounded ONCE on the total, not per system', () => {
-  // At ¢10.50 a unit, two one-unit allocations round to 11 each if rounded per
-  // system (22) but to 21 rounded once on the total. #43 says once.
-  const before = setPosted(sellState(), GOOD, 10.5);
-  const after = accept(before, sell('g1', GOOD, [{ systemId: A, qty: 1 }, { systemId: B, qty: 1 }]));
-  const credited = after.guilds[0].credits - before.guilds[0].credits;
-  assert.equal(credited, 21, 'round(2 × 10.5) — one rounding on the total');
-  assert.notEqual(credited, 22, 'NOT round(1 × 10.5) + round(1 × 10.5)');
-});
-
-test('the same total pays the same credits however the player splits it across systems', () => {
-  const before = setPosted(sellState(), GOOD, 10.5);
-  const oneWay = accept(before, sell('g1', GOOD, [{ systemId: A, qty: 7 }]));
-  const another = accept(before, sell('g1', GOOD, [{ systemId: A, qty: 4 }, { systemId: B, qty: 3 }]));
-  assert.equal(
-    oneWay.guilds[0].credits, another.guilds[0].credits,
-    'the split is a supply-chain choice, never a price choice',
+test('proceeds are round(qty × price) PER LINE (§5), not once on the whole order', () => {
+  // At ¢10.50 a unit, two one-unit lines round to 11 each — 22 rounded per line, where
+  // the retired one-good/many-systems path rounded once on the total (21). The held order
+  // is many goods at (potentially) many prices, so each line settles on its own rounding.
+  const before = buildSell(
+    setPosted(setPosted(sellState(), GOOD, 10.5), GOOD2, 10.5),
+    [{ good: GOOD, qty: 1 }, { good: GOOD2, qty: 1 }],
   );
+  const after = accept(before, sellFrom('g1', ORIGIN));
+  const credited = after.guilds[0].credits - before.guilds[0].credits;
+  assert.equal(credited, 22, 'round(1 × 10.5) + round(1 × 10.5) — one rounding per line');
 });
 
 // --- 2. no reserve guard ------------------------------------------------------
 
-test('a system\'s WHOLE pile may be sold, and so may every system\'s (§5: no reserve guard)', () => {
-  const before = setPosted(sellState(), GOOD, 12);
-
-  const whole = accept(before, sell('g1', GOOD, [{ systemId: C, qty: 40 }]));
-  assert.equal(getStock(whole.guilds[0], C, GOOD), 0, 'the pile may be emptied');
-  assert.deepEqual(checkInvariants(whole, whole.tick), []);
-
-  const everything = accept(before, sell('g1', GOOD, [
-    { systemId: A, qty: 900 }, { systemId: B, qty: 500 }, { systemId: C, qty: 40 },
-  ]));
-  assert.equal(guildTotals(everything.guilds[0])[GOOD], 0, 'every pile may be emptied');
-  assert.equal(
-    everything.guilds[0].credits - before.guilds[0].credits,
-    Math.round(1440 * 12),
+test('every pile at the origin may be sold to zero (§5: no reserve guard)', () => {
+  const before = buildSell(
+    setPosted(setPosted(sellState(), GOOD, 12), GOOD2, 12),
+    [{ good: GOOD, qty: 900 }, { good: GOOD2, qty: 500 }],
   );
-  assert.deepEqual(checkInvariants(everything, everything.tick), []);
+  const after = accept(before, sellFrom('g1', ORIGIN));
+  assert.equal(guildTotals(after.guilds[0])[GOOD], 0, 'the raw pile may be emptied');
+  assert.equal(guildTotals(after.guilds[0])[GOOD2], 0, 'and the processed pile');
+  assert.equal(
+    after.guilds[0].credits - before.guilds[0].credits,
+    Math.round(900 * 12) + Math.round(500 * 12),
+  );
+  assert.deepEqual(checkInvariants(after, after.tick), []);
 });
 
 // --- 3. the rejections (normal outcomes, not errors) --------------------------
 
-test('an allocation over that system\'s stock is refused, and the refusal names the system', () => {
-  const state = sellState();
-  reject(state, sell('g1', GOOD, [{ systemId: C, qty: 41 }]), /holds 40 titanium in system "sysC", cannot sell 41/);
-  // ...and it is judged PER SYSTEM: a quantity the guild has galaxy-wide but not in
-  // the system it named is still a refusal — there is no pooling across systems.
-  reject(state, sell('g1', GOOD, [{ systemId: C, qty: 100 }]), /cannot sell 100/);
+test('an order the origin cannot cover reject-wholes, naming the short lines and the shortfall', () => {
+  // The origin holds 40 titanium and none of the processed good; the order asks more of each.
+  let s = setPosted(setPosted(sellState({ stock: { [GOOD]: 40 } }), GOOD, 12), GOOD2, 12);
+  s = buildSell(s, [{ good: GOOD, qty: 41 }, { good: GOOD2, qty: 3 }]);
+  const before = hashState(s);
+  const reason = reject(s, sellFrom('g1', ORIGIN), /does not hold enough stock/);
+  assert.match(reason, /titanium \(need 41, hold 40\)/, 'names the over-ordered line and its shortfall');
+  assert.match(reason, /battery_cells \(need 3, hold 0\)/, 'and a line the origin holds none of');
+  assert.equal(hashState(s), before, 'a refused sell order is left untouched (draft and all)');
 });
 
-test('a system the guild holds none of the good in is refused by name', () => {
+test('fuel can never be added to a sell order, and the refusal says why', () => {
   const state = sellState();
-  reject(state, sell('g1', GOOD, [{ systemId: 'sys_nobody', qty: 1 }]), /holds no titanium in system "sys_nobody"/);
-  // A system the guild DOES operate in, but which holds none of this good.
-  const other = sellState();
-  other.guilds[0].stockpiles[A] = { copper: 10 };
-  reject(other, sell('g1', GOOD, [{ systemId: A, qty: 1 }]), /holds no titanium in system "sysA"/);
-});
-
-test('fuel is never sold on the Exchange, and the refusal says why', () => {
-  const state = sellState();
-  state.guilds[0].stockpiles[A][FUEL_GOOD] = 100;   // not a stockpile good; force the shape anyway
-  reject(state, sell('g1', FUEL_GOOD, [{ systemId: A, qty: 10 }]), /Syndicate-regulated/);
+  reject(state, add('sell', FUEL_GOOD, 10), /Syndicate-regulated/);
 });
 
 test('a good the Syndicate posts no price for is refused', () => {
   const state = sellState();
-  reject(state, sell('g1', 'not_a_good', [{ systemId: A, qty: 1 }]), /is not a good the Syndicate posts a price for/);
-  // 2.1a: a Tier-3 module is now a real priced good, so it is NOT refused for being
-  // unpriced (the old "catalog-only, no sale" case retired when modules joined the
-  // economy). The unpriced-refusal path is still exercised by `not_a_good` above and
-  // the hand-deleted price row below.
+  // An unknown good is refused at build time — it is not in the Exchange's vocabulary.
+  reject(state, add('sell', 'not_a_good', 1), /is not a good the Syndicate posts a price for/);
+  // 2.1a: a Tier-3 module is now a real priced good, so it is a legal order line (the old
+  // "catalog-only, no sale" case retired when modules joined the economy).
   assert.ok(PRICED_GOODS.includes('small_reactor_engine'), 'a module is priced now');
-  // ...and a priced good whose price row was removed by hand is refused rather
-  // than sold for nothing.
-  const priceless = sellState();
+  // ...and a priced good whose price row was removed by hand is refused at finalise rather
+  // than sold for nothing (the order builds while the price exists, then the row is deleted).
+  let priceless = buildSell(sellState({ stock: { [GOOD]: 10 } }), [{ good: GOOD, qty: 1 }]);
   delete priceless.prices[GOOD];
-  reject(priceless, sell('g1', GOOD, [{ systemId: A, qty: 1 }]), /has no posted price to sell at/);
+  reject(priceless, sellFrom('g1', ORIGIN), /has no posted price to sell at/);
 });
 
-test('a non-positive or non-integer qty is refused (§15.2: integer goods)', () => {
+test('a non-positive or non-integer qty cannot be ordered (§15.2: integer goods)', () => {
   const state = sellState();
   for (const qty of [0, -5, 1.5, '10', NaN]) {
-    reject(state, sell('g1', GOOD, [{ systemId: A, qty }]), /must be a positive integer/);
+    reject(state, add('sell', GOOD, qty), /must be a positive integer/);
   }
 });
 
-test('empty, malformed and duplicate allocations are refused', () => {
-  const state = sellState();
-  reject(state, sell('g1', GOOD, []), /must be a non-empty array/);
-  reject(state, { type: 'sellToSyndicate', guildId: 'g1', good: GOOD, allocations: 'all' }, /must be a non-empty array/);
-  reject(state, sell('g1', GOOD, [null]), /must be an object/);
-  reject(state, sell('g1', GOOD, [{ systemId: '', qty: 1 }]), /non-empty systemId/);
-  // A duplicate is refused, never silently summed — two rows for one system is an
-  // ambiguous order, and adding them up would be the engine guessing.
-  reject(
-    state,
-    sell('g1', GOOD, [{ systemId: A, qty: 10 }, { systemId: A, qty: 20 }]),
-    /name system "sysA" twice/,
-  );
+test('finalising an empty (absent) sell order is refused', () => {
+  reject(sellState(), sellFrom('g1', ORIGIN), /has no sell order to finalise/);
 });
 
 test('an unknown guild is refused', () => {
-  reject(sellState(), sell('ghost', GOOD, [{ systemId: A, qty: 1 }]), /no guild with id "ghost"/);
+  reject(sellState(), sellFrom('ghost', ORIGIN), /no guild with id "ghost"/);
 });
 
 test('a rejected sale changes nothing at all', () => {
-  const before = setPosted(sellState(), GOOD, 12);
-  const { state: after, results } = intake(before, [sell('g1', GOOD, [{ systemId: C, qty: 999 }])]);
+  const before = buildSell(
+    setPosted(sellState({ stock: { [GOOD]: 40 } }), GOOD, 12),
+    [{ good: GOOD, qty: 999 }],
+  );
+  const { state: after, results } = intake(before, [sellFrom('g1', ORIGIN)]);
   assert.equal(results[0].accepted, false);
   assert.ok(results[0].reason, 'a rejection carries its reason — a normal outcome, not an error');
   assert.equal(hashState(after), hashState(before), 'state is byte-identical after a refused sale');
@@ -260,7 +247,7 @@ test('selling into your own hoard moves the posted price DOWN — no impact code
   // A real producer, so the good has capacity to be scarce against: with none, the
   // level is undefined and the price rests at base (prices.js), and there would be
   // nothing for a sale to move.
-  const ventures = [mine('m1', A, GOOD, 5)];
+  const ventures = [mine('m1', ORIGIN, GOOD, 5)];
   // The hoard is sized in TICKS OF GALAXY OUTPUT HELD — the unit the level is
   // measured in — off the engine's own droidless baseline, so no number is invented
   // here and the fixture cannot drift from prices.js. Nine ticks' worth is a real
@@ -268,10 +255,10 @@ test('selling into your own hoard moves the posted price DOWN — no impact code
   // branches separate on the very first recompute instead of both pinning to it.
   const capacity = baselineOutputFor(ventures[0]).units;
   const hoard = capacity * 9;
-  const base = sellState({ stock: { [A]: hoard, [B]: 0, [C]: 0 }, ventures });
+  const base = sellState({ stock: { [GOOD]: hoard }, ventures });
 
   const held = tick(base, []);                                   // the hoard sits
-  const sold = tick(accept(base, sell('g1', GOOD, [{ systemId: A, qty: capacity * 8 }])), []);
+  const sold = tick(accept(buildSell(base, [{ good: GOOD, qty: capacity * 8 }]), sellFrom('g1', ORIGIN)), []);
 
   // The LEADING value is what this tick's recompute produced — the immediate signal.
   assert.ok(
@@ -292,30 +279,32 @@ test('selling into your own hoard moves the posted price DOWN — no impact code
 
 // --- 5. determinism (invariant 9) and the no-op proof -------------------------
 
-test('the same sale from the same state is byte-identical, however the allocations are ordered', () => {
-  const before = setPosted(sellState(), GOOD, 12);
-  const forwards = [{ systemId: A, qty: 300 }, { systemId: B, qty: 125 }];
-  const backwards = [{ systemId: B, qty: 125 }, { systemId: A, qty: 300 }];
+test('the same order finalises byte-identical, whichever order its lines were added in', () => {
+  const priced = () => setPosted(setPosted(sellState(), GOOD, 12), GOOD2, 12);
+  const forwards = buildSell(priced(), [{ good: GOOD, qty: 300 }, { good: GOOD2, qty: 125 }]);
+  const backwards = buildSell(priced(), [{ good: GOOD2, qty: 125 }, { good: GOOD, qty: 300 }]);
 
-  const once = accept(before, sell('g1', GOOD, forwards));
-  const twice = accept(before, sell('g1', GOOD, forwards));
+  const once = accept(forwards, sellFrom('g1', ORIGIN));
+  const twice = accept(forwards, sellFrom('g1', ORIGIN));
   assert.equal(hashState(once), hashState(twice), 'twice-run, byte-identical');
   assert.equal(
-    hashState(once), hashState(accept(before, sell('g1', GOOD, backwards))),
-    'the drain walks systems in sorted order, so the caller\'s row order cannot change the bytes',
+    hashState(once), hashState(accept(backwards, sellFrom('g1', ORIGIN))),
+    'addOrderLine keeps lines sorted and the drain walks them sorted, so the add order cannot change the bytes',
   );
 });
 
-test('NO-OP PROOF: the sale introduces no serialized field — which is why every committed golden is untouched', () => {
-  const before = setPosted(sellState(), GOOD, 12);
-  const after = accept(before, sell('g1', GOOD, [{ systemId: A, qty: 300 }]));
+test('NO-OP PROOF: the finalise introduces no serialized field — which is why every committed golden is untouched', () => {
+  const pristine = setPosted(sellState(), GOOD, 12);
+  const built = buildSell(structuredClone(pristine), [{ good: GOOD, qty: 300 }]);
+  const after = accept(built, sellFrom('g1', ORIGIN));
+  assert.equal('sellOrder' in after.guilds[0], false, 'the held order is cleared — omitted again');
   assert.deepEqual(
-    Object.keys(after).sort(), Object.keys(before).sort(),
+    Object.keys(after).sort(), Object.keys(pristine).sort(),
     'no new top-level state key',
   );
   assert.deepEqual(
-    Object.keys(after.guilds[0]).sort(), Object.keys(before.guilds[0]).sort(),
-    'no new guild key — the sale writes no record of itself',
+    Object.keys(after.guilds[0]).sort(), Object.keys(pristine.guilds[0]).sort(),
+    'no new guild key — the finalise writes no record of itself',
   );
   // And a galaxy that never sells is entirely unchanged by this slice: the only
   // paths the action touches are its own.
