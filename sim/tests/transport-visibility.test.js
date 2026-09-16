@@ -28,7 +28,7 @@ const { GUILD_STARTING_FUEL } = require('../fuel.js');
 const { nearestWaystation, arrivalTickFor } = require('../transport.js');
 const { starterHomeAtDistance } = require('./waystation-fixtures.js');
 const {
-  createBuyFromSyndicateAction, validateAction, applyAction,
+  createAddOrderLineAction, createBuyFromSyndicateAction, validateAction, applyAction,
 } = require('../actions.js');
 
 // A starter home a small even distance from its nearest waystation — the same
@@ -64,11 +64,16 @@ function buyState() {
   });
 }
 
-function placeBuy(state) {
-  const action = createBuyFromSyndicateAction({ guildId: 'g1', good: GOOD, qty: 5, destinationSystemId: DEST });
+// The BUY is the held-order finalise (docs/syndicate-orders.md §5): build a one-good buyOrder, then
+// finalise it to DEST. (The inline `cart`/`good` intake was RETIRED with the client slice, §8.)
+function apply(state, action) {
   const { valid, reason } = validateAction(state, action);
-  assert.equal(valid, true, `expected the BUY to be accepted, got: ${reason}`);
+  assert.equal(valid, true, `expected the action to be accepted, got: ${reason}`);
   return applyAction(state, action);
+}
+function placeBuy(state) {
+  const built = apply(state, createAddOrderLineAction({ guildId: 'g1', side: 'buy', good: GOOD, qty: 5 }));
+  return apply(built, createBuyFromSyndicateAction({ guildId: 'g1', destinationSystemId: DEST }));
 }
 
 // The §2.3 contract, recomputed here so the test pins the formula the client

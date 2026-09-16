@@ -44,7 +44,8 @@ const {
 } = require('../price-ring.js');
 const { starterHomeAtDistance } = require('./waystation-fixtures.js');
 const {
-  createSellToSyndicateAction, createBuyFromSyndicateAction, validateAction, applyAction,
+  createAddOrderLineAction, createSellToSyndicateAction, createBuyFromSyndicateAction,
+  validateAction, applyAction,
 } = require('../actions.js');
 
 // A real seed home so the claim-integrity / guild-home invariants have something true to
@@ -86,8 +87,6 @@ function lockState({ credits = 100000, hoard = CAP * 40, fuelHoard = GUILD_START
 }
 
 const ticks = (state, n) => { let s = state; for (let i = 0; i < n; i += 1) s = tick(s, []); return s; };
-const sell = (allocations, issueTick) => createSellToSyndicateAction({ guildId: 'g1', good: GOOD, allocations, issueTick });
-const buy = (qty, issueTick) => createBuyFromSyndicateAction({ guildId: 'g1', good: GOOD, qty, destinationSystemId: DEST, issueTick });
 const accept = (state, action) => {
   const { valid, reason } = validateAction(state, action);
   assert.equal(valid, true, `expected accepted, got: ${reason}`);
@@ -99,6 +98,19 @@ const reject = (state, action, match) => {
   assert.match(reason, match);
   return reason;
 };
+
+// The SELL/BUY are now the held-order finalise (docs/syndicate-orders.md §5): build a one-good order
+// (all trades here are one good, GOOD, at DEST), then finalise it with an optional `issueTick`. The
+// legacy `allocations` SELL and inline `good`/`qty` BUY were RETIRED with the client slice (§8).
+const addSell = (qty) => createAddOrderLineAction({ guildId: 'g1', side: 'sell', good: GOOD, qty });
+const addBuy = (qty) => createAddOrderLineAction({ guildId: 'g1', side: 'buy', good: GOOD, qty });
+const sellFinal = (issueTick) => createSellToSyndicateAction({ guildId: 'g1', originSystemId: DEST, issueTick });
+const buyFinal = (issueTick) => createBuyFromSyndicateAction({ guildId: 'g1', destinationSystemId: DEST, issueTick });
+// Build the one-line order, then accept/reject the finalise (issueTick optional).
+const acceptSell = (state, qty, issueTick) => accept(accept(state, addSell(qty)), sellFinal(issueTick));
+const acceptBuy = (state, qty, issueTick) => accept(accept(state, addBuy(qty)), buyFinal(issueTick));
+const rejectSell = (state, qty, issueTick, match) => reject(accept(state, addSell(qty)), sellFinal(issueTick), match);
+const rejectBuy = (state, qty, issueTick, match) => reject(accept(state, addBuy(qty)), buyFinal(issueTick), match);
 
 // --- 1. the ring itself -------------------------------------------------------
 
@@ -179,16 +191,16 @@ test('NO-OP: a SELL with issueTick omitted prices at the current posted value, e
   const price = postedPrice(s, GOOD);
   const qty = 10;
 
-  const omitted = createSellToSyndicateAction({ guildId: 'g1', good: GOOD, allocations: [{ systemId: DEST, qty }] });
+  const omitted = sellFinal(undefined);
   assert.equal('issueTick' in omitted, false, 'an omitted issueTick leaves the action shape byte-identical');
 
-  const after = accept(s, omitted);
+  const after = acceptSell(s, qty);
   const credited = after.guilds[0].credits - s.guilds[0].credits;
   assert.equal(credited, Math.round(qty * price), 'credited at round(qty × postedPrice) — the pre-slice arithmetic');
 
   // And it is byte-identical to naming the current tick explicitly (age 0), which is the
   // whole no-op claim: omitting == pricing at the current tick.
-  const explicit = accept(s, sell([{ systemId: DEST, qty }], s.tick));
+  const explicit = acceptSell(s, qty, s.tick);
   assert.equal(hashState(after), hashState(explicit), 'omitted ⇒ issueTick = current tick, to the byte');
 });
 
@@ -199,13 +211,13 @@ test('NO-OP: a BUY with issueTick omitted debits round(qty × posted) and burns 
   // 10 units of titanium (volume 1) = 10 cargo space, a light-hold leg (§5.1).
   const { fuelBurn } = routeFuelCost(DEST, qty * volumeOf(GOOD));
 
-  const omitted = createBuyFromSyndicateAction({ guildId: 'g1', good: GOOD, qty, destinationSystemId: DEST });
+  const omitted = buyFinal(undefined);
   assert.equal('issueTick' in omitted, false, 'omitted issueTick, byte-identical action shape');
 
-  const after = accept(s, omitted);
+  const after = acceptBuy(s, qty);
   assert.equal(s.guilds[0].credits - after.guilds[0].credits, Math.round(qty * price), 'cost is round(qty × postedPrice)');
   assert.equal(s.guilds[0].fuelHoard - after.guilds[0].fuelHoard, fuelBurn, 'the route fuel burned is seed geometry, unchanged by the quote-lock');
-  assert.equal(hashState(after), hashState(accept(s, buy(qty, s.tick))), 'omitted ⇒ the current tick, to the byte');
+  assert.equal(hashState(after), hashState(acceptBuy(s, qty, s.tick)), 'omitted ⇒ the current tick, to the byte');
 });
 
 // --- 3. the lock actually locks -----------------------------------------------
@@ -222,7 +234,7 @@ test('a SELL confirmed a few ticks after issue executes at the ISSUE tick\'s pri
   assert.equal(quotedPrice(now, GOOD, T), issuePrice, 'the ring still holds the issue-tick price');
 
   const qty = 10;
-  const after = accept(now, sell([{ systemId: DEST, qty }], T));
+  const after = acceptSell(now, qty, T);
   const credited = after.guilds[0].credits - now.guilds[0].credits;
   assert.equal(credited, Math.round(qty * issuePrice), 'the sale executed at the LOCKED issue price');
   assert.notEqual(credited, Math.round(qty * postedPrice(now, GOOD)), 'and NOT at the current, moved price');
@@ -236,7 +248,7 @@ test('a BUY confirmed a few ticks after issue debits the ISSUE tick\'s price, no
   assert.notEqual(postedPrice(now, GOOD), issuePrice, 'the price moved');
 
   const qty = 10;
-  const after = accept(now, buy(qty, T));
+  const after = acceptBuy(now, qty, T);
   const cost = now.guilds[0].credits - after.guilds[0].credits;
   assert.equal(cost, Math.round(qty * issuePrice), 'the purchase paid the LOCKED issue price');
   assert.notEqual(cost, Math.round(qty * postedPrice(now, GOOD)), 'not the current price');
@@ -251,7 +263,7 @@ test('a quote confirmed a full QUOTE_TTL_TICKS after issue is still honoured (th
   const issuePrice = postedPrice(atIssue, GOOD);
   const now = ticks(atIssue, QUOTE_TTL_TICKS); // exactly TTL ticks later
   assert.equal(now.tick - T, QUOTE_TTL_TICKS, 'confirmed the full TTL after issue');
-  const after = accept(now, sell([{ systemId: DEST, qty: 10 }], T));
+  const after = acceptSell(now, 10, T);
   assert.equal(after.guilds[0].credits - now.guilds[0].credits, Math.round(10 * issuePrice), 'the oldest still-valid age prices at issue');
 });
 
@@ -261,8 +273,8 @@ test('a confirm QUOTE_TTL_TICKS + 1 ticks old is refused as expired (the TTL rul
   const atIssue = ticks(lockState(), 2);
   const T = atIssue.tick;
   const now = ticks(atIssue, QUOTE_TTL_TICKS + 1); // one tick past the window
-  reject(now, sell([{ systemId: DEST, qty: 10 }], T), /has expired — more than 5 ticks old/);
-  reject(now, buy(10, T), /has expired — more than 5 ticks old/);
+  rejectSell(now, 10, T, /has expired — more than 5 ticks old/);
+  rejectBuy(now, 10, T, /has expired — more than 5 ticks old/);
 });
 
 test('a confirm whose cycle has rolled is refused as expired (the boundary rule), even inside the TTL', () => {
@@ -275,16 +287,16 @@ test('a confirm whose cycle has rolled is refused as expired (the boundary rule)
   assert.equal(now.tick, 3);
   assert.equal(now.tick - s.tick, 1, 'only one tick old — the TTL is not the reason');
   assert.notEqual(cycleIndexOf(now, 2), cycleIndexOf(now, 3), 'but the fuel-price cycle rolled');
-  reject(now, sell([{ systemId: DEST, qty: 10 }], 2), /a cycle boundary has passed/);
-  reject(now, buy(10, 2), /a cycle boundary has passed/);
+  rejectSell(now, 10, 2, /a cycle boundary has passed/);
+  rejectBuy(now, 10, 2, /a cycle boundary has passed/);
   // ...and a quote issued AT the boundary tick (same cycle as now) is still fine.
-  assert.doesNotThrow(() => accept(now, sell([{ systemId: DEST, qty: 10 }], 3)));
+  assert.doesNotThrow(() => acceptSell(now, 10, 3));
 });
 
 test('a FUTURE issueTick is refused — it names no posted price', () => {
   const now = ticks(lockState(), 4);
-  reject(now, sell([{ systemId: DEST, qty: 10 }], now.tick + 1), /is in the future/);
-  reject(now, buy(10, now.tick + 3), /is in the future/);
+  rejectSell(now, 10, now.tick + 1, /is in the future/);
+  rejectBuy(now, 10, now.tick + 3, /is in the future/);
 });
 
 test('expiry is reject-whole and blamed LAST — another failing gate is named first', () => {
@@ -292,21 +304,24 @@ test('expiry is reject-whole and blamed LAST — another failing gate is named f
   const expired = 0; // 8 ticks old
 
   // A SELL that also over-draws stock: the STOCK gate is blamed, not the quote.
-  reject(now, sell([{ systemId: DEST, qty: 10 ** 9 }], expired), /cannot sell/);
-  // A SELL that names a system the guild holds none of: that gate first.
-  reject(now, sell([{ systemId: 'sys_nobody', qty: 1 }], expired), /holds no titanium/);
+  rejectSell(now, 10 ** 9, expired, /does not hold enough stock/);
+  // A SELL from an origin the guild holds none of the good in: that gate first, too.
+  const builtNobody = accept(now, addSell(1));
+  reject(builtNobody, createSellToSyndicateAction({ guildId: 'g1', originSystemId: 'sys_nobody', issueTick: expired }),
+    /does not hold enough stock/);
   // A BUY the guild cannot afford AND an expired quote: CREDITS first — a problem
   // refreshing the quote would not fix.
   const broke = ticks(lockState({ credits: 1 }), 8);
-  reject(broke, buy(10 ** 6, 0), /cannot pay/);
+  rejectBuy(broke, 10 ** 6, 0, /cannot pay/);
 
   // Only once every other gate passes is the quote itself the refusal — reject-whole,
   // changing nothing.
-  const before = hashState(now);
-  const r = validateAction(now, sell([{ systemId: DEST, qty: 10 }], expired));
+  const built = accept(now, addSell(10));
+  const before = hashState(built);
+  const r = validateAction(built, sellFinal(expired));
   assert.equal(r.valid, false);
   assert.match(r.reason, /has expired/);
-  assert.equal(hashState(now), before, 'a refused confirm mutates nothing (reject-whole)');
+  assert.equal(hashState(built), before, 'a refused confirm mutates nothing (reject-whole)');
 });
 
 test('checkQuote is the pure gate: a bare integer, the TTL edge, the future, and a non-integer', () => {
@@ -332,12 +347,12 @@ test('invariants 1 (fuel) and 2 (credits) hold across a multi-tick run with lock
   const g0Ledger = s.syndicate.ledger;
 
   s = ticks(s, 2);
-  s = accept(s, sell([{ systemId: DEST, qty: 20 }], T));
+  s = acceptSell(s, 20, T);
   assertInvariants(s, s.tick);
   // Invariant 2 to the credit: what the guild gained the ledger lost.
   assert.equal(s.guilds[0].credits + s.syndicate.ledger, g0Credits + g0Ledger, 'the SELL moved credits, minted none');
 
-  s = accept(s, buy(15, T)); // still within TTL, same cycle
+  s = acceptBuy(s, 15, T); // still within TTL, same cycle
   assertInvariants(s, s.tick);
 
   // Keep ticking, including across a real cycle boundary is not needed here — the point is

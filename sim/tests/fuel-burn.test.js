@@ -35,7 +35,7 @@ const {
 } = require('../fuel.js');
 const { farthestSystem, starterHomeAtDistance } = require('./waystation-fixtures.js');
 const {
-  createBuyFromSyndicateAction, createSellToSyndicateAction,
+  createAddOrderLineAction, createBuyFromSyndicateAction, createSellToSyndicateAction,
   validateAction, applyAction, intake,
 } = require('../actions.js');
 
@@ -81,7 +81,6 @@ function burnState({ credits = 100000, fuelHoard = GUILD_STARTING_FUEL, stockpil
   return s;
 }
 
-const buy = (qty, destinationSystemId) => createBuyFromSyndicateAction({ guildId: 'g1', good: GOOD, qty, destinationSystemId });
 const accept = (state, action) => {
   const { valid, reason } = validateAction(state, action);
   assert.equal(valid, true, `expected accepted, got: ${reason}`);
@@ -92,6 +91,16 @@ const refuse = (state, action) => {
   assert.equal(valid, false, 'expected a refusal');
   return reason;
 };
+
+// The BUY/SELL are the held-order finalise (docs/syndicate-orders.md §5): build a one-good order,
+// then finalise it. The inline `cart`/`good` BUY and multi-system `allocations` SELL were RETIRED
+// with the client slice (§8). These helpers build the order and finalise it in one step.
+const addBuy = (qty) => createAddOrderLineAction({ guildId: 'g1', side: 'buy', good: GOOD, qty });
+const addSell = (qty) => createAddOrderLineAction({ guildId: 'g1', side: 'sell', good: GOOD, qty });
+const buyFinal = (dest) => createBuyFromSyndicateAction({ guildId: 'g1', destinationSystemId: dest });
+const sellFrom = (origin) => createSellToSyndicateAction({ guildId: 'g1', originSystemId: origin });
+const acceptBuy = (state, qty, dest) => accept(accept(state, addBuy(qty)), buyFinal(dest));
+const refuseBuy = (state, qty, dest) => refuse(accept(state, addBuy(qty)), buyFinal(dest));
 
 // Invariant 1 restated by hand, so a failure names the term rather than the rule.
 function assertFuelBalances(state, where) {
@@ -113,7 +122,7 @@ test('the pinned burns are what the engine actually quotes', () => {
 
 test('a BUY burns exactly the quoted fuel, and records it as consumed', () => {
   const s = burnState({ fuelHoard: 500 });
-  const next = accept(s, buy(5, FAR));
+  const next = acceptBuy(s, 5, FAR);
 
   assert.equal(next.guilds[0].fuelHoard, 500 - BURN_FAR, `500 - ${BURN_FAR}`);
   assert.equal(next.audit.totalConsumed, BURN_FAR, 'the burn is recorded, not lost');
@@ -137,8 +146,8 @@ test('the burn is flat WITHIN A TIER — 1 unit and 1000 cost the same fuel (bot
   // of titanium (volume 1) are 1 and 1000 space, both inside the LIGHT hold, so they burn the
   // same — quantity changes the CREDITS and not one drop of the fuel, exactly as before, so
   // long as the load stays in one tier.
-  const one = accept(burnState(), buy(1, FAR));
-  const many = accept(burnState(), buy(1000, FAR));
+  const one = acceptBuy(burnState(), 1, FAR);
+  const many = acceptBuy(burnState(), 1000, FAR);
   assert.equal(one.guilds[0].fuelHoard, many.guilds[0].fuelHoard, 'same burn');
   assert.equal(one.audit.totalConsumed, many.audit.totalConsumed);
   assert.notEqual(one.guilds[0].credits, many.guilds[0].credits, 'but the credits really did differ');
@@ -148,7 +157,7 @@ test('a hoard exactly equal to the burn is enough — and lands at zero', () => 
   // The boundary the gate is written on: `<` refuses, so equality must pass. An
   // off-by-one here would make the last affordable trade in a guild's life illegal.
   const s = burnState({ fuelHoard: BURN_FAR });
-  const next = accept(s, buy(5, FAR));
+  const next = acceptBuy(s, 5, FAR);
 
   assert.equal(next.guilds[0].fuelHoard, 0, 'spent to the last drop');
   assert.equal(next.audit.totalConsumed, BURN_FAR);
@@ -157,22 +166,22 @@ test('a hoard exactly equal to the burn is enough — and lands at zero', () => 
 });
 
 test('one drop short is refused, whole, and changes nothing', () => {
-  const s = burnState({ fuelHoard: BURN_FAR - 1 });
-  const before = hashState(s);
-  const reason = refuse(s, buy(5, FAR));
+  const built = accept(burnState({ fuelHoard: BURN_FAR - 1 }), addBuy(5));
+  const before = hashState(built);
+  const reason = refuse(built, buyFinal(FAR));
 
   // Both numbers in the message, so the player can see the gap without arithmetic.
   assert.match(reason, new RegExp(`insufficient fuel: need ${BURN_FAR}, have ${BURN_FAR - 1}`));
   assert.match(reason, /fuel-supply-and-allocation\.md §8/);
 
-  // REJECT-WHOLE: no partial trade, no shorter flight, no credits taken.
-  assert.equal(hashState(s), before, 'validation is pure — a refusal leaves the state byte-identical');
-  assert.deepEqual(checkInvariants(s, s.tick), []);
+  // REJECT-WHOLE: no partial trade, no shorter flight, no credits taken — the built draft and all.
+  assert.equal(hashState(built), before, 'validation is pure — a refusal leaves the state byte-identical');
+  assert.deepEqual(checkInvariants(built, built.tick), []);
 });
 
 test('an empty hoard refuses too, with the same message shape', () => {
   const s = burnState({ fuelHoard: 0 });
-  assert.match(refuse(s, buy(5, NEAR)), new RegExp(`insufficient fuel: need ${BURN_NEAR}, have 0`));
+  assert.match(refuseBuy(s, 5, NEAR), new RegExp(`insufficient fuel: need ${BURN_NEAR}, have 0`));
   // ...and the guild is not otherwise broke: it is fuel, and only fuel, stopping it.
   assert.equal(s.guilds[0].credits, 100000);
 });
@@ -183,19 +192,19 @@ test('the fuel gate runs LAST — a trade short on credits blames credits, not f
   // A guild short on BOTH. If the fuel gate ran earlier the player would be sent
   // to fix the wrong problem: they would top up fuel and still be refused.
   const s = burnState({ credits: 1, fuelHoard: 0 });
-  const reason = refuse(s, buy(5, FAR));
+  const reason = refuseBuy(s, 5, FAR);
 
   assert.match(reason, /cannot pay/, 'the credits refusal is the one returned');
   assert.doesNotMatch(reason, /insufficient fuel/, 'and fuel is not blamed for it');
 
   // The same trade, with credits fixed, THEN reports the fuel problem — proving the
   // fuel gate is genuinely there and merely later, not skipped.
-  assert.match(refuse(burnState({ credits: 100000, fuelHoard: 0 }), buy(5, FAR)), /insufficient fuel/);
+  assert.match(refuseBuy(burnState({ credits: 100000, fuelHoard: 0 }), 5, FAR), /insufficient fuel/);
 });
 
 test('a system the guild does not hold is refused on territory, never on fuel', () => {
   // The other gate a fuel-first ordering would mask. `sys_0256` is real and unheld.
-  const reason = refuse(burnState({ fuelHoard: 0 }), buy(5, 'sys_0256'));
+  const reason = refuseBuy(burnState({ fuelHoard: 0 }), 5, 'sys_0256');
   assert.match(reason, /does not hold system/);
   assert.doesNotMatch(reason, /insufficient fuel/);
 });
@@ -206,12 +215,16 @@ test('two BUYs in one batch: the second is refused on the first\'s burn', () => 
   // The §15.6 discipline applied to fuel — each action validated against
   // state-as-it-stands INCLUDING everything accepted earlier in the same batch.
   // Fuel for exactly one far trip; the second must not fly on fuel already spent.
+  // Each finalise clears the order, so the batch rebuilds it before the second trade.
   const s = burnState({ fuelHoard: BURN_FAR });
-  const { state: next, results } = intake(s, [buy(5, FAR), buy(5, FAR)]);
+  const { state: next, results } = intake(s, [
+    addBuy(5), buyFinal(FAR),
+    addBuy(5), buyFinal(FAR),
+  ]);
 
-  assert.equal(results[0].accepted, true, 'the first trade flies');
-  assert.equal(results[1].accepted, false, 'the second cannot');
-  assert.match(results[1].reason, new RegExp(`insufficient fuel: need ${BURN_FAR}, have 0`));
+  assert.equal(results[1].accepted, true, 'the first trade flies');
+  assert.equal(results[3].accepted, false, 'the second cannot');
+  assert.match(results[3].reason, new RegExp(`insufficient fuel: need ${BURN_FAR}, have 0`));
 
   assert.equal(next.guilds[0].fuelHoard, 0);
   assert.equal(next.audit.totalConsumed, BURN_FAR, 'EXACTLY ONE deduction, not two and not none');
@@ -227,8 +240,8 @@ test('several BUYs in a row keep every invariant green — the cache is refreshe
   let spent = 0;
   for (let i = 0; i < 5; i += 1) {
     const dest = i % 2 === 0 ? NEAR : FAR;
-    s = accept(s, buy(2, dest));
-    spent += routeFuelCost(dest, 2).fuelBurn; // buy(2, dest): 2 titanium = 2 space, light
+    s = acceptBuy(s, 2, dest);
+    spent += routeFuelCost(dest, 2).fuelBurn; // buy 2 titanium = 2 space, light
 
     assert.equal(s.guilds[0].fuelHoard, 500 - spent, `hoard after buy ${i + 1}`);
     assert.equal(s.audit.totalConsumed, spent, `consumed after buy ${i + 1}`);
@@ -242,30 +255,28 @@ test('several BUYs in a row keep every invariant green — the cache is refreshe
 // --- SELL now burns too (the SELL slice, 03-09-26) --------------------------
 //
 // The Slice-3 scope note that used to sit here — "SELL burns NO fuel, deferred to
-// its own slice" — is retired: that slice has landed. SELL burns the SUMMED route
-// fuel of its basket, mirroring BUY. The full basket/sum/reject-whole coverage
+// its own slice" — is retired: that slice has landed. SELL burns its single-origin
+// route fuel, mirroring BUY (the multi-system `allocations` sum was itself RETIRED
+// with the client slice, §8). The full single-origin fuel/reject-whole coverage
 // lives in sell-fuel-burn.test.js; these two flip the old BUY-scope tripwires to
 // the new truth so this file cannot silently drift back.
 
 test('a SELL from an empty hoard is now REFUSED — fuel bites on the sale too', () => {
   // The exact inverse of the retired "an empty hoard can still sell": a real route
   // now costs real fuel, and a hoard of 0 cannot cover it.
-  const s = burnState({ fuelHoard: 0, stockpiles: { [NEAR]: { [GOOD]: 40 } } });
-  const before = hashState(s);
-  const action = createSellToSyndicateAction({ guildId: 'g1', good: GOOD, allocations: [{ systemId: NEAR, qty: 40 }] });
+  const built = accept(burnState({ fuelHoard: 0, stockpiles: { [NEAR]: { [GOOD]: 40 } } }), addSell(40));
+  const before = hashState(built);
 
-  const { valid, reason } = validateAction(s, action);
+  const { valid, reason } = validateAction(built, sellFrom(NEAR));
   assert.equal(valid, false, 'a sale that cannot pay its burn is refused');
   assert.match(reason, new RegExp(`insufficient fuel: need ${BURN_NEAR}, have 0`));
-  assert.equal(hashState(s), before, 'and the refusal leaves the state byte-identical');
+  assert.equal(hashState(built), before, 'and the refusal leaves the state byte-identical');
 });
 
-test('a SELL with fuel in the hoard now burns the summed route fuel', () => {
+test('a SELL with fuel in the hoard now burns the route fuel', () => {
   // The other half: a real hoard IS touched now, by exactly the route's burn.
   const s = burnState({ fuelHoard: 500, stockpiles: { [NEAR]: { [GOOD]: 10 } } });
-  const next = applyAction(s, createSellToSyndicateAction({
-    guildId: 'g1', good: GOOD, allocations: [{ systemId: NEAR, qty: 10 }],
-  }));
+  const next = accept(accept(s, addSell(10)), sellFrom(NEAR));
   assert.equal(next.guilds[0].fuelHoard, 500 - BURN_NEAR, `500 - ${BURN_NEAR}`);
   assert.equal(next.audit.totalConsumed, BURN_NEAR, 'sunk into the consumed counter');
   assert.ok(next.guilds[0].credits > s.guilds[0].credits, 'and the sale really did happen');
@@ -284,11 +295,11 @@ test('no waystation: the waystation gate refuses first, so the burn is never rea
   // removes the waystation gate cannot quietly let a free flight through.
   assert.deepEqual(routeFuelCost('sys_nope', 5), { fuelBurn: 0 });
 
-  const s = burnState({ fuelHoard: 0 });
-  const reason = refuse(s, buy(5, 'sys_nope'));
+  const built = accept(burnState({ fuelHoard: 0 }), addBuy(5));
+  const reason = refuse(built, buyFinal('sys_nope'));
   assert.match(reason, /does not hold system|no Syndicate waystation/);
   assert.doesNotMatch(reason, /insufficient fuel/, 'a zero burn is never reported as unaffordable');
 
-  assert.equal(s.guilds[0].fuelHoard, 0, 'and nothing moved');
-  assert.equal(s.audit.totalConsumed, 0);
+  assert.equal(built.guilds[0].fuelHoard, 0, 'and nothing moved');
+  assert.equal(built.audit.totalConsumed, 0);
 });
