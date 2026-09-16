@@ -245,3 +245,85 @@ test('pickIdleAssetId: no idle machine of that kind throws rather than deploying
   assert.throws(() => A.pickIdleAssetId(allDeployed, 'g', 'miner'), /holds no idle miner/);
   assert.throws(() => A.pickIdleAssetId(SNAP, 'nobody', 'miner'), /holds no idle miner/);
 });
+
+// --- the operator adjust levers (docs/operator-adjust.md §5) -----------------
+// The CLI surface for the six levers: parseArgs must carry their flags, and
+// adjustActionFor must build the exact action object POST /action validates —
+// authoring no game number, just wiring flags to fields.
+
+test('parseArgs: the adjust levers carry their flags', () => {
+  assert.deepEqual(
+    A.parseArgs(['adjust-credits', '--guild', 'g1', '--delta', '15000000']),
+    { command: 'adjust-credits', flags: { _: [], guild: 'g1', delta: 15000000 } },
+  );
+  // A negative delta is a remove — still an integer.
+  assert.equal(A.parseArgs(['adjust-fuel', '--guild', 'g1', '--delta', '-4000']).flags.delta, -4000);
+  assert.deepEqual(
+    A.parseArgs(['adjust-goods', '--guild', 'g1', '--system', 'sys_1', '--good', 'titanium', '--delta', '900']),
+    { command: 'adjust-goods', flags: { _: [], guild: 'g1', system: 'sys_1', good: 'titanium', delta: 900 } },
+  );
+  assert.deepEqual(
+    A.parseArgs(['remove-asset', '--guild', 'g1', '--asset', 'asset_g1_miner_01', '--close']),
+    { command: 'remove-asset', flags: { _: [], guild: 'g1', asset: 'asset_g1_miner_01', close: true } },
+  );
+  assert.deepEqual(
+    A.parseArgs(['remove-venture', '--guild', 'g1', '--venture', 'v1', '--remove-asset']),
+    { command: 'remove-venture', flags: { _: [], guild: 'g1', venture: 'v1', 'remove-asset': true } },
+  );
+  // --delta refuses a non-integer, like every int flag.
+  assert.throws(() => A.parseArgs(['adjust-credits', '--guild', 'g1', '--delta', '1.5']), /--delta must be an integer/);
+});
+
+test('adjustActionFor: each subcommand builds the exact engine action', () => {
+  assert.deepEqual(
+    A.adjustActionFor('adjust-credits', { guild: 'g1', delta: 15000000 }),
+    { type: 'adjustCredits', guildId: 'g1', delta: 15000000 },
+  );
+  assert.deepEqual(
+    A.adjustActionFor('adjust-fuel', { guild: 'g1', delta: -4000 }),
+    { type: 'adjustFuel', guildId: 'g1', delta: -4000 },
+  );
+  assert.deepEqual(
+    A.adjustActionFor('adjust-goods', { guild: 'g1', system: 'sys_1', good: 'titanium', delta: 900 }),
+    { type: 'adjustGoods', guildId: 'g1', systemId: 'sys_1', good: 'titanium', delta: 900 },
+  );
+  assert.deepEqual(
+    A.adjustActionFor('grant-asset', { guild: 'g1', kind: 'factory', system: 'sys_1' }),
+    { type: 'grantAsset', guildId: 'g1', kind: 'factory', systemId: 'sys_1' },
+  );
+  // remove-asset: --close picks 'close', its absence defaults to 'detach'.
+  assert.deepEqual(
+    A.adjustActionFor('remove-asset', { guild: 'g1', asset: 'asset_g1_miner_01', close: true }),
+    { type: 'removeAsset', guildId: 'g1', assetId: 'asset_g1_miner_01', occupied: 'close' },
+  );
+  assert.deepEqual(
+    A.adjustActionFor('remove-asset', { guild: 'g1', asset: 'asset_g1_miner_01' }),
+    { type: 'removeAsset', guildId: 'g1', assetId: 'asset_g1_miner_01', occupied: 'detach' },
+  );
+  // remove-venture: --remove-asset picks 'remove', its absence defaults to 'keep'.
+  assert.deepEqual(
+    A.adjustActionFor('remove-venture', { guild: 'g1', venture: 'v1', 'remove-asset': true }),
+    { type: 'removeVenture', guildId: 'g1', ventureId: 'v1', asset: 'remove' },
+  );
+  assert.deepEqual(
+    A.adjustActionFor('remove-venture', { guild: 'g1', venture: 'v1' }),
+    { type: 'removeVenture', guildId: 'g1', ventureId: 'v1', asset: 'keep' },
+  );
+});
+
+test('adjustActionFor: a missing required flag throws rather than posting a half action', () => {
+  assert.throws(() => A.adjustActionFor('adjust-credits', { guild: 'g1' }), /--delta is required/);
+  assert.throws(() => A.adjustActionFor('adjust-credits', { delta: 1 }), /--guild is required/);
+  assert.throws(() => A.adjustActionFor('adjust-goods', { guild: 'g1', system: 's', delta: 1 }), /--good is required/);
+  assert.throws(() => A.adjustActionFor('grant-asset', { guild: 'g1', kind: 'miner' }), /--system is required/);
+  assert.throws(() => A.adjustActionFor('remove-asset', { guild: 'g1' }), /--asset is required/);
+  assert.throws(() => A.adjustActionFor('remove-venture', { guild: 'g1' }), /--venture is required/);
+  assert.throws(() => A.adjustActionFor('not-a-lever', { guild: 'g1' }), /is not an adjust subcommand/);
+});
+
+test('ADJUST_COMMANDS lists exactly the six levers', () => {
+  assert.deepEqual(
+    [...A.ADJUST_COMMANDS].sort(),
+    ['adjust-credits', 'adjust-fuel', 'adjust-goods', 'grant-asset', 'remove-asset', 'remove-venture'].sort(),
+  );
+});
