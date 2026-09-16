@@ -18,8 +18,8 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
-| 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,157 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **Next** — nothing of the inter-guild contest is built yet |
+| 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,256 tests, deterministic) |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -242,14 +242,17 @@ boundary so the later hex-map swap doesn't touch it.
 - **2.0 — Two guilds, the fuel contest proven.** Seat a second guild (inert or lightly scripted);
   run the existing mean-line / issuance as an actual multi-guild contest; confirm density-beats-sprawl
   tension is real between two actors. *No new mechanic — the oldest walking-skeleton line, closed.*
-- **2.1 — The asset economy / build yard (keystone).** A build-yard venture: a commission menu + a
-  single-slot build queue (one at a time, no auto-skip when parts arrive out of order), no licence
-  fee / equity / constant output. Builds every asset type from parts (transports, miners, factories,
-  outposts, toll gates, scan arrays, spycraft, droids), each with a build+delivery time. **Buy from
-  the Syndicate** (credit cost derived from parts + delivery ticks). **List assets on the open
-  market to other guilds** — the first guild↔guild trade. *Open: sell-to-Syndicate outright vs
-  lease-only; the Syndicate purchase price formula; do founding grants survive or must you build
-  everything.*
+- **2.1 — The asset economy / build yard (keystone).** 🔶 *Largely built* (see "Built so far").
+  The **dockyard** (build from your own parts, 2.1b) and the **Syndicate purchase** (buy for credits,
+  2.1d) are in end-to-end for the two kinds that have entities — **miner** and **factory**: a
+  commission menu, a single-slot build queue, central build + delivery, a fresh idle asset minted at
+  the destination. The Syndicate purchase-price question is settled (`docs/asset-purchase.md`).
+  **Remaining:** **2.1e — list assets on the open market to other guilds**, the first guild↔guild
+  trade (*precondition: 2.0, a second guild*; open: sell-to-Syndicate outright vs lease-only; do
+  founding grants survive the market era); and the **other Tier-4 output kinds** — ship / outpost /
+  toll gate / scan array / droid (no entities yet; the buy+dockyard machinery is kind-general, so
+  each is mostly its entity + recipe, and each unblocks a downstream slice: toll gates → 2.3, scan
+  arrays/spycraft → 2.5, droids → 2.6, outposts → 2.2).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
