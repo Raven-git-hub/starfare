@@ -329,6 +329,8 @@ destination, a SELL load from one origin. The full model — volumes, holds, why
 below are updated where they set the burn and the gate; the built multi-system SELL / single-good BUY they
 describe stand as the record of what is deployed until the rebuild slice lands.
 
+**The transaction is now placed as a held ORDER (RULED 16-09-26).** The guild assembles a buy/sell order line by line on the trade floor and finalises it here; `buyFromSyndicate` / `sellToSyndicate` read the guild's **held order** (`guild.buyOrder` / `guild.sellOrder`) rather than an inline cart. The order model — entity, actions, finalise, the adjusted popups — is `docs/syndicate-orders.md`.
+
 **⤳ AS-BUILT (shipment rebuild slice 1, ENGINE) — the space-based burn and the reject-whole gate are built.**
 The burn (both directions) is now `ceil(hexDistance × rate[tier])` where the tier is `haulerTierForSpace`
 of the leg's total cargo space (`Σ qty × volumeOf`, §5.1), via `routeFuelCost(systemId, space)`
