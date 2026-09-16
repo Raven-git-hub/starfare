@@ -28,7 +28,7 @@
 const { computeGalacticSupply } = require('./supply.js');
 const {
   REFERENCE_FUEL_PRICE, routeFuelBurnByTier, fuelValue,
-  volumeOf, HAULER_TIERS,
+  volumeOf, HAULER_TIERS, haulerTierForSpace, HEAVY_HOLD,
 } = require('./fuel.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
 const { grantFor, targetReserve, DEUTERIUM_INFLUX_PER_CYCLE } = require('./issuance.js');
@@ -710,6 +710,29 @@ function computeAttention(state) {
 //       // notices (docs/event-log.md), newest-first. Multi-guild; the client filters to its own
 //       // guildId.
 //   }
+// orderSnapshot(order) -> the derived-on-read view of a guild's held buy/sell order
+// (docs/syndicate-orders.md §4), or null when the guild has none (so the caller omits the key,
+// mirroring the omit-when-empty order state). ENGINE-COMPUTED so the client renders and computes no
+// space/tier (§18): each line echoes its `space` (`qty × volumeOf(good)`); `totalUnits`/`totalSpace`
+// are the Σ; `haulerTier` is the smallest hold that fits (null when over cap); `overCap` is true when
+// the total exceeds the heavy hold. Pure telemetry — no serialized byte, no determinism hash, like
+// the `fuelCost` block. The lines are guaranteed priced by checkOrders, so `volumeOf` never throws.
+function orderSnapshot(order) {
+  if (!order || !Array.isArray(order.lines) || order.lines.length === 0) return null;
+  const lines = order.lines.map((l) => ({ good: l.good, qty: l.qty, space: l.qty * volumeOf(l.good) }));
+  const totalUnits = lines.reduce((sum, l) => sum + l.qty, 0);
+  const totalSpace = lines.reduce((sum, l) => sum + l.space, 0);
+  return {
+    lines,
+    totalUnits,
+    totalSpace,
+    // The smallest hold that fits, or null when the order is over the heavy hold (haulerTierForSpace
+    // reads null there) — the split-the-order state the finalise popup renders with confirm disabled.
+    haulerTier: haulerTierForSpace(totalSpace),
+    overCap: totalSpace > HEAVY_HOLD,
+  };
+}
+
 function buildSnapshot(state) {
   const supply = computeGalacticSupply(state);
   const occupancy = computeOccupancy(state);
@@ -1066,6 +1089,15 @@ function buildSnapshot(state) {
         maintenanceCondition: a.maintenanceCondition,
         deployedToVentureId: deployedTo.get(a.id) || null,
       })).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+      // buyOrder / sellOrder: the guild's HELD Syndicate orders, echoed with the engine-computed
+      // per-line `space`, the Σ `totalUnits`/`totalSpace`, the `haulerTier` and the `overCap` flag
+      // (docs/syndicate-orders.md §4) — so the trade-floor gauge and the finalise popup render the
+      // manifest and its cargo-space tier without computing any of it (§18). PRESENT ONLY when the
+      // guild has that order (omit-when-empty, mirroring the order state) — so a guild with no order
+      // carries no key and the snapshot stays byte-identical to pre-slice. Pure derived telemetry:
+      // no serialized byte, no determinism hash.
+      ...(orderSnapshot(g.buyOrder) ? { buyOrder: orderSnapshot(g.buyOrder) } : {}),
+      ...(orderSnapshot(g.sellOrder) ? { sellOrder: orderSnapshot(g.sellOrder) } : {}),
       // What the Syndicate last BOUGHT from this guild under its commitment (Slice 3a) —
       // the credits it paid, the units it took and the posted price it paid them at, per
       // good. `thisTick` is the engine answering "is this the current tick's sale?" so the

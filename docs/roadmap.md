@@ -107,6 +107,33 @@ boundary so the later hex-map swap doesn't touch it.
 
 **Built so far:**
 
+- **The Syndicate order model (Phase 2, ENGINE — `docs/syndicate-orders.md`).** Engine + snapshot
+  only (NO client — the next slice), all backward-compatible so the deployed single-good BUY / multi-
+  system SELL keep working untouched. Each guild now carries a held **`buyOrder`** and **`sellOrder`**
+  (`{ lines: [{good, qty}] }`, `sim/state.js`, omit-when-empty like `assets` — an order-less guild is
+  byte-identical to pre-slice). Three build actions (`sim/actions.js`): **`addOrderLine`** (append or
+  top-up a repeated good, one line per good, kept sorted by good id; creates the order on first add;
+  no capacity/stock gate — a draft may exceed a hold, §3), **`removeOrderLine`** (drops a line, omits
+  the order when it empties, fails loud on a missing line), **`clearOrder`** (idempotent). Both
+  finalises go **dual-mode**: `buyFromSyndicate` with no inline `cart`/`good` reads `guild.buyOrder`,
+  delivers the whole multi-good cart to one destination on one space-tiered leg and clears it;
+  `sellToSyndicate` with an `originSystemId` (no `allocations`) reads `guild.sellOrder`, sells it from
+  that ONE origin on one space-tiered leg (the §5.1 single-origin SELL re-axe), credits Σ proceeds,
+  removes the stock and clears it — immediate settlement, no shipment. Both new paths reject-whole on
+  the aggregate — capacity (> `HEAVY_HOLD`), credits (BUY), fuel hoard (both), destination held (BUY),
+  origin holds each line's stock (SELL, naming short lines), and the §8.1 quote-lock — and leave the
+  draft untouched on refusal; an empty order is refused. **Snapshot** — additive derived-on-read:
+  each guild row gains `buyOrder`/`sellOrder` = `{ lines:[{good,qty,space}], totalUnits, totalSpace,
+  haulerTier, overCap }` (engine-computed, so the client renders no space/tier — §18), present only
+  when the order exists. **Invariant** — `checkOrders` (`sim/invariants.js`): lines sorted, unique,
+  priced-and-not-fuel, positive-int. No serialized byte from the snapshot, no schema bump, goldens
+  byte-identical; `sim/tests/syndicate-orders.test.js` (27 tests), full suite **1,298 green**.
+  *Deferred to later slices: the whole CLIENT (Add-to-Order wiring, the two hero buttons, the adjusted
+  finalise popups + origin-picker help) and RETIRING the legacy inline BUY / multi-system SELL (kept
+  for backward-compat until the client stops sending them). One decision deferred, not invented: the
+  held order stores NO tick — §2/§4 pin its shape with no field for one — flagged rather than adding
+  a field that would move the snapshot/persist shape.*
+
 - **The cargo-space Syndicate hauler + multi-good BUY (Phase 2, ENGINE — shipment rebuild slice 1,
   `docs/transport-model.md` §5.1/§8.0).** Engine + snapshot only (NO client — later slices), all
   backward-compatible so the deployed single-good client keeps working. A shipment's size is now

@@ -54,6 +54,18 @@ function cloneSyndicateBuilds(list) {
   return (Array.isArray(list) ? list : []).map((b) => ({ ...b }));
 }
 
+// cloneOrder(order) -> a deep-enough copy of a guild's HELD buy/sell order (docs/syndicate-orders.md
+// §2), or `null` when the guild has none. An order is `{ lines: [ { good, qty }, ... ] }`; each line
+// is flat scalars, so a fresh line object per row is the whole clone (the cloneShipments discipline
+// for the sibling `assets` list). Returns null for a missing or EMPTY order so the caller keeps the
+// order OMIT-WHEN-EMPTY: an order-less guild carries no key and serializes byte-identical to
+// pre-slice state, exactly as `assets` does. This file assembles; the lines' shape (sorted, unique,
+// priced, positive-int) is judged by `checkOrders` (invariants.js), not re-sorted here.
+function cloneOrder(order) {
+  if (!order || !Array.isArray(order.lines) || order.lines.length === 0) return null;
+  return { lines: order.lines.map((l) => ({ good: l.good, qty: l.qty })) };
+}
+
 // --- Entity constructors -----------------------------------------------
 
 // Guild (OWNED, design.md §15.4). `ventures` and `vehicles` are nested here
@@ -85,6 +97,8 @@ function createGuild({
   modifierHistory = [],
   fuelBurnHistory = [],
   assets = [],
+  buyOrder = null,
+  sellOrder = null,
   ventures = [],
   vehicles = [],
   events = [],
@@ -302,6 +316,20 @@ function createGuild({
     // serializes byte-identically to pre-asset state, which is what keeps the
     // determinism goldens meaningful.
     ...(assets.length ? { assets: assets.map(createAsset) } : {}),
+    // buyOrder / sellOrder: the guild's HELD Syndicate trade orders (docs/syndicate-orders.md §2) —
+    // a buy order (goods to acquire, delivered to one destination) and a sell order (goods to offload,
+    // shipped from one origin), each `{ lines: [ { good, qty }, ... ] }` built up line by line by the
+    // three build actions and read by a finalise. Nested here, a sibling of `assets`, for the same
+    // reason it is: an order-in-progress is game state the engine owns (§2, design.md §18), not a
+    // browser draft, so it lives on the guild and rides persist through `guilds.map(createGuild)`.
+    //
+    // OMITTED when empty, exactly like `assets` above: a guild with no such order — every guild that
+    // has not built one — carries NO key at all and serializes byte-identically to pre-slice state,
+    // which is the determinism no-op guard (invariant 9). A scenario or a restored save that HANDS ONE
+    // IN keeps it, DEEP-copied line by line (via cloneOrder) so a caller's array can never alias into
+    // engine state. NO target (destination/origin) is stored — that is a finalise-time choice (§2).
+    ...(cloneOrder(buyOrder) ? { buyOrder: cloneOrder(buyOrder) } : {}),
+    ...(cloneOrder(sellOrder) ? { sellOrder: cloneOrder(sellOrder) } : {}),
     // events / eventSeq: the append-only event log and its per-guild id counter
     // (sim/events.js; docs/event-log.md). ENGINE-OWNED — written only by the two licence
     // removers (applyLapse / applyVentureClosure) through `recordEvent`, never player-set

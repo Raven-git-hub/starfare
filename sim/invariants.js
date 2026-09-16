@@ -1337,6 +1337,67 @@ function checkBuildQueues(state) {
   return out;
 }
 
+// Syndicate held orders — the structural check on each guild's buy/sell order
+// (state.guild.buyOrder / sellOrder, docs/syndicate-orders.md §2). The per-guild analogue of
+// checkBuildQueues: a present order must be a well-formed line list, and each line legal. The
+// omit-when-empty discipline (§2) means an ABSENT order is the norm and is skipped; a PRESENT one
+// must be non-empty (an empty `{ lines: [] }` should have been omitted). For each order:
+//   - `lines` is an array (the whole order's shape);
+//   - it is non-empty (present ⇒ has lines, the omit-when-empty guard);
+//   - each line's `good` is a good the Syndicate posts a price for (PRICED_GOODS, which excludes
+//     fuel and any catalog-only placeholder) — the priced-and-not-fuel rule (§3);
+//   - each line's `qty` is a positive integer (§15.2);
+//   - no good appears twice (one line per good, §2);
+//   - the lines are sorted ascending by good id, so the serialized order and every derived sum are
+//     deterministic (invariant 9, §2).
+// Fail loud on any of these — a silent violation would let a malformed order serialize, or a
+// finalise sum read a non-integer or an unpriced good (§15.5).
+function checkOrders(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    for (const side of ['buyOrder', 'sellOrder']) {
+      const order = g[side];
+      if (order === undefined) continue; // omit-when-empty: an absent order is the norm
+      const where = `guild:${g.id}.${side}`;
+      if (!order || typeof order !== 'object' || !Array.isArray(order.lines)) {
+        out.push({ rule: 'order-is-a-line-list (syndicate-orders.md §2)', where, detail: { order } });
+        continue;
+      }
+      // A present order must carry lines — an empty one should have been omitted (§2).
+      if (order.lines.length === 0) {
+        out.push({ rule: 'order-omitted-when-empty (syndicate-orders.md §2)', where, detail: {} });
+        continue;
+      }
+      const seen = new Set();
+      let prev = null;
+      order.lines.forEach((line, i) => {
+        const at = `${where}.lines[${i}]`;
+        if (!line || typeof line !== 'object') {
+          out.push({ rule: 'order-line-is-an-object (syndicate-orders.md §2)', where: at, detail: { line } });
+          return;
+        }
+        // priced-and-not-fuel: PRICED_GOODS is exactly the goods with a posted price (fuel excluded).
+        if (typeof line.good !== 'string' || !PRICED_GOODS.includes(line.good)) {
+          out.push({ rule: 'order-line-good-priced-not-fuel (syndicate-orders.md §3)', where: `${at}.good`, detail: { good: line.good } });
+        }
+        if (!Number.isInteger(line.qty) || line.qty <= 0) {
+          out.push({ rule: 'order-line-qty-positive-int (§15.2)', where: `${at}.qty`, detail: { qty: line.qty } });
+        }
+        if (seen.has(line.good)) {
+          out.push({ rule: 'order-line-good-unique (syndicate-orders.md §2)', where: `${at}.good`, detail: { good: line.good } });
+        }
+        seen.add(line.good);
+        // Sorted ascending by good (invariant 9): each good must be strictly greater than the prior.
+        if (prev !== null && !(prev < line.good)) {
+          out.push({ rule: 'order-lines-sorted-by-good (invariant 9, syndicate-orders.md §2)', where: `${at}.good`, detail: { good: line.good, previous: prev } });
+        }
+        prev = line.good;
+      });
+    }
+  }
+  return out;
+}
+
 // Claim integrity — the territory analogue of site occupancy. Every claim in
 // the SHARED territory layer names a seed landmark by (landmarkId, landmarkKind);
 // each must resolve to a real landmark of that exact kind (a citadel-kind claim
@@ -1451,6 +1512,7 @@ function checkInvariants(state, tick) {
     ...checkSiteOccupancy(state),
     ...checkAssetOccupancy(state),
     ...checkBuildQueues(state),
+    ...checkOrders(state),
     ...checkClaimIntegrity(state),
     ...checkNodeLockouts(state),
     ...checkGuildHome(state),

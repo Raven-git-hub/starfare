@@ -38,6 +38,16 @@ as `assets`):
 
 ## 3. The actions (build the order)
 
+> **AS-BUILT (engine slice, Phase 2).** The state (§2) and these three actions are BUILT in
+> `sim/state.js` (`createGuild` threads `buyOrder`/`sellOrder` omit-when-empty via `cloneOrder`,
+> the `assets` discipline) and `sim/actions.js` (`addOrderLine` / `removeOrderLine` / `clearOrder`
+> with their creators, validate and apply). `addOrderLine` tops up a repeated good and keeps lines
+> sorted by good id; `removeOrderLine` omits the order when it empties and fails loud on a missing
+> line; `clearOrder` is idempotent. `checkOrders` (`sim/invariants.js`) is the tripwire — lines
+> sorted, unique, priced-and-not-fuel, positive-int. NO tick is stored on the order: §2/§4 pin its
+> shape as `{ lines: [{ good, qty }] }` (with `space` added only in the snapshot), which has no
+> field for one — see the decision note in the build report; the CLIENT is a later slice (§8).
+
 - **`addOrderLine({ guildId, side, good, qty })`** — `side` ∈ `buy | sell`. Appends the good or tops up its
   existing line. Validates: `good` is a priced good (not fuel, `prices.js` `PRICED_GOODS`); `qty` a positive
   integer. It does **not** gate on capacity or on stock — a draft may be built past a hauler's hold and
@@ -49,6 +59,13 @@ An order may therefore exceed the heavy hold while being built; that is a **show
 (see §4/§5). A guild deleted (torn down) takes its orders with it — no orphan.
 
 ## 4. What the snapshot publishes (engine computes; client renders)
+
+> **AS-BUILT (engine slice, Phase 2).** BUILT in `sim/snapshot.js` (`orderSnapshot`): each guild
+> row gains `buyOrder`/`sellOrder` = `{ lines:[{good,qty,space}], totalUnits, totalSpace, haulerTier,
+> overCap }`, present only when the guild has that order (omit-when-empty). `space` = `qty ×
+> volumeOf(good)`; `haulerTier` = `haulerTierForSpace(totalSpace)` (null when over cap); `overCap`
+> = `totalSpace > HEAVY_HOLD`. Pure derived telemetry — no serialized byte, no determinism hash, no
+> schema-version bump (additive, like `goodVolumes`/`haulerTiers`).
 
 Each guild row publishes its two orders, **echoed with the engine-computed derived fields** so the client
 performs no space/tier arithmetic (§18):
@@ -66,6 +83,19 @@ table) — **no stored byte, no determinism hash** (like the existing `fuelCost`
 already carries. The trade-floor gauge and the finalise popup render these; they compute nothing.
 
 ## 5. Finalise (commit the order)
+
+> **AS-BUILT (engine slice, Phase 2).** BUILT in `sim/actions.js`, DUAL-MODE for backward-compat.
+> `buyFromSyndicate`: an action carrying an inline `cart`/`good` takes the legacy path unchanged
+> (the deployed client); one carrying NEITHER reads `guild.buyOrder.lines`, delivers to
+> `destinationSystemId` on one space-tiered leg, and clears `buyOrder` on success. `sellToSyndicate`:
+> an action carrying `allocations` takes the legacy multi-system path unchanged; one carrying
+> `originSystemId` reads `guild.sellOrder.lines`, sells them from that one origin on ONE space-tiered
+> leg (origin → nearest waystation), credits Σ `round(qty × quotedPrice)` per line, removes the
+> stock, and clears `sellOrder` — immediate settlement, no shipment. Both new paths reject-whole on
+> the aggregate: capacity (total space > `HEAVY_HOLD`), credits (BUY), fuel hoard (both), destination
+> held (BUY), origin holds each line's stock (SELL, naming short lines), and the §8.1 quote-lock. An
+> empty held order is refused; a reject-whole leaves the draft untouched (never reaches apply). The
+> legacy branches are marked TRANSITIONAL — retired with the client slice (§8).
 
 The transaction popup's confirm **finalises the held order** — this is the permanent shape of
 `buyFromSyndicate` / `sellToSyndicate`, replacing PR #89's inline-cart BUY and the multi-system SELL:
@@ -121,3 +151,12 @@ order + the snapshot publish + the SELL re-axe (single origin). The deployed sin
 SELL keep working through the engine slice (backward-compat) and are retired when the client switches. Then
 the **client slice** — the Add-to-Order wiring, the two hero buttons, and the adjusted popups. Both spelled
 out in their build prompts; the mockups land in `docs/mockups/` with the client slice as its visual contract.
+
+> **AS-BUILT (engine slice, Phase 2 — DONE).** The engine slice above is built and green (state,
+> the three build actions, both dual-mode finalises incl. the single-origin SELL re-axe, the
+> snapshot publish, the `checkOrders` tripwire; `sim/tests/syndicate-orders.test.js`, 27 tests;
+> full suite green, goldens byte-identical). STILL REMAINING: (1) the **client slice** — the
+> Add-to-Order wiring, the two "Syndicate Exchange" hero buttons, the adjusted finalise popups, and
+> the origin-picker help (§6/§7), with the mockups; (2) **retiring the legacy paths** — the inline
+> `cart`/`good` BUY and the `allocations` SELL stay for backward-compat and are removed once the
+> client no longer sends them.
