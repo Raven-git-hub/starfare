@@ -107,6 +107,25 @@ boundary so the later hex-map swap doesn't touch it.
 
 **Built so far:**
 
+- **The operator adjust levers (dev/steward tool, ENGINE + CLI — `docs/operator-adjust.md`).** Six
+  operator/dev actions (`sim/actions.js`) that grant or remove a guild's producible state and remove a
+  venture — `adjustCredits` / `adjustFuel` (signed-delta scalars, each doing the conserving
+  counter-move: credits against the Syndicate ledger, fuel against the audit counters), `adjustGoods`
+  (a `(guild, system)` stockpile cell + the `galacticSupply` cache refresh), `grantAsset` (mint one
+  idle `asset_<guild>_<kind>_NN`), `removeAsset` (`detach` nulls the venture's `assetId` / `close`
+  tears it down via the shared `applyVentureClosure`, cause `operator`), and `removeVenture`
+  (`keep` / `remove` the freed asset). Ordinary actions on `POST /action`, journaled + invariant-checked
+  for free — the same species as `setSyndicateCommitment` / `setWindowN`; the operator surface is six
+  `tools/admin.js` subcommands, NOT a client panel or a new endpoint. Additive only: no existing action
+  path changed, so every determinism / persist golden is byte-identical (suite 1,298 → **1,315 green**,
+  plus `tools/` 38 → 42). Proven by `sim/tests/operator-adjust.test.js` (the §15.5 tripwires clean after
+  each lever) + `tools/admin.test.js` (the pure arg→action mapping). *No tick path was touched — the
+  detach-production proof found production already null-safe (the engine never dereferences a venture's
+  `assetId`), so a detached venture survives a tick invariant-clean. Deferred, not invented: making a
+  detached venture actually PRODUCE NOTHING — the engine's production is asset-blind by design (design.md
+  §4, "occupying an asset changes no game number"), so coupling asset-presence to output is a broad new
+  rule on the decision checklist below, not this steward slice's to bolt on.*
+
 - **The Syndicate order trade UI (Phase 2, CLIENT — `docs/syndicate-orders.md` §6).** Client-only
   (`client/game.html`, the `trade-tab-wire` block) — NO `sim/` change, so every determinism/persisted
   golden is byte-identical and the suite is unchanged (**1,298 green**). The trade floor now BUILDS
@@ -426,6 +445,16 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
 ## Decision checklist (open)
 
 **Phase 2 — new, from the design notes (need rulings before their slice becomes a build prompt):**
+
+- **Asset-presence vs. production** — *surfaced 16-09-26 by the operator adjust levers
+  (`docs/operator-adjust.md` §3.5 AS-BUILT).* Production is currently **asset-blind** — a venture
+  produces from its own `productionRate`, and "occupying an asset changes no game number" (design.md
+  §4). So `removeAsset 'detach'`, which the ruling calls "dormant/unpowered," leaves a venture that
+  keeps producing at its rate. Should a venture with no asset (`assetId == null`) produce **nothing**
+  (detach = unpowered), and if so does the maintenance slice's condition→output curve subsume it? This
+  is a real coupling that would move the whole body of asset-less-producing-venture tests; flagged, not
+  guessed. Invariant-safety is unaffected either way (a detached venture is invariant-legal and the
+  tick is null-safe).
 
 - **Build yard:** *Purchase price* — **RULED 14-09-26** (`docs/asset-purchase.md` + `phase-1-tuning.md`):
   `price = max(12,000,000 floor, round(partsCost × 0.8))` `[FIRST-CUT]`; a buy pays credits + fuel up

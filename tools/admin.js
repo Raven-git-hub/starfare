@@ -38,6 +38,16 @@ const FLAG_SPEC = Object.freeze({
   window: 'int',    // seat-demo: short-cycle test galaxy via setWindowN
   'utc-offset': 'number', // new-galaxy: which midnight the cycle rolls on, in HOURS
   json: 'bool',     // snapshot: dump the whole thing
+  // The operator adjust levers (docs/operator-adjust.md §5).
+  guild: 'string',    // which guild the adjust acts on
+  delta: 'int',       // signed integer: a grant (+) or remove (−) for the scalar levers
+  system: 'string',   // adjust-goods / grant-asset: which system's cell / where to mint
+  good: 'string',     // adjust-goods: which stockpile good
+  kind: 'string',     // grant-asset: miner | factory
+  asset: 'string',    // remove-asset: which asset id
+  venture: 'string',  // remove-venture: which venture id
+  close: 'bool',      // remove-asset: tear the venture down (else detach)
+  'remove-asset': 'bool', // remove-venture: delete the freed asset too (else keep it idle)
   help: 'bool',
 });
 
@@ -214,8 +224,71 @@ function pickIdleAssetId(snap, guildId, kind) {
   return idle[0];
 }
 
+// The six operator adjust subcommands (docs/operator-adjust.md §5) and the engine
+// action each posts. One command per action, so the CLI surface mirrors the six levers
+// exactly. The scalar levers take a SIGNED `--delta` (positive grants, negative removes),
+// so `adjust-credits`/`adjust-fuel`/`adjust-goods` each cover both directions.
+const ADJUST_COMMANDS = Object.freeze([
+  'adjust-credits', 'adjust-fuel', 'adjust-goods', 'grant-asset', 'remove-asset', 'remove-venture',
+]);
+
+// requireFlag(flags, name, command) -> the flag's value, or THROWS. A missing required
+// flag must fail the command, never post a half-formed action (the parseArgs discipline).
+function requireFlag(flags, name, command) {
+  const v = flags[name];
+  if (v === undefined) throw new Error(`${command}: --${name} is required`);
+  return v;
+}
+
+// adjustActionFor(command, flags) -> the exact { type, ... } action object POST /action
+// validates for that subcommand. PURE and exported so tools/admin.test.js can assert each
+// command builds the right action without a server — this file authors no game number (a
+// delta is the operator's; the conserving counter-move is the engine's, docs/operator-
+// adjust.md §2). Boolean flags pick the two-valued modes: --close -> occupied 'close'
+// (else 'detach'); --remove-asset -> asset 'remove' (else 'keep').
+function adjustActionFor(command, flags) {
+  switch (command) {
+    case 'adjust-credits':
+      return { type: 'adjustCredits', guildId: requireFlag(flags, 'guild', command), delta: requireFlag(flags, 'delta', command) };
+    case 'adjust-fuel':
+      return { type: 'adjustFuel', guildId: requireFlag(flags, 'guild', command), delta: requireFlag(flags, 'delta', command) };
+    case 'adjust-goods':
+      return {
+        type: 'adjustGoods',
+        guildId: requireFlag(flags, 'guild', command),
+        systemId: requireFlag(flags, 'system', command),
+        good: requireFlag(flags, 'good', command),
+        delta: requireFlag(flags, 'delta', command),
+      };
+    case 'grant-asset':
+      return {
+        type: 'grantAsset',
+        guildId: requireFlag(flags, 'guild', command),
+        kind: requireFlag(flags, 'kind', command),
+        systemId: requireFlag(flags, 'system', command),
+      };
+    case 'remove-asset':
+      return {
+        type: 'removeAsset',
+        guildId: requireFlag(flags, 'guild', command),
+        assetId: requireFlag(flags, 'asset', command),
+        occupied: flags.close ? 'close' : 'detach',
+      };
+    case 'remove-venture':
+      return {
+        type: 'removeVenture',
+        guildId: requireFlag(flags, 'guild', command),
+        ventureId: requireFlag(flags, 'venture', command),
+        asset: flags['remove-asset'] ? 'remove' : 'keep',
+      };
+    default:
+      throw new Error(`adjustActionFor: ${JSON.stringify(command)} is not an adjust subcommand`);
+  }
+}
+
 module.exports = {
   parseArgs, pick, findResourceNodes, pickResourceNode, pickIdleAssetId, judgeVerify, utcOffsetMinutesFromHours,
+  adjustActionFor, ADJUST_COMMANDS,
   EXPECTED_COMMITMENT, EXPECTED_WINDOW_N,
 };
 
@@ -495,6 +568,24 @@ async function cmdVerifyCycle(base, flags) {
   if (!verdict.pass) throw new Error('verify-cycle failed');
 }
 
+// The operator adjust levers (docs/operator-adjust.md §5): build the action from the
+// subcommand's flags (the PURE `adjustActionFor`) and POST it over the shared `act`
+// helper — so a refused adjust throws and exits 1, exactly as the other action commands
+// rely on. Prints the accepted action and the guild's resulting producible state so an
+// operator sees what moved.
+async function cmdAdjust(base, command, flags) {
+  const action = adjustActionFor(command, flags);
+  const snap = await act(base, action); // refused action => throw => exit 1
+  const guild = (snap.guilds || []).find((g) => g.id === action.guildId) || null;
+  row('action', action.type);
+  row('guild', action.guildId);
+  if (guild) {
+    if (guild.credits !== undefined) row('credits', guild.credits);
+    if (guild.fuelHoard !== undefined) row('fuelHoard', guild.fuelHoard);
+    if (Array.isArray(guild.assets)) row('assets', `${guild.assets.length}`);
+  }
+}
+
 const USAGE = `starfare operator CLI — a thin client over the running server's API.
 
   node tools/admin.js <command> [flags]
@@ -511,6 +602,14 @@ Commands
   verify-cycle [--seed N]     the post-redeploy self-check; exit 0 only if every check passes
   tick [n]                    POST /tick, n times (default 1)
 
+Operator adjust levers (docs/operator-adjust.md — dev/steward, exit 1 on a refused action)
+  adjust-credits  --guild ID --delta N     grant (+) / remove (−) credits (ledger counter-move)
+  adjust-fuel     --guild ID --delta N     grant (+) / remove (−) legal fuel hoard
+  adjust-goods    --guild ID --system ID --good G --delta N   a (guild, system) stockpile cell
+  grant-asset     --guild ID --kind miner|factory --system ID   mint one idle asset
+  remove-asset    --guild ID --asset ID [--close]   remove an asset (occupied: detach, or --close)
+  remove-venture  --guild ID --venture ID [--remove-asset]   tear a venture down (keep / remove asset)
+
 Flags
   --base <url>   which server (default $STARFARE_BASE or ${DEFAULT_BASE})
   --seed N       name the galaxy new-galaxy/verify-cycle creates
@@ -520,6 +619,15 @@ Flags
   --utc-offset H new-galaxy: which midnight the galaxy's day rolls on, in HOURS
                  (default 0 = UTC; -12 .. +14; halves allowed, e.g. +5.5). FROZEN
                  at creation — only a new galaxy can carry a different one.
+  --guild ID     adjust levers: which guild the adjust acts on
+  --delta N      adjust-credits/fuel/goods: a SIGNED integer (grant +, remove −)
+  --system ID    adjust-goods / grant-asset: which system's cell / where to mint
+  --good G       adjust-goods: which stockpile good
+  --kind K       grant-asset: miner | factory
+  --asset ID     remove-asset: which asset id
+  --venture ID   remove-venture: which venture id
+  --close        remove-asset: tear the occupying venture down (default: detach it)
+  --remove-asset remove-venture: delete the freed asset too (default: keep it idle)
   --help, -h     this text
 `;
 
@@ -536,6 +644,8 @@ async function main(argv) {
     case 'verify-cycle': await cmdVerifyCycle(base, flags); return;
     case 'tick': await cmdTick(base, flags); return;
     default:
+      // The six operator adjust levers share one thin command (docs/operator-adjust.md §5).
+      if (ADJUST_COMMANDS.includes(command)) { await cmdAdjust(base, command, flags); return; }
       throw new Error(`unknown command ${JSON.stringify(command)} — run \`node tools/admin.js --help\``);
   }
 }

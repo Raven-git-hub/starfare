@@ -1,6 +1,6 @@
 'use strict';
 
-const { createGuild, createVenture } = require('./state.js');
+const { createGuild, createVenture, createAsset } = require('./state.js');
 const { isStarterSystem, getTerranHomeworld, getSite, getSystem } = require('./seed.js');
 const { getRecipe } = require('./recipes.js');
 const {
@@ -29,7 +29,7 @@ const {
 } = require('./fuel.js');
 const {
   STARTER_MINERS, STARTER_FACTORIES, starterAssetSpecs, assetKindForVentureType,
-  deployedAssetIds,
+  deployedAssetIds, isAssetKind, assetId, nextAssetNumber, ASSET_CONDITION_NEW,
 } = require('./assets.js');
 
 // actions.js — action constructors, and the validate-as-they-arrive intake
@@ -374,6 +374,80 @@ function createCancelCommissionAction({ guildId, ventureId, commissionId }) {
   if (ventureId === undefined) throw new Error('createCancelCommissionAction: ventureId is required');
   if (commissionId === undefined) throw new Error('createCancelCommissionAction: commissionId is required');
   return { type: 'cancelCommission', guildId, ventureId, commissionId };
+}
+
+// --- Operator adjust levers (docs/operator-adjust.md) -------------------------
+//
+// Six OPERATOR/DEV actions that GRANT or REMOVE a guild's producible state —
+// credits, fuel, goods, assets — plus remove a venture (the dev/steward testbed
+// tool, §1). They are ordinary engine actions (validate + apply), so they ride
+// `POST /action` and are journaled + invariant-checked for free, the same species
+// as setSyndicateCommitment/setWindowN (§5). The one rule (§2): an adjust never just
+// "writes a field" — each does the CONSERVING COUNTER-MOVE its quantity requires, so
+// the §15.5 tripwires stay whole. The scalar levers take a SIGNED `delta` (positive
+// grants, negative removes) so one action covers both directions. The operator
+// surface is tools/admin.js; the player client never surfaces them.
+
+// adjustCredits: move credits against the Syndicate ledger, exactly as founding does
+// (§3.1) — apply debits `syndicate.ledger` by the same delta it credits the guild, so
+// invariant 2's total is unchanged. A non-zero integer delta.
+function createAdjustCreditsAction({ guildId, delta }) {
+  if (guildId === undefined) throw new Error('createAdjustCreditsAction: guildId is required');
+  if (delta === undefined) throw new Error('createAdjustCreditsAction: delta is required');
+  return { type: 'adjustCredits', guildId, delta };
+}
+
+// adjustFuel: the legal `fuelHoard`, framed as backend production/consumption so it is
+// invisible to the market (§3.2) — a grant raises `audit.totalProduced`, a removal
+// raises `audit.totalConsumed`, so invariant 1 stays closed. Targets the legal hoard
+// only, never contraband `deuteriumFuel`. A non-zero integer delta.
+function createAdjustFuelAction({ guildId, delta }) {
+  if (guildId === undefined) throw new Error('createAdjustFuelAction: guildId is required');
+  if (delta === undefined) throw new Error('createAdjustFuelAction: delta is required');
+  return { type: 'adjustFuel', guildId, delta };
+}
+
+// adjustGoods: a (guild, systemId) stockpile cell (§3.3). Goods have no conservation
+// ledger, so the only bookkeeping is refreshing the `galacticSupply` cache in the same
+// apply (the founding precedent) so the consistency invariant passes. A non-zero
+// integer delta into a real system's cell of a known good.
+function createAdjustGoodsAction({ guildId, systemId, good, delta }) {
+  if (guildId === undefined) throw new Error('createAdjustGoodsAction: guildId is required');
+  if (systemId === undefined) throw new Error('createAdjustGoodsAction: systemId is required');
+  if (good === undefined) throw new Error('createAdjustGoodsAction: good is required');
+  if (delta === undefined) throw new Error('createAdjustGoodsAction: delta is required');
+  return { type: 'adjustGoods', guildId, systemId, good, delta };
+}
+
+// grantAsset: mint one IDLE machine into the guild's inventory (§3.4) — a fresh
+// `asset_<guildId>_<kind>_NN` id (max existing + 1), new condition, attached to no
+// venture. `kind` must be a buildable asset kind; `systemId` a real system. There is
+// no negative form — an asset is removed by id via removeAsset.
+function createGrantAssetAction({ guildId, kind, systemId }) {
+  if (guildId === undefined) throw new Error('createGrantAssetAction: guildId is required');
+  if (kind === undefined) throw new Error('createGrantAssetAction: kind is required');
+  if (systemId === undefined) throw new Error('createGrantAssetAction: systemId is required');
+  return { type: 'grantAsset', guildId, kind, systemId };
+}
+
+// removeAsset: remove the named asset (§3.5). `occupied` decides an occupied asset's
+// venture: `'detach'` (default) nulls the venture's `assetId` and leaves it dormant;
+// `'close'` tears the venture down through the shared closure first. An idle asset is
+// just deleted. Reject only an unknown `assetId`.
+function createRemoveAssetAction({ guildId, assetId, occupied }) {
+  if (guildId === undefined) throw new Error('createRemoveAssetAction: guildId is required');
+  if (assetId === undefined) throw new Error('createRemoveAssetAction: assetId is required');
+  return { type: 'removeAsset', guildId, assetId, ...(occupied === undefined ? {} : { occupied }) };
+}
+
+// removeVenture: tear a venture down through the shared closure, cause `'operator'`
+// (§3.6). `asset` decides its machine: `'keep'` (default) drops it to idle inventory;
+// `'remove'` deletes it too. Reject only an unknown `ventureId`. This removes ventures;
+// it does not create them (establishVenture is the game's path).
+function createRemoveVentureAction({ guildId, ventureId, asset }) {
+  if (guildId === undefined) throw new Error('createRemoveVentureAction: guildId is required');
+  if (ventureId === undefined) throw new Error('createRemoveVentureAction: ventureId is required');
+  return { type: 'removeVenture', guildId, ventureId, ...(asset === undefined ? {} : { asset }) };
 }
 
 // setWindowN: set the single engine-wide accrual window length `state.windowN`. The
@@ -1795,6 +1869,120 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  // --- Operator adjust levers (docs/operator-adjust.md §3) ---------------------
+  // Each reject-wholes on any failure (state untouched, §2); a signed `delta` scalar
+  // is a non-zero integer (a zero adjust is a no-op, refused — §6). The conserving
+  // counter-move lives in apply; validate only proves the move is legal.
+
+  if (action.type === 'adjustCredits') {
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (typeof action.delta !== 'number' || !Number.isInteger(action.delta) || action.delta === 0) {
+      return { valid: false, reason: 'delta must be a non-zero integer (§15.2) — a zero adjust is a refused no-op (§6)' };
+    }
+    // A removal may not drive the guild's credits below zero (§3.1/§6): guild credits
+    // are non-negativity-enforced; only the Syndicate ledger is exempt (and it absorbs
+    // the counter-move, so it may go negative — exactly as founding leaves it).
+    if (guild.credits + action.delta < 0) {
+      return { valid: false, reason: `guild ${guild.id} holds ${guild.credits} credits, cannot remove ${-action.delta} — it would go below zero` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'adjustFuel') {
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (typeof action.delta !== 'number' || !Number.isInteger(action.delta) || action.delta === 0) {
+      return { valid: false, reason: 'delta must be a non-zero integer (§15.2) — a zero adjust is a refused no-op (§6)' };
+    }
+    // Targets the LEGAL hoard only (§3.2), never contraband `deuteriumFuel`. A removal
+    // may not drive it below zero (a store, never a debt); the audit counter-move keeps
+    // invariant 1 closed on either side.
+    if (guild.fuelHoard + action.delta < 0) {
+      return { valid: false, reason: `guild ${guild.id} holds ${guild.fuelHoard} legal fuel, cannot remove ${-action.delta} — it would go below zero` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'adjustGoods') {
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    // Unknown target first (§6): a real system, a known stockpile good. `isStockpileGood`
+    // excludes fuel (`deuterium_fuel` is not a stockpile key), so a fuel adjust is refused
+    // here and belongs on adjustFuel.
+    if (typeof action.systemId !== 'string' || !getSystem(action.systemId)) {
+      return { valid: false, reason: `system ${JSON.stringify(action.systemId)} is not a system on the seed` };
+    }
+    if (typeof action.good !== 'string' || !isStockpileGood(action.good)) {
+      return { valid: false, reason: `${JSON.stringify(action.good)} is not a known stockpile good` };
+    }
+    if (typeof action.delta !== 'number' || !Number.isInteger(action.delta) || action.delta === 0) {
+      return { valid: false, reason: 'delta must be a non-zero integer (§15.2) — a zero adjust is a refused no-op (§6)' };
+    }
+    // The cell may not go below zero (§3.3). getStock is 0 for an absent pool/good.
+    if (getStock(guild, action.systemId, action.good) + action.delta < 0) {
+      return { valid: false, reason: `guild ${guild.id} holds ${getStock(guild, action.systemId, action.good)} ${action.good} in system ${JSON.stringify(action.systemId)}, cannot remove ${-action.delta} — it would go below zero` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'grantAsset') {
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (typeof action.kind !== 'string' || !isAssetKind(action.kind)) {
+      return { valid: false, reason: `${JSON.stringify(action.kind)} is not an asset kind (miner / factory)` };
+    }
+    if (typeof action.systemId !== 'string' || !getSystem(action.systemId)) {
+      return { valid: false, reason: `system ${JSON.stringify(action.systemId)} is not a system on the seed` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'removeAsset') {
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    // `occupied` defaults to 'detach' when omitted; any other value is a caller bug —
+    // reject-whole rather than silently pick a mode (§3.5).
+    if (action.occupied !== undefined && action.occupied !== 'detach' && action.occupied !== 'close') {
+      return { valid: false, reason: `occupied must be "detach" or "close" (default "detach"), got ${JSON.stringify(action.occupied)}` };
+    }
+    // Reject ONLY an unknown asset (§3.5): removal always succeeds otherwise, by keeping
+    // the state consistent (detach nulls the pointer, close removes the venture).
+    const asset = (guild.assets || []).find((a) => a.id === action.assetId);
+    if (!asset) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no asset ${JSON.stringify(action.assetId)}` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'removeVenture') {
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    // `asset` defaults to 'keep' when omitted; any other value is a caller bug (§3.6).
+    if (action.asset !== undefined && action.asset !== 'keep' && action.asset !== 'remove') {
+      return { valid: false, reason: `asset must be "keep" or "remove" (default "keep"), got ${JSON.stringify(action.asset)}` };
+    }
+    // Reject ONLY an unknown venture (§3.6). Scan only THIS guild's ventures — removing a
+    // venture is an act on one you own, exactly as decommissionVenture scopes its lookup.
+    const venture = (guild.ventures || []).find((v) => v.id === action.ventureId);
+    if (!venture) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} has no venture with id ${JSON.stringify(action.ventureId)}` };
+    }
+    return { valid: true };
+  }
+
   if (action.type === 'setWindowN') {
     if (typeof action.windowN !== 'number' || !Number.isInteger(action.windowN) || action.windowN < 1) {
       return { valid: false, reason: 'windowN must be an integer >= 1 (§15.2)' };
@@ -2710,6 +2898,97 @@ function applyAction(state, action) {
     return next;
   }
 
+  // --- Operator adjust levers (docs/operator-adjust.md §3) ---------------------
+  // Each does the CONSERVING COUNTER-MOVE its quantity needs (§2), so `POST /action`'s
+  // post-apply invariant assert stays clean. Validate ran first, so every lookup below
+  // resolves.
+
+  if (action.type === 'adjustCredits') {
+    // §3.1: guild ±delta, ledger ∓delta — the founding move, generalised to a signed
+    // delta. Net zero, so `expectedCreditTotal` is unchanged and invariant 2 holds.
+    const guild = findGuild(next, action.guildId);
+    guild.credits += action.delta;
+    next.syndicate.ledger -= action.delta;
+    return next;
+  }
+
+  if (action.type === 'adjustFuel') {
+    // §3.2: move the LEGAL hoard, recorded as backend production/consumption so invariant
+    // 1 (`Σ held == totalProduced − totalConsumed`) stays closed. A grant is minted (like
+    // founding's fuel-genesis) → `totalProduced`; a removal is consumed → `totalConsumed`.
+    const guild = findGuild(next, action.guildId);
+    guild.fuelHoard += action.delta;
+    if (action.delta > 0) next.audit.totalProduced += action.delta;
+    else next.audit.totalConsumed += -action.delta;
+    // The between-tick seam (the founding/buy precedent): `galacticSupply.fuel.guildHeld`
+    // sums `fuelHoard`, and `POST /action` asserts the consistency invariant with no tick
+    // between — so refresh the cache through the one selector the tick uses.
+    next.galacticSupply = computeGalacticSupply(next);
+    return next;
+  }
+
+  if (action.type === 'adjustGoods') {
+    // §3.3: add `delta` (may be negative) to the (guild, systemId) cell, then refresh the
+    // galactic-supply cache in the SAME apply (the founding precedent) so the
+    // galactic-supply-consistency invariant sees the cache and the recompute agree. Goods
+    // have no conservation ledger, so there is no audit counter-move.
+    const guild = findGuild(next, action.guildId);
+    addStock(guild, action.systemId, action.good, action.delta);
+    next.galacticSupply = computeGalacticSupply(next);
+    return next;
+  }
+
+  if (action.type === 'grantAsset') {
+    // §3.4: mint one IDLE asset — a fresh `asset_<guildId>_<kind>_NN` id (max existing +1
+    // for this guild+kind, via nextAssetNumber), new condition, at the named system. It
+    // attaches to no venture, so occupancy stays clean; no quantity is conserved, so there
+    // is no counter-move.
+    const guild = findGuild(next, action.guildId);
+    if (!Array.isArray(guild.assets)) guild.assets = [];
+    const id = assetId(action.guildId, action.kind, nextAssetNumber(guild, action.kind));
+    guild.assets.push(createAsset({ id, kind: action.kind, systemId: action.systemId, maintenanceCondition: ASSET_CONDITION_NEW }));
+    return next;
+  }
+
+  if (action.type === 'removeAsset') {
+    // §3.5. Idle → just delete it. Occupied → `occupied` decides: 'detach' (default) nulls
+    // the venture's `assetId` and leaves the venture dormant (an asset-less venture is
+    // invariant-legal — checkAssetOccupancy skips `assetId == null`); 'close' tears the
+    // venture down through the shared closure first. Either way the asset is then removed,
+    // and no venture is ever left pointing at a deleted asset (§4 — no dangling reference).
+    const guild = findGuild(next, action.guildId);
+    const occupied = action.occupied === undefined ? 'detach' : action.occupied;
+    const holder = (guild.ventures || []).find((v) => v.assetId === action.assetId);
+    if (holder && occupied === 'close') {
+      // The shared teardown (sim/licence.js), cause 'operator' — removes the venture and
+      // frees its asset to idle WITHOUT deleting it, exactly as decommissionVenture reuses
+      // it; the now-idle asset is deleted just below.
+      applyVentureClosure(next, guild, holder, 'operator', next.tick);
+    } else if (holder) {
+      // 'detach' — null the pointer so the venture survives dormant. DELETE the key (not
+      // set null) to keep the omit-when-null serialization discipline createVenture uses.
+      delete holder.assetId;
+    }
+    guild.assets = (guild.assets || []).filter((a) => a.id !== action.assetId);
+    return next;
+  }
+
+  if (action.type === 'removeVenture') {
+    // §3.6: close the venture through the shared closure (cause 'operator'); `asset`
+    // decides its machine. 'keep' (default) leaves the freed asset idle (closure frees it,
+    // nothing more to do); 'remove' also deletes it — the same end state as removeAsset
+    // 'close', driven from the venture side. Capture the assetId BEFORE the closure splices
+    // the venture out.
+    const guild = findGuild(next, action.guildId);
+    const venture = guild.ventures.find((v) => v.id === action.ventureId);
+    const freedAssetId = venture.assetId;
+    applyVentureClosure(next, guild, venture, 'operator', next.tick);
+    if (action.asset === 'remove' && freedAssetId != null) {
+      guild.assets = (guild.assets || []).filter((a) => a.id !== freedAssetId);
+    }
+    return next;
+  }
+
   if (action.type === 'setWindowN') {
     // Set the single engine-wide window length. Setup-only (validate refused it once
     // tick > 0), so this only ever writes tick-0 state. No guild is resolved — this
@@ -2777,6 +3056,12 @@ module.exports = {
   createAddOrderLineAction,
   createRemoveOrderLineAction,
   createClearOrderAction,
+  createAdjustCreditsAction,
+  createAdjustFuelAction,
+  createAdjustGoodsAction,
+  createGrantAssetAction,
+  createRemoveAssetAction,
+  createRemoveVentureAction,
   validateAction,
   applyAction,
   intake,
