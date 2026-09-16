@@ -899,7 +899,6 @@ select.field{appearance:none; cursor:pointer;}
 /* the Constructed view's status line (engine refusal / commission-placed), under the menu */
 #tw-cn .cn-note{margin:0 10px 10px; font-size:11px; line-height:1.4; letter-spacing:.02em; color:var(--ink3); text-align:center;}
 #tw-cn .cn-note.ok{color:var(--green);}
-#tw-cn .cn-note.bad{color:var(--red);}
 
 /* ===== the GUILD HALL tab — the Standing panel (docs/guild-hall.md §2; look =
    docs/mockups/guild-hall.html). Rendered in the SHELL'S OWN overlay exactly like the
@@ -4860,6 +4859,9 @@ window.__adviserConfirm = function(opts){
   $('reelBody').innerHTML = opts.body || '';
   $('reelDots').style.display='none'; $('reelDots').innerHTML='';
   $('reelCancel').textContent = opts.cancelLabel || 'Cancel';
+  // Single-button (acknowledge) mode: hide the cancel button so only reelNext dismisses. Set
+  // visibility explicitly every call so a normal two-button confirm always resets it.
+  $('reelCancel').style.display = opts.singleButton ? 'none' : '';
   $('reelNext').textContent = opts.confirmLabel || 'Confirm ▸';
   $('reelNext').disabled = false;
   openReel();
@@ -6515,6 +6517,22 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var deliver = cnDeliveryTicks(guild, dest);
     var buildT = q.buildTicks || 0, price = q.price;
     var issueTick = (s && typeof s.tick === 'number') ? s.tick : null;
+    // Affordability pre-check: compare two snapshot values (guild.credits vs the quoted price —
+    // no game number computed, §5). If the guild can't afford it, show a graceful single-button
+    // "cannot afford" popup and return — no buy fired, no note. The engine stays the real gate;
+    // this only spares the player a doomed commission. (Credits only this slice — a non-credits
+    // refusal, e.g. fuel-short, is now silent and reconsidered later.)
+    if(price != null && typeof guild.credits === 'number' && guild.credits < price){
+      if(!window.__adviserConfirm){ return; }
+      window.__adviserConfirm({
+        title: 'Insufficient credits',
+        body: 'We cannot afford a ' + pretty(kind) + ' right now. We need <b>&#162;' + fmt(price) + '</b>.',
+        confirmLabel: 'Close',
+        singleButton: true,
+        onConfirm: function(){}   // closes the reel; nothing happens
+      });
+      return;
+    }
     var destName = (window.__systemName && window.__systemName(dest)) || dest;
     var body = 'Commission a ' + pretty(kind) + ' from the Syndicate for '
       + '<b>&#162;' + (price == null ? '&mdash;' : fmt(price)) + '</b> (paid up front, with the delivery '
@@ -6534,19 +6552,20 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(!player.guildId || !dest || !kind) return;
     var action = { type:'buyAssetFromSyndicate', guildId: player.guildId, assetKind: kind, destinationSystemId: dest };
     if(typeof issueTick === 'number') action.issueTick = issueTick;
-    // The SAME action-post path the goods buy uses; the engine's refusal surfaces as an amber
-    // note (never pre-guessed), and a success refreshes so the new build appears In Progress.
+    // The SAME action-post path the goods buy uses. A refusal is now SILENT (the red note was
+    // retired — the affordability case is caught before this point, and the non-credits refusal
+    // case is deferred); only a success shows the green note and refreshes so the new build
+    // appears In Progress. The re-render on refusal is a harmless consistency paint.
     window.__sendAction(action)
       .then(function(res){
         if(!res || !res.accepted){
-          cnNote(String((res && res.reason) || 'The Syndicate refused the commission.'), 'bad');
           if(T.tier === 4) renderConstructed();
           return;
         }
         cnNote('Commission placed — ' + pretty(kind) + ' is now building.', 'ok');
         if(window.__refreshNow) window.__refreshNow(); else if(T.tier === 4) renderConstructed();
       })
-      .catch(function(err){ cnNote(String((err && err.message) || err), 'bad'); if(T.tier === 4) renderConstructed(); });
+      .catch(function(err){ if(T.tier === 4) renderConstructed(); });
   }
 
   // Delegated once, on the panel — so every re-render keeps working with no rebinding.
