@@ -114,7 +114,37 @@ The transaction popup's confirm **finalises the held order** — this is the per
   the `issueTick`; TTL + cycle-boundary expiry → re-quote). An **empty** order cannot be finalised. On
   reject-whole the draft is **untouched**, so the player trims and retries.
 
-## 6. The trade UI (client slice, mockups pending in `docs/mockups/`)
+## 6. The trade UI (client slice)
+
+> **AS-BUILT (client slice, Phase 2 — DONE).** BUILT in `client/game.html` (the `trade-tab-wire`
+> block), client-only — no `sim/` change, so every determinism/persisted golden is byte-identical
+> and the full suite is unchanged (1298 tests green). What landed:
+> - **Syndicate Trade card:** both panes collapse to one shape — a quantity for the selected good +
+>   an **Add to Sell/Buy Order** button that posts `addOrderLine({ side, good, qty })`. The retired
+>   per-system SELL basket (`tw-sysalloc`, the `Max`/allocation UI) is gone from the card; the card
+>   keeps no local basket and no cost/fuel preview — the order is engine state, rendered from the poll.
+> - **The two hero buttons** on the "Syndicate Exchange" hero (`tw-thero`), **Buy Order** / **Sell
+>   Order**, each badged with the snapshot order's line-count + `totalSpace` (absent ⇒ "empty",
+>   disabled; `overCap` flagged). Clicking opens the finalise popup for that side.
+> - **The finalise popup** (`#tw-tx-overlay`): the two-column **Qty | Resource** fixed-height scroll
+>   manifest read from `order.lines` (per-line `space`, a per-row remove ✕ → `removeOrderLine`); the
+>   finalise-time **target** (BUY *Deliver to* destination / SELL *Ship from* origin) over the held
+>   systems; the hero art + **`TIER · used / hold`** tag driven by `order.haulerTier`; the ledger
+>   (cost/proceeds, treasury, route fuel `fuelCost[target].{fuelBurnByTier,creditCostByTier}[tier]`,
+>   the fuel-hoard bar, and — BUY only — arrival `fuelCost[target].travelTicks`); the **over-capacity**
+>   split-the-order state (confirm disabled); and the §8.1 quote-lock (freeze at open, `issueTick` on
+>   confirm). Confirm posts the held-order finalise — BUY `buyFromSyndicate({ destinationSystemId,
+>   issueTick })`, SELL `sellToSyndicate({ originSystemId, issueTick })` — no `cart`/`good`/`allocations`.
+> - Verified by the served-bytes tripwire (`sim/tests/server.test.js`) and a headless-Chromium
+>   end-to-end (build a two-good buy order → manifest + tier + route fuel + arrival → confirm →
+>   order empties; a one-origin sell; an over-cap build with confirm disabled).
+>
+> STILL REMAINING (unchanged from §8): (1) **retiring the legacy engine paths** — the inline
+> `cart`/`good` BUY and the `allocations` SELL stay for backward-compat; the client no longer sends
+> them, so a later cleanup slice removes them. (2) The **SELL origin-picker helper** (§7) — this
+> slice offers every held system and lets the engine's stock gate reject-whole with the named
+> shortfall; offering only systems that hold every line (or per-line availability) is a later refinement.
+> The client computes no game number (§18): space, tier, fuel, cost and arrival are all read from the snapshot.
 
 - **Syndicate Trade card:** the Sell/Buy toggle's action button becomes **Add to Sell Order** /
   **Add to Buy Order** (calls `addOrderLine` for the selected good + qty). The card's mechanics — pick a

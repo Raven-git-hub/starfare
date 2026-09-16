@@ -389,59 +389,72 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the SELL & 
   assert.match(html, /id="tw-reslist"/);
   assert.match(html, /id="tw-chart"/);
   assert.match(html, /id="tw-inv"/);
-  assert.match(html, /id="tw-sysalloc"/);      // the PER-SYSTEM allocation table
-  assert.match(html, /id="tw-proceeds"/);
-  assert.match(html, /id="tw-sellbtn"/);
   assert.match(html, />Open Market</);
   assert.match(html, />Your Listings</);
 
-  // The sale itself: the ruled action shape, posted through the shell's own /action
-  // path. `allocations` is the load-bearing word — a guild-wide qty would be the
-  // rejected design.
-  assert.match(html, /type:'sellToSyndicate'/);
-  assert.match(html, /allocations: allocations/);
-  // §8.1 quote-lock (CLIENT half): the confirm builds the action and carries the FROZEN issue
-  // tick — never a price (§18) — then posts it. The engine re-derives the price at that tick.
-  assert.match(html, /window\.__sendAction\(sellAction\)/);
-  assert.match(html, /sellAction\.issueTick = TX\.issueTick/,
-    'the SELL confirm must send the frozen issueTick, so the engine prices at the quoted tick');
+  // THE ORDER MODEL, CLIENT HALF (docs/syndicate-orders.md §6). Both panes of the Syndicate Trade
+  // card now BUILD the held order: the exec buttons are Add to Sell/Buy Order and post addOrderLine.
+  // The old "Sell/Buy from Syndicate" exec LABELS on the card are gone (the popup confirm still
+  // carries them, set in JS — asserted below).
+  assert.match(html, /<button class="tw-exec" id="tw-sellbtn" type="button" disabled>Add to Sell Order<\/button>/);
+  assert.match(html, /<button class="tw-exec" id="tw-buybtn" type="button" disabled>Add to Buy Order<\/button>/);
+  assert.match(html, /id="tw-sellqty"/);              // the sell pane's quantity
+  assert.match(html, /id="tw-buyqty"/);               // the buy pane's quantity
+  assert.match(html, /type:'addOrderLine', guildId: player\.guildId, side: side, good: good, qty: qty/,
+    'both Add buttons post addOrderLine for the selected good (§3)');
+  // The old per-system SELL basket is RETIRED (§6) — its table and its guild-wide-qty markup are gone.
+  assert.ok(!/id="tw-sysalloc"/.test(html), 'the per-system SELL allocation table is retired');
+  assert.ok(!/allocations: allocations/.test(html), 'the client no longer sends the legacy multi-system SELL');
 
-  // BUY IS NOW LIVE (the transaction-popup slice): the mode toggle is real (neither button
-  // carries `na` any more), and the finalise popup — one .est-style overlay scoped under
-  // #tw-tx-overlay — is served with both panes' confirm buttons.
+  // THE TWO HERO ORDER BUTTONS on the Syndicate Exchange hero (.tw-thero), badged from the snapshot's
+  // buyOrder/sellOrder and opening the finalise popup for that side.
+  assert.match(html, /class="tw-thero-orders"/);
+  assert.match(html, /id="tw-order-buy"[^>]*data-side="buy"/);
+  assert.match(html, /id="tw-order-sell"[^>]*data-side="sell"/);
+  assert.match(html, />Buy Order</);
+  assert.match(html, />Sell Order</);
+  assert.match(html, /function renderOrderButtons\(\)/);
+  assert.match(html, /side === 'buy' \? g\.buyOrder : g\.sellOrder/,
+    'the hero badges read the guild order rows off the snapshot (§4), never a local basket');
+
+  // The mode toggle is real (neither button carries `na`), and the finalise popup — one .est-style
+  // overlay scoped under #tw-tx-overlay — is served with its single confirm and the manifest.
   assert.match(html, /id="tw-mode-sell"[^>]*data-mode="sell"/);
   assert.match(html, /id="tw-mode-buy"[^>]*data-mode="buy"/);
   assert.ok(!/class="tw-mbtn na"/.test(html), 'Buy is no longer dimmed — the popup slice wires it');
   assert.match(html, /id="tw-tx-overlay"/);           // the shared finalise popup
   assert.match(html, /id="tw-tx-confirm"/);           // its single confirm button
-  assert.match(html, /id="tw-buybtn"/);               // the BUY manifest's exec button
-  assert.match(html, /id="tw-buyqty"/);               // …and its quantity ("the prior window")
+  assert.match(html, /id="tw-tx-herotag"/);           // the TIER · used / hold transport tag
 
-  // FUEL SLICE 3: the SELL panel carries a Fuel row, and it READS the engine's
-  // per-system quote rather than pricing a route itself. `guild.fuelCost` is the
-  // load-bearing string — the browser holds no seed geometry and no burn rate, so
-  // a hardcoded number here would be a game figure invented in the client.
-  assert.match(html, /id="tw-fuelcost"/);
-  assert.match(html, /guild\.fuelCost/);
-  assert.match(html, /q\.fuelBurn \|\| 0/);
-  assert.match(html, /q\.creditCost \|\| 0/);
-  // The short-fuel pre-gate, naming both numbers exactly as the engine's refusal does.
-  assert.match(html, /Not enough fuel — need/);
-  // THE ANTI-RECOMPUTE GUARANTEE, now covering the BUY arrival too: the popup reads
-  // `fuelCost[sysId].creditCost` for money and `.travelTicks` for the arrival, formatting the
-  // latter as a duration. It must carry NEITHER the burn rate, NOR the hex geometry, NOR the
-  // craft speed / arrival helper — those would be game numbers invented in the client.
+  // THE MANIFEST: the popup reads the order's `lines` and renders a two-column Qty | Resource
+  // scroll box (§6), each row its engine-computed per-line `space`.
+  assert.match(html, /function txManifest\(order\)/);
+  assert.match(html, /order\.lines\.map/, 'the manifest is rendered from the order lines');
+  assert.match(html, /class="manifest"/);
+  assert.match(html, /data-txrm/, 'each manifest row offers a remove ✕ (removeOrderLine)');
+  assert.match(html, /order\.haulerTier/, 'the hero art + tag are driven by the order tier, engine-computed');
+  assert.match(html, /order\.overCap/, 'the over-capacity split-the-order state is rendered');
+
+  // THE FINALISE posts the HELD-ORDER shape (§5): BUY carries a destinationSystemId and NO cart/good;
+  // SELL carries an originSystemId and NO allocations/good. The engine reads the guild's own order.
+  assert.match(html, /type:'buyFromSyndicate', guildId: player\.guildId, destinationSystemId: TX\.target/);
+  assert.match(html, /type:'sellToSyndicate', guildId: player\.guildId, originSystemId: TX\.target/);
+  assert.match(html, /window\.__sendAction\(buyAction\)/);
+  assert.match(html, /window\.__sendAction\(sellAction\)/);
+  assert.match(html, /buyAction\.issueTick = TX\.issueTick/,
+    'the BUY confirm sends the frozen issueTick, so the engine prices at the quoted tick');
+  assert.match(html, /sellAction\.issueTick = TX\.issueTick/,
+    'the SELL confirm sends the frozen issueTick, so the engine prices at the quoted tick');
+
+  // §18 — the popup READS route fuel + arrival by the order's tier; it computes none. It reads the
+  // engine's per-tier burn (`fuelBurnByTier`), the per-tier valuation (`creditCostByTier`) and the
+  // travel duration (`.travelTicks`). It must carry NEITHER the burn rate, NOR the hex geometry, NOR
+  // the craft speed / arrival helper — and it picks NO tier itself (the tier is read off the order).
+  assert.match(html, /fuelBurnByTier/, 'the route burn is read per tier from the snapshot');
+  assert.match(html, /creditCostByTier/, 'the route fuel credits are read per tier from the snapshot');
+  assert.match(html, /\.travelTicks/, 'the BUY arrival is read from the snapshot, not recomputed');
   assert.ok(!/SYNDICATE_HAULER_BURN_RATE|hexDistance|nearestWaystation|CRAFT_SPEED|arrivalTickFor/.test(html),
     'the client must never carry the burn rate, the geometry, or the craft speed — it reads fuelCost');
-  assert.match(html, /\.travelTicks/, 'the BUY arrival is read from the snapshot, not recomputed');
-
-  // ...and BUY IS now wired: the confirm popup posts the ruled single-destination action,
-  // carrying the FROZEN issue tick (§8.1) exactly as SELL does.
-  assert.match(html, /window\.__sendAction\(buyAction\)/);
-  assert.match(html, /buyAction\.issueTick = TX\.issueTick/,
-    'the BUY confirm must send the frozen issueTick, so the engine prices at the quoted tick');
-  assert.match(html, /destinationSystemId: TX\.dest/,
-    'BUY is a single order to one destination the popup carries (§6)');
 
   // §8.1 QUOTE-LOCK — the client mirrors the engine's TTL as a served constant, so the popup's
   // courtesy expiry timer and the engine's checkQuote can never silently drift. §18 makes a
@@ -458,7 +471,7 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the SELL & 
   // The popup FREEZES the two prices at open and stops re-pricing them — it reads the frozen
   // figures, not the live feed. (Geometry — burn, travelTicks — stays live, tested above.)
   assert.match(html, /function txFreezeQuote\(\)/);
-  assert.match(html, /price: priceOf\(TX\.good\)/, 'the resource posted price is frozen at open');
+  assert.match(html, /priceByGood\[l\.good\] = p/, 'each order good\'s posted price is frozen at open (§4 is multi-good)');
   assert.match(html, /id="tw-tx-refresh"/, 'the expired state offers a Refresh control');
 
   // THE WIRING SEAM, pinned so it cannot silently move to the console bridge: the tab

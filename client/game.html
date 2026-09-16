@@ -737,6 +737,18 @@ select.field{appearance:none; cursor:pointer;}
 #tp-trade .tw-thero .tbody{position:absolute; z-index:2; top:50%; left:0; transform:translateY(-50%); padding:0 26px; text-align:left;}
 #tp-trade .tw-thero .tname{font-family:var(--tw-serif); font-size:24px; font-weight:600; color:var(--tw-ink); line-height:1.1; text-shadow:0 2px 14px rgba(13,15,20,.9), 0 1px 3px rgba(13,15,20,.95);}
 #tp-trade .tw-thero .tflav{font-size:11px; color:var(--tw-ink2); margin-top:8px; line-height:1.5; max-width:300px;}
+/* The two held-order buttons pinned to the top of the Syndicate Exchange hero (§6). */
+#tp-trade .tw-thero-orders{position:absolute; z-index:2; top:0; left:0; right:0; display:flex; gap:8px; padding:18px 20px;}
+#tp-trade .tw-ordbtn{flex:1; display:flex; flex-direction:column; align-items:flex-start; gap:3px; text-align:left; cursor:pointer;
+  background:rgba(13,15,20,.62); border:1px solid var(--tw-line2); border-radius:9px; padding:10px 12px; backdrop-filter:blur(2px); transition:.12s;}
+#tp-trade .tw-ordbtn:hover{border-color:var(--tw-amber); background:rgba(13,15,20,.8);}
+#tp-trade .tw-ordbtn .l{font-family:var(--tw-mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--tw-ink);}
+#tp-trade .tw-ordbtn .b{font-size:10px; letter-spacing:.04em; color:var(--tw-amber2); font-variant-numeric:tabular-nums;}
+#tp-trade .tw-ordbtn.empty{cursor:default; opacity:.65;}
+#tp-trade .tw-ordbtn.empty .b{color:var(--tw-ink3);}
+#tp-trade .tw-ordbtn.empty:hover{border-color:var(--tw-line2); background:rgba(13,15,20,.62);}
+#tp-trade .tw-ordbtn.over{border-color:var(--tw-down);}
+#tp-trade .tw-ordbtn.over .b{color:var(--tw-down);}
 
 /* the trade centre: 2x2, rows equal height */
 /* The mockup's 2x2 with ONE deviation, recorded in docs/client-wiring.md: the rows
@@ -784,27 +796,15 @@ select.field{appearance:none; cursor:pointer;}
 #tp-trade .tw-sellhead .sp{font-size:15px; color:var(--tw-amber2); font-variant-numeric:tabular-nums;}
 #tp-trade .tw-sellhead .sp .c{font-size:11px; color:var(--tw-amber); margin-right:1px;}
 #tp-trade .tw-sellhead .sp i{font-style:normal; font-size:10px; color:var(--tw-ink3);}
-#tp-trade .tw-sysalloc{display:flex; flex-direction:column; gap:8px; flex:1 1 auto; min-height:76px; max-height:236px; overflow-y:auto;}
-#tp-trade .tw-sysrow{display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:10px;}
+/* The Add-to-Order row: a good's quantity + the Add button. (The retired per-system SELL basket
+   left .tw-selltot / .tw-fuelline / .tw-forline / .smax behind — removed with §6's client slice.) */
+#tp-trade .tw-sysrow{display:grid; grid-template-columns:1fr auto; align-items:center; gap:10px;}
 #tp-trade .tw-sysrow .snm{font-size:13px; color:var(--tw-ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-#tp-trade .tw-sysrow .snm .sh{display:block; font-size:10px; color:var(--tw-ink3); letter-spacing:.04em; margin-top:1px;}
-#tp-trade .tw-sysrow .tw-qtybox{width:104px;}
+#tp-trade .tw-sysrow .tw-qtybox{width:140px;}
 #tp-trade .tw-sysrow .tw-qtybox input{font-size:15px; padding:8px 10px;}
-#tp-trade .tw-sysrow .smax{font-family:var(--tw-mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--tw-ink3); background:var(--tw-panel); border:1px solid var(--tw-line2); border-radius:5px; padding:8px 10px; cursor:pointer; transition:.12s;}
-#tp-trade .tw-sysrow .smax:hover{color:var(--tw-ink); border-color:var(--tw-amber-dim);}
-#tp-trade .tw-selltot{display:flex; justify-content:flex-end; gap:6px; font-size:11px; color:var(--tw-ink3); letter-spacing:.04em;}
-#tp-trade .tw-selltot b{color:var(--tw-ink2); font-variant-numeric:tabular-nums;}
-#tp-trade .tw-fuelline{display:flex; align-items:baseline; justify-content:space-between; margin-top:4px;}
-#tp-trade .tw-fuelline .lbl{font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--tw-ink3);}
-#tp-trade .tw-fuelline .amt{font-size:12px; color:var(--tw-ink2); font-variant-numeric:tabular-nums;}
-#tp-trade .tw-fuelline.short .amt{color:#e06c5a;}
 #tp-trade .tw-qtybox{display:flex; align-items:center; border:1px solid var(--tw-line2); border-radius:7px; background:#0d0f14; overflow:hidden;}
 #tp-trade .tw-qtybox input{flex:1; min-width:0; background:none; border:none; color:var(--tw-ink); font-family:var(--tw-mono); font-size:20px; font-weight:600; padding:11px 14px; outline:none; font-variant-numeric:tabular-nums;}
 #tp-trade .tw-qtybox .u{font-size:11px; color:var(--tw-ink3); padding-right:12px; letter-spacing:.06em;}
-#tp-trade .tw-forline{display:flex; align-items:baseline; justify-content:space-between;}
-#tp-trade .tw-forline .lbl{font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--tw-ink3);}
-#tp-trade .tw-forline .amt{font-size:26px; font-weight:600; color:var(--tw-ink); font-variant-numeric:tabular-nums;}
-#tp-trade .tw-forline .amt .c{color:var(--tw-amber); font-size:17px; margin-right:2px;}
 #tp-trade .tw-exec{width:100%; padding:14px; border:none; border-radius:8px; background:var(--tw-amber); color:#0d0f14;
   font-family:var(--tw-mono); font-weight:600; font-size:15px; letter-spacing:.14em; text-transform:uppercase; cursor:pointer; transition:.12s;}
 #tp-trade .tw-exec:hover{background:var(--tw-amber2);}
@@ -1972,27 +1972,21 @@ select.field{appearance:none; cursor:pointer;}
           </div>
           <div class="tw-syn-body">
             <div class="tw-sellhead"><span class="sg" id="tw-sellgood">&mdash;</span><span class="sp" id="tw-sellprice"></span></div>
-            <!-- SELL manifest: the per-system allocation. Its "Sell to Syndicate" button opens
-                 the finalise popup (#tw-tx-overlay) carrying these rows in as the basket. -->
+            <!-- Both panes collapse to ONE shape (docs/syndicate-orders.md §6): a quantity for the
+                 selected good + an Add button that posts `addOrderLine`. The order is HELD BY THE
+                 ENGINE (§2) and rendered from the snapshot on the hero's badges — the card keeps no
+                 local basket, and the route/destination/fuel/arrival all live in the finalise popup. -->
             <div id="tw-sell-pane">
-              <div class="tw-sysalloc" id="tw-sysalloc"></div>
-              <div class="tw-selltot">Selling <b id="tw-selltot">0</b> u</div>
-              <!-- Fuel cost of the routes this sale would fly (fuel Slice 3). Read
-                   straight off the snapshot's per-system `fuelCost`; the browser does
-                   no distance or burn arithmetic of its own. -->
-              <div class="tw-fuelline" id="tw-fuelline"><span class="lbl">Fuel</span><span class="amt" id="tw-fuelcost">&mdash;</span></div>
-              <div class="tw-forline"><span class="lbl">You receive</span><span class="amt"><span class="c">&#162;</span><span id="tw-proceeds">0</span></span></div>
-              <button class="tw-exec" id="tw-sellbtn" type="button" disabled>Sell to Syndicate</button>
-            </div>
-            <!-- BUY manifest ("the prior window"): the good is the selection above; here the
-                 player fixes only HOW MANY. The route, destination, fuel and arrival are all
-                 chosen/shown in the finalise popup, because they depend on the destination. -->
-            <div id="tw-buy-pane" style="display:none">
-              <div class="tw-sysrow"><span class="snm">Quantity to buy</span>
-                <div class="tw-qtybox"><input type="text" inputmode="numeric" id="tw-buyqty" value="0" aria-label="Quantity to buy"><span class="u">u</span></div>
+              <div class="tw-sysrow"><span class="snm">Quantity to add</span>
+                <div class="tw-qtybox"><input type="text" inputmode="numeric" id="tw-sellqty" value="0" aria-label="Quantity to add to sell order"><span class="u">u</span></div>
               </div>
-              <div class="tw-forline"><span class="lbl">Cost</span><span class="amt"><span class="c">&#162;</span><span id="tw-buycost">0</span></span></div>
-              <button class="tw-exec" id="tw-buybtn" type="button" disabled>Buy from Syndicate</button>
+              <button class="tw-exec" id="tw-sellbtn" type="button" disabled>Add to Sell Order</button>
+            </div>
+            <div id="tw-buy-pane" style="display:none">
+              <div class="tw-sysrow"><span class="snm">Quantity to add</span>
+                <div class="tw-qtybox"><input type="text" inputmode="numeric" id="tw-buyqty" value="0" aria-label="Quantity to add to buy order"><span class="u">u</span></div>
+              </div>
+              <button class="tw-exec" id="tw-buybtn" type="button" disabled>Add to Buy Order</button>
             </div>
             <div class="tw-note" id="tw-note"></div>
           </div>
@@ -2016,6 +2010,17 @@ select.field{appearance:none; cursor:pointer;}
       <aside class="tw-hero tw-thero">
         <div class="art"></div>
         <div class="scrim"></div>
+        <!-- The two HELD-ORDER buttons (docs/syndicate-orders.md §6), badged from the snapshot's
+             `buyOrder`/`sellOrder` line-count + total space (absent ⇒ "empty", disabled). Clicking
+             opens the finalise popup for that side. Filled by renderOrderButtons() each poll. -->
+        <div class="tw-thero-orders">
+          <button class="tw-ordbtn empty" id="tw-order-buy" type="button" data-side="buy" disabled>
+            <span class="l">Buy Order</span><span class="b" id="tw-order-buybadge">empty</span>
+          </button>
+          <button class="tw-ordbtn empty" id="tw-order-sell" type="button" data-side="sell" disabled>
+            <span class="l">Sell Order</span><span class="b" id="tw-order-sellbadge">empty</span>
+          </button>
+        </div>
         <div class="tbody">
           <div class="tname">Syndicate Exchange</div>
           <div class="tflav">One posted value, always good for it. Sold goods leave the moment you place them &mdash; no shipment, no waiting.</div>
@@ -2069,12 +2074,10 @@ select.field{appearance:none; cursor:pointer;}
    #tw-tx-overlay .blk{margin-bottom:24px} #tw-tx-overlay .blk:last-child{margin-bottom:0}
    #tw-tx-overlay .sec-head{display:flex; align-items:center; gap:9px; margin-bottom:12px}
    #tw-tx-overlay .sec-head .t{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2)}
-   #tw-tx-overlay .sec-head .g{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--amber)}
    #tw-tx-overlay .sec-head .aux{margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--ink3); letter-spacing:.04em}
-   /* SELL basket rows */
-   #tw-tx-overlay .row{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 13px 13px; margin-bottom:9px}
-   #tw-tx-overlay .row.base{border-color:var(--line2); background:var(--panel2)}
-   #tw-tx-overlay .rtop{display:flex; align-items:baseline; gap:12px; margin-bottom:11px}
+   /* the target picker's route line (BUY destination / SELL origin) */
+   #tw-tx-overlay .destcard{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px}
+   #tw-tx-overlay .dtop{display:flex; align-items:baseline; gap:12px}
    #tw-tx-overlay .rroute{font-family:var(--mono); font-size:13px; color:var(--ink); letter-spacing:.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
    #tw-tx-overlay .rroute .rarr{color:var(--ink3); margin:0 6px}
    #tw-tx-overlay .rroute .rway{color:var(--amber2)}
@@ -2082,31 +2085,8 @@ select.field{appearance:none; cursor:pointer;}
      background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);
      background-position:calc(100% - 12px) 55%, calc(100% - 8px) 55%; background-size:4px 4px,4px 4px; background-repeat:no-repeat}
    #tw-tx-overlay .rowsel:focus{outline:none; border-color:var(--amber)}
-   #tw-tx-overlay .rfuelcr{margin-left:auto; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); white-space:nowrap; flex:none}
-   #tw-tx-overlay .rfuelcr b{color:var(--red); font-weight:500; font-size:12px; letter-spacing:0}
-   #tw-tx-overlay .rbody{display:flex; align-items:center; gap:14px}
-   #tw-tx-overlay .rctrl{flex:1; display:flex; align-items:center; min-width:0}
-   #tw-tx-overlay .rctrl .basetag{font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink4)}
-   #tw-tx-overlay .rctrl input[type=range]{-webkit-appearance:none; appearance:none; width:100%; height:6px; border-radius:4px; background:var(--void); border:1px solid var(--line); cursor:ew-resize}
-   #tw-tx-overlay .rctrl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:var(--ink); border:2px solid var(--void); box-shadow:0 0 0 1px var(--amber-dim); cursor:ew-resize}
-   #tw-tx-overlay .rctrl input[type=range]::-moz-range-thumb{width:16px; height:16px; border-radius:50%; background:var(--ink); border:2px solid var(--void); box-shadow:0 0 0 1px var(--amber-dim)}
-   #tw-tx-overlay .qbig{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:21px; font-weight:500; color:var(--amber); text-align:right; min-width:120px; padding-right:16px; flex:none}
-   #tw-tx-overlay .qbig .u{font-size:11px; color:var(--ink3); margin-left:5px; letter-spacing:.08em}
-   #tw-tx-overlay .xslot{width:26px; flex:none; display:flex; justify-content:center}
-   #tw-tx-overlay .xslot button{background:none; border:1px solid var(--line); color:var(--ink3); border-radius:6px; width:24px; height:24px; font-size:12px; cursor:pointer}
-   #tw-tx-overlay .xslot button:hover{border-color:var(--red); color:var(--red)}
-   #tw-tx-overlay .addbtn{width:100%; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); background:var(--amber-ghost); border:1px dashed var(--amber-dim); border-radius:9px; padding:11px; cursor:pointer; margin-top:3px}
-   #tw-tx-overlay .addbtn:hover{background:var(--amber-dim); color:var(--void)}
-   #tw-tx-overlay .addbtn:disabled{color:var(--ink4); border-color:var(--line); background:transparent; cursor:not-allowed}
-   /* BUY destination + readouts */
-   #tw-tx-overlay .destcard{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px}
-   #tw-tx-overlay .dtop{display:flex; align-items:baseline; gap:12px}
    #tw-tx-overlay .dmeta{margin-left:auto; font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); white-space:nowrap}
    #tw-tx-overlay .dmeta b{color:var(--red); font-weight:500; font-size:12px; letter-spacing:0}
-   #tw-tx-overlay .readouts{display:flex; gap:48px}
-   #tw-tx-overlay .ro-lbl{font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3); margin-bottom:7px}
-   #tw-tx-overlay .ro-big{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:28px; font-weight:500; color:var(--amber); letter-spacing:.01em; line-height:1}
-   #tw-tx-overlay .ro-big .u{font-size:12px; color:var(--ink3); margin-left:6px; letter-spacing:.08em}
    /* right hero + ledger */
    #tw-tx-overlay .est-side{position:relative; background:#0d0f14; display:flex; flex-direction:column; min-height:520px}
    #tw-tx-overlay .est-side .art{position:absolute; inset:0; background-size:cover; background-position:50% 20%; z-index:0}
@@ -2155,6 +2135,25 @@ select.field{appearance:none; cursor:pointer;}
    #tw-tx-overlay .success .sled .k{color:var(--ink3); text-transform:uppercase; font-size:10px; letter-spacing:.05em}
    #tw-tx-overlay .success .again{margin-top:22px; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); background:var(--amber-ghost); border:1px solid var(--amber-dim); border-radius:9px; padding:11px 22px; cursor:pointer}
    #tw-tx-overlay .tw-empty{font-size:12px; color:var(--ink3); letter-spacing:.02em; padding:6px 2px}
+   /* The held-order MANIFEST (docs/syndicate-orders.md §6): a two-column Qty | Resource list in a
+      FIXED-HEIGHT scroll box — a long order scrolls, the popup never resizes. */
+   #tw-tx-overlay .mhead{display:grid; grid-template-columns:118px 1fr 26px; gap:10px; padding:0 2px 8px; border-bottom:1px solid var(--line); font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3)}
+   #tw-tx-overlay .manifest{max-height:236px; overflow-y:auto; margin-top:4px}
+   #tw-tx-overlay .mrow{display:grid; grid-template-columns:118px 1fr 26px; gap:10px; align-items:center; padding:9px 2px; border-bottom:1px solid rgba(232,223,200,0.06)}
+   #tw-tx-overlay .mrow .mq{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:17px; font-weight:500; color:var(--amber)}
+   #tw-tx-overlay .mrow .mq .u{font-size:10px; color:var(--ink3); margin-left:4px; letter-spacing:.08em}
+   #tw-tx-overlay .mrow .mr{font-size:13px; color:var(--ink)}
+   #tw-tx-overlay .mrow .mr .msp{display:block; font-family:var(--mono); font-size:10px; letter-spacing:.04em; color:var(--ink3); margin-top:2px}
+   #tw-tx-overlay .mrow .mx{display:flex; justify-content:center}
+   #tw-tx-overlay .mrow .mx button{background:none; border:1px solid var(--line); color:var(--ink3); border-radius:6px; width:24px; height:24px; font-size:11px; cursor:pointer}
+   #tw-tx-overlay .mrow .mx button:hover{border-color:var(--red); color:var(--red)}
+   /* The over-capacity banner (§7) — the split-the-order state, confirm disabled. */
+   #tw-tx-overlay .overcap{margin-bottom:16px; font-family:var(--mono); font-size:11px; line-height:1.5; letter-spacing:.02em; color:var(--orange); border:1px solid var(--orange); background:rgba(216,132,46,.08); border-radius:9px; padding:11px 13px}
+   /* The transport tag on the hero side — TIER · used / hold, by the order's engine-computed tier. */
+   #tw-tx-overlay .herotag{align-self:flex-start; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink2); background:rgba(13,15,20,.55); border:1px solid var(--line2); border-radius:7px; padding:8px 11px}
+   #tw-tx-overlay .herotag b{color:var(--amber2); font-weight:600}
+   #tw-tx-overlay .herotag.over{color:var(--orange); border-color:var(--orange)}
+   #tw-tx-overlay .herotag:empty{display:none}
    @media(max-width:760px){ #tw-tx-overlay .est-body{grid-template-columns:1fr} #tw-tx-overlay .est-main{border-right:none; border-bottom:1px solid var(--line)} }
    </style>
 
@@ -2174,6 +2173,9 @@ select.field{appearance:none; cursor:pointer;}
              <div class="art" id="tw-tx-art"></div>
              <div class="scrim"></div>
              <div class="inner">
+               <!-- The transport tag by the order's engine-computed cargo-space tier (TIER · used /
+                    hold). Sits at the top; the ledger's margin-top:auto sinks it to the bottom. -->
+               <div class="herotag" id="tw-tx-herotag"></div>
                <div class="ledger" id="tw-tx-ledger"></div>
                <!-- §8.1 quote-lock: shown only once the frozen quote has expired (older than
                     QUOTE_TTL_TICKS ticks, or a fuel-price cycle boundary crossed since it was
@@ -5849,11 +5851,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     tier:1,          // which tier tab is showing
     good:null,       // the selected good — HELD across polls, never reset by a refresh
     scale:null,      // which price-history resolution the chart is drawing
-    alloc:{},        // systemId -> the qty the player has typed, for the selected good
     cnOpen:null,     // tier-4 Constructed view: which commission-menu asset kind is expanded
     cnNote:'', cnNoteKind:'', cnNoteTimer:null,   // the Constructed view's own status line (held in
                                                   // state so it survives the ~1s poll re-render)
-    navSig:'', rowSig:'',
+    navSig:'',
     noteTimer:null
   };
 
@@ -5905,20 +5906,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return (typeof p === 'number') ? p : null;
   }
   function totalsOf(guild){ return (guild && guild.stockpiles) || {}; }
-  function perSystem(guild){ return (guild && guild.stockpilesBySystem) || {}; }
-  function heldIn(guild, systemId, good){
-    var pool = perSystem(guild)[systemId] || {};
-    return pool[good] || 0;
-  }
-  // Which of the guild's systems hold the good at all, in sorted id order so the rows
-  // are stable between polls (and match the order the engine drains them in).
-  function systemsHolding(guild, good){
-    var by = perSystem(guild), out = [];
-    Object.keys(by).sort().forEach(function(sysId){
-      if((by[sysId] || {})[good] > 0) out.push(sysId);
-    });
-    return out;
-  }
+  // Per-system piles fed the retired SELL basket (which system a good sold from); the held ORDER
+  // stores no origin — it is picked at finalise (§2) — so the trade card no longer reads them.
   function pretty(key){
     return String(key).split('_').map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' ');
   }
@@ -5943,8 +5932,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(good === T.good) return;
     T.good = good;
     T.tier = tierOf(good);
-    T.alloc = {};                 // a new good is a new sale — the old rows go
-    T.scale = null;               // and the chart re-picks a resolution
+    T.scale = null;               // a new good — the chart re-picks a resolution
     note('');
     render();
   }
@@ -6201,118 +6189,14 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       + '<text x="'+(+ex-6)+'" y="'+(+ey-9)+'" fill="#e3c04a" font-size="10" font-family="monospace" text-anchor="end">NOW</text>';
   }
 
-  /* -- the Syndicate SELL card: the per-system allocation table --------------- */
-  // §5's ruling made visible: one row per system that holds the good, each with its
-  // own quantity. There is NO guild-wide qty box, and nothing drains automatically.
+  /* -- the Syndicate Trade card: the shared head (good + price) --------------- */
+  // The per-system allocation basket is RETIRED (§6): both panes are the qty + Add shape above,
+  // and the head just names the selected good and its posted unit price for both.
   function renderSell(){
-    var guild = meGuild(), good = T.good;
-    var price = good ? priceOf(good) : null;
+    var good = T.good, price = good ? priceOf(good) : null;
     el('tw-sellgood').textContent = good ? pretty(good) : '—';
     el('tw-sellprice').innerHTML = (price == null) ? '' : '<span class="c">&#162;</span>'+money(price)+' <i>/u</i>';
-
-    var systems = (guild && good) ? systemsHolding(guild, good) : [];
-    var sig = good + '|' + systems.join(',');
-    var box = el('tw-sysalloc');
-    if(sig !== T.rowSig){
-      T.rowSig = sig;
-      if(!systems.length){
-        box.innerHTML = '<div class="tw-empty">No system holds '
-          + (good ? pretty(good) : 'this good') + ' &mdash; nothing to sell.</div>';
-      } else {
-        box.innerHTML = systems.map(function(sysId){
-          var held = heldIn(guild, sysId, good);
-          var name = (window.__systemName && window.__systemName(sysId)) || sysId;
-          var typed = T.alloc[sysId] || '0';
-          return '<div class="tw-sysrow" data-sys="'+sysId+'">'
-            + '<span class="snm">'+name+'<span class="sh" data-held>holds '+fmt(held)+' u</span></span>'
-            + '<div class="tw-qtybox"><input type="text" inputmode="numeric" value="'+typed+'" '
-            + 'aria-label="Sell from '+name+'"><span class="u">u</span></div>'
-            + '<button class="smax" type="button">Max</button></div>';
-        }).join('');
-      }
-    } else {
-      // Same rows, new tick: refresh only the held figures, so a player mid-type
-      // keeps their caret (and their number).
-      Array.prototype.forEach.call(box.querySelectorAll('.tw-sysrow'), function(row){
-        var held = heldIn(guild, row.getAttribute('data-sys'), good);
-        var sh = row.querySelector('[data-held]');
-        if(sh) sh.textContent = 'holds ' + fmt(held) + ' u';
-      });
-    }
-    recalc();
   }
-  // Clamp every row to the pile behind it, then total. NO RESERVE GUARD (§5): the
-  // ceiling is the whole pile.
-  function readRows(){
-    var guild = meGuild(), good = T.good, rows = [], total = 0;
-    Array.prototype.forEach.call(el('tw-sysalloc').querySelectorAll('.tw-sysrow'), function(row){
-      var sysId = row.getAttribute('data-sys');
-      var input = row.querySelector('input');
-      var held = heldIn(guild, sysId, good);
-      var v = parseInt(String(input.value).replace(/[^0-9]/g,''), 10);
-      if(isNaN(v) || v < 0) v = 0;
-      if(v > held) v = held;
-      if(String(v) !== input.value) input.value = String(v);
-      T.alloc[sysId] = String(v);
-      if(v > 0){ rows.push({ systemId: sysId, qty: v }); total += v; }
-    });
-    return { rows: rows, total: total };
-  }
-  // The fuel a sale's routes would burn, and what that fuel is worth — READ, never
-  // computed (fuel Slice 3). Every figure comes off the snapshot: `fuelCost` is the
-  // engine's own `routeFuelCost` per system this guild holds, and the credit value
-  // rides `creditCost` from the same row. The browser knows no distance and no burn
-  // rate, which is the point: the number shown is the number the engine would charge.
-  //
-  // A row whose system has NO `fuelCost` entry counts 0 rather than crashing the
-  // panel — that is the no-route case, and the engine refuses such a trade on its
-  // own terms (§6's waystation gate), so the display never has to explain it.
-  function fuelFor(rows){
-    var guild = meGuild();
-    var costs = (guild && guild.fuelCost) || {};
-    var burn = 0, credits = 0;
-    rows.forEach(function(row){
-      var q = costs[row.systemId];
-      if(!q) return;
-      burn += q.fuelBurn || 0;
-      credits += q.creditCost || 0;
-    });
-    // Combined held fuel (legal + contraband, §1.4 1b): the engine's burn spends both, so this
-    // pre-gate must count both or it would block a sale the engine would accept.
-    return { burn: burn, credits: credits, hoard: heldUnits(guild) };
-  }
-  function recalc(){
-    var price = T.good ? priceOf(T.good) : null;
-    var r = readRows();
-    el('tw-selltot').textContent = fmt(r.total);
-    // A DISPLAY ECHO of decision #43 — round(total × price), rounded once on the
-    // total exactly as the engine does. The authoritative figure is the credit
-    // balance read back off the snapshot after the sale, never this.
-    el('tw-proceeds').textContent = (price == null) ? '—' : fmt(Math.round(r.total * price));
-
-    // The Fuel row: summed across the rows the player has actually entered, so it
-    // moves as they type and reads 0 for an empty order.
-    var f = fuelFor(r.rows);
-    var short = f.burn > f.hoard;
-    el('tw-fuelcost').textContent = fmt(f.burn) + ' fuel  ·  ≈ ¢' + fmt(f.credits);
-    el('tw-fuelline').classList.toggle('short', short);
-
-    var btn = el('tw-sellbtn');
-    btn.disabled = !(r.total > 0 && price != null) || short;
-    // A PRE-GATE, not the gate. The engine is always the authority on a refusal;
-    // this only spares the player a round trip to be told what the panel already
-    // knew. The message names both numbers, exactly as the engine's own does.
-    if(short){
-      note('Not enough fuel — need ' + fmt(f.burn) + ', have ' + fmt(f.hoard), 'bad');
-    }
-    return r;
-  }
-
-  // The SELL sale itself no longer fires from here — the "Sell to Syndicate" button opens the
-  // finalise popup (openTx('sell')), and txConfirm posts the action. `recalc` above stays: the
-  // card is the manifest, and its live fuel/proceeds preview is what the player reads before
-  // committing. The reject-whole preview (short-fuel disable) is duplicated in the popup, so
-  // the button that opens it is only ever the pre-gate the popup then restates against the ledger.
 
   /* -- render + events ------------------------------------------------------- */
   function render(){
@@ -6338,9 +6222,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(cn) cn.style.display = 'none';
     renderHoldings();
     renderChart();
-    renderSell();       // fills the shared head (good + price) and the sell pane
-    renderMode();       // show the sell pane or the buy pane, light the mode button
-    recalcBuy();        // the buy pane's cost preview + button gate
+    renderSell();          // fills the shared head (good + price)
+    renderMode();          // show the sell pane or the buy pane, light the mode button
+    recalcAdd();           // both panes' Add-to-Order button gate
+    renderOrderButtons();  // the hero's two held-order badges, read from the snapshot
   }
 
   // The Sell / Buy toggle (both LIVE now). Only the pane switches — the good, the chart
@@ -6354,18 +6239,74 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(ms) ms.classList.toggle('on', sellOn);
     if(mb) mb.classList.toggle('on', !sellOn);
   }
-  // The BUY manifest is one number: HOW MANY. Cost is a DISPLAY ECHO of the engine's
-  // round(qty × price) (#43) — the authoritative debit is read back off the snapshot the
-  // purchase returns. The destination, its route fuel and the arrival all live in the
-  // finalise popup, because they depend on WHERE it is going.
-  function recalcBuy(){
-    var q = el('tw-buyqty'); if(!q) return;
-    var price = T.good ? priceOf(T.good) : null;
+  // Both panes are now the SAME shape (§6): a quantity for the selected good + an Add button.
+  // The button only gates on "a positive qty of a priced good" — capacity and stock are NOT
+  // checked here (a draft may be built past a hauler's hold and trimmed later, §3); the engine
+  // is the authority, and the built order is read back off the snapshot on the hero.
+  function addQtyOf(id){
+    var q = el(id); if(!q) return 0;
     var v = parseInt(String(q.value).replace(/[^0-9]/g,''), 10);
     if(isNaN(v) || v < 0) v = 0;
     if(String(v) !== q.value) q.value = String(v);
-    el('tw-buycost').textContent = (price == null) ? '—' : fmt(Math.round(v * price));
-    el('tw-buybtn').disabled = !(v > 0 && price != null);
+    return v;
+  }
+  function recalcAdd(){
+    var price = T.good ? priceOf(T.good) : null;
+    if(el('tw-sellqty')) el('tw-sellbtn').disabled = !(addQtyOf('tw-sellqty') > 0 && price != null);
+    if(el('tw-buyqty'))  el('tw-buybtn').disabled  = !(addQtyOf('tw-buyqty')  > 0 && price != null);
+  }
+  // Post an addOrderLine for the selected good (§3). The engine appends the line or tops up an
+  // existing one; on success the qty box clears and the next poll re-badges the hero from the
+  // snapshot's order — no local bookkeeping, the engine holds the order (§2).
+  function addOrder(side){
+    var player = (window.__player && window.__player()) || {};
+    var good = T.good, price = good ? priceOf(good) : null;
+    if(!player.guildId || !good || price == null) return;
+    var qtyId = side === 'buy' ? 'tw-buyqty' : 'tw-sellqty';
+    var qty = addQtyOf(qtyId);
+    if(!(qty > 0)) return;
+    var btn = el(side === 'buy' ? 'tw-buybtn' : 'tw-sellbtn'); if(btn) btn.disabled = true;
+    window.__sendAction({ type:'addOrderLine', guildId: player.guildId, side: side, good: good, qty: qty })
+      .then(function(res){
+        if(res && res.accepted){
+          note('Added ' + fmt(qty) + ' ' + pretty(good) + ' to the ' + side + ' order.', 'ok');
+          var q = el(qtyId); if(q) q.value = '0';
+          if(window.__refreshNow) window.__refreshNow().then(function(){ if(T.open) render(); }).catch(function(){});
+          else render();
+        } else {
+          note((res && res.reason) || 'The Syndicate refused the line.', 'bad');
+          render();
+        }
+      })
+      .catch(function(err){ note(String((err && err.message) || err), 'bad'); render(); });
+  }
+  // The guild's HELD order for a side, present ONLY when non-empty (omit-when-empty, §2). The
+  // snapshot echoes the engine-computed `lines[].space`, `totalUnits`, `totalSpace`, `haulerTier`
+  // and `overCap` (§4) — read, never derived here (§18).
+  function orderOf(side){
+    var g = meGuild(); if(!g) return null;
+    var o = side === 'buy' ? g.buyOrder : g.sellOrder;
+    return (o && o.lines && o.lines.length) ? o : null;
+  }
+  // Badge each hero button with its order's line-count + total space; an empty/absent order is
+  // muted and disabled. The click that OPENS the popup is delegated on the panel, below.
+  function renderOrderButtons(){
+    ['buy','sell'].forEach(function(side){
+      var o = orderOf(side), btn = el('tw-order-' + side), badge = el('tw-order-' + side + 'badge');
+      if(!btn || !badge) return;
+      if(o){
+        var n = o.lines.length;
+        badge.textContent = n + (n === 1 ? ' line · ' : ' lines · ') + fmt(o.totalSpace) + ' space' + (o.overCap ? ' · over' : '');
+        btn.disabled = false;
+        btn.classList.remove('empty');
+        btn.classList.toggle('over', !!o.overCap);
+      } else {
+        badge.textContent = 'empty';
+        btn.disabled = true;
+        btn.classList.add('empty');
+        btn.classList.remove('over');
+      }
+    });
   }
 
   /* ===== the tier-4 "Constructed" view (docs/mockups/trade-4constructed.html, roadmap 2.1d
@@ -6592,35 +6533,32 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(invRow){ selectGood(invRow.getAttribute('data-good')); return; }
     var scale = e.target.closest('.tw-scale');
     if(scale){ T.scale = scale.getAttribute('data-scale'); renderChart(); return; }
-    var max = e.target.closest('.smax');
-    if(max){
-      var row = max.closest('.tw-sysrow');
-      var input = row.querySelector('input');
-      input.value = String(heldIn(meGuild(), row.getAttribute('data-sys'), T.good));
-      recalc();
-      return;
-    }
     var mbtn = e.target.closest('.tw-mbtn');
     if(mbtn && mbtn.getAttribute('data-mode')){ T.mode = mbtn.getAttribute('data-mode'); note(''); render(); return; }
-    // The exec buttons no longer post directly — they open the finalise popup, which is
-    // where the ledger, the fuel bar and the confirm live (the transaction contract).
-    if(e.target.closest('#tw-sellbtn')){ openTx('sell'); return; }
-    if(e.target.closest('#tw-buybtn')){ openTx('buy'); return; }
+    // The Add buttons build the held order (addOrderLine); the hero's order buttons open the
+    // finalise popup (openTx), where the manifest, the target, the ledger and the confirm live.
+    if(e.target.closest('#tw-sellbtn')){ addOrder('sell'); return; }
+    if(e.target.closest('#tw-buybtn')){ addOrder('buy'); return; }
+    var ord = e.target.closest('.tw-ordbtn');
+    if(ord && !ord.disabled && ord.getAttribute('data-side')){ openTx(ord.getAttribute('data-side')); return; }
   });
   panel.addEventListener('input', function(e){
-    if(e.target.closest('.tw-sysrow') && !e.target.closest('#tw-buy-pane')) recalc();
-    if(e.target.id === 'tw-buyqty') recalcBuy();
+    if(e.target.id === 'tw-sellqty' || e.target.id === 'tw-buyqty') recalcAdd();
   });
 
-  /* ===== the SELL & BUY finalise-transaction popups (#tw-tx-overlay) =============
-     docs/mockups/{sell,buy}-to-syndicate.html, wired to the live snapshot. Reads the SAME
-     helpers this tab already uses (meGuild, priceOf, heldIn, systemsHolding, fuelCost) and
-     fires the SAME actions the engine applies. It COMPUTES NO GAME NUMBER (§18): route fuel
-     credits are `fuelCost[sysId].creditCost`; the arrival is `fuelCost[sysId].travelTicks`
-     formatted as a duration; the ledger figures are display sums/products of those and the
-     posted price. On confirm the ENGINE is authoritative — the success view reads the applied
-     numbers back off the snapshot the action returns, never the popup's preview. */
-  var TX = { open:false, kind:null, good:null, rows:[], qty:0, dest:null, last:null,
+  /* ===== the held-order finalise popup (#tw-tx-overlay) ==========================
+     The BUY and SELL halves of the ORDER model (docs/syndicate-orders.md §6), wired to the live
+     snapshot. The manifest is the guild's own `buyOrder`/`sellOrder` (§4) — the client renders it
+     and COMPUTES NO GAME NUMBER (§18): each line's `space` and the order's `totalSpace`/`haulerTier`
+     are engine-computed; route fuel is `fuelCost[target].fuelBurnByTier[tier]` (burn) and
+     `creditCostByTier[tier]` (credits); the arrival is `fuelCost[target].travelTicks` formatted as a
+     duration. The ledger's cost/proceeds are display sums of Σ round(qty × frozen price) per line.
+     On confirm the ENGINE is authoritative — it reads the held order, and the success view reads the
+     applied numbers back off the snapshot the action returns, never the popup's preview. */
+  // The popup renders the HELD order (§6): a multi-good manifest read from the snapshot, a
+  // finalise-time TARGET (BUY destination / SELL origin), and a confirm that posts the held-order
+  // finalise. It carries no basket of its own — the order is engine state (§2).
+  var TX = { open:false, kind:null, target:null, last:null,
              issueTick:null, frozen:null, rejected:false };
   // QUOTE_TTL_TICKS — the §8.1 quote-lock window, MIRRORED from the engine's own constant
   // (sim/price-ring.js). `[FIRST-CUT]` 5 (docs/phase-1-tuning.md "Quote-lock"). §18 makes a
@@ -6630,10 +6568,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // the engine's own checkQuote. This is the ONE number the client half reads; it computes no
   // price (it freezes a display and sends a tick — the engine re-derives and validates).
   var QUOTE_TTL_TICKS = 5;   // MIRRORS sim/price-ring.js QUOTE_TTL_TICKS
-  // Hero art by shipment size (each order is its own Syndicate hauler), referenced by path
-  // exactly as #tp-trade references its own art.
+  // Hero art keyed by the order's ENGINE-computed hauler tier (the client picks none, §18),
+  // referenced by path exactly as #tp-trade references its own art.
   var TX_ART = { light:'assets/units/lighttransport.jpg', medium:'assets/units/mediumtransport.jpg', heavy:'assets/units/heavytransport.jpg' };
-  function txHeroClass(qty){ return qty <= 10000 ? 'light' : (qty <= 50000 ? 'medium' : 'heavy'); }
   // The travel DURATION as `XXdXXh`. 1 tick = 1 game-minute and a day = 1,440 ticks are the
   // ruled CLOCK (docs/phase-1-tuning.md, docs/cycle-and-calendar.md), the same convention the
   // shell's wall clock and the Guild Hall already render on — NOT an economy tunable, so this
@@ -6651,13 +6588,21 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // The systems the guild HOLDS — `fuelCost` is keyed by `heldSystemIds`, so its keys ARE the
   // held set, already sorted (invariant 9). This is the BUY destination set.
   function txHeldSystems(){ var g = meGuild(); return (g && g.fuelCost) ? Object.keys(g.fuelCost).sort() : []; }
-  // The systems that hold the selected good (SELL basket candidates), and the free ones.
-  function txSellSystems(){ return systemsHolding(meGuild(), TX.good); }
-  function txSellFree(exceptIdx){
-    var used = {}; TX.rows.forEach(function(r, i){ if(i !== exceptIdx) used[r.systemId] = true; });
-    return txSellSystems().filter(function(id){ return !used[id]; });
+  // The guild's HELD order for the popup's side, present ONLY when non-empty (§2/§4). Every derived
+  // field — `lines[].space`, `totalUnits`, `totalSpace`, `haulerTier`, `overCap` — is ENGINE-computed
+  // and read here, never re-derived (§18).
+  function txOrder(){
+    var g = meGuild(); if(!g) return null;
+    var o = TX.kind === 'buy' ? g.buyOrder : g.sellOrder;
+    return (o && o.lines && o.lines.length) ? o : null;
   }
-  function txStep(max){ return max >= 1000 ? 100 : (max >= 100 ? 10 : 1); }
+  // A hauler tier's HOLD (its capacity), read from the snapshot's `haulerTiers` ladder — the client
+  // picks no tier and knows no hold of its own (§18). null for an unknown tier.
+  function txHoldFor(tier){
+    var s = snap(), t = (s && s.haulerTiers) || [];
+    for(var i = 0; i < t.length; i++){ if(t[i].tier === tier) return t[i].hold; }
+    return null;
+  }
   function txDone(){ var s = el('tw-tx-success'); return !!(s && s.classList.contains('show')); }
 
   /* -- the §8.1 quote-lock: freeze at open, mirror the engine's expiry, refresh to re-quote --
@@ -6673,28 +6618,42 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var s = snap();
     TX.issueTick = (s && typeof s.tick === 'number') ? s.tick : null;
     TX.rejected = false;
-    // Freeze the per-system route fuel credits for EVERY candidate system (all the guild holds,
-    // which is a superset of both the SELL basket candidates and the BUY destinations), so a row
-    // the player adds or a destination they switch to already has a firm figure — no live re-read.
+    // Freeze the posted price of EVERY good in the held order — the order is multi-good (§4), so one
+    // price is not enough; each line prices from the ring at the issue tick, so each good's frozen
+    // price feeds the ledger's frozen cost/proceeds total. Prices are the only per-good freeze.
+    var order = txOrder(), priceByGood = {};
+    if(order) order.lines.forEach(function(l){ var p = priceOf(l.good); if(p != null) priceByGood[l.good] = p; });
+    // Freeze the per-system, PER-TIER route fuel credits for every system the guild holds (a
+    // superset of the BUY destinations and the SELL origins), so the target the player picks already
+    // has a firm figure at the order's tier — no live re-read. Geometry (burn, travelTicks) is NOT
+    // frozen; it never moves, and stays live for the gate and the arrival readout.
     var g = meGuild(), fc = (g && g.fuelCost) || {}, cc = {};
     Object.keys(fc).forEach(function(sysId){
       var r = fc[sysId];
-      if(r && r.creditCost != null) cc[sysId] = r.creditCost;
+      if(r && r.creditCostByTier) cc[sysId] = r.creditCostByTier;
     });
-    TX.frozen = { price: priceOf(TX.good), creditCostBySys: cc };
+    TX.frozen = { priceByGood: priceByGood, creditCostBySys: cc };
   }
-  // The frozen resource posted price — the number the popup showed at open, not the live feed.
-  // Falls back to live only if nothing was frozen (defensive; the popup always freezes at open).
-  function txQuotedPrice(){
-    return (TX.frozen && TX.frozen.price != null) ? TX.frozen.price : priceOf(TX.good);
+  // The frozen posted price of one good — the number the popup showed at open, not the live feed.
+  // Falls back to live only if nothing was frozen for it (defensive; the popup freezes at open).
+  function txQuotedPrice(good){
+    var f = TX.frozen && TX.frozen.priceByGood;
+    if(f && Object.prototype.hasOwnProperty.call(f, good)) return f[good];
+    return priceOf(good);
   }
-  // The frozen route fuel credits for one system (the fuel price, made concrete). Geometry
-  // (fuelBurn units, travelTicks) is NOT frozen — it never moves — and is still read live by the
-  // gates and the arrival readout. A system with no frozen value (not held at open) reads live.
-  function txQuotedCredit(sysId){
-    var f = TX.frozen && TX.frozen.creditCostBySys;
-    if(f && Object.prototype.hasOwnProperty.call(f, sysId)) return f[sysId];
-    var route = txRoute(sysId); return route ? (route.creditCost || 0) : 0;
+  // The frozen route fuel credits for one system AT THE ORDER'S TIER (the fuel price, made concrete
+  // for the hauler the order sizes to). A system/tier with no frozen value reads live.
+  function txQuotedCredit(sysId, tier){
+    var f = TX.frozen && TX.frozen.creditCostBySys, m = f && f[sysId];
+    if(m && tier && m[tier] != null) return m[tier];
+    var r = txRoute(sysId);
+    return (r && r.creditCostByTier && tier && r.creditCostByTier[tier] != null) ? r.creditCostByTier[tier] : 0;
+  }
+  // The route's fuel BURN (units) for one system at the order's tier — seed geometry, read LIVE from
+  // the snapshot's `fuelBurnByTier` (the client holds no burn rate, §18). This is the SELL/BUY gate.
+  function txRouteBurn(sysId, tier){
+    var r = txRoute(sysId);
+    return (r && r.fuelBurnByTier && tier && r.fuelBurnByTier[tier] != null) ? r.fuelBurnByTier[tier] : 0;
   }
   // The cycle index a tick sits in — MIRRORS sim/price-ring.js cycleIndexOf: floor((tick −
   // anchor) / N), the partition the fuel price is constant on (NOT calendar.dayOf). Read from
@@ -6764,134 +6723,130 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       + '</div></div>';
   }
 
-  /* -- SELL popup ---------------------------------------------------------------- */
-  // Sum ONLY the rows we will send (qty > 0), so the fuel burn previewed here is exactly the
-  // aggregate the engine gates on (Σ routeFuelCost over the allocations it receives).
-  function txSellTotals(){
-    var guild = meGuild(), good = TX.good, price = txQuotedPrice();   // §8.1: the FROZEN price
-    var totalQty = 0, burn = 0, credits = 0, maxQty = 0;
-    TX.rows.forEach(function(r){
-      var held = heldIn(guild, r.systemId, good);
-      r.qty = Math.max(0, Math.min(r.qty, held));      // clamp to the pile behind it
-      if(r.qty > 0){
-        totalQty += r.qty; maxQty = Math.max(maxQty, r.qty);
-        var route = txRoute(r.systemId);
-        if(route) burn += route.fuelBurn || 0;         // burn (units) is seed geometry — live
-        credits += txQuotedCredit(r.systemId);         // route fuel CREDITS — frozen (§8.1)
-      }
-    });
-    // round(total × price), rounded once on the total — the same DISPLAY echo the card uses.
-    var profit = (price == null) ? 0 : Math.round(totalQty * price);
-    return { totalQty:totalQty, profit:profit, burn:burn, credits:credits, maxQty:maxQty };
+  /* -- the held-order popup (BUY + SELL are mirror halves of one model, §1/§6) ---- */
+  // The order's frozen totals: Σ round(qty × frozen posted price) per line (the ledger's cost for a
+  // BUY, proceeds for a SELL — the same DISPLAY echo the engine rounds per line), plus the units,
+  // space and goods count the snapshot already computed. The engine is authoritative; this is preview.
+  function txTotals(order){
+    var value = 0;
+    order.lines.forEach(function(l){ var p = txQuotedPrice(l.good); if(p != null) value += Math.round(l.qty * p); });
+    return { units:order.totalUnits, space:order.totalSpace, goods:order.lines.length, value:value };
   }
-  function txRenderSellMain(){
-    var good = TX.good;
-    var html = '<div class="sec-head"><span class="t">Consignment</span><span class="g">&mdash; ' + pretty(good)
-      + '</span><span class="aux">' + TX.rows.length + ' / ' + txSellSystems().length + ' systems</span></div>';
-    TX.rows.forEach(function(r, i){
-      var routeCr = txQuotedCredit(r.systemId);        // §8.1: the FROZEN route fuel credits
-      var name = (window.__systemName && window.__systemName(r.systemId)) || r.systemId;
-      var held = heldIn(meGuild(), r.systemId, good), shown = Math.min(r.qty, held);
-      var base = (i === 0), head;
-      if(base){ head = '<span>' + name + '</span>'; }
-      else {
-        var opts = txSellFree(i).concat([r.systemId]).sort();
-        head = '<select class="rowsel" data-txsel="' + i + '">' + opts.map(function(id){
-          var nm = (window.__systemName && window.__systemName(id)) || id;
-          return '<option value="' + id + '"' + (id === r.systemId ? ' selected' : '') + '>' + nm + '</option>';
-        }).join('') + '</select>';
-      }
-      html += '<div class="row' + (base ? ' base' : '') + '">'
-        + '<div class="rtop"><span class="rroute">' + head + '<span class="rarr">&#8594;</span><span class="rway">Syndicate waystation</span></span>'
-        + '<span class="rfuelcr">Route fuel credits: <b>&#162;' + fmt(routeCr) + '</b></span></div>'
-        + '<div class="rbody"><div class="rctrl">'
-        + (base ? '<span class="basetag">&#9671; base order &middot; fixed</span>'
-               : '<input type="range" min="0" max="' + held + '" step="' + txStep(held) + '" value="' + shown + '" data-txqty="' + i + '" aria-label="Sell from ' + name + '">')
-        + '</div><div class="qbig"><span class="qn">' + fmt(shown) + '</span><span class="u">u</span></div>'
-        + '<div class="xslot">' + (base ? '' : '<button type="button" data-txrm="' + i + '" title="Remove">&#10005;</button>') + '</div>'
-        + '</div></div>';
-    });
-    html += '<button class="addbtn"' + (txSellFree(-1).length ? '' : ' disabled') + ' data-txadd>+ Add a system</button>';
-    return html;
+  // The two-column Qty | Resource manifest (§6): a fixed-height scroll box read from `order.lines`,
+  // each row its qty, resource and engine-computed `space`. The per-row ✕ posts removeOrderLine.
+  function txManifest(order){
+    var rows = order.lines.map(function(l){
+      return '<div class="mrow">'
+        + '<span class="mq">' + fmt(l.qty) + '<span class="u">u</span></span>'
+        + '<span class="mr">' + pretty(l.good) + '<span class="msp">' + fmt(l.space) + ' space</span></span>'
+        + '<span class="mx"><button type="button" data-txrm="' + l.good + '" title="Remove ' + pretty(l.good) + '">&#10005;</button></span>'
+        + '</div>';
+    }).join('');
+    return '<div class="mhead"><span>Qty</span><span>Resource</span><span></span></div>'
+      + '<div class="manifest">' + rows + '</div>';
   }
-  function txRenderSellLedger(){
-    var t = txSellTotals(), g = meGuild(), hoard = heldUnits(g);   // legal + contraband (§1.4 1b)
-    var fuelShort = t.burn > hoard;                        // the engine's SELL gate, in UNITS (combined)
-    el('tw-tx-art').style.backgroundImage = t.totalQty > 0 ? 'url(' + TX_ART[txHeroClass(t.maxQty)] + ')' : 'none';
-    el('tw-tx-ledger').innerHTML =
-        '<div class="row2"><span class="k">Consignment</span><span class="v">'
-      + (t.totalQty > 0 ? pretty(TX.good) + ' <span style="color:var(--ink3)">&times;</span> ' + fmt(t.totalQty) : '&mdash;') + '</span></div>'
-      + '<div class="row2 profit"><span class="k">Profit</span><span class="v"><b>+&#162;' + fmt(t.profit) + '</b></span></div>'
-      + '<div class="row2 fuel"><span class="k">Route Fuel Credits</span><span class="v"><b>&#8722;&#162;' + fmt(t.credits) + '</b></span></div>'
-      + txFuelBar(t.credits, fuelShort);
-    var btn = el('tw-tx-confirm');
-    btn.textContent = 'Sell to Syndicate';
-    btn.disabled = !(t.totalQty > 0 && txQuotedPrice() != null) || fuelShort;
-    TX.last = { totalQty:t.totalQty, before:{ credits:(g && g.credits) || 0, hoard:hoard } };
-    txApplyExpiry();                                   // §8.1: overrides the enable when stale
-  }
-
-  /* -- BUY popup ----------------------------------------------------------------- */
-  function txRenderBuyMain(){
-    var good = TX.good, dests = txHeldSystems(), dest = TX.dest;
-    var route = txRoute(dest), routeCr = txQuotedCredit(dest);   // §8.1: FROZEN route fuel credits
-    var arr = route ? txEta(route.travelTicks) : '—';           // arrival is seed geometry — live
-    var opts = dests.map(function(id){
+  // The finalise-time TARGET (§2/§6): BUY picks a DESTINATION to deliver to, SELL an ORIGIN to ship
+  // from. Both offer the systems the guild holds (`fuelCost` keys); the SELL origin-picker refinement
+  // (only systems that hold every line) is a later slice — here the engine's stock gate reject-wholes
+  // with the named shortfall (§7). Route fuel for the target reads the order's tier, frozen (§8.1).
+  function txTargetBlock(kind, order){
+    var systems = txHeldSystems(), target = TX.target;
+    var routeCr = txQuotedCredit(target, order.haulerTier);
+    var opts = systems.map(function(id){
       var nm = (window.__systemName && window.__systemName(id)) || id;
-      return '<option value="' + id + '"' + (id === dest ? ' selected' : '') + '>' + nm + '</option>';
-    }).join('') + '<option disabled>&#9670; Controlled outpost &mdash; soon</option>';
-    return '<div class="blk"><div class="sec-head"><span class="t">Deliver to</span></div>'
-      + '<div class="destcard"><div class="dtop">'
-      + '<span class="rroute"><span class="rway">Syndicate waystation</span><span class="rarr">&#8594;</span>'
-      + '<select class="rowsel" id="tw-tx-dest" aria-label="Destination system">' + opts + '</select></span>'
-      + '<span class="dmeta">Route fuel <b>&#162;' + fmt(routeCr) + '</b></span></div></div></div>'
-      + '<div class="blk readouts">'
-      + '<div class="ro"><div class="ro-lbl">Quantity &middot; ' + pretty(good) + '</div><div class="ro-big">' + fmt(TX.qty) + '<span class="u">u</span></div></div>'
-      + '<div class="ro"><div class="ro-lbl">Arrival time</div><div class="ro-big">' + arr + '</div></div>'
-      + '</div>';
+      return '<option value="' + id + '"' + (id === target ? ' selected' : '') + '>' + nm + '</option>';
+    }).join('');
+    var buy = kind === 'buy';
+    var sel = '<select class="rowsel" id="tw-tx-target" aria-label="' + (buy ? 'Destination' : 'Origin') + ' system">'
+      + opts + (buy ? '<option disabled>&#9670; Controlled outpost &mdash; soon</option>' : '') + '</select>';
+    var route = buy
+      ? '<span class="rway">Syndicate waystation</span><span class="rarr">&#8594;</span>' + sel
+      : sel + '<span class="rarr">&#8594;</span><span class="rway">Syndicate waystation</span>';
+    return '<div class="blk"><div class="sec-head"><span class="t">' + (buy ? 'Deliver to' : 'Ship from') + '</span></div>'
+      + '<div class="destcard"><div class="dtop"><span class="rroute">' + route + '</span>'
+      + '<span class="dmeta">Route fuel <b>&#162;' + fmt(routeCr) + '</b></span></div></div></div>';
   }
-  function txRenderBuyLedger(){
-    var g = meGuild(), good = TX.good, price = txQuotedPrice();   // §8.1: the FROZEN price
-    var cost = (price == null) ? 0 : Math.round(TX.qty * price);
-    var credits = (g && g.credits) || 0, hoard = heldUnits(g);   // legal + contraband (§1.4 1b)
-    var route = txRoute(TX.dest), burn = route ? (route.fuelBurn || 0) : 0;   // burn (units) — live
-    var routeCr = txQuotedCredit(TX.dest);                        // route fuel CREDITS — frozen
-    var costShort = cost > credits, fuelShort = burn > hoard;   // the engine's TWO BUY gates (fuel combined)
-    el('tw-tx-art').style.backgroundImage = 'url(' + TX_ART[txHeroClass(TX.qty)] + ')';
-    el('tw-tx-ledger').innerHTML =
-        '<div class="row2"><span class="k">Purchase</span><span class="v">' + pretty(good) + ' <span style="color:var(--ink3)">&times;</span> ' + fmt(TX.qty) + '</span></div>'
-      + '<div class="row2 cost"><span class="k">Cost</span><span class="v"><b>&#8722;&#162;' + fmt(cost) + '</b></span></div>'
-      + '<div class="row2 treasury' + (costShort ? ' short' : '') + '"><span class="k">Treasury</span><span class="v">&#162;' + fmt(credits)
-      + ' <span style="color:var(--ink3)">&#8594;</span> &#162;' + fmt(credits - cost) + (costShort ? ' &middot; SHORT' : '') + '</span></div>'
-      + '<div class="row2 fuel"><span class="k">Route Fuel Credits</span><span class="v"><b>&#8722;&#162;' + fmt(routeCr) + '</b></span></div>'
-      + txFuelBar(routeCr, fuelShort);
-    var btn = el('tw-tx-confirm');
-    btn.textContent = 'Buy from Syndicate';
-    btn.disabled = !(TX.qty > 0 && price != null && TX.dest) || costShort || fuelShort;
-    TX.last = { qty:TX.qty, arr:route ? route.travelTicks : 0, before:{ credits:credits, hoard:hoard } };
+  // The est-main: the target picker + the manifest, plus (over cap) the split-the-order banner.
+  function txRenderMain(){
+    var order = txOrder();
+    if(!order){ el('tw-tx-main').innerHTML = '<div class="tw-empty">The order is empty.</div>'; return; }
+    var over = order.overCap
+      ? '<div class="overcap">This order needs ' + fmt(order.totalSpace) + ' cargo space &mdash; more than the heaviest hauler’s hold. Remove a line to bring it within capacity before it can ship.</div>'
+      : '';
+    var manifest = '<div class="blk"><div class="sec-head"><span class="t">Manifest</span>'
+      + '<span class="aux">' + order.lines.length + (order.lines.length === 1 ? ' line' : ' lines')
+      + ' &middot; ' + fmt(order.totalUnits) + ' u</span></div>' + txManifest(order) + '</div>';
+    el('tw-tx-main').innerHTML = over + txTargetBlock(TX.kind, order) + manifest;
+  }
+  // The est-side: the transport tag + art by the order's ENGINE-computed tier (the client picks
+  // none, §18), then the ledger and the fuel bar; a BUY carries an arrival row, a SELL does not.
+  function txRenderLedger(){
+    var order = txOrder(), art = el('tw-tx-art'), tag = el('tw-tx-herotag'), btn = el('tw-tx-confirm');
+    if(!order){                                        // emptied (e.g. the last line was removed)
+      if(art) art.style.backgroundImage = 'none';
+      if(tag){ tag.className = 'herotag'; tag.innerHTML = ''; }
+      el('tw-tx-ledger').innerHTML = '';
+      btn.textContent = TX.kind === 'buy' ? 'Buy from Syndicate' : 'Sell to Syndicate';
+      btn.disabled = true;
+      return;
+    }
+    var g = meGuild(), t = txTotals(order), tier = order.haulerTier;   // tier: null when over cap
+    var routeCr = txQuotedCredit(TX.target, tier);      // §8.1: FROZEN route fuel credits at the tier
+    var burn = txRouteBurn(TX.target, tier);            // burn (units) — seed geometry, live
+    var route = txRoute(TX.target);
+    var hoard = heldUnits(g);                           // legal + contraband (§1.4 1b)
+    var fuelShort = burn > hoard;                       // the engine's fuel gate, in UNITS (combined)
+    // Hero art + tag by the order's tier. Over cap has no tier: show the heaviest hauler, flagged.
+    var artTier = tier || 'heavy', hold = txHoldFor(artTier);
+    if(art) art.style.backgroundImage = 'url(' + (TX_ART[artTier] || TX_ART.heavy) + ')';
+    if(tag){
+      tag.className = 'herotag' + (order.overCap ? ' over' : '');
+      tag.innerHTML = order.overCap
+        ? '<b>Over capacity</b> &middot; ' + fmt(t.space) + ' / ' + fmt(hold)
+        : '<b>' + String(tier).toUpperCase() + '</b> &middot; ' + fmt(t.space) + ' / ' + fmt(hold);
+    }
+    var manifestRow = '<div class="row2"><span class="k">' + (TX.kind === 'buy' ? 'Manifest' : 'Consignment')
+      + '</span><span class="v">' + t.goods + (t.goods === 1 ? ' good' : ' goods')
+      + ' <span style="color:var(--ink3)">&times;</span> ' + fmt(t.units) + '</span></div>';
+    if(TX.kind === 'buy'){
+      var credits = (g && g.credits) || 0, cost = t.value, costShort = cost > credits;
+      var arr = (route && !order.overCap) ? txEta(route.travelTicks) : '—';   // arrival — live geometry
+      el('tw-tx-ledger').innerHTML = manifestRow
+        + '<div class="row2 cost"><span class="k">Cost</span><span class="v"><b>&#8722;&#162;' + fmt(cost) + '</b></span></div>'
+        + '<div class="row2 treasury' + (costShort ? ' short' : '') + '"><span class="k">Treasury</span><span class="v">&#162;' + fmt(credits)
+        + ' <span style="color:var(--ink3)">&#8594;</span> &#162;' + fmt(credits - cost) + (costShort ? ' &middot; SHORT' : '') + '</span></div>'
+        + '<div class="row2 fuel"><span class="k">Route Fuel Credits</span><span class="v"><b>&#8722;&#162;' + fmt(routeCr) + '</b></span></div>'
+        + txFuelBar(routeCr, fuelShort)
+        + '<div class="row2"><span class="k">Arrival time</span><span class="v" style="color:var(--blue)">' + arr + '</span></div>';
+      btn.textContent = 'Buy from Syndicate';
+      btn.disabled = order.overCap || costShort || fuelShort || !TX.target || !(t.units > 0);
+      TX.last = { units:t.units, goods:t.goods, arr:route ? route.travelTicks : 0, before:{ credits:credits, hoard:hoard } };
+    } else {
+      el('tw-tx-ledger').innerHTML = manifestRow
+        + '<div class="row2 profit"><span class="k">Proceeds</span><span class="v"><b>+&#162;' + fmt(t.value) + '</b></span></div>'
+        + '<div class="row2 fuel"><span class="k">Route Fuel Credits</span><span class="v"><b>&#8722;&#162;' + fmt(routeCr) + '</b></span></div>'
+        + txFuelBar(routeCr, fuelShort);
+      btn.textContent = 'Sell to Syndicate';
+      btn.disabled = order.overCap || fuelShort || !TX.target || !(t.units > 0);
+      TX.last = { units:t.units, goods:t.goods, before:{ credits:(g && g.credits) || 0, hoard:hoard } };
+    }
     txApplyExpiry();                                   // §8.1: overrides the enable when stale
   }
 
   /* -- open / render / confirm / close ------------------------------------------- */
+  // Open the finalise popup for a side. The manifest is the HELD order read from the snapshot (§2)
+  // — nothing is carried in from the card. The target defaults to the operating (home) system when
+  // the guild holds it, else its first held system. An empty order never opens (the hero button is
+  // disabled), and a guild with no held system cannot pick a target.
   function openTx(kind){
-    var guild = meGuild(), good = T.good, price = good ? priceOf(good) : null;
-    if(!guild || !good || price == null) return;
-    TX.kind = kind; TX.good = good; TX.open = true;
-    if(kind === 'sell'){
-      var r = readRows();                       // the card's per-system allocation = the manifest
-      if(!r.total) return;
-      TX.rows = r.rows.map(function(x){ return { systemId:x.systemId, qty:x.qty }; });
-    } else {
-      var q = el('tw-buyqty');
-      var v = q ? parseInt(String(q.value).replace(/[^0-9]/g,''), 10) : 0;
-      if(isNaN(v) || v < 0) v = 0;
-      if(!(v > 0)) return;
-      TX.qty = v;
-      var held = txHeldSystems(), home = guild.homeSystemId;
-      TX.dest = (home && held.indexOf(home) >= 0) ? home : (held[0] || null);   // default = operating system
-      if(!TX.dest) return;
-    }
-    txFreezeQuote();                                   // §8.1: freeze the two prices + issue tick
+    var guild = meGuild(); if(!guild) return;
+    TX.kind = kind;
+    var order = txOrder(); if(!order) return;
+    var held = txHeldSystems(), home = guild.homeSystemId;
+    TX.target = (home && held.indexOf(home) >= 0) ? home : (held[0] || null);
+    if(!TX.target) return;
+    TX.open = true;
+    txFreezeQuote();                                   // §8.1: freeze the prices + issue tick
     txRender();
     el('tw-tx-overlay').classList.add('open');
   }
@@ -6899,40 +6854,28 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(!TX.open) return;
     el('tw-tx-form').style.display = '';
     el('tw-tx-success').classList.remove('show');
-    if(TX.kind === 'sell'){
-      el('tw-tx-title').textContent = 'Sell to Syndicate';
-      el('tw-tx-main').innerHTML = txRenderSellMain();
-      txRenderSellLedger();
-    } else {
-      el('tw-tx-title').textContent = 'Buy from Syndicate';
-      el('tw-tx-main').innerHTML = txRenderBuyMain();
-      txRenderBuyLedger();
-    }
+    el('tw-tx-title').textContent = TX.kind === 'buy' ? 'Buy from Syndicate' : 'Sell to Syndicate';
+    txRenderMain();
+    txRenderLedger();
   }
   function txSledRow(k, v){ return '<div><span class="k">' + k + '</span><span>' + v + '</span></div>'; }
+  // Confirm posts the HELD-ORDER finalise (§5): the engine reads the guild's own order, so the
+  // action carries NO cart, NO good, NO allocations — only the target and the frozen issue tick
+  // (§8.1, never a price; the engine re-derives and validates it). BUY → destinationSystemId,
+  // SELL → originSystemId. On success the engine clears the order.
   function txConfirm(){
     var player = (window.__player && window.__player()) || {};
+    var order = txOrder(); if(!order || order.overCap || !TX.target) return;
     var btn = el('tw-tx-confirm');
     var before = TX.last ? TX.last.before : { credits:0, hoard:0 };
     var pending;
+    btn.disabled = true;
     if(TX.kind === 'sell'){
-      // The ruled SELL shape: a basket of per-system allocations for ONE good (§5). Only the
-      // rows with a real quantity are sent — the same rows the fuel preview summed.
-      var allocations = TX.rows.filter(function(r){ return r.qty > 0; }).map(function(r){ return { systemId:r.systemId, qty:r.qty }; });
-      if(!allocations.length) return;
-      btn.disabled = true;
-      // §8.1 quote-lock: carry the FROZEN issue tick, never a price — the engine re-derives the
-      // posted price at that tick and validates its expiry. Omitted (no snapshot at open) ⇒ the
-      // engine defaults to the current tick ⇒ today's behaviour.
-      var sellAction = { type:'sellToSyndicate', guildId: player.guildId, good: TX.good, allocations: allocations };
+      var sellAction = { type:'sellToSyndicate', guildId: player.guildId, originSystemId: TX.target };
       if(typeof TX.issueTick === 'number') sellAction.issueTick = TX.issueTick;
       pending = window.__sendAction(sellAction);
     } else {
-      // The ruled BUY shape: a single order to ONE destination (§6). §8.1 quote-lock: the confirm
-      // carries the frozen issue tick, never a price; the engine re-derives and validates it.
-      if(!(TX.qty > 0 && TX.dest)) return;
-      btn.disabled = true;
-      var buyAction = { type:'buyFromSyndicate', guildId: player.guildId, good: TX.good, qty: TX.qty, destinationSystemId: TX.dest };
+      var buyAction = { type:'buyFromSyndicate', guildId: player.guildId, destinationSystemId: TX.target };
       if(typeof TX.issueTick === 'number') buyAction.issueTick = TX.issueTick;
       pending = window.__sendAction(buyAction);
     }
@@ -6950,7 +6893,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       // a generic failure — flip to the expired state + Refresh, keeping the popup open.
       if(txIsQuoteRejection(reason)){
         TX.rejected = true;
-        if(TX.kind === 'sell') txRenderSellLedger(); else txRenderBuyLedger();
+        txRenderLedger();
         return;
       }
       txError(reason); return;
@@ -6960,11 +6903,14 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // the burn — which draws legal-first then contraband — reads true only against the combined
     // after-total. `nowFuel` likewise shows the combined credit value the bar draws.
     var nowFuel = after ? ('&#162;' + fmt(heldValue(after))) : '&mdash;';
+    var manifest = (TX.last.goods || 0) + ((TX.last.goods === 1) ? ' good' : ' goods') + ' &times; ' + fmt(TX.last.units || 0) + ' u';
+    var targetName = (window.__systemName && window.__systemName(TX.target)) || TX.target;
     var sled;
     if(TX.kind === 'sell'){
       var credited = after ? (after.credits - before.credits) : null;
       var burned = after ? (before.hoard - heldUnits(after)) : null;
-      sled = txSledRow('Sold', pretty(TX.good) + ' &times; ' + fmt(TX.last.totalQty))
+      sled = txSledRow('Sold', manifest)
+        + txSledRow('Ship from', targetName)
         + txSledRow('Proceeds &#8594; treasury', '<span style="color:var(--green)">+&#162;' + (credited == null ? '&mdash;' : fmt(credited)) + '</span>')
         + txSledRow('Route fuel burned', '<span style="color:var(--red)">&#8722;' + (burned == null ? '&mdash;' : fmt(burned) + ' fuel') + '</span>')
         + txSledRow('Fuel credits now', nowFuel);
@@ -6973,11 +6919,11 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       var spent = after ? (before.credits - after.credits) : null;
       var burnedB = after ? (before.hoard - heldUnits(after)) : null;
       var ships = (res.snapshot && res.snapshot.shipments) || [];
-      var mine = ships.filter(function(s){ return s.ownerGuildId === guildId && s.destinationSystemId === TX.dest; });
+      var mine = ships.filter(function(s){ return s.ownerGuildId === guildId && s.destinationSystemId === TX.target; });
       var ship = mine.length ? mine[mine.length - 1] : null;   // shipments arrive sorted; the last match is the one just placed
       var arr = ship ? txEta(ship.ticksRemaining) : txEta(TX.last.arr);
-      sled = txSledRow('Ordered', pretty(TX.good) + ' &times; ' + fmt(TX.last.qty))
-        + txSledRow('Destination', (window.__systemName && window.__systemName(TX.dest)) || TX.dest)
+      sled = txSledRow('Ordered', manifest)
+        + txSledRow('Destination', targetName)
         + txSledRow('Cost &#8594; treasury', '<span style="color:var(--red)">&#8722;&#162;' + (spent == null ? '&mdash;' : fmt(spent)) + '</span>')
         + txSledRow('Route fuel burned', '<span style="color:var(--red)">&#8722;' + (burnedB == null ? '&mdash;' : fmt(burnedB) + ' fuel') + '</span>')
         + txSledRow('Arrival time', '<span style="color:var(--blue)">' + arr + '</span>');
@@ -6989,7 +6935,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(window.__refreshNow) window.__refreshNow();   // the card, holdings, credits and hoard update behind the popup
   }
   // A rejection is a normal answer (client-wiring.md): surface the engine's own reason on the
-  // card and close the popup so the player sees it, then rebuild the manifest against fresh state.
+  // card and close the popup so the player sees it, then rebuild the card against fresh state.
   function txError(msg){
     note(String((msg && msg.message) || msg), 'bad');
     txClose();
@@ -7001,6 +6947,21 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     el('tw-tx-form').style.display = '';
     el('tw-tx-success').classList.remove('show');
   }
+  // The per-row ✕ posts removeOrderLine for that good (§3). On success the order updates; refresh
+  // and rebuild the manifest (or close, if that was the last line). The quote is NOT re-frozen — a
+  // removed good just drops out of the frozen total.
+  function txRemoveLine(good){
+    var player = (window.__player && window.__player()) || {};
+    if(!player.guildId || !good) return;
+    window.__sendAction({ type:'removeOrderLine', guildId: player.guildId, side: TX.kind, good: good })
+      .then(function(res){
+        if(!res || !res.accepted) return;
+        var after = function(){ if(!TX.open) return; if(txOrder()){ txRender(); } else { txClose(); render(); } };
+        if(window.__refreshNow) window.__refreshNow().then(after).catch(function(){});
+        else after();
+      })
+      .catch(function(){});
+  }
 
   // Delegated once on the overlay — every re-render keeps working with no rebinding.
   var ov = el('tw-tx-overlay');
@@ -7010,41 +6971,24 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(e.target.closest('#tw-tx-again')){ txClose(); return; }
     if(e.target.closest('#tw-tx-refresh')){ txRefreshQuote(); return; }   // §8.1: re-quote at now
     if(e.target.closest('#tw-tx-confirm')){ txConfirm(); return; }
-    if(e.target.closest('[data-txadd]')){
-      var free = txSellFree(-1);
-      if(free.length){ TX.rows.push({ systemId:free[0], qty:heldIn(meGuild(), free[0], TX.good) }); txRender(); }
-      return;
-    }
     var rm = e.target.closest('[data-txrm]');
-    if(rm){ TX.rows.splice(+rm.getAttribute('data-txrm'), 1); txRender(); return; }
+    if(rm){ txRemoveLine(rm.getAttribute('data-txrm')); return; }
   });
   ov.addEventListener('change', function(e){
-    if(e.target.id === 'tw-tx-dest'){ TX.dest = e.target.value; txRender(); return; }
-    var sel = e.target.closest('[data-txsel]');
-    if(sel){ var i = +sel.getAttribute('data-txsel'); TX.rows[i].systemId = sel.value; TX.rows[i].qty = heldIn(meGuild(), sel.value, TX.good); txRender(); return; }
-  });
-  // Slider drag: patch the row's number and the ledger in place, WITHOUT rebuilding the rows,
-  // so the thumb the player is holding is never yanked out from under them.
-  ov.addEventListener('input', function(e){
-    var sl = e.target.closest('[data-txqty]');
-    if(sl){
-      var i = +sl.getAttribute('data-txqty');
-      TX.rows[i].qty = parseInt(sl.value, 10) || 0;
-      var qn = sl.closest('.row').querySelector('.qn'); if(qn) qn.textContent = fmt(TX.rows[i].qty);
-      txRenderSellLedger();
-    }
+    // Switching the target re-renders the route fuel (main + ledger) at the new system; the
+    // manifest and the frozen quote are untouched.
+    if(e.target.id === 'tw-tx-target'){ TX.target = e.target.value; txRender(); return; }
   });
   document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && TX.open) txClose(); });
 
   // The shell drives these three: the tab opening, the tab closing, and every poll.
-  window.__tradeOpen = function(){ T.open = true; T.navSig = ''; T.rowSig = ''; render(); };
+  window.__tradeOpen = function(){ T.open = true; T.navSig = ''; render(); };
   window.__tradeClosed = function(){ T.open = false; note(''); txClose(); };
-  // On a poll, refresh the open popup's LEDGER only (gates + fuel bar move with live state)
-  // and leave its inputs — the basket sliders, the destination select — untouched. The
-  // success receipt is left alone once shown.
+  // On a poll, refresh the open popup's LEDGER only (gates + fuel bar + tag move with live state)
+  // and leave the target select untouched. The success receipt is left alone once shown.
   window.__tradeRefresh = function(){
     if(T.open) render();
-    if(TX.open && !txDone()){ if(TX.kind === 'sell') txRenderSellLedger(); else txRenderBuyLedger(); }
+    if(TX.open && !txDone()) txRenderLedger();
   };
 })();
 </script>
