@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order finalise popups &#8212; mockup</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+:root{
+  --void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
+  --line:rgba(232,223,200,0.10); --line2:rgba(232,223,200,0.20);
+  --amber:#C9A227; --amber2:#B79433; --amber-dim:#7A6420; --amber-ghost:rgba(201,162,39,0.10);
+  --ink:#E8DFC8; --ink2:#8B8F9C; --ink3:#565B68;
+  --green:#4E9A87; --red:#C2603A; --blue:#3E82B5; --orange:#D8842E;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  --sans:'IBM Plex Sans',system-ui,sans-serif; --serif:'Cinzel',serif;
+}
+*{box-sizing:border-box} html,body{margin:0}
+body{background:radial-gradient(1100px 520px at 80% -12%, #15171f 0%, transparent 60%),var(--void); color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.45; min-height:100vh; padding:26px 18px 50px}
+.toggle{max-width:940px; margin:0 auto 18px; display:flex; align-items:center; gap:12px}
+.toggle .tt{font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3); margin-right:auto}
+.tg{font-family:var(--mono); font-size:12px; letter-spacing:.12em; text-transform:uppercase; padding:9px 20px; border-radius:8px; border:1px solid var(--line2); background:var(--panel); color:var(--ink2); cursor:pointer}
+.tg.on{background:var(--amber-ghost); border-color:var(--amber); color:var(--amber)}
+
+.est{max-width:940px; margin:0 auto; background:linear-gradient(180deg,#12151C,#0F1218); border:1px solid var(--line2); border-radius:14px; box-shadow:0 30px 90px rgba(0,0,0,.6); overflow:hidden; position:relative}
+.est-head{display:flex; align-items:center; gap:16px; padding:18px 22px 16px; border-bottom:1px solid var(--line); background:radial-gradient(700px 200px at 85% -40%, rgba(201,162,39,.06), transparent 70%)}
+.est-head .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
+.est-head h2{font-family:var(--serif); font-weight:600; font-size:22px; margin:4px 0 0; letter-spacing:.02em}
+.est-close{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--ink2); border-radius:8px; width:34px; height:34px; font-size:16px; cursor:pointer; flex:none}
+.est-body{display:grid; grid-template-columns:1fr 340px; gap:0}
+.est-main{padding:20px 22px 22px; border-right:1px solid var(--line)}
+.blk{margin-bottom:20px}.blk:last-child{margin-bottom:0}
+.sec-head{display:flex; align-items:baseline; gap:9px; margin-bottom:11px}
+.sec-head .t{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2)}
+.sec-head .r{margin-left:auto; font-family:var(--mono); font-size:10px; letter-spacing:.06em; color:var(--ink3)}
+.destcard{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px}
+.dtop{display:flex; align-items:baseline; gap:12px}
+.rroute{font-family:var(--mono); font-size:14px; color:var(--ink)}
+.rroute .rarr{color:var(--ink3); margin:0 7px}.rroute .rway{color:var(--amber2)}
+.rowsel{font-family:var(--mono); font-size:14px; color:var(--ink); background:var(--void); border:1px solid var(--line2); border-radius:6px; padding:5px 24px 5px 9px; cursor:pointer; appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);
+  background-position:calc(100% - 12px) 55%, calc(100% - 8px) 55%; background-size:5px 5px,5px 5px; background-repeat:no-repeat}
+.dmeta{margin-left:auto; font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); white-space:nowrap}
+.dmeta b{color:var(--amber2); font-weight:500; font-size:12px; letter-spacing:0}
+
+/* manifest — two-column scroll table */
+.mftable{background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden}
+.mfhrow{display:grid; grid-template-columns:96px 1fr; gap:12px; padding:8px 14px; border-bottom:1px solid var(--line); font-family:var(--mono); font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3)}
+.mfscroll{max-height:196px; overflow-y:auto}
+.mfscroll::-webkit-scrollbar{width:9px}.mfscroll::-webkit-scrollbar-thumb{background:var(--raised); border-radius:5px}
+.mfrow{display:grid; grid-template-columns:96px 1fr; gap:12px; padding:9px 14px; border-bottom:1px dashed var(--line); align-items:baseline}
+.mfrow:last-child{border-bottom:none}
+.mfq{font-family:var(--mono); font-size:14px; color:var(--amber2); font-variant-numeric:tabular-nums}
+.mfq .u{font-size:10px; color:var(--ink3); margin-left:2px}
+.mfg{font-size:14px; color:var(--ink)}
+.mfg small{display:block; font-family:var(--mono); font-size:9.5px; color:var(--ink3); letter-spacing:.04em; margin-top:2px}
+.mffoot{display:flex; justify-content:space-between; padding:10px 14px; border-top:1px solid var(--line); font-family:var(--mono); font-size:11px; color:var(--ink2); letter-spacing:.04em}
+.mffoot b{color:var(--ink); font-weight:500}
+
+.est-side{position:relative; background:#0d0f14; display:flex; flex-direction:column; min-height:540px}
+.est-side .art{position:absolute; inset:0; background-size:cover; background-position:50% 22%; z-index:0}
+.est-side .scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(10,11,15,.28) 0%, rgba(10,11,15,.66) 40%, rgba(10,11,15,.97) 100%); z-index:1}
+.haultag{position:absolute; top:14px; left:16px; z-index:2; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink); background:rgba(10,11,15,.55); border:1px solid var(--line2); border-radius:6px; padding:6px 10px}
+.haultag b{color:var(--orange)}
+.est-side .inner{position:relative; z-index:2; margin-top:auto; padding:18px 20px 20px}
+.ledger{border-top:1px solid var(--line2); padding-top:6px}
+.row2{display:flex; justify-content:space-between; align-items:baseline; padding:7px 0; font-size:13px; border-bottom:1px dashed rgba(232,223,200,0.07)}
+.row2:last-of-type{border-bottom:none}
+.row2 .k{color:var(--ink2); font-size:12px}
+.row2 .v{font-family:var(--mono); font-variant-numeric:tabular-nums}
+.row2.cost .v b{color:var(--red)} .row2.recv .v b{color:var(--green)} .row2.fuel .v b{color:var(--orange)} .row2.arr .v{color:var(--blue)}
+.row2.short .v{color:var(--red)}
+.fcblk{padding-top:10px}
+.fchead{display:flex; justify-content:space-between; font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink3); margin-bottom:5px}
+.fcbar{height:8px; border-radius:5px; background:var(--void); border:1px solid var(--line); overflow:hidden; position:relative}
+.fcfill{position:absolute; left:0; top:0; bottom:0; background:linear-gradient(90deg,#8a5322,var(--orange)); border-radius:5px}
+.deploy{margin-top:14px; width:100%; font-family:var(--mono); font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:#0b0d12; background:linear-gradient(180deg,var(--amber),var(--amber2)); border:none; border-radius:9px; padding:13px; cursor:pointer; font-weight:600}
+.note{max-width:940px; margin:18px auto 0; color:var(--ink3); font-size:11.5px; line-height:1.6; border-top:1px solid var(--line); padding-top:14px}
+.note b{color:var(--ink2); font-weight:500}
+</style></head>
+<body>
+<div class="toggle">
+  <span class="tt">Finalise popup &#183; mock</span>
+  <button class="tg on" id="tgBuy">Buy Order</button>
+  <button class="tg" id="tgSell">Sell Order</button>
+</div>
+
+<div class="est">
+  <div class="est-head">
+    <div><div class="eyebrow">Trade &#183; Syndicate Exchange</div><h2 id="title">Buy from Syndicate</h2></div>
+    <button class="est-close" title="Close">&#10005;</button>
+  </div>
+  <div class="est-body">
+    <div class="est-main">
+      <div class="blk">
+        <div class="sec-head"><span class="t" id="destLbl">Deliver to</span></div>
+        <div class="destcard"><div class="dtop">
+          <span class="rroute"><span class="rway" id="dWay">&#8212;</span><span class="rarr" id="dArrGlyph">&#8594;</span><select class="rowsel" id="destSel"></select></span>
+          <span class="dmeta">Route fuel <b id="dRoute">&#162;0</b></span>
+        </div></div>
+      </div>
+      <div class="blk">
+        <div class="sec-head"><span class="t">Manifest</span><span class="r" id="mfMeta">&#8212;</span></div>
+        <div class="mftable">
+          <div class="mfhrow"><span>Qty</span><span>Resource</span></div>
+          <div class="mfscroll"><div id="mfrows"></div></div>
+          <div class="mffoot"><span>Cargo space</span><b id="mfSpace">0</b></div>
+        </div>
+      </div>
+    </div>
+    <div class="est-side">
+      <div class="art" id="heroArt"></div><div class="scrim"></div>
+      <div class="haultag" id="hTag">&#8212;</div>
+      <div class="inner">
+        <div class="ledger">
+          <div class="row2 cost" id="rowMoney"><span class="k" id="moneyLbl">Goods cost</span><span class="v"><b id="lMoney">&#8212;</b></span></div>
+          <div class="row2" id="rowTre"><span class="k" id="treLbl">Treasury</span><span class="v" id="lTre">&#8212;</span></div>
+          <div class="row2 fuel"><span class="k">Route Fuel Credits</span><span class="v"><b id="lFuel">&#8212;</b></span></div>
+          <div class="row2 arr" id="rowArr"><span class="k">Arrival time</span><span class="v" id="lArr">&#8212;</span></div>
+          <div class="fcblk">
+            <div class="fchead"><span>Fuel hoard</span><span id="fcState"></span></div>
+            <div class="fcbar"><div class="fcfill" id="fcFill" style="width:0"></div></div>
+          </div>
+        </div>
+        <button class="deploy" id="confirmBtn">Buy from Syndicate</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>Mockup &#183; static sample data.</b> One BUY order (7 lines &#8212; scroll it) and its SELL mirror; flip with the toggle. Left is the two-column <b>Qty | Resource</b> manifest in a fixed-height scroll box (a long order never resizes the popup). Arrival now sits in the right ledger (BUY only &#8212; a SELL settles immediately). Hero art + tag follow the order's <b>total cargo space</b> tier (light &le;10,000 / medium &le;50,000 / heavy &le;6,000,000). Price locks when the popup opens (the &#167;8.1 quote-lock). Figures illustrative; volumes/holds/rates are the ruled ones.
+</div>
+
+<script>
+const ART={light:"../../client/assets/units/lighttransport.jpg",medium:"../../client/assets/units/mediumtransport.jpg",heavy:"../../client/assets/units/heavytransport.jpg"};
+const VOL={1:1,2:100,3:60000};
+const TIERS=[{t:"light",hold:10000,rate:0.5},{t:"medium",hold:50000,rate:0.6},{t:"heavy",hold:6000000,rate:0.7}];
+const FUEL_PRICE=3.0, TREASURY=14200000, HOARD_CR=420;
+const LINES=[  // the accumulated order (good, tier, price, qty)
+  {g:"Chassis",tier:3,price:2400,qty:25},
+  {g:"Drive Module",tier:3,price:3150,qty:18},
+  {g:"Hull Plating",tier:3,price:1800,qty:12},
+  {g:"Fuel Tank",tier:3,price:2100,qty:8},
+  {g:"Silicon Wafer",tier:2,price:95,qty:150},
+  {g:"Titanium Alloy",tier:2,price:140,qty:90},
+  {g:"Titanium",tier:1,price:12,qty:4000},
+];
+const BUY_DESTS=[{name:"Kepler-9c (operating)",way:"Cygnus Waystation",dist:8},{name:"Vega Reach",way:"Perseus Waystation",dist:10},{name:"Tau Ceti",way:"Orion Waystation",dist:18}];
+const SELL_ORIGINS=[{name:"Kepler-9c (operating)",way:"Cygnus Waystation",dist:8},{name:"Rigel Hold",way:"Draco Waystation",dist:6},{name:"Tau Ceti",way:"Orion Waystation",dist:18}];
+const $=id=>document.getElementById(id), fmt=n=>n.toLocaleString("en-US");
+const eta=t=>String(Math.floor(t/1440)).padStart(2,"0")+"d"+String(Math.floor((t%1440)/60)).padStart(2,"0")+"h";
+function space(){return LINES.reduce((s,l)=>s+l.qty*VOL[l.tier],0);}
+function money(){return LINES.reduce((s,l)=>s+l.qty*l.price,0);}
+function tier(sp){for(const t of TIERS){if(sp<=t.hold)return t;}return TIERS[2];}
+let mode="buy", idx=0;
+
+function renderRows(){
+  $("mfrows").innerHTML=LINES.map(l=>`<div class="mfrow"><div class="mfq">${fmt(l.qty)}<span class="u">u</span></div>
+    <div class="mfg">${l.g}<small>T${l.tier} &#183; ${fmt(l.qty*VOL[l.tier])} space</small></div></div>`).join("");
+  $("mfMeta").textContent=LINES.length+" goods";
+  $("mfSpace").textContent=fmt(space());
+}
+function render(){
+  const sp=space(), t=tier(sp), m=money();
+  const buy=mode==="buy";
+  const src=buy?BUY_DESTS:SELL_ORIGINS, d=src[idx];
+  $("title").textContent=buy?"Buy from Syndicate":"Sell to Syndicate";
+  $("destLbl").textContent=buy?"Deliver to":"Ship from";
+  $("dArrGlyph").innerHTML=buy?"&#8594;":"&#8592;";
+  $("destSel").innerHTML=src.map((x,i)=>`<option value="${i}">${x.name}</option>`).join("")+(buy?`<option disabled>&#9670; Controlled outpost &#8212; soon</option>`:``);
+  $("destSel").value=idx;
+  $("dWay").textContent=d.way;
+  const fuelUnits=Math.ceil(d.dist*t.rate), fuelCr=Math.round(fuelUnits*FUEL_PRICE), arr=Math.ceil(d.dist*150);
+  $("dRoute").textContent="¢"+fmt(fuelCr);
+  // hero + tag
+  $("heroArt").style.backgroundImage=`url(${ART[t.t]})`;
+  $("hTag").innerHTML=`<b>${t.t.toUpperCase()}</b> · ${fmt(sp)} / ${fmt(t.hold)} space`;
+  // ledger
+  $("rowMoney").className="row2 "+(buy?"cost":"recv");
+  $("moneyLbl").textContent=buy?"Goods cost":"You receive";
+  $("lMoney").textContent=(buy?"−":"+")+"¢"+fmt(m);
+  $("treLbl").textContent="Treasury";
+  const treNew=buy?TREASURY-m:TREASURY+m;
+  const treShort=buy&&m>TREASURY;
+  $("rowTre").className="row2"+(treShort?" short":"");
+  $("lTre").innerHTML=`¢${fmt(TREASURY)} <span style="color:var(--ink3)">→</span> ¢${fmt(treNew)}`+(treShort?" · SHORT":"");
+  $("lFuel").textContent="−¢"+fmt(fuelCr);
+  // arrival: BUY only
+  $("rowArr").style.display=buy?"flex":"none";
+  $("lArr").textContent=eta(arr);
+  // fuel hoard bar
+  const fuelShort=fuelCr>HOARD_CR;
+  $("fcFill").style.width=Math.min(100,fuelCr/HOARD_CR*100)+"%";
+  $("fcState").textContent=fuelShort?"INSUFFICIENT":(HOARD_CR-fuelCr)+" left";
+  $("fcState").style.color=fuelShort?"var(--red)":"var(--ink3)";
+  $("confirmBtn").textContent=buy?"Buy from Syndicate":"Sell to Syndicate";
+  $("confirmBtn").disabled=treShort||fuelShort;
+}
+$("tgBuy").onclick=()=>{mode="buy";idx=0;$("tgBuy").classList.add("on");$("tgSell").classList.remove("on");render();};
+$("tgSell").onclick=()=>{mode="sell";idx=0;$("tgSell").classList.add("on");$("tgBuy").classList.remove("on");render();};
+$("destSel").onchange=e=>{idx=+e.target.value;render();};
+renderRows(); render();
+</script>
+</body></html>
