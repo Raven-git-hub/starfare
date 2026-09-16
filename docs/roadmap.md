@@ -119,6 +119,16 @@ boundary so the later hex-map swap doesn't touch it.
   No serialized byte, no schema bump, goldens byte-identical. *Deferred to CLIENT slice B: the
   Operations "on order" indicator and the in-flight manifest's Miner/Factory label.*
 
+- **Buy a Tier-4 asset from the Syndicate (2.1d, CLIENT slice B — `docs/asset-purchase.md`).** The
+  Operations "In Transit" manifest now NAMES an asset delivery (`client/game.html`, `rowHtml`):
+  when `sh.assetKind` is set it renders one `<kind> asset` `.ops-manrow` ("Miner Asset" / "Factory
+  Asset" via the existing `.ops-manrow .g` capitalize rule) instead of the goods-cargo loop's "No
+  cargo listed." empty case; a goods delivery is byte-for-byte unchanged (row head, carrier line,
+  map leg, cargo). The "Nothing in transit" empty-state copy now names asset commissions too.
+  Pure presentation of the already-published `assetKind` marker (§5) — no engine/snapshot change,
+  goldens byte-identical. *Still deferred: the Operations "on order" indicator (a build surfaced
+  BEFORE it ships stays in the TRADE tab's In Progress, not Operations).*
+
 - **Buy a Tier-4 asset from the Syndicate (2.1d, ENGINE slice 1 — `docs/asset-purchase.md`).** The
   BUY side of the asset economy, engine + snapshot only (NO client — the next slice). A guild pays
   **credits + fuel up front** and the Syndicate builds the asset centrally, then ships it and mints an

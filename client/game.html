@@ -7381,13 +7381,21 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // The manifest carries the carrier identity line (Syndicate — no craft id, §3) and the cargo,
   // itemised `Good: Nu`. A Syndicate BUY is single-good, so today it is one line; the loop keeps
   // the list ready for the mixed cargo a guild transport carries (Phase 4).
+  // AN ASSET DELIVERY (docs/asset-purchase.md — a completed Syndicate build travelling to be minted)
+  // carries no `cargo`; the snapshot marks it with `assetKind` instead. So when that marker is set
+  // the manifest NAMES the asset (one `<kind> asset` row) rather than running the goods loop — the
+  // row head, carrier line, map leg and everything else are byte-for-byte a goods delivery's. The
+  // `.ops-manrow .g` capitalize rule renders `miner asset` as "Miner Asset", `factory asset` as
+  // "Factory Asset". The client PRICES NOTHING here (§5): this is pure presentation of `sh.assetKind`.
   function rowHtml(sh){
     var key = shipKey(sh);
     var open = O.expanded[key] === true;
     var cargo = sh.cargo || {};
-    var manRows = Object.keys(cargo).sort().map(function(g){
-      return '<div class="ops-manrow"><span class="g">' + esc(g) + '</span><span class="q">' + fmt(cargo[g]) + ' Nu</span></div>';
-    }).join('') || '<div class="ops-manrow ops-manempty">No cargo listed.</div>';
+    var manRows = sh.assetKind
+      ? '<div class="ops-manrow"><span class="g">' + esc(sh.assetKind) + ' asset</span></div>'
+      : Object.keys(cargo).sort().map(function(g){
+          return '<div class="ops-manrow"><span class="g">' + esc(g) + '</span><span class="q">' + fmt(cargo[g]) + ' Nu</span></div>';
+        }).join('') || '<div class="ops-manrow ops-manempty">No cargo listed.</div>';
     return '<div class="ops-row' + (open ? ' open' : '') + '" data-key="' + esc(key) + '">'
       + '<div class="ops-rowhead">'
       +   '<span class="ops-origin">' + esc(outpostName(sh.originOutpostId)) + '</span>'
@@ -7427,7 +7435,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       host.innerHTML = mine.length
         ? mine.map(rowHtml).join('')
         : '<div class="ops-empty"><div class="glyph">&#10022;</div><h3>Nothing in transit</h3>'
-          + '<p>A Syndicate delivery appears here the moment you buy goods to a system you hold.</p></div>';
+          + '<p>A Syndicate delivery appears here the moment you buy goods or commission an asset to a system you hold.</p></div>';
     }
 
     if(mine.length){

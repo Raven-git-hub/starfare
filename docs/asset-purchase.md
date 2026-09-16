@@ -171,9 +171,13 @@ live and renders the Syndicate asset-commission view (`client/game.html`, built 
   the goods buy uses. Destination is the single home system (no picker this slice — multi-system is
   2.2). The engine's refusal surfaces as an amber note; it is never pre-guessed.
 
-**Deferred to CLIENT slice B (unbuilt):** the Operations "on order" indicator and the in-flight
-transit manifest's "Miner"/"Factory" label. This slice's In Progress shows only the BUILD phase
-(`syndicateBuilds`); once a build completes it leaves that list and becomes a delivery shown
-elsewhere (slice B).
+**Client slice B (built):** the Operations "In Transit" manifest now NAMES an asset delivery —
+`rowHtml` branches on `sh.assetKind` and renders one `<kind> asset` row ("Miner Asset" / "Factory
+Asset" via the existing `.ops-manrow .g` capitalize rule) instead of the goods-cargo loop's "No
+cargo listed." empty case; a goods delivery's manifest is unchanged. This slice's In Progress
+(slice A) shows only the BUILD phase (`syndicateBuilds`); once a build completes it leaves that
+list and appears here as a normal delivery. *Still deferred (unbuilt): the Operations "on order"
+indicator surfacing a build BEFORE it ships — a still-building asset stays in the TRADE tab's In
+Progress and is deliberately not surfaced in Operations until it is actually in transit.*
 
 <!-- asset-purchase-doc-sentinel v1 -->
