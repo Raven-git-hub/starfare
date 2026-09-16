@@ -107,6 +107,30 @@ boundary so the later hex-map swap doesn't touch it.
 
 **Built so far:**
 
+- **The Syndicate order trade UI (Phase 2, CLIENT — `docs/syndicate-orders.md` §6).** Client-only
+  (`client/game.html`, the `trade-tab-wire` block) — NO `sim/` change, so every determinism/persisted
+  golden is byte-identical and the suite is unchanged (**1,298 green**). The trade floor now BUILDS
+  the engine-held order and finalises it. The Syndicate Trade card's two panes collapse to one shape —
+  a quantity + an **Add to Sell/Buy Order** button posting `addOrderLine` — retiring the per-system
+  SELL basket from the card. The "Syndicate Exchange" hero grows two buttons, **Buy Order** / **Sell
+  Order**, badged from the snapshot's `buyOrder`/`sellOrder` (line-count + `totalSpace`, "empty" when
+  absent), each opening the adjusted finalise popup (`#tw-tx-overlay`): a two-column **Qty | Resource**
+  fixed-height scroll manifest from `order.lines` (per-line `space`, per-row remove ✕), a finalise-time
+  target (BUY *Deliver to* / SELL *Ship from* over the held systems), the hero art + **`TIER · used /
+  hold`** tag by `order.haulerTier`, the ledger (cost/proceeds, treasury, route fuel from
+  `fuelCost[target].{fuelBurnByTier,creditCostByTier}[tier]`, the fuel-hoard bar, BUY-only arrival from
+  `.travelTicks`), the **over-capacity** split-the-order state (confirm disabled), and the §8.1
+  quote-lock (freeze at open, `issueTick` on confirm). Confirm posts the held-order finalise —
+  `buyFromSyndicate({ destinationSystemId, issueTick })` / `sellToSyndicate({ originSystemId,
+  issueTick })`, no `cart`/`good`/`allocations`. The client computes no game number — space, tier,
+  fuel, cost and arrival are all read from the snapshot (§18). Verified by the served-bytes tripwire
+  (`sim/tests/server.test.js`) and a headless-Chromium end-to-end (two-good buy order → manifest, tier,
+  route fuel, arrival → confirm → order empties; a one-origin sell; an over-cap build, confirm disabled).
+  *Deferred, not invented: RETIRING the legacy engine paths (inline `cart`/`good` BUY, `allocations`
+  SELL — the client no longer sends them, a later cleanup removes them) and the SELL origin-picker
+  helper (§7 — this slice offers every held system and lets the engine's stock gate reject-whole with
+  the named shortfall; only-systems-that-hold-every-line is a later refinement).*
+
 - **The Syndicate order model (Phase 2, ENGINE — `docs/syndicate-orders.md`).** Engine + snapshot
   only (NO client — the next slice), all backward-compatible so the deployed single-good BUY / multi-
   system SELL keep working untouched. Each guild now carries a held **`buyOrder`** and **`sellOrder`**
@@ -128,11 +152,11 @@ boundary so the later hex-map swap doesn't touch it.
   when the order exists. **Invariant** — `checkOrders` (`sim/invariants.js`): lines sorted, unique,
   priced-and-not-fuel, positive-int. No serialized byte from the snapshot, no schema bump, goldens
   byte-identical; `sim/tests/syndicate-orders.test.js` (27 tests), full suite **1,298 green**.
-  *Deferred to later slices: the whole CLIENT (Add-to-Order wiring, the two hero buttons, the adjusted
-  finalise popups + origin-picker help) and RETIRING the legacy inline BUY / multi-system SELL (kept
-  for backward-compat until the client stops sending them). One decision deferred, not invented: the
-  held order stores NO tick — §2/§4 pin its shape with no field for one — flagged rather than adding
-  a field that would move the snapshot/persist shape.*
+  *The CLIENT half is now BUILT (the row above). Still deferred to a later slice: RETIRING the legacy
+  inline BUY / multi-system SELL (kept for backward-compat until confirmed no client sends them) and
+  the SELL origin-picker help. One decision deferred, not invented: the held order stores NO tick —
+  §2/§4 pin its shape with no field for one — flagged rather than adding a field that would move the
+  snapshot/persist shape.*
 
 - **The cargo-space Syndicate hauler + multi-good BUY (Phase 2, ENGINE — shipment rebuild slice 1,
   `docs/transport-model.md` §5.1/§8.0).** Engine + snapshot only (NO client — later slices), all
