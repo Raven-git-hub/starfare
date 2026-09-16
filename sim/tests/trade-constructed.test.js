@@ -99,6 +99,37 @@ test('the .tw-wrap fills the tab width — no vestigial auto side-margins to shr
   assert.doesNotMatch(rule[0], /margin:0 auto/, '.tw-wrap must NOT re-introduce the auto-centring margin');
 });
 
+test('cnCommission gates on guild.credits < price → single-button "cannot afford" popup, no buy', () => {
+  // The affordability gate compares two snapshot values (credits vs quoted price — no game number,
+  // §5) and returns before the confirm/buy path.
+  assert.match(html, /if\(price != null && typeof guild\.credits === 'number' && guild\.credits < price\)\{/);
+  // In that branch it opens the shared adviser-confirm popup in single-button acknowledge mode,
+  // Close-labelled, with a no-op onConfirm.
+  const gate = html.match(/if\(price != null && typeof guild\.credits === 'number' && guild\.credits < price\)\{[\s\S]*?\n    \}/);
+  assert.ok(gate, 'the credits gate block is present');
+  assert.match(gate[0], /title: 'Insufficient credits'/);
+  assert.match(gate[0], /confirmLabel: 'Close'/);
+  assert.match(gate[0], /singleButton: true/);
+  assert.match(gate[0], /return;/);
+  // The gate must NOT reach cnPostCommission (no buy fired) — the block posts no action.
+  assert.doesNotMatch(gate[0], /cnPostCommission/);
+  assert.doesNotMatch(gate[0], /buyAssetFromSyndicate/);
+});
+
+test('__adviserConfirm honours singleButton by hiding reelCancel (reset every call)', () => {
+  // Visibility is set explicitly on every call so a normal two-button confirm always resets it.
+  assert.match(html, /\$\('reelCancel'\)\.style\.display = opts\.singleButton \? 'none' : '';/);
+});
+
+test('cnPostCommission no longer shows a red refusal note — the bad note is gone', () => {
+  // A refusal is now silent: no cnNote(..., 'bad') anywhere in the source, and the .cn-note.bad
+  // (red) CSS rule is dropped. The green 'ok' note (and its styling) stays in use.
+  assert.doesNotMatch(html, /cnNote\([^)]*,\s*'bad'\)/);
+  assert.doesNotMatch(html, /#tw-cn \.cn-note\.bad\{/);
+  assert.match(html, /cnNote\('Commission placed[\s\S]*?'ok'\)/);
+  assert.match(html, /#tw-cn \.cn-note\.ok\{/);
+});
+
 test('Add → __adviserConfirm → buyAssetFromSyndicate with the ruled payload', () => {
   // The Add button opens the shared adviser-confirm popup (not a new overlay), Commission-labelled.
   assert.match(html, /window\.__adviserConfirm\(\{/);
