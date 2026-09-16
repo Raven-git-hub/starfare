@@ -64,6 +64,15 @@ test('the delivery leg + build time are DISPLAY derivations, never computed pric
   assert.match(html, /q\.buildTicks/);
 });
 
+test('the Constructed grid fills the tab like the goods floor — #tw-cn grows as a flex child', () => {
+  // #tw-cn and .tw-body are sibling flex children of .tw-wrap; both must carry `flex:1 1 auto`
+  // so they grow to fill the panel height. Without it #tw-cn stops at min-height:560px and leaves
+  // dead space on a tall viewport (the compression this pins against a future regression).
+  assert.match(html, /#tw-cn\{[^}]*flex:1 1 auto;[^}]*min-height:560px;\}/s);
+  // The goods floor it must match still carries the same growth rule.
+  assert.match(html, /#tp-trade \.tw-body\{[^}]*flex:1 1 auto; min-height:560px;\}/s);
+});
+
 test('Add → __adviserConfirm → buyAssetFromSyndicate with the ruled payload', () => {
   // The Add button opens the shared adviser-confirm popup (not a new overlay), Commission-labelled.
   assert.match(html, /window\.__adviserConfirm\(\{/);
