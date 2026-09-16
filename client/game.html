@@ -881,14 +881,13 @@ select.field{appearance:none; cursor:pointer;}
 #tw-cn .am-h .t{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink2); font-weight:600;}
 #tw-cn .am-h small{display:block; font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); margin-top:3px;}
 #tw-cn .am-list{padding:10px; display:flex; flex-direction:column; gap:9px;}
-#tw-cn .am-item{border:1px solid var(--line2); border-radius:9px; background:var(--panel); padding:12px 12px 11px; cursor:pointer;}
+#tw-cn .am-item{border:1px solid var(--line2); border-radius:9px; background:var(--panel); padding:11px 12px; cursor:pointer;}
 #tw-cn .am-item.open{border-color:var(--amber); background:linear-gradient(180deg,var(--amber-ghost),transparent 55%),var(--panel);}
 #tw-cn .am-item .anm{font-family:var(--serif); font-size:16px; color:var(--ink); text-transform:capitalize;}
-#tw-cn .am-item .asub{font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); margin-top:1px;}
-#tw-cn .am-item .apr{font-family:var(--mono); font-size:14px; color:var(--amber2); margin-top:9px; font-variant-numeric:tabular-nums;}
+#tw-cn .am-item .apr{display:flex; align-items:baseline; justify-content:space-between; margin-top:7px;}
+#tw-cn .am-item .apr .amt{font-family:var(--mono); font-size:14px; color:var(--amber2); font-variant-numeric:tabular-nums;}
 #tw-cn .am-item .apr .c{font-size:11px; color:var(--amber); margin-right:1px;}
-#tw-cn .am-item .abuildt{font-size:10px; color:var(--ink3); margin-top:3px;}
-#tw-cn .am-item .abuildt b{color:var(--ink2); font-weight:500;}
+#tw-cn .am-item .apr .abt{font-family:var(--mono); font-size:11px; color:var(--ink3); letter-spacing:.04em; font-variant-numeric:tabular-nums;}
 #tw-cn .am-add{margin-top:11px; width:100%; font-family:var(--mono); font-size:10.5px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:7px; padding:9px; cursor:pointer;}
 /* in-progress commissions (parallel; the dockyard queue look) */
 #tw-cn .ip-item{border:1px solid var(--line); border-radius:7px; background:var(--panel2); padding:10px 11px; display:flex; align-items:center; gap:9px; flex:0 0 auto;}
@@ -6389,9 +6388,6 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return '<1h';
   }
   function cnPad(n){ return (n < 10 ? '0' : '') + n; }
-  // The descriptive sub-line for each kind — presentation copy lifted from the approved mockup,
-  // not a game value. A kind the mockup did not name falls back to a generic label.
-  var CN_SUB = { miner:'Resource node asset', factory:'Settlement slot asset' };
   // The delivery leg's travel duration to a system, read WHOLE from the per-system route quote
   // the goods buy already uses (`fuelCost[sysId].travelTicks`); 0 (→ "<1h") when the guild holds
   // no route to it. The client never sees a distance or a craft speed.
@@ -6415,9 +6411,6 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var kinds = Object.keys(quote);
     if(!T.cnOpen || kinds.indexOf(T.cnOpen) < 0) T.cnOpen = kinds[0] || null;
 
-    var dest = guild ? guild.homeSystemId : null;
-    var homeDelivery = cnDeliveryTicks(guild, dest);
-
     // This guild's in-progress builds (parallel, not a queue), each with a derived arrival
     // (build remaining + its own delivery leg), ordered soonest-arrival first.
     var builds = ((s && s.syndicateBuilds) || [])
@@ -6434,13 +6427,12 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // ---- panel 1: Commission Assets menu ----
     var menu = kinds.map(function(kind){
       var q = quote[kind] || {}, open = kind === T.cnOpen;
-      var price = q.price, buildT = q.buildTicks || 0, arrive = buildT + homeDelivery;
+      var price = q.price, buildT = q.buildTicks || 0;
       return '<div class="am-item' + (open ? ' open' : '') + '" data-kind="' + kind + '">'
         + '<div class="anm">' + pretty(kind) + '</div>'
-        + '<div class="asub">' + (CN_SUB[kind] || 'Syndicate-built asset') + '</div>'
-        + '<div class="apr"><span class="c">&#162;</span>' + (price == null ? '&mdash;' : fmt(price)) + '</div>'
-        + '<div class="abuildt">Build ' + cnDur(buildT) + ' &middot; Delivery ~' + cnDur(homeDelivery)
-          + ' &middot; <b>arrives ~' + cnDur(arrive) + '</b></div>'
+        + '<div class="apr"><span class="amt"><span class="c">&#162;</span>'
+          + (price == null ? '&mdash;' : fmt(price)) + '</span>'
+          + '<span class="abt">' + cnDur(buildT) + '</span></div>'
         + (open ? '<button class="am-add" data-kind="' + kind + '">+ Add commission</button>' : '')
         + '</div>';
     }).join('');
