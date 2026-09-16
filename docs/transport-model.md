@@ -245,6 +245,24 @@ asset on the §6 delivery rails, and **this ruling sets that delivery's hauler t
 The same T4 volume also governs future guild-tier asset **relocation** transport (the "moving asset", §5)
 when that lands.
 
+**AS-BUILT (shipment rebuild slice 1, ENGINE — `sim/` only).** ✅ The cargo-space model of this section
+is built in the engine. `sim/fuel.js` holds the ruled table as data — `HAULER_TIERS` (`{tier, hold, rate}`
+smallest→largest), `HEAVY_HOLD` (the reject-whole cap, derived from the last row), `TIER_VOLUME`
+(T1 1 / T2 100 / T3 60,000) and `ASSET_CARGO_VOLUME` (= the heavy hold) — with `volumeOf(good)` (per-unit
+space from `tierOf`; throws for fuel/non-priced), `haulerTierForSpace(space)` (the smallest hold that fits;
+`null` over the heavy hold), `routeFuelBurnByTier(systemId)` (the three per-tier burns, for the snapshot),
+and a **space-required** `routeFuelCost(systemId, space)` (the tier is chosen by the leg's space; a missing
+`space` throws — a charge site that forgot the load must not silently under-charge). The light rate IS the
+old `SYNDICATE_HAULER_BURN_RATE = 0.5`, so a light-hold leg is byte-identical to the pre-tier burn. A BUY
+carries a multi-good `cart` to one destination (legacy single-good normalizes to a one-line cart), sized by
+its total space; SELL keeps its one-good/many-systems shape but space-tiers and caps each row; the bought
+T4 asset now burns the heavy rate. The snapshot publishes each good's volume (`goodVolumes`), the hold
+ladder (`haulerTiers`), and per-system `fuelBurnByTier`/`creditCostByTier` (its `fuelBurn`/`creditCost`
+stay the light-tier values) — unit counts and integers, no rate/geometry/speed. **Not built here (later
+slices):** the SELL axis-flip (one origin, many goods) and the whole client — the manifest UI (Add to
+Buy/Sell Shipment · Finalise), the tier/fuel/cap display, and the `txHeroClass` art re-key to the space
+tier — so the multi-good cart is engine-ready but not yet reachable from the deployed single-good client.
+
 ## 6. legProgress serves three consumers
 
 The interpolation of §2.3 is read by three places, from one primitive:
@@ -310,6 +328,17 @@ unit-count, and both directions carry **multi-good** loads on a **single leg**: 
 destination, a SELL load from one origin. The full model — volumes, holds, why — is **§5.1**. The bullets
 below are updated where they set the burn and the gate; the built multi-system SELL / single-good BUY they
 describe stand as the record of what is deployed until the rebuild slice lands.
+
+**⤳ AS-BUILT (shipment rebuild slice 1, ENGINE) — the space-based burn and the reject-whole gate are built.**
+The burn (both directions) is now `ceil(hexDistance × rate[tier])` where the tier is `haulerTierForSpace`
+of the leg's total cargo space (`Σ qty × volumeOf`, §5.1), via `routeFuelCost(systemId, space)`
+(`sim/fuel.js`, `sim/actions.js`). **BUY** is a multi-good `cart` to one destination (its tier is the
+cart's total space; legacy single-good normalizes to a one-line cart, byte-identical); **SELL** keeps its
+one-good/many-systems shape this slice but space-tiers **each row** by that row's own space, summed. **The
+third gate — the space cap** is built: a BUY cart whose total space, or any SELL row whose space, exceeds
+the heavy hold (§5.1) is **reject-whole**d with a split-the-order message, before the cost/fuel gates. The
+credits/fuel gates and the quote-lock still run last, unchanged. **Not built (later slices):** the SELL
+axis-flip to one-origin/many-goods, and the client.
 
 - **Both BUY and SELL burn route fuel — distance-scaled, from the hoard, in units.** A leg's burn is
   `ceil(hexDistance(system → nearest waystation) × BURN_RATE[tier])`, where the tier is the Syndicate

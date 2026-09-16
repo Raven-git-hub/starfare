@@ -67,9 +67,12 @@ BOTH costs are charged at buy, up front:
 - **Credits** — the price above, debited from the guild and credited to the Syndicate ledger
   (invariant 2, as the goods BUY does).
 - **Fuel** — the delivery flight burns route fuel like any Syndicate delivery. An asset is a
-  single indivisible payload with no good-unit count, so it burns at the **light hauler rate**
-  (the smallest tier, `phase-1-tuning.md`) over the hex distance — cargo-independent. `[FIRST-CUT]`
-  choice: an asset-mass → hauler-tier mapping is a later ruling, not an invented mass. **⤳ RULED 14-09-26 (`transport-model.md` §5.1):** that ruling has landed — a non-movable T4 asset fills a **heavy** hold, so this delivery burns the **heavy hauler rate (0.7/hex)**, not the light placeholder. The light→heavy change rides the tiered-hauler build; until it lands the engine still charges the light rate recorded below.
+  single indivisible payload that fills a **heavy** hold, so it burns at the **heavy hauler rate
+  (0.7/hex)** over the hex distance (`transport-model.md` §5.1, RULED 14-09-26). **✅ BUILT** (shipment
+  rebuild slice 1): the light→heavy change rode the tiered-hauler build and the engine now charges the
+  heavy rate — `routeFuelCost(destinationSystemId, ASSET_CARGO_VOLUME)`, where `ASSET_CARGO_VOLUME` is the
+  heavy hold (`sim/fuel.js`). *(History: this began as a `[FIRST-CUT]` light-rate placeholder that
+  deferred the asset→tier mapping to §5.1's ruling; that ruling set it to heavy and the build applied it.)*
 
 Charging the fuel up front (rather than when the flight departs) is deliberate: it removes the
 failure mode where construction finishes but the guild can no longer afford the flight, leaving a
@@ -132,7 +135,9 @@ now exists, the client renders it next slice.
   (`quotedPrice`) the goods BUY uses. The floor binds at today's parts scale.
 - **The action** — `buyAssetFromSyndicate` (`sim/actions.js`), the asset analogue of `buyFromSyndicate`:
   same gate structure and quote-lock, minus the `guildHolds` gate (presence not required). Apply debits
-  credits → `syndicate.ledger` (invariant 2) and burns the light-hauler route fuel up front (invariant 1) — a light-rate placeholder **SUPERSEDED 14-09-26 by §5.1's heavy-rate ruling; the light→heavy change rides the tiered-hauler build** —,
+  credits → `syndicate.ledger` (invariant 2) and burns the **heavy**-hauler route fuel up front (invariant 1)
+  — a T4 asset fills a heavy hold (§5.1, RULED 14-09-26), `routeFuelCost(dest, ASSET_CARGO_VOLUME)`; ✅ BUILT
+  in the shipment-rebuild slice, superseding the original light-rate placeholder —,
   then records a build order on the new top-level `state.syndicateBuilds` (omit-when-empty, so an unbought
   galaxy stays byte-identical).
 - **Two-phase build→deliver** — `stepSyndicateBuilds` (`sim/tick.js` step 4, scheduled events) promotes a

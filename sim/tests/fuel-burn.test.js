@@ -30,7 +30,9 @@ const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { computeGalacticSupply } = require('../supply.js');
 const { getStock } = require('../stock.js');
-const { routeFuelCost, GUILD_STARTING_FUEL, SYNDICATE_HAULER_BURN_RATE } = require('../fuel.js');
+const {
+  routeFuelCost, routeFuelBurnByTier, GUILD_STARTING_FUEL, SYNDICATE_HAULER_BURN_RATE,
+} = require('../fuel.js');
 const { farthestSystem, starterHomeAtDistance } = require('./waystation-fixtures.js');
 const {
   createBuyFromSyndicateAction, createSellToSyndicateAction,
@@ -47,8 +49,12 @@ const FAR = FAR_SYS.id;
 const NEAR_HOME_PLANET = NEAR_HOME.homePlanet;
 const GOOD = 'titanium';
 
-const BURN_NEAR = routeFuelCost(NEAR).fuelBurn;
-const BURN_FAR = routeFuelCost(FAR).fuelBurn;
+// Every BUY in this file ships small quantities of titanium (raw, volume 1), so every leg
+// fits a LIGHT hold in space and burns the light rate (§5.1) — the same numbers this file
+// always pinned. `routeFuelBurnByTier(...).light` is that light-tier burn without a call to
+// the now-space-required `routeFuelCost`.
+const BURN_NEAR = routeFuelBurnByTier(NEAR).light;
+const BURN_FAR = routeFuelBurnByTier(FAR).light;
 
 const claim = (guildId, systemId, i) => ({
   claimId: i === 0 ? `claim_home_${guildId}` : `claim_${guildId}_${systemId}`,
@@ -122,12 +128,15 @@ test('a BUY burns exactly the quoted fuel, and records it as consumed', () => {
   assert.deepEqual(next.galacticSupply, computeGalacticSupply(next), 'galactic-supply-consistency, live');
 
   // The burn is exactly what the client was quoted. One function, one number.
-  assert.equal(s.guilds[0].fuelHoard - next.guilds[0].fuelHoard, routeFuelCost(FAR).fuelBurn);
+  assert.equal(s.guilds[0].fuelHoard - next.guilds[0].fuelHoard, routeFuelCost(FAR, 5).fuelBurn);
 });
 
-test('the burn is cargo-independent — 1 unit and 1000 cost the same fuel', () => {
-  // The ruling made observable at the point it is charged, not just where it is
-  // quoted: quantity changes the CREDITS and not one drop of the fuel.
+test('the burn is flat WITHIN A TIER — 1 unit and 1000 cost the same fuel (both light)', () => {
+  // ⤳ REVISED 14-09-26 (§5.1): burn is no longer globally cargo-independent — it is flat
+  // within a hauler tier and steps between tiers by the leg's cargo SPACE. 1 and 1000 units
+  // of titanium (volume 1) are 1 and 1000 space, both inside the LIGHT hold, so they burn the
+  // same — quantity changes the CREDITS and not one drop of the fuel, exactly as before, so
+  // long as the load stays in one tier.
   const one = accept(burnState(), buy(1, FAR));
   const many = accept(burnState(), buy(1000, FAR));
   assert.equal(one.guilds[0].fuelHoard, many.guilds[0].fuelHoard, 'same burn');
@@ -219,7 +228,7 @@ test('several BUYs in a row keep every invariant green — the cache is refreshe
   for (let i = 0; i < 5; i += 1) {
     const dest = i % 2 === 0 ? NEAR : FAR;
     s = accept(s, buy(2, dest));
-    spent += routeFuelCost(dest).fuelBurn;
+    spent += routeFuelCost(dest, 2).fuelBurn; // buy(2, dest): 2 titanium = 2 space, light
 
     assert.equal(s.guilds[0].fuelHoard, 500 - spent, `hoard after buy ${i + 1}`);
     assert.equal(s.audit.totalConsumed, spent, `consumed after buy ${i + 1}`);
@@ -273,7 +282,7 @@ test('no waystation: the waystation gate refuses first, so the burn is never rea
   // a route. But the trade never gets that far: the waystation gate above already
   // refuses it on its own terms. This pins BOTH halves, so a future change that
   // removes the waystation gate cannot quietly let a free flight through.
-  assert.deepEqual(routeFuelCost('sys_nope'), { fuelBurn: 0 });
+  assert.deepEqual(routeFuelCost('sys_nope', 5), { fuelBurn: 0 });
 
   const s = burnState({ fuelHoard: 0 });
   const reason = refuse(s, buy(5, 'sys_nope'));

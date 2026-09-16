@@ -37,8 +37,11 @@ const { guildPoints } = require('../points.js');
 const { issuanceModifier } = require('../meanline.js');
 const { getStarterSystems } = require('../seed.js');
 const {
-  REFERENCE_FUEL_PRICE, GUILD_STARTING_FUEL, routeFuelCost, fuelValue,
+  REFERENCE_FUEL_PRICE, GUILD_STARTING_FUEL, routeFuelBurnByTier, fuelValue,
 } = require('../fuel.js');
+// The snapshot's `fuelBurn`/`creditCost` stay the LIGHT-tier values (§5.1), so the light burn
+// is what a route quote is compared against here.
+const routeFuelCost = (systemId) => ({ fuelBurn: routeFuelBurnByTier(systemId).light });
 const {
   BASE_GRANT_PER_GP, DEUTERIUM_INFLUX_PER_CYCLE, grantFor, physicalGrantFor, rationGrants,
 } = require('../issuance.js');

@@ -107,6 +107,29 @@ boundary so the later hex-map swap doesn't touch it.
 
 **Built so far:**
 
+- **The cargo-space Syndicate hauler + multi-good BUY (Phase 2, ENGINE — shipment rebuild slice 1,
+  `docs/transport-model.md` §5.1/§8.0).** Engine + snapshot only (NO client — later slices), all
+  backward-compatible so the deployed single-good client keeps working. A shipment's size is now
+  **cargo SPACE** (`Σ qty × volumeOf(good)`, volume by manufacturing tier: T1 1 / T2 100 / T3 60,000 /
+  T4 asset 6,000,000), and a leg flies on the **smallest hauler tier whose hold fits** it — light
+  10,000 @ 0.5/hex, medium 50,000 @ 0.6, heavy 6,000,000 @ 0.7 — the tier moving fuel, never time.
+  **`sim/fuel.js`** gains the tier table, `volumeOf`, `haulerTierForSpace`, `routeFuelBurnByTier`, and
+  a space-required `routeFuelCost(systemId, space)` (a missing load throws — no silent under-charge).
+  **BUY** (`sim/actions.js`) gains an optional multi-good `cart:[{good,qty}]` to ONE destination
+  (legacy `{good,qty}` normalizes to a one-line cart, byte-identical): one shipment carrying the whole
+  cart, cost = Σ per-good, burn = the total-space tier, a NEW capacity gate reject-wholing a cart over
+  the heavy hold. **SELL** keeps its shape (one good, many systems) but space-tiers each row's burn and
+  caps each row at the heavy hold. **Asset delivery** (`buyAssetFromSyndicate`) now burns the **heavy**
+  rate — a T4 asset fills a heavy hold (§5.1, RULED 14-09-26) — superseding the light-rate placeholder.
+  **Snapshot** — additive derived-on-read: `fuelCost[sys]` gains `fuelBurnByTier`/`creditCostByTier`
+  (its `fuelBurn`/`creditCost` stay the light-tier values), plus published `goodVolumes` and a
+  `haulerTiers` hold ladder — unit counts + integers only, no rate/geometry/speed. No serialized byte,
+  no schema bump, no golden moved (every golden's trades stay within the light hold in space). Full
+  suite 1,271 green. *Deferred to later slices: the SELL axis-flip (one origin, many goods — a breaking
+  action-shape change), and the whole CLIENT (the BUY/SELL manifest UI, the tier/fuel/cap display, the
+  art re-key). Until they land, SELL stays one-good/many-systems (now space-tiered) and the BUY popup
+  stays single-good — the multi-good cart is engine-ready but not reachable from the deployed client.*
+
 - **Buy a Tier-4 asset from the Syndicate (2.1d, CLIENT slice A — `docs/asset-purchase.md`).** The
   TRADE tab's "4 · Constructed" tier tab is now LIVE and renders the Syndicate asset-commission BUY
   view (`client/game.html`, built to `docs/mockups/trade-4constructed.html`): a Commission-Assets

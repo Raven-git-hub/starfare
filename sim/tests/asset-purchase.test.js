@@ -34,7 +34,10 @@ const { hashState, canonicalStringify } = require('../serialize.js');
 const { checkInvariants } = require('../invariants.js');
 const { getStock } = require('../stock.js');
 const { buildSnapshot } = require('../snapshot.js');
-const { GUILD_STARTING_FUEL, routeFuelCost } = require('../fuel.js');
+const { GUILD_STARTING_FUEL, routeFuelCost, ASSET_CARGO_VOLUME } = require('../fuel.js');
+// A T4 asset fills a HEAVY hold (§5.1, RULED 14-09-26), so its delivery burns the heavy rate.
+// The test's expected burn must be sized on that same space, exactly as the engine does.
+const assetBurn = (systemId) => routeFuelCost(systemId, ASSET_CARGO_VOLUME).fuelBurn;
 const { nearestWaystation, arrivalTickFor } = require('../transport.js');
 const { QUOTE_TTL_TICKS } = require('../price-ring.js');
 const {
@@ -159,7 +162,7 @@ test('validate: refuses when CREDITS are short — and blames credits, not fuel'
 });
 
 test('validate: refuses when FUEL is short — reached only once credits pass (the goods-buy gate order)', () => {
-  const burn = routeFuelCost(DEST).fuelBurn;
+  const burn = assetBurn(DEST);
   assert.ok(burn > 0, 'the DEST leg costs fuel');
   // Ample credits, but one unit short of the delivery burn.
   const s = buyState({ fuelHoard: burn - 1 });
@@ -171,7 +174,7 @@ test('validate: refuses when FUEL is short — reached only once credits pass (t
 test('apply: debits the EXACT price to the ledger (invariant 2) and burns the EXACT route fuel (invariant 1), and records the build order', () => {
   const s0 = buyState();
   const price = priceAssetForPurchase(s0, MINER, s0.tick);
-  const burn = routeFuelCost(DEST).fuelBurn;
+  const burn = assetBurn(DEST);
   const creditsBefore = s0.guilds[0].credits;
   const ledgerBefore = s0.syndicate.ledger;
   const fuelBefore = s0.guilds[0].fuelHoard;
@@ -198,6 +201,19 @@ test('apply: debits the EXACT price to the ledger (invariant 2) and burns the EX
   });
   // Every invariant green right after apply (the between-tick assert the server runs).
   assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('apply: the delivery burns the HEAVY rate — a T4 asset fills a heavy hold (§5.1, RULED 14-09-26)', () => {
+  // The light→heavy fix. A T4 asset fills a heavy hold, so the burn is ceil(distance × 0.7),
+  // NOT the old light-rate ceil(distance × 0.5) placeholder. Pinned against both, so a slip
+  // back to the light rate fails here loudly.
+  const s0 = buyState();
+  const { distance } = nearestWaystation(DEST);
+  const s = accept(s0, buy(MINER, DEST));
+  const spent = s0.guilds[0].fuelHoard - s.guilds[0].fuelHoard;
+  assert.equal(spent, Math.ceil(distance * 0.7), 'burns the heavy rate 0.7/hex');
+  assert.notEqual(spent, Math.ceil(distance * 0.5), 'and NOT the retired light-rate placeholder');
+  assert.equal(spent, assetBurn(DEST), 'exactly the heavy-hold route burn the engine quotes');
 });
 
 // --- 4. stepSyndicateBuilds: promotion timing ---------------------------------
@@ -386,7 +402,7 @@ test('headless end-to-end: found → buy → build → deliver → mint', () => 
 
   // Buy a factory delivered to the home system.
   const price = priceAssetForPurchase(s, FACTORY, s.tick);
-  const burn = routeFuelCost(homeSystemId).fuelBurn;
+  const burn = assetBurn(homeSystemId);
   s = intake(s, [createBuyAssetFromSyndicateAction({ guildId: 'e2e', assetKind: FACTORY, destinationSystemId: homeSystemId })]).state;
 
   // Credits + fuel debited; a build order recorded; no asset yet.

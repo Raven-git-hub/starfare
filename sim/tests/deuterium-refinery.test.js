@@ -25,7 +25,7 @@ const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { guildTotals } = require('../stock.js');
 const { guildPoints, TIER_WEIGHT } = require('../points.js');
-const { burnFuel, routeFuelCost } = require('../fuel.js');
+const { burnFuel, routeFuelBurnByTier } = require('../fuel.js');
 const { isIllegalDeuteriumRefinery } = require('../baseline.js');
 const {
   validateAction, applyAction,
@@ -69,7 +69,9 @@ function refineryState({ deuterium = 0, refineries = [{ id: 'r1', rate: RATE }],
 const NEAR_HOME = starterHomeAtDistance(6);
 const NEAR = NEAR_HOME.id;
 const FAR = farthestSystem().id;
-const BURN_FAR = routeFuelCost(FAR).fuelBurn;
+// Every buy here is buy(5, FAR): 5 titanium (volume 1) = 5 cargo space, a light-hold leg (§5.1),
+// so its burn is the light rate — the same number this file always used.
+const BURN_FAR = routeFuelBurnByTier(FAR).light;
 const GOOD = 'titanium';
 
 const claim = (systemId, i) => ({

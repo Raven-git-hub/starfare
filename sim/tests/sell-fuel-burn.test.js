@@ -25,7 +25,7 @@ const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { computeGalacticSupply } = require('../supply.js');
 const { getStock } = require('../stock.js');
-const { routeFuelCost, GUILD_STARTING_FUEL } = require('../fuel.js');
+const { routeFuelCost, routeFuelBurnByTier, volumeOf, GUILD_STARTING_FUEL } = require('../fuel.js');
 const { farthestSystem, starterHomeAtDistance } = require('./waystation-fixtures.js');
 const {
   createSellToSyndicateAction, validateAction, applyAction, intake,
@@ -38,8 +38,11 @@ const A = NEAR_HOME.id;                 // the guild's home, the near route
 const B = farthestSystem().id;          // the far route — a bigger, distinct burn
 const GOOD = 'titanium';
 
-const BURN_A = routeFuelCost(A).fuelBurn;
-const BURN_B = routeFuelCost(B).fuelBurn;
+// Every row here ships small quantities of titanium (raw, volume 1), so each row's leg fits a
+// LIGHT hold in space (§5.1) and burns the light rate — the same per-row numbers this file
+// always pinned. `routeFuelBurnByTier(...).light` is that light burn without a space-argument call.
+const BURN_A = routeFuelBurnByTier(A).light;
+const BURN_B = routeFuelBurnByTier(B).light;
 // The whole point of the slice: A and B cost different amounts, so BURN_A + BURN_B
 // is a genuine sum, not a doubled single route. If a regen ever collapsed them the
 // basket tests would stop proving anything — so assert the premise up front.
@@ -119,8 +122,10 @@ test('a single-allocation sale burns exactly that one route', () => {
   assertFuelBalances(next, 'after a single-allocation sale');
 });
 
-test('the burn is cargo-independent — 1 unit and 30 across the same basket cost the same fuel', () => {
-  // Quantity changes the CREDITS and not one drop of the fuel: the burn is geometry.
+test('the burn is flat WITHIN A TIER — 1 unit and 30 across the same basket cost the same fuel (both light)', () => {
+  // ⤳ REVISED 14-09-26 (§5.1): burn is flat within a hauler tier and steps by cargo SPACE
+  // between tiers. 1 and 30 units of titanium (volume 1) keep each row inside the LIGHT hold,
+  // so quantity changes the CREDITS and not one drop of the fuel — as before, within a tier.
   const small = accept(sellState(), sell([{ systemId: A, qty: 1 }, { systemId: B, qty: 1 }]));
   const large = accept(sellState(), sell([{ systemId: A, qty: 30 }, { systemId: B, qty: 30 }]));
   assert.equal(small.guilds[0].fuelHoard, large.guilds[0].fuelHoard, 'same summed burn');
@@ -215,7 +220,7 @@ test('several sales in a row keep every invariant green — the cache is refresh
       ? [{ systemId: A, qty: 3 }, { systemId: B, qty: 3 }]
       : [{ systemId: A, qty: 2 }];
     s = accept(s, sell(rows));
-    spent += rows.reduce((sum, r) => sum + routeFuelCost(r.systemId).fuelBurn, 0);
+    spent += rows.reduce((sum, r) => sum + routeFuelCost(r.systemId, r.qty * volumeOf(GOOD)).fuelBurn, 0);
 
     assert.equal(s.guilds[0].fuelHoard, 500 - spent, `hoard after sale ${i + 1}`);
     assert.equal(s.audit.totalConsumed, spent, `consumed after sale ${i + 1}`);

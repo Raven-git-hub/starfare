@@ -10,9 +10,12 @@
 // it needs lives here ONCE and is never inlined.
 //
 // SCOPE TODAY: the founding grant, the fuel economy's CALIBRATION price, the route
-// burn, and the one function that marks physical fuel to money. Everything that
-// MOVES fuel lives elsewhere and reads from here — the grant and the pool in
-// sim/issuance.js and tick.js's step 6, the burn's deduction in sim/actions.js.
+// burn — now SPACE-TIERED across three Syndicate hauler tiers (transport-model.md
+// §5.1: a leg flies on the smallest hold its cargo SPACE fits, and the tier sets the
+// per-hex rate) — the cargo-space primitives that size a load (`volumeOf`,
+// `haulerTierForSpace`), and the one function that marks physical fuel to money.
+// Everything that MOVES fuel lives elsewhere and reads from here — the grant and the
+// pool in sim/issuance.js and tick.js's step 6, the burn's deduction in sim/actions.js.
 //
 // ⚠ THE MARKET PRICE IS NOT IN THIS FILE, AND THAT IS THE POINT (01-09-26, slice
 // 5b-i). `REFERENCE_FUEL_PRICE` below is a CONSTANT — the anchor the economy was
@@ -32,6 +35,7 @@
 // the burn and the valuation below.
 
 const { nearestWaystation } = require('./transport.js');
+const { tierOf } = require('./points.js');
 
 // GUILD_STARTING_FUEL — the fuel a guild's hoard opens with at founding.
 //
@@ -75,67 +79,153 @@ const GUILD_STARTING_FUEL = 500;
 // reserve/flow controller is what finally makes them differ.
 const REFERENCE_FUEL_PRICE = 10;
 
-// SYNDICATE_HAULER_BURN_RATE — fuel units burned per unit of route distance.
+// SYNDICATE_HAULER_BURN_RATE — the LIGHT-tier per-hex burn rate, in fuel units.
 //
-// `[FIRST-CUT]`, and the only new number in fuel Slice 2. RULED 31-08-26
-// (docs/fuel-supply-and-allocation.md §8, Slice 2): `fuel = distance x craftBurnRate`,
-// **cargo-independent** — a hauler burns what the trip costs, not what it carries.
-// Tune after the waystation rebalance lands (roadmap: 9 -> 96 waystations), which
-// moves every distance in the galaxy and so moves every burn with it.
-//
-// ONE HAULER, ONE RATE. Syndicate trades all fly the same Syndicate hauler, so a
-// per-craft table would be a table of one. It arrives with the guild transport
-// tier (Phase 4), where craft actually differ.
+// `[FIRST-CUT]`, RULED 31-08-26 (docs/fuel-supply-and-allocation.md §8, Slice 2) as the
+// single flat rate; ⤳ REFINED 11-09-26 / REVISED 14-09-26 (transport-model.md §5.1) — the
+// one hauler became THREE space-tiered ones, and this constant is now the LIGHT row of the
+// rate table (`HAULER_TIERS` below), unchanged in value so a leg that fits a light hold in
+// SPACE is byte-identical to the pre-tier burn. The medium/heavy rates live beside it in the
+// table; nothing inlines any of them. Tune after the waystation rebalance lands (roadmap:
+// 9 -> 96 waystations), which moves every distance in the galaxy and so moves every burn.
 //
 // THE STAND-IN NOTE: design.md §15.4 defines `Vehicle.fuelCostToRun` and names the
 // Syndicate Hauler as an instance of that shape. No such Vehicle row exists in
-// state — minting one is out of scope here — so this module constant stands in
-// for the field until it does. When a real hauler row lands this constant is what
-// it replaces, and the replacement is one line because nothing inlines it.
+// state — minting one is out of scope here — so these module constants stand in
+// for the field until it does.
 const SYNDICATE_HAULER_BURN_RATE = 0.5;
 
-// routeFuelCost(systemId) -> { fuelBurn: int }
+// HAULER_TIERS — the three Syndicate-hauler tiers, RULED (transport-model.md §5.1; the
+// numbers are `phase-1-tuning.md`'s, the authority on the values). A shipment flies on the
+// SMALLEST tier whose hold fits its load, and the tier moves fuel, never time (speed is
+// identical across tiers). Two things vary per tier and nothing else:
+//   - `hold`  — capacity, measured in cargo SPACE (`Σ qty × volumeOf(good)`, REVISED 14-09-26
+//               from unit-count). Light 10,000 / medium 50,000 / heavy 6,000,000.
+//   - `rate`  — per-hex burn. Light 0.5 (== SYNDICATE_HAULER_BURN_RATE) / medium 0.6 / heavy 0.7.
+// Ordered smallest → largest hold; `haulerTierForSpace` walks it in that order. `[FIRST-CUT]`:
+// the human's anchors fixed the ratios (100 T2 fill a light; a T3 will not fit a medium; 100
+// T3 fill a heavy; a non-movable T4 asset fills a heavy hold), the scale is provisional. The
+// heavy hold is ~100× a medium's — lopsided on purpose (§5.1: a heavy is the only hauler that
+// moves modules or assets). Frozen rows so nothing mutates the ruled table.
+const HAULER_TIERS = Object.freeze([
+  Object.freeze({ tier: 'light', hold: 10000, rate: SYNDICATE_HAULER_BURN_RATE }),
+  Object.freeze({ tier: 'medium', hold: 50000, rate: 0.6 }),
+  Object.freeze({ tier: 'heavy', hold: 6000000, rate: 0.7 }),
+]);
+
+// HEAVY_HOLD — the largest hold's capacity, the reject-whole cap (§5.1 / §8.0). A load whose
+// total space exceeds this is refused with a split-the-order message; no auto-split. Derived
+// from the table's last row so the cap and the tier can never disagree (invariant 5).
+const HEAVY_HOLD = HAULER_TIERS[HAULER_TIERS.length - 1].hold;
+
+// TIER_VOLUME — cargo space per UNIT of a good, keyed by its manufacturing tier (`tierOf`,
+// sim/points.js — a function of the tier ONLY, not per-good: two T3 modules take the same
+// room). RULED (transport-model.md §5.1). T1 raw = 1, T2 processed = 100, T3 module = 60,000.
+const TIER_VOLUME = Object.freeze({ 1: 1, 2: 100, 3: 60000 });
+
+// ASSET_CARGO_VOLUME — the cargo space a non-movable Tier-4 asset (a bought outpost / rig)
+// fills: a WHOLE heavy hold (== HEAVY_HOLD). So a bought asset (2.1d, buyAssetFromSyndicate)
+// flies heavy, alone, and its delivery burns the heavy rate (§5.1, RULED 14-09-26 — superseding
+// asset-purchase.md's light-rate placeholder). Its own constant, not a `TIER_VOLUME[4]`, because
+// a T4 asset is not a stockpile good `tierOf` ever resolves — it never rides a cart.
+const ASSET_CARGO_VOLUME = HEAVY_HOLD;
+
+// volumeOf(good) -> the cargo space ONE unit of `good` takes, from its manufacturing
+// tier (`tierOf`). T1 -> 1, T2 -> 100, T3 -> 60,000. THROWS for a good with no ruled
+// cargo volume — fuel, an unknown name, anything `tierOf` returns null for. FAIL-LOUD:
+// a cart is only ever priced goods (validate refuses fuel and non-priced names up
+// front), so a good reaching here without a volume is a bug, and under-sizing a load
+// by scoring it 0 would be the quietest possible under-charge (§18 / §15.5).
+function volumeOf(good) {
+  const tier = tierOf(good);
+  const volume = tier === null ? undefined : TIER_VOLUME[tier];
+  if (volume === undefined) {
+    throw new Error(
+      `volumeOf: "${good}" has no cargo volume — its tier is ${tier === null ? 'UNKNOWN (not a priced cargo good)' : tier}, `
+      + 'and only T1/T2/T3 goods ride a Syndicate cart (transport-model.md §5.1). Refusing to size it as 0, '
+      + 'which would understate the load and under-charge the burn',
+    );
+  }
+  return volume;
+}
+
+// haulerTierForSpace(space) -> 'light' | 'medium' | 'heavy' | null.
 //
-// The fuel a Syndicate trade burns flying between `systemId` and its nearest
-// waystation. PURE: it takes no state, reads no state and mutates nothing — the
-// geography is baked into the seed at generation time, which is why
-// `nearestWaystation` takes no state either. ONE ARGUMENT, a system id.
+// The SMALLEST hold whose capacity is >= `space` (§5.1's whole rule — the tier
+// restrictions fall out of the volumes, there are no separate ones). Inclusive at each
+// boundary: 10,000 -> light, 10,001 -> medium, 50,000 -> medium, 50,001 -> heavy,
+// 6,000,000 -> heavy, 6,000,001 -> null. `null` = over the heavy hold: no hauler carries
+// it, and the caller reject-wholes (split the order).
+function haulerTierForSpace(space) {
+  for (const t of HAULER_TIERS) {
+    if (space <= t.hold) return t.tier;
+  }
+  return null;
+}
+
+// rateForTier(tier) -> the per-hex burn rate for a tier name. The one lookup, so no rate
+// is ever inlined. Throws on an unknown tier (a caller passing a bad name is a bug).
+function rateForTier(tier) {
+  const row = HAULER_TIERS.find((t) => t.tier === tier);
+  if (!row) throw new Error(`rateForTier: no such Syndicate hauler tier ${JSON.stringify(tier)}`);
+  return row.rate;
+}
+
+// routeFuelCost(systemId, space) -> { fuelBurn: int }
 //
-// DISTANCE COMES FROM `nearestWaystation`, NOT FROM A SECOND MEASUREMENT.
-// `near.distance` is the value that function already computed, and it is the very
-// value `buyFromSyndicate` reads to schedule a delivery's arrival tick. Calling
-// `hexDistance` again here would be a second derivation of one fact, and the two
-// could drift — a trip priced on one geometry and timed on another. One call, one
-// distance, one geometry, by construction.
+// The fuel a Syndicate trade burns flying between `systemId` and its nearest waystation,
+// on the tier the LOAD'S SPACE selects. PURE: the geography is baked into the seed, and
+// the tier is a function of `space` alone.
 //
-// CARGO-INDEPENDENT BY CONSTRUCTION: no good and no quantity appears anywhere in
-// this function, so a caller cannot make the burn depend on the load even by
-// accident. The ruling is made structural rather than merely obeyed.
+// `space` IS REQUIRED (throws if undefined). ⤳ REVISED 14-09-26 (transport-model.md
+// §5.1): the burn is no longer cargo-independent — which hauler tier flies, and so which
+// per-hex rate applies, is chosen by the leg's total cargo space (`Σ qty × volumeOf`). A
+// charge site that forgot to pass the load would silently under-charge at whatever a
+// missing argument defaulted to, so a missing `space` is a fail-loud bug, not a light-tier
+// default. Every caller (BUY, SELL, asset, snapshot) passes an explicit space.
 //
-// `Math.ceil` so every REAL route costs at least 1 fuel: the closest system in the
-// seed sits 1 hex out, and 1 x 0.5 = 0.5 would floor to a free trip. Zero is
-// reserved for the one honest case below.
+// DISTANCE COMES FROM `nearestWaystation`, NOT A SECOND MEASUREMENT — `near.distance` is
+// the value that function already computed and the one `buyFromSyndicate` schedules the
+// arrival tick on, so a trip cannot be priced on one geometry and flown on another.
 //
-// ⚠ IT NO LONGER QUOTES A PRICE (slice 5b-i, §4.2). It used to return a `creditCost`
-// beside the burn, computed from the retired flat constant. A burn is GEOMETRY — a
-// distance times a rate — and it is what the engine actually CHARGES; what that burn
-// is WORTH in credits is a valuation at the market price, which is display, changes
-// every cycle once 5b-ii lands, and needs state this pure function must not read. So
-// the two are split: the burn stays here, and the valuation is `fuelValue(fuelBurn,
-// reserve.fuelPrice)` at the display site (sim/snapshot.js), exactly parallel to the
-// hoard's mark-to-market. The RETURN SHAPE STAYS AN OBJECT so every caller's
-// `const { fuelBurn } = routeFuelCost(id)` keeps working untouched.
+// `Math.ceil` so every REAL route costs at least 1 fuel (the closest seed system is 1 hex
+// out; 1 × 0.5 = 0.5 would floor to a free trip). Zero is reserved for the no-route case.
 //
-// GRACEFUL ABSENCE: when no waystation can reach the system (it does not exist,
-// carries no seed coords, or no outpost has coords) -> `{ fuelBurn: 0 }`, never a
-// throw. A quote is a display figure, and the refusal that matters already lives in
-// `validateAction`, which rejects the purchase on this same null. ⚠ The DEDUCTION
-// (slice 3, sim/actions.js) must not read that 0 as "free": it means "no route", and
-// such a trade is refused before fuel is ever considered.
-function routeFuelCost(systemId) {
+// ⚠ IT QUOTES A BURN, NOT A PRICE (slice 5b-i, §4.2): what the burn is WORTH in credits is
+// `fuelValue(fuelBurn, reserve.fuelPrice)` at the display site (sim/snapshot.js). The return
+// shape stays an object so every `const { fuelBurn } = routeFuelCost(...)` caller is untouched.
+//
+// GRACEFUL ABSENCE: no reachable waystation -> `{ fuelBurn: 0 }` (checked BEFORE the tier, so
+// a no-route quote never depends on the load). An OVER-CAP space (> heavy hold) THROWS: it must
+// be reject-wholed by the caller before the fuel gate, so reaching here with one is a bug, and
+// returning a burn would price a trip no hauler can fly.
+function routeFuelCost(systemId, space) {
+  if (space === undefined) {
+    throw new Error('routeFuelCost: space is required — a charge site that omits the load would silently under-charge (transport-model.md §5.1)');
+  }
   const near = nearestWaystation(systemId);
   if (!near) return { fuelBurn: 0 };
-  return { fuelBurn: Math.ceil(near.distance * SYNDICATE_HAULER_BURN_RATE) };
+  const tier = haulerTierForSpace(space);
+  if (tier === null) {
+    throw new Error(`routeFuelCost: load space ${space} exceeds the heavy hold (${HEAVY_HOLD}) — the reject-whole gate must refuse it before the fuel charge (transport-model.md §8.0)`);
+  }
+  return { fuelBurn: Math.ceil(near.distance * rateForTier(tier)) };
+}
+
+// routeFuelBurnByTier(systemId) -> { light, medium, heavy } — the per-hex burn for THIS
+// system's route at each of the three tiers, three ints. The snapshot publishes it so the
+// client can read the burn for whichever tier its cart's space maps to (§18: the client
+// picks the tier from `goodVolumes` + `haulerTiers`, reads the matching burn, computes none).
+// A system with no reachable waystation reads 0 at every tier, the same honest no-route value
+// `routeFuelCost` reports. Every tier here is a plain `ceil(distance × rate)`, never a
+// re-derivation — the same geometry `routeFuelCost` uses.
+function routeFuelBurnByTier(systemId) {
+  const near = nearestWaystation(systemId);
+  const out = {};
+  for (const t of HAULER_TIERS) {
+    out[t.tier] = near ? Math.ceil(near.distance * t.rate) : 0;
+  }
+  return out;
 }
 
 // fuelValue(units, fuelPrice) -> integer credits.
@@ -203,7 +293,15 @@ module.exports = {
   GUILD_STARTING_FUEL,
   REFERENCE_FUEL_PRICE,
   SYNDICATE_HAULER_BURN_RATE,
+  HAULER_TIERS,
+  HEAVY_HOLD,
+  TIER_VOLUME,
+  ASSET_CARGO_VOLUME,
+  volumeOf,
+  haulerTierForSpace,
+  rateForTier,
   routeFuelCost,
+  routeFuelBurnByTier,
   fuelValue,
   burnFuel,
 };

@@ -23,7 +23,10 @@ const { foundingEndowmentFor } = require('./meanline.js');
 const { grantFor } = require('./issuance.js');
 const { guildHolds } = require('./claims.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
-const { GUILD_STARTING_FUEL, routeFuelCost, burnFuel } = require('./fuel.js');
+const {
+  GUILD_STARTING_FUEL, routeFuelCost, burnFuel,
+  volumeOf, haulerTierForSpace, HEAVY_HOLD, ASSET_CARGO_VOLUME,
+} = require('./fuel.js');
 const {
   STARTER_MINERS, STARTER_FACTORIES, starterAssetSpecs, assetKindForVentureType,
   deployedAssetIds,
@@ -423,16 +426,29 @@ function createSellToSyndicateAction({ guildId, good, allocations, issueTick }) 
 // another). The confirm popup that asks for it is the next slice; this action is
 // complete and testable without it.
 //
+// A MULTI-GOOD CART, backward-compatible (⤳ REVISED 14-09-26, transport-model.md §5.1). A BUY
+// may carry a `cart: [{ good, qty }, …]` — several goods to ONE destination on ONE hauler,
+// sized by the cart's total cargo space. The legacy single-good `{ good, qty }` form still
+// works and is what the deployed client sends; validate + apply normalize it to a one-line
+// cart, so a single-good BUY is byte-identical to before. This creator emits WHICHEVER form the
+// caller gives — a `cart` (no `good`/`qty` keys) or the legacy pair — so the legacy action's
+// serialized shape is unchanged. `destinationSystemId` is always required.
+//
 // `issueTick` (§8.1's quote-lock) is OPTIONAL and behaves exactly as it does on the SELL
 // side: omitted ⇒ the current tick ⇒ today's posted price ⇒ byte-identical to before; a
-// past tick prices the bought good from the ring at that tick, validated for expiry. The
-// route fuel it burns is seed geometry and never moves, so only the resource price is
-// re-derived.
-function createBuyFromSyndicateAction({ guildId, good, qty, destinationSystemId, issueTick }) {
+// past tick prices EACH good in the cart from the ring at that one tick, validated for expiry.
+// The route fuel it burns is seed geometry and moves only with the cart's total-space tier.
+function createBuyFromSyndicateAction({ guildId, good, qty, destinationSystemId, cart, issueTick }) {
   if (guildId === undefined) throw new Error('createBuyFromSyndicateAction: guildId is required');
-  if (good === undefined) throw new Error('createBuyFromSyndicateAction: good is required');
-  if (qty === undefined) throw new Error('createBuyFromSyndicateAction: qty is required');
   if (destinationSystemId === undefined) throw new Error('createBuyFromSyndicateAction: destinationSystemId is required');
+  if (cart !== undefined) {
+    return {
+      type: 'buyFromSyndicate', guildId, cart, destinationSystemId,
+      ...(issueTick === undefined ? {} : { issueTick }),
+    };
+  }
+  if (good === undefined) throw new Error('createBuyFromSyndicateAction: good is required (or pass a cart)');
+  if (qty === undefined) throw new Error('createBuyFromSyndicateAction: qty is required (or pass a cart)');
   return {
     type: 'buyFromSyndicate', guildId, good, qty, destinationSystemId,
     ...(issueTick === undefined ? {} : { issueTick }),
@@ -461,6 +477,15 @@ function createBuyAssetFromSyndicateAction({ guildId, assetKind, destinationSyst
 }
 
 // --- Validation -------------------------------------------------------
+
+// buyCartLines(action) -> the BUY's cart as an array of { good, qty } lines. Normalizes
+// the legacy single-good `{ good, qty }` action (no `cart`) to a one-line cart, so the
+// deployed single-good client keeps working and a one-good cart is byte-identical to it
+// (transport-model.md §5.1). Called from BOTH validate and apply so they read one shape;
+// the per-line and dup/empty checks live in validate, this only picks the array.
+function buyCartLines(action) {
+  return Array.isArray(action.cart) ? action.cart : [{ good: action.good, qty: action.qty }];
+}
 
 // A Gate-1 `order` is a PERMUTATION of exactly these three fork names (§15.4):
 // same three, each once, any ordering. No more, no fewer, no strangers.
@@ -1318,6 +1343,15 @@ function validateAction(state, action) {
       if (alloc.qty > held) {
         return { valid: false, reason: `guild ${guild.id} holds ${held} ${action.good} in system ${JSON.stringify(alloc.systemId)}, cannot sell ${alloc.qty}` };
       }
+      // THE PER-ROW CAPACITY GATE (§5.1 / §8.0) — each row is its own leg on ONE hauler, so
+      // a row whose cargo space (`qty × volumeOf(good)`) exceeds the heavy hold cannot be
+      // carried: reject-whole naming that system. A T3-module SELL now caps at 100/row (100 ×
+      // 60,000 = the heavy hold); a 101st needs a second row. `action.good` is validated
+      // priced above, so `volumeOf` never throws here.
+      const rowSpace = alloc.qty * volumeOf(action.good);
+      if (haulerTierForSpace(rowSpace) === null) {
+        return { valid: false, reason: `${alloc.qty} ${action.good} in system ${JSON.stringify(alloc.systemId)} is ${rowSpace} cargo space, over the Syndicate heavy hold (${HEAVY_HOLD}) — split this row into smaller shipments (transport-model.md §5.1)` };
+      }
     }
     // THE FUEL GATE — SELL burns route fuel too (docs/transport-model.md §8.0,
     // RULED 03-09-26), mirroring `buyFromSyndicate`'s gate below. Both directions
@@ -1336,9 +1370,14 @@ function validateAction(state, action) {
     // snapshot quotes to the client, so what the player was shown and what the
     // engine charges cannot disagree. A row on an unreachable system contributes a
     // 0 burn (no route, no cost); a real route costs at least 1.
+    //
+    // SPACE-TIERED PER ROW (⤳ REVISED 14-09-26, §5.1): each row is its own leg, so its
+    // burn is at the hauler tier its OWN cargo space (`qty × volumeOf(good)`) selects — a
+    // heavier row on a thirstier tier. The per-row capacity gate above has already
+    // reject-wholed any row over the heavy hold, so `routeFuelCost` never sees over-cap space.
     let totalBurn = 0;
     for (const alloc of action.allocations) {
-      totalBurn += routeFuelCost(alloc.systemId).fuelBurn;
+      totalBurn += routeFuelCost(alloc.systemId, alloc.qty * volumeOf(action.good)).fuelBurn;
     }
     // COMBINED AVAILABILITY (§1.4 slice 1b): route burn spends legal `fuelHoard` first and
     // contraband `deuteriumFuel` second (apply, via `burnFuel`), so the sufficiency gate counts
@@ -1367,22 +1406,39 @@ function validateAction(state, action) {
     if (!guild) {
       return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
     }
-    // WHAT MAY BE BOUGHT — the same vocabulary a sale uses, for the same reasons.
-    // A single posted price serves both directions (#43, no spread, no transport
-    // fee: the Syndicate charges for control, not carriage — §6), so anything it
-    // will not buy it will not sell either.
-    if (isFuel(action.good)) {
-      return { valid: false, reason: `${JSON.stringify(action.good)} is Syndicate-regulated — fuel is never listed on the Exchange (§8)` };
+    // THE CART — a multi-good BUY to ONE destination (⤳ REVISED 14-09-26, §5.1). The legacy
+    // single-good `{ good, qty }` action normalizes to a one-line cart, so the deployed
+    // single-good client is unchanged and a one-good cart is byte-identical to it.
+    const cart = buyCartLines(action);
+    if (!Array.isArray(cart) || cart.length === 0) {
+      return { valid: false, reason: 'a BUY cart must carry at least one { good, qty } line' };
     }
-    if (typeof action.good !== 'string' || !PRICED_GOODS.includes(action.good)) {
-      return { valid: false, reason: `${JSON.stringify(action.good)} is not a good the Syndicate posts a price for` };
-    }
-    const price = postedPrice(state, action.good);
-    if (price == null) {
-      return { valid: false, reason: `${JSON.stringify(action.good)} has no posted price to buy at` };
-    }
-    if (typeof action.qty !== 'number' || !Number.isInteger(action.qty) || action.qty <= 0) {
-      return { valid: false, reason: 'qty must be a positive integer (§15.2)' };
+    // EACH LINE, and no duplicate good. `PRICED_GOODS` is the same vocabulary a sale uses
+    // (#43: one posted price serves both directions, no spread, no transport fee — §6), so
+    // anything the Syndicate will not buy it will not sell. A DUPLICATE good is refused
+    // rather than summed — two lines for one good is an ambiguous order, exactly as SELL
+    // refuses a duplicate system.
+    const seenGoods = new Set();
+    for (const line of cart) {
+      if (!line || typeof line !== 'object' || Array.isArray(line)) {
+        return { valid: false, reason: 'each cart line must be an object { good, qty }' };
+      }
+      if (isFuel(line.good)) {
+        return { valid: false, reason: `${JSON.stringify(line.good)} is Syndicate-regulated — fuel is never listed on the Exchange (§8)` };
+      }
+      if (typeof line.good !== 'string' || !PRICED_GOODS.includes(line.good)) {
+        return { valid: false, reason: `${JSON.stringify(line.good)} is not a good the Syndicate posts a price for` };
+      }
+      if (postedPrice(state, line.good) == null) {
+        return { valid: false, reason: `${JSON.stringify(line.good)} has no posted price to buy at` };
+      }
+      if (typeof line.qty !== 'number' || !Number.isInteger(line.qty) || line.qty <= 0) {
+        return { valid: false, reason: `qty for ${JSON.stringify(line.good)} must be a positive integer (§15.2)` };
+      }
+      if (seenGoods.has(line.good)) {
+        return { valid: false, reason: `cart names ${JSON.stringify(line.good)} twice — one line per good` };
+      }
+      seenGoods.add(line.good);
     }
     if (typeof action.destinationSystemId !== 'string' || action.destinationSystemId.length === 0) {
       return { valid: false, reason: 'destinationSystemId must be a non-empty string' };
@@ -1401,41 +1457,39 @@ function validateAction(state, action) {
     if (!nearestWaystation(action.destinationSystemId)) {
       return { valid: false, reason: `no Syndicate waystation can reach system ${JSON.stringify(action.destinationSystemId)} — it resolves to no seed coordinates` };
     }
-    // THE CASH IS DEBITED NOW, in full, at the QUOTED price with no fee (§6 step 3;
-    // §8.1's quote-lock). Rounded once on the whole order, exactly as a sale is (#43).
-    // The price is the ring's value at the ISSUE TICK — today's posted value when
-    // `issueTick` is omitted (age 0), a past tick's when the confirm carries one — so the
-    // affordability check is measured against the same price apply will charge, never a
-    // moved one. `?? price` falls back to the current posted value ONLY for a quote that
-    // is not in the ring at all (too old / future): such a trade is refused by the expiry
-    // gate below anyway, and the fallback exists so that a co-occurring credits shortfall
-    // is still blamed FIRST (a problem refreshing the quote would not fix), matching the
-    // "blame the other gate first" discipline the fuel gate documents.
-    const issueTick = action.issueTick === undefined ? state.tick : action.issueTick;
-    const quotedForCost = quotedPrice(state, action.good, issueTick);
-    const cost = Math.round(action.qty * (quotedForCost == null ? price : quotedForCost));
-    if (guild.credits < cost) {
-      return { valid: false, reason: `guild ${guild.id} holds ${guild.credits} credits, cannot pay ${cost} for ${action.qty} ${action.good}` };
+    // THE CAPACITY GATE (NEW, §5.1 / §8.0) — a STRUCTURAL check, run with the ones above
+    // and BEFORE cost/fuel/quote: the whole cart flies on ONE hauler, and a load whose
+    // total cargo space (`Σ qty × volumeOf(good)`) exceeds the heavy hold cannot be
+    // carried. Reject-whole with a split-the-order message — no auto-split, one shipment,
+    // one hauler. Every good is priced (checked above), so `volumeOf` never throws here.
+    const totalSpace = cart.reduce((sum, line) => sum + (line.qty * volumeOf(line.good)), 0);
+    if (haulerTierForSpace(totalSpace) === null) {
+      return { valid: false, reason: `this cart's total cargo space ${totalSpace} exceeds the Syndicate heavy hold (${HEAVY_HOLD}) — split the order into smaller shipments (transport-model.md §5.1)` };
     }
-    // THE FUEL GATE — fuel Slice 3, and the moment fuel starts to BITE: no fuel,
-    // no Syndicate BUY (docs/fuel-supply-and-allocation.md §8, Slice 3).
-    //
-    // RUN LAST, ON PURPOSE. Every other gate above answers a different question,
-    // and a trade refused for lacking credits, or for a system the guild does not
-    // hold, must say so rather than blaming fuel — the player would go looking for
-    // the wrong problem. So the fuel refusal is only ever reached by a trade that
-    // is otherwise entirely legal, and it means exactly what it says.
-    //
-    // REJECT-WHOLE (ruled): a guild that cannot pay the full burn does not get a
-    // partial trade or a shorter flight. The order is refused intact.
-    //
-    // `destinationSystemId` is the route — this action has no `systemId` field.
-    // The burn comes from `routeFuelCost` (sim/fuel.js), the SAME function the
-    // snapshot quotes to the client, so what the player was shown and what the
-    // engine charges cannot disagree. A `fuelBurn` of 0 means NO ROUTE, and this
-    // gate passes: there is no cost without a route, and the no-waystation refusal
-    // above has already turned that case away on its own terms.
-    const { fuelBurn } = routeFuelCost(action.destinationSystemId);
+    // THE CASH IS DEBITED NOW, in full, at the QUOTED prices with no fee (§6 step 3;
+    // §8.1's quote-lock). Rounded PER GOOD then summed (#43's `round(qty × price)`), so a
+    // one-good cart is byte-identical to the old single-good order. Each good is priced from
+    // the ring at the ONE issue tick — today's posted value when `issueTick` is omitted (age
+    // 0), a past tick's when the confirm carries one — so the affordability check is measured
+    // against the same prices apply will charge. The `?? postedPrice` fallback covers ONLY a
+    // quote not in the ring (too old / future), which the expiry gate below refuses anyway;
+    // it exists so a co-occurring credits shortfall is still blamed FIRST.
+    const issueTick = action.issueTick === undefined ? state.tick : action.issueTick;
+    let cost = 0;
+    for (const line of cart) {
+      const quoted = quotedPrice(state, line.good, issueTick);
+      cost += Math.round(line.qty * (quoted == null ? postedPrice(state, line.good) : quoted));
+    }
+    if (guild.credits < cost) {
+      return { valid: false, reason: `guild ${guild.id} holds ${guild.credits} credits, cannot pay ${cost} for this cart` };
+    }
+    // THE FUEL GATE — no fuel, no Syndicate BUY (docs/fuel-supply-and-allocation.md §8).
+    // RUN LAST (before quote-lock), ON PURPOSE: a trade refused for credits or territory
+    // says so rather than blaming fuel. The burn is `routeFuelCost(dest, totalSpace)` — the
+    // per-hex rate of the hauler tier the cart's TOTAL SPACE selects (§5.1), the SAME
+    // function the snapshot quotes. Over-cap space cannot reach here (the capacity gate above
+    // reject-wholed it). A `fuelBurn` of 0 is the no-route case, already refused above.
+    const { fuelBurn } = routeFuelCost(action.destinationSystemId, totalSpace);
     // COMBINED AVAILABILITY (§1.4 slice 1b): legal `fuelHoard` + contraband `deuteriumFuel`,
     // since apply burns legal-first then contraband (`burnFuel`). Same combined-total gate the
     // SELL side uses.
@@ -1444,14 +1498,14 @@ function validateAction(state, action) {
       return { valid: false, reason: `guild ${guild.id} holds ${availableFuel} fuel (legal + contraband), cannot burn ${fuelBurn} flying to ${JSON.stringify(action.destinationSystemId)} — insufficient fuel: need ${fuelBurn}, have ${availableFuel} (fuel-supply-and-allocation.md §8)` };
     }
     // THE QUOTE-LOCK GATE (docs/transport-model.md §8.1) — LAST, exactly like the fuel
-    // gate above and for the same reason: a purchase that also fails credits, territory
-    // or fuel blames THAT first, so the quote is only ever refused on a trade otherwise
-    // entirely legal. Refuses an EXPIRED issue tick (past the TTL, or with a cycle
-    // boundary crossed since issue). `issueTick` was resolved above for the cost; omitted
-    // ⇒ the current tick ⇒ never expired. Apply prices the bought good from the ring at
-    // this tick.
-    const quote = checkQuote(state, action.good, issueTick);
-    if (!quote.valid) return quote;
+    // gate above and for the same reason. Refuses an EXPIRED issue tick (past the TTL, or a
+    // cycle boundary crossed since issue). The expiry rules are good-INDEPENDENT, but the
+    // ring guard is per-good, so every line is checked — a cart prices each good at the one
+    // issue tick, and apply re-derives each from the ring at this same tick.
+    for (const line of cart) {
+      const quote = checkQuote(state, line.good, issueTick);
+      if (!quote.valid) return quote;
+    }
     return { valid: true };
   }
 
@@ -1495,12 +1549,13 @@ function validateAction(state, action) {
     if (price != null && guild.credits < price) {
       return { valid: false, reason: `guild ${guild.id} holds ${guild.credits} credits, cannot pay ${price} for a ${action.assetKind}` };
     }
-    // THE FUEL GATE — the delivery flight burns route fuel (light hauler, cargo-independent),
-    // charged UP FRONT (asset-purchase.md "Cost timing and fuel"). RUN LAST, like the goods buy,
-    // so a trade refused for credits / kind / destination says so rather than blaming fuel. The
-    // burn is the SAME `routeFuelCost` the goods buy uses and the snapshot quotes; a 0 means no
-    // route, already turned away by the waystation gate above.
-    const { fuelBurn } = routeFuelCost(action.destinationSystemId);
+    // THE FUEL GATE — the delivery flight burns route fuel, charged UP FRONT (asset-purchase.md
+    // "Cost timing and fuel"). RUN LAST, like the goods buy, so a trade refused for credits /
+    // kind / destination says so rather than blaming fuel. ⤳ RULED 14-09-26 (§5.1): a non-movable
+    // T4 asset fills a HEAVY hold (`ASSET_CARGO_VOLUME` = the heavy hold), so the delivery burns
+    // the HEAVY rate (0.7/hex), superseding the light-rate placeholder. Same `routeFuelCost` the
+    // goods buy uses; a 0 means no route, already turned away by the waystation gate above.
+    const { fuelBurn } = routeFuelCost(action.destinationSystemId, ASSET_CARGO_VOLUME);
     const availableFuel = guild.fuelHoard + (guild.deuteriumFuel || 0);
     if (availableFuel < fuelBurn) {
       return { valid: false, reason: `guild ${guild.id} holds ${availableFuel} fuel (legal + contraband), cannot burn ${fuelBurn} flying a ${action.assetKind} to ${JSON.stringify(action.destinationSystemId)} — insufficient fuel: need ${fuelBurn}, have ${availableFuel}` };
@@ -2151,7 +2206,7 @@ function applyAction(state, action) {
     // systems sums to a 0 burn and both lines are no-ops.
     let totalBurn = 0;
     for (const alloc of allocations) {
-      totalBurn += routeFuelCost(alloc.systemId).fuelBurn;
+      totalBurn += routeFuelCost(alloc.systemId, alloc.qty * volumeOf(action.good)).fuelBurn;
     }
     // LEGAL-FIRST (§1.4 slice 1b): `burnFuel` spends `fuelHoard` first, contraband
     // `deuteriumFuel` for any remainder — one deduction across both stores. Both are held fuel,
@@ -2186,20 +2241,27 @@ function applyAction(state, action) {
     // deposited — that is stepArrivals' job, `arrivalTick` ticks from now.
     const guild = findGuild(next, action.guildId);
     const issueTick = action.issueTick === undefined ? next.tick : action.issueTick;
-    const price = quotedPrice(next, action.good, issueTick);
-    if (price == null) {
-      // Validation refused this (expiry gate + ring guard), so reaching it means the ring
-      // or price block was edited between validate and apply. Taking the money for goods
-      // with no price would be a silent theft — halt, exactly as the sale's mirror guard.
-      throw new Error(`applyAction: guild ${guild.id} bought ${action.good} from the Syndicate at tick ${next.tick} (quote issueTick ${issueTick}) but no posted price is in the ring for that tick — refusing to take credits for nothing`);
-    }
+    // THE CART — the legacy single-good action normalizes to a one-line cart, so this apply
+    // is byte-identical to the pre-cart BUY for a single good (§5.1).
+    const cart = buyCartLines(action);
 
-    // ROUNDED ONCE, ON THE WHOLE ORDER — #43, and the identical arithmetic the sale uses,
-    // so a good bought and immediately sold back at an UNMOVED price costs exactly
-    // nothing. Priced at the QUOTED value (§8.1) — the ring at `issueTick`, which is the
-    // current posted price when omitted — matching the affordability check validate ran.
-    // There is NO transport fee and NO spread (§5/§6).
-    const cost = Math.round(action.qty * price);
+    // ROUNDED PER GOOD then summed — #43's `round(qty × price)` per line, so a good bought
+    // and immediately sold back at an UNMOVED price costs exactly nothing, and a one-good
+    // cart is byte-identical to the old order. Priced at the QUOTED value (§8.1) — the ring
+    // at `issueTick`, which is the current posted price when omitted — matching validate's
+    // affordability check. A null price means the ring or price block was edited between
+    // validate and apply; taking the money for goods with no price would be a silent theft,
+    // so halt, exactly as the sale's mirror guard. There is NO transport fee and NO spread.
+    let cost = 0;
+    const cargo = {};
+    for (const line of cart) {
+      const price = quotedPrice(next, line.good, issueTick);
+      if (price == null) {
+        throw new Error(`applyAction: guild ${guild.id} bought ${line.good} from the Syndicate at tick ${next.tick} (quote issueTick ${issueTick}) but no posted price is in the ring for that tick — refusing to take credits for nothing`);
+      }
+      cost += Math.round(line.qty * price);
+      cargo[line.good] = line.qty;
+    }
     // The mirror of paySyndicateFee: credits leave the guild and the same integer
     // lands in the ledger, so invariant 2 holds to the credit by construction.
     guild.credits -= cost;
@@ -2209,16 +2271,16 @@ function applyAction(state, action) {
     // arrival tick (§6 steps 1–2). Computed once, here, and never recomputed: a
     // delivery on an uncontested straight line needs no per-tick work until it
     // lands (§15.6's "pure schedule"), and an absolute tick is what lets a save
-    // reloaded mid-flight land on the right tick with no special case.
+    // reloaded mid-flight land on the right tick with no special case. Speed is
+    // tier-independent (§5.1), so the arrival tick does not depend on the cart's space.
     const { distance } = nearestWaystation(action.destinationSystemId);
     if (!Array.isArray(next.shipments)) next.shipments = [];
     next.shipments.push({
       ownerGuildId: action.guildId,
-      // `cargo` carries the bought good and NOTHING else — in particular never a
-      // `fuel` key, so invariant 1's fuel-in-transit sum reads 0 for a BUY
-      // delivery (§6's fuel-invariant note). Fuel is refused up front anyway;
-      // this is the shape making that structurally true rather than incidentally.
-      cargo: { [action.good]: action.qty },
+      // `cargo` carries the WHOLE cart — every bought good and NOTHING else, in particular
+      // never a `fuel` key, so invariant 1's fuel-in-transit sum reads 0 for a BUY delivery
+      // (§6's fuel-invariant note). `stepArrivals` already deposits every good in this map.
+      cargo,
       destinationSystemId: action.destinationSystemId,
       arrivalTick: arrivalTickFor(next.tick, distance),
     });
@@ -2226,13 +2288,12 @@ function applyAction(state, action) {
     // arrival, and a field nobody reads is a fact with a second home waiting to
     // drift (invariant 5).
     //
-    // THE BURN — fuel Slice 3. The flight scheduled just above costs fuel, and this
-    // is where the guild pays it: `fuel = distance x SYNDICATE_HAULER_BURN_RATE`,
-    // cargo-independent, from the SAME `routeFuelCost` the validate gate checked
-    // against and the snapshot quotes to the client. Called again rather than
-    // threaded through from validate, because apply must be correct on its own
-    // terms — and it is a pure function of the seed, so the two calls cannot
-    // disagree.
+    // THE BURN — the flight scheduled just above costs fuel, and this is where the guild
+    // pays it: `routeFuelCost(dest, totalSpace).fuelBurn` — the per-hex rate of the hauler
+    // tier the cart's TOTAL SPACE (`Σ qty × volumeOf`) selects (§5.1), from the SAME function
+    // the validate gate checked and the snapshot quotes. Recomputed here (not threaded from
+    // validate) because apply must be correct on its own terms, and it is a pure function of
+    // the seed + cart, so the two calls cannot disagree.
     //
     // TWO FIELDS MOVE AND NO OTHERS. Fuel LEAVES the galaxy here — it is burned,
     // not transferred, so there is no counterparty to credit — and invariant 1
@@ -2245,7 +2306,8 @@ function applyAction(state, action) {
     //
     // A `fuelBurn` of 0 makes both lines no-ops — the no-route case, already
     // refused up front by validate's waystation gate.
-    const { fuelBurn } = routeFuelCost(action.destinationSystemId);
+    const totalSpace = cart.reduce((sum, line) => sum + (line.qty * volumeOf(line.good)), 0);
+    const { fuelBurn } = routeFuelCost(action.destinationSystemId, totalSpace);
     // LEGAL-FIRST (§1.4 slice 1b): `burnFuel` draws `fuelHoard` first, contraband
     // `deuteriumFuel` for the remainder — the same combined burn the SELL side does. Both are
     // held fuel, so one consumption event: `totalConsumed += fuelBurn` once, invariant 1 stays
@@ -2297,10 +2359,11 @@ function applyAction(state, action) {
     // fuel"): charging it now removes the failure mode where construction finishes but the guild
     // can no longer afford the flight. Fuel LEAVES the galaxy (burned, not transferred), so
     // invariant 1 balances only because `totalConsumed` rises to match the hoard falling. Same
-    // legal-first `burnFuel` and the SAME `routeFuelCost` the goods buy uses; a 0 is a no-op (no
-    // route, refused up front). The combined-availability gate covered it, so neither store goes
-    // negative.
-    const { fuelBurn } = routeFuelCost(action.destinationSystemId);
+    // legal-first `burnFuel`. ⤳ RULED 14-09-26 (§5.1): a T4 asset fills a HEAVY hold
+    // (`ASSET_CARGO_VOLUME`), so this burns the HEAVY rate, matching the validate gate. A 0 is a
+    // no-op (no route, refused up front); the combined-availability gate covered it, so neither
+    // store goes negative.
+    const { fuelBurn } = routeFuelCost(action.destinationSystemId, ASSET_CARGO_VOLUME);
     burnFuel(guild, fuelBurn);
     next.audit.totalConsumed += fuelBurn;
 

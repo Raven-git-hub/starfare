@@ -36,7 +36,7 @@ const { assertInvariants, checkInvariants } = require('../invariants.js');
 const { postedPrice } = require('../prices.js');
 const { baselineOutputFor } = require('../baseline.js');
 const { FUEL_GOOD } = require('../resources.js');
-const { GUILD_STARTING_FUEL, routeFuelCost } = require('../fuel.js');
+const { GUILD_STARTING_FUEL, routeFuelCost, volumeOf } = require('../fuel.js');
 const { getStock } = require('../stock.js');
 const {
   QUOTE_TTL_TICKS, RING_DEPTH, seedPriceRing, quotedPrice, checkQuote, cycleIndexOf,
@@ -196,7 +196,8 @@ test('NO-OP: a BUY with issueTick omitted debits round(qty × posted) and burns 
   const s = ticks(lockState(), 5);
   const price = postedPrice(s, GOOD);
   const qty = 10;
-  const { fuelBurn } = routeFuelCost(DEST);
+  // 10 units of titanium (volume 1) = 10 cargo space, a light-hold leg (§5.1).
+  const { fuelBurn } = routeFuelCost(DEST, qty * volumeOf(GOOD));
 
   const omitted = createBuyFromSyndicateAction({ guildId: 'g1', good: GOOD, qty, destinationSystemId: DEST });
   assert.equal('issueTick' in omitted, false, 'omitted issueTick, byte-identical action shape');

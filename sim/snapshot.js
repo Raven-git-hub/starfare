@@ -26,7 +26,10 @@
 // the object is assembled in a fixed field order, so its bytes are stable.
 
 const { computeGalacticSupply } = require('./supply.js');
-const { REFERENCE_FUEL_PRICE, routeFuelCost, fuelValue } = require('./fuel.js');
+const {
+  REFERENCE_FUEL_PRICE, routeFuelBurnByTier, fuelValue,
+  volumeOf, HAULER_TIERS,
+} = require('./fuel.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
 const { grantFor, targetReserve, DEUTERIUM_INFLUX_PER_CYCLE } = require('./issuance.js');
 const { heldSystemIds } = require('./claims.js');
@@ -869,14 +872,32 @@ function buildSnapshot(state) {
       // deduction is Slice 3.
       fuelCost: Object.fromEntries(
         heldSystemIds(state, g.id).map((systemId) => {
-          const { fuelBurn } = routeFuelCost(systemId);
+          // PER-TIER BURNS (§5.1): three ints, one per Syndicate hauler tier, from the
+          // engine's own `routeFuelBurnByTier` — the client sizes its cart's space
+          // (`Σ qty × goodVolumes[good]`), maps it to a tier via the `haulerTiers` ladder
+          // below, and reads the matching burn here (§18: it computes no burn).
+          const fuelBurnByTier = routeFuelBurnByTier(systemId);
+          const creditCostByTier = Object.fromEntries(
+            Object.entries(fuelBurnByTier).map(([tier, burn]) => [tier, fuelValue(burn, fuelPrice)]),
+          );
+          // `fuelBurn` / `creditCost` STAY the LIGHT-tier values — today's numbers — so a
+          // pre-cart reader (the deployed single-good popup) is unchanged; the byTier maps
+          // are purely additive. Light is the tier a small leg already flew, so this is the
+          // same figure `routeFuelCost` used to return for a cargo-independent burn.
+          const fuelBurn = fuelBurnByTier.light;
           // Same route the burn uses; a system with no reachable waystation → 0
           // travel ticks, matching the 0 `fuelBurn` reports for that no-route case.
           const near = nearestWaystation(systemId);
           const travelTicks = near ? arrivalTickFor(0, near.distance) : 0;
           return [
             systemId,
-            { fuelBurn, creditCost: fuelValue(fuelBurn, fuelPrice), travelTicks },
+            {
+              fuelBurn,
+              creditCost: fuelValue(fuelBurn, fuelPrice),
+              travelTicks,
+              fuelBurnByTier,
+              creditCostByTier,
+            },
           ];
         }),
       ),
@@ -1464,6 +1485,18 @@ function buildSnapshot(state) {
     // prices.js's one accessor: it is uniform across goods TODAY because per-good
     // bases are unruled, and this shape is what that later ruling fills in.
     priceBase: Object.fromEntries(PRICED_GOODS.map((good) => [good, basePriceFor(good)])),
+    // GOOD VOLUMES + HAULER TIERS (transport-model.md §5.1) — the two published facts the
+    // multi-good manifest client needs to size a shipment and read its burn WITHOUT computing
+    // a game number (§18). `goodVolumes` is the cargo space ONE unit of each priced good takes
+    // (its manufacturing-tier volume, from the engine's own `volumeOf`); the client sums
+    // `qty × goodVolumes[good]` for the cart's total space. `haulerTiers` is the ladder of
+    // holds — `[{ tier, hold }]` smallest → largest — so the client maps that space to a tier
+    // (the smallest hold it fits) and reads the matching `fuelCost[sys].fuelBurnByTier[tier]`.
+    // Unit counts and integers only — no rate, no geometry, no speed (the served-page
+    // tripwire's forbidden tokens stay absent). Both are DERIVED-ON-READ publish of ruled
+    // constants: no serialized byte, no determinism hash, no schema bump.
+    goodVolumes: Object.fromEntries(PRICED_GOODS.map((good) => [good, volumeOf(good)])),
+    haulerTiers: HAULER_TIERS.map((t) => ({ tier: t.tier, hold: t.hold })),
     // The BASIC licence fee per good, in credits, at the posted price and window in force
     // (built above). What a licence signed this tick would lock — so the Establish-Venture
     // panel can show the real number instead of a percentage, and still compute nothing

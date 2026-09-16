@@ -36,7 +36,7 @@ const { buildSnapshot } = require('../snapshot.js');
 const { postedPrice } = require('../prices.js');
 const { FUEL_GOOD } = require('../resources.js');
 const { guildHolds } = require('../claims.js');
-const { GUILD_STARTING_FUEL, routeFuelCost } = require('../fuel.js');
+const { GUILD_STARTING_FUEL, routeFuelCost, volumeOf } = require('../fuel.js');
 const { getTerranHomeworld } = require('../seed.js');
 const { systemAtDistance, starterHomeAtDistance } = require('./waystation-fixtures.js');
 const {
@@ -377,7 +377,9 @@ test('a BUY delivery contributes ZERO fuel in transit — and the tripwire prove
   // "untouched" — the hoard drops and `totalConsumed` rises to match. What stays
   // exactly zero is the IN-TRANSIT term, which is what this test is about: fuel is
   // spent at the moment of purchase, never carried by the delivery.
-  const { fuelBurn } = routeFuelCost(DEST);
+  // The burn is space-tiered (§5.1): 12 units of titanium (volume 1) = 12 cargo space, a
+  // light-hold leg, so the burn is the light rate — the same figure this test always pinned.
+  const { fuelBurn } = routeFuelCost(DEST, 12 * volumeOf(GOOD));
   assert.equal(bought.guilds[0].fuelHoard, 10 - fuelBurn, 'the flight was paid for');
   assert.equal(bought.audit.totalConsumed, fuelBurn, 'and recorded as consumed');
 
