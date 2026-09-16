@@ -73,6 +73,16 @@ test('the Constructed grid fills the tab like the goods floor — #tw-cn grows a
   assert.match(html, /#tp-trade \.tw-body\{[^}]*flex:1 1 auto; min-height:560px;\}/s);
 });
 
+test('the .tw-wrap fills the tab width — no vestigial auto side-margins to shrink-wrap and centre', () => {
+  // #tp-trade is a flex column and .tw-wrap is a flex item; auto cross-axis margins would override
+  // align-items:stretch, shrink-wrapping .tw-wrap to its content and centring it (blank side gutters,
+  // visible on tier 4's narrower grid). The margin must be a bare `margin:0` so the wrap stretches.
+  const rule = html.match(/#tp-trade \.tw-wrap\{max-width:none;[^}]*\}/);
+  assert.ok(rule, 'the #tp-trade .tw-wrap max-width rule is present');
+  assert.match(rule[0], /margin:0;/, '.tw-wrap must set margin:0 (full-width stretch)');
+  assert.doesNotMatch(rule[0], /margin:0 auto/, '.tw-wrap must NOT re-introduce the auto-centring margin');
+});
+
 test('Add → __adviserConfirm → buyAssetFromSyndicate with the ruled payload', () => {
   // The Add button opens the shared adviser-confirm popup (not a new overlay), Commission-labelled.
   assert.match(html, /window\.__adviserConfirm\(\{/);
