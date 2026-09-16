@@ -844,7 +844,7 @@ select.field{appearance:none; cursor:pointer;}
   /* 5-panel body: commission menu | in-progress | current build | building art | buildyard hero.
      The Building (inner right) hero is ~2x the dockyard's; the Current Build column is squeezed. */
   grid-template-columns:224px 188px minmax(190px,1fr) 312px 300px; gap:12px; align-items:stretch;
-  min-height:560px;}
+  flex:1 1 auto; min-height:560px;}
 #tw-cn.cn-body{display:grid;}
 #tw-cn *{box-sizing:border-box;}
 @media (max-width:1120px){ #tw-cn{grid-template-columns:1fr 1fr; min-height:0;} }
