@@ -18,8 +18,8 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
-| 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,256 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy); the guild↔guild contest (a rival, territory, the market) is not built yet |
+| 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,310 tests, deterministic) |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -478,6 +478,18 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   is a real coupling that would move the whole body of asset-less-producing-venture tests; flagged, not
   guessed. Invariant-safety is unaffected either way (a detached venture is invariant-legal and the
   tick is null-safe).
+
+- **Owned transports + missions** — *surfaced 16-09-26 by the transport-ops thread; confirmed
+  design intent, not yet designed.* Guilds building/buying their own transports (the entity
+  `guild.vehicles` exists, empty) and flying them on missions — the guild transport tier of 2.3.
+  Open design: its **seam with the cargo-space Syndicate hauler** (one shared cargo/volume/burn model
+  vs a distinct guild-craft model), and where owning-and-flying sits against 2.3's routes / tolls /
+  lease-back.
+
+- **Deferred, flagged in docs (revisit with their slice, don't lose):** the SELL origin-picker helper
+  (offer only systems that hold every line — `syndicate-orders.md` §7, a client refinement); a
+  contraband-fuel operator lever (`operator-adjust.md`); and Phase-3 per-role auth to fence the
+  operator actions off from players.
 
 - **Build yard:** *Purchase price* — **RULED 14-09-26** (`docs/asset-purchase.md` + `phase-1-tuning.md`):
   `price = max(12,000,000 floor, round(partsCost × 0.8))` `[FIRST-CUT]`; a buy pays credits + fuel up
