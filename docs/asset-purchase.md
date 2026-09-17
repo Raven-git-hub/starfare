@@ -25,8 +25,8 @@ A purchase is TWO phases in sequence, one order:
 
 1. **Construction (Syndicate-side).** On buy, the guild pays the full price in credits AND the
    delivery fuel UP FRONT, and a build order is recorded. The asset is built centrally over the
-   kind's build time — the SAME `BUILD_TICKS` the dockyard uses (`asset-recipes.js`: miner 4,320
-   / factory 7,200 ticks). During construction the order is "on order": it is NOT a shipment and
+   kind's build time — the SAME `BUILD_TICKS` the dockyard uses (`asset-recipes.js`: miner 720
+   / factory 960 ticks). During construction the order is "on order": it is NOT a shipment and
    does NOT appear on the map — only a calm "on order — arriving day X" indicator in the
    Operations panel tells the player it is coming.
 2. **Delivery.** When construction completes, the order becomes a **standard Syndicate delivery

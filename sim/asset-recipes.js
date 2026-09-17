@@ -90,11 +90,11 @@ function assetBill(kind) {
 const MAX_QUEUE = 5;
 
 // Ticks a build counts down once its bill is consumed, per asset kind (build-yard.md §3). At
-// 1,440 ticks/day (docs/cycle-and-calendar.md), a miner is 3 days and a factory 5 days. Frozen
+// 1,440 ticks/day (docs/cycle-and-calendar.md), a miner is 12 hours and a factory 16 hours. Frozen
 // and keyed by the same MINER/FACTORY constants as the bills.
 const BUILD_TICKS = Object.freeze({
-  [MINER]: 4320,   // 3 days × 1,440 ticks/day
-  [FACTORY]: 7200, // 5 days × 1,440 ticks/day
+  [MINER]: 720,    // 12 hours × 60 ticks/hour
+  [FACTORY]: 960,  // 16 hours × 60 ticks/hour
 });
 
 // ── BUYING A TIER-4 ASSET FROM THE SYNDICATE (2.1d) ─────────────────────────────────────────

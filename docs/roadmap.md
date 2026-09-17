@@ -331,7 +331,7 @@ boundary so the later hex-map swap doesn't touch it.
   at `MAX_QUEUE` = 5) that turns modules **drawn from its own system's stockpile** into finished
   **miner / factory** assets. The **reserve-and-wait build step** (`buildDockyards`, a per-guild sub-step
   beside `refineDeuterium`) waits with no reservation until a head's whole bill is present, consumes it
-  atomically, counts down `BUILD_TICKS` (miner 4,320 / factory 7,200), then **emits one asset idle at the
+  atomically, counts down `BUILD_TICKS` (miner 720 / factory 960), then **emits one asset idle at the
   dockyard's system**, its id continuing the per-(guild,kind) sequence above the founding grant. The
   Tier-4 bills live in `sim/asset-recipes.js` (lifted from `docs/asset-recipes.md`, with a load-time
   tripwire that every module is a real Tier-3 good); teardown reuses `decommissionVenture` (queue gone,
