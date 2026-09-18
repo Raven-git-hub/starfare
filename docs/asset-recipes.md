@@ -104,6 +104,14 @@ Each asset recipe outputs **1** asset. All quantities `[FIRST-CUT]`.
 `buildable` = ground-asset yard output this thread; the rest are design-ahead
 (ships need 2.1/2.3 usability rulings; installations are blocked on 2.2/2.5).
 
+> **BUILT — the four SHIP bills are now in code (2.2-foundation slice (a), 18-09-26).** The four
+> transport rows below (Light / Medium / Heavy / Spy) are lifted **verbatim** into a parallel
+> `VEHICLE_BILLS` catalog in `sim/asset-recipes.js`, beside the two `buildable` ground bills and
+> under the SAME `assertBillModulesAreTier3` load-time tripwire. A guild transport can now be built
+> by a dockyard or bought from the Syndicate; it is minted **idle** into `guild.vehicles` (design.md
+> §15.4; numbers in `phase-1-tuning.md` §"Guild transports"). The four **installation** rows (Outpost,
+> Deep Scan Array, Toll Gate, Droid) stay design-ahead — their entities do not exist yet.
+
 | Asset | Module bill | Status |
 |---|---|---|
 | **Light transport** | chassis · small_reactor_engine · fuel_tank · power_cells · control_module · life_support_module | ship (design-ahead) |

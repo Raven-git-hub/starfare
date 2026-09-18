@@ -673,15 +673,30 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
 }
 
 // Vehicle (OWNED, design.md §15.4): "id, ownerGuildId, class, speed/capacity/
-// defenseRating/fuelCostToRun, status." Only ONE class exists so far —
-// `lightTransport` (design.md §4's simplest ship, no sensors/weapons) — so
-// that's the default; anything else is a later addition, not invented here.
+// defenseRating/fuelCostToRun, systemId, maintenanceCondition, status." The four
+// classes now exist (sim/vehicles.js, roadmap 2.2-foundation); `lightTransport`
+// (design.md §4's simplest ship) stays the default so an old caller that passes no
+// class is unchanged.
 //
-// speed/capacity/defenseRating/fuelCostToRun are REQUIRED, not defaulted —
-// same discipline as createGuild's credits/fuelHoard. None of these numbers
-// has a decided value anywhere in docs/phase-1-tuning.md yet; defaulting
-// them to something plausible would be inventing a game-balance number
-// silently (working practice #5). The caller must supply real numbers.
+// speed/capacity/defenseRating/fuelCostToRun are REQUIRED, not defaulted — same
+// discipline as createGuild's credits/fuelHoard. The per-class values live in
+// sim/vehicles.js's VEHICLE_SPECS (from docs/phase-1-tuning.md §"Guild transports");
+// the mint helper (sim/tick.js) stamps them, and a direct caller must supply real
+// numbers rather than have a plausible one invented here (working practice #5).
+// `capacity` is checked against `undefined`, NOT falsiness, so spycraft's legal
+// capacity of exactly 0 is accepted.
+//
+// `systemId` (2.2, roadmap 2.2-foundation — design.md §15.4) is the system the craft
+// physically sits in when idle: its inventory location, and where a dispatch measures
+// distance from. REQUIRED — no default, throw if missing, exactly as `Asset.systemId`
+// does — because a craft with no location is meaningless and a silent default would put
+// it somewhere nobody chose. Set when the craft is minted (a dockyard build → the
+// building system; a Syndicate delivery → the destination system).
+//
+// `maintenanceCondition` (2.2) is a fraction, 1 = new, and is INERT like
+// `Asset.maintenanceCondition` until the maintenance slice — nothing reads it, nothing
+// changes it. Carried and serialized now so the shape is settled with no later migration;
+// defaults to ASSET_CONDITION_NEW, the same "new = full" identity assets use.
 function createVehicle({
   id,
   ownerGuildId,
@@ -690,6 +705,8 @@ function createVehicle({
   capacity,
   defenseRating,
   fuelCostToRun,
+  systemId,
+  maintenanceCondition = ASSET_CONDITION_NEW,
   status = 'idle',
 }) {
   if (id === undefined) throw new Error('createVehicle: id is required');
@@ -698,6 +715,7 @@ function createVehicle({
   if (capacity === undefined) throw new Error('createVehicle: capacity is required');
   if (defenseRating === undefined) throw new Error('createVehicle: defenseRating is required');
   if (fuelCostToRun === undefined) throw new Error('createVehicle: fuelCostToRun is required');
+  if (systemId === undefined) throw new Error('createVehicle: systemId is required');
 
   return {
     id,
@@ -707,6 +725,10 @@ function createVehicle({
     capacity,
     defenseRating,
     fuelCostToRun,
+    // systemId — the craft's physical location when idle, always present (see the note above).
+    systemId,
+    // maintenanceCondition — INERT this slice (sim/vehicles.js / assets.js own the scale).
+    maintenanceCondition,
     status,
     // §15.2: "every mutation records its tick." null until something (a
     // future consumption/movement step) first touches this vehicle.

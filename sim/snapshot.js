@@ -37,7 +37,7 @@ const { guildPoints } = require('./points.js');
 const { expectedReputation, issuanceModifier } = require('./meanline.js');
 const { computeOccupancy } = require('./occupancy.js');
 const { deployedAssetIds } = require('./assets.js');
-const { BUILDABLE_ASSET_KINDS, BUILD_TICKS, priceAssetForPurchase } = require('./asset-recipes.js');
+const { BUILDABLE_KINDS, BUILD_TICKS, priceAssetForPurchase } = require('./asset-recipes.js');
 const { getSite, getLandmark, getStarterSystems, getTerranHomeworld } = require('./seed.js');
 const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
@@ -657,6 +657,8 @@ function computeAttention(state) {
 //                 assets: [ { id, kind, systemId,                 // §4 inventory
 //                             maintenanceCondition,                //   systemId = location
 //                             deployedToVentureId: id | null } ],  //   null = IDLE
+//                 vehicles: [ { id, class, systemId,               // §15.4 transport inventory (2.2)
+//                               maintenanceCondition, status } ],   //   status idle this slice
 //                 productionProfile: { ... } } ],               // §5 profile, sparse as stored
 //     production: [ { guildId,                                  // previewProduction(state)
 //       systems: [ { systemId, mines, goods, lines, refineries,     // resolved per-system
@@ -698,7 +700,7 @@ function computeAttention(state) {
 //     syndicateBuilds: [ { ownerGuildId, assetKind, destinationSystemId,       // asset-purchase.md
 //                          buildDoneTick, ticksRemaining } ],                  // "on order" indicator
 //     assetPurchaseQuote: { <assetKind>: { price, buildTicks } },              // asset-purchase.md
-//       // Per Syndicate-buildable kind (miner, factory): the current-tick credit `price`
+//       // Per Syndicate-buildable kind (miner, factory, and the four guild transports): the current-tick credit `price`
 //       // (priceAssetForPurchase) and the `buildTicks` (BUILD_TICKS[kind]). The TRADE tab's
 //       // "4 · Constructed" buy view reads these; the delivery leg of the arrival estimate
 //       // comes from fuelCost[dest].travelTicks, not from here. Derived-on-read, no stored byte.
@@ -1088,6 +1090,21 @@ function buildSnapshot(state) {
         systemId: a.systemId,
         maintenanceCondition: a.maintenanceCondition,
         deployedToVentureId: deployedTo.get(a.id) || null,
+      })).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+      // vehicles: the guild's guild-transport inventory (design.md §15.4, 2.2-foundation), one row
+      // per owned craft — the vehicle mirror of the `assets` rows above. `class`/`systemId`/
+      // `maintenanceCondition`/`status` are surfaced (the client groups by system and shows the
+      // idle/in-transit state); `capacity`/`speed`/`fuelCostToRun`/`defenseRating` are engine
+      // stats the client reads from the catalog, not per-row. This slice mints every craft IDLE,
+      // so `status` is always 'idle' here. Sorted by id (the deterministic mint order), fresh
+      // objects so a consumer mutating the snapshot can't alias into engine state. Derived-on-read
+      // like `assets`: no serialized byte beyond the minted `guild.vehicles` rows themselves.
+      vehicles: (g.vehicles || []).map((v) => ({
+        id: v.id,
+        class: v.class,
+        systemId: v.systemId,
+        maintenanceCondition: v.maintenanceCondition,
+        status: v.status,
       })).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
       // buyOrder / sellOrder: the guild's HELD Syndicate orders, echoed with the engine-computed
       // per-line `space`, the Σ `totalUnits`/`totalSpace`, the `haulerTier` and the `overCap` flag
@@ -1576,7 +1593,8 @@ function buildSnapshot(state) {
       ticksRemaining: Math.max(0, b.buildDoneTick - state.tick),
     })),
     // The ASSET-PURCHASE QUOTE (docs/asset-purchase.md "Price") — for each Syndicate-buildable
-    // asset kind, the credit price a purchase would cost right now and the ticks it builds over.
+    // kind (the two ground assets AND the four guild transports, 2.2-foundation), the credit price
+    // a purchase would cost right now and the ticks it builds over.
     // Published so the TRADE tab's "4 · Constructed" buy view can SHOW the price and the build
     // time without the browser ever pricing an asset or knowing a build duration (§5: the client
     // renders the snapshot, computes no game number). The price is the engine's own
@@ -1587,7 +1605,7 @@ function buildSnapshot(state) {
     // Additive DERIVED-ON-READ telemetry like `syndicateBuilds` above: no serialized byte, no
     // schema bump, no golden move — a galaxy that buys nothing serializes byte-identically.
     assetPurchaseQuote: Object.fromEntries(
-      BUILDABLE_ASSET_KINDS.map((kind) => [
+      BUILDABLE_KINDS.map((kind) => [
         kind,
         { price: priceAssetForPurchase(state, kind, state.tick), buildTicks: BUILD_TICKS[kind] },
       ]),
