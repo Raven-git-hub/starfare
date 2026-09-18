@@ -1236,9 +1236,10 @@ select.field{appearance:none; cursor:pointer;}
 #tp-ops .ops-tp-stat{display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:9px 0 11px;}
 #tp-ops .ops-tp-stat .k{font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ops-ink4);}
 #tp-ops .ops-tp-stat .v{font-family:var(--ops-mono); font-size:13px; color:var(--ops-ink); font-variant-numeric:tabular-nums;}
-/* Dispatch is INERT this slice (movement is the next slice), so it renders disabled — built now so
-   the tab layout is final and the wiring lands next slice against a finished shape. */
-#tp-ops .ops-tp-dispatch{width:100%; font-family:var(--ops-mono); font-size:10px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--ops-ink3); background:var(--ops-panel); border:1px solid var(--ops-line2); border-radius:6px; padding:8px; cursor:not-allowed; opacity:.55;}
+/* Dispatch opens the Dispatch popup (2.2 spawn client). Its only action this slice is "Show on map";
+   destination / route / the real dispatch are slice (b). */
+#tp-ops .ops-tp-dispatch{width:100%; font-family:var(--ops-mono); font-size:10px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--ops-amber2); background:var(--ops-panel); border:1px solid var(--ops-amber-dim); border-radius:6px; padding:8px; cursor:pointer;}
+#tp-ops .ops-tp-dispatch:hover{background:var(--ops-amber-dim); color:var(--ops-ink);}
 
 /* RIGHT: the pilot hero (client/assets/characters/pilot.jpg under the Guild-Hall scrim) */
 #tp-ops .ops-thero{position:relative; padding:0; overflow:hidden; min-height:0; border:1px solid var(--ops-line); border-radius:10px;}
@@ -1751,6 +1752,54 @@ select.field{appearance:none; cursor:pointer;}
 #vm-overlay .vm-reneg:hover{background:var(--amber-dim); color:var(--void)}
 #vm-overlay .vm-note{font-family:var(--mono); font-size:10px; color:var(--ink3); text-align:center; margin-top:9px; letter-spacing:.03em; line-height:1.5; min-height:12px}
 @media(max-width:820px){ #vm-overlay .est-body{grid-template-columns:1fr} #vm-overlay .est-main{border-right:none; border-bottom:1px solid var(--line)} #vm-overlay .vm-sub{grid-template-columns:1fr} }
+
+/* ===== #dispatch-overlay — the DISPATCH popup (2.2 spawn client; roadmap 2.2 spawn). The MIRROR of
+   #vm-overlay, wearing the same est card/hero/ledger language: head = eyebrow + the craft's name +
+   close; body = a main column (the summary the dispatch controls will slot into next slice) and a
+   side hero (the per-class unit art) with the primary action. This slice the ONLY action is "Show on
+   map" (jump-and-centre on the craft's hex); destination / route / fuel / the real dispatch are slice
+   (b). Every field is a PUBLISHED snapshot value (class, location, maintenance) — the client computes
+   no game number (§5/§18). ===== */
+#dispatch-overlay{
+  --void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
+  --line:rgba(232,223,200,0.10); --line2:rgba(232,223,200,0.20);
+  --amber:#C9A227; --amber-dim:#7A6420; --amber-ghost:rgba(201,162,39,0.10);
+  --ink:#E8DFC8; --ink2:#8B8F9C; --ink3:#565B68; --ink4:#3a3f49;
+  --green:#4E9A87; --red:#C2603A;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;
+  --serif:'Cinzel',serif;
+  position:fixed; left:0; right:0; top:104px; bottom:0;
+  background:rgba(6,7,10,.72); backdrop-filter:blur(3px);
+  display:none; align-items:flex-start; justify-content:center;
+  padding:26px 20px; overflow-y:auto; z-index:570;
+  font-family:var(--sans); font-size:14px; line-height:1.45; color:var(--ink);
+}
+#dispatch-overlay.open{display:flex}
+#dispatch-overlay .est{width:100%; max-width:900px; background:linear-gradient(180deg,#12151C,#0F1218); border:1px solid var(--line2); border-radius:14px; box-shadow:0 30px 90px rgba(0,0,0,.6); overflow:hidden; position:relative}
+#dispatch-overlay .est-head{display:flex; align-items:flex-start; gap:16px; padding:18px 22px 16px; border-bottom:1px solid var(--line); background:radial-gradient(700px 200px at 85% -40%, rgba(201,162,39,.06), transparent 70%)}
+#dispatch-overlay .est-head .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
+#dispatch-overlay .est-head h2{font-family:var(--serif); font-weight:600; font-size:22px; margin:5px 0 0; letter-spacing:.02em}
+#dispatch-overlay .est-close{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--ink2); border-radius:8px; width:34px; height:34px; font-size:16px; cursor:pointer; flex:none}
+#dispatch-overlay .est-close:hover{border-color:var(--red); color:var(--red)}
+#dispatch-overlay .est-body{display:grid; grid-template-columns:1fr 340px; gap:0}
+#dispatch-overlay .est-main{padding:22px 22px 24px; border-right:1px solid var(--line)}
+/* The summary the dispatch controls slot into next slice — a labelled read-out list. */
+#dispatch-overlay .dp-sechead{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2); margin-bottom:14px}
+#dispatch-overlay .dp-sum{border-top:1px solid var(--line)}
+#dispatch-overlay .dp-sum .row{display:flex; justify-content:space-between; align-items:baseline; gap:14px; padding:13px 2px; border-bottom:1px solid rgba(232,223,200,0.08)}
+#dispatch-overlay .dp-sum .row .k{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3)}
+#dispatch-overlay .dp-sum .row .v{font-family:var(--mono); font-size:14px; color:var(--ink); text-align:right; font-variant-numeric:tabular-nums}
+#dispatch-overlay .dp-soon{margin-top:20px; font-family:var(--mono); font-size:10.5px; color:var(--ink3); line-height:1.6; letter-spacing:.02em}
+#dispatch-overlay .est-side{position:relative; background:#0d0f14; display:flex; flex-direction:column; min-height:100%}
+#dispatch-overlay .est-side .art{position:absolute; inset:0; background-size:cover; background-position:50% 30%; z-index:0}
+#dispatch-overlay .est-side .scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(10,11,15,.42) 0%, rgba(10,11,15,.72) 46%, rgba(10,11,15,.95) 100%); z-index:1}
+#dispatch-overlay .est-side .inner{position:relative; z-index:2; padding:20px 20px 22px; display:flex; flex-direction:column; flex:1}
+#dispatch-overlay .est-side .stitle{font-family:var(--mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber); margin-bottom:14px}
+#dispatch-overlay .dp-actions{margin-top:auto}
+#dispatch-overlay .dp-show{width:100%; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer}
+#dispatch-overlay .dp-show:hover{background:#DCB43A}
+@media(max-width:820px){ #dispatch-overlay .est-body{grid-template-columns:1fr} #dispatch-overlay .est-main{border-right:none; border-bottom:1px solid var(--line)} }
 
 /* ===== #reneg-overlay — the LICENCE RENEGOTIATION popup (#64 Slice 1b, design.md §5; restyled in
    the Slice 2 client-polish pass to wear the adviser-reel look — the same two-column hero card as
@@ -2790,6 +2839,44 @@ select.field{appearance:none; cursor:pointer;}
   </div>
 </div>
 
+<!-- The DISPATCH popup (2.2 spawn client) — the est-shell mirror of #vm-overlay, opened for one
+     idle guild transport from two entry points: the OPERATIONS Dispatch button and a click on the
+     craft's map name-tag. The main column is the summary the real dispatch controls slot into next
+     slice; this slice the ONLY action is "Show on map" (jump-and-centre on the craft's hex). Every
+     field is a published snapshot value — the client computes no game number (§5/§18). -->
+<div id="dispatch-overlay">
+  <div class="est">
+    <div class="est-head">
+      <div>
+        <div class="eyebrow">Dispatch</div>
+        <h2 id="dpName">—</h2>
+      </div>
+      <button class="est-close" id="dpClose" title="Close (Esc)">✕</button>
+    </div>
+    <div class="est-body">
+      <div class="est-main">
+        <div class="dp-sechead">Craft</div>
+        <div class="dp-sum">
+          <div class="row"><span class="k">Class</span><span class="v" id="dpClass">—</span></div>
+          <div class="row"><span class="k">Location</span><span class="v" id="dpLoc">—</span></div>
+          <div class="row"><span class="k">Maintenance</span><span class="v" id="dpMaint">—</span></div>
+        </div>
+        <div class="dp-soon">Choosing a destination, the route and its fuel, and the dispatch order arrive with movement (next slice). For now, locate the craft on the galaxy map.</div>
+      </div>
+      <div class="est-side">
+        <div class="art" id="dpArt"></div>
+        <div class="scrim"></div>
+        <div class="inner">
+          <div class="stitle">Transport</div>
+          <div class="dp-actions">
+            <button class="dp-show" id="dpShowMap" type="button">Show on map</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- The LICENCE RENEGOTIATION popup (#64 Slice 1b) — one modal, two entry points (a Messages row
      and the VM "Renegotiate ▸" button). ACCEPT → renegotiateLicence; REJECT → confirm → lapseLicence.
      Every term is read from the snapshot; the adviser voice is keyed on the emitted standing band. -->
@@ -2908,6 +2995,13 @@ select.field{appearance:none; cursor:pointer;}
   // each as a leg + a craft tweened along it (transport-model.md §3/§6), computing no game
   // number — legProgress and fmtETA are derives off engine-surfaced ticks (design.md §5).
   let liveShipments = [];
+  // The player's OWN idle deep-space (bare-hex) transports, pushed by __setLiveDeepSpaceCraft
+  // from each poll. [] until the first snapshot. A craft berthed at a system/outpost is already
+  // marked by that landmark's own tag, so ONLY bare-hex craft are fed here (design.md §15.4).
+  // OWN CRAFT ONLY (client-wiring §7 — a rival's logistics are not free intel). PRESENTATION
+  // ONLY: a small accent marker + a clickable name-tag; the client computes no game number (§18).
+  let liveDeepSpaceCraft = [];
+  let craftByKey = new Map();   // "q,r" -> the craft row, for hit-testing in handleClick
   let systemById = new Map(), guildById = new Map(), systemToGuild = new Map(), guildOutpostByKey = new Map(), gateByKey = new Map();
 
   const COLOR_RGB = { system: [111,183,232], outpost: [232,185,58], citadel: [242,206,93], player: [67,217,200] };
@@ -3005,6 +3099,15 @@ select.field{appearance:none; cursor:pointer;}
       ctx.fillText(line, bx + 8, by + 16 + i * 13);
     });
     ctx.restore();
+  }
+
+  // A camelCase-splitting display name (lightTransport -> "Light Transport"), a copy of the
+  // trade tab's `pretty` (its IIFE is out of scope here). Display vocabulary only — never a game
+  // number (§18). An unknown class still reads as its title-cased words.
+  function prettyClass(key) {
+    return String(key == null ? '' : key)
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
   }
 
   // ticks -> a compact ETA string ("12m" / "11h 58m" / "1d 04h"), the same tick->time
@@ -3380,6 +3483,35 @@ select.field{appearance:none; cursor:pointer;}
       }
     }
 
+    // the player's own idle DEEP-SPACE craft (2.2 spawn) — a bare-hex transport sits where no
+    // system/outpost tag would mark it, so it gets its OWN small accent marker plus a clickable
+    // name-tag. A craft at a system/outpost is already drawn by that landmark's tag and is not fed
+    // here. OWN CRAFT ONLY (client-wiring §7). PRESENTATION ONLY (§5/§18): the engine surfaces each
+    // craft's location; the client resolves its hex to pixels and draws — it invents no game number.
+    if (liveDeepSpaceCraft.length) {
+      const hsC = galaxy.galaxyParams.hexSize;
+      liveDeepSpaceCraft.forEach((c) => {
+        const p = hexToPixel(c.q, c.r, hsC);
+        const scr = worldToScreen(p.x, p.y);
+        if (scr.x < -60 || scr.x > window.innerWidth + 60 || scr.y < -60 || scr.y > window.innerHeight + 60) return;
+        // the marker — a small filled diamond in the player accent, matching the outpost/claim idiom
+        const s = Math.min(7, 4 + zoom * 0.05);
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(scr.x, scr.y - s); ctx.lineTo(scr.x + s, scr.y);
+        ctx.lineTo(scr.x, scr.y + s); ctx.lineTo(scr.x - s, scr.y);
+        ctx.closePath();
+        ctx.fillStyle = col('player', 0.9);
+        ctx.fill();
+        ctx.restore();
+        // the name-tag: the class then the status line. The SECOND line is optional — a future
+        // guild-outpost deployable will label with its type ONLY (no status) — and drawLabelBox
+        // sizes the box to whatever lines it is handed, so a one-line label already works; a
+        // transport passes two (e.g. LIGHT TRANSPORT / IDLE). Only above 1× (as the system labels).
+        if (zoom > 1) drawLabelBox(scr, [prettyClass(c.class).toUpperCase(), 'IDLE'], 'player');
+      });
+    }
+
     // labels — diagonal line + name/detail box, ported from galaxy-map-hex.html.
     // Syndicate outposts label at WAYSTATION_LABEL_ZOOM (1.5×) and closer; the placeholder guild's own systems only above 1×.
     // Everyone else (rivals, unclaimed) stays unlabeled, same as the original.
@@ -3484,6 +3616,18 @@ select.field{appearance:none; cursor:pointer;}
 
     // what's at this hex? system > guild outpost > toll gate > Syndicate outpost > Citadel > claimed empty territory > empty
     const key = `${ax.q},${ax.r}`;
+
+    // A bare-hex idle craft sits where no system/outpost is (design.md §15.4), so it takes the TOP
+    // of the priority chain: clicking its hex opens the Dispatch popup for that craft instead of
+    // the system panel. Only the player's own craft are ever fed here. Falls through to the normal
+    // chain when no craft is at this hex.
+    const craftHere = craftByKey.get(key);
+    if (craftHere && window.__openDispatch) {
+      selectedCoords = ax;
+      window.__openDispatch({ id: craftHere.id, class: craftHere.class, location: { q: craftHere.q, r: craftHere.r } });
+      return;
+    }
+
     let hit = systemByKey.get(key);
     let type = 'system';
     if (!hit) { hit = guildOutpostByKey.get(key); type = 'guildOutpost'; }
@@ -3672,6 +3816,15 @@ select.field{appearance:none; cursor:pointer;}
         arrivalTick: s.arrivalTick,
         ticksRemaining: s.ticksRemaining,
       }));
+  };
+
+  // The sibling door for the DEEP-SPACE CRAFT layer: the player's own idle transports that sit on
+  // a bare hex. A craft berthed at a system/outpost is drawn by that landmark's own tag, so it is
+  // NOT fed here (design.md §15.4). OWN CRAFT ONLY (client-wiring §7). Builds the "q,r" hit-test
+  // map the click handler reads and keeps the list the render pass draws; computes nothing else.
+  window.__setLiveDeepSpaceCraft = function (list) {
+    liveDeepSpaceCraft = (list || []).map((c) => ({ id: c.id, class: c.class, q: c.q, r: c.r }));
+    craftByKey = new Map(liveDeepSpaceCraft.map((c) => [`${c.q},${c.r}`, c]));
   };
 
   // A stable colour per rival guild id. PRESENTATION ONLY — a hue, not a game
@@ -5523,6 +5676,18 @@ function applySnapshot(snap){
       myGuildId: GAME.guildId,
       shipments: snap.shipments || [],
     });
+  }
+  // The DEEP-SPACE CRAFT overlay reads from the same poll: the player's OWN idle transports that
+  // sit on a bare hex (a craft at a system/outpost is drawn by that landmark's tag, so it is not
+  // fed). Own craft only (client-wiring §7 — a rival's logistics are not free intel). We resolve
+  // the bare-hex location to { id, class, q, r } and hand the map the hit-test + draw data; the
+  // map computes no game number (§18).
+  if (window.__setLiveDeepSpaceCraft){
+    var myGuildRow = (snap.guilds || []).filter(function(g){ return g.id === GAME.guildId; })[0];
+    var deepCraft = ((myGuildRow && myGuildRow.vehicles) || [])
+      .filter(function(v){ return v.status === 'idle' && v.location && typeof v.location.q === 'number' && typeof v.location.r === 'number'; })
+      .map(function(v){ return { id: v.id, class: v.class, q: v.location.q, r: v.location.r }; });
+    window.__setLiveDeepSpaceCraft(deepCraft);
   }
   // The systems the player controls, for the detail screen's system picker.
   var mineIds = Object.keys(LIVE.systemClaims).filter(function(id){ return LIVE.systemClaims[id] === GAME.guildId; });
@@ -7644,10 +7809,11 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return 'Unknown';
   }
 
-  // A craft tab: collapsed head = short type + system; expanded body = maintenance % + the inert
-  // (disabled) Dispatch button. Default COLLAPSED (the panel stays a compact roster); expansion is
-  // remembered in O.tpOpen so a signature-guarded rebuild honours it. Maintenance is the engine's
-  // own `maintenanceCondition` as a percent — inert this slice (reads 100%), rendered not computed.
+  // A craft tab: collapsed head = short type + system; expanded body = maintenance % + the Dispatch
+  // button. Default COLLAPSED (the panel stays a compact roster); expansion is remembered in O.tpOpen
+  // so a signature-guarded rebuild honours it. Maintenance is the engine's own `maintenanceCondition`
+  // as a percent — inert this slice (reads 100%), rendered not computed. Dispatch opens the Dispatch
+  // popup (2.2 spawn client) for this craft; its only action this slice is "Show on map".
   function tpCraftHtml(v){
     var key = 'tp:' + v.id;
     var open = O.tpOpen[key] === true;
@@ -7660,7 +7826,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       +   '</div>'
       +   '<div class="ops-tp-craftbody">'
       +     '<div class="ops-tp-stat"><span class="k">Maintenance</span><span class="v">' + maint + '%</span></div>'
-      +     '<button class="ops-tp-dispatch" type="button" disabled title="Dispatch arrives with movement (next slice)">Dispatch</button>'
+      +     '<button class="ops-tp-dispatch" type="button" data-tp-dispatch="' + esc(v.id) + '">Dispatch</button>'
       +   '</div>'
       + '</div>';
   }
@@ -7746,6 +7912,17 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // header element itself resolves to the right group either way.
   var panel = el('tp-ops');
   if(panel) panel.addEventListener('click', function(e){
+    // Dispatch button (2.2 spawn client) — opens the Dispatch popup for this craft, handed the
+    // snapshot `vehicles` row it was rendered from. Checked first so a click on the button never
+    // also toggles the craft tab. The row is looked up fresh off the current snapshot by id.
+    var dispBtn = e.target.closest('.ops-tp-dispatch');
+    if(dispBtn){
+      var vid = dispBtn.getAttribute('data-tp-dispatch');
+      var g = meGuild();
+      var v = ((g && g.vehicles) || []).filter(function(x){ return x.id === vid; })[0];
+      if(v && window.__openDispatch) window.__openDispatch(v);
+      return;
+    }
     var hd = e.target.closest('.ops-idle-syshd, .ops-idle-kindhd');
     if(hd){
       var grp = hd.closest('.ops-idle-sys, .ops-idle-kind'); if(!grp) return;
@@ -8769,6 +8946,104 @@ function paintInventoryHero(d){
     if(!player || !player.guildId || !VM.ventureId || !window.__openRenegotiation){ return; }
     window.__openRenegotiation(player.guildId, VM.ventureId);
   });
+})();
+</script>
+
+<script>
+/* ============================================================================
+   THE DISPATCH POPUP (2.2 spawn client; roadmap 2.2 (spawn)). The est-shell mirror of the
+   Venture Management popup, opened for ONE idle guild transport from two entry points — the
+   OPERATIONS Dispatch button (which passes the snapshot `vehicles` row it rendered) and a click
+   on the craft's galaxy-map name-tag (which passes { id, class, location:{q,r} }). It shows a
+   summary — Class, Location, Maintenance — and the per-class unit art, with ONE action this slice:
+   "Show on map", which closes the popup and jump-and-centres on the craft's hex (zoom 9, matching
+   My System). Destination / route / fuel / the real dispatch are slice (b) and slot into the main
+   column later. The client computes NO game number (§5/§18): it reads the craft's published
+   `location`, resolves names/coords off the seed the client already holds, and draws.
+   ============================================================================ */
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function snap(){ return (window.__snapshot && window.__snapshot()) || null; }
+
+  var DP = { vehicle: null };
+
+  // A camelCase-splitting display name (heavyTransport -> "Heavy Transport"). Display vocabulary
+  // only (§18) — a local copy, the map/trade `pretty` are out of this IIFE's scope.
+  function prettyClass(key){
+    return String(key == null ? '' : key)
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/\b\w/g, function(c){ return c.toUpperCase(); });
+  }
+
+  // The player's own live vehicle row by id, off the polled snapshot — the ONE authoritative
+  // source for maintenance/location whichever entry point opened us. null if it is momentarily gone.
+  function liveVehicle(id){
+    var s = snap(); if(!s) return null;
+    var pid = window.__player ? (window.__player().guildId) : null;
+    var g = (s.guilds || []).filter(function(x){ return x.id === pid; })[0]; if(!g) return null;
+    return (g.vehicles || []).filter(function(v){ return v.id === id; })[0] || null;
+  }
+
+  // A craft's `location` -> its display label: a landmark reads its name (system OR outpost, the two
+  // anchors a transport treats identically, §15.4); a bare hex reads its coordinates "(q, r)". Off
+  // the same seed resolvers the map/OPERATIONS use.
+  function locLabel(v){
+    var loc = v && v.location; if(!loc) return '—';
+    if(loc.landmarkKind === 'system') return (window.__systemName && window.__systemName(loc.landmarkId)) || loc.landmarkId;
+    if(loc.landmarkKind === 'outpost') return (window.__outpostName && window.__outpostName(loc.landmarkId)) || loc.landmarkId;
+    if(typeof loc.q === 'number' && typeof loc.r === 'number') return '(' + loc.q + ', ' + loc.r + ')';
+    return '—';
+  }
+
+  // The craft's coordinates for "Show on map": a bare hex is its own {q,r}; a landmark craft is that
+  // landmark's `coords`, looked up in the seed the client already holds (GAME.galaxy). Dispatch
+  // measures from resolved coordinates the same way for a system, an outpost, or a deep-space berth
+  // (§15.4), so this is one path with no special case. null if the landmark isn't in the seed.
+  function coordsOf(v){
+    var loc = v && v.location; if(!loc) return null;
+    if(typeof loc.q === 'number' && typeof loc.r === 'number') return { q: loc.q, r: loc.r };
+    if(!GAME || !GAME.galaxy) return null;
+    var arr = loc.landmarkKind === 'system' ? GAME.galaxy.systems
+            : (loc.landmarkKind === 'outpost' ? GAME.galaxy.outposts : null);
+    if(!arr) return null;
+    var m = arr.filter(function(x){ return x.id === loc.landmarkId; })[0];
+    return (m && m.coords) ? { q: m.coords.q, r: m.coords.r } : null;
+  }
+
+  // Fill the fields + art and show the overlay. `vehicle` may be the full OPERATIONS snapshot row or
+  // the map's { id, class, location:{q,r} } — either way we re-read the authoritative row by id.
+  function openDispatch(vehicle){
+    if(!vehicle || !vehicle.id) return;
+    var v = liveVehicle(vehicle.id) || vehicle;
+    DP.vehicle = v;
+    var suffix = String(v.id).split('_').slice(-1)[0];   // vehicle_<guild>_<class>_NN -> "NN"
+    $('dpName').textContent = prettyClass(v.class) + ' · #' + suffix;
+    $('dpClass').textContent = prettyClass(v.class);
+    $('dpLoc').textContent = locLabel(v);
+    var maint = Math.round((typeof v.maintenanceCondition === 'number' ? v.maintenanceCondition : 0) * 100);
+    $('dpMaint').textContent = maint + '%';
+    // per-class hero art (client/assets/units/<class>.jpg, all four classes resolve): heavyTransport
+    // -> "heavytransport.jpg", spycraft -> "spycraft.jpg".
+    $('dpArt').style.backgroundImage = "url('assets/units/" + String(v.class).toLowerCase() + ".jpg')";
+    $('dispatch-overlay').classList.add('open');
+  }
+  function closeDispatch(){ DP.vehicle = null; $('dispatch-overlay').classList.remove('open'); }
+
+  // "Show on map": close the popup, then centre on the craft's hex at zoom 9 (matching My System).
+  // __flyTo already closes the open tab/panel and centres, so this is the whole action (§ prompt 6).
+  function showOnMap(){
+    var v = DP.vehicle; if(!v) return;
+    var c = coordsOf(v);
+    closeDispatch();
+    if(c && window.__flyTo) window.__flyTo(c.q, c.r, 9);
+  }
+
+  window.__openDispatch = openDispatch;   // the ONE entry point both call sites use
+  window.__dispatchClose = closeDispatch;
+
+  $('dpClose').addEventListener('click', closeDispatch);
+  $('dispatch-overlay').addEventListener('click', function(e){ if(e.target === this) closeDispatch(); });
+  $('dpShowMap').addEventListener('click', showOnMap);
 })();
 </script>
 
