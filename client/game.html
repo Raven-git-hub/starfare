@@ -1791,15 +1791,26 @@ select.field{appearance:none; cursor:pointer;}
 #dispatch-overlay .dp-sum .row .k{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3)}
 #dispatch-overlay .dp-sum .row .v{font-family:var(--mono); font-size:14px; color:var(--ink); text-align:right; font-variant-numeric:tabular-nums}
 #dispatch-overlay .dp-soon{margin-top:20px; font-family:var(--mono); font-size:10.5px; color:var(--ink3); line-height:1.6; letter-spacing:.02em}
-#dispatch-overlay .est-side{position:relative; background:#0d0f14; display:flex; flex-direction:column; min-height:100%}
-#dispatch-overlay .est-side .art{position:absolute; inset:0; background-size:cover; background-position:50% 30%; z-index:0}
-#dispatch-overlay .est-side .scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(10,11,15,.42) 0%, rgba(10,11,15,.72) 46%, rgba(10,11,15,.95) 100%); z-index:1}
-#dispatch-overlay .est-side .inner{position:relative; z-index:2; padding:20px 20px 22px; display:flex; flex-direction:column; flex:1}
-#dispatch-overlay .est-side .stitle{font-family:var(--mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber); margin-bottom:14px}
-#dispatch-overlay .dp-actions{margin-top:auto}
+/* The side column is a plain top-to-bottom stack: the whole portrait, then a solid footer with
+   the label + action. Unlike the other est heroes it does NOT float a button over a full-bleed
+   image — the ship shows uncropped and the button sits beneath it. */
+#dispatch-overlay .est-side{background:#0d0f14; display:flex; flex-direction:column; min-height:100%}
+/* The art files (assets/units/*.jpg) are 848×1264 portraits composed vertically. A box at the
+   image's own ratio means background-size:cover fills it edge-to-edge with NO crop, so the entire
+   craft reads top to bottom. It spans the side column's 340px grid track. The per-class
+   background-image is set by the popup's JS (openDispatch) and left untouched here. */
+#dispatch-overlay .est-side .art{aspect-ratio:848 / 1264; background-size:cover; background-position:center; background-repeat:no-repeat}
+#dispatch-overlay .dp-foot{padding:16px 20px 20px; display:flex; flex-direction:column; gap:12px; background:#0d0f14}
+#dispatch-overlay .dp-foot .stitle{font-family:var(--mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
 #dispatch-overlay .dp-show{width:100%; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer}
 #dispatch-overlay .dp-show:hover{background:#DCB43A}
-@media(max-width:820px){ #dispatch-overlay .est-body{grid-template-columns:1fr} #dispatch-overlay .est-main{border-right:none; border-bottom:1px solid var(--line)} }
+/* One-column phone layout: the art is now full-width, so cap its height (a display cap, not a game
+   number) and switch to `contain` so the whole ship still shows, letterboxed, without dominating. */
+@media(max-width:820px){
+  #dispatch-overlay .est-body{grid-template-columns:1fr}
+  #dispatch-overlay .est-main{border-right:none; border-bottom:1px solid var(--line)}
+  #dispatch-overlay .est-side .art{max-height:60vh; background-size:contain}
+}
 
 /* ===== #reneg-overlay — the LICENCE RENEGOTIATION popup (#64 Slice 1b, design.md §5; restyled in
    the Slice 2 client-polish pass to wear the adviser-reel look — the same two-column hero card as
@@ -2865,12 +2876,9 @@ select.field{appearance:none; cursor:pointer;}
       </div>
       <div class="est-side">
         <div class="art" id="dpArt"></div>
-        <div class="scrim"></div>
-        <div class="inner">
+        <div class="dp-foot">
           <div class="stitle">Transport</div>
-          <div class="dp-actions">
-            <button class="dp-show" id="dpShowMap" type="button">Show on map</button>
-          </div>
+          <button class="dp-show" id="dpShowMap" type="button">Show on map</button>
         </div>
       </div>
     </div>
@@ -3001,7 +3009,11 @@ select.field{appearance:none; cursor:pointer;}
   // OWN CRAFT ONLY (client-wiring §7 — a rival's logistics are not free intel). PRESENTATION
   // ONLY: a small accent marker + a clickable name-tag; the client computes no game number (§18).
   let liveDeepSpaceCraft = [];
-  let craftByKey = new Map();   // "q,r" -> the craft row, for hit-testing in handleClick
+  // Each drawn craft name-tag's screen-space box + its craft: [{ x, y, w, h, craft }]. Rebuilt every
+  // frame in the draw pass and read by handleClick — a click inside a box opens that craft's Dispatch
+  // popup, while a click on the craft's hex/marker falls through to normal hex handling. Labels draw
+  // only above 1×, so below that this is simply empty and there is nothing to click.
+  let craftLabelHits = [];
   let systemById = new Map(), guildById = new Map(), systemToGuild = new Map(), guildOutpostByKey = new Map(), gateByKey = new Map();
 
   const COLOR_RGB = { system: [111,183,232], outpost: [232,185,58], citadel: [242,206,93], player: [67,217,200] };
@@ -3099,6 +3111,9 @@ select.field{appearance:none; cursor:pointer;}
       ctx.fillText(line, bx + 8, by + 16 + i * 13);
     });
     ctx.restore();
+    // Return the box's real drawn rectangle (screen space) so callers that need to hit-test the
+    // label — the deep-space-craft pass — capture the exact pixels drawn. Other callers ignore it.
+    return { x: bx, y: by, w: boxW, h: boxH };
   }
 
   // A camelCase-splitting display name (lightTransport -> "Light Transport"), a copy of the
@@ -3488,6 +3503,7 @@ select.field{appearance:none; cursor:pointer;}
     // name-tag. A craft at a system/outpost is already drawn by that landmark's tag and is not fed
     // here. OWN CRAFT ONLY (client-wiring §7). PRESENTATION ONLY (§5/§18): the engine surfaces each
     // craft's location; the client resolves its hex to pixels and draws — it invents no game number.
+    craftLabelHits = [];   // rebuilt every frame; only the labels actually drawn below get captured
     if (liveDeepSpaceCraft.length) {
       const hsC = galaxy.galaxyParams.hexSize;
       liveDeepSpaceCraft.forEach((c) => {
@@ -3508,7 +3524,11 @@ select.field{appearance:none; cursor:pointer;}
         // guild-outpost deployable will label with its type ONLY (no status) — and drawLabelBox
         // sizes the box to whatever lines it is handed, so a one-line label already works; a
         // transport passes two (e.g. LIGHT TRANSPORT / IDLE). Only above 1× (as the system labels).
-        if (zoom > 1) drawLabelBox(scr, [prettyClass(c.class).toUpperCase(), 'IDLE'], 'player');
+        if (zoom > 1) {
+          const box = drawLabelBox(scr, [prettyClass(c.class).toUpperCase(), 'IDLE'], 'player');
+          // capture the label's real drawn rectangle so a click on the name-tag opens Dispatch
+          craftLabelHits.push({ x: box.x, y: box.y, w: box.w, h: box.h, craft: c });
+        }
       });
     }
 
@@ -3598,6 +3618,22 @@ select.field{appearance:none; cursor:pointer;}
   });
 
   function handleClick(e) {
+    // A click on a craft's name-tag LABEL opens that craft's Dispatch popup. Checked before any hex
+    // resolution so the label wins its own pixels; a click that misses every label (including one on
+    // the craft's hex or marker) falls straight through to the normal hex handling below. The stored
+    // boxes and the click point are in the same client space (worldToScreen output vs e.clientX/Y,
+    // the space this handler already uses), so a click lands where the label was drawn.
+    for (let i = 0; i < craftLabelHits.length; i++) {
+      const b = craftLabelHits[i];
+      if (e.clientX >= b.x && e.clientX <= b.x + b.w && e.clientY >= b.y && e.clientY <= b.y + b.h) {
+        if (window.__openDispatch) {
+          const c = b.craft;
+          window.__openDispatch({ id: c.id, class: c.class, location: { q: c.q, r: c.r } });
+          return;
+        }
+      }
+    }
+
     const w = screenToWorld(e.clientX, e.clientY);
     const hexSize = galaxy.galaxyParams.hexSize;
     const R = galaxy.galaxyParams.radius;
@@ -3615,18 +3651,10 @@ select.field{appearance:none; cursor:pointer;}
     const territoryMap = computeTerritoryMap();
 
     // what's at this hex? system > guild outpost > toll gate > Syndicate outpost > Citadel > claimed empty territory > empty
+    // A bare-hex idle craft carries no landmark, so its hex resolves as empty/territory and
+    // centres/selects like any other hex — the craft's Dispatch popup is reached from its LABEL
+    // (the hit-test above), not its hex.
     const key = `${ax.q},${ax.r}`;
-
-    // A bare-hex idle craft sits where no system/outpost is (design.md §15.4), so it takes the TOP
-    // of the priority chain: clicking its hex opens the Dispatch popup for that craft instead of
-    // the system panel. Only the player's own craft are ever fed here. Falls through to the normal
-    // chain when no craft is at this hex.
-    const craftHere = craftByKey.get(key);
-    if (craftHere && window.__openDispatch) {
-      selectedCoords = ax;
-      window.__openDispatch({ id: craftHere.id, class: craftHere.class, location: { q: craftHere.q, r: craftHere.r } });
-      return;
-    }
 
     let hit = systemByKey.get(key);
     let type = 'system';
@@ -3820,11 +3848,10 @@ select.field{appearance:none; cursor:pointer;}
 
   // The sibling door for the DEEP-SPACE CRAFT layer: the player's own idle transports that sit on
   // a bare hex. A craft berthed at a system/outpost is drawn by that landmark's own tag, so it is
-  // NOT fed here (design.md §15.4). OWN CRAFT ONLY (client-wiring §7). Builds the "q,r" hit-test
-  // map the click handler reads and keeps the list the render pass draws; computes nothing else.
+  // NOT fed here (design.md §15.4). OWN CRAFT ONLY (client-wiring §7). Keeps the list the render
+  // pass draws; the clickable-label boxes are captured from that pass (craftLabelHits).
   window.__setLiveDeepSpaceCraft = function (list) {
     liveDeepSpaceCraft = (list || []).map((c) => ({ id: c.id, class: c.class, q: c.q, r: c.r }));
-    craftByKey = new Map(liveDeepSpaceCraft.map((c) => [`${c.q},${c.r}`, c]));
   };
 
   // A stable colour per rival guild id. PRESENTATION ONLY — a hue, not a game
