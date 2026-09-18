@@ -421,8 +421,19 @@ boundary so the later hex-map swap doesn't touch it.
   `checkVehicleIntegrity` upgraded to the landmark-or-hex + serial-monotonic + unique-id sweep; the
   snapshot's `location` row; and `POST /admin/vehicle/spawn|remove` + the two `tools/admin.js` commands.
   A NO-OP on a craft-less galaxy (persist goldens byte-identical); sim suite 1,325 → **1,337 green**, and
-  `tools/admin.test.js` 24 → 30. **Deferred:** the OPERATIONS **DEEP SPACE** client group (reads the
-  snapshot's `location`), and everything movement (dispatch/arrival/cargo) which is slice (b).
+  `tools/admin.test.js` 24 → 30.
+  **BUILT — the OPERATIONS DEEP SPACE client group (18-09-26, `client/game.html`, CLIENT ONLY).** The
+  IDLE-transports panel now reads each craft's snapshot `location` instead of the retired `v.systemId`,
+  fixing the regression where every idle craft mis-grouped under a blank header. A pure group resolver
+  `tpGroupOf(v)` maps a craft's `location` to a group `{ key, name }` — a system landmark → its system
+  name, an outpost landmark → its outpost name, a bare hex → the one shared **DEEP SPACE** bucket, and a
+  malformed row → a defensive "Unknown"; a per-craft `tpCraftWhere(v)` labels a landmark craft by name and
+  a deep-space craft by its `(q, r)` coordinates. `tpSystemHtml` is generalised to `tpGroupHtml(key, name,
+  craft)` (one `ops-tp-sys` group per landmark or DEEP SPACE, collapse-keyed on the group key), and
+  `renderIdleTransports` groups by group key, sorts named landmarks alphabetically with DEEP SPACE last,
+  and signs on the full resolved location so any re-anchor re-renders. No engine/snapshot change — the
+  snapshot already emits `location` — so the sim suite still passes **1,337 green**. **Deferred:**
+  everything movement (dispatch/arrival/cargo) which is slice (b).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
