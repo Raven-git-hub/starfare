@@ -453,7 +453,10 @@ boundary so the later hex-map swap doesn't touch it.
   engine/snapshot change — the client reads the already-published `vehicles[].location`, resolves
   names/coords off the seed, and draws (§5/§18) — so the sim suite still passes **1,337 green**.
   **Deferred:** everything movement (destination/route/fuel/the real dispatch, and rivals' craft on the
-  map) which is slice (b).
+  map) which is slice (b). *Polished (client-only): the popup now shows the FULL-PORTRAIT art
+  (`aspect-ratio:848/1264` + `cover`, the whole ship uncropped, "Show on map" on a footer beneath it),
+  and the LABEL opens the popup while a hex click is normal (the `craftByKey` hex branch retired for a
+  per-frame `craftLabelHits` label hit-test off `drawLabelBox`'s returned box).*
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
