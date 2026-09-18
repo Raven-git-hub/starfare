@@ -434,6 +434,26 @@ boundary so the later hex-map swap doesn't touch it.
   and signs on the full resolved location so any re-anchor re-renders. No engine/snapshot change — the
   snapshot already emits `location` — so the sim suite still passes **1,337 green**. **Deferred:**
   everything movement (dispatch/arrival/cargo) which is slice (b).
+  **BUILT — deep-space craft on the map + the Dispatch popup scaffold (client polish, `client/game.html`,
+  CLIENT ONLY).** The player's OWN idle bare-hex transports now draw on the galaxy map: the poll feeds
+  them to a new map-IIFE setter `__setLiveDeepSpaceCraft([{ id, class, q, r }])` (own craft only,
+  client-wiring §7 — a craft berthed at a system/outpost is already marked by that landmark's tag, so
+  only bare-hex craft are fed), which keeps the list for drawing and a `craftByKey` "q,r" hit-test map.
+  The render pass draws each as a small player-accent diamond plus a clickable diagonal name-tag
+  (`drawLabelBox` with `[<TYPE>, 'IDLE']`; the second line is optional so a future guild-outpost
+  deployable inherits a type-only label). `handleClick` gains a top-of-chain branch: a click on a
+  craft's hex opens the **Dispatch popup** instead of the system panel. The popup is a new
+  `#dispatch-overlay` mirroring `#vm-overlay`'s `.est` shell — head (eyebrow "Dispatch" + the craft's
+  name, e.g. `Heavy Transport · #03`), a main column summarising Class / Location (landmark name or
+  `(q, r)`) / Maintenance %, and a side hero showing the per-class art (`assets/units/<class>.jpg`).
+  Its ONE action this slice is **"Show on map"**: it closes the popup and `__flyTo(coords.q, coords.r, 9)`
+  (zoom matching My System), resolving a bare-hex craft to its own hex and a landmark craft to the seed's
+  `GAME.galaxy.systems`/`.outposts` coords. `openDispatch(vehicle)` is the one entry point, opened from
+  the map click AND from the OPERATIONS Dispatch button (now enabled, its `disabled`/title removed). No
+  engine/snapshot change — the client reads the already-published `vehicles[].location`, resolves
+  names/coords off the seed, and draws (§5/§18) — so the sim suite still passes **1,337 green**.
+  **Deferred:** everything movement (destination/route/fuel/the real dispatch, and rivals' craft on the
+  map) which is slice (b).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
