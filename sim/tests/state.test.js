@@ -99,7 +99,7 @@ test('createVenture round-trips committedFromTick, the pro-rate term', () => {
   assert.equal(createVenture({ id: 'v3', ownerGuildId: 'g1', type: 'mining', committedFromTick: 0 }).committedFromTick, 0);
 });
 
-test('createVehicle defaults to a light transport, idle, with no fuel/speed/etc. invented', () => {
+test('createVehicle defaults to a light transport, idle, new, with no fuel/speed/etc. invented', () => {
   const v = createVehicle({
     id: 'ship1',
     ownerGuildId: 'g1',
@@ -107,6 +107,7 @@ test('createVehicle defaults to a light transport, idle, with no fuel/speed/etc.
     capacity: 10,
     defenseRating: 1,
     fuelCostToRun: 4,
+    systemId: 'sys1',
   });
   assert.equal(v.class, 'lightTransport');
   assert.equal(v.status, 'idle');
@@ -114,17 +115,37 @@ test('createVehicle defaults to a light transport, idle, with no fuel/speed/etc.
   assert.equal(v.capacity, 10);
   assert.equal(v.defenseRating, 1);
   assert.equal(v.fuelCostToRun, 4);
+  assert.equal(v.systemId, 'sys1');
+  assert.equal(v.maintenanceCondition, 1); // ASSET_CONDITION_NEW — inert this slice
   assert.equal(v.updatedAtTick, null);
 });
 
-test('createVehicle requires id, ownerGuildId, speed, capacity, defenseRating, and fuelCostToRun', () => {
-  const full = { id: 'ship1', ownerGuildId: 'g1', speed: 2, capacity: 10, defenseRating: 1, fuelCostToRun: 4 };
+test('createVehicle: capacity of exactly 0 is accepted (spycraft carries no cargo)', () => {
+  // The falsy-0 trap: a `!capacity` guard would reject a real spycraft. createVehicle checks
+  // `capacity === undefined`, so 0 passes through unchanged.
+  const v = createVehicle({
+    id: 'spy1',
+    ownerGuildId: 'g1',
+    class: 'spycraft',
+    speed: 26.25,
+    capacity: 0,
+    defenseRating: 5,
+    fuelCostToRun: 20,
+    systemId: 'sys1',
+  });
+  assert.equal(v.capacity, 0);
+  assert.equal(v.class, 'spycraft');
+});
+
+test('createVehicle requires id, ownerGuildId, speed, capacity, defenseRating, fuelCostToRun, and systemId', () => {
+  const full = { id: 'ship1', ownerGuildId: 'g1', speed: 2, capacity: 10, defenseRating: 1, fuelCostToRun: 4, systemId: 'sys1' };
   assert.throws(() => createVehicle({ ...full, id: undefined }), /id is required/);
   assert.throws(() => createVehicle({ ...full, ownerGuildId: undefined }), /ownerGuildId is required/);
   assert.throws(() => createVehicle({ ...full, speed: undefined }), /speed is required/);
   assert.throws(() => createVehicle({ ...full, capacity: undefined }), /capacity is required/);
   assert.throws(() => createVehicle({ ...full, defenseRating: undefined }), /defenseRating is required/);
   assert.throws(() => createVehicle({ ...full, fuelCostToRun: undefined }), /fuelCostToRun is required/);
+  assert.throws(() => createVehicle({ ...full, systemId: undefined }), /systemId is required/);
   assert.doesNotThrow(() => createVehicle(full));
 });
 
@@ -137,6 +158,7 @@ test('createVehicle: class and status can be overridden', () => {
     capacity: 20,
     defenseRating: 2,
     fuelCostToRun: 8,
+    systemId: 'sys1',
     status: 'inTransit',
   });
   assert.equal(v.class, 'mediumTransport');
@@ -148,11 +170,12 @@ test('createGuild nests vehicles the same way it nests ventures', () => {
     id: 'g1',
     credits: 10,
     fuelHoard: 0,
-    vehicles: [{ id: 'ship1', ownerGuildId: 'g1', speed: 2, capacity: 10, defenseRating: 1, fuelCostToRun: 4 }],
+    vehicles: [{ id: 'ship1', ownerGuildId: 'g1', speed: 2, capacity: 10, defenseRating: 1, fuelCostToRun: 4, systemId: 'sys1' }],
   });
   assert.equal(g.vehicles.length, 1);
   assert.equal(g.vehicles[0].id, 'ship1');
   assert.equal(g.vehicles[0].class, 'lightTransport');
+  assert.equal(g.vehicles[0].systemId, 'sys1');
 });
 
 test('createReserve and createSyndicate require their one field', () => {
@@ -212,7 +235,8 @@ test('createState assembles a scenario with a vehicle and still passes every inv
         credits: 120,
         fuelHoard: 0,
         vehicles: [
-          { id: 'ship1', ownerGuildId: 'g1', speed: 2, capacity: 10, defenseRating: 1, fuelCostToRun: 4 },
+          // systemId must resolve to a real seed system (checkVehicleIntegrity, 2.2-foundation).
+          { id: 'ship1', ownerGuildId: 'g1', speed: 2, capacity: 10, defenseRating: 1, fuelCostToRun: 4, systemId: 'sys_0006' },
         ],
       },
     ],

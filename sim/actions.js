@@ -10,8 +10,9 @@ const {
 } = require('./licence.js');
 const { producedGoodFor, baselineOutputFor, isLicensedDeuteriumMine, isDockyard } = require('./baseline.js');
 const {
-  BUILDABLE_ASSET_KINDS, MAX_QUEUE, BUILD_TICKS, assetBill, priceAssetForPurchase,
+  BUILDABLE_KINDS, MAX_QUEUE, BUILD_TICKS, assetBill, priceAssetForPurchase,
 } = require('./asset-recipes.js');
+const { isVehicleClass, vehicleSpec } = require('./vehicles.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { checkQuote, quotedPrice } = require('./price-ring.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
@@ -31,6 +32,26 @@ const {
   STARTER_MINERS, STARTER_FACTORIES, starterAssetSpecs, assetKindForVentureType,
   deployedAssetIds, isAssetKind, assetId, nextAssetNumber, ASSET_CONDITION_NEW,
 } = require('./assets.js');
+
+// vehicleDeliveryFuelBurn(destinationSystemId, vehicleClass) -> { fuelBurn: int }
+//
+// THE ONE PLACE a bought VEHICLE's delivery burn is computed (2.2-foundation), shared by the
+// buy VALIDATE gate and the buy APPLY so the amount checked and the amount charged cannot drift.
+// A bought craft FLIES ITSELF in (docs/phase-1-tuning.md §"Guild transports"): it is not carried
+// on a Syndicate hauler, so the burn is the craft's OWN `fuelCostToRun × hexDistance`, NOT the
+// heavy-hauler rate a non-movable ground asset pays (`routeFuelCost(dest, ASSET_CARGO_VOLUME)`).
+//
+// `near.distance` is the SAME hex distance nearestWaystation gives the arrival scheduler
+// (sim/tick.js stepSyndicateBuilds), so the trip is priced and flown on one geometry. `Math.ceil`
+// matches routeFuelCost's discipline — every real route costs at least 1 fuel, and fuel stays an
+// integer (§15.2). GRACEFUL ABSENCE: no reachable waystation -> `{ fuelBurn: 0 }`, the same honest
+// no-route value routeFuelCost reports (the waystation gate refuses such a buy up front anyway).
+function vehicleDeliveryFuelBurn(destinationSystemId, vehicleClass) {
+  const near = nearestWaystation(destinationSystemId);
+  if (!near) return { fuelBurn: 0 };
+  const spec = vehicleSpec(vehicleClass);
+  return { fuelBurn: Math.ceil(near.distance * spec.fuelCostToRun) };
+}
 
 // actions.js — action constructors, and the validate-as-they-arrive intake
 // discipline (design.md §15.6). This is the guard against the game's own
@@ -1331,8 +1352,8 @@ function validateAction(state, action) {
     if (!isDockyard(venture)) {
       return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} is not a dockyard — only a dockyard can be commissioned to build (docs/build-yard.md §3)` };
     }
-    if (!BUILDABLE_ASSET_KINDS.includes(action.assetKind)) {
-      return { valid: false, reason: `assetKind ${JSON.stringify(action.assetKind)} is not buildable — a dockyard builds one of ${JSON.stringify(BUILDABLE_ASSET_KINDS)} this slice (docs/build-yard.md §1)` };
+    if (!BUILDABLE_KINDS.includes(action.assetKind)) {
+      return { valid: false, reason: `assetKind ${JSON.stringify(action.assetKind)} is not buildable — a dockyard builds one of ${JSON.stringify(BUILDABLE_KINDS)} (the two ground assets or the four guild transports, docs/build-yard.md §1 / phase-1-tuning §"Guild transports")` };
     }
     // Single-slot queue capped at MAX_QUEUE — a commission over the cap is refused loudly (§3).
     const queueLen = (venture.buildQueue || []).length;
@@ -1644,10 +1665,11 @@ function validateAction(state, action) {
     if (!guild) {
       return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
     }
-    // WHAT MAY BE BOUGHT — only kinds with a buildable entity (miner / factory). The same
-    // vocabulary the dockyard commission uses, for the same reason: no entity, no asset to mint.
-    if (typeof action.assetKind !== 'string' || !BUILDABLE_ASSET_KINDS.includes(action.assetKind)) {
-      return { valid: false, reason: `${JSON.stringify(action.assetKind)} is not a Syndicate-buildable asset kind (miner / factory)` };
+    // WHAT MAY BE BOUGHT — only kinds with a buildable entity: the two ground assets
+    // (miner / factory) or the four guild transports (2.2-foundation). The same vocabulary the
+    // dockyard commission uses, for the same reason: no entity, no thing to mint.
+    if (typeof action.assetKind !== 'string' || !BUILDABLE_KINDS.includes(action.assetKind)) {
+      return { valid: false, reason: `${JSON.stringify(action.assetKind)} is not a Syndicate-buildable kind (miner / factory, or a guild transport)` };
     }
     if (typeof action.destinationSystemId !== 'string' || action.destinationSystemId.length === 0) {
       return { valid: false, reason: 'destinationSystemId must be a non-empty string' };
@@ -1677,11 +1699,15 @@ function validateAction(state, action) {
     }
     // THE FUEL GATE — the delivery flight burns route fuel, charged UP FRONT (asset-purchase.md
     // "Cost timing and fuel"). RUN LAST, like the goods buy, so a trade refused for credits /
-    // kind / destination says so rather than blaming fuel. ⤳ RULED 14-09-26 (§5.1): a non-movable
-    // T4 asset fills a HEAVY hold (`ASSET_CARGO_VOLUME` = the heavy hold), so the delivery burns
-    // the HEAVY rate (0.7/hex), superseding the light-rate placeholder. Same `routeFuelCost` the
-    // goods buy uses; a 0 means no route, already turned away by the waystation gate above.
-    const { fuelBurn } = routeFuelCost(action.destinationSystemId, ASSET_CARGO_VOLUME);
+    // kind / destination says so rather than blaming fuel. TWO delivery models, by kind:
+    //   - a VEHICLE flies ITSELF in (2.2-foundation, phase-1-tuning §"Guild transports"): the burn
+    //     is the craft's OWN `fuelCostToRun × hexDistance` (vehicleDeliveryFuelBurn), NOT a hauler.
+    //   - a GROUND asset can't fly, so it rides a HEAVY hauler (⤳ RULED 14-09-26 §5.1: a non-movable
+    //     T4 asset fills a HEAVY hold, `routeFuelCost(dest, ASSET_CARGO_VOLUME)` — the 0.7/hex rate).
+    // A 0 means no route, already turned away by the waystation gate above.
+    const { fuelBurn } = isVehicleClass(action.assetKind)
+      ? vehicleDeliveryFuelBurn(action.destinationSystemId, action.assetKind)
+      : routeFuelCost(action.destinationSystemId, ASSET_CARGO_VOLUME);
     const availableFuel = guild.fuelHoard + (guild.deuteriumFuel || 0);
     if (availableFuel < fuelBurn) {
       return { valid: false, reason: `guild ${guild.id} holds ${availableFuel} fuel (legal + contraband), cannot burn ${fuelBurn} flying a ${action.assetKind} to ${JSON.stringify(action.destinationSystemId)} — insufficient fuel: need ${fuelBurn}, have ${availableFuel}` };
@@ -2607,11 +2633,14 @@ function applyAction(state, action) {
     // fuel"): charging it now removes the failure mode where construction finishes but the guild
     // can no longer afford the flight. Fuel LEAVES the galaxy (burned, not transferred), so
     // invariant 1 balances only because `totalConsumed` rises to match the hoard falling. Same
-    // legal-first `burnFuel`. ⤳ RULED 14-09-26 (§5.1): a T4 asset fills a HEAVY hold
-    // (`ASSET_CARGO_VOLUME`), so this burns the HEAVY rate, matching the validate gate. A 0 is a
-    // no-op (no route, refused up front); the combined-availability gate covered it, so neither
-    // store goes negative.
-    const { fuelBurn } = routeFuelCost(action.destinationSystemId, ASSET_CARGO_VOLUME);
+    // legal-first `burnFuel`. The burn matches the validate gate EXACTLY — the shared helpers
+    // guarantee it: a VEHICLE burns its OWN `fuelCostToRun × hexDistance` (it flies itself in,
+    // 2.2-foundation); a GROUND asset burns the HEAVY hauler rate (`ASSET_CARGO_VOLUME`, §5.1).
+    // A 0 is a no-op (no route, refused up front); the combined-availability gate covered it, so
+    // neither store goes negative.
+    const { fuelBurn } = isVehicleClass(action.assetKind)
+      ? vehicleDeliveryFuelBurn(action.destinationSystemId, action.assetKind)
+      : routeFuelCost(action.destinationSystemId, ASSET_CARGO_VOLUME);
     burnFuel(guild, fuelBurn);
     next.audit.totalConsumed += fuelBurn;
 

@@ -72,8 +72,9 @@ const {
   RP_FLOOR, RP_SOFT_CAP,
 } = require('./licence.js');
 const { ASSET_CONDITION_NEW, ASSET_CONDITION_MIN, isAssetKind, assetKindForVentureType } = require('./assets.js');
+const { isVehicleClass, VEHICLE_STATUSES } = require('./vehicles.js');
 const { isDockyard } = require('./baseline.js');
-const { BUILDABLE_ASSET_KINDS, BUILD_TICKS } = require('./asset-recipes.js');
+const { BUILDABLE_KINDS, BUILD_TICKS } = require('./asset-recipes.js');
 const { DEFAULT_WINDOW_N, winStartFor, windowFraction } = require('./windows.js');
 const { HISTORY_N } = require('./history.js');
 const { MODIFIER_HISTORY_N } = require('./modifier-history.js');
@@ -1232,6 +1233,47 @@ function checkAssetOccupancy(state) {
   return out;
 }
 
+// Vehicle integrity — the structural guard for the guild-transport inventory (design.md §15.4,
+// roadmap 2.2-foundation engine slice (a)). The vehicle mirror of checkAssetOccupancy: it asserts
+// every craft in `guild.vehicles` is well-formed, so a save-reload, a future slice, or a client
+// bug that mints a malformed craft is caught by the harness rather than a review pass (rule 4). A
+// pure read — mutates nothing, changes no determinism hash. Runs every tick.
+//
+// For each guild's each vehicle:
+//   - a KNOWN class (one of the four, sim/vehicles.js) — a garbage class is corruption;
+//   - a `systemId` that RESOLVES to a real seed system (getSystem), stricter than the asset's
+//     present-string check: a craft's location must be somewhere it could actually sit. Every mint
+//     uses a real system (a dockyard's own system, a buy's validated destination), so a non-
+//     resolving one is corruption;
+//   - a `maintenanceCondition` that is a finite number inside [MIN, NEW] = [0, 1] (the §15.2 field
+//     check — inert this slice, but a garbage value must still fail loudly, exactly as the asset's);
+//   - a `status` in the legal set (idle / in-transit). THIS SLICE mints only 'idle' — nothing moves
+//     a craft yet — but the check is membership so slice b's dispatch needs no invariant change.
+//
+// Like checkAssetOccupancy it runs within one guild; vehicles are guild-nested, so ownership is
+// containment and there is nothing cross-guild to reconcile.
+function checkVehicleIntegrity(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    for (const v of g.vehicles || []) {
+      if (!isVehicleClass(v.class)) {
+        out.push({ rule: 'vehicle-class-known (vehicles.js)', where: `guild:${g.id}.vehicle:${v.id}`, detail: { class: v.class } });
+      }
+      if (typeof v.systemId !== 'string' || v.systemId.length === 0 || !getSystem(v.systemId)) {
+        out.push({ rule: 'vehicle-system-resolves', where: `guild:${g.id}.vehicle:${v.id}.systemId`, detail: { systemId: v.systemId, resolved: typeof v.systemId === 'string' ? !!getSystem(v.systemId) : false } });
+      }
+      const cond = v.maintenanceCondition;
+      if (typeof cond !== 'number' || !Number.isFinite(cond) || cond < ASSET_CONDITION_MIN || cond > ASSET_CONDITION_NEW) {
+        out.push({ rule: 'vehicle-condition-in-range', where: `guild:${g.id}.vehicle:${v.id}.maintenanceCondition`, detail: { maintenanceCondition: cond, min: ASSET_CONDITION_MIN, max: ASSET_CONDITION_NEW } });
+      }
+      if (!VEHICLE_STATUSES.includes(v.status)) {
+        out.push({ rule: 'vehicle-status-legal', where: `guild:${g.id}.vehicle:${v.id}.status`, detail: { status: v.status, legal: VEHICLE_STATUSES } });
+      }
+    }
+  }
+  return out;
+}
+
 // Build-queue integrity — the structural guard for the dockyard's commission queue
 // (docs/build-yard.md §3/§6, roadmap 2.1b slice 1). The reserve-and-wait build (sim/tick.js
 // `buildDockyards`) and the commission/cancel actions (sim/actions.js) MAINTAIN the single-slot /
@@ -1283,8 +1325,8 @@ function checkBuildQueues(state) {
       v.buildQueue.forEach((entry, i) => {
         const at = `${where}.buildQueue[${i}]`;
 
-        // assetKind must be buildable.
-        if (!BUILDABLE_ASSET_KINDS.includes(entry.assetKind)) {
+        // assetKind must be buildable — a ground asset OR a guild transport (2.2-foundation).
+        if (!BUILDABLE_KINDS.includes(entry.assetKind)) {
           out.push({ rule: 'build-entry-kind-buildable (build-yard.md §1)', where: `${at}.assetKind`, detail: { assetKind: entry.assetKind } });
         }
 
@@ -1511,6 +1553,7 @@ function checkInvariants(state, tick) {
     ...checkReputationBand(state),
     ...checkSiteOccupancy(state),
     ...checkAssetOccupancy(state),
+    ...checkVehicleIntegrity(state),
     ...checkBuildQueues(state),
     ...checkOrders(state),
     ...checkClaimIntegrity(state),

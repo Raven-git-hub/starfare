@@ -12,6 +12,9 @@
 // encoding them here would be inventing a build path for an asset kind that has no entity.
 
 const { MINER, FACTORY } = require('./assets.js');
+const {
+  LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT, SPYCRAFT, BUILDABLE_VEHICLE_KINDS,
+} = require('./vehicles.js');
 const { isTier3Good } = require('./resources.js');
 const { quotedPrice } = require('./price-ring.js');
 
@@ -49,8 +52,81 @@ const ASSET_BILLS = Object.freeze({
   [FACTORY]: FACTORY_BILL,
 });
 
-// The kinds a Dockyard can build this slice — exactly the two with buildable entities.
+// The kinds a Dockyard can build as a GROUND asset — exactly the two with buildable entities.
+// Kept exactly [miner, factory] (the combined build vocabulary is BUILDABLE_KINDS below).
 const BUILDABLE_ASSET_KINDS = Object.freeze([MINER, FACTORY]);
+
+// ── THE FOUR GUILD-TRANSPORT BILLS (2.2-foundation) ─────────────────────────────────────────
+// A PARALLEL catalog to ASSET_BILLS, keyed by the vehicle class constants (sim/vehicles.js).
+// Kept beside the ground-asset bills so the same `assertBillModulesAreTier3` tripwire covers
+// them (run over the merged view below), and so a bought/built vehicle is priced and consumed
+// through the SAME kind-general machinery a ground asset is. Ground-asset bills stay in
+// ASSET_BILLS untouched — the /asset-recipes endpoint that serves ASSET_BILLS and lists
+// [miner, factory] as buildable is a client concern for a later slice, not moved here.
+//
+// Quantities lifted VERBATIM from docs/asset-recipes.md's four ship rows (all `[FIRST-CUT]`).
+const LIGHT_TRANSPORT_BILL = Object.freeze({
+  chassis: 1,
+  small_reactor_engine: 1,
+  fuel_tank: 1,
+  power_cells: 1,
+  control_module: 1,
+  life_support_module: 1,
+});
+
+const MEDIUM_TRANSPORT_BILL = Object.freeze({
+  chassis: 2,
+  medium_reactor_engine: 1,
+  reactor_housing: 1,
+  fuel_tank: 2,
+  power_cells: 1,
+  control_module: 1,
+  life_support_module: 2,
+  sensor_suite: 1,
+});
+
+const HEAVY_TRANSPORT_BILL = Object.freeze({
+  chassis: 3,
+  heavy_reactor_engine: 1,
+  reactor_housing: 1,
+  fuel_tank: 2,
+  power_cells: 1,
+  control_module: 1,
+  life_support_module: 2,
+  sensor_suite: 1,
+  cargo_module: 2,
+  cargo_handling_system: 1,
+  hull_plating: 2,
+  defence_system: 1,
+});
+
+const SPYCRAFT_BILL = Object.freeze({
+  chassis: 1,
+  small_reactor_engine: 1,
+  fuel_tank: 2,
+  power_cells: 2,
+  control_module: 1,
+  life_support_module: 1,
+  sensor_suite: 2,
+  stealth_module: 1,
+});
+
+// vehicleClass -> bill. Keyed by the SAME class constants sim/vehicles.js pins.
+const VEHICLE_BILLS = Object.freeze({
+  [LIGHT_TRANSPORT]: LIGHT_TRANSPORT_BILL,
+  [MEDIUM_TRANSPORT]: MEDIUM_TRANSPORT_BILL,
+  [HEAVY_TRANSPORT]: HEAVY_TRANSPORT_BILL,
+  [SPYCRAFT]: SPYCRAFT_BILL,
+});
+
+// The merged view — every buildable/buyable kind's bill, ground assets AND vehicles. `assetBill`
+// and the tripwire read this, so one lookup answers "the bill for this kind" for either family.
+const ALL_BILLS = Object.freeze({ ...ASSET_BILLS, ...VEHICLE_BILLS });
+
+// The combined kind vocabulary a dockyard can build / the Syndicate can sell — ground assets
+// THEN vehicles. The buy/build gates (sim/actions.js), the build-queue invariant, and the
+// snapshot's purchase quote read THIS, so a vehicle is accepted everywhere a ground asset is.
+const BUILDABLE_KINDS = Object.freeze([...BUILDABLE_ASSET_KINDS, ...BUILDABLE_VEHICLE_KINDS]);
 
 // THE LOAD-BEARING MECHANICAL TRIPWIRE (working practice #4). Every module named in every
 // bill MUST be a real Tier-3 stockpile good (resources.js). A typo that drifts a bill from
@@ -72,14 +148,16 @@ function assertBillModulesAreTier3(bills) {
   }
 }
 
-// Run it now, at require time, over the frozen catalog above.
-assertBillModulesAreTier3(ASSET_BILLS);
+// Run it now, at require time, over the MERGED catalog (ground assets + the four ship bills),
+// so a drift in ANY bill — miner, factory, or a transport — fails the whole suite loudly the
+// instant this file is required.
+assertBillModulesAreTier3(ALL_BILLS);
 
-// assetBill(kind) -> the frozen bill for a buildable kind, or null. null (not a throw) so a
-// caller can ASK whether a kind is buildable and refuse loudly itself (sim/actions.js), the
-// same shape `getRecipe` has.
+// assetBill(kind) -> the frozen bill for a buildable kind (ground asset OR vehicle class), or
+// null. null (not a throw) so a caller can ASK whether a kind is buildable and refuse loudly
+// itself (sim/actions.js), the same shape `getRecipe` has.
 function assetBill(kind) {
-  return ASSET_BILLS[kind] || null;
+  return ALL_BILLS[kind] || null;
 }
 
 // ── CONSTANTS — `[FIRST-CUT]`, RULED this design session (13-09-26) ─────────────────────────
@@ -95,6 +173,12 @@ const MAX_QUEUE = 5;
 const BUILD_TICKS = Object.freeze({
   [MINER]: 720,    // 12 hours × 60 ticks/hour
   [FACTORY]: 960,  // 16 hours × 60 ticks/hour
+  // The four guild transports (docs/phase-1-tuning.md §"Guild transports", 18-09-26). At
+  // 1,440 ticks/day: light 6 h, medium 16 h, heavy and spy 1 week each. All `[FIRST-CUT]`.
+  [LIGHT_TRANSPORT]: 360,     // 6 hours
+  [MEDIUM_TRANSPORT]: 960,    // 16 hours
+  [HEAVY_TRANSPORT]: 10080,   // 1 week (7 × 1,440)
+  [SPYCRAFT]: 10080,          // 1 week
 });
 
 // ── BUYING A TIER-4 ASSET FROM THE SYNDICATE (2.1d) ─────────────────────────────────────────
@@ -116,11 +200,27 @@ const ASSET_PURCHASE_FLOOR = 12_000_000;
 // the code (docs/asset-purchase.md "Price").
 const ASSET_PURCHASE_REDUCTION = 0.8;
 
+// VEHICLE_BUY_BASELINE — the per-class minimum a bought guild transport costs (2.2-foundation),
+// REPLACING the flat 12M floor PER CLASS (docs/phase-1-tuning.md §"Guild transports": a per-class
+// baseline, not the flat floor). All `[FIRST-CUT]`. At today's parts scale the baseline binds for
+// every class (parts are near-nothing), exactly as the 12M floor binds for miner/factory, so the
+// `partsCost × 0.8` branch stays live-but-dormant for later tuning. A ground asset has no entry
+// here and falls back to ASSET_PURCHASE_FLOOR.
+const VEHICLE_BUY_BASELINE = Object.freeze({
+  [LIGHT_TRANSPORT]: 5_000_000,
+  [MEDIUM_TRANSPORT]: 15_000_000,
+  [HEAVY_TRANSPORT]: 200_000_000,
+  [SPYCRAFT]: 100_000_000,
+});
+
 // priceAssetForPurchase(state, assetKind, issueTick) -> the integer credit price of buying
 // `assetKind` from the Syndicate, or null when it cannot be priced.
 //
 //   partsCost = Σ over the kind's bill of ( module qty × that module's quoted price )
-//   price     = max( ASSET_PURCHASE_FLOOR , round( partsCost × ASSET_PURCHASE_REDUCTION ) )
+//   price     = max( baseline , round( partsCost × ASSET_PURCHASE_REDUCTION ) )
+//
+// where `baseline` is the per-class VEHICLE_BUY_BASELINE for a vehicle kind, else the flat
+// ASSET_PURCHASE_FLOOR (miner/factory keep the 12M floor). Same formula, one baseline per kind.
 //
 // Rounded ONCE on the whole order (#43), exactly as a goods buy rounds `qty × price`. The
 // module price is the SAME `quotedPrice` the goods buy uses (§8.1 quote-lock): today's posted
@@ -140,17 +240,21 @@ function priceAssetForPurchase(state, assetKind, issueTick) {
     if (price == null) return null; // ring guard — refuse rather than price off a missing part
     partsCost += qty * price;
   }
-  return Math.max(ASSET_PURCHASE_FLOOR, Math.round(partsCost * ASSET_PURCHASE_REDUCTION));
+  const baseline = VEHICLE_BUY_BASELINE[assetKind] ?? ASSET_PURCHASE_FLOOR;
+  return Math.max(baseline, Math.round(partsCost * ASSET_PURCHASE_REDUCTION));
 }
 
 module.exports = {
   ASSET_BILLS,
+  VEHICLE_BILLS,
   BUILDABLE_ASSET_KINDS,
+  BUILDABLE_KINDS,
   assetBill,
   assertBillModulesAreTier3,
   MAX_QUEUE,
   BUILD_TICKS,
   ASSET_PURCHASE_FLOOR,
   ASSET_PURCHASE_REDUCTION,
+  VEHICLE_BUY_BASELINE,
   priceAssetForPurchase,
 };
