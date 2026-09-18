@@ -369,6 +369,19 @@ boundary so the later hex-map swap doesn't touch it.
   toll gate / scan array / droid (no entities yet; the buy+dockyard machinery is kind-general, so
   each is mostly its entity + recipe, and each unblocks a downstream slice: toll gates → 2.3, scan
   arrays/spycraft → 2.5, droids → 2.6, outposts → 2.2).
+- **2.2 (foundation) — The guild transport tier: own & move a craft (the substrate under the differentiation stack).**
+  Guilds build/buy, own, and fly their own transports — the first guild-tier Tier-4 output to enter the build.
+  **Pulled forward from Phase 4** (design.md §6): territory (below), tolls (2.3), and exploration/espionage (2.5)
+  all require an ownable, movable guild craft, so it is built FIRST. Sequence — (a) **entity + ownership:** the
+  `Vehicle` gains a `systemId` location + inert `maintenanceCondition`, and BOTH the dockyard build and the
+  Syndicate purchase mint a transport **idle** into `guild.vehicles` (numbers: `phase-1-tuning.md` "Guild
+  transports"; entity: design.md §15.4; the buy/build machinery is kind-general); (b) **dispatch + arrival:** a
+  single-leg move, fuel debited up front, position **derived** from a stored schedule (§6, the Syndicate-shipment
+  pattern), the only tick step being arrival; then multi-leg routes (the leg is the atomic unit from the start),
+  cargo, and scheduled runs. UI: the OPERATIONS hero splits into idle-transports (dispatch) over leased. *From
+  here the thread fans out — Syndicate transport contracts, maintenance, exploration (a plain craft scans,
+  slower and fuelled), and deep-space asset deployment (outpost → toll). A full Phase-2 renumber to reflect this
+  reordering is the roadmap-expert thread's job at hand-back, not done here.*
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
