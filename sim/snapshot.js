@@ -667,7 +667,7 @@ function computeAttention(state) {
 //                 assets: [ { id, kind, systemId,                 // §4 inventory
 //                             maintenanceCondition,                //   systemId = location
 //                             deployedToVentureId: id | null } ],  //   null = IDLE
-//                 vehicles: [ { id, class, systemId,               // §15.4 transport inventory (2.2)
+//                 vehicles: [ { id, class, location,               // §15.4 transport inventory (2.2)
 //                               maintenanceCondition, status } ],   //   status idle this slice
 //                 productionProfile: { ... } } ],               // §5 profile, sparse as stored
 //     production: [ { guildId,                                  // previewProduction(state)
@@ -1120,18 +1120,19 @@ function buildSnapshot(state) {
         maintenanceCondition: a.maintenanceCondition,
         deployedToVentureId: deployedTo.get(a.id) || null,
       })).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
-      // vehicles: the guild's guild-transport inventory (design.md §15.4, 2.2-foundation), one row
-      // per owned craft — the vehicle mirror of the `assets` rows above. `class`/`systemId`/
-      // `maintenanceCondition`/`status` are surfaced (the client groups by system and shows the
-      // idle/in-transit state); `capacity`/`speed`/`fuelCostToRun`/`defenseRating` are engine
-      // stats the client reads from the catalog, not per-row. This slice mints every craft IDLE,
-      // so `status` is always 'idle' here. Sorted by id (the deterministic mint order), fresh
-      // objects so a consumer mutating the snapshot can't alias into engine state. Derived-on-read
-      // like `assets`: no serialized byte beyond the minted `guild.vehicles` rows themselves.
+      // vehicles: the guild's guild-transport inventory (design.md §15.4), one row per owned
+      // craft — the vehicle mirror of the `assets` rows above. `class`/`location`/
+      // `maintenanceCondition`/`status` are surfaced; `location` (2.2 spawn) is the landmark ref
+      // { landmarkKind, landmarkId } or the bare hex { q, r } — enough for a later client to group
+      // a craft under its system/outpost, or under DEEP SPACE when it is a bare hex, and to label
+      // it. `capacity`/`speed`/`fuelCostToRun`/`defenseRating` are engine stats the client reads
+      // from the catalog, not per-row. Sorted by id (the deterministic mint order), fresh objects
+      // (location copied) so a consumer mutating the snapshot can't alias into engine state.
+      // Derived-on-read like `assets`: no serialized byte beyond the minted `guild.vehicles` rows.
       vehicles: (g.vehicles || []).map((v) => ({
         id: v.id,
         class: v.class,
-        systemId: v.systemId,
+        location: { ...v.location },
         maintenanceCondition: v.maintenanceCondition,
         status: v.status,
       })).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),

@@ -1,6 +1,6 @@
 'use strict';
 
-const { createGuild, createVenture, createAsset } = require('./state.js');
+const { createGuild, createVenture, createAsset, createVehicle } = require('./state.js');
 const { isStarterSystem, getTerranHomeworld, getSite, getSystem } = require('./seed.js');
 const { getRecipe } = require('./recipes.js');
 const {
@@ -12,7 +12,9 @@ const { producedGoodFor, baselineOutputFor, isLicensedDeuteriumMine, isDockyard 
 const {
   BUILDABLE_KINDS, MAX_QUEUE, BUILD_TICKS, assetBill, priceAssetForPurchase,
 } = require('./asset-recipes.js');
-const { isVehicleClass, vehicleSpec } = require('./vehicles.js');
+const {
+  isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation,
+} = require('./vehicles.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { checkQuote, quotedPrice } = require('./price-ring.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
@@ -30,7 +32,7 @@ const {
 } = require('./fuel.js');
 const {
   STARTER_MINERS, STARTER_FACTORIES, starterAssetSpecs, assetKindForVentureType,
-  deployedAssetIds, isAssetKind, assetId, nextAssetNumber, ASSET_CONDITION_NEW,
+  deployedAssetIds, isAssetKind, assetId, nextAssetNumber, ASSET_CONDITION_NEW, ASSET_CONDITION_MIN,
 } = require('./assets.js');
 
 // vehicleDeliveryFuelBurn(destinationSystemId, vehicleClass) -> { fuelBurn: int }
@@ -469,6 +471,32 @@ function createRemoveVentureAction({ guildId, ventureId, asset }) {
   if (guildId === undefined) throw new Error('createRemoveVentureAction: guildId is required');
   if (ventureId === undefined) throw new Error('createRemoveVentureAction: ventureId is required');
   return { type: 'removeVenture', guildId, ventureId, ...(asset === undefined ? {} : { asset }) };
+}
+
+// spawnVehicle: mint one IDLE craft into a guild at any location — the operator/Storyteller
+// primitive (design.md §15.4 "Spawn / remove"). `class` is one of the four transport classes;
+// `location` is EXACTLY ONE of a landmark ref `{ landmarkKind, landmarkId }` (system | outpost)
+// or a bare hex `{ q, r }`; `condition` is the optional starting maintenanceCondition (default
+// new / 1). It touches no credits/fuel/points/reputation/claims — a vehicle feeds none of them.
+// It MINTS craft; a craft is destroyed by id via removeVehicle.
+function createSpawnVehicleAction({ guildId, class: vehicleClass, location, condition }) {
+  if (guildId === undefined) throw new Error('createSpawnVehicleAction: guildId is required');
+  if (vehicleClass === undefined) throw new Error('createSpawnVehicleAction: class is required');
+  if (location === undefined) throw new Error('createSpawnVehicleAction: location is required');
+  return {
+    type: 'spawnVehicle', guildId, class: vehicleClass, location,
+    ...(condition === undefined ? {} : { condition }),
+  };
+}
+
+// removeVehicle: DESTROY the named craft (design.md §15.4 "Spawn / remove") — not a recall.
+// Drops the row from `guild.vehicles`; the guild's mint serial is untouched (never decrements),
+// so the removed id is never reissued. Reject only an unknown craft id. This removes craft; it
+// does not create them (spawnVehicle / buy / build are the mint paths).
+function createRemoveVehicleAction({ guildId, vehicleId: vId }) {
+  if (guildId === undefined) throw new Error('createRemoveVehicleAction: guildId is required');
+  if (vId === undefined) throw new Error('createRemoveVehicleAction: vehicleId is required');
+  return { type: 'removeVehicle', guildId, vehicleId: vId };
 }
 
 // setWindowN: set the single engine-wide accrual window length `state.windowN`. The
@@ -1837,6 +1865,45 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'spawnVehicle') {
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (typeof action.class !== 'string' || !isVehicleClass(action.class)) {
+      return { valid: false, reason: `${JSON.stringify(action.class)} is not a vehicle class (lightTransport / mediumTransport / heavyTransport / spycraft)` };
+    }
+    // The location must be EXACTLY ONE valid form — a landmark (system | outpost) that resolves,
+    // or an in-bounds bare hex. resolveVehicleLocation is the one judge (both-set, both-null, an
+    // unresolvable landmark and an off-lattice hex all return null); refuse-whole on anything else.
+    if (resolveVehicleLocation(action.location) === null) {
+      return { valid: false, reason: `location must be exactly one of a landmark { landmarkKind: "system"|"outpost", landmarkId } that resolves, or an in-bounds hex { q, r } — got ${JSON.stringify(action.location)}` };
+    }
+    // condition (default new / 1) is a fraction in [MIN, NEW] = [0, 1] — the maintenanceCondition
+    // scale (sim/assets.js). Only refuse an explicitly-supplied bad one; omitted defaults to new.
+    if (action.condition !== undefined) {
+      const c = action.condition;
+      if (typeof c !== 'number' || !Number.isFinite(c) || c < ASSET_CONDITION_MIN || c > ASSET_CONDITION_NEW) {
+        return { valid: false, reason: `condition must be a number in [${ASSET_CONDITION_MIN}, ${ASSET_CONDITION_NEW}] (default ${ASSET_CONDITION_NEW}), got ${JSON.stringify(c)}` };
+      }
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'removeVehicle') {
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    // Reject ONLY an unknown craft (design.md §15.4): removal otherwise always succeeds. Scan
+    // this guild's own vehicles — a craft is destroyed by the guild that owns it.
+    const vehicle = (guild.vehicles || []).find((v) => v.id === action.vehicleId);
+    if (!vehicle) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no vehicle ${JSON.stringify(action.vehicleId)}` };
+    }
+    return { valid: true };
+  }
+
   if (action.type === 'setWindowN') {
     if (typeof action.windowN !== 'number' || !Number.isInteger(action.windowN) || action.windowN < 1) {
       return { valid: false, reason: 'windowN must be an integer >= 1 (§15.2)' };
@@ -2759,6 +2826,50 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'spawnVehicle') {
+    // design.md §15.4 "Spawn / remove": mint one IDLE craft at the current tick, as though
+    // manufactured and delivered instantly. Bump the guild's monotonic mint serial (never
+    // reused) and mint from it — the SAME serial + `vehicle_<guild>_<class>_NN` id scheme +
+    // per-class VEHICLE_SPECS the buy/build seam (mintFinishedKind) uses, so a spawned craft is
+    // INDISTINGUISHABLE from a delivered one the moment it lands (no updatedAtTick stamp either,
+    // matching the buy/build mint and grantAsset — the tick is recorded in the journal, §15.2).
+    // It moves NO fuel/credits/points/reputation/claims — a vehicle feeds none — so there is no
+    // conserving counter-move and galacticSupply (stockpiles + hoards only) is untouched.
+    const guild = findGuild(next, action.guildId);
+    if (!Array.isArray(guild.vehicles)) guild.vehicles = [];
+    const serial = nextVehicleSerial(guild);
+    guild.vehicleSerial = serial;
+    const id = vehicleId(action.guildId, action.class, serial);
+    const spec = vehicleSpec(action.class);
+    guild.vehicles.push(createVehicle({
+      id,
+      ownerGuildId: action.guildId,
+      class: action.class,
+      speed: spec.speed,
+      capacity: spec.capacity,       // spycraft's 0 is legal — createVehicle checks !== undefined
+      defenseRating: spec.defenseRating,
+      fuelCostToRun: spec.fuelCostToRun,
+      location: action.location,     // exactly-one-form, already validated; createVehicle copies it
+      maintenanceCondition: action.condition === undefined ? ASSET_CONDITION_NEW : action.condition,
+    }));
+    return next;
+  }
+
+  if (action.type === 'removeVehicle') {
+    // design.md §15.4 "Spawn / remove": DESTROY the craft — drop the row. The mint serial is
+    // NOT decremented (design.md "Ids never repeat"), so the removed id is never reissued.
+    //
+    // FORWARD GOODS-SINK CONTRACT (design.md §15.4 "Destroying a laden craft is a recorded goods
+    // sink"): removal destroys whatever the craft CARRIES. Today craft carry no cargo, so this
+    // drops an empty craft and nothing conservation-tracked moves. WHEN CARGO LANDS (the movement
+    // slice), a destroyed craft's cargo is a legitimate goods sink — galactic-supply must count
+    // craft cargo as an in-flight category so this removal decrements the total, and the loss must
+    // be tick-stamped and recorded, never silent. The movement slice must not miss this.
+    const guild = findGuild(next, action.guildId);
+    guild.vehicles = (guild.vehicles || []).filter((v) => v.id !== action.vehicleId);
+    return next;
+  }
+
   if (action.type === 'setWindowN') {
     // Set the single engine-wide window length. Setup-only (validate refused it once
     // tick > 0), so this only ever writes tick-0 state. No guild is resolved — this
@@ -2832,6 +2943,8 @@ module.exports = {
   createGrantAssetAction,
   createRemoveAssetAction,
   createRemoveVentureAction,
+  createSpawnVehicleAction,
+  createRemoveVehicleAction,
   validateAction,
   applyAction,
   intake,

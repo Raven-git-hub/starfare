@@ -327,3 +327,68 @@ test('ADJUST_COMMANDS lists exactly the six levers', () => {
     ['adjust-credits', 'adjust-fuel', 'adjust-goods', 'grant-asset', 'remove-asset', 'remove-venture'].sort(),
   );
 });
+
+// --- the vehicle spawn/remove primitive (design.md §15.4, roadmap 2.2 spawn) --------------------
+// The CLI surface: parseArgs must carry the new flags, and the PURE body builders must map the
+// flags to the exact request body the /admin/vehicle/* endpoints construct their action from.
+
+test('parseArgs: the vehicle flags parse (class/outpost/hex strings, condition a number)', () => {
+  assert.deepEqual(
+    A.parseArgs(['spawn-vehicle', '--guild', 'g1', '--class', 'lightTransport', '--system', 'sys_0006']),
+    { command: 'spawn-vehicle', flags: { _: [], guild: 'g1', class: 'lightTransport', system: 'sys_0006' } },
+  );
+  assert.deepEqual(
+    A.parseArgs(['spawn-vehicle', '--guild', 'g1', '--class', 'spycraft', '--hex', '3,-4', '--condition', '0.5']),
+    { command: 'spawn-vehicle', flags: { _: [], guild: 'g1', class: 'spycraft', hex: '3,-4', condition: 0.5 } },
+  );
+  assert.deepEqual(
+    A.parseArgs(['remove-vehicle', '--guild', 'g1', '--id', 'vehicle_g1_lightTransport_01']),
+    { command: 'remove-vehicle', flags: { _: [], guild: 'g1', id: 'vehicle_g1_lightTransport_01' } },
+  );
+});
+
+test('parseHexFlag: "q,r" of two integers, else it refuses rather than coercing', () => {
+  assert.deepEqual(A.parseHexFlag('3,-4'), { q: 3, r: -4 });
+  assert.deepEqual(A.parseHexFlag('0,0'), { q: 0, r: 0 });
+  assert.throws(() => A.parseHexFlag('3'), /must be "q,r"/);
+  assert.throws(() => A.parseHexFlag('3,4,5'), /must be "q,r"/);
+  assert.throws(() => A.parseHexFlag('3.5,4'), /must both be integers/);
+  assert.throws(() => A.parseHexFlag('a,b'), /must both be integers/);
+});
+
+test('vehicleLocationFromFlags: exactly one of --system / --outpost / --hex becomes the location', () => {
+  assert.deepEqual(A.vehicleLocationFromFlags({ system: 'sys_0006' }), { landmarkKind: 'system', landmarkId: 'sys_0006' });
+  assert.deepEqual(A.vehicleLocationFromFlags({ outpost: 'out_01' }), { landmarkKind: 'outpost', landmarkId: 'out_01' });
+  assert.deepEqual(A.vehicleLocationFromFlags({ hex: '3,-4' }), { q: 3, r: -4 });
+  // Zero forms and more-than-one form are both refused (a craft sits at exactly one location).
+  assert.throws(() => A.vehicleLocationFromFlags({}), /a location is required/);
+  assert.throws(() => A.vehicleLocationFromFlags({ system: 'sys_0006', hex: '0,0' }), /exactly one/);
+  assert.throws(() => A.vehicleLocationFromFlags({ system: 'sys_0006', outpost: 'out_01' }), /exactly one/);
+});
+
+test('spawnVehicleBody / removeVehicleBody: build the exact request body, condition omitted by default', () => {
+  assert.deepEqual(
+    A.spawnVehicleBody({ guild: 'g1', class: 'lightTransport', system: 'sys_0006' }),
+    { guildId: 'g1', class: 'lightTransport', location: { landmarkKind: 'system', landmarkId: 'sys_0006' } },
+  );
+  assert.deepEqual(
+    A.spawnVehicleBody({ guild: 'g1', class: 'spycraft', hex: '3,-4', condition: 0.5 }),
+    { guildId: 'g1', class: 'spycraft', location: { q: 3, r: -4 }, condition: 0.5 },
+  );
+  assert.deepEqual(
+    A.removeVehicleBody({ guild: 'g1', id: 'vehicle_g1_lightTransport_01' }),
+    { guildId: 'g1', vehicleId: 'vehicle_g1_lightTransport_01' },
+  );
+});
+
+test('spawnVehicleBody / removeVehicleBody: a missing required flag throws rather than posting a half body', () => {
+  assert.throws(() => A.spawnVehicleBody({ class: 'lightTransport', system: 'sys_0006' }), /--guild is required/);
+  assert.throws(() => A.spawnVehicleBody({ guild: 'g1', system: 'sys_0006' }), /--class is required/);
+  assert.throws(() => A.spawnVehicleBody({ guild: 'g1', class: 'lightTransport' }), /a location is required/);
+  assert.throws(() => A.removeVehicleBody({ guild: 'g1' }), /--id is required/);
+  assert.throws(() => A.removeVehicleBody({ id: 'v' }), /--guild is required/);
+});
+
+test('VEHICLE_COMMANDS lists exactly the two primitive subcommands', () => {
+  assert.deepEqual([...A.VEHICLE_COMMANDS].sort(), ['remove-vehicle', 'spawn-vehicle'].sort());
+});

@@ -48,6 +48,12 @@ const FLAG_SPEC = Object.freeze({
   venture: 'string',  // remove-venture: which venture id
   close: 'bool',      // remove-asset: tear the venture down (else detach)
   'remove-asset': 'bool', // remove-venture: delete the freed asset too (else keep it idle)
+  // The vehicle spawn/remove primitive (design.md §15.4, roadmap 2.2 spawn).
+  class: 'string',    // spawn-vehicle: lightTransport | mediumTransport | heavyTransport | spycraft
+  outpost: 'string',  // spawn-vehicle: berth at an outpost landmark
+  hex: 'string',      // spawn-vehicle: berth at a bare hex, "q,r"
+  condition: 'number', // spawn-vehicle: starting maintenanceCondition fraction (default 1)
+  id: 'string',       // remove-vehicle: which vehicle id
   help: 'bool',
 });
 
@@ -286,9 +292,63 @@ function adjustActionFor(command, flags) {
   }
 }
 
+// The two vehicle spawn/remove subcommands (design.md §15.4, roadmap 2.2 spawn) — thin HTTP
+// clients over POST /admin/vehicle/spawn|remove, the operator/Storyteller primitive.
+const VEHICLE_COMMANDS = Object.freeze(['spawn-vehicle', 'remove-vehicle']);
+
+// parseHexFlag(raw) -> { q, r } | THROWS. The operator writes `--hex 3,-4`; the engine speaks a
+// bare-hex location { q, r } of INTEGERS (design.md §15.4). Anything not exactly two integers is
+// refused rather than coerced — a mistyped coordinate must fail the command, not spawn a craft
+// somewhere nobody named.
+function parseHexFlag(raw) {
+  if (typeof raw !== 'string') throw new Error(`--hex must be "q,r", got ${JSON.stringify(raw)}`);
+  const parts = raw.split(',');
+  if (parts.length !== 2) throw new Error(`--hex must be "q,r" (two integers), got ${JSON.stringify(raw)}`);
+  const q = Number(parts[0]);
+  const r = Number(parts[1]);
+  if (!Number.isInteger(q) || !Number.isInteger(r)) throw new Error(`--hex q and r must both be integers, got ${JSON.stringify(raw)}`);
+  return { q, r };
+}
+
+// vehicleLocationFromFlags(flags) -> the engine `location` object, or THROWS. EXACTLY ONE of
+// --system / --outpost / --hex must be given (design.md §15.4 "exactly one" location form); zero
+// or more than one is refused. A --system/--outpost becomes a landmark ref { landmarkKind,
+// landmarkId }; a --hex becomes a bare { q, r }. PURE and exported so admin.test.js can assert
+// the mapping without a server (this file authors no game number — the seed decides what resolves).
+function vehicleLocationFromFlags(flags) {
+  const forms = [];
+  if (flags.system !== undefined) forms.push({ landmarkKind: 'system', landmarkId: flags.system });
+  if (flags.outpost !== undefined) forms.push({ landmarkKind: 'outpost', landmarkId: flags.outpost });
+  if (flags.hex !== undefined) forms.push(parseHexFlag(flags.hex));
+  if (forms.length === 0) throw new Error('spawn-vehicle: a location is required — give exactly one of --system <id>, --outpost <id>, or --hex q,r');
+  if (forms.length > 1) throw new Error('spawn-vehicle: give exactly one of --system, --outpost, or --hex (a craft sits at exactly one location)');
+  return forms[0];
+}
+
+// spawnVehicleBody(flags) -> the POST /admin/vehicle/spawn request body. --condition is included
+// only when given (the engine defaults it to new / 1). PURE and exported (admin.test.js).
+function spawnVehicleBody(flags) {
+  const body = {
+    guildId: requireFlag(flags, 'guild', 'spawn-vehicle'),
+    class: requireFlag(flags, 'class', 'spawn-vehicle'),
+    location: vehicleLocationFromFlags(flags),
+  };
+  if (flags.condition !== undefined) body.condition = flags.condition;
+  return body;
+}
+
+// removeVehicleBody(flags) -> the POST /admin/vehicle/remove request body. PURE and exported.
+function removeVehicleBody(flags) {
+  return {
+    guildId: requireFlag(flags, 'guild', 'remove-vehicle'),
+    vehicleId: requireFlag(flags, 'id', 'remove-vehicle'),
+  };
+}
+
 module.exports = {
   parseArgs, pick, findResourceNodes, pickResourceNode, pickIdleAssetId, judgeVerify, utcOffsetMinutesFromHours,
   adjustActionFor, ADJUST_COMMANDS,
+  parseHexFlag, vehicleLocationFromFlags, spawnVehicleBody, removeVehicleBody, VEHICLE_COMMANDS,
   EXPECTED_COMMITMENT, EXPECTED_WINDOW_N,
 };
 
@@ -586,6 +646,37 @@ async function cmdAdjust(base, command, flags) {
   }
 }
 
+// The vehicle spawn/remove primitive (design.md §15.4, roadmap 2.2 spawn): build the request
+// body from the flags (the PURE spawnVehicleBody / removeVehicleBody) and POST it to the gated
+// /admin/vehicle/* endpoint. A REFUSED action comes back as a 200 with accepted:false — turn it
+// into a throw so a scripted operator gets exit 1, exactly as `act` does for /action. Prints the
+// craft that moved so the operator sees the result.
+async function cmdSpawnVehicle(base, flags) {
+  const body = spawnVehicleBody(flags);
+  const out = await postJson(base, '/admin/vehicle/spawn', body);
+  if (!out.accepted) throw new Error(`spawn-vehicle refused: ${out.reason}`);
+  const guild = (out.snapshot.guilds || []).find((g) => g.id === body.guildId) || null;
+  const vehicles = (guild && guild.vehicles) || [];
+  const minted = vehicles[vehicles.length - 1] || null; // the just-minted craft is the newest row
+  row('action', 'spawnVehicle');
+  row('guild', body.guildId);
+  row('class', body.class);
+  row('location', JSON.stringify(body.location));
+  if (minted) row('minted', `${minted.id} (${minted.status}, condition ${minted.maintenanceCondition})`);
+  row('vehicles', `${vehicles.length}`);
+}
+
+async function cmdRemoveVehicle(base, flags) {
+  const body = removeVehicleBody(flags);
+  const out = await postJson(base, '/admin/vehicle/remove', body);
+  if (!out.accepted) throw new Error(`remove-vehicle refused: ${out.reason}`);
+  const guild = (out.snapshot.guilds || []).find((g) => g.id === body.guildId) || null;
+  row('action', 'removeVehicle');
+  row('guild', body.guildId);
+  row('removed', body.vehicleId);
+  row('vehicles', `${((guild && guild.vehicles) || []).length}`);
+}
+
 const USAGE = `starfare operator CLI — a thin client over the running server's API.
 
   node tools/admin.js <command> [flags]
@@ -610,6 +701,11 @@ Operator adjust levers (docs/operator-adjust.md — dev/steward, exit 1 on a ref
   remove-asset    --guild ID --asset ID [--close]   remove an asset (occupied: detach, or --close)
   remove-venture  --guild ID --venture ID [--remove-asset]   tear a venture down (keep / remove asset)
 
+Vehicle spawn/remove primitive (design.md §15.4 — operator/Storyteller, exit 1 on a refused action)
+  spawn-vehicle   --guild ID --class C (one of --system ID / --outpost ID / --hex q,r) [--condition F]
+                  mint one idle craft (default condition 1) at a system, an outpost, or a bare hex
+  remove-vehicle  --guild ID --id VEHICLE_ID   destroy the named craft (id never reissued)
+
 Flags
   --base <url>   which server (default $STARFARE_BASE or ${DEFAULT_BASE})
   --seed N       name the galaxy new-galaxy/verify-cycle creates
@@ -628,6 +724,11 @@ Flags
   --venture ID   remove-venture: which venture id
   --close        remove-asset: tear the occupying venture down (default: detach it)
   --remove-asset remove-venture: delete the freed asset too (default: keep it idle)
+  --class C      spawn-vehicle: lightTransport | mediumTransport | heavyTransport | spycraft
+  --outpost ID   spawn-vehicle: berth the craft at an outpost landmark
+  --hex q,r      spawn-vehicle: berth the craft at a bare in-bounds hex
+  --condition F  spawn-vehicle: starting maintenanceCondition fraction in [0, 1] (default 1)
+  --id ID        remove-vehicle: which vehicle id to destroy
   --help, -h     this text
 `;
 
@@ -643,6 +744,8 @@ async function main(argv) {
     case 'seat-demo': await cmdSeatDemo(base, flags); return;
     case 'verify-cycle': await cmdVerifyCycle(base, flags); return;
     case 'tick': await cmdTick(base, flags); return;
+    case 'spawn-vehicle': await cmdSpawnVehicle(base, flags); return;
+    case 'remove-vehicle': await cmdRemoveVehicle(base, flags); return;
     default:
       // The six operator adjust levers share one thin command (docs/operator-adjust.md §5).
       if (ADJUST_COMMANDS.includes(command)) { await cmdAdjust(base, command, flags); return; }

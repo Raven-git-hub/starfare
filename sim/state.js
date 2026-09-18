@@ -101,6 +101,7 @@ function createGuild({
   sellOrder = null,
   ventures = [],
   vehicles = [],
+  vehicleSerial = 0,
   events = [],
   eventSeq = 0,
 }) {
@@ -343,6 +344,19 @@ function createGuild({
     ...(eventSeq ? { eventSeq } : {}),
     ventures: ventures.map(createVenture),
     vehicles: vehicles.map(createVehicle),
+    // vehicleSerial: the per-guild MONOTONIC vehicle-mint counter (design.md §15.4 "Ids never
+    // repeat"). It only ever increments — at each mint (buy / build / operator spawn), never on
+    // removal — so a removed craft's id (`vehicle_<guild>_<class>_NN`) is never reissued and an
+    // id is unique across the guild's whole history. STORED (not derived from the live vehicles,
+    // which removal would let re-hand a number), the justified stored-counter exception
+    // `guildReputation` already makes; `checkVehicleIntegrity` guards it against the live suffixes
+    // every tick so it can never drift below one.
+    //
+    // OMITTED when 0, exactly like `foundingEndowment` / `assets` above: a guild that has never
+    // minted a craft (every guild in today's goldens) carries NO key and serializes byte-
+    // identically to pre-slice — the location rename + this counter are a no-op on a craft-less
+    // galaxy (invariant 9). A scenario or a restored save that HANDS ONE IN keeps it.
+    ...(vehicleSerial !== 0 ? { vehicleSerial } : {}),
   };
 }
 
@@ -686,12 +700,17 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
 // `capacity` is checked against `undefined`, NOT falsiness, so spycraft's legal
 // capacity of exactly 0 is accepted.
 //
-// `systemId` (2.2, roadmap 2.2-foundation — design.md §15.4) is the system the craft
-// physically sits in when idle: its inventory location, and where a dispatch measures
-// distance from. REQUIRED — no default, throw if missing, exactly as `Asset.systemId`
-// does — because a craft with no location is meaningless and a silent default would put
-// it somewhere nobody chose. Set when the craft is minted (a dockyard build → the
-// building system; a Syndicate delivery → the destination system).
+// `location` (2.2 spawn, roadmap 2.2 — design.md §15.4 "Location — a landmark or a bare
+// hex") is where the craft physically sits when idle, and where a dispatch measures distance
+// from. It GENERALISES the shipped system-only `systemId` into EXACTLY ONE of: a landmark
+// reference `{ landmarkKind, landmarkId }` (a system OR an outpost — the two anchors a
+// transport treats identically), or a bare hex `{ q, r }` (a craft adrift in open space).
+// REQUIRED — no default, throw if missing, exactly as the old `systemId` was — because a
+// craft with no location is meaningless. Set when the craft is minted (a dockyard build /
+// Syndicate delivery lands at a system landmark; an operator/Storyteller spawn at any of the
+// three forms). This file ASSEMBLES the shape it is handed; `checkVehicleIntegrity` (which
+// resolves it via seed lookups) is where legality — exactly-one-form, resolvable, in-bounds —
+// is judged, the same assemble-here / judge-there division `systemId` ran under.
 //
 // `maintenanceCondition` (2.2) is a fraction, 1 = new, and is INERT like
 // `Asset.maintenanceCondition` until the maintenance slice — nothing reads it, nothing
@@ -705,7 +724,7 @@ function createVehicle({
   capacity,
   defenseRating,
   fuelCostToRun,
-  systemId,
+  location,
   maintenanceCondition = ASSET_CONDITION_NEW,
   status = 'idle',
 }) {
@@ -715,7 +734,7 @@ function createVehicle({
   if (capacity === undefined) throw new Error('createVehicle: capacity is required');
   if (defenseRating === undefined) throw new Error('createVehicle: defenseRating is required');
   if (fuelCostToRun === undefined) throw new Error('createVehicle: fuelCostToRun is required');
-  if (systemId === undefined) throw new Error('createVehicle: systemId is required');
+  if (location === undefined) throw new Error('createVehicle: location is required');
 
   return {
     id,
@@ -725,8 +744,10 @@ function createVehicle({
     capacity,
     defenseRating,
     fuelCostToRun,
-    // systemId — the craft's physical location when idle, always present (see the note above).
-    systemId,
+    // location — the craft's idle position (a landmark ref or a bare hex), always present
+    // (see the note above). COPIED, not aliased: a fresh object per field so a caller's
+    // object can never reach into engine state, the discipline `licence` / `batchCarry` use.
+    location: { ...location },
     // maintenanceCondition — INERT this slice (sim/vehicles.js / assets.js own the scale).
     maintenanceCondition,
     status,

@@ -72,7 +72,9 @@ const {
   RP_FLOOR, RP_SOFT_CAP,
 } = require('./licence.js');
 const { ASSET_CONDITION_NEW, ASSET_CONDITION_MIN, isAssetKind, assetKindForVentureType } = require('./assets.js');
-const { isVehicleClass, VEHICLE_STATUSES } = require('./vehicles.js');
+const {
+  isVehicleClass, VEHICLE_STATUSES, resolveVehicleLocation, vehicleNumberOf,
+} = require('./vehicles.js');
 const { isDockyard } = require('./baseline.js');
 const { BUILDABLE_KINDS, BUILD_TICKS } = require('./asset-recipes.js');
 const { DEFAULT_WINDOW_N, winStartFor, windowFraction } = require('./windows.js');
@@ -1241,26 +1243,35 @@ function checkAssetOccupancy(state) {
 //
 // For each guild's each vehicle:
 //   - a KNOWN class (one of the four, sim/vehicles.js) — a garbage class is corruption;
-//   - a `systemId` that RESOLVES to a real seed system (getSystem), stricter than the asset's
-//     present-string check: a craft's location must be somewhere it could actually sit. Every mint
-//     uses a real system (a dockyard's own system, a buy's validated destination), so a non-
-//     resolving one is corruption;
+//   - a `location` that RESOLVES to EXACTLY ONE valid form (2.2 spawn, design.md §15.4): a
+//     landmark { landmarkKind: system|outpost, landmarkId } that resolves via getLandmark, OR an
+//     in-bounds bare hex { q, r }. resolveVehicleLocation is the one judge — both-set, both-null,
+//     an unresolvable landmark, and an off-lattice hex all fail. Every mint uses a real location,
+//     so a non-resolving one is corruption;
 //   - a `maintenanceCondition` that is a finite number inside [MIN, NEW] = [0, 1] (the §15.2 field
 //     check — inert this slice, but a garbage value must still fail loudly, exactly as the asset's);
 //   - a `status` in the legal set (idle / in-transit). THIS SLICE mints only 'idle' — nothing moves
 //     a craft yet — but the check is membership so slice b's dispatch needs no invariant change.
+// And PER GUILD (the stable-id guarantee the event log / Storyteller need — design.md §15.4):
+//   - `vehicleSerial` >= the highest minted suffix among its LIVE vehicles: the monotonic counter
+//     can never have handed out a number it now sits below (it only climbs), so a live craft above
+//     it means the counter drifted and a future mint could re-issue a live id;
+//   - no two vehicles share an id — the "unique across history" guarantee, asserted structurally.
 //
 // Like checkAssetOccupancy it runs within one guild; vehicles are guild-nested, so ownership is
 // containment and there is nothing cross-guild to reconcile.
 function checkVehicleIntegrity(state) {
   const out = [];
   for (const g of state.guilds || []) {
+    const serial = g.vehicleSerial || 0; // omitted-when-0 (state.js): absent means no craft minted
+    const seenIds = new Set();
+    let maxSuffix = 0;
     for (const v of g.vehicles || []) {
       if (!isVehicleClass(v.class)) {
         out.push({ rule: 'vehicle-class-known (vehicles.js)', where: `guild:${g.id}.vehicle:${v.id}`, detail: { class: v.class } });
       }
-      if (typeof v.systemId !== 'string' || v.systemId.length === 0 || !getSystem(v.systemId)) {
-        out.push({ rule: 'vehicle-system-resolves', where: `guild:${g.id}.vehicle:${v.id}.systemId`, detail: { systemId: v.systemId, resolved: typeof v.systemId === 'string' ? !!getSystem(v.systemId) : false } });
+      if (resolveVehicleLocation(v.location) === null) {
+        out.push({ rule: 'vehicle-location-resolves', where: `guild:${g.id}.vehicle:${v.id}.location`, detail: { location: v.location } });
       }
       const cond = v.maintenanceCondition;
       if (typeof cond !== 'number' || !Number.isFinite(cond) || cond < ASSET_CONDITION_MIN || cond > ASSET_CONDITION_NEW) {
@@ -1269,6 +1280,15 @@ function checkVehicleIntegrity(state) {
       if (!VEHICLE_STATUSES.includes(v.status)) {
         out.push({ rule: 'vehicle-status-legal', where: `guild:${g.id}.vehicle:${v.id}.status`, detail: { status: v.status, legal: VEHICLE_STATUSES } });
       }
+      if (seenIds.has(v.id)) {
+        out.push({ rule: 'vehicle-id-unique', where: `guild:${g.id}.vehicle:${v.id}`, detail: { id: v.id } });
+      }
+      seenIds.add(v.id);
+      const n = vehicleNumberOf(v.id);
+      if (n != null && n > maxSuffix) maxSuffix = n;
+    }
+    if (serial < maxSuffix) {
+      out.push({ rule: 'vehicle-serial-monotonic', where: `guild:${g.id}.vehicleSerial`, detail: { vehicleSerial: serial, highestLiveSuffix: maxSuffix } });
     }
   }
   return out;

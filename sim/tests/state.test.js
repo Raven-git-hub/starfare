@@ -107,7 +107,7 @@ test('createVehicle defaults to a light transport, idle, new, with no fuel/speed
     capacity: 10,
     defenseRating: 1,
     fuelCostToRun: 4,
-    systemId: 'sys1',
+    location: { landmarkKind: 'system', landmarkId: 'sys1' },
   });
   assert.equal(v.class, 'lightTransport');
   assert.equal(v.status, 'idle');
@@ -115,9 +115,19 @@ test('createVehicle defaults to a light transport, idle, new, with no fuel/speed
   assert.equal(v.capacity, 10);
   assert.equal(v.defenseRating, 1);
   assert.equal(v.fuelCostToRun, 4);
-  assert.equal(v.systemId, 'sys1');
+  assert.deepEqual(v.location, { landmarkKind: 'system', landmarkId: 'sys1' });
   assert.equal(v.maintenanceCondition, 1); // ASSET_CONDITION_NEW — inert this slice
   assert.equal(v.updatedAtTick, null);
+});
+
+test('createVehicle copies location so a caller cannot alias into engine state, and takes a bare hex', () => {
+  const loc = { q: 3, r: -4 };
+  const v = createVehicle({
+    id: 'ship1', ownerGuildId: 'g1', speed: 2, capacity: 10, defenseRating: 1, fuelCostToRun: 4, location: loc,
+  });
+  assert.deepEqual(v.location, { q: 3, r: -4 });
+  loc.q = 999;
+  assert.equal(v.location.q, 3, 'the stored location is a copy, not the caller\'s object');
 });
 
 test('createVehicle: capacity of exactly 0 is accepted (spycraft carries no cargo)', () => {
@@ -131,21 +141,21 @@ test('createVehicle: capacity of exactly 0 is accepted (spycraft carries no carg
     capacity: 0,
     defenseRating: 5,
     fuelCostToRun: 20,
-    systemId: 'sys1',
+    location: { landmarkKind: 'system', landmarkId: 'sys1' },
   });
   assert.equal(v.capacity, 0);
   assert.equal(v.class, 'spycraft');
 });
 
-test('createVehicle requires id, ownerGuildId, speed, capacity, defenseRating, fuelCostToRun, and systemId', () => {
-  const full = { id: 'ship1', ownerGuildId: 'g1', speed: 2, capacity: 10, defenseRating: 1, fuelCostToRun: 4, systemId: 'sys1' };
+test('createVehicle requires id, ownerGuildId, speed, capacity, defenseRating, fuelCostToRun, and location', () => {
+  const full = { id: 'ship1', ownerGuildId: 'g1', speed: 2, capacity: 10, defenseRating: 1, fuelCostToRun: 4, location: { landmarkKind: 'system', landmarkId: 'sys1' } };
   assert.throws(() => createVehicle({ ...full, id: undefined }), /id is required/);
   assert.throws(() => createVehicle({ ...full, ownerGuildId: undefined }), /ownerGuildId is required/);
   assert.throws(() => createVehicle({ ...full, speed: undefined }), /speed is required/);
   assert.throws(() => createVehicle({ ...full, capacity: undefined }), /capacity is required/);
   assert.throws(() => createVehicle({ ...full, defenseRating: undefined }), /defenseRating is required/);
   assert.throws(() => createVehicle({ ...full, fuelCostToRun: undefined }), /fuelCostToRun is required/);
-  assert.throws(() => createVehicle({ ...full, systemId: undefined }), /systemId is required/);
+  assert.throws(() => createVehicle({ ...full, location: undefined }), /location is required/);
   assert.doesNotThrow(() => createVehicle(full));
 });
 
@@ -158,7 +168,7 @@ test('createVehicle: class and status can be overridden', () => {
     capacity: 20,
     defenseRating: 2,
     fuelCostToRun: 8,
-    systemId: 'sys1',
+    location: { landmarkKind: 'system', landmarkId: 'sys1' },
     status: 'inTransit',
   });
   assert.equal(v.class, 'mediumTransport');
@@ -170,12 +180,12 @@ test('createGuild nests vehicles the same way it nests ventures', () => {
     id: 'g1',
     credits: 10,
     fuelHoard: 0,
-    vehicles: [{ id: 'ship1', ownerGuildId: 'g1', speed: 2, capacity: 10, defenseRating: 1, fuelCostToRun: 4, systemId: 'sys1' }],
+    vehicles: [{ id: 'ship1', ownerGuildId: 'g1', speed: 2, capacity: 10, defenseRating: 1, fuelCostToRun: 4, location: { landmarkKind: 'system', landmarkId: 'sys1' } }],
   });
   assert.equal(g.vehicles.length, 1);
   assert.equal(g.vehicles[0].id, 'ship1');
   assert.equal(g.vehicles[0].class, 'lightTransport');
-  assert.equal(g.vehicles[0].systemId, 'sys1');
+  assert.deepEqual(g.vehicles[0].location, { landmarkKind: 'system', landmarkId: 'sys1' });
 });
 
 test('createReserve and createSyndicate require their one field', () => {
@@ -235,8 +245,9 @@ test('createState assembles a scenario with a vehicle and still passes every inv
         credits: 120,
         fuelHoard: 0,
         vehicles: [
-          // systemId must resolve to a real seed system (checkVehicleIntegrity, 2.2-foundation).
-          { id: 'ship1', ownerGuildId: 'g1', speed: 2, capacity: 10, defenseRating: 1, fuelCostToRun: 4, systemId: 'sys_0006' },
+          // location must resolve to exactly one valid form (checkVehicleIntegrity, 2.2 spawn) —
+          // here a system landmark that resolves on the seed.
+          { id: 'ship1', ownerGuildId: 'g1', speed: 2, capacity: 10, defenseRating: 1, fuelCostToRun: 4, location: { landmarkKind: 'system', landmarkId: 'sys_0006' } },
         ],
       },
     ],

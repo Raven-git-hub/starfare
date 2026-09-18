@@ -10,10 +10,14 @@
 // nothing — `createVehicle` lives with the other entity constructors in state.js —
 // which keeps this file free of a require cycle with state.js, exactly as assets.js is.
 //
-// SCOPE THIS SLICE: buy + build, minted idle. Nothing moves a vehicle yet
-// (dispatch/routes are slice b), so `capacity`/`defenseRating` are carried but read
-// by nothing, and `speed`/`fuelCostToRun` are read only by the delivery flight of a
-// Syndicate BUY (sim/actions.js + sim/tick.js).
+// SCOPE: buy + build + operator/Storyteller spawn/remove, all minted idle. Nothing
+// MOVES a vehicle yet (dispatch/routes are slice b), so `capacity`/`defenseRating` are
+// carried but read by nothing, and `speed`/`fuelCostToRun` are read only by the delivery
+// flight of a Syndicate BUY (sim/actions.js + sim/tick.js). This slice (2.2 spawn) adds
+// the LOCATION model (a landmark-or-hex idle position, generalising the shipped system-
+// only `systemId`) and the per-guild MINT COUNTER that makes a removed id un-reissuable.
+
+const { getLandmark, isHexInBounds } = require('./seed.js');
 
 // The four classes. The strings are camelCase — the exact spelling design.md §15.4
 // and docs/phase-1-tuning.md §"Guild transports" use — pinned here once so no other
@@ -85,23 +89,64 @@ function vehicleNumberOf(id) {
   return m ? parseInt(m[1], 10) : null;
 }
 
-// nextVehicleNumber(guild, class) -> the next free per-(guild, class) vehicle NUMBER: one
-// above the highest suffix among this guild's vehicles of that class (0 -> 1 when it owns
-// none). The dockyard build and the Syndicate delivery mint a vehicle's id from this,
-// exactly as nextAssetNumber does for a ground asset.
+// nextVehicleSerial(guild) -> the next per-GUILD mint serial: one above the guild's stored
+// `vehicleSerial` counter (absent/0 -> 1). REPLACES the old `max(existing suffix)+1`
+// derivation, which removal broke: a removed craft's id must never be reissued (design.md
+// §15.4 "Ids never repeat"), so the number cannot be re-derived from the LIVE vehicles —
+// once the highest is removed, max+1 would hand its number to the next mint. The counter is
+// STORED, monotonic and guild-wide (spanning classes: `…_light_01`, `…_heavy_02`,
+// `…_light_03`), the justified stored-counter exception `guild.guildReputation` already
+// makes. The CALLER bumps `guild.vehicleSerial` to this value at mint (this stays a pure
+// read, the pure-selectors discipline the rest of this file keeps); it only ever increments
+// and never decrements on removal, so an id is unique across the guild's whole history.
+function nextVehicleSerial(guild) {
+  return (guild.vehicleSerial || 0) + 1;
+}
+
+// resolveVehicleLocation(location) -> { form: 'landmark' | 'hex', coords: { q, r } } | null.
 //
-// DETERMINISTIC and MONOTONIC (invariant 9): vehicles are NEVER deleted this slice, so the
-// max only ever grows and a minted id can never collide with an earlier build. Two emissions
-// in one tick get distinct ids because each is pushed into `guild.vehicles` BEFORE the next
-// id is minted, so the second read sees the first and returns a higher number.
-function nextVehicleNumber(guild, vehicleClass) {
-  let max = 0;
-  for (const v of (guild.vehicles || [])) {
-    if (v.class !== vehicleClass) continue;
-    const n = vehicleNumberOf(v.id);
-    if (n != null && n > max) max = n;
+// A vehicle's idle location (design.md §15.4 "Location — a landmark or a bare hex") is
+// EXACTLY ONE of:
+//   - a landmark reference `{ landmarkKind, landmarkId }` — a SYSTEM or an OUTPOST, the two
+//     anchors a transport treats identically, resolved by `getLandmark` exactly as a claim's
+//     landmark is (an outpost is NOT deep space; for transports it groups as a system does);
+//   - a bare hex `{ q, r }` — an in-bounds integer lattice coordinate, a craft adrift in
+//     open space anchored to nothing.
+// This returns the resolved coordinates for a valid location and `null` for a corrupt one:
+// BOTH forms set (landmark keys AND hex keys) or NEITHER set is corruption, an unresolvable
+// landmark is corruption, and an off-lattice hex is corruption. It is the ONE place the
+// shape is judged, shared by the intake validator, the integrity invariant, and the dispatch
+// selector below — so a system, an outpost, and a deep-space berth are ONE path with no
+// special case, and dispatch/grouping key off the resolved coords, never the raw field.
+function resolveVehicleLocation(location) {
+  if (!location || typeof location !== 'object' || Array.isArray(location)) return null;
+  const hasLandmark = location.landmarkKind !== undefined || location.landmarkId !== undefined;
+  const hasHex = location.q !== undefined || location.r !== undefined;
+  // Exactly one form: both-set or both-null is corruption (design.md §15.4).
+  if (hasLandmark === hasHex) return null;
+  if (hasLandmark) {
+    // Only a system or an outpost anchors a transport today (design.md §15.4 — toll gates /
+    // guild outposts as landmarks are not built). getLandmark enforces the (id, kind) pair
+    // resolves to a real landmark OF THAT KIND, so a mistagged id fails rather than resolving
+    // by luck — the same strictness the claim invariant uses.
+    if (location.landmarkKind !== 'system' && location.landmarkKind !== 'outpost') return null;
+    const lm = getLandmark(location.landmarkId, location.landmarkKind);
+    if (!lm || !lm.coords) return null;
+    return { form: 'landmark', coords: { q: lm.coords.q, r: lm.coords.r } };
   }
-  return max + 1;
+  // Bare hex: an in-bounds integer lattice coordinate (isHexInBounds checks both).
+  if (!isHexInBounds(location.q, location.r)) return null;
+  return { form: 'hex', coords: { q: location.q, r: location.r } };
+}
+
+// vehicleCoords(vehicle) -> the craft's resolved coordinates { q, r }, or null when its
+// location is corrupt. THE ONE SELECTOR the movement slice measures distance from and the
+// client groups by — a landmark resolves to its coords, a hex is itself (design.md §15.4's
+// performance contract: position is derived on read). Named as the vehicle-level convenience
+// over `resolveVehicleLocation`.
+function vehicleCoords(vehicle) {
+  const r = resolveVehicleLocation(vehicle && vehicle.location);
+  return r ? r.coords : null;
 }
 
 module.exports = {
@@ -117,5 +162,7 @@ module.exports = {
   vehicleSpec,
   vehicleId,
   vehicleNumberOf,
-  nextVehicleNumber,
+  nextVehicleSerial,
+  resolveVehicleLocation,
+  vehicleCoords,
 };
