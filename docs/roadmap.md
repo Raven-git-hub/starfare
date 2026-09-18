@@ -381,6 +381,19 @@ boundary so the later hex-map swap doesn't touch it.
   `fuelCostToRun × hexDistance` up front, arrival `buildDoneTick + ceil(hexDistance × speed[class])`), and the
   slice authored no number (all from `phase-1-tuning.md` "Guild transports"; entity: design.md §15.4; the
   buy/build machinery is kind-general). *A NO-OP on galaxies that mint no craft — the goldens do not move.*
+  **(a-client) surface the transports in the CLIENT — ✅ BUILT (18-09-26, `client/game.html`, client-only bar
+  one additive snapshot field):** the four classes now COMMISSION on the TRADE "4 · Constructed" floor (they
+  already rode the generic `assetPurchaseQuote` path; `pretty()` now splits camelCase so a class reads
+  "Light Transport" / "Medium Transport" / "Heavy Transport" / "Spycraft", and the menu got a fixed-panel
+  internal scroll as the catalog grew to six), and the OPERATIONS left column SPLIT into a herostack of two
+  equal panels — **Idle Transports** (the guild's idle `vehicles`, grouped by system, each craft a collapsible
+  tab: short type + system → maintenance % + an inert, disabled Dispatch) over **Leased**. The one engine touch
+  is an **additive, derived-on-read** snapshot field, `fuelCost[sys].vehicleTravelTicks[class]` — the craft's
+  OWN self-delivery leg `ceil(hexDistance × speed[class])` (a bought craft flies itself, so the hauler
+  `travelTicks` was wrong for it; §18 — the client computes no game number), so the commission popup and the
+  In-Progress rows quote a craft's real arrival. *Byte-identical goldens (derived-on-read, no serialized byte);
+  the suite holds at 1,325.* **Dispatch/movement stays slice (b).** *(No `docs/mockups/guild-transport-client.html`
+  existed in the repo at build time — see the decision checklist; built to the build-prompt's textual contract.)*
   (b) **dispatch + arrival:** a
   single-leg move, fuel debited up front, position **derived** from a stored schedule (§6, the Syndicate-shipment
   pattern), the only tick step being arrival; then multi-leg routes (the leg is the atomic unit from the start),
@@ -504,6 +517,13 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   Open design: its **seam with the cargo-space Syndicate hauler** (one shared cargo/volume/burn model
   vs a distinct guild-craft model), and where owning-and-flying sits against 2.3's routes / tolls /
   lease-back.
+
+- **Guild-transport client mockup is missing** — *surfaced 18-09-26 by the 2.2-foundation client slice.*
+  The build prompt named `docs/mockups/guild-transport-client.html` as the visual contract, but no such
+  file exists in the repo (nor in git history). The slice was built to the prompt's textual spec (the
+  commission floor + the two-panel OPERATIONS herostack); a later mockup should be reconciled against
+  what shipped, or the "point the roadmap note at the mockup" instruction dropped. No number was invented
+  by its absence — every figure still reads from the snapshot.
 
 - **Deferred, flagged in docs (revisit with their slice, don't lose):** the SELL origin-picker helper
   (offer only systems that hold every line — `syndicate-orders.md` §7, a client refinement); a

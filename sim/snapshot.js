@@ -38,6 +38,7 @@ const { expectedReputation, issuanceModifier } = require('./meanline.js');
 const { computeOccupancy } = require('./occupancy.js');
 const { deployedAssetIds } = require('./assets.js');
 const { BUILDABLE_KINDS, BUILD_TICKS, priceAssetForPurchase } = require('./asset-recipes.js');
+const { BUILDABLE_VEHICLE_KINDS, vehicleSpec } = require('./vehicles.js');
 const { getSite, getLandmark, getStarterSystems, getTerranHomeworld } = require('./seed.js');
 const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
@@ -264,6 +265,14 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // to the current tick — and `0` for a system with no reachable waystation, matching the 0
 // `fuelBurn` reports there. Pure derived telemetry, exactly as the `fuelBurn`/`creditCost`
 // beside it: no serialized byte, no determinism hash, nothing charged.
+// (18-09-26, 2.2-foundation client): each `fuelCost` entry ALSO gains `vehicleTravelTicks`
+// — a per-guild-transport-class map `{ [class]: duration }` of the SELF-DELIVERY flight leg
+// to this system. A bought craft is not hauled: it flies itself in at its OWN `speed[class]`
+// (ticks/hex), so its delivery duration is `ceil(distance × speed[class])` — the SAME clock
+// `stepSyndicateBuilds` flies a vehicle in on — NOT the hauler's `travelTicks`. Published so
+// the TRADE-4 commission popup and the In-Progress rows quote a CRAFT's arrival from the engine
+// instead of the wrong hauler leg (§18). ADDITIVE, NO schema bump; `0` per class for a no-route
+// system, matching `travelTicks`. Pure derived telemetry, exactly as `travelTicks` beside it.
 // (31-08-26, RP slice 1): each guild row gains `guildReputation` and each venture row
 // gains `reputation` — the guild's Reputation Points and the per-venture running total
 // they are the sum of (docs/points-and-reputation.md §2 / §6 step 1). ADDITIVE, and NO
@@ -648,7 +657,8 @@ function computeAttention(state) {
 //                 predictedGrant,                    // live fuel-credit entitlement, DERIVED
 //                 fuelGrant: { tick, thisTick, granted, desired, rationed, modifier,
 //                              entitlement } | null,           // entitlement: this cycle's, echoed
-//                 fuelCost: { systemId: { fuelBurn, creditCost, travelTicks } }, // held systems, sorted
+//                 fuelCost: { systemId: { fuelBurn, creditCost, travelTicks, // held systems, sorted
+//                             vehicleTravelTicks: { <class>: duration } } },   // per-craft self-delivery leg (2.2)
 //                 syndicateSale: { tick, thisTick, credited, goods } | null, // Slice 3a
 //                 licenceFee: { tick, thisTick, charged, ventures } | null,   // Slice 3b-iii
 //                 events: [ { id, tick, type, payload, readTick? } ],  // event log, live, newest-first
@@ -914,12 +924,31 @@ function buildSnapshot(state) {
           // travel ticks, matching the 0 `fuelBurn` reports for that no-route case.
           const near = nearestWaystation(systemId);
           const travelTicks = near ? arrivalTickFor(0, near.distance) : 0;
+          // PER-VEHICLE-CLASS delivery leg (2.2-foundation) — the vehicle mirror of `travelTicks`
+          // above. `travelTicks` times a SYNDICATE-HAULER delivery (ground assets, goods) at the
+          // flat CRAFT_SPEED; a bought guild transport is NOT carried — it flies ITSELF in at its
+          // OWN `speed[class]` ticks/hex (phase-1-tuning.md §"Guild transports"), so its delivery
+          // duration is `ceil(distance × speed[class])` — the SAME clock stepSyndicateBuilds
+          // (sim/tick.js) flies a vehicle in on, over the SAME `nearestWaystation` route the burn
+          // uses. Published as a per-class DURATION (never an absolute tick), keyed by class, so the
+          // TRADE-4 commission popup can quote a CRAFT's arrival before the buy and the In-Progress
+          // rows can time its delivery leg — without the browser knowing a distance or a craft speed
+          // (§18: the client computes no game number). A no-route system gets 0 for every class,
+          // the same honest no-route value `travelTicks`/`fuelBurn` report. Pure derived telemetry:
+          // no serialized byte, no determinism hash — a galaxy that buys nothing is byte-identical.
+          const vehicleTravelTicks = Object.fromEntries(
+            BUILDABLE_VEHICLE_KINDS.map((cls) => [
+              cls,
+              near ? Math.ceil(near.distance * vehicleSpec(cls).speed) : 0,
+            ]),
+          );
           return [
             systemId,
             {
               fuelBurn,
               creditCost: fuelValue(fuelBurn, fuelPrice),
               travelTicks,
+              vehicleTravelTicks,
               fuelBurnByTier,
               creditCostByTier,
             },

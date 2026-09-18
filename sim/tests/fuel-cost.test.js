@@ -33,7 +33,19 @@ const { hashState } = require('../serialize.js');
 const { checkInvariants } = require('../invariants.js');
 const { guildHolds, heldSystemIds } = require('../claims.js');
 const { nearestWaystation, arrivalTickFor } = require('../transport.js');
+const { BUILDABLE_VEHICLE_KINDS, vehicleSpec } = require('../vehicles.js');
 const { postedPrice } = require('../prices.js');
+
+// The per-class vehicle self-delivery leg the snapshot publishes beside `travelTicks`:
+// `ceil(distance × speed[class])` (the SAME clock stepSyndicateBuilds flies a bought craft in on),
+// keyed by class. Recomputed here from the engine's own specs so a spec change shows up as a moved
+// number, exactly as `travelTicks` recomputes `arrivalTickFor`.
+function expectedVehicleTravelTicks(systemId) {
+  const near = nearestWaystation(systemId);
+  return Object.fromEntries(
+    BUILDABLE_VEHICLE_KINDS.map((cls) => [cls, near ? Math.ceil(near.distance * vehicleSpec(cls).speed) : 0]),
+  );
+}
 const {
   REFERENCE_FUEL_PRICE, SYNDICATE_HAULER_BURN_RATE, GUILD_STARTING_FUEL,
   routeFuelCost, routeFuelBurnByTier, fuelValue,
@@ -230,7 +242,8 @@ test('fuelCost row: fuelBurn/creditCost stay the LIGHT-tier values, byTier is ad
   const s = quoteState({ holds: [MID.id, FAR.id, NEAR.id, ODD.id] });
   for (const [systemId, q] of Object.entries(buildSnapshot(s).guilds[0].fuelCost)) {
     assert.deepEqual(Object.keys(q).sort(),
-      ['creditCost', 'creditCostByTier', 'fuelBurn', 'fuelBurnByTier', 'travelTicks'], `${systemId} row shape`);
+      ['creditCost', 'creditCostByTier', 'fuelBurn', 'fuelBurnByTier', 'travelTicks', 'vehicleTravelTicks'],
+      `${systemId} row shape`);
     // The top-level burn/cost are the LIGHT-tier values — today's numbers, unchanged.
     const byTier = routeFuelBurnByTier(systemId);
     assert.equal(q.fuelBurn, byTier.light, `${systemId}: fuelBurn is the light tier`);
@@ -243,6 +256,12 @@ test('fuelCost row: fuelBurn/creditCost stay the LIGHT-tier values, byTier is ad
       assert.equal(q.creditCostByTier[tier], fuelValue(q.fuelBurnByTier[tier], s.reserve.fuelPrice), `${systemId}.${tier} valuation`);
     }
     assert.ok(Number.isInteger(q.travelTicks) && q.travelTicks >= 0, `${systemId} travelTicks`);
+    // The per-class vehicle self-delivery leg is present for all four transport classes, each a
+    // non-negative integer (the ceil'd flight duration), and matches the engine spec.
+    assert.deepEqual(q.vehicleTravelTicks, expectedVehicleTravelTicks(systemId), `${systemId} vehicleTravelTicks`);
+    for (const cls of BUILDABLE_VEHICLE_KINDS) {
+      assert.ok(Number.isInteger(q.vehicleTravelTicks[cls]) && q.vehicleTravelTicks[cls] >= 0, `${systemId}.${cls} leg`);
+    }
   }
 });
 
@@ -268,6 +287,7 @@ test('the snapshot quote IS the function — the anti-drift guarantee, per tier'
       fuelBurn: byTier.light,
       creditCost: fuelValue(byTier.light, s.reserve.fuelPrice),
       travelTicks: arrivalTickFor(0, nearestWaystation(systemId).distance),
+      vehicleTravelTicks: expectedVehicleTravelTicks(systemId),
       fuelBurnByTier: byTier,
       creditCostByTier: creditByTier,
     }, systemId);
