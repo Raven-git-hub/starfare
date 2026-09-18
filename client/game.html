@@ -7599,8 +7599,12 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
 
   // ---- IDLE TRANSPORTS (§5 / design.md §15.4): the guild's own idle guild-transports -----------
   // Read straight off the polled snapshot's per-guild `vehicles` rows (status 'idle'); the browser
-  // never re-derives "idle" or a class stat — the engine decides (§18). Grouped by SYSTEM (the IDLE
-  // tree idiom), each craft its own collapsible tab.
+  // never re-derives "idle" or a class stat — the engine decides (§18). Each craft carries a
+  // `location` (2.2 spawn): a landmark ref `{ landmarkKind: 'system'|'outpost', landmarkId }` or a
+  // bare hex `{ q, r }`. Per §15.4 a craft groups under its LANDMARK'S NAME (a system OR an outpost,
+  // the two anchors a transport treats identically), and a craft anchored to nothing — a bare hex —
+  // groups under one shared DEEP SPACE bucket. The browser only resolves names (systemName /
+  // outpostName) and reads coordinates — it computes no game number (§18).
   //
   // The four guild-transport class ids → their SHORT tab label (per the OPERATIONS mockup). Display
   // vocabulary only — the same kind the IDLE section's KIND_ORDER is — never a game number (§18). An
@@ -7615,6 +7619,31 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return ((guild && guild.vehicles) || []).filter(function(v){ return v.status === 'idle'; });
   }
 
+  // A craft's `location` → its GROUP descriptor `{ key, name }` (§15.4). A system or an outpost
+  // landmark keys and names by that landmark (an outpost is NOT deep space — it groups as a system
+  // does); a bare hex keys to the single shared 'deep' bucket named DEEP SPACE; anything malformed
+  // (a row that slipped past the integrity invariant) falls to a defensive 'unknown' so the panel
+  // never throws. The key is prefixed by kind so the three kinds never collide in the collapse-state
+  // map. Pure read-time resolution — no game number (§18).
+  function tpGroupOf(v){
+    var loc = v && v.location;
+    if(loc && loc.landmarkKind === 'system') return { key: 'system:' + loc.landmarkId, name: systemName(loc.landmarkId) };
+    if(loc && loc.landmarkKind === 'outpost') return { key: 'outpost:' + loc.landmarkId, name: outpostName(loc.landmarkId) };
+    if(loc && typeof loc.q === 'number' && typeof loc.r === 'number') return { key: 'deep', name: 'DEEP SPACE' };
+    return { key: 'unknown', name: 'Unknown' };
+  }
+
+  // A craft's per-row "where" label: a landmark craft reads its landmark name (as the group header
+  // does); a deep-space craft reads its hex coordinates as "(q, r)" so a berth anchored to nothing
+  // still says where it sits. Presentation only, off the same resolvers.
+  function tpCraftWhere(v){
+    var loc = v && v.location;
+    if(loc && loc.landmarkKind === 'system') return systemName(loc.landmarkId);
+    if(loc && loc.landmarkKind === 'outpost') return outpostName(loc.landmarkId);
+    if(loc && typeof loc.q === 'number' && typeof loc.r === 'number') return '(' + loc.q + ', ' + loc.r + ')';
+    return 'Unknown';
+  }
+
   // A craft tab: collapsed head = short type + system; expanded body = maintenance % + the inert
   // (disabled) Dispatch button. Default COLLAPSED (the panel stays a compact roster); expansion is
   // remembered in O.tpOpen so a signature-guarded rebuild honours it. Maintenance is the engine's
@@ -7627,7 +7656,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       +   '<div class="ops-tp-crafthd">'
       +     '<span class="ops-idle-caret">&#9660;</span>'
       +     '<span class="ttype">' + esc(tpShort(v['class'])) + '</span>'
-      +     '<span class="tsys">' + esc(systemName(v.systemId)) + '</span>'
+      +     '<span class="tsys">' + esc(tpCraftWhere(v)) + '</span>'
       +   '</div>'
       +   '<div class="ops-tp-craftbody">'
       +     '<div class="ops-tp-stat"><span class="k">Maintenance</span><span class="v">' + maint + '%</span></div>'
@@ -7636,10 +7665,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       + '</div>';
   }
 
-  // A transport SYSTEM group: default OPEN (collapse remembered in O.tpSysCollapsed), body is the
-  // system's craft tabs sorted by id (the deterministic mint order).
-  function tpSystemHtml(sysId, craft){
-    var key = 'tpsys:' + sysId;
+  // A transport GROUP (a system, an outpost, or DEEP SPACE — one `ops-tp-sys` group either way, §15.4):
+  // default OPEN (collapse remembered in O.tpSysCollapsed, keyed on the group `key`), header shows the
+  // group `name`, body is the group's craft tabs sorted by id (the deterministic mint order).
+  function tpGroupHtml(key, name, craft){
     var collapsed = O.tpSysCollapsed[key] === true;
     var body = craft.slice()
       .sort(function(x, y){ return x.id < y.id ? -1 : (x.id > y.id ? 1 : 0); })
@@ -7647,7 +7676,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return '<div class="ops-tp-sys' + (collapsed ? ' collapsed' : '') + '" data-tp-key="' + esc(key) + '">'
       +   '<div class="ops-tp-syshd">'
       +     '<span class="ops-idle-caret">&#9660;</span>'
-      +     '<span class="nm">' + esc(systemName(sysId)) + '</span>'
+      +     '<span class="nm">' + esc(name) + '</span>'
       +     '<span class="ct">' + craft.length + ' idle</span>'
       +   '</div>'
       +   '<div class="ops-tp-sysbody">' + body + '</div>'
@@ -7662,8 +7691,12 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var host = el('ops-tp-list'); if(!host) return;
     var craft = myIdleTransports(guild);
 
+    // Signature carries the craft's full resolved location (group key + the raw location), so ANY
+    // location change — a re-anchor, or a deep-space craft moving to a different hex under the shared
+    // 'deep' key — shifts the signature and rebuilds, exactly as a re-group must.
     var sig = craft.map(function(v){
-      return v.id + '@' + v.systemId + ':' + v.status + ':' + Math.round((v.maintenanceCondition || 0) * 100);
+      return v.id + '@' + tpGroupOf(v).key + JSON.stringify(v.location)
+        + ':' + v.status + ':' + Math.round((v.maintenanceCondition || 0) * 100);
     }).sort().join('|');
     if(sig === O.tpSig) return;
     O.tpSig = sig;
@@ -7676,20 +7709,29 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       return;
     }
 
-    var bySys = {};
-    craft.forEach(function(v){ (bySys[v.systemId] = bySys[v.systemId] || []).push(v); });
-    var sysIds = Object.keys(bySys).sort(function(x, y){
-      var nx = String(systemName(x)), ny = String(systemName(y));
+    // Bucket by group key (system / outpost / deep / unknown), carrying each group's display name.
+    var byGroup = {};
+    craft.forEach(function(v){
+      var grp = tpGroupOf(v);
+      if(!byGroup[grp.key]) byGroup[grp.key] = { name: grp.name, craft: [] };
+      byGroup[grp.key].craft.push(v);
+    });
+    // Named landmark groups alphabetically by name; DEEP SPACE always last (a bare-hex berth sorts
+    // below every named anchor, §15.4).
+    var keys = Object.keys(byGroup).sort(function(x, y){
+      if(x === 'deep' && y !== 'deep') return 1;
+      if(y === 'deep' && x !== 'deep') return -1;
+      var nx = String(byGroup[x].name), ny = String(byGroup[y].name);
       return nx < ny ? -1 : (nx > ny ? 1 : 0);
     });
 
     // prune collapse/expand state to the groups/craft that still exist, then render
     var keepSys = {}, keepOpen = {};
-    sysIds.forEach(function(sid){ var sk = 'tpsys:' + sid; if(O.tpSysCollapsed[sk]) keepSys[sk] = true; });
+    keys.forEach(function(k){ if(O.tpSysCollapsed[k]) keepSys[k] = true; });
     craft.forEach(function(v){ var ck = 'tp:' + v.id; if(O.tpOpen[ck]) keepOpen[ck] = true; });
     O.tpSysCollapsed = keepSys; O.tpOpen = keepOpen;
 
-    host.innerHTML = sysIds.map(function(sid){ return tpSystemHtml(sid, bySys[sid]); }).join('');
+    host.innerHTML = keys.map(function(k){ return tpGroupHtml(k, byGroup[k].name, byGroup[k].craft); }).join('');
   }
 
   // The whole hub, run on open and on every poll while open. IN TRANSIT, IDLE and IDLE TRANSPORTS
