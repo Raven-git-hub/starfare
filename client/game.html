@@ -880,7 +880,10 @@ select.field{appearance:none; cursor:pointer;}
 #tw-cn .am-h{padding:11px 14px; border-bottom:1px solid var(--line);}
 #tw-cn .am-h .t{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink2); font-weight:600;}
 #tw-cn .am-h small{display:block; font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); margin-top:3px;}
-#tw-cn .am-list{padding:10px; display:flex; flex-direction:column; gap:9px;}
+/* The menu holds its size as kinds grow (six now: two ground assets + the four guild transports):
+   it takes the card's spare height and scrolls INTERNALLY (flex:1 1 auto + min-height:0), so the
+   panel never grows past the row and the header/note stay put. */
+#tw-cn .am-list{padding:10px; display:flex; flex-direction:column; gap:9px; flex:1 1 auto; overflow-y:auto; min-height:0;}
 #tw-cn .am-item{border:1px solid var(--line2); border-radius:9px; background:var(--panel); padding:11px 12px; cursor:pointer;}
 #tw-cn .am-item.open{border-color:var(--amber); background:linear-gradient(180deg,var(--amber-ghost),transparent 55%),var(--panel);}
 #tw-cn .am-item .anm{font-family:var(--serif); font-size:16px; color:var(--ink); text-transform:capitalize;}
@@ -1115,6 +1118,12 @@ select.field{appearance:none; cursor:pointer;}
 #tp-ops .ops-hero .zsub{font-family:var(--ops-serif); font-size:18px; color:var(--ops-ink); padding:0 15px 13px; border-bottom:1px solid var(--ops-line); letter-spacing:.02em; flex:0 0 auto;}
 #tp-ops .ops-hero .zsub .m{display:block; font-family:var(--ops-mono); font-size:10px; color:var(--ops-ink3); letter-spacing:.06em; margin-top:3px; text-transform:uppercase;}
 #tp-ops .ops-hero .ops-herobody{flex:1 1 auto; min-height:0; overflow-y:auto; display:flex; flex-direction:column;}
+/* the LEFT herostack: two EQUAL ops-hero panels (flex-basis 0 + equal grow), each handing its
+   internal scroll to its ops-herobody — so adding idle craft never resizes either panel. */
+#tp-ops .ops-herostack{display:flex; flex-direction:column; gap:16px; min-height:0;}
+#tp-ops .ops-herostack > .ops-hero{flex:1 1 0; min-height:0;}
+/* a bare zsub — the zhead + .m subtitle were dropped, so the serif title needs its own top pad */
+#tp-ops .ops-hero .zsub.bare{padding-top:13px;}
 
 /* CENTRE: IN TRANSIT on top (grows + scrolls), DEPLOYED + IDLE side by side below (scaffolds) */
 #tp-ops .ops-centre{display:flex; flex-direction:column; min-width:0; min-height:0; gap:16px;}
@@ -1195,6 +1204,41 @@ select.field{appearance:none; cursor:pointer;}
 #tp-ops .ops-idle-machine:first-child{margin-top:0;}
 #tp-ops .ops-idle-machine .mid{font-family:var(--ops-mono); font-size:11px; color:var(--ops-ink2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 #tp-ops .ops-idle-machine .mkind{font-size:10px; color:var(--ops-ink4); letter-spacing:.03em; text-transform:capitalize; flex:0 0 auto;}
+
+/* IDLE TRANSPORTS — the guild's own idle guild-transports (design.md §15.4), grouped by SYSTEM
+   (the ops-idle tree idiom, tp-prefixed) then ONE COLLAPSIBLE TAB per craft. A craft tab collapsed
+   shows its short type (Light / Medium / Heavy / Spy) + system; expanded reveals maintenance % and
+   the Dispatch button, which is INERT this slice (movement is next) and so renders disabled. The
+   caret + collapse mechanics reuse the ops-idle idiom: a `collapsed` class hides the body and
+   rotates the shared .ops-idle-caret; the click handler only flips the class. */
+#tp-ops #ops-tp-list{padding:10px;}
+#tp-ops .ops-tp-sys{margin-bottom:8px;}
+#tp-ops .ops-tp-sys:last-child{margin-bottom:0;}
+#tp-ops .ops-tp-syshd,
+#tp-ops .ops-tp-crafthd{display:flex; align-items:center; gap:8px; cursor:pointer;}
+#tp-ops .ops-tp-syshd{padding:9px 10px; background:var(--ops-panel); border:1px solid var(--ops-line); border-radius:6px; color:var(--ops-ink2);}
+#tp-ops .ops-tp-syshd:hover{border-color:var(--ops-line2); color:var(--ops-ink);}
+#tp-ops .ops-tp-syshd .nm{flex:1; font-size:12px; letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+#tp-ops .ops-tp-syshd .ct{font-size:10px; color:var(--ops-ink4); letter-spacing:.06em; text-transform:uppercase; flex:0 0 auto;}
+#tp-ops .ops-tp-sys.collapsed > .ops-tp-syshd .ops-idle-caret,
+#tp-ops .ops-tp-craft.collapsed > .ops-tp-crafthd .ops-idle-caret{transform:rotate(-90deg);}
+#tp-ops .ops-tp-sysbody{padding:6px 0 2px 12px;}
+#tp-ops .ops-tp-sys.collapsed > .ops-tp-sysbody{display:none;}
+/* a craft tab — the collapsible unit; collapsed by default so the panel stays a compact roster */
+#tp-ops .ops-tp-craft{margin-top:4px; border:1px solid var(--ops-line); border-radius:6px; background:rgba(232,223,200,.03);}
+#tp-ops .ops-tp-craft:first-child{margin-top:0;}
+#tp-ops .ops-tp-crafthd{padding:8px 10px; color:var(--ops-ink3);}
+#tp-ops .ops-tp-crafthd:hover{color:var(--ops-ink2);}
+#tp-ops .ops-tp-crafthd .ttype{flex:1; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ops-ink2);}
+#tp-ops .ops-tp-crafthd .tsys{font-size:10px; color:var(--ops-ink4); letter-spacing:.04em; flex:0 0 auto; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px;}
+#tp-ops .ops-tp-craftbody{padding:2px 10px 10px; border-top:1px solid var(--ops-line);}
+#tp-ops .ops-tp-craft.collapsed > .ops-tp-craftbody{display:none;}
+#tp-ops .ops-tp-stat{display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:9px 0 11px;}
+#tp-ops .ops-tp-stat .k{font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ops-ink4);}
+#tp-ops .ops-tp-stat .v{font-family:var(--ops-mono); font-size:13px; color:var(--ops-ink); font-variant-numeric:tabular-nums;}
+/* Dispatch is INERT this slice (movement is the next slice), so it renders disabled — built now so
+   the tab layout is final and the wiring lands next slice against a finished shape. */
+#tp-ops .ops-tp-dispatch{width:100%; font-family:var(--ops-mono); font-size:10px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--ops-ink3); background:var(--ops-panel); border:1px solid var(--ops-line2); border-radius:6px; padding:8px; cursor:not-allowed; opacity:.55;}
 
 /* RIGHT: the pilot hero (client/assets/characters/pilot.jpg under the Guild-Hall scrim) */
 #tp-ops .ops-thero{position:relative; padding:0; overflow:hidden; min-height:0; border:1px solid var(--ops-line); border-radius:10px;}
@@ -2274,18 +2318,30 @@ select.field{appearance:none; cursor:pointer;}
        fills the viewport exactly like #tp-deut. -->
   <div id="tp-ops">
     <div class="ops-body">
-      <!-- LEFT HERO: LEASED (empty scaffold — leasing is Phase 4, §6) -->
-      <aside class="ops-hero">
-        <div class="zhead">Fleet</div>
-        <div class="zsub">Leased<span class="m">On Syndicate contract</span></div>
-        <div class="ops-herobody">
-          <div class="ops-empty">
-            <div class="glyph">&#9673;</div>
-            <h3>No transports leased</h3>
-            <p>Transports you lease to the Syndicate wait here, ready to recall. Leasing arrives with guild transport (Phase&nbsp;4).</p>
+      <!-- LEFT: a herostack of two EQUAL-size hero panels — IDLE TRANSPORTS (the guild's own idle
+           craft, live) over LEASED (empty scaffold — leasing is Phase 4, §6). Each is a fixed-size
+           ops-hero whose body scrolls internally (min-height:0 + ops-herobody{overflow-y:auto}), so
+           neither resizes as craft are added (§2, load-bearing). The old "Fleet" zhead and the .m
+           subtitles are dropped; each bare zsub carries its own top padding. -->
+      <div class="ops-herostack">
+        <aside class="ops-hero">
+          <div class="zsub bare">Idle Transports</div>
+          <!-- filled by operations-tab-wire (open + every poll): the guild's idle guild-transports,
+               grouped by system, each craft a collapsible tab (short type + system → maintenance %
+               + an inert, disabled Dispatch). -->
+          <div class="ops-herobody" id="ops-tp-list"></div>
+        </aside>
+        <aside class="ops-hero">
+          <div class="zsub bare">Leased</div>
+          <div class="ops-herobody">
+            <div class="ops-empty">
+              <div class="glyph">&#9673;</div>
+              <h3>No transports leased</h3>
+              <p>Transports you lease to the Syndicate wait here, ready to recall. Leasing arrives with guild transport (Phase&nbsp;4).</p>
+            </div>
           </div>
-        </div>
-      </aside>
+        </aside>
+      </div>
 
       <!-- CENTRE: IN TRANSIT (live) on top; DEPLOYED + IDLE (scaffolds) below -->
       <div class="ops-centre">
@@ -5908,8 +5964,16 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   function totalsOf(guild){ return (guild && guild.stockpiles) || {}; }
   // Per-system piles fed the retired SELL basket (which system a good sold from); the held ORDER
   // stores no origin — it is picked at finalise (§2) — so the trade card no longer reads them.
+  // A display name from an engine id. Splits on '_' AND at a camelCase boundary, so a snake_case
+  // good (`battery_cells` → "Battery Cells") and a camelCase asset/vehicle class (`lightTransport`
+  // → "Light Transport") both read as words. Ground kinds and all-lowercase ids are untouched
+  // (`miner` → "Miner", `spycraft` → "Spycraft"). Pure presentation — it names a thing, it computes
+  // no game number (§18).
   function pretty(key){
-    return String(key).split('_').map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' ');
+    return String(key)
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')   // camelCase → split point (lightTransport → light_Transport)
+      .split('_')
+      .map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' ');
   }
   function fmt(n){ return Math.round(n).toLocaleString('en-US'); }
   function money(n){ return Number(n).toFixed(2); }
@@ -6332,12 +6396,20 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
   function cnPad(n){ return (n < 10 ? '0' : '') + n; }
   // The delivery leg's travel duration to a system, read WHOLE from the per-system route quote
-  // the goods buy already uses (`fuelCost[sysId].travelTicks`); 0 (→ "<1h") when the guild holds
-  // no route to it. The client never sees a distance or a craft speed.
-  function cnDeliveryTicks(guild, sysId){
+  // the goods buy already uses; 0 (→ "<1h") when the guild holds no route to it. The client never
+  // sees a distance or a craft speed (§18).
+  //   - A guild TRANSPORT flies ITSELF in at its own speed, so its leg is the engine's per-class
+  //     `fuelCost[sysId].vehicleTravelTicks[kind]` — NOT the Syndicate hauler estimate (which would
+  //     be wrong for every class but medium). The map's KEY SET is the engine's own list of
+  //     self-delivering craft, so its presence for `kind` is what tells the client this is one.
+  //   - A GROUND asset (miner/factory) rides the hauler, so it reads `travelTicks` as before.
+  // With no kind given it falls back to the hauler leg — the goods-buy behaviour, untouched.
+  function cnDeliveryTicks(guild, sysId, kind){
     var fc = (guild && guild.fuelCost) || {};
     var r = sysId ? fc[sysId] : null;
-    return (r && typeof r.travelTicks === 'number') ? r.travelTicks : 0;
+    if(!r) return 0;
+    if(kind && r.vehicleTravelTicks && typeof r.vehicleTravelTicks[kind] === 'number') return r.vehicleTravelTicks[kind];
+    return (typeof r.travelTicks === 'number') ? r.travelTicks : 0;
   }
   // The Constructed view's own status line (engine refusal / commission-placed), held in T so it
   // survives the ~1s poll re-render. `ok` notes self-clear after a few seconds, like the goods note.
@@ -6360,7 +6432,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       .filter(function(b){ return guild && b.ownerGuildId === guild.id; })
       .map(function(b){
         var bt = (quote[b.assetKind] && quote[b.assetKind].buildTicks) || 0;
-        var deliver = cnDeliveryTicks(guild, b.destinationSystemId);
+        var deliver = cnDeliveryTicks(guild, b.destinationSystemId, b.assetKind);
         return { kind:b.assetKind, remaining:b.ticksRemaining, buildTicks:bt,
                  deliver:deliver, arrive:(b.ticksRemaining || 0) + deliver };
       });
@@ -6455,7 +6527,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var quote = (s && s.assetPurchaseQuote) || {};
     var q = quote[kind]; if(!q) return;
     var dest = guild.homeSystemId;
-    var deliver = cnDeliveryTicks(guild, dest);
+    var deliver = cnDeliveryTicks(guild, dest, kind);
     var buildT = q.buildTicks || 0, price = q.price;
     var issueTick = (s && typeof s.tick === 'number') ? s.tick : null;
     // Affordability pre-check: compare two snapshot values (guild.credits vs the quoted price —
@@ -7278,7 +7350,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     transitSig: '',   // rebuild the IN TRANSIT row structure only when the set of deliveries changes
     expanded: {},     // which rows are expanded (by ship key) — survives a poll's re-render
     idleSig: null,    // last rendered idle signature; null forces a rebuild ('' is a real, empty sig)
-    idleCollapsed: {} // which IDLE groups are collapsed (by group key) — survives a poll's re-render
+    idleCollapsed: {}, // which IDLE groups are collapsed (by group key) — survives a poll's re-render
+    tpSig: null,       // last rendered IDLE-TRANSPORTS signature; null forces a rebuild
+    tpSysCollapsed: {}, // which transport SYSTEM groups are collapsed (default open) — survives a poll
+    tpOpen: {}         // which craft tabs are EXPANDED (default collapsed) — survives a poll
   };
 
   // Own helpers — copies of the Deuterium panel's (its IIFE's are not in scope). They read
@@ -7336,18 +7411,26 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // The manifest carries the carrier identity line (Syndicate — no craft id, §3) and the cargo,
   // itemised `Good: Nu`. A Syndicate BUY is single-good, so today it is one line; the loop keeps
   // the list ready for the mixed cargo a guild transport carries (Phase 4).
-  // AN ASSET DELIVERY (docs/asset-purchase.md — a completed Syndicate build travelling to be minted)
-  // carries no `cargo`; the snapshot marks it with `assetKind` instead. So when that marker is set
-  // the manifest NAMES the asset (one `<kind> asset` row) rather than running the goods loop — the
-  // row head, carrier line, map leg and everything else are byte-for-byte a goods delivery's. The
-  // `.ops-manrow .g` capitalize rule renders `miner asset` as "Miner Asset", `factory asset` as
-  // "Factory Asset". The client PRICES NOTHING here (§5): this is pure presentation of `sh.assetKind`.
+  // AN ASSET / VEHICLE DELIVERY (docs/asset-purchase.md — a completed Syndicate build travelling to
+  // be minted) carries no `cargo`; the snapshot marks it with `assetKind` instead. So when that
+  // marker is set the manifest NAMES the delivered thing (one row) rather than running the goods
+  // loop — the row head, carrier line, map leg and everything else are byte-for-byte a goods
+  // delivery's. A GROUND asset reads "<kind> asset" ("Miner Asset" / "Factory Asset"); a guild
+  // TRANSPORT reads its own name ("Light Transport", NOT "Lighttransport Asset") — a craft is a
+  // Vehicle, not an asset, so it drops the suffix. `craftManifestLabel` splits a camelCase class id
+  // into words for the `.ops-manrow .g` capitalize rule to title-case; the class-vs-asset test is
+  // TP_SHORT's key set (the client's own transport vocabulary). PRICES NOTHING here (§5).
+  function craftManifestLabel(kind){
+    return TP_SHORT.hasOwnProperty(kind)
+      ? String(kind).replace(/([a-z0-9])([A-Z])/g, '$1 $2')   // lightTransport → "light Transport" → (CSS) "Light Transport"
+      : (kind + ' asset');                                    // miner → "miner asset" → (CSS) "Miner Asset"
+  }
   function rowHtml(sh){
     var key = shipKey(sh);
     var open = O.expanded[key] === true;
     var cargo = sh.cargo || {};
     var manRows = sh.assetKind
-      ? '<div class="ops-manrow"><span class="g">' + esc(sh.assetKind) + ' asset</span></div>'
+      ? '<div class="ops-manrow"><span class="g">' + esc(craftManifestLabel(sh.assetKind)) + '</span></div>'
       : Object.keys(cargo).sort().map(function(g){
           return '<div class="ops-manrow"><span class="g">' + esc(g) + '</span><span class="q">' + fmt(cargo[g]) + ' Nu</span></div>';
         }).join('') || '<div class="ops-manrow ops-manempty">No cargo listed.</div>';
@@ -7514,9 +7597,104 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     host.innerHTML = sysIds.map(function(sid){ return systemHtml(sid, bySys[sid]); }).join('');
   }
 
-  // The whole hub, run on open and on every poll while open. IN TRANSIT and IDLE are live; the
-  // LEASED / DEPLOYED scaffolds are static markup, so there is nothing else to re-read.
-  function render(){ var g = meGuild(); renderTransit(g, snap()); renderIdle(g); }
+  // ---- IDLE TRANSPORTS (§5 / design.md §15.4): the guild's own idle guild-transports -----------
+  // Read straight off the polled snapshot's per-guild `vehicles` rows (status 'idle'); the browser
+  // never re-derives "idle" or a class stat — the engine decides (§18). Grouped by SYSTEM (the IDLE
+  // tree idiom), each craft its own collapsible tab.
+  //
+  // The four guild-transport class ids → their SHORT tab label (per the OPERATIONS mockup). Display
+  // vocabulary only — the same kind the IDLE section's KIND_ORDER is — never a game number (§18). An
+  // unknown class falls back to its camelCase words so an added class still reads.
+  var TP_SHORT = { lightTransport: 'Light', mediumTransport: 'Medium', heavyTransport: 'Heavy', spycraft: 'Spy' };
+  function tpShort(cls){
+    return TP_SHORT[cls] || String(cls == null ? '' : cls)
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/^./, function(c){ return c.toUpperCase(); });
+  }
+
+  function myIdleTransports(guild){
+    return ((guild && guild.vehicles) || []).filter(function(v){ return v.status === 'idle'; });
+  }
+
+  // A craft tab: collapsed head = short type + system; expanded body = maintenance % + the inert
+  // (disabled) Dispatch button. Default COLLAPSED (the panel stays a compact roster); expansion is
+  // remembered in O.tpOpen so a signature-guarded rebuild honours it. Maintenance is the engine's
+  // own `maintenanceCondition` as a percent — inert this slice (reads 100%), rendered not computed.
+  function tpCraftHtml(v){
+    var key = 'tp:' + v.id;
+    var open = O.tpOpen[key] === true;
+    var maint = Math.round((typeof v.maintenanceCondition === 'number' ? v.maintenanceCondition : 0) * 100);
+    return '<div class="ops-tp-craft' + (open ? '' : ' collapsed') + '" data-tp-key="' + esc(key) + '">'
+      +   '<div class="ops-tp-crafthd">'
+      +     '<span class="ops-idle-caret">&#9660;</span>'
+      +     '<span class="ttype">' + esc(tpShort(v['class'])) + '</span>'
+      +     '<span class="tsys">' + esc(systemName(v.systemId)) + '</span>'
+      +   '</div>'
+      +   '<div class="ops-tp-craftbody">'
+      +     '<div class="ops-tp-stat"><span class="k">Maintenance</span><span class="v">' + maint + '%</span></div>'
+      +     '<button class="ops-tp-dispatch" type="button" disabled title="Dispatch arrives with movement (next slice)">Dispatch</button>'
+      +   '</div>'
+      + '</div>';
+  }
+
+  // A transport SYSTEM group: default OPEN (collapse remembered in O.tpSysCollapsed), body is the
+  // system's craft tabs sorted by id (the deterministic mint order).
+  function tpSystemHtml(sysId, craft){
+    var key = 'tpsys:' + sysId;
+    var collapsed = O.tpSysCollapsed[key] === true;
+    var body = craft.slice()
+      .sort(function(x, y){ return x.id < y.id ? -1 : (x.id > y.id ? 1 : 0); })
+      .map(tpCraftHtml).join('');
+    return '<div class="ops-tp-sys' + (collapsed ? ' collapsed' : '') + '" data-tp-key="' + esc(key) + '">'
+      +   '<div class="ops-tp-syshd">'
+      +     '<span class="ops-idle-caret">&#9660;</span>'
+      +     '<span class="nm">' + esc(systemName(sysId)) + '</span>'
+      +     '<span class="ct">' + craft.length + ' idle</span>'
+      +   '</div>'
+      +   '<div class="ops-tp-sysbody">' + body + '</div>'
+      + '</div>';
+  }
+
+  // Rebuild the tree only when the idle-transport set (id + where each sits + status + shown
+  // maintenance) changes — the IN TRANSIT / IDLE signature discipline, so a poll never discards the
+  // reader's collapse/expand state. A bought craft minting (it appears) or a future dispatch (it
+  // leaves idle) shifts the signature and rebuilds; state for groups/craft that still exist survives.
+  function renderIdleTransports(guild){
+    var host = el('ops-tp-list'); if(!host) return;
+    var craft = myIdleTransports(guild);
+
+    var sig = craft.map(function(v){
+      return v.id + '@' + v.systemId + ':' + v.status + ':' + Math.round((v.maintenanceCondition || 0) * 100);
+    }).sort().join('|');
+    if(sig === O.tpSig) return;
+    O.tpSig = sig;
+
+    if(!craft.length){
+      O.tpSysCollapsed = {}; O.tpOpen = {};
+      host.innerHTML = '<div class="ops-empty"><div class="glyph">&#9673;</div>'
+        + '<h3>No idle transports</h3>'
+        + '<p>Guild transports you build or buy arrive here idle, ready to dispatch. Commission one from Trade &middot; Constructed.</p></div>';
+      return;
+    }
+
+    var bySys = {};
+    craft.forEach(function(v){ (bySys[v.systemId] = bySys[v.systemId] || []).push(v); });
+    var sysIds = Object.keys(bySys).sort(function(x, y){
+      var nx = String(systemName(x)), ny = String(systemName(y));
+      return nx < ny ? -1 : (nx > ny ? 1 : 0);
+    });
+
+    // prune collapse/expand state to the groups/craft that still exist, then render
+    var keepSys = {}, keepOpen = {};
+    sysIds.forEach(function(sid){ var sk = 'tpsys:' + sid; if(O.tpSysCollapsed[sk]) keepSys[sk] = true; });
+    craft.forEach(function(v){ var ck = 'tp:' + v.id; if(O.tpOpen[ck]) keepOpen[ck] = true; });
+    O.tpSysCollapsed = keepSys; O.tpOpen = keepOpen;
+
+    host.innerHTML = sysIds.map(function(sid){ return tpSystemHtml(sid, bySys[sid]); }).join('');
+  }
+
+  // The whole hub, run on open and on every poll while open. IN TRANSIT, IDLE and IDLE TRANSPORTS
+  // are live; the LEASED / DEPLOYED scaffolds are static markup, so there is nothing else to re-read.
+  function render(){ var g = meGuild(); renderTransit(g, snap()); renderIdle(g); renderIdleTransports(g); }
 
   // Delegated once on the panel. Two independent toggles:
   //  - an IN TRANSIT row expands its manifest (state in O.expanded, by ship key);
@@ -7534,6 +7712,22 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       if(gkey){ if(isCollapsed) O.idleCollapsed[gkey] = true; else delete O.idleCollapsed[gkey]; }
       return;
     }
+    // IDLE TRANSPORTS collapse toggles — mirrors the IDLE handler above, for the transport tree: a
+    // SYSTEM group (default open, collapse remembered) and a CRAFT tab (default collapsed, expansion
+    // remembered). Both flip a `collapsed` class; CSS hides the body + rotates the caret, so this
+    // only records intent for the signature-guarded rebuild to honour.
+    var tphd = e.target.closest('.ops-tp-syshd, .ops-tp-crafthd');
+    if(tphd){
+      var isSys = tphd.classList.contains('ops-tp-syshd');
+      var tgrp = tphd.closest(isSys ? '.ops-tp-sys' : '.ops-tp-craft'); if(!tgrp) return;
+      var tkey = tgrp.getAttribute('data-tp-key');
+      var nowCollapsed = tgrp.classList.toggle('collapsed');
+      if(tkey){
+        if(isSys){ if(nowCollapsed) O.tpSysCollapsed[tkey] = true; else delete O.tpSysCollapsed[tkey]; }
+        else { if(nowCollapsed) delete O.tpOpen[tkey]; else O.tpOpen[tkey] = true; }
+      }
+      return;
+    }
     var row = e.target.closest('.ops-row'); if(!row) return;
     var key = row.getAttribute('data-key');
     var isOpen = row.classList.toggle('open');
@@ -7543,7 +7737,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // The shell drives these three, mirroring the Deuterium dashboard's lifecycle: open, close, and
   // every poll — so an open hub re-reads each snapshot (new deliveries appear, bars advance, ETAs
   // decrement) driven by its own panel's lifecycle.
-  window.__opsOpen = function(){ O.open = true; O.transitSig = ''; O.idleSig = null; render(); };
+  window.__opsOpen = function(){ O.open = true; O.transitSig = ''; O.idleSig = null; O.tpSig = null; render(); };
   window.__opsClosed = function(){ O.open = false; };
   window.__opsRefresh = function(){ if(O.open) render(); };
 })();
