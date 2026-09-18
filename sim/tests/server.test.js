@@ -1323,6 +1323,65 @@ test('POST /tick advances one tick and production mints', async () => {
   assert.equal(t.body.guilds[0].stockpiles.titanium, 10);
 });
 
+// --- the vehicle spawn/remove primitive (design.md §15.4, roadmap 2.2 spawn) ----------------
+
+test('POST /admin/vehicle/spawn mints an idle craft; /admin/vehicle/remove destroys it; neither ticks', async () => {
+  await reset();
+  await found();
+  // Spawn a craft at the guild's home system landmark.
+  const spawn = await req('POST', '/admin/vehicle/spawn', {
+    guildId: 'player-guild', class: 'lightTransport', location: { landmarkKind: 'system', landmarkId: HOME_SYSTEM },
+  });
+  assert.equal(spawn.status, 200);
+  assert.equal(spawn.body.accepted, true);
+  assert.equal(spawn.body.snapshot.tick, 0, 'spawn must not tick');
+  const vehicles = spawn.body.snapshot.guilds[0].vehicles;
+  assert.equal(vehicles.length, 1);
+  assert.equal(vehicles[0].id, 'vehicle_player-guild_lightTransport_01');
+  assert.equal(vehicles[0].status, 'idle');
+  assert.deepEqual(vehicles[0].location, { landmarkKind: 'system', landmarkId: HOME_SYSTEM });
+
+  // Remove it by id — the row is gone.
+  const rm = await req('POST', '/admin/vehicle/remove', {
+    guildId: 'player-guild', vehicleId: 'vehicle_player-guild_lightTransport_01',
+  });
+  assert.equal(rm.status, 200);
+  assert.equal(rm.body.accepted, true);
+  assert.equal(rm.body.snapshot.guilds[0].vehicles.length, 0);
+
+  // The next spawn does NOT reuse the removed id (serial monotonic) — it is _02.
+  const again = await req('POST', '/admin/vehicle/spawn', {
+    guildId: 'player-guild', class: 'lightTransport', location: { landmarkKind: 'system', landmarkId: HOME_SYSTEM },
+  });
+  assert.equal(again.body.snapshot.guilds[0].vehicles[0].id, 'vehicle_player-guild_lightTransport_02');
+});
+
+test('POST /admin/vehicle/spawn refuses a bad location (200, accepted:false) and 400s a malformed body', async () => {
+  await reset();
+  await found();
+  // A resolvable-but-wrong location form → the engine refuses (200, accepted:false).
+  const refused = await req('POST', '/admin/vehicle/spawn', {
+    guildId: 'player-guild', class: 'lightTransport', location: { landmarkKind: 'system', landmarkId: 'sys_not_real' },
+  });
+  assert.equal(refused.status, 200);
+  assert.equal(refused.body.accepted, false);
+  assert.match(refused.body.reason, /location/);
+  assert.equal(refused.body.snapshot.guilds[0].vehicles.length, 0, 'a refused spawn mints nothing');
+  // A structurally malformed request (no class) is a 400 — the constructor refuses to build it.
+  const bad = await req('POST', '/admin/vehicle/spawn', { guildId: 'player-guild', location: { landmarkKind: 'system', landmarkId: HOME_SYSTEM } });
+  assert.equal(bad.status, 400);
+  assert.match(bad.body.error, /malformed spawn-vehicle/);
+});
+
+test('POST /admin/vehicle/remove refuses an unknown craft id (200, accepted:false)', async () => {
+  await reset();
+  await found();
+  const rm = await req('POST', '/admin/vehicle/remove', { guildId: 'player-guild', vehicleId: 'vehicle_player-guild_lightTransport_99' });
+  assert.equal(rm.status, 200);
+  assert.equal(rm.body.accepted, false);
+  assert.match(rm.body.reason, /owns no vehicle/);
+});
+
 // --- rejections are 200 with a reason, not errors --------------------------
 
 test('an occupied node is rejected (200, accepted:false, reason)', async () => {

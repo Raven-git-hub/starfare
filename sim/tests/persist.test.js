@@ -26,6 +26,7 @@ const { advance } = require('../run.js');
 const {
   validateAction, applyAction,
   createFoundGuildAction, createEstablishVentureAction, createSetProductionProfileAction,
+  createSpawnVehicleAction, createRemoveVehicleAction,
 } = require('../actions.js');
 const { hashState } = require('../serialize.js');
 const { saveState, appendJournal, clearJournal, loadOrInit, journalPath } = require('../persist.js');
@@ -133,6 +134,32 @@ test('crash window: actions after the last save survive via journal replay', (t)
 
   assert.equal(hashState(recovered), hashState(control)); // zero action loss
   assert.equal(recovered.guilds[0].ventures.length, 2);   // the crash-window mine is back
+});
+
+// --- 2b. the spawn/remove primitive replays byte-identically (2.2 spawn) ----
+
+test('spawn→remove→spawn journalled through the server protocol replays hash-identical', (t) => {
+  const dir = withTmpDir(t);
+  // Found + one tick (snapshot @1 bakes the guild in), THEN the crash-window: spawn a craft at
+  // the home system, spawn another at a bare hex, remove the first (destruction, serial NOT
+  // decremented), spawn a third — all journalled @tick 1, no further save. On recovery the three
+  // survivors and, crucially, the third's id (_03, never reissuing the removed _01) must come back
+  // exactly — the monotonic-serial guarantee across restart.
+  const original = runScripted(dir, [
+    { action: FOUND },
+    { tick: true },
+    { action: createSpawnVehicleAction({ guildId: 'player-guild', class: 'lightTransport', location: { landmarkKind: 'system', landmarkId: HOME_SYSTEM } }) },
+    { action: createSpawnVehicleAction({ guildId: 'player-guild', class: 'spycraft', location: { q: 0, r: 0 }, condition: 0.5 }) },
+    { action: createRemoveVehicleAction({ guildId: 'player-guild', vehicleId: 'vehicle_player-guild_lightTransport_01' }) },
+    { action: createSpawnVehicleAction({ guildId: 'player-guild', class: 'heavyTransport', location: { landmarkKind: 'outpost', landmarkId: 'out_01' } }) },
+  ]);
+
+  const recovered = loadOrInit(dir, createZeroState);
+
+  assert.equal(hashState(recovered), hashState(original));
+  const vehicles = recovered.guilds[0].vehicles;
+  assert.deepEqual(vehicles.map((v) => v.id), ['vehicle_player-guild_spycraft_02', 'vehicle_player-guild_heavyTransport_03']);
+  assert.equal(recovered.guilds[0].vehicleSerial, 3, 'the serial survived restart and never reissued _01');
 });
 
 // --- 3. double-apply guard (the WAL trap this design exists to avoid) -------

@@ -42,11 +42,13 @@ const {
 const {
   LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT, SPYCRAFT,
   VEHICLE_CLASSES, BUILDABLE_VEHICLE_KINDS, VEHICLE_SPECS, VEHICLE_STATUSES,
-  isVehicleClass, vehicleSpec, vehicleId, nextVehicleNumber,
+  isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation, vehicleCoords,
 } = require('../vehicles.js');
 const { MINER } = require('../assets.js');
+const { getSystem, getOutpost } = require('../seed.js');
 const {
   validateAction, applyAction, createBuyAssetFromSyndicateAction, createCommissionBuildAction,
+  createSpawnVehicleAction, createRemoveVehicleAction,
 } = require('../actions.js');
 const { starterHomeAtDistance } = require('./waystation-fixtures.js');
 
@@ -106,17 +108,14 @@ test('isVehicleClass / vehicleSpec answer for the four classes and refuse anythi
   assert.equal(vehicleSpec('galleon'), null);
 });
 
-test('the id scheme mirrors assets: vehicle_<guild>_<class>_NN, and nextVehicleNumber counts per class', () => {
+test('the id scheme mirrors assets: vehicle_<guild>_<class>_NN, NN from the per-guild mint serial', () => {
   assert.equal(vehicleId('g1', LIGHT_TRANSPORT, 1), 'vehicle_g1_lightTransport_01');
   assert.equal(vehicleId('g1', SPYCRAFT, 12), 'vehicle_g1_spycraft_12');
-  const guild = { vehicles: [
-    { id: vehicleId('g1', LIGHT_TRANSPORT, 1), class: LIGHT_TRANSPORT },
-    { id: vehicleId('g1', LIGHT_TRANSPORT, 2), class: LIGHT_TRANSPORT },
-    { id: vehicleId('g1', SPYCRAFT, 1), class: SPYCRAFT },
-  ] };
-  assert.equal(nextVehicleNumber(guild, LIGHT_TRANSPORT), 3, 'one above the highest light suffix');
-  assert.equal(nextVehicleNumber(guild, SPYCRAFT), 2);
-  assert.equal(nextVehicleNumber(guild, MEDIUM_TRANSPORT), 1, 'none owned -> 1');
+  // nextVehicleSerial reads the guild's STORED counter (design.md §15.4 "Ids never repeat"), NOT
+  // the highest live suffix — so a removed craft's number is never re-derived and reissued.
+  assert.equal(nextVehicleSerial({}), 1, 'no counter yet -> 1');
+  assert.equal(nextVehicleSerial({ vehicleSerial: 0 }), 1);
+  assert.equal(nextVehicleSerial({ vehicleSerial: 5 }), 6, 'one above the stored counter, spanning classes');
 });
 
 // --- 2. the catalog: ship bills beside the ground bills, under the same tripwire --------------
@@ -218,8 +217,8 @@ test('buy end-to-end: found → buy → build → deliver → an idle transport 
   assert.equal(vehicles.length, 1, 'exactly one transport minted');
   const v = vehicles[0];
   assert.equal(v.class, MEDIUM_TRANSPORT);
-  assert.equal(v.id, 'vehicle_g1_mediumTransport_01', 'a fresh stable id from the per-(guild, class) sequence');
-  assert.equal(v.systemId, DEST, 'minted at the destination system');
+  assert.equal(v.id, 'vehicle_g1_mediumTransport_01', 'a fresh stable id from the per-guild mint serial');
+  assert.deepEqual(v.location, { landmarkKind: 'system', landmarkId: DEST }, 'minted at the destination system landmark');
   assert.equal(v.status, 'idle', 'minted idle — nothing moves it this slice');
   assert.equal(v.maintenanceCondition, 1, 'new = full (inert)');
   assert.equal(v.speed, VEHICLE_SPECS[MEDIUM_TRANSPORT].speed);
@@ -230,7 +229,8 @@ test('buy end-to-end: found → buy → build → deliver → an idle transport 
   // The snapshot's per-guild vehicles row mirrors the asset rows.
   const snapVehicles = buildSnapshot(s).guilds[0].vehicles;
   assert.deepEqual(snapVehicles, [{
-    id: 'vehicle_g1_mediumTransport_01', class: MEDIUM_TRANSPORT, systemId: DEST,
+    id: 'vehicle_g1_mediumTransport_01', class: MEDIUM_TRANSPORT,
+    location: { landmarkKind: 'system', landmarkId: DEST },
     maintenanceCondition: 1, status: 'idle',
   }]);
   assert.deepEqual(checkInvariants(s, s.tick), []);
@@ -280,7 +280,7 @@ test('build: a dockyard consumes the ship bill from its own system and mints an 
   const vehicles = s.guilds[0].vehicles;
   assert.equal(vehicles.length, 1, 'one transport minted by the dockyard');
   assert.equal(vehicles[0].class, LIGHT_TRANSPORT);
-  assert.equal(vehicles[0].systemId, YARD_SYS, 'minted idle at the dockyard\'s own system');
+  assert.deepEqual(vehicles[0].location, { landmarkKind: 'system', landmarkId: YARD_SYS }, 'minted idle at the dockyard\'s own system landmark');
   assert.equal(vehicles[0].status, 'idle');
   assert.equal(vehicles[0].id, 'vehicle_g1_lightTransport_01');
   assert.equal((s.guilds[0].buildQueue || s.guilds[0].ventures[0].buildQueue).length, 0, 'the queue head shifted off');
@@ -312,13 +312,14 @@ test('validate: commissionBuild and buyAssetFromSyndicate both accept the four t
 
 // --- 5. the integrity invariant ----------------------------------------------------------------
 
-test('checkVehicleIntegrity catches a bad class, an unresolvable system, a bad condition, an illegal status', () => {
+test('checkVehicleIntegrity catches a bad class, an unresolvable location, a bad condition, an illegal status', () => {
   const mk = (over) => createState({
     guilds: [{
-      id: 'g1', credits: 0, fuelHoard: 0,
+      id: 'g1', credits: 0, fuelHoard: 0, vehicleSerial: 1,
       vehicles: [{
-        id: 'v1', ownerGuildId: 'g1', class: LIGHT_TRANSPORT, speed: 105, capacity: 10000,
-        defenseRating: 10, fuelCostToRun: 0.5, systemId: DEST, maintenanceCondition: 1, status: 'idle', ...over,
+        id: 'vehicle_g1_lightTransport_01', ownerGuildId: 'g1', class: LIGHT_TRANSPORT, speed: 105, capacity: 10000,
+        defenseRating: 10, fuelCostToRun: 0.5, location: { landmarkKind: 'system', landmarkId: DEST },
+        maintenanceCondition: 1, status: 'idle', ...over,
       }],
     }],
     reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 },
@@ -328,12 +329,148 @@ test('checkVehicleIntegrity catches a bad class, an unresolvable system, a bad c
 
   const ruleOf = (over) => checkInvariants(mk(over), 0).map((x) => x.rule);
   assert.ok(ruleOf({ class: 'galleon' }).some((r) => r.startsWith('vehicle-class-known')), 'unknown class trips');
-  assert.ok(ruleOf({ systemId: 'sys_not_real' }).includes('vehicle-system-resolves'), 'unresolvable system trips');
+  assert.ok(ruleOf({ location: { landmarkKind: 'system', landmarkId: 'sys_not_real' } }).includes('vehicle-location-resolves'), 'unresolvable landmark trips');
   assert.ok(ruleOf({ maintenanceCondition: 1.5 }).includes('vehicle-condition-in-range'), 'out-of-range condition trips');
   assert.ok(ruleOf({ maintenanceCondition: 'x' }).includes('vehicle-condition-in-range'), 'non-number condition trips');
   assert.ok(ruleOf({ status: 'parked' }).includes('vehicle-status-legal'), 'illegal status trips');
   // The legal set is the design pair; both pass membership (this slice mints only idle).
   assert.deepEqual(VEHICLE_STATUSES, ['idle', 'inTransit']);
+});
+
+// --- 5b. the location model (landmark or bare hex) + its selector ------------------------------
+
+test('resolveVehicleLocation accepts a system, an outpost, and an in-bounds hex; rejects the rest', () => {
+  const sys = getSystem(DEST);
+  const out = getOutpost('out_01');
+  // A system landmark resolves to the system's coords.
+  assert.deepEqual(resolveVehicleLocation({ landmarkKind: 'system', landmarkId: DEST }), { form: 'landmark', coords: { q: sys.coords.q, r: sys.coords.r } });
+  // An outpost is an EQUAL anchor (not deep space) and resolves to its coords.
+  assert.deepEqual(resolveVehicleLocation({ landmarkKind: 'outpost', landmarkId: 'out_01' }), { form: 'landmark', coords: { q: out.coords.q, r: out.coords.r } });
+  // A bare in-bounds hex resolves to itself (the Citadel origin is in-bounds).
+  assert.deepEqual(resolveVehicleLocation({ q: 0, r: 0 }), { form: 'hex', coords: { q: 0, r: 0 } });
+
+  // Corruption, every shape → null:
+  assert.equal(resolveVehicleLocation(null), null, 'no location');
+  assert.equal(resolveVehicleLocation({}), null, 'both-null (neither form)');
+  assert.equal(resolveVehicleLocation({ landmarkKind: 'system', landmarkId: DEST, q: 0, r: 0 }), null, 'both-set');
+  assert.equal(resolveVehicleLocation({ landmarkKind: 'system', landmarkId: 'sys_not_real' }), null, 'unresolvable landmark');
+  assert.equal(resolveVehicleLocation({ landmarkKind: 'citadel', landmarkId: 'citadel' }), null, 'citadel is not a transport anchor');
+  assert.equal(resolveVehicleLocation({ q: 100000, r: 100000 }), null, 'off-lattice hex');
+  assert.equal(resolveVehicleLocation({ q: 1.5, r: 0 }), null, 'a non-integer is not a hex');
+});
+
+test('vehicleCoords resolves ANY vehicle location to coords; the invariant rejects both-set, both-null, off-lattice', () => {
+  const sys = getSystem(DEST);
+  assert.deepEqual(vehicleCoords({ location: { landmarkKind: 'system', landmarkId: DEST } }), { q: sys.coords.q, r: sys.coords.r });
+  assert.deepEqual(vehicleCoords({ location: { q: 0, r: 0 } }), { q: 0, r: 0 });
+  assert.equal(vehicleCoords({ location: {} }), null);
+
+  // The invariant accepts an outpost berth and a bare hex, and trips on the three corrupt shapes.
+  const mk = (location) => createState({
+    guilds: [{
+      id: 'g1', credits: 0, fuelHoard: 0, vehicleSerial: 1,
+      vehicles: [{
+        id: 'vehicle_g1_lightTransport_01', ownerGuildId: 'g1', class: LIGHT_TRANSPORT, speed: 105, capacity: 10000,
+        defenseRating: 10, fuelCostToRun: 0.5, location, maintenanceCondition: 1, status: 'idle',
+      }],
+    }],
+    reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 },
+  });
+  assert.deepEqual(checkInvariants(mk({ landmarkKind: 'outpost', landmarkId: 'out_01' }), 0), [], 'an outpost berth is legal');
+  assert.deepEqual(checkInvariants(mk({ q: 0, r: 0 }), 0), [], 'a bare in-bounds hex is legal');
+  const trips = (loc) => checkInvariants(mk(loc), 0).map((x) => x.rule).includes('vehicle-location-resolves');
+  assert.ok(trips({ landmarkKind: 'system', landmarkId: DEST, q: 0, r: 0 }), 'both-set trips');
+  assert.ok(trips({}), 'both-null trips');
+  assert.ok(trips({ q: 999999, r: 999999 }), 'off-lattice hex trips');
+});
+
+// --- 5c. the spawn / remove primitive (design.md §15.4, roadmap 2.2 spawn) ---------------------
+
+// A bare guild with no home claim — spawn/remove touch no credits/fuel/points/reputation/claims,
+// so nothing needs seating; the ledger is balanced so createState opens invariant-clean.
+function spawnState() {
+  return createState({
+    guilds: [{ id: 'g1', credits: 0, fuelHoard: 0 }],
+    reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 },
+  });
+}
+const spawn = (over = {}) => createSpawnVehicleAction({
+  guildId: 'g1', class: LIGHT_TRANSPORT, location: { landmarkKind: 'system', landmarkId: DEST }, ...over,
+});
+
+test('spawn: at a system, an outpost, and a bare hex each mints an idle craft with the serial id', () => {
+  let s = spawnState();
+  s = accept(s, createSpawnVehicleAction({ guildId: 'g1', class: LIGHT_TRANSPORT, location: { landmarkKind: 'system', landmarkId: DEST } }));
+  s = accept(s, createSpawnVehicleAction({ guildId: 'g1', class: HEAVY_TRANSPORT, location: { landmarkKind: 'outpost', landmarkId: 'out_01' } }));
+  s = accept(s, createSpawnVehicleAction({ guildId: 'g1', class: SPYCRAFT, location: { q: 0, r: 0 } }));
+  const vs = s.guilds[0].vehicles;
+  assert.equal(vs.length, 3);
+  // The serial is per-GUILD and spans classes: 01, 02, 03 regardless of class.
+  assert.deepEqual(vs.map((v) => v.id), [
+    'vehicle_g1_lightTransport_01', 'vehicle_g1_heavyTransport_02', 'vehicle_g1_spycraft_03',
+  ]);
+  assert.equal(s.guilds[0].vehicleSerial, 3);
+  for (const v of vs) { assert.equal(v.status, 'idle', 'minted idle'); assert.equal(v.maintenanceCondition, 1, 'default new'); }
+  assert.deepEqual(vs[0].location, { landmarkKind: 'system', landmarkId: DEST });
+  assert.deepEqual(vs[1].location, { landmarkKind: 'outpost', landmarkId: 'out_01' });
+  assert.deepEqual(vs[2].location, { q: 0, r: 0 });
+  assert.equal(vs[2].capacity, 0, 'a spawned spycraft carries no cargo');
+  // Spawn moves NOTHING else — no credits/fuel change, no asset minted, invariants clean.
+  assert.equal(s.guilds[0].credits, 0);
+  assert.equal(s.guilds[0].fuelHoard, 0);
+  assert.equal((s.guilds[0].assets || []).length, 0);
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('spawn: condition defaults to new and is settable in [0,1]; bad inputs refuse-whole', () => {
+  let s = spawnState();
+  s = accept(s, spawn({ condition: 0.5 }));
+  assert.equal(s.guilds[0].vehicles[0].maintenanceCondition, 0.5, 'the settable condition lands on the craft');
+  const bad = (over) => validateAction(spawnState(), spawn(over)).valid;
+  assert.equal(bad({ condition: 1.5 }), false, 'condition above 1 refused');
+  assert.equal(bad({ condition: -0.1 }), false, 'condition below 0 refused');
+  assert.equal(bad({ class: 'galleon' }), false, 'unknown class refused');
+  assert.equal(bad({ location: { landmarkKind: 'system', landmarkId: 'sys_not_real' } }), false, 'unresolvable location refused');
+  assert.equal(bad({ location: {} }), false, 'no location form refused');
+  assert.equal(bad({ location: { landmarkKind: 'system', landmarkId: DEST, q: 0, r: 0 } }), false, 'both-set location refused');
+  assert.equal(validateAction(spawnState(), createSpawnVehicleAction({ guildId: 'ghost', class: LIGHT_TRANSPORT, location: { landmarkKind: 'system', landmarkId: DEST } })).valid, false, 'unknown guild refused');
+});
+
+test('remove: drops the craft by id; the serial does NOT decrement, and an unknown id refuses', () => {
+  let s = spawnState();
+  s = accept(s, spawn());
+  const id = s.guilds[0].vehicles[0].id;
+  assert.equal(validateAction(s, createRemoveVehicleAction({ guildId: 'g1', vehicleId: 'vehicle_g1_lightTransport_99' })).valid, false, 'unknown id refused');
+  s = accept(s, createRemoveVehicleAction({ guildId: 'g1', vehicleId: id }));
+  assert.equal(s.guilds[0].vehicles.length, 0, 'the row is dropped — destruction, not recall');
+  assert.equal(s.guilds[0].vehicleSerial, 1, 'the serial is untouched by removal');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('spawn→remove→spawn: the removed id is never reissued (serial monotonic, design.md §15.4)', () => {
+  let s = spawnState();
+  s = accept(s, spawn()); // _01
+  const firstId = s.guilds[0].vehicles[0].id;
+  s = accept(s, createRemoveVehicleAction({ guildId: 'g1', vehicleId: firstId }));
+  s = accept(s, spawn()); // _02, NOT _01 — the max-based derivation would have reissued _01
+  const vs = s.guilds[0].vehicles;
+  assert.equal(vs.length, 1);
+  assert.notEqual(vs[0].id, firstId, 'the removed id is not reissued');
+  assert.equal(vs[0].id, 'vehicle_g1_lightTransport_02');
+  assert.equal(s.guilds[0].vehicleSerial, 2);
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('determinism: a spawn→remove→spawn sequence run twice is byte-identical (invariant 9)', () => {
+  const run = () => {
+    let s = spawnState();
+    s = accept(s, createSpawnVehicleAction({ guildId: 'g1', class: HEAVY_TRANSPORT, location: { landmarkKind: 'outpost', landmarkId: 'out_01' } }));
+    s = accept(s, createSpawnVehicleAction({ guildId: 'g1', class: SPYCRAFT, location: { q: 0, r: 0 }, condition: 0.25 }));
+    s = accept(s, createRemoveVehicleAction({ guildId: 'g1', vehicleId: 'vehicle_g1_heavyTransport_01' }));
+    s = accept(s, spawn());
+    return s;
+  };
+  assert.equal(hashState(run()), hashState(run()));
 });
 
 // --- 6. determinism ----------------------------------------------------------------------------

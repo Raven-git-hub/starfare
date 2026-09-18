@@ -28,7 +28,7 @@ const { addStock, getStock } = require('./stock.js');
 const { createAsset, createVehicle } = require('./state.js');
 const { assetId, nextAssetNumber } = require('./assets.js');
 const {
-  isVehicleClass, vehicleId, nextVehicleNumber, vehicleSpec,
+  isVehicleClass, vehicleId, nextVehicleSerial, vehicleSpec,
 } = require('./vehicles.js');
 const { assetBill, BUILD_TICKS } = require('./asset-recipes.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
@@ -257,19 +257,26 @@ function refineDeuterium(state, guild) {
 // (buildDockyards, below) and the Syndicate delivery's arrival (stepArrivals) — route through
 // here, so the branch and the duplicate-id tripwire live once. It BRANCHES on the kind:
 //   - a VEHICLE class → mint a Vehicle into `guild.vehicles`, stamping the per-class spec
-//     (sim/vehicles.js VEHICLE_SPECS) + `systemId`; the id continues the per-(guild, class)
-//     `vehicle_<guild>_<class>_NN` sequence.
+//     (sim/vehicles.js VEHICLE_SPECS) + a SYSTEM-LANDMARK location for `systemId` (a bought/
+//     built craft always lands at a system — design.md §15.4); the id's `NN` is the per-GUILD
+//     mint serial (`guild.vehicleSerial`, bumped here), so a removed id is never reissued.
 //   - a GROUND kind (miner/factory) → mint an Asset into `guild.assets` (unchanged behaviour):
 //     the `asset_<guild>_<kind>_NN` sequence.
 // The finished thing is IDLE — referenced by no venture (assets) / carrying no leg (vehicles) —
 // which is derived, so it stores no status flag beyond the vehicle's default `idle`.
 //
-// THE DUPLICATE-ID TRIPWIRE (rule 4) holds for both families: a minted id cannot collide (max + 1
-// is above every existing suffix, and neither assets nor vehicles are deleted this slice), so a
-// hit means the id scheme itself has been corrupted — halt loudly rather than share an id.
+// THE DUPLICATE-ID TRIPWIRE (rule 4) holds for both families: a minted id cannot collide (the
+// vehicle serial only ever climbs; the asset max + 1 is above every existing suffix), so a hit
+// means the id scheme itself has been corrupted — halt loudly rather than share an id.
 function mintFinishedKind(guild, kind, systemId) {
   if (isVehicleClass(kind)) {
-    const id = vehicleId(guild.id, kind, nextVehicleNumber(guild, kind));
+    // Bump the per-guild serial and mint from it (design.md §15.4 "Ids never repeat"): the
+    // caller writes the new value back so it survives removal, which the max-based derivation
+    // could not. Two emissions in one tick get distinct ids because each bump lands before the
+    // next read.
+    const serial = nextVehicleSerial(guild);
+    guild.vehicleSerial = serial;
+    const id = vehicleId(guild.id, kind, serial);
     if (!Array.isArray(guild.vehicles)) guild.vehicles = [];
     if (guild.vehicles.some((v) => v.id === id)) {
       throw new Error(`mintFinishedKind: guild ${guild.id} minted duplicate vehicle id ${id} — id sequence corrupted`);
@@ -283,7 +290,9 @@ function mintFinishedKind(guild, kind, systemId) {
       capacity: spec.capacity,       // spycraft's 0 is legal — createVehicle checks !== undefined
       defenseRating: spec.defenseRating,
       fuelCostToRun: spec.fuelCostToRun,
-      systemId,
+      // A bought/built craft lands at a SYSTEM (design.md §15.4) — a system-landmark location,
+      // the generalisation of the shipped scalar `systemId`.
+      location: { landmarkKind: 'system', landmarkId: systemId },
     }));
     return;
   }

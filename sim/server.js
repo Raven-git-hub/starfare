@@ -82,7 +82,9 @@ const { join, resolve, sep, extname } = require('node:path');
 
 const { createZeroState } = require('./scenarios/zero-state.js');
 const { advance } = require('./run.js');
-const { validateAction, applyAction } = require('./actions.js');
+const {
+  validateAction, applyAction, createSpawnVehicleAction, createRemoveVehicleAction,
+} = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
 const { saveState, appendJournal, clearJournal, loadOrInit, saveSeed, loadSeed, deleteGalaxy } = require('./persist.js');
 const { buildSnapshot } = require('./snapshot.js');
@@ -388,6 +390,32 @@ function readBody(req) {
   });
 }
 
+// applyOneAction(action) — intake ONE already-constructed action against live state WITHOUT
+// ticking, in the write-ahead order the durability model needs: validate FIRST, then (when
+// persisting) journal the accepted action BEFORE applying it, so the journal only ever holds
+// actions that took effect and always records them before the effect — a crash between the
+// append and the apply loses nothing (the entry replays on restart). A rejected action leaves
+// state unchanged (accepted:false + reason) and is NOT journalled. Returns the POST /action
+// response payload; an invariant violation / engine throw propagates (the caller maps it to a
+// 500 with the live state left on its last good value). This is the ONE intake path POST
+// /action and the /admin/vehicle/* operator endpoints share, so a spawned/removed craft is
+// journalled and replays deterministically exactly as a player action does.
+function applyOneAction(action) {
+  const before = getState();
+  const { valid, reason } = validateAction(before, action);
+  let next = before;
+  if (valid) {
+    // `tick` = state.tick at apply time (applyAction never advances it).
+    if (persistDir) appendJournal(before.tick, action, persistDir);
+    next = applyAction(before, action);
+  }
+  // For every action defined so far the post-apply state is fully valid, so a violation here
+  // is a real bug (for a rejected action next === before, already-valid live state).
+  assertInvariants(next, next.tick);
+  setState(next);
+  return { accepted: valid, reason: valid ? null : reason, snapshot: buildSnapshot(next) };
+}
+
 // --- request handling -------------------------------------------------------
 
 async function handleRequest(req, res) {
@@ -682,30 +710,8 @@ async function handleRequest(req, res) {
       return;
     }
     try {
-      // Apply ONE action against state-as-it-stands WITHOUT ticking, in the
-      // write-ahead order the durability model needs: validate FIRST, then (when
-      // persisting) journal the accepted action BEFORE applying it, so the journal
-      // only ever holds actions that took effect and always records them before
-      // the effect — a crash between the append and the apply loses nothing (the
-      // entry replays on restart). A rejected action leaves the state unchanged
-      // (accepted:false + reason) and is NOT journalled — that is a normal 200
-      // outcome, not an error. This is exactly intake's single-action semantics,
-      // spelled out here so the append lands between validate and apply.
-      const before = getState();
-      const { valid, reason } = validateAction(before, action);
-      let next = before;
-      if (valid) {
-        // `tick` = state.tick at apply time (applyAction never advances it).
-        if (persistDir) appendJournal(before.tick, action, persistDir);
-        next = applyAction(before, action);
-      }
-      // We still assert: for every action defined so far the post-apply state is
-      // fully valid, so a violation here would be a real bug, surfaced as a 500
-      // with the live state left on its last good value. (For a rejected action
-      // next === before, already-valid live state.)
-      assertInvariants(next, next.tick);
-      setState(next);
-      sendJson(res, 200, { accepted: valid, reason: valid ? null : reason, snapshot: buildSnapshot(next) });
+      // The shared single-action intake path (write-ahead journal between validate and apply).
+      sendJson(res, 200, applyOneAction(action));
     } catch (err) {
       sendJson(res, 500, { error: 'error applying action (invariant violation or engine throw)', detail: String(err && err.message || err) });
     }
@@ -810,6 +816,79 @@ async function handleRequest(req, res) {
       sendJson(res, 200, { ok: true, state: 'no-galaxy' });
     } catch (err) {
       sendJson(res, 500, { error: 'could not delete the galaxy', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // --- the vehicle spawn/remove primitive (design.md §15.4, roadmap 2.2 spawn) --------------
+  // Two OPERATOR endpoints, namespaced under /admin/ and gated exactly like the /admin/galaxy/*
+  // lifecycle routes (the Delete-Galaxy privilege level — Cloudflare Access is the interim gate,
+  // real per-role auth is Phase 3; the player client never surfaces them). They CONSTRUCT the
+  // engine action from the request body and run it through the SAME validate → journal → apply
+  // path POST /action uses (applyOneAction), so a spawned/removed craft survives restart and
+  // replays deterministically. This is ALSO the primitive the Storyteller later materialises
+  // craft with. They need a live galaxy (hasGalaxy), like POST /action; journalling is on when a
+  // persist volume is present, exactly as POST /action's is.
+
+  // POST /admin/vehicle/spawn { guildId, class, location, condition? } — mint one idle craft.
+  if (method === 'POST' && path === '/admin/vehicle/spawn') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","class":"lightTransport","location":{"landmarkKind":"system","landmarkId":"sys_0001"}}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId, class, location, and an optional condition' });
+      return;
+    }
+    let action;
+    try {
+      // The constructor enforces the required fields (guildId / class / location); legality of
+      // each — guild exists, real class, exactly-one-form resolvable location, in-range condition
+      // — is validateAction's job, run inside applyOneAction below.
+      action = createSpawnVehicleAction({
+        guildId: body.guildId, class: body.class, location: body.location, condition: body.condition,
+      });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed spawn-vehicle request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying spawnVehicle (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // POST /admin/vehicle/remove { guildId, vehicleId } — destroy the named craft by id.
+  if (method === 'POST' && path === '/admin/vehicle/remove') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","vehicleId":"vehicle_g1_lightTransport_01"}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId and vehicleId' });
+      return;
+    }
+    let action;
+    try {
+      action = createRemoveVehicleAction({ guildId: body.guildId, vehicleId: body.vehicleId });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed remove-vehicle request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying removeVehicle (invariant violation or engine throw)', detail: String((err && err.message) || err) });
     }
     return;
   }
