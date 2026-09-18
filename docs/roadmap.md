@@ -401,6 +401,20 @@ boundary so the later hex-map swap doesn't touch it.
   here the thread fans out — Syndicate transport contracts, maintenance, exploration (a plain craft scans,
   slower and fuelled), and deep-space asset deployment (outpost → toll). A full Phase-2 renumber to reflect this
   reordering is the roadmap-expert thread's job at hand-back, not done here.*
+- **2.2 (spawn) — Vehicle spawn / remove primitive (operator CLI + Storyteller substrate).**
+  A journalled `spawnVehicle` / `removeVehicle` engine action pair. **Spawn** any class into any guild
+  (bots included) at any location — a system, an outpost, or a bare hex — minted **idle at the current
+  tick**, condition settable (default `1`); **remove** by id, which **destroys** the craft (and, forward,
+  its cargo — a recorded goods sink). Generalises the shipped `systemId` into a **landmark-or-hex
+  location** (system and outpost are equivalent anchors; a craft anchored to nothing is **DEEP SPACE**),
+  adds a **stored per-guild monotonic mint counter** so a removed id is never reissued, and states the
+  movement **performance contract** (position derived on read, never simulated per tick). Exposed as
+  `tools/admin.js spawn-vehicle` / `remove-vehicle` over an Access-gated `/admin` endpoint; the SAME
+  primitive is how the Storyteller materialises craft later. Ruling: design.md §15.4 ("Vehicle location,
+  spawn / remove, and the movement performance contract"). **Slices:** engine first — state (the mint
+  counter + `location`), `spawnVehicle`/`removeVehicle` actions, `checkVehicleIntegrity` (landmark-or-hex),
+  the snapshot, and the `admin.js` commands + `/admin` endpoint; the OPERATIONS **DEEP SPACE** group
+  (client) behind it.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
