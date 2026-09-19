@@ -190,6 +190,40 @@ list, re-validated at launch because tolls may have changed hands (§9); a **sch
 re-dispatches it. Neither is built in the dispatch slice — the anchor-list shape is what lets both fall
 out later.
 
+**AS-BUILT 19-09-26 — the dispatch + arrival ENGINE + operator CLI (slice b1; `sim/`, `tools/admin.js`).** ✅
+The polyline model of this section is built. The §2.2 formula lives in ONE place — `legTicks(length,
+craftSpeed, isToll)` and `legFuelBurn(length, fuelCostToRun, isToll)` in `sim/transport.js`, with the
+doc-ruled `TOLL_BUFF = 2` (cited to §2.2) — and the `÷ TOLL_BUFF` buff path is present and directly unit-tested,
+though every leg a dispatch builds today carries `isToll: false` (no toll infrastructure exists yet). The
+`dispatchVehicle` action (`sim/actions.js`) takes `{ guildId, vehicleId, waypoints }` (a non-empty ordered
+anchor list, each anchor the `location` shape); it builds the legs from the craft's current `location` through
+the waypoints (`dispatchRoute`, the one home shared by validate + apply), refuses whole on any zero-length leg /
+off-lattice waypoint / empty list / non-idle craft, and refuses whole when `fuelHoard + deuteriumFuel` cannot
+cover `Σ legFuelBurn` (the combined-availability gate the buy uses). On apply it freezes the contiguous absolute
+schedule (leg 0 departs at the dispatch tick; leg K+1 departs when leg K arrives), stores it as
+`vehicle.trip = { legs: [{ from, to, isToll:false, departureTick, arrivalTick }], dispatchTick, arrivalTick }`
+(anchors AS GIVEN — resolved coords are derived on read), drops the bare `location`, flips the craft to
+`inTransit`, and burns the whole route from the hoard up front via `burnFuel` (`audit.totalConsumed += units`,
+then `computeGalacticSupply`, exactly as `buyFromSyndicate` does after a hoard burn). The ONLY tick step is
+`stepVehicleArrivals` (`sim/tick.js`, beside `stepArrivals`): when `trip.arrivalTick <= thisTick` it sets the
+craft's `location` to the final leg's `to` anchor (a landmark → idle there; a bare hex → DEEP SPACE), flips it
+`idle`, and drops the trip — no per-craft per-tick movement loop (design.md §15.4 performance contract). The
+snapshot (`sim/snapshot.js`) surfaces an in-transit craft's route — the ordered legs with RESOLVED endpoint
+coords + per-leg ticks, the trip's arrivalTick, and the whole-route fuel cost in credits at the live price
+(`fuelValue(Σ legFuelBurn, reserve.fuelPrice)`, recomputed on read so it floats with price) — an idle row is
+unchanged. `checkVehicleIntegrity` (`sim/invariants.js`) now branches on status: idle → a resolving `location`
+and no `trip`; in-transit → a valid `trip` (≥ 1 leg, endpoints resolve, contiguous, each `arrivalTick >
+departureTick`, `trip.arrivalTick ==` the last leg's) and no bare `location`; both/neither is corruption.
+Exposed as the Access-gated `POST /admin/vehicle/dispatch` with `tools/admin.js dispatch-vehicle --guild …
+--id … --waypoints "sys:<id>;out:<id>;q,r;…"` over it, routed through the SAME validate/journal/apply path as
+spawn/remove. **NO-OP on a galaxy that dispatches nothing** (the persist/determinism goldens are byte-identical
+— the new snapshot fields are derived-on-read and appear only for an in-transit craft); a dispatch→…→arrival
+run replays byte-identically and a restart mid-route lands on the right absolute tick (proven end-to-end
+headless: a spawned craft dispatched on a multi-leg route flies, survives a server restart, and lands idle at
+its final anchor on the frozen tick). **Not built here (b2+):** the client (the Dispatch popup's route builder,
+the in-flight polyline render, any cost estimate), cargo, tolls as infrastructure, waypoint actions / saved
+routes / scheduled runs, and detection/piracy.
+
 **Syndicate craft never use tolls** — they fly one straight leg and ignore the network entirely (§3).
 
 ## 5. Craft & speed

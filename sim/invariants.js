@@ -1235,6 +1235,36 @@ function checkAssetOccupancy(state) {
   return out;
 }
 
+// tripViolation(trip) -> a detail object naming the first thing wrong with an in-transit craft's
+// `trip`, or null when the trip is well-formed (transport-model.md §4; design.md §15.4). A valid
+// trip has: >= 1 leg; every leg's `from`/`to` anchors resolve; each leg's arrivalTick strictly
+// exceeds its departureTick (no zero-length leg survived); legs are CONTIGUOUS
+// (`legs[K].departureTick === legs[K-1].arrivalTick`); and `trip.arrivalTick` equals the last leg's
+// arrivalTick. The one home of the trip shape, used by checkVehicleIntegrity below.
+function tripViolation(trip) {
+  if (!trip || typeof trip !== 'object' || !Array.isArray(trip.legs) || trip.legs.length === 0) {
+    return { reason: 'a trip must carry at least one leg', trip };
+  }
+  for (let i = 0; i < trip.legs.length; i += 1) {
+    const leg = trip.legs[i];
+    if (!leg || resolveVehicleLocation(leg.from) === null || resolveVehicleLocation(leg.to) === null) {
+      return { reason: `leg ${i}'s from/to must both resolve to a valid anchor`, leg };
+    }
+    if (typeof leg.departureTick !== 'number' || typeof leg.arrivalTick !== 'number'
+      || !(leg.arrivalTick > leg.departureTick)) {
+      return { reason: `leg ${i}'s arrivalTick must exceed its departureTick (no zero-length leg)`, leg };
+    }
+    if (i > 0 && leg.departureTick !== trip.legs[i - 1].arrivalTick) {
+      return { reason: `leg ${i} is not contiguous with leg ${i - 1} (departureTick must equal the prior arrivalTick)`, leg, priorArrivalTick: trip.legs[i - 1].arrivalTick };
+    }
+  }
+  const last = trip.legs[trip.legs.length - 1];
+  if (trip.arrivalTick !== last.arrivalTick) {
+    return { reason: 'trip.arrivalTick must equal the last leg\'s arrivalTick', tripArrivalTick: trip.arrivalTick, lastLegArrivalTick: last.arrivalTick };
+  }
+  return null;
+}
+
 // Vehicle integrity — the structural guard for the guild-transport inventory (design.md §15.4,
 // roadmap 2.2-foundation engine slice (a)). The vehicle mirror of checkAssetOccupancy: it asserts
 // every craft in `guild.vehicles` is well-formed, so a save-reload, a future slice, or a client
@@ -1243,11 +1273,16 @@ function checkAssetOccupancy(state) {
 //
 // For each guild's each vehicle:
 //   - a KNOWN class (one of the four, sim/vehicles.js) — a garbage class is corruption;
-//   - a `location` that RESOLVES to EXACTLY ONE valid form (2.2 spawn, design.md §15.4): a
-//     landmark { landmarkKind: system|outpost, landmarkId } that resolves via getLandmark, OR an
-//     in-bounds bare hex { q, r }. resolveVehicleLocation is the one judge — both-set, both-null,
-//     an unresolvable landmark, and an off-lattice hex all fail. Every mint uses a real location,
-//     so a non-resolving one is corruption;
+//   - a SHAPE that MATCHES the status (2.2 (b1), design.md §15.4 "an idle craft has a `location`
+//     and no leg; an in-transit one carries a route of legs … and no bare `location`"):
+//       · an IDLE craft has a `location` that RESOLVES to exactly one valid form — a landmark
+//         { landmarkKind: system|outpost, landmarkId } via getLandmark, OR an in-bounds bare hex
+//         { q, r } (resolveVehicleLocation is the one judge: both-set, both-null, an unresolvable
+//         landmark and an off-lattice hex all fail) — and NO `trip`;
+//       · an IN-TRANSIT craft has a valid `trip` (tripViolation above: >= 1 leg, every leg's
+//         endpoints resolve, legs contiguous, each arrivalTick > departureTick, trip.arrivalTick ==
+//         the last leg's) and NO bare `location`.
+//     Both-set (a location AND a trip) or both-neither is corruption and fails loudly;
 //   - a `maintenanceCondition` that is a finite number inside [MIN, NEW] = [0, 1] (the §15.2 field
 //     check — inert this slice, but a garbage value must still fail loudly, exactly as the asset's);
 //   - a `status` in the legal set (idle / in-transit). THIS SLICE mints only 'idle' — nothing moves
@@ -1270,8 +1305,24 @@ function checkVehicleIntegrity(state) {
       if (!isVehicleClass(v.class)) {
         out.push({ rule: 'vehicle-class-known (vehicles.js)', where: `guild:${g.id}.vehicle:${v.id}`, detail: { class: v.class } });
       }
-      if (resolveVehicleLocation(v.location) === null) {
-        out.push({ rule: 'vehicle-location-resolves', where: `guild:${g.id}.vehicle:${v.id}.location`, detail: { location: v.location } });
+      // Shape-by-status (design.md §15.4). An in-transit craft carries a trip and no bare location;
+      // any other status (idle, or an illegal one already flagged above) must carry a resolving
+      // location and no trip. Both-set / both-neither is corruption.
+      if (v.status === 'inTransit') {
+        if (v.location !== undefined) {
+          out.push({ rule: 'vehicle-intransit-no-location', where: `guild:${g.id}.vehicle:${v.id}.location`, detail: { location: v.location } });
+        }
+        const tv = tripViolation(v.trip);
+        if (tv) {
+          out.push({ rule: 'vehicle-trip-valid', where: `guild:${g.id}.vehicle:${v.id}.trip`, detail: tv });
+        }
+      } else {
+        if (resolveVehicleLocation(v.location) === null) {
+          out.push({ rule: 'vehicle-location-resolves', where: `guild:${g.id}.vehicle:${v.id}.location`, detail: { location: v.location } });
+        }
+        if (v.trip !== undefined) {
+          out.push({ rule: 'vehicle-idle-no-trip', where: `guild:${g.id}.vehicle:${v.id}.trip`, detail: { status: v.status, trip: v.trip } });
+        }
       }
       const cond = v.maintenanceCondition;
       if (typeof cond !== 'number' || !Number.isFinite(cond) || cond < ASSET_CONDITION_MIN || cond > ASSET_CONDITION_NEW) {

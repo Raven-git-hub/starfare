@@ -30,7 +30,7 @@ const {
   REFERENCE_FUEL_PRICE, routeFuelBurnByTier, fuelValue,
   volumeOf, HAULER_TIERS, haulerTierForSpace, HEAVY_HOLD,
 } = require('./fuel.js');
-const { nearestWaystation, arrivalTickFor } = require('./transport.js');
+const { nearestWaystation, arrivalTickFor, hexDistance, legFuelBurn } = require('./transport.js');
 const { grantFor, targetReserve, DEUTERIUM_INFLUX_PER_CYCLE } = require('./issuance.js');
 const { heldSystemIds } = require('./claims.js');
 const { guildPoints } = require('./points.js');
@@ -38,7 +38,7 @@ const { expectedReputation, issuanceModifier } = require('./meanline.js');
 const { computeOccupancy } = require('./occupancy.js');
 const { deployedAssetIds } = require('./assets.js');
 const { BUILDABLE_KINDS, BUILD_TICKS, priceAssetForPurchase } = require('./asset-recipes.js');
-const { BUILDABLE_VEHICLE_KINDS, vehicleSpec } = require('./vehicles.js');
+const { BUILDABLE_VEHICLE_KINDS, vehicleSpec, resolveVehicleLocation } = require('./vehicles.js');
 const { getSite, getLandmark, getStarterSystems, getTerranHomeworld } = require('./seed.js');
 const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
@@ -273,6 +273,15 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // the TRADE-4 commission popup and the In-Progress rows quote a CRAFT's arrival from the engine
 // instead of the wrong hauler leg (§18). ADDITIVE, NO schema bump; `0` per class for a no-route
 // system, matching `travelTicks`. Pure derived telemetry, exactly as `travelTicks` beside it.
+// (2.2 (b1), the guild-transport dispatch slice): an IN-TRANSIT vehicle row now carries its
+// in-flight `trip` in place of `location` — the ordered legs with RESOLVED endpoint coords + per-leg
+// departureTick/arrivalTick (so a later client can draw the polyline and interpolate position, §2.3),
+// the trip's arrivalTick, and the whole-route fuel cost in credits at the CURRENT price
+// (`fuelValue(Σ legFuelBurn, reserve.fuelPrice)`, recomputed on read so it floats with price — a
+// display figure, §4). An IDLE row is UNCHANGED (`location`, no `trip`). NO schema bump: an in-transit
+// craft is a state this slice first makes reachable (nothing moved a craft before), so no existing
+// row changed shape and an older reader still reads every idle row exactly as before. Derived on read,
+// fresh objects (coords copied): no serialized byte beyond `guild.vehicles` itself.
 // (31-08-26, RP slice 1): each guild row gains `guildReputation` and each venture row
 // gains `reputation` — the guild's Reputation Points and the per-venture running total
 // they are the sum of (docs/points-and-reputation.md §2 / §6 step 1). ADDITIVE, and NO
@@ -667,8 +676,10 @@ function computeAttention(state) {
 //                 assets: [ { id, kind, systemId,                 // §4 inventory
 //                             maintenanceCondition,                //   systemId = location
 //                             deployedToVentureId: id | null } ],  //   null = IDLE
-//                 vehicles: [ { id, class, location,               // §15.4 transport inventory (2.2)
-//                               maintenanceCondition, status } ],   //   status idle this slice
+//                 vehicles: [ { id, class,                        // §15.4 transport inventory (2.2)
+//                               maintenanceCondition, status,       //   idle -> location; inTransit -> trip
+//                               location?, trip? } ],               //   trip: { legs[{from,to,isToll,
+//                                                                   //   departureTick,arrivalTick}], arrivalTick, fuelCost }
 //                 productionProfile: { ... } } ],               // §5 profile, sparse as stored
 //     production: [ { guildId,                                  // previewProduction(state)
 //       systems: [ { systemId, mines, goods, lines, refineries,     // resolved per-system
@@ -743,6 +754,48 @@ function orderSnapshot(order) {
     haulerTier: haulerTierForSpace(totalSpace),
     overCap: totalSpace > HEAVY_HOLD,
   };
+}
+
+// snapshotVehicleRow(v, fuelPrice) -> the per-vehicle snapshot row (design.md §15.4, 2.2 (b1)).
+// An IDLE craft carries its `location` (unchanged from the spawn slice). An IN-TRANSIT craft carries
+// its in-flight `trip` instead: the ordered legs with RESOLVED endpoint coords (so a later client can
+// draw the polyline and interpolate position, §2.3), each leg's departure/arrival ticks, the trip's
+// arrivalTick, and the whole-route fuel cost in credits at the CURRENT price. Fuel cost is recomputed
+// on read — `fuelValue(Σ legFuelBurn(length, fuelCostToRun, isToll), fuelPrice)` — so it floats with
+// the fuel price (a display figure, §4), while the units themselves are fixed seed geometry. Fresh
+// objects (coords copied); nothing here is serialized beyond the `guild.vehicles` rows it reads.
+function snapshotVehicleRow(v, fuelPrice) {
+  const base = {
+    id: v.id, class: v.class, maintenanceCondition: v.maintenanceCondition, status: v.status,
+  };
+  if (v.status === 'inTransit' && v.trip) {
+    let totalUnits = 0;
+    const legs = v.trip.legs.map((leg) => {
+      const fromR = resolveVehicleLocation(leg.from);
+      const toR = resolveVehicleLocation(leg.to);
+      // The integrity invariant guarantees a valid trip resolves; be defensive anyway (a leg that
+      // does not resolve contributes 0 fuel and null endpoints rather than throwing on the read path).
+      const length = fromR && toR ? hexDistance(fromR.coords, toR.coords) : 0;
+      totalUnits += legFuelBurn(length, v.fuelCostToRun, leg.isToll);
+      return {
+        from: fromR ? { ...fromR.coords } : null,
+        to: toR ? { ...toR.coords } : null,
+        isToll: leg.isToll,
+        departureTick: leg.departureTick,
+        arrivalTick: leg.arrivalTick,
+      };
+    });
+    return {
+      ...base,
+      trip: {
+        legs,
+        dispatchTick: v.trip.dispatchTick,
+        arrivalTick: v.trip.arrivalTick,
+        fuelCost: fuelValue(totalUnits, fuelPrice),
+      },
+    };
+  }
+  return { ...base, location: { ...v.location } };
 }
 
 function buildSnapshot(state) {
@@ -1121,21 +1174,16 @@ function buildSnapshot(state) {
         deployedToVentureId: deployedTo.get(a.id) || null,
       })).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
       // vehicles: the guild's guild-transport inventory (design.md §15.4), one row per owned
-      // craft — the vehicle mirror of the `assets` rows above. `class`/`location`/
-      // `maintenanceCondition`/`status` are surfaced; `location` (2.2 spawn) is the landmark ref
-      // { landmarkKind, landmarkId } or the bare hex { q, r } — enough for a later client to group
-      // a craft under its system/outpost, or under DEEP SPACE when it is a bare hex, and to label
-      // it. `capacity`/`speed`/`fuelCostToRun`/`defenseRating` are engine stats the client reads
-      // from the catalog, not per-row. Sorted by id (the deterministic mint order), fresh objects
-      // (location copied) so a consumer mutating the snapshot can't alias into engine state.
-      // Derived-on-read like `assets`: no serialized byte beyond the minted `guild.vehicles` rows.
-      vehicles: (g.vehicles || []).map((v) => ({
-        id: v.id,
-        class: v.class,
-        location: { ...v.location },
-        maintenanceCondition: v.maintenanceCondition,
-        status: v.status,
-      })).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+      // craft — the vehicle mirror of the `assets` rows above. An IDLE craft carries its `location`
+      // (the landmark ref { landmarkKind, landmarkId } or bare hex { q, r } — enough for a later
+      // client to group it under its system/outpost, or DEEP SPACE for a bare hex). An IN-TRANSIT
+      // craft carries its in-flight `trip` instead (2.2 (b1) — see snapshotVehicleRow). Either way
+      // `class`/`maintenanceCondition`/`status` are surfaced; `capacity`/`speed`/`fuelCostToRun`/
+      // `defenseRating` are engine stats the client reads from the catalog, not per-row. Sorted by id
+      // (the deterministic mint order); derived-on-read like `assets`, fresh objects so a consumer
+      // mutating the snapshot can't alias into engine state.
+      vehicles: (g.vehicles || []).map((v) => snapshotVehicleRow(v, fuelPrice))
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
       // buyOrder / sellOrder: the guild's HELD Syndicate orders, echoed with the engine-computed
       // per-line `space`, the Σ `totalUnits`/`totalSpace`, the `haulerTier` and the `overCap` flag
       // (docs/syndicate-orders.md §4) — so the trade-floor gauge and the finalise popup render the

@@ -400,8 +400,18 @@ boundary so the later hex-map swap doesn't touch it.
   multi-leg is not a later add-on. Fuel is burned in **units from the hoard, whole route up front** (refused whole
   if short — no stranding), presented to the player as a live-priced credit cost; the whole schedule is **frozen at
   dispatch** and the **only tick step is the final arrival**, which flips the craft idle at its last anchor.
-  **Slices: (b1) engine + operator CLI** — the `dispatchVehicle` action, the arrival step, the snapshot's per-leg
-  schedule, invariants, and `admin.js dispatch-vehicle` (dispatch a multi-leg route headless, determinism-proven);
+  **Slices: (b1) engine + operator CLI — ✅ BUILT (19-09-26; `sim/transport.js` leg math, `sim/actions.js`
+  `dispatchVehicle`, `sim/tick.js` `stepVehicleArrivals`, `sim/invariants.js` `checkVehicleIntegrity` status
+  branch, `sim/snapshot.js` in-flight route, `sim/server.js` `/admin/vehicle/dispatch`, `tools/admin.js
+  dispatch-vehicle`; `sim/tests/dispatch.test.js`):** `legTicks`/`legFuelBurn` put the §2.2 formula (with the
+  `TOLL_BUFF` path) in one place; `dispatchVehicle` builds the polyline from the craft's location through the
+  waypoints, burns `Σ legFuelBurn` from the hoard up front (refused whole if short), and freezes a contiguous
+  schedule; `stepVehicleArrivals` is the ONE tick step — it lands a craft idle at its final anchor at
+  `trip.arrivalTick`; the snapshot surfaces the in-flight legs (resolved coords + ticks) and the live-priced
+  credit cost; `admin.js dispatch-vehicle --waypoints "…"` dispatches a multi-leg route headless. *A NO-OP on a
+  galaxy that dispatches nothing (the goldens do not move); determinism + a mid-route restart proven; the suite
+  holds at 1,353 (+16) + tools.* **This slice sets `isToll: false` on every leg (no toll infrastructure yet) —
+  the buff path is present and unit-tested. Cargo, the client, and everything else stay slice (b2)+.**
   **(b2) client** — the Dispatch popup's waypoint builder (a live estimate, engine authoritative at apply) and the
   in-flight polyline / craft render. Cargo, waypoint actions, saved routes, and scheduled/repeating runs are their
   own later passes; the anchor-list shape leaves the seams. UI: the OPERATIONS hero splits into idle-transports

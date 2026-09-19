@@ -53,7 +53,8 @@ const FLAG_SPEC = Object.freeze({
   outpost: 'string',  // spawn-vehicle: berth at an outpost landmark
   hex: 'string',      // spawn-vehicle: berth at a bare hex, "q,r"
   condition: 'number', // spawn-vehicle: starting maintenanceCondition fraction (default 1)
-  id: 'string',       // remove-vehicle: which vehicle id
+  id: 'string',       // remove-vehicle / dispatch-vehicle: which vehicle id
+  waypoints: 'string', // dispatch-vehicle: "w;w;…", each sys:<id> | out:<id> | q,r
   help: 'bool',
 });
 
@@ -294,7 +295,7 @@ function adjustActionFor(command, flags) {
 
 // The two vehicle spawn/remove subcommands (design.md §15.4, roadmap 2.2 spawn) — thin HTTP
 // clients over POST /admin/vehicle/spawn|remove, the operator/Storyteller primitive.
-const VEHICLE_COMMANDS = Object.freeze(['spawn-vehicle', 'remove-vehicle']);
+const VEHICLE_COMMANDS = Object.freeze(['spawn-vehicle', 'remove-vehicle', 'dispatch-vehicle']);
 
 // parseHexFlag(raw) -> { q, r } | THROWS. The operator writes `--hex 3,-4`; the engine speaks a
 // bare-hex location { q, r } of INTEGERS (design.md §15.4). Anything not exactly two integers is
@@ -345,10 +346,43 @@ function removeVehicleBody(flags) {
   };
 }
 
+// parseWaypointToken(tok) -> a single location anchor { landmarkKind, landmarkId } | { q, r }, or
+// THROWS. `sys:<id>` -> a system landmark; `out:<id>` -> an outpost landmark; anything else is a bare
+// hex `q,r` (parseHexFlag). Mirrors vehicleLocationFromFlags' mapping so a waypoint speaks the same
+// anchor shape a spawn location does (design.md §15.4). PURE — the seed decides what resolves, not this.
+function parseWaypointToken(tok) {
+  const t = String(tok).trim();
+  if (t.startsWith('sys:')) return { landmarkKind: 'system', landmarkId: t.slice(4) };
+  if (t.startsWith('out:')) return { landmarkKind: 'outpost', landmarkId: t.slice(4) };
+  return parseHexFlag(t); // "q,r" or throw
+}
+
+// parseWaypointsFlag(raw) -> a non-empty ordered array of anchors, or THROWS. Semicolon-separated,
+// each token sys:<id> | out:<id> | q,r (transport-model.md §4 — a route is an ordered anchor list).
+// An empty (or all-blank) list is refused: a dispatch needs at least one waypoint. PURE and exported.
+function parseWaypointsFlag(raw) {
+  if (typeof raw !== 'string') throw new Error(`--waypoints must be a "w;w;…" string, got ${JSON.stringify(raw)}`);
+  const tokens = raw.split(';').map((s) => s.trim()).filter((s) => s.length > 0);
+  if (tokens.length === 0) {
+    throw new Error('dispatch-vehicle: --waypoints needs at least one anchor (sys:<id> | out:<id> | q,r), separated by ;');
+  }
+  return tokens.map(parseWaypointToken);
+}
+
+// dispatchVehicleBody(flags) -> the POST /admin/vehicle/dispatch request body. PURE and exported.
+function dispatchVehicleBody(flags) {
+  return {
+    guildId: requireFlag(flags, 'guild', 'dispatch-vehicle'),
+    vehicleId: requireFlag(flags, 'id', 'dispatch-vehicle'),
+    waypoints: parseWaypointsFlag(requireFlag(flags, 'waypoints', 'dispatch-vehicle')),
+  };
+}
+
 module.exports = {
   parseArgs, pick, findResourceNodes, pickResourceNode, pickIdleAssetId, judgeVerify, utcOffsetMinutesFromHours,
   adjustActionFor, ADJUST_COMMANDS,
   parseHexFlag, vehicleLocationFromFlags, spawnVehicleBody, removeVehicleBody, VEHICLE_COMMANDS,
+  parseWaypointToken, parseWaypointsFlag, dispatchVehicleBody,
   EXPECTED_COMMITMENT, EXPECTED_WINDOW_N,
 };
 
@@ -677,6 +711,30 @@ async function cmdRemoveVehicle(base, flags) {
   row('vehicles', `${((guild && guild.vehicles) || []).length}`);
 }
 
+// dispatch-vehicle (transport-model.md §4): send an idle craft along a multi-leg route. Prints the
+// craft flying — its status, leg count, final arrivalTick, and the credit-equivalent route fuel cost
+// the snapshot surfaces — so the operator sees the trip took (and can advance the server to watch it
+// land idle at its final anchor). A refused action comes back accepted:false -> throw -> exit 1.
+async function cmdDispatchVehicle(base, flags) {
+  const body = dispatchVehicleBody(flags);
+  const out = await postJson(base, '/admin/vehicle/dispatch', body);
+  if (!out.accepted) throw new Error(`dispatch-vehicle refused: ${out.reason}`);
+  const guild = (out.snapshot.guilds || []).find((g) => g.id === body.guildId) || null;
+  const craft = ((guild && guild.vehicles) || []).find((v) => v.id === body.vehicleId) || null;
+  row('action', 'dispatchVehicle');
+  row('guild', body.guildId);
+  row('vehicle', body.vehicleId);
+  row('waypoints', JSON.stringify(body.waypoints));
+  if (craft) {
+    row('status', craft.status);
+    if (craft.trip) {
+      row('legs', `${craft.trip.legs.length}`);
+      row('arrivalTick', `${craft.trip.arrivalTick}`);
+      row('fuelCost', `${craft.trip.fuelCost} credits`);
+    }
+  }
+}
+
 const USAGE = `starfare operator CLI — a thin client over the running server's API.
 
   node tools/admin.js <command> [flags]
@@ -705,6 +763,9 @@ Vehicle spawn/remove primitive (design.md §15.4 — operator/Storyteller, exit 
   spawn-vehicle   --guild ID --class C (one of --system ID / --outpost ID / --hex q,r) [--condition F]
                   mint one idle craft (default condition 1) at a system, an outpost, or a bare hex
   remove-vehicle  --guild ID --id VEHICLE_ID   destroy the named craft (id never reissued)
+  dispatch-vehicle --guild ID --id VEHICLE_ID --waypoints "w;w;…"
+                  send an idle craft along a multi-leg route; each w is sys:<id> | out:<id> | q,r
+                  (whole-route fuel burned up front from the hoard; refused whole if short)
 
 Flags
   --base <url>   which server (default $STARFARE_BASE or ${DEFAULT_BASE})
@@ -728,7 +789,8 @@ Flags
   --outpost ID   spawn-vehicle: berth the craft at an outpost landmark
   --hex q,r      spawn-vehicle: berth the craft at a bare in-bounds hex
   --condition F  spawn-vehicle: starting maintenanceCondition fraction in [0, 1] (default 1)
-  --id ID        remove-vehicle: which vehicle id to destroy
+  --id ID        remove-vehicle / dispatch-vehicle: which vehicle id
+  --waypoints W  dispatch-vehicle: "w;w;…" route, each w = sys:<id> | out:<id> | q,r
   --help, -h     this text
 `;
 
@@ -746,6 +808,7 @@ async function main(argv) {
     case 'tick': await cmdTick(base, flags); return;
     case 'spawn-vehicle': await cmdSpawnVehicle(base, flags); return;
     case 'remove-vehicle': await cmdRemoveVehicle(base, flags); return;
+    case 'dispatch-vehicle': await cmdDispatchVehicle(base, flags); return;
     default:
       // The six operator adjust levers share one thin command (docs/operator-adjust.md §5).
       if (ADJUST_COMMANDS.includes(command)) { await cmdAdjust(base, command, flags); return; }

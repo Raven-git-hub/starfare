@@ -25,7 +25,9 @@ const { computeGalacticSupply } = require('./supply.js');
 const { foundingEndowmentFor } = require('./meanline.js');
 const { grantFor } = require('./issuance.js');
 const { guildHolds } = require('./claims.js');
-const { nearestWaystation, arrivalTickFor } = require('./transport.js');
+const {
+  nearestWaystation, arrivalTickFor, hexDistance, legTicks, legFuelBurn,
+} = require('./transport.js');
 const {
   GUILD_STARTING_FUEL, routeFuelCost, burnFuel,
   volumeOf, haulerTierForSpace, HEAVY_HOLD, ASSET_CARGO_VOLUME,
@@ -53,6 +55,53 @@ function vehicleDeliveryFuelBurn(destinationSystemId, vehicleClass) {
   if (!near) return { fuelBurn: 0 };
   const spec = vehicleSpec(vehicleClass);
   return { fuelBurn: Math.ceil(near.distance * spec.fuelCostToRun) };
+}
+
+// dispatchRoute(craft, waypoints) -> { ok: true, legs: [{ from, to, length }], totalUnits }
+//                                  | { ok: false, reason }
+//
+// THE ONE place a guild-transport route is built and priced (transport-model.md §4), shared by the
+// dispatch VALIDATE gate and APPLY so the route checked and the route flown/charged cannot drift —
+// the same discipline vehicleDeliveryFuelBurn keeps for the buy. A route is an ordered list of legs
+// (a polyline): leg 0 runs from the craft's current `location` to `waypoints[0]`, and leg K from
+// `waypoints[K-1]` to `waypoints[K]`. Anchors are location refs (a landmark { landmarkKind,
+// landmarkId } or a bare hex { q, r }) and are kept AS GIVEN — resolved coords are derived on read,
+// never stored (§4). Fuel is `Σ legFuelBurn(hexDistance(resolve(from), resolve(to)), craft.
+// fuelCostToRun, false)` in UNITS; `isToll` is false on every leg this slice (no toll infrastructure
+// exists yet, §4 — the buff path lives in legFuelBurn regardless).
+//
+// The RULED failure modes (§4) each return `{ ok: false }`: an empty `waypoints`, an off-lattice /
+// ill-formed waypoint (does not resolve), and a zero-length leg (its two anchors resolve to the SAME
+// hex — the §2.3 interpolation would divide by zero; this also catches "first waypoint is the craft's
+// own hex"). The FUEL gate is the caller's (it needs the guild's stores), so this only prices.
+function dispatchRoute(craft, waypoints) {
+  if (!Array.isArray(waypoints) || waypoints.length === 0) {
+    return { ok: false, reason: 'waypoints must be a non-empty ordered array of location anchors' };
+  }
+  // The craft's own location is leg 0's `from`; each waypoint is the next anchor in the polyline.
+  const anchors = [craft.location, ...waypoints];
+  const legs = [];
+  let totalUnits = 0;
+  for (let i = 0; i < anchors.length - 1; i += 1) {
+    const from = anchors[i];
+    const to = anchors[i + 1];
+    const fromR = resolveVehicleLocation(from);
+    const toR = resolveVehicleLocation(to);
+    // Both endpoints must resolve. Leg 0's `from` is the craft's own location (the integrity
+    // invariant guarantees it resolves), so a failure here is a bad WAYPOINT — index i is the leg,
+    // and waypoints[i] is `to` (anchors is offset by the craft location at the front).
+    if (fromR === null || toR === null) {
+      return { ok: false, reason: `waypoint ${i} does not resolve to a valid anchor — a landmark { landmarkKind: "system"|"outpost", landmarkId } that resolves, or an in-bounds hex { q, r }` };
+    }
+    // Zero-length leg: the two anchors resolve to the SAME hex (§2.3 would divide by zero).
+    if (fromR.coords.q === toR.coords.q && fromR.coords.r === toR.coords.r) {
+      return { ok: false, reason: `leg ${i} is zero-length — its endpoints resolve to the same hex ${JSON.stringify(fromR.coords)} (a route may not stand still, transport-model.md §4)` };
+    }
+    const length = hexDistance(fromR.coords, toR.coords);
+    totalUnits += legFuelBurn(length, craft.fuelCostToRun, false);
+    legs.push({ from, to, length });
+  }
+  return { ok: true, legs, totalUnits };
 }
 
 // actions.js — action constructors, and the validate-as-they-arrive intake
@@ -497,6 +546,20 @@ function createRemoveVehicleAction({ guildId, vehicleId: vId }) {
   if (guildId === undefined) throw new Error('createRemoveVehicleAction: guildId is required');
   if (vId === undefined) throw new Error('createRemoveVehicleAction: vehicleId is required');
   return { type: 'removeVehicle', guildId, vehicleId: vId };
+}
+
+// dispatchVehicle: send an IDLE craft along a multi-leg route (transport-model.md §4, the polyline
+// model). `waypoints` is a non-empty ordered array of location anchors — each the same shape a
+// craft's `location` uses ({ landmarkKind: 'system'|'outpost', landmarkId } or { q, r }). The route
+// is built from the craft's current location through the waypoints (leg 0: craft → waypoints[0];
+// leg K: waypoints[K-1] → waypoints[K]); the whole route's fuel is burned from the hoard UP FRONT.
+// No `isToll` in the action — there is no toll infrastructure to select yet, so every leg flies open
+// space (§4); the buff path lives in the leg math for the later toll slice.
+function createDispatchVehicleAction({ guildId, vehicleId: vId, waypoints }) {
+  if (guildId === undefined) throw new Error('createDispatchVehicleAction: guildId is required');
+  if (vId === undefined) throw new Error('createDispatchVehicleAction: vehicleId is required');
+  if (waypoints === undefined) throw new Error('createDispatchVehicleAction: waypoints is required');
+  return { type: 'dispatchVehicle', guildId, vehicleId: vId, waypoints };
 }
 
 // setWindowN: set the single engine-wide accrual window length `state.windowN`. The
@@ -1904,6 +1967,37 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'dispatchVehicle') {
+    // transport-model.md §4 (the polyline model): send an IDLE craft along a multi-leg route,
+    // refused whole with a clear reason (mirroring spawnVehicle's block). The order of the gates is
+    // the order of the doc's ruled failure modes.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    const craft = (guild.vehicles || []).find((v) => v.id === action.vehicleId);
+    if (!craft) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no vehicle ${JSON.stringify(action.vehicleId)}` };
+    }
+    // Only an idle craft dispatches (§4: an in-transit one is already flying its frozen route).
+    if (craft.status !== 'idle') {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is not idle (status ${JSON.stringify(craft.status)}) — only an idle craft dispatches` };
+    }
+    // Build + price the route (dispatchRoute is the one home): a non-empty waypoint list, every
+    // waypoint resolves, and no zero-length leg. It returns the whole-route unit burn.
+    const route = dispatchRoute(craft, action.waypoints);
+    if (!route.ok) {
+      return { valid: false, reason: route.reason };
+    }
+    // The FUEL gate — the SAME combined-availability gate the buy uses (hoard + contraband), refuse
+    // whole (§4: no partial dispatch, no stranding). The credit figure is display-only; units gate.
+    const available = guild.fuelHoard + (guild.deuteriumFuel || 0);
+    if (available < route.totalUnits) {
+      return { valid: false, reason: `dispatch burns ${route.totalUnits} fuel units up front but the guild holds ${available} (hoard ${guild.fuelHoard} + contraband ${guild.deuteriumFuel || 0}) — refused whole (transport-model.md §4)` };
+    }
+    return { valid: true };
+  }
+
   if (action.type === 'setWindowN') {
     if (typeof action.windowN !== 'number' || !Number.isInteger(action.windowN) || action.windowN < 1) {
       return { valid: false, reason: 'windowN must be an integer >= 1 (§15.2)' };
@@ -2870,6 +2964,55 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'dispatchVehicle') {
+    // transport-model.md §4: the trip departs at the dispatch tick and the WHOLE schedule is frozen
+    // here. Mirrors buyFromSyndicate's fuel handling (burn the hoard, record the consumption, refresh
+    // galacticSupply across the between-action seam) and spawnVehicle's craft mutation shape.
+    const guild = findGuild(next, action.guildId);
+    const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
+    // Re-derive the route BEFORE the craft leaves its berth (dispatchRoute reads craft.location);
+    // validate guaranteed { ok: true }, so this cannot fail — the shared helper keeps the legs and
+    // the burn byte-identical to the ones the gate checked.
+    const route = dispatchRoute(craft, action.waypoints);
+
+    // Freeze the CONTIGUOUS schedule (§4): leg 0 departs at the dispatch tick; each leg's arrivalTick
+    // = its departureTick + legTicks; leg K+1 departs exactly when leg K arrives (no pause). Absolute
+    // ticks, so a restart mid-route lands on the right tick with no special case. Anchors stored AS
+    // GIVEN (resolved coords are derived on read); isToll false on every leg this slice.
+    let departureTick = next.tick;
+    const legs = route.legs.map((leg) => {
+      const arrivalTick = departureTick + legTicks(leg.length, craft.speed, false);
+      const scheduled = {
+        from: leg.from, to: leg.to, isToll: false, departureTick, arrivalTick,
+      };
+      departureTick = arrivalTick; // contiguous — the next leg leaves when this one lands
+      return scheduled;
+    });
+    const arrivalTick = legs[legs.length - 1].arrivalTick;
+
+    // The craft leaves its berth: an in-transit craft carries the `trip` and NO bare `location`
+    // (design.md §15.4). Drop `location` (omit-when-absent) so nothing says it is still where it
+    // left; the arrival step restores it at the final anchor.
+    craft.status = 'inTransit';
+    craft.trip = { legs, dispatchTick: next.tick, arrivalTick };
+    delete craft.location;
+    craft.updatedAtTick = next.tick; // §15.2 — every mutation records its tick
+
+    // FUEL — the whole route burns UP FRONT, units from the hoard (legal-first burnFuel, §4). Fuel
+    // LEAVES the galaxy (burned, not transferred), so invariant 1 balances only because
+    // totalConsumed rises to match the hoard falling — exactly buyFromSyndicate's discipline. The
+    // combined-availability gate ran in validate, so neither store goes negative. The credit figure
+    // is a display value (fuelValue in the snapshot), never a treasury debit.
+    burnFuel(guild, route.totalUnits);
+    next.audit.totalConsumed += route.totalUnits;
+
+    // The SAME galacticSupply refresh buyFromSyndicate makes after a hoard burn: the burn deducted
+    // fuelHoard, which galacticSupply.fuel.guildHeld sums, and POST /action asserts the consistency
+    // invariant with no tick between (the between-action seam).
+    next.galacticSupply = computeGalacticSupply(next);
+    return next;
+  }
+
   if (action.type === 'setWindowN') {
     // Set the single engine-wide window length. Setup-only (validate refused it once
     // tick > 0), so this only ever writes tick-0 state. No guild is resolved — this
@@ -2945,6 +3088,7 @@ module.exports = {
   createRemoveVentureAction,
   createSpawnVehicleAction,
   createRemoveVehicleAction,
+  createDispatchVehicleAction,
   validateAction,
   applyAction,
   intake,

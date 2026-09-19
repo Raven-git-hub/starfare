@@ -24,6 +24,31 @@ const { getOutposts, getSystem } = require('./seed.js');
 // At the ruled 1 tick = 1 minute, 150 ticks is 2.5 hours per hex.
 const CRAFT_SPEED = 150;
 
+// TOLL_BUFF — the toll speed/fuel buff, RULED 2 (transport-model.md §2.2, `[FIRST-CUT]`, flat).
+// A toll leg runs at 2× speed (half the ticks) AND burns half the fuel — this ONE constant drives
+// BOTH buffs (§4: "the one constant drives both buffs"). SOURCED, not invented (§18 / CLAUDE.md):
+// the doc rules it by name. This slice sets `isToll: false` on every dispatched leg — there is no
+// toll infrastructure to select yet (§4) — but the `÷ TOLL_BUFF` path lives in the leg math from
+// the start and is directly unit-tested, so the toll slice only has to supply the flag.
+const TOLL_BUFF = 2;
+
+// legTicks(length, craftSpeed, isToll) -> a leg's duration in whole ticks (transport-model.md §2.2:
+// `ceil( length × craftSpeed ÷ (isToll ? TOLL_BUFF : 1) )`). `length` is HEX-STEP (hexDistance,
+// §2.1); `craftSpeed` is the craft's ticks-per-hex (`Vehicle.speed`, §5). `ceil` throughout (§2.1),
+// matching the built `ceil(hexDistance × speed)` arrival. A toll leg divides by TOLL_BUFF (half the
+// ticks); an open-space leg divides by 1. The ONE home of the duration formula — nothing inlines it.
+function legTicks(length, craftSpeed, isToll) {
+  return Math.ceil((length * craftSpeed) / (isToll ? TOLL_BUFF : 1));
+}
+
+// legFuelBurn(length, fuelCostToRun, isToll) -> a leg's fuel burn in whole UNITS (§2.2 / §4). A
+// craft burns its OWN per-hex `fuelCostToRun` (§5), never a hauler rate. `length` is hex-step (§2.1);
+// `ceil` (§2.1). A toll leg burns half (÷ TOLL_BUFF); an open-space leg burns full. The ONE home of
+// the burn formula: a dispatch sums this across every leg and burns the total from the hoard up front.
+function legFuelBurn(length, fuelCostToRun, isToll) {
+  return Math.ceil((length * fuelCostToRun) / (isToll ? TOLL_BUFF : 1));
+}
+
 // hexDistance(a, b) — the standard axial-coordinate hex distance:
 //   (|dq| + |dr| + |dq + dr|) / 2
 // Always a non-negative integer for integer axial coords (the third term is what
@@ -71,4 +96,6 @@ function arrivalTickFor(currentTick, distance) {
   return currentTick + Math.ceil(distance * CRAFT_SPEED);
 }
 
-module.exports = { CRAFT_SPEED, hexDistance, nearestWaystation, arrivalTickFor };
+module.exports = {
+  CRAFT_SPEED, TOLL_BUFF, hexDistance, legTicks, legFuelBurn, nearestWaystation, arrivalTickFor,
+};

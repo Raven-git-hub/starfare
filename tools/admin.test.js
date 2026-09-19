@@ -389,6 +389,37 @@ test('spawnVehicleBody / removeVehicleBody: a missing required flag throws rathe
   assert.throws(() => A.removeVehicleBody({ id: 'v' }), /--guild is required/);
 });
 
-test('VEHICLE_COMMANDS lists exactly the two primitive subcommands', () => {
-  assert.deepEqual([...A.VEHICLE_COMMANDS].sort(), ['remove-vehicle', 'spawn-vehicle'].sort());
+test('VEHICLE_COMMANDS lists the vehicle subcommands (spawn / remove / dispatch)', () => {
+  assert.deepEqual([...A.VEHICLE_COMMANDS].sort(), ['dispatch-vehicle', 'remove-vehicle', 'spawn-vehicle'].sort());
+});
+
+test('parseWaypointsFlag / parseWaypointToken: sys/out/hex tokens, semicolon-separated, non-empty', () => {
+  // The three anchor forms, in one route, order preserved.
+  assert.deepEqual(
+    A.parseWaypointsFlag('1,-2;sys:sys_0006;out:out_01'),
+    [{ q: 1, r: -2 }, { landmarkKind: 'system', landmarkId: 'sys_0006' }, { landmarkKind: 'outpost', landmarkId: 'out_01' }],
+  );
+  // A single hex token, and blanks/trailing separators are ignored.
+  assert.deepEqual(A.parseWaypointsFlag(' 3,4 ; '), [{ q: 3, r: 4 }]);
+  assert.deepEqual(A.parseWaypointToken('sys:sys_0001'), { landmarkKind: 'system', landmarkId: 'sys_0001' });
+  assert.deepEqual(A.parseWaypointToken('out:out_02'), { landmarkKind: 'outpost', landmarkId: 'out_02' });
+  assert.deepEqual(A.parseWaypointToken('5,-1'), { q: 5, r: -1 });
+  // Empty / all-blank is refused (a dispatch needs a route); a bad hex token throws through parseHexFlag.
+  assert.throws(() => A.parseWaypointsFlag(''), /at least one anchor/);
+  assert.throws(() => A.parseWaypointsFlag(' ; ; '), /at least one anchor/);
+  assert.throws(() => A.parseWaypointsFlag('sys_0006'), /must be "q,r"/); // no sys:/out: prefix -> parsed as a hex
+});
+
+test('dispatchVehicleBody: builds the exact request body; a missing required flag throws', () => {
+  assert.deepEqual(
+    A.dispatchVehicleBody({ guild: 'g1', id: 'vehicle_g1_lightTransport_01', waypoints: 'sys:sys_0006;3,4' }),
+    {
+      guildId: 'g1',
+      vehicleId: 'vehicle_g1_lightTransport_01',
+      waypoints: [{ landmarkKind: 'system', landmarkId: 'sys_0006' }, { q: 3, r: 4 }],
+    },
+  );
+  assert.throws(() => A.dispatchVehicleBody({ id: 'v', waypoints: 'sys:s' }), /--guild is required/);
+  assert.throws(() => A.dispatchVehicleBody({ guild: 'g1', waypoints: 'sys:s' }), /--id is required/);
+  assert.throws(() => A.dispatchVehicleBody({ guild: 'g1', id: 'v' }), /--waypoints is required/);
 });

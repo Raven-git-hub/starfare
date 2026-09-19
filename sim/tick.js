@@ -1026,6 +1026,44 @@ function stepArrivals(state, _actions) {
   return state;
 }
 
+// Step 5 (the vehicle half) — guild-transport arrivals (transport-model.md §4; design.md §15.4's
+// movement performance contract). The ONLY per-tick vehicle work there is: a dispatched craft's
+// whole route is a frozen schedule, so nothing is simulated per tick — this step just LANDS the ones
+// whose trip is up. For each guild's each craft with `status === 'inTransit'` and
+// `trip.arrivalTick <= thisTick`: set its `location` to the FINAL leg's `to` anchor (a landmark →
+// idle at that system/outpost; a bare hex → idle in DEEP SPACE), flip it to `idle`, and drop the
+// `trip`. Intermediate legs are NOT tick steps — they are frozen numbers the client interpolates
+// across; there is deliberately NO per-craft per-tick movement loop.
+//
+// Mirrors stepArrivals' discipline EXACTLY: `thisTick = state.tick + 1` (tick() assigns next.tick
+// only after every step), the `<=` guard (a craft whose tick has somehow passed still lands rather
+// than stranding), a deterministic sort, and NO galacticSupply refresh inside the step (the tick's
+// end-of-steps derive owns the cache). Landing moves NO fuel/credits/goods — the fuel was burned at
+// dispatch — so there is nothing to conserve here.
+function stepVehicleArrivals(state, _actions) {
+  const thisTick = state.tick + 1;
+  for (const guild of state.guilds || []) {
+    // Collect the craft landing this tick, then land them in a FIXED id order (invariant 9). No total
+    // depends on the order — each landing touches only its own craft — but it is pinned anyway, the
+    // same discipline stepArrivals' deposit order follows.
+    const due = (guild.vehicles || []).filter(
+      (v) => v.status === 'inTransit' && v.trip && v.trip.arrivalTick <= thisTick,
+    );
+    if (due.length === 0) continue;
+    due.sort((a, b) => cmp(a.id, b.id));
+    for (const craft of due) {
+      const lastLeg = craft.trip.legs[craft.trip.legs.length - 1];
+      // The final anchor, copied (a fresh object, the createVehicle discipline) so the landed craft's
+      // location can never alias the trip object being dropped.
+      craft.location = { ...lastLeg.to };
+      craft.status = 'idle';
+      craft.updatedAtTick = thisTick; // §15.2 — every mutation records its tick
+      delete craft.trip;
+    }
+  }
+  return state;
+}
+
 // recordFuelGrant(...) — stamp this cycle's fuel grant onto the guild, so a reader can say
 // WHAT it was due and WHAT it actually received without recomputing anything (§5's display
 // rule). Like `recordLicenceFee` and `recordSale` above this is a RECORD OF AN EVENT, not
@@ -1339,6 +1377,7 @@ const STEPS = [
   stepPriceRecompute,
   stepScheduledEvents,
   stepArrivals,
+  stepVehicleArrivals,
   stepBaselineAllocation,
   stepStoryteller,
   stepVoteClosures,

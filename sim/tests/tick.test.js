@@ -53,7 +53,10 @@ test('the tick steps run in the exact §15.6 order', () => {
   // (a renegotiation deadline the calendar reaches), not a window-boundary verdict. It runs
   // LAST, after all the boundary/accrual/grant work, so a venture takes its final window
   // verdict (and the cycle's fuel grant reads its standing) before its RP is forfeited.
-  assert.equal(STEPS.length, 9);
+  // 2.2 (b1) inserted stepVehicleArrivals — the guild-transport half of step 5 "arrivals"
+  // (transport-model.md §4) — directly after stepArrivals, keeping the two arrival passes adjacent:
+  // a dispatched craft's frozen route is landed by the SAME arrivals step the Syndicate delivery is.
+  assert.equal(STEPS.length, 10);
   assert.deepEqual(
     STEPS.map((fn) => fn.name),
     [
@@ -62,6 +65,7 @@ test('the tick steps run in the exact §15.6 order', () => {
       'stepPriceRecompute',
       'stepScheduledEvents',
       'stepArrivals',
+      'stepVehicleArrivals',
       'stepBaselineAllocation',
       'stepStoryteller',
       'stepVoteClosures',

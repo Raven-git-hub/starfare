@@ -84,6 +84,7 @@ const { createZeroState } = require('./scenarios/zero-state.js');
 const { advance } = require('./run.js');
 const {
   validateAction, applyAction, createSpawnVehicleAction, createRemoveVehicleAction,
+  createDispatchVehicleAction,
 } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
 const { saveState, appendJournal, clearJournal, loadOrInit, saveSeed, loadSeed, deleteGalaxy } = require('./persist.js');
@@ -821,8 +822,8 @@ async function handleRequest(req, res) {
   }
 
   // --- the vehicle spawn/remove primitive (design.md §15.4, roadmap 2.2 spawn) --------------
-  // Two OPERATOR endpoints, namespaced under /admin/ and gated exactly like the /admin/galaxy/*
-  // lifecycle routes (the Delete-Galaxy privilege level — Cloudflare Access is the interim gate,
+  // The OPERATOR vehicle endpoints, namespaced under /admin/ and gated exactly like the
+  // /admin/galaxy/* lifecycle routes (the Delete-Galaxy privilege level — Cloudflare Access is the interim gate,
   // real per-role auth is Phase 3; the player client never surfaces them). They CONSTRUCT the
   // engine action from the request body and run it through the SAME validate → journal → apply
   // path POST /action uses (applyOneAction), so a spawned/removed craft survives restart and
@@ -889,6 +890,43 @@ async function handleRequest(req, res) {
       sendJson(res, 200, applyOneAction(action));
     } catch (err) {
       sendJson(res, 500, { error: 'error applying removeVehicle (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // POST /admin/vehicle/dispatch { guildId, vehicleId, waypoints } — send an idle craft along a
+  // multi-leg route (transport-model.md §4). Gated and routed exactly like /spawn and /remove: the
+  // SAME validate → journal → apply path (applyOneAction), so a dispatched craft survives restart
+  // and replays deterministically.
+  if (method === 'POST' && path === '/admin/vehicle/dispatch') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","vehicleId":"vehicle_g1_lightTransport_01","waypoints":[{"landmarkKind":"system","landmarkId":"sys_0006"}]}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId, vehicleId, and a non-empty waypoints array' });
+      return;
+    }
+    let action;
+    try {
+      // The constructor enforces the required fields; legality — guild/craft exist, craft idle,
+      // waypoints resolve with no zero-length leg, hoard covers the burn — is validateAction's job,
+      // run inside applyOneAction below.
+      action = createDispatchVehicleAction({
+        guildId: body.guildId, vehicleId: body.vehicleId, waypoints: body.waypoints,
+      });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed dispatch-vehicle request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying dispatchVehicle (invariant violation or engine throw)', detail: String((err && err.message) || err) });
     }
     return;
   }
