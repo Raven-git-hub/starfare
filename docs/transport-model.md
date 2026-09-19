@@ -352,6 +352,13 @@ The interpolation of §2.3 is read by three places, from one primitive:
   §3. BUILT 10-09-26, Phase 2 — the **OPERATIONS tab's IN TRANSIT section**, the list companion that
   reads the same fields into a progress bar + ETA per row; see `docs/operations-hub.md` §7. The tab's
   **guild-craft / leasing board** — LEASED, and craft ids in IN TRANSIT — stays Phase 4.)*
+  *(**AS-BUILT 19-09-26, slice 2.2 (b2a), CLIENT ONLY (`client/game.html`)** — the legProgress consumers
+  now include the **guild's own in-transit craft**, on BOTH the map and the tab: the map draws each own
+  `vehicles[].trip` (b1) as its full multi-leg polyline with the craft tweened along the active leg and a
+  `<class>/<ETA>` tag in the player accent, and OPERATIONS IN TRANSIT gains a craft row (name · bar · ETA ·
+  destination) interleaved with the Syndicate deliveries. Same primitive as the deliveries — the client
+  re-derives position/progress off the engine's leg ticks and differences `trip.arrivalTick − nowTick` for
+  the ETA (§18), consuming the b1 snapshot unchanged. The route-planner (b2b) is the remaining client half.)*
 
 ## 7. Piracy, risk, and interception (Phase 1: storyteller-only)
 

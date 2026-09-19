@@ -415,7 +415,29 @@ boundary so the later hex-map swap doesn't touch it.
   **(b2) client** — the Dispatch popup's waypoint builder (a live estimate, engine authoritative at apply) and the
   in-flight polyline / craft render. Cargo, waypoint actions, saved routes, and scheduled/repeating runs are their
   own later passes; the anchor-list shape leaves the seams. UI: the OPERATIONS hero splits into idle-transports
-  (dispatch) over leased. *From
+  (dispatch) over leased.
+  **Slices: (b2a) in-flight render — ✅ BUILT (19-09-26, `client/game.html`, CLIENT ONLY).** The visibility half
+  of the dispatch client, built before the planner (b2b) so a dispatched craft is visible the moment it flies. It
+  consumes the b1 snapshot's `vehicles[].trip` as-is (NO engine/snapshot change) and mirrors the Syndicate-delivery
+  machinery. **Map overlay:** a sibling feed `window.__setLiveInTransitCraft` (beside `__setLiveDeepSpaceCraft`),
+  filled each poll from the player's OWN guild row filtered `status === 'inTransit' && v.trip` (own only,
+  client-wiring §7); a draw pass beside the delivery pass draws the WHOLE multi-leg polyline (every leg the same
+  dashed brass line, off-screen culled per leg), slides the craft along its ACTIVE leg (`departureTick ≤ Tf <
+  arrivalTick`, clamped at both ends) as the same rotated gold chevron, and — above 1× — tags it
+  `[prettyClass(class), fmtETA(trip.arrivalTick − nowTick)]` in the `'player'` accent. **OPERATIONS IN TRANSIT:**
+  each own in-transit craft becomes a row in `#ops-transit-list` alongside the Syndicate deliveries (interleaved by
+  soonest arrival) — craft name · overall progress bar (`clamp01((Tf − trip.dispatchTick)/(trip.arrivalTick −
+  trip.dispatchTick))`) · ETA (`trip.arrivalTick − nowTick`) · destination name (the final leg's `to` coords
+  reverse-mapped to a system/outpost via the new `window.__landmarkNameAt`, else `Deep Space (q, r)`); its manifest
+  carrier line is the craft's own name and cargo reads "No cargo" (the goods loop shape left ready). Both fold into
+  the existing `transitSig` structure-guard + in-place bar/ETA update (stable key `id + trip.arrivalTick`), so
+  scroll/expand state survives a poll. The client computes no game number (§18): position/ETA/progress are derives
+  off the engine's ticks, the reverse-map is presentation. *Client-only — the sim suite holds at 1,353, 0 fail;
+  proven end-to-end in headless Chromium: a `dispatch-vehicle` multi-leg route flies as a polyline + chevron + tag
+  and shows a live IN TRANSIT row, then on arrival leaves both layers and reappears idle at its final anchor.*
+  **(b2b) the route-planner** — the Dispatch popup's waypoint builder, quote, and Finalise — stays the remaining
+  client slice.
+  *From
   here the thread fans out — Syndicate transport contracts, maintenance, exploration (a plain craft scans,
   slower and fuelled), and deep-space asset deployment (outpost → toll). A full Phase-2 renumber to reflect this
   reordering is the roadmap-expert thread's job at hand-back, not done here.*

@@ -3009,6 +3009,16 @@ select.field{appearance:none; cursor:pointer;}
   // OWN CRAFT ONLY (client-wiring §7 — a rival's logistics are not free intel). PRESENTATION
   // ONLY: a small accent marker + a clickable name-tag; the client computes no game number (§18).
   let liveDeepSpaceCraft = [];
+  // The player's OWN in-transit guild craft, pushed by __setLiveInTransitCraft from each poll.
+  // [] until the first snapshot. Each is { id, class, trip } — the in-flight `trip` the b1 engine
+  // surfaces (ordered legs with RESOLVED endpoint coords + per-leg ticks, plus the trip's
+  // arrivalTick; design.md §15.4, transport-model.md §4). PRESENTATION ONLY (§18): the map draws
+  // the whole polyline and slides the craft along its ACTIVE leg, re-deriving the smooth position
+  // between ticks (§2.3/§6) exactly as the Syndicate-delivery pass does — the guild-craft mirror,
+  // generalised from one leg to many. OWN CRAFT ONLY (client-wiring §7 — a rival's logistics are
+  // not free intel). It invents no game number: position is interpolation off the engine's coords
+  // + ticks, and the ETA differences the trip's arrivalTick against the snapshot tick.
+  let liveInTransitCraft = [];
   // Each drawn craft name-tag's screen-space box + its craft: [{ x, y, w, h, craft }]. Rebuilt every
   // frame in the draw pass and read by handleClick — a click inside a box opens that craft's Dispatch
   // popup, while a click on the craft's hex/marker falls through to normal hex handling. Labels draw
@@ -3498,6 +3508,104 @@ select.field{appearance:none; cursor:pointer;}
       }
     }
 
+    // in-transit guild craft — the player's OWN dispatched craft (2.2 b2a), drawn as the whole
+    // multi-leg polyline with the craft sliding along its ACTIVE leg and a class/ETA tag. The
+    // guild-craft mirror of the Syndicate-delivery pass above, generalised from one leg to many
+    // (transport-model.md §2.3/§6, design.md §15.4/§18). PRESENTATION ONLY: the engine surfaces each
+    // leg's RESOLVED endpoints and its two ticks and the trip's arrivalTick; the client re-derives
+    // the smooth position between ticks (like the clock ring off a period/phase) and differences
+    // arrivalTick − nowTick for the countdown — it invents no game number (§18). OWN CRAFT ONLY (§7).
+    if (liveInTransitCraft.length) {
+      const hsV = galaxy.galaxyParams.hexSize;
+      // ONE timing source: the absolute fractional tick from the clock ring (§6). Null before the
+      // first snapshot sets a tick — nothing to place, so skip the overlay this frame.
+      const Tf = window.__fractionalTick ? window.__fractionalTick() : null;
+      if (Tf !== null) {
+        // nowTick is the snapshot's own integer tick — the SAME source the delivery ETA differences
+        // against (the engine pre-differences a delivery's ticksRemaining; a craft trip carries the
+        // absolute arrivalTick, so the client differences it here, §18). Falls back to the ring's
+        // integer position if no snapshot is readable yet.
+        const snapNow = window.__snapshot ? window.__snapshot() : null;
+        const nowTick = (snapNow && typeof snapNow.tick === 'number') ? snapNow.tick : Math.floor(Tf);
+        liveInTransitCraft.forEach((craft) => {
+          const legs = (craft.trip && craft.trip.legs) || [];
+          if (!legs.length) return;
+
+          // the whole route — every leg as the same dashed brass line the delivery draws, with the
+          // delivery's off-screen cull per leg so a galaxy-spanning route stays cheap.
+          legs.forEach((leg) => {
+            if (!leg.from || !leg.to) return; // an unresolved endpoint (defensive) — nothing to draw
+            const aPix = hexToPixel(leg.from.q, leg.from.r, hsV);
+            const bPix = hexToPixel(leg.to.q, leg.to.r, hsV);
+            const A = worldToScreen(aPix.x, aPix.y);
+            const B = worldToScreen(bPix.x, bPix.y);
+            const offA = A.x < -60 || A.x > window.innerWidth + 60 || A.y < -60 || A.y > window.innerHeight + 60;
+            const offB = B.x < -60 || B.x > window.innerWidth + 60 || B.y < -60 || B.y > window.innerHeight + 60;
+            if (offA && offB) return; // this leg is wholly off-screen
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.setLineDash([4, 6]);
+            ctx.strokeStyle = 'rgba(232,185,58,0.5)';
+            ctx.lineWidth = 1.4;
+            ctx.moveTo(A.x, A.y);
+            ctx.lineTo(B.x, B.y);
+            ctx.stroke();
+            ctx.restore();
+          });
+
+          // the ACTIVE leg: the first leg not yet arrived (departureTick ≤ Tf < arrivalTick). Before
+          // the first leg's departure this picks leg 0 (f clamps to 0); at/after the final arrival it
+          // picks the last leg (f clamps to 1). Legs are contiguous, so exactly one is live at a time.
+          let active = legs[0];
+          for (let i = 0; i < legs.length; i++) {
+            active = legs[i];
+            if (Tf < legs[i].arrivalTick) break;
+          }
+          if (!active.from || !active.to) return; // active leg unresolved — no marker this frame
+
+          const oPix = hexToPixel(active.from.q, active.from.r, hsV);
+          const dPix = hexToPixel(active.to.q, active.to.r, hsV);
+          const A = worldToScreen(oPix.x, oPix.y);
+          const B = worldToScreen(dPix.x, dPix.y);
+          // legProgress along the active leg (transport-model.md §2.3): fraction elapsed in TIME ==
+          // fraction covered in SPACE. Lerp in WORLD space then project, so the craft rides the same
+          // straight line the leg draws under any rotation/zoom.
+          const span = active.arrivalTick - active.departureTick;
+          const f = span > 0 ? Math.min(1, Math.max(0, (Tf - active.departureTick) / span)) : 1;
+          const wx = oPix.x + f * (dPix.x - oPix.x);
+          const wy = oPix.y + f * (dPix.y - oPix.y);
+          const cp = worldToScreen(wx, wy);
+          // the gold chevron, rotated to the active leg's SCREEN angle — the delivery's marker.
+          const theta = Math.atan2(B.y - A.y, B.x - A.x);
+          const cs = 2 * Math.min(6.5, 3.5 + zoom * 0.06);
+          ctx.save();
+          ctx.translate(cp.x, cp.y);
+          ctx.rotate(theta);
+          ctx.shadowColor = 'rgba(242,206,93,0.9)';
+          ctx.shadowBlur = 8;
+          ctx.fillStyle = '#f2ce5d';
+          ctx.beginPath();
+          ctx.moveTo(cs, 0);
+          ctx.lineTo(-cs, -cs * 0.8);
+          ctx.lineTo(-cs * 0.45, 0);
+          ctx.lineTo(-cs, cs * 0.8);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+
+          // the tag — class + ETA, only above 1× (the same threshold the delivery/system tags use).
+          // The 'player' accent marks it as the player's OWN craft (the Syndicate's is 'outpost').
+          // The ETA is the trip's arrivalTick differenced against nowTick, formatted — never
+          // recomputed from legProgress or wall-clock (§18; the position tweens, the number is the
+          // engine's).
+          if (zoom > 1) {
+            drawLabelBox(cp, [prettyClass(craft.class).toUpperCase(), fmtETA(craft.trip.arrivalTick - nowTick)], 'player', true);
+          }
+        });
+      }
+    }
+
     // the player's own idle DEEP-SPACE craft (2.2 spawn) — a bare-hex transport sits where no
     // system/outpost tag would mark it, so it gets its OWN small accent marker plus a clickable
     // name-tag. A craft at a system/outpost is already drawn by that landmark's tag and is not fed
@@ -3852,6 +3960,15 @@ select.field{appearance:none; cursor:pointer;}
   // pass draws; the clickable-label boxes are captured from that pass (craftLabelHits).
   window.__setLiveDeepSpaceCraft = function (list) {
     liveDeepSpaceCraft = (list || []).map((c) => ({ id: c.id, class: c.class, q: c.q, r: c.r }));
+  };
+
+  // The sibling door for the IN-TRANSIT CRAFT layer (2.2 b2a): the player's own dispatched guild
+  // craft, each carrying the b1 engine's in-flight `trip` (resolved leg coords + ticks). A craft is
+  // in transit XOR idle, so this and the deep-space feed are naturally exclusive — a craft moves
+  // from one to the other on dispatch/arrival with no extra bookkeeping. OWN CRAFT ONLY (§7). Keeps
+  // just what the draw pass reads (id/class/trip); the map computes no game number (§18).
+  window.__setLiveInTransitCraft = function (list) {
+    liveInTransitCraft = (list || []).map((c) => ({ id: c.id, class: c.class, trip: c.trip }));
   };
 
   // A stable colour per rival guild id. PRESENTATION ONLY — a hue, not a game
@@ -5716,6 +5833,18 @@ function applySnapshot(snap){
       .map(function(v){ return { id: v.id, class: v.class, q: v.location.q, r: v.location.r }; });
     window.__setLiveDeepSpaceCraft(deepCraft);
   }
+  // The IN-TRANSIT CRAFT overlay reads from the same poll: the player's OWN dispatched craft (a
+  // vehicle row with status 'inTransit' and a `trip`). Own craft only (client-wiring §7 — a rival's
+  // logistics are not free intel), filtered exactly as the idle feed is. The trip legs already carry
+  // resolved { q, r } + ticks, so we pass the row through as { id, class, trip }; the map draws the
+  // polyline and tweens the craft, computing no game number (§18).
+  if (window.__setLiveInTransitCraft){
+    var myRowTr = (snap.guilds || []).filter(function(g){ return g.id === GAME.guildId; })[0];
+    var inTransitCraft = ((myRowTr && myRowTr.vehicles) || [])
+      .filter(function(v){ return v.status === 'inTransit' && v.trip; })
+      .map(function(v){ return { id: v.id, class: v.class, trip: v.trip }; });
+    window.__setLiveInTransitCraft(inTransitCraft);
+  }
   // The systems the player controls, for the detail screen's system picker.
   var mineIds = Object.keys(LIVE.systemClaims).filter(function(id){ return LIVE.systemClaims[id] === GAME.guildId; });
   window.__ownedSet = {}; mineIds.forEach(function(id){ window.__ownedSet[id] = 1; });
@@ -5776,6 +5905,18 @@ window.__outpostName = function(id){
   if (!id || !GAME.galaxy || !GAME.galaxy.outposts) return id;
   var o = GAME.galaxy.outposts.filter(function(x){ return x.id === id; })[0];
   return (o && o.name) ? o.name : id;
+};
+// Reverse-map a resolved hex { q, r } to the landmark (system or outpost) that sits on it, or null
+// if none does — the OPERATIONS IN TRANSIT list names a guild craft's destination (its final leg's
+// `to` coords) the way the map names any landmark: off the seed the client already holds
+// (GAME.galaxy), never a stored byte. A hex holds at most one landmark, so a system is checked
+// before an outpost. PRESENTATION ONLY (§18): a coordinate the engine surfaced, resolved to a name.
+window.__landmarkNameAt = function(q, r){
+  if (typeof q !== 'number' || typeof r !== 'number' || !GAME.galaxy) return null;
+  var s = (GAME.galaxy.systems || []).filter(function(x){ return x.coords && x.coords.q === q && x.coords.r === r; })[0];
+  if (s && s.name) return s.name;
+  var o = (GAME.galaxy.outposts || []).filter(function(x){ return x.coords && x.coords.q === q && x.coords.r === r; })[0];
+  return (o && o.name) ? o.name : null;
 };
 window.__refreshNow = function(){ return apiGet('/snapshot').then(applySnapshot); };
 // The stored terms of one of the player's own ventures (or null) — read back by the
@@ -7642,6 +7783,82 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       + '</div>';
   }
 
+  // ---- the guild's OWN in-transit craft (2.2 b2a): rows alongside the Syndicate deliveries -------
+  // A craft's full display name ("Heavy Transport") — the camelCase-split title-case the map slice's
+  // prettyClass does, a copy because that IIFE is out of scope. Display vocabulary only (§18).
+  function craftClassName(cls){
+    return String(cls == null ? '' : cls)
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/\b\w/g, function(c){ return c.toUpperCase(); });
+  }
+  // A stable key per in-transit craft: its id + the trip's absolute arrival tick (§4). Unlike a
+  // Syndicate delivery a craft HAS an id, so this is unique across the guild's history.
+  function craftKey(v){ return 'craft:' + v.id + '@' + (v.trip && v.trip.arrivalTick); }
+
+  // The player's OWN in-transit craft (status 'inTransit' with a `trip`), off the polled guild row —
+  // own only, exactly as the idle-transport feed is filtered (client-wiring §7). Not sorted here; the
+  // combined list (myTransitItems) sorts craft and deliveries together by soonest arrival.
+  function myCraftTransit(guild){
+    return ((guild && guild.vehicles) || []).filter(function(v){ return v.status === 'inTransit' && v.trip; });
+  }
+
+  // A craft's DESTINATION name: the final leg's `to` coords reverse-mapped to the landmark that sits
+  // on that hex (system or outpost), via the shell bridge — the same seed the map reads. If no
+  // landmark sits there the craft is bound for open space, shown as "Deep Space (q, r)". Presentation
+  // only (§18): a coordinate the engine surfaced, resolved to a name.
+  function craftDestName(trip){
+    var legs = (trip && trip.legs) || [];
+    var last = legs[legs.length - 1];
+    var to = last && last.to;
+    if(!to || typeof to.q !== 'number' || typeof to.r !== 'number') return 'Deep Space';
+    var nm = window.__landmarkNameAt && window.__landmarkNameAt(to.q, to.r);
+    return nm || ('Deep Space (' + to.q + ', ' + to.r + ')');
+  }
+
+  // One craft IN TRANSIT row — the delivery row's twin (rowHtml), so the two interleave seamlessly:
+  //   craft name (identity cell) · progress bar · [reserved alert] · time remaining · destination.
+  // The manifest's carrier line IS the craft's own name (unlike the Syndicate's faceless carrier),
+  // and cargo reads "No cargo" — guild craft carry none this slice. The goods loop is left shaped
+  // exactly as the delivery's manifest note anticipates, so mixed cargo (Phase 4) drops straight in.
+  // PRICES NOTHING here (§18) — the bar + ETA are derives off the trip's ticks, updated below.
+  function craftRowHtml(v){
+    var key = craftKey(v);
+    var open = O.expanded[key] === true;
+    var name = craftClassName(v['class']);
+    // var cargo = {}; craft carry none this slice — when they do, itemise here exactly as rowHtml does.
+    var manRows = '<div class="ops-manrow ops-manempty">No cargo.</div>';
+    return '<div class="ops-row craft' + (open ? ' open' : '') + '" data-key="' + esc(key) + '">'
+      + '<div class="ops-rowhead">'
+      +   '<span class="ops-origin">' + esc(name) + '</span>'
+      +   '<span class="ops-bar"><span class="ops-fill"></span></span>'
+      +   '<span class="ops-alert" aria-hidden="true"></span>'
+      +   '<span class="ops-eta"></span>'
+      +   '<span class="ops-dest">' + esc(craftDestName(v.trip)) + '</span>'
+      + '</div>'
+      + '<div class="ops-manifest">'
+      +   '<div class="ops-idline">Carrier: <b>' + esc(name) + '</b></div>'
+      +   '<div class="ops-manhd">Manifest</div>'
+      +   manRows
+      + '</div>'
+      + '</div>';
+  }
+
+  // The player's OWN deliveries AND in-transit craft as one list, each wrapped in a common item
+  // { kind, key, arrivalTick, ... } and sorted by soonest arrival so the two interleave (§4). Both
+  // arrivalTicks are absolute engine ticks, so sorting on arrivalTick orders them the same way the
+  // deliveries' own ticksRemaining sort does; the key breaks ties deterministically.
+  function myTransitItems(guild, s){
+    var items = myTransit(guild, s).map(function(sh){
+      return { kind: 'ship', key: shipKey(sh), arrivalTick: sh.arrivalTick, sh: sh };
+    });
+    myCraftTransit(guild).forEach(function(v){
+      items.push({ kind: 'craft', key: craftKey(v), arrivalTick: v.trip.arrivalTick, v: v });
+    });
+    return items.sort(function(a, b){
+      return (a.arrivalTick - b.arrivalTick) || (a.key < b.key ? -1 : (a.key > b.key ? 1 : 0));
+    });
+  }
+
   // The live IN TRANSIT list. The STRUCTURE is rebuilt only when the set of deliveries changes (a
   // signature), so a poll never throws away the reader's scroll or an expanded manifest; within a
   // stable set every delivery's ticksRemaining falls by one each tick, so their order never changes.
@@ -7651,33 +7868,56 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // falling back to the snapshot's integer tick before the first sweep. The ETA is fmtETA of the
   // engine's ticksRemaining — the two are computed from DIFFERENT sources on purpose: the bar tweens,
   // the number is the engine's.
+  // (2.2 b2a) `mine` is now deliveries AND the guild's own in-transit craft, interleaved by soonest
+  // arrival. Both kinds share the same row shape, so the per-poll update below drives them uniformly:
+  // the bar off the fractional tick, the ETA off the snapshot's integer tick. A craft's bar spans its
+  // WHOLE trip (dispatchTick→arrivalTick, not one leg) and its ETA differences the trip's arrivalTick;
+  // a delivery keeps its departure/arrival span and the engine's pre-differenced ticksRemaining.
   function renderTransit(guild, s){
     var host = el('ops-transit-list'); if(!host) return;
-    var mine = myTransit(guild, s);
+    var mine = myTransitItems(guild, s);
 
-    var sig = mine.map(shipKey).join('|');
+    var sig = mine.map(function(it){ return it.key; }).join('|');
     if(sig !== O.transitSig){
       O.transitSig = sig;
-      // prune the expand-state map to the deliveries still in flight
+      // prune the expand-state map to the deliveries/craft still in flight
       var keep = {};
-      mine.forEach(function(sh){ var k = shipKey(sh); if(O.expanded[k]) keep[k] = true; });
+      mine.forEach(function(it){ if(O.expanded[it.key]) keep[it.key] = true; });
       O.expanded = keep;
       host.innerHTML = mine.length
-        ? mine.map(rowHtml).join('')
+        ? mine.map(function(it){ return it.kind === 'craft' ? craftRowHtml(it.v) : rowHtml(it.sh); }).join('')
         : '<div class="ops-empty"><div class="glyph">&#10022;</div><h3>Nothing in transit</h3>'
-          + '<p>A Syndicate delivery appears here the moment you buy goods or commission an asset to a system you hold.</p></div>';
+          + '<p>A Syndicate delivery appears here the moment you buy goods or commission an asset to a system you hold. A dispatched guild craft joins it.</p></div>';
     }
 
     if(mine.length){
       var Tf = window.__fractionalTick ? window.__fractionalTick() : null;
       if(Tf === null || Tf === undefined) Tf = (s && typeof s.tick === 'number') ? s.tick : 0;
+      // nowTick — the snapshot's integer tick, the engine tick a craft's ETA differences against (a
+      // delivery uses its pre-differenced ticksRemaining instead; §18).
+      var nowTick = (s && typeof s.tick === 'number') ? s.tick : Math.floor(Tf);
       var domRows = host.querySelectorAll('.ops-row');
-      mine.forEach(function(sh, i){
+      mine.forEach(function(it, i){
         var row = domRows[i]; if(!row) return;   // dom order matches `mine` (structure built from it)
-        var span = sh.arrivalTick - sh.departureTick;
-        var f = span > 0 ? Math.min(1, Math.max(0, (Tf - sh.departureTick) / span)) : 1;
-        var fill = row.querySelector('.ops-fill'); if(fill) fill.style.width = (f * 100).toFixed(1) + '%';
-        var eta = row.querySelector('.ops-eta'); if(eta) eta.textContent = fmtETA(sh.ticksRemaining);
+        var fill = row.querySelector('.ops-fill');
+        var eta = row.querySelector('.ops-eta');
+        if(it.kind === 'craft'){
+          // a craft's bar spans its WHOLE trip (dispatch→arrival); its ETA differences the trip's
+          // absolute arrivalTick against nowTick (the trip carries no pre-differenced remainder, §18).
+          var trip = it.v.trip;
+          var cspan = trip.arrivalTick - trip.dispatchTick;
+          var cf = cspan > 0 ? Math.min(1, Math.max(0, (Tf - trip.dispatchTick) / cspan)) : 1;
+          if(fill) fill.style.width = (cf * 100).toFixed(1) + '%';
+          if(eta) eta.textContent = fmtETA(trip.arrivalTick - nowTick);
+        } else {
+          // a delivery's bar is legProgress off its two ticks; its ETA is the engine's own
+          // ticksRemaining, formatted — never recomputed from the tweened bar.
+          var sh = it.sh;
+          var span = sh.arrivalTick - sh.departureTick;
+          var f = span > 0 ? Math.min(1, Math.max(0, (Tf - sh.departureTick) / span)) : 1;
+          if(fill) fill.style.width = (f * 100).toFixed(1) + '%';
+          if(eta) eta.textContent = fmtETA(sh.ticksRemaining);
+        }
       });
     }
   }
