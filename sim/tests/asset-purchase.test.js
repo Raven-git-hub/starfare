@@ -14,13 +14,14 @@
 //   - APPLY moves TWO costs and records ONE build order: the exact price debited to the ledger
 //     (invariant 2), the exact routeFuelCost fuel burned (invariant 1), a build order recorded,
 //     and NO shipment / NO asset yet;
-//   - stepSyndicateBuilds promotes at buildDoneTick (an asset-marked shipment appears) and NOT
-//     before, scheduling the delivery leg from the completion tick;
+//   - stepSyndicateBuilds runs a PER-GUILD single-slot queue (asset-purchase.md §"Build
+//     concurrency"): only the HEAD counts down its BUILD_TICKS and promotes at 0 (an asset-marked
+//     shipment appears) and NOT before, scheduling the delivery leg from the completion tick;
 //   - stepArrivals mints one idle asset of the right kind at the destination with a fresh stable
 //     id, and DROPS the shipment (mints nothing) when the owner is gone;
 //   - the §8.1 quote-lock prices the parts from the ring at the issue tick / refuses on expiry;
-//   - serialization: a state with a pending build survives save→load with buildDoneTick intact
-//     and lands the asset on the right tick;
+//   - serialization: a state with a pending build survives save→load with its remainingTicks
+//     intact and lands the asset on the right tick;
 //   - the no-op / determinism proofs: an unbought galaxy carries no syndicateBuilds key and is
 //     byte-identical, and a bought galaxy run twice is byte-identical;
 //   - a HEADLESS END-TO-END: found → buy → build → deliver → mint, ticked the whole span.
@@ -192,11 +193,13 @@ test('apply: debits the EXACT price to the ledger (invariant 2) and burns the EX
   assert.equal((s.shipments || []).length, 0, 'no shipment until construction finishes');
   assert.equal((s.guilds[0].assets || []).length, 0, 'no asset until it arrives');
   assert.equal(s.syndicateBuilds.length, 1);
+  // The build order records the dockyard's RELATIVE shape (asset-purchase.md §"Build concurrency"):
+  // `remainingTicks: null` = queued, not yet started — the clock starts when it reaches the head.
   assert.deepEqual(s.syndicateBuilds[0], {
     ownerGuildId: 'g1',
     assetKind: MINER,
     destinationSystemId: DEST,
-    buildDoneTick: s.tick + BUILD_TICKS[MINER],
+    remainingTicks: null,
     boughtTick: s.tick,
   });
   // Every invariant green right after apply (the between-tick assert the server runs).
@@ -218,34 +221,36 @@ test('apply: the delivery burns the HEAVY rate — a T4 asset fills a heavy hold
 
 // --- 4. stepSyndicateBuilds: promotion timing ---------------------------------
 
-test('stepSyndicateBuilds promotes at buildDoneTick — an asset-marked shipment appears, and NOT before', () => {
-  // Seed a build due at tick 5 (bypassing the 4,320-tick wait), then tick up to it.
-  const seed = [{ ownerGuildId: 'g1', assetKind: FACTORY, destinationSystemId: DEST, buildDoneTick: 5, boughtTick: 0 }];
+test('stepSyndicateBuilds — the HEAD counts down and promotes at 0 (an asset-marked shipment appears), and NOT before', () => {
+  // Seed a head 3 ticks from completion — a mid-construction save (bypassing the full BUILD_TICKS
+  // wait). `remainingTicks` is the RELATIVE countdown (not the retired absolute buildDoneTick).
+  const seed = [{ ownerGuildId: 'g1', assetKind: FACTORY, destinationSystemId: DEST, remainingTicks: 3, boughtTick: 0 }];
   let s = buyState({ syndicateBuilds: seed });
 
-  s = ticks(s, 4); // to tick 4 — thisTick reaches 4 < 5, so no promotion yet
-  assert.equal(s.tick, 4);
-  assert.equal(s.syndicateBuilds.length, 1, 'still on order at tick 4');
-  assert.equal((s.shipments || []).length, 0, 'no shipment at tick 4');
+  s = ticks(s, 2); // remainingTicks 3 → 1 over ticks 1,2 — still building, not yet done
+  assert.equal(s.tick, 2);
+  assert.equal(s.syndicateBuilds.length, 1, 'still on order at tick 2');
+  assert.equal(s.syndicateBuilds[0].remainingTicks, 1, 'one tick of build left');
+  assert.equal((s.shipments || []).length, 0, 'no shipment before completion');
 
-  s = tick(s); // to tick 5 — promoted
-  assert.equal(s.tick, 5);
-  assert.equal(s.syndicateBuilds, undefined, 'the promoted build leaves the list (omit-when-empty)');
+  s = tick(s); // to tick 3 — remainingTicks 1 → 0 → promoted
+  assert.equal(s.tick, 3);
+  assert.equal(s.syndicateBuilds, undefined, 'the completed head leaves the queue (omit-when-empty)');
   assert.equal(s.shipments.length, 1);
   const ship = s.shipments[0];
   assert.equal(ship.assetKind, FACTORY, 'the shipment carries the ASSET marker, not a goods cargo');
   assert.equal(ship.cargo, undefined, 'no goods cargo on an asset delivery');
-  // The delivery leg is scheduled from the completion tick: arrival = buildDoneTick + ceil(dist × speed).
-  assert.equal(ship.arrivalTick, arrivalTickFor(5, DEST_DISTANCE));
+  // The delivery leg is scheduled from the completion tick: arrival = completionTick + ceil(dist × speed).
+  assert.equal(ship.arrivalTick, arrivalTickFor(3, DEST_DISTANCE));
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
 // --- 5. stepArrivals: the mint ------------------------------------------------
 
 test('stepArrivals mints one idle asset of the right kind at the destination, with a fresh stable id', () => {
-  const seed = [{ ownerGuildId: 'g1', assetKind: MINER, destinationSystemId: DEST, buildDoneTick: 2, boughtTick: 0 }];
+  const seed = [{ ownerGuildId: 'g1', assetKind: MINER, destinationSystemId: DEST, remainingTicks: 2, boughtTick: 0 }];
   let s = buyState({ syndicateBuilds: seed });
-  s = ticks(s, 2);                 // promote at tick 2
+  s = ticks(s, 2);                 // remainingTicks 2 → 0 at tick 2 — promoted
   assert.equal(s.shipments.length, 1);
   const arrivalTick = s.shipments[0].arrivalTick;
 
@@ -315,20 +320,22 @@ test('quote-lock: a purchase prices the parts from the ring at the ISSUE TICK, a
 
 // --- 7. serialization round-trip ----------------------------------------------
 
-test('serialization: a state with a pending build survives save→load with buildDoneTick intact, and lands on the right tick', () => {
+test('serialization: a state with a pending build survives save→load with its remainingTicks intact, and lands on the right tick', () => {
   const s0 = accept(buyState(), buy(MINER, DEST));
-  const buildDoneTick = s0.syndicateBuilds[0].buildDoneTick;
+  assert.equal(s0.syndicateBuilds[0].remainingTicks, null, 'queued at buy, not yet started');
 
   // save → load (the engine's canonical JSON, reloaded verbatim as the persist path does).
   const reloaded = JSON.parse(canonicalStringify(s0));
   assert.equal(hashState(reloaded), hashState(s0), 'the pending build round-trips byte-identically');
-  assert.equal(reloaded.syndicateBuilds[0].buildDoneTick, buildDoneTick, 'buildDoneTick intact');
+  assert.equal(reloaded.syndicateBuilds[0].remainingTicks, null, 'remainingTicks intact');
 
-  // buildDoneTick is ABSOLUTE, so the reloaded galaxy lands the asset on the SAME tick the
-  // original would have — determinism across a save/load (invariant 9).
-  const arrivalTick = buildDoneTick + arrivalTickFor(0, DEST_DISTANCE);
-  const fromReload = ticks(reloaded, arrivalTick - reloaded.tick);
-  const fromOriginal = ticks(s0, arrivalTick - s0.tick);
+  // The queue clock is RELATIVE but deterministic: the reloaded galaxy runs the SAME
+  // start→countdown→ship→arrive sequence as the original, so it lands the asset on the SAME tick
+  // (invariant 9). Tick both well past the whole span — the start tick, BUILD_TICKS, and the
+  // delivery leg — and compare byte-for-byte.
+  const span = 1 + BUILD_TICKS[MINER] + arrivalTickFor(0, DEST_DISTANCE) + 5;
+  const fromReload = ticks(reloaded, span);
+  const fromOriginal = ticks(s0, span);
   assert.equal(hashState(fromReload), hashState(fromOriginal));
   assert.equal((fromReload.guilds[0].assets || []).length, 1, 'the asset lands from the reloaded save');
   assert.equal(fromReload.guilds[0].assets[0].kind, MINER);
@@ -409,16 +416,17 @@ test('headless end-to-end: found → buy → build → deliver → mint', () => 
   assert.equal(guild().credits, creditsAfterFound - price);
   assert.equal(guild().fuelHoard, fuelAfterFound - burn);
   assert.equal(s.syndicateBuilds.length, 1);
-  const buildDoneTick = s.syndicateBuilds[0].buildDoneTick;
-  assert.equal(buildDoneTick, s.tick + BUILD_TICKS[FACTORY]);
+  assert.equal(s.syndicateBuilds[0].remainingTicks, null, 'queued at buy, not yet started');
 
-  // Tick PAST buildDoneTick — the transit shipment appears, asset-marked.
-  s = ticks(s, (buildDoneTick - s.tick) + 1);
+  // Sequential model (asset-purchase.md §"Build concurrency"): the head STARTS the tick after buy,
+  // then counts down BUILD_TICKS, so it completes (promotes to a shipment) at buyTick + 1 + BUILD_TICKS.
+  const completionTick = s.tick + 1 + BUILD_TICKS[FACTORY];
+  s = ticks(s, completionTick - s.tick);
   assert.equal(s.syndicateBuilds, undefined, 'construction finished');
   assert.equal(s.shipments.length, 1);
   assert.equal(s.shipments[0].assetKind, FACTORY, 'an asset-marked transit shipment');
   const arrivalTick = s.shipments[0].arrivalTick;
-  assert.ok(arrivalTick > buildDoneTick, 'the delivery leg is still ahead');
+  assert.ok(arrivalTick > completionTick, 'the delivery leg is still ahead');
 
   // The snapshot labels the transit manifest for the client slice.
   const snap = buildSnapshot(s);
@@ -431,4 +439,174 @@ test('headless end-to-end: found → buy → build → deliver → mint', () => 
   assert.equal(factoriesNow.length, startersFactories + 1, 'exactly one new factory minted');
   assert.ok(factoriesNow.every((a) => a.systemId === homeSystemId), 'minted at the home system');
   assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+// --- 10. per-guild single-slot sequential (asset-purchase.md §"Build concurrency") -------------
+// The ruling (19-09-26): the Syndicate runs ONE build slot per guild. A guild's commissions form a
+// FIFO queue on `state.syndicateBuilds`; only the HEAD builds (counting down its BUILD_TICKS), and
+// the next entry starts when the head ships. These tripwires guard that shape against a regression
+// to the retired PARALLEL model (a batch collapsing to near-simultaneous completion — the bug that
+// motivated the ruling). It mirrors the dockyard's single-slot `remainingTicks` model per GUILD.
+
+// How many of a guild's builds are actively counting down (remainingTicks > 0) right now.
+const startedCount = (state, guildId) =>
+  (state.syndicateBuilds || []).filter((b) => b.ownerGuildId === guildId && b.remainingTicks > 0).length;
+
+// A two-guild seed helper for the independence/snapshot cases (no ventures, just a queue).
+const twoGuildState = (syndicateBuilds) => createState({
+  guilds: [
+    { id: 'g1', credits: 0, fuelHoard: 0, homeSystemId: DEST, homePlanetId: HOME.homePlanet },
+    { id: 'g2', credits: 0, fuelHoard: 0, homeSystemId: DEST, homePlanetId: HOME.homePlanet },
+  ],
+  reserve: { reserveLevel: 0 },
+  syndicate: { ledger: 0 },
+  claims: [homeClaim('g1', DEST), homeClaim('g2', DEST)],
+  syndicateBuilds,
+});
+
+test('single-slot: at any tick a guild has AT MOST ONE build counting down (never the parallel batch)', () => {
+  // Three miners commissioned in the SAME tick — the batch the parallel model would build all at once.
+  let s = buyState({ credits: 100_000_000 });
+  s = accept(s, buy(MINER, DEST));
+  s = accept(s, buy(MINER, DEST));
+  s = accept(s, buy(MINER, DEST));
+  assert.equal(s.syndicateBuilds.length, 3, 'three queued');
+  assert.deepEqual(s.syndicateBuilds.map((b) => b.remainingTicks), [null, null, null], 'none started at buy');
+
+  // Tick through the whole sequential run. At NO tick may two of g1's builds count down at once.
+  const span = 3 * (BUILD_TICKS[MINER] + 1) + 10;
+  let maxStarted = 0;
+  for (let i = 0; i < span; i += 1) {
+    s = tick(s);
+    const started = startedCount(s, 'g1');
+    maxStarted = Math.max(maxStarted, started);
+    assert.ok(started <= 1, `two of g1's builds counting down at tick ${s.tick} — single-slot broken`);
+    if (!s.syndicateBuilds) break;
+  }
+  assert.equal(maxStarted, 1, 'exactly one slot was ever active (a build really ran — not a dead no-op loop)');
+});
+
+test('sequential handoff: a head completing dispatches ONE shipment AND the next entry starts the FOLLOWING tick', () => {
+  // A head one tick from done, a second build queued behind it (same guild).
+  const seed = [
+    { ownerGuildId: 'g1', assetKind: MINER, destinationSystemId: DEST, remainingTicks: 1, boughtTick: 0 },
+    { ownerGuildId: 'g1', assetKind: FACTORY, destinationSystemId: DEST, remainingTicks: null, boughtTick: 0 },
+  ];
+  let s = buyState({ syndicateBuilds: seed });
+
+  s = tick(s); // the head (miner) hits 0 → ships; the factory is NOT started this same tick
+  assert.equal(s.shipments.length, 1, 'the completed head dispatched exactly one shipment');
+  assert.equal(s.shipments[0].assetKind, MINER);
+  assert.equal(s.syndicateBuilds.length, 1, 'only the second build remains');
+  assert.equal(s.syndicateBuilds[0].assetKind, FACTORY);
+  assert.equal(s.syndicateBuilds[0].remainingTicks, null, 'the new head has NOT started on the handoff tick');
+
+  s = tick(s); // NOW the factory (the new head) starts its own countdown
+  assert.equal(s.syndicateBuilds[0].remainingTicks, BUILD_TICKS[FACTORY], 'the new head starts the FOLLOWING tick');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('independence: two guilds\' queues are independent — both build at once, and A completing does not advance B', () => {
+  // g1's head one tick from done; g2's head mid-build; each with a second build queued behind it.
+  let s = twoGuildState([
+    { ownerGuildId: 'g1', assetKind: MINER, destinationSystemId: DEST, remainingTicks: 1, boughtTick: 0 },
+    { ownerGuildId: 'g2', assetKind: MINER, destinationSystemId: DEST, remainingTicks: 5, boughtTick: 0 },
+    { ownerGuildId: 'g1', assetKind: FACTORY, destinationSystemId: DEST, remainingTicks: null, boughtTick: 0 },
+    { ownerGuildId: 'g2', assetKind: FACTORY, destinationSystemId: DEST, remainingTicks: null, boughtTick: 0 },
+  ]);
+  // BOTH heads count down at once — parallelism ACROSS guilds is allowed; the single slot is PER guild.
+  assert.equal(startedCount(s, 'g1'), 1);
+  assert.equal(startedCount(s, 'g2'), 1);
+
+  s = tick(s); // g1's head (rt 1) ships; g2's head (rt 5→4) keeps building, untouched by g1's completion
+  assert.equal(s.shipments.length, 1, 'only g1 shipped');
+  assert.equal(s.shipments[0].ownerGuildId, 'g1');
+  const g2Head = s.syndicateBuilds.find((b) => b.ownerGuildId === 'g2' && b.assetKind === MINER);
+  assert.equal(g2Head.remainingTicks, 4, 'g2\'s head advanced by its OWN one tick — g1 completing did not push it');
+  const g1Next = s.syndicateBuilds.find((b) => b.ownerGuildId === 'g1');
+  assert.equal(g1Next.assetKind, FACTORY);
+  assert.equal(g1Next.remainingTicks, null, 'g1\'s next waits for the following tick');
+  const g2Next = s.syndicateBuilds.find((b) => b.ownerGuildId === 'g2' && b.assetKind === FACTORY);
+  assert.equal(g2Next.remainingTicks, null, 'g2\'s second build never started — its head is still building');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('worked example: 3 miners commissioned together complete one build apart, in order — one shipment each, NOT all at once', () => {
+  let s = buyState({ credits: 100_000_000 });
+  s = accept(s, buy(MINER, DEST));
+  s = accept(s, buy(MINER, DEST));
+  s = accept(s, buy(MINER, DEST));
+  assert.equal(s.syndicateBuilds.length, 3);
+
+  // Watch the queue empty one build at a time; record the tick each build ships.
+  const completionTicks = [];
+  let prevLen = s.syndicateBuilds.length;
+  const runFor = 3 * (BUILD_TICKS[MINER] + 1) + 10;
+  for (let i = 0; i < runFor; i += 1) {
+    s = tick(s);
+    const len = (s.syndicateBuilds || []).length;
+    if (len < prevLen) completionTicks.push(s.tick);
+    prevLen = len;
+  }
+
+  // Each build takes its own BUILD_TICKS countdown PLUS the one start tick (the dockyard mirror:
+  // start and count-down are separate), so completions land one BUILD_TICKS+1 apart, IN ORDER —
+  // NOT the near-simultaneous collapse of the retired parallel model. For a miner (720) that is
+  // 721, 1442, 2163 ticks out — k × (BUILD_TICKS+1).
+  const step = BUILD_TICKS[MINER] + 1; // 721
+  assert.deepEqual(completionTicks, [step, 2 * step, 3 * step], 'staggered completions, one after another');
+  assert.equal(completionTicks[1] - completionTicks[0], step, 'evenly one build apart — not simultaneous');
+  assert.equal(completionTicks[2] - completionTicks[1], step);
+
+  // Flush the delivery legs: exactly three miners minted at the destination — one shipment each.
+  s = ticks(s, arrivalTickFor(0, DEST_DISTANCE) + 2);
+  const minted = (s.guilds[0].assets || []).filter((a) => a.kind === MINER);
+  assert.equal(minted.length, 3, 'three miners delivered — one per build, none lost or doubled');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('determinism: a mixed sequential multi-build run is byte-identical across two runs (invariant 9)', () => {
+  const run = () => {
+    let s = buyState({ credits: 100_000_000 });
+    s = accept(s, buy(MINER, DEST));
+    s = accept(s, buy(FACTORY, DEST));
+    s = accept(s, buy(MINER, DEST));
+    // Deep into the run: the head has completed and shipped, the second is mid-build, the third waits.
+    return ticks(s, BUILD_TICKS[MINER] + 50);
+  };
+  assert.equal(hashState(run()), hashState(run()));
+});
+
+// --- 11. the snapshot per-guild queue (derived-on-read) ------------------------
+// The snapshot rebuilds `syndicateBuilds` as the client-readable queue: a `building` flag on each
+// guild's head, the stored `remainingTicks`, and a QUEUE-AWARE `ticksRemaining` (a per-guild running
+// sum). No serialized byte — additive derived-on-read, like assetPurchaseQuote.
+
+test('snapshot: syndicateBuilds publishes the per-guild single-slot queue — head building, queue-aware ticksRemaining', () => {
+  // g1: a head mid-build (100 left) + two queued behind it; g2: one queued head. Interleaved in the
+  // array to prove the derive keys on ownerGuildId, not on position alone.
+  const rows = buildSnapshot(twoGuildState([
+    { ownerGuildId: 'g1', assetKind: MINER, destinationSystemId: DEST, remainingTicks: 100, boughtTick: 0 },
+    { ownerGuildId: 'g1', assetKind: FACTORY, destinationSystemId: DEST, remainingTicks: null, boughtTick: 0 },
+    { ownerGuildId: 'g2', assetKind: MINER, destinationSystemId: DEST, remainingTicks: null, boughtTick: 0 },
+    { ownerGuildId: 'g1', assetKind: MINER, destinationSystemId: DEST, remainingTicks: null, boughtTick: 0 },
+  ])).syndicateBuilds;
+  assert.equal(rows.length, 4);
+
+  // `building` is true for each guild's HEAD only (the first entry per guild in FIFO order).
+  assert.deepEqual(rows.map((r) => r.building), [true, false, true, false]);
+  //                                              g1head g1-2  g2head g1-3
+
+  // `remainingTicks` echoes the STORED value — null while queued.
+  assert.deepEqual(rows.map((r) => r.remainingTicks), [100, null, null, null]);
+
+  // `ticksRemaining` is a per-guild running sum of (remainingTicks ?? BUILD_TICKS[kind]): the head's
+  // own remaining, and each entry behind it adds a full BUILD_TICKS. g2 is independent of g1.
+  assert.equal(rows[0].ticksRemaining, 100, 'g1 head: its own countdown');
+  assert.equal(rows[1].ticksRemaining, 100 + BUILD_TICKS[FACTORY], 'g1 2nd: head remaining + a full factory build');
+  assert.equal(rows[2].ticksRemaining, BUILD_TICKS[MINER], 'g2 head: a full miner build, independent of g1');
+  assert.equal(rows[3].ticksRemaining, 100 + BUILD_TICKS[FACTORY] + BUILD_TICKS[MINER], 'g1 3rd: the two ahead + its own');
+
+  // `buildDoneTick` is GONE (the retired absolute model).
+  assert.ok(rows.every((r) => r.buildDoneTick === undefined), 'no buildDoneTick on the published row');
 });

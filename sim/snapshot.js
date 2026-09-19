@@ -719,7 +719,7 @@ function computeAttention(state) {
 //       // manifest labels it "Miner"/"Factory"; a goods delivery carries none.
 //     nodeLockouts: [ { siteId, releaseTick, lockedAtTick, ticksRemaining } ], // teardown §3.3
 //     syndicateBuilds: [ { ownerGuildId, assetKind, destinationSystemId,       // asset-purchase.md
-//                          buildDoneTick, ticksRemaining } ],                  // "on order" indicator
+//                          building, remainingTicks, ticksRemaining } ],       // per-guild single-slot queue
 //     assetPurchaseQuote: { <assetKind>: { price, buildTicks } },              // asset-purchase.md
 //       // Per Syndicate-buildable kind (miner, factory, and the four guild transports): the current-tick credit `price`
 //       // (priceAssetForPurchase) and the `buildTicks` (BUILD_TICKS[kind]). The TRADE tab's
@@ -1654,22 +1654,42 @@ function buildSnapshot(state) {
       lockedAtTick: l.lockedAtTick,
       ticksRemaining: Math.max(0, l.releaseTick - state.tick),
     })),
-    // The PENDING SYNDICATE BUILDS (docs/asset-purchase.md "The two phases") — assets bought and
-    // still under central construction, before they promote to a delivery shipment. Published so
-    // the client can show the calm "on order — arriving day X" indicator during construction (the
-    // order is NOT a shipment yet and does not appear on the map). Echoed as stored, with the one
-    // derived `ticksRemaining` (`buildDoneTick - tick`, floored at 0) computed here so the browser
-    // renders and never calculates — exactly the courtesy `shipments`/`nodeLockouts` above extend.
-    // ALWAYS EMITTED as an array (a stable [] when none), unlike the omit-when-empty STATE field:
-    // the snapshot answers to a reader, and this is additive derived-on-read telemetry — no
-    // serialized byte, no golden move.
-    syndicateBuilds: (state.syndicateBuilds || []).map((b) => ({
-      ownerGuildId: b.ownerGuildId,
-      assetKind: b.assetKind,
-      destinationSystemId: b.destinationSystemId,
-      buildDoneTick: b.buildDoneTick,
-      ticksRemaining: Math.max(0, b.buildDoneTick - state.tick),
-    })),
+    // The PENDING SYNDICATE BUILDS (docs/asset-purchase.md §"Build concurrency") — assets bought and
+    // still under central construction, before they promote to a delivery shipment. The Syndicate is
+    // PER-GUILD SINGLE-SLOT: only each guild's HEAD builds, the rest of its queue waits. Published so
+    // the client can show the calm "on order" indicator (the order is NOT a shipment yet and does not
+    // appear on the map). DERIVED-ON-READ, walking each guild's builds in FIFO (array) order with a
+    // running total, so the browser renders and never calculates:
+    //   - `building`: true for the guild's HEAD only (the one entry currently able to build).
+    //   - `remainingTicks`: this build's OWN stored countdown (`null` while queued, not yet started).
+    //   - `ticksRemaining`: QUEUE-AWARE time until THIS build completes — the running sum over its
+    //     guild's queue of `(remainingTicks ?? BUILD_TICKS[kind])`, so the head's is its own remaining
+    //     and each entry behind it adds a full BUILD_TICKS. The current client sorts by this, so it
+    //     renders the queue as a correct staggered list with the donut on the head.
+    // `buildDoneTick` is GONE (the retired absolute model). ALWAYS EMITTED as an array (a stable []
+    // when none), unlike the omit-when-empty STATE field: this is additive derived-on-read telemetry —
+    // no serialized byte, no golden move.
+    syndicateBuilds: (() => {
+      const cumulativeByGuild = new Map(); // ownerGuildId → ticks of its queue up to & including here
+      const headSeen = new Set();          // guilds whose head we have already emitted
+      return (state.syndicateBuilds || []).map((b) => {
+        const own = (b.remainingTicks === null || b.remainingTicks === undefined)
+          ? BUILD_TICKS[b.assetKind]
+          : b.remainingTicks;
+        const cumulative = (cumulativeByGuild.get(b.ownerGuildId) || 0) + own;
+        cumulativeByGuild.set(b.ownerGuildId, cumulative);
+        const building = !headSeen.has(b.ownerGuildId);
+        headSeen.add(b.ownerGuildId);
+        return {
+          ownerGuildId: b.ownerGuildId,
+          assetKind: b.assetKind,
+          destinationSystemId: b.destinationSystemId,
+          building,
+          remainingTicks: b.remainingTicks ?? null,
+          ticksRemaining: cumulative,
+        };
+      });
+    })(),
     // The ASSET-PURCHASE QUOTE (docs/asset-purchase.md "Price") — for each Syndicate-buildable
     // kind (the two ground assets AND the four guild transports, 2.2-foundation), the credit price
     // a purchase would cost right now and the ticks it builds over.

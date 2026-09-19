@@ -10,7 +10,7 @@ const {
 } = require('./licence.js');
 const { producedGoodFor, baselineOutputFor, isLicensedDeuteriumMine, isDockyard } = require('./baseline.js');
 const {
-  BUILDABLE_KINDS, MAX_QUEUE, BUILD_TICKS, assetBill, priceAssetForPurchase,
+  BUILDABLE_KINDS, MAX_QUEUE, assetBill, priceAssetForPurchase,
 } = require('./asset-recipes.js');
 const {
   isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation,
@@ -2876,11 +2876,13 @@ function applyAction(state, action) {
     burnFuel(guild, fuelBurn);
     next.audit.totalConsumed += fuelBurn;
 
-    // THE BUILD ORDER — construction is a wait (asset-purchase.md "The two phases"). No shipment
-    // and no asset are created here; the order sits on `syndicateBuilds` until stepSyndicateBuilds
-    // promotes it at `buildDoneTick`. `buildDoneTick` is ABSOLUTE (`tick + BUILD_TICKS[kind]`, the
-    // SAME build time the dockyard counts down) so a save reloaded mid-construction lands on the
-    // right tick with no special case. `boughtTick` records the mutation's tick (§15.2 — every
+    // THE BUILD ORDER — construction is a wait (asset-purchase.md §"Build concurrency"). No shipment
+    // and no asset are created here; the order sits on `syndicateBuilds` as one entry of this guild's
+    // per-guild single-slot FIFO queue. Array insertion order IS the guild's FIFO order, so a fresh
+    // commission goes to the BACK. `remainingTicks: null` means "queued, not yet started": the build
+    // clock is NOT started here (unlike the retired absolute `buildDoneTick` model) — stepSyndicateBuilds
+    // starts a commission's `BUILD_TICKS` countdown only when it reaches the HEAD of its guild's queue,
+    // mirroring the dockyard (`buildDockyards`). `boughtTick` records the mutation's tick (§15.2 — every
     // mutation records its tick). Created lazily so a galaxy that buys no asset carries no key
     // (the omit-when-empty no-op, byte-identical goldens).
     if (!Array.isArray(next.syndicateBuilds)) next.syndicateBuilds = [];
@@ -2888,7 +2890,7 @@ function applyAction(state, action) {
       ownerGuildId: action.guildId,
       assetKind: action.assetKind,
       destinationSystemId: action.destinationSystemId,
-      buildDoneTick: next.tick + BUILD_TICKS[action.assetKind],
+      remainingTicks: null,
       boughtTick: next.tick,
     });
 

@@ -169,12 +169,17 @@ now exists, the client renders it next slice.
   in the shipment-rebuild slice, superseding the original light-rate placeholder —,
   then records a build order on the new top-level `state.syndicateBuilds` (omit-when-empty, so an unbought
   galaxy stays byte-identical).
-- **Two-phase build→deliver** — `stepSyndicateBuilds` (`sim/tick.js` step 4, scheduled events) promotes a
-  build at its absolute `buildDoneTick` to a standard §6 delivery shipment carrying an `assetKind` marker;
-  `stepArrivals` mints one idle asset (the dockyard's exact `assetId`/`nextAssetNumber`/`createAsset`
-  pattern) at the destination on arrival, guarding a vanished owner by dropping the shipment.
-- **Snapshot** — additive, derived-on-read: `snapshot.syndicateBuilds` (the on-order indicator) + an
-  `assetKind` field on an asset shipment's transit row. No serialized byte, no golden move.
+- **Two-phase build→deliver** — `stepSyndicateBuilds` (`sim/tick.js` step 4, scheduled events) advances
+  each guild's PER-GUILD SINGLE-SLOT queue: only the HEAD builds, counting down its `BUILD_TICKS`, and on
+  completion it promotes to a standard §6 delivery shipment carrying an `assetKind` marker and leaves the
+  queue so the next entry starts on the following tick. `stepArrivals` mints one idle asset (the dockyard's
+  exact `assetId`/`nextAssetNumber`/`createAsset` pattern) at the destination on arrival, guarding a
+  vanished owner by dropping the shipment. *(Superseded the original PARALLEL "promote at an absolute
+  `buildDoneTick`" model in the 2.1d ENGINE sequential slice — see §"Build concurrency".)*
+- **Snapshot** — additive, derived-on-read: `snapshot.syndicateBuilds` (the on-order indicator, now the
+  per-guild queue with a `building` flag on each guild's head, the stored `remainingTicks`, and a
+  queue-aware `ticksRemaining`) + an `assetKind` field on an asset shipment's transit row. No serialized
+  byte, no golden move.
 
 **Deferred to the client slice (unbuilt):** the TRADE-tab section, the confirm popup, the Operations
 "on order" rendering, and the map label — this slice only makes the data exist.
@@ -194,11 +199,18 @@ live and renders the Syndicate asset-commission view (`client/game.html`, built 
 - **The view** — tier 4 is always live (an asset is bought, not held, so it needs no goods or
   dockyard); `T.tier === 4` renders the five panels in place of the goods floor and hides the
   resource-chip row. Commission-Assets menu (per kind: price + Build/Delivery/arrival stat, Add →
-  the confirm popup) · In Progress (this guild's `syndicateBuilds`, parallel, soonest-arrival first,
-  a % complete each) · Current Build donut (the soonest build's BUILD countdown + %, no parts and no
-  pending state, IDLE when nothing builds) · Building art (follows the soonest build) · SYNDICATE
-  BUILDYARD hero. Every price/day-count/%/arrival is a display derivation of `assetPurchaseQuote` /
-  `syndicateBuilds` / the route quote.
+  the confirm popup) · In Progress (this guild's `syndicateBuilds`, sorted by `ticksRemaining`, a %
+  complete each) · Current Build donut (the soonest build's BUILD countdown + %, no parts, IDLE when
+  nothing builds) · Building art (follows the soonest build) · SYNDICATE BUILDYARD hero. Every
+  price/day-count/%/arrival is a display derivation of `assetPurchaseQuote` / `syndicateBuilds` /
+  the route quote.
+  *(Superseded framing: this view was built against the PARALLEL engine, where every build counted
+  down at once and the panel showed them soonest-arrival first with no head/queued distinction. The
+  2.1d ENGINE sequential slice made the queue per-guild single-slot — only the head builds — and the
+  snapshot now carries a `building` flag on each guild's head plus a queue-aware `ticksRemaining`, so
+  sorting by `ticksRemaining` still renders a correct staggered list with the donut on the head. The
+  client's own visual rework — marking the head "building" vs the rest "queued" off that flag — is the
+  NEXT slice; this view keeps working off `ticksRemaining` until then. See §"Build concurrency".)*
 - **Add → confirm → buy** — the menu's Add opens `window.__adviserConfirm` (the `#est-reel` adviser
   card) restating the ¢ cost + build/delivery/arrival; onConfirm fires `buyAssetFromSyndicate`
   (`{ guildId, assetKind, destinationSystemId: <home>, issueTick }`) via the SAME action-post path

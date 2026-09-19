@@ -15,7 +15,8 @@
 //     parts scale, so a bought transport costs exactly its per-class baseline;
 //   - the BUY path: it flies ITSELF in — the up-front burn is the craft's OWN fuelCostToRun ×
 //     hexDistance (NOT the heavy-hauler rate a ground asset pays), and the arrival is
-//     buildDoneTick + ceil(hexDistance × speed[class]) (NOT the flat CRAFT_SPEED);
+//     completionTick + ceil(hexDistance × speed[class]) (NOT the flat CRAFT_SPEED), where the head
+//     completes after its BUILD_TICKS countdown in the per-guild single-slot queue;
 //   - the BUILD path: a dockyard consumes the ship bill from its own system and mints an idle
 //     transport at that system after BUILD_TICKS;
 //   - the MINT: a transport lands in guild.vehicles (never guild.assets), idle, with the class
@@ -170,22 +171,24 @@ test('buy: a bought transport burns its OWN fuelCostToRun × distance, not the h
   const s = accept(s0, buy(LIGHT_TRANSPORT));
   assert.equal(s.guilds[0].credits, creditsBefore - VEHICLE_BUY_BASELINE[LIGHT_TRANSPORT], 'debited the class baseline');
   assert.equal(s.guilds[0].fuelHoard, fuelBefore - craftBurn, 'burned the CRAFT\'s own rate, not the heavy rate');
-  // A build order recorded, no vehicle yet, no shipment yet.
+  // A build order recorded, no vehicle yet, no shipment yet. Queued (remainingTicks null), not
+  // yet started — the per-guild single-slot clock starts when it reaches the head.
   assert.equal(s.syndicateBuilds.length, 1);
   assert.equal(s.syndicateBuilds[0].assetKind, LIGHT_TRANSPORT);
-  assert.equal(s.syndicateBuilds[0].buildDoneTick, s.tick + BUILD_TICKS[LIGHT_TRANSPORT]);
+  assert.equal(s.syndicateBuilds[0].remainingTicks, null, 'queued at buy, not yet started');
   assert.equal((s.guilds[0].vehicles || []).length, 0, 'no craft until it lands');
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
-test('buy: the delivery flies at the craft\'s OWN speed — arrival = buildDoneTick + ceil(dist × speed)', () => {
-  // Seed a build due at tick 5 (bypass the 360-tick construction) to exercise the arrival clock.
+test('buy: the delivery flies at the craft\'s OWN speed — arrival = completionTick + ceil(dist × speed)', () => {
+  // Seed a head 5 ticks from completion (bypass the 360-tick construction) to exercise the arrival
+  // clock. `remainingTicks` is the RELATIVE countdown, so it completes at tick 5.
   let s = createState({
     guilds: [{ id: 'g1', credits: 0, fuelHoard: 0, homeSystemId: DEST, homePlanetId: HOME.homePlanet }],
     reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 }, claims: [homeClaim('g1', DEST)],
-    syndicateBuilds: [{ ownerGuildId: 'g1', assetKind: LIGHT_TRANSPORT, destinationSystemId: DEST, buildDoneTick: 5, boughtTick: 0 }],
+    syndicateBuilds: [{ ownerGuildId: 'g1', assetKind: LIGHT_TRANSPORT, destinationSystemId: DEST, remainingTicks: 5, boughtTick: 0 }],
   });
-  s = ticks(s, 5); // promote at tick 5
+  s = ticks(s, 5); // remainingTicks 5 → 0 at tick 5 — promoted
   assert.equal(s.shipments.length, 1);
   const ship = s.shipments[0];
   assert.equal(ship.assetKind, LIGHT_TRANSPORT);
@@ -198,14 +201,16 @@ test('buy: the delivery flies at the craft\'s OWN speed — arrival = buildDoneT
 
 test('buy end-to-end: found → buy → build → deliver → an idle transport minted at the destination', () => {
   let s = accept(buyState(), buy(MEDIUM_TRANSPORT));
-  const buildDoneTick = s.syndicateBuilds[0].buildDoneTick;
+  assert.equal(s.syndicateBuilds[0].remainingTicks, null, 'queued at buy, not yet started');
+  // The head starts the tick after buy, then counts down BUILD_TICKS — completing at buyTick + 1 + BUILD_TICKS.
+  const completionTick = s.tick + 1 + BUILD_TICKS[MEDIUM_TRANSPORT];
 
   // Tick past construction — an asset-marked transit shipment appears.
-  s = ticks(s, (buildDoneTick - s.tick) + 1);
+  s = ticks(s, completionTick - s.tick);
   assert.equal(s.syndicateBuilds, undefined, 'construction finished (omit-when-empty)');
   assert.equal(s.shipments.length, 1);
   const arrivalTick = s.shipments[0].arrivalTick;
-  assert.equal(arrivalTick, buildDoneTick + Math.ceil(DIST * VEHICLE_SPECS[MEDIUM_TRANSPORT].speed));
+  assert.equal(arrivalTick, completionTick + Math.ceil(DIST * VEHICLE_SPECS[MEDIUM_TRANSPORT].speed));
 
   // The snapshot labels the transit manifest with the class marker (client slice reads it).
   assert.equal(buildSnapshot(s).shipments[0].assetKind, MEDIUM_TRANSPORT);
@@ -238,8 +243,8 @@ test('buy end-to-end: found → buy → build → deliver → an idle transport 
 
 test('buy: a spycraft mints with capacity EXACTLY 0 (no !capacity guard rejects it)', () => {
   let s = accept(buyState(), buy(SPYCRAFT));
-  const buildDoneTick = s.syndicateBuilds[0].buildDoneTick;
-  s = ticks(s, (buildDoneTick - s.tick) + 1);
+  const completionTick = s.tick + 1 + BUILD_TICKS[SPYCRAFT];
+  s = ticks(s, completionTick - s.tick);
   const arrivalTick = s.shipments[0].arrivalTick;
   s = ticks(s, arrivalTick - s.tick);
   const v = s.guilds[0].vehicles[0];
