@@ -41,6 +41,35 @@ Player timeline: pay → (build time) → a manifest appears and travels → ass
 
     arrivalTick = buyTick + BUILD_TICKS[kind] + ceil(hexDistance × <Syndicate craft speed>)
 
+(This holds only for a commission that starts building immediately — first in an empty queue. One
+placed behind others starts its BUILD_TICKS only when it reaches the head; see §Build concurrency.)
+
+## Build concurrency — one slot per guild, single-slot sequential (RULED 19-09-26)
+
+The Syndicate runs **one build slot per guild**. A guild's Syndicate commissions — Tier-4 assets
+AND guild transports alike, the unified `state.syndicateBuilds` list — form a **per-guild FIFO
+queue**: **only the HEAD builds**, counting down its `BUILD_TICKS`, and when the head completes and
+is sent for delivery the **next head starts** its countdown. The build clock starts when a
+commission reaches the front, **not when it is ordered**.
+
+This mirrors the dockyard's single-slot / strict-FIFO `remainingTicks` model exactly
+(`buildDockyards`, `docs/build-yard.md` §3) — the Syndicate is simply a per-guild queue where the
+dockyard is a per-yard one. Each guild's queue is **independent**: the Syndicate services every
+guild as though it were the only one, so a rival's queue never delays yours. Credits and the
+delivery fuel are still charged **up front at buy** (unchanged) — so a head dispatches the instant
+it completes; there is no fuel-gated wait.
+
+**Differentiation from dockyards (deliberate):** a guild may own several dockyards and so build
+several assets at once — **one per yard** — but the Syndicate is one slot per guild, so a guild's
+Syndicate orders **never build in parallel**.
+
+**Supersedes the PARALLEL model.** The as-built notes below describe the earlier behaviour — each
+order counting down from its own buy tick, all at once — which let a batch of commissions collapse
+to near-simultaneous completion (the bug that motivated this ruling). The engine (`syndicateBuilds`
+→ head-only `remainingTicks`, one active build per guild) and the client In Progress panel (head
+building on the donut, the rest queued/waiting) are rebuilt to this model in the slices that follow;
+treat those "As built" descriptions as superseded until then.
+
 ## Price
 
 Assets have no posted market price, so the Syndicate prices a purchase as:
