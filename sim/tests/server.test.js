@@ -1382,6 +1382,56 @@ test('POST /admin/vehicle/remove refuses an unknown craft id (200, accepted:fals
   assert.match(rm.body.reason, /owns no vehicle/);
 });
 
+// --- the read-only dispatch quote (transport-model.md §4/§18, roadmap 2.2 b2b-1) -------------
+
+test('POST /vehicle/quote returns an engine-computed quote and MUTATES NOTHING', async () => {
+  await reset();
+  await found();
+  await req('POST', '/admin/vehicle/spawn', {
+    guildId: 'player-guild', class: 'lightTransport', location: { landmarkKind: 'system', landmarkId: HOME_SYSTEM },
+  });
+  const tickBefore = (await req('GET', '/snapshot')).body.tick;
+
+  const q = await req('POST', '/vehicle/quote', {
+    guildId: 'player-guild', vehicleId: 'vehicle_player-guild_lightTransport_01',
+    waypoints: [{ landmarkKind: 'outpost', landmarkId: 'out_01' }, { q: 0, r: 0 }],
+  });
+  assert.equal(q.status, 200);
+  assert.equal(q.body.ok, true);
+  // The engine computed the numbers: per-leg breakdown summing to the totals, a credit cost, affordability.
+  assert.equal(q.body.legs.reduce((a, l) => a + l.ticks, 0), q.body.totalTicks);
+  assert.equal(q.body.legs.reduce((a, l) => a + l.fuel, 0), q.body.totalUnits);
+  assert.equal(typeof q.body.credits, 'number');
+  assert.equal(typeof q.body.affordable, 'boolean');
+
+  // Read-only: the tick did not advance, and quoting again is byte-identical (no journal, no state move).
+  const after = await req('GET', '/snapshot');
+  assert.equal(after.body.tick, tickBefore, 'a quote must not tick');
+  const q2 = await req('POST', '/vehicle/quote', {
+    guildId: 'player-guild', vehicleId: 'vehicle_player-guild_lightTransport_01',
+    waypoints: [{ landmarkKind: 'outpost', landmarkId: 'out_01' }, { q: 0, r: 0 }],
+  });
+  assert.deepEqual(q2.body, q.body, 'quoting is idempotent — the same route quotes identically');
+});
+
+test('POST /vehicle/quote: a ruled failure is a 200 { ok:false, reason }; a malformed body is a 400', async () => {
+  await reset();
+  await found();
+  await req('POST', '/admin/vehicle/spawn', {
+    guildId: 'player-guild', class: 'lightTransport', location: { landmarkKind: 'system', landmarkId: HOME_SYSTEM },
+  });
+  // An empty waypoint list is a valid quote answer ("can't dispatch, here's why") — 200, ok:false.
+  const failing = await req('POST', '/vehicle/quote', {
+    guildId: 'player-guild', vehicleId: 'vehicle_player-guild_lightTransport_01', waypoints: [],
+  });
+  assert.equal(failing.status, 200);
+  assert.equal(failing.body.ok, false);
+  assert.match(failing.body.reason, /non-empty/);
+  // A structurally malformed request (not an object) is a 400 — reserved for the request, not the quote.
+  const bad = await fetch(base + '/vehicle/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '[1,2,3]' });
+  assert.equal(bad.status, 400);
+});
+
 // --- rejections are 200 with a reason, not errors --------------------------
 
 test('an occupied node is rejected (200, accepted:false, reason)', async () => {

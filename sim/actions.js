@@ -29,7 +29,7 @@ const {
   nearestWaystation, arrivalTickFor, hexDistance, legTicks, legFuelBurn,
 } = require('./transport.js');
 const {
-  GUILD_STARTING_FUEL, routeFuelCost, burnFuel,
+  GUILD_STARTING_FUEL, routeFuelCost, burnFuel, fuelValue,
   volumeOf, haulerTierForSpace, HEAVY_HOLD, ASSET_CARGO_VOLUME,
 } = require('./fuel.js');
 const {
@@ -102,6 +102,77 @@ function dispatchRoute(craft, waypoints) {
     legs.push({ from, to, length });
   }
   return { ok: true, legs, totalUnits };
+}
+
+// quoteDispatch(state, { guildId, vehicleId, waypoints }) -> { ok: true, legs, totalTicks, totalUnits,
+//                                                             credits, affordable, arrivalTick }
+//                                                          | { ok: false, reason }
+//
+// The READ-ONLY PROJECTION of a dispatch (roadmap 2.2 b2b-1, transport-model.md §4/§18). It answers
+// "what would this route cost the player, and can they afford it?" for the route-planner client BEFORE
+// they commit — computing every game number in the engine so the client computes none (§18). It shares
+// `dispatchRoute` and the leg math with the real `dispatchVehicle`, so a quote and the dispatch it
+// previews can NEVER disagree. It reads state and MUTATES NOTHING — calling it any number of times
+// leaves the galaxy byte-identical (no journal, no tick, no snapshot).
+//
+// It mirrors `dispatchVehicle`'s validate gates so the planner shows the same truth the dispatch would:
+// guild exists, owns `vehicleId`, craft is idle. On any failure — those gates, or one of the ruled
+// route failure modes (empty / unresolvable waypoint / zero-length leg) that `dispatchRoute` returns —
+// it returns `{ ok: false, reason }` with the SAME message the dispatch validate gives. Unlike dispatch
+// it does NOT gate on fuel: an unaffordable route is still a valid quote answer ("here's the cost, you
+// can't afford it"), surfaced as `affordable: false` rather than a refusal.
+//
+// The `ok` breakdown is built from the SAME numbers a dispatch freezes — `dispatchRoute`'s `legs[].length`
+// (no re-derived geometry), the §2.2 leg math (`legTicks` / `legFuelBurn`, `isToll` false this slice),
+// `dispatchRoute`'s own `totalUnits` sum, `fuelValue` at the live `reserve.fuelPrice` (a display cost,
+// floating with price like the snapshot's trip cost), and `state.tick` for the arrival — so the quote is
+// authoritative and matches what `dispatchVehicle` + `stepVehicleArrivals` + the snapshot would produce.
+function quoteDispatch(state, { guildId, vehicleId, waypoints }) {
+  // The dispatch validate gates, in the same order, returning the same messages (so the planner shows
+  // exactly what a real dispatch would refuse).
+  const guild = findGuild(state, guildId);
+  if (!guild) {
+    return { ok: false, reason: `no guild with id ${JSON.stringify(guildId)}` };
+  }
+  const craft = (guild.vehicles || []).find((v) => v.id === vehicleId);
+  if (!craft) {
+    return { ok: false, reason: `guild ${JSON.stringify(guildId)} owns no vehicle ${JSON.stringify(vehicleId)}` };
+  }
+  if (craft.status !== 'idle') {
+    return { ok: false, reason: `vehicle ${JSON.stringify(vehicleId)} is not idle (status ${JSON.stringify(craft.status)}) — only an idle craft dispatches` };
+  }
+  // Build + price the route through the ONE home the real dispatch uses. A ruled failure mode surfaces
+  // to the planner verbatim; on ok, `route.legs[].length` is the geometry we reuse (never re-derived).
+  const route = dispatchRoute(craft, waypoints);
+  if (!route.ok) return route;
+
+  // Per-leg ticks + fuel from the §2.2 formula (isToll false this slice — no toll infra); totalTicks is
+  // Σ per-leg ticks, exactly the contiguous schedule dispatch freezes (leg 0 departs now, legs abut).
+  let totalTicks = 0;
+  const legs = route.legs.map((leg) => {
+    const ticks = legTicks(leg.length, craft.speed, false);
+    const fuel = legFuelBurn(leg.length, craft.fuelCostToRun, false);
+    totalTicks += ticks;
+    return { length: leg.length, ticks, fuel };
+  });
+  // `totalUnits` is dispatchRoute's own sum (== Σ leg.fuel by construction, both being legFuelBurn with
+  // isToll false) — the whole-route burn the dispatch takes from the hoard. Trust the shared helper's
+  // sum so the quote and the dispatch can't drift on the number that gates the burn.
+  const totalUnits = route.totalUnits;
+  return {
+    ok: true,
+    legs,
+    totalTicks,
+    totalUnits,
+    // The live-priced display cost (a credit figure, not a treasury debit) — the same mark-to-market the
+    // snapshot's in-flight trip uses, so a quote reads at the fuel price of the tick it was asked at.
+    credits: fuelValue(totalUnits, state.reserve.fuelPrice),
+    // The whole-route, refuse-whole gate the dispatch applies (hoard + contraband ≥ the burn) — reported,
+    // not enforced: an unaffordable route is a valid quote, and the planner gates its Dispatch button on it.
+    affordable: (guild.fuelHoard + (guild.deuteriumFuel || 0)) >= totalUnits,
+    // The absolute tick the craft would land — contiguous legs, first departs now — matching the apply.
+    arrivalTick: state.tick + totalTicks,
+  };
 }
 
 // actions.js — action constructors, and the validate-as-they-arrive intake
@@ -3091,6 +3162,7 @@ module.exports = {
   createSpawnVehicleAction,
   createRemoveVehicleAction,
   createDispatchVehicleAction,
+  quoteDispatch,
   validateAction,
   applyAction,
   intake,

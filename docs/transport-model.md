@@ -224,6 +224,24 @@ its final anchor on the frozen tick). **Not built here (b2+):** the client (the 
 the in-flight polyline render, any cost estimate), cargo, tolls as infrastructure, waypoint actions / saved
 routes / scheduled runs, and detection/piracy.
 
+**AS-BUILT 19-09-26 — the read-only dispatch quote (slice b2b-1; `sim/actions.js`, `sim/server.js`).** ✅
+The route-planner (b2b-2) reads a candidate route's authoritative time/fuel/cost from the ENGINE, not from a
+client computation (§18) — so the planner can show the truth and gate its Dispatch button on it before the
+player commits. `quoteDispatch(state, { guildId, vehicleId, waypoints })` is the **read-only projection of a
+dispatch**: it mirrors `dispatchVehicle`'s validate gates and calls the SAME `dispatchRoute` (now shared) the
+real dispatch uses, so a quote and the dispatch it previews can never disagree. On success it returns
+`{ ok: true, legs: [{ length, ticks, fuel }], totalTicks, totalUnits, credits, affordable, arrivalTick }` —
+per-leg `legTicks`/`legFuelBurn` (isToll false), `totalUnits` = `dispatchRoute`'s own sum, `credits =
+fuelValue(totalUnits, reserve.fuelPrice)` (the live-priced display cost, §8.0), `affordable = (fuelHoard +
+deuteriumFuel) >= totalUnits` (the whole-route refuse-whole gate, **reported not enforced** — an unaffordable
+route is still a valid quote), and `arrivalTick = state.tick + totalTicks` (contiguous legs, first departs
+now). A ruled failure mode (empty / unresolvable waypoint / zero-length leg / non-idle craft / unknown
+guild-or-vehicle) returns `{ ok: false, reason }` verbatim. Exposed as **`POST /vehicle/quote`** — the
+read-only twin of `POST /admin/vehicle/dispatch`, player-facing (not under `/admin/`, as open as `/snapshot`):
+it reads the live state and returns the quote as JSON (a `{ ok: false }` quote is a 200), NO action / journal /
+tick / snapshot, so calling it any number of times leaves the galaxy byte-identical. **NO state change, NO
+client** — the popup is b2b-2. *No serialized byte added; goldens byte-identical; the suite is 1,353 → 1,361 green.*
+
 **Syndicate craft never use tolls** — they fly one straight leg and ignore the network entirely (§3).
 
 ## 5. Craft & speed

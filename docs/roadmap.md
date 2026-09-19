@@ -435,8 +435,29 @@ boundary so the later hex-map swap doesn't touch it.
   off the engine's ticks, the reverse-map is presentation. *Client-only — the sim suite holds at 1,353, 0 fail;
   proven end-to-end in headless Chromium: a `dispatch-vehicle` multi-leg route flies as a polyline + chevron + tag
   and shows a live IN TRANSIT row, then on arrival leaves both layers and reappears idle at its final anchor.*
-  **(b2b) the route-planner** — the Dispatch popup's waypoint builder, quote, and Finalise — stays the remaining
-  client slice.
+  **(b2b) the route-planner** — the Dispatch popup's waypoint builder, quote, and Finalise. Split into a small
+  engine prerequisite (b2b-1, the quote endpoint) and the client (b2b-2, the popup).
+  **Slices: (b2b-1) the dispatch quote — ✅ BUILT (19-09-26, engine + endpoint only; `sim/actions.js`
+  `quoteDispatch`, `sim/server.js` `POST /vehicle/quote`; `sim/tests/quote.test.js` + a `server.test.js`
+  tripwire).** The read-only projection of a dispatch, so the planner (b2b-2) can preview a candidate route's
+  authoritative time/fuel/cost and gate its Dispatch button off the truth WITHOUT computing any game number (§18).
+  `quoteDispatch(state, { guildId, vehicleId, waypoints })` mirrors `dispatchVehicle`'s validate gates (guild
+  exists, owns the craft, craft idle) and calls the SAME `dispatchRoute` the real dispatch uses (now shared, via
+  the new read-only `quoteDispatch` wrapper) — so a quote and the dispatch it previews can never disagree — then
+  builds the breakdown from `dispatchRoute`'s own leg lengths: per-leg `{ length, ticks, fuel }` (§2.2 `legTicks`
+  / `legFuelBurn`, `isToll` false), `totalTicks`/`totalUnits`, `credits = fuelValue(totalUnits, reserve.fuelPrice)`
+  (the live-priced display cost), `affordable = (fuelHoard + deuteriumFuel) >= totalUnits` (reported, not enforced
+  — an unaffordable route is still a valid `ok` quote), and `arrivalTick = state.tick + totalTicks`. A ruled
+  failure (empty / unresolvable waypoint / zero-length leg / non-idle craft / unknown guild-or-vehicle) returns
+  `{ ok: false, reason }` with the SAME message the dispatch validate gives. The endpoint `POST /vehicle/quote`
+  is the read-only twin of `POST /admin/vehicle/dispatch`: player-facing (NOT under `/admin/`, as open as
+  `/snapshot`), it reads the live state and returns `quoteDispatch`'s result as JSON — NO action, NO
+  `applyOneAction`, NO journal, NO tick, NO snapshot — so calling it any number of times leaves the galaxy
+  byte-identical; a `{ ok: false }` quote is a 200 (a valid answer), 409/400 reserved for no-galaxy / a malformed
+  body. **NO state change, NO client** (the popup is b2b-2). *No serialized byte added, so the persist/determinism
+  goldens do not move; the suite is 1,353 → **1,361 green** (0 fail).* **(b2b-2) the route-planner client** — the
+  Dispatch popup's waypoint builder (reading its quote from `POST /vehicle/quote`), the map planning mode, the
+  waypoint list, Finalise, and the Dispatch button — stays the remaining client slice.
   *From
   here the thread fans out — Syndicate transport contracts, maintenance, exploration (a plain craft scans,
   slower and fuelled), and deep-space asset deployment (outpost → toll). A full Phase-2 renumber to reflect this

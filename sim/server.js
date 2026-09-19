@@ -71,6 +71,9 @@
 //   POST /autotick/stop  -> stop the heartbeat (idempotent); returns status
 //   POST /action         -> intake ONE action object (no tick); returns
 //                           { accepted, reason, snapshot }
+//   POST /vehicle/quote  -> READ-ONLY dispatch quote { guildId, vehicleId, waypoints }: the
+//                           route's per-leg/total ticks, fuel, credit cost + affordability,
+//                           computed by the engine (quoteDispatch), mutating nothing (§18)
 //   POST /reset          -> back to the zero-state; re-arms the boot clock if one
 //                           was configured, so a deployed galaxy keeps turning
 //
@@ -84,7 +87,7 @@ const { createZeroState } = require('./scenarios/zero-state.js');
 const { advance } = require('./run.js');
 const {
   validateAction, applyAction, createSpawnVehicleAction, createRemoveVehicleAction,
-  createDispatchVehicleAction,
+  createDispatchVehicleAction, quoteDispatch,
 } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
 const { saveState, appendJournal, clearJournal, loadOrInit, saveSeed, loadSeed, deleteGalaxy } = require('./persist.js');
@@ -716,6 +719,37 @@ async function handleRequest(req, res) {
     } catch (err) {
       sendJson(res, 500, { error: 'error applying action (invariant violation or engine throw)', detail: String(err && err.message || err) });
     }
+    return;
+  }
+
+  // POST /vehicle/quote { guildId, vehicleId, waypoints } — the READ-ONLY dispatch quote
+  // (transport-model.md §4/§18, roadmap 2.2 b2b-1). The read-only twin of POST /admin/vehicle/dispatch:
+  // it runs the SAME `dispatchRoute` a real dispatch uses (via `quoteDispatch`) against the LIVE state and
+  // returns the route's per-leg + total ticks / fuel / credit cost and whether the guild can afford it —
+  // so the route-planner client can preview a route and gate its Dispatch button off the engine's truth.
+  // It MUTATES NOTHING: like GET /snapshot it reads state and returns a computed projection — no action,
+  // no applyOneAction, no journal, no tick, no snapshot — so the galaxy stays byte-identical however many
+  // times it is called. Player-facing (NOT under /admin/): as open as /snapshot in this dev rig. A
+  // `{ ok: false, reason }` quote is a valid answer ("this route can't be dispatched, here's why") and is
+  // still a 200; non-200 is reserved for no galaxy (409) or a malformed request (400).
+  if (method === 'POST' && path === '/vehicle/quote') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","vehicleId":"vehicle_g1_lightTransport_01","waypoints":[{"landmarkKind":"system","landmarkId":"sys_0006"}]}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId, vehicleId, and a non-empty waypoints array' });
+      return;
+    }
+    // Read the live state and return the computed quote — exactly as GET /snapshot reads and returns.
+    // quoteDispatch never mutates, so there is nothing to persist or tick.
+    sendJson(res, 200, quoteDispatch(getState(), {
+      guildId: body.guildId, vehicleId: body.vehicleId, waypoints: body.waypoints,
+    }));
     return;
   }
 
