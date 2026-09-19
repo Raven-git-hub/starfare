@@ -27,45 +27,43 @@ speed) and *chains* them.
 
 A leg is a straight segment between two **hex anchors**, carrying:
 
-- `startHex`, `endHex` — axial `{q,r}` coordinates. Anchors are always meaningful points: a
-  waystation, a gate, a toll-outpost, a system, or an origin/destination. **Direction only changes at
-  an anchor** — see gate-anchoring (§4).
+- `startHex`, `endHex` — axial `{q,r}` coordinates, each the resolved hex of a **location anchor**
+  (a system, an outpost, or a bare hex — a deep-space turn point). **Direction changes only at an
+  anchor** (a waypoint) — see waypoint routing (§4).
 - `departureTick`, `arrivalTick` — absolute ticks. The whole journey is a schedule of these; nothing
   is simulated per tick (§15.6 "a schedule is a prediction").
 - (guild only) `isToll` (bool), the toll `owner`, and a `riskFactor` — see §4, §6.
 
-### 2.1 Length — straight-line (Euclidean), not hex-step
+### 2.1 Length — hex-step (`hexDistance`), matching the engine *(RULED 18-09-26)*
 
-> ⚠ **DOC↔CODE CONTRADICTION, TRACKED NOT RESOLVED (noted 31-08-26, fuel Slice 2).** This section rules
-> Euclidean and calls hex-step "the wrong measure". The engine measures **hex-step**: `hexDistance` in
-> `sim/transport.js` is the axial `(|dq| + |dr| + |dq+dr|) / 2`, and `nearestWaystation` returns it.
-> Every live consumer therefore uses hex-step — `buyFromSyndicate`'s arrival tick, and now
-> `routeFuelCost`'s burn. Slice 2 deliberately used whatever `nearestWaystation` already returned rather
-> than picking a side, so burn and travel time stay derived from **one** geometry and cannot drift while
-> the question is open. Resolving it is a ruling (which measure is right, and whether arrival ticks move),
-> not a quiet code change — it is on the roadmap's decision checklist.
+> ✅ **RESOLVED 18-09-26 (dispatch slice) — was the tracked DOC↔CODE contradiction.** Leg length is
+> **hex-step**: `hexDistance` in `sim/transport.js`, the axial `(|dq| + |dr| + |dq+dr|) / 2` that
+> `nearestWaystation` returns — the measure the engine already uses for `buyFromSyndicate`'s arrival
+> tick and `routeFuelCost`'s burn. The guild dispatch tier adopts the **same geometry as the Syndicate**,
+> so duration and fuel across both tiers derive from **one** measure and cannot drift. The earlier ruling
+> (Euclidean, "hex-step is the wrong measure") is superseded, and the question is struck from the
+> decision checklist.
 
+A craft's leg length is the **hex-step distance between its two anchors' hexes** — one geometry for
+arrival ticks (§2.2) and fuel (§4, §8) alike. Rounding is **`ceil`** throughout, matching the built
+`ceil(hexDistance × speed)` arrival and `ceil(hexDistance × rate)` burn.
 
-A craft that flies a straight line covers the **Euclidean distance between the two hex centres**, not
-the count of hexes crossed. Convert each anchor to the plane and take the hypotenuse:
+The plane conversion below is retained for **one thing only — the client's smooth position tween**
+(§2.3): rendering slides a craft along the straight line between two hex centres, which needs
+real-plane coordinates, while the *numbers that matter* (length, ticks, fuel) are hex-step.
 
 ```
-cart(q, r) = ( q + r/2,  r · √3/2 )      // adjacent hex centres come out exactly 1 apart
-length     = | cart(endHex) − cart(startHex) |
+cart(q, r) = ( q + r/2,  r · √3/2 )      // hex centre in the plane — for the render tween only
 ```
-
-This is a real number (fine — arrival ticks round it), and always ≤ the hex-step count. **Hex-step
-distance is the wrong measure for straight flight** and is reserved for anything that genuinely acts
-*per hex* — which, under gate-anchoring (§4), nothing in this model does.
 
 ### 2.2 Duration — the one function, parameterised for the future
 
 ```
-legTicks(length, craftSpeed, isToll) = round( length × craftSpeed ÷ (isToll ? TOLL_BUFF : 1) )
+legTicks(length, craftSpeed, isToll) = ceil( length × craftSpeed ÷ (isToll ? TOLL_BUFF : 1) )
 ```
 
 - `craftSpeed` is **ticks per hex-unit for that craft** (§5). Higher = slower.
-- `TOLL_BUFF = 2` (`[FIRST-CUT]`, flat) — a toll leg runs at 2× speed, so it takes half the ticks.
+- `TOLL_BUFF = 2` (`[FIRST-CUT]`, flat) — a toll leg runs at 2× speed (half the ticks) **and** burns half the fuel (§4): the one constant drives both buffs.
 - The **Syndicate is the degenerate call**: `legTicks(length, SYNDICATE_SPEED, false)`. The guild tier
   passes a real per-craft speed and a real `isToll`. Same function, no rewrite — shaping it this way
   now is the whole point of doing the model on paper.
@@ -129,28 +127,70 @@ still surfacing its cargo + ticks. Read-only derive: no persisted/determinism go
 galaxy-map / Transport-tab **CLIENT** half — which reads these fields and tweens — is the FOLLOWING
 slice.
 
-## 4. The guild tier — gate-anchored routing on a graph (Phase 4)
+## 4. The guild tier — waypoint routing (the polyline model) *(RULED 18-09-26 — supersedes gate-anchored routing)*
 
-**Routes are gate-anchored.** A craft may only change direction at a gate or a toll-outpost. That
-turns the toll system into a **graph**: gates and toll-outposts are **nodes**, toll legs between them
-are **edges**. A guild route is then: a short **open-space leg** from the origin to the nearest gate,
-a **path through the toll graph**, and a short open-space leg from the last gate to the destination.
-Routing is shortest-path over that graph against a cost function (money + time + risk); the hub case
-(gate → toll-outpost → gate) is just a node of degree > 2 and falls out for free.
+**A route is an ordered list of legs; a leg is any two points.** A guild builds a route by choosing
+waypoints, and the craft flies straight from each to the next — a **polyline** through space. A leg's
+two endpoints are **location anchors** (the same `{ landmarkKind, landmarkId }`-or-`{ q, r }` shape a
+craft's idle `location` uses, design.md §15.4): a system, an outpost, or a bare hex. Direction changes
+at **every waypoint, deep space included** — a guild can dogleg around a rival's territory or a toll
+path precisely because a turn needs no gate. There is **no limit to a leg's length** and no gate
+requirement anywhere. *(This supersedes the earlier gate-anchored graph: routing does not run on a toll
+graph, and a craft is not confined to changing direction at gates.)*
 
-**Tolls** (refines §6's Toll Path):
+**Routing enforces nothing.** A route just draws the path — it checks neither territory nor tolls. A
+guild may send a craft anywhere and accept the **detection risk** of whatever it crosses (§7.1); that
+risk, not a prohibition, is the whole game of routing. Pressure over prohibition.
 
-- A toll is a guild-owned corridor, **≤ 10 hexes** (≤ 20 with a toll-outpost hub in the middle).
-  Tolls are **local shortcuts**, so a long haul chains several, often owned by different guilds.
-- **Charged per gate passed.** Owning a gate on a busy corridor is a passive income stream — a real
-  business.
-- A toll leg gives the **2× speed buff** (`TOLL_BUFF`) and lower risk; open-space legs are base speed
-  and carry ordinary piracy exposure. **Nothing forces a craft onto the network** — open space is
-  always legal, just slower, free, and riskier. That trade-off is the whole game of routing.
-- **The 2× toll buff and the old "secured edge" speed bonus are the same mechanic** (unifies
-  `phase-1-tuning.md`'s `[PROP]` "2 open / 1 secured ticks per edge"): the toll network *is* the fast,
-  secured infrastructure. There is one speed knob — base off-network, 2× on-network — not two.
-- **Syndicate craft never use tolls** — they fly straight and ignore the network entirely.
+**Tolls are optional legs, pre-shaped.** A toll is a specific two-hex corridor with a fixed route
+between its gates. If a player *chooses* to route through a toll, that leg's **end anchor is
+pre-selected** for them — you enter at one gate and must exit at the far gate; you cannot leave a toll
+early — and the leg is flagged **`isToll: true`**. A toll leg is **faster and cheaper**: the one
+`TOLL_BUFF = 2` halves both its ticks (§2.2) and its fuel burn (below). Nothing forces a craft onto a
+toll — open space is always legal, slower, thirstier, and riskier. **Tolls are their own later design
+pass** (they need gates / toll-outposts, which do not exist yet), so every leg a route can build
+*today* carries `isToll: false`; the buff path lives in the math from the start and is exercised by a
+direct unit test, so the toll slice only has to supply the flag.
+
+**Dispatch — the whole route is priced and fuelled up front.**
+
+- **Legs.** From the craft's current `location`, each chosen waypoint appends a leg
+  `{ from, to, isToll, departureTick, arrivalTick }`. A leg's length is **hex-step**
+  `hexDistance(resolve(from), resolve(to))` (§2.1); its duration is
+  `legTicks = ceil( length × craftSpeed ÷ (isToll ? TOLL_BUFF : 1) )` (§2.2). Legs are **contiguous**:
+  `departureTick` of leg K+1 equals `arrivalTick` of leg K (no pause — a per-waypoint action pause is
+  the actions slice's concern). The first leg departs at the dispatch tick, so the **whole schedule —
+  every leg's two ticks and the final `arrivalTick` — is frozen at dispatch.**
+- **Fuel — units from the hoard, whole route, up front.** The route burns
+  `Σ ceil( legLength × craft.fuelCostToRun ÷ (isToll ? TOLL_BUFF : 1) )` **units** out of the guild's
+  fuel hoard (a craft burns its **own** `fuelCostToRun`, §5 — not a hauler rate). The dispatch is
+  **refused whole** if the hoard cannot cover the sum — no partial dispatch and no stranding, because
+  there is no deep-space refuel. The cost is **presented to the player in credits** at the live fuel
+  price of the dispatch tick (`fuelValue(units, reserve.fuelPrice)`, §8.0): units leave the hoard, the
+  treasury is untouched, and because the price moves every tick the same route reads at a different
+  credit cost from one tick to the next.
+- **Arrival — the only tick step.** When `tick == arrivalTick` the craft's `location` is set to the
+  **final leg's `to` anchor** (a landmark → idle *at* that system / outpost, grouping under it in
+  OPERATIONS; a bare hex → idle in **DEEP SPACE**) and its status flips to `idle`. Intermediate
+  waypoints are **not** tick steps — they are frozen numbers the client interpolates across to animate
+  the craft; the engine never steps on them. So a multi-leg dispatch is the **built single-leg
+  Syndicate delivery with a richer stored schedule** — the performance contract (design.md §15.4) is
+  untouched, with no per-tick per-craft movement loop.
+
+**Failure modes (ruled).** A dispatch is **rejected at validation** if any leg is **zero-length** (an
+endpoint equal to the previous — the position interpolation would divide by zero), any waypoint's
+resolved hex is **off-lattice**, the route has **no legs**, or the craft is **not idle**. A craft
+**removed mid-flight** is destroyed with its route, and fuel already spent is **not** refunded
+(destruction is not a recall). A **restart mid-route** reloads the frozen schedule and lands on the
+right absolute tick — persistence *is* the mid-flight handling — and because dispatch is a journalled
+action the whole route **replays byte-identically**.
+
+**Saved routes and scheduled runs are later passes.** A **saved route** is exactly this ordered anchor
+list, re-validated at launch because tolls may have changed hands (§9); a **scheduled / repeating run**
+re-dispatches it. Neither is built in the dispatch slice — the anchor-list shape is what lets both fall
+out later.
+
+**Syndicate craft never use tolls** — they fly one straight leg and ignore the network entirely (§3).
 
 ## 5. Craft & speed
 
@@ -290,6 +330,24 @@ The interpolation of §2.3 is read by three places, from one primitive:
 - **Interception outcomes are three: cargo loss, damage, and delay.** (No capture.) The change
   calculator (§15.6, deferred) resolves these against `riskFactor` at the leg boundary.
 
+### 7.1 Detection risk by craft class — recorded numbers for the detection slice *(FORWARD RULING 18-09-26 — NOT built)*
+
+Routing enforces nothing (§4); crossing hostile space instead raises the chance a craft is
+**detected**. These per-class catch-chances are **ruled and recorded here so they are not lost**, but
+the detection layer is **its own slice** — the dispatch slice builds no detection and no code reads
+these yet:
+
+| Region crossed | Light | Medium | Heavy |
+|----------------|-------|--------|-------|
+| Guild-controlled territory (a rival's) | 50% | 60% | 80% |
+| Guild-uncontrolled territory | 20% | 40% | 70% |
+| Through a deep-scan fan | 70% | 85% | 95% |
+| Across a toll path (not on the toll) | 95% | 99% | 99% |
+
+Bigger craft are easier to catch; slipping *onto* a toll (paying it) is safe, while cutting *across*
+one is near-certain detection. Numbers are `[FIRST-CUT]` and belong in `phase-1-tuning.md` when the
+detection slice lands.
+
 ## 8. Fuel — the fuel-credit model (the tie-up)
 
 *This resolves the "instant-SELL is free movement" tension flagged with the BUY commit (design.md §6),
@@ -407,8 +465,8 @@ waystation"), because naming it would need the "nearest" geometry the client mus
 Syndicate waystation (`nearestWaystation` iterates `getOutposts()`). The design word is *waystation*; a
 future Guild-controlled *outpost* is a different thing (BUY-to-a-controlled-outpost is deferred until it
 exists). The UI says "waystation"; a code rename of the seed `outpost` → `waystation` is its own tidy-up,
-not part of the trade slices. (§2.1's Euclidean-vs-hex-step contradiction is untouched — the burn uses the
-built `hexDistance`.)
+not part of the trade slices. (§2.1's geometry is now **ruled** hex-step — the burn and travel time both use the
+built `hexDistance` — resolving the earlier contradiction.)
 
 ### 8.1 The agreed-price quote — RULED 03-09-26 (its own slice, across SELL and BUY)
 

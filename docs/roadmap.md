@@ -394,10 +394,18 @@ boundary so the later hex-map swap doesn't touch it.
   In-Progress rows quote a craft's real arrival. *Byte-identical goldens (derived-on-read, no serialized byte);
   the suite holds at 1,325.* **Dispatch/movement stays slice (b).** *(No `docs/mockups/guild-transport-client.html`
   existed in the repo at build time — see the decision checklist; built to the build-prompt's textual contract.)*
-  (b) **dispatch + arrival:** a
-  single-leg move, fuel debited up front, position **derived** from a stored schedule (§6, the Syndicate-shipment
-  pattern), the only tick step being arrival; then multi-leg routes (the leg is the atomic unit from the start),
-  cargo, and scheduled runs. UI: the OPERATIONS hero splits into idle-transports (dispatch) over leased. *From
+  (b) **dispatch + arrival — the polyline / waypoint model (RULED 18-09-26, transport-model.md §4).**
+  A route is an ordered list of **legs**, each leg any two location **anchors** (system / outpost / bare hex),
+  direction changing at every waypoint (deep space included); the leg is the atomic unit **from the start**, so
+  multi-leg is not a later add-on. Fuel is burned in **units from the hoard, whole route up front** (refused whole
+  if short — no stranding), presented to the player as a live-priced credit cost; the whole schedule is **frozen at
+  dispatch** and the **only tick step is the final arrival**, which flips the craft idle at its last anchor.
+  **Slices: (b1) engine + operator CLI** — the `dispatchVehicle` action, the arrival step, the snapshot's per-leg
+  schedule, invariants, and `admin.js dispatch-vehicle` (dispatch a multi-leg route headless, determinism-proven);
+  **(b2) client** — the Dispatch popup's waypoint builder (a live estimate, engine authoritative at apply) and the
+  in-flight polyline / craft render. Cargo, waypoint actions, saved routes, and scheduled/repeating runs are their
+  own later passes; the anchor-list shape leaves the seams. UI: the OPERATIONS hero splits into idle-transports
+  (dispatch) over leased. *From
   here the thread fans out — Syndicate transport contracts, maintenance, exploration (a plain craft scans,
   slower and fuelled), and deep-space asset deployment (outpost → toll). A full Phase-2 renumber to reflect this
   reordering is the roadmap-expert thread's job at hand-back, not done here.*
