@@ -377,6 +377,11 @@ The interpolation of §2.3 is read by three places, from one primitive:
   destination) interleaved with the Syndicate deliveries. Same primitive as the deliveries — the client
   re-derives position/progress off the engine's leg ticks and differences `trip.arrivalTick − nowTick` for
   the ETA (§18), consuming the b1 snapshot unchanged. The route-planner (b2b) is the remaining client half.)*
+  *(**AMENDED 19-09-26, cosmetic follow-up, CLIENT ONLY (`client/game.html`)** — the guild in-flight
+  route polyline + craft chevron + the OPERATIONS craft-row IN TRANSIT bar now all render in the
+  **player accent** (teal, `col('player')` / `--accent`; the route at 1.8px, matching the planning
+  preview), distinguishing the guild's OWN craft from the Syndicate deliveries' gold everywhere. A
+  colour + line-weight pass only — no game number, feed, or behaviour touched (§18).)*
 
 ## 7. Piracy, risk, and interception (Phase 1: storyteller-only)
 

@@ -1149,6 +1149,10 @@ select.field{appearance:none; cursor:pointer;}
 #tp-ops{--ops-void:#0d0f14; --ops-panel:#14171e; --ops-panel2:#181c24; --ops-panel3:#1c212b;
   --ops-ink:#E8DFC8; --ops-ink2:#b7b09a; --ops-ink3:#6f7687; --ops-ink4:#454b58;
   --ops-amber:#C9A227; --ops-amber2:#e3c04a; --ops-amber-dim:rgba(201,162,39,.30);
+  /* guild accent (== --accent / COLOR_RGB.player, #43d9c8) as a dim→bright pair mirroring the
+     amber one — colours the IN TRANSIT bar of the guild's OWN craft rows, so guild reads teal
+     while the Syndicate deliveries keep amber (2.2 b2a cosmetic follow-up). */
+  --ops-teal:#43d9c8; --ops-teal-dim:rgba(67,217,200,.30);
   --ops-line:rgba(232,223,200,.10); --ops-line2:rgba(232,223,200,.18);
   --ops-up:#5fb98a; --ops-down:#e0796b;
   --ops-mono:'IBM Plex Mono',ui-monospace,monospace; --ops-serif:'Cinzel',Georgia,serif;
@@ -1203,6 +1207,9 @@ select.field{appearance:none; cursor:pointer;}
 #tp-ops .ops-origin{font-size:12px; color:var(--ops-ink2); letter-spacing:.02em; flex:0 0 auto; max-width:130px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 #tp-ops .ops-bar{position:relative; flex:1 1 auto; min-width:48px; height:6px; border-radius:4px; background:var(--ops-void); border:1px solid var(--ops-line); overflow:hidden;}
 #tp-ops .ops-fill{position:absolute; left:0; top:0; bottom:0; border-radius:3px; background:linear-gradient(90deg, var(--ops-amber-dim), var(--ops-amber2)); transition:width .3s linear;}
+/* guild-craft rows only (.ops-row.craft, emitted by craftRowHtml) get the teal bar — the guild's
+   own in-transit identity vs the Syndicate deliveries' amber; base .ops-fill above is untouched. */
+#tp-ops .ops-row.craft .ops-fill{ background:linear-gradient(90deg, var(--ops-teal-dim), var(--ops-teal)); }
 /* the alert slot — reserved + dark + UNWIRED this slice (§4: the one real trigger, destination
    lost in flight, stays dormant until territory is contestable). Built so the row layout is final. */
 #tp-ops .ops-alert{width:16px; height:16px; border-radius:4px; background:rgba(6,8,13,.55); border:1px solid var(--ops-line); flex:0 0 auto;}
@@ -3846,8 +3853,10 @@ select.field{appearance:none; cursor:pointer;}
           const legs = (craft.trip && craft.trip.legs) || [];
           if (!legs.length) return;
 
-          // the whole route — every leg as the same dashed brass line the delivery draws, with the
-          // delivery's off-screen cull per leg so a galaxy-spanning route stays cheap.
+          // the whole route — every leg as a dashed teal line in the guild (player) accent, so the
+          // guild's own craft reads teal against the Syndicate delivery's gold; the route is drawn at
+          // 1.8px to match the planning-preview line so dispatching no longer visibly thins it. Reuses
+          // the delivery's off-screen cull per leg so a galaxy-spanning route stays cheap.
           legs.forEach((leg) => {
             if (!leg.from || !leg.to) return; // an unresolved endpoint (defensive) — nothing to draw
             const aPix = hexToPixel(leg.from.q, leg.from.r, hsV);
@@ -3861,8 +3870,8 @@ select.field{appearance:none; cursor:pointer;}
             ctx.save();
             ctx.beginPath();
             ctx.setLineDash([4, 6]);
-            ctx.strokeStyle = 'rgba(232,185,58,0.5)';
-            ctx.lineWidth = 1.4;
+            ctx.strokeStyle = col('player', 0.5); // guild accent teal — the Syndicate delivery keeps gold
+            ctx.lineWidth = 1.8;                   // matches the planning-preview weight (no thinning on dispatch)
             ctx.moveTo(A.x, A.y);
             ctx.lineTo(B.x, B.y);
             ctx.stroke();
@@ -3891,15 +3900,16 @@ select.field{appearance:none; cursor:pointer;}
           const wx = oPix.x + f * (dPix.x - oPix.x);
           const wy = oPix.y + f * (dPix.y - oPix.y);
           const cp = worldToScreen(wx, wy);
-          // the gold chevron, rotated to the active leg's SCREEN angle — the delivery's marker.
+          // the chevron in the guild (player) accent teal, rotated to the active leg's SCREEN angle —
+          // same marker shape as the Syndicate delivery, recoloured so guild reads teal, Syndicate gold.
           const theta = Math.atan2(B.y - A.y, B.x - A.x);
           const cs = 2 * Math.min(6.5, 3.5 + zoom * 0.06);
           ctx.save();
           ctx.translate(cp.x, cp.y);
           ctx.rotate(theta);
-          ctx.shadowColor = 'rgba(242,206,93,0.9)';
+          ctx.shadowColor = col('player', 0.9);
           ctx.shadowBlur = 8;
-          ctx.fillStyle = '#f2ce5d';
+          ctx.fillStyle = col('player', 1);
           ctx.beginPath();
           ctx.moveTo(cs, 0);
           ctx.lineTo(-cs, -cs * 0.8);
