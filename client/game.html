@@ -94,6 +94,65 @@
   #sp-details:hover { background: rgba(67,217,200,0.2); }
   #sp-details:disabled { opacity: 0.4; cursor: default; background: rgba(255,255,255,0.04); border-color: var(--line-bright); color: var(--text-dim); }
 
+  /* ============ b2b-2 route-planner: the galaxy-map PLANNING MODE overlays ============
+     Shown only while #app carries .planning (set by the map IIFE on enter, cleared on exit):
+     a top-centre banner, a left waypoint list, top-right Finalise/Cancel, and the ADD/Confirm
+     chip that the JS glues to the candidate hex each frame. Teal (the player accent) throughout,
+     matching the confirmed polyline the draw pass paints. Presentation only (§18). */
+  #plan-ui { display: none; }
+  #app.planning #plan-ui { display: block; }
+  #plan-banner {
+    position: absolute; top: 116px; left: 50%; transform: translateX(-50%); z-index: 520;
+    background: rgba(8,10,16,0.92); border: 1px solid var(--accent); border-radius: 3px;
+    padding: 9px 18px; pointer-events: none; max-width: 60vw; text-align: center;
+  }
+  #plan-banner .bt { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 12px; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; }
+  #plan-banner .bs { font-size: 10px; letter-spacing: 1px; color: var(--text-dim); margin-top: 3px; }
+  #plan-controls { position: absolute; top: 116px; right: 22px; z-index: 520; display: flex; gap: 10px; pointer-events: auto; }
+  .plan-btn {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+    background: rgba(8,10,16,0.92); border: 1px solid var(--line-bright); color: var(--text);
+    padding: 10px 16px; border-radius: 2px; cursor: pointer;
+  }
+  .plan-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .plan-btn.primary { background: rgba(67,217,200,0.14); border-color: var(--accent); color: var(--accent); }
+  .plan-btn.primary:hover:not(:disabled) { background: rgba(67,217,200,0.24); }
+  .plan-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  #plan-list {
+    position: absolute; left: 22px; top: 176px; width: 250px; max-height: 52vh; z-index: 520;
+    background: rgba(8,10,16,0.92); border: 1px solid var(--line-bright); border-radius: 3px;
+    pointer-events: auto; display: flex; flex-direction: column; overflow: hidden;
+  }
+  #plan-list .plh { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; padding: 11px 14px 9px; border-bottom: 1px solid #1c2637; }
+  #plan-list .plrows { overflow-y: auto; }
+  #plan-list .plfade { height: 18px; margin-top: -18px; background: linear-gradient(rgba(8,10,16,0), rgba(8,10,16,0.92)); pointer-events: none; flex: none; }
+  .plrow { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 11px; }
+  .plrow .plix { font-family: 'JetBrains Mono', monospace; font-size: 9px; width: 20px; height: 20px; flex: none; border-radius: 50%; border: 1px solid var(--line-bright); display: flex; align-items: center; justify-content: center; color: var(--text-dim); }
+  .plrow.origin .plix { border-color: var(--accent); color: var(--accent); }
+  .plrow.deadleg { background: rgba(194,96,58,0.14); }
+  .plrow .plnm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .plrow .plnm .warn { color: #e08a5a; font-size: 9px; letter-spacing: 1px; display: block; }
+  .plrow .plctl { display: flex; gap: 4px; flex: none; }
+  .plrow .plctl button {
+    width: 22px; height: 22px; font-size: 11px; line-height: 1; cursor: pointer;
+    background: rgba(255,255,255,0.04); border: 1px solid var(--line-bright); color: var(--text-dim); border-radius: 2px;
+  }
+  .plrow .plctl button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .plrow .plctl button:disabled { opacity: 0.3; cursor: default; }
+  #plan-chip { position: absolute; z-index: 521; transform: translate(-50%, -140%); pointer-events: auto; display: none; }
+  #plan-chip.on { display: block; }
+  #plan-chip .chwrap { display: flex; gap: 5px; }
+  #plan-chip button {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+    background: rgba(8,10,16,0.95); border: 1px solid var(--accent); color: var(--accent);
+    padding: 6px 11px; border-radius: 2px; cursor: pointer; white-space: nowrap;
+  }
+  #plan-chip button:hover:not(:disabled) { background: rgba(67,217,200,0.2); }
+  #plan-chip button.cancel { border-color: var(--line-bright); color: var(--text-dim); }
+  #plan-chip button.cancel:hover { border-color: #c2603a; color: #c2603a; background: rgba(194,96,58,0.14); }
+  #plan-chip button:disabled { opacity: 0.4; cursor: not-allowed; }
+  #plan-chip .chhint { margin-top: 5px; font-size: 9px; letter-spacing: 1px; color: #e08a5a; background: rgba(8,10,16,0.95); border: 1px solid rgba(194,96,58,0.5); border-radius: 2px; padding: 3px 7px; white-space: nowrap; }
+
   /* ============ System View detail screen (ported from the System & Planet Index mockup, since retired) ============
      The mockup's own component CSS, unchanged. Its custom properties are scoped to
      #detail-screen (not :root) and its global resets (body, universal and ::selection) are dropped,
@@ -1790,7 +1849,6 @@ select.field{appearance:none; cursor:pointer;}
 #dispatch-overlay .dp-sum .row{display:flex; justify-content:space-between; align-items:baseline; gap:14px; padding:13px 2px; border-bottom:1px solid rgba(232,223,200,0.08)}
 #dispatch-overlay .dp-sum .row .k{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3)}
 #dispatch-overlay .dp-sum .row .v{font-family:var(--mono); font-size:14px; color:var(--ink); text-align:right; font-variant-numeric:tabular-nums}
-#dispatch-overlay .dp-soon{margin-top:20px; font-family:var(--mono); font-size:10.5px; color:var(--ink3); line-height:1.6; letter-spacing:.02em}
 /* The side column is a plain top-to-bottom stack: the whole portrait, then a solid footer with
    the label + action. Unlike the other est heroes it does NOT float a button over a full-bleed
    image — the ship shows uncropped and the button sits beneath it. */
@@ -1804,6 +1862,38 @@ select.field{appearance:none; cursor:pointer;}
 #dispatch-overlay .dp-foot .stitle{font-family:var(--mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
 #dispatch-overlay .dp-show{width:100%; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer}
 #dispatch-overlay .dp-show:hover{background:#DCB43A}
+/* ===== b2b-2 (the route-planner client): the left column's dynamic body. The pre-plan state is
+   the Onboard Manifest placeholder + the two action buttons; the post-finalise state is the
+   Planned Route section (a scrollable waypoint list beside Time-over-Cost). Every game number here
+   is the engine's — the manifest capacity is not yet published so it shows a placeholder, and the
+   route's time/cost come from POST /vehicle/quote (§18). ===== */
+#dispatch-overlay .dp-manifest{margin-top:22px}
+#dispatch-overlay .dp-manifest .mbox{height:92px; overflow-y:auto; border:1px solid var(--line); border-radius:8px; background:var(--panel); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px}
+#dispatch-overlay .dp-manifest .mbox .empty{font-family:var(--mono); font-size:12px; letter-spacing:.06em; color:var(--ink2)}
+#dispatch-overlay .dp-manifest .mbox .cap{font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--ink3); font-variant-numeric:tabular-nums}
+/* the left-column action buttons (Maintenance/Plan Route, then Edit/Dispatch) */
+#dispatch-overlay .dp-actions{margin-top:22px; display:flex; gap:12px}
+#dispatch-overlay .dp-btn{flex:1; font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; padding:13px 12px; border-radius:9px; cursor:pointer; background:var(--panel); border:1px solid var(--line2); color:var(--ink)}
+#dispatch-overlay .dp-btn:hover:not(:disabled){border-color:var(--amber); color:var(--amber)}
+#dispatch-overlay .dp-btn.primary{background:var(--amber); border:1px solid var(--amber); color:var(--void)}
+#dispatch-overlay .dp-btn.primary:hover:not(:disabled){background:#DCB43A; border-color:#DCB43A}
+#dispatch-overlay .dp-btn:disabled{opacity:.4; cursor:not-allowed}
+/* the Planned Route section — two equal-height boxes: list | time-over-cost */
+#dispatch-overlay .dp-route{margin-top:22px; display:grid; grid-template-columns:1fr 148px; gap:12px}
+#dispatch-overlay .dp-route .wp-wrap{position:relative}
+#dispatch-overlay .dp-route .wp-list{height:154px; overflow-y:auto; border:1px solid var(--line); border-radius:8px; background:var(--panel)}
+#dispatch-overlay .dp-route .wp-fade{position:absolute; left:1px; right:1px; bottom:1px; height:22px; border-radius:0 0 8px 8px; background:linear-gradient(rgba(18,21,28,0), var(--panel)); pointer-events:none}
+#dispatch-overlay .dp-route .wp-row{display:flex; align-items:center; gap:10px; padding:9px 11px; border-bottom:1px solid rgba(232,223,200,0.06)}
+#dispatch-overlay .dp-route .wp-row .ix{font-family:var(--mono); font-size:9px; width:22px; height:22px; flex:none; border-radius:50%; border:1px solid var(--line2); display:flex; align-items:center; justify-content:center; color:var(--ink2)}
+#dispatch-overlay .dp-route .wp-row.origin .ix{border-color:var(--amber); color:var(--amber)}
+#dispatch-overlay .dp-route .wp-row .nm{font-size:12px; color:var(--ink); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+#dispatch-overlay .dp-route .wp-row .slot{width:16px; height:16px; flex:none}
+#dispatch-overlay .dp-route .tc-box{border:1px solid var(--line); border-radius:8px; background:var(--panel); display:flex; flex-direction:column}
+#dispatch-overlay .dp-route .tc-box .cell{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; padding:10px}
+#dispatch-overlay .dp-route .tc-box .cell + .cell{border-top:1px solid var(--line)}
+#dispatch-overlay .dp-route .tc-box .cell .lab{font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3)}
+#dispatch-overlay .dp-route .tc-box .cell .val{font-family:var(--mono); font-size:18px; color:var(--ink); font-variant-numeric:tabular-nums}
+#dispatch-overlay .dp-refuse{margin-top:12px; font-family:var(--mono); font-size:11px; color:var(--red); line-height:1.5}
 /* One-column phone layout: the art is now full-width, so cap its height (a display cap, not a game
    number) and switch to `contain` so the whole ship still shows, letterboxed, without dominating. */
 @media(max-width:820px){
@@ -2530,6 +2620,30 @@ select.field{appearance:none; cursor:pointer;}
     <div class="row" id="sp-ring-row" style="display:none"><span>Ring:</span> <b id="sp-ring">—</b></div>
     <button id="sp-details" disabled title="Placeholder — will open the solar system data guide">OPEN DETAILS</button>
   </div>
+
+  <!-- b2b-2 route-planner: the galaxy-map PLANNING MODE overlays. Hidden until the map IIFE puts
+       #app into .planning (Plan Route). The banner names the craft; the list shows Origin + each
+       turning point with reorder/remove; Finalise/Cancel are the two deliberate exits; the chip is
+       glued to the candidate hex by the JS each frame (ADD, then Confirm/Cancel). -->
+  <div id="plan-ui">
+    <div id="plan-banner">
+      <div class="bt" id="plan-banner-title">Planning Route</div>
+      <div class="bs">Click a hex to add a turning point</div>
+    </div>
+    <div id="plan-controls">
+      <button class="plan-btn primary" id="planFinalise" type="button" disabled>Finalise Route</button>
+      <button class="plan-btn" id="planCancel" type="button">Cancel</button>
+    </div>
+    <div id="plan-list">
+      <div class="plh">Route Waypoints</div>
+      <div class="plrows" id="planRows"></div>
+      <div class="plfade"></div>
+    </div>
+    <div id="plan-chip">
+      <div class="chwrap" id="planChipButtons"></div>
+      <div class="chhint" id="planChipHint" style="display:none"></div>
+    </div>
+  </div>
 </div>
 
 
@@ -2872,7 +2986,12 @@ select.field{appearance:none; cursor:pointer;}
           <div class="row"><span class="k">Location</span><span class="v" id="dpLoc">—</span></div>
           <div class="row"><span class="k">Maintenance</span><span class="v" id="dpMaint">—</span></div>
         </div>
-        <div class="dp-soon">Choosing a destination, the route and its fuel, and the dispatch order arrive with movement (next slice). For now, locate the craft on the galaxy map.</div>
+        <!-- The dynamic body: the pre-plan Onboard Manifest OR the post-finalise Planned Route,
+             filled by the popup JS (renderPrePlan / renderPostFinalise). -->
+        <div id="dpSection"></div>
+        <!-- The left-column action buttons: Maintenance/Plan Route (pre-plan) or Edit/Dispatch
+             (post-finalise), also filled by the popup JS. -->
+        <div class="dp-actions" id="dpActions"></div>
       </div>
       <div class="est-side">
         <div class="art" id="dpArt"></div>
@@ -3025,6 +3144,202 @@ select.field{appearance:none; cursor:pointer;}
   // only above 1×, so below that this is simply empty and there is nothing to click.
   let craftLabelHits = [];
   let systemById = new Map(), guildById = new Map(), systemToGuild = new Map(), guildOutpostByKey = new Map(), gateByKey = new Map();
+
+  // ---------- b2b-2: the interactive ROUTE PLANNER (transport-model.md §4/§9, design.md §18) ----------
+  // The whole in-progress route lives in ONE object. `waypoints` is the ordered turning-point anchor
+  // list — NOT including the origin (the craft's current location); `candidate` is the hex the player
+  // last clicked, proposed but not yet added (a two-step ADD → Confirm guards pans/mis-clicks). Each
+  // anchor is the engine's own location shape — { landmarkKind:'system'|'outpost', landmarkId } or a
+  // bare { q, r } — so the list the client sends is exactly what quoteDispatch/dispatchVehicle accept.
+  // PRESENTATION ONLY (§18): the client resolves anchors to coords to DRAW and to compare hexes for the
+  // dead-leg check (geometry, not an economy number); every time/fuel/credit figure comes from the
+  // engine's quote, never client math.
+  let PLAN = null;              // { vehicle, origin, waypoints:[anchor,…], candidate:anchor|null, candidateArmed:bool }
+  let planActive = false;       // true while the map is in planning mode (the click branch + draw pass read this)
+
+  // resolveAnchor(anchor) -> { q, r } | null. A bare hex is its own coords; a landmark reads its
+  // seed coords (the same GAME.galaxy the map already draws from). One path for origin, waypoint, and
+  // candidate alike — the dead-leg check and the polyline both compare/draw resolved coords.
+  function resolveAnchor(a) {
+    if (!a) return null;
+    if (typeof a.q === 'number' && typeof a.r === 'number') return { q: a.q, r: a.r };
+    if (!galaxy) return null;
+    if (a.landmarkKind === 'system') { const s = (galaxy.systems || []).find(x => x.id === a.landmarkId); return s ? { q: s.coords.q, r: s.coords.r } : null; }
+    if (a.landmarkKind === 'outpost') { const o = (galaxy.outposts || []).find(x => x.id === a.landmarkId); return o ? { q: o.coords.q, r: o.coords.r } : null; }
+    return null;
+  }
+
+  // sameHex(a, b) — two resolved coords land on the same lattice hex (a zero-length leg, §4). Null
+  // coords never match (an unresolvable anchor is not "the same hex", it is simply not drawable).
+  function sameHex(a, b) { return !!a && !!b && a.q === b.q && a.r === b.r; }
+
+  // A waypoint's display name: a landmark reads its seed name, a bare hex its "(q, r)" — the SAME
+  // vocabulary the OPERATIONS list uses (__landmarkNameAt), off the seed the client already holds.
+  function anchorLabel(a) {
+    if (!a) return '—';
+    if (typeof a.q === 'number' && typeof a.r === 'number') {
+      return (window.__landmarkNameAt && window.__landmarkNameAt(a.q, a.r)) || ('(' + a.q + ', ' + a.r + ')');
+    }
+    if (a.landmarkKind === 'system') return (window.__systemName && window.__systemName(a.landmarkId)) || a.landmarkId;
+    if (a.landmarkKind === 'outpost') return (window.__outpostName && window.__outpostName(a.landmarkId)) || a.landmarkId;
+    return '—';
+  }
+
+  // The coords each waypoint follows: the leg before entry i runs from prevCoords(i) to that anchor.
+  // For i === 0 the previous anchor is the ORIGIN; otherwise it is waypoints[i-1]. Used by both the
+  // list's dead-leg flags and the draw pass.
+  function prevCoordsFor(i) {
+    return resolveAnchor(i === 0 ? PLAN.origin : PLAN.waypoints[i - 1]);
+  }
+
+  // deadLegAt(i) — waypoint i resolves to the same hex as the anchor before it (a zero-length leg the
+  // engine would reject, §4). The list flags such a row and Finalise stays disabled until it is fixed.
+  function deadLegAt(i) {
+    if (!PLAN) return false;
+    return sameHex(resolveAnchor(PLAN.waypoints[i]), prevCoordsFor(i));
+  }
+  function anyDeadLeg() {
+    if (!PLAN) return false;
+    for (let i = 0; i < PLAN.waypoints.length; i++) if (deadLegAt(i)) return true;
+    return false;
+  }
+
+  // Enter planning mode for a craft. `vehicle` is the DP row (needs id/class/location); `waypoints`
+  // seeds the list (empty for a fresh Plan Route, the current list for Edit Route). Closes any open
+  // tab/panel, flies to the craft's hex at a hex-visible zoom (≥ VECTOR_ZOOM_THRESHOLD), and shows the
+  // planning overlays. The origin is the craft's own location anchor — resolved to coords for the draw.
+  function startPlanning(vehicle, waypoints) {
+    if (!vehicle || !vehicle.location) return;
+    PLAN = { vehicle: vehicle, origin: vehicle.location, waypoints: (waypoints || []).slice(), candidate: null, candidateArmed: false };
+    planActive = true;
+    const c = resolveAnchor(vehicle.location);
+    document.getElementById('app').classList.add('planning');
+    document.getElementById('plan-banner-title').textContent = 'Planning Route · ' + prettyClass(vehicle.class);
+    if (c) window.__flyTo(c.q, c.r, Math.max(VECTOR_ZOOM_THRESHOLD + 2, 6));
+    // __flyTo leaves the system-info panel open on the origin; the planner has its own list, so hide it
+    // to keep the top-right clear for Finalise/Cancel.
+    document.getElementById('syspanel').style.display = 'none';
+    renderPlanList();
+    renderPlanChip();
+  }
+
+  // Leave planning mode (shared by Cancel, Finalise, and abandon). `keepPlan` true only for Finalise,
+  // which hands the SAME PLAN to the popup; every other exit discards it.
+  function exitPlanning(keepPlan) {
+    planActive = false;
+    document.getElementById('app').classList.remove('planning');
+    document.getElementById('plan-chip').classList.remove('on');
+    if (!keepPlan) PLAN = null;
+  }
+
+  // Cancel — abandon the in-progress route entirely (a deliberate exit, § B). Discards PLAN and drops
+  // the overlays; the map returns to its normal state with nothing selected.
+  function cancelPlanning() {
+    exitPlanning(false);
+  }
+
+  // Finalise — leave planning WITHOUT discarding the route, and hand it to the Dispatch popup, which
+  // fetches the engine quote and shows the two-box Planned Route. Guarded by the same rule the button
+  // is: at least one waypoint and no dead leg.
+  function finalisePlanning() {
+    if (!PLAN || !PLAN.waypoints.length || anyDeadLeg()) return;
+    const vehicle = PLAN.vehicle, waypoints = PLAN.waypoints.slice();
+    exitPlanning(true); // clears the .planning class + the chip; keeps PLAN for the popup / Edit Route
+    if (window.__dispatchFinalise) window.__dispatchFinalise(vehicle, waypoints);
+  }
+
+  // Re-cost/re-draw hook: every list edit (add/remove/reorder) re-runs the dead-leg sweep and gates
+  // Finalise. The polyline redraws on the next frame from PLAN, so there is nothing to repaint here.
+  function refreshPlanState() {
+    renderPlanList();
+    renderPlanChip();
+    const f = document.getElementById('planFinalise');
+    if (f) f.disabled = !PLAN || !PLAN.waypoints.length || anyDeadLeg();
+  }
+
+  // The waypoint list panel: an Origin row (fixed, no controls) then one row per waypoint — its index,
+  // its name, ▲ ▼ to reorder and ✕ to remove. Reorder is arrows (not drag, §out-of-scope). A row that
+  // resolves to the same hex as the one before it is flagged and disables Finalise.
+  function renderPlanList() {
+    const box = document.getElementById('planRows');
+    if (!box || !PLAN) return;
+    box.innerHTML = '';
+    const mkRow = (cls, ixText, name, warn, ctlHtml) => {
+      const row = document.createElement('div');
+      row.className = 'plrow' + (cls ? ' ' + cls : '');
+      row.innerHTML = '<div class="plix">' + ixText + '</div>' +
+        '<div class="plnm">' + escapeHtml(name) + (warn ? '<span class="warn">' + warn + '</span>' : '') + '</div>' +
+        '<div class="plctl">' + (ctlHtml || '') + '</div>';
+      return row;
+    };
+    box.appendChild(mkRow('origin', '◎', anchorLabel(PLAN.origin) + '  · origin', '', ''));
+    PLAN.waypoints.forEach((wp, i) => {
+      const dead = deadLegAt(i);
+      const ctl =
+        '<button data-act="up" data-i="' + i + '" title="Move up"' + (i === 0 ? ' disabled' : '') + '>▲</button>' +
+        '<button data-act="down" data-i="' + i + '" title="Move down"' + (i === PLAN.waypoints.length - 1 ? ' disabled' : '') + '>▼</button>' +
+        '<button data-act="rm" data-i="' + i + '" title="Remove">✕</button>';
+      box.appendChild(mkRow(dead ? 'deadleg' : '', String(i + 1), anchorLabel(wp), dead ? 'zero-length leg — remove or reorder' : '', ctl));
+    });
+  }
+
+  // A tiny HTML-escape for the waypoint names (a landmark name is seed data, but escaping keeps the
+  // list injection-safe as a matter of course — presentation only).
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  // The candidate chip: nothing when no candidate; [ADD] when a candidate is proposed; [Confirm][Cancel]
+  // once ADD is clicked. A candidate whose hex equals the previous anchor's is a dead leg — ADD/Confirm
+  // is disabled with a hint (the UI never builds a zero-length leg; the engine would reject it, §4).
+  function renderPlanChip() {
+    const chip = document.getElementById('plan-chip');
+    const btns = document.getElementById('planChipButtons');
+    const hint = document.getElementById('planChipHint');
+    if (!chip || !PLAN || !PLAN.candidate) { if (chip) chip.classList.remove('on'); return; }
+    const prev = resolveAnchor(PLAN.waypoints.length ? PLAN.waypoints[PLAN.waypoints.length - 1] : PLAN.origin);
+    const dead = sameHex(resolveAnchor(PLAN.candidate), prev);
+    btns.innerHTML = '';
+    if (!PLAN.candidateArmed) {
+      const add = document.createElement('button');
+      add.textContent = 'Add';
+      add.disabled = dead;
+      add.addEventListener('click', () => { PLAN.candidateArmed = true; renderPlanChip(); });
+      btns.appendChild(add);
+    } else {
+      const ok = document.createElement('button');
+      ok.textContent = 'Confirm';
+      ok.disabled = dead;
+      ok.addEventListener('click', confirmCandidate);
+      const no = document.createElement('button');
+      no.className = 'cancel';
+      no.textContent = 'Cancel';
+      no.addEventListener('click', clearCandidate);
+      btns.appendChild(ok); btns.appendChild(no);
+    }
+    hint.style.display = dead ? 'block' : 'none';
+    if (dead) hint.textContent = 'Same hex as the last point';
+    // position it now (not only on the next render frame) so it never flashes at a stale spot
+    const cc = resolveAnchor(PLAN.candidate);
+    if (cc) { const s = worldToScreen(hexToPixel(cc.q, cc.r, galaxy.galaxyParams.hexSize).x, hexToPixel(cc.q, cc.r, galaxy.galaxyParams.hexSize).y); chip.style.left = s.x + 'px'; chip.style.top = s.y + 'px'; }
+    chip.classList.add('on');
+  }
+
+  // Confirm the candidate → append it to the route (unless it would be a dead leg) and clear it.
+  function confirmCandidate() {
+    if (!PLAN || !PLAN.candidate) return;
+    const prev = resolveAnchor(PLAN.waypoints.length ? PLAN.waypoints[PLAN.waypoints.length - 1] : PLAN.origin);
+    if (sameHex(resolveAnchor(PLAN.candidate), prev)) return; // never build a zero-length leg
+    PLAN.waypoints.push(PLAN.candidate);
+    PLAN.candidate = null; PLAN.candidateArmed = false;
+    document.getElementById('plan-chip').classList.remove('on');
+    refreshPlanState();
+  }
+  function clearCandidate() {
+    if (!PLAN) return;
+    PLAN.candidate = null; PLAN.candidateArmed = false;
+    document.getElementById('plan-chip').classList.remove('on');
+  }
 
   const COLOR_RGB = { system: [111,183,232], outpost: [232,185,58], citadel: [242,206,93], player: [67,217,200] };
   function col(key, a) { const c = COLOR_RGB[key]; return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
@@ -3606,6 +3921,81 @@ select.field{appearance:none; cursor:pointer;}
       }
     }
 
+    // b2b-2 PLANNING-ROUTE draw pass (the sibling of the in-transit pass above): while planning, paint
+    // the in-progress route from PLAN — the confirmed polyline through origin → each waypoint (solid,
+    // player teal), a dashed proposed leg from the last confirmed anchor to the candidate (dimmer), the
+    // origin marker + a labelled tag, and a turning-point ring + index at each waypoint. PRESENTATION
+    // ONLY (§18): resolve anchors to coords and draw; the numbers (time/fuel/credits) are the engine's
+    // quote, never computed here.
+    if (planActive && PLAN) {
+      const hsP = galaxy.galaxyParams.hexSize;
+      // resolved coords → screen point, the one conversion this pass draws through
+      const scrOf = (c) => { const p = hexToPixel(c.q, c.r, hsP); return worldToScreen(p.x, p.y); };
+      // the anchor chain, origin first, resolved to coords (an unresolvable anchor drops out of the line)
+      const chain = [PLAN.origin, ...PLAN.waypoints].map(resolveAnchor);
+      // confirmed polyline — solid teal between consecutive resolved anchors
+      ctx.save();
+      ctx.strokeStyle = col('player', 0.85);
+      ctx.lineWidth = 1.8;
+      for (let i = 1; i < chain.length; i++) {
+        const a = chain[i - 1], b = chain[i];
+        if (!a || !b) continue;
+        const A = scrOf(a), B = scrOf(b);
+        ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+      }
+      ctx.restore();
+      // the dashed proposed leg — last confirmed anchor → candidate (dimmer)
+      const cand = PLAN.candidate ? resolveAnchor(PLAN.candidate) : null;
+      const lastConfirmed = chain[chain.length - 1];
+      if (cand && lastConfirmed) {
+        const A = scrOf(lastConfirmed), B = scrOf(cand);
+        ctx.save();
+        ctx.setLineDash([5, 6]);
+        ctx.strokeStyle = col('player', 0.4);
+        ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+        ctx.restore();
+      }
+      // origin marker + tag
+      if (chain[0]) {
+        const os = scrOf(chain[0]);
+        ctx.save();
+        ctx.fillStyle = col('player', 0.95);
+        ctx.beginPath(); ctx.arc(os.x, os.y, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        drawLabelBox(os, [prettyClass(PLAN.vehicle.class).toUpperCase(), 'ORIGIN'], 'player', true);
+      }
+      // a ring + index at each confirmed turning point
+      PLAN.waypoints.forEach((wp, i) => {
+        const c = resolveAnchor(wp);
+        if (!c) return;
+        const s = scrOf(c);
+        ctx.save();
+        ctx.strokeStyle = col('player', 0.95);
+        ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.arc(s.x, s.y, 7, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = col('player', 0.95);
+        ctx.font = "700 10px 'JetBrains Mono', monospace";
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(i + 1), s.x, s.y);
+        ctx.restore();
+      });
+      // the candidate ring — a hollow dashed marker where the proposed point sits
+      if (cand) {
+        const s = scrOf(cand);
+        ctx.save();
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = col('player', 0.6);
+        ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.arc(s.x, s.y, 8, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+        // glue the ADD/Confirm chip to the candidate hex — repositioned every frame so it holds as the
+        // map pans/zooms (its CSS transform lifts it above the ring).
+        const chip = document.getElementById('plan-chip');
+        if (chip && chip.classList.contains('on')) { chip.style.left = s.x + 'px'; chip.style.top = s.y + 'px'; }
+      }
+    }
+
     // the player's own idle DEEP-SPACE craft (2.2 spawn) — a bare-hex transport sits where no
     // system/outpost tag would mark it, so it gets its OWN small accent marker plus a clickable
     // name-tag. A craft at a system/outpost is already drawn by that landmark's tag and is not fed
@@ -3726,6 +4116,26 @@ select.field{appearance:none; cursor:pointer;}
   });
 
   function handleClick(e) {
+    // PLANNING MODE intercepts at the TOP (before the normal selection chain, §C): a click resolves to
+    // a CANDIDATE anchor instead of selecting a hex. If a system sits on the hex it is a system anchor;
+    // a Syndicate outpost, an outpost anchor; otherwise a bare hex. Nothing is added yet — the ADD →
+    // Confirm chip does that, so a pan/mis-click is safe. Re-uses the same screenToWorld→pixelToAxial
+    // resolution the normal handler uses (one geometry).
+    if (planActive && PLAN) {
+      const wp = screenToWorld(e.clientX, e.clientY);
+      const hs = galaxy.galaxyParams.hexSize;
+      const ax = pixelToAxial(wp.x, wp.y, hs);
+      const key = ax.q + ',' + ax.r;
+      const sys = systemByKey.get(key);
+      const out = outpostByKey.get(key);
+      if (sys) PLAN.candidate = { landmarkKind: 'system', landmarkId: sys.id };
+      else if (out) PLAN.candidate = { landmarkKind: 'outpost', landmarkId: out.id };
+      else PLAN.candidate = { q: ax.q, r: ax.r };
+      PLAN.candidateArmed = false; // a fresh click re-proposes (back to the ADD step)
+      renderPlanChip();
+      return;
+    }
+
     // A click on a craft's name-tag LABEL opens that craft's Dispatch popup. Checked before any hex
     // resolution so the label wins its own pixels; a click that misses every label (including one on
     // the craft's hex or marker) falls straight through to the normal hex handling below. The stored
@@ -3994,6 +4404,34 @@ select.field{appearance:none; cursor:pointer;}
     if(z){ zoom = Math.min(getMaxZoom(), Math.max(getMinZoom(), z)); document.getElementById('zoomval').textContent = (zoom<10?zoom.toFixed(1):Math.round(zoom))+'\u00d7'; }
     if(sys){ selected = sys; selectedCoords = {q:q,r:r}; selectedType = 'system'; showSysPanel(sys, 'system', {q:q,r:r}); document.getElementById('recenter').disabled = false; }
   };
+
+  // ---------- b2b-2: wire the planning overlays + the cross-IIFE bridges ----------
+  // Finalise / Cancel are the two deliberate exits (§B). Finalise hands the route to the popup; Cancel
+  // discards it.
+  document.getElementById('planFinalise').addEventListener('click', finalisePlanning);
+  document.getElementById('planCancel').addEventListener('click', cancelPlanning);
+  // The waypoint list's reorder/remove controls — event delegation over the rows, re-costing on each
+  // edit (the dead-leg sweep + Finalise gate run in refreshPlanState). Arrows only (no drag, §scope).
+  document.getElementById('planRows').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-act]');
+    if (!btn || !PLAN) return;
+    const i = Number(btn.getAttribute('data-i'));
+    const act = btn.getAttribute('data-act');
+    if (act === 'rm') { PLAN.waypoints.splice(i, 1); }
+    else if (act === 'up' && i > 0) { const t = PLAN.waypoints[i - 1]; PLAN.waypoints[i - 1] = PLAN.waypoints[i]; PLAN.waypoints[i] = t; }
+    else if (act === 'down' && i < PLAN.waypoints.length - 1) { const t = PLAN.waypoints[i + 1]; PLAN.waypoints[i + 1] = PLAN.waypoints[i]; PLAN.waypoints[i] = t; }
+    else return;
+    refreshPlanState();
+  });
+
+  // The bridges the Dispatch popup calls: Plan Route / Edit Route enter planning (with an empty list,
+  // or the current one to edit); abandon discards any in-progress route (the popup calls it on close /
+  // opening another craft). __fmtETA lets the popup format the quote's totalTicks the way the map's
+  // tags do (ONE formatter, no second copy). PLAN's waypoints are the source of truth during planning;
+  // the popup receives a copy on Finalise and hands it back on Edit.
+  window.__planRoute = function (vehicle, waypoints) { startPlanning(vehicle, waypoints); };
+  window.__abandonPlanning = function () { if (planActive || PLAN) exitPlanning(false); };
+  window.__fmtETA = fmtETA;
 
   resize(); tick();
 })();
@@ -9232,7 +9670,10 @@ function paintInventoryHero(d){
   function $(id){ return document.getElementById(id); }
   function snap(){ return (window.__snapshot && window.__snapshot()) || null; }
 
-  var DP = { vehicle: null };
+  // The popup's own state: the craft, plus the FINALISED route + its engine quote once Finalise has
+  // run (the map owns the route DURING planning; the popup holds this copy for the post-finalise view
+  // and Edit Route). Reset on open/close.
+  var DP = { vehicle: null, waypoints: [], quote: null };
 
   // A camelCase-splitting display name (heavyTransport -> "Heavy Transport"). Display vocabulary
   // only (§18) — a local copy, the map/trade `pretty` are out of this IIFE's scope.
@@ -9279,10 +9720,14 @@ function paintInventoryHero(d){
 
   // Fill the fields + art and show the overlay. `vehicle` may be the full OPERATIONS snapshot row or
   // the map's { id, class, location:{q,r} } — either way we re-read the authoritative row by id.
+  // Fill the FIXED head + summary + art (unchanged whichever state the body is in), then reset the
+  // body to the PRE-PLAN state. Opening a craft ALWAYS abandons any in-progress route (§B) — a second
+  // craft's plan must not carry the first one's waypoints — and clears the popup's own finalise memory.
   function openDispatch(vehicle){
     if(!vehicle || !vehicle.id) return;
+    if(window.__abandonPlanning) window.__abandonPlanning();
     var v = liveVehicle(vehicle.id) || vehicle;
-    DP.vehicle = v;
+    DP.vehicle = v; DP.waypoints = []; DP.quote = null;
     var suffix = String(v.id).split('_').slice(-1)[0];   // vehicle_<guild>_<class>_NN -> "NN"
     $('dpName').textContent = prettyClass(v.class) + ' · #' + suffix;
     $('dpClass').textContent = prettyClass(v.class);
@@ -9292,9 +9737,157 @@ function paintInventoryHero(d){
     // per-class hero art (client/assets/units/<class>.jpg, all four classes resolve): heavyTransport
     // -> "heavytransport.jpg", spycraft -> "spycraft.jpg".
     $('dpArt').style.backgroundImage = "url('assets/units/" + String(v.class).toLowerCase() + ".jpg')";
+    renderPrePlan();
     $('dispatch-overlay').classList.add('open');
   }
-  function closeDispatch(){ DP.vehicle = null; $('dispatch-overlay').classList.remove('open'); }
+
+  // PRE-PLAN state (§A): the Onboard Manifest placeholder + the Maintenance (disabled) / Plan Route
+  // buttons. Capacity is not published to the client (no engine change this slice), so the hold shows
+  // its shape with a placeholder rather than a client-invented number (§18) — cargo is a later slice.
+  function renderPrePlan(){
+    $('dpSection').innerHTML =
+      '<div class="dp-manifest">' +
+        '<div class="dp-sechead" style="margin-bottom:10px">Onboard Manifest</div>' +
+        '<div class="mbox"><div class="empty">Hold empty</div><div class="cap">0 / — capacity</div></div>' +
+      '</div>';
+    var acts = $('dpActions');
+    acts.innerHTML =
+      '<button class="dp-btn" id="dpMaintBtn" type="button" disabled title="Maintenance arrives later">Maintenance</button>' +
+      '<button class="dp-btn primary" id="dpPlanBtn" type="button">Plan Route</button>';
+    $('dpPlanBtn').addEventListener('click', onPlanRoute);
+  }
+
+  // POST-FINALISE state (§D): the two-box Planned Route (a scrollable Origin+waypoints list beside
+  // Time-over-Cost) + the Edit Route / Dispatch buttons. `quote` is the ENGINE's — every number here
+  // comes from POST /vehicle/quote (§18); the client only formats and lays them out.
+  function renderPostFinalise(){
+    var v = DP.vehicle, q = DP.quote;
+    // the waypoint list: Origin (the craft's location) then one row per finalised waypoint, each with a
+    // reserved (empty) action-icon slot on the right (a future load/unload/deploy indicator, §out-of-scope).
+    var rows = '<div class="wp-row origin"><div class="ix">◎</div><div class="nm">' + esc(locLabel(v)) + '</div><div class="slot"></div></div>';
+    DP.waypoints.forEach(function(wp, i){
+      rows += '<div class="wp-row"><div class="ix">' + (i+1) + '</div><div class="nm">' + esc(wpName(wp)) + '</div><div class="slot"></div></div>';
+    });
+    // Time over Cost — read straight from the quote; the fuel cost is presented in CREDITS (§8.0), not
+    // units. An { ok:false } quote has no figures, so those cells read "—" and Dispatch is disabled below.
+    var okQ = q && q.ok;
+    var timeVal = okQ ? (window.__fmtETA ? window.__fmtETA(q.totalTicks) : q.totalTicks) : '—';
+    var costVal = okQ ? (q.credits + ' ¢') : '—';
+    $('dpSection').innerHTML =
+      '<div class="dp-sechead" style="margin-bottom:10px">Planned Route</div>' +
+      '<div class="dp-route">' +
+        '<div class="wp-wrap"><div class="wp-list">' + rows + '</div><div class="wp-fade"></div></div>' +
+        '<div class="tc-box">' +
+          '<div class="cell"><div class="lab">Time</div><div class="val">' + esc(String(timeVal)) + '</div></div>' +
+          '<div class="cell"><div class="lab">Cost</div><div class="val">' + esc(String(costVal)) + '</div></div>' +
+        '</div>' +
+      '</div>' +
+      // an { ok:false } quote surfaces its engine reason (a route the dispatch would refuse); an
+      // unaffordable ok quote needs no sentence — the disabled Dispatch button is the quiet cue (§D).
+      (q && q.ok === false ? '<div class="dp-refuse">' + esc(q.reason || 'This route cannot be dispatched.') + '</div>' : '');
+    var acts = $('dpActions');
+    acts.innerHTML =
+      '<button class="dp-btn" id="dpEditBtn" type="button">Edit Route</button>' +
+      '<button class="dp-btn primary" id="dpDispatchBtn" type="button">Dispatch</button>';
+    // Dispatch is gated on the engine's answer: an unaffordable route (fuel short) or an { ok:false }
+    // quote cannot be sent, so the button is disabled (the engine re-validates and refuses-whole anyway).
+    var canSend = okQ && q.affordable !== false;
+    $('dpDispatchBtn').disabled = !canSend;
+    $('dpEditBtn').addEventListener('click', onEditRoute);
+    $('dpDispatchBtn').addEventListener('click', onDispatch);
+  }
+
+  // A waypoint's name for the popup list — a landmark reads its seed name, a bare hex its "(q, r)",
+  // the same vocabulary the map's list uses.
+  function wpName(wp){
+    if(!wp) return '—';
+    if(typeof wp.q === 'number' && typeof wp.r === 'number'){
+      return (window.__landmarkNameAt && window.__landmarkNameAt(wp.q, wp.r)) || ('(' + wp.q + ', ' + wp.r + ')');
+    }
+    if(wp.landmarkKind === 'system') return (window.__systemName && window.__systemName(wp.landmarkId)) || wp.landmarkId;
+    if(wp.landmarkKind === 'outpost') return (window.__outpostName && window.__outpostName(wp.landmarkId)) || wp.landmarkId;
+    return '—';
+  }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); }
+
+  // Plan Route → hand off to the map's planner with an EMPTY list (a fresh route). Hide the overlay
+  // WITHOUT abandoning (there is no plan yet; __planRoute creates it) — the deliberate transition into
+  // planning, not a close.
+  function onPlanRoute(){
+    var v = DP.vehicle; if(!v) return;
+    $('dispatch-overlay').classList.remove('open');
+    if(window.__planRoute) window.__planRoute(v, []);
+  }
+  // Edit Route → re-enter planning with the CURRENT waypoints (the finalised list), same soft hide.
+  function onEditRoute(){
+    var v = DP.vehicle; if(!v) return;
+    $('dispatch-overlay').classList.remove('open');
+    if(window.__planRoute) window.__planRoute(v, (DP.waypoints || []).slice());
+  }
+
+  // Finalise (called BY the map when the player commits the route): remember the route, fetch the
+  // engine quote, and re-open the popup in its post-finalise state. The map has already left planning.
+  // The quote is the ONLY source of time/fuel/credits (§18); a network/HTTP failure surfaces as an
+  // { ok:false }-shaped result so the same render path shows a reason rather than throwing.
+  async function dispatchFinalise(vehicle, waypoints){
+    var v = liveVehicle(vehicle.id) || vehicle;
+    DP.vehicle = v; DP.waypoints = (waypoints || []).slice();
+    var player = window.__player ? window.__player() : null;
+    var gid = player && player.guildId;
+    var q;
+    try {
+      var res = await fetch('/vehicle/quote', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ guildId: gid, vehicleId: v.id, waypoints: DP.waypoints }) });
+      q = await res.json();
+    } catch(err){
+      q = { ok:false, reason:'The quote could not be reached: ' + (err && err.message || err) };
+    }
+    DP.quote = q;
+    renderPostFinalise();
+    $('dispatch-overlay').classList.add('open');
+  }
+
+  // Dispatch (§E) → send dispatchVehicle through the existing /action helper. On accept: close, discard
+  // the plan, refresh the snapshot (the craft is now in-transit and renders via the b2a overlay). On
+  // refuse: surface the engine's reason and leave the popup open. The engine re-validates + refuses
+  // whole, so the client never enforces fuel itself — it only previewed.
+  async function onDispatch(){
+    var v = DP.vehicle; if(!v || !DP.waypoints || !DP.waypoints.length) return;
+    var player = window.__player ? window.__player() : null;
+    var gid = player && player.guildId;
+    var btn = $('dpDispatchBtn'); if(btn){ btn.disabled = true; btn.textContent = 'Dispatching…'; }
+    var out;
+    try {
+      out = await window.__sendAction({ type:'dispatchVehicle', guildId: gid, vehicleId: v.id, waypoints: DP.waypoints });
+    } catch(err){
+      if(btn){ btn.disabled = false; btn.textContent = 'Dispatch'; }
+      showDispatchRefuse('The Syndicate could not be reached: ' + (err && err.message || err));
+      return;
+    }
+    if(out && out.accepted){
+      closeDispatch();
+      if(window.__refreshNow){ try { await window.__refreshNow(); } catch(e){} }
+      return;
+    }
+    if(btn){ btn.disabled = false; btn.textContent = 'Dispatch'; }
+    showDispatchRefuse('Refused: ' + ((out && out.reason) || 'the Syndicate declined'));
+  }
+  // Show an engine refusal beneath the route boxes without rebuilding the section (the route stays
+  // visible so the player can Edit and retry).
+  function showDispatchRefuse(msg){
+    var sec = $('dpSection');
+    var ex = sec.querySelector('.dp-refuse');
+    if(!ex){ ex = document.createElement('div'); ex.className = 'dp-refuse'; sec.appendChild(ex); }
+    ex.textContent = msg;
+  }
+
+  // Close (X / backdrop): hide the overlay AND abandon any in-progress route (§B) — closing the popup
+  // is one of the three abandon triggers. Clears the popup's own state too.
+  function closeDispatch(){
+    DP.vehicle = null; DP.waypoints = []; DP.quote = null;
+    if(window.__abandonPlanning) window.__abandonPlanning();
+    $('dispatch-overlay').classList.remove('open');
+  }
 
   // "Show on map": close the popup, then centre on the craft's hex at zoom 9 (matching My System).
   // __flyTo already closes the open tab/panel and centres, so this is the whole action (§ prompt 6).
@@ -9307,6 +9900,7 @@ function paintInventoryHero(d){
 
   window.__openDispatch = openDispatch;   // the ONE entry point both call sites use
   window.__dispatchClose = closeDispatch;
+  window.__dispatchFinalise = dispatchFinalise;   // the map's Finalise Route calls this
 
   $('dpClose').addEventListener('click', closeDispatch);
   $('dispatch-overlay').addEventListener('click', function(e){ if(e.target === this) closeDispatch(); });

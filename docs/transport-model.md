@@ -634,6 +634,20 @@ change, gates are destroyed, tolls are raised. So a saved route must be **re-val
 **flagged whenever anything on it changes** — a real and fiddly complexity (acknowledged, not solved),
 and the direct cousin of the Syndicate's destination-vanish rule.
 
+**AS-BUILT 19-09-26 — the interactive route planner (client slice b2b-2; `client/game.html`, CLIENT ONLY).** ✅
+The Dispatch popup's **Plan Route** enters a galaxy-map planning mode where the player clicks hexes to append
+turning-point anchors (system / Syndicate outpost / bare hex — the §4 polyline model), reorders/removes them in a
+left list, and **Finalise**s to see the route's **cost + time read from the ENGINE**, not a client computation
+(§18): Finalise POSTs the candidate anchor list to the b2b-1 **`POST /vehicle/quote`** and shows its `totalTicks`
+(as an ETA) over its `credits` (the live-priced fuel cost in credits, §8.0), gating the **Dispatch** button on the
+quote's `affordable`. Dispatch sends `dispatchVehicle` through the existing `POST /action` — no new endpoint, no
+`sim` change. The client owns only the geometry the planner needs — resolving anchors to coords to draw the
+polyline and comparing resolved hexes for the **dead-leg guard** (it never builds the zero-length leg the engine
+would reject) — and invents no time/fuel/credit number. **Saved routes / scheduled runs are still later passes**
+(this slice holds only the one in-progress `PLAN`, no persistence); risk is not yet shown (the detection slice,
+§7.1). Proven end-to-end in headless Chromium (plan → quote → dispatch → the craft flies via the b2a overlay); the
+engine suite is untouched (1,361 green, 0 fail).
+
 ## 10. Open questions (carry into the Phase-4 build)
 
 1. The per-craft **speed table** numbers (§5) and where the Syndicate hauler and normal light

@@ -455,9 +455,38 @@ boundary so the later hex-map swap doesn't touch it.
   `applyOneAction`, NO journal, NO tick, NO snapshot — so calling it any number of times leaves the galaxy
   byte-identical; a `{ ok: false }` quote is a 200 (a valid answer), 409/400 reserved for no-galaxy / a malformed
   body. **NO state change, NO client** (the popup is b2b-2). *No serialized byte added, so the persist/determinism
-  goldens do not move; the suite is 1,353 → **1,361 green** (0 fail).* **(b2b-2) the route-planner client** — the
-  Dispatch popup's waypoint builder (reading its quote from `POST /vehicle/quote`), the map planning mode, the
-  waypoint list, Finalise, and the Dispatch button — stays the remaining client slice.
+  goldens do not move; the suite is 1,353 → **1,361 green** (0 fail).*
+  **Slices: (b2b-2) the route-planner client — ✅ BUILT (19-09-26, CLIENT ONLY; `client/game.html`).** The final
+  dispatch slice: the player builds a multi-leg route on the galaxy map and dispatches a craft from the client,
+  gated by the engine quote. NO engine/snapshot/`sim` change — dispatch goes through the existing `POST /action`
+  (`dispatchVehicle`), the cost preview through the b2b-1 `POST /vehicle/quote`. The whole in-progress route lives
+  in one client object `PLAN = { vehicle, origin, waypoints:[anchor,…], candidate }` (each anchor the engine's own
+  `{ landmarkKind, landmarkId }`-or-`{ q, r }` location shape, so the list the client sends is exactly what
+  `quoteDispatch`/`dispatchVehicle` accept). **The Dispatch popup, restructured:** the left column's `.dp-soon`
+  placeholder becomes an Onboard Manifest placeholder ("Hold empty") + Maintenance (disabled) / **Plan Route**
+  (pre-plan), and — post-Finalise — a two-box **Planned Route** (a scrollable Origin+waypoints list beside Time
+  over Cost, the fuel cost shown in credits, §8.0) + Edit Route / **Dispatch**. **The map planning mode:** Plan
+  Route flies to the craft and enters a planning mode with a banner, a left waypoint list (▲▼ reorder, ✕ remove —
+  arrows, not drag), and top-right Finalise/Cancel; a map click resolves a hex to a candidate anchor (system →
+  `system`, Syndicate outpost → `outpost`, else a bare hex) shown as an **ADD → Confirm/Cancel** chip glued to the
+  hex, so a pan/mis-click adds nothing until Confirm. A **dead-leg guard** refuses a candidate (or flags a list
+  row) whose resolved `{q,r}` equals the previous anchor's — the UI never builds the zero-length leg the engine
+  would reject (§4). A **planning draw pass** (the sibling of the b2a in-transit pass) paints the confirmed
+  polyline + a dashed proposed leg + origin/turning-point markers each frame from `PLAN`. **Finalise → quote →
+  Dispatch:** Finalise (≥ 1 waypoint, no dead leg) POSTs the route to `/vehicle/quote`, shows Time
+  (`fmtETA(totalTicks)`) over Cost (`credits ¢`), and gates Dispatch on `affordable` / a `{ ok:false }` reason;
+  Dispatch sends `dispatchVehicle` through `/action`, and on accept the craft flies via the b2a overlay (map +
+  OPERATIONS). **§18 is the load-bearing rule:** the client computes NO game number — every time/fuel/credit
+  figure is the engine's quote, and the client only resolves anchors to coords to draw the polyline and to compare
+  hexes for the dead-leg check (geometry, not an economy number). Capacity is not published to the client (no
+  engine change this slice), so the manifest shows its shape with a placeholder rather than a client-invented
+  number — surfacing guild-vehicle capacity is a decision-checklist item (below). Proven CLIENT-ONLY (the engine
+  suite is untouched: `sim && node --test` still **1,361 green**, 0 fail) and end-to-end in headless Chromium
+  against a booted server: the restructured pre-plan popup; Plan Route → planning mode; click → ADD → Confirm
+  appends a turning point and the polyline draws; a second click builds a multi-leg route; reorder/remove
+  re-costs and re-draws; a zero-length candidate is refused; Finalise shows the two-box Planned Route (Time over
+  Cost in credits); Dispatch → `/action` accepted → the craft flies (b2a overlay); a landmark final anchor lands
+  the craft idle at that landmark and a bare-hex final anchor lands it in DEEP SPACE.
   *From
   here the thread fans out — Syndicate transport contracts, maintenance, exploration (a plain craft scans,
   slower and fuelled), and deep-space asset deployment (outpost → toll). A full Phase-2 renumber to reflect this
@@ -634,6 +663,14 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   Open design: its **seam with the cargo-space Syndicate hauler** (one shared cargo/volume/burn model
   vs a distinct guild-craft model), and where owning-and-flying sits against 2.3's routes / tolls /
   lease-back.
+
+- **Guild-vehicle capacity is not published to the client** — *surfaced 19-09-26 by the b2b-2 route-planner
+  slice.* The engine holds each craft's `capacity` (`VEHICLE_SPECS`, `sim/vehicles.js`), but neither the snapshot
+  vehicle row nor any catalog block surfaces it, and the b2b-2 slice was CLIENT-ONLY (no `sim` change). So the
+  Dispatch popup's Onboard Manifest placeholder shows its shape ("Hold empty · 0 / — capacity") rather than a
+  real capacity — the client refuses to type a game number the engine hasn't published (§18). The cargo slice
+  needs this number, so it (or a small snapshot addition beside `goodVolumes`/`haulerTiers`) should surface
+  per-class capacity when it lands; until then the placeholder is honest, not a guessed constant.
 
 - **Guild-transport client mockup is missing** — *surfaced 18-09-26 by the 2.2-foundation client slice.*
   The build prompt named `docs/mockups/guild-transport-client.html` as the visual contract, but no such
