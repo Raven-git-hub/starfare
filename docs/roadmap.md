@@ -107,6 +107,29 @@ boundary so the later hex-map swap doesn't touch it.
 
 **Built so far:**
 
+- **Syndicate build → per-guild single-slot sequential (2.1d, ENGINE slice — `docs/asset-purchase.md`
+  §"Build concurrency").** Engine + snapshot + tests only (NO client — the In-Progress visual rework is
+  the next slice), rebuilding the Syndicate construction queue from the retired PARALLEL model to the
+  per-guild single-slot FIFO the ruling (19-09-26) sets — mirroring the dockyard (`buildDockyards`) per
+  GUILD instead of per yard. The bug it fixes: the old `stepSyndicateBuilds` stored an absolute
+  `buildDoneTick` per commission and promoted EVERY build whose done-tick had passed, so a batch
+  commissioned together completed together. Now **`buyAssetFromSyndicate`** records the dockyard's
+  RELATIVE shape — `{ ownerGuildId, assetKind, destinationSystemId, remainingTicks: null, boughtTick }`
+  (`remainingTicks: null` = queued, not started; array order IS the guild's FIFO; omit-when-empty
+  unchanged) — and **`stepSyndicateBuilds`** (`sim/tick.js`) walks `state.syndicateBuilds` in array order
+  tracking advanced guilds in a Set: each guild's HEAD only either STARTS (`null` → `BUILD_TICKS[kind]`,
+  no decrement that tick) or counts down and, at 0, promotes to the same §6 delivery shipment as before
+  (kind-aware `arrivalTick`, `assetKind` marker) and leaves the queue so the next entry starts the
+  following tick. Credits + fuel stay charged up front; the completion→shipment/arrival/mint code is
+  unchanged. **Snapshot** — `syndicateBuilds` is now the derived-on-read per-guild queue: a `building`
+  flag on each guild's head, the stored `remainingTicks`, and a queue-aware `ticksRemaining` (a per-guild
+  running sum of `remainingTicks ?? BUILD_TICKS[kind]`), dropping the retired `buildDoneTick`; the current
+  client keeps rendering off `ticksRemaining` until its slice. Determinism holds (array order only, integer
+  ticks — invariant 9). Proven by `sim/tests/asset-purchase.test.js` (re-baselined off the sequential model
+  + new single-slot / handoff / two-guild-independence / worked-example / determinism tripwires) and
+  `sim/tests/vehicles.test.js`; full suite **1,367 green**, an unbought galaxy byte-identical. *Deferred to
+  the CLIENT slice: the In-Progress panel marking the head "building" vs the rest "queued" off the new flag.*
+
 - **The operator adjust levers (dev/steward tool, ENGINE + CLI — `docs/operator-adjust.md`).** Six
   operator/dev actions (`sim/actions.js`) that grant or remove a guild's producible state and remove a
   venture — `adjustCredits` / `adjustFuel` (signed-delta scalars, each doing the conserving
@@ -227,8 +250,8 @@ boundary so the later hex-map swap doesn't touch it.
   TRADE tab's "4 · Constructed" tier tab is now LIVE and renders the Syndicate asset-commission BUY
   view (`client/game.html`, built to `docs/mockups/trade-4constructed.html`): a Commission-Assets
   menu (per kind — price + Build/Delivery/arrival — Add → `__adviserConfirm` → `buyAssetFromSyndicate`
-  to the home system), an In Progress list + Current Build donut off `syndicateBuilds` (parallel
-  builds, soonest first; no parts, no pending state), and the two art heroes. The client PRICES
+  to the home system), an In Progress list + Current Build donut off `syndicateBuilds` (sorted by
+  `ticksRemaining`; no parts), and the two art heroes. The client PRICES
   NOTHING (§5): a new additive, derived-on-read snapshot block **`assetPurchaseQuote`** = `{ <kind>:
   { price, buildTicks } }` (off `priceAssetForPurchase` + `BUILD_TICKS`) supplies the price and build
   time; the delivery leg of the arrival is read from the goods buy's own `fuelCost[dest].travelTicks`.
@@ -259,7 +282,9 @@ boundary so the later hex-map swap doesn't touch it.
   (tick **step 4**, scheduled events — the eight-step order is unchanged, step 4 simply gained its first
   occupant) promotes a build at its absolute `buildDoneTick` to a standard §6 delivery shipment carrying
   an `assetKind` marker; `stepArrivals` mints one idle asset (the dockyard's exact id/`createAsset`
-  pattern) at the destination on arrival, dropping the shipment if the owner is gone. **Snapshot** —
+  pattern) at the destination on arrival, dropping the shipment if the owner is gone. *(This absolute-
+  `buildDoneTick` PARALLEL promotion was superseded by the per-guild single-slot sequential rebuild — the
+  top-of-list ENGINE slice — see §"Build concurrency".)* **Snapshot** —
   additive derived-on-read: `syndicateBuilds` (the on-order indicator) + an `assetKind` field on an
   asset transit row; no serialized byte, no golden move. Proven by `sim/tests/asset-purchase.test.js`
   (16 tests incl. a headless found→buy→build→deliver→mint; full suite 1,239 green, goldens
@@ -378,7 +403,8 @@ boundary so the later hex-map swap doesn't touch it.
   the snapshot `vehicles` rows + purchase quote, `checkVehicleIntegrity`; `sim/tests/vehicles.test.js`):** the
   `Vehicle` gained a `systemId` location + inert `maintenanceCondition`, and BOTH the dockyard build and the
   Syndicate purchase mint a transport **idle** into `guild.vehicles` — the buy flies the craft itself (its own
-  `fuelCostToRun × hexDistance` up front, arrival `buildDoneTick + ceil(hexDistance × speed[class])`), and the
+  `fuelCostToRun × hexDistance` up front, arrival `<head completion tick> + ceil(hexDistance × speed[class])` —
+  the head completing its single-slot countdown, §"Build concurrency"), and the
   slice authored no number (all from `phase-1-tuning.md` "Guild transports"; entity: design.md §15.4; the
   buy/build machinery is kind-general). *A NO-OP on galaxies that mint no craft — the goldens do not move.*
   **(a-client) surface the transports in the CLIENT — ✅ BUILT (18-09-26, `client/game.html`, client-only bar

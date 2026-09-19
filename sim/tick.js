@@ -840,21 +840,28 @@ function stepPriceRecompute(state, _actions, ctx) {
   return state;
 }
 
-// stepSyndicateBuilds(state) — promote every FINISHED Syndicate asset build to a delivery
-// (docs/asset-purchase.md "The two phases"). A bought asset builds centrally over BUILD_TICKS:
-// the buyAssetFromSyndicate apply recorded a `{ ownerGuildId, assetKind, destinationSystemId,
-// buildDoneTick }` order on `state.syndicateBuilds`, and when construction completes that order
-// becomes a STANDARD Syndicate delivery shipment (§6 / the `shipments` layer) — it travels the
-// nearest-waystation → destination leg and mints an idle asset on arrival (stepArrivals below).
+// stepSyndicateBuilds(state) — advance each guild's PER-GUILD SINGLE-SLOT build queue by one tick
+// (docs/asset-purchase.md §"Build concurrency"). The Syndicate runs one build slot per guild: a
+// guild's commissions form a FIFO queue on `state.syndicateBuilds` (assets AND guild transports,
+// unified) and ONLY THE HEAD builds — counting down its `BUILD_TICKS` — while the rest wait. When
+// the head finishes it becomes a STANDARD Syndicate delivery shipment (§6 / the `shipments` layer)
+// and leaves the queue, so the guild's next entry becomes the new head and starts on the NEXT tick.
 //
-// `state.tick` is still the PREVIOUS tick's number inside a step (tick() assigns `next.tick`
-// only after all steps run), so the tick BEING BUILT is `state.tick + 1` — the SAME `thisTick`
-// convention stepArrivals uses, shared on purpose so both steps judge one tick number and a
-// delivery promoted here is seen by stepArrivals in the same pass. `<=` (not `===`) so a build
-// whose done-tick has somehow already passed still promotes rather than stranding forever.
+// This MIRRORS the dockyard (`buildDockyards`) exactly, just per-GUILD instead of per-yard: a head
+// with `remainingTicks == null` is queued-not-started; START sets it to `BUILD_TICKS[kind]` and does
+// NOT decrement that same tick (separate start/count-down, the dockyard's discipline); a building
+// head decrements by 1 and promotes to a delivery at 0.
 //
-// Scheduling the delivery from `thisTick` makes the full timeline `buyTick + BUILD_TICKS +
-// ceil(hexDistance × craftSpeed)` — the asset-purchase.md formula, arrivalTick end to end.
+// DETERMINISM (invariant 9): the queue is walked in ARRAY (insertion = FIFO) order, and a Set of
+// already-advanced guilds means the FIRST entry seen for a guild this tick is its head and its later
+// entries are left untouched — no sort, no float, integer ticks only. Shipments are pushed in that
+// same array order, so a fixed, reproducible promotion order falls out for free.
+//
+// `state.tick` is still the PREVIOUS tick's number inside a step (tick() assigns `next.tick` only
+// after all steps run), so the tick BEING BUILT is `state.tick + 1` — the SAME `thisTick` convention
+// stepArrivals uses, shared on purpose so a delivery promoted here is seen by stepArrivals in the
+// same pass. Scheduling the delivery from `thisTick` keeps the full timeline `buyTick + (queue wait)
+// + BUILD_TICKS + ceil(hexDistance × craftSpeed)` — the asset-purchase.md formula for the head.
 //
 // NO FUEL is burned here — the delivery flight's fuel was charged UP FRONT at BUY.
 function stepSyndicateBuilds(state) {
@@ -862,40 +869,22 @@ function stepSyndicateBuilds(state) {
   if (!Array.isArray(builds) || builds.length === 0) return state;
 
   const thisTick = state.tick + 1;
-  const done = [];
-  const pending = [];
-  for (const b of builds) {
-    (b.buildDoneTick <= thisTick ? done : pending).push(b);
-  }
-  if (done.length === 0) return state;
 
-  // A FIXED promotion order (invariant 9): stable sort, so equal keys keep their (deterministic)
-  // insertion order. No total depends on this — a shipment push commutes — which is exactly why
-  // it is pinned anyway, the same discipline stepArrivals' deposit order follows.
-  done.sort((a, b) => (
-    a.buildDoneTick - b.buildDoneTick
-    || cmp(a.destinationSystemId, b.destinationSystemId)
-    || cmp(a.ownerGuildId, b.ownerGuildId)
-    || cmp(a.assetKind, b.assetKind)
-  ));
-
-  if (!Array.isArray(state.shipments)) state.shipments = [];
-  for (const b of done) {
-    // Nearest waystation → straight-line hex distance → an ABSOLUTE arrival tick, exactly as the
-    // goods buy schedules (§6). A build with no resolvable waystation cannot arise from a real
-    // purchase (validate required one), but guard defensively — keep it pending rather than throw
-    // or silently drop it on a hand-built state.
+  // Promote one finished head to a delivery shipment: nearest waystation → straight-line hex
+  // distance → an ABSOLUTE arrival tick, exactly as the goods buy schedules (§6). Returns true when
+  // it shipped, false when the destination has no resolvable waystation (impossible from a real
+  // purchase — validate required one — but guarded so a hand-built state waits rather than throws).
+  const promote = (b) => {
     const near = nearestWaystation(b.destinationSystemId);
-    if (!near) { pending.push(b); continue; }
+    if (!near) return false;
     // TWO delivery clocks, by kind (phase-1-tuning §"Guild transports"):
-    //   - a VEHICLE flies ITSELF in at its OWN `speed` (ticks/hex), so the flight is
-    //     `thisTick + ceil(distance × speed[class])` — NOT the flat Syndicate CRAFT_SPEED.
+    //   - a VEHICLE flies ITSELF in at its OWN `speed` (ticks/hex): thisTick + ceil(distance × speed).
     //   - a GROUND asset rides a Syndicate hauler at CRAFT_SPEED (arrivalTickFor).
     // Either way the arrival is an ABSOLUTE tick, so a save reloaded mid-flight still lands right.
-    // End to end this makes a vehicle's timeline buyTick + BUILD_TICKS + ceil(distance × speed).
     const arrivalTick = isVehicleClass(b.assetKind)
       ? thisTick + Math.ceil(near.distance * vehicleSpec(b.assetKind).speed)
       : arrivalTickFor(thisTick, near.distance);
+    if (!Array.isArray(state.shipments)) state.shipments = [];
     state.shipments.push({
       ownerGuildId: b.ownerGuildId,
       // The KIND marker (not a goods `cargo`) — this is what lets stepArrivals and the snapshot
@@ -904,13 +893,47 @@ function stepSyndicateBuilds(state) {
       destinationSystemId: b.destinationSystemId,
       arrivalTick,
     });
+    return true;
+  };
+
+  const advanced = new Set(); // guilds whose single slot has already moved this tick
+  const remaining = [];       // entries that survive the tick, ORDER PRESERVED (FIFO intact)
+  for (const b of builds) {
+    if (advanced.has(b.ownerGuildId)) {
+      // Not this guild's head — a queued entry waits, untouched, keeping its place in line.
+      remaining.push(b);
+      continue;
+    }
+    // This IS the guild's head — the one slot. It moves exactly once this tick, so mark the guild
+    // advanced whatever branch it takes; a slot vacated by a shipped head is NOT reused this tick
+    // (the next entry starts on the NEXT tick, mirroring the dockyard's shift-then-wait).
+    advanced.add(b.ownerGuildId);
+
+    if (b.remainingTicks === null || b.remainingTicks === undefined) {
+      // START: begin the build clock; do NOT decrement this tick (separate start/count-down).
+      b.remainingTicks = BUILD_TICKS[b.assetKind];
+      remaining.push(b);
+    } else if (b.remainingTicks > 0) {
+      // BUILDING: count down. At 0, promote to a delivery and drop from the queue; if the
+      // destination is unroutable (guarded above), keep it at 0 to retry next tick.
+      b.remainingTicks -= 1;
+      if (b.remainingTicks === 0) {
+        if (!promote(b)) remaining.push(b);
+      } else {
+        remaining.push(b);
+      }
+    } else {
+      // remainingTicks === 0 already — a build that finished counting but could not ship last tick
+      // (unroutable). Retry the promotion; keep waiting if still unroutable.
+      if (!promote(b)) remaining.push(b);
+    }
   }
 
-  // The promoted builds leave the list; a defensively-kept (unroutable) build stays. DELETE the
-  // key when it empties, keeping `syndicateBuilds` omit-when-empty so a galaxy whose last build
-  // has shipped serializes byte-identically to one that never bought (the pruneLockout discipline).
-  if (pending.length === 0) delete state.syndicateBuilds;
-  else state.syndicateBuilds = pending;
+  // Shipped heads leave the queue; everything else keeps its order. DELETE the key when it empties,
+  // keeping `syndicateBuilds` omit-when-empty so a galaxy whose last build has shipped serializes
+  // byte-identically to one that never bought (the pruneLockout discipline).
+  if (remaining.length === 0) delete state.syndicateBuilds;
+  else state.syndicateBuilds = remaining;
   return state;
 }
 
