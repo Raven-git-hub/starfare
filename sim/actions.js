@@ -2996,7 +2996,9 @@ function applyAction(state, action) {
     craft.status = 'inTransit';
     craft.trip = { legs, dispatchTick: next.tick, arrivalTick };
     delete craft.location;
-    craft.updatedAtTick = next.tick; // §15.2 — every mutation records its tick
+    // No `updatedAtTick` stamp: the schedule ticks ARE the record (dispatchTick, and each leg's two
+    // ticks), and the journal records the dispatch tick — a second stamp would be a redundant home
+    // for the same fact (§15.4 / invariant 5). The spawn slice stamps none either.
 
     // FUEL — the whole route burns UP FRONT, units from the hoard (legal-first burnFuel, §4). Fuel
     // LEAVES the galaxy (burned, not transferred), so invariant 1 balances only because

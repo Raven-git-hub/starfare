@@ -1057,7 +1057,8 @@ function stepVehicleArrivals(state, _actions) {
       // location can never alias the trip object being dropped.
       craft.location = { ...lastLeg.to };
       craft.status = 'idle';
-      craft.updatedAtTick = thisTick; // §15.2 — every mutation records its tick
+      // No `updatedAtTick` stamp: the trip's frozen arrivalTick is the record of when the craft
+      // lands, and the spawn slice stamps none either (§15.4 / invariant 5 — no second home).
       delete craft.trip;
     }
   }

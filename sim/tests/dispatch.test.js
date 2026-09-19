@@ -295,9 +295,9 @@ test('a restart MID-ROUTE still lands on the right absolute tick (persistence IS
   const reloaded = JSON.parse(JSON.stringify(mid));
   const resumed = ticks(reloaded, arr - 100);
 
-  assert.equal(craftOf(resumed).status, 'idle');
-  assert.equal(craftOf(resumed).updatedAtTick, arr, 'landed on the frozen absolute arrival tick');
-  assert.equal(hashState(resumed), hashState(continuous), 'the reload lands exactly where the continuous run did');
+  assert.equal(craftOf(resumed).status, 'idle', 'landed after the reload');
+  assert.deepEqual(craftOf(resumed).location, { q: 1, r: 1 }, 'idle at the final anchor of the frozen route');
+  assert.equal(hashState(resumed), hashState(continuous), 'the reload lands exactly where the continuous run did (same absolute tick)');
 });
 
 // --- 7. the snapshot surfaces the in-flight route ----------------------------------------------
