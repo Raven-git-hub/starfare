@@ -609,8 +609,12 @@ boundary so the later hex-map swap doesn't touch it.
     derived display-name choice (anchor name + " Outpost", `#NN` fallback — presentation, ruled here);
     rival-outpost economic detail (only location + static class figures shown); cargo/stockpile
     contents, docking, and outposts as route/planner targets (all slice 3+).
-  - **slice 3 — cargo + the dock model.** Load/unload, the finite stockpile enforced, the deadlock-free
-    dock turnaround, destruction consequences; then selling to the Syndicate from the Outpost.
+  - **slice 3 — cargo + the dock model.** 🟢 *ENGINE BUILT (21-09-26 — same work as the 2.2 cargo
+    ladder's engine slice 2 below).* Load/unload AT an Outpost through the deadlock-free
+    park/queue/slot/turnaround, the finite stockpile enforced (an unload clamps to the room remaining),
+    the destruction consequences (teardown destroys the stored goods and evicts docked craft) — all in the
+    engine + operator CLI + snapshot. **Still deferred:** the load/unload CLIENT (the manual popup, the
+    OPERATIONS dock display) and selling to the Syndicate from the Outpost.
   - **slice 4 — the Tier-4 build/deploy path.** The buildable/deployable kit, placement range, anchor-ownership.
 - **2.2 — cargo: the load / haul / unload engine (design.md §4 "The dock model").** The craft's hold
   and the manifest that fills/empties it — the substrate that turns dispatch (above) into a real
@@ -637,11 +641,32 @@ boundary so the later hex-map swap doesn't touch it.
     (park / queue / the ten slots / the per-class `OUTPOST_DOCK_TURNAROUND` timer / transfers at an Outpost
     — cargo engine slice 2, aka the outpost ladder's slice 3); route-embedded auto-manifests and the manual
     load/unload popup (client slices); selling from an Outpost (later). No client touched.
-  - **slice 2 — the Outpost dock model.** The park/queue/slot/turnaround at an Outpost (the timed half of
-    §4): a parked craft queues for one of `OUTPOST_DOCK_SLOTS` on a manifest, serves its class
-    `OUTPOST_DOCK_TURNAROUND`, resolves the SAME manifest at completion, frees the slot. Goods move at
-    completion (a mid-turnaround Outpost destruction leaves the transfer un-happened); the finite Outpost
-    stockpile cap is enforced here (an unload clamps to the room remaining). Deadlock-free by construction.
+  - **slice 2 — the Outpost dock model (engine + operator CLI).** 🟢 *BUILT (21-09-26).* The
+    park/queue/slot/turnaround at an Outpost (the timed half of §4): `transferCargo` at one of the guild's
+    OWN Outposts (reached by hex-coincidence — a guild Outpost is not a location landmark, so the craft's
+    bare-hex berth sits on the Outpost's `{q,r}`) is QUEUED, not instant. The manifest records on the
+    Outpost's `queue` (`readyTick` = the confirm tick); the craft stays plain `idle` (parked). A new tick
+    step **`stepOutpostDocks`** (after `stepVehicleArrivals` — arrive-then-dock in one tick) promotes
+    queued craft into free slots (≤ `OUTPOST_DOCK_SLOTS`, earliest `readyTick`, tie-break stable id,
+    `completionTick = thisTick + OUTPOST_DOCK_TURNAROUND[class]` = 5/30/120) — the craft carries the new
+    `loading` status while slotted (so `dispatchVehicle` refuses it) — then resolves every slot completing
+    this tick via the ONE shared resolver (`sim/manifest.js`, extracted from slice 1) against the hold and
+    the Outpost's **hard-capped** stockpile (an unload clamps to the room remaining — the partial case);
+    goods move at COMPLETION, the craft returns to parked, the slot frees. **Galactic Supply now counts
+    Outpost stockpiles** (`sim/supply.js` folds each `outpost.stockpile` in; the consistency invariant
+    agrees), so a completion is conserved. **`removeOutpost`** cashes the teardown deferral — evicts docked
+    (`loading`→`idle`) + queued craft to idle-in-space at the hex with their pre-transfer holds (a
+    mid-turnaround loader leaves un-happened) and DESTROYS the stored goods (supply drops by exactly that);
+    **`dispatchVehicle`** cancels a re-dispatched queued craft, refuses a loading one. `checkOutpostIntegrity`
+    guards the dock state (slots ≤ `dockCapacity`, live owner-held craft, one dock per craft, status/kind
+    match, tick fields, well-formed manifests) and the stockpile hard cap. The snapshot surfaces the
+    `queue`/`slots` (per-slot ETA) and each craft's `dockStatus` (parked/queued/loading+eta). One manifest
+    per craft (a second is refused); `spycraft` (capacity 0, no ruled turnaround) is refused. **No new
+    number** — `OUTPOST_DOCK_SLOTS` / `OUTPOST_DOCK_TURNAROUND` are `phase-1-tuning.md`'s. **A NO-OP on a
+    galaxy with no Outpost transfer** (the step early-returns; `queue`/`slots`/`stockpile` omit-when-empty;
+    goldens byte-identical). Sim suite 1,398 → **1,412 green** (`sim/tests/outpost-dock.test.js`, +14).
+    **Deferred:** the manual load/unload popup + the OPERATIONS dock display (client), route-embedded
+    auto-manifests, selling from an Outpost. No client touched.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*

@@ -175,18 +175,19 @@ test('supply: a load moves goods pool->hold with galactic supply CONSERVED and c
   assert.deepEqual(checkInvariants(s, s.tick), [], 'consistent after (the cache matches the hold-inclusive sum)');
 });
 
-// --- 6. systems only — an outpost or a bare hex is refused --------------------------------------
+// --- 6. a store is required — a seed waystation or an empty bare hex is refused -----------------
 
-test('refused: a transfer at an Outpost arrives in a later slice (systems only this slice)', () => {
-  // A craft berthed at a seed waystation-outpost (`landmarkKind: 'outpost'`, resolved by getLandmark;
-  // guild Outposts are not resolvable craft locations this slice, §15.4). The dock model is later.
+test('refused: a craft at a seed waystation (NOT a guild Outpost) has no dockable store', () => {
+  // A craft berthed at a seed waystation-outpost (`landmarkKind: 'outpost'`, resolved by getLandmark).
+  // A seed waystation is NOT a guild Outpost (the dock model, slice 2, docks only at a guild Outpost
+  // reached by hex-coincidence, §4/§15.4), so there is no store here — refused as deep space.
   const s = stateWith({ location: { landmarkKind: 'outpost', landmarkId: OUT }, pool: {} });
   const reason = refuse(s, transfer([{ dir: 'load', good: T1, qty: 1 }]));
-  assert.match(reason, /Outpost/, 'refused with the systems-only reason');
+  assert.match(reason, /deep space|Outpost/, 'refused — no system or owned guild Outpost here');
 });
 
-test('refused: a transfer in deep space (a bare hex) has no store to move against', () => {
-  const s = stateWith({ location: FREE, pool: {} }); // the craft sits at a bare hex
+test('refused: a transfer in deep space (a bare hex with no owned Outpost) has no store to move against', () => {
+  const s = stateWith({ location: FREE, pool: {} }); // a bare hex holding no owned Outpost
   const reason = refuse(s, transfer([{ dir: 'load', good: T1, qty: 1 }]));
   assert.match(reason, /deep space/);
 });

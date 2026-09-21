@@ -19,7 +19,8 @@ const {
 const {
   isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation,
 } = require('./vehicles.js');
-const { outpostId, nextOutpostSerial } = require('./outposts.js');
+const { outpostId, nextOutpostSerial, outpostDockTurnaround } = require('./outposts.js');
+const { resolveManifest, usedSpace } = require('./manifest.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { checkQuote, quotedPrice } = require('./price-ring.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
@@ -60,14 +61,6 @@ function vehicleDeliveryFuelBurn(destinationSystemId, vehicleClass) {
   if (!near) return { fuelBurn: 0 };
   const spec = vehicleSpec(vehicleClass);
   return { fuelBurn: Math.ceil(near.distance * spec.fuelCostToRun) };
-}
-
-// holdUsedSpace(cargo) -> the cargo space `Σ qty × volumeOf(good)` a hold's contents occupy (design.md
-// §4 "Capacity — measured in cargo space"). The vehicle-hold twin of the load-space sum the trade layer
-// already computes (`Σ line.qty × volumeOf`, sim/actions.js buy/sell). Every good in a hold is a real
-// stockpile good (transferCargo's validate proves it), so `volumeOf` never throws here.
-function holdUsedSpace(cargo) {
-  return Object.entries(cargo || {}).reduce((sum, [good, qty]) => sum + (qty * volumeOf(good)), 0);
 }
 
 // dispatchRoute(craft, waypoints) -> { ok: true, legs: [{ from, to, length }], totalUnits }
@@ -853,6 +846,31 @@ function isIntInRange(n, lo, hi) {
 
 function findGuild(state, guildId) {
   return state.guilds.find((g) => g.id === guildId);
+}
+
+// ownedOutpostAtCraft(state, guildId, craft) -> the guild's own Outpost the craft is berthed at, or
+// null. A guild Outpost is NOT a location `landmarkKind` (design.md §4 / §15.4 — a first-class
+// Outpost dispatch anchor is a later UX nicety); a craft is "at" an Outpost by HEX-COINCIDENCE — it
+// was dispatched to the Outpost's `{q,r}`, so its idle `location` is a BARE HEX on that hex. This
+// resolves the craft's coords and finds the OWN-ONLY (§4 — only the owning guild's craft dock) Outpost
+// standing there. A system-berthed craft resolves to a landmark's coords, never an Outpost's (an
+// Outpost cannot share a seed landmark's hex, checkOutpostIntegrity), so the system path is untouched.
+function ownedOutpostAtCraft(state, guildId, craft) {
+  const r = resolveVehicleLocation(craft.location);
+  if (!r) return null;
+  const { q, r: rr } = r.coords;
+  return (state.outposts || []).find(
+    (o) => o.ownerGuildId === guildId && o.coords.q === q && o.coords.r === rr,
+  ) || null;
+}
+
+// isDockedAt(outpost, vehicleId) -> true when the craft already holds a manifest at this Outpost —
+// either waiting in its `queue` or serving a `slot`. The one-manifest-per-craft guard: a craft already
+// queued/loading here cannot stack a second transfer (design.md §4 — I refuse rather than replace, so
+// a pending manifest is never silently overwritten).
+function isDockedAt(outpost, vehicleId) {
+  return (outpost.queue || []).some((e) => e.vehicleId === vehicleId)
+    || (outpost.slots || []).some((e) => e.vehicleId === vehicleId);
 }
 
 // Venture ids are unique across the whole galaxy, not just within a guild —
@@ -2150,9 +2168,17 @@ function validateAction(state, action) {
     if (!craft) {
       return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no vehicle ${JSON.stringify(action.vehicleId)}` };
     }
-    // Only an idle craft dispatches (§4: an in-transit one is already flying its frozen route).
+    // Only an idle craft dispatches (§4: an in-transit one is already flying its frozen route). A
+    // craft IN A DOCK SLOT carries the `loading` status (design.md §4 "a craft in a slot runs to
+    // completion — no mid-transfer abort"), so this same idle gate refuses it; the message names the
+    // dock case so an operator knows to wait for the turnaround rather than that the craft is flying.
+    // A PARKED or QUEUED craft is plain `idle` and dispatches freely — the queued case CANCELS its
+    // pending manifest in apply below (§4 "a parked or queued craft is cancelled by being re-dispatched").
     if (craft.status !== 'idle') {
-      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is not idle (status ${JSON.stringify(craft.status)}) — only an idle craft dispatches` };
+      const why = craft.status === 'loading'
+        ? 'mid-transfer in a dock slot and runs to completion — it cannot be re-dispatched (§4)'
+        : `not idle (status ${JSON.stringify(craft.status)}) — only an idle craft dispatches`;
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is ${why}` };
     }
     // Build + price the route (dispatchRoute is the one home): a non-empty waypoint list, every
     // waypoint resolves, and no zero-length leg. It returns the whole-route unit burn.
@@ -2186,15 +2212,31 @@ function validateAction(state, action) {
     if (craft.status !== 'idle') {
       return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is not idle (status ${JSON.stringify(craft.status)}) — only an idle craft loads or unloads` };
     }
-    // SYSTEMS ONLY this slice (§4 "At a system, a transfer is instant"): the craft must sit at a
-    // system landmark. An outpost berth goes through the dock model (park/queue/slot/turnaround —
-    // engine slice 2), and a bare hex has no store to move against; both are refused with a clear
-    // reason. `location.landmarkKind` is the raw field — a bare hex has none, an outpost is 'outpost'.
-    if (!craft.location || craft.location.landmarkKind !== 'system') {
-      const where = craft.location && craft.location.landmarkKind === 'outpost'
-        ? `an Outpost (${JSON.stringify(craft.location.landmarkId)})`
-        : 'in deep space';
-      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is ${where} — load/unload there arrives in a later slice; this slice transfers only at a system (§4)` };
+    // WHERE the craft sits decides HOW (design.md §4 "Where it happens decides how"):
+    //  - at a SYSTEM landmark → the transfer is INSTANT (slice 1, unchanged): a guild's own territory
+    //    has unlimited handling, so the manifest resolves the tick it is issued.
+    //  - at one of the guild's OWN Outposts (reached by hex-coincidence, ownedOutpostAtCraft) → the
+    //    DOCK model (slice 2): the manifest is queued for a slot and resolves after the class
+    //    turnaround, NOT now. Own-only (§4 — only the owning guild's craft dock).
+    //  - anywhere else (deep space, or a bare hex with no owned Outpost) → refused: no store to move.
+    const atSystem = !!(craft.location && craft.location.landmarkKind === 'system');
+    const outpost = atSystem ? null : ownedOutpostAtCraft(state, action.guildId, craft);
+    if (!atSystem && !outpost) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is in deep space (no system or owned Outpost at its berth) — a transfer is issued at a store (§4)` };
+    }
+    if (outpost) {
+      // A capacity-0 craft (spycraft) carries no cargo and has no ruled dock turnaround (§4 /
+      // phase-1-tuning.md), so there is nothing to transfer and no timer to size — refuse it rather
+      // than invent a turnaround (§15.2 "Never invent a number").
+      if (outpostDockTurnaround(craft.class) === null) {
+        return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} (class ${JSON.stringify(craft.class)}) carries no cargo and cannot dock at an Outpost (§4)` };
+      }
+      // ONE MANIFEST PER CRAFT (§4): a craft already queued or loading here can't stack a second — I
+      // refuse rather than replace, so a pending manifest is never silently overwritten. (A LOADING
+      // craft is already refused by the idle gate above; this catches a QUEUED craft, which stays idle.)
+      if (isDockedAt(outpost, craft.id)) {
+        return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} already has a manifest queued/loading at Outpost ${JSON.stringify(outpost.id)} — cancel it (re-dispatch) before issuing another (§4)` };
+      }
     }
     // The manifest is a NON-EMPTY ordered array (a transfer with no lines is a refused no-op, the
     // adjustGoods zero-delta / dispatch empty-waypoints discipline). Refuse-whole on the first bad
@@ -3215,15 +3257,38 @@ function applyAction(state, action) {
   }
 
   if (action.type === 'removeOutpost') {
-    // design.md §4 "torn down permanently": DESTROY the outpost — drop the row from state.outposts.
-    // The mint serial is NOT decremented (design.md §15.4 "Ids never repeat"), so the removed id is
-    // never reissued. A plain delete THIS SLICE: the stockpile is always empty and nothing can be
-    // docked. The destruction consequences §4 names — stored goods destroyed, docked craft evicted to
-    // idle-in-space — belong to the cargo slice (slice 3), when there is something to destroy or evict.
+    // design.md §4 "torn down permanently" + "On destruction its stored goods are destroyed, and any
+    // craft at it (parked or docked) become idle in space carrying whatever they held at that instant".
+    // The mint serial is NOT decremented (§15.4 "Ids never repeat"), so the removed id is never reissued.
+    const outpost = (next.outposts || []).find((o) => o.id === action.outpostId); // validate proved it exists
+    const guild = findGuild(next, outpost.ownerGuildId); // own-only docking (§4), so the owner holds every docked craft
+
+    // EVICT the craft the Outpost holds — its SLOTS and its QUEUE. Each becomes idle-in-space: a
+    // bare-hex idle craft AT the Outpost's hex (its location is already that hex — it was dispatched
+    // there — so only a LOADING craft's status must flip back to idle; a queued craft is already idle).
+    // Each keeps the hold it holds AT THIS INSTANT: a loader caught mid-turnaround never reached its
+    // resolve, so it leaves EMPTY of the new load; an unloader leaves STILL-LADEN (the resolve-at-
+    // completion rule, §4). We touch only `status` — never `cargo` — so that pre-transfer hold rides out
+    // untouched. A queued craft simply drops its pending manifest (it dies with the Outpost row below).
+    for (const entry of [...(outpost.slots || []), ...(outpost.queue || [])]) {
+      const craft = (guild.vehicles || []).find((v) => v.id === entry.vehicleId);
+      if (!craft) continue; // defensive: own-only means the owner holds it, but never throw on teardown
+      craft.status = 'idle';
+      // §15.2 "every mutation records its tick": eviction is a state change to the craft, so stamp it.
+      craft.updatedAtTick = next.tick;
+    }
+
+    // DESTROY the row (and with it the stockpile — the stored goods leave the galaxy, the accounted
+    // goods sink, §4/§15.4) and the dock state (queue/slots). Omit-when-empty: a galaxy back to zero
+    // outposts drops the key, byte-identical to pre-slice (invariant 9).
     next.outposts = (next.outposts || []).filter((o) => o.id !== action.outpostId);
-    // Keep `outposts` omit-when-empty: a galaxy back to zero outposts drops the key, so it serializes
-    // byte-identically to pre-slice (the createState assembly's discipline, invariant 9).
     if (next.outposts.length === 0) delete next.outposts;
+
+    // The destroyed stockpile's goods LEFT galactic supply (supply.js folds Outpost stockpiles in), so
+    // refresh the cache across the between-action seam (the goods-sink discipline removeVehicle already
+    // follows for a laden craft) — invariant 1 balances because non-fuel supply is a consistency check,
+    // never conservation (mining mints, this destruction sinks). A no-goods Outpost drops supply by 0.
+    next.galacticSupply = computeGalacticSupply(next);
     return next;
   }
 
@@ -3233,6 +3298,17 @@ function applyAction(state, action) {
     // galacticSupply across the between-action seam) and spawnVehicle's craft mutation shape.
     const guild = findGuild(next, action.guildId);
     const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
+    // CANCEL a pending Outpost transfer (design.md §4 "a parked or queued craft is cancelled by being
+    // re-dispatched away — that drops its pending manifest"). A queued craft is plain `idle`, so it
+    // passed the idle gate; here we drop its queue entry before it flies. A parked craft has no entry
+    // (nothing to drop); a LOADING craft never reaches here (the idle gate refused it — it runs to
+    // completion). The craft is queued at exactly one Outpost, but the sweep is written store-wide so
+    // a stray entry can never survive a dispatch.
+    for (const outpost of next.outposts || []) {
+      if (!outpost.queue) continue;
+      outpost.queue = outpost.queue.filter((e) => e.vehicleId !== craft.id);
+      if (outpost.queue.length === 0) delete outpost.queue;
+    }
     // Re-derive the route BEFORE the craft leaves its berth (dispatchRoute reads craft.location);
     // validate guaranteed { ok: true }, so this cannot fail — the shared helper keeps the legs and
     // the burn byte-identical to the ones the gate checked.
@@ -3279,45 +3355,51 @@ function applyAction(state, action) {
   }
 
   if (action.type === 'transferCargo') {
-    // design.md §4 "Resolving a manifest" (the SYSTEM half, instant): move goods between the craft's
-    // hold and the guild's (guild, system) pool in the fixed order — ALL UNLOADS FIRST, THEN ALL
-    // LOADS — each line clamped to what actually fits, partial-safe. It moves only goods between two
-    // of the guild's OWN stores, so galactic supply is CONSERVED across it (pool down = hold up, or
-    // the reverse) and both stores stay counted (supply.js folds the hold in) — no fuel, no credits.
+    // design.md §4 "Where it happens decides how": a SYSTEM transfer resolves INSTANTLY here; an
+    // OUTPOST transfer is QUEUED for a dock slot and resolves later (at completion, in the tick step).
     const guild = findGuild(next, action.guildId);
     const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
+    const atSystem = !!(craft.location && craft.location.landmarkKind === 'system');
+
+    if (!atSystem) {
+      // AT AN OUTPOST — the DOCK model (design.md §4). NOTHING moves now: record the manifest and
+      // enqueue it for the Outpost's slots at ready-tick = the CURRENT tick (the confirm tick of a
+      // manual transfer, §4 "served by the tick a craft became ready"). The craft stays plain `idle`
+      // (parked, re-dispatchable) — its distinct `loading` status is set only when the dock step
+      // promotes it into a slot. Goods move at COMPLETION, resolved by stepOutpostDocks (sim/tick.js).
+      const outpost = ownedOutpostAtCraft(next, action.guildId, craft); // validate proved one exists
+      if (!outpost.queue) outpost.queue = [];
+      // Deep-copy the manifest so the enqueued record can never alias the caller's array (the
+      // createVehicle/createOutpost copy discipline). Lines are the validated { dir, good, qty } shape.
+      outpost.queue.push({
+        vehicleId: craft.id,
+        manifest: action.manifest.map((l) => ({ dir: l.dir, good: l.good, qty: l.qty })),
+        readyTick: next.tick,
+      });
+      // §15.2 "every mutation records its tick": the craft records the tick it was given a manifest
+      // (the queue entry's readyTick is the same fact on the Outpost side; both are the confirm tick).
+      craft.updatedAtTick = next.tick;
+      // No goods moved, so galactic supply is unchanged — but refresh the cache anyway (the
+      // between-action seam asserts cache == live sum with no tick between; the value is identical).
+      next.galacticSupply = computeGalacticSupply(next);
+      return next;
+    }
+
+    // AT A SYSTEM — INSTANT (§4 "Resolving a manifest", the system half). Move goods between the
+    // craft's hold and the guild's (guild, system) pool via the ONE shared resolver (sim/manifest.js),
+    // in the fixed order — ALL UNLOADS FIRST, THEN ALL LOADS — each line clamped to what fits,
+    // partial-safe. It moves only goods between two of the guild's OWN stores, so galactic supply is
+    // CONSERVED and both stores stay counted (supply.js folds the hold in) — no fuel, no credits.
     const systemId = craft.location.landmarkId; // validate proved it is a system landmark
     const hold = craft.cargo || {}; // the working hold (a cargo-less craft starts empty)
-
-    // Move `n` units of `good` between the hold and the pool; +n loads (pool→hold), −n unloads
-    // (hold→pool). Keeps the hold omit-when-empty (a key that hits 0 is deleted), so a craft emptied
-    // by an unload is byte-identical to one that never loaded. `addStock` is the ONLY pool writer
-    // (ruling B1). `n` is always ≥ 0 here (a clamped move), and 0 moves nothing.
-    const move = (good, n, loading) => {
-      if (n <= 0) return;
-      hold[good] = (hold[good] || 0) + (loading ? n : -n);
-      if (hold[good] === 0) delete hold[good];
-      addStock(guild, systemId, good, loading ? -n : n);
+    // The SYSTEM store: `addStock` is the ONLY pool writer (ruling B1), and a system pool is
+    // SOFT-capped (§4), so its free space for an unload is effectively unbounded (`Infinity`).
+    const store = {
+      get: (good) => getStock(guild, systemId, good),
+      add: (good, delta) => addStock(guild, systemId, good, delta),
+      freeSpace: () => Infinity,
     };
-
-    // ALL UNLOADS FIRST. The system pool is soft-capped (§4), so its "remaining space" is effectively
-    // unbounded — an unload is limited only by what the hold holds. Dropping cargo first frees the
-    // hold space the loads below then use (the deliberate unloads-before-loads cascade, §4).
-    for (const line of action.manifest) {
-      if (line.dir !== 'unload') continue;
-      move(line.good, Math.min(line.qty, hold[line.good] || 0), false);
-    }
-    // THEN ALL LOADS, each clamped by the pool's holding AND the hold's LIVE remaining space
-    // (`capacity − Σ qty×volumeOf`, recomputed per line so an incomplete unload correctly shrinks it).
-    // A good the pool lacks, or a hold with no room, simply loads 0 — the rest of the manifest still
-    // resolves (partial-safe). Integer goods throughout: `volumeOf` is a positive integer, so the
-    // per-unit floor is exact.
-    for (const line of action.manifest) {
-      if (line.dir !== 'load') continue;
-      const free = craft.capacity - holdUsedSpace(hold);
-      const bySpace = Math.floor(free / volumeOf(line.good));
-      move(line.good, Math.min(line.qty, getStock(guild, systemId, line.good), bySpace), true);
-    }
+    resolveManifest(hold, craft.capacity, store, action.manifest);
 
     // Re-attach the hold, keeping omit-when-empty: a transfer that nets to an empty hold drops the
     // key (the createVehicle discipline), so the no-op case serializes byte-identically to pre-slice.

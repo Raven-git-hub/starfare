@@ -71,6 +71,24 @@ function computeGalacticSupply(state) {
     if (g.deuterium) resources[DEUTERIUM] += g.deuterium;
   }
 
+  // OUTPOST STOCKPILES — the ONE sanctioned second home for a guild's goods besides its system pool
+  // (design.md §4 "Goods now live in two kinds of place"; the Outpost dock model, 2.2 cargo engine
+  // slice 2). Outpost-held goods are still the guild's goods, just warehoused forward, so everything
+  // that reads the guild's goods as a pricing aggregate must count them — exactly as the vehicle holds
+  // above are counted. Fold each Outpost's `stockpile` in beside the pools and holds, so an unload
+  // (hold→stockpile) CONSERVES the total (both counted) and tearing an Outpost down is the accounted
+  // goods sink the total then drops by. Outposts are SHARED (state.outposts), not guild-nested, so this
+  // sweeps the top-level list once. Omit-when-empty (state.js): an empty stockpile carries no key and
+  // folds in as nothing, so a galaxy with no Outpost goods is byte-identical to pre-slice. Only KNOWN
+  // goods are folded (an unknown key is left for invariants.js to flag, as the sums above do).
+  for (const o of state.outposts || []) {
+    for (const [good, qty] of Object.entries(o.stockpile || {})) {
+      if (Object.prototype.hasOwnProperty.call(resources, good)) {
+        resources[good] += qty;
+      }
+    }
+  }
+
   // guildHeld sums EVERY held fuel store per guild — legal `fuelHoard` AND contraband
   // `deuteriumFuel` (§1.4 slice 1b). Contraband is held fuel like any other, so invariant 1's
   // conservation counts it (checkFuelConservation) and this cache must agree, or a refine (which

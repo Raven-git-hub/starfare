@@ -22,6 +22,9 @@
 // `dockCapacity` are CARRIED but read by nothing — no cargo/dock behaviour yet (slice 3).
 
 const { HEAVY_HOLD } = require('./fuel.js');
+const {
+  LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT,
+} = require('./vehicles.js');
 
 // OUTPOST_CAPACITY — the Outpost stockpile's hard space cap, in cargo space (the same
 // `Σ qty × volumeOf` unit a transport hold uses). RULED 20-09-26 (design.md §4 "Capacity";
@@ -34,8 +37,40 @@ const OUTPOST_CAPACITY = 30 * HEAVY_HOLD;
 
 // OUTPOST_DOCK_SLOTS — the number of docking slots an Outpost has (design.md §4 "The dock
 // model"). `[FIRST-CUT]`, the doc's working value 10 (recorded in docs/phase-1-tuning.md);
-// carried on the entity as `dockCapacity` and INERT this slice — nothing docks yet (slice 3).
+// carried on the entity as `dockCapacity`. Read by the dock tick step (slice 2, sim/tick.js):
+// it throttles CONCURRENT transfers — at most this many craft hold a slot at once, the rest wait
+// in the queue. Parking is unlimited; only ACTIVE transfers consume a slot (the deadlock-free
+// guarantee, §4).
 const OUTPOST_DOCK_SLOTS = 10;
+
+// OUTPOST_DOCK_TURNAROUND — the per-class load/unload time (ticks a craft holds a dock slot),
+// RULED 21-09-26 (design.md §4 "The dock model"; recorded in docs/phase-1-tuning.md): light 5,
+// medium 30, heavy 120 ticks. It is the whole dock cycle's cost — one manifest, however many
+// goods — and it is the LOADING TIME ITSELF: goods move at COMPLETION (the resolve-at-completion
+// rule, §4), which is why an Outpost torn down mid-turnaround leaves the transfer un-happened.
+// OUTPOST-ONLY: a transfer at a guild's own system is instant (slice 1), so no turnaround there.
+//
+// `spycraft` is DELIBERATELY ABSENT — it has capacity 0 (carries no cargo, sim/vehicles.js), so it
+// never transfers and the doc rules no turnaround for it. Inventing one would be a number pulled
+// from nowhere (§15.2 "Never invent a number"); instead the transfer gate refuses a capacity-0
+// craft up front, so nothing without a ruled turnaround ever reaches a slot. The class names are
+// imported from vehicles.js (spelled once there), never re-spelled here.
+const OUTPOST_DOCK_TURNAROUND = Object.freeze({
+  [LIGHT_TRANSPORT]: 5,
+  [MEDIUM_TRANSPORT]: 30,
+  [HEAVY_TRANSPORT]: 120,
+});
+
+// outpostDockTurnaround(vehicleClass) -> the ruled turnaround in ticks for a class, or null for a
+// class with no ruled value (today only `spycraft`, capacity 0). null (not a throw) so a caller can
+// ASK whether a class can dock and refuse loudly itself — the same null-means-"not a thing" shape
+// `vehicleSpec` / `getRecipe` have. The dock tick step only ever promotes craft whose class HAS a
+// turnaround (the transfer gate refused the rest), so `completionTick` is never sized off a null.
+function outpostDockTurnaround(vehicleClass) {
+  return Object.prototype.hasOwnProperty.call(OUTPOST_DOCK_TURNAROUND, vehicleClass)
+    ? OUTPOST_DOCK_TURNAROUND[vehicleClass]
+    : null;
+}
 
 // The id scheme is `outpost_<guildId>_NN`, 1-based and zero-padded to two digits — the exact
 // mirror of vehicles.js's `vehicle_<guildId>_<class>_NN`. STABLE and DETERMINISTIC (§15.2,
@@ -70,6 +105,8 @@ function nextOutpostSerial(guild) {
 module.exports = {
   OUTPOST_CAPACITY,
   OUTPOST_DOCK_SLOTS,
+  OUTPOST_DOCK_TURNAROUND,
+  outpostDockTurnaround,
   outpostId,
   outpostNumberOf,
   nextOutpostSerial,

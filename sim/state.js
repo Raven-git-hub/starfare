@@ -807,6 +807,8 @@ function createOutpost({
   stockpile = {},
   capacity = OUTPOST_CAPACITY,
   dockCapacity = OUTPOST_DOCK_SLOTS,
+  queue = [],
+  slots = [],
   createdAtTick,
 }) {
   if (id === undefined) throw new Error('createOutpost: id is required');
@@ -825,12 +827,36 @@ function createOutpost({
     // `anchorId`). An outpost anchors ONLY to a system (design.md §4), never another outpost.
     anchorSystemId,
     // stockpile — a good→int cargo container, OMITTED when empty (guild.assets discipline). A
-    // fresh copy so a caller's map can't alias into engine state; written by nothing this slice.
+    // fresh copy so a caller's map can't alias into engine state. Born empty; the DOCK step
+    // (sim/tick.js) fills it as craft unload at completion (2.2 cargo engine slice 2).
     ...(stockpile && Object.keys(stockpile).length ? { stockpile: { ...stockpile } } : {}),
     capacity,
     dockCapacity,
+    // The DOCK STATE (design.md §4 "The dock model", 2.2 cargo engine slice 2). Both OMITTED when
+    // empty (the stockpile/guild.assets discipline) — an Outpost with nothing docking is byte-identical
+    // to a pre-slice one. DEEP-copied (each entry, and each manifest line) so a caller's array can
+    // never alias into engine state, the `location`/`stockpile` copy discipline.
+    //   queue — ordered { vehicleId, manifest, readyTick }: parked craft that have been given a
+    //           manifest and wait for a free slot (served earliest ready-tick first, tie-break id).
+    //   slots — { vehicleId, manifest, completionTick }: craft actively transferring, ≤ dockCapacity;
+    //           the manifest RESOLVES when completionTick is reached, then the slot frees.
+    ...(queue && queue.length ? { queue: queue.map(cloneQueueEntry) } : {}),
+    ...(slots && slots.length ? { slots: slots.map(cloneSlotEntry) } : {}),
     createdAtTick,
   };
+}
+
+// cloneQueueEntry / cloneSlotEntry — deep-copy one dock entry so a restored save or a scenario that
+// HANDS ONE IN can never alias into engine state (createOutpost's copy discipline). The manifest is
+// copied line by line ({ dir, good, qty }, the validated transfer shape).
+function cloneManifest(manifest) {
+  return (manifest || []).map((l) => ({ dir: l.dir, good: l.good, qty: l.qty }));
+}
+function cloneQueueEntry(e) {
+  return { vehicleId: e.vehicleId, manifest: cloneManifest(e.manifest), readyTick: e.readyTick };
+}
+function cloneSlotEntry(e) {
+  return { vehicleId: e.vehicleId, manifest: cloneManifest(e.manifest), completionTick: e.completionTick };
 }
 
 // Fuel Utility reserve (SHARED, design.md §15.4) — the subset the engine needs.

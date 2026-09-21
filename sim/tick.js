@@ -56,6 +56,8 @@ const {
 const { issuanceModifier } = require('./meanline.js');
 const { pushModifierSample } = require('./modifier-history.js');
 const { pushFuelBurnEntry } = require('./fuel-burn-history.js');
+const { outpostDockTurnaround } = require('./outposts.js');
+const { resolveManifest, usedSpace } = require('./manifest.js');
 
 // A total, deterministic string order for sort keys — used where a tie has to
 // break the same way every run (invariant 9) rather than however sort found it.
@@ -1088,6 +1090,112 @@ function stepVehicleArrivals(state, _actions) {
   return state;
 }
 
+// Step 5 (the Outpost half) — the DOCK STEP (design.md §4 "The dock model"; roadmap 2.2 cargo engine
+// slice 2). This is the Outpost's throughput made to tick: every Outpost's queue is served into its
+// finite slots, and every slot that has served its full turnaround RESOLVES its manifest. It is the
+// SECOND half of the movement layer — `stepVehicleArrivals` above LANDS a craft at a berth (a bare hex
+// on the Outpost's tile → parked), and THIS step then works the parked/queued/loading state machine.
+//
+// WHY IT SITS IMMEDIATELY AFTER stepVehicleArrivals (the ordering choice §15.6 asks be documented): a
+// craft dispatched to an Outpost's hex lands in stepVehicleArrivals and is PARKED (plain idle) the same
+// tick; running the dock step next means that within one tick a craft first arrives, then is eligible
+// for the dock logic — a coherent arrive-then-dock order that leaves room for the later route-embedded
+// auto-manifest slice to enqueue ON ARRIVAL and be promoted the same tick with no reordering. THIS
+// slice enqueues only via the `transferCargo` action (applied between ticks), so the two halves are
+// independent today; the adjacency is for the coherent order, not a present data dependency.
+//
+// Per Outpost, in a fixed id order, DETERMINISTICALLY (§15.5 invariant 9):
+//   (a) PROMOTE queued craft into free slots — `dockCapacity − |slots|` of them, earliest READY-TICK
+//       first, tie-broken by stable vehicle id. Each promoted craft flips to `loading` and its slot
+//       gets `completionTick = thisTick + OUTPOST_DOCK_TURNAROUND[class]` (the loading time itself, §4).
+//   (b) RESOLVE every slot whose `completionTick == thisTick` — run the ONE shared manifest resolver
+//       (sim/manifest.js, the same one the instant system transfer uses) against the craft hold and
+//       the Outpost's HARD-CAPPED stockpile, in fixed vehicle-id order (so two craft competing for the
+//       same limited stockpile space clamp deterministically). The craft returns to plain `idle`
+//       (parked), keeping its now-changed hold; the slot frees.
+// Promotion runs BEFORE resolution, so a slot a completion frees THIS tick is available to the queue on
+// the FOLLOWING tick (promotion reads the slots as they stand at the top of the step). With turnarounds
+// of 5/30/120 and ten slots this one-tick hand-off is immaterial, and it keeps the step's two phases
+// cleanly separated. A promoted craft's `completionTick` is `thisTick + turnaround ≥ thisTick + 5`, so
+// it can NEVER resolve the same tick it was promoted.
+//
+// The whole step moves goods only between a craft's hold and its guild's OWN Outpost stockpile — two of
+// the guild's own stores, both counted in Galactic Supply (supply.js) — so a completion CONSERVES the
+// total (hold−n = stockpile+n, or the reverse). Like every step it takes NO galacticSupply refresh of
+// its own; tick()'s end-of-steps derive owns the cache. `thisTick = state.tick + 1` (tick() assigns
+// next.tick only after the steps), the same convention stepVehicleArrivals/stepArrivals use.
+function stepOutpostDocks(state, _actions) {
+  const outposts = state.outposts || [];
+  if (outposts.length === 0) return state; // no Outposts → nothing to dock (the byte-identical no-op)
+  const thisTick = state.tick + 1;
+
+  // Iterate Outposts in a fixed id order (invariant 9). No cross-Outpost total depends on the order —
+  // each Outpost's dock is self-contained — but it is pinned anyway, the stepVehicleArrivals discipline.
+  for (const outpost of [...outposts].sort((a, b) => cmp(a.id, b.id))) {
+    // The owner holds every docked/queued craft (own-only docking, §4).
+    const guild = (state.guilds || []).find((g) => g.id === outpost.ownerGuildId);
+    if (!guild) continue; // dangling owner is corruption checkOutpostIntegrity flags; never throw in a step
+
+    // (a) PROMOTE. Free slots = dockCapacity − occupied. Serve the queue earliest-ready first, tie-break
+    // stable vehicle id (§4 "served by the tick a craft became ready … tie-broken by stable id").
+    const slots = outpost.slots || [];
+    const queue = outpost.queue || [];
+    const free = outpost.dockCapacity - slots.length;
+    if (free > 0 && queue.length > 0) {
+      const ordered = [...queue].sort((a, b) => (a.readyTick - b.readyTick) || cmp(a.vehicleId, b.vehicleId));
+      const promoted = ordered.slice(0, free);
+      const promotedIds = new Set(promoted.map((e) => e.vehicleId));
+      const nowSlots = outpost.slots || (outpost.slots = []);
+      for (const entry of promoted) {
+        const craft = (guild.vehicles || []).find((v) => v.id === entry.vehicleId);
+        if (!craft) continue; // defensive; own-only means the owner holds it
+        // The class turnaround is guaranteed present — the transfer gate refused any class without one
+        // (spycraft), so this never reads a null (§4 / phase-1-tuning.md; no number invented here).
+        const turnaround = outpostDockTurnaround(craft.class);
+        nowSlots.push({ vehicleId: entry.vehicleId, manifest: entry.manifest, completionTick: thisTick + turnaround });
+        craft.status = 'loading'; // a slot-held craft carries the distinct `loading` status (dispatch refuses it)
+        craft.updatedAtTick = thisTick; // §15.2: entering a slot is a state change; stamp the tick
+      }
+      outpost.queue = queue.filter((e) => !promotedIds.has(e.vehicleId));
+      if (outpost.queue.length === 0) delete outpost.queue;
+    }
+
+    // (b) RESOLVE the slots that complete THIS tick. Fixed vehicle-id order so competing unloads into a
+    // near-full stockpile clamp deterministically.
+    const currentSlots = outpost.slots || [];
+    const done = currentSlots.filter((s) => s.completionTick === thisTick);
+    if (done.length > 0) {
+      done.sort((a, b) => cmp(a.vehicleId, b.vehicleId));
+      for (const slot of done) {
+        const craft = (guild.vehicles || []).find((v) => v.id === slot.vehicleId);
+        if (!craft) continue;
+        const hold = craft.cargo || {};
+        const stockpile = outpost.stockpile || {};
+        // The OUTPOST store: HARD-capped (§4), so its free space for an unload is `capacity − used`,
+        // recomputed each read — the partial-unload case (a full Outpost clamps the unload). Kept
+        // omit-when-empty (a key hitting 0 is deleted), the stockpile-copy discipline.
+        const store = {
+          get: (good) => stockpile[good] || 0,
+          add: (good, delta) => {
+            stockpile[good] = (stockpile[good] || 0) + delta;
+            if (stockpile[good] === 0) delete stockpile[good];
+          },
+          freeSpace: () => outpost.capacity - usedSpace(stockpile),
+        };
+        resolveManifest(hold, craft.capacity, store, slot.manifest);
+        // Re-attach hold + stockpile, both omit-when-empty (byte-identical no-op when nothing remains).
+        if (Object.keys(hold).length) craft.cargo = hold; else delete craft.cargo;
+        if (Object.keys(stockpile).length) outpost.stockpile = stockpile; else delete outpost.stockpile;
+        craft.status = 'idle';        // returns to orbit — parked (idle) at the Outpost's hex (§4)
+        craft.updatedAtTick = thisTick; // §15.2: the completion moved goods; stamp the tick
+      }
+      outpost.slots = currentSlots.filter((s) => s.completionTick !== thisTick);
+      if (outpost.slots.length === 0) delete outpost.slots;
+    }
+  }
+  return state;
+}
+
 // recordFuelGrant(...) — stamp this cycle's fuel grant onto the guild, so a reader can say
 // WHAT it was due and WHAT it actually received without recomputing anything (§5's display
 // rule). Like `recordLicenceFee` and `recordSale` above this is a RECORD OF AN EVENT, not
@@ -1402,6 +1510,7 @@ const STEPS = [
   stepScheduledEvents,
   stepArrivals,
   stepVehicleArrivals,
+  stepOutpostDocks,
   stepBaselineAllocation,
   stepStoryteller,
   stepVoteClosures,
@@ -1453,4 +1562,4 @@ function tick(state, actions = []) {
   return next;
 }
 
-module.exports = { tick, STEPS, stepSyndicateBuilds };
+module.exports = { tick, STEPS, stepSyndicateBuilds, stepOutpostDocks };

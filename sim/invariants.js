@@ -1594,6 +1594,21 @@ function checkOutpostIntegrity(state) {
   const seenIds = new Set();
   const byHex = new Map();              // "q,r" -> the first outpost id seen there
   const maxSuffixByGuild = new Map();   // ownerGuildId -> highest live outpost suffix
+  const dockedAt = new Map();           // vehicleId -> "outpost:kind" of the FIRST dock seen (§4 — a craft docks at one place only)
+
+  // A dock entry's manifest must be the SAME well-formed shape the transfer gate accepts (design.md §4;
+  // sim/actions.js `transferCargo` validate): a non-empty list of { dir: 'load'|'unload', good, qty }
+  // lines, each good a known stockpile good and each qty a positive integer (§15.2). A stranded bad
+  // manifest (a save-reload, a future slice) would resolve wrongly at completion, so it fails here.
+  const manifestViolation = (manifest) => {
+    if (!Array.isArray(manifest) || manifest.length === 0) return { manifest };
+    for (const l of manifest) {
+      if (!l || typeof l !== 'object' || (l.dir !== 'load' && l.dir !== 'unload')) return { line: l };
+      if (typeof l.good !== 'string' || !isStockpileGood(l.good)) return { good: l && l.good };
+      if (typeof l.qty !== 'number' || !Number.isInteger(l.qty) || l.qty <= 0) return { qty: l && l.qty };
+    }
+    return null;
+  };
   for (const o of outposts) {
     const where = `outpost:${o.id}`;
     if (!guildById(o.ownerGuildId)) {
@@ -1617,12 +1632,79 @@ function checkOutpostIntegrity(state) {
       out.push({ rule: 'outpost-createdAtTick-is-a-tick (§15.2)', where: `${where}.createdAtTick`, detail: { createdAtTick: o.createdAtTick } });
     }
     if (o.stockpile !== undefined) {
+      let used = 0;
       for (const [good, qty] of Object.entries(o.stockpile)) {
+        if (!isStockpileGood(good)) {
+          out.push({ rule: 'outpost-stockpile-known-good (resources.js)', where: `${where}.stockpile`, detail: { good } });
+          continue; // don't size an unknown good — volumeOf would throw
+        }
         if (!Number.isInteger(qty) || qty < 0) {
           out.push({ rule: 'outpost-stockpile-is-a-non-negative-int (§15.2)', where: `${where}.stockpile.${good}`, detail: { good, qty } });
+          continue;
         }
+        used += qty * volumeOf(good);
+      }
+      // The HARD CAP (design.md §4 "Capacity" — the whole point of an Outpost being finite, unlike a
+      // soft-capped system pool). The dock step CLAMPS an unload to the room remaining, so a completion
+      // can never breach it; this ASSERTS that, and guards a save-reload / bad scenario that stuffed one.
+      if (used > o.capacity) {
+        out.push({ rule: 'outpost-stockpile-within-capacity (§4)', where: `${where}.stockpile`, detail: { usedSpace: used, capacity: o.capacity } });
       }
     }
+    // DOCK STATE (design.md §4 "The dock model", 2.2 cargo engine slice 2). `queue` and `slots` are
+    // both omit-when-empty — absent is the byte-identical no-op path; a present one must be honest, or a
+    // save-reload / bad scenario could strand a craft or overflow the slots. The owner guild holds every
+    // docked craft (own-only docking, §4), so craft references resolve against it.
+    const ownerGuild = guildById(o.ownerGuildId);
+    const craftById = (vid) => (ownerGuild && (ownerGuild.vehicles || []).find((v) => v.id === vid)) || null;
+    // A dock entry (queue OR slot): its craft is live + owner-held, docks at ONE place only, carries the
+    // right status for its kind, its tick field is a whole tick ≥ 0, and its manifest is well-formed.
+    const checkDockEntry = (entry, kind, tickField, wantStatus) => {
+      const at = `${where}.${kind}[${entry && entry.vehicleId}]`;
+      const craft = entry && craftById(entry.vehicleId);
+      if (!craft) {
+        out.push({ rule: 'outpost-dock-craft-exists (§4)', where: `${at}.vehicleId`, detail: { vehicleId: entry && entry.vehicleId, ownerGuildId: o.ownerGuildId } });
+      } else if (craft.status !== wantStatus) {
+        // A slot craft must be `loading`; a queued craft must be `idle` (re-dispatchable). The dock step
+        // maintains both; a mismatch means the state machine and the craft disagree.
+        out.push({ rule: 'outpost-dock-status-matches-kind (§4)', where: `${at}.status`, detail: { kind, status: craft.status, expected: wantStatus } });
+      }
+      if (entry && entry.vehicleId !== undefined) {
+        if (dockedAt.has(entry.vehicleId)) {
+          out.push({ rule: 'outpost-dock-craft-single (§4)', where: `${at}.vehicleId`, detail: { vehicleId: entry.vehicleId, alsoAt: dockedAt.get(entry.vehicleId) } });
+        } else {
+          dockedAt.set(entry.vehicleId, `${o.id}:${kind}`);
+        }
+      }
+      const t = entry && entry[tickField];
+      if (!Number.isInteger(t) || t < 0) {
+        out.push({ rule: `outpost-dock-${tickField}-is-a-tick (§15.2)`, where: `${at}.${tickField}`, detail: { [tickField]: t } });
+      }
+      const mv = manifestViolation(entry && entry.manifest);
+      if (mv) {
+        out.push({ rule: 'outpost-dock-manifest-well-formed (§4)', where: `${at}.manifest`, detail: mv });
+      }
+    };
+    if (o.slots !== undefined) {
+      if (!Array.isArray(o.slots)) {
+        out.push({ rule: 'outpost-slots-is-an-array (§4)', where: `${where}.slots`, detail: { slots: o.slots } });
+      } else {
+        // Slots THROTTLE concurrent transfers: never more than `dockCapacity` at once (§4 — the whole
+        // deadlock-free guarantee). dockCapacity itself is range-checked above.
+        if (o.slots.length > o.dockCapacity) {
+          out.push({ rule: 'outpost-slots-within-dockCapacity (§4)', where: `${where}.slots`, detail: { slots: o.slots.length, dockCapacity: o.dockCapacity } });
+        }
+        for (const s of o.slots) checkDockEntry(s, 'slots', 'completionTick', 'loading');
+      }
+    }
+    if (o.queue !== undefined) {
+      if (!Array.isArray(o.queue)) {
+        out.push({ rule: 'outpost-queue-is-an-array (§4)', where: `${where}.queue`, detail: { queue: o.queue } });
+      } else {
+        for (const e of o.queue) checkDockEntry(e, 'queue', 'readyTick', 'idle');
+      }
+    }
+
     // One structure per hex (§4 / §2): not on a seed landmark, not on another outpost. Only meaningful
     // once the coords are a real hex — a bad-coords outpost has already tripped above.
     if (coordsOk) {

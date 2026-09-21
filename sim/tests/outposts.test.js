@@ -121,6 +121,9 @@ test('spawn: the snapshot surfaces the outpost with an empty stockpile view', ()
     capacity: OUTPOST_CAPACITY,
     dockCapacity: OUTPOST_DOCK_SLOTS,
     stockpile: {},
+    // The dock state (2.2 cargo engine slice 2) — always emitted as stable arrays; empty on a fresh spawn.
+    queue: [],
+    slots: [],
   }]);
 });
 

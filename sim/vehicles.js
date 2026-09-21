@@ -36,11 +36,15 @@ const VEHICLE_CLASSES = Object.freeze([LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_
 // separately so the ground-asset list stays exactly [miner, factory].
 const BUILDABLE_VEHICLE_KINDS = Object.freeze([LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT, SPYCRAFT]);
 
-// The legal stored `status` values (design.md §15.4 "status (idle / in-transit)").
-// THIS SLICE mints only `idle` — nothing moves a vehicle yet — but the legal set is
-// the full pair so slice b's dispatch needs no invariant change; `checkVehicleIntegrity`
-// asserts membership, not strict idleness.
-const VEHICLE_STATUSES = Object.freeze(['idle', 'inTransit']);
+// The legal stored `status` values (design.md §15.4 "status (idle / in-transit)", extended by the
+// Outpost dock model, §4). `idle` (parked at a berth, or waiting in an Outpost queue — both
+// re-dispatchable) and `inTransit` (flying a frozen route) are the design's pair; `loading` is the
+// third, distinct state a craft holds ONLY while it occupies an Outpost DOCK SLOT (2.2 cargo engine
+// slice 2). It is what makes `dispatchVehicle`'s idle gate refuse a craft mid-turnaround ("a craft in
+// a slot runs to completion", §4) while a parked/queued craft stays plain `idle` and dispatches freely.
+// `checkVehicleIntegrity` asserts membership; the shape-by-status rule treats `loading` like `idle`
+// (a resolving location, no trip) since a docked craft sits at the Outpost's hex.
+const VEHICLE_STATUSES = Object.freeze(['idle', 'inTransit', 'loading']);
 
 // The per-class stat table — every value read VERBATIM from docs/phase-1-tuning.md
 // §"Guild transports" (18-09-26, all `[FIRST-CUT]`); NONE invented here (§18 /

@@ -38,7 +38,7 @@ const { expectedReputation, issuanceModifier } = require('./meanline.js');
 const { computeOccupancy } = require('./occupancy.js');
 const { deployedAssetIds } = require('./assets.js');
 const { BUILDABLE_KINDS, BUILD_TICKS, priceAssetForPurchase } = require('./asset-recipes.js');
-const { BUILDABLE_VEHICLE_KINDS, vehicleSpec, resolveVehicleLocation } = require('./vehicles.js');
+const { BUILDABLE_VEHICLE_KINDS, vehicleSpec, resolveVehicleLocation, vehicleCoords } = require('./vehicles.js');
 const { getSite, getLandmark, getStarterSystems, getTerranHomeworld } = require('./seed.js');
 const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
@@ -764,7 +764,7 @@ function orderSnapshot(order) {
 // on read — `fuelValue(Σ legFuelBurn(length, fuelCostToRun, isToll), fuelPrice)` — so it floats with
 // the fuel price (a display figure, §4), while the units themselves are fixed seed geometry. Fresh
 // objects (coords copied); nothing here is serialized beyond the `guild.vehicles` rows it reads.
-function snapshotVehicleRow(v, fuelPrice) {
+function snapshotVehicleRow(v, fuelPrice, dockStatus) {
   const base = {
     id: v.id, class: v.class, maintenanceCondition: v.maintenanceCondition, status: v.status,
     // The HOLD (2.2 cargo, engine slice 1 — design.md §4, §15.4 the `cargo` field). A FRESH map so a
@@ -772,6 +772,13 @@ function snapshotVehicleRow(v, fuelPrice) {
     // hold (mirroring how the shipment row surfaces its `cargo`) so the reader has one shape to read.
     // The client's craft manifest (currently hard-coding "No cargo") reads this in a later slice.
     cargo: { ...(v.cargo || {}) },
+    // dockStatus (2.2 cargo, engine slice 2 — design.md §4 the dock model). The craft's relationship to
+    // an Outpost dock, DERIVED once in buildSnapshot from the Outpost's queue/slots (a craft does not
+    // store this — it is a plain `idle`/`loading` craft, and the dock state lives on the Outpost).
+    // PRESENT only when the craft is engaged with a dock: `{ state: 'parked' | 'queued' | 'loading',
+    // outpostId, eta? }` — `eta` (ticks to completion) only for `loading`. A craft with no dock relation
+    // (flying, or idle at a system) carries no key, so the field is the exception not the rule.
+    ...(dockStatus ? { dockStatus } : {}),
   };
   if (v.status === 'inTransit' && v.trip) {
     let totalUnits = 0;
@@ -811,7 +818,7 @@ function snapshotVehicleRow(v, fuelPrice) {
 // (empty this slice) `stockpile` view. `stockpile` is ALWAYS EMITTED as a map (a stable `{}` when the
 // outpost holds nothing) — unlike the STATE field, which is omit-when-empty for the determinism hash;
 // the snapshot answers to a reader, for whom a stable shape beats a key that appears only once goods land.
-function snapshotOutpostRow(o) {
+function snapshotOutpostRow(o, thisTick) {
   return {
     id: o.id,
     ownerGuildId: o.ownerGuildId,
@@ -820,12 +827,63 @@ function snapshotOutpostRow(o) {
     capacity: o.capacity,
     dockCapacity: o.dockCapacity,
     stockpile: { ...(o.stockpile || {}) },
+    // The DOCK STATE (2.2 cargo, engine slice 2 — design.md §4 the dock model): the queue and the
+    // slots the later UI slice renders. ALWAYS EMITTED as arrays (stable `[]` when nothing docks) —
+    // unlike the STATE fields, which are omit-when-empty for the determinism hash; the snapshot answers
+    // to a reader, for whom a stable shape beats a key that appears only once a craft docks. FRESH
+    // objects (manifest lines copied) so a consumer can't alias into engine state.
+    //   queue — waiting craft: { vehicleId, readyTick, manifest } in stored (ready) order.
+    //   slots — active transfers: { vehicleId, completionTick, eta, manifest }, where `eta` is
+    //           `completionTick − tick` (the delivery-ETA differencing discipline — ticks until the
+    //           manifest resolves), computed no game number beyond differencing engine ticks.
+    queue: (o.queue || []).map((e) => ({
+      vehicleId: e.vehicleId,
+      readyTick: e.readyTick,
+      manifest: e.manifest.map((l) => ({ dir: l.dir, good: l.good, qty: l.qty })),
+    })),
+    slots: (o.slots || []).map((s) => ({
+      vehicleId: s.vehicleId,
+      completionTick: s.completionTick,
+      eta: s.completionTick - thisTick,
+      manifest: s.manifest.map((l) => ({ dir: l.dir, good: l.good, qty: l.qty })),
+    })),
   };
 }
 
 function buildSnapshot(state) {
   const supply = computeGalacticSupply(state);
   const occupancy = computeOccupancy(state);
+
+  // DOCK STATUS PER CRAFT (2.2 cargo, engine slice 2 — design.md §4 the dock model). A craft does not
+  // store its dock relation — it is a plain `idle`/`loading` craft, and the queue/slots live on the
+  // Outpost — so derive it ONCE here for every vehicle row below to read. Three states:
+  //   loading — the craft occupies a slot: `{ state, outpostId, eta }`, eta = completionTick − tick.
+  //   queued  — the craft waits in the queue: `{ state, outpostId }`.
+  //   parked  — the craft is idle AT an Outpost's hex with no pending manifest: `{ state, outpostId }`.
+  // A craft with no dock relation (flying, or idle at a system) gets no entry. Built from the Outpost
+  // dock state first (queue/slots name their craft), then a parked sweep over idle craft standing on an
+  // Outpost hex that the first pass did not already claim. `state.tick` is the ETA reference.
+  const dockStatusByVehicle = new Map();
+  const outpostIdByHex = new Map();
+  for (const o of state.outposts || []) {
+    outpostIdByHex.set(`${o.coords.q},${o.coords.r}`, o.id);
+    for (const s of o.slots || []) {
+      dockStatusByVehicle.set(s.vehicleId, { state: 'loading', outpostId: o.id, eta: s.completionTick - state.tick });
+    }
+    for (const e of o.queue || []) {
+      dockStatusByVehicle.set(e.vehicleId, { state: 'queued', outpostId: o.id });
+    }
+  }
+  if (outpostIdByHex.size > 0) {
+    for (const g of state.guilds || []) {
+      for (const v of g.vehicles || []) {
+        if (v.status !== 'idle' || dockStatusByVehicle.has(v.id)) continue;
+        const c = vehicleCoords(v);
+        const oid = c && outpostIdByHex.get(`${c.q},${c.r}`);
+        if (oid) dockStatusByVehicle.set(v.id, { state: 'parked', outpostId: oid });
+      }
+    }
+  }
 
   // THE ONE FUEL PRICE (§15.5 invariant 5), read ONCE for the whole snapshot — the
   // hoard's mark-to-market, every route's credit quote, and the headline figure in
@@ -1207,7 +1265,7 @@ function buildSnapshot(state) {
       // `defenseRating` are engine stats the client reads from the catalog, not per-row. Sorted by id
       // (the deterministic mint order); derived-on-read like `assets`, fresh objects so a consumer
       // mutating the snapshot can't alias into engine state.
-      vehicles: (g.vehicles || []).map((v) => snapshotVehicleRow(v, fuelPrice))
+      vehicles: (g.vehicles || []).map((v) => snapshotVehicleRow(v, fuelPrice, dockStatusByVehicle.get(v.id)))
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
       // buyOrder / sellOrder: the guild's HELD Syndicate orders, echoed with the engine-computed
       // per-line `space`, the Σ `totalUnits`/`totalSpace`, the `haulerTier` and the `overCap` flag
@@ -1460,7 +1518,7 @@ function buildSnapshot(state) {
   // deterministic (invariant 9). ADDITIVE: a galaxy with no outpost has no `state.outposts` key, so
   // this is `[]` and no serialized byte moves. Territory infrastructure, surfaced beside `claims`.
   const outposts = (state.outposts || [])
-    .map(snapshotOutpostRow)
+    .map((o) => snapshotOutpostRow(o, state.tick))
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
   // The IN-FLIGHT layer (§15.1): every pending Syndicate delivery, echoed as

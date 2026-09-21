@@ -56,7 +56,11 @@ test('the tick steps run in the exact §15.6 order', () => {
   // 2.2 (b1) inserted stepVehicleArrivals — the guild-transport half of step 5 "arrivals"
   // (transport-model.md §4) — directly after stepArrivals, keeping the two arrival passes adjacent:
   // a dispatched craft's frozen route is landed by the SAME arrivals step the Syndicate delivery is.
-  assert.equal(STEPS.length, 10);
+  // 2.2 cargo engine slice 2 inserted stepOutpostDocks — the Outpost half of the movement layer
+  // (design.md §4 the dock model) — directly after stepVehicleArrivals, so within one tick a craft
+  // first LANDS at an Outpost's hex (parked) and then the dock logic works the queue/slots (the
+  // arrive-then-dock order documented on the step).
+  assert.equal(STEPS.length, 11);
   assert.deepEqual(
     STEPS.map((fn) => fn.name),
     [
@@ -66,6 +70,7 @@ test('the tick steps run in the exact §15.6 order', () => {
       'stepScheduledEvents',
       'stepArrivals',
       'stepVehicleArrivals',
+      'stepOutpostDocks',
       'stepBaselineAllocation',
       'stepStoryteller',
       'stepVoteClosures',

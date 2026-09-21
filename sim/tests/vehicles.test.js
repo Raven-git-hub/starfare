@@ -339,8 +339,9 @@ test('checkVehicleIntegrity catches a bad class, an unresolvable location, a bad
   assert.ok(ruleOf({ maintenanceCondition: 1.5 }).includes('vehicle-condition-in-range'), 'out-of-range condition trips');
   assert.ok(ruleOf({ maintenanceCondition: 'x' }).includes('vehicle-condition-in-range'), 'non-number condition trips');
   assert.ok(ruleOf({ status: 'parked' }).includes('vehicle-status-legal'), 'illegal status trips');
-  // The legal set is the design pair; both pass membership (this slice mints only idle).
-  assert.deepEqual(VEHICLE_STATUSES, ['idle', 'inTransit']);
+  // The legal set is idle / inTransit (the design pair) plus `loading` (a craft in an Outpost dock
+  // slot, 2.2 cargo engine slice 2 — design.md §4). `parked` above is still not a real status.
+  assert.deepEqual(VEHICLE_STATUSES, ['idle', 'inTransit', 'loading']);
 });
 
 // --- 5b. the location model (landmark or bare hex) + its selector ------------------------------
