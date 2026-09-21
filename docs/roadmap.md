@@ -635,6 +635,23 @@ boundary so the later hex-map swap doesn't touch it.
     vacant row is inert; the derived outpost name (anchor name + " Outpost", `#NN` fallback); the parked
     ASSETS tab + Maintenance Hangar. **Still deferred:** the manual load/unload popup (the shared manifest
     editor, cargo engine slice B) and the OPERATIONS dock display.
+  - **slice 3-client, playtest fixes.** 🟢 *BUILT — CLIENT ONLY (`client/game.html`, no engine/snapshot/`sim`
+    change; the parked lifecycle, `dockStatus`, and the space figures are all already published — design.md §4/§18).*
+    Two fixes found playing the read-only manager: (1) **a craft parked on an Outpost's hex no longer steals the
+    Outpost's map click** — the map label pass skips a deep-space craft whose hex is in `guildOutpostByKey`, so it
+    draws no name-tag to intercept and `handleClick` falls through to the hex chain (which already resolves the hex
+    as `guildOutpost` → OPEN DETAILS → the manager); a bare-hex idle craft's label is unchanged. (2) The parked
+    craft is **shown in the manager's DOCKED tab** under a new **"Parked · awaiting orders"** group — the player's
+    own vehicle rows whose `dockStatus` is `{ state:'parked', outpostId }` (a filter, not new data), selectable
+    (a `'parked'` selection kind, guarded like slot/queue) and read into the right hero; it holds no berth (§4), so
+    it sits above the ten unchanged docks (no parked craft ⇒ no group). (3) The **popup height is now stable across
+    all four tier tabs** — `#outpost-overlay .est-body` takes a fixed height (reusing the existing 620 figure) and
+    the resource grid scrolls inside a flex-capped `.om-tierbody` (Tier 3's 25 modules scroll; RAW/PROCESSED don't),
+    so the donut, Maintenance Hangar, and tier tabs stay fixed. Sim suite **1,415 green** (untouched — client-only);
+    rendered end-to-end in headless Chromium (parked craft opens the manager not Dispatch and lists under Parked;
+    a far bare-hex craft still opens Dispatch from its label; the popup height is identical tabbing 1→2→3→4).
+    **View + select only** — giving a parked craft an order / dispatch-from-the-manager is slice B (the shared
+    manifest editor), still out of scope.
   - **slice 4 — the Tier-4 build/deploy path.** The buildable/deployable kit, placement range, anchor-ownership.
 - **2.2 — cargo: the load / haul / unload engine (design.md §4 "The dock model").** The craft's hold
   and the manifest that fills/empties it — the substrate that turns dispatch (above) into a real

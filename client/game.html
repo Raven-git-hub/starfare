@@ -1943,8 +1943,11 @@ select.field{appearance:none; cursor:pointer;}
 #outpost-overlay .est-head .om-sub{font-family:var(--mono); font-size:11.5px; color:var(--ink2); letter-spacing:.02em}
 #outpost-overlay .est-close{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--ink2); border-radius:8px; width:34px; height:34px; font-size:16px; cursor:pointer; flex:none}
 #outpost-overlay .est-close:hover{border-color:var(--red); color:var(--red)}
-/* [ outpost hero 340px | centre 1fr | craft hero 340px ], noticeably taller than the Dispatch popup. */
-#outpost-overlay .est-body{display:grid; grid-template-columns:340px 1fr 340px; min-height:620px}
+/* [ outpost hero 340px | centre 1fr | craft hero 340px ], noticeably taller than the Dispatch popup.
+   A FIXED height (was min-height) so the popup is dimensionally STABLE across all four tier tabs — the
+   centre column's resource grid scrolls internally rather than growing the popup (2.2 playtest fix 3).
+   Reuses the existing 620 figure — no new number. The phone media block below relaxes it to auto. */
+#outpost-overlay .est-body{display:grid; grid-template-columns:340px 1fr 340px; height:620px}
 /* The two hero columns share the est-side portrait pattern (absolute art + scrim + inner). */
 #outpost-overlay .om-hero{position:relative; background:#0d0f14; overflow:hidden; display:flex; flex-direction:column}
 #outpost-overlay .om-hero .art{position:absolute; inset:0; background-size:cover; background-position:center; background-repeat:no-repeat; z-index:0}
@@ -1969,8 +1972,18 @@ select.field{appearance:none; cursor:pointer;}
 #outpost-overlay .om-row .rt .berth{font-family:var(--mono); font-size:9px; letter-spacing:.12em; color:var(--ink3); text-transform:uppercase}
 #outpost-overlay .om-row .rt .cl{font-size:12px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 #outpost-overlay .om-row .rt .sub{font-family:var(--mono); font-size:10px; color:var(--ink2)}
-/* centre column — storage + hangar squares, then the tier tabs + resource grid. Scrolls internally. */
-#outpost-overlay .om-mid{padding:18px 20px 22px; display:flex; flex-direction:column; gap:18px; overflow-y:auto}
+/* the "Parked · awaiting orders" group label above the ten berths (2.2 playtest fix 2). A plain
+   section heading in the list flow — not a row, so it carries no border/fill and is not clickable. */
+#outpost-overlay .om-grouphead{font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--amber); padding:2px 2px 1px; flex:none}
+/* centre column — a flex COLUMN inside the fixed-height body (2.2 playtest fix 3). It no longer scrolls
+   as a whole (donut + Maintenance Hangar + tier tabs stay put); only the resource grid scrolls, via the
+   .om-tiersec / .om-tierbody flex chain below. min-height:0 lets that inner scroll area shrink. */
+#outpost-overlay .om-mid{padding:18px 20px 22px; display:flex; flex-direction:column; gap:18px; overflow:hidden; min-height:0}
+/* the tier section (tabs + grid) takes the leftover height under the squares; its grid scrolls inside. */
+#outpost-overlay .om-tiersec{flex:1 1 auto; min-height:0; display:flex; flex-direction:column}
+/* the resource grid's scroll area — flex-fills the tier section and scrolls when a tier overflows
+   (Tier 3's 25 modules), so the popup height never jumps. RAW/PROCESSED fit and don't scroll. */
+#outpost-overlay .om-tierbody{flex:1 1 auto; min-height:0; overflow-y:auto; margin-top:12px}
 #outpost-overlay .om-squares{display:grid; grid-template-columns:1fr 1fr; gap:14px}
 #outpost-overlay .om-square{border:1px solid var(--line); border-radius:10px; background:var(--panel); padding:16px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; aspect-ratio:1/1}
 #outpost-overlay .om-square .sqhead{font-family:var(--mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--amber); margin-bottom:10px}
@@ -2006,10 +2019,14 @@ select.field{appearance:none; cursor:pointer;}
 #outpost-overlay .om-empty-hero{margin:auto; font-family:var(--mono); font-size:11px; letter-spacing:.08em; color:var(--ink3); text-align:center}
 /* One-column phone layout: the columns stack; the heroes need an explicit height for the absolute art. */
 @media(max-width:960px){
-  #outpost-overlay .est-body{grid-template-columns:1fr; min-height:0}
+  /* stacked one-column: the columns flow and the whole overlay scrolls, so the body height is released
+     back to auto and the centre column / grid grow naturally rather than scrolling internally. */
+  #outpost-overlay .est-body{grid-template-columns:1fr; height:auto}
   #outpost-overlay .om-left, #outpost-overlay .om-right{border:none; border-bottom:1px solid var(--line)}
   #outpost-overlay .om-hero{min-height:360px}
   #outpost-overlay .om-list{max-height:240px}
+  #outpost-overlay .om-mid{overflow:visible}
+  #outpost-overlay .om-tierbody{overflow:visible}
 }
 
 /* ===== #reneg-overlay — the LICENCE RENEGOTIATION popup (#64 Slice 1b, design.md §5; restyled in
@@ -3160,9 +3177,9 @@ select.field{appearance:none; cursor:pointer;}
             <div class="ph">No craft under<br>maintenance · Later</div>
           </div>
         </div>
-        <div>
+        <div class="om-tiersec">
           <div class="om-tiers" id="omTiers"></div>
-          <div id="omTierBody" style="margin-top:12px"></div>
+          <div class="om-tierbody" id="omTierBody"></div>
         </div>
       </div>
       <!-- right hero: the selected berth's craft portrait + read-out -->
@@ -4179,6 +4196,13 @@ select.field{appearance:none; cursor:pointer;}
     if (liveDeepSpaceCraft.length) {
       const hsC = galaxy.galaxyParams.hexSize;
       liveDeepSpaceCraft.forEach((c) => {
+        // 2.2 playtest fix 1 — a craft PARKED on a guild Outpost's hex is the Outpost's business: the
+        // Outpost owns the hex (design.md §4). Suppress this craft's marker + name-tag so it captures no
+        // click; handleClick then falls through to the hex chain, which resolves the hex as guildOutpost
+        // and opens the Outpost Manager. The parked craft is not lost — it shows in the manager's DOCKED
+        // tab under "Parked · awaiting orders". Only outpost-co-located craft are skipped; a bare-hex idle
+        // craft keeps its label (and its Dispatch popup) unchanged.
+        if (guildOutpostByKey.has(`${c.q},${c.r}`)) return;
         const p = hexToPixel(c.q, c.r, hsC);
         const scr = worldToScreen(p.x, p.y);
         if (scr.x < -60 || scr.x > window.innerWidth + 60 || scr.y < -60 || scr.y > window.innerHeight + 60) return;
@@ -10199,6 +10223,20 @@ function paintInventoryHero(d){
     ((s && s.guilds) || []).forEach(function(g){ (g.vehicles||[]).forEach(function(v){ m[v.id]=v; }); });
     return m;
   }
+  // 2.2 playtest fix 2 — the player's OWN craft PARKED at THIS Outpost. A parked craft is present and
+  // idle on the Outpost's hex holding no dock slot and not in the queue (design.md §4 "a craft that
+  // arrives parks … a manifest is what makes a parked craft queue"). The engine publishes this as the
+  // craft's `dockStatus` = { state:'parked', outpostId } (derived in buildSnapshot's parked sweep), so
+  // "which craft are parked here" is a FILTER over the vehicle rows, not new data (§18). Own craft only
+  // (client-wiring §7 — a rival's parked craft are not our concern here).
+  function parkedCraft(){
+    var s = snap(); if(!s) return [];
+    var mine = (window.__player && window.__player().guildId) || null;
+    var g = (s.guilds||[]).filter(function(x){ return x.id===mine; })[0];
+    return ((g && g.vehicles) || []).filter(function(v){
+      return v.dockStatus && v.dockStatus.state==='parked' && v.dockStatus.outpostId===OM.id;
+    });
+  }
   // The anchor system's display name (window.__systemName returns the id when unresolved). The DERIVED
   // outpost name is the anchor name + " Outpost", falling back to the id's #NN suffix — presentation
   // only, the same discipline the render slice + the Dispatch popup use (§18).
@@ -10245,6 +10283,9 @@ function paintInventoryHero(d){
     if(OM.sel){
       if(OM.sel.kind==='slot' && slots.some(function(s){ return s.vehicleId===OM.sel.id; })) return;
       if(OM.sel.kind==='queue' && queue.some(function(q){ return q.vehicleId===OM.sel.id; })) return;
+      // 2.2 playtest fix 2 — a parked selection survives only while that craft is still parked HERE
+      // (mirrors the slot/queue guards): re-dispatching it away drops the selection on the next poll.
+      if(OM.sel.kind==='parked' && parkedCraft().some(function(v){ return v.id===OM.sel.id; })) return;
     }
     if(slots.length){ OM.sel = { kind:'slot', id:slots[0].vehicleId }; return; }
     if(queue.length){ OM.sel = { kind:'queue', id:queue[0].vehicleId }; return; }
@@ -10274,6 +10315,22 @@ function paintInventoryHero(d){
     var byId = vehicleById();
     var html = '';
     if(OM.tab==='DOCKED'){
+      // 2.2 playtest fix 2 — the "Parked · awaiting orders" group, ABOVE the ten berths. A parked craft
+      // holds NO slot (parking holds no slot, design.md §4), so it is not one of the numbered docks — it
+      // is its own group. View + select only: a parked craft is given an order in the shared manifest
+      // editor (slice B), not here. No parked craft ⇒ no group, and DOCKED reads as the ten berths exactly
+      // as before.
+      var parked = parkedCraft();
+      if(parked.length){
+        html += '<div class="om-grouphead">Parked · awaiting orders</div>';
+        parked.forEach(function(v){
+          var suffix = String(v.id).split('_').slice(-1)[0];
+          var on = OM.sel && OM.sel.kind==='parked' && OM.sel.id===v.id;
+          // same row anatomy as a slot/queue row (a small tag, the class, a subline): the craft reads
+          // as class · #NN, with no progress fill (nothing is loading) and never a vacant row.
+          html += rowHtml('parked', v.id, on, 'Parked', pretty(v.class), '#'+suffix, 0, false);
+        });
+      }
       var slots = row.slots||[];
       // Active slots first, numbered DOCK 01.. — the berth ordinals are CLIENT display numbering: the
       // engine's slots[] is an unordered list of active transfers with no berth identity (§18), so a
@@ -10396,7 +10453,11 @@ function paintInventoryHero(d){
     }
     art.style.backgroundImage = "url('assets/units/"+String(v.class).toLowerCase()+".jpg')";
     var suffix = String(v.id).split('_').slice(-1)[0];
-    var lines = crow('Status', OM.sel.kind==='slot' ? 'Loading' : (OM.sel.kind==='queue' ? 'Queued' : pretty(v.status||'')));
+    var lines = crow('Status',
+      OM.sel.kind==='slot'   ? 'Loading' :
+      OM.sel.kind==='queue'  ? 'Queued'  :
+      OM.sel.kind==='parked' ? 'Parked'  :  // 2.2 playtest fix 2 — mirrors how slot/queue label the relation
+      pretty(v.status||''));
     if(OM.sel.kind==='slot'){
       var sl = (row.slots||[]).filter(function(s){ return s.vehicleId===v.id; })[0];
       if(sl) lines += crow('Departs in', sl.eta+' min');
