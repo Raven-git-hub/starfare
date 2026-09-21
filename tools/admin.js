@@ -55,8 +55,8 @@ const FLAG_SPEC = Object.freeze({
   condition: 'number', // spawn-vehicle: starting maintenanceCondition fraction (default 1)
   id: 'string',       // remove-vehicle / dispatch-vehicle / transfer-cargo: which vehicle id
   waypoints: 'string', // dispatch-vehicle: "w;w;…", each sys:<id> | out:<id> | q,r
-  load: 'string',     // transfer-cargo: "good:qty,good:qty" to load pool -> hold
-  unload: 'string',   // transfer-cargo: "good:qty,good:qty" to unload hold -> pool
+  load: 'string',     // transfer-cargo: "good:qty|max,…" to load pool -> hold
+  unload: 'string',   // transfer-cargo: "good:qty|max,…" to unload hold -> pool
   help: 'bool',
 });
 
@@ -381,10 +381,11 @@ function dispatchVehicleBody(flags) {
 }
 
 // parseCargoFlag(raw, dir) -> the manifest lines for one direction, or THROWS. The operator writes
-// `--load good:qty,good:qty`; each comma-separated token is `good:qty` (qty a positive integer). A
-// malformed token fails the command rather than posting a half-formed manifest (the parseHexFlag /
-// parseWaypointsFlag discipline). `good` is passed through verbatim — WHICH goods are real stockpile
-// keys is the engine's validate gate, not this file's (it authors no vocabulary). PURE.
+// `--load good:qty,good:qty`; each comma-separated token is `good:qty` (qty a positive integer) OR
+// `good:max` — "as much as possible" (design.md §4), which builds a { dir, good, max: true } line with
+// no qty. A malformed token fails the command rather than posting a half-formed manifest (the
+// parseHexFlag / parseWaypointsFlag discipline). `good` is passed through verbatim — WHICH goods are
+// real stockpile keys is the engine's validate gate, not this file's (it authors no vocabulary). PURE.
 function parseCargoFlag(raw, dir) {
   if (typeof raw !== 'string') throw new Error(`--${dir} must be "good:qty,good:qty", got ${JSON.stringify(raw)}`);
   const tokens = raw.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
@@ -393,8 +394,11 @@ function parseCargoFlag(raw, dir) {
     const colon = tok.lastIndexOf(':'); // lastIndexOf so a good id with a ':' (none today) wouldn't split wrong
     if (colon <= 0 || colon === tok.length - 1) throw new Error(`--${dir} token must be "good:qty", got ${JSON.stringify(tok)}`);
     const good = tok.slice(0, colon);
-    const qty = Number(tok.slice(colon + 1));
-    if (!Number.isInteger(qty) || qty <= 0) throw new Error(`--${dir} qty must be a positive integer, got ${JSON.stringify(tok)}`);
+    const amount = tok.slice(colon + 1);
+    // `good:max` -> a MAX line (no qty). Anything else must be a positive integer qty.
+    if (amount === 'max') return { dir, good, max: true };
+    const qty = Number(amount);
+    if (!Number.isInteger(qty) || qty <= 0) throw new Error(`--${dir} qty must be a positive integer or "max", got ${JSON.stringify(tok)}`);
     return { dir, good, qty };
   });
 }
@@ -901,9 +905,10 @@ Vehicle spawn/remove primitive (design.md §15.4 — operator/Storyteller, exit 
   dispatch-vehicle --guild ID --id VEHICLE_ID --waypoints "w;w;…"
                   send an idle craft along a multi-leg route; each w is sys:<id> | out:<id> | q,r
                   (whole-route fuel burned up front from the hoard; refused whole if short)
-  transfer-cargo  --guild ID --id VEHICLE_ID [--unload good:qty,…] [--load good:qty,…]
+  transfer-cargo  --guild ID --id VEHICLE_ID [--unload good:qty|max,…] [--load good:qty|max,…]
                   load/unload an idle craft against the SYSTEM it sits at, resolved instantly
-                  (unloads-then-loads, partial-safe; at an outpost / in deep space → refused)
+                  (a token is good:qty for a fixed amount, or good:max for "as much as possible", §4;
+                  unloads-then-loads, partial-safe; at an outpost / in deep space → refused)
 
 Guild-Outpost spawn/remove primitive (design.md §4 — operator, exit 1 on a refused action)
   spawn-outpost   --guild ID --system ANCHOR_ID --hex q,r
@@ -938,8 +943,8 @@ Flags
   --id ID        remove-vehicle / dispatch-vehicle: which vehicle id;
                  remove-outpost: which outpost id
   --waypoints W  dispatch-vehicle: "w;w;…" route, each w = sys:<id> | out:<id> | q,r
-  --load G:N,…   transfer-cargo: goods to load pool -> hold ("good:qty" pairs, comma-sep)
-  --unload G:N,… transfer-cargo: goods to unload hold -> pool ("good:qty" pairs, comma-sep)
+  --load G:N,…   transfer-cargo: goods to load pool -> hold ("good:qty" or "good:max", comma-sep)
+  --unload G:N,… transfer-cargo: goods to unload hold -> pool ("good:qty" or "good:max", comma-sep)
   --help, -h     this text
 `;
 

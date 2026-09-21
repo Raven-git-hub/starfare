@@ -215,6 +215,42 @@ test('a full Outpost partials the unload — only the room remaining lands, the 
   assert.deepEqual(checkInvariants(done, done.tick), [], 'still within capacity — the invariant is green');
 });
 
+// --- 4b. the manifest MAX mode at an Outpost (design.md §4 — a line may be { dir, good, max: true }) --
+
+test('a MAX line is queued FAITHFULLY (the deep-copy carries { dir, good, max: true }, no qty)', () => {
+  const id = 'vehicle_g1_lightTransport_01';
+  const s0 = dockState([craft(id, { [T1]: 100 })]);
+  const s = accept(s0, transfer(id, [{ dir: 'unload', good: T1, max: true }]));
+  assert.deepEqual(outpostOf(s).queue[0].manifest, [{ dir: 'unload', good: T1, max: true }],
+    'the queued copy is the max shape — { dir, good, max: true }, never a qty: undefined');
+  assert.equal('qty' in outpostOf(s).queue[0].manifest[0], false, 'no qty key on the queued max line');
+  // The snapshot surfaces the same max shape to a later client (the read side of §4).
+  const row = buildSnapshot(s).outposts.find((o) => o.id === outpostOf(s).id);
+  assert.deepEqual(row.queue[0].manifest, [{ dir: 'unload', good: T1, max: true }], 'the snapshot mirrors the max line');
+  assert.deepEqual(checkInvariants(s, s.tick), [], 'a queued max manifest passes the dock-integrity invariant');
+});
+
+test('a MAX unload at a near-full Outpost stops at the hard cap — a partial at completion', () => {
+  const id = 'vehicle_g1_lightTransport_01';
+  // Outpost 3 space short of its hard cap; a craft holding 10 titanium (vol 1) can land only 3.
+  const s0 = dockState([craft(id, { [T1]: 10 })], { outpostStock: { [T1]: OUTPOST_CAPACITY - 3 } });
+  const s1 = accept(s0, transfer(id, [{ dir: 'unload', good: T1, max: true }]));
+  const done = ticks(s1, 6); // light turnaround → resolves at tick 6
+  assert.deepEqual(craftOf(done, id).cargo, { [T1]: 7 }, 'only the 3 that fit landed; 7 stay aboard (max clamps at the cap)');
+  assert.equal(outpostOf(done).stockpile[T1], OUTPOST_CAPACITY, 'the Outpost is exactly at its hard cap');
+  assert.deepEqual(checkInvariants(done, done.tick), []);
+});
+
+test('a MAX load at an Outpost fills the hold from the stockpile (drains what the stockpile holds)', () => {
+  const id = 'vehicle_g1_lightTransport_01';
+  const s0 = dockState([craft(id)], { outpostStock: { [T1]: 500 } }); // empty craft, 500 in the Outpost
+  const s1 = accept(s0, transfer(id, [{ dir: 'load', good: T1, max: true }]));
+  const done = ticks(s1, 6);
+  assert.deepEqual(craftOf(done, id).cargo, { [T1]: 500 }, 'the max load took the whole 500 — under the hold cap');
+  assert.equal(outpostOf(done).stockpile, undefined, 'the Outpost stockpile drained to empty');
+  assert.deepEqual(checkInvariants(done, done.tick), []);
+});
+
 // --- 5. supply conserved across a completion, and consistency counts Outpost stockpiles ---------
 
 test('a completion CONSERVES galactic supply (hold → stockpile, both counted) and stays consistency-green', () => {

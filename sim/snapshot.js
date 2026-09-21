@@ -40,7 +40,7 @@ const { deployedAssetIds } = require('./assets.js');
 const { BUILDABLE_KINDS, BUILD_TICKS, priceAssetForPurchase } = require('./asset-recipes.js');
 const { BUILDABLE_VEHICLE_KINDS, vehicleSpec, resolveVehicleLocation, vehicleCoords } = require('./vehicles.js');
 const { outpostDockTurnaround } = require('./outposts.js');
-const { usedSpace } = require('./manifest.js');
+const { usedSpace, copyManifestLine } = require('./manifest.js');
 const { getSite, getLandmark, getStarterSystems, getTerranHomeworld } = require('./seed.js');
 const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
@@ -869,7 +869,9 @@ function snapshotOutpostRow(o, thisTick, vehicleClassById) {
     queue: (o.queue || []).map((e) => ({
       vehicleId: e.vehicleId,
       readyTick: e.readyTick,
-      manifest: e.manifest.map((l) => ({ dir: l.dir, good: l.good, qty: l.qty })),
+      // FRESH lines in canonical shape (copyManifestLine): a MAX line surfaces as { dir, good, max: true },
+      // an amount line as { dir, good, qty } — never a `qty: undefined`, so the client can tell them apart.
+      manifest: e.manifest.map(copyManifestLine),
     })),
     //   totalTicks — the slotted craft's FULL class turnaround (2.2 read-only Outpost Manager —
     //           design.md §4 / §18), `outpostDockTurnaround(class)` looked up via the slot's
@@ -885,7 +887,7 @@ function snapshotOutpostRow(o, thisTick, vehicleClassById) {
         completionTick: s.completionTick,
         eta: s.completionTick - thisTick,
         ...(totalTicks == null ? {} : { totalTicks }),
-        manifest: s.manifest.map((l) => ({ dir: l.dir, good: l.good, qty: l.qty })),
+        manifest: s.manifest.map(copyManifestLine), // canonical shape (max → { dir, good, max: true })
       };
     }),
   };

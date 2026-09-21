@@ -20,7 +20,7 @@ const {
   isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation,
 } = require('./vehicles.js');
 const { outpostId, nextOutpostSerial, outpostDockTurnaround } = require('./outposts.js');
-const { resolveManifest, usedSpace } = require('./manifest.js');
+const { resolveManifest, usedSpace, manifestAmountError, copyManifestLine } = require('./manifest.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { checkQuote, quotedPrice } = require('./price-ring.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
@@ -2246,7 +2246,7 @@ function validateAction(state, action) {
     }
     for (const line of action.manifest) {
       if (!line || typeof line !== 'object' || Array.isArray(line)) {
-        return { valid: false, reason: `each manifest line must be a { dir, good, qty } object, got ${JSON.stringify(line)}` };
+        return { valid: false, reason: `each manifest line must be a { dir, good, qty | max } object, got ${JSON.stringify(line)}` };
       }
       if (line.dir !== 'load' && line.dir !== 'unload') {
         return { valid: false, reason: `manifest line dir must be "load" or "unload", got ${JSON.stringify(line.dir)}` };
@@ -2256,9 +2256,11 @@ function validateAction(state, action) {
       if (typeof line.good !== 'string' || !isStockpileGood(line.good)) {
         return { valid: false, reason: `${JSON.stringify(line.good)} is not a known stockpile good` };
       }
-      if (typeof line.qty !== 'number' || !Number.isInteger(line.qty) || line.qty <= 0) {
-        return { valid: false, reason: `manifest line qty must be a positive integer (§15.2), got ${JSON.stringify(line.qty)}` };
-      }
+      // The amount half: a fixed positive-integer `qty` OR `max: true` (no qty) — never both, never
+      // neither (design.md §4). The ONE spelling of that shape lives in sim/manifest.js so the gate,
+      // the dock-integrity invariant, and the resolver's cap-drop can never disagree.
+      const amountError = manifestAmountError(line);
+      if (amountError) return { valid: false, reason: amountError };
     }
     return { valid: true };
   }
@@ -3370,10 +3372,11 @@ function applyAction(state, action) {
       const outpost = ownedOutpostAtCraft(next, action.guildId, craft); // validate proved one exists
       if (!outpost.queue) outpost.queue = [];
       // Deep-copy the manifest so the enqueued record can never alias the caller's array (the
-      // createVehicle/createOutpost copy discipline). Lines are the validated { dir, good, qty } shape.
+      // createVehicle/createOutpost copy discipline). `copyManifestLine` carries each validated line in
+      // its canonical shape — an AMOUNT line as { dir, good, qty }, a MAX line as { dir, good, max: true }.
       outpost.queue.push({
         vehicleId: craft.id,
-        manifest: action.manifest.map((l) => ({ dir: l.dir, good: l.good, qty: l.qty })),
+        manifest: action.manifest.map(copyManifestLine),
         readyTick: next.tick,
       });
       // §15.2 "every mutation records its tick": the craft records the tick it was given a manifest

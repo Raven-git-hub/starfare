@@ -264,6 +264,51 @@ test('invariant: a corrupt hold (unknown good / non-positive qty / over capacity
   assert.ok(rules(badGood).includes('vehicle-cargo-known-good (resources.js)'), 'an unknown good is flagged');
 });
 
+// --- 11. the manifest MAX mode (design.md §4 — a line may be { dir, good, max: true }) ----------
+
+test('max load: at a system, "load as much as possible" fills the hold when the pool is plentiful', () => {
+  let s = stateWith({ pool: { [T1]: 100000 } }); // far more titanium than the hold can carry
+  s = accept(s, transfer([{ dir: 'load', good: T1, max: true }]));
+  assert.deepEqual(craftOf(s).cargo, { [T1]: LIGHT.capacity }, 'the hold filled to capacity (vol-1 good)');
+  assert.equal(pool(s, T1), 100000 - LIGHT.capacity, 'the pool gave up exactly what fit');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('max load: takes the WHOLE pool stock when the pool, not the hold, is the limit', () => {
+  let s = stateWith({ pool: { [T1]: 300 } }); // fewer than the hold could hold
+  s = accept(s, transfer([{ dir: 'load', good: T1, max: true }]));
+  assert.deepEqual(craftOf(s).cargo, { [T1]: 300 }, 'the max load drained the pool');
+  assert.equal(pool(s, T1), 0, 'the pool emptied');
+});
+
+test('max unload: at a system (soft-capped pool) empties the good from the hold', () => {
+  let s = stateWith({ pool: { [T1]: 1000 } });
+  s = accept(s, transfer([{ dir: 'load', good: T1, qty: 400 }]));   // hold 400
+  s = accept(s, transfer([{ dir: 'unload', good: T1, max: true }])); // empty the whole hold
+  assert.equal(craftOf(s).cargo, undefined, 'the hold emptied (omit-when-empty)');
+  assert.equal(pool(s, T1), 1000, 'every unit returned to the pool — a system pool is unbounded');
+});
+
+test('max mode CONSERVES supply — a max load moves goods pool->hold with the total unchanged', () => {
+  let s = stateWith({ pool: { [T1]: 100000 } });
+  const before = computeGalacticSupply(s).resources[T1];
+  s = accept(s, transfer([{ dir: 'load', good: T1, max: true }]));
+  assert.equal(computeGalacticSupply(s).resources[T1], before, 'supply unchanged — the hold is counted');
+  assert.equal(pool(s, T1) + craftOf(s).cargo[T1], before, 'pool + hold still totals the original');
+  assert.deepEqual(checkInvariants(s, s.tick), [], 'consistency green (the cache matches the hold-inclusive sum)');
+});
+
+test('validate: a max line is accepted; both / neither / a non-boolean max are refused', () => {
+  const s = stateWith({ pool: { [T1]: 100 } });
+  // Accepted: { dir, good, max: true } with no qty.
+  assert.equal(validateAction(s, transfer([{ dir: 'load', good: T1, max: true }])).valid, true, 'a well-formed max line is accepted');
+  // Refused: qty AND max together, neither qty nor max, and a max that is not the boolean true.
+  assert.match(refuse(s, transfer([{ dir: 'load', good: T1, qty: 5, max: true }])), /qty AND max|both/);
+  assert.match(refuse(s, transfer([{ dir: 'load', good: T1 }])), /needs/);
+  assert.match(refuse(s, transfer([{ dir: 'load', good: T1, max: false }])), /boolean true/);
+  assert.match(refuse(s, transfer([{ dir: 'load', good: T1, max: 1 }])), /boolean true/);
+});
+
 // A tiny deep-copy so a mutation in one assertion can't leak into the shared `base`.
 function structuredCloneState(s) {
   return JSON.parse(JSON.stringify(s));

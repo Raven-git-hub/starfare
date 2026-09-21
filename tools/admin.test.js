@@ -468,6 +468,31 @@ test('parseCargoFlag: "good:qty,good:qty" -> dir-tagged lines, order preserved; 
   assert.throws(() => A.parseCargoFlag('titanium_alloy:-3', 'load'), /positive integer/);
 });
 
+test('parseCargoFlag: "good:max" -> a MAX line (no qty); amount lines and max mix in one flag', () => {
+  // A bare `good:max` token builds a { dir, good, max: true } line — no `qty` key at all (§4).
+  assert.deepEqual(A.parseCargoFlag('ammonia:max', 'load'), [{ dir: 'load', good: 'ammonia', max: true }]);
+  // Amount and max tokens mix in one flag, order preserved — each carries its own shape.
+  assert.deepEqual(
+    A.parseCargoFlag('titanium:400,ammonia:max', 'load'),
+    [{ dir: 'load', good: 'titanium', qty: 400 }, { dir: 'load', good: 'ammonia', max: true }],
+  );
+  // `max` works the same for an unload, and is whitespace-tolerant like the qty tokens.
+  assert.deepEqual(A.parseCargoFlag(' coolant:max ', 'unload'), [{ dir: 'unload', good: 'coolant', max: true }]);
+  // Only the exact word `max` is the sentinel — anything else is still parsed as a qty and rejected.
+  assert.throws(() => A.parseCargoFlag('titanium:maximum', 'load'), /positive integer or "max"/);
+});
+
+test('transferCargoBody: a good:max token rides through to a { dir, good, max: true } manifest line', () => {
+  assert.deepEqual(
+    A.transferCargoBody({ guild: 'g1', id: 'v', load: 'titanium:400,ammonia:max' }),
+    {
+      guildId: 'g1',
+      vehicleId: 'v',
+      manifest: [{ dir: 'load', good: 'titanium', qty: 400 }, { dir: 'load', good: 'ammonia', max: true }],
+    },
+  );
+});
+
 test('transferCargoBody: builds the exact body — UNLOADS FIRST then LOADS; a missing flag throws', () => {
   // Both directions given: the manifest resolves unloads-before-loads (§4), so the body lists it that way.
   assert.deepEqual(

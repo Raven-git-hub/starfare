@@ -76,6 +76,7 @@ const {
   isVehicleClass, VEHICLE_STATUSES, resolveVehicleLocation, vehicleNumberOf,
 } = require('./vehicles.js');
 const { volumeOf } = require('./fuel.js');
+const { manifestAmountError } = require('./manifest.js');
 const { isDockyard } = require('./baseline.js');
 const { BUILDABLE_KINDS, BUILD_TICKS } = require('./asset-recipes.js');
 const { DEFAULT_WINDOW_N, winStartFor, windowFraction } = require('./windows.js');
@@ -1597,15 +1598,17 @@ function checkOutpostIntegrity(state) {
   const dockedAt = new Map();           // vehicleId -> "outpost:kind" of the FIRST dock seen (§4 — a craft docks at one place only)
 
   // A dock entry's manifest must be the SAME well-formed shape the transfer gate accepts (design.md §4;
-  // sim/actions.js `transferCargo` validate): a non-empty list of { dir: 'load'|'unload', good, qty }
-  // lines, each good a known stockpile good and each qty a positive integer (§15.2). A stranded bad
-  // manifest (a save-reload, a future slice) would resolve wrongly at completion, so it fails here.
+  // sim/actions.js `transferCargo` validate): a non-empty list of { dir: 'load'|'unload', good, … }
+  // lines, each good a known stockpile good, each amount either a positive-integer `qty` OR `max: true`
+  // (no qty) — never both, never neither (the shared `manifestAmountError`, sim/manifest.js). A stranded
+  // bad manifest (a save-reload, a future slice) would resolve wrongly at completion, so it fails here.
   const manifestViolation = (manifest) => {
     if (!Array.isArray(manifest) || manifest.length === 0) return { manifest };
     for (const l of manifest) {
       if (!l || typeof l !== 'object' || (l.dir !== 'load' && l.dir !== 'unload')) return { line: l };
       if (typeof l.good !== 'string' || !isStockpileGood(l.good)) return { good: l && l.good };
-      if (typeof l.qty !== 'number' || !Number.isInteger(l.qty) || l.qty <= 0) return { qty: l && l.qty };
+      const amountError = manifestAmountError(l);
+      if (amountError) return { amount: amountError, line: l };
     }
     return null;
   };

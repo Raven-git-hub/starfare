@@ -729,6 +729,25 @@ boundary so the later hex-map swap doesn't touch it.
     goldens byte-identical). Sim suite 1,398 → **1,412 green** (`sim/tests/outpost-dock.test.js`, +14).
     **Deferred:** the manual load/unload popup + the OPERATIONS dock display (client), route-embedded
     auto-manifests, selling from an Outpost. No client touched.
+  - **slice 2.2 — the manifest MAX mode (engine + operator CLI).** 🟢 *BUILT (21-09-26).* A tiny
+    extension to the manifest model for the DOCK popup (client slice B) to drive: a line may now be
+    `{ dir, good, max: true }` (no `qty`) for **max** — "as much as possible" — alongside the existing
+    `{ dir, good, qty }` fixed amount (§4). The **ONE shared resolver** (`sim/manifest.js`) drops the
+    `qty` term for a max line — the clamp becomes `min(source holds, destination's remaining space)`,
+    expressed as an `Infinity` cap so it falls out of the same `min` against the LIVE running totals
+    (no special branch): a max load fills the hold or drains the store's stock; a max unload empties
+    the hold or stops at an Outpost's hard cap (partial). A max line consumes whatever room/stock its
+    phase has left, in listed order — deterministic (§15.5 inv 9). **`transferCargo` validate** accepts
+    the two shapes and rejects both-`qty`-and-`max` / neither / a non-`true` `max` (the shared
+    `manifestAmountError`, reused by `checkOutpostIntegrity` so gate and invariant can't drift). The
+    outpost-queue copy + the snapshot `queue`/`slots` carry a max line as `{ dir, good, max: true }`
+    (never `qty: undefined`) via the shared `copyManifestLine`, so the later client tells the two
+    apart. The `transfer-cargo` CLI takes a `good:max` token (`--load titanium:400,ammonia:max`).
+    **No new number** (max removes a cap, adds none). **A NO-OP on a galaxy whose every manifest is an
+    amount line** (the max branch is never taken; goldens byte-identical). Sim suite → **1,433 green**
+    (+18: `sim/tests/manifest.test.js` new, plus max tripwires in `cargo-transfer`/`outpost-dock`);
+    `tools/admin.test.js` 37 → **39**. **Deferred:** the DOCK popup + capacity bar that drive max
+    (client slice B). No client touched (`client/game.html` untouched).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
