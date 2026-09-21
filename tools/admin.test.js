@@ -389,8 +389,8 @@ test('spawnVehicleBody / removeVehicleBody: a missing required flag throws rathe
   assert.throws(() => A.removeVehicleBody({ id: 'v' }), /--guild is required/);
 });
 
-test('VEHICLE_COMMANDS lists the vehicle subcommands (spawn / remove / dispatch)', () => {
-  assert.deepEqual([...A.VEHICLE_COMMANDS].sort(), ['dispatch-vehicle', 'remove-vehicle', 'spawn-vehicle'].sort());
+test('VEHICLE_COMMANDS lists the vehicle subcommands (spawn / remove / dispatch / transfer)', () => {
+  assert.deepEqual([...A.VEHICLE_COMMANDS].sort(), ['dispatch-vehicle', 'remove-vehicle', 'spawn-vehicle', 'transfer-cargo'].sort());
 });
 
 test('parseWaypointsFlag / parseWaypointToken: sys/out/hex tokens, semicolon-separated, non-empty', () => {
@@ -449,4 +449,46 @@ test('dispatchVehicleBody: builds the exact request body; a missing required fla
   assert.throws(() => A.dispatchVehicleBody({ id: 'v', waypoints: 'sys:s' }), /--guild is required/);
   assert.throws(() => A.dispatchVehicleBody({ guild: 'g1', waypoints: 'sys:s' }), /--id is required/);
   assert.throws(() => A.dispatchVehicleBody({ guild: 'g1', id: 'v' }), /--waypoints is required/);
+});
+
+// --- transfer-cargo (design.md §4 "The dock model", the system half; roadmap 2.2 cargo slice 1) ---
+
+test('parseCargoFlag: "good:qty,good:qty" -> dir-tagged lines, order preserved; bad tokens throw', () => {
+  assert.deepEqual(
+    A.parseCargoFlag('titanium_alloy:400,ore:1200', 'load'),
+    [{ dir: 'load', good: 'titanium_alloy', qty: 400 }, { dir: 'load', good: 'ore', qty: 1200 }],
+  );
+  // Blanks and trailing separators are ignored; the good id passes through verbatim (the engine
+  // decides which goods are real, not the CLI).
+  assert.deepEqual(A.parseCargoFlag(' coolant:50 , ', 'unload'), [{ dir: 'unload', good: 'coolant', qty: 50 }]);
+  assert.throws(() => A.parseCargoFlag('', 'load'), /at least one "good:qty" pair/);
+  assert.throws(() => A.parseCargoFlag('titanium_alloy', 'load'), /must be "good:qty"/); // no colon
+  assert.throws(() => A.parseCargoFlag('titanium_alloy:0', 'load'), /positive integer/); // qty must be > 0
+  assert.throws(() => A.parseCargoFlag('titanium_alloy:2.5', 'load'), /positive integer/);
+  assert.throws(() => A.parseCargoFlag('titanium_alloy:-3', 'load'), /positive integer/);
+});
+
+test('transferCargoBody: builds the exact body — UNLOADS FIRST then LOADS; a missing flag throws', () => {
+  // Both directions given: the manifest resolves unloads-before-loads (§4), so the body lists it that way.
+  assert.deepEqual(
+    A.transferCargoBody({ guild: 'g1', id: 'vehicle_g1_heavyTransport_01', unload: 'coolant:50', load: 'titanium_alloy:400,ore:1200' }),
+    {
+      guildId: 'g1',
+      vehicleId: 'vehicle_g1_heavyTransport_01',
+      manifest: [
+        { dir: 'unload', good: 'coolant', qty: 50 },
+        { dir: 'load', good: 'titanium_alloy', qty: 400 },
+        { dir: 'load', good: 'ore', qty: 1200 },
+      ],
+    },
+  );
+  // Only one direction is enough.
+  assert.deepEqual(
+    A.transferCargoBody({ guild: 'g1', id: 'v', load: 'silica:10' }),
+    { guildId: 'g1', vehicleId: 'v', manifest: [{ dir: 'load', good: 'silica', qty: 10 }] },
+  );
+  // Neither --load nor --unload is a refused no-op (nothing to move).
+  assert.throws(() => A.transferCargoBody({ guild: 'g1', id: 'v' }), /at least one of --load .* or --unload/);
+  assert.throws(() => A.transferCargoBody({ id: 'v', load: 'silica:1' }), /--guild is required/);
+  assert.throws(() => A.transferCargoBody({ guild: 'g1', load: 'silica:1' }), /--id is required/);
 });

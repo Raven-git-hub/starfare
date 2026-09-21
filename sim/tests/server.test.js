@@ -1382,6 +1382,41 @@ test('POST /admin/vehicle/remove refuses an unknown craft id (200, accepted:fals
   assert.match(rm.body.reason, /owns no vehicle/);
 });
 
+test('POST /admin/vehicle/transfer loads a craft at its system instantly; refuses in deep space; 400s a malformed body', async () => {
+  await reset();
+  await found();
+  await mine();
+  await req('POST', '/tick'); // the mine mints 5 titanium into the home-system pool
+  await req('POST', '/admin/vehicle/spawn', {
+    guildId: 'player-guild', class: 'lightTransport', location: { landmarkKind: 'system', landmarkId: HOME_SYSTEM },
+  });
+  const VID = 'vehicle_player-guild_lightTransport_01';
+
+  const load = await req('POST', '/admin/vehicle/transfer', {
+    guildId: 'player-guild', vehicleId: VID, manifest: [{ dir: 'load', good: 'titanium', qty: 3 }],
+  });
+  assert.equal(load.status, 200);
+  assert.equal(load.body.accepted, true);
+  assert.equal(load.body.snapshot.tick, 1, 'a transfer must not tick');
+  const g = load.body.snapshot.guilds[0];
+  assert.deepEqual(g.vehicles[0].cargo, { titanium: 3 }, 'the hold carries the loaded goods');
+  assert.equal(g.stockpilesBySystem[HOME_SYSTEM].titanium, 2, 'the pool gave up exactly 3');
+
+  // A craft in deep space (a bare hex) has no store to move against → refused (200, accepted:false).
+  await req('POST', '/admin/vehicle/spawn', { guildId: 'player-guild', class: 'lightTransport', location: { q: 0, r: 0 } });
+  const refused = await req('POST', '/admin/vehicle/transfer', {
+    guildId: 'player-guild', vehicleId: 'vehicle_player-guild_lightTransport_02', manifest: [{ dir: 'load', good: 'titanium', qty: 1 }],
+  });
+  assert.equal(refused.status, 200);
+  assert.equal(refused.body.accepted, false);
+  assert.match(refused.body.reason, /deep space/);
+
+  // A structurally malformed request (no manifest) is a 400 — the constructor refuses to build it.
+  const bad = await req('POST', '/admin/vehicle/transfer', { guildId: 'player-guild', vehicleId: VID });
+  assert.equal(bad.status, 400);
+  assert.match(bad.body.error, /malformed transfer-cargo/);
+});
+
 // --- the guild-Outpost spawn/remove primitive (design.md §4 / §15.4, roadmap 2.2 slice 1) ------
 
 // The first in-bounds hex that holds no seed landmark — DERIVED from the seed, so a regen carries

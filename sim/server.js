@@ -87,7 +87,7 @@ const { createZeroState } = require('./scenarios/zero-state.js');
 const { advance } = require('./run.js');
 const {
   validateAction, applyAction, createSpawnVehicleAction, createRemoveVehicleAction,
-  createDispatchVehicleAction, quoteDispatch,
+  createDispatchVehicleAction, createTransferCargoAction, quoteDispatch,
   createSpawnOutpostAction, createRemoveOutpostAction,
 } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
@@ -962,6 +962,42 @@ async function handleRequest(req, res) {
       sendJson(res, 200, applyOneAction(action));
     } catch (err) {
       sendJson(res, 500, { error: 'error applying dispatchVehicle (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // POST /admin/vehicle/transfer { guildId, vehicleId, manifest } — load/unload an idle craft against
+  // the system it sits at, resolved instantly (design.md §4 "The dock model", the system half; roadmap
+  // 2.2 cargo engine slice 1). Gated and routed exactly like /spawn|/remove|/dispatch: the SAME
+  // validate → journal → apply path (applyOneAction), so a transfer survives restart and replays.
+  if (method === 'POST' && path === '/admin/vehicle/transfer') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","vehicleId":"vehicle_g1_lightTransport_01","manifest":[{"dir":"load","good":"titanium_alloy","qty":40}]}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId, vehicleId, and a non-empty manifest array' });
+      return;
+    }
+    let action;
+    try {
+      // The constructor enforces the required fields; legality — guild/craft exist, craft idle at a
+      // system, every manifest line well-formed — is validateAction's job, run inside applyOneAction.
+      action = createTransferCargoAction({
+        guildId: body.guildId, vehicleId: body.vehicleId, manifest: body.manifest,
+      });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed transfer-cargo request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying transferCargo (invariant violation or engine throw)', detail: String((err && err.message) || err) });
     }
     return;
   }

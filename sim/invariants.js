@@ -75,6 +75,7 @@ const { ASSET_CONDITION_NEW, ASSET_CONDITION_MIN, isAssetKind, assetKindForVentu
 const {
   isVehicleClass, VEHICLE_STATUSES, resolveVehicleLocation, vehicleNumberOf,
 } = require('./vehicles.js');
+const { volumeOf } = require('./fuel.js');
 const { isDockyard } = require('./baseline.js');
 const { BUILDABLE_KINDS, BUILD_TICKS } = require('./asset-recipes.js');
 const { DEFAULT_WINDOW_N, winStartFor, windowFraction } = require('./windows.js');
@@ -1333,6 +1334,30 @@ function checkVehicleIntegrity(state) {
       }
       if (!VEHICLE_STATUSES.includes(v.status)) {
         out.push({ rule: 'vehicle-status-legal', where: `guild:${g.id}.vehicle:${v.id}.status`, detail: { status: v.status, legal: VEHICLE_STATUSES } });
+      }
+      // The HOLD (2.2 cargo, engine slice 1 — design.md §4 "The dock model", §15.4 the `cargo` field).
+      // ABSENT is legal (the omit-when-empty discipline — a cargo-less craft is the no-op path); a
+      // PRESENT hold must be honest: every key a known stockpile good, every qty a positive integer
+      // (§15.2 integer goods), and the used space `Σ qty×volumeOf` within `capacity`. Guards a corrupt
+      // hold from a save-reload or a future slice, exactly as the fields above are guarded; the
+      // transferCargo resolution maintains all three by construction, this ASSERTS them. `volumeOf`
+      // never throws — a non-stockpile key is caught first, and every stockpile good is T1/T2/T3.
+      if (v.cargo !== undefined) {
+        let used = 0;
+        for (const [good, qty] of Object.entries(v.cargo)) {
+          if (!isStockpileGood(good)) {
+            out.push({ rule: 'vehicle-cargo-known-good (resources.js)', where: `guild:${g.id}.vehicle:${v.id}.cargo`, detail: { good } });
+            continue; // don't size an unknown good — volumeOf would throw
+          }
+          if (typeof qty !== 'number' || !Number.isInteger(qty) || qty <= 0) {
+            out.push({ rule: 'vehicle-cargo-positive-int', where: `guild:${g.id}.vehicle:${v.id}.cargo.${good}`, detail: { qty } });
+            continue;
+          }
+          used += qty * volumeOf(good);
+        }
+        if (used > v.capacity) {
+          out.push({ rule: 'vehicle-cargo-within-capacity', where: `guild:${g.id}.vehicle:${v.id}.cargo`, detail: { usedSpace: used, capacity: v.capacity } });
+        }
       }
       if (seenIds.has(v.id)) {
         out.push({ rule: 'vehicle-id-unique', where: `guild:${g.id}.vehicle:${v.id}`, detail: { id: v.id } });

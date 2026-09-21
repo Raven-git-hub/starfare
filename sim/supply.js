@@ -47,6 +47,20 @@ function computeGalacticSupply(state) {
         resources[good] += qty;
       }
     }
+    // A craft's HOLD is still the guild's goods (design.md §4, the cargo slice's ruling: goods in a
+    // vehicle's `cargo` stay counted in Galactic Supply, exactly as Outpost-held goods do — they
+    // leave supply only when SOLD to the Syndicate). Fold each vehicle's hold in beside the pools, so
+    // a load (pool→hold) conserves the total and hauling never blinks goods out of the market view.
+    // Omit-when-empty (state.js): a cargo-less craft carries no key, so a fleet that never loaded
+    // contributes nothing and the sum is byte-identical to pre-slice. Only KNOWN goods are folded (an
+    // unknown key is left for invariants.js to flag, exactly as the pool sum above does).
+    for (const v of g.vehicles || []) {
+      for (const [good, qty] of Object.entries(v.cargo || {})) {
+        if (Object.prototype.hasOwnProperty.call(resources, good)) {
+          resources[good] += qty;
+        }
+      }
+    }
     // The guild-wide raw `deuterium` store (§1.4's B1 exemption, sim/state.js): an unlicensed
     // deuterium mine deposits its output HERE, not into a per-system stockpile, so the good's
     // supply row would understate what the galaxy holds if this were not folded in. `deuterium`

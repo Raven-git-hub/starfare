@@ -237,6 +237,7 @@ test('buy end-to-end: found → buy → build → deliver → an idle transport 
     id: 'vehicle_g1_mediumTransport_01', class: MEDIUM_TRANSPORT,
     location: { landmarkKind: 'system', landmarkId: DEST },
     maintenanceCondition: 1, status: 'idle',
+    cargo: {}, // 2.2 cargo slice 1: the row surfaces the hold as a stable {} (empty here — a minted craft carries none)
   }]);
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });

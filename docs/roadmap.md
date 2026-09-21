@@ -612,6 +612,36 @@ boundary so the later hex-map swap doesn't touch it.
   - **slice 3 — cargo + the dock model.** Load/unload, the finite stockpile enforced, the deadlock-free
     dock turnaround, destruction consequences; then selling to the Syndicate from the Outpost.
   - **slice 4 — the Tier-4 build/deploy path.** The buildable/deployable kit, placement range, anchor-ownership.
+- **2.2 — cargo: the load / haul / unload engine (design.md §4 "The dock model").** The craft's hold
+  and the manifest that fills/empties it — the substrate that turns dispatch (above) into a real
+  load → haul → unload loop. Built as a ladder around the design's split (a transfer is INSTANT at a
+  system, but goes through the deadlock-free park/queue/slot/turnaround dock model at an Outpost):
+  - **slice 1 — the craft hold + load/unload at a system (engine + operator CLI).** 🟢 *BUILT (21-09-26).*
+    `Vehicle.cargo` (a `good → int` hold, capped by `capacity` in `Σ qty × volumeOf` space, omit-when-empty,
+    deep-copied — `sim/state.js`); the journalled **`transferCargo`** action (`sim/actions.js`, `{ guildId,
+    vehicleId, manifest }`) that refuses whole unless the guild owns an idle craft **at a system** with a
+    well-formed manifest, then resolves it INSTANTLY (no slot, no timer) in the design's fixed order —
+    **all unloads first, then all loads**, each line `min(qty, source holds, destination space)` against
+    the live totals, partial-safe, the unloads-before-loads cascade freeing the space the loads then use;
+    goods move between the hold and the guild's `(guild, system)` pool via `sim/stock.js` (ruling B1), no
+    fuel/credits, every mutation tick-stamped. **Galactic Supply now counts the hold** (`sim/supply.js`
+    folds each craft's `cargo` in beside the pools; `checkGalacticSupplyConsistency` agrees), so a load is
+    conserved and `removeVehicle` refreshes the cache — destroying a laden craft is the accounted goods
+    sink §15.4's forward contract named. `checkVehicleIntegrity` guards a corrupt hold (known good,
+    positive-int qty, `Σ qty×volumeOf ≤ capacity`); the snapshot row surfaces the hold as a stable `cargo`
+    map (the client reads it later). Exposed as `POST /admin/vehicle/transfer` + `tools/admin.js
+    transfer-cargo --load good:qty,… --unload good:qty,…` (prints the resulting hold + the system-pool
+    deltas). **No new number** — capacity and `volumeOf` are reused. **A NO-OP on a galaxy where no craft
+    loads** (persist/determinism/galactic-supply goldens byte-identical — an empty hold omits its key).
+    Sim suite 1,383 → **1,398 green**, `tools/admin.test.js` 35 → 37. **Deferred:** the Outpost dock model
+    (park / queue / the ten slots / the per-class `OUTPOST_DOCK_TURNAROUND` timer / transfers at an Outpost
+    — cargo engine slice 2, aka the outpost ladder's slice 3); route-embedded auto-manifests and the manual
+    load/unload popup (client slices); selling from an Outpost (later). No client touched.
+  - **slice 2 — the Outpost dock model.** The park/queue/slot/turnaround at an Outpost (the timed half of
+    §4): a parked craft queues for one of `OUTPOST_DOCK_SLOTS` on a manifest, serves its class
+    `OUTPOST_DOCK_TURNAROUND`, resolves the SAME manifest at completion, frees the slot. Goods move at
+    completion (a mid-turnaround Outpost destruction leaves the transfer un-happened); the finite Outpost
+    stockpile cap is enforced here (an unload clamps to the room remaining). Deadlock-free by construction.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*

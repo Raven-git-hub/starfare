@@ -62,6 +62,14 @@ function vehicleDeliveryFuelBurn(destinationSystemId, vehicleClass) {
   return { fuelBurn: Math.ceil(near.distance * spec.fuelCostToRun) };
 }
 
+// holdUsedSpace(cargo) -> the cargo space `Σ qty × volumeOf(good)` a hold's contents occupy (design.md
+// §4 "Capacity — measured in cargo space"). The vehicle-hold twin of the load-space sum the trade layer
+// already computes (`Σ line.qty × volumeOf`, sim/actions.js buy/sell). Every good in a hold is a real
+// stockpile good (transferCargo's validate proves it), so `volumeOf` never throws here.
+function holdUsedSpace(cargo) {
+  return Object.entries(cargo || {}).reduce((sum, [good, qty]) => sum + (qty * volumeOf(good)), 0);
+}
+
 // dispatchRoute(craft, waypoints) -> { ok: true, legs: [{ from, to, length }], totalUnits }
 //                                  | { ok: false, reason }
 //
@@ -660,6 +668,20 @@ function createDispatchVehicleAction({ guildId, vehicleId: vId, waypoints }) {
   if (vId === undefined) throw new Error('createDispatchVehicleAction: vehicleId is required');
   if (waypoints === undefined) throw new Error('createDispatchVehicleAction: waypoints is required');
   return { type: 'dispatchVehicle', guildId, vehicleId: vId, waypoints };
+}
+
+// transferCargo: load/unload an IDLE craft against the SYSTEM it sits at (design.md §4 "The dock
+// model", the system half; roadmap 2.2 cargo engine slice 1). `manifest` is an ordered array of
+// `{ dir: 'load' | 'unload', good, qty }` lines. At a system the transfer is INSTANT — it resolves
+// the tick it is issued, no slot, no wait (§4 "At a system, a transfer is instant"); the Outpost
+// park/queue/slot/turnaround is a later slice, and a craft anywhere but a system is refused. Mirrors
+// createDispatchVehicleAction: the constructor only enforces the required fields are present;
+// validateAction judges legality (guild owns an idle craft at a system, well-formed manifest).
+function createTransferCargoAction({ guildId, vehicleId: vId, manifest }) {
+  if (guildId === undefined) throw new Error('createTransferCargoAction: guildId is required');
+  if (vId === undefined) throw new Error('createTransferCargoAction: vehicleId is required');
+  if (manifest === undefined) throw new Error('createTransferCargoAction: manifest is required');
+  return { type: 'transferCargo', guildId, vehicleId: vId, manifest };
 }
 
 // setWindowN: set the single engine-wide accrual window length `state.windowN`. The
@@ -2147,6 +2169,58 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'transferCargo') {
+    // design.md §4 "The dock model" (the SYSTEM half, roadmap 2.2 cargo engine slice 1): load/unload
+    // an idle craft against the system it sits at, resolved instantly. The gates, in the order a
+    // failure is felt (mirroring dispatchVehicle's block):
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    const craft = (guild.vehicles || []).find((v) => v.id === action.vehicleId);
+    if (!craft) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no vehicle ${JSON.stringify(action.vehicleId)}` };
+    }
+    // Only an idle craft transfers (§4: an in-transit one is mid-flight, carrying no location; a
+    // transfer is issued at a berth). The idle check also guarantees `craft.location` is present.
+    if (craft.status !== 'idle') {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is not idle (status ${JSON.stringify(craft.status)}) — only an idle craft loads or unloads` };
+    }
+    // SYSTEMS ONLY this slice (§4 "At a system, a transfer is instant"): the craft must sit at a
+    // system landmark. An outpost berth goes through the dock model (park/queue/slot/turnaround —
+    // engine slice 2), and a bare hex has no store to move against; both are refused with a clear
+    // reason. `location.landmarkKind` is the raw field — a bare hex has none, an outpost is 'outpost'.
+    if (!craft.location || craft.location.landmarkKind !== 'system') {
+      const where = craft.location && craft.location.landmarkKind === 'outpost'
+        ? `an Outpost (${JSON.stringify(craft.location.landmarkId)})`
+        : 'in deep space';
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is ${where} — load/unload there arrives in a later slice; this slice transfers only at a system (§4)` };
+    }
+    // The manifest is a NON-EMPTY ordered array (a transfer with no lines is a refused no-op, the
+    // adjustGoods zero-delta / dispatch empty-waypoints discipline). Refuse-whole on the first bad
+    // line: a malformed manifest never partially applies.
+    if (!Array.isArray(action.manifest) || action.manifest.length === 0) {
+      return { valid: false, reason: 'manifest must be a non-empty array of { dir: "load"|"unload", good, qty } lines' };
+    }
+    for (const line of action.manifest) {
+      if (!line || typeof line !== 'object' || Array.isArray(line)) {
+        return { valid: false, reason: `each manifest line must be a { dir, good, qty } object, got ${JSON.stringify(line)}` };
+      }
+      if (line.dir !== 'load' && line.dir !== 'unload') {
+        return { valid: false, reason: `manifest line dir must be "load" or "unload", got ${JSON.stringify(line.dir)}` };
+      }
+      // A real stockpile good (isStockpileGood excludes fuel — a hold moves goods, never fuel, §4
+      // "A transfer burns no fuel"). Every stockpile good is T1/T2/T3, so `volumeOf` can size it.
+      if (typeof line.good !== 'string' || !isStockpileGood(line.good)) {
+        return { valid: false, reason: `${JSON.stringify(line.good)} is not a known stockpile good` };
+      }
+      if (typeof line.qty !== 'number' || !Number.isInteger(line.qty) || line.qty <= 0) {
+        return { valid: false, reason: `manifest line qty must be a positive integer (§15.2), got ${JSON.stringify(line.qty)}` };
+      }
+    }
+    return { valid: true };
+  }
+
   if (action.type === 'setWindowN') {
     if (typeof action.windowN !== 'number' || !Number.isInteger(action.windowN) || action.windowN < 1) {
       return { valid: false, reason: 'windowN must be an integer >= 1 (§15.2)' };
@@ -3104,14 +3178,16 @@ function applyAction(state, action) {
     // design.md §15.4 "Spawn / remove": DESTROY the craft — drop the row. The mint serial is
     // NOT decremented (design.md "Ids never repeat"), so the removed id is never reissued.
     //
-    // FORWARD GOODS-SINK CONTRACT (design.md §15.4 "Destroying a laden craft is a recorded goods
-    // sink"): removal destroys whatever the craft CARRIES. Today craft carry no cargo, so this
-    // drops an empty craft and nothing conservation-tracked moves. WHEN CARGO LANDS (the movement
-    // slice), a destroyed craft's cargo is a legitimate goods sink — galactic-supply must count
-    // craft cargo as an in-flight category so this removal decrements the total, and the loss must
-    // be tick-stamped and recorded, never silent. The movement slice must not miss this.
+    // GOODS-SINK CONTRACT (design.md §15.4 "Destroying a laden craft is a recorded goods sink"):
+    // removal destroys whatever the craft CARRIES. Since the cargo slice (2.2 cargo, engine slice 1)
+    // a craft's hold is counted in galactic supply (supply.js folds it in beside the pools), so
+    // destroying a LADEN craft is a legitimate goods sink — the goods leave the galaxy. Refresh the
+    // supply cache so the drop shows honestly at the between-action seam (POST /action asserts cache
+    // == live sum with no tick between); an EMPTY craft folds in as nothing, so this is the pre-slice
+    // no-op there. The loss is tick-stamped by the journal (the action's tick), never silent.
     const guild = findGuild(next, action.guildId);
     guild.vehicles = (guild.vehicles || []).filter((v) => v.id !== action.vehicleId);
+    next.galacticSupply = computeGalacticSupply(next);
     return next;
   }
 
@@ -3202,6 +3278,62 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'transferCargo') {
+    // design.md §4 "Resolving a manifest" (the SYSTEM half, instant): move goods between the craft's
+    // hold and the guild's (guild, system) pool in the fixed order — ALL UNLOADS FIRST, THEN ALL
+    // LOADS — each line clamped to what actually fits, partial-safe. It moves only goods between two
+    // of the guild's OWN stores, so galactic supply is CONSERVED across it (pool down = hold up, or
+    // the reverse) and both stores stay counted (supply.js folds the hold in) — no fuel, no credits.
+    const guild = findGuild(next, action.guildId);
+    const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
+    const systemId = craft.location.landmarkId; // validate proved it is a system landmark
+    const hold = craft.cargo || {}; // the working hold (a cargo-less craft starts empty)
+
+    // Move `n` units of `good` between the hold and the pool; +n loads (pool→hold), −n unloads
+    // (hold→pool). Keeps the hold omit-when-empty (a key that hits 0 is deleted), so a craft emptied
+    // by an unload is byte-identical to one that never loaded. `addStock` is the ONLY pool writer
+    // (ruling B1). `n` is always ≥ 0 here (a clamped move), and 0 moves nothing.
+    const move = (good, n, loading) => {
+      if (n <= 0) return;
+      hold[good] = (hold[good] || 0) + (loading ? n : -n);
+      if (hold[good] === 0) delete hold[good];
+      addStock(guild, systemId, good, loading ? -n : n);
+    };
+
+    // ALL UNLOADS FIRST. The system pool is soft-capped (§4), so its "remaining space" is effectively
+    // unbounded — an unload is limited only by what the hold holds. Dropping cargo first frees the
+    // hold space the loads below then use (the deliberate unloads-before-loads cascade, §4).
+    for (const line of action.manifest) {
+      if (line.dir !== 'unload') continue;
+      move(line.good, Math.min(line.qty, hold[line.good] || 0), false);
+    }
+    // THEN ALL LOADS, each clamped by the pool's holding AND the hold's LIVE remaining space
+    // (`capacity − Σ qty×volumeOf`, recomputed per line so an incomplete unload correctly shrinks it).
+    // A good the pool lacks, or a hold with no room, simply loads 0 — the rest of the manifest still
+    // resolves (partial-safe). Integer goods throughout: `volumeOf` is a positive integer, so the
+    // per-unit floor is exact.
+    for (const line of action.manifest) {
+      if (line.dir !== 'load') continue;
+      const free = craft.capacity - holdUsedSpace(hold);
+      const bySpace = Math.floor(free / volumeOf(line.good));
+      move(line.good, Math.min(line.qty, getStock(guild, systemId, line.good), bySpace), true);
+    }
+
+    // Re-attach the hold, keeping omit-when-empty: a transfer that nets to an empty hold drops the
+    // key (the createVehicle discipline), so the no-op case serializes byte-identically to pre-slice.
+    if (Object.keys(hold).length) craft.cargo = hold; else delete craft.cargo;
+    // §15.2 "every mutation records its tick": a transfer has no schedule ticks of its own (unlike a
+    // dispatch, whose leg ticks are its record), so the craft stamps the tick it moved goods on.
+    craft.updatedAtTick = next.tick;
+
+    // Galactic supply is CONSERVED across the transfer (a load's pool−n is exactly the hold's +n, and
+    // both are summed, supply.js) — but the between-action seam asserts the cache equals the live sum
+    // with no tick between, so refresh it (the dispatchVehicle discipline). The value is unchanged;
+    // this keeps the cache honest against the moved goods rather than leaving it stale by luck.
+    next.galacticSupply = computeGalacticSupply(next);
+    return next;
+  }
+
   if (action.type === 'setWindowN') {
     // Set the single engine-wide window length. Setup-only (validate refused it once
     // tick > 0), so this only ever writes tick-0 state. No guild is resolved — this
@@ -3280,6 +3412,7 @@ module.exports = {
   createSpawnOutpostAction,
   createRemoveOutpostAction,
   createDispatchVehicleAction,
+  createTransferCargoAction,
   quoteDispatch,
   validateAction,
   applyAction,

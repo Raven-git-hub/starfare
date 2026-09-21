@@ -767,6 +767,11 @@ function orderSnapshot(order) {
 function snapshotVehicleRow(v, fuelPrice) {
   const base = {
     id: v.id, class: v.class, maintenanceCondition: v.maintenanceCondition, status: v.status,
+    // The HOLD (2.2 cargo, engine slice 1 — design.md §4, §15.4 the `cargo` field). A FRESH map so a
+    // consumer mutating the snapshot can't alias into engine state, and a stable `{}` for an empty
+    // hold (mirroring how the shipment row surfaces its `cargo`) so the reader has one shape to read.
+    // The client's craft manifest (currently hard-coding "No cargo") reads this in a later slice.
+    cargo: { ...(v.cargo || {}) },
   };
   if (v.status === 'inTransit' && v.trip) {
     let totalUnits = 0;

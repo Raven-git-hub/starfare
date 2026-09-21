@@ -53,8 +53,10 @@ const FLAG_SPEC = Object.freeze({
   outpost: 'string',  // spawn-vehicle: berth at an outpost landmark
   hex: 'string',      // spawn-vehicle: berth at a bare hex, "q,r"
   condition: 'number', // spawn-vehicle: starting maintenanceCondition fraction (default 1)
-  id: 'string',       // remove-vehicle / dispatch-vehicle: which vehicle id
+  id: 'string',       // remove-vehicle / dispatch-vehicle / transfer-cargo: which vehicle id
   waypoints: 'string', // dispatch-vehicle: "w;w;…", each sys:<id> | out:<id> | q,r
+  load: 'string',     // transfer-cargo: "good:qty,good:qty" to load pool -> hold
+  unload: 'string',   // transfer-cargo: "good:qty,good:qty" to unload hold -> pool
   help: 'bool',
 });
 
@@ -295,7 +297,7 @@ function adjustActionFor(command, flags) {
 
 // The two vehicle spawn/remove subcommands (design.md §15.4, roadmap 2.2 spawn) — thin HTTP
 // clients over POST /admin/vehicle/spawn|remove, the operator/Storyteller primitive.
-const VEHICLE_COMMANDS = Object.freeze(['spawn-vehicle', 'remove-vehicle', 'dispatch-vehicle']);
+const VEHICLE_COMMANDS = Object.freeze(['spawn-vehicle', 'remove-vehicle', 'dispatch-vehicle', 'transfer-cargo']);
 
 // parseHexFlag(raw) -> { q, r } | THROWS. The operator writes `--hex 3,-4`; the engine speaks a
 // bare-hex location { q, r } of INTEGERS (design.md §15.4). Anything not exactly two integers is
@@ -378,6 +380,41 @@ function dispatchVehicleBody(flags) {
   };
 }
 
+// parseCargoFlag(raw, dir) -> the manifest lines for one direction, or THROWS. The operator writes
+// `--load good:qty,good:qty`; each comma-separated token is `good:qty` (qty a positive integer). A
+// malformed token fails the command rather than posting a half-formed manifest (the parseHexFlag /
+// parseWaypointsFlag discipline). `good` is passed through verbatim — WHICH goods are real stockpile
+// keys is the engine's validate gate, not this file's (it authors no vocabulary). PURE.
+function parseCargoFlag(raw, dir) {
+  if (typeof raw !== 'string') throw new Error(`--${dir} must be "good:qty,good:qty", got ${JSON.stringify(raw)}`);
+  const tokens = raw.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+  if (tokens.length === 0) throw new Error(`--${dir} needs at least one "good:qty" pair`);
+  return tokens.map((tok) => {
+    const colon = tok.lastIndexOf(':'); // lastIndexOf so a good id with a ':' (none today) wouldn't split wrong
+    if (colon <= 0 || colon === tok.length - 1) throw new Error(`--${dir} token must be "good:qty", got ${JSON.stringify(tok)}`);
+    const good = tok.slice(0, colon);
+    const qty = Number(tok.slice(colon + 1));
+    if (!Number.isInteger(qty) || qty <= 0) throw new Error(`--${dir} qty must be a positive integer, got ${JSON.stringify(tok)}`);
+    return { dir, good, qty };
+  });
+}
+
+// transferCargoBody(flags) -> the POST /admin/vehicle/transfer request body. The manifest is built
+// UNLOADS FIRST, then LOADS — matching the engine's fixed resolution order (design.md §4), so the
+// printed manifest reads the way it resolves — from `--unload` and/or `--load` ("good:qty,…" each);
+// at least one is required. PURE and exported so admin.test.js can assert the arg→body mapping.
+function transferCargoBody(flags) {
+  const manifest = [];
+  if (flags.unload !== undefined) manifest.push(...parseCargoFlag(flags.unload, 'unload'));
+  if (flags.load !== undefined) manifest.push(...parseCargoFlag(flags.load, 'load'));
+  if (manifest.length === 0) throw new Error('transfer-cargo: give at least one of --load good:qty,… or --unload good:qty,…');
+  return {
+    guildId: requireFlag(flags, 'guild', 'transfer-cargo'),
+    vehicleId: requireFlag(flags, 'id', 'transfer-cargo'),
+    manifest,
+  };
+}
+
 // The two guild-Outpost spawn/remove subcommands (design.md §4 / §15.4, roadmap 2.2 slice 1) — thin
 // HTTP clients over POST /admin/outpost/spawn|remove, the operator primitive for placing/destroying a
 // guild Outpost, exactly as spawn-vehicle / remove-vehicle place/destroy a craft.
@@ -408,6 +445,7 @@ module.exports = {
   adjustActionFor, ADJUST_COMMANDS,
   parseHexFlag, vehicleLocationFromFlags, spawnVehicleBody, removeVehicleBody, VEHICLE_COMMANDS,
   parseWaypointToken, parseWaypointsFlag, dispatchVehicleBody,
+  parseCargoFlag, transferCargoBody,
   spawnOutpostBody, removeOutpostBody, OUTPOST_COMMANDS,
   EXPECTED_COMMITMENT, EXPECTED_WINDOW_N,
 };
@@ -761,6 +799,49 @@ async function cmdDispatchVehicle(base, flags) {
   }
 }
 
+// transfer-cargo (design.md §4 "The dock model", the system half; roadmap 2.2 cargo engine slice 1):
+// load/unload an idle craft against the system it sits at, resolved instantly. Captures the pre-state
+// snapshot first so it can print the SYSTEM POOL DELTAS the transfer produced (the transfer is
+// partial-safe — a line clamps to what fits — so the delta is the honest record, read from before/
+// after, not the ask). Then POSTs, and prints the resulting hold. A refused action -> throw -> exit 1.
+async function cmdTransferCargo(base, flags) {
+  const body = transferCargoBody(flags);
+  const before = await liveSnapshot(base);
+  const craftBefore = (((before.guilds || []).find((g) => g.id === body.guildId) || {}).vehicles || [])
+    .find((v) => v.id === body.vehicleId) || null;
+  // The system the craft sits at — the pool the deltas are read against. Absent (craft gone / not at a
+  // system) is left for the engine to refuse; fall back to a null key so the diff below reads 0s.
+  const systemId = (craftBefore && craftBefore.location && craftBefore.location.landmarkKind === 'system')
+    ? craftBefore.location.landmarkId : null;
+  const poolOf = (snap) => {
+    const g = (snap.guilds || []).find((gg) => gg.id === body.guildId) || {};
+    return ((g.stockpilesBySystem || {})[systemId]) || {};
+  };
+  const poolBefore = poolOf(before);
+
+  const out = await postJson(base, '/admin/vehicle/transfer', body);
+  if (!out.accepted) throw new Error(`transfer-cargo refused: ${out.reason}`);
+  const guild = (out.snapshot.guilds || []).find((g) => g.id === body.guildId) || null;
+  const craft = ((guild && guild.vehicles) || []).find((v) => v.id === body.vehicleId) || null;
+  const poolAfter = poolOf(out.snapshot);
+
+  row('action', 'transferCargo');
+  row('guild', body.guildId);
+  row('vehicle', body.vehicleId);
+  row('system', systemId === null ? '(not at a system)' : systemId);
+  // The hold as it stands after the transfer (empty prints "empty" — omit-when-empty on the engine).
+  const hold = (craft && craft.cargo) || {};
+  const holdKeys = Object.keys(hold).sort();
+  row('hold', holdKeys.length ? holdKeys.map((good) => `${good}:${hold[good]}`).join(', ') : 'empty');
+  // The pool delta for every good the manifest touched — how many units actually moved (signed:
+  // +into the pool on an unload, −out on a load), so a clamped partial reads truthfully.
+  const touched = [...new Set(body.manifest.map((l) => l.good))].sort();
+  for (const good of touched) {
+    const delta = ((poolAfter[good] || 0) - (poolBefore[good] || 0));
+    row(`pool ${good}`, `${delta >= 0 ? '+' : ''}${delta} (now ${poolAfter[good] || 0})`);
+  }
+}
+
 // The guild-Outpost spawn/remove primitive (design.md §4 / §15.4, roadmap 2.2 slice 1): build the
 // request body from the flags (the PURE spawnOutpostBody / removeOutpostBody) and POST it to the gated
 // /admin/outpost/* endpoint. A REFUSED action comes back as a 200 with accepted:false — turn it into a
@@ -820,6 +901,9 @@ Vehicle spawn/remove primitive (design.md §15.4 — operator/Storyteller, exit 
   dispatch-vehicle --guild ID --id VEHICLE_ID --waypoints "w;w;…"
                   send an idle craft along a multi-leg route; each w is sys:<id> | out:<id> | q,r
                   (whole-route fuel burned up front from the hoard; refused whole if short)
+  transfer-cargo  --guild ID --id VEHICLE_ID [--unload good:qty,…] [--load good:qty,…]
+                  load/unload an idle craft against the SYSTEM it sits at, resolved instantly
+                  (unloads-then-loads, partial-safe; at an outpost / in deep space → refused)
 
 Guild-Outpost spawn/remove primitive (design.md §4 — operator, exit 1 on a refused action)
   spawn-outpost   --guild ID --system ANCHOR_ID --hex q,r
@@ -854,6 +938,8 @@ Flags
   --id ID        remove-vehicle / dispatch-vehicle: which vehicle id;
                  remove-outpost: which outpost id
   --waypoints W  dispatch-vehicle: "w;w;…" route, each w = sys:<id> | out:<id> | q,r
+  --load G:N,…   transfer-cargo: goods to load pool -> hold ("good:qty" pairs, comma-sep)
+  --unload G:N,… transfer-cargo: goods to unload hold -> pool ("good:qty" pairs, comma-sep)
   --help, -h     this text
 `;
 
@@ -872,6 +958,7 @@ async function main(argv) {
     case 'spawn-vehicle': await cmdSpawnVehicle(base, flags); return;
     case 'remove-vehicle': await cmdRemoveVehicle(base, flags); return;
     case 'dispatch-vehicle': await cmdDispatchVehicle(base, flags); return;
+    case 'transfer-cargo': await cmdTransferCargo(base, flags); return;
     case 'spawn-outpost': await cmdSpawnOutpost(base, flags); return;
     case 'remove-outpost': await cmdRemoveOutpost(base, flags); return;
     default:

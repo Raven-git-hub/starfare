@@ -725,6 +725,14 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
 // `Asset.maintenanceCondition` until the maintenance slice — nothing reads it, nothing
 // changes it. Carried and serialized now so the shape is settled with no later migration;
 // defaults to ASSET_CONDITION_NEW, the same "new = full" identity assets use.
+//
+// `cargo` (2.2 cargo, engine slice 1 — design.md §4 "The dock model", §15.4 the Vehicle `cargo`
+// field) is the craft's HOLD: a `good → int` map, the vehicle twin of the Syndicate shipment's
+// `cargo`, capped by `capacity` (in `Σ qty × volumeOf` cargo space) at transfer time, NOT here.
+// OMITTED when empty — a cargo-less craft carries no key, byte-identical to a pre-slice one (the
+// same omit-when-empty discipline `guild.assets` and the shipment `cargo` follow) — and DEEP-COPIED
+// on construct, the `location` discipline, so a caller's map can never alias into engine state.
+// Nothing but `transferCargo` (sim/actions.js) writes it; this file only ASSEMBLES the shape.
 function createVehicle({
   id,
   ownerGuildId,
@@ -734,6 +742,7 @@ function createVehicle({
   defenseRating,
   fuelCostToRun,
   location,
+  cargo = {},
   maintenanceCondition = ASSET_CONDITION_NEW,
   status = 'idle',
 }) {
@@ -757,6 +766,9 @@ function createVehicle({
     // (see the note above). COPIED, not aliased: a fresh object per field so a caller's
     // object can never reach into engine state, the discipline `licence` / `batchCarry` use.
     location: { ...location },
+    // cargo — the craft's hold, OMITTED when empty (see the note above). A fresh copy so a caller's
+    // map can't alias into engine state, the same discipline `location` / `guild.assets` keep.
+    ...(cargo && Object.keys(cargo).length ? { cargo: { ...cargo } } : {}),
     // maintenanceCondition — INERT this slice (sim/vehicles.js / assets.js own the scale).
     maintenanceCondition,
     status,
