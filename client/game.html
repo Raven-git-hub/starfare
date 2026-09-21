@@ -65,6 +65,8 @@
   #legend .heading { font-family: 'Rajdhani', sans-serif; font-size: 11px; letter-spacing: 2px; color: var(--text-dim); margin-bottom: 10px; border-bottom: 1px solid #1c2637; padding-bottom: 6px; }
   .legend-row { display: flex; align-items: center; gap: 9px; font-size: 11px; padding: 3px 0; }
   .swatch { width: 12px; height: 12px; flex-shrink: 0; clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%); }
+  /* the guild-outpost key uses a diamond, matching its map marker (a coloured hex carries a diamond) */
+  .swatch.diamond { clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
 
   #controls { position: absolute; right: 22px; bottom: 22px; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: auto; }
   #zoomreadout { font-size: 11px; color: var(--text-dim); background: rgba(8,10,16,0.85); border: 1px solid var(--line-bright); padding: 6px 10px; border-radius: 2px; letter-spacing: 1px; display: none; }
@@ -2610,6 +2612,7 @@ select.field{appearance:none; cursor:pointer;}
     <div class="legend-row"><div class="swatch" style="background:var(--system)"></div> Solar System</div>
     <div class="legend-row"><div class="swatch" style="background:var(--accent)"></div> <span id="legend-me">Your Guild</span></div>
     <div class="legend-row"><div class="swatch" style="background:var(--outpost)"></div> Waystation</div>
+    <div class="legend-row"><div class="swatch diamond" style="background:var(--accent)"></div> Guild Outpost</div>
     <div class="legend-row"><div class="swatch" style="background:var(--citadel)"></div> The Citadel</div>
   </div>
 
@@ -2625,6 +2628,14 @@ select.field{appearance:none; cursor:pointer;}
     <div class="row"><span>Control:</span> <b id="sp-control">—</b></div>
     <div class="row" id="sp-planets-row" style="display:none"><span>Planets:</span> <b id="sp-planets">—</b></div>
     <div class="row" id="sp-ring-row" style="display:none"><span>Ring:</span> <b id="sp-ring">—</b></div>
+    <!-- Guild-outpost detail (roadmap 2.2 slice 2): the anchor system + the engine-surfaced class
+         figures (capacity / dock slots) + the empty-hold line. Shown only for a guildOutpost hex. -->
+    <div id="sp-outpost-rows" style="display:none">
+      <div class="row"><span>Anchor:</span> <b id="sp-anchor">—</b></div>
+      <div class="row"><span>Capacity:</span> <b id="sp-capacity">—</b></div>
+      <div class="row"><span>Dock slots:</span> <b id="sp-docks">—</b></div>
+      <div class="row"><span>Hold:</span> <b id="sp-hold">—</b></div>
+    </div>
     <button id="sp-details" disabled title="Placeholder — will open the solar system data guide">OPEN DETAILS</button>
   </div>
 
@@ -3118,7 +3129,7 @@ select.field{appearance:none; cursor:pointer;}
   // Ownership is live state, never seed data (galaxy-state-model.md §1a), so both
   // of these are filled by window.__setLiveTerritory() from the snapshot's claims[]
   // on every poll — nothing here is computed, invented, or read from the seed.
-  const PLAYER_GUILD = { ownedSystemIds: [], name: 'Your Guild' };
+  const PLAYER_GUILD = { ownedSystemIds: [], name: 'Your Guild', guildId: null };
 
   // Rival territory, in the same shape the renderer already consumed: guild rows
   // with a colour, and systemId -> ownerGuildId. Null until the first snapshot.
@@ -4063,6 +4074,20 @@ select.field{appearance:none; cursor:pointer;}
       });
     }
 
+    // Guild outposts label at the waystation threshold (both are single-hex map landmarks). Only the
+    // player's OWN outposts get a name-tag, exactly as only the player's own systems are labelled
+    // above (rivals stay tagless to keep the zoomed-out galaxy legible — their coloured hex + diamond
+    // still mark them). Presentation only (§18): the derived name from loadClaims, no game number.
+    if (claimsData && zoom >= WAYSTATION_LABEL_ZOOM) {
+      claimsData.guildOutposts.forEach(o => {
+        if (o.guildId !== PLAYER_GUILD.guildId) return;
+        const p = hexToPixel(o.coords.q, o.coords.r, galaxy.galaxyParams.hexSize);
+        const scr = worldToScreen(p.x, p.y);
+        if (scr.x < -150 || scr.x > window.innerWidth+150 || scr.y < -150 || scr.y > window.innerHeight+150) return;
+        drawLabelBox(scr, [o.name.toUpperCase(), 'GUILD OUTPOST'], 'player');
+      });
+    }
+
     // selection outline — drawn live for exactly one hex, works for empty hexes too
     if (selectedCoords) {
       const p = hexToPixel(selectedCoords.q, selectedCoords.r, galaxy.galaxyParams.hexSize);
@@ -4212,6 +4237,8 @@ select.field{appearance:none; cursor:pointer;}
     const detailsBtn = document.getElementById('sp-details');
     const ringRow = document.getElementById('sp-ring-row');
     ringRow.style.display = 'none'; // shown only for systems that carry a ring
+    const outpostRows = document.getElementById('sp-outpost-rows');
+    outpostRows.style.display = 'none'; // shown only for a guild outpost
 
     const coords = (type === 'empty' || type === 'territory') ? ax : hit.coords;
     document.getElementById('sp-coords').textContent = `q${coords.q} r${coords.r}`;
@@ -4234,6 +4261,16 @@ select.field{appearance:none; cursor:pointer;}
       typeEl.textContent = 'Guild Outpost';
       controlEl.textContent = guild ? guild.name : 'Unknown guild';
       planetsRow.style.display = 'none';
+      // The anchor system + the engine's class figures, read straight off the snapshot row
+      // (design.md §18 — the client computes no game number). Capacity is a large integer;
+      // thousands separators are presentation only. The hold is empty this slice (no cargo yet),
+      // so it mirrors the vehicle popup's "Hold empty" placeholder.
+      const anchor = systemById.get(hit.anchorSystemId);
+      document.getElementById('sp-anchor').textContent = anchor && anchor.name ? anchor.name : hit.anchorSystemId;
+      document.getElementById('sp-capacity').textContent = hit.capacity.toLocaleString() + ' cargo space';
+      document.getElementById('sp-docks').textContent = hit.dockCapacity;
+      document.getElementById('sp-hold').textContent = 'Hold empty';
+      outpostRows.style.display = 'block';
       detailsBtn.disabled = true;
     } else if (type === 'tollGate') {
       const guild = guildById.get(hit.guildId);
@@ -4292,13 +4329,35 @@ select.field{appearance:none; cursor:pointer;}
   // in-world, shared layer — who owns which system — so it is player-safe to
   // render for EVERY guild (client-wiring.md §7); their economics are not read.
   function loadClaims(parsed) {
-    // Guild outposts, toll gates and toll paths do not exist in the engine yet.
-    // The renderer walks those arrays unconditionally, so they are supplied EMPTY
-    // — the feature is absent, not faked.
-    claimsData = { guilds: parsed.guilds, systemClaims: parsed.systemClaims, guildOutposts: [], tollGates: [], tollPaths: [] };
     guildById = new Map(parsed.guilds.map(g => [g.id, g]));
     systemToGuild = new Map(Object.entries(parsed.systemClaims));
-    guildOutpostByKey = new Map();
+
+    // Guild outposts, from the snapshot's `outposts` rows (design.md §4, roadmap 2.2 slice 2).
+    // EVERY guild's outpost is rendered — a structure's LOCATION is public (client-wiring §7); its
+    // economics are not, and this slice holds none to show. Each engine row
+    // { id, ownerGuildId, coords, anchorSystemId, capacity, dockCapacity, stockpile } is mapped to
+    // the shape the two draw passes read (guildId/coords) plus the extras the info panel names. The
+    // display NAME is derived, not stored (design.md §18 — presentation, no game number): the anchor
+    // system's name + " Outpost", falling back to the id's #NN suffix if the anchor isn't in the
+    // seed (mirroring how the Dispatch popup names a craft). Toll gates / paths are still absent from
+    // the engine, so those arrays stay EMPTY — the feature is absent, not faked.
+    const guildOutposts = (parsed.outposts || []).map(o => {
+      const anchor = systemById.get(o.anchorSystemId);
+      const suffix = String(o.id).split('_').slice(-1)[0]; // outpost_<guild>_NN -> "NN"
+      const name = anchor && anchor.name ? `${anchor.name} Outpost` : `Outpost #${suffix}`;
+      return {
+        id: o.id,
+        guildId: o.ownerGuildId,
+        coords: { q: o.coords.q, r: o.coords.r },
+        name,
+        anchorSystemId: o.anchorSystemId,
+        capacity: o.capacity,
+        dockCapacity: o.dockCapacity,
+      };
+    });
+
+    claimsData = { guilds: parsed.guilds, systemClaims: parsed.systemClaims, guildOutposts, tollGates: [], tollPaths: [] };
+    guildOutpostByKey = new Map(guildOutposts.map(o => [`${o.coords.q},${o.coords.r}`, o]));
     gateByKey = new Map();
   }
 
@@ -4332,7 +4391,7 @@ select.field{appearance:none; cursor:pointer;}
   window.__loadGalaxy = loadGalaxy;
 
   // The one door live state enters the map through. Called by the shell after every
-  // /snapshot read with { myGuildId, myGuildName, guilds:[{id,name}], systemClaims }.
+  // /snapshot read with { myGuildId, myGuildName, guilds:[{id,name}], systemClaims, outposts }.
   // The map computes nothing from it: it colours hexes and labels owners.
   window.__setLiveTerritory = function (live) {
     // EVERY guild goes into the lookup — the player's own included, so the system
@@ -4349,7 +4408,8 @@ select.field{appearance:none; cursor:pointer;}
     // only labels the map draws for a guild (both keyed off this list).
     PLAYER_GUILD.ownedSystemIds = Object.keys(claims).filter((id) => claims[id] === live.myGuildId);
     PLAYER_GUILD.name = live.myGuildName || 'Your Guild';
-    loadClaims({ guilds, systemClaims: claims });
+    PLAYER_GUILD.guildId = live.myGuildId; // so the label pass tags only the player's OWN outposts
+    loadClaims({ guilds, systemClaims: claims, outposts: live.outposts || [] });
   };
 
   // The sibling door for the IN-FLIGHT layer: the player's own Syndicate deliveries, pushed
@@ -6259,6 +6319,9 @@ function applySnapshot(snap){
       myGuildName: GAME.guildName,
       guilds: (snap.guilds || []).map(function(g){ return { id:g.id, name:g.name || g.id }; }),
       systemClaims: LIVE.systemClaims,
+      // Guild outposts — the full public list across all guilds (client-wiring §7: location is
+      // public, economics are not). Passed through verbatim; the map derives names + colours it.
+      outposts: snap.outposts || [],
     });
   }
   // The IN-FLIGHT transport overlay reads from the same poll: the player's own deliveries

@@ -190,7 +190,13 @@ The player client reads, for the **player's own guild only**: `tick`; the guild'
 resolved per-system per-good report — forks, reserve, commitment window — as the
 console already renders); its `ventures[]` (and `occupancy`) for its own sites;
 and `claims[]` for **territory control** (who owns which system — visible to all
-in-world). It also reads the **public Syndicate figures**, which are the same for
+in-world), and — for **every** guild — `outposts[]`, the public guild-Outpost
+structure layer (a structure's location is public §7; its economics are not — the
+map draws each in its owner's colour and the panel names owner / anchor / static
+class figures only). *(AS-BUILT — roadmap 2.2 outpost slice 2, `client/game.html`:
+the map's territory-fill hex, diamond marker, click-map and "Guild Outpost" panel
+read `snapshot.outposts` — a derived name + engine `capacity`/`dockCapacity`,
+computing no game number §18; the hold is empty this slice.)* It also reads the **public Syndicate figures**, which are the same for
 everyone and secret from no one: `prices` / `priceBase` / `priceHistory`, and
 `feeQuote` (the per-good basic licence fee in credits — see the revision at the
 end of this file). It must **NOT** render `galacticSupply` totals, the `syndicate.ledger`,

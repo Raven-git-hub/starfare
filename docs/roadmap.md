@@ -591,7 +591,24 @@ boundary so the later hex-map swap doesn't touch it.
     behaviour, and the destruction consequences §4 names — stored goods destroyed, docked craft evicted to
     idle-in-space (slice 3); storing idle assets at an Outpost (idle assets have no location yet, §4); selling
     to the Syndicate from an Outpost, the toll-hub, maintenance (later).
-  - **slice 2 — the client.** Draw the outpost on the map, read it in the console.
+  - **slice 2 — the client.** 🟢 *BUILT.* Draw the outpost on the map, read it in the panel — CLIENT
+    ONLY (`client/game.html`), consuming the `snapshot.outposts` rows slice 1 emits; no engine,
+    snapshot or `sim` change. The already-scaffolded render passes (the guild-coloured territory-fill
+    hex, the diamond marker, the `guildOutpostByKey` click map, the "Guild Outpost" info-panel branch)
+    were fed EMPTY; they are now filled from the snapshot. `loadClaims` maps each row to the shape the
+    passes read (`guildId`/`coords`) plus the panel's fields, `__setLiveTerritory` threads
+    `snapshot.outposts` through beside `guilds`/`systemClaims`, and every guild's outpost renders in
+    the owner's colour (client-wiring §7 — a structure's location is public; its economics are not,
+    and this slice holds none). The panel names the owner, the anchor system, and the engine's
+    `capacity` / `dockCapacity` figures (displayed, never computed — §18; thousands-formatting and the
+    derived name are presentation), with a "Hold empty" line mirroring the vehicle popup. A name-tag
+    (own outposts only, matching own-systems labelling) and a legend "Guild Outpost" diamond entry
+    round it out. Sim suite still **1,383 green** (untouched); rendered end-to-end in headless
+    Chromium (operator-spawned outpost → tinted hex + marker + name tag; click → the enriched panel;
+    a no-outpost galaxy renders byte-for-byte as before). **Deferred (surfaced, not invented):** the
+    derived display-name choice (anchor name + " Outpost", `#NN` fallback — presentation, ruled here);
+    rival-outpost economic detail (only location + static class figures shown); cargo/stockpile
+    contents, docking, and outposts as route/planner targets (all slice 3+).
   - **slice 3 — cargo + the dock model.** Load/unload, the finite stockpile enforced, the deadlock-free
     dock turnaround, destruction consequences; then selling to the Syndicate from the Outpost.
   - **slice 4 — the Tier-4 build/deploy path.** The buildable/deployable kit, placement range, anchor-ownership.
