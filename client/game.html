@@ -8535,6 +8535,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   function fmt(n){ return Number(n).toLocaleString('en-US'); }
   function esc(s){ return String(s == null ? '' : s)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  // Display name for a stockpile good: snake_case -> Title Case. A tiny local copy; the panels that
+  // already have a prettyGood live in their own IIFEs, out of scope here. Presentation only (§18).
+  function prettyGood(g){ return String(g == null ? '' : g).replace(/_/g,' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); }); }
 
   // ticks -> a compact ETA string — a COPY of the map slice's fmtETA (transport-model.md §3; 1 tick
   // = 1 minute, N=1440 = 24h). PRESENTATION of the engine's own `ticksRemaining`; the number the
@@ -8650,16 +8653,24 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
 
   // One craft IN TRANSIT row — the delivery row's twin (rowHtml), so the two interleave seamlessly:
   //   craft name (identity cell) · progress bar · [reserved alert] · time remaining · destination.
-  // The manifest's carrier line IS the craft's own name (unlike the Syndicate's faceless carrier),
-  // and cargo reads "No cargo" — guild craft carry none this slice. The goods loop is left shaped
-  // exactly as the delivery's manifest note anticipates, so mixed cargo (Phase 4) drops straight in.
-  // PRICES NOTHING here (§18) — the bar + ETA are derives off the trip's ticks, updated below.
+  // The manifest's carrier line IS the craft's own name (unlike the Syndicate's faceless carrier).
+  // The cargo is the craft's published hold: snapshotVehicleRow spreads cargo/used/capacity onto the
+  // in-transit row too, so we itemise v.cargo exactly as the sibling Syndicate manifest does — one
+  // row per good (pretty name + quantity), sorted by good id for a stable order — then a used /
+  // capacity summary. Stockpile goods, not fuel, so a plain quantity (no "Nu"). An empty hold keeps
+  // one "No cargo." row. PRICES NOTHING here (§18) — the bar + ETA are derives off the trip's ticks.
   function craftRowHtml(v){
     var key = craftKey(v);
     var open = O.expanded[key] === true;
     var name = craftClassName(v['class']);
-    // var cargo = {}; craft carry none this slice — when they do, itemise here exactly as rowHtml does.
-    var manRows = '<div class="ops-manrow ops-manempty">No cargo.</div>';
+    var cargo = v.cargo || {};
+    var goods = Object.keys(cargo).sort();
+    var manRows = goods.length
+      ? goods.map(function(g){
+          return '<div class="ops-manrow"><span class="g">' + esc(prettyGood(g)) + '</span><span class="q">' + fmt(cargo[g]) + '</span></div>';
+        }).join('')
+        + '<div class="ops-manrow"><span class="g">Hold</span><span class="q">' + fmt(v.used) + ' / ' + fmt(v.capacity) + '</span></div>'
+      : '<div class="ops-manrow ops-manempty">No cargo.</div>';
     return '<div class="ops-row craft' + (open ? ' open' : '') + '" data-key="' + esc(key) + '">'
       + '<div class="ops-rowhead">'
       +   '<span class="ops-origin">' + esc(name) + '</span>'
@@ -8909,15 +8920,26 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return 'Unknown';
   }
 
-  // A craft tab: collapsed head = short type + system; expanded body = maintenance % + the Dispatch
-  // button. Default COLLAPSED (the panel stays a compact roster); expansion is remembered in O.tpOpen
-  // so a signature-guarded rebuild honours it. Maintenance is the engine's own `maintenanceCondition`
-  // as a percent — inert this slice (reads 100%), rendered not computed. Dispatch opens the Dispatch
+  // A craft tab: collapsed head = short type + system; expanded body = maintenance % + the craft's
+  // Hold + the Dispatch button. Default COLLAPSED (the panel stays a compact roster); expansion is
+  // remembered in O.tpOpen so a signature-guarded rebuild honours it. Maintenance is the engine's own
+  // `maintenanceCondition` as a percent — inert this slice (reads 100%), rendered not computed. The
+  // Hold is the craft's published cargo/used/capacity (an idle row carries the hold too): the used /
+  // capacity summary mirrors the Maintenance stat, with the goods it carries listed beneath (pretty
+  // name + quantity, sorted by good id); an empty hold reads "Hold empty" under a "0 / capacity"
+  // summary. Displays published values, computes no game number (§18). Dispatch opens the Dispatch
   // popup (2.2 spawn client) for this craft; its only action this slice is "Show on map".
   function tpCraftHtml(v){
     var key = 'tp:' + v.id;
     var open = O.tpOpen[key] === true;
     var maint = Math.round((typeof v.maintenanceCondition === 'number' ? v.maintenanceCondition : 0) * 100);
+    var cargo = v.cargo || {};
+    var goods = Object.keys(cargo).sort();
+    var holdRows = goods.length
+      ? goods.map(function(g){
+          return '<div class="ops-manrow"><span class="g">' + esc(prettyGood(g)) + '</span><span class="q">' + fmt(cargo[g]) + '</span></div>';
+        }).join('')
+      : '<div class="ops-manrow ops-manempty">Hold empty</div>';
     return '<div class="ops-tp-craft' + (open ? '' : ' collapsed') + '" data-tp-key="' + esc(key) + '">'
       +   '<div class="ops-tp-crafthd">'
       +     '<span class="ops-idle-caret">&#9660;</span>'
@@ -8926,6 +8948,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       +   '</div>'
       +   '<div class="ops-tp-craftbody">'
       +     '<div class="ops-tp-stat"><span class="k">Maintenance</span><span class="v">' + maint + '%</span></div>'
+      +     '<div class="ops-tp-stat"><span class="k">Hold</span><span class="v">' + fmt(v.used) + ' / ' + fmt(v.capacity) + '</span></div>'
+      +     holdRows
       +     '<button class="ops-tp-dispatch" type="button" data-tp-dispatch="' + esc(v.id) + '">Dispatch</button>'
       +   '</div>'
       + '</div>';

@@ -799,6 +799,21 @@ boundary so the later hex-map swap doesn't touch it.
     closes the manager and the Dispatch popup is fully visible, DOCK still opens its editor over the
     manager; no application console errors). **Display calls (surfaced, not invented):** the goods rows are
     sorted by good id (stable display order) and the row/summary font sizes are display constants (CSS).
+  - **Operations tab, craft hold wired.** 🟢 *BUILT — CLIENT ONLY (`client/game.html`; no engine/snapshot/`sim`
+    change — `cargo`/`used`/`capacity` are already published on every vehicle row, idle AND in-transit,
+    design.md §18: the client displays them, computes no game number).* A playtest follow-up on the merged
+    cargo UI: the Operations tab ignored a craft's hold in two places, both predating the cargo engine.
+    (1) **The in-transit craft manifest** (`craftRowHtml`) hard-coded "No cargo."; it now itemises the
+    craft's published `v.cargo` (one `ops-manrow` per good — pretty name + `fmt` quantity, sorted by good
+    id) plus a `used / capacity` Hold summary row, an empty hold keeping the single `No cargo.` row —
+    mirroring the sibling Syndicate shipment manifest (stockpile goods, so a plain quantity, no "Nu").
+    (2) **The Idle Transports craft card** (`tpCraftHtml`) showed only Maintenance + Dispatch; its expanded
+    body now carries a Hold stat line (`used / capacity`, mirroring the Maintenance line) with the goods it
+    carries listed beneath, an empty hold reading `Hold empty` under a `0 / <capacity>` summary. Added one
+    tiny local `prettyGood` (snake_case → Title Case) — the other panels' copies live in their own IIFEs,
+    out of scope here. Sim suite **1,433 green** (untouched — client-only; the served-page tripwire stays
+    green). **Display calls (surfaced, not invented):** goods rows sorted by good id (stable order); the
+    in-transit manifest carries the same used/capacity summary row as the idle card, for parity.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
