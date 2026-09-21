@@ -782,6 +782,23 @@ boundary so the later hex-map swap doesn't touch it.
     (instant load/unload at a system — the same editor, opened from a system later); editing/cancelling a
     QUEUED craft's manifest (that stays re-dispatch via Operations); a stock hint / stock-filter in the
     good dropdown (the player reads availability from the manager's resource tables).
+  - **slice B, playtest fixes.** 🟢 *BUILT — CLIENT ONLY (`client/game.html`; no engine/snapshot/`sim`
+    change — `cargo`/`used`/`capacity` are already published on every vehicle row (cargo slices 1/2),
+    design.md §18: the client displays them, computes no game number).* Two fixes found playing the DOCK
+    loop: (1) **opening DISPATCH from the Outpost Manager closes the manager first** — the PARKED-tab
+    DISPATCH handler calls `closeManager()` before `window.__openDispatch(v)`, so the Dispatch popup opens
+    unobstructed (both overlays are `z-index: 570`, which had left Dispatch behind the manager). DOCK is
+    unchanged — its editor is `z-index: 580` and is meant to sit over the still-open manager. (2) **the
+    Dispatch popup's Onboard Manifest now renders the craft's real hold** instead of the hard-coded "Hold
+    empty · 0 / — capacity": `renderPrePlan` reads `DP.vehicle.cargo`/`used`/`capacity` (re-read from the
+    live row each open) — an empty hold shows `Hold empty` + `0 / <capacity> cargo space` (the real cap,
+    not `—`), a laden hold lists each good (`<pretty name>` · `<qty>`, `fmtNum`-formatted) plus the
+    published `<used> / <capacity> cargo space` summary. Sim suite **1,433 green** (untouched — client-only;
+    the served-page tripwire stays green); verified end-to-end in headless Chromium (a laden craft lists its
+    goods + used/capacity; an empty craft shows the real capacity; Outpost Manager → PARKED → DISPATCH
+    closes the manager and the Dispatch popup is fully visible, DOCK still opens its editor over the
+    manager; no application console errors). **Display calls (surfaced, not invented):** the goods rows are
+    sorted by good id (stable display order) and the row/summary font sizes are display constants (CSS).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*

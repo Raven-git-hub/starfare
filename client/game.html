@@ -1872,14 +1872,20 @@ select.field{appearance:none; cursor:pointer;}
 #dispatch-overlay .dp-show{width:100%; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer}
 #dispatch-overlay .dp-show:hover{background:#DCB43A}
 /* ===== b2b-2 (the route-planner client): the left column's dynamic body. The pre-plan state is
-   the Onboard Manifest placeholder + the two action buttons; the post-finalise state is the
-   Planned Route section (a scrollable waypoint list beside Time-over-Cost). Every game number here
-   is the engine's — the manifest capacity is not yet published so it shows a placeholder, and the
-   route's time/cost come from POST /vehicle/quote (§18). ===== */
+   the Onboard Manifest (the craft's real hold) + the two action buttons; the post-finalise state is
+   the Planned Route section (a scrollable waypoint list beside Time-over-Cost). Every game number here
+   is the engine's — the manifest reads the craft's published cargo/used/capacity, and the route's
+   time/cost come from POST /vehicle/quote (§18). ===== */
 #dispatch-overlay .dp-manifest{margin-top:22px}
 #dispatch-overlay .dp-manifest .mbox{height:92px; overflow-y:auto; border:1px solid var(--line); border-radius:8px; background:var(--panel); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px}
 #dispatch-overlay .dp-manifest .mbox .empty{font-family:var(--mono); font-size:12px; letter-spacing:.06em; color:var(--ink2)}
 #dispatch-overlay .dp-manifest .mbox .cap{font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--ink3); font-variant-numeric:tabular-nums}
+/* the non-empty hold: a top-aligned list of goods, one light row each (good name left, qty right). */
+#dispatch-overlay .dp-manifest .mbox.filled{align-items:stretch; justify-content:flex-start; gap:0; padding:4px 0}
+#dispatch-overlay .dp-manifest .mbox .mrow{display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:5px 11px}
+#dispatch-overlay .dp-manifest .mbox .mrow .g{font-family:var(--mono); font-size:12px; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+#dispatch-overlay .dp-manifest .mbox .mrow .q{font-family:var(--mono); font-size:12px; color:var(--ink2); font-variant-numeric:tabular-nums; flex:none}
+#dispatch-overlay .dp-manifest .msum{margin-top:8px; font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--ink3); font-variant-numeric:tabular-nums; text-align:right}
 /* the left-column action buttons (Maintenance/Plan Route, then Edit/Dispatch) */
 #dispatch-overlay .dp-actions{margin-top:22px; display:flex; gap:12px}
 #dispatch-overlay .dp-btn{flex:1; font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; padding:13px 12px; border-radius:9px; cursor:pointer; background:var(--panel); border:1px solid var(--line2); color:var(--ink)}
@@ -10072,6 +10078,14 @@ function paintInventoryHero(d){
       .replace(/\b\w/g, function(c){ return c.toUpperCase(); });
   }
 
+  // Display vocabulary only (§18) — local copies, isolated to this IIFE. A good is snake_case
+  // (`titanium_alloy` -> "Titanium Alloy"), so this splits on '_' (prettyClass splits camelCase).
+  function prettyGood(key){
+    return String(key == null ? '' : key).split('_')
+      .map(function(w){ return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
+  }
+  function fmtNum(n){ return Math.round(n || 0).toLocaleString('en-US'); }
+
   // The player's own live vehicle row by id, off the polled snapshot — the ONE authoritative
   // source for maintenance/location whichever entry point opened us. null if it is momentarily gone.
   function liveVehicle(id){
@@ -10130,14 +10144,36 @@ function paintInventoryHero(d){
     $('dispatch-overlay').classList.add('open');
   }
 
-  // PRE-PLAN state (§A): the Onboard Manifest placeholder + the Maintenance (disabled) / Plan Route
-  // buttons. Capacity is not published to the client (no engine change this slice), so the hold shows
-  // its shape with a placeholder rather than a client-invented number (§18) — cargo is a later slice.
+  // The Onboard Manifest box — a PURE DISPLAY of the craft's published hold (§18): the goods it
+  // carries + quantities, and the engine's own used/capacity summary. No game number is computed
+  // here — `cargo` (a good->int map, omit-when-empty), `used` and `capacity` are all read off the
+  // live vehicle row (openDispatch/dispatchFinalise already set DP.vehicle from liveVehicle).
+  function manifestHtml(v){
+    var cargo = (v && v.cargo) || {};
+    var goods = Object.keys(cargo).sort();   // stable display order (good id); presentation only
+    var cap = (v && typeof v.capacity === 'number') ? v.capacity : 0;
+    var used = (v && typeof v.used === 'number') ? v.used : 0;
+    if(!goods.length){
+      // Empty hold: keep the empty state, but show the craft's REAL capacity (not "—").
+      return '<div class="mbox"><div class="empty">Hold empty</div>' +
+        '<div class="cap">0 / ' + fmtNum(cap) + ' cargo space</div></div>';
+    }
+    // Non-empty: one row per good (name + quantity), then the published used / capacity summary.
+    var rows = goods.map(function(g){
+      return '<div class="mrow"><span class="g">' + esc(prettyGood(g)) + '</span>' +
+             '<span class="q">' + fmtNum(cargo[g]) + '</span></div>';
+    }).join('');
+    return '<div class="mbox filled">' + rows + '</div>' +
+      '<div class="msum">' + fmtNum(used) + ' / ' + fmtNum(cap) + ' cargo space</div>';
+  }
+
+  // PRE-PLAN state (§A): the Onboard Manifest (the craft's real hold) + the Maintenance (disabled) /
+  // Plan Route buttons. Re-read from DP.vehicle each call so the box reflects the current cargo (§18).
   function renderPrePlan(){
     $('dpSection').innerHTML =
       '<div class="dp-manifest">' +
         '<div class="dp-sechead" style="margin-bottom:10px">Onboard Manifest</div>' +
-        '<div class="mbox"><div class="empty">Hold empty</div><div class="cap">0 / — capacity</div></div>' +
+        manifestHtml(DP.vehicle) +
       '</div>';
     var acts = $('dpActions');
     acts.innerHTML =
@@ -10531,6 +10567,10 @@ function paintInventoryHero(d){
           if(window.__openDock) window.__openDock(vid, OM.id);
         } else {
           var v = vehicleById()[vid];
+          // Close the manager BEFORE opening Dispatch: both overlays are z-index 570, so a manager
+          // left open would leave the Dispatch popup behind it (playtest fix). DOCK is unaffected —
+          // its editor is z-index 580 and is meant to sit over the manager, so it stays as-is above.
+          closeManager();
           if(v && window.__openDispatch) window.__openDispatch(v);
         }
       });
