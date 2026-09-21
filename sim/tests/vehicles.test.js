@@ -238,6 +238,8 @@ test('buy end-to-end: found → buy → build → deliver → an idle transport 
     location: { landmarkKind: 'system', landmarkId: DEST },
     maintenanceCondition: 1, status: 'idle',
     cargo: {}, // 2.2 cargo slice 1: the row surfaces the hold as a stable {} (empty here — a minted craft carries none)
+    // 2.2 read-only Outpost Manager: the hold space figures — capacity (per-class cap) + used (0, empty).
+    capacity: VEHICLE_SPECS[MEDIUM_TRANSPORT].capacity, used: 0,
   }]);
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });

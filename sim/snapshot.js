@@ -39,6 +39,8 @@ const { computeOccupancy } = require('./occupancy.js');
 const { deployedAssetIds } = require('./assets.js');
 const { BUILDABLE_KINDS, BUILD_TICKS, priceAssetForPurchase } = require('./asset-recipes.js');
 const { BUILDABLE_VEHICLE_KINDS, vehicleSpec, resolveVehicleLocation, vehicleCoords } = require('./vehicles.js');
+const { outpostDockTurnaround } = require('./outposts.js');
+const { usedSpace } = require('./manifest.js');
 const { getSite, getLandmark, getStarterSystems, getTerranHomeworld } = require('./seed.js');
 const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
@@ -455,6 +457,22 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // schema bump — nothing existing changed shape, and both are read straight off the venture, so no
 // state golden moves. Present on every venture row (`dockyard: false` / `buildQueue: []` for a
 // non-dockyard) so the later client slice can render a dockyard's queue.
+// (21-09-26, the read-only Outpost Manager — roadmap 2.2): three additive DERIVED fields the manager
+// popup reads so the client renders the storage donut / dock progress bar / craft hold gauge without
+// computing a game number (§18). ADDITIVE, NO schema bump — nothing existing changed shape, and all
+// three are derived-on-read (no serialized byte, no determinism hash), so a galaxy is byte-identical
+// in the persist/determinism goldens before and after. They invent no number: each is an existing
+// engine figure surfaced, never re-derived in the browser.
+//   - each outpost row gains `used` — the stockpile's occupied space, `usedSpace(o.stockpile)`
+//     (sim/manifest.js), so the storage donut is `used / capacity` (both now published) rather than
+//     the client summing `qty × volumeOf`.
+//   - each outpost row's `slots[i]` gains `totalTicks` — the slotted craft's full class turnaround,
+//     `outpostDockTurnaround(class)` (sim/outposts.js) via the slot's `vehicleId` → class, so the dock
+//     progress bar is `1 − eta/totalTicks` off published figures. OMITTED for a class with no ruled
+//     turnaround (only `spycraft`, capacity 0 — it can never dock), so the client shows no bar there.
+//   - each vehicle row gains `capacity` and `used` — the craft's hold cap (stored per-class) and its
+//     occupied hold space `usedSpace(v.cargo)`, so the selected-berth hero shows `hold used / capacity`
+//     without the client summing volumes.
 const SNAPSHOT_SCHEMA = 7;
 
 // contractWindowForVenture(state, venture) -> the venture's licence window in CYCLES, or null.
@@ -678,7 +696,8 @@ function computeAttention(state) {
 //                             deployedToVentureId: id | null } ],  //   null = IDLE
 //                 vehicles: [ { id, class,                        // §15.4 transport inventory (2.2)
 //                               maintenanceCondition, status,       //   idle -> location; inTransit -> trip
-//                               location?, trip? } ],               //   trip: { legs[{from,to,isToll,
+//                               cargo, capacity, used,              //   hold + space figures (2.2 Outpost Mgr)
+//                               dockStatus?, location?, trip? } ],  //   trip: { legs[{from,to,isToll,
 //                                                                   //   departureTick,arrivalTick}], arrivalTick, fuelCost }
 //                 productionProfile: { ... } } ],               // §5 profile, sparse as stored
 //     production: [ { guildId,                                  // previewProduction(state)
@@ -772,6 +791,12 @@ function snapshotVehicleRow(v, fuelPrice, dockStatus) {
     // hold (mirroring how the shipment row surfaces its `cargo`) so the reader has one shape to read.
     // The client's craft manifest (currently hard-coding "No cargo") reads this in a later slice.
     cargo: { ...(v.cargo || {}) },
+    // The hold's SPACE figures (2.2 read-only Outpost Manager — design.md §4 / §18). `capacity` is the
+    // craft's per-class hold cap (stored, surfaced not invented); `used` is `usedSpace(cargo)` (the same
+    // `Σ qty × volumeOf` the transfer resolver enforces). Published so the Outpost Manager's craft hero
+    // draws `hold used / capacity` without the client summing volumes — the client computes no game number.
+    capacity: v.capacity,
+    used: usedSpace(v.cargo),
     // dockStatus (2.2 cargo, engine slice 2 — design.md §4 the dock model). The craft's relationship to
     // an Outpost dock, DERIVED once in buildSnapshot from the Outpost's queue/slots (a craft does not
     // store this — it is a plain `idle`/`loading` craft, and the dock state lives on the Outpost).
@@ -818,7 +843,7 @@ function snapshotVehicleRow(v, fuelPrice, dockStatus) {
 // (empty this slice) `stockpile` view. `stockpile` is ALWAYS EMITTED as a map (a stable `{}` when the
 // outpost holds nothing) — unlike the STATE field, which is omit-when-empty for the determinism hash;
 // the snapshot answers to a reader, for whom a stable shape beats a key that appears only once goods land.
-function snapshotOutpostRow(o, thisTick) {
+function snapshotOutpostRow(o, thisTick, vehicleClassById) {
   return {
     id: o.id,
     ownerGuildId: o.ownerGuildId,
@@ -827,6 +852,11 @@ function snapshotOutpostRow(o, thisTick) {
     capacity: o.capacity,
     dockCapacity: o.dockCapacity,
     stockpile: { ...(o.stockpile || {}) },
+    // The stockpile's OCCUPIED space (2.2 read-only Outpost Manager — design.md §4 / §18): `usedSpace`
+    // of the stockpile, the same `Σ qty × volumeOf` cap the dock resolver enforces against `capacity`.
+    // Published so the Outpost Manager's storage donut draws `used / capacity` without the client summing
+    // `qty × volumeOf` — both figures are now the engine's, so the client computes no game number.
+    used: usedSpace(o.stockpile),
     // The DOCK STATE (2.2 cargo, engine slice 2 — design.md §4 the dock model): the queue and the
     // slots the later UI slice renders. ALWAYS EMITTED as arrays (stable `[]` when nothing docks) —
     // unlike the STATE fields, which are omit-when-empty for the determinism hash; the snapshot answers
@@ -841,12 +871,23 @@ function snapshotOutpostRow(o, thisTick) {
       readyTick: e.readyTick,
       manifest: e.manifest.map((l) => ({ dir: l.dir, good: l.good, qty: l.qty })),
     })),
-    slots: (o.slots || []).map((s) => ({
-      vehicleId: s.vehicleId,
-      completionTick: s.completionTick,
-      eta: s.completionTick - thisTick,
-      manifest: s.manifest.map((l) => ({ dir: l.dir, good: l.good, qty: l.qty })),
-    })),
+    //   totalTicks — the slotted craft's FULL class turnaround (2.2 read-only Outpost Manager —
+    //           design.md §4 / §18), `outpostDockTurnaround(class)` looked up via the slot's
+    //           `vehicleId` → its class. With `eta` (= completionTick − tick) the client draws the
+    //           dock progress bar as `1 − eta/totalTicks` — all published, no client constant. OMITTED
+    //           when the class has no ruled turnaround (`outpostDockTurnaround` returns null — only
+    //           `spycraft`, capacity 0, which can never dock), so the client shows no bar there.
+    slots: (o.slots || []).map((s) => {
+      const cls = vehicleClassById && vehicleClassById.get(s.vehicleId);
+      const totalTicks = cls == null ? null : outpostDockTurnaround(cls);
+      return {
+        vehicleId: s.vehicleId,
+        completionTick: s.completionTick,
+        eta: s.completionTick - thisTick,
+        ...(totalTicks == null ? {} : { totalTicks }),
+        manifest: s.manifest.map((l) => ({ dir: l.dir, good: l.good, qty: l.qty })),
+      };
+    }),
   };
 }
 
@@ -863,6 +904,14 @@ function buildSnapshot(state) {
   // A craft with no dock relation (flying, or idle at a system) gets no entry. Built from the Outpost
   // dock state first (queue/slots name their craft), then a parked sweep over idle craft standing on an
   // Outpost hex that the first pass did not already claim. `state.tick` is the ETA reference.
+  // A craft's class by id, for the outpost rows' per-slot `totalTicks` (2.2 read-only Outpost Manager):
+  // a slot names its craft by `vehicleId`, and the turnaround is keyed by CLASS, so the class lookup
+  // lives here (buildSnapshot sees every guild's vehicles; snapshotOutpostRow does not). Cheap O(N).
+  const vehicleClassById = new Map();
+  for (const g of state.guilds || []) {
+    for (const v of g.vehicles || []) vehicleClassById.set(v.id, v.class);
+  }
+
   const dockStatusByVehicle = new Map();
   const outpostIdByHex = new Map();
   for (const o of state.outposts || []) {
@@ -1518,7 +1567,7 @@ function buildSnapshot(state) {
   // deterministic (invariant 9). ADDITIVE: a galaxy with no outpost has no `state.outposts` key, so
   // this is `[]` and no serialized byte moves. Territory infrastructure, surfaced beside `claims`.
   const outposts = (state.outposts || [])
-    .map((o) => snapshotOutpostRow(o, state.tick))
+    .map((o) => snapshotOutpostRow(o, state.tick, vehicleClassById))
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
   // The IN-FLIGHT layer (§15.1): every pending Syndicate delivery, echoed as

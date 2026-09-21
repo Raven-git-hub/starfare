@@ -615,6 +615,26 @@ boundary so the later hex-map swap doesn't touch it.
     the destruction consequences (teardown destroys the stored goods and evicts docked craft) — all in the
     engine + operator CLI + snapshot. **Still deferred:** the load/unload CLIENT (the manual popup, the
     OPERATIONS dock display) and selling to the Syndicate from the Outpost.
+  - **slice 3-client — the read-only Outpost Manager.** 🟢 *BUILT (21-09-26 — CLIENT + three derived
+    snapshot fields; `client/game.html` `#outpost-overlay`, `sim/snapshot.js`).* Clicking a guild Outpost's
+    **OPEN DETAILS** button (the `#sp-details` placeholder, now enabled + wired) opens a three-column popup
+    (the Dispatch popup reshaped) that renders `snapshot.outposts[i]` LIVE: the ten dock berths counting
+    down (a progress fill = `1 − eta/totalTicks`), the queue with wait times, the storage donut (`used /
+    capacity`) + per-tier resource tables (bucketed by the same `tierGoods` the Trade tab uses), and the
+    selected berth's craft (`hold used / capacity`). It is the WINDOW, not the control panel — **nothing
+    here starts a transfer**. The client computes NO game number (§18): the ENGINE gained **three additive,
+    derived-on-read snapshot fields** so the view invents none — `slots[i].totalTicks`
+    (`outpostDockTurnaround(class)`), the outpost row's `used` (`usedSpace(stockpile)`), and each vehicle
+    row's `capacity` + `used` (`usedSpace(cargo)`). Derived-only, so `persist`/determinism goldens are
+    **byte-identical** (an empty-dock galaxy is unchanged); the ASSETS tier tab + the Maintenance Hangar are
+    parked placeholders (no engine data). Sim suite 1,412 → **1,415 green** (three new tripwires on the
+    fields); rendered end-to-end in headless Chromium (click → OPEN DETAILS → the manager; DOCKED countdown
+    + fill; QUEUED wait times; the donut + RAW/PROCESSED tables; the parked ASSETS/hangar; an empty outpost
+    opens cleanly). **Display calls (surfaced, not invented):** the berth ordinals (`DOCK 01…`) are client
+    numbering — the engine's `slots[]` is an unordered list of active transfers with no berth identity, so a
+    vacant row is inert; the derived outpost name (anchor name + " Outpost", `#NN` fallback); the parked
+    ASSETS tab + Maintenance Hangar. **Still deferred:** the manual load/unload popup (the shared manifest
+    editor, cargo engine slice B) and the OPERATIONS dock display.
   - **slice 4 — the Tier-4 build/deploy path.** The buildable/deployable kit, placement range, anchor-ownership.
 - **2.2 — cargo: the load / haul / unload engine (design.md §4 "The dock model").** The craft's hold
   and the manifest that fills/empties it — the substrate that turns dispatch (above) into a real

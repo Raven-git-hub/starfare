@@ -1911,6 +1911,107 @@ select.field{appearance:none; cursor:pointer;}
   #dispatch-overlay .est-side .art{max-height:60vh; background-size:contain}
 }
 
+/* ===== #outpost-overlay — the read-only OUTPOST MANAGER (roadmap 2.2). A SIBLING of #dispatch-overlay,
+   wearing the same est card / palette / hero language, reshaped into THREE columns: an outpost hero
+   (DOCKED / QUEUED lists over the outpost portrait) | a centre (storage donut + a parked Maintenance
+   Hangar, then the per-tier resource tables) | the selected berth's craft hero. Everything is read
+   straight off the snapshot's outpost row + its craft rows — nothing here starts a transfer (the manual
+   load/unload is the next slice). Every figure is a PUBLISHED snapshot value or a pure display ratio of
+   published figures (a fill fraction, a thousands separator, a tick difference) — §18. The fill-bar row
+   (an absolute fill behind, text in front) is the #tp-trade .tw-inv-row anatomy; the donut is the
+   #tw-cn .dk-donut shape; the tier tabs mirror the trade .tw-tier tabs. ===== */
+#outpost-overlay{
+  --void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
+  --line:rgba(232,223,200,0.10); --line2:rgba(232,223,200,0.20);
+  --amber:#C9A227; --amber-dim:#7A6420; --amber-ghost:rgba(201,162,39,0.10);
+  --ink:#E8DFC8; --ink2:#8B8F9C; --ink3:#565B68; --ink4:#3a3f49;
+  --green:#4E9A87; --red:#C2603A;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;
+  --serif:'Cinzel',serif;
+  position:fixed; left:0; right:0; top:104px; bottom:0;
+  background:rgba(6,7,10,.72); backdrop-filter:blur(3px);
+  display:none; align-items:flex-start; justify-content:center;
+  padding:26px 20px; overflow-y:auto; z-index:570;
+  font-family:var(--sans); font-size:14px; line-height:1.45; color:var(--ink);
+}
+#outpost-overlay.open{display:flex}
+#outpost-overlay .est{width:100%; max-width:1180px; background:linear-gradient(180deg,#12151C,#0F1218); border:1px solid var(--line2); border-radius:14px; box-shadow:0 30px 90px rgba(0,0,0,.6); overflow:hidden; position:relative}
+#outpost-overlay .est-head{display:flex; align-items:flex-start; gap:16px; padding:18px 22px 16px; border-bottom:1px solid var(--line); background:radial-gradient(700px 200px at 85% -40%, rgba(201,162,39,.06), transparent 70%)}
+#outpost-overlay .est-head .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
+#outpost-overlay .est-head h2{font-family:var(--serif); font-weight:600; font-size:22px; margin:5px 0 3px; letter-spacing:.02em}
+#outpost-overlay .est-head .om-sub{font-family:var(--mono); font-size:11.5px; color:var(--ink2); letter-spacing:.02em}
+#outpost-overlay .est-close{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--ink2); border-radius:8px; width:34px; height:34px; font-size:16px; cursor:pointer; flex:none}
+#outpost-overlay .est-close:hover{border-color:var(--red); color:var(--red)}
+/* [ outpost hero 340px | centre 1fr | craft hero 340px ], noticeably taller than the Dispatch popup. */
+#outpost-overlay .est-body{display:grid; grid-template-columns:340px 1fr 340px; min-height:620px}
+/* The two hero columns share the est-side portrait pattern (absolute art + scrim + inner). */
+#outpost-overlay .om-hero{position:relative; background:#0d0f14; overflow:hidden; display:flex; flex-direction:column}
+#outpost-overlay .om-hero .art{position:absolute; inset:0; background-size:cover; background-position:center; background-repeat:no-repeat; z-index:0}
+#outpost-overlay .om-hero .scrim{position:absolute; inset:0; z-index:1; background:linear-gradient(180deg, rgba(10,11,15,.88) 0%, rgba(10,11,15,.55) 46%, rgba(10,11,15,.93) 100%)}
+#outpost-overlay .om-hero .inner{position:relative; z-index:2; display:flex; flex-direction:column; flex:1; padding:16px 16px 18px; min-height:0}
+#outpost-overlay .om-left{border-right:1px solid var(--line)}
+#outpost-overlay .om-right{border-left:1px solid var(--line)}
+/* left hero — DOCKED / QUEUED tabs aligned to the top, the active list on the upper portion. */
+#outpost-overlay .om-tabs{display:flex; gap:2px; margin-bottom:12px; flex:none}
+#outpost-overlay .om-tab{flex:1; font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3); background:rgba(10,11,15,.45); border:1px solid var(--line); padding:8px 6px; text-align:center; cursor:pointer}
+#outpost-overlay .om-tab:hover{color:var(--ink2)}
+#outpost-overlay .om-tab.on{color:var(--ink); background:var(--panel2); box-shadow:0 -2px 0 var(--amber) inset}
+/* capped so the list never swallows the art (the portrait stays visible below it). */
+#outpost-overlay .om-list{display:flex; flex-direction:column; gap:5px; overflow-y:auto; max-height:432px}
+/* a dock / queue row — the fill-bar anatomy: an absolute fill behind, text in front. */
+#outpost-overlay .om-row{position:relative; display:flex; align-items:center; min-height:40px; padding:6px 11px; border:1px solid var(--line); border-radius:7px; background:rgba(10,11,15,.5); cursor:pointer; overflow:hidden; flex:none}
+#outpost-overlay .om-row:hover:not(.vacant){border-color:var(--line2)}
+#outpost-overlay .om-row.vacant{cursor:default; opacity:.5}
+#outpost-overlay .om-row.on{border-color:var(--amber)}
+#outpost-overlay .om-row i{position:absolute; left:0; top:0; bottom:0; background:rgba(201,162,39,.22); z-index:0}
+#outpost-overlay .om-row .rt{position:relative; z-index:1; flex:1; min-width:0}
+#outpost-overlay .om-row .rt .berth{font-family:var(--mono); font-size:9px; letter-spacing:.12em; color:var(--ink3); text-transform:uppercase}
+#outpost-overlay .om-row .rt .cl{font-size:12px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+#outpost-overlay .om-row .rt .sub{font-family:var(--mono); font-size:10px; color:var(--ink2)}
+/* centre column — storage + hangar squares, then the tier tabs + resource grid. Scrolls internally. */
+#outpost-overlay .om-mid{padding:18px 20px 22px; display:flex; flex-direction:column; gap:18px; overflow-y:auto}
+#outpost-overlay .om-squares{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+#outpost-overlay .om-square{border:1px solid var(--line); border-radius:10px; background:var(--panel); padding:16px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; aspect-ratio:1/1}
+#outpost-overlay .om-square .sqhead{font-family:var(--mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--amber); margin-bottom:10px}
+#outpost-overlay .om-square.parked .ph{font-family:var(--mono); font-size:11px; letter-spacing:.05em; color:var(--ink3); line-height:1.7}
+/* the storage donut — the dockyard-tab shape: an SVG ring rotated −90° with a centre read-out. */
+#outpost-overlay .om-donutwrap{position:relative; width:138px; height:138px}
+#outpost-overlay .om-donutwrap svg{transform:rotate(-90deg)}
+#outpost-overlay .om-donut-c{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center}
+#outpost-overlay .om-donut-c .big{font-family:var(--mono); font-size:26px; color:var(--ink); line-height:1; font-variant-numeric:tabular-nums}
+#outpost-overlay .om-donut-c .u{font-family:var(--mono); font-size:8px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3); margin-top:6px}
+#outpost-overlay .om-donut-c .fig{font-family:var(--mono); font-size:9.5px; color:var(--amber); margin-top:4px; font-variant-numeric:tabular-nums}
+/* tier tabs — the trade .tw-tier clip look, in the est palette. */
+#outpost-overlay .om-tiers{display:flex; gap:2px}
+#outpost-overlay .om-tier{flex:1; font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink3); background:rgba(10,11,15,.4); border:1px solid var(--line); padding:8px 4px; cursor:pointer; text-align:center}
+#outpost-overlay .om-tier .n{color:var(--ink2); font-weight:600; margin-right:5px}
+#outpost-overlay .om-tier:hover{color:var(--ink2)}
+#outpost-overlay .om-tier.on{color:var(--ink); background:var(--panel2); box-shadow:0 -2px 0 var(--amber) inset}
+#outpost-overlay .om-tier.on .n{color:var(--amber)}
+/* the resource cells — a three-column grid of the tw-inv-row fill anatomy. */
+#outpost-overlay .om-res{display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px}
+#outpost-overlay .om-cell{position:relative; display:flex; flex-direction:column; justify-content:center; min-height:40px; padding:6px 9px; border:1px solid var(--line); border-radius:6px; background:rgba(10,11,15,.4); overflow:hidden}
+#outpost-overlay .om-cell.zero{opacity:.4}
+#outpost-overlay .om-cell i{position:absolute; left:0; top:0; bottom:0; background:rgba(201,162,39,.20); z-index:0}
+#outpost-overlay .om-cell .nm{position:relative; z-index:1; font-size:11px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+#outpost-overlay .om-cell .q{position:relative; z-index:1; font-family:var(--mono); font-size:11px; color:var(--ink); font-variant-numeric:tabular-nums; margin-top:2px}
+/* the parked placeholder box (ASSETS tab, an empty tier). */
+#outpost-overlay .om-parked{border:1px dashed var(--line2); border-radius:8px; padding:26px 16px; text-align:center; font-family:var(--mono); font-size:11px; letter-spacing:.05em; color:var(--ink3)}
+/* right hero — the selected craft's read-out, pinned to the bottom of the portrait. */
+#outpost-overlay .om-craft{margin-top:auto; display:flex; flex-direction:column; gap:2px}
+#outpost-overlay .om-craft .cname{font-family:var(--serif); font-size:19px; color:var(--ink); margin-bottom:8px}
+#outpost-overlay .om-craft .crow{display:flex; justify-content:space-between; align-items:baseline; gap:12px; font-family:var(--mono); font-size:11.5px; color:var(--ink); border-top:1px solid var(--line); padding:7px 0}
+#outpost-overlay .om-craft .crow .k{color:var(--ink3); letter-spacing:.08em; text-transform:uppercase; font-size:9.5px}
+#outpost-overlay .om-empty-hero{margin:auto; font-family:var(--mono); font-size:11px; letter-spacing:.08em; color:var(--ink3); text-align:center}
+/* One-column phone layout: the columns stack; the heroes need an explicit height for the absolute art. */
+@media(max-width:960px){
+  #outpost-overlay .est-body{grid-template-columns:1fr; min-height:0}
+  #outpost-overlay .om-left, #outpost-overlay .om-right{border:none; border-bottom:1px solid var(--line)}
+  #outpost-overlay .om-hero{min-height:360px}
+  #outpost-overlay .om-list{max-height:240px}
+}
+
 /* ===== #reneg-overlay — the LICENCE RENEGOTIATION popup (#64 Slice 1b, design.md §5; restyled in
    the Slice 2 client-polish pass to wear the adviser-reel look — the same two-column hero card as
    #est-reel). It stays its OWN overlay with its own id and its own JS: it is deliberately NOT merged
@@ -3017,6 +3118,58 @@ select.field{appearance:none; cursor:pointer;}
           <div class="stitle">Transport</div>
           <button class="dp-show" id="dpShowMap" type="button">Show on map</button>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- The read-only OUTPOST MANAGER (roadmap 2.2). Opened from a guild Outpost's OPEN DETAILS button.
+     Three columns: the outpost hero (DOCKED / QUEUED over the portrait) | the centre (storage donut +
+     a parked Maintenance Hangar, then the per-tier resource tables) | the selected berth's craft hero.
+     Everything is rendered from the snapshot's outpost row + its craft rows (§18); nothing here starts
+     a transfer — the manual load/unload is the next slice. Filled by the outpost-manager-wire IIFE. -->
+<div id="outpost-overlay">
+  <div class="est">
+    <div class="est-head">
+      <div>
+        <div class="eyebrow">Guild Outpost</div>
+        <h2 id="omName">—</h2>
+        <div class="om-sub" id="omSub">—</div>
+      </div>
+      <button class="est-close" id="omClose" title="Close (Esc)">✕</button>
+    </div>
+    <div class="est-body">
+      <!-- left hero: the outpost portrait, DOCKED / QUEUED tabs, the active list over the upper portion -->
+      <div class="om-hero om-left">
+        <div class="art" style="background-image:url('assets/units/outpost.jpg')"></div>
+        <div class="scrim"></div>
+        <div class="inner">
+          <div class="om-tabs">
+            <div class="om-tab" id="omTabDocked">Docked</div>
+            <div class="om-tab" id="omTabQueued">Queued</div>
+          </div>
+          <div class="om-list" id="omList"></div>
+        </div>
+      </div>
+      <!-- centre: storage donut + Maintenance Hangar (parked), then the tier tabs + resource grid -->
+      <div class="om-mid">
+        <div class="om-squares">
+          <div class="om-square" id="omStorage"></div>
+          <div class="om-square parked">
+            <div class="sqhead">Maintenance Hangar</div>
+            <div class="ph">No craft under<br>maintenance · Later</div>
+          </div>
+        </div>
+        <div>
+          <div class="om-tiers" id="omTiers"></div>
+          <div id="omTierBody" style="margin-top:12px"></div>
+        </div>
+      </div>
+      <!-- right hero: the selected berth's craft portrait + read-out -->
+      <div class="om-hero om-right">
+        <div class="art" id="omCraftArt"></div>
+        <div class="scrim"></div>
+        <div class="inner" id="omCraftInner"></div>
       </div>
     </div>
   </div>
@@ -4239,6 +4392,7 @@ select.field{appearance:none; cursor:pointer;}
     ringRow.style.display = 'none'; // shown only for systems that carry a ring
     const outpostRows = document.getElementById('sp-outpost-rows');
     outpostRows.style.display = 'none'; // shown only for a guild outpost
+    detailsBtn.title = 'Placeholder — will open the solar system data guide'; // reset; the outpost branch overrides it
 
     const coords = (type === 'empty' || type === 'territory') ? ax : hit.coords;
     document.getElementById('sp-coords').textContent = `q${coords.q} r${coords.r}`;
@@ -4271,7 +4425,9 @@ select.field{appearance:none; cursor:pointer;}
       document.getElementById('sp-docks').textContent = hit.dockCapacity;
       document.getElementById('sp-hold').textContent = 'Hold empty';
       outpostRows.style.display = 'block';
-      detailsBtn.disabled = true;
+      // OPEN DETAILS now opens the read-only Outpost Manager (roadmap 2.2) for this outpost.
+      detailsBtn.disabled = false;
+      detailsBtn.title = 'Open the Outpost Manager';
     } else if (type === 'tollGate') {
       const guild = guildById.get(hit.guildId);
       nameEl.textContent = hit.name;
@@ -4321,6 +4477,8 @@ select.field{appearance:none; cursor:pointer;}
   document.getElementById('sp-details').addEventListener('click', () => {
     if (selectedType === 'system' && selected && selected.planets) window.openSystemDetail(selected);
     else if (selectedType === 'outpost' && selected && window.openWaystationDetail) window.openWaystationDetail(selected);
+    // A guild Outpost opens the read-only Outpost Manager (roadmap 2.2), fed the clicked outpost's id.
+    else if (selectedType === 'guildOutpost' && selected && window.__openOutpostManager) window.__openOutpostManager(selected.id);
   });
   window.addEventListener('resize', () => { resize(); if (galaxy) starDots = genStarDots(galaxy.seed); });
 
@@ -6382,6 +6540,9 @@ function applySnapshot(snap){
   // An open VENTURE MANAGEMENT popup re-reads too, so its RP gauge, production donut and contract
   // window move as ticks pass (docs/venture-management.md) — the same open/refresh lifecycle.
   if (window.__vmRefresh) window.__vmRefresh();
+  // An open OUTPOST MANAGER re-reads too, so its dock berths count down, the storage donut and resource
+  // tables move, and a torn-down outpost self-closes (roadmap 2.2) — the same open/refresh lifecycle.
+  if (window.__outpostMgrRefresh) window.__outpostMgrRefresh();
 }
 
 // Who controls a system, for the detail screen's header. Reads the live claims —
@@ -9978,6 +10139,283 @@ function paintInventoryHero(d){
   $('dpClose').addEventListener('click', closeDispatch);
   $('dispatch-overlay').addEventListener('click', function(e){ if(e.target === this) closeDispatch(); });
   $('dpShowMap').addEventListener('click', showOnMap);
+})();
+</script>
+
+<script>
+/* ============================================================================
+   THE OUTPOST MANAGER (read-only) — roadmap 2.2 (the outpost/cargo ladder). Opened for ONE guild
+   Outpost from its OPEN DETAILS button (#sp-details). It renders the outpost LIVE off the snapshot's
+   outpost row (`snapshot.outposts[i]`) and the craft rows it joins to — its ten dock berths counting
+   down, its queue, its storage donut + per-tier resource tables, and the craft in the selected berth.
+   This is the WINDOW, not the control panel: NOTHING here starts a transfer (the shared manifest editor
+   is the very next slice, explicitly out of scope). The client computes NO game number (§18): every
+   figure is a published snapshot value (used/capacity/eta/totalTicks/stockpile) or a pure display ratio
+   of published figures (a fill fraction, a thousands separator, a tick difference). Its own well-named
+   CSS block + this IIFE, isolated exactly as #dispatch-overlay is.
+   ============================================================================ */
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function snap(){ return (window.__snapshot && window.__snapshot()) || null; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); }
+  function pad2(n){ return String(n).padStart(2,'0'); }
+  function fmtNum(n){ return Math.round(n||0).toLocaleString('en-US'); }
+  // Display vocabulary only (§18) — local copies, the map/trade `pretty` are out of this IIFE's scope.
+  // Splits at a camelCase boundary AND on '_', so a class (`lightTransport` → "Light Transport") and a
+  // snake_case good (`titanium_alloy` → "Titanium Alloy") both read as words.
+  function pretty(key){
+    return String(key==null?'':key)
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .split('_')
+      .map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' ');
+  }
+
+  // The open outpost, the left tab, the selected berth, and the tier tab. `sel` is { kind:'slot'|'queue',
+  // id:<vehicleId> } or null (no berth to select). Reset on open.
+  var OM = { open:false, id:null, tab:'DOCKED', sel:null, tier:1 };
+
+  // The tier vocabulary, read the SAME way the TRADE tab reads it — off the shared goods catalog
+  // (window.__goodsCatalog, GET /goods) with the same deuterium filter — so the buckets never diverge
+  // from the Trade tab's and no good vocabulary is invented here.
+  var HIDDEN_GOODS = { deuterium:1, deuterium_fuel:1 };
+  function tierGoods(t){
+    var c = (window.__goodsCatalog && window.__goodsCatalog()) || {};
+    var list = t===1 ? (c.raw||[]) : t===2 ? (c.processed||[]) : t===3 ? (c.tier3||[]) : [];
+    return list.filter(function(g){ return !HIDDEN_GOODS[g]; });
+  }
+  var TIER_LABELS = { 1:'Raw', 2:'Processed', 3:'Parts', 4:'Assets' };
+
+  // The live outpost row by id, off the polled snapshot — the ONE authoritative source, re-read every
+  // render so the view stays live and self-closes if the outpost is torn down. null if it's gone.
+  function outpostRow(){
+    var s = snap(); if(!s) return null;
+    return (s.outposts||[]).filter(function(o){ return o.id === OM.id; })[0] || null;
+  }
+  // Every guild's vehicle rows, by id — a slot / queue names its craft by `vehicleId`, and the craft's
+  // class / hold / maintenance live on its own row (§15.4). A rival craft the snapshot doesn't carry
+  // simply misses the join and the row degrades to "—" / the neutral hero, never throwing.
+  function vehicleById(){
+    var s = snap(); var m = {};
+    ((s && s.guilds) || []).forEach(function(g){ (g.vehicles||[]).forEach(function(v){ m[v.id]=v; }); });
+    return m;
+  }
+  // The anchor system's display name (window.__systemName returns the id when unresolved). The DERIVED
+  // outpost name is the anchor name + " Outpost", falling back to the id's #NN suffix — presentation
+  // only, the same discipline the render slice + the Dispatch popup use (§18).
+  function anchorName(row){ return (window.__systemName && window.__systemName(row.anchorSystemId)) || row.anchorSystemId; }
+  function outpostName(row){
+    var an = anchorName(row);
+    if(an && an !== row.anchorSystemId) return an + ' Outpost';
+    return 'Outpost #' + String(row.id).split('_').slice(-1)[0];
+  }
+
+  function openManager(id){
+    if(!id) return;
+    OM.open = true; OM.id = id; OM.tab = 'DOCKED'; OM.sel = null; OM.tier = 1;
+    if(!outpostRow()) { OM.open = false; return; }  // gone between click and open — don't show an empty shell
+    render();
+    $('outpost-overlay').classList.add('open');
+  }
+  function closeManager(){
+    OM.open = false; OM.id = null; OM.sel = null;
+    $('outpost-overlay').classList.remove('open');
+  }
+
+  // Full render — the head + all three columns. Re-run on open and on every poll (the view is live: the
+  // berths count down, the donut and tables move). A torn-down outpost self-closes.
+  function render(){
+    if(!OM.open) return;
+    var row = outpostRow();
+    if(!row){ closeManager(); return; }
+    $('omName').textContent = outpostName(row);
+    $('omSub').textContent = 'Anchored at ' + anchorName(row) + ' · ' + row.dockCapacity + ' dock slots · capacity ' + fmtNum(row.capacity) + ' cargo space';
+    ensureSelection(row);
+    renderTabs();
+    renderLeft(row);
+    renderStorage(row);
+    renderTiers();
+    renderTierBody(row);
+    renderCraft(row);
+  }
+
+  // Default the selection to the first occupied slot, else the first queued craft, else none — and keep
+  // a still-valid selection across polls so a craft the player picked stays picked as ticks pass.
+  function ensureSelection(row){
+    var slots = row.slots||[], queue = row.queue||[];
+    if(OM.sel){
+      if(OM.sel.kind==='slot' && slots.some(function(s){ return s.vehicleId===OM.sel.id; })) return;
+      if(OM.sel.kind==='queue' && queue.some(function(q){ return q.vehicleId===OM.sel.id; })) return;
+    }
+    if(slots.length){ OM.sel = { kind:'slot', id:slots[0].vehicleId }; return; }
+    if(queue.length){ OM.sel = { kind:'queue', id:queue[0].vehicleId }; return; }
+    OM.sel = null;
+  }
+
+  function renderTabs(){
+    $('omTabDocked').classList.toggle('on', OM.tab==='DOCKED');
+    $('omTabQueued').classList.toggle('on', OM.tab==='QUEUED');
+  }
+
+  // One dock / queue row (the tw-inv-row fill anatomy). `fill` (0..1) draws the transfer-progress bar;
+  // a vacant row is inert (no data attributes, not clickable).
+  function rowHtml(kind, vid, on, berth, cl, sub, fill, vacant){
+    var attrs = vacant
+      ? 'class="om-row vacant"'
+      : 'class="om-row'+(on?' on':'')+'" data-kind="'+esc(kind)+'" data-vid="'+esc(vid)+'"';
+    var bar = fill>0 ? '<i style="width:'+(fill*100).toFixed(1)+'%"></i>' : '';
+    return '<div '+attrs+'>'+bar+
+      '<div class="rt"><div class="berth">'+esc(berth)+'</div>'+
+      '<div class="cl">'+esc(cl)+'</div>'+
+      (sub ? '<div class="sub">'+esc(sub)+'</div>' : '')+
+      '</div></div>';
+  }
+
+  function renderLeft(row){
+    var byId = vehicleById();
+    var html = '';
+    if(OM.tab==='DOCKED'){
+      var slots = row.slots||[];
+      // Active slots first, numbered DOCK 01.. — the berth ordinals are CLIENT display numbering: the
+      // engine's slots[] is an unordered list of active transfers with no berth identity (§18), so a
+      // craft is not pinned to a berth and a vacant row means nothing to click.
+      slots.forEach(function(sl, i){
+        var v = byId[sl.vehicleId];
+        var cls = v ? pretty(v.class) : '—';
+        var total = (typeof sl.totalTicks==='number') ? sl.totalTicks : 0;
+        // the dock progress bar = 1 − eta/totalTicks, all published (§18); no totalTicks ⇒ no bar.
+        var fill = total>0 ? Math.max(0, Math.min(1, 1 - sl.eta/total)) : 0;
+        var on = OM.sel && OM.sel.kind==='slot' && OM.sel.id===sl.vehicleId;
+        html += rowHtml('slot', sl.vehicleId, on, 'Dock '+pad2(i+1), cls, sl.eta+' min remaining', fill, false);
+      });
+      for(var j=slots.length; j<row.dockCapacity; j++){
+        html += rowHtml(null, null, false, 'Dock '+pad2(j+1), 'Vacant', '', 0, true);
+      }
+    } else {
+      var queue = row.queue||[];
+      if(!queue.length){ html = '<div class="om-parked">None waiting.</div>'; }
+      else {
+        var now = (snap()||{}).tick || 0;
+        queue.forEach(function(q, i){
+          var v = byId[q.vehicleId];
+          var cls = v ? pretty(v.class) : '—';
+          var wait = Math.max(0, now - q.readyTick); // waiting time = tick − readyTick (a tick difference, §18)
+          var on = OM.sel && OM.sel.kind==='queue' && OM.sel.id===q.vehicleId;
+          html += rowHtml('queue', q.vehicleId, on, i===0?'Next':('Queue '+pad2(i+1)), cls, 'waiting '+wait+' min', 0, false);
+        });
+      }
+    }
+    $('omList').innerHTML = html;
+    // A row is clickable to SELECT (updates only the craft hero + the row highlight — this is the window,
+    // it starts no transfer). A vacant row carries no data-vid and is skipped.
+    Array.prototype.forEach.call($('omList').querySelectorAll('.om-row[data-vid]'), function(el){
+      el.addEventListener('click', function(){
+        OM.sel = { kind: el.getAttribute('data-kind'), id: el.getAttribute('data-vid') };
+        var r = outpostRow(); if(r){ renderLeftSelection(); renderCraft(r); }
+      });
+    });
+  }
+
+  // Toggle the .on highlight without rebuilding the list — a selection click updates only the hero.
+  function renderLeftSelection(){
+    Array.prototype.forEach.call($('omList').querySelectorAll('.om-row[data-vid]'), function(el){
+      var on = OM.sel && el.getAttribute('data-kind')===OM.sel.kind && el.getAttribute('data-vid')===OM.sel.id;
+      el.classList.toggle('on', !!on);
+    });
+  }
+
+  // The storage donut = used / capacity (both published — the client sums no volumes, §18). The ring is
+  // the dockyard-tab shape: an SVG circle rotated −90° whose dash-offset draws the filled fraction.
+  function renderStorage(row){
+    var used = row.used||0, cap = row.capacity||0;
+    var frac = cap>0 ? Math.max(0, Math.min(1, used/cap)) : 0;
+    var pct = Math.round(frac*100);
+    var R = 60, C = 2*Math.PI*R;
+    var off = C*(1-frac);
+    $('omStorage').innerHTML =
+      '<div class="sqhead">Storage</div>' +
+      '<div class="om-donutwrap">' +
+        '<svg width="138" height="138" viewBox="0 0 138 138">' +
+          '<circle cx="69" cy="69" r="'+R+'" fill="none" stroke="rgba(232,223,200,0.10)" stroke-width="12"/>' +
+          '<circle cx="69" cy="69" r="'+R+'" fill="none" stroke="#C9A227" stroke-width="12" stroke-linecap="round" ' +
+                  'stroke-dasharray="'+C.toFixed(2)+'" stroke-dashoffset="'+off.toFixed(2)+'"/>' +
+        '</svg>' +
+        '<div class="om-donut-c">' +
+          '<div class="big">'+pct+'%</div>' +
+          '<div class="u">capacity used</div>' +
+          '<div class="fig">'+fmtNum(used)+' / '+fmtNum(cap)+'</div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function renderTiers(){
+    var html = '';
+    [1,2,3,4].forEach(function(t){
+      html += '<div class="om-tier'+(OM.tier===t?' on':'')+'" data-tier="'+t+'"><span class="n">'+t+'</span>'+esc(TIER_LABELS[t].toUpperCase())+'</div>';
+    });
+    $('omTiers').innerHTML = html;
+    Array.prototype.forEach.call($('omTiers').querySelectorAll('.om-tier'), function(el){
+      el.addEventListener('click', function(){
+        OM.tier = parseInt(el.getAttribute('data-tier'),10);
+        var r = outpostRow(); if(r){ renderTiers(); renderTierBody(r); }
+      });
+    });
+  }
+
+  // Tiers 1–3: a three-column grid of resource cells, bucketing the stockpile by tierGoods(t). Each
+  // cell's fill = the good's share of the MAX qty in that tier (a display ratio of published figures);
+  // a good the outpost doesn't hold reads 0 (dim, no fill). Tier 4 (ASSETS) is parked — the engine has
+  // no tier-4-asset-at-outpost storage (the stockpile is goods-only), so there is nothing to render.
+  function renderTierBody(row){
+    if(OM.tier===4){ $('omTierBody').innerHTML = '<div class="om-parked">No assets stored · later</div>'; return; }
+    var goods = tierGoods(OM.tier);
+    if(!goods.length){ $('omTierBody').innerHTML = '<div class="om-parked">No goods at this tier.</div>'; return; }
+    var stock = row.stockpile || {};
+    var maxQ = 0; goods.forEach(function(g){ maxQ = Math.max(maxQ, stock[g]||0); });
+    var cells = goods.map(function(g){
+      var q = stock[g]||0;
+      var frac = maxQ>0 ? q/maxQ : 0;
+      var bar = q>0 ? '<i style="width:'+(frac*100).toFixed(1)+'%"></i>' : '';
+      return '<div class="om-cell'+(q>0?'':' zero')+'">'+bar+
+        '<div class="nm">'+esc(pretty(g))+'</div><div class="q">'+fmtNum(q)+'</div></div>';
+    }).join('');
+    $('omTierBody').innerHTML = '<div class="om-res">'+cells+'</div>';
+  }
+
+  function crow(k, v){ return '<div class="crow"><span class="k">'+esc(k)+'</span><span>'+esc(v)+'</span></div>'; }
+
+  // The right hero — the selected berth's craft. Its portrait + a small read-out (Class · #NN, status,
+  // departs-in for a loading craft, hold used/capacity). No selection ⇒ a neutral "Select a berth"
+  // placeholder over the (blank) art.
+  function renderCraft(row){
+    var art = $('omCraftArt'), inner = $('omCraftInner');
+    var v = OM.sel ? vehicleById()[OM.sel.id] : null;
+    if(!v){
+      art.style.backgroundImage = '';
+      inner.innerHTML = '<div class="om-empty-hero">Select a berth</div>';
+      return;
+    }
+    art.style.backgroundImage = "url('assets/units/"+String(v.class).toLowerCase()+".jpg')";
+    var suffix = String(v.id).split('_').slice(-1)[0];
+    var lines = crow('Status', OM.sel.kind==='slot' ? 'Loading' : (OM.sel.kind==='queue' ? 'Queued' : pretty(v.status||'')));
+    if(OM.sel.kind==='slot'){
+      var sl = (row.slots||[]).filter(function(s){ return s.vehicleId===v.id; })[0];
+      if(sl) lines += crow('Departs in', sl.eta+' min');
+    }
+    // hold used / capacity — the two published vehicle fields (§18), no client volume-summing.
+    lines += crow('Hold', fmtNum(v.used)+' / '+fmtNum(v.capacity));
+    inner.innerHTML = '<div class="om-craft"><div class="cname">'+esc(pretty(v.class))+' · #'+esc(suffix)+'</div>'+lines+'</div>';
+  }
+
+  // tab clicks — set state and re-render only the left list (no snapshot change).
+  $('omTabDocked').addEventListener('click', function(){ OM.tab='DOCKED'; var r=outpostRow(); if(r){ renderTabs(); renderLeft(r); } });
+  $('omTabQueued').addEventListener('click', function(){ OM.tab='QUEUED'; var r=outpostRow(); if(r){ renderTabs(); renderLeft(r); } });
+  $('omClose').addEventListener('click', closeManager);
+  $('outpost-overlay').addEventListener('click', function(e){ if(e.target===this) closeManager(); });
+  document.addEventListener('keydown', function(e){ if(OM.open && e.key==='Escape') closeManager(); });
+
+  window.__openOutpostManager = openManager;                       // the ONE entry point (OPEN DETAILS)
+  window.__outpostMgrRefresh = function(){ if(OM.open) render(); }; // the poll keeps the view live
+  window.__outpostMgrClose = closeManager;
 })();
 </script>
 

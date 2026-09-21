@@ -33,6 +33,7 @@ const {
   LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT, SPYCRAFT, VEHICLE_SPECS,
 } = require('../vehicles.js');
 const { OUTPOST_CAPACITY, OUTPOST_DOCK_TURNAROUND } = require('../outposts.js');
+const { usedSpace } = require('../manifest.js');
 const { isHexInBounds, seedLandmarkAtHex } = require('../seed.js');
 const { starterHomeAtDistance } = require('./waystation-fixtures.js');
 const {
@@ -371,4 +372,59 @@ test('a galaxy that runs ticks with no Outpost transfer keeps queue/slots omitte
   assert.deepEqual(craftOf(advanced, 'vehicle_g1_lightTransport_01').cargo, { [T1]: 3 });
   assert.notEqual(before, undefined);
   assert.deepEqual(checkInvariants(advanced, advanced.tick), []);
+});
+
+// --- 12. the read-only Outpost Manager's three DERIVED snapshot fields (roadmap 2.2) ------------
+// The manager view renders the storage donut / dock progress bar / craft hold gauge off these three
+// published figures so the client invents no game number (§18). Unit-test them directly.
+
+test('a slot row carries totalTicks = outpostDockTurnaround(class), and eta ≤ totalTicks', () => {
+  // A light AND a medium craft, so the per-class turnaround (5 / 30) is proved, not one value twice.
+  const lightId = 'vehicle_g1_lightTransport_01';
+  const medId = 'vehicle_g1_mediumTransport_01';
+  let s = dockState([craft(lightId, { [T1]: 10 }), craft(medId, { [T1]: 10 }, MEDIUM_TRANSPORT)]);
+  s = accept(s, transfer(lightId, [{ dir: 'unload', good: T1, qty: 10 }]));
+  s = accept(s, transfer(medId, [{ dir: 'unload', good: T1, qty: 10 }]));
+  s = ticks(s, 1); // both promote into slots this tick
+
+  const slots = buildSnapshot(s).outposts[0].slots;
+  const lightSlot = slots.find((sl) => sl.vehicleId === lightId);
+  const medSlot = slots.find((sl) => sl.vehicleId === medId);
+  assert.equal(lightSlot.totalTicks, OUTPOST_DOCK_TURNAROUND[LIGHT_TRANSPORT], 'light turnaround = 5');
+  assert.equal(medSlot.totalTicks, OUTPOST_DOCK_TURNAROUND[MEDIUM_TRANSPORT], 'medium turnaround = 30');
+  // eta (completionTick − tick) never exceeds the full turnaround — the fill 1 − eta/totalTicks stays in [0,1].
+  assert.ok(lightSlot.eta <= lightSlot.totalTicks && lightSlot.eta > 0);
+  assert.ok(medSlot.eta <= medSlot.totalTicks && medSlot.eta > 0);
+});
+
+test("an outpost row's used = usedSpace(stockpile) and 0 ≤ used ≤ capacity; empty reads 0", () => {
+  // Empty outpost: used is 0 and within [0, capacity].
+  const empty = buildSnapshot(dockState([craft('vehicle_g1_lightTransport_01')])).outposts[0];
+  assert.equal(empty.used, 0, 'an empty stockpile reads used 0');
+  assert.ok(empty.used >= 0 && empty.used <= empty.capacity);
+
+  // After a completion the stockpile grows; `used` equals usedSpace of the stockpile the row carries.
+  const loaderId = 'vehicle_g1_lightTransport_01';
+  let s = dockState([craft(loaderId, { [T1]: 10, [T2]: 3 })]);
+  s = accept(s, transfer(loaderId, [{ dir: 'unload', good: T1, qty: 10 }, { dir: 'unload', good: T2, qty: 3 }]));
+  s = ticks(s, 1 + OUTPOST_DOCK_TURNAROUND[LIGHT_TRANSPORT]); // promote, then resolve at completion
+  const row = buildSnapshot(s).outposts[0];
+  assert.deepEqual(row.stockpile, { [T1]: 10, [T2]: 3 }, 'the goods landed');
+  assert.equal(row.used, usedSpace(row.stockpile), 'used is the stockpile occupancy');
+  assert.equal(row.used, 10 * volumeOf(T1) + 3 * volumeOf(T2));
+  assert.ok(row.used >= 0 && row.used <= row.capacity, 'within the hard cap');
+});
+
+test("a vehicle row's used = usedSpace(cargo) and ≤ capacity; an empty hold reads 0", () => {
+  const ladenId = 'vehicle_g1_lightTransport_01';
+  const emptyId = 'vehicle_g1_lightTransport_02';
+  const s = dockState([craft(ladenId, { [T1]: 40, [T2]: 5 }), craft(emptyId)]);
+  const rows = buildSnapshot(s).guilds[0].vehicles;
+  const laden = rows.find((v) => v.id === ladenId);
+  const empty = rows.find((v) => v.id === emptyId);
+  assert.equal(laden.used, usedSpace(laden.cargo), 'used is the hold occupancy');
+  assert.equal(laden.used, 40 * volumeOf(T1) + 5 * volumeOf(T2));
+  assert.equal(laden.capacity, LIGHT_CAP, 'the published per-class hold cap');
+  assert.ok(laden.used <= laden.capacity, 'a hold never exceeds its capacity');
+  assert.equal(empty.used, 0, 'an empty hold reads used 0');
 });
