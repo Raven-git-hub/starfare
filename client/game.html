@@ -1976,6 +1976,15 @@ select.field{appearance:none; cursor:pointer;}
 #outpost-overlay .om-row .rt .berth{font-family:var(--mono); font-size:13px; letter-spacing:.12em; color:var(--ink3); text-transform:uppercase}
 #outpost-overlay .om-row .rt .cl{font-size:18px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 #outpost-overlay .om-row .rt .sub{font-family:var(--mono); font-size:14px; color:var(--ink2)}
+/* the PARKED action card (2.2 cargo slice B) — the text on top, a two-button row (DOCK / DISPATCH)
+   beneath. Overrides the base row's centre-flex so the buttons stack under the text rather than beside
+   it; the min-height relaxes to fit the extra row. */
+#outpost-overlay .om-actionrow{flex-direction:column; align-items:stretch; min-height:auto; gap:10px; padding:10px 12px}
+#outpost-overlay .om-actbar{position:relative; z-index:1; display:flex; gap:8px}
+#outpost-overlay .om-act{flex:1; font-family:var(--mono); font-size:11px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; padding:9px 8px; border-radius:7px; cursor:pointer; background:var(--panel); border:1px solid var(--line2); color:var(--ink)}
+#outpost-overlay .om-act:hover{border-color:var(--amber); color:var(--amber)}
+#outpost-overlay .om-act.primary{background:var(--amber); border-color:var(--amber); color:var(--void)}
+#outpost-overlay .om-act.primary:hover{background:#DCB43A; border-color:#DCB43A}
 /* centre column — a flex COLUMN inside the fixed-height body (2.2 playtest fix 3). It no longer scrolls
    as a whole (donut + Maintenance Hangar + tier tabs stay put); only the resource grid scrolls, via the
    .om-tiersec / .om-tierbody flex chain below. min-height:0 lets that inner scroll area shrink. */
@@ -2030,6 +2039,84 @@ select.field{appearance:none; cursor:pointer;}
   #outpost-overlay .om-list{max-height:240px}
   #outpost-overlay .om-mid{overflow:visible}
   #outpost-overlay .om-tierbody{overflow:visible}
+}
+
+/* ===== #dock-overlay — the DOCK / MANIFEST editor popup (roadmap 2.2, cargo slice B). A SIBLING of
+   #dispatch-overlay, wearing the SAME est card / palette / hero language: head = eyebrow + the craft's
+   name + close; body = a main column (the manifest line builder + the hold-capacity bar + the footer)
+   and a side hero (the per-class unit art). Opened from a PARKED craft's DOCK button; it builds a
+   { load|unload, good, amount-or-max } manifest and fires transferCargo (the engine queues it for a
+   dock and resolves it authoritatively, §4). The client computes NO game number (§18): the ONLY figure
+   drawn is the hold-capacity bar, a DISPLAY PROJECTION of published goodVolumes × the player's own
+   entered amounts (an empty-hold estimate — it deliberately ignores cargo already aboard). Its own
+   well-named CSS block + its own IIFE, isolated exactly as #dispatch-overlay is. ===== */
+#dock-overlay{
+  --void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
+  --line:rgba(232,223,200,0.10); --line2:rgba(232,223,200,0.20);
+  --amber:#C9A227; --amber-dim:#7A6420; --amber-ghost:rgba(201,162,39,0.10);
+  --ink:#E8DFC8; --ink2:#8B8F9C; --ink3:#565B68; --ink4:#3a3f49;
+  --green:#4E9A87; --red:#C2603A;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;
+  --serif:'Cinzel',serif;
+  position:fixed; left:0; right:0; top:104px; bottom:0;
+  background:rgba(6,7,10,.72); backdrop-filter:blur(3px);
+  display:none; align-items:flex-start; justify-content:center;
+  padding:26px 20px; overflow-y:auto; z-index:580; /* above #outpost-overlay (570) — the manager stays behind */
+  font-family:var(--sans); font-size:14px; line-height:1.45; color:var(--ink);
+}
+#dock-overlay.open{display:flex}
+#dock-overlay .est{width:100%; max-width:900px; background:linear-gradient(180deg,#12151C,#0F1218); border:1px solid var(--line2); border-radius:14px; box-shadow:0 30px 90px rgba(0,0,0,.6); overflow:hidden; position:relative}
+#dock-overlay .est-head{display:flex; align-items:flex-start; gap:16px; padding:18px 22px 16px; border-bottom:1px solid var(--line); background:radial-gradient(700px 200px at 85% -40%, rgba(201,162,39,.06), transparent 70%)}
+#dock-overlay .est-head .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
+#dock-overlay .est-head h2{font-family:var(--serif); font-weight:600; font-size:22px; margin:5px 0 0; letter-spacing:.02em}
+#dock-overlay .est-close{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--ink2); border-radius:8px; width:34px; height:34px; font-size:16px; cursor:pointer; flex:none}
+#dock-overlay .est-close:hover{border-color:var(--red); color:var(--red)}
+#dock-overlay .est-body{display:grid; grid-template-columns:1fr 340px; gap:0}
+#dock-overlay .est-main{padding:22px 22px 24px; border-right:1px solid var(--line)}
+#dock-overlay .est-side{background:#0d0f14; display:flex; flex-direction:column; min-height:100%}
+#dock-overlay .est-side .art{aspect-ratio:848 / 1264; background-size:cover; background-position:center; background-repeat:no-repeat}
+#dock-overlay .dk-sechead{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2); margin-bottom:14px}
+/* the manifest line list — each line is a grid: good | dir | qty+MAX | remove. */
+#dock-overlay .dk-lines{display:flex; flex-direction:column; gap:8px}
+#dock-overlay .dk-line{display:grid; grid-template-columns:1fr 96px 150px 34px; gap:8px; align-items:center}
+#dock-overlay .dk-sel{width:100%; font-family:var(--mono); font-size:12px; color:var(--ink); background:var(--panel); border:1px solid var(--line2); border-radius:7px; padding:9px 8px; cursor:pointer}
+#dock-overlay .dk-sel:focus{outline:none; border-color:var(--amber)}
+/* the qty input sits beside a MAX toggle; when MAX is on the input is disabled + greyed (design: no
+   capacity prose, just the greyed field). */
+#dock-overlay .dk-qtywrap{display:flex; gap:6px}
+#dock-overlay .dk-qty{flex:1; min-width:0; font-family:var(--mono); font-size:12px; color:var(--ink); background:var(--panel); border:1px solid var(--line2); border-radius:7px; padding:9px 8px; text-align:right; font-variant-numeric:tabular-nums}
+#dock-overlay .dk-qty:focus{outline:none; border-color:var(--amber)}
+#dock-overlay .dk-qty:disabled{opacity:.35; cursor:not-allowed}
+#dock-overlay .dk-max{flex:none; width:52px; font-family:var(--mono); font-size:10px; letter-spacing:.08em; color:var(--ink2); background:var(--panel); border:1px solid var(--line2); border-radius:7px; cursor:pointer}
+#dock-overlay .dk-max:hover{border-color:var(--amber); color:var(--amber)}
+#dock-overlay .dk-max.on{background:var(--amber); border-color:var(--amber); color:var(--void)}
+#dock-overlay .dk-rm{flex:none; width:34px; height:34px; font-size:15px; color:var(--ink3); background:var(--panel); border:1px solid var(--line); border-radius:7px; cursor:pointer}
+#dock-overlay .dk-rm:hover{border-color:var(--red); color:var(--red)}
+#dock-overlay .dk-add{margin-top:12px; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink2); background:transparent; border:1px dashed var(--line2); border-radius:7px; padding:10px 12px; cursor:pointer; width:100%}
+#dock-overlay .dk-add:hover{border-color:var(--amber); color:var(--amber)}
+/* the hold-capacity bar — an empty-hold estimate: the solid fill is the fixed load amount, the hatched
+   band the remainder a MAX load would fill. A pure display projection of published figures (§18). */
+#dock-overlay .dk-cap{margin-top:22px}
+#dock-overlay .dk-cap-head{display:flex; justify-content:space-between; align-items:baseline; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); margin-bottom:8px}
+#dock-overlay .dk-cap-head .fig{color:var(--amber); font-size:12px; font-variant-numeric:tabular-nums}
+#dock-overlay .dk-bar{position:relative; height:16px; border:1px solid var(--line2); border-radius:6px; background:var(--panel); overflow:hidden}
+#dock-overlay .dk-bar .solid{position:absolute; left:0; top:0; bottom:0; background:rgba(201,162,39,.55); z-index:1}
+#dock-overlay .dk-bar .hatch{position:absolute; top:0; bottom:0; z-index:0; background:repeating-linear-gradient(45deg, rgba(201,162,39,.28) 0 5px, rgba(201,162,39,.06) 5px 10px)}
+/* footer — Cancel + Confirm, and an inline refusal line (engine reason on reject, popup stays open). */
+#dock-overlay .dk-foot{margin-top:24px; display:flex; gap:12px}
+#dock-overlay .dk-btn{flex:1; font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; padding:13px 12px; border-radius:9px; cursor:pointer; background:var(--panel); border:1px solid var(--line2); color:var(--ink)}
+#dock-overlay .dk-btn:hover:not(:disabled){border-color:var(--amber); color:var(--amber)}
+#dock-overlay .dk-btn.primary{background:var(--amber); border:1px solid var(--amber); color:var(--void)}
+#dock-overlay .dk-btn.primary:hover:not(:disabled){background:#DCB43A; border-color:#DCB43A}
+#dock-overlay .dk-btn:disabled{opacity:.4; cursor:not-allowed}
+#dock-overlay .dk-refuse{margin-top:12px; font-family:var(--mono); font-size:11px; color:var(--red); line-height:1.5}
+/* One-column phone layout, mirroring #dispatch-overlay: the art goes full-width, contained. */
+@media(max-width:820px){
+  #dock-overlay .est-body{grid-template-columns:1fr}
+  #dock-overlay .est-main{border-right:none; border-bottom:1px solid var(--line)}
+  #dock-overlay .est-side .art{max-height:60vh; background-size:contain}
+  #dock-overlay .dk-line{grid-template-columns:1fr 84px 130px 30px}
 }
 
 /* ===== #reneg-overlay — the LICENCE RENEGOTIATION popup (#64 Slice 1b, design.md §5; restyled in
@@ -3192,6 +3279,45 @@ select.field{appearance:none; cursor:pointer;}
         <div class="art" id="omCraftArt"></div>
         <div class="scrim"></div>
         <div class="inner" id="omCraftInner"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- The DOCK / MANIFEST editor popup (roadmap 2.2, cargo slice B). Opened from a PARKED craft's DOCK
+     button in the Outpost Manager. A manifest line builder (good · load/unload · amount-or-MAX) with a
+     hold-capacity bar; Confirm fires transferCargo, which queues the manifest for a dock (the engine
+     resolves it authoritatively, §4). Everything is rendered by the dock-manifest IIFE; the capacity bar
+     is the ONE display projection here (published goodVolumes × the player's own amounts, §18). -->
+<div id="dock-overlay">
+  <div class="est">
+    <div class="est-head">
+      <div>
+        <div class="eyebrow">Dock · Manifest</div>
+        <h2 id="dkName">—</h2>
+      </div>
+      <button class="est-close" id="dkClose" title="Close (Esc)">✕</button>
+    </div>
+    <div class="est-body">
+      <div class="est-main">
+        <div class="dk-sechead">Manifest</div>
+        <!-- the manifest line list (rendered by the IIFE) -->
+        <div class="dk-lines" id="dkLines"></div>
+        <button class="dk-add" id="dkAdd" type="button">+ Add line</button>
+        <!-- the hold-capacity bar (empty-hold estimate) -->
+        <div class="dk-cap">
+          <div class="dk-cap-head"><span>Hold (empty-hold estimate)</span><span class="fig" id="dkCapFig">0 / 0</span></div>
+          <div class="dk-bar"><i class="hatch" id="dkBarHatch" style="display:none"></i><i class="solid" id="dkBarSolid" style="width:0%"></i></div>
+        </div>
+        <!-- footer: Cancel + Confirm, with an inline refusal line beneath -->
+        <div class="dk-foot">
+          <button class="dk-btn" id="dkCancel" type="button">Cancel</button>
+          <button class="dk-btn primary" id="dkConfirm" type="button">Confirm</button>
+        </div>
+        <div class="dk-refuse" id="dkRefuse" style="display:none"></div>
+      </div>
+      <div class="est-side">
+        <div class="art" id="dkArt"></div>
       </div>
     </div>
   </div>
@@ -10365,12 +10491,23 @@ function paintInventoryHero(d){
           var on = OM.sel && OM.sel.kind==='queue' && OM.sel.id===q.vehicleId;
           html += rowHtml('queue', q.vehicleId, on, i===0?'Next':('Queue '+pad2(i+1)), cl, 'waiting '+wait+' min', 0, false);
         });
-        // then the parked craft — class · #NN over an "awaiting orders" subline, no progress fill.
+        // then the parked craft — an ACTION card (2.2 cargo slice B): the class · #NN / "awaiting orders"
+        // text, then a two-button row — DOCK (opens the manifest editor for this craft + this outpost)
+        // and DISPATCH (opens the existing Dispatch popup). The buttons sit on awaiting-orders craft ONLY;
+        // a queued craft (above) already holds a manifest and shows no buttons. The card is still
+        // selectable (its .om-row[data-vid] drives the right-hero read-out); the buttons stopPropagation.
         parked.forEach(function(v){
           var suffix = String(v.id).split('_').slice(-1)[0];
           var cl = pretty(v.class) + ' · #' + suffix;
           var on = OM.sel && OM.sel.kind==='parked' && OM.sel.id===v.id;
-          html += rowHtml('parked', v.id, on, 'Parked', cl, 'awaiting orders', 0, false);
+          html += '<div class="om-row om-actionrow'+(on?' on':'')+'" data-kind="parked" data-vid="'+esc(v.id)+'">'+
+            '<div class="rt"><div class="berth">Parked</div>'+
+              '<div class="cl">'+esc(cl)+'</div>'+
+              '<div class="sub">awaiting orders</div></div>'+
+            '<div class="om-actbar">'+
+              '<button class="om-act primary" data-act="dock" data-vid="'+esc(v.id)+'" type="button">Dock</button>'+
+              '<button class="om-act" data-act="dispatch" data-vid="'+esc(v.id)+'" type="button">Dispatch</button>'+
+            '</div></div>';
         });
       }
     }
@@ -10381,6 +10518,21 @@ function paintInventoryHero(d){
       el.addEventListener('click', function(){
         OM.sel = { kind: el.getAttribute('data-kind'), id: el.getAttribute('data-vid') };
         var r = outpostRow(); if(r){ renderLeftSelection(); renderCraft(r); }
+      });
+    });
+    // The parked-row action buttons (2.2 cargo slice B). stopPropagation so a button click does NOT also
+    // select the row. DOCK → the manifest editor (window.__openDock, craft + this outpost); DISPATCH →
+    // the existing Dispatch popup (window.__openDispatch) with the full craft row.
+    Array.prototype.forEach.call($('omList').querySelectorAll('.om-act[data-act]'), function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var vid = btn.getAttribute('data-vid');
+        if(btn.getAttribute('data-act')==='dock'){
+          if(window.__openDock) window.__openDock(vid, OM.id);
+        } else {
+          var v = vehicleById()[vid];
+          if(v && window.__openDispatch) window.__openDispatch(v);
+        }
       });
     });
   }
@@ -10490,6 +10642,229 @@ function paintInventoryHero(d){
   window.__openOutpostManager = openManager;                       // the ONE entry point (OPEN DETAILS)
   window.__outpostMgrRefresh = function(){ if(OM.open) render(); }; // the poll keeps the view live
   window.__outpostMgrClose = closeManager;
+})();
+</script>
+
+<script>
+/* ============================================================================
+   THE DOCK / MANIFEST EDITOR POPUP (#dock-overlay — roadmap 2.2, cargo slice B).
+   Opened from a PARKED (awaiting-orders) craft's DOCK button in the Outpost
+   Manager, with (craftId, outpostId). A manifest LINE BUILDER: each line names a
+   good (grouped by tier), a direction (load / unload), and an amount — a fixed
+   positive integer OR a MAX toggle ("as much as possible", §4). Confirm builds the
+   ordered manifest and fires transferCargo (window.__sendAction); the ENGINE queues
+   it for one of the Outpost's dock slots and resolves it authoritatively at
+   turnaround (§4). The client computes NO game number (§18): the ONLY figure it
+   draws is the hold-capacity bar — an EMPTY-HOLD projection of published
+   goodVolumes × the player's own entered load amounts (it deliberately ignores
+   cargo already aboard). Its own overlay + id + IIFE, mirroring #dispatch-overlay.
+   ============================================================================ */
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function snap(){ return (window.__snapshot && window.__snapshot()) || null; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); }
+  function fmtNum(n){ return Math.round(n||0).toLocaleString('en-US'); }
+  // Display vocabulary only (§18) — the same camelCase/snake_case splitter the Outpost Manager uses.
+  function pretty(key){
+    return String(key==null?'':key)
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .split('_')
+      .map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' ');
+  }
+
+  // The tier vocabulary, read the SAME way the Outpost Manager / Trade tab read it — off the shared
+  // goods catalog (window.__goodsCatalog, GET /goods) with the same deuterium filter — so the dropdown's
+  // buckets never diverge from the manager's resource tables and no good vocabulary is invented here.
+  var HIDDEN_GOODS = { deuterium:1, deuterium_fuel:1 };
+  var TIER_LABELS = { 1:'Raw', 2:'Processed', 3:'Parts' };
+  function tierGoods(t){
+    var c = (window.__goodsCatalog && window.__goodsCatalog()) || {};
+    var list = t===1 ? (c.raw||[]) : t===2 ? (c.processed||[]) : t===3 ? (c.tier3||[]) : [];
+    return list.filter(function(g){ return !HIDDEN_GOODS[g]; });
+  }
+
+  // The popup's own state: the craft + outpost it targets, and the editable manifest lines. A line is
+  // { good:'', dir:'load'|'unload', qty:'', max:false } — `qty` is the RAW input string (validated on
+  // read). Start with one empty line; reset on open.
+  var DK = { open:false, craftId:null, outpostId:null, lines:[] };
+  function freshLine(){ return { good:'', dir:'load', qty:'', max:false }; }
+
+  // The live craft row by id, off the polled snapshot — re-read each render so capacity stays authoritative.
+  function craftRow(){
+    var s = snap(); if(!s) return null;
+    var found = null;
+    (s.guilds||[]).forEach(function(g){ (g.vehicles||[]).forEach(function(v){ if(v.id===DK.craftId) found=v; }); });
+    return found;
+  }
+  // The per-good cargo space (published fact, §18): snap().goodVolumes[good]. The client sums no volumes
+  // beyond multiplying this by the player's own entered amounts for the capacity-bar projection.
+  function goodVolumes(){ var s = snap(); return (s && s.goodVolumes) || {}; }
+
+  function open(craftId, outpostId){
+    if(!craftId) return;
+    DK.open = true; DK.craftId = craftId; DK.outpostId = outpostId || null;
+    DK.lines = [ freshLine() ];
+    var v = craftRow();
+    if(!v){ DK.open = false; return; }  // gone between click and open — don't show an empty shell
+    var suffix = String(v.id).split('_').slice(-1)[0];
+    $('dkName').textContent = pretty(v.class) + ' · #' + suffix;
+    $('dkArt').style.backgroundImage = "url('assets/units/" + String(v.class).toLowerCase() + ".jpg')";
+    hideRefuse();
+    render();
+    $('dock-overlay').classList.add('open');
+  }
+  function close(){
+    DK.open = false; DK.craftId = null; DK.outpostId = null; DK.lines = [];
+    $('dock-overlay').classList.remove('open');
+  }
+
+  // A qty is valid when it is a positive integer (integer goods, §15.2). A line is COMPLETE when it names
+  // a good AND is either a max line OR carries a valid amount. The manifest is ready when it has at least
+  // one line and every line is complete (an empty / incomplete line disables Confirm).
+  function qtyInt(s){ var n = Number(s); return (Number.isInteger(n) && n>0) ? n : null; }
+  function lineComplete(l){ return !!l.good && (l.max || qtyInt(l.qty)!=null); }
+  function manifestReady(){ return DK.lines.length>0 && DK.lines.every(lineComplete); }
+
+  // Render on open and on STRUCTURAL changes (add / remove line, MAX toggle). Field edits (good / dir /
+  // qty) update DK.lines in place and call refreshDerived() only, so a qty input keeps focus mid-type.
+  function render(){ renderLines(); refreshDerived(); }
+
+  // The good <select>, grouped by tier via <optgroup> (Tier 1 · Raw / Tier 2 · Processed / Tier 3 · Parts).
+  function goodOptions(sel){
+    var html = '<option value="">— good —</option>';
+    [1,2,3].forEach(function(t){
+      var goods = tierGoods(t);
+      if(!goods.length) return;
+      html += '<optgroup label="Tier '+t+' · '+esc(TIER_LABELS[t])+'">';
+      goods.forEach(function(g){
+        html += '<option value="'+esc(g)+'"'+(g===sel?' selected':'')+'>'+esc(pretty(g))+'</option>';
+      });
+      html += '</optgroup>';
+    });
+    return html;
+  }
+
+  function renderLines(){
+    $('dkLines').innerHTML = DK.lines.map(function(l, i){
+      return '<div class="dk-line" data-i="'+i+'">'+
+        '<select class="dk-sel dk-good" data-i="'+i+'">'+goodOptions(l.good)+'</select>'+
+        '<select class="dk-sel dk-dir" data-i="'+i+'">'+
+          '<option value="load"'+(l.dir==='load'?' selected':'')+'>Load</option>'+
+          '<option value="unload"'+(l.dir==='unload'?' selected':'')+'>Unload</option>'+
+        '</select>'+
+        '<div class="dk-qtywrap">'+
+          '<input class="dk-qty" data-i="'+i+'" type="number" min="1" step="1" inputmode="numeric" '+
+            'placeholder="amount" value="'+esc(l.max?'':l.qty)+'"'+(l.max?' disabled':'')+'>'+
+          '<button class="dk-max'+(l.max?' on':'')+'" data-i="'+i+'" type="button" title="As much as possible">MAX</button>'+
+        '</div>'+
+        '<button class="dk-rm" data-i="'+i+'" type="button" title="Remove line">×</button>'+
+      '</div>';
+    }).join('');
+    var box = $('dkLines');
+    Array.prototype.forEach.call(box.querySelectorAll('.dk-good'), function(el){
+      el.addEventListener('change', function(){ DK.lines[+el.getAttribute('data-i')].good = el.value; refreshDerived(); });
+    });
+    Array.prototype.forEach.call(box.querySelectorAll('.dk-dir'), function(el){
+      el.addEventListener('change', function(){ DK.lines[+el.getAttribute('data-i')].dir = el.value; refreshDerived(); });
+    });
+    Array.prototype.forEach.call(box.querySelectorAll('.dk-qty'), function(el){
+      el.addEventListener('input', function(){ DK.lines[+el.getAttribute('data-i')].qty = el.value; refreshDerived(); });
+    });
+    // MAX toggle — a structural change (it greys/clears the qty input), so rebuild the list.
+    Array.prototype.forEach.call(box.querySelectorAll('.dk-max'), function(el){
+      el.addEventListener('click', function(){
+        var i = +el.getAttribute('data-i');
+        DK.lines[i].max = !DK.lines[i].max;
+        if(DK.lines[i].max) DK.lines[i].qty = '';   // a max line carries no amount
+        renderLines(); refreshDerived();
+      });
+    });
+    Array.prototype.forEach.call(box.querySelectorAll('.dk-rm'), function(el){
+      el.addEventListener('click', function(){
+        DK.lines.splice(+el.getAttribute('data-i'), 1);
+        if(!DK.lines.length) DK.lines.push(freshLine());  // never leave the editor with zero lines
+        renderLines(); refreshDerived();
+      });
+    });
+  }
+
+  // Recompute the hold-capacity bar + the Confirm-enabled state WITHOUT rebuilding the list. The bar is
+  // an EMPTY-HOLD estimate (a settled design decision): the SOLID fill is the sum of the LOAD lines'
+  // fixed amounts × goodVolumes[good]; if any LOAD line is MAX, a HATCHED band shows the remaining room
+  // a max load would fill. It ignores cargo already aboard and unload lines — a display projection of
+  // published figures (§18); the engine resolves the transfer authoritatively on confirm.
+  function refreshDerived(){
+    var v = craftRow();
+    var cap = (v && typeof v.capacity==='number') ? v.capacity : 0;
+    var vol = goodVolumes();
+    var fixed = 0, hasMaxLoad = false;
+    DK.lines.forEach(function(l){
+      if(l.dir!=='load' || !l.good) return;
+      if(l.max){ hasMaxLoad = true; return; }
+      var n = qtyInt(l.qty);
+      if(n!=null) fixed += n * (vol[l.good]||0);
+    });
+    var solidFrac = cap>0 ? Math.max(0, Math.min(1, fixed/cap)) : 0;
+    var solidPct = solidFrac*100;
+    $('dkBarSolid').style.width = solidPct.toFixed(1)+'%';
+    var hatch = $('dkBarHatch');
+    if(hasMaxLoad && solidFrac<1){
+      hatch.style.display = 'block';
+      hatch.style.left = solidPct.toFixed(1)+'%';
+      hatch.style.width = (100-solidPct).toFixed(1)+'%';
+    } else {
+      hatch.style.display = 'none';
+    }
+    $('dkCapFig').textContent = fmtNum(fixed) + ' / ' + fmtNum(cap);
+    $('dkConfirm').disabled = !manifestReady();
+  }
+
+  function hideRefuse(){ var el=$('dkRefuse'); el.style.display='none'; el.textContent=''; }
+  function showRefuse(msg){ var el=$('dkRefuse'); el.textContent=msg; el.style.display='block'; }
+
+  // Confirm → build the manifest in LISTED order (order matters: a MAX line consumes its phase's
+  // remaining room, §4) and fire transferCargo through the existing /action helper. Accepted → close (the
+  // craft leaves Parked for the queue on the next poll). Refused → surface the engine reason inline and
+  // keep the popup open. The engine re-validates + refuses-whole, so the client only builds + posts.
+  async function onConfirm(){
+    if(!manifestReady()) return;
+    var player = window.__player ? window.__player() : null;
+    var gid = player && player.guildId;
+    var manifest = DK.lines.map(function(l){
+      return l.max ? { dir:l.dir, good:l.good, max:true }
+                   : { dir:l.dir, good:l.good, qty: qtyInt(l.qty) };
+    });
+    var btn = $('dkConfirm'); var label = btn.textContent; btn.disabled = true; btn.textContent = 'Confirming…';
+    hideRefuse();
+    var out;
+    try {
+      out = await window.__sendAction({ type:'transferCargo', guildId: gid, vehicleId: DK.craftId, manifest: manifest });
+    } catch(err){
+      btn.disabled = false; btn.textContent = label;
+      showRefuse('The dock could not be reached: ' + (err && err.message || err));
+      return;
+    }
+    if(out && out.accepted){
+      close();
+      if(window.__refreshNow){ try { await window.__refreshNow(); } catch(e){} }
+      return;
+    }
+    btn.disabled = false; btn.textContent = label;
+    showRefuse('Refused: ' + ((out && out.reason) || 'the manifest was declined'));
+  }
+
+  // Static wiring — the overlay + footer buttons exist once. The Esc handler is in the CAPTURE phase and
+  // stops propagation, so when the dock popup sits over the Outpost Manager, Esc closes only the dock (it
+  // fires before the manager's bubble-phase Esc handler and halts it).
+  $('dkAdd').addEventListener('click', function(){ DK.lines.push(freshLine()); renderLines(); refreshDerived(); });
+  $('dkConfirm').addEventListener('click', onConfirm);
+  $('dkCancel').addEventListener('click', close);
+  $('dkClose').addEventListener('click', close);
+  $('dock-overlay').addEventListener('click', function(e){ if(e.target===this) close(); });
+  document.addEventListener('keydown', function(e){ if(DK.open && e.key==='Escape'){ e.stopPropagation(); close(); } }, true);
+
+  window.__openDock = open;   // the ONE entry point (a PARKED craft's DOCK button)
+  window.__dockClose = close;
 })();
 </script>
 

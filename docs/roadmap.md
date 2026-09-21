@@ -748,6 +748,40 @@ boundary so the later hex-map swap doesn't touch it.
     (+18: `sim/tests/manifest.test.js` new, plus max tripwires in `cargo-transfer`/`outpost-dock`);
     `tools/admin.test.js` 37 → **39**. **Deferred:** the DOCK popup + capacity bar that drive max
     (client slice B). No client touched (`client/game.html` untouched).
+  - **slice B — the DOCK popup + Parked-row actions (client).** 🟢 *BUILT (CLIENT ONLY —
+    `client/game.html`; no engine/snapshot/`sim`/`tools` change. `transferCargo`, the MAX manifest and
+    the dock lifecycle are all merged (slices 1/2/2.2); this only builds the UI that drives them, off
+    already-published figures — design.md §4 the settled+built manifest amount/max model, §18 the client
+    computes no game number).* The manual load/unload UI the read-only Outpost Manager left deferred. Two
+    pieces: (1) **the PARKED-tab action bar** — in `renderLeft`'s PARKED branch an awaiting-orders craft
+    (`parkedCraft()`, no manifest) now renders as an ACTION CARD with a two-button row: **DOCK** (opens
+    the manifest editor for that craft + this outpost, `window.__openDock(craftId, OM.id)`) and
+    **DISPATCH** (opens the existing Dispatch popup, `window.__openDispatch(<craft row>)`); the buttons
+    `stopPropagation` so the card stays selectable for the right-hero read-out. A QUEUED craft (`row.queue`
+    — already holds an engine-queued manifest) renders as before with NO buttons, so it reads at a glance
+    which craft need an action. (2) **the `#dock-overlay` manifest editor** — a new overlay + CSS block +
+    IIFE mirroring `#dispatch-overlay` (same est card / palette / backdrop / Esc-to-close, z-index 580 so
+    it sits over the manager). A line builder: each line is a good `<select>` grouped by tier
+    (`<optgroup>` off the same `tierGoods`/`window.__goodsCatalog` the resource tables use), a load/unload
+    `<select>`, and a quantity — a number input beside a **MAX** toggle (MAX greys/clears the input and
+    makes the line a max line). **+ Add line** appends a fresh line; a per-line **×** removes it (never
+    below one line). A **hold-capacity bar** shows `used / capacity` against the craft's `capacity`: the
+    solid fill is `Σ (load line's fixed amount × goodVolumes[good])`, and a hatched remainder appears when
+    any load line is MAX (a max load fills whatever's left). **Confirm** builds the manifest in listed
+    order — each line → `{ dir, good, qty }` (positive int) or `{ dir, good, max:true }` — and fires
+    `window.__sendAction({ type:'transferCargo', … })`; accepted → close (the craft leaves Parked for the
+    queue on the next poll), refused → the engine `reason` shows inline and the popup stays open. Confirm
+    is disabled while the manifest is empty or any line is incomplete (no good, or an amount line with a
+    non-positive/blank qty). **Display calls (surfaced, not invented):** the capacity bar is an
+    **EMPTY-HOLD estimate** — it deliberately ignores cargo already aboard and other legs, summing only
+    the entered load amounts × published `goodVolumes` (a §18 display projection; the ENGINE resolves the
+    transfer authoritatively on confirm); the MAX line's listed order decides which same-phase line gets
+    the remaining room (§4), reflected in the manifest's build order. The only new constants are display
+    sizes (the CSS). Sim suite **1,433 green** (untouched — client-only; the served-page tripwire
+    `sim/tests/server.test.js` stays green). **Deferred, not invented:** the SYSTEM-transfer entry point
+    (instant load/unload at a system — the same editor, opened from a system later); editing/cancelling a
+    QUEUED craft's manifest (that stays re-dispatch via Operations); a stock hint / stock-filter in the
+    good dropdown (the player reads availability from the manager's resource tables).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
