@@ -798,6 +798,26 @@ function snapshotVehicleRow(v, fuelPrice) {
   return { ...base, location: { ...v.location } };
 }
 
+// snapshotOutpostRow(o) -> the per-outpost snapshot row (design.md §4 / §15.4, roadmap 2.2 — the
+// outpost ladder slice 1). The outpost mirror of `snapshotVehicleRow`: a FRESH derived object so a
+// consumer mutating the snapshot can't alias into engine state. Surfaces what a later client slice
+// reads — identity (`id` / `ownerGuildId`), the single hex (`coords`), the anchor (`anchorSystemId`),
+// the carried `capacity` / `dockCapacity` (inert this slice — no cargo/dock behaviour yet), and an
+// (empty this slice) `stockpile` view. `stockpile` is ALWAYS EMITTED as a map (a stable `{}` when the
+// outpost holds nothing) — unlike the STATE field, which is omit-when-empty for the determinism hash;
+// the snapshot answers to a reader, for whom a stable shape beats a key that appears only once goods land.
+function snapshotOutpostRow(o) {
+  return {
+    id: o.id,
+    ownerGuildId: o.ownerGuildId,
+    coords: { q: o.coords.q, r: o.coords.r },
+    anchorSystemId: o.anchorSystemId,
+    capacity: o.capacity,
+    dockCapacity: o.dockCapacity,
+    stockpile: { ...(o.stockpile || {}) },
+  };
+}
+
 function buildSnapshot(state) {
   const supply = computeGalacticSupply(state);
   const occupancy = computeOccupancy(state);
@@ -1430,6 +1450,14 @@ function buildSnapshot(state) {
     landmark: getLandmark(c.landmarkId, c.landmarkKind) || null,
   }));
 
+  // Every guild Outpost (design.md §4 / §15.4, roadmap 2.2 — the outpost ladder slice 1), fresh
+  // derived rows sorted by stable id so a later client slice can read them and the emitted order is
+  // deterministic (invariant 9). ADDITIVE: a galaxy with no outpost has no `state.outposts` key, so
+  // this is `[]` and no serialized byte moves. Territory infrastructure, surfaced beside `claims`.
+  const outposts = (state.outposts || [])
+    .map(snapshotOutpostRow)
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
   // The IN-FLIGHT layer (§15.1): every pending Syndicate delivery, echoed as
   // stored. `ticksRemaining` is the ONE counter derived field — `arrivalTick -
   // tick`, floored at 0 so a delivery due this very tick reads 0 rather than a
@@ -1640,6 +1668,10 @@ function buildSnapshot(state) {
     ventures,
     occupancy,
     claims,
+    // The guild Outposts (design.md §4 / §15.4) — SHARED single-hex infrastructure rows, sorted by
+    // stable id (built above). ALWAYS EMITTED as an array (a stable [] when a galaxy holds none),
+    // unlike the omit-when-empty STATE field: additive derived-on-read telemetry, no serialized byte.
+    outposts,
     shipments,
     // The node lockouts (docs/venture-teardown.md §3.3) — sites barred from re-establishment
     // until `releaseTick` after an ordinary-licensed teardown. Echoed as stored, with the one

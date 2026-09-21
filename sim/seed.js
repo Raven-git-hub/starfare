@@ -95,6 +95,13 @@ function buildIndex() {
   const bySystem = new Map();
   const bySystemRaw = new Map();
   const byOutpost = new Map();
+  // byHex — every seed landmark that OCCUPIES a hex, keyed by "q,r" -> the landmark. Built here
+  // (once, cached) so "is a seed landmark on this hex?" is one map lookup, not a scan of 1500
+  // systems + 96 waystations on every guild-Outpost placement (sim/actions.js `spawnOutpost`).
+  // A hex holds at most one landmark by construction (the generator places systems and
+  // waystations on distinct hexes), so a plain last-writer map is faithful.
+  const byHex = new Map();
+  const hexKey = (coords) => `${coords.q},${coords.r}`;
 
   for (const sys of seed.systems || []) {
     // The lowest-id Terran planet is the homeworld a guild starts on (§13);
@@ -132,10 +139,12 @@ function buildIndex() {
     // (with nodes + slots) on demand without a second pass over the seed. It's a
     // reference into the already-cached seed object, not a copy.
     bySystemRaw.set(sys.id, sys);
+    if (sys.coords) byHex.set(hexKey(sys.coords), { id: sys.id, kind: 'system', coords: sys.coords });
   }
 
   for (const out of seed.outposts || []) {
     byOutpost.set(out.id, { id: out.id, kind: 'outpost', name: out.name, coords: out.coords });
+    if (out.coords) byHex.set(hexKey(out.coords), { id: out.id, kind: 'outpost', coords: out.coords });
   }
 
   // The Citadel is a single galactic-origin landmark with no seed id of its own
@@ -144,13 +153,14 @@ function buildIndex() {
   const citadel = seed.citadel
     ? { id: 'citadel', kind: 'citadel', coords: seed.citadel.coords, radius: seed.citadel.radius }
     : null;
+  if (citadel && citadel.coords) byHex.set(hexKey(citadel.coords), { id: citadel.id, kind: 'citadel', coords: citadel.coords });
 
   // galaxyParams — the seed's generation parameters (radius in world units, hexSize).
   // Carried through the index so `isHexInBounds` can test lattice membership from the
   // SAME two numbers the generator used (tools/generate_seed.js), never a chosen constant
   // (§18 / CLAUDE.md "Never invent a number"). A generator-less test seed may omit them,
   // in which case there is no lattice to bound and `isHexInBounds` answers false.
-  return { bySite, bySystem, bySystemRaw, byOutpost, citadel, seedNumber: seed.seed, galaxyParams: seed.galaxyParams || null };
+  return { bySite, bySystem, bySystemRaw, byOutpost, byHex, citadel, seedNumber: seed.seed, galaxyParams: seed.galaxyParams || null };
 }
 
 function index() {
@@ -257,6 +267,17 @@ function isHexInBounds(q, r) {
   return Math.hypot(p.x, p.y) <= gp.radius;
 }
 
+// seedLandmarkAtHex(q, r) -> the SEED landmark occupying that hex — { id, kind, coords } for a
+// system, a Syndicate waystation, or the Citadel — or null when the hex holds no seed feature.
+// The "one structure per hex" question a guild-Outpost placement asks against the immutable seed
+// (design.md §4 / §2; sim/actions.js `spawnOutpost`). A GUILD outpost is live state and is NOT in
+// this index — the placement checks `state.outposts` separately, so a second guild outpost on the
+// same hex is caught there. One map lookup over the cached `byHex` index (built above), never a
+// scan. Answers null for a non-integer/out-of-lattice coordinate the same way `isHexInBounds` does.
+function seedLandmarkAtHex(q, r) {
+  return index().byHex.get(`${q},${r}`) || null;
+}
+
 // isStarterSystem(id) -> is this a real, starter-eligible system (design.md
 // §13: it holds >=1 Terran planet)? The eligibility answer a guild home needs.
 function isStarterSystem(id) {
@@ -325,6 +346,6 @@ module.exports = {
   setSeed,
   getSite, isResourceNode, isSettlementSlot, findNodesByResource, siteName, roman,
   getCitadel, getSystem, getOutpost, getOutposts, getLandmark,
-  hexToPixel, isHexInBounds,
+  hexToPixel, isHexInBounds, seedLandmarkAtHex,
   isStarterSystem, getTerranHomeworld, getStarterSystems, getSystemLayout, getSeedNumber,
 };

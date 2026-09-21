@@ -1382,6 +1382,78 @@ test('POST /admin/vehicle/remove refuses an unknown craft id (200, accepted:fals
   assert.match(rm.body.reason, /owns no vehicle/);
 });
 
+// --- the guild-Outpost spawn/remove primitive (design.md §4 / §15.4, roadmap 2.2 slice 1) ------
+
+// The first in-bounds hex that holds no seed landmark — DERIVED from the seed, so a regen carries
+// the test (the waystation-fixtures discipline).
+const { isHexInBounds, seedLandmarkAtHex } = require('../seed.js');
+function firstFreeHex() {
+  for (let q = -60; q <= 60; q += 1) {
+    for (let r = -60; r <= 60; r += 1) {
+      if (isHexInBounds(q, r) && !seedLandmarkAtHex(q, r)) return { q, r };
+    }
+  }
+  throw new Error('server.test: no free hex on this seed');
+}
+const FREE_HEX = firstFreeHex();
+
+test('POST /admin/outpost/spawn places an outpost; /admin/outpost/remove tears it down; neither ticks', async () => {
+  await reset();
+  await found();
+  const spawn = await req('POST', '/admin/outpost/spawn', {
+    guildId: 'player-guild', anchorSystemId: HOME_SYSTEM, coords: FREE_HEX,
+  });
+  assert.equal(spawn.status, 200);
+  assert.equal(spawn.body.accepted, true);
+  assert.equal(spawn.body.snapshot.tick, 0, 'spawn must not tick');
+  const outposts = spawn.body.snapshot.outposts;
+  assert.equal(outposts.length, 1);
+  assert.equal(outposts[0].id, 'outpost_player-guild_01');
+  assert.equal(outposts[0].ownerGuildId, 'player-guild');
+  assert.deepEqual(outposts[0].coords, FREE_HEX);
+  assert.equal(outposts[0].anchorSystemId, HOME_SYSTEM);
+
+  // Tear it down by id — the row is gone.
+  const rm = await req('POST', '/admin/outpost/remove', {
+    guildId: 'player-guild', outpostId: 'outpost_player-guild_01',
+  });
+  assert.equal(rm.status, 200);
+  assert.equal(rm.body.accepted, true);
+  assert.equal(rm.body.snapshot.outposts.length, 0);
+
+  // The next spawn does NOT reuse the removed id (serial monotonic) — it is _02.
+  const again = await req('POST', '/admin/outpost/spawn', {
+    guildId: 'player-guild', anchorSystemId: HOME_SYSTEM, coords: FREE_HEX,
+  });
+  assert.equal(again.body.snapshot.outposts[0].id, 'outpost_player-guild_02');
+});
+
+test('POST /admin/outpost/spawn refuses a bad placement (200, accepted:false) and 400s a malformed body', async () => {
+  await reset();
+  await found();
+  // A resolvable-but-wrong anchor → the engine refuses (200, accepted:false).
+  const refused = await req('POST', '/admin/outpost/spawn', {
+    guildId: 'player-guild', anchorSystemId: 'sys_not_real', coords: FREE_HEX,
+  });
+  assert.equal(refused.status, 200);
+  assert.equal(refused.body.accepted, false);
+  assert.match(refused.body.reason, /anchorSystemId/);
+  assert.equal((refused.body.snapshot.outposts || []).length, 0, 'a refused spawn places nothing');
+  // A structurally malformed request (no coords) is a 400 — the constructor refuses to build it.
+  const bad = await req('POST', '/admin/outpost/spawn', { guildId: 'player-guild', anchorSystemId: HOME_SYSTEM });
+  assert.equal(bad.status, 400);
+  assert.match(bad.body.error, /malformed spawn-outpost/);
+});
+
+test('POST /admin/outpost/remove refuses an unknown outpost id (200, accepted:false)', async () => {
+  await reset();
+  await found();
+  const rm = await req('POST', '/admin/outpost/remove', { guildId: 'player-guild', outpostId: 'outpost_player-guild_99' });
+  assert.equal(rm.status, 200);
+  assert.equal(rm.body.accepted, false);
+  assert.match(rm.body.reason, /owns no outpost/);
+});
+
 // --- the read-only dispatch quote (transport-model.md §4/§18, roadmap 2.2 b2b-1) -------------
 
 test('POST /vehicle/quote returns an engine-computed quote and MUTATES NOTHING', async () => {

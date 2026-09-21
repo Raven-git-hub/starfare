@@ -573,6 +573,28 @@ boundary so the later hex-map swap doesn't touch it.
   (`aspect-ratio:848/1264` + `cover`, the whole ship uncropped, "Show on map" on a footer beneath it),
   and the LABEL opens the popup while a hex click is normal (the `craftByKey` hex branch retired for a
   per-frame `craftLabelHits` label hit-test off `drawLabelBox`'s returned box).*
+- **2.2 — The guild Outpost: the outpost ladder (design.md §4 "The Guild Outpost").** The logistics
+  staging structure the cargo loop hangs off — a single-hex, guild-owned infrastructure claim in the
+  Toll Gate family (§15.4) that anchors to a system and holds a finite, cargo-space stockpile. Built
+  as a rung-by-rung ladder, mirroring how the guild transport was bootstrapped (spawn/remove first,
+  the economy wired later):
+  - **slice 1 — the entity + operator CLI (engine only).** 🟢 *BUILT.* The Outpost entity
+    (`state.outposts`, SHARED), `spawnOutpost`/`removeOutpost` journalled actions, `POST /admin/outpost/spawn|remove`,
+    and `tools/admin.js spawn-outpost`/`remove-outpost` — an operator can place and destroy one and see it
+    in the snapshot, exactly as a vehicle. Two numbers, neither invented: `OUTPOST_CAPACITY = 30 × HEAVY_HOLD`
+    (derived) and `OUTPOST_DOCK_SLOTS = 10` (`[FIRST-CUT]`) → `phase-1-tuning.md`; a stored per-guild mint
+    serial (`outpost_<guild>_NN`, never reissued); `checkOutpostIntegrity` (owner/anchor/hex/one-structure-per-hex/
+    unique-id/serial-monotonic). `capacity`/`dockCapacity`/`stockpile` CARRIED but read/written by nothing.
+    A NO-OP on a galaxy with no outpost (goldens byte-identical). Sim suite 1,367 → **1,383 green**,
+    `tools/admin.test.js` 32 → 35. **Deferred:** placement RANGE / anchor-ownership gating (the operator
+    places freely, like `spawn-vehicle`); the client (slice 2); cargo / load / unload / the dock model's
+    behaviour, and the destruction consequences §4 names — stored goods destroyed, docked craft evicted to
+    idle-in-space (slice 3); storing idle assets at an Outpost (idle assets have no location yet, §4); selling
+    to the Syndicate from an Outpost, the toll-hub, maintenance (later).
+  - **slice 2 — the client.** Draw the outpost on the map, read it in the console.
+  - **slice 3 — cargo + the dock model.** Load/unload, the finite stockpile enforced, the deadlock-free
+    dock turnaround, destruction consequences; then selling to the Syndicate from the Outpost.
+  - **slice 4 — the Tier-4 build/deploy path.** The buildable/deployable kit, placement range, anchor-ownership.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*

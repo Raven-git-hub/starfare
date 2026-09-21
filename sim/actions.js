@@ -1,7 +1,11 @@
 'use strict';
 
-const { createGuild, createVenture, createAsset, createVehicle } = require('./state.js');
-const { isStarterSystem, getTerranHomeworld, getSite, getSystem } = require('./seed.js');
+const {
+  createGuild, createVenture, createAsset, createVehicle, createOutpost,
+} = require('./state.js');
+const {
+  isStarterSystem, getTerranHomeworld, getSite, getSystem, isHexInBounds, seedLandmarkAtHex,
+} = require('./seed.js');
 const { getRecipe } = require('./recipes.js');
 const {
   EQUITY_CEILING, isValidEquityPct, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
@@ -15,6 +19,7 @@ const {
 const {
   isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation,
 } = require('./vehicles.js');
+const { outpostId, nextOutpostSerial } = require('./outposts.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { checkQuote, quotedPrice } = require('./price-ring.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
@@ -617,6 +622,30 @@ function createRemoveVehicleAction({ guildId, vehicleId: vId }) {
   if (guildId === undefined) throw new Error('createRemoveVehicleAction: guildId is required');
   if (vId === undefined) throw new Error('createRemoveVehicleAction: vehicleId is required');
   return { type: 'removeVehicle', guildId, vehicleId: vId };
+}
+
+// spawnOutpost: place one guild Outpost — the operator primitive (design.md §4 "Placed, fixed,
+// destructible", §15.4; roadmap 2.2, the outpost ladder slice 1). Anchors to `anchorSystemId` (a
+// real system) and occupies the single hex `coords` ({ q, r }). The operator places FREELY, exactly
+// as `spawnVehicle` does: placement RANGE to the anchor and requiring the guild to HOLD the anchor
+// system are DEFERRED to the real build/deploy slice (§4). It touches no credits/fuel/points/
+// reputation/claims — an outpost feeds none of them this slice. It MINTS an outpost; one is destroyed
+// by id via removeOutpost.
+function createSpawnOutpostAction({ guildId, anchorSystemId, coords }) {
+  if (guildId === undefined) throw new Error('createSpawnOutpostAction: guildId is required');
+  if (anchorSystemId === undefined) throw new Error('createSpawnOutpostAction: anchorSystemId is required');
+  if (coords === undefined) throw new Error('createSpawnOutpostAction: coords is required');
+  return { type: 'spawnOutpost', guildId, anchorSystemId, coords };
+}
+
+// removeOutpost: TEAR DOWN the named outpost (design.md §4 "torn down permanently") — a plain delete
+// this slice. Drops the row from `state.outposts`; the guild's mint serial is untouched (never
+// decrements), so the removed id is never reissued. Reject an unknown outpost or one this guild does
+// not own. This removes outposts; it does not create them (spawnOutpost is the mint path).
+function createRemoveOutpostAction({ guildId, outpostId: oId }) {
+  if (guildId === undefined) throw new Error('createRemoveOutpostAction: guildId is required');
+  if (oId === undefined) throw new Error('createRemoveOutpostAction: outpostId is required');
+  return { type: 'removeOutpost', guildId, outpostId: oId };
 }
 
 // dispatchVehicle: send an IDLE craft along a multi-leg route (transport-model.md §4, the polyline
@@ -2038,6 +2067,55 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'spawnOutpost') {
+    // design.md §4 / §15.4 (the outpost ladder, slice 1): place one guild Outpost. The operator
+    // places FREELY (like spawnVehicle) — placement RANGE and anchor-ownership are the real
+    // build/deploy slice's, DEFERRED here. The gates, in order:
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    // The anchor must resolve to a REAL system (an outpost anchors ONLY to a system, §4 — never to
+    // another outpost, mirroring the Toll Gate anchor rule). Reference only this slice.
+    if (!getSystem(action.anchorSystemId)) {
+      return { valid: false, reason: `anchorSystemId ${JSON.stringify(action.anchorSystemId)} is not a real system` };
+    }
+    // The hex must be a well-formed, in-bounds lattice coordinate (isHexInBounds checks integer +
+    // in-radius, derived from the seed's own galaxyParams — no invented number).
+    const coords = action.coords;
+    if (!coords || typeof coords !== 'object' || Array.isArray(coords) || !isHexInBounds(coords.q, coords.r)) {
+      return { valid: false, reason: `coords must be an in-bounds hex { q, r } of integers, got ${JSON.stringify(coords)}` };
+    }
+    // ONE STRUCTURE PER HEX (§4 / §2): the hex must not already hold a seed landmark (a system, a
+    // Syndicate waystation, or the Citadel) ...
+    const landmark = seedLandmarkAtHex(coords.q, coords.r);
+    if (landmark) {
+      return { valid: false, reason: `hex { q: ${coords.q}, r: ${coords.r} } is already occupied by ${landmark.kind} ${JSON.stringify(landmark.id)} — one structure per hex` };
+    }
+    // ... nor another guild Outpost (toll gates are not built yet, so there is none to check; a
+    // claim occupies its landmark's hex, already covered by the seed-landmark check above).
+    const occupied = (state.outposts || []).find((o) => o.coords && o.coords.q === coords.q && o.coords.r === coords.r);
+    if (occupied) {
+      return { valid: false, reason: `hex { q: ${coords.q}, r: ${coords.r} } is already occupied by outpost ${JSON.stringify(occupied.id)} — one structure per hex` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'removeOutpost') {
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    // Reject an unknown outpost OR one this guild does not own (design.md §4: teardown is an act on
+    // an outpost you own). Outposts are SHARED (state.outposts), so the owner check is explicit,
+    // unlike the guild-nested vehicles.
+    const outpost = (state.outposts || []).find((o) => o.id === action.outpostId);
+    if (!outpost || outpost.ownerGuildId !== action.guildId) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no outpost ${JSON.stringify(action.outpostId)}` };
+    }
+    return { valid: true };
+  }
+
   if (action.type === 'dispatchVehicle') {
     // transport-model.md §4 (the polyline model): send an IDLE craft along a multi-leg route,
     // refused whole with a clear reason (mirroring spawnVehicle's block). The order of the gates is
@@ -3037,6 +3115,42 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'spawnOutpost') {
+    // design.md §4 / §15.4 (the outpost ladder, slice 1): place one guild Outpost. Bump the guild's
+    // monotonic mint serial (never reused, exactly as vehicleSerial) and mint from it — the SAME
+    // serial + `outpost_<guild>_NN` id scheme sim/outposts.js owns. The row is SHARED, so it lands in
+    // `state.outposts`, not on the guild. `capacity`/`dockCapacity` default from the constants
+    // (30 × HEAVY_HOLD and the [FIRST-CUT] 10); the stockpile is born empty. `createdAtTick` records
+    // the mutation's tick (§15.2). It moves NO fuel/credits/points/reputation/claims — an outpost
+    // feeds none — so there is no conserving counter-move and galacticSupply is untouched.
+    const guild = findGuild(next, action.guildId);
+    const serial = nextOutpostSerial(guild);
+    guild.outpostSerial = serial;
+    const id = outpostId(action.guildId, serial);
+    if (!Array.isArray(next.outposts)) next.outposts = [];
+    next.outposts.push(createOutpost({
+      id,
+      ownerGuildId: action.guildId,
+      coords: action.coords,     // in-bounds, unoccupied — already validated; createOutpost copies it
+      anchorSystemId: action.anchorSystemId,
+      createdAtTick: next.tick,
+    }));
+    return next;
+  }
+
+  if (action.type === 'removeOutpost') {
+    // design.md §4 "torn down permanently": DESTROY the outpost — drop the row from state.outposts.
+    // The mint serial is NOT decremented (design.md §15.4 "Ids never repeat"), so the removed id is
+    // never reissued. A plain delete THIS SLICE: the stockpile is always empty and nothing can be
+    // docked. The destruction consequences §4 names — stored goods destroyed, docked craft evicted to
+    // idle-in-space — belong to the cargo slice (slice 3), when there is something to destroy or evict.
+    next.outposts = (next.outposts || []).filter((o) => o.id !== action.outpostId);
+    // Keep `outposts` omit-when-empty: a galaxy back to zero outposts drops the key, so it serializes
+    // byte-identically to pre-slice (the createState assembly's discipline, invariant 9).
+    if (next.outposts.length === 0) delete next.outposts;
+    return next;
+  }
+
   if (action.type === 'dispatchVehicle') {
     // transport-model.md §4: the trip departs at the dispatch tick and the WHOLE schedule is frozen
     // here. Mirrors buyFromSyndicate's fuel handling (burn the hoard, record the consumption, refresh
@@ -3163,6 +3277,8 @@ module.exports = {
   createRemoveVentureAction,
   createSpawnVehicleAction,
   createRemoveVehicleAction,
+  createSpawnOutpostAction,
+  createRemoveOutpostAction,
   createDispatchVehicleAction,
   quoteDispatch,
   validateAction,

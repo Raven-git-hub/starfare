@@ -410,6 +410,33 @@ test('parseWaypointsFlag / parseWaypointToken: sys/out/hex tokens, semicolon-sep
   assert.throws(() => A.parseWaypointsFlag('sys_0006'), /must be "q,r"/); // no sys:/out: prefix -> parsed as a hex
 });
 
+// --- spawn-outpost / remove-outpost (design.md §4 / §15.4, roadmap 2.2 slice 1) ---------------
+
+test('spawnOutpostBody / removeOutpostBody: build the exact request body from the flags', () => {
+  assert.deepEqual(
+    A.spawnOutpostBody({ guild: 'g1', system: 'sys_0006', hex: '3,-4' }),
+    { guildId: 'g1', anchorSystemId: 'sys_0006', coords: { q: 3, r: -4 } },
+  );
+  assert.deepEqual(
+    A.removeOutpostBody({ guild: 'g1', id: 'outpost_g1_01' }),
+    { guildId: 'g1', outpostId: 'outpost_g1_01' },
+  );
+});
+
+test('spawnOutpostBody / removeOutpostBody: a missing required flag throws rather than posting a half body', () => {
+  assert.throws(() => A.spawnOutpostBody({ system: 'sys_0006', hex: '0,0' }), /--guild is required/);
+  assert.throws(() => A.spawnOutpostBody({ guild: 'g1', hex: '0,0' }), /--system is required/);
+  assert.throws(() => A.spawnOutpostBody({ guild: 'g1', system: 'sys_0006' }), /--hex is required/);
+  // A malformed --hex is refused (not two integers) rather than coerced.
+  assert.throws(() => A.spawnOutpostBody({ guild: 'g1', system: 'sys_0006', hex: '3' }), /must be "q,r"/);
+  assert.throws(() => A.removeOutpostBody({ guild: 'g1' }), /--id is required/);
+  assert.throws(() => A.removeOutpostBody({ id: 'o' }), /--guild is required/);
+});
+
+test('OUTPOST_COMMANDS lists the outpost subcommands (spawn / remove)', () => {
+  assert.deepEqual([...A.OUTPOST_COMMANDS].sort(), ['remove-outpost', 'spawn-outpost'].sort());
+});
+
 test('dispatchVehicleBody: builds the exact request body; a missing required flag throws', () => {
   assert.deepEqual(
     A.dispatchVehicleBody({ guild: 'g1', id: 'vehicle_g1_lightTransport_01', waypoints: 'sys:sys_0006;3,4' }),

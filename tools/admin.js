@@ -378,11 +378,37 @@ function dispatchVehicleBody(flags) {
   };
 }
 
+// The two guild-Outpost spawn/remove subcommands (design.md §4 / §15.4, roadmap 2.2 slice 1) — thin
+// HTTP clients over POST /admin/outpost/spawn|remove, the operator primitive for placing/destroying a
+// guild Outpost, exactly as spawn-vehicle / remove-vehicle place/destroy a craft.
+const OUTPOST_COMMANDS = Object.freeze(['spawn-outpost', 'remove-outpost']);
+
+// spawnOutpostBody(flags) -> the POST /admin/outpost/spawn request body. The anchor is --system (the
+// system the outpost anchors to) and the hex is --hex "q,r" (parseHexFlag). PURE and exported so
+// admin.test.js can assert the mapping without a server (this file authors no game number — the seed
+// decides what resolves and the engine mints the id).
+function spawnOutpostBody(flags) {
+  return {
+    guildId: requireFlag(flags, 'guild', 'spawn-outpost'),
+    anchorSystemId: requireFlag(flags, 'system', 'spawn-outpost'),
+    coords: parseHexFlag(requireFlag(flags, 'hex', 'spawn-outpost')),
+  };
+}
+
+// removeOutpostBody(flags) -> the POST /admin/outpost/remove request body. PURE and exported.
+function removeOutpostBody(flags) {
+  return {
+    guildId: requireFlag(flags, 'guild', 'remove-outpost'),
+    outpostId: requireFlag(flags, 'id', 'remove-outpost'),
+  };
+}
+
 module.exports = {
   parseArgs, pick, findResourceNodes, pickResourceNode, pickIdleAssetId, judgeVerify, utcOffsetMinutesFromHours,
   adjustActionFor, ADJUST_COMMANDS,
   parseHexFlag, vehicleLocationFromFlags, spawnVehicleBody, removeVehicleBody, VEHICLE_COMMANDS,
   parseWaypointToken, parseWaypointsFlag, dispatchVehicleBody,
+  spawnOutpostBody, removeOutpostBody, OUTPOST_COMMANDS,
   EXPECTED_COMMITMENT, EXPECTED_WINDOW_N,
 };
 
@@ -735,6 +761,34 @@ async function cmdDispatchVehicle(base, flags) {
   }
 }
 
+// The guild-Outpost spawn/remove primitive (design.md §4 / §15.4, roadmap 2.2 slice 1): build the
+// request body from the flags (the PURE spawnOutpostBody / removeOutpostBody) and POST it to the gated
+// /admin/outpost/* endpoint. A REFUSED action comes back as a 200 with accepted:false — turn it into a
+// throw so a scripted operator gets exit 1, exactly as cmdSpawnVehicle does. Prints the outpost that moved.
+async function cmdSpawnOutpost(base, flags) {
+  const body = spawnOutpostBody(flags);
+  const out = await postJson(base, '/admin/outpost/spawn', body);
+  if (!out.accepted) throw new Error(`spawn-outpost refused: ${out.reason}`);
+  const outposts = (out.snapshot.outposts || []).filter((o) => o.ownerGuildId === body.guildId);
+  const minted = outposts[outposts.length - 1] || null; // the just-minted outpost is the newest row
+  row('action', 'spawnOutpost');
+  row('guild', body.guildId);
+  row('anchor', body.anchorSystemId);
+  row('hex', JSON.stringify(body.coords));
+  if (minted) row('minted', `${minted.id} (capacity ${minted.capacity}, dockCapacity ${minted.dockCapacity})`);
+  row('outposts', `${(out.snapshot.outposts || []).length}`);
+}
+
+async function cmdRemoveOutpost(base, flags) {
+  const body = removeOutpostBody(flags);
+  const out = await postJson(base, '/admin/outpost/remove', body);
+  if (!out.accepted) throw new Error(`remove-outpost refused: ${out.reason}`);
+  row('action', 'removeOutpost');
+  row('guild', body.guildId);
+  row('removed', body.outpostId);
+  row('outposts', `${(out.snapshot.outposts || []).length}`);
+}
+
 const USAGE = `starfare operator CLI — a thin client over the running server's API.
 
   node tools/admin.js <command> [flags]
@@ -767,6 +821,12 @@ Vehicle spawn/remove primitive (design.md §15.4 — operator/Storyteller, exit 
                   send an idle craft along a multi-leg route; each w is sys:<id> | out:<id> | q,r
                   (whole-route fuel burned up front from the hoard; refused whole if short)
 
+Guild-Outpost spawn/remove primitive (design.md §4 — operator, exit 1 on a refused action)
+  spawn-outpost   --guild ID --system ANCHOR_ID --hex q,r
+                  place one guild Outpost anchored to a system, on a single in-bounds hex
+                  (one structure per hex; placed freely — range/anchor-ownership deferred)
+  remove-outpost  --guild ID --id OUTPOST_ID   tear the named outpost down (id never reissued)
+
 Flags
   --base <url>   which server (default $STARFARE_BASE or ${DEFAULT_BASE})
   --seed N       name the galaxy new-galaxy/verify-cycle creates
@@ -778,7 +838,8 @@ Flags
                  at creation — only a new galaxy can carry a different one.
   --guild ID     adjust levers: which guild the adjust acts on
   --delta N      adjust-credits/fuel/goods: a SIGNED integer (grant +, remove −)
-  --system ID    adjust-goods / grant-asset: which system's cell / where to mint
+  --system ID    adjust-goods / grant-asset: which system's cell / where to mint;
+                 spawn-outpost: the system the outpost anchors to
   --good G       adjust-goods: which stockpile good
   --kind K       grant-asset: miner | factory
   --asset ID     remove-asset: which asset id
@@ -787,9 +848,11 @@ Flags
   --remove-asset remove-venture: delete the freed asset too (default: keep it idle)
   --class C      spawn-vehicle: lightTransport | mediumTransport | heavyTransport | spycraft
   --outpost ID   spawn-vehicle: berth the craft at an outpost landmark
-  --hex q,r      spawn-vehicle: berth the craft at a bare in-bounds hex
+  --hex q,r      spawn-vehicle: berth the craft at a bare in-bounds hex;
+                 spawn-outpost: the single hex the outpost occupies
   --condition F  spawn-vehicle: starting maintenanceCondition fraction in [0, 1] (default 1)
-  --id ID        remove-vehicle / dispatch-vehicle: which vehicle id
+  --id ID        remove-vehicle / dispatch-vehicle: which vehicle id;
+                 remove-outpost: which outpost id
   --waypoints W  dispatch-vehicle: "w;w;…" route, each w = sys:<id> | out:<id> | q,r
   --help, -h     this text
 `;
@@ -809,6 +872,8 @@ async function main(argv) {
     case 'spawn-vehicle': await cmdSpawnVehicle(base, flags); return;
     case 'remove-vehicle': await cmdRemoveVehicle(base, flags); return;
     case 'dispatch-vehicle': await cmdDispatchVehicle(base, flags); return;
+    case 'spawn-outpost': await cmdSpawnOutpost(base, flags); return;
+    case 'remove-outpost': await cmdRemoveOutpost(base, flags); return;
     default:
       // The six operator adjust levers share one thin command (docs/operator-adjust.md §5).
       if (ADJUST_COMMANDS.includes(command)) { await cmdAdjust(base, command, flags); return; }

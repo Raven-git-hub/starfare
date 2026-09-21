@@ -86,7 +86,10 @@ const { FUEL_PRICE_HISTORY_N } = require('./fuel-price-history.js');
 const { RING_DEPTH: PRICE_RING_DEPTH } = require('./price-ring.js');
 const { EVENT_TYPES, isEventType } = require('./events.js');
 const { computeGalacticSupply } = require('./supply.js');
-const { getSite, getLandmark, getSystem, getTerranHomeworld } = require('./seed.js');
+const {
+  getSite, getLandmark, getSystem, getTerranHomeworld, isHexInBounds, seedLandmarkAtHex,
+} = require('./seed.js');
+const { outpostNumberOf } = require('./outposts.js');
 const { getRecipe } = require('./recipes.js');
 
 function sumFuelInTransit(state) {
@@ -1530,6 +1533,103 @@ function checkClaimIntegrity(state) {
   return out;
 }
 
+// Guild-Outpost integrity — the structural guard for the SHARED outpost rows (state.outposts,
+// design.md §4 / §15.4, roadmap 2.2 — the outpost ladder slice 1). The outpost sibling of
+// checkVehicleIntegrity / checkClaimIntegrity: it asserts every outpost is well-formed, so a
+// save-reload, a future slice, or a bad scenario that injects a malformed outpost is caught by the
+// harness rather than a review pass (rule 4). A pure read — mutates nothing, changes no determinism
+// hash. Runs every tick. A galaxy with no outposts carries no `outposts` key (omit-when-empty) —
+// legal, the byte-identical no-op path; the sweep just does nothing.
+//
+// For each outpost:
+//   - `ownerGuildId` resolves to a REAL guild (containment is ownership for a nested entity, but an
+//     outpost is SHARED, so the back-pointer is checked against the roster — a dangling owner is
+//     corruption, the same referential guard a claim's landmark gets);
+//   - `anchorSystemId` resolves to a real SYSTEM (an outpost anchors only to a system, §4);
+//   - `coords` is an in-bounds integer hex (isHexInBounds — the seed's own lattice rule);
+//   - `capacity` / `dockCapacity` are whole numbers ≥ 0 (carried + inert this slice, but a garbage
+//     value must still fail loudly, exactly as the vehicle's condition does);
+//   - `createdAtTick` is a whole tick ≥ 0 (§15.2 — every mutation records its tick);
+//   - any present `stockpile` entry is a whole count ≥ 0 (nothing writes it this slice, so it is
+//     absent, but a scenario/save could hand one in — the §15.2 integer/non-negative discipline);
+//   - ONE STRUCTURE PER HEX (§4 / §2): the hex holds no seed landmark and no OTHER outpost.
+// And PER GUILD (the stable-id guarantee — design.md §15.4 "Ids never repeat"):
+//   - no two outposts share an id (unique across history, asserted structurally);
+//   - `outpostSerial` ≥ the highest minted suffix among that guild's LIVE outposts — the monotonic
+//     counter can never sit below a number it has handed out, or a future mint could re-issue a live id.
+function checkOutpostIntegrity(state) {
+  const out = [];
+  const outposts = state.outposts;
+  if (outposts === undefined) return out;
+  if (!Array.isArray(outposts)) {
+    out.push({ rule: 'outposts-is-an-array (design.md §15.4)', where: 'outposts', detail: { value: outposts } });
+    return out;
+  }
+  const guildById = (id) => (state.guilds || []).find((g) => g.id === id);
+  const seenIds = new Set();
+  const byHex = new Map();              // "q,r" -> the first outpost id seen there
+  const maxSuffixByGuild = new Map();   // ownerGuildId -> highest live outpost suffix
+  for (const o of outposts) {
+    const where = `outpost:${o.id}`;
+    if (!guildById(o.ownerGuildId)) {
+      out.push({ rule: 'outpost-owner-exists', where: `${where}.ownerGuildId`, detail: { ownerGuildId: o.ownerGuildId } });
+    }
+    if (!getSystem(o.anchorSystemId)) {
+      out.push({ rule: 'outpost-anchor-is-a-system (seed.js)', where: `${where}.anchorSystemId`, detail: { anchorSystemId: o.anchorSystemId } });
+    }
+    const c = o.coords;
+    const coordsOk = c && typeof c === 'object' && !Array.isArray(c) && isHexInBounds(c.q, c.r);
+    if (!coordsOk) {
+      out.push({ rule: 'outpost-coords-in-bounds (seed.js)', where: `${where}.coords`, detail: { coords: c } });
+    }
+    if (!Number.isInteger(o.capacity) || o.capacity < 0) {
+      out.push({ rule: 'outpost-capacity-is-a-non-negative-int', where: `${where}.capacity`, detail: { capacity: o.capacity } });
+    }
+    if (!Number.isInteger(o.dockCapacity) || o.dockCapacity < 0) {
+      out.push({ rule: 'outpost-dockCapacity-is-a-non-negative-int', where: `${where}.dockCapacity`, detail: { dockCapacity: o.dockCapacity } });
+    }
+    if (!Number.isInteger(o.createdAtTick) || o.createdAtTick < 0) {
+      out.push({ rule: 'outpost-createdAtTick-is-a-tick (§15.2)', where: `${where}.createdAtTick`, detail: { createdAtTick: o.createdAtTick } });
+    }
+    if (o.stockpile !== undefined) {
+      for (const [good, qty] of Object.entries(o.stockpile)) {
+        if (!Number.isInteger(qty) || qty < 0) {
+          out.push({ rule: 'outpost-stockpile-is-a-non-negative-int (§15.2)', where: `${where}.stockpile.${good}`, detail: { good, qty } });
+        }
+      }
+    }
+    // One structure per hex (§4 / §2): not on a seed landmark, not on another outpost. Only meaningful
+    // once the coords are a real hex — a bad-coords outpost has already tripped above.
+    if (coordsOk) {
+      const landmark = seedLandmarkAtHex(c.q, c.r);
+      if (landmark) {
+        out.push({ rule: 'outpost-hex-unoccupied-by-seed (§4)', where: `${where}.coords`, detail: { coords: { q: c.q, r: c.r }, occupiedBy: { kind: landmark.kind, id: landmark.id } } });
+      }
+      const key = `${c.q},${c.r}`;
+      if (byHex.has(key)) {
+        out.push({ rule: 'outpost-hex-unique (§4)', where: `${where}.coords`, detail: { coords: { q: c.q, r: c.r }, alsoHeldBy: byHex.get(key) } });
+      } else {
+        byHex.set(key, o.id);
+      }
+    }
+    if (seenIds.has(o.id)) {
+      out.push({ rule: 'outpost-id-unique', where, detail: { id: o.id } });
+    }
+    seenIds.add(o.id);
+    const n = outpostNumberOf(o.id);
+    if (n != null && n > (maxSuffixByGuild.get(o.ownerGuildId) || 0)) maxSuffixByGuild.set(o.ownerGuildId, n);
+  }
+  // The per-guild serial can never sit below a suffix it has minted (design.md §15.4 "Ids never repeat").
+  for (const [guildId, maxSuffix] of maxSuffixByGuild) {
+    const guild = guildById(guildId);
+    const serial = (guild && guild.outpostSerial) || 0;
+    if (serial < maxSuffix) {
+      out.push({ rule: 'outpost-serial-monotonic', where: `guild:${guildId}.outpostSerial`, detail: { outpostSerial: serial, highestLiveSuffix: maxSuffix } });
+    }
+  }
+  return out;
+}
+
 // Node lockouts — the self-denial bars written when an ordinary-licensed venture is torn
 // down mid-term (state.nodeLockouts, docs/venture-teardown.md §3.3). The FIRST "this site is
 // unavailable with no venture on it" fact in the engine, so it gets its own tripwire. Each
@@ -1628,6 +1728,7 @@ function checkInvariants(state, tick) {
     ...checkBuildQueues(state),
     ...checkOrders(state),
     ...checkClaimIntegrity(state),
+    ...checkOutpostIntegrity(state),
     ...checkNodeLockouts(state),
     ...checkGuildHome(state),
   ];

@@ -88,6 +88,7 @@ const { advance } = require('./run.js');
 const {
   validateAction, applyAction, createSpawnVehicleAction, createRemoveVehicleAction,
   createDispatchVehicleAction, quoteDispatch,
+  createSpawnOutpostAction, createRemoveOutpostAction,
 } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
 const { saveState, appendJournal, clearJournal, loadOrInit, saveSeed, loadSeed, deleteGalaxy } = require('./persist.js');
@@ -961,6 +962,75 @@ async function handleRequest(req, res) {
       sendJson(res, 200, applyOneAction(action));
     } catch (err) {
       sendJson(res, 500, { error: 'error applying dispatchVehicle (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // --- the guild-Outpost spawn/remove primitive (design.md §4 / §15.4, roadmap 2.2 slice 1) ---
+  // The OPERATOR outpost endpoints, shaped identically to /admin/vehicle/spawn|remove: gated at the
+  // Delete-Galaxy privilege level (Cloudflare Access is the interim gate; the player client never
+  // surfaces them), constructing the engine action from the body and running it through the SAME
+  // validate → journal → apply path POST /action uses (applyOneAction), so a placed/torn-down outpost
+  // survives restart and replays deterministically. They need a live galaxy (hasGalaxy).
+
+  // POST /admin/outpost/spawn { guildId, anchorSystemId, coords } — place one guild Outpost.
+  if (method === 'POST' && path === '/admin/outpost/spawn') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","anchorSystemId":"sys_0006","coords":{"q":3,"r":-4}}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId, anchorSystemId, and coords' });
+      return;
+    }
+    let action;
+    try {
+      // The constructor enforces the required fields; legality — guild exists, anchor is a real
+      // system, the hex is in-bounds and unoccupied — is validateAction's job, inside applyOneAction.
+      action = createSpawnOutpostAction({
+        guildId: body.guildId, anchorSystemId: body.anchorSystemId, coords: body.coords,
+      });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed spawn-outpost request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying spawnOutpost (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // POST /admin/outpost/remove { guildId, outpostId } — tear down the named outpost by id.
+  if (method === 'POST' && path === '/admin/outpost/remove') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","outpostId":"outpost_g1_01"}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId and outpostId' });
+      return;
+    }
+    let action;
+    try {
+      action = createRemoveOutpostAction({ guildId: body.guildId, outpostId: body.outpostId });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed remove-outpost request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying removeOutpost (invariant violation or engine throw)', detail: String((err && err.message) || err) });
     }
     return;
   }

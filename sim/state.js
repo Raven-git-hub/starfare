@@ -30,6 +30,7 @@ const { cloneFuelPriceHistory } = require('./fuel-price-history.js');
 const { seedPriceRing, clonePriceRing } = require('./price-ring.js');
 const { ASSET_CONDITION_NEW } = require('./assets.js');
 const { REFERENCE_FUEL_PRICE } = require('./fuel.js');
+const { OUTPOST_CAPACITY, OUTPOST_DOCK_SLOTS } = require('./outposts.js');
 const { DEUTERIUM_INFLUX_PER_CYCLE } = require('./issuance.js');
 
 // cloneShipments(list) -> a deep-enough copy of the IN-FLIGHT rows. `cargo` is the
@@ -102,6 +103,7 @@ function createGuild({
   ventures = [],
   vehicles = [],
   vehicleSerial = 0,
+  outpostSerial = 0,
   events = [],
   eventSeq = 0,
 }) {
@@ -357,6 +359,13 @@ function createGuild({
     // identically to pre-slice — the location rename + this counter are a no-op on a craft-less
     // galaxy (invariant 9). A scenario or a restored save that HANDS ONE IN keeps it.
     ...(vehicleSerial !== 0 ? { vehicleSerial } : {}),
+    // outpostSerial: the per-guild MONOTONIC guild-Outpost-mint counter (design.md §15.4 "Ids never
+    // repeat"), the exact sibling of `vehicleSerial` above. It only ever increments — at each
+    // `spawnOutpost`, never on removal — so a torn-down outpost's id (`outpost_<guild>_NN`) is never
+    // reissued. STORED (removal would let a live-derived max re-hand a number), guarded by
+    // `checkOutpostIntegrity`; OMITTED when 0 so a guild that has placed no outpost carries no key
+    // and serializes byte-identically to pre-slice (invariant 9).
+    ...(outpostSerial !== 0 ? { outpostSerial } : {}),
   };
 }
 
@@ -757,6 +766,61 @@ function createVehicle({
   };
 }
 
+// Guild Outpost (SHARED, design.md §4 "The Guild Outpost", §15.4 — the Toll Gate entity
+// family, NOT a per-guild inventory row like a vehicle). A single-hex, guild-owned
+// infrastructure claim that anchors to a system and carries an as-yet-empty cargo-space
+// stockpile. Lives in `state.outposts` (assembled below), the outpost mirror of how a
+// vehicle lives in `guild.vehicles`; the id/serial rules are sim/outposts.js's.
+//
+// This file ASSEMBLES the shape; legality — the guild owns it, the anchor resolves, the hex
+// is in-bounds and unoccupied — is `spawnOutpost`'s validate gate and `checkOutpostIntegrity`
+// (sim/actions.js / sim/invariants.js), the same assemble-here / judge-there division the
+// other constructors keep.
+//
+// `capacity` / `dockCapacity` DEFAULT to the module constants (the derived 30 × HEAVY_HOLD cap
+// and the [FIRST-CUT] slot count), the same "there is exactly one sensible value, so default it
+// rather than force every caller to pass it" reasoning `createReserve` applies to `fuelPrice`.
+// Both are CARRIED but INERT this slice — nothing reads them (the cargo/dock model is slice 3).
+//
+// `stockpile` (a good→int cargo map, keyed to the Outpost) is OMITTED when empty — the same
+// omit-when-empty discipline `guild.assets` / `syndicateWindows` follow — so an outpost with no
+// goods carries no key. Nothing writes it this slice; it is shaped now so the cargo slice needs
+// no migration. `createdAtTick` is REQUIRED: every mutation records its tick (§15.2), and an
+// outpost is only ever minted by an action that knows the tick.
+function createOutpost({
+  id,
+  ownerGuildId,
+  coords,
+  anchorSystemId,
+  stockpile = {},
+  capacity = OUTPOST_CAPACITY,
+  dockCapacity = OUTPOST_DOCK_SLOTS,
+  createdAtTick,
+}) {
+  if (id === undefined) throw new Error('createOutpost: id is required');
+  if (ownerGuildId === undefined) throw new Error('createOutpost: ownerGuildId is required');
+  if (coords === undefined) throw new Error('createOutpost: coords is required');
+  if (anchorSystemId === undefined) throw new Error('createOutpost: anchorSystemId is required');
+  if (createdAtTick === undefined) throw new Error('createOutpost: createdAtTick is required');
+
+  return {
+    id,
+    ownerGuildId,
+    // coords — the single hex it occupies. COPIED, not aliased: a fresh object so a caller's
+    // object can never reach into engine state (the createVehicle `location` discipline).
+    coords: { q: coords.q, r: coords.r },
+    // anchorSystemId — the system it anchors to (reference only, mirroring the Toll Gate's
+    // `anchorId`). An outpost anchors ONLY to a system (design.md §4), never another outpost.
+    anchorSystemId,
+    // stockpile — a good→int cargo container, OMITTED when empty (guild.assets discipline). A
+    // fresh copy so a caller's map can't alias into engine state; written by nothing this slice.
+    ...(stockpile && Object.keys(stockpile).length ? { stockpile: { ...stockpile } } : {}),
+    capacity,
+    dockCapacity,
+    createdAtTick,
+  };
+}
+
 // Fuel Utility reserve (SHARED, design.md §15.4) — the subset the engine needs.
 // `priceBand`/etc. are still left out until something reads them.
 //
@@ -902,6 +966,17 @@ function createState(scenario) {
     // carry weight: they reference real seed landmarks, guarded by invariants.js.
     world: scenario.world || {},
     claims: Array.isArray(scenario.claims) ? scenario.claims : [],
+    // outposts: the SHARED guild-Outpost rows (design.md §4 / §15.4, roadmap 2.2) — single-hex,
+    // guild-owned infrastructure claims in the Toll Gate family, top-level beside `claims` because
+    // an outpost is territory infrastructure on a hex, not a guild's inventory item. OMITTED when
+    // there is none — exactly like `nodeLockouts` / `syndicateBuilds` above and for the same reason:
+    // `spawnOutpost` is its only mint path, so a galaxy that has placed none carries no key and
+    // serializes byte-identically to pre-slice (the determinism no-op, invariant 9). A scenario or a
+    // restored save that HANDS ONE IN keeps it, normalised + deep-copied through `createOutpost` so a
+    // caller's object can never alias into engine state (the cloneShipments discipline).
+    ...(Array.isArray(scenario.outposts) && scenario.outposts.length
+      ? { outposts: scenario.outposts.map(createOutpost) }
+      : {}),
     // IN-FLIGHT (§15.1). Today's only occupant is the Syndicate BUY delivery
     // (design.md §6): `{ ownerGuildId, cargo, destinationSystemId, arrivalTick }`
     // — a pure schedule, deposited by tick.js's stepArrivals on its absolute
@@ -1005,6 +1080,7 @@ module.exports = {
   createVenture,
   createAsset,
   createVehicle,
+  createOutpost,
   createReserve,
   createSyndicate,
   createState,
