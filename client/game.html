@@ -1913,7 +1913,7 @@ select.field{appearance:none; cursor:pointer;}
 
 /* ===== #outpost-overlay — the read-only OUTPOST MANAGER (roadmap 2.2). A SIBLING of #dispatch-overlay,
    wearing the same est card / palette / hero language, reshaped into THREE columns: an outpost hero
-   (DOCKED / QUEUED lists over the outpost portrait) | a centre (storage donut + a parked Maintenance
+   (DOCKED / PARKED lists over the outpost portrait) | a centre (storage donut + a parked Maintenance
    Hangar, then the per-tier resource tables) | the selected berth's craft hero. Everything is read
    straight off the snapshot's outpost row + its craft rows — nothing here starts a transfer (the manual
    load/unload is the next slice). Every figure is a PUBLISHED snapshot value or a pure display ratio of
@@ -1955,26 +1955,27 @@ select.field{appearance:none; cursor:pointer;}
 #outpost-overlay .om-hero .inner{position:relative; z-index:2; display:flex; flex-direction:column; flex:1; padding:16px 16px 18px; min-height:0}
 #outpost-overlay .om-left{border-right:1px solid var(--line)}
 #outpost-overlay .om-right{border-left:1px solid var(--line)}
-/* left hero — DOCKED / QUEUED tabs aligned to the top, the active list on the upper portion. */
+/* left hero — DOCKED / PARKED tabs aligned to the top, the active list on the upper portion. */
 #outpost-overlay .om-tabs{display:flex; gap:2px; margin-bottom:12px; flex:none}
-#outpost-overlay .om-tab{flex:1; font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3); background:rgba(10,11,15,.45); border:1px solid var(--line); padding:8px 6px; text-align:center; cursor:pointer}
+/* tab labels bumped 10→13px with the row-text legibility pass (2.2 readability). */
+#outpost-overlay .om-tab{flex:1; font-family:var(--mono); font-size:13px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3); background:rgba(10,11,15,.45); border:1px solid var(--line); padding:9px 6px; text-align:center; cursor:pointer}
 #outpost-overlay .om-tab:hover{color:var(--ink2)}
 #outpost-overlay .om-tab.on{color:var(--ink); background:var(--panel2); box-shadow:0 -2px 0 var(--amber) inset}
 /* capped so the list never swallows the art (the portrait stays visible below it). */
 #outpost-overlay .om-list{display:flex; flex-direction:column; gap:5px; overflow-y:auto; max-height:432px}
-/* a dock / queue row — the fill-bar anatomy: an absolute fill behind, text in front. */
-#outpost-overlay .om-row{position:relative; display:flex; align-items:center; min-height:40px; padding:6px 11px; border:1px solid var(--line); border-radius:7px; background:rgba(10,11,15,.5); cursor:pointer; overflow:hidden; flex:none}
+/* a dock / parked row — the fill-bar anatomy: an absolute fill behind, text in front. The row text was
+   enlarged toward ~double for legibility (2.2 readability): berth 9→13, class 12→18, sub 10→14, with a
+   taller min-height so the bigger text never clips. The list scrolls (max-height above) so the extra
+   height stays inside the fixed-height popup. */
+#outpost-overlay .om-row{position:relative; display:flex; align-items:center; min-height:58px; padding:8px 12px; border:1px solid var(--line); border-radius:7px; background:rgba(10,11,15,.5); cursor:pointer; overflow:hidden; flex:none}
 #outpost-overlay .om-row:hover:not(.vacant){border-color:var(--line2)}
 #outpost-overlay .om-row.vacant{cursor:default; opacity:.5}
 #outpost-overlay .om-row.on{border-color:var(--amber)}
 #outpost-overlay .om-row i{position:absolute; left:0; top:0; bottom:0; background:rgba(201,162,39,.22); z-index:0}
 #outpost-overlay .om-row .rt{position:relative; z-index:1; flex:1; min-width:0}
-#outpost-overlay .om-row .rt .berth{font-family:var(--mono); font-size:9px; letter-spacing:.12em; color:var(--ink3); text-transform:uppercase}
-#outpost-overlay .om-row .rt .cl{font-size:12px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-#outpost-overlay .om-row .rt .sub{font-family:var(--mono); font-size:10px; color:var(--ink2)}
-/* the "Parked · awaiting orders" group label above the ten berths (2.2 playtest fix 2). A plain
-   section heading in the list flow — not a row, so it carries no border/fill and is not clickable. */
-#outpost-overlay .om-grouphead{font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--amber); padding:2px 2px 1px; flex:none}
+#outpost-overlay .om-row .rt .berth{font-family:var(--mono); font-size:13px; letter-spacing:.12em; color:var(--ink3); text-transform:uppercase}
+#outpost-overlay .om-row .rt .cl{font-size:18px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+#outpost-overlay .om-row .rt .sub{font-family:var(--mono); font-size:14px; color:var(--ink2)}
 /* centre column — a flex COLUMN inside the fixed-height body (2.2 playtest fix 3). It no longer scrolls
    as a whole (donut + Maintenance Hangar + tier tabs stay put); only the resource grid scrolls, via the
    .om-tiersec / .om-tierbody flex chain below. min-height:0 lets that inner scroll area shrink. */
@@ -2004,11 +2005,13 @@ select.field{appearance:none; cursor:pointer;}
 #outpost-overlay .om-tier.on .n{color:var(--amber)}
 /* the resource cells — a three-column grid of the tw-inv-row fill anatomy. */
 #outpost-overlay .om-res{display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px}
-#outpost-overlay .om-cell{position:relative; display:flex; flex-direction:column; justify-content:center; min-height:40px; padding:6px 9px; border:1px solid var(--line); border-radius:6px; background:rgba(10,11,15,.4); overflow:hidden}
+/* resource cells — the same legibility bump as the rows (2.2 readability): name/qty 11→15px, taller so
+   the bigger text sits clear. The grid scrolls (.om-tierbody) so the popup height is unchanged. */
+#outpost-overlay .om-cell{position:relative; display:flex; flex-direction:column; justify-content:center; min-height:50px; padding:7px 10px; border:1px solid var(--line); border-radius:6px; background:rgba(10,11,15,.4); overflow:hidden}
 #outpost-overlay .om-cell.zero{opacity:.4}
 #outpost-overlay .om-cell i{position:absolute; left:0; top:0; bottom:0; background:rgba(201,162,39,.20); z-index:0}
-#outpost-overlay .om-cell .nm{position:relative; z-index:1; font-size:11px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-#outpost-overlay .om-cell .q{position:relative; z-index:1; font-family:var(--mono); font-size:11px; color:var(--ink); font-variant-numeric:tabular-nums; margin-top:2px}
+#outpost-overlay .om-cell .nm{position:relative; z-index:1; font-size:15px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+#outpost-overlay .om-cell .q{position:relative; z-index:1; font-family:var(--mono); font-size:15px; color:var(--ink); font-variant-numeric:tabular-nums; margin-top:3px}
 /* the parked placeholder box (ASSETS tab, an empty tier). */
 #outpost-overlay .om-parked{border:1px dashed var(--line2); border-radius:8px; padding:26px 16px; text-align:center; font-family:var(--mono); font-size:11px; letter-spacing:.05em; color:var(--ink3)}
 /* right hero — the selected craft's read-out, pinned to the bottom of the portrait. */
@@ -3141,7 +3144,7 @@ select.field{appearance:none; cursor:pointer;}
 </div>
 
 <!-- The read-only OUTPOST MANAGER (roadmap 2.2). Opened from a guild Outpost's OPEN DETAILS button.
-     Three columns: the outpost hero (DOCKED / QUEUED over the portrait) | the centre (storage donut +
+     Three columns: the outpost hero (DOCKED / PARKED over the portrait) | the centre (storage donut +
      a parked Maintenance Hangar, then the per-tier resource tables) | the selected berth's craft hero.
      Everything is rendered from the snapshot's outpost row + its craft rows (§18); nothing here starts
      a transfer — the manual load/unload is the next slice. Filled by the outpost-manager-wire IIFE. -->
@@ -3156,14 +3159,16 @@ select.field{appearance:none; cursor:pointer;}
       <button class="est-close" id="omClose" title="Close (Esc)">✕</button>
     </div>
     <div class="est-body">
-      <!-- left hero: the outpost portrait, DOCKED / QUEUED tabs, the active list over the upper portion -->
+      <!-- left hero: the outpost portrait, DOCKED / PARKED tabs, the active list over the upper portion.
+           DOCKED = the ten berths (slot-held craft loading); PARKED = the unified waiting line (parked
+           craft + engine-queued craft together), the 2.2 Parked/Queued presentation merge. -->
       <div class="om-hero om-left">
         <div class="art" style="background-image:url('assets/units/outpost.jpg')"></div>
         <div class="scrim"></div>
         <div class="inner">
           <div class="om-tabs">
             <div class="om-tab" id="omTabDocked">Docked</div>
-            <div class="om-tab" id="omTabQueued">Queued</div>
+            <div class="om-tab" id="omTabParked">Parked</div>
           </div>
           <div class="om-list" id="omList"></div>
         </div>
@@ -4199,8 +4204,8 @@ select.field{appearance:none; cursor:pointer;}
         // 2.2 playtest fix 1 — a craft PARKED on a guild Outpost's hex is the Outpost's business: the
         // Outpost owns the hex (design.md §4). Suppress this craft's marker + name-tag so it captures no
         // click; handleClick then falls through to the hex chain, which resolves the hex as guildOutpost
-        // and opens the Outpost Manager. The parked craft is not lost — it shows in the manager's DOCKED
-        // tab under "Parked · awaiting orders". Only outpost-co-located craft are skipped; a bare-hex idle
+        // and opens the Outpost Manager. The parked craft is not lost — it shows in the manager's PARKED
+        // tab ("awaiting orders"). Only outpost-co-located craft are skipped; a bare-hex idle
         // craft keeps its label (and its Dispatch popup) unchanged.
         if (guildOutpostByKey.has(`${c.q},${c.r}`)) return;
         const p = hexToPixel(c.q, c.r, hsC);
@@ -10194,8 +10199,9 @@ function paintInventoryHero(d){
       .map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' ');
   }
 
-  // The open outpost, the left tab, the selected berth, and the tier tab. `sel` is { kind:'slot'|'queue',
-  // id:<vehicleId> } or null (no berth to select). Reset on open.
+  // The open outpost, the left tab ('DOCKED' berths | 'PARKED' waiting line), the selected craft, and
+  // the tier tab. `sel` is { kind:'slot'|'queue'|'parked', id:<vehicleId> } or null (nothing selected).
+  // Reset on open.
   var OM = { open:false, id:null, tab:'DOCKED', sel:null, tier:1 };
 
   // The tier vocabulary, read the SAME way the TRADE tab reads it — off the shared goods catalog
@@ -10294,7 +10300,7 @@ function paintInventoryHero(d){
 
   function renderTabs(){
     $('omTabDocked').classList.toggle('on', OM.tab==='DOCKED');
-    $('omTabQueued').classList.toggle('on', OM.tab==='QUEUED');
+    $('omTabParked').classList.toggle('on', OM.tab==='PARKED');
   }
 
   // One dock / queue row (the tw-inv-row fill anatomy). `fill` (0..1) draws the transfer-progress bar;
@@ -10315,22 +10321,9 @@ function paintInventoryHero(d){
     var byId = vehicleById();
     var html = '';
     if(OM.tab==='DOCKED'){
-      // 2.2 playtest fix 2 — the "Parked · awaiting orders" group, ABOVE the ten berths. A parked craft
-      // holds NO slot (parking holds no slot, design.md §4), so it is not one of the numbered docks — it
-      // is its own group. View + select only: a parked craft is given an order in the shared manifest
-      // editor (slice B), not here. No parked craft ⇒ no group, and DOCKED reads as the ten berths exactly
-      // as before.
-      var parked = parkedCraft();
-      if(parked.length){
-        html += '<div class="om-grouphead">Parked · awaiting orders</div>';
-        parked.forEach(function(v){
-          var suffix = String(v.id).split('_').slice(-1)[0];
-          var on = OM.sel && OM.sel.kind==='parked' && OM.sel.id===v.id;
-          // same row anatomy as a slot/queue row (a small tag, the class, a subline): the craft reads
-          // as class · #NN, with no progress fill (nothing is loading) and never a vacant row.
-          html += rowHtml('parked', v.id, on, 'Parked', pretty(v.class), '#'+suffix, 0, false);
-        });
-      }
+      // DOCKED = the ten berths, nothing else (2.2 Parked/Queued merge). A berth is a slot-held craft
+      // actively loading (design.md §4 "loading"); a parked craft holds NO slot, so it now lives in the
+      // PARKED tab, not here. The engine model is unchanged — this only re-presents it.
       var slots = row.slots||[];
       // Active slots first, numbered DOCK 01.. — the berth ordinals are CLIENT display numbering: the
       // engine's slots[] is an unordered list of active transfers with no berth identity (§18), so a
@@ -10348,16 +10341,36 @@ function paintInventoryHero(d){
         html += rowHtml(null, null, false, 'Dock '+pad2(j+1), 'Vacant', '', 0, true);
       }
     } else {
+      // PARKED = the unified waiting line (2.2 Parked/Queued merge): the player only needs to see "craft
+      // waiting at the Outpost", so the engine's two waiting states are shown TOGETHER in one list —
+      // engine-QUEUED craft (they carry a manifest, waiting for a berth) and PARKED craft (idle on the
+      // hex, no manifest yet). Both are the SAME engine states as before (design.md §4 unchanged); this
+      // only re-presents them. Display order is simple and stable: queued entries in their queue order
+      // (earliest-ready served first), then the parked craft — NOT a promotion/priority rule (that unified
+      // ordering is a slice-B ruling, out of scope). In the live galaxy row.queue is empty (no manual
+      // dispatch yet), so today this reads as the parked craft alone — expected; the queued half lights up
+      // with slice B, and a promoted craft then leaves this list for a DOCKED berth. Both kinds select via
+      // the existing 'queue' / 'parked' kinds and drive the right-hero read-out.
       var queue = row.queue||[];
-      if(!queue.length){ html = '<div class="om-parked">None waiting.</div>'; }
+      var parked = parkedCraft();
+      if(!queue.length && !parked.length){ html = '<div class="om-parked">No craft parked.</div>'; }
       else {
         var now = (snap()||{}).tick || 0;
+        // queued craft first, in queue order — class · #NN over the existing "waiting N min" subline.
         queue.forEach(function(q, i){
           var v = byId[q.vehicleId];
-          var cls = v ? pretty(v.class) : '—';
+          var suffix = String(q.vehicleId).split('_').slice(-1)[0];
+          var cl = (v ? pretty(v.class) : '—') + ' · #' + suffix;
           var wait = Math.max(0, now - q.readyTick); // waiting time = tick − readyTick (a tick difference, §18)
           var on = OM.sel && OM.sel.kind==='queue' && OM.sel.id===q.vehicleId;
-          html += rowHtml('queue', q.vehicleId, on, i===0?'Next':('Queue '+pad2(i+1)), cls, 'waiting '+wait+' min', 0, false);
+          html += rowHtml('queue', q.vehicleId, on, i===0?'Next':('Queue '+pad2(i+1)), cl, 'waiting '+wait+' min', 0, false);
+        });
+        // then the parked craft — class · #NN over an "awaiting orders" subline, no progress fill.
+        parked.forEach(function(v){
+          var suffix = String(v.id).split('_').slice(-1)[0];
+          var cl = pretty(v.class) + ' · #' + suffix;
+          var on = OM.sel && OM.sel.kind==='parked' && OM.sel.id===v.id;
+          html += rowHtml('parked', v.id, on, 'Parked', cl, 'awaiting orders', 0, false);
         });
       }
     }
@@ -10469,7 +10482,7 @@ function paintInventoryHero(d){
 
   // tab clicks — set state and re-render only the left list (no snapshot change).
   $('omTabDocked').addEventListener('click', function(){ OM.tab='DOCKED'; var r=outpostRow(); if(r){ renderTabs(); renderLeft(r); } });
-  $('omTabQueued').addEventListener('click', function(){ OM.tab='QUEUED'; var r=outpostRow(); if(r){ renderTabs(); renderLeft(r); } });
+  $('omTabParked').addEventListener('click', function(){ OM.tab='PARKED'; var r=outpostRow(); if(r){ renderTabs(); renderLeft(r); } });
   $('omClose').addEventListener('click', closeManager);
   $('outpost-overlay').addEventListener('click', function(e){ if(e.target===this) closeManager(); });
   document.addEventListener('keydown', function(e){ if(OM.open && e.key==='Escape') closeManager(); });

@@ -652,6 +652,31 @@ boundary so the later hex-map swap doesn't touch it.
     a far bare-hex craft still opens Dispatch from its label; the popup height is identical tabbing 1→2→3→4).
     **View + select only** — giving a parked craft an order / dispatch-from-the-manager is slice B (the shared
     manifest editor), still out of scope.
+  - **slice 3-client, Parked/Queued merge + readability.** 🟢 *BUILT — CLIENT ONLY (`client/game.html`, no
+    engine/snapshot/`sim` change; the park/queue/slot model, `dockStatus`, and the space figures are all already
+    published — design.md §4/§18 UNCHANGED, this only re-presents them).* A playtest UX simplification: the manager
+    surfaced three waiting-states (Docked / Parked / Queued) where a player needs two. (1) **DOCKED → the ten berths
+    only** — the "Parked · awaiting orders" group is removed from the `OM.tab==='DOCKED'` branch of `renderLeft`;
+    DOCKED now renders exactly the slot-held craft (`Dock NN`, counting down) plus vacant fillers to `dockCapacity`.
+    (2) **QUEUED → PARKED, the unified waiting line** — the tab is renamed (label + `OM.tab` value `'QUEUED'`→
+    `'PARKED'` + the `omTabQueued`→`omTabParked` id, kept internally consistent) and its list is the UNION of the two
+    engine waiting-states shown together: engine-`queue` craft (a manifest, waiting for a berth — `class · #NN` over
+    the existing wait subline) then parked craft (`parkedCraft()`, no manifest — `class · #NN` over an "awaiting
+    orders" subline). Both keep their existing `'queue'` / `'parked'` selection kinds; empty union ⇒ a single
+    "No craft parked" placeholder. Display order is queued-then-parked, a **stable presentation order only** — the
+    unified-queue promotion/priority ruling (a parked craft keeps its arrival spot; a manifest-carrying craft behind
+    it jumps it) is a slice-B design ruling, NOT encoded here. (3) **Row/label text enlarged for legibility** — the
+    `#outpost-overlay .om-row` text is pushed toward ~double (`.cl` 12→18px, `.berth` 9→13px, `.sub` 10→14px, tabs
+    10→13px), the resource-grid cells match it (`.om-cell .nm`/`.q` 11→15px), and `.om-row`/`.om-cell` min-heights
+    grow so nothing clips; the list + tier grid still scroll inside the fixed 620px body, so the popup height is
+    unchanged (playtest-fix 3 holds). Sim suite **1,415 green** (untouched — client-only; the served-page tripwire
+    stays green); rendered end-to-end in headless Chromium (a parked craft + a queued craft both list under PARKED,
+    DOCKED shows only berths; one tick promotes the queued craft into a DOCK berth and it leaves PARKED; the enlarged
+    text is not clipped and the body height is identical across the four tier tabs; an empty Outpost shows "No craft
+    parked" + ten vacant berths, no console errors). **Display calls (surfaced, not invented):** the unified list's
+    queued-then-parked display order, and the enlarged font/row-height figures (display sizes, tunable). **Deferred,
+    not invented:** the unified-queue promotion/priority ruling → slice B; giving a parked craft an order / manual
+    dispatch → slice B.
   - **slice 4 — the Tier-4 build/deploy path.** The buildable/deployable kit, placement range, anchor-ownership.
 - **2.2 — cargo: the load / haul / unload engine (design.md §4 "The dock model").** The craft's hold
   and the manifest that fills/empties it — the substrate that turns dispatch (above) into a real
