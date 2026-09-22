@@ -814,6 +814,29 @@ boundary so the later hex-map swap doesn't touch it.
     out of scope here. Sim suite **1,433 green** (untouched — client-only; the served-page tripwire stays
     green). **Display calls (surfaced, not invented):** goods rows sorted by good id (stable order); the
     in-transit manifest carries the same used/capacity summary row as the idle card, for parity.
+  - **DOCK editor made hold-aware.** 🟢 *BUILT — CLIENT ONLY (`client/game.html`; no engine/snapshot/`sim`/`tools`
+    change — the vehicle row already publishes `cargo`/`capacity`/`used` and the snapshot already publishes
+    top-level `goodVolumes`, design.md §4/§18: the client displays them, computes no game number).* A playtest
+    fix on the DOCK / Manifest editor (cargo slice B): a laden craft opening the editor gave no sign of what it
+    already carried, and the capacity bar was an EMPTY-HOLD estimate that pretended the hold started empty — so
+    a craft carrying 3,000 ammonia "looked empty" in the one screen where the player decides what to load/unload.
+    Two pieces: (1) a **"Currently aboard" read-out** (`renderAboard` → `#dkAboard`) above the Manifest sechead —
+    one row per good in `v.cargo` (pretty name + `fmtNum` quantity, sorted by good id) plus a `Hold used <used> /
+    <capacity> cargo space` summary (both published, `used` not recomputed), an empty hold showing a muted `Hold
+    empty` row; re-read off the live row each render. (2) the **capacity bar is now a projection over the REAL
+    current hold** (`refreshDerived` reworked), mirroring the engine's §4 resolution order — ALL UNLOADS first
+    (each removing `min(amount, units aboard)`, MAX emptying the good), then ALL LOADS (fixed loads clamped by the
+    room left, a MAX load filling to capacity): `base = v.used` (the faded `#dkBarBase` segment, the hold that
+    survives), the solid `#dkBarSolid` stacked ON TOP for this order's load, the hatch to capacity for a MAX load;
+    head relabelled "Hold after this order", figure `projUsed / cap`, with a faded/solid legend (`Already aboard` /
+    `This order`). Sim suite **1,433 green** (untouched — client-only; the served-page tripwire stays green);
+    verified end-to-end in headless Chromium (a 3,000-ammonia craft parked at an outpost: "Currently aboard" reads
+    the real 3,000 / 10,000, a +4,000 load stacks to 7,000 / 10,000, an amount/MAX unload drops the base, a MAX
+    load hatches to capacity from the top of the real hold, an empty craft reads `Hold empty` / 0 / capacity — no
+    console errors). **Display calls (surfaced, not invented):** the projection follows §4's unload-then-load order
+    so the estimate matches what the engine will do; a net-unload simply reads the bar shorter and the figure lower
+    (the per-good picture lives in the "Currently aboard" read-out, so the bar stays a pure space projection);
+    the new constants are display sizes/colours (the faded base segment reuses the overlay's amber palette).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*

@@ -2083,6 +2083,14 @@ select.field{appearance:none; cursor:pointer;}
 #dock-overlay .est-side{background:#0d0f14; display:flex; flex-direction:column; min-height:100%}
 #dock-overlay .est-side .art{aspect-ratio:848 / 1264; background-size:cover; background-position:center; background-repeat:no-repeat}
 #dock-overlay .dk-sechead{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2); margin-bottom:14px}
+/* "Currently aboard" — the craft's real hold right now: a bordered mono panel, one row per good, and a
+   hairline-topped used/capacity summary. A pure display of published cargo / used / capacity (§18). */
+#dock-overlay .dk-aboard{border:1px solid var(--line); border-radius:8px; background:var(--panel2)}
+#dock-overlay .dk-aboard .ab-row{display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:6px 12px; font-family:var(--mono); font-size:12px}
+#dock-overlay .dk-aboard .ab-row .g{color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+#dock-overlay .dk-aboard .ab-row .q{color:var(--ink2); font-variant-numeric:tabular-nums; flex:none}
+#dock-overlay .dk-aboard .ab-empty .g{color:var(--ink3)}
+#dock-overlay .dk-aboard .ab-sum{padding:7px 12px; border-top:1px solid var(--line); font-family:var(--mono); font-size:10px; letter-spacing:.08em; color:var(--ink3); font-variant-numeric:tabular-nums; text-align:right}
 /* the manifest line list — each line is a grid: good | dir | qty+MAX | remove. */
 #dock-overlay .dk-lines{display:flex; flex-direction:column; gap:8px}
 #dock-overlay .dk-line{display:grid; grid-template-columns:1fr 96px 150px 34px; gap:8px; align-items:center}
@@ -2101,14 +2109,23 @@ select.field{appearance:none; cursor:pointer;}
 #dock-overlay .dk-rm:hover{border-color:var(--red); color:var(--red)}
 #dock-overlay .dk-add{margin-top:12px; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink2); background:transparent; border:1px dashed var(--line2); border-radius:7px; padding:10px 12px; cursor:pointer; width:100%}
 #dock-overlay .dk-add:hover{border-color:var(--amber); color:var(--amber)}
-/* the hold-capacity bar — an empty-hold estimate: the solid fill is the fixed load amount, the hatched
-   band the remainder a MAX load would fill. A pure display projection of published figures (§18). */
+/* the hold-after-this-order bar — a projection over the REAL current hold (§4 unload-then-load order):
+   a FADED base = the hold already aboard that survives, the SOLID = this order's load stacked on top,
+   and a HATCHED band = the room a MAX load would fill to capacity. A pure display projection of
+   published used / capacity / goodVolumes × the player's own amounts (§18). */
 #dock-overlay .dk-cap{margin-top:22px}
 #dock-overlay .dk-cap-head{display:flex; justify-content:space-between; align-items:baseline; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); margin-bottom:8px}
 #dock-overlay .dk-cap-head .fig{color:var(--amber); font-size:12px; font-variant-numeric:tabular-nums}
 #dock-overlay .dk-bar{position:relative; height:16px; border:1px solid var(--line2); border-radius:6px; background:var(--panel); overflow:hidden}
-#dock-overlay .dk-bar .solid{position:absolute; left:0; top:0; bottom:0; background:rgba(201,162,39,.55); z-index:1}
+#dock-overlay .dk-bar .base{position:absolute; left:0; top:0; bottom:0; background:rgba(201,162,39,.32); z-index:0}
+#dock-overlay .dk-bar .solid{position:absolute; top:0; bottom:0; background:rgba(201,162,39,.55); z-index:1}
 #dock-overlay .dk-bar .hatch{position:absolute; top:0; bottom:0; z-index:0; background:repeating-linear-gradient(45deg, rgba(201,162,39,.28) 0 5px, rgba(201,162,39,.06) 5px 10px)}
+/* the legend — a faded swatch (already aboard) + a solid swatch (this order), beneath the bar. */
+#dock-overlay .dk-legend{display:flex; gap:18px; margin-top:8px; font-family:var(--mono); font-size:10px; letter-spacing:.06em; color:var(--ink3)}
+#dock-overlay .dk-leg{display:flex; align-items:center; gap:6px}
+#dock-overlay .dk-leg .sw{width:11px; height:11px; border-radius:2px; flex:none}
+#dock-overlay .dk-leg .sw.base{background:rgba(201,162,39,.32)}
+#dock-overlay .dk-leg .sw.solid{background:rgba(201,162,39,.55)}
 /* footer — Cancel + Confirm, and an inline refusal line (engine reason on reject, popup stays open). */
 #dock-overlay .dk-foot{margin-top:24px; display:flex; gap:12px}
 #dock-overlay .dk-btn{flex:1; font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; padding:13px 12px; border-radius:9px; cursor:pointer; background:var(--panel); border:1px solid var(--line2); color:var(--ink)}
@@ -3306,14 +3323,21 @@ select.field{appearance:none; cursor:pointer;}
     </div>
     <div class="est-body">
       <div class="est-main">
-        <div class="dk-sechead">Manifest</div>
+        <!-- "Currently aboard": the craft's real hold RIGHT NOW (rendered by the IIFE off the live row) -->
+        <div class="dk-sechead">Currently aboard</div>
+        <div class="dk-aboard" id="dkAboard"></div>
+        <div class="dk-sechead" style="margin-top:22px">Manifest</div>
         <!-- the manifest line list (rendered by the IIFE) -->
         <div class="dk-lines" id="dkLines"></div>
         <button class="dk-add" id="dkAdd" type="button">+ Add line</button>
-        <!-- the hold-capacity bar (empty-hold estimate) -->
+        <!-- the hold-after-this-order bar: a projection over the REAL current hold (§4 unload-then-load) -->
         <div class="dk-cap">
-          <div class="dk-cap-head"><span>Hold (empty-hold estimate)</span><span class="fig" id="dkCapFig">0 / 0</span></div>
-          <div class="dk-bar"><i class="hatch" id="dkBarHatch" style="display:none"></i><i class="solid" id="dkBarSolid" style="width:0%"></i></div>
+          <div class="dk-cap-head"><span>Hold after this order</span><span class="fig" id="dkCapFig">0 / 0</span></div>
+          <div class="dk-bar"><i class="base" id="dkBarBase" style="width:0%"></i><i class="hatch" id="dkBarHatch" style="display:none"></i><i class="solid" id="dkBarSolid" style="left:0%; width:0%"></i></div>
+          <div class="dk-legend">
+            <span class="dk-leg"><i class="sw base"></i><span id="dkLegBase">Already aboard (0)</span></span>
+            <span class="dk-leg"><i class="sw solid"></i><span id="dkLegAdd">This order (+0)</span></span>
+          </div>
         </div>
         <!-- footer: Cancel + Confirm, with an inline refusal line beneath -->
         <div class="dk-foot">
@@ -10718,10 +10742,12 @@ function paintInventoryHero(d){
    positive integer OR a MAX toggle ("as much as possible", §4). Confirm builds the
    ordered manifest and fires transferCargo (window.__sendAction); the ENGINE queues
    it for one of the Outpost's dock slots and resolves it authoritatively at
-   turnaround (§4). The client computes NO game number (§18): the ONLY figure it
-   draws is the hold-capacity bar — an EMPTY-HOLD projection of published
-   goodVolumes × the player's own entered load amounts (it deliberately ignores
-   cargo already aboard). Its own overlay + id + IIFE, mirroring #dispatch-overlay.
+   turnaround (§4). The client computes NO game number (§18): it draws a
+   "Currently aboard" read-out (the craft's published hold) and a hold-after-this-
+   order bar — a projection over the REAL current hold following the engine's
+   resolution order (§4: unloads first, then loads), from published used /
+   capacity / goodVolumes × the player's own amounts. Its own overlay + id + IIFE,
+   mirroring #dispatch-overlay.
    ============================================================================ */
 (function(){
   function $(id){ return document.getElementById(id); }
@@ -10852,34 +10878,83 @@ function paintInventoryHero(d){
     });
   }
 
-  // Recompute the hold-capacity bar + the Confirm-enabled state WITHOUT rebuilding the list. The bar is
-  // an EMPTY-HOLD estimate (a settled design decision): the SOLID fill is the sum of the LOAD lines'
-  // fixed amounts × goodVolumes[good]; if any LOAD line is MAX, a HATCHED band shows the remaining room
-  // a max load would fill. It ignores cargo already aboard and unload lines — a display projection of
-  // published figures (§18); the engine resolves the transfer authoritatively on confirm.
+  // "Currently aboard" — the craft's real hold RIGHT NOW, read off the live row each call (§18: a pure
+  // display of published cargo / used / capacity — used is NOT recomputed from cargo). One row per good
+  // (sorted by good id for a stable order), then a used / capacity summary; an empty hold shows a single
+  // muted "Hold empty" row. It has no inputs, so re-rendering on every field edit loses nothing.
+  function renderAboard(){
+    var v = craftRow();
+    var cargo = (v && v.cargo) || {};
+    var cap = (v && typeof v.capacity==='number') ? v.capacity : 0;
+    var used = (v && typeof v.used==='number') ? v.used : 0;
+    var goods = Object.keys(cargo).sort();
+    var rows = goods.length
+      ? goods.map(function(g){
+          return '<div class="ab-row"><span class="g">'+esc(pretty(g))+'</span>'+
+                 '<span class="q">'+fmtNum(cargo[g])+'</span></div>';
+        }).join('')
+      : '<div class="ab-row ab-empty"><span class="g">Hold empty</span></div>';
+    $('dkAboard').innerHTML = rows +
+      '<div class="ab-sum">Hold used '+fmtNum(used)+' / '+fmtNum(cap)+' cargo space</div>';
+  }
+
+  // Recompute the "Currently aboard" read-out, the hold-after-this-order bar, and the Confirm-enabled
+  // state WITHOUT rebuilding the manifest list. The bar PROJECTS the real current hold, mirroring the
+  // engine's resolution order (§4: ALL UNLOADS first, then ALL LOADS) so the estimate matches what
+  // transferCargo will do. base = the craft's published `used`; each unload frees space (clamped by the
+  // units still aboard), each fixed load fills it (clamped by the room left), a MAX load fills to
+  // capacity. A display projection of published used / capacity / goodVolumes × the player's own
+  // entered amounts (§18); the engine still resolves the transfer authoritatively on confirm.
   function refreshDerived(){
+    renderAboard();
     var v = craftRow();
     var cap = (v && typeof v.capacity==='number') ? v.capacity : 0;
     var vol = goodVolumes();
-    var fixed = 0, hasMaxLoad = false;
+    // A working copy of the live hold, so unloads clamp by what is REALLY aboard (not recomputed used).
+    var aboard = {}, cargo = (v && v.cargo) || {};
+    Object.keys(cargo).forEach(function(g){ aboard[g] = cargo[g]; });
+    var used = (v && typeof v.used==='number') ? v.used : 0;
+
+    // UNLOAD phase FIRST (§4): each unload removes min(amount, units aboard) — MAX empties the good.
+    DK.lines.forEach(function(l){
+      if(l.dir!=='unload' || !l.good) return;
+      var have = aboard[l.good] || 0;
+      var removed = l.max ? have : Math.min(qtyInt(l.qty)||0, have);
+      used -= removed * (vol[l.good]||0);
+      aboard[l.good] = have - removed;
+    });
+    var kept = Math.max(0, used);   // the aboard space that survives — the faded base segment
+
+    // LOAD phase (§4): fixed loads sum by space; a MAX load fills whatever room is left, up to capacity.
+    var fixedAdd = 0, hasMaxLoad = false;
     DK.lines.forEach(function(l){
       if(l.dir!=='load' || !l.good) return;
       if(l.max){ hasMaxLoad = true; return; }
       var n = qtyInt(l.qty);
-      if(n!=null) fixed += n * (vol[l.good]||0);
+      if(n!=null) fixedAdd += n * (vol[l.good]||0);
     });
-    var solidFrac = cap>0 ? Math.max(0, Math.min(1, fixed/cap)) : 0;
-    var solidPct = solidFrac*100;
+    var room = Math.max(0, cap - kept);
+    var solidAdd = Math.min(fixedAdd, room);
+    var projUsed = hasMaxLoad ? cap : kept + solidAdd;
+
+    // The three bar layers, each a % of capacity: the faded base (kept), the solid this-order fill
+    // (solidAdd, offset to stack ON TOP of the base), and — for a MAX load — a hatch to capacity.
+    var basePct = cap>0 ? Math.max(0, Math.min(100, kept/cap*100)) : 0;
+    var solidPct = cap>0 ? Math.max(0, Math.min(100, solidAdd/cap*100)) : 0;
+    $('dkBarBase').style.width = basePct.toFixed(1)+'%';
+    $('dkBarSolid').style.left = basePct.toFixed(1)+'%';
     $('dkBarSolid').style.width = solidPct.toFixed(1)+'%';
     var hatch = $('dkBarHatch');
-    if(hasMaxLoad && solidFrac<1){
+    if(hasMaxLoad && (kept + solidAdd) < cap){
       hatch.style.display = 'block';
-      hatch.style.left = solidPct.toFixed(1)+'%';
-      hatch.style.width = (100-solidPct).toFixed(1)+'%';
+      hatch.style.left = (basePct + solidPct).toFixed(1)+'%';
+      hatch.style.width = Math.max(0, 100 - basePct - solidPct).toFixed(1)+'%';
     } else {
       hatch.style.display = 'none';
     }
-    $('dkCapFig').textContent = fmtNum(fixed) + ' / ' + fmtNum(cap);
+    $('dkCapFig').textContent = fmtNum(projUsed) + ' / ' + fmtNum(cap);
+    $('dkLegBase').textContent = 'Already aboard (' + fmtNum(kept) + ')';
+    $('dkLegAdd').textContent = 'This order (+' + fmtNum(solidAdd) + ')';
     $('dkConfirm').disabled = !manifestReady();
   }
 
