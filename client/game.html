@@ -8920,16 +8920,24 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return ((guild && guild.vehicles) || []).filter(function(v){ return v.status === 'idle'; });
   }
 
-  // A craft's `location` → its GROUP descriptor `{ key, name }` (§15.4). A system or an outpost
-  // landmark keys and names by that landmark (an outpost is NOT deep space — it groups as a system
-  // does); a bare hex keys to the single shared 'deep' bucket named DEEP SPACE; anything malformed
-  // (a row that slipped past the integrity invariant) falls to a defensive 'unknown' so the panel
-  // never throws. The key is prefixed by kind so the three kinds never collide in the collapse-state
-  // map. Pure read-time resolution — no game number (§18).
+  // A craft's `location` (+ `dockStatus`) → its GROUP descriptor `{ key, name }` (§15.4). A system
+  // or an outpost landmark keys and names by that landmark (an outpost is NOT deep space — it groups
+  // as a system does); a craft docked at an outpost (parked / queued / loading) keys/names by that
+  // outpost too, off `dockStatus.outpostId`, so it merges with the landmark-outpost craft; a bare
+  // hex with no dock relation keys to the single shared 'deep' bucket named DEEP SPACE; anything
+  // malformed (a row that slipped past the integrity invariant) falls to a defensive 'unknown' so
+  // the panel never throws. The key is prefixed by kind so the kinds never collide in the
+  // collapse-state map. Pure read-time resolution — no game number (§18).
   function tpGroupOf(v){
     var loc = v && v.location;
     if(loc && loc.landmarkKind === 'system') return { key: 'system:' + loc.landmarkId, name: systemName(loc.landmarkId) };
     if(loc && loc.landmarkKind === 'outpost') return { key: 'outpost:' + loc.landmarkId, name: outpostName(loc.landmarkId) };
+    // A craft parked / queued / loading at an outpost berths BY HEX-COINCIDENCE, so its `location`
+    // is the outpost's bare hex (anchored to nothing) — the outpost link lives on `dockStatus`
+    // (§15.4). Key/name it EXACTLY as the landmark-outpost branch above, so a docked craft merges
+    // into the same group as any craft whose `location` is that outpost landmark. Must win before
+    // the bare-hex DEEP SPACE branch below, or the docked craft's hex would fall into Deep Space.
+    if(v && v.dockStatus && v.dockStatus.outpostId) return { key: 'outpost:' + v.dockStatus.outpostId, name: outpostName(v.dockStatus.outpostId) };
     if(loc && typeof loc.q === 'number' && typeof loc.r === 'number') return { key: 'deep', name: 'DEEP SPACE' };
     return { key: 'unknown', name: 'Unknown' };
   }
@@ -8941,6 +8949,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var loc = v && v.location;
     if(loc && loc.landmarkKind === 'system') return systemName(loc.landmarkId);
     if(loc && loc.landmarkKind === 'outpost') return outpostName(loc.landmarkId);
+    // Same precedence as tpGroupOf: a docked craft's `location` is the outpost's bare hex, so read
+    // its outpost name from `dockStatus` (before the bare-hex branch) — the row then reads the
+    // outpost name its group header now shows. A genuinely adrift craft still reads its (q, r).
+    if(v && v.dockStatus && v.dockStatus.outpostId) return outpostName(v.dockStatus.outpostId);
     if(loc && typeof loc.q === 'number' && typeof loc.r === 'number') return '(' + loc.q + ', ' + loc.r + ')';
     return 'Unknown';
   }

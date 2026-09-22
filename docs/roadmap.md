@@ -837,6 +837,22 @@ boundary so the later hex-map swap doesn't touch it.
     so the estimate matches what the engine will do; a net-unload simply reads the bar shorter and the figure lower
     (the per-good picture lives in the "Currently aboard" read-out, so the bar stays a pure space projection);
     the new constants are display sizes/colours (the faded base segment reuses the overlay's amber palette).
+  - **Operations tab, idle transports parked at an outpost group under that outpost.** 🟢 *BUILT — CLIENT ONLY
+    (`client/game.html`; no engine/snapshot/`sim`/`tools` change — `location` and `dockStatus` are both already
+    on every idle vehicle row, design.md §15.4/§18: the client buckets published values, computes no game number).*
+    A playtest fix on the OPERATIONS Idle-Transports grouper: a craft parked / queued / loading at a guild outpost
+    berths by hex-coincidence, so its published `location` is the outpost's bare hex (anchored to nothing) and the
+    grouper dropped it into the shared **DEEP SPACE** bucket — even though a craft whose `location` is that outpost
+    landmark already groups under the outpost. Two tiny read-time branches, each off `dockStatus.outpostId`: (1)
+    `tpGroupOf` now returns `{ key: 'outpost:'+id, name: outpostName(id) }` — the SAME key/name the landmark-outpost
+    branch produces, so a parked craft merges into the one outpost group — placed after the landmark checks and
+    before the bare-hex DEEP SPACE branch, so it wins for a parked craft's bare-hex location; (2) `tpCraftWhere`
+    mirrors the precedence, labelling a docked craft with its outpost name (before the `(q, r)` branch). A craft
+    with no dock relation still falls to DEEP SPACE with its `(q, r)`; a craft idle at a system is unaffected. This
+    covers `queued`/`loading` craft too (they carry `dockStatus.outpostId`) — correct, they're at the outpost.
+    Sim suite unchanged (client-only; the served-page tripwire stays green). **Display calls (surfaced, not
+    invented):** none — the outpost `{q,r}`↔landmark relation is the engine's model (§15.4), read here off the
+    already-published `dockStatus`, keyed identically to the landmark path so the two paths merge into one group.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
