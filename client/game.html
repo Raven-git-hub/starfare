@@ -1305,9 +1305,14 @@ select.field{appearance:none; cursor:pointer;}
 #tp-ops .ops-tp-stat .k{font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ops-ink4);}
 #tp-ops .ops-tp-stat .v{font-family:var(--ops-mono); font-size:13px; color:var(--ops-ink); font-variant-numeric:tabular-nums;}
 /* Dispatch opens the Dispatch popup (2.2 spawn client). Its only action this slice is "Show on map";
-   destination / route / the real dispatch are slice (b). */
-#tp-ops .ops-tp-dispatch{width:100%; font-family:var(--ops-mono); font-size:10px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--ops-amber2); background:var(--ops-panel); border:1px solid var(--ops-amber-dim); border-radius:6px; padding:8px; cursor:pointer;}
-#tp-ops .ops-tp-dispatch:hover{background:var(--ops-amber-dim); color:var(--ops-ink);}
+   destination / route / the real dispatch are slice (b). DOCK (2.2 cargo, system entry point) sits
+   beside it, styled the same, only for a craft idle at a system (see tpCraftHtml). The button row is a
+   flex pair — one button fills the width, two split it evenly. */
+#tp-ops .ops-tp-btns{display:flex; gap:6px;}
+#tp-ops .ops-tp-dispatch,
+#tp-ops .ops-tp-dock{width:100%; font-family:var(--ops-mono); font-size:10px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--ops-amber2); background:var(--ops-panel); border:1px solid var(--ops-amber-dim); border-radius:6px; padding:8px; cursor:pointer;}
+#tp-ops .ops-tp-dispatch:hover,
+#tp-ops .ops-tp-dock:hover{background:var(--ops-amber-dim); color:var(--ops-ink);}
 
 /* RIGHT: the pilot hero (client/assets/characters/pilot.jpg under the Guild-Hall scrim) */
 #tp-ops .ops-thero{position:relative; padding:0; overflow:hidden; min-height:0; border:1px solid var(--ops-line); border-radius:10px;}
@@ -9014,6 +9019,17 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
           return '<div class="ops-manrow"><span class="g">' + esc(prettyGood(g)) + '</span><span class="q">' + fmt(cargo[g]) + '</span></div>';
         }).join('')
       : '<div class="ops-manrow ops-manempty">Hold empty</div>';
+    // DOCK (2.2 cargo, the SYSTEM-transfer entry point). A craft idle AT a system transfers cargo
+    // INSTANTLY against the guild's system pool (design.md §4, the SYSTEM half — built in the engine):
+    // so the SAME manifest editor a parked-at-outpost craft uses, opened with a null outpost, drives it
+    // (window.__openDock(id, null)); the engine branches on where the craft sits. A craft's published
+    // `location` is `{ landmarkKind:'system', ... }` only when it sits at a system (a parked-at-outpost
+    // or adrift craft's location is a bare hex — its DOCK is the Outpost Manager, not here). A spycraft
+    // has capacity 0 / no hold and the engine refuses its transfer, so it gets NO DOCK — Dispatch only.
+    var showDock = !!(v.location && v.location.landmarkKind === 'system') && v['class'] !== 'spycraft';
+    var dockBtn = showDock
+      ? '<button class="ops-tp-dock" type="button" data-tp-dock="' + esc(v.id) + '">Dock</button>'
+      : '';
     return '<div class="ops-tp-craft' + (open ? '' : ' collapsed') + '" data-tp-key="' + esc(key) + '">'
       +   '<div class="ops-tp-crafthd">'
       +     '<span class="ops-idle-caret">&#9660;</span>'
@@ -9024,7 +9040,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       +     '<div class="ops-tp-stat"><span class="k">Maintenance</span><span class="v">' + maint + '%</span></div>'
       +     '<div class="ops-tp-stat"><span class="k">Hold</span><span class="v">' + fmt(v.used) + ' / ' + fmt(v.capacity) + '</span></div>'
       +     holdRows
-      +     '<button class="ops-tp-dispatch" type="button" data-tp-dispatch="' + esc(v.id) + '">Dispatch</button>'
+      +     '<div class="ops-tp-btns">'
+      +       dockBtn
+      +       '<button class="ops-tp-dispatch" type="button" data-tp-dispatch="' + esc(v.id) + '">Dispatch</button>'
+      +     '</div>'
       +   '</div>'
       + '</div>';
   }
@@ -9119,6 +9138,17 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       var g = meGuild();
       var v = ((g && g.vehicles) || []).filter(function(x){ return x.id === vid; })[0];
       if(v && window.__openDispatch) window.__openDispatch(v);
+      return;
+    }
+    // DOCK button (2.2 cargo, the SYSTEM-transfer entry point) — opens the SAME manifest editor with a
+    // NULL outpost (window.__openDock(id, null)). The engine resolves the transfer instantly against the
+    // guild's system pool (design.md §4); the editor is reused unchanged, no system mode. Checked beside
+    // Dispatch so a button click never also toggles the craft tab. Rendered only for a non-spycraft craft
+    // idle at a system (tpCraftHtml's showDock gate), so no class check is needed here.
+    var dockBtn = e.target.closest('.ops-tp-dock');
+    if(dockBtn){
+      var dvid = dockBtn.getAttribute('data-tp-dock');
+      if(window.__openDock) window.__openDock(dvid, null);
       return;
     }
     var hd = e.target.closest('.ops-idle-syshd, .ops-idle-kindhd');
@@ -10633,12 +10663,17 @@ function paintInventoryHero(d){
           var suffix = String(v.id).split('_').slice(-1)[0];
           var cl = pretty(v.class) + ' · #' + suffix;
           var on = OM.sel && OM.sel.kind==='parked' && OM.sel.id===v.id;
+          // A spycraft has capacity 0 / no hold and cannot dock — the engine refuses its transfer — so it
+          // gets NO Dock button (only Dispatch). Every other parked craft shows both as before.
+          var dockAct = v.class !== 'spycraft'
+            ? '<button class="om-act primary" data-act="dock" data-vid="'+esc(v.id)+'" type="button">Dock</button>'
+            : '';
           html += '<div class="om-row om-actionrow'+(on?' on':'')+'" data-kind="parked" data-vid="'+esc(v.id)+'">'+
             '<div class="rt"><div class="berth">Parked</div>'+
               '<div class="cl">'+esc(cl)+'</div>'+
               '<div class="sub">awaiting orders</div></div>'+
             '<div class="om-actbar">'+
-              '<button class="om-act primary" data-act="dock" data-vid="'+esc(v.id)+'" type="button">Dock</button>'+
+              dockAct+
               '<button class="om-act" data-act="dispatch" data-vid="'+esc(v.id)+'" type="button">Dispatch</button>'+
             '</div></div>';
         });

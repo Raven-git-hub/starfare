@@ -867,6 +867,29 @@ boundary so the later hex-map swap doesn't touch it.
     grouping code (`tpGroupOf`/`tpCraftWhere`) is untouched — it just starts reading the friendly name. Sim suite
     unchanged (client-only; served-page tripwire green). **Display calls (surfaced, not invented):** none — the
     same anchor-derived convention, now centralised.
+  - **The SYSTEM-transfer DOCK entry point + the spycraft DOCK-button gate.** 🟢 *BUILT — CLIENT ONLY
+    (`client/game.html`; no engine/snapshot/`sim`/`tools` change — `transferCargo` at a system already resolves
+    instantly against the guild's soft-capped system pool (cargo engine slice 1), design.md §4 the SYSTEM half;
+    no design.md change, "a spycraft cannot dock" is the engine's existing refusal now surfaced in the UI).* The
+    slice-B deferral — "the SYSTEM-transfer entry point (instant load/unload at a system — the same editor, opened
+    from a system later)" — landed. In OPERATIONS → Idle Transports, a craft **idle at a system and not a
+    spycraft** (`v.location.landmarkKind === 'system'` && `v.class !== 'spycraft'`) now renders a **Dock** button
+    (`.ops-tp-dock`, styled like Dispatch, in a flex pair before it) beside Dispatch; its delegated handler calls
+    `window.__openDock(id, null)` — the SAME manifest editor a parked-at-outpost craft uses, with a **null**
+    outpost, so the engine branches on where the craft sits and resolves the transfer **instantly** (no queue, no
+    turnaround) against the system pool. The editor is reused UNCHANGED (no system mode, no header/capacity-bar
+    change): a system transfer is instant and hold-bounded, which the existing popup already models. A craft
+    parked at an outpost (its DOCK is the Outpost Manager) or adrift in deep space gets no system Dock; a spycraft
+    at a system gets Dispatch only. **The spycraft gate's second site:** the Outpost Manager PARKED action bar now
+    renders its **Dock** button only for a non-spycraft parked craft (`v.class !== 'spycraft'`) — a spycraft has
+    no hold and the engine refuses its transfer, so the button (which was shown to it before, and refused on
+    confirm) is gone; Dispatch is unchanged for a parked spycraft. Sim suite **1,439 green** (untouched —
+    client-only; the served-page tripwire stays green); verified end-to-end in headless Chromium (a transport idle
+    at a system shows Dock + Dispatch, Dock opens the editor, a `titanium` load + Confirm resolves instantly — the
+    hold grows and the system pool shrinks with no tick; a spycraft at a system shows Dispatch only; a parked
+    spycraft shows no Dock in the manager while a parked transport still does; a transport parked at an outpost
+    shows no system Dock in Operations; no application console errors). **Display calls (surfaced, not invented):**
+    the Dock button reuses the Dispatch button styling; the flex button-row split is a display size (CSS).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
