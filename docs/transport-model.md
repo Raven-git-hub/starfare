@@ -664,3 +664,101 @@ engine suite is untouched (1,361 green, 0 fail).
 5. **Guild-run piracy / seizure** as a later Resistance mission (§7) — deferred, not designed.
 6. `TOLL_BUFF` confirm at 2× flat; whether open-space legs keep any per-distance security modifier or
    it is purely binary (on-network 2× / off-network base).
+
+## 11. Route actions, saved routes & repeating lanes (the automation layer) *(RULED 22-09-26)*
+
+The route planner (§9, built) flies a one-off multi-leg route. This section is the design contract for
+the AUTOMATION LAYER on top of it: per-waypoint ACTIONS that execute on arrival, SAVED routes (reusable
+trade lanes), and REPEATING runs (continuous or a set number of laps) — the "self-repeating trade lane".
+It is built as a ladder (roadmap 2.2 automation: 1a engine → 1b client → 2 saved → 3 repeat); everything
+below is the contract all four build to. It resolves §10 open-question 4 (route re-validation /
+change-flagging) for this layer.
+
+### 11.1 The route with actions — the entity
+A route is an ordered list of WAYPOINTS, each `{ anchor, action? }`. An `anchor` is the §4 location shape
+(a system / outpost landmark, or a bare hex). An `action` is `{ type:'dock', manifest }`: `type` tags the
+action ('dock' is the only type now — the tag is what lets later action types, e.g. missions, slot in
+without reshaping the entity), and `manifest` is the §4 load/unload manifest (the same amount/max lines
+the dock editor builds). A waypoint with no action is a pure turning point. **The route is ORIGIN-FREE —
+it stores only its waypoints, never a start location.** The launching craft's current location is always the
+runtime origin (see §11.4).
+
+### 11.2 Execution — dynamic chained legs
+A dispatched route flies leg by leg. On ARRIVAL at a waypoint, its action (if any) resolves — INSTANT at a
+system (§4, the system half), or QUEUE + TURNAROUND at an outpost (§4, the outpost half — the existing
+dock model, unchanged) — and ON COMPLETION the next leg is dispatched. A no-action waypoint chains straight
+through on arrival. A one-shot route's last waypoint lands the craft idle there.
+This REPLACES the frozen-whole-trip model (§4 dispatch) for an actioned route: **timing is dynamic** — an
+outpost turnaround's length depends on the outpost's queue state at the moment of arrival, unknowable at
+dispatch — but the **geometry and fuel are known** (they depend on leg lengths, not timing). The only tick
+events remain per-arrival and per-turnaround-completion; there is still NO per-tick per-craft movement loop
+(the design.md §15.4 performance contract holds).
+
+### 11.3 Fuel — up front, per run / per lap
+Because legs are known even when timing is not, a RUN (one-shot) or each LAP (repeating) is fully fuelled UP
+FRONT out of the guild's hoard at the start of that run/lap, and REFUSED / PAUSED WHOLE if the hoard cannot
+cover it — the existing dispatch fuel rule (§4, "refused whole"), now at run/lap granularity. No partial
+dispatch, and the mechanism never strands a craft for want of fuel (it pauses at a berth — §11.6).
+
+### 11.4 Repeating lanes — the reposition rule
+A repeating route cycles its OWN waypoints — `W1 → W2 → ... → WN → back to W1` — either
+continuously or for a set number of laps (N-run). The single rule that governs it: **a lap begins by
+repositioning the craft to W1, from wherever it currently is.**
+- **Lap 1:** reposition from the launch location C to W1 (the one-time POSITIONING leg), then run `W1 ... WN`.
+- **Lap k > 1:** reposition from WN (the previous lap's end) to W1 (the LOOP-BACK leg), then run `W1 ... WN`.
+
+A zero-length reposition (the craft is already at W1, or WN == W1) is SKIPPED, not built — it never trips
+the §4 dead-leg guard. **The launch location C is therefore a ONE-TIME prefix** — paid once in lap 1's
+fuel and never seen again: after lap 1 the craft is on the loop and every later reposition runs from WN,
+never from C. The repeat cycles only the saved waypoints. After the final lap of an N-run (or on a pause) the
+craft goes idle at WN — a real waypoint, never abandoned mid-space by the mechanism. Fuel incidence
+follows: lap 1's up-front bill includes C → W1; every later lap's bill is just the cycle (`W1 ... WN → W1`).
+
+### 11.5 Saved routes
+A SAVED route is the origin-free waypoint list (with its actions), stored per guild and named. Loaded onto
+ANY craft (the map planner's "Load Route" control, slice 2) it populates the plan from that craft's current
+location — so the same lane runs on any craft from any position (§11.4). It is RE-VALIDATED at load /
+launch, because a route runs through places that may have changed hands since it was saved (§11.6). A saved
+route stores NO repeat setting; whether a launch is one-shot, continuous, or N-run is a LAUNCH parameter
+(slice 3), so one saved lane can be run either way.
+
+### 11.6 Failure handling — partial proceeds, anchor-gone pauses
+Two DISTINCT failure classes, separated by whether the target still EXISTS:
+- **Partial capacity** — the target exists but cannot fully satisfy the action (the source pool is empty,
+  or the destination is at its cap): the action moves WHAT IT CAN and the lane PROCEEDS. It is calculable the
+  moment the craft docks, and is the §4 partial-safe resolution. A lane never stalls on a partial.
+- **Anchor gone** — the target no longer EXISTS (an outpost torn down, a system lost): the lane PAUSES and
+  FLAGS. This is checked at each lap's START (so the craft pauses at the safe berth WN) and also caught if a
+  target vanishes MID-FLIGHT (the craft arrives at the now-bare hex and pauses there). A paused lane keeps the
+  craft idle where it paused, flagged for the player; the mechanism does not strand it — a *narrative*
+  stranding is a deliberately later edition, and the bare-hex pause is where that hook would attach. This
+  resolves §10 open-question 4 for the automation layer.
+
+### 11.7 The two authoring entry points (client — slices 1b / 2)
+Actions are attached to waypoints from two surfaces, BOTH writing `waypoint.action`:
+- **The map planner (set at placement).** The candidate-hex chip (§9, `renderPlanChip`) gains an **Action**
+  button when the candidate is an ACTIONABLE tile — a **guild-held system or outpost**; it opens the dock
+  editor (§4) to set the manifest, which rides into the waypoint on Confirm. This is the quick
+  set-as-you-place surface only.
+- **The dispatch Finalise list (manage anytime).** Each waypoint row's already-reserved action slot becomes
+  an **Action** control on the actionable rows — add / edit / clear an action on the laid-out route. This is
+  the full management surface; editing reopens the dock editor pre-filled, with a clear option.
+
+Gate for BOTH: a guild-held system or outpost (first cut). Waypoint labels resolve a guild-outpost hex to the
+outpost's NAME via the canonical resolver (design.md §15.4) — fixing the current raw-hex-coords display in
+both the map and the dispatch lists.
+
+### 11.8 The slice ladder
+- **1a — engine.** One-shot route-with-actions execution: the chained-legs model (§11.2), per-waypoint
+  action resolution (instant / dock), fuel up front per run (§11.3). Driven and tripwired through the
+  operator CLI; NO client. The slice that de-risks the execution seam.
+- **1b — client.** The two authoring entry points (§11.7) + the outpost-name label fix, driving the 1a
+  engine. `waypoint.action` in the client plan; Dispatch sends the actioned route.
+- **2 — saved routes.** The per-guild saved-route store + Save / "Load Route" UI + re-validation at load
+  (§11.5).
+- **3 — repetition.** Continuous / N-run repeating with the reposition rule (§11.4), per-lap fuel +
+  re-validation (§11.3/§11.6), and pause / resume / cancel controls.
+
+**No new number.** The automation layer introduces no constant — it reuses the §4 manifest resolver, the
+§4 dock turnaround, and the §2.2 leg fuel/time formulas. Determinism (design.md §15.5 invariant 9) is
+preserved: every step is a per-arrival / per-turnaround-completion event resolved in tick order.
