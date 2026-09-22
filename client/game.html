@@ -9067,9 +9067,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
 
   // Rebuild the tree only when the idle-transport set (id + where each sits + status + shown
-  // maintenance) changes — the IN TRANSIT / IDLE signature discipline, so a poll never discards the
-  // reader's collapse/expand state. A bought craft minting (it appears) or a future dispatch (it
-  // leaves idle) shifts the signature and rebuilds; state for groups/craft that still exist survives.
+  // maintenance + the hold) changes — the IN TRANSIT / IDLE signature discipline, so a poll never
+  // discards the reader's collapse/expand state. A bought craft minting (it appears), a future
+  // dispatch (it leaves idle), or a system cargo transfer (its hold changes in place) shifts the
+  // signature and rebuilds; state for groups/craft that still exist survives.
   function renderIdleTransports(guild){
     var host = el('ops-tp-list'); if(!host) return;
     var craft = myIdleTransports(guild);
@@ -9077,9 +9078,18 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // Signature carries the craft's full resolved location (group key + the raw location), so ANY
     // location change — a re-anchor, or a deep-space craft moving to a different hex under the shared
     // 'deep' key — shifts the signature and rebuilds, exactly as a re-group must.
+    //
+    // The signature must cover EVERY field the card renders (§18) — and tpCraftHtml renders the hold:
+    // the Hold stat (`used / capacity`) and the per-good cargo list. A system transfer (the instant
+    // DOCK load/unload) changes ONLY the hold, leaving id/location/status/maintenance unchanged, so
+    // without a cargo term `sig` would not shift and the card would freeze at its old hold. We fold in
+    // a canonical (sorted) per-good fingerprint — mirroring the goods list, not just a total, so a
+    // load, an unload, or an equal-volume swap all shift it (an empty hold → empty string). `capacity`
+    // is fixed per craft, so it needs no term.
     var sig = craft.map(function(v){
       return v.id + '@' + tpGroupOf(v).key + JSON.stringify(v.location)
-        + ':' + v.status + ':' + Math.round((v.maintenanceCondition || 0) * 100);
+        + ':' + v.status + ':' + Math.round((v.maintenanceCondition || 0) * 100)
+        + ':' + Object.keys(v.cargo || {}).sort().map(function(g){ return g + (v.cargo[g]); }).join(',');
     }).sort().join('|');
     if(sig === O.tpSig) return;
     O.tpSig = sig;

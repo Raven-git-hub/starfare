@@ -890,6 +890,22 @@ boundary so the later hex-map swap doesn't touch it.
     spycraft shows no Dock in the manager while a parked transport still does; a transport parked at an outpost
     shows no system Dock in Operations; no application console errors). **Display calls (surfaced, not invented):**
     the Dock button reuses the Dispatch button styling; the flex button-row split is a display size (CSS).
+  - **Idle-Transports hold-staleness fix: cargo folded into the rebuild signature.** 🟢 *BUILT — CLIENT
+    ONLY (`client/game.html`; no engine/snapshot/`sim`/`tools` change — `cargo`/`used` are already
+    published and already read by `tpCraftHtml`).* A playtest follow-up on the craft-hold wiring + the
+    SYSTEM-transfer entry point above: loading cargo onto a craft at a system (an instant transfer) with
+    the OPERATIONS → Idle Transports panel open left the craft's expanded card reading "Hold empty" /
+    `0 / cap` until an unrelated change forced a rebuild. Root cause: `renderIdleTransports`'s rebuild
+    signature (a render-guard that preserves the reader's collapse/expand state across polls, §18)
+    carried id/group/location/status/maintenance but **not** the hold — so an in-place cargo change,
+    which the instant system transfer makes trivial to trigger with nothing else moving, didn't shift
+    the signature and the card early-returned frozen. Fix: one appended term folding a canonical (sorted)
+    per-good cargo fingerprint into each craft's signature — mirroring what the card renders (the Hold
+    stat + the goods list, not just a total, so a load, an unload, or an equal-volume swap all rebuild);
+    the guard and rebuild body are otherwise unchanged, so the reader's open/closed state still survives.
+    Sim suite **1,439 green** (untouched — client-only; the served-page tripwire stays green). *Deferred,
+    not folded in: the IN-TRANSIT list has its own separate signature and a laden in-transit craft's
+    manifest is a separate surface — not touched this slice.*
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
