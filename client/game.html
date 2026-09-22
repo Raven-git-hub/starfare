@@ -6755,14 +6755,33 @@ window.__sendAction = function(action){ return apiAction(action); };
 window.__snapshot = function(){ return LIVE.snap; };
 window.__goodsCatalog = function(){ return GAME.goods; };
 window.__systemName = function(id){ var s = systemById(id); return (s && s.name) ? s.name : id; };
-// The waystation (Syndicate outpost) display name for an id — the OPERATIONS hub's IN TRANSIT
-// list resolves each delivery's `originOutpostId` to a name the same way the map resolves a
-// system: off the seed the client already holds (GAME.galaxy.outposts), never a stored byte.
-// Falls back to the raw id if the seed has no such outpost (defensive; should not happen).
+// The ONE canonical outpost display-name resolver for an id — every outpost name a player sees
+// (the OPERATIONS hub, the map, the Dispatch popup, the Outpost Manager title, the idle-transport
+// group headers) derives here, so the manager and Operations can never drift. Resolution order:
+//   1. Seed waystation (Syndicate) — the static /galaxy geometry the client already holds
+//      (GAME.galaxy.outposts, never a stored byte). UNCHANGED first branch: every existing
+//      waystation caller still resolves by seed name, so this extension is a no-op for them.
+//   2. Guild outpost — never in the seed (a guild outpost has no stored name by design); its
+//      display name is DERIVED from the live snapshot row's published `anchorSystemId`, using the
+//      same "<anchor system> Outpost" (fallback "Outpost #NN") discipline the render slice and the
+//      Dispatch popup already use (§18) — resolution of a published value, no game number computed.
+//   3. Unknown — the raw id (no snapshot yet, or an outpost torn down between polls). Every access
+//      is guarded (missing snapshot / `outposts` / row) so the resolver never throws — it runs on
+//      every OPERATIONS render and from the map.
 window.__outpostName = function(id){
-  if (!id || !GAME.galaxy || !GAME.galaxy.outposts) return id;
-  var o = GAME.galaxy.outposts.filter(function(x){ return x.id === id; })[0];
-  return (o && o.name) ? o.name : id;
+  if (!id) return id;
+  if (GAME.galaxy && GAME.galaxy.outposts) {
+    var seed = GAME.galaxy.outposts.filter(function(x){ return x.id === id; })[0];
+    if (seed && seed.name) return seed.name;
+  }
+  var snap = window.__snapshot && window.__snapshot();
+  var row = snap && snap.outposts && snap.outposts.filter(function(o){ return o.id === id; })[0];
+  if (row) {
+    var an = (window.__systemName && window.__systemName(row.anchorSystemId)) || row.anchorSystemId;
+    if (an && an !== row.anchorSystemId) return an + ' Outpost';
+    return 'Outpost #' + String(id).split('_').slice(-1)[0];
+  }
+  return id;
 };
 // Reverse-map a resolved hex { q, r } to the landmark (system or outpost) that sits on it, or null
 // if none does — the OPERATIONS IN TRANSIT list names a guild craft's destination (its final leg's
@@ -10466,15 +10485,14 @@ function paintInventoryHero(d){
       return v.dockStatus && v.dockStatus.state==='parked' && v.dockStatus.outpostId===OM.id;
     });
   }
-  // The anchor system's display name (window.__systemName returns the id when unresolved). The DERIVED
-  // outpost name is the anchor name + " Outpost", falling back to the id's #NN suffix — presentation
-  // only, the same discipline the render slice + the Dispatch popup use (§18).
+  // The anchor system's display name (window.__systemName returns the id when unresolved) — kept for
+  // the sub-line ("Anchored at <anchor> …"). PRESENTATION only (§18).
   function anchorName(row){ return (window.__systemName && window.__systemName(row.anchorSystemId)) || row.anchorSystemId; }
-  function outpostName(row){
-    var an = anchorName(row);
-    if(an && an !== row.anchorSystemId) return an + ' Outpost';
-    return 'Outpost #' + String(row.id).split('_').slice(-1)[0];
-  }
+  // The title name delegates to the ONE canonical resolver so the manager and the OPERATIONS grouping
+  // header share a single anchor-derived derivation (<anchor> Outpost, "Outpost #NN" fallback) and can
+  // never drift. window.__outpostName looks a guild outpost up on the live snapshot by id, so passing
+  // row.id resolves the same row; fall back to the id defensively.
+  function outpostName(row){ return (window.__outpostName && window.__outpostName(row.id)) || row.id; }
 
   function openManager(id){
     if(!id) return;

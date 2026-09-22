@@ -853,6 +853,20 @@ boundary so the later hex-map swap doesn't touch it.
     Sim suite unchanged (client-only; the served-page tripwire stays green). **Display calls (surfaced, not
     invented):** none — the outpost `{q,r}`↔landmark relation is the engine's model (§15.4), read here off the
     already-published `dockStatus`, keyed identically to the landmark path so the two paths merge into one group.
+  - **One canonical guild-outpost display-name resolver.** 🟢 *BUILT — CLIENT ONLY (`client/game.html`; no
+    engine/snapshot/`sim`/`tools` change — `anchorSystemId` is already on the outpost row, design.md §15.4/§18;
+    no design.md change, the anchor-derived naming convention is pre-existing).* Naming follow-up to the grouping
+    above: those new group headers read `window.__outpostName(id)`, but that resolver knew only the seed Syndicate
+    waystations (static `/galaxy` geometry) — a guild outpost id isn't there, so a header fell back to the raw
+    `outpost_<guild>_NN` id and disagreed with the Outpost Manager's friendly title. Fix: `window.__outpostName`
+    is now the ONE resolver — seed waystation by stored name (unchanged first branch, a no-op for every existing
+    waystation caller), ELSE a guild outpost looked up on the live snapshot and named `<anchor system> Outpost`
+    (fallback `Outpost #NN`) the way the manager already derives it, ELSE the raw id (guarded, non-throwing before
+    the first snapshot). The Outpost Manager's private `outpostName(row)` now delegates to it (`window.__outpostName(row.id)`),
+    so the derivation lives in one spot and the manager title and the Operations grouping header can't drift. The
+    grouping code (`tpGroupOf`/`tpCraftWhere`) is untouched — it just starts reading the friendly name. Sim suite
+    unchanged (client-only; served-page tripwire green). **Display calls (surfaced, not invented):** none — the
+    same anchor-derived convention, now centralised.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
