@@ -41,6 +41,10 @@ const { SYNDICATE_SELLABLE_KINDS, BUILD_TICKS, priceAssetForPurchase } = require
 const { BUILDABLE_VEHICLE_KINDS, vehicleSpec, resolveVehicleLocation, vehicleCoords } = require('./vehicles.js');
 const { outpostDockTurnaround } = require('./outposts.js');
 const { usedSpace, copyManifestLine } = require('./manifest.js');
+// copyRouteWaypoint (from actions.js — the ONE spelling of the { anchor, action? } waypoint copy,
+// shared so a snapshotted route can't drift from the journalled one). actions.js does not require
+// snapshot.js, so this top-level edge is cycle-free.
+const { copyRouteWaypoint } = require('./actions.js');
 const { getSite, getLandmark, getStarterSystems, getTerranHomeworld } = require('./seed.js');
 const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
@@ -805,6 +809,11 @@ function snapshotVehicleRow(v, fuelPrice, dockStatus) {
     // outpostId, eta? }` — `eta` (ticks to completion) only for `loading`. A craft with no dock relation
     // (flying, or idle at a system) carries no key, so the field is the exception not the rule.
     ...(dockStatus ? { dockStatus } : {}),
+    // The ROUTE (2.2 automation slice 1a — transport-model.md §11.1). PRESENT only while the craft is
+    // executing a chained route: its `{ anchor, action? }` waypoints (FRESH-copied, manifest lines
+    // copied — no aliasing) and the `cursor` marking the waypoint it is at/heading to, so the later
+    // client (1b) can read the plan and mark progress. Omit-when-absent, like `trip`/`dockStatus`.
+    ...(v.route ? { route: { waypoints: v.route.waypoints.map(copyRouteWaypoint), cursor: v.route.cursor } } : {}),
   };
   if (v.status === 'inTransit' && v.trip) {
     let totalUnits = 0;

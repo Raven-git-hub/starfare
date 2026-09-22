@@ -55,6 +55,7 @@ const FLAG_SPEC = Object.freeze({
   condition: 'number', // spawn-vehicle: starting maintenanceCondition fraction (default 1)
   id: 'string',       // remove-vehicle / dispatch-vehicle / transfer-cargo: which vehicle id
   waypoints: 'string', // dispatch-vehicle: "w;w;…", each sys:<id> | out:<id> | q,r
+  route: 'string',    // dispatch-route: "w;w;…", each anchor[@load:…][@unload:…] (per-waypoint actions)
   load: 'string',     // transfer-cargo: "good:qty|max,…" to load pool -> hold
   unload: 'string',   // transfer-cargo: "good:qty|max,…" to unload hold -> pool
   help: 'bool',
@@ -297,7 +298,7 @@ function adjustActionFor(command, flags) {
 
 // The two vehicle spawn/remove subcommands (design.md §15.4, roadmap 2.2 spawn) — thin HTTP
 // clients over POST /admin/vehicle/spawn|remove, the operator/Storyteller primitive.
-const VEHICLE_COMMANDS = Object.freeze(['spawn-vehicle', 'remove-vehicle', 'dispatch-vehicle', 'transfer-cargo']);
+const VEHICLE_COMMANDS = Object.freeze(['spawn-vehicle', 'remove-vehicle', 'dispatch-vehicle', 'dispatch-route', 'transfer-cargo']);
 
 // parseHexFlag(raw) -> { q, r } | THROWS. The operator writes `--hex 3,-4`; the engine speaks a
 // bare-hex location { q, r } of INTEGERS (design.md §15.4). Anything not exactly two integers is
@@ -380,6 +381,53 @@ function dispatchVehicleBody(flags) {
   };
 }
 
+// parseRouteWaypointToken(tok) -> a single { anchor, action? } route waypoint (transport-model.md
+// §11.1), or THROWS. A waypoint is an ANCHOR token (`sys:<id>` | `out:<id>` | `q,r`, parseWaypointToken)
+// optionally followed by one or more `@` ACTION segments — `@load:good:qty|max,…` and/or
+// `@unload:good:qty|max,…` — each carrying comma-separated cargo tokens in the transfer-cargo grammar
+// (parseCargoFlag, so `:max` works too). A waypoint with no `@` segment is a pure turning point (no
+// `action` key). Every segment folds into one `{ type: 'dock', manifest }` action, segments in order.
+// PURE — the seed decides what resolves and which goods are real, not this file.
+function parseRouteWaypointToken(tok) {
+  const parts = String(tok).split('@').map((s) => s.trim());
+  const anchor = parseWaypointToken(parts[0]);
+  const segments = parts.slice(1).filter((s) => s.length > 0);
+  if (segments.length === 0) return { anchor }; // a pure turning point — no action
+  const manifest = [];
+  for (const seg of segments) {
+    const colon = seg.indexOf(':');
+    const dir = colon === -1 ? seg : seg.slice(0, colon);
+    if (dir !== 'load' && dir !== 'unload') {
+      throw new Error(`dispatch-route: a waypoint action must be @load:… or @unload:…, got ${JSON.stringify(`@${seg}`)}`);
+    }
+    // The remainder after "load:"/"unload:" is the transfer-cargo cargo grammar ("good:qty|max,…").
+    manifest.push(...parseCargoFlag(seg.slice(colon + 1), dir));
+  }
+  return { anchor, action: { type: 'dock', manifest } };
+}
+
+// parseRouteFlag(raw) -> a non-empty ordered array of { anchor, action? } waypoints, or THROWS.
+// Semicolon-separated waypoint tokens (parseRouteWaypointToken), the same separator dispatch-vehicle's
+// --waypoints uses; an empty (or all-blank) list is refused. PURE and exported.
+function parseRouteFlag(raw) {
+  if (typeof raw !== 'string') throw new Error(`--route must be a "w;w;…" string, got ${JSON.stringify(raw)}`);
+  const tokens = raw.split(';').map((s) => s.trim()).filter((s) => s.length > 0);
+  if (tokens.length === 0) {
+    throw new Error('dispatch-route: --route needs at least one waypoint (anchor[@load:…][@unload:…]), separated by ;');
+  }
+  return tokens.map(parseRouteWaypointToken);
+}
+
+// dispatchRouteBody(flags) -> the POST /admin/vehicle/dispatch-route request body. PURE and exported so
+// admin.test.js can assert the arg→body mapping (including @load:/@unload: and :max) without a server.
+function dispatchRouteBody(flags) {
+  return {
+    guildId: requireFlag(flags, 'guild', 'dispatch-route'),
+    vehicleId: requireFlag(flags, 'id', 'dispatch-route'),
+    waypoints: parseRouteFlag(requireFlag(flags, 'route', 'dispatch-route')),
+  };
+}
+
 // parseCargoFlag(raw, dir) -> the manifest lines for one direction, or THROWS. The operator writes
 // `--load good:qty,good:qty`; each comma-separated token is `good:qty` (qty a positive integer) OR
 // `good:max` — "as much as possible" (design.md §4), which builds a { dir, good, max: true } line with
@@ -449,6 +497,7 @@ module.exports = {
   adjustActionFor, ADJUST_COMMANDS,
   parseHexFlag, vehicleLocationFromFlags, spawnVehicleBody, removeVehicleBody, VEHICLE_COMMANDS,
   parseWaypointToken, parseWaypointsFlag, dispatchVehicleBody,
+  parseRouteWaypointToken, parseRouteFlag, dispatchRouteBody,
   parseCargoFlag, transferCargoBody,
   spawnOutpostBody, removeOutpostBody, OUTPOST_COMMANDS,
   EXPECTED_COMMITMENT, EXPECTED_WINDOW_N,
@@ -803,6 +852,37 @@ async function cmdDispatchVehicle(base, flags) {
   }
 }
 
+// dispatch-route (transport-model.md §11, automation slice 1a): send an idle craft along a route whose
+// waypoints can carry a load/unload action, run automatically on arrival — the chained-legs model.
+// Prints the craft flying its FIRST leg (status, that leg's arrivalTick + fuel cost) and the whole
+// route it will execute (each waypoint's anchor + any action), so the operator can tick through and
+// watch it load, haul, unload and land idle at the last waypoint. A refused action -> throw -> exit 1.
+async function cmdDispatchRoute(base, flags) {
+  const body = dispatchRouteBody(flags);
+  const out = await postJson(base, '/admin/vehicle/dispatch-route', body);
+  if (!out.accepted) throw new Error(`dispatch-route refused: ${out.reason}`);
+  const guild = (out.snapshot.guilds || []).find((g) => g.id === body.guildId) || null;
+  const craft = ((guild && guild.vehicles) || []).find((v) => v.id === body.vehicleId) || null;
+  row('action', 'dispatchRouteWithActions');
+  row('guild', body.guildId);
+  row('vehicle', body.vehicleId);
+  // The route as it will execute — each waypoint's anchor and its action (if any), one per line.
+  body.waypoints.forEach((wp, i) => {
+    const act = wp.action
+      ? wp.action.manifest.map((l) => `${l.dir} ${l.good}:${l.max ? 'max' : l.qty}`).join(', ')
+      : '(no action)';
+    row(`waypoint ${i}`, `${JSON.stringify(wp.anchor)} — ${act}`);
+  });
+  if (craft) {
+    row('status', craft.status);
+    if (craft.route) row('cursor', `${craft.route.cursor} of ${craft.route.waypoints.length}`);
+    if (craft.trip) {
+      row('firstLegArrivalTick', `${craft.trip.arrivalTick}`);
+      row('firstLegFuelCost', `${craft.trip.fuelCost} credits`);
+    }
+  }
+}
+
 // transfer-cargo (design.md §4 "The dock model", the system half; roadmap 2.2 cargo engine slice 1):
 // load/unload an idle craft against the system it sits at, resolved instantly. Captures the pre-state
 // snapshot first so it can print the SYSTEM POOL DELTAS the transfer produced (the transfer is
@@ -905,6 +985,11 @@ Vehicle spawn/remove primitive (design.md §15.4 — operator/Storyteller, exit 
   dispatch-vehicle --guild ID --id VEHICLE_ID --waypoints "w;w;…"
                   send an idle craft along a multi-leg route; each w is sys:<id> | out:<id> | q,r
                   (whole-route fuel burned up front from the hoard; refused whole if short)
+  dispatch-route  --guild ID --id VEHICLE_ID --route "w;w;…"
+                  send an idle craft along a route with per-waypoint ACTIONS run on arrival (§11 automation);
+                  each w is an anchor (sys:<id> | out:<id> | q,r) optionally + @load:good:qty|max,… and/or
+                  @unload:good:qty|max,… e.g. "sys:A@load:titanium:400; out:B@unload:titanium:400"
+                  (chained legs; whole-run fuel burned up front; refused whole if short / spycraft w/ action)
   transfer-cargo  --guild ID --id VEHICLE_ID [--unload good:qty|max,…] [--load good:qty|max,…]
                   load/unload an idle craft against the SYSTEM it sits at, resolved instantly
                   (a token is good:qty for a fixed amount, or good:max for "as much as possible", §4;
@@ -943,6 +1028,7 @@ Flags
   --id ID        remove-vehicle / dispatch-vehicle: which vehicle id;
                  remove-outpost: which outpost id
   --waypoints W  dispatch-vehicle: "w;w;…" route, each w = sys:<id> | out:<id> | q,r
+  --route W      dispatch-route: "w;w;…" route, each w = anchor[@load:G:N,…][@unload:G:N,…]
   --load G:N,…   transfer-cargo: goods to load pool -> hold ("good:qty" or "good:max", comma-sep)
   --unload G:N,… transfer-cargo: goods to unload hold -> pool ("good:qty" or "good:max", comma-sep)
   --help, -h     this text
@@ -963,6 +1049,7 @@ async function main(argv) {
     case 'spawn-vehicle': await cmdSpawnVehicle(base, flags); return;
     case 'remove-vehicle': await cmdRemoveVehicle(base, flags); return;
     case 'dispatch-vehicle': await cmdDispatchVehicle(base, flags); return;
+    case 'dispatch-route': await cmdDispatchRoute(base, flags); return;
     case 'transfer-cargo': await cmdTransferCargo(base, flags); return;
     case 'spawn-outpost': await cmdSpawnOutpost(base, flags); return;
     case 'remove-outpost': await cmdRemoveOutpost(base, flags); return;

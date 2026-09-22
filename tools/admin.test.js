@@ -389,8 +389,11 @@ test('spawnVehicleBody / removeVehicleBody: a missing required flag throws rathe
   assert.throws(() => A.removeVehicleBody({ id: 'v' }), /--guild is required/);
 });
 
-test('VEHICLE_COMMANDS lists the vehicle subcommands (spawn / remove / dispatch / transfer)', () => {
-  assert.deepEqual([...A.VEHICLE_COMMANDS].sort(), ['dispatch-vehicle', 'remove-vehicle', 'spawn-vehicle', 'transfer-cargo'].sort());
+test('VEHICLE_COMMANDS lists the vehicle subcommands (spawn / remove / dispatch / dispatch-route / transfer)', () => {
+  assert.deepEqual(
+    [...A.VEHICLE_COMMANDS].sort(),
+    ['dispatch-route', 'dispatch-vehicle', 'remove-vehicle', 'spawn-vehicle', 'transfer-cargo'].sort(),
+  );
 });
 
 test('parseWaypointsFlag / parseWaypointToken: sys/out/hex tokens, semicolon-separated, non-empty', () => {
@@ -449,6 +452,71 @@ test('dispatchVehicleBody: builds the exact request body; a missing required fla
   assert.throws(() => A.dispatchVehicleBody({ id: 'v', waypoints: 'sys:s' }), /--guild is required/);
   assert.throws(() => A.dispatchVehicleBody({ guild: 'g1', waypoints: 'sys:s' }), /--id is required/);
   assert.throws(() => A.dispatchVehicleBody({ guild: 'g1', id: 'v' }), /--waypoints is required/);
+});
+
+// --- dispatch-route (transport-model.md §11, automation slice 1a — per-waypoint actions) ----------
+
+test('parseRouteWaypointToken: an anchor with no @segment is a pure turning point (no action key)', () => {
+  // The three anchor forms, each with no action, carry ONLY an `anchor` (omit-when-absent).
+  assert.deepEqual(A.parseRouteWaypointToken('sys:sys_0006'), { anchor: { landmarkKind: 'system', landmarkId: 'sys_0006' } });
+  assert.deepEqual(A.parseRouteWaypointToken('out:out_01'), { anchor: { landmarkKind: 'outpost', landmarkId: 'out_01' } });
+  assert.deepEqual(A.parseRouteWaypointToken('3,-4'), { anchor: { q: 3, r: -4 } });
+});
+
+test('parseRouteWaypointToken: @load:/@unload: build a { type: "dock", manifest } action, :max supported', () => {
+  // A load action on a system anchor.
+  assert.deepEqual(
+    A.parseRouteWaypointToken('sys:A@load:titanium:400'),
+    { anchor: { landmarkKind: 'system', landmarkId: 'A' }, action: { type: 'dock', manifest: [{ dir: 'load', good: 'titanium', qty: 400 }] } },
+  );
+  // An unload action on a bare hex; :max rides through to a max line.
+  assert.deepEqual(
+    A.parseRouteWaypointToken('2,3@unload:titanium:max'),
+    { anchor: { q: 2, r: 3 }, action: { type: 'dock', manifest: [{ dir: 'unload', good: 'titanium', max: true }] } },
+  );
+  // Both directions + multiple goods fold into ONE action, segments and goods in order.
+  assert.deepEqual(
+    A.parseRouteWaypointToken('out:B@unload:coolant:50@load:titanium:400,ammonia:max'),
+    {
+      anchor: { landmarkKind: 'outpost', landmarkId: 'B' },
+      action: {
+        type: 'dock',
+        manifest: [
+          { dir: 'unload', good: 'coolant', qty: 50 },
+          { dir: 'load', good: 'titanium', qty: 400 },
+          { dir: 'load', good: 'ammonia', max: true },
+        ],
+      },
+    },
+  );
+  // A bad action verb is refused rather than posted; a bad cargo token throws through parseCargoFlag.
+  assert.throws(() => A.parseRouteWaypointToken('sys:A@fetch:titanium:1'), /@load:… or @unload:…/);
+  assert.throws(() => A.parseRouteWaypointToken('sys:A@load:titanium:0'), /positive integer or "max"/);
+});
+
+test('parseRouteFlag / dispatchRouteBody: builds the exact body; blanks ignored; a missing flag throws', () => {
+  // The canonical trade lane: load at a system, unload at an outpost — the whole thing drivable from one flag.
+  assert.deepEqual(
+    A.dispatchRouteBody({ guild: 'g1', id: 'vehicle_g1_lightTransport_01', route: 'sys:A@load:titanium:400; out:B@unload:titanium:400' }),
+    {
+      guildId: 'g1',
+      vehicleId: 'vehicle_g1_lightTransport_01',
+      waypoints: [
+        { anchor: { landmarkKind: 'system', landmarkId: 'A' }, action: { type: 'dock', manifest: [{ dir: 'load', good: 'titanium', qty: 400 }] } },
+        { anchor: { landmarkKind: 'outpost', landmarkId: 'B' }, action: { type: 'dock', manifest: [{ dir: 'unload', good: 'titanium', qty: 400 }] } },
+      ],
+    },
+  );
+  // A pure turning point mixes with actioned waypoints; blanks and trailing separators are ignored.
+  assert.deepEqual(
+    A.parseRouteFlag(' 3,4 ; sys:A@load:titanium:1 ; '),
+    [{ anchor: { q: 3, r: 4 } }, { anchor: { landmarkKind: 'system', landmarkId: 'A' }, action: { type: 'dock', manifest: [{ dir: 'load', good: 'titanium', qty: 1 }] } }],
+  );
+  assert.throws(() => A.parseRouteFlag(''), /at least one waypoint/);
+  assert.throws(() => A.parseRouteFlag(' ; ; '), /at least one waypoint/);
+  assert.throws(() => A.dispatchRouteBody({ id: 'v', route: 'sys:A' }), /--guild is required/);
+  assert.throws(() => A.dispatchRouteBody({ guild: 'g1', route: 'sys:A' }), /--id is required/);
+  assert.throws(() => A.dispatchRouteBody({ guild: 'g1', id: 'v' }), /--route is required/);
 });
 
 // --- transfer-cargo (design.md §4 "The dock model", the system half; roadmap 2.2 cargo slice 1) ---

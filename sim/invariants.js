@@ -1270,6 +1270,48 @@ function tripViolation(trip) {
   return null;
 }
 
+// routeViolation(route) -> a detail object naming the first thing wrong with a routed craft's `route`,
+// or null when it is well-formed (transport-model.md §11.1; the automation layer). A routed craft
+// carries `route = { waypoints: [{ anchor, action? }], cursor }` while it executes a chained route (the
+// automation layer, §11.2) — ORTHOGONAL to `status`/`trip`: it rides a flying (`inTransit` + trip),
+// a parked/queued (`idle` + location) or a docked (`loading` + location) craft alike. A valid route
+// has: >= 1 waypoint; a `cursor` that is an integer in [0, waypoints.length) (the waypoint the craft is
+// at or heading to — never past the end, since the run clears the route when it reaches the last);
+// every waypoint's `anchor` resolves; and any waypoint `action` is a well-formed { type: 'dock',
+// manifest } (each manifest line a { dir: 'load'|'unload', good, qty|max } with a real stockpile good
+// and a well-formed amount half — the SAME shape checks the craft hold and the dock queue/slots use).
+// The one home of the route shape, used by checkVehicleIntegrity below.
+function routeViolation(route) {
+  if (!route || typeof route !== 'object' || !Array.isArray(route.waypoints) || route.waypoints.length === 0) {
+    return { reason: 'a route must carry at least one waypoint', route };
+  }
+  if (!Number.isInteger(route.cursor) || route.cursor < 0 || route.cursor >= route.waypoints.length) {
+    return { reason: 'route.cursor must be an integer in [0, waypoints.length)', cursor: route.cursor, waypoints: route.waypoints.length };
+  }
+  for (let i = 0; i < route.waypoints.length; i += 1) {
+    const wp = route.waypoints[i];
+    if (!wp || typeof wp !== 'object' || Array.isArray(wp)) {
+      return { reason: `waypoint ${i} must be a { anchor, action? } object`, waypoint: wp };
+    }
+    if (resolveVehicleLocation(wp.anchor) === null) {
+      return { reason: `waypoint ${i}'s anchor must resolve to a valid anchor`, anchor: wp.anchor };
+    }
+    if (wp.action !== undefined) {
+      const a = wp.action;
+      if (!a || typeof a !== 'object' || a.type !== 'dock' || !Array.isArray(a.manifest) || a.manifest.length === 0) {
+        return { reason: `waypoint ${i}'s action must be a { type: "dock", manifest } with a non-empty manifest`, action: a };
+      }
+      for (const line of a.manifest) {
+        if (!line || typeof line !== 'object' || (line.dir !== 'load' && line.dir !== 'unload')
+          || typeof line.good !== 'string' || !isStockpileGood(line.good) || manifestAmountError(line)) {
+          return { reason: `waypoint ${i}'s action has a malformed manifest line`, line };
+        }
+      }
+    }
+  }
+  return null;
+}
+
 // Vehicle integrity — the structural guard for the guild-transport inventory (design.md §15.4,
 // roadmap 2.2-foundation engine slice (a)). The vehicle mirror of checkAssetOccupancy: it asserts
 // every craft in `guild.vehicles` is well-formed, so a save-reload, a future slice, or a client
@@ -1358,6 +1400,19 @@ function checkVehicleIntegrity(state) {
         }
         if (used > v.capacity) {
           out.push({ rule: 'vehicle-cargo-within-capacity', where: `guild:${g.id}.vehicle:${v.id}.cargo`, detail: { usedSpace: used, capacity: v.capacity } });
+        }
+      }
+      // The ROUTE (2.2 automation slice 1a — transport-model.md §11.1, the `route` field). ABSENT is
+      // legal (omit-when-absent — a route-less craft is byte-identical to pre-slice); a PRESENT route
+      // must be well-formed (routeViolation above: >= 1 waypoint, cursor in range, every anchor
+      // resolves, every action a well-formed dock manifest). It is ORTHOGONAL to the status/trip/
+      // location shape checked above — a routed craft rides a flying, parked or docked craft alike, so
+      // this is a separate assertion, not a fourth status branch. The chained execution maintains it by
+      // construction; this ASSERTS it, so a save-reload or a future slice that corrupts it fails loudly.
+      if (v.route !== undefined) {
+        const rv = routeViolation(v.route);
+        if (rv) {
+          out.push({ rule: 'vehicle-route-valid', where: `guild:${g.id}.vehicle:${v.id}.route`, detail: rv });
         }
       }
       if (seenIds.has(v.id)) {

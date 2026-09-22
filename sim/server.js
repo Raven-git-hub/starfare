@@ -87,7 +87,7 @@ const { createZeroState } = require('./scenarios/zero-state.js');
 const { advance } = require('./run.js');
 const {
   validateAction, applyAction, createSpawnVehicleAction, createRemoveVehicleAction,
-  createDispatchVehicleAction, createTransferCargoAction, quoteDispatch,
+  createDispatchVehicleAction, createTransferCargoAction, createDispatchRouteWithActionsAction, quoteDispatch,
   createSpawnOutpostAction, createRemoveOutpostAction,
 } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
@@ -1002,6 +1002,44 @@ async function handleRequest(req, res) {
       sendJson(res, 200, applyOneAction(action));
     } catch (err) {
       sendJson(res, 500, { error: 'error applying transferCargo (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // POST /admin/vehicle/dispatch-route { guildId, vehicleId, waypoints } — send an idle craft along a
+  // route of { anchor, action? } waypoints, executed leg by leg with per-waypoint actions run on
+  // arrival (transport-model.md §11, automation slice 1a). Gated and routed exactly like /dispatch: the
+  // SAME validate → journal → apply path (applyOneAction), so the routed craft + its journalled route/
+  // cursor survive restart and replay deterministically (§11 — a mid-run restart replays byte-identically).
+  if (method === 'POST' && path === '/admin/vehicle/dispatch-route') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","vehicleId":"vehicle_g1_lightTransport_01","waypoints":[{"anchor":{"landmarkKind":"system","landmarkId":"sys_0006"},"action":{"type":"dock","manifest":[{"dir":"load","good":"titanium","qty":400}]}}]}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId, vehicleId, and a non-empty waypoints array of { anchor, action? }' });
+      return;
+    }
+    let action;
+    try {
+      // The constructor enforces the required fields; legality — guild/craft exist, craft idle,
+      // waypoints resolve with no zero-length leg, actions well-formed, spycraft-with-an-action refused,
+      // whole-run fuel covered — is validateAction's job, run inside applyOneAction below.
+      action = createDispatchRouteWithActionsAction({
+        guildId: body.guildId, vehicleId: body.vehicleId, waypoints: body.waypoints,
+      });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed dispatch-route request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying dispatchRouteWithActions (invariant violation or engine throw)', detail: String((err && err.message) || err) });
     }
     return;
   }

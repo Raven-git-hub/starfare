@@ -907,6 +907,35 @@ boundary so the later hex-map swap doesn't touch it.
     not folded in: the IN-TRANSIT list has its own separate signature and a laden in-transit craft's
     manifest is a separate surface — not touched this slice.*
 - **2.2 — Transport: route actions, saved lanes & repeating runs (the automation layer).** The continuation of the guild-transport UI: per-waypoint load/unload ACTIONS that run automatically on arrival, SAVED reusable lanes, and REPEATING runs (continuous or N laps) — the self-repeating trade lane. Design contract: **transport-model.md §11** (RULED 22-09-26; the entity, the chained-legs execution, up-front per-run/per-lap fuel, the reposition rule, and the partial-proceeds / anchor-gone failure split). Built as a ladder: **1a** engine (one-shot route-with-actions execution — chained legs, per-waypoint action, up-front per-run fuel; operator-CLI driven, no client) → **1b** client (the two authoring entry points — the map chip at placement + the dispatch Finalise list to manage — plus the outpost-name label fix) → **2** saved routes (per-guild store + Save / Load Route UI + re-validate at load) → **3** repetition (continuous / N-run with the reposition rule, per-lap fuel + re-validation + pause/resume/cancel). *Pulls the transport-model.md §9/§10 "Phase 4" route-planner automation forward into Phase 2.*
+  - **slice 1a — engine (one-shot route-with-actions execution).** 🟢 *BUILT (22-09-26 — `sim/actions.js`,
+    `sim/tick.js`, `sim/invariants.js`, `sim/snapshot.js`, `sim/server.js`, `tools/admin.js`; tripwires
+    `sim/tests/route-actions.test.js` (new), `tools/admin.test.js`; contract transport-model.md §11 —
+    engine + operator CLI, NO client).* The chained-legs execution seam. A new journalled action
+    **`dispatchRouteWithActions`** (`sim/actions.js`, `{ guildId, vehicleId, waypoints }`, each waypoint
+    `{ anchor, action? }` with `action = { type:'dock', manifest }`) validates WHOLE / refuses WHOLE — idle
+    owned craft, every leg (craft → W1 → … → WN) resolves and is non-zero-length (reuses `dispatchRoute`),
+    every action's manifest well-formed (the shared `manifestError`, extracted from `transferCargo`), a
+    spycraft (capacity 0) with any action refused, and the WHOLE run's fuel (`Σ legFuelBurn`) covered.
+    Apply burns that fuel UP FRONT (§11.3), journals `vehicle.route = { waypoints, cursor }` (omit-when-absent),
+    and dispatches the FIRST leg (`buildSingleLegTrip`, the one-home single-leg trip). The chained execution
+    is one funnel **`advanceRoute`** called by the two tick hooks: **`stepVehicleArrivals`** — on arrival a
+    routed craft resolves the waypoint's action (INSTANT at a system via `resolveManifest`; QUEUE at an owned
+    Outpost, exactly as `transferCargo` does; a no-action waypoint chains straight through) then advances;
+    **`stepOutpostDocks`** — advances after the slot resolves at turnaround (the turnaround IS the pause).
+    The run ends idle at the last waypoint, `route` cleared, no `trip`. Partial-safe (§11.6 — a partial load/
+    unload never stalls the lane); anchor-gone (an outpost torn down mid-run) HALTS SAFELY (idle at the current
+    berth, route cleared, no throw). `checkVehicleIntegrity` asserts the route (`routeViolation`: ≥1 waypoint,
+    cursor in range, anchors resolve, actions well-formed); the snapshot surfaces a routed craft's `route`
+    (fresh-copied). Exposed as `POST /admin/vehicle/dispatch-route` + `tools/admin.js dispatch-route --route
+    "sys:A@load:titanium:400; q,r@unload:titanium:400"`. **No new number** — reuses the §4 manifest resolver,
+    the §4 dock turnaround, the §2.2 leg time/fuel. **A NO-OP on a galaxy that dispatches no actioned route**
+    (`route` omit-when-absent; persist/determinism/galactic-supply goldens byte-identical). Sim suite 1,439 →
+    **1,453 green** (`route-actions.test.js` +14); `tools/admin.test.js` 39 → **42**. Driven end-to-end via the
+    CLI against a booted server (load @ system, deliver @ outpost, craft idle at the last waypoint). **Deferred,
+    not invented:** the client + the two authoring entry points (1b), saved routes (2), repetition + the
+    reposition rule + the anchor-gone flag surfacing (3). The §11.4 zero-length-reposition SKIP is the
+    reposition rule (slice 3), so 1a refuses a route whose first waypoint IS the craft's berth (a zero-length
+    first leg) — a run positions to a distinct first waypoint.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*

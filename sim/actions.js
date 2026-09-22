@@ -110,6 +110,40 @@ function dispatchRoute(craft, waypoints) {
   return { ok: true, legs, totalUnits };
 }
 
+// buildSingleLegTrip(craft, toAnchor, dispatchTick) -> a ONE-LEG `trip` { legs: [scheduled],
+// dispatchTick, arrivalTick } from the craft's CURRENT location to `toAnchor`, or `null` when that
+// leg is not buildable (the `to` anchor no longer resolves, or the leg is zero-length). THE ONE home
+// of a single-leg trip, shared by the actioned-route dispatch's FIRST leg (below) and by the chained
+// execution's every-subsequent leg (sim/tick.js `advanceRoute`) — the automation's "the next leg goes"
+// (transport-model.md §11.2). It reuses `dispatchRoute` for the resolution + zero-length guard (one
+// home), so a chained leg is built and validated exactly as the plain dispatch's legs are. `isToll`
+// false (no toll infra yet, §4); the schedule is one contiguous leg departing at `dispatchTick`. It
+// burns NO fuel — a routed run is fuelled WHOLE up front (§11.3), so re-dispatching a leg is free here.
+function buildSingleLegTrip(craft, toAnchor, dispatchTick) {
+  const route = dispatchRoute(craft, [toAnchor]);
+  if (!route.ok) return null; // anchor-gone / zero-length: the caller halts safely (§11.6), never throws
+  const leg = route.legs[0];
+  const arrivalTick = dispatchTick + legTicks(leg.length, craft.speed, false);
+  const scheduled = {
+    from: leg.from, to: leg.to, isToll: false, departureTick: dispatchTick, arrivalTick,
+  };
+  return { legs: [scheduled], dispatchTick, arrivalTick };
+}
+
+// copyRouteWaypoint(wp) -> a FRESH copy of a { anchor, action? } route waypoint (transport-model.md
+// §11.1) — the anchor object copied, and any action's manifest lines copied in canonical shape
+// (copyManifestLine), so a stored/snapshotted route can never alias the caller's arrays. THE ONE
+// spelling of the waypoint copy, shared by the dispatch apply (journalling the route onto the craft)
+// and the snapshot (surfacing it for the later client). Omit-when-absent: a no-action waypoint carries
+// no `action` key, exactly as it was authored.
+function copyRouteWaypoint(wp) {
+  const copy = { anchor: { ...wp.anchor } };
+  if (wp.action) {
+    copy.action = { type: wp.action.type, manifest: wp.action.manifest.map(copyManifestLine) };
+  }
+  return copy;
+}
+
 // quoteDispatch(state, { guildId, vehicleId, waypoints }) -> { ok: true, legs, totalTicks, totalUnits,
 //                                                             credits, affordable, arrivalTick }
 //                                                          | { ok: false, reason }
@@ -677,6 +711,25 @@ function createTransferCargoAction({ guildId, vehicleId: vId, manifest }) {
   return { type: 'transferCargo', guildId, vehicleId: vId, manifest };
 }
 
+// dispatchRouteWithActions: send an IDLE craft along a route whose waypoints can carry a load/unload
+// ACTION, executed automatically as the craft arrives at each stop (transport-model.md §11, roadmap
+// 2.2 automation slice 1a — the chained-legs model). `waypoints` is a non-empty ordered array of
+// `{ anchor, action? }`: `anchor` is the same location shape a plain dispatch waypoint uses
+// ({ landmarkKind, landmarkId } or { q, r }); `action` (optional) is `{ type: 'dock', manifest }`, the
+// §4 load/unload manifest fired on arrival. Unlike the plain frozen `dispatchVehicle` (§11.2 — left
+// as-is for no-action routes), this flies leg by leg: the whole run's fuel burns UP FRONT (§11.3,
+// legs are known even though timing is not), the route + a cursor are journalled onto the craft, and
+// each leg is re-dispatched by the tick hooks (`advanceRoute`) as the craft completes the stop before
+// it. One-shot: the run ends idle at the last waypoint. The constructor only enforces the required
+// fields are present; validateAction judges legality (idle owned craft, resolvable non-zero legs,
+// well-formed actions, spycraft-with-an-action refused, whole-run fuel affordable).
+function createDispatchRouteWithActionsAction({ guildId, vehicleId: vId, waypoints }) {
+  if (guildId === undefined) throw new Error('createDispatchRouteWithActionsAction: guildId is required');
+  if (vId === undefined) throw new Error('createDispatchRouteWithActionsAction: vehicleId is required');
+  if (waypoints === undefined) throw new Error('createDispatchRouteWithActionsAction: waypoints is required');
+  return { type: 'dispatchRouteWithActions', guildId, vehicleId: vId, waypoints };
+}
+
 // setWindowN: set the single engine-wide accrual window length `state.windowN`. The
 // codebase's FIRST state-scoped action — window length is engine-wide state, not a
 // guild's, so there is NO guildId. An integer ≥ 1, settable ONLY before the run
@@ -862,6 +915,37 @@ function ownedOutpostAtCraft(state, guildId, craft) {
   return (state.outposts || []).find(
     (o) => o.ownerGuildId === guildId && o.coords.q === q && o.coords.r === rr,
   ) || null;
+}
+
+// manifestError(manifest) -> a reason string for the first thing wrong with a §4 load/unload manifest,
+// or null when it is well-formed. THE ONE spelling of the manifest-shape gate, shared by the
+// `transferCargo` validate (the manual/instant transfer) and the `dispatchRouteWithActions` validate
+// (a waypoint's automatic action) — so a manifest fired manually and one fired on arrival are judged
+// identically (transport-model.md §11.1 "validate it exactly as transferCargo does"). A manifest is a
+// NON-EMPTY ordered array; each line is a { dir: 'load'|'unload', good, qty|max } with a real
+// stockpile good and a well-formed amount half (the shared `manifestAmountError`).
+function manifestError(manifest) {
+  if (!Array.isArray(manifest) || manifest.length === 0) {
+    return 'manifest must be a non-empty array of { dir: "load"|"unload", good, qty } lines';
+  }
+  for (const line of manifest) {
+    if (!line || typeof line !== 'object' || Array.isArray(line)) {
+      return `each manifest line must be a { dir, good, qty | max } object, got ${JSON.stringify(line)}`;
+    }
+    if (line.dir !== 'load' && line.dir !== 'unload') {
+      return `manifest line dir must be "load" or "unload", got ${JSON.stringify(line.dir)}`;
+    }
+    // A real stockpile good (isStockpileGood excludes fuel — a hold moves goods, never fuel, §4).
+    // Every stockpile good is T1/T2/T3, so `volumeOf` can size it.
+    if (typeof line.good !== 'string' || !isStockpileGood(line.good)) {
+      return `${JSON.stringify(line.good)} is not a known stockpile good`;
+    }
+    // The amount half: a fixed positive-integer `qty` OR `max: true` (no qty) — never both, never
+    // neither (design.md §4). The ONE spelling of that shape lives in sim/manifest.js.
+    const amountError = manifestAmountError(line);
+    if (amountError) return amountError;
+  }
+  return null;
 }
 
 // isDockedAt(outpost, vehicleId) -> true when the craft already holds a manifest at this Outpost —
@@ -2243,29 +2327,71 @@ function validateAction(state, action) {
         return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} already has a manifest queued/loading at Outpost ${JSON.stringify(outpost.id)} — cancel it (re-dispatch) before issuing another (§4)` };
       }
     }
-    // The manifest is a NON-EMPTY ordered array (a transfer with no lines is a refused no-op, the
-    // adjustGoods zero-delta / dispatch empty-waypoints discipline). Refuse-whole on the first bad
-    // line: a malformed manifest never partially applies.
-    if (!Array.isArray(action.manifest) || action.manifest.length === 0) {
-      return { valid: false, reason: 'manifest must be a non-empty array of { dir: "load"|"unload", good, qty } lines' };
+    // The manifest is a NON-EMPTY ordered array of well-formed lines (a transfer with no lines is a
+    // refused no-op, the adjustGoods zero-delta / dispatch empty-waypoints discipline). Refuse-whole
+    // on the first bad line via the shared `manifestError` — a malformed manifest never partially applies.
+    const mError = manifestError(action.manifest);
+    if (mError) return { valid: false, reason: mError };
+    return { valid: true };
+  }
+
+  if (action.type === 'dispatchRouteWithActions') {
+    // transport-model.md §11 (the automation layer, slice 1a): send an idle craft along a route of
+    // { anchor, action? } waypoints, executed leg by leg. Validate WHOLE, refuse WHOLE — the existing
+    // dispatch discipline — with the gates in the order a failure is felt (mirroring dispatchVehicle).
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
     }
-    for (const line of action.manifest) {
-      if (!line || typeof line !== 'object' || Array.isArray(line)) {
-        return { valid: false, reason: `each manifest line must be a { dir, good, qty | max } object, got ${JSON.stringify(line)}` };
+    const craft = (guild.vehicles || []).find((v) => v.id === action.vehicleId);
+    if (!craft) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no vehicle ${JSON.stringify(action.vehicleId)}` };
+    }
+    // Only an idle craft dispatches (an in-transit / loading one is already engaged — the same gate,
+    // and the same message, dispatchVehicle uses).
+    if (craft.status !== 'idle') {
+      const why = craft.status === 'loading'
+        ? 'mid-transfer in a dock slot and runs to completion — it cannot be re-dispatched (§4)'
+        : `not idle (status ${JSON.stringify(craft.status)}) — only an idle craft dispatches`;
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is ${why}` };
+    }
+    // The waypoints must be a NON-EMPTY ordered array of { anchor, action? } objects (§11.1). The
+    // ANCHORS are validated + priced through `dispatchRoute` (the one home) below; here we check the
+    // per-waypoint SHAPE and any ACTION, refuse-whole on the first bad one.
+    if (!Array.isArray(action.waypoints) || action.waypoints.length === 0) {
+      return { valid: false, reason: 'waypoints must be a non-empty ordered array of { anchor, action? } waypoints' };
+    }
+    for (let i = 0; i < action.waypoints.length; i += 1) {
+      const wp = action.waypoints[i];
+      if (!wp || typeof wp !== 'object' || Array.isArray(wp)) {
+        return { valid: false, reason: `waypoint ${i} must be a { anchor, action? } object, got ${JSON.stringify(wp)}` };
       }
-      if (line.dir !== 'load' && line.dir !== 'unload') {
-        return { valid: false, reason: `manifest line dir must be "load" or "unload", got ${JSON.stringify(line.dir)}` };
+      if (wp.action !== undefined) {
+        // The only action type today is 'dock' (§11.1 — the tag is what lets later types slot in).
+        if (!wp.action || typeof wp.action !== 'object' || wp.action.type !== 'dock') {
+          return { valid: false, reason: `waypoint ${i} action must be { type: "dock", manifest } (the only action type is "dock", §11.1), got ${JSON.stringify(wp.action)}` };
+        }
+        // A capacity-0 craft (spycraft) carries no cargo, so an action it can never perform is a
+        // whole-route refusal (§11 — validate whole, refuse whole), not a silent no-op on arrival.
+        if (craft.capacity === 0) {
+          return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} (class ${JSON.stringify(craft.class)}) carries no cargo (capacity 0) and cannot run a route with an action (§11)` };
+        }
+        // The manifest is judged exactly as a manual transferCargo manifest is (the shared gate).
+        const mError = manifestError(wp.action.manifest);
+        if (mError) return { valid: false, reason: `waypoint ${i} action: ${mError}` };
       }
-      // A real stockpile good (isStockpileGood excludes fuel — a hold moves goods, never fuel, §4
-      // "A transfer burns no fuel"). Every stockpile good is T1/T2/T3, so `volumeOf` can size it.
-      if (typeof line.good !== 'string' || !isStockpileGood(line.good)) {
-        return { valid: false, reason: `${JSON.stringify(line.good)} is not a known stockpile good` };
-      }
-      // The amount half: a fixed positive-integer `qty` OR `max: true` (no qty) — never both, never
-      // neither (design.md §4). The ONE spelling of that shape lives in sim/manifest.js so the gate,
-      // the dock-integrity invariant, and the resolver's cap-drop can never disagree.
-      const amountError = manifestAmountError(line);
-      if (amountError) return { valid: false, reason: amountError };
+    }
+    // Build + price the WHOLE route (dispatchRoute is the one home): leg 0 from the craft's location
+    // through every waypoint anchor, each resolving and non-zero-length. It returns the whole-run burn.
+    const route = dispatchRoute(craft, action.waypoints.map((wp) => wp.anchor));
+    if (!route.ok) {
+      return { valid: false, reason: route.reason };
+    }
+    // The FUEL gate — the whole run is fuelled UP FRONT (§11.3), so the SAME combined-availability
+    // gate a plain dispatch uses (hoard + contraband ≥ Σ legFuelBurn), refused WHOLE.
+    const available = guild.fuelHoard + (guild.deuteriumFuel || 0);
+    if (available < route.totalUnits) {
+      return { valid: false, reason: `route burns ${route.totalUnits} fuel units up front but the guild holds ${available} (hoard ${guild.fuelHoard} + contraband ${guild.deuteriumFuel || 0}) — refused whole (transport-model.md §11.3)` };
     }
     return { valid: true };
   }
@@ -3424,6 +3550,44 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'dispatchRouteWithActions') {
+    // transport-model.md §11.2/§11.3: the chained-legs model. The whole run's fuel burns UP FRONT
+    // (the legs are known even though the timing is not), the route + a cursor are JOURNALLED onto the
+    // craft, and only the FIRST leg is dispatched here — each later leg is re-dispatched by the tick
+    // hooks (`advanceRoute`, sim/tick.js) as the craft completes the stop before it.
+    const guild = findGuild(next, action.guildId);
+    const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
+
+    // Re-derive + price the whole route BEFORE the craft leaves its berth (dispatchRoute reads
+    // craft.location); validate guaranteed { ok: true }, so this cannot fail — the shared helper keeps
+    // the legs and the whole-run burn byte-identical to the ones the gate checked.
+    const route = dispatchRoute(craft, action.waypoints.map((wp) => wp.anchor));
+
+    // Journal the plan onto the craft: a fresh, non-aliasing copy of the { anchor, action? } waypoints
+    // and a cursor at 0 (the next waypoint to REACH — leg 0 flies the craft to waypoints[0]). The
+    // `route` field is omit-when-absent on every OTHER craft, so a route-less galaxy is byte-identical
+    // to pre-slice (§11.8). It is journalled state, so a mid-run restart replays byte-identically.
+    craft.route = { waypoints: action.waypoints.map(copyRouteWaypoint), cursor: 0 };
+
+    // Dispatch the FIRST leg exactly as the plain dispatch builds a single leg's trip (buildSingleLegTrip
+    // is the one home). Build it while the craft still carries its location, then drop the location — an
+    // in-transit craft carries the `trip` and NO bare `location` (§15.4); the arrival hook restores it.
+    craft.trip = buildSingleLegTrip(craft, action.waypoints[0].anchor, next.tick);
+    craft.status = 'inTransit';
+    delete craft.location;
+
+    // FUEL — the WHOLE run burns UP FRONT (§11.3), units from the hoard, exactly as dispatchVehicle
+    // burns a plain route: fuel LEAVES the galaxy (burned, not transferred), so totalConsumed rises to
+    // match the hoard falling (invariant 1). The combined-availability gate ran in validate.
+    burnFuel(guild, route.totalUnits);
+    next.audit.totalConsumed += route.totalUnits;
+
+    // The SAME galacticSupply refresh the plain dispatch makes after a hoard burn (the between-action
+    // seam asserts cache == live sum with no tick between).
+    next.galacticSupply = computeGalacticSupply(next);
+    return next;
+  }
+
   if (action.type === 'setWindowN') {
     // Set the single engine-wide window length. Setup-only (validate refused it once
     // tick > 0), so this only ever writes tick-0 state. No guild is resolved — this
@@ -3503,7 +3667,13 @@ module.exports = {
   createRemoveOutpostAction,
   createDispatchVehicleAction,
   createTransferCargoAction,
+  createDispatchRouteWithActionsAction,
   quoteDispatch,
+  // Shared with sim/tick.js's chained-route execution (the automation layer, §11.2): the single-leg
+  // trip builder, the own-Outpost-at-a-craft lookup, and the { anchor, action? } waypoint copy.
+  buildSingleLegTrip,
+  ownedOutpostAtCraft,
+  copyRouteWaypoint,
   validateAction,
   applyAction,
   intake,
