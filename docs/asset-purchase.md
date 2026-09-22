@@ -15,9 +15,32 @@ time, spending no credits. The Syndicate purchase is the mirror acquisition path
 deliberate trade-off — parts + time + no credits (dockyard) vs credits + time + no parts
 (Syndicate) — so neither dominates.
 
-Buildable kinds this slice: **miner, factory** — the only asset kinds with entities
-(`sim/assets.js`; `sim/asset-recipes.js` `BUILDABLE_ASSET_KINDS`). The ship / outpost / scanner /
-toll-gate / droid kinds follow when their entities exist.
+Buildable vs sellable — two catalogs. The dockyard can BUILD every kind that has a recipe
+(`sim/asset-recipes.js` `BUILDABLE_KINDS`): miner, factory, and the four guild transports
+(light / medium / heavy / spycraft). The Syndicate SELLS a narrower set — see §"What the
+Syndicate sells" below. The outpost / scanner / toll-gate / droid kinds follow when their
+entities and recipes exist.
+
+## What the Syndicate sells — sellable ⊂ buildable (RULED 22-09-26)
+
+The Syndicate sells every BUILDABLE kind **except `spycraft`**. Spycraft is a
+**guild-build-only** asset: a guild constructs it at its own dockyard (parts + time), and it is
+**never** sold by the Syndicate and **not tradeable** on the open market. The two acquisition
+catalogs deliberately DIVERGE at spycraft:
+
+- **Build catalog** — the dockyard (`GET /asset-recipes` → the System Production Console): the
+  full `BUILDABLE_KINDS` — miner, factory, light / medium / heavy transport, **and spycraft**.
+- **Sell catalog** — the Syndicate buy (the `assetPurchaseQuote` snapshot block + the
+  `buyAssetFromSyndicate` gate): a new **`SYNDICATE_SELLABLE_KINDS`** = `BUILDABLE_KINDS` **minus
+  `spycraft`** — miner, factory, light / medium / heavy transport (five kinds).
+
+`SYNDICATE_SELLABLE_KINDS` is the one authoritative set for "what the Syndicate sells": the buy
+gate **refuses** any kind outside it (a spycraft buy is refused loudly, not merely hidden from
+the UI), and the TRADE tab's Constructed view renders exactly it (it iterates the quote). The
+build gate and `/asset-recipes` keep the full `BUILDABLE_KINDS`, so a guild can still build
+spycraft itself. `spycraft`'s `VEHICLE_BUY_BASELINE` entry goes **dormant** — no buy path prices
+it any more — retained, not read by the sell path. Narrative: stealth craft are something a
+guild makes in the dark, not something it orders from the institution.
 
 ## The two phases
 
