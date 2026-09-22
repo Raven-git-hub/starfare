@@ -14,7 +14,7 @@ const {
 } = require('./licence.js');
 const { producedGoodFor, baselineOutputFor, isLicensedDeuteriumMine, isDockyard } = require('./baseline.js');
 const {
-  BUILDABLE_KINDS, MAX_QUEUE, assetBill, priceAssetForPurchase,
+  BUILDABLE_KINDS, SYNDICATE_SELLABLE_KINDS, MAX_QUEUE, assetBill, priceAssetForPurchase,
 } = require('./asset-recipes.js');
 const {
   isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation,
@@ -1896,11 +1896,16 @@ function validateAction(state, action) {
     if (!guild) {
       return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
     }
-    // WHAT MAY BE BOUGHT — only kinds with a buildable entity: the two ground assets
-    // (miner / factory) or the four guild transports (2.2-foundation). The same vocabulary the
-    // dockyard commission uses, for the same reason: no entity, no thing to mint.
-    if (typeof action.assetKind !== 'string' || !BUILDABLE_KINDS.includes(action.assetKind)) {
-      return { valid: false, reason: `${JSON.stringify(action.assetKind)} is not a Syndicate-buildable kind (miner / factory, or a guild transport)` };
+    // WHAT MAY BE BOUGHT — the SELL catalog, not the build catalog: SYNDICATE_SELLABLE_KINDS =
+    // BUILDABLE_KINDS minus spycraft (docs/asset-purchase.md §"What the Syndicate sells", RULED
+    // 22-09-26). The two catalogs deliberately DIVERGE at spycraft — a guild builds it at its own
+    // dockyard (commissionBuild keeps the full BUILDABLE_KINDS gate), but the Syndicate never
+    // sells it, so a spycraft buy is refused LOUDLY here (not merely hidden from the UI).
+    if (typeof action.assetKind !== 'string' || !SYNDICATE_SELLABLE_KINDS.includes(action.assetKind)) {
+      const spycraftNote = typeof action.assetKind === 'string' && BUILDABLE_KINDS.includes(action.assetKind)
+        ? ' — the Syndicate does not sell spycraft, it is guild-build-only; commission it at a dockyard'
+        : '';
+      return { valid: false, reason: `${JSON.stringify(action.assetKind)} is not a Syndicate-sellable kind (miner / factory, or a cargo transport)${spycraftNote}` };
     }
     if (typeof action.destinationSystemId !== 'string' || action.destinationSystemId.length === 0) {
       return { valid: false, reason: 'destinationSystemId must be a non-empty string' };

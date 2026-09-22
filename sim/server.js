@@ -95,7 +95,7 @@ const { saveState, appendJournal, clearJournal, loadOrInit, saveSeed, loadSeed, 
 const { buildSnapshot } = require('./snapshot.js');
 const { getStarterSystems, getSystemLayout, setSeed, getSeedNumber } = require('./seed.js');
 const { listRecipes } = require('./recipes.js');
-const { ASSET_BILLS, BUILD_TICKS, MAX_QUEUE, BUILDABLE_ASSET_KINDS } = require('./asset-recipes.js');
+const { ALL_BILLS, BUILD_TICKS, MAX_QUEUE, BUILDABLE_KINDS } = require('./asset-recipes.js');
 const { RAW_RESOURCES, PROCESSED_GOODS, TIER3_GOODS } = require('./resources.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
 // The calendar's two creation-seam helpers. `anchorForCreation` is pure arithmetic;
@@ -617,13 +617,17 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // The Tier-4 ASSET-BILL catalog — RULES, not state (sim/asset-recipes.js is the one
-  // source of truth, like /recipes for the refining catalog). Static and read-only, so
-  // the client fetches it once; the Tier-4 Production tab (build-yard.md §7 slice B) reads
-  // the bills + BUILD_TICKS to render each dockyard's queue and the module shortfall.
+  // The BUILD catalog — RULES, not state (sim/asset-recipes.js is the one source of truth,
+  // like /recipes for the refining catalog). Static and read-only, so the client fetches it
+  // once; the System Production Console (build-yard.md §7 slice B) reads the bills + BUILD_TICKS
+  // to render each dockyard's queue and the module shortfall. It serves the FULL BUILDABLE_KINDS
+  // (all six — miner, factory, the three cargo transports AND spycraft): a guild builds every
+  // recipe at its own dockyard. This is the build catalog, NOT the sell catalog — the Syndicate
+  // sells the narrower SYNDICATE_SELLABLE_KINDS (spycraft excluded, docs/asset-purchase.md
+  // §"What the Syndicate sells"), surfaced separately via the snapshot's assetPurchaseQuote.
   // Changing a bill means editing asset-recipes.js + restarting, never a live mutation.
   if (method === 'GET' && path === '/asset-recipes') {
-    sendJson(res, 200, { bills: ASSET_BILLS, buildTicks: BUILD_TICKS, maxQueue: MAX_QUEUE, buildable: BUILDABLE_ASSET_KINDS });
+    sendJson(res, 200, { bills: ALL_BILLS, buildTicks: BUILD_TICKS, maxQueue: MAX_QUEUE, buildable: BUILDABLE_KINDS });
     return;
   }
 

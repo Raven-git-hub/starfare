@@ -123,10 +123,23 @@ const VEHICLE_BILLS = Object.freeze({
 // and the tripwire read this, so one lookup answers "the bill for this kind" for either family.
 const ALL_BILLS = Object.freeze({ ...ASSET_BILLS, ...VEHICLE_BILLS });
 
-// The combined kind vocabulary a dockyard can build / the Syndicate can sell — ground assets
-// THEN vehicles. The buy/build gates (sim/actions.js), the build-queue invariant, and the
-// snapshot's purchase quote read THIS, so a vehicle is accepted everywhere a ground asset is.
+// The combined kind vocabulary a dockyard can BUILD — ground assets THEN vehicles. The build
+// gate (commissionBuild, sim/actions.js), the build-queue invariant, and `GET /asset-recipes`
+// read THIS, so a vehicle is buildable everywhere a ground asset is — spycraft INCLUDED (a
+// guild builds all six at its own dockyard).
 const BUILDABLE_KINDS = Object.freeze([...BUILDABLE_ASSET_KINDS, ...BUILDABLE_VEHICLE_KINDS]);
+
+// SYNDICATE_SELLABLE_KINDS — the kinds the Syndicate SELLS: sellable ⊂ buildable, diverging at
+// spycraft (docs/asset-purchase.md §"What the Syndicate sells — sellable ⊂ buildable (RULED
+// 22-09-26)"). It is `BUILDABLE_KINDS` MINUS `spycraft` — the two ground assets + the three
+// CARGO transports (light / medium / heavy), five kinds. Spycraft is guild-build-only: a guild
+// makes it in the dark at its own dockyard, the Syndicate never sells it. Spelled as an
+// explicit list (not a filter of BUILDABLE_KINDS) so it reads as the deliberate sell catalog it
+// is — the buy gate (buyAssetFromSyndicate) and the snapshot's purchase quote read THIS, not
+// BUILDABLE_KINDS, so a spycraft buy is refused loudly and the TRADE tab shows exactly the five.
+const SYNDICATE_SELLABLE_KINDS = Object.freeze([
+  ...BUILDABLE_ASSET_KINDS, LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT,
+]);
 
 // THE LOAD-BEARING MECHANICAL TRIPWIRE (working practice #4). Every module named in every
 // bill MUST be a real Tier-3 stockpile good (resources.js). A typo that drifts a bill from
@@ -247,8 +260,10 @@ function priceAssetForPurchase(state, assetKind, issueTick) {
 module.exports = {
   ASSET_BILLS,
   VEHICLE_BILLS,
+  ALL_BILLS,
   BUILDABLE_ASSET_KINDS,
   BUILDABLE_KINDS,
+  SYNDICATE_SELLABLE_KINDS,
   assetBill,
   assertBillModulesAreTier3,
   MAX_QUEUE,

@@ -37,8 +37,8 @@ const { buildSnapshot } = require('../snapshot.js');
 const { GUILD_STARTING_FUEL, routeFuelCost, ASSET_CARGO_VOLUME } = require('../fuel.js');
 const { nearestWaystation, arrivalTickFor } = require('../transport.js');
 const {
-  assetBill, assertBillModulesAreTier3, BUILD_TICKS, BUILDABLE_KINDS, VEHICLE_BUY_BASELINE,
-  priceAssetForPurchase, ASSET_PURCHASE_FLOOR,
+  assetBill, assertBillModulesAreTier3, BUILD_TICKS, BUILDABLE_KINDS, SYNDICATE_SELLABLE_KINDS,
+  VEHICLE_BUY_BASELINE, priceAssetForPurchase, ASSET_PURCHASE_FLOOR,
 } = require('../asset-recipes.js');
 const {
   LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT, SPYCRAFT,
@@ -244,15 +244,48 @@ test('buy end-to-end: found → buy → build → deliver → an idle transport 
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
-test('buy: a spycraft mints with capacity EXACTLY 0 (no !capacity guard rejects it)', () => {
-  let s = accept(buyState(), buy(SPYCRAFT));
-  const completionTick = s.tick + 1 + BUILD_TICKS[SPYCRAFT];
-  s = ticks(s, completionTick - s.tick);
-  const arrivalTick = s.shipments[0].arrivalTick;
-  s = ticks(s, arrivalTick - s.tick);
-  const v = s.guilds[0].vehicles[0];
-  assert.equal(v.class, SPYCRAFT);
-  assert.equal(v.capacity, 0, 'spycraft carries no cargo');
+// THE LOAD-BEARING TRIPWIRE (rule 4) for the sell/build divergence: the Console now offers every
+// buildable kind, spycraft included — so a dockyard must actually BUILD both a cargo transport AND
+// spycraft end-to-end, each minting into guild.vehicles. (Spycraft is no longer buyable from the
+// Syndicate, so this dockyard path is the ONLY way it is minted.) The light transport runs the full
+// consume → countdown → mint lifecycle; spycraft's head is seeded already-started (BUILD_TICKS is a
+// full week — the `invariants-buildqueue` started-head pattern), so its MINT branch is proven
+// without a 10,080-tick countdown, and it lands with capacity EXACTLY 0 (no `!capacity` guard).
+test('build: a dockyard builds a light_transport AND spycraft, each minting into guild.vehicles (spycraft capacity 0)', () => {
+  const YARD_SYS = HOME.id; // a REAL seed system — a dockyard always sits in one (checkVehicleIntegrity)
+  const lightBill = assetBill(LIGHT_TRANSPORT);
+  let s = createState({
+    guilds: [{
+      id: 'g1', credits: 0, fuelHoard: 0,
+      stockpiles: { [YARD_SYS]: { ...lightBill } }, // exactly one light-transport bill on hand
+      ventures: [
+        // d1 builds a light transport the full way: it consumes the bill and counts down BUILD_TICKS.
+        {
+          id: 'd1', ownerGuildId: 'g1', type: 'refining', systemId: YARD_SYS, dockyard: true,
+          buildQueue: [{ commissionId: 0, assetKind: LIGHT_TRANSPORT, remainingTicks: null }], nextCommissionId: 1,
+        },
+        // d2 builds spycraft — head seeded already-started (bill consumed), 3 ticks from completion,
+        // so the mint lands quickly without a full-week countdown.
+        {
+          id: 'd2', ownerGuildId: 'g1', type: 'refining', systemId: YARD_SYS, dockyard: true,
+          buildQueue: [{ commissionId: 0, assetKind: SPYCRAFT, remainingTicks: 3 }], nextCommissionId: 1,
+        },
+      ],
+    }],
+    reserve: { reserveLevel: 100 },
+    syndicate: { ledger: 0 },
+  });
+
+  // Run past the light transport's full countdown (it consumes on tick 1, emits BUILD_TICKS later);
+  // spycraft (3 ticks left) mints well within this span.
+  s = ticks(s, BUILD_TICKS[LIGHT_TRANSPORT] + 2);
+  const vehicles = s.guilds[0].vehicles || [];
+  const byClass = Object.fromEntries(vehicles.map((v) => [v.class, v]));
+  assert.ok(byClass[LIGHT_TRANSPORT], 'the cargo transport minted into guild.vehicles');
+  assert.ok(byClass[SPYCRAFT], 'spycraft minted into guild.vehicles (dockyard-built, never bought)');
+  assert.equal(byClass[SPYCRAFT].capacity, 0, 'spycraft carries no cargo — capacity is exactly 0');
+  assert.deepEqual(byClass[LIGHT_TRANSPORT].location, { landmarkKind: 'system', landmarkId: YARD_SYS });
+  assert.deepEqual(byClass[SPYCRAFT].location, { landmarkKind: 'system', landmarkId: YARD_SYS });
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
@@ -295,16 +328,22 @@ test('build: a dockyard consumes the ship bill from its own system and mints an 
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
-test('validate: commissionBuild and buyAssetFromSyndicate both accept the four transport classes', () => {
-  // buy: a well-formed transport purchase validates (BUILDABLE_KINDS includes the four classes).
+test('validate: the sell/build catalogs DIVERGE at spycraft — the Syndicate sells the three cargo transports (not spycraft), the dockyard builds all four', () => {
+  // buy: the SELL catalog is the three CARGO transports — SYNDICATE_SELLABLE_KINDS carries them,
+  // spycraft is NOT sellable (guild-build-only, docs/asset-purchase.md §"What the Syndicate sells").
   const s = buyState();
-  for (const c of BUILDABLE_VEHICLE_KINDS) {
+  for (const c of [LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT]) {
     const { valid, reason } = validateAction(s, buy(c));
     assert.equal(valid, true, `buy ${c}: ${reason}`);
+    assert.ok(SYNDICATE_SELLABLE_KINDS.includes(c), `${c} is a sellable kind`);
   }
-  assert.ok(BUILDABLE_KINDS.includes(LIGHT_TRANSPORT), 'the combined buildable vocabulary carries transports');
+  // A spycraft BUY is refused LOUDLY, naming it guild-build-only — not merely hidden from the UI.
+  const spyBuy = validateAction(s, buy(SPYCRAFT));
+  assert.equal(spyBuy.valid, false, 'the Syndicate does not sell spycraft');
+  assert.match(spyBuy.reason, /guild-build-only/);
+  assert.ok(!SYNDICATE_SELLABLE_KINDS.includes(SPYCRAFT), 'spycraft is not in the sell catalog');
 
-  // commission: a dockyard can be commissioned to build each transport class.
+  // commission: a dockyard can still be commissioned to build EVERY transport class, spycraft included.
   const ds = createState({
     guilds: [{
       id: 'g1', credits: 0, fuelHoard: 0,
@@ -315,6 +354,7 @@ test('validate: commissionBuild and buyAssetFromSyndicate both accept the four t
   for (const c of BUILDABLE_VEHICLE_KINDS) {
     const { valid, reason } = validateAction(ds, createCommissionBuildAction({ guildId: 'g1', ventureId: 'd1', assetKind: c }));
     assert.equal(valid, true, `commission ${c}: ${reason}`);
+    assert.ok(BUILDABLE_KINDS.includes(c), `${c} is in the build catalog`);
   }
 });
 
@@ -487,7 +527,7 @@ test('determinism: a spawn→remove→spawn sequence run twice is byte-identical
 test('determinism: a buy-and-build transport scenario run twice is byte-identical (invariant 9)', () => {
   const run = () => {
     let s = accept(buyState(), buy(HEAVY_TRANSPORT));           // a heavy: 200M baseline, own 600-fuel flight
-    s = accept(s, buy(SPYCRAFT, DEST, s.tick));                 // a second class, same tick
+    s = accept(s, buy(MEDIUM_TRANSPORT, DEST, s.tick));         // a second SELLABLE class, same tick (spycraft is build-only)
     return ticks(s, 40);                                        // deep into construction
   };
   assert.equal(hashState(run()), hashState(run()));

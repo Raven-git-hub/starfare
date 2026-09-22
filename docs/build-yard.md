@@ -20,6 +20,14 @@ build encodes the `asset-recipes.md` bills as a machine-readable catalog — **`
 `assetKind -> { module: qty }` — lifting quantities straight from the doc (all `[FIRST-CUT]`).
 **Buildable this slice: miner + factory** (their entities exist). Ships/droids/installations have
 bills in the doc but no buildable entity yet — deferred to their own slices.
+
+> **As built (22-09-26):** the build catalog served to the System Production Console (`GET
+> /asset-recipes`) is now the FULL `BUILDABLE_KINDS` — six kinds: miner, factory, the three cargo
+> transports (light / medium / heavy) **and spycraft** — with every bill (`ALL_BILLS`). The
+> "Buildable this slice: miner + factory" line above is the original design-ahead scope; the ship
+> bills gained buildable vehicle entities (2.2-foundation) and the endpoint now serves them all.
+> This is the BUILD catalog; the Syndicate SELLS the narrower `SYNDICATE_SELLABLE_KINDS` (spycraft
+> excluded, guild-build-only — see `docs/asset-purchase.md` §"What the Syndicate sells").
 - Miner = 2 chassis, reactor_housing, photovoltaic_array, power_cells, control_module,
   extraction_head, cargo_module, cargo_handling_system, defence_system.
 - Factory = 3 chassis, reactor_housing, 2 photovoltaic_array, 2 power_cells, control_module,
@@ -58,6 +66,11 @@ guild holds the system). It takes **no `recipeId`** and carries a **queue** inst
 ## 4. Outputs, ids, cost, landing
 - **Outputs this slice:** miner + factory. **Cost:** parts only (modules). Syndicate-commission for
   credits is the separate 2.1d slice; the open market is 2.1e.
+  - **As built (22-09-26):** a dockyard's outputs are now the full `BUILDABLE_KINDS` — the two
+    ground assets AND the four guild transports, **spycraft included**. A transport/spycraft build
+    mints into `guild.vehicles` (a ground asset into `guild.assets`) via the shared
+    `mintFinishedKind`, idle at the dockyard's own system. Spycraft is dockyard-ONLY: the Syndicate
+    never sells it (`docs/asset-purchase.md` §"What the Syndicate sells").
 - **Built-asset ids:** the starter grant uses `asset_<guild>_<kind>_01..15`. Built assets continue
   a **per-(guild,kind) counter beyond the starter range**, so ids stay stable, unique, and
   deterministic (invariant 9) with no collision against the founding gift.

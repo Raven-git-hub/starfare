@@ -42,9 +42,10 @@ const assetBurn = (systemId) => routeFuelCost(systemId, ASSET_CARGO_VOLUME).fuel
 const { nearestWaystation, arrivalTickFor } = require('../transport.js');
 const { QUOTE_TTL_TICKS } = require('../price-ring.js');
 const {
-  ASSET_BILLS, ASSET_PURCHASE_FLOOR, ASSET_PURCHASE_REDUCTION, BUILD_TICKS, BUILDABLE_KINDS,
-  priceAssetForPurchase,
+  ASSET_BILLS, ALL_BILLS, ASSET_PURCHASE_FLOOR, ASSET_PURCHASE_REDUCTION, BUILD_TICKS,
+  BUILDABLE_KINDS, SYNDICATE_SELLABLE_KINDS, priceAssetForPurchase,
 } = require('../asset-recipes.js');
+const { SPYCRAFT } = require('../vehicles.js');
 const { MINER, FACTORY, idleAssets } = require('../assets.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
 const {
@@ -150,9 +151,9 @@ test('validate: accepts a well-formed purchase into a real system (presence NOT 
   assert.equal(validateAction(s, buy(MINER, OTHER)).valid, true, 'no guildHolds gate for an asset');
 });
 
-test('validate: refuses a non-buildable kind, an unknown destination, and a missing guild', () => {
+test('validate: refuses a non-sellable kind, an unknown destination, and a missing guild', () => {
   const s = buyState();
-  reject(s, buy('ship', DEST), /not a Syndicate-buildable kind/);
+  reject(s, buy('ship', DEST), /not a Syndicate-sellable kind/);
   reject(s, buy(MINER, 'sys_does_not_exist'), /not a system on the seed/);
   reject(s, createBuyAssetFromSyndicateAction({ guildId: 'nope', assetKind: MINER, destinationSystemId: DEST }), /no guild with id/);
 });
@@ -168,6 +169,37 @@ test('validate: refuses when FUEL is short — reached only once credits pass (t
   // Ample credits, but one unit short of the delivery burn.
   const s = buyState({ fuelHoard: burn - 1 });
   reject(s, buy(MINER, DEST), /insufficient fuel/);
+});
+
+// --- 2b. the sell catalog DIVERGES from the build catalog at spycraft (2.1d/2.2) ----------------
+// docs/asset-purchase.md §"What the Syndicate sells — sellable ⊂ buildable (RULED 22-09-26)".
+
+test('catalog: SYNDICATE_SELLABLE_KINDS is EXACTLY BUILDABLE_KINDS minus spycraft (rule-4 tripwire)', () => {
+  // The load-bearing set relation, asserted both ways so a future kind added to ONE catalog can
+  // never silently skip the other: spycraft is buildable but NOT sellable, and every OTHER
+  // buildable kind IS sellable.
+  assert.ok(BUILDABLE_KINDS.includes(SPYCRAFT), 'spycraft is a BUILDABLE kind (a guild builds it)');
+  assert.ok(!SYNDICATE_SELLABLE_KINDS.includes(SPYCRAFT), 'spycraft is NOT sellable (guild-build-only)');
+  for (const kind of BUILDABLE_KINDS) {
+    if (kind === SPYCRAFT) continue;
+    assert.ok(SYNDICATE_SELLABLE_KINDS.includes(kind), `${kind} is buildable AND sellable`);
+  }
+  // The sell set is precisely the buildable set with spycraft removed — nothing more, nothing less.
+  assert.deepEqual(
+    [...SYNDICATE_SELLABLE_KINDS].sort(),
+    BUILDABLE_KINDS.filter((k) => k !== SPYCRAFT).sort(),
+  );
+});
+
+test('validate: the buy gate ACCEPTS each of the five sellable kinds and REFUSES spycraft (build-only)', () => {
+  // Fund past the priciest baseline (heavy transport, 200M) and its own delivery burn, so this is
+  // a pure KIND-gate check — no accept turns on a credits/fuel shortfall.
+  const s = buyState({ credits: 500_000_000, fuelHoard: 5_000 });
+  for (const kind of SYNDICATE_SELLABLE_KINDS) {
+    assert.equal(validateAction(s, buy(kind, DEST)).valid, true, `buy ${kind} accepted`);
+  }
+  // A spycraft buy is refused LOUDLY, naming it guild-build-only (not merely hidden from the UI).
+  reject(s, buy(SPYCRAFT, DEST), /guild-build-only/);
 });
 
 // --- 3. apply -----------------------------------------------------------------
@@ -365,11 +397,14 @@ test('determinism: a bought galaxy run through construction twice is byte-identi
 // `assetPurchaseQuote[kind].{price,buildTicks}` off the engine's own `priceAssetForPurchase`
 // (quote-lock ring) and `BUILD_TICKS`, so the TRADE tab's "4 · Constructed" view can show them.
 
-test('snapshot: assetPurchaseQuote publishes the engine price + build ticks for every buildable kind', () => {
+test('snapshot: assetPurchaseQuote publishes the engine price + build ticks for every SELLABLE kind', () => {
   const s = buyState();
   const snap = buildSnapshot(s);
-  assert.deepEqual(Object.keys(snap.assetPurchaseQuote).sort(), [...BUILDABLE_KINDS].sort());
-  for (const kind of BUILDABLE_KINDS) {
+  // The quote is the SELL catalog, not the build catalog: exactly SYNDICATE_SELLABLE_KINDS (the
+  // five), spycraft ABSENT — the TRADE tab iterates the quote, so this is what it shows.
+  assert.deepEqual(Object.keys(snap.assetPurchaseQuote).sort(), [...SYNDICATE_SELLABLE_KINDS].sort());
+  assert.ok(!(SPYCRAFT in snap.assetPurchaseQuote), 'spycraft is guild-build-only — not in the sell quote');
+  for (const kind of SYNDICATE_SELLABLE_KINDS) {
     const q = snap.assetPurchaseQuote[kind];
     assert.equal(q.price, priceAssetForPurchase(s, kind, s.tick), `${kind} price == priceAssetForPurchase`);
     assert.equal(q.buildTicks, BUILD_TICKS[kind], `${kind} buildTicks == BUILD_TICKS`);

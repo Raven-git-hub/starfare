@@ -1240,21 +1240,27 @@ test('GET /goods returns the vocabulary by tier', async () => {
   }
 });
 
-test('GET /asset-recipes returns the Tier-4 asset-bill catalog, matching sim/asset-recipes.js', async () => {
+test('GET /asset-recipes returns the FULL build catalog, matching sim/asset-recipes.js', async () => {
   // RULES, not state (like /recipes): no galaxy is founded first, and the route answers
   // 200 regardless. This is the tripwire that the served catalog never drifts from the
   // engine's own — a bill typo or a retuned BUILD_TICKS/MAX_QUEUE would fail here.
-  const { ASSET_BILLS, BUILD_TICKS, MAX_QUEUE, BUILDABLE_ASSET_KINDS } = require('../asset-recipes.js');
+  // The Console builds every recipe (2.1d/2.2), so the route serves the FULL BUILDABLE_KINDS
+  // (all six, spycraft INCLUDED) and ALL_BILLS — the build catalog, not the sell catalog.
+  const { ALL_BILLS, BUILD_TICKS, MAX_QUEUE, BUILDABLE_KINDS } = require('../asset-recipes.js');
+  const { SPYCRAFT } = require('../vehicles.js');
   const { status, body } = await req('GET', '/asset-recipes');
   assert.equal(status, 200);
   // Byte-for-byte on the values (JSON round-trips the frozen objects/arrays as-is).
-  assert.deepEqual(body.bills, ASSET_BILLS);
+  assert.deepEqual(body.bills, ALL_BILLS);
   assert.deepEqual(body.buildTicks, BUILD_TICKS);
   assert.equal(body.maxQueue, MAX_QUEUE);
-  assert.deepEqual(body.buildable, [...BUILDABLE_ASSET_KINDS]);
-  // And a spot-check on the two buildable kinds, so the shape is asserted, not just equality.
-  assert.deepEqual(body.buildable, ['miner', 'factory']);
-  assert.ok(body.bills.miner && body.bills.factory, 'both buildable bills served');
+  assert.deepEqual(body.buildable, [...BUILDABLE_KINDS]);
+  // And a spot-check on the shape: all six buildable kinds, spycraft among them, each with a bill.
+  assert.equal(body.buildable.length, 6, 'the full build catalog is served (six kinds)');
+  assert.ok(body.buildable.includes(SPYCRAFT), 'spycraft IS in the build catalog (guild-buildable)');
+  for (const kind of body.buildable) {
+    assert.ok(body.bills[kind], `bill served for buildable kind ${kind}`);
+  }
 });
 
 test('GET /health reports liveness (JSON)', async () => {

@@ -37,7 +37,7 @@ const { guildPoints } = require('./points.js');
 const { expectedReputation, issuanceModifier } = require('./meanline.js');
 const { computeOccupancy } = require('./occupancy.js');
 const { deployedAssetIds } = require('./assets.js');
-const { BUILDABLE_KINDS, BUILD_TICKS, priceAssetForPurchase } = require('./asset-recipes.js');
+const { SYNDICATE_SELLABLE_KINDS, BUILD_TICKS, priceAssetForPurchase } = require('./asset-recipes.js');
 const { BUILDABLE_VEHICLE_KINDS, vehicleSpec, resolveVehicleLocation, vehicleCoords } = require('./vehicles.js');
 const { outpostDockTurnaround } = require('./outposts.js');
 const { usedSpace, copyManifestLine } = require('./manifest.js');
@@ -740,7 +740,8 @@ function computeAttention(state) {
 //     syndicateBuilds: [ { ownerGuildId, assetKind, destinationSystemId,       // asset-purchase.md
 //                          building, remainingTicks, ticksRemaining } ],       // per-guild single-slot queue
 //     assetPurchaseQuote: { <assetKind>: { price, buildTicks } },              // asset-purchase.md
-//       // Per Syndicate-buildable kind (miner, factory, and the four guild transports): the current-tick credit `price`
+//       // Per Syndicate-sellable kind (miner, factory, and the three cargo transports; spycraft is
+//       // guild-build-only, not sold): the current-tick credit `price`
 //       // (priceAssetForPurchase) and the `buildTicks` (BUILD_TICKS[kind]). The TRADE tab's
 //       // "4 · Constructed" buy view reads these; the delivery leg of the arrival estimate
 //       // comes from fuelCost[dest].travelTicks, not from here. Derived-on-read, no stored byte.
@@ -1837,8 +1838,9 @@ function buildSnapshot(state) {
       });
     })(),
     // The ASSET-PURCHASE QUOTE (docs/asset-purchase.md "Price") — for each Syndicate-buildable
-    // kind (the two ground assets AND the four guild transports, 2.2-foundation), the credit price
-    // a purchase would cost right now and the ticks it builds over.
+    // SELLABLE kind (the two ground assets and the three CARGO transports — SYNDICATE_SELLABLE_KINDS,
+    // spycraft excluded as guild-build-only, docs/asset-purchase.md §"What the Syndicate sells"), the
+    // credit price a purchase would cost right now and the ticks it builds over.
     // Published so the TRADE tab's "4 · Constructed" buy view can SHOW the price and the build
     // time without the browser ever pricing an asset or knowing a build duration (§5: the client
     // renders the snapshot, computes no game number). The price is the engine's own
@@ -1849,7 +1851,7 @@ function buildSnapshot(state) {
     // Additive DERIVED-ON-READ telemetry like `syndicateBuilds` above: no serialized byte, no
     // schema bump, no golden move — a galaxy that buys nothing serializes byte-identically.
     assetPurchaseQuote: Object.fromEntries(
-      BUILDABLE_KINDS.map((kind) => [
+      SYNDICATE_SELLABLE_KINDS.map((kind) => [
         kind,
         { price: priceAssetForPurchase(state, kind, state.tick), buildTicks: BUILD_TICKS[kind] },
       ]),

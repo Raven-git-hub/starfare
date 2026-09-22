@@ -249,4 +249,27 @@ list and appears here as a normal delivery. *Still deferred (unbuilt): the Opera
 indicator surfacing a build BEFORE it ships — a still-building asset stays in the TRADE tab's In
 Progress and is deliberately not surfaced in Operations until it is actually in transit.*
 
+## As built — the SELL/BUILD catalog divergence (2.1d/2.2, 22-09-26)
+
+✅ **BUILT — the ruling above, in the engine + server (no client change).** `sim/asset-recipes.js`
+now defines and exports **`SYNDICATE_SELLABLE_KINDS`** — an explicit frozen list (the two ground
+assets + the three cargo transports), `BUILDABLE_KINDS` minus `spycraft` — and also exports the
+merged **`ALL_BILLS`** catalog. The two catalogs now diverge exactly where the ruling says:
+
+- **Sell path** reads `SYNDICATE_SELLABLE_KINDS`, not `BUILDABLE_KINDS`. `buyAssetFromSyndicate`'s
+  gate (`sim/actions.js`) refuses any kind outside it — a spycraft buy is refused **loudly**,
+  naming it guild-build-only. The snapshot's `assetPurchaseQuote` (`sim/snapshot.js`) maps over the
+  sellable set, so it carries exactly the five kinds (spycraft absent) and the TRADE tab's
+  Constructed view — which iterates the quote — shows exactly those five with **no client change**.
+- **Build path** keeps the full `BUILDABLE_KINDS`. `commissionBuild`'s gate is untouched (a guild
+  builds all six), and `GET /asset-recipes` (`sim/server.js`) now serves `{ bills: ALL_BILLS,
+  buildable: BUILDABLE_KINDS, … }` — all six kinds with every bill — so the System Production
+  Console builds any recipe, spycraft included. The dockyard mint path was already kind-general
+  (`mintFinishedKind` branches a vehicle into `guild.vehicles`); this slice added no mint logic,
+  only a tripwire proving a dockyard builds a transport AND spycraft end-to-end into `guild.vehicles`.
+
+No serialized state moved (gate/derive/endpoint changes only) — a galaxy that neither buys nor
+builds serializes byte-identically (goldens unchanged). `spycraft`'s `VEHICLE_BUY_BASELINE` entry is
+now **dormant** on the sell path, retained but no longer read to price a sale.
+
 <!-- asset-purchase-doc-sentinel v1 -->
