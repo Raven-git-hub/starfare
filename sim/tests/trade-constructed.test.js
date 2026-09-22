@@ -50,8 +50,11 @@ test('the Constructed view renders all five panels off the snapshot', () => {
   // Panel 3 — the Current Build donut (soonest build's countdown), with an explicit IDLE state.
   assert.match(html, /class="dk-donutwrap"/);
   assert.match(html, /class="big grey">IDLE/);
-  // Panels 4 & 5 — the building art (follows the soonest build) and the buildyard hero (two lines).
-  assert.match(html, /assets\/industrial\/factoryConstruction\.jpg/);
+  // Panels 4 & 5 — the building art (follows the soonest build's KIND via CN_BUILD_ART, not a
+  // hardcoded factory literal) and the buildyard hero (two lines). The map + per-kind resolution
+  // are pinned in build-hero-art.test.js; here we pin that panel 4 reads the resolved art variable.
+  assert.match(html, /var p4art = \(soonest && CN_BUILD_ART\[soonest\.kind\]\) \|\| CN_BUILD_ART_FALLBACK;/);
+  assert.match(html, /background-image:url\(\\'' \+ p4art \+ '\\'\)/);
   assert.match(html, /assets\/industrial\/buildyard\.jpg/);
   assert.match(html, /class="word">SYNDICATE<br>BUILDYARD</);
 });

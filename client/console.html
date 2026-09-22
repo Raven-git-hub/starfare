@@ -2763,9 +2763,12 @@ function renderDockyardTab(){
   //     The two hero panels are SIBLINGS in the 4-column .dk-body grid (no .dk-heroes column
   //     wrapper), so they sit side by side per docs/mockups/dockyard-tab.html. ---
   var role = headState === 'idle' ? '&mdash;' : esc(head.assetKind);
+  // The hero art follows the head build's kind (via DKC_ART) so a transport build shows its own
+  // portrait, not the factory image; when idle it keeps the dimmed construction fallback.
+  var buildingArt = (headState === 'idle' ? DKC_ART_FALLBACK : (DKC_ART[head.assetKind] || DKC_ART_FALLBACK));
   var buildingHero =
     '<div class="dk-card dk-hero' + (headState === 'idle' ? ' dim' : '') + '">' +
-      '<div class="art" style="background-image:url(\'assets/industrial/factoryConstruction.jpg\')"></div><div class="scrim"></div>' +
+      '<div class="art" style="background-image:url(\'' + buildingArt + '\')"></div><div class="scrim"></div>' +
       '<div class="ttop"><div class="zhead">Building</div></div><div class="role">' + role + '</div>' +
     '</div>';
   var yardHero =
@@ -2787,9 +2790,20 @@ function renderDockyardTab(){
 // no game number. The only thing it POSTs is the commissionBuild action, on the Commission button;
 // the engine re-checks the queue cap and buildability, and sendAction surfaces any refusal.
 
-// Per-kind hero art. Miner + factory share the construction art (their entities exist this
-// slice); other kinds slot in their own unit art here as they become buildable.
-var DKC_ART = { miner: 'assets/industrial/factoryConstruction.jpg', factory: 'assets/industrial/factoryConstruction.jpg' };
+// Per-kind hero art, keyed by the snapshot's build-kind strings (miner / factory, and the four
+// camelCase transport classes). The two ground assets share the construction image; each craft
+// shows its own portrait. This is the ONE art map in this file — both the current-build hero
+// (buildingHero, above) and the Add-commission overlay read it, with the construction image as a
+// graceful fallback for any kind whose art is not yet wired.
+var DKC_ART = {
+  miner: 'assets/industrial/factoryConstruction.jpg',
+  factory: 'assets/industrial/factoryConstruction.jpg',
+  lightTransport: 'assets/units/lighttransport.jpg',
+  mediumTransport: 'assets/units/mediumtransport.jpg',
+  heavyTransport: 'assets/units/heavytransport.jpg',
+  spycraft: 'assets/units/spycraft.jpg'
+};
+var DKC_ART_FALLBACK = 'assets/industrial/factoryConstruction.jpg';
 // 1,440 ticks/day (docs/cycle-and-calendar.md) — the same conversion the catalog's comment uses;
 // the mockup's "3 days / 5 days" are buildTicks/1440. Not a game number of ours: a display unit.
 var DKC_TICKS_PER_DAY = 1440;

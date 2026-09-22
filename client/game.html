@@ -7629,6 +7629,21 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(text && kind === 'ok'){ T.cnNoteTimer = setTimeout(function(){ T.cnNote=''; T.cnNoteKind=''; if(T.tier===4) renderConstructed(); }, 6000); }
   }
 
+  // Per-kind hero art for the Constructed view, keyed by the snapshot's build-kind strings
+  // (miner / factory, and the four camelCase transport classes). The two ground assets share the
+  // construction image; each craft shows its own portrait. Anything unknown falls back to the
+  // construction image, so a new build kind is never blank while its art is wired in. This is the
+  // single source the "Building" hero (panel 4) reads — no hardcoded art per panel.
+  var CN_BUILD_ART = {
+    miner: 'assets/industrial/factoryConstruction.jpg',
+    factory: 'assets/industrial/factoryConstruction.jpg',
+    lightTransport: 'assets/units/lighttransport.jpg',
+    mediumTransport: 'assets/units/mediumtransport.jpg',
+    heavyTransport: 'assets/units/heavytransport.jpg',
+    spycraft: 'assets/units/spycraft.jpg'
+  };
+  var CN_BUILD_ART_FALLBACK = 'assets/industrial/factoryConstruction.jpg';
+
   function renderConstructed(){
     var cn = el('tw-cn'); if(!cn) return;
     var s = snap(), guild = meGuild();
@@ -7714,8 +7729,11 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       + '<div class="dk-donutwrap">' + donut + '</div>' + sub + '</div></div></div>';
 
     // ---- panel 4: Building art (follows the soonest build; dimmed/blank when idle) ----
+    // The art keys off the soonest build's kind (via CN_BUILD_ART) so a transport build shows its
+    // own portrait, not the factory image; when idle it keeps the dimmed construction fallback.
+    var p4art = (soonest && CN_BUILD_ART[soonest.kind]) || CN_BUILD_ART_FALLBACK;
     var p4 = '<div class="dk-card dk-hero' + (soonest ? '' : ' dim') + '">'
-      + '<div class="art" style="background-image:url(\'assets/industrial/factoryConstruction.jpg\')"></div>'
+      + '<div class="art" style="background-image:url(\'' + p4art + '\')"></div>'
       + '<div class="scrim"></div><div class="ttop"><div class="zhead">Building</div></div>'
       + '<div class="role">' + (soonest ? pretty(soonest.kind) : 'Idle') + '</div></div>';
 

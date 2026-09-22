@@ -195,6 +195,20 @@ single mine/factory art.
   `facility` (mine/refinery) only; extend to include `resource` and `archetype` (or post the
   derived key).
 
+### 3.7 As-built: the "Building" hero art follows the build KIND (22-09-26)
+
+The current-build hero — the "Building" panel — now derives its artwork from the build's **kind**,
+the same §3 principle applied to the Tier-4 build. Previously the art was a hardcoded
+`assets/industrial/factoryConstruction.jpg` while only the label tracked the kind, so a transport
+build showed the factory image under a correct "Medium Transport" label. Each client now keys the
+hero off the snapshot's build-kind string via one per-file art map (`CN_BUILD_ART` in the TRADE
+tab's Constructed view, `game.html`; `DKC_ART` — shared with the Add-commission overlay — in the
+System Production Console, `console.html`): `miner`/`factory` → the construction image, the four
+transports → `assets/units/{light,medium,heavy}transport.jpg` / `spycraft.jpg`, and any unknown
+kind → the construction image as a graceful fallback. Pure presentation of the already-published
+`assetKind` (§5/§18) — no engine/snapshot/number change. Pinned by
+`sim/tests/build-hero-art.test.js`.
+
 ---
 
 ## 4. Carry-forward (open rulings & next)
