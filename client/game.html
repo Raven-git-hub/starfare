@@ -2052,9 +2052,10 @@ select.field{appearance:none; cursor:pointer;}
    name + close; body = a main column (the manifest line builder + the hold-capacity bar + the footer)
    and a side hero (the per-class unit art). Opened from a PARKED craft's DOCK button; it builds a
    { load|unload, good, amount-or-max } manifest and fires transferCargo (the engine queues it for a
-   dock and resolves it authoritatively, §4). The client computes NO game number (§18): the ONLY figure
-   drawn is the hold-capacity bar, a DISPLAY PROJECTION of published goodVolumes × the player's own
-   entered amounts (an empty-hold estimate — it deliberately ignores cargo already aboard). Its own
+   dock and resolves it authoritatively, §4). The client computes NO game number (§18): it draws a
+   "Currently aboard" read-out (the craft's published hold) and a hold-after-this-order bar — a DISPLAY
+   PROJECTION over the REAL current hold (§4 unload-then-load order), from published used / capacity /
+   goodVolumes × the player's own entered amounts. Its own
    well-named CSS block + its own IIFE, isolated exactly as #dispatch-overlay is. ===== */
 #dock-overlay{
   --void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
