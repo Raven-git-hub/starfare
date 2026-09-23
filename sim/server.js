@@ -89,6 +89,7 @@ const {
   validateAction, applyAction, createSpawnVehicleAction, createRemoveVehicleAction,
   createDispatchVehicleAction, createTransferCargoAction, createDispatchRouteWithActionsAction, quoteDispatch,
   createSpawnOutpostAction, createRemoveOutpostAction,
+  createSaveRouteAction, createDeleteRouteAction,
 } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
 const { saveState, appendJournal, clearJournal, loadOrInit, saveSeed, loadSeed, deleteGalaxy } = require('./persist.js');
@@ -1040,6 +1041,73 @@ async function handleRequest(req, res) {
       sendJson(res, 200, applyOneAction(action));
     } catch (err) {
       sendJson(res, 500, { error: 'error applying dispatchRouteWithActions (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // --- the saved-route store (transport-model.md §11.9, automation slice 2a) ------------------
+  // The OPERATOR saved-route endpoints, gated and routed exactly like /admin/vehicle/*: they construct
+  // the engine action from the body and run it through the SAME validate → journal → apply path POST
+  // /action uses (applyOneAction), so a saved/deleted route survives restart and replays
+  // deterministically. There is no list endpoint — a guild's saved routes are read from GET /snapshot.
+  // (The player client will send the same two actions through POST /action — slice 2b.)
+
+  // POST /admin/route/save { guildId, name, waypoints } — save (or, for a name in use, update) a route.
+  if (method === 'POST' && path === '/admin/route/save') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","name":"Ore run","waypoints":[{"anchor":{"landmarkKind":"system","landmarkId":"sys_0006"},"action":{"type":"dock","manifest":[{"dir":"load","good":"titanium","qty":400}]}}]}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId, name, and a non-empty waypoints array of { anchor, action? }' });
+      return;
+    }
+    let action;
+    try {
+      // The constructor enforces the required fields; legality — guild exists, a non-empty name, every
+      // waypoint's anchor resolves and action is well-formed — is validateAction's job, inside applyOneAction.
+      action = createSaveRouteAction({ guildId: body.guildId, name: body.name, waypoints: body.waypoints });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed save-route request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying saveRoute (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // POST /admin/route/delete { guildId, routeId } — delete one of the guild's saved routes by id.
+  if (method === 'POST' && path === '/admin/route/delete') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","routeId":"route_g1_01"}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId and routeId' });
+      return;
+    }
+    let action;
+    try {
+      action = createDeleteRouteAction({ guildId: body.guildId, routeId: body.routeId });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed delete-route request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying deleteRoute (invariant violation or engine throw)', detail: String((err && err.message) || err) });
     }
     return;
   }

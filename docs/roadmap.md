@@ -1006,6 +1006,14 @@ boundary so the later hex-map swap doesn't touch it.
     tick of the LAST save, since an upsert rewrites it — the §11.9 "stamps its tick"); snapshot order is stored
     (first-saved) order. **A NO-OP on a galaxy with no saved route** (both keys omitted; persist/determinism/
     galactic-supply goldens byte-identical). Sim suite 1,453 → **1,472 green** (`saved-routes.test.js` +19).
+    **(2) The operator CLI** (`sim/server.js`, `tools/admin.js`; tripwires `sim/tests/server.test.js`,
+    `tools/admin.test.js`). Access-gated `POST /admin/route/save { guildId, name, waypoints }` and
+    `POST /admin/route/delete { guildId, routeId }`, through the SAME validate → journal → apply path as the
+    vehicle endpoints; no list endpoint — `GET /snapshot` carries the routes. `tools/admin.js save-route "NAME"
+    --guild ID --route "…"` (the name is the one positional argument — an unquoted multi-word name is refused,
+    not guessed at; `--route` is the dispatch-route grammar, now shared with a `command` name for its errors)
+    and `delete-route --guild ID --id ROUTE_ID`; both print the guild's saved routes as they now stand. Sim suite
+    → **1,474 green** (`server.test.js` +2); `tools/admin.test.js` 42 → **45**.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*

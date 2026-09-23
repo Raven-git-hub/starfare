@@ -1495,6 +1495,68 @@ test('POST /admin/outpost/remove refuses an unknown outpost id (200, accepted:fa
   assert.match(rm.body.reason, /owns no outpost/);
 });
 
+// --- the saved-route store (transport-model.md §11.9, automation slice 2a) -------------------
+
+test('POST /admin/route/save saves + upserts a route; GET /snapshot reads it; /admin/route/delete removes it; none tick', async () => {
+  await reset();
+  await found();
+  const home = { landmarkKind: 'system', landmarkId: HOME_SYSTEM };
+  const lane = [
+    { anchor: home, action: { type: 'dock', manifest: [{ dir: 'load', good: 'titanium', qty: 400 }] } },
+    { anchor: FREE_HEX, action: { type: 'dock', manifest: [{ dir: 'unload', good: 'titanium', qty: 400 }] } },
+  ];
+  const saved = await req('POST', '/admin/route/save', { guildId: 'player-guild', name: 'Ore run', waypoints: lane });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.accepted, true);
+  assert.equal(saved.body.snapshot.tick, 0, 'a save must not tick');
+
+  // The snapshot is where a guild's saved routes are read (no separate list endpoint).
+  const snap = await req('GET', '/snapshot');
+  const guildRow = () => snap.body.guilds.find((g) => g.id === 'player-guild');
+  assert.deepEqual(guildRow().savedRoutes, [{ id: 'route_player-guild_01', name: 'Ore run', waypoints: lane }]);
+
+  // Re-saving the same name updates in place — same id, new waypoints.
+  const upsert = await req('POST', '/admin/route/save', { guildId: 'player-guild', name: 'Ore run', waypoints: [{ anchor: home }] });
+  const routes = upsert.body.snapshot.guilds.find((g) => g.id === 'player-guild').savedRoutes;
+  assert.deepEqual(routes, [{ id: 'route_player-guild_01', name: 'Ore run', waypoints: [{ anchor: home }] }]);
+
+  // Delete it by id — the key is gone (omit-when-empty).
+  const rm = await req('POST', '/admin/route/delete', { guildId: 'player-guild', routeId: 'route_player-guild_01' });
+  assert.equal(rm.status, 200);
+  assert.equal(rm.body.accepted, true);
+  assert.equal(rm.body.snapshot.tick, 0, 'a delete must not tick');
+  assert.equal('savedRoutes' in rm.body.snapshot.guilds.find((g) => g.id === 'player-guild'), false);
+
+  // The next save does NOT reuse the deleted id — it is _02.
+  const again = await req('POST', '/admin/route/save', { guildId: 'player-guild', name: 'Ore run', waypoints: lane });
+  assert.equal(again.body.snapshot.guilds.find((g) => g.id === 'player-guild').savedRoutes[0].id, 'route_player-guild_02');
+});
+
+test('POST /admin/route/save|delete refuse a bad request (200, accepted:false) and 400 a malformed body', async () => {
+  await reset();
+  await found();
+  // An unresolvable anchor → the engine refuses (200, accepted:false), nothing saved.
+  const refused = await req('POST', '/admin/route/save', {
+    guildId: 'player-guild', name: 'Ore run', waypoints: [{ anchor: { landmarkKind: 'system', landmarkId: 'sys_not_real' } }],
+  });
+  assert.equal(refused.status, 200);
+  assert.equal(refused.body.accepted, false);
+  assert.match(refused.body.reason, /does not resolve/);
+  assert.equal('savedRoutes' in refused.body.snapshot.guilds.find((g) => g.id === 'player-guild'), false);
+  // An unknown route id → refused.
+  const rm = await req('POST', '/admin/route/delete', { guildId: 'player-guild', routeId: 'route_player-guild_99' });
+  assert.equal(rm.status, 200);
+  assert.equal(rm.body.accepted, false);
+  assert.match(rm.body.reason, /has no saved route/);
+  // Structurally malformed (a missing required field) → 400: the constructor refuses to build it.
+  const bad = await req('POST', '/admin/route/save', { guildId: 'player-guild', waypoints: [] });
+  assert.equal(bad.status, 400);
+  assert.match(bad.body.error, /malformed save-route/);
+  const badDel = await req('POST', '/admin/route/delete', { guildId: 'player-guild' });
+  assert.equal(badDel.status, 400);
+  assert.match(badDel.body.error, /malformed delete-route/);
+});
+
 // --- the read-only dispatch quote (transport-model.md §4/§18, roadmap 2.2 b2b-1) -------------
 
 test('POST /vehicle/quote returns an engine-computed quote and MUTATES NOTHING', async () => {

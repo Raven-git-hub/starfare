@@ -585,3 +585,43 @@ test('transferCargoBody: builds the exact body — UNLOADS FIRST then LOADS; a m
   assert.throws(() => A.transferCargoBody({ id: 'v', load: 'silica:1' }), /--guild is required/);
   assert.throws(() => A.transferCargoBody({ guild: 'g1', load: 'silica:1' }), /--id is required/);
 });
+
+// --- save-route / delete-route (transport-model.md §11.9, automation slice 2a) ---------------------
+
+test('saveRouteBody: the quoted name + --route build the exact body (the dispatch-route grammar)', () => {
+  // Driven through parseArgs, exactly as the shell hands it over: the name is the ONE positional.
+  const { command, flags } = A.parseArgs([
+    'save-route', 'Ore run', '--guild', 'g1', '--route', 'sys:A@load:titanium:400; 3,4@unload:titanium:max',
+  ]);
+  assert.equal(command, 'save-route');
+  assert.deepEqual(A.saveRouteBody(flags), {
+    guildId: 'g1',
+    name: 'Ore run',
+    waypoints: [
+      { anchor: { landmarkKind: 'system', landmarkId: 'A' }, action: { type: 'dock', manifest: [{ dir: 'load', good: 'titanium', qty: 400 }] } },
+      { anchor: { q: 3, r: 4 }, action: { type: 'dock', manifest: [{ dir: 'unload', good: 'titanium', max: true }] } },
+    ],
+  });
+  // The name passes through verbatim — trimming and emptiness are the engine's to judge.
+  assert.equal(A.saveRouteBody({ _: ['  Ore run '], guild: 'g1', route: 'sys:A' }).name, '  Ore run ');
+});
+
+test('saveRouteBody: a missing / unquoted multi-word name, or a missing flag, throws', () => {
+  assert.throws(() => A.saveRouteBody({ _: [], guild: 'g1', route: 'sys:A' }), /ONE quoted argument.*got 0/);
+  assert.throws(() => A.saveRouteBody({ guild: 'g1', route: 'sys:A' }), /ONE quoted argument.*got 0/);
+  // `save-route Ore run …` (unquoted) arrives as two words — refused rather than guessed at.
+  const { flags } = A.parseArgs(['save-route', 'Ore', 'run', '--guild', 'g1', '--route', 'sys:A']);
+  assert.throws(() => A.saveRouteBody(flags), /ONE quoted argument.*got 2/);
+  assert.throws(() => A.saveRouteBody({ _: ['Ore run'], route: 'sys:A' }), /save-route: --guild is required/);
+  assert.throws(() => A.saveRouteBody({ _: ['Ore run'], guild: 'g1' }), /save-route: --route is required/);
+  // A bad route spec names save-route (not dispatch-route) in its error.
+  assert.throws(() => A.saveRouteBody({ _: ['Ore run'], guild: 'g1', route: ' ; ' }), /^Error: save-route: --route needs at least one waypoint/);
+  assert.throws(() => A.saveRouteBody({ _: ['Ore run'], guild: 'g1', route: 'sys:A@dump:titanium:1' }), /^Error: save-route: a waypoint action must be @load/);
+});
+
+test('deleteRouteBody: builds the exact body; a missing flag throws', () => {
+  assert.deepEqual(A.deleteRouteBody({ guild: 'g1', id: 'route_g1_01' }), { guildId: 'g1', routeId: 'route_g1_01' });
+  assert.throws(() => A.deleteRouteBody({ id: 'route_g1_01' }), /delete-route: --guild is required/);
+  assert.throws(() => A.deleteRouteBody({ guild: 'g1' }), /delete-route: --id is required/);
+  assert.deepEqual([...A.ROUTE_COMMANDS], ['save-route', 'delete-route']);
+});

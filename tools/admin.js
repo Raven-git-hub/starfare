@@ -53,9 +53,9 @@ const FLAG_SPEC = Object.freeze({
   outpost: 'string',  // spawn-vehicle: berth at an outpost landmark
   hex: 'string',      // spawn-vehicle: berth at a bare hex, "q,r"
   condition: 'number', // spawn-vehicle: starting maintenanceCondition fraction (default 1)
-  id: 'string',       // remove-vehicle / dispatch-vehicle / transfer-cargo: which vehicle id
+  id: 'string',       // remove-vehicle / dispatch-vehicle / transfer-cargo: which vehicle id; delete-route: which route id
   waypoints: 'string', // dispatch-vehicle: "w;w;…", each sys:<id> | out:<id> | q,r
-  route: 'string',    // dispatch-route: "w;w;…", each anchor[@load:…][@unload:…] (per-waypoint actions)
+  route: 'string',    // dispatch-route / save-route: "w;w;…", each anchor[@load:…][@unload:…] (per-waypoint actions)
   load: 'string',     // transfer-cargo: "good:qty|max,…" to load pool -> hold
   unload: 'string',   // transfer-cargo: "good:qty|max,…" to unload hold -> pool
   help: 'bool',
@@ -387,8 +387,9 @@ function dispatchVehicleBody(flags) {
 // `@unload:good:qty|max,…` — each carrying comma-separated cargo tokens in the transfer-cargo grammar
 // (parseCargoFlag, so `:max` works too). A waypoint with no `@` segment is a pure turning point (no
 // `action` key). Every segment folds into one `{ type: 'dock', manifest }` action, segments in order.
-// PURE — the seed decides what resolves and which goods are real, not this file.
-function parseRouteWaypointToken(tok) {
+// PURE — the seed decides what resolves and which goods are real, not this file. `command` only names the
+// subcommand in an error (dispatch-route and save-route share this grammar).
+function parseRouteWaypointToken(tok, command = 'dispatch-route') {
   const parts = String(tok).split('@').map((s) => s.trim());
   const anchor = parseWaypointToken(parts[0]);
   const segments = parts.slice(1).filter((s) => s.length > 0);
@@ -398,7 +399,7 @@ function parseRouteWaypointToken(tok) {
     const colon = seg.indexOf(':');
     const dir = colon === -1 ? seg : seg.slice(0, colon);
     if (dir !== 'load' && dir !== 'unload') {
-      throw new Error(`dispatch-route: a waypoint action must be @load:… or @unload:…, got ${JSON.stringify(`@${seg}`)}`);
+      throw new Error(`${command}: a waypoint action must be @load:… or @unload:…, got ${JSON.stringify(`@${seg}`)}`);
     }
     // The remainder after "load:"/"unload:" is the transfer-cargo cargo grammar ("good:qty|max,…").
     manifest.push(...parseCargoFlag(seg.slice(colon + 1), dir));
@@ -408,14 +409,16 @@ function parseRouteWaypointToken(tok) {
 
 // parseRouteFlag(raw) -> a non-empty ordered array of { anchor, action? } waypoints, or THROWS.
 // Semicolon-separated waypoint tokens (parseRouteWaypointToken), the same separator dispatch-vehicle's
-// --waypoints uses; an empty (or all-blank) list is refused. PURE and exported.
-function parseRouteFlag(raw) {
+// --waypoints uses; an empty (or all-blank) list is refused. Shared by dispatch-route and save-route (a
+// saved route is the SAME waypoint list, transport-model.md §11.9); `command` names the caller in an
+// error. PURE and exported.
+function parseRouteFlag(raw, command = 'dispatch-route') {
   if (typeof raw !== 'string') throw new Error(`--route must be a "w;w;…" string, got ${JSON.stringify(raw)}`);
   const tokens = raw.split(';').map((s) => s.trim()).filter((s) => s.length > 0);
   if (tokens.length === 0) {
-    throw new Error('dispatch-route: --route needs at least one waypoint (anchor[@load:…][@unload:…]), separated by ;');
+    throw new Error(`${command}: --route needs at least one waypoint (anchor[@load:…][@unload:…]), separated by ;`);
   }
-  return tokens.map(parseRouteWaypointToken);
+  return tokens.map((tok) => parseRouteWaypointToken(tok, command));
 }
 
 // dispatchRouteBody(flags) -> the POST /admin/vehicle/dispatch-route request body. PURE and exported so
@@ -492,6 +495,37 @@ function removeOutpostBody(flags) {
   };
 }
 
+// The two saved-route subcommands (transport-model.md §11.9, automation slice 2a) — thin HTTP clients
+// over POST /admin/route/save|delete. A guild's saved routes are read back with `snapshot`.
+const ROUTE_COMMANDS = Object.freeze(['save-route', 'delete-route']);
+
+// saveRouteBody(flags) -> the POST /admin/route/save request body. The route's NAME is the command's one
+// positional argument (`save-route "Ore run" --guild g1 --route "…"`), the only other positional besides
+// `tick [n]`. It must be ONE argument: an unquoted multi-word name would arrive as several words, and
+// guessing how to join them could save under a name the operator did not mean — so that throws instead.
+// The waypoints use the SAME --route grammar as dispatch-route. Whether the name is empty, and whether
+// each anchor/action is real, is the engine's validate gate, not this file's. PURE and exported.
+function saveRouteBody(flags) {
+  const guildId = requireFlag(flags, 'guild', 'save-route');
+  const words = flags._ || [];
+  if (words.length !== 1) {
+    throw new Error(`save-route: give the route name as ONE quoted argument, e.g. save-route "Ore run" --guild g1 --route "…" (got ${words.length} name arguments)`);
+  }
+  return {
+    guildId,
+    name: words[0],
+    waypoints: parseRouteFlag(requireFlag(flags, 'route', 'save-route'), 'save-route'),
+  };
+}
+
+// deleteRouteBody(flags) -> the POST /admin/route/delete request body (the route by id). PURE and exported.
+function deleteRouteBody(flags) {
+  return {
+    guildId: requireFlag(flags, 'guild', 'delete-route'),
+    routeId: requireFlag(flags, 'id', 'delete-route'),
+  };
+}
+
 module.exports = {
   parseArgs, pick, findResourceNodes, pickResourceNode, pickIdleAssetId, judgeVerify, utcOffsetMinutesFromHours,
   adjustActionFor, ADJUST_COMMANDS,
@@ -500,6 +534,7 @@ module.exports = {
   parseRouteWaypointToken, parseRouteFlag, dispatchRouteBody,
   parseCargoFlag, transferCargoBody,
   spawnOutpostBody, removeOutpostBody, OUTPOST_COMMANDS,
+  saveRouteBody, deleteRouteBody, ROUTE_COMMANDS,
   EXPECTED_COMMITMENT, EXPECTED_WINDOW_N,
 };
 
@@ -954,6 +989,38 @@ async function cmdRemoveOutpost(base, flags) {
   row('outposts', `${(out.snapshot.outposts || []).length}`);
 }
 
+// save-route / delete-route (transport-model.md §11.9, automation slice 2a): build the body (the PURE
+// saveRouteBody / deleteRouteBody) and POST it to the gated /admin/route/* endpoint. A refused action comes
+// back accepted:false -> throw -> exit 1. Prints the guild's saved routes as they now stand, so the operator
+// sees the id a save minted (or kept, for an update) without a separate `snapshot` call.
+function printSavedRoutes(snapshot, guildId) {
+  const guild = (snapshot.guilds || []).find((g) => g.id === guildId) || null;
+  const routes = (guild && guild.savedRoutes) || [];
+  row('savedRoutes', `${routes.length}`);
+  // `log`, not `row`: an id like route_player-guild_01 is wider than row's 12-character label column.
+  for (const r of routes) log(`  ${r.id}  "${r.name}" — ${r.waypoints.length} waypoint(s)`);
+}
+
+async function cmdSaveRoute(base, flags) {
+  const body = saveRouteBody(flags);
+  const out = await postJson(base, '/admin/route/save', body);
+  if (!out.accepted) throw new Error(`save-route refused: ${out.reason}`);
+  row('action', 'saveRoute');
+  row('guild', body.guildId);
+  row('name', body.name);
+  printSavedRoutes(out.snapshot, body.guildId);
+}
+
+async function cmdDeleteRoute(base, flags) {
+  const body = deleteRouteBody(flags);
+  const out = await postJson(base, '/admin/route/delete', body);
+  if (!out.accepted) throw new Error(`delete-route refused: ${out.reason}`);
+  row('action', 'deleteRoute');
+  row('guild', body.guildId);
+  row('removed', body.routeId);
+  printSavedRoutes(out.snapshot, body.guildId);
+}
+
 const USAGE = `starfare operator CLI — a thin client over the running server's API.
 
   node tools/admin.js <command> [flags]
@@ -1001,6 +1068,12 @@ Guild-Outpost spawn/remove primitive (design.md §4 — operator, exit 1 on a re
                   (one structure per hex; placed freely — range/anchor-ownership deferred)
   remove-outpost  --guild ID --id OUTPOST_ID   tear the named outpost down (id never reissued)
 
+Saved routes (transport-model.md §11.9 — operator, exit 1 on a refused action; read them back with snapshot)
+  save-route "NAME" --guild ID --route "w;w;…"
+                  save a named, origin-free route (same --route grammar as dispatch-route); a NAME the
+                  guild already uses UPDATES that route in place (same id). Quote a name with spaces.
+  delete-route    --guild ID --id ROUTE_ID     delete a saved route (id never reissued)
+
 Flags
   --base <url>   which server (default $STARFARE_BASE or ${DEFAULT_BASE})
   --seed N       name the galaxy new-galaxy/verify-cycle creates
@@ -1026,9 +1099,9 @@ Flags
                  spawn-outpost: the single hex the outpost occupies
   --condition F  spawn-vehicle: starting maintenanceCondition fraction in [0, 1] (default 1)
   --id ID        remove-vehicle / dispatch-vehicle: which vehicle id;
-                 remove-outpost: which outpost id
+                 remove-outpost: which outpost id; delete-route: which saved-route id
   --waypoints W  dispatch-vehicle: "w;w;…" route, each w = sys:<id> | out:<id> | q,r
-  --route W      dispatch-route: "w;w;…" route, each w = anchor[@load:G:N,…][@unload:G:N,…]
+  --route W      dispatch-route / save-route: "w;w;…" route, each w = anchor[@load:G:N,…][@unload:G:N,…]
   --load G:N,…   transfer-cargo: goods to load pool -> hold ("good:qty" or "good:max", comma-sep)
   --unload G:N,… transfer-cargo: goods to unload hold -> pool ("good:qty" or "good:max", comma-sep)
   --help, -h     this text
@@ -1053,6 +1126,8 @@ async function main(argv) {
     case 'transfer-cargo': await cmdTransferCargo(base, flags); return;
     case 'spawn-outpost': await cmdSpawnOutpost(base, flags); return;
     case 'remove-outpost': await cmdRemoveOutpost(base, flags); return;
+    case 'save-route': await cmdSaveRoute(base, flags); return;
+    case 'delete-route': await cmdDeleteRoute(base, flags); return;
     default:
       // The six operator adjust levers share one thin command (docs/operator-adjust.md §5).
       if (ADJUST_COMMANDS.includes(command)) { await cmdAdjust(base, command, flags); return; }
