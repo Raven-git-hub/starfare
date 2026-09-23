@@ -3501,16 +3501,34 @@ select.field{appearance:none; cursor:pointer;}
   let systemById = new Map(), guildById = new Map(), systemToGuild = new Map(), guildOutpostByKey = new Map(), gateByKey = new Map();
 
   // ---------- b2b-2: the interactive ROUTE PLANNER (transport-model.md §4/§9, design.md §18) ----------
-  // The whole in-progress route lives in ONE object. `waypoints` is the ordered turning-point anchor
-  // list — NOT including the origin (the craft's current location); `candidate` is the hex the player
-  // last clicked, proposed but not yet added (a two-step ADD → Confirm guards pans/mis-clicks). Each
-  // anchor is the engine's own location shape — { landmarkKind:'system'|'outpost', landmarkId } or a
-  // bare { q, r } — so the list the client sends is exactly what quoteDispatch/dispatchVehicle accept.
+  // The whole in-progress route lives in ONE object. `waypoints` is the ordered turning-point list —
+  // NOT including the origin (the craft's current location); `candidate` is the hex the player last
+  // clicked, proposed but not yet added (a two-step ADD → Confirm guards pans/mis-clicks). Each anchor
+  // is the engine's own location shape — { landmarkKind:'system'|'outpost', landmarkId } or a bare
+  // { q, r } — so the anchors the client sends are exactly what quoteDispatch/dispatchVehicle accept.
   // PRESENTATION ONLY (§18): the client resolves anchors to coords to DRAW and to compare hexes for the
   // dead-leg check (geometry, not an economy number); every time/fuel/credit figure comes from the
   // engine's quote, never client math.
-  let PLAN = null;              // { vehicle, origin, waypoints:[anchor,…], candidate:anchor|null, candidateArmed:bool }
+  //
+  // A WAYPOINT is `{ anchor, action? }` (transport-model.md §11.1, automation slice 1b). The `anchor`
+  // is still the ONE source for geometry — every draw / dead-leg / label read goes through `wp.anchor`.
+  // The optional `action` ({ type:'dock', manifest }) just rides alongside it: it never changes a leg,
+  // so it never changes the quote. `action` is ABSENT (not null) on a pure turning point.
+  let PLAN = null;              // { vehicle, origin, waypoints:[{anchor, action?},…], candidate:anchor|null, candidateArmed:bool }
   let planActive = false;       // true while the map is in planning mode (the click branch + draw pass read this)
+
+  // copyWaypoint(wp) -> a fresh { anchor, action? } — used wherever a waypoint list crosses between the
+  // planner and the Dispatch popup, so the two never share (and so never silently edit) the same object.
+  // An action is only ever REPLACED whole (never edited in place), so a shallow copy is enough.
+  function copyWaypoint(wp) {
+    return wp.action ? { anchor: wp.anchor, action: wp.action } : { anchor: wp.anchor };
+  }
+
+  // lastAnchor() — the anchor a NEW waypoint would follow: the last waypoint's, or the origin when the
+  // list is empty. The chip's dead-leg check and confirmCandidate both measure from it.
+  function lastAnchor() {
+    return PLAN.waypoints.length ? PLAN.waypoints[PLAN.waypoints.length - 1].anchor : PLAN.origin;
+  }
 
   // resolveAnchor(anchor) -> { q, r } | null. A bare hex is its own coords; a landmark reads its
   // seed coords (the same GAME.galaxy the map already draws from). One path for origin, waypoint, and
@@ -3541,17 +3559,17 @@ select.field{appearance:none; cursor:pointer;}
   }
 
   // The coords each waypoint follows: the leg before entry i runs from prevCoords(i) to that anchor.
-  // For i === 0 the previous anchor is the ORIGIN; otherwise it is waypoints[i-1]. Used by both the
-  // list's dead-leg flags and the draw pass.
+  // For i === 0 the previous anchor is the ORIGIN; otherwise it is waypoints[i-1]'s anchor. Used by
+  // both the list's dead-leg flags and the draw pass.
   function prevCoordsFor(i) {
-    return resolveAnchor(i === 0 ? PLAN.origin : PLAN.waypoints[i - 1]);
+    return resolveAnchor(i === 0 ? PLAN.origin : PLAN.waypoints[i - 1].anchor);
   }
 
   // deadLegAt(i) — waypoint i resolves to the same hex as the anchor before it (a zero-length leg the
   // engine would reject, §4). The list flags such a row and Finalise stays disabled until it is fixed.
   function deadLegAt(i) {
     if (!PLAN) return false;
-    return sameHex(resolveAnchor(PLAN.waypoints[i]), prevCoordsFor(i));
+    return sameHex(resolveAnchor(PLAN.waypoints[i].anchor), prevCoordsFor(i));
   }
   function anyDeadLeg() {
     if (!PLAN) return false;
@@ -3560,12 +3578,13 @@ select.field{appearance:none; cursor:pointer;}
   }
 
   // Enter planning mode for a craft. `vehicle` is the DP row (needs id/class/location); `waypoints`
-  // seeds the list (empty for a fresh Plan Route, the current list for Edit Route). Closes any open
-  // tab/panel, flies to the craft's hex at a hex-visible zoom (≥ VECTOR_ZOOM_THRESHOLD), and shows the
-  // planning overlays. The origin is the craft's own location anchor — resolved to coords for the draw.
+  // seeds the list of { anchor, action? } (empty for a fresh Plan Route, the current list — actions
+  // and all — for Edit Route). Closes any open tab/panel, flies to the craft's hex at a hex-visible zoom
+  // (≥ VECTOR_ZOOM_THRESHOLD), and shows the planning overlays. The origin is the craft's own location
+  // anchor — resolved to coords for the draw.
   function startPlanning(vehicle, waypoints) {
     if (!vehicle || !vehicle.location) return;
-    PLAN = { vehicle: vehicle, origin: vehicle.location, waypoints: (waypoints || []).slice(), candidate: null, candidateArmed: false };
+    PLAN = { vehicle: vehicle, origin: vehicle.location, waypoints: (waypoints || []).map(copyWaypoint), candidate: null, candidateArmed: false };
     planActive = true;
     const c = resolveAnchor(vehicle.location);
     document.getElementById('app').classList.add('planning');
@@ -3598,7 +3617,7 @@ select.field{appearance:none; cursor:pointer;}
   // is: at least one waypoint and no dead leg.
   function finalisePlanning() {
     if (!PLAN || !PLAN.waypoints.length || anyDeadLeg()) return;
-    const vehicle = PLAN.vehicle, waypoints = PLAN.waypoints.slice();
+    const vehicle = PLAN.vehicle, waypoints = PLAN.waypoints.map(copyWaypoint);
     exitPlanning(true); // clears the .planning class + the chip; keeps PLAN for the popup / Edit Route
     if (window.__dispatchFinalise) window.__dispatchFinalise(vehicle, waypoints);
   }
@@ -3634,7 +3653,7 @@ select.field{appearance:none; cursor:pointer;}
         '<button data-act="up" data-i="' + i + '" title="Move up"' + (i === 0 ? ' disabled' : '') + '>▲</button>' +
         '<button data-act="down" data-i="' + i + '" title="Move down"' + (i === PLAN.waypoints.length - 1 ? ' disabled' : '') + '>▼</button>' +
         '<button data-act="rm" data-i="' + i + '" title="Remove">✕</button>';
-      box.appendChild(mkRow(dead ? 'deadleg' : '', String(i + 1), anchorLabel(wp), dead ? 'zero-length leg — remove or reorder' : '', ctl));
+      box.appendChild(mkRow(dead ? 'deadleg' : '', String(i + 1), anchorLabel(wp.anchor), dead ? 'zero-length leg — remove or reorder' : '', ctl));
     });
   }
 
@@ -3652,8 +3671,7 @@ select.field{appearance:none; cursor:pointer;}
     const btns = document.getElementById('planChipButtons');
     const hint = document.getElementById('planChipHint');
     if (!chip || !PLAN || !PLAN.candidate) { if (chip) chip.classList.remove('on'); return; }
-    const prev = resolveAnchor(PLAN.waypoints.length ? PLAN.waypoints[PLAN.waypoints.length - 1] : PLAN.origin);
-    const dead = sameHex(resolveAnchor(PLAN.candidate), prev);
+    const dead = sameHex(resolveAnchor(PLAN.candidate), resolveAnchor(lastAnchor()));
     btns.innerHTML = '';
     if (!PLAN.candidateArmed) {
       const add = document.createElement('button');
@@ -3680,12 +3698,12 @@ select.field{appearance:none; cursor:pointer;}
     chip.classList.add('on');
   }
 
-  // Confirm the candidate → append it to the route (unless it would be a dead leg) and clear it.
+  // Confirm the candidate → append it to the route as a { anchor } waypoint (unless it would be a dead
+  // leg) and clear it.
   function confirmCandidate() {
     if (!PLAN || !PLAN.candidate) return;
-    const prev = resolveAnchor(PLAN.waypoints.length ? PLAN.waypoints[PLAN.waypoints.length - 1] : PLAN.origin);
-    if (sameHex(resolveAnchor(PLAN.candidate), prev)) return; // never build a zero-length leg
-    PLAN.waypoints.push(PLAN.candidate);
+    if (sameHex(resolveAnchor(PLAN.candidate), resolveAnchor(lastAnchor()))) return; // never build a zero-length leg
+    PLAN.waypoints.push({ anchor: PLAN.candidate });
     PLAN.candidate = null; PLAN.candidateArmed = false;
     document.getElementById('plan-chip').classList.remove('on');
     refreshPlanState();
@@ -4289,8 +4307,9 @@ select.field{appearance:none; cursor:pointer;}
       const hsP = galaxy.galaxyParams.hexSize;
       // resolved coords → screen point, the one conversion this pass draws through
       const scrOf = (c) => { const p = hexToPixel(c.q, c.r, hsP); return worldToScreen(p.x, p.y); };
-      // the anchor chain, origin first, resolved to coords (an unresolvable anchor drops out of the line)
-      const chain = [PLAN.origin, ...PLAN.waypoints].map(resolveAnchor);
+      // the anchor chain, origin first, resolved to coords (an unresolvable anchor drops out of the line).
+      // Only each waypoint's ANCHOR is geometry — its action (if any) plays no part in the drawn route.
+      const chain = [PLAN.origin, ...PLAN.waypoints.map(wp => wp.anchor)].map(resolveAnchor);
       // confirmed polyline — solid teal between consecutive resolved anchors
       ctx.save();
       ctx.strokeStyle = col('player', 0.85);
@@ -4325,7 +4344,7 @@ select.field{appearance:none; cursor:pointer;}
       }
       // a ring + index at each confirmed turning point
       PLAN.waypoints.forEach((wp, i) => {
-        const c = resolveAnchor(wp);
+        const c = resolveAnchor(wp.anchor);
         if (!c) return;
         const s = scrOf(c);
         ctx.save();
@@ -4831,6 +4850,7 @@ select.field{appearance:none; cursor:pointer;}
   document.getElementById('planCancel').addEventListener('click', cancelPlanning);
   // The waypoint list's reorder/remove controls — event delegation over the rows, re-costing on each
   // edit (the dead-leg sweep + Finalise gate run in refreshPlanState). Arrows only (no drag, §scope).
+  // The swaps move whole { anchor, action? } objects, so a stop's action travels with its stop.
   document.getElementById('planRows').addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-act]');
     if (!btn || !PLAN) return;
@@ -4847,7 +4867,7 @@ select.field{appearance:none; cursor:pointer;}
   // or the current one to edit); abandon discards any in-progress route (the popup calls it on close /
   // opening another craft). __fmtETA lets the popup format the quote's totalTicks the way the map's
   // tags do (ONE formatter, no second copy). PLAN's waypoints are the source of truth during planning;
-  // the popup receives a copy on Finalise and hands it back on Edit.
+  // the popup receives a copy ({ anchor, action? } each) on Finalise and hands it back on Edit.
   window.__planRoute = function (vehicle, waypoints) { startPlanning(vehicle, waypoints); };
   window.__abandonPlanning = function () { if (planActive || PLAN) exitPlanning(false); };
   window.__fmtETA = fmtETA;
@@ -10205,8 +10225,13 @@ function paintInventoryHero(d){
 
   // The popup's own state: the craft, plus the FINALISED route + its engine quote once Finalise has
   // run (the map owns the route DURING planning; the popup holds this copy for the post-finalise view
-  // and Edit Route). Reset on open/close.
+  // and Edit Route). Each waypoint is { anchor, action? } (transport-model.md §11.1) — the same shape
+  // the map planner holds. Reset on open/close.
   var DP = { vehicle: null, waypoints: [], quote: null };
+
+  // anchorsOf(waypoints) -> just the anchors, in order. The quote and the plain dispatchVehicle both
+  // take a bare anchor list (actions do not change the legs, so they never reach either).
+  function anchorsOf(waypoints){ return waypoints.map(function(w){ return w.anchor; }); }
 
   // A camelCase-splitting display name (heavyTransport -> "Heavy Transport"). Display vocabulary
   // only (§18) — a local copy, the map/trade `pretty` are out of this IIFE's scope.
@@ -10329,7 +10354,7 @@ function paintInventoryHero(d){
     // reserved (empty) action-icon slot on the right (a future load/unload/deploy indicator, §out-of-scope).
     var rows = '<div class="wp-row origin"><div class="ix">◎</div><div class="nm">' + esc(locLabel(v)) + '</div><div class="slot"></div></div>';
     DP.waypoints.forEach(function(wp, i){
-      rows += '<div class="wp-row"><div class="ix">' + (i+1) + '</div><div class="nm">' + esc(wpName(wp)) + '</div><div class="slot"></div></div>';
+      rows += '<div class="wp-row"><div class="ix">' + (i+1) + '</div><div class="nm">' + esc(wpName(wp.anchor)) + '</div><div class="slot"></div></div>';
     });
     // Time over Cost — read straight from the quote; the fuel cost is presented in CREDITS (§8.0), not
     // units. An { ok:false } quote has no figures, so those cells read "—" and Dispatch is disabled below.
@@ -10360,15 +10385,15 @@ function paintInventoryHero(d){
     $('dpDispatchBtn').addEventListener('click', onDispatch);
   }
 
-  // A waypoint's name for the popup list — a landmark reads its seed name, a bare hex its "(q, r)",
-  // the same vocabulary the map's list uses.
-  function wpName(wp){
-    if(!wp) return '—';
-    if(typeof wp.q === 'number' && typeof wp.r === 'number'){
-      return (window.__landmarkNameAt && window.__landmarkNameAt(wp.q, wp.r)) || ('(' + wp.q + ', ' + wp.r + ')');
+  // A waypoint ANCHOR's name for the popup list — a landmark reads its seed name, a bare hex its
+  // "(q, r)", the same vocabulary the map's list uses. Callers pass `wp.anchor`, not the waypoint.
+  function wpName(a){
+    if(!a) return '—';
+    if(typeof a.q === 'number' && typeof a.r === 'number'){
+      return (window.__landmarkNameAt && window.__landmarkNameAt(a.q, a.r)) || ('(' + a.q + ', ' + a.r + ')');
     }
-    if(wp.landmarkKind === 'system') return (window.__systemName && window.__systemName(wp.landmarkId)) || wp.landmarkId;
-    if(wp.landmarkKind === 'outpost') return (window.__outpostName && window.__outpostName(wp.landmarkId)) || wp.landmarkId;
+    if(a.landmarkKind === 'system') return (window.__systemName && window.__systemName(a.landmarkId)) || a.landmarkId;
+    if(a.landmarkKind === 'outpost') return (window.__outpostName && window.__outpostName(a.landmarkId)) || a.landmarkId;
     return '—';
   }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); }
@@ -10400,7 +10425,7 @@ function paintInventoryHero(d){
     var q;
     try {
       var res = await fetch('/vehicle/quote', { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ guildId: gid, vehicleId: v.id, waypoints: DP.waypoints }) });
+        body: JSON.stringify({ guildId: gid, vehicleId: v.id, waypoints: anchorsOf(DP.waypoints) }) });
       q = await res.json();
     } catch(err){
       q = { ok:false, reason:'The quote could not be reached: ' + (err && err.message || err) };
@@ -10421,7 +10446,7 @@ function paintInventoryHero(d){
     var btn = $('dpDispatchBtn'); if(btn){ btn.disabled = true; btn.textContent = 'Dispatching…'; }
     var out;
     try {
-      out = await window.__sendAction({ type:'dispatchVehicle', guildId: gid, vehicleId: v.id, waypoints: DP.waypoints });
+      out = await window.__sendAction({ type:'dispatchVehicle', guildId: gid, vehicleId: v.id, waypoints: anchorsOf(DP.waypoints) });
     } catch(err){
       if(btn){ btn.disabled = false; btn.textContent = 'Dispatch'; }
       showDispatchRefuse('The Syndicate could not be reached: ' + (err && err.message || err));
