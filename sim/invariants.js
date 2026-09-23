@@ -92,6 +92,7 @@ const {
   getSite, getLandmark, getSystem, getTerranHomeworld, isHexInBounds, seedLandmarkAtHex,
 } = require('./seed.js');
 const { outpostNumberOf } = require('./outposts.js');
+const { savedRouteId, savedRouteNumberOf } = require('./routes.js');
 const { getRecipe } = require('./recipes.js');
 
 function sumFuelInTransit(state) {
@@ -1288,8 +1289,18 @@ function routeViolation(route) {
   if (!Number.isInteger(route.cursor) || route.cursor < 0 || route.cursor >= route.waypoints.length) {
     return { reason: 'route.cursor must be an integer in [0, waypoints.length)', cursor: route.cursor, waypoints: route.waypoints.length };
   }
-  for (let i = 0; i < route.waypoints.length; i += 1) {
-    const wp = route.waypoints[i];
+  return waypointListViolation(route.waypoints);
+}
+
+// waypointListViolation(waypoints) -> a detail object naming the first malformed { anchor, action? }
+// waypoint in an array, or null when every one is well-formed (transport-model.md §11.1). THE ONE
+// spelling of the per-waypoint check, shared by a craft's journalled `route` (routeViolation above) and
+// a guild's SAVED routes (checkSavedRouteIntegrity below) — both hold the SAME §11.1 list, so they are
+// judged identically. Each waypoint's `anchor` resolves (resolveVehicleLocation), and any `action` is a
+// { type: 'dock', manifest } with a non-empty manifest of well-formed lines.
+function waypointListViolation(waypoints) {
+  for (let i = 0; i < waypoints.length; i += 1) {
+    const wp = waypoints[i];
     if (!wp || typeof wp !== 'object' || Array.isArray(wp)) {
       return { reason: `waypoint ${i} must be a { anchor, action? } object`, waypoint: wp };
     }
@@ -1795,6 +1806,79 @@ function checkOutpostIntegrity(state) {
   return out;
 }
 
+// Saved-route integrity — the structural guard for each guild's SAVED ROUTES (transport-model.md
+// §11.9, roadmap 2.2 automation slice 2a). `saveRoute` / `deleteRoute` (sim/actions.js) MAINTAIN these
+// properties; this ASSERTS them every tick, so a save-reload, a future slice or a client bug that writes
+// a malformed saved route fails loudly rather than surfacing later as a bad "Load Route". A pure read.
+//
+// Per guild — an ABSENT `savedRoutes` is legal (omit-when-empty, the no-op path). A PRESENT one must be:
+//   - a NON-EMPTY array (an empty one should have been dropped — the omit-when-empty discipline that
+//     keeps a route-less guild byte-identical to pre-slice);
+// and each row:
+//   - an id of the form `route_<guildId>_NN` for THIS guild, unique within it (ids never repeat, §15.2);
+//   - a `name` that is a non-empty, already-trimmed string, UNIQUE within the guild — the upsert keys on
+//     the name (§11.9 "a name that already exists UPDATES that route"), so two rows sharing one would
+//     make it ambiguous which the next save updates;
+//   - a non-empty `waypoints` list, each { anchor, action? } well-formed (waypointListViolation — the
+//     SAME check a craft's journalled route gets);
+//   - an `updatedAtTick` that is a whole tick ≥ 0 (§15.2 — every mutation records its tick).
+// And `savedRouteSerial` ≥ the highest live suffix — the monotonic counter can never sit below a number
+// it has handed out, or a future save could re-issue a live id.
+function checkSavedRouteIntegrity(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    const routes = g.savedRoutes;
+    if (routes === undefined) continue;
+    if (!Array.isArray(routes) || routes.length === 0) {
+      out.push({ rule: 'saved-routes-omit-when-empty (§11.9)', where: `guild:${g.id}.savedRoutes`, detail: { savedRoutes: routes } });
+      continue;
+    }
+    const seenIds = new Set();
+    const seenNames = new Set();
+    let maxSuffix = 0;
+    for (const r of routes) {
+      const where = `guild:${g.id}.savedRoute:${r && r.id}`;
+      if (!r || typeof r !== 'object' || Array.isArray(r)) {
+        out.push({ rule: 'saved-route-is-an-object (§11.9)', where, detail: { row: r } });
+        continue;
+      }
+      // The id must be exactly what savedRouteId would mint for this guild — re-minting it from its own
+      // suffix and comparing catches a wrong prefix, another guild's id, or a missing number in one test.
+      const n = savedRouteNumberOf(r.id);
+      if (n === null || n < 1 || r.id !== savedRouteId(g.id, n)) {
+        out.push({ rule: 'saved-route-id-form (route_<guild>_NN)', where, detail: { id: r.id, guildId: g.id } });
+      } else if (n > maxSuffix) {
+        maxSuffix = n;
+      }
+      if (seenIds.has(r.id)) {
+        out.push({ rule: 'saved-route-id-unique', where, detail: { id: r.id } });
+      }
+      seenIds.add(r.id);
+      if (typeof r.name !== 'string' || r.name.length === 0 || r.name.trim() !== r.name) {
+        out.push({ rule: 'saved-route-name-non-empty-trimmed (§11.9)', where: `${where}.name`, detail: { name: r.name } });
+      } else if (seenNames.has(r.name)) {
+        out.push({ rule: 'saved-route-name-unique (§11.9 upsert key)', where: `${where}.name`, detail: { name: r.name } });
+      } else {
+        seenNames.add(r.name);
+      }
+      if (!Array.isArray(r.waypoints) || r.waypoints.length === 0) {
+        out.push({ rule: 'saved-route-has-waypoints (§11.9)', where: `${where}.waypoints`, detail: { waypoints: r.waypoints } });
+      } else {
+        const wv = waypointListViolation(r.waypoints);
+        if (wv) out.push({ rule: 'saved-route-waypoints-valid (§11.1)', where: `${where}.waypoints`, detail: wv });
+      }
+      if (!Number.isInteger(r.updatedAtTick) || r.updatedAtTick < 0) {
+        out.push({ rule: 'saved-route-updatedAtTick-is-a-tick (§15.2)', where: `${where}.updatedAtTick`, detail: { updatedAtTick: r.updatedAtTick } });
+      }
+    }
+    const serial = g.savedRouteSerial || 0; // omitted-when-0 (state.js): absent means none ever minted
+    if (serial < maxSuffix) {
+      out.push({ rule: 'saved-route-serial-monotonic', where: `guild:${g.id}.savedRouteSerial`, detail: { savedRouteSerial: serial, highestLiveSuffix: maxSuffix } });
+    }
+  }
+  return out;
+}
+
 // Node lockouts — the self-denial bars written when an ordinary-licensed venture is torn
 // down mid-term (state.nodeLockouts, docs/venture-teardown.md §3.3). The FIRST "this site is
 // unavailable with no venture on it" fact in the engine, so it gets its own tripwire. Each
@@ -1894,6 +1978,7 @@ function checkInvariants(state, tick) {
     ...checkOrders(state),
     ...checkClaimIntegrity(state),
     ...checkOutpostIntegrity(state),
+    ...checkSavedRouteIntegrity(state),
     ...checkNodeLockouts(state),
     ...checkGuildHome(state),
   ];

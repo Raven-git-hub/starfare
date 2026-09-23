@@ -41,10 +41,9 @@ const { SYNDICATE_SELLABLE_KINDS, BUILD_TICKS, priceAssetForPurchase } = require
 const { BUILDABLE_VEHICLE_KINDS, vehicleSpec, resolveVehicleLocation, vehicleCoords } = require('./vehicles.js');
 const { outpostDockTurnaround } = require('./outposts.js');
 const { usedSpace, copyManifestLine } = require('./manifest.js');
-// copyRouteWaypoint (from actions.js — the ONE spelling of the { anchor, action? } waypoint copy,
-// shared so a snapshotted route can't drift from the journalled one). actions.js does not require
-// snapshot.js, so this top-level edge is cycle-free.
-const { copyRouteWaypoint } = require('./actions.js');
+// copyRouteWaypoint (sim/routes.js — the ONE spelling of the { anchor, action? } waypoint copy, shared
+// so a snapshotted route — a craft's journalled one or a guild's saved one — can't drift from the stored).
+const { copyRouteWaypoint } = require('./routes.js');
 const { getSite, getLandmark, getStarterSystems, getTerranHomeworld } = require('./seed.js');
 const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
@@ -703,6 +702,8 @@ function computeAttention(state) {
 //                               cargo, capacity, used,              //   hold + space figures (2.2 Outpost Mgr)
 //                               dockStatus?, location?, trip? } ],  //   trip: { legs[{from,to,isToll,
 //                                                                   //   departureTick,arrivalTick}], arrivalTick, fuelCost }
+//                 savedRoutes?: [ { id, name,                     // §11.9 saved routes (2.2 automation 2a),
+//                                   waypoints: [ { anchor, action? } ] } ], // omit-when-empty, stored order
 //                 productionProfile: { ... } } ],               // §5 profile, sparse as stored
 //     production: [ { guildId,                                  // previewProduction(state)
 //       systems: [ { systemId, mines, goods, lines, refineries,     // resolved per-system
@@ -1328,6 +1329,19 @@ function buildSnapshot(state) {
       // mutating the snapshot can't alias into engine state.
       vehicles: (g.vehicles || []).map((v) => snapshotVehicleRow(v, fuelPrice, dockStatusByVehicle.get(v.id)))
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+      // savedRoutes: the guild's SAVED ROUTES (transport-model.md §11.9) — what the client's "Load Route"
+      // list reads (slice 2b). Each row is `{ id, name, waypoints: [{ anchor, action? }] }`, FRESH-copied
+      // (copyRouteWaypoint copies each anchor and manifest line) so a consumer mutating the snapshot can
+      // never alias into engine state. In STORED order — the order the routes were first saved (an upsert
+      // keeps a route's place). PRESENT ONLY when the guild has one (omit-when-empty, mirroring the state),
+      // so a guild with no saved route carries no key and the snapshot is byte-identical to pre-slice.
+      ...(g.savedRoutes && g.savedRoutes.length
+        ? {
+            savedRoutes: g.savedRoutes.map((r) => ({
+              id: r.id, name: r.name, waypoints: r.waypoints.map(copyRouteWaypoint),
+            })),
+          }
+        : {}),
       // buyOrder / sellOrder: the guild's HELD Syndicate orders, echoed with the engine-computed
       // per-line `space`, the Σ `totalUnits`/`totalSpace`, the `haulerTier` and the `overCap` flag
       // (docs/syndicate-orders.md §4) — so the trade-floor gauge and the finalise popup render the

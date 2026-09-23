@@ -979,6 +979,33 @@ boundary so the later hex-map swap doesn't touch it.
     repetition + the reposition rule + pause/resume (3); the anchor-gone pause/flag UI (3); a route-mode hold
     view in the editor (projecting the hold at a mid-route stop — revisit if playtest shows it confuses);
     actions at the origin (not a waypoint, §11.1).
+  - **slice 2a — engine (the saved-route store + the zero-length reposition skip).** 🔶 *IN PROGRESS (23-09-26
+    — engine + operator CLI, NO client; contract transport-model.md §11.9 / §11.4 / §11.2).*
+    **(1) The store** (`sim/routes.js` (new), `sim/state.js`, `sim/actions.js`, `sim/invariants.js`,
+    `sim/snapshot.js`; tripwires `sim/tests/saved-routes.test.js` (new)). A guild owns **`savedRoutes`** — rows
+    `{ id, name, waypoints: [{ anchor, action? }], updatedAtTick }` built by `createSavedRoute` (waypoints
+    DEEP-copied), **omit-when-empty** — and **`savedRouteSerial`** (**omit-when-0**), the exact sibling of
+    `vehicleSerial` / `outpostSerial`: ids are `route_<guild>_NN` (`sim/routes.js`, the `outpost_<guild>_NN`
+    mirror), bumped at every create, never decremented. Two journalled actions, the spawn/remove validate→apply
+    shape: **`saveRoute { guildId, name, waypoints }`** is a NAME-BASED UPSERT — a new name mints a fresh id; a
+    name the guild already uses updates that row's waypoints IN PLACE (same id, same list position, serial
+    unchanged); it moves no goods/fuel/credits and stamps `updatedAtTick`. Validate: guild exists; `name` a
+    non-empty string after trim; `waypoints` non-empty, each checked by **`routeWaypointError`** — the ONE
+    per-waypoint gate now shared with `dispatchRouteWithActions`'s validate (anchor resolves; action, if any, a
+    `{ type:'dock', manifest }` with a §4 manifest via `manifestError`). A saved route is ORIGIN-FREE, so there
+    is no leg-length or fuel check at save time (those are the dispatch's). **`deleteRoute { guildId, routeId }`**
+    removes a row the guild owns; an emptied store drops the key. `checkSavedRouteIntegrity` asserts every tick:
+    a present store is a non-empty array; each id is `route_<guild>_NN` for its guild and unique; each name a
+    non-empty trimmed string, unique within the guild (the upsert key); each waypoint list non-empty and
+    well-formed (`waypointListViolation`, extracted from `routeViolation` so a craft's route and a saved route are
+    judged by one check); `updatedAtTick` a whole tick; `savedRouteSerial ≥` the highest live suffix. The
+    snapshot surfaces each guild's `savedRoutes` as fresh `{ id, name, waypoints }` copies in stored order,
+    omit-when-empty. `copyRouteWaypoint` moved from `sim/actions.js` to the new `sim/routes.js` so `state.js` can
+    share it without a require cycle. **Slice-local shape calls:** the name is stored TRIMMED and matched
+    exactly otherwise (case and inner spaces count — "Ore run" ≠ "ore run"); the row stamps `updatedAtTick` (the
+    tick of the LAST save, since an upsert rewrites it — the §11.9 "stamps its tick"); snapshot order is stored
+    (first-saved) order. **A NO-OP on a galaxy with no saved route** (both keys omitted; persist/determinism/
+    galactic-supply goldens byte-identical). Sim suite 1,453 → **1,472 green** (`saved-routes.test.js` +19).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*

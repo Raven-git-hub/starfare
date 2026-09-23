@@ -1,7 +1,7 @@
 'use strict';
 
 const {
-  createGuild, createVenture, createAsset, createVehicle, createOutpost,
+  createGuild, createVenture, createAsset, createVehicle, createOutpost, createSavedRoute,
 } = require('./state.js');
 const {
   isStarterSystem, getTerranHomeworld, getSite, getSystem, isHexInBounds, seedLandmarkAtHex,
@@ -21,6 +21,9 @@ const {
 } = require('./vehicles.js');
 const { outpostId, nextOutpostSerial, outpostDockTurnaround } = require('./outposts.js');
 const { resolveManifest, usedSpace, manifestAmountError, copyManifestLine } = require('./manifest.js');
+const {
+  copyRouteWaypoint, savedRouteId, nextSavedRouteSerial,
+} = require('./routes.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { checkQuote, quotedPrice } = require('./price-ring.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
@@ -128,20 +131,6 @@ function buildSingleLegTrip(craft, toAnchor, dispatchTick) {
     from: leg.from, to: leg.to, isToll: false, departureTick: dispatchTick, arrivalTick,
   };
   return { legs: [scheduled], dispatchTick, arrivalTick };
-}
-
-// copyRouteWaypoint(wp) -> a FRESH copy of a { anchor, action? } route waypoint (transport-model.md
-// §11.1) — the anchor object copied, and any action's manifest lines copied in canonical shape
-// (copyManifestLine), so a stored/snapshotted route can never alias the caller's arrays. THE ONE
-// spelling of the waypoint copy, shared by the dispatch apply (journalling the route onto the craft)
-// and the snapshot (surfacing it for the later client). Omit-when-absent: a no-action waypoint carries
-// no `action` key, exactly as it was authored.
-function copyRouteWaypoint(wp) {
-  const copy = { anchor: { ...wp.anchor } };
-  if (wp.action) {
-    copy.action = { type: wp.action.type, manifest: wp.action.manifest.map(copyManifestLine) };
-  }
-  return copy;
 }
 
 // quoteDispatch(state, { guildId, vehicleId, waypoints }) -> { ok: true, legs, totalTicks, totalUnits,
@@ -730,6 +719,26 @@ function createDispatchRouteWithActionsAction({ guildId, vehicleId: vId, waypoin
   return { type: 'dispatchRouteWithActions', guildId, vehicleId: vId, waypoints };
 }
 
+// saveRoute: store a NAMED, origin-free route on the guild so it can be loaded onto any craft later
+// (transport-model.md §11.9, roadmap 2.2 automation slice 2a). `waypoints` is the SAME §11.1 list a
+// dispatchRouteWithActions takes (`[{ anchor, action? }]`). NAME-BASED UPSERT: a name the guild is not
+// yet using CREATES a saved route (a fresh `route_<guild>_NN` id); a name it already uses UPDATES that
+// route's waypoints in place (same id). Pure guild-owned bookkeeping — it moves no goods, fuel or credits.
+function createSaveRouteAction({ guildId, name, waypoints }) {
+  if (guildId === undefined) throw new Error('createSaveRouteAction: guildId is required');
+  if (name === undefined) throw new Error('createSaveRouteAction: name is required');
+  if (waypoints === undefined) throw new Error('createSaveRouteAction: waypoints is required');
+  return { type: 'saveRoute', guildId, name, waypoints };
+}
+
+// deleteRoute: remove one of the guild's saved routes by id (transport-model.md §11.9). The guild's
+// saved-route serial is NOT decremented, so the deleted id is never reissued. Rename is delete + re-save.
+function createDeleteRouteAction({ guildId, routeId }) {
+  if (guildId === undefined) throw new Error('createDeleteRouteAction: guildId is required');
+  if (routeId === undefined) throw new Error('createDeleteRouteAction: routeId is required');
+  return { type: 'deleteRoute', guildId, routeId };
+}
+
 // setWindowN: set the single engine-wide accrual window length `state.windowN`. The
 // codebase's FIRST state-scoped action — window length is engine-wide state, not a
 // guild's, so there is NO guildId. An integer ≥ 1, settable ONLY before the run
@@ -944,6 +953,34 @@ function manifestError(manifest) {
     // neither (design.md §4). The ONE spelling of that shape lives in sim/manifest.js.
     const amountError = manifestAmountError(line);
     if (amountError) return amountError;
+  }
+  return null;
+}
+
+// routeWaypointError(wp, i) -> a reason string for the first thing wrong with ONE { anchor, action? }
+// route waypoint (transport-model.md §11.1), or null when it is well-formed. THE ONE spelling of the
+// per-waypoint gate, shared by the `dispatchRouteWithActions` validate and the `saveRoute` validate — so
+// a route saved for later and a route dispatched now are judged identically (§11.9 "the SAME per-waypoint
+// checks"). It checks only what a waypoint is ON ITS OWN: the anchor resolves (a landmark that exists or
+// an in-bounds hex), and the action, if present, is a { type: 'dock', manifest } with a well-formed §4
+// manifest. Anything that needs a CRAFT — leg lengths, fuel, a spycraft's empty hold — is the dispatch's
+// own gate, since a saved route has no craft and no origin. `i` numbers the waypoint in the reason.
+function routeWaypointError(wp, i) {
+  if (!wp || typeof wp !== 'object' || Array.isArray(wp)) {
+    return `waypoint ${i} must be a { anchor, action? } object, got ${JSON.stringify(wp)}`;
+  }
+  // The same wording dispatchRoute uses for an unresolvable anchor, so either gate reads the same.
+  if (resolveVehicleLocation(wp.anchor) === null) {
+    return `waypoint ${i} does not resolve to a valid anchor — a landmark { landmarkKind: "system"|"outpost", landmarkId } that resolves, or an in-bounds hex { q, r }`;
+  }
+  if (wp.action !== undefined) {
+    // The only action type today is 'dock' (§11.1 — the tag is what lets later types slot in).
+    if (!wp.action || typeof wp.action !== 'object' || wp.action.type !== 'dock') {
+      return `waypoint ${i} action must be { type: "dock", manifest } (the only action type is "dock", §11.1), got ${JSON.stringify(wp.action)}`;
+    }
+    // The manifest is judged exactly as a manual transferCargo manifest is (the shared gate).
+    const mError = manifestError(wp.action.manifest);
+    if (mError) return `waypoint ${i} action: ${mError}`;
   }
   return null;
 }
@@ -2355,30 +2392,20 @@ function validateAction(state, action) {
         : `not idle (status ${JSON.stringify(craft.status)}) — only an idle craft dispatches`;
       return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is ${why}` };
     }
-    // The waypoints must be a NON-EMPTY ordered array of { anchor, action? } objects (§11.1). The
-    // ANCHORS are validated + priced through `dispatchRoute` (the one home) below; here we check the
-    // per-waypoint SHAPE and any ACTION, refuse-whole on the first bad one.
+    // The waypoints must be a NON-EMPTY ordered array of { anchor, action? } objects (§11.1). Each is
+    // checked ON ITS OWN by the shared `routeWaypointError` (the same gate `saveRoute` uses), refuse-whole
+    // on the first bad one; the legs BETWEEN them are built + priced through `dispatchRoute` below.
     if (!Array.isArray(action.waypoints) || action.waypoints.length === 0) {
       return { valid: false, reason: 'waypoints must be a non-empty ordered array of { anchor, action? } waypoints' };
     }
     for (let i = 0; i < action.waypoints.length; i += 1) {
       const wp = action.waypoints[i];
-      if (!wp || typeof wp !== 'object' || Array.isArray(wp)) {
-        return { valid: false, reason: `waypoint ${i} must be a { anchor, action? } object, got ${JSON.stringify(wp)}` };
-      }
-      if (wp.action !== undefined) {
-        // The only action type today is 'dock' (§11.1 — the tag is what lets later types slot in).
-        if (!wp.action || typeof wp.action !== 'object' || wp.action.type !== 'dock') {
-          return { valid: false, reason: `waypoint ${i} action must be { type: "dock", manifest } (the only action type is "dock", §11.1), got ${JSON.stringify(wp.action)}` };
-        }
-        // A capacity-0 craft (spycraft) carries no cargo, so an action it can never perform is a
-        // whole-route refusal (§11 — validate whole, refuse whole), not a silent no-op on arrival.
-        if (craft.capacity === 0) {
-          return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} (class ${JSON.stringify(craft.class)}) carries no cargo (capacity 0) and cannot run a route with an action (§11)` };
-        }
-        // The manifest is judged exactly as a manual transferCargo manifest is (the shared gate).
-        const mError = manifestError(wp.action.manifest);
-        if (mError) return { valid: false, reason: `waypoint ${i} action: ${mError}` };
+      const wpError = routeWaypointError(wp, i);
+      if (wpError) return { valid: false, reason: wpError };
+      // A capacity-0 craft (spycraft) carries no cargo, so an action it can never perform is a
+      // whole-route refusal (§11 — validate whole, refuse whole), not a silent no-op on arrival.
+      if (wp.action !== undefined && craft.capacity === 0) {
+        return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} (class ${JSON.stringify(craft.class)}) carries no cargo (capacity 0) and cannot run a route with an action (§11)` };
       }
     }
     // Build + price the WHOLE route (dispatchRoute is the one home): leg 0 from the craft's location
@@ -2392,6 +2419,45 @@ function validateAction(state, action) {
     const available = guild.fuelHoard + (guild.deuteriumFuel || 0);
     if (available < route.totalUnits) {
       return { valid: false, reason: `route burns ${route.totalUnits} fuel units up front but the guild holds ${available} (hoard ${guild.fuelHoard} + contraband ${guild.deuteriumFuel || 0}) — refused whole (transport-model.md §11.3)` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'saveRoute') {
+    // transport-model.md §11.9: store a named, origin-free route on the guild. Refuse WHOLE on the first
+    // bad field — nothing is written unless every waypoint passes.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    // The name is the upsert key, so it must be real text. It is compared and stored TRIMMED (apply
+    // below), so a name that is only whitespace is as empty as "".
+    if (typeof action.name !== 'string' || action.name.trim().length === 0) {
+      return { valid: false, reason: `name must be a non-empty string, got ${JSON.stringify(action.name)}` };
+    }
+    if (!Array.isArray(action.waypoints) || action.waypoints.length === 0) {
+      return { valid: false, reason: 'waypoints must be a non-empty ordered array of { anchor, action? } waypoints' };
+    }
+    // The SAME per-waypoint gate dispatchRouteWithActions runs (§11.9). A saved route is ORIGIN-FREE —
+    // there is no craft yet — so there is deliberately no leg-length or fuel check here: those are
+    // judged when the route is dispatched, from wherever the craft then is.
+    for (let i = 0; i < action.waypoints.length; i += 1) {
+      const wpError = routeWaypointError(action.waypoints[i], i);
+      if (wpError) return { valid: false, reason: wpError };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'deleteRoute') {
+    // transport-model.md §11.9: remove one of the guild's saved routes by id. Reject only an id the
+    // guild does not hold (scanned within this guild — a guild deletes only its own routes).
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    const route = (guild.savedRoutes || []).find((r) => r.id === action.routeId);
+    if (!route) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} has no saved route ${JSON.stringify(action.routeId)}` };
     }
     return { valid: true };
   }
@@ -3588,6 +3654,44 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'saveRoute') {
+    // transport-model.md §11.9 — NAME-BASED UPSERT. The name is stored TRIMMED, so " Ore run " and
+    // "Ore run" are the same route (the match is otherwise exact: case and inner spaces count).
+    // It moves no goods, fuel or credits, so there is nothing to conserve and no galacticSupply refresh.
+    const guild = findGuild(next, action.guildId);
+    const name = action.name.trim();
+    const existing = (guild.savedRoutes || []).find((r) => r.name === name);
+    if (existing) {
+      // A name the guild already uses: UPDATE that route in place — same id, same place in the list,
+      // new waypoints (fresh copies, never the caller's objects). The serial does NOT move: no id minted.
+      existing.waypoints = action.waypoints.map(copyRouteWaypoint);
+      existing.updatedAtTick = next.tick; // §15.2: the save is a mutation — record its tick
+      return next;
+    }
+    // A new name: CREATE a route from the guild's monotonic serial (bumped, never reused), the same
+    // mint shape spawnVehicle / spawnOutpost use. createSavedRoute deep-copies the waypoints.
+    const serial = nextSavedRouteSerial(guild);
+    guild.savedRouteSerial = serial;
+    if (!Array.isArray(guild.savedRoutes)) guild.savedRoutes = [];
+    guild.savedRoutes.push(createSavedRoute({
+      id: savedRouteId(action.guildId, serial),
+      name,
+      waypoints: action.waypoints,
+      updatedAtTick: next.tick,
+    }));
+    return next;
+  }
+
+  if (action.type === 'deleteRoute') {
+    // transport-model.md §11.9: drop the row. The serial is NOT decremented, so the id is never reissued.
+    // When the last route goes, the key goes too (omit-when-empty), so the guild is byte-identical to one
+    // that never saved a route. (savedRouteSerial stays — it remembers which numbers are spent.)
+    const guild = findGuild(next, action.guildId);
+    guild.savedRoutes = guild.savedRoutes.filter((r) => r.id !== action.routeId);
+    if (guild.savedRoutes.length === 0) delete guild.savedRoutes;
+    return next;
+  }
+
   if (action.type === 'setWindowN') {
     // Set the single engine-wide window length. Setup-only (validate refused it once
     // tick > 0), so this only ever writes tick-0 state. No guild is resolved — this
@@ -3668,12 +3772,14 @@ module.exports = {
   createDispatchVehicleAction,
   createTransferCargoAction,
   createDispatchRouteWithActionsAction,
+  createSaveRouteAction,
+  createDeleteRouteAction,
   quoteDispatch,
   // Shared with sim/tick.js's chained-route execution (the automation layer, §11.2): the single-leg
-  // trip builder, the own-Outpost-at-a-craft lookup, and the { anchor, action? } waypoint copy.
+  // trip builder and the own-Outpost-at-a-craft lookup. (The { anchor, action? } waypoint copy lives in
+  // sim/routes.js, so state.js can share it too.)
   buildSingleLegTrip,
   ownedOutpostAtCraft,
-  copyRouteWaypoint,
   validateAction,
   applyAction,
   intake,

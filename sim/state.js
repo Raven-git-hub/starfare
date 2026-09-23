@@ -31,6 +31,7 @@ const { seedPriceRing, clonePriceRing } = require('./price-ring.js');
 const { ASSET_CONDITION_NEW } = require('./assets.js');
 const { REFERENCE_FUEL_PRICE } = require('./fuel.js');
 const { OUTPOST_CAPACITY, OUTPOST_DOCK_SLOTS } = require('./outposts.js');
+const { copyRouteWaypoint } = require('./routes.js');
 const { DEUTERIUM_INFLUX_PER_CYCLE } = require('./issuance.js');
 
 // cloneShipments(list) -> a deep-enough copy of the IN-FLIGHT rows. `cargo` is the
@@ -104,6 +105,8 @@ function createGuild({
   vehicles = [],
   vehicleSerial = 0,
   outpostSerial = 0,
+  savedRoutes = [],
+  savedRouteSerial = 0,
   events = [],
   eventSeq = 0,
 }) {
@@ -366,6 +369,19 @@ function createGuild({
     // `checkOutpostIntegrity`; OMITTED when 0 so a guild that has placed no outpost carries no key
     // and serializes byte-identically to pre-slice (invariant 9).
     ...(outpostSerial !== 0 ? { outpostSerial } : {}),
+    // savedRoutes: the guild's SAVED ROUTES (transport-model.md §11.9) — named, origin-free waypoint
+    // lists the guild can load onto any craft. Nested here, a sibling of `vehicles`, because a saved
+    // route is guild-owned bookkeeping: ownership is "the guild whose array holds it". Each row goes
+    // through createSavedRoute, which DEEP-copies its waypoints so a caller's array can never alias
+    // into engine state. OMITTED when empty, exactly like `assets` above: a guild with no saved route
+    // carries NO key and serializes byte-identically to pre-slice (the determinism no-op, invariant 9).
+    ...(Array.isArray(savedRoutes) && savedRoutes.length ? { savedRoutes: savedRoutes.map(createSavedRoute) } : {}),
+    // savedRouteSerial: the per-guild MONOTONIC saved-route mint counter, the exact sibling of
+    // `vehicleSerial` / `outpostSerial` above. Bumped at every CREATE (a `saveRoute` under a new name),
+    // never on delete and never on an in-place update, so a deleted route's id (`route_<guild>_NN`) is
+    // never reissued. STORED (a delete would let a live-derived max re-hand a number), guarded by
+    // `checkSavedRouteIntegrity`; OMITTED when 0 so a guild that never saved a route carries no key.
+    ...(savedRouteSerial !== 0 ? { savedRouteSerial } : {}),
   };
 }
 
@@ -846,6 +862,33 @@ function createOutpost({
   };
 }
 
+// Saved route (OWNED, transport-model.md §11.9 — a row in `guild.savedRoutes`). A NAMED, ORIGIN-FREE
+// route the guild can load onto any craft: `waypoints` is the SAME §11.1 list a dispatched route uses
+// (`[{ anchor, action? }]`, each action a `{ type: 'dock', manifest }`). It stores NO origin and NO
+// repeat setting — both are launch-time choices (§11.4 / §11.5).
+//
+// `waypoints` is DEEP-COPIED through `copyRouteWaypoint` (the one waypoint copy, sim/routes.js), so a
+// caller's array — or the action object it came from — can never alias into engine state.
+// `updatedAtTick` is REQUIRED: every mutation records its tick (§15.2), and a saved route is only ever
+// written by `saveRoute`, which knows the tick. It is the tick of the LAST save — a `saveRoute` under an
+// existing name updates the row in place (the upsert), so "updated" rather than "created".
+//
+// This file ASSEMBLES the shape; legality — the anchors resolve, the actions are well-formed, the id
+// matches the guild — is `saveRoute`'s validate gate and `checkSavedRouteIntegrity` (sim/actions.js /
+// sim/invariants.js), the same assemble-here / judge-there division the other constructors keep.
+function createSavedRoute({ id, name, waypoints, updatedAtTick }) {
+  if (id === undefined) throw new Error('createSavedRoute: id is required');
+  if (name === undefined) throw new Error('createSavedRoute: name is required');
+  if (waypoints === undefined) throw new Error('createSavedRoute: waypoints is required');
+  if (updatedAtTick === undefined) throw new Error('createSavedRoute: updatedAtTick is required');
+  return {
+    id,
+    name,
+    waypoints: waypoints.map(copyRouteWaypoint),
+    updatedAtTick,
+  };
+}
+
 // cloneQueueEntry / cloneSlotEntry — deep-copy one dock entry so a restored save or a scenario that
 // HANDS ONE IN can never alias into engine state (createOutpost's copy discipline). The manifest is
 // copied line by line ({ dir, good, qty }, the validated transfer shape).
@@ -1119,6 +1162,7 @@ module.exports = {
   createAsset,
   createVehicle,
   createOutpost,
+  createSavedRoute,
   createReserve,
   createSyndicate,
   createState,
