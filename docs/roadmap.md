@@ -1055,7 +1055,7 @@ boundary so the later hex-map swap doesn't touch it.
     anchor-gone check and pause/flag surfacing (3); soft re-validation at load (2b, client); rename (delete +
     re-save, §11.9). **Carried to 2b:** `quoteDispatch` (the Finalise quote) still refuses a zero-length first leg
     — a route loaded onto a craft already at W1 will need the quote to learn the same skip. **Two rulings flagged on
-    the decision checklist** (both built conservatively): a one-waypoint route at the craft's own berth, and a
+    the decision checklist** (both built conservatively, and SINCE RULED 23-09-26 — see the checklist): a one-waypoint route at the craft's own berth, and a
     skipped W1 whose action has no store.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
@@ -1196,6 +1196,10 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   one-stop route at the craft's berth instead run its action in place, so a one-stop SAVED route works from its
   own stop? Needs a ruling before 2b's Load Route makes it easy to reach.
 
+    **RULED 23-09-26 — RUN IT IN PLACE.** A one-stop route dispatched from that very stop resolves its
+    action in place and ends idle there (no leg, no fuel), not refused (transport-model.md §11.9). Small
+    engine follow-up (slice 2a.1), before 2b's Load Route.
+
 - **Actioned route — a skipped W1 whose action has no store** — *surfaced 23-09-26 by 2.2 automation slice 2a.*
   When the craft already sits on W1 and W1 carries an action, the skip resolves it through the SAME arrival
   resolver; if W1 is not a store (a bare hex with no own Outpost — e.g. a saved route's Outpost since torn down,
@@ -1203,6 +1207,11 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   up-front fuel for the real legs has already burned. Should the dispatch instead be REFUSED at validate (the §4
   transfer gate: "a transfer is issued at a store"), so no fuel is spent? §11.6's lap-start anchor-gone check
   (slice 3) is the ruled home for catching this before fuelling; 2a mirrors arrival and does not guess.
+
+    **RULED 23-09-26 — NO REFUND.** Fuel burned up front is committed and never refunded, even when the
+    route then proves impossible; the craft halts and eats the loss (transport-model.md §11.3). 2a's
+    behaviour STANDS (no code change). The §11.6 lap-start re-check (slice 3) declines to FUEL a
+    visibly-doomed lap — a refusal to charge, not a refund.
 
 - **Deferred, flagged in docs (revisit with their slice, don't lose):** the SELL origin-picker helper
   (offer only systems that hold every line — `syndicate-orders.md` §7, a client refinement); a

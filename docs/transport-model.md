@@ -700,6 +700,13 @@ FRONT out of the guild's hoard at the start of that run/lap, and REFUSED / PAUSE
 cover it — the existing dispatch fuel rule (§4, "refused whole"), now at run/lap granularity. No partial
 dispatch, and the mechanism never strands a craft for want of fuel (it pauses at a berth — §11.6).
 
+**No refund once committed (RULED 23-09-26).** The up-front burn is spent the moment a run/lap launches.
+If the route then proves impossible to complete — a stop's store is gone, an anchor no longer resolves
+(§11.6) — the craft halts at a berth and the already-burned fuel is NOT refunded. Fuel is committed at
+launch; a run that strands itself eats its own bill. (Where the mechanism can see a lap is doomed BEFORE it
+fuels — the §11.6 lap-start re-check, slice 3 — it declines to FUEL that lap at all, which is a refusal
+to charge, not a refund; once charged, there is no giving back.)
+
 ### 11.4 Repeating lanes — the reposition rule
 A repeating route cycles its OWN waypoints — `W1 → W2 → ... → WN → back to W1` — either
 continuously or for a set number of laps (N-run). The single rule that governs it: **a lap begins by
@@ -803,6 +810,17 @@ ALREADY at that route's first waypoint makes the first leg zero-length. Slice 1a
 slice 2a implements the §11.4 SKIP instead — a zero-length reposition is not built: the craft resolves
 W1's action IN PLACE and continues to W2. (Only the origin→W1 reposition is skippable; two clicked
 waypoints on the same hex are still a dead leg the planner never builds.)
+
+**A one-stop route dispatched from its own stop (RULED 23-09-26 — engine slice 2a.1).** The skip's limit
+case: a route whose ONLY waypoint is the craft's current berth, carrying an action. Once the zero-length
+reposition is skipped there is NO leg left, and slice 2a conservatively REFUSED it (§4, a route with no
+legs). RULED otherwise: it resolves that one stop's action IN PLACE and the craft ends idle there — the
+plain reading of "already at W1, act in place" when W1 is also the last stop. No leg is flown, so it costs no
+fuel, exactly as the manual dock transfer at that berth does. A one-stop route at the berth with NO action is
+still refused (nothing to fly and nothing to do), and an internal dead leg (two chosen waypoints on one hex)
+is still refused — only origin = W1 = the only stop, carrying an action, acts in place. A small engine
+follow-up (slice 2a.1) lands this so 2b's Load Route can drop a one-stop saved route onto a craft already
+parked at that stop and have it just work.
 
 **The slice split.** **2a — engine:** `savedRoutes` + `savedRouteSerial`, the `saveRoute` / `deleteRoute`
 actions, the snapshot surface (each guild's saved routes, for the client's Load list), and the §11.4
