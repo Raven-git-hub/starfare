@@ -132,6 +132,10 @@
   .plrow .plix { font-family: 'JetBrains Mono', monospace; font-size: 9px; width: 20px; height: 20px; flex: none; border-radius: 50%; border: 1px solid var(--line-bright); display: flex; align-items: center; justify-content: center; color: var(--text-dim); }
   .plrow.origin .plix { border-color: var(--accent); color: var(--accent); }
   .plrow.deadleg { background: rgba(194,96,58,0.14); }
+  /* automation 2b: a BROKEN stop (its action can no longer run there) — the same red flag palette as a
+     dead leg, plus a red index ring to match the red outline the map draws on its hex. */
+  .plrow.broken { background: rgba(194,96,58,0.14); }
+  .plrow.broken .plix { border-color: #c2603a; color: #e08a5a; }
   .plrow .plnm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
   .plrow .plnm .warn { color: #e08a5a; font-size: 9px; letter-spacing: 1px; display: block; white-space: normal; }
   /* a waypoint's route action (automation 1b) — a small teal sub-line under its name. It WRAPS (the
@@ -1915,7 +1919,7 @@ select.field{appearance:none; cursor:pointer;}
 #dispatch-overlay .dp-route .wp-row .ix{font-family:var(--mono); font-size:9px; width:22px; height:22px; flex:none; border-radius:50%; border:1px solid var(--line2); display:flex; align-items:center; justify-content:center; color:var(--ink2)}
 #dispatch-overlay .dp-route .wp-row.origin .ix{border-color:var(--amber); color:var(--amber)}
 #dispatch-overlay .dp-route .wp-row .nm{font-size:12px; color:var(--ink); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-#dispatch-overlay .dp-route .wp-row .slot{min-width:16px; min-height:16px; flex:none}
+#dispatch-overlay .dp-route .wp-row .slot{min-width:16px; min-height:16px; flex:none; display:flex; gap:6px; align-items:center}
 /* automation 1b: the slot's route-ACTION control — dashed "+ Action" when unset, filled amber
    "● Action" when set — and the set action's summary as a wrapping sub-line under the stop's name. */
 #dispatch-overlay .dp-route .wp-act{font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink2); background:transparent; border:1px dashed var(--line2); border-radius:6px; padding:4px 7px; cursor:pointer; white-space:nowrap}
@@ -1925,6 +1929,11 @@ select.field{appearance:none; cursor:pointer;}
 /* automation 2b: a stop's quiet "you are here — acts in place" note (dim), and its flagged line (red) */
 #dispatch-overlay .dp-route .wp-row .nm .note{margin-top:2px; font-family:var(--mono); font-size:10px; color:var(--ink2); white-space:normal}
 #dispatch-overlay .dp-route .wp-row .nm .warn{margin-top:2px; font-family:var(--mono); font-size:10px; color:var(--red); white-space:normal}
+/* automation 2b: a BROKEN stop's row — tinted in the flag red, its index ring red — and its small Remove */
+#dispatch-overlay .dp-route .wp-row.broken{background:rgba(194,96,58,0.10)}
+#dispatch-overlay .dp-route .wp-row.broken .ix{border-color:var(--red); color:var(--red)}
+#dispatch-overlay .dp-route .wp-rm{font-family:var(--mono); font-size:11px; line-height:1; color:var(--ink2); background:transparent; border:1px solid var(--line2); border-radius:6px; padding:4px 7px; cursor:pointer}
+#dispatch-overlay .dp-route .wp-rm:hover{border-color:var(--red); color:var(--red)}
 #dispatch-overlay .dp-route .tc-box{border:1px solid var(--line); border-radius:8px; background:var(--panel); display:flex; flex-direction:column}
 #dispatch-overlay .dp-route .tc-box .cell{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; padding:10px}
 #dispatch-overlay .dp-route .tc-box .cell + .cell{border-top:1px solid var(--line)}
@@ -3660,6 +3669,29 @@ select.field{appearance:none; cursor:pointer;}
     return route.waypoints[0].action ? 'you are here — acts in place' : 'you are here — starts from this stop';
   }
 
+  // brokenAt(route, i) — waypoint i carries an action its craft can no longer run there. The stop is no
+  // longer actionable (its store is gone — an outpost torn down, a system no longer guild-held) or the
+  // craft has no hold. The anchor still resolves as a hex, so the geometry is fine; only the ACTION is
+  // dead — §11.9's "reverts to a plain hex, action orphaned and visible". Decided by the SAME gate that
+  // offers the Action button (routeActionAllowed), so there is one rule, not two. Because it is judged
+  // at render time, a loaded saved route needs no separate re-validation pass: it simply renders its
+  // dead stops as broken (§11.9, soft re-validation).
+  function brokenAt(route, i) {
+    const wp = route.waypoints[i];
+    return !!wp.action && !routeActionAllowed(route.vehicle, wp.anchor);
+  }
+  function anyBroken(route) {
+    for (let i = 0; i < route.waypoints.length; i++) if (brokenAt(route, i)) return true;
+    return false;
+  }
+  // brokenReason(route) — the one-line WHY for a broken row. A spycraft has no hold at all, so every
+  // action is dead for it; otherwise the stop has lost its store.
+  function brokenReason(route) {
+    return route.vehicle && route.vehicle['class'] === 'spycraft'
+      ? 'no hold — this craft can\'t load/unload'
+      : 'store gone — this stop can\'t load/unload';
+  }
+
   // Enter planning mode for a craft. `vehicle` is the DP row (needs id/class/location); `waypoints`
   // seeds the list of { anchor, action? } (empty for a fresh Plan Route, the current list — actions
   // and all — for Edit Route). Closes any open tab/panel, flies to the craft's hex at a hex-visible zoom
@@ -3722,7 +3754,8 @@ select.field{appearance:none; cursor:pointer;}
   // resolves to the same hex as the one before it is flagged and disables Finalise. A waypoint that
   // carries an action shows it as a small sub-line under its name (`act`, e.g. "dock · load titanium
   // 400"), so the list reads at a glance which stops act. Stop 1 on the craft's own hex (the §11.4
-  // skip) is a normal stop with a quiet "you are here" note; the idle one-stop case gets its cue.
+  // skip) is a normal stop with a quiet "you are here" note; the idle one-stop case gets its cue. A
+  // BROKEN stop (brokenAt) is flagged red with its reason.
   function renderPlanList() {
     const box = document.getElementById('planRows');
     if (!box || !PLAN) return;
@@ -3743,18 +3776,24 @@ select.field{appearance:none; cursor:pointer;}
     box.appendChild(mkRow({ cls: 'origin', ix: '◎', name: anchorLabel(PLAN.origin) + '  · origin' }));
     PLAN.waypoints.forEach((wp, i) => {
       const dead = deadLegAt(PLAN, i);
+      const broken = brokenAt(PLAN, i);
       const idle = i === 0 && idleAtBerth(PLAN);
+      // The flagged line: a dead leg first (it blocks Finalise), then a broken stop (it blocks Dispatch —
+      // remove it here, or Finalise and Clear its action there), then the idle one-stop cue.
+      const warn = dead ? 'zero-length leg — remove or reorder'
+        : broken ? brokenReason(PLAN)
+        : idle ? IDLE_AT_BERTH_CUE : '';
       const ctl =
         '<button data-act="up" data-i="' + i + '" title="Move up"' + (i === 0 ? ' disabled' : '') + '>▲</button>' +
         '<button data-act="down" data-i="' + i + '" title="Move down"' + (i === PLAN.waypoints.length - 1 ? ' disabled' : '') + '>▼</button>' +
         '<button data-act="rm" data-i="' + i + '" title="Remove">✕</button>';
       box.appendChild(mkRow({
-        cls: dead ? 'deadleg' : '',
+        cls: dead ? 'deadleg' : (broken ? 'broken' : ''),
         ix: String(i + 1),
         name: anchorLabel(wp.anchor),
         act: actionSummary(wp.action),
         note: hereNote(PLAN, i),
-        warn: dead ? 'zero-length leg — remove or reorder' : (idle ? IDLE_AT_BERTH_CUE : ''),
+        warn: warn,
         ctl: ctl,
       }));
     });
@@ -3849,7 +3888,9 @@ select.field{appearance:none; cursor:pointer;}
     document.getElementById('plan-chip').classList.remove('on');
   }
 
-  const COLOR_RGB = { system: [111,183,232], outpost: [232,185,58], citadel: [242,206,93], player: [67,217,200] };
+  // `broken` (automation 2b) is the planner's flag red — the same #C2603A the popup's --red and the
+  // dead-leg row use — for a route stop whose action can no longer run (the plan draw pass).
+  const COLOR_RGB = { system: [111,183,232], outpost: [232,185,58], citadel: [242,206,93], player: [67,217,200], broken: [194,96,58] };
   function col(key, a) { const c = COLOR_RGB[key]; return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
   function rgbaFrom(rgb, a) { return `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`; }
 
@@ -4482,11 +4523,28 @@ select.field{appearance:none; cursor:pointer;}
         const c = resolveAnchor(wp.anchor);
         if (!c) return;
         const s = scrOf(c);
+        // automation 2b: a BROKEN stop (brokenAt — its action can no longer run here) is drawn in the
+        // flag colour: its hex outlined (the selection-outline shape) and its ring + index red, so a
+        // dead stop on a loaded route is visible on the map, not only in the lists.
+        const broken = brokenAt(PLAN, i);
+        const ringKey = broken ? 'broken' : 'player';
+        if (broken) {
+          const p = hexToPixel(c.q, c.r, hsP);
+          const corners = hexCorners(p.x, p.y, hsP).map(k => worldToScreen(k.x, k.y));
+          ctx.save();
+          ctx.beginPath();
+          corners.forEach((k, j) => j === 0 ? ctx.moveTo(k.x, k.y) : ctx.lineTo(k.x, k.y));
+          ctx.closePath();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = col('broken', 0.95);
+          ctx.stroke();
+          ctx.restore();
+        }
         ctx.save();
-        ctx.strokeStyle = col('player', 0.95);
+        ctx.strokeStyle = col(ringKey, 0.95);
         ctx.lineWidth = 1.8;
         ctx.beginPath(); ctx.arc(s.x, s.y, 7, 0, Math.PI * 2); ctx.stroke();
-        ctx.fillStyle = col('player', 0.95);
+        ctx.fillStyle = col(ringKey, 0.95);
         ctx.font = "700 10px 'JetBrains Mono', monospace";
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(String(i + 1), s.x, s.y);
@@ -5019,6 +5077,9 @@ select.field{appearance:none; cursor:pointer;}
     idleAtBerth: idleAtBerth,
     hereNote: hereNote,
     idleAtBerthCue: IDLE_AT_BERTH_CUE,
+    brokenAt: brokenAt,
+    anyBroken: anyBroken,
+    brokenReason: brokenReason,
   };
 
   resize(); tick();
@@ -10529,9 +10590,15 @@ function paintInventoryHero(d){
       var note = rc.hereNote(route, i);
       if(note) sub += '<div class="note">' + esc(note) + '</div>';
       if(i === 0 && idle) sub += '<div class="warn">' + esc(rc.idleAtBerthCue) + '</div>';
-      rows += '<div class="wp-row"><div class="ix">' + (i+1) + '</div>' +
+      // Automation 2b: a BROKEN stop (its action can no longer run there) is flagged red with its reason,
+      // and gets a Remove beside its Action control — Clear the action (it becomes a plain fly-through)
+      // or drop the stop, without leaving the popup. Either un-breaks it.
+      var broken = rc.brokenAt(route, i);
+      if(broken) sub += '<div class="warn">' + esc(rc.brokenReason(route)) + '</div>';
+      var rm = broken ? '<button class="wp-rm" type="button" data-rm="' + i + '" title="Remove this stop">✕</button>' : '';
+      rows += '<div class="wp-row' + (broken ? ' broken' : '') + '"><div class="ix">' + (i+1) + '</div>' +
         '<div class="nm">' + esc(wpName(wp.anchor)) + sub + '</div>' +
-        '<div class="slot">' + actionSlotHtml(wp, i) + '</div></div>';
+        '<div class="slot">' + actionSlotHtml(wp, i) + rm + '</div></div>';
     });
     // Time over Cost — read straight from the quote; the fuel cost is presented in CREDITS (§8.0), not
     // units. An { ok:false } quote has no figures, so those cells read "—" and Dispatch is disabled below.
@@ -10567,15 +10634,21 @@ function paintInventoryHero(d){
     Array.prototype.forEach.call($('dpSection').querySelectorAll('.wp-act'), function(b){
       b.addEventListener('click', function(){ onRowAction(Number(b.getAttribute('data-wp'))); });
     });
+    Array.prototype.forEach.call($('dpSection').querySelectorAll('.wp-rm'), function(b){
+      b.addEventListener('click', function(){ onRowRemove(Number(b.getAttribute('data-rm'))); });
+    });
   }
 
   // dispatchBlock(route) -> why the CLIENT holds Dispatch back, or '' when nothing does (automation 2b).
-  // Each gate mirrors a route the engine would refuse — a dead leg (two stops on one hex, §4), or the
+  // Two gates mirror a route the engine would refuse — a dead leg (two stops on one hex, §4), or the
   // idle one-stop route at the craft's own berth (§11.9) — so the player sees why BEFORE sending,
-  // rather than a refusal after. Shown under the route boxes, like an { ok:false } quote's reason.
+  // rather than a refusal after. The third is the RULED hard block on a broken stop (§11.9): the engine
+  // would fly it and halt at the dead stop, fuel spent; the client refuses to send it at all — no
+  // warn-but-allow. Shown under the route boxes, like an { ok:false } quote's reason.
   function dispatchBlock(route){
     var rc = window.__routeChecks;
     if(rc.anyDeadLeg(route)) return 'Two stops sit on the same hex — remove or reorder one.';
+    if(rc.anyBroken(route)) return 'A stop\'s action can no longer run there — clear its action or remove the stop.';
     if(rc.idleAtBerth(route)) return 'Nothing to do — ' + rc.idleAtBerthCue + '.';
     return '';
   }
@@ -10607,6 +10680,25 @@ function paintInventoryHero(d){
       else delete wp.action;
       renderPostFinalise();
     }, wp.action ? wp.action.manifest : null);
+  }
+
+  // onRowRemove(i) — drop waypoint i from the laid-out route (automation 2b: offered on a BROKEN stop,
+  // so a dead stop can go without leaving the popup). Removing a stop CHANGES THE LEGS, so the old quote
+  // is void: it is cleared at once (Time / Cost read "—" and Dispatch is disabled) and re-fetched. If a
+  // quicker second Remove lands first, only the newest route's quote is kept. Removing the last stop
+  // leaves nothing to plan, so the popup returns to its pre-plan state.
+  function onRowRemove(i){
+    var v = DP.vehicle; if(!v || !DP.waypoints[i]) return;
+    DP.waypoints.splice(i, 1);
+    DP.quote = null;
+    if(!DP.waypoints.length){ renderPrePlan(); return; }
+    renderPostFinalise();
+    var asked = DP.waypoints;
+    fetchQuote(v, asked).then(function(q){
+      if(DP.waypoints !== asked || DP.vehicle !== v) return;   // the route moved on — a newer quote wins
+      DP.quote = q;
+      renderPostFinalise();
+    });
   }
 
   // A waypoint ANCHOR's name for the popup list — a landmark reads its seed name; a bare hex reads the
@@ -10645,19 +10737,25 @@ function paintInventoryHero(d){
   async function dispatchFinalise(vehicle, waypoints){
     var v = liveVehicle(vehicle.id) || vehicle;
     DP.vehicle = v; DP.waypoints = (waypoints || []).slice();
-    var player = window.__player ? window.__player() : null;
-    var gid = player && player.guildId;
-    var q;
-    try {
-      var res = await fetch('/vehicle/quote', { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ guildId: gid, vehicleId: v.id, waypoints: anchorsOf(DP.waypoints) }) });
-      q = await res.json();
-    } catch(err){
-      q = { ok:false, reason:'The quote could not be reached: ' + (err && err.message || err) };
-    }
-    DP.quote = q;
+    DP.quote = await fetchQuote(v, DP.waypoints);
     renderPostFinalise();
     $('dispatch-overlay').classList.add('open');
+  }
+
+  // fetchQuote(v, waypoints) -> the ENGINE's quote for this route from this craft (POST /vehicle/quote)
+  // — the only source of time / fuel / credits (§18). A network/HTTP failure comes back { ok:false }-
+  // shaped, so the one render path shows a reason rather than throwing. Shared by Finalise and by a
+  // Remove in the Finalise list (automation 2b), the two things that change the route's geometry.
+  async function fetchQuote(v, waypoints){
+    var player = window.__player ? window.__player() : null;
+    var gid = player && player.guildId;
+    try {
+      var res = await fetch('/vehicle/quote', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ guildId: gid, vehicleId: v.id, waypoints: anchorsOf(waypoints) }) });
+      return await res.json();
+    } catch(err){
+      return { ok:false, reason:'The quote could not be reached: ' + (err && err.message || err) };
+    }
   }
 
   // dispatchActionFor(gid, v) — WHICH engine action this route becomes (automation slice 1b, §11.2):
@@ -10684,6 +10782,10 @@ function paintInventoryHero(d){
   // engine re-validates + refuses whole, so the client never enforces fuel itself — it only previewed.
   async function onDispatch(){
     var v = DP.vehicle; if(!v || !DP.waypoints || !DP.waypoints.length) return;
+    // The client gates, re-checked at the moment of sending (automation 2b): the button was rendered
+    // earlier, and a store can vanish while the popup is open. If a gate now holds, re-render to show
+    // why and send nothing — the broken-stop block is hard, never warn-but-allow.
+    if(dispatchBlock(dpRoute())){ renderPostFinalise(); return; }
     var player = window.__player ? window.__player() : null;
     var gid = player && player.guildId;
     var btn = $('dpDispatchBtn'); if(btn){ btn.disabled = true; btn.textContent = 'Dispatching…'; }
