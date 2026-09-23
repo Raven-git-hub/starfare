@@ -762,3 +762,50 @@ both the map and the dispatch lists.
 **No new number.** The automation layer introduces no constant — it reuses the §4 manifest resolver, the
 §4 dock turnaround, and the §2.2 leg fuel/time formulas. Determinism (design.md §15.5 invariant 9) is
 preserved: every step is a per-arrival / per-turnaround-completion event resolved in tick order.
+
+### 11.9 Saved routes — the entity & the save/delete actions *(RULED 23-09-26)*
+
+Slice 2 makes a route REUSABLE. §11.5 named the concept (an origin-free, named waypoint list, loaded onto
+any craft, re-validated at load); this fixes the entity and the actions so the build reads the real shape.
+
+**The entity.** A guild owns `savedRoutes` — an array of `{ id, name, waypoints: [{ anchor, action? }] }`,
+the SAME §11.1 origin-free waypoint list (each `action` a `{ type:'dock', manifest }`), plus a display
+`name`. Per-guild, **omit-when-empty** (a guild with no saved route is byte-identical to pre-slice, the
+`guild.vehicles` / `guild.assets` discipline). Ids are `route_<guild>_NN` from a stored monotonic
+`guild.savedRouteSerial` (**omit-when-0**), bumped at every create and never decremented — a deleted id is
+never reissued (the `vehicleSerial` / `outpostSerial` "ids never repeat" discipline). It stores **no** origin
+and **no** repeat setting (both are launch-time — §11.4 / §11.5).
+
+**The actions (journalled, validate/apply like the others).**
+- `saveRoute { guildId, name, waypoints }` — **NAME-BASED UPSERT**: a name the guild is not yet using
+  CREATES a new saved route (a fresh id from the serial); a name that already exists UPDATES that route's
+  waypoints in place (keeping its id). Validate: a non-empty `name`; a non-empty `waypoints`, each
+  `{ anchor, action? }` well-formed — the anchor resolves, and the action, if present, is a valid
+  `{ type:'dock', manifest }` with a §4 manifest (the SAME per-waypoint checks `dispatchRouteWithActions`
+  runs). It moves no goods / fuel / credits — pure guild-owned bookkeeping — and stamps its tick.
+- `deleteRoute { guildId, routeId }` — removes the saved route by id. Delete-only management this slice;
+  RENAME is a later nicety (delete + re-save).
+
+**Load & re-validation — SOFT (client, slice 2b).** "Load Route" (the planner's control, §11.7) populates
+the plan from a saved route's waypoints — the craft's current location is the runtime origin (§11.5), so
+the positioning leg falls out (§11.4). The client resolves each anchor FRESH at load: an anchor that no
+longer names what it did (a saved outpost since torn down) reverts to a **plain hex** with its action
+orphaned and VISIBLE in the plan, which the player can edit or remove; the Finalise quote re-validates the
+geometry before Dispatch. There is **no hard refuse-at-load** — a saved route is a plan, not a guarantee
+(§9); full change-flagging is slice 3.
+
+**Editing a loaded route.** The loaded plan is editable through the §11.7 entry points, so the SAME lane can
+run different resources (change a stop's load in the Finalise list, then Dispatch). The saved route is
+UNCHANGED unless re-saved — a `saveRoute` under the same name (the upsert) commits the edit back to the lane.
+
+**The zero-length reposition skip (§11.4), pulled forward in slice 2a.** Loading a saved route onto a craft
+ALREADY at that route's first waypoint makes the first leg zero-length. Slice 1a conservatively REFUSED that;
+slice 2a implements the §11.4 SKIP instead — a zero-length reposition is not built: the craft resolves
+W1's action IN PLACE and continues to W2. (Only the origin→W1 reposition is skippable; two clicked
+waypoints on the same hex are still a dead leg the planner never builds.)
+
+**The slice split.** **2a — engine:** `savedRoutes` + `savedRouteSerial`, the `saveRoute` / `deleteRoute`
+actions, the snapshot surface (each guild's saved routes, for the client's Load list), and the §11.4
+zero-length skip. **2b — client:** the "Save Route" affordance (names + upserts the current plan) and the
+"Load Route" dropdown (populates the plan; a small delete removes a saved route). No new number — it reuses
+the §11.1 entity and the §4 manifest checks.
