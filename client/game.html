@@ -1912,7 +1912,13 @@ select.field{appearance:none; cursor:pointer;}
 #dispatch-overlay .dp-route .wp-row .ix{font-family:var(--mono); font-size:9px; width:22px; height:22px; flex:none; border-radius:50%; border:1px solid var(--line2); display:flex; align-items:center; justify-content:center; color:var(--ink2)}
 #dispatch-overlay .dp-route .wp-row.origin .ix{border-color:var(--amber); color:var(--amber)}
 #dispatch-overlay .dp-route .wp-row .nm{font-size:12px; color:var(--ink); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-#dispatch-overlay .dp-route .wp-row .slot{width:16px; height:16px; flex:none}
+#dispatch-overlay .dp-route .wp-row .slot{min-width:16px; min-height:16px; flex:none}
+/* automation 1b: the slot's route-ACTION control — dashed "+ Action" when unset, filled amber
+   "● Action" when set — and the set action's summary as a wrapping sub-line under the stop's name. */
+#dispatch-overlay .dp-route .wp-act{font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink2); background:transparent; border:1px dashed var(--line2); border-radius:6px; padding:4px 7px; cursor:pointer; white-space:nowrap}
+#dispatch-overlay .dp-route .wp-act:hover{border-color:var(--amber); color:var(--amber)}
+#dispatch-overlay .dp-route .wp-act.set{background:var(--amber-ghost); border:1px solid var(--amber); color:var(--amber)}
+#dispatch-overlay .dp-route .wp-row .nm .act{margin-top:2px; font-family:var(--mono); font-size:10px; color:var(--amber); white-space:normal; overflow-wrap:anywhere}
 #dispatch-overlay .dp-route .tc-box{border:1px solid var(--line); border-radius:8px; background:var(--panel); display:flex; flex-direction:column}
 #dispatch-overlay .dp-route .tc-box .cell{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; padding:10px}
 #dispatch-overlay .dp-route .tc-box .cell + .cell{border-top:1px solid var(--line)}
@@ -4952,6 +4958,10 @@ select.field{appearance:none; cursor:pointer;}
   window.__planRoute = function (vehicle, waypoints) { startPlanning(vehicle, waypoints); };
   window.__abandonPlanning = function () { if (planActive || PLAN) exitPlanning(false); };
   window.__fmtETA = fmtETA;
+  // Automation 1b: the Dispatch popup's Finalise list uses the SAME action gate and the SAME summary
+  // line as the map chip / left list — one copy of each, shared across the two IIFEs like __fmtETA.
+  window.__routeActionAllowed = routeActionAllowed;
+  window.__routeActionSummary = actionSummary;
 
   resize(); tick();
 })();
@@ -10431,11 +10441,15 @@ function paintInventoryHero(d){
   // comes from POST /vehicle/quote (§18); the client only formats and lays them out.
   function renderPostFinalise(){
     var v = DP.vehicle, q = DP.quote;
-    // the waypoint list: Origin (the craft's location) then one row per finalised waypoint, each with a
-    // reserved (empty) action-icon slot on the right (a future load/unload/deploy indicator, §out-of-scope).
+    // the waypoint list: Origin (the craft's location) then one row per finalised waypoint. Each row's
+    // right-hand slot is its route-ACTION control (actionSlotHtml, below) and a set action reads as a
+    // sub-line under the stop's name. The origin is not a waypoint, so its slot stays empty (§11.1).
     var rows = '<div class="wp-row origin"><div class="ix">◎</div><div class="nm">' + esc(locLabel(v)) + '</div><div class="slot"></div></div>';
     DP.waypoints.forEach(function(wp, i){
-      rows += '<div class="wp-row"><div class="ix">' + (i+1) + '</div><div class="nm">' + esc(wpName(wp.anchor)) + '</div><div class="slot"></div></div>';
+      var sub = (wp.action && window.__routeActionSummary) ? '<div class="act">' + esc(window.__routeActionSummary(wp.action)) + '</div>' : '';
+      rows += '<div class="wp-row"><div class="ix">' + (i+1) + '</div>' +
+        '<div class="nm">' + esc(wpName(wp.anchor)) + sub + '</div>' +
+        '<div class="slot">' + actionSlotHtml(wp, i) + '</div></div>';
     });
     // Time over Cost — read straight from the quote; the fuel cost is presented in CREDITS (§8.0), not
     // units. An { ok:false } quote has no figures, so those cells read "—" and Dispatch is disabled below.
@@ -10464,6 +10478,38 @@ function paintInventoryHero(d){
     $('dpDispatchBtn').disabled = !canSend;
     $('dpEditBtn').addEventListener('click', onEditRoute);
     $('dpDispatchBtn').addEventListener('click', onDispatch);
+    Array.prototype.forEach.call($('dpSection').querySelectorAll('.wp-act'), function(b){
+      b.addEventListener('click', function(){ onRowAction(Number(b.getAttribute('data-wp'))); });
+    });
+  }
+
+  // ---------- automation slice 1b: entry point B — manage actions on the laid-out route (§11.7) ----------
+  // actionSlotHtml(wp, i) — the Action control for waypoint i's slot. An ACTIONABLE stop (the SAME gate
+  // the map chip uses, window.__routeActionAllowed) shows "+ Action" when unset; a stop that carries an
+  // action shows a filled "● Action" (its summary is the sub-line beside it). A set action ALWAYS keeps
+  // its control, even if the stop has since stopped being actionable, so it can still be seen and
+  // cleared. Any other stop leaves the slot empty.
+  function actionSlotHtml(wp, i){
+    var allowed = window.__routeActionAllowed && window.__routeActionAllowed(DP.vehicle, wp.anchor);
+    if(!wp.action && !allowed) return '';
+    return wp.action
+      ? '<button class="wp-act set" type="button" data-wp="' + i + '" title="Edit or clear this stop\'s action">● Action</button>'
+      : '<button class="wp-act" type="button" data-wp="' + i + '" title="Load or unload at this stop">+ Action</button>';
+  }
+
+  // onRowAction(i) — open the dock editor in COLLECT mode for this craft, pre-filled from waypoint i's
+  // action if it has one (that also offers Clear). Save sets / replaces the action; Clear (null) removes
+  // it. Nothing is sent: the route re-renders showing the new state, and Dispatch carries it. The quote
+  // is NOT re-fetched — an action never changes a leg, so the Time / Cost stay exact.
+  function onRowAction(i){
+    var v = DP.vehicle, wp = DP.waypoints[i];
+    if(!v || !wp || !window.__openDock) return;
+    window.__openDock(v.id, null, function(manifest){
+      if(DP.waypoints[i] !== wp) return;   // the route changed while the editor was open — ignore
+      if(manifest) wp.action = { type:'dock', manifest: manifest };
+      else delete wp.action;
+      renderPostFinalise();
+    }, wp.action ? wp.action.manifest : null);
   }
 
   // A waypoint ANCHOR's name for the popup list — a landmark reads its seed name, a bare hex its
