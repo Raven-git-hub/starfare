@@ -10913,7 +10913,9 @@ function paintInventoryHero(d){
   // leaves nothing to plan, so the popup returns to its pre-plan state.
   function onRowRemove(i){
     var v = DP.vehicle; if(!v || !DP.waypoints[i]) return;
-    DP.waypoints.splice(i, 1);
+    // A NEW array (not an in-place splice), so each Remove's route has its own identity — that is what
+    // the "a newer quote wins" check below compares.
+    DP.waypoints = DP.waypoints.filter(function(w, j){ return j !== i; });
     DP.quote = null;
     if(!DP.waypoints.length){ renderPrePlan(); return; }
     renderPostFinalise();
