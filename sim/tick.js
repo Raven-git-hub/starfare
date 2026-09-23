@@ -57,12 +57,15 @@ const { issuanceModifier } = require('./meanline.js');
 const { pushModifierSample } = require('./modifier-history.js');
 const { pushFuelBurnEntry } = require('./fuel-burn-history.js');
 const { outpostDockTurnaround } = require('./outposts.js');
-const { resolveManifest, usedSpace, copyManifestLine } = require('./manifest.js');
-// The chained-route execution (the automation layer, transport-model.md §11.2) reuses three helpers
-// from actions.js: the single-leg trip builder (the "next leg goes"), the own-Outpost-at-a-craft
-// lookup (the arrival's dock-enqueue path), and the { anchor, action? } waypoint copy. actions.js does
-// NOT require tick.js, so this one-directional edge is cycle-free.
-const { buildSingleLegTrip, ownedOutpostAtCraft } = require('./actions.js');
+const { resolveManifest, usedSpace } = require('./manifest.js');
+// The chained-route execution (the automation layer, transport-model.md §11.2) lives in actions.js:
+// `resolveRouteArrival` (a routed craft has just reached a waypoint — run its action, then go on) and
+// `advanceRoute` (dispatch the next leg, or end the run). It lives there, not here, because the
+// actioned-route DISPATCH runs it too — a craft already sitting on its first waypoint resolves that stop
+// in place at dispatch (the §11.4 zero-length reposition skip). The two tick hooks below call the SAME
+// functions, so a stop resolves identically whichever way the craft reached it. actions.js does NOT
+// require tick.js, so this one-directional edge is cycle-free.
+const { resolveRouteArrival, advanceRoute } = require('./actions.js');
 
 // A total, deterministic string order for sort keys — used where a tie has to
 // break the same way every run (invariant 9) rather than however sort found it.
@@ -1054,97 +1057,6 @@ function stepArrivals(state, _actions) {
   // pass, which recomputes the cache from whatever the eight steps produced. The
   // tick owns the cache; a step that re-derived it would be a second opinion.
   return state;
-}
-
-// --- the chained-route execution (the automation layer, transport-model.md §11.2) ---------------
-// A routed craft (one carrying `route = { waypoints: [{ anchor, action? }], cursor }`) does not fly a
-// frozen whole-trip; it flies leg by leg, and on ARRIVAL at each waypoint runs that stop's action —
-// instant at a system, queue + turnaround at an outpost — then dispatches the next leg itself. The
-// three helpers below are that execution. `advanceRoute` is the ONE FUNNEL both tick hooks call to
-// "make the next leg go"; the two hooks (stepVehicleArrivals, stepOutpostDocks) are where a routed
-// craft advances its route instead of simply landing / simply resolving. It stays event-driven — a
-// per-arrival / per-turnaround-completion step in fixed id order — so there is no per-tick per-craft
-// movement loop and determinism (§15.5 invariant 9) is preserved.
-
-// advanceRoute(craft, thisTick) — bump the cursor and dispatch the next leg, or END the one-shot run.
-// The cursor points at the waypoint the craft is AT (just resolved); the next is `cursor + 1`.
-//   - past the last waypoint → the one-shot run is done: the craft is already idle at the last
-//     anchor (the arrival hook set its location), so just clear the `route` (§11.2 "lands idle there").
-//   - otherwise → dispatch the next single leg from the craft's current berth (buildSingleLegTrip is
-//     the one home — the same builder the first leg used), with NO fuel recharge (the whole run was
-//     fuelled up front, §11.3). A null trip means the next anchor no longer resolves / the leg is
-//     zero-length — a target vanished mid-run (§11.6 anchor-gone): HALT SAFELY (leave the craft idle
-//     at its current berth, route cleared, no throw, no bad leg). Rich pause/resume/flag surfacing is
-//     slice 3; 1a does the safe halt only.
-function advanceRoute(craft, thisTick) {
-  const route = craft.route;
-  const nextCursor = route.cursor + 1;
-  if (nextCursor >= route.waypoints.length) {
-    delete craft.route; // the last waypoint was just resolved — the run ends idle here
-    return;
-  }
-  const trip = buildSingleLegTrip(craft, route.waypoints[nextCursor].anchor, thisTick);
-  if (!trip) {
-    delete craft.route; // anchor-gone safe halt — idle where it paused (§11.6)
-    return;
-  }
-  route.cursor = nextCursor;
-  craft.status = 'inTransit';
-  craft.trip = trip;
-  delete craft.location; // an in-transit craft carries the trip and no bare location (§15.4)
-}
-
-// resolveSystemAction(guild, craft, systemId, manifest, thisTick) — the INSTANT system-transfer path,
-// the SAME one transferCargo's system branch uses (design.md §4, the system half): move goods between
-// the craft's hold and the guild's (guild, system) soft-capped pool via the ONE shared resolver
-// (partial-safe, §11.6), keeping the hold omit-when-empty and stamping the mutation's tick (§15.2).
-function resolveSystemAction(guild, craft, systemId, manifest, thisTick) {
-  const hold = craft.cargo || {};
-  const store = {
-    get: (good) => getStock(guild, systemId, good),
-    add: (good, delta) => addStock(guild, systemId, good, delta),
-    freeSpace: () => Infinity, // a system pool is soft-capped (§4) — an unload is bounded only by the hold
-  };
-  resolveManifest(hold, craft.capacity, store, manifest);
-  if (Object.keys(hold).length) craft.cargo = hold; else delete craft.cargo;
-  craft.updatedAtTick = thisTick;
-}
-
-// resolveRouteArrival(state, guild, craft, thisTick) — called from stepVehicleArrivals when a routed
-// craft lands at a waypoint (its `location` already set to the arrived anchor). Resolve that waypoint's
-// action (if any), then advance — EXCEPT at an outpost, where the dock step advances after turnaround.
-function resolveRouteArrival(state, guild, craft, thisTick) {
-  const wp = craft.route.waypoints[craft.route.cursor];
-  if (!wp.action) {
-    advanceRoute(craft, thisTick); // a no-action waypoint is a pure turning point — chain straight through
-    return;
-  }
-  // WHERE the craft sits decides HOW the action resolves — the SAME split transferCargo uses (§4):
-  if (craft.location && craft.location.landmarkKind === 'system') {
-    // A SYSTEM → INSTANT, then advance the SAME tick (no wait at a guild's own territory, §4).
-    resolveSystemAction(guild, craft, craft.location.landmarkId, wp.action.manifest, thisTick);
-    advanceRoute(craft, thisTick);
-    return;
-  }
-  const outpost = ownedOutpostAtCraft(state, guild.id, craft);
-  if (outpost) {
-    // One of the guild's OWN Outposts → QUEUE for a dock slot, exactly as transferCargo's outpost
-    // branch does (ready-tick = now; the craft stays plain `idle`, parked). Do NOT advance — the dock
-    // step (running immediately after this one, the SAME tick) promotes it, and advanceRoute runs at
-    // completion: the outpost turnaround IS the pause, and the next leg goes on completion (§11.2).
-    if (!outpost.queue) outpost.queue = [];
-    outpost.queue.push({
-      vehicleId: craft.id,
-      manifest: wp.action.manifest.map(copyManifestLine), // canonical, non-aliasing copy
-      readyTick: thisTick,
-    });
-    craft.updatedAtTick = thisTick;
-    return;
-  }
-  // Neither a system nor an owned Outpost — the action's target vanished mid-run (an outpost torn down,
-  // §11.6 anchor-gone). HALT SAFELY: the craft is idle at its current berth, route cleared. Goods are
-  // conserved — nothing moved for the un-resolved action (rich flag surfacing is slice 3).
-  delete craft.route;
 }
 
 // Step 5 (the vehicle half) — guild-transport arrivals (transport-model.md §4; design.md §15.4's
