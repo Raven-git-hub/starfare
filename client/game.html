@@ -1940,6 +1940,15 @@ select.field{appearance:none; cursor:pointer;}
 #dispatch-overlay .dp-route .tc-box .cell .lab{font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3)}
 #dispatch-overlay .dp-route .tc-box .cell .val{font-family:var(--mono); font-size:18px; color:var(--ink); font-variant-numeric:tabular-nums}
 #dispatch-overlay .dp-refuse{margin-top:12px; font-family:var(--mono); font-size:11px; color:var(--red); line-height:1.5}
+/* automation 2b: Save Route — a name field + a Save button under the Planned Route, then the engine's
+   answer (green saved / red refused). The field wears the popup's panel + line palette. */
+#dispatch-overlay .dp-save{margin-top:14px; display:flex; gap:12px}
+#dispatch-overlay .dp-save-name{flex:1; min-width:0; font-family:var(--mono); font-size:12px; color:var(--ink); background:var(--panel); border:1px solid var(--line2); border-radius:9px; padding:0 12px}
+#dispatch-overlay .dp-save-name:focus{outline:none; border-color:var(--amber)}
+#dispatch-overlay .dp-save .dp-btn{flex:none; padding:11px 16px}
+#dispatch-overlay .dp-save-msg{margin-top:8px; font-family:var(--mono); font-size:11px; color:var(--green); line-height:1.5}
+#dispatch-overlay .dp-save-msg:empty{display:none}
+#dispatch-overlay .dp-save-msg.bad{color:var(--red)}
 /* One-column phone layout: the art is now full-width, so cap its height (a display cap, not a game
    number) and switch to `contain` so the whole ship still shows, letterboxed, without dominating. */
 @media(max-width:820px){
@@ -10444,7 +10453,9 @@ function paintInventoryHero(d){
   // run (the map owns the route DURING planning; the popup holds this copy for the post-finalise view
   // and Edit Route). Each waypoint is { anchor, action? } (transport-model.md §11.1) — the same shape
   // the map planner holds. Reset on open/close.
-  var DP = { vehicle: null, waypoints: [], quote: null };
+  // `saveName` (automation 2b) is the Save Route name field's text, kept here so a re-render (an action
+  // edit, a Remove) never throws away what the player typed; `saving` holds the button while a save posts.
+  var DP = { vehicle: null, waypoints: [], quote: null, saveName: '', saving: false };
 
   // anchorsOf(waypoints) -> just the anchors, in order. The quote and the plain dispatchVehicle both
   // take a bare anchor list (actions do not change the legs, so they never reach either).
@@ -10473,12 +10484,18 @@ function paintInventoryHero(d){
   }
   function fmtNum(n){ return Math.round(n || 0).toLocaleString('en-US'); }
 
+  // The player's own guild row, off the polled snapshot — null if it is momentarily absent. Its
+  // `vehicles` and (automation 2b) its `savedRoutes` are read from here.
+  function myGuild(){
+    var s = snap(); if(!s) return null;
+    var pid = window.__player ? (window.__player().guildId) : null;
+    return (s.guilds || []).filter(function(x){ return x.id === pid; })[0] || null;
+  }
+
   // The player's own live vehicle row by id, off the polled snapshot — the ONE authoritative
   // source for maintenance/location whichever entry point opened us. null if it is momentarily gone.
   function liveVehicle(id){
-    var s = snap(); if(!s) return null;
-    var pid = window.__player ? (window.__player().guildId) : null;
-    var g = (s.guilds || []).filter(function(x){ return x.id === pid; })[0]; if(!g) return null;
+    var g = myGuild(); if(!g) return null;
     return (g.vehicles || []).filter(function(v){ return v.id === id; })[0] || null;
   }
 
@@ -10520,7 +10537,7 @@ function paintInventoryHero(d){
     if(!vehicle || !vehicle.id) return;
     if(window.__abandonPlanning) window.__abandonPlanning();
     var v = liveVehicle(vehicle.id) || vehicle;
-    DP.vehicle = v; DP.waypoints = []; DP.quote = null;
+    DP.vehicle = v; DP.waypoints = []; DP.quote = null; DP.saveName = ''; DP.saving = false;
     var suffix = String(v.id).split('_').slice(-1)[0];   // vehicle_<guild>_<class>_NN -> "NN"
     $('dpName').textContent = prettyClass(v.class) + ' · #' + suffix;
     $('dpClass').textContent = prettyClass(v.class);
@@ -10619,7 +10636,8 @@ function paintInventoryHero(d){
       // a client route gate (dispatchBlock) shows ITS reason the same way. An unaffordable ok quote
       // needs no sentence — the disabled Dispatch button is the quiet cue (§D).
       (q && q.ok === false ? '<div class="dp-refuse">' + esc(q.reason || 'This route cannot be dispatched.') + '</div>'
-        : (block ? '<div class="dp-refuse">' + esc(block) + '</div>' : ''));
+        : (block ? '<div class="dp-refuse">' + esc(block) + '</div>' : '')) +
+      saveRowHtml();
     var acts = $('dpActions');
     acts.innerHTML =
       '<button class="dp-btn" id="dpEditBtn" type="button">Edit Route</button>' +
@@ -10637,6 +10655,75 @@ function paintInventoryHero(d){
     Array.prototype.forEach.call($('dpSection').querySelectorAll('.wp-rm'), function(b){
       b.addEventListener('click', function(){ onRowRemove(Number(b.getAttribute('data-rm'))); });
     });
+    // Save Route: typing updates DP.saveName and the button (no re-render, so the field keeps focus);
+    // Enter saves, like the button.
+    $('dpSaveName').addEventListener('input', function(){ DP.saveName = this.value; showSaveMsg('', false); refreshSaveBtn(); });
+    $('dpSaveName').addEventListener('keydown', function(e){ if(e.key === 'Enter') onSaveRoute(); });
+    $('dpSaveBtn').addEventListener('click', onSaveRoute);
+    refreshSaveBtn();
+  }
+
+  // ---------- automation slice 2b: Save Route (transport-model.md §11.9) ----------
+  // saveRowHtml() — the Finalise view's Save Route affordance: a name field + a Save button, and a line
+  // for the engine's answer. Saving is ALWAYS available: a saved route is an origin-free PLAN (§11.9),
+  // so a stop that is broken for THIS craft right now is still legal to save — only Dispatch is gated.
+  function saveRowHtml(){
+    return '<div class="dp-save">' +
+        '<input class="dp-save-name" id="dpSaveName" type="text" placeholder="Name this route to save it" value="' + esc(DP.saveName) + '">' +
+        '<button class="dp-btn" id="dpSaveBtn" type="button">Save Route</button>' +
+      '</div>' +
+      '<div class="dp-save-msg" id="dpSaveMsg"></div>';
+  }
+
+  // savedRouteNamed(name) -> the guild's saved route with this name, or null. The engine's save is a
+  // NAME-BASED UPSERT on the trimmed name (§11.9), so this mirrors that match to label the button
+  // honestly: "Update Route" when saving will overwrite that lane in place, "Save Route" when it will
+  // create a new one. A label only — the engine decides.
+  function savedRouteNamed(name){
+    var g = myGuild(), n = String(name || '').trim();
+    return ((g && g.savedRoutes) || []).filter(function(r){ return r.name === n; })[0] || null;
+  }
+
+  // refreshSaveBtn() — label and enable the Save button from the current name, without a re-render.
+  // Disabled only for a blank name (the engine refuses one) or while a save is posting.
+  function refreshSaveBtn(){
+    var b = $('dpSaveBtn'); if(!b) return;
+    var name = DP.saveName.trim();
+    b.textContent = savedRouteNamed(name) ? 'Update Route' : 'Save Route';
+    b.disabled = !name || DP.saving;
+  }
+
+  // showSaveMsg(text, bad) — the engine's answer under the Save row: green on accept, red on refuse.
+  function showSaveMsg(text, bad){
+    var m = $('dpSaveMsg'); if(!m) return;
+    m.textContent = text;
+    m.className = 'dp-save-msg' + (bad ? ' bad' : '');
+  }
+
+  // onSaveRoute — POST saveRoute { guildId, name, waypoints } with the laid-out route (actions and all).
+  // A name the guild already uses UPDATES that lane in place (same id) — how "edit a lane's resources,
+  // then commit it back" works (§11.9); a new name creates one. On accept the snapshot is re-read at
+  // once, so the planner's Load Route list shows it; a refusal surfaces the engine's reason.
+  async function onSaveRoute(){
+    var name = DP.saveName.trim();
+    if(!name || DP.saving || !DP.waypoints.length) return;
+    var player = window.__player ? window.__player() : null;
+    var updating = !!savedRouteNamed(name);
+    DP.saving = true; refreshSaveBtn();
+    var out;
+    try {
+      out = await window.__sendAction({ type:'saveRoute', guildId: player && player.guildId, name: name, waypoints: wireWaypoints(DP.waypoints) });
+    } catch(err){
+      out = { accepted:false, reason:'the Syndicate could not be reached: ' + (err && err.message || err) };
+    }
+    DP.saving = false;
+    if(out && out.accepted){
+      if(window.__refreshNow){ try { await window.__refreshNow(); } catch(e){} }
+      showSaveMsg((updating ? 'Updated' : 'Saved') + ' "' + name + '".', false);
+    } else {
+      showSaveMsg('Refused: ' + ((out && out.reason) || 'the Syndicate declined'), true);
+    }
+    refreshSaveBtn();
   }
 
   // dispatchBlock(route) -> why the CLIENT holds Dispatch back, or '' when nothing does (automation 2b).
@@ -10770,10 +10857,16 @@ function paintInventoryHero(d){
   function dispatchActionFor(gid, v){
     var anyAction = DP.waypoints.some(function(w){ return !!w.action; });
     if(anyAction || window.__routeChecks.skipsFirstLeg(dpRoute())){
-      return { type:'dispatchRouteWithActions', guildId: gid, vehicleId: v.id,
-               waypoints: DP.waypoints.map(function(w){ return w.action ? { anchor: w.anchor, action: w.action } : { anchor: w.anchor }; }) };
+      return { type:'dispatchRouteWithActions', guildId: gid, vehicleId: v.id, waypoints: wireWaypoints(DP.waypoints) };
     }
     return { type:'dispatchVehicle', guildId: gid, vehicleId: v.id, waypoints: anchorsOf(DP.waypoints) };
+  }
+
+  // wireWaypoints(waypoints) -> the { anchor, action? } list as the engine's route actions take it: an
+  // absent action stays ABSENT (never an `action: undefined` key). Shared by the actioned dispatch and
+  // Save Route (automation 2b), which send the same §11.1 waypoint shape.
+  function wireWaypoints(waypoints){
+    return waypoints.map(function(w){ return w.action ? { anchor: w.anchor, action: w.action } : { anchor: w.anchor }; });
   }
 
   // Dispatch (§E) → send the route (dispatchActionFor picks the action) through the existing /action
@@ -10817,7 +10910,7 @@ function paintInventoryHero(d){
   // Close (X / backdrop): hide the overlay AND abandon any in-progress route (§B) — closing the popup
   // is one of the three abandon triggers. Clears the popup's own state too.
   function closeDispatch(){
-    DP.vehicle = null; DP.waypoints = []; DP.quote = null;
+    DP.vehicle = null; DP.waypoints = []; DP.quote = null; DP.saveName = ''; DP.saving = false;
     if(window.__abandonPlanning) window.__abandonPlanning();
     $('dispatch-overlay').classList.remove('open');
   }
