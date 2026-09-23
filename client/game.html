@@ -10562,10 +10562,25 @@ function paintInventoryHero(d){
     $('dispatch-overlay').classList.add('open');
   }
 
-  // Dispatch (§E) → send dispatchVehicle through the existing /action helper. On accept: close, discard
-  // the plan, refresh the snapshot (the craft is now in-transit and renders via the b2a overlay). On
-  // refuse: surface the engine's reason and leave the popup open. The engine re-validates + refuses
-  // whole, so the client never enforces fuel itself — it only previewed.
+  // dispatchActionFor(gid, v) — WHICH engine action this route becomes (automation slice 1b, §11.2):
+  //  - ANY waypoint carries an action → `dispatchRouteWithActions` — the chained-legs flight that runs
+  //    each stop's action on arrival. Each waypoint goes as { anchor, action } or just { anchor }
+  //    (an absent action, never an `action: undefined` key).
+  //  - NO action anywhere → the plain `dispatchVehicle`, exactly as before (a bare anchor list), so a
+  //    no-action route keeps the frozen multi-leg flight and its animation unchanged.
+  function dispatchActionFor(gid, v){
+    var anyAction = DP.waypoints.some(function(w){ return !!w.action; });
+    if(anyAction){
+      return { type:'dispatchRouteWithActions', guildId: gid, vehicleId: v.id,
+               waypoints: DP.waypoints.map(function(w){ return w.action ? { anchor: w.anchor, action: w.action } : { anchor: w.anchor }; }) };
+    }
+    return { type:'dispatchVehicle', guildId: gid, vehicleId: v.id, waypoints: anchorsOf(DP.waypoints) };
+  }
+
+  // Dispatch (§E) → send the route (dispatchActionFor picks the action) through the existing /action
+  // helper. On accept: close, discard the plan, refresh the snapshot (the craft is now in-transit and
+  // renders via the b2a overlay). On refuse: surface the engine's reason and leave the popup open. The
+  // engine re-validates + refuses whole, so the client never enforces fuel itself — it only previewed.
   async function onDispatch(){
     var v = DP.vehicle; if(!v || !DP.waypoints || !DP.waypoints.length) return;
     var player = window.__player ? window.__player() : null;
@@ -10573,7 +10588,7 @@ function paintInventoryHero(d){
     var btn = $('dpDispatchBtn'); if(btn){ btn.disabled = true; btn.textContent = 'Dispatching…'; }
     var out;
     try {
-      out = await window.__sendAction({ type:'dispatchVehicle', guildId: gid, vehicleId: v.id, waypoints: anchorsOf(DP.waypoints) });
+      out = await window.__sendAction(dispatchActionFor(gid, v));
     } catch(err){
       if(btn){ btn.disabled = false; btn.textContent = 'Dispatch'; }
       showDispatchRefuse('The Syndicate could not be reached: ' + (err && err.message || err));
