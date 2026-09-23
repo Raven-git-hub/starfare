@@ -134,6 +134,9 @@
   .plrow.deadleg { background: rgba(194,96,58,0.14); }
   .plrow .plnm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
   .plrow .plnm .warn { color: #e08a5a; font-size: 9px; letter-spacing: 1px; display: block; }
+  /* a waypoint's route action (automation 1b) — a small teal sub-line under its name. It WRAPS (the
+     name above stays one line) so the whole manifest reads in the narrow panel rather than cutting off. */
+  .plrow .plnm .act { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.5px; display: block; white-space: normal; overflow-wrap: anywhere; }
   .plrow .plctl { display: flex; gap: 4px; flex: none; }
   .plrow .plctl button {
     width: 22px; height: 22px; font-size: 11px; line-height: 1; cursor: pointer;
@@ -153,6 +156,8 @@
   #plan-chip button.cancel { border-color: var(--line-bright); color: var(--text-dim); }
   #plan-chip button.cancel:hover { border-color: #c2603a; color: #c2603a; background: rgba(194,96,58,0.14); }
   #plan-chip button:disabled { opacity: 0.4; cursor: not-allowed; }
+  /* the chip's Action button once an action is pending on the candidate — filled, so it reads as "set" */
+  #plan-chip button.set { background: rgba(67,217,200,0.22); }
   #plan-chip .chhint { margin-top: 5px; font-size: 9px; letter-spacing: 1px; color: #e08a5a; background: rgba(8,10,16,0.95); border: 1px solid rgba(194,96,58,0.5); border-radius: 2px; padding: 3px 7px; white-space: nowrap; }
 
   /* ============ System View detail screen (ported from the System & Planet Index mockup, since retired) ============
@@ -3518,7 +3523,9 @@ select.field{appearance:none; cursor:pointer;}
   // is still the ONE source for geometry — every draw / dead-leg / label read goes through `wp.anchor`.
   // The optional `action` ({ type:'dock', manifest }) just rides alongside it: it never changes a leg,
   // so it never changes the quote. `action` is ABSENT (not null) on a pure turning point.
-  let PLAN = null;              // { vehicle, origin, waypoints:[{anchor, action?},…], candidate:anchor|null, candidateArmed:bool }
+  // `candidateAction` is an action set on the CANDIDATE from the chip before it is confirmed (§11.7
+  // "set at placement") — confirmCandidate bakes it into the new waypoint; a fresh click drops it.
+  let PLAN = null;              // { vehicle, origin, waypoints:[{anchor, action?},…], candidate:anchor|null, candidateArmed:bool, candidateAction:action|null }
   let planActive = false;       // true while the map is in planning mode (the click branch + draw pass read this)
 
   // copyWaypoint(wp) -> a fresh { anchor, action? } — used wherever a waypoint list crosses between the
@@ -3549,6 +3556,39 @@ select.field{appearance:none; cursor:pointer;}
   // sameHex(a, b) — two resolved coords land on the same lattice hex (a zero-length leg, §4). Null
   // coords never match (an unresolvable anchor is not "the same hex", it is simply not drawable).
   function sameHex(a, b) { return !!a && !!b && a.q === b.q && a.r === b.r; }
+
+  // ---------- automation slice 1b: which waypoints can carry a route ACTION (transport-model.md §11.7) ----------
+  // isActionableAnchor(a) — the §11.7 first-cut gate: a system the player's guild HOLDS, or one of the
+  // guild's OWN outposts. A planner click on a guild outpost records a bare { q, r } (guild outposts are
+  // not in the seed, so handleClick's outpost lookup never sees them), so an own outpost is matched by
+  // its hex. Anything else — an unheld system, a Syndicate waystation, open space — is a pure turning point.
+  function isActionableAnchor(a) {
+    if (!a) return false;
+    if (a.landmarkKind === 'system') return PLAYER_GUILD.ownedSystemIds.includes(a.landmarkId);
+    if (typeof a.q === 'number' && typeof a.r === 'number') {
+      const o = guildOutpostByKey.get(a.q + ',' + a.r);
+      return !!o && o.guildId === PLAYER_GUILD.guildId;
+    }
+    return false;
+  }
+
+  // routeActionAllowed(vehicle, a) — the gate BOTH entry points use (the map chip and the Dispatch
+  // Finalise list): an actionable tile AND a craft with a hold. A spycraft carries no cargo, so the
+  // engine refuses any route action for it — it gets no Action button, the same class gate the
+  // Operations / Outpost Manager DOCK buttons already apply.
+  function routeActionAllowed(vehicle, a) {
+    return !!vehicle && vehicle['class'] !== 'spycraft' && isActionableAnchor(a);
+  }
+
+  // actionSummary(action) -> a one-line read-out of a set action, e.g. "dock · load titanium 400,
+  // unload iron max" — so a list shows at a glance which stops act. Display only: it echoes the
+  // player's own manifest lines, computing nothing.
+  function actionSummary(action) {
+    if (!action || !action.manifest) return '';
+    return action.type + ' · ' + action.manifest.map(l =>
+      l.dir + ' ' + String(l.good).replace(/_/g, ' ') + ' ' + (l.max ? 'max' : l.qty)
+    ).join(', ');
+  }
 
   // A waypoint's display name: a landmark reads its seed name, a bare hex its "(q, r)" — the SAME
   // vocabulary the OPERATIONS list uses (__landmarkNameAt), off the seed the client already holds.
@@ -3588,7 +3628,7 @@ select.field{appearance:none; cursor:pointer;}
   // anchor — resolved to coords for the draw.
   function startPlanning(vehicle, waypoints) {
     if (!vehicle || !vehicle.location) return;
-    PLAN = { vehicle: vehicle, origin: vehicle.location, waypoints: (waypoints || []).map(copyWaypoint), candidate: null, candidateArmed: false };
+    PLAN = { vehicle: vehicle, origin: vehicle.location, waypoints: (waypoints || []).map(copyWaypoint), candidate: null, candidateArmed: false, candidateAction: null };
     planActive = true;
     const c = resolveAnchor(vehicle.location);
     document.getElementById('app').classList.add('planning');
@@ -3637,16 +3677,20 @@ select.field{appearance:none; cursor:pointer;}
 
   // The waypoint list panel: an Origin row (fixed, no controls) then one row per waypoint — its index,
   // its name, ▲ ▼ to reorder and ✕ to remove. Reorder is arrows (not drag, §out-of-scope). A row that
-  // resolves to the same hex as the one before it is flagged and disables Finalise.
+  // resolves to the same hex as the one before it is flagged and disables Finalise. A waypoint that
+  // carries an action shows it as a small sub-line under its name (`act`, e.g. "dock · load titanium
+  // 400"), so the list reads at a glance which stops act.
   function renderPlanList() {
     const box = document.getElementById('planRows');
     if (!box || !PLAN) return;
     box.innerHTML = '';
-    const mkRow = (cls, ixText, name, warn, ctlHtml) => {
+    const mkRow = (cls, ixText, name, warn, ctlHtml, act) => {
       const row = document.createElement('div');
       row.className = 'plrow' + (cls ? ' ' + cls : '');
       row.innerHTML = '<div class="plix">' + ixText + '</div>' +
-        '<div class="plnm">' + escapeHtml(name) + (warn ? '<span class="warn">' + warn + '</span>' : '') + '</div>' +
+        '<div class="plnm">' + escapeHtml(name) +
+          (act ? '<span class="act">' + escapeHtml(act) + '</span>' : '') +
+          (warn ? '<span class="warn">' + warn + '</span>' : '') + '</div>' +
         '<div class="plctl">' + (ctlHtml || '') + '</div>';
       return row;
     };
@@ -3657,7 +3701,7 @@ select.field{appearance:none; cursor:pointer;}
         '<button data-act="up" data-i="' + i + '" title="Move up"' + (i === 0 ? ' disabled' : '') + '>▲</button>' +
         '<button data-act="down" data-i="' + i + '" title="Move down"' + (i === PLAN.waypoints.length - 1 ? ' disabled' : '') + '>▼</button>' +
         '<button data-act="rm" data-i="' + i + '" title="Remove">✕</button>';
-      box.appendChild(mkRow(dead ? 'deadleg' : '', String(i + 1), anchorLabel(wp.anchor), dead ? 'zero-length leg — remove or reorder' : '', ctl));
+      box.appendChild(mkRow(dead ? 'deadleg' : '', String(i + 1), anchorLabel(wp.anchor), dead ? 'zero-length leg — remove or reorder' : '', ctl, actionSummary(wp.action)));
     });
   }
 
@@ -3670,6 +3714,8 @@ select.field{appearance:none; cursor:pointer;}
   // The candidate chip: nothing when no candidate; [ADD] when a candidate is proposed; [Confirm][Cancel]
   // once ADD is clicked. A candidate whose hex equals the previous anchor's is a dead leg — ADD/Confirm
   // is disabled with a hint (the UI never builds a zero-length leg; the engine would reject it, §4).
+  // On an ACTIONABLE candidate (routeActionAllowed) an [Action] button sits beside Add/Confirm — the
+  // §11.7 "set at placement" entry point. It reads "Action ✓" (filled) once an action is pending.
   function renderPlanChip() {
     const chip = document.getElementById('plan-chip');
     const btns = document.getElementById('planChipButtons');
@@ -3677,12 +3723,23 @@ select.field{appearance:none; cursor:pointer;}
     if (!chip || !PLAN || !PLAN.candidate) { if (chip) chip.classList.remove('on'); return; }
     const dead = sameHex(resolveAnchor(PLAN.candidate), resolveAnchor(lastAnchor()));
     btns.innerHTML = '';
+    // The Action button, built once and slotted in after the step's primary button (Add or Confirm).
+    // Disabled on a dead leg like its siblings — a stop that can't be placed can't carry an action.
+    let actBtn = null;
+    if (routeActionAllowed(PLAN.vehicle, PLAN.candidate)) {
+      actBtn = document.createElement('button');
+      actBtn.textContent = PLAN.candidateAction ? 'Action ✓' : 'Action';
+      if (PLAN.candidateAction) { actBtn.className = 'set'; actBtn.title = actionSummary(PLAN.candidateAction); }
+      actBtn.disabled = dead;
+      actBtn.addEventListener('click', openCandidateAction);
+    }
     if (!PLAN.candidateArmed) {
       const add = document.createElement('button');
       add.textContent = 'Add';
       add.disabled = dead;
       add.addEventListener('click', () => { PLAN.candidateArmed = true; renderPlanChip(); });
       btns.appendChild(add);
+      if (actBtn) btns.appendChild(actBtn);
     } else {
       const ok = document.createElement('button');
       ok.textContent = 'Confirm';
@@ -3692,7 +3749,9 @@ select.field{appearance:none; cursor:pointer;}
       no.className = 'cancel';
       no.textContent = 'Cancel';
       no.addEventListener('click', clearCandidate);
-      btns.appendChild(ok); btns.appendChild(no);
+      btns.appendChild(ok);
+      if (actBtn) btns.appendChild(actBtn);
+      btns.appendChild(no);
     }
     hint.style.display = dead ? 'block' : 'none';
     if (dead) hint.textContent = 'Same hex as the last point';
@@ -3702,19 +3761,36 @@ select.field{appearance:none; cursor:pointer;}
     chip.classList.add('on');
   }
 
-  // Confirm the candidate → append it to the route as a { anchor } waypoint (unless it would be a dead
-  // leg) and clear it.
+  // The chip's [Action] → open the dock editor in COLLECT mode for this craft (pre-filled if an action
+  // is already pending). Save stashes { type:'dock', manifest } on the candidate; Clear (null) drops it.
+  // Nothing is sent — the action rides into the waypoint on Confirm. The candidate is captured so a
+  // save that somehow lands after the candidate changed (or planning ended) is ignored, never misfiled.
+  function openCandidateAction() {
+    if (!PLAN || !PLAN.candidate || !window.__openDock) return;
+    const cand = PLAN.candidate;
+    const existing = PLAN.candidateAction ? PLAN.candidateAction.manifest : null;
+    window.__openDock(PLAN.vehicle.id, null, (manifest) => {
+      if (!PLAN || PLAN.candidate !== cand) return;
+      PLAN.candidateAction = manifest ? { type: 'dock', manifest: manifest } : null;
+      renderPlanChip();
+    }, existing);
+  }
+
+  // Confirm the candidate → append it to the route as a { anchor } waypoint — with its pending action,
+  // if one was set from the chip — unless it would be a dead leg, then clear the candidate.
   function confirmCandidate() {
     if (!PLAN || !PLAN.candidate) return;
     if (sameHex(resolveAnchor(PLAN.candidate), resolveAnchor(lastAnchor()))) return; // never build a zero-length leg
-    PLAN.waypoints.push({ anchor: PLAN.candidate });
-    PLAN.candidate = null; PLAN.candidateArmed = false;
+    const wp = { anchor: PLAN.candidate };
+    if (PLAN.candidateAction) wp.action = PLAN.candidateAction;
+    PLAN.waypoints.push(wp);
+    PLAN.candidate = null; PLAN.candidateArmed = false; PLAN.candidateAction = null;
     document.getElementById('plan-chip').classList.remove('on');
     refreshPlanState();
   }
   function clearCandidate() {
     if (!PLAN) return;
-    PLAN.candidate = null; PLAN.candidateArmed = false;
+    PLAN.candidate = null; PLAN.candidateArmed = false; PLAN.candidateAction = null;
     document.getElementById('plan-chip').classList.remove('on');
   }
 
@@ -4534,6 +4610,7 @@ select.field{appearance:none; cursor:pointer;}
       else if (out) PLAN.candidate = { landmarkKind: 'outpost', landmarkId: out.id };
       else PLAN.candidate = { q: ax.q, r: ax.r };
       PLAN.candidateArmed = false; // a fresh click re-proposes (back to the ADD step)
+      PLAN.candidateAction = null; // …and an action pending on the old candidate never carries to a new hex
       renderPlanChip();
       return;
     }
