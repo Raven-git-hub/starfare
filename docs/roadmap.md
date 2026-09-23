@@ -1193,8 +1193,9 @@ boundary so the later hex-map swap doesn't touch it.
     lap-start anchor-gone re-check and pause/flag surfacing (3); rename (delete + re-save, §11.9); the route-mode
     hold view in the dock editor (since 1b).
   - **slice 3a — engine (repetition: the repeat loop).** 🟢 *BUILT (23-09-26 — `sim/routes.js`, `sim/actions.js`,
-    `sim/state.js`, `sim/invariants.js`, `sim/snapshot.js`; tripwires `sim/tests/route-repeat.test.js` (new);
-    contract transport-model.md §11.10 / §11.4 / §11.6 / §11.3 / §11.2 — engine + operator CLI, NO client).*
+    `sim/tick.js`, `sim/state.js`, `sim/invariants.js`, `sim/snapshot.js`, `sim/server.js`, `tools/admin.js`;
+    tripwires `sim/tests/route-repeat.test.js` (new), `server.test.js`, `tools/admin.test.js`; contract
+    transport-model.md §11.10 / §11.4 / §11.6 / §11.3 / §11.2 — engine + operator CLI, NO client).*
     A route can now REPEAT. Landed as tight commits, one piece each.
     **(1) The launch modes + the entity.** `dispatchRouteWithActions` takes an optional **`repeat`** —
     `{ mode: 'once' | 'continuous' | 'nRun', n? }`, default `{ mode: 'once' }` — a LAUNCH parameter (§11.5),
@@ -1295,8 +1296,10 @@ boundary so the later hex-map swap doesn't touch it.
     gains **`--repeat once | continuous | nRun:N`** (`parseRepeatFlag`; the engine's own mode names, the lap
     count after a colon; anything else fails the command). Both commands print the lane's state (mode, laps
     left, a wait, a pending stop). The player client sends the same two actions through `POST /action`
-    (slice 3c). Sim suite → **1,523 green** (`route-repeat.test.js` +5, `server.test.js` +1); `tools/admin.test.js`
-    45 → **48**.
+    (slice 3c). Sim suite → **1,524 green** (`route-repeat.test.js` +5, plus one more lap-loop tripwire found
+    in review — WN == W1 at an OUTPOST, where the lap boundary fires inside the dock step and re-queues the craft
+    on the Outpost being iterated; `server.test.js` +1); `tools/admin.test.js` 45 → **48**. Slice 3a total:
+    1,493 → **1,524**, zero failures.
     **No-op proof.** The persist / determinism / galactic-supply goldens are untouched and green. Five runs hash
     byte-identical (state + snapshot, every 100 ticks) on `main` and on this branch: zero-state,
     economy_meanline (+ crisis) and supply_relief (400 ticks each), and a routed ONE-SHOT lane (1,500 ticks, a

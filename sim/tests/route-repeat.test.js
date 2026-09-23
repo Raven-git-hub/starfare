@@ -111,6 +111,13 @@ const LANE = () => [
   { anchor: { ...SYS_ANCHOR }, action: dock([{ dir: 'load', good: T1, qty: 400 }]) },
   { anchor: { ...HEX_B }, action: dock([{ dir: 'unload', good: T1, qty: 400 }]) },
 ];
+// The REVERSED lane: load 400 from the Outpost on HEX_B (W1), deliver it to system A (WN). Its last stop
+// is a system, so a craft that finishes a lap sits at A while the Outpost — a stop of its NEXT lap — can
+// vanish behind it: exactly the case the lap-start re-check exists for.
+const REVERSE = () => [
+  { anchor: { ...HEX_B }, action: dock([{ dir: 'load', good: T1, qty: 400 }]) },
+  { anchor: { ...SYS_ANCHOR }, action: dock([{ dir: 'unload', good: T1, qty: 400 }]) },
+];
 const dispatch = (waypoints, repeat) => createDispatchRouteWithActionsAction({
   guildId: 'g1', vehicleId: VID, waypoints, ...(repeat !== undefined ? { repeat } : {}),
 });
@@ -307,6 +314,27 @@ test('reposition: WN == W1 — the zero-length loop-back is SKIPPED; W1 resolves
   assert.equal(s.audit.totalConsumed, lap1 + 2 * cycle, 'invariant 1: every unit burned is recorded');
 });
 
+test('reposition: WN == W1 at an OUTPOST — the lap boundary fires inside the dock step and re-queues cleanly', () => {
+  // B(load from the Outpost) → A(unload) → B: each lap ends on W1's Outpost, so the zero-length loop-back
+  // is skipped and W1's load is QUEUED on the same Outpost whose dock step just finished the lap. Every tick
+  // runs through `advance`, so any queue/slot/status corruption this re-entry caused would throw here.
+  const ring = [...REVERSE(), { anchor: { ...HEX_B } }];
+  let s = accept(routeState({ outpostStock: { [T1]: 1600 } }), dispatch(ring, { mode: 'nRun', n: 3 }));
+  let docked = 0;
+  s = stepUntil(s, (st) => {
+    const c = craftOf(st);
+    if (c.trip) assert.notDeepEqual(c.trip.legs[0].from, c.trip.legs[0].to, `a zero-length leg at tick ${st.tick}`);
+    if (c.status === 'loading') docked += 1;
+    return !c.route;
+  });
+  assert.equal(pool(s), 1200, 'three loads at the Outpost, three deliveries to A');
+  assert.equal(stock(s), 400, 'the fourth lap\'s goods are still at the Outpost');
+  assert.deepEqual(craftOf(s).location, { ...HEX_B }, 'idle at WN (= W1, the Outpost)');
+  assert.equal(s.outposts[0].queue, undefined, 'nothing left queued');
+  assert.equal(s.outposts[0].slots, undefined, 'no slot left held');
+  assert.ok(docked >= 3 * outpostDockTurnaround(LIGHT_TRANSPORT), 'W1\'s load took its turnaround every lap');
+});
+
 test('fuel: each lap\'s WHOLE bill leaves the hoard at the lap start — never mid-lap', () => {
   let s = accept(routeState({ systemPool: { [T1]: 400 * 10 }, fuelHoard: 1000 }), dispatch(LANE(), { mode: 'continuous' }));
   assert.equal(s.guilds[0].fuelHoard, 1000 - LAP1_FUEL, 'lap 1 burned at launch');
@@ -343,14 +371,6 @@ test('determinism: a repeating lane replays byte-identically, and a mid-lap rest
 });
 
 // --- 3. target-gone ENDS + the flag ----------------------------------------------------------------
-
-// The REVERSED lane: load 400 from the Outpost on HEX_B (W1), deliver it to system A (WN). Its last stop
-// is a system, so a craft that finishes a lap sits at A while the Outpost — a stop of its NEXT lap — can
-// vanish behind it: exactly the case the lap-start re-check exists for.
-const REVERSE = () => [
-  { anchor: { ...HEX_B }, action: dock([{ dir: 'load', good: T1, qty: 400 }]) },
-  { anchor: { ...SYS_ANCHOR }, action: dock([{ dir: 'unload', good: T1, qty: 400 }]) },
-];
 
 test('target-gone at the LAP START: the lane ENDS idle at WN, flagged — and the doomed lap burns nothing', () => {
   let s = accept(routeState({ outpostStock: { [T1]: 4000 } }), dispatch(REVERSE(), { mode: 'continuous' }));
