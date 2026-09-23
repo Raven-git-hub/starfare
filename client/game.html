@@ -125,7 +125,7 @@
     background: rgba(8,10,16,0.92); border: 1px solid var(--line-bright); border-radius: 3px;
     pointer-events: auto; display: flex; flex-direction: column; overflow: hidden;
   }
-  #plan-list .plh { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; padding: 11px 14px 9px; border-bottom: 1px solid #1c2637; }
+  #plan-list .plh, #plan-load .plh { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; padding: 11px 14px 9px; border-bottom: 1px solid #1c2637; }
   #plan-list .plrows { overflow-y: auto; }
   #plan-list .plfade { height: 18px; margin-top: -18px; background: linear-gradient(rgba(8,10,16,0), rgba(8,10,16,0.92)); pointer-events: none; flex: none; }
   .plrow { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 11px; }
@@ -151,6 +151,30 @@
   }
   .plrow .plctl button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
   .plrow .plctl button:disabled { opacity: 0.3; cursor: default; }
+  /* automation 2b: the Load Route menu, dropped under the top-right controls. Each row: the route's name
+     (+ its stop count) to load it, and a small ✕ that arms to "Delete?" before it deletes. */
+  #plan-load {
+    position: absolute; top: 164px; right: 22px; width: 290px; max-height: 40vh; z-index: 522;
+    background: rgba(8,10,16,0.95); border: 1px solid var(--line-bright); border-radius: 3px;
+    pointer-events: auto; display: none; flex-direction: column; overflow: hidden;
+  }
+  #plan-load.on { display: flex; }
+  #plan-load .plload-rows { overflow-y: auto; }
+  .plload-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .plload-row .pick {
+    flex: 1; min-width: 0; text-align: left; cursor: pointer; padding: 6px 8px; border-radius: 2px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text);
+    background: transparent; border: 1px solid transparent; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .plload-row .pick:hover { border-color: var(--accent); color: var(--accent); }
+  .plload-row .pick .n { color: var(--text-dim); font-size: 9px; margin-left: 8px; }
+  .plload-row .del {
+    flex: none; height: 24px; min-width: 24px; padding: 0 6px; cursor: pointer; border-radius: 2px;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+    background: rgba(255,255,255,0.04); border: 1px solid var(--line-bright); color: var(--text-dim);
+  }
+  .plload-row .del:hover, .plload-row .del.armed { border-color: #c2603a; color: #e08a5a; }
+  #plan-load .plload-msg { color: #e08a5a; font-size: 9px; letter-spacing: 1px; padding: 7px 12px; }
   #plan-chip { position: absolute; z-index: 521; transform: translate(-50%, -140%); pointer-events: auto; display: none; }
   #plan-chip.on { display: block; }
   #plan-chip .chwrap { display: flex; gap: 5px; }
@@ -2923,8 +2947,17 @@ select.field{appearance:none; cursor:pointer;}
       <div class="bs">Click a hex to add a turning point</div>
     </div>
     <div id="plan-controls">
+      <!-- automation 2b: Load Route — shown only when the guild has a saved route (omit-when-empty);
+           it opens the #plan-load menu below. -->
+      <button class="plan-btn" id="planLoad" type="button" style="display:none">Load Route ▾</button>
       <button class="plan-btn primary" id="planFinalise" type="button" disabled>Finalise Route</button>
       <button class="plan-btn" id="planCancel" type="button">Cancel</button>
+    </div>
+    <!-- automation 2b: the Load Route menu — one row per saved route (load it / delete it), filled by
+         the map JS (renderLoadControl) from the guild's snapshot `savedRoutes`. -->
+    <div id="plan-load">
+      <div class="plh">Saved Routes</div>
+      <div class="plload-rows" id="planLoadRows"></div>
     </div>
     <div id="plan-list">
       <div class="plh">Route Waypoints</div>
@@ -3555,8 +3588,16 @@ select.field{appearance:none; cursor:pointer;}
   // so it never changes the quote. `action` is ABSENT (not null) on a pure turning point.
   // `candidateAction` is an action set on the CANDIDATE from the chip before it is confirmed (§11.7
   // "set at placement") — confirmCandidate bakes it into the new waypoint; a fresh click drops it.
-  let PLAN = null;              // { vehicle, origin, waypoints:[{anchor, action?},…], candidate:anchor|null, candidateArmed:bool, candidateAction:action|null }
+  let PLAN = null;              // { vehicle, origin, waypoints:[{anchor, action?},…], candidate:anchor|null, candidateArmed:bool, candidateAction:action|null, routeName:string }
   let planActive = false;       // true while the map is in planning mode (the click branch + draw pass read this)
+
+  // Automation 2b — Load Route. `liveSavedRoutes` is the player's guild's saved routes, pushed by
+  // __setLiveSavedRoutes from each poll (the snapshot's `guild.savedRoutes`: fresh { id, name, waypoints }
+  // rows; [] when the guild has none). The rest is the Load menu's own display state.
+  let liveSavedRoutes = [];
+  let savedRoutesSig = '';      // the rows the menu last drew — a poll rebuilds it only when they change
+  let deleteArmedId = null;     // the saved route whose ✕ was clicked once (a second click deletes it)
+  let loadMsg = '';             // a delete refusal, shown in the menu
 
   // copyWaypoint(wp) -> a fresh { anchor, action? } — used wherever a waypoint list crosses between the
   // planner and the Dispatch popup, so the two never share (and so never silently edit) the same object.
@@ -3706,9 +3747,12 @@ select.field{appearance:none; cursor:pointer;}
   // and all — for Edit Route). Closes any open tab/panel, flies to the craft's hex at a hex-visible zoom
   // (≥ VECTOR_ZOOM_THRESHOLD), and shows the planning overlays. The origin is the craft's own location
   // anchor — resolved to coords for the draw.
-  function startPlanning(vehicle, waypoints) {
+  // `routeName` (automation 2b) is the saved route's name when the list came from Load Route — it rides to
+  // the popup so its Save field starts on that name (re-saving it updates the lane in place, §11.9).
+  function startPlanning(vehicle, waypoints, routeName) {
     if (!vehicle || !vehicle.location) return;
-    PLAN = { vehicle: vehicle, origin: vehicle.location, waypoints: (waypoints || []).map(copyWaypoint), candidate: null, candidateArmed: false, candidateAction: null };
+    PLAN = { vehicle: vehicle, origin: vehicle.location, waypoints: (waypoints || []).map(copyWaypoint), candidate: null, candidateArmed: false, candidateAction: null, routeName: routeName || '' };
+    closeLoadMenu();
     planActive = true;
     const c = resolveAnchor(vehicle.location);
     document.getElementById('app').classList.add('planning');
@@ -3728,6 +3772,7 @@ select.field{appearance:none; cursor:pointer;}
     planActive = false;
     document.getElementById('app').classList.remove('planning');
     document.getElementById('plan-chip').classList.remove('on');
+    closeLoadMenu();
     if (!keepPlan) PLAN = null;
   }
 
@@ -3746,7 +3791,7 @@ select.field{appearance:none; cursor:pointer;}
     if (!PLAN || !PLAN.waypoints.length || anyDeadLeg(PLAN)) return;
     const vehicle = PLAN.vehicle, waypoints = PLAN.waypoints.map(copyWaypoint);
     exitPlanning(true); // clears the .planning class + the chip; keeps PLAN for the popup / Edit Route
-    if (window.__dispatchFinalise) window.__dispatchFinalise(vehicle, waypoints);
+    if (window.__dispatchFinalise) window.__dispatchFinalise(vehicle, waypoints, PLAN.routeName);
   }
 
   // Re-cost/re-draw hook: every list edit (add/remove/reorder) re-runs the dead-leg sweep and gates
@@ -3895,6 +3940,68 @@ select.field{appearance:none; cursor:pointer;}
     if (!PLAN) return;
     PLAN.candidate = null; PLAN.candidateArmed = false; PLAN.candidateAction = null;
     document.getElementById('plan-chip').classList.remove('on');
+  }
+
+  // ---------- automation slice 2b: Load Route — the guild's saved lanes (transport-model.md §11.9) ----------
+  // renderLoadControl() — the Load Route button and its menu. The button is HIDDEN when the guild has no
+  // saved route (omit-when-empty, like the snapshot key). Each menu row is the route's name + stop count
+  // (click to load) and a small ✕ to delete. Delete is two-step (✕ → "Delete?"), the same mis-click
+  // guard as the chip's Add → Confirm, so one stray click never loses a lane.
+  function renderLoadControl() {
+    const btn = document.getElementById('planLoad');
+    const rowsBox = document.getElementById('planLoadRows');
+    if (!btn || !rowsBox) return;
+    btn.style.display = liveSavedRoutes.length ? '' : 'none';
+    if (!liveSavedRoutes.length) closeLoadMenu();
+    rowsBox.innerHTML = liveSavedRoutes.map((r) => {
+      const armed = deleteArmedId === r.id;
+      const stops = r.waypoints.length + (r.waypoints.length === 1 ? ' stop' : ' stops');
+      return '<div class="plload-row">' +
+        '<button class="pick" type="button" data-load="' + escapeHtml(r.id) + '" title="Load this route onto the craft">' +
+          escapeHtml(r.name) + '<span class="n">' + stops + '</span></button>' +
+        '<button class="del' + (armed ? ' armed' : '') + '" type="button" data-del="' + escapeHtml(r.id) + '" title="Delete this saved route">' +
+          (armed ? 'Delete?' : '✕') + '</button>' +
+      '</div>';
+    }).join('') + (loadMsg ? '<div class="plload-msg">' + escapeHtml(loadMsg) + '</div>' : '');
+  }
+  function closeLoadMenu() {
+    deleteArmedId = null; loadMsg = '';
+    const menu = document.getElementById('plan-load');
+    if (menu) menu.classList.remove('on');
+  }
+
+  // loadSavedRoute(id) — repopulate the plan from a saved route (§11.9 Load). It goes through the
+  // planner's own init (startPlanning → copyWaypoint), so the plan holds fresh { anchor, action? } copies
+  // that never alias the snapshot, and the ORIGIN is this craft's current location: the route is
+  // origin-free, so the positioning leg simply falls out (§11.4 — on the craft's own hex, the skip). Each
+  // anchor is judged FRESH as it renders: a stop whose store has gone shows BROKEN (brokenAt), visible
+  // and editable — soft re-validation, never a refuse-at-load. Finalise then fetches a fresh quote for
+  // the new geometry (the quote is only ever fetched there, so it can never be stale).
+  function loadSavedRoute(id) {
+    const route = liveSavedRoutes.find((r) => r.id === id);
+    if (!PLAN || !route) return;
+    startPlanning(PLAN.vehicle, route.waypoints, route.name);
+  }
+
+  // deleteSavedRoute(id) — the ✕: the first click arms it, the second POSTs deleteRoute { guildId, routeId }
+  // through the one action path. On accept the snapshot is re-read, and the menu rebuilds from it (the
+  // route leaves the list there, not by a local splice); a refusal shows the engine's reason in the menu.
+  async function deleteSavedRoute(id) {
+    if (deleteArmedId !== id) { deleteArmedId = id; loadMsg = ''; renderLoadControl(); return; }
+    deleteArmedId = null;
+    let out;
+    try {
+      out = await window.__sendAction({ type: 'deleteRoute', guildId: PLAYER_GUILD.guildId, routeId: id });
+    } catch (err) {
+      out = { accepted: false, reason: 'the Syndicate could not be reached: ' + ((err && err.message) || err) };
+    }
+    if (out && out.accepted) {
+      loadMsg = '';
+      if (window.__refreshNow) { try { await window.__refreshNow(); } catch (e) {} }
+    } else {
+      loadMsg = 'Refused: ' + ((out && out.reason) || 'the Syndicate declined');
+    }
+    renderLoadControl();
   }
 
   // `broken` (automation 2b) is the planner's flag red — the same #C2603A the popup's --red and the
@@ -4733,6 +4840,7 @@ select.field{appearance:none; cursor:pointer;}
       else PLAN.candidate = { q: ax.q, r: ax.r };
       PLAN.candidateArmed = false; // a fresh click re-proposes (back to the ADD step)
       PLAN.candidateAction = null; // …and an action pending on the old candidate never carries to a new hex
+      closeLoadMenu();             // a map click dismisses an open Load Route menu, like any dropdown
       renderPlanChip();
       return;
     }
@@ -5065,6 +5173,30 @@ select.field{appearance:none; cursor:pointer;}
     else return;
     refreshPlanState();
   });
+  // Automation 2b: Load Route. The button toggles the menu; the menu's rows load (data-load) or delete
+  // (data-del) a saved route — event delegation, since the rows are rebuilt from each snapshot.
+  document.getElementById('planLoad').addEventListener('click', () => {
+    const menu = document.getElementById('plan-load');
+    const opening = !menu.classList.contains('on');
+    closeLoadMenu();
+    if (opening) { renderLoadControl(); menu.classList.add('on'); }
+  });
+  document.getElementById('planLoadRows').addEventListener('click', (e) => {
+    const pick = e.target.closest('button[data-load]');
+    const del = e.target.closest('button[data-del]');
+    if (pick) loadSavedRoute(pick.getAttribute('data-load'));
+    else if (del) deleteSavedRoute(del.getAttribute('data-del'));
+  });
+  // The live door for the guild's saved routes (called by the shell after every /snapshot read). The
+  // menu is rebuilt only when the rows actually changed, so a poll never swaps it out from under a click.
+  window.__setLiveSavedRoutes = function (rows) {
+    const sig = JSON.stringify(rows || []);
+    if (sig === savedRoutesSig) return;
+    savedRoutesSig = sig;
+    liveSavedRoutes = rows || [];
+    if (deleteArmedId && !liveSavedRoutes.some((r) => r.id === deleteArmedId)) deleteArmedId = null;
+    renderLoadControl();
+  };
 
   // The bridges the Dispatch popup calls: Plan Route / Edit Route enter planning (with an empty list,
   // or the current one to edit); abandon discards any in-progress route (the popup calls it on close /
@@ -6943,6 +7075,11 @@ function applySnapshot(snap){
       .filter(function(v){ return v.status === 'inTransit' && v.trip; })
       .map(function(v){ return { id: v.id, class: v.class, trip: v.trip }; });
     window.__setLiveInTransitCraft(inTransitCraft);
+  }
+  // The player's SAVED ROUTES (automation 2b, transport-model.md §11.9) — the route planner's Load Route
+  // list, off the player's OWN guild row (`savedRoutes` is omit-when-empty, so none reads as []).
+  if (window.__setLiveSavedRoutes){
+    window.__setLiveSavedRoutes((me && me.savedRoutes) || []);
   }
   // The systems the player controls, for the detail screen's system picker.
   var mineIds = Object.keys(LIVE.systemClaims).filter(function(id){ return LIVE.systemClaims[id] === GAME.guildId; });
@@ -10736,7 +10873,7 @@ function paintInventoryHero(d){
     var rc = window.__routeChecks;
     if(rc.anyDeadLeg(route)) return 'Two stops sit on the same hex — remove or reorder one.';
     if(rc.anyBroken(route)) return 'A stop\'s action can no longer run there — clear its action or remove the stop.';
-    if(rc.idleAtBerth(route)) return 'Nothing to do — ' + rc.idleAtBerthCue + '.';
+    if(rc.idleAtBerth(route)) return 'Nothing to do: ' + rc.idleAtBerthCue + '.';
     return '';
   }
 
@@ -10821,9 +10958,12 @@ function paintInventoryHero(d){
   // engine quote, and re-open the popup in its post-finalise state. The map has already left planning.
   // The quote is the ONLY source of time/fuel/credits (§18); a network/HTTP failure surfaces as an
   // { ok:false }-shaped result so the same render path shows a reason rather than throwing.
-  async function dispatchFinalise(vehicle, waypoints){
+  async function dispatchFinalise(vehicle, waypoints, routeName){
     var v = liveVehicle(vehicle.id) || vehicle;
     DP.vehicle = v; DP.waypoints = (waypoints || []).slice();
+    // A route that came from Load Route arrives with its saved name: the Save field starts on it, so
+    // re-saving an edited lane updates it in place (§11.9 upsert). Otherwise the field keeps its text.
+    if(routeName) DP.saveName = routeName;
     DP.quote = await fetchQuote(v, DP.waypoints);
     renderPostFinalise();
     $('dispatch-overlay').classList.add('open');

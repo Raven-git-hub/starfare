@@ -1105,7 +1105,8 @@ boundary so the later hex-map swap doesn't touch it.
     fixed here):** plain `dispatchVehicle` does NOT skip, so a NO-action route whose first waypoint is the craft's
     own hex now quotes ok while a plain dispatch of it is still refused. Today's client never asks for that
     quote: its planner flags the craft → W1 row as a dead leg and keeps Finalise disabled. 2b decides how the
-    client treats it. Sim suite → **1,493 green** (`quote.test.js` +5: skip ≡ quoting from W1 onward; the quote
+    client treats it. *(Decided in slice 2b: such a route is sent as `dispatchRouteWithActions`, the path that
+    skips.)* Sim suite → **1,493 green** (`quote.test.js` +5: skip ≡ quoting from W1 onward; the quote
     matches the real actioned run's fuel, first leg and final arrival tick; act-in-place quotes 0/0/0 arriving
     now (at tick 0 and ticked forward) and the dispatch burns that 0; the skip never cascades; deterministic.
     `server.test.js` +1: `POST /vehicle/quote` act-in-place + skip, still read-only. The old "first waypoint on
@@ -1129,6 +1130,68 @@ boundary so the later hex-map swap doesn't touch it.
     craft, and `delete-route` dropped the `savedRoutes` key.
     **Deferred, not invented:** the client Save / Load Route UI and any client handling of the plain-route-at-
     berth edge (2b); repetition, the lap-start anchor-gone re-check and pause/flag surfacing (3).
+  - **slice 2b — client (Save / Load Route, the skip-aware planner, the broken-stop gate).** 🟢 *BUILT (23-09-26 —
+    CLIENT ONLY, `client/game.html`; no engine/snapshot/`sim`/`tools` change — it drives the 2a `saveRoute` /
+    `deleteRoute` and the 2a/2a.1 skip through the existing `POST /action` and `POST /vehicle/quote`; contract
+    transport-model.md §11.9 / §11.1 / §11.7 / §11.4, design.md §18).* Four isolated pieces, one commit each.
+    **(1) The skip-aware planner.** The planner's route checks now take a `route` (`{ vehicle, origin,
+    waypoints }`) instead of reading `PLAN`, so the map planner and the Finalise list judge a route by ONE rule
+    set (shared as `window.__routeChecks`). `deadLegAt`: waypoint 0 is never a dead leg — on the craft's own hex
+    it is the §11.4 skip (`skipsFirstLeg`); an internal zero-length leg (two stops on one hex) is still dead,
+    unchanged. The chip and Confirm share one `candidateIsDeadLeg`, so the craft's own hex can be clicked as
+    stop 1, Action and all. `idleAtBerth`: the one-stop route at the berth with NO action (the engine refuses
+    it) carries a cue ("this stop is where the craft already sits — add an action or remove it") and cannot
+    Dispatch; Finalise stays reachable, so the popup's "+ Action" can fix it. **The "acts in place" cue:**
+    stop 1 on the craft's hex reads "you are here — acts in place" (or "you are here — starts from this stop"
+    with no action) in both lists, so the 0-leg / 0-fuel first stop reads as intentional. `startPlanning` now
+    runs `refreshPlanState`, so a seeded list (Edit / Load Route) sets the Finalise gate too.
+    **(2) The broken-stop flag + hard Dispatch gate.** `brokenAt(route, i) = wp.action &&
+    !routeActionAllowed(craft, wp.anchor)` — the 1b Action gate, reused, not forked. It is judged at render time,
+    so a loaded route needs no separate re-validation pass: its dead stops simply render broken (§11.9 soft
+    re-validation). Map: a broken stop's hex is outlined and its ring/index drawn in the flag red (#C2603A, the
+    popup's `--red` and the dead-leg row's palette). Lists: the broken row is red-tinted with a one-line reason
+    in both the planner list and the Finalise list ("store gone — this stop can't load/unload"); the Finalise
+    row keeps its Action control (Edit / Clear) and gains a Remove, which re-quotes (`fetchQuote`, factored out
+    of Finalise). Dispatch: `canSend = okQ && q.affordable !== false && !dispatchBlock(route)`, where
+    `dispatchBlock` is the dead-leg / broken-stop / idle-at-berth gate, its reason shown the way an
+    `{ ok:false }` quote's is, and re-checked at the moment of sending. Hard block, no warn-but-allow (ruled).
+    **(3) Save Route (the Finalise view).** A name field + Save posts `saveRoute { guildId, name, waypoints }`
+    with the laid-out route, actions and all. The engine's name upsert decides; the button reads "Update Route"
+    when the trimmed name matches one of the guild's saved routes, else "Save Route". Always available — a
+    stop broken for this craft is still a legal plan to save; only Dispatch is gated. The engine's accept /
+    refuse shows under the row, and an accept re-reads the snapshot at once.
+    **(4) Load Route (the planner).** A "Load Route ▾" button beside Finalise / Cancel, HIDDEN when the guild
+    has no saved route (omit-when-empty), opens a menu of the guild's saved routes (name + stop count) off the
+    snapshot's `guild.savedRoutes` (a new `__setLiveSavedRoutes` door fed by `applySnapshot`, rebuilt only when
+    the rows change). Picking one runs the planner's own init (`startPlanning` → `copyWaypoint`: fresh
+    non-aliasing copies, the craft's current location as the origin, so the positioning leg falls out, §11.4);
+    the next Finalise quotes the new geometry. A small ✕ arms to "Delete?", and a second click posts
+    `deleteRoute { guildId, routeId }`; the list refreshes from the re-read snapshot.
+    Sim suite **1,493 green** (untouched — client-only; the served-page tripwire stays green). **Verified
+    end-to-end in headless Chromium** against a booted server (seed 7; guild `g1`, two light transports at home,
+    one in deep space, a guild outpost 2 hexes off home). (a) The human's case: Plan Route → click the craft's
+    own hex, attach load titanium 400, add the outpost (unload 400) and a bare hex → Finalises (it did not
+    before) and posts `dispatchRouteWithActions`; the 400 loads IN PLACE at dispatch, the craft flies on, the
+    outpost ends holding 400 and the craft idles at W3. Two clicked stops on one hex are still refused (chip +
+    list + Finalise). (b) Save "Ore run" → it appears in Load Route → loaded onto the deep-space craft (origin =
+    its own hex, fresh quote) → an edited unload re-saved under the same name updates `route_g1_01` in place →
+    ✕ / Delete? removes it and the button disappears. (c) A route through the outpost saved, the outpost torn
+    down, Load → red on the map and in both lists, Dispatch disabled with the reason; still saves; Clear (or
+    Remove) → Dispatch re-enables and it flies. (d) A one-stop "load 400" route loaded onto a craft at that
+    stop shows the cue and a 0m / 0 ¢ quote, and Dispatch acts in place (400 aboard, no fuel burned). No
+    application console errors (the only console lines are Google Fonts stylesheets failing TLS through the
+    sandbox proxy).
+    **Slice-local calls (surfaced, not invented):** a route whose stop 1 is the craft's hex is sent as
+    `dispatchRouteWithActions` even with NO action — it is the one engine path that takes the skip, and the one
+    the quote previews (plain `dispatchVehicle` still refuses a zero first leg; discharges 2a.1's "known edge");
+    the idle one-stop route blocks Dispatch, not Finalise; the Save field starts on a loaded route's name (so
+    "edit a lane, then commit it back" is one click); delete is two-step; a spycraft's broken reason reads "no
+    hold — this craft can't load/unload"; the gate is re-checked at click time rather than the open popup
+    re-rendering on each poll (the map outline is live; the lists refresh on the next edit). **Display calls:**
+    the Load control's placement (top-right, beside Finalise) and its menu; the broken palette (the existing
+    flag red); the cue wording; the Save row under the Planned Route. **Deferred, not invented:** repetition, the
+    lap-start anchor-gone re-check and pause/flag surfacing (3); rename (delete + re-save, §11.9); the route-mode
+    hold view in the dock editor (since 1b).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
