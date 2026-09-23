@@ -1014,6 +1014,13 @@ boundary so the later hex-map swap doesn't touch it.
     not guessed at; `--route` is the dispatch-route grammar, now shared with a `command` name for its errors)
     and `delete-route --guild ID --id ROUTE_ID`; both print the guild's saved routes as they now stand. Sim suite
     → **1,474 green** (`server.test.js` +2); `tools/admin.test.js` 42 → **45**.
+    **(3) A 1a fix found on the way (`sim/actions.js`; tripwire `route-actions.test.js`).** `dispatchRouteWithActions`
+    did not cancel a craft's queued manual Outpost manifest the way `dispatchVehicle` does (design.md §4 "a queued
+    craft is cancelled by being re-dispatched away"): the stale entry named a craft now in flight, tripping
+    `outpost-dock-status-matches-kind` at once (a 500 over the server), and a tick later the dock step promoted the
+    flying craft to `loading`. Both applies now call one `cancelQueuedManifest` (extracted from `dispatchVehicle`,
+    unchanged behaviour there). The skip below depends on it — a craft dispatched from its own Outpost would
+    otherwise queue a SECOND manifest there. Sim suite → **1,475 green** (+1).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*

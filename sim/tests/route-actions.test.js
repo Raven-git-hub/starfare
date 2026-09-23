@@ -44,7 +44,7 @@ const { starterHomeAtDistance } = require('./waystation-fixtures.js');
 const {
   validateAction, applyAction,
   createSpawnVehicleAction, createDispatchRouteWithActionsAction,
-  createDispatchVehicleAction, createRemoveOutpostAction,
+  createDispatchVehicleAction, createRemoveOutpostAction, createTransferCargoAction,
 } = require('../actions.js');
 
 const SYS_A = starterHomeAtDistance(6).id; // a real seed system — the LOAD stop
@@ -377,6 +377,24 @@ test('validation: a bad manifest / zero-length leg / non-idle craft / spycraft-w
   let flying = base();
   flying = accept(flying, createDispatchVehicleAction({ guildId: 'g1', vehicleId: VID, waypoints: [{ ...HEX_B }] }));
   assert.match(refuse(flying, dispatchRoute([{ anchor: SYS_ANCHOR }])), /only an idle craft dispatches/);
+});
+
+// --- re-dispatch cancels a queued manual manifest (design.md §4), as the plain dispatch does --------
+
+test('a craft queued at its outpost with a manual manifest drops it when dispatched on a route', () => {
+  // The craft sits at the outpost (HEX_B) and a manual transferCargo queues a load there (the craft stays
+  // idle, so it may be re-dispatched). Dispatching it on a route must cancel that entry (§4), or the dock
+  // step would later promote a craft that is in flight.
+  let s = routeState({ craftAt: { ...HEX_B }, outpostStock: { [T1]: 50 } });
+  s = accept(s, createTransferCargoAction({ guildId: 'g1', vehicleId: VID, manifest: [{ dir: 'load', good: T1, qty: 10 }] }));
+  assert.equal(outpostOf(s).queue.length, 1, 'the manual manifest is queued');
+  s = accept(s, dispatchRoute([{ anchor: SYS_ANCHOR }]));
+  assert.equal(outpostOf(s).queue, undefined, 'the queued manifest was cancelled (omit-when-empty)');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+  s = tickUntil(s, (st) => !craftOf(st).route);
+  assert.deepEqual(craftOf(s).location, SYS_ANCHOR, 'flew the route and landed idle at A');
+  assert.equal(stock(s, T1), 50, 'the cancelled load never ran');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
 // --- the no-action route (a pure turning-point chain) + the omit-when-absent no-op -----------------

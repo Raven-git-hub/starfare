@@ -994,6 +994,23 @@ function isDockedAt(outpost, vehicleId) {
     || (outpost.slots || []).some((e) => e.vehicleId === vehicleId);
 }
 
+// cancelQueuedManifest(state, vehicleId) — drop the craft's pending Outpost manifest, if it has one
+// (design.md §4 "a parked or queued craft is cancelled by being re-dispatched away — that drops its
+// pending manifest"). THE ONE spelling of that cancel, shared by both dispatch applies (dispatchVehicle
+// and dispatchRouteWithActions): a queued craft is plain `idle`, so it passes a dispatch's idle gate, and
+// its queue entry must go before it flies — a stale entry would let the dock step later grab a craft that
+// is in flight. A parked craft has no entry (a no-op); a LOADING craft never reaches a dispatch apply (the
+// idle gate refused it — it runs to completion). The craft is queued at one Outpost at most, but the sweep
+// is store-wide so a stray entry can never survive a dispatch. Keeps `queue` omit-when-empty. A mutator on
+// the already-cloned `next`.
+function cancelQueuedManifest(state, vehicleId) {
+  for (const outpost of state.outposts || []) {
+    if (!outpost.queue) continue;
+    outpost.queue = outpost.queue.filter((e) => e.vehicleId !== vehicleId);
+    if (outpost.queue.length === 0) delete outpost.queue;
+  }
+}
+
 // Venture ids are unique across the whole galaxy, not just within a guild —
 // scan every guild's ventures. Returns the venture or undefined.
 function findVenture(state, ventureId) {
@@ -3498,16 +3515,8 @@ function applyAction(state, action) {
     const guild = findGuild(next, action.guildId);
     const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
     // CANCEL a pending Outpost transfer (design.md §4 "a parked or queued craft is cancelled by being
-    // re-dispatched away — that drops its pending manifest"). A queued craft is plain `idle`, so it
-    // passed the idle gate; here we drop its queue entry before it flies. A parked craft has no entry
-    // (nothing to drop); a LOADING craft never reaches here (the idle gate refused it — it runs to
-    // completion). The craft is queued at exactly one Outpost, but the sweep is written store-wide so
-    // a stray entry can never survive a dispatch.
-    for (const outpost of next.outposts || []) {
-      if (!outpost.queue) continue;
-      outpost.queue = outpost.queue.filter((e) => e.vehicleId !== craft.id);
-      if (outpost.queue.length === 0) delete outpost.queue;
-    }
+    // re-dispatched away — that drops its pending manifest") — the shared sweep, see cancelQueuedManifest.
+    cancelQueuedManifest(next, craft.id);
     // Re-derive the route BEFORE the craft leaves its berth (dispatchRoute reads craft.location);
     // validate guaranteed { ok: true }, so this cannot fail — the shared helper keeps the legs and
     // the burn byte-identical to the ones the gate checked.
@@ -3623,6 +3632,10 @@ function applyAction(state, action) {
     // hooks (`advanceRoute`, sim/tick.js) as the craft completes the stop before it.
     const guild = findGuild(next, action.guildId);
     const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
+
+    // CANCEL a pending Outpost transfer, exactly as the plain dispatch does (design.md §4 — a queued craft
+    // is idle, so it passed the idle gate; its manual manifest is dropped when it is re-dispatched).
+    cancelQueuedManifest(next, craft.id);
 
     // Re-derive + price the whole route BEFORE the craft leaves its berth (dispatchRoute reads
     // craft.location); validate guaranteed { ok: true }, so this cannot fail — the shared helper keeps
