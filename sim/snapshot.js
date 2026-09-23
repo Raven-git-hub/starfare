@@ -700,8 +700,10 @@ function computeAttention(state) {
 //                 vehicles: [ { id, class,                        // §15.4 transport inventory (2.2)
 //                               maintenanceCondition, status,       //   idle -> location; inTransit -> trip
 //                               cargo, capacity, used,              //   hold + space figures (2.2 Outpost Mgr)
-//                               dockStatus?, location?, trip? } ],  //   trip: { legs[{from,to,isToll,
+//                               dockStatus?, location?, trip?,      //   trip: { legs[{from,to,isToll,
 //                                                                   //   departureTick,arrivalTick}], arrivalTick, fuelCost }
+//                               route? } ],                         //   route: { waypoints, cursor, mode?,
+//                                                                   //   lapsRemaining? } (§11.10 repeat state)
 //                 savedRoutes?: [ { id, name,                     // §11.9 saved routes (2.2 automation 2a),
 //                                   waypoints: [ { anchor, action? } ] } ], // omit-when-empty, stored order
 //                 productionProfile: { ... } } ],               // §5 profile, sparse as stored
@@ -781,6 +783,20 @@ function orderSnapshot(order) {
   };
 }
 
+// snapshotRoute(route) -> a routed craft's `route` as the snapshot shows it (transport-model.md §11.1 /
+// §11.10): FRESH copies throughout (no aliasing into engine state). The repeat state rides along exactly
+// as stored — `mode` ('continuous' | 'nRun') and an nRun's `lapsRemaining` — and is ABSENT for a one-shot
+// route (omit-when-default, mirroring the state), so a one-shot row is byte-identical to the pre-repeat
+// one. Read by the slice-3c client to render a lane's mode and laps left.
+function snapshotRoute(route) {
+  return {
+    waypoints: route.waypoints.map(copyRouteWaypoint),
+    cursor: route.cursor,
+    ...(route.mode !== undefined ? { mode: route.mode } : {}),
+    ...(route.lapsRemaining !== undefined ? { lapsRemaining: route.lapsRemaining } : {}),
+  };
+}
+
 // snapshotVehicleRow(v, fuelPrice) -> the per-vehicle snapshot row (design.md §15.4, 2.2 (b1)).
 // An IDLE craft carries its `location` (unchanged from the spawn slice). An IN-TRANSIT craft carries
 // its in-flight `trip` instead: the ordered legs with RESOLVED endpoint coords (so a later client can
@@ -813,8 +829,9 @@ function snapshotVehicleRow(v, fuelPrice, dockStatus) {
     // The ROUTE (2.2 automation slice 1a — transport-model.md §11.1). PRESENT only while the craft is
     // executing a chained route: its `{ anchor, action? }` waypoints (FRESH-copied, manifest lines
     // copied — no aliasing) and the `cursor` marking the waypoint it is at/heading to, so the later
-    // client (1b) can read the plan and mark progress. Omit-when-absent, like `trip`/`dockStatus`.
-    ...(v.route ? { route: { waypoints: v.route.waypoints.map(copyRouteWaypoint), cursor: v.route.cursor } } : {}),
+    // client (1b) can read the plan and mark progress — plus a repeating lane's state (snapshotRoute).
+    // Omit-when-absent, like `trip`/`dockStatus`.
+    ...(v.route ? { route: snapshotRoute(v.route) } : {}),
   };
   if (v.status === 'inTransit' && v.trip) {
     let totalUnits = 0;

@@ -22,7 +22,7 @@ const {
 const { outpostId, nextOutpostSerial, outpostDockTurnaround } = require('./outposts.js');
 const { resolveManifest, usedSpace, manifestAmountError, copyManifestLine } = require('./manifest.js');
 const {
-  copyRouteWaypoint, savedRouteId, nextSavedRouteSerial,
+  REPEAT_MODES, copyRouteWaypoint, savedRouteId, nextSavedRouteSerial,
 } = require('./routes.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { checkQuote, quotedPrice } = require('./price-ring.js');
@@ -843,14 +843,24 @@ function createTransferCargoAction({ guildId, vehicleId: vId, manifest }) {
 // as-is for no-action routes), this flies leg by leg: the whole run's fuel burns UP FRONT (§11.3,
 // legs are known even though timing is not), the route + a cursor are journalled onto the craft, and
 // each leg is re-dispatched by the tick hooks (`advanceRoute`) as the craft completes the stop before
-// it. One-shot: the run ends idle at the last waypoint. The constructor only enforces the required
-// fields are present; validateAction judges legality (idle owned craft, resolvable non-zero legs,
-// well-formed actions, spycraft-with-an-action refused, whole-run fuel affordable).
-function createDispatchRouteWithActionsAction({ guildId, vehicleId: vId, waypoints }) {
+// it. The constructor only enforces the required fields are present; validateAction judges legality
+// (idle owned craft, resolvable non-zero legs, well-formed actions, spycraft-with-an-action refused,
+// lap-1 fuel affordable, a well-formed `repeat`).
+//
+// `repeat` (optional, slice 3a — transport-model.md §11.10) is the LAUNCH MODE: `{ mode: 'once' }` (the
+// default — run the waypoints once and land idle at the last), `{ mode: 'continuous' }` (keep cycling
+// until stopped or the lane ends) or `{ mode: 'nRun', n }` (exactly n full cycles). It rides the action
+// only when given, so a one-shot dispatch journals byte-identically to the pre-repeat one.
+function createDispatchRouteWithActionsAction({
+  guildId, vehicleId: vId, waypoints, repeat,
+}) {
   if (guildId === undefined) throw new Error('createDispatchRouteWithActionsAction: guildId is required');
   if (vId === undefined) throw new Error('createDispatchRouteWithActionsAction: vehicleId is required');
   if (waypoints === undefined) throw new Error('createDispatchRouteWithActionsAction: waypoints is required');
-  return { type: 'dispatchRouteWithActions', guildId, vehicleId: vId, waypoints };
+  return {
+    type: 'dispatchRouteWithActions', guildId, vehicleId: vId, waypoints,
+    ...(repeat !== undefined ? { repeat } : {}),
+  };
 }
 
 // saveRoute: store a NAMED, origin-free route on the guild so it can be loaded onto any craft later
@@ -1117,6 +1127,41 @@ function routeWaypointError(wp, i) {
     if (mError) return `waypoint ${i} action: ${mError}`;
   }
   return null;
+}
+
+// repeatError(repeat) -> a reason string for the first thing wrong with a dispatch's `repeat` launch
+// mode (transport-model.md §11.10), or null when it is well-formed. Absent means `once` (the built
+// one-shot). Otherwise it is `{ mode }` with `mode` one of the three REPEAT_MODES, and `n` — the number
+// of full cycles — belongs to `nRun` alone: a whole number >= 1 there, and not present on the other two
+// (a stray `n` on a continuous lane is a mistake worth refusing, not a value to quietly ignore).
+function repeatError(repeat) {
+  if (repeat === undefined) return null;
+  if (!repeat || typeof repeat !== 'object' || Array.isArray(repeat)) {
+    return `repeat must be { mode: "once"|"continuous"|"nRun", n? }, got ${JSON.stringify(repeat)}`;
+  }
+  if (!REPEAT_MODES.includes(repeat.mode)) {
+    return `repeat.mode must be one of ${REPEAT_MODES.map((m) => JSON.stringify(m)).join(' | ')}, got ${JSON.stringify(repeat.mode)}`;
+  }
+  if (repeat.mode === 'nRun') {
+    if (!Number.isInteger(repeat.n) || repeat.n < 1) {
+      return `an nRun lane needs n, a whole number of laps >= 1, got ${JSON.stringify(repeat.n)}`;
+    }
+  } else if (repeat.n !== undefined) {
+    return `repeat.n is only for mode "nRun" — a ${JSON.stringify(repeat.mode)} lane has no lap count, got n ${JSON.stringify(repeat.n)}`;
+  }
+  return null;
+}
+
+// repeatStateFor(repeat) -> the repeat fields journalled onto a craft's `route` at launch (§11.10):
+//   once (or absent) → {}                     — nothing: a one-shot route stays byte-identical to the
+//                                               built one (omit-when-default);
+//   continuous       → { mode: 'continuous' };
+//   nRun             → { mode: 'nRun', lapsRemaining: n } — counts DOWN one per finished lap.
+// `repeat` is already validated (repeatError).
+function repeatStateFor(repeat) {
+  if (repeat === undefined || repeat.mode === 'once') return {};
+  if (repeat.mode === 'nRun') return { mode: 'nRun', lapsRemaining: repeat.n };
+  return { mode: repeat.mode };
 }
 
 // isDockedAt(outpost, vehicleId) -> true when the craft already holds a manifest at this Outpost —
@@ -2559,10 +2604,24 @@ function validateAction(state, action) {
         return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} (class ${JSON.stringify(craft.class)}) carries no cargo (capacity 0) and cannot run a route with an action (§11)` };
       }
     }
+    // The LAUNCH MODE (§11.10): once (the default) / continuous / nRun with n >= 1.
+    const rError = repeatError(action.repeat);
+    if (rError) return { valid: false, reason: rError };
+    // A REPEATING lane needs at least two waypoints. Its lap is one cycle W1 → … → WN, and with one stop
+    // that cycle has NO leg — WN is W1, so every lap after the first would reposition zero-length (skipped,
+    // §11.4) and resolve W1 in place again at once: the lane would lap in place, without end, inside a
+    // single tick (§11.2 / §15.4 — every lap step must hang off a real arrival or turnaround). With two or
+    // more stops the W1 → W2 leg is real (a dead internal leg is refused below), so every lap takes time.
+    const repeating = action.repeat !== undefined && action.repeat.mode !== 'once';
+    if (repeating && action.waypoints.length < 2) {
+      return { valid: false, reason: `a repeating lane needs at least two waypoints — a one-stop cycle has no leg to fly, so it would lap in place within one tick (transport-model.md §11.4 / §11.10)` };
+    }
     // Build + price the WHOLE route (dispatchRoute is the one home): leg 0 from the craft's location
     // through every waypoint anchor, each resolving and non-zero-length. It returns the whole-run burn.
     // A craft ALREADY on W1 has a zero-length leg 0 — the §11.4 reposition skip leaves it out (no leg, no
-    // fuel) instead of refusing; any other zero-length leg is still refused.
+    // fuel) instead of refusing; any other zero-length leg is still refused. For a REPEATING lane this is
+    // LAP 1 (the positioning to W1 plus the first cycle, §11.4) — each later lap is fuelled at its own
+    // start, from the last waypoint (advanceRoute), so the launch only has to afford lap 1 (§11.3).
     const route = dispatchRoute(craft, action.waypoints.map((wp) => wp.anchor), { skipZeroLengthFirstLeg: true });
     if (!route.ok) {
       return { valid: false, reason: route.reason };
@@ -2574,8 +2633,9 @@ function validateAction(state, action) {
     if (route.actInPlace && action.waypoints[0].action === undefined) {
       return { valid: false, reason: 'a one-stop route at the craft\'s own berth with no action does nothing — nothing to fly and nothing to do (transport-model.md §11.9 / §4)' };
     }
-    // The FUEL gate — the whole run is fuelled UP FRONT (§11.3), so the SAME combined-availability
-    // gate a plain dispatch uses (hoard + contraband ≥ Σ legFuelBurn), refused WHOLE.
+    // The FUEL gate — the whole run (a repeating lane: its lap 1) is fuelled UP FRONT (§11.3), so the
+    // SAME combined-availability gate a plain dispatch uses (hoard + contraband ≥ Σ legFuelBurn), refused
+    // WHOLE. At launch an unaffordable lap 1 is REFUSED, never left waiting (§11.6 — WAIT is mid-run only).
     const available = guild.fuelHoard + (guild.deuteriumFuel || 0);
     if (available < route.totalUnits) {
       return { valid: false, reason: `route burns ${route.totalUnits} fuel units up front but the guild holds ${available} (hoard ${guild.fuelHoard} + contraband ${guild.deuteriumFuel || 0}) — refused whole (transport-model.md §11.3)` };
@@ -3789,7 +3849,11 @@ function applyAction(state, action) {
     // and a cursor at 0 (the waypoint the craft is heading to, or — after the skip — standing at). The
     // `route` field is omit-when-absent on every OTHER craft, so a route-less galaxy is byte-identical
     // to pre-slice (§11.8). It is journalled state, so a mid-run restart replays byte-identically.
-    craft.route = { waypoints: action.waypoints.map(copyRouteWaypoint), cursor: 0 };
+    // A repeating lane also journals its launch mode (and an nRun its laps still to run) — §11.10; a
+    // one-shot adds nothing, so it is byte-identical to the pre-repeat route (repeatStateFor).
+    craft.route = {
+      waypoints: action.waypoints.map(copyRouteWaypoint), cursor: 0, ...repeatStateFor(action.repeat),
+    };
 
     if (route.skippedFirstLeg) {
       // THE ZERO-LENGTH REPOSITION SKIP (transport-model.md §11.4 / §11.9). The craft already sits on W1,
@@ -3822,6 +3886,7 @@ function applyAction(state, action) {
     // match the hoard falling (invariant 1). The combined-availability gate ran in validate. After a
     // skip this is Σ over the REAL legs only (W1→W2→…) — the skipped reposition was never a leg. An
     // act-in-place run has no legs at all, so this is 0 and burns nothing (§11.3: nothing to refund).
+    // A repeating lane burns only LAP 1 here; each later lap burns its own bill at its start (§11.3).
     burnFuel(guild, route.totalUnits);
     next.audit.totalConsumed += route.totalUnits;
 

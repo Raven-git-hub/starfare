@@ -3,15 +3,25 @@
 // routes.js — the automation layer's ROUTE vocabulary (transport-model.md §11; roadmap 2.2 automation).
 // (Not the HTTP routes in sim/server.js — a "route" here is a craft's ordered list of waypoints.)
 //
-// It holds two small things several modules share, and constructs nothing:
+// It holds a few small things several modules share, and constructs nothing:
 //   - `copyRouteWaypoint` — THE ONE spelling of the { anchor, action? } waypoint copy (§11.1). It lives
 //     here, not in actions.js, so state.js's `createSavedRoute` can deep-copy a saved route's waypoints
 //     without requiring actions.js (which requires state.js — that would be a cycle).
 //   - the SAVED-ROUTE id scheme + per-guild mint serial (§11.9) — the exact mirror of sim/outposts.js's
 //     `outpostId` / `outpostNumberOf` / `nextOutpostSerial`, and for the same reason: a saved route can
 //     be DELETED, so its number must come from a stored counter, never from the live rows.
+//   - the REPEAT vocabulary (§11.10) — the three launch modes, shared by the dispatch validate and the
+//     route integrity check so the two can never disagree about which modes exist.
 
 const { copyManifestLine } = require('./manifest.js');
+
+// REPEAT_MODES — the three LAUNCH modes a `dispatchRouteWithActions` can choose (transport-model.md
+// §11.10): `once` runs the waypoints and lands idle at the last one (the built one-shot); `continuous`
+// repeats the cycle until the player stops it or the lane ends; `nRun` repeats it for N full cycles.
+// A mode is a launch parameter, never stored on a saved route (§11.5). On a craft's journalled `route`,
+// `once` is the DEFAULT and is never written (omit-when-default), so a one-shot route stays
+// byte-identical to the pre-repeat one; only `continuous` / `nRun` ever appear there.
+const REPEAT_MODES = Object.freeze(['once', 'continuous', 'nRun']);
 
 // copyRouteWaypoint(wp) -> a FRESH copy of a { anchor, action? } route waypoint (transport-model.md
 // §11.1) — the anchor object copied, and any action's manifest lines copied in canonical shape
@@ -52,6 +62,7 @@ function nextSavedRouteSerial(guild) {
 }
 
 module.exports = {
+  REPEAT_MODES,
   copyRouteWaypoint,
   savedRouteId,
   savedRouteNumberOf,

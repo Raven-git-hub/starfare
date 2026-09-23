@@ -749,6 +749,15 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
 // same omit-when-empty discipline `guild.assets` and the shipment `cargo` follow) — and DEEP-COPIED
 // on construct, the `location` discipline, so a caller's map can never alias into engine state.
 // Nothing but `transferCargo` (sim/actions.js) writes it; this file only ASSEMBLES the shape.
+//
+// `route` (2.2 automation — transport-model.md §11.1 / §11.10) is NOT assembled here: a craft is minted
+// route-less, and only `dispatchRouteWithActions` (sim/actions.js) journals one onto it. Listed here so
+// the entity's whole shape reads in one place. OMITTED unless the craft is running a chained route:
+//   { waypoints: [{ anchor, action? }], cursor,
+//     mode?, lapsRemaining? }   — a REPEATING lane only (slice 3a): mode 'continuous' | 'nRun', and an
+//                                 nRun's laps still to run. A one-shot (`once`) route carries neither
+//                                 (omit-when-default), so it is byte-identical to the pre-repeat route.
+// Its integrity is `routeViolation` (sim/invariants.js).
 function createVehicle({
   id,
   ownerGuildId,

@@ -1192,6 +1192,29 @@ boundary so the later hex-map swap doesn't touch it.
     flag red); the cue wording; the Save row under the Planned Route. **Deferred, not invented:** repetition, the
     lap-start anchor-gone re-check and pause/flag surfacing (3); rename (delete + re-save, §11.9); the route-mode
     hold view in the dock editor (since 1b).
+  - **slice 3a — engine (repetition: the repeat loop).** 🟢 *BUILT (23-09-26 — `sim/routes.js`, `sim/actions.js`,
+    `sim/state.js`, `sim/invariants.js`, `sim/snapshot.js`; tripwires `sim/tests/route-repeat.test.js` (new);
+    contract transport-model.md §11.10 / §11.4 / §11.6 / §11.3 / §11.2 — engine + operator CLI, NO client).*
+    A route can now REPEAT. Landed as tight commits, one piece each.
+    **(1) The launch modes + the entity.** `dispatchRouteWithActions` takes an optional **`repeat`** —
+    `{ mode: 'once' | 'continuous' | 'nRun', n? }`, default `{ mode: 'once' }` — a LAUNCH parameter (§11.5),
+    never stored on a saved route. The constructor carries it only when given, so a one-shot dispatch journals
+    exactly as before. Validate (`repeatError`): `mode` one of the three (`REPEAT_MODES`, the shared vocabulary
+    in `sim/routes.js`); `n` a whole number ≥ 1 on `nRun` and ABSENT on the other two. Apply journals the repeat
+    state onto `craft.route` (`repeatStateFor`): `continuous` → `mode`; `nRun` → `mode` + `lapsRemaining = n`;
+    `once` → NOTHING (omit-when-default), so a one-shot route is the built `{ waypoints, cursor }`, byte for
+    byte. The launch fuels **lap 1 only** (the positioning to W1 + the first cycle — the same bill a one-shot
+    pays) and an unaffordable lap 1 is REFUSED at launch, never left waiting (§11.3 / §11.6).
+    `routeViolation` now checks the repeat state: a present `mode` is `continuous` or `nRun` (a stored `once`
+    is non-canonical); `lapsRemaining` only on `nRun`, a whole number ≥ 1 on a live route (the lap that reaches
+    0 ends the lane on the spot); a repeating route has ≥ 2 waypoints. The snapshot's vehicle row surfaces
+    `route.mode` / `route.lapsRemaining` (`snapshotRoute`, fresh copies), both absent on a one-shot row.
+    **Slice-local call (flagged on the decision checklist):** a ONE-stop lane cannot repeat — refused at
+    launch. Its cycle has no leg (WN is W1), so every lap after the first would skip its zero-length
+    reposition (§11.4) and resolve W1 in place again at once: it would lap without end inside a single tick,
+    breaking §11.2 / §15.4 (every lap step hangs off a real arrival or turnaround). With ≥ 2 stops the W1 → W2
+    leg is real, so every lap takes time. Sim suite 1,493 → **1,500 green** (`route-repeat.test.js` +7). (With
+    no loop yet, a repeating lane still ends idle at WN after one cycle — piece (2) makes it lap.)
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
@@ -1347,6 +1370,12 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     route then proves impossible; the craft halts and eats the loss (transport-model.md §11.3). 2a's
     behaviour STANDS (no code change). The §11.6 lap-start re-check (slice 3) declines to FUEL a
     visibly-doomed lap — a refusal to charge, not a refund.
+
+- **Repeating lanes — edge calls built conservatively** — *surfaced 23-09-26 by 2.2 automation slice 3a.*
+  §11.10 does not cover these; each is built the cautious way and wants a ruling (or a confirm):
+  - **A one-stop lane cannot repeat** (refused at launch). Its cycle has no leg, so it would lap in place
+    without end inside one tick. Alternative: let it repeat but only at a turnaround (an Outpost stop), or
+    make a legless lap wait for the next tick — which would be a new timing rule.
 
 - **Deferred, flagged in docs (revisit with their slice, don't lose):** the SELL origin-picker helper
   (offer only systems that hold every line — `syndicate-orders.md` §7, a client refinement); a

@@ -92,7 +92,7 @@ const {
   getSite, getLandmark, getSystem, getTerranHomeworld, isHexInBounds, seedLandmarkAtHex,
 } = require('./seed.js');
 const { outpostNumberOf } = require('./outposts.js');
-const { savedRouteId, savedRouteNumberOf } = require('./routes.js');
+const { REPEAT_MODES, savedRouteId, savedRouteNumberOf } = require('./routes.js');
 const { getRecipe } = require('./recipes.js');
 
 function sumFuelInTransit(state) {
@@ -1281,6 +1281,13 @@ function tripViolation(trip) {
 // every waypoint's `anchor` resolves; and any waypoint `action` is a well-formed { type: 'dock',
 // manifest } (each manifest line a { dir: 'load'|'unload', good, qty|max } with a real stockpile good
 // and a well-formed amount half — the SAME shape checks the craft hold and the dock queue/slots use).
+//
+// A REPEATING lane (slice 3a, §11.10) also carries its launch `mode`. `once` is the default and is never
+// stored (omit-when-default — a one-shot route is byte-identical to the pre-repeat one), so a PRESENT
+// mode must be `continuous` or `nRun`, and a repeating lane has >= 2 waypoints (a one-stop cycle has no
+// leg and would lap in place inside one tick — the dispatch refuses it). `lapsRemaining` belongs to
+// `nRun` alone and is a whole number >= 1 on a LIVE route: the lap that takes it to 0 ends the lane on
+// the spot, so a 0 left standing would mean a lane that should have ended and did not.
 // The one home of the route shape, used by checkVehicleIntegrity below.
 function routeViolation(route) {
   if (!route || typeof route !== 'object' || !Array.isArray(route.waypoints) || route.waypoints.length === 0) {
@@ -1288,6 +1295,21 @@ function routeViolation(route) {
   }
   if (!Number.isInteger(route.cursor) || route.cursor < 0 || route.cursor >= route.waypoints.length) {
     return { reason: 'route.cursor must be an integer in [0, waypoints.length)', cursor: route.cursor, waypoints: route.waypoints.length };
+  }
+  if (route.mode !== undefined) {
+    if (route.mode === 'once' || !REPEAT_MODES.includes(route.mode)) {
+      return { reason: 'route.mode, when present, must be "continuous" or "nRun" (a one-shot route stores no mode)', mode: route.mode };
+    }
+    if (route.waypoints.length < 2) {
+      return { reason: 'a repeating route must carry at least two waypoints (a one-stop cycle has no leg)', mode: route.mode, waypoints: route.waypoints.length };
+    }
+  }
+  if (route.mode === 'nRun') {
+    if (!Number.isInteger(route.lapsRemaining) || route.lapsRemaining < 1) {
+      return { reason: 'an nRun route\'s lapsRemaining must be a whole number >= 1 (the lap that reaches 0 ends the lane)', lapsRemaining: route.lapsRemaining };
+    }
+  } else if (route.lapsRemaining !== undefined) {
+    return { reason: 'route.lapsRemaining belongs to an nRun route only', mode: route.mode, lapsRemaining: route.lapsRemaining };
   }
   return waypointListViolation(route.waypoints);
 }
