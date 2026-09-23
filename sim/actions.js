@@ -163,7 +163,7 @@ function buildSingleLegTrip(craft, toAnchor, dispatchTick) {
 // A routed craft (one carrying `route = { waypoints: [{ anchor, action? }], cursor }`) does not fly a
 // frozen whole-trip; it flies leg by leg, and on ARRIVAL at each waypoint runs that stop's action —
 // instant at a system, queue + turnaround at an outpost — then dispatches the next leg itself. The
-// three helpers below are that execution. `advanceRoute` is the ONE FUNNEL that "makes the next leg go";
+// helpers below are that execution. `advanceRoute` is the ONE FUNNEL that "makes the next leg go";
 // `resolveRouteArrival` is the ONE place a reached stop's action resolves. Their callers are the two tick
 // hooks (sim/tick.js stepVehicleArrivals, stepOutpostDocks) and the `dispatchRouteWithActions` apply below
 // (a craft already sitting on W1 resolves it in place — the §11.4 zero-length reposition skip). They live
@@ -171,22 +171,26 @@ function buildSingleLegTrip(craft, toAnchor, dispatchTick) {
 // would be a require cycle. It stays event-driven — a per-arrival / per-turnaround-completion / per-dispatch
 // step in fixed id order — so there is no per-tick per-craft movement loop and determinism (§15.5
 // invariant 9) is preserved.
+//
+// A REPEATING lane (slice 3a, §11.10) uses the same funnel: when the craft finishes its LAST waypoint
+// (WN), `advanceRoute` reaches the lap boundary (`finishLap`) and, if the lane repeats, starts the next
+// lap (`startLap`) — re-check the targets, fuel the lap up front, reposition to W1 and run the cycle again.
 
-// advanceRoute(craft, thisTick) — bump the cursor and dispatch the next leg, or END the one-shot run.
-// The cursor points at the waypoint the craft is AT (just resolved); the next is `cursor + 1`.
-//   - past the last waypoint → the one-shot run is done: the craft is already idle at the last
-//     anchor (the arrival hook set its location), so just clear the `route` (§11.2 "lands idle there").
+// advanceRoute(state, guild, craft, thisTick) — bump the cursor and dispatch the next leg, or reach the
+// END OF THE LAP. The cursor points at the waypoint the craft is AT (just resolved); the next is `cursor + 1`.
+//   - past the last waypoint → one lap of the waypoints is done: the craft is already idle at WN (the
+//     arrival hook set its location), and `finishLap` decides what happens next (§11.10) — a one-shot
+//     simply ends there (§11.2 "lands idle there"), a repeating lane goes round again.
 //   - otherwise → dispatch the next single leg from the craft's current berth (buildSingleLegTrip is
-//     the one home — the same builder the first leg used), with NO fuel recharge (the whole run was
+//     the one home — the same builder the first leg used), with NO fuel recharge (the whole lap was
 //     fuelled up front, §11.3). A null trip means the next anchor no longer resolves / the leg is
 //     zero-length — a target vanished mid-run (§11.6 anchor-gone): HALT SAFELY (leave the craft idle
-//     at its current berth, route cleared, no throw, no bad leg). Rich pause/resume/flag surfacing is
-//     slice 3; 1a does the safe halt only.
-function advanceRoute(craft, thisTick) {
+//     at its current berth, route cleared, no throw, no bad leg).
+function advanceRoute(state, guild, craft, thisTick) {
   const route = craft.route;
   const nextCursor = route.cursor + 1;
   if (nextCursor >= route.waypoints.length) {
-    delete craft.route; // the last waypoint was just resolved — the run ends idle here
+    finishLap(state, guild, craft, thisTick); // WN was just resolved — the lap boundary
     return;
   }
   const trip = buildSingleLegTrip(craft, route.waypoints[nextCursor].anchor, thisTick);
@@ -198,6 +202,94 @@ function advanceRoute(craft, thisTick) {
   craft.status = 'inTransit';
   craft.trip = trip;
   delete craft.location; // an in-transit craft carries the trip and no bare location (§15.4)
+}
+
+// finishLap(state, guild, craft, thisTick) — the craft has just resolved WN, its LAST waypoint, so one
+// lap (one full cycle of the waypoints, §11.10) is done. The lap boundary, step 1 of §11.10's fixed order:
+// is the run OVER? A one-shot (`once` stores no mode) is over after its one pass, and an N-run is over
+// when this was its last lap — either way the craft ENDS idle at WN, route cleared: an ordinary
+// completion, WN being a real waypoint (§11.4). Otherwise the lane repeats, and `startLap` runs steps 2–4.
+// An N-run counts its laps DOWN here, at the end of each lap, so `lapsRemaining` is always "laps still
+// to fly, this one included" while the lane is live — the lap that takes it to 0 is the last.
+function finishLap(state, guild, craft, thisTick) {
+  const route = craft.route;
+  if (route.mode === undefined) {
+    delete craft.route; // once — the built one-shot end, unchanged
+    return;
+  }
+  if (route.mode === 'nRun') {
+    route.lapsRemaining -= 1;
+    if (route.lapsRemaining === 0) {
+      delete craft.route; // the N-th lap just finished — the run ends idle at WN
+      return;
+    }
+  }
+  startLap(state, guild, craft, thisTick);
+}
+
+// startLap(state, guild, craft, thisTick) — begin the NEXT lap of a repeating lane, from WN where the
+// craft now sits idle. Steps 2–4 of §11.10's lap boundary, in that FIXED order:
+//   2. RE-CHECK the lap's targets (§11.6): every actioned waypoint must still have its store — the SAME
+//      `routeStoreAt` the arrival resolver uses, so a target this check passes is one an arrival would
+//      find. Any gone → the lane ENDS: route dropped, craft idle at WN. This comes BEFORE the fuel step,
+//      so a visibly doomed lap is never charged (§11.3 — a refusal to charge, not a refund).
+//   3. PRICE the lap (§11.3 / §11.4): the reposition WN → W1 plus the cycle W1 → … → WN, through the SAME
+//      `dispatchRoute` the launch used, from the craft's berth at WN. When WN is W1 the reposition is
+//      zero-length and is SKIPPED (no leg, no fuel). If the hoard can't cover it → the lane WAITS at WN:
+//      nothing burns, the route stays, and the craft sits idle (§11.6).
+//   4. Otherwise BURN the whole lap up front (§11.3) — exactly the launch's burn: units from the hoard,
+//      `totalConsumed` rising to match (invariant 1) — reset the cursor to W1 and fly there
+//      (`flyToFirstStop`, the launch's own reposition).
+// Every leg it dispatches departs now and lands in a later tick's arrival step; nothing here loops.
+function startLap(state, guild, craft, thisTick) {
+  const route = craft.route;
+  if (route.waypoints.some((wp) => wp.action && routeStoreAt(state, guild.id, wp.anchor) === null)) {
+    delete craft.route; // a target is gone — the lane ENDS at WN (§11.6)
+    return;
+  }
+  const lap = dispatchRoute(craft, route.waypoints.map((wp) => wp.anchor), { skipZeroLengthFirstLeg: true });
+  if (!lap.ok) {
+    // Defensive: the anchors were checked at launch and seed landmarks never move, so this cannot fail
+    // today. If it ever does, an anchor that no longer resolves IS a gone anchor (§11.6) — end the lane.
+    delete craft.route;
+    return;
+  }
+  if (guild.fuelHoard + (guild.deuteriumFuel || 0) < lap.totalUnits) {
+    // Fuel short — the lane WAITS at WN, burning nothing (§11.6). `sinceTick` records when it began.
+    if (!route.waiting) route.waiting = { reason: 'fuel', sinceTick: thisTick };
+    return;
+  }
+  delete route.waiting;
+  burnFuel(guild, lap.totalUnits);
+  state.audit.totalConsumed += lap.totalUnits;
+  route.cursor = 0;
+  flyToFirstStop(state, guild, craft, lap.skippedFirstLeg, thisTick);
+}
+
+// flyToFirstStop(state, guild, craft, skippedFirstLeg, thisTick) — put a routed craft (cursor 0) on its
+// way to W1: the §11.4 REPOSITION. Shared by the launch (the positioning from wherever the craft was
+// dispatched) and every later lap (the loop-back from WN), so both reposition exactly alike.
+//   - The reposition is zero-length (`skippedFirstLeg` — the craft already sits on W1's hex): it is not
+//     built (§11.4). The craft ARRIVES at W1 right here: it takes W1's anchor as its location (the same
+//     hex, and exactly what landing there would set) and W1 resolves through the SAME resolver an arrival
+//     uses — a system action now, then the W1 → W2 leg goes; an Outpost action queues for a dock slot and
+//     W2 goes at turnaround; no action → straight on to W2; and a halt if W1's store is gone (§11.6).
+//     No same-tick loop: W1 → W2 is a real leg (a dead one is refused at launch), so the craft next lands
+//     in a LATER tick's arrival step. (A one-stop one-shot — act in place, §11.9 — needs nothing extra:
+//     W1 is also its last waypoint, so the resolver's advanceRoute ends the run.)
+//   - Otherwise fly the W1 leg (buildSingleLegTrip is the one home). It is built while the craft still
+//     carries its location; then the location goes — an in-transit craft carries the `trip` and NO bare
+//     `location` (§15.4), and the arrival hook restores it.
+function flyToFirstStop(state, guild, craft, skippedFirstLeg, thisTick) {
+  const w1 = craft.route.waypoints[0].anchor;
+  if (skippedFirstLeg) {
+    craft.location = { ...w1 };
+    resolveRouteArrival(state, guild, craft, thisTick);
+    return;
+  }
+  craft.trip = buildSingleLegTrip(craft, w1, thisTick);
+  craft.status = 'inTransit';
+  delete craft.location;
 }
 
 // resolveSystemAction(guild, craft, systemId, manifest, thisTick) — the INSTANT system-transfer path,
@@ -222,22 +314,24 @@ function resolveSystemAction(guild, craft, systemId, manifest, thisTick) {
 function resolveRouteArrival(state, guild, craft, thisTick) {
   const wp = craft.route.waypoints[craft.route.cursor];
   if (!wp.action) {
-    advanceRoute(craft, thisTick); // a no-action waypoint is a pure turning point — chain straight through
+    advanceRoute(state, guild, craft, thisTick); // a no-action waypoint is a pure turning point — chain straight through
     return;
   }
-  // WHERE the craft sits decides HOW the action resolves — the SAME split transferCargo uses (§4):
-  if (craft.location && craft.location.landmarkKind === 'system') {
+  // WHERE the craft sits decides HOW the action resolves — the SAME split transferCargo uses (§4), read
+  // through `routeStoreAt`, the one predicate the lap-start re-check shares:
+  const store = routeStoreAt(state, guild.id, craft.location);
+  if (store && store.kind === 'system') {
     // A SYSTEM → INSTANT, then advance the SAME tick (no wait at a guild's own territory, §4).
-    resolveSystemAction(guild, craft, craft.location.landmarkId, wp.action.manifest, thisTick);
-    advanceRoute(craft, thisTick);
+    resolveSystemAction(guild, craft, store.systemId, wp.action.manifest, thisTick);
+    advanceRoute(state, guild, craft, thisTick);
     return;
   }
-  const outpost = ownedOutpostAtCraft(state, guild.id, craft);
-  if (outpost) {
+  if (store) {
     // One of the guild's OWN Outposts → QUEUE for a dock slot, exactly as transferCargo's outpost
     // branch does (ready-tick = now; the craft stays plain `idle`, parked). Do NOT advance — the dock
     // step (running immediately after this one, the SAME tick) promotes it, and advanceRoute runs at
     // completion: the outpost turnaround IS the pause, and the next leg goes on completion (§11.2).
+    const outpost = store.outpost;
     if (!outpost.queue) outpost.queue = [];
     outpost.queue.push({
       vehicleId: craft.id,
@@ -249,7 +343,7 @@ function resolveRouteArrival(state, guild, craft, thisTick) {
   }
   // Neither a system nor an owned Outpost — the action's target vanished mid-run (an outpost torn down,
   // §11.6 anchor-gone). HALT SAFELY: the craft is idle at its current berth, route cleared. Goods are
-  // conserved — nothing moved for the un-resolved action (rich flag surfacing is slice 3).
+  // conserved — nothing moved for the un-resolved action.
   delete craft.route;
 }
 
@@ -1062,12 +1156,35 @@ function findGuild(state, guildId) {
 // standing there. A system-berthed craft resolves to a landmark's coords, never an Outpost's (an
 // Outpost cannot share a seed landmark's hex, checkOutpostIntegrity), so the system path is untouched.
 function ownedOutpostAtCraft(state, guildId, craft) {
-  const r = resolveVehicleLocation(craft.location);
+  return ownedOutpostAt(state, guildId, craft.location);
+}
+
+// ownedOutpostAt(state, guildId, anchor) -> the guild's own Outpost standing on `anchor`'s hex, or null
+// — the anchor form of ownedOutpostAtCraft above (which asks it about the craft's location), so a route
+// can ask the same question of a waypoint it has not reached yet.
+function ownedOutpostAt(state, guildId, anchor) {
+  const r = resolveVehicleLocation(anchor);
   if (!r) return null;
   const { q, r: rr } = r.coords;
   return (state.outposts || []).find(
     (o) => o.ownerGuildId === guildId && o.coords.q === q && o.coords.r === rr,
   ) || null;
+}
+
+// routeStoreAt(state, guildId, anchor) -> the STORE a route action at `anchor` works against, or null
+// when there is none (transport-model.md §11.6 — the target is gone):
+//   { kind: 'system', systemId } — a system landmark: the guild's (guild, system) pool (instant, §4);
+//   { kind: 'outpost', outpost } — the guild's OWN Outpost on that hex (dock + turnaround, §4).
+// THE ONE predicate for "does this stop still have a store", shared by the arrival resolver (the craft is
+// there now) and the §11.10 lap-start re-check (the craft will be there this lap), so the re-check can
+// never pass a target the arrival would then refuse, or the reverse. It mirrors transferCargo's split
+// (a system, else an own Outpost, else nothing). NOTE: a system counts whoever holds it, exactly as the
+// arrival always has — no path yet takes a system away from a guild (claims are a later territory item),
+// so "a system lost" (§11.6) cannot happen today; when it can, this one predicate is where it goes.
+function routeStoreAt(state, guildId, anchor) {
+  if (anchor && anchor.landmarkKind === 'system') return { kind: 'system', systemId: anchor.landmarkId };
+  const outpost = ownedOutpostAt(state, guildId, anchor);
+  return outpost ? { kind: 'outpost', outpost } : null;
 }
 
 // manifestError(manifest) -> a reason string for the first thing wrong with a §4 load/unload manifest,
@@ -3855,31 +3972,13 @@ function applyAction(state, action) {
       waypoints: action.waypoints.map(copyRouteWaypoint), cursor: 0, ...repeatStateFor(action.repeat),
     };
 
-    if (route.skippedFirstLeg) {
-      // THE ZERO-LENGTH REPOSITION SKIP (transport-model.md §11.4 / §11.9). The craft already sits on W1,
-      // so the reposition to W1 has nothing to fly and is not built. Instead the craft ARRIVES at W1 right
-      // here, and W1 resolves through the SAME resolver the tick's arrival step uses:
-      //   - the craft takes W1's anchor as its location — the same hex it already sits on, and exactly
-      //     what landing at W1 would set, so the resolver sees what it sees after a real arrival;
-      //   - resolveRouteArrival then runs W1's action IN PLACE — a system action now, then the W1→W2 leg
-      //     goes; an Outpost action queues for a dock slot and W2 goes at turnaround; no action → straight
-      //     on to W2 — and, as on arrival, halts safely if W1's store is gone (§11.6).
-      // No same-tick loop: W1→W2 is a real leg (dispatchRoute refused a zero-length one), so it takes at
-      // least one tick and the craft next lands in a LATER tick's arrival step.
-      // A ONE-stop route (act in place, §11.9) needs nothing extra: W1 is also the last waypoint, so the
-      // resolver's advanceRoute ends the run instead of dispatching a leg — a system action leaves the
-      // craft idle at W1 with its route cleared now; an Outpost action queues and the dock step ends the
-      // run at turnaround, exactly as if the craft had just flown in.
-      craft.location = { ...action.waypoints[0].anchor };
-      resolveRouteArrival(next, guild, craft, next.tick);
-    } else {
-      // Dispatch the FIRST leg exactly as the plain dispatch builds a single leg's trip (buildSingleLegTrip
-      // is the one home). Build it while the craft still carries its location, then drop the location — an
-      // in-transit craft carries the `trip` and NO bare `location` (§15.4); the arrival hook restores it.
-      craft.trip = buildSingleLegTrip(craft, action.waypoints[0].anchor, next.tick);
-      craft.status = 'inTransit';
-      delete craft.location;
-    }
+    // Reposition to W1 (§11.4): fly the first leg — or, when the craft already sits on W1, SKIP that
+    // zero-length leg and resolve W1 in place (§11.4 / §11.9), exactly as an arrival there would. The
+    // SAME helper every later lap of a repeating lane repositions with (flyToFirstStop, above). A ONE-stop
+    // route (act in place, §11.9) needs nothing extra: W1 is also the last waypoint, so the resolver's
+    // advanceRoute ends the run — a system action leaves the craft idle at W1 with its route cleared now;
+    // an Outpost action queues and the dock step ends the run at turnaround.
+    flyToFirstStop(next, guild, craft, route.skippedFirstLeg, next.tick);
 
     // FUEL — the WHOLE run burns UP FRONT (§11.3), units from the hoard, exactly as dispatchVehicle
     // burns a plain route: fuel LEAVES the galaxy (burned, not transferred), so totalConsumed rises to

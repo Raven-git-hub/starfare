@@ -1215,6 +1215,29 @@ boundary so the later hex-map swap doesn't touch it.
     breaking §11.2 / §15.4 (every lap step hangs off a real arrival or turnaround). With ≥ 2 stops the W1 → W2
     leg is real, so every lap takes time. Sim suite 1,493 → **1,500 green** (`route-repeat.test.js` +7). (With
     no loop yet, a repeating lane still ends idle at WN after one cycle — piece (2) makes it lap.)
+    **(2) The lap loop** (`sim/actions.js`, `sim/tick.js`). `advanceRoute(state, guild, craft, thisTick)` — the
+    one funnel — now reaches a LAP BOUNDARY when the craft has resolved WN, instead of always ending. The
+    boundary runs §11.10's fixed order: **`finishLap`** — step 1, is the run over? A one-shot (no `mode`) ends
+    idle at WN exactly as before; an N-run counts `lapsRemaining` down and ends at 0 — then **`startLap`**:
+    step 2, the lap-START target re-check — every actioned waypoint must still have its store, through
+    **`routeStoreAt`**, the ONE predicate the arrival resolver now also uses (a system landmark, else the
+    guild's own Outpost on that hex, else none), so the re-check can never pass a stop the arrival would then
+    refuse; any gone → the lane ENDS at WN (route dropped). It runs BEFORE the fuel, so a doomed lap is never
+    charged (§11.3). Step 3, price the lap through the SAME `dispatchRoute` the launch uses, from the craft's
+    berth at WN: the reposition WN → W1 (skipped when zero-length) plus the cycle; hoard + contraband short →
+    the lane WAITS at WN (`route.waiting`, nothing burned — the resume is piece (4)). Step 4, burn the whole lap
+    up front (`burnFuel` + `totalConsumed`, the launch's own burn), reset the cursor to W1 and reposition
+    through **`flyToFirstStop`** — the launch's first-leg code, now one helper shared by the dispatch apply and
+    every later lap: fly WN → W1, or, when WN is W1, skip that zero-length leg and resolve W1 in place through
+    `resolveRouteArrival` (the 2a/2a.1 skip), then chain on — never a dead leg. Every step still hangs off an
+    arrival or a turnaround completion (the two tick hooks call the same funnel) — no per-tick per-craft loop.
+    Sim suite → **1,506 green** (`route-repeat.test.js` +6): an n=3 lane runs EXACTLY three cycles (`lapsRemaining`
+    3→2→1→0, the 4th lap's goods left at A however long it runs on); a continuous lane unloads 400 once per lap
+    on an exact, derived lap period (loop-back + cycle + the ruled turnaround), never twice in a tick; WN ≠ W1
+    flies the loop-back leg each lap and pays for it; WN == W1 never builds a zero-length leg and pays only the
+    cycle; each lap's whole bill leaves the hoard on the tick the craft leaves WN, `totalConsumed` rising to
+    match; replay and a mid-lap JSON restart are byte-identical. Every lap test ticks through `advance`, which
+    asserts every invariant on every tick.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*

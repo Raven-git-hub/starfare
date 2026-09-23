@@ -60,7 +60,8 @@ const { outpostDockTurnaround } = require('./outposts.js');
 const { resolveManifest, usedSpace } = require('./manifest.js');
 // The chained-route execution (the automation layer, transport-model.md §11.2) lives in actions.js:
 // `resolveRouteArrival` (a routed craft has just reached a waypoint — run its action, then go on) and
-// `advanceRoute` (dispatch the next leg, or end the run). It lives there, not here, because the
+// `advanceRoute` (dispatch the next leg, or reach the lap boundary: end the run, or start a repeating
+// lane's next lap, §11.10). It lives there, not here, because the
 // actioned-route DISPATCH runs it too — a craft already sitting on its first waypoint resolves that stop
 // in place at dispatch (the §11.4 zero-length reposition skip). The two tick hooks below call the SAME
 // functions, so a stop resolves identically whichever way the craft reached it. actions.js does NOT
@@ -1211,8 +1212,9 @@ function stepOutpostDocks(state, _actions) {
         craft.updatedAtTick = thisTick; // §15.2: the completion moved goods; stamp the tick
         // A ROUTED craft (the automation layer, §11.2) does not simply park after its turnaround — the
         // turnaround WAS the pause; completion is when the next leg goes. Advance the route now (same
-        // tick): dispatch the next leg, or end the one-shot run idle here if this was the last waypoint.
-        if (craft.route) advanceRoute(craft, thisTick);
+        // tick): dispatch the next leg — or, if this was the last waypoint, reach the lap boundary: a
+        // one-shot run ends idle here, a repeating lane starts its next lap (§11.10).
+        if (craft.route) advanceRoute(state, guild, craft, thisTick);
       }
       outpost.slots = currentSlots.filter((s) => s.completionTick !== thisTick);
       if (outpost.slots.length === 0) delete outpost.slots;

@@ -9,16 +9,21 @@
 // This file grows with the slice, one section per commit:
 //   1. launch modes + the entity — the `repeat` grammar, the journalled repeat state (omit-when-once),
 //      the integrity check and the snapshot surface.
+//   2. the lap loop — an N-run runs exactly N cycles; a continuous lane keeps cycling on a fixed period;
+//      the WN → W1 reposition is flown (and fuelled) each lap, or SKIPPED when WN is W1; each lap's fuel
+//      leaves the hoard whole at the lap start; deterministic across replay and a mid-lap restart.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { createState } = require('../state.js');
+const { advance } = require('../run.js');
 const { hashState } = require('../serialize.js');
 const { checkInvariants } = require('../invariants.js');
 const { buildSnapshot } = require('../snapshot.js');
-const { hexDistance, legFuelBurn } = require('../transport.js');
+const { hexDistance, legFuelBurn, legTicks } = require('../transport.js');
 const { LIGHT_TRANSPORT, VEHICLE_SPECS } = require('../vehicles.js');
+const { outpostDockTurnaround } = require('../outposts.js');
 const { getSystem, isHexInBounds, seedLandmarkAtHex } = require('../seed.js');
 const { starterHomeAtDistance } = require('./waystation-fixtures.js');
 const {
@@ -52,6 +57,12 @@ const [ORIGIN, HEX_B] = freeHexesNear(A_COORDS, 2);
 // canonical lane = the loop-back B → A plus the cycle A → B (§11.4).
 const burn = (from, to) => legFuelBurn(hexDistance(from, to), LIGHT.fuelCostToRun, false);
 const LAP1_FUEL = burn(ORIGIN, A_COORDS) + burn(A_COORDS, HEX_B);
+const LAP_FUEL = burn(HEX_B, A_COORDS) + burn(A_COORDS, HEX_B); // loop-back B → A + the cycle A → B
+// The steady-state lap PERIOD of the canonical lane: fly B → A, load (instant at a system), fly A → B,
+// then the Outpost turnaround for the unload — at whose completion the next lap departs. Derived from the
+// ONE leg-time formula and the ruled class turnaround, never inlined.
+const ticksOf = (from, to) => legTicks(hexDistance(from, to), LIGHT.speed, false);
+const LAP_PERIOD = ticksOf(HEX_B, A_COORDS) + ticksOf(A_COORDS, HEX_B) + outpostDockTurnaround(LIGHT_TRANSPORT);
 
 // routeState(...) -> an invariant-clean galaxy: guild g1 with one idle light craft at ORIGIN (or
 // `craftAt`), 400 titanium per lap in its (g1, A) pool, and its Outpost `outpost_g1_01` on HEX_B.
@@ -88,6 +99,18 @@ const dispatch = (waypoints, repeat) => createDispatchRouteWithActionsAction({
 });
 const craftOf = (s) => s.guilds[0].vehicles.find((v) => v.id === VID);
 const snapRow = (s) => buildSnapshot(s).guilds[0].vehicles.find((v) => v.id === VID);
+const pool = (s) => ((s.guilds[0].stockpiles || {})[SYS_A] || {})[T1] || 0;
+const stock = (s) => ((s.outposts[0] || {}).stockpile || {})[T1] || 0;
+// step(s) — one full turn through the real driver, which ASSERTS EVERY INVARIANT on the result and throws
+// with the tick number on any violation — so every lane below is invariant-checked on every tick.
+const step = (s) => advance(s, []).state;
+const stepUntil = (state, pred, cap = 20000) => {
+  let s = state;
+  let i = 0;
+  while (!pred(s) && i < cap) { s = step(s); i += 1; }
+  assert.ok(pred(s), `condition not met within ${cap} ticks`);
+  return s;
+};
 
 // --- 1. launch modes + the entity --------------------------------------------------------------
 
@@ -179,4 +202,123 @@ test('snapshot: a repeating lane surfaces mode + lapsRemaining (fresh); a one-sh
   const cont = accept(routeState({ systemPool: { [T1]: 400 } }), dispatch(LANE(), { mode: 'continuous' }));
   assert.equal(snapRow(cont).route.mode, 'continuous');
   assert.equal('lapsRemaining' in snapRow(cont).route, false);
+});
+
+// --- 2. the lap loop ------------------------------------------------------------------------------
+
+test('nRun: an n=3 lane runs EXACTLY three cycles (400 moved each), lapsRemaining 3→2→1→0, then idles at WN', () => {
+  // Enough titanium at A for FOUR laps, so a 4th cycle — if one ever ran — would have goods to move.
+  let s = accept(routeState({ systemPool: { [T1]: 1600 } }), dispatch(LANE(), { mode: 'nRun', n: 3 }));
+  const seen = [3];
+  s = stepUntil(s, (st) => {
+    const laps = craftOf(st).route ? craftOf(st).route.lapsRemaining : 0;
+    if (laps !== seen[seen.length - 1]) seen.push(laps);
+    return !craftOf(st).route;
+  });
+  assert.deepEqual(seen, [3, 2, 1, 0], 'one lap counted down per finished cycle, never skipping');
+  assert.equal(stock(s), 1200, 'exactly three unloads of 400 reached the Outpost');
+  assert.equal(pool(s), 400, 'the fourth lap\'s titanium is still at A');
+  assert.equal(craftOf(s).status, 'idle');
+  assert.deepEqual(craftOf(s).location, { ...HEX_B }, 'idle at WN (the last waypoint)');
+  assert.equal(craftOf(s).trip, undefined);
+  // A 4th cycle never happens, however long the galaxy runs on.
+  for (let i = 0; i < 3 * LAP_PERIOD; i += 1) s = step(s);
+  assert.equal(stock(s), 1200, 'no 4th cycle');
+  assert.equal(pool(s), 400);
+  assert.deepEqual(craftOf(s).location, { ...HEX_B });
+});
+
+test('continuous: the lane keeps cycling — one 400 unload per lap on a fixed period, never twice in a tick', () => {
+  let s = accept(routeState({ systemPool: { [T1]: 400 * 50 } }), dispatch(LANE(), { mode: 'continuous' }));
+  const unloadTicks = [];
+  let prev = stock(s);
+  while (unloadTicks.length < 6) {
+    s = step(s);
+    const now = stock(s);
+    if (now !== prev) {
+      assert.equal(now - prev, 400, `exactly one lap's unload lands in tick ${s.tick} (never two)`);
+      unloadTicks.push(s.tick);
+    }
+    prev = now;
+  }
+  // After lap 1 (which also flew the positioning leg), every lap takes exactly the same number of ticks.
+  for (let i = 1; i < unloadTicks.length; i += 1) {
+    assert.equal(unloadTicks[i] - unloadTicks[i - 1], LAP_PERIOD, `lap ${i + 1} took one lap period`);
+  }
+  assert.equal(craftOf(s).route.mode, 'continuous', 'still a live lane after six laps');
+  assert.equal(pool(s), 400 * 50 - 400 * 6 - (craftOf(s).cargo ? craftOf(s).cargo[T1] : 0), 'goods conserved: pool + hold + stock');
+});
+
+test('reposition: WN ≠ W1 — each lap flies the WN → W1 loop-back leg, and the lap\'s fuel includes it', () => {
+  let s = accept(routeState({ systemPool: { [T1]: 400 * 10 } }), dispatch(LANE(), { mode: 'continuous' }));
+  // Lap 2 starts at B's first turnaround completion: the craft departs B for A on the loop-back leg.
+  s = stepUntil(s, (st) => stock(st) === 400);
+  const leg = craftOf(s).trip.legs[0];
+  assert.deepEqual(leg.from, { ...HEX_B }, 'the reposition departs WN');
+  assert.deepEqual(leg.to, { ...SYS_ANCHOR }, 'the reposition flies to W1');
+  assert.equal(leg.departureTick, s.tick, 'it departs the tick the lap ended');
+  assert.equal(craftOf(s).route.cursor, 0, 'heading for W1 again');
+  assert.equal(LAP_FUEL, burn(HEX_B, A_COORDS) + burn(A_COORDS, HEX_B), 'lap bill = loop-back + cycle (§11.4)');
+});
+
+test('reposition: WN == W1 — the zero-length loop-back is SKIPPED; W1 resolves in place, no dead leg ever', () => {
+  // The lane A(load) → B(unload) → A: it ends each lap back ON W1, so the reposition is zero-length.
+  const ring = () => [...LANE(), { anchor: { ...SYS_ANCHOR } }];
+  let s = accept(routeState({ systemPool: { [T1]: 1600 } }), dispatch(ring(), { mode: 'nRun', n: 3 }));
+  const hoardAtStart = s.guilds[0].fuelHoard;
+  const seenLegs = [];
+  s = stepUntil(s, (st) => {
+    const c = craftOf(st);
+    if (c.trip) {
+      const l = c.trip.legs[0];
+      assert.notDeepEqual(l.from, l.to, `a zero-length leg was built at tick ${st.tick}`);
+      assert.ok(l.arrivalTick > l.departureTick, 'every leg takes time');
+      if (!seenLegs.some((x) => x.departureTick === l.departureTick)) seenLegs.push(l);
+    }
+    return !c.route;
+  });
+  // Three cycles: lap 1 = ORIGIN → A, A → B, B → A; laps 2–3 = A → B, B → A (no A → A reposition).
+  assert.equal(seenLegs.length, 3 + 2 + 2, 'no reposition leg on laps 2 and 3');
+  assert.equal(stock(s), 1200, 'three loads + unloads — W1\'s load ran in place each lap');
+  assert.equal(pool(s), 400);
+  assert.deepEqual(craftOf(s).location, { ...SYS_ANCHOR }, 'idle at WN (= W1)');
+  const lap1 = burn(ORIGIN, A_COORDS) + burn(A_COORDS, HEX_B) + burn(HEX_B, A_COORDS);
+  const cycle = burn(A_COORDS, HEX_B) + burn(HEX_B, A_COORDS);
+  assert.equal(hoardAtStart - s.guilds[0].fuelHoard, 2 * cycle, 'laps 2–3 paid only the cycle — nothing for a skipped reposition');
+  assert.equal(s.audit.totalConsumed, lap1 + 2 * cycle, 'invariant 1: every unit burned is recorded');
+});
+
+test('fuel: each lap\'s WHOLE bill leaves the hoard at the lap start — never mid-lap', () => {
+  let s = accept(routeState({ systemPool: { [T1]: 400 * 10 }, fuelHoard: 1000 }), dispatch(LANE(), { mode: 'continuous' }));
+  assert.equal(s.guilds[0].fuelHoard, 1000 - LAP1_FUEL, 'lap 1 burned at launch');
+  let lapStarts = 0;
+  let prevHoard = s.guilds[0].fuelHoard;
+  let prevConsumed = s.audit.totalConsumed;
+  while (lapStarts < 4) {
+    s = step(s);
+    const hoard = s.guilds[0].fuelHoard;
+    if (hoard !== prevHoard) {
+      // The only ticks the hoard moves are lap starts: the craft has just left WN for W1.
+      const leg = craftOf(s).trip.legs[0];
+      assert.deepEqual(leg.from, { ...HEX_B }, `the burn at tick ${s.tick} is a lap start (departing WN)`);
+      assert.equal(leg.departureTick, s.tick);
+      assert.equal(prevHoard - hoard, LAP_FUEL, 'the whole lap, up front');
+      assert.equal(s.audit.totalConsumed - prevConsumed, LAP_FUEL, 'totalConsumed rises to match (invariant 1)');
+      lapStarts += 1;
+    }
+    prevHoard = hoard;
+    prevConsumed = s.audit.totalConsumed;
+  }
+});
+
+test('determinism: a repeating lane replays byte-identically, and a mid-lap restart lands on the same state', () => {
+  const launch = () => accept(routeState({ systemPool: { [T1]: 400 * 20 } }), dispatch(LANE(), { mode: 'nRun', n: 4 }));
+  const done = (st) => !craftOf(st).route;
+  const whole = stepUntil(launch(), done);
+  assert.equal(hashState(whole), hashState(stepUntil(launch(), done)), 'same inputs, same run');
+  // Restart in the middle of lap 2 (flying the loop-back, 3 laps to go): a JSON save/reload, then the rest.
+  const mid = stepUntil(launch(), (st) => craftOf(st).route && craftOf(st).route.lapsRemaining === 3
+    && craftOf(st).status === 'inTransit' && craftOf(st).route.cursor === 0);
+  const resumed = stepUntil(JSON.parse(JSON.stringify(mid)), done);
+  assert.equal(hashState(resumed), hashState(whole), 'the reload lands exactly where the unbroken run did');
 });
