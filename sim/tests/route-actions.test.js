@@ -25,6 +25,10 @@
 //      action in place (system: at dispatch; own Outpost: queued) and goes on to W2, fuelled for the
 //      real legs only; a craft not at W1 still flies there first; an internal dead leg is still refused;
 //      deterministic, with no double advance in one tick;
+//   9. (slice 2a.1) ACT IN PLACE (§11.9) — a ONE-stop route dispatched from that very stop, carrying an
+//      action, resolves it where the craft stands and ends idle there: no leg, no fuel (system: at
+//      dispatch; own Outpost: queued, completed at turnaround, one manifest per craft). With no action
+//      it is refused; from elsewhere it still flies there first;
 //   + re-dispatch cancels a queued manual Outpost manifest (§4), as the plain dispatch does;
 //   + the no-action route (a pure turning-point chain) and the omit-when-absent no-op.
 
@@ -33,6 +37,7 @@ const assert = require('node:assert/strict');
 
 const { createState } = require('../state.js');
 const { tick } = require('../tick.js');
+const { advance } = require('../run.js');
 const { hashState } = require('../serialize.js');
 const { checkInvariants } = require('../invariants.js');
 const { buildSnapshot } = require('../snapshot.js');
@@ -367,11 +372,19 @@ test('validation: a bad manifest / zero-length leg / non-idle craft / spycraft-w
     refuse(base(), dispatchRoute([{ anchor: SYS_ANCHOR }, { anchor: SYS_ANCHOR, action: dock([{ dir: 'load', good: T1, qty: 1 }]) }])),
     /leg 1 is zero-length/,
   );
-  // A ONE-waypoint route whose waypoint IS the craft's berth — the reposition is skipped, leaving no leg
-  // at all, and a route with no legs is refused (§4).
+  // A ONE-waypoint route whose waypoint IS the craft's berth, with NO action — nothing to fly and nothing to
+  // do, refused (§11.9). (WITH an action it acts in place — slice 2a.1, see the act-in-place tests below.)
   assert.match(
-    refuse(base(), dispatchRoute([{ anchor: { ...ORIGIN }, action: dock([{ dir: 'load', good: T1, qty: 1 }]) }])),
-    /the route has no legs/,
+    refuse(base(), dispatchRoute([{ anchor: { ...ORIGIN } }])),
+    /nothing to fly and nothing to do/,
+  );
+  // The skip never cascades: W1 is the craft's berth (skipped), then W2 is W1 again — an internal dead leg.
+  assert.match(
+    refuse(base(), dispatchRoute([
+      { anchor: { ...ORIGIN }, action: dock([{ dir: 'load', good: T1, qty: 1 }]) },
+      { anchor: { ...ORIGIN } },
+    ])),
+    /leg 1 is zero-length/,
   );
   // An empty waypoint list — refused (a run needs at least one waypoint).
   assert.match(refuse(base(), dispatchRoute([])), /non-empty ordered array/);
@@ -524,6 +537,151 @@ test('skip: determinism — replays byte-identically, and the cursor never advan
     return hashState(s);
   };
   assert.equal(run(), run(), 'the skipped run is deterministic');
+});
+
+// --- 9. ACT IN PLACE — a one-stop route dispatched from its own stop (§11.9, slice 2a.1) -------------
+// The skip's limit case: the route's ONLY waypoint is the craft's own berth. Once the reposition is
+// skipped there is no leg left, so the whole run is that stop's action, done where the craft stands, and
+// the craft ends idle there. No leg is flown, so no fuel burns (§11.3 — and so nothing to refund).
+
+// fuelOf(s) — every fuel figure a burn would move, so a test can show an act-in-place run moved none.
+const fuelOf = (s) => ({
+  hoard: s.guilds[0].fuelHoard,
+  contraband: s.guilds[0].deuteriumFuel,
+  burnedThisCycle: s.guilds[0].fuelBurnedThisCycle,
+  consumed: s.audit.totalConsumed,
+});
+
+test('act in place: a craft at a system, sent on [that system (load)], loads right there and ends idle', () => {
+  // Tick a little first so the in-place transfer's tick stamp is a real tick, not the spawn's tick 0.
+  let s = ticks(routeState({ systemPool: { [T1]: 400 }, craftAt: { ...SYS_ANCHOR }, fuelHoard: 1000 }), 2);
+  const fuelBefore = fuelOf(s);
+  const tiBefore = totalTitanium(s);
+  s = accept(s, dispatchRoute([{ anchor: SYS_ANCHOR, action: dock([{ dir: 'load', good: T1, qty: 400 }]) }]));
+
+  // Right after the dispatch (no tick yet) the load has happened at the system, and the run is over.
+  assert.deepEqual(craftOf(s).cargo, { [T1]: 400 }, 'loaded 400 in place');
+  assert.equal(pool(s, T1), 0, 'the (guild, system) pool gave up exactly what loaded');
+  assert.equal(craftOf(s).status, 'idle');
+  assert.deepEqual(craftOf(s).location, SYS_ANCHOR, 'idle at the stop it acted at');
+  assert.equal(craftOf(s).route, undefined, 'one stop, done — the route is cleared');
+  assert.equal(craftOf(s).trip, undefined, 'no leg was flown');
+  assert.equal(craftOf(s).updatedAtTick, 2, 'the in-place transfer records its tick (§15.2)');
+  assert.deepEqual(fuelOf(s), fuelBefore, 'no leg, so no fuel burned (§11.3)');
+  assert.equal(totalTitanium(s), tiBefore, 'titanium conserved');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+
+  // The other direction: sent again on [that system (unload)], it puts the 400 back — still no fuel.
+  s = accept(s, dispatchRoute([{ anchor: SYS_ANCHOR, action: dock([{ dir: 'unload', good: T1, qty: 400 }]) }]));
+  assert.equal(craftOf(s).cargo, undefined, 'hold emptied (omit-when-empty)');
+  assert.equal(pool(s, T1), 400, 'the pool has it back');
+  assert.equal(craftOf(s).status, 'idle');
+  assert.equal(craftOf(s).route, undefined);
+  assert.deepEqual(fuelOf(s), fuelBefore);
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('act in place: a craft at its own Outpost, sent on [that Outpost (load)], queues there and loads at turnaround', () => {
+  // The craft is parked at the Outpost with a manual load already queued. The re-dispatch cancels that
+  // (§4) and the route's own load takes its place — ONE manifest for the craft, never two.
+  let s = routeState({ craftAt: { ...HEX_B }, outpostStock: { [T1]: 400 }, fuelHoard: 1000 });
+  s = accept(s, createTransferCargoAction({ guildId: 'g1', vehicleId: VID, manifest: [{ dir: 'load', good: T1, qty: 1 }] }));
+  const fuelBefore = fuelOf(s);
+  const tiBefore = totalTitanium(s);
+  s = accept(s, dispatchRoute([{ anchor: { ...HEX_B }, action: dock([{ dir: 'load', good: T1, qty: 400 }]) }]));
+
+  assert.deepEqual(outpostOf(s).queue, [{ vehicleId: VID, manifest: [{ dir: 'load', good: T1, qty: 400 }], readyTick: s.tick }]);
+  assert.equal(craftOf(s).status, 'idle', 'a queued craft stays idle until promoted (§4)');
+  assert.equal(craftOf(s).route.cursor, 0, 'at its one stop — the turnaround is the pause');
+  assert.equal(craftOf(s).trip, undefined, 'no leg was flown');
+  assert.deepEqual(fuelOf(s), fuelBefore, 'no leg, so no fuel burned (§11.3)');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+  // Still one manifest per craft: a manual transfer on top of the queued route load is refused (§4).
+  assert.match(
+    refuse(s, createTransferCargoAction({ guildId: 'g1', vehicleId: VID, manifest: [{ dir: 'load', good: T1, qty: 1 }] })),
+    /already has a manifest queued/,
+  );
+
+  // The dock step promotes it; at turnaround the load resolves and the run ends — idle, parked here.
+  s = tickUntil(s, (st) => !craftOf(st).route);
+  assert.deepEqual(craftOf(s).cargo, { [T1]: 400 }, 'loaded at the Outpost at turnaround');
+  assert.equal(stock(s, T1), 0);
+  assert.equal(craftOf(s).status, 'idle');
+  assert.deepEqual(craftOf(s).location, { ...HEX_B }, 'parked idle at the Outpost');
+  assert.equal(craftOf(s).trip, undefined);
+  assert.equal(outpostOf(s).queue, undefined, 'queue drained');
+  assert.equal(outpostOf(s).slots, undefined, 'slot released');
+  assert.equal(craftOf(s).updatedAtTick, s.tick, 'the turnaround completion records its tick (§15.2)');
+  assert.equal(s.guilds[0].fuelHoard, fuelBefore.hoard, 'still no fuel burned');
+  assert.equal(s.audit.totalConsumed, fuelBefore.consumed);
+  assert.equal(totalTitanium(s), tiBefore, 'titanium conserved');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('act in place: a one-stop route at the craft\'s own berth with NO action is refused — nothing changes', () => {
+  // At a system, at its own Outpost, and at a bare hex: nothing to fly and nothing to do.
+  for (const berth of [{ ...SYS_ANCHOR }, { ...HEX_B }, { ...ORIGIN }]) {
+    const s = routeState({ systemPool: { [T1]: 400 }, craftAt: berth });
+    const act = dispatchRoute([{ anchor: { ...berth } }]);
+    assert.match(refuse(s, act), /nothing to fly and nothing to do/);
+    // Through the real intake: the action is rejected, and the tick lands exactly where an empty tick does.
+    const withAct = advance(s, [act]);
+    assert.equal(withAct.results[0].accepted, false);
+    assert.equal(hashState(withAct.state), hashState(advance(s, []).state), 'a refused action changes nothing');
+  }
+  // A spycraft (capacity 0) cannot act in place either — the no-cargo gate still refuses its action.
+  const spy = routeState({ systemPool: { [T1]: 400 }, craftAt: { ...SYS_ANCHOR }, craftClass: SPYCRAFT });
+  assert.match(
+    refuse(spy, createDispatchRouteWithActionsAction({
+      guildId: 'g1', vehicleId: 'vehicle_g1_spycraft_01',
+      waypoints: [{ anchor: SYS_ANCHOR, action: dock([{ dir: 'load', good: T1, qty: 1 }]) }],
+    })),
+    /carries no cargo/,
+  );
+});
+
+test('act in place: the SAME one-stop route from ELSEWHERE still flies there first, then acts (unchanged)', () => {
+  let s = routeState({ systemPool: { [T1]: 400 }, fuelHoard: 1000 }); // craft at ORIGIN, not at A
+  s = accept(s, dispatchRoute([{ anchor: SYS_ANCHOR, action: dock([{ dir: 'load', good: T1, qty: 400 }]) }]));
+  assert.equal(craftOf(s).status, 'inTransit');
+  assert.deepEqual(craftOf(s).trip.legs[0].to, SYS_ANCHOR, 'the one leg is ORIGIN → A');
+  assert.equal(craftOf(s).cargo, undefined, 'nothing loaded yet — the craft is not at A');
+  assert.equal(s.guilds[0].fuelHoard, 1000 - legFuelBurn(LEG_OA, LIGHT.fuelCostToRun, false), 'the leg is fuelled up front');
+  s = tickUntil(s, (st) => !craftOf(st).route);
+  assert.deepEqual(craftOf(s).cargo, { [T1]: 400 }, 'loaded on arrival');
+  assert.deepEqual(craftOf(s).location, SYS_ANCHOR);
+  assert.equal(craftOf(s).status, 'idle');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('act in place: an action at a berth with no store (a bare hex) halts safely, as an arrival there would', () => {
+  // The action runs through the SAME arrival resolver, and a bare hex with no own Outpost is not a store,
+  // so the run halts at once (§11.6; RULED 23-09-26, transport-model.md §11.3). Here that costs nothing:
+  // there is no leg, so there is no fuel to lose.
+  let s = routeState({ systemPool: { [T1]: 400 } }); // craft at ORIGIN, a bare hex
+  const fuelBefore = fuelOf(s);
+  s = accept(s, dispatchRoute([{ anchor: { ...ORIGIN }, action: dock([{ dir: 'load', good: T1, qty: 1 }]) }]));
+  assert.equal(craftOf(s).status, 'idle');
+  assert.deepEqual(craftOf(s).location, { ...ORIGIN });
+  assert.equal(craftOf(s).route, undefined, 'halted — route cleared');
+  assert.equal(craftOf(s).cargo, undefined, 'nothing moved');
+  assert.equal(pool(s, T1), 400);
+  assert.deepEqual(fuelOf(s), fuelBefore);
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('act in place: deterministic, and a restart mid-turnaround replays byte-identically', () => {
+  const start = () => accept(
+    routeState({ craftAt: { ...HEX_B }, outpostStock: { [T1]: 400 } }),
+    dispatchRoute([{ anchor: { ...HEX_B }, action: dock([{ dir: 'load', good: T1, qty: 400 }]) }]),
+  );
+  const end = (st) => !craftOf(st).route;
+  const continuous = tickUntil(start(), end);
+  assert.equal(hashState(tickUntil(start(), end)), hashState(continuous), 'the act-in-place run is deterministic');
+  // Save/reload while the craft holds its dock slot (the route is journalled state), then run on.
+  const mid = tickUntil(start(), (st) => craftOf(st).status === 'loading');
+  const reloaded = JSON.parse(JSON.stringify(mid));
+  assert.equal(hashState(tickUntil(reloaded, end)), hashState(continuous), 'the reload lands where the continuous run did');
 });
 
 // --- re-dispatch cancels a queued manual manifest (design.md §4), as the plain dispatch does --------

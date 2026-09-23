@@ -66,7 +66,8 @@ function vehicleDeliveryFuelBurn(destinationSystemId, vehicleClass) {
   return { fuelBurn: Math.ceil(near.distance * spec.fuelCostToRun) };
 }
 
-// dispatchRoute(craft, waypoints) -> { ok: true, legs: [{ from, to, length }], totalUnits }
+// dispatchRoute(craft, waypoints) -> { ok: true, legs: [{ from, to, length }], totalUnits,
+//                                              skippedFirstLeg, actInPlace }
 //                                  | { ok: false, reason }
 //
 // THE ONE place a guild-transport route is built and priced (transport-model.md §4), shared by the
@@ -89,7 +90,10 @@ function vehicleDeliveryFuelBurn(destinationSystemId, vehicleClass) {
 // zero-length because the craft already sits on W1, that leg is left out rather than refused, and the
 // result says so (`skippedFirstLeg: true`) — the caller then resolves W1 in place. ONLY leg 0 is
 // skippable: a later zero-length leg (two chosen waypoints on the same hex) is still a dead leg, refused.
-// A route whose ONLY waypoint is skipped has no legs left, and a route with no legs is refused (§4).
+// A route whose ONLY waypoint is skipped has no legs left: that is the §11.9 ACT-IN-PLACE route
+// (`actInPlace: true`, `legs: []`, `totalUnits: 0`) — the craft is already at its one and only stop, so
+// it does that stop's action where it stands. This helper sees bare anchors, not actions, so "an
+// act-in-place route must carry an action" is the caller's check (the actioned-route validate).
 function dispatchRoute(craft, waypoints, { skipZeroLengthFirstLeg = false } = {}) {
   if (!Array.isArray(waypoints) || waypoints.length === 0) {
     return { ok: false, reason: 'waypoints must be a non-empty ordered array of location anchors' };
@@ -124,11 +128,14 @@ function dispatchRoute(craft, waypoints, { skipZeroLengthFirstLeg = false } = {}
     totalUnits += legFuelBurn(length, craft.fuelCostToRun, false);
     legs.push({ from, to, length });
   }
-  // Only reachable through the skip: a one-waypoint route whose waypoint IS the craft's berth.
-  if (legs.length === 0) {
-    return { ok: false, reason: 'the route has no legs — its only waypoint is the craft\'s own berth, so there is nothing to fly (transport-model.md §4)' };
+  // Defensive only: without the skip, leg 0 is always either built or refused above, so a non-empty
+  // `waypoints` never gets here with no legs. Kept so a later change cannot slip a legless route through.
+  if (legs.length === 0 && !skippedFirstLeg) {
+    return { ok: false, reason: 'the route has no legs — there is nothing to fly (transport-model.md §4)' };
   }
-  return { ok: true, legs, totalUnits, skippedFirstLeg };
+  // No legs AFTER the skip = the one-stop route dispatched from its own stop (§11.9). A craft already at
+  // its only stop has nothing to fly, so it acts in place: no leg, and so no fuel (totalUnits stays 0).
+  return { ok: true, legs, totalUnits, skippedFirstLeg, actInPlace: legs.length === 0 };
 }
 
 // buildSingleLegTrip(craft, toAnchor, dispatchTick) -> a ONE-LEG `trip` { legs: [scheduled],
@@ -2545,6 +2552,13 @@ function validateAction(state, action) {
     if (!route.ok) {
       return { valid: false, reason: route.reason };
     }
+    // ACT IN PLACE (§11.9): the route's only stop is the craft's own berth, so there is no leg — the whole
+    // run is that stop's action, done where the craft stands. Without an action it would do nothing at
+    // all, so it is refused. This check lives here, not in dispatchRoute, because only here can we see
+    // the waypoints' actions (dispatchRoute is handed bare anchors).
+    if (route.actInPlace && action.waypoints[0].action === undefined) {
+      return { valid: false, reason: 'a one-stop route at the craft\'s own berth with no action does nothing — nothing to fly and nothing to do (transport-model.md §11.9 / §4)' };
+    }
     // The FUEL gate — the whole run is fuelled UP FRONT (§11.3), so the SAME combined-availability
     // gate a plain dispatch uses (hoard + contraband ≥ Σ legFuelBurn), refused WHOLE.
     const available = guild.fuelHoard + (guild.deuteriumFuel || 0);
@@ -3773,6 +3787,10 @@ function applyAction(state, action) {
       //     on to W2 — and, as on arrival, halts safely if W1's store is gone (§11.6).
       // No same-tick loop: W1→W2 is a real leg (dispatchRoute refused a zero-length one), so it takes at
       // least one tick and the craft next lands in a LATER tick's arrival step.
+      // A ONE-stop route (act in place, §11.9) needs nothing extra: W1 is also the last waypoint, so the
+      // resolver's advanceRoute ends the run instead of dispatching a leg — a system action leaves the
+      // craft idle at W1 with its route cleared now; an Outpost action queues and the dock step ends the
+      // run at turnaround, exactly as if the craft had just flown in.
       craft.location = { ...action.waypoints[0].anchor };
       resolveRouteArrival(next, guild, craft, next.tick);
     } else {
@@ -3787,7 +3805,8 @@ function applyAction(state, action) {
     // FUEL — the WHOLE run burns UP FRONT (§11.3), units from the hoard, exactly as dispatchVehicle
     // burns a plain route: fuel LEAVES the galaxy (burned, not transferred), so totalConsumed rises to
     // match the hoard falling (invariant 1). The combined-availability gate ran in validate. After a
-    // skip this is Σ over the REAL legs only (W1→W2→…) — the skipped reposition was never a leg.
+    // skip this is Σ over the REAL legs only (W1→W2→…) — the skipped reposition was never a leg. An
+    // act-in-place run has no legs at all, so this is 0 and burns nothing (§11.3: nothing to refund).
     burnFuel(guild, route.totalUnits);
     next.audit.totalConsumed += route.totalUnits;
 

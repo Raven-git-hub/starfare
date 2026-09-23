@@ -1030,7 +1030,8 @@ boundary so the later hex-map swap doesn't touch it.
     refused (a zero-length leg 0); now that reposition is SKIPPED. `dispatchRoute` gains one opt-in
     (`skipZeroLengthFirstLeg`, used ONLY by the actioned-route validate + apply): a zero-length leg 0 is left out
     and reported (`skippedFirstLeg`); any later zero-length leg (two chosen waypoints on one hex) is still refused,
-    and a one-waypoint route whose waypoint is the craft's berth is refused as "no legs" (§4). The plain dispatch,
+    and a one-waypoint route whose waypoint is the craft's berth is refused as "no legs" (§4) *(superseded by
+    slice 2a.1 — WITH an action it now acts in place, §11.9)*. The plain dispatch,
     the quote and the chained next-leg builder keep the refusal unchanged. On a skip the apply seats the craft on
     W1's anchor (the same hex — what landing there sets) and runs the SAME `resolveRouteArrival` the arrival step
     uses: a system action resolves at dispatch and the W1→W2 leg goes; an own-Outpost action queues (readyTick =
@@ -1057,6 +1058,36 @@ boundary so the later hex-map swap doesn't touch it.
     — a route loaded onto a craft already at W1 will need the quote to learn the same skip. **Two rulings flagged on
     the decision checklist** (both built conservatively, and SINCE RULED 23-09-26 — see the checklist): a one-waypoint route at the craft's own berth, and a
     skipped W1 whose action has no store.
+  - **slice 2a.1 — engine (a one-stop route acts in place).** 🟢 *BUILT (23-09-26 — `sim/actions.js`; tripwires
+    `sim/tests/route-actions.test.js`; contract transport-model.md §11.9 "A one-stop route dispatched from its own
+    stop" / §11.4 / §11.3 — ENGINE ONLY, no client, no `tools` change).* The limit case of the 2a skip, now RULED:
+    a `dispatchRouteWithActions` whose ONLY waypoint is the craft's own berth, carrying an action, resolves that
+    action IN PLACE and the craft ends idle there — no leg, no fuel. **(1) `dispatchRoute`:** when the skip leaves
+    no leg it now returns ok with `legs: []`, `totalUnits: 0` and a new `actInPlace: true` marker (every ok result
+    carries `actInPlace`), instead of the "no legs" refusal. That refusal stays, as a defensive branch, for a
+    legless result that did NOT come from the skip (unreachable today: without the skip, leg 0 is always built or
+    refused). An internal zero-length leg is still refused, and the skip never cascades (`[W1(action), W1]` from
+    W1 → "leg 1 is zero-length"). **(2) The validate** gates the no-action case: `dispatchRoute` only sees bare
+    anchors, so the rule "an act-in-place route must carry an action" lives where the `{ anchor, action? }`
+    waypoints are visible. A one-stop route at the berth with NO action is refused ("nothing to fly and nothing
+    to do", §11.9 / §4). The per-waypoint gate, the spycraft (capacity 0) refusal and the fuel gate are unchanged.
+    The fuel gate over zero legs is trivially met. **(3) The apply is unchanged:** the 2a skip branch already
+    covers it. It seats the craft on W1's anchor and runs `resolveRouteArrival`, and because W1 is also the last
+    waypoint, `advanceRoute` ends the run instead of dispatching a leg. A system action resolves at dispatch and
+    the craft is idle at W1 with no `route` / `trip`. An own-Outpost action queues (readyTick = now), and the dock
+    step completes it and ends the run at turnaround, idle at the Outpost (one manifest per craft holds: a queued
+    manual manifest is cancelled, and a second transfer on top of the route's is refused). `burnFuel(guild, 0)`
+    is a no-op, so nothing burns and there is nothing to refund (§11.3). Comments only. **Follows from two
+    rulings (not a new call):** an action at a berth with NO store (a bare hex, e.g. 2b's orphaned action) is
+    accepted and halts safely in place, exactly as an arrival there would (§11.6, the RULED "skipped W1 whose
+    action has no store"). Here that costs nothing, since there is no leg. **The plain `dispatchVehicle` is
+    untouched** and still refuses a standing-still route. Sim suite 1,481 → **1,487 green**
+    (`route-actions.test.js` +6: act in place at a system (load, then unload), at its own Outpost (queued →
+    turnaround, one manifest per craft), no-action refused with no state change (system / Outpost / bare hex; and
+    a spycraft's action still refused), the same one-stop route from elsewhere still flies there first,
+    the no-store halt, determinism + a mid-turnaround restart. The old "a one-stop route at the berth is refused
+    as no legs" assertion became "no-action one-stop refused" + "the skip never cascades"). The new tests are
+    real tripwires: run against the pre-slice `actions.js`, six fail.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
@@ -1198,7 +1229,7 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
 
     **RULED 23-09-26 — RUN IT IN PLACE.** A one-stop route dispatched from that very stop resolves its
     action in place and ends idle there (no leg, no fuel), not refused (transport-model.md §11.9). Small
-    engine follow-up (slice 2a.1), before 2b's Load Route.
+    engine follow-up (slice 2a.1), before 2b's Load Route. *BUILT 23-09-26 (slice 2a.1).*
 
 - **Actioned route — a skipped W1 whose action has no store** — *surfaced 23-09-26 by 2.2 automation slice 2a.*
   When the craft already sits on W1 and W1 carries an action, the skip resolves it through the SAME arrival
