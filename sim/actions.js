@@ -83,7 +83,14 @@ function vehicleDeliveryFuelBurn(destinationSystemId, vehicleClass) {
 // ill-formed waypoint (does not resolve), and a zero-length leg (its two anchors resolve to the SAME
 // hex — the §2.3 interpolation would divide by zero; this also catches "first waypoint is the craft's
 // own hex"). The FUEL gate is the caller's (it needs the guild's stores), so this only prices.
-function dispatchRoute(craft, waypoints) {
+//
+// `skipZeroLengthFirstLeg` (default false — the plain dispatch, the quote and the chained next-leg keep
+// the refusal above) is the ACTIONED route's §11.4 / §11.9 REPOSITION SKIP: when leg 0 (craft → W1) is
+// zero-length because the craft already sits on W1, that leg is left out rather than refused, and the
+// result says so (`skippedFirstLeg: true`) — the caller then resolves W1 in place. ONLY leg 0 is
+// skippable: a later zero-length leg (two chosen waypoints on the same hex) is still a dead leg, refused.
+// A route whose ONLY waypoint is skipped has no legs left, and a route with no legs is refused (§4).
+function dispatchRoute(craft, waypoints, { skipZeroLengthFirstLeg = false } = {}) {
   if (!Array.isArray(waypoints) || waypoints.length === 0) {
     return { ok: false, reason: 'waypoints must be a non-empty ordered array of location anchors' };
   }
@@ -91,6 +98,7 @@ function dispatchRoute(craft, waypoints) {
   const anchors = [craft.location, ...waypoints];
   const legs = [];
   let totalUnits = 0;
+  let skippedFirstLeg = false;
   for (let i = 0; i < anchors.length - 1; i += 1) {
     const from = anchors[i];
     const to = anchors[i + 1];
@@ -104,13 +112,23 @@ function dispatchRoute(craft, waypoints) {
     }
     // Zero-length leg: the two anchors resolve to the SAME hex (§2.3 would divide by zero).
     if (fromR.coords.q === toR.coords.q && fromR.coords.r === toR.coords.r) {
+      // The craft already sits on W1: an actioned route's reposition has nothing to fly, so it is not
+      // built (§11.4) — no leg, no fuel. Only leg 0, and only when the caller asked.
+      if (i === 0 && skipZeroLengthFirstLeg) {
+        skippedFirstLeg = true;
+        continue;
+      }
       return { ok: false, reason: `leg ${i} is zero-length — its endpoints resolve to the same hex ${JSON.stringify(fromR.coords)} (a route may not stand still, transport-model.md §4)` };
     }
     const length = hexDistance(fromR.coords, toR.coords);
     totalUnits += legFuelBurn(length, craft.fuelCostToRun, false);
     legs.push({ from, to, length });
   }
-  return { ok: true, legs, totalUnits };
+  // Only reachable through the skip: a one-waypoint route whose waypoint IS the craft's berth.
+  if (legs.length === 0) {
+    return { ok: false, reason: 'the route has no legs — its only waypoint is the craft\'s own berth, so there is nothing to fly (transport-model.md §4)' };
+  }
+  return { ok: true, legs, totalUnits, skippedFirstLeg };
 }
 
 // buildSingleLegTrip(craft, toAnchor, dispatchTick) -> a ONE-LEG `trip` { legs: [scheduled],
@@ -2521,7 +2539,9 @@ function validateAction(state, action) {
     }
     // Build + price the WHOLE route (dispatchRoute is the one home): leg 0 from the craft's location
     // through every waypoint anchor, each resolving and non-zero-length. It returns the whole-run burn.
-    const route = dispatchRoute(craft, action.waypoints.map((wp) => wp.anchor));
+    // A craft ALREADY on W1 has a zero-length leg 0 — the §11.4 reposition skip leaves it out (no leg, no
+    // fuel) instead of refusing; any other zero-length leg is still refused.
+    const route = dispatchRoute(craft, action.waypoints.map((wp) => wp.anchor), { skipZeroLengthFirstLeg: true });
     if (!route.ok) {
       return { valid: false, reason: route.reason };
     }
@@ -3722,8 +3742,8 @@ function applyAction(state, action) {
   if (action.type === 'dispatchRouteWithActions') {
     // transport-model.md §11.2/§11.3: the chained-legs model. The whole run's fuel burns UP FRONT
     // (the legs are known even though the timing is not), the route + a cursor are JOURNALLED onto the
-    // craft, and only the FIRST leg is dispatched here — each later leg is re-dispatched by the tick
-    // hooks (`advanceRoute`, sim/tick.js) as the craft completes the stop before it.
+    // craft, and only the FIRST leg is dispatched here — each later leg is re-dispatched by `advanceRoute`
+    // (from the sim/tick.js hooks) as the craft completes the stop before it.
     const guild = findGuild(next, action.guildId);
     const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
 
@@ -3733,25 +3753,41 @@ function applyAction(state, action) {
 
     // Re-derive + price the whole route BEFORE the craft leaves its berth (dispatchRoute reads
     // craft.location); validate guaranteed { ok: true }, so this cannot fail — the shared helper keeps
-    // the legs and the whole-run burn byte-identical to the ones the gate checked.
-    const route = dispatchRoute(craft, action.waypoints.map((wp) => wp.anchor));
+    // the legs, the whole-run burn and the skip decision byte-identical to the ones the gate checked.
+    const route = dispatchRoute(craft, action.waypoints.map((wp) => wp.anchor), { skipZeroLengthFirstLeg: true });
 
     // Journal the plan onto the craft: a fresh, non-aliasing copy of the { anchor, action? } waypoints
-    // and a cursor at 0 (the next waypoint to REACH — leg 0 flies the craft to waypoints[0]). The
+    // and a cursor at 0 (the waypoint the craft is heading to, or — after the skip — standing at). The
     // `route` field is omit-when-absent on every OTHER craft, so a route-less galaxy is byte-identical
     // to pre-slice (§11.8). It is journalled state, so a mid-run restart replays byte-identically.
     craft.route = { waypoints: action.waypoints.map(copyRouteWaypoint), cursor: 0 };
 
-    // Dispatch the FIRST leg exactly as the plain dispatch builds a single leg's trip (buildSingleLegTrip
-    // is the one home). Build it while the craft still carries its location, then drop the location — an
-    // in-transit craft carries the `trip` and NO bare `location` (§15.4); the arrival hook restores it.
-    craft.trip = buildSingleLegTrip(craft, action.waypoints[0].anchor, next.tick);
-    craft.status = 'inTransit';
-    delete craft.location;
+    if (route.skippedFirstLeg) {
+      // THE ZERO-LENGTH REPOSITION SKIP (transport-model.md §11.4 / §11.9). The craft already sits on W1,
+      // so the reposition to W1 has nothing to fly and is not built. Instead the craft ARRIVES at W1 right
+      // here, and W1 resolves through the SAME resolver the tick's arrival step uses:
+      //   - the craft takes W1's anchor as its location — the same hex it already sits on, and exactly
+      //     what landing at W1 would set, so the resolver sees what it sees after a real arrival;
+      //   - resolveRouteArrival then runs W1's action IN PLACE — a system action now, then the W1→W2 leg
+      //     goes; an Outpost action queues for a dock slot and W2 goes at turnaround; no action → straight
+      //     on to W2 — and, as on arrival, halts safely if W1's store is gone (§11.6).
+      // No same-tick loop: W1→W2 is a real leg (dispatchRoute refused a zero-length one), so it takes at
+      // least one tick and the craft next lands in a LATER tick's arrival step.
+      craft.location = { ...action.waypoints[0].anchor };
+      resolveRouteArrival(next, guild, craft, next.tick);
+    } else {
+      // Dispatch the FIRST leg exactly as the plain dispatch builds a single leg's trip (buildSingleLegTrip
+      // is the one home). Build it while the craft still carries its location, then drop the location — an
+      // in-transit craft carries the `trip` and NO bare `location` (§15.4); the arrival hook restores it.
+      craft.trip = buildSingleLegTrip(craft, action.waypoints[0].anchor, next.tick);
+      craft.status = 'inTransit';
+      delete craft.location;
+    }
 
     // FUEL — the WHOLE run burns UP FRONT (§11.3), units from the hoard, exactly as dispatchVehicle
     // burns a plain route: fuel LEAVES the galaxy (burned, not transferred), so totalConsumed rises to
-    // match the hoard falling (invariant 1). The combined-availability gate ran in validate.
+    // match the hoard falling (invariant 1). The combined-availability gate ran in validate. After a
+    // skip this is Σ over the REAL legs only (W1→W2→…) — the skipped reposition was never a leg.
     burnFuel(guild, route.totalUnits);
     next.audit.totalConsumed += route.totalUnits;
 

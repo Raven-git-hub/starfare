@@ -935,7 +935,8 @@ boundary so the later hex-map swap doesn't touch it.
     not invented:** the client + the two authoring entry points (1b), saved routes (2), repetition + the
     reposition rule + the anchor-gone flag surfacing (3). The §11.4 zero-length-reposition SKIP is the
     reposition rule (slice 3), so 1a refuses a route whose first waypoint IS the craft's berth (a zero-length
-    first leg) — a run positions to a distinct first waypoint.
+    first leg) — a run positions to a distinct first waypoint. *(Superseded by slice 2a — that reposition is now
+    SKIPPED, §11.9.)*
   - **slice 1b — client (the two authoring entry points + the outpost-name label fix).** 🟢 *BUILT (23-09-26 —
     CLIENT ONLY, `client/game.html`; no engine/snapshot/`sim`/`tools` change — it drives the 1a
     `dispatchRouteWithActions` through the existing `POST /action`; contract transport-model.md §11.1 / §11.7 /
@@ -979,8 +980,11 @@ boundary so the later hex-map swap doesn't touch it.
     repetition + the reposition rule + pause/resume (3); the anchor-gone pause/flag UI (3); a route-mode hold
     view in the editor (projecting the hold at a mid-route stop — revisit if playtest shows it confuses);
     actions at the origin (not a waypoint, §11.1).
-  - **slice 2a — engine (the saved-route store + the zero-length reposition skip).** 🔶 *IN PROGRESS (23-09-26
-    — engine + operator CLI, NO client; contract transport-model.md §11.9 / §11.4 / §11.2).*
+  - **slice 2a — engine (the saved-route store + the zero-length reposition skip).** 🟢 *BUILT (23-09-26 —
+    `sim/routes.js` (new), `sim/state.js`, `sim/actions.js`, `sim/tick.js`, `sim/invariants.js`, `sim/snapshot.js`,
+    `sim/server.js`, `tools/admin.js`; tripwires `sim/tests/saved-routes.test.js` (new), `route-actions.test.js`,
+    `server.test.js`, `tools/admin.test.js`; contract transport-model.md §11.9 / §11.4 / §11.2 — engine + operator
+    CLI, NO client).*
     **(1) The store** (`sim/routes.js` (new), `sim/state.js`, `sim/actions.js`, `sim/invariants.js`,
     `sim/snapshot.js`; tripwires `sim/tests/saved-routes.test.js` (new)). A guild owns **`savedRoutes`** — rows
     `{ id, name, waypoints: [{ anchor, action? }], updatedAtTick }` built by `createSavedRoute` (waypoints
@@ -1021,6 +1025,38 @@ boundary so the later hex-map swap doesn't touch it.
     flying craft to `loading`. Both applies now call one `cancelQueuedManifest` (extracted from `dispatchVehicle`,
     unchanged behaviour there). The skip below depends on it — a craft dispatched from its own Outpost would
     otherwise queue a SECOND manifest there. Sim suite → **1,475 green** (+1).
+    **(4) The zero-length reposition SKIP (§11.4, pulled forward by §11.9)** (`sim/actions.js`, `sim/tick.js`;
+    tripwires `route-actions.test.js`). A `dispatchRouteWithActions` whose craft already sits on W1 used to be
+    refused (a zero-length leg 0); now that reposition is SKIPPED. `dispatchRoute` gains one opt-in
+    (`skipZeroLengthFirstLeg`, used ONLY by the actioned-route validate + apply): a zero-length leg 0 is left out
+    and reported (`skippedFirstLeg`); any later zero-length leg (two chosen waypoints on one hex) is still refused,
+    and a one-waypoint route whose waypoint is the craft's berth is refused as "no legs" (§4). The plain dispatch,
+    the quote and the chained next-leg builder keep the refusal unchanged. On a skip the apply seats the craft on
+    W1's anchor (the same hex — what landing there sets) and runs the SAME `resolveRouteArrival` the arrival step
+    uses: a system action resolves at dispatch and the W1→W2 leg goes; an own-Outpost action queues (readyTick =
+    now) and W2 goes at turnaround; a no-action W1 flies straight on; no store at W1 halts safely, as an arrival
+    would (§11.6). Up-front fuel is Σ over the REAL legs only. No same-tick loop: W1→W2 is a real ≥ 1-tick leg,
+    so the craft next lands in a later tick's arrival step (tripwired: the cursor never advances twice in one tick;
+    replay byte-identical). To let the apply call the resolver without a require cycle, the executor trio
+    (`advanceRoute` / `resolveSystemAction` / `resolveRouteArrival`) moved verbatim from `sim/tick.js` to
+    `sim/actions.js` (its own move-only commit); the tick hooks import it. Sim suite → **1,481 green**
+    (`route-actions.test.js` +6 skip tripwires; the old "zero-length first leg refused" assertion became "an
+    internal dead leg / a no-leg route refused"). **No-op proof:** the persist/determinism/galactic-supply goldens
+    are untouched and green, and five runs — zero-state, economy_meanline (+ crisis), supply_relief (400 ticks
+    each) and a routed NON-skip lane (1,500 ticks) — hash byte-identical (state + snapshot) on `main` and on this
+    branch. **Driven end-to-end via the CLI** against a booted, persisted server (seed 7): `save-route "Ore run"
+    --route "sys:sys_0001@load:titanium:400; 78,-7@unload:titanium:400"` → `route_g1_01`, read back from
+    `/snapshot`; `dispatch-route` of a craft PARKED at sys_0001 along the same waypoints → the 400 loaded IN PLACE
+    at tick 0 (pool 400 → 0), the craft already on the one real leg (fuel 500 → 499), arrived tick 105, unloaded
+    at turnaround (outpost stockpile 400), idle at the outpost; restarts after every step reload canonically
+    identical; `delete-route` ×2 dropped the key, and a re-save minted `route_g1_03` (never a reissue). (The
+    Outpost is addressed as `q,r` — a guild Outpost is not a location landmark; `out:<id>` names a seed waystation.)
+    **Deferred, not invented:** the client — Save Route / Load Route / delete (2b); repetition, the lap-start
+    anchor-gone check and pause/flag surfacing (3); soft re-validation at load (2b, client); rename (delete +
+    re-save, §11.9). **Carried to 2b:** `quoteDispatch` (the Finalise quote) still refuses a zero-length first leg
+    — a route loaded onto a craft already at W1 will need the quote to learn the same skip. **Two rulings flagged on
+    the decision checklist** (both built conservatively): a one-waypoint route at the craft's own berth, and a
+    skipped W1 whose action has no store.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
@@ -1152,6 +1188,21 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   commission floor + the two-panel OPERATIONS herostack); a later mockup should be reconciled against
   what shipped, or the "point the roadmap note at the mockup" instruction dropped. No number was invented
   by its absence — every figure still reads from the snapshot.
+
+- **Actioned route — a one-waypoint route at the craft's own berth** — *surfaced 23-09-26 by 2.2 automation
+  slice 2a.* §11.4 / §11.9 say a craft already at W1 "resolves W1's action IN PLACE and continues to W2". With no
+  W2 the skip leaves NO leg, and §4 refuses a route with no legs — so 2a REFUSES `[W1]` dispatched from W1, with
+  or without an action (the conservative reading; `transferCargo` already does the in-place half). Should a
+  one-stop route at the craft's berth instead run its action in place, so a one-stop SAVED route works from its
+  own stop? Needs a ruling before 2b's Load Route makes it easy to reach.
+
+- **Actioned route — a skipped W1 whose action has no store** — *surfaced 23-09-26 by 2.2 automation slice 2a.*
+  When the craft already sits on W1 and W1 carries an action, the skip resolves it through the SAME arrival
+  resolver; if W1 is not a store (a bare hex with no own Outpost — e.g. a saved route's Outpost since torn down,
+  2b's "orphaned action"), the run HALTS at dispatch exactly as an arrival there would (§11.6) — but the run's
+  up-front fuel for the real legs has already burned. Should the dispatch instead be REFUSED at validate (the §4
+  transfer gate: "a transfer is issued at a store"), so no fuel is spent? §11.6's lap-start anchor-gone check
+  (slice 3) is the ruled home for catching this before fuelling; 2a mirrors arrival and does not guess.
 
 - **Deferred, flagged in docs (revisit with their slice, don't lose):** the SELL origin-picker helper
   (offer only systems that hold every line — `syndicate-orders.md` §7, a client refinement); a
