@@ -2139,6 +2139,8 @@ select.field{appearance:none; cursor:pointer;}
 #dock-overlay .dk-btn.primary{background:var(--amber); border:1px solid var(--amber); color:var(--void)}
 #dock-overlay .dk-btn.primary:hover:not(:disabled){background:#DCB43A; border-color:#DCB43A}
 #dock-overlay .dk-btn:disabled{opacity:.4; cursor:not-allowed}
+/* Clear action (collect mode, editing an existing route action) — it removes, so it warms to red. */
+#dock-overlay .dk-btn.clear:hover{border-color:var(--red); color:var(--red)}
 #dock-overlay .dk-refuse{margin-top:12px; font-family:var(--mono); font-size:11px; color:var(--red); line-height:1.5}
 /* One-column phone layout, mirroring #dispatch-overlay: the art goes full-width, contained. */
 @media(max-width:820px){
@@ -3322,7 +3324,7 @@ select.field{appearance:none; cursor:pointer;}
   <div class="est">
     <div class="est-head">
       <div>
-        <div class="eyebrow">Dock · Manifest</div>
+        <div class="eyebrow" id="dkEyebrow">Dock · Manifest</div>
         <h2 id="dkName">—</h2>
       </div>
       <button class="est-close" id="dkClose" title="Close (Esc)">✕</button>
@@ -3345,9 +3347,11 @@ select.field{appearance:none; cursor:pointer;}
             <span class="dk-leg"><i class="sw solid"></i><span id="dkLegAdd">This order (+0)</span></span>
           </div>
         </div>
-        <!-- footer: Cancel + Confirm, with an inline refusal line beneath -->
+        <!-- footer: Cancel + Confirm, with an inline refusal line beneath. Clear action shows ONLY when
+             the editor was opened to edit an existing route action (collect mode, pre-filled). -->
         <div class="dk-foot">
           <button class="dk-btn" id="dkCancel" type="button">Cancel</button>
+          <button class="dk-btn clear" id="dkClear" type="button" style="display:none">Clear action</button>
           <button class="dk-btn primary" id="dkConfirm" type="button">Confirm</button>
         </div>
         <div class="dk-refuse" id="dkRefuse" style="display:none"></div>
@@ -10867,6 +10871,16 @@ function paintInventoryHero(d){
    resolution order (§4: unloads first, then loads), from published used /
    capacity / goodVolumes × the player's own amounts. Its own overlay + id + IIFE,
    mirroring #dispatch-overlay.
+
+   COLLECT MODE (roadmap 2.2 automation slice 1b, transport-model.md §11.7). The SAME
+   editor also collects a manifest for a ROUTE ACTION, without sending anything: open
+   it with an `onSave` callback and its primary button reads "Save action" — Save
+   builds the identical manifest and hands it to onSave(manifest) instead of posting
+   transferCargo. Passing an `existing` manifest opens it pre-filled (editing a set
+   action) and shows "Clear action", which calls onSave(null). The "Currently aboard"
+   read-out and the hold bar are reused as-is: they show the craft's hold NOW — exact
+   for its first actioned stop, advisory for later ones (the engine resolves each stop
+   against the real hold on arrival, partial-safe, §11.6).
    ============================================================================ */
 (function(){
   function $(id){ return document.getElementById(id); }
@@ -10894,9 +10908,15 @@ function paintInventoryHero(d){
 
   // The popup's own state: the craft + outpost it targets, and the editable manifest lines. A line is
   // { good:'', dir:'load'|'unload', qty:'', max:false } — `qty` is the RAW input string (validated on
-  // read). Start with one empty line; reset on open.
-  var DK = { open:false, craftId:null, outpostId:null, lines:[] };
+  // read). Start with one empty line; reset on open. `onSave` is null for a real transfer, or the
+  // collect-mode callback (see the header) when the editor is building a route action.
+  var DK = { open:false, craftId:null, outpostId:null, lines:[], onSave:null };
   function freshLine(){ return { good:'', dir:'load', qty:'', max:false }; }
+  // A saved manifest line ({ dir, good, qty } or { dir, good, max:true }) back into an editable line —
+  // the reverse of onConfirm's build, so an existing route action reopens exactly as it was saved.
+  function lineFromManifest(m){
+    return { good: m.good, dir: m.dir, qty: m.max ? '' : String(m.qty), max: !!m.max };
+  }
 
   // The live craft row by id, off the polled snapshot — re-read each render so capacity stays authoritative.
   function craftRow(){
@@ -10909,21 +10929,31 @@ function paintInventoryHero(d){
   // beyond multiplying this by the player's own entered amounts for the capacity-bar projection.
   function goodVolumes(){ var s = snap(); return (s && s.goodVolumes) || {}; }
 
-  function open(craftId, outpostId){
+  // open(craftId, outpostId, onSave?, existing?) — the two trailing arguments are COLLECT MODE only:
+  //   onSave   — a function(manifest | null). Given → the editor collects instead of transferring.
+  //   existing — the manifest of a route action already set; the lines open pre-filled from it.
+  // Called with just (craftId, outpostId), it behaves exactly as before (Confirm posts transferCargo).
+  function open(craftId, outpostId, onSave, existing){
     if(!craftId) return;
     DK.open = true; DK.craftId = craftId; DK.outpostId = outpostId || null;
-    DK.lines = [ freshLine() ];
+    DK.onSave = (typeof onSave === 'function') ? onSave : null;
+    DK.lines = (DK.onSave && existing && existing.length) ? existing.map(lineFromManifest) : [ freshLine() ];
     var v = craftRow();
-    if(!v){ DK.open = false; return; }  // gone between click and open — don't show an empty shell
+    if(!v){ DK.open = false; DK.onSave = null; return; }  // gone between click and open — don't show an empty shell
     var suffix = String(v.id).split('_').slice(-1)[0];
     $('dkName').textContent = pretty(v.class) + ' · #' + suffix;
     $('dkArt').style.backgroundImage = "url('assets/units/" + String(v.class).toLowerCase() + ".jpg')";
+    // The mode's labels: collecting a route action vs a real transfer now. Clear only makes sense when
+    // there is an existing action to remove.
+    $('dkEyebrow').textContent = DK.onSave ? 'Route Action · Manifest' : 'Dock · Manifest';
+    $('dkConfirm').textContent = DK.onSave ? 'Save action' : 'Confirm';
+    $('dkClear').style.display = (DK.onSave && existing && existing.length) ? '' : 'none';
     hideRefuse();
     render();
     $('dock-overlay').classList.add('open');
   }
   function close(){
-    DK.open = false; DK.craftId = null; DK.outpostId = null; DK.lines = [];
+    DK.open = false; DK.craftId = null; DK.outpostId = null; DK.lines = []; DK.onSave = null;
     $('dock-overlay').classList.remove('open');
   }
 
@@ -11084,6 +11114,8 @@ function paintInventoryHero(d){
   // remaining room, §4) and fire transferCargo through the existing /action helper. Accepted → close (the
   // craft leaves Parked for the queue on the next poll). Refused → surface the engine reason inline and
   // keep the popup open. The engine re-validates + refuses-whole, so the client only builds + posts.
+  // In COLLECT MODE (DK.onSave set) the same manifest is handed to onSave instead and nothing is sent —
+  // the route carries it, and the engine validates it when the route is dispatched.
   async function onConfirm(){
     if(!manifestReady()) return;
     var player = window.__player ? window.__player() : null;
@@ -11092,6 +11124,12 @@ function paintInventoryHero(d){
       return l.max ? { dir:l.dir, good:l.good, max:true }
                    : { dir:l.dir, good:l.good, qty: qtyInt(l.qty) };
     });
+    if(DK.onSave){
+      var save = DK.onSave;   // grab it first — close() resets DK
+      close();
+      save(manifest);
+      return;
+    }
     var btn = $('dkConfirm'); var label = btn.textContent; btn.disabled = true; btn.textContent = 'Confirming…';
     hideRefuse();
     var out;
@@ -11111,17 +11149,27 @@ function paintInventoryHero(d){
     showRefuse('Refused: ' + ((out && out.reason) || 'the manifest was declined'));
   }
 
+  // Clear action (collect mode only — the button is hidden otherwise): tell the caller the route
+  // action is removed by handing it null, then close.
+  function onClear(){
+    if(!DK.onSave) return;
+    var save = DK.onSave;
+    close();
+    save(null);
+  }
+
   // Static wiring — the overlay + footer buttons exist once. The Esc handler is in the CAPTURE phase and
   // stops propagation, so when the dock popup sits over the Outpost Manager, Esc closes only the dock (it
   // fires before the manager's bubble-phase Esc handler and halts it).
   $('dkAdd').addEventListener('click', function(){ DK.lines.push(freshLine()); renderLines(); refreshDerived(); });
   $('dkConfirm').addEventListener('click', onConfirm);
+  $('dkClear').addEventListener('click', onClear);
   $('dkCancel').addEventListener('click', close);
   $('dkClose').addEventListener('click', close);
   $('dock-overlay').addEventListener('click', function(e){ if(e.target===this) close(); });
   document.addEventListener('keydown', function(e){ if(DK.open && e.key==='Escape'){ e.stopPropagation(); close(); } }, true);
 
-  window.__openDock = open;   // the ONE entry point (a PARKED craft's DOCK button)
+  window.__openDock = open;   // the ONE entry point (DOCK buttons, and the route planner's action collect mode)
   window.__dockClose = close;
 })();
 </script>
