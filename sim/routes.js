@@ -11,7 +11,8 @@
 //     `outpostId` / `outpostNumberOf` / `nextOutpostSerial`, and for the same reason: a saved route can
 //     be DELETED, so its number must come from a stored counter, never from the live rows.
 //   - the REPEAT vocabulary (§11.10) — the three launch modes, shared by the dispatch validate and the
-//     route integrity check so the two can never disagree about which modes exist.
+//     route integrity check so the two can never disagree about which modes exist — and the reasons a
+//     lane can END, which the craft's `laneEnded` flag names.
 
 const { copyManifestLine } = require('./manifest.js');
 
@@ -22,6 +23,12 @@ const { copyManifestLine } = require('./manifest.js');
 // `once` is the DEFAULT and is never written (omit-when-default), so a one-shot route stays
 // byte-identical to the pre-repeat one; only `continuous` / `nRun` ever appear there.
 const REPEAT_MODES = Object.freeze(['once', 'continuous', 'nRun']);
+
+// LANE_END_REASONS — why a lane ENDED on its own (transport-model.md §11.6), recorded on the craft as
+// `laneEnded = { reason, tick }` so the player can see it. One reason today: 'target-gone' — a stop's
+// store no longer exists (an Outpost torn down). A lane that simply finishes, or that the player stops,
+// is not flagged: nothing went wrong.
+const LANE_END_REASONS = Object.freeze(['target-gone']);
 
 // copyRouteWaypoint(wp) -> a FRESH copy of a { anchor, action? } route waypoint (transport-model.md
 // §11.1) — the anchor object copied, and any action's manifest lines copied in canonical shape
@@ -63,6 +70,7 @@ function nextSavedRouteSerial(guild) {
 
 module.exports = {
   REPEAT_MODES,
+  LANE_END_REASONS,
   copyRouteWaypoint,
   savedRouteId,
   savedRouteNumberOf,

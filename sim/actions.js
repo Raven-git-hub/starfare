@@ -184,8 +184,8 @@ function buildSingleLegTrip(craft, toAnchor, dispatchTick) {
 //   - otherwise → dispatch the next single leg from the craft's current berth (buildSingleLegTrip is
 //     the one home — the same builder the first leg used), with NO fuel recharge (the whole lap was
 //     fuelled up front, §11.3). A null trip means the next anchor no longer resolves / the leg is
-//     zero-length — a target vanished mid-run (§11.6 anchor-gone): HALT SAFELY (leave the craft idle
-//     at its current berth, route cleared, no throw, no bad leg).
+//     zero-length — a target vanished mid-run (§11.6 anchor-gone): the lane ENDS (leave the craft idle
+//     at its current berth, route cleared and flagged, no throw, no bad leg).
 function advanceRoute(state, guild, craft, thisTick) {
   const route = craft.route;
   const nextCursor = route.cursor + 1;
@@ -195,7 +195,7 @@ function advanceRoute(state, guild, craft, thisTick) {
   }
   const trip = buildSingleLegTrip(craft, route.waypoints[nextCursor].anchor, thisTick);
   if (!trip) {
-    delete craft.route; // anchor-gone safe halt — idle where it paused (§11.6)
+    endLane(craft, 'target-gone', thisTick); // anchor gone — the lane ENDS, idle where it paused (§11.6)
     return;
   }
   route.cursor = nextCursor;
@@ -231,7 +231,7 @@ function finishLap(state, guild, craft, thisTick) {
 // craft now sits idle. Steps 2–4 of §11.10's lap boundary, in that FIXED order:
 //   2. RE-CHECK the lap's targets (§11.6): every actioned waypoint must still have its store — the SAME
 //      `routeStoreAt` the arrival resolver uses, so a target this check passes is one an arrival would
-//      find. Any gone → the lane ENDS: route dropped, craft idle at WN. This comes BEFORE the fuel step,
+//      find. Any gone → the lane ENDS: route dropped, craft idle at WN, flagged. This comes BEFORE the fuel step,
 //      so a visibly doomed lap is never charged (§11.3 — a refusal to charge, not a refund).
 //   3. PRICE the lap (§11.3 / §11.4): the reposition WN → W1 plus the cycle W1 → … → WN, through the SAME
 //      `dispatchRoute` the launch used, from the craft's berth at WN. When WN is W1 the reposition is
@@ -244,14 +244,14 @@ function finishLap(state, guild, craft, thisTick) {
 function startLap(state, guild, craft, thisTick) {
   const route = craft.route;
   if (route.waypoints.some((wp) => wp.action && routeStoreAt(state, guild.id, wp.anchor) === null)) {
-    delete craft.route; // a target is gone — the lane ENDS at WN (§11.6)
+    endLane(craft, 'target-gone', thisTick); // a target is gone — the lane ENDS at WN (§11.6)
     return;
   }
   const lap = dispatchRoute(craft, route.waypoints.map((wp) => wp.anchor), { skipZeroLengthFirstLeg: true });
   if (!lap.ok) {
     // Defensive: the anchors were checked at launch and seed landmarks never move, so this cannot fail
     // today. If it ever does, an anchor that no longer resolves IS a gone anchor (§11.6) — end the lane.
-    delete craft.route;
+    endLane(craft, 'target-gone', thisTick);
     return;
   }
   if (guild.fuelHoard + (guild.deuteriumFuel || 0) < lap.totalUnits) {
@@ -342,9 +342,21 @@ function resolveRouteArrival(state, guild, craft, thisTick) {
     return;
   }
   // Neither a system nor an owned Outpost — the action's target vanished mid-run (an outpost torn down,
-  // §11.6 anchor-gone). HALT SAFELY: the craft is idle at its current berth, route cleared. Goods are
-  // conserved — nothing moved for the un-resolved action.
+  // §11.6 anchor-gone). The lane ENDS: the craft is idle at its current berth (the now-bare hex), route
+  // cleared, flagged. Goods are conserved — nothing moved for the un-resolved action.
+  endLane(craft, 'target-gone', thisTick);
+}
+
+// endLane(craft, reason, thisTick) — a lane ENDS on its own (transport-model.md §11.6): the route is
+// DROPPED and the craft is left an ordinary idle craft wherever it stands — at WN if caught at a lap's
+// start, at the bare hex if a target vanished mid-flight. There is no resume-in-place; the player
+// re-dispatches. The craft is FLAGGED `laneEnded = { reason, tick }` (a LANE_END_REASONS entry, and the
+// tick it happened — §15.2) so the player can see WHY it stopped; the next dispatch of the craft clears it.
+// The one place a lane is ended-and-flagged, for every halt site (the arrival resolver, a leg that can no
+// longer be built, the lap-start re-check, and an Outpost torn down under a docked craft).
+function endLane(craft, reason, thisTick) {
   delete craft.route;
+  craft.laneEnded = { reason, tick: thisTick };
 }
 
 // quoteDispatch(state, { guildId, vehicleId, waypoints }) -> { ok: true, legs, totalTicks, totalUnits,
@@ -3812,6 +3824,10 @@ function applyAction(state, action) {
       craft.status = 'idle';
       // §15.2 "every mutation records its tick": eviction is a state change to the craft, so stamp it.
       craft.updatedAtTick = next.tick;
+      // A ROUTED craft was here for its lane's stop — and that stop's store is what is being torn down, so
+      // its lane ENDS now (§11.6), flagged. Left alone it would keep a route nothing can ever advance: the
+      // dock completion it waits for dies with this Outpost.
+      if (craft.route) endLane(craft, 'target-gone', next.tick);
     }
 
     // DESTROY the row (and with it the stockpile — the stored goods leave the galaxy, the accounted
@@ -3837,6 +3853,8 @@ function applyAction(state, action) {
     // CANCEL a pending Outpost transfer (design.md §4 "a parked or queued craft is cancelled by being
     // re-dispatched away — that drops its pending manifest") — the shared sweep, see cancelQueuedManifest.
     cancelQueuedManifest(next, craft.id);
+    // A fresh dispatch CLEARS an ended-lane flag (§11.6): the player has re-tasked the craft.
+    delete craft.laneEnded;
     // Re-derive the route BEFORE the craft leaves its berth (dispatchRoute reads craft.location);
     // validate guaranteed { ok: true }, so this cannot fail — the shared helper keeps the legs and
     // the burn byte-identical to the ones the gate checked.
@@ -3956,6 +3974,9 @@ function applyAction(state, action) {
     // CANCEL a pending Outpost transfer, exactly as the plain dispatch does (design.md §4 — a queued craft
     // is idle, so it passed the idle gate; its manual manifest is dropped when it is re-dispatched).
     cancelQueuedManifest(next, craft.id);
+    // A fresh dispatch CLEARS an ended-lane flag (§11.6) — before this run starts, so a flag set below (a
+    // skipped W1 whose store is gone, resolved at once) is this run's own.
+    delete craft.laneEnded;
 
     // Re-derive + price the whole route BEFORE the craft leaves its berth (dispatchRoute reads
     // craft.location); validate guaranteed { ok: true }, so this cannot fail — the shared helper keeps

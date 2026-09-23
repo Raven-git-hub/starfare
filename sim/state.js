@@ -758,6 +758,11 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
 //                                 nRun's laps still to run. A one-shot (`once`) route carries neither
 //                                 (omit-when-default), so it is byte-identical to the pre-repeat route.
 // Its integrity is `routeViolation` (sim/invariants.js).
+//
+// `laneEnded` (slice 3a — transport-model.md §11.6) is likewise never assembled here: when a lane ENDS
+// on its own (a stop's store gone), the executor drops the `route` and flags the craft
+// `{ reason: 'target-gone', tick }` so the player sees why it stopped. OMITTED otherwise, and cleared by
+// the craft's next dispatch.
 function createVehicle({
   id,
   ownerGuildId,

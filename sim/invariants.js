@@ -92,7 +92,9 @@ const {
   getSite, getLandmark, getSystem, getTerranHomeworld, isHexInBounds, seedLandmarkAtHex,
 } = require('./seed.js');
 const { outpostNumberOf } = require('./outposts.js');
-const { REPEAT_MODES, savedRouteId, savedRouteNumberOf } = require('./routes.js');
+const {
+  REPEAT_MODES, LANE_END_REASONS, savedRouteId, savedRouteNumberOf,
+} = require('./routes.js');
 const { getRecipe } = require('./recipes.js');
 
 function sumFuelInTransit(state) {
@@ -1446,6 +1448,21 @@ function checkVehicleIntegrity(state) {
         const rv = routeViolation(v.route);
         if (rv) {
           out.push({ rule: 'vehicle-route-valid', where: `guild:${g.id}.vehicle:${v.id}.route`, detail: rv });
+        }
+      }
+      // The ENDED-LANE flag (slice 3a — transport-model.md §11.6). ABSENT is legal (the usual case); a
+      // PRESENT flag is `{ reason, tick }` with a known reason and a whole tick no later than now (§15.2 —
+      // it records when the lane ended), and it rides a craft with NO route: a lane that ended dropped its
+      // route, and the next dispatch — the only way to a new route — clears the flag.
+      if (v.laneEnded !== undefined) {
+        const le = v.laneEnded;
+        const shapeOk = le && typeof le === 'object' && LANE_END_REASONS.includes(le.reason)
+          && Number.isInteger(le.tick) && le.tick >= 0 && le.tick <= state.tick;
+        if (!shapeOk) {
+          out.push({ rule: 'vehicle-lane-ended-valid', where: `guild:${g.id}.vehicle:${v.id}.laneEnded`, detail: { laneEnded: le, tick: state.tick, reasons: LANE_END_REASONS } });
+        }
+        if (v.route !== undefined) {
+          out.push({ rule: 'vehicle-lane-ended-no-route', where: `guild:${g.id}.vehicle:${v.id}`, detail: { laneEnded: le, routeCursor: v.route && v.route.cursor } });
         }
       }
       if (seenIds.has(v.id)) {

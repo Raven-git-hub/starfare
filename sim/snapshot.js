@@ -702,8 +702,9 @@ function computeAttention(state) {
 //                               cargo, capacity, used,              //   hold + space figures (2.2 Outpost Mgr)
 //                               dockStatus?, location?, trip?,      //   trip: { legs[{from,to,isToll,
 //                                                                   //   departureTick,arrivalTick}], arrivalTick, fuelCost }
-//                               route? } ],                         //   route: { waypoints, cursor, mode?,
-//                                                                   //   lapsRemaining? } (§11.10 repeat state)
+//                               route?, laneEnded? } ],             //   route: { waypoints, cursor, mode?,
+//                                                                   //   lapsRemaining? } (§11.10 repeat state);
+//                                                                   //   laneEnded: { reason, tick } (§11.6)
 //                 savedRoutes?: [ { id, name,                     // §11.9 saved routes (2.2 automation 2a),
 //                                   waypoints: [ { anchor, action? } ] } ], // omit-when-empty, stored order
 //                 productionProfile: { ... } } ],               // §5 profile, sparse as stored
@@ -832,6 +833,10 @@ function snapshotVehicleRow(v, fuelPrice, dockStatus) {
     // client (1b) can read the plan and mark progress — plus a repeating lane's state (snapshotRoute).
     // Omit-when-absent, like `trip`/`dockStatus`.
     ...(v.route ? { route: snapshotRoute(v.route) } : {}),
+    // laneEnded (slice 3a — transport-model.md §11.6). PRESENT only when the craft's last lane ENDED on
+    // its own — `{ reason: 'target-gone', tick }` — so the client can show the player WHY an idle craft
+    // stopped. A fresh copy; cleared by the craft's next dispatch. Omit-when-absent.
+    ...(v.laneEnded ? { laneEnded: { ...v.laneEnded } } : {}),
   };
   if (v.status === 'inTransit' && v.trip) {
     let totalUnits = 0;

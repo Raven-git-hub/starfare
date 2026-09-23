@@ -1238,6 +1238,23 @@ boundary so the later hex-map swap doesn't touch it.
     cycle; each lap's whole bill leaves the hoard on the tick the craft leaves WN, `totalConsumed` rising to
     match; replay and a mid-lap JSON restart are byte-identical. Every lap test ticks through `advance`, which
     asserts every invariant on every tick.
+    **(3) Target-gone ENDS + the flag** (`sim/routes.js`, `sim/actions.js`, `sim/invariants.js`,
+    `sim/snapshot.js`, `sim/state.js`). Every place a lane stops because a stop's store is gone now goes
+    through ONE helper, **`endLane`**: drop the route (an ordinary idle craft, no resume-in-place, §11.6) and
+    flag the craft **`laneEnded = { reason: 'target-gone', tick }`** (`LANE_END_REASONS`, `sim/routes.js`) so
+    the player can see WHY it stopped. The sites: the lap-start re-check (idle at WN — nothing burned, the
+    check precedes the fuel); the arrival resolver's no-store halt (idle at the now-bare hex, still laden); a
+    next leg that can no longer be built; and — **a 1a gap found on the way** — an Outpost torn down under a
+    craft DOCKED there for its lane (queued or loading). `removeOutpost` evicts such a craft idle, as §4 says,
+    but it used to keep its route: the dock completion it waited for died with the Outpost, so nothing could
+    ever advance it (reproduced on `main`: idle 2,000 ticks later, cursor stuck). Now its lane ends and is
+    flagged at the teardown tick. The flag is cleared by the craft's next dispatch, plain or routed (a manual
+    transfer leaves it). One-shot routes get the flag too — the 1a "safe halt" is now the ruled END. The
+    snapshot row surfaces `laneEnded` (a fresh copy, omit-when-absent); `checkVehicleIntegrity` asserts a
+    known reason, a whole tick no later than now, and no route alongside it. Sim suite → **1,512 green**
+    (`route-repeat.test.js` +6: the lap-start END at WN with no fuel spent; the mid-flight END at the bare
+    hex, no refund; the docked-eviction END; a one-shot flagged too; the flag cleared by both dispatches but
+    not a transfer; the integrity checks).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*

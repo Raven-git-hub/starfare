@@ -12,6 +12,9 @@
 //   2. the lap loop — an N-run runs exactly N cycles; a continuous lane keeps cycling on a fixed period;
 //      the WN → W1 reposition is flown (and fuelled) each lap, or SKIPPED when WN is W1; each lap's fuel
 //      leaves the hoard whole at the lap start; deterministic across replay and a mid-lap restart.
+//   3. target-gone ENDS + the flag (§11.6) — a stop's Outpost torn down ends the lane: at WN if caught by
+//      the lap-start re-check (nothing burned for the doomed lap), at the bare hex if mid-flight, and at
+//      the Outpost's hex if the craft was docked there; `laneEnded` flags why, and the next dispatch clears it.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -28,6 +31,7 @@ const { getSystem, isHexInBounds, seedLandmarkAtHex } = require('../seed.js');
 const { starterHomeAtDistance } = require('./waystation-fixtures.js');
 const {
   validateAction, applyAction, createSpawnVehicleAction, createDispatchRouteWithActionsAction,
+  createDispatchVehicleAction, createRemoveOutpostAction, createTransferCargoAction,
 } = require('../actions.js');
 
 const SYS_A = starterHomeAtDistance(6).id; // a real seed system — the LOAD stop (W1)
@@ -66,11 +70,14 @@ const LAP_PERIOD = ticksOf(HEX_B, A_COORDS) + ticksOf(A_COORDS, HEX_B) + outpost
 
 // routeState(...) -> an invariant-clean galaxy: guild g1 with one idle light craft at ORIGIN (or
 // `craftAt`), 400 titanium per lap in its (g1, A) pool, and its Outpost `outpost_g1_01` on HEX_B.
-function routeState({ systemPool, fuelHoard = 1000000, craftAt = { ...ORIGIN } } = {}) {
+function routeState({
+  systemPool, fuelHoard = 1000000, craftAt = { ...ORIGIN }, outpostStock,
+} = {}) {
   const guild = { id: 'g1', credits: 0, fuelHoard, outpostSerial: 1 };
   if (systemPool) guild.stockpiles = { [SYS_A]: { ...systemPool } };
   const outpost = {
     id: 'outpost_g1_01', ownerGuildId: 'g1', anchorSystemId: SYS_A, coords: { ...HEX_B }, createdAtTick: 0,
+    ...(outpostStock ? { stockpile: { ...outpostStock } } : {}),
   };
   const s = createState({
     guilds: [guild], outposts: [outpost], reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 },
@@ -104,6 +111,8 @@ const stock = (s) => ((s.outposts[0] || {}).stockpile || {})[T1] || 0;
 // step(s) — one full turn through the real driver, which ASSERTS EVERY INVARIANT on the result and throws
 // with the tick number on any violation — so every lane below is invariant-checked on every tick.
 const step = (s) => advance(s, []).state;
+const tearDownB = (s) => accept(s, createRemoveOutpostAction({ guildId: 'g1', outpostId: 'outpost_g1_01' }));
+const fuelOf = (s) => ({ hoard: s.guilds[0].fuelHoard, consumed: s.audit.totalConsumed });
 const stepUntil = (state, pred, cap = 20000) => {
   let s = state;
   let i = 0;
@@ -321,4 +330,110 @@ test('determinism: a repeating lane replays byte-identically, and a mid-lap rest
     && craftOf(st).status === 'inTransit' && craftOf(st).route.cursor === 0);
   const resumed = stepUntil(JSON.parse(JSON.stringify(mid)), done);
   assert.equal(hashState(resumed), hashState(whole), 'the reload lands exactly where the unbroken run did');
+});
+
+// --- 3. target-gone ENDS + the flag ----------------------------------------------------------------
+
+// The REVERSED lane: load 400 from the Outpost on HEX_B (W1), deliver it to system A (WN). Its last stop
+// is a system, so a craft that finishes a lap sits at A while the Outpost — a stop of its NEXT lap — can
+// vanish behind it: exactly the case the lap-start re-check exists for.
+const REVERSE = () => [
+  { anchor: { ...HEX_B }, action: dock([{ dir: 'load', good: T1, qty: 400 }]) },
+  { anchor: { ...SYS_ANCHOR }, action: dock([{ dir: 'unload', good: T1, qty: 400 }]) },
+];
+
+test('target-gone at the LAP START: the lane ENDS idle at WN, flagged — and the doomed lap burns nothing', () => {
+  let s = accept(routeState({ outpostStock: { [T1]: 4000 } }), dispatch(REVERSE(), { mode: 'continuous' }));
+  // Lap 1: load at B, then fly to A. Tear B down while the craft is on the B → A leg.
+  s = stepUntil(s, (st) => craftOf(st).route.cursor === 1 && craftOf(st).status === 'inTransit');
+  s = tearDownB(s);
+  const fuelBefore = fuelOf(s);
+  // The craft reaches A, unloads — and the lap-start re-check finds lap 2's first stop gone.
+  s = stepUntil(s, (st) => !craftOf(st).route);
+  assert.equal(pool(s), 400, 'lap 1 finished properly: the 400 was delivered to A');
+  assert.equal(craftOf(s).status, 'idle');
+  assert.deepEqual(craftOf(s).location, { ...SYS_ANCHOR }, 'idle at WN (the safe berth)');
+  assert.equal(craftOf(s).trip, undefined, 'no leg was built toward the vanished stop');
+  assert.deepEqual(craftOf(s).laneEnded, { reason: 'target-gone', tick: s.tick }, 'flagged, with the tick it ended');
+  assert.deepEqual(fuelOf(s), fuelBefore, 'the check precedes the burn — the aborted lap cost nothing (and nothing to refund)');
+  assert.deepEqual(snapRow(s).laneEnded, { reason: 'target-gone', tick: s.tick }, 'surfaced in the snapshot');
+  assert.equal(snapRow(s).route, undefined, 'an ordinary idle craft — no route to resume');
+  // It stays that way: no resume-in-place (§11.6).
+  for (let i = 0; i < LAP_PERIOD; i += 1) s = step(s);
+  assert.equal(craftOf(s).route, undefined);
+  assert.deepEqual(craftOf(s).location, { ...SYS_ANCHOR });
+});
+
+test('target-gone MID-FLIGHT: the craft arrives at the now-bare hex and the lane ENDS there, flagged', () => {
+  let s = accept(routeState({ systemPool: { [T1]: 4000 } }), dispatch(LANE(), { mode: 'continuous' }));
+  s = stepUntil(s, (st) => craftOf(st).route.cursor === 1 && craftOf(st).status === 'inTransit'); // A → B
+  const fuelBefore = fuelOf(s);
+  s = tearDownB(s);
+  s = stepUntil(s, (st) => !craftOf(st).route);
+  assert.equal(craftOf(s).status, 'idle');
+  assert.deepEqual(craftOf(s).location, { ...HEX_B }, 'idle in deep space at the bare hex');
+  assert.deepEqual(craftOf(s).cargo, { [T1]: 400 }, 'still laden — the unload never resolved');
+  assert.deepEqual(craftOf(s).laneEnded, { reason: 'target-gone', tick: s.tick });
+  assert.deepEqual(fuelOf(s), fuelBefore, 'the lap was paid at its start; nothing is refunded (§11.3)');
+});
+
+test('target-gone while DOCKED: an Outpost torn down under a routed craft ends its lane on the spot', () => {
+  let s = accept(routeState({ systemPool: { [T1]: 4000 } }), dispatch(LANE(), { mode: 'continuous' }));
+  s = stepUntil(s, (st) => craftOf(st).status === 'loading'); // in B's dock slot, mid-turnaround
+  s = tearDownB(s);
+  assert.equal(craftOf(s).status, 'idle', 'evicted into space (§4)');
+  assert.equal(craftOf(s).route, undefined, 'the lane ended — its stop died with the Outpost');
+  assert.deepEqual(craftOf(s).laneEnded, { reason: 'target-gone', tick: s.tick }, 'flagged at the teardown tick');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+  // Before this slice the craft kept a route nothing could ever advance. Now it is simply idle.
+  for (let i = 0; i < 2 * LAP_PERIOD; i += 1) s = step(s);
+  assert.equal(craftOf(s).route, undefined);
+  assert.deepEqual(craftOf(s).location, { ...HEX_B });
+});
+
+test('target-gone: a ONE-SHOT route that loses its stop is flagged too (the 1a safe halt, now the ruled END)', () => {
+  let s = accept(routeState({ systemPool: { [T1]: 400 } }), dispatch(LANE()));
+  s = stepUntil(s, (st) => craftOf(st).route.cursor === 1 && craftOf(st).status === 'inTransit');
+  s = tearDownB(s);
+  s = stepUntil(s, (st) => !craftOf(st).route);
+  assert.deepEqual(craftOf(s).laneEnded, { reason: 'target-gone', tick: s.tick });
+});
+
+test('the laneEnded flag is cleared by the next dispatch — plain or routed — and by nothing else', () => {
+  // A craft whose lane ended at the torn-down Outpost's (now bare) hex.
+  let ended = accept(routeState({ systemPool: { [T1]: 4000 } }), dispatch(LANE(), { mode: 'continuous' }));
+  ended = stepUntil(ended, (st) => craftOf(st).status === 'loading');
+  ended = tearDownB(ended);
+  assert.ok(craftOf(ended).laneEnded);
+  // A manual transfer is not a dispatch, so the flag stays. A transfer needs a store, so this uses a craft
+  // whose lane ended AT a system: the reversed lane, caught by the lap-start re-check at A.
+  let atA = accept(routeState({ outpostStock: { [T1]: 4000 } }), dispatch(REVERSE(), { mode: 'continuous' }));
+  atA = stepUntil(atA, (st) => craftOf(st).route.cursor === 1 && craftOf(st).status === 'inTransit');
+  atA = stepUntil(tearDownB(atA), (st) => !craftOf(st).route);
+  const flag = craftOf(atA).laneEnded;
+  atA = accept(atA, createTransferCargoAction({ guildId: 'g1', vehicleId: VID, manifest: [{ dir: 'load', good: T1, qty: 1 }] }));
+  assert.deepEqual(craftOf(atA).laneEnded, flag, 'a transfer leaves the flag alone');
+  // A plain dispatch clears it…
+  const plain = accept(ended, createDispatchVehicleAction({ guildId: 'g1', vehicleId: VID, waypoints: [{ ...SYS_ANCHOR }] }));
+  assert.equal(craftOf(plain).laneEnded, undefined, 'cleared by a plain dispatch');
+  // …and so does a routed one.
+  const routed = accept(ended, dispatch([{ anchor: { ...SYS_ANCHOR } }, { anchor: { ...ORIGIN } }]));
+  assert.equal(craftOf(routed).laneEnded, undefined, 'cleared by a routed dispatch');
+  assert.equal(snapRow(routed).laneEnded, undefined);
+});
+
+test('integrity: a malformed laneEnded, or one riding a live route, fails loudly', () => {
+  let s = accept(routeState({ systemPool: { [T1]: 4000 } }), dispatch(LANE(), { mode: 'continuous' }));
+  s = stepUntil(s, (st) => craftOf(st).status === 'loading');
+  s = tearDownB(s);
+  const rules = (mutate) => {
+    const c = structuredClone(s);
+    mutate(craftOf(c));
+    return checkInvariants(c, c.tick).map((v) => v.rule).filter((r) => r.startsWith('vehicle-lane-ended'));
+  };
+  assert.deepEqual(rules(() => {}), [], 'the real flag is clean');
+  assert.deepEqual(rules((c) => { c.laneEnded.reason = 'bored'; }), ['vehicle-lane-ended-valid']);
+  assert.deepEqual(rules((c) => { c.laneEnded.tick = s.tick + 1; }), ['vehicle-lane-ended-valid'], 'a flag from the future');
+  assert.deepEqual(rules((c) => { c.laneEnded.tick = 1.5; }), ['vehicle-lane-ended-valid']);
+  assert.deepEqual(rules((c) => { c.route = { waypoints: LANE(), cursor: 0 }; }), ['vehicle-lane-ended-no-route']);
 });
