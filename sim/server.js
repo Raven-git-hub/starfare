@@ -89,7 +89,7 @@ const {
   validateAction, applyAction, createSpawnVehicleAction, createRemoveVehicleAction,
   createDispatchVehicleAction, createTransferCargoAction, createDispatchRouteWithActionsAction, quoteDispatch,
   createSpawnOutpostAction, createRemoveOutpostAction,
-  createSaveRouteAction, createDeleteRouteAction,
+  createSaveRouteAction, createDeleteRouteAction, createStopRouteAfterRunAction,
 } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
 const { saveState, appendJournal, clearJournal, loadOrInit, saveSeed, loadSeed, deleteGalaxy } = require('./persist.js');
@@ -1007,11 +1007,13 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // POST /admin/vehicle/dispatch-route { guildId, vehicleId, waypoints } — send an idle craft along a
+  // POST /admin/vehicle/dispatch-route { guildId, vehicleId, waypoints, repeat? } — send an idle craft along a
   // route of { anchor, action? } waypoints, executed leg by leg with per-waypoint actions run on
   // arrival (transport-model.md §11, automation slice 1a). Gated and routed exactly like /dispatch: the
   // SAME validate → journal → apply path (applyOneAction), so the routed craft + its journalled route/
   // cursor survive restart and replay deterministically (§11 — a mid-run restart replays byte-identically).
+  // `repeat` (slice 3a, §11.10) is the launch mode — { mode: 'once' | 'continuous' | 'nRun', n? } —
+  // passed through only when the body carries it, so a one-shot request journals exactly as before.
   if (method === 'POST' && path === '/admin/vehicle/dispatch-route') {
     if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
     let body;
@@ -1031,7 +1033,7 @@ async function handleRequest(req, res) {
       // waypoints resolve with no zero-length leg, actions well-formed, spycraft-with-an-action refused,
       // whole-run fuel covered — is validateAction's job, run inside applyOneAction below.
       action = createDispatchRouteWithActionsAction({
-        guildId: body.guildId, vehicleId: body.vehicleId, waypoints: body.waypoints,
+        guildId: body.guildId, vehicleId: body.vehicleId, waypoints: body.waypoints, repeat: body.repeat,
       });
     } catch (err) {
       sendJson(res, 400, { error: 'malformed dispatch-route request', detail: String((err && err.message) || err) });
@@ -1041,6 +1043,41 @@ async function handleRequest(req, res) {
       sendJson(res, 200, applyOneAction(action));
     } catch (err) {
       sendJson(res, 500, { error: 'error applying dispatchRouteWithActions (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // POST /admin/vehicle/stop-route-after-run { guildId, vehicleId } — "Stop after this run" on a repeating
+  // lane (transport-model.md §11.10, automation slice 3a): the lane finishes the lap it is on, lands idle at
+  // its last waypoint and ends. Gated and routed exactly like /dispatch-route (the SAME validate → journal →
+  // apply path), so the stop survives restart and replays. (The player client sends the same action
+  // through POST /action — slice 3c.)
+  if (method === 'POST' && path === '/admin/vehicle/stop-route-after-run') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","vehicleId":"vehicle_g1_lightTransport_01"}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId and vehicleId' });
+      return;
+    }
+    let action;
+    try {
+      // The constructor enforces the required fields; legality — the guild's craft is running a repeating
+      // lane that is not already stopping — is validateAction's job, run inside applyOneAction below.
+      action = createStopRouteAfterRunAction({ guildId: body.guildId, vehicleId: body.vehicleId });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed stop-route-after-run request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying stopRouteAfterRun (invariant violation or engine throw)', detail: String((err && err.message) || err) });
     }
     return;
   }

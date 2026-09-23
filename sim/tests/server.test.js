@@ -1557,6 +1557,60 @@ test('POST /admin/route/save|delete refuse a bad request (200, accepted:false) a
   assert.match(badDel.body.error, /malformed delete-route/);
 });
 
+// --- repetition (transport-model.md §11.10, automation slice 3a) ---------------------------------
+
+test('POST /admin/vehicle/dispatch-route carries `repeat`; /admin/vehicle/stop-route-after-run stops the lane; neither ticks', async () => {
+  await reset();
+  await found();
+  const { getSystem } = require('../seed.js');
+  const home = getSystem(HOME_SYSTEM).coords;
+  // A free hex right beside the home system — a short, cheap lane (derived from the seed, never typed).
+  let near = null;
+  for (let dq = -1; dq <= 1 && !near; dq += 1) {
+    for (let dr = -1; dr <= 1 && !near; dr += 1) {
+      const h = { q: home.q + dq, r: home.r + dr };
+      if ((dq || dr) && isHexInBounds(h.q, h.r) && !seedLandmarkAtHex(h.q, h.r)) near = h;
+    }
+  }
+  assert.ok(near, 'a free hex beside home');
+  const HOME = { landmarkKind: 'system', landmarkId: HOME_SYSTEM };
+  const VID = 'vehicle_player-guild_lightTransport_01';
+  await req('POST', '/admin/vehicle/spawn', { guildId: 'player-guild', class: 'lightTransport', location: HOME });
+  const craftIn = (body) => body.snapshot.guilds.find((g) => g.id === 'player-guild').vehicles.find((v) => v.id === VID);
+
+  // A malformed repeat is an engine refusal (200, accepted:false) — nothing launched.
+  const badMode = await req('POST', '/admin/vehicle/dispatch-route', {
+    guildId: 'player-guild', vehicleId: VID, waypoints: [{ anchor: HOME }, { anchor: near }], repeat: { mode: 'forever' },
+  });
+  assert.equal(badMode.status, 200);
+  assert.equal(badMode.body.accepted, false);
+  assert.match(badMode.body.reason, /repeat\.mode must be one of/);
+
+  const launched = await req('POST', '/admin/vehicle/dispatch-route', {
+    guildId: 'player-guild', vehicleId: VID, waypoints: [{ anchor: HOME }, { anchor: near }], repeat: { mode: 'nRun', n: 2 },
+  });
+  assert.equal(launched.status, 200);
+  assert.equal(launched.body.accepted, true, launched.body.reason);
+  assert.equal(launched.body.snapshot.tick, 0, 'a dispatch must not tick');
+  assert.equal(craftIn(launched.body).route.mode, 'nRun');
+  assert.equal(craftIn(launched.body).route.lapsRemaining, 2);
+
+  const stopped = await req('POST', '/admin/vehicle/stop-route-after-run', { guildId: 'player-guild', vehicleId: VID });
+  assert.equal(stopped.status, 200);
+  assert.equal(stopped.body.accepted, true, stopped.body.reason);
+  assert.equal(stopped.body.snapshot.tick, 0, 'a stop must not tick');
+  assert.equal(craftIn(stopped.body).route.stopAfterRun, true);
+
+  // A second stop is refused (200, accepted:false); a body missing its vehicle id is a 400.
+  const again = await req('POST', '/admin/vehicle/stop-route-after-run', { guildId: 'player-guild', vehicleId: VID });
+  assert.equal(again.status, 200);
+  assert.equal(again.body.accepted, false);
+  assert.match(again.body.reason, /already set to stop/);
+  const bad = await req('POST', '/admin/vehicle/stop-route-after-run', { guildId: 'player-guild' });
+  assert.equal(bad.status, 400);
+  assert.match(bad.body.error, /malformed stop-route-after-run/);
+});
+
 // --- the read-only dispatch quote (transport-model.md §4/§18, roadmap 2.2 b2b-1) -------------
 
 test('POST /vehicle/quote returns an engine-computed quote and MUTATES NOTHING', async () => {

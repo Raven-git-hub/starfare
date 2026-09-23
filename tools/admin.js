@@ -56,6 +56,7 @@ const FLAG_SPEC = Object.freeze({
   id: 'string',       // remove-vehicle / dispatch-vehicle / transfer-cargo: which vehicle id; delete-route: which route id
   waypoints: 'string', // dispatch-vehicle: "w;w;…", each sys:<id> | out:<id> | q,r
   route: 'string',    // dispatch-route / save-route: "w;w;…", each anchor[@load:…][@unload:…] (per-waypoint actions)
+  repeat: 'string',   // dispatch-route: the launch mode — once | continuous | nRun:N
   load: 'string',     // transfer-cargo: "good:qty|max,…" to load pool -> hold
   unload: 'string',   // transfer-cargo: "good:qty|max,…" to unload hold -> pool
   help: 'bool',
@@ -298,7 +299,9 @@ function adjustActionFor(command, flags) {
 
 // The two vehicle spawn/remove subcommands (design.md §15.4, roadmap 2.2 spawn) — thin HTTP
 // clients over POST /admin/vehicle/spawn|remove, the operator/Storyteller primitive.
-const VEHICLE_COMMANDS = Object.freeze(['spawn-vehicle', 'remove-vehicle', 'dispatch-vehicle', 'dispatch-route', 'transfer-cargo']);
+const VEHICLE_COMMANDS = Object.freeze([
+  'spawn-vehicle', 'remove-vehicle', 'dispatch-vehicle', 'dispatch-route', 'stop-route-after-run', 'transfer-cargo',
+]);
 
 // parseHexFlag(raw) -> { q, r } | THROWS. The operator writes `--hex 3,-4`; the engine speaks a
 // bare-hex location { q, r } of INTEGERS (design.md §15.4). Anything not exactly two integers is
@@ -421,13 +424,36 @@ function parseRouteFlag(raw, command = 'dispatch-route') {
   return tokens.map((tok) => parseRouteWaypointToken(tok, command));
 }
 
+// parseRepeatFlag(raw) -> the engine's `repeat` launch mode (transport-model.md §11.10), or THROWS. The
+// operator writes `--repeat once`, `--repeat continuous` or `--repeat nRun:3` (the engine's own mode
+// names; for nRun the number of full cycles follows a colon). Anything else fails the command rather than
+// launching a lane in a mode nobody asked for. Whether n is a legal lap count (>= 1) is still judged by
+// the engine; this only refuses what is not a whole number at all. PURE and exported.
+function parseRepeatFlag(raw) {
+  if (raw === 'once' || raw === 'continuous') return { mode: raw };
+  const m = /^nRun:(-?\d+)$/.exec(String(raw));
+  if (m) return { mode: 'nRun', n: Number(m[1]) };
+  throw new Error(`--repeat must be once | continuous | nRun:N (N whole laps), got ${JSON.stringify(raw)}`);
+}
+
 // dispatchRouteBody(flags) -> the POST /admin/vehicle/dispatch-route request body. PURE and exported so
 // admin.test.js can assert the arg→body mapping (including @load:/@unload: and :max) without a server.
+// `repeat` is in the body only when --repeat is given, so a plain dispatch-route stays a one-shot request.
 function dispatchRouteBody(flags) {
-  return {
+  const body = {
     guildId: requireFlag(flags, 'guild', 'dispatch-route'),
     vehicleId: requireFlag(flags, 'id', 'dispatch-route'),
     waypoints: parseRouteFlag(requireFlag(flags, 'route', 'dispatch-route')),
+  };
+  if (flags.repeat !== undefined) body.repeat = parseRepeatFlag(flags.repeat);
+  return body;
+}
+
+// stopRouteAfterRunBody(flags) -> the POST /admin/vehicle/stop-route-after-run request body. PURE, exported.
+function stopRouteAfterRunBody(flags) {
+  return {
+    guildId: requireFlag(flags, 'guild', 'stop-route-after-run'),
+    vehicleId: requireFlag(flags, 'id', 'stop-route-after-run'),
   };
 }
 
@@ -531,7 +557,7 @@ module.exports = {
   adjustActionFor, ADJUST_COMMANDS,
   parseHexFlag, vehicleLocationFromFlags, spawnVehicleBody, removeVehicleBody, VEHICLE_COMMANDS,
   parseWaypointToken, parseWaypointsFlag, dispatchVehicleBody,
-  parseRouteWaypointToken, parseRouteFlag, dispatchRouteBody,
+  parseRouteWaypointToken, parseRouteFlag, parseRepeatFlag, dispatchRouteBody, stopRouteAfterRunBody,
   parseCargoFlag, transferCargoBody,
   spawnOutpostBody, removeOutpostBody, OUTPOST_COMMANDS,
   saveRouteBody, deleteRouteBody, ROUTE_COMMANDS,
@@ -910,11 +936,42 @@ async function cmdDispatchRoute(base, flags) {
   });
   if (craft) {
     row('status', craft.status);
-    if (craft.route) row('cursor', `${craft.route.cursor} of ${craft.route.waypoints.length}`);
+    if (craft.route) {
+      row('cursor', `${craft.route.cursor} of ${craft.route.waypoints.length}`);
+      printLaneState(craft.route);
+    }
     if (craft.trip) {
       row('firstLegArrivalTick', `${craft.trip.arrivalTick}`);
       row('firstLegFuelCost', `${craft.trip.fuelCost} credits`);
     }
+  }
+}
+
+// printLaneState(route) — a snapshot route's repeat state (transport-model.md §11.10), one row each:
+// the mode (a one-shot stores none), an nRun's laps still to fly, a fuel wait, a pending stop.
+function printLaneState(route) {
+  row('mode', route.mode || 'once');
+  if (route.lapsRemaining !== undefined) row('lapsLeft', `${route.lapsRemaining}`);
+  if (route.waiting) row('waiting', `${route.waiting.reason} (since tick ${route.waiting.sinceTick})`);
+  if (route.stopAfterRun) row('stopping', 'after this run');
+}
+
+// stop-route-after-run (transport-model.md §11.10, automation slice 3a): tell a repeating lane to finish the
+// lap it is on, land idle at its last waypoint and end. Prints the lane as it now stands — still running
+// with "stopping: after this run", or already ended if it was waiting for fuel (it was at its last stop).
+async function cmdStopRouteAfterRun(base, flags) {
+  const body = stopRouteAfterRunBody(flags);
+  const out = await postJson(base, '/admin/vehicle/stop-route-after-run', body);
+  if (!out.accepted) throw new Error(`stop-route-after-run refused: ${out.reason}`);
+  const guild = (out.snapshot.guilds || []).find((g) => g.id === body.guildId) || null;
+  const craft = ((guild && guild.vehicles) || []).find((v) => v.id === body.vehicleId) || null;
+  row('action', 'stopRouteAfterRun');
+  row('guild', body.guildId);
+  row('vehicle', body.vehicleId);
+  if (craft) {
+    row('status', craft.status);
+    if (craft.route) printLaneState(craft.route);
+    else row('lane', `ended — idle at ${JSON.stringify(craft.location)}`);
   }
 }
 
@@ -1052,11 +1109,15 @@ Vehicle spawn/remove primitive (design.md §15.4 — operator/Storyteller, exit 
   dispatch-vehicle --guild ID --id VEHICLE_ID --waypoints "w;w;…"
                   send an idle craft along a multi-leg route; each w is sys:<id> | out:<id> | q,r
                   (whole-route fuel burned up front from the hoard; refused whole if short)
-  dispatch-route  --guild ID --id VEHICLE_ID --route "w;w;…"
+  dispatch-route  --guild ID --id VEHICLE_ID --route "w;w;…" [--repeat once|continuous|nRun:N]
                   send an idle craft along a route with per-waypoint ACTIONS run on arrival (§11 automation);
                   each w is an anchor (sys:<id> | out:<id> | q,r) optionally + @load:good:qty|max,… and/or
                   @unload:good:qty|max,… e.g. "sys:A@load:titanium:400; out:B@unload:titanium:400"
                   (chained legs; whole-run fuel burned up front; refused whole if short / spycraft w/ action)
+                  --repeat makes it a LANE (§11.10): continuous, or nRun:N full cycles; each lap repositions
+                  to the first stop and is fuelled up front (waits at the last stop if the hoard is short)
+  stop-route-after-run --guild ID --id VEHICLE_ID
+                  a repeating lane finishes the lap it is on, lands idle at its last stop, and ends
   transfer-cargo  --guild ID --id VEHICLE_ID [--unload good:qty|max,…] [--load good:qty|max,…]
                   load/unload an idle craft against the SYSTEM it sits at, resolved instantly
                   (a token is good:qty for a fixed amount, or good:max for "as much as possible", §4;
@@ -1098,10 +1159,11 @@ Flags
   --hex q,r      spawn-vehicle: berth the craft at a bare in-bounds hex;
                  spawn-outpost: the single hex the outpost occupies
   --condition F  spawn-vehicle: starting maintenanceCondition fraction in [0, 1] (default 1)
-  --id ID        remove-vehicle / dispatch-vehicle: which vehicle id;
+  --id ID        remove-vehicle / dispatch-vehicle / stop-route-after-run: which vehicle id;
                  remove-outpost: which outpost id; delete-route: which saved-route id
   --waypoints W  dispatch-vehicle: "w;w;…" route, each w = sys:<id> | out:<id> | q,r
   --route W      dispatch-route / save-route: "w;w;…" route, each w = anchor[@load:G:N,…][@unload:G:N,…]
+  --repeat R     dispatch-route: the launch mode — once (default) | continuous | nRun:N (N full cycles)
   --load G:N,…   transfer-cargo: goods to load pool -> hold ("good:qty" or "good:max", comma-sep)
   --unload G:N,… transfer-cargo: goods to unload hold -> pool ("good:qty" or "good:max", comma-sep)
   --help, -h     this text
@@ -1123,6 +1185,7 @@ async function main(argv) {
     case 'remove-vehicle': await cmdRemoveVehicle(base, flags); return;
     case 'dispatch-vehicle': await cmdDispatchVehicle(base, flags); return;
     case 'dispatch-route': await cmdDispatchRoute(base, flags); return;
+    case 'stop-route-after-run': await cmdStopRouteAfterRun(base, flags); return;
     case 'transfer-cargo': await cmdTransferCargo(base, flags); return;
     case 'spawn-outpost': await cmdSpawnOutpost(base, flags); return;
     case 'remove-outpost': await cmdRemoveOutpost(base, flags); return;

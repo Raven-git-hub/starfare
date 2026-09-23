@@ -1279,6 +1279,52 @@ boundary so the later hex-map swap doesn't touch it.
     with nothing burned, stays waiting through a boundary while short, resumes on exactly the first boundary
     after fuel arrives and cycles on; lower id first when a boundary can pay for one of two; a stop gone while
     waiting ends it at the boundary; the two guards; the integrity checks).
+    **(5) "Stop after this run" + the operator CLI** (`sim/actions.js`, `sim/invariants.js`, `sim/snapshot.js`,
+    `sim/state.js`, `sim/server.js`, `tools/admin.js`; tripwires `route-repeat.test.js`, `server.test.js`,
+    `tools/admin.test.js`). A new journalled action **`stopRouteAfterRun { guildId, vehicleId }`** — the engine
+    half of §11.10's in-transit control. Validate: the guild's craft is running a REPEATING lane (a craft with
+    no route, or a one-shot — which already ends after this run — is refused) that is not already stopping (a
+    second stop is a refused no-op). Apply sets `route.stopAfterRun = true` and stamps `updatedAtTick`;
+    `finishLap` then ends the lane at the next WN boundary whatever its mode — the lap it is on finishes, the
+    craft lands idle at WN, nothing snaps, nothing is flagged (a player stop is not a failure). **Slice-local
+    call:** a lane WAITING for fuel is already at that boundary with its run finished, so a stop ends it on
+    the spot (idle at WN, no route). `routeViolation` checks `stopAfterRun` is `true`, on a running repeating
+    lane, never beside a wait; the snapshot route surfaces it. Exposed as `POST /admin/vehicle/stop-route-after-run`
+    (the SAME validate → journal → apply path) and `tools/admin.js stop-route-after-run --guild ID --id
+    VEHICLE_ID`; `POST /admin/vehicle/dispatch-route` passes a body `repeat` through, and `dispatch-route`
+    gains **`--repeat once | continuous | nRun:N`** (`parseRepeatFlag`; the engine's own mode names, the lap
+    count after a colon; anything else fails the command). Both commands print the lane's state (mode, laps
+    left, a wait, a pending stop). The player client sends the same two actions through `POST /action`
+    (slice 3c). Sim suite → **1,523 green** (`route-repeat.test.js` +5, `server.test.js` +1); `tools/admin.test.js`
+    45 → **48**.
+    **No-op proof.** The persist / determinism / galactic-supply goldens are untouched and green. Five runs hash
+    byte-identical (state + snapshot, every 100 ticks) on `main` and on this branch: zero-state,
+    economy_meanline (+ crisis) and supply_relief (400 ticks each), and a routed ONE-SHOT lane (1,500 ticks, a
+    100-tick fuel cycle so the new boundary re-attempt runs fifteen times: an actioned run from off-W1, a 2a skip
+    run and a plain dispatch, plus a quote). A one-shot route stores no repeat field, never takes the loop
+    branch, and nothing waits. (A one-shot that loses its stop now also carries the `laneEnded` flag — piece (3),
+    the one deliberate one-shot change.)
+    **Driven end-to-end via the CLI** against a booted, persisted server (seed 7; guild `g1` founded at sys_0001
+    with 4,000 titanium, its Outpost two hexes off at `75,-7`, a light craft at home). (a) `dispatch-route
+    --route "sys:sys_0001@load:titanium:400; 75,-7@unload:titanium:400" --repeat nRun:3` → W1 loaded in place,
+    laps left 3 → 2 → 1, 400 delivered per lap, each lap's 2 fuel units leaving the hoard on the tick it left
+    WN, idle at the Outpost at t1065 (the derived lap period) with 1,200 delivered and the fourth lap's goods
+    still at home; a SIGKILL restart mid-lap-3 reloaded canonically identical and the run finished the same.
+    (b) `--repeat continuous` then `stop-route-after-run` mid-lap → the lap finished and the craft landed idle at
+    WN, no flag; a second stop exited 1. (c) `remove-outpost` while the craft flew toward it → the lane ENDED
+    at the bare hex on arrival, still laden, `laneEnded {target-gone, 3520}` in the snapshot, no fuel back; the
+    next `dispatch-route` cleared it. (d) `adjust-fuel` drained the hoard → the lane finished its lap and
+    WAITED at WN (nothing burned), then resumed on exactly the next fuel-cycle boundary when the cycle grant
+    landed; drained again, SIGKILLed while waiting, restarted canonically identical, and resumed on the
+    following boundary. No invariant errors in the server log.
+    **Deferred, not invented:** **3b** — Cancel: the immediate in-transit stop that snaps the craft to the hex
+    it occupies (§2.3 position, hex-rounded) with the toll-aware `isToll` branch as a stub. **3c** — the client:
+    the launch-mode picker, the Operations → In Transit Cancel / Stop-after-run controls, and rendering a
+    flagged idle craft and a fuel wait (this slice only SURFACES the state in the snapshot). The lane's
+    original `n` is not stored (only `lapsRemaining`, as specified) — if 3c wants "lap k of N" it will need it
+    added. `quoteDispatch` quotes lap 1 (what the launch burns); a per-lap (loop-back + cycle) quote, if 3c wants
+    one, is engine work (§18). "A system lost" (§11.6) cannot happen yet — no path removes a claim; when
+    territory lands, `routeStoreAt` is the one place it goes.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
@@ -1446,6 +1492,9 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   - **Re-dispatching a craft drops its lane** (a waiting lane, or one queued at an Outpost stop). Follows §4
     ("a queued craft is cancelled by being re-dispatched"); the alternative is to refuse the dispatch until
     the lane is stopped.
+  - **"Stop after this run" on a lane waiting for fuel ends it at once** (it is already idle at WN with its
+    run finished). The alternative is to refuse the stop and leave Cancel (slice 3b) as the only way out of
+    a wait.
 
 - **Deferred, flagged in docs (revisit with their slice, don't lose):** the SELL origin-picker helper
   (offer only systems that hold every line — `syndicate-orders.md` §7, a client refinement); a

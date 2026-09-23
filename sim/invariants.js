@@ -1316,6 +1316,13 @@ function routeViolation(route) {
   } else if (route.lapsRemaining !== undefined) {
     return { reason: 'route.lapsRemaining belongs to an nRun route only', mode: route.mode, lapsRemaining: route.lapsRemaining };
   }
+  // "Stop after this run" (§11.10): `stopAfterRun: true` only, only on a repeating lane, and never on a
+  // waiting one — a waiting lane is already at its boundary, so a stop ends it on the spot instead.
+  if (route.stopAfterRun !== undefined) {
+    if (route.stopAfterRun !== true || route.mode === undefined || route.waiting !== undefined) {
+      return { reason: 'route.stopAfterRun is `true` on a running (not waiting) repeating lane only', stopAfterRun: route.stopAfterRun, mode: route.mode, waiting: route.waiting };
+    }
+  }
   if (route.waiting !== undefined) {
     const w = route.waiting;
     if (!w || typeof w !== 'object' || !WAIT_REASONS.includes(w.reason) || !Number.isInteger(w.sinceTick) || w.sinceTick < 0) {

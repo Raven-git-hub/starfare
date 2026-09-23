@@ -389,10 +389,10 @@ test('spawnVehicleBody / removeVehicleBody: a missing required flag throws rathe
   assert.throws(() => A.removeVehicleBody({ id: 'v' }), /--guild is required/);
 });
 
-test('VEHICLE_COMMANDS lists the vehicle subcommands (spawn / remove / dispatch / dispatch-route / transfer)', () => {
+test('VEHICLE_COMMANDS lists the vehicle subcommands (spawn / remove / dispatch / dispatch-route / stop / transfer)', () => {
   assert.deepEqual(
     [...A.VEHICLE_COMMANDS].sort(),
-    ['dispatch-route', 'dispatch-vehicle', 'remove-vehicle', 'spawn-vehicle', 'transfer-cargo'].sort(),
+    ['dispatch-route', 'dispatch-vehicle', 'remove-vehicle', 'spawn-vehicle', 'stop-route-after-run', 'transfer-cargo'].sort(),
   );
 });
 
@@ -517,6 +517,34 @@ test('parseRouteFlag / dispatchRouteBody: builds the exact body; blanks ignored;
   assert.throws(() => A.dispatchRouteBody({ id: 'v', route: 'sys:A' }), /--guild is required/);
   assert.throws(() => A.dispatchRouteBody({ guild: 'g1', route: 'sys:A' }), /--id is required/);
   assert.throws(() => A.dispatchRouteBody({ guild: 'g1', id: 'v' }), /--route is required/);
+});
+
+// --- repetition (transport-model.md §11.10, automation slice 3a) -----------------------------------
+
+test('parseRepeatFlag: once | continuous | nRun:N -> the engine repeat; anything else throws', () => {
+  assert.deepEqual(A.parseRepeatFlag('once'), { mode: 'once' });
+  assert.deepEqual(A.parseRepeatFlag('continuous'), { mode: 'continuous' });
+  assert.deepEqual(A.parseRepeatFlag('nRun:3'), { mode: 'nRun', n: 3 });
+  // A whole but illegal lap count still reaches the engine, which refuses it with the ruled reason.
+  assert.deepEqual(A.parseRepeatFlag('nRun:0'), { mode: 'nRun', n: 0 });
+  for (const bad of ['', 'nRun', 'nRun:', 'nRun:2.5', 'nRun:x', 'forever', 'Continuous', '3']) {
+    assert.throws(() => A.parseRepeatFlag(bad), /--repeat must be once \| continuous \| nRun:N/, `refuses ${JSON.stringify(bad)}`);
+  }
+});
+
+test('dispatchRouteBody: --repeat rides the body only when given; parseArgs knows the flag', () => {
+  const flags = A.parseArgs(['dispatch-route', '--guild', 'g1', '--id', 'v', '--route', 'sys:A; 3,4', '--repeat', 'nRun:3']).flags;
+  assert.deepEqual(A.dispatchRouteBody(flags).repeat, { mode: 'nRun', n: 3 });
+  assert.equal('repeat' in A.dispatchRouteBody({ guild: 'g1', id: 'v', route: 'sys:A' }), false, 'a one-shot request carries no repeat');
+});
+
+test('stopRouteAfterRunBody: the exact body; a missing flag throws', () => {
+  assert.deepEqual(
+    A.stopRouteAfterRunBody({ guild: 'g1', id: 'vehicle_g1_lightTransport_01' }),
+    { guildId: 'g1', vehicleId: 'vehicle_g1_lightTransport_01' },
+  );
+  assert.throws(() => A.stopRouteAfterRunBody({ id: 'v' }), /--guild is required/);
+  assert.throws(() => A.stopRouteAfterRunBody({ guild: 'g1' }), /--id is required/);
 });
 
 // --- transfer-cargo (design.md §4 "The dock model", the system half; roadmap 2.2 cargo slice 1) ---

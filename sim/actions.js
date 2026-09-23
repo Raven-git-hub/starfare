@@ -206,15 +206,16 @@ function advanceRoute(state, guild, craft, thisTick) {
 
 // finishLap(state, guild, craft, thisTick) — the craft has just resolved WN, its LAST waypoint, so one
 // lap (one full cycle of the waypoints, §11.10) is done. The lap boundary, step 1 of §11.10's fixed order:
-// is the run OVER? A one-shot (`once` stores no mode) is over after its one pass, and an N-run is over
-// when this was its last lap — either way the craft ENDS idle at WN, route cleared: an ordinary
-// completion, WN being a real waypoint (§11.4). Otherwise the lane repeats, and `startLap` runs steps 2–4.
+// is the run OVER? A one-shot (`once` stores no mode) is over after its one pass, a lane the player told
+// to "stop after this run" (`stopAfterRun`) is over now whatever its mode, and an N-run is over when this
+// was its last lap — each way the craft ENDS idle at WN, route cleared: an ordinary completion, WN being
+// a real waypoint (§11.4), and nothing flagged. Otherwise the lane repeats, and `startLap` runs steps 2–4.
 // An N-run counts its laps DOWN here, at the end of each lap, so `lapsRemaining` is always "laps still
 // to fly, this one included" while the lane is live — the lap that takes it to 0 is the last.
 function finishLap(state, guild, craft, thisTick) {
   const route = craft.route;
-  if (route.mode === undefined) {
-    delete craft.route; // once — the built one-shot end, unchanged
+  if (route.mode === undefined || route.stopAfterRun) {
+    delete craft.route; // once (the built one-shot end, unchanged), or a lane stopped after this run
     return;
   }
   if (route.mode === 'nRun') {
@@ -984,6 +985,16 @@ function createDispatchRouteWithActionsAction({
     type: 'dispatchRouteWithActions', guildId, vehicleId: vId, waypoints,
     ...(repeat !== undefined ? { repeat } : {}),
   };
+}
+
+// stopRouteAfterRun: the "Stop after this run" control (transport-model.md §11.10, slice 3a — the engine
+// half; the Operations button is slice 3c). A REPEATING lane finishes the lap it is on, lands idle at WN
+// and ends — a clean stop, no snap. The constructor only enforces the required fields are present;
+// validateAction judges legality (the guild's craft is running a repeating lane not already stopping).
+function createStopRouteAfterRunAction({ guildId, vehicleId: vId }) {
+  if (guildId === undefined) throw new Error('createStopRouteAfterRunAction: guildId is required');
+  if (vId === undefined) throw new Error('createStopRouteAfterRunAction: vehicleId is required');
+  return { type: 'stopRouteAfterRun', guildId, vehicleId: vId };
 }
 
 // saveRoute: store a NAMED, origin-free route on the guild so it can be loaded onto any craft later
@@ -2836,6 +2847,30 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'stopRouteAfterRun') {
+    // transport-model.md §11.10 "Stop after this run" — repeating lanes only. Refuse anything it cannot
+    // mean: a craft with no lane, a one-shot (it already ends after this run), or a lane already stopping
+    // (a second stop would change nothing — the refused-no-op discipline).
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    const craft = (guild.vehicles || []).find((v) => v.id === action.vehicleId);
+    if (!craft) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no vehicle ${JSON.stringify(action.vehicleId)}` };
+    }
+    if (!craft.route) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is not running a route — there is no lane to stop` };
+    }
+    if (craft.route.mode === undefined) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is on a one-shot route — it already ends after this run (only a repeating lane can be stopped after its run, §11.10)` };
+    }
+    if (craft.route.stopAfterRun) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is already set to stop after this run` };
+    }
+    return { valid: true };
+  }
+
   if (action.type === 'setWindowN') {
     if (typeof action.windowN !== 'number' || !Number.isInteger(action.windowN) || action.windowN < 1) {
       return { valid: false, reason: 'windowN must be an integer >= 1 (§15.2)' };
@@ -4083,6 +4118,20 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'stopRouteAfterRun') {
+    // transport-model.md §11.10: the lane finishes the lap it is on, lands idle at WN and ends. Mark it;
+    // `finishLap` ends it at the next WN boundary (a clean stop — the craft is never snapped anywhere).
+    // A lane WAITING for fuel is already AT that boundary — its run is finished and it sits idle at WN —
+    // so it ends right now: the route goes and the craft is an ordinary idle craft at WN.
+    // Moves no goods, fuel or credits, so nothing to conserve and no galacticSupply refresh.
+    const guild = findGuild(next, action.guildId);
+    const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
+    if (craft.route.waiting) delete craft.route;
+    else craft.route.stopAfterRun = true;
+    craft.updatedAtTick = next.tick; // §15.2: the stop is a mutation of the craft — record its tick
+    return next;
+  }
+
   if (action.type === 'setWindowN') {
     // Set the single engine-wide window length. Setup-only (validate refused it once
     // tick > 0), so this only ever writes tick-0 state. No guild is resolved — this
@@ -4165,6 +4214,7 @@ module.exports = {
   createDispatchRouteWithActionsAction,
   createSaveRouteAction,
   createDeleteRouteAction,
+  createStopRouteAfterRunAction,
   quoteDispatch,
   // The chained-route execution (the automation layer, §11.2), called by sim/tick.js's two hooks: a
   // routed craft reached a waypoint (resolveRouteArrival), or finished its turnaround (advanceRoute).

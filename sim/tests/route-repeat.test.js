@@ -20,6 +20,9 @@
 //      when fuel is short for some; a stop that vanishes while it waits ends it; a waiting craft cannot
 //      take a manual transfer, and re-dispatching it drops the lane. (An unaffordable lap 1 is REFUSED at
 //      launch, never left waiting — section 1.)
+//   5. "Stop after this run" (`stopRouteAfterRun`, §11.10) — a repeating lane finishes the lap it is on
+//      and ends idle at WN, whatever its mode; a waiting lane (already at WN) ends at once; refused on a
+//      craft with no lane, a one-shot, or a lane already stopping.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -37,7 +40,7 @@ const { starterHomeAtDistance } = require('./waystation-fixtures.js');
 const {
   validateAction, applyAction, createSpawnVehicleAction, createDispatchRouteWithActionsAction,
   createDispatchVehicleAction, createRemoveOutpostAction, createTransferCargoAction,
-  createSetWindowNAction, createAdjustFuelAction,
+  createSetWindowNAction, createAdjustFuelAction, createStopRouteAfterRunAction,
 } = require('../actions.js');
 const { isWindowBoundary } = require('../windows.js');
 
@@ -569,4 +572,82 @@ test('integrity: a malformed or misplaced fuel wait fails loudly', () => {
   assert.deepEqual(rules((c) => { delete c.route.mode; delete c.route.lapsRemaining; }), ['vehicle-route-valid'], 'a one-shot never waits');
   assert.deepEqual(rules((c) => { c.route.waiting.sinceTick = s.tick + 1; }), ['vehicle-waiting-lane-idle'], 'a wait from the future');
   assert.deepEqual(rules((c) => { c.status = 'loading'; }), ['vehicle-waiting-lane-idle'], 'a waiting craft sits idle');
+});
+
+// --- 5. "Stop after this run" ---------------------------------------------------------------------
+
+const stopAfterRun = (vid = VID) => createStopRouteAfterRunAction({ guildId: 'g1', vehicleId: vid });
+
+test('stop after run: a continuous lane finishes the lap it is on, lands idle at WN and ends — no more laps', () => {
+  let s = accept(routeState({ systemPool: { [T1]: 4000 } }), dispatch(LANE(), { mode: 'continuous' }));
+  s = stepUntil(s, (st) => stock(st) === 800); // two laps done; lap 3 under way
+  s = stepUntil(s, (st) => craftOf(st).route.cursor === 1 && craftOf(st).status === 'inTransit'); // mid lap 3, A → B
+  s = accept(s, stopAfterRun());
+  assert.equal(craftOf(s).route.stopAfterRun, true);
+  assert.equal(craftOf(s).updatedAtTick, s.tick, 'the stop records its tick (§15.2)');
+  assert.equal(snapRow(s).route.stopAfterRun, true, 'surfaced in the snapshot');
+  assert.equal(craftOf(s).status, 'inTransit', 'a clean stop — the lap carries on, nothing snaps');
+  const fuelMidLap = fuelOf(s);
+  s = stepUntil(s, (st) => !craftOf(st).route);
+  assert.equal(stock(s), 1200, 'the lap it was on finished — its unload landed');
+  assert.equal(craftOf(s).status, 'idle');
+  assert.deepEqual(craftOf(s).location, { ...HEX_B }, 'idle at WN');
+  assert.equal(craftOf(s).laneEnded, undefined, 'a player stop is not a failure — no flag');
+  assert.deepEqual(fuelOf(s), fuelMidLap, 'no next lap was fuelled');
+  for (let i = 0; i < 2 * LAP_PERIOD; i += 1) s = step(s);
+  assert.equal(stock(s), 1200, 'and no lap ever starts again');
+});
+
+test('stop after run: overrides an N-run\'s remaining laps; is deterministic on replay', () => {
+  const run = () => {
+    let s = accept(routeState({ systemPool: { [T1]: 4000 } }), dispatch(LANE(), { mode: 'nRun', n: 5 }));
+    s = accept(s, stopAfterRun()); // straight away — lap 1 is the last
+    return stepUntil(s, (st) => !craftOf(st).route);
+  };
+  const s = run();
+  assert.equal(stock(s), 400, 'one lap, not five');
+  assert.equal(hashState(s), hashState(run()));
+});
+
+test('stop after run: a lane WAITING for fuel is already at WN — it ends right there, now', () => {
+  let s = shortCycle(routeState({ systemPool: { [T1]: 4000 }, fuelHoard: LAP1_FUEL }));
+  s = accept(s, dispatch(LANE(), { mode: 'continuous' }));
+  s = stepUntil(s, (st) => waitingOf(st) !== undefined);
+  const fuel = fuelOf(s);
+  s = accept(s, stopAfterRun());
+  assert.equal(craftOf(s).route, undefined, 'the lane ended on the spot');
+  assert.equal(craftOf(s).status, 'idle');
+  assert.deepEqual(craftOf(s).location, { ...HEX_B }, 'an ordinary idle craft at WN');
+  assert.deepEqual(fuelOf(s), fuel, 'nothing burned');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+  // A later boundary finds nothing to resume.
+  s = grantFuel(s, 100);
+  s = stepUntil(s, (st) => isBoundary(st.tick));
+  assert.equal(craftOf(s).route, undefined);
+});
+
+test('stop after run: refused on a craft with no lane, on a one-shot, and on a lane already stopping', () => {
+  const idle = routeState({ systemPool: { [T1]: 4000 } });
+  assert.match(refuse(idle, stopAfterRun()), /not running a route/);
+  const once = accept(routeState({ systemPool: { [T1]: 4000 } }), dispatch(LANE()));
+  assert.match(refuse(once, stopAfterRun()), /one-shot route — it already ends after this run/);
+  let lane = accept(routeState({ systemPool: { [T1]: 4000 } }), dispatch(LANE(), { mode: 'continuous' }));
+  lane = accept(lane, stopAfterRun());
+  assert.match(refuse(lane, stopAfterRun()), /already set to stop after this run/);
+  assert.match(refuse(lane, createStopRouteAfterRunAction({ guildId: 'g1', vehicleId: 'vehicle_g1_nope' })), /owns no vehicle/);
+  assert.match(refuse(lane, createStopRouteAfterRunAction({ guildId: 'g9', vehicleId: VID })), /no guild/);
+});
+
+test('integrity: stopAfterRun is `true` on a running repeating lane only', () => {
+  let s = accept(routeState({ systemPool: { [T1]: 4000 } }), dispatch(LANE(), { mode: 'continuous' }));
+  s = accept(s, stopAfterRun());
+  const bad = (mutate) => {
+    const c = structuredClone(s);
+    mutate(craftOf(c).route);
+    return checkInvariants(c, c.tick).filter((v) => v.rule === 'vehicle-route-valid').length;
+  };
+  assert.equal(bad(() => {}), 0);
+  assert.equal(bad((r) => { r.stopAfterRun = 'yes'; }), 1);
+  assert.equal(bad((r) => { delete r.mode; }), 1, 'a one-shot carries no stop');
+  assert.equal(bad((r) => { r.waiting = { reason: 'fuel', sinceTick: 0 }; r.cursor = 1; }), 1, 'never beside a wait');
 });
