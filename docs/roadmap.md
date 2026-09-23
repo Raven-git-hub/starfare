@@ -1055,12 +1055,15 @@ boundary so the later hex-map swap doesn't touch it.
     **Deferred, not invented:** the client — Save Route / Load Route / delete (2b); repetition, the lap-start
     anchor-gone check and pause/flag surfacing (3); soft re-validation at load (2b, client); rename (delete +
     re-save, §11.9). **Carried to 2b:** `quoteDispatch` (the Finalise quote) still refuses a zero-length first leg
-    — a route loaded onto a craft already at W1 will need the quote to learn the same skip. **Two rulings flagged on
+    — a route loaded onto a craft already at W1 will need the quote to learn the same skip. *(Landed in engine
+    slice 2a.1 instead — the quote is engine code (§18), so 2b stays client-only.)* **Two rulings flagged on
     the decision checklist** (both built conservatively, and SINCE RULED 23-09-26 — see the checklist): a one-waypoint route at the craft's own berth, and a
     skipped W1 whose action has no store.
-  - **slice 2a.1 — engine (a one-stop route acts in place).** 🟢 *BUILT (23-09-26 — `sim/actions.js`; tripwires
-    `sim/tests/route-actions.test.js`; contract transport-model.md §11.9 "A one-stop route dispatched from its own
-    stop" / §11.4 / §11.3 — ENGINE ONLY, no client, no `tools` change).* The limit case of the 2a skip, now RULED:
+  - **slice 2a.1 — engine (a one-stop route acts in place + the quote learns the skip).** 🟢 *BUILT (23-09-26 —
+    `sim/actions.js`; tripwires `sim/tests/route-actions.test.js`, `quote.test.js`, `server.test.js`; contract
+    transport-model.md §11.9 "A one-stop route dispatched from its own stop" / §11.4 / §11.3, design.md §18 —
+    ENGINE ONLY, no client, no `tools` change).* Two halves of the same skip.
+    **(A) A one-stop route acts in place.** The limit case of the 2a skip, now RULED:
     a `dispatchRouteWithActions` whose ONLY waypoint is the craft's own berth, carrying an action, resolves that
     action IN PLACE and the craft ends idle there — no leg, no fuel. **(1) `dispatchRoute`:** when the skip leaves
     no leg it now returns ok with `legs: []`, `totalUnits: 0` and a new `actInPlace: true` marker (every ok result
@@ -1088,6 +1091,44 @@ boundary so the later hex-map swap doesn't touch it.
     the no-store halt, determinism + a mid-turnaround restart. The old "a one-stop route at the berth is refused
     as no legs" assertion became "no-action one-stop refused" + "the skip never cascades"). The new tests are
     real tripwires: run against the pre-slice `actions.js`, six fail.
+    **(B) The quote takes the same skip** (discharges 2a's "Carried to 2b" line). `quoteDispatch` now passes
+    `skipZeroLengthFirstLeg` to `dispatchRoute`, so the Finalise quote previews exactly what
+    `dispatchRouteWithActions` will fly. A craft already on W1 quotes only the REAL onward legs; the quote for
+    `[W1, W2, …]` from W1 is identical to the quote for `[W2, …]`. A one-stop route at the berth quotes as acting
+    in place: `legs: []`, `totalTicks: 0`, `totalUnits: 0`, `credits: 0`, `affordable: true`, `arrivalTick` = now.
+    The builder already handled an empty `legs` (no NaN), so the change is the one option plus comments. After a
+    skip there is one leg fewer than waypoints (leg k ends at waypoint k+1). The quote stays action-blind (geometry
+    only, as in 1b), so the "act in place needs an action" rule stays the dispatch validate's. An internal dead
+    leg is still refused, and so is a dead leg right after a skipped W1. **Scope call:** §11.9 names only the
+    one-stop ruling for 2a.1. The quote half was done here rather than in 2b because the quote is engine code
+    (design.md §18 — the client computes no game number), which keeps 2b purely client-side. **Known edge (not
+    fixed here):** plain `dispatchVehicle` does NOT skip, so a NO-action route whose first waypoint is the craft's
+    own hex now quotes ok while a plain dispatch of it is still refused. Today's client never asks for that
+    quote: its planner flags the craft → W1 row as a dead leg and keeps Finalise disabled. 2b decides how the
+    client treats it. Sim suite → **1,493 green** (`quote.test.js` +5: skip ≡ quoting from W1 onward; the quote
+    matches the real actioned run's fuel, first leg and final arrival tick; act-in-place quotes 0/0/0 arriving
+    now (at tick 0 and ticked forward) and the dispatch burns that 0; the skip never cascades; deterministic.
+    `server.test.js` +1: `POST /vehicle/quote` act-in-place + skip, still read-only. The old "first waypoint on
+    the craft's hex is a zero-length failure" quote assertion became an internal dead leg.) Against slice (A)'s
+    `actions.js`, five of the six fail. The sixth, determinism, is a property that holds either way.
+    **No-op proof:** the only behaviour changes are previously REFUSED inputs now accepted (an actioned one-stop
+    dispatch at the berth; a quote whose first waypoint is the craft's hex). The persist / determinism /
+    galactic-supply goldens are untouched and green. Five runs hash byte-identical (state + snapshot, every
+    100 ticks) on `main` and on this branch: zero-state, economy_meanline (+ crisis) and supply_relief (400
+    ticks each), plus a routed NON-act-in-place lane (1,500 ticks: an actioned run from off-W1, a 2a multi-stop
+    skip run, a plain dispatch) together with the non-skip quotes asked along the way.
+    **Driven end-to-end via the CLI** against a booted, persisted server (seed 7; guild `g1` founded at sys_0001,
+    400 titanium in its pool, a light craft parked there): `save-route "Top up" --route
+    "sys:sys_0001@load:titanium:400"` → `route_g1_01`. `POST /vehicle/quote` on that one waypoint →
+    `{ legs: [], totalTicks: 0, totalUnits: 0, credits: 0, arrivalTick: 0 }`. `dispatch-route --route
+    "sys:sys_0001"` (no action) → refused, exit 1. `dispatch-route` along the saved waypoint → the 400 loaded IN
+    PLACE at tick 0 (pool 400 → 0, hold 400), fuel 500 → 500, the craft idle at sys_0001 with no route/trip. An
+    in-place unload at tick 3 put it back, and a second in-place load at tick 5 was followed by a SIGKILL. The
+    restart REPLAYED that journalled action ("replayed 1 journalled actions") and reloaded canonically identical to
+    the pre-kill state (a graceful restart also reloads identically). One more tick changed nothing about the
+    craft, and `delete-route` dropped the `savedRoutes` key.
+    **Deferred, not invented:** the client Save / Load Route UI and any client handling of the plain-route-at-
+    berth edge (2b); repetition, the lap-start anchor-gone re-check and pause/flag surfacing (3).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*

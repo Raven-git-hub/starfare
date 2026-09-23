@@ -85,11 +85,12 @@ function vehicleDeliveryFuelBurn(destinationSystemId, vehicleClass) {
 // hex — the §2.3 interpolation would divide by zero; this also catches "first waypoint is the craft's
 // own hex"). The FUEL gate is the caller's (it needs the guild's stores), so this only prices.
 //
-// `skipZeroLengthFirstLeg` (default false — the plain dispatch, the quote and the chained next-leg keep
-// the refusal above) is the ACTIONED route's §11.4 / §11.9 REPOSITION SKIP: when leg 0 (craft → W1) is
-// zero-length because the craft already sits on W1, that leg is left out rather than refused, and the
-// result says so (`skippedFirstLeg: true`) — the caller then resolves W1 in place. ONLY leg 0 is
-// skippable: a later zero-length leg (two chosen waypoints on the same hex) is still a dead leg, refused.
+// `skipZeroLengthFirstLeg` (default false — the plain dispatch and the chained next-leg keep the refusal
+// above; the actioned dispatch and the quote turn it on) is the §11.4 / §11.9 REPOSITION SKIP: when
+// leg 0 (craft → W1) is zero-length because the craft already sits on W1, that leg is left out rather
+// than refused, and the result says so (`skippedFirstLeg: true`) — the caller then resolves W1 in place.
+// ONLY leg 0 is skippable: a later zero-length leg (two chosen waypoints on the same hex) is still a dead
+// leg, refused.
 // A route whose ONLY waypoint is skipped has no legs left: that is the §11.9 ACT-IN-PLACE route
 // (`actInPlace: true`, `legs: []`, `totalUnits: 0`) — the craft is already at its one and only stop, so
 // it does that stop's action where it stands. This helper sees bare anchors, not actions, so "an
@@ -270,6 +271,14 @@ function resolveRouteArrival(state, guild, craft, thisTick) {
 // it does NOT gate on fuel: an unaffordable route is still a valid quote answer ("here's the cost, you
 // can't afford it"), surfaced as `affordable: false` rather than a refusal.
 //
+// The craft → W1 leg follows the ACTIONED dispatch (slice 2a.1): when the craft already sits on W1 that
+// leg is skipped, not refused (§11.4 / §11.9), so the Finalise quote shows what `dispatchRouteWithActions`
+// will really fly. Known edge: the plain `dispatchVehicle` does NOT skip, so a NO-action route whose
+// first waypoint is the craft's own hex now quotes ok (acting in place if it is one stop; otherwise just
+// the onward legs) while a plain dispatch of it is still refused. Today's client never asks for that
+// quote — it flags the craft → W1 row as a dead leg and keeps Finalise disabled; slice 2b decides how
+// the client treats it.
+//
 // The `ok` breakdown is built from the SAME numbers a dispatch freezes — `dispatchRoute`'s `legs[].length`
 // (no re-derived geometry), the §2.2 leg math (`legTicks` / `legFuelBurn`, `isToll` false this slice),
 // `dispatchRoute`'s own `totalUnits` sum, `fuelValue` at the live `reserve.fuelPrice` (a display cost,
@@ -291,11 +300,17 @@ function quoteDispatch(state, { guildId, vehicleId, waypoints }) {
   }
   // Build + price the route through the ONE home the real dispatch uses. A ruled failure mode surfaces
   // to the planner verbatim; on ok, `route.legs[].length` is the geometry we reuse (never re-derived).
-  const route = dispatchRoute(craft, waypoints);
+  // The quote takes the SAME §11.4 / §11.9 zero-length skip the actioned dispatch takes, because a quote
+  // must preview exactly what dispatch will fly: a craft already on W1 quotes only the REAL legs
+  // (W1→W2…), and a one-stop route at its own berth quotes as acting in place (no legs, 0 ticks, 0 fuel).
+  // The quote never sees actions, so the "act in place needs an action" rule is the dispatch validate's.
+  const route = dispatchRoute(craft, waypoints, { skipZeroLengthFirstLeg: true });
   if (!route.ok) return route;
 
   // Per-leg ticks + fuel from the §2.2 formula (isToll false this slice — no toll infra); totalTicks is
   // Σ per-leg ticks, exactly the contiguous schedule dispatch freezes (leg 0 departs now, legs abut).
+  // After a skip there is one leg fewer than waypoints (leg k ends at waypoint k+1), and an act-in-place
+  // route has none — `legs` is then [] and every total below is a clean 0 (arrivalTick is now).
   let totalTicks = 0;
   const legs = route.legs.map((leg) => {
     const ticks = legTicks(leg.length, craft.speed, false);

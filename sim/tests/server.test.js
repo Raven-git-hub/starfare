@@ -1607,6 +1607,32 @@ test('POST /vehicle/quote: a ruled failure is a 200 { ok:false, reason }; a malf
   assert.equal(bad.status, 400);
 });
 
+test('POST /vehicle/quote: a craft already at W1 skips that leg, as the actioned dispatch does (slice 2a.1)', async () => {
+  await reset();
+  await found();
+  const HOME = { landmarkKind: 'system', landmarkId: HOME_SYSTEM };
+  await req('POST', '/admin/vehicle/spawn', { guildId: 'player-guild', class: 'lightTransport', location: HOME });
+  const quoteOf = (waypoints) => req('POST', '/vehicle/quote', {
+    guildId: 'player-guild', vehicleId: 'vehicle_player-guild_lightTransport_01', waypoints,
+  });
+  const tickNow = (await req('GET', '/snapshot')).body.tick;
+
+  // A one-stop route at the craft's own berth: acts in place — no legs, 0 ticks, 0 fuel, arriving now.
+  const inPlace = await quoteOf([HOME]);
+  assert.equal(inPlace.status, 200);
+  assert.deepEqual(inPlace.body, {
+    ok: true, legs: [], totalTicks: 0, totalUnits: 0, credits: 0, affordable: true, arrivalTick: tickNow,
+  });
+  // A route that starts at the berth quotes exactly like the same route without it (the leg is skipped).
+  const out = { landmarkKind: 'outpost', landmarkId: 'out_01' };
+  const fromBerth = await quoteOf([HOME, out]);
+  assert.equal(fromBerth.body.ok, true);
+  assert.equal(fromBerth.body.legs.length, 1);
+  assert.deepEqual(fromBerth.body, (await quoteOf([out])).body);
+  // Still read-only: no tick passed.
+  assert.equal((await req('GET', '/snapshot')).body.tick, tickNow, 'a quote must not tick');
+});
+
 // --- rejections are 200 with a reason, not errors --------------------------
 
 test('an occupied node is rejected (200, accepted:false, reason)', async () => {

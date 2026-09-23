@@ -17,7 +17,12 @@
 //     zero-length leg / non-idle craft / unknown guild / unknown vehicle) — the SAME messages the
 //     dispatch validate gives;
 //   - READ-ONLY: quoting a route any number of times leaves the state byte-identical (no journal, no
-//     tick, no snapshot).
+//     tick, no snapshot);
+//   - (slice 2a.1) the quote takes the SAME craft → W1 zero-length skip the actioned dispatch takes
+//     (transport-model.md §11.4 / §11.9): a craft already on W1 quotes only the REAL onward legs — the
+//     legs, fuel and arrival `dispatchRouteWithActions` then really flies — and a one-stop route at its own
+//     berth quotes as acting in place (no legs, 0 ticks, 0 fuel, arrival now). An internal dead leg is
+//     still refused.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -30,6 +35,7 @@ const { fuelValue } = require('../fuel.js');
 const { LIGHT_TRANSPORT, VEHICLE_SPECS } = require('../vehicles.js');
 const {
   validateAction, applyAction, createSpawnVehicleAction, createDispatchVehicleAction, quoteDispatch,
+  createDispatchRouteWithActionsAction,
 } = require('../actions.js');
 
 const LIGHT = VEHICLE_SPECS[LIGHT_TRANSPORT]; // speed 105, fuelCostToRun 0.5
@@ -136,8 +142,9 @@ test('each ruled failure mode returns { ok: false } with a clear reason', () => 
   const empty = quote(s, []);
   assert.equal(empty.ok, false);
   assert.match(empty.reason, /non-empty/);
-  // Zero-length leg — the first waypoint IS the craft's own hex {0,0}.
-  assert.match(quote(s, [{ q: 0, r: 0 }]).reason, /zero-length/);
+  // Zero-length leg — two chosen waypoints on the same hex (a dead leg). (A first waypoint on the craft's
+  // OWN hex is not a failure: that reposition is skipped, slice 2a.1 — see section 6 below.)
+  assert.match(quote(s, [{ q: 3, r: 0 }, { q: 3, r: 0 }]).reason, /leg 1 is zero-length/);
   // Off-lattice waypoint (out of the galaxy's hex bounds).
   assert.match(quote(s, [{ q: 999999, r: 999999 }]).reason, /does not resolve/);
   // An unresolvable landmark waypoint.
@@ -161,8 +168,80 @@ test('quoting a route any number of times leaves the state byte-identical', () =
   for (let i = 0; i < 5; i += 1) {
     quote(s, [{ q: 3, r: 0 }, { q: 3, r: 4 }]); // an ok, affordable route
     quote(s, [{ q: 9, r: -2 }]);                // a longer route
-    quote(s, [{ q: 0, r: 0 }]);                 // a zero-length failure
+    quote(s, [{ q: 3, r: 0 }, { q: 3, r: 0 }]); // a zero-length (dead leg) failure
+    quote(s, [{ q: 0, r: 0 }]);                 // an act-in-place quote (craft already at its one stop)
+    quote(s, [{ q: 0, r: 0 }, { q: 3, r: 0 }]); // a skipped-reposition quote (craft already at W1)
     quote(s, []);                               // an empty failure
   }
   assert.equal(hashState(s), before, 'no journal, no tick, no snapshot — the galaxy is untouched');
+});
+
+// --- 6. the zero-length reposition skip (slice 2a.1, transport-model.md §11.4 / §11.9) ------------
+// The quote must preview exactly what dispatch will do. The actioned dispatch SKIPS a craft → W1 leg of
+// zero length (the craft is already there), so the quote skips it too.
+
+test('skip: a craft already at W1 quotes only the real onward legs — identical to quoting from W1 onward', () => {
+  const s = withIdleCraft(); // craft at {0,0}
+  const withW1 = quote(s, [{ q: 0, r: 0 }, { q: 3, r: 0 }, { q: 3, r: 4 }]);
+  assert.equal(withW1.ok, true, `expected ok, got: ${withW1.reason}`);
+  assert.deepEqual(withW1.legs.map((l) => l.length), [3, 4], 'the zero-length craft → W1 leg is not in the quote');
+  // Naming the berth as W1 changes nothing: the same quote as the route without it.
+  assert.deepEqual(withW1, quote(s, [{ q: 3, r: 0 }, { q: 3, r: 4 }]));
+});
+
+test('skip: the quote agrees with what dispatchRouteWithActions really flies (legs, fuel, arrival)', () => {
+  const before = withIdleCraft({ fuelHoard: 500 }); // craft at {0,0}
+  const anchors = [{ q: 0, r: 0 }, { q: 3, r: 0 }, { q: 3, r: 4 }];
+  const q = quote(before, anchors);
+  assert.equal(q.ok, true);
+
+  // Dispatch the SAME route for real (no actions — pure turning points, so the timing is exactly the flight).
+  let s = accept(before, createDispatchRouteWithActionsAction({
+    guildId: 'g1', vehicleId: VID, waypoints: anchors.map((anchor) => ({ anchor })),
+  }));
+  const craft = (st) => st.guilds[0].vehicles.find((v) => v.id === VID);
+  // Fuel: the up-front burn is exactly the quote's totalUnits (the skipped reposition cost nothing).
+  assert.equal(before.guilds[0].fuelHoard - s.guilds[0].fuelHoard, q.totalUnits);
+  // The first leg flown is the quote's first leg: {0,0} → {3,0}, landing when the quote says.
+  assert.deepEqual(craft(s).trip.legs[0].to, { q: 3, r: 0 });
+  assert.equal(craft(s).trip.arrivalTick, s.tick + q.legs[0].ticks);
+  // Fly it out: the craft lands at the last waypoint on the quote's arrivalTick.
+  while (craft(s).route) s = tick(s, []);
+  assert.equal(s.tick, q.arrivalTick, 'the run ends on the quoted arrival tick');
+  assert.deepEqual(craft(s).location, { q: 3, r: 4 });
+});
+
+test('act in place: a one-stop route at the craft\'s own berth quotes 0 legs / 0 ticks / 0 fuel, arriving now', () => {
+  for (const s of [withIdleCraft(), ticks(withIdleCraft(), 3)]) { // at tick 0, and ticked forward
+    const q = quote(s, [{ q: 0, r: 0 }]);
+    assert.deepEqual(q, {
+      ok: true,
+      legs: [],
+      totalTicks: 0,
+      totalUnits: 0,
+      credits: 0,
+      affordable: true,
+      arrivalTick: s.tick, // resolves in place, at the dispatch tick
+    });
+  }
+  // It agrees with the dispatch: the act-in-place run burns exactly the quoted 0 fuel. (The action sits
+  // at a bare hex, so it halts safely in place — what matters here is the fuel, which is none.)
+  const before = withIdleCraft({ fuelHoard: 500 });
+  const after = accept(before, createDispatchRouteWithActionsAction({
+    guildId: 'g1', vehicleId: VID,
+    waypoints: [{ anchor: { q: 0, r: 0 }, action: { type: 'dock', manifest: [{ dir: 'load', good: 'titanium', qty: 1 }] } }],
+  }));
+  assert.equal(after.guilds[0].fuelHoard, before.guilds[0].fuelHoard);
+  assert.equal(after.audit.totalConsumed, before.audit.totalConsumed);
+});
+
+test('skip: the skip never cascades — a dead leg right after the skipped W1 is still refused', () => {
+  const s = withIdleCraft(); // craft at {0,0}
+  assert.match(quote(s, [{ q: 0, r: 0 }, { q: 0, r: 0 }]).reason, /leg 1 is zero-length/);
+});
+
+test('skip: quoting is deterministic — the same route quotes identically every time', () => {
+  const s = withIdleCraft();
+  const wp = [{ q: 0, r: 0 }, { q: 3, r: 0 }];
+  assert.deepEqual(quote(s, wp), quote(JSON.parse(JSON.stringify(s)), wp), 'a reloaded state quotes the same');
 });
