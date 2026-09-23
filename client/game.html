@@ -3596,8 +3596,9 @@ select.field{appearance:none; cursor:pointer;}
     ).join(', ');
   }
 
-  // A waypoint's display name: a landmark reads its seed name, a bare hex its "(q, r)" — the SAME
-  // vocabulary the OPERATIONS list uses (__landmarkNameAt), off the seed the client already holds.
+  // A waypoint's display name: a landmark reads its seed name; a bare hex reads the landmark on it —
+  // including a guild outpost ("<system> Outpost") — else its "(q, r)". The SAME vocabulary the
+  // OPERATIONS list uses (__landmarkNameAt).
   function anchorLabel(a) {
     if (!a) return '—';
     if (typeof a.q === 'number' && typeof a.r === 'number') {
@@ -6904,12 +6905,19 @@ window.__outpostName = function(id){
 // `to` coords) the way the map names any landmark: off the seed the client already holds
 // (GAME.galaxy), never a stored byte. A hex holds at most one landmark, so a system is checked
 // before an outpost. PRESENTATION ONLY (§18): a coordinate the engine surfaced, resolved to a name.
+// A GUILD outpost is never in the seed, so it is looked up last on the live snapshot's `outposts` rows
+// (by hex — a route waypoint or a craft parked there is a bare { q, r }) and named by the ONE canonical
+// resolver, __outpostName, so it reads exactly as it does everywhere else (automation 1b, §11.7 —
+// the route lists and this function's other callers stop showing a guild outpost as raw coords).
 window.__landmarkNameAt = function(q, r){
   if (typeof q !== 'number' || typeof r !== 'number' || !GAME.galaxy) return null;
   var s = (GAME.galaxy.systems || []).filter(function(x){ return x.coords && x.coords.q === q && x.coords.r === r; })[0];
   if (s && s.name) return s.name;
   var o = (GAME.galaxy.outposts || []).filter(function(x){ return x.coords && x.coords.q === q && x.coords.r === r; })[0];
-  return (o && o.name) ? o.name : null;
+  if (o && o.name) return o.name;
+  var snap = window.__snapshot && window.__snapshot();
+  var g = snap && (snap.outposts || []).filter(function(x){ return x.coords && x.coords.q === q && x.coords.r === r; })[0];
+  return g ? window.__outpostName(g.id) : null;
 };
 window.__refreshNow = function(){ return apiGet('/snapshot').then(applySnapshot); };
 // The stored terms of one of the player's own ventures (or null) — read back by the
@@ -10350,13 +10358,16 @@ function paintInventoryHero(d){
   }
 
   // A craft's `location` -> its display label: a landmark reads its name (system OR outpost, the two
-  // anchors a transport treats identically, §15.4); a bare hex reads its coordinates "(q, r)". Off
-  // the same seed resolvers the map/OPERATIONS use.
+  // anchors a transport treats identically, §15.4); a bare hex reads the landmark on it if any — e.g.
+  // a craft parked at a guild outpost reads "<system> Outpost" (__landmarkNameAt) — else its
+  // coordinates "(q, r)". Off the same resolvers the map/OPERATIONS use.
   function locLabel(v){
     var loc = v && v.location; if(!loc) return '—';
     if(loc.landmarkKind === 'system') return (window.__systemName && window.__systemName(loc.landmarkId)) || loc.landmarkId;
     if(loc.landmarkKind === 'outpost') return (window.__outpostName && window.__outpostName(loc.landmarkId)) || loc.landmarkId;
-    if(typeof loc.q === 'number' && typeof loc.r === 'number') return '(' + loc.q + ', ' + loc.r + ')';
+    if(typeof loc.q === 'number' && typeof loc.r === 'number'){
+      return (window.__landmarkNameAt && window.__landmarkNameAt(loc.q, loc.r)) || ('(' + loc.q + ', ' + loc.r + ')');
+    }
     return '—';
   }
 
@@ -10512,8 +10523,9 @@ function paintInventoryHero(d){
     }, wp.action ? wp.action.manifest : null);
   }
 
-  // A waypoint ANCHOR's name for the popup list — a landmark reads its seed name, a bare hex its
-  // "(q, r)", the same vocabulary the map's list uses. Callers pass `wp.anchor`, not the waypoint.
+  // A waypoint ANCHOR's name for the popup list — a landmark reads its seed name; a bare hex reads the
+  // landmark on it (a guild outpost included, via __landmarkNameAt) else its "(q, r)" — the same
+  // vocabulary the map's list uses. Callers pass `wp.anchor`, not the waypoint.
   function wpName(a){
     if(!a) return '—';
     if(typeof a.q === 'number' && typeof a.r === 'number'){

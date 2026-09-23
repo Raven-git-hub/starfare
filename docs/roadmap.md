@@ -936,6 +936,49 @@ boundary so the later hex-map swap doesn't touch it.
     reposition rule + the anchor-gone flag surfacing (3). The §11.4 zero-length-reposition SKIP is the
     reposition rule (slice 3), so 1a refuses a route whose first waypoint IS the craft's berth (a zero-length
     first leg) — a run positions to a distinct first waypoint.
+  - **slice 1b — client (the two authoring entry points + the outpost-name label fix).** 🟢 *BUILT (23-09-26 —
+    CLIENT ONLY, `client/game.html`; no engine/snapshot/`sim`/`tools` change — it drives the 1a
+    `dispatchRouteWithActions` through the existing `POST /action`; contract transport-model.md §11.1 / §11.7 /
+    §18).* Six isolated pieces. **(1) The waypoint shape:** the map planner's `PLAN.waypoints` and the Dispatch
+    popup's `DP.waypoints` are now `[{ anchor, action? }]` (§11.1) — every geometry read (draw chain, dead-leg
+    check, labels) goes through `wp.anchor`; the quote and the plain dispatch still receive a bare anchor list.
+    **(2) The dock editor as a manifest COLLECTOR** (reused, not forked): `window.__openDock(craftId, outpostId,
+    onSave?, existing?)` — with `onSave` the primary button reads "Save action" and Save hands the identical
+    manifest to `onSave(manifest)` instead of posting `transferCargo`; `existing` opens it pre-filled with a
+    **Clear action** (`onSave(null)`). Without `onSave` it behaves exactly as before (the Outpost Manager and the
+    Operations system Dock are untouched). **(3) Entry point A — the map chip:** on an ACTIONABLE candidate the
+    chip gains **[Action]** beside Add/Confirm; Save stashes the manifest on the candidate and Confirm bakes
+    `{ anchor, action }` into the waypoint; the left list shows a set action as a sub-line ("dock · load
+    titanium 400"). **(4) Entry point B — the Finalise list:** each row's reserved slot is its action control
+    ("+ Action" unset / filled "● Action" set, summary sub-line) — add / edit (pre-filled) / clear on the
+    laid-out route, no re-quote (an action never changes a leg). **(5) Dispatch:** any action set → POST
+    `dispatchRouteWithActions` with `{ anchor, action? }` per waypoint; none → the plain `dispatchVehicle`
+    exactly as before (the frozen multi-leg flight + animation); a refusal surfaces the engine's reason.
+    **(6) Labels:** the shared `__landmarkNameAt` now also resolves a GUILD outpost's hex (off the live
+    snapshot) through the canonical `__outpostName`, so a guild-outpost waypoint reads "<system> Outpost" in
+    the map list, the Dispatch list and the Dispatch Location (a craft parked there), not "(q, r)"; a plain hex
+    still reads "(q, r)". **The gate** (both entry points, one shared `routeActionAllowed`): the §11.7 first cut
+    — a system the guild holds or the guild's OWN outpost (matched by hex, since a planner click on a guild
+    outpost records a bare `{ q, r }`); a Syndicate waystation, an unheld system or open space is a pure turning
+    point, and a spycraft (no hold — the engine refuses its actions) gets no Action, mirroring the existing
+    DOCK-button class gate. Sim suite **1,453 green** (untouched — client-only; the served-page tripwire stays
+    green). Verified end-to-end in headless Chromium: the chip shows Action on a held system / own outpost and
+    not on an unheld system, a bare hex, or for a spycraft; the editor opens in collect mode ("Save action"),
+    re-opens pre-filled with Clear; the Finalise list adds / edits / clears and the Time/Cost hold; a no-action
+    route posts `dispatchVehicle` unchanged, an actioned one posts the exact `dispatchRouteWithActions`
+    payload, a fuel refusal shows the engine reason; a bare hex → home (load titanium 400) → own outpost
+    (unload titanium 400) run ticks through with the 400 moving from the home pool into the outpost stockpile
+    and the craft idle at the outpost; labels read the outpost's name; no application console errors.
+    **Display calls (surfaced, not invented):** the chip's "Action" / "Action ✓" and the list's "+ Action" /
+    "● Action" labels + styles; the summary wording; the sub-lines wrap rather than truncate; the editor's
+    eyebrow reads "Route Action · Manifest" in collect mode. **Slice-local call:** the editor's "Currently
+    aboard" + hold bar show the craft's hold NOW — exact for its first actioned stop, advisory for later ones
+    (the engine resolves each stop against the real hold on arrival, partial-safe §11.6). **Side effect, by
+    design:** `__landmarkNameAt`'s fourth caller, the OPERATIONS IN TRANSIT destination, now also names a
+    guild outpost instead of "Deep Space (q, r)". **Deferred, not invented:** saved routes / Load Route (2);
+    repetition + the reposition rule + pause/resume (3); the anchor-gone pause/flag UI (3); a route-mode hold
+    view in the editor (projecting the hold at a mid-route stop — revisit if playtest shows it confuses);
+    actions at the origin (not a waypoint, §11.1).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
