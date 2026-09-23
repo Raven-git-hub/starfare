@@ -236,7 +236,8 @@ function finishLap(state, guild, craft, thisTick) {
 //   3. PRICE the lap (§11.3 / §11.4): the reposition WN → W1 plus the cycle W1 → … → WN, through the SAME
 //      `dispatchRoute` the launch used, from the craft's berth at WN. When WN is W1 the reposition is
 //      zero-length and is SKIPPED (no leg, no fuel). If the hoard can't cover it → the lane WAITS at WN:
-//      nothing burns, the route stays, and the craft sits idle (§11.6).
+//      nothing burns, the route stays, and the craft sits idle (§11.6) — `resumeWaitingLanes` calls this
+//      same function again at each fuel-cycle boundary, so a waiting lane re-runs steps 2–4 in full.
 //   4. Otherwise BURN the whole lap up front (§11.3) — exactly the launch's burn: units from the hoard,
 //      `totalConsumed` rising to match (invariant 1) — reset the cursor to W1 and fly there
 //      (`flyToFirstStop`, the launch's own reposition).
@@ -264,6 +265,22 @@ function startLap(state, guild, craft, thisTick) {
   state.audit.totalConsumed += lap.totalUnits;
   route.cursor = 0;
   flyToFirstStop(state, guild, craft, lap.skippedFirstLeg, thisTick);
+}
+
+// resumeWaitingLanes(state, thisTick) — the FUEL-CYCLE BOUNDARY re-attempt (transport-model.md §11.6 /
+// §11.10). Called by sim/tick.js's stepBaselineAllocation at each cycle boundary, AFTER issuance has
+// grown the hoards. Every lane waiting for fuel gets one fresh try at its next lap, through the SAME
+// `startLap` its lap boundary ran — so the target re-check comes first (a stop that vanished while it
+// waited ENDS the lane, flagged), then the fuel: affordable now → burn and go; still short → it keeps
+// waiting, `sinceTick` unchanged. Guilds in array order, and each guild's waiting craft in FIXED id order,
+// so when a hoard can cover only some of them the lower ids go first, the same way every run (§15.5
+// invariant 9). Bounded: one try per waiting craft per boundary, and no per-tick work between boundaries.
+function resumeWaitingLanes(state, thisTick) {
+  for (const guild of state.guilds || []) {
+    const waiting = (guild.vehicles || []).filter((v) => v.route && v.route.waiting);
+    waiting.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    for (const craft of waiting) startLap(state, guild, craft, thisTick);
+  }
 }
 
 // flyToFirstStop(state, guild, craft, skippedFirstLeg, thisTick) — put a routed craft (cursor 0) on its
@@ -2689,6 +2706,14 @@ function validateAction(state, action) {
         return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} already has a manifest queued/loading at Outpost ${JSON.stringify(outpost.id)} — cancel it (re-dispatch) before issuing another (§4)` };
       }
     }
+    // A craft RUNNING A LANE is driven by its lane (transport-model.md §11.10). The one time such a craft
+    // is idle and not already queued is a lane WAITING for fuel at its last stop — and a manual transfer
+    // there would cut across the lane: at an Outpost, the dock completion would advance the lane as if it
+    // were the lane's own stop, and the fuel re-attempt could launch a craft sitting in a dock slot. So it
+    // is refused; stop the lane or re-dispatch the craft first.
+    if (craft.route) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is running a lane — a manual transfer would cut across its stops; stop the lane or re-dispatch the craft first (transport-model.md §11.10)` };
+    }
     // The manifest is a NON-EMPTY ordered array of well-formed lines (a transfer with no lines is a
     // refused no-op, the adjustGoods zero-delta / dispatch empty-waypoints discipline). Refuse-whole
     // on the first bad line via the shared `manifestError` — a malformed manifest never partially applies.
@@ -3855,6 +3880,10 @@ function applyAction(state, action) {
     cancelQueuedManifest(next, craft.id);
     // A fresh dispatch CLEARS an ended-lane flag (§11.6): the player has re-tasked the craft.
     delete craft.laneEnded;
+    // …and DROPS any lane the idle craft was still carrying (one WAITING for fuel at its last stop, or
+    // queued at an Outpost stop): re-dispatching a craft cancels what it was waiting on (§4). A plain
+    // trip must not land carrying a stale route, or the arrival step would resolve that route's stop.
+    delete craft.route;
     // Re-derive the route BEFORE the craft leaves its berth (dispatchRoute reads craft.location);
     // validate guaranteed { ok: true }, so this cannot fail — the shared helper keeps the legs and
     // the burn byte-identical to the ones the gate checked.
@@ -4141,6 +4170,7 @@ module.exports = {
   // routed craft reached a waypoint (resolveRouteArrival), or finished its turnaround (advanceRoute).
   resolveRouteArrival,
   advanceRoute,
+  resumeWaitingLanes,
   validateAction,
   applyAction,
   intake,

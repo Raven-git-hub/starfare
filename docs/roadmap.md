@@ -1255,6 +1255,30 @@ boundary so the later hex-map swap doesn't touch it.
     (`route-repeat.test.js` +6: the lap-start END at WN with no fuel spent; the mid-flight END at the bare
     hex, no refund; the docked-eviction END; a one-shot flagged too; the flag cleared by both dispatches but
     not a transfer; the integrity checks).
+    **(4) Fuel-short WAITS + the cycle-boundary re-attempt** (`sim/routes.js`, `sim/actions.js`, `sim/tick.js`,
+    `sim/invariants.js`, `sim/snapshot.js`, `sim/state.js`). A lane that cannot pay for its next lap (piece
+    (2)'s step 3) keeps its craft idle at WN with its route intact and `route.waiting = { reason: 'fuel',
+    sinceTick }` (`WAIT_REASONS`), burning nothing. **`resumeWaitingLanes`** re-runs the SAME `startLap` for
+    every waiting lane — guilds in array order, each guild's craft in fixed id order, one try each — and is
+    called from `stepBaselineAllocation` at each fuel-cycle boundary as a new last block **(e)**, after
+    issuance has grown the hoards (and after the fuel-burn-history pass, so a lap burned there counts toward
+    the cycle just opening); the ruled (a)–(d) order is untouched, and nothing the price controller reads is
+    moved by a lap burn. So a waiting lane re-checks its targets first (a stop gone meanwhile → END + flag,
+    nothing burned), then its fuel: affordable → burn, reposition, run; still short → keep waiting,
+    `sinceTick` unchanged. The anchored cycle boundary, never a wall clock (invariant 9); no lane waiting →
+    no work. An unaffordable lap 1 is still REFUSED at launch (piece (1)). Integrity: `routeViolation` checks
+    a `waiting` has a known reason and a whole `sinceTick`, rides only a repeating lane and only at WN;
+    `checkVehicleIntegrity` checks the waiting craft is idle with no trip and `sinceTick` ≤ now. The snapshot
+    route surfaces `waiting` (a fresh copy). **Two guards on a waiting craft** (it is idle, so it would
+    otherwise pass the idle gates): a manual `transferCargo` on a craft running a lane is REFUSED — at an
+    Outpost the dock completion would advance the lane as if it were the lane's own stop, and the re-attempt
+    could launch a craft sitting in a dock slot; and a plain `dispatchVehicle` now DROPS any lane the craft
+    carries (re-dispatching cancels what it was waiting on, §4) — before, a plain trip could land still
+    carrying a stale route (reachable on `main` with a routed craft queued at a full Outpost) and the arrival
+    step would resolve that route's stop. Sim suite → **1,517 green** (`route-repeat.test.js` +5: waits at WN
+    with nothing burned, stays waiting through a boundary while short, resumes on exactly the first boundary
+    after fuel arrives and cycles on; lower id first when a boundary can pay for one of two; a stop gone while
+    waiting ends it at the boundary; the two guards; the integrity checks).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
@@ -1416,6 +1440,12 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   - **A one-stop lane cannot repeat** (refused at launch). Its cycle has no leg, so it would lap in place
     without end inside one tick. Alternative: let it repeat but only at a turnaround (an Outpost stop), or
     make a legless lap wait for the next tick — which would be a new timing rule.
+  - **A craft running a lane refuses a manual transfer.** Only reachable while a lane WAITS for fuel (the
+    craft is idle at WN). At an Outpost a manual transfer would be mistaken for the lane's own stop when it
+    completes. Alternative: allow it at a system (instant, harmless) and refuse only at an Outpost.
+  - **Re-dispatching a craft drops its lane** (a waiting lane, or one queued at an Outpost stop). Follows §4
+    ("a queued craft is cancelled by being re-dispatched"); the alternative is to refuse the dispatch until
+    the lane is stopped.
 
 - **Deferred, flagged in docs (revisit with their slice, don't lose):** the SELL origin-picker helper
   (offer only systems that hold every line — `syndicate-orders.md` §7, a client refinement); a

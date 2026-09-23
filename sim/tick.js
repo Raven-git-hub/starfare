@@ -66,7 +66,7 @@ const { resolveManifest, usedSpace } = require('./manifest.js');
 // in place at dispatch (the §11.4 zero-length reposition skip). The two tick hooks below call the SAME
 // functions, so a stop resolves identically whichever way the craft reached it. actions.js does NOT
 // require tick.js, so this one-directional edge is cycle-free.
-const { resolveRouteArrival, advanceRoute } = require('./actions.js');
+const { resolveRouteArrival, advanceRoute, resumeWaitingLanes } = require('./actions.js');
 
 // A total, deterministic string order for sort keys — used where a tie has to
 // break the same way every run (invariant 9) rather than however sort found it.
@@ -1475,6 +1475,17 @@ function stepBaselineAllocation(state, _actions) {
   const cycleDemand = desired.reduce((sum, d) => sum + d, 0);
   state.reserve.avgDraw = nextAvgDraw(state.reserve.avgDraw, cycleDemand);
   state.reserve.fuelPrice = nextFuelPrice(state.reserve.reserveLevel, state.reserve.avgDraw);
+
+  // (e) WAITING LANES RE-ATTEMPT (transport-model.md §11.6 / §11.10, automation slice 3a). A repeating
+  // lane that could not afford its next lap is waiting at its last stop; the hoard grows HERE, at the
+  // cycle boundary, so this is where it gets its next try (resumeWaitingLanes, sim/actions.js — fixed id
+  // order, one try each). It runs after issuance (b), because issuance is what grew the hoards, and after
+  // the fuel-burn-history pass inside it, so a lap burned now counts toward the cycle just opening. Its
+  // place after the controller (d) changes nothing the controller reads — a lap burns from a guild's own
+  // hoard, never the Syndicate pool or this cycle's demand — and it leaves the ruled (a)–(d) order intact.
+  // The anchored boundary, never a wall clock, so the resume replays deterministically (invariant 9).
+  // No lane waiting → no work and no change (the byte-identical no-op).
+  resumeWaitingLanes(state, state.tick + 1);
 
   return state;
 }

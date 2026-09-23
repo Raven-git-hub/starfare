@@ -11,8 +11,8 @@
 //     `outpostId` / `outpostNumberOf` / `nextOutpostSerial`, and for the same reason: a saved route can
 //     be DELETED, so its number must come from a stored counter, never from the live rows.
 //   - the REPEAT vocabulary (§11.10) — the three launch modes, shared by the dispatch validate and the
-//     route integrity check so the two can never disagree about which modes exist — and the reasons a
-//     lane can END, which the craft's `laneEnded` flag names.
+//     route integrity check so the two can never disagree about which modes exist — the reasons a
+//     lane can END, which the craft's `laneEnded` flag names, and the reasons a lane can WAIT.
 
 const { copyManifestLine } = require('./manifest.js');
 
@@ -29,6 +29,12 @@ const REPEAT_MODES = Object.freeze(['once', 'continuous', 'nRun']);
 // store no longer exists (an Outpost torn down). A lane that simply finishes, or that the player stops,
 // is not flagged: nothing went wrong.
 const LANE_END_REASONS = Object.freeze(['target-gone']);
+
+// WAIT_REASONS — why a repeating lane is WAITING at its last waypoint instead of starting its next lap,
+// recorded on the route as `waiting = { reason, sinceTick }` (transport-model.md §11.6 / §11.10). One
+// reason today: 'fuel' — the hoard cannot cover the next lap up front, so the lane waits (burning
+// nothing) and re-attempts at each fuel-cycle boundary.
+const WAIT_REASONS = Object.freeze(['fuel']);
 
 // copyRouteWaypoint(wp) -> a FRESH copy of a { anchor, action? } route waypoint (transport-model.md
 // §11.1) — the anchor object copied, and any action's manifest lines copied in canonical shape
@@ -71,6 +77,7 @@ function nextSavedRouteSerial(guild) {
 module.exports = {
   REPEAT_MODES,
   LANE_END_REASONS,
+  WAIT_REASONS,
   copyRouteWaypoint,
   savedRouteId,
   savedRouteNumberOf,

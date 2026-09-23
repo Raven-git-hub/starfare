@@ -703,7 +703,7 @@ function computeAttention(state) {
 //                               dockStatus?, location?, trip?,      //   trip: { legs[{from,to,isToll,
 //                                                                   //   departureTick,arrivalTick}], arrivalTick, fuelCost }
 //                               route?, laneEnded? } ],             //   route: { waypoints, cursor, mode?,
-//                                                                   //   lapsRemaining? } (§11.10 repeat state);
+//                                                                   //   lapsRemaining?, waiting? } (§11.10);
 //                                                                   //   laneEnded: { reason, tick } (§11.6)
 //                 savedRoutes?: [ { id, name,                     // §11.9 saved routes (2.2 automation 2a),
 //                                   waypoints: [ { anchor, action? } ] } ], // omit-when-empty, stored order
@@ -786,15 +786,17 @@ function orderSnapshot(order) {
 
 // snapshotRoute(route) -> a routed craft's `route` as the snapshot shows it (transport-model.md §11.1 /
 // §11.10): FRESH copies throughout (no aliasing into engine state). The repeat state rides along exactly
-// as stored — `mode` ('continuous' | 'nRun') and an nRun's `lapsRemaining` — and is ABSENT for a one-shot
-// route (omit-when-default, mirroring the state), so a one-shot row is byte-identical to the pre-repeat
-// one. Read by the slice-3c client to render a lane's mode and laps left.
+// as stored — `mode` ('continuous' | 'nRun'), an nRun's `lapsRemaining`, and `waiting` ({ reason: 'fuel',
+// sinceTick }) while the lane waits for fuel at its last stop — and is ABSENT for a one-shot route
+// (omit-when-default, mirroring the state), so a one-shot row is byte-identical to the pre-repeat one.
+// Read by the slice-3c client to render a lane's mode, laps left and a fuel wait.
 function snapshotRoute(route) {
   return {
     waypoints: route.waypoints.map(copyRouteWaypoint),
     cursor: route.cursor,
     ...(route.mode !== undefined ? { mode: route.mode } : {}),
     ...(route.lapsRemaining !== undefined ? { lapsRemaining: route.lapsRemaining } : {}),
+    ...(route.waiting ? { waiting: { ...route.waiting } } : {}),
   };
 }
 

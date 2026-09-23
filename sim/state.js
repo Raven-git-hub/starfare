@@ -754,9 +754,11 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
 // route-less, and only `dispatchRouteWithActions` (sim/actions.js) journals one onto it. Listed here so
 // the entity's whole shape reads in one place. OMITTED unless the craft is running a chained route:
 //   { waypoints: [{ anchor, action? }], cursor,
-//     mode?, lapsRemaining? }   — a REPEATING lane only (slice 3a): mode 'continuous' | 'nRun', and an
-//                                 nRun's laps still to run. A one-shot (`once`) route carries neither
-//                                 (omit-when-default), so it is byte-identical to the pre-repeat route.
+//     mode?, lapsRemaining?,    — a REPEATING lane only (slice 3a): mode 'continuous' | 'nRun', and an
+//     waiting? }                  nRun's laps still to run; `waiting = { reason: 'fuel', sinceTick }` while
+//                                 it waits at its last stop for fuel for its next lap. A one-shot (`once`)
+//                                 route carries none of them (omit-when-default), so it is byte-identical
+//                                 to the pre-repeat route.
 // Its integrity is `routeViolation` (sim/invariants.js).
 //
 // `laneEnded` (slice 3a — transport-model.md §11.6) is likewise never assembled here: when a lane ENDS

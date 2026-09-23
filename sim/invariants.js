@@ -93,7 +93,7 @@ const {
 } = require('./seed.js');
 const { outpostNumberOf } = require('./outposts.js');
 const {
-  REPEAT_MODES, LANE_END_REASONS, savedRouteId, savedRouteNumberOf,
+  REPEAT_MODES, LANE_END_REASONS, WAIT_REASONS, savedRouteId, savedRouteNumberOf,
 } = require('./routes.js');
 const { getRecipe } = require('./recipes.js');
 
@@ -1289,7 +1289,10 @@ function tripViolation(trip) {
 // mode must be `continuous` or `nRun`, and a repeating lane has >= 2 waypoints (a one-stop cycle has no
 // leg and would lap in place inside one tick — the dispatch refuses it). `lapsRemaining` belongs to
 // `nRun` alone and is a whole number >= 1 on a LIVE route: the lap that takes it to 0 ends the lane on
-// the spot, so a 0 left standing would mean a lane that should have ended and did not.
+// the spot, so a 0 left standing would mean a lane that should have ended and did not. A lane WAITING
+// for fuel carries `waiting = { reason, sinceTick }` (a known WAIT_REASONS entry and a whole tick); only a
+// repeating lane waits, and it waits AT its last waypoint (cursor on WN) — the lap boundary is the only
+// place a lap is fuelled. (That the waiting craft is idle, with no trip, is checked with the craft below.)
 // The one home of the route shape, used by checkVehicleIntegrity below.
 function routeViolation(route) {
   if (!route || typeof route !== 'object' || !Array.isArray(route.waypoints) || route.waypoints.length === 0) {
@@ -1312,6 +1315,18 @@ function routeViolation(route) {
     }
   } else if (route.lapsRemaining !== undefined) {
     return { reason: 'route.lapsRemaining belongs to an nRun route only', mode: route.mode, lapsRemaining: route.lapsRemaining };
+  }
+  if (route.waiting !== undefined) {
+    const w = route.waiting;
+    if (!w || typeof w !== 'object' || !WAIT_REASONS.includes(w.reason) || !Number.isInteger(w.sinceTick) || w.sinceTick < 0) {
+      return { reason: `route.waiting must be { reason: ${WAIT_REASONS.map((r) => JSON.stringify(r)).join('|')}, sinceTick: a whole tick }`, waiting: w };
+    }
+    if (route.mode === undefined) {
+      return { reason: 'only a repeating lane waits — a one-shot route never fuels a second lap', waiting: w };
+    }
+    if (route.cursor !== route.waypoints.length - 1) {
+      return { reason: 'a waiting lane waits at its LAST waypoint (the lap boundary)', cursor: route.cursor, waypoints: route.waypoints.length };
+    }
   }
   return waypointListViolation(route.waypoints);
 }
@@ -1448,6 +1463,12 @@ function checkVehicleIntegrity(state) {
         const rv = routeViolation(v.route);
         if (rv) {
           out.push({ rule: 'vehicle-route-valid', where: `guild:${g.id}.vehicle:${v.id}.route`, detail: rv });
+        }
+        // A lane WAITING for fuel (slice 3a, §11.6) leaves its craft an idle craft parked at WN — never
+        // flying, never in a dock slot — and it began waiting no later than now (§15.2).
+        const w = v.route && v.route.waiting;
+        if (w && (v.status !== 'idle' || v.trip !== undefined || !(w.sinceTick <= state.tick))) {
+          out.push({ rule: 'vehicle-waiting-lane-idle', where: `guild:${g.id}.vehicle:${v.id}.route.waiting`, detail: { status: v.status, hasTrip: v.trip !== undefined, sinceTick: w.sinceTick, tick: state.tick } });
         }
       }
       // The ENDED-LANE flag (slice 3a — transport-model.md §11.6). ABSENT is legal (the usual case); a

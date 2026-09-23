@@ -15,6 +15,11 @@
 //   3. target-gone ENDS + the flag (§11.6) — a stop's Outpost torn down ends the lane: at WN if caught by
 //      the lap-start re-check (nothing burned for the doomed lap), at the bare hex if mid-flight, and at
 //      the Outpost's hex if the craft was docked there; `laneEnded` flags why, and the next dispatch clears it.
+//   4. fuel-short WAITS + resumes (§11.6 / §11.3) — a lane that can't afford its next lap waits at WN,
+//      burning nothing, and re-attempts at each fuel-cycle boundary (never between); lower ids go first
+//      when fuel is short for some; a stop that vanishes while it waits ends it; a waiting craft cannot
+//      take a manual transfer, and re-dispatching it drops the lane. (An unaffordable lap 1 is REFUSED at
+//      launch, never left waiting — section 1.)
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -32,7 +37,9 @@ const { starterHomeAtDistance } = require('./waystation-fixtures.js');
 const {
   validateAction, applyAction, createSpawnVehicleAction, createDispatchRouteWithActionsAction,
   createDispatchVehicleAction, createRemoveOutpostAction, createTransferCargoAction,
+  createSetWindowNAction, createAdjustFuelAction,
 } = require('../actions.js');
+const { isWindowBoundary } = require('../windows.js');
 
 const SYS_A = starterHomeAtDistance(6).id; // a real seed system — the LOAD stop (W1)
 const A_COORDS = getSystem(SYS_A).coords;
@@ -436,4 +443,130 @@ test('integrity: a malformed laneEnded, or one riding a live route, fails loudly
   assert.deepEqual(rules((c) => { c.laneEnded.tick = s.tick + 1; }), ['vehicle-lane-ended-valid'], 'a flag from the future');
   assert.deepEqual(rules((c) => { c.laneEnded.tick = 1.5; }), ['vehicle-lane-ended-valid']);
   assert.deepEqual(rules((c) => { c.route = { waypoints: LANE(), cursor: 0 }; }), ['vehicle-lane-ended-no-route']);
+});
+
+// --- 4. fuel-short WAITS, and resumes at the fuel-cycle boundary ---------------------------------
+
+// A short fuel cycle (a setup-only knob, set at tick 0) so the boundaries — where the hoard grows and a
+// waiting lane re-attempts — come every CYCLE ticks instead of once a day. The guild has no holdings, so
+// the boundary grants it nothing: the only fuel it gets is what a test hands it with adjustFuel.
+const CYCLE = 100;
+const shortCycle = (s) => accept(s, createSetWindowNAction({ windowN: CYCLE }));
+const isBoundary = (tick) => isWindowBoundary(tick, CYCLE, 0);
+const grantFuel = (s, units) => accept(s, createAdjustFuelAction({ guildId: 'g1', delta: units }));
+const waitingOf = (s, vid = VID) => {
+  const c = s.guilds[0].vehicles.find((v) => v.id === vid);
+  return c.route ? c.route.waiting : undefined;
+};
+
+test('fuel WAITS at WN: nothing burned, route intact — through a boundary while short, then resumes ON the next one', () => {
+  // Fuel for lap 1 and lap 2 only: lap 3 cannot be paid for up front.
+  let s = shortCycle(routeState({ systemPool: { [T1]: 4000 }, fuelHoard: LAP1_FUEL + LAP_FUEL }));
+  s = accept(s, dispatch(LANE(), { mode: 'continuous' }));
+  s = stepUntil(s, (st) => waitingOf(st) !== undefined);
+  const since = s.tick;
+  assert.deepEqual(craftOf(s).route.waiting, { reason: 'fuel', sinceTick: since });
+  assert.equal(craftOf(s).status, 'idle');
+  assert.deepEqual(craftOf(s).location, { ...HEX_B }, 'waiting at WN, the safe berth');
+  assert.equal(craftOf(s).trip, undefined);
+  assert.equal(craftOf(s).route.cursor, 1, 'route intact, at its last waypoint');
+  assert.equal(craftOf(s).route.mode, 'continuous');
+  assert.equal(stock(s), 800, 'two full laps delivered before the wait');
+  assert.deepEqual(fuelOf(s), { hoard: 0, consumed: LAP1_FUEL + LAP_FUEL }, 'the unaffordable lap burned nothing');
+  assert.deepEqual(snapRow(s).route.waiting, { reason: 'fuel', sinceTick: since }, 'surfaced in the snapshot');
+
+  // A boundary passes while the hoard is still short: it keeps waiting, since-tick unchanged.
+  s = stepUntil(s, (st) => isBoundary(st.tick) && st.tick > since);
+  s = step(s);
+  assert.deepEqual(craftOf(s).route.waiting, { reason: 'fuel', sinceTick: since });
+  assert.equal(stock(s), 800);
+
+  // Fuel arrives BETWEEN boundaries — the lane does not jump at it; it resumes on the next boundary.
+  if (isBoundary(s.tick + 1)) s = step(s); // make sure the grant lands strictly between boundaries
+  s = grantFuel(s, LAP_FUEL * 3);
+  const grantTick = s.tick;
+  let firstBoundary = grantTick + 1;
+  while (!isBoundary(firstBoundary)) firstBoundary += 1;
+  s = stepUntil(s, (st) => waitingOf(st) === undefined);
+  assert.equal(s.tick, firstBoundary, 'resumed on the first fuel-cycle boundary after the grant, not before');
+  assert.equal(craftOf(s).status, 'inTransit', 'on its way to W1 again');
+  assert.deepEqual(craftOf(s).trip.legs[0].from, { ...HEX_B }, 'the lap starts with the loop-back from WN');
+  assert.equal(s.guilds[0].fuelHoard, LAP_FUEL * 2, 'the resumed lap burned its whole bill up front');
+  // …and cycles on.
+  s = stepUntil(s, (st) => stock(st) === 1200);
+  assert.equal(craftOf(s).route.mode, 'continuous');
+});
+
+test('fuel WAIT: when a boundary can pay for only one of two waiting lanes, the LOWER id resumes', () => {
+  const run = () => {
+    let s = shortCycle(routeState({ systemPool: { [T1]: 4000 }, fuelHoard: 2 * LAP1_FUEL }));
+    s = accept(s, createSpawnVehicleAction({ guildId: 'g1', class: LIGHT_TRANSPORT, location: { ...ORIGIN } }));
+    const VID2 = 'vehicle_g1_lightTransport_02';
+    s = accept(s, dispatch(LANE(), { mode: 'continuous' }));
+    s = accept(s, createDispatchRouteWithActionsAction({ guildId: 'g1', vehicleId: VID2, waypoints: LANE(), repeat: { mode: 'continuous' } }));
+    s = stepUntil(s, (st) => waitingOf(st) && waitingOf(st, VID2));
+    if (isBoundary(s.tick + 1)) s = step(s);
+    s = grantFuel(s, LAP_FUEL); // one lap's worth, for two waiting lanes
+    s = stepUntil(s, (st) => !waitingOf(st) || !waitingOf(st, VID2));
+    assert.equal(waitingOf(s), undefined, '_01 resumed (fixed id order)');
+    assert.ok(waitingOf(s, VID2), '_02 still waits — the hoard ran dry on _01');
+    assert.equal(s.guilds[0].fuelHoard, 0);
+    return s;
+  };
+  assert.equal(hashState(run()), hashState(run()), 'the re-attempt is deterministic');
+});
+
+test('fuel WAIT: a stop that vanishes while the lane waits ENDS it at the boundary — flagged, nothing burned', () => {
+  // The reversed lane waits at A (a system). Its lap-1 bill: ORIGIN → B, then B → A.
+  const REV_LAP1 = burn(ORIGIN, HEX_B) + burn(HEX_B, A_COORDS);
+  let s = shortCycle(routeState({ outpostStock: { [T1]: 4000 }, fuelHoard: REV_LAP1 }));
+  s = accept(s, dispatch(REVERSE(), { mode: 'continuous' }));
+  s = stepUntil(s, (st) => waitingOf(st) !== undefined);
+  assert.deepEqual(craftOf(s).location, { ...SYS_ANCHOR });
+  s = tearDownB(s); // W1's Outpost goes while the lane waits…
+  s = grantFuel(s, 1000); // …and the fuel it needed arrives
+  const fuelBefore = fuelOf(s);
+  s = stepUntil(s, (st) => !craftOf(st).route);
+  assert.ok(isBoundary(s.tick), 'decided at the boundary re-attempt');
+  assert.deepEqual(craftOf(s).laneEnded, { reason: 'target-gone', tick: s.tick }, 'the target check runs first');
+  assert.deepEqual(fuelOf(s), fuelBefore, 'nothing burned for the doomed lap');
+  assert.deepEqual(craftOf(s).location, { ...SYS_ANCHOR }, 'idle at WN');
+});
+
+test('fuel WAIT: a waiting craft refuses a manual transfer; re-dispatching it drops the lane (plain or routed)', () => {
+  let s = shortCycle(routeState({ systemPool: { [T1]: 4000 }, fuelHoard: LAP1_FUEL }));
+  s = accept(s, dispatch(LANE(), { mode: 'continuous' }));
+  s = stepUntil(s, (st) => waitingOf(st) !== undefined); // waiting, parked at its Outpost (WN)
+  assert.match(
+    refuse(s, createTransferCargoAction({ guildId: 'g1', vehicleId: VID, manifest: [{ dir: 'load', good: T1, qty: 1 }] })),
+    /running a lane/,
+  );
+  s = grantFuel(s, 10);
+  // A plain dispatch: the lane is dropped, the craft flies the plain trip and lands as an ordinary craft.
+  let plain = accept(s, createDispatchVehicleAction({ guildId: 'g1', vehicleId: VID, waypoints: [{ ...ORIGIN }] }));
+  assert.equal(craftOf(plain).route, undefined, 'the waiting lane is dropped');
+  plain = stepUntil(plain, (st) => craftOf(st).status === 'idle');
+  assert.deepEqual(craftOf(plain).location, { ...ORIGIN });
+  assert.equal(craftOf(plain).route, undefined);
+  // A routed re-dispatch replaces it with the new route (no `waiting` carried over).
+  const routed = accept(s, dispatch([{ anchor: { ...SYS_ANCHOR } }, { anchor: { ...ORIGIN } }]));
+  assert.deepEqual(Object.keys(craftOf(routed).route).sort(), ['cursor', 'waypoints']);
+});
+
+test('integrity: a malformed or misplaced fuel wait fails loudly', () => {
+  let s = shortCycle(routeState({ systemPool: { [T1]: 4000 }, fuelHoard: LAP1_FUEL }));
+  s = accept(s, dispatch(LANE(), { mode: 'nRun', n: 5 }));
+  s = stepUntil(s, (st) => waitingOf(st) !== undefined);
+  const rules = (mutate) => {
+    const c = structuredClone(s);
+    mutate(craftOf(c));
+    return checkInvariants(c, c.tick).map((v) => v.rule).filter((r) => r === 'vehicle-route-valid' || r === 'vehicle-waiting-lane-idle');
+  };
+  assert.deepEqual(rules(() => {}), [], 'the real wait is clean');
+  assert.deepEqual(rules((c) => { c.route.waiting.reason = 'bored'; }), ['vehicle-route-valid']);
+  assert.deepEqual(rules((c) => { c.route.waiting.sinceTick = 2.5; }), ['vehicle-route-valid']);
+  assert.deepEqual(rules((c) => { c.route.cursor = 0; }), ['vehicle-route-valid'], 'a wait anywhere but WN');
+  assert.deepEqual(rules((c) => { delete c.route.mode; delete c.route.lapsRemaining; }), ['vehicle-route-valid'], 'a one-shot never waits');
+  assert.deepEqual(rules((c) => { c.route.waiting.sinceTick = s.tick + 1; }), ['vehicle-waiting-lane-idle'], 'a wait from the future');
+  assert.deepEqual(rules((c) => { c.status = 'loading'; }), ['vehicle-waiting-lane-idle'], 'a waiting craft sits idle');
 });
