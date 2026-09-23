@@ -133,10 +133,13 @@
   .plrow.origin .plix { border-color: var(--accent); color: var(--accent); }
   .plrow.deadleg { background: rgba(194,96,58,0.14); }
   .plrow .plnm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-  .plrow .plnm .warn { color: #e08a5a; font-size: 9px; letter-spacing: 1px; display: block; }
+  .plrow .plnm .warn { color: #e08a5a; font-size: 9px; letter-spacing: 1px; display: block; white-space: normal; }
   /* a waypoint's route action (automation 1b) — a small teal sub-line under its name. It WRAPS (the
      name above stays one line) so the whole manifest reads in the narrow panel rather than cutting off. */
   .plrow .plnm .act { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.5px; display: block; white-space: normal; overflow-wrap: anywhere; }
+  /* automation 2b: the quiet "you are here" note on stop 1 when the craft already sits on it (the §11.4
+     skip) — dim, so it reads as information, not a warning. Warnings keep the .warn line. */
+  .plrow .plnm .note { color: var(--text-dim); font-size: 9px; letter-spacing: 0.5px; display: block; white-space: normal; }
   .plrow .plctl { display: flex; gap: 4px; flex: none; }
   .plrow .plctl button {
     width: 22px; height: 22px; font-size: 11px; line-height: 1; cursor: pointer;
@@ -1919,6 +1922,9 @@ select.field{appearance:none; cursor:pointer;}
 #dispatch-overlay .dp-route .wp-act:hover{border-color:var(--amber); color:var(--amber)}
 #dispatch-overlay .dp-route .wp-act.set{background:var(--amber-ghost); border:1px solid var(--amber); color:var(--amber)}
 #dispatch-overlay .dp-route .wp-row .nm .act{margin-top:2px; font-family:var(--mono); font-size:10px; color:var(--amber); white-space:normal; overflow-wrap:anywhere}
+/* automation 2b: a stop's quiet "you are here — acts in place" note (dim), and its flagged line (red) */
+#dispatch-overlay .dp-route .wp-row .nm .note{margin-top:2px; font-family:var(--mono); font-size:10px; color:var(--ink2); white-space:normal}
+#dispatch-overlay .dp-route .wp-row .nm .warn{margin-top:2px; font-family:var(--mono); font-size:10px; color:var(--red); white-space:normal}
 #dispatch-overlay .dp-route .tc-box{border:1px solid var(--line); border-radius:8px; background:var(--panel); display:flex; flex-direction:column}
 #dispatch-overlay .dp-route .tc-box .cell{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; padding:10px}
 #dispatch-overlay .dp-route .tc-box .cell + .cell{border-top:1px solid var(--line)}
@@ -3541,10 +3547,13 @@ select.field{appearance:none; cursor:pointer;}
     return wp.action ? { anchor: wp.anchor, action: wp.action } : { anchor: wp.anchor };
   }
 
-  // lastAnchor() — the anchor a NEW waypoint would follow: the last waypoint's, or the origin when the
-  // list is empty. The chip's dead-leg check and confirmCandidate both measure from it.
-  function lastAnchor() {
-    return PLAN.waypoints.length ? PLAN.waypoints[PLAN.waypoints.length - 1].anchor : PLAN.origin;
+  // candidateIsDeadLeg() — would confirming the candidate build a dead leg? Only when it sits on the
+  // LAST WAYPOINT's hex. On an empty list the candidate would become waypoint 0, and waypoint 0 on the
+  // craft's own hex is the §11.4 reposition skip (see deadLegAt) — allowed, so the player can click the
+  // hex the craft sits on as stop 1. The chip and confirmCandidate share this one rule.
+  function candidateIsDeadLeg() {
+    if (!PLAN.waypoints.length) return false;
+    return sameHex(resolveAnchor(PLAN.candidate), resolveAnchor(PLAN.waypoints[PLAN.waypoints.length - 1].anchor));
   }
 
   // resolveAnchor(anchor) -> { q, r } | null. A bare hex is its own coords; a landmark reads its
@@ -3609,23 +3618,46 @@ select.field{appearance:none; cursor:pointer;}
     return '—';
   }
 
-  // The coords each waypoint follows: the leg before entry i runs from prevCoords(i) to that anchor.
-  // For i === 0 the previous anchor is the ORIGIN; otherwise it is waypoints[i-1]'s anchor. Used by
-  // both the list's dead-leg flags and the draw pass.
-  function prevCoordsFor(i) {
-    return resolveAnchor(i === 0 ? PLAN.origin : PLAN.waypoints[i - 1].anchor);
+  // ---------- automation slice 2b: the route checks (transport-model.md §11.4 / §11.9) ----------
+  // Every check below takes a `route` shaped like PLAN — { vehicle, origin, waypoints } — rather than
+  // reading PLAN itself, so the map planner (which passes PLAN) and the Dispatch popup (which passes its
+  // own finalised copy) judge a route by ONE set of rules, never two copies that could drift apart.
+  // Geometry and the action gate only — no game number (§18).
+
+  // skipsFirstLeg(route) — the craft already sits on W1: the origin and waypoint 0 resolve to the SAME
+  // hex. That zero-length first leg is the §11.4 reposition SKIP, which the engine supports: it flies
+  // no leg to W1, resolves W1's action IN PLACE, then flies on (§11.9). So it is NOT a dead leg.
+  function skipsFirstLeg(route) {
+    return route.waypoints.length > 0 &&
+      sameHex(resolveAnchor(route.waypoints[0].anchor), resolveAnchor(route.origin));
   }
 
-  // deadLegAt(i) — waypoint i resolves to the same hex as the anchor before it (a zero-length leg the
-  // engine would reject, §4). The list flags such a row and Finalise stays disabled until it is fixed.
-  function deadLegAt(i) {
-    if (!PLAN) return false;
-    return sameHex(resolveAnchor(PLAN.waypoints[i].anchor), prevCoordsFor(i));
+  // deadLegAt(route, i) — waypoint i resolves to the same hex as waypoint i-1: two chosen stops on one
+  // hex, a zero-length leg the engine still refuses (§4). Waypoint 0 is never a dead leg — on the
+  // origin's own hex it is the skip above, and anywhere else its leg has a real length.
+  function deadLegAt(route, i) {
+    if (i === 0) return false;
+    return sameHex(resolveAnchor(route.waypoints[i].anchor), resolveAnchor(route.waypoints[i - 1].anchor));
   }
-  function anyDeadLeg() {
-    if (!PLAN) return false;
-    for (let i = 0; i < PLAN.waypoints.length; i++) if (deadLegAt(i)) return true;
+  function anyDeadLeg(route) {
+    for (let i = 0; i < route.waypoints.length; i++) if (deadLegAt(route, i)) return true;
     return false;
+  }
+
+  // idleAtBerth(route) — the one route the skip leaves with NOTHING to do: a single stop, on the craft's
+  // own hex, carrying no action — nothing to fly and nothing to do. The engine refuses it (§11.9), so it
+  // is never dispatchable here either. With an action it is the valid act-in-place route; with more
+  // stops after it the craft simply starts from here — both fine.
+  function idleAtBerth(route) {
+    return route.waypoints.length === 1 && skipsFirstLeg(route) && !route.waypoints[0].action;
+  }
+  const IDLE_AT_BERTH_CUE = 'this stop is where the craft already sits — add an action or remove it';
+
+  // hereNote(route, i) — the "you are here" cue for stop 1 when the craft already sits on it, so the
+  // skipped first leg reads as intentional rather than as a bug. Display only; '' for any other stop.
+  function hereNote(route, i) {
+    if (i !== 0 || !skipsFirstLeg(route) || idleAtBerth(route)) return '';
+    return route.waypoints[0].action ? 'you are here — acts in place' : 'you are here — starts from this stop';
   }
 
   // Enter planning mode for a craft. `vehicle` is the DP row (needs id/class/location); `waypoints`
@@ -3644,8 +3676,9 @@ select.field{appearance:none; cursor:pointer;}
     // __flyTo leaves the system-info panel open on the origin; the planner has its own list, so hide it
     // to keep the top-right clear for Finalise/Cancel.
     document.getElementById('syspanel').style.display = 'none';
-    renderPlanList();
-    renderPlanChip();
+    // refreshPlanState (not just the two renders) so the Finalise gate is set for a SEEDED list too —
+    // Edit Route and Load Route arrive here with waypoints already in place.
+    refreshPlanState();
   }
 
   // Leave planning mode (shared by Cancel, Finalise, and abandon). `keepPlan` true only for Finalise,
@@ -3665,9 +3698,11 @@ select.field{appearance:none; cursor:pointer;}
 
   // Finalise — leave planning WITHOUT discarding the route, and hand it to the Dispatch popup, which
   // fetches the engine quote and shows the two-box Planned Route. Guarded by the same rule the button
-  // is: at least one waypoint and no dead leg.
+  // is: at least one waypoint and no dead leg. (Nothing else blocks Finalise — a stop the popup can
+  // fix, like an idle one-stop route at the berth, is gated at Dispatch instead, so the player can
+  // always REACH the popup to fix it.)
   function finalisePlanning() {
-    if (!PLAN || !PLAN.waypoints.length || anyDeadLeg()) return;
+    if (!PLAN || !PLAN.waypoints.length || anyDeadLeg(PLAN)) return;
     const vehicle = PLAN.vehicle, waypoints = PLAN.waypoints.map(copyWaypoint);
     exitPlanning(true); // clears the .planning class + the chip; keeps PLAN for the popup / Edit Route
     if (window.__dispatchFinalise) window.__dispatchFinalise(vehicle, waypoints);
@@ -3679,36 +3714,49 @@ select.field{appearance:none; cursor:pointer;}
     renderPlanList();
     renderPlanChip();
     const f = document.getElementById('planFinalise');
-    if (f) f.disabled = !PLAN || !PLAN.waypoints.length || anyDeadLeg();
+    if (f) f.disabled = !PLAN || !PLAN.waypoints.length || anyDeadLeg(PLAN);
   }
 
   // The waypoint list panel: an Origin row (fixed, no controls) then one row per waypoint — its index,
   // its name, ▲ ▼ to reorder and ✕ to remove. Reorder is arrows (not drag, §out-of-scope). A row that
   // resolves to the same hex as the one before it is flagged and disables Finalise. A waypoint that
   // carries an action shows it as a small sub-line under its name (`act`, e.g. "dock · load titanium
-  // 400"), so the list reads at a glance which stops act.
+  // 400"), so the list reads at a glance which stops act. Stop 1 on the craft's own hex (the §11.4
+  // skip) is a normal stop with a quiet "you are here" note; the idle one-stop case gets its cue.
   function renderPlanList() {
     const box = document.getElementById('planRows');
     if (!box || !PLAN) return;
     box.innerHTML = '';
-    const mkRow = (cls, ixText, name, warn, ctlHtml, act) => {
+    // One row. `act` (the action summary) and `note` (the "you are here" cue) are quiet sub-lines;
+    // `warn` is the flagged one. Every text part is escaped; `ctl` is the row's own button HTML.
+    const mkRow = (r) => {
       const row = document.createElement('div');
-      row.className = 'plrow' + (cls ? ' ' + cls : '');
-      row.innerHTML = '<div class="plix">' + ixText + '</div>' +
-        '<div class="plnm">' + escapeHtml(name) +
-          (act ? '<span class="act">' + escapeHtml(act) + '</span>' : '') +
-          (warn ? '<span class="warn">' + warn + '</span>' : '') + '</div>' +
-        '<div class="plctl">' + (ctlHtml || '') + '</div>';
+      row.className = 'plrow' + (r.cls ? ' ' + r.cls : '');
+      row.innerHTML = '<div class="plix">' + r.ix + '</div>' +
+        '<div class="plnm">' + escapeHtml(r.name) +
+          (r.act ? '<span class="act">' + escapeHtml(r.act) + '</span>' : '') +
+          (r.note ? '<span class="note">' + escapeHtml(r.note) + '</span>' : '') +
+          (r.warn ? '<span class="warn">' + escapeHtml(r.warn) + '</span>' : '') + '</div>' +
+        '<div class="plctl">' + (r.ctl || '') + '</div>';
       return row;
     };
-    box.appendChild(mkRow('origin', '◎', anchorLabel(PLAN.origin) + '  · origin', '', ''));
+    box.appendChild(mkRow({ cls: 'origin', ix: '◎', name: anchorLabel(PLAN.origin) + '  · origin' }));
     PLAN.waypoints.forEach((wp, i) => {
-      const dead = deadLegAt(i);
+      const dead = deadLegAt(PLAN, i);
+      const idle = i === 0 && idleAtBerth(PLAN);
       const ctl =
         '<button data-act="up" data-i="' + i + '" title="Move up"' + (i === 0 ? ' disabled' : '') + '>▲</button>' +
         '<button data-act="down" data-i="' + i + '" title="Move down"' + (i === PLAN.waypoints.length - 1 ? ' disabled' : '') + '>▼</button>' +
         '<button data-act="rm" data-i="' + i + '" title="Remove">✕</button>';
-      box.appendChild(mkRow(dead ? 'deadleg' : '', String(i + 1), anchorLabel(wp.anchor), dead ? 'zero-length leg — remove or reorder' : '', ctl, actionSummary(wp.action)));
+      box.appendChild(mkRow({
+        cls: dead ? 'deadleg' : '',
+        ix: String(i + 1),
+        name: anchorLabel(wp.anchor),
+        act: actionSummary(wp.action),
+        note: hereNote(PLAN, i),
+        warn: dead ? 'zero-length leg — remove or reorder' : (idle ? IDLE_AT_BERTH_CUE : ''),
+        ctl: ctl,
+      }));
     });
   }
 
@@ -3728,7 +3776,7 @@ select.field{appearance:none; cursor:pointer;}
     const btns = document.getElementById('planChipButtons');
     const hint = document.getElementById('planChipHint');
     if (!chip || !PLAN || !PLAN.candidate) { if (chip) chip.classList.remove('on'); return; }
-    const dead = sameHex(resolveAnchor(PLAN.candidate), resolveAnchor(lastAnchor()));
+    const dead = candidateIsDeadLeg();
     btns.innerHTML = '';
     // The Action button, built once and slotted in after the step's primary button (Add or Confirm).
     // Disabled on a dead leg like its siblings — a stop that can't be placed can't carry an action.
@@ -3787,7 +3835,7 @@ select.field{appearance:none; cursor:pointer;}
   // if one was set from the chip — unless it would be a dead leg, then clear the candidate.
   function confirmCandidate() {
     if (!PLAN || !PLAN.candidate) return;
-    if (sameHex(resolveAnchor(PLAN.candidate), resolveAnchor(lastAnchor()))) return; // never build a zero-length leg
+    if (candidateIsDeadLeg()) return; // never build a dead leg (the skip on stop 1 is not one)
     const wp = { anchor: PLAN.candidate };
     if (PLAN.candidateAction) wp.action = PLAN.candidateAction;
     PLAN.waypoints.push(wp);
@@ -4963,6 +5011,15 @@ select.field{appearance:none; cursor:pointer;}
   // line as the map chip / left list — one copy of each, shared across the two IIFEs like __fmtETA.
   window.__routeActionAllowed = routeActionAllowed;
   window.__routeActionSummary = actionSummary;
+  // Automation 2b: the route checks, shared the same way. The popup passes its OWN finalised route
+  // ({ vehicle, origin, waypoints }), so the planner and the Finalise list judge a route by one rule.
+  window.__routeChecks = {
+    skipsFirstLeg: skipsFirstLeg,
+    anyDeadLeg: anyDeadLeg,
+    idleAtBerth: idleAtBerth,
+    hereNote: hereNote,
+    idleAtBerthCue: IDLE_AT_BERTH_CUE,
+  };
 
   resize(); tick();
 })();
@@ -10332,6 +10389,13 @@ function paintInventoryHero(d){
   // take a bare anchor list (actions do not change the legs, so they never reach either).
   function anchorsOf(waypoints){ return waypoints.map(function(w){ return w.anchor; }); }
 
+  // dpRoute() -> the finalised route in the shape the map's shared route checks take (automation 2b):
+  // { vehicle, origin, waypoints }. The origin is the craft's own location — a route is origin-free
+  // (§11.1), and the launching craft's position is always its runtime origin (§11.4).
+  function dpRoute(){
+    return { vehicle: DP.vehicle, origin: DP.vehicle && DP.vehicle.location, waypoints: DP.waypoints };
+  }
+
   // A camelCase-splitting display name (heavyTransport -> "Heavy Transport"). Display vocabulary
   // only (§18) — a local copy, the map/trade `pretty` are out of this IIFE's scope.
   function prettyClass(key){
@@ -10455,9 +10519,16 @@ function paintInventoryHero(d){
     // the waypoint list: Origin (the craft's location) then one row per finalised waypoint. Each row's
     // right-hand slot is its route-ACTION control (actionSlotHtml, below) and a set action reads as a
     // sub-line under the stop's name. The origin is not a waypoint, so its slot stays empty (§11.1).
+    var rc = window.__routeChecks, route = dpRoute();
+    var idle = rc.idleAtBerth(route);
     var rows = '<div class="wp-row origin"><div class="ix">◎</div><div class="nm">' + esc(locLabel(v)) + '</div><div class="slot"></div></div>';
     DP.waypoints.forEach(function(wp, i){
       var sub = (wp.action && window.__routeActionSummary) ? '<div class="act">' + esc(window.__routeActionSummary(wp.action)) + '</div>' : '';
+      // Automation 2b: stop 1 on the craft's own hex (the §11.4 skip) carries a quiet "you are here"
+      // note, so a 0-leg / 0-fuel first stop reads as intentional; the idle one-stop case its cue.
+      var note = rc.hereNote(route, i);
+      if(note) sub += '<div class="note">' + esc(note) + '</div>';
+      if(i === 0 && idle) sub += '<div class="warn">' + esc(rc.idleAtBerthCue) + '</div>';
       rows += '<div class="wp-row"><div class="ix">' + (i+1) + '</div>' +
         '<div class="nm">' + esc(wpName(wp.anchor)) + sub + '</div>' +
         '<div class="slot">' + actionSlotHtml(wp, i) + '</div></div>';
@@ -10465,6 +10536,7 @@ function paintInventoryHero(d){
     // Time over Cost — read straight from the quote; the fuel cost is presented in CREDITS (§8.0), not
     // units. An { ok:false } quote has no figures, so those cells read "—" and Dispatch is disabled below.
     var okQ = q && q.ok;
+    var block = dispatchBlock(route);
     var timeVal = okQ ? (window.__fmtETA ? window.__fmtETA(q.totalTicks) : q.totalTicks) : '—';
     var costVal = okQ ? (q.credits + ' ¢') : '—';
     $('dpSection').innerHTML =
@@ -10476,22 +10548,36 @@ function paintInventoryHero(d){
           '<div class="cell"><div class="lab">Cost</div><div class="val">' + esc(String(costVal)) + '</div></div>' +
         '</div>' +
       '</div>' +
-      // an { ok:false } quote surfaces its engine reason (a route the dispatch would refuse); an
-      // unaffordable ok quote needs no sentence — the disabled Dispatch button is the quiet cue (§D).
-      (q && q.ok === false ? '<div class="dp-refuse">' + esc(q.reason || 'This route cannot be dispatched.') + '</div>' : '');
+      // an { ok:false } quote surfaces its engine reason (a route the dispatch would refuse); otherwise
+      // a client route gate (dispatchBlock) shows ITS reason the same way. An unaffordable ok quote
+      // needs no sentence — the disabled Dispatch button is the quiet cue (§D).
+      (q && q.ok === false ? '<div class="dp-refuse">' + esc(q.reason || 'This route cannot be dispatched.') + '</div>'
+        : (block ? '<div class="dp-refuse">' + esc(block) + '</div>' : ''));
     var acts = $('dpActions');
     acts.innerHTML =
       '<button class="dp-btn" id="dpEditBtn" type="button">Edit Route</button>' +
       '<button class="dp-btn primary" id="dpDispatchBtn" type="button">Dispatch</button>';
-    // Dispatch is gated on the engine's answer: an unaffordable route (fuel short) or an { ok:false }
-    // quote cannot be sent, so the button is disabled (the engine re-validates and refuses-whole anyway).
-    var canSend = okQ && q.affordable !== false;
+    // Dispatch is gated on the engine's answer — an unaffordable route (fuel short) or an { ok:false }
+    // quote cannot be sent — AND on the client's route gates (dispatchBlock). The button is disabled
+    // (the engine re-validates and refuses-whole anyway).
+    var canSend = okQ && q.affordable !== false && !block;
     $('dpDispatchBtn').disabled = !canSend;
     $('dpEditBtn').addEventListener('click', onEditRoute);
     $('dpDispatchBtn').addEventListener('click', onDispatch);
     Array.prototype.forEach.call($('dpSection').querySelectorAll('.wp-act'), function(b){
       b.addEventListener('click', function(){ onRowAction(Number(b.getAttribute('data-wp'))); });
     });
+  }
+
+  // dispatchBlock(route) -> why the CLIENT holds Dispatch back, or '' when nothing does (automation 2b).
+  // Each gate mirrors a route the engine would refuse — a dead leg (two stops on one hex, §4), or the
+  // idle one-stop route at the craft's own berth (§11.9) — so the player sees why BEFORE sending,
+  // rather than a refusal after. Shown under the route boxes, like an { ok:false } quote's reason.
+  function dispatchBlock(route){
+    var rc = window.__routeChecks;
+    if(rc.anyDeadLeg(route)) return 'Two stops sit on the same hex — remove or reorder one.';
+    if(rc.idleAtBerth(route)) return 'Nothing to do — ' + rc.idleAtBerthCue + '.';
+    return '';
   }
 
   // ---------- automation slice 1b: entry point B — manage actions on the laid-out route (§11.7) ----------
@@ -10580,9 +10666,12 @@ function paintInventoryHero(d){
   //    (an absent action, never an `action: undefined` key).
   //  - NO action anywhere → the plain `dispatchVehicle`, exactly as before (a bare anchor list), so a
   //    no-action route keeps the frozen multi-leg flight and its animation unchanged.
+  //  - EXCEPT (automation 2b) a route whose stop 1 is the craft's own hex, action or not: only
+  //    `dispatchRouteWithActions` takes the §11.4 zero-length-first-leg SKIP — the plain dispatch still
+  //    refuses a zero-length leg 0 — and the quote previews that same skip, so this sends what was quoted.
   function dispatchActionFor(gid, v){
     var anyAction = DP.waypoints.some(function(w){ return !!w.action; });
-    if(anyAction){
+    if(anyAction || window.__routeChecks.skipsFirstLeg(dpRoute())){
       return { type:'dispatchRouteWithActions', guildId: gid, vehicleId: v.id,
                waypoints: DP.waypoints.map(function(w){ return w.action ? { anchor: w.anchor, action: w.action } : { anchor: w.anchor }; }) };
     }
