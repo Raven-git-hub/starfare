@@ -729,17 +729,25 @@ launch, because a route runs through places that may have changed hands since it
 route stores NO repeat setting; whether a launch is one-shot, continuous, or N-run is a LAUNCH parameter
 (slice 3), so one saved lane can be run either way.
 
-### 11.6 Failure handling — partial proceeds, anchor-gone pauses
+### 11.6 Failure handling — partial proceeds, anchor-gone ENDS, fuel-short WAITS
 Two DISTINCT failure classes, separated by whether the target still EXISTS:
 - **Partial capacity** — the target exists but cannot fully satisfy the action (the source pool is empty,
   or the destination is at its cap): the action moves WHAT IT CAN and the lane PROCEEDS. It is calculable the
   moment the craft docks, and is the §4 partial-safe resolution. A lane never stalls on a partial.
-- **Anchor gone** — the target no longer EXISTS (an outpost torn down, a system lost): the lane PAUSES and
-  FLAGS. This is checked at each lap's START (so the craft pauses at the safe berth WN) and also caught if a
-  target vanishes MID-FLIGHT (the craft arrives at the now-bare hex and pauses there). A paused lane keeps the
-  craft idle where it paused, flagged for the player; the mechanism does not strand it — a *narrative*
-  stranding is a deliberately later edition, and the bare-hex pause is where that hook would attach. This
-  resolves §10 open-question 4 for the automation layer.
+- **Anchor gone — the lane ENDS** *(RULED 23-09-26, superseding the earlier "pauses" wording)*. The target
+  no longer EXISTS (an outpost torn down, a system lost): the lane is DROPPED and the craft goes idle where it
+  stopped — at the safe berth WN if caught at a lap's START, in deep space at the now-bare hex if a target
+  vanishes MID-FLIGHT (the craft arrives at the bare hex and stops) — FLAGGED for the player. There is NO
+  resume-in-place: a dropped lane leaves an ORDINARY idle craft, and the player re-dispatches a fresh route
+  (§11.5, re-validated at launch). The mechanism never strands the craft against its will; a *narrative*
+  stranding remains a later edition, and the bare-hex stop is where that hook would attach. Resolves §10
+  open-question 4 for the automation layer.
+- **Fuel short — the lane WAITS** *(RULED 23-09-26)*. A lap is fuelled UP FRONT (§11.3); if the hoard
+  cannot cover the next lap the lane does NOT drop — it WAITS at the safe berth, burns nothing, and
+  RE-ATTEMPTS at each fuel-cycle boundary (where the hoard grows, §1.4) until it can afford the lap, then
+  carries on. It self-heals and keeps its craft. At the FIRST launch an unaffordable lap 1 is REFUSED
+  outright, never started. This is §11.3's "refused / paused whole", now named: REFUSE at launch, WAIT
+  mid-run — never a partial, never a silent drop.
 
 ### 11.7 The two authoring entry points (client — slices 1b / 2)
 Actions are attached to waypoints from two surfaces, BOTH writing `waypoint.action`:
@@ -764,7 +772,7 @@ both the map and the dispatch lists.
 - **2 — saved routes.** The per-guild saved-route store + Save / "Load Route" UI + re-validation at load
   (§11.5).
 - **3 — repetition.** Continuous / N-run repeating with the reposition rule (§11.4), per-lap fuel +
-  re-validation (§11.3/§11.6), and pause / resume / cancel controls.
+  re-validation (§11.3/§11.6), and the in-transit Cancel / Stop-after-run controls (§11.10).
 
 **No new number.** The automation layer introduces no constant — it reuses the §4 manifest resolver, the
 §4 dock turnaround, and the §2.2 leg fuel/time formulas. Determinism (design.md §15.5 invariant 9) is
@@ -827,3 +835,47 @@ actions, the snapshot surface (each guild's saved routes, for the client's Load 
 zero-length skip. **2b — client:** the "Save Route" affordance (names + upserts the current plan) and the
 "Load Route" dropdown (populates the plan; a small delete removes a saved route). No new number — it reuses
 the §11.1 entity and the §4 manifest checks.
+
+### 11.10 Repetition — launch modes, the lap loop & the in-transit controls *(RULED 23-09-26)*
+
+Slice 3 makes a route REPEAT and adds the controls to stop one. It introduces NO new number — it reuses
+§11.4's reposition, §11.3's per-lap fuel, §4's resolver, §2.2's leg math and §2.3's position
+interpolation; the only addition is a deterministic hex-round of an already-computed position (the cancel snap).
+
+**Launch modes (a LAUNCH parameter, §11.5 — not stored on the saved route).** A dispatch chooses one:
+- **once** — the built one-shot (§11.2): run the waypoints, land idle at WN.
+- **continuous** — repeat the cycle until the player stops it (or the lane ends, below).
+- **N-run** — repeat for N full cycles, then land idle at WN.
+A "lap" is one full cycle of the saved waypoints (§11.4's `W1 ... WN`). The one-time positioning to W1 —
+lap 1's launch-location→W1 prefix (§11.4) — is NOT a counted lap; N counts the goods cycles only.
+
+**The lap loop (extends §11.2's chained execution).** After the craft resolves WN's action, the lap
+boundary runs in FIXED order, each step a per-arrival / per-turnaround event (§11.2 / §15.4 — still no
+per-tick per-craft movement loop):
+1. N-run whose last lap just finished → the run ENDS, craft idle at WN (an ordinary completion).
+2. Re-validate the next lap's action targets (the lap-START anchor-gone check, §11.6). Any target gone →
+   the lane ENDS (§11.6 — dropped, craft idle at WN, flagged).
+3. Fuel the next lap UP FRONT (§11.3 — the reposition WN→W1 plus the cycle). Hoard short → the lane
+   WAITS (§11.6 / §11.3 — re-attempt each fuel-cycle boundary).
+4. Otherwise → burn the lap's fuel, reposition to W1 (a zero-length reposition is SKIPPED, §11.4), and run
+   the cycle.
+
+**The repeat state (on the craft's `route`).** Beyond `{ waypoints, cursor }` a repeating lane carries its
+launch `mode`, an `N` / `lapsRemaining` (N-run only), and a `waiting` flag + reason while fuel-blocked. A
+`once` route carries NONE of it and stays byte-identical to the built one-shot (omit-when-default). It is
+journalled state, so a mid-run restart replays byte-identically; determinism (§15.5 invariant 9) holds —
+every step is event-hung and the fuel re-attempt fires on the anchored cycle boundary, never a wall clock.
+
+**The in-transit controls (Operations → In Transit → the craft's expandable row).** A player stops a lane
+from its own transit row, through two controls:
+- **Cancel** — for ANY in-transit guild craft (one-shot or repeating). The lane ends AT ONCE: the craft
+  SNAPS to the hex it currently occupies — its position interpolated along the current leg from the tick
+  clock (§2.3) and rounded to the nearest lattice hex — and goes idle there (idle-in-space is legal,
+  §11.6), route dropped, an ordinary idle craft again. Built TOLL-AWARE: it branches on the leg's `isToll`.
+  A normal leg snaps as above; a TOLL leg instead COMPLETES to the toll's exit and stops there — a craft
+  never snaps to a hex INSIDE a toll passage. Tolls are roadmap 2.3 (`isToll` is always false until then), so
+  the toll branch is a documented STUB this slice.
+- **Stop after this run** — repeating lanes only. The lane finishes the lap it is on, lands idle at WN, and
+  ends — a clean stop, no snap.
+The snap hex is the ENGINE's (§18 — the client shows the control, the engine computes the landing). Both
+controls leave an ordinary idle craft the player can re-task.
