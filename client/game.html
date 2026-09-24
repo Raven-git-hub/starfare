@@ -9203,7 +9203,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       ? '<span class="ops-dest">' + esc(craftDestName(v.trip)) + '</span>'
       : '<span class="ops-dest here">' + esc(tpCraftWhere(v)) + '</span>';
     var lane = laneLine(v);
-    return '<div class="ops-row craft' + (v.trip ? '' : ' parked') + (open ? ' open' : '') + '" data-key="' + esc(key) + '">'
+    return '<div class="ops-row craft' + (open ? ' open' : '') + '" data-key="' + esc(key) + '">'
       + '<div class="ops-rowhead">'
       +   '<span class="ops-origin">' + esc(tpShort(v['class']) + ' #' + craftNumber(v)) + '</span>'
       +   middle
@@ -9579,8 +9579,12 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       .replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/^./, function(c){ return c.toUpperCase(); });
   }
 
+  // (Automation 3c) A craft still carrying a `route` is ON A LANE — e.g. waiting at its last stop for fuel
+  // or for its cadence — even though its status is 'idle'. It is listed under IN TRANSIT with its lane
+  // controls (myCraftOnLane), so it is left out here: one craft, one home. (Its Dispatch would drop the lane
+  // and its Dock is refused while it runs one.)
   function myIdleTransports(guild){
-    return ((guild && guild.vehicles) || []).filter(function(v){ return v.status === 'idle'; });
+    return ((guild && guild.vehicles) || []).filter(function(v){ return v.status === 'idle' && !v.route; });
   }
 
   // A craft's `location` (+ `dockStatus`) → its GROUP descriptor `{ key, name }` (§15.4). A system

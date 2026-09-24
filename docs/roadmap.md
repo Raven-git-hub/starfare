@@ -1669,7 +1669,10 @@ boundary so the later hex-map swap doesn't touch it.
     popup's "#NN"), so two craft of one class can be told apart; a row's expand state is keyed on the craft
     id alone (it was id + arrival tick), so an open row — and its controls — survives the lane moving to its
     next leg. The row still rebuilds on a new leg or a lane-state change (`craftSig`). The per-row alert slot
-    stays unwired (operations-hub.md §4 reserves it for "destination lost in flight").
+    stays unwired (operations-hub.md §4 reserves it for "destination lost in flight"). The IDLE TRANSPORTS
+    panel now leaves out a craft carrying a `route`: a lane waiting at its last stop has status `idle`, so it
+    was listed there too, with a Dock the engine refuses for a lane craft and a Dispatch that drops the
+    lane. One craft, one home: IN TRANSIT, with its lane controls.
     **(3) The ended-lane notice** (§11.6). A craft carrying `laneEnded` has had its lane dropped and is an
     ordinary idle craft, and the idle-craft board that would show it is Phase 4. So the lanes' home says it:
     a strip at the top of the IN TRANSIT card with one notice per flagged craft, e.g. "Light #01's lane
