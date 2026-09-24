@@ -1281,6 +1281,14 @@ select.field{appearance:none; cursor:pointer;}
 #tp-ops .ops-lane-btn:disabled{opacity:.45; cursor:default;}
 #tp-ops .ops-lane-ask{flex:1 1 100%; font-size:11px; color:var(--ops-ink);}
 #tp-ops .ops-lane-msg{margin-top:9px; font-size:11px; line-height:1.5; color:var(--ops-down);}
+/* automation 3c: the ENDED-LANE notices — a strip above the IN TRANSIT list, one amber-edged line per
+   craft whose lane ended on its own, each with a small ✕. Takes no room when there is none. */
+#tp-ops #ops-lane-notices{flex:0 0 auto; padding:12px 14px 0;}
+#tp-ops #ops-lane-notices:empty{display:none;}
+#tp-ops .ops-notice{display:flex; align-items:center; gap:10px; padding:9px 11px; margin-bottom:8px; border:1px solid var(--ops-amber-dim); border-left:3px solid var(--ops-amber2); border-radius:6px; background:rgba(201,162,39,.06);}
+#tp-ops .ops-notice .msg{flex:1 1 auto; font-size:11.5px; line-height:1.5; color:var(--ops-ink);}
+#tp-ops .ops-notice-x{flex:0 0 auto; font-family:var(--ops-mono); font-size:11px; line-height:1; color:var(--ops-ink3); background:transparent; border:1px solid var(--ops-line2); border-radius:6px; padding:4px 7px; cursor:pointer;}
+#tp-ops .ops-notice-x:hover{color:var(--ops-ink); border-color:var(--ops-amber-dim);}
 
 /* the calm empty states — IN TRANSIT when idle, and the LEASED/DEPLOYED/IDLE scaffolds. The
    soon-panel idiom from guild-hall.html (a centred glyph + line), muted so a populated section
@@ -2837,6 +2845,9 @@ select.field{appearance:none; cursor:pointer;}
       <div class="ops-centre">
         <div class="ops-card ops-transit">
           <div class="ops-card-h"><span class="t">In Transit</span><span class="ops-tag live">Live</span></div>
+          <!-- automation 3c: filled by operations-tab-wire — a dismissible notice per craft whose lane
+               ENDED on its own (the snapshot's `laneEnded` flag); empty, and hidden, otherwise -->
+          <div id="ops-lane-notices"></div>
           <!-- filled by operations-tab-wire: the player's own Syndicate deliveries, soonest first -->
           <div class="ops-list" id="ops-transit-list"></div>
         </div>
@@ -9003,7 +9014,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     tpSig: null,       // last rendered IDLE-TRANSPORTS signature; null forces a rebuild
     tpSysCollapsed: {}, // which transport SYSTEM groups are collapsed (default open) — survives a poll
     tpOpen: {},        // which craft tabs are EXPANDED (default collapsed) — survives a poll
-    laneUi: {}         // (automation 3c) per craft id: a lane control's in-between state — see laneControlsHtml
+    laneUi: {},        // (automation 3c) per craft id: a lane control's in-between state — see laneControlsHtml
+    endedSig: null,    // (3c) last rendered ended-lane notices; null forces a rebuild
+    endedDismissed: {} // (3c) which ended-lane notices were dismissed, by endedKey — this page visit only
   };
 
   // Own helpers — copies of the Deuterium panel's (its IIFE's are not in scope). They read
@@ -9268,6 +9281,38 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     html += '</div>';
     if(ui.msg) html += '<div class="ops-lane-msg">' + esc(ui.msg) + '</div>';
     return html;
+  }
+
+  // ---- automation slice 3c: the ENDED-LANE notice (transport-model.md §11.6) ----------------------
+  // A lane that ends ON ITS OWN — a stop's store is gone (an Outpost torn down) — leaves an ordinary idle
+  // craft carrying `laneEnded = { reason, tick }`. The idle-craft board that would show it is Phase 4, so the
+  // lanes' home says it instead: one small notice per flagged craft, at the top of IN TRANSIT. The engine
+  // clears the flag on the craft's next dispatch, so the notice goes by itself once the craft is re-tasked;
+  // ✕ dismisses it sooner. A player's own Cancel / Stop sets no flag, so it never shows a notice.
+  // Why each reason ended the lane, in the player's words. 'target-gone' is the only reason the engine has
+  // (LANE_END_REASONS); an unknown one shows as the engine wrote it rather than being hidden.
+  var LANE_END_WHY = { 'target-gone': 'a stop\'s store is gone' };
+
+  // endedKey(v) — one notice per ENDING: the craft id + the tick its lane ended. A craft whose next lane
+  // also ends gets a fresh key, so a dismissed old notice never hides the new one.
+  function endedKey(v){ return v.id + '@' + v.laneEnded.tick; }
+
+  function renderLaneNotices(guild){
+    var host = el('ops-lane-notices'); if(!host) return;
+    var ended = ((guild && guild.vehicles) || []).filter(function(v){ return v.laneEnded && !O.endedDismissed[endedKey(v)]; });
+    // rewrite only when the set of notices changed (the IN TRANSIT signature discipline), so a poll never
+    // swaps the strip out from under a click
+    var sig = ended.map(endedKey).join('|');
+    if(sig === O.endedSig) return;
+    O.endedSig = sig;
+    host.innerHTML = ended.map(function(v){
+      var why = LANE_END_WHY[v.laneEnded.reason] || v.laneEnded.reason;
+      return '<div class="ops-notice">'
+        +   '<span class="msg">' + esc(tpShort(v['class']) + ' #' + craftNumber(v)) + '\'s lane stopped at '
+        +     esc(tpCraftWhere(v)) + ' — ' + esc(why) + '.</span>'
+        +   '<button class="ops-notice-x" type="button" data-ended-x="' + esc(endedKey(v)) + '" title="Dismiss">&#10005;</button>'
+        + '</div>';
+    }).join('');
   }
 
   // rebuildTransit() — redraw the IN TRANSIT list now, even though the set of rows has not changed (a
@@ -9705,7 +9750,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
 
   // The whole hub, run on open and on every poll while open. IN TRANSIT, IDLE and IDLE TRANSPORTS
   // are live; the LEASED / DEPLOYED scaffolds are static markup, so there is nothing else to re-read.
-  function render(){ var g = meGuild(); renderTransit(g, snap()); renderIdle(g); renderIdleTransports(g); }
+  function render(){ var g = meGuild(); renderLaneNotices(g); renderTransit(g, snap()); renderIdle(g); renderIdleTransports(g); }
 
   // Delegated once on the panel. Two independent toggles:
   //  - an IN TRANSIT row expands its manifest (state in O.expanded, by ship key);
@@ -9761,6 +9806,13 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       }
       return;
     }
+    // (automation 3c) The ✕ on an ended-lane notice: remember the dismissal and redraw the strip.
+    var endedX = e.target.closest('[data-ended-x]');
+    if(endedX){
+      O.endedDismissed[endedX.getAttribute('data-ended-x')] = true;
+      renderLaneNotices(meGuild());
+      return;
+    }
     // (automation 3c) A lane control in an expanded craft row — Cancel, its Yes / Keep going, or Stop after
     // this run. Checked before the row toggle below, so pressing one never also collapses the row.
     var laneBtn = e.target.closest('[data-lane-act]');
@@ -9780,7 +9832,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // The shell drives these three, mirroring the Deuterium dashboard's lifecycle: open, close, and
   // every poll — so an open hub re-reads each snapshot (new deliveries appear, bars advance, ETAs
   // decrement) driven by its own panel's lifecycle.
-  window.__opsOpen = function(){ O.open = true; O.transitSig = ''; O.idleSig = null; O.tpSig = null; render(); };
+  window.__opsOpen = function(){ O.open = true; O.transitSig = ''; O.idleSig = null; O.tpSig = null; O.endedSig = null; render(); };
   window.__opsClosed = function(){ O.open = false; };
   window.__opsRefresh = function(){ if(O.open) render(); };
 })();

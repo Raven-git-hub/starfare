@@ -1670,6 +1670,16 @@ boundary so the later hex-map swap doesn't touch it.
     id alone (it was id + arrival tick), so an open row — and its controls — survives the lane moving to its
     next leg. The row still rebuilds on a new leg or a lane-state change (`craftSig`). The per-row alert slot
     stays unwired (operations-hub.md §4 reserves it for "destination lost in flight").
+    **(3) The ended-lane notice** (§11.6). A craft carrying `laneEnded` has had its lane dropped and is an
+    ordinary idle craft, and the idle-craft board that would show it is Phase 4. So the lanes' home says it:
+    a strip at the top of the IN TRANSIT card with one notice per flagged craft, e.g. "Light #01's lane
+    stopped at (75, -7) — a stop's store is gone." (`target-gone` → "a stop's store is gone"; an unknown
+    reason would show as the engine wrote it). Each notice has a ✕. A dismissal is keyed on the craft id +
+    the flag's tick, so a later ending on the same craft shows again. It is remembered for this page visit
+    only; a reload shows a still-flagged craft again. The engine clears the flag on the craft's next
+    dispatch, so the notice also goes by itself once the craft is re-tasked. A player's Cancel / Stop sets
+    no flag, so it never shows one. **Display call:** the notice lives only in Operations (no tab pip or
+    map toast).
 - **Tuning — resource yield tiers & the homeworld production floor.** ⬜ *Designed 24-09-26; build pending.*
   Per-resource mine yields by rarity tier (design.md §2 "Resource Yield Tiers & the Homeworld Production
   Floor"; numbers in `docs/phase-1-tuning.md` "Resource yield tiers"). The build: the yield table in
