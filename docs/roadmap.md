@@ -1392,6 +1392,18 @@ boundary so the later hex-map swap doesn't touch it.
     boundary after fuel arrives and holds for cadence again; a stop torn down during a hold ends the lane at
     the boundary, flagged, nothing burned; the integrity checks). Mutation-checked: with the hold disabled 10
     of these fail; with the reason flip reverted the flip test fails.
+    **(4) The operator CLI** (`tools/admin.js`, `sim/server.js` comment; tripwires `tools/admin.test.js`,
+    `server.test.js`). No new endpoint — `POST /admin/vehicle/dispatch-route` already passes the body's whole
+    `repeat` to the engine, cadence included. `dispatch-route --repeat` takes the cadence as a trailing
+    colon field, in the engine's own words: **`--repeat continuous:perCycle`**, **`--repeat nRun:3:perCycle`**
+    (or `:immediate`, the default) — so the flag reads as the one `repeat` object it sends, and the mode and
+    cadence stay one flag rather than two that could disagree. `parseRepeatFlag` refuses only what does not
+    parse (an unknown cadence word, a stray colon); legality stays the engine's — `once:perCycle` parses and
+    the engine refuses it with the ruled reason. `printLaneState` adds the cadence (repeating lanes; none
+    stored = immediate) and `lapsDone` ("2 of 3" on an nRun) beside the existing laps-left / wait / stop rows,
+    and the wait row now names either reason. Usage text documents the grammar. `tools/admin.test.js` 48 →
+    **49** (the cadence grammar, the arg → body mapping); `server.test.js`'s repeat test now launches
+    `perCycle` and refuses a cadence on `once` (no count change). Sim suite still **1,543**.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*

@@ -528,7 +528,18 @@ test('parseRepeatFlag: once | continuous | nRun:N -> the engine repeat; anything
   // A whole but illegal lap count still reaches the engine, which refuses it with the ruled reason.
   assert.deepEqual(A.parseRepeatFlag('nRun:0'), { mode: 'nRun', n: 0 });
   for (const bad of ['', 'nRun', 'nRun:', 'nRun:2.5', 'nRun:x', 'forever', 'Continuous', '3']) {
-    assert.throws(() => A.parseRepeatFlag(bad), /--repeat must be once \| continuous \| nRun:N/, `refuses ${JSON.stringify(bad)}`);
+    assert.throws(() => A.parseRepeatFlag(bad), /--repeat must be once \| continuous\[:CADENCE\] \| nRun:N\[:CADENCE\]/, `refuses ${JSON.stringify(bad)}`);
+  }
+});
+
+test('parseRepeatFlag: a trailing :immediate | :perCycle is the cadence (slice 3a.1); a bad cadence throws', () => {
+  assert.deepEqual(A.parseRepeatFlag('continuous:perCycle'), { mode: 'continuous', cadence: 'perCycle' });
+  assert.deepEqual(A.parseRepeatFlag('continuous:immediate'), { mode: 'continuous', cadence: 'immediate' });
+  assert.deepEqual(A.parseRepeatFlag('nRun:3:perCycle'), { mode: 'nRun', n: 3, cadence: 'perCycle' });
+  // A cadence on once still reaches the engine, which refuses it with the ruled reason (no next lap to pace).
+  assert.deepEqual(A.parseRepeatFlag('once:perCycle'), { mode: 'once', cadence: 'perCycle' });
+  for (const bad of ['continuous:', 'continuous:daily', 'continuous:PerCycle', 'nRun:perCycle', 'nRun:3:', 'nRun:3:perCycle:x', 'perCycle']) {
+    assert.throws(() => A.parseRepeatFlag(bad), /CADENCE immediate \| perCycle/, `refuses ${JSON.stringify(bad)}`);
   }
 });
 
@@ -536,6 +547,10 @@ test('dispatchRouteBody: --repeat rides the body only when given; parseArgs know
   const flags = A.parseArgs(['dispatch-route', '--guild', 'g1', '--id', 'v', '--route', 'sys:A; 3,4', '--repeat', 'nRun:3']).flags;
   assert.deepEqual(A.dispatchRouteBody(flags).repeat, { mode: 'nRun', n: 3 });
   assert.equal('repeat' in A.dispatchRouteBody({ guild: 'g1', id: 'v', route: 'sys:A' }), false, 'a one-shot request carries no repeat');
+  const paced = A.parseArgs(['dispatch-route', '--guild', 'g1', '--id', 'v', '--route', 'sys:A; 3,4', '--repeat', 'continuous:perCycle']).flags;
+  assert.deepEqual(A.dispatchRouteBody(paced), {
+    guildId: 'g1', vehicleId: 'v', waypoints: A.parseRouteFlag('sys:A; 3,4'), repeat: { mode: 'continuous', cadence: 'perCycle' },
+  }, 'the cadence rides inside the one `repeat` the engine reads');
 });
 
 test('stopRouteAfterRunBody: the exact body; a missing flag throws', () => {
