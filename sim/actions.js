@@ -210,6 +210,8 @@ function advanceRoute(state, guild, craft, thisTick) {
 // to "stop after this run" (`stopAfterRun`) is over now whatever its mode, and an N-run is over when this
 // was its last lap — each way the craft ENDS idle at WN, route cleared: an ordinary completion, WN being
 // a real waypoint (§11.4), and nothing flagged. Otherwise the lane repeats, and `startLap` runs steps 2–4.
+// A lane that goes on does NOT always start its next lap at once: a `perCycle` lane (slice 3a.1) HOLDS here
+// as a `waiting` lane (reason 'cadence'), and the fuel-cycle boundary starts its next lap (see below).
 // A repeating lane COUNTS the lap here, at the end of each lap (slice 3a.1): `lapsDone` goes UP by one —
 // so after lap 1 it reads 1, and the client can show "lap k" as lapsDone + 1 — and an N-run's
 // `lapsRemaining` goes DOWN by one, so it is always "laps still to fly, this one included" while the lane
@@ -228,7 +230,15 @@ function finishLap(state, guild, craft, thisTick) {
     delete craft.route; // a lane stopped after this run, or the N-th lap just finished — idle at WN
     return;
   }
-  startLap(state, guild, craft, thisTick);
+  if (route.cadence === 'perCycle') {
+    // A PER-CYCLE lane paces itself to one lap per fuel cycle (§11.10): rather than start the next lap
+    // back to back, it holds at WN as a `waiting` lane. The fuel-cycle boundary already re-attempts
+    // every waiting lane through `startLap` (resumeWaitingLanes), so its next lap starts there — the SAME
+    // path a fuel-short lane resumes on, with no timer of its own. Nothing is burned while it holds.
+    route.waiting = { reason: 'cadence', sinceTick: thisTick };
+    return;
+  }
+  startLap(state, guild, craft, thisTick); // an immediate lane: the next lap starts now
 }
 
 // startLap(state, guild, craft, thisTick) — begin the NEXT lap of a repeating lane, from WN where the
@@ -242,6 +252,7 @@ function finishLap(state, guild, craft, thisTick) {
 //      zero-length and is SKIPPED (no leg, no fuel). If the hoard can't cover it → the lane WAITS at WN:
 //      nothing burns, the route stays, and the craft sits idle (§11.6) — `resumeWaitingLanes` calls this
 //      same function again at each fuel-cycle boundary, so a waiting lane re-runs steps 2–4 in full.
+//      (A per-cycle lane held for its cadence arrives here the same way, from that boundary re-attempt.)
 //   4. Otherwise BURN the whole lap up front (§11.3) — exactly the launch's burn: units from the hoard,
 //      `totalConsumed` rising to match (invariant 1) — reset the cursor to W1 and fly there
 //      (`flyToFirstStop`, the launch's own reposition).
@@ -260,11 +271,13 @@ function startLap(state, guild, craft, thisTick) {
     return;
   }
   if (guild.fuelHoard + (guild.deuteriumFuel || 0) < lap.totalUnits) {
-    // Fuel short — the lane WAITS at WN, burning nothing (§11.6). `sinceTick` records when it began.
-    if (!route.waiting) route.waiting = { reason: 'fuel', sinceTick: thisTick };
+    // Fuel short — the lane WAITS at WN, burning nothing (§11.6). `sinceTick` records when the FUEL wait
+    // began: a lane already waiting for fuel keeps its first `sinceTick`, while a per-cycle lane that was
+    // holding for its cadence — and now, at the boundary, cannot pay — becomes a fuel wait from this tick.
+    if (!route.waiting || route.waiting.reason !== 'fuel') route.waiting = { reason: 'fuel', sinceTick: thisTick };
     return;
   }
-  delete route.waiting;
+  delete route.waiting; // the lap runs — whichever wait it was (fuel or cadence), it is over
   burnFuel(guild, lap.totalUnits);
   state.audit.totalConsumed += lap.totalUnits;
   route.cursor = 0;
@@ -273,12 +286,14 @@ function startLap(state, guild, craft, thisTick) {
 
 // resumeWaitingLanes(state, thisTick) — the FUEL-CYCLE BOUNDARY re-attempt (transport-model.md §11.6 /
 // §11.10). Called by sim/tick.js's stepBaselineAllocation at each cycle boundary, AFTER issuance has
-// grown the hoards. Every lane waiting for fuel gets one fresh try at its next lap, through the SAME
-// `startLap` its lap boundary ran — so the target re-check comes first (a stop that vanished while it
-// waited ENDS the lane, flagged), then the fuel: affordable now → burn and go; still short → it keeps
-// waiting, `sinceTick` unchanged. Guilds in array order, and each guild's waiting craft in FIXED id order,
-// so when a hoard can cover only some of them the lower ids go first, the same way every run (§15.5
-// invariant 9). Bounded: one try per waiting craft per boundary, and no per-tick work between boundaries.
+// grown the hoards. Every WAITING lane — short of fuel, or a per-cycle lane holding for its cadence (slice
+// 3a.1) — gets one fresh try at its next lap, through the SAME `startLap` its lap boundary ran, so the
+// reason it waited does not change what happens now: the target re-check comes first (a stop that vanished
+// while it waited ENDS the lane, flagged), then the fuel: affordable now → burn and go; short → it waits
+// for fuel (a fuel wait keeps its `sinceTick`; a cadence hold turns into a fuel wait from this tick).
+// Guilds in array order, and each guild's waiting craft in FIXED id order, so when a hoard can cover only
+// some of them the lower ids go first, the same way every run (§15.5 invariant 9). Bounded: one try per
+// waiting craft per boundary, and no per-tick work between boundaries.
 function resumeWaitingLanes(state, thisTick) {
   for (const guild of state.guilds || []) {
     const waiting = (guild.vehicles || []).filter((v) => v.route && v.route.waiting);
@@ -4146,8 +4161,9 @@ function applyAction(state, action) {
   if (action.type === 'stopRouteAfterRun') {
     // transport-model.md §11.10: the lane finishes the lap it is on, lands idle at WN and ends. Mark it;
     // `finishLap` ends it at the next WN boundary (a clean stop — the craft is never snapped anywhere).
-    // A lane WAITING for fuel is already AT that boundary — its run is finished and it sits idle at WN —
-    // so it ends right now: the route goes and the craft is an ordinary idle craft at WN.
+    // A WAITING lane (for fuel, or a per-cycle lane holding for its cadence) is already AT that boundary —
+    // its run is finished and it sits idle at WN — so it ends right now: the route goes and the craft is
+    // an ordinary idle craft at WN.
     // Moves no goods, fuel or credits, so nothing to conserve and no galacticSupply refresh.
     const guild = findGuild(next, action.guildId);
     const craft = guild.vehicles.find((v) => v.id === action.vehicleId);

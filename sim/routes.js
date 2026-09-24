@@ -40,10 +40,13 @@ const CADENCES = Object.freeze(['immediate', 'perCycle']);
 const LANE_END_REASONS = Object.freeze(['target-gone']);
 
 // WAIT_REASONS — why a repeating lane is WAITING at its last waypoint instead of starting its next lap,
-// recorded on the route as `waiting = { reason, sinceTick }` (transport-model.md §11.6 / §11.10). One
-// reason today: 'fuel' — the hoard cannot cover the next lap up front, so the lane waits (burning
-// nothing) and re-attempts at each fuel-cycle boundary.
-const WAIT_REASONS = Object.freeze(['fuel']);
+// recorded on the route as `waiting = { reason, sinceTick }` (transport-model.md §11.6 / §11.10). Two
+// reasons, and the fuel-cycle boundary re-attempts BOTH the same way (a fresh try at the next lap):
+//   'fuel'    — the hoard cannot cover the next lap up front, so the lane waits (burning nothing) and
+//               re-attempts at each fuel-cycle boundary until it can pay;
+//   'cadence' — a `perCycle` lane between laps (slice 3a.1): it holds until the next boundary on purpose,
+//               so it runs at most one lap per fuel cycle.
+const WAIT_REASONS = Object.freeze(['fuel', 'cadence']);
 
 // copyRouteWaypoint(wp) -> a FRESH copy of a { anchor, action? } route waypoint (transport-model.md
 // §11.1) — the anchor object copied, and any action's manifest lines copied in canonical shape

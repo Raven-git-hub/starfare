@@ -1359,6 +1359,39 @@ boundary so the later hex-map swap doesn't touch it.
     journalled at launch; an n=3 lane reads 0/3 → 1/2 → 2/1 in state and snapshot, each count moving on the
     tick that lap's unload lands, then ends idle at WN after three laps; a continuous lane's count climbs one
     per lap with no `N`; the integrity checks).
+    **(3) The per-cycle hold + the wait-reason split** (`sim/routes.js`, `sim/actions.js`, `sim/invariants.js`,
+    `sim/snapshot.js`, `sim/state.js`, `sim/tick.js` comment only). `finishLap`, after counting the lap and
+    running the unchanged end-checks, HOLDS a `perCycle` lane instead of calling `startLap`: it sets
+    **`route.waiting = { reason: 'cadence', sinceTick }`** and returns, the craft idle at WN, nothing burned.
+    `WAIT_REASONS` is now `['fuel', 'cadence']`. The EXISTING cycle-boundary re-attempt (`resumeWaitingLanes`,
+    step 6 (e)) already runs every waiting lane through `startLap` in fixed id order — confirmed, no change —
+    so a held lane starts its next lap there: target re-check, then fuel, then burn + reposition, the SAME
+    path a fuel-short lane resumes on. No new timer, no new number: the anchored cycle boundary (invariant 9).
+    An `immediate` lane calls `startLap` at once, exactly as in 3a; lap 1 of either cadence launches from the
+    dispatch apply, so a per-cycle lane still flies its FIRST lap immediately — the hold is only between laps.
+    **The reason split:** `startLap`'s fuel-short branch now re-dates the wait when the reason changes — a
+    lane already waiting for FUEL keeps its first `sinceTick` (3a, unchanged), while a cadence hold that
+    cannot pay at its boundary becomes `{ reason: 'fuel', sinceTick: <that boundary> }` (the reason change is
+    a mutation, and `sinceTick` records its tick). A lap that runs clears either reason (`delete
+    route.waiting`), and after it completes a per-cycle lane holds for its cadence again — the two reasons
+    never wedge. "Stop after this run" on a lane holding for its cadence ends it on the spot, exactly as on a
+    fuel wait (it is already at WN with its run finished). **The boundary-tick edge (built, flagged in the
+    code):** a per-cycle lap that ENDS on a boundary tick holds in the arrival / dock step (step 5) and is
+    re-attempted by step 6 (e) of the same tick, so it goes straight on — that boundary is the one it held
+    for; still one lap start per boundary, since every lap takes at least a tick. A fuel-short lane already
+    behaved this way in 3a. `routeViolation`: a `cadence` wait rides a `perCycle` lane only, and ANY wait
+    needs `lapsDone ≥ 1` (a lane only waits at a lap boundary; lap 1 launches or is refused, never waits).
+    The snapshot surfaces the reason as stored. Sim suite → **1,543 green** (`route-repeat-extensions.test.js`
+    +11: lap 1 flies at once and the hold appears only after it, burning nothing, until exactly the next
+    boundary; one lap per cycle, each later lap starting ON a boundary one cycle after the last, while the
+    immediate lane runs back to back (the 3a loop); a lap longer than the cycle still starts only on the first
+    boundary after it ended; the boundary-tick edge; an n=2 per-cycle run ends idle at WN on its last lap's
+    tick, with no trailing hold; stop-after-run on a hold; WN == W1 at an Outpost re-queued from the boundary
+    step, invariants every tick; replay and a mid-hold restart byte-identical; a cadence hold short at its
+    boundary flips to a fuel wait dated from that boundary, stays `fuel` through the next, runs on the first
+    boundary after fuel arrives and holds for cadence again; a stop torn down during a hold ends the lane at
+    the boundary, flagged, nothing burned; the integrity checks). Mutation-checked: with the hold disabled 10
+    of these fail; with the reason flip reverted the flip test fails.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*

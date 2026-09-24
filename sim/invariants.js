@@ -1289,10 +1289,13 @@ function tripViolation(trip) {
 // mode must be `continuous` or `nRun`, and a repeating lane has >= 2 waypoints (a one-stop cycle has no
 // leg and would lap in place inside one tick — the dispatch refuses it). `lapsRemaining` belongs to
 // `nRun` alone and is a whole number >= 1 on a LIVE route: the lap that takes it to 0 ends the lane on
-// the spot, so a 0 left standing would mean a lane that should have ended and did not. A lane WAITING
-// for fuel carries `waiting = { reason, sinceTick }` (a known WAIT_REASONS entry and a whole tick); only a
+// the spot, so a 0 left standing would mean a lane that should have ended and did not. A WAITING lane
+// carries `waiting = { reason, sinceTick }` (a known WAIT_REASONS entry and a whole tick); only a
 // repeating lane waits, and it waits AT its last waypoint (cursor on WN) — the lap boundary is the only
-// place a lap is fuelled. (That the waiting craft is idle, with no trip, is checked with the craft below.)
+// place a lap is fuelled — so it has always completed at least one lap (lap 1 is refused at launch if
+// short, never left waiting). A `cadence` wait (slice 3a.1) belongs to a `perCycle` lane only: an
+// immediate lane never holds between laps. (That the waiting craft is idle, with no trip, is checked with
+// the craft below.)
 // A repeating lane's `cadence` (slice 3a.1) is likewise omit-when-default: `immediate` is never stored, so
 // a PRESENT cadence must be `perCycle`, and only on a repeating lane (a one-shot has no next lap to pace).
 // Its lap COUNTERS (slice 3a.1): `lapsDone`, the completed laps, rides EVERY repeating lane and no
@@ -1343,7 +1346,8 @@ function routeViolation(route) {
     return { reason: 'route.N belongs to an nRun route only', mode: route.mode, N: route.N };
   }
   // "Stop after this run" (§11.10): `stopAfterRun: true` only, only on a repeating lane, and never on a
-  // waiting one — a waiting lane is already at its boundary, so a stop ends it on the spot instead.
+  // waiting one (fuel or cadence) — a waiting lane is already at its boundary, so a stop ends it on the
+  // spot instead.
   if (route.stopAfterRun !== undefined) {
     if (route.stopAfterRun !== true || route.mode === undefined || route.waiting !== undefined) {
       return { reason: 'route.stopAfterRun is `true` on a running (not waiting) repeating lane only', stopAfterRun: route.stopAfterRun, mode: route.mode, waiting: route.waiting };
@@ -1359,6 +1363,12 @@ function routeViolation(route) {
     }
     if (route.cursor !== route.waypoints.length - 1) {
       return { reason: 'a waiting lane waits at its LAST waypoint (the lap boundary)', cursor: route.cursor, waypoints: route.waypoints.length };
+    }
+    if (!(route.lapsDone >= 1)) {
+      return { reason: 'a lane only waits after completing a lap (lap 1 launches or is refused, never waits)', lapsDone: route.lapsDone, waiting: w };
+    }
+    if (w.reason === 'cadence' && route.cadence !== 'perCycle') {
+      return { reason: 'only a perCycle lane holds for its cadence — an immediate lane starts its next lap at once', cadence: route.cadence, waiting: w };
     }
   }
   return waypointListViolation(route.waypoints);
@@ -1497,8 +1507,9 @@ function checkVehicleIntegrity(state) {
         if (rv) {
           out.push({ rule: 'vehicle-route-valid', where: `guild:${g.id}.vehicle:${v.id}.route`, detail: rv });
         }
-        // A lane WAITING for fuel (slice 3a, §11.6) leaves its craft an idle craft parked at WN — never
-        // flying, never in a dock slot — and it began waiting no later than now (§15.2).
+        // A WAITING lane — for fuel (slice 3a, §11.6) or a per-cycle lane holding for its cadence (slice
+        // 3a.1) — leaves its craft an idle craft parked at WN — never flying, never in a dock slot — and
+        // it began waiting no later than now (§15.2).
         const w = v.route && v.route.waiting;
         if (w && (v.status !== 'idle' || v.trip !== undefined || !(w.sinceTick <= state.tick))) {
           out.push({ rule: 'vehicle-waiting-lane-idle', where: `guild:${g.id}.vehicle:${v.id}.route.waiting`, detail: { status: v.status, hasTrip: v.trip !== undefined, sinceTick: w.sinceTick, tick: state.tick } });

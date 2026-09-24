@@ -1479,7 +1479,10 @@ function stepBaselineAllocation(state, _actions) {
   // (e) WAITING LANES RE-ATTEMPT (transport-model.md §11.6 / §11.10, automation slice 3a). A repeating
   // lane that could not afford its next lap is waiting at its last stop; the hoard grows HERE, at the
   // cycle boundary, so this is where it gets its next try (resumeWaitingLanes, sim/actions.js — fixed id
-  // order, one try each). It runs after issuance (b), because issuance is what grew the hoards, and after
+  // order, one try each). A per-cycle lane holding between laps (slice 3a.1) is a waiting lane too, and
+  // this is the boundary it holds for: it starts its next lap here, down the same path. A per-cycle lap
+  // that ENDS on a boundary tick holds in the arrival / dock step earlier in this same tick, so it is
+  // re-attempted here at once — still one lap start per boundary, since every lap takes at least a tick. It runs after issuance (b), because issuance is what grew the hoards, and after
   // the fuel-burn-history pass inside it, so a lap burned now counts toward the cycle just opening. Its
   // place after the controller (d) changes nothing the controller reads — a lap burns from a guild's own
   // hoard, never the Syndicate pool or this cycle's demand — and it leaves the ruled (a)–(d) order intact.
