@@ -24,6 +24,15 @@ const { copyManifestLine } = require('./manifest.js');
 // byte-identical to the pre-repeat one; only `continuous` / `nRun` ever appear there.
 const REPEAT_MODES = Object.freeze(['once', 'continuous', 'nRun']);
 
+// CADENCES — how SOON a repeating lane starts its next lap (transport-model.md §11.10, a second launch
+// parameter beside the mode). `immediate` starts the next lap the moment the last one finishes (back to
+// back); `perCycle` holds at the last waypoint between laps and starts the next lap at the next fuel-cycle
+// boundary, so the lane runs at most one lap per fuel cycle. Like the mode, it is chosen at launch and never
+// stored on a saved route. On a craft's `route`, `immediate` is the DEFAULT and is never written
+// (omit-when-default), so a lane launched without a cadence is byte-identical to a slice-3a lane; only
+// `perCycle` ever appears there. A `once` run has no cadence at all — it has no next lap to pace.
+const CADENCES = Object.freeze(['immediate', 'perCycle']);
+
 // LANE_END_REASONS — why a lane ENDED on its own (transport-model.md §11.6), recorded on the craft as
 // `laneEnded = { reason, tick }` so the player can see it. One reason today: 'target-gone' — a stop's
 // store no longer exists (an Outpost torn down). A lane that simply finishes, or that the player stops,
@@ -76,6 +85,7 @@ function nextSavedRouteSerial(guild) {
 
 module.exports = {
   REPEAT_MODES,
+  CADENCES,
   LANE_END_REASONS,
   WAIT_REASONS,
   copyRouteWaypoint,

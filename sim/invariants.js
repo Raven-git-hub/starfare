@@ -93,7 +93,7 @@ const {
 } = require('./seed.js');
 const { outpostNumberOf } = require('./outposts.js');
 const {
-  REPEAT_MODES, LANE_END_REASONS, WAIT_REASONS, savedRouteId, savedRouteNumberOf,
+  REPEAT_MODES, CADENCES, LANE_END_REASONS, WAIT_REASONS, savedRouteId, savedRouteNumberOf,
 } = require('./routes.js');
 const { getRecipe } = require('./recipes.js');
 
@@ -1293,6 +1293,8 @@ function tripViolation(trip) {
 // for fuel carries `waiting = { reason, sinceTick }` (a known WAIT_REASONS entry and a whole tick); only a
 // repeating lane waits, and it waits AT its last waypoint (cursor on WN) — the lap boundary is the only
 // place a lap is fuelled. (That the waiting craft is idle, with no trip, is checked with the craft below.)
+// A repeating lane's `cadence` (slice 3a.1) is likewise omit-when-default: `immediate` is never stored, so
+// a PRESENT cadence must be `perCycle`, and only on a repeating lane (a one-shot has no next lap to pace).
 // The one home of the route shape, used by checkVehicleIntegrity below.
 function routeViolation(route) {
   if (!route || typeof route !== 'object' || !Array.isArray(route.waypoints) || route.waypoints.length === 0) {
@@ -1307,6 +1309,11 @@ function routeViolation(route) {
     }
     if (route.waypoints.length < 2) {
       return { reason: 'a repeating route must carry at least two waypoints (a one-stop cycle has no leg)', mode: route.mode, waypoints: route.waypoints.length };
+    }
+  }
+  if (route.cadence !== undefined) {
+    if (route.cadence === 'immediate' || !CADENCES.includes(route.cadence) || route.mode === undefined) {
+      return { reason: 'route.cadence, when present, must be "perCycle" on a repeating lane (immediate is never stored; a one-shot has no cadence)', cadence: route.cadence, mode: route.mode };
     }
   }
   if (route.mode === 'nRun') {

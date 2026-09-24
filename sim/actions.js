@@ -22,7 +22,7 @@ const {
 const { outpostId, nextOutpostSerial, outpostDockTurnaround } = require('./outposts.js');
 const { resolveManifest, usedSpace, manifestAmountError, copyManifestLine } = require('./manifest.js');
 const {
-  REPEAT_MODES, copyRouteWaypoint, savedRouteId, nextSavedRouteSerial,
+  REPEAT_MODES, CADENCES, copyRouteWaypoint, savedRouteId, nextSavedRouteSerial,
 } = require('./routes.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { checkQuote, quotedPrice } = require('./price-ring.js');
@@ -973,8 +973,10 @@ function createTransferCargoAction({ guildId, vehicleId: vId, manifest }) {
 //
 // `repeat` (optional, slice 3a — transport-model.md §11.10) is the LAUNCH MODE: `{ mode: 'once' }` (the
 // default — run the waypoints once and land idle at the last), `{ mode: 'continuous' }` (keep cycling
-// until stopped or the lane ends) or `{ mode: 'nRun', n }` (exactly n full cycles). It rides the action
-// only when given, so a one-shot dispatch journals byte-identically to the pre-repeat one.
+// until stopped or the lane ends) or `{ mode: 'nRun', n }` (exactly n full cycles). A repeating mode may
+// also carry a `cadence` (slice 3a.1): 'immediate' (the default — the next lap starts the moment the
+// last one finishes) or 'perCycle' (at most one lap per fuel cycle). It rides the action only when
+// given, so a one-shot dispatch journals byte-identically to the pre-repeat one.
 function createDispatchRouteWithActionsAction({
   guildId, vehicleId: vId, waypoints, repeat,
 }) {
@@ -1291,10 +1293,12 @@ function routeWaypointError(wp, i) {
 // one-shot). Otherwise it is `{ mode }` with `mode` one of the three REPEAT_MODES, and `n` — the number
 // of full cycles — belongs to `nRun` alone: a whole number >= 1 there, and not present on the other two
 // (a stray `n` on a continuous lane is a mistake worth refusing, not a value to quietly ignore).
+// The optional `cadence` (slice 3a.1) is one of the CADENCES and belongs to a REPEATING mode only: a
+// `once` run has no next lap to pace, so a cadence on it is refused for the same reason a stray `n` is.
 function repeatError(repeat) {
   if (repeat === undefined) return null;
   if (!repeat || typeof repeat !== 'object' || Array.isArray(repeat)) {
-    return `repeat must be { mode: "once"|"continuous"|"nRun", n? }, got ${JSON.stringify(repeat)}`;
+    return `repeat must be { mode: "once"|"continuous"|"nRun", n?, cadence? }, got ${JSON.stringify(repeat)}`;
   }
   if (!REPEAT_MODES.includes(repeat.mode)) {
     return `repeat.mode must be one of ${REPEAT_MODES.map((m) => JSON.stringify(m)).join(' | ')}, got ${JSON.stringify(repeat.mode)}`;
@@ -1306,6 +1310,14 @@ function repeatError(repeat) {
   } else if (repeat.n !== undefined) {
     return `repeat.n is only for mode "nRun" — a ${JSON.stringify(repeat.mode)} lane has no lap count, got n ${JSON.stringify(repeat.n)}`;
   }
+  if (repeat.cadence !== undefined) {
+    if (repeat.mode === 'once') {
+      return `repeat.cadence is only for a repeating lane — a "once" run has no next lap to pace, got cadence ${JSON.stringify(repeat.cadence)}`;
+    }
+    if (!CADENCES.includes(repeat.cadence)) {
+      return `repeat.cadence must be one of ${CADENCES.map((c) => JSON.stringify(c)).join(' | ')}, got ${JSON.stringify(repeat.cadence)}`;
+    }
+  }
   return null;
 }
 
@@ -1314,11 +1326,14 @@ function repeatError(repeat) {
 //                                               built one (omit-when-default);
 //   continuous       → { mode: 'continuous' };
 //   nRun             → { mode: 'nRun', lapsRemaining: n } — counts DOWN one per finished lap.
+// A repeating lane launched `perCycle` also carries `cadence: 'perCycle'`; `immediate` is the default and
+// is never written (omit-when-default), so a lane launched without a cadence journals exactly as in 3a.
 // `repeat` is already validated (repeatError).
 function repeatStateFor(repeat) {
   if (repeat === undefined || repeat.mode === 'once') return {};
-  if (repeat.mode === 'nRun') return { mode: 'nRun', lapsRemaining: repeat.n };
-  return { mode: repeat.mode };
+  const cadence = repeat.cadence === 'perCycle' ? { cadence: 'perCycle' } : {};
+  if (repeat.mode === 'nRun') return { mode: 'nRun', lapsRemaining: repeat.n, ...cadence };
+  return { mode: repeat.mode, ...cadence };
 }
 
 // isDockedAt(outpost, vehicleId) -> true when the craft already holds a manifest at this Outpost —
@@ -2769,7 +2784,8 @@ function validateAction(state, action) {
         return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} (class ${JSON.stringify(craft.class)}) carries no cargo (capacity 0) and cannot run a route with an action (§11)` };
       }
     }
-    // The LAUNCH MODE (§11.10): once (the default) / continuous / nRun with n >= 1.
+    // The LAUNCH MODE (§11.10): once (the default) / continuous / nRun with n >= 1, and a repeating
+    // mode's optional cadence (immediate / perCycle).
     const rError = repeatError(action.repeat);
     if (rError) return { valid: false, reason: rError };
     // A REPEATING lane needs at least two waypoints. Its lap is one cycle W1 → … → WN, and with one stop
@@ -4051,8 +4067,9 @@ function applyAction(state, action) {
     // and a cursor at 0 (the waypoint the craft is heading to, or — after the skip — standing at). The
     // `route` field is omit-when-absent on every OTHER craft, so a route-less galaxy is byte-identical
     // to pre-slice (§11.8). It is journalled state, so a mid-run restart replays byte-identically.
-    // A repeating lane also journals its launch mode (and an nRun its laps still to run) — §11.10; a
-    // one-shot adds nothing, so it is byte-identical to the pre-repeat route (repeatStateFor).
+    // A repeating lane also journals its launch mode (and an nRun its laps still to run, a perCycle lane
+    // its cadence) — §11.10; a one-shot adds nothing, so it is byte-identical to the pre-repeat route
+    // (repeatStateFor).
     craft.route = {
       waypoints: action.waypoints.map(copyRouteWaypoint), cursor: 0, ...repeatStateFor(action.repeat),
     };

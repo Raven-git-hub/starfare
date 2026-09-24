@@ -754,8 +754,9 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
 // route-less, and only `dispatchRouteWithActions` (sim/actions.js) journals one onto it. Listed here so
 // the entity's whole shape reads in one place. OMITTED unless the craft is running a chained route:
 //   { waypoints: [{ anchor, action? }], cursor,
-//     mode?, lapsRemaining?,    — a REPEATING lane only (slice 3a): mode 'continuous' | 'nRun', and an
-//     waiting?, stopAfterRun? }   nRun's laps still to run; `waiting = { reason: 'fuel', sinceTick }` while
+//     mode?, cadence?,          — a REPEATING lane only (slice 3a): mode 'continuous' | 'nRun'; cadence
+//     lapsRemaining?,             'perCycle' (slice 3a.1 — absent means the default 'immediate'); an nRun's
+//     waiting?, stopAfterRun? }   laps still to run; `waiting = { reason: 'fuel', sinceTick }` while
 //                                 it waits at its last stop for fuel for its next lap; `stopAfterRun: true`
 //                                 once the player asked it to end after the lap it is on. A one-shot
 //                                 (`once`) route carries none of them (omit-when-default), so it is

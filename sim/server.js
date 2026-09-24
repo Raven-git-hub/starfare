@@ -1012,8 +1012,9 @@ async function handleRequest(req, res) {
   // arrival (transport-model.md §11, automation slice 1a). Gated and routed exactly like /dispatch: the
   // SAME validate → journal → apply path (applyOneAction), so the routed craft + its journalled route/
   // cursor survive restart and replay deterministically (§11 — a mid-run restart replays byte-identically).
-  // `repeat` (slice 3a, §11.10) is the launch mode — { mode: 'once' | 'continuous' | 'nRun', n? } —
-  // passed through only when the body carries it, so a one-shot request journals exactly as before.
+  // `repeat` (slice 3a, §11.10) is the launch mode — { mode: 'once' | 'continuous' | 'nRun', n?, cadence? }
+  // (cadence 'immediate' | 'perCycle', slice 3a.1) — passed through only when the body carries it, so a
+  // one-shot request journals exactly as before.
   if (method === 'POST' && path === '/admin/vehicle/dispatch-route') {
     if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
     let body;

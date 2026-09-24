@@ -1328,6 +1328,20 @@ boundary so the later hex-map swap doesn't touch it.
     added. `quoteDispatch` quotes lap 1 (what the launch burns); a per-lap (loop-back + cycle) quote, if 3c wants
     one, is engine work (§18). "A system lost" (§11.6) cannot happen yet — no path removes a claim; when
     territory lands, `routeStoreAt` is the one place it goes.
+  - **slice 3a.1 — engine (repetition extensions: cadence, `N` + `lapsDone`, the wait-reason split).** 🟡 *IN
+    PROGRESS (24-09-26 — `sim/routes.js`, `sim/actions.js`, `sim/invariants.js`, `sim/snapshot.js`,
+    `sim/state.js`, `sim/server.js`; tripwires `sim/tests/route-repeat-extensions.test.js` (new); contract
+    transport-model.md §11.10 as amended 24-09-26 — engine + operator CLI, NO client).* Rounds out 3a's repeat
+    model with the three extensions ruled into §11.10 on 24-09-26, before 3b (cancel) and 3c (client).
+    **(1) The cadence launch option.** `dispatchRouteWithActions`'s `repeat` takes an optional **`cadence`** —
+    `'immediate'` (the default) or `'perCycle'` (`CADENCES`, `sim/routes.js`, beside `REPEAT_MODES`). Validate
+    (`repeatError`): one of the two, and only on a REPEATING mode — a cadence on `once` is REFUSED (even
+    `immediate`: a one-shot has no next lap to pace; the same call 3a made for a stray `n`). Apply journals it
+    onto `craft.route` **omit-when-immediate** (`repeatStateFor`), so a lane launched without a cadence — or
+    with an explicit `immediate` — is byte-identical to a 3a lane. `routeViolation`: a PRESENT cadence must be
+    `perCycle` (a stored `immediate` is non-canonical, exactly as a stored `once` mode is) and rides a repeating
+    lane only. The snapshot route surfaces it (absent = immediate). The option is journalled here; piece (3)
+    makes a `perCycle` lane hold. Sim suite 1,524 → **1,528 green** (`route-repeat-extensions.test.js` +4).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
