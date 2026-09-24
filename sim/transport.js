@@ -66,8 +66,10 @@ function hexDistance(a, b) {
 
 // roundHalfUp(n, d) -> the whole number nearest to the fraction n / d (d > 0). An exact half rounds UP,
 // towards +infinity (so 2.5 → 3 and −2.5 → −2), the same rule Math.round uses. Written as
-// floor((2n + d) / 2d), i.e. floor(n/d + 1/2), so it works on the two integers and never needs n / d as
-// a decimal: the numbers here are small enough (hex coords × leg ticks) for that division to be exact.
+// floor((2n + d) / 2d), i.e. floor(n/d + 1/2). JavaScript has no whole-number division, so this does
+// divide — but the floor of it is always the exact answer here: the true quotient is either a whole
+// number (which the division hits exactly) or at least 1/(2d) away from one, and for numbers this small
+// (hex coords × leg ticks, far below 2^53) the division's own rounding error is far smaller than that.
 function roundHalfUp(n, d) {
   return Math.floor((2 * n + d) / (2 * d));
 }
