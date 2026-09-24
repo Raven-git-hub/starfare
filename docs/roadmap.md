@@ -1328,6 +1328,13 @@ boundary so the later hex-map swap doesn't touch it.
     added. `quoteDispatch` quotes lap 1 (what the launch burns); a per-lap (loop-back + cycle) quote, if 3c wants
     one, is engine work (§18). "A system lost" (§11.6) cannot happen yet — no path removes a claim; when
     territory lands, `routeStoreAt` is the one place it goes.
+- **Tuning — resource yield tiers & the homeworld production floor.** ⬜ *Designed 24-09-26; build pending.*
+  Per-resource mine yields by rarity tier (design.md §2 "Resource Yield Tiers & the Homeworld Production
+  Floor"; numbers in `docs/phase-1-tuning.md` "Resource yield tiers"). The build: the yield table in
+  `sim/baseline.js`; the engine stamps a new venture's `productionRate` from its baseline when the establish
+  call names none, and the client stops sending its flat `ESTABLISH_RATE`; baselines served to the client;
+  a homeworld-floor tripwire test. Needs a **fresh galaxy** on deploy (no migration of stored rates).
+
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*

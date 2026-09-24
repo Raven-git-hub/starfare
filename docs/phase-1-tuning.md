@@ -148,12 +148,46 @@ exclusion above — it is a named stand-in so that question has one line to repl
 | **Slew cap** | **10% per tick** | Relative, so it scales with the good's own price level. Binding only on shocks: it lets a value double in ~7 ticks, so a single dump can't teleport the price but an honest trend isn't throttled. |
 | **Floor / ceiling** | **2 / 200** | 0.2× and 20× base — the *technical* stop only. The real circuit-breakers are the storyteller (Phase 6) and the destabiliser/counter bots (Slice 7); this band exists so nothing runs away before they exist. |
 | **Publish lag** | **2 ticks** | Straight from the settled design: it breaks the price↔action circular dependency, restores §8/#42's knowable posted price, and creates the front-running read (the stock is visible now, the price catches up later). |
-| **Droidless baseline output** | **5** units/tick per mine, **5** batches/tick per recipe | The capacity denominator needs a venture's *max possible* output, not its throttleable `productionRate`. 5 is the one extraction rate the repo has actually ruled (Titanium 5/tick, 01-08-26) and the client's uniform `ESTABLISH_RATE`. The table in `sim/baseline.js` is written out entry by entry so tuning is a one-file edit; **per-resource differentiation is designed but unruled** ("a gold mine might yield ~1", above) and is deliberately left on the checklist rather than guessed. |
+| **Droidless baseline output** | **Per resource** for mines (units/tick, see "Resource yield tiers" below — RULED 24-09-26); **5** batches/tick per recipe | The capacity denominator needs a venture's *max possible* output, not its throttleable `productionRate`. The mine table in `sim/baseline.js` is now **differentiated by yield tier** (design.md §2 "Resource Yield Tiers & the Homeworld Production Floor"); it was a uniform 5 until 24-09-26, echoing the one early ruled rate (Titanium 5/tick, 01-08-26). The per-**recipe** factory baseline stays the uniform first-cut 5 and is still open. |
 
 **Open, for the human — not invented here:** per-good base prices (a tier-aware base is the obvious next
-ruling); per-resource/per-recipe baseline outputs; whether the level curve should stay **linear** in the
+ruling); per-recipe baseline outputs (per-resource mine yields are RULED 24-09-26, "Resource yield tiers" below); whether the level curve should stay **linear** in the
 level or bend (concave would make the first units of a hoard matter most); and `docs/licence-and-price-system.md`
 Part 5's *normaliser confirm* — live production capacity (what was built) vs. a fixed per-good reference.
+
+### Resource yield tiers *(24-09-26 — design.md §2 "Resource Yield Tiers & the Homeworld Production Floor")*
+
+**RULED 24-09-26, `[FIRST-CUT]`.** The per-resource mine yield (`MINE_BASELINE`, units/tick at the droidless baseline). It is also the rate the engine stamps on a newly established mine (design.md §2). Node share is each raw's share of all resource nodes in the reference seed (seed 7331, 51,273 nodes).
+
+**How the numbers were derived, in two steps.**
+1. *Homeworld floor minimums.* The smallest yields at which the uncommitted 25% of the 12 guaranteed Terran mines could sustain the six homeworld-complete factories at 25% of their baseline: polymers, nitrogen and carbon products **15**; silica **10**; titanium **8**; lithium and copper **5**; everything else left at the old uniform **5**.
+2. *Tier multiplier on those.* Common **x20**, Uncommon **x10**, Rare **x2**, deuterium unchanged.
+
+At the result the floor holds at **full** factory baseline (the stronger form written into design.md), with lithium the binding input at 2.5x headroom.
+
+| Tier | Raw | Node share | Step-1 yield | Multiplier | **Yield (units/tick)** |
+|---|---|---|---|---|---|
+| Common | titanium | 16.4% | 8 | x20 | **160** |
+| Common | copper | 11.6% | 5 | x20 | **100** |
+| Common | lead | 11.5% | 5 | x20 | **100** |
+| Common | silica | 10.4% | 10 | x20 | **200** |
+| Common | nitrogen | 8.8% | 15 | x20 | **300** |
+| Common | helium | 7.6% | 5 | x20 | **100** |
+| Common | carbon_products | 3.6% | 15 | x20 | **300** |
+| Common | polymers | 3.6% | 15 | x20 | **300** |
+| Uncommon | ammonia | 4.2% | 5 | x10 | **50** |
+| Uncommon | xenon | 3.4% | 5 | x10 | **50** |
+| Uncommon | silver | 3.2% | 5 | x10 | **50** |
+| Uncommon | gold | 3.2% | 5 | x10 | **50** |
+| Uncommon | tungsten | 3.2% | 5 | x10 | **50** |
+| Uncommon | lithium | 1.0% | 5 | x10 | **50** |
+| Rare | neodymium | 1.2% | 5 | x2 | **10** |
+| Rare | palladium | 0.9% | 5 | x2 | **10** |
+| (fuel) | deuterium | 5.9% | 5 | — | **5** (unchanged; governed by the fuel economy) |
+
+Every yield is a positive integer, and must stay one: a mine deposits its rate as whole units each tick with no fractional carry (`sim/production.js`).
+
+**Deliberately left for later balancing (not open decisions blocking the build):** raw surplus against factory capacity; `titanium_alloy`'s 3:1 titanium ratio (no longer binding on the floor); the per-recipe factory baselines; the fuel volume consequences, which are intended.
 
 ### Price history — the chart's depth *(29-08-26 — `sim/price-history.js`)*
 
@@ -338,8 +372,8 @@ corners, `k`, the baselines and `N` are all read from where they already live.
   PRE-engine sketch and are dead — the 0.6 sensitivity in particular was **tried and rejected against a
   live run** (it pinned every hoarded good at the ceiling inside forty ticks), which is exactly why it
   must not sit here reading as live. The toll/shipping figures in this section are untouched.
-- **Client establish-rate** `[FIRST-CUT]` *(client-wiring Slice 3, 24-08-26)*: the `productionRate` the **game client** sends with every `establishVenture` — a uniform **5**, for every resource and for refineries alike. Given by the human for the slice and explicitly *to change*. It does **not** change the engine's per-resource intent below: `establishVenture` takes whatever rate the caller sends and stores it, so this is the client's single stand-in until the per-resource extraction rates (and a refinery throughput rule) are wired through the establishment panel. Defined once as `ESTABLISH_RATE` in `client/game.html`; a venture seeded by the operator over `POST /action` still carries whatever rate that call names.
-- **Extraction rate** `[FIRST-CUT]`: a **base rate per resource** — a property of the resource mined, *not* a mine 'tier' (mines have no tiers). Titanium **5/tick** (ruled 01-08-26); a common Tier-1 raw yields decently, a scarcer one less (a gold mine might yield ~1). Mines can later be buffed (droids) — out of scope now; the model leaves room, since production reads the base rate and a buff would modify the *effective* rate at step time.
+- **Client establish-rate** `[FIRST-CUT]` *(client-wiring Slice 3, 24-08-26)*: the `productionRate` the **game client** sends with every `establishVenture` — a uniform **5**, for every resource and for refineries alike. Given by the human for the slice and explicitly *to change*. It does **not** change the engine's per-resource intent below: `establishVenture` takes whatever rate the caller sends and stores it, so this is the client's single stand-in until the per-resource extraction rates (and a refinery throughput rule) are wired through the establishment panel. Defined once as `ESTABLISH_RATE` in `client/game.html`; a venture seeded by the operator over `POST /action` still carries whatever rate that call names. *(**SUPERSEDED 24-09-26** by design.md §2 "Resource Yield Tiers & the Homeworld Production Floor": the client stops sending a rate for mines and factories, and the engine stamps `productionRate` from the venture's baseline. `ESTABLISH_RATE` survives only where no baseline exists (the deuterium refinery). Marked AS-BUILT when the build slice lands.)*
+- **Extraction rate** `[FIRST-CUT]`: a **base rate per resource** — a property of the resource mined, *not* a mine 'tier' (mines have no tiers). Titanium **5/tick** (ruled 01-08-26); a common Tier-1 raw yields decently, a scarcer one less (a gold mine might yield ~1). Mines can later be buffed (droids) — out of scope now; the model leaves room, since production reads the base rate and a buff would modify the *effective* rate at step time. *(**RULED 24-09-26** — the per-resource rates are the yield-tier table in "Resource yield tiers" below. The principle above stands: a property of the resource, galaxy-wide, never of the mine.)*
 
 ### Guild starts
 - **Five bot guilds** `[SHEET]`: exactly the spreadsheet roster (Refinery Combine, Vantar Trust, Orun Compact, Dracis Concern, Ilyra Holdings) — their credits, needs, capacities, hoard 0.
