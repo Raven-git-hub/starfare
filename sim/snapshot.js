@@ -703,6 +703,7 @@ function computeAttention(state) {
 //                               dockStatus?, location?, trip?,      //   trip: { legs[{from,to,isToll,
 //                                                                   //   departureTick,arrivalTick}], arrivalTick, fuelCost }
 //                               route?, laneEnded? } ],             //   route: { waypoints, cursor, mode?,
+//                                                                   //   cadence?, lapsDone?, N?,
 //                                                                   //   lapsRemaining?, waiting?,
 //                                                                   //   stopAfterRun? } (§11.10);
 //                                                                   //   laneEnded: { reason, tick } (§11.6)
@@ -787,16 +788,22 @@ function orderSnapshot(order) {
 
 // snapshotRoute(route) -> a routed craft's `route` as the snapshot shows it (transport-model.md §11.1 /
 // §11.10): FRESH copies throughout (no aliasing into engine state). The repeat state rides along exactly
-// as stored — `mode` ('continuous' | 'nRun'), an nRun's `lapsRemaining`, and `waiting` ({ reason: 'fuel',
-// sinceTick }) while the lane waits for fuel at its last stop, and `stopAfterRun: true` once the player
-// has asked it to stop after this run — and is ABSENT for a one-shot route
+// as stored — `mode` ('continuous' | 'nRun'), `cadence` ('perCycle' — absent means the default
+// 'immediate'), `lapsDone` (completed laps, every repeating lane — "lap k" is lapsDone + 1), an nRun's
+// launched target `N` ("of N") and `lapsRemaining`, and `waiting` ({ reason, sinceTick }) while the lane
+// waits at its last stop — reason 'fuel' (it can't pay for the next lap) or 'cadence' (a perCycle lane
+// holding for the next fuel-cycle boundary) — and `stopAfterRun: true` once the player has asked it to stop
+// after this run — and is ABSENT for a one-shot route
 // (omit-when-default, mirroring the state), so a one-shot row is byte-identical to the pre-repeat one.
-// Read by the slice-3c client to render a lane's mode, laps left and a fuel wait.
+// Read by the slice-3c client to render a lane's launch settings, its "lap k (of N)" and why it waits.
 function snapshotRoute(route) {
   return {
     waypoints: route.waypoints.map(copyRouteWaypoint),
     cursor: route.cursor,
     ...(route.mode !== undefined ? { mode: route.mode } : {}),
+    ...(route.cadence !== undefined ? { cadence: route.cadence } : {}),
+    ...(route.lapsDone !== undefined ? { lapsDone: route.lapsDone } : {}),
+    ...(route.N !== undefined ? { N: route.N } : {}),
     ...(route.lapsRemaining !== undefined ? { lapsRemaining: route.lapsRemaining } : {}),
     ...(route.waiting ? { waiting: { ...route.waiting } } : {}),
     ...(route.stopAfterRun ? { stopAfterRun: true } : {}),

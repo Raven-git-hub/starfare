@@ -93,7 +93,7 @@ const {
 } = require('./seed.js');
 const { outpostNumberOf } = require('./outposts.js');
 const {
-  REPEAT_MODES, LANE_END_REASONS, WAIT_REASONS, savedRouteId, savedRouteNumberOf,
+  REPEAT_MODES, CADENCES, LANE_END_REASONS, WAIT_REASONS, savedRouteId, savedRouteNumberOf,
 } = require('./routes.js');
 const { getRecipe } = require('./recipes.js');
 
@@ -1289,10 +1289,19 @@ function tripViolation(trip) {
 // mode must be `continuous` or `nRun`, and a repeating lane has >= 2 waypoints (a one-stop cycle has no
 // leg and would lap in place inside one tick — the dispatch refuses it). `lapsRemaining` belongs to
 // `nRun` alone and is a whole number >= 1 on a LIVE route: the lap that takes it to 0 ends the lane on
-// the spot, so a 0 left standing would mean a lane that should have ended and did not. A lane WAITING
-// for fuel carries `waiting = { reason, sinceTick }` (a known WAIT_REASONS entry and a whole tick); only a
+// the spot, so a 0 left standing would mean a lane that should have ended and did not. A WAITING lane
+// carries `waiting = { reason, sinceTick }` (a known WAIT_REASONS entry and a whole tick); only a
 // repeating lane waits, and it waits AT its last waypoint (cursor on WN) — the lap boundary is the only
-// place a lap is fuelled. (That the waiting craft is idle, with no trip, is checked with the craft below.)
+// place a lap is fuelled — so it has always completed at least one lap (lap 1 is refused at launch if
+// short, never left waiting). A `cadence` wait (slice 3a.1) belongs to a `perCycle` lane only: an
+// immediate lane never holds between laps. (That the waiting craft is idle, with no trip, is checked with
+// the craft below.)
+// A repeating lane's `cadence` (slice 3a.1) is likewise omit-when-default: `immediate` is never stored, so
+// a PRESENT cadence must be `perCycle`, and only on a repeating lane (a one-shot has no next lap to pace).
+// Its lap COUNTERS (slice 3a.1): `lapsDone`, the completed laps, rides EVERY repeating lane and no
+// one-shot, a whole number >= 0; `N`, the launched lap target, rides an nRun alone, a whole number >= 1;
+// and on an nRun the count-up and the count-down always add back to the target — lapsDone +
+// lapsRemaining === N. A drift there means a lap was counted one way and not the other.
 // The one home of the route shape, used by checkVehicleIntegrity below.
 function routeViolation(route) {
   if (!route || typeof route !== 'object' || !Array.isArray(route.waypoints) || route.waypoints.length === 0) {
@@ -1309,15 +1318,36 @@ function routeViolation(route) {
       return { reason: 'a repeating route must carry at least two waypoints (a one-stop cycle has no leg)', mode: route.mode, waypoints: route.waypoints.length };
     }
   }
+  if (route.cadence !== undefined) {
+    if (route.cadence === 'immediate' || !CADENCES.includes(route.cadence) || route.mode === undefined) {
+      return { reason: 'route.cadence, when present, must be "perCycle" on a repeating lane (immediate is never stored; a one-shot has no cadence)', cadence: route.cadence, mode: route.mode };
+    }
+  }
+  if (route.mode !== undefined) {
+    if (!Number.isInteger(route.lapsDone) || route.lapsDone < 0) {
+      return { reason: 'a repeating route\'s lapsDone must be a whole number >= 0 (its completed laps)', mode: route.mode, lapsDone: route.lapsDone };
+    }
+  } else if (route.lapsDone !== undefined) {
+    return { reason: 'route.lapsDone belongs to a repeating route only (a one-shot counts no laps)', lapsDone: route.lapsDone };
+  }
   if (route.mode === 'nRun') {
     if (!Number.isInteger(route.lapsRemaining) || route.lapsRemaining < 1) {
       return { reason: 'an nRun route\'s lapsRemaining must be a whole number >= 1 (the lap that reaches 0 ends the lane)', lapsRemaining: route.lapsRemaining };
     }
+    if (!Number.isInteger(route.N) || route.N < 1) {
+      return { reason: 'an nRun route\'s N (its launched lap target) must be a whole number >= 1', N: route.N };
+    }
+    if (route.lapsDone + route.lapsRemaining !== route.N) {
+      return { reason: 'an nRun route\'s laps done + laps remaining must equal its N', lapsDone: route.lapsDone, lapsRemaining: route.lapsRemaining, N: route.N };
+    }
   } else if (route.lapsRemaining !== undefined) {
     return { reason: 'route.lapsRemaining belongs to an nRun route only', mode: route.mode, lapsRemaining: route.lapsRemaining };
+  } else if (route.N !== undefined) {
+    return { reason: 'route.N belongs to an nRun route only', mode: route.mode, N: route.N };
   }
   // "Stop after this run" (§11.10): `stopAfterRun: true` only, only on a repeating lane, and never on a
-  // waiting one — a waiting lane is already at its boundary, so a stop ends it on the spot instead.
+  // waiting one (fuel or cadence) — a waiting lane is already at its boundary, so a stop ends it on the
+  // spot instead.
   if (route.stopAfterRun !== undefined) {
     if (route.stopAfterRun !== true || route.mode === undefined || route.waiting !== undefined) {
       return { reason: 'route.stopAfterRun is `true` on a running (not waiting) repeating lane only', stopAfterRun: route.stopAfterRun, mode: route.mode, waiting: route.waiting };
@@ -1333,6 +1363,12 @@ function routeViolation(route) {
     }
     if (route.cursor !== route.waypoints.length - 1) {
       return { reason: 'a waiting lane waits at its LAST waypoint (the lap boundary)', cursor: route.cursor, waypoints: route.waypoints.length };
+    }
+    if (!(route.lapsDone >= 1)) {
+      return { reason: 'a lane only waits after completing a lap (lap 1 launches or is refused, never waits)', lapsDone: route.lapsDone, waiting: w };
+    }
+    if (w.reason === 'cadence' && route.cadence !== 'perCycle') {
+      return { reason: 'only a perCycle lane holds for its cadence — an immediate lane starts its next lap at once', cadence: route.cadence, waiting: w };
     }
   }
   return waypointListViolation(route.waypoints);
@@ -1471,8 +1507,9 @@ function checkVehicleIntegrity(state) {
         if (rv) {
           out.push({ rule: 'vehicle-route-valid', where: `guild:${g.id}.vehicle:${v.id}.route`, detail: rv });
         }
-        // A lane WAITING for fuel (slice 3a, §11.6) leaves its craft an idle craft parked at WN — never
-        // flying, never in a dock slot — and it began waiting no later than now (§15.2).
+        // A WAITING lane — for fuel (slice 3a, §11.6) or a per-cycle lane holding for its cadence (slice
+        // 3a.1) — leaves its craft an idle craft parked at WN — never flying, never in a dock slot — and
+        // it began waiting no later than now (§15.2).
         const w = v.route && v.route.waiting;
         if (w && (v.status !== 'idle' || v.trip !== undefined || !(w.sinceTick <= state.tick))) {
           out.push({ rule: 'vehicle-waiting-lane-idle', where: `guild:${g.id}.vehicle:${v.id}.route.waiting`, detail: { status: v.status, hasTrip: v.trip !== undefined, sinceTick: w.sinceTick, tick: state.tick } });

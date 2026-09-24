@@ -1585,15 +1585,25 @@ test('POST /admin/vehicle/dispatch-route carries `repeat`; /admin/vehicle/stop-r
   assert.equal(badMode.status, 200);
   assert.equal(badMode.body.accepted, false);
   assert.match(badMode.body.reason, /repeat\.mode must be one of/);
+  // …and so is a cadence on a once run (slice 3a.1): it has no next lap to pace.
+  const badCadence = await req('POST', '/admin/vehicle/dispatch-route', {
+    guildId: 'player-guild', vehicleId: VID, waypoints: [{ anchor: HOME }, { anchor: near }], repeat: { mode: 'once', cadence: 'perCycle' },
+  });
+  assert.equal(badCadence.body.accepted, false);
+  assert.match(badCadence.body.reason, /repeat\.cadence is only for a repeating lane/);
 
+  // The whole `repeat` — mode, n and the 3a.1 cadence — passes through to the engine untouched.
   const launched = await req('POST', '/admin/vehicle/dispatch-route', {
-    guildId: 'player-guild', vehicleId: VID, waypoints: [{ anchor: HOME }, { anchor: near }], repeat: { mode: 'nRun', n: 2 },
+    guildId: 'player-guild', vehicleId: VID, waypoints: [{ anchor: HOME }, { anchor: near }], repeat: { mode: 'nRun', n: 2, cadence: 'perCycle' },
   });
   assert.equal(launched.status, 200);
   assert.equal(launched.body.accepted, true, launched.body.reason);
   assert.equal(launched.body.snapshot.tick, 0, 'a dispatch must not tick');
   assert.equal(craftIn(launched.body).route.mode, 'nRun');
   assert.equal(craftIn(launched.body).route.lapsRemaining, 2);
+  assert.equal(craftIn(launched.body).route.cadence, 'perCycle');
+  assert.equal(craftIn(launched.body).route.N, 2, 'the snapshot carries the "of N" denominator');
+  assert.equal(craftIn(launched.body).route.lapsDone, 0);
 
   const stopped = await req('POST', '/admin/vehicle/stop-route-after-run', { guildId: 'player-guild', vehicleId: VID });
   assert.equal(stopped.status, 200);

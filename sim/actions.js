@@ -22,7 +22,7 @@ const {
 const { outpostId, nextOutpostSerial, outpostDockTurnaround } = require('./outposts.js');
 const { resolveManifest, usedSpace, manifestAmountError, copyManifestLine } = require('./manifest.js');
 const {
-  REPEAT_MODES, copyRouteWaypoint, savedRouteId, nextSavedRouteSerial,
+  REPEAT_MODES, CADENCES, copyRouteWaypoint, savedRouteId, nextSavedRouteSerial,
 } = require('./routes.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { checkQuote, quotedPrice } = require('./price-ring.js');
@@ -210,22 +210,35 @@ function advanceRoute(state, guild, craft, thisTick) {
 // to "stop after this run" (`stopAfterRun`) is over now whatever its mode, and an N-run is over when this
 // was its last lap — each way the craft ENDS idle at WN, route cleared: an ordinary completion, WN being
 // a real waypoint (§11.4), and nothing flagged. Otherwise the lane repeats, and `startLap` runs steps 2–4.
-// An N-run counts its laps DOWN here, at the end of each lap, so `lapsRemaining` is always "laps still
-// to fly, this one included" while the lane is live — the lap that takes it to 0 is the last.
+// A lane that goes on does NOT always start its next lap at once: a `perCycle` lane (slice 3a.1) HOLDS here
+// as a `waiting` lane (reason 'cadence'), and the fuel-cycle boundary starts its next lap (see below).
+// A repeating lane COUNTS the lap here, at the end of each lap (slice 3a.1): `lapsDone` goes UP by one —
+// so after lap 1 it reads 1, and the client can show "lap k" as lapsDone + 1 — and an N-run's
+// `lapsRemaining` goes DOWN by one, so it is always "laps still to fly, this one included" while the lane
+// is live (the lap that takes it to 0 is the last) and the two always add back to the launched `N`.
+// No tick is stamped for the count: this runs on the tick the lap ended, and whatever happens next records
+// that tick already — the next lap's departure, a wait's `sinceTick`, an end flag, or the route going away.
 function finishLap(state, guild, craft, thisTick) {
   const route = craft.route;
-  if (route.mode === undefined || route.stopAfterRun) {
-    delete craft.route; // once (the built one-shot end, unchanged), or a lane stopped after this run
+  if (route.mode === undefined) {
+    delete craft.route; // once — the built one-shot end, unchanged
     return;
   }
-  if (route.mode === 'nRun') {
-    route.lapsRemaining -= 1;
-    if (route.lapsRemaining === 0) {
-      delete craft.route; // the N-th lap just finished — the run ends idle at WN
-      return;
-    }
+  route.lapsDone += 1;
+  if (route.mode === 'nRun') route.lapsRemaining -= 1;
+  if (route.stopAfterRun || (route.mode === 'nRun' && route.lapsRemaining === 0)) {
+    delete craft.route; // a lane stopped after this run, or the N-th lap just finished — idle at WN
+    return;
   }
-  startLap(state, guild, craft, thisTick);
+  if (route.cadence === 'perCycle') {
+    // A PER-CYCLE lane paces itself to one lap per fuel cycle (§11.10): rather than start the next lap
+    // back to back, it holds at WN as a `waiting` lane. The fuel-cycle boundary already re-attempts
+    // every waiting lane through `startLap` (resumeWaitingLanes), so its next lap starts there — the SAME
+    // path a fuel-short lane resumes on, with no timer of its own. Nothing is burned while it holds.
+    route.waiting = { reason: 'cadence', sinceTick: thisTick };
+    return;
+  }
+  startLap(state, guild, craft, thisTick); // an immediate lane: the next lap starts now
 }
 
 // startLap(state, guild, craft, thisTick) — begin the NEXT lap of a repeating lane, from WN where the
@@ -239,6 +252,7 @@ function finishLap(state, guild, craft, thisTick) {
 //      zero-length and is SKIPPED (no leg, no fuel). If the hoard can't cover it → the lane WAITS at WN:
 //      nothing burns, the route stays, and the craft sits idle (§11.6) — `resumeWaitingLanes` calls this
 //      same function again at each fuel-cycle boundary, so a waiting lane re-runs steps 2–4 in full.
+//      (A per-cycle lane held for its cadence arrives here the same way, from that boundary re-attempt.)
 //   4. Otherwise BURN the whole lap up front (§11.3) — exactly the launch's burn: units from the hoard,
 //      `totalConsumed` rising to match (invariant 1) — reset the cursor to W1 and fly there
 //      (`flyToFirstStop`, the launch's own reposition).
@@ -257,11 +271,13 @@ function startLap(state, guild, craft, thisTick) {
     return;
   }
   if (guild.fuelHoard + (guild.deuteriumFuel || 0) < lap.totalUnits) {
-    // Fuel short — the lane WAITS at WN, burning nothing (§11.6). `sinceTick` records when it began.
-    if (!route.waiting) route.waiting = { reason: 'fuel', sinceTick: thisTick };
+    // Fuel short — the lane WAITS at WN, burning nothing (§11.6). `sinceTick` records when the FUEL wait
+    // began: a lane already waiting for fuel keeps its first `sinceTick`, while a per-cycle lane that was
+    // holding for its cadence — and now, at the boundary, cannot pay — becomes a fuel wait from this tick.
+    if (!route.waiting || route.waiting.reason !== 'fuel') route.waiting = { reason: 'fuel', sinceTick: thisTick };
     return;
   }
-  delete route.waiting;
+  delete route.waiting; // the lap runs — whichever wait it was (fuel or cadence), it is over
   burnFuel(guild, lap.totalUnits);
   state.audit.totalConsumed += lap.totalUnits;
   route.cursor = 0;
@@ -270,12 +286,14 @@ function startLap(state, guild, craft, thisTick) {
 
 // resumeWaitingLanes(state, thisTick) — the FUEL-CYCLE BOUNDARY re-attempt (transport-model.md §11.6 /
 // §11.10). Called by sim/tick.js's stepBaselineAllocation at each cycle boundary, AFTER issuance has
-// grown the hoards. Every lane waiting for fuel gets one fresh try at its next lap, through the SAME
-// `startLap` its lap boundary ran — so the target re-check comes first (a stop that vanished while it
-// waited ENDS the lane, flagged), then the fuel: affordable now → burn and go; still short → it keeps
-// waiting, `sinceTick` unchanged. Guilds in array order, and each guild's waiting craft in FIXED id order,
-// so when a hoard can cover only some of them the lower ids go first, the same way every run (§15.5
-// invariant 9). Bounded: one try per waiting craft per boundary, and no per-tick work between boundaries.
+// grown the hoards. Every WAITING lane — short of fuel, or a per-cycle lane holding for its cadence (slice
+// 3a.1) — gets one fresh try at its next lap, through the SAME `startLap` its lap boundary ran, so the
+// reason it waited does not change what happens now: the target re-check comes first (a stop that vanished
+// while it waited ENDS the lane, flagged), then the fuel: affordable now → burn and go; short → it waits
+// for fuel (a fuel wait keeps its `sinceTick`; a cadence hold turns into a fuel wait from this tick).
+// Guilds in array order, and each guild's waiting craft in FIXED id order, so when a hoard can cover only
+// some of them the lower ids go first, the same way every run (§15.5 invariant 9). Bounded: one try per
+// waiting craft per boundary, and no per-tick work between boundaries.
 function resumeWaitingLanes(state, thisTick) {
   for (const guild of state.guilds || []) {
     const waiting = (guild.vehicles || []).filter((v) => v.route && v.route.waiting);
@@ -973,8 +991,10 @@ function createTransferCargoAction({ guildId, vehicleId: vId, manifest }) {
 //
 // `repeat` (optional, slice 3a — transport-model.md §11.10) is the LAUNCH MODE: `{ mode: 'once' }` (the
 // default — run the waypoints once and land idle at the last), `{ mode: 'continuous' }` (keep cycling
-// until stopped or the lane ends) or `{ mode: 'nRun', n }` (exactly n full cycles). It rides the action
-// only when given, so a one-shot dispatch journals byte-identically to the pre-repeat one.
+// until stopped or the lane ends) or `{ mode: 'nRun', n }` (exactly n full cycles). A repeating mode may
+// also carry a `cadence` (slice 3a.1): 'immediate' (the default — the next lap starts the moment the
+// last one finishes) or 'perCycle' (at most one lap per fuel cycle). It rides the action only when
+// given, so a one-shot dispatch journals byte-identically to the pre-repeat one.
 function createDispatchRouteWithActionsAction({
   guildId, vehicleId: vId, waypoints, repeat,
 }) {
@@ -1291,10 +1311,12 @@ function routeWaypointError(wp, i) {
 // one-shot). Otherwise it is `{ mode }` with `mode` one of the three REPEAT_MODES, and `n` — the number
 // of full cycles — belongs to `nRun` alone: a whole number >= 1 there, and not present on the other two
 // (a stray `n` on a continuous lane is a mistake worth refusing, not a value to quietly ignore).
+// The optional `cadence` (slice 3a.1) is one of the CADENCES and belongs to a REPEATING mode only: a
+// `once` run has no next lap to pace, so a cadence on it is refused for the same reason a stray `n` is.
 function repeatError(repeat) {
   if (repeat === undefined) return null;
   if (!repeat || typeof repeat !== 'object' || Array.isArray(repeat)) {
-    return `repeat must be { mode: "once"|"continuous"|"nRun", n? }, got ${JSON.stringify(repeat)}`;
+    return `repeat must be { mode: "once"|"continuous"|"nRun", n?, cadence? }, got ${JSON.stringify(repeat)}`;
   }
   if (!REPEAT_MODES.includes(repeat.mode)) {
     return `repeat.mode must be one of ${REPEAT_MODES.map((m) => JSON.stringify(m)).join(' | ')}, got ${JSON.stringify(repeat.mode)}`;
@@ -1306,19 +1328,35 @@ function repeatError(repeat) {
   } else if (repeat.n !== undefined) {
     return `repeat.n is only for mode "nRun" — a ${JSON.stringify(repeat.mode)} lane has no lap count, got n ${JSON.stringify(repeat.n)}`;
   }
+  if (repeat.cadence !== undefined) {
+    if (repeat.mode === 'once') {
+      return `repeat.cadence is only for a repeating lane — a "once" run has no next lap to pace, got cadence ${JSON.stringify(repeat.cadence)}`;
+    }
+    if (!CADENCES.includes(repeat.cadence)) {
+      return `repeat.cadence must be one of ${CADENCES.map((c) => JSON.stringify(c)).join(' | ')}, got ${JSON.stringify(repeat.cadence)}`;
+    }
+  }
   return null;
 }
 
 // repeatStateFor(repeat) -> the repeat fields journalled onto a craft's `route` at launch (§11.10):
 //   once (or absent) → {}                     — nothing: a one-shot route stays byte-identical to the
 //                                               built one (omit-when-default);
-//   continuous       → { mode: 'continuous' };
-//   nRun             → { mode: 'nRun', lapsRemaining: n } — counts DOWN one per finished lap.
+//   continuous       → { mode: 'continuous', lapsDone: 0 };
+//   nRun             → { mode: 'nRun', N: n, lapsRemaining: n, lapsDone: 0 }.
+// `lapsDone` (slice 3a.1) counts COMPLETED laps UP from 0 on every repeating lane — the client's "lap k"
+// read-out. An nRun also keeps `N`, the launched target, which never changes (the "of N" denominator), and
+// `lapsRemaining`, which counts DOWN; finishLap moves the two counters together, so lapsDone +
+// lapsRemaining is always N. A repeating lane launched `perCycle` also carries `cadence: 'perCycle'`;
+// `immediate` is the default and is never written (omit-when-default).
 // `repeat` is already validated (repeatError).
 function repeatStateFor(repeat) {
   if (repeat === undefined || repeat.mode === 'once') return {};
-  if (repeat.mode === 'nRun') return { mode: 'nRun', lapsRemaining: repeat.n };
-  return { mode: repeat.mode };
+  const cadence = repeat.cadence === 'perCycle' ? { cadence: 'perCycle' } : {};
+  if (repeat.mode === 'nRun') {
+    return { mode: 'nRun', N: repeat.n, lapsRemaining: repeat.n, lapsDone: 0, ...cadence };
+  }
+  return { mode: repeat.mode, lapsDone: 0, ...cadence };
 }
 
 // isDockedAt(outpost, vehicleId) -> true when the craft already holds a manifest at this Outpost —
@@ -2769,7 +2807,8 @@ function validateAction(state, action) {
         return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} (class ${JSON.stringify(craft.class)}) carries no cargo (capacity 0) and cannot run a route with an action (§11)` };
       }
     }
-    // The LAUNCH MODE (§11.10): once (the default) / continuous / nRun with n >= 1.
+    // The LAUNCH MODE (§11.10): once (the default) / continuous / nRun with n >= 1, and a repeating
+    // mode's optional cadence (immediate / perCycle).
     const rError = repeatError(action.repeat);
     if (rError) return { valid: false, reason: rError };
     // A REPEATING lane needs at least two waypoints. Its lap is one cycle W1 → … → WN, and with one stop
@@ -4051,8 +4090,9 @@ function applyAction(state, action) {
     // and a cursor at 0 (the waypoint the craft is heading to, or — after the skip — standing at). The
     // `route` field is omit-when-absent on every OTHER craft, so a route-less galaxy is byte-identical
     // to pre-slice (§11.8). It is journalled state, so a mid-run restart replays byte-identically.
-    // A repeating lane also journals its launch mode (and an nRun its laps still to run) — §11.10; a
-    // one-shot adds nothing, so it is byte-identical to the pre-repeat route (repeatStateFor).
+    // A repeating lane also journals its launch mode, its lap counters (lapsDone; an nRun's N and laps
+    // still to run) and a perCycle lane its cadence — §11.10; a one-shot adds nothing, so it is
+    // byte-identical to the pre-repeat route (repeatStateFor).
     craft.route = {
       waypoints: action.waypoints.map(copyRouteWaypoint), cursor: 0, ...repeatStateFor(action.repeat),
     };
@@ -4121,8 +4161,9 @@ function applyAction(state, action) {
   if (action.type === 'stopRouteAfterRun') {
     // transport-model.md §11.10: the lane finishes the lap it is on, lands idle at WN and ends. Mark it;
     // `finishLap` ends it at the next WN boundary (a clean stop — the craft is never snapped anywhere).
-    // A lane WAITING for fuel is already AT that boundary — its run is finished and it sits idle at WN —
-    // so it ends right now: the route goes and the craft is an ordinary idle craft at WN.
+    // A WAITING lane (for fuel, or a per-cycle lane holding for its cadence) is already AT that boundary —
+    // its run is finished and it sits idle at WN — so it ends right now: the route goes and the craft is
+    // an ordinary idle craft at WN.
     // Moves no goods, fuel or credits, so nothing to conserve and no galacticSupply refresh.
     const guild = findGuild(next, action.guildId);
     const craft = guild.vehicles.find((v) => v.id === action.vehicleId);

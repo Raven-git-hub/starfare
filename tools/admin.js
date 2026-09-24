@@ -56,7 +56,7 @@ const FLAG_SPEC = Object.freeze({
   id: 'string',       // remove-vehicle / dispatch-vehicle / transfer-cargo: which vehicle id; delete-route: which route id
   waypoints: 'string', // dispatch-vehicle: "w;w;…", each sys:<id> | out:<id> | q,r
   route: 'string',    // dispatch-route / save-route: "w;w;…", each anchor[@load:…][@unload:…] (per-waypoint actions)
-  repeat: 'string',   // dispatch-route: the launch mode — once | continuous | nRun:N
+  repeat: 'string',   // dispatch-route: the launch mode — once | continuous[:CADENCE] | nRun:N[:CADENCE]
   load: 'string',     // transfer-cargo: "good:qty|max,…" to load pool -> hold
   unload: 'string',   // transfer-cargo: "good:qty|max,…" to unload hold -> pool
   help: 'bool',
@@ -426,14 +426,20 @@ function parseRouteFlag(raw, command = 'dispatch-route') {
 
 // parseRepeatFlag(raw) -> the engine's `repeat` launch mode (transport-model.md §11.10), or THROWS. The
 // operator writes `--repeat once`, `--repeat continuous` or `--repeat nRun:3` (the engine's own mode
-// names; for nRun the number of full cycles follows a colon). Anything else fails the command rather than
-// launching a lane in a mode nobody asked for. Whether n is a legal lap count (>= 1) is still judged by
-// the engine; this only refuses what is not a whole number at all. PURE and exported.
+// names; for nRun the number of full cycles follows a colon). A repeating mode may end with the CADENCE
+// (slice 3a.1) after one more colon — `--repeat continuous:perCycle`, `--repeat nRun:3:perCycle` (or
+// `:immediate`, the default) — the engine's own cadence names, so the flag reads as the `repeat` it
+// sends. Anything else fails the command rather than launching a lane in a mode nobody asked for. Whether
+// n is a legal lap count (>= 1), and whether a cadence may ride this mode (`once:perCycle` has no next lap
+// to pace), are still judged by the engine; this only refuses what does not parse. PURE and exported.
 function parseRepeatFlag(raw) {
-  if (raw === 'once' || raw === 'continuous') return { mode: raw };
-  const m = /^nRun:(-?\d+)$/.exec(String(raw));
-  if (m) return { mode: 'nRun', n: Number(m[1]) };
-  throw new Error(`--repeat must be once | continuous | nRun:N (N whole laps), got ${JSON.stringify(raw)}`);
+  const m = /^(once|continuous|nRun:(-?\d+))(?::(immediate|perCycle))?$/.exec(String(raw));
+  if (!m) {
+    throw new Error(`--repeat must be once | continuous[:CADENCE] | nRun:N[:CADENCE] (N whole laps; CADENCE immediate | perCycle), got ${JSON.stringify(raw)}`);
+  }
+  const repeat = m[2] !== undefined ? { mode: 'nRun', n: Number(m[2]) } : { mode: m[1] };
+  if (m[3] !== undefined) repeat.cadence = m[3];
+  return repeat;
 }
 
 // dispatchRouteBody(flags) -> the POST /admin/vehicle/dispatch-route request body. PURE and exported so
@@ -948,9 +954,15 @@ async function cmdDispatchRoute(base, flags) {
 }
 
 // printLaneState(route) — a snapshot route's repeat state (transport-model.md §11.10), one row each:
-// the mode (a one-shot stores none), an nRun's laps still to fly, a fuel wait, a pending stop.
+// the mode (a one-shot stores none), a repeating lane's cadence (none stored = immediate) and laps done
+// ("of N" on an nRun), an nRun's laps still to fly, a wait and why (fuel, or a per-cycle cadence hold),
+// a pending stop.
 function printLaneState(route) {
   row('mode', route.mode || 'once');
+  if (route.mode !== undefined) row('cadence', route.cadence || 'immediate');
+  if (route.lapsDone !== undefined) {
+    row('lapsDone', route.N !== undefined ? `${route.lapsDone} of ${route.N}` : `${route.lapsDone}`);
+  }
   if (route.lapsRemaining !== undefined) row('lapsLeft', `${route.lapsRemaining}`);
   if (route.waiting) row('waiting', `${route.waiting.reason} (since tick ${route.waiting.sinceTick})`);
   if (route.stopAfterRun) row('stopping', 'after this run');
@@ -1109,13 +1121,16 @@ Vehicle spawn/remove primitive (design.md §15.4 — operator/Storyteller, exit 
   dispatch-vehicle --guild ID --id VEHICLE_ID --waypoints "w;w;…"
                   send an idle craft along a multi-leg route; each w is sys:<id> | out:<id> | q,r
                   (whole-route fuel burned up front from the hoard; refused whole if short)
-  dispatch-route  --guild ID --id VEHICLE_ID --route "w;w;…" [--repeat once|continuous|nRun:N]
+  dispatch-route  --guild ID --id VEHICLE_ID --route "w;w;…" [--repeat once|continuous|nRun:N[:CADENCE]]
                   send an idle craft along a route with per-waypoint ACTIONS run on arrival (§11 automation);
                   each w is an anchor (sys:<id> | out:<id> | q,r) optionally + @load:good:qty|max,… and/or
                   @unload:good:qty|max,… e.g. "sys:A@load:titanium:400; out:B@unload:titanium:400"
                   (chained legs; whole-run fuel burned up front; refused whole if short / spycraft w/ action)
                   --repeat makes it a LANE (§11.10): continuous, or nRun:N full cycles; each lap repositions
-                  to the first stop and is fuelled up front (waits at the last stop if the hoard is short)
+                  to the first stop and is fuelled up front (waits at the last stop if the hoard is short);
+                  add :perCycle (e.g. continuous:perCycle, nRun:3:perCycle) to hold at the last stop between
+                  laps and start each next lap at a fuel-cycle boundary — at most one lap per cycle
+                  (:immediate, back to back, is the default)
   stop-route-after-run --guild ID --id VEHICLE_ID
                   a repeating lane finishes the lap it is on, lands idle at its last stop, and ends
   transfer-cargo  --guild ID --id VEHICLE_ID [--unload good:qty|max,…] [--load good:qty|max,…]
@@ -1163,7 +1178,8 @@ Flags
                  remove-outpost: which outpost id; delete-route: which saved-route id
   --waypoints W  dispatch-vehicle: "w;w;…" route, each w = sys:<id> | out:<id> | q,r
   --route W      dispatch-route / save-route: "w;w;…" route, each w = anchor[@load:G:N,…][@unload:G:N,…]
-  --repeat R     dispatch-route: the launch mode — once (default) | continuous | nRun:N (N full cycles)
+  --repeat R     dispatch-route: the launch mode — once (default) | continuous | nRun:N (N full cycles),
+                 a repeating mode optionally + :immediate (default) | :perCycle (one lap per fuel cycle)
   --load G:N,…   transfer-cargo: goods to load pool -> hold ("good:qty" or "good:max", comma-sep)
   --unload G:N,… transfer-cargo: goods to unload hold -> pool ("good:qty" or "good:max", comma-sep)
   --help, -h     this text
