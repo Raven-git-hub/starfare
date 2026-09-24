@@ -89,7 +89,7 @@ const {
   validateAction, applyAction, createSpawnVehicleAction, createRemoveVehicleAction,
   createDispatchVehicleAction, createTransferCargoAction, createDispatchRouteWithActionsAction, quoteDispatch,
   createSpawnOutpostAction, createRemoveOutpostAction,
-  createSaveRouteAction, createDeleteRouteAction, createStopRouteAfterRunAction,
+  createSaveRouteAction, createDeleteRouteAction, createStopRouteAfterRunAction, createCancelRouteAction,
 } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
 const { saveState, appendJournal, clearJournal, loadOrInit, saveSeed, loadSeed, deleteGalaxy } = require('./persist.js');
@@ -1079,6 +1079,41 @@ async function handleRequest(req, res) {
       sendJson(res, 200, applyOneAction(action));
     } catch (err) {
       sendJson(res, 500, { error: 'error applying stopRouteAfterRun (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // POST /admin/vehicle/cancel-route { guildId, vehicleId } — "Cancel" (transport-model.md §11.10, automation
+  // slice 3b): the craft's lane ends at once. A craft in flight snaps to the hex it is over and goes idle
+  // there; a craft parked mid-lane drops its route where it sits. Gated and routed exactly like
+  // /stop-route-after-run (the SAME validate → journal → apply path), so the cancel survives restart and
+  // replays. (The player client sends the same action through POST /action — slice 3c.)
+  if (method === 'POST' && path === '/admin/vehicle/cancel-route') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","vehicleId":"vehicle_g1_lightTransport_01"}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId and vehicleId' });
+      return;
+    }
+    let action;
+    try {
+      // The constructor enforces the required fields; legality — the guild's craft is on a lane, and a craft
+      // in flight has a hex to stop on — is validateAction's job, run inside applyOneAction below.
+      action = createCancelRouteAction({ guildId: body.guildId, vehicleId: body.vehicleId });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed cancel-route request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying cancelRoute (invariant violation or engine throw)', detail: String((err && err.message) || err) });
     }
     return;
   }

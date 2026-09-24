@@ -1457,10 +1457,12 @@ boundary so the later hex-map swap doesn't touch it.
     Cancel / Stop-after-run controls, and the closed-loop legibility UX (§11.10 loop geometry). This slice
     only SURFACES the state. The per-lap (loop-back + cycle) quote noted under 3a is still open for 3c. Edge
     calls built one way are on the decision checklist ("Repeating lanes — 3a.1 edge calls").
-  - **slice 3b — engine (Cancel: the in-transit stop + the snap-to-hex).** ⬜ *Building (24-09-26 — contract
+  - **slice 3b — engine (Cancel: the in-transit stop + the snap-to-hex).** 🟢 *BUILT (24-09-26 —
+    `sim/transport.js`, `sim/actions.js`, `sim/server.js`, `tools/admin.js`; tripwires
+    `sim/tests/route-cancel.test.js` (new), `server.test.js`, `tools/admin.test.js`; contract
     transport-model.md §11.10 "Cancel" / §2.3 / §2.4 / §11.6 — engine + operator CLI, NO client).* The engine
     half of §11.10's Cancel control: a craft's lane ends AT ONCE, a craft in flight snapping to the hex it is
-    over. Landing as tight commits, one piece each.
+    over. Landed as tight commits, one piece each.
     **(1) The snap-to-hex helper** (`sim/transport.js`; tripwires `sim/tests/route-cancel.test.js` (new)).
     Beside `hexDistance`: **`legHexAtTick(from, to, departureTick, arrivalTick, tick)`** — the hex a craft
     flying the straight leg `from` → `to` is over at `tick`. It is §2.3's `legProgress = clamp01((T −
@@ -1525,6 +1527,40 @@ boundary so the later hex-map swap doesn't touch it.
     multi-leg dispatch, an actioned one-shot, a 2a skip run, a continuous lane starved into fuel waits, an
     nRun:3 lane, a perCycle lane, and a quote: 850 waiting lane-ticks, 2,800 titanium delivered). Control:
     adding one cancel to the routed galaxy changes its digest.
+    **(3) The operator CLI** (`sim/server.js`, `tools/admin.js`; tripwires `server.test.js`,
+    `tools/admin.test.js`). **`POST /admin/vehicle/cancel-route { guildId, vehicleId }`**, Access-gated under
+    /admin/ and routed exactly like `/stop-route-after-run` (the SAME validate → journal → apply path, so a
+    cancel survives restart and replays). **`tools/admin.js cancel-route --guild ID --id VEHICLE_ID`**:
+    `--id` names the vehicle as on every other vehicle command (the build prompt said `--vehicle`; the
+    sibling commands' flag was kept). It prints the tick, the craft's status and location, and for a craft
+    that was LOADING the dock row ("this transfer finishes in N ticks, then idle there"). A refused cancel
+    exits 1 with the engine's reason. The player client sends the same action through `POST /action`
+    (slice 3c). `server.test.js` +1: an idle craft is refused, a craft past half-way on a 2-hex leg lands on
+    the engine's own `legHexAtTick` hex (not either end), the call does not tick, a second cancel is refused,
+    and a body without a vehicle id is a 400. `tools/admin.test.js` 49 → **50** (the arg → body mapping; the
+    command list). Sim suite → **1,564 green**; tools suite 67 → **68**. Slice 3b total: sim 1,545 →
+    **1,564**, zero failures.
+    **Driven end-to-end via the CLI** against a booted, persisted server (seed 7; guild `g1` founded at
+    sys_0001 (77,-7), its Outpost at `75,-7`, three light craft at home). At tick 0: craft 01 `dispatch-vehicle
+    --waypoints "80,-7; 89,0"` (3 hexes, then the worked (9,7) leg); craft 03 loaded 300 titanium and
+    `dispatch-route "75,-7@unload:titanium:max; sys:sys_0001"`; craft 02 a `--repeat continuous` lane
+    home→Outpost; then `adjust-fuel` drained the hoard. At t210 craft 03 was LOADING at the Outpost: `cancel-route`
+    printed `status loading … this transfer finishes in 5 ticks`. By t220 its 300 were unloaded and it sat
+    idle at the Outpost, no route, not flown on home. Craft 02 finished lap 1 and WAITED for fuel (since t215):
+    `cancel-route` dropped it idle at the Outpost, and a second cancel exited 1 ("not on a lane"). An unknown
+    craft exited 1 too. A SIGKILL at t800 (craft 01 mid leg 2) restarted canonically identical (the journalled
+    cancels replayed). At t1155, half-way along leg 2, `cancel-route` put craft 01 idle at **`85,-4`** =
+    (80,-7) + (5,3), the hand-computed hex. At t2055 (past its old arrival, t1995, and past the t1127 fuel
+    boundary that refilled the hoard) all three were still ordinary idle craft, no trip / route / flag, and
+    craft 02 never resumed. A second SIGKILL restart was canonically identical. No invariant errors in any
+    server log.
+    **Snapshot marker: none.** A cancelled craft is an ordinary idle row (status + location), exactly what
+    the snapshot already surfaces. Nothing records that it was cancelled, which matches the ruling ("an
+    ordinary idle craft again").
+    **Deferred, not invented:** **3c** — the client: the Operations → In Transit Cancel / Stop-after-run
+    buttons, the launch picker, and rendering flagged / waiting lanes (this slice is the engine action only).
+    **Roadmap 2.3** — the toll-exit completion behind the `isToll` stub. The four edge calls are on the
+    decision checklist ("Cancel — 3b edge calls").
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*

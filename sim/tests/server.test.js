@@ -1621,6 +1621,62 @@ test('POST /admin/vehicle/dispatch-route carries `repeat`; /admin/vehicle/stop-r
   assert.match(bad.body.error, /malformed stop-route-after-run/);
 });
 
+// --- Cancel (transport-model.md §11.10, automation slice 3b) ------------------------------------------
+
+test('POST /admin/vehicle/cancel-route snaps a flying craft to the hex it is over; refuses a craft with no lane; never ticks', async () => {
+  await reset();
+  await found();
+  const { getSystem } = require('../seed.js');
+  const { legHexAtTick } = require('../transport.js');
+  const home = getSystem(HOME_SYSTEM).coords;
+  // A free hex two steps from home (derived from the seed, never typed) — a short, cheap leg.
+  let far = null;
+  for (const [dq, dr] of [[2, 0], [0, 2], [-2, 0], [0, -2], [2, -2], [-2, 2]]) {
+    const h = { q: home.q + dq, r: home.r + dr };
+    if (isHexInBounds(h.q, h.r) && !seedLandmarkAtHex(h.q, h.r)) { far = h; break; }
+  }
+  assert.ok(far, 'a free hex two steps from home');
+  const VID = 'vehicle_player-guild_lightTransport_01';
+  const craftIn = (snapshot) => snapshot.guilds.find((g) => g.id === 'player-guild').vehicles.find((v) => v.id === VID);
+  await req('POST', '/admin/vehicle/spawn', {
+    guildId: 'player-guild', class: 'lightTransport', location: { landmarkKind: 'system', landmarkId: HOME_SYSTEM },
+  });
+
+  // An idle craft with no lane has nothing to cancel: an engine refusal (200, accepted:false).
+  const idle = await req('POST', '/admin/vehicle/cancel-route', { guildId: 'player-guild', vehicleId: VID });
+  assert.equal(idle.status, 200);
+  assert.equal(idle.body.accepted, false);
+  assert.match(idle.body.reason, /not on a lane/);
+
+  const sent = await req('POST', '/admin/vehicle/dispatch', { guildId: 'player-guild', vehicleId: VID, waypoints: [far] });
+  assert.equal(sent.body.accepted, true, sent.body.reason);
+  // Tick until the craft is just past half-way: over the hex BETWEEN home and `far`.
+  let snap = (await req('POST', '/tick')).body;
+  const leg = craftIn(snap).trip.legs[0];
+  const halfway = leg.departureTick + Math.ceil((leg.arrivalTick - leg.departureTick) / 2);
+  while (snap.tick < halfway) snap = (await req('POST', '/tick')).body;
+  // Where the engine's own snap says the craft is now (the maths is pinned in route-cancel.test.js).
+  const expected = legHexAtTick(leg.from, leg.to, leg.departureTick, leg.arrivalTick, snap.tick);
+  assert.notDeepEqual(expected, leg.from, 'mid-leg: not the start hex');
+  assert.notDeepEqual(expected, leg.to, 'mid-leg: not the end hex');
+
+  const cancelled = await req('POST', '/admin/vehicle/cancel-route', { guildId: 'player-guild', vehicleId: VID });
+  assert.equal(cancelled.status, 200);
+  assert.equal(cancelled.body.accepted, true, cancelled.body.reason);
+  assert.equal(cancelled.body.snapshot.tick, snap.tick, 'a cancel must not tick');
+  const craft = craftIn(cancelled.body.snapshot);
+  assert.equal(craft.status, 'idle');
+  assert.deepEqual(craft.location, expected);
+  assert.equal('trip' in craft || 'route' in craft || 'laneEnded' in craft, false);
+
+  // A second cancel has nothing left to cancel; a body missing its vehicle id is a 400.
+  const again = await req('POST', '/admin/vehicle/cancel-route', { guildId: 'player-guild', vehicleId: VID });
+  assert.equal(again.body.accepted, false);
+  const bad = await req('POST', '/admin/vehicle/cancel-route', { guildId: 'player-guild' });
+  assert.equal(bad.status, 400);
+  assert.match(bad.body.error, /malformed cancel-route/);
+});
+
 // --- the read-only dispatch quote (transport-model.md §4/§18, roadmap 2.2 b2b-1) -------------
 
 test('POST /vehicle/quote returns an engine-computed quote and MUTATES NOTHING', async () => {

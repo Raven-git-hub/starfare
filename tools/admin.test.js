@@ -389,10 +389,10 @@ test('spawnVehicleBody / removeVehicleBody: a missing required flag throws rathe
   assert.throws(() => A.removeVehicleBody({ id: 'v' }), /--guild is required/);
 });
 
-test('VEHICLE_COMMANDS lists the vehicle subcommands (spawn / remove / dispatch / dispatch-route / stop / transfer)', () => {
+test('VEHICLE_COMMANDS lists the vehicle subcommands (spawn / remove / dispatch / dispatch-route / stop / cancel / transfer)', () => {
   assert.deepEqual(
     [...A.VEHICLE_COMMANDS].sort(),
-    ['dispatch-route', 'dispatch-vehicle', 'remove-vehicle', 'spawn-vehicle', 'stop-route-after-run', 'transfer-cargo'].sort(),
+    ['cancel-route', 'dispatch-route', 'dispatch-vehicle', 'remove-vehicle', 'spawn-vehicle', 'stop-route-after-run', 'transfer-cargo'].sort(),
   );
 });
 
@@ -560,6 +560,14 @@ test('stopRouteAfterRunBody: the exact body; a missing flag throws', () => {
   );
   assert.throws(() => A.stopRouteAfterRunBody({ id: 'v' }), /--guild is required/);
   assert.throws(() => A.stopRouteAfterRunBody({ guild: 'g1' }), /--id is required/);
+});
+
+test('cancelRouteBody: `cancel-route --guild G --id V` maps to { guildId, vehicleId }; a missing flag throws', () => {
+  const { command, flags } = A.parseArgs(['cancel-route', '--guild', 'g1', '--id', 'vehicle_g1_lightTransport_01']);
+  assert.equal(command, 'cancel-route');
+  assert.deepEqual(A.cancelRouteBody(flags), { guildId: 'g1', vehicleId: 'vehicle_g1_lightTransport_01' });
+  assert.throws(() => A.cancelRouteBody({ id: 'v' }), /cancel-route: --guild is required/);
+  assert.throws(() => A.cancelRouteBody({ guild: 'g1' }), /cancel-route: --id is required/);
 });
 
 // --- transfer-cargo (design.md §4 "The dock model", the system half; roadmap 2.2 cargo slice 1) ---

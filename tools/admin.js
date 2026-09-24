@@ -300,7 +300,8 @@ function adjustActionFor(command, flags) {
 // The two vehicle spawn/remove subcommands (design.md §15.4, roadmap 2.2 spawn) — thin HTTP
 // clients over POST /admin/vehicle/spawn|remove, the operator/Storyteller primitive.
 const VEHICLE_COMMANDS = Object.freeze([
-  'spawn-vehicle', 'remove-vehicle', 'dispatch-vehicle', 'dispatch-route', 'stop-route-after-run', 'transfer-cargo',
+  'spawn-vehicle', 'remove-vehicle', 'dispatch-vehicle', 'dispatch-route', 'stop-route-after-run', 'cancel-route',
+  'transfer-cargo',
 ]);
 
 // parseHexFlag(raw) -> { q, r } | THROWS. The operator writes `--hex 3,-4`; the engine speaks a
@@ -463,6 +464,15 @@ function stopRouteAfterRunBody(flags) {
   };
 }
 
+// cancelRouteBody(flags) -> the POST /admin/vehicle/cancel-route request body. PURE, exported. `--id` names the
+// vehicle, as on every other vehicle command.
+function cancelRouteBody(flags) {
+  return {
+    guildId: requireFlag(flags, 'guild', 'cancel-route'),
+    vehicleId: requireFlag(flags, 'id', 'cancel-route'),
+  };
+}
+
 // parseCargoFlag(raw, dir) -> the manifest lines for one direction, or THROWS. The operator writes
 // `--load good:qty,good:qty`; each comma-separated token is `good:qty` (qty a positive integer) OR
 // `good:max` — "as much as possible" (design.md §4), which builds a { dir, good, max: true } line with
@@ -563,7 +573,7 @@ module.exports = {
   adjustActionFor, ADJUST_COMMANDS,
   parseHexFlag, vehicleLocationFromFlags, spawnVehicleBody, removeVehicleBody, VEHICLE_COMMANDS,
   parseWaypointToken, parseWaypointsFlag, dispatchVehicleBody,
-  parseRouteWaypointToken, parseRouteFlag, parseRepeatFlag, dispatchRouteBody, stopRouteAfterRunBody,
+  parseRouteWaypointToken, parseRouteFlag, parseRepeatFlag, dispatchRouteBody, stopRouteAfterRunBody, cancelRouteBody,
   parseCargoFlag, transferCargoBody,
   spawnOutpostBody, removeOutpostBody, OUTPOST_COMMANDS,
   saveRouteBody, deleteRouteBody, ROUTE_COMMANDS,
@@ -987,6 +997,30 @@ async function cmdStopRouteAfterRun(base, flags) {
   }
 }
 
+// cancel-route (transport-model.md §11.10, automation slice 3b): end a craft's lane at once. A craft in flight
+// snaps to the hex it is over and goes idle there; a parked one drops its route where it sits. Prints where
+// the craft now is. A craft that was LOADING in a dock slot keeps the slot until that one transfer finishes
+// (§4), so that case prints the dock row too. A refused cancel (no lane, or over a hex off the lattice) ->
+// throw -> exit 1.
+async function cmdCancelRoute(base, flags) {
+  const body = cancelRouteBody(flags);
+  const out = await postJson(base, '/admin/vehicle/cancel-route', body);
+  if (!out.accepted) throw new Error(`cancel-route refused: ${out.reason}`);
+  const guild = (out.snapshot.guilds || []).find((g) => g.id === body.guildId) || null;
+  const craft = ((guild && guild.vehicles) || []).find((v) => v.id === body.vehicleId) || null;
+  row('action', 'cancelRoute');
+  row('guild', body.guildId);
+  row('vehicle', body.vehicleId);
+  row('tick', `${out.snapshot.tick}`);
+  if (craft) {
+    row('status', craft.status);
+    row('location', JSON.stringify(craft.location));
+    if (craft.dockStatus && craft.dockStatus.state === 'loading') {
+      row('dock', `loading at ${craft.dockStatus.outpostId} — this transfer finishes in ${craft.dockStatus.eta} ticks, then idle there`);
+    }
+  }
+}
+
 // transfer-cargo (design.md §4 "The dock model", the system half; roadmap 2.2 cargo engine slice 1):
 // load/unload an idle craft against the system it sits at, resolved instantly. Captures the pre-state
 // snapshot first so it can print the SYSTEM POOL DELTAS the transfer produced (the transfer is
@@ -1133,6 +1167,9 @@ Vehicle spawn/remove primitive (design.md §15.4 — operator/Storyteller, exit 
                   (:immediate, back to back, is the default)
   stop-route-after-run --guild ID --id VEHICLE_ID
                   a repeating lane finishes the lap it is on, lands idle at its last stop, and ends
+  cancel-route    --guild ID --id VEHICLE_ID
+                  end the craft's lane NOW (§11.10 Cancel): in flight it snaps to the hex it is over and goes
+                  idle there; parked (waiting, or at an Outpost stop) it drops its route where it sits
   transfer-cargo  --guild ID --id VEHICLE_ID [--unload good:qty|max,…] [--load good:qty|max,…]
                   load/unload an idle craft against the SYSTEM it sits at, resolved instantly
                   (a token is good:qty for a fixed amount, or good:max for "as much as possible", §4;
@@ -1174,7 +1211,7 @@ Flags
   --hex q,r      spawn-vehicle: berth the craft at a bare in-bounds hex;
                  spawn-outpost: the single hex the outpost occupies
   --condition F  spawn-vehicle: starting maintenanceCondition fraction in [0, 1] (default 1)
-  --id ID        remove-vehicle / dispatch-vehicle / stop-route-after-run: which vehicle id;
+  --id ID        remove-vehicle / dispatch-vehicle / stop-route-after-run / cancel-route: which vehicle id;
                  remove-outpost: which outpost id; delete-route: which saved-route id
   --waypoints W  dispatch-vehicle: "w;w;…" route, each w = sys:<id> | out:<id> | q,r
   --route W      dispatch-route / save-route: "w;w;…" route, each w = anchor[@load:G:N,…][@unload:G:N,…]
@@ -1202,6 +1239,7 @@ async function main(argv) {
     case 'dispatch-vehicle': await cmdDispatchVehicle(base, flags); return;
     case 'dispatch-route': await cmdDispatchRoute(base, flags); return;
     case 'stop-route-after-run': await cmdStopRouteAfterRun(base, flags); return;
+    case 'cancel-route': await cmdCancelRoute(base, flags); return;
     case 'transfer-cargo': await cmdTransferCargo(base, flags); return;
     case 'spawn-outpost': await cmdSpawnOutpost(base, flags); return;
     case 'remove-outpost': await cmdRemoveOutpost(base, flags); return;
