@@ -1328,13 +1328,6 @@ boundary so the later hex-map swap doesn't touch it.
     added. `quoteDispatch` quotes lap 1 (what the launch burns); a per-lap (loop-back + cycle) quote, if 3c wants
     one, is engine work (§18). "A system lost" (§11.6) cannot happen yet — no path removes a claim; when
     territory lands, `routeStoreAt` is the one place it goes.
-- **Tuning — resource yield tiers & the homeworld production floor.** ⬜ *Designed 24-09-26; build pending.*
-  Per-resource mine yields by rarity tier (design.md §2 "Resource Yield Tiers & the Homeworld Production
-  Floor"; numbers in `docs/phase-1-tuning.md` "Resource yield tiers"). The build: the yield table in
-  `sim/baseline.js`; the engine stamps a new venture's `productionRate` from its baseline when the establish
-  call names none, and the client stops sending its flat `ESTABLISH_RATE`; baselines served to the client;
-  a homeworld-floor tripwire test. Needs a **fresh galaxy** on deploy (no migration of stored rates).
-
   - **slice 3a.1 — engine (repetition extensions: cadence, `N` + `lapsDone`, the wait-reason split).** 🟢 *BUILT
     (24-09-26 — `sim/routes.js`, `sim/actions.js`, `sim/invariants.js`, `sim/snapshot.js`, `sim/state.js`,
     `sim/tick.js` (comment), `sim/server.js` (comment), `tools/admin.js`; tripwires
@@ -1634,6 +1627,33 @@ boundary so the later hex-map swap doesn't touch it.
     mode / N / cadence, the "X fuel / lap" read-out on the Operations active-lanes row, the In Transit Cancel /
     Stop-after-run controls, rendering flagged / waiting lanes, and the closed-loop legibility UX (§11.10).
     Nothing went to the decision checklist: no number or rule was chosen.
+  - **slice 3c — client (the automation layer's player surface).** 🔶 *IN PROGRESS (24-09-26 —
+    `client/game.html` only; contract transport-model.md §11.10 / §11.4 / §11.6, design.md §18 — CLIENT
+    ONLY: no engine, snapshot, `sim` or `tools` change).* The last rung of the ladder. The player launches,
+    watches and stops a lane by rendering fields the engine already publishes and POSTing actions that
+    already exist. Landed as four commits, one piece each.
+    **(1) The launch picker + the per-lap cost** (the Dispatch popup's Finalise view). Under the Save row,
+    just above Dispatch: a **Launch** row (Once, the default / Continuous / N-run, with a lap-count field
+    beside N-run) and, for a repeating mode, a **Cadence** row (Immediate, the default / Per-cycle) and a
+    **Per lap** line, e.g. "2 fuel · 20 ¢", read straight off the quote's `perLapUnits` / `perLapCredits`
+    (§18). A note says the Time / Cost above are the FIRST lap, which includes reaching stop 1. **The gate
+    mirrors the engine:** only `dispatchRouteWithActions` takes a `repeat`, and it refuses a repeating lane
+    with fewer than two stops. So the repeating toggles are enabled only for a route with two or more stops
+    and at least one action; a route with no action still goes out as the plain `dispatchVehicle`, once, as
+    before. Otherwise they are disabled, with a one-line why. Dispatch adds `repeat: { mode, n?, cadence? }`
+    to the actioned dispatch, sending only what differs from the engine defaults (`n` for N-run only,
+    `cadence` only for per-cycle). A Once launch sends NO `repeat` key, so it is exactly the 1b / 2b
+    dispatch. Dispatch is held, with a line saying why, until an N-run's lap count is a whole number ≥ 1 (the
+    engine's own rule, previewed). The field starts EMPTY rather than on a guessed default. The choice lives in
+    the popup (a launch parameter, §11.5, never stored on a saved route): it resets when the popup opens a
+    craft or closes, and survives an Edit Route round trip.
+- **Tuning — resource yield tiers & the homeworld production floor.** ⬜ *Designed 24-09-26; build pending.*
+  Per-resource mine yields by rarity tier (design.md §2 "Resource Yield Tiers & the Homeworld Production
+  Floor"; numbers in `docs/phase-1-tuning.md` "Resource yield tiers"). The build: the yield table in
+  `sim/baseline.js`; the engine stamps a new venture's `productionRate` from its baseline when the establish
+  call names none, and the client stops sending its flat `ESTABLISH_RATE`; baselines served to the client;
+  a homeworld-floor tripwire test. Needs a **fresh galaxy** on deploy (no migration of stored rates).
+
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*

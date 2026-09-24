@@ -1973,6 +1973,23 @@ select.field{appearance:none; cursor:pointer;}
 #dispatch-overlay .dp-save-msg{margin-top:8px; font-family:var(--mono); font-size:11px; color:var(--green); line-height:1.5}
 #dispatch-overlay .dp-save-msg:empty{display:none}
 #dispatch-overlay .dp-save-msg.bad{color:var(--red)}
+/* automation 3c: the LAUNCH picker — labelled rows of small toggles (Once / Continuous / N-run, then the
+   cadence), the lap-count field, the per-lap cost line, a dim note and the picker's own block line (red).
+   A toggle that is ON wears the set-action amber (.wp-act.set); a disabled one fades like .dp-btn. */
+#dispatch-overlay .dp-launch{margin-top:16px; padding-top:12px; border-top:1px solid var(--line)}
+#dispatch-overlay .dp-lrow{display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-top:8px}
+#dispatch-overlay .dp-lrow:first-child{margin-top:0}
+#dispatch-overlay .dp-lrow .lab{width:64px; flex:none; font-family:var(--mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3)}
+#dispatch-overlay .dp-lrow .val{font-family:var(--mono); font-size:13px; color:var(--ink); font-variant-numeric:tabular-nums}
+#dispatch-overlay .dp-seg{font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink2); background:transparent; border:1px solid var(--line2); border-radius:6px; padding:5px 9px; cursor:pointer; white-space:nowrap}
+#dispatch-overlay .dp-seg:hover:not(:disabled){border-color:var(--amber); color:var(--amber)}
+#dispatch-overlay .dp-seg.on{background:var(--amber-ghost); border-color:var(--amber); color:var(--amber)}
+#dispatch-overlay .dp-seg:disabled{opacity:.4; cursor:not-allowed}
+#dispatch-overlay .dp-n{width:72px; font-family:var(--mono); font-size:12px; color:var(--ink); background:var(--panel); border:1px solid var(--line2); border-radius:6px; padding:4px 8px}
+#dispatch-overlay .dp-n:focus{outline:none; border-color:var(--amber)}
+#dispatch-overlay .dp-lnote{margin-top:8px; font-family:var(--mono); font-size:10px; color:var(--ink2); line-height:1.5}
+#dispatch-overlay .dp-launch-msg{margin-top:8px; font-family:var(--mono); font-size:11px; color:var(--red); line-height:1.5}
+#dispatch-overlay .dp-launch-msg:empty{display:none}
 /* One-column phone layout: the art is now full-width, so cap its height (a display cap, not a game
    number) and switch to `contain` so the whole ship still shows, letterboxed, without dominating. */
 @media(max-width:820px){
@@ -10592,7 +10609,13 @@ function paintInventoryHero(d){
   // the map planner holds. Reset on open/close.
   // `saveName` (automation 2b) is the Save Route name field's text, kept here so a re-render (an action
   // edit, a Remove) never throws away what the player typed; `saving` holds the button while a save posts.
-  var DP = { vehicle: null, waypoints: [], quote: null, saveName: '', saving: false };
+  // `mode` / `n` / `cadence` (automation 3c) are the launch picker's choices — see resetLaunch below.
+  var DP = { vehicle: null, waypoints: [], quote: null, saveName: '', saving: false,
+             mode: 'once', n: '', cadence: 'immediate' };
+
+  // resetLaunch() — back to the defaults: run once; no lap count typed; immediate cadence. Called when the
+  // popup opens a craft and when it closes. NOT on Finalise, so a mode survives an Edit Route round trip.
+  function resetLaunch(){ DP.mode = 'once'; DP.n = ''; DP.cadence = 'immediate'; }
 
   // anchorsOf(waypoints) -> just the anchors, in order. The quote and the plain dispatchVehicle both
   // take a bare anchor list (actions do not change the legs, so they never reach either).
@@ -10675,6 +10698,7 @@ function paintInventoryHero(d){
     if(window.__abandonPlanning) window.__abandonPlanning();
     var v = liveVehicle(vehicle.id) || vehicle;
     DP.vehicle = v; DP.waypoints = []; DP.quote = null; DP.saveName = ''; DP.saving = false;
+    resetLaunch();
     var suffix = String(v.id).split('_').slice(-1)[0];   // vehicle_<guild>_<class>_NN -> "NN"
     $('dpName').textContent = prettyClass(v.class) + ' · #' + suffix;
     $('dpClass').textContent = prettyClass(v.class);
@@ -10774,16 +10798,16 @@ function paintInventoryHero(d){
       // needs no sentence — the disabled Dispatch button is the quiet cue (§D).
       (q && q.ok === false ? '<div class="dp-refuse">' + esc(q.reason || 'This route cannot be dispatched.') + '</div>'
         : (block ? '<div class="dp-refuse">' + esc(block) + '</div>' : '')) +
-      saveRowHtml();
+      saveRowHtml() +
+      launchHtml(q);
     var acts = $('dpActions');
     acts.innerHTML =
       '<button class="dp-btn" id="dpEditBtn" type="button">Edit Route</button>' +
       '<button class="dp-btn primary" id="dpDispatchBtn" type="button">Dispatch</button>';
     // Dispatch is gated on the engine's answer — an unaffordable route (fuel short) or an { ok:false }
-    // quote cannot be sent — AND on the client's route gates (dispatchBlock). The button is disabled
-    // (the engine re-validates and refuses-whole anyway).
-    var canSend = okQ && q.affordable !== false && !block;
-    $('dpDispatchBtn').disabled = !canSend;
+    // quote cannot be sent — AND on the client's route gates (dispatchBlock) and the launch picker's
+    // (launchBlock). The button is disabled (the engine re-validates and refuses-whole anyway).
+    $('dpDispatchBtn').disabled = !canDispatch();
     $('dpEditBtn').addEventListener('click', onEditRoute);
     $('dpDispatchBtn').addEventListener('click', onDispatch);
     Array.prototype.forEach.call($('dpSection').querySelectorAll('.wp-act'), function(b){
@@ -10798,6 +10822,114 @@ function paintInventoryHero(d){
     $('dpSaveName').addEventListener('keydown', function(e){ if(e.key === 'Enter') onSaveRoute(); });
     $('dpSaveBtn').addEventListener('click', onSaveRoute);
     refreshSaveBtn();
+    wireLaunch();
+  }
+
+  // canDispatch() — every gate Dispatch waits on, in one place: an ok, affordable engine quote; no client
+  // route gate (dispatchBlock); and a complete launch choice (launchBlock).
+  function canDispatch(){
+    var q = DP.quote;
+    return !!(q && q.ok && q.affordable !== false && !dispatchBlock(dpRoute()) && !launchBlock());
+  }
+
+  // ---------- automation slice 3c: the LAUNCH picker (transport-model.md §11.10) ----------
+  // HOW the finalised route is launched: once (the built one-shot), continuous (until stopped), or N-run
+  // (N laps) — and, for a repeating mode, its cadence: immediate (the next lap starts as soon as the last
+  // ends) or per-cycle (the lane holds at its last stop and starts the next lap at the next fuel-cycle
+  // boundary). These are LAUNCH choices (§11.5), never part of a saved route, so they live here in the
+  // popup (DP.mode / DP.n / DP.cadence), not in the plan.
+
+  // repeatAllowed() — may this route repeat? It mirrors the engine: only the actioned-route dispatch
+  // (dispatchRouteWithActions) takes a `repeat`, and it refuses a repeating lane with fewer than two stops
+  // (a one-stop cycle has no leg to fly, §11.10). So a route repeats only when some stop carries an action
+  // (a route with no action goes out as the plain dispatch, which always runs once) AND it has two or
+  // more stops.
+  function repeatAllowed(){
+    return DP.waypoints.length >= 2 && DP.waypoints.some(function(w){ return !!w.action; });
+  }
+
+  // launchRepeat() -> the `repeat` object the dispatch carries, or null for a one-shot. It sends only what
+  // differs from the engine's defaults: `n` only for N-run, `cadence` only when it is per-cycle (immediate
+  // is the default). A route that cannot repeat always launches once, whatever mode was picked before the
+  // route was edited.
+  function launchRepeat(){
+    if(DP.mode === 'once' || !repeatAllowed()) return null;
+    var repeat = { mode: DP.mode };
+    if(DP.mode === 'nRun') repeat.n = Number(DP.n);
+    if(DP.cadence === 'perCycle') repeat.cadence = 'perCycle';
+    return repeat;
+  }
+
+  // launchBlock() -> why the picker holds Dispatch back, or '' when nothing does. An N-run needs its lap
+  // count: a whole number, 1 or more. That is the engine's own rule, checked here so the player sees why
+  // before sending. (An empty field reads as 0, so it blocks too.)
+  function launchBlock(){
+    var repeat = launchRepeat();
+    if(repeat && repeat.mode === 'nRun' && !(Number.isInteger(repeat.n) && repeat.n >= 1)){
+      return 'Enter how many laps to run: a whole number, 1 or more.';
+    }
+    return '';
+  }
+
+  // perLapText(q) -> "5 fuel · 13 ¢": what each lap AFTER the first costs, read straight off the quote's
+  // perLapUnits / perLapCredits (§18 — the engine prices the lap exactly as it charges one). "—" while
+  // there is no ok quote, or when the engine priced no lap (null).
+  function perLapText(q){
+    if(!q || !q.ok || q.perLapUnits == null) return '—';
+    return fmtNum(q.perLapUnits) + ' fuel · ' + fmtNum(q.perLapCredits) + ' ¢';
+  }
+
+  // launchHtml(q) — the picker, under the Save row and just above Dispatch. A Launch row of three toggles
+  // (Once / Continuous / N-run, with the lap-count field beside N-run). The repeating toggles are disabled,
+  // with a one-line why, on a route that can't repeat. When a repeating mode is on it adds a Cadence row
+  // and the Per lap cost, plus a note that Time / Cost above are the FIRST lap (which also gets the craft
+  // to stop 1). The last line is the picker's own Dispatch block, updated in place as N is typed.
+  function launchHtml(q){
+    var can = repeatAllowed();
+    var mode = can ? DP.mode : 'once';
+    // one toggle button; `group` is 'mode' or 'cadence' (its data attribute), `value` what it sets
+    function toggle(group, value, label, on, disabled, title){
+      return '<button class="dp-seg' + (on ? ' on' : '') + '" type="button" data-' + group + '="' + value + '"' +
+        (disabled ? ' disabled' : '') + (title ? ' title="' + esc(title) + '"' : '') + '>' + label + '</button>';
+    }
+    var html = '<div class="dp-launch">' +
+      '<div class="dp-lrow"><span class="lab">Launch</span>' +
+        toggle('mode', 'once', 'Once', mode === 'once', false, 'Fly the route one time') +
+        toggle('mode', 'continuous', 'Continuous', mode === 'continuous', !can, 'Repeat the route until you stop it') +
+        toggle('mode', 'nRun', 'N-run', mode === 'nRun', !can, 'Repeat the route a set number of laps') +
+        (mode === 'nRun' ? '<input class="dp-n" id="dpN" type="number" min="1" step="1" placeholder="laps" value="' + esc(DP.n) + '">' : '') +
+      '</div>';
+    if(!can){
+      html += '<div class="dp-lnote">To repeat, a route needs two or more stops and at least one load / unload action.</div>';
+    } else if(mode !== 'once'){
+      html +=
+        '<div class="dp-lrow"><span class="lab">Cadence</span>' +
+          toggle('cadence', 'immediate', 'Immediate', DP.cadence !== 'perCycle', false, 'Start each lap as soon as the last one ends') +
+          toggle('cadence', 'perCycle', 'Per-cycle', DP.cadence === 'perCycle', false, 'Wait at the last stop and start each next lap at the next fuel cycle') +
+        '</div>' +
+        '<div class="dp-lrow"><span class="lab">Per lap</span><span class="val" id="dpPerLap">' + esc(perLapText(q)) + '</span></div>' +
+        '<div class="dp-lnote">Time and Cost above are the first lap, which includes reaching stop 1. Each lap after it costs the per-lap figure.</div>';
+    }
+    return html + '<div class="dp-launch-msg" id="dpLaunchMsg">' + esc(launchBlock()) + '</div></div>';
+  }
+
+  // wireLaunch() — the picker's controls. A mode or cadence toggle re-renders the whole Finalise view (which
+  // rows the picker shows depends on the mode). Typing N does NOT re-render, so the field keeps its focus:
+  // it only refreshes the block line and the Dispatch button in place.
+  function wireLaunch(){
+    var sec = $('dpSection');
+    Array.prototype.forEach.call(sec.querySelectorAll('.dp-seg[data-mode]'), function(b){
+      b.addEventListener('click', function(){ DP.mode = b.getAttribute('data-mode'); renderPostFinalise(); });
+    });
+    Array.prototype.forEach.call(sec.querySelectorAll('.dp-seg[data-cadence]'), function(b){
+      b.addEventListener('click', function(){ DP.cadence = b.getAttribute('data-cadence'); renderPostFinalise(); });
+    });
+    var n = $('dpN');
+    if(n) n.addEventListener('input', function(){
+      DP.n = this.value;
+      $('dpLaunchMsg').textContent = launchBlock();
+      $('dpDispatchBtn').disabled = !canDispatch();
+    });
   }
 
   // ---------- automation slice 2b: Save Route (transport-model.md §11.9) ----------
@@ -10996,10 +11128,16 @@ function paintInventoryHero(d){
   //  - EXCEPT (automation 2b) a route whose stop 1 is the craft's own hex, action or not: only
   //    `dispatchRouteWithActions` takes the §11.4 zero-length-first-leg SKIP — the plain dispatch still
   //    refuses a zero-length leg 0 — and the quote previews that same skip, so this sends what was quoted.
+  // (automation 3c) A repeating launch adds `repeat` to the actioned dispatch — the one engine action
+  // that takes it. A one-shot sends no `repeat` at all, so it is exactly the dispatch it was before.
+  // launchRepeat only ever returns a repeat for an actioned route, so it never meets dispatchVehicle.
   function dispatchActionFor(gid, v){
     var anyAction = DP.waypoints.some(function(w){ return !!w.action; });
     if(anyAction || window.__routeChecks.skipsFirstLeg(dpRoute())){
-      return { type:'dispatchRouteWithActions', guildId: gid, vehicleId: v.id, waypoints: wireWaypoints(DP.waypoints) };
+      var action = { type:'dispatchRouteWithActions', guildId: gid, vehicleId: v.id, waypoints: wireWaypoints(DP.waypoints) };
+      var repeat = launchRepeat();
+      if(repeat) action.repeat = repeat;
+      return action;
     }
     return { type:'dispatchVehicle', guildId: gid, vehicleId: v.id, waypoints: anchorsOf(DP.waypoints) };
   }
@@ -11019,8 +11157,9 @@ function paintInventoryHero(d){
     var v = DP.vehicle; if(!v || !DP.waypoints || !DP.waypoints.length) return;
     // The client gates, re-checked at the moment of sending (automation 2b): the button was rendered
     // earlier, and a store can vanish while the popup is open. If a gate now holds, re-render to show
-    // why and send nothing — the broken-stop block is hard, never warn-but-allow.
-    if(dispatchBlock(dpRoute())){ renderPostFinalise(); return; }
+    // why and send nothing — the broken-stop block is hard, never warn-but-allow. (3c: the launch
+    // picker's lap-count gate is re-checked the same way.)
+    if(dispatchBlock(dpRoute()) || launchBlock()){ renderPostFinalise(); return; }
     var player = window.__player ? window.__player() : null;
     var gid = player && player.guildId;
     var btn = $('dpDispatchBtn'); if(btn){ btn.disabled = true; btn.textContent = 'Dispatching…'; }
@@ -11053,6 +11192,7 @@ function paintInventoryHero(d){
   // is one of the three abandon triggers. Clears the popup's own state too.
   function closeDispatch(){
     DP.vehicle = null; DP.waypoints = []; DP.quote = null; DP.saveName = ''; DP.saving = false;
+    resetLaunch();
     if(window.__abandonPlanning) window.__abandonPlanning();
     $('dispatch-overlay').classList.remove('open');
   }
