@@ -189,6 +189,8 @@ Every yield is a positive integer, and must stay one: a mine deposits its rate a
 
 **Deliberately left for later balancing (not open decisions blocking the build):** raw surplus against factory capacity; `titanium_alloy`'s 3:1 titanium ratio (no longer binding on the floor); the per-recipe factory baselines; the fuel volume consequences, which are intended.
 
+*(**AS-BUILT 24-09-26.** `MINE_BASELINE` in `sim/baseline.js` carries this table exactly, all 17 rows including deuterium's unchanged 5, grouped by tier. Nothing else moved: `REFINERY_BASELINE` stays the uniform 5 (its constant is renamed `FIRST_CUT_REFINERY_BASELINE`, since it no longer describes the mines), and recipe quantities, `FEE_RATE`, the price-engine constants and reputation are untouched. Two tripwires guard it: `sim/tests/baseline.test.js` (every value in both tables is a positive integer) and `sim/tests/homeworld-floor.test.js` (design.md §2's floor, red on the old uniform table and green on this one). `GET /goods` serves the tables and each good's baseline in output units, and the establish panel reads its Rate row and commitment preview from there. The post-redeploy `verify-cycle` check (`tools/admin.js`) now expects a 100 % titanium licence to commit 160 × 1,440 = 230,400 a cycle. **A fresh galaxy is required**: a live galaxy's stored rates are not migrated.)*
+
 ### Price history — the chart's depth *(29-08-26 — `sim/price-history.js`)*
 
 `state.priceHistory` records the posted value into **three fixed-size rings per good** at

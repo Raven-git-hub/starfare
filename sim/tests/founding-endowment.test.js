@@ -34,6 +34,13 @@ const {
   createSetProductionProfileAction, createRenegotiateLicenceAction,
 } = require('../actions.js');
 const { licenceEndTick } = require('../licence.js');
+const { MINE_BASELINE } = require('../baseline.js');
+
+// The titanium mine these tests establish runs at TWICE its baseline, so any commitment
+// (priced off the baseline) is coverable with room to spare. ⤳ 24-09-26 (yield tiers): this
+// was a literal 10 against the old uniform baseline of 5; it is DERIVED now, keeping the same
+// 2:1 surplus at any tuning.
+const MINE_RATE = 2 * MINE_BASELINE.titanium;
 const { checkInvariants } = require('../invariants.js');
 const { canonicalStringify } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
@@ -184,7 +191,7 @@ test('the sum tripwire holds every tick through a MET boundary and a BREACHED on
     let s = founded();
     s = applyValid(s, createEstablishVentureAction({
       guildId: 'newborn', ventureId: 'm1', siteId: HOME_MINE,
-      assetId: 'asset_newborn_miner_01', resourceType: 'titanium', productionRate: 10,
+      assetId: 'asset_newborn_miner_01', resourceType: 'titanium', productionRate: MINE_RATE,
     }));
     s.windowN = N;
     s = intake(s, [createApplyForLicenceAction({
@@ -214,6 +221,10 @@ test('the sum tripwire holds every tick through a MET boundary and a BREACHED on
   };
 
   const met = run(null);                      // the paced default delivers Q exactly ⇒ met
+  // The premise, asserted: the signing bump alone keeps RP positive, so without this line a
+  // run that BREACHED every window would still pass the two checks below (it did, silently,
+  // when the yield tiers raised the baseline above this mine's old literal rate).
+  assert.equal(guild(met).lastLicenceFee.ventures.m1.status, 'met', 'the met run really was met');
   assert.ok(guild(met).ventures[0].reputation > 0, 'the met run really did earn reputation');
   assert.ok(guild(met).guildReputation > guild(met).foundingEndowment, 'so the total rose above the endowment');
 
@@ -248,7 +259,7 @@ const signAt = (commitPct) => {
   let s = founded();
   s = applyValid(s, createEstablishVentureAction({
     guildId: 'newborn', ventureId: 'm1', siteId: HOME_MINE,
-    assetId: 'asset_newborn_miner_01', resourceType: 'titanium', productionRate: 10,
+    assetId: 'asset_newborn_miner_01', resourceType: 'titanium', productionRate: MINE_RATE,
   }));
   s.windowN = 4;
   return intake(s, [createApplyForLicenceAction({

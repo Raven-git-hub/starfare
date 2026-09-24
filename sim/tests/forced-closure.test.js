@@ -48,13 +48,15 @@ const ventureOf = (s, id) => guildOf(s).ventures.find((v) => v.id === id);
 // A galaxy with windowN pinned to N, the player founded on the home system, holding a titanium
 // mine on HOME_MINE licensed 100%/7-day (signed the tick the mine is seated, so its window opens
 // clean). The licence gives it a commitment to breach and a term for the lockout to run to.
+// ⤳ 24-09-26 (yield tiers): the establish names NO rate, so the engine stamps the titanium
+// baseline the licence prices off (design.md §2). It used to name 5 — the old uniform baseline.
 function foundedWithLicensedMine() {
   const founded = advance(createZeroState(), [
     createSetWindowNAction({ windowN: N }),
     createFoundGuildAction({ guildId: GUILD, credits: 100000, influence: 100, homeSystemId: HOME_SYSTEM }),
   ]).state;
   return advance(founded, [
-    createEstablishVentureAction({ guildId: GUILD, ventureId: 'mine_1', siteId: HOME_MINE, assetId: M1, resourceType: 'titanium', productionRate: 5 }),
+    createEstablishVentureAction({ guildId: GUILD, ventureId: 'mine_1', siteId: HOME_MINE, assetId: M1, resourceType: 'titanium' }),
     createApplyForLicenceAction({ guildId: GUILD, ventureId: 'mine_1', committedOutputPct: 1, windowDays: 7 }),
   ]).state;
 }

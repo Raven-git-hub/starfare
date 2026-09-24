@@ -45,6 +45,7 @@ const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { HOME_SYSTEM, HOME_MINE } = require('./home-anchor.js');
+const { MINE_BASELINE } = require('../baseline.js');
 
 const GUILD = 'player-guild';
 const N = 4;                                    // a short accrual window, so terms resolve fast
@@ -180,11 +181,14 @@ function founded() {
 
 // Found, establish a titanium mine on HOME_MINE, license it. equityPct is an ESTABLISH
 // term, so it rides the establish action, not the licence.
+// ⤳ 24-09-26 (yield tiers): the establish names NO rate, so the engine stamps the titanium
+// baseline (design.md §2) — the same number the licence prices off. It used to name 5,
+// which WAS the baseline under the old uniform table.
 function licensedMine({ committedOutputPct = 0.5, windowDays = 7, equityPct } = {}) {
   return advance(founded(), [
     createEstablishVentureAction({
       guildId: GUILD, ventureId: 'mine_1', siteId: HOME_MINE, assetId: M1,
-      resourceType: 'titanium', productionRate: 5, ...(equityPct === undefined ? {} : { equityPct }),
+      resourceType: 'titanium', ...(equityPct === undefined ? {} : { equityPct }),
     }),
     createApplyForLicenceAction({ guildId: GUILD, ventureId: 'mine_1', committedOutputPct, windowDays }),
   ]).state;
@@ -284,13 +288,13 @@ test('on ACCEPT (Steady) — re-locks in place, NO signing bump, fee re-locked a
   // Strong — byte-for-byte what a fresh licenceFee returns for those terms.
   const price = v.licence.lockedPrice;
   const { basicFee, discountedFee } = licenceFee({
-    baselineUnitsPerTick: 5, windowN: N, lockedPrice: price,
+    baselineUnitsPerTick: MINE_BASELINE.titanium, windowN: N, lockedPrice: price,
     committedOutputPct: expectedCommit, equityPct: 0,
   });
   assert.equal(v.licence.basicFee, basicFee, 'basic fee re-locked, undiscounted off Strong');
   assert.equal(v.licence.discountedFee, discountedFee);
   // syndicateCommitment recomputed off the new pct.
-  assert.equal(v.syndicateCommitment, Math.round(expectedCommit * 5 * N));
+  assert.equal(v.syndicateCommitment, Math.round(expectedCommit * MINE_BASELINE.titanium * N));
 
   // NO signing bump: RP untouched and the guild sum identical before/after.
   assert.equal(v.reputation, rpBefore, 'venture RP unchanged (no re-bump)');
@@ -312,7 +316,7 @@ test('on ACCEPT (Strong) — the fee falls by exactly the Strong discount', () =
   // The re-locked fees are the undiscounted fee × (1 − STRONG_FEE_DISCOUNT), rounded.
   const price = v.licence.lockedPrice;
   const raw = licenceFee({
-    baselineUnitsPerTick: 5, windowN: N, lockedPrice: price,
+    baselineUnitsPerTick: MINE_BASELINE.titanium, windowN: N, lockedPrice: price,
     committedOutputPct: 0.5, equityPct: 0,
   });
   assert.equal(v.licence.basicFee, Math.round(raw.basicFee * (1 - STRONG_FEE_DISCOUNT)));
@@ -327,7 +331,7 @@ test('on ACCEPT (At-risk) — commitment jumps to full', () => {
   const { state } = renegotiate(s);
   const v = ventureOf(state, 'mine_1');
   assert.equal(v.licence.committedOutputPct, 1);
-  assert.equal(v.syndicateCommitment, Math.round(1 * 5 * N));
+  assert.equal(v.syndicateCommitment, Math.round(1 * MINE_BASELINE.titanium * N));
   assert.equal(checkInvariants(state).length, 0);
 });
 

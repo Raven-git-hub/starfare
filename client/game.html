@@ -5739,17 +5739,14 @@ window.openWaystationDetail = function(outpost){
 
 /* --- the panel's constants. The cycle length `N` is NOT here: it is read live off
    the snapshot's calendar block (`cycleTicks()` below), because the engine owns it.
-   The four that remain and DO describe engine behaviour are MIRRORS — there is no
-   constants endpoint for the browser to read them from — so `sim/tests/server.test.js`
-   asserts the served page against `sim/licence.js` and `sim/baseline.js`. If the
-   engine's ceiling, baseline or fee shape ever moves, that tripwire goes red instead
-   of this panel quietly showing the old one. The last two feed the two readouts that
-   are still design-ahead, and are tagged as such on screen. ------------------ */
+   Nor is the BASELINE: it is read per good off GET /goods (`baselineUnits()` below),
+   because since the yield tiers (design.md §2, 24-09-26) every mine and recipe has its
+   own and there is no single number left to mirror. The ones that remain and DO
+   describe engine behaviour are MIRRORS — there is no constants endpoint for the
+   browser to read them from — so `sim/tests/server.test.js` asserts the served page
+   against `sim/licence.js`. If the engine's ceiling or fee shape ever moves, that
+   tripwire goes red instead of this panel quietly showing the old one. ----------- */
 var P = {
-  BASELINE_RATE: 5,        // MIRRORS sim/baseline.js MINE_BASELINE, units/tick [FIRST-CUT]
-                           // (and, since a factory can be licensed too, its REFINERY_BASELINE
-                           // x recipe output qty — one number while both are the uniform 5;
-                           // the served-page tripwire goes red if they ever differ)
   EQUITY_CEIL: 49,         // MIRRORS sim/licence.js EQUITY_CEILING x 100 (design-settled)
   K: 2,                    // MIRRORS sim/licence.js EQUITY_SHAPE_K, o^k       [FIRST-CUT]
   // MIRRORS sim/licence.js CORNERS, key for key so the mirror is obvious   [FIRST-CUT]
@@ -5776,6 +5773,26 @@ var P = {
    the same number `applyForLicence` measures the commitment over. Null when no
    snapshot has been read; the panel then shows a dash rather than inventing one. */
 function cycleTicks(){ return window.__windowN ? window.__windowN() : null; }
+
+/* The droidless baseline, in output UNITS/tick, of the good this venture will produce —
+   the engine's own `baselineUnitsForGood`, served by GET /goods as `baselineUnits`. It
+   is what `applyForLicence` commits a share of, for a mine and a factory alike. Null
+   when the catalog was not read or no output is chosen yet (a slot before its recipe):
+   the preview then shows a dash rather than inventing one. */
+function baselineUnits(){
+  var goods = (window.__goodsCatalog && window.__goodsCatalog()) || {};
+  var u = (goods.baselineUnits && S.outGood) ? goods.baselineUnits[S.outGood] : null;
+  return (typeof u === 'number') ? u : null;
+}
+
+/* The committed quantity per cycle for the slider's share: the engine's
+   `commitmentUnitsFor` — round(pct x baseline x N) — over the two numbers the engine
+   serves, so it is the quantity `applyForLicence` will actually store. Null when
+   either is unread. */
+function committedPerCycle(){
+  var N = cycleTicks(), units = baselineUnits();
+  return (N === null || units === null) ? null : Math.round(S.c * units * N);
+}
 
 /* The BASIC licence fee in CREDITS for the good this venture will produce — the engine's
    own `feeQuote[good]` (sim/snapshot.js): `licenceFee`'s basic fee at the posted price
@@ -5845,9 +5862,9 @@ function draw(){
 
   // The committed quantity per cycle. Not a number the browser owns: it is exactly the
   // engine's `commitmentUnitsFor` — round(pct x baseline x N) — with N read live off
-  // the snapshot, so the preview is the quantity `applyForLicence` will actually store.
-  var N = cycleTicks();
-  var cQtyCycle = N === null ? null : Math.round(S.c * P.BASELINE_RATE * N);
+  // the snapshot and the good's baseline off GET /goods, so the preview is the quantity
+  // `applyForLicence` will actually store.
+  var cQtyCycle = committedPerCycle();
   $('cPct').textContent = Math.round(S.c*100)+'%';
   $('cQty').textContent = cQtyCycle === null ? '– —' : ('– '+fmt(cQtyCycle)+'/cycle');
 
@@ -5989,7 +6006,7 @@ function drawLedger(fp, cQtyCycle, ePct){
     return;
   }
   setRow('tLic','<span class="amber">Licensed</span>');
-  setRow('tCommit', cQtyCycle === null ? '<span class="mut">cycle length unread</span>'
+  setRow('tCommit', cQtyCycle === null ? '<span class="mut">cycle or baseline unread</span>'
     : (cQtyCycle>0 ? (fmt(cQtyCycle)+' '+esc(S.outLabel.toLowerCase())+' <span class="mut">/cycle</span>')
                    : '<span class="mut">0 — none</span>'));
   setRow('tEquity', ePct>0 ? (ePct+'%') : '<span class="mut">none</span>');
@@ -6119,8 +6136,7 @@ function reelConfirm(){
     openReel();
     return;
   }
-  var N = cycleTicks();
-  var cq = N === null ? null : Math.round(S.c * P.BASELINE_RATE * N);
+  var cq = committedPerCycle();
   var lic = S.licensed
     ? ('<em>licensed</em>, committing '+(cq === null ? 'a share of' : (fmt(cq)+' of its'))+' baseline output each cycle'
        + (equityPctInt()>0 ? (' and offering '+equityPctInt()+'% equity') : ' with no equity offered')

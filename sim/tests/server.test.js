@@ -771,19 +771,31 @@ test('the served licence panel\'s mirrored constants still match the engine', as
     + `maxCommitMaxOffer:${licence.CORNERS.maxCommitMaxOffer} \\}`),
     'the fee curve must use the engine\'s four corners');
 
-  // The commitment preview is round(pct x BASELINE x N): the baseline is the mirror.
-  const baseline = baselineOutputFor({ type: 'mining', resourceType: 'titanium' }).units;
-  assert.match(html, new RegExp(`BASELINE_RATE: ${baseline},`),
-    'the commitment preview must use the engine\'s droidless mine baseline');
-  // …and since the factory-commitment slice (28-08-26) that ONE mirrored constant is
-  // also what the panel previews a TIER-2 licence with. It is right today only because
-  // every mine and every recipe currently sits on the same uniform [FIRST-CUT] baseline.
-  // The day per-resource / per-recipe baselines differentiate (phase-1-tuning.md), this
-  // goes red — which is the point: the panel must then carry a per-venture baseline
-  // rather than quietly previewing a commitment the engine will not store.
-  const factoryBaseline = baselineOutputFor({ type: 'refining', recipeId: 'titanium_alloy' }).units;
-  assert.equal(factoryBaseline, baseline,
-    'the licence panel mirrors ONE baseline for both tiers — differentiate them and it must gain a second');
+  // The commitment preview is round(pct x BASELINE x N). Until 24-09-26 the baseline was
+  // ONE mirrored constant, `BASELINE_RATE`, right only while every mine and every recipe
+  // sat on the same uniform baseline — and this test said it would go red the day they
+  // differentiated, because the panel would then have to carry a per-venture baseline
+  // rather than quietly preview a commitment the engine will not store. The yield tiers
+  // (design.md §2) are that day. The panel now reads the good's baseline per good from
+  // GET /goods (`baselineUnits`), so what is pinned is (a) the mirror is GONE, so it
+  // cannot come back as a stale single number, (b) the preview reads the served table,
+  // and (c) that table is the engine's own, good for good, for mines and factories alike.
+  assert.ok(!/BASELINE_RATE/.test(html), 'the single mirrored baseline is gone from the panel');
+  assert.match(html, /goods\.baselineUnits\[S\.outGood\]/, 'the preview reads the served per-good baseline');
+  assert.match(html, /Math\.round\(S\.c \* units \* N\)/, 'and multiplies it exactly as commitmentUnitsFor does');
+  const { baselineUnitsForGood } = require('../baseline.js');
+  const goods = (await req('GET', '/goods')).body;
+  for (const good of STOCKPILE_GOODS) {
+    const units = baselineUnitsForGood(good);
+    if (units === null) {
+      assert.equal(good in goods.baselineUnits, false, `${good}: nothing makes it, so no number is served`);
+    } else {
+      assert.equal(goods.baselineUnits[good], units, `${good}: the served baseline is the engine's`);
+    }
+  }
+  // A mine and a factory, named, so the two venture kinds are each shown to be covered.
+  assert.equal(goods.baselineUnits.titanium, baselineOutputFor({ type: 'mining', resourceType: 'titanium' }).units);
+  assert.equal(goods.baselineUnits.titanium_alloy, baselineOutputFor({ type: 'refining', recipeId: 'titanium_alloy' }).units);
 
   // The EARN PREVIEW is TIER-BLIND (06-09-26, points-and-reputation.md §2.6). The engine
   // dropped `tierFactor` from `metGain`, so the meter previews `REP_MEET_MAX × (W_COMMIT·c

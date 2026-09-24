@@ -99,8 +99,8 @@ const { buildSnapshot } = require('./snapshot.js');
 const { getStarterSystems, getSystemLayout, setSeed, getSeedNumber } = require('./seed.js');
 const { listRecipes } = require('./recipes.js');
 const { ALL_BILLS, BUILD_TICKS, MAX_QUEUE, BUILDABLE_KINDS } = require('./asset-recipes.js');
-const { RAW_RESOURCES, PROCESSED_GOODS, TIER3_GOODS } = require('./resources.js');
-const { MINE_BASELINE, REFINERY_BASELINE } = require('./baseline.js');
+const { RAW_RESOURCES, PROCESSED_GOODS, TIER3_GOODS, STOCKPILE_GOODS } = require('./resources.js');
+const { MINE_BASELINE, REFINERY_BASELINE, baselineUnitsForGood } = require('./baseline.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
 // The calendar's two creation-seam helpers. `anchorForCreation` is pure arithmetic;
 // `minuteOfDayFromDate` converts a Date the CALLER supplies — the single wall-clock
@@ -108,6 +108,15 @@ const { DEFAULT_WINDOW_N } = require('./windows.js');
 const { anchorForCreation, minuteOfDayFromDate, localMinuteOfDay, isUtcOffsetMinutes,
   UTC_OFFSET_MIN_MINUTES, UTC_OFFSET_MAX_MINUTES } = require('./calendar.js');
 const { generateGalaxySeed } = require('../tools/generate_seed.js');
+
+// Every stockpile good's droidless baseline in output UNITS/tick — the figure a licence on
+// a venture making that good is committed and priced off. Built once, from the engine's
+// own `baselineUnitsForGood` (the lookup the snapshot's fee quote already uses), so the
+// establish panel's commitment preview and the commitment `applyForLicence` stores cannot
+// disagree. A good nothing can make is left out, never given a number.
+const BASELINE_UNITS_BY_GOOD = Object.freeze(Object.fromEntries(
+  STOCKPILE_GOODS.map((good) => [good, baselineUnitsForGood(good)]).filter(([, units]) => units !== null),
+));
 
 const DEFAULT_PORT = 7331; // the galaxy seed number, and clear of the host's other services
 
@@ -621,10 +630,14 @@ async function handleRequest(req, res) {
   // a new venture's rate from them when the establish call names none (design.md §2),
   // so the establish panel reads the rate it will get from HERE instead of carrying a
   // number of its own: a mine's units/tick, a factory's batches/tick, by recipe id.
+  // `baselineUnits` (additive, with the yield tiers) is the same baseline per GOOD in
+  // output units/tick — what the panel's commitment preview multiplies by the cycle,
+  // now that mines and recipes no longer share one baseline it could mirror.
   if (method === 'GET' && path === '/goods') {
     sendJson(res, 200, {
       raw: RAW_RESOURCES, processed: PROCESSED_GOODS, tier3: TIER3_GOODS,
       mineBaseline: MINE_BASELINE, refineryBaseline: REFINERY_BASELINE,
+      baselineUnits: BASELINE_UNITS_BY_GOOD,
     });
     return;
   }

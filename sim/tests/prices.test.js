@@ -59,8 +59,10 @@ const setStock = (s, good, qty) => { s.guilds[0].stockpiles[SYS][good] = qty; };
 
 test('a good accumulating in guild stockpiles is bid UP, tick over tick', () => {
   // One titanium mine, nothing consuming: the pile only grows, so the level only
-  // rises. Capacity is the mine's fixed droidless baseline (5), so level = ticks held.
-  let s = sysState([mine('m', 'titanium', 5)]);
+  // rises. Capacity is the mine's fixed droidless baseline and the mine runs AT it, so
+  // level = ticks held. ⤳ 24-09-26 (yield tiers): the rate was a literal 5, the old
+  // uniform baseline; it is read from the table so the premise holds at any tuning.
+  let s = sysState([mine('m', 'titanium', MINE_BASELINE.titanium)]);
   const series = [];
   for (let i = 0; i < 20; i += 1) { s = tick(s); series.push(posted(s, 'titanium')); }
 
@@ -74,7 +76,8 @@ test('a good accumulating in guild stockpiles is bid UP, tick over tick', () => 
 });
 
 test('draining the hoard crashes the value back down', () => {
-  let s = sysState([mine('m', 'titanium', 5)]);
+  // The mine runs at its baseline, as above (⤳ 24-09-26: was a literal 5).
+  let s = sysState([mine('m', 'titanium', MINE_BASELINE.titanium)]);
   for (let i = 0; i < 40; i += 1) s = tick(s);
   const peak = posted(s, 'titanium');
   assert.ok(peak > BASE_PRICE * 2, 'the hoard really did build first');
@@ -102,18 +105,21 @@ test('the same hoard moves a low-capacity good far more than a high-capacity one
   // The formula, first: identical hoards, one producer vs ten.
   assert.ok(priceTarget(100, 5, 0) > priceTarget(100, 50, 0));
 
-  // And end to end. Both goods hold 100 units; neodymium has ONE mine (capacity 5),
-  // copper has TEN (capacity 50). Every mine is throttled to 0 so the piles stay put
-  // and the ONLY difference between the two goods is how many producers exist —
-  // which is exactly the rarity term.
+  // And end to end. Both goods hold 100 units; neodymium has ONE mine, copper has TEN.
+  // Every mine is throttled to 0 so the piles stay put, and the only difference between
+  // the two goods is their CAPACITY — which is exactly the rarity term.
+  // ⤳ 24-09-26 (yield tiers): capacity used to differ by producer count alone (5 vs 50,
+  // one uniform baseline). Now a copper mine's baseline is also a Common yield and
+  // neodymium's a Rare one (design.md §2), so copper's capacity is ten Common mines
+  // against one Rare: both halves of that are the rarity term, read from the table.
   const copperMines = Array.from({ length: 10 }, (_, i) => mine(`c${i}`, 'copper', 0));
   let s = sysState([mine('n', 'neodymium', 0), ...copperMines], { neodymium: 100, copper: 100 });
-  assert.equal(productionCapacity(s).neodymium, 5);
-  assert.equal(productionCapacity(s).copper, 50);
+  assert.equal(productionCapacity(s).neodymium, MINE_BASELINE.neodymium);
+  assert.equal(productionCapacity(s).copper, 10 * MINE_BASELINE.copper);
 
   for (let i = 0; i < 30; i += 1) s = tick(s);
-  // Compare the GAIN over base — the whole of what the hoard bought each good. Ten
-  // producers dilute the same pile tenfold, and the price says so.
+  // Compare the GAIN over base — the whole of what the hoard bought each good. More
+  // capacity dilutes the same pile, and the price says so.
   const rareGain = posted(s, 'neodymium') - BASE_PRICE;
   const commonGain = posted(s, 'copper') - BASE_PRICE;
   assert.ok(commonGain > 0, 'the common good still moved — gentle, not dead');

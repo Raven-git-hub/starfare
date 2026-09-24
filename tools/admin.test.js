@@ -11,6 +11,13 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const A = require('./admin.js');
+const { MINE_BASELINE } = require('../sim/baseline.js');
+
+// The engine's 100%-titanium commitment over one 1,440-tick day, DERIVED from the table
+// (⤳ 24-09-26, yield tiers: this was the literal 7,200 = 5 × 1,440 under the old uniform
+// baseline). verify-cycle quotes it as EXPECTED_COMMITMENT; the test below ties the quote
+// to the table so the two cannot drift.
+const DAY_OF_TITANIUM = MINE_BASELINE.titanium * 1440;
 
 // --- parseArgs --------------------------------------------------------------
 
@@ -159,7 +166,7 @@ test('findResourceNodes: collects up to the limit — how seat-demo gets its TWO
 // A live, correctly-ruled galaxy: a 100% titanium licence over a 1,440-tick day,
 // created at 14:25 server time (so the anchor is -865).
 const GOOD = {
-  venture: { id: 'verify_cycle_pl_00002_n02', syndicateCommitment: 7200 },
+  venture: { id: 'verify_cycle_pl_00002_n02', syndicateCommitment: DAY_OF_TITANIUM },
   calendar: { day: 0, minute: 3, label: '0000:0003', windowN: 1440, dayAnchorTick: -865 },
 };
 
@@ -214,7 +221,7 @@ test('judgeVerify: nothing read back at all fails loudly rather than throwing', 
 test('the expected figures are the ruled ones, quoted not authored', () => {
   // If either ruling moves, docs/cycle-and-calendar.md and sim/ move FIRST; this
   // line is where the CLI's copy of them must be re-quoted, never patched blind.
-  assert.equal(A.EXPECTED_COMMITMENT, 7200);
+  assert.equal(A.EXPECTED_COMMITMENT, DAY_OF_TITANIUM);
   assert.equal(A.EXPECTED_WINDOW_N, 1440);
 });
 

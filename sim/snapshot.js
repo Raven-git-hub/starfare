@@ -1975,7 +1975,11 @@ if (require.main === module) {
     // The deploy NAMES its machine (§4, 31-08-26). miner_01 went to the founding's
     // inline mine_1, so this one takes the next idle Miner out of the starter gift.
     assetId: 'asset_player-guild_miner_02',
-    resourceType: 'titanium', productionRate: 5, // titanium's ruled rate, matching mine_1 [phase-1-tuning.md]
+    // No productionRate: the engine stamps titanium's baseline (design.md §2, 24-09-26) —
+    // what the literal 5 here stood for under the old uniform table. mine_1 above is a
+    // foundGuild INLINE venture, whose rate handling the yield-tier slice left alone, so it
+    // still names 5 and the two mines now run at different rates.
+    resourceType: 'titanium',
   });
   state = advance(state, [secondMine]).state;
   for (let i = 0; i < 2; i += 1) state = advance(state, []).state; // two quiet ticks

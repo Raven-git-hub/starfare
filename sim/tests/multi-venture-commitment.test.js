@@ -43,9 +43,12 @@ const N = 4;                       // a short window, so a mid-window join is a 
 const FULL_COMMITMENT = 8;         // raw units per window
 const LATE_EQUITY = 0.4;           // `late` offers equity, `full` offers none
 
+// Each mine runs at TWICE its baseline, so the licensed one can always cover its
+// commitment. ⤳ 24-09-26 (yield tiers): this was a literal 10 against the old uniform
+// baseline of 5; it is DERIVED now, keeping the same 2:1 surplus at any tuning.
 const mine = (id, commitment, equityPct) => ({
   id, ownerGuildId: 'g1', type: 'mining', systemId: SYS, resourceType: GOOD,
-  productionRate: 10, syndicateCommitment: commitment, equityPct,
+  productionRate: 2 * MINE_BASELINE[GOOD], syndicateCommitment: commitment, equityPct,
 });
 
 function fixture() {
@@ -73,10 +76,10 @@ const licenceLate = (s) => intake(s, [createApplyForLicenceAction({
 
 // The two weights, stated here as plain arithmetic rather than read back from the
 // code under test — that is the whole point of the fixture.
-const LATE_COMMITMENT = MINE_BASELINE[GOOD] * N;          // round(1 × baseline × N) = 20
+const LATE_COMMITMENT = MINE_BASELINE[GOOD] * N;          // round(1 × baseline × N)
 const LATE_FRACTION = 3 / 4;                               // present ticks 2,3,4 of a 4-tick window
 const CONTRIB_FULL = FULL_COMMITMENT;                      // fraction 1
-const CONTRIB_LATE = LATE_COMMITMENT * LATE_FRACTION;      // 15
+const CONTRIB_LATE = LATE_COMMITMENT * LATE_FRACTION;      // ¾ of it
 // RIGHT: each venture's weight is its contribution to Q.
 const OWNER_FRACTION = ((CONTRIB_FULL * 1) + (CONTRIB_LATE * (1 - LATE_EQUITY)))
   / (CONTRIB_FULL + CONTRIB_LATE);

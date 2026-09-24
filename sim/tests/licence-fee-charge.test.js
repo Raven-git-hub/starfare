@@ -49,7 +49,11 @@ const N = 4;                                  // a short window, so a boundary i
 const BASIC_FEE = Math.round(FEE_RATE * MINE_BASELINE[GOOD] * N * BASE_PRICE);
 const DISCOUNTED_FEE = Math.round(BASIC_FEE * 0.75);
 
-const mine = (id, { systemId = SYS, productionRate = 10, commitment } = {}) => ({
+// The mine runs at TWICE its baseline, so a full commitment (priced off the baseline)
+// is always coverable with room to spare. ⤳ 24-09-26 (yield tiers): this was a literal 10
+// against the old uniform baseline of 5; it is now DERIVED from the table, so the fixture
+// keeps that same 2:1 surplus at any tuning.
+const mine = (id, { systemId = SYS, productionRate = 2 * MINE_BASELINE[GOOD], commitment } = {}) => ({
   id, ownerGuildId: 'g1', type: 'mining', systemId, resourceType: GOOD, productionRate,
   ...(commitment === undefined ? {} : { syndicateCommitment: commitment }),
 });
@@ -121,21 +125,32 @@ test('a BREACHED licence is charged the FULL basic fee — the discount is voide
 });
 
 test('ONE UNIT SHORT is a breach and pays the full fee — no partial-delivery credit', () => {
-  // alpha owes 20 (pct 1), beta owes 1 (pct 0.05) ⇒ Q = 21, and the send is pinned so the
-  // window's pile is exactly 20 — one unit short of the pair's total. Ranking beta first
-  // feeds it its whole 1 and leaves alpha with 19 of 20: 95% delivered, one unit short.
+  // alpha owes QA (pct 1: one whole baseline window), beta owes exactly ONE unit ⇒ Q =
+  // QA + 1, and the send is pinned at the baseline a tick, so the window's pile is QA —
+  // one unit short of the pair's total. Ranking beta first feeds it its whole 1 and
+  // leaves alpha with QA − 1 of QA: one unit short.
+  // ⤳ 24-09-26 (yield tiers): at the old uniform baseline of 5 this read QA = 20, beta at
+  // pct 0.05 (which was exactly one unit), and a send of 5. The quantities are derived
+  // from MINE_BASELINE now: beta's pct is whatever makes ONE unit a window, and the send
+  // is the baseline, so the fixture has the same shape at any tuning. (The send must be an
+  // integer — setProductionProfile refuses anything else — which is why beta is sized to
+  // fit the send rather than the send to fit beta.)
+  const QA = MINE_BASELINE[GOOD] * N;
+  const BETA_PCT = 1 / (MINE_BASELINE[GOOD] * N);
   let s = fixture([mine('alpha'), mine('beta')]);
   s = intake(s, [
     createApplyForLicenceAction({ guildId: 'g1', ventureId: 'alpha', committedOutputPct: 1, windowDays: 7 }),
-    createApplyForLicenceAction({ guildId: 'g1', ventureId: 'beta', committedOutputPct: 0.05, windowDays: 7 }),
+    createApplyForLicenceAction({ guildId: 'g1', ventureId: 'beta', committedOutputPct: BETA_PCT, windowDays: 7 }),
   ]).state;
-  s = setPursue(setSend(s, 5), ['beta', 'alpha']);
+  assert.deepEqual(guild(s).ventures.map((v) => v.syndicateCommitment), [QA, 1],
+    'the fixture really does owe the two quantities this test reasons about');
+  s = setPursue(setSend(s, MINE_BASELINE[GOOD]), ['beta', 'alpha']);
 
   s = runToBoundary(s);
   const rows = fee(s).ventures;
   assert.equal(rows.beta.status, 'met');
-  assert.equal(rows.alpha.status, 'breach', 'nineteen of twenty is a breach');
-  assert.equal(rows.alpha.owed, licence(s, 'alpha').basicFee, 'and it pays the FULL fee, not 95% of it');
+  assert.equal(rows.alpha.status, 'breach', `${QA - 1} of ${QA} is a breach`);
+  assert.equal(rows.alpha.owed, licence(s, 'alpha').basicFee, 'and it pays the FULL fee, not a pro-rata share of it');
   assert.equal(rows.alpha.owed, rows.alpha.basicFee);
   assert.ok(rows.alpha.owed > rows.alpha.discountedFee, 'the discount it was one unit from is simply gone');
   assert.deepEqual(checkInvariants(s, s.tick), []);
@@ -173,15 +188,17 @@ test('a COMMITTED licence with no boundary verdict HALTS — it is never read as
   // balance and every other test, which is exactly the silent violation §15.5 forbids.
   //
   // Corrupt the state the way the tripwire is aimed at: strip the licensed venture's
-  // `resourceType` after signing, leaving `syndicateCommitment` at its full 20 units. The
-  // resolver skips a venture with no good, so no target, no `Q`, no window block and no
-  // row — while the licence still owes twenty units.
+  // `resourceType` after signing, leaving `syndicateCommitment` at its full window's worth
+  // (the baseline × N). The resolver skips a venture with no good, so no target, no `Q`,
+  // no window block and no row — while the licence still owes those units.
+  // ⤳ 24-09-26 (yield tiers): the owed quantity was the literal 20 (5 × 4); it is derived.
+  const OWED = Math.round(MINE_BASELINE[GOOD] * N);
   let s = licenceAll(fixture([mine('m')]), ['m']);
-  assert.ok(guild(s).ventures[0].syndicateCommitment > 0, 'it really is committed');
+  assert.equal(guild(s).ventures[0].syndicateCommitment, OWED, 'it really is committed, in full');
   delete guild(s).ventures[0].resourceType;
 
   assert.throws(() => runToBoundary(s), (err) => {
-    assert.match(err.message, /owed 20 units/, 'names the offending quantity');
+    assert.match(err.message, new RegExp(`owed ${OWED} units`), 'names the offending quantity');
     assert.match(err.message, new RegExp(`tick ${N}`), 'and the tick it halted on (§15.5)');
     assert.match(err.message, /never judged/);
     return true;

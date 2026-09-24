@@ -239,15 +239,16 @@ things — every figure read back from the server, none computed here:
 
     docker exec starfare node tools/admin.js verify-cycle
 
-      PASS  venture.syndicateCommitment === 7200       read back 7200
+      PASS  venture.syndicateCommitment === 230400     read back 230400
       PASS  calendar.windowN === 1440                  read back 1440
       PASS  calendar.dayAnchorTick present             read back -896
 
       ALL PASS — the 24-hour, midnight-anchored commitment cycle is live on this server.
 
 A `120` commitment or a `24` window means the container is running code from before the `N` 24 → 1,440
-flip; a missing `dayAnchorTick` means it predates the calendar layer. Either way: **the redeploy did
-not take** — check `docker logs starfare` and section 10's "running container is behind the code" row.
+flip; a `7200` commitment means it predates the resource yield tiers (24-09-26 — titanium's baseline
+went 5 → 160/tick, so a day's 100 % licence went 5 × 1,440 → 160 × 1,440); a missing `dayAnchorTick`
+means it predates the calendar layer. Either way: **the redeploy did not take** — check `docker logs starfare` and section 10's "running container is behind the code" row.
 
 > ⚠️ `verify-cycle` and `seat-demo` (without `--window`) both **create a galaxy**, which REPLACES the
 > active one. Run them on a rig, or accept that the live world is being rebuilt. Back the state dir up

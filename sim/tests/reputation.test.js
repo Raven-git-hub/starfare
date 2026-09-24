@@ -62,6 +62,7 @@ const { hashState, canonicalStringify } = require('../serialize.js');
 const { buildSnapshot, SNAPSHOT_SCHEMA } = require('../snapshot.js');
 const { saveState, loadOrInit } = require('../persist.js');
 const { TIER_WEIGHT } = require('../points.js');
+const { MINE_BASELINE } = require('../baseline.js');
 const W_T1 = TIER_WEIGHT[1];
 const {
   EQUITY_CEILING,
@@ -86,7 +87,11 @@ const GAIN_COMMIT_ONLY = REP_MEET_MAX * REP_W_COMMIT;       // 5 — committed a
 // MAX, and `breachPenalty` rounds — so fixtures name the landed integer, not the constant.
 const DROP_FULL_COMMIT = Math.round(REP_BREACH_MIN);        // 3
 
-const mine = (id, { systemId = SYS, productionRate = 10, equityPct } = {}) => ({
+// The mine runs at TWICE its baseline, so a full commitment (which is priced off the
+// baseline) is always coverable with room to spare. ⤳ 24-09-26 (yield tiers): this was a
+// literal 10 against the old uniform baseline of 5; it is now DERIVED from the table, so
+// the fixture keeps that same 2:1 surplus at any tuning.
+const mine = (id, { systemId = SYS, productionRate = 2 * MINE_BASELINE[GOOD], equityPct } = {}) => ({
   id, ownerGuildId: 'g1', type: 'mining', systemId, resourceType: GOOD, productionRate,
   ...(equityPct === undefined ? {} : { equityPct }),
 });

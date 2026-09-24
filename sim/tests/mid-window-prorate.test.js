@@ -37,6 +37,15 @@ const mine = (id, good, rate, commitment = 0) => ({
   productionRate: rate, syndicateCommitment: commitment,
 });
 
+// The titanium baseline. The tests that reason about what a licence OWES against what the
+// mine can DELIVER run the mine AT its baseline, so one tick of fresh output is exactly one
+// tick of a full commitment and every pro-rated target is a whole number of ticks' output.
+// ⤳ 24-09-26 (yield tiers): these mines ran at a literal 5, the old uniform baseline, with
+// the owed quantities typed as 20 / 10 / 5. The ruling raised the baseline, so the rate
+// and every quantity are DERIVED from the table now: a window owes round(B × N × fraction),
+// exactly the engine's own formula.
+const B = MINE_BASELINE.titanium;
+
 function sysState(ventures, windowN) {
   return createState({
     guilds: [{ id: 'g1', credits: 0, fuelHoard: 0, ventures }],
@@ -84,60 +93,62 @@ test('only applyForLicence stamps it — the dev scaffold stays full-window', ()
 // --- 2. THE HEADLINE: the case that used to breach unavoidably --------------------
 
 test('a mine licensed mid-window now MEETS its pro-rated Q, where it used to breach', () => {
-  // N = 4, baseline 5, committed 100% ⇒ syndicateCommitment = 20 units per window.
+  // N = 4, baseline B, committed 100% ⇒ syndicateCommitment = B × N units per window.
   // Licensed at tick 2, so it first delivers at tick 3: present for ticks 3 and 4 of a
-  // window spanning 1..4 ⇒ 2/4 present ⇒ it owes round(20 × 0.5) = 10, and it can
-  // deliver exactly 10 (2 ticks × 5 fresh). Before this slice it owed the full 20,
-  // delivered 10, and breached at the boundary having never had a chance.
+  // window spanning 1..4 ⇒ 2/4 present ⇒ it owes round(B × N × 0.5), and it can deliver
+  // exactly that (2 ticks × B fresh). Before this slice it owed the full B × N, delivered
+  // half of it, and breached at the boundary having never had a chance.
   const N = 4;
-  let s = sysState([mine('m', 'titanium', 5)], N);
+  const HALF = Math.round(B * N * 0.5);
+  let s = sysState([mine('m', 'titanium', B)], N);
   s = tick(s); s = tick(s);
   s = licenseNow(s);
 
   const v = venture(s);
-  assert.equal(v.syndicateCommitment, MINE_BASELINE.titanium * N, 'a full commitment: 20 units per window');
+  assert.equal(v.syndicateCommitment, MINE_BASELINE.titanium * N, 'a full commitment: a baseline window');
   assert.equal(windowFraction(v, winStartFor(3, N), N), 0.5, 'present for half the window');
 
   s = tick(s);                                   // producing tick 3
   const boundary = nextWindow(s);
-  assert.equal(boundary.Q, 10, 'it owes the pro-rated half, as a whole number of goods');
+  assert.equal(boundary.Q, HALF, 'it owes the pro-rated half, as a whole number of goods');
   assert.equal(boundary.status, 'met', 'the boundary tick will MEET it — the fix, in one assertion');
 
   s = tick(s);                                   // producing tick 4 = the boundary
-  assert.equal(win(s).delivered, 10, 'delivered exactly what it owed');
+  assert.equal(win(s).delivered, HALF, 'delivered exactly what it owed');
   assert.equal(win(s).windowStart, 1);
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
 test('...and the same timing WOULD have breached without the stamp', () => {
   // The counterfactual, so the headline test can never quietly pass for another reason:
-  // strip the join tick and the identical run owes the full 20 and falls short.
+  // strip the join tick and the identical run owes the full B × N and falls short.
   const N = 4;
-  let s = sysState([mine('m', 'titanium', 5)], N);
+  let s = sysState([mine('m', 'titanium', B)], N);
   s = tick(s); s = tick(s);
   s = licenseNow(s);
   delete venture(s).committedFromTick;           // pre-3b-ii behaviour, exactly
 
   s = tick(s);
   const boundary = nextWindow(s);
-  assert.equal(boundary.Q, 20, 'a full window owed');
+  assert.equal(boundary.Q, B * N, 'a full window owed');
   assert.equal(boundary.status, 'breach', 'with only two ticks to deliver it in');
 });
 
 test('a licence signed for the very last tick of a window owes a sliver, and meets it', () => {
-  // The extreme case: first producing tick IS the boundary tick. 1/4 of 20 = 5, which
+  // The extreme case: first producing tick IS the boundary tick. 1/4 of B × N is B, which
   // is exactly one tick of fresh output. Pro-rating means owing a little, not nothing.
   const N = 4;
-  let s = sysState([mine('m', 'titanium', 5)], N);
+  const SLIVER = Math.round(B * N * 0.25);
+  let s = sysState([mine('m', 'titanium', B)], N);
   s = tick(s); s = tick(s); s = tick(s);         // ticks 1..3
   s = licenseNow(s);
   assert.equal(venture(s).committedFromTick, 4);
 
   const boundary = nextWindow(s);
-  assert.equal(boundary.Q, 5);
+  assert.equal(boundary.Q, SLIVER);
   assert.equal(boundary.status, 'met');
   s = tick(s);
-  assert.equal(win(s).delivered, 5);
+  assert.equal(win(s).delivered, SLIVER);
 });
 
 // --- 3. Q rounds, and the fraction = 1 path is byte-identical ---------------------
@@ -184,20 +195,20 @@ test('NO-OP: with a full-window fraction, rounding Q changes nothing — byte-id
 
 test('from its first COMPLETE window on, a mid-window licence owes the full Q', () => {
   const N = 4;
-  let s = sysState([mine('m', 'titanium', 5)], N);
+  let s = sysState([mine('m', 'titanium', B)], N);
   s = tick(s); s = tick(s);
   s = licenseNow(s);                              // committedFromTick 3, window 1..4
 
   s = tick(s);                                    // 3 — pro-rated window
-  assert.equal(nextWindow(s).Q, 10);
+  assert.equal(nextWindow(s).Q, Math.round(B * N * 0.5));
   s = tick(s);                                    // 4 — the boundary
   // Window 2 spans ticks 5..8; committedFromTick 3 ≤ its windowStart, so fraction 1.
   assert.equal(windowFraction(venture(s), winStartFor(5, N), N), 1);
-  assert.equal(nextWindow(s).Q, 20, 'the full commitment, every window after the first');
+  assert.equal(nextWindow(s).Q, B * N, 'the full commitment, every window after the first');
 
   for (let i = 0; i < 4; i += 1) s = tick(s);      // ticks 5..8
   assert.equal(s.tick, 8);
-  assert.equal(win(s).delivered, 20, 'and it delivers the full amount');
+  assert.equal(win(s).delivered, B * N, 'and it delivers the full amount');
   assert.equal(win(s).windowStart, 5);
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
@@ -206,7 +217,7 @@ test('a licence signed exactly as a window opens is never pro-rated', () => {
   // Signed on the boundary tick T (so committedFromTick = T+1 = the next window's first
   // tick): it owes nothing in the window it never produced in, and a full Q in its own.
   const N = 4;
-  let s = sysState([mine('m', 'titanium', 5)], N);
+  let s = sysState([mine('m', 'titanium', B)], N);
   for (let i = 0; i < 4; i += 1) s = tick(s);     // ticks 1..4, boundary at 4
   s = licenseNow(s);
   assert.equal(venture(s).committedFromTick, 5, 'the first tick of window 2');
@@ -214,7 +225,7 @@ test('a licence signed exactly as a window opens is never pro-rated', () => {
   assert.deepEqual(checkInvariants(s, s.tick), [], 'and the tripwire is content mid-intake');
 
   s = tick(s);
-  assert.equal(nextWindow(s).Q, 20, 'a full window, owed from the start of it');
+  assert.equal(nextWindow(s).Q, B * N, 'a full window, owed from the start of it');
 });
 
 // --- 5. the tripwire, determinism, and the unlicensed no-op -----------------------
@@ -323,7 +334,7 @@ test('the pro-rate moves no credits of its OWN — every tick is the sale, less 
 // fee (§5: "one fraction, applied once to the target and once to the fee").
 test('a mid-window licence pays a PRO-RATED fee at its first boundary and the full fee after', () => {
   const N = 4;
-  let s = sysState([mine('m', 'titanium', 5)], N);
+  let s = sysState([mine('m', 'titanium', B)], N);
   s = tick(s); s = tick(s);            // state.tick 2 — mid-window (the window is ticks 1..4)
   s = licenseNow(s);
   const lic = venture(s).licence;

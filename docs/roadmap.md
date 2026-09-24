@@ -1732,7 +1732,7 @@ boundary so the later hex-map swap doesn't touch it.
     playtest surfaces. Nothing went to the decision checklist: no number or rule was chosen. The new
     constants are display sizes and colours from the existing palettes; the empty N field avoids a default
     lap count.
-- **Tuning — resource yield tiers & the homeworld production floor.** ⬜ *Designed 24-09-26; build pending.*
+- **Tuning — resource yield tiers & the homeworld production floor — ✅ BUILT 24-09-26 (two commits).**
   Per-resource mine yields by rarity tier (design.md §2 "Resource Yield Tiers & the Homeworld Production
   Floor"; numbers in `docs/phase-1-tuning.md` "Resource yield tiers"). The build: the yield table in
   `sim/baseline.js`; the engine stamps a new venture's `productionRate` from its baseline when the establish
@@ -1745,6 +1745,24 @@ boundary so the later hex-map swap doesn't touch it.
   rate and the ledger's Rate row reads the served baseline (`ESTABLISH_RATE` survives only on the
   deuterium refinery). A tripwire pins every baseline value as a positive integer. The table itself is
   still the uniform 5, so every determinism golden is byte-identical. Suite **1,587 green**.
+  **Commit 2 of 2 BUILT 24-09-26 — the yield table + the homeworld-floor tripwire.** `MINE_BASELINE` is
+  the phase-1-tuning.md table exactly (deuterium stays 5; `REFINERY_BASELINE`, recipes, `FEE_RATE`, price
+  and reputation constants untouched). `sim/tests/homeworld-floor.test.js` derives the 12-node Terran
+  spread from the seed and the six homeworld-complete recipes from the catalog, then checks design.md §2's
+  inequality for every input good: RED on the uniform-5 table (all seven inputs short), GREEN on the tiers.
+  The new yields broke 47 tests. Each fix derives its expectation from the table, and a mine fixture keeps
+  its old ratio to the baseline: a rate of 5 becomes the baseline, 10 becomes twice it. Every re-pinned
+  determinism golden (23 in commitment-scaffold, 14 in persist) was first shown to reproduce byte for byte
+  with only the table set back to all-5. With the table set back, the whole suite passes except the floor
+  tripwire, which fails by design. The establish panel's single mirrored `BASELINE_RATE` is retired (its
+  own tripwire demanded it the day baselines differentiated). The commitment preview now reads each good's
+  baseline from `GET /goods` (`baselineUnits`). Non-test callers audited: `tools/admin.js` (seat-demo,
+  verify-cycle) and the `sim/snapshot.js` CLI demo now take the engine default, and verify-cycle expects
+  230,400. The supply-relief and meanline scenarios keep their explicit fixture rates, and `sim/demo.js`'s
+  foundGuild inline mine is out of scope. Sim suite **1,590 green**; tools **68 green**. **Deferred, not
+  invented:** capping a named `productionRate` at its baseline (throttle-below / droids-above); foundGuild
+  inline rates; the deuterium refinery's throughput (`ESTABLISH_RATE` 5 still stands in). **Needs a fresh
+  galaxy on deploy.**
 
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar

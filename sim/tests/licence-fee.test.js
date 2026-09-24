@@ -91,10 +91,13 @@ test('the discounted fee never exceeds the basic fee, across a spread of terms',
 });
 
 test('the basic fee is feeRate × baseline-over-one-window × the locked price', () => {
+  // ⤳ 24-09-26 (yield tiers): the baseline here was the literal 5 — titanium's under the
+  // old uniform table. It is titanium's baseline READ from the table, because the second
+  // half compares it with the fee the engine locks for a real titanium mine.
   const { basicFee } = licenceFee({
-    baselineUnitsPerTick: 5, windowN: N, lockedPrice: 10, committedOutputPct: 0, equityPct: 0,
+    baselineUnitsPerTick: MINE_BASELINE.titanium, windowN: N, lockedPrice: 10, committedOutputPct: 0, equityPct: 0,
   });
-  assert.equal(basicFee, Math.round(FEE_RATE * 5 * N * 10));
+  assert.equal(basicFee, Math.round(FEE_RATE * MINE_BASELINE.titanium * N * 10));
   // ...and it is priced off the BASELINE, so it cannot be shrunk by throttling: two
   // ventures of the same type carry the same basic fee whatever their productionRate.
   let s = sysState([mine('m', 'titanium', 1)]);       // throttled to a trickle
@@ -494,9 +497,11 @@ test('the quote tracks the POSTED price, proportionally', () => {
   assert.equal(at10, Math.round(FEE_RATE * MINE_BASELINE.titanium * N * 10),
     'and the figure is §5’s own formula — asserted here once, against the constants');
   // The scarcity of the good is the price’s business; a good at a different price quotes
-  // differently in the same snapshot.
+  // differently in the same snapshot — by the same formula, at its OWN baseline and price.
+  // ⤳ 24-09-26 (yield tiers): this was `at10 * 4`, which held only while gold and titanium
+  // shared the uniform baseline of 5. They are different tiers now (design.md §2).
   s.prices.gold.posted = 40;
-  assert.equal(quoteFor(s, 'gold'), at10 * 4);
+  assert.equal(quoteFor(s, 'gold'), Math.round(FEE_RATE * MINE_BASELINE.gold * N * 40));
 });
 
 test('the quote tracks the WINDOW — the same scaling the charge takes', () => {

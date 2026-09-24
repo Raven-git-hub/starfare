@@ -33,7 +33,10 @@ Titanium's type baseline is 5 units/tick (`MINE_BASELINE`), so a **100 % titaniu
 figure on the console was a derivative of `5 × 24`; they all become derivatives of `5 × 1,440`.
 The basic fee scales with `N` on the same axis (`FEE_RATE × baseline × N × price`,
 `licenceFee`), so the `0.10` *ratio* the fee is tuned on is unchanged — only the absolute grows,
-by design (the `FEE_RATE` note in `phase-1-tuning.md`).
+by design (the `FEE_RATE` note in `phase-1-tuning.md`). *(**Baseline updated 24-09-26** by the
+resource yield tiers, design.md §2: titanium's baseline is now 160 units/tick, so a 100 % titanium
+licence owes 160 × 1,440 = 230,400 units per cycle. The formula and `N` are unchanged; the 5-based
+figures above are the record of this ruling as it was made.)*
 
 **A related fact, flagged so it is not a surprise later.** `baselineUnitsPerTick` is the
 **type** baseline (`MINE_BASELINE[good]`), *not* the venture's own `productionRate`. A mine

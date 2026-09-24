@@ -30,45 +30,59 @@
 // below (since the factory-commitment slice, 28-08-26); it reads neither table.
 //
 // [FIRST-CUT] EVERY number below is provisional and recorded in
-// docs/phase-1-tuning.md. The value chosen is a UNIFORM 5 — the one extraction
-// rate the repo has actually ruled (Titanium 5/tick, 01-08-26). Per-resource differentiation IS
-// designed ("a common Tier-1 raw yields decently, a scarcer one less — a gold mine
-// might yield ~1", phase-1-tuning.md) but NO per-resource number has ever been
-// ruled, so none is invented here: the table is written out entry by entry so
-// tuning is a one-file edit, and the differentiation sits on the decision
-// checklist instead of being guessed. A refinery's baseline is in BATCHES/tick;
-// its output units are batches × the recipe's output qty.
+// docs/phase-1-tuning.md; the tables are written out entry by entry so tuning is a
+// one-file edit.
+//   - MINES are differentiated by YIELD TIER (RULED 24-09-26, design.md §2 "Resource
+//     Yield Tiers & the Homeworld Production Floor"; the numbers are copied from
+//     phase-1-tuning.md "Resource yield tiers", which is where they are argued).
+//     A mine's yield is a property of the RESOURCE, galaxy-wide — a mine has no tier.
+//   - FACTORIES are still the uniform first cut, 5 batches/tick per recipe; the
+//     per-recipe baselines are open on the decision checklist, not guessed here.
+// A refinery's baseline is in BATCHES/tick; its output units are batches × the
+// recipe's output qty. Every value in both tables must be a positive integer (a
+// tripwire in tests/baseline.test.js): the engine stamps them onto new ventures as
+// `productionRate`, and a mine deposits its rate as whole units with no carry.
+// The homeworld production floor that these yields were derived to satisfy is its own
+// tripwire, tests/homeworld-floor.test.js.
 
 const { RAW_RESOURCES, PROCESSED_GOODS, TIER3_GOODS, DEUTERIUM } = require('./resources.js');
 const { getRecipe, listRecipes } = require('./recipes.js');
 
-// [FIRST-CUT] the uniform baseline every entry below is currently set to.
-const FIRST_CUT_BASELINE = 5;
+// [FIRST-CUT] the uniform FACTORY baseline, batches/tick: every REFINERY_BASELINE
+// entry below is set to it. Mines no longer share it (they are tiered, below).
+const FIRST_CUT_REFINERY_BASELINE = 5;
 
-// Mining ventures: baseline units/tick, keyed by the RAW resource mined.
+// Mining ventures: baseline units/tick, keyed by the RAW resource mined. RULED 24-09-26
+// by yield tier (design.md §2); the values are phase-1-tuning.md "Resource yield tiers"
+// exactly — change them THERE first, then here.
 const MINE_BASELINE = Object.freeze({
-  ammonia: 5,
-  carbon_products: 5,
-  copper: 5,
+  // Common (abundant)
+  titanium: 160,
+  copper: 100,
+  lead: 100,
+  silica: 200,
+  nitrogen: 300,
+  helium: 100,
+  carbon_products: 300,
+  polymers: 300,
+  // Uncommon — lithium is ruled Uncommon, not Rare: Terran-only, and every battery needs it
+  ammonia: 50,
+  xenon: 50,
+  silver: 50,
+  gold: 50,
+  tungsten: 50,
+  lithium: 50,
+  // Rare
+  neodymium: 10,
+  palladium: 10,
+  // Fuel sits OUTSIDE the tiers: its supply is governed by the fuel economy (§1.4), so
+  // it keeps the old uniform 5.
   deuterium: 5,
-  gold: 5,
-  helium: 5,
-  lead: 5,
-  lithium: 5,
-  neodymium: 5,
-  nitrogen: 5,
-  palladium: 5,
-  polymers: 5,
-  silica: 5,
-  silver: 5,
-  titanium: 5, // the one RULED extraction rate (01-08-26); every other entry echoes it
-  tungsten: 5,
-  xenon: 5,
 });
 
 // Refining/manufacturing ventures: baseline BATCHES/tick, keyed by recipeId. Both the
 // Tier-2 refines and (as of 2.1a) the 25 Tier-3 module manufactures sit here at the one
-// ruled uniform droidless baseline, FIRST_CUT_BASELINE (= 5) — a module is quoted and
+// uniform first-cut factory baseline, FIRST_CUT_REFINERY_BASELINE (= 5) — a module is quoted and
 // its capacity summed by the same path as a processed good (docs/phase-1-tuning.md).
 const REFINERY_BASELINE = Object.freeze({
   battery_cells: 5,
@@ -83,7 +97,7 @@ const REFINERY_BASELINE = Object.freeze({
   refrigerant_fluid: 5,
   silicon_wafer: 5,
   titanium_alloy: 5,
-  // Tier-3 modules (recipeId === module good id), alphabetical, all at FIRST_CUT_BASELINE.
+  // Tier-3 modules (recipeId === module good id), alphabetical, all at FIRST_CUT_REFINERY_BASELINE.
   cargo_handling_system: 5,
   cargo_module: 5,
   chassis: 5,
@@ -308,7 +322,7 @@ const BASELINE_KEYS = Object.freeze({
 });
 
 module.exports = {
-  FIRST_CUT_BASELINE, MINE_BASELINE, REFINERY_BASELINE, BASELINE_KEYS,
+  FIRST_CUT_REFINERY_BASELINE, MINE_BASELINE, REFINERY_BASELINE, BASELINE_KEYS,
   producedGoodFor, baselineOutputFor, baselineRateFor, baselineUnitsForGood,
   isLicensedDeuteriumMine, isDeuteriumMine, isIllegalDeuteriumRefinery, isDockyard,
 };

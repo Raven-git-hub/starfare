@@ -228,7 +228,18 @@ test('THE CASCADE: committing the INPUT starves the factory, which breaches and 
   // Two runs, identical but for ONE thing: whether the titanium mine is also licensed.
   // The counterfactual proves the alloy licence is meetable in this fixture, so the
   // breach below can only be the starvation.
-  const chain = () => suppliedChain([factory('f', 5)]);
+  //
+  // The titanium mine makes ONE FULL BASELINE — exactly what a 100% licence on it owes
+  // each tick, so that licence can be met — plus LEFTOVER_TI more, which is all the
+  // factory gets once the Syndicate has taken its share: 10 of the 15 it draws flat out.
+  // ⤳ 24-09-26 (yield tiers): this mine was suppliedChain's literal 15, which WAS
+  // baseline + 10 when the baseline was 5. The baseline is read from the table now and the
+  // 10 is kept, so the starved factory gets exactly what it always got and the pile
+  // pinned below is unchanged; at the old table this is 15 again, byte for byte.
+  const LEFTOVER_TI = 10;
+  const chain = () => [
+    mine('tm', 'titanium', MINE_BASELINE.titanium + LEFTOVER_TI), mine('cm', 'carbon_products', 5), factory('f', 5),
+  ];
 
   const fed = runToBoundary(licenceAll(fixture(chain()), ['f']));
   const starved = runToBoundary(licenceAll(fixture(chain()), ['f', 'tm']));

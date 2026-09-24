@@ -31,7 +31,11 @@ const { intake, createApplyForLicenceAction } = require('../actions.js');
 const { MINE_BASELINE } = require('../baseline.js');
 
 const SYS = 'sysA';
-const TITANIUM_BASELINE = MINE_BASELINE.titanium; // 5 units/tick, the one RULED rate
+// Titanium's droidless baseline, units/tick. ⤳ 24-09-26 (yield tiers): it was the uniform
+// 5, so a day's licence read as the literal 7,200 (5 × 1,440). It is read from the table
+// now and every licence figure below is DERIVED from it, because what this file pins is
+// the WINDOW (N = 1,440), not the yield.
+const TITANIUM_BASELINE = MINE_BASELINE.titanium;
 
 // A one-mine system with NO `windowN` on the state — the fallback is what runs.
 function unconfigured(venture) {
@@ -64,15 +68,16 @@ test('1,440 is the DERIVED figure, not a memorable coincidence: 24 h × 60 min/h
 
 // --- 2. what the number is FOR: the licence terms it sizes -------------------------
 
-test('an unconfigured galaxy sizes a 100% titanium licence at 7,200 units a window', () => {
+test('an unconfigured galaxy sizes a 100% titanium licence at a whole day of baseline output', () => {
   // The headline the ruling exists for. A full-commitment titanium mine owes its type
-  // baseline over a whole day — 5 × 1,440 — where under the retired placeholder 24 it
-  // owed 120, a figure that was a day's promise priced as twenty-four minutes' work.
-  assert.equal(commitmentUnitsFor(1, TITANIUM_BASELINE, DEFAULT_WINDOW_N), 7200);
-  assert.equal(commitmentUnitsFor(1, TITANIUM_BASELINE, 24), 120, 'the value being retired');
+  // baseline over a whole day — baseline × 1,440 — where under the retired placeholder 24
+  // it owed baseline × 24, a figure that was a day's promise priced as twenty-four
+  // minutes' work.
+  assert.equal(commitmentUnitsFor(1, TITANIUM_BASELINE, DEFAULT_WINDOW_N), TITANIUM_BASELINE * 1440);
+  assert.equal(commitmentUnitsFor(1, TITANIUM_BASELINE, 24), TITANIUM_BASELINE * 24, 'the value being retired');
 });
 
-test('the real licence action stamps 7,200 with no windowN set anywhere', () => {
+test('the real licence action stamps a day of baseline output with no windowN set anywhere', () => {
   // Not the formula in isolation — the shipped intake path, reading the same fallback
   // a live galaxy reads, on a state that configures nothing.
   const s = unconfigured(mine());
@@ -84,7 +89,7 @@ test('the real licence action stamps 7,200 with no windowN set anywhere', () => 
   assert.equal(results[0].accepted, true, results[0].reason);
 
   const v = next.guilds[0].ventures.find((x) => x.id === 'm');
-  assert.equal(v.syndicateCommitment, 7200, 'a day of titanium at the type baseline');
+  assert.equal(v.syndicateCommitment, TITANIUM_BASELINE * 1440, 'a day of titanium at the type baseline');
   assert.deepEqual(checkInvariants(next, next.tick), []);
 });
 
@@ -96,7 +101,8 @@ test('the fee re-derives off the same window — the RATIO is what is tuned, not
   const { basicFee } = licenceFee({ ...terms, windowN: DEFAULT_WINDOW_N });
   const windowIncome = commitmentUnitsFor(1, TITANIUM_BASELINE, DEFAULT_WINDOW_N) * lockedPrice;
 
-  assert.equal(basicFee, 7200, 'the fee scaled with the window, exactly as the note says it must');
+  assert.equal(basicFee, Math.round(FEE_RATE * TITANIUM_BASELINE * 1440 * lockedPrice),
+    'the fee scaled with the window, exactly as the note says it must');
   assert.equal(basicFee / windowIncome, FEE_RATE, 'and the tuned ratio is unmoved at a tenth');
 });
 
@@ -105,7 +111,7 @@ test('the fee re-derives off the same window — the RATIO is what is tuned, not
 test('with no windowN set, a committed good runs a 1,440-tick cycle in the live engine', () => {
   // The strongest form: no formula, no constant — just the boundary the engine puts a
   // window roll on. Under the retired 24 this window would have rolled sixty times.
-  let s = unconfigured(mine({ syndicateCommitment: 7200 }));
+  let s = unconfigured(mine({ syndicateCommitment: TITANIUM_BASELINE * 1440 }));
   const win = () => getWindow(s.guilds[0], SYS, 'titanium').windowStart;
 
   for (let i = 0; i < 24; i += 1) s = tick(s);

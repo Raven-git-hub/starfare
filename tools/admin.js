@@ -176,12 +176,16 @@ function pickResourceNode(layouts, resourceType) {
   return found.length > 0 ? found[0] : null;
 }
 
-// The two figures verify-cycle asserts on. NEITHER is authored here: 7,200 is
-// the engine's own 100%-titanium commitment over one 1,440-tick day (5/tick ×
-// 1,440 — sim/tests/cycle-length.test.js), and 1,440 is the ruled cycle length
+// The two figures verify-cycle asserts on. NEITHER is authored here: 230,400 is
+// the engine's own 100%-titanium commitment over one 1,440-tick day (titanium's
+// baseline 160/tick × 1,440 — sim/baseline.js MINE_BASELINE, ruled 24-09-26 in
+// docs/phase-1-tuning.md "Resource yield tiers"; it was 7,200 = 5 × 1,440 under the
+// old uniform baseline), and 1,440 is the ruled cycle length
 // (docs/cycle-and-calendar.md §1). They are written down as EXPECTATIONS so a
-// container running older code fails loudly instead of quietly.
-const EXPECTED_COMMITMENT = 7200;
+// container running older code fails loudly instead of quietly — a server still on
+// the uniform-5 table reads back 7,200 and FAILS. tools/admin.test.js re-derives the
+// commitment from the table, so a retune that forgets this line goes red there.
+const EXPECTED_COMMITMENT = 230400;
 const EXPECTED_WINDOW_N = 1440;
 
 // judgeVerify({ venture, calendar }) -> { pass, checks: [{ name, ok, detail }] }.
@@ -589,7 +593,6 @@ const DEFAULT_BASE = process.env.STARFARE_BASE || 'http://localhost:7331';
 // Operator-supplied setup values, every one QUOTED from somewhere that already
 // ruled it — this file chooses no game number.
 const STARTING_CREDITS = 2000;   // client/game.html's STARTING_CREDITS [FIRST-CUT]
-const ESTABLISH_RATE = 5;        // titanium's ruled 5/tick (phase-1-tuning.md); the client's establish rate
 const FULL_COMMITMENT = 1;       // committedOutputPct as a fraction — 1 = 100%
 const WINDOW_DAYS = 7;           // sim/licence.js WINDOW_DAYS_MIN, the shortest legal term
 const DEMO_GOOD = 'titanium';
@@ -788,7 +791,8 @@ async function cmdSeatDemo(base, flags) {
       siteId: node.nodeId,
       assetId: pickIdleAssetId(live, guildId, 'miner'),
       resourceType: DEMO_GOOD,
-      productionRate: ESTABLISH_RATE,
+      // No productionRate: the engine stamps the titanium baseline (design.md §2), the
+      // same figure both licences commit a share of.
     });
     await act(base, {
       type: 'applyForLicence', guildId, ventureId, committedOutputPct: FULL_COMMITMENT, windowDays: WINDOW_DAYS,
@@ -833,7 +837,7 @@ async function cmdVerifyCycle(base, flags) {
     siteId: node.nodeId,
     assetId: pickIdleAssetId(founded, guildId, 'miner'),
     resourceType: DEMO_GOOD,
-    productionRate: ESTABLISH_RATE,
+    // No productionRate: the engine stamps the titanium baseline (design.md §2).
   });
   await act(base, {
     type: 'applyForLicence', guildId, ventureId, committedOutputPct: FULL_COMMITMENT, windowDays: WINDOW_DAYS,
