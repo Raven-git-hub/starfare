@@ -210,20 +210,23 @@ function advanceRoute(state, guild, craft, thisTick) {
 // to "stop after this run" (`stopAfterRun`) is over now whatever its mode, and an N-run is over when this
 // was its last lap — each way the craft ENDS idle at WN, route cleared: an ordinary completion, WN being
 // a real waypoint (§11.4), and nothing flagged. Otherwise the lane repeats, and `startLap` runs steps 2–4.
-// An N-run counts its laps DOWN here, at the end of each lap, so `lapsRemaining` is always "laps still
-// to fly, this one included" while the lane is live — the lap that takes it to 0 is the last.
+// A repeating lane COUNTS the lap here, at the end of each lap (slice 3a.1): `lapsDone` goes UP by one —
+// so after lap 1 it reads 1, and the client can show "lap k" as lapsDone + 1 — and an N-run's
+// `lapsRemaining` goes DOWN by one, so it is always "laps still to fly, this one included" while the lane
+// is live (the lap that takes it to 0 is the last) and the two always add back to the launched `N`.
+// No tick is stamped for the count: this runs on the tick the lap ended, and whatever happens next records
+// that tick already — the next lap's departure, a wait's `sinceTick`, an end flag, or the route going away.
 function finishLap(state, guild, craft, thisTick) {
   const route = craft.route;
-  if (route.mode === undefined || route.stopAfterRun) {
-    delete craft.route; // once (the built one-shot end, unchanged), or a lane stopped after this run
+  if (route.mode === undefined) {
+    delete craft.route; // once — the built one-shot end, unchanged
     return;
   }
-  if (route.mode === 'nRun') {
-    route.lapsRemaining -= 1;
-    if (route.lapsRemaining === 0) {
-      delete craft.route; // the N-th lap just finished — the run ends idle at WN
-      return;
-    }
+  route.lapsDone += 1;
+  if (route.mode === 'nRun') route.lapsRemaining -= 1;
+  if (route.stopAfterRun || (route.mode === 'nRun' && route.lapsRemaining === 0)) {
+    delete craft.route; // a lane stopped after this run, or the N-th lap just finished — idle at WN
+    return;
   }
   startLap(state, guild, craft, thisTick);
 }
@@ -1324,16 +1327,21 @@ function repeatError(repeat) {
 // repeatStateFor(repeat) -> the repeat fields journalled onto a craft's `route` at launch (§11.10):
 //   once (or absent) → {}                     — nothing: a one-shot route stays byte-identical to the
 //                                               built one (omit-when-default);
-//   continuous       → { mode: 'continuous' };
-//   nRun             → { mode: 'nRun', lapsRemaining: n } — counts DOWN one per finished lap.
-// A repeating lane launched `perCycle` also carries `cadence: 'perCycle'`; `immediate` is the default and
-// is never written (omit-when-default), so a lane launched without a cadence journals exactly as in 3a.
+//   continuous       → { mode: 'continuous', lapsDone: 0 };
+//   nRun             → { mode: 'nRun', N: n, lapsRemaining: n, lapsDone: 0 }.
+// `lapsDone` (slice 3a.1) counts COMPLETED laps UP from 0 on every repeating lane — the client's "lap k"
+// read-out. An nRun also keeps `N`, the launched target, which never changes (the "of N" denominator), and
+// `lapsRemaining`, which counts DOWN; finishLap moves the two counters together, so lapsDone +
+// lapsRemaining is always N. A repeating lane launched `perCycle` also carries `cadence: 'perCycle'`;
+// `immediate` is the default and is never written (omit-when-default).
 // `repeat` is already validated (repeatError).
 function repeatStateFor(repeat) {
   if (repeat === undefined || repeat.mode === 'once') return {};
   const cadence = repeat.cadence === 'perCycle' ? { cadence: 'perCycle' } : {};
-  if (repeat.mode === 'nRun') return { mode: 'nRun', lapsRemaining: repeat.n, ...cadence };
-  return { mode: repeat.mode, ...cadence };
+  if (repeat.mode === 'nRun') {
+    return { mode: 'nRun', N: repeat.n, lapsRemaining: repeat.n, lapsDone: 0, ...cadence };
+  }
+  return { mode: repeat.mode, lapsDone: 0, ...cadence };
 }
 
 // isDockedAt(outpost, vehicleId) -> true when the craft already holds a manifest at this Outpost —
@@ -4067,9 +4075,9 @@ function applyAction(state, action) {
     // and a cursor at 0 (the waypoint the craft is heading to, or — after the skip — standing at). The
     // `route` field is omit-when-absent on every OTHER craft, so a route-less galaxy is byte-identical
     // to pre-slice (§11.8). It is journalled state, so a mid-run restart replays byte-identically.
-    // A repeating lane also journals its launch mode (and an nRun its laps still to run, a perCycle lane
-    // its cadence) — §11.10; a one-shot adds nothing, so it is byte-identical to the pre-repeat route
-    // (repeatStateFor).
+    // A repeating lane also journals its launch mode, its lap counters (lapsDone; an nRun's N and laps
+    // still to run) and a perCycle lane its cadence — §11.10; a one-shot adds nothing, so it is
+    // byte-identical to the pre-repeat route (repeatStateFor).
     craft.route = {
       waypoints: action.waypoints.map(copyRouteWaypoint), cursor: 0, ...repeatStateFor(action.repeat),
     };

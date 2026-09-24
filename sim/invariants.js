@@ -1295,6 +1295,10 @@ function tripViolation(trip) {
 // place a lap is fuelled. (That the waiting craft is idle, with no trip, is checked with the craft below.)
 // A repeating lane's `cadence` (slice 3a.1) is likewise omit-when-default: `immediate` is never stored, so
 // a PRESENT cadence must be `perCycle`, and only on a repeating lane (a one-shot has no next lap to pace).
+// Its lap COUNTERS (slice 3a.1): `lapsDone`, the completed laps, rides EVERY repeating lane and no
+// one-shot, a whole number >= 0; `N`, the launched lap target, rides an nRun alone, a whole number >= 1;
+// and on an nRun the count-up and the count-down always add back to the target — lapsDone +
+// lapsRemaining === N. A drift there means a lap was counted one way and not the other.
 // The one home of the route shape, used by checkVehicleIntegrity below.
 function routeViolation(route) {
   if (!route || typeof route !== 'object' || !Array.isArray(route.waypoints) || route.waypoints.length === 0) {
@@ -1316,12 +1320,27 @@ function routeViolation(route) {
       return { reason: 'route.cadence, when present, must be "perCycle" on a repeating lane (immediate is never stored; a one-shot has no cadence)', cadence: route.cadence, mode: route.mode };
     }
   }
+  if (route.mode !== undefined) {
+    if (!Number.isInteger(route.lapsDone) || route.lapsDone < 0) {
+      return { reason: 'a repeating route\'s lapsDone must be a whole number >= 0 (its completed laps)', mode: route.mode, lapsDone: route.lapsDone };
+    }
+  } else if (route.lapsDone !== undefined) {
+    return { reason: 'route.lapsDone belongs to a repeating route only (a one-shot counts no laps)', lapsDone: route.lapsDone };
+  }
   if (route.mode === 'nRun') {
     if (!Number.isInteger(route.lapsRemaining) || route.lapsRemaining < 1) {
       return { reason: 'an nRun route\'s lapsRemaining must be a whole number >= 1 (the lap that reaches 0 ends the lane)', lapsRemaining: route.lapsRemaining };
     }
+    if (!Number.isInteger(route.N) || route.N < 1) {
+      return { reason: 'an nRun route\'s N (its launched lap target) must be a whole number >= 1', N: route.N };
+    }
+    if (route.lapsDone + route.lapsRemaining !== route.N) {
+      return { reason: 'an nRun route\'s laps done + laps remaining must equal its N', lapsDone: route.lapsDone, lapsRemaining: route.lapsRemaining, N: route.N };
+    }
   } else if (route.lapsRemaining !== undefined) {
     return { reason: 'route.lapsRemaining belongs to an nRun route only', mode: route.mode, lapsRemaining: route.lapsRemaining };
+  } else if (route.N !== undefined) {
+    return { reason: 'route.N belongs to an nRun route only', mode: route.mode, N: route.N };
   }
   // "Stop after this run" (§11.10): `stopAfterRun: true` only, only on a repeating lane, and never on a
   // waiting one — a waiting lane is already at its boundary, so a stop ends it on the spot instead.

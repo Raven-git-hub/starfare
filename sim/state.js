@@ -755,8 +755,10 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
 // the entity's whole shape reads in one place. OMITTED unless the craft is running a chained route:
 //   { waypoints: [{ anchor, action? }], cursor,
 //     mode?, cadence?,          — a REPEATING lane only (slice 3a): mode 'continuous' | 'nRun'; cadence
-//     lapsRemaining?,             'perCycle' (slice 3a.1 — absent means the default 'immediate'); an nRun's
-//     waiting?, stopAfterRun? }   laps still to run; `waiting = { reason: 'fuel', sinceTick }` while
+//     lapsDone?, N?,              'perCycle' (slice 3a.1 — absent means the default 'immediate'); lapsDone,
+//     lapsRemaining?,             its completed laps (slice 3a.1, every repeating lane); an nRun's launched
+//     waiting?, stopAfterRun? }   target N (slice 3a.1) and laps still to run (lapsDone + lapsRemaining ===
+//                                 N); `waiting = { reason: 'fuel', sinceTick }` while
 //                                 it waits at its last stop for fuel for its next lap; `stopAfterRun: true`
 //                                 once the player asked it to end after the lap it is on. A one-shot
 //                                 (`once`) route carries none of them (omit-when-default), so it is

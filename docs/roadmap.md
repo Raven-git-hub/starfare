@@ -1342,6 +1342,23 @@ boundary so the later hex-map swap doesn't touch it.
     `perCycle` (a stored `immediate` is non-canonical, exactly as a stored `once` mode is) and rides a repeating
     lane only. The snapshot route surfaces it (absent = immediate). The option is journalled here; piece (3)
     makes a `perCycle` lane hold. Sim suite 1,524 → **1,528 green** (`route-repeat-extensions.test.js` +4).
+    **(2) The lap counters — `lapsDone` + `N`** (`sim/actions.js`, `sim/invariants.js`, `sim/snapshot.js`,
+    `sim/state.js`). At launch every repeating lane journals **`lapsDone: 0`** (always present on a repeating
+    route, not omit-when-0 — the client reads one shape), and an nRun also journals **`N`**, its launched lap
+    target (never changed afterwards — the "of N" denominator), beside the existing `lapsRemaining`. A `once`
+    route carries neither (unchanged). `finishLap` counts each completed lap: `lapsDone` up by one (so after
+    lap 1 it reads 1 — the client's "lap k" is `lapsDone + 1`), an nRun's `lapsRemaining` down by one, then the
+    unchanged end-checks (stop-after-run, or the N-th lap → idle at WN). The positioning prefix is not a
+    lap (§11.10), so lap 1 counts once, when its cycle completes. No new tick stamp: the count happens on the
+    tick the lap ended, which the next event already records (the next departure, a wait's `sinceTick`, an
+    end flag, or the route going) — the arrival step's "no second home" discipline. `routeViolation`:
+    `lapsDone` a whole number ≥ 0 on every repeating route and on no one-shot; `N` a whole number ≥ 1 present
+    iff `mode === 'nRun'`; and on an nRun `lapsDone + lapsRemaining === N`, so a lap counted one way and not
+    the other fails loudly. The snapshot route surfaces both (fresh copies). *(Closes 3a's deferred "the
+    original `n` is not stored" note.)* Sim suite → **1,532 green** (`route-repeat-extensions.test.js` +4:
+    journalled at launch; an n=3 lane reads 0/3 → 1/2 → 2/1 in state and snapshot, each count moving on the
+    tick that lap's unload lands, then ends idle at WN after three laps; a continuous lane's count climbs one
+    per lap with no `N`; the integrity checks).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
