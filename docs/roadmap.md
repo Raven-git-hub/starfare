@@ -906,7 +906,7 @@ boundary so the later hex-map swap doesn't touch it.
     Sim suite **1,439 green** (untouched — client-only; the served-page tripwire stays green). *Deferred,
     not folded in: the IN-TRANSIT list has its own separate signature and a laden in-transit craft's
     manifest is a separate surface — not touched this slice.*
-- **2.2 — Transport: route actions, saved lanes & repeating runs (the automation layer).** The continuation of the guild-transport UI: per-waypoint load/unload ACTIONS that run automatically on arrival, SAVED reusable lanes, and REPEATING runs (continuous or N laps) — the self-repeating trade lane. Design contract: **transport-model.md §11** (RULED 22-09-26; the entity, the chained-legs execution, up-front per-run/per-lap fuel, the reposition rule, and the partial-proceeds / anchor-gone failure split). Built as a ladder: **1a** engine (one-shot route-with-actions execution — chained legs, per-waypoint action, up-front per-run fuel; operator-CLI driven, no client) → **1b** client (the two authoring entry points — the map chip at placement + the dispatch Finalise list to manage — plus the outpost-name label fix) → **2** saved routes (per-guild store + Save / Load Route UI + re-validate at load) → **3** repetition (continuous / N-run with the reposition rule, per-lap fuel + re-validation + pause/resume/cancel). *Pulls the transport-model.md §9/§10 "Phase 4" route-planner automation forward into Phase 2.*
+- **2.2 — Transport: route actions, saved lanes & repeating runs (the automation layer).** The continuation of the guild-transport UI: per-waypoint load/unload ACTIONS that run automatically on arrival, SAVED reusable lanes, and REPEATING runs (continuous or N laps) — the self-repeating trade lane. Design contract: **transport-model.md §11** (RULED 22-09-26; the entity, the chained-legs execution, up-front per-run/per-lap fuel, the reposition rule, and the partial-proceeds / anchor-gone failure split). Built as a ladder: **1a** engine (one-shot route-with-actions execution — chained legs, per-waypoint action, up-front per-run fuel; operator-CLI driven, no client) → **1b** client (the two authoring entry points — the map chip at placement + the dispatch Finalise list to manage — plus the outpost-name label fix) → **2** saved routes (per-guild store + Save / Load Route UI + re-validate at load) → **3** repetition (continuous / N-run with the reposition rule, per-lap fuel + re-validation + pause/resume/cancel). *Pulls the transport-model.md §9/§10 "Phase 4" route-planner automation forward into Phase 2.* ✅ **Ladder DONE (24-09-26)** — 1a → 1b → 2a / 2a.1 → 2b → 3a / 3a.1 → 3b → 3c-engine → 3c (client) all BUILT: a guild can author an actioned route, save / load it, launch it once / continuous / N-run at an immediate or per-cycle cadence with the per-lap cost shown, watch its laps and waits, and Cancel or Stop it after this run.
   - **slice 1a — engine (one-shot route-with-actions execution).** 🟢 *BUILT (22-09-26 — `sim/actions.js`,
     `sim/tick.js`, `sim/invariants.js`, `sim/snapshot.js`, `sim/server.js`, `tools/admin.js`; tripwires
     `sim/tests/route-actions.test.js` (new), `tools/admin.test.js`; contract transport-model.md §11 —
@@ -1627,7 +1627,7 @@ boundary so the later hex-map swap doesn't touch it.
     mode / N / cadence, the "X fuel / lap" read-out on the Operations active-lanes row, the In Transit Cancel /
     Stop-after-run controls, rendering flagged / waiting lanes, and the closed-loop legibility UX (§11.10).
     Nothing went to the decision checklist: no number or rule was chosen.
-  - **slice 3c — client (the automation layer's player surface).** 🔶 *IN PROGRESS (24-09-26 —
+  - **slice 3c — client (the automation layer's player surface).** 🟢 *BUILT (24-09-26 —
     `client/game.html` only; contract transport-model.md §11.10 / §11.4 / §11.6, design.md §18 — CLIENT
     ONLY: no engine, snapshot, `sim` or `tools` change).* The last rung of the ladder. The player launches,
     watches and stops a lane by rendering fields the engine already publishes and POSTing actions that
@@ -1683,6 +1683,55 @@ boundary so the later hex-map swap doesn't touch it.
     dispatch, so the notice also goes by itself once the craft is re-tasked. A player's Cancel / Stop sets
     no flag, so it never shows one. **Display call:** the notice lives only in Operations (no tab pip or
     map toast).
+    **(4) Closed-loop legibility** (§11.10 loop geometry). With a repeating mode picked, the route reads as a
+    loop. An OPEN loop (`B → C → D`) gets a **"↺ Return to B"** row after its last stop in the Finalise
+    list ("each lap flies back to stop 1"). It is not a stop: dashed ring, dimmer name, no controls. So the
+    player sees the loop close itself and need not re-add stop 1. A hand-CLOSED loop (`B → C → D → B`, the
+    last stop on stop 1's hex) keeps BOTH B stops, each able to act (the two-way haul the engine takes
+    literally), with a note on the last one ("back on stop 1's hex — the loop is closed, no return leg"),
+    and draws no return row. Nothing is merged or de-duplicated. The mode is chosen in the popup AFTER
+    planning, so the planner learns it only on **Edit Route**: with a repeating mode on, it re-opens with
+    the same return row in its waypoint list and a finer, dimmer dashed return line WN → W1 on the map
+    (none for a closed loop). A fresh Plan Route starts with it off, and Load Route keeps it. The repeat
+    gate (two or more stops, some action) and the closed-loop test (last stop's hex == stop 1's) move into
+    the planner's shared `window.__routeChecks` (`canRepeat`, `loopClosed`), so the popup and the planner
+    judge a route by one rule. The hex comparison is the same geometry the dead-leg check already does, not
+    a game number.
+    **Verified** — sim suite **1,576 green**, unchanged (client-only; the served-page tripwire
+    `sim/tests/server.test.js` green). Driven in headless Chromium against a booted, persisted server (seed 7;
+    guild `g1` at sys_0001, its Outpost at `75,-7`, 4,000 titanium, three light craft at home, four saved
+    routes). Each run started from a fresh galaxy, went through the real UI (open the craft → Plan Route →
+    Load Route → Finalise → the picker → Dispatch; Operations for the lanes), and logged **no console
+    errors**; the server log had no invariant errors. (1) An N-run 3 / per-cycle launch posted `repeat:
+    { mode:'nRun', n:3, cadence:'perCycle' }`, and the engine's route carried `N 3`, `cadence perCycle`,
+    `lapsDone 0`. The picker's "2 fuel · 20 ¢" equalled the quote's `perLapUnits` / `perLapCredits` (run:
+    1 fuel · 10 ¢, the 3c-engine figures). An empty N held Dispatch with its line. A plain route had the
+    repeat toggles disabled and still posted `dispatchVehicle`, and a Once actioned route posted no `repeat`
+    key. (2) The lanes appeared as "Lap 1 of 3 · 2 fuel / lap" and "Lap 1 · 5 fuel / lap · per-cycle"; the
+    N-run read "Lap 2 of 3" at t215. The per-cycle lane read "Next lap at cycle" at its last stop from t530,
+    listed under IN TRANSIT only (IDLE TRANSPORTS kept just the two idle craft at home).
+    With the hoard drained, the N-run finished lap 2 and read "Holding for fuel" (amber) at t640. (3) Cancel
+    asked first, "Keep going" left the craft flying, and "Yes, cancel" posted `cancelRoute`: the one-shot
+    snapped idle at `76,-7` and left the list. A craft on a rim chord (`-192,80` → `-191,72`, 56 ticks in,
+    over `-192,79`) was refused with the engine's reason and flew on; the reason cleared on the next tick.
+    Stop after this run posted `stopRouteAfterRun`, the row read "stopping after this lap" and the button
+    "Stopping after this lap" (disabled). The lane ended after its current lap, idle at its last stop
+    `75,-4`, with no flag. (4) Two continuous lanes flying to the Outpost; `remove-outpost` mid-flight ended both at
+    the bare hex (`laneEnded {target-gone, 210}`), and two notices appeared. ✕ removed one; re-dispatching
+    the other craft cleared the flag and its notice. (5) `B → C → D` Continuous showed "↺ Return to
+    ZOV-6064" in Finalise and, after Edit Route, in the planner list with the dashed return line on the
+    map. The mode survived Edit Route → Finalise. Once showed no return row. `B → C → D → B` showed two
+    ZOV-6064 stops (#1 and #4), the closed note on #4 and no return row. Its per-lap "5 fuel · 50 ¢" matched
+    the quote, the same lap as the open form's (the closing leg IS the flyback).
+    **Not changed:** operations-hub.md §4 / §7 still describe IN TRANSIT as Syndicate deliveries only. It
+    has not described guild craft rows since 2.2 b2a (recorded here, as 3c is). Left alone: a design-ahead doc
+    this slice was not asked to touch. **Deferred, not invented:** the full idle / DEPLOYED / LEASED craft board
+    (Phase 4, where a waiting lane and an ended-lane craft would also live); the toll-exit completion behind
+    Cancel's `isToll` stub (roadmap 2.3); drawing a RUNNING lane's whole loop on the map (the in-transit
+    layer still draws only the leg being flown); an Operations tab pip for an ended lane; anything a
+    playtest surfaces. Nothing went to the decision checklist: no number or rule was chosen. The new
+    constants are display sizes and colours from the existing palettes; the empty N field avoids a default
+    lap count.
 - **Tuning — resource yield tiers & the homeworld production floor.** ⬜ *Designed 24-09-26; build pending.*
   Per-resource mine yields by rarity tier (design.md §2 "Resource Yield Tiers & the Homeworld Production
   Floor"; numbers in `docs/phase-1-tuning.md` "Resource yield tiers"). The build: the yield table in

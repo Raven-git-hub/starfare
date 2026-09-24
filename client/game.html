@@ -136,6 +136,10 @@
      dead leg, plus a red index ring to match the red outline the map draws on its hex. */
   .plrow.broken { background: rgba(194,96,58,0.14); }
   .plrow.broken .plix { border-color: #c2603a; color: #e08a5a; }
+  /* automation 3c: an open loop's RETURN leg — not a stop: a dashed index ring and dimmer name, matching
+     the dashed return line the map draws. */
+  .plrow.return .plix { border-style: dashed; border-color: var(--accent); color: var(--accent); }
+  .plrow.return .plnm { color: var(--text-dim); }
   .plrow .plnm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
   .plrow .plnm .warn { color: #e08a5a; font-size: 9px; letter-spacing: 1px; display: block; white-space: normal; }
   /* a waypoint's route action (automation 1b) — a small teal sub-line under its name. It WRAPS (the
@@ -1980,6 +1984,10 @@ select.field{appearance:none; cursor:pointer;}
 /* automation 2b: a BROKEN stop's row — tinted in the flag red, its index ring red — and its small Remove */
 #dispatch-overlay .dp-route .wp-row.broken{background:rgba(194,96,58,0.10)}
 #dispatch-overlay .dp-route .wp-row.broken .ix{border-color:var(--red); color:var(--red)}
+/* automation 3c: an open loop's RETURN row (the flyback to stop 1) — not a stop, so a dashed ring, a
+   dimmer name and no controls */
+#dispatch-overlay .dp-route .wp-row.return .ix{border-style:dashed; border-color:var(--amber-dim); color:var(--amber)}
+#dispatch-overlay .dp-route .wp-row.return .nm{color:var(--ink2)}
 #dispatch-overlay .dp-route .wp-rm{font-family:var(--mono); font-size:11px; line-height:1; color:var(--ink2); background:transparent; border:1px solid var(--line2); border-radius:6px; padding:4px 7px; cursor:pointer}
 #dispatch-overlay .dp-route .wp-rm:hover{border-color:var(--red); color:var(--red)}
 #dispatch-overlay .dp-route .tc-box{border:1px solid var(--line); border-radius:8px; background:var(--panel); display:flex; flex-direction:column}
@@ -3632,7 +3640,10 @@ select.field{appearance:none; cursor:pointer;}
   // so it never changes the quote. `action` is ABSENT (not null) on a pure turning point.
   // `candidateAction` is an action set on the CANDIDATE from the chip before it is confirmed (§11.7
   // "set at placement") — confirmCandidate bakes it into the new waypoint; a fresh click drops it.
-  let PLAN = null;              // { vehicle, origin, waypoints:[{anchor, action?},…], candidate:anchor|null, candidateArmed:bool, candidateAction:action|null, routeName:string }
+  // `loop` (automation 3c) is true when the Dispatch popup's launch picker has a REPEATING mode on and sent
+  // the player back here through Edit Route: the plan then shows the lap's return leg (see canRepeat /
+  // loopClosed). A fresh Plan Route starts with it off — the mode is picked after planning, in the popup.
+  let PLAN = null;              // { vehicle, origin, waypoints:[{anchor, action?},…], candidate:anchor|null, candidateArmed:bool, candidateAction:action|null, routeName:string, loop:bool }
   let planActive = false;       // true while the map is in planning mode (the click branch + draw pass read this)
 
   // Automation 2b — Load Route. `liveSavedRoutes` is the player's guild's saved routes, pushed by
@@ -3786,6 +3797,29 @@ select.field{appearance:none; cursor:pointer;}
       : 'store gone — this stop can\'t load/unload';
   }
 
+  // ---------- automation slice 3c: repeating routes read as LOOPS (transport-model.md §11.10) ----------
+  // canRepeat(route) — may this route launch as a repeating lane? It mirrors the engine: only the
+  // actioned-route dispatch takes a `repeat`, and it refuses a repeating lane with fewer than two stops (a
+  // one-stop cycle has no leg to fly). So: two or more stops, and some stop carries an action (a route
+  // with no action goes out as the plain dispatch, which always runs once).
+  function canRepeat(route) {
+    return route.waypoints.length >= 2 && route.waypoints.some((wp) => !!wp.action);
+  }
+
+  // loopClosed(route) — the player CLOSED the loop by hand: the last stop sits on stop 1's hex
+  // (B → C → D → B). The engine takes that literally — the shared hex is a stop at BOTH ends, each with its
+  // own action (a two-way haul) — and skips the zero-length flyback. So the lists show both stops, never
+  // merged, and draw no return leg. Otherwise (B → C → D) the loop is OPEN, and every lap starts by flying
+  // back from the last stop to stop 1: the auto-flyback, shown as a "return" leg.
+  function loopClosed(route) {
+    const n = route.waypoints.length;
+    return n >= 2 && sameHex(resolveAnchor(route.waypoints[0].anchor), resolveAnchor(route.waypoints[n - 1].anchor));
+  }
+  // The two loop lines both lists show: under the return leg of an open loop, and under the last stop of
+  // a hand-closed one.
+  const LOOP_RETURN_NOTE = 'each lap flies back to stop 1';
+  const LOOP_CLOSED_NOTE = 'back on stop 1\'s hex — the loop is closed, no return leg';
+
   // Enter planning mode for a craft. `vehicle` is the DP row (needs id/class/location); `waypoints`
   // seeds the list of { anchor, action? } (empty for a fresh Plan Route, the current list — actions
   // and all — for Edit Route). Closes any open tab/panel, flies to the craft's hex at a hex-visible zoom
@@ -3793,9 +3827,10 @@ select.field{appearance:none; cursor:pointer;}
   // anchor — resolved to coords for the draw.
   // `routeName` (automation 2b) is the saved route's name when the list came from Load Route — it rides to
   // the popup so its Save field starts on that name (re-saving it updates the lane in place, §11.9).
-  function startPlanning(vehicle, waypoints, routeName) {
+  // `loop` (automation 3c) — see PLAN above.
+  function startPlanning(vehicle, waypoints, routeName, loop) {
     if (!vehicle || !vehicle.location) return;
-    PLAN = { vehicle: vehicle, origin: vehicle.location, waypoints: (waypoints || []).map(copyWaypoint), candidate: null, candidateArmed: false, candidateAction: null, routeName: routeName || '' };
+    PLAN = { vehicle: vehicle, origin: vehicle.location, waypoints: (waypoints || []).map(copyWaypoint), candidate: null, candidateArmed: false, candidateAction: null, routeName: routeName || '', loop: !!loop };
     closeLoadMenu();
     planActive = true;
     const c = resolveAnchor(vehicle.location);
@@ -3872,6 +3907,10 @@ select.field{appearance:none; cursor:pointer;}
       return row;
     };
     box.appendChild(mkRow({ cls: 'origin', ix: '◎', name: anchorLabel(PLAN.origin) + '  · origin' }));
+    // (automation 3c) A plan for a REPEATING launch reads as a loop: a hand-closed one says so on its last
+    // stop; an open one gets a return row after its last stop (below the rows).
+    const looping = PLAN.loop && canRepeat(PLAN);
+    const last = PLAN.waypoints.length - 1;
     PLAN.waypoints.forEach((wp, i) => {
       const dead = deadLegAt(PLAN, i);
       const broken = brokenAt(PLAN, i);
@@ -3890,11 +3929,16 @@ select.field{appearance:none; cursor:pointer;}
         ix: String(i + 1),
         name: anchorLabel(wp.anchor),
         act: actionSummary(wp.action),
-        note: hereNote(PLAN, i),
+        note: (looping && i === last && loopClosed(PLAN)) ? LOOP_CLOSED_NOTE : hereNote(PLAN, i),
         warn: warn,
         ctl: ctl,
       }));
     });
+    // the return leg of an open loop: not a stop (no number, no controls) — the flyback to stop 1 that
+    // starts every lap after the first (§11.4)
+    if (looping && !loopClosed(PLAN)) {
+      box.appendChild(mkRow({ cls: 'return', ix: '↺', name: 'Return to ' + anchorLabel(PLAN.waypoints[0].anchor), note: LOOP_RETURN_NOTE }));
+    }
   }
 
   // A tiny HTML-escape for the waypoint names (a landmark name is seed data, but escaping keeps the
@@ -4024,7 +4068,7 @@ select.field{appearance:none; cursor:pointer;}
   function loadSavedRoute(id) {
     const route = liveSavedRoutes.find((r) => r.id === id);
     if (!PLAN || !route) return;
-    startPlanning(PLAN.vehicle, route.waypoints, route.name);
+    startPlanning(PLAN.vehicle, route.waypoints, route.name, PLAN.loop); // a loaded route keeps the loop reading
   }
 
   // deleteSavedRoute(id) — the ✕: the first click arms it, the second POSTs deleteRoute { guildId, routeId }
@@ -4657,6 +4701,21 @@ select.field{appearance:none; cursor:pointer;}
         ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
       }
       ctx.restore();
+      // (automation 3c) an open loop's RETURN leg — last stop → stop 1, the flyback every later lap starts
+      // with — in a finer, dimmer dash than the candidate's, so the loop reads closed without looking like
+      // a stop still to be added. None for a hand-closed loop (its last stop IS stop 1's hex).
+      if (PLAN.loop && canRepeat(PLAN) && !loopClosed(PLAN)) {
+        const w1 = chain[1], wn = chain[chain.length - 1];
+        if (w1 && wn) {
+          const A = scrOf(wn), B = scrOf(w1);
+          ctx.save();
+          ctx.setLineDash([2, 5]);
+          ctx.strokeStyle = col('player', 0.55);
+          ctx.lineWidth = 1.4;
+          ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+          ctx.restore();
+        }
+      }
       // the dashed proposed leg — last confirmed anchor → candidate (dimmer)
       const cand = PLAN.candidate ? resolveAnchor(PLAN.candidate) : null;
       const lastConfirmed = chain[chain.length - 1];
@@ -5247,7 +5306,8 @@ select.field{appearance:none; cursor:pointer;}
   // opening another craft). __fmtETA lets the popup format the quote's totalTicks the way the map's
   // tags do (ONE formatter, no second copy). PLAN's waypoints are the source of truth during planning;
   // the popup receives a copy ({ anchor, action? } each) on Finalise and hands it back on Edit.
-  window.__planRoute = function (vehicle, waypoints) { startPlanning(vehicle, waypoints); };
+  // (automation 3c) `loop` is the popup saying its launch picker has a repeating mode on (Edit Route).
+  window.__planRoute = function (vehicle, waypoints, loop) { startPlanning(vehicle, waypoints, '', loop); };
   window.__abandonPlanning = function () { if (planActive || PLAN) exitPlanning(false); };
   window.__fmtETA = fmtETA;
   // Automation 1b: the Dispatch popup's Finalise list uses the SAME action gate and the SAME summary
@@ -5265,6 +5325,11 @@ select.field{appearance:none; cursor:pointer;}
     brokenAt: brokenAt,
     anyBroken: anyBroken,
     brokenReason: brokenReason,
+    // automation 3c: the repeat gate + the loop reading, shared the same way
+    canRepeat: canRepeat,
+    loopClosed: loopClosed,
+    loopReturnNote: LOOP_RETURN_NOTE,
+    loopClosedNote: LOOP_CLOSED_NOTE,
   };
 
   resize(); tick();
@@ -11002,6 +11067,11 @@ function paintInventoryHero(d){
     // sub-line under the stop's name. The origin is not a waypoint, so its slot stays empty (§11.1).
     var rc = window.__routeChecks, route = dpRoute();
     var idle = rc.idleAtBerth(route);
+    // Automation 3c: a REPEATING launch reads as a loop (§11.10 loop geometry). A hand-closed loop (the last
+    // stop back on stop 1's hex) keeps BOTH stops — each acts, a two-way haul — with a note on the last one.
+    // An open loop gets a "return" row after its last stop: the flyback to stop 1 that starts each later lap.
+    var looping = !!launchRepeat();
+    var closed = looping && rc.loopClosed(route);
     var rows = '<div class="wp-row origin"><div class="ix">◎</div><div class="nm">' + esc(locLabel(v)) + '</div><div class="slot"></div></div>';
     DP.waypoints.forEach(function(wp, i){
       var sub = (wp.action && window.__routeActionSummary) ? '<div class="act">' + esc(window.__routeActionSummary(wp.action)) + '</div>' : '';
@@ -11009,6 +11079,7 @@ function paintInventoryHero(d){
       // note, so a 0-leg / 0-fuel first stop reads as intentional; the idle one-stop case its cue.
       var note = rc.hereNote(route, i);
       if(note) sub += '<div class="note">' + esc(note) + '</div>';
+      if(closed && i === DP.waypoints.length - 1) sub += '<div class="note">' + esc(rc.loopClosedNote) + '</div>';
       if(i === 0 && idle) sub += '<div class="warn">' + esc(rc.idleAtBerthCue) + '</div>';
       // Automation 2b: a BROKEN stop (its action can no longer run there) is flagged red with its reason,
       // and gets a Remove beside its Action control — Clear the action (it becomes a plain fly-through)
@@ -11020,6 +11091,11 @@ function paintInventoryHero(d){
         '<div class="nm">' + esc(wpName(wp.anchor)) + sub + '</div>' +
         '<div class="slot">' + actionSlotHtml(wp, i) + rm + '</div></div>';
     });
+    if(looping && !closed){
+      rows += '<div class="wp-row return"><div class="ix">↺</div>' +
+        '<div class="nm">Return to ' + esc(wpName(DP.waypoints[0].anchor)) + '<div class="note">' + esc(rc.loopReturnNote) + '</div></div>' +
+        '<div class="slot"></div></div>';
+    }
     // Time over Cost — read straight from the quote; the fuel cost is presented in CREDITS (§8.0), not
     // units. An { ok:false } quote has no figures, so those cells read "—" and Dispatch is disabled below.
     var okQ = q && q.ok;
@@ -11081,14 +11157,12 @@ function paintInventoryHero(d){
   // boundary). These are LAUNCH choices (§11.5), never part of a saved route, so they live here in the
   // popup (DP.mode / DP.n / DP.cadence), not in the plan.
 
-  // repeatAllowed() — may this route repeat? It mirrors the engine: only the actioned-route dispatch
-  // (dispatchRouteWithActions) takes a `repeat`, and it refuses a repeating lane with fewer than two stops
-  // (a one-stop cycle has no leg to fly, §11.10). So a route repeats only when some stop carries an action
-  // (a route with no action goes out as the plain dispatch, which always runs once) AND it has two or
-  // more stops.
-  function repeatAllowed(){
-    return DP.waypoints.length >= 2 && DP.waypoints.some(function(w){ return !!w.action; });
-  }
+  // repeatAllowed() — may this route repeat? The map's shared canRepeat, which mirrors the engine: only the
+  // actioned-route dispatch (dispatchRouteWithActions) takes a `repeat`, and it refuses a repeating lane
+  // with fewer than two stops (a one-stop cycle has no leg to fly, §11.10). So a route repeats only when
+  // some stop carries an action (a route with no action goes out as the plain dispatch, which always runs
+  // once) AND it has two or more stops. The planner reads the same rule for its loop drawing.
+  function repeatAllowed(){ return window.__routeChecks.canRepeat(dpRoute()); }
 
   // launchRepeat() -> the `repeat` object the dispatch carries, or null for a one-shot. It sends only what
   // differs from the engine's defaults: `n` only for N-run, `cadence` only when it is per-cycle (immediate
@@ -11156,8 +11230,8 @@ function paintInventoryHero(d){
   }
 
   // wireLaunch() — the picker's controls. A mode or cadence toggle re-renders the whole Finalise view (which
-  // rows the picker shows depends on the mode). Typing N does NOT re-render, so the field keeps its focus:
-  // it only refreshes the block line and the Dispatch button in place.
+  // rows the picker shows depends on the mode, and so does the route list's loop reading). Typing N does
+  // NOT re-render, so the field keeps its focus: it only refreshes the block line and the Dispatch button.
   function wireLaunch(){
     var sec = $('dpSection');
     Array.prototype.forEach.call(sec.querySelectorAll('.dp-seg[data-mode]'), function(b){
@@ -11324,10 +11398,11 @@ function paintInventoryHero(d){
     if(window.__planRoute) window.__planRoute(v, []);
   }
   // Edit Route → re-enter planning with the CURRENT waypoints (the finalised list), same soft hide.
+  // (Automation 3c) With a repeating mode picked, the planner is told so, and draws the plan as a loop too.
   function onEditRoute(){
     var v = DP.vehicle; if(!v) return;
     $('dispatch-overlay').classList.remove('open');
-    if(window.__planRoute) window.__planRoute(v, (DP.waypoints || []).slice());
+    if(window.__planRoute) window.__planRoute(v, (DP.waypoints || []).slice(), !!launchRepeat());
   }
 
   // Finalise (called BY the map when the player commits the route): remember the route, fetch the
