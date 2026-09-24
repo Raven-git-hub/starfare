@@ -1647,6 +1647,29 @@ boundary so the later hex-map swap doesn't touch it.
     engine's own rule, previewed). The field starts EMPTY rather than on a guessed default. The choice lives in
     the popup (a launch parameter, §11.5, never stored on a saved route): it resets when the popup opens a
     craft or closes, and survives an Edit Route round trip.
+    **(2) The active-lanes rows + Cancel / Stop after this run** (Operations → IN TRANSIT). The craft
+    selector widens from "flying" to the engine's own on-a-lane test (the `cancelRoute` gate): a craft
+    FLYING (`inTransit` with a `trip`) or holding a `route` while parked (a lane waiting at its last stop, or
+    at an Outpost stop in the dock). So a waiting lane stays visible; the full idle-craft board is Phase 4.
+    A flying row is unchanged (the leg's bar, ETA and destination). A PARKED row shows its state where the
+    bar would be: **"Holding for fuel"** (amber) for `waiting.reason === 'fuel'`, **"Next lap at cycle"**
+    for `'cadence'`, "Loading" (with the engine's `dockStatus.eta` in the ETA cell) or "Queued to dock" at
+    an Outpost stop. The destination cell names where it sits, with no arrow. A REPEATING lane adds a read-out
+    line under the head, e.g. "Lap 2 of 3 · 5 fuel / lap · per-cycle": the lap is `lapsDone + 1` (the lap it
+    is on, or waiting to start, presentation of a published count), "of N" for an N-run, and the snapshot's
+    `perLapUnits`. A pending stop adds "stopping after this lap". Parked rows sort after the flying ones.
+    The expanded region adds the controls: **Cancel** on every craft row (§11.10: any lane, a plain dispatch
+    included) asks first ("Stop this run? The craft halts where it is." — Yes, cancel / Keep going), then
+    POSTs `cancelRoute`. **Stop after this run**, on a repeating lane only, POSTs `stopRouteAfterRun` with
+    no confirm, then reads "Stopping after this lap", disabled. Both go through `window.__sendAction`. On
+    accept the snapshot is re-read, so a cancelled craft leaves the list at once. On refuse the engine's
+    reason shows on the row, and the craft flies on (the rim refusal: a craft over a hex outside the
+    lattice). That refusal answers the tick it was asked on, so it clears when the clock moves on. **Display
+    calls:** the identity cell now reads the short class + the craft's number ("Light #02", the Dispatch
+    popup's "#NN"), so two craft of one class can be told apart; a row's expand state is keyed on the craft
+    id alone (it was id + arrival tick), so an open row — and its controls — survives the lane moving to its
+    next leg. The row still rebuilds on a new leg or a lane-state change (`craftSig`). The per-row alert slot
+    stays unwired (operations-hub.md §4 reserves it for "destination lost in flight").
 - **Tuning — resource yield tiers & the homeworld production floor.** ⬜ *Designed 24-09-26; build pending.*
   Per-resource mine yields by rarity tier (design.md §2 "Resource Yield Tiers & the Homeworld Production
   Floor"; numbers in `docs/phase-1-tuning.md` "Resource yield tiers"). The build: the yield table in

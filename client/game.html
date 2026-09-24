@@ -1265,6 +1265,22 @@ select.field{appearance:none; cursor:pointer;}
 #tp-ops .ops-manrow .g{color:var(--ops-ink2); text-transform:capitalize;}
 #tp-ops .ops-manrow .q{color:var(--ops-ink); font-weight:600;}
 #tp-ops .ops-manempty{color:var(--ops-ink4);}
+/* automation 3c: the ACTIVE-LANES additions to a craft row. A PARKED lane craft shows its state where the
+   bar would be (amber when it is holding for fuel) and names where it sits with no arrow. A repeating
+   lane's read-out line ("Lap 2 of 3 · 5 fuel / lap") sits under the head. The expanded region gains the
+   lane controls — Stop after this run / Cancel (the Operations amber button, Cancel red on hover), the
+   Cancel question — and the engine's refusal line (red). */
+#tp-ops .ops-state{flex:1 1 auto; min-width:48px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ops-ink2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+#tp-ops .ops-state.warn{color:var(--ops-amber2);}
+#tp-ops .ops-dest.here:before{content:none;}
+#tp-ops .ops-lane{padding:0 13px 10px; margin-top:-4px; font-size:10.5px; letter-spacing:.04em; color:var(--ops-ink3); font-variant-numeric:tabular-nums;}
+#tp-ops .ops-lane-ctl{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--ops-line);}
+#tp-ops .ops-lane-btn{font-family:var(--ops-mono); font-size:10px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--ops-amber2); background:var(--ops-panel); border:1px solid var(--ops-amber-dim); border-radius:6px; padding:8px 12px; cursor:pointer;}
+#tp-ops .ops-lane-btn:hover:not(:disabled){background:var(--ops-amber-dim); color:var(--ops-ink);}
+#tp-ops .ops-lane-btn.danger:hover:not(:disabled){background:rgba(224,121,107,.18); border-color:var(--ops-down); color:var(--ops-down);}
+#tp-ops .ops-lane-btn:disabled{opacity:.45; cursor:default;}
+#tp-ops .ops-lane-ask{flex:1 1 100%; font-size:11px; color:var(--ops-ink);}
+#tp-ops .ops-lane-msg{margin-top:9px; font-size:11px; line-height:1.5; color:var(--ops-down);}
 
 /* the calm empty states — IN TRANSIT when idle, and the LEASED/DEPLOYED/IDLE scaffolds. The
    soon-panel idiom from guild-hall.html (a centred glyph + line), muted so a populated section
@@ -8986,7 +9002,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     idleCollapsed: {}, // which IDLE groups are collapsed (by group key) — survives a poll's re-render
     tpSig: null,       // last rendered IDLE-TRANSPORTS signature; null forces a rebuild
     tpSysCollapsed: {}, // which transport SYSTEM groups are collapsed (default open) — survives a poll
-    tpOpen: {}         // which craft tabs are EXPANDED (default collapsed) — survives a poll
+    tpOpen: {},        // which craft tabs are EXPANDED (default collapsed) — survives a poll
+    laneUi: {}         // (automation 3c) per craft id: a lane control's in-between state — see laneControlsHtml
   };
 
   // Own helpers — copies of the Deuterium panel's (its IIFE's are not in scope). They read
@@ -9094,15 +9111,34 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
       .replace(/\b\w/g, function(c){ return c.toUpperCase(); });
   }
-  // A stable key per in-transit craft: its id + the trip's absolute arrival tick (§4). Unlike a
-  // Syndicate delivery a craft HAS an id, so this is unique across the guild's history.
-  function craftKey(v){ return 'craft:' + v.id + '@' + (v.trip && v.trip.arrivalTick); }
+  // A stable key per craft row: its id. Unlike a Syndicate delivery a craft HAS an id, so this is unique
+  // across the guild's history. (Automation 3c: it no longer carries the trip's arrival tick, so a row's
+  // expanded state — where its Cancel / Stop controls live — survives the lane moving on to its next leg.
+  // The arrival tick still rebuilds the row, through craftSig below.)
+  function craftKey(v){ return 'craft:' + v.id; }
 
-  // The player's OWN in-transit craft (status 'inTransit' with a `trip`), off the polled guild row —
-  // own only, exactly as the idle-transport feed is filtered (client-wiring §7). Not sorted here; the
-  // combined list (myTransitItems) sorts craft and deliveries together by soonest arrival.
-  function myCraftTransit(guild){
-    return ((guild && guild.vehicles) || []).filter(function(v){ return v.status === 'inTransit' && v.trip; });
+  // The player's OWN craft that are ON A LANE, off the polled guild row — own only, exactly as the
+  // idle-transport feed is filtered (client-wiring §7). Automation 3c widens it from "flying" to the
+  // engine's own test (the cancelRoute gate): a craft is on a lane when it is FLYING (status 'inTransit'
+  // with a `trip` — a plain dispatch or one leg of a route) OR when it holds a `route` while parked (a lane
+  // waiting at its last stop for fuel or for its cadence, or at an Outpost stop, queued or loading). So a
+  // waiting lane stays visible here. Not sorted here; myTransitItems sorts the combined list.
+  function myCraftOnLane(guild){
+    return ((guild && guild.vehicles) || []).filter(function(v){
+      return (v.status === 'inTransit' && v.trip) || !!v.route;
+    });
+  }
+
+  // craftSig(v) — a craft row's STRUCTURE signature: everything the row draws that can change while the
+  // craft stays on the list. That is the leg it is flying (its arrival tick) and the lane read-out (lap
+  // count, wait reason, a pending stop, the dock state, the per-lap figure). The per-poll update only moves
+  // the bar and the ETA, so a change to anything here must rebuild the row.
+  function craftSig(v){
+    var r = v.route || {};
+    return craftKey(v) + '@' + (v.trip ? v.trip.arrivalTick : 'parked') + ':' + JSON.stringify([
+      r.lapsDone, r.waiting ? r.waiting.reason : null, !!r.stopAfterRun, r.perLapUnits,
+      v.dockStatus ? v.dockStatus.state : null,
+    ]);
   }
 
   // A craft's DESTINATION name: the final leg's `to` coords reverse-mapped to the landmark that sits
@@ -9126,10 +9162,17 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // row per good (pretty name + quantity), sorted by good id for a stable order — then a used /
   // capacity summary. Stockpile goods, not fuel, so a plain quantity (no "Nu"). An empty hold keeps
   // one "No cargo." row. PRICES NOTHING here (§18) — the bar + ETA are derives off the trip's ticks.
+  // (Automation 3c) The row now serves every craft ON A LANE, flying or parked:
+  //  - FLYING (a `trip`): unchanged — the bar and ETA of the leg it is on, bound for that leg's end.
+  //  - PARKED (a `route`, no trip): the bar's place holds what it is doing (parkedState), and the
+  //    destination cell names where it sits, with no arrow.
+  // The identity cell reads the short class + the craft's number ("Light #02"), so two craft of one class
+  // can be told apart. A REPEATING lane adds its read-out line (laneLine) under the head, so it shows even
+  // with the row collapsed. The expanded region adds the lane controls (laneControlsHtml).
   function craftRowHtml(v){
     var key = craftKey(v);
     var open = O.expanded[key] === true;
-    var name = craftClassName(v['class']);
+    var name = craftClassName(v['class']) + ' #' + craftNumber(v);
     var cargo = v.cargo || {};
     var goods = Object.keys(cargo).sort();
     var manRows = goods.length
@@ -9138,35 +9181,150 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
         }).join('')
         + '<div class="ops-manrow"><span class="g">Hold</span><span class="q">' + fmt(v.used) + ' / ' + fmt(v.capacity) + '</span></div>'
       : '<div class="ops-manrow ops-manempty">No cargo.</div>';
-    return '<div class="ops-row craft' + (open ? ' open' : '') + '" data-key="' + esc(key) + '">'
+    // a lane starved of fuel reads amber (it needs the hoard topped up); any other parked state is calm
+    var fuelWait = !!(v.route && v.route.waiting && v.route.waiting.reason === 'fuel');
+    var middle = v.trip
+      ? '<span class="ops-bar"><span class="ops-fill"></span></span>'
+      : '<span class="ops-state' + (fuelWait ? ' warn' : '') + '">' + esc(parkedState(v)) + '</span>';
+    var dest = v.trip
+      ? '<span class="ops-dest">' + esc(craftDestName(v.trip)) + '</span>'
+      : '<span class="ops-dest here">' + esc(tpCraftWhere(v)) + '</span>';
+    var lane = laneLine(v);
+    return '<div class="ops-row craft' + (v.trip ? '' : ' parked') + (open ? ' open' : '') + '" data-key="' + esc(key) + '">'
       + '<div class="ops-rowhead">'
-      +   '<span class="ops-origin">' + esc(name) + '</span>'
-      +   '<span class="ops-bar"><span class="ops-fill"></span></span>'
+      +   '<span class="ops-origin">' + esc(tpShort(v['class']) + ' #' + craftNumber(v)) + '</span>'
+      +   middle
       +   '<span class="ops-alert" aria-hidden="true"></span>'
       +   '<span class="ops-eta"></span>'
-      +   '<span class="ops-dest">' + esc(craftDestName(v.trip)) + '</span>'
+      +   dest
       + '</div>'
+      + (lane ? '<div class="ops-lane">' + esc(lane) + '</div>' : '')
       + '<div class="ops-manifest">'
       +   '<div class="ops-idline">Carrier: <b>' + esc(name) + '</b></div>'
       +   '<div class="ops-manhd">Manifest</div>'
       +   manRows
+      +   laneControlsHtml(v)
       + '</div>'
       + '</div>';
   }
 
-  // The player's OWN deliveries AND in-transit craft as one list, each wrapped in a common item
-  // { kind, key, arrivalTick, ... } and sorted by soonest arrival so the two interleave (§4). Both
+  // ---- automation slice 3c: the active-lanes read-out + controls (transport-model.md §11.10) --------
+  // craftNumber(v) — the craft's own number, the last part of its id (vehicle_<guild>_<class>_NN → "NN"),
+  // the same "#NN" the Dispatch popup's title shows. Display only.
+  function craftNumber(v){ return String(v.id).split('_').slice(-1)[0]; }
+
+  // parkedState(v) -> what a lane craft that is NOT flying is doing, read off the snapshot: waiting at its
+  // last stop (route.waiting.reason — 'fuel': the hoard can't pay for the next lap yet; 'cadence': a
+  // per-cycle lane between laps), or engaged with an Outpost dock at one of its stops (dockStatus).
+  function parkedState(v){
+    var w = v.route && v.route.waiting;
+    if(w && w.reason === 'fuel') return 'Holding for fuel';
+    if(w && w.reason === 'cadence') return 'Next lap at cycle';
+    var d = v.dockStatus;
+    if(d && d.state === 'loading') return 'Loading';
+    if(d && d.state === 'queued') return 'Queued to dock';
+    return 'Holding';
+  }
+
+  // laneLine(v) -> the read-out line of a REPEATING lane, or '' for anything else, e.g.
+  // "Lap 2 of 3 · 5 fuel / lap · per-cycle". Every figure is the snapshot's. lapsDone counts COMPLETED
+  // laps, so the lap the craft is on (or waiting to start) is lapsDone + 1; that +1 is presentation of a
+  // published count, not a game number. "of N" is an N-run's launched target; the fuel is the engine's
+  // perLapUnits. A pending "Stop after this run" shows here too.
+  function laneLine(v){
+    var r = v.route;
+    if(!r || !r.mode) return '';
+    var parts = ['Lap ' + (r.lapsDone + 1) + (r.mode === 'nRun' ? ' of ' + r.N : '')];
+    if(r.perLapUnits != null) parts.push(fmt(r.perLapUnits) + ' fuel / lap');
+    if(r.cadence === 'perCycle') parts.push('per-cycle');
+    if(r.stopAfterRun) parts.push('stopping after this lap');
+    return parts.join(' · ');
+  }
+
+  // laneControlsHtml(v) — the lane controls in the expanded region (§11.10):
+  //  - Cancel, on ANY lane (a one-shot, a repeating lane, a plain dispatch in flight). It asks first — the
+  //    craft halts where it is — and only the second click sends cancelRoute.
+  //  - Stop after this run, on a REPEATING lane only. Gentle, so no confirm: the lap it is on finishes and
+  //    the craft lands at its last stop. Once asked, it reads "Stopping after this lap", disabled.
+  // O.laneUi[id] holds a row's in-between state (the Cancel question armed, a send in flight, the engine's
+  // refusal until the tick moves on) so a poll's rebuild keeps it.
+  function laneControlsHtml(v){
+    var ui = O.laneUi[v.id] || {};
+    var id = esc(v.id);
+    var repeating = !!(v.route && v.route.mode);
+    var html = '<div class="ops-lane-ctl">';
+    if(ui.armed){
+      html += '<span class="ops-lane-ask">Stop this run? The craft halts where it is.</span>'
+        + '<button class="ops-lane-btn danger" type="button" data-lane-act="cancel-yes" data-vid="' + id + '"' + (ui.busy ? ' disabled' : '') + '>Yes, cancel</button>'
+        + '<button class="ops-lane-btn" type="button" data-lane-act="cancel-no" data-vid="' + id + '"' + (ui.busy ? ' disabled' : '') + '>Keep going</button>';
+    } else {
+      if(repeating){
+        html += v.route.stopAfterRun
+          ? '<button class="ops-lane-btn" type="button" disabled>Stopping after this lap</button>'
+          : '<button class="ops-lane-btn" type="button" data-lane-act="stop" data-vid="' + id + '"' + (ui.busy ? ' disabled' : '') + '>Stop after this run</button>';
+      }
+      html += '<button class="ops-lane-btn danger" type="button" data-lane-act="cancel" data-vid="' + id + '"' + (ui.busy ? ' disabled' : '') + '>Cancel</button>';
+    }
+    html += '</div>';
+    if(ui.msg) html += '<div class="ops-lane-msg">' + esc(ui.msg) + '</div>';
+    return html;
+  }
+
+  // rebuildTransit() — redraw the IN TRANSIT list now, even though the set of rows has not changed (a
+  // control's state moved). Clearing the signature forces renderTransit to rebuild; expand state survives.
+  function rebuildTransit(){ O.transitSig = ''; render(); }
+
+  // onLaneAction(act, vid) — one lane-control click. Cancel arms the question; "Keep going" disarms it;
+  // "Yes, cancel" POSTs cancelRoute; Stop POSTs stopRouteAfterRun. Both go through the one action path
+  // (window.__sendAction) and read its accept / refuse. On accept the snapshot is re-read at once, so a
+  // cancelled craft leaves the list and a stopping lane shows it. On refuse the engine's reason stays on
+  // the row, and the craft carries on — e.g. a craft over a hex outside the lattice cannot stop there yet.
+  async function onLaneAction(act, vid){
+    if(act === 'cancel'){ O.laneUi[vid] = { armed: true }; rebuildTransit(); return; }
+    if(act === 'cancel-no'){ delete O.laneUi[vid]; rebuildTransit(); return; }
+    var type = act === 'cancel-yes' ? 'cancelRoute' : (act === 'stop' ? 'stopRouteAfterRun' : null);
+    if(!type) return;
+    var gid = window.__player ? window.__player().guildId : null;
+    O.laneUi[vid] = { armed: act === 'cancel-yes', busy: true };
+    rebuildTransit();
+    var out;
+    try {
+      out = await window.__sendAction({ type: type, guildId: gid, vehicleId: vid });
+    } catch(err){
+      out = { accepted: false, reason: 'the Syndicate could not be reached: ' + ((err && err.message) || err) };
+    }
+    if(out && out.accepted){
+      delete O.laneUi[vid];
+      if(window.__refreshNow){ try { await window.__refreshNow(); } catch(e){} }
+    } else {
+      // the refusal answers the tick it was asked on, so it remembers that tick (see renderTransit)
+      var s = snap();
+      O.laneUi[vid] = { msg: 'Refused: ' + ((out && out.reason) || 'the Syndicate declined'), tick: s ? s.tick : null };
+    }
+    rebuildTransit();
+  }
+
+  // The player's OWN deliveries AND craft on a lane as one list, each wrapped in a common item
+  // { kind, key, sig, arrivalTick, ... } and sorted by soonest arrival so the two interleave (§4). Both
   // arrivalTicks are absolute engine ticks, so sorting on arrivalTick orders them the same way the
-  // deliveries' own ticksRemaining sort does; the key breaks ties deterministically.
+  // deliveries' own ticksRemaining sort does; the key breaks ties deterministically. A PARKED lane craft
+  // (automation 3c) has no trip, so no arrival (null): those rows sort after everything in flight.
+  // `sig` is what the structure signature reads: a delivery's key, or a craft's craftSig.
   function myTransitItems(guild, s){
     var items = myTransit(guild, s).map(function(sh){
-      return { kind: 'ship', key: shipKey(sh), arrivalTick: sh.arrivalTick, sh: sh };
+      var key = shipKey(sh);
+      return { kind: 'ship', key: key, sig: key, arrivalTick: sh.arrivalTick, sh: sh };
     });
-    myCraftTransit(guild).forEach(function(v){
-      items.push({ kind: 'craft', key: craftKey(v), arrivalTick: v.trip.arrivalTick, v: v });
+    myCraftOnLane(guild).forEach(function(v){
+      items.push({ kind: 'craft', key: craftKey(v), sig: craftSig(v), arrivalTick: v.trip ? v.trip.arrivalTick : null, v: v });
     });
     return items.sort(function(a, b){
-      return (a.arrivalTick - b.arrivalTick) || (a.key < b.key ? -1 : (a.key > b.key ? 1 : 0));
+      if(a.arrivalTick !== b.arrivalTick){
+        if(a.arrivalTick === null) return 1;    // a parked row after a flying one
+        if(b.arrivalTick === null) return -1;
+        return a.arrivalTick - b.arrivalTick;
+      }
+      return a.key < b.key ? -1 : (a.key > b.key ? 1 : 0);
     });
   }
 
@@ -9188,17 +9346,30 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var host = el('ops-transit-list'); if(!host) return;
     var mine = myTransitItems(guild, s);
 
-    var sig = mine.map(function(it){ return it.key; }).join('|');
+    // (3c) A lane control's refusal answers the TICK it was asked on — e.g. "the craft is over a hex
+    // outside the lattice; cancel again once it has flown back" — so it is dropped once the clock moves on,
+    // rather than staying on the row as a stale answer. Which rows hold control state is part of the
+    // signature, so dropping one redraws its row.
+    Object.keys(O.laneUi).forEach(function(id){
+      var ui = O.laneUi[id];
+      if(ui.msg && s && ui.tick !== s.tick) delete O.laneUi[id];
+    });
+    var sig = mine.map(function(it){ return it.sig; }).join('|') + '#' + Object.keys(O.laneUi).sort().join(',');
     if(sig !== O.transitSig){
       O.transitSig = sig;
-      // prune the expand-state map to the deliveries/craft still in flight
-      var keep = {};
-      mine.forEach(function(it){ if(O.expanded[it.key]) keep[it.key] = true; });
+      // prune the expand-state map to the deliveries/craft still listed — and (3c) the lane controls'
+      // state to the craft still on a lane
+      var keep = {}, keepUi = {};
+      mine.forEach(function(it){
+        if(O.expanded[it.key]) keep[it.key] = true;
+        if(it.kind === 'craft' && O.laneUi[it.v.id]) keepUi[it.v.id] = O.laneUi[it.v.id];
+      });
       O.expanded = keep;
+      O.laneUi = keepUi;
       host.innerHTML = mine.length
         ? mine.map(function(it){ return it.kind === 'craft' ? craftRowHtml(it.v) : rowHtml(it.sh); }).join('')
         : '<div class="ops-empty"><div class="glyph">&#10022;</div><h3>Nothing in transit</h3>'
-          + '<p>A Syndicate delivery appears here the moment you buy goods or commission an asset to a system you hold. A dispatched guild craft joins it.</p></div>';
+          + '<p>A Syndicate delivery appears here the moment you buy goods or commission an asset to a system you hold. A dispatched guild craft joins it, and a repeating lane stays here while it waits between laps.</p></div>';
     }
 
     if(mine.length){
@@ -9212,7 +9383,12 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
         var row = domRows[i]; if(!row) return;   // dom order matches `mine` (structure built from it)
         var fill = row.querySelector('.ops-fill');
         var eta = row.querySelector('.ops-eta');
-        if(it.kind === 'craft'){
+        if(it.kind === 'craft' && !it.v.trip){
+          // (3c) a PARKED lane craft has no bar. Its ETA cell shows the dock transfer's remaining ticks
+          // while it is loading (the engine's own dockStatus.eta, formatted), and nothing otherwise.
+          var d = it.v.dockStatus;
+          if(eta) eta.textContent = (d && d.state === 'loading' && typeof d.eta === 'number') ? fmtETA(d.eta) : '';
+        } else if(it.kind === 'craft'){
           // a craft's bar spans its WHOLE trip (dispatch→arrival); its ETA differences the trip's
           // absolute arrivalTick against nowTick (the trip carries no pre-differenced remainder, §18).
           var trip = it.v.trip;
@@ -9585,6 +9761,16 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       }
       return;
     }
+    // (automation 3c) A lane control in an expanded craft row — Cancel, its Yes / Keep going, or Stop after
+    // this run. Checked before the row toggle below, so pressing one never also collapses the row.
+    var laneBtn = e.target.closest('[data-lane-act]');
+    if(laneBtn){
+      onLaneAction(laneBtn.getAttribute('data-lane-act'), laneBtn.getAttribute('data-vid'));
+      return;
+    }
+    // any other click inside the controls strip (the Cancel question's text, a gap between buttons, a
+    // disabled button) is not meant as "collapse this row" either
+    if(e.target.closest('.ops-lane-ctl')) return;
     var row = e.target.closest('.ops-row'); if(!row) return;
     var key = row.getAttribute('data-key');
     var isOpen = row.classList.toggle('open');
