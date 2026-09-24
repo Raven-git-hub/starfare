@@ -35,7 +35,7 @@ const { foundingEndowmentFor } = require('./meanline.js');
 const { grantFor } = require('./issuance.js');
 const { guildHolds } = require('./claims.js');
 const {
-  nearestWaystation, arrivalTickFor, hexDistance, legTicks, legFuelBurn,
+  nearestWaystation, arrivalTickFor, hexDistance, legHexAtTick, legTicks, legFuelBurn,
 } = require('./transport.js');
 const {
   GUILD_STARTING_FUEL, routeFuelCost, burnFuel, fuelValue,
@@ -393,6 +393,45 @@ function resolveRouteArrival(state, guild, craft, thisTick) {
 function endLane(craft, reason, thisTick) {
   delete craft.route;
   craft.laneEnded = { reason, tick: thisTick };
+}
+
+// cancelLanding(craft, tick) -> { ok: true, location: { q, r } } | { ok: false, reason }
+//
+// WHERE a craft in flight stops when the player CANCELS it (transport-model.md §11.10 "Cancel", slice 3b):
+// the hex it is over at `tick`. THE ONE home of that answer, shared by the cancelRoute VALIDATE gate and
+// APPLY, so the landing checked and the landing made cannot drift (the dispatchRoute discipline).
+//   1. Find the ACTIVE leg — the one being flown at `tick`. A trip's legs are contiguous (leg K+1 departs
+//      the tick leg K arrives), so it is the first leg that has not arrived yet. A routed craft's trip has
+//      one leg; a plain dispatch's has one per waypoint. (Past the last arrival — which a live craft never
+//      is, it would have landed — the last leg is used, and its clamp puts the craft at its end.)
+//   2. A TOLL leg does not snap (see the stub below).
+//   3. Otherwise interpolate the craft's position along the leg and round it to a hex (§2.3 / §2.4,
+//      `legHexAtTick`). At the very tick one leg ends and the next begins, this is the waypoint between them.
+//   4. That hex must be inside the galaxy. A leg between two in-bounds hexes near the rim can pass over a
+//      hex outside the lattice, and a craft cannot be left there (it would not be a valid location). The
+//      cancel is REFUSED for that tick; the craft keeps flying, so a later cancel lands. Which in-bounds hex
+//      it should snap to instead is not ruled — it is on the decision checklist, not guessed here.
+function cancelLanding(craft, tick) {
+  const legs = craft.trip.legs;
+  const leg = legs.find((l) => tick < l.arrivalTick) || legs[legs.length - 1];
+  if (leg.isToll) {
+    // TODO(2.3, §11.10): a TOLL leg does not snap. The craft COMPLETES the passage to the toll's exit and
+    // stops there — it never snaps to a hex INSIDE a toll. Tolls are roadmap 2.3: every leg is dispatched
+    // with isToll false today, so this branch cannot be reached. Until it is built it REFUSES, so a toll
+    // leg can never fall through to the normal snap below.
+    return { ok: false, reason: `vehicle ${JSON.stringify(craft.id)} is on a toll leg — a toll cancel completes to the toll's exit, which is not built yet (roadmap 2.3, transport-model.md §11.10)` };
+  }
+  const from = resolveVehicleLocation(leg.from);
+  const to = resolveVehicleLocation(leg.to);
+  if (!from || !to) {
+    // Defensive: the trip invariant guarantees both ends resolve. Refuse rather than throw on a bad leg.
+    return { ok: false, reason: `vehicle ${JSON.stringify(craft.id)}'s current leg does not resolve — cannot place it` };
+  }
+  const hex = legHexAtTick(from.coords, to.coords, leg.departureTick, leg.arrivalTick, tick);
+  if (!isHexInBounds(hex.q, hex.r)) {
+    return { ok: false, reason: `vehicle ${JSON.stringify(craft.id)} is over hex ${JSON.stringify(hex)}, outside the galaxy's lattice — it cannot stop there; cancel again once it has flown back over the lattice (transport-model.md §11.10)` };
+  }
+  return { ok: true, location: hex };
 }
 
 // quoteDispatch(state, { guildId, vehicleId, waypoints }) -> { ok: true, legs, totalTicks, totalUnits,
@@ -1015,6 +1054,17 @@ function createStopRouteAfterRunAction({ guildId, vehicleId: vId }) {
   if (guildId === undefined) throw new Error('createStopRouteAfterRunAction: guildId is required');
   if (vId === undefined) throw new Error('createStopRouteAfterRunAction: vehicleId is required');
   return { type: 'stopRouteAfterRun', guildId, vehicleId: vId };
+}
+
+// cancelRoute: the "Cancel" control (transport-model.md §11.10, slice 3b — the engine half; the Operations
+// button is slice 3c). The craft's lane ends AT ONCE: a craft in flight snaps to the hex it is over and goes
+// idle there; a craft parked mid-lane (waiting at its last stop, or at an Outpost stop) just drops its route
+// where it sits. The constructor only enforces the required fields are present; validateAction judges
+// legality (the guild's craft is on a lane — flying, or holding a route).
+function createCancelRouteAction({ guildId, vehicleId: vId }) {
+  if (guildId === undefined) throw new Error('createCancelRouteAction: guildId is required');
+  if (vId === undefined) throw new Error('createCancelRouteAction: vehicleId is required');
+  return { type: 'cancelRoute', guildId, vehicleId: vId };
 }
 
 // saveRoute: store a NAMED, origin-free route on the guild so it can be loaded onto any craft later
@@ -2910,6 +2960,30 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'cancelRoute') {
+    // transport-model.md §11.10 "Cancel" — end the craft's lane now. A craft is ON A LANE when it is flying
+    // (it has a `trip` — a routed leg, or a plain dispatch) or when it holds a `route` while parked (waiting
+    // at its last stop, or queued / loading at an Outpost stop). A craft with neither is an ordinary idle
+    // craft: there is nothing to cancel, so it is refused.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    const craft = (guild.vehicles || []).find((v) => v.id === action.vehicleId);
+    if (!craft) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no vehicle ${JSON.stringify(action.vehicleId)}` };
+    }
+    if (!craft.trip && !craft.route) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is not on a lane — it is idle with no route, so there is nothing to cancel` };
+    }
+    // A craft in flight must have somewhere to stop: the SAME cancelLanding the apply uses.
+    if (craft.trip) {
+      const landing = cancelLanding(craft, state.tick);
+      if (!landing.ok) return { valid: false, reason: landing.reason };
+    }
+    return { valid: true };
+  }
+
   if (action.type === 'setWindowN') {
     if (typeof action.windowN !== 'number' || !Number.isInteger(action.windowN) || action.windowN < 1) {
       return { valid: false, reason: 'windowN must be an integer >= 1 (§15.2)' };
@@ -4173,6 +4247,37 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'cancelRoute') {
+    // transport-model.md §11.10 "Cancel": the lane ends AT ONCE and the craft is left an ORDINARY idle craft —
+    // no trip, no route, and no `laneEnded` flag (a player's cancel is not a failure, §11.6's flag is for a
+    // lane that ended on its own). It moves no goods, fuel or credits: the hold stays aboard, and the fuel
+    // already burned for the legs it will not fly is not refunded (§11.3 — committed at launch). So there is
+    // nothing to conserve and no galacticSupply refresh.
+    const guild = findGuild(next, action.guildId);
+    const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
+    if (craft.trip) {
+      // IN FLIGHT → SNAP to the hex it is over now and go idle there, as a bare hex (idle-in-space is legal,
+      // §11.6). The same shape the arrival step leaves: a location, `idle`, no trip.
+      const landing = cancelLanding(craft, next.tick);
+      if (!landing.ok) throw new Error(`cancelRoute: ${landing.reason}`); // validate refused this; unreachable
+      craft.location = landing.location;
+      craft.status = 'idle';
+      delete craft.trip;
+    }
+    // PARKED mid-lane (no trip) → the craft already sits on a hex, so nothing snaps; the route just goes.
+    //   - waiting at its last stop (for fuel, or a per-cycle lane between laps): now simply idle there.
+    //   - QUEUED at an Outpost stop: its queue entry is swept (the shared cancelQueuedManifest — no stale
+    //     entry may outlive the lane), and it is idle, parked at the Outpost.
+    //   - LOADING in an Outpost dock slot: the slot is NOT touched. A craft in a slot runs to completion
+    //     (design.md §4 — the same reason a dispatch refuses it), so that one transfer finishes and the craft
+    //     goes idle at the Outpost. With no route left, the dock step does not send it on anywhere.
+    // (The sweep is a no-op for a craft that holds no queue entry, including one that was in flight.)
+    cancelQueuedManifest(next, craft.id);
+    delete craft.route;
+    craft.updatedAtTick = next.tick; // §15.2: the cancel is a mutation of the craft — record its tick
+    return next;
+  }
+
   if (action.type === 'setWindowN') {
     // Set the single engine-wide window length. Setup-only (validate refused it once
     // tick > 0), so this only ever writes tick-0 state. No guild is resolved — this
@@ -4256,6 +4361,7 @@ module.exports = {
   createSaveRouteAction,
   createDeleteRouteAction,
   createStopRouteAfterRunAction,
+  createCancelRouteAction,
   quoteDispatch,
   // The chained-route execution (the automation layer, §11.2), called by sim/tick.js's two hooks: a
   // routed craft reached a waypoint (resolveRouteArrival), or finished its turnaround (advanceRoute).

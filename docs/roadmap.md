@@ -1479,6 +1479,52 @@ boundary so the later hex-map swap doesn't touch it.
     flown either way is the same hex; the endpoints and the clamp; tick by tick the craft only ever steps
     to a neighbouring hex; an exact tie and the negative zero; the bad-schedule refusals. Mutation-checked:
     with the correction removed 4 of these fail; with the tie order flipped the tie test fails.
+    **(2) The `cancelRoute` action** (`sim/actions.js`; tripwires `route-cancel.test.js`). A new journalled
+    action **`cancelRoute { guildId, vehicleId }`**, the validate → apply shape of `stopRouteAfterRun`.
+    Validate: the guild owns the craft and the craft is ON A LANE, meaning it is flying (a `trip`: a routed leg
+    or a plain multi-leg dispatch) or holds a `route` while parked. An ordinary idle craft (neither) is
+    REFUSED, "nothing to cancel". Apply, by state:
+    **In flight** → **`cancelLanding`**, the one home of the landing, shared by validate and apply (the
+    `dispatchRoute` discipline): find the ACTIVE leg (the first not yet arrived; the legs are contiguous, so
+    at a leg boundary it is the next leg at progress 0, i.e. the waypoint between them), snap through
+    `legHexAtTick`, and set `location = { q, r }` (a bare hex), `status = 'idle'`, with the trip and route
+    dropped. **Parked** (a lane waiting for fuel or holding for its cadence at WN, or queued / loading at an
+    Outpost stop) → nothing snaps; the route drops where the craft sits and the shared
+    `cancelQueuedManifest` sweeps any queue entry. Either way no `laneEnded` flag (a player's cancel is not a
+    failure), `updatedAtTick` stamped, and nothing moves: the hold stays aboard, and the unflown legs' fuel
+    is not refunded (§11.3). **The toll branch is a STUB:** `cancelLanding` checks the active leg's
+    `isToll`; a toll leg (roadmap 2.3: complete to the toll's exit) is REFUSED today, and the apply throws
+    if called without validate, so it can never fall through to a snap inside a toll. `isToll` is always
+    false until 2.3, so the branch is unreachable. **Two conservative calls (on the decision checklist,
+    "Cancel — 3b edge calls"):** (a) a craft LOADING in a dock slot drops its lane but keeps its slot. A
+    craft in a slot runs to completion (§4), so that one transfer finishes and the craft stays idle at the
+    Outpost. (b) **A snap that would land OFF the lattice is refused for that tick.** The lattice is a disc of
+    hexes, so a leg between two in-bounds hexes near the rim can pass over a hex outside it (on this seed
+    ~3% of sampled rim-leg positions do). The craft flies on, and a later cancel lands. Which in-bounds hex
+    it "should" snap to is not ruled, so it is not guessed. Integrity: the existing checks already cover a
+    snapped craft (idle ⇒ a location that resolves in-bounds, no trip; a present route/flag checked as
+    before). No gap was found, so no check was added. Snapshot: no change (a cancelled craft is an ordinary
+    idle row). Sim suite 1,545 → **1,563 green** (`route-cancel.test.js` 6 → 18): a routed lane cancelled
+    half-way along the worked (9,7) leg lands on (5,3) from its start and 1/20 in on (1,0), with no trip,
+    route or flag, fuel untouched, and it stays there and can be re-dispatched; a plain two-leg dispatch
+    snaps on the ACTIVE leg (mid leg 2 → leg 2's own (5,3); exactly at the boundary → the waypoint; mid leg 1
+    → its hex); cancelled on the dispatch tick it is on its start hex, a bare hex even when it left a system;
+    a fuel wait and a cadence hold drop in place with nothing burned and nothing resumed at the next boundary;
+    a lane queued at its Outpost stop loses its queue entry and nothing loads later; a LOADING lane keeps its
+    slot, the load completes and nothing sends the craft on; refusals (no lane, unknown craft/guild, a second
+    cancel) leave the galaxy byte-identical; the toll stub refuses (and ignores a toll flag on a later leg);
+    a rim chord over an off-lattice hex is refused, then lands a few ticks on; replay and a mid-flight JSON
+    restart are byte-identical; the integrity checks trip on a corrupted snapped craft. Mutation-checked,
+    each caught by its own test: the first leg instead of the active one; no queue sweep; no bounds check;
+    no toll guard; a `laneEnded` flag on cancel (9 tests fail).
+    **No-op proof.** `cancelRoute` is a new action and `legHexAtTick` is called only by it, so nothing that
+    exists changes. The persist / determinism / galactic-supply goldens are untouched and green. Hashed on
+    `main` (pre-slice) and on this branch with one script, all **byte-identical**: zero-state,
+    supply_relief, economy_meanline and its crisis variant (400 ticks each, state + snapshot every 100
+    ticks), and a routed galaxy hashed EVERY tick for 3,000 ticks on a 100-tick fuel cycle (a plain
+    multi-leg dispatch, an actioned one-shot, a 2a skip run, a continuous lane starved into fuel waits, an
+    nRun:3 lane, a perCycle lane, and a quote: 850 waiting lane-ticks, 2,800 titanium delivered). Control:
+    adding one cancel to the routed galaxy changes its digest.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
@@ -1667,6 +1713,28 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   - **A stored `cadence: 'immediate'` fails integrity.** It is non-canonical, the same way a stored `once`
     mode is. The build prompt read "`immediate` | `perCycle` when present". The stricter check protects the
     rule that an immediate lane is byte-identical to a 3a one.
+
+- **Cancel — 3b edge calls** — *surfaced 24-09-26 by 2.2 automation slice 3b.* §11.10 rules Cancel for an
+  IN-TRANSIT craft. These readings were built one way and want a ruling or a confirm:
+  - **Cancel also frees a PARKED lane.** A lane waiting for fuel or holding for its cadence at WN, or queued /
+    loading at an Outpost stop, has no leg to snap on, so Cancel just drops its route where the craft sits
+    (the queue entry swept). Without this, the only way out of a wait would be "stop after this run" (which
+    already ends a waiting lane at once, 3a) or a re-dispatch. The alternative is to refuse Cancel on a
+    craft that is not flying.
+  - **A craft LOADING in a dock slot keeps its slot.** Its lane ends at once, but the one transfer in
+    progress finishes (design.md §4: "a craft in a slot runs to completion", the same reason a dispatch
+    refuses it), then the craft is idle at the Outpost. The alternative is to pull it out of the slot
+    unloaded, which would break that §4 rule.
+  - **A snap that would land OFF the lattice is refused for that tick.** The lattice is a disc of hexes, so
+    a straight leg between two in-bounds hexes near the rim can pass over a hex outside it, and a craft
+    cannot be left there (not a valid location). The craft flies on, and a cancel a few ticks later lands.
+    The alternative is a rule for which in-bounds hex to use instead (e.g. the last in-bounds hex it
+    passed, or the leg's nearer end), and that rule is not in the doc.
+  - **The snap is always a BARE hex, even on a landmark's hex.** A craft cancelled over (or still on) a
+    system's hex idles as `{ q, r }`, not as that system. The transfer gate then reads it as deep space, and
+    a plain dispatch to that same system is refused as a zero-length leg (an actioned route re-anchors it
+    through the §11.4 skip). The alternative: when the snap hex holds a system or outpost landmark, idle AT
+    that landmark (the shape the arrival step leaves).
 
 - **Deferred, flagged in docs (revisit with their slice, don't lose):** the SELL origin-picker helper
   (offer only systems that hold every line — `syndicate-orders.md` §7, a client refinement); a
