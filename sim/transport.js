@@ -59,6 +59,87 @@ function hexDistance(a, b) {
   return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
 }
 
+// --- where a craft IS, mid-leg (transport-model.md §2.3 / §2.4) ---------------------------------
+// The two functions below answer "which hex is this craft over, right now?" for a craft flying a
+// straight leg. The one caller today is the Cancel control (§11.10): a cancelled craft SNAPS to that
+// hex and goes idle there. They are pure geometry — interpolation and rounding — with no game number.
+
+// roundHalfUp(n, d) -> the whole number nearest to the fraction n / d (d > 0). An exact half rounds UP,
+// towards +infinity (so 2.5 → 3 and −2.5 → −2), the same rule Math.round uses. Written as
+// floor((2n + d) / 2d), i.e. floor(n/d + 1/2), so it works on the two integers and never needs n / d as
+// a decimal: the numbers here are small enough (hex coords × leg ticks) for that division to be exact.
+function roundHalfUp(n, d) {
+  return Math.floor((2 * n + d) / (2 * d));
+}
+
+// cubeRound(qScaled, rScaled, d) -> { q, r } — the hex that CONTAINS a point lying between hex centres
+// (transport-model.md §2.4 `cubeRound`). The point is passed as two whole numbers over one shared
+// denominator: its fractional coordinates are qScaled / d and rScaled / d. Keeping it as fractions of
+// integers, rather than decimals, makes every comparison below exact, so the same point always gives
+// the same hex, even when it sits exactly on the edge between two hexes (§15.5 invariant 9).
+//
+// WHY NOT JUST ROUND q AND r? Axial coords name a hex with two numbers, but the grid has THREE axes. The
+// third is s = −q − r (so q + r + s = 0 for every hex — the "cube" form). Rounding q and r on their own
+// ignores s, and near a corner where three hexes meet it can pick a hex the point is not in. Example:
+// the point (0.45, 0.35) is inside hex (1, 0), but rounding q and r alone gives (0, 0).
+//
+// THE FIX, in three steps:
+//   1. Round all three coords — q, r and s — to the nearest whole number.
+//   2. The three rounded numbers may no longer add up to 0 (each moved by up to a half, independently).
+//   3. So distrust the ONE that moved furthest when it was rounded, and rebuild it from the other two
+//      (q = −r − s, or r = −q − s). The two that moved least are the most trustworthy.
+// On the example: q 0.45 → 0 (moved 0.45), r 0.35 → 0 (moved 0.35), s −0.8 → −1 (moved 0.2). They add up
+// to −1, not 0. q moved furthest, so rebuild it: q = −r − s = 0 + 1 = 1. The hex is (1, 0).
+//
+// A TIE (two coords moved exactly as far — the point is on an edge) is settled by the fixed order of the
+// checks below, so the answer never depends on anything but the point itself.
+function cubeRound(qScaled, rScaled, d) {
+  const sScaled = -qScaled - rScaled; // the third cube coordinate, over the same denominator
+  // Step 1: round each coordinate.
+  let q = roundHalfUp(qScaled, d);
+  let r = roundHalfUp(rScaled, d);
+  const s = roundHalfUp(sScaled, d);
+  // How far each moved when rounded, times d — so still a whole number, and exact to compare.
+  const qMoved = Math.abs(q * d - qScaled);
+  const rMoved = Math.abs(r * d - rScaled);
+  const sMoved = Math.abs(s * d - sScaled);
+  // Step 3: rebuild the one that moved furthest. If it is s, there is nothing to do — s is not returned.
+  if (qMoved > rMoved && qMoved > sMoved) q = -r - s;
+  else if (rMoved > sMoved) r = -q - s;
+  // `+ 0` turns JavaScript's "negative zero" (which −r − s gives when r and s are both 0) into a plain 0.
+  // The two print the same, but a deep-equality check tells them apart, so a hex at q = 0 is always 0.
+  return { q: q + 0, r: r + 0 };
+}
+
+// legHexAtTick(from, to, departureTick, arrivalTick, tick) -> { q, r } — the hex a craft flying the
+// straight leg `from` → `to` (two hex coords { q, r }) is over at `tick` (transport-model.md §2.3 + §2.4).
+//
+// §2.3: speed is constant along a leg, so the share of the leg FLOWN equals the share of its TIME gone:
+//   legProgress = clamp01((tick − departureTick) / (arrivalTick − departureTick))
+//   position    = from + legProgress × (to − from)
+// then §2.4 rounds that position to a hex (cubeRound above). The clamp makes a tick before departure read
+// as `from` and a tick at or after arrival read as `to`.
+//
+// Everything is multiplied through by the leg's length in ticks (`span`), so no fraction is ever formed:
+// `elapsed` / `span` IS legProgress, and qScaled / span is the craft's fractional q. (§2.3 interpolates in
+// the drawing plane; that conversion is linear, so interpolating q and r directly lands on the same point.)
+//
+// It returns the nearest hex on the unbounded grid. Whether that hex is inside the galaxy is the
+// caller's question (isHexInBounds). All inputs must be whole numbers and the leg must take at least one
+// tick — both always true of a real leg (legTicks ceils, a zero-length leg is refused). Anything else
+// throws, rather than handing back a hex computed from a bad schedule.
+function legHexAtTick(from, to, departureTick, arrivalTick, tick) {
+  const inputs = [from.q, from.r, to.q, to.r, departureTick, arrivalTick, tick];
+  if (!inputs.every(Number.isInteger) || !(arrivalTick > departureTick)) {
+    throw new Error(`legHexAtTick: needs whole-number coords and ticks, and a leg that takes at least one tick — got ${JSON.stringify({ from, to, departureTick, arrivalTick, tick })}`);
+  }
+  const span = arrivalTick - departureTick;
+  const elapsed = Math.min(Math.max(tick - departureTick, 0), span); // clamped to [0, span]
+  const qScaled = from.q * span + (to.q - from.q) * elapsed;
+  const rScaled = from.r * span + (to.r - from.r) * elapsed;
+  return cubeRound(qScaled, rScaled, span);
+}
+
 // nearestWaystation(destinationSystemId) -> { outpost, distance } | null
 //
 // THE WAYSTATIONS ARE THE SEED'S OUTPOSTS. Not a choice made here: the ruling
@@ -97,5 +178,6 @@ function arrivalTickFor(currentTick, distance) {
 }
 
 module.exports = {
-  CRAFT_SPEED, TOLL_BUFF, hexDistance, legTicks, legFuelBurn, nearestWaystation, arrivalTickFor,
+  CRAFT_SPEED, TOLL_BUFF, hexDistance, cubeRound, legHexAtTick, legTicks, legFuelBurn, nearestWaystation,
+  arrivalTickFor,
 };

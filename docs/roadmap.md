@@ -1457,6 +1457,28 @@ boundary so the later hex-map swap doesn't touch it.
     Cancel / Stop-after-run controls, and the closed-loop legibility UX (§11.10 loop geometry). This slice
     only SURFACES the state. The per-lap (loop-back + cycle) quote noted under 3a is still open for 3c. Edge
     calls built one way are on the decision checklist ("Repeating lanes — 3a.1 edge calls").
+  - **slice 3b — engine (Cancel: the in-transit stop + the snap-to-hex).** ⬜ *Building (24-09-26 — contract
+    transport-model.md §11.10 "Cancel" / §2.3 / §2.4 / §11.6 — engine + operator CLI, NO client).* The engine
+    half of §11.10's Cancel control: a craft's lane ends AT ONCE, a craft in flight snapping to the hex it is
+    over. Landing as tight commits, one piece each.
+    **(1) The snap-to-hex helper** (`sim/transport.js`; tripwires `sim/tests/route-cancel.test.js` (new)).
+    Beside `hexDistance`: **`legHexAtTick(from, to, departureTick, arrivalTick, tick)`** — the hex a craft
+    flying the straight leg `from` → `to` is over at `tick`. It is §2.3's `legProgress = clamp01((T −
+    departureTick) / (arrivalTick − departureTick))`, the position interpolated along the leg, then §2.4's
+    **`cubeRound`**: round q, r and s = −q − r, and rebuild the one that moved furthest from the other two so
+    they still sum to 0 (rounding q and r alone can pick the wrong hex near a corner). **Whole-number maths
+    throughout:** the position is carried as integers over the leg's tick span, never as a decimal, so every
+    rounding comparison is exact. That matters on an exact edge: the textbook decimal version of the same
+    algorithm disagrees with itself on such points (794 of 2,000,000 random points, every one an exact tie,
+    tipped by float noise), while this one settles a tie by the fixed order of its checks, every run
+    (§15.5 invariant 9). A negative zero is normalised to 0. It throws on a fractional tick or coord or a leg
+    of no duration rather than place a craft from a bad schedule. No number: interpolation and rounding are
+    geometry. Nothing calls it yet (piece (2) does), so nothing existing changes. Tripwires (6): the cube
+    correction ((0.45, 0.35) is hex (1, 0), not the naive (0, 0)); half-way along (0,0) → (9,7) is the edge
+    between (5,3) and (4,4) and the tie rule picks (5,3) (naive rounding would give (5,4)); the same point
+    flown either way is the same hex; the endpoints and the clamp; tick by tick the craft only ever steps
+    to a neighbouring hex; an exact tie and the negative zero; the bad-schedule refusals. Mutation-checked:
+    with the correction removed 4 of these fail; with the tie order flipped the tie test fails.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
