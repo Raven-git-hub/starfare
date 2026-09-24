@@ -73,7 +73,8 @@
 //                           { accepted, reason, snapshot }
 //   POST /vehicle/quote  -> READ-ONLY dispatch quote { guildId, vehicleId, waypoints }: the
 //                           route's per-leg/total ticks, fuel, credit cost + affordability,
-//                           computed by the engine (quoteDispatch), mutating nothing (§18)
+//                           and the per-lap cost if it repeats — computed by the engine
+//                           (quoteDispatch), mutating nothing (§18)
 //   POST /reset          -> back to the zero-state; re-arms the boot clock if one
 //                           was configured, so a deployed galaxy keeps turning
 //
@@ -732,7 +733,8 @@ async function handleRequest(req, res) {
   // (transport-model.md §4/§18, roadmap 2.2 b2b-1). The read-only twin of POST /admin/vehicle/dispatch:
   // it runs the SAME `dispatchRoute` a real dispatch uses (via `quoteDispatch`) against the LIVE state and
   // returns the route's per-leg + total ticks / fuel / credit cost and whether the guild can afford it —
-  // so the route-planner client can preview a route and gate its Dispatch button off the engine's truth.
+  // so the route-planner client can preview a route and gate its Dispatch button off the engine's truth —
+  // plus what one lap would cost if it is launched as a repeating lane (perLapUnits / perLapCredits).
   // It MUTATES NOTHING: like GET /snapshot it reads state and returns a computed projection — no action,
   // no applyOneAction, no journal, no tick, no snapshot — so the galaxy stays byte-identical however many
   // times it is called. Player-facing (NOT under /admin/): as open as /snapshot in this dev rig. A

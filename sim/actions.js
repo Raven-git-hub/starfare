@@ -139,6 +139,34 @@ function dispatchRoute(craft, waypoints, { skipZeroLengthFirstLeg = false } = {}
   return { ok: true, legs, totalUnits, skippedFirstLeg, actInPlace: legs.length === 0 };
 }
 
+// perLapCost(craft, waypoints, fuelPrice) -> { perLapUnits, perLapCredits }
+//
+// What ONE LAP of a repeating lane costs, for the client to show beside the lane (roadmap 2.2 automation
+// slice 3c-engine; the client computes no game number, §18). A lap is the RECURRING cycle
+// (transport-model.md §11.4): from the last waypoint WN, reposition WN → W1, then run W1 → … → WN. So the
+// fuel is the WN → W1 flyback plus the cycle's legs. When the player closed the loop themselves (WN == W1)
+// the flyback is zero-length and skipped, so the lap is just the cycle.
+//
+// It is priced EXACTLY the way `startLap` charges a lap: `dispatchRoute` from the craft parked at WN, with
+// the zero-length first leg skipped. So the number shown is the number each lap after the first really
+// takes from the hoard — the two cannot drift. It depends only on the waypoints and the craft's per-hex
+// burn, never on where the craft is now or on the launch mode. It leaves out lap 1's one-time positioning
+// leg (wherever the craft launched from → W1): the run quote's `totalUnits` already carries that, and it is
+// never paid again (§11.4).
+//
+// `waypoints` are bare anchors. A one-stop route [W1] has no leg to fly (WN is W1), so its lap costs 0.
+// `perLapCredits` is the live-priced display value, `fuelValue` at the given price — the same rule as the
+// run quote's `credits`. Both are null only for a list `dispatchRoute` would refuse (empty, an anchor that
+// does not resolve, two stops in a row on one hex), which never reaches here from an accepted route — a
+// visible null rather than a quiet 0.
+function perLapCost(craft, waypoints, fuelPrice) {
+  if (!Array.isArray(waypoints) || waypoints.length === 0) return { perLapUnits: null, perLapCredits: null };
+  const atWN = { ...craft, location: waypoints[waypoints.length - 1] }; // the craft parked at WN
+  const lap = dispatchRoute(atWN, waypoints, { skipZeroLengthFirstLeg: true });
+  if (!lap.ok) return { perLapUnits: null, perLapCredits: null };
+  return { perLapUnits: lap.totalUnits, perLapCredits: fuelValue(lap.totalUnits, fuelPrice) };
+}
+
 // buildSingleLegTrip(craft, toAnchor, dispatchTick) -> a ONE-LEG `trip` { legs: [scheduled],
 // dispatchTick, arrivalTick } from the craft's CURRENT location to `toAnchor`, or `null` when that
 // leg is not buildable (the `to` anchor no longer resolves, or the leg is zero-length). THE ONE home
@@ -435,7 +463,8 @@ function cancelLanding(craft, tick) {
 }
 
 // quoteDispatch(state, { guildId, vehicleId, waypoints }) -> { ok: true, legs, totalTicks, totalUnits,
-//                                                             credits, affordable, arrivalTick }
+//                                                             credits, perLapUnits, perLapCredits,
+//                                                             affordable, arrivalTick }
 //                                                          | { ok: false, reason }
 //
 // The READ-ONLY PROJECTION of a dispatch (roadmap 2.2 b2b-1, transport-model.md §4/§18). It answers
@@ -465,6 +494,11 @@ function cancelLanding(craft, tick) {
 // `dispatchRoute`'s own `totalUnits` sum, `fuelValue` at the live `reserve.fuelPrice` (a display cost,
 // floating with price like the snapshot's trip cost), and `state.tick` for the arrival — so the quote is
 // authoritative and matches what `dispatchVehicle` + `stepVehicleArrivals` + the snapshot would produce.
+//
+// Beside that whole-RUN cost it gives the cost of ONE LAP if the route is launched as a repeating lane
+// (`perLapUnits` / `perLapCredits`, slice 3c-engine — see `perLapCost`): the WN → W1 flyback plus the
+// cycle, without the one-time positioning leg. It is a property of the waypoints, so every ok quote
+// carries it; the client shows it only when the player picks a repeating mode.
 function quoteDispatch(state, { guildId, vehicleId, waypoints }) {
   // The dispatch validate gates, in the same order, returning the same messages (so the planner shows
   // exactly what a real dispatch would refuse).
@@ -503,6 +537,9 @@ function quoteDispatch(state, { guildId, vehicleId, waypoints }) {
   // isToll false) — the whole-route burn the dispatch takes from the hoard. Trust the shared helper's
   // sum so the quote and the dispatch can't drift on the number that gates the burn.
   const totalUnits = route.totalUnits;
+  // The route passed dispatchRoute above, so its lap builds too (same waypoints; only the skippable
+  // WN → W1 leg is new) — the per-lap figures are always numbers here.
+  const lap = perLapCost(craft, waypoints, state.reserve.fuelPrice);
   return {
     ok: true,
     legs,
@@ -511,6 +548,10 @@ function quoteDispatch(state, { guildId, vehicleId, waypoints }) {
     // The live-priced display cost (a credit figure, not a treasury debit) — the same mark-to-market the
     // snapshot's in-flight trip uses, so a quote reads at the fuel price of the tick it was asked at.
     credits: fuelValue(totalUnits, state.reserve.fuelPrice),
+    // What each lap AFTER the first would burn if this route repeats: the recurring flyback + cycle, not
+    // the run's one-time positioning. Priced at the same live fuel price as `credits`. It gates nothing.
+    perLapUnits: lap.perLapUnits,
+    perLapCredits: lap.perLapCredits,
     // The whole-route, refuse-whole gate the dispatch applies (hoard + contraband ≥ the burn) — reported,
     // not enforced: an unaffordable route is a valid quote, and the planner gates its Dispatch button on it.
     affordable: (guild.fuelHoard + (guild.deuteriumFuel || 0)) >= totalUnits,
@@ -4363,6 +4404,8 @@ module.exports = {
   createStopRouteAfterRunAction,
   createCancelRouteAction,
   quoteDispatch,
+  // The cost of one lap of a repeating lane — shared by the quote above and the snapshot's route row.
+  perLapCost,
   // The chained-route execution (the automation layer, §11.2), called by sim/tick.js's two hooks: a
   // routed craft reached a waypoint (resolveRouteArrival), or finished its turnaround (advanceRoute).
   resolveRouteArrival,

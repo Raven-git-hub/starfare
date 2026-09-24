@@ -1740,15 +1740,22 @@ test('POST /vehicle/quote: a craft already at W1 skips that leg, as the actioned
   // A one-stop route at the craft's own berth: acts in place — no legs, 0 ticks, 0 fuel, arriving now.
   const inPlace = await quoteOf([HOME]);
   assert.equal(inPlace.status, 200);
+  // (A one-stop route is a degenerate lap too — nothing to fly — so its per-lap cost is 0.)
   assert.deepEqual(inPlace.body, {
-    ok: true, legs: [], totalTicks: 0, totalUnits: 0, credits: 0, affordable: true, arrivalTick: tickNow,
+    ok: true, legs: [], totalTicks: 0, totalUnits: 0, credits: 0,
+    perLapUnits: 0, perLapCredits: 0, affordable: true, arrivalTick: tickNow,
   });
-  // A route that starts at the berth quotes exactly like the same route without it (the leg is skipped).
+  // A route that starts at the berth quotes its RUN exactly like the same route without it (the leg is
+  // skipped). Its LAP differs, by design: HOME is a stop on that loop, so every lap flies back to it.
   const out = { landmarkKind: 'outpost', landmarkId: 'out_01' };
   const fromBerth = await quoteOf([HOME, out]);
   assert.equal(fromBerth.body.ok, true);
   assert.equal(fromBerth.body.legs.length, 1);
-  assert.deepEqual(fromBerth.body, (await quoteOf([out])).body);
+  const runOf = ({ perLapUnits, perLapCredits, ...run }) => run; // every field but the two per-lap ones
+  const outOnly = (await quoteOf([out])).body;
+  assert.deepEqual(runOf(fromBerth.body), runOf(outOnly));
+  assert.equal(fromBerth.body.perLapUnits, 2 * fromBerth.body.totalUnits, 'a lap = out → HOME and HOME → out');
+  assert.equal(outOnly.perLapUnits, 0, 'a one-stop lap has nothing to fly');
   // Still read-only: no tick passed.
   assert.equal((await req('GET', '/snapshot')).body.tick, tickNow, 'a quote must not tick');
 });

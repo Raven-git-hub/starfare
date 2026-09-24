@@ -1561,6 +1561,79 @@ boundary so the later hex-map swap doesn't touch it.
     buttons, the launch picker, and rendering flagged / waiting lanes (this slice is the engine action only).
     **Roadmap 2.3** — the toll-exit completion behind the `isToll` stub. The four edge calls are on the
     decision checklist ("Cancel — 3b edge calls").
+  - **slice 3c-engine — engine (the per-lap cost quote).** 🟢 *BUILT (24-09-26 — `sim/actions.js`,
+    `sim/snapshot.js`, `sim/server.js` (comments); tripwires `sim/tests/route-lap-cost.test.js` (new),
+    `quote.test.js`, `server.test.js`; contract transport-model.md §11.4 / §11.10 / §2.2, design.md §18 —
+    engine only, NO client).* The client half of 3c must show what ONE LAP of a repeating lane costs, and the
+    client computes no game number (§18), so the engine now publishes it on the two surfaces the client reads.
+    *(Closes the per-lap quote left open under 3a and 3a.1.)* No new number, no stored field.
+    **The lap.** A lap is the recurring cycle (§11.4): from WN, fly back WN → W1, then run W1 → … → WN. Its
+    fuel is the flyback plus the cycle's legs; when WN == W1 the flyback is zero-length and skipped, so the lap
+    is just the cycle. It leaves out lap 1's one-time positioning leg (launch location → W1), which the run
+    quote's `totalUnits` already carries. **`perLapCost(craft, waypoints, fuelPrice)`** (`sim/actions.js`,
+    beside `dispatchRoute`) is the one home: it prices the lap EXACTLY as `startLap` charges one —
+    `dispatchRoute` from the craft parked at WN, with the zero-length first leg skipped — so the number shown
+    is the number each later lap takes from the hoard. It returns `{ perLapUnits, perLapCredits }`:
+    `perLapCredits = fuelValue(perLapUnits, fuelPrice)`, the same live-priced display rule as the run quote's
+    `credits`. It depends only on the waypoints and the craft's per-hex burn, never on where the craft is or the
+    launch mode.
+    **(1) The quote.** Every ok `quoteDispatch` now also returns `perLapUnits` + `perLapCredits` (at
+    `reserve.fuelPrice`), so its ok shape is `{ ok, legs, totalTicks, totalUnits, credits, perLapUnits,
+    perLapCredits, affordable, arrivalTick }`. They gate nothing, and every existing figure is unchanged. It
+    is still a pure read.
+    **(2) The snapshot.** A REPEATING lane's `route` row (`snapshotRoute`, which now takes the craft and the
+    fuel price) carries `perLapUnits` + `perLapCredits`, derived on read. A `once` route carries neither and
+    is byte-identical to before. So is a craft with no route. Nothing is added to the craft's route in engine
+    state.
+    **Shape calls.** The field names are the build prompt's. A ONE-stop route (`[W1]`) is a degenerate lap
+    (WN is W1, nothing to fly): it prices as **0**, not an error. `perLapCost` returns **null** for both fields
+    only on a list `dispatchRoute` would refuse (empty, an anchor that does not resolve, two stops in a row on
+    one hex). That cannot happen from an accepted route: the quote prices the lap only after the run built, and
+    a running lane's anchors are invariant-checked and never change. So null is a visible "no lap", never a
+    quiet 0. **Worth knowing for the client:** run − lap = positioning − flyback, and that can go EITHER way.
+    Launched far from W1, a lap is cheaper than the first run. Launched on W1 (the positioning is skipped), a
+    lap costs MORE, because only the lap flies the flyback. For the same reason, naming the craft's berth as
+    W1 leaves the RUN quote unchanged but changes the LAP (the berth is now a stop on the loop). So three
+    existing tests changed by design (four assertions, no count change). In `quote.test.js`, the berth-as-W1
+    test now compares the run and pins both laps, and the act-in-place shape gains `perLapUnits: 0,
+    perLapCredits: 0`. `server.test.js` makes the same two changes over HTTP, in one test.
+    **Tripwires** (`route-lap-cost.test.js`, 12): an open loop's lap = flyback + cycle, from pinned leg lengths
+    (5 fuel against a 7-fuel run), and run − lap = positioning − flyback both ways (a 1-hex launch gives a lap
+    dearer than the run); the lap is the same from any launch point, including on W1; a closed loop's lap is
+    just the cycle, and equals the open loop's (the closing leg IS the flyback); **driven** nRun lanes
+    (closed n=3, open n=4) burn `totalUnits` at launch and exactly `perLapUnits` at every later lap start,
+    read off the hoard on the tick it moves, and the snapshot showed that same figure; `perLapCredits` =
+    `fuelValue` at the asked price, and re-reads at a new price on the quote and on a running lane's row;
+    continuous / nRun / perCycle rows carry the quote's figures, a `once` row's keys are exactly `cursor` +
+    `waypoints`, and nothing is stored on the route; the row's figure is unchanged on every tick of two laps; a
+    one-waypoint route quotes 0 (no throw), and an unbuildable list prices null (never 0); quoting is a pure,
+    deterministic read. Mutation-checked, each caught: pricing from W1 (no flyback) (5 fail), from the craft's
+    real location (12), with no zero-length skip (5), at a fixed price (1), 0 instead of null (1), per-lap on a
+    `once` row (1). Sim suite 1,564 → **1,576 green**, tools suite **68** (unchanged), zero failures.
+    **No-op proof.** The persist / determinism / galactic-supply goldens are untouched and green. Hashed on
+    `main` and on this branch with one script, all **identical**: zero-state, supply_relief, economy_meanline
+    and its crisis variant (400 ticks, state + snapshot every 100); and a routed galaxy on a 100-tick fuel cycle
+    hashed EVERY tick for 3,000 ticks (a plain multi-leg dispatch, a one-shot route, a continuous open lane, an
+    nRun:3 closed lane and a perCycle lane on a starved hoard, 98 waiting lane-ticks), covering its state, its
+    snapshot with the two per-lap keys stripped, its one-shot / route-less rows UNSTRIPPED, and three quotes a
+    tick with the per-lap keys stripped. Control: 9,000 lane-row ticks carried the per-lap figures on the
+    branch, 0 on `main`.
+    **Driven end-to-end** against a booted, persisted server (seed 7; guild `g1` at sys_0001 (77,-7) with
+    4,000 titanium, its Outpost at `75,-7`). `POST /vehicle/quote` before launch: craft 01 (at home) on
+    `home → Outpost` quoted a 1-fuel run and a **2-fuel lap** (20 credits); craft 02 (at `80,-7`) on the closed
+    `home → Outpost → 75,-4 → home` quoted a 7-fuel run and a **5-fuel lap**; a one-stop route quoted a 0 lap.
+    Both launched with `dispatch-route --repeat nRun:3`, and the hoard fell 8 (the two runs). Ticking and reading
+    each snapshot, every lap start matched the row's figure: craft 01 −2 at t215 and t640 (idle at the Outpost
+    at t1065, 3a's own figures); craft 02 −5 at t1160 and t2005 (idle at home at t2850). The t858 boundary
+    moved the fuel price to 2.56, and craft 02's row re-read to **13 credits** a lap (`fuelValue(5, 2.56)`). A
+    SIGKILL at t1500 restarted canonically identical, still showing 5 / 13. 1,800 titanium delivered, the hoard
+    reconciled (500 − 8 − 14 + two grants = 772), and no invariant errors in either server log.
+    **Not changed:** transport-model.md's §4 "AS-BUILT 19-09-26" paragraph still lists the b2b-1 quote shape
+    (dated, and the new fields only extend it). It was left alone per the build prompt; this note records the
+    addition. **Deferred, not invented:** **3c (client)** — the launch picker showing this cost beside the
+    mode / N / cadence, the "X fuel / lap" read-out on the Operations active-lanes row, the In Transit Cancel /
+    Stop-after-run controls, rendering flagged / waiting lanes, and the closed-loop legibility UX (§11.10).
+    Nothing went to the decision checklist: no number or rule was chosen.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*

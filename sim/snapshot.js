@@ -44,6 +44,9 @@ const { usedSpace, copyManifestLine } = require('./manifest.js');
 // copyRouteWaypoint (sim/routes.js — the ONE spelling of the { anchor, action? } waypoint copy, shared
 // so a snapshotted route — a craft's journalled one or a guild's saved one — can't drift from the stored).
 const { copyRouteWaypoint } = require('./routes.js');
+// The one home of a lap's price (beside dispatchRoute), so a lane's row shows what its laps really burn.
+// No require cycle: nothing actions.js loads requires this file.
+const { perLapCost } = require('./actions.js');
 const { getSite, getLandmark, getStarterSystems, getTerranHomeworld } = require('./seed.js');
 const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
@@ -796,7 +799,15 @@ function orderSnapshot(order) {
 // after this run — and is ABSENT for a one-shot route
 // (omit-when-default, mirroring the state), so a one-shot row is byte-identical to the pre-repeat one.
 // Read by the slice-3c client to render a lane's launch settings, its "lap k (of N)" and why it waits.
-function snapshotRoute(route) {
+//
+// A repeating lane also shows what ONE LAP costs — `perLapUnits` (fuel) and `perLapCredits` (at the
+// current `fuelPrice`) — so the client can show "X fuel / lap" without computing it (§18). They are
+// DERIVED on read from the waypoints and the craft (`perLapCost`, the same pricing the lap burn uses), not
+// stored on the route. A one-shot has no next lap, so it carries neither.
+function snapshotRoute(route, craft, fuelPrice) {
+  const lapCost = route.mode !== undefined
+    ? perLapCost(craft, route.waypoints.map((wp) => wp.anchor), fuelPrice)
+    : null;
   return {
     waypoints: route.waypoints.map(copyRouteWaypoint),
     cursor: route.cursor,
@@ -807,6 +818,7 @@ function snapshotRoute(route) {
     ...(route.lapsRemaining !== undefined ? { lapsRemaining: route.lapsRemaining } : {}),
     ...(route.waiting ? { waiting: { ...route.waiting } } : {}),
     ...(route.stopAfterRun ? { stopAfterRun: true } : {}),
+    ...(lapCost ? { perLapUnits: lapCost.perLapUnits, perLapCredits: lapCost.perLapCredits } : {}),
   };
 }
 
@@ -844,7 +856,7 @@ function snapshotVehicleRow(v, fuelPrice, dockStatus) {
     // copied — no aliasing) and the `cursor` marking the waypoint it is at/heading to, so the later
     // client (1b) can read the plan and mark progress — plus a repeating lane's state (snapshotRoute).
     // Omit-when-absent, like `trip`/`dockStatus`.
-    ...(v.route ? { route: snapshotRoute(v.route) } : {}),
+    ...(v.route ? { route: snapshotRoute(v.route, v, fuelPrice) } : {}),
     // laneEnded (slice 3a — transport-model.md §11.6). PRESENT only when the craft's last lane ENDED on
     // its own — `{ reason: 'target-gone', tick }` — so the client can show the player WHY an idle craft
     // stopped. A fresh copy; cleared by the craft's next dispatch. Omit-when-absent.

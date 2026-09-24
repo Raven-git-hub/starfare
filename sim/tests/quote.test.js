@@ -23,6 +23,9 @@
 //     legs, fuel and arrival `dispatchRouteWithActions` then really flies — and a one-stop route at its own
 //     berth quotes as acting in place (no legs, 0 ticks, 0 fuel, arrival now). An internal dead leg is
 //     still refused.
+//   - (slice 3c-engine) an ok quote also carries the cost of one LAP if the route repeats (`perLapUnits` /
+//     `perLapCredits`). Naming the berth as W1 leaves the RUN unchanged but not the lap, since the berth is
+//     then a stop on the loop. The per-lap tripwires live in route-lap-cost.test.js.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -185,8 +188,17 @@ test('skip: a craft already at W1 quotes only the real onward legs — identical
   const withW1 = quote(s, [{ q: 0, r: 0 }, { q: 3, r: 0 }, { q: 3, r: 4 }]);
   assert.equal(withW1.ok, true, `expected ok, got: ${withW1.reason}`);
   assert.deepEqual(withW1.legs.map((l) => l.length), [3, 4], 'the zero-length craft → W1 leg is not in the quote');
-  // Naming the berth as W1 changes nothing: the same quote as the route without it.
-  assert.deepEqual(withW1, quote(s, [{ q: 3, r: 0 }, { q: 3, r: 4 }]));
+  // Naming the berth as W1 changes nothing about the RUN: the same legs, ticks, fuel and arrival as the
+  // route without it. (`runOf` keeps every field except the two per-lap ones.)
+  const without = quote(s, [{ q: 3, r: 0 }, { q: 3, r: 4 }]);
+  const runOf = ({ perLapUnits, perLapCredits, ...run }) => run;
+  assert.deepEqual(runOf(withW1), runOf(without));
+  // It DOES change the LAP (slice 3c-engine): the berth is now a stop on the loop, so a repeating lane flies
+  // back to it every lap — flyback {3,4} → {0,0} (7 hexes), then {0,0} → {3,0} (3) and {3,0} → {3,4} (4) —
+  // where the route without it only flies {3,4} → {3,0} (4) and back (4).
+  const f = (length) => legFuelBurn(length, LIGHT.fuelCostToRun, false);
+  assert.equal(withW1.perLapUnits, f(7) + f(3) + f(4));
+  assert.equal(without.perLapUnits, f(4) + f(4));
 });
 
 test('skip: the quote agrees with what dispatchRouteWithActions really flies (legs, fuel, arrival)', () => {
@@ -220,6 +232,9 @@ test('act in place: a one-stop route at the craft\'s own berth quotes 0 legs / 0
       totalTicks: 0,
       totalUnits: 0,
       credits: 0,
+      // One stop is also a degenerate LAP: WN is W1 and there is no leg to fly, so a lap costs nothing.
+      perLapUnits: 0,
+      perLapCredits: 0,
       affordable: true,
       arrivalTick: s.tick, // resolves in place, at the dispatch tick
     });
