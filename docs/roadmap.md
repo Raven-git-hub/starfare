@@ -1328,9 +1328,10 @@ boundary so the later hex-map swap doesn't touch it.
     added. `quoteDispatch` quotes lap 1 (what the launch burns); a per-lap (loop-back + cycle) quote, if 3c wants
     one, is engine work (§18). "A system lost" (§11.6) cannot happen yet — no path removes a claim; when
     territory lands, `routeStoreAt` is the one place it goes.
-  - **slice 3a.1 — engine (repetition extensions: cadence, `N` + `lapsDone`, the wait-reason split).** 🟡 *IN
-    PROGRESS (24-09-26 — `sim/routes.js`, `sim/actions.js`, `sim/invariants.js`, `sim/snapshot.js`,
-    `sim/state.js`, `sim/server.js`; tripwires `sim/tests/route-repeat-extensions.test.js` (new); contract
+  - **slice 3a.1 — engine (repetition extensions: cadence, `N` + `lapsDone`, the wait-reason split).** 🟢 *BUILT
+    (24-09-26 — `sim/routes.js`, `sim/actions.js`, `sim/invariants.js`, `sim/snapshot.js`, `sim/state.js`,
+    `sim/tick.js` (comment), `sim/server.js` (comment), `tools/admin.js`; tripwires
+    `sim/tests/route-repeat-extensions.test.js` (new), `server.test.js`, `tools/admin.test.js`; contract
     transport-model.md §11.10 as amended 24-09-26 — engine + operator CLI, NO client).* Rounds out 3a's repeat
     model with the three extensions ruled into §11.10 on 24-09-26, before 3b (cancel) and 3c (client).
     **(1) The cadence launch option.** `dispatchRouteWithActions`'s `repeat` takes an optional **`cadence`** —
@@ -1404,6 +1405,51 @@ boundary so the later hex-map swap doesn't touch it.
     and the wait row now names either reason. Usage text documents the grammar. `tools/admin.test.js` 48 →
     **49** (the cadence grammar, the arg → body mapping); `server.test.js`'s repeat test now launches
     `perCycle` and refuses a cadence on `once` (no count change). Sim suite still **1,543**.
+    **(5) Loop geometry — a guard, no new rule** (`route-repeat-extensions.test.js` only). §11.10's loop-geometry
+    ruling documents what 3a's executor already does (it walks the waypoints by cursor and refuses only two
+    CONSECUTIVE stops on one hex), so no engine logic changed. Two tripwires hold it to the ruling's own
+    example, the milk-run **B → C → D → C → B** (C = system A; B, D = two of the guild's Outposts) run as an
+    n=3 lane: each stop's pool moves in cursor order every lap — A `+60` then `+25−10`, B `−100` (as W1) then
+    `+10` (as W5), D once — the closing B → B flyback is skipped (WN == W1) so laps 2–3 fly only the four
+    cycle legs, no zero-length leg is ever built, and the hold ends each lap empty; replay and a mid-lap
+    restart (between A's two visits) are byte-identical. Sim suite → **1,545 green**. Slice 3a.1 total: sim
+    1,524 → **1,545**, `tools/admin.test.js` 48 → **49** (tools suite 66 → 67), zero failures.
+    **No-op proof.** The persist / determinism / galactic-supply goldens are untouched and green (they carry
+    no repeating route). Hashed on `main` (pre-slice) and on this branch with the same script: (a)
+    zero-state, supply_relief, economy_meanline and its crisis variant, 400 ticks each, state + snapshot
+    every 100 ticks — **byte-identical**; (b) a routed ONE-SHOT galaxy (an actioned run from off-W1, a 2a
+    skip run, a plain dispatch, a quote; 1,500 ticks on a 100-tick fuel cycle) — **byte-identical** (a
+    `once` route carries no repeat field at all); (c) three IMMEDIATE repeating lanes (continuous, nRun:3,
+    and a WN == W1 ring at the Outpost) on a starved hoard with a fuel grant every 700 ticks, so they wait and
+    resume (3,256 lane-ticks waiting, 18 lap burns), 4,000 ticks, state + snapshot hashed EVERY tick with only
+    the new bookkeeping fields (`lapsDone`, `N`, `cadence`) stripped — **identical every tick**: the same
+    laps, fuel, arrival ticks, cargo and waits as 3a. Controls: unstripped, the digest differs (the new
+    fields are really there); with one lane switched to `perCycle`, it differs (the projection sees a real
+    behaviour change).
+    **Driven end-to-end via the CLI** against a booted, persisted server (seed 7, `/reset` + a 900-tick fuel
+    cycle; guild `g1` at sys_0001 with 8,000 titanium, its Outpost two hexes off at `75,-7`, three light craft
+    at home). `dispatch-route … --repeat continuous:perCycle` (craft 01) printed `cadence perCycle, lapsDone
+    0`; `--repeat nRun:3` (craft 02) printed `cadence immediate, lapsDone 0 of 3, lapsLeft 3`; `--repeat
+    once:perCycle` exited 1 with the engine's reason; `--repeat continuous:daily` failed the parse. Ticking
+    and reading `/snapshot`: craft 02 ran back to back, laps ending t215 / t640 / t1065, `lapsDone` 0/3 → 1/3
+    → 2/3, idle at the Outpost at t1065 (3a's own figure); craft 01 flew lap 1 at once, held (`waiting
+    cadence since 215`), started lap 2 ON the t900 boundary, held from t1325, started lap 3 ON t1800, held
+    from t2225 — one lap per cycle. A SIGKILL at t1400 (mid-hold) restarted to a canonically identical
+    snapshot, still holding since t1325, and resumed at t1800 as the unbroken run would. `stop-route-after-run`
+    on the held lane at t2300 ended it on the spot, idle at the Outpost; the t2700 boundary started nothing.
+    2,400 titanium delivered (6 laps × 400). No invariant errors in either server log. (The reason flip
+    could not be shown live: this guild's per-cycle fuel grant dwarfs a 2-unit lap. The tripwire covers it.)
+    **Deploy note.** A galaxy persisted with a slice-3a repeating lane RUNNING (a route with a `mode` but no
+    `lapsDone`) fails the new `lapsDone` check on its first tick after this deploy and halts loudly, by
+    design, not silently. No migration was written. Before deploying, check `snapshot` for any craft whose
+    route has a `mode`, and let it finish or re-dispatch it. Lanes only exist if an operator launched one
+    through the 3a CLI.
+    **Deferred, not invented:** **3b**: Cancel, the immediate in-transit stop that snaps the craft to the hex
+    it occupies, with the toll-aware `isToll` branch as a stub. **3c**: the client launch picker (mode + N +
+    cadence), the "lap k / lap k of N" and waiting read-out (fuel vs cadence), the Operations → In Transit
+    Cancel / Stop-after-run controls, and the closed-loop legibility UX (§11.10 loop geometry). This slice
+    only SURFACES the state. The per-lap (loop-back + cycle) quote noted under 3a is still open for 3c. Edge
+    calls built one way are on the decision checklist ("Repeating lanes — 3a.1 edge calls").
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
@@ -1574,6 +1620,24 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   - **"Stop after this run" on a lane waiting for fuel ends it at once** (it is already idle at WN with its
     run finished). The alternative is to refuse the stop and leave Cancel (slice 3b) as the only way out of
     a wait.
+
+- **Repeating lanes — 3a.1 edge calls** — *surfaced 24-09-26 by 2.2 automation slice 3a.1.* §11.10's
+  amendment covers the model. These readings were built one way and want a ruling or a confirm:
+  - **A per-cycle lap that ends ON a boundary tick starts its next lap at that same boundary.** The hold is set
+    in the arrival / dock step and the boundary re-attempt runs later in the same tick, so the boundary
+    firing now is "the next" one. It is still one lap start per boundary, and a fuel-short lane already
+    behaved this way in 3a. The alternative is to hold a full extra cycle, which means an extra "held since"
+    tick rule.
+  - **A cadence on a `once` run is REFUSED, not ignored** (even `cadence: 'immediate'`). This follows 3a's
+    call on a stray `n` on a continuous lane. The alternative is to accept and drop it silently.
+  - **A cadence hold that cannot pay at its boundary is a fuel wait dated FROM THAT BOUNDARY.** `sinceTick`
+    reads as "waiting for this reason since". The alternative is to carry the hold's original `sinceTick`
+    across, which would read as "stopped since".
+  - **"Stop after this run" on a lane holding for its cadence ends it at once.** This extends 3a's fuel-wait
+    call: the lane is already idle at WN with its run finished.
+  - **A stored `cadence: 'immediate'` fails integrity.** It is non-canonical, the same way a stored `once`
+    mode is. The build prompt read "`immediate` | `perCycle` when present". The stricter check protects the
+    rule that an immediate lane is byte-identical to a 3a one.
 
 - **Deferred, flagged in docs (revisit with their slice, don't lose):** the SELL origin-picker helper
   (offer only systems that hold every line — `syndicate-orders.md` §7, a client refinement); a

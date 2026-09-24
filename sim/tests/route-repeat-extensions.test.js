@@ -14,6 +14,8 @@
 //      per cycle. An immediate lane still runs back to back.
 //   4. the WAIT-REASON split — a cadence hold that cannot pay at the boundary becomes a FUEL wait (and
 //      runs once it can); the two reasons never wedge; a stop gone during a hold ends the lane.
+//   5. LOOP GEOMETRY — a guard, not a new rule: §11.10's there-and-back milk-run (a hex visited twice
+//      in one lap) already runs as a lane, each visit its own stop, in cursor order.
 //
 // The fixture below is the SAME galaxy route-repeat.test.js builds (guild g1, one light craft, system A
 // as the load stop, its Outpost on the free hex B as the unload stop), copied rather than shared so each
@@ -59,7 +61,7 @@ function freeHexesNear(center, n) {
   assert.ok(found.length >= n, `need ${n} free hexes near ${JSON.stringify(center)}`);
   return found.slice(0, n).map(({ q, r }) => ({ q, r }));
 }
-const [ORIGIN, HEX_B] = freeHexesNear(A_COORDS, 2);
+const [ORIGIN, HEX_B, HEX_D] = freeHexesNear(A_COORDS, 3); // HEX_D: a second Outpost (the milk-run only)
 
 // Leg fuel and leg time from the ONE leg formulas, and the ruled class turnaround — never inlined. Lap 1 of
 // the canonical lane = ORIGIN → A → B; every later lap = the loop-back B → A plus the cycle A → B (§11.4).
@@ -74,15 +76,20 @@ const LAP1_TICKS = ticksOf(ORIGIN, A_COORDS) + ticksOf(A_COORDS, HEX_B) + TURNAR
 const LAP_PERIOD = ticksOf(HEX_B, A_COORDS) + ticksOf(A_COORDS, HEX_B) + TURNAROUND; // a later lap, start → done
 
 // routeState(...) -> an invariant-clean galaxy: guild g1 with one idle light craft at ORIGIN, titanium in
-// its (g1, A) pool (and, if given, in its Outpost `outpost_g1_01` on HEX_B).
-function routeState({ systemPool = { [T1]: 400 * 50 }, fuelHoard = 1000000, outpostStock } = {}) {
-  const guild = { id: 'g1', credits: 0, fuelHoard, outpostSerial: 1, stockpiles: { [SYS_A]: { ...systemPool } } };
+// its (g1, A) pool (and, if given, in its Outpost `outpost_g1_01` on HEX_B). `extraOutposts` adds more of
+// the guild's Outposts (the milk-run's second one), built through createState like the first.
+function routeState({
+  systemPool = { [T1]: 400 * 50 }, fuelHoard = 1000000, outpostStock, extraOutposts = [],
+} = {}) {
+  const guild = {
+    id: 'g1', credits: 0, fuelHoard, outpostSerial: 1 + extraOutposts.length, stockpiles: { [SYS_A]: { ...systemPool } },
+  };
   const outpost = {
     id: 'outpost_g1_01', ownerGuildId: 'g1', anchorSystemId: SYS_A, coords: { ...HEX_B }, createdAtTick: 0,
     ...(outpostStock ? { stockpile: { ...outpostStock } } : {}),
   };
   const s = createState({
-    guilds: [guild], outposts: [outpost], reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 },
+    guilds: [guild], outposts: [outpost, ...extraOutposts], reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 },
   });
   return accept(s, createSpawnVehicleAction({ guildId: 'g1', class: LIGHT_TRANSPORT, location: { ...ORIGIN } }));
 }
@@ -475,4 +482,76 @@ test('integrity: a wait is only ever after a completed lap, and only a perCycle 
   assert.deepEqual(rules((r) => { r.lapsDone = 0; r.lapsRemaining = 4; }), ['vehicle-route-valid'], 'a wait before any lap completed');
   assert.deepEqual(rules((r) => { r.stopAfterRun = true; }), ['vehicle-route-valid'], 'a stop never stands beside a wait');
   assert.deepEqual(rules((r) => { r.waiting.reason = 'fuel'; }), [], 'a perCycle lane can wait for fuel too');
+});
+
+// --- 5. loop geometry: the milk-run (a guard — no new rule) ---------------------------------------
+
+// §11.10 "Loop geometry" documents what 3a's executor already does: it walks the waypoint list by cursor,
+// so a hex may appear more than once in a lap (each visit its own stop and action), and the only refused
+// shape is two CONSECUTIVE stops on one hex. This guards that reading with the ruling's own example, the
+// there-and-back milk-run B → C → D → C → B, where C is system A and B, D are two of the guild's Outposts:
+//   W1 B: load 100          (hold 100)
+//   W2 A: unload 60         (hold 40)    — A's FIRST visit
+//   W3 D: unload 40, load 25 (hold 25)
+//   W4 A: unload 25, load 10 (hold 10)   — A's SECOND visit
+//   W5 B: unload 10         (hold 0)     — B's second visit; WN == W1, so the B → B flyback is skipped
+const MILK_RUN = () => [
+  { anchor: { ...HEX_B }, action: dock([{ dir: 'load', good: T1, qty: 100 }]) },
+  { anchor: { ...SYS_ANCHOR }, action: dock([{ dir: 'unload', good: T1, qty: 60 }]) },
+  { anchor: { ...HEX_D }, action: dock([{ dir: 'unload', good: T1, qty: 40 }, { dir: 'load', good: T1, qty: 25 }]) },
+  { anchor: { ...SYS_ANCHOR }, action: dock([{ dir: 'unload', good: T1, qty: 25 }, { dir: 'load', good: T1, qty: 10 }]) },
+  { anchor: { ...HEX_B }, action: dock([{ dir: 'unload', good: T1, qty: 10 }]) },
+];
+// milkRunState() -> routeState's galaxy plus a second Outpost `outpost_g1_02` on HEX_D, both stocked.
+function milkRunState() {
+  const s = routeState({
+    outpostStock: { [T1]: 4000 },
+    extraOutposts: [{
+      id: 'outpost_g1_02', ownerGuildId: 'g1', anchorSystemId: SYS_A, coords: { ...HEX_D }, createdAtTick: 0,
+      stockpile: { [T1]: 1000 },
+    }],
+  });
+  assert.deepEqual(checkInvariants(s, s.tick), [], 'the two-Outpost galaxy is clean');
+  return s;
+}
+const stockAt = (s, i) => ((s.outposts[i] || {}).stockpile || {})[T1] || 0;
+
+test('milk-run: B → A → D → A → B loops — every visit acts once per lap, in cursor order; the B → B flyback is skipped', () => {
+  let s = accept(milkRunState(), dispatch(MILK_RUN(), { mode: 'nRun', n: 3 }));
+  // Record each stop's pool change, tick by tick — the ORDER of the changes is what shows each visit
+  // acting as its own stop — and every leg the craft flies.
+  const deltas = { A: [], B: [], D: [] };
+  const legs = [];
+  while (craftOf(s).route) {
+    const before = { A: pool(s), B: stockAt(s, 0), D: stockAt(s, 1) };
+    s = step(s);
+    const after = { A: pool(s), B: stockAt(s, 0), D: stockAt(s, 1) };
+    for (const k of ['A', 'B', 'D']) if (after[k] !== before[k]) deltas[k].push(after[k] - before[k]);
+    const c = craftOf(s);
+    if (c.trip) {
+      const l = c.trip.legs[0];
+      assert.notDeepEqual(l.from, l.to, `a zero-length leg was built at tick ${s.tick}`);
+      if (!legs.some((x) => x.departureTick === l.departureTick)) legs.push(l);
+    }
+  }
+  assert.deepEqual(deltas.A, [60, 15, 60, 15, 60, 15], 'A acts twice a lap: +60 on the first visit, then +25−10');
+  assert.deepEqual(deltas.B, [-100, 10, -100, 10, -100, 10], 'B loads as W1 and unloads as W5, every lap');
+  assert.deepEqual(deltas.D, [15, 15, 15], 'D once a lap: +40−25');
+  // Lap 1 = the positioning ORIGIN → B plus the four cycle legs; laps 2–3 = the four cycle legs only —
+  // WN is W1 (both B), so the B → B loop-back is skipped, never built.
+  assert.equal(legs.length, 1 + 4 + 4 + 4);
+  assert.deepEqual(legs.map((l) => l.from).slice(1, 5), [{ ...HEX_B }, { ...SYS_ANCHOR }, { ...HEX_D }, { ...SYS_ANCHOR }]);
+  assert.equal(craftOf(s).cargo, undefined, 'the hold ends each lap empty');
+  assert.deepEqual(craftOf(s).location, { ...HEX_B }, 'idle at WN');
+});
+
+test('milk-run: deterministic — a replay, and a mid-lap restart, land on the same state', () => {
+  const launch = () => accept(milkRunState(), dispatch(MILK_RUN(), { mode: 'nRun', n: 2 }));
+  const done = (st) => !craftOf(st).route;
+  const whole = stepUntil(launch(), done);
+  assert.equal(hashState(whole), hashState(stepUntil(launch(), done)), 'same inputs, same run');
+  // Restart on lap 2, between A's two visits (heading for D).
+  const mid = stepUntil(launch(), (st) => craftOf(st).route && craftOf(st).route.lapsDone === 1 && craftOf(st).route.cursor === 2);
+  const resumed = stepUntil(JSON.parse(JSON.stringify(mid)), done);
+  assert.equal(hashState(resumed), hashState(whole));
 });
