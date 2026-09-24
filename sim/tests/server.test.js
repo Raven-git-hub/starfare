@@ -1240,6 +1240,56 @@ test('GET /goods returns the vocabulary by tier', async () => {
   }
 });
 
+test('GET /goods serves the mine and refinery baseline tables, matching sim/baseline.js', async () => {
+  // Additive (24-09-26): the establish panel's Rate row reads the rate the engine will
+  // stamp from HERE (design.md §2), so the served tables must be the engine's own —
+  // a drift would show the player one rate and seat the venture at another.
+  const { MINE_BASELINE, REFINERY_BASELINE } = require('../baseline.js');
+  const { status, body } = await req('GET', '/goods');
+  assert.equal(status, 200);
+  assert.deepEqual(body.mineBaseline, MINE_BASELINE);
+  assert.deepEqual(body.refineryBaseline, REFINERY_BASELINE);
+});
+
+test('GET / serves the establish popups WITHOUT a client rate — the engine stamps the baseline', async () => {
+  // design.md §2 (24-09-26): the game client sends no productionRate for a mine or a
+  // factory, and the ledger's Rate row shows the baseline read off GET /goods. A page that
+  // quietly went back to sending its flat ESTABLISH_RATE would still establish ventures —
+  // at the wrong rate, under a licence priced off a different one — so the tripwire is on
+  // the served bytes.
+  const html = await (await fetch(base + '/')).text();
+  const slice = (from, to) => {
+    const a = html.indexOf(from); const b = html.indexOf(to, a);
+    assert.ok(a >= 0 && b > a, `found ${from} … ${to}`);
+    return html.slice(a, b);
+  };
+  // 1. The general establish (mining + refining) carries no rate: neither in the action
+  //    object nor added to it afterwards (the doDeploy body up to the send).
+  const general = slice('async function doDeploy', 'out = await window.__sendAction(establish)');
+  const generalCode = general.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+  assert.match(generalCode, /type: 'establishVenture'/);
+  assert.doesNotMatch(generalCode, /productionRate/, 'doDeploy sends no productionRate');
+  // 2. The deuterium-mine establish carries no rate.
+  const deut = slice('async function deutDeploy', 'function deutFail');
+  const deutCode = deut.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+  assert.match(deutCode, /type:'establishVenture'/);
+  assert.doesNotMatch(deutCode, /productionRate/, 'deutDeploy sends no productionRate');
+  // 3. ESTABLISH_RATE survives ONLY for the deuterium refinery (no baseline exists for
+  //    it): its declaration, the refinery's action, and the FUEL tier's Rate row.
+  const refinery = slice('async function deployRefinery', 'function showRefinerySuccess');
+  assert.match(refinery, /productionRate: ESTABLISH_RATE/, 'the refinery still sends its rate');
+  const lines = html.split('\n').filter((l) => l.includes('ESTABLISH_RATE')).map((l) => l.trim());
+  assert.deepEqual(lines, [
+    'var ESTABLISH_RATE = 5;',
+    `if(S.tier==='fuel') return ESTABLISH_RATE + ' <span class="mut">/tick</span>';`,
+    'productionRate: ESTABLISH_RATE,',
+  ], 'the declaration, the FUEL Rate row and the refinery action are its only readers');
+  // 4. The Rate row reads the served baselines, per mine good and per recipe.
+  assert.match(html, /setRow\('tRate', establishRateRow\(\)\);/);
+  assert.match(html, /goods\.mineBaseline \? goods\.mineBaseline\[S\.site\.resource\]/);
+  assert.match(html, /goods\.refineryBaseline \? goods\.refineryBaseline\[S\.recipeId\]/);
+});
+
 test('GET /asset-recipes returns the FULL build catalog, matching sim/asset-recipes.js', async () => {
   // RULES, not state (like /recipes): no galaxy is founded first, and the route answers
   // 200 regardless. This is the tripwire that the served catalog never drifts from the

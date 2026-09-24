@@ -11,25 +11,27 @@
 // divide the level by zero and make a hoard infinitely valuable: the denominator
 // has to be what the venture COULD make, which is a property of its TYPE.
 //
-// WHAT THIS FILE DELIBERATELY IS NOT (deferred, licence slice): the
-// `productionRate` → throttle-below / droids-above refactor. `productionRate`
-// stays exactly what it is today — the free per-venture rate the resolver runs at —
-// and NOTHING in production.js reads this table. It has exactly one consumer, the
-// pricing capacity calc. When the licence slice makes commitment a % of the known
-// max, it reads this same table, and the refactor rides with it (that slice is
-// where commitment/fee actually need it).
+// WHAT THIS FILE DELIBERATELY IS NOT (deferred): the `productionRate` →
+// throttle-below / droids-above refactor. `productionRate` stays exactly what it
+// is — the free per-venture rate the resolver runs at — and NOTHING in
+// production.js reads these tables.
 //
-// *(**Still true after the factory-commitment slice, 28-08-26** — with one clarifying
-// line. `sim/production.js` now imports `producedGoodFor` from this file, the
-// venture → good IDENTITY below; it still reads neither baseline TABLE. The resolver
-// runs off `productionRate` exactly as before; the fee and the committed quantity are
-// the only things priced off the baselines, and they are computed in `sim/actions.js`
-// at signing, not in the resolver.)*
+// WHO READS THE TABLES — three consumers, and the resolver is not one of them:
+//   1. the price engine's capacity normaliser (sim/prices.js), the first consumer;
+//   2. the licence: its fee and committed quantity are priced off the baseline at
+//      signing (sim/actions.js, with the fee arithmetic in sim/licence.js), and the
+//      snapshot's licence quotes read the same path (sim/snapshot.js);
+//   3. the establish path (sim/actions.js, 24-09-26): when an `establishVenture`
+//      names no `productionRate`, the engine stamps the venture's baseline as its
+//      rate (`baselineRateFor`), so a licence commits a share of what the venture
+//      really makes (design.md §2 "A mine's yield IS its establish rate"). Read ONCE,
+//      at establishment; from then on the venture runs off its own stored rate.
+// `sim/production.js` imports only `producedGoodFor`, the venture → good IDENTITY
+// below (since the factory-commitment slice, 28-08-26); it reads neither table.
 //
 // [FIRST-CUT] EVERY number below is provisional and recorded in
 // docs/phase-1-tuning.md. The value chosen is a UNIFORM 5 — the one extraction
-// rate the repo has actually ruled (Titanium 5/tick, 01-08-26) and the client's
-// uniform establish rate (`ESTABLISH_RATE` = 5). Per-resource differentiation IS
+// rate the repo has actually ruled (Titanium 5/tick, 01-08-26). Per-resource differentiation IS
 // designed ("a common Tier-1 raw yields decently, a scarcer one less — a gold mine
 // might yield ~1", phase-1-tuning.md) but NO per-resource number has ever been
 // ruled, so none is invented here: the table is written out entry by entry so
@@ -227,6 +229,34 @@ function baselineOutputFor(venture) {
   return { good, units: batches * recipe.output.qty };
 }
 
+// baselineRateFor(venture) -> the venture's droidless baseline in its OWN rate unit, or
+// null when it has none. A mine's is MINE_BASELINE[resourceType] (units/tick); a factory's
+// is REFINERY_BASELINE[recipeId] (BATCHES/tick) — the same unit `productionRate` is in.
+//
+// WHY a second reader beside `baselineOutputFor` above: that one answers in output UNITS
+// (batches × the recipe's output qty), the unit the price engine and the licence fee need.
+// A factory's `productionRate` is counted in batches, so stamping a factory from
+// `baselineOutputFor` would run it at the wrong rate whenever a recipe makes more than one
+// unit per batch. This is the reader for "what rate does a new venture run at", and the
+// establish path (sim/actions.js) is its consumer (design.md §2 "A mine's yield IS its
+// establish rate").
+//
+// Null (never a default number) for an unknown resource or recipe, or a venture that names
+// neither, so the caller refuses rather than inventing a rate. `hasOwnProperty`, not a
+// plain lookup, so a name like `constructor` can never read a prototype value as a rate.
+function baselineRateFor(venture) {
+  if (!venture) return null;
+  if (venture.resourceType) {
+    return Object.prototype.hasOwnProperty.call(MINE_BASELINE, venture.resourceType)
+      ? MINE_BASELINE[venture.resourceType] : null;
+  }
+  if (venture.recipeId) {
+    return Object.prototype.hasOwnProperty.call(REFINERY_BASELINE, venture.recipeId)
+      ? REFINERY_BASELINE[venture.recipeId] : null;
+  }
+  return null;
+}
+
 // baselineUnitsForGood(good) -> the fixed droidless baseline output, in units/tick, of a
 // venture that PRODUCES this good — or null when nothing in the engine can make it.
 //
@@ -279,6 +309,6 @@ const BASELINE_KEYS = Object.freeze({
 
 module.exports = {
   FIRST_CUT_BASELINE, MINE_BASELINE, REFINERY_BASELINE, BASELINE_KEYS,
-  producedGoodFor, baselineOutputFor, baselineUnitsForGood,
+  producedGoodFor, baselineOutputFor, baselineRateFor, baselineUnitsForGood,
   isLicensedDeuteriumMine, isDeuteriumMine, isIllegalDeuteriumRefinery, isDockyard,
 };

@@ -12,7 +12,7 @@ const {
   isValidCommitmentPct, isValidWindowDays, licenceFee, commitmentUnitsFor, equityOf,
   signingBump, teardownSettlement, licenceEndTick, renegotiationFee, applyLapse, applyVentureClosure,
 } = require('./licence.js');
-const { producedGoodFor, baselineOutputFor, isLicensedDeuteriumMine, isDockyard } = require('./baseline.js');
+const { producedGoodFor, baselineOutputFor, baselineRateFor, isLicensedDeuteriumMine, isDockyard } = require('./baseline.js');
 const {
   BUILDABLE_KINDS, SYNDICATE_SELLABLE_KINDS, MAX_QUEUE, assetBill, priceAssetForPurchase,
 } = require('./asset-recipes.js');
@@ -675,8 +675,13 @@ function createFoundGuildAction({
 // it and validation proves it is owned, idle and of the matching kind. (Founding is
 // unaffected — a `foundGuild`'s inline ventures still draw from the starter pool that
 // same founding mints, where there is no inventory for a caller to name.)
-// `productionRate` is REQUIRED and operator-supplied — a testbed dial, since only
-// Titanium's mining rate is ruled; the rest (and refinery throughput) are undecided.
+// `productionRate` is OPTIONAL (design.md §2 "A mine's yield IS its establish rate",
+// 24-09-26). Omitted, the ENGINE stamps the venture's droidless baseline as its rate
+// (`baselineRateFor`, sim/baseline.js): a mine's units/tick, a factory's batches/tick.
+// That is the rate its licence is priced off, so a licensed venture commits a share of
+// what it really makes. The game client sends no rate. Named, it is honoured as given
+// (the operator, a test scenario), validated as a positive integer; capping it at the
+// baseline belongs to the deferred throttle-below / droids-above refactor.
 // Establishing a venture moves no credits or fuel (no licence/site cost yet).
 function createEstablishVentureAction({
   guildId, ventureId, type = 'mining', siteId, assetId, resourceType, recipeId, productionRate, equityPct,
@@ -685,20 +690,36 @@ function createEstablishVentureAction({
   if (ventureId === undefined) throw new Error('createEstablishVentureAction: ventureId is required');
   if (siteId === undefined) throw new Error('createEstablishVentureAction: siteId is required');
   if (assetId === undefined) throw new Error('createEstablishVentureAction: assetId is required');
-  if (productionRate === undefined) throw new Error('createEstablishVentureAction: productionRate is required');
   // Type-specific required field: a mining venture names the good it extracts;
   // a refining venture names the recipe it runs.
   if (type === 'mining' && resourceType === undefined) throw new Error('createEstablishVentureAction: resourceType is required for a mining venture');
   if (type === 'refining' && recipeId === undefined) throw new Error('createEstablishVentureAction: recipeId is required for a refining venture');
   // `ventureType` (not `type`) in the action object, so it never collides with
   // the action's own discriminator `type: 'establishVenture'`.
-  // equityPct (`o`, §5's equity lever) is OPTIONAL and omitted from the action when
-  // not offered, so an establish call that says nothing about equity is byte-identical
-  // to one made before this slice — the venture lands at 0 (no equity offered).
+  // productionRate and equityPct (`o`, §5's equity lever) are both OPTIONAL and each is
+  // omitted from the action when not given, so a call that names both is byte-identical
+  // to one made before either became optional (same keys, same order). With no equity
+  // the venture lands at 0; with no rate the engine stamps its baseline (above).
   return {
-    type: 'establishVenture', guildId, ventureId, ventureType: type, siteId, assetId, resourceType, recipeId, productionRate,
+    type: 'establishVenture', guildId, ventureId, ventureType: type, siteId, assetId, resourceType, recipeId,
+    ...(productionRate === undefined ? {} : { productionRate }),
     ...(equityPct === undefined ? {} : { equityPct }),
   };
+}
+
+// establishRateFor(action) -> the productionRate an establishVenture action seats its
+// venture at: the caller's own rate when it names one, else the venture's droidless
+// baseline (design.md §2), or null when it names none and there is no baseline to stamp.
+// ONE function, read by both validation (which refuses the null) and the apply (which
+// stores the answer), so what was approved and what is written cannot disagree.
+// The baseline is keyed by the venture TYPE the action declares: a mine by the good it
+// extracts, a factory by the recipe it runs.
+function establishRateFor(action) {
+  if (action.productionRate !== undefined) return action.productionRate;
+  const ventureType = action.ventureType || 'mining';
+  return baselineRateFor(ventureType === 'mining'
+    ? { resourceType: action.resourceType }
+    : { recipeId: action.recipeId });
 }
 
 // Setting a guild's System Production Profile: storing, for ONE (guildId,
@@ -1634,7 +1655,11 @@ function validateAction(state, action) {
     if (!guildHolds(state, action.guildId, site.systemId)) {
       return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} does not hold system ${JSON.stringify(site.systemId)} — a venture may only be deployed in a system you hold (§4)` };
     }
-    if (typeof action.productionRate !== 'number' || !Number.isInteger(action.productionRate) || action.productionRate <= 0) {
+    // A rate the caller NAMES must be a positive integer, exactly as before. An absent
+    // one is the engine's to stamp (design.md §2), checked below once the resource or
+    // recipe it is stamped from has been proven real.
+    if (action.productionRate !== undefined
+      && (typeof action.productionRate !== 'number' || !Number.isInteger(action.productionRate) || action.productionRate <= 0)) {
       return { valid: false, reason: 'productionRate must be a positive integer (§15.2)' };
     }
     // The equity offer `o` (§5, Slice 3a): optional, a FRACTION in [0, 0.49] — the
@@ -1665,6 +1690,17 @@ function validateAction(state, action) {
       }
     } else {
       return { valid: false, reason: `unknown ventureType ${JSON.stringify(ventureType)} (expected 'mining' or 'refining')` };
+    }
+    // THE ENGINE-STAMPED RATE (design.md §2, 24-09-26). With the resource or recipe now
+    // proven real, a call that named no rate takes the venture's baseline. If there is no
+    // baseline to take, REFUSE: the engine never makes a rate up. Today every raw good and
+    // every recipe has one (the drift guard in tests/prices.test.js), so this refusal
+    // guards a future good or recipe that is added without a baseline.
+    if (establishRateFor(action) === null) {
+      const what = ventureType === 'mining'
+        ? `resource ${JSON.stringify(action.resourceType)}`
+        : `recipe ${JSON.stringify(action.recipeId)}`;
+      return { valid: false, reason: `no productionRate was given and ${what} has no droidless baseline to establish at (sim/baseline.js) — name a productionRate` };
     }
     // GATE 2 — the deploy NAMES the machine, and the named one must be an IDLE asset
     // of the matching kind in this guild's inventory (design.md §4): a Miner for a
@@ -3226,7 +3262,9 @@ function applyAction(state, action) {
       assetId: action.assetId,
       resourceType: action.resourceType,
       recipeId: action.recipeId,
-      productionRate: action.productionRate,
+      // The caller's rate, or the venture's baseline when it named none (design.md §2) —
+      // the one function validation already approved it through.
+      productionRate: establishRateFor(action),
       // equityPct: the ONE licence term this slice lets the establish path set (§5's
       // equity lever, validated above). Absent ⇒ createVenture's 0, and the venture
       // carries no key at all. The rest of the terms — commitment %, the fee locked

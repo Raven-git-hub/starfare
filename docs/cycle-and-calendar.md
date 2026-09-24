@@ -41,7 +41,10 @@ established below its type baseline structurally cannot deliver a 100 % commitme
 type's daily output but produces less). That is existing behaviour, unchanged by this ruling; the
 client's `ESTABLISH_RATE` is currently `5`, matching the titanium baseline, so a normally-
 established titanium mine can exactly meet its commitment. Per-resource extraction rates remain a
-separate open tuning item.
+separate open tuning item. *(**Superseded 24-09-26** by design.md §2 "Resource Yield Tiers & the
+Homeworld Production Floor": the client no longer sends `ESTABLISH_RATE` for a mine or factory; the
+engine stamps the venture's `productionRate` from the same type baseline, so a normally-established
+venture's rate IS its baseline. A rate an operator names explicitly can still differ from it.)*
 
 ## 2. The midnight anchor — the engine stays clock-free
 

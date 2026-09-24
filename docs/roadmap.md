@@ -1738,6 +1738,13 @@ boundary so the later hex-map swap doesn't touch it.
   `sim/baseline.js`; the engine stamps a new venture's `productionRate` from its baseline when the establish
   call names none, and the client stops sending its flat `ESTABLISH_RATE`; baselines served to the client;
   a homeworld-floor tripwire test. Needs a **fresh galaxy** on deploy (no migration of stored rates).
+  **Commit 1 of 2 BUILT 24-09-26 — the engine-owned establish rate (a no-op on every existing caller).**
+  `establishVenture`'s `productionRate` is optional; omitted, the engine stamps the venture's baseline
+  (`baselineRateFor`, `sim/baseline.js`) and refuses if there is none. `GET /goods` serves
+  `mineBaseline` / `refineryBaseline`; the client's mine, factory and deuterium-mine establishes send no
+  rate and the ledger's Rate row reads the served baseline (`ESTABLISH_RATE` survives only on the
+  deuterium refinery). A tripwire pins every baseline value as a positive integer. The table itself is
+  still the uniform 5, so every determinism golden is byte-identical. Suite **1,587 green**.
 
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar

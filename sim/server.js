@@ -61,8 +61,9 @@
 //                           composes live occupancy from the snapshot on top)
 //   GET  /recipes        -> the refining recipe catalog (rules, not state; feeds
 //                           the establish-refinery picker)
-//   GET  /goods          -> the good vocabulary by tier (raw, processed); static
-//                           rules, buckets the galactic-supply display
+//   GET  /goods          -> the good vocabulary by tier (raw, processed), plus the
+//                           mine / refinery baseline tables; static rules, buckets
+//                           the galactic-supply display and shows the establish rate
 //   GET  /asset-recipes  -> the Tier-4 asset-bill catalog (bills + build ticks + queue
 //                           cap + buildable kinds) from sim/asset-recipes.js; RULES, not
 //                           state (like /recipes), read by the Tier-4 Production tab
@@ -99,6 +100,7 @@ const { getStarterSystems, getSystemLayout, setSeed, getSeedNumber } = require('
 const { listRecipes } = require('./recipes.js');
 const { ALL_BILLS, BUILD_TICKS, MAX_QUEUE, BUILDABLE_KINDS } = require('./asset-recipes.js');
 const { RAW_RESOURCES, PROCESSED_GOODS, TIER3_GOODS } = require('./resources.js');
+const { MINE_BASELINE, REFINERY_BASELINE } = require('./baseline.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
 // The calendar's two creation-seam helpers. `anchorForCreation` is pure arithmetic;
 // `minuteOfDayFromDate` converts a Date the CALLER supplies — the single wall-clock
@@ -614,8 +616,16 @@ async function handleRequest(req, res) {
   // price; the console reads them from here so the browser never invents game
   // vocabulary of its own. Tier 4 (Constructed Assets) still has no goods, so
   // the UI renders it as an empty placeholder.
+  // `mineBaseline` / `refineryBaseline` (24-09-26, additive) are the droidless
+  // baseline tables from sim/baseline.js — also rules, not state. The engine stamps
+  // a new venture's rate from them when the establish call names none (design.md §2),
+  // so the establish panel reads the rate it will get from HERE instead of carrying a
+  // number of its own: a mine's units/tick, a factory's batches/tick, by recipe id.
   if (method === 'GET' && path === '/goods') {
-    sendJson(res, 200, { raw: RAW_RESOURCES, processed: PROCESSED_GOODS, tier3: TIER3_GOODS });
+    sendJson(res, 200, {
+      raw: RAW_RESOURCES, processed: PROCESSED_GOODS, tier3: TIER3_GOODS,
+      mineBaseline: MINE_BASELINE, refineryBaseline: REFINERY_BASELINE,
+    });
     return;
   }
 

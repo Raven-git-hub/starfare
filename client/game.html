@@ -5789,11 +5789,12 @@ function quotedBasicFee(){
   return (typeof q === 'number' && isFinite(q)) ? q : null;
 }
 
-/* The one REAL number the client chooses: the rate every venture is established at.
-   [FIRST-CUT], given for this slice and recorded in docs/phase-1-tuning.md — a
-   uniform placeholder until per-resource extraction rates are wired. The ENGINE has
-   no default of its own; it takes whatever rate the caller sends, so this is the
-   client's stand-in, not a change to the engine's per-resource intent. */
+/* The rate the illegal deuterium REFINERY is established at, and nothing else.
+   [FIRST-CUT], recorded in docs/phase-1-tuning.md "Client establish-rate". Mines and
+   factories no longer send a rate: the ENGINE stamps each one's droidless baseline
+   (design.md §2 "A mine's yield IS its establish rate"), and the ledger shows that
+   baseline read from GET /goods. The refinery is the one venture with no baseline to
+   stamp (its throughput is unruled), so establishDeuteriumRefinery still carries this. */
 var ESTABLISH_RATE = 5;
 
 function label(id){ return String(id).split('_').map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' '); }
@@ -5948,12 +5949,32 @@ function drawGraph(fp){
 }
 
 function setRow(id,h){ $(id).innerHTML = h; }
+/* The Rate row: the rate the ENGINE will stamp on this venture, read off GET /goods's
+   baseline tables (design.md §2). The deploy sends no rate, so this is exactly what the
+   venture runs at; the browser only shows it. A mine's is units/tick, keyed by the good
+   it mines; a factory's is batches/tick, keyed by the recipe. The FUEL refinery has no
+   baseline and still sends the client's own rate, so it shows that. A dash when the
+   catalog was not read — never a guessed number. */
+function establishRateRow(){
+  if(S.tier==='fuel') return ESTABLISH_RATE + ' <span class="mut">/tick</span>';
+  var goods = (window.__goodsCatalog && window.__goodsCatalog()) || {};
+  var rate, unit;
+  if(S.site && S.site.kind==='node'){
+    rate = goods.mineBaseline ? goods.mineBaseline[S.site.resource] : null;
+    unit = 'units/tick';
+  } else {
+    if(!S.recipeId) return '<span class="mut">pick a recipe</span>';
+    rate = goods.refineryBaseline ? goods.refineryBaseline[S.recipeId] : null;
+    unit = 'batches/tick';
+  }
+  return (typeof rate === 'number') ? (fmt(rate)+' <span class="mut">'+unit+'</span>') : '—';
+}
 function drawLedger(fp, cQtyCycle, ePct){
   setRow('tAsset', S.asset ? (S.asset.label+' <span class="mut">'+S.asset.id+' · '+S.asset.condition+'%</span>') : '— <span class="mut">none</span>');
   // The three REAL rows: what the engine will actually be told.
   setRow('tSite', S.site ? esc(S.site.summary) : '—');
   setRow('tOutput', S.outGood ? esc(S.outLabel) : '<span class="mut">pick a recipe</span>');
-  setRow('tRate', ESTABLISH_RATE + ' <span class="mut">/tick</span>');
+  setRow('tRate', establishRateRow());
   if(S.licensed===null){
     setRow('tLic','— <span class="mut">undecided</span>');
     ['tCommit','tEquity','tFee','tBreach'].forEach(function(id){ setRow(id,'—'); });
@@ -6153,6 +6174,8 @@ async function doDeploy(){
   // reputation. `assetId` is the machine the player PICKED — the
   // engine requires it and re-checks it is owned, idle and of the matching kind, so
   // the picker is a convenience over that rule, never a substitute for it.
+  // NO productionRate (design.md §2, 24-09-26): the engine stamps the venture's own
+  // baseline, the same figure the ledger's Rate row showed from GET /goods.
   var establish = {
     type: 'establishVenture',
     guildId: player.guildId,
@@ -6160,7 +6183,6 @@ async function doDeploy(){
     siteId: S.site.siteId,
     assetId: S.asset.id,
     ventureType: S.site.kind === 'node' ? 'mining' : 'refining',
-    productionRate: ESTABLISH_RATE,
   };
   if (establish.ventureType === 'mining') establish.resourceType = S.site.resource;
   else establish.recipeId = S.recipeId;
@@ -6349,7 +6371,11 @@ function showSuccess(action, licenceRefusal){
     // printing the panel's own numbers as though they were the stored ones.
     out.push('Your '+S.asset.label+' now runs a licensed '+good+' venture. Its stored terms could not be read back just now — the next refresh will carry them.');
   }
-  out.push('Recorded: venture '+action.ventureId+' on '+action.siteId+' at '+action.productionRate+'/tick.');
+  // The rate is the one the ENGINE stamped (the action carries none — design.md §2), read
+  // back off the snapshot. If the re-read missed the venture, say where it is, not a rate.
+  var unit = action.ventureType === 'mining' ? ' units/tick' : ' batches/tick';
+  out.push('Recorded: venture '+action.ventureId+' on '+action.siteId
+    + ((v && typeof v.productionRate === 'number') ? (' at '+fmt(v.productionRate)+unit+'.') : '.'));
   $('successMsg').textContent = out.join('  ');
   $('estForm').style.display='none';
   $('estSuccess').classList.add('show');
@@ -6714,7 +6740,8 @@ async function deutDeploy(){
   D.busy = true; deutDraw();
   var hint=$('deutHint'); hint.classList.remove('err','ok'); hint.textContent='Filing…';
   var ventureId = player.guildId + '_' + D.site.siteId;   // one venture per site (the occupancy invariant guards it)
-  var establish = { type:'establishVenture', guildId:player.guildId, ventureId:ventureId, siteId:D.site.siteId, assetId:D.asset.id, ventureType:'mining', resourceType:'deuterium', productionRate:ESTABLISH_RATE };
+  // No productionRate: the engine stamps the deuterium mine's baseline (design.md §2).
+  var establish = { type:'establishVenture', guildId:player.guildId, ventureId:ventureId, siteId:D.site.siteId, assetId:D.asset.id, ventureType:'mining', resourceType:'deuterium' };
   var out;
   try { out = await window.__sendAction(establish); }
   catch(err){ deutFail('The Syndicate could not be reached: '+err.message); return; }
@@ -7108,6 +7135,8 @@ function applySnapshot(snap){
         equityPct: v.equityPct || 0,
         licence: v.licence || null,
         committedFromTick: v.committedFromTick == null ? null : v.committedFromTick,
+        // The rate the engine stamped at establish (design.md §2) — the receipt reports it.
+        productionRate: v.productionRate,
       };
     }
     if (!v.siteId) return;
