@@ -836,7 +836,7 @@ zero-length skip. **2b — client:** the "Save Route" affordance (names + upsert
 "Load Route" dropdown (populates the plan; a small delete removes a saved route). No new number — it reuses
 the §11.1 entity and the §4 manifest checks.
 
-### 11.10 Repetition — launch modes, the lap loop & the in-transit controls *(RULED 23-09-26)*
+### 11.10 Repetition — launch modes, the lap loop & the in-transit controls *(RULED 23-09-26; amended 24-09-26)*
 
 Slice 3 makes a route REPEAT and adds the controls to stop one. It introduces NO new number — it reuses
 §11.4's reposition, §11.3's per-lap fuel, §4's resolver, §2.2's leg math and §2.3's position
@@ -849,6 +849,28 @@ interpolation; the only addition is a deterministic hex-round of an already-comp
 A "lap" is one full cycle of the saved waypoints (§11.4's `W1 ... WN`). The one-time positioning to W1 —
 lap 1's launch-location→W1 prefix (§11.4) — is NOT a counted lap; N counts the goods cycles only.
 
+**Cadence (a second LAUNCH parameter, §11.5) *(RULED 24-09-26)*.** Independently of the mode, a repeating
+launch chooses how SOON the next lap starts:
+- **immediate** (default) — the next lap begins the moment the last one finishes (back-to-back, subject to
+  the lap-boundary checks below).
+- **per-cycle** — after each lap the lane HOLDS at WN and starts its next lap at the next fuel-cycle
+  boundary, throttling it to at most one lap per fuel cycle so its burn paces against its refuel. Lap 1 still
+  launches immediately on dispatch; the hold applies only BETWEEN laps. It reuses the fuel-WAIT machinery: a
+  held lane is a `waiting` lane (reason `cadence`) that the cycle-boundary re-attempt (§11.6) runs when it
+  fires. `once` has no cadence.
+
+**Loop geometry — open loops and repeated stops *(RULED 24-09-26)*.** A repeating route is NOT required to
+start and end on the same hex: the §11.4 reposition closes any open loop by flying WN→W1 at each lap's
+start, so a plain shuttle `B → C` repeats as `B → C → (flyback C→B) → B → C ...`, the flyback
+fuelled as part of each lap. A hex may appear MORE THAN ONCE in a route — each visit is its own stop,
+carrying its own action, resolved in cursor order — so a there-and-back milk-run `B → C → D → C → B`
+(load outbound, unload on the way back) is a first-class route, C and B each acting twice per lap. The ONE
+constraint is the §4 dead-leg rule: two CONSECUTIVE waypoints may not share a hex. When a player CLOSES the
+loop themselves (WN == W1, e.g. `B → C → D → B`), the zero-length WN→W1 flyback is simply SKIPPED
+(§11.4) and the lane runs as the open form would — the engine takes the route LITERALLY (the shared hex
+is a stop at both ends, exactly how a two-way haul is expressed), and making that reading legible in the
+planner is the client's job (slice 3c).
+
 **The lap loop (extends §11.2's chained execution).** After the craft resolves WN's action, the lap
 boundary runs in FIXED order, each step a per-arrival / per-turnaround event (§11.2 / §15.4 — still no
 per-tick per-craft movement loop):
@@ -860,11 +882,19 @@ per-tick per-craft movement loop):
 4. Otherwise → burn the lap's fuel, reposition to W1 (a zero-length reposition is SKIPPED, §11.4), and run
    the cycle.
 
-**The repeat state (on the craft's `route`).** Beyond `{ waypoints, cursor }` a repeating lane carries its
-launch `mode`, an `N` / `lapsRemaining` (N-run only), and a `waiting` flag + reason while fuel-blocked. A
-`once` route carries NONE of it and stays byte-identical to the built one-shot (omit-when-default). It is
-journalled state, so a mid-run restart replays byte-identically; determinism (§15.5 invariant 9) holds —
-every step is event-hung and the fuel re-attempt fires on the anchored cycle boundary, never a wall clock.
+(A **per-cycle** cadence lane does not reach step 4 back-to-back: after each lap it HOLDS as a `waiting`
+lane with reason `cadence`, and the cycle-boundary re-attempt runs the sequence above when it fires — the
+same path a fuel-short lane resumes on.)
+
+**The repeat state (on the craft's `route`) *(amended 24-09-26)*.** Beyond `{ waypoints, cursor }` a
+repeating lane carries: its launch `mode` (`continuous` / `nRun`); its `cadence` (`immediate` / `perCycle`);
+`lapsDone`, a counter of COMPLETED laps (every repeating mode — it drives the client's "lap k" / "lap k of
+N" read-out); for `nRun`, the launched target `N` (immutable, so the display has its denominator) and
+`lapsRemaining` (the live count-down); and a `waiting` flag while held, with a `reason` (`fuel` — can't
+afford the next lap; or `cadence` — a per-cycle lane between laps). A `once` route carries NONE of these and
+stays byte-identical to the built one-shot (omit-when-default). It is journalled state, so a mid-run restart
+replays byte-identically; determinism (§15.5 invariant 9) holds — every step is event-hung and the fuel /
+cadence re-attempt fires on the anchored cycle boundary, never a wall clock.
 
 **The in-transit controls (Operations → In Transit → the craft's expandable row).** A player stops a lane
 from its own transit row, through two controls:
