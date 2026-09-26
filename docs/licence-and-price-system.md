@@ -63,7 +63,7 @@ A per-good Syndicate **value**: the "one true number" the whole economy is denom
     (c) creates a **front-running game** — the real stock is visible now, the price catches up later, so
     watching the stock (not just the price) is a skill edge.
   - **Slew-capped** (max move per tick) so a single dump can't teleport the price, and **clamped** to a
-    soft floor/ceiling.
+    soft floor/ceiling. **(Base, floor and ceiling are per manufacturing tier — RULED 26-09-26, `docs/phase-1-tuning.md`; base T1 1 / T2 10 / T3 100, ceiling 1000× base. The tier-scaled base makes refining value-positive, which by design opens the Syndicate refining pump kept as an engagement hook — see design.md §5, Syndicate Exchange.)**
 - **Cadence = per tick**, lagged 2, EMA-smoothed. (A further deliberate override of §8/#42's per-window
   posting — recorded, not drifted.)
 - **Bounded by** the hard ceiling (technical stop), the **storyteller** as the intended circuit-breaker
