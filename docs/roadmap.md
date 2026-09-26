@@ -107,6 +107,18 @@ boundary so the later hex-map swap doesn't touch it.
 
 **Built so far:**
 
+- **Cancel a Syndicate commission from the TRADE tab + a commission-id guard (2.1d, CLIENT slice —
+  `docs/asset-purchase.md` §"Cancelling a queued commission").** The Constructed view's In Progress
+  rows now carry a ✕ on every commission the snapshot marks `cancellable` (`client/game.html`). It
+  confirms in words, with no refund figure (the snapshot publishes none), and posts
+  `cancelSyndicateCommission`. New invariant `checkSyndicateBuildsIntegrity`: per guild, every present
+  `commissionId` is a unique positive integer and `syndicateCommissionSerial` is ≥ the highest live id.
+  Entries with no id (bought before ids existed) are skipped. The check is read-only, so goldens are
+  byte-identical. Proven by `sim/tests/syndicate-commission-integrity.test.js` (+7) and
+  `sim/tests/trade-constructed.test.js` (+4); full suite **1,632 green**. *Still deferred (listed under
+  the single-slot slice below): marking the building head vs the queued rows. The list still sorts by
+  arrival, so a queued self-flying transport can head the list and take the Current Build donut.*
+
 - **Syndicate queue cap + cancel a not-started commission (2.1d, ENGINE slice — `docs/asset-purchase.md`
   §"The queue cap" + §"Cancelling a queued commission", RULED 26-09-26).** Engine + snapshot + tests only
   (NO client — the cancel controls are the next slice). **Cap:** `buyAssetFromSyndicate` refuses a guild's

@@ -1000,6 +1000,9 @@ select.field{appearance:none; cursor:pointer;}
 #tw-cn .ip-item .k .sub{display:block; font-family:var(--mono); font-size:8.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3); margin-top:2px;}
 #tw-cn .ip-item.cur .k .sub{color:var(--amber);}
 #tw-cn .ip-item .eta{font-family:var(--mono); font-size:10px; color:var(--ink3); text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums;}
+/* the per-row cancel on a not-yet-started commission — console.html's dockyard .dk-x look */
+#tw-cn .ip-cancel{width:22px; height:22px; border-radius:5px; border:1px solid var(--line2); background:none; color:var(--ink3); cursor:pointer; font-size:13px; line-height:1; flex:0 0 auto;}
+#tw-cn .ip-cancel:hover{color:var(--red); border-color:var(--red);}
 /* the Constructed view's status line (engine refusal / commission-placed), under the menu */
 #tw-cn .cn-note{margin:0 10px 10px; font-size:11px; line-height:1.4; letter-spacing:.02em; color:var(--ink3); text-align:center;}
 #tw-cn .cn-note.ok{color:var(--green);}
@@ -8194,14 +8197,17 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(!T.cnOpen || kinds.indexOf(T.cnOpen) < 0) T.cnOpen = kinds[0] || null;
 
     // This guild's in-progress builds (parallel, not a queue), each with a derived arrival
-    // (build remaining + its own delivery leg), ordered soonest-arrival first.
+    // (build remaining + its own delivery leg), ordered soonest-arrival first. `commissionId` and
+    // `cancellable` are copied straight from the snapshot row: the engine decides which commission
+    // can be cancelled, so the client never works it out from row order or remainingTicks.
     var builds = ((s && s.syndicateBuilds) || [])
       .filter(function(b){ return guild && b.ownerGuildId === guild.id; })
       .map(function(b){
         var bt = (quote[b.assetKind] && quote[b.assetKind].buildTicks) || 0;
         var deliver = cnDeliveryTicks(guild, b.destinationSystemId, b.assetKind);
         return { kind:b.assetKind, remaining:b.ticksRemaining, buildTicks:bt,
-                 deliver:deliver, arrive:(b.ticksRemaining || 0) + deliver };
+                 deliver:deliver, arrive:(b.ticksRemaining || 0) + deliver,
+                 commissionId:b.commissionId, cancellable:b.cancellable };
       });
     builds.sort(function(a, b){ return a.arrive - b.arrive; });
     var soonest = builds[0] || null;
@@ -8230,9 +8236,15 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       ipRows = builds.map(function(b, i){
         var bt = b.buildTicks || 0;
         var pct = bt > 0 ? Math.round(Math.max(0, Math.min(1, (bt - b.remaining) / bt)) * 100) : 0;
+        // A ✕ only on a row the snapshot marks `cancellable` (has an id, not yet started). The
+        // building head, and an old entry with no id, get no control. The id is a positive integer
+        // (checkSyndicateBuildsIntegrity guards it), so it goes into the attribute as-is.
+        var x = b.cancellable
+          ? '<button class="ip-cancel" title="cancel this commission" data-commission="' + b.commissionId + '">&#10005;</button>'
+          : '';
         return '<div class="ip-item' + (i === 0 ? ' cur' : '') + '">'
           + '<span class="k">' + pretty(b.kind) + '<span class="sub">arrives in ' + cnDur(b.arrive) + '</span></span>'
-          + '<span class="eta">' + pct + '%</span></div>';
+          + '<span class="eta">' + pct + '%</span>' + x + '</div>';
       }).join('');
     } else {
       ipRows = '<div class="dk-qempty">No commissions in progress.<br>Buy an asset from the Syndicate to begin.</div>';
@@ -8351,6 +8363,48 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       .catch(function(err){ if(T.tier === 4) renderConstructed(); });
   }
 
+  // Cancel a not-yet-started commission (docs/asset-purchase.md §"Cancelling a queued commission").
+  // The confirm states the rule in words, with NO figure: the snapshot does not publish the refund,
+  // and the quoted price is not guaranteed to equal it (§5 — the client computes no game number).
+  // On confirm it fires cancelSyndicateCommission and handles the answer exactly as
+  // cnPostCommission does: success shows the green note and refreshes so the row drops; a refusal
+  // (e.g. the build started while the popup was open) just re-renders.
+  function cnCancelCommission(commissionId){
+    var s = snap(), guild = meGuild();
+    if(!guild || !commissionId) return;
+    // The row being cancelled, read back from the snapshot for its kind (the popup names it).
+    var row = ((s && s.syndicateBuilds) || []).filter(function(b){
+      return b.ownerGuildId === guild.id && b.commissionId === commissionId;
+    })[0];
+    // Gone, or started building since this render: repaint so the stale ✕ drops, open nothing.
+    if(!row || !row.cancellable){ if(T.tier === 4) renderConstructed(); return; }
+    var kind = row.assetKind;
+    var fire = function(){ cnPostCancel(kind, commissionId); };
+    if(!window.__adviserConfirm){ fire(); return; }
+    window.__adviserConfirm({
+      title: 'Cancel this ' + pretty(kind) + ' commission?',
+      body: 'You\'ll be refunded the baseline (minimum) price in credits; '
+        + 'the prepaid delivery fuel is not returned.',
+      confirmLabel: 'Cancel commission ▸',
+      cancelLabel: 'Keep it',
+      onConfirm: fire
+    });
+  }
+  function cnPostCancel(kind, commissionId){
+    var player = (window.__player && window.__player()) || {};
+    if(!player.guildId || !commissionId) return;
+    window.__sendAction({ type:'cancelSyndicateCommission', guildId: player.guildId, commissionId: commissionId })
+      .then(function(res){
+        if(!res || !res.accepted){
+          if(T.tier === 4) renderConstructed();
+          return;
+        }
+        cnNote('Commission cancelled — ' + pretty(kind) + ' withdrawn.', 'ok');
+        if(window.__refreshNow) window.__refreshNow(); else if(T.tier === 4) renderConstructed();
+      })
+      .catch(function(err){ if(T.tier === 4) renderConstructed(); });
+  }
+
   // Delegated once, on the panel — so every re-render keeps working with no rebinding.
   var panel = el('tp-trade');
   panel.addEventListener('click', function(e){
@@ -8365,6 +8419,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(amItem && !e.target.closest('.am-add')){ T.cnOpen = amItem.getAttribute('data-kind'); renderConstructed(); return; }
     var amAdd = e.target.closest('.am-add');
     if(amAdd){ cnCommission(amAdd.getAttribute('data-kind')); return; }
+    var ipCancel = e.target.closest('.ip-cancel');
+    if(ipCancel){ cnCancelCommission(+ipCancel.getAttribute('data-commission')); return; }
     var chip = e.target.closest('.tw-chip');
     if(chip){
       if(chip.classList.contains('dim')) return;   // unpriced: not tradable

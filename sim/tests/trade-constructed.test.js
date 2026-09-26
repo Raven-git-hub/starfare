@@ -144,3 +144,61 @@ test('Add → __adviserConfirm → buyAssetFromSyndicate with the ruled payload'
   assert.match(html, /if\(typeof issueTick === 'number'\) action\.issueTick = issueTick;/);
   assert.match(html, /window\.__sendAction\(action\)/);
 });
+
+// --- cancelling a not-yet-started commission (docs/asset-purchase.md §"Cancelling a queued
+// commission"; roadmap 2.1d, the cancel CLIENT slice). The engine half — the action, and the
+// snapshot's `commissionId` / `cancellable` — is proven in syndicate-queue-cancel.test.js.
+
+// The body of one named function in the page, from its `function name(` to the next top-level
+// (two-space-indented) `function` or the panel's delegated click handler — so an assertion about
+// what a function does or doesn't contain reads THAT function only.
+function fnBody(name) {
+  const m = html.match(new RegExp('\\n  function ' + name + '\\([\\s\\S]*?(?=\\n  function |\\n  // Delegated once)'));
+  assert.ok(m, `function ${name} is present`);
+  return m[0];
+}
+
+test('the In Progress builds map carries commissionId + cancellable straight from the snapshot', () => {
+  // A pure passthrough: the snapshot row's own fields, not a value the client derives.
+  assert.match(html, /commissionId:b\.commissionId, cancellable:b\.cancellable \};/);
+});
+
+test('each In Progress row renders a data-commission ✕ ONLY when the snapshot marks it cancellable', () => {
+  const rows = html.match(/ipRows = builds\.map\(function\(b, i\)\{[\s\S]*?\}\)\.join\(''\);/);
+  assert.ok(rows, 'the panel-2 row builder is present');
+  // The control is gated on the snapshot flag, carries the id, and is empty otherwise.
+  assert.match(rows[0], /var x = b\.cancellable\s*\? '<button class="ip-cancel" title="cancel this commission" data-commission="' \+ b\.commissionId \+ '">&#10005;<\/button>'\s*: '';/);
+  // ...and it lands inside the ip-item, after the % column (right-aligned).
+  assert.match(rows[0], /'<span class="eta">' \+ pct \+ '%<\/span>' \+ x \+ '<\/div>'/);
+  // The gate is the FLAG, never the row's position: the control's expression does not read `i`.
+  const gate = rows[0].match(/var x = [\s\S]*?;/)[0];
+  assert.doesNotMatch(gate, /\bi\b/);
+  // Styled like the console's dockyard cancel (.dk-x): a small bordered ✕ that reddens on hover.
+  assert.match(html, /#tw-cn \.ip-cancel\{[^}]*width:22px; height:22px;[^}]*\}/);
+  assert.match(html, /#tw-cn \.ip-cancel:hover\{color:var\(--red\); border-color:var\(--red\);\}/);
+});
+
+test('the panel click handler routes .ip-cancel → cnCancelCommission with the NUMERIC id', () => {
+  assert.match(html, /var ipCancel = e\.target\.closest\('\.ip-cancel'\);\s*if\(ipCancel\)\{ cnCancelCommission\(\+ipCancel\.getAttribute\('data-commission'\)\); return; \}/);
+});
+
+test('cnCancelCommission confirms in words — no figure — then posts cancelSyndicateCommission', () => {
+  const confirm = fnBody('cnCancelCommission');
+  // It re-reads the row from the snapshot and bails (repainting) if it is gone or no longer cancellable.
+  assert.match(confirm, /if\(!row \|\| !row\.cancellable\)\{ if\(T\.tier === 4\) renderConstructed\(\); return; \}/);
+  // The shared adviser confirm, stating the mechanic qualitatively.
+  assert.match(confirm, /window\.__adviserConfirm\(\{/);
+  assert.match(confirm, /refunded the baseline \(minimum\) price in credits/);
+  assert.match(confirm, /the prepaid delivery fuel is not returned/);
+  assert.match(confirm, /onConfirm: fire/);
+  // §5: no refund figure — no price read, no number formatted, no ¢ amount in the popup.
+  assert.doesNotMatch(confirm, /assetPurchaseQuote|\.price|fmt\(|&#162;/);
+
+  const post = fnBody('cnPostCancel');
+  // The ruled payload through the SAME action path as the buy...
+  assert.match(post, /window\.__sendAction\(\{ type:'cancelSyndicateCommission', guildId: player\.guildId, commissionId: commissionId \}\)/);
+  // ...a refusal repaints, a success shows the green note and refreshes so the row drops.
+  assert.match(post, /if\(!res \|\| !res\.accepted\)\{\s*if\(T\.tier === 4\) renderConstructed\(\);\s*return;/);
+  assert.match(post, /cnNote\('Commission cancelled[\s\S]*?'ok'\)/);
+  assert.match(post, /if\(window\.__refreshNow\) window\.__refreshNow\(\);/);
+});

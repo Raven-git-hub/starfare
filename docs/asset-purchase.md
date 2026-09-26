@@ -356,8 +356,19 @@ from the existing baselines. None was invented.
 Tripwires: `sim/tests/syndicate-queue-cancel.test.js` (23 tests: the cap, stable ids, cancel and
 refund, fuel forfeit, FIFO order kept, the empty key deleted, underway and non-owner refusals,
 conservation, the premium kept, snapshot fields, an entry bought before this slice, no-op and
-determinism), plus the re-pinned entry shape in `sim/tests/asset-purchase.test.js`. **Deferred to
-the CLIENT slice:** the cancel controls in the TRADE tab's Constructed view (`client/game.html`) and
-`client/console.html`, which read `cancellable`.
+determinism), plus the re-pinned entry shape in `sim/tests/asset-purchase.test.js`. The client
+cancel control landed in the next slice (below).
+
+✅ **BUILT — the cancel control (client) + a commission-id integrity guard (engine).** The TRADE
+tab's Constructed view (`client/game.html`, `renderConstructed`) puts a ✕ on each In Progress row
+whose snapshot `cancellable` is true, so never on the building head or on an entry with no id. The
+✕ opens the adviser confirm, which states the rule in words with no figure (the snapshot publishes
+no refund amount), then posts `cancelSyndicateCommission`. On success the row drops. The new
+invariant `checkSyndicateBuildsIntegrity` (`sim/invariants.js`) asserts, per guild, that every
+present `commissionId` is a positive integer, unique within the guild, and that
+`syndicateCommissionSerial` is a non-negative integer ≥ the highest live id. An entry with no id is
+skipped. `client/console.html` needs no change: it shows only the dockyard queue (which has its own
+cancel) and never renders `syndicateBuilds`. Tripwires: `sim/tests/syndicate-commission-integrity.test.js`
+and `sim/tests/trade-constructed.test.js`.
 
 <!-- asset-purchase-doc-sentinel v1 -->

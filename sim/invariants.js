@@ -1656,6 +1656,55 @@ function checkBuildQueues(state) {
   return out;
 }
 
+// Syndicate commission-id integrity — the guard on the stable id a cancel addresses
+// (docs/asset-purchase.md §"Cancelling a queued commission", roadmap 2.1d). The buy apply stamps
+// each `state.syndicateBuilds` entry with a `commissionId` from its guild's MONOTONIC
+// `syndicateCommissionSerial`, and cancelSyndicateCommission finds its target by (owner, id). Two
+// entries sharing an id would make a cancel ambiguous, and a counter sitting below a live id would
+// let the next buy re-issue it. The buy apply maintains both by construction; this ASSERTS them,
+// exactly like checkBuildQueues' id check and the vehicleSerial / savedRouteSerial pattern. A pure
+// read — mutates nothing, changes no determinism hash.
+//
+// Per guild, over the entries it owns:
+//   - every entry that HAS a `commissionId` carries a positive integer (ids start at 1), unique
+//     within the guild. Ids are per-guild, so another guild's entry with the same number is no clash;
+//   - `syndicateCommissionSerial` (omitted-when-0, state.js) is a non-negative integer — a garbage
+//     counter would make the comparison below silently false — and is ≥ the highest live id.
+// An entry with NO id (`null` / absent — bought before ids were stamped) is legal, just not
+// cancellable: it is skipped here, never flagged (the migration case).
+function checkSyndicateBuildsIntegrity(state) {
+  const out = [];
+  const builds = Array.isArray(state.syndicateBuilds) ? state.syndicateBuilds : [];
+  for (const g of state.guilds || []) {
+    const serial = g.syndicateCommissionSerial ?? 0; // omitted-when-0: absent means never commissioned
+    const serialOk = Number.isInteger(serial) && serial >= 0;
+    if (!serialOk) {
+      out.push({ rule: 'syndicate-commission-serial-non-negative-int', where: `guild:${g.id}.syndicateCommissionSerial`, detail: { syndicateCommissionSerial: serial } });
+    }
+    const seenIds = new Set();
+    let maxId = 0;
+    builds.forEach((b, i) => {
+      if (b.ownerGuildId !== g.id) return;
+      const id = b.commissionId;
+      if (id === null || id === undefined) return; // pre-slice entry: legal, uncancellable
+      const where = `syndicateBuilds[${i}].commissionId`;
+      if (!Number.isInteger(id) || id < 1) {
+        out.push({ rule: 'syndicate-commissionId-positive-int (asset-purchase.md)', where, detail: { ownerGuildId: g.id, commissionId: id } });
+        return;
+      }
+      if (seenIds.has(id)) {
+        out.push({ rule: 'syndicate-commissionId-unique (asset-purchase.md)', where, detail: { ownerGuildId: g.id, commissionId: id } });
+      }
+      seenIds.add(id);
+      if (id > maxId) maxId = id;
+    });
+    if (serialOk && serial < maxId) {
+      out.push({ rule: 'syndicate-commission-serial-monotonic', where: `guild:${g.id}.syndicateCommissionSerial`, detail: { syndicateCommissionSerial: serial, highestLiveCommissionId: maxId } });
+    }
+  }
+  return out;
+}
+
 // Syndicate held orders — the structural check on each guild's buy/sell order
 // (state.guild.buyOrder / sellOrder, docs/syndicate-orders.md §2). The per-guild analogue of
 // checkBuildQueues: a present order must be a well-formed line list, and each line legal. The
@@ -2086,6 +2135,7 @@ function checkInvariants(state, tick) {
     ...checkAssetOccupancy(state),
     ...checkVehicleIntegrity(state),
     ...checkBuildQueues(state),
+    ...checkSyndicateBuildsIntegrity(state),
     ...checkOrders(state),
     ...checkClaimIntegrity(state),
     ...checkOutpostIntegrity(state),
