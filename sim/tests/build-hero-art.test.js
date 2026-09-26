@@ -38,8 +38,8 @@ test('game.html: the TRADE Constructed view has a kind-keyed build-art map with 
 });
 
 test('game.html: panel 4 resolves its art from the kind map (regression guard vs a hardcoded image)', () => {
-  // The art is picked by the soonest build's KIND, falling back when idle/unknown...
-  assert.match(gameHtml, /var p4art = \(soonest && CN_BUILD_ART\[soonest\.kind\]\) \|\| CN_BUILD_ART_FALLBACK;/);
+  // The art is picked by the building head's KIND, falling back when idle/unknown...
+  assert.match(gameHtml, /var p4art = \(head && CN_BUILD_ART\[head\.kind\]\) \|\| CN_BUILD_ART_FALLBACK;/);
   // ...and the hero div interpolates that variable rather than a literal URL. If someone reverts to
   // a hardcoded factory image, `+ p4art +` disappears and this fails loudly.
   assert.match(gameHtml, /background-image:url\(\\'' \+ p4art \+ '\\'\)/);

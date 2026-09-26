@@ -8196,10 +8196,12 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var kinds = Object.keys(quote);
     if(!T.cnOpen || kinds.indexOf(T.cnOpen) < 0) T.cnOpen = kinds[0] || null;
 
-    // This guild's in-progress builds (parallel, not a queue), each with a derived arrival
-    // (build remaining + its own delivery leg), ordered soonest-arrival first. `commissionId` and
-    // `cancellable` are copied straight from the snapshot row: the engine decides which commission
-    // can be cancelled, so the client never works it out from row order or remainingTicks.
+    // This guild's Syndicate queue (one slot per guild — only the head builds), each row with a
+    // derived arrival (queue-aware build remaining + its own delivery leg). Kept in the snapshot's
+    // FIFO order, NOT sorted by arrival: a fast self-flying craft queued behind a slow-hauled
+    // miner can arrive first, but it is still waiting its turn. `building`, `commissionId` and
+    // `cancellable` are copied straight from the snapshot row: the engine decides which row is the
+    // head and which can be cancelled, so the client never works either out from order or ticks.
     var builds = ((s && s.syndicateBuilds) || [])
       .filter(function(b){ return guild && b.ownerGuildId === guild.id; })
       .map(function(b){
@@ -8207,10 +8209,11 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
         var deliver = cnDeliveryTicks(guild, b.destinationSystemId, b.assetKind);
         return { kind:b.assetKind, remaining:b.ticksRemaining, buildTicks:bt,
                  deliver:deliver, arrive:(b.ticksRemaining || 0) + deliver,
-                 commissionId:b.commissionId, cancellable:b.cancellable };
+                 building:b.building, commissionId:b.commissionId, cancellable:b.cancellable };
       });
-    builds.sort(function(a, b){ return a.arrive - b.arrive; });
-    var soonest = builds[0] || null;
+    // The row actually under construction: the one the snapshot flags `building` (exactly one
+    // per non-empty queue). Found by the flag, not by position, so it holds whatever the order.
+    var head = builds.filter(function(b){ return b.building; })[0] || builds[0] || null;
 
     // ---- panel 1: Commission Assets menu ----
     var menu = kinds.map(function(kind){
@@ -8233,7 +8236,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // ---- panel 2: In Progress ----
     var ipRows;
     if(builds.length){
-      ipRows = builds.map(function(b, i){
+      ipRows = builds.map(function(b){
         var bt = b.buildTicks || 0;
         var pct = bt > 0 ? Math.round(Math.max(0, Math.min(1, (bt - b.remaining) / bt)) * 100) : 0;
         // A ✕ only on a row the snapshot marks `cancellable` (has an id, not yet started). The
@@ -8242,22 +8245,25 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
         var x = b.cancellable
           ? '<button class="ip-cancel" title="cancel this commission" data-commission="' + b.commissionId + '">&#10005;</button>'
           : '';
-        return '<div class="ip-item' + (i === 0 ? ' cur' : '') + '">'
+        // Only the building row has a % to show; a queued row hasn't started, so it says so
+        // rather than a clamped 0%. Both the highlight and the label read the snapshot flag.
+        var cell = b.building ? pct + '%' : 'queued';
+        return '<div class="ip-item' + (b.building ? ' cur' : '') + '">'
           + '<span class="k">' + pretty(b.kind) + '<span class="sub">arrives in ' + cnDur(b.arrive) + '</span></span>'
-          + '<span class="eta">' + pct + '%</span>' + x + '</div>';
+          + '<span class="eta">' + cell + '</span>' + x + '</div>';
       }).join('');
     } else {
       ipRows = '<div class="dk-qempty">No commissions in progress.<br>Buy an asset from the Syndicate to begin.</div>';
     }
     var p2 = '<div class="dk-card"><div class="dk-h"><span class="t">In Progress</span>'
-      + '<span class="n">' + (builds.length ? builds.length + ' building' : 'idle') + '</span></div>'
+      + '<span class="n">' + (builds.length ? builds.length + ' in queue' : 'idle') + '</span></div>'
       + '<div class="dk-queue">' + ipRows + '</div></div>';
 
-    // ---- panel 3: Current Build (donut on the soonest build's BUILD countdown; no parts, no
+    // ---- panel 3: Current Build (donut on the building head's BUILD countdown; no parts, no
     //      pending state — a Syndicate build never waits on parts; IDLE when nothing builds) ----
     var C = 2 * Math.PI * 52, donut, sub, hn;
-    if(soonest){
-      var bt = soonest.buildTicks || 0, rem = soonest.remaining || 0;
+    if(head){
+      var bt = head.buildTicks || 0, rem = head.remaining || 0;
       var fill = bt > 0 ? Math.max(0, Math.min(1, (bt - rem) / bt)) : 0;
       var pct = Math.round(fill * 100);
       var hh = Math.floor(rem / 60), mm = rem % 60;
@@ -8268,8 +8274,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
         + '<div class="dk-donut-c"><div class="big">' + cnPad(hh) + ':' + cnPad(mm) + '</div>'
           + '<div class="u">hrs : min left</div><div class="pct">' + pct + '%</div></div>';
       sub = '<div class="dk-note">Building at the Syndicate foundry</div>'
-        + '<div class="dk-note small">then ~' + cnDur(soonest.deliver) + ' delivery &middot; arrives in ' + cnDur(soonest.arrive) + '</div>';
-      hn = pretty(soonest.kind) + ' &middot; soonest';
+        + '<div class="dk-note small">then ~' + cnDur(head.deliver) + ' delivery &middot; arrives in ' + cnDur(head.arrive) + '</div>';
+      hn = pretty(head.kind) + ' &middot; building';
     } else {
       donut = '<svg viewBox="0 0 120 120" width="158" height="158">'
         + '<circle cx="60" cy="60" r="52" fill="none" stroke="#1C212B" stroke-width="13"/></svg>'
@@ -8282,14 +8288,14 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       + '<div class="dk-prog" style="justify-content:center; padding:16px">'
       + '<div class="dk-donutwrap">' + donut + '</div>' + sub + '</div></div></div>';
 
-    // ---- panel 4: Building art (follows the soonest build; dimmed/blank when idle) ----
-    // The art keys off the soonest build's kind (via CN_BUILD_ART) so a transport build shows its
-    // own portrait, not the factory image; when idle it keeps the dimmed construction fallback.
-    var p4art = (soonest && CN_BUILD_ART[soonest.kind]) || CN_BUILD_ART_FALLBACK;
-    var p4 = '<div class="dk-card dk-hero' + (soonest ? '' : ' dim') + '">'
+    // ---- panel 4: Building art (follows the building head; dimmed/blank when idle) ----
+    // The art keys off the head's kind (via CN_BUILD_ART) so a transport build shows its own
+    // portrait, not the factory image; when idle it keeps the dimmed construction fallback.
+    var p4art = (head && CN_BUILD_ART[head.kind]) || CN_BUILD_ART_FALLBACK;
+    var p4 = '<div class="dk-card dk-hero' + (head ? '' : ' dim') + '">'
       + '<div class="art" style="background-image:url(\'' + p4art + '\')"></div>'
       + '<div class="scrim"></div><div class="ttop"><div class="zhead">Building</div></div>'
-      + '<div class="role">' + (soonest ? pretty(soonest.kind) : 'Idle') + '</div></div>';
+      + '<div class="role">' + (head ? pretty(head.kind) : 'Idle') + '</div></div>';
 
     // ---- panel 5: SYNDICATE BUILDYARD hero ----
     var p5 = '<div class="dk-card dk-hero">'

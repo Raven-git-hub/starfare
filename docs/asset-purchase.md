@@ -91,7 +91,8 @@ order counting down from its own buy tick, all at once — which let a batch of 
 to near-simultaneous completion (the bug that motivated this ruling). The engine (`syndicateBuilds`
 → head-only `remainingTicks`, one active build per guild) and the client In Progress panel (head
 building on the donut, the rest queued/waiting) are rebuilt to this model in the slices that follow;
-treat those "As built" descriptions as superseded until then.
+treat those "As built" descriptions as superseded until then. *(Both are now built: the engine in the
+2.1d ENGINE sequential slice, the client in §"As built — the building head vs the queued rows".)*
 
 ## Cancelling a queued commission — refund the baseline, forfeit the fuel (RULED 26-09-26)
 
@@ -263,10 +264,11 @@ live and renders the Syndicate asset-commission view (`client/game.html`, built 
   *(Superseded framing: this view was built against the PARALLEL engine, where every build counted
   down at once and the panel showed them soonest-arrival first with no head/queued distinction. The
   2.1d ENGINE sequential slice made the queue per-guild single-slot — only the head builds — and the
-  snapshot now carries a `building` flag on each guild's head plus a queue-aware `ticksRemaining`, so
-  sorting by `ticksRemaining` still renders a correct staggered list with the donut on the head. The
-  client's own visual rework — marking the head "building" vs the rest "queued" off that flag — is the
-  NEXT slice; this view keeps working off `ticksRemaining` until then. See §"Build concurrency".)*
+  snapshot now carries a `building` flag on each guild's head plus a queue-aware `ticksRemaining`. This
+  view kept sorting by ARRIVAL (build remaining + delivery leg), so a quick self-flying craft queued
+  behind a slow-hauled asset could head the list and take the donut. The client rework — marking the
+  head "building" vs the rest "queued" off that flag — has since landed; see §"As built — the
+  building head vs the queued rows". See also §"Build concurrency".)*
 - **Add → confirm → buy** — the menu's Add opens `window.__adviserConfirm` (the `#est-reel` adviser
   card) restating the ¢ cost + build/delivery/arrival; onConfirm fires `buyAssetFromSyndicate`
   (`{ guildId, assetKind, destinationSystemId: <home>, issueTick }`) via the SAME action-post path
@@ -370,5 +372,19 @@ present `commissionId` is a positive integer, unique within the guild, and that
 skipped. `client/console.html` needs no change: it shows only the dockyard queue (which has its own
 cancel) and never renders `syndicateBuilds`. Tripwires: `sim/tests/syndicate-commission-integrity.test.js`
 and `sim/tests/trade-constructed.test.js`.
+
+## As built — the building head vs the queued rows (2.1d, CLIENT slice, 26-09-26)
+
+✅ **BUILT — the Constructed view shows the one commission the Syndicate is actually building.**
+`renderConstructed` (`client/game.html`) now reads the snapshot's `building` flag. The Current Build
+donut (its countdown, %, delivery note and a header tagged `· building`), the "Building" art and its
+label, and the In Progress highlight all follow the row flagged `building`. They used to follow the
+row that arrives soonest, so a light transport queued behind a miner (it builds fast and flies itself
+in, so it can arrive first) took all three while it was still waiting. The list is no longer sorted:
+it keeps the snapshot's FIFO order, building head first. A queued row shows "queued" instead of a
+clamped 0%, and the header counts `N in queue`. The ✕ cancel is unchanged. Client only: no engine,
+snapshot or server change, so goldens are byte-identical. Tripwires: `sim/tests/trade-constructed.test.js`
+(source) and `sim/tests/constructed-building-head.test.js`, which builds the miner-then-light-transport
+case in the engine and runs the page's own render against its snapshot.
 
 <!-- asset-purchase-doc-sentinel v1 -->
