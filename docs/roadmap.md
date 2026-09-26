@@ -107,6 +107,19 @@ boundary so the later hex-map swap doesn't touch it.
 
 **Built so far:**
 
+- **The Constructed view follows the BUILDING head, not the soonest arrival (2.1d, CLIENT slice —
+  `docs/asset-purchase.md` §"As built — the building head vs the queued rows").** `renderConstructed`
+  (`client/game.html`) now reads the snapshot's `building` flag. The Current Build donut (header tag
+  `· building`), the "Building" art and the In Progress highlight follow that row instead of the
+  soonest-arriving one. The list keeps the snapshot's FIFO order (no sort), a queued row reads "queued"
+  instead of 0%, and the header counts `N in queue`. The fixed bug: a light transport queued behind a
+  miner (fast build, flies itself in) can arrive first, and it took the donut, the art and the
+  highlight while still waiting. Client only; no `sim/` source change, so goldens are byte-identical.
+  Proven by `sim/tests/trade-constructed.test.js` (+3 source) and the new
+  `sim/tests/constructed-building-head.test.js` (+4: that exact miner-then-light-transport case built in
+  the engine, with the page's own render run against its snapshot), plus a headless-Chromium smoke of
+  the same case; full suite **1,639 green**.
+
 - **Cancel a Syndicate commission from the TRADE tab + a commission-id guard (2.1d, CLIENT slice —
   `docs/asset-purchase.md` §"Cancelling a queued commission").** The Constructed view's In Progress
   rows now carry a ✕ on every commission the snapshot marks `cancellable` (`client/game.html`). It
@@ -115,9 +128,8 @@ boundary so the later hex-map swap doesn't touch it.
   `commissionId` is a unique positive integer and `syndicateCommissionSerial` is ≥ the highest live id.
   Entries with no id (bought before ids existed) are skipped. The check is read-only, so goldens are
   byte-identical. Proven by `sim/tests/syndicate-commission-integrity.test.js` (+7) and
-  `sim/tests/trade-constructed.test.js` (+4); full suite **1,632 green**. *Still deferred (listed under
-  the single-slot slice below): marking the building head vs the queued rows. The list still sorts by
-  arrival, so a queued self-flying transport can head the list and take the Current Build donut.*
+  `sim/tests/trade-constructed.test.js` (+4); full suite **1,632 green**. *Marking the building head vs
+  the queued rows was deferred from here; it landed in the next slice (above).*
 
 - **Syndicate queue cap + cancel a not-started commission (2.1d, ENGINE slice — `docs/asset-purchase.md`
   §"The queue cap" + §"Cancelling a queued commission", RULED 26-09-26).** Engine + snapshot + tests only
@@ -157,8 +169,9 @@ boundary so the later hex-map swap doesn't touch it.
   client keeps rendering off `ticksRemaining` until its slice. Determinism holds (array order only, integer
   ticks — invariant 9). Proven by `sim/tests/asset-purchase.test.js` (re-baselined off the sequential model
   + new single-slot / handoff / two-guild-independence / worked-example / determinism tripwires) and
-  `sim/tests/vehicles.test.js`; full suite **1,367 green**, an unbought galaxy byte-identical. *Deferred to
-  the CLIENT slice: the In-Progress panel marking the head "building" vs the rest "queued" off the new flag.*
+  `sim/tests/vehicles.test.js`; full suite **1,367 green**, an unbought galaxy byte-identical. *The CLIENT
+  slice (the In-Progress panel marking the head "building" vs the rest "queued" off the new flag) has
+  since landed (above).*
 
 - **The operator adjust levers (dev/steward tool, ENGINE + CLI — `docs/operator-adjust.md`).** Six
   operator/dev actions (`sim/actions.js`) that grant or remove a guild's producible state and remove a
