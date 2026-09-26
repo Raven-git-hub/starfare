@@ -750,8 +750,13 @@ function computeAttention(state) {
 //       // `assetKind` marks a Syndicate ASSET delivery (asset-purchase.md) — the
 //       // manifest labels it "Miner"/"Factory"; a goods delivery carries none.
 //     nodeLockouts: [ { siteId, releaseTick, lockedAtTick, ticksRemaining } ], // teardown §3.3
-//     syndicateBuilds: [ { ownerGuildId, assetKind, destinationSystemId,       // asset-purchase.md
-//                          building, remainingTicks, ticksRemaining } ],       // per-guild single-slot queue
+//     syndicateBuilds: [ { ownerGuildId, commissionId, assetKind,              // asset-purchase.md
+//                          destinationSystemId, building, remainingTicks,      // per-guild single-slot queue
+//                          ticksRemaining, cancellable } ],
+//       // `commissionId` is the entry's stable per-guild id (what cancelSyndicateCommission
+//       // addresses; null on an entry bought before ids existed). `cancellable` is true iff the
+//       // entry has an id AND has not started (`remainingTicks == null`) — the client shows a
+//       // cancel control only on those rows and decides nothing itself.
 //     assetPurchaseQuote: { <assetKind>: { price, buildTicks } },              // asset-purchase.md
 //       // Per Syndicate-sellable kind (miner, factory, and the three cargo transports; spycraft is
 //       // guild-build-only, not sold): the current-tick credit `price`
@@ -1882,6 +1887,11 @@ function buildSnapshot(state) {
     //     guild's queue of `(remainingTicks ?? BUILD_TICKS[kind])`, so the head's is its own remaining
     //     and each entry behind it adds a full BUILD_TICKS. The current client sorts by this, so it
     //     renders the queue as a correct staggered list with the donut on the head.
+    //   - `commissionId`: the stable per-guild id a cancel addresses (asset-purchase.md §"Cancelling a
+    //     queued commission"); `null` on an entry bought before ids were stamped.
+    //   - `cancellable`: true iff the entry can be cancelled right now — it has an id AND has not
+    //     started (`remainingTicks == null`). The SAME two conditions cancelSyndicateCommission's
+    //     validate checks, so the client never offers a cancel the engine would refuse.
     // `buildDoneTick` is GONE (the retired absolute model). ALWAYS EMITTED as an array (a stable []
     // when none), unlike the omit-when-empty STATE field: this is additive derived-on-read telemetry —
     // no serialized byte, no golden move.
@@ -1896,13 +1906,17 @@ function buildSnapshot(state) {
         cumulativeByGuild.set(b.ownerGuildId, cumulative);
         const building = !headSeen.has(b.ownerGuildId);
         headSeen.add(b.ownerGuildId);
+        const commissionId = b.commissionId ?? null;
+        const notStarted = b.remainingTicks === null || b.remainingTicks === undefined;
         return {
           ownerGuildId: b.ownerGuildId,
+          commissionId,
           assetKind: b.assetKind,
           destinationSystemId: b.destinationSystemId,
           building,
           remainingTicks: b.remainingTicks ?? null,
           ticksRemaining: cumulative,
+          cancellable: commissionId !== null && notStarted,
         };
       });
     })(),

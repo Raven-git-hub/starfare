@@ -107,6 +107,24 @@ boundary so the later hex-map swap doesn't touch it.
 
 **Built so far:**
 
+- **Syndicate queue cap + cancel a not-started commission (2.1d, ENGINE slice — `docs/asset-purchase.md`
+  §"The queue cap" + §"Cancelling a queued commission", RULED 26-09-26).** Engine + snapshot + tests only
+  (NO client — the cancel controls are the next slice). **Cap:** `buyAssetFromSyndicate` refuses a guild's
+  11th pending commission (`SYNDICATE_QUEUE_MAX` = 10, `phase-1-tuning.md`; the whole per-guild queue,
+  building head included), before the credits and fuel gates. The dockyard's `MAX_QUEUE` (5) is
+  unchanged. **Stable id:** each `syndicateBuilds` entry now carries a `commissionId` from a per-guild
+  counter (`guild.syndicateCommissionSerial`, following `vehicleSerial`: starts at 1, counts up only,
+  omitted until the guild's first commission). **Cancel:** the new
+  **`cancelSyndicateCommission { guildId, commissionId }`** removes a not-started entry
+  (`remainingTicks == null`; an underway commission, or another guild's, is refused) and refunds
+  `assetPurchaseBaseline(kind)` (guild credits up, ledger down). `priceAssetForPurchase`'s floor now
+  reads the same helper, so price and refund can't diverge. The delivery fuel is forfeit (fuel and
+  `totalConsumed` untouched), and the key is deleted when the queue empties. **Snapshot:** each
+  `syndicateBuilds` row gains `commissionId` + `cancellable`. An entry from before this slice has no id,
+  so it shows as not cancellable, can't be matched by a cancel, and still ships. A galaxy that never
+  commissions is byte-identical (hash-compared against pre-slice `main`), and `stepSyndicateBuilds` is
+  untouched. Proven by `sim/tests/syndicate-queue-cancel.test.js` (+23); full suite **1,621 green**.
+
 - **Syndicate build → per-guild single-slot sequential (2.1d, ENGINE slice — `docs/asset-purchase.md`
   §"Build concurrency").** Engine + snapshot + tests only (NO client — the In-Progress visual rework is
   the next slice), rebuilding the Syndicate construction queue from the retired PARALLEL model to the

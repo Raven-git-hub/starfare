@@ -14,7 +14,8 @@ const {
 } = require('./licence.js');
 const { producedGoodFor, baselineOutputFor, baselineRateFor, isLicensedDeuteriumMine, isDockyard } = require('./baseline.js');
 const {
-  BUILDABLE_KINDS, SYNDICATE_SELLABLE_KINDS, MAX_QUEUE, assetBill, priceAssetForPurchase,
+  BUILDABLE_KINDS, SYNDICATE_SELLABLE_KINDS, MAX_QUEUE, SYNDICATE_QUEUE_MAX, assetBill,
+  priceAssetForPurchase, assetPurchaseBaseline, nextSyndicateCommissionId,
 } = require('./asset-recipes.js');
 const {
   isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation,
@@ -1239,6 +1240,18 @@ function createBuyAssetFromSyndicateAction({ guildId, assetKind, destinationSyst
     type: 'buyAssetFromSyndicate', guildId, assetKind, destinationSystemId,
     ...(issueTick === undefined ? {} : { issueTick }),
   };
+}
+
+// cancelSyndicateCommission: withdraw a Syndicate commission that HAS NOT STARTED building
+// (docs/asset-purchase.md §"Cancelling a queued commission", RULED 26-09-26) — a queued entry, or a
+// head whose countdown has not begun. Addressed by the stable per-guild `commissionId` stamped at
+// buy time, NOT an array index (an index shifts when an earlier entry ships or is cancelled) — the
+// dockyard's `cancelCommission` precedent. The guild gets back the kind's BASELINE credits; the
+// prepaid delivery fuel is forfeit. Shape is exactly `{ guildId, commissionId }`.
+function createCancelSyndicateCommissionAction({ guildId, commissionId }) {
+  if (guildId === undefined) throw new Error('createCancelSyndicateCommissionAction: guildId is required');
+  if (commissionId === undefined) throw new Error('createCancelSyndicateCommissionAction: commissionId is required');
+  return { type: 'cancelSyndicateCommission', guildId, commissionId };
 }
 
 // --- The Syndicate ORDER build actions (docs/syndicate-orders.md §3) -----
@@ -2560,6 +2573,14 @@ function validateAction(state, action) {
     if (!nearestWaystation(action.destinationSystemId)) {
       return { valid: false, reason: `no Syndicate waystation can reach system ${JSON.stringify(action.destinationSystemId)} — it resolves to no seed coordinates` };
     }
+    // THE QUEUE CAP (asset-purchase.md §"The queue cap", RULED 26-09-26) — a STRUCTURAL refusal, so it
+    // runs after the kind/destination gates but BEFORE credits and fuel: a guild with a full queue is
+    // told the queue is full, not that it is short of money. The WHOLE per-guild queue counts — the
+    // one building plus those waiting — so filter by owner (the list is shared by every guild).
+    const queued = (state.syndicateBuilds || []).filter((b) => b.ownerGuildId === action.guildId).length;
+    if (queued >= SYNDICATE_QUEUE_MAX) {
+      return { valid: false, reason: `guild ${guild.id}'s Syndicate commission queue is full (${queued}/${SYNDICATE_QUEUE_MAX}) — cancel a queued commission or wait for a build to ship before commissioning another (docs/asset-purchase.md §"The queue cap")` };
+    }
     // THE PRICE — `max(FLOOR, round(partsCost × 0.8))`, priced at the ISSUE TICK's quoted parts
     // prices (§8.1 quote-lock), so the affordability check is measured against the same price
     // apply will charge. `priceAssetForPurchase` is null when a module has no quoted price at the
@@ -2595,6 +2616,35 @@ function validateAction(state, action) {
     // module was unpriced at the issue tick.
     const quote = checkQuote(state, Object.keys(assetBill(action.assetKind))[0], issueTick);
     if (!quote.valid) return quote;
+    return { valid: true };
+  }
+
+  if (action.type === 'cancelSyndicateCommission') {
+    // Cancel an UNSTARTED Syndicate commission (docs/asset-purchase.md §"Cancelling a queued
+    // commission"). REFUSE, never clamp — the dockyard cancelCommission's gate order.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    // Ids are positive integers (nextSyndicateCommissionId starts at 1). Checked BEFORE the lookup
+    // so a missing or malformed id can never match an entry that has no commissionId at all — one
+    // bought before ids existed stays un-cancellable rather than being hit by `undefined === undefined`.
+    if (!Number.isInteger(action.commissionId) || action.commissionId < 1) {
+      return { valid: false, reason: `commissionId must be a positive integer, got ${JSON.stringify(action.commissionId)}` };
+    }
+    // The entry must EXIST and be THIS guild's — only the owner may cancel its own commission. Ids are
+    // per-guild, so another guild's entry with the same number is simply not a match.
+    const entry = (state.syndicateBuilds || []).find(
+      (b) => b.ownerGuildId === action.guildId && b.commissionId === action.commissionId,
+    );
+    if (!entry) {
+      return { valid: false, reason: `guild ${guild.id} has no Syndicate commission with id ${JSON.stringify(action.commissionId)}` };
+    }
+    // … and must NOT be underway. `remainingTicks == null` is "not yet started"; any number (even 0,
+    // a finished build waiting to ship) means the Syndicate is already building it.
+    if (entry.remainingTicks !== null && entry.remainingTicks !== undefined) {
+      return { valid: false, reason: `Syndicate commission ${action.commissionId} (a ${entry.assetKind}) is underway (${entry.remainingTicks} ticks left) — a commission already under construction cannot be cancelled (docs/asset-purchase.md §"Cancelling a queued commission")` };
+    }
     return { valid: true };
   }
 
@@ -3879,9 +3929,18 @@ function applyAction(state, action) {
     // mirroring the dockyard (`buildDockyards`). `boughtTick` records the mutation's tick (§15.2 — every
     // mutation records its tick). Created lazily so a galaxy that buys no asset carries no key
     // (the omit-when-empty no-op, byte-identical goldens).
+    //
+    // `commissionId` is the entry's STABLE per-guild id (asset-purchase.md §"Cancelling a queued
+    // commission") — what a cancel addresses instead of an array index. It comes from the guild's
+    // monotonic `syndicateCommissionSerial`, bumped here and never decremented, so an id is never
+    // reissued even after the entry it named is cancelled or shipped. The counter is written only
+    // when a guild first commissions, so a guild that never commissions carries no key.
+    const commissionId = nextSyndicateCommissionId(guild);
+    guild.syndicateCommissionSerial = commissionId;
     if (!Array.isArray(next.syndicateBuilds)) next.syndicateBuilds = [];
     next.syndicateBuilds.push({
       ownerGuildId: action.guildId,
+      commissionId,
       assetKind: action.assetKind,
       destinationSystemId: action.destinationSystemId,
       remainingTicks: null,
@@ -3892,6 +3951,37 @@ function applyAction(state, action) {
     // above deducted `fuelHoard`, which `galacticSupply.fuel.guildHeld` sums, and `POST /action`
     // asserts every invariant with no tick between. No goods moved (nothing to refresh there) and
     // `expectedCreditTotal` is untouched (credits moved guild↔ledger without changing the total).
+    next.galacticSupply = computeGalacticSupply(next);
+    return next;
+  }
+
+  if (action.type === 'cancelSyndicateCommission') {
+    // Withdraw an UNSTARTED Syndicate commission (docs/asset-purchase.md §"Cancelling a queued
+    // commission"). Validate proved the entry exists, is this guild's, and has not started.
+    const guild = findGuild(next, action.guildId);
+    const idx = next.syndicateBuilds.findIndex(
+      (b) => b.ownerGuildId === action.guildId && b.commissionId === action.commissionId,
+    );
+    const [entry] = next.syndicateBuilds.splice(idx, 1);
+
+    // CREDITS — refund the kind's BASELINE, not the price paid. It REVERSES the buy's ledger move
+    // (guild +, ledger − by the same integer), so invariant 2 holds by construction. When the
+    // parts-cost branch ever lifts a price above the baseline, the Syndicate keeps that premium.
+    // The SAME assetPurchaseBaseline the price is `max(baseline, …)` of, so the two cannot drift.
+    const refund = assetPurchaseBaseline(entry.assetKind);
+    guild.credits += refund;
+    next.syndicate.ledger -= refund;
+
+    // FUEL — FORFEIT. The delivery flight's fuel was burned out of the galaxy at buy and stays
+    // burned: neither the hoard nor `audit.totalConsumed` is touched here (invariant 1 unchanged).
+
+    // The pruneLockout discipline: DELETE the key when the last entry leaves, so an emptied queue
+    // serializes byte-identically to one that never held a commission (omit-when-empty).
+    if (next.syndicateBuilds.length === 0) delete next.syndicateBuilds;
+
+    // The SAME refresh the buy apply makes, so `POST /action`'s invariant assert passes with no tick
+    // between. Credits only moved guild↔ledger (total unchanged) and no fuel moved, so this is
+    // expected to be a no-op — recomputed anyway so the cache can never lag the state it summarises.
     next.galacticSupply = computeGalacticSupply(next);
     return next;
   }
@@ -4421,6 +4511,7 @@ module.exports = {
   createSellToSyndicateAction,
   createBuyFromSyndicateAction,
   createBuyAssetFromSyndicateAction,
+  createCancelSyndicateCommissionAction,
   createAddOrderLineAction,
   createRemoveOrderLineAction,
   createClearOrderAction,

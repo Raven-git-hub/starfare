@@ -227,13 +227,17 @@ test('apply: debits the EXACT price to the ledger (invariant 2) and burns the EX
   assert.equal(s.syndicateBuilds.length, 1);
   // The build order records the dockyard's RELATIVE shape (asset-purchase.md §"Build concurrency"):
   // `remainingTicks: null` = queued, not yet started — the clock starts when it reaches the head.
+  // `commissionId` is the stable per-guild id a cancel addresses (§"Cancelling a queued commission"):
+  // this guild's first commission, so 1, and the guild's counter now records it.
   assert.deepEqual(s.syndicateBuilds[0], {
     ownerGuildId: 'g1',
+    commissionId: 1,
     assetKind: MINER,
     destinationSystemId: DEST,
     remainingTicks: null,
     boughtTick: s.tick,
   });
+  assert.equal(s.guilds[0].syndicateCommissionSerial, 1, 'the per-guild id counter records the id it issued');
   // Every invariant green right after apply (the between-tick assert the server runs).
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });

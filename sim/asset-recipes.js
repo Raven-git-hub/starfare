@@ -226,14 +226,41 @@ const VEHICLE_BUY_BASELINE = Object.freeze({
   [SPYCRAFT]: 100_000_000,
 });
 
+// SYNDICATE_QUEUE_MAX — the most Syndicate commissions ONE GUILD may hold on `state.syndicateBuilds`
+// at once, counting the WHOLE queue (the one building + those waiting). An 11th buy is refused
+// loudly at intake (docs/asset-purchase.md §"The queue cap", RULED 26-09-26; the value is
+// `[FIRST-CUT]` in docs/phase-1-tuning.md). Separate from the dockyard's per-yard MAX_QUEUE (5).
+const SYNDICATE_QUEUE_MAX = 10;
+
+// assetPurchaseBaseline(kind) -> the kind's BASELINE credit price: its per-class
+// VEHICLE_BUY_BASELINE for a transport, else the flat ASSET_PURCHASE_FLOOR (miner/factory).
+// The ONE definition of "baseline". Two things read it and must never disagree: the purchase
+// price is `max(baseline, …)` of it (priceAssetForPurchase below), and a cancelled commission
+// refunds exactly it (docs/asset-purchase.md §"Cancelling a queued commission").
+function assetPurchaseBaseline(kind) {
+  return VEHICLE_BUY_BASELINE[kind] ?? ASSET_PURCHASE_FLOOR;
+}
+
+// nextSyndicateCommissionId(guild) -> the next per-GUILD Syndicate commission id: one above the
+// guild's stored `syndicateCommissionSerial` counter (absent/0 -> 1). The commission mirror of
+// `nextVehicleSerial`, and for the same reason (design.md §15.4 "Ids never repeat"): a commission
+// can be CANCELLED or ship out of the queue, so its id cannot be re-derived from the live entries —
+// a `max(existing)+1` would re-hand a spent number. The CALLER bumps
+// `guild.syndicateCommissionSerial` to this value at buy (this stays a pure read); it never
+// decrements, so a cancel can never make a later commission's id shift or repeat.
+function nextSyndicateCommissionId(guild) {
+  return (guild.syndicateCommissionSerial || 0) + 1;
+}
+
 // priceAssetForPurchase(state, assetKind, issueTick) -> the integer credit price of buying
 // `assetKind` from the Syndicate, or null when it cannot be priced.
 //
 //   partsCost = Σ over the kind's bill of ( module qty × that module's quoted price )
 //   price     = max( baseline , round( partsCost × ASSET_PURCHASE_REDUCTION ) )
 //
-// where `baseline` is the per-class VEHICLE_BUY_BASELINE for a vehicle kind, else the flat
-// ASSET_PURCHASE_FLOOR (miner/factory keep the 12M floor). Same formula, one baseline per kind.
+// where `baseline` is assetPurchaseBaseline(kind) — the per-class VEHICLE_BUY_BASELINE for a
+// vehicle kind, else the flat ASSET_PURCHASE_FLOOR (miner/factory keep the 12M floor). Same
+// formula, one baseline per kind.
 //
 // Rounded ONCE on the whole order (#43), exactly as a goods buy rounds `qty × price`. The
 // module price is the SAME `quotedPrice` the goods buy uses (§8.1 quote-lock): today's posted
@@ -253,8 +280,7 @@ function priceAssetForPurchase(state, assetKind, issueTick) {
     if (price == null) return null; // ring guard — refuse rather than price off a missing part
     partsCost += qty * price;
   }
-  const baseline = VEHICLE_BUY_BASELINE[assetKind] ?? ASSET_PURCHASE_FLOOR;
-  return Math.max(baseline, Math.round(partsCost * ASSET_PURCHASE_REDUCTION));
+  return Math.max(assetPurchaseBaseline(assetKind), Math.round(partsCost * ASSET_PURCHASE_REDUCTION));
 }
 
 module.exports = {
@@ -271,5 +297,8 @@ module.exports = {
   ASSET_PURCHASE_FLOOR,
   ASSET_PURCHASE_REDUCTION,
   VEHICLE_BUY_BASELINE,
+  SYNDICATE_QUEUE_MAX,
+  assetPurchaseBaseline,
+  nextSyndicateCommissionId,
   priceAssetForPurchase,
 };

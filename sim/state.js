@@ -107,6 +107,7 @@ function createGuild({
   outpostSerial = 0,
   savedRoutes = [],
   savedRouteSerial = 0,
+  syndicateCommissionSerial = 0,
   events = [],
   eventSeq = 0,
 }) {
@@ -382,6 +383,13 @@ function createGuild({
     // never reissued. STORED (a delete would let a live-derived max re-hand a number), guarded by
     // `checkSavedRouteIntegrity`; OMITTED when 0 so a guild that never saved a route carries no key.
     ...(savedRouteSerial !== 0 ? { savedRouteSerial } : {}),
+    // syndicateCommissionSerial: the per-guild MONOTONIC Syndicate-commission id counter
+    // (docs/asset-purchase.md §"Cancelling a queued commission"), the sibling of `vehicleSerial`
+    // above. Bumped at every `buyAssetFromSyndicate` (nextSyndicateCommissionId), never on a cancel
+    // or a ship-out, so a commission's `commissionId` is never reissued. OMITTED when 0 so a guild
+    // that has never commissioned carries no key and serializes byte-identically to pre-slice
+    // (invariant 9). A scenario or a restored save that HANDS ONE IN keeps it.
+    ...(syndicateCommissionSerial !== 0 ? { syndicateCommissionSerial } : {}),
   };
 }
 

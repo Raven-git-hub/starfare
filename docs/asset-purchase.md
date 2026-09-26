@@ -305,4 +305,59 @@ No serialized state moved (gate/derive/endpoint changes only) — a galaxy that 
 builds serializes byte-identically (goldens unchanged). `spycraft`'s `VEHICLE_BUY_BASELINE` entry is
 now **dormant** on the sell path, retained but no longer read to price a sale.
 
+## As built — the queue cap + cancelling a commission (2.1d, ENGINE slice, 26-09-26)
+
+✅ **BUILT — §"The queue cap" and §"Cancelling a queued commission", engine + snapshot only (no
+client).** Every number is sourced: `SYNDICATE_QUEUE_MAX` (10) from `phase-1-tuning.md`, the refund
+from the existing baselines. None was invented.
+
+- **The constant + one baseline** (`sim/asset-recipes.js`): `SYNDICATE_QUEUE_MAX = 10`, and
+  `assetPurchaseBaseline(kind)` = `VEHICLE_BUY_BASELINE[kind] ?? ASSET_PURCHASE_FLOOR`. This helper
+  is the only definition of "baseline". `priceAssetForPurchase` now calls it for its
+  `max(baseline, …)`, and the cancel refund calls it too, so the price floor and the refund cannot
+  drift apart.
+- **A stable id on every commission.** The `buyAssetFromSyndicate` apply stamps a `commissionId` on
+  each `syndicateBuilds` entry. It comes from a per-guild counter, `guild.syndicateCommissionSerial`,
+  read through `nextSyndicateCommissionId` and following the `vehicleSerial` / `nextVehicleSerial`
+  pattern: ids start at 1 and only ever count up, so a cancel or ship-out never shifts or reissues
+  one. The counter is written only when a guild first commissions (`createGuild` omits it at 0), so
+  a guild that never commissions carries no new byte. `boughtTick` is unchanged. `stepSyndicateBuilds`
+  is unchanged too: it carries the new field along without reading it.
+- **The cap** (`buyAssetFromSyndicate` validate): the gate counts the guild's own entries (filtered by
+  `ownerGuildId`, so the building head counts) and refuses at `>= SYNDICATE_QUEUE_MAX`, naming
+  the count (`… queue is full (10/10)`). It runs after the kind and destination gates and before
+  the credits and fuel gates, so a full queue is blamed on the cap, not on affordability. The
+  dockyard's `MAX_QUEUE` (5) is unchanged.
+- **The cancel** — `cancelSyndicateCommission { guildId, commissionId }`, built by
+  `createCancelSyndicateCommissionAction`.
+  - *Validate* refuses, each with its own reason, when: the guild does not exist; the id is not a
+    positive integer; no entry with that id is owned by this guild (only the owner may cancel); or
+    the entry has `remainingTicks != null`, meaning it is underway ("a commission already under
+    construction cannot be cancelled"). A head that has counted down to 0 but not yet shipped
+    counts as underway.
+  - *Apply* removes the entry and refunds `assetPurchaseBaseline(kind)`: guild credits go up and
+    the ledger goes down by the same integer, reversing the buy's ledger move, and the Syndicate
+    keeps any premium above the baseline. Fuel and `audit.totalConsumed` are not touched, so the
+    delivery fuel is forfeit. The apply deletes `syndicateBuilds` when it empties and refreshes
+    `galacticSupply`, the same refresh the buy makes, so `POST /action`'s invariant check passes
+    with no tick between.
+- **Snapshot** (derived on read, no serialized byte): each `syndicateBuilds` row gains `commissionId`
+  and `cancellable`. `cancellable` is true only when the entry has an id and `remainingTicks == null`,
+  the same two conditions validate checks, so the client never offers a cancel the engine would refuse.
+- **An entry bought before this slice** has no `commissionId`. The snapshot shows it with
+  `commissionId: null` and `cancellable: false`. The validate's integer check runs before the lookup,
+  so no cancel can match such an entry. It still builds, ships and mints normally.
+- **Observation, not a new decision:** under the per-tier price bands (RULED 26-09-26), every sellable
+  kind's parts cost at the Tier-3 **ceiling**, times 0.8, stays far below its baseline (a miner's comes
+  to about 0.8M against the 12M floor). So the `partsCost × 0.8` branch cannot bind today, and a cancel
+  refund always equals the price paid. The premium rule is live in code and pinned by a test that
+  hand-sets out-of-band prices.
+
+Tripwires: `sim/tests/syndicate-queue-cancel.test.js` (23 tests: the cap, stable ids, cancel and
+refund, fuel forfeit, FIFO order kept, the empty key deleted, underway and non-owner refusals,
+conservation, the premium kept, snapshot fields, an entry bought before this slice, no-op and
+determinism), plus the re-pinned entry shape in `sim/tests/asset-purchase.test.js`. **Deferred to
+the CLIENT slice:** the cancel controls in the TRADE tab's Constructed view (`client/game.html`) and
+`client/console.html`, which read `cancellable`.
+
 <!-- asset-purchase-doc-sentinel v1 -->
