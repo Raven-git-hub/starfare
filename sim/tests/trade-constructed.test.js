@@ -43,17 +43,17 @@ test('the Constructed view renders all five panels off the snapshot', () => {
   assert.match(html, /var quote = \(s && s\.assetPurchaseQuote\) \|\| \{\};/);
   assert.match(html, /class="am-item/);
   assert.match(html, /class="am-add" data-kind="/);
-  // Panel 2 — In Progress, this guild's parallel syndicateBuilds, soonest-arrival first.
+  // Panel 2 — In Progress, this guild's syndicateBuilds queue (its order and head are pinned in
+  // the "building head" tests below).
   assert.match(html, /s\.syndicateBuilds\) \|\| \[\]\)/);
   assert.match(html, /class="ip-item/);
-  assert.match(html, /builds\.sort\(function\(a, b\)\{ return a\.arrive - b\.arrive; \}\);/);
-  // Panel 3 — the Current Build donut (soonest build's countdown), with an explicit IDLE state.
+  // Panel 3 — the Current Build donut (the building head's countdown), with an explicit IDLE state.
   assert.match(html, /class="dk-donutwrap"/);
   assert.match(html, /class="big grey">IDLE/);
-  // Panels 4 & 5 — the building art (follows the soonest build's KIND via CN_BUILD_ART, not a
+  // Panels 4 & 5 — the building art (follows the building head's KIND via CN_BUILD_ART, not a
   // hardcoded factory literal) and the buildyard hero (two lines). The map + per-kind resolution
   // are pinned in build-hero-art.test.js; here we pin that panel 4 reads the resolved art variable.
-  assert.match(html, /var p4art = \(soonest && CN_BUILD_ART\[soonest\.kind\]\) \|\| CN_BUILD_ART_FALLBACK;/);
+  assert.match(html, /var p4art = \(head && CN_BUILD_ART\[head\.kind\]\) \|\| CN_BUILD_ART_FALLBACK;/);
   assert.match(html, /background-image:url\(\\'' \+ p4art \+ '\\'\)/);
   assert.match(html, /assets\/industrial\/buildyard\.jpg/);
   assert.match(html, /class="word">SYNDICATE<br>BUILDYARD</);
@@ -164,12 +164,12 @@ test('the In Progress builds map carries commissionId + cancellable straight fro
 });
 
 test('each In Progress row renders a data-commission ✕ ONLY when the snapshot marks it cancellable', () => {
-  const rows = html.match(/ipRows = builds\.map\(function\(b, i\)\{[\s\S]*?\}\)\.join\(''\);/);
+  const rows = html.match(/ipRows = builds\.map\(function\(b\)\{[\s\S]*?\}\)\.join\(''\);/);
   assert.ok(rows, 'the panel-2 row builder is present');
   // The control is gated on the snapshot flag, carries the id, and is empty otherwise.
   assert.match(rows[0], /var x = b\.cancellable\s*\? '<button class="ip-cancel" title="cancel this commission" data-commission="' \+ b\.commissionId \+ '">&#10005;<\/button>'\s*: '';/);
-  // ...and it lands inside the ip-item, after the % column (right-aligned).
-  assert.match(rows[0], /'<span class="eta">' \+ pct \+ '%<\/span>' \+ x \+ '<\/div>'/);
+  // ...and it lands inside the ip-item, after the %/queued column (right-aligned).
+  assert.match(rows[0], /'<span class="eta">' \+ cell \+ '<\/span>' \+ x \+ '<\/div>'/);
   // The gate is the FLAG, never the row's position: the control's expression does not read `i`.
   const gate = rows[0].match(/var x = [\s\S]*?;/)[0];
   assert.doesNotMatch(gate, /\bi\b/);
@@ -201,4 +201,52 @@ test('cnCancelCommission confirms in words — no figure — then posts cancelSy
   assert.match(post, /if\(!res \|\| !res\.accepted\)\{\s*if\(T\.tier === 4\) renderConstructed\(\);\s*return;/);
   assert.match(post, /cnNote\('Commission cancelled[\s\S]*?'ok'\)/);
   assert.match(post, /if\(window\.__refreshNow\) window\.__refreshNow\(\);/);
+});
+
+// --- the BUILDING head vs the queued rows (docs/asset-purchase.md §"Build concurrency"; roadmap
+// 2.1d, the head/queued CLIENT slice). The Syndicate builds one commission per guild at a time; the
+// snapshot flags that row `building`. The bug these pin against: the view sorted by ARRIVAL and put
+// the donut, the art and the highlight on the first row — so a quick self-flying craft queued
+// behind a slow-hauled miner took the "Current Build" slot while it was still waiting its turn.
+// The end-to-end render of that exact case is in constructed-building-head.test.js.
+
+test('the builds map carries the snapshot `building` flag and keeps the snapshot (FIFO) order', () => {
+  const render = fnBody('renderConstructed');
+  // A pure passthrough of the engine's flag, beside the other passthroughs.
+  assert.match(render, /building:b\.building, commissionId:b\.commissionId, cancellable:b\.cancellable \};/);
+  // No re-sort: the list reads as the queue it is (building head first), not by arrival.
+  assert.doesNotMatch(render, /builds\.sort\(/);
+});
+
+test('the head is found by the `building` flag — the donut, art and label all read `head`, never `soonest`', () => {
+  const render = fnBody('renderConstructed');
+  assert.match(render, /var head = builds\.filter\(function\(b\)\{ return b\.building; \}\)\[0\] \|\| builds\[0\] \|\| null;/);
+  // The old soonest-arrival pick is gone entirely from the view.
+  assert.doesNotMatch(render, /soonest/);
+  // Panel 3 — the donut's countdown, its delivery sub-note and its header tag all come from `head`.
+  assert.match(render, /if\(head\)\{\s*var bt = head\.buildTicks \|\| 0, rem = head\.remaining \|\| 0;/);
+  assert.match(render, /cnDur\(head\.deliver\) \+ ' delivery &middot; arrives in ' \+ cnDur\(head\.arrive\)/);
+  assert.match(render, /hn = pretty\(head\.kind\) \+ ' &middot; building';/);
+  // Panel 4 — the art, the dim-when-idle, and the role label all come from `head`.
+  assert.match(render, /var p4art = \(head && CN_BUILD_ART\[head\.kind\]\) \|\| CN_BUILD_ART_FALLBACK;/);
+  assert.match(render, /'<div class="dk-card dk-hero' \+ \(head \? '' : ' dim'\) \+ '">'/);
+  assert.match(render, /'<div class="role">' \+ \(head \? pretty\(head\.kind\) : 'Idle'\) \+ '<\/div><\/div>'/);
+});
+
+test('In Progress highlights the `building` row (not row 0) and labels the rest "queued", not 0%', () => {
+  const rows = html.match(/ipRows = builds\.map\(function\(b\)\{[\s\S]*?\}\)\.join\(''\);/);
+  assert.ok(rows, 'the panel-2 row builder (no index argument) is present');
+  // The highlight gates on the snapshot flag — the #131 pattern: the gate never reads the index.
+  const cur = rows[0].match(/'<div class="ip-item' \+ \(([^)]*)\) \+ '">'/);
+  assert.ok(cur, 'the ip-item class expression is present');
+  assert.equal(cur[1], "b.building ? ' cur' : ''");
+  assert.doesNotMatch(cur[1], /\bi\b/);
+  // The right-hand cell: a % only on the building row, the word "queued" on every other row.
+  assert.match(rows[0], /var cell = b\.building \? pct \+ '%' : 'queued';/);
+  assert.match(rows[0], /'<span class="eta">' \+ cell \+ '<\/span>'/);
+  // The per-row arrival sub-line is kept.
+  assert.match(rows[0], /'<span class="sub">arrives in ' \+ cnDur\(b\.arrive\) \+ '<\/span><\/span>'/);
+  // The header counts the queue honestly — only one row is building.
+  assert.match(html, /\(builds\.length \? builds\.length \+ ' in queue' : 'idle'\)/);
+  assert.doesNotMatch(html, /builds\.length \+ ' building'/);
 });
