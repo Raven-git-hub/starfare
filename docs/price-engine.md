@@ -135,11 +135,11 @@ live, as ruled.
   commit rather than keeping a misleading flat constant alive. There is no tier-4 row: Tier-4 assets are
   never priced by this engine.
 - **The seam is `bandFor(good)`**, which reads the good's tier through `tierOf` (`sim/points.js`, the
-  same answer the GP weights and cargo volumes use). `basePriceFor(good)` is now `bandFor(good).base`.
+  same answer the GP weights and cargo volumes use), except for raw deuterium (below). `basePriceFor(good)` is now `bandFor(good).base`.
   Both still return **null** for a good that is not priced (fuel, an unknown name); the snapshot's
   `priceBase` and other readers rely on that null.
 - **Fail loud.** If a priced good ever resolves to a tier with no row, `bandFor` throws and names the
-  good. It never guesses a band. A test pins that every entry of `PRICED_GOODS` has tier 1, 2 or 3.
+  good. It never guesses a band. A test pins that every other entry of `PRICED_GOODS` has tier 1, 2 or 3.
 - **Threaded once per good.** `recomputePrices` looks the band up once per good and hands the same band
   to `priceTarget(band, …)` (the target and the zero-capacity rest) and `advanceLeading(band, …)` (the
   clamp), so the target and the clamp can never disagree about which good they are pricing. A missing
@@ -149,11 +149,16 @@ live, as ruled.
 - **The snapshot is unchanged in shape.** `prices` and `priceBase` carry the new values; there is no new
   field and no schema bump, so the client needed no change (it already read `priceBase` per good).
 
-**Raw `deuterium` is priced, so its band is live, not moot.** The ruling assumed `deuterium` was never
-priced. That holds only for `deuterium_fuel`. Raw `deuterium` is a stockpile good, so it has always had a
-price row, and the licensed deuterium mine's per-tick auto-sale pays that posted price. As a T1 good it
-now rests at **1**, not 10. The slice applied the ruled rule as written; whether deuterium should be
-priced differently is on the roadmap's decision checklist.
+**Raw `deuterium` is excepted — it keeps its own band (RULED 26-09-26).** Deuterium is out of the tier
+system (design.md §8): `tierOf` calls it tier 1, but that is only the Points (GP) view, so the tier bands
+must not re-price it. It stays in `PRICED_GOODS`, because the licensed deuterium mine's per-tick auto-sale
+pays its posted price, and `bandFor` hands it `DEUTERIUM_BAND` — **base 10, floor 2, ceiling 200**, the
+flat band every good had before this slice. Those are its status-quo values, not new numbers, so its
+price row behaves exactly as before: replaying a run with licensed mines and a growing unlicensed hoard
+(the price moving off base) gives a byte-identical deuterium row and auto-sale income on both engines. A
+separate, fuel-facing deuterium price is a future fuel-economy decision
+(`docs/fuel-supply-and-allocation.md` §1.4), not built here. (The same day's first cut had put deuterium on
+the T1 band at base 1. The ruling reverted that before merge.)
 
 **The floor is a backstop the formula never reaches.** At level 0 the target is `base × idleness`, and
 idleness never falls below 0.5, so the lowest target is half the base. The floor (0.2 × base) binds only
@@ -163,7 +168,8 @@ same.
 **Golden hashes.** A fresh galaxy's price block is different, so every pinned hash that includes prices
 moved and was re-pinned in the same commit: 14 of 15 in `persist.test.js` and 23 of 27 in
 `commitment-scaffold.test.js`. The two hashes computed with the price block **stripped**
-(`GOLDEN_HASH`, `GOLDEN_UNLICENSED`) did **not** move. On the committed run, the only non-price fields
+(`GOLDEN_HASH`, `GOLDEN_UNLICENSED`) did **not** move, and deuterium's price row in every run is the same
+as before this slice (the deuterium exception was proven by the same replay, above). On the committed run, the only non-price fields
 that moved are the guild's credits, its last-sale record and the Syndicate ledger: its scaffold sale is
 paid at a T1 price that now rests near 1. As a build-session proof, the new code with every band set
 back to the old uniform 10 / 2 / 200 reproduced every previous hash the tests assert equal to (39 of the

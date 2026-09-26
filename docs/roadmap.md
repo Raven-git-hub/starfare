@@ -1764,7 +1764,7 @@ boundary so the later hex-map swap doesn't touch it.
   inline rates; the deuterium refinery's throughput (`ESTABLISH_RATE` 5 still stands in). **Needs a fresh
   galaxy on deploy.**
 
-- **Tuning — per-tier price bands — ✅ BUILT 26-09-26 (one commit).** design.md §5 "PER-TIER PRICE BANDS
+- **Tuning — per-tier price bands — ✅ BUILT 26-09-26 (two commits).** design.md §5 "PER-TIER PRICE BANDS
   + THE REFINING PUMP AS A FEATURE" (ruled 26-09-26); numbers in `docs/phase-1-tuning.md` "Resource prices";
   as-built in `docs/price-engine.md`. `PRICE_BANDS` (`sim/prices.js`, keyed by `tierOf`) replaces the flat
   `BASE_PRICE` / `PRICE_FLOOR` / `PRICE_CEILING`: T1 1 / 0.2 / 1,000, T2 10 / 2 / 10,000, T3 100 / 20 /
@@ -1776,9 +1776,17 @@ boundary so the later hex-map swap doesn't touch it.
   were re-pinned; with the bands set back to a uniform 10 / 2 / 200, the new code reproduces every previous
   asserted hash. Tests that assumed a flat 10 now read the good's own band (none deleted); one fixture
   (multi-venture F-A) opens titanium's price at 10 so its two splits stay whole credits apart. Sim suite
-  1,590 → **1,598 green**; tools **68 green**. **Needs a fresh galaxy on deploy.** **Flagged, not decided:**
-  raw `deuterium` is priced (only `deuterium_fuel` is not), so it takes the T1 band and rests at 1 — see the
-  decision checklist.
+  1,590 → **1,598 green**; tools **68 green**. **Needs a fresh galaxy on deploy.**
+  **Commit 2 of 2 — raw deuterium excepted (RULED 26-09-26).** Commit 1 had put raw `deuterium` (priced;
+  only `deuterium_fuel` is not) on the T1 band at base 1. Deuterium is out of the tier system (design.md
+  §8), so `bandFor` now hands it `DEUTERIUM_BAND` — its status-quo **10 / 2 / 200** — and it stays in
+  `PRICED_GOODS` for the licensed-mine auto-sale. Its price row and auto-sale income are byte-identical to
+  the pre-slice engine (proven by replaying the golden runs plus a deuterium-heavy run on both engines);
+  the 53 manufacturing goods stay per tier. The price-stripped goldens are still unchanged; the 37
+  price-inclusive hashes were re-pinned again, and the only delta from commit 1 is deuterium's price rows
+  (plus, where deuterium auto-sells, the credits and ledger it pays). The "deuterium on T1" tripwire is
+  replaced by "deuterium on its own 10 / 2 / 200 band, not T1's". Sim suite **1,598 green**; tools **68
+  green**.
 
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
@@ -2001,6 +2009,11 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   like any other; (b) give deuterium its own base and band, a per-good exception and a new number to rule;
   (c) pay the auto-sale off a dedicated fuel-facing quote instead of the commodity price, which
   fuel-supply-and-allocation.md already leaves open as a build choice. Not guessed.
+
+    **RULED 26-09-26 — DEUTERIUM UNTOUCHED; separate pricing mechanism deferred to the fuel-economy
+    work.** Deuterium is out of the tier system (design.md §8) and is not re-tiered: it keeps its
+    pre-slice band (10 / 2 / 200) on the shared price engine. A dedicated fuel-facing price (option c) is
+    a future fuel-economy decision. *BUILT 26-09-26 (commit 2 of the per-tier price-bands slice).*
 
 - **Deferred, flagged in docs (revisit with their slice, don't lose):** the SELL origin-picker helper
   (offer only systems that hold every line — `syndicate-orders.md` §7, a client refinement); a

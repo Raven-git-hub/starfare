@@ -324,6 +324,14 @@ test('double-apply guard: a snapshot-baked action still in the journal is not re
 // instead of a flat 10, and clamps it to its tier's band. So the price block, the quote-lock
 // ring seeded from it, and every hash that keeps either one present, moved.
 //
+// RAW DEUTERIUM IS EXCEPTED (ruled 26-09-26, the same day): it is out of the tier system
+// (design.md §8) and keeps its pre-slice 10 / 2 / 200 band, so its price row is exactly
+// what it was before this slice. The hashes above were re-pinned a second time for that
+// follow-up (they had briefly carried deuterium at the Tier-1 base of 1). Proven in the
+// build session by replaying this run on both engines: the follow-up's ONLY delta was
+// deuterium's `prices` and `priceRing` rows, and deuterium's rows are byte-identical to
+// the pre-slice engine's.
+//
 // GOLDEN_HASH, the one with the prices (and the ring) STRIPPED, did NOT move. That is the
 // proof this slice changed prices and nothing else in this run. (This run sells nothing and
 // pays no fee, so no credit moved either: the guild still holds its founding 120, asserted
@@ -336,10 +344,10 @@ test('double-apply guard: a snapshot-baked action still in the journal is not re
 // uniform { base 10, floor 2, ceiling 200 } and every other change of the slice in place, all
 // 15 PREVIOUS values reproduced byte for byte. The previous values are in git at commit
 // 2732d9f (the ruling commit, which changed no code).
-const GOLDEN_HASH ='55896afecbe70715b35d466a618afbb2dca1fb9cf7718a756083a2f50523c116';
-const GOLDEN_HASH_WITH_PRICES = '6c7f4a3efece80e134041231618565d0a8fef688ab90e249734cbbd7b3080570';
-const GOLDEN_HASH_WITH_HISTORY = '89d1b420eb3b756819f0d7f8e9cb6bd8a2560b824715b72ff0770d73acd5ba55';
-const GOLDEN_HASH_WITH_ASSETS = '39d1008e4cf3a313b6a85289261ee4eb7469ed0c4c3dc45b630384498d3b9be0';
+const GOLDEN_HASH = '55896afecbe70715b35d466a618afbb2dca1fb9cf7718a756083a2f50523c116';
+const GOLDEN_HASH_WITH_PRICES = '532e94465e77de088168c44e66f527eef9e78b672dc0098485aaa2630cf2dc0d';
+const GOLDEN_HASH_WITH_HISTORY = '9c0e2f03198a7c7714a9dd2a369df7612b6a88d649dc8aa5fb5ee7c51f8695ad';
+const GOLDEN_HASH_WITH_ASSETS = '138f41f4d19c6d093d6cdfbc255b32c13bd9b405b874700d9e4fdfab7e3ffda4';
 
 // FUEL SLICE 5a (31-08-26) — the pool got a real seed. The Syndicate reserve
 // (`state.reserve.reserveLevel`) opened on a `[SHEET]` placeholder 30 from the walking
@@ -351,7 +359,7 @@ const GOLDEN_HASH_WITH_ASSETS = '39d1008e4cf3a313b6a85289261ee4eb7469ed0c4c3dc45
 // this run is 2 ticks on the 1,440-tick default window, so it crosses NO boundary — no
 // influx, no issuance, no grant record. The value the full hash held before this slice,
 // kept so the un-seed proof has something to prove against:
-const GOLDEN_HASH_BEFORE_POOL_SEED = 'c32b8fadfd933cfd79c7a8818c4275831ff06bfe823676a8d3848f8620674f2d';
+const GOLDEN_HASH_BEFORE_POOL_SEED = '02f2676f28ad9f1b860483bb145e3688ab469ace4e43be0649da53b3b1a18cef';
 // What that line seeded before POOL_SEED replaced it.
 const RETIRED_POOL_PLACEHOLDER = 30;
 
@@ -367,11 +375,11 @@ const RETIRED_POOL_PLACEHOLDER = 30;
 // window, so it crosses NO cycle boundary — no issuance, so the newborn's modifier rising
 // from ×0.30 to ×1.00 changes no fuel in THIS run. (A run that did cross a boundary would
 // also see the grant rise, which is the point of the slice.)
-const GOLDEN_HASH_BEFORE_ENDOWMENT = '350fc8bd275a3aa7b778fe4ce670d2910ccde81e1379eec6b2e3b053543e9f5a';
+const GOLDEN_HASH_BEFORE_ENDOWMENT = 'fbadad5967bd515b4d9301c6552d5e3d1d350ea9aadf8db83521a374080c37e3';
 
 // The pre-fuel-slice full hash, kept so the un-granting proof below has something to
 // prove against. It is the value `GOLDEN_HASH_WITH_ASSETS` held before 31-08-26.
-const GOLDEN_HASH_BEFORE_FUEL_GRANT = '22ae56ef5fa812712f3b58d4595a5da018b568c77b36e2ebcc90e0ea5231e410';
+const GOLDEN_HASH_BEFORE_FUEL_GRANT = 'eea032935a21822769c63aa6da4a6f75b985f9cd54c78806ae7ef058b269c1b7';
 
 // FUEL PRICE MEDIATION (01-09-26, slice 5b-i — docs/fuel-supply-and-allocation.md §4.2).
 // The reserve gains `fuelPrice`, the galaxy's ONE market price of `deuterium_fuel`. It is
@@ -382,7 +390,7 @@ const GOLDEN_HASH_BEFORE_FUEL_GRANT = '22ae56ef5fa812712f3b58d4595a5da018b568c77
 // and altered NOTHING else about this sequence, byte for byte — no grant, no hoard, no
 // pool, no valuation. The new full hash is pinned beside them so a drift in the price
 // itself is caught too.
-const GOLDEN_HASH_WITH_FUEL_PRICE = '8e31f625c9a8347edc49d8678b0e631a0f134e9d101c524e068125bacc2843e5';
+const GOLDEN_HASH_WITH_FUEL_PRICE = '699e3a300bc7cffe9f536957f814d7ea2297d18ef0df7d6e9adb3f1873b3885a';
 
 // THE FUEL PRICE CONTROLLER (01-09-26, slice 5b-ii — §4.2). The reserve gains `avgDraw`,
 // the trailing average of galaxy demand the controller steers against. Real serialized
@@ -395,12 +403,12 @@ const GOLDEN_HASH_WITH_FUEL_PRICE = '8e31f625c9a8347edc49d8678b0e631a0f134e9d101
 // crosses NO cycle boundary — so the controller never runs, `avgDraw` is still its seed,
 // `fuelPrice` is still the reference, and the added key is the entire delta. The runs that
 // DO cross a boundary are in commitment-scaffold.test.js, and their hashes moved for real.
-const GOLDEN_HASH_WITH_AVG_DRAW = '86789ba64788bd5ed065858aa09432f74b342e781de89f8a21f4e825f67b0700';
+const GOLDEN_HASH_WITH_AVG_DRAW = 'dd412842b55db5d0be7ace0729ce6d236c4d36607ef18e6bb6829143db25804b';
 
 // SLICE A′ (03-09-26): the full hash with `fuelHoardAtCycleStart` stamped at founding. The
 // delta from GOLDEN_HASH_WITH_AVG_DRAW is that single key (= GUILD_STARTING_FUEL) on the
 // founded guild — proven by asserting the stripped hash returns the value above, below.
-const GOLDEN_HASH_WITH_GUILD_HALL = 'a03011b12f642ccc4fea1fd0b6209954bbee3f87dec8a12f92cd152e72813821';
+const GOLDEN_HASH_WITH_GUILD_HALL = '9006e910043828a1f29f3c8917ad1cf473ef33c0a787c0426d977dcdb43c3217';
 
 // §8.1 QUOTE-LOCK — THE PER-TICK PRICE RING (04-09-26, docs/transport-model.md §8.1). The
 // state gains `priceRing`, an always-on top-level field seeded at tick 0 and appended to
@@ -412,7 +420,7 @@ const GOLDEN_HASH_WITH_GUILD_HALL = 'a03011b12f642ccc4fea1fd0b6209954bbee3f87dec
 // ⤳ 26-09-26 it is [1, 1, 1] now — titanium's own Tier-1 base),
 // deterministic from the seed. The new full hash is pinned so a drift in the ring itself
 // is caught too.
-const GOLDEN_HASH_WITH_PRICE_RING = 'db5f55988e5c2f493e7a7b2919b92cd798483ce35074a22a7277957053076318';
+const GOLDEN_HASH_WITH_PRICE_RING = '2f7c959ac67cf78f24b172d638e92ed2d864b76224e539d00a4090e09927ff0b';
 
 // THE FUEL Δ FOUNDING BASELINE (06-09-26, docs/guild-hall.md §2, Slice D′). The `foundGuild`
 // apply now stamps `guild.foundingEntitlement = grantFor(next, guild)` — the credit entitlement
@@ -424,7 +432,7 @@ const GOLDEN_HASH_WITH_PRICE_RING = 'db5f55988e5c2f493e7a7b2919b92cd798483ce3507
 // mine established after founding does not count toward it). The new full hash is pinned so a
 // drift in the baseline itself is caught too. (A `createState` galaxy never founds, so its
 // goldens carry no such key and are untouched.)
-const GOLDEN_HASH_WITH_FOUNDING_ENTITLEMENT = '45e698bdb4d412a3fca14daa360c749a9bd5c2f636fe1b0790dca991b65f5ad0';
+const GOLDEN_HASH_WITH_FOUNDING_ENTITLEMENT = '43e9c2628314ef07df9f1629af9d4f92e10dd23e804a518f0a156777451c54ea';
 
 // THE GALAXY-WIDE FUEL-PRICE HISTORY (07-09-26, docs/guild-hall.md §4.2 — sim/fuel-price-history.js).
 // The state gains a top-level `fuelPriceHistory` (ring + current-bucket accumulator). It advances
@@ -432,7 +440,7 @@ const GOLDEN_HASH_WITH_FOUNDING_ENTITLEMENT = '45e698bdb4d412a3fca14daa360c749a9
 // FULL hash moved even though it closes no bucket (its ring is empty; its accumulator sampled both
 // ticks). ADDED serialized state, so the ordinary strip works: `withoutFuelPriceHistory` takes it
 // back out and GOLDEN_HASH_WITH_FOUNDING_ENTITLEMENT returns byte-for-byte — the whole delta proof.
-const GOLDEN_HASH_WITH_FUEL_PRICE_HISTORY = 'ca5b20c7d3fba0a1490cb1c892bb7db969797bffc52aaf4d806ef7721d494e73';
+const GOLDEN_HASH_WITH_FUEL_PRICE_HISTORY = 'd08a394e5aba62d53744704e28f648c4be7ad76a1d14f0f4edfbc1b0f8c1df20';
 
 // THE TIER-3 MODULE CATALOG (2.1a — docs/asset-recipes.md). The slice added 26 goods to
 // the priced/stockpile vocabulary (luminite_glass + 25 modules), so this sequence's FULL
@@ -444,13 +452,13 @@ const GOLDEN_HASH_WITH_FUEL_PRICE_HISTORY = 'ca5b20c7d3fba0a1490cb1c892bb7db9697
 // the whole delta proof. This full hash is pinned so a drift in the new goods' at-rest
 // prices is caught too. (This 2-tick run takes no price sample, so priceHistory is absent;
 // commitment-scaffold.test.js's 40-tick runs cross the fine bucket and carry the 26 rings.)
-const GOLDEN_HASH_WITH_TIER3_CATALOG = '02b0cb98f77ede3105149a23c03df30b91cab033b2a4bd14a5b6daa0bf6ad519';
+const GOLDEN_HASH_WITH_TIER3_CATALOG = '99fe2e11ad2d333843ace6a5024835ea8468ce25128302e774f173cd0d3fd818';
 
 // ASSET SYSTEMID (2.1b, 12-09-26): the full hash with a `systemId` on every asset row —
 // the 25 founding-granted starter machines plus the one the mine occupies, all at the
 // guild's home system. The delta from GOLDEN_HASH_WITH_TIER3_CATALOG is that single
 // per-asset key, proven by asserting `withoutAssetSystemId(s)` returns the value above.
-const GOLDEN_HASH_WITH_ASSET_SYSTEMID = 'c45b7acd0beca913a155f483d160ecfd745ad040d9e5687b14a7aabcdd21ca02';
+const GOLDEN_HASH_WITH_ASSET_SYSTEMID = 'd99ea97b972e8d56f7bd45bb08f13d67f676e7173331c564f40195121e21a9b8';
 
 // The state minus the reserve's fuel price — everything the four goldens above covered.
 // Stripped inside `reserve`, leaving `reserveLevel` and every other top-level key in

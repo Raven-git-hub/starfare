@@ -34,8 +34,9 @@
 //   - The CLAMP is the soft floor/ceiling (the technical stop; the storyteller and
 //     the destabiliser bots are the real circuit-breakers, Phase 6 / Slice 7).
 //   - BASE, FLOOR and CEILING are PER MANUFACTURING TIER (PRICE_BANDS below), so a
-//     processed good is not priced as though it were raw ore. Every other constant
-//     is shared by all goods.
+//     processed good is not priced as though it were raw ore. Raw deuterium is the
+//     one exception: it is out of the tier system and keeps its own band
+//     (DEUTERIUM_BAND below). Every other constant is shared by all goods.
 //   - The PUBLISH LAG breaks the price↔action circular dependency, restores §8/#42's
 //     knowable posted price, and creates the front-running game: the real stock is
 //     visible NOW, the price catches up later, so watching the stock is a skill edge.
@@ -61,7 +62,7 @@
 // docs/phase-1-tuning.md with its rationale. The SHAPE (level × idleness, EMA,
 // slew, clamp, lag) is the settled design; the values are expected to move.
 
-const { STOCKPILE_GOODS, isFuel } = require('./resources.js');
+const { STOCKPILE_GOODS, DEUTERIUM, isFuel } = require('./resources.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { baselineOutputFor } = require('./baseline.js');
 const { tierOf } = require('./points.js');
@@ -87,6 +88,21 @@ const PRICE_BANDS = Object.freeze({
   2: Object.freeze({ base: 10, floor: 2, ceiling: 10000 }),     // processed
   3: Object.freeze({ base: 100, floor: 20, ceiling: 100000 }),  // Tier-3 module
 });
+
+// Raw `deuterium`'s own band — it is NOT on the tier table above (RULED 26-09-26).
+//
+// Deuterium is OUT OF THE TIER SYSTEM (design.md §8, "The Deuterium Cycle"): it is the
+// fuel economy's raw good, on its own production and pricing track. `tierOf` does call
+// it tier 1, but that is only how the Points (GP) code sees it, not a manufacturing
+// fact, so the tier bands must not re-price it.
+//
+// It STAYS a priced good (in PRICED_GOODS), because the licensed deuterium mine's
+// per-tick auto-sale is paid at its posted price (sim/tick.js). These three numbers
+// are deuterium's STATUS QUO — the flat band every good shared before the per-tier
+// bands — not new ones. A truly separate, fuel-facing deuterium price is a FUTURE
+// fuel-economy decision (docs/fuel-supply-and-allocation.md §1.4, "Priced, but not
+// hidden"); it is not built here.
+const DEUTERIUM_BAND = Object.freeze({ base: 10, floor: 2, ceiling: 200 });
 
 // [FIRST-CUT] how hard the level drives the value. The level is measured in TICKS
 // OF GALAXY-WIDE PRODUCTION HELD (stock ÷ units-per-tick), so this value sets the
@@ -118,16 +134,18 @@ const PUBLISH_LAG = 2;
 // so the permanent exclusion is visible here rather than implied elsewhere.
 const PRICED_GOODS = Object.freeze(STOCKPILE_GOODS.filter((good) => !isFuel(good)));
 
-// bandFor(good) -> the good's { base, floor, ceiling } (its tier's row of PRICE_BANDS),
-// or null for a good that is not priced (fuel, or an unknown name).
+// bandFor(good) -> the good's { base, floor, ceiling }, or null for a good that is not
+// priced (fuel, or an unknown name). Raw deuterium gets DEUTERIUM_BAND (it is out of
+// the tier system); every other priced good gets its tier's row of PRICE_BANDS.
 //
 // FAIL LOUD: a PRICED good whose tier has no band is a broken vocabulary, not a
 // good to price at some default. Guessing a band would quietly misprice it forever,
-// so this throws and names the good instead (§18, §15.5). Today every priced good is
-// tier 1, 2 or 3 (a test pins that), so the throw can only fire if a new good is
-// added to the priced list without a tier.
+// so this throws and names the good instead (§18, §15.5). Today every other priced
+// good is tier 1, 2 or 3 (a test pins that), so the throw can only fire if a new good
+// is added to the priced list without a tier.
 function bandFor(good) {
   if (!PRICED_GOODS.includes(good)) return null;
+  if (good === DEUTERIUM) return DEUTERIUM_BAND;
   const tier = tierOf(good);
   const band = PRICE_BANDS[tier];
   if (!band) {
@@ -145,7 +163,8 @@ function seedRow(good) {
   return { posted: base, pending: new Array(PUBLISH_LAG).fill(base) };
 }
 
-// seedPrices() -> the tick-0 price block: every priced good at its own tier's base.
+// seedPrices() -> the tick-0 price block: every priced good at its own base (its
+// tier's, or deuterium's own).
 // state.js calls this once, in createState.
 function seedPrices() {
   const prices = {};
@@ -171,10 +190,11 @@ function postedPrice(state, good) {
 // basePriceFor(good) -> the good's BASE value — the anchor the curve multiplies and
 // the value a fresh galaxy posts — or null for a good that is not priced (fuel).
 //
-// The base is its TIER's base (PRICE_BANDS). The accessor exists so that "what is this
-// good's base?" has ONE answer in ONE file: the snapshot publishes it per good for the
-// chart's reference line. The null for a non-priced good is part of the contract —
-// readers use it to tell "not priced" apart from a number — so it must stay null.
+// The base comes from the good's band (its tier's row, or deuterium's own). The
+// accessor exists so that "what is this good's base?" has ONE answer in ONE file: the
+// snapshot publishes it per good for the chart's reference line. The null for a
+// non-priced good is part of the contract — readers use it to tell "not priced" apart
+// from a number — so it must stay null.
 function basePriceFor(good) {
   const band = bandFor(good);
   return band ? band.base : null;

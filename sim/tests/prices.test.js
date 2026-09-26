@@ -15,7 +15,8 @@
 // manufacturing tier (T1 1 / 0.2 / 1000, T2 10 / 2 / 10,000, T3 100 / 20 / 100,000). The
 // cases that used the old flat 10 and 2 / 200 now read the good's own band (via
 // `bandFor` / `basePriceFor`), and a block of tripwires at the end pins the per-tier
-// numbers themselves.
+// numbers themselves. Raw deuterium is the one exception: it is out of the tier system
+// and keeps its own 10 / 2 / 200 band (RULED 26-09-26).
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -491,10 +492,14 @@ test('PRICE_BANDS carries the ruled per-tier numbers exactly', () => {
   }
 });
 
-test('every priced good resolves to a tier that has a band', () => {
+test('every priced manufacturing good resolves to a tier that has a band', () => {
   // FAIL LOUD: a priced good with no tier would have no base, floor or ceiling, and
   // bandFor would throw on it. This catches it at test time instead of on a live tick.
-  for (const good of PRICED_GOODS) {
+  // Raw deuterium is skipped on purpose: it is out of the tier system and has its own
+  // band (RULED 26-09-26 — its own test below).
+  const manufacturing = PRICED_GOODS.filter((good) => good !== DEUTERIUM);
+  assert.equal(manufacturing.length, PRICED_GOODS.length - 1, 'only deuterium is skipped');
+  for (const good of manufacturing) {
     const tier = tierOf(good);
     assert.ok(tier === 1 || tier === 2 || tier === 3, `${good} has tier ${tier}`);
     assert.equal(bandFor(good), PRICE_BANDS[tier], `${good} uses its tier's band`);
@@ -523,15 +528,37 @@ test('a fresh galaxy seeds each good at its own tier base: T1 1, T2 10, T3 100',
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
-test('raw deuterium IS priced, and takes the Tier-1 band (only deuterium_fuel is unpriced)', () => {
-  // As built: `deuterium` is a stockpile good, so it is in PRICED_GOODS, and the licensed
-  // deuterium mine's per-tick auto-sale pays its posted price (sim/tick.js). Its band is
-  // therefore LIVE. The 26-09-26 ruling assumed it was unpriced; that question is on
-  // the roadmap's decision checklist. If it is ruled otherwise, this test changes.
-  assert.equal(PRICED_GOODS.includes(DEUTERIUM), true);
-  assert.equal(tierOf(DEUTERIUM), 1);
-  assert.equal(bandFor(DEUTERIUM), PRICE_BANDS[1]);
-  assert.equal(sysState().prices[DEUTERIUM].posted, 1);
+test('raw deuterium is priced on its OWN band (10 / 2 / 200), not the Tier-1 band', () => {
+  // RULED 26-09-26: deuterium is out of the tier system (design.md §8). `tierOf` calls it
+  // tier 1, but that is only how the Points code sees it, so the tier bands must not
+  // re-price it. It keeps the band it had before the per-tier bands, and stays priced,
+  // because the licensed deuterium mine's per-tick auto-sale pays its posted price.
+  assert.equal(PRICED_GOODS.includes(DEUTERIUM), true, 'still a priced good');
+  assert.equal(tierOf(DEUTERIUM), 1, 'tierOf still says 1 (the Points view)…');
+  assert.deepEqual(bandFor(DEUTERIUM), { base: 10, floor: 2, ceiling: 200 }, '…but its band is its own');
+  assert.notDeepEqual(bandFor(DEUTERIUM), PRICE_BANDS[1], 'and it is NOT the Tier-1 band');
+  assert.equal(basePriceFor(DEUTERIUM), 10);
+
+  // A fresh galaxy seeds it at 10, pipeline included, exactly as before the per-tier bands.
+  const s = sysState();
+  assert.equal(s.prices[DEUTERIUM].posted, 10);
+  assert.deepEqual(s.prices[DEUTERIUM].pending, new Array(PUBLISH_LAG).fill(10));
+  assert.equal(s.prices.titanium.posted, 1, 'while a Tier-1 manufacturing raw still seeds at 1');
+
+  // The clamp uses deuterium's own ceiling: a runaway target stops at 200, not T1's 1,000.
+  let v = 10;
+  for (let i = 0; i < 500; i += 1) v = advanceLeading(bandFor(DEUTERIUM), v, 1e9);
+  assert.equal(v, 200);
+
+  // And the price tripwire checks deuterium against ITS band. Each of these values would
+  // be judged the other way on the Tier-1 band (0.2 .. 1,000).
+  const tooLow = JSON.parse(JSON.stringify(s));
+  tooLow.prices[DEUTERIUM].posted = 0.5;
+  assert.equal(checkInvariants(tooLow, 0).length, 1, 'deuterium at 0.5 is below its floor of 2');
+  const tooHigh = JSON.parse(JSON.stringify(s));
+  tooHigh.prices[DEUTERIUM].pending[0] = 500;
+  assert.deepEqual(checkInvariants(tooHigh, 0).map((violation) => violation.detail),
+    [{ value: 500, floor: 2, ceiling: 200 }], 'deuterium at 500 is above its ceiling of 200');
 });
 
 test('a runaway hoard clamps at its own tier ceiling: T1 1,000, T2 10,000, T3 100,000', () => {
