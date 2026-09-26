@@ -93,6 +93,39 @@ to near-simultaneous completion (the bug that motivated this ruling). The engine
 building on the donut, the rest queued/waiting) are rebuilt to this model in the slices that follow;
 treat those "As built" descriptions as superseded until then.
 
+## Cancelling a queued commission — refund the baseline, forfeit the fuel (RULED 26-09-26)
+
+A guild may CANCEL a Syndicate commission that has **not started building** — every queued entry,
+and a head that has not yet begun its countdown (`remainingTicks == null`). A commission that is
+**underway** (its `remainingTicks` is counting down) cannot be cancelled: the Syndicate is already
+building it. The action is `cancelSyndicateCommission`, addressing one entry by a **stable
+`commissionId`** stamped on it at buy time (a per-guild counter, never an array index — the
+dockyard's `cancelCommission` precedent, `build-yard.md` §3).
+
+On cancel:
+
+- **Credits — refund the kind's BASELINE, not the price paid.** The guild is returned
+  `VEHICLE_BUY_BASELINE[kind]` for a transport, else `ASSET_PURCHASE_FLOOR` (12M) for miner/factory
+  — the same `baseline` term the purchase price is `max(baseline, …)` of. When the pricing formula
+  ever lifts the paid price above the baseline (the `partsCost × 0.8` branch), the Syndicate KEEPS
+  that premium; at today's parts scale the baseline binds, so the refund equals what was paid. The
+  refund REVERSES the buy's ledger move (`guild.credits += baseline; syndicate.ledger -= baseline`),
+  so credit conservation (invariant 2) holds by construction.
+- **Fuel — FORFEIT.** The delivery flight's fuel was burned out of the galaxy up front; a cancel
+  does NOT return it (the fuel stays consumed, invariant 1 untouched). Cancelling therefore costs
+  the whole prepaid flight — a real, deliberate cost that discourages queue-stuffing.
+
+The entry leaves `state.syndicateBuilds`; the queue stays omit-when-empty (the key is deleted when
+the last entry goes). Only the OWNING guild may cancel its own commission.
+
+## The queue cap — at most 10 pending per guild (RULED 26-09-26)
+
+A guild's Syndicate commission queue is capped at **`SYNDICATE_QUEUE_MAX` (10, `phase-1-tuning.md`)**
+— the WHOLE per-guild queue counts, the one building plus those waiting (mirroring how the dockyard's
+`MAX_QUEUE` counts `buildQueue.length`). An 11th `buyAssetFromSyndicate` is refused loudly at intake,
+exactly as a dockyard refuses a 6th commission. (The dockyard's own cap stays 5; the Syndicate's is a
+separate, per-guild number.)
+
 ## Price
 
 Assets have no posted market price, so the Syndicate prices a purchase as:
