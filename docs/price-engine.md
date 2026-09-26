@@ -7,14 +7,14 @@ Every number is `[FIRST-CUT]` and lives in `docs/phase-1-tuning.md`, never in pr
 
 ## What it does
 
-Per tick, for every non-fuel stockpile good (28 of them — 17 raw + 11 processed, walked in sorted
-order for invariant 9), step 3 computes
+Per tick, for every non-fuel stockpile good (54 of them since 2.1a — 17 raw, 12 processed, 25 Tier-3
+modules — walked in sorted order for invariant 9), step 3 computes
 
 ```
 level    = Σ guild stockpile ÷ production capacity
 idleness = 1 − IDLENESS_WEIGHT × (consumed this tick ÷ (stock + consumed))
-target   = BASE × (1 + SENSITIVITY × level) × idleness
-leading  = clamp( slew( leading + ALPHA × (target − leading) ) )
+target   = base × (1 + SENSITIVITY × level) × idleness      (base = the good's TIER base)
+leading  = clamp( slew( leading + ALPHA × (target − leading) ) )   (clamp = the good's TIER band)
 posted   = the `leading` computed PUBLISH_LAG ticks ago
 ```
 
@@ -42,7 +42,7 @@ state.prices = {
 
 It is **serialized state**: it joins the save and the determinism hash, because the EMA memory and the
 publish pipeline are real memory the next tick reads, not telemetry that could be re-derived. Seeded at
-tick 0 by `createState` with every good at its base price.
+tick 0 by `createState` with every good at its own tier's base price (since 26-09-26 — see below).
 
 **Floats are correct here.** §15.2's "integer credits, integer goods" governs *balances*; a price is a
 *rate*, like the resolver's `rate` and the `batchCarry`/`sendCarry` fractions. The credits a price
@@ -72,7 +72,7 @@ still stale at step 3.
   this pile is working inventory".
 - **The slew cap is RELATIVE** (a % of the good's own current value), so it means the same thing to a
   cheap good and an expensive one.
-- **A good nobody produces rests at BASE.** With no producers there is no capacity to be scarce
+- **A good nobody produces rests at its tier's base.** With no producers there is no capacity to be scarce
   against, so the level is undefined, not infinite. This is also what keeps an empty galaxy's prices
   sitting exactly at base (the no-op path).
 - **The `[FIRST-CUT]` level sensitivity was chosen against a live run**, not from the armchair: the
@@ -99,7 +99,7 @@ still stale at step 3.
 the lens, because handing out the future price would kill the front-running read the lag exists to
 create.
 
-## Tripwires (`sim/tests/prices.test.js`, 24 tests)
+## Tripwires (`sim/tests/prices.test.js`, 32 tests since 26-09-26; 24 at build)
 
 Rises on a hoard · crashes on a drain · rarity scaling (same hoard, one producer vs ten) · idleness
 (consumed stock prices below identical static stock, and the step demonstrably used the resolver's own
@@ -109,7 +109,8 @@ pre-slice state with no price block still ticks · capacity reads the baseline n
 baseline table drift guard · the snapshot surface · step purity.
 
 `sim/invariants.js` also gains a **price sanity tripwire**, asserted every tick beside the other
-tripwires: every priced good present, every value finite and inside the clamp band, the publish pipeline
+tripwires: every priced good present, every value finite and inside its own tier's clamp band (since
+26-09-26; one flat band before), the publish pipeline
 the right depth, and no row for fuel. Prices are floats fenced off the integer sweep (like `batchCarry`
 and `sendCarry`), and a NaN is exactly the failure that would rot silently — nothing reads the price
 *yet*, but the moment the licence slice denominates credits in it, a poisoned value would reach the
@@ -119,3 +120,52 @@ The three **golden-hash no-op proofs** elsewhere in the suite (`persist.test.js`
 `commitment-scaffold.test.js`) keep their original hashes, now asserted against the state with the
 price block stripped — so they prove something *stronger* than before: this slice added prices and
 changed nothing else, byte for byte. The full-state hashes are pinned beside them.
+
+## Per-tier price bands (26-09-26)
+
+The build for design.md §5's ruling "PER-TIER PRICE BANDS + THE REFINING PUMP AS A FEATURE". The numbers
+are in `docs/phase-1-tuning.md` "Resource prices". **Only the base, floor and ceiling changed.** The
+level sensitivity, idleness weight, EMA alpha, slew cap, publish lag and the linear curve are untouched.
+The Syndicate stays a spreadless two-sided market-maker, so the refining pump the new bases open is left
+live, as ruled.
+
+- **One table, keyed by tier.** `PRICE_BANDS` in `sim/prices.js` holds `{ base, floor, ceiling }` for
+  tiers 1, 2 and 3 (T1 1 / 0.2 / 1,000; T2 10 / 2 / 10,000; T3 100 / 20 / 100,000). It replaces the flat
+  `BASE_PRICE` / `PRICE_FLOOR` / `PRICE_CEILING`, which are gone. Every importer was updated in the same
+  commit rather than keeping a misleading flat constant alive. There is no tier-4 row: Tier-4 assets are
+  never priced by this engine.
+- **The seam is `bandFor(good)`**, which reads the good's tier through `tierOf` (`sim/points.js`, the
+  same answer the GP weights and cargo volumes use). `basePriceFor(good)` is now `bandFor(good).base`.
+  Both still return **null** for a good that is not priced (fuel, an unknown name); the snapshot's
+  `priceBase` and other readers rely on that null.
+- **Fail loud.** If a priced good ever resolves to a tier with no row, `bandFor` throws and names the
+  good. It never guesses a band. A test pins that every entry of `PRICED_GOODS` has tier 1, 2 or 3.
+- **Threaded once per good.** `recomputePrices` looks the band up once per good and hands the same band
+  to `priceTarget(band, …)` (the target and the zero-capacity rest) and `advanceLeading(band, …)` (the
+  clamp), so the target and the clamp can never disagree about which good they are pricing. A missing
+  price row (an old save) is seeded at that good's own base.
+- **The invariant is per tier.** `checkPrices` (`sim/invariants.js`) checks each good against its own
+  band. Left flat, it would have passed a module crashed to 5 and flagged a healthy raw good at 0.5.
+- **The snapshot is unchanged in shape.** `prices` and `priceBase` carry the new values; there is no new
+  field and no schema bump, so the client needed no change (it already read `priceBase` per good).
+
+**Raw `deuterium` is priced, so its band is live, not moot.** The ruling assumed `deuterium` was never
+priced. That holds only for `deuterium_fuel`. Raw `deuterium` is a stockpile good, so it has always had a
+price row, and the licensed deuterium mine's per-tick auto-sale pays that posted price. As a T1 good it
+now rests at **1**, not 10. The slice applied the ruled rule as written; whether deuterium should be
+priced differently is on the roadmap's decision checklist.
+
+**The floor is a backstop the formula never reaches.** At level 0 the target is `base × idleness`, and
+idleness never falls below 0.5, so the lowest target is half the base. The floor (0.2 × base) binds only
+on a hand-set or corrupted value, so it is tested on `advanceLeading` directly. The old flat floor was the
+same.
+
+**Golden hashes.** A fresh galaxy's price block is different, so every pinned hash that includes prices
+moved and was re-pinned in the same commit: 14 of 15 in `persist.test.js` and 23 of 27 in
+`commitment-scaffold.test.js`. The two hashes computed with the price block **stripped**
+(`GOLDEN_HASH`, `GOLDEN_UNLICENSED`) did **not** move. On the committed run, the only non-price fields
+that moved are the guild's credits, its last-sale record and the Syndicate ledger: its scaffold sale is
+paid at a T1 price that now rests near 1. As a build-session proof, the new code with every band set
+back to the old uniform 10 / 2 / 200 reproduced every previous hash the tests assert equal to (39 of the
+42 pinned; the other 3 are historical records read only by a `notEqual`) byte for byte. **A fresh galaxy is
+required on deploy.** Saved states keep their old uniform-10 price rows and are not migrated.

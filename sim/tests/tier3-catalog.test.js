@@ -29,7 +29,7 @@ const { guildTotals } = require('../stock.js');
 const { computeGalacticSupply } = require('../supply.js');
 const { hashState } = require('../serialize.js');
 const {
-  PRICED_GOODS, postedPrice, basePriceFor, BASE_PRICE, productionCapacity,
+  PRICED_GOODS, postedPrice, basePriceFor, PRICE_BANDS, productionCapacity,
 } = require('../prices.js');
 const { TIER3_GOODS } = require('../resources.js');
 const { getRecipe } = require('../recipes.js');
@@ -116,8 +116,10 @@ test('at rest: with no module venture, every module sits at base price, zero sto
   const supply = computeGalacticSupply(s).resources;
   for (const m of TIER3_GOODS) {
     assert.equal(capacity[m], 0, `${m} has zero production capacity (nobody makes it)`);
-    assert.equal(postedPrice(s, m), BASE_PRICE, `${m} rests exactly at base — zero capacity rests priceTarget at base`);
-    assert.equal(basePriceFor(m), BASE_PRICE, `${m} is a priced good with the uniform base`);
+    // ⤳ 26-09-26 (per-tier bands): a module's base is the Tier-3 base (100), not the old
+    // uniform 10.
+    assert.equal(postedPrice(s, m), PRICE_BANDS[3].base, `${m} rests exactly at the T3 base — zero capacity rests priceTarget at base`);
+    assert.equal(basePriceFor(m), PRICE_BANDS[3].base, `${m} is a priced good with the Tier-3 base`);
     assert.equal(supply[m], 0, `${m} holds nothing anywhere`);
     // The module's baseline resolves (it is quotable) even though nothing makes it — the
     // capacity is 0 only because no VENTURE makes it, not because it is unmakeable.

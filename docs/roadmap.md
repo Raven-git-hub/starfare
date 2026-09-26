@@ -1764,6 +1764,22 @@ boundary so the later hex-map swap doesn't touch it.
   inline rates; the deuterium refinery's throughput (`ESTABLISH_RATE` 5 still stands in). **Needs a fresh
   galaxy on deploy.**
 
+- **Tuning — per-tier price bands — ✅ BUILT 26-09-26 (one commit).** design.md §5 "PER-TIER PRICE BANDS
+  + THE REFINING PUMP AS A FEATURE" (ruled 26-09-26); numbers in `docs/phase-1-tuning.md` "Resource prices";
+  as-built in `docs/price-engine.md`. `PRICE_BANDS` (`sim/prices.js`, keyed by `tierOf`) replaces the flat
+  `BASE_PRICE` / `PRICE_FLOOR` / `PRICE_CEILING`: T1 1 / 0.2 / 1,000, T2 10 / 2 / 10,000, T3 100 / 20 /
+  100,000. The seed, the target, the zero-capacity rest, the clamp and the `sim/invariants.js` price
+  tripwire all read the good's own band, and `bandFor` throws (naming the good) on a priced good with no
+  tier. Nothing else moved: no other price constant, no Syndicate mechanic (still spreadless and two-sided,
+  so the refining pump stays live as ruled), no `feeRate`, no client, no snapshot schema. The two
+  price-STRIPPED goldens (`GOLDEN_HASH`, `GOLDEN_UNLICENSED`) are byte-identical; 37 price-inclusive hashes
+  were re-pinned; with the bands set back to a uniform 10 / 2 / 200, the new code reproduces every previous
+  asserted hash. Tests that assumed a flat 10 now read the good's own band (none deleted); one fixture
+  (multi-venture F-A) opens titanium's price at 10 so its two splits stay whole credits apart. Sim suite
+  1,590 → **1,598 green**; tools **68 green**. **Needs a fresh galaxy on deploy.** **Flagged, not decided:**
+  raw `deuterium` is priced (only `deuterium_fuel` is not), so it takes the T1 band and rests at 1 — see the
+  decision checklist.
+
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
@@ -1974,6 +1990,17 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     a plain dispatch to that same system is refused as a zero-length leg (an actioned route re-anchors it
     through the §11.4 skip). The alternative: when the snap hex holds a system or outpost landmark, idle AT
     that landmark (the shape the arrival step leaves).
+
+- **Raw deuterium's price under the per-tier bands** — *surfaced 26-09-26 by the per-tier price-bands
+  slice.* The ruling (design.md §5) says "`deuterium` is tier 1 but never priced, so its band is moot". In
+  the engine only `deuterium_fuel` is unpriced. Raw `deuterium` has a posted price
+  (`docs/fuel-supply-and-allocation.md` "Priced, but not hidden"), and the licensed deuterium mine's per-tick
+  auto-sale pays it. Built as ruled, it takes the T1 band and rests at **1** (was 10), so a licensed
+  deuterium mine's sale income falls about 10× (a 5/tick mine: ~50 → ~5 credits a tick) — the mine that
+  feeds "the one raw the Syndicate genuinely needs fed to it". Options: (a) keep it, deuterium is a T1 raw
+  like any other; (b) give deuterium its own base and band, a per-good exception and a new number to rule;
+  (c) pay the auto-sale off a dedicated fuel-facing quote instead of the commodity price, which
+  fuel-supply-and-allocation.md already leaves open as a build choice. Not guessed.
 
 - **Deferred, flagged in docs (revisit with their slice, don't lose):** the SELL origin-picker helper
   (offer only systems that hold every line — `syndicate-orders.md` §7, a client refinement); a

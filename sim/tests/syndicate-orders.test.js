@@ -37,6 +37,7 @@ const {
   validateAction, applyAction,
 } = require('../actions.js');
 const { goodState } = require('./fixtures.js');
+const { basePriceFor } = require('../prices.js');
 const { starterHomeAtDistance } = require('./waystation-fixtures.js');
 
 const HOME = starterHomeAtDistance(6);
@@ -57,7 +58,7 @@ const homeClaim = (guildId, systemId) => ({
   contested: false,
 });
 
-// A guild seated on SYS, holding it, with flat posted prices — enough for build + finalise.
+// A guild seated on SYS, holding it, with pinned posted prices — enough for build + finalise.
 function orderState({ credits = 100_000_000, fuelHoard = GUILD_STARTING_FUEL, stock = {} } = {}) {
   const s = createState({
     guilds: [{
@@ -68,7 +69,9 @@ function orderState({ credits = 100_000_000, fuelHoard = GUILD_STARTING_FUEL, st
     syndicate: { ledger: -credits },
     claims: [homeClaim('g1', SYS)],
   });
-  for (const good of [RAW, PROCESSED, MODULE]) s.prices[good].posted = 10;
+  // Pinned at each good's tier base (T1 1, T2 10, T3 100). ⤳ 26-09-26: was a flat 10 for all
+  // three, which is now below a T3 module's floor of 20 (per-tier bands).
+  for (const good of [RAW, PROCESSED, MODULE]) s.prices[good].posted = basePriceFor(good);
   return s;
 }
 
@@ -245,7 +248,7 @@ test('a built buyOrder finalises to one destination: one shipment, Σ cost, tier
   assert.equal(next.shipments.length, 1, 'one order, one hauler, one shipment');
   assert.deepEqual(next.shipments[0].cargo, { [RAW]: 5000, [PROCESSED]: 60 }, 'all goods, one shipment');
 
-  const expectedCost = Math.round(5000 * 10) + Math.round(60 * 10);
+  const expectedCost = Math.round(5000 * basePriceFor(RAW)) + Math.round(60 * basePriceFor(PROCESSED));
   assert.equal(creditsBefore - next.guilds[0].credits, expectedCost, 'Σ per-good cost debited');
 
   const expectedBurn = routeFuelCost(SYS, totalSpace).fuelBurn;
@@ -302,7 +305,7 @@ test('a built sellOrder finalises from one origin: Σ proceeds, stock removed, c
 
   // Immediate settlement — no shipment.
   assert.deepEqual(next.shipments, [], 'a SELL settles immediately, no shipment');
-  const expectedProceeds = Math.round(5000 * 10) + Math.round(60 * 10);
+  const expectedProceeds = Math.round(5000 * basePriceFor(RAW)) + Math.round(60 * basePriceFor(PROCESSED));
   assert.equal(next.guilds[0].credits - creditsBefore, expectedProceeds, 'Σ per-good proceeds credited');
   assert.equal(getStock(next.guilds[0], SYS, RAW), 0, 'raw stock removed');
   assert.equal(getStock(next.guilds[0], SYS, PROCESSED), 0, 'processed stock removed');

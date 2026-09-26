@@ -66,7 +66,7 @@
 // One violation record shape everywhere: { rule, where, detail }.
 
 const { isRawResource, isStockpileGood, FUEL_GOOD } = require('./resources.js');
-const { PRICED_GOODS, PRICE_FLOOR, PRICE_CEILING, PUBLISH_LAG } = require('./prices.js');
+const { PRICED_GOODS, PUBLISH_LAG, bandFor } = require('./prices.js');
 const {
   EQUITY_CEILING, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX, isValidWindowDays,
   RP_FLOOR, RP_SOFT_CAP,
@@ -798,23 +798,29 @@ function checkLicenceTerms(state) {
 // A NaN or Infinity price is the exact failure that would rot silently: nothing reads
 // the price yet, but the moment the licence slice denominates credits in it, a poisoned
 // value would spread through the ledger before anyone noticed. So: every priced good
-// present, every value finite and inside the clamp band, the publish pipeline the right
-// depth, and NO row for fuel (never listed, §8). A state with no price block at all is
-// legal (a pre-price-engine save, or a hand-built test fixture); only a present, broken
-// one trips.
+// present, every value finite and inside ITS OWN clamp band, the publish pipeline the
+// right depth, and NO row for fuel (never listed, §8). A state with no price block at
+// all is legal (a pre-price-engine save, or a hand-built test fixture); only a present,
+// broken one trips.
+//
+// THE BAND IS PER TIER (26-09-26, sim/prices.js PRICE_BANDS). Each good is checked
+// against its own tier's floor and ceiling, never one shared band: a raw good's floor
+// (0.2) sits far below a module's (20), so a single flat band would wave through a
+// module that had crashed to a raw good's price, or flag a healthy raw good as broken.
 function checkPrices(state) {
   const out = [];
   if (!state.prices) return out;
-  const inBand = (v) => typeof v === 'number' && Number.isFinite(v) && v >= PRICE_FLOOR && v <= PRICE_CEILING;
 
   for (const good of PRICED_GOODS) {
+    const { floor, ceiling } = bandFor(good);
+    const inBand = (v) => typeof v === 'number' && Number.isFinite(v) && v >= floor && v <= ceiling;
     const row = state.prices[good];
     if (!row) {
       out.push({ rule: 'price-present (price engine)', where: `prices.${good}`, detail: { missing: true } });
       continue;
     }
     if (!inBand(row.posted)) {
-      out.push({ rule: 'price-finite-and-in-band (price engine)', where: `prices.${good}.posted`, detail: { value: row.posted, floor: PRICE_FLOOR, ceiling: PRICE_CEILING } });
+      out.push({ rule: 'price-finite-and-in-band (price engine)', where: `prices.${good}.posted`, detail: { value: row.posted, floor, ceiling } });
     }
     if (!Array.isArray(row.pending) || row.pending.length !== PUBLISH_LAG) {
       out.push({ rule: 'publish-pipeline-depth (price engine)', where: `prices.${good}.pending`, detail: { value: row.pending, expected: PUBLISH_LAG } });
@@ -822,7 +828,7 @@ function checkPrices(state) {
     }
     row.pending.forEach((v, i) => {
       if (!inBand(v)) {
-        out.push({ rule: 'price-finite-and-in-band (price engine)', where: `prices.${good}.pending[${i}]`, detail: { value: v, floor: PRICE_FLOOR, ceiling: PRICE_CEILING } });
+        out.push({ rule: 'price-finite-and-in-band (price engine)', where: `prices.${good}.pending[${i}]`, detail: { value: v, floor, ceiling } });
       }
     });
   }
@@ -846,11 +852,12 @@ function checkPrices(state) {
 //     failure this exists to catch;
 //   - the VALUES: every sample a finite number.
 //
-// The price BAND (PRICE_FLOOR..PRICE_CEILING) is deliberately NOT asserted here, though
-// checkPrices asserts it on the live posted value. History is the PAST: those bounds are
-// [FIRST-CUT] tuning, and narrowing them one day must not make a restored save halt on
-// samples that were perfectly legal when they were taken. Finiteness is the invariant;
-// the band is a policy the live value answers to.
+// The price BAND (each good's tier floor..ceiling, sim/prices.js PRICE_BANDS) is
+// deliberately NOT asserted here, though checkPrices asserts it on the live posted
+// value. History is the PAST: those bounds are [FIRST-CUT] tuning, and changing them one
+// day must not make a restored save halt on samples that were perfectly legal when they
+// were taken (the 26-09-26 per-tier re-band is exactly such a change). Finiteness is the
+// invariant; the band is a policy the live value answers to.
 function checkPriceHistory(state) {
   const out = [];
   if (!state.priceHistory) return out;

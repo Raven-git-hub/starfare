@@ -11,7 +11,7 @@
 //
 // THE FORMULA, per non-fuel good, every tick (step 3 of §15.6):
 //
-//     target  = BASE × (1 + SENSITIVITY × level) × idleness
+//     target  = base × (1 + SENSITIVITY × level) × idleness
 //     level   = Σ guild stockpile ÷ production capacity
 //     idleness= 1 − IDLENESS_WEIGHT × (consumedThisTick ÷ (stock + consumedThisTick))
 //     leading = clamp( slew( leading + ALPHA × (target − leading) ) )
@@ -33,6 +33,9 @@
 //   - The SLEW CAP bounds one tick's move, so a single dump can't teleport it.
 //   - The CLAMP is the soft floor/ceiling (the technical stop; the storyteller and
 //     the destabiliser bots are the real circuit-breakers, Phase 6 / Slice 7).
+//   - BASE, FLOOR and CEILING are PER MANUFACTURING TIER (PRICE_BANDS below), so a
+//     processed good is not priced as though it were raw ore. Every other constant
+//     is shared by all goods.
 //   - The PUBLISH LAG breaks the price↔action circular dependency, restores §8/#42's
 //     knowable posted price, and creates the front-running game: the real stock is
 //     visible NOW, the price catches up later, so watching the stock is a skill edge.
@@ -61,20 +64,37 @@
 const { STOCKPILE_GOODS, isFuel } = require('./resources.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { baselineOutputFor } = require('./baseline.js');
+const { tierOf } = require('./points.js');
 
-// [FIRST-CUT] the seed value every good starts at, and the anchor the curve
-// multiplies. Uniform across goods: per-good base prices are UNRULED (a tier-aware
-// base is an obvious later ruling), so none is invented.
-const BASE_PRICE = 10;
+// [FIRST-CUT] the price BAND of each manufacturing tier (RULED 26-09-26, design.md §5
+// "PER-TIER PRICE BANDS"; the numbers live in docs/phase-1-tuning.md "Resource prices").
+//
+//   base    — the seed value a good starts at, and the anchor the curve multiplies.
+//   floor   — the lowest the value may go: 0.2 × base.
+//   ceiling — the highest the value may go: 1000 × base. At LEVEL_SENSITIVITY 0.05 the
+//             ceiling needs a level of ~19,980, so it is a technical backstop, not
+//             a target a hoard can realistically reach.
+//
+// Keyed by TIER, not by good: two goods of the same tier share a band. A good's tier
+// comes from `tierOf` (sim/points.js), the same answer the GP weights and the cargo
+// volumes use. There is no tier-4 row on purpose: Tier-4 assets are never priced by
+// this engine (they are built on demand at component cost).
+//
+// The floor is a float (0.2). That is fine here: a price is a RATE, not a balance
+// (see "FLOATS ARE CORRECT HERE" above).
+const PRICE_BANDS = Object.freeze({
+  1: Object.freeze({ base: 1, floor: 0.2, ceiling: 1000 }),     // raw
+  2: Object.freeze({ base: 10, floor: 2, ceiling: 10000 }),     // processed
+  3: Object.freeze({ base: 100, floor: 20, ceiling: 100000 }),  // Tier-3 module
+});
 
 // [FIRST-CUT] how hard the level drives the value. The level is measured in TICKS
 // OF GALAXY-WIDE PRODUCTION HELD (stock ÷ units-per-tick), so this value sets the
 // timescale on which hoarding pays: at 0.05, a level of 20 (twenty ticks of the
-// galaxy's whole output sitting in stockpiles) DOUBLES the value, and it takes a
-// level of 380 to reach the ceiling — a bit over six hours of wholly unmanaged
-// hoarding at the ruled 1 tick = 1 minute. Chosen against a live run: the first cut
-// tried (0.6) pinned every hoarded good at the ceiling inside forty ticks, which is
-// a saturated flat line, not a market. See docs/phase-1-tuning.md.
+// galaxy's whole output sitting in stockpiles) DOUBLES the value. Chosen against a
+// live run: the first cut tried (0.6) pinned every hoarded good at the old ceiling
+// (20× base) inside forty ticks, which is a saturated flat line, not a market. See
+// docs/phase-1-tuning.md.
 const LEVEL_SENSITIVITY = 0.05;
 
 // [FIRST-CUT] how much a fully-consumed pile is discounted against a static one.
@@ -89,10 +109,6 @@ const EMA_ALPHA = 0.2;
 // of its own current value (relative, so it scales with the good's price level).
 const MAX_SLEW_PCT = 0.10;
 
-// [FIRST-CUT] the soft clamp band — 0.2× base to 20× base.
-const PRICE_FLOOR = 2;
-const PRICE_CEILING = 200;
-
 // [FIRST-CUT] publish the value computed this many ticks ago.
 const PUBLISH_LAG = 2;
 
@@ -102,19 +118,38 @@ const PUBLISH_LAG = 2;
 // so the permanent exclusion is visible here rather than implied elsewhere.
 const PRICED_GOODS = Object.freeze(STOCKPILE_GOODS.filter((good) => !isFuel(good)));
 
-// A fresh price row for one good: posted at base, and a PUBLISH_LAG-deep pipeline
-// of values already "computed" as base. The LAST pipeline slot doubles as the EMA
-// MEMORY (the value the next smoothing step glides from) — one field, both roles,
-// so the leading value is never stored twice (invariant 5).
-function seedRow() {
-  return { posted: BASE_PRICE, pending: new Array(PUBLISH_LAG).fill(BASE_PRICE) };
+// bandFor(good) -> the good's { base, floor, ceiling } (its tier's row of PRICE_BANDS),
+// or null for a good that is not priced (fuel, or an unknown name).
+//
+// FAIL LOUD: a PRICED good whose tier has no band is a broken vocabulary, not a
+// good to price at some default. Guessing a band would quietly misprice it forever,
+// so this throws and names the good instead (§18, §15.5). Today every priced good is
+// tier 1, 2 or 3 (a test pins that), so the throw can only fire if a new good is
+// added to the priced list without a tier.
+function bandFor(good) {
+  if (!PRICED_GOODS.includes(good)) return null;
+  const tier = tierOf(good);
+  const band = PRICE_BANDS[tier];
+  if (!band) {
+    throw new Error(`prices: priced good "${good}" has tier ${tier}, which has no price band in PRICE_BANDS — refusing to guess its base, floor and ceiling`);
+  }
+  return band;
 }
 
-// seedPrices() -> the tick-0 price block: every priced good at its base price.
+// A fresh price row for one good: posted at the good's base, and a PUBLISH_LAG-deep
+// pipeline of values already "computed" as that base. The LAST pipeline slot doubles
+// as the EMA MEMORY (the value the next smoothing step glides from) — one field,
+// both roles, so the leading value is never stored twice (invariant 5).
+function seedRow(good) {
+  const { base } = bandFor(good);
+  return { posted: base, pending: new Array(PUBLISH_LAG).fill(base) };
+}
+
+// seedPrices() -> the tick-0 price block: every priced good at its own tier's base.
 // state.js calls this once, in createState.
 function seedPrices() {
   const prices = {};
-  for (const good of PRICED_GOODS) prices[good] = seedRow();
+  for (const good of PRICED_GOODS) prices[good] = seedRow(good);
   return prices;
 }
 
@@ -136,13 +171,13 @@ function postedPrice(state, good) {
 // basePriceFor(good) -> the good's BASE value — the anchor the curve multiplies and
 // the value a fresh galaxy posts — or null for a good that is not priced (fuel).
 //
-// It is UNIFORM across goods today, deliberately: per-good base prices are UNRULED
-// (a tier-aware base is an obvious later ruling, see BASE_PRICE above), so none is
-// invented. The accessor exists so that "what is this good's base?" has ONE answer in
-// ONE file: the snapshot publishes it per good for the chart's reference line, and
-// when the per-good ruling lands it is this function that changes, not the readers.
+// The base is its TIER's base (PRICE_BANDS). The accessor exists so that "what is this
+// good's base?" has ONE answer in ONE file: the snapshot publishes it per good for the
+// chart's reference line. The null for a non-priced good is part of the contract —
+// readers use it to tell "not priced" apart from a number — so it must stay null.
 function basePriceFor(good) {
-  return PRICED_GOODS.includes(good) ? BASE_PRICE : null;
+  const band = bandFor(good);
+  return band ? band.base : null;
 }
 
 // productionCapacity(state) -> { good: units/tick } — Σ of the FIXED DROIDLESS
@@ -163,16 +198,17 @@ function productionCapacity(state) {
   return capacity;
 }
 
-// priceTarget(stock, capacity, consumed) -> the value the good is heading toward
-// this tick, BEFORE smoothing/slew/clamp. Pure arithmetic, exported so the tests
+// priceTarget(band, stock, capacity, consumed) -> the value the good is heading toward
+// this tick, BEFORE smoothing/slew/clamp. `band` is the good's own band (bandFor), so
+// the curve multiplies the good's tier base. Pure arithmetic, exported so the tests
 // can assert the formula directly rather than by inference.
 //
-// The ZERO-CAPACITY case (nobody makes the good) rests it at BASE: with no
+// The ZERO-CAPACITY case (nobody makes the good) rests it at its BASE: with no
 // producers there is no capacity to be scarce against, so the level is undefined —
 // not infinite. This is also what keeps an empty galaxy's prices sitting exactly at
 // base forever (the no-op path), and it is why nothing here can divide by zero.
-function priceTarget(stock, capacity, consumed) {
-  if (capacity <= 0) return BASE_PRICE;
+function priceTarget(band, stock, capacity, consumed) {
+  if (capacity <= 0) return band.base;
   const level = stock / capacity;
   // Turnover: of everything that sat in the pile this tick — what was drawn plus
   // what was left standing — the fraction that went downstream. In [0, 1] by
@@ -181,19 +217,19 @@ function priceTarget(stock, capacity, consumed) {
   const pool = stock + consumed;
   const turnover = pool > 0 ? consumed / pool : 0;
   const idleness = 1 - (IDLENESS_WEIGHT * turnover);
-  return BASE_PRICE * (1 + (LEVEL_SENSITIVITY * level)) * idleness;
+  return band.base * (1 + (LEVEL_SENSITIVITY * level)) * idleness;
 }
 
-// advanceLeading(previous, target) -> the new leading value: EMA-smooth toward the
-// target, cap the per-tick move, then clamp into the soft band. The order is the
-// design's (smooth, then slew, then clamp) — clamping LAST means the clamped value
-// is what the next EMA glides from, so a target far outside the band can never wind
-// the memory up beyond it.
-function advanceLeading(previous, target) {
+// advanceLeading(band, previous, target) -> the new leading value: EMA-smooth toward
+// the target, cap the per-tick move, then clamp into the good's own band (its tier's
+// floor and ceiling). The order is the design's (smooth, then slew, then clamp) —
+// clamping LAST means the clamped value is what the next EMA glides from, so a target
+// far outside the band can never wind the memory up beyond it.
+function advanceLeading(band, previous, target) {
   const smoothed = previous + (EMA_ALPHA * (target - previous));
   const maxMove = MAX_SLEW_PCT * Math.abs(previous);
   const slewed = Math.max(previous - maxMove, Math.min(previous + maxMove, smoothed));
-  return Math.max(PRICE_FLOOR, Math.min(PRICE_CEILING, slewed));
+  return Math.max(band.floor, Math.min(band.ceiling, slewed));
 }
 
 // recomputePrices(state, consumed) -> a NEW price block for the state as it stands
@@ -215,9 +251,12 @@ function recomputePrices(state, consumed = {}) {
 
   const next = {};
   for (const good of PRICED_GOODS) { // sorted order — invariant 9
-    const row = previous[good] || seedRow();
-    const target = priceTarget(stock[good] || 0, capacity[good] || 0, consumed[good] || 0);
-    const leading = advanceLeading(leadingValue(row), target);
+    // Looked up ONCE per good, so the target and the clamp below use the same band.
+    const band = bandFor(good);
+    // A missing row (a save from before prices existed) is seeded at this good's base.
+    const row = previous[good] || seedRow(good);
+    const target = priceTarget(band, stock[good] || 0, capacity[good] || 0, consumed[good] || 0);
+    const leading = advanceLeading(band, leadingValue(row), target);
     next[good] = {
       // Publish the OLDEST value in the pipeline: computed PUBLISH_LAG ticks ago.
       posted: row.pending[0],
@@ -229,8 +268,8 @@ function recomputePrices(state, consumed = {}) {
 }
 
 module.exports = {
-  BASE_PRICE, LEVEL_SENSITIVITY, IDLENESS_WEIGHT, EMA_ALPHA, MAX_SLEW_PCT,
-  PRICE_FLOOR, PRICE_CEILING, PUBLISH_LAG, PRICED_GOODS,
-  seedPrices, leadingValue, postedPrice, basePriceFor, productionCapacity, priceTarget,
+  PRICE_BANDS, LEVEL_SENSITIVITY, IDLENESS_WEIGHT, EMA_ALPHA, MAX_SLEW_PCT,
+  PUBLISH_LAG, PRICED_GOODS,
+  seedPrices, leadingValue, postedPrice, bandFor, basePriceFor, productionCapacity, priceTarget,
   advanceLeading, recomputePrices,
 };

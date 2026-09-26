@@ -35,13 +35,16 @@ const { resolveProduction } = require('../production.js');
 const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
-const { BASE_PRICE } = require('../prices.js');
+const { basePriceFor } = require('../prices.js');
 const { getRecipe } = require('../recipes.js');
 const { REFINERY_BASELINE, MINE_BASELINE, producedGoodFor } = require('../baseline.js');
 const { FEE_RATE } = require('../licence.js');
 
 const SYS = 'sysA';
 const OUT = 'titanium_alloy';                 // the recipe: 3 titanium + 1 carbon → 1 alloy
+// The output good's base price, which the fee and the sale are priced off. ⤳ 26-09-26: read
+// per good (its tier's base, T2 = 10) now that bases are per tier, not one flat constant.
+const OUT_BASE = basePriceFor(OUT);
 const N = 4;                                  // a short window, so a boundary is 4 ticks away
 
 // What a factory's droidless baseline output of its OUTPUT good is: batches/tick × the
@@ -49,7 +52,7 @@ const N = 4;                                  // a short window, so a boundary i
 // under test, so a changed baseline moves this file loudly rather than silently.
 const FACTORY_UNITS = REFINERY_BASELINE[OUT] * getRecipe(OUT).output.qty;   // 5/tick
 const FACTORY_Q = FACTORY_UNITS * N;                                       // 20 a window
-const FACTORY_BASIC_FEE = Math.round(FEE_RATE * FACTORY_UNITS * N * BASE_PRICE);
+const FACTORY_BASIC_FEE = Math.round(FEE_RATE * FACTORY_UNITS * N * OUT_BASE);
 const FACTORY_DISCOUNTED_FEE = Math.round(FACTORY_BASIC_FEE * 0.75); // commit max, no equity
 
 const mine = (id, good, productionRate, extra = {}) => ({
@@ -169,7 +172,7 @@ test('THE HEADLINE: a licensed factory sells its output every tick and MEETS at 
   const lic = guild(s).ventures.find((v) => v.id === 'f').licence;
   assert.deepEqual(
     { basicFee: lic.basicFee, discountedFee: lic.discountedFee, lockedPrice: lic.lockedPrice },
-    { basicFee: FACTORY_BASIC_FEE, discountedFee: FACTORY_DISCOUNTED_FEE, lockedPrice: BASE_PRICE },
+    { basicFee: FACTORY_BASIC_FEE, discountedFee: FACTORY_DISCOUNTED_FEE, lockedPrice: OUT_BASE },
     'the fee is priced off the OUTPUT good’s posted price and the recipe baseline',
   );
 
@@ -306,7 +309,7 @@ test('the equity split reads a FACTORY too — the owner keeps (1 − o) of its 
   const plain = tick(fixture(chain(0)));
   const offered = tick(fixture(chain(0.4)));
 
-  const gross = FACTORY_UNITS * BASE_PRICE;
+  const gross = FACTORY_UNITS * OUT_BASE;
   assert.equal(guild(plain).credits, Math.round(gross), 'no offer ⇒ the owner keeps the lot');
   assert.equal(guild(offered).credits, Math.round(0.6 * gross), 'a 40% offer costs the owner 40%');
   assert.equal(guild(offered).credits + offered.syndicate.ledger, 0,

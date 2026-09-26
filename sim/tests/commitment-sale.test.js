@@ -22,7 +22,11 @@ const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
-const { BASE_PRICE } = require('../prices.js');
+const { basePriceFor } = require('../prices.js');
+
+// Every sale in this file sells titanium. ⤳ 26-09-26: its base is its tier's (T1 = 1),
+// no longer a flat 10 shared by every good, so it is read from the engine by name.
+const TITANIUM_BASE = basePriceFor('titanium');
 const { EQUITY_CEILING, equityOf, ownerFraction, commitmentSale, isValidEquityPct } = require('../licence.js');
 
 const SYS = 'sysA';
@@ -57,7 +61,7 @@ test('a committed delivery pays the guild and debits the Syndicate ledger, to th
   s = tick(s);
   const units = delivered(s);
   assert.ok(units > 0, 'the fixture really does deliver');
-  const expected = Math.round(units * BASE_PRICE); // o = 0 ⇒ the owner keeps all of it
+  const expected = Math.round(units * TITANIUM_BASE); // o = 0 ⇒ the owner keeps all of it
 
   assert.equal(guild(s).credits - before.credits, expected, 'the guild was paid for what it delivered');
   assert.equal(before.ledger - s.syndicate.ledger, expected, 'and the Syndicate paid exactly that');
@@ -74,7 +78,7 @@ test('the sale is recorded on the guild, stamped with the tick it happened on', 
   assert.equal(sale.tick, s.tick, 'stamped with the producing tick — no off-by-one for a reader');
   assert.equal(sale.credited, guild(s).credits, 'the record matches what was actually paid');
   assert.equal(sale.goods.titanium.units, delivered(s));
-  assert.equal(sale.goods.titanium.price, BASE_PRICE);
+  assert.equal(sale.goods.titanium.price, TITANIUM_BASE);
   assert.equal(sale.goods.titanium.credited, sale.credited);
 });
 
@@ -84,7 +88,7 @@ test('with o = 0 the owner keeps the whole proceeds', () => {
   let s = sysState([mine('t', 'titanium', 10, 4, 0)]);
   assert.equal('equityPct' in guild(s).ventures[0], false, 'a zero offer leaves no key on the venture');
   s = tick(s);
-  assert.equal(guild(s).credits, Math.round(delivered(s) * BASE_PRICE));
+  assert.equal(guild(s).credits, Math.round(delivered(s) * TITANIUM_BASE));
 });
 
 test('with o = 0.4 the owner keeps 60% and the ledger keeps the rest', () => {
@@ -95,7 +99,7 @@ test('with o = 0.4 the owner keeps 60% and the ledger keeps the rest', () => {
   offered = tick(offered);
 
   assert.equal(delivered(plain), delivered(offered), 'identical deliveries — only the terms differ');
-  const gross = delivered(plain) * BASE_PRICE;
+  const gross = delivered(plain) * TITANIUM_BASE;
   assert.equal(guild(offered).credits, Math.round((1 - OFFER) * gross), 'the owner keeps (1 − o)');
   assert.ok(guild(offered).credits < guild(plain).credits, 'offering equity really costs the owner');
 
@@ -138,7 +142,7 @@ test('the split is contribution-weighted when two ventures offer different equit
 
   let s = sysState(ventures);
   s = tick(s);
-  assert.equal(guild(s).credits, Math.round(0.8 * delivered(s) * BASE_PRICE));
+  assert.equal(guild(s).credits, Math.round(0.8 * delivered(s) * TITANIUM_BASE));
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
@@ -190,7 +194,7 @@ test('the price a sale pays was fixed two ticks earlier — the lag is what make
   let s = sysState([mine('t', 'titanium', 10, 100)], { windowN: 50 });
   for (let i = 0; i < 6; i += 1) s = tick(s);
   const postedNow = s.prices.titanium.posted;
-  assert.notEqual(postedNow, BASE_PRICE, 'the price has moved off base by now');
+  assert.notEqual(postedNow, TITANIUM_BASE, 'the price has moved off base by now');
 
   const creditsBefore = guild(s).credits;
   const next = tick(s);

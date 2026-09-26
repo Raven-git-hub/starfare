@@ -5,7 +5,7 @@
 //
 // WHY A MODULE AND NOT A CONSTANTS FILE: there is no `sim/constants.js` in this
 // repo and deliberately so — a constant lives in the module that owns the rule
-// it belongs to (`CRAFT_SPEED` in transport.js, `BASE_PRICE` in prices.js). Fuel
+// it belongs to (`CRAFT_SPEED` in transport.js, `PRICE_BANDS` in prices.js). Fuel
 // is now a system with rules of its own, so it gets a module, and every number
 // it needs lives here ONCE and is never inlined.
 //

@@ -29,7 +29,7 @@ const { createState } = require('../state.js');
 const { intake, createApplyForLicenceAction } = require('../actions.js');
 const { checkInvariants } = require('../invariants.js');
 const { getWindow, windowFraction, winStartFor } = require('../windows.js');
-const { postedPrice } = require('../prices.js');
+const { postedPrice, PUBLISH_LAG } = require('../prices.js');
 const { previewProduction } = require('../production.js');
 const { MINE_BASELINE } = require('../baseline.js');
 
@@ -51,8 +51,16 @@ const mine = (id, commitment, equityPct) => ({
   productionRate: 2 * MINE_BASELINE[GOOD], syndicateCommitment: commitment, equityPct,
 });
 
+// The price titanium's pipeline OPENS at in this fixture. ⤳ 26-09-26 (per-tier bands):
+// titanium now seeds at its T1 base of 1. The right and wrong splits differ by only
+// ~0.2% of a tick's gross, and at 1 credit a unit that gap rounds to the SAME whole
+// credit, so the F-A check below would prove nothing. Opening at 10 (a legal T1 price,
+// and what every good seeded at before the per-tier bands) keeps the two splits whole
+// credits apart. The sale still reads whatever price is on state each tick.
+const FIXTURE_PRICE = 10;
+
 function fixture() {
-  return createState({
+  const s = createState({
     guilds: [{
       id: 'g1', credits: 0, fuelHoard: 0,
       ventures: [mine('full', FULL_COMMITMENT, 0), mine('late', 0, LATE_EQUITY)],
@@ -61,6 +69,8 @@ function fixture() {
     syndicate: { ledger: 0 },
     windowN: N,
   });
+  s.prices[GOOD] = { posted: FIXTURE_PRICE, pending: new Array(PUBLISH_LAG).fill(FIXTURE_PRICE) };
+  return s;
 }
 
 const guild = (s) => s.guilds[0];

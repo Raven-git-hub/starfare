@@ -26,7 +26,7 @@ const { tick } = require('../tick.js');
 const { hashState } = require('../serialize.js');
 const { checkInvariants } = require('../invariants.js');
 const { getStock } = require('../stock.js');
-const { postedPrice } = require('../prices.js');
+const { postedPrice, basePriceFor } = require('../prices.js');
 const { nearestWaystation } = require('../transport.js');
 const {
   GUILD_STARTING_FUEL, routeFuelCost, volumeOf, haulerTierForSpace, HEAVY_HOLD,
@@ -65,8 +65,9 @@ function buyState({ credits = 100_000_000, fuelHoard = GUILD_STARTING_FUEL } = {
     syndicate: { ledger: -credits },
     claims: [homeClaim('g1', DEST)],
   });
-  // Posted prices flat at 10, the setPosted shortcut buy.test uses.
-  for (const good of [RAW, PROCESSED, MODULE]) s.prices[good].posted = 10;
+  // Posted prices pinned at each good's tier base (T1 1, T2 10, T3 100). ⤳ 26-09-26: was a
+  // flat 10 for all three, which is now below a T3 module's floor of 20 (per-tier bands).
+  for (const good of [RAW, PROCESSED, MODULE]) s.prices[good].posted = basePriceFor(good);
   return s;
 }
 
@@ -80,7 +81,8 @@ function sellState({ fuelHoard = GUILD_STARTING_FUEL, stock = {} } = {}) {
     syndicate: { ledger: -100_000 },
     claims: [homeClaim('g1', DEST)],
   });
-  for (const good of [RAW, PROCESSED, MODULE]) s.prices[good].posted = 10;
+  // Pinned at each good's tier base, as buyState does (⤳ 26-09-26: was a flat 10).
+  for (const good of [RAW, PROCESSED, MODULE]) s.prices[good].posted = basePriceFor(good);
   return s;
 }
 
@@ -130,8 +132,9 @@ test('a two-good buy order flies as ONE shipment carrying both goods, cost is th
   assert.equal(next.shipments.length, 1, 'one cart, one hauler, one shipment');
   assert.deepEqual(next.shipments[0].cargo, { [RAW]: 5000, [PROCESSED]: 60 });
 
-  // Cost = Σ round(qty × posted) per good; at posted 10 that is 50,000 + 600.
-  const expectedCost = Math.round(5000 * 10) + Math.round(60 * 10);
+  // Cost = Σ round(qty × posted) per good; at the tier bases (1 and 10) that is 5,000 + 600.
+  const expectedCost = Math.round(5000 * basePriceFor(RAW)) + Math.round(60 * basePriceFor(PROCESSED));
+  assert.equal(expectedCost, 5600);
   assert.equal(creditsBefore - next.guilds[0].credits, expectedCost);
 
   // Burn = the TOTAL-space tier, the medium rate on the DEST route.

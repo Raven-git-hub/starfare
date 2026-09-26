@@ -32,7 +32,7 @@ const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { MINE_BASELINE } = require('../baseline.js');
-const { BASE_PRICE } = require('../prices.js');
+const { basePriceFor } = require('../prices.js');
 const {
   FEE_RATE, feeOwed, metGain, gainFactor, RP_FLOOR, signingBump,
 } = require('../licence.js');
@@ -40,13 +40,16 @@ const {
 const SYS = 'sysA';
 const SYS_B = 'sysB';
 const GOOD = 'titanium';
+// The licensed good's base — the price a fresh galaxy's licence locks. ⤳ 26-09-26: read
+// per good (titanium's tier base, T1 = 1) now that bases are per tier, not a flat 10.
+const GOOD_BASE = basePriceFor(GOOD);
 const N = 4;                                  // a short window, so a boundary is 4 ticks away
 
 // The two locked fees a full-commitment, no-equity licence carries in these fixtures,
 // stated as arithmetic rather than read back off the code under test:
 //   basicFee = round(FEE_RATE × baseline-per-tick × N × the posted price at signing)
 //   discountedFee = 75% of it (§5's grid: commit max, offer min buys 25 points of relief)
-const BASIC_FEE = Math.round(FEE_RATE * MINE_BASELINE[GOOD] * N * BASE_PRICE);
+const BASIC_FEE = Math.round(FEE_RATE * MINE_BASELINE[GOOD] * N * GOOD_BASE);
 const DISCOUNTED_FEE = Math.round(BASIC_FEE * 0.75);
 
 // The mine runs at TWICE its baseline, so a full commitment (priced off the baseline)

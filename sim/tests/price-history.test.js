@@ -24,7 +24,7 @@ const { tick } = require('../tick.js');
 const { hashState } = require('../serialize.js');
 const { checkInvariants } = require('../invariants.js');
 const { buildSnapshot } = require('../snapshot.js');
-const { BASE_PRICE, PRICED_GOODS, postedPrice } = require('../prices.js');
+const { basePriceFor, PRICED_GOODS, postedPrice } = require('../prices.js');
 const { FUEL_GOOD } = require('../resources.js');
 const {
   TIERS, TIER_KEYS, getPriceHistory, pushPriceSample, tiersClosingAt,
@@ -252,7 +252,12 @@ test('the snapshot echoes the rings verbatim, and publishes the per-good base', 
   assert.equal(getPriceHistory(s, GOOD).fine.length, 2);
 
   // The base is read through prices.js's accessor, never typed by a reader.
-  assert.equal(snap.priceBase[GOOD], BASE_PRICE);
+  // ⤳ 26-09-26 (per-tier bands): the published base is the good's own tier base, which
+  // for titanium (T1) is 1, not the old flat 10.
+  assert.equal(snap.priceBase[GOOD], basePriceFor(GOOD));
+  assert.equal(snap.priceBase[GOOD], 1);
+  assert.equal(snap.priceBase.titanium_alloy, 10, 'a T2 good publishes 10');
+  assert.equal(snap.priceBase.chassis, 100, 'a T3 module publishes 100');
   assert.deepEqual(Object.keys(snap.priceBase).sort(), [...PRICED_GOODS].sort());
   assert.equal(snap.priceBase[FUEL_GOOD], undefined, 'fuel has no base because it has no price (§8)');
 });

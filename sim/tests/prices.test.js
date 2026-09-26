@@ -10,6 +10,12 @@
 // the slew cap (smoothing), the published value is the one computed two ticks ago
 // (the lag), fuel is never priced, and the whole thing is deterministic — including
 // the no-op proof that an empty galaxy's prices sit at base and add nothing spurious.
+//
+// ⤳ 26-09-26 (PER-TIER PRICE BANDS, design.md §5): base, floor and ceiling are now per
+// manufacturing tier (T1 1 / 0.2 / 1000, T2 10 / 2 / 10,000, T3 100 / 20 / 100,000). The
+// cases that used the old flat 10 and 2 / 200 now read the good's own band (via
+// `bandFor` / `basePriceFor`), and a block of tripwires at the end pins the per-tier
+// numbers themselves.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -22,17 +28,22 @@ const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { previewProduction } = require('../production.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
-const { RAW_RESOURCES, PROCESSED_GOODS, TIER3_GOODS, FUEL_GOOD } = require('../resources.js');
+const { RAW_RESOURCES, PROCESSED_GOODS, TIER3_GOODS, FUEL_GOOD, DEUTERIUM } = require('../resources.js');
 const { RECIPES } = require('../recipes.js');
 const {
-  BASE_PRICE, EMA_ALPHA, MAX_SLEW_PCT, PRICE_FLOOR, PRICE_CEILING, PUBLISH_LAG,
+  PRICE_BANDS, EMA_ALPHA, MAX_SLEW_PCT, PUBLISH_LAG,
   PRICED_GOODS, LEVEL_SENSITIVITY,
-  seedPrices, leadingValue, postedPrice, productionCapacity, priceTarget,
+  seedPrices, leadingValue, postedPrice, bandFor, basePriceFor, productionCapacity, priceTarget,
   advanceLeading, recomputePrices,
 } = require('../prices.js');
 const { MINE_BASELINE, REFINERY_BASELINE, baselineOutputFor } = require('../baseline.js');
+const { tierOf } = require('../points.js');
 
 const SYS = 'sysA';
+
+// Titanium is the workhorse good of most cases below: a Tier-1 raw. Its band is read
+// from the engine, never typed here, so these cases hold at any tuning of the bands.
+const TI = bandFor('titanium');
 
 // Synthetic ventures, seatless (no siteId) exactly as the other engine tests build
 // them, so the occupancy invariant has nothing to resolve.
@@ -66,12 +77,12 @@ test('a good accumulating in guild stockpiles is bid UP, tick over tick', () => 
   const series = [];
   for (let i = 0; i < 20; i += 1) { s = tick(s); series.push(posted(s, 'titanium')); }
 
-  assert.equal(series[0], BASE_PRICE, 'nothing is published until the lag has run');
+  assert.equal(series[0], TI.base, 'nothing is published until the lag has run');
   const climbing = series.slice(PUBLISH_LAG); // the ticks whose published value is real
   for (let i = 1; i < climbing.length; i += 1) {
     assert.ok(climbing[i] > climbing[i - 1], `tick ${i}: ${climbing[i]} must exceed ${climbing[i - 1]}`);
   }
-  assert.ok(series[series.length - 1] > BASE_PRICE * 1.5, 'a 20-tick hoard has visibly moved the value');
+  assert.ok(series[series.length - 1] > TI.base * 1.5, 'a 20-tick hoard has visibly moved the value');
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
@@ -80,7 +91,7 @@ test('draining the hoard crashes the value back down', () => {
   let s = sysState([mine('m', 'titanium', MINE_BASELINE.titanium)]);
   for (let i = 0; i < 40; i += 1) s = tick(s);
   const peak = posted(s, 'titanium');
-  assert.ok(peak > BASE_PRICE * 2, 'the hoard really did build first');
+  assert.ok(peak > TI.base * 2, 'the hoard really did build first');
 
   // Drain it: the pile is sold/shipped away and the mine is throttled off. Capacity
   // is unchanged (it reads the venture TYPE's baseline, never productionRate), so
@@ -103,7 +114,7 @@ test('draining the hoard crashes the value back down', () => {
 
 test('the same hoard moves a low-capacity good far more than a high-capacity one', () => {
   // The formula, first: identical hoards, one producer vs ten.
-  assert.ok(priceTarget(100, 5, 0) > priceTarget(100, 50, 0));
+  assert.ok(priceTarget(TI, 100, 5, 0) > priceTarget(TI, 100, 50, 0));
 
   // And end to end. Both goods hold 100 units; neodymium has ONE mine, copper has TEN.
   // Every mine is throttled to 0 so the piles stay put, and the only difference between
@@ -120,8 +131,10 @@ test('the same hoard moves a low-capacity good far more than a high-capacity one
   for (let i = 0; i < 30; i += 1) s = tick(s);
   // Compare the GAIN over base — the whole of what the hoard bought each good. More
   // capacity dilutes the same pile, and the price says so.
-  const rareGain = posted(s, 'neodymium') - BASE_PRICE;
-  const commonGain = posted(s, 'copper') - BASE_PRICE;
+  // Both are Tier-1 raws, so they share a base and the gains compare like for like.
+  assert.equal(basePriceFor('neodymium'), basePriceFor('copper'));
+  const rareGain = posted(s, 'neodymium') - basePriceFor('neodymium');
+  const commonGain = posted(s, 'copper') - basePriceFor('copper');
   assert.ok(commonGain > 0, 'the common good still moved — gentle, not dead');
   assert.ok(rareGain > commonGain * 5,
     `rare gain ${rareGain} must far outrun common gain ${commonGain}`);
@@ -131,8 +144,8 @@ test('the same hoard moves a low-capacity good far more than a high-capacity one
 // --- 3. idleness: working inventory prices below a hoard ----------------------
 
 test('the formula discounts consumed stock against identical static stock', () => {
-  assert.ok(priceTarget(100, 5, 40) < priceTarget(100, 5, 0));
-  assert.equal(priceTarget(100, 5, 0), BASE_PRICE * (1 + LEVEL_SENSITIVITY * 20), 'static stock takes the full level');
+  assert.ok(priceTarget(TI, 100, 5, 40) < priceTarget(TI, 100, 5, 0));
+  assert.equal(priceTarget(TI, 100, 5, 0), TI.base * (1 + LEVEL_SENSITIVITY * 20), 'static stock takes the full level');
 });
 
 test('the tick feeds step 3 the REAL downstream draw, without re-resolving production', () => {
@@ -152,8 +165,8 @@ test('the tick feeds step 3 the REAL downstream draw, without re-resolving produ
   const next = tick(s);
   const stockAfter = next.guilds[0].stockpiles[SYS].titanium;
   const capacity = productionCapacity(next).titanium;
-  const expected = advanceLeading(BASE_PRICE, priceTarget(stockAfter, capacity, drawn));
-  const asIfIdle = advanceLeading(BASE_PRICE, priceTarget(stockAfter, capacity, 0));
+  const expected = advanceLeading(TI, TI.base, priceTarget(TI, stockAfter, capacity, drawn));
+  const asIfIdle = advanceLeading(TI, TI.base, priceTarget(TI, stockAfter, capacity, 0));
   assert.equal(leading(next, 'titanium'), expected, 'the value moved on the resolver\'s own draw');
   assert.notEqual(expected, asIfIdle, 'and that draw demonstrably changed the answer');
   assert.ok(expected < asIfIdle, 'consumed stock priced below the same pile sitting idle');
@@ -196,7 +209,7 @@ test('a single huge stock jump moves the value by at most the slew cap', () => {
   const before = leading(s, 'titanium');
   s = tick(s);
   assert.equal(leading(s, 'titanium'), before * (1 + MAX_SLEW_PCT), 'exactly the cap, not the target');
-  assert.ok(leading(s, 'titanium') < PRICE_CEILING, 'nowhere near the target it is heading for');
+  assert.ok(leading(s, 'titanium') < TI.ceiling, 'nowhere near the ceiling');
 
   // And it keeps climbing at the cap, never teleporting.
   for (let i = 0; i < 5; i += 1) {
@@ -209,17 +222,20 @@ test('a single huge stock jump moves the value by at most the slew cap', () => {
 test('the EMA glides toward the target rather than snapping to it', () => {
   // With the slew cap out of the way (a target close enough that the EMA step is the
   // binding constraint), one tick closes exactly ALPHA of the gap.
-  const target = BASE_PRICE * 1.05;
-  assert.equal(advanceLeading(BASE_PRICE, target), BASE_PRICE + (EMA_ALPHA * (target - BASE_PRICE)));
+  const target = TI.base * 1.05;
+  assert.equal(advanceLeading(TI, TI.base, target), TI.base + (EMA_ALPHA * (target - TI.base)));
 });
 
-test('the value is clamped into the soft floor/ceiling band', () => {
-  assert.equal(advanceLeading(PRICE_CEILING, PRICE_CEILING * 10), PRICE_CEILING, 'the ceiling holds');
-  assert.equal(advanceLeading(PRICE_FLOOR, 0), PRICE_FLOOR, 'the floor holds');
-  // The clamp lands LAST, so a wild target can never wind the EMA memory past the band.
-  let v = BASE_PRICE;
-  for (let i = 0; i < 500; i += 1) v = advanceLeading(v, 1e9);
-  assert.equal(v, PRICE_CEILING);
+test('the value is clamped into its own tier\'s floor/ceiling band', () => {
+  // Every tier, each against ITS band (⤳ 26-09-26: was the one flat 2 / 200).
+  for (const [tier, band] of Object.entries(PRICE_BANDS)) {
+    assert.equal(advanceLeading(band, band.ceiling, band.ceiling * 10), band.ceiling, `T${tier}: the ceiling holds`);
+    assert.equal(advanceLeading(band, band.floor, 0), band.floor, `T${tier}: the floor holds`);
+    // The clamp lands LAST, so a wild target can never wind the EMA memory past the band.
+    let v = band.base;
+    for (let i = 0; i < 500; i += 1) v = advanceLeading(band, v, 1e9);
+    assert.equal(v, band.ceiling, `T${tier}: a runaway target winds up to the ceiling and stops`);
+  }
 });
 
 // --- 5. the two-tick publish lag ---------------------------------------------
@@ -236,9 +252,9 @@ test('the value published at tick N is the one computed at tick N-2', () => {
   for (let t = 1 + PUBLISH_LAG; t <= 10; t += 1) {
     assert.equal(published[t], computed[t - PUBLISH_LAG], `tick ${t} publishes tick ${t - PUBLISH_LAG}'s value`);
   }
-  assert.equal(published[1], BASE_PRICE, 'the first ticks publish the seeded base — nothing computed yet');
-  assert.equal(published[2], BASE_PRICE);
-  assert.ok(published[3] > BASE_PRICE, 'the pipeline starts delivering on tick 3');
+  assert.equal(published[1], TI.base, 'the first ticks publish the seeded base — nothing computed yet');
+  assert.equal(published[2], TI.base);
+  assert.ok(published[3] > TI.base, 'the pipeline starts delivering on tick 3');
 });
 
 test('the lag is visible as a delayed reaction to a stock shock', () => {
@@ -315,8 +331,8 @@ test('NO-OP PROOF: an empty galaxy is hash-stable and its prices sit exactly at 
   assert.equal(hashState(a), hashState(b));
   assert.deepEqual(a.prices, seedPrices(), 'every price still at its seeded base, pipeline included');
   for (const good of PRICED_GOODS) {
-    assert.equal(a.prices[good].posted, BASE_PRICE);
-    assert.equal(leadingValue(a.prices[good]), BASE_PRICE);
+    assert.equal(a.prices[good].posted, basePriceFor(good), `${good} sits at its own tier's base`);
+    assert.equal(leadingValue(a.prices[good]), basePriceFor(good));
   }
   assert.deepEqual(checkInvariants(a, a.tick), []);
 });
@@ -328,7 +344,13 @@ test('a state built before this slice (no price block) is handled, not crashed o
   delete s.prices;
   const next = tick(s);
   assert.equal(Object.keys(next.prices).length, PRICED_GOODS.length);
-  assert.equal(next.prices.titanium.posted, BASE_PRICE);
+  // ⤳ 26-09-26: each missing row is seeded at its OWN tier's base, not one shared value.
+  for (const good of PRICED_GOODS) {
+    assert.equal(next.prices[good].posted, basePriceFor(good), `${good}'s missing row seeds at its tier base`);
+  }
+  assert.equal(next.prices.titanium.posted, 1, 'a T1 raw seeds at 1');
+  assert.equal(next.prices.titanium_alloy.posted, 10, 'a T2 processed good seeds at 10');
+  assert.equal(next.prices.chassis.posted, 100, 'a T3 module seeds at 100');
 });
 
 // --- the capacity normaliser + its constant table -----------------------------
@@ -346,14 +368,22 @@ test('a refinery contributes baseline batches x the recipe output qty', () => {
   assert.equal(productionCapacity(s).titanium_alloy, REFINERY_BASELINE.titanium_alloy * recipe.output.qty);
 });
 
-test('a good nobody produces rests at base and never divides by zero', () => {
+test('a good nobody produces rests at ITS TIER\'s base and never divides by zero', () => {
   // Stock with no producers at all: capacity 0. The value must rest, not explode.
-  let s = sysState([], { gold: 5000 });
-  assert.equal(productionCapacity(s).gold, 0);
-  assert.equal(priceTarget(5000, 0, 0), BASE_PRICE);
+  // ⤳ 26-09-26: one good per tier, because "rests at base" now means the good's own
+  // tier base (1 / 10 / 100), not a shared 10.
+  const idle = { gold: 5000, battery_cells: 5000, chassis: 5000 }; // T1, T2, T3
+  let s = sysState([], idle);
+  for (const good of Object.keys(idle)) {
+    assert.equal(productionCapacity(s)[good], 0, `${good} has no producer`);
+    assert.equal(priceTarget(bandFor(good), 5000, 0, 0), basePriceFor(good), `${good}'s target is its tier base`);
+  }
   for (let i = 0; i < 10; i += 1) s = tick(s);
-  assert.equal(posted(s, 'gold'), BASE_PRICE);
-  assert.ok(Number.isFinite(leading(s, 'gold')));
+  assert.equal(posted(s, 'gold'), 1, 'T1 rests at 1');
+  assert.equal(posted(s, 'battery_cells'), 10, 'T2 rests at 10');
+  assert.equal(posted(s, 'chassis'), 100, 'T3 rests at 100 — not at the old flat 10');
+  for (const good of Object.keys(idle)) assert.ok(Number.isFinite(leading(s, good)));
+  assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
 test('DRIFT GUARD: every raw resource and every recipe has a baseline entry', () => {
@@ -399,18 +429,141 @@ test('a poisoned price trips the tripwire instead of rotting silently', () => {
   assert.equal(checkInvariants(nan, 0).length, 1, 'a NaN price is caught');
 
   const outOfBand = JSON.parse(JSON.stringify(s));
-  outOfBand.prices.titanium.pending[1] = PRICE_CEILING * 2;
+  outOfBand.prices.titanium.pending[1] = TI.ceiling * 2;
   assert.equal(checkInvariants(outOfBand, 0).length, 1, 'a value outside the clamp band is caught');
 
   const shortPipeline = JSON.parse(JSON.stringify(s));
-  shortPipeline.prices.titanium.pending = [BASE_PRICE];
+  shortPipeline.prices.titanium.pending = [TI.base];
   assert.equal(checkInvariants(shortPipeline, 0).length, 1, 'a wrong-depth publish pipeline is caught');
 
   const priced = JSON.parse(JSON.stringify(s));
-  priced.prices[FUEL_GOOD] = { posted: BASE_PRICE, pending: [BASE_PRICE, BASE_PRICE] };
+  priced.prices[FUEL_GOOD] = { posted: TI.base, pending: [TI.base, TI.base] };
   assert.equal(checkInvariants(priced, 0).length, 1, 'pricing fuel is caught (§8: never listed)');
 
   const missing = JSON.parse(JSON.stringify(s));
   delete missing.prices.titanium;
   assert.equal(checkInvariants(missing, 0).length, 1, 'a good that lost its price row is caught');
+});
+
+test('the tripwire checks each good against ITS OWN tier band, not one flat band', () => {
+  // Each case is one the old flat 2 / 200 band would have judged WRONGLY.
+  const s = sysState([mine('m', 'titanium', 5)]);
+
+  // A T1 raw at 0.5: inside T1's band (floor 0.2). The old flat floor of 2 would flag it.
+  const cheapRaw = JSON.parse(JSON.stringify(s));
+  cheapRaw.prices.titanium.posted = 0.5;
+  assert.deepEqual(checkInvariants(cheapRaw, 0), [], 'a T1 good at 0.5 is legal');
+
+  // A T3 module at 5: inside the old flat band, but below T3's floor of 20. Must trip.
+  const crashedModule = JSON.parse(JSON.stringify(s));
+  crashedModule.prices.chassis.posted = 5;
+  const tripped = checkInvariants(crashedModule, 0);
+  assert.equal(tripped.length, 1, 'a T3 module below 20 is caught');
+  assert.equal(tripped[0].where, 'prices.chassis.posted');
+  assert.deepEqual(tripped[0].detail, { value: 5, floor: 20, ceiling: 100000 }, 'and it reports the module\'s own band');
+
+  // A T3 module at 50,000: far above the old flat ceiling of 200, but legal for T3.
+  const dearModule = JSON.parse(JSON.stringify(s));
+  dearModule.prices.chassis.pending[0] = 50000;
+  assert.deepEqual(checkInvariants(dearModule, 0), [], 'a T3 module at 50,000 is legal');
+
+  // A T1 raw at 1,500: above T1's ceiling of 1,000. Must trip.
+  const runawayRaw = JSON.parse(JSON.stringify(s));
+  runawayRaw.prices.titanium.posted = 1500;
+  assert.equal(checkInvariants(runawayRaw, 0).length, 1, 'a T1 good above 1,000 is caught');
+});
+
+// --- per-tier bands (26-09-26, design.md §5; numbers in docs/phase-1-tuning.md) --------
+
+test('PRICE_BANDS carries the ruled per-tier numbers exactly', () => {
+  // The numbers are typed here ON PURPOSE: this is the tripwire that pins the ruling.
+  // Retune them in docs/phase-1-tuning.md and here together, never in one place alone.
+  assert.deepEqual(PRICE_BANDS, {
+    1: { base: 1, floor: 0.2, ceiling: 1000 },
+    2: { base: 10, floor: 2, ceiling: 10000 },
+    3: { base: 100, floor: 20, ceiling: 100000 },
+  });
+  // The ruled SHAPE, per tier: floor 0.2 × base, ceiling 1000 × base.
+  for (const band of Object.values(PRICE_BANDS)) {
+    assert.ok(Math.abs(band.floor - (0.2 * band.base)) < 1e-12, 'floor is 0.2 × base');
+    assert.equal(band.ceiling, 1000 * band.base, 'ceiling is 1000 × base');
+    assert.ok(band.floor < band.base && band.base < band.ceiling, 'the base sits inside its own band');
+  }
+});
+
+test('every priced good resolves to a tier that has a band', () => {
+  // FAIL LOUD: a priced good with no tier would have no base, floor or ceiling, and
+  // bandFor would throw on it. This catches it at test time instead of on a live tick.
+  for (const good of PRICED_GOODS) {
+    const tier = tierOf(good);
+    assert.ok(tier === 1 || tier === 2 || tier === 3, `${good} has tier ${tier}`);
+    assert.equal(bandFor(good), PRICE_BANDS[tier], `${good} uses its tier's band`);
+    assert.equal(basePriceFor(good), PRICE_BANDS[tier].base);
+  }
+});
+
+test('a good that is not priced has no band and no base — null, as before', () => {
+  // The null is a contract: readers (the snapshot's priceBase, the licence charge) use
+  // it to tell "not priced" apart from a number.
+  assert.equal(bandFor(FUEL_GOOD), null);
+  assert.equal(basePriceFor(FUEL_GOOD), null, 'fuel is never priced');
+  assert.equal(bandFor('no_such_good'), null);
+  assert.equal(basePriceFor('no_such_good'), null);
+});
+
+test('a fresh galaxy seeds each good at its own tier base: T1 1, T2 10, T3 100', () => {
+  const s = sysState();
+  const cases = { titanium: 1, silica: 1, titanium_alloy: 10, silicon_wafer: 10, chassis: 100, drive_module: 100 };
+  for (const [good, base] of Object.entries(cases)) {
+    assert.equal(s.prices[good].posted, base, `${good} posts ${base}`);
+    assert.deepEqual(s.prices[good].pending, new Array(PUBLISH_LAG).fill(base), `${good}'s pipeline is seeded at ${base}`);
+  }
+  // …and the quote-lock ring seeds off the same block, so it agrees.
+  assert.equal(s.priceRing.chassis[0], 100);
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('raw deuterium IS priced, and takes the Tier-1 band (only deuterium_fuel is unpriced)', () => {
+  // As built: `deuterium` is a stockpile good, so it is in PRICED_GOODS, and the licensed
+  // deuterium mine's per-tick auto-sale pays its posted price (sim/tick.js). Its band is
+  // therefore LIVE. The 26-09-26 ruling assumed it was unpriced; that question is on
+  // the roadmap's decision checklist. If it is ruled otherwise, this test changes.
+  assert.equal(PRICED_GOODS.includes(DEUTERIUM), true);
+  assert.equal(tierOf(DEUTERIUM), 1);
+  assert.equal(bandFor(DEUTERIUM), PRICE_BANDS[1]);
+  assert.equal(sysState().prices[DEUTERIUM].posted, 1);
+});
+
+test('a runaway hoard clamps at its own tier ceiling: T1 1,000, T2 10,000, T3 100,000', () => {
+  // A billion units of each, held still by a rate-0 producer (so capacity is non-zero
+  // and the level is enormous). The target is far past every ceiling, so the value
+  // climbs at the slew cap until the clamp stops it. From base to 1000 × base at 10%
+  // a tick takes ~73 ticks, plus the 2-tick publish lag.
+  const HOARD = 1e9;
+  let s = sysState(
+    [mine('m', 'titanium', 0), refinery('r2', 'titanium_alloy', 0), refinery('r3', 'chassis', 0)],
+    { titanium: HOARD, titanium_alloy: HOARD, chassis: HOARD },
+  );
+  for (let i = 0; i < 90; i += 1) s = tick(s);
+  assert.equal(posted(s, 'titanium'), 1000, 'T1 stops at 1,000');
+  assert.equal(posted(s, 'titanium_alloy'), 10000, 'T2 stops at 10,000');
+  assert.equal(posted(s, 'chassis'), 100000, 'T3 stops at 100,000');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('a price driven down with no support stops at its own tier floor: 0.2, 2, 20', () => {
+  // The clamp alone, tier by tier: feed a target of 0 every tick (as far down as a
+  // target could ever go). The value falls at the slew cap and stops on the floor.
+  //
+  // This is tested on advanceLeading directly because the tick's own formula cannot
+  // push a price this low: with the level at 0 the target is base × idleness, and
+  // idleness never goes below 0.5, so the lowest reachable target is half the base.
+  // The floor is a backstop under that, exactly as the ceiling is above.
+  for (const good of ['titanium', 'titanium_alloy', 'chassis']) {
+    const band = bandFor(good);
+    let v = band.base;
+    for (let i = 0; i < 100; i += 1) v = advanceLeading(band, v, 0);
+    assert.equal(v, band.floor, `${good} stops at ${band.floor}`);
+  }
+  assert.deepEqual([bandFor('titanium').floor, bandFor('titanium_alloy').floor, bandFor('chassis').floor], [0.2, 2, 20]);
 });

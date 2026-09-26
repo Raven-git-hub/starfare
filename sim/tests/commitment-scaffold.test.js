@@ -20,7 +20,7 @@ const { hashState } = require('../serialize.js');
 const { DEUTERIUM_INFLUX_PER_CYCLE } = require('../issuance.js');
 const { REFERENCE_FUEL_PRICE } = require('../fuel.js');
 const { getWindow } = require('../windows.js');
-const { BASE_PRICE } = require('../prices.js');
+const { basePriceFor } = require('../prices.js');
 const { previewProduction } = require('../production.js');
 const { TIER3_GOODS } = require('../resources.js');
 
@@ -95,8 +95,8 @@ test('an under-injected commitment BREACHES at the boundary (status flag only, n
   assert.equal(w(s, 'titanium').delivered, 8, 'only 8 delivered against Q 9 — a breach');
   // 8 units sold at the posted price, which is still the seeded base at both ticks
   // (the 2-tick publish lag means nothing computed has been published yet), and no
-  // equity offered ⇒ the owner keeps all of it.
-  const sale = 8 * BASE_PRICE;
+  // equity offered ⇒ the owner keeps all of it. ⤳ 26-09-26: titanium's own (T1) base, 1.
+  const sale = 8 * basePriceFor('titanium');
   assert.equal(s.guilds[0].credits - creditsBefore, sale, 'the delivered units were BOUGHT, not confiscated');
   assert.equal(ledgerBefore - s.syndicate.ledger, sale, 'and the Syndicate paid for them, to the credit');
   assert.equal(s.guilds[0].credits + s.syndicate.ledger, creditsBefore + ledgerBefore, 'no fee, no fine — nothing but the sale moved (invariant 2)');
@@ -209,18 +209,47 @@ test('the injected N moves the boundary cadence (the window rolls at tick % N ==
 // table is a frozen module constant): with MINE_BASELINE restored to all-5 and every other
 // change of the slice in place, every PREVIOUS value reproduced byte for byte. The previous
 // values are in git at commit d1eef65 (the slice's first commit, which changed no golden).
-const GOLDEN_UNLICENSED = '682e42e0dd758ce523fea882f6560707802cdd7e7b4def794f323430a4cfcff5';
-const GOLDEN_UNLICENSED_WITH_PRICES = '9d19224119cd8a81d38b803dc7995592a9ae6a282eaed8ec597f13708cec756f';
-const GOLDEN_COMMITTED_WITH_PRICES = '630fdd20f3c0ce84753027d9bc19a63f9f7b28300fc3cff6c9547837e1639eda';
+//
+// ── THE PER-TIER PRICE BANDS (26-09-26 — design.md §5 "PER-TIER PRICE BANDS"; the numbers are
+// in docs/phase-1-tuning.md "Resource prices") ──
+//
+// 23 OF THE 27 HASHES IN THIS FILE WERE RE-PINNED, AND THAT IS THE INTENDED PER-TIER RESEED.
+// A fresh galaxy now seeds each good at its own tier's base (T1 1, T2 10, T3 100) instead of a
+// flat 10, and clamps it to its tier's band. So in both runs every T1 and T3 price row moved
+// (T2 goods sit at 10 either way), and with them the quote-lock ring and the price history.
+//
+//   - GOLDEN_UNLICENSED, the one hash with the prices STRIPPED on the run that sells nothing,
+//     did NOT move. That is the proof: this slice reached that run through its prices alone.
+//   - The COMMITTED run's scaffold sale is paid at titanium's and carbon_products' POSTED
+//     prices, which now rest near their T1 base of 1 instead of 10. So beyond the price data,
+//     exactly three fields moved: the guild's `credits` (1,153 → 120 over the 40 ticks), its
+//     `lastSyndicateSale` record, and the Syndicate `ledger` (the mirror, so invariant 2 still
+//     closes). No fuel, grant, reputation or production field moved — checked in the build
+//     session by diffing this run's final state under the old and new bands. That run has no
+//     price-stripped golden, so every one of its hashes moved.
+//   - Every value a test asserts EQUAL to, the `*_BEFORE_FUEL_FLOWS` ones included, was
+//     re-pinned to what the same run and the same strip produce under the new bands.
+//   - The three `COMMITTED_*_BEFORE_CONTROLLER` records were NOT re-pinned, exactly as the
+//     yield-tier slice left them: they are what the pre-controller engine produced.
+//
+// THE PROOF THE BANDS ALONE MOVED THEM (run in the build session, not a standing test — the
+// bands are a frozen module constant): with every row of PRICE_BANDS set back to the old
+// uniform { base 10, floor 2, ceiling 200 } and every other change of the slice in place, all
+// 24 PREVIOUS values a test asserts equal to (all but the three BEFORE_CONTROLLER records)
+// reproduced byte for byte. The previous values are in git at commit 2732d9f (the ruling
+// commit, which changed no code).
+const GOLDEN_UNLICENSED ='682e42e0dd758ce523fea882f6560707802cdd7e7b4def794f323430a4cfcff5';
+const GOLDEN_UNLICENSED_WITH_PRICES = '03bf079ade69b5c1d70df0cf03d544a9209b4b8a3aaf59ff7304f8200338c92f';
+const GOLDEN_COMMITTED_WITH_PRICES = 'baa3898e6533f20e8e29ef80e198618744e927ef6d0689a0aafc2a6b4ca5246c';
 // The three values the COMMITTED goldens held before fuel slice 5a, kept so the
 // un-flow proof below has something to prove against.
-const COMMITTED_WITH_PRICES_BEFORE_FUEL_FLOWS = '60b03ede58aae6a04a402fcf69f19d7d027b95c35f1f3f54f0e02350002c422b';
-const GOLDEN_UNLICENSED_WITH_HISTORY = 'd6c7eccac3c7ad6dfc3097b284364d9ab6952f400ef582eaa25872d761131cc3';
-const GOLDEN_COMMITTED_WITH_HISTORY = '575060e36cb20be6c4d69aa35b98e1ecae4fc37083e984af5f0e98eaf2db76cc';
-const COMMITTED_WITH_HISTORY_BEFORE_FUEL_FLOWS = '9c1bf9eb3226f0ef8aec74190cbb4f79baa693b327000c02c06a102e77e287c9';
-const GOLDEN_UNLICENSED_WITH_PRICE_HISTORY = 'fc1b1cbb13f236fc0f2bd1ad9c8c4b9807e30ac9d81daba02ad28f4ac73f9688';
-const GOLDEN_COMMITTED_WITH_PRICE_HISTORY = '7326a5c043bdc99e3dd092304d360f747b7eecbe75ef5de1b16c3a354b137732';
-const COMMITTED_WITH_PRICE_HISTORY_BEFORE_FUEL_FLOWS = 'b3e5c98914e36553f05b72599fb0dde8591f5bdc79f50b7ad4eb9d9fcf3d6740';
+const COMMITTED_WITH_PRICES_BEFORE_FUEL_FLOWS = 'ba6fe7fa3dbb7666ae43bc537cb2e7c68600e6ff9d9582a2847c52569d2263d2';
+const GOLDEN_UNLICENSED_WITH_HISTORY = 'a7551405f231718f2795769987507fd826d6d4a738775e1c086513d68e73b3d6';
+const GOLDEN_COMMITTED_WITH_HISTORY = '3411e14a5134041d81f552043f66c33dd102c9e785ca9190403ca19eefbd2967';
+const COMMITTED_WITH_HISTORY_BEFORE_FUEL_FLOWS = '9cc0bd12a3cb1fca4f280a5dc73f84a4830a43547113006b4a395d9b557d793c';
+const GOLDEN_UNLICENSED_WITH_PRICE_HISTORY = '9ed5d4c5f17740292e82ff64f51736a22da4d29d597754bd0beb827737e02bc5';
+const GOLDEN_COMMITTED_WITH_PRICE_HISTORY = 'd4bf0ced26de6b72ac1979ae185c00f3331cbc2e96ec222458fe253993809399';
+const COMMITTED_WITH_PRICE_HISTORY_BEFORE_FUEL_FLOWS = '71579646ba8f82f873ae18ec8507a972285952451b1817a8d10b371c240f075b';
 
 // FUEL PRICE MEDIATION (01-09-26, slice 5b-i — docs/fuel-supply-and-allocation.md §4.2).
 // The reserve gains `fuelPrice`, the galaxy's ONE market price of `deuterium_fuel` — real
@@ -233,9 +262,9 @@ const COMMITTED_WITH_PRICE_HISTORY_BEFORE_FUEL_FLOWS = 'b3e5c98914e36553f05b7259
 // byte-identical: the grant now passes through the price, but the price is seeded AT the
 // reference the grant is calibrated at, so the conversion is exactly ×1.0. The two new
 // full-state hashes are pinned below so a drift in the price itself is caught too.
-const GOLDEN_UNLICENSED_WITH_FUEL_PRICE = 'd00f69b07c51d0fa08fdef545c5b3a630121368f2205b2ee48392c9937d3f90c';
+const GOLDEN_UNLICENSED_WITH_FUEL_PRICE = 'c4e7c524bde32d13fb879ecfba406f33d0e4e6694da556c2112d06781032c660';
 // (its pre-controller value was 25698f31…, kept in the note above as one of the three)
-const GOLDEN_COMMITTED_WITH_FUEL_PRICE = 'e4b1e1bde93bd3cd7db660a87d0e4e59f1c1f52c5634997cc5fb04493c58715f';
+const GOLDEN_COMMITTED_WITH_FUEL_PRICE = '8f4fbeccdaccc41abc556003a0c09b8623b7e8bdd4b9f4ea0254ea8b639a703a';
 
 // ⚠ THE FUEL PRICE CONTROLLER (01-09-26, slice 5b-ii — §4.2). THIS IS THE FIRST SLICE IN
 // THIS FILE'S HISTORY WHOSE COMMITTED GOLDENS MOVED FOR A REAL BEHAVIOUR CHANGE RATHER THAN
@@ -256,8 +285,8 @@ const GOLDEN_COMMITTED_WITH_FUEL_PRICE = 'e4b1e1bde93bd3cd7db660a87d0e4e59f1c1f5
 // 1,440-tick default and its 40 ticks cross NO boundary: no influx, no issuance, no
 // controller. Not one byte of it moved beyond the added key. A slice that had touched
 // anything outside step 6's boundary block would have shown up there and nowhere else.
-const GOLDEN_UNLICENSED_WITH_CONTROLLER = '2352793d0f349c9a79ddf6463ee356cb6318b639fd4ee3617380c9ba2c156f39';
-const GOLDEN_COMMITTED_WITH_CONTROLLER = '939d0775d7fce47a24c8d9b7e57648acef385c3c7eb6096f7dc6e7cf68f00d96';
+const GOLDEN_UNLICENSED_WITH_CONTROLLER = '8b710e5843bb277d4d04077c9a139aee7e24858634e120d01d4e7f5d8ef6071e';
+const GOLDEN_COMMITTED_WITH_CONTROLLER = '4fec1893f0f1a36efa53d982aa596a7aa6c9528c79f4737f38a428c936f96e70';
 // The three values the COMMITTED goldens held under 5b-i — i.e. with the price present but
 // FROZEN at the reference. Kept so the re-pinning above is a comparison rather than an
 // assertion, and so the test below can show the delta is the controller and nothing else.
@@ -284,15 +313,15 @@ const COMMITTED_WITH_PRICE_HISTORY_BEFORE_CONTROLLER = '33021945d4660c785d2f287b
 // 1,440-tick default — so its 40 ticks cross NO boundary, no grant is due, and no field is
 // minted: it stays byte-identical, and its guild carries none of the three keys (asserted in
 // the no-op test above). Nothing happens off a boundary.
-const GOLDEN_COMMITTED_WITH_GUILD_HALL = '3a016707910f1bf47c2520cc79146778028090a4c0fa6cda155400d68631bf28';
+const GOLDEN_COMMITTED_WITH_GUILD_HALL = '8612508a44d9e472c500e25ef613383decb1c6da4deacb5e23a726887ea62696';
 // §8.1 QUOTE-LOCK — THE PER-TICK PRICE RING (04-09-26). Both runs gain the always-on
 // `priceRing` (sim/price-ring.js), so BOTH full hashes moved and the ordinary strip
 // works: `withoutPriceRing` takes the added field back out and both GUILD_HALL goldens
 // above return byte-for-byte — the whole delta. A 40-tick run fills the ring to its
 // RING_DEPTH (6) most-recent posted values. Neither run's OTHER bytes moved (the ring is
 // independent serialized state), which is why every stripped golden above is unchanged.
-const GOLDEN_UNLICENSED_WITH_PRICE_RING = '1cf8829a9d92b78d09d092052cc50f4357035bf4883015586dbad21833108c6e';
-const GOLDEN_COMMITTED_WITH_PRICE_RING = '46cf145673f973ded8785ab1b02abf2960064eb2db0fe133dcee281e66068557';
+const GOLDEN_UNLICENSED_WITH_PRICE_RING = 'cc13af4859c62697a9a5628922022d213379817e74d72afa988225b669664121';
+const GOLDEN_COMMITTED_WITH_PRICE_RING = '95e58e324b3bd832540f67d4c781d68558b7320e7d551ff9fe731e5f20f22899';
 
 // ── THE EXPECTED-FUEL-CHANGE GAUGE (06-09-26 — docs/guild-hall.md §2.1, Slice D) ──
 //
@@ -311,7 +340,7 @@ const GOLDEN_COMMITTED_WITH_PRICE_RING = '46cf145673f973ded8785ab1b02abf2960064e
 // key; `sysState` leaves the unlicensed run on the 1,440-tick default, so its 40 ticks cross
 // NO boundary, no grant record exists, and there is nothing to gain — it stays byte-identical
 // (its guild carries no `lastFuelGrant` at all, asserted in the no-op test above).
-const GOLDEN_COMMITTED_WITH_FUEL_ENTITLEMENT = 'b7a60234de23563229921f639f5356f7568194b75247650725be018e1f2f3e57';
+const GOLDEN_COMMITTED_WITH_FUEL_ENTITLEMENT = 'b89c30320c074018486b96d2b89eba261fb99ba61c35d921d7504c464c240d99';
 
 // ── THE FUEL-BURN HISTORY (07-09-26 — docs/guild-hall.md, the fuel-burn-history subsection) ──
 //
@@ -332,7 +361,7 @@ const GOLDEN_COMMITTED_WITH_FUEL_ENTITLEMENT = 'b7a60234de23563229921f639f5356f7
 // committed run crosses ten boundaries and is due a grant at each, so a burn entry is pushed each
 // time; `sysState` leaves the unlicensed run on the 1,440-tick default, so its 40 ticks cross NO
 // boundary, no entry is pushed, and its guild carries no `fuelBurnHistory` at all — byte-identical.
-const GOLDEN_COMMITTED_WITH_FUEL_BURN_HISTORY = '88f898fdef20d6b308a661fed352561c66a66da5b8eaed8d4ffe4b7718f56f3c';
+const GOLDEN_COMMITTED_WITH_FUEL_BURN_HISTORY = '3cad53234ea8844be4643532e06378a76f716487b4dc4400e6fedabb77a73e59';
 
 // ── THE GALAXY-WIDE FUEL-PRICE HISTORY (07-09-26 — docs/guild-hall.md §4.2) ──
 //
@@ -350,8 +379,8 @@ const GOLDEN_COMMITTED_WITH_FUEL_BURN_HISTORY = '88f898fdef20d6b308a661fed352561
 //   - The COMMITTED run (windowN 4 ⇒ a 1-tick bucket) closes a bucket every tick, so its ring
 //     fills and caps at 12 (39 closes, last 12 kept). Strip it and
 //     GOLDEN_COMMITTED_WITH_FUEL_BURN_HISTORY returns.
-const GOLDEN_UNLICENSED_WITH_FUEL_PRICE_HISTORY = '23d066dd3b17ffa7e60ab0ba2a9b3ee835d34f379b66a6147bbb46386174b795';
-const GOLDEN_COMMITTED_WITH_FUEL_PRICE_HISTORY = 'aecca10d910f9e7de640ca733d680fc90991663593a569ea18fab2003f42ac64';
+const GOLDEN_UNLICENSED_WITH_FUEL_PRICE_HISTORY = 'f4579393a916d22bd9e3bff7df2d54cff448ad265171ab9a4c78111c2f752cbe';
+const GOLDEN_COMMITTED_WITH_FUEL_PRICE_HISTORY = '0965967099ba69adb4a2840698dc7bad5d014f36c7e30f3ad66ad250c11f2cc7';
 
 // THE TIER-3 MODULE CATALOG (2.1a — docs/asset-recipes.md). BOTH runs' FULL hashes moved:
 // the 26 new goods (luminite_glass + 25 modules) each gained a base-price row, a
@@ -360,8 +389,8 @@ const GOLDEN_COMMITTED_WITH_FUEL_PRICE_HISTORY = 'aecca10d910f9e7de640ca733d680f
 // rest and nothing else — proven by `withoutTier3` recovering GOLDEN_*_WITH_FUEL_PRICE_HISTORY
 // byte-for-byte above. These full hashes are pinned so a drift in the new goods' at-rest
 // prices (or in an existing good's, which would leak past the strip) is caught too.
-const GOLDEN_UNLICENSED_WITH_TIER3_CATALOG = '721a9094a973deabfff61f90fbd820d33d8931591516a4b7201a8cb60202d558';
-const GOLDEN_COMMITTED_WITH_TIER3_CATALOG = '89e3d12c7f1a7504792913555fff178a94f59cd294d7df184a9fd711f8b94a7d';
+const GOLDEN_UNLICENSED_WITH_TIER3_CATALOG = 'd43cb6e70246ba5dc0a1bc210d4e17d49ddf41dd3e353092eb0aa462ded82493';
+const GOLDEN_COMMITTED_WITH_TIER3_CATALOG = 'e1924f297ed17988d0ee2aa4a8c71b10e0dc8ca01a28dc40f4c9fca4595d03b0';
 
 // ── SLICE A′ — STAMP `fuelHoardAtCycleStart` AT FOUNDING (03-09-26 — docs/guild-hall.md §4) ──
 //
@@ -377,7 +406,7 @@ const GOLDEN_COMMITTED_WITH_TIER3_CATALOG = '89e3d12c7f1a7504792913555fff178a94f
 //     hoard it held before A′. Canonical serialization sorts keys, so insertion order does not
 //     matter: `GOLDEN_COMMITTED_WITH_GUILD_HALL` is UNCHANGED and needs no regen (asserted below,
 //     untouched). A′ moved the field's BIRTH, not its boundary value.
-const GOLDEN_UNLICENSED_WITH_GUILD_HALL = '537728dc4d042b02c40179559fa8b0e6f3cecfdc4804ddf6a329651c5fd5f211';
+const GOLDEN_UNLICENSED_WITH_GUILD_HALL = '50ab52b23de3c4952be8621612cd9824c2344fed71c0388d1488d822a86834b3';
 
 // ── THE REPUTATION RESCALE (01-09-26, slice 1 of 2 — points-and-reputation.md §2.6) ──
 //

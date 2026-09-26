@@ -24,7 +24,13 @@ const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
-const { BASE_PRICE, PRICED_GOODS } = require('../prices.js');
+const { basePriceFor, PRICED_GOODS } = require('../prices.js');
+
+// The two goods this file licenses, each at its own base. ⤳ 26-09-26: bases are per
+// manufacturing tier now (titanium T1 = 1, titanium_alloy T2 = 10), so a mine's terms and a
+// factory's terms are no longer priced off the same flat 10 — they are read by name.
+const TITANIUM_BASE = basePriceFor('titanium');
+const ALLOY_BASE = basePriceFor('titanium_alloy');
 const { MINE_BASELINE, REFINERY_BASELINE, baselineUnitsForGood } = require('../baseline.js');
 const { getRecipe } = require('../recipes.js');
 const {
@@ -94,10 +100,13 @@ test('the basic fee is feeRate × baseline-over-one-window × the locked price',
   // ⤳ 24-09-26 (yield tiers): the baseline here was the literal 5 — titanium's under the
   // old uniform table. It is titanium's baseline READ from the table, because the second
   // half compares it with the fee the engine locks for a real titanium mine.
+  // ⤳ 26-09-26 (per-tier bands): the locked price was the literal 10, the old flat base. It
+  // is titanium's own base now (T1 = 1), for the same reason: the second half signs a real
+  // titanium mine, which locks titanium's posted price.
   const { basicFee } = licenceFee({
-    baselineUnitsPerTick: MINE_BASELINE.titanium, windowN: N, lockedPrice: 10, committedOutputPct: 0, equityPct: 0,
+    baselineUnitsPerTick: MINE_BASELINE.titanium, windowN: N, lockedPrice: TITANIUM_BASE, committedOutputPct: 0, equityPct: 0,
   });
-  assert.equal(basicFee, Math.round(FEE_RATE * MINE_BASELINE.titanium * N * 10));
+  assert.equal(basicFee, Math.round(FEE_RATE * MINE_BASELINE.titanium * N * TITANIUM_BASE));
   // ...and it is priced off the BASELINE, so it cannot be shrunk by throttling: two
   // ventures of the same type carry the same basic fee whatever their productionRate.
   let s = sysState([mine('m', 'titanium', 1)]);       // throttled to a trickle
@@ -132,7 +141,7 @@ test('a valid application stores the licence, locks both fees, and sets the comm
   s = grant(s, { committedOutputPct: 0.5, windowDays: 14 });
   const lic = venture(s).licence;
   const expected = licenceFee({
-    baselineUnitsPerTick: MINE_BASELINE.titanium, windowN: N, lockedPrice: BASE_PRICE,
+    baselineUnitsPerTick: MINE_BASELINE.titanium, windowN: N, lockedPrice: TITANIUM_BASE,
     committedOutputPct: 0.5, equityPct: 0.245,
   });
 
@@ -140,7 +149,7 @@ test('a valid application stores the licence, locks both fees, and sets the comm
     committedOutputPct: 0.5,
     windowDays: 14,
     signedTick: 0,
-    lockedPrice: BASE_PRICE,
+    lockedPrice: TITANIUM_BASE,
     basicFee: expected.basicFee,
     discountedFee: expected.discountedFee,
   });
@@ -194,9 +203,9 @@ test('a FACTORY can be licensed — the terms are priced off its recipe OUTPUT',
     committedOutputPct: 0.5,
     windowDays: 14,
     signedTick: 0,
-    lockedPrice: BASE_PRICE,          // titanium_alloy's posted price, not titanium's
+    lockedPrice: ALLOY_BASE,          // titanium_alloy's posted price, not titanium's
     ...licenceFee({
-      baselineUnitsPerTick: outUnits, windowN: N, lockedPrice: BASE_PRICE,
+      baselineUnitsPerTick: outUnits, windowN: N, lockedPrice: ALLOY_BASE,
       committedOutputPct: 0.5, equityPct: 0,
     }),
   });
@@ -245,14 +254,14 @@ test('an application against a venture you do not own, or that does not exist, i
 test('the stored fees do NOT move when the market does', () => {
   let s = grant(sysState([mine('m', 'titanium', 5, 0.2)]), { committedOutputPct: 0.5, windowDays: 14 });
   const locked = { ...venture(s).licence };
-  assert.equal(locked.lockedPrice, BASE_PRICE);
+  assert.equal(locked.lockedPrice, TITANIUM_BASE);
 
   // The market moves hard, in both directions, and the ticks roll on.
-  s.prices.titanium.posted = BASE_PRICE * 9;
+  s.prices.titanium.posted = TITANIUM_BASE * 9;
   for (let i = 0; i < 5; i += 1) s = tick(s);
   assert.deepEqual(venture(s).licence, locked, 'a signed licence is a fixed contract, not a live quote');
 
-  s.prices.titanium.posted = BASE_PRICE / 4;
+  s.prices.titanium.posted = TITANIUM_BASE / 4;
   for (let i = 0; i < 5; i += 1) s = tick(s);
   assert.deepEqual(venture(s).licence, locked);
 });
@@ -260,7 +269,7 @@ test('the stored fees do NOT move when the market does', () => {
 test('signing at a different price is a different contract', () => {
   const cheap = sysState([mine('m', 'titanium', 5)]);
   const dear = sysState([mine('m', 'titanium', 5)]);
-  dear.prices.titanium.posted = BASE_PRICE * 3;
+  dear.prices.titanium.posted = TITANIUM_BASE * 3;
 
   const a = grant(cheap, { committedOutputPct: 0.5, windowDays: 14 });
   const b = grant(dear, { committedOutputPct: 0.5, windowDays: 14 });
@@ -465,13 +474,13 @@ test('QUOTE == CHARGE (a FACTORY): priced off the recipe OUTPUT, same equality',
   // titanium it eats — a factory quoted off its inputs would be a different contract.
   assert.equal(quoted, licenceFee({
     baselineUnitsPerTick: REFINERY_BASELINE.titanium_alloy * getRecipe('titanium_alloy').output.qty,
-    windowN: N, lockedPrice: BASE_PRICE, committedOutputPct: 0, equityPct: 0,
+    windowN: N, lockedPrice: ALLOY_BASE, committedOutputPct: 0, equityPct: 0,
   }).basicFee);
 });
 
 test('the equality holds after the market has MOVED — the quote is live, the licence is not', () => {
   let s = sysState([mine('m', 'titanium', 5)]);
-  s.prices.titanium.posted = BASE_PRICE * 3;
+  s.prices.titanium.posted = TITANIUM_BASE * 3;
 
   const quoted = quoteFor(s, 'titanium');
   const granted = grant(s, { committedOutputPct: 0.25, windowDays: 14 });
@@ -480,7 +489,7 @@ test('the equality holds after the market has MOVED — the quote is live, the l
   // The price moves again: the SIGNED licence stays put (it is a contract) while the
   // quote for the next signature follows the market. Both behaviours in one place, since
   // it is exactly the difference a panel showing both must not blur.
-  granted.prices.titanium.posted = BASE_PRICE;
+  granted.prices.titanium.posted = TITANIUM_BASE;
   assert.equal(venture(granted).licence.basicFee, quoted, 'a locked fee does not re-quote');
   assert.equal(quoteFor(granted, 'titanium'), quoted / 3, 'but the quote does');
 });
