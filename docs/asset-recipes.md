@@ -98,38 +98,28 @@ These modules **join `STOCKPILE_GOODS`** at build time, retiring the three inert
 `*_reactor_engine` placeholders in `resources.js` (which now become real,
 sized recipes above).
 
-## Tier-4 asset bills (3→4 recipes)
+## Tier-4 asset bills (3→4 recipes) — FINAL quantities *(RULED 27-09-26)*
 
-Each asset recipe outputs **1** asset. All quantities `[FIRST-CUT]`.
-`buildable` = ground-asset yard output this thread; the rest are design-ahead
-(ships need 2.1/2.3 usability rulings; installations are blocked on 2.2/2.5).
+Each asset recipe outputs **1** asset. Quantities below are **final** — they supersede the `[FIRST-CUT]` placeholders and design.md §3's eight-part sketch. Module **prices** live in `docs/phase-1-tuning.md` "Tier-3 sub-tiers & specialist parts"; every bill is sized so its parts cost **≈50% of the asset's base price AT REST** (a resting figure — live prices run higher as parts appreciate through the passthrough).
 
-> **BUILT — the four SHIP bills are now in code (2.2-foundation slice (a), 18-09-26).** The four
-> transport rows below (Light / Medium / Heavy / Spy) are lifted **verbatim** into a parallel
-> `VEHICLE_BILLS` catalog in `sim/asset-recipes.js`, beside the two `buildable` ground bills and
-> under the SAME `assertBillModulesAreTier3` load-time tripwire. A guild transport can now be built
-> by a dockyard or bought from the Syndicate; it is minted **idle** into `guild.vehicles` (design.md
-> §15.4; numbers in `phase-1-tuning.md` §"Guild transports"). The four **installation** rows (Outpost,
-> Deep Scan Array, Toll Gate, Droid) stay design-ahead — their entities do not exist yet.
+**Design principle — precision small, bulk large.** A "part" is an **abstract manufacturing unit**, not one literal component. Precision / specialist assets (transports, spycraft, scan array, toll gate) carry a few defining specialist parts and small quantities; **bulk infrastructure** (the Outpost) is honestly a warehouse of ordinary parts, so large quantities are correct there — the "silly quantity" concern was about precision craft, not depots.
 
-| Asset | Module bill | Status |
+> **SUPERSEDED IN CODE (this is a design-doc commit).** The four ship bills lifted verbatim into `sim/asset-recipes.js` `VEHICLE_BILLS` (18-09-26) and the two ground bills carry the OLD placeholder quantities/compositions. The bills below replace them; the code update — the bills AND the Tier-3 sub-tier / specialist price bands in `sim/prices.js` — is a subsequent Claude Code slice, NOT this commit. Its load-bearing companion is the timer-production model (deferred to the next design pass; see `docs/phase-1-tuning.md`).
+
+| Asset | Base | Module bill (final) |
 |---|---|---|
-| **Light transport** | chassis · small_reactor_engine · fuel_tank · power_cells · control_module · life_support_module | ship (design-ahead) |
-| **Medium transport** | 2 chassis · medium_reactor_engine · reactor_housing · 2 fuel_tank · power_cells · control_module · 2 life_support_module · sensor_suite | ship (design-ahead) |
-| **Heavy transport** | 3 chassis · heavy_reactor_engine · reactor_housing · 2 fuel_tank · power_cells · control_module · 2 life_support_module · sensor_suite · 2 cargo_module · cargo_handling_system · 2 hull_plating · defence_system | ship (design-ahead) |
-| **Spy / spycraft** | chassis · small_reactor_engine · 2 fuel_tank · 2 power_cells · control_module · life_support_module · 2 sensor_suite · stealth_module | ship (design-ahead) |
-| **Miner** | 2 chassis · reactor_housing · photovoltaic_array · power_cells · control_module · extraction_head · cargo_module · cargo_handling_system · defence_system | **buildable** |
-| **Factory** | 3 chassis · reactor_housing · 2 photovoltaic_array · 2 power_cells · control_module · 2 fabrication_line · sensor_suite · cargo_handling_system · defence_system | **buildable** |
-| **Outpost** (depot) | chassis · reactor_housing · photovoltaic_array · power_cells · control_module · claim_beacon · habitation_module · life_support_module · cargo_module · cargo_handling_system · defence_system | design-ahead |
-| **Deep Scan Array** | chassis · reactor_housing · photovoltaic_array · 2 power_cells · control_module · 2 deep_scan_mast · comms_array · 2 habitation_module · 2 life_support_module · defence_system | design-ahead |
-| **Toll Gate** | 2 chassis · reactor_housing · photovoltaic_array · 2 power_cells · control_module · sensor_suite · interdiction_projector · comms_array · defence_system | design-ahead |
-| **Droid** | droid_components · control_module · sensor_suite · drive_module · power_cells | design-ahead (no entity yet) |
+| **Light transport** | 1.5M | 40 chassis · 20 control_module · 15 life_support_module · 4 small_reactor_engine · 50 fuel_tank · 50 power_cells |
+| **Medium transport** | 15M | 3 medium_reactor_engine · 100 chassis · 30 control_module · 20 life_support_module · 5 sensor_suite · 20 reactor_housing · 200 fuel_tank · 200 power_cells |
+| **Miner** | 12M | 5 extraction_head · 50 chassis · 20 control_module · 10 cargo_handling_system · 5 defence_system · 1000 cargo_module · 100 photovoltaic_array · 500 power_cells |
+| **Factory** | 12M | 5 fabrication_line · 50 chassis · 20 control_module · 20 sensor_suite · 5 cargo_handling_system · 200 photovoltaic_array · 1000 power_cells |
+| **Spycraft** | 100M | 6 stealth_module · 100 control_module · 100 sensor_suite · 50 chassis · 40 life_support_module · 500 power_cells *(build-only; not Syndicate-traded)* |
+| **Heavy transport** | 200M | 5 heavy_reactor_engine · 30 chassis · 30 life_support_module · 20 control_module · 10 defence_system · 2000 hull_plating · 2000 cargo_module |
+| **Deep Scan Array** | 400M | 9 deep_scan_mast · 1000 sensor_suite · 500 control_module · 5000 comms_array · 400 chassis · 5000 power_cells |
+| **Toll Gate** | 500M | 10 interdiction_projector · 2 deep_scan_mast · 500 defence_system · 400 chassis · 1000 comms_array · 20000 power_cells · 20000 hull_plating |
+| **Outpost** (depot) | 600M | 15000 chassis · 5000 cargo_handling_system · 3000 control_module · 300000 cargo_module · 20000 photovoltaic_array · 200000 power_cells *(bulk infrastructure — large quantities intended)* |
+| **Droid** | — | design-ahead, no entity yet; uses unclassified modules (droid_components, drive_module) — bill & price deferred |
 
-**The Outpost is a depot, not a factory** (refines design.md §4): no production
-function, but a **limited depot capacity** — a manned drop-off/pickup node that
-makes outside trade less fuel-intensive by shortening hauls. Hence its habitation,
-life support, cargo handling, and defence. §4's "no production; flag on a stick"
-line narrows to "no production; limited depot capacity."
+**The Outpost is a depot, not a factory** (refines design.md §4): no production function, a manned drop-off/pickup node that makes outside trade less fuel-intensive by shortening hauls. Its final bill is deliberately **bulk** — structure (chassis, hull-equivalent), storage (cargo_module, cargo_handling_system), and power (photovoltaic_array, power_cells), with control for the crewed core. §4's "no production; flag on a stick" narrows to "no production; limited depot capacity." *(The earlier sketch's claim_beacon / habitation_module are dropped from the final bill; both are currently unclassified and used by no asset.)*
 
 ## Reconciliation with design.md §3's eight-part sketch
 
