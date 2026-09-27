@@ -137,3 +137,85 @@ Their build time is assembly `BUILD_TICKS` above; part-sourcing is produced-or-b
 
 New serialized state (the per-venture countdown, per-contract `windowN`) is a schema
 touch → fresh galaxy + omit-when-default discipline. Build is a later Claude Code slice.
+
+## As built (27-09-26) — Slice 2: timed production + the per-period capacity
+
+This slice built **The model**, **The timer ladder**, the input-gating half of **Build time**, and
+**The price fix**. Income, weekly settlement, Syndicate-first delivery, renegotiation and teardown
+changes are **Slice 3** and were not touched.
+
+**The timer.** `TICKS_PER_UNIT` in `sim/baseline.js` is the ladder above, keyed the way it is ruled:
+`'3-1'` 15, `'3-2'` 30, `'3-3'` 60, and one row per specialist. `ticksPerUnitFor(good)` looks a good
+up through its Tier-3 class (`TIER3_PRICE_CLASS`) and answers null for a good that is not timed. That
+one function is the whole "timed or continuous?" question for the resolver, the price capacity and
+the invariants. A load-time check throws, naming the good, if a classified Tier-3 good has no timer.
+(The classifier moved, unchanged, from `sim/prices.js` to `sim/resources.js`, because
+`sim/baseline.js` now reads it and cannot import `sim/prices.js`. `sim/prices.js` re-exports it.)
+
+**The loop** (`sim/production.js`, `resolveTimedFactory`). Each tick, for a factory whose output is
+timed:
+1. If no unit is on the line, the throttle is above 0 and Gate 3 handed it **every** input's full
+   qty, the unit **starts**: the whole input set is drawn this tick and the countdown is set to
+   `TICKS_PER_UNIT`. If any input is short, nothing is drawn. What it was handed stays in the pool,
+   and the preview names the first short input as the bottleneck.
+2. A unit on the line (including one that just started) gets this tick's work, so the countdown
+   drops by 1. At 0 the unit is minted into the stockpile and the line is empty again.
+
+With steady inputs a unit therefore lands exactly every `TICKS_PER_UNIT` ticks (a 3-1 part on ticks
+15, 30, 45 …), and nothing lands in between. The timed factory is an ordinary **consumer** in Gates
+2 and 3. It shares its inputs through the same pool, reserve, priority order and FCFS/proportional
+split as every other line, so it can never take a unit another claimant was handed. The only
+difference is its ask: one whole input set when its line is empty, and nothing while a unit is on
+it. Mines and Tier-2 refineries are untouched.
+
+**The state.** `venture.unitTicksRemaining` is the ticks of work the unit on the line still needs.
+It is an integer in `[1, TICKS_PER_UNIT)` between ticks, because the start tick is itself the
+unit's first tick of work. It is **omitted when the line is empty**, so a galaxy with no Tier-3
+factory at work is byte-identical to before. A timed factory keeps no `batchCarry`. This is a schema
+touch, so **a fresh galaxy is required on deploy.**
+
+**The price fix** (`sim/prices.js`). `capacityOutputFor(venture)` is the capacity path's own
+reader:
+- A continuous good gets `baselineOutputFor`, per tick, unchanged.
+- A timed good gets `CAPACITY_PERIOD_TICKS (1,440) ÷ TICKS_PER_UNIT × recipe output`, units per
+  **day**. A 3-1 factory counts 96 a day, a heavy-engine factory 0.5.
+
+`productionCapacity` sums it. With the unchanged 0.05 sensitivity, one finished heavy reactor engine
+held against one factory is a level of 2 (two days of output). Its price settles at 20M × 1.1 =
+22M, a 10% nudge. Against a per-tick capacity (1/2,880 an engine a tick) the same one engine would be
+a level of 2,880, a target of 2.9B, and the price pinned at its 2B ceiling. The test file pins both.
+
+**The two seams, fenced.**
+- *The commitment / sale / fee logic is unchanged.* It reads what production yields, and a
+  committed timed factory now yields 0 most ticks and 1 on a completion tick. So the Syndicate fork
+  delivers, and the sale pays, lumpily. That is expected, and smoothing it is Slice 3.
+- *`baselineOutputFor` is unchanged.* The licence fee ("baseline output over one window") and the
+  snapshot's fee quote read exactly what they read before. Only the capacity sum reads per day.
+- **Consequence to know before running live:** a Tier-3 licence's committed quantity and fee are
+  still sized off the continuous 5 batches/tick baseline. A licensed Tier-3 factory (making at most
+  96 a day) will therefore breach its daily window at any meaningful commitment, until Slice 3's
+  weekly whole-unit settlement lands. Tier 3 is still **not safe to run live**.
+
+**Invariants** (`sim/invariants.js`, `checkTimedProduction`):
+- **Invariant 1 (timed never continuous).** A venture producing a timed good must be a factory
+  running the timer. A mine of a timed good, or a timed factory carrying a `batchCarry`, fails,
+  naming the good.
+- **Invariant 2 (no fractional units).** Needs no new code: the §15.2 integer sweep already checks
+  every stockpile cell.
+- **The timer.** The countdown may sit only on a timed factory, and only in `[1, TICKS_PER_UNIT)`.
+- **Invariant 4 (inputs at start).** Holds by construction and is pinned by tests.
+- **Invariant 3 (paid once)** is Slice 3's.
+
+**Decided by the ruling's silence, not invented — on the roadmap's decision checklist:**
+- **The four unclassified modules** (drive_module, droid_components, claim_beacon,
+  habitation_module) have no sub-tier, so no timer. They stay **continuous**, their status quo,
+  until a sub-tier is ruled; then they become timed with no code change.
+- **A timed factory's throttle is on/off.** 0 stops a new unit starting (a unit on the line still
+  finishes); anything above 0 runs the timer at full pace. Whether a partial throttle should slow
+  the timer is unruled.
+- **`productionRate` on a timed factory is inert.** The establish path still stamps
+  `REFINERY_BASELINE` (5) as it did; the timed path only needs it to be above 0. It is still what
+  the console shows and what the snapshot's equity projection multiplies.
+
+Tests: `sim/tests/tier3-timed-production.test.js` (20). No golden hash moved: no run behind a
+pinned hash makes a Tier-3 good, and a Tier-1/2 run is byte-identical to the pre-slice engine.

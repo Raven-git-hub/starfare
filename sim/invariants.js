@@ -77,7 +77,7 @@ const {
 } = require('./vehicles.js');
 const { volumeOf } = require('./fuel.js');
 const { manifestAmountError } = require('./manifest.js');
-const { isDockyard } = require('./baseline.js');
+const { isDockyard, producedGoodFor, ticksPerUnitFor } = require('./baseline.js');
 const { BUILDABLE_KINDS, BUILD_TICKS } = require('./asset-recipes.js');
 const { DEFAULT_WINDOW_N, winStartFor, windowFraction } = require('./windows.js');
 const { HISTORY_N } = require('./history.js');
@@ -333,6 +333,56 @@ function checkBatchCarry(state) {
         if (typeof frac !== 'number' || Number.isNaN(frac) || frac < 0 || frac >= 1) {
           out.push({ rule: 'batch-carry-in-[0,1) (§5 Ruling 2)', where: `venture:${v.id}.batchCarry.${good}`, detail: { value: frac } });
         }
+      }
+    }
+  }
+  return out;
+}
+
+// Tier-3 TIMED production (docs/tier3-timed-production.md "Invariants"). A good is produced
+// EITHER on a timer (a Tier-3 part: one whole unit per TICKS_PER_UNIT) OR continuously (every
+// Tier-1/2 good) — never both. The price engine's capacity depends on it: a timed good's
+// capacity is counted per DAY and a continuous one's per TICK, so a good produced both ways
+// would sum two timescales into one meaningless denominator. The code decides the path from the
+// GOOD (`ticksPerUnitFor`, sim/baseline.js), so this should be impossible; this makes it LOUD
+// if a future change, a hand-built scenario or a stale save ever breaks it. Per venture:
+//
+//   (a) a venture producing a TIMED good must be a factory running the timer. Two things would
+//       mean it is being produced continuously: a MINE whose resource is a timed good (mines
+//       only run continuously), or a factory carrying a `batchCarry` remainder (that map only
+//       exists because a line ran at a continuous rate). Either fails, naming the good.
+//   (b) the countdown `unitTicksRemaining` exists ONLY on a timed factory, and only as an
+//       integer from 1 to TICKS_PER_UNIT − 1: the start tick already takes one tick off it, and
+//       at 0 the unit is minted and the key removed (sim/production.js). Anything else is a
+//       corrupt timer.
+// "No fractional units in any stockpile" — the third timed-production tripwire — needs no new
+// code: the §15.2 integer sweep above already checks every stockpile cell of every good.
+// Like checkBatchCarry, an ABSENT field is legal; only a present, wrong one trips.
+function checkTimedProduction(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    for (const v of g.ventures || []) {
+      const where = `venture:${v.id}`;
+      const good = producedGoodFor(v);
+      const ticksPerUnit = good ? ticksPerUnitFor(good) : null;
+
+      if (ticksPerUnit !== null) {
+        const carried = Object.keys(v.batchCarry || {});
+        if (v.resourceType || carried.length > 0) {
+          out.push({
+            rule: 'timed-good-never-continuous (tier3-timed-production.md invariant 1)',
+            where,
+            detail: { good, ticksPerUnit, mine: !!v.resourceType, batchCarry: carried },
+          });
+        }
+      }
+
+      const left = v.unitTicksRemaining;
+      if (left === undefined) continue;
+      if (ticksPerUnit === null || v.resourceType) {
+        out.push({ rule: 'unit-timer-only-on-a-timed-factory (tier3-timed-production.md)', where: `${where}.unitTicksRemaining`, detail: { value: left, good } });
+      } else if (!Number.isInteger(left) || left < 1 || left >= ticksPerUnit) {
+        out.push({ rule: 'unit-timer-in-[1, TICKS_PER_UNIT) (tier3-timed-production.md)', where: `${where}.unitTicksRemaining`, detail: { value: left, good, ticksPerUnit } });
       }
     }
   }
@@ -2121,6 +2171,7 @@ function checkInvariants(state, tick) {
     ...checkCreditConservation(state),
     ...checkNonNegativityAndIntegrality(state),
     ...checkBatchCarry(state),
+    ...checkTimedProduction(state),
     ...checkSyndicateWindows(state),
     ...checkProductionHistory(state),
     ...checkEventLog(state),

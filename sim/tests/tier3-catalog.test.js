@@ -77,8 +77,13 @@ test('a factory manufactures a module through the tier-blind engine — raw → 
   // is deployable through the ENGINE" means.
   assert.equal(getRecipe('power_cells').output.good, 'power_cells');
 
+  // ⤳ TIMED PRODUCTION (the Tier-3 timed-production slice, docs/tier3-timed-production.md):
+  // a module is no longer made at a rate — power_cells (sub-tier 3-1) takes 15 ticks per whole
+  // unit. Its processed inputs first exist after tick 1, so the first unit starts on tick 2 and
+  // lands on tick 16. This used to run 15 ticks (enough for the old per-tick path); it now runs
+  // 30, and the first-mint tick is pinned below.
   let firstMintTick = null;
-  for (let i = 1; i <= 15; i += 1) {
+  for (let i = 1; i <= 30; i += 1) {
     s = tick(s);
     // All nine invariants green EVERY tick — never once a silent violation while the
     // brand-new module good flows through mint, stockpile and supply cache.
@@ -90,7 +95,10 @@ test('a factory manufactures a module through the tier-blind engine — raw → 
   // The module was minted into the guild's (system) stockpile — the load-bearing claim.
   assert.ok(totals.power_cells > 0, 'the module was manufactured and banked in the stockpile');
   assert.ok(Number.isInteger(totals.power_cells), 'goods are integers (§15.2)');
-  assert.ok(firstMintTick !== null && firstMintTick >= 2, 'the module is minted once its processed inputs have accrued');
+  assert.equal(firstMintTick, 16, 'the first unit starts on tick 2 (its processed inputs accrue on tick 1) and lands 15 ticks of work later, on tick 16');
+  assert.equal(totals.power_cells, 1, 'one whole unit by tick 30: the second started on tick 17 and lands on tick 31');
+  assert.equal(s.guilds[0].ventures.find((v) => v.id === 'f_pc').unitTicksRemaining, 1,
+    'and that second unit is on the line with one tick of work left');
   // The two lower tiers really did flow (the chain is genuine, not seeded modules): the
   // processed inputs were manufactured, and the raws were mined and drawn.
   assert.ok(totals.battery_cells > 0 && totals.conductive_material > 0 && totals.composite_resin > 0,
@@ -159,7 +167,9 @@ test('determinism (invariant 9): a module-manufacturing scenario runs byte-ident
   let a = powerCellChainState();
   let b = powerCellChainState();
   assert.equal(hashState(a), hashState(b), 'identical seeds hash identically at tick 0');
-  for (let i = 1; i <= 12; i += 1) {
+  // ⤳ timed production: 20 ticks (was 12), so the run covers a unit's start (tick 2), its
+  // countdown, and its landing (tick 16) — the countdown is serialized state and is hashed too.
+  for (let i = 1; i <= 20; i += 1) {
     a = tick(a);
     b = tick(b);
     assert.equal(hashState(a), hashState(b), `byte-identical at tick ${i}`);

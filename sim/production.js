@@ -52,6 +52,12 @@
 // the recipe ratio holds on average (bounded transient). The one non-integer the
 // rate itself is transient; the persisted fractions live in `batchCarry`, each
 // fenced in [0, 1) with its own tripwire.
+//
+// TIER 3 IS THE EXCEPTION (docs/tier3-timed-production.md): a factory whose output is a
+// timed Tier-3 good runs no rate and keeps no carry. It builds one WHOLE unit at a time —
+// its whole input set is taken when a unit starts, and the unit is minted TICKS_PER_UNIT
+// ticks later (see "TIMED PRODUCTION" below resolveProduction). Mines and Tier-2
+// refineries are exactly as described above.
 
 const { getRecipe } = require('./recipes.js');
 const { getStock } = require('./stock.js');
@@ -63,7 +69,7 @@ const {
   DEFAULT_WINDOW_N, winStartFor, isWindowBoundary, getWindow,
 } = require('./windows.js');
 const { committedContribution } = require('./licence.js');
-const { producedGoodFor } = require('./baseline.js');
+const { producedGoodFor, ticksPerUnitFor } = require('./baseline.js');
 const { getHistory } = require('./history.js');
 
 // resolveProduction(guild, systemId) -> a plain report for that (guild, system):
@@ -103,6 +109,10 @@ const { getHistory } = require('./history.js');
 // is the whole output units produced this tick; `batchCarry` is the venture's NEW
 // per-good carry map (every input + the output, each in [0, 1)), which
 // stepProduction writes back onto the venture (§5 Correction, Ruling 2 generalized).
+// A TIMED Tier-3 factory's row is different (resolveTimedFactory, below): it has NO
+// `batchCarry`, and carries `{ ventureId, timed: true, ticksPerUnit, started, rate,
+// bottleneckGood, minted, unitTicksRemaining }` — `minted` is 0 or one whole unit, and
+// `unitTicksRemaining` is the countdown stepProduction writes back (null = line empty).
 //
 // The null/undefined system is handled EXACTLY as stepProduction does: a venture
 // with no seat keeps its `systemId` (undefined/null) as its key, and the strict
@@ -261,7 +271,7 @@ function resolveProduction(guild, systemId, opts = {}) {
     // the per-line min-rate balancer below: a line held by a scarce partner input
     // consumes less of this good and spills the rest back.
     let demandTotal = 0;
-    for (const { venture, qty } of consumers) demandTotal += venture.productionRate * qty;
+    for (const { venture, qty } of consumers) demandTotal += batchesAsked(venture) * qty;
 
     // §5 one-pot distribution (Slice A, 10-08-26). The whole pot for this good is the
     // start-of-step reserve PLUS this tick's fresh; three claimants draw from it in
@@ -325,7 +335,7 @@ function resolveProduction(guild, systemId, opts = {}) {
       give = [];
       let rem = consumerPool;
       for (const { venture, qty } of consumers) {
-        const g = Math.min(venture.productionRate * qty, rem);
+        const g = Math.min(batchesAsked(venture) * qty, rem);
         give.push(g);
         rem -= g;
       }
@@ -336,8 +346,14 @@ function resolveProduction(guild, systemId, opts = {}) {
       // wants; the integer remainder goes to the earliest-established line
       // (invariant 9). Capping at Σ ceil(want) stops an abundant pool from
       // over-handing a line more than it can use (the surplus just stays put).
-      const wants = consumers.map(({ venture, qty }) =>
-        (getThrottlePct(guild, systemId, venture.id) / 100) * venture.productionRate * qty);
+      // A TIMED factory's throttle is ON/OFF, not a fraction (see resolveTimedFactory): at 0 it
+      // asks for nothing, above 0 it asks for its whole input set (or nothing, mid-unit). A
+      // fractional ask would hand it part of a set it can never start on.
+      const wants = consumers.map(({ venture, qty }) => {
+        const pct = getThrottlePct(guild, systemId, venture.id);
+        if (isTimedFactory(venture)) return pct > 0 ? batchesAsked(venture) * qty : 0;
+        return (pct / 100) * venture.productionRate * qty;
+      });
       const wantTotal = wants.reduce((a, b) => a + b, 0);
       const capTotal = wants.reduce((a, b) => a + Math.ceil(b), 0);
       const toAllocate = Math.min(consumerPool, capTotal);
@@ -354,7 +370,7 @@ function resolveProduction(guild, systemId, opts = {}) {
     }
     consumers.forEach(({ venture, qty }, idx) => {
       (alloc[venture.id] || (alloc[venture.id] = {}))[good] = give[idx];
-      lines.push({ ventureId: venture.id, good, demand: venture.productionRate * qty, alloc: give[idx] });
+      lines.push({ ventureId: venture.id, good, demand: batchesAsked(venture) * qty, alloc: give[idx] });
     });
   }
 
@@ -379,6 +395,23 @@ function resolveProduction(guild, systemId, opts = {}) {
   for (const c of refineryVentures) {
     const recipe = getRecipe(c.recipeId);
     if (!recipe) continue;
+
+    // A TIMED Tier-3 factory takes its own path — one whole unit at a time, never a rate
+    // (resolveTimedFactory, below). What it reports back plugs into the SAME three places a
+    // continuous line's numbers do: its whole-unit draws, its minted output (so the Syndicate
+    // fork and the history see it exactly as they see a refinery's), and a report row.
+    const ticksPerUnit = ticksPerUnitFor(recipe.output.good);
+    if (ticksPerUnit !== null) {
+      const timed = resolveTimedFactory(c, recipe, ticksPerUnit, alloc[c.id] || {},
+        getThrottlePct(guild, systemId, c.id));
+      drawnByLine[c.id] = timed.drawn;
+      if (timed.row.minted > 0) {
+        mintedByGood[recipe.output.good] = (mintedByGood[recipe.output.good] || 0) + timed.row.minted;
+      }
+      refineries.push(timed.row);
+      continue;
+    }
+
     const throttleCap = (getThrottlePct(guild, systemId, c.id) / 100) * c.productionRate;
     // The scarcest input sets the rate; that input IS the bottleneck (no search —
     // it is the min by definition, §5). Ties resolve to the first input in recipe
@@ -540,6 +573,109 @@ function resolveProduction(guild, systemId, opts = {}) {
   }
 
   return { systemId, mines, goods, lines, refineries };
+}
+
+// ── TIMED PRODUCTION (Tier 3) — docs/tier3-timed-production.md ─────────────────────────────
+//
+// A Tier-3 factory does not run at a rate. It builds ONE WHOLE UNIT at a time, like the Tier-4
+// dockyard builds an asset, but in a continuous loop with no commission:
+//
+//     line empty → are ALL the recipe's inputs in hand? → take the WHOLE set now →
+//     count down TICKS_PER_UNIT → mint one unit → line empty again → …
+//
+// The one piece of state is `venture.unitTicksRemaining` (sim/state.js) — how many more ticks
+// the unit on the line needs; absent means the line is empty. Nothing fractional is ever
+// stored: the stockpile only sees whole inputs leave (at a unit's start) and whole units arrive
+// (at its end). Tier-1 mines and Tier-2 refineries are untouched — they stay continuous.
+//
+// HOW IT SITS IN THE GATES. A timed factory is an ordinary CONSUMER in Gates 2 and 3 — it
+// shares its inputs with every other line through the same pool, reserve and priority order, so
+// it can never take a unit another claimant was given, and the pool cannot go negative. The
+// only difference is how much it ASKS for (`batchesAsked`): a whole input set when its line is
+// empty, nothing while a unit is on the line. If Gate 3 hands it less than a whole set, the unit
+// simply does not start this tick and what it was handed stays in the pool — a deterministic
+// stall, never a partial draw.
+
+// isTimedFactory(venture) -> true iff this venture is a factory whose OUTPUT good is timed
+// (`ticksPerUnitFor`, sim/baseline.js). The good decides, never the venture, so every factory
+// making a good runs the same way.
+function isTimedFactory(venture) {
+  const recipe = venture.recipeId ? getRecipe(venture.recipeId) : null;
+  return !!recipe && ticksPerUnitFor(recipe.output.good) !== null;
+}
+
+// batchesAsked(venture) -> how many batches a consuming line asks its inputs for THIS tick, at
+// full tilt: the number each input's per-batch qty is multiplied by in Gates 2 and 3.
+//   - a CONTINUOUS line: its `productionRate` (batches per tick), exactly as always;
+//   - a TIMED factory: 1 when its line is empty (it wants one whole set, to start a unit), 0
+//     while a unit is on the line (that unit's inputs were already taken when it started).
+function batchesAsked(venture) {
+  if (!isTimedFactory(venture)) return venture.productionRate;
+  return venture.unitTicksRemaining == null ? 1 : 0;
+}
+
+// resolveTimedFactory(venture, recipe, ticksPerUnit, allocated, throttlePct)
+//   -> { drawn: { [input good]: whole units }, row: <the report row> }
+// ONE timed factory's tick, computed from start-of-step state — pure, it moves nothing.
+// `allocated` is what Gate 3 handed it per input this tick.
+//
+// THE THROTTLE IS ON/OFF for a timed factory: 0 stops a new unit starting; anything above 0
+// lets the timer run at full pace. (What a PARTIAL throttle should mean for a timer — slow it?
+// — is not ruled; it is on docs/roadmap.md's decision checklist rather than guessed here.) A
+// unit already on the line always finishes — its inputs are spent.
+//
+// The report row carries the same keys a continuous refinery's does, so the console reads it
+// unchanged — `rate` is the unit's pace (1 / ticksPerUnit batches a tick while a unit is on the
+// line, else 0; display telemetry, never stored) — plus the timed facts:
+//   timed: true, ticksPerUnit, started (a unit began this tick), unitTicksRemaining (the value
+//   applyProduction writes back — null means the line is now empty).
+function resolveTimedFactory(venture, recipe, ticksPerUnit, allocated, throttlePct) {
+  let remaining = venture.unitTicksRemaining; // undefined/null = the line is empty
+  const drawn = {};
+  for (const inp of recipe.inputs) drawn[inp.good] = 0;
+  let bottleneckGood = null;
+  let started = false;
+
+  // 1. START a unit: only on an empty line, only if not throttled to 0, and only with the WHOLE
+  // input set in hand — every input is checked before any is taken. The first input short of
+  // its qty (recipe order — deterministic) is reported as the bottleneck.
+  if (remaining == null && throttlePct > 0) {
+    const short = recipe.inputs.find((inp) => (allocated[inp.good] || 0) < inp.qty);
+    if (short) {
+      bottleneckGood = short.good;
+    } else {
+      for (const inp of recipe.inputs) drawn[inp.good] = inp.qty; // the whole set, at start
+      remaining = ticksPerUnit;
+      started = true;
+    }
+  }
+
+  // 2. WORK: a unit on the line (including one that started just now) gets this tick's work.
+  // When the last tick is done the unit is minted and the line is empty again — so with steady
+  // inputs a unit lands exactly every `ticksPerUnit` ticks, and 0 on every tick in between.
+  let minted = 0;
+  const onLine = remaining != null;
+  if (onLine) {
+    remaining -= 1;
+    if (remaining === 0) {
+      minted = recipe.output.qty; // one whole unit (every Tier-3 recipe outputs 1 — a test pins it)
+      remaining = null;
+    }
+  }
+
+  return {
+    drawn,
+    row: {
+      ventureId: venture.id,
+      timed: true,
+      ticksPerUnit,
+      started,
+      rate: onLine ? 1 / ticksPerUnit : 0,
+      bottleneckGood,
+      minted,
+      unitTicksRemaining: remaining == null ? null : remaining,
+    },
+  };
 }
 
 // reconcilePursue(targets, pursue) -> the good's committing ventures in the order the

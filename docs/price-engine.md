@@ -23,6 +23,8 @@ posted   = the `leading` computed PUBLISH_LAG ticks ago
 - **Capacity** is Σ of the **fixed droidless baseline output** of every venture making the good
   (`sim/baseline.js`) — *not* `productionRate`. Throttling every mine to zero therefore does **not**
   inflate the level, and nothing can divide by zero.
+  *(⤳ 27-09-26, Tier-3 timed production: a TIMED Tier-3 good's capacity is counted per **day**, not per
+  tick — see "Tier-3 timed production" at the end of this file.)*
 - **Nothing consumes the price yet.** No sale, no fee, no dividend, no ledger effect — this slice only
   produces the number (the licence slice spends it). No credits move, so invariant 2 is untouched.
 
@@ -186,7 +188,9 @@ every other price constant, and the capacity and level code are untouched.
 
 - **Tier 3 needs a finer answer than `tierOf`.** `tierOf` returns 1 / 2 / 3, but a Tier-3 module now
   belongs to a sub-tier (3-1 / 3-2 / 3-3) or is a specialist with its own price. So `sim/prices.js` has a
-  classifier, `TIER3_PRICE_CLASS`, naming each of the 25 modules' price class. `bandFor` routes a Tier-3
+  classifier, `TIER3_PRICE_CLASS`, naming each of the 25 modules' price class. *(⤳ 27-09-26: the classifier moved,
+  unchanged, to `sim/resources.js` when the production timer became its second reader; `sim/prices.js`
+  imports and re-exports it.)* `bandFor` routes a Tier-3
   good through it instead of `PRICE_BANDS`, which now has T1 / T2 rows only.
 - **The bands.** `TIER3_SUBTIER_BANDS`: 3-1 100 / 20 / 10,000; 3-2 1,000 / 200 / 100,000; 3-3 10,000 /
   2,000 / 1,000,000. `SPECIALIST_BANDS`: one row per specialist, 1,000,000 to 20,000,000 base. Every Tier-3
@@ -216,3 +220,24 @@ and `GOLDEN_UNLICENSED_WITH_TIER3_CATALOG` and `GOLDEN_COMMITTED_WITH_TIER3_CATA
 included) with every Tier-3 good put back on the old uniform 100 / 20 / 100,000 band. All 42 hashes pinned
 in the two files came back byte for byte as HEAD's values. **A fresh galaxy is required on deploy:**
 stored Tier-3 price rows are not migrated, and a stored specialist row at ~100 sits below its new floor.
+
+## Tier-3 timed production — the per-period capacity (27-09-26)
+
+Slice 2 of the Tier-3 economy build (`docs/tier3-timed-production.md`, "The price fix"). Every
+classified Tier-3 good is now produced one whole unit per `TICKS_PER_UNIT` (15 ticks to 4,320). Its
+per-tick output is a fraction, so a per-tick capacity would make `level = stock ÷ capacity` explode.
+One finished heavy engine would read as a level of 2,880 and peg its 2B ceiling.
+
+- **`capacityOutputFor(venture)`** is the capacity path's own reader:
+  - A continuous good (all of Tier 1/2, and the four unclassified modules) gets `baselineOutputFor`,
+    per **tick**, unchanged.
+  - A timed good gets `CAPACITY_PERIOD_TICKS (1,440) ÷ TICKS_PER_UNIT × recipe output`, per **day**.
+  - `productionCapacity` sums it. The basis is decided by the good, so no good's capacity can mix
+    the two timescales.
+- **The level of a timed good reads as days of output hoarded.** With the unchanged 0.05 sensitivity,
+  one heavy engine held against one factory is a level of 2 and a target of 20M × 1.1 = 22M, a gentle
+  nudge. `tier3-timed-production.test.js` pins that, and pins the per-tick contrast pegging the ceiling.
+- **`baselineOutputFor` did not change.** It is also the licence fee's basis and the snapshot's fee
+  quote, and neither moved. Re-pricing Tier-3 licences is Slice 3's.
+- **Nothing else in the formula moved.** The sensitivity, idleness, EMA, slew, clamp, lag and every
+  band are unchanged. No golden hash moved: no pinned run makes a Tier-3 good.

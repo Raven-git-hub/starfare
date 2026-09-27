@@ -129,6 +129,64 @@ const TIER3_GOODS = Object.freeze([
   'stealth_module',
 ]);
 
+// ── THE TIER-3 CLASSES (RULED 27-09-26, docs/phase-1-tuning.md "Tier-3 sub-tiers & specialist
+// parts") ─────────────────────────────────────────────────────────────────────────────────
+//
+// Every Tier-3 module -> its class: one of the three sub-tiers ('3-1' bulk parts, '3-2'
+// standard gear, '3-3' complex systems), SPECIALIST (a part priced to the one asset it
+// defines), or UNCLASSIFIED (no asset bill uses it yet). `tierOf` only knows "tier 3"; this is
+// the finer answer.
+//
+// TWO READERS, and that is why it lives here in the vocabulary rather than in one of them:
+//   - the PRICE BAND (sim/prices.js `bandFor`) — a sub-tier's band, or a specialist's own row;
+//   - the PRODUCTION TIMER (sim/baseline.js `ticksPerUnitFor`, the Tier-3 timed-production
+//     slice) — a sub-tier's ticks-per-unit, or a specialist's own.
+// The ruling couples the two on purpose (design.md §5: "Base price ↔ production timer are ONE
+// coupled system" — dearer is slower), so one class drives both. It was born in prices.js
+// (Slice 1, when only the price read it) and moved here VERBATIM when the timer became its
+// second reader: baseline.js cannot import prices.js (prices.js imports baseline.js), so the
+// shared answer had to sit below both. prices.js re-exports it, so every existing import of it
+// still works. The name keeps its Slice-1 spelling for the same reason.
+
+// The two classes that are not a sub-tier. Spelled once, here.
+const SPECIALIST = 'specialist';
+const UNCLASSIFIED = 'unclassified';
+
+// THE TIER-3 CLASSIFIER. Membership is lifted from docs/phase-1-tuning.md's two tables. A test
+// pins that it names every Tier-3 good exactly once, and nothing else.
+const TIER3_PRICE_CLASS = Object.freeze({
+  // 3-1 — bulk / dumb parts
+  cargo_module: '3-1',
+  fuel_tank: '3-1',
+  hull_plating: '3-1',
+  power_cells: '3-1',
+  // 3-2 — standard gear
+  comms_array: '3-2',
+  photovoltaic_array: '3-2',
+  reactor_housing: '3-2',
+  small_reactor_engine: '3-2',
+  // 3-3 — complex systems
+  cargo_handling_system: '3-3',
+  chassis: '3-3',
+  control_module: '3-3',
+  defence_system: '3-3',
+  life_support_module: '3-3',
+  sensor_suite: '3-3',
+  // specialists — each one's band (prices.js) and timer (baseline.js) is its own row
+  deep_scan_mast: SPECIALIST,
+  extraction_head: SPECIALIST,
+  fabrication_line: SPECIALIST,
+  heavy_reactor_engine: SPECIALIST,
+  interdiction_projector: SPECIALIST,
+  medium_reactor_engine: SPECIALIST,
+  stealth_module: SPECIALIST,
+  // unclassified — no asset uses them yet (see UNCLASSIFIED_TIER3_BAND in prices.js)
+  claim_beacon: UNCLASSIFIED,
+  drive_module: UNCLASSIFIED,
+  droid_components: UNCLASSIFIED,
+  habitation_module: UNCLASSIFIED,
+});
+
 // The goods that may key a guild stockpile and appear as a galactic-supply row:
 // raw resources + processed goods + Tier-3 modules (NOT fuel). ONE source of truth
 // for "what is a legal stockpile key," used by stockpile validation (invariants.js)
@@ -173,5 +231,6 @@ function isStockpileGood(id) {
 
 module.exports = {
   RAW_RESOURCES, PROCESSED_GOODS, STOCKPILE_GOODS, TIER3_GOODS, FUEL_GOOD, DEUTERIUM,
+  TIER3_PRICE_CLASS, SPECIALIST, UNCLASSIFIED,
   isRawResource, isFuel, isProcessedGood, isTier3Good, isStockpileGood,
 };

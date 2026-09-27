@@ -421,6 +421,7 @@ function createVenture({
   buildQueue = [],
   nextCommissionId = 0,
   batchCarry = {},
+  unitTicksRemaining,
 }) {
   if (id === undefined) throw new Error('createVenture: id is required');
   if (ownerGuildId === undefined) throw new Error('createVenture: ownerGuildId is required');
@@ -662,6 +663,24 @@ function createVenture({
     // venture has nothing carried). Advanced only by stepProduction (tick.js) — the
     // resolver reads it start-of-step and stays pure.
     batchCarry: { ...batchCarry },
+    // unitTicksRemaining: the Tier-3 TIMED factory's countdown (docs/tier3-timed-production.md,
+    // the timed-production slice). A Tier-3 factory builds one whole unit at a time instead of
+    // running at a rate: when a unit STARTS, its whole input set is taken and this is set to the
+    // good's TICKS_PER_UNIT (sim/baseline.js); each tick the unit is on the line takes one tick
+    // off it; at 0 the unit is minted into the stockpile and the field is REMOVED again. So it
+    // reads "how many more ticks the unit on the line needs" — an integer from 1 up to
+    // TICKS_PER_UNIT − 1 between ticks (the start tick is itself the unit's first tick of work).
+    // This is the ONLY place a part-built unit exists: the stockpile only ever holds whole units.
+    //
+    // ABSENT means "no unit on the line" — every continuous venture, and a timed factory that is
+    // idle or waiting for inputs. OMITTED when absent, like `licence` and `committedFromTick`
+    // above, so a galaxy with no Tier-3 factory at work serializes byte-identically to before
+    // this slice. A scenario or saved state that hands one in keeps it (a plain number, so it is
+    // copied by value). Advanced only by stepProduction (tick.js); the resolver reads it
+    // start-of-step and stays pure. Its range is a tripwire (invariants.js).
+    // `!= null` (not truthiness): a 0 is not "absent" — it is a finished unit nobody minted — so
+    // it is kept and reaches the tripwire rather than being swallowed here.
+    ...(unitTicksRemaining != null ? { unitTicksRemaining } : {}),
     // NOTE: the old typeless `outputStockpile` scalar was retired in the
     // resource-representation slice (02-08-26). Produced goods are typed and go
     // straight into the owner guild's `stockpiles` — one home, no drift. There

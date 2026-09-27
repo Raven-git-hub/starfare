@@ -29,6 +29,13 @@
 // `sim/production.js` imports only `producedGoodFor`, the venture → good IDENTITY
 // below (since the factory-commitment slice, 28-08-26); it reads neither table.
 //
+// THE ONE EXCEPTION — TICKS_PER_UNIT (the Tier-3 timed-production slice). That table is
+// not a baseline output: it is the Tier-3 production TIMER, and the resolver DOES read it
+// (through `ticksPerUnitFor`), because a timed factory's pace is its timer, not a rate. It
+// sits here beside the two baseline tables because it is the same kind of thing — a fixed
+// per-type production fact that tuning edits in one file. The price engine reads it too, for
+// the per-period capacity (sim/prices.js `capacityOutputFor`).
+//
 // [FIRST-CUT] EVERY number below is provisional and recorded in
 // docs/phase-1-tuning.md; the tables are written out entry by entry so tuning is a
 // one-file edit.
@@ -45,7 +52,10 @@
 // The homeworld production floor that these yields were derived to satisfy is its own
 // tripwire, tests/homeworld-floor.test.js.
 
-const { RAW_RESOURCES, PROCESSED_GOODS, TIER3_GOODS, DEUTERIUM } = require('./resources.js');
+const {
+  RAW_RESOURCES, PROCESSED_GOODS, TIER3_GOODS, DEUTERIUM,
+  TIER3_PRICE_CLASS, SPECIALIST, UNCLASSIFIED,
+} = require('./resources.js');
 const { getRecipe, listRecipes } = require('./recipes.js');
 
 // [FIRST-CUT] the uniform FACTORY baseline, batches/tick: every REFINERY_BASELINE
@@ -124,6 +134,62 @@ const REFINERY_BASELINE = Object.freeze({
   small_reactor_engine: 5,
   stealth_module: 5,
 });
+
+// ── TIER-3 TIMED PRODUCTION: TICKS PER UNIT (RULED 27-09-26, docs/tier3-timed-production.md;
+// the numbers are docs/phase-1-tuning.md "Tier-3 production timers" exactly) ─────────────────
+//
+// A Tier-3 factory does not run at a continuous rate like the tables above. It builds ONE WHOLE
+// UNIT at a time: its full input set is taken when the unit starts, the unit takes this many
+// ticks, and it lands in the stockpile at the end (sim/production.js). 1 tick = 1 minute, so
+// 15 = a quarter hour and 2,880 = two days. Dearer parts are slower on purpose — the timer is
+// what keeps a 20M part from being a 20M-per-tick printer (design.md §5).
+//
+// [FIRST-CUT] every value. Keyed the way the ruling states them: by SUB-TIER for the three
+// uniform tiers, and by GOOD for each specialist (each specialist has its own timer, as it has
+// its own price). A good's class comes from TIER3_PRICE_CLASS (sim/resources.js).
+const TICKS_PER_UNIT = Object.freeze({
+  '3-1': 15,                       // 15 min — bulk / dumb parts
+  '3-2': 30,                       // 30 min — standard gear
+  '3-3': 60,                       // 1 h    — complex systems
+  extraction_head: 360,            // 6 h
+  fabrication_line: 480,           // 8 h
+  medium_reactor_engine: 720,      // 12 h
+  interdiction_projector: 1440,    // 24 h
+  stealth_module: 2880,            // 48 h
+  heavy_reactor_engine: 2880,      // 48 h
+  deep_scan_mast: 4320,            // 72 h
+});
+
+// ticksPerUnitFor(good) -> how many ticks one whole unit of `good` takes, or null when the good
+// is NOT timed — which means it is produced CONTINUOUSLY, per tick, like every Tier-1 mine and
+// Tier-2 refinery. This one function is the whole "timed or continuous?" question: the
+// production resolver, the price engine's capacity and the invariants all ask it, so they can
+// never disagree about a good (a good is all-timed or all-continuous — never both).
+//
+// NULL for the four UNCLASSIFIED modules (drive_module, droid_components, claim_beacon,
+// habitation_module). The ruling makes every Tier-3 good timed, but their timer depends on the
+// sub-tier they have not been given yet (the same open question that keeps them on the old
+// uniform price band). Picking one would invent a number, so they stay CONTINUOUS — their
+// status quo — until their sub-tier is ruled; then they become timed with no code change. This
+// is on docs/roadmap.md's decision checklist.
+function ticksPerUnitFor(good) {
+  if (!Object.prototype.hasOwnProperty.call(TIER3_PRICE_CLASS, good)) return null; // not Tier 3
+  const priceClass = TIER3_PRICE_CLASS[good];
+  if (priceClass === UNCLASSIFIED) return null;
+  const key = priceClass === SPECIALIST ? good : priceClass;
+  return Object.prototype.hasOwnProperty.call(TICKS_PER_UNIT, key) ? TICKS_PER_UNIT[key] : null;
+}
+
+// LOAD-TIME TRIPWIRE: every CLASSIFIED Tier-3 good must resolve to a timer. A new specialist
+// added to TIER3_PRICE_CLASS without a TICKS_PER_UNIT row would otherwise fall back to
+// continuous production silently — the exact per-tick printer the timer exists to prevent. So
+// it throws, naming the good, the moment this file is required (§15.5: fail loud).
+for (const good of TIER3_GOODS) {
+  if (TIER3_PRICE_CLASS[good] === UNCLASSIFIED) continue;
+  if (ticksPerUnitFor(good) === null) {
+    throw new Error(`baseline: Tier-3 good "${good}" (class ${JSON.stringify(TIER3_PRICE_CLASS[good])}) has no TICKS_PER_UNIT timer — add its row rather than let it produce continuously`);
+  }
+}
 
 // producedGoodFor(venture) -> the good this venture's output lands as, or null when it
 // produces nothing identifiable. A mine is identified by `resourceType`, a refinery by
@@ -323,6 +389,7 @@ const BASELINE_KEYS = Object.freeze({
 
 module.exports = {
   FIRST_CUT_REFINERY_BASELINE, MINE_BASELINE, REFINERY_BASELINE, BASELINE_KEYS,
+  TICKS_PER_UNIT, ticksPerUnitFor,
   producedGoodFor, baselineOutputFor, baselineRateFor, baselineUnitsForGood,
   isLicensedDeuteriumMine, isDeuteriumMine, isIllegalDeuteriumRefinery, isDockyard,
 };

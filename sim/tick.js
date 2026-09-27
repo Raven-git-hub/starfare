@@ -465,9 +465,25 @@ function applyProduction(state, guild, systemId, ctx) {
   // carry map (§5 Correction). A starved line (rate 0) draws/mints nothing, but its
   // carry map is unchanged by the resolver, so writing it back is a harmless no-op —
   // still, only a line that ran is stamped (matching the old `if rate<=0 continue`).
+  //
+  // A TIMED Tier-3 factory's row (docs/tier3-timed-production.md) is applied first and on its
+  // own: it has no carry. Its inputs already left with the draws above (the whole set, on the
+  // tick its unit started). Here its countdown is written back — REMOVED when the line is empty,
+  // so the key is omitted exactly when it holds nothing (sim/state.js) — and a finished unit is
+  // minted into the pool. It is stamped on every tick a unit was on the line (its countdown
+  // moved); an idle or starved timed factory changed nothing, so it is not stamped.
   for (const r of report.refineries) {
-    if (r.rate <= 0) continue;
     const v = byId.get(r.ventureId);
+    if (r.timed) {
+      if (r.unitTicksRemaining === null) delete v.unitTicksRemaining;
+      else v.unitTicksRemaining = r.unitTicksRemaining;
+      if (r.minted > 0) {
+        addStock(guild, systemId, getRecipe(v.recipeId).output.good, r.minted);
+      }
+      if (r.rate > 0) v.updatedAtTick = state.tick;
+      continue;
+    }
+    if (r.rate <= 0) continue;
     v.batchCarry = r.batchCarry;
     if (r.minted > 0) {
       const recipe = getRecipe(v.recipeId);

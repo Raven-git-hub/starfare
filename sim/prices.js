@@ -21,7 +21,8 @@
 //     of the fixed droidless baselines (sim/baseline.js) of every venture making
 //     the good, so a good with few producers turns any hoard into a big disparity
 //     (sharp price) while a well-supplied one moves gently. It is self-correcting:
-//     drain the hoard, the ratio falls, the price crashes.
+//     drain the hoard, the ratio falls, the price crashes. Capacity is per TICK for a
+//     continuous good and per DAY for a timed Tier-3 good (capacityOutputFor, below).
 //   - IDLENESS is the behavioural term: stock being consumed downstream this tick
 //     is WORKING INVENTORY and is discounted; static stock is a HOARD and is bid
 //     up. Measured as TURNOVER — this tick's downstream draw as a fraction of the
@@ -64,9 +65,13 @@
 // docs/phase-1-tuning.md with its rationale. The SHAPE (level × idleness, EMA,
 // slew, clamp, lag) is the settled design; the values are expected to move.
 
-const { STOCKPILE_GOODS, TIER3_GOODS, DEUTERIUM, isFuel } = require('./resources.js');
+const {
+  STOCKPILE_GOODS, TIER3_GOODS, DEUTERIUM, isFuel,
+  TIER3_PRICE_CLASS, SPECIALIST, UNCLASSIFIED,
+} = require('./resources.js');
 const { computeGalacticSupply } = require('./supply.js');
-const { baselineOutputFor } = require('./baseline.js');
+const { baselineOutputFor, ticksPerUnitFor } = require('./baseline.js');
+const { getRecipe } = require('./recipes.js');
 const { tierOf } = require('./points.js');
 
 // [FIRST-CUT] the price BAND of Tier 1 and Tier 2 (RULED 26-09-26, design.md §5
@@ -138,46 +143,11 @@ const SPECIALIST_BANDS = Object.freeze({
 // checklist.
 const UNCLASSIFIED_TIER3_BAND = Object.freeze({ base: 100, floor: 20, ceiling: 100_000 });
 
-// The two price classes that are not a sub-tier. Spelled once, here.
-const SPECIALIST = 'specialist';
-const UNCLASSIFIED = 'unclassified';
-
-// THE TIER-3 CLASSIFIER: every Tier-3 module -> its price class ('3-1', '3-2', '3-3',
-// SPECIALIST or UNCLASSIFIED). `tierOf` only knows "tier 3"; this is the finer answer the
-// prices need. Membership is lifted from docs/phase-1-tuning.md's two tables. A test pins
-// that it names every Tier-3 good exactly once, and nothing else.
-const TIER3_PRICE_CLASS = Object.freeze({
-  // 3-1 — bulk / dumb parts
-  cargo_module: '3-1',
-  fuel_tank: '3-1',
-  hull_plating: '3-1',
-  power_cells: '3-1',
-  // 3-2 — standard gear
-  comms_array: '3-2',
-  photovoltaic_array: '3-2',
-  reactor_housing: '3-2',
-  small_reactor_engine: '3-2',
-  // 3-3 — complex systems
-  cargo_handling_system: '3-3',
-  chassis: '3-3',
-  control_module: '3-3',
-  defence_system: '3-3',
-  life_support_module: '3-3',
-  sensor_suite: '3-3',
-  // specialists — each one's band is its own row of SPECIALIST_BANDS
-  deep_scan_mast: SPECIALIST,
-  extraction_head: SPECIALIST,
-  fabrication_line: SPECIALIST,
-  heavy_reactor_engine: SPECIALIST,
-  interdiction_projector: SPECIALIST,
-  medium_reactor_engine: SPECIALIST,
-  stealth_module: SPECIALIST,
-  // unclassified — no asset uses them yet (see UNCLASSIFIED_TIER3_BAND)
-  claim_beacon: UNCLASSIFIED,
-  drive_module: UNCLASSIFIED,
-  droid_components: UNCLASSIFIED,
-  habitation_module: UNCLASSIFIED,
-});
+// THE TIER-3 CLASSIFIER — `TIER3_PRICE_CLASS` (every Tier-3 module -> '3-1', '3-2', '3-3',
+// SPECIALIST or UNCLASSIFIED) and the two class names — now lives in sim/resources.js and is
+// imported above. It moved there, unchanged, in the Tier-3 timed-production slice, because the
+// production timer (sim/baseline.js) became its second reader and baseline.js cannot import this
+// file. It is re-exported below, so `require('./prices.js').TIER3_PRICE_CLASS` still works.
 
 // Own-key lookup: a plain `table[key]` would also find inherited names like "toString",
 // and a classifier typo must read as "no band", never as a function.
@@ -233,6 +203,9 @@ const DEUTERIUM_BAND = Object.freeze({ base: 10, floor: 2, ceiling: 200 });
 // live run: the first cut tried (0.6) pinned every hoarded good at the old ceiling
 // (20× base) inside forty ticks, which is a saturated flat line, not a market. See
 // docs/phase-1-tuning.md.
+// For a TIMED Tier-3 good the level is DAYS of production held, not ticks (its capacity is
+// per period — see capacityOutputFor), so the same 0.05 gives it a gradient too: one day's
+// output held nudges the value up 5%.
 const LEVEL_SENSITIVITY = 0.05;
 
 // [FIRST-CUT] how much a fully-consumed pile is discounted against a static one.
@@ -329,17 +302,54 @@ function basePriceFor(good) {
   return band ? band.base : null;
 }
 
-// productionCapacity(state) -> { good: units/tick } — Σ of the FIXED DROIDLESS
-// BASELINE output (sim/baseline.js) of every venture making the good, across every
-// guild. Deliberately NOT `productionRate`: capacity is what the galaxy COULD make,
-// so throttling doesn't inflate the level (see baseline.js's header). Integer sums,
-// so guild/venture array order can't change the result.
+// [FIRST-CUT] the reference PERIOD a TIMED good's capacity is measured over: one day, 1,440
+// ticks at the ruled 1 tick = 1 minute (docs/tier3-timed-production.md "The price fix";
+// docs/phase-1-tuning.md "Tier-3 production timers"). Read ONLY by capacityOutputFor below.
+const CAPACITY_PERIOD_TICKS = 1440;
+
+// capacityOutputFor(venture) -> { good, units } | null — what ONE venture adds to its good's
+// capacity, the denominator of `level = stock ÷ capacity`. The capacity path's OWN reader.
+//
+// THE PER-PERIOD FIX (the load-bearing half of the timed-production slice). A continuous good
+// (every Tier-1 mine, every Tier-2 refinery) is measured PER TICK, exactly as before — this
+// just hands back `baselineOutputFor`. A TIMED good (Tier 3) makes less than one unit a tick —
+// the fastest, a 3-1 part, makes one per 15 — so a per-tick capacity would be a fraction
+// (1/15 … 1/4,320) and `stock ÷ fraction` explodes: ONE finished heavy engine would read as a
+// level of 2,880 and peg the price at its ceiling. So a timed good is measured per PERIOD
+// instead: units per day = 1,440 ÷ ticks-per-unit × the recipe's output (a 3-1 factory 96/day,
+// a heavy-engine factory 0.5/day). The level then reads "days of production hoarded", and the
+// unchanged 0.05 sensitivity gives a gentle gradient. The basis is per GOOD (ticksPerUnitFor),
+// so one good's capacity can never mix the two timescales.
+//
+// WHY A SEPARATE READER, not a change to `baselineOutputFor`: that function is ALSO the licence
+// fee's basis ("baseline output over one window", sim/actions.js) and the snapshot's fee quote.
+// Changing it would silently re-price every Tier-3 licence — a Slice-3 decision. So the fee
+// keeps reading `baselineOutputFor` exactly as before, and only the capacity sum reads this.
+//
+// A timed good's figure can be FRACTIONAL (a 72 h part makes ⅓ a day). That is fine: capacity
+// is a rate, not a balance, like the price itself ("FLOATS ARE CORRECT HERE" above).
+function capacityOutputFor(venture) {
+  const out = baselineOutputFor(venture);
+  if (!out) return null;
+  const ticksPerUnit = ticksPerUnitFor(out.good);
+  if (ticksPerUnit === null) return out; // continuous: units per TICK, unchanged
+  const recipe = getRecipe(venture.recipeId);
+  if (!recipe) return null; // not a factory (a timed good is only ever made by one)
+  return { good: out.good, units: (CAPACITY_PERIOD_TICKS / ticksPerUnit) * recipe.output.qty };
+}
+
+// productionCapacity(state) -> { good: capacity } — Σ of every venture's FIXED capacity
+// (capacityOutputFor above) across every guild: units per TICK for a continuous good, units per
+// PERIOD (one day) for a timed Tier-3 good. Deliberately NOT `productionRate`: capacity is what
+// the galaxy COULD make, so throttling doesn't inflate the level (see baseline.js's header).
+// Continuous goods sum integers; a timed good's per-venture figure may be fractional, but the
+// ventures are always walked in the same guild/venture array order, so the sum is deterministic.
 function productionCapacity(state) {
   const capacity = {};
   for (const good of PRICED_GOODS) capacity[good] = 0;
   for (const guild of state.guilds || []) {
     for (const venture of guild.ventures || []) {
-      const out = baselineOutputFor(venture);
+      const out = capacityOutputFor(venture);
       if (!out) continue;
       if (Object.prototype.hasOwnProperty.call(capacity, out.good)) capacity[out.good] += out.units;
     }
@@ -422,6 +432,7 @@ module.exports = {
   SPECIALIST, UNCLASSIFIED, assertTier3Classified,
   LEVEL_SENSITIVITY, IDLENESS_WEIGHT, EMA_ALPHA, MAX_SLEW_PCT,
   PUBLISH_LAG, PRICED_GOODS,
-  seedPrices, leadingValue, postedPrice, bandFor, basePriceFor, productionCapacity, priceTarget,
-  advanceLeading, recomputePrices,
+  CAPACITY_PERIOD_TICKS,
+  seedPrices, leadingValue, postedPrice, bandFor, basePriceFor, capacityOutputFor, productionCapacity,
+  priceTarget, advanceLeading, recomputePrices,
 };

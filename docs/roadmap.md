@@ -1854,6 +1854,43 @@ boundary so the later hex-map swap doesn't touch it.
   tools **68 green**. **Not safe to run live until Slice 2 (timed production) ships**, as ruled; needs a
   **fresh galaxy** on deploy.
 
+- **Tier-3 timed production + the per-period capacity — ✅ BUILT 27-09-26 (Slice 2 of the Tier-3 economy
+  build).** `docs/tier3-timed-production.md` ("The model", "The timer ladder", the input-gating half of
+  "Build time", "The price fix"; as-built at its end); numbers in `docs/phase-1-tuning.md`; design.md §5
+  AS-BUILT note. **Every classified Tier-3 good is produced on a timer.**
+  - `TICKS_PER_UNIT` (`sim/baseline.js`) is the ruled ladder: 3-1 15 · 3-2 30 · 3-3 60 · specialists
+    360–4,320. `ticksPerUnitFor(good)` is the one "timed or continuous?" answer.
+  - A timed factory takes its **whole input set when a unit starts**, counts down the new
+    `venture.unitTicksRemaining` (omitted when the line is empty), and mints **one whole unit** at 0.
+    With steady inputs that is one unit every `TICKS_PER_UNIT` ticks and 0 in between.
+  - It is an ordinary Gate-2/3 consumer that asks for a whole set when idle and nothing mid-unit. Handed
+    less than a whole set, it does not start and draws nothing (a deterministic stall).
+  - Tier-1 mines and Tier-2 refineries are untouched.
+  - **Capacity fix, on the capacity path only.** `capacityOutputFor` (`sim/prices.js`) counts a timed
+    good per **day** (`CAPACITY_PERIOD_TICKS` 1,440 ÷ `TICKS_PER_UNIT` × output) and a continuous good
+    per tick as before. One finished heavy engine now nudges its price to ~22M (1.1× base); against a
+    per-tick capacity it would peg the 2B ceiling (both pinned).
+  - **Seams held.** `baselineOutputFor` is unchanged, so the licence fee and the fee quote read what they
+    did. The commitment / sale / fee logic is untouched: a committed timed factory now delivers lumpily
+    (0 most ticks, 1 on completion), as expected until Slice 3 smooths it.
+  - **Invariants** (`sim/invariants.js`): a timed good is never produced continuously (fails naming the
+    good); the countdown sits only on a timed factory and only in `[1, TICKS_PER_UNIT)`; no fractional
+    stockpile unit (the existing §15.2 sweep).
+  - **One structural move:** `TIER3_PRICE_CLASS` moved verbatim from `sim/prices.js` to
+    `sim/resources.js`, because `sim/baseline.js` now reads it and cannot import `sim/prices.js`.
+    `sim/prices.js` re-exports it; no band or `bandFor` logic changed.
+  - **Goldens: none moved.** No pinned run makes a Tier-3 good, and a Tier-1/2 run is byte-identical to
+    the pre-slice engine (scratch-checkout diff). In a run that does make a module, only that factory,
+    the module and its inputs' stocks, prices and histories differ from HEAD.
+  - One existing test updated deliberately: `tier3-catalog.test.js` ran 15 ticks, and a 15-tick unit
+    started on tick 2 lands on tick 16, so it now runs 30 and pins the first mint at tick 16.
+  - Sim suite 1,655 → **1,675 green** (`sim/tests/tier3-timed-production.test.js`, +20); tools **68
+    green**.
+  - **Still not safe to run live:** a Tier-3 licence's commitment and fee are still sized off the
+    continuous 5 batches/tick baseline, so a licensed Tier-3 factory breaches its daily window until
+    Slice 3 (weekly whole-unit settlement, progress-based payment). Needs a **fresh galaxy** on deploy
+    (new venture field).
+
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
@@ -2089,6 +2126,31 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   `sim/prices.js`), their status quo. Note 3-1 has the same base (100) and floor but a 10,000
   ceiling. Needs: a sub-tier (or specialist band) for each, ruled when the droid / claim / habitation
   bills are designed. Not guessed.
+  **⤳ 27-09-26 (Tier-3 timed production):** their sub-tier now also decides their production
+  **timer**. With no sub-tier they have no `TICKS_PER_UNIT`, so they stay **continuous** at 5
+  batches/tick (their status quo). The ruling says ALL Tier-3 goods are timed, so this is a known gap.
+  Ruling their sub-tier makes them timed with no code change (`ticksPerUnitFor` reads the class).
+
+- **Tier-3 slice 2 (timed production) — items for a ruling or a confirm** — *surfaced 27-09-26.*
+  - **What a partial throttle means for a timed factory.** Built as **on/off**: a throttle of 0 stops
+    a new unit starting (a unit already on the line finishes, since its inputs are spent), and
+    anything above 0 runs the timer at full pace. Should 50% slow the timer (e.g. a unit every 2 ×
+    `TICKS_PER_UNIT`)? That needs a rule, so it was not guessed.
+  - **`productionRate` on a timed factory is inert.** Establish still stamps `REFINERY_BASELINE` (5
+    batches/tick); the timed path only needs it above 0. The console still shows it, and the
+    snapshot's `equityPerCycle` projection multiplies it. Retire it for timed factories, or show the
+    timer instead? (A client / Slice-3 question.) The snapshot's venture row does not yet echo
+    `unitTicksRemaining`; the production preview row does.
+  - **Before Tier 3 runs live (Slice 3's job, recorded so it is not missed):** a Tier-3 licence's
+    committed quantity (`commitmentUnitsFor`) and fee (`licenceFee`) still read the continuous
+    `baselineOutputFor` (5 units/tick). A timed factory makes at most 1,440 ÷ `TICKS_PER_UNIT` a day,
+    so a licensed Tier-3 factory breaches every daily window at any commitment above about 1.3% (3-1)
+    — much lower for specialists. Seam 2 kept the fee's reading unchanged on purpose.
+  - **Doc drift, not a code question.** design.md §5's "Load-bearing price fix" paragraph and
+    `docs/phase-1-tuning.md`'s base-price ↔ timer paragraph still say capacity is "per cycle (whole
+    units per week ≈ one per factory)". The later RULED notes say per **day** (1,440 ticks), and that
+    is what was built. The same §5 ruling says the timer reuses "the remainder mechanism"; it was built
+    as a countdown instead, because a carry accrues inputs continuously, which the build rule forbids.
 
 - **Tier-3 slice 1 — small items for a ruling or a confirm** — *surfaced 27-09-26 by the Tier-3
   price-bands slice.*
