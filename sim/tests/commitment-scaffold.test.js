@@ -395,8 +395,17 @@ const GOLDEN_COMMITTED_WITH_FUEL_PRICE_HISTORY = 'a39d9385eae3cf88b060d0ce8fd10a
 // rest and nothing else — proven by `withoutTier3` recovering GOLDEN_*_WITH_FUEL_PRICE_HISTORY
 // byte-for-byte above. These full hashes are pinned so a drift in the new goods' at-rest
 // prices (or in an existing good's, which would leak past the strip) is caught too.
-const GOLDEN_UNLICENSED_WITH_TIER3_CATALOG = '54e3fc2c7f08e1bc1814be3d79c7af2fa3601c1680e2bb2d081d2872d5506bcd';
-const GOLDEN_COMMITTED_WITH_TIER3_CATALOG = '70b4009c91e95600d63c6ec9e4e16328973c752ebc4d2ed5e26015690556f1b2';
+//
+// ⤳ TIER-3 SUB-TIERS + SPECIALIST PARTS (27-09-26 — design.md §5; numbers in docs/phase-1-tuning.md).
+// Each module now seeds at its sub-tier's or specialist's base instead of the uniform 100. Neither
+// run makes a module, so the modules' at-rest price rows are the ONLY thing that moved: every golden
+// that strips them (`withoutTier3`) did NOT move — GOLDEN_UNLICENSED, the price-stripped one,
+// included. These two full hashes keep those rows, so both were re-pinned. Build-session proof (not a
+// standing test — the bands are frozen module constants): with every module put back on the old
+// uniform 100 / 20 / 100,000 band and the rest of the slice in place, both previous values
+// (54e3fc2c… and 70b4009c…) came back byte for byte.
+const GOLDEN_UNLICENSED_WITH_TIER3_CATALOG = 'dd93779327d61eed0ea84f3ead4d50c40531b1e672d1b056458bbd75f3da9d93';
+const GOLDEN_COMMITTED_WITH_TIER3_CATALOG = 'f6120e60a193baf3e0753f9b8a5926d2df5dda51a5cc721ea1edeba232a5f218';
 
 // ── SLICE A′ — STAMP `fuelHoardAtCycleStart` AT FOUNDING (03-09-26 — docs/guild-hall.md §4) ──
 //

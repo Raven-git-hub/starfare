@@ -803,10 +803,12 @@ function checkLicenceTerms(state) {
 // all is legal (a pre-price-engine save, or a hand-built test fixture); only a present,
 // broken one trips.
 //
-// THE BAND IS PER TIER (26-09-26, sim/prices.js PRICE_BANDS). Each good is checked
-// against its own tier's floor and ceiling, never one shared band: a raw good's floor
-// (0.2) sits far below a module's (20), so a single flat band would wave through a
-// module that had crashed to a raw good's price, or flag a healthy raw good as broken.
+// THE BAND IS THE GOOD'S OWN (sim/prices.js bandFor): its tier's row for Tier 1/2
+// (26-09-26), its sub-tier's or specialist's row for a Tier-3 module (27-09-26), or
+// deuterium's own. Each good is checked against its own floor and ceiling, never one
+// shared band: a raw good's floor (0.2) sits far below a bulk module's (20), and that far
+// below a heavy reactor engine's (4,000,000), so a single flat band would wave through a
+// specialist that had crashed to a bulk part's price, or flag a healthy raw good as broken.
 function checkPrices(state) {
   const out = [];
   if (!state.prices) return out;
@@ -852,12 +854,13 @@ function checkPrices(state) {
 //     failure this exists to catch;
 //   - the VALUES: every sample a finite number.
 //
-// The price BAND (each good's tier floor..ceiling, sim/prices.js PRICE_BANDS) is
+// The price BAND (each good's own floor..ceiling, sim/prices.js bandFor) is
 // deliberately NOT asserted here, though checkPrices asserts it on the live posted
 // value. History is the PAST: those bounds are [FIRST-CUT] tuning, and changing them one
 // day must not make a restored save halt on samples that were perfectly legal when they
-// were taken (the 26-09-26 per-tier re-band is exactly such a change). Finiteness is the
-// invariant; the band is a policy the live value answers to.
+// were taken (the 26-09-26 per-tier re-band and the 27-09-26 Tier-3 sub-tier re-band are
+// exactly such changes). Finiteness is the invariant; the band is a policy the live value
+// answers to.
 function checkPriceHistory(state) {
   const out = [];
   if (!state.priceHistory) return out;
@@ -1619,8 +1622,9 @@ function checkBuildQueues(state) {
         }
 
         // remainingTicks: null (not started) OR a non-negative integer ≤ BUILD_TICKS[kind]
-        // (building — never more ticks left than the build takes). The cap is read only when the
-        // kind is buildable; a bad kind already tripped above and has no BUILD_TICKS entry.
+        // (building — never more ticks left than the build takes). A bad kind already tripped
+        // above; it may still have a BUILD_TICKS entry (the three data-only installations do,
+        // sim/asset-recipes.js), so the cap check below can add a second violation for it.
         const rt = entry.remainingTicks;
         if (rt === null || rt === undefined) {
           // not started — fine

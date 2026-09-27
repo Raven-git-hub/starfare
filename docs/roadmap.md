@@ -1831,6 +1831,29 @@ boundary so the later hex-map swap doesn't touch it.
   replaced by "deuterium on its own 10 / 2 / 200 band, not T1's". Sim suite **1,598 green**; tools **68
   green**.
 
+- **Tuning — Tier-3 sub-tier + specialist price bands, and the final Tier-4 bills — ✅ BUILT 27-09-26
+  (Slice 1 of the Tier-3 economy build; data/pricing only).** design.md §5 "TIER-3 SUB-TIERS, SPECIALIST
+  PARTS & FINAL TIER-4 BILLS" (ruled 27-09-26); numbers in `docs/phase-1-tuning.md`, bills in
+  `docs/asset-recipes.md`, as-built in `docs/price-engine.md`. `sim/prices.js`: the uniform T3 row of
+  `PRICE_BANDS` is retired. A new classifier, `TIER3_PRICE_CLASS`, puts each of the 25 modules in a
+  sub-tier (3-1 100 / 3-2 1,000 / 3-3 10,000) or makes it a specialist with its own band (1M–20M). Every
+  Tier-3 band is floor 0.2× base, ceiling 100× base. `bandFor` routes Tier 3 through the classifier and
+  fails loud, naming the good, if one has no band; it also runs as a load-time check. The four modules no
+  bill uses yet keep the old uniform 100 / 20 / 100,000 band as their status quo (see the decision
+  checklist). `sim/asset-recipes.js`: all nine FINAL bills. The outpost, deep scan array and toll gate
+  bills are **data only** (`INSTALLATION_BILLS`, no build or buy path). `BUILD_TICKS` gains outpost
+  12,960, deep_scan_array 10,080 and toll_gate 8,640, inert until those kinds are buildable. **Untouched:**
+  capacity, level, production rates, `TICKS_PER_UNIT`, the build/assembly flow, income/settlement. The
+  price invariant already reads `bandFor`, so it checks the new bands with no logic change. Goldens:
+  every Tier-3-stripped golden held, including both price-stripped ones (`GOLDEN_HASH`,
+  `GOLDEN_UNLICENSED`). Four full-state hashes were re-pinned. With the Tier-3 bands set back to the old
+  uniform band, all 42 pinned hashes reproduced HEAD's values byte for byte. New tripwires: the ruled
+  Tier-3 numbers and classifier, every module resolving to a band, each class seeding at its own base
+  and clamping in its own band, the per-band invariant, the fail-loud guard, and all nine bills plus
+  their assembly times checked against `docs/asset-recipes.md` itself. Sim suite 1,639 → **1,655 green**;
+  tools **68 green**. **Not safe to run live until Slice 2 (timed production) ships**, as ruled; needs a
+  **fresh galaxy** on deploy.
+
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
@@ -2057,6 +2080,28 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     work.** Deuterium is out of the tier system (design.md §8) and is not re-tiered: it keeps its
     pre-slice band (10 / 2 / 200) on the shared price engine. A dedicated fuel-facing price (option c) is
     a future fuel-economy decision. *BUILT 26-09-26 (commit 2 of the per-tier price-bands slice).*
+
+- **The four unclassified Tier-3 modules' sub-tier** — *surfaced 27-09-26 by the Tier-3 price-bands
+  slice.* `docs/phase-1-tuning.md` says drive_module, droid_components, claim_beacon and
+  habitation_module "default to a sub-tier when first placed in a bill" but not WHICH one, and no bill
+  uses them yet. They are priced goods, so they must have a band (a fresh galaxy seeds them). Built as:
+  they keep the old uniform Tier-3 band, **100 / 20 / 100,000** (`UNCLASSIFIED_TIER3_BAND`,
+  `sim/prices.js`), their status quo. Note 3-1 has the same base (100) and floor but a 10,000
+  ceiling. Needs: a sub-tier (or specialist band) for each, ruled when the droid / claim / habitation
+  bills are designed. Not guessed.
+
+- **Tier-3 slice 1 — small items for a ruling or a confirm** — *surfaced 27-09-26 by the Tier-3
+  price-bands slice.*
+  - **Installation kind spellings.** The three data-only installation kinds are spelled `outpost`,
+    `deep_scan_array` and `toll_gate` (as the build prompt named them) in `sim/asset-recipes.js`. The
+    vehicle classes are camelCase (`lightTransport`). Confirm or re-spell before an entity uses them;
+    after that, a rename is a migration.
+  - **Doc drift, not a code question.** design.md §5 (27-09-26) and `docs/phase-1-tuning.md` still say
+    each final bill is sized to "≈50% of its base at rest", but `docs/asset-recipes.md` says that target
+    is retired. If "base" means the Syndicate buy baseline, only the heavy transport's parts at rest are
+    near 50% of it (miner / factory ≈ 9%, spycraft ≈ 8%, medium ≈ 27%, light < 1%). Separately,
+    `docs/tier3-timed-production.md` calls the bills "8–35 parts", but the heavy transport's is 55.
+    The bills were built exactly as tabled; which text is current is for the human.
 
 - **Deferred, flagged in docs (revisit with their slice, don't lose):** the SELL origin-picker helper
   (offer only systems that hold every line — `syndicate-orders.md` §7, a client refinement); a

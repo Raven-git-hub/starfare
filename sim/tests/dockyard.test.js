@@ -97,13 +97,15 @@ const starterMiners = (guildId = 'g1') => {
 
 test('the two buildable bills match the doc, and every module is a real Tier-3 good', () => {
   assert.deepEqual(BUILDABLE_ASSET_KINDS, ['miner', 'factory']);
+  // ⤳ 27-09-26: the FINAL bills (docs/asset-recipes.md, RULED 27-09-26) replace the earlier table.
+  // asset-recipes-final.test.js checks all nine bills against the doc's table itself.
   assert.deepEqual(assetBill('miner'), {
-    chassis: 2, reactor_housing: 1, photovoltaic_array: 1, power_cells: 1, control_module: 1,
-    extraction_head: 1, cargo_module: 1, cargo_handling_system: 1, defence_system: 1,
+    extraction_head: 1, chassis: 2, control_module: 1, cargo_handling_system: 1, defence_system: 1,
+    photovoltaic_array: 2, cargo_module: 6, power_cells: 6,
   });
   assert.deepEqual(assetBill('factory'), {
-    chassis: 3, reactor_housing: 1, photovoltaic_array: 2, power_cells: 2, control_module: 1,
-    fabrication_line: 2, sensor_suite: 1, cargo_handling_system: 1, defence_system: 1,
+    fabrication_line: 1, chassis: 2, control_module: 1, sensor_suite: 1, cargo_handling_system: 1,
+    photovoltaic_array: 3, power_cells: 8,
   });
   // A non-buildable kind has no bill.
   assert.equal(assetBill('light_transport'), null);

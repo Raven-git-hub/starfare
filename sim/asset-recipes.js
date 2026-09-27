@@ -1,15 +1,21 @@
 'use strict';
 
 // asset-recipes.js — the Tier-4 ASSET BILL catalog + the build-yard constants
-// (docs/asset-recipes.md "Tier-4 asset bills"; docs/build-yard.md §1). A Tier-4 recipe is
-// NOT a `recipes.js` row: its output is an ASSET, not a stockpile good, so it never runs
-// through the 2→3 resolver. This file is the machine-readable form of the doc's two
-// `buildable` bills — `assetKind -> { module: qty }` — read only by the Dockyard's
-// reserve-and-wait build step (sim/tick.js) and the commission intake (sim/actions.js).
+// (docs/asset-recipes.md "Tier-4 asset bills (3→4 recipes) — FINAL"; docs/build-yard.md §1).
+// A Tier-4 recipe is NOT a `recipes.js` row: its output is an ASSET, not a stockpile good, so
+// it never runs through the 2→3 resolver. This file is the machine-readable form of the doc's
+// nine FINAL bills — `assetKind -> { module: qty }` — in three catalogs:
 //
-// SCOPE (build-yard.md §7 slice 1): only the two rows with buildable ENTITIES — miner and
-// factory. The ship / outpost / scanner / toll-gate / droid bills stay in the doc, unbuilt;
-// encoding them here would be inventing a build path for an asset kind that has no entity.
+//   - ASSET_BILLS        — miner, factory (the two ground assets).
+//   - VEHICLE_BILLS      — the four guild transports.
+//   - INSTALLATION_BILLS — outpost, deep scan array, toll gate. DATA ONLY: none of the three
+//                          has a build path yet, so these are not in ALL_BILLS / BUILDABLE_KINDS
+//                          (see INSTALLATION_BILLS below for why).
+//
+// The Droid row of the doc has no bill yet (design-ahead, no entity), so it is not here.
+//
+// The buildable bills (ALL_BILLS) are read by the Dockyard's reserve-and-wait build step
+// (sim/tick.js), the commission intake (sim/actions.js) and the Syndicate purchase price.
 
 const { MINER, FACTORY } = require('./assets.js');
 const {
@@ -18,31 +24,29 @@ const {
 const { isTier3Good } = require('./resources.js');
 const { quotedPrice } = require('./price-ring.js');
 
-// The two buildable bills — quantities lifted VERBATIM from docs/asset-recipes.md's two
-// `buildable` rows (all `[FIRST-CUT]`). Each entry is `module -> integer count` (§15.2:
-// integer goods). Frozen so no reader can mutate the catalog at runtime.
+// The two ground-asset bills — quantities lifted VERBATIM from docs/asset-recipes.md's FINAL
+// table (RULED 27-09-26, all `[FIRST-CUT]`), in the doc's own order. Each entry is
+// `module -> integer count` (§15.2: integer goods). Frozen so no reader can mutate the
+// catalog at runtime. A test checks every bill in this file against the doc's table.
 const MINER_BILL = Object.freeze({
-  chassis: 2,
-  reactor_housing: 1,
-  photovoltaic_array: 1,
-  power_cells: 1,
-  control_module: 1,
   extraction_head: 1,
-  cargo_module: 1,
+  chassis: 2,
+  control_module: 1,
   cargo_handling_system: 1,
   defence_system: 1,
+  photovoltaic_array: 2,
+  cargo_module: 6,
+  power_cells: 6,
 });
 
 const FACTORY_BILL = Object.freeze({
-  chassis: 3,
-  reactor_housing: 1,
-  photovoltaic_array: 2,
-  power_cells: 2,
+  fabrication_line: 1,
+  chassis: 2,
   control_module: 1,
-  fabrication_line: 2,
   sensor_suite: 1,
   cargo_handling_system: 1,
-  defence_system: 1,
+  photovoltaic_array: 3,
+  power_cells: 8,
 });
 
 // assetKind -> bill. Keyed by the SAME `MINER`/`FACTORY` constants sim/assets.js pins, so a
@@ -64,51 +68,48 @@ const BUILDABLE_ASSET_KINDS = Object.freeze([MINER, FACTORY]);
 // ASSET_BILLS untouched — the /asset-recipes endpoint that serves ASSET_BILLS and lists
 // [miner, factory] as buildable is a client concern for a later slice, not moved here.
 //
-// Quantities lifted VERBATIM from docs/asset-recipes.md's four ship rows (all `[FIRST-CUT]`).
+// Quantities lifted VERBATIM from docs/asset-recipes.md's FINAL table, the four ship rows
+// (RULED 27-09-26, all `[FIRST-CUT]`), in the doc's own order.
 const LIGHT_TRANSPORT_BILL = Object.freeze({
   chassis: 1,
-  small_reactor_engine: 1,
-  fuel_tank: 1,
-  power_cells: 1,
   control_module: 1,
   life_support_module: 1,
-});
-
-const MEDIUM_TRANSPORT_BILL = Object.freeze({
-  chassis: 2,
-  medium_reactor_engine: 1,
-  reactor_housing: 1,
-  fuel_tank: 2,
-  power_cells: 1,
-  control_module: 1,
-  life_support_module: 2,
-  sensor_suite: 1,
-});
-
-const HEAVY_TRANSPORT_BILL = Object.freeze({
-  chassis: 3,
-  heavy_reactor_engine: 1,
-  reactor_housing: 1,
-  fuel_tank: 2,
-  power_cells: 1,
-  control_module: 1,
-  life_support_module: 2,
-  sensor_suite: 1,
-  cargo_module: 2,
-  cargo_handling_system: 1,
-  hull_plating: 2,
-  defence_system: 1,
-});
-
-const SPYCRAFT_BILL = Object.freeze({
-  chassis: 1,
   small_reactor_engine: 1,
   fuel_tank: 2,
   power_cells: 2,
+});
+
+const MEDIUM_TRANSPORT_BILL = Object.freeze({
+  medium_reactor_engine: 2,
+  chassis: 2,
   control_module: 1,
   life_support_module: 1,
-  sensor_suite: 2,
+  sensor_suite: 1,
+  reactor_housing: 2,
+  fuel_tank: 6,
+  power_cells: 6,
+});
+
+const HEAVY_TRANSPORT_BILL = Object.freeze({
+  heavy_reactor_engine: 5,
+  chassis: 14,
+  life_support_module: 2,
+  control_module: 2,
+  defence_system: 2,
+  hull_plating: 10,
+  cargo_module: 10,
+  fuel_tank: 10,
+});
+
+// Build-only: the Syndicate never sells a spycraft (SYNDICATE_SELLABLE_KINDS below).
+const SPYCRAFT_BILL = Object.freeze({
   stealth_module: 1,
+  control_module: 1,
+  sensor_suite: 3,
+  chassis: 2,
+  life_support_module: 1,
+  small_reactor_engine: 2,
+  power_cells: 6,
 });
 
 // vehicleClass -> bill. Keyed by the SAME class constants sim/vehicles.js pins.
@@ -119,8 +120,67 @@ const VEHICLE_BILLS = Object.freeze({
   [SPYCRAFT]: SPYCRAFT_BILL,
 });
 
+// ── THE THREE INSTALLATION BILLS — DATA ONLY, NO BUILD PATH (RULED 27-09-26) ──────────────────
+// The doc's FINAL table rules a bill and an assembly time for the outpost, the deep scan array and
+// the toll gate. They are recorded here so the code carries all nine bills the doc does, and so the
+// Tier-3 tripwire below covers them. But NONE of the three can be built or bought yet:
+//   - outpost         — the entity exists (state.outposts), but it is placed by the operator
+//                       (spawnOutpost), not built at a dockyard;
+//   - deep scan array — no entity yet;
+//   - toll gate       — no entity yet.
+// So these bills are deliberately NOT in ALL_BILLS and their kinds are NOT in BUILDABLE_KINDS:
+// `assetBill` returns null for them, the dockyard refuses them and the Syndicate cannot price
+// them. Wiring one in is the job of the slice that gives it a build path — adding it here alone
+// would invent that path.
+//
+// The kind names are spelled ONCE, here, as the build prompt named them. None is used as an
+// entity kind anywhere else yet.
+const OUTPOST = 'outpost';
+const DEEP_SCAN_ARRAY = 'deep_scan_array';
+const TOLL_GATE = 'toll_gate';
+
+const DEEP_SCAN_ARRAY_BILL = Object.freeze({
+  deep_scan_mast: 2,
+  sensor_suite: 4,
+  control_module: 2,
+  chassis: 2,
+  comms_array: 3,
+  power_cells: 6,
+});
+
+const TOLL_GATE_BILL = Object.freeze({
+  interdiction_projector: 4,
+  deep_scan_mast: 1,
+  defence_system: 2,
+  chassis: 2,
+  comms_array: 4,
+  power_cells: 8,
+  hull_plating: 8,
+});
+
+// The Outpost is a depot (design.md §4): a big, plain station, so its large counts of ordinary
+// parts are correct, not a typo (docs/asset-recipes.md).
+const OUTPOST_BILL = Object.freeze({
+  chassis: 20,
+  cargo_handling_system: 20,
+  control_module: 6,
+  defence_system: 4,
+  photovoltaic_array: 16,
+  cargo_module: 200,
+  hull_plating: 200,
+  power_cells: 200,
+});
+
+// installationKind -> bill. NOT merged into ALL_BILLS (see above).
+const INSTALLATION_BILLS = Object.freeze({
+  [DEEP_SCAN_ARRAY]: DEEP_SCAN_ARRAY_BILL,
+  [TOLL_GATE]: TOLL_GATE_BILL,
+  [OUTPOST]: OUTPOST_BILL,
+});
+
 // The merged view — every buildable/buyable kind's bill, ground assets AND vehicles. `assetBill`
-// and the tripwire read this, so one lookup answers "the bill for this kind" for either family.
+// reads this, so one lookup answers "the bill for this kind" for either family. The installation
+// bills are NOT in it: they have no build path yet.
 const ALL_BILLS = Object.freeze({ ...ASSET_BILLS, ...VEHICLE_BILLS });
 
 // The combined kind vocabulary a dockyard can BUILD — ground assets THEN vehicles. The build
@@ -161,10 +221,11 @@ function assertBillModulesAreTier3(bills) {
   }
 }
 
-// Run it now, at require time, over the MERGED catalog (ground assets + the four ship bills),
-// so a drift in ANY bill — miner, factory, or a transport — fails the whole suite loudly the
+// Run it now, at require time, over EVERY catalog (ground assets, the four ship bills AND the
+// three data-only installation bills), so a drift in ANY bill fails the whole suite loudly the
 // instant this file is required.
 assertBillModulesAreTier3(ALL_BILLS);
+assertBillModulesAreTier3(INSTALLATION_BILLS);
 
 // assetBill(kind) -> the frozen bill for a buildable kind (ground asset OR vehicle class), or
 // null. null (not a throw) so a caller can ASK whether a kind is buildable and refuse loudly
@@ -192,6 +253,13 @@ const BUILD_TICKS = Object.freeze({
   [MEDIUM_TRANSPORT]: 960,    // 16 hours
   [HEAVY_TRANSPORT]: 10080,   // 1 week (7 × 1,440)
   [SPYCRAFT]: 10080,          // 1 week
+  // The three installations' assembly times (docs/asset-recipes.md FINAL table; docs/
+  // tier3-timed-production.md, RULED 27-09-26). All `[FIRST-CUT]`. Carried now so the doc's
+  // times live in one table, but INERT: none of these kinds is buildable yet (INSTALLATION_BILLS
+  // above), so no build ever counts one of these down.
+  [OUTPOST]: 12960,           // 9 days (9 × 1,440)
+  [DEEP_SCAN_ARRAY]: 10080,   // 7 days (7 × 1,440)
+  [TOLL_GATE]: 8640,          // 6 days (6 × 1,440)
 });
 
 // ── BUYING A TIER-4 ASSET FROM THE SYNDICATE (2.1d) ─────────────────────────────────────────
@@ -286,6 +354,10 @@ function priceAssetForPurchase(state, assetKind, issueTick) {
 module.exports = {
   ASSET_BILLS,
   VEHICLE_BILLS,
+  INSTALLATION_BILLS,
+  OUTPOST,
+  DEEP_SCAN_ARRAY,
+  TOLL_GATE,
   ALL_BILLS,
   BUILDABLE_ASSET_KINDS,
   BUILDABLE_KINDS,

@@ -33,10 +33,12 @@
 //   - The SLEW CAP bounds one tick's move, so a single dump can't teleport it.
 //   - The CLAMP is the soft floor/ceiling (the technical stop; the storyteller and
 //     the destabiliser bots are the real circuit-breakers, Phase 6 / Slice 7).
-//   - BASE, FLOOR and CEILING are PER MANUFACTURING TIER (PRICE_BANDS below), so a
-//     processed good is not priced as though it were raw ore. Raw deuterium is the
-//     one exception: it is out of the tier system and keeps its own band
-//     (DEUTERIUM_BAND below). Every other constant is shared by all goods.
+//   - BASE, FLOOR and CEILING are PER GOOD'S OWN BAND, so a processed good is not
+//     priced as though it were raw ore. Tier-1 and Tier-2 goods take their tier's row
+//     (PRICE_BANDS below); a Tier-3 module takes its SUB-TIER's row or, for a
+//     specialist part, its own row (TIER3_PRICE_CLASS below). Raw deuterium is out of
+//     the tier system and keeps its own band (DEUTERIUM_BAND below). Every other
+//     constant is shared by all goods.
 //   - The PUBLISH LAG breaks the price↔action circular dependency, restores §8/#42's
 //     knowable posted price, and creates the front-running game: the real stock is
 //     visible NOW, the price catches up later, so watching the stock is a skill edge.
@@ -62,12 +64,12 @@
 // docs/phase-1-tuning.md with its rationale. The SHAPE (level × idleness, EMA,
 // slew, clamp, lag) is the settled design; the values are expected to move.
 
-const { STOCKPILE_GOODS, DEUTERIUM, isFuel } = require('./resources.js');
+const { STOCKPILE_GOODS, TIER3_GOODS, DEUTERIUM, isFuel } = require('./resources.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { baselineOutputFor } = require('./baseline.js');
 const { tierOf } = require('./points.js');
 
-// [FIRST-CUT] the price BAND of each manufacturing tier (RULED 26-09-26, design.md §5
+// [FIRST-CUT] the price BAND of Tier 1 and Tier 2 (RULED 26-09-26, design.md §5
 // "PER-TIER PRICE BANDS"; the numbers live in docs/phase-1-tuning.md "Resource prices").
 //
 //   base    — the seed value a good starts at, and the anchor the curve multiplies.
@@ -78,16 +80,136 @@ const { tierOf } = require('./points.js');
 //
 // Keyed by TIER, not by good: two goods of the same tier share a band. A good's tier
 // comes from `tierOf` (sim/points.js), the same answer the GP weights and the cargo
-// volumes use. There is no tier-4 row on purpose: Tier-4 assets are never priced by
-// this engine (they are built on demand at component cost).
+// volumes use.
+//
+// There is NO tier-3 row any more (RULED 27-09-26): Tier 3 is too wide for one band — a
+// fuel tank and a heavy reactor engine are both "a module" — so a Tier-3 good is priced
+// by its sub-tier or specialist band instead (TIER3_PRICE_CLASS below). There is no
+// tier-4 row either: Tier-4 assets are never priced by this engine (they are built on
+// demand at component cost).
 //
 // The floor is a float (0.2). That is fine here: a price is a RATE, not a balance
 // (see "FLOATS ARE CORRECT HERE" above).
 const PRICE_BANDS = Object.freeze({
   1: Object.freeze({ base: 1, floor: 0.2, ceiling: 1000 }),     // raw
   2: Object.freeze({ base: 10, floor: 2, ceiling: 10000 }),     // processed
-  3: Object.freeze({ base: 100, floor: 20, ceiling: 100000 }),  // Tier-3 module
 });
+
+// ── TIER-3 PRICES (RULED 27-09-26, design.md §5 "TIER-3 SUB-TIERS, SPECIALIST PARTS & FINAL
+// TIER-4 BILLS"; the numbers live in docs/phase-1-tuning.md "Tier-3 sub-tiers & specialist
+// parts") ──────────────────────────────────────────────────────────────────────────────────
+//
+// Every Tier-3 band has the SAME SHAPE as the tiers above, with one deliberate difference:
+//   floor   — 0.2 × base (the ruled floor ratio, unchanged).
+//   ceiling — 100 × base, NOT 1000 × base: a deliberately tighter module band, ruled for a
+//             better module market (it overrides the 1000× the uniform Tier-3 row had).
+//
+// These bases are MARKET FLOORS AT REST — the value a fresh galaxy seeds. A live price is
+// expected to run above them as hoards build (the level term), specialists hardest.
+
+// [FIRST-CUT] the three Tier-3 SUB-TIERS, by complexity. Each is a uniform band: every
+// module in a sub-tier shares it.
+const TIER3_SUBTIER_BANDS = Object.freeze({
+  '3-1': Object.freeze({ base: 100, floor: 20, ceiling: 10_000 }),           // bulk / dumb parts
+  '3-2': Object.freeze({ base: 1_000, floor: 200, ceiling: 100_000 }),       // standard gear
+  '3-3': Object.freeze({ base: 10_000, floor: 2_000, ceiling: 1_000_000 }),  // complex systems
+});
+
+// [FIRST-CUT] the SPECIALIST parts: each has its OWN band, keyed by the good, because each
+// is priced to the one asset it defines (docs/phase-1-tuning.md: `base = (½ × asset base −
+// ordinary-part filler) ÷ desired quantity`). Above 3-3, and not a uniform tier.
+const SPECIALIST_BANDS = Object.freeze({
+  extraction_head: Object.freeze({ base: 1_000_000, floor: 200_000, ceiling: 100_000_000 }),               // miner
+  fabrication_line: Object.freeze({ base: 1_000_000, floor: 200_000, ceiling: 100_000_000 }),              // factory
+  medium_reactor_engine: Object.freeze({ base: 2_000_000, floor: 400_000, ceiling: 200_000_000 }),         // medium transport
+  stealth_module: Object.freeze({ base: 8_000_000, floor: 1_600_000, ceiling: 800_000_000 }),              // spycraft
+  heavy_reactor_engine: Object.freeze({ base: 20_000_000, floor: 4_000_000, ceiling: 2_000_000_000 }),     // heavy transport
+  deep_scan_mast: Object.freeze({ base: 20_000_000, floor: 4_000_000, ceiling: 2_000_000_000 }),           // deep scan array
+  interdiction_projector: Object.freeze({ base: 20_000_000, floor: 4_000_000, ceiling: 2_000_000_000 }),   // toll gate
+});
+
+// The band of the four UNCLASSIFIED modules — drive_module, droid_components, claim_beacon,
+// habitation_module. No asset bill uses them yet, and the ruling says they "default to a
+// sub-tier when first placed in a bill" WITHOUT saying which one. Picking a sub-tier here
+// would be inventing their price, and leaving them with no band would crash every galaxy
+// (they are priced goods, so a fresh galaxy seeds them). So they keep their STATUS QUO: the
+// uniform Tier-3 band every module had before this ruling. These are not new numbers — the
+// same move DEUTERIUM_BAND makes. Choosing their sub-tier is on the roadmap's decision
+// checklist.
+const UNCLASSIFIED_TIER3_BAND = Object.freeze({ base: 100, floor: 20, ceiling: 100_000 });
+
+// The two price classes that are not a sub-tier. Spelled once, here.
+const SPECIALIST = 'specialist';
+const UNCLASSIFIED = 'unclassified';
+
+// THE TIER-3 CLASSIFIER: every Tier-3 module -> its price class ('3-1', '3-2', '3-3',
+// SPECIALIST or UNCLASSIFIED). `tierOf` only knows "tier 3"; this is the finer answer the
+// prices need. Membership is lifted from docs/phase-1-tuning.md's two tables. A test pins
+// that it names every Tier-3 good exactly once, and nothing else.
+const TIER3_PRICE_CLASS = Object.freeze({
+  // 3-1 — bulk / dumb parts
+  cargo_module: '3-1',
+  fuel_tank: '3-1',
+  hull_plating: '3-1',
+  power_cells: '3-1',
+  // 3-2 — standard gear
+  comms_array: '3-2',
+  photovoltaic_array: '3-2',
+  reactor_housing: '3-2',
+  small_reactor_engine: '3-2',
+  // 3-3 — complex systems
+  cargo_handling_system: '3-3',
+  chassis: '3-3',
+  control_module: '3-3',
+  defence_system: '3-3',
+  life_support_module: '3-3',
+  sensor_suite: '3-3',
+  // specialists — each one's band is its own row of SPECIALIST_BANDS
+  deep_scan_mast: SPECIALIST,
+  extraction_head: SPECIALIST,
+  fabrication_line: SPECIALIST,
+  heavy_reactor_engine: SPECIALIST,
+  interdiction_projector: SPECIALIST,
+  medium_reactor_engine: SPECIALIST,
+  stealth_module: SPECIALIST,
+  // unclassified — no asset uses them yet (see UNCLASSIFIED_TIER3_BAND)
+  claim_beacon: UNCLASSIFIED,
+  drive_module: UNCLASSIFIED,
+  droid_components: UNCLASSIFIED,
+  habitation_module: UNCLASSIFIED,
+});
+
+// Own-key lookup: a plain `table[key]` would also find inherited names like "toString",
+// and a classifier typo must read as "no band", never as a function.
+const own = (table, key) => (Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined);
+
+// tier3BandOf(good, classOf) -> the Tier-3 good's band under the classifier `classOf`, or
+// undefined when that classifier gives it no band (missing, an unknown class, or a
+// SPECIALIST with no row in SPECIALIST_BANDS).
+function tier3BandOf(good, classOf) {
+  const priceClass = own(classOf, good);
+  if (priceClass === SPECIALIST) return own(SPECIALIST_BANDS, good);
+  if (priceClass === UNCLASSIFIED) return UNCLASSIFIED_TIER3_BAND;
+  return own(TIER3_SUBTIER_BANDS, priceClass);
+}
+
+// assertTier3Classified(goods, classOf) — THROWS, naming the good, if any of `goods` gets no
+// band under `classOf`. Guessing a band would quietly misprice a module forever (§18, §15.5).
+//
+// THE LOAD-TIME TRIPWIRE, the same pattern as assertBillModulesAreTier3 (sim/asset-recipes.js):
+// it runs below over the real Tier-3 vocabulary the instant this file is required, so a new
+// module added to resources.js without a price class fails the whole suite loudly. bandFor
+// also calls it for each Tier-3 good it prices. It is exported so a test can hand it a
+// deliberately broken classifier and prove the guard bites.
+function assertTier3Classified(goods, classOf) {
+  for (const good of goods) {
+    if (!tier3BandOf(good, classOf)) {
+      throw new Error(`prices: Tier-3 good "${good}" has price class ${JSON.stringify(own(classOf, good))}, which resolves to no band — classify it in TIER3_PRICE_CLASS (and SPECIALIST_BANDS for a specialist) rather than guess its base, floor and ceiling`);
+    }
+  }
+}
+
+assertTier3Classified(TIER3_GOODS, TIER3_PRICE_CLASS);
 
 // Raw `deuterium`'s own band — it is NOT on the tier table above (RULED 26-09-26).
 //
@@ -135,18 +257,24 @@ const PUBLISH_LAG = 2;
 const PRICED_GOODS = Object.freeze(STOCKPILE_GOODS.filter((good) => !isFuel(good)));
 
 // bandFor(good) -> the good's { base, floor, ceiling }, or null for a good that is not
-// priced (fuel, or an unknown name). Raw deuterium gets DEUTERIUM_BAND (it is out of
-// the tier system); every other priced good gets its tier's row of PRICE_BANDS.
+// priced (fuel, or an unknown name). Three routes:
+//   - raw deuterium        -> DEUTERIUM_BAND (it is out of the tier system);
+//   - a Tier-3 module      -> its sub-tier or specialist band (tier3BandFor);
+//   - a Tier-1/2 good      -> its tier's row of PRICE_BANDS.
 //
-// FAIL LOUD: a PRICED good whose tier has no band is a broken vocabulary, not a
-// good to price at some default. Guessing a band would quietly misprice it forever,
-// so this throws and names the good instead (§18, §15.5). Today every other priced
-// good is tier 1, 2 or 3 (a test pins that), so the throw can only fire if a new good
-// is added to the priced list without a tier.
+// FAIL LOUD: a PRICED good with no band is a broken vocabulary, not a good to price at
+// some default. Guessing a band would quietly misprice it forever, so this throws and
+// names the good instead (§18, §15.5). Today every priced good has a band (tests pin
+// that), so the throw can only fire if a new good is added to the priced list — a new
+// module above all — without being classified.
 function bandFor(good) {
   if (!PRICED_GOODS.includes(good)) return null;
   if (good === DEUTERIUM) return DEUTERIUM_BAND;
   const tier = tierOf(good);
+  if (tier === 3) {
+    assertTier3Classified([good], TIER3_PRICE_CLASS); // throws, naming the good, if it has no band
+    return tier3BandOf(good, TIER3_PRICE_CLASS);
+  }
   const band = PRICE_BANDS[tier];
   if (!band) {
     throw new Error(`prices: priced good "${good}" has tier ${tier}, which has no price band in PRICE_BANDS — refusing to guess its base, floor and ceiling`);
@@ -164,7 +292,7 @@ function seedRow(good) {
 }
 
 // seedPrices() -> the tick-0 price block: every priced good at its own base (its
-// tier's, or deuterium's own).
+// tier's, its Tier-3 sub-tier's or specialist's, or deuterium's own).
 // state.js calls this once, in createState.
 function seedPrices() {
   const prices = {};
@@ -190,7 +318,8 @@ function postedPrice(state, good) {
 // basePriceFor(good) -> the good's BASE value — the anchor the curve multiplies and
 // the value a fresh galaxy posts — or null for a good that is not priced (fuel).
 //
-// The base comes from the good's band (its tier's row, or deuterium's own). The
+// The base comes from the good's band (bandFor: its tier's row, its Tier-3 sub-tier's
+// or specialist's, or deuterium's own). The
 // accessor exists so that "what is this good's base?" has ONE answer in ONE file: the
 // snapshot publishes it per good for the chart's reference line. The null for a
 // non-priced good is part of the contract — readers use it to tell "not priced" apart
@@ -220,7 +349,7 @@ function productionCapacity(state) {
 
 // priceTarget(band, stock, capacity, consumed) -> the value the good is heading toward
 // this tick, BEFORE smoothing/slew/clamp. `band` is the good's own band (bandFor), so
-// the curve multiplies the good's tier base. Pure arithmetic, exported so the tests
+// the curve multiplies the good's own base. Pure arithmetic, exported so the tests
 // can assert the formula directly rather than by inference.
 //
 // The ZERO-CAPACITY case (nobody makes the good) rests it at its BASE: with no
@@ -241,8 +370,8 @@ function priceTarget(band, stock, capacity, consumed) {
 }
 
 // advanceLeading(band, previous, target) -> the new leading value: EMA-smooth toward
-// the target, cap the per-tick move, then clamp into the good's own band (its tier's
-// floor and ceiling). The order is the design's (smooth, then slew, then clamp) —
+// the target, cap the per-tick move, then clamp into the good's own band (its own
+// floor and ceiling, from bandFor). The order is the design's (smooth, then slew, then clamp) —
 // clamping LAST means the clamped value is what the next EMA glides from, so a target
 // far outside the band can never wind the memory up beyond it.
 function advanceLeading(band, previous, target) {
@@ -288,7 +417,10 @@ function recomputePrices(state, consumed = {}) {
 }
 
 module.exports = {
-  PRICE_BANDS, LEVEL_SENSITIVITY, IDLENESS_WEIGHT, EMA_ALPHA, MAX_SLEW_PCT,
+  PRICE_BANDS, DEUTERIUM_BAND,
+  TIER3_SUBTIER_BANDS, SPECIALIST_BANDS, UNCLASSIFIED_TIER3_BAND, TIER3_PRICE_CLASS,
+  SPECIALIST, UNCLASSIFIED, assertTier3Classified,
+  LEVEL_SENSITIVITY, IDLENESS_WEIGHT, EMA_ALPHA, MAX_SLEW_PCT,
   PUBLISH_LAG, PRICED_GOODS,
   seedPrices, leadingValue, postedPrice, bandFor, basePriceFor, productionCapacity, priceTarget,
   advanceLeading, recomputePrices,

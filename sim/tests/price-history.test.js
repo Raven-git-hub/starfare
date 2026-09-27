@@ -257,7 +257,11 @@ test('the snapshot echoes the rings verbatim, and publishes the per-good base', 
   assert.equal(snap.priceBase[GOOD], basePriceFor(GOOD));
   assert.equal(snap.priceBase[GOOD], 1);
   assert.equal(snap.priceBase.titanium_alloy, 10, 'a T2 good publishes 10');
-  assert.equal(snap.priceBase.chassis, 100, 'a T3 module publishes 100');
+  // ⤳ 27-09-26 (Tier-3 sub-tiers + specialists): a module publishes its own sub-tier's or
+  // specialist's base, not one Tier-3 100.
+  assert.equal(snap.priceBase.fuel_tank, 100, 'a 3-1 module publishes 100');
+  assert.equal(snap.priceBase.chassis, 10000, 'a 3-3 module publishes 10,000');
+  assert.equal(snap.priceBase.heavy_reactor_engine, 20000000, 'a specialist publishes its own base');
   assert.deepEqual(Object.keys(snap.priceBase).sort(), [...PRICED_GOODS].sort());
   assert.equal(snap.priceBase[FUEL_GOOD], undefined, 'fuel has no base because it has no price (§8)');
 });

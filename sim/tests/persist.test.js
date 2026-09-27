@@ -452,13 +452,23 @@ const GOLDEN_HASH_WITH_FUEL_PRICE_HISTORY = 'd08a394e5aba62d53744704e28f648c4be7
 // the whole delta proof. This full hash is pinned so a drift in the new goods' at-rest
 // prices is caught too. (This 2-tick run takes no price sample, so priceHistory is absent;
 // commitment-scaffold.test.js's 40-tick runs cross the fine bucket and carry the 26 rings.)
-const GOLDEN_HASH_WITH_TIER3_CATALOG = '99fe2e11ad2d333843ace6a5024835ea8468ce25128302e774f173cd0d3fd818';
+//
+// ⤳ TIER-3 SUB-TIERS + SPECIALIST PARTS (27-09-26 — design.md §5; numbers in docs/phase-1-tuning.md).
+// Each module now seeds at its sub-tier's or specialist's base instead of the uniform 100. No module
+// is made here, so the 25 modules' at-rest price rows are the ONLY thing that moved: every hash above
+// strips them (`withoutTier3`) and did NOT move — GOLDEN_HASH, the price-stripped one, included. This
+// hash and GOLDEN_HASH_WITH_ASSET_SYSTEMID below keep those rows, so both were re-pinned. Build-session
+// proof (not a standing test — the bands are frozen module constants): with every module put back on
+// the old uniform 100 / 20 / 100,000 band and the rest of the slice in place, both previous values
+// (99fe2e11… and d99ea97b…) came back byte for byte.
+const GOLDEN_HASH_WITH_TIER3_CATALOG = 'c49c8e4c27dcfc26cab74baa5ce78f06e3fa8295bfe50901197d2dac2fe4eb6e';
 
 // ASSET SYSTEMID (2.1b, 12-09-26): the full hash with a `systemId` on every asset row —
 // the 25 founding-granted starter machines plus the one the mine occupies, all at the
 // guild's home system. The delta from GOLDEN_HASH_WITH_TIER3_CATALOG is that single
 // per-asset key, proven by asserting `withoutAssetSystemId(s)` returns the value above.
-const GOLDEN_HASH_WITH_ASSET_SYSTEMID = 'd99ea97b972e8d56f7bd45bb08f13d67f676e7173331c564f40195121e21a9b8';
+// (⤳ re-pinned 27-09-26 for the Tier-3 re-band — see the note above GOLDEN_HASH_WITH_TIER3_CATALOG.)
+const GOLDEN_HASH_WITH_ASSET_SYSTEMID = 'ffa2b309ebd3b3308b1c2f3de4b0bf6464c9b6372086d521e1d618ac63fffd79';
 
 // The state minus the reserve's fuel price — everything the four goldens above covered.
 // Stripped inside `reserve`, leaving `reserveLevel` and every other top-level key in

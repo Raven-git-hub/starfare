@@ -113,7 +113,8 @@ const ticks = (state, n) => {
 
 test('price: the FLOOR binds at today\'s parts scale — a miner and a factory both cost exactly ASSET_PURCHASE_FLOOR', () => {
   const s = buyState();
-  // At the seed's base prices a miner/factory's parts are worth ~100 credits, far below 12M, so
+  // At the seed's base prices a miner/factory's parts are worth ~1.05M credits (⤳ 27-09-26: the
+  // Tier-3 re-band — each bill's one specialist part alone rests at 1M), far below 12M, so
   // `round(partsCost × 0.8)` never wins and the price is the flat floor (asset-purchase.md).
   assert.equal(priceAssetForPurchase(s, MINER, s.tick), ASSET_PURCHASE_FLOOR);
   assert.equal(priceAssetForPurchase(s, FACTORY, s.tick), ASSET_PURCHASE_FLOOR);
@@ -122,20 +123,21 @@ test('price: the FLOOR binds at today\'s parts scale — a miner and a factory b
 test('price: the partsCost × 0.8 branch governs once a high quoted price lifts the parts past the floor', () => {
   const s = buyState();
   // Force the discount branch: set every miner module to 2,000,000. partsCost = Σ qty × price;
-  // for the miner bill (qty sum 10) that is 20,000,000, and round(20M × 0.8) = 16,000,000 > floor.
+  // for the miner bill (qty sum 20 — ⤳ 27-09-26 FINAL bill, was 10) that is 40,000,000, and
+  // round(40M × 0.8) = 32,000,000 > floor.
   const P = 2_000_000;
   setBillPosted(s, MINER, P);
   let partsCost = 0;
   for (const [module, qty] of Object.entries(ASSET_BILLS[MINER])) partsCost += qty * P;
   const expected = Math.max(ASSET_PURCHASE_FLOOR, Math.round(partsCost * ASSET_PURCHASE_REDUCTION));
-  assert.equal(expected, 16_000_000, 'the forced parts price clears the floor');
+  assert.equal(expected, 32_000_000, 'the forced parts price clears the floor');
   assert.equal(priceAssetForPurchase(s, MINER, s.tick), expected);
 });
 
 test('price: rounded ONCE on the whole order (#43), and a non-buildable kind prices to null', () => {
   const s = buyState();
   // An odd per-part price makes the single whole-order round observable: 3 credits/part over the
-  // miner bill (qty sum 10) = partsCost 30, × 0.8 = 24 — but the floor still binds here, so the
+  // miner bill (qty sum 20) = partsCost 60, × 0.8 = 48 — but the floor still binds here, so the
   // rounding is exercised where it matters in the branch test above; this pins the null contract.
   assert.equal(priceAssetForPurchase(s, 'ship', s.tick), null, 'a kind with no bill is not priceable');
   assert.equal(priceAssetForPurchase(s, 'not_a_kind', s.tick), null);
@@ -334,7 +336,7 @@ test('quote-lock: a purchase prices the parts from the ring at the ISSUE TICK, a
   setBillPosted(s, MINER, 2_000_000);
   const issueTick = s.tick;
   const lockedPrice = priceAssetForPurchase(s, MINER, issueTick);
-  assert.equal(lockedPrice, 16_000_000, 'the price at the issue tick');
+  assert.equal(lockedPrice, 32_000_000, 'the price at the issue tick'); // ⤳ 27-09-26: qty sum 20 × 2M × 0.8
 
   // Advance a couple of ticks — still inside the TTL. The price engine will move the live posted
   // value, but a quote pinned to `issueTick` re-prices from the ring at that tick.

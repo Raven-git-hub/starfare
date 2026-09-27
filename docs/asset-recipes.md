@@ -125,6 +125,24 @@ Assembly `BUILD_TICKS`: light/miner/factory/medium/heavy/spy are the existing va
 (all `[FIRST-CUT]`). The Outpost is a depot (design.md §4): no production, bulk structure +
 storage + power; its large counts are correct for a big plain station.
 
+*(**AS-BUILT 27-09-26 — Slice 1 of the Tier-3 economy build (data/pricing only).** All nine
+bills are in `sim/asset-recipes.js`, lifted verbatim from the table above, in three catalogs:
+`ASSET_BILLS` (miner, factory), `VEHICLE_BILLS` (the four transports) and a new
+`INSTALLATION_BILLS` (outpost, deep scan array, toll gate). **The three installation bills are
+data only:** none of the three has a build path yet (the outpost entity exists but is placed by
+the operator, not built; the deep scan array and toll gate have no entity), so they are
+deliberately kept out of `ALL_BILLS` / `BUILDABLE_KINDS` — `assetBill` returns null for them, a
+dockyard refuses them and the Syndicate cannot price them. Their kind names (`outpost`,
+`deep_scan_array`, `toll_gate`) are spelled once, in `sim/asset-recipes.js`. `BUILD_TICKS` gains
+**outpost 12,960 (9 d), deep_scan_array 10,080 (7 d), toll_gate 8,640 (6 d)**, inert until those
+kinds are buildable; the other six are unchanged. The load-time Tier-3 tripwire
+(`assertBillModulesAreTier3`) covers all three catalogs. `sim/tests/asset-recipes-final.test.js`
+reads this table **from this file** and checks every bill part-for-part and every assembly time
+against `BUILD_TICKS`, so a drift on either side fails loudly. At rest, every buildable kind's
+parts cost × 0.8 stays below its purchase baseline, so a fresh galaxy's Syndicate buy prices are
+unchanged (a test pins that). No build or assembly flow moved. The Droid row has no bill in
+code.)*
+
 ## Reconciliation with design.md §3's eight-part sketch
 
 The eight parts map into modules with no loss: Structural Frames → `chassis`;

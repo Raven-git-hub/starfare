@@ -17,6 +17,13 @@
 // `bandFor` / `basePriceFor`), and a block of tripwires at the end pins the per-tier
 // numbers themselves. Raw deuterium is the one exception: it is out of the tier system
 // and keeps its own 10 / 2 / 200 band (RULED 26-09-26).
+//
+// ⤳ 27-09-26 (TIER-3 SUB-TIERS + SPECIALIST PARTS, design.md §5): the uniform Tier-3 row
+// (100 / 20 / 100,000) is retired. A module is priced by its sub-tier (3-1 100, 3-2 1,000,
+// 3-3 10,000; floor 0.2×, ceiling 100×) or, for a specialist part, by its own band
+// (1M–20M). The four modules no bill uses yet keep the old uniform band as their status
+// quo. The cases that used `chassis` at 100 now read its 3-3 band, and a block of Tier-3
+// tripwires at the end pins the new numbers and the classifier.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -34,6 +41,8 @@ const { RECIPES } = require('../recipes.js');
 const {
   PRICE_BANDS, EMA_ALPHA, MAX_SLEW_PCT, PUBLISH_LAG,
   PRICED_GOODS, LEVEL_SENSITIVITY,
+  TIER3_SUBTIER_BANDS, SPECIALIST_BANDS, UNCLASSIFIED_TIER3_BAND, TIER3_PRICE_CLASS,
+  SPECIALIST, UNCLASSIFIED, assertTier3Classified,
   seedPrices, leadingValue, postedPrice, bandFor, basePriceFor, productionCapacity, priceTarget,
   advanceLeading, recomputePrices,
 } = require('../prices.js');
@@ -351,7 +360,9 @@ test('a state built before this slice (no price block) is handled, not crashed o
   }
   assert.equal(next.prices.titanium.posted, 1, 'a T1 raw seeds at 1');
   assert.equal(next.prices.titanium_alloy.posted, 10, 'a T2 processed good seeds at 10');
-  assert.equal(next.prices.chassis.posted, 100, 'a T3 module seeds at 100');
+  // ⤳ 27-09-26: chassis is a 3-3 module now (was the uniform T3 100).
+  assert.equal(next.prices.chassis.posted, 10000, 'a 3-3 module seeds at 10,000');
+  assert.equal(next.prices.heavy_reactor_engine.posted, 20000000, 'a specialist seeds at its own base');
 });
 
 // --- the capacity normaliser + its constant table -----------------------------
@@ -372,8 +383,8 @@ test('a refinery contributes baseline batches x the recipe output qty', () => {
 test('a good nobody produces rests at ITS TIER\'s base and never divides by zero', () => {
   // Stock with no producers at all: capacity 0. The value must rest, not explode.
   // ⤳ 26-09-26: one good per tier, because "rests at base" now means the good's own
-  // tier base (1 / 10 / 100), not a shared 10.
-  const idle = { gold: 5000, battery_cells: 5000, chassis: 5000 }; // T1, T2, T3
+  // tier base (1 / 10 / 100), not a shared 10. ⤳ 27-09-26: chassis is a 3-3 module (10,000).
+  const idle = { gold: 5000, battery_cells: 5000, chassis: 5000 }; // T1, T2, T3 (3-3)
   let s = sysState([], idle);
   for (const good of Object.keys(idle)) {
     assert.equal(productionCapacity(s)[good], 0, `${good} has no producer`);
@@ -382,7 +393,7 @@ test('a good nobody produces rests at ITS TIER\'s base and never divides by zero
   for (let i = 0; i < 10; i += 1) s = tick(s);
   assert.equal(posted(s, 'gold'), 1, 'T1 rests at 1');
   assert.equal(posted(s, 'battery_cells'), 10, 'T2 rests at 10');
-  assert.equal(posted(s, 'chassis'), 100, 'T3 rests at 100 — not at the old flat 10');
+  assert.equal(posted(s, 'chassis'), 10000, 'a 3-3 module rests at 10,000 — not the old uniform T3 100');
   for (const good of Object.keys(idle)) assert.ok(Number.isFinite(leading(s, good)));
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
@@ -455,18 +466,19 @@ test('the tripwire checks each good against ITS OWN tier band, not one flat band
   cheapRaw.prices.titanium.posted = 0.5;
   assert.deepEqual(checkInvariants(cheapRaw, 0), [], 'a T1 good at 0.5 is legal');
 
-  // A T3 module at 5: inside the old flat band, but below T3's floor of 20. Must trip.
+  // A T3 module at 5: inside the old flat band, but below the module's own floor. Must trip.
+  // ⤳ 27-09-26: chassis is a 3-3 module, so its floor is 2,000 (was the uniform T3 20).
   const crashedModule = JSON.parse(JSON.stringify(s));
   crashedModule.prices.chassis.posted = 5;
   const tripped = checkInvariants(crashedModule, 0);
-  assert.equal(tripped.length, 1, 'a T3 module below 20 is caught');
+  assert.equal(tripped.length, 1, 'a 3-3 module below 2,000 is caught');
   assert.equal(tripped[0].where, 'prices.chassis.posted');
-  assert.deepEqual(tripped[0].detail, { value: 5, floor: 20, ceiling: 100000 }, 'and it reports the module\'s own band');
+  assert.deepEqual(tripped[0].detail, { value: 5, floor: 2000, ceiling: 1000000 }, 'and it reports the module\'s own band');
 
-  // A T3 module at 50,000: far above the old flat ceiling of 200, but legal for T3.
+  // A 3-3 module at 50,000: far above the old flat ceiling of 200, but legal for 3-3.
   const dearModule = JSON.parse(JSON.stringify(s));
   dearModule.prices.chassis.pending[0] = 50000;
-  assert.deepEqual(checkInvariants(dearModule, 0), [], 'a T3 module at 50,000 is legal');
+  assert.deepEqual(checkInvariants(dearModule, 0), [], 'a 3-3 module at 50,000 is legal');
 
   // A T1 raw at 1,500: above T1's ceiling of 1,000. Must trip.
   const runawayRaw = JSON.parse(JSON.stringify(s));
@@ -479,10 +491,11 @@ test('the tripwire checks each good against ITS OWN tier band, not one flat band
 test('PRICE_BANDS carries the ruled per-tier numbers exactly', () => {
   // The numbers are typed here ON PURPOSE: this is the tripwire that pins the ruling.
   // Retune them in docs/phase-1-tuning.md and here together, never in one place alone.
+  // ⤳ 27-09-26: there is no tier-3 row any more — Tier 3 is priced by sub-tier and
+  // specialist (the Tier-3 block at the end of this file).
   assert.deepEqual(PRICE_BANDS, {
     1: { base: 1, floor: 0.2, ceiling: 1000 },
     2: { base: 10, floor: 2, ceiling: 10000 },
-    3: { base: 100, floor: 20, ceiling: 100000 },
   });
   // The ruled SHAPE, per tier: floor 0.2 × base, ceiling 1000 × base.
   for (const band of Object.values(PRICE_BANDS)) {
@@ -502,6 +515,8 @@ test('every priced manufacturing good resolves to a tier that has a band', () =>
   for (const good of manufacturing) {
     const tier = tierOf(good);
     assert.ok(tier === 1 || tier === 2 || tier === 3, `${good} has tier ${tier}`);
+    // ⤳ 27-09-26: Tier 3 has no PRICE_BANDS row; its goods are checked in the Tier-3 block.
+    if (tier === 3) continue;
     assert.equal(bandFor(good), PRICE_BANDS[tier], `${good} uses its tier's band`);
     assert.equal(basePriceFor(good), PRICE_BANDS[tier].base);
   }
@@ -516,15 +531,17 @@ test('a good that is not priced has no band and no base — null, as before', ()
   assert.equal(basePriceFor('no_such_good'), null);
 });
 
-test('a fresh galaxy seeds each good at its own tier base: T1 1, T2 10, T3 100', () => {
+test('a fresh galaxy seeds each good at its own base: T1 1, T2 10, a 3-3 module 10,000', () => {
+  // ⤳ 27-09-26: chassis is a 3-3 module (10,000); drive_module is one of the four
+  // unclassified modules and keeps the old uniform T3 base (100) as its status quo.
   const s = sysState();
-  const cases = { titanium: 1, silica: 1, titanium_alloy: 10, silicon_wafer: 10, chassis: 100, drive_module: 100 };
+  const cases = { titanium: 1, silica: 1, titanium_alloy: 10, silicon_wafer: 10, chassis: 10000, drive_module: 100 };
   for (const [good, base] of Object.entries(cases)) {
     assert.equal(s.prices[good].posted, base, `${good} posts ${base}`);
     assert.deepEqual(s.prices[good].pending, new Array(PUBLISH_LAG).fill(base), `${good}'s pipeline is seeded at ${base}`);
   }
   // …and the quote-lock ring seeds off the same block, so it agrees.
-  assert.equal(s.priceRing.chassis[0], 100);
+  assert.equal(s.priceRing.chassis[0], 10000);
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
@@ -561,11 +578,12 @@ test('raw deuterium is priced on its OWN band (10 / 2 / 200), not the Tier-1 ban
     [{ value: 500, floor: 2, ceiling: 200 }], 'deuterium at 500 is above its ceiling of 200');
 });
 
-test('a runaway hoard clamps at its own tier ceiling: T1 1,000, T2 10,000, T3 100,000', () => {
+test('a runaway hoard clamps at its own ceiling: T1 1,000, T2 10,000, a 3-3 module 1,000,000', () => {
   // A billion units of each, held still by a rate-0 producer (so capacity is non-zero
   // and the level is enormous). The target is far past every ceiling, so the value
   // climbs at the slew cap until the clamp stops it. From base to 1000 × base at 10%
-  // a tick takes ~73 ticks, plus the 2-tick publish lag.
+  // a tick takes ~73 ticks, plus the 2-tick publish lag. (⤳ 27-09-26: chassis is a 3-3
+  // module, 10,000 → 1,000,000, a 100× climb that needs only ~49.)
   const HOARD = 1e9;
   let s = sysState(
     [mine('m', 'titanium', 0), refinery('r2', 'titanium_alloy', 0), refinery('r3', 'chassis', 0)],
@@ -574,11 +592,11 @@ test('a runaway hoard clamps at its own tier ceiling: T1 1,000, T2 10,000, T3 10
   for (let i = 0; i < 90; i += 1) s = tick(s);
   assert.equal(posted(s, 'titanium'), 1000, 'T1 stops at 1,000');
   assert.equal(posted(s, 'titanium_alloy'), 10000, 'T2 stops at 10,000');
-  assert.equal(posted(s, 'chassis'), 100000, 'T3 stops at 100,000');
+  assert.equal(posted(s, 'chassis'), 1000000, 'a 3-3 module stops at 1,000,000');
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
-test('a price driven down with no support stops at its own tier floor: 0.2, 2, 20', () => {
+test('a price driven down with no support stops at its own floor: 0.2, 2, and 2,000 for a 3-3 module', () => {
   // The clamp alone, tier by tier: feed a target of 0 every tick (as far down as a
   // target could ever go). The value falls at the slew cap and stops on the floor.
   //
@@ -592,5 +610,175 @@ test('a price driven down with no support stops at its own tier floor: 0.2, 2, 2
     for (let i = 0; i < 100; i += 1) v = advanceLeading(band, v, 0);
     assert.equal(v, band.floor, `${good} stops at ${band.floor}`);
   }
-  assert.deepEqual([bandFor('titanium').floor, bandFor('titanium_alloy').floor, bandFor('chassis').floor], [0.2, 2, 20]);
+  assert.deepEqual([bandFor('titanium').floor, bandFor('titanium_alloy').floor, bandFor('chassis').floor], [0.2, 2, 2000]);
+});
+
+// --- Tier-3 sub-tiers + specialist parts (27-09-26, design.md §5; numbers in
+// docs/phase-1-tuning.md "Tier-3 sub-tiers & specialist parts") ----------------------------
+
+// The ruled membership, typed here ON PURPOSE from the doc's two tables — this is the tripwire
+// that pins the classification. Retune it in docs/phase-1-tuning.md and here together.
+const RULED_SUBTIERS = {
+  '3-1': ['fuel_tank', 'power_cells', 'hull_plating', 'cargo_module'],
+  '3-2': ['small_reactor_engine', 'reactor_housing', 'photovoltaic_array', 'comms_array'],
+  '3-3': ['control_module', 'life_support_module', 'chassis', 'sensor_suite', 'cargo_handling_system', 'defence_system'],
+};
+const RULED_SPECIALIST_BASES = {
+  extraction_head: 1000000,
+  fabrication_line: 1000000,
+  medium_reactor_engine: 2000000,
+  stealth_module: 8000000,
+  heavy_reactor_engine: 20000000,
+  deep_scan_mast: 20000000,
+  interdiction_projector: 20000000,
+};
+const RULED_UNCLASSIFIED = ['drive_module', 'droid_components', 'claim_beacon', 'habitation_module'];
+
+test('the Tier-3 sub-tier and specialist bands carry the ruled numbers exactly', () => {
+  assert.deepEqual(TIER3_SUBTIER_BANDS, {
+    '3-1': { base: 100, floor: 20, ceiling: 10000 },
+    '3-2': { base: 1000, floor: 200, ceiling: 100000 },
+    '3-3': { base: 10000, floor: 2000, ceiling: 1000000 },
+  });
+  for (const [good, base] of Object.entries(RULED_SPECIALIST_BASES)) {
+    assert.equal(SPECIALIST_BANDS[good].base, base, `${good}'s base is ${base}`);
+  }
+  assert.deepEqual(Object.keys(SPECIALIST_BANDS).sort(), Object.keys(RULED_SPECIALIST_BASES).sort(),
+    'exactly the seven ruled specialists, no more');
+  // The ruled SHAPE of every Tier-3 band: floor 0.2 × base, ceiling 100 × base (NOT the
+  // 1000× of Tier 1/2). `floor * 5 === base` is the same check as 0.2 × base, done in exact
+  // integer arithmetic.
+  for (const band of [...Object.values(TIER3_SUBTIER_BANDS), ...Object.values(SPECIALIST_BANDS)]) {
+    assert.equal(band.floor * 5, band.base, `floor ${band.floor} is 0.2 × base ${band.base}`);
+    assert.equal(band.ceiling, 100 * band.base, `ceiling ${band.ceiling} is 100 × base ${band.base}`);
+  }
+});
+
+test('the Tier-3 classifier names every Tier-3 module exactly once, and nothing else', () => {
+  assert.deepEqual(Object.keys(TIER3_PRICE_CLASS).sort(), [...TIER3_GOODS].sort(),
+    'one price class per Tier-3 module — a new module must be classified before it can be priced');
+  assert.equal(TIER3_GOODS.length, 25);
+  // Every module in the class the doc's tables put it in.
+  for (const [subTier, goods] of Object.entries(RULED_SUBTIERS)) {
+    for (const good of goods) assert.equal(TIER3_PRICE_CLASS[good], subTier, `${good} is ${subTier}`);
+  }
+  for (const good of Object.keys(RULED_SPECIALIST_BASES)) {
+    assert.equal(TIER3_PRICE_CLASS[good], SPECIALIST, `${good} is a specialist`);
+  }
+  for (const good of RULED_UNCLASSIFIED) {
+    assert.equal(TIER3_PRICE_CLASS[good], UNCLASSIFIED, `${good} is not classified yet`);
+  }
+  // 4 + 4 + 6 + 7 + 4 = 25: the typed tables above cover the whole classifier.
+  const typed = Object.values(RULED_SUBTIERS).flat().length
+    + Object.keys(RULED_SPECIALIST_BASES).length + RULED_UNCLASSIFIED.length;
+  assert.equal(typed, TIER3_GOODS.length, 'the ruled tables account for every module');
+});
+
+test('every Tier-3 module resolves to a band — its sub-tier\'s, its own specialist row, or the unclassified one', () => {
+  for (const good of TIER3_GOODS) {
+    const band = bandFor(good);
+    assert.ok(band, `${good} has a band`);
+    const priceClass = TIER3_PRICE_CLASS[good];
+    if (priceClass === SPECIALIST) assert.equal(band, SPECIALIST_BANDS[good], `${good} uses its own specialist band`);
+    else if (priceClass === UNCLASSIFIED) assert.equal(band, UNCLASSIFIED_TIER3_BAND, `${good} uses the unclassified band`);
+    else assert.equal(band, TIER3_SUBTIER_BANDS[priceClass], `${good} uses the ${priceClass} band`);
+    assert.equal(basePriceFor(good), band.base);
+  }
+});
+
+test('the four unclassified modules keep the old uniform Tier-3 band (100 / 20 / 100,000) — deferred, not guessed', () => {
+  // The ruling says they "default to a sub-tier when first placed in a bill" but not which
+  // one, and no bill uses them yet. So they keep their status quo — the band every module
+  // had before 27-09-26 — rather than an invented sub-tier (on the decision checklist).
+  assert.deepEqual(UNCLASSIFIED_TIER3_BAND, { base: 100, floor: 20, ceiling: 100000 });
+  for (const good of RULED_UNCLASSIFIED) assert.equal(bandFor(good), UNCLASSIFIED_TIER3_BAND, good);
+});
+
+test('a fresh galaxy seeds every Tier-3 module at its own base: 3-1 at 100, 3-2 at 1,000, 3-3 at 10,000, each specialist at its own', () => {
+  const s = sysState();
+  const seededAt = (good, base) => {
+    assert.equal(s.prices[good].posted, base, `${good} posts ${base}`);
+    assert.deepEqual(s.prices[good].pending, new Array(PUBLISH_LAG).fill(base), `${good}'s pipeline is seeded at ${base}`);
+    assert.equal(s.priceRing[good][0], base, `${good}'s quote-lock ring seeds at ${base}`);
+  };
+  const SUBTIER_BASE = { '3-1': 100, '3-2': 1000, '3-3': 10000 };
+  for (const [subTier, goods] of Object.entries(RULED_SUBTIERS)) {
+    for (const good of goods) seededAt(good, SUBTIER_BASE[subTier]);
+  }
+  for (const [good, base] of Object.entries(RULED_SPECIALIST_BASES)) seededAt(good, base);
+  for (const good of RULED_UNCLASSIFIED) seededAt(good, 100);
+  assert.deepEqual(checkInvariants(s, s.tick), [], 'a fresh galaxy is inside every good\'s own band');
+});
+
+test('the clamp uses each Tier-3 good\'s own band: its own ceiling and its own floor', () => {
+  // The clamp alone, class by class (as the per-tier clamp test above does for T1/T2). The
+  // runaway target is 10 × the band's own ceiling, so even a 2-billion ceiling is reached.
+  const bands = [...Object.values(TIER3_SUBTIER_BANDS), ...Object.values(SPECIALIST_BANDS), UNCLASSIFIED_TIER3_BAND];
+  for (const band of bands) {
+    let up = band.base;
+    for (let i = 0; i < 200; i += 1) up = advanceLeading(band, up, band.ceiling * 10);
+    assert.equal(up, band.ceiling, `base ${band.base}: a runaway target stops at its own ceiling ${band.ceiling}`);
+    let down = band.base;
+    for (let i = 0; i < 100; i += 1) down = advanceLeading(band, down, 0);
+    assert.equal(down, band.floor, `base ${band.base}: a collapsing target stops at its own floor ${band.floor}`);
+  }
+});
+
+test('end to end: a runaway Tier-3 hoard clamps at the good\'s own ceiling, not a shared one', () => {
+  // One module per class, a billion units each, held still by a rate-0 producer (so capacity
+  // is non-zero and the level is enormous). Each climbs at the slew cap until its OWN clamp
+  // stops it: a 100× climb at 10% a tick takes ~49 ticks, plus the 2-tick publish lag.
+  const HOARD = 1e9;
+  const goods = ['fuel_tank', 'reactor_housing', 'sensor_suite', 'heavy_reactor_engine'];
+  let s = sysState(
+    goods.map((good, i) => refinery(`r${i}`, good, 0)),
+    Object.fromEntries(goods.map((good) => [good, HOARD])),
+  );
+  for (let i = 0; i < 70; i += 1) s = tick(s);
+  assert.equal(posted(s, 'fuel_tank'), 10000, 'a 3-1 module stops at 10,000');
+  assert.equal(posted(s, 'reactor_housing'), 100000, 'a 3-2 module stops at 100,000');
+  assert.equal(posted(s, 'sensor_suite'), 1000000, 'a 3-3 module stops at 1,000,000');
+  assert.equal(posted(s, 'heavy_reactor_engine'), 2000000000, 'a specialist stops at its own 100 × 20M');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('the price tripwire checks each Tier-3 good against ITS OWN band', () => {
+  // Each case is one a single shared Tier-3 band would judge wrongly.
+  const s = sysState();
+
+  // A specialist crashed to a 3-3 price: legal for a 3-3 module, far below its own floor.
+  const crashed = JSON.parse(JSON.stringify(s));
+  crashed.prices.heavy_reactor_engine.posted = 10000;
+  assert.deepEqual(checkInvariants(crashed, 0).map((v) => [v.where, v.detail]),
+    [['prices.heavy_reactor_engine.posted', { value: 10000, floor: 4000000, ceiling: 2000000000 }]],
+    'a specialist below its own 4,000,000 floor is caught, and reports its own band');
+
+  // A bulk 3-1 part at 50,000: legal for a 3-3 module, above the 3-1 ceiling of 10,000.
+  const dearBulk = JSON.parse(JSON.stringify(s));
+  dearBulk.prices.fuel_tank.pending[0] = 50000;
+  assert.deepEqual(checkInvariants(dearBulk, 0).map((v) => v.detail),
+    [{ value: 50000, floor: 20, ceiling: 10000 }], 'a 3-1 module above 10,000 is caught');
+
+  // The same 50,000 on a 3-3 module and on an unclassified one is legal.
+  const legal = JSON.parse(JSON.stringify(s));
+  legal.prices.sensor_suite.posted = 50000;
+  legal.prices.drive_module.posted = 50000;
+  assert.deepEqual(checkInvariants(legal, 0), [], '50,000 is inside the 3-3 and the unclassified bands');
+});
+
+test('FAIL LOUD: a Tier-3 good with no band throws, naming the good', () => {
+  // The real classifier passes (it already ran at load time, or this file could not have
+  // required prices.js at all).
+  assert.doesNotThrow(() => assertTier3Classified(TIER3_GOODS, TIER3_PRICE_CLASS));
+  // A module missing from the classifier — the case a new module added to resources.js
+  // without a price class would hit.
+  const { chassis, ...missingChassis } = TIER3_PRICE_CLASS;
+  assert.equal(chassis, '3-3', 'the fixture really removed a classified module');
+  assert.throws(() => assertTier3Classified(TIER3_GOODS, missingChassis), /"chassis"/);
+  // A class that is not a sub-tier.
+  assert.throws(() => assertTier3Classified(['fuel_tank'], { fuel_tank: '3-4' }), /"fuel_tank".*"3-4"/);
+  // An inherited name must not pass for a class (it would find a function, not a band).
+  assert.throws(() => assertTier3Classified(['fuel_tank'], { fuel_tank: 'toString' }), /"fuel_tank"/);
+  // A "specialist" with no specialist row.
+  assert.throws(() => assertTier3Classified(['chassis'], { chassis: SPECIALIST }), /"chassis".*"specialist"/);
 });

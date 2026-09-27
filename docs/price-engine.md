@@ -130,7 +130,8 @@ The Syndicate stays a spreadless two-sided market-maker, so the refining pump th
 live, as ruled.
 
 - **One table, keyed by tier.** `PRICE_BANDS` in `sim/prices.js` holds `{ base, floor, ceiling }` for
-  tiers 1, 2 and 3 (T1 1 / 0.2 / 1,000; T2 10 / 2 / 10,000; T3 100 / 20 / 100,000). It replaces the flat
+  tiers 1, 2 and 3 (T1 1 / 0.2 / 1,000; T2 10 / 2 / 10,000; T3 100 / 20 / 100,000 — ⤳ the T3 row was
+  retired 27-09-26, see "Tier-3 sub-tiers + specialist parts" below). It replaces the flat
   `BASE_PRICE` / `PRICE_FLOOR` / `PRICE_CEILING`, which are gone. Every importer was updated in the same
   commit rather than keeping a misleading flat constant alive. There is no tier-4 row: Tier-4 assets are
   never priced by this engine.
@@ -175,3 +176,43 @@ paid at a T1 price that now rests near 1. As a build-session proof, the new code
 back to the old uniform 10 / 2 / 200 reproduced every previous hash the tests assert equal to (39 of the
 42 pinned; the other 3 are historical records read only by a `notEqual`) byte for byte. **A fresh galaxy is
 required on deploy.** Saved states keep their old uniform-10 price rows and are not migrated.
+
+## Tier-3 sub-tiers + specialist parts (27-09-26)
+
+The build for design.md §5's ruling "TIER-3 SUB-TIERS, SPECIALIST PARTS & FINAL TIER-4 BILLS" (Slice 1 of
+the Tier-3 economy build — data and pricing only). The numbers are in `docs/phase-1-tuning.md` "Tier-3
+sub-tiers & specialist parts". **Only Tier-3 bases, floors and ceilings changed.** T1, T2 and deuterium,
+every other price constant, and the capacity and level code are untouched.
+
+- **Tier 3 needs a finer answer than `tierOf`.** `tierOf` returns 1 / 2 / 3, but a Tier-3 module now
+  belongs to a sub-tier (3-1 / 3-2 / 3-3) or is a specialist with its own price. So `sim/prices.js` has a
+  classifier, `TIER3_PRICE_CLASS`, naming each of the 25 modules' price class. `bandFor` routes a Tier-3
+  good through it instead of `PRICE_BANDS`, which now has T1 / T2 rows only.
+- **The bands.** `TIER3_SUBTIER_BANDS`: 3-1 100 / 20 / 10,000; 3-2 1,000 / 200 / 100,000; 3-3 10,000 /
+  2,000 / 1,000,000. `SPECIALIST_BANDS`: one row per specialist, 1,000,000 to 20,000,000 base. Every Tier-3
+  band is **floor 0.2× base, ceiling 100× base** (tighter than T1/T2's 1000×, as ruled).
+- **The four unclassified modules** (drive_module, droid_components, claim_beacon, habitation_module) keep
+  the old uniform Tier-3 band, 100 / 20 / 100,000 (`UNCLASSIFIED_TIER3_BAND`). The ruling does not say
+  which sub-tier they default to, and they cannot go without a band (a fresh galaxy seeds every priced
+  good). So they keep their status quo, like `DEUTERIUM_BAND`. Their sub-tier is on the decision checklist.
+- **Fail loud, twice.** `assertTier3Classified` runs at load time over the whole Tier-3 vocabulary, so a new
+  module with no price class halts the process the moment `prices.js` is required, naming the module.
+  `bandFor` runs the same check for each Tier-3 good it prices. `basePriceFor` keeps its null contract for
+  non-priced goods.
+- **Nothing downstream changed shape.** The seed, target, zero-capacity rest, clamp and the
+  `sim/invariants.js` price tripwire already read `bandFor(good)`, so they pick up the new bands with no
+  code change. The snapshot's `priceBase` carries the new values in the same shape.
+- **Not safe to run live yet (as ruled).** Capacity is still per tick (`baselineOutputFor` /
+  `productionCapacity` untouched), so a specialist factory still produces per tick. Its sale and
+  licence-fee values are unthrottled until the timed-production slice (Slice 2) ships.
+
+**Golden hashes.** No run behind a pinned hash makes a Tier-3 module, so every module rests at its base
+and the only change in each run is those modules' `prices` / `priceRing` / `priceHistory` rows. Every
+golden that strips the Tier-3 vocabulary (`withoutTier3`) held byte for byte, including the two
+price-**stripped** goldens (`GOLDEN_HASH`, `GOLDEN_UNLICENSED`). Four full-state hashes keep those rows and
+were re-pinned: `GOLDEN_HASH_WITH_TIER3_CATALOG` and `GOLDEN_HASH_WITH_ASSET_SYSTEMID` in `persist.test.js`,
+and `GOLDEN_UNLICENSED_WITH_TIER3_CATALOG` and `GOLDEN_COMMITTED_WITH_TIER3_CATALOG` in
+`commitment-scaffold.test.js`. The build-session proof ran the new code (new bills and `BUILD_TICKS`
+included) with every Tier-3 good put back on the old uniform 100 / 20 / 100,000 band. All 42 hashes pinned
+in the two files came back byte for byte as HEAD's values. **A fresh galaxy is required on deploy:**
+stored Tier-3 price rows are not migrated, and a stored specialist row at ~100 sits below its new floor.
