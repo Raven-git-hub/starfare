@@ -1,122 +1,139 @@
-# Tier-3 Timed Production — the specialist manufacturing model
+# Tier-3 Timed Production — the manufacturing model
 
-*RULED 27-09-26. Design record; the build is a later Claude Code slice. This is the
-companion the 27-09-26 pricing ruling (design.md §5 / `phase-1-tuning.md` "Tier-3
-sub-tiers & specialist parts") named as "deferred to the next design pass" — now
-designed. Until it ships, specialist prices are **ruled but NOT safe to run in a live
-economy** (the refining pump is unthrottled per tick without it).*
+*RULED 27-09-26 (design record; build is a later Claude Code slice). Supersedes the
+27-09-26 "specialist manufacturing model" draft of this file — scope, timers, the
+build rule and the capacity fix are all now SETTLED. The companion the pricing ruling
+(design.md §5 / `phase-1-tuning.md`) named "deferred to the next design pass."*
 
 ## Why this exists
 
-Specialist parts base high (1M–20M) so the intentional refining pump rewards complex
-production. But at ordinary production speed (batches/tick) a factory could refine a
-specialist every tick, turning a fair +20M-per-unit reward into a +20M-per-tick printer,
-and — separately — the price would go degenerate (see "the price fix" below). The cure
-for both is the same: **make specialist production slow and discrete.** Slow production
-throttles the pump at its source and lets specialist prices trend upward smoothly instead
-of snapping to the ceiling.
+Tier-3 parts span cheap bulk (fuel tanks) to slow specialists (reactor engines, 1M–20M
+base). Two problems needed one cure. (1) At ordinary batch speed a factory could refine
+a 20M specialist every tick — a fair +20M-per-unit reward becomes a +20M-per-tick
+printer. (2) At a per-tick rate, a slow good's price goes degenerate (see the price fix).
+The cure for both: **produce Tier-3 goods discretely, on a timer — one whole unit per
+`TICKS_PER_UNIT`.**
 
-## The model — a hybrid of Tier 1/2 and Tier 4
+## Scope — ALL Tier-3 goods are timed (RULED)
 
-- **Continuous single-good build (like T1/2):** a factory keeps making one good on a loop;
-  there is no per-build commission to place (unlike the T4 dockyard).
-- **Discrete timed output (like T4):** it completes **one whole unit per `TICKS_PER_UNIT`**,
-  a per-venture timer that is the Tier-4 dockyard countdown *without* the commission wrapper.
-  Reuses the existing remainder mechanism (`batchCarry`) — progress is a hidden per-venture
-  accumulator; **no fractional units are ever stored.** A whole unit mints at completion,
-  then the loop restarts.
+Every Tier-3 good — the three sub-tiers (3-1/3-2/3-3) AND the specialist parts — is
+produced on the timed engine. One production model, no fast/slow split. (The earlier
+"specialists-only" question is closed: cheap tiers get *fast* timers, so bulk stays
+buildable, and a single uniform engine is simpler than two.) **Tier-1 (mines) and
+Tier-2 (refineries) are UNCHANGED** — continuous, units-per-tick, as today.
 
-So: T1/2's constant single-good loop, paced by T4's timer, emitting whole units.
+## The model — one whole unit per `TICKS_PER_UNIT`
+
+A Tier-3 factory runs a continuous single-good loop (no per-build commission, unlike the
+T4 dockyard): **check its recipe inputs are all present → consume the whole input set at
+start → count down `TICKS_PER_UNIT` → mint one whole unit → repeat.** Inputs are gated
+UP FRONT per unit (the dockyard/T4 discipline, not continuous draw) and consumed when
+that unit's build starts; a unit can't begin without its full inputs. **No fractional
+units are ever stored** — the countdown is hidden per-venture state; stockpiles hold
+whole units only.
+
+## The timer ladder (`TICKS_PER_UNIT`, 1 tick = 1 min; all `[FIRST-CUT]` → `phase-1-tuning.md`)
+
+Climbs by complexity: 3-1 15 min · 3-2 30 min · 3-3 1 h · then the specialists —
+extraction_head 6 h · fabrication_line 8 h · medium_reactor_engine 12 h ·
+interdiction_projector 24 h · stealth_module 48 h · heavy_reactor_engine 48 h ·
+deep_scan_mast 72 h. (Paired with base price: dearer ≈ slower.)
+
+## Build time — assembly is a SEPARATE clock; parts are produced OR bought
+
+A Tier-4 asset needs its parts present, then assembled. These are two clocks in
+sequence, and neither is a design target we tune the recipe to:
+- **Sourcing the parts** is player-elected: **produce** them (bill × the timers above ×
+  how many factories the guild runs) OR **buy them from the Syndicate** at market price.
+  A guild in a hurry buys; a guild saving credits produces. So parts-sourcing time is
+  variable and player-driven, never a fixed floor.
+- **Assembly** is the dockyard `BUILD_TICKS` countdown, UNCHANGED from today: it starts
+  ONLY once all parts are present, **consumes the whole bill atomically at start**, and
+  counts down its fixed time. Existing (`sim/asset-recipes.js`, all `[FIRST-CUT]`): light
+  6 h · miner 12 h · factory 16 h · medium 16 h · heavy 7 d · spycraft 7 d. Not yet set,
+  assigned here: **outpost 9 d · deep scan array 7 d · toll gate 6 d.**
+
+**Sequential, not parallel.** Assembly does not run alongside production; parts must
+exist first. (An earlier `max(parts, assembly)` / parallel idea was raised and STRUCK —
+it contradicted "all parts present before build starts.") So a spycraft is 7 days of
+assembly for anyone who has (or buys) its parts; its own parts are quick to make, which
+is fine — the buy option means part-sourcing is never a wall.
 
 ## Income — progress-based per-tick committed payment
 
-Each tick, the **committed share of the progress actually made that tick** is valued at the
-current market price and paid to the guild. Smooth when on-pace; less when production lags;
-**nothing to claw back**, because payment tracks real work, not a promise.
-
-This **deviates deliberately from T1/2**, which pays on units *delivered* (`gross =
-delivered × price`, `sim/licence.js`). Paying a flat committed *rate* regardless of output
-would overpay a lagging factory and open a teardown-and-walk exploit; paying on committed
-*progress* closes it. This is its own model, not a reuse of the T1/2 sale.
-
-**No double-count:** committed progress *is* the payment. A completed committed unit goes to
-the Syndicate **already paid** (bought in installments as it was built). Only **uncommitted**
-progress mints whole units into the guild's own stockpile (unpaid until the guild sells them).
+Each tick, the committed share of the progress ACTUALLY MADE that tick is valued at the
+current market price and paid to the guild — smooth on-pace, less when behind, nothing
+to claw back (payment tracks real work, not a promise). Deviates from T1/2's
+delivered-basis (`gross = delivered × price`); its own model, and it closes the
+teardown-and-walk exploit a flat committed *rate* would open. **No double-count:**
+committed progress IS the payment — a completed committed unit goes to the Syndicate
+already paid; only uncommitted progress mints whole units to the guild's stockpile.
 
 ## Settlement — weekly, on whole units
 
-A Tier-3 contract settles per **production cycle = 10,080 ticks** (one week = 7 × the 1,440
-daily window), via a **per-contract `windowN`**. Because 10,080 = 7 × 1,440, the weekly
-boundary always coincides with a daily one, so the two clocks **nest** and never resolve on
-conflicting ticks. At the boundary: a **delivered-or-not verdict on whole committed units**
-(the existing boundary-verdict machinery); under-delivery → breach → full fee.
+A Tier-3 commitment settles per **10,080-tick week** (7 × the 1,440 daily window) via a
+per-contract `windowN` that nests inside the daily boundary. At the boundary: a
+delivered-or-not verdict on whole committed units (existing boundary machinery);
+under-delivery → breach → full fee.
 
 ## Delivery — Syndicate first (fixed)
 
-Committed units go to the Syndicate **first**; the guild's own units are whatever completes
-**beyond** the commitment. No staggering, no player choice. Narratively this is the
-Syndicate's risk premium for outsourcing advanced production. Mechanically it makes
-commitment a real sacrifice: a guild that commits specialist output waits out the whole
-commitment before it sees its *own* units (e.g. to build a heavy transport). **Breach bites
-harder on specialists by design** — a bad window leaves the guild with nothing *and*
-breached — so guilds commit conservatively. This is intended, not a rough edge.
+Committed units go to the Syndicate first; the guild's own units are whatever completes
+beyond the commitment. No staggering. It is the Syndicate's risk premium and it gates the
+guild's own capital output, so breach bites harder on specialists — commit conservatively.
 
 ## Renegotiation — fixed re-offer
 
-At contract end the Syndicate **re-offers identical terms** — same committed unit count, same
-10,080-tick window — with the **signing price refreshed to current market**; **no
-standing-driven ratchet** up or down (unlike T1/2's `renegotiationTerms`), equity untouched.
-The guild accepts (renew) or rejects (lapse to unlicensed), exactly the T1/2 accept/reject
-shape, with a fixed offer instead of a computed one.
+At contract end the Syndicate re-offers identical terms (same committed unit count, same
+week window), price refreshed to current market; no standing ratchet, equity untouched.
+Accept (renew) or reject (lapse). Drops T1/2's `renegotiationTerms` recompute for Tier-3.
 
 ## Teardown
 
-Forfeit partial progress + consumed ingredients, **pay the remaining contract fee**, forfeit
-RP. Mostly existing `decommissionVenture` behaviour (it already forfeits RP and pays the
-remaining fee). With progress-based payment there is no overpayment to escape with either, so
-tearing down benefits no one.
+Forfeit partial progress + consumed ingredients, pay the remaining contract fee, forfeit
+RP. Mostly existing `decommissionVenture` behaviour. No benefit to tearing down.
 
-## The price fix — per-cycle capacity (LOAD-BEARING; do not skip)
+## The price fix — per-PERIOD capacity for timed goods (LOAD-BEARING; do not skip)
 
-The price level is `level = stock ÷ capacity`, capacity in **units per tick**
-(`sim/prices.js`, `productionCapacity` / `baselineOutputFor`). A timed good's per-tick rate
-is `1 ÷ TICKS_PER_UNIT` — for a once-a-week good, ≈ 0.0000992, a millionth-scale number.
-Dividing by it multiplies the level by ~10,080, so **any hoard above zero pins the price at
-the ceiling** — a degenerate binary signal (base when nobody holds one, ceiling the instant
-anyone does), the opposite of the smooth upward trend this model is for.
+`level = stock ÷ capacity`, capacity in units per tick (`sim/prices.js`). Every timed
+Tier-3 good produces at LESS than 1 unit/tick (the fastest, 3-1, is 1 per 15 ticks), so
+its per-tick capacity is a fraction — `stock ÷ tiny` explodes, and any hoard pins the
+price at the ceiling (degenerate, no gradient). **Fix: a timed good's capacity is
+measured per a reference PERIOD, not per tick** — `capacity = units produced per period ×
+producers`, so `level` reads as "**periods of production hoarded**" and gives a sensible
+gradient with the unchanged 0.05 sensitivity. The natural first-cut period is **one day
+(1,440 ticks)** — e.g. a 3-1 at 15 min makes 96/day, a heavy engine at 48 h makes 0.5/day
+— but the exact period is `[FIRST-CUT]` → `phase-1-tuning.md`. This applies to **all
+Tier-3 (all timed)**; **Tier-1/2 keep per-tick capacity** (they are continuous and fast).
+So the capacity basis is per production MODEL: timed → per-period, continuous → per-tick.
+Rarity preserved (more factories → higher capacity → lower level); throttle-gaming still
+impossible (capacity reads the fixed baseline). Change lives in `baselineOutputFor` /
+the capacity sum only.
 
-**Fix:** a timed good reports its capacity **per production cycle — whole units per week
-(≈ one per factory) — NOT per tick.** Then `level` reads as "**cycles of output hoarded**":
-holding 1 engine → level ≈ 1 (gentle nudge), 20 → level 20 (price doubles), ~380 → ceiling.
-A real gradient, with the **unchanged 0.05 sensitivity and one formula**. Rarity is preserved
-(more factories → higher per-cycle capacity → the same hoard gives a lower level), and
-throttle-gaming is still impossible (capacity reads the fixed baseline, which for a timed good
-is the fixed one-per-cycle). The change lives in `baselineOutputFor` / the capacity sum only.
+## Buy-to-skip relies on specialists staying dear (note for future tuning)
 
-## Invariants to enforce (mechanical tripwires)
+Buying parts from the Syndicate to skip production is the same two-sided-market
+interaction as the refining pump, run in reverse. It is a healthy time-vs-credits
+tradeoff ONLY while the Syndicate sells specialists at their (high, scarce) market price.
+Do NOT let a future tuning pass sell specialists cheaply — that would make buy-to-skip a
+no-brainer and re-feed the pump. Specialists are dear by construction (timed + scarce),
+so this holds today; the caution is to keep it holding.
 
-1. **A timed good is NEVER also produced continuously.** The production model is a property of
-   the *good*, so every producer of a good is on the same clock. If one weren't, the capacity
-   sum would mix per-tick and per-cycle timescales and silently mis-level the price. Fail loud.
-2. **No fractional units in any stockpile.** Progress is a hidden per-venture accumulator only;
-   stockpiles hold whole units.
-3. **Committed progress is paid exactly once** — no double-count between the per-tick payment
-   and the completed-unit delivery.
+## Invariants (mechanical tripwires)
 
-## Open — for the human (not decided here)
+1. A timed Tier-3 good is never also produced continuously (the capacity sum must not mix
+   per-period and per-tick timescales — fail loud).
+2. No fractional units in any stockpile (progress is hidden per-venture state only).
+3. Committed progress is paid exactly once (no double-count with completed-unit delivery).
+4. A unit's build never starts without its full inputs present; inputs consumed at start.
 
-- **SCOPE — which goods are timed.** Specialist parts **must** be (they are why this exists).
-  Ordinary **3-3** modules are a live candidate too — their refining pump is ~+72M/day per
-  factory, non-trivial — so there is a real case for timing 3-3 as well. **3-1 / 3-2 stay
-  continuous** regardless (small pumps, and bulk parts cannot be made slow). **A DECISION IS
-  REQUIRED before the build.**
-- **`TICKS_PER_UNIT` per timed good** — the numbers, paired with the base price (a 20M part
-  slow, a 1M part faster). Deferred to `phase-1-tuning.md`.
-- **Input model** — continuous draw (T2-style, the remainder default; disruption handled for
-  free) vs upfront batch-gating (T4-feel, more state). Lean: continuous. Confirm at build.
+## The nine Tier-4 bills
 
-## Sequencing
+The believable final bills live in `docs/asset-recipes.md` ("Tier-4 asset bills"). They
+are small and literal (8–35 parts; the outpost is the deliberate bulk exception at ~666).
+Their build time is assembly `BUILD_TICKS` above; part-sourcing is produced-or-bought.
 
-The 27-09-26 specialist prices depend on this model; do not run the specialist bands in a live
-economy until the timer ships. New serialized state (the per-venture progress counter,
-per-contract `windowN`) is a schema touch → fresh galaxy + omit-when-default discipline.
+## Sequencing & state
+
+New serialized state (the per-venture countdown, per-contract `windowN`) is a schema
+touch → fresh galaxy + omit-when-default discipline. Build is a later Claude Code slice.

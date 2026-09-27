@@ -98,28 +98,32 @@ These modules **join `STOCKPILE_GOODS`** at build time, retiring the three inert
 `*_reactor_engine` placeholders in `resources.js` (which now become real,
 sized recipes above).
 
-## Tier-4 asset bills (3→4 recipes) — FINAL quantities *(RULED 27-09-26)*
+## Tier-4 asset bills (3→4 recipes) — FINAL *(RULED 27-09-26; supersedes the earlier FINAL table)*
 
-Each asset recipe outputs **1** asset. Quantities below are **final** — they supersede the `[FIRST-CUT]` placeholders and design.md §3's eight-part sketch. Module **prices** live in `docs/phase-1-tuning.md` "Tier-3 sub-tiers & specialist parts"; every bill is sized so its parts cost **≈50% of the asset's base price AT REST** (a resting figure — live prices run higher as parts appreciate through the passthrough).
+Each recipe outputs **1** asset. These bills are **small and literal** — believable part
+lists, not padded to a price %. The %-of-base target is retired (it was a signpost, now
+spent). Module **prices** are in `docs/phase-1-tuning.md`; module **production timers** and
+the build model are in `docs/tier3-timed-production.md`. **Build time = the dockyard
+assembly `BUILD_TICKS`** (parts must all be present first — produced on the timers, or
+**bought from the Syndicate**); the times below are those assembly floors.
 
-**Design principle — precision small, bulk large.** A "part" is an **abstract manufacturing unit**, not one literal component. Precision / specialist assets (transports, spycraft, scan array, toll gate) carry a few defining specialist parts and small quantities; **bulk infrastructure** (the Outpost) is honestly a warehouse of ordinary parts, so large quantities are correct there — the "silly quantity" concern was about precision craft, not depots.
-
-> **SUPERSEDED IN CODE (this is a design-doc commit).** The four ship bills lifted verbatim into `sim/asset-recipes.js` `VEHICLE_BILLS` (18-09-26) and the two ground bills carry the OLD placeholder quantities/compositions. The bills below replace them; the code update — the bills AND the Tier-3 sub-tier / specialist price bands in `sim/prices.js` — is a subsequent Claude Code slice, NOT this commit. Its load-bearing companion is the timer-production model (deferred to the next design pass; see `docs/phase-1-tuning.md`).
-
-| Asset | Base | Module bill (final) |
+| Asset | Assembly | Module bill (final) |
 |---|---|---|
-| **Light transport** | 1.5M | 40 chassis · 20 control_module · 15 life_support_module · 4 small_reactor_engine · 50 fuel_tank · 50 power_cells |
-| **Medium transport** | 15M | 3 medium_reactor_engine · 100 chassis · 30 control_module · 20 life_support_module · 5 sensor_suite · 20 reactor_housing · 200 fuel_tank · 200 power_cells |
-| **Miner** | 12M | 5 extraction_head · 50 chassis · 20 control_module · 10 cargo_handling_system · 5 defence_system · 1000 cargo_module · 100 photovoltaic_array · 500 power_cells |
-| **Factory** | 12M | 5 fabrication_line · 50 chassis · 20 control_module · 20 sensor_suite · 5 cargo_handling_system · 200 photovoltaic_array · 1000 power_cells |
-| **Spycraft** | 100M | 6 stealth_module · 100 control_module · 100 sensor_suite · 50 chassis · 40 life_support_module · 500 power_cells *(build-only; not Syndicate-traded)* |
-| **Heavy transport** | 200M | 5 heavy_reactor_engine · 30 chassis · 30 life_support_module · 20 control_module · 10 defence_system · 2000 hull_plating · 2000 cargo_module |
-| **Deep Scan Array** | 400M | 9 deep_scan_mast · 1000 sensor_suite · 500 control_module · 5000 comms_array · 400 chassis · 5000 power_cells |
-| **Toll Gate** | 500M | 10 interdiction_projector · 2 deep_scan_mast · 500 defence_system · 400 chassis · 1000 comms_array · 20000 power_cells · 20000 hull_plating |
-| **Outpost** (depot) | 600M | 15000 chassis · 5000 cargo_handling_system · 3000 control_module · 300000 cargo_module · 20000 photovoltaic_array · 200000 power_cells *(bulk infrastructure — large quantities intended)* |
-| **Droid** | — | design-ahead, no entity yet; uses unclassified modules (droid_components, drive_module) — bill & price deferred |
+| **Light transport** | 6 h | 1 chassis · 1 control_module · 1 life_support_module · 1 small_reactor_engine · 2 fuel_tank · 2 power_cells |
+| **Miner** | 12 h | 1 extraction_head · 2 chassis · 1 control_module · 1 cargo_handling_system · 1 defence_system · 2 photovoltaic_array · 6 cargo_module · 6 power_cells |
+| **Factory** | 16 h | 1 fabrication_line · 2 chassis · 1 control_module · 1 sensor_suite · 1 cargo_handling_system · 3 photovoltaic_array · 8 power_cells |
+| **Medium transport** | 16 h | 2 medium_reactor_engine · 2 chassis · 1 control_module · 1 life_support_module · 1 sensor_suite · 2 reactor_housing · 6 fuel_tank · 6 power_cells |
+| **Heavy transport** | 7 d | 5 heavy_reactor_engine · 14 chassis · 2 life_support_module · 2 control_module · 2 defence_system · 10 hull_plating · 10 cargo_module · 10 fuel_tank |
+| **Spycraft** | 7 d | 1 stealth_module · 1 control_module · 3 sensor_suite · 2 chassis · 1 life_support_module · 2 small_reactor_engine · 6 power_cells *(build-only; not Syndicate-traded)* |
+| **Deep Scan Array** | 7 d | 2 deep_scan_mast · 4 sensor_suite · 2 control_module · 2 chassis · 3 comms_array · 6 power_cells |
+| **Toll Gate** | 6 d | 4 interdiction_projector · 1 deep_scan_mast · 2 defence_system · 2 chassis · 4 comms_array · 8 power_cells · 8 hull_plating |
+| **Outpost** (depot) | 9 d | 20 chassis · 20 cargo_handling_system · 6 control_module · 4 defence_system · 16 photovoltaic_array · 200 cargo_module · 200 hull_plating · 200 power_cells *(bulk — a big, plain station)* |
+| **Droid** | — | design-ahead, no entity yet (droid_components, drive_module — unclassified) |
 
-**The Outpost is a depot, not a factory** (refines design.md §4): no production function, a manned drop-off/pickup node that makes outside trade less fuel-intensive by shortening hauls. Its final bill is deliberately **bulk** — structure (chassis, hull-equivalent), storage (cargo_module, cargo_handling_system), and power (photovoltaic_array, power_cells), with control for the crewed core. §4's "no production; flag on a stick" narrows to "no production; limited depot capacity." *(The earlier sketch's claim_beacon / habitation_module are dropped from the final bill; both are currently unclassified and used by no asset.)*
+Assembly `BUILD_TICKS`: light/miner/factory/medium/heavy/spy are the existing values
+(`sim/asset-recipes.js`); **outpost 9 d, deep scan array 7 d, toll gate 6 d are set here**
+(all `[FIRST-CUT]`). The Outpost is a depot (design.md §4): no production, bulk structure +
+storage + power; its large counts are correct for a big plain station.
 
 ## Reconciliation with design.md §3's eight-part sketch
 
