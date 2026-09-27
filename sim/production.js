@@ -56,7 +56,9 @@
 // TIER 3 IS THE EXCEPTION (docs/tier3-timed-production.md): a factory whose output is a
 // timed Tier-3 good runs no rate and keeps no carry. It builds one WHOLE unit at a time —
 // its whole input set is taken when a unit starts, and the unit is minted TICKS_PER_UNIT
-// ticks later (see "TIMED PRODUCTION" below resolveProduction). Mines and Tier-2
+// ticks later (see "TIMED PRODUCTION" below resolveProduction). A committed timed good is
+// also DELIVERED differently: no paced send — every minted unit goes to the Syndicate
+// first, until the week's target is met (see "SYNDICATE FIRST", below). Mines and Tier-2
 // refineries are exactly as described above.
 
 const { getRecipe } = require('./recipes.js');
@@ -267,6 +269,10 @@ function resolveProduction(guild, systemId, opts = {}) {
     // not allowed to hold.
     const Q = commitmentQ[good] || 0;
     const targets = ventureTargets[good] || [];
+    // A committed TIMED good is delivered Syndicate-first (Slice 3b — see "SYNDICATE FIRST"
+    // below): the Syndicate claims before the player's other two claimants, whatever order
+    // the profile stores. Every other good walks the player's order exactly as before.
+    const syndicateFirst = Q > 0 && deliversSyndicateFirst(good);
 
     // A fresh good nobody consumes AND that carries no commitment: nothing to route —
     // it all stays in the pool (next tick's reserve). No `goods` entry. A good with
@@ -290,6 +296,9 @@ function resolveProduction(guild, systemId, opts = {}) {
     const policy = getGoodPolicy(guild, systemId, good);
     const reserve0 = getStock(guild, systemId, good);
     const pot = reserve0 + freshG;
+    // The claimant order both walks below use: the player's, or — for a Syndicate-first good —
+    // the player's with the Syndicate lifted to the front.
+    const order = syndicateFirst ? syndicateFirstOrder(policy.order) : policy.order;
 
     // §5 windowed accrual: resolve THIS tick's INTENDED Syndicate send (a whole-unit
     // count) from the window state + the per-tick send control (paced / absolute /
@@ -297,6 +306,8 @@ function resolveProduction(guild, systemId, opts = {}) {
     // reports the NEW window state for apply to write back — the resolver mutates
     // nothing. `win` is null for an uncommitted good (Q ≤ 0), so the Syndicate takes 0.
     // The window is THIS good's (a day, or the Tier-3 week) — the same pair `Q` was built on.
+    // A timed Tier-3 good's intent is not paced at all: it is everything still owed (SYNDICATE
+    // FIRST, below resolveTimedFactory).
     const goodWin = Q > 0 ? windowOf(good) : null;
     const win = goodWin
       ? resolveWindow(guild, systemId, good, Q, freshG, policy.syndicate, goodWin.windowStart, goodWin.windowN, p)
@@ -311,7 +322,7 @@ function resolveProduction(guild, systemId, opts = {}) {
     // finalize pass. `available` never goes negative — each take is ≤ it.
     let availableForConsumers = pot;
     let preFreshRem = freshG;
-    for (const f of policy.order) {
+    for (const f of order) {
       if (f === 'downstream') break;
       if (f === 'stockpile') {
         availableForConsumers -= Math.min(policy.reserveLevel, availableForConsumers);
@@ -328,7 +339,7 @@ function resolveProduction(guild, systemId, opts = {}) {
     // fresh-capped draw) is assembled there, once the consumer draw is known.
     goodPlans.push({
       good, fresh: freshG, reserve0, pot, demand: demandTotal,
-      order: policy.order, reserveLevel: policy.reserveLevel, consumerPool,
+      order, reserveLevel: policy.reserveLevel, consumerPool,
       // `targets` (establishment order) and `pursue` (the player's ranking, absent =
       // none) are what the finalize pass fills the window's pile with — read HERE, on
       // the one pass that already reads the good's policy, so the fill never opens the
@@ -514,7 +525,9 @@ function resolveProduction(guild, systemId, opts = {}) {
     // fresh first (the rate-based drawdown), and the Syndicate is FRESH-ONLY, so it is
     // capped at freshRem — which guarantees it NEVER reduces the reserve (§5). If a
     // higher-priority Production claimant consumed the fresh, the Syndicate under-draws
-    // and the pace self-corrects (or breaches) — the on-theme competition for fresh.
+    // and the pace self-corrects (or breaches) — the on-theme competition for fresh. (For a
+    // Syndicate-first good the Syndicate is always first in `plan.order`, so here it takes
+    // min(Q − delivered, minted): `available` is still the whole pot, which holds every minted unit.)
     let available = potHere;
     let freshRem = freshHere;
     let reserveHeld = 0;
@@ -695,6 +708,47 @@ function resolveTimedFactory(venture, recipe, ticksPerUnit, allocated, throttleP
   };
 }
 
+// ── SYNDICATE FIRST (Tier 3, Slice 3b) — docs/tier3-timed-production.md "Delivery" ────────────
+//
+// THE PROBLEM IT FIXES. A continuous good's Syndicate send is PACED: each tick it asks for
+// (Q − delivered) ÷ ticks-left, a fraction carried until it adds up to a whole unit, and it may
+// only take units made THIS tick ("fresh-only"). A timed factory makes nothing on most ticks
+// and one whole unit every TICKS_PER_UNIT. So the paced ask mostly fell on empty ticks and got
+// nothing, while the tick a unit DID land usually asked for 0 — and that unit went to the
+// guild's stockpile. A committed 3-1 factory delivered only ~20–40% of its week and breached.
+//
+// THE RULE (ruled, "Delivery — Syndicate first (fixed)"): committed units go to the Syndicate
+// FIRST; the guild's own units are whatever completes beyond the commitment. So for a committed
+// timed good, each tick:
+//     Syndicate's take = min(units minted this tick, Q − delivered so far this window)
+// Every minted unit goes to the Syndicate until the week's target Q is met; after that every
+// unit stays in the guild's stockpile. It is built from two small changes, nothing more:
+//   1. the INTENT is the whole of what is still owed, Q − delivered (resolveWindow) — no pace,
+//      no carry, and the player's send control (absolute / percent) is not read;
+//   2. the Syndicate claims AHEAD of the player's other claimants (`syndicateFirstOrder`), so a
+//      reserve level (or, one day, an in-system consumer) can never catch a unit before it.
+// The existing fresh-only cap in the finalize walk then does the rest: it caps the intent at the
+// units minted this tick. So the Syndicate still never takes a unit from the stockpile, never
+// takes more than Q, and `delivered`, the verdict, the sale and the fee read exactly what they
+// read before — only which minted units reach the Syndicate changed.
+//
+// "FIXED" means not a lever: there is no staggering to set, so it is the same for every guild.
+// Tier-1 mines and Tier-2 refineries keep the paced / absolute / percent send untouched.
+
+// deliversSyndicateFirst(good) -> true iff a commitment on `good` is delivered Syndicate-first:
+// exactly the timed Tier-3 goods (the same `ticksPerUnitFor` that decides "made on a timer?" and
+// "settles weekly?", so the three can never disagree about a good).
+function deliversSyndicateFirst(good) {
+  return ticksPerUnitFor(good) !== null;
+}
+
+// syndicateFirstOrder(order) -> the player's claimant order with 'syndicate' moved to the front
+// and the other two kept in the player's relative order. The default order already starts with
+// the Syndicate, so for most profiles this changes nothing.
+function syndicateFirstOrder(order) {
+  return ['syndicate', ...order.filter((f) => f !== 'syndicate')];
+}
+
 // reconcilePursue(targets, pursue) -> the good's committing ventures in the order the
 // boundary fill feeds them, as { ventureId, q } rows.
 //
@@ -808,6 +862,8 @@ function rollupStatus(perVenture, isBoundary) {
 //   - "percent":  `value`% of THIS tick's fresh (the Syndicate fork's own mode).
 // That fractional rate lands on integers via the send carry (floor-and-carry, RULED):
 // accrue the intent, deliver the whole part, carry the sub-unit remainder in [0,1).
+// EXCEPT a timed Tier-3 good, which skips all three: its intent is simply Q − delivered, with
+// no carry (SYNDICATE FIRST, above).
 //
 // ⚠️ DEFERRED, NOT OVERLOOKED — "percent" mode on a REFINED good (factory-commitment
 // slice, 28-08-26). `freshG` here is the routing pass's figure, and for a refined good
@@ -819,7 +875,8 @@ function rollupStatus(perVenture, isBoundary) {
 // intends 0 every tick and will breach. Paced (the default) and absolute are unaffected.
 // The gap is pinned by a test and recorded on docs/roadmap.md's decision
 // checklist (with the two candidate fixes, both of them rulings) rather than papered
-// over with a guessed stand-in figure.
+// over with a guessed stand-in figure. (A timed Tier-3 good never reaches the three modes
+// at all — it is delivered Syndicate-first, above — so the gap is Tier-2-only now.)
 function resolveWindow(guild, systemId, good, Q, freshG, control, curWindowStart, windowN, p) {
   const stored = getWindow(guild, systemId, good);
   const roll = !stored || stored.windowStart !== curWindowStart;
@@ -838,6 +895,15 @@ function resolveWindow(guild, systemId, good, Q, freshG, control, curWindowStart
   // cap at apply, so no Infinity/NaN ever reaches integer state.
   const ticksRemaining = windowStart + windowN - p;
   const requiredRate = ticksRemaining > 0 ? remaining / ticksRemaining : remaining;
+
+  // SYNDICATE FIRST (a timed Tier-3 good — see the section above): no pace, no send control and
+  // no carry. The Syndicate is willing to take the WHOLE of what is still owed this tick; the
+  // finalize walk caps that at the units actually minted, so the take is
+  // min(minted, Q − delivered). `requiredRate` / `ticksRemaining` are still reported — they
+  // are display telemetry, and "what pace would still meet Q" is true for any good.
+  if (deliversSyndicateFirst(good)) {
+    return { windowStart, delivered, newSendCarry: 0, intendedSend: remaining, ticksRemaining, requiredRate };
+  }
 
   let targetRate;
   if (!control) {

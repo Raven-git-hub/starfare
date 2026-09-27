@@ -21,13 +21,16 @@
 //   5. ISOLATION — a Tier-1/2-licensed galaxy with an unlicensed Tier-3 factory reproduces the
 //      PRE-SLICE engine's bytes at every tick (hashes computed on HEAD f060689 and pinned).
 //
-// ⚠ A KNOWN GAP, PINNED ON PURPOSE (test "THE GAP" below): under the DEFAULT paced Syndicate send
-// a committed Tier-3 factory still under-delivers and breaches, because the pace's whole-unit
-// intent mostly lands on ticks the timer mints nothing (the fork is fresh-only). The week and the
-// sizing are right — fed its units through the existing `absolute` send control, the same factory
-// meets even a 100% commitment. Making the default path meet is Syndicate-first DELIVERY, which
-// is Slice 3b's (docs/tier3-timed-production.md "Delivery — Syndicate first") and is NOT built
-// here. It is on docs/roadmap.md's decision checklist. Tier 3 is still not safe to run live.
+// THE GAP, NOW CLOSED (test "THE GAP, CLOSED" below). 3a pinned it: on the DEFAULT paced Syndicate
+// send a committed Tier-3 factory under-delivered and breached, because the pace's whole-unit
+// intent mostly landed on ticks the timer minted nothing (the fork is fresh-only). Slice 3b built
+// Syndicate-first delivery (docs/tier3-timed-production.md "Delivery — Syndicate first"): every
+// minted unit goes to the Syndicate until the week's Q is met. The same test now asserts the
+// default send MEETS. Slice 3b's own tripwires are in tier3-delivery.test.js.
+//
+// Since 3b a timed good's send control is not read at all, so the guilds below that set the
+// `absolute` send (`met`, `mixed`, `late`, `heavy`) settle exactly as they would on the default
+// send. They keep the setting, which now doubles as proof that it is inert.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -293,7 +296,7 @@ test('a Tier-3 re-lock (renegotiateLicence) re-prices on the SAME weekly basis �
 //   solo     the same titanium mine alone                        → (c)'s reference: mixed's mine must match it
 //   late     the `met` factory, licensed at tick 5,040 (mid-week) → met on a half-week target, half the fee
 //   heavy    a heavy reactor engine at 100%, absolute send       → commits floor(3.5) = 3, met on 10,080
-//   paced    the `met` factory on the DEFAULT paced send         → THE GAP: breaches (Slice 3b's to fix)
+//   paced    the `met` factory on the DEFAULT send               → met (3a's gap, closed by Slice 3b)
 const LATE_TICK = 5040;
 let weekRun = null;
 function runWeek() {
@@ -318,6 +321,7 @@ function runWeek() {
   const fees = {};         // guildId -> [ the lastLicenceFee record, each time a new one is written ]
   const reputation = {};   // guildId -> [ { tick, rp } ] each time the Tier-3 venture's RP moved
   const tankWindow = [];   // the met guild's fuel-tank window, at each day's last and first tick
+  let pacedAtWeekEnd = null; // the paced guild's fuel-tank window on the week's last tick
   const invariantsAt = {};
   const starvedVerdict = {}; // the resolver's verdict for the starved factory, on a day's end and the week's end
   for (const g of s.guilds) { fees[g.id] = []; reputation[g.id] = []; }
@@ -338,9 +342,10 @@ function runWeek() {
     if (s.tick % DAY === 0 || s.tick % DAY === 1) {
       tankWindow.push({ tick: s.tick, ...getWindow(guildOf(s, 'met'), SYS, 'fuel_tank') });
     }
+    if (s.tick === WEEK) pacedAtWeekEnd = { ...getWindow(guildOf(s, 'paced'), SYS, 'fuel_tank') };
     if (s.tick % DAY === 0) invariantsAt[s.tick] = checkInvariants(s, s.tick);
   }
-  weekRun = { signed, firstPreview, end: s, fees, reputation, tankWindow, invariantsAt, starvedVerdict };
+  weekRun = { signed, firstPreview, end: s, fees, reputation, tankWindow, pacedAtWeekEnd, invariantsAt, starvedVerdict };
   return weekRun;
 }
 const DAY_ENDS = [1, 2, 3, 4, 5, 6, 7].map((d) => d * DAY);
@@ -371,7 +376,7 @@ test('(b) a starved Tier-3 factory breaches on the 10,080 boundary and pays the 
   });
 });
 
-test('(b) the Tier-3 window spans the week: it does not roll at a day boundary, and it paces over 10,080 ticks', () => {
+test('(b) the Tier-3 window spans the week: it does not roll at a day boundary, and its window counts down 10,080 ticks', () => {
   const { firstPreview, tankWindow, end } = runWeek();
   const w0 = firstPreview.find((g) => g.guildId === 'met').systems[0].goods.fuel_tank.window;
   assert.equal(w0.ticksRemaining, WEEK, 'on tick 1 the whole week remains');
@@ -425,16 +430,20 @@ test('a heavy reactor engine at 100% commits floor(3.5) = 3 and meets it on the 
   assert.equal(fees.heavy[0].ventures.f.status, 'met');
 });
 
-test('THE GAP (Slice 3b\'s, pinned not fixed): on the DEFAULT paced send a committed Tier-3 factory under-delivers and breaches', () => {
-  // Same factory, same inputs, same 50% as `met` — only the send control differs. The pace wants
-  // 1/30 of a unit a tick; its whole-unit intent mostly falls on ticks the timer mints nothing,
-  // and the fork is fresh-only, so most finished units miss the Syndicate. This is DELIVERY, not
-  // settlement: the week and the sizing are proven right by `met`. Syndicate-first delivery
-  // (docs/tier3-timed-production.md) is the ruled fix and belongs to Slice 3b. When it lands,
-  // this test is expected to go red — replace it, don't loosen it.
-  const { fees } = runWeek();
+test('THE GAP, CLOSED (Slice 3b): on the DEFAULT send a committed Tier-3 factory delivers its whole weekly Q and settles MET', () => {
+  // Same factory, same inputs, same 50% as `met`; this one sets no send control. Under 3a the pace
+  // wanted 1/30 of a unit a tick, its whole-unit intent mostly fell on ticks the timer minted
+  // nothing, and the fork was fresh-only, so it delivered 100 of 336 and breached. Slice 3b's
+  // Syndicate-first delivery (docs/tier3-timed-production.md) sends every minted unit until Q is
+  // met, so the default send now meets, and settles exactly as `met` does.
+  const { signed, fees, pacedAtWeekEnd } = runWeek();
+  const lic = signed.guilds.find((g) => g.id === 'paced').ventures[0].licence;
   assert.deepEqual(fees.paced.map((f) => f.tick), [WEEK], 'it is still judged on the week boundary only');
-  assert.equal(fees.paced[0].ventures.f.status, 'breach');
+  assert.equal(pacedAtWeekEnd.delivered, 336, 'the whole weekly target (50% of 672), not 3a\'s 100');
+  assert.deepEqual(fees.paced[0].ventures.f, {
+    status: 'met', owed: lic.discountedFee, basicFee: lic.basicFee, discountedFee: lic.discountedFee,
+  });
+  assert.deepEqual(fees.paced[0].ventures.f, fees.met[0].ventures.f, 'the default send settles exactly like the absolute one');
 });
 
 test('invariants hold at every day boundary of the week, for every guild', () => {

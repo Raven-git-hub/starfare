@@ -103,6 +103,7 @@ settlement fee.
 Committed units go to the Syndicate first; the guild's own units are whatever completes
 beyond the commitment. No staggering. It is the Syndicate's risk premium and it gates the
 guild's own capital output, so breach bites harder on specialists — commit conservatively.
+*(⤳ As built: Slice 3b, "As built — Slice 3b" at the end.)*
 
 ## Renegotiation — fixed re-offer
 
@@ -334,6 +335,7 @@ three 3,000-tick Tier-1/2 runs (plain, with an unlicensed Tier-3 factory, and an
 HEAD: identical state at every tick, and identical snapshots except the Tier-3 `feeQuote` entries.
 
 **⚠ The gap 3a exposes (Slice 3b's to close — pinned by a test, on the decision checklist).**
+*(⤳ CLOSED 27-09-26 by Slice 3b: see "As built — Slice 3b" below.)*
 The week and the sizing are right. Fed through the **existing `absolute` Syndicate send control**,
 a committed 3-1 factory meets every commitment from 10% to 100% of `y`. On the **default paced
 send**, the same factory delivers only about 20–40% of its target and **breaches at every level**.
@@ -348,3 +350,112 @@ fresh-only, so most finished units go to the guild's stockpile instead.
 *(3-1 fuel tank, one week, delivered / target.)* This is **delivery order**, not settlement:
 **Delivery — Syndicate first** above is the ruled cure, and it is 3b's. It was not touched here.
 **Tier 3 is still not safe to run live.**
+
+## As built (27-09-26) — Slice 3b: Syndicate-first delivery
+
+**The sub-slices were re-cut for this build** (the human's 3b build prompt). **3b** is Syndicate-first
+delivery only. **3c** is the whole-unit `x`-of-`y` commitment expression, the one-week rolling term
+and the fixed re-offer. **3d** is the per-tick progress payment. Where Slice 3a's text above says
+"3b" for the commitment expression, the term or the re-offer, read 3c. Where it says "3c" for the
+payment, read 3d.
+
+3b builds **Delivery — Syndicate first (fixed)** and closes the gap 3a pinned. It changes only
+**which minted units reach the Syndicate**. It does not touch the commitment expression, the term or
+the re-offer (3c), the payment (3d), or the week and the fee (3a).
+
+**The rule.** For a committed **timed** good, each tick:
+
+    the Syndicate's take = min(units minted this tick, Q − delivered so far this week)
+
+Every minted unit goes to the Syndicate until the week's target `Q` is met. Every unit after that
+stays in the guild's stockpile. Whole units only: there is no paced rate and no send carry, so a
+unit can no longer miss the Syndicate by landing on a tick the pace asked for nothing. `Q` is the
+unchanged 3a target (`committedContribution` over the 10,080 week).
+
+**Built as two small changes in `sim/production.js`** (the section "SYNDICATE FIRST"):
+1. **The intent.** `resolveWindow` gives a timed good an intent of the whole of what is still owed,
+   `Q − delivered`, and returns before the paced / absolute / percent branch. So the send control is
+   not read, and `sendCarry` stays 0.
+2. **The order.** The Syndicate claimant is lifted to the front of the good's claimant order
+   (`syndicateFirstOrder`). The player's other two claimants keep their relative order. The
+   default order already starts with the Syndicate, so this changes nothing for most profiles.
+
+The existing fresh-only cap in the finalize walk then caps that intent at the units minted this
+tick. That cap is what makes the take `min(minted, Q − delivered)`. `deliversSyndicateFirst(good)` is
+`ticksPerUnitFor(good) !== null`, the same answer that decides timed production and the weekly
+window. So the three can never disagree about a good.
+
+**What did not move.** `delivered` still accumulates the units sent and `Q` still caps it. The
+boundary verdict still reads `delivered` against `Q`. The fee, reputation and the sale
+(`commitmentSale`, still on delivered units) are unchanged. `sim/tick.js` is untouched, because it
+already delivered whatever `fork.syndicate` said. There is **no new state and no schema change**:
+`sendCarry` keeps its field and is simply always 0 for a timed good. Tier-1 mines and Tier-2
+refineries keep the paced / absolute / percent fresh-only send exactly as before.
+
+**"Fixed" was built to mean not a lever.** Neither the stored claimant order (a reserve ranked ahead
+of the Syndicate) nor the send control (e.g. "absolute 0") can hold a committed unit back. The
+profile action still accepts both for a timed good; they are simply inert. Whether intake should
+refuse them, and what the console should show instead, is on the decision checklist.
+
+**The result** (a fed 3-1 fuel tank, one week, on the DEFAULT send; delivered / target, verdict):
+
+| commitment | 10% | 25% | 50% | 75% | 90% | 100% |
+|---|---|---|---|---|---|---|
+| 3a (paced) | 27 / 67 ✗ | 69 / 168 ✗ | 100 / 336 ✗ | 132 / 504 ✗ | 142 / 605 ✗ | 211 / 672 ✗ |
+| 3b (Syndicate first) | 67 / 67 ✓ | 168 / 168 ✓ | 336 / 336 ✓ | 504 / 504 ✓ | 605 / 605 ✓ | 672 / 672 ✓ |
+
+The guild keeps `672 − Q` (605, 504, 336, 168, 67, 0). The 3a row was re-measured on HEAD 8af8b11
+and matches 3a's own table.
+
+**Consequences worth knowing** (all pinned by tests):
+- **It is Syndicate FIRST, not interleaved.** A 25% factory's first 168 units all go to the Syndicate
+  (the 168th lands on tick 2,520), and the stockpile is still empty at that moment. The other 504 all
+  stay home.
+- **The Syndicate never takes from the stockpile.** Units already in stock, or minted after `Q` is
+  met, are the guild's.
+- **An under-producing week delivers everything it made and still breaches.** With inputs for 100
+  units against `Q = 336`, it delivers all 100 and pays the full basic fee.
+- **One pot per good, as before.** `Q` is the good's target, and the fork has always drawn on the
+  good's whole fresh output in the system. So an **unlicensed** factory making the same good beside a
+  licensed one feeds `Q` too. This is unchanged from the paced send, but it is more visible now. It
+  is on the checklist as a confirm.
+- **Payment is still lumpy.** The sale still fires when a unit is delivered: nothing, then one whole
+  unit's worth. Delivery is now reliable; smoothing the payment is 3d.
+
+**Proven.** `sim/tests/tier3-delivery.test.js` (14) runs one shared week plus 30 ticks, 13 guilds.
+- The table above, at all six levels, on the default send.
+- **The rule on every tick** for every guild: the take is exactly `min(minted, Q − delivered)`,
+  `delivered` never passes `Q`, the stockpile moves by exactly `minted − take`, and it does not move at
+  all while the week is short of `Q`.
+- The over-producing and under-producing weeks.
+- A reserve ranked ahead of the Syndicate, and "absolute 0", both still meet.
+- An unlicensed sibling, two licences on one good, and a heavy engine at `Q = floor(3.5) = 3`.
+- The week rolling: next week's first two units go to the Syndicate again.
+- Determinism, and an isolation pin (below).
+
+The file was also run against the **HEAD** engine: 11 of its 14 tests fail, and the three that pass
+are the engine-independent ones (invariants, determinism, the isolation pin). Four deliberate code
+breakages each turn tests red:
+- the order left un-lifted;
+- the paced intent kept;
+- Syndicate-first applied to every good (caught by the isolation pin);
+- the `Q` cap dropped.
+
+3a's **"THE GAP"** test in `tier3-settlement.test.js` is **repointed, not deleted**. It is now "THE
+GAP, CLOSED": the same paced guild delivers 336 of 336 and settles exactly like the `absolute` one.
+
+**Isolation.** A Tier-1/2 galaxy under every send control and order is pinned to hashes computed on
+the pre-slice engine (HEAD 8af8b11), every tick of 600: absolute, percent, a reserve ahead of the
+Syndicate, the Syndicate last, a pursue ranking, two licensed mines on one good, a licensed Tier-2
+factory, and an unlicensed Tier-3 factory producing beside them. The build session also diffed six
+3,000-tick runs against HEAD (paced at a 60- and a 1,440-tick day, anchored, every send mode, and an
+unlicensed Tier-3 sibling): identical state, preview and snapshots at every tick. A seventh run with
+a **licensed** Tier-3 factory beside the Tier-1/2 licences differs only in that factory's own good
+(its delivery, the guild's credits, its fee and its quote); the Tier-1/2 slice is identical.
+
+**No golden hash moved.** No pinned run commits a timed good, so nothing needed re-pinning.
+
+**Before Tier 3 runs live.** The delivery blocker is closed. Two known defects from 3a still stand,
+both 3c's (decision checklist): teardown settlement is still counted in days (a 7-day Tier-3 licence
+torn down on day 1 is charged 7 weekly fees), and the Tier-1/2 `windowDays` term and commitment
+ratchet still apply to a Tier-3 licence.

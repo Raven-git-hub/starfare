@@ -1918,7 +1918,40 @@ boundary so the later hex-map swap doesn't touch it.
   - **Still not safe to run live:** on the default paced send, a committed Tier-3 factory under-delivers
     and breaches (see the decision checklist). That is Slice 3b's Syndicate-first delivery. Not built
     here: whole-unit `x`-of-`y` (3b), fixed re-offer and one-week term (3b), per-tick progress
-    payment (3c).
+    payment (3c). *(⤳ Re-cut for the 3b build: those are now 3c, 3c and 3d. The delivery gap is
+    closed by Slice 3b, below.)*
+
+- **Tier-3 Syndicate-first delivery — ✅ BUILT 27-09-26 (Slice 3b of the Tier-3 economy build).**
+  `docs/tier3-timed-production.md` ("Delivery — Syndicate first (fixed)"; as-built "Slice 3b" at its
+  end); design.md §5 AS-BUILT note and §15.4. **Sub-slices re-cut by the human for this build:** 3b =
+  Syndicate-first delivery; 3c = whole-unit `x`-of-`y`, the one-week rolling term and the fixed
+  re-offer; 3d = the per-tick progress payment.
+  - **The rule.** For a committed **timed** good, each tick the Syndicate takes `min(units minted this
+    tick, Q − delivered so far this week)`. Every minted unit goes to the Syndicate until the week's `Q`
+    is met, then to the guild's stockpile. Whole units only: no pace, no carry.
+  - **Two small changes in `sim/production.js`** ("SYNDICATE FIRST"): the intent is `Q − delivered`
+    (the paced / absolute / percent send is skipped for a timed good, and `sendCarry` stays 0), and
+    the Syndicate claimant is lifted to the front of the good's claimant order. The existing fresh-only
+    cap turns that into `min(minted, Q − delivered)`. `sim/tick.js` is untouched.
+  - **Unchanged:** `Q`, `delivered`, the verdict, the fee, reputation and the sale (still on delivered
+    units, so still lumpy: 3d). No new state, no schema change. Tier-1/2 send untouched.
+  - **The gap is closed.** A fed 3-1 factory on the DEFAULT send now meets every level from 10% to
+    100% (3a: 27/67 … 211/672, all breach; 3b: 67/67 … 672/672, all met) and keeps `672 − Q`.
+  - **"Fixed" = not a lever:** a reserve ranked ahead of the Syndicate, or the send control set to
+    "absolute 0", cannot hold a committed unit back (both still met). The profile action still
+    accepts them; they are inert for a timed good (decision checklist).
+  - **Goldens: none moved** (no pinned run commits a timed good). A new standing test pins a Tier-1/2
+    galaxy under every send control and order to hashes computed on HEAD 8af8b11, every tick. Six
+    3,000-tick Tier-1/2 runs were diffed against HEAD: identical state, preview and snapshots at every
+    tick. Beside a *licensed* Tier-3 factory, the Tier-1/2 slice is identical too.
+  - Tests updated deliberately: `tier3-settlement.test.js`'s "THE GAP" is **repointed** to "THE GAP,
+    CLOSED" (the default send now meets, 336 of 336, and settles exactly like the absolute one); its
+    header, one run comment and one test title follow.
+  - Sim suite 1,694 → **1,708 green** (`sim/tests/tier3-delivery.test.js`, +14; also run against HEAD,
+    where 11 of the 14 fail, and against four deliberate breakages, each caught). Tools **68 green**.
+  - **Still not safe to run live:** delivery is fixed, but two 3a defects remain for 3c (decision
+    checklist): teardown settlement counted in days, and the Tier-1/2 `windowDays` term and ratchet
+    still applying to Tier 3.
 
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
@@ -2177,7 +2210,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     — much lower for specialists. Seam 2 kept the fee's reading unchanged on purpose.
     **⤳ 27-09-26 (Slice 3a): the SIZING half is built.** The commitment and fee now read the timed
     weekly output `y` over a 10,080-tick week, not the continuous baseline over a day. What still breaches
-    is the default paced DELIVERY; see "Tier-3 slice 3a" below.
+    is the default paced DELIVERY; see "Tier-3 slice 3a" below. **⤳ 27-09-26 (Slice 3b): the
+    delivery half is built too** (Syndicate-first); see "Tier-3 slice 3b" below.
   - **Doc drift, not a code question.** design.md §5's "Load-bearing price fix" paragraph and
     `docs/phase-1-tuning.md`'s base-price ↔ timer paragraph still say capacity is "per cycle (whole
     units per week ≈ one per factory)". The later RULED notes say per **day** (1,440 ticks), and that
@@ -2194,18 +2228,22 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     week and the sizing are right, and the gap is DELIVERY ORDER. The ruled cure is "Delivery —
     Syndicate first" (`docs/tier3-timed-production.md`), which is 3b's and was not touched. The gap is
     pinned by a test ("THE GAP", `tier3-settlement.test.js`) that is expected to go red when 3b lands.
+    **⤳ CLOSED 27-09-26 (Slice 3b).** Syndicate-first delivery is built; the same factory now meets
+    every level on the default send (10% → 67/67 … 100% → 672/672). "THE GAP" went red as expected and
+    is repointed to "THE GAP, CLOSED".
   - **Teardown settlement is still counted in DAYS.** `teardownSettlement` charges `remaining days ×
     discountedFee`, and for a Tier-3 licence that fee is now a WEEKLY one. A 7-day Tier-3 licence torn
     down on day 1 is charged 7 weekly fees. The ruling says "Teardown owes at most this one week's
     settlement fee". That is still ~10× less than before this slice (the old daily fee was ~10× larger),
     but it is wrong by construction. The fix belongs with the one-week term (3b) and was not changed here.
+    *(⤳ Re-cut: the one-week term is now 3c. Still open after 3b.)*
   - **A Tier-3 licence still carries `windowDays` (7–42) and the day-based renegotiation schedule.**
     The ruled Tier-3 contract term is one week with a fixed re-offer (no ratchet). 3a shares only the
     fee basis with renegotiation, so a re-lock re-prices on `y`. The Steady/Sub-par/At-risk commitment
-    ratchet still applies to Tier-3 until 3b.
+    ratchet still applies to Tier-3 until 3b. *(⤳ Re-cut: now 3c. Still open after 3b.)*
   - **The `floor(y)` ceiling on the percentage commitment** (e.g. a heavy engine at 100% commits 3, not
     `round(3.5) = 4`). This applies the ruled `x ≤ floor(y)` to today's percentage expression; the
-    whole-unit `x` is 3b's. Confirm.
+    whole-unit `x` is 3b's. Confirm. *(⤳ Re-cut: whole-unit `x` is now 3c.)*
   - **A day that does not divide the week** (`state.windowN`, a setup knob; e.g. the 50 one test uses) is
     built REFUSE + HALT + INVARIANT for Tier 3 only. Tier-1/2 in such a galaxy is untouched, and its
     Tier-3 fee quotes are omitted. Confirm (the alternative would be refusing such a `setWindowN`
@@ -2214,6 +2252,32 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     a Tier-3 weekly verdict is overwritten by the next day's Tier-1/2 charge. The client also still labels
     fee quotes and commitments "per cycle", but a Tier-3 figure is per WEEK. Both are client / read-model
     follow-ups.
+
+- **Tier-3 slice 3b (Syndicate-first delivery) — items for a ruling or a confirm** — *surfaced
+  27-09-26.*
+  - **"Fixed" was built as: the Syndicate always claims first for a timed good.** The ruling says
+    "Delivery — Syndicate first (fixed)" and "No staggering". The build reads "fixed" as not a lever.
+    For a committed timed good the Syndicate claimant is lifted to the front of the stored claimant
+    order, so a reserve ranked ahead of it cannot catch a committed unit. The player's other two
+    claimants keep their relative order. Without the lift, a reserve level would hold every minted
+    unit (on 3a's engine such a guild delivered nothing). Confirm.
+  - **The send control and the Syndicate's place in `order` are inert for a timed good, but still
+    accepted.** `setProductionProfile` still takes `syndicate: { mode, value }` and any `order` for a
+    Tier-3 good; the engine does not read either for delivery. Should intake refuse them for a timed
+    good, or keep accepting them as harmless? The console still shows a timed good's "pace" and
+    "resolved send", and offers the send control. `requiredRate` is still reported (it is true
+    telemetry: the pace that would still meet `Q`), but the control does nothing. A client / read-model
+    follow-up either way.
+  - **One pot per good: an unlicensed sibling's units fill `Q` too.** `Q` is the good's target in a
+    system, and the fork has always drawn on the good's whole fresh output there, so an unlicensed
+    factory beside a licensed one of the same good feeds the Syndicate first as well. This is unchanged
+    from the paced send (it is the existing per-good pot), but Syndicate-first makes it visible. Confirm,
+    or rule it per-licence when whole-unit `x` lands (3c). A test pins today's behaviour.
+  - **Payment is still lumpy** (not a question; recorded so it is not missed). The sale still fires on
+    delivery: nothing on most ticks, one whole unit's worth when a unit lands. The per-tick progress
+    payment is 3d's. Until then, a met week is paid for exactly its `Q` delivered units, in lumps.
+  - **Still open before Tier 3 runs live:** the two 3a items above that are now 3c's (teardown
+    settlement counted in days; the `windowDays` term and ratchet still applying to Tier 3).
 
 - **Tier-3 slice 1 — small items for a ruling or a confirm** — *surfaced 27-09-26 by the Tier-3
   price-bands slice.*
