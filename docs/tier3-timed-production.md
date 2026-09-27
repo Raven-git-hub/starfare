@@ -59,22 +59,44 @@ it contradicted "all parts present before build starts.") So a spycraft is 7 day
 assembly for anyone who has (or buys) its parts; its own parts are quick to make, which
 is fine — the buy option means part-sourcing is never a wall.
 
-## Income — progress-based per-tick committed payment
+## Income & commitment — commit `x` of `y`, paid per tick on progress
 
-Each tick, the committed share of the progress ACTUALLY MADE that tick is valued at the
-current market price and paid to the guild — smooth on-pace, less when behind, nothing
-to claw back (payment tracks real work, not a promise). Deviates from T1/2's
-delivered-basis (`gross = delivered × price`); its own model, and it closes the
-teardown-and-walk exploit a flat committed *rate* would open. **No double-count:**
-committed progress IS the payment — a completed committed unit goes to the Syndicate
-already paid; only uncommitted progress mints whole units to the guild's stockpile.
+A Tier-3 licence commits **`x` whole units of `y`**, where `y` is the venture's weekly
+timed output — `y = 10,080 ÷ TICKS_PER_UNIT` (fractional allowed; a heavy-engine factory
+is 3.5/week). `x` is an integer in **`[0, floor(y)]`** (whole units, for delivery); the
+exact ratio **`x/y`** (fractional `y` kept) is what the fee and reputation read — replacing
+T1/2's percentage-of-output commitment with a whole-unit count.
 
-## Settlement — weekly, on whole units
+**Fee — the 1/10th rule, on the timed output:** `FEE_RATE (0.10) × y × price-at-signing`.
+Measured on the good's REAL timed weekly output `y`, NOT the stale continuous
+5-batches/tick baseline the fee read pre-Slice-3 (the fix Slice 2 flagged). Same
+proportional cost as T1/2.
 
-A Tier-3 commitment settles per **10,080-tick week** (7 × the 1,440 daily window) via a
-per-contract `windowN` that nests inside the daily boundary. At the boundary: a
-delivered-or-not verdict on whole committed units (existing boundary machinery);
-under-delivery → breach → full fee.
+**Reputation** maps straight onto the existing T1/2 machinery: `committedOutputPct = x/y`
+feeds the met-gain and signing-bump formulas unchanged — no new RP mechanism.
+
+**Payment — per tick, on progress actually made (the new mechanism).** Each tick a timed
+factory makes `1 ÷ TICKS_PER_UNIT` of a unit; the committed slice of that,
+`(x/y) × (1 ÷ TICKS_PER_UNIT)`, is valued at **that tick's** current price and paid to the
+guild. Smooth on-pace, less when the line stalls or is throttled, **nothing to claw back**
+(payment tracks real progress, not a promise — this is what closes the teardown-and-walk
+exploit a flat committed *rate* would open). Over a full week it sums to `x` units' worth
+at the average price. **No double-count:** the per-tick progress payment IS the payment; a
+completed committed unit is delivered to the Syndicate **already paid**, and only
+uncommitted output mints whole units into the guild's own stockpile. Deviates deliberately
+from T1/2's delivered-basis sale (`gross = delivered × price`); its own model.
+
+## Contract & settlement — a rolling 7-day term
+
+A Tier-3 contract is **exactly one 7-day window (10,080 ticks)** — the contract term and
+the settlement window are the same week. Sign → produce for the week → **settle** at the
+boundary (a delivered-or-not verdict on the whole committed `x` units; under-delivery →
+breach → full fee) → the Syndicate **re-offers identical terms** (see Renegotiation below)
+→ renew or lapse. It is a **rolling weekly commitment** that, because the re-offer never
+changes, effectively auto-renews unless the guild opts out. There is **no separate
+multi-cycle term** (`windowDays`) for Tier-3 — term and settlement window are one week,
+collapsing the T1/2 term-vs-cadence distinction. Teardown owes at most this one week's
+settlement fee.
 
 ## Delivery — Syndicate first (fixed)
 
