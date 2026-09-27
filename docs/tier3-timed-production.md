@@ -130,7 +130,7 @@ so this holds today; the caution is to keep it holding.
 ## The nine Tier-4 bills
 
 The believable final bills live in `docs/asset-recipes.md` ("Tier-4 asset bills"). They
-are small and literal (8–35 parts; the outpost is the deliberate bulk exception at ~666).
+are small and literal (8–55 parts; the outpost is the deliberate bulk exception at ~666).
 Their build time is assembly `BUILD_TICKS` above; part-sourcing is produced-or-bought.
 
 ## Sequencing & state
