@@ -21,13 +21,19 @@
 //
 // `Q` is NOT stored here: it is DERIVED = Σ `Venture.syndicateCommitment` over the
 // ventures producing the good (× the window fraction, below) — the venture field
-// stays the single source (invariant 5). `N` is NOT stored here either: it is a
-// single engine-wide value read from `state.windowN` (below).
+// stays the single source (invariant 5). `N` is NOT stored here either: it is the
+// engine-wide `state.windowN` (below) for every good EXCEPT a timed Tier-3 good, which
+// settles weekly — and that is DERIVED from the good on every read (`windowNForGood`,
+// below), never stored, so it too is not a field here.
 //
 // CRUCIAL for the no-op proof: the field is created LAZILY — only apply, and only
 // for a good with a non-zero aggregate commitment, ever writes it. A guild whose
 // every commitment is 0 never gets a `syndicateWindows` key, so its serialized state
 // is byte-identical to pre-Slice-B (the determinism hash is unchanged).
+
+// The one "is this good made on a timer?" answer (sim/baseline.js) — read to decide which
+// goods settle on the Tier-3 week (windowNForGood, below).
+const { ticksPerUnitFor } = require('./baseline.js');
 
 // The engine-wide window length in ticks — RULED 1,440 (27-08-26). This is NOT a
 // first cut and NOT an invented number: it is DERIVED from two things already ruled.
@@ -48,6 +54,58 @@
 // these files open anyway: the value is the ruled default, and had not been a first
 // cut since the number was ruled. Pure rename, no behavioural change.
 const DEFAULT_WINDOW_N = 1440;
+
+// ── THE TIER-3 WEEK (Slice 3a of the Tier-3 economy build) ────────────────────────────
+//
+// A Tier-3 good is made one whole unit at a time on a timer (docs/tier3-timed-production.md),
+// and a slow one makes only a handful a DAY (a heavy reactor engine makes 0.5). So a Tier-3
+// commitment is not judged daily: its contract and its settlement window are one WEEK —
+// RULED 27-09-26, "Contract & settlement": "exactly one 7-day window (10,080 ticks)". Not a
+// new number: 7 days × 1,440 ticks a day at the ruled 1 tick = 1 minute.
+const TIER3_WINDOW_N = 10080;
+
+// windowNForGood(good, engineWindowN) -> the length, in ticks, of the window a commitment
+// on `good` accrues, settles and is charged over:
+//   - a TIMED Tier-3 good (it has a `TICKS_PER_UNIT` timer) -> TIER3_WINDOW_N, the week;
+//   - every other good -> `engineWindowN` (the galaxy's `state.windowN`, the day), as always.
+//
+// DERIVED, NEVER STORED. The good alone decides, through the same `ticksPerUnitFor` that
+// decides "timed or continuous?" for production, capacity and the invariants — so the window a
+// good settles on can never disagree with how it is made, and no new field enters a save.
+// Because the good decides (not the venture), every venture making one good in one system
+// shares one window, which is what lets their commitments sum into the good's single `Q`.
+//
+// THE TWO WINDOWS MUST NEST. The fee charge and the verdicts run inside the daily boundary
+// (sim/tick.js), so a week that ended part-way through a day would never be judged at all.
+// At the ruled day it nests (10,080 = 7 × 1,440), and so it does for any day length that
+// divides 10,080 — but `state.windowN` is a setup knob a test or scenario may set to anything.
+// So a timed good under a day that does NOT divide the week THROWS here rather than settle on
+// a clock nothing is watching (§15.5: fail loud). Only a COMMITTED or LICENSED timed good ever
+// asks, so a galaxy with no Tier-3 licence never reaches the throw.
+function windowNForGood(good, engineWindowN) {
+  if (ticksPerUnitFor(good) === null) return engineWindowN;
+  if (!tier3WindowNests(engineWindowN)) {
+    throw new Error(`windowNForGood: ${JSON.stringify(good)} settles on the ${TIER3_WINDOW_N}-tick Tier-3 week, which does not divide into this galaxy's ${engineWindowN}-tick day — a Tier-3 boundary would fall mid-day and never be judged`);
+  }
+  return TIER3_WINDOW_N;
+}
+
+// tier3WindowNests(engineWindowN) -> true iff every Tier-3 week boundary is also a day
+// boundary, i.e. the day divides the week exactly. Asked by windowNForGood above (which halts
+// when it is false), and by the places that must REFUSE rather than halt: licensing a Tier-3
+// venture (sim/actions.js), its fee quote (sim/snapshot.js) and the invariant (sim/invariants.js).
+function tier3WindowNests(engineWindowN) {
+  return Number.isInteger(engineWindowN) && engineWindowN >= 1 && TIER3_WINDOW_N % engineWindowN === 0;
+}
+
+// goodWindow(good, tick, engineWindowN, dayAnchorTick) -> { windowN, windowStart }: the window
+// a commitment on `good` is in at producing tick `tick` — its length and the tick it opened on.
+// The ONE place the pair is built, so the resolver (which accrues and judges in it) and the tick
+// (which sells and charges in it) can never read a good's window differently.
+function goodWindow(good, tick, engineWindowN, dayAnchorTick = 0) {
+  const windowN = windowNForGood(good, engineWindowN);
+  return { windowN, windowStart: winStartFor(tick, windowN, dayAnchorTick) };
+}
 
 // winStartFor(tick, N, dayAnchorTick): the producing tick that opened the window
 // CONTAINING `tick`, under the ANCHORED cadence — the boundary falls when
@@ -137,5 +195,6 @@ function cloneWindows(windows) {
 }
 
 module.exports = {
-  DEFAULT_WINDOW_N, winStartFor, isWindowBoundary, windowFraction, getWindow, setWindow, cloneWindows,
+  DEFAULT_WINDOW_N, TIER3_WINDOW_N, windowNForGood, tier3WindowNests, goodWindow,
+  winStartFor, isWindowBoundary, windowFraction, getWindow, setWindow, cloneWindows,
 };

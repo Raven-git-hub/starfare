@@ -66,7 +66,7 @@ const {
   storedThrottleIds, storedPolicyGoods, storedPursueGoods, storedPursue,
 } = require('./profile.js');
 const {
-  DEFAULT_WINDOW_N, winStartFor, isWindowBoundary, getWindow,
+  DEFAULT_WINDOW_N, goodWindow, isWindowBoundary, getWindow,
 } = require('./windows.js');
 const { committedContribution } = require('./licence.js');
 const { producedGoodFor, ticksPerUnitFor } = require('./baseline.js');
@@ -133,7 +133,12 @@ function resolveProduction(guild, systemId, opts = {}) {
   // byte-identical to the pre-anchor engine. Never a clock — the one wall-clock read
   // happens at galaxy creation and is frozen into state from then on.
   const dayAnchorTick = opts.dayAnchorTick == null ? 0 : opts.dayAnchorTick;
-  const curWindowStart = winStartFor(p, windowN, dayAnchorTick);
+  // THE WINDOW IS PER GOOD (Slice 3a of the Tier-3 economy build). `windowN` above is the
+  // galaxy's day; a timed Tier-3 good settles on the week instead (`goodWindow`,
+  // sim/windows.js). So each committed good asks for ITS window — its length and the tick it
+  // opened on — and every read below (the target, the pace, the verdict) uses that pair. A
+  // Tier-1/2 good gets exactly the day it always had, so its bytes are unchanged.
+  const windowOf = (good) => goodWindow(good, p, windowN, dayAnchorTick);
 
   // --- Mines: this tick's fresh raw output (the routing basis), per producing
   // mine and aggregated per good. Order is establishment order (ventures order),
@@ -207,7 +212,12 @@ function resolveProduction(guild, systemId, opts = {}) {
   for (const v of ventures) {
     const producedGood = producedGoodFor(v);
     if (!producedGood) continue; // produces nothing committable (a dangling recipeId)
-    const contribution = committedContribution(v, curWindowStart, windowN);
+    // An uncommitted venture owes nothing, so it never asks for a window at all — an
+    // unlicensed Tier-3 factory reads no week. (`committedContribution` would return 0 for it
+    // anyway; skipping first just means the window is only derived where it is used.)
+    if (!(v.syndicateCommitment > 0)) continue;
+    const win = windowOf(producedGood);
+    const contribution = committedContribution(v, win.windowStart, win.windowN);
     if (contribution <= 0) continue;
     const q = Math.round(contribution);
     (ventureTargets[producedGood] || (ventureTargets[producedGood] = []))
@@ -286,8 +296,10 @@ function resolveProduction(guild, systemId, opts = {}) {
     // percent). This reads guild.syndicateWindows START-OF-STEP (like batchCarry) and
     // reports the NEW window state for apply to write back — the resolver mutates
     // nothing. `win` is null for an uncommitted good (Q ≤ 0), so the Syndicate takes 0.
-    const win = Q > 0
-      ? resolveWindow(guild, systemId, good, Q, freshG, policy.syndicate, curWindowStart, windowN, p)
+    // The window is THIS good's (a day, or the Tier-3 week) — the same pair `Q` was built on.
+    const goodWin = Q > 0 ? windowOf(good) : null;
+    const win = goodWin
+      ? resolveWindow(guild, systemId, good, Q, freshG, policy.syndicate, goodWin.windowStart, goodWin.windowN, p)
       : null;
     const intendedSend = win ? win.intendedSend : 0;
 
@@ -322,6 +334,9 @@ function resolveProduction(guild, systemId, opts = {}) {
       // the one pass that already reads the good's policy, so the fill never opens the
       // profile a second time.
       Q, intendedSend, win, targets, pursue: policy.pursue || [],
+      // The good's window length, so the finalize pass judges the verdict on the good's own
+      // boundary (null for an uncommitted good, which has no verdict).
+      windowN: goodWin ? goodWin.windowN : null,
     });
 
     // Gate 3 — ration `consumerPool` across consumers into integer per-line allocations.
@@ -549,8 +564,10 @@ function resolveProduction(guild, systemId, opts = {}) {
       // anchor 0 this is exactly the old `p % windowN === 0`. The formula moved to
       // sim/windows.js in Slice 3b-iii — the licence-fee charge must fire on exactly the
       // tick these verdicts are resolved on, and one shared function is the only way to
-      // guarantee that. Same arithmetic, same bytes.
-      const isBoundary = isWindowBoundary(p, windowN, dayAnchorTick);
+      // guarantee that. Same arithmetic, same bytes. `plan.windowN` is the GOOD's window
+      // (Slice 3a): the day for a Tier-1/2 good, the week for a timed Tier-3 one — so a Tier-3
+      // verdict resolves on its 10,080 boundary and on no daily one in between.
+      const isBoundary = isWindowBoundary(p, plan.windowN, dayAnchorTick);
       // The PER-VENTURE verdicts (§5's per-venture met/breach ruling), and the
       // good-level status ROLLED UP from them — the individuals are computed first and
       // the aggregate is derived from them, never the other way round.

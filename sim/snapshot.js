@@ -52,8 +52,11 @@ const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
 const { previewProduction } = require('./production.js');
 const { PRICED_GOODS, postedPrice, basePriceFor } = require('./prices.js');
-const { baselineUnitsForGood, baselineOutputFor, isLicensedDeuteriumMine, isIllegalDeuteriumRefinery, producedGoodFor } = require('./baseline.js');
-const { licenceFee, teardownSettlement, licenceEndTick, ventureStanding, renegotiationFee, renegotiationSchedule } = require('./licence.js');
+const { isLicensedDeuteriumMine, isIllegalDeuteriumRefinery, producedGoodFor } = require('./baseline.js');
+const {
+  licenceFee, licenceBasisFor, licenceBasisForGood, teardownSettlement, licenceEndTick, ventureStanding,
+  renegotiationFee, renegotiationSchedule,
+} = require('./licence.js');
 const { clonePriceHistory } = require('./price-history.js');
 const { getFuelPriceRing } = require('./fuel-price-history.js');
 const { cloneModifierHistory } = require('./modifier-history.js');
@@ -234,7 +237,10 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // depends on the player's live slider values, which a snapshot cannot know, so publishing
 // a discounted figure would be guessing the player's terms. Pure derived telemetry: it
 // reads state as it stands, mutates nothing, enters no serialized byte and no
-// determinism hash.
+// determinism hash. (⤳ Tier-3 settlement, Slice 3a, 27-09-26: a timed Tier-3 good's quote
+// is now its WEEKLY fee, `0.10 × (10,080 ÷ TICKS_PER_UNIT) × price`, through the same
+// `licenceBasisForGood` the signing reads — no shape change; every other good's quote is
+// unchanged. The client still labels every quote "per cycle" — a client follow-up.)
 // (31-08-26, fuel Slice 1): each guild row gains `fuelHoardValue` — the guild's
 // `fuelHoard` marked to market in integer credits at the `[FIRST-CUT]` flat rate
 // `FLAT_FUEL_PRICE_PER_UNIT` (sim/fuel.js). ADDITIVE, and NO schema bump: nothing
@@ -582,15 +588,19 @@ function renegotiationFieldsFor(state, venture) {
   // so MESSAGES stays quiet and the VM shows the normal Close-venture control (§5 phase B).
   // This supersedes Slice 1b's window-end (`contractWindow.expired`) gate.
   if (state.tick >= sched.actsTick) {
-    const baseline = baselineOutputFor(venture);
-    const lockedPrice = baseline && postedPrice(state, baseline.good);
+    // The SAME basis the `renegotiateLicence` apply re-locks on (`licenceBasisFor`,
+    // sim/licence.js) — for a Tier-3 venture its timed weekly output over the week (Slice 3a)
+    // — so the offer shown and the terms locked cannot disagree. `windowN` above stays the
+    // calendar day, which is what the countdown below speaks in.
+    const basis = licenceBasisFor(venture, windowN);
+    const lockedPrice = basis && postedPrice(state, basis.good);
     // A licensed non-deuterium venture always has both (its good was priced at signing);
     // guard anyway so a preview is never computed against a missing baseline or price.
-    if (baseline && baseline.units > 0 && lockedPrice != null) {
+    if (basis && basis.unitsPerTick > 0 && lockedPrice != null) {
       const fee = renegotiationFee({
         venture,
-        baselineUnitsPerTick: baseline.units,
-        windowN,
+        baselineUnitsPerTick: basis.unitsPerTick,
+        windowN: basis.windowN,
         lockedPrice,
       });
       // Carry the acceptance countdown so the client can show "respond in N days" without
@@ -1722,14 +1732,21 @@ function buildSnapshot(state) {
   // good is OMITTED rather than given an invented number when either half is missing:
   // nothing can produce it (no baseline), or the state carries no price row for it (a
   // hand-built test state) — a zero fee there would read as "this licence is free".
+  //
+  // THE BASIS IS THE SIGNING'S OWN (Slice 3a): `licenceBasisForGood` (sim/licence.js) — the
+  // droidless baseline over the day for a Tier-1/2 good, exactly as before; for a TIMED Tier-3
+  // good its weekly output `y = 10,080 ÷ TICKS_PER_UNIT` over the week, so the quote is the
+  // weekly fee `0.10 × y × price` a signature would lock, never the stale 5-batches/tick
+  // figure. A Tier-3 good in a galaxy whose day does not divide the week has no basis (it
+  // cannot be licensed there) and is omitted, like any other unlicensable good.
   const feeQuote = {};
   for (const good of PRICED_GOODS) {
-    const baselineUnitsPerTick = baselineUnitsForGood(good);
+    const basis = licenceBasisForGood(good, calN);
     const lockedPrice = postedPrice(state, good);
-    if (baselineUnitsPerTick == null || lockedPrice == null) continue;
+    if (basis == null || lockedPrice == null) continue;
     feeQuote[good] = licenceFee({
-      baselineUnitsPerTick,
-      windowN: calN,
+      baselineUnitsPerTick: basis.unitsPerTick,
+      windowN: basis.windowN,
       lockedPrice,
       committedOutputPct: 0,
       equityPct: 0,

@@ -41,8 +41,14 @@
 // pro-rate). This file still moves no credit itself: `commitmentSale` and `feeOwed` both
 // return numbers, and the tick is the only place a balance changes.
 
-const { windowFraction, DEFAULT_WINDOW_N } = require('./windows.js');
-const { producedGoodFor, isLicensedDeuteriumMine, isDockyard } = require('./baseline.js');
+const {
+  windowFraction, DEFAULT_WINDOW_N, TIER3_WINDOW_N, tier3WindowNests,
+} = require('./windows.js');
+const {
+  producedGoodFor, isLicensedDeuteriumMine, isDockyard,
+  baselineOutputFor, ticksPerUnitFor, producerShapeFor,
+} = require('./baseline.js');
+const { getRecipe } = require('./recipes.js');
 const { tierWeight, tierOf } = require('./points.js');
 const { dayOf, tickAt } = require('./calendar.js');
 const { getSite } = require('./seed.js');
@@ -284,6 +290,57 @@ function licenceFee({ baselineUnitsPerTick, windowN, lockedPrice, committedOutpu
   const basicFee = Math.round(FEE_RATE * baselineUnitsPerTick * windowN * lockedPrice);
   const { c, oNorm } = normalisedTerms({ committedOutputPct, equityPct });
   return { basicFee, discountedFee: Math.round(basicFee * feeFraction(c, oNorm)) };
+}
+
+// --- The basis: what "output over one window" means for this venture (Slice 3a) ---
+//
+// The fee and the committed quantity both multiply the same two numbers — a per-tick output
+// and the window it is measured over (`licenceFee` and `commitmentUnitsFor` below). Until the
+// Tier-3 settlement slice both came from `baselineOutputFor` × the galaxy's day. That is still
+// exactly right for a CONTINUOUS good. It is wrong for a TIMED Tier-3 good, which does not run
+// at 5 batches a tick: it makes one whole unit per `TICKS_PER_UNIT`, and it settles weekly.
+//
+// licenceBasisFor(venture, engineWindowN) -> { good, unitsPerTick, windowN } | null
+//   - a CONTINUOUS good (Tier 1/2, and the four unclassified modules): its droidless baseline
+//     (`baselineOutputFor`, units/tick) over the galaxy's day — the very numbers the fee has
+//     always read, so every Tier-1/2 fee and commitment is unchanged to the credit.
+//   - a TIMED Tier-3 good: the timer's real pace, `output qty ÷ TICKS_PER_UNIT` units a tick,
+//     over the Tier-3 week (TIER3_WINDOW_N, 10,080). Their product is the RULED timed weekly
+//     output `y = 10,080 ÷ TICKS_PER_UNIT` (docs/tier3-timed-production.md "Income &
+//     commitment"; every Tier-3 recipe makes one unit) — so the basic fee is
+//     `FEE_RATE × y × price-at-signing`, e.g. a 3-1 part 0.10 × 672 × price, a heavy reactor
+//     engine 0.10 × 3.5 × price. The same shape `capacityOutputFor` (sim/prices.js) uses for a
+//     timed good's price capacity, over a week instead of a day. No new number.
+// Null when there is nothing to price: no baseline (the same refusal as before), or a timed
+// good in a galaxy whose day does not divide the week (it could never be settled — see
+// `windowNForGood`, sim/windows.js), so the caller refuses or omits instead of halting.
+//
+// ONE BASIS, FOUR READERS: the signing (`applyForLicence`), the re-lock (`renegotiateLicence`),
+// and the two previews of them (the snapshot's `feeQuote` and `renegotiationOffer`). If any of
+// them read a different basis, the fee a player is quoted, the fee they sign and the fee they
+// re-sign would drift apart — for a Tier-3 venture by an order of magnitude.
+function licenceBasisFor(venture, engineWindowN) {
+  const baseline = baselineOutputFor(venture);
+  if (!baseline) return null;
+  const ticksPerUnit = ticksPerUnitFor(baseline.good);
+  if (ticksPerUnit === null) {
+    return { good: baseline.good, unitsPerTick: baseline.units, windowN: engineWindowN };
+  }
+  if (!tier3WindowNests(engineWindowN)) return null;
+  const recipe = getRecipe(venture.recipeId); // a timed good is only ever made by a factory
+  if (!recipe) return null;
+  return { good: baseline.good, unitsPerTick: recipe.output.qty / ticksPerUnit, windowN: TIER3_WINDOW_N };
+}
+
+// licenceBasisForGood(good, engineWindowN) -> the basis a venture making `good` would sign on,
+// before any such venture exists — for the snapshot's per-good fee quote. It asks
+// `licenceBasisFor` about the minimal venture shape that makes the good (`producerShapeFor`,
+// sim/baseline.js) and checks the answer is about the good asked for, exactly as
+// `baselineUnitsForGood` does — so a quote cannot be priced off a different basis than a
+// signature.
+function licenceBasisForGood(good, engineWindowN) {
+  const basis = licenceBasisFor(producerShapeFor(good), engineWindowN);
+  return basis && basis.good === good ? basis : null;
 }
 
 // --- The charge (Slice 3b-iii) ---------------------------------------------------
@@ -794,9 +851,22 @@ function isValidWindowDays(value) {
 // quantity per window, in whole units — the operative number the §5 window accrual and
 // 3a's sale already read off `Venture.syndicateCommitment`. It is a share of the
 // BASELINE over one window, so it is exactly the quantity a droidless venture running
-// flat out could deliver at `pct` of its capacity.
+// flat out could deliver at `pct` of its capacity. The two inputs come from
+// `licenceBasisFor` above: for a timed Tier-3 venture that is its timer's pace over the week,
+// so the share is of its weekly output `y` (Slice 3a — the sizing basis; the percentage
+// expression itself is unchanged).
+//
+// THE CEILING (Slice 3a): a commitment can never exceed what the venture makes in one window,
+// in WHOLE units — `floor(output over the window)`. For a Tier-3 good whose `y` is fractional
+// the plain rounding would overshoot: a heavy reactor engine makes 3.5 a week, and 100% of
+// that rounds to 4, one more than it can be sure to finish. The ruled bound is `floor(y)`
+// (docs/tier3-timed-production.md: "x is an integer in [0, floor(y)]"), so it is 3.
+// For every Tier-1/2 venture this is a no-op, provably: its output over a window is a whole
+// number (integer baseline × integer ticks), and a share `pct ≤ 1` of a whole number rounds to
+// at most that number — so `min` always picks the rounded share, byte for byte as before.
 function commitmentUnitsFor(pct, baselineUnitsPerTick, windowN) {
-  return Math.round(pct * baselineUnitsPerTick * windowN);
+  const ceiling = Math.floor(baselineUnitsPerTick * windowN);
+  return Math.min(Math.round(pct * baselineUnitsPerTick * windowN), ceiling);
 }
 
 // ── LICENCE RENEGOTIATION (#64, Slice 1) ─────────────────────────────────────────
@@ -1124,7 +1194,7 @@ module.exports = {
   EQUITY_CEILING, equityOf, isValidEquityPct, committedContribution, ownerFraction, commitmentSale,
   FEE_RATE, CORNERS, EQUITY_SHAPE_K, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
   feeFraction, normalisedTerms, licenceFee, feeOwed, teardownSettlement, licenceEndTick, isValidCommitmentPct, isValidWindowDays,
-  commitmentUnitsFor,
+  commitmentUnitsFor, licenceBasisFor, licenceBasisForGood,
   REP_MEET_MAX, REP_W_COMMIT, REP_W_EQUITY, REP_BREACH_MAX, REP_BREACH_MIN,
   RP_FLOOR, RP_SOFT_CAP, RP_TAPER_KNEE,
   repTerms, tierFactor, ventureTierWeight, signingBump, DOCKYARD_SIGNING_BUMP, metGain, deuteriumMetGain, breachPenalty, gainFactor, reputationDelta,

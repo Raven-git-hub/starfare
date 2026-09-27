@@ -42,6 +42,8 @@ committedContribution(venture, windowStart, N)   // = syndicateCommitment × win
 - `ownerFraction` weights the proceeds split by it, instead of by the raw commitment. It needs the
   window, so `applyProduction` (`sim/tick.js`) threads `windowStart`/`windowN` through `commitmentSale` —
   derived from the same producing tick and the same engine-wide `N` the resolver used that tick.
+  *(⤳ Tier-3 settlement, Slice 3a: the same **good's** window — the day, or the 10,080-tick week for a
+  timed Tier-3 good — built by the one `goodWindow` both files read.)*
 - The non-positive-commitment skip now lives **inside** the shared function, so the two consumers agree
   on **sign** as well as magnitude (see N-1 below).
 

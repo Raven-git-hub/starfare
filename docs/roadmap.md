@@ -1891,6 +1891,35 @@ boundary so the later hex-map swap doesn't touch it.
     Slice 3 (weekly whole-unit settlement, progress-based payment). Needs a **fresh galaxy** on deploy
     (new venture field).
 
+- **Tier-3 weekly settlement window + the fee re-based on timed output — ✅ BUILT 27-09-26 (Slice 3a of
+  the Tier-3 economy build).** `docs/tier3-timed-production.md` ("Contract & settlement"; the sizing half
+  of "Income & commitment"; as-built "Slice 3a" at its end); design.md §5 AS-BUILT note.
+  - **A Tier-3 commitment settles weekly.** `TIER3_WINDOW_N` = 10,080 (`sim/windows.js`; 7 ruled days).
+    `windowNForGood` gives a timed good the week and every other good `state.windowN`. It is
+    **derived from the good, not stored**: no schema change.
+  - **Threaded through** the target `Q` and pace, the met/breach verdict, the sale's equity split, the fee
+    charge + RP (each licence charged only on its own boundary, inside the unchanged day gate), the
+    `syndicateWindows` roll, and the window-fraction invariant. A mid-week signer owes the week pro-rated.
+  - **The windows nest** (every week end is a day end). A galaxy whose day does not divide 10,080 refuses a
+    Tier-3 licence, the tick halts, and a new invariant (`tier3-week-nests-in-the-day`) names it. An
+    unlicensed Tier-3 factory reads no window.
+  - **The fee:** `licenceBasisFor` (`sim/licence.js`) sizes a Tier-3 licence on `y = 10,080 ÷
+    TICKS_PER_UNIT`, so `basicFee = 0.10 × y × price-at-signing`: a 3-1 part at base 6,720 a week
+    (was 72,000 a day). The committed quantity is `round(pct × y)`, capped at `floor(y)`. The quote,
+    the signing, the re-lock and its preview share the one basis. Tier-1/2 fees are unchanged.
+    `FEE_RATE` stays 0.10, and no number was invented.
+  - **Goldens: none moved** (no pinned run licenses Tier 3). Tier-1/2 runs, with and without an
+    unlicensed Tier-3 factory and anchored, are byte-identical to HEAD at every tick (scratch-checkout
+    diff). A standing test pins two hashes computed on the pre-slice engine.
+  - Tests updated deliberately: `tier3-timed-production.test.js`'s "SEAM 2" title and comment (the fee
+    no longer reads `baselineOutputFor` for a timed good; its assertions are unchanged).
+  - Sim suite 1,675 → **1,694 green** (`sim/tests/tier3-settlement.test.js`, +19, one shared
+    10,080-tick run). Tools **68 green**.
+  - **Still not safe to run live:** on the default paced send, a committed Tier-3 factory under-delivers
+    and breaches (see the decision checklist). That is Slice 3b's Syndicate-first delivery. Not built
+    here: whole-unit `x`-of-`y` (3b), fixed re-offer and one-week term (3b), per-tick progress
+    payment (3c).
+
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
@@ -2146,11 +2175,45 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     `baselineOutputFor` (5 units/tick). A timed factory makes at most 1,440 ÷ `TICKS_PER_UNIT` a day,
     so a licensed Tier-3 factory breaches every daily window at any commitment above about 1.3% (3-1)
     — much lower for specialists. Seam 2 kept the fee's reading unchanged on purpose.
+    **⤳ 27-09-26 (Slice 3a): the SIZING half is built.** The commitment and fee now read the timed
+    weekly output `y` over a 10,080-tick week, not the continuous baseline over a day. What still breaches
+    is the default paced DELIVERY; see "Tier-3 slice 3a" below.
   - **Doc drift, not a code question.** design.md §5's "Load-bearing price fix" paragraph and
     `docs/phase-1-tuning.md`'s base-price ↔ timer paragraph still say capacity is "per cycle (whole
     units per week ≈ one per factory)". The later RULED notes say per **day** (1,440 ticks), and that
     is what was built. The same §5 ruling says the timer reuses "the remainder mechanism"; it was built
     as a countdown instead, because a carry accrues inputs continuously, which the build rule forbids.
+
+- **Tier-3 slice 3a (weekly settlement + fee re-base) — items for a ruling or a confirm** — *surfaced
+  27-09-26.*
+  - **The paced-send gap: Slice 3b must close this before Tier 3 runs live.** On the DEFAULT paced
+    Syndicate send, a committed Tier-3 factory delivers about 20–40% of its weekly target and breaches at
+    every commitment. For a 3-1 part over one week: 10% → 27/67, 50% → 100/336, 100% → 211/672. The
+    pace's whole-unit intent mostly falls on ticks the timer mints nothing, and the fork is fresh-only.
+    Through the existing `absolute` send (1/tick) the same factory meets every level up to 100%. So the
+    week and the sizing are right, and the gap is DELIVERY ORDER. The ruled cure is "Delivery —
+    Syndicate first" (`docs/tier3-timed-production.md`), which is 3b's and was not touched. The gap is
+    pinned by a test ("THE GAP", `tier3-settlement.test.js`) that is expected to go red when 3b lands.
+  - **Teardown settlement is still counted in DAYS.** `teardownSettlement` charges `remaining days ×
+    discountedFee`, and for a Tier-3 licence that fee is now a WEEKLY one. A 7-day Tier-3 licence torn
+    down on day 1 is charged 7 weekly fees. The ruling says "Teardown owes at most this one week's
+    settlement fee". That is still ~10× less than before this slice (the old daily fee was ~10× larger),
+    but it is wrong by construction. The fix belongs with the one-week term (3b) and was not changed here.
+  - **A Tier-3 licence still carries `windowDays` (7–42) and the day-based renegotiation schedule.**
+    The ruled Tier-3 contract term is one week with a fixed re-offer (no ratchet). 3a shares only the
+    fee basis with renegotiation, so a re-lock re-prices on `y`. The Steady/Sub-par/At-risk commitment
+    ratchet still applies to Tier-3 until 3b.
+  - **The `floor(y)` ceiling on the percentage commitment** (e.g. a heavy engine at 100% commits 3, not
+    `round(3.5) = 4`). This applies the ruled `x ≤ floor(y)` to today's percentage expression; the
+    whole-unit `x` is 3b's. Confirm.
+  - **A day that does not divide the week** (`state.windowN`, a setup knob; e.g. the 50 one test uses) is
+    built REFUSE + HALT + INVARIANT for Tier 3 only. Tier-1/2 in such a galaxy is untouched, and its
+    Tier-3 fee quotes are omitted. Confirm (the alternative would be refusing such a `setWindowN`
+    outright).
+  - **Display, not engine.** `lastLicenceFee` is replaced at every charge, so in a guild with both tiers
+    a Tier-3 weekly verdict is overwritten by the next day's Tier-1/2 charge. The client also still labels
+    fee quotes and commitments "per cycle", but a Tier-3 figure is per WEEK. Both are client / read-model
+    follow-ups.
 
 - **Tier-3 slice 1 — small items for a ruling or a confirm** — *surfaced 27-09-26 by the Tier-3
   price-bands slice.*

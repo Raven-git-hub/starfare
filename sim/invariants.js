@@ -79,7 +79,9 @@ const { volumeOf } = require('./fuel.js');
 const { manifestAmountError } = require('./manifest.js');
 const { isDockyard, producedGoodFor, ticksPerUnitFor } = require('./baseline.js');
 const { BUILDABLE_KINDS, BUILD_TICKS } = require('./asset-recipes.js');
-const { DEFAULT_WINDOW_N, winStartFor, windowFraction } = require('./windows.js');
+const {
+  DEFAULT_WINDOW_N, TIER3_WINDOW_N, windowNForGood, tier3WindowNests, winStartFor, windowFraction,
+} = require('./windows.js');
 const { HISTORY_N } = require('./history.js');
 const { MODIFIER_HISTORY_N } = require('./modifier-history.js');
 const { FUEL_BURN_HISTORY_N } = require('./fuel-burn-history.js');
@@ -726,19 +728,39 @@ function checkLicenceTerms(state) {
           // so a check keyed on the live window alone would fire spuriously on a licence
           // signed on a boundary tick. The live window is checked too, once the venture
           // has actually started producing.
-          const N = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+          const engineN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+          // The venture's OWN window (Slice 3a): the day, or the week for a timed Tier-3
+          // good — the window its fraction is actually pro-rated over. A week that does not
+          // nest in the day is reported by the nesting rule below, not re-derived here
+          // (`windowNForGood` would halt on it, and an invariant reports rather than halts).
+          const good = producedGoodFor(v);
+          const timed = ticksPerUnitFor(good) !== null;
+          const N = timed && !tier3WindowNests(engineN) ? null : windowNForGood(good, engineN);
           // Same anchored cadence the engine resolves on — a window-start computed here
           // on the UNanchored cadence would disagree with the stored one and make this
           // guard fire spuriously on an anchored galaxy.
           const anchor = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
-          const windows = [winStartFor(from, N, anchor)];
-          if (from <= state.tick) windows.push(winStartFor(state.tick, N, anchor));
+          const windows = N === null ? [] : [winStartFor(from, N, anchor)];
+          if (N !== null && from <= state.tick) windows.push(winStartFor(state.tick, N, anchor));
           for (const ws of windows) {
             const f = windowFraction(v, ws, N);
             if (!(f > 0) || f > 1) {
               out.push({ rule: 'window-fraction-in-(0,1] (§5 join ruling)', where: at, detail: { committedFromTick: from, windowStart: ws, N, fraction: f } });
             }
           }
+        }
+      }
+
+      // THE TIER-3 WEEK NESTS IN THE DAY (Slice 3a; docs/tier3-timed-production.md "Contract &
+      // settlement"). A committed or licensed venture making a timed good settles on the
+      // 10,080-tick week, and the fee loop only ever looks at day boundaries — so if the
+      // galaxy's day does not divide the week, that venture's boundary falls mid-day and it
+      // is never judged or charged. The engine halts before that can happen
+      // (`windowNForGood`); this is the standing assertion of the same fact.
+      if ((v.syndicateCommitment > 0 || v.licence) && ticksPerUnitFor(producedGoodFor(v)) !== null) {
+        const engineN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+        if (!tier3WindowNests(engineN)) {
+          out.push({ rule: 'tier3-week-nests-in-the-day (Tier-3 settlement)', where: `venture:${v.id}`, detail: { good: producedGoodFor(v), weekTicks: TIER3_WINDOW_N, dayTicks: engineN } });
         }
       }
 

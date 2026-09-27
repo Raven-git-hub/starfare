@@ -159,6 +159,9 @@ Their build time is assembly `BUILD_TICKS` above; part-sourcing is produced-or-b
 
 New serialized state (the per-venture countdown, per-contract `windowN`) is a schema
 touch → fresh galaxy + omit-when-default discipline. Build is a later Claude Code slice.
+*(⤳ As built: the countdown landed in Slice 2 as `venture.unitTicksRemaining`. The per-contract
+`windowN` turned out not to need storing: it is a pure function of the good, **derived** by
+`windowNForGood` (Slice 3a, below), so that part is no schema touch.)*
 
 ## As built (27-09-26) — Slice 2: timed production + the per-period capacity
 
@@ -241,3 +244,107 @@ a level of 2,880, a target of 2.9B, and the price pinned at its 2B ceiling. The 
 
 Tests: `sim/tests/tier3-timed-production.test.js` (20). No golden hash moved: no run behind a
 pinned hash makes a Tier-3 good, and a Tier-1/2 run is byte-identical to the pre-slice engine.
+
+## As built (27-09-26) — Slice 3a: the weekly settlement window + the fee re-based on timed output
+
+Slice 3 is built in sub-slices. **3a** builds the *clock* and the *sizing* of "Contract &
+settlement" and "Income & commitment": a Tier-3 commitment settles on the week, and its fee and
+committed quantity are measured on its timed weekly output `y`. It does **not** build the whole-unit
+`x`-of-`y` commitment expression, Syndicate-first delivery, the fixed re-offer or the one-week
+contract term (3b), nor the per-tick progress payment (3c). Tier-1/2 settlement is untouched.
+
+**The week, derived — no new state.** `TIER3_WINDOW_N = 10,080` (`sim/windows.js`; 7 × the ruled
+1,440-tick day). `windowNForGood(good, day)` answers the window a commitment on `good` runs in: the
+week for a timed good (`ticksPerUnitFor(good)` is not null), the galaxy's `state.windowN` for
+everything else, exactly as before. It is a pure function of the good, **so nothing is stored**:
+the "per-contract `windowN`" that **Sequencing & state** above expected to serialize is not needed,
+and there is **no schema change** (no fresh galaxy is needed for this slice's own sake). Because the
+good decides (not the venture), every venture making one good in one system shares one window, so
+their commitments still sum into the good's single `Q`. `goodWindow(good, tick, day, anchor)` builds
+the `{ windowN, windowStart }` pair, and the resolver and the tick both read it.
+
+**Threaded through every commitment read** (each one used `state.windowN` before):
+- **the target `Q` and the pace** (`resolveProduction`): each committed good's
+  `committedContribution` and `resolveWindow` read that good's window. A Tier-3 good paces over the
+  whole week (`ticksRemaining` is 10,080 on the week's first tick), and its `syndicateWindows` entry
+  opens on the week's first tick and rolls only on the next week's.
+- **the verdict**: the met/breach fill runs on the good's own boundary. On the six day-ends inside
+  a week a Tier-3 good is still `accruing`.
+- **the sale's equity split** (`commitmentSale` → `ownerFraction`): weighted in the good's window.
+- **the fee charge and reputation** (`applyProduction`): the outer gate is still the day boundary.
+  Every window ends on one, so a non-boundary tick skips the block exactly as before. Inside it, each
+  licence is charged **only on its own window's boundary**. A Tier-1/2 licence is due every day, and
+  a Tier-3 licence once, on the week's last tick. Its `feeOwed` is pro-rated by `windowFraction`
+  over the **week**: a licence signed mid-week owes the share of the week it was present for, in
+  target and fee alike. On a day inside the week the guild's lump and `lastLicenceFee` record hold
+  only its Tier-1/2 licences.
+- **the invariant** `window-fraction-in-(0,1]` checks the venture's own window.
+
+**The windows nest.** 10,080 = 7 × 1,440, so every week boundary is a day boundary. Nesting is what
+lets the fee loop keep its day gate. `state.windowN` is a setup knob a test may set to anything,
+so a day that does **not** divide the week is handled loudly in three places. `applyForLicence`
+**refuses** a Tier-3 licence there. `windowNForGood` **halts** the tick rather than settle a week
+nothing watches. The new invariant `tier3-week-nests-in-the-day` names any committed or licensed
+Tier-3 venture in such a galaxy. An **unlicensed** Tier-3 factory never asks for a window, so it
+runs in any galaxy.
+
+**The fee and the committed quantity.** `licenceBasisFor(venture, day)` (`sim/licence.js`) is the
+one basis they are sized on: a per-tick output and the window it runs over.
+- **Continuous** (Tier 1/2, and the four unclassified modules): `baselineOutputFor` over the day,
+  the very numbers the fee always read. Every Tier-1/2 fee and commitment is unchanged to the credit.
+- **Timed Tier-3:** the timer's pace, `output qty ÷ TICKS_PER_UNIT` a tick, over the 10,080 week.
+  The product is `y = 10,080 ÷ TICKS_PER_UNIT`, so `basicFee = round(0.10 × y × price-at-signing)`.
+  This mirrors `capacityOutputFor`, over a week instead of a day. A 3-1 part is `0.10 × 672 × 100
+  = 6,720` a week (it was 72,000 a *day* on the stale 5-batches/tick basis). A heavy reactor engine
+  is `0.10 × 3.5 × 20M = 7M` a week. `FEE_RATE` stays 0.10, and **no number was invented**.
+- `licenceFee` and `commitmentUnitsFor` keep their arithmetic byte for byte; only their inputs
+  changed. For every ruled timer, `(1 ÷ TICKS_PER_UNIT) × 10,080` is exactly `10,080 ÷
+  TICKS_PER_UNIT` in floating point, and a test pins that no whole percent rounds differently
+  either way.
+- **The ceiling.** The committed quantity is still the percentage expression (`round(pct × y)`;
+  whole-unit `x` is 3b), but it is capped at `floor(y)`, the prompt's "a commitment can't exceed
+  the venture's weekly output". It is also the doc's `x ∈ [0, floor(y)]`. It bites only where `y`
+  is fractional: a heavy engine at 100% commits 3, not `round(3.5) = 4`. For Tier 1/2 it is
+  provably a no-op, because a share `≤ 1` of a whole number rounds to at most that number.
+- **One basis, four readers.** The signing (`applyForLicence`), the re-lock (`renegotiateLicence`)
+  and their two previews (the snapshot's `feeQuote` and `renegotiationOffer`) all read it. The
+  quote a player sees equals the fee they sign, and a re-lock can never slide a Tier-3 licence back
+  onto the stale basis. Only the **basis** is shared. The terms function (the commitment ratchet)
+  is unchanged for every tier; the Tier-3 fixed re-offer is 3b.
+
+**Proven.** `sim/tests/tier3-settlement.test.js` (19) covers the following:
+- The fee equals `0.10 × (10,080 ÷ TICKS_PER_UNIT) × price` for all 21 timed goods and never the
+  old figure.
+- One shared 10,080-tick run with seven guilds:
+  - A fed 3-1 factory is judged and charged **once**, on tick 10,080, and on no day-end before it.
+  - A starved one is still `accruing` at day 1's end and breaches on 10,080, paying the full
+    weekly fee.
+  - A titanium mine beside a Tier-3 licence is charged every day, its rows identical to the same
+    mine alone.
+  - A mid-week signer owes half the week.
+  - A heavy engine at 100% commits 3 and meets it.
+- A Tier-1/2-licensed galaxy with an unlicensed Tier-3 factory reproduces hashes computed on the
+  pre-slice engine at **every tick**. This holds at a 60-tick day and at a 50-tick day the week
+  does not divide.
+- Four deliberate code breakages (the fee basis, the per-licence gate, the resolver's verdict clock
+  and the ceiling) each turn tests red.
+
+**No golden hash moved:** no pinned run licenses a Tier-3 venture. The build session also diffed
+three 3,000-tick Tier-1/2 runs (plain, with an unlicensed Tier-3 factory, and anchored) against
+HEAD: identical state at every tick, and identical snapshots except the Tier-3 `feeQuote` entries.
+
+**⚠ The gap 3a exposes (Slice 3b's to close — pinned by a test, on the decision checklist).**
+The week and the sizing are right. Fed through the **existing `absolute` Syndicate send control**,
+a committed 3-1 factory meets every commitment from 10% to 100% of `y`. On the **default paced
+send**, the same factory delivers only about 20–40% of its target and **breaches at every level**.
+The pace's whole-unit intent mostly falls on ticks the timer mints nothing, and the fork is
+fresh-only, so most finished units go to the guild's stockpile instead.
+
+| commitment | 10% | 25% | 50% | 75% | 90% | 100% |
+|---|---|---|---|---|---|---|
+| paced (default) | 27 / 67 | 69 / 168 | 100 / 336 | 132 / 504 | 142 / 605 | 211 / 672 |
+| absolute, 1/tick | 67 / 67 | 168 / 168 | 336 / 336 | 504 / 504 | 605 / 605 | 672 / 672 |
+
+*(3-1 fuel tank, one week, delivered / target.)* This is **delivery order**, not settlement:
+**Delivery — Syndicate first** above is the ruled cure, and it is 3b's. It was not touched here.
+**Tier 3 is still not safe to run live.**

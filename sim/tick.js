@@ -35,7 +35,7 @@ const { nearestWaystation, arrivalTickFor } = require('./transport.js');
 const { guildHolds } = require('./claims.js');
 const { resolveProduction } = require('./production.js');
 const {
-  setWindow, winStartFor, windowFraction, isWindowBoundary, DEFAULT_WINDOW_N,
+  setWindow, goodWindow, windowFraction, isWindowBoundary, DEFAULT_WINDOW_N,
 } = require('./windows.js');
 const { getHistory, pushHistory } = require('./history.js');
 const { recordPriceSamples } = require('./price-history.js');
@@ -130,8 +130,10 @@ function stepProduction(state, _actions, ctx) {
     // per (system, good) — each system's applyProduction returns the per-venture oweds it
     // computed from its OWN boundary verdicts — but the CHARGE is guild-level and
     // system/good-agnostic, because a guild has exactly ONE credit pool. Every window in
-    // the galaxy closes on the same anchored boundary, so a guild's oweds all fall due on
-    // the same tick and sum into ONE lump: one debit, one ledger transfer, one receipt.
+    // the galaxy closes on a day boundary (a Tier-3 week on every seventh — Slice 3a), so the
+    // oweds DUE on a given boundary all fall on the same tick and sum into ONE lump: one
+    // debit, one ledger transfer, one receipt. On a day inside a Tier-3 week, only the guild's
+    // Tier-1/2 licences are due, and the lump and the record hold only them.
     //
     // THE TOTAL IS DERIVED FROM THE INDIVIDUALS, never the reverse. Each venture computes
     // what IT owes from ITS OWN verdict, rounded there (§5 rounds per venture); this only
@@ -373,16 +375,15 @@ function applyProduction(state, guild, systemId, ctx) {
   });
   const byId = new Map((guild.ventures || []).map((v) => [v.id, v]));
 
-  // The window this tick's delivery falls in, derived from the SAME producing tick and
-  // the SAME engine-wide `N` the resolver just used — so the commitment sale below
-  // weights its split by each venture's contribution to the very `Q` this report was
-  // built against. Pure arithmetic (sim/windows.js), read only by the sale.
+  // The galaxy's day (`windowN`) and its anchored cadence (docs/cycle-and-calendar.md §2),
+  // read exactly as the resolver just read them. The sale and the fee below each ask for a
+  // GOOD's window from these (`goodWindow`, sim/windows.js — Slice 3a): the day for a
+  // Tier-1/2 good, the week for a timed Tier-3 one — the SAME pair the resolver built that
+  // good's `Q` on, so the sale can never weight its split, nor the fee judge a verdict,
+  // against a different window than the one the report was built in.
   const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
-  // The same anchored cadence the resolver just used (docs/cycle-and-calendar.md §2) —
-  // the sale must weight its split against the very window the report was built on, so
-  // this MUST read the anchor the same way, not fall back to the unanchored cadence.
   const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
-  const curWindowStart = winStartFor(state.tick + 1, windowN, dayAnchorTick);
+  const windowOf = (good) => goodWindow(good, state.tick + 1, windowN, dayAnchorTick);
 
   // Deposit each mine's fresh output into the pool; stamp the mine's tick.
   //
@@ -532,8 +533,10 @@ function applyProduction(state, guild, systemId, ctx) {
       throw new Error(`applyProduction: guild ${guild.id} delivered ${delivered} ${good} to the Syndicate at tick ${state.tick + 1} but the good has no posted price — refusing to hand over goods for nothing`);
     }
 
+    const saleWin = windowOf(good);
     const { ownerCredits } = commitmentSale({
-      ventures: systemVentures, good, delivered, price, windowStart: curWindowStart, windowN,
+      ventures: systemVentures, good, delivered, price,
+      windowStart: saleWin.windowStart, windowN: saleWin.windowN,
     });
     guild.credits += ownerCredits;
     state.syndicate.ledger -= ownerCredits;
@@ -593,6 +596,10 @@ function applyProduction(state, guild, systemId, ctx) {
   // in the RP loop below and returned; stepProduction force-closes them AFTER this guild's whole
   // fee loop finishes — never mid-loop (§5), so each breach's full-basic-fee row is still charged.
   const boundaryClosures = [];
+  // THE OUTER GATE IS THE DAY. Every window in the galaxy ends on a day boundary — a Tier-1/2
+  // window IS the day, and the Tier-3 week is 7 of them (it must divide exactly, or
+  // `windowNForGood` halts) — so no licence can be due on any other tick, and a non-boundary
+  // tick still skips this whole block exactly as before.
   if (isWindowBoundary(state.tick + 1, windowN, dayAnchorTick)) {
     for (const v of systemVentures) {
       if (!v.licence) continue;
@@ -603,23 +610,32 @@ function applyProduction(state, guild, systemId, ctx) {
       // would have found no window for a licensed factory, and the guard below would
       // have halted the tick on a licence that was in fact judged perfectly well.
       const committedGood = producedGoodFor(v);
+      // THE INNER GATE IS THE LICENCE'S OWN WINDOW (Slice 3a). A Tier-1/2 licence's window is
+      // the day, so on this tick it is always due — nothing changes for it. A Tier-3 licence's
+      // window is the week, so on the six day boundaries inside it the licence is simply NOT
+      // DUE: no verdict, no fee, no reputation, no row — it is judged once, on the week's last
+      // tick, for the whole week. `own` is the SAME window the resolver built this good's
+      // target and verdicts on, and every read below uses it.
+      const own = windowOf(committedGood);
+      if (!isWindowBoundary(state.tick + 1, own.windowN, dayAnchorTick)) continue;
       const win = (report.goods[committedGood] || {}).window;
       const row = win && win.perVenture ? win.perVenture[v.id] : null;
       if (!row) {
         // Legal ONLY for a licence that owed zero units this window (§5's 0% floor, or a
         // fraction that leaves nothing owed). Anything else is a committed licence about
         // to be charged as met without having been judged — halt.
-        const owedUnits = committedContribution(v, curWindowStart, windowN);
+        const owedUnits = committedContribution(v, own.windowStart, own.windowN);
         if (owedUnits > 0) {
           throw new Error(`applyProduction: guild ${guild.id}'s licensed venture ${v.id} owed ${owedUnits} units of ${committedGood} in the window closing at tick ${state.tick + 1}, but the boundary produced no verdict for it — refusing to charge a committed licence the discounted fee it was never judged for`);
         }
       }
       const status = row ? row.status : 'met';
-      // The SAME window the verdict was computed against — `curWindowStart` and `windowN`
-      // are the pair the resolver just used, so the fee can never be pro-rated by a
-      // fraction from a different window than the one it is paying for (§5: one fraction,
-      // applied once to the target and once to the fee).
-      const owed = feeOwed(v.licence, status, windowFraction(v, curWindowStart, windowN));
+      // The SAME window the verdict was computed against — `own` is the pair the resolver
+      // just used for this good, so the fee can never be pro-rated by a fraction from a
+      // different window than the one it is paying for (§5: one fraction, applied once to the
+      // target and once to the fee). For a Tier-3 licence that is the week: one signed
+      // mid-week pays the week's fee pro-rated by the share of the WEEK it was present for.
+      const owed = feeOwed(v.licence, status, windowFraction(v, own.windowStart, own.windowN));
       feeOwedHere += owed;
       // ── REPUTATION (RP slice 2, docs/points-and-reputation.md §2.2) ──────────────
       // The SAME `status`, read from the SAME row, in the SAME loop as the fee — never

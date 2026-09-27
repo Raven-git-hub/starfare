@@ -9,10 +9,12 @@ const {
 const { getRecipe } = require('./recipes.js');
 const {
   EQUITY_CEILING, isValidEquityPct, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
-  isValidCommitmentPct, isValidWindowDays, licenceFee, commitmentUnitsFor, equityOf,
+  isValidCommitmentPct, isValidWindowDays, licenceFee, commitmentUnitsFor, licenceBasisFor, equityOf,
   signingBump, teardownSettlement, licenceEndTick, renegotiationFee, applyLapse, applyVentureClosure,
 } = require('./licence.js');
-const { producedGoodFor, baselineOutputFor, baselineRateFor, isLicensedDeuteriumMine, isDockyard } = require('./baseline.js');
+const {
+  producedGoodFor, baselineRateFor, isLicensedDeuteriumMine, isDockyard, ticksPerUnitFor,
+} = require('./baseline.js');
 const {
   BUILDABLE_KINDS, SYNDICATE_SELLABLE_KINDS, MAX_QUEUE, SYNDICATE_QUEUE_MAX, assetBill,
   priceAssetForPurchase, assetPurchaseBaseline, nextSyndicateCommissionId,
@@ -27,7 +29,7 @@ const {
 } = require('./routes.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { checkQuote, quotedPrice } = require('./price-ring.js');
-const { DEFAULT_WINDOW_N } = require('./windows.js');
+const { DEFAULT_WINDOW_N, TIER3_WINDOW_N, tier3WindowNests } = require('./windows.js');
 const { isStockpileGood, isFuel, DEUTERIUM } = require('./resources.js');
 const { setEntry } = require('./profile.js');
 const { getStock, addStock } = require('./stock.js');
@@ -1946,11 +1948,21 @@ function validateAction(state, action) {
     if (postedPrice(state, committedGood) == null) {
       return { valid: false, reason: `${JSON.stringify(committedGood)} has no posted price to lock the fee against` };
     }
-    // And the venture must have a baseline to price the fee off (sim/baseline.js). A
-    // mine whose resource has no baseline entry is caught by that file's drift guard;
-    // refusing here keeps a fee from being computed against a zero capacity.
-    const baseline = baselineOutputFor(venture);
-    if (!baseline || !(baseline.units > 0)) {
+    // A TIMED Tier-3 good settles on the 10,080-tick week (Slice 3a), which must end on a day
+    // boundary to be judged at all. At the ruled day it always does; a galaxy set up with a
+    // day that does not divide the week cannot settle one, so the licence is REFUSED here
+    // rather than signed and halted on at the next tick (sim/windows.js `windowNForGood`).
+    const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+    if (ticksPerUnitFor(committedGood) !== null && !tier3WindowNests(windowN)) {
+      return { valid: false, reason: `${JSON.stringify(committedGood)} is a Tier-3 good and settles on the ${TIER3_WINDOW_N}-tick week, which this galaxy's ${windowN}-tick day does not divide — it could never be judged` };
+    }
+    // And the venture must have an output to price the fee off — the SAME basis the apply
+    // signs on (`licenceBasisFor`, sim/licence.js: the droidless baseline, or a Tier-3
+    // factory's timer). A mine whose resource has no baseline entry is caught by
+    // sim/baseline.js's drift guard; refusing here keeps a fee from being computed against
+    // a zero capacity.
+    const basis = licenceBasisFor(venture, windowN);
+    if (!basis || !(basis.unitsPerTick > 0)) {
       return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} has no droidless baseline output to price a fee against` };
     }
     return { valid: true };
@@ -3365,17 +3377,23 @@ function applyAction(state, action) {
     const venture = guild.ventures.find((v) => v.id === action.ventureId);
     // The OUTPUT good — the price engine posts one for every processed good exactly as
     // it does for a raw one, so a factory's fee is priced off its own product, not its
-    // inputs. `baselineOutputFor` is the single source for both halves of that (the good
-    // and the droidless units/tick), for a mine and a factory alike — no number invented.
-    const baseline = baselineOutputFor(venture);
-    const good = baseline.good;
+    // inputs — and the output the terms are measured on: a per-tick output and the window
+    // it runs over. `licenceBasisFor` (sim/licence.js) is the single source for all three,
+    // for a mine and a factory alike — no number invented:
+    //   - a continuous good (Tier 1/2): its droidless baseline over the galaxy's day
+    //     (`state.windowN`, or the resolver's own fallback) — exactly as before;
+    //   - a TIMED Tier-3 good (Slice 3a): its timer's pace over the 10,080-tick week, whose
+    //     product is the ruled weekly output `y = 10,080 ÷ TICKS_PER_UNIT`. So the basic fee
+    //     locked below is `0.10 × y × price-at-signing`, not the stale 5 batches/tick × a day.
+    // The window here is the SAME one the commitment then accrues and settles in
+    // (`windowNForGood`, sim/windows.js), so the licence can never be priced over a
+    // different window than the one it is judged on.
+    const engineWindowN = next.windowN == null ? DEFAULT_WINDOW_N : next.windowN;
+    const basis = licenceBasisFor(venture, engineWindowN);
+    const good = basis.good;
     const lockedPrice = postedPrice(next, good);
-    // The window the terms are measured over: the engine-wide `state.windowN`, or the
-    // flagged fallback the resolver itself uses when a scenario sets none — the same
-    // number, read the same way, so the licence can never be priced over a different
-    // window than the one its commitment accrues in.
-    const windowN = next.windowN == null ? DEFAULT_WINDOW_N : next.windowN;
-    const baselineUnitsPerTick = baseline.units;
+    const windowN = basis.windowN;
+    const baselineUnitsPerTick = basis.unitsPerTick;
 
     const { basicFee, discountedFee } = licenceFee({
       baselineUnitsPerTick,
@@ -3427,7 +3445,9 @@ function applyAction(state, action) {
 
     // The operative commitment: the share of BASELINE output promised over one window,
     // in whole units. This is the field the §5 accrual sums into `Q` and that 3a's sale
-    // is paid on — so granting the licence is what switches the commitment sale on.
+    // is paid on — so granting the licence is what switches the commitment sale on. For a
+    // Tier-3 venture it is a share of its WEEKLY output `y`, never more than `floor(y)`
+    // whole units (`commitmentUnitsFor`'s ceiling), accrued over the week it settles on.
     venture.syndicateCommitment = commitmentUnitsFor(action.committedOutputPct, baselineUnitsPerTick, windowN);
 
     // The MID-WINDOW PRO-RATE (§5's join ruling, Option A; Slice 3b-ii). Stamping this
@@ -3460,15 +3480,19 @@ function applyAction(state, action) {
     // state-as-it-stands at THIS tick, exactly as a first signing is.
     const guild = findGuild(next, action.guildId);
     const venture = guild.ventures.find((v) => v.id === action.ventureId);
-    // The OUTPUT good, its droidless baseline and this tick's posted price — read the
-    // SAME way applyForLicence reads them (`baselineOutputFor` is the single source for
-    // both the good and the units/tick, for a mine and a factory alike; no number
-    // invented). The window is the engine-wide `windowN` (or the resolver's fallback).
-    const baseline = baselineOutputFor(venture);
-    const good = baseline.good;
+    // The OUTPUT good, the output the fee is measured on and this tick's posted price —
+    // read the SAME way applyForLicence reads them, through the one `licenceBasisFor`
+    // (sim/licence.js; no number invented). For a Tier-3 venture that is its timed weekly
+    // output (Slice 3a), so a re-lock can never slide it back onto the stale 5 batches/tick ×
+    // a day it was signed off. ONLY THE BASIS is shared: the Syndicate's terms function (the
+    // commitment ratchet below) is unchanged for every tier — Tier-3's fixed re-offer is a
+    // later slice (docs/tier3-timed-production.md "Renegotiation").
+    const engineWindowN = next.windowN == null ? DEFAULT_WINDOW_N : next.windowN;
+    const basis = licenceBasisFor(venture, engineWindowN);
+    const good = basis.good;
     const lockedPrice = postedPrice(next, good);
-    const windowN = next.windowN == null ? DEFAULT_WINDOW_N : next.windowN;
-    const baselineUnitsPerTick = baseline.units;
+    const windowN = basis.windowN;
+    const baselineUnitsPerTick = basis.unitsPerTick;
     const windowDays = venture.licence.windowDays;   // carried unchanged (§5)
 
     // The Syndicate's new terms + the re-locked fee, from the ONE helper the snapshot's

@@ -14,7 +14,7 @@
 //   5. ONE RESOLVER — the preview reports exactly what the tick then does.
 //   6. THE STATE — the countdown is omitted when the line is empty (the byte-identical no-op).
 //   7. SEAM 1 — a committed timed factory delivers lumpily through the UNCHANGED commitment sale.
-//   8. SEAM 2 — the licence fee's baseline is untouched; only the capacity path reads per day.
+//   8. SEAM 2 — `baselineOutputFor` is untouched; the capacity path reads per day (the fee moved off it in Slice 3a).
 //   9. THE PRICE FIX — capacity per day, and the headline tripwire: one finished specialist is a
 //      gentle nudge above base, where a per-tick capacity would peg it at the ceiling.
 //  10. THE TRIPWIRES — each new invariant fires on a constructed violation, naming the good.
@@ -277,14 +277,20 @@ test('SEAM 1: a committed timed factory delivers LUMPILY — one unit on a compl
   assert.equal(getWindow(s.guilds[0], SYS, 'fuel_tank').delivered, 3, 'three whole units delivered this window');
 });
 
-// --- 8. SEAM 2 — the fee's baseline is untouched -------------------------------------------
+// --- 8. SEAM 2 — the per-tick baseline is untouched ------------------------------------------
 
-test('SEAM 2: the licence fee still reads the per-TICK baseline; only the capacity path reads per DAY', () => {
+// ⤳ Slice 3a (Tier-3 settlement) re-based the licence fee: a TIMED good's fee and commitment now
+// read its timer over the 10,080-tick week (`licenceBasisFor`, sim/licence.js — pinned in
+// tier3-settlement.test.js), no longer `baselineOutputFor`. What this test still pins is the part
+// of Seam 2 that stands: `baselineOutputFor` itself is unchanged (a continuous good's fee, the
+// unclassified modules and `productionRate`'s establish stamp still read it), and the capacity
+// path reads per DAY. Title and comment updated with that slice; the assertions are unchanged.
+test('SEAM 2: baselineOutputFor is unchanged (per TICK); the capacity path reads per DAY', () => {
   for (const good of TIER3_GOODS) {
     const venture = { recipeId: good };
     const qty = getRecipe(good).output.qty;
-    // What the fee (sim/actions.js applyForLicence) and the snapshot quote read — unchanged.
-    assert.deepEqual(baselineOutputFor(venture), { good, units: REFINERY_BASELINE[good] * qty }, `${good}: fee baseline unchanged`);
+    // The per-tick baseline — unchanged. (A timed good's LICENCE no longer reads it: Slice 3a.)
+    assert.deepEqual(baselineOutputFor(venture), { good, units: REFINERY_BASELINE[good] * qty }, `${good}: baseline unchanged`);
     // What the price capacity reads.
     const ticksPerUnit = ticksPerUnitFor(good);
     const expected = ticksPerUnit === null

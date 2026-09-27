@@ -20,7 +20,9 @@
 //   1. the price engine's capacity normaliser (sim/prices.js), the first consumer;
 //   2. the licence: its fee and committed quantity are priced off the baseline at
 //      signing (sim/actions.js, with the fee arithmetic in sim/licence.js), and the
-//      snapshot's licence quotes read the same path (sim/snapshot.js);
+//      snapshot's licence quotes read the same path (sim/snapshot.js) — for a CONTINUOUS
+//      good. A timed Tier-3 good's licence reads its timer over the week instead
+//      (`licenceBasisFor`, sim/licence.js — the Tier-3 settlement slice, 3a);
 //   3. the establish path (sim/actions.js, 24-09-26): when an `establishVenture`
 //      names no `productionRate`, the engine stamps the venture's baseline as its
 //      rate (`baselineRateFor`), so a licence commits a share of what the venture
@@ -357,15 +359,25 @@ function baselineRateFor(venture) {
 // prices a licence: this returns null (no quote) rather than pick, and that ambiguity is
 // flagged on the roadmap instead of being decided here.
 function baselineUnitsForGood(good) {
-  if (!good) return null;
-  const venture = Object.prototype.hasOwnProperty.call(MINE_BASELINE, good)
-    ? { resourceType: good }
-    : refineryVentureFor(good);
+  const venture = producerShapeFor(good);
   if (!venture) return null;
   const baseline = baselineOutputFor(venture);
   // The identity check: if the shape we built produces something else, the assumption
   // behind it is wrong and no number here would be trustworthy.
   return baseline && baseline.good === good ? baseline.units : null;
+}
+
+// producerShapeFor(good) -> the minimal venture shape that PRODUCES `good` — a mine's
+// `{ resourceType }` or a refinery's `{ recipeId }` — or null when nothing can make it (see
+// refineryVentureFor below for the two-recipe case). Factored out of `baselineUnitsForGood`
+// (unchanged behaviour) because the licence path now needs the same shape to price a quote
+// for a good nobody has built yet (`licenceBasisForGood`, sim/licence.js): one shape, so the
+// quote and a signed licence are priced off the same venture.
+function producerShapeFor(good) {
+  if (!good) return null;
+  return Object.prototype.hasOwnProperty.call(MINE_BASELINE, good)
+    ? { resourceType: good }
+    : refineryVentureFor(good);
 }
 
 // refineryVentureFor(good) -> the minimal refining-venture shape that makes `good`, or
@@ -390,6 +402,6 @@ const BASELINE_KEYS = Object.freeze({
 module.exports = {
   FIRST_CUT_REFINERY_BASELINE, MINE_BASELINE, REFINERY_BASELINE, BASELINE_KEYS,
   TICKS_PER_UNIT, ticksPerUnitFor,
-  producedGoodFor, baselineOutputFor, baselineRateFor, baselineUnitsForGood,
+  producedGoodFor, baselineOutputFor, baselineRateFor, baselineUnitsForGood, producerShapeFor,
   isLicensedDeuteriumMine, isDeuteriumMine, isIllegalDeuteriumRefinery, isDockyard,
 };
