@@ -1939,7 +1939,8 @@ boundary so the later hex-map swap doesn't touch it.
     100% (3a: 27/67 … 211/672, all breach; 3b: 67/67 … 672/672, all met) and keeps `672 − Q`.
   - **"Fixed" = not a lever:** a reserve ranked ahead of the Syndicate, or the send control set to
     "absolute 0", cannot hold a committed unit back (both still met). The profile action still
-    accepts them; they are inert for a timed good (decision checklist).
+    accepts them; they are inert for a timed good (decision checklist). *(⤳ 28-09-26, Slice A: intake
+    now refuses a send or an order for a committed timed good.)*
   - **Goldens: none moved** (no pinned run commits a timed good). A new standing test pins a Tier-1/2
     galaxy under every send control and order to hashes computed on HEAD 8af8b11, every tick. Six
     3,000-tick Tier-1/2 runs were diffed against HEAD: identical state, preview and snapshots at every
@@ -2163,7 +2164,8 @@ boundary so the later hex-map swap doesn't touch it.
   - **Two display rulings, made by the human during the build (checklist below):**
     - the order is drawn fixed and never written;
     - the reserve floor keeps the strip's typed field but drops the per-tick % slider, and no copy
-      claims the reserve holds units back (it moves no unit of a timed good today).
+      claims the reserve holds units back (it moves no unit of a timed good today). *(⤳ 28-09-26, Slice
+      A: it now does, at the week's end, and the console says so.)*
   - **Goldens: none moved** (no engine change). By exercise in Chromium on a live server, 14 Tier-1/2
     cases (standalone and embedded, both tabs, an idle good, an unclassified module, Tier 4) rendered
     identical DOM and byte-identical screenshots against HEAD's page (apart from a one-pixel renderer
@@ -2174,6 +2176,61 @@ boundary so the later hex-map swap doesn't touch it.
     breakages, two of them in the engine, are each caught. Tools **68 green**.
   - **Still not safe to run live:** the Venture Management and renegotiation popups (3c's other client
     items), and the checklist items below.
+
+- **Slice A (licence system) — the settlement-time stockpile rescue + refusing controls on a timed good —
+  ✅ BUILT 28-09-26.** design.md §5 (the two RULED 28-09-26 notes and the AS-BUILT note after them);
+  `docs/tier3-timed-production.md` "As built — Slice A". Closes two checklist items: 3b's "should intake
+  refuse a send/order for a timed good" and the console's "should the reserve get a job for a timed good".
+  - **The rescue (every tier).** At each committed good's own boundary (the day for Tier 1/2, the week for
+    a timed Tier-3 good), just before the verdict, a short licence is topped up from the guild's stock of
+    that good in that system: `topUp = min(shortfall, stock above reserveLevel not yet used)`.
+    - Stock at or below the floor is never taken. A partial top-up leaves the guild exactly at its floor,
+      and the licence still breaches on the rest.
+    - The shortfall is the one the verdict's pursue fill leaves. Several short licences share the pile
+      in the same pursue order, and the resolver halts if re-running the fill on the topped-up pile
+      credits any venture differently.
+    - Paid as a delivery: the posted price, `commitmentSale`, `recordSale`, owner `1 − o`. For a timed
+      good this is the stockpiled units' one payment, beside unchanged progress payments.
+    - Halts, naming the tick: no posted price; a rescue that would leave less than the floor on hand.
+    - The fee, reputation and closure code is unchanged and reads the topped-up verdict.
+  - **Built as:** `settlementRescue` + the boundary block in `resolveProduction` (`sim/production.js`,
+    the plan, shared with the preview) and one loop in `applyProduction` (`sim/tick.js`, the move and the
+    payment). The good's `window` gains `rescued`, present only when units move. No stored field, no
+    schema bump.
+  - **The refusal.** `setProductionProfile` refuses `syndicate` or `order` for a good a venture in that
+    system makes as a timed good and commits, naming the field and the venture. `null`, `reserveLevel`,
+    `pursue`, an uncommitted timed good and every Tier-1/2 good are still accepted.
+  - **The console (client only).** The timed path's typed reserve field was already live (checked in
+    Chromium: it POSTs only `reserveLevel`, which is stored and re-rendered). The strip and the Stockpile
+    arm now say what the floor does at the week's end. The Tier-1, Tier-2 and uncommitted timed-good
+    pages checked (four) render DOM identical to HEAD's.
+  - **Isolation (the shared settlement path).**
+    - The whole final suite (1,760 sim + 68 tools, all green) was run with the engine compared to HEAD
+      d12ba58 from the same input on every tick: 178,600 ticks identical, the 50 ticks with a rescue
+      all different, 0 unexplained; 8,292 previews identical, 14 previewing a rescue, 0 unexplained.
+    - A new standing pin (hashes computed on HEAD d12ba58) holds a no-shortfall run and a
+      shortfall-with-no-spare run, both spanning a Tier-3 week boundary, to HEAD's bytes at every tick.
+    - **Four pins re-pinned, each only because its run now contains rescues** (the rescue ticks are
+      named beside each): `tier3-contract` (both hashes), `tier3-delivery` (both), `tier3-payment`
+      (three of four; the mixed guild's slice did not move), `tier3-settlement` (all four).
+  - **Tests updated deliberately** (the rescue now reaches them; all were first proven to pass with only
+    the rescue switched off):
+    - breach-subject fixtures that forced a breach with a short send while the unsent output piled up
+      now also hold that pile behind a reserve floor, so their verdicts, fees and RP are exactly as
+      before: `licence-distribution` and `licence-fee-charge` (`setSend`), `reputation` (`send`),
+      `forced-closure` (`starve`), `founding-endowment`, `mid-window-prorate` (the counterfactual),
+      `factory-commitment` (the under-send breach), `window-accrual` (e);
+    - repointed, because they pinned the pile as untouchable at a boundary: `window-accrual` (d) (the
+      fork still sends 0; the pile now moves only on a boundary, by the rescue) and `reserve-priority`
+      ("fresh only": the fork still takes 3; the rescue takes 2 and the window meets; the old breach is
+      now what a floor of 10 gives, pinned beside it); `factory-commitment` "DEFERRED, PINNED" (the
+      percent gap still sends 0 on every tick; at the boundary the rescue now delivers from stock);
+    - comments only: `tier3-console-client` (fact 3), `tools/licence_bot.js`.
+  - Sim suite 1,747 → **1,760 green** (`sim/tests/settlement-rescue.test.js` +12; a served-page pin in
+    `server.test.js` +1). Against HEAD's engine 11 of the 12 new tests fail (the isolation pin passes).
+    Eight deliberate breakages each turn a named test red: skip the floor, rescue below the floor, pay
+    twice, a partial rescue softening the breach, a free hand-over, rescue on every tick, ignore the
+    pursue order, drop the refusal. Tools **68 green**. **No number was invented.**
 
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
@@ -2511,7 +2568,9 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     follow-up either way. *(⤳ 28-09-26, the console's Tier-3 fork, RULED by the human during that
     build: for a timed good the console draws the order as fixed (Syndicate 1, Stockpile 2), with no
     selector, no send control and no pace, and POSTs neither. Whether INTAKE should refuse them is
-    still open.)*
+    still open.)* **⤳ CLOSED 28-09-26 (Slice A, RULED design.md §5): intake refuses a send or an order
+    for a committed timed good, naming the field and the venture.** (What stays open is in the Slice A
+    items below: an uncommitted timed good, and a value stored before the commitment.)
   - **One pot per good: an unlicensed sibling's units fill `Q` too.** `Q` is the good's target in a
     system, and the fork has always drawn on the good's whole fresh output there, so an unlicensed
     factory beside a licensed one of the same good feeds the Syndicate first as well. This is unchanged
@@ -2702,6 +2761,9 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     - **Open:** should the reserve get a job for a timed good (e.g. hold stock back from a Tier-4
       build start or a sale)? Or should the field be hidden on the timed path until it has one?
       Nothing on the timed path claims it holds units back.
+      **⤳ ANSWERED 28-09-26 (Slice A, RULED design.md §5):** its job is the floor of the settlement
+      rescue: a short week is topped up from stock above it, never at or below it. The strip and the
+      Stockpile arm now say so. It still holds nothing back from a Tier-4 build start or a sale.
   - **A timed good this galaxy cannot license** (a day that does not divide the week; a dev setup
     only). `tier3Contract` is empty there, so the console shows such a good in the Tier-1/2 layout,
     though its production is timed. This matches the Establish popup's item above. Confirm, or fork on
@@ -2721,6 +2783,46 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     - the Syndicate arm's rule sentence;
     - the Stockpile arm's "On hand" duplicates the strip's figure (a layout choice);
     - the footer's week sentence.
+
+- **Slice A (the settlement rescue + the timed-good refusal) — items for a ruling or a confirm** —
+  *surfaced 28-09-26. Each was built one way, stated here, not chosen silently.*
+  - **The rescue's equity split is the SALE's, not the fill's (confirm).** The build prompt said "pay it
+    as the boundary delivery does", so the rescued units go through `commitmentSale`: the owner's share
+    is the good's contribution-weighted `1 − o` across its committed ventures, not the `1 − o` of the
+    licence the pursue fill credited them to. With one committed venture per good, or equal equity, the
+    two are the same. With two ventures of different equity, the rescued units are paid at the blend
+    (the same question 3d's progress payment raised).
+  - **A dev-scaffold commitment is rescued too (confirm).** The rescue runs over the verdict's own set,
+    every venture with `syndicateCommitment > 0`, including a `setSyndicateCommitment` one with no
+    licence (no fee to save, but a verdict and a paid delivery). Leaving them out would split the one
+    pursue attribution in two.
+  - **The rescue takes any stock above the floor, whatever it was held for (a consequence, confirm).**
+    Stock kept as another line's input is rescued unless it is floored: e.g. titanium alloy held as a
+    fuel-tank factory's input sets (each of the four re-pinned runs rescues alloy that a fuel-tank
+    factory beside it also draws on), or Tier-3 parts
+    held for a Tier-4 build. The rescue runs in step 1, before the dockyard sub-step, so a boundary can
+    take parts a build would have started on that tick. The reserve floor is the only protection, as
+    ruled.
+  - **Only the venture's own system (confirm).** Stock of the good in the guild's OTHER systems is not
+    used (stockpiles are per system, ruling B1). This reads "its own stockpile" as the guild's pile where
+    the venture is.
+  - **An uncommitted timed good still accepts a send or an order (a ruling).** The ruling says
+    "committed", so that is what is refused. For an uncommitted timed good both are just as inert (no
+    recipe consumes a timed good, and it has no commitment to send). Also, a value stored BEFORE the good
+    was committed stays stored, inert, after it (a `null` clears it). Should intake refuse both for every
+    timed good, whether committed or not?
+  - **The percent-of-fresh gap on a refined good is now covered at the boundary (a consequence).**
+    design.md §5 (the factory-commitment note) records that a `percent` send on a refined good sends 0.
+    That is unchanged on every tick. But the factory's output piles up, and at the boundary the rescue
+    now delivers the target from that stock (above the floor). So the window meets, with every unit
+    handed over at the window's end. `factory-commitment.test.js` "DEFERRED, PINNED" now pins both
+    halves. (The gap itself is not on this checklist today; design.md says it should be.)
+  - **The Tier-1/2 console says nothing about the rescue (client follow-up).** The rescue is live for
+    Tier 1/2 too, but this slice changed only the timed path's copy. The Tier-1/2 strip and reserve
+    controls still describe the per-tick flow. Nothing shows `window.rescued` yet, on either path.
+  - **Reputation moves with the rescue, so fuel grants can too (a consequence).** A rescued licence is
+    `met`, not `breach`, so its RP moves the other way. Through the shared pool, that can move other
+    guilds' fuel grants, as 3c recorded for Tier-3 standing.
 
 - **Tier-3 slice 1 — small items for a ruling or a confirm** — *surfaced 27-09-26 by the Tier-3
   price-bands slice.*

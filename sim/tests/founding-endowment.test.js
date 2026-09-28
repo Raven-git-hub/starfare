@@ -205,8 +205,11 @@ test('the sum tripwire holds every tick through a MET boundary and a BREACHED on
         'at signing: the bump moved the venture and the guild total by the same amount');
     }
     if (send !== null) {
+      // ⤳ Slice A (settlement rescue, 28-09-26): a reserve floor above anything this run can pile
+      // up, so the boundary rescue finds no spare and the breached boundary this test walks
+      // through stays a breach. The rescue has its own tests (settlement-rescue.test.js).
       s = intake(s, [createSetProductionProfileAction({
-        guildId: 'newborn', systemId: HOME, goods: { titanium: { syndicate: { mode: 'absolute', value: send } } },
+        guildId: 'newborn', systemId: HOME, goods: { titanium: { syndicate: { mode: 'absolute', value: send }, reserveLevel: Number.MAX_SAFE_INTEGER } },
       })]).state;
     }
     for (let i = 0; i < 4 * N; i += 1) {

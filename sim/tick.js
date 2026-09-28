@@ -34,6 +34,7 @@ const { assetBill, BUILD_TICKS } = require('./asset-recipes.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
 const { guildHolds } = require('./claims.js');
 const { resolveProduction } = require('./production.js');
+const { getGoodPolicy } = require('./profile.js');
 const {
   setWindow, goodWindow, windowFraction, isWindowBoundary, DEFAULT_WINDOW_N,
 } = require('./windows.js');
@@ -602,6 +603,55 @@ function applyProduction(state, guild, systemId, ctx) {
     guild.credits += ownerCredits;
     state.syndicate.ledger -= ownerCredits;
     recordSale(guild, state.tick + 1, good, delivered, price, ownerCredits);
+  }
+
+  // ── THE SETTLEMENT-TIME STOCKPILE RESCUE (Slice A; design.md §5, RULED 28-09-26) ──────────────
+  // At a good's own boundary a licence that came up short is topped up from the guild's stockpile
+  // of that good, from stock above the reserve floor only. The resolver has already worked out how
+  // many units (`window.rescued`, `settlementRescue` in sim/production.js) and judged the verdict
+  // on the topped-up pile, so the fee and reputation below read the rescued result with no change
+  // to their own code. This loop does the two things the resolver cannot: it MOVES the units and
+  // it PAYS for them.
+  //
+  // It runs after the delivery above and before the window write-back and the verdict below, the
+  // same order the resolver computed it in. A good with no rescue has no `rescued` key, so on every
+  // other tick, and every boundary where no licence was short or no spare stock existed, nothing
+  // here runs and the tick is exactly what it was before this slice.
+  //
+  // PAID AS A DELIVERY, EVERY TIER. The rescued units are sold at the POSTED price through
+  // `commitmentSale` and recorded by `recordSale`, exactly as a Tier-1/2 boundary delivery is: the
+  // owner is paid its `1 − o` share, and the `o` share stays in the ledger. For a TIMED Tier-3 good
+  // this is the one payment those units ever get. Its units delivered during the week were paid on
+  // progress (above) and their delivery credited nothing; a unit sitting in the stockpile was never
+  // progress-paid (design.md §5's ruling), so paying for it here pays it once, not twice.
+  for (const good of Object.keys(report.goods).sort()) {
+    const w = report.goods[good].window;
+    const rescued = w && w.rescued ? w.rescued : 0;
+    if (rescued <= 0) continue;
+
+    // The resolver worked this out from the pile it predicted; this checks it against the pile
+    // that is really here. Taking the floor, or more than is on hand, would mean the two disagree.
+    // Halt rather than dig into stock the player said to keep (§15.5).
+    const floor = getGoodPolicy(guild, systemId, good).reserveLevel;
+    const onHand = getStock(guild, systemId, good);
+    if (onHand - rescued < floor) {
+      throw new Error(`applyProduction: guild ${guild.id}'s settlement rescue would take ${rescued} ${good} at tick ${state.tick + 1} with ${onHand} on hand and a reserve floor of ${floor} — refusing to dig below the floor`);
+    }
+    // The same guard as the delivery above: no price, no hand-over.
+    const price = postedPrice(state, good);
+    if (price == null) {
+      throw new Error(`applyProduction: guild ${guild.id}'s settlement rescue would deliver ${rescued} ${good} to the Syndicate at tick ${state.tick + 1} but the good has no posted price — refusing to hand over goods for nothing`);
+    }
+
+    addStock(guild, systemId, good, -rescued);
+    const saleWin = windowOf(good);
+    const { ownerCredits } = commitmentSale({
+      ventures: systemVentures, good, delivered: rescued, price,
+      windowStart: saleWin.windowStart, windowN: saleWin.windowN,
+    });
+    guild.credits += ownerCredits;
+    state.syndicate.ledger -= ownerCredits;
+    recordSale(guild, state.tick + 1, good, rescued, price, ownerCredits);
   }
 
   // Write back the §5 windowed-accrual state (guild.syndicateWindows) for each

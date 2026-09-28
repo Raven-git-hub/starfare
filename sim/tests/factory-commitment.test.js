@@ -210,9 +210,12 @@ test('THE HEADLINE: a licensed factory sells its output every tick and MEETS at 
 test('a licensed factory that under-sends BREACHES and pays the full basic fee', () => {
   // Same licence, same supply — only the send control differs, so nothing but the
   // verdict can explain the different fee.
+  // ⤳ Slice A (settlement rescue, 28-09-26): the alloy it does not send piles up in the
+  // stockpile, and a short licence is now topped up from stock above the reserve floor at the
+  // boundary. A floor above anything this run can pile up keeps this test about the breach.
   let s = licenceAll(fixture(suppliedChain([factory('f', 5)])), ['f']);
   s = intake(s, [createSetProductionProfileAction({
-    guildId: 'g1', systemId: SYS, goods: { [OUT]: { syndicate: { mode: 'absolute', value: 2 } } },
+    guildId: 'g1', systemId: SYS, goods: { [OUT]: { syndicate: { mode: 'absolute', value: 2 }, reserveLevel: Number.MAX_SAFE_INTEGER } },
   })]).state;
   s = runToBoundary(s);
 
@@ -352,15 +355,26 @@ test('DEFERRED, PINNED: "percent" send mode on a refined good still sends nothin
   // refined good's real fresh (its `minted`) does not exist until after it. Threading it
   // there would mean resolving one good's window in two different places depending on how
   // it is produced, so the gap is left OPEN and VISIBLE rather than guessed at: paced (the
-  // default) and absolute are exact for a factory, percent intends 0 and will breach.
+  // default) and absolute are exact for a factory, percent intends 0 and will breach
+  // (unless the boundary rescue covers it from stock — see below).
   // Recorded on the decision checklist (docs/roadmap.md). Delete this test only when the
   // gap is actually closed.
   let s = fixture(suppliedChain([factory('f', 5, { syndicateCommitment: FACTORY_Q })]));
   s = intake(s, [createSetProductionProfileAction({
     guildId: 'g1', systemId: SYS, goods: { [OUT]: { syndicate: { mode: 'percent', value: 100 } } },
   })]).state;
-  s = runToBoundary(s);
-  assert.equal(windows(s)[OUT].delivered, 0, 'the known gap — NOT the intended behaviour');
+  while (s.tick < N - 1) s = tick(s);
+  assert.equal(windows(s)[OUT].delivered, 0, 'the known gap — NOT the intended behaviour: no tick sends a unit');
+  // ⤳ Slice A (settlement rescue, 28-09-26). The send is still broken on every tick, including the
+  // boundary's. But the alloy it never sent piled up in the stockpile, and with the default floor
+  // of 0 the boundary's settlement rescue now delivers the whole target from that stock. So the
+  // rescue covers for the gap wherever stock sits above the floor. It does not close it: the units
+  // arrive all at once at the window's end, not tick by tick (decision checklist).
+  const boundary = preview(s).goods[OUT];
+  assert.equal(boundary.fork.syndicate, 0, 'the boundary tick sends nothing either');
+  assert.equal(boundary.window.rescued, FACTORY_Q, 'the rescue delivers the target from stock');
+  s = tick(s);
+  assert.equal(windows(s)[OUT].delivered, FACTORY_Q);
 });
 
 // --- 8. determinism (invariant 9) -------------------------------------------------

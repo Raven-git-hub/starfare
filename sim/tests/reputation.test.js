@@ -142,8 +142,14 @@ const licenceAll = (s, ids, committedOutputPct = 1) => intake(s, ids.map((id) =>
 // whatever the paced default converges on. `value: 0` sends NOTHING, which breaches any
 // positive commitment — the only way to breach a SMALL one, whose target the paced
 // default would otherwise comfortably fill.
+// ⤳ Slice A (settlement rescue, 28-09-26): what the send holds back piles up in the stockpile,
+// and at the boundary a short licence is now topped up from stock above the reserve floor. So
+// this also sets a floor above anything the fixture can pile up: the rescue finds no spare, and
+// the breach this file is about still happens. The rescue has its own tests
+// (settlement-rescue.test.js).
+const HOLD_THE_PILE = Number.MAX_SAFE_INTEGER;
 const send = (s, value, systemId = SYS) => intake(s, [createSetProductionProfileAction({
-  guildId: 'g1', systemId, goods: { [GOOD]: { syndicate: { mode: 'absolute', value } } },
+  guildId: 'g1', systemId, goods: { [GOOD]: { syndicate: { mode: 'absolute', value }, reserveLevel: HOLD_THE_PILE } },
 })]).state;
 const starve = (s, systemId = SYS) => send(s, 0, systemId);
 

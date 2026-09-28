@@ -21,7 +21,7 @@ const { tick } = require('../tick.js');
 const { createState } = require('../state.js');
 const { advance } = require('../run.js');
 const {
-  intake, createApplyForLicenceAction, createSetSyndicateCommitmentAction,
+  intake, createApplyForLicenceAction, createSetSyndicateCommitmentAction, createSetProductionProfileAction,
 } = require('../actions.js');
 const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
@@ -127,6 +127,13 @@ test('...and the same timing WOULD have breached without the stamp', () => {
   s = tick(s); s = tick(s);
   s = licenseNow(s);
   delete venture(s).committedFromTick;           // pre-3b-ii behaviour, exactly
+  // ⤳ Slice A (settlement rescue, 28-09-26): the two ticks mined before the licence sit in the
+  // stockpile, and a short licence is now topped up from stock above the reserve floor at the
+  // boundary. Hold those 2B units behind the floor, so this counterfactual is still about the
+  // stamp alone. (The rescue has its own tests, settlement-rescue.test.js.)
+  s = intake(s, [createSetProductionProfileAction({
+    guildId: 'g1', systemId: SYS, goods: { titanium: { reserveLevel: 2 * B } },
+  })]).state;
 
   s = tick(s);
   const boundary = nextWindow(s);

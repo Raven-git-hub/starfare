@@ -344,8 +344,15 @@ test('determinism: the same committed Tier-3 galaxy run twice gives the same byt
 // 600 ticks on a 60-tick day (ten boundaries). These two hashes were computed on the PRE-SLICE
 // engine (HEAD 8af8b11) by the build session and pinned: the paced / absolute / percent send is
 // untouched for every Tier-1/2 good, so the new engine must reproduce every tick's bytes.
-const ISO_FINAL = '11fafaf8cd59b5cc649701f09151a5a7b399a7e438cf8f60de6b815d513c16a0';
-const ISO_EVERY_TICK = 'fe166027428d67b5c392d88bb780affca25e0a14f971fa5141bfcefd10a44a34';
+// ⤳ RE-PINNED 28-09-26 by Slice A (the settlement-time stockpile rescue, design.md §5). Two guilds
+// here end a day short while holding the good above its floor, so the rescue now tops them up:
+// `abs` (absolute sends under target) on titanium, 360 units, and on titanium alloy, 90, at every
+// boundary 60…600; `reord` on titanium alloy above its floor of 7, at 60, 120, 180 (150 each) and
+// 240 (11). The new engine was checked against HEAD d12ba58 from the same input on every tick of
+// this run: equal on every tick without a rescue, different only on those ten. Before the rescue
+// the two hashes were 11fafaf8…16a0 (final) and fe166027…4a34 (every tick).
+const ISO_FINAL = '103ed0e1e3edea8372c4ac900e6bae71ed1dbd53b401e596e6546c35da9bb195';
+const ISO_EVERY_TICK = 'bd81549e79924dd773062fc26ec309eebebf54bdb9561022da238eefe42148a1';
 
 function isolationRun() {
   const crypto = require('node:crypto');

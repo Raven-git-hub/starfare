@@ -73,8 +73,14 @@ const nextWindow = (s) => previewProduction(s)[0].systems[0].goods[GOOD].window;
 // fact of the fixture rather than whatever the paced default happens to converge on.
 // (The paced default is very good at hitting `Q` exactly — which is the wrong thing for
 // a test about how a SHORTFALL is distributed.)
+// ⤳ Slice A (settlement rescue, 28-09-26): the unsent output piles up in the stockpile, and
+// at the boundary a short licence is now topped up from stock above the reserve floor. So
+// the helper also sets a floor above anything this fixture can pile up: the rescue finds no
+// spare, and the delivered pile is again exactly the send. The rescue has its own tests
+// (settlement-rescue.test.js); this file is about how a shortfall is distributed.
+const HOLD_THE_PILE = Number.MAX_SAFE_INTEGER;
 const setSend = (s, value) => intake(s, [createSetProductionProfileAction({
-  guildId: 'g1', systemId: SYS, goods: { [GOOD]: { syndicate: { mode: 'absolute', value } } },
+  guildId: 'g1', systemId: SYS, goods: { [GOOD]: { syndicate: { mode: 'absolute', value }, reserveLevel: HOLD_THE_PILE } },
 })]).state;
 
 const setPursue = (s, pursue) => intake(s, [createSetProductionProfileAction({

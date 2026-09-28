@@ -63,9 +63,15 @@ function foundedWithLicensedMine() {
 
 // Send NOTHING to the Syndicate, so a positive commitment is breached at the boundary — the same
 // lever reputation.test.js uses to force a breach (a starved fork delivers 0 against a target > 0).
+// ⤳ Slice A (settlement rescue, 28-09-26): what the send holds back piles up in the stockpile,
+// and at the boundary a short licence is now topped up from stock above the reserve floor. So
+// this also sets a floor above anything the fixture can pile up: the rescue finds no spare, and
+// the breach this file is about still happens. The rescue has its own tests
+// (settlement-rescue.test.js).
+const HOLD_THE_PILE = Number.MAX_SAFE_INTEGER;
 function starve(s) {
   return intake(s, [createSetProductionProfileAction({
-    guildId: GUILD, systemId: HOME_SYSTEM, goods: { titanium: { syndicate: { mode: 'absolute', value: 0 } } },
+    guildId: GUILD, systemId: HOME_SYSTEM, goods: { titanium: { syndicate: { mode: 'absolute', value: 0 }, reserveLevel: HOLD_THE_PILE } },
   })]).state;
 }
 

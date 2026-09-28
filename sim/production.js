@@ -85,9 +85,11 @@ const { getHistory } = require('./history.js');
 //   }
 // A good carrying commitment also gets `goods[good].window` = the §5 windowed-accrual
 // telemetry — { Q, windowStart, delivered, sendCarry, ticksRemaining, requiredRate,
-// sendThisTick, pctAchieved, status, perVenture } — where `perVenture` is
+// sendThisTick, pctAchieved, status, perVenture, rescued? } — where `perVenture` is
 // { [ventureId]: { commitment, delivered, status } }, the per-licence outcome of the
-// boundary fill. All of it DERIVED: only windowStart/delivered/sendCarry echo stored
+// boundary fill, and `rescued` (present only when above 0) is how many units a
+// settlement rescue took from the stockpile on this boundary (Slice A — `settlementRescue`).
+// All of it DERIVED: only windowStart/delivered/sendCarry echo stored
 // state, and nothing here enters the determinism hash.
 // GOOD-LEVEL integers (§5 one-pot distribution, Slice A): `fresh` = the units produced
 // HERE this tick — Σ mine output for a mined good, Σ refinery `minted` for a refined one
@@ -99,7 +101,8 @@ const { getHistory } = require('./history.js');
 // Production slot); `fork` = the three claimants' takes — `stockpile` = reserve HELD
 // (stays in the pot), `downstream` = consumer DRAW (actual), `syndicate` = the
 // commitment DELIVERED (leaves to the Syndicate sink); `reserveDelta` = this tick's
-// net reserve change (pot − draws − reserve0), the console's trend arrow. Undrawn
+// net reserve change (pot − draws − reserve0, less any settlement rescue), the
+// console's trend arrow. Undrawn
 // goods stay in the pot as next tick's reserve. LINE-LEVEL integers: `demand` = that
 // line's full-tilt draw
 // for the input (rate × input-qty), `alloc` = the integer units Gate 3 handed it
@@ -548,16 +551,8 @@ function resolveProduction(guild, systemId, opts = {}) {
     // Goods left in the pot at tick end become next tick's reserve. reserveHeld STAYS
     // in the pot; only the consumer draw and the syndicate delivery leave. Both are
     // bounded by `available` at their slot, so newReserve ≥ 0 (invariant 3).
-    const newReserve = potHere - consumerDraw - synDraw;
-    const goodEntry = {
-      fresh: freshHere,
-      demand: plan.demand,
-      reserve0: plan.reserve0,           // start-of-step reserve (the pot minus fresh)
-      pot: potHere,                      // reserve0 + fresh — the whole pot the claimants draw from
-      supplied: plan.consumerPool,       // the consumer draw CAP this tick (min of demand-cap and what's left above Production)
-      fork: { syndicate: synDraw, downstream: consumerDraw, stockpile: reserveHeld },
-      reserveDelta: newReserve - plan.reserve0, // this tick's net reserve change — the console's trend arrow
-    };
+    // (`let`, because a settlement rescue below takes units out of it too.)
+    let newReserve = potHere - consumerDraw - synDraw;
 
     // §5 windowed accrual telemetry + the engine-owned window state apply writes back.
     // windowStart/delivered/sendCarry ARE serialized state (enter the determinism
@@ -570,9 +565,15 @@ function resolveProduction(guild, systemId, opts = {}) {
     // (§5: met/breach is per licence) — pure derived telemetry keyed by ventureId, so
     // the console roster reads a row per licence without reshaping anything, and the
     // good-level `status` above it is a rollup of those rows.
+    //
+    // At the boundary a SETTLEMENT RESCUE (Slice A, below) may top the pile up from the
+    // stockpile before the verdict. `delivered` then counts the rescued units too (the
+    // Syndicate did receive them this window), `rescued` says how many there were, and
+    // the pot left behind is smaller by the same number.
+    let windowReport = null;
     if (plan.win) {
       const w = plan.win;
-      const newDelivered = w.delivered + synDraw;
+      let newDelivered = w.delivered + synDraw;
       // The ANCHORED boundary (§2): `(tick - dayAnchorTick) % N == 0`. At the default
       // anchor 0 this is exactly the old `p % windowN === 0`. The formula moved to
       // sim/windows.js in Slice 3b-iii — the licence-fee charge must fire on exactly the
@@ -584,8 +585,36 @@ function resolveProduction(guild, systemId, opts = {}) {
       // The PER-VENTURE verdicts (§5's per-venture met/breach ruling), and the
       // good-level status ROLLED UP from them — the individuals are computed first and
       // the aggregate is derived from them, never the other way round.
-      const perVenture = pursueFill(plan.targets, plan.pursue, newDelivered, isBoundary);
-      goodEntry.window = {
+      let perVenture = pursueFill(plan.targets, plan.pursue, newDelivered, isBoundary);
+
+      // THE SETTLEMENT-TIME STOCKPILE RESCUE (Slice A — see the section above
+      // `settlementRescue`, below). Only on the good's own boundary, and only from stock
+      // ABOVE the reserve floor. When nothing is rescued, nothing below runs, so every
+      // window without a rescue is exactly what it was before this slice.
+      let rescued = 0;
+      if (isBoundary) {
+        const spare = Math.max(0, newReserve - plan.reserveLevel);
+        const topUps = settlementRescue(plan.targets, plan.pursue, perVenture, spare);
+        for (const units of Object.values(topUps)) rescued += units;
+        if (rescued > 0) {
+          const judged = pursueFill(plan.targets, plan.pursue, newDelivered + rescued, isBoundary);
+          // ONE ATTRIBUTION, CHECKED. The verdict re-judges the topped-up pile with the
+          // unchanged fill, and each venture must come out credited with exactly what it had
+          // plus its own top-up. If the two ever disagreed, a unit would be paid for as saving
+          // one licence while the verdict gave it to another. Halt rather than charge that.
+          for (const id of Object.keys(perVenture)) {
+            const expected = perVenture[id].delivered + (topUps[id] || 0);
+            if (judged[id].delivered !== expected) {
+              throw new Error(`resolveProduction: the settlement rescue of ${plan.good} in system ${systemId} at tick ${p} credited venture ${id} with ${expected} units, but the re-judged fill gave it ${judged[id].delivered} — the rescue and the verdict must attribute units the same way`);
+            }
+          }
+          perVenture = judged;
+          newDelivered += rescued;
+          newReserve -= rescued;
+        }
+      }
+
+      windowReport = {
         Q: plan.Q,
         windowStart: w.windowStart,
         delivered: newDelivered,
@@ -596,8 +625,21 @@ function resolveProduction(guild, systemId, opts = {}) {
         pctAchieved: plan.Q > 0 ? (newDelivered / plan.Q) * 100 : 100,
         status: rollupStatus(perVenture, isBoundary),
         perVenture,
+        // Present only when a rescue really moved units, so every other window keeps its shape.
+        ...(rescued > 0 ? { rescued } : {}),
       };
     }
+
+    const goodEntry = {
+      fresh: freshHere,
+      demand: plan.demand,
+      reserve0: plan.reserve0,           // start-of-step reserve (the pot minus fresh)
+      pot: potHere,                      // reserve0 + fresh — the whole pot the claimants draw from
+      supplied: plan.consumerPool,       // the consumer draw CAP this tick (min of demand-cap and what's left above Production)
+      fork: { syndicate: synDraw, downstream: consumerDraw, stockpile: reserveHeld },
+      reserveDelta: newReserve - plan.reserve0, // this tick's net reserve change — the console's trend arrow
+    };
+    if (windowReport) goodEntry.window = windowReport;
 
     goods[plan.good] = goodEntry;
   }
@@ -845,6 +887,52 @@ function rollupStatus(perVenture, isBoundary) {
   const allMet = Object.values(perVenture).every((r) => r.status === 'met');
   if (allMet) return 'met';
   return isBoundary ? 'breach' : 'accruing';
+}
+
+// ── THE SETTLEMENT-TIME STOCKPILE RESCUE (Slice A) — design.md §5, RULED 28-09-26 ─────────────
+//
+// THE PROBLEM IT FIXES. Until this slice a licence that came up short at its boundary simply
+// breached, even when the guild had the very good sitting in its stockpile. Now, just before the
+// verdict, a short licence is topped up from that stockpile. The same rule holds for every tier,
+// on each good's own boundary: the day for Tier 1/2, the week for a timed Tier-3 good.
+//
+// THE RULE, per short venture:
+//     topUp = min(its shortfall, the stock ABOVE the reserve floor that is still unused)
+// where the floor is the good's `reserveLevel` (the Gate-1 level the player already sets). Stock
+// at or below the floor is never touched. The stock is the guild's pile of the good in this
+// system, after this tick's production and delivery (`newReserve` in the finalize pass).
+//
+// WHOSE SHORTFALL, AND IN WHAT ORDER. The fill above (`pursueFill`) has already said how many of
+// the window's units each venture got, walking the player's pursue order. A venture's shortfall
+// is what that fill left it short: its target minus what it got. The ventures share one pile of
+// stock, so they are topped up in that same pursue order. That is not a second choice of order: a
+// pursue fill always leaves its short ventures at the END of the order, so topping them up in
+// order and then re-running the fill on the bigger pile credit every venture identically. The
+// caller checks that they agree, and halts if they ever do not.
+//
+// PARTIAL IS EXPECTED. If the spare stock cannot cover every shortfall, all of it goes (the guild
+// can be left holding exactly its floor), and the licence still short after that still breaches.
+// The rescue can only turn a shortfall it fully covers into `met`. It never softens a breach.
+//
+// The rescued units are a real delivery: sim/tick.js removes them from the stockpile and pays for
+// them at the posted price through the normal sale. This function only works out how many.
+//
+// settlementRescue(targets, pursue, fill, spare) -> { [ventureId]: topUp } — only ventures whose
+// top-up is above 0. `fill` is pursueFill's verdict for this boundary; `spare` is the stock above
+// the floor. Whole units in, whole units out (§15.2). Pure: reads its arguments, mutates nothing.
+function settlementRescue(targets, pursue, fill, spare) {
+  const topUps = {};
+  let spareLeft = spare;
+  for (const t of reconcilePursue(targets, pursue)) {
+    const row = fill[t.ventureId];
+    const shortfall = row.commitment - row.delivered;
+    const topUp = Math.min(shortfall, spareLeft);
+    if (topUp > 0) {
+      topUps[t.ventureId] = topUp;
+      spareLeft -= topUp;
+    }
+  }
+  return topUps;
 }
 
 // resolveWindow(...) -> the §5 per-good windowed-accrual send for ONE tick. Reads the

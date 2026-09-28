@@ -2587,6 +2587,7 @@ function reservePanel2(good, rg){
 // good the panel forks:
 //   - Stockpile strip: the reserve field stays; the two top-up squares and the per-tick
 //     chevrons go; the factory's cadence (1 unit / its timer, up to y a week) takes their place.
+//     The reserve is the floor the week's settlement rescue respects (Slice A, below).
 //   - Production column: the cadence and each factory's unit on the line, not a per-tick trend.
 //   - Distribution: two arms, Syndicate then Stockpile, in a FIXED order. The engine delivers
 //     a committed timed good Syndicate first whatever order is stored (Slice 3b, "fixed" = not
@@ -2640,12 +2641,16 @@ function fmtTicksAsDays(ticks){
 // The stockpile row for a timed good: the strip alone. There are no top-up squares — nothing
 // here consumes a timed good, so there is nothing to top up, and the Syndicate takes only units
 // made this tick. The strip's reserve field is kept exactly as it is for Tier 1/2 (whole units,
-// the same action). RULED 28-09-26: keep it — but note it moves no unit of a timed good today
-// (docs/roadmap.md decision checklist), so nothing here says it holds units back.
+// the same action). It now has a job (design.md §5, the settlement-time stockpile rescue, Slice A):
+// if the week ends short, the engine delivers stock ABOVE this floor to cover it, and never the
+// stock at or below it. The note under the cadence says so; the Stockpile arm says the rest.
 function timedReservePanel(good, t3, report){
   var tpu = goodTicksPerUnit(report, good);
+  // Only a committed good has a week to settle (its `window`), so only then is the note shown.
+  var g = report ? (report.goods || {})[good] : null;
   var note = (tpu != null ? '<div class="rs-cad">per factory · <b>' + esc(fmtCadence(tpu)) + '</b></div>' : '') +
-    '<div class="rs-cad">up to <b>' + esc(fmtY(t3.weeklyOutput)) + '</b> /week' + (tpu != null ? '' : ' per factory') + '</div>';
+    '<div class="rs-cad">up to <b>' + esc(fmtY(t3.weeklyOutput)) + '</b> /week' + (tpu != null ? '' : ' per factory') + '</div>' +
+    (g && g.window ? '<div class="rs-cad">the reserve is never taken at the week’s settlement</div>' : '');
   var strip = stockpileStrip(good, onHand(good), goodPolicy(good).reserveLevel, null, note);
   return '<div class="stock-row">' + strip + '</div>';
 }
@@ -2723,11 +2728,13 @@ function timedSynPanel(rg, rank){
 }
 // The Stockpile arm for a timed good: where the units the Syndicate does not take end up, and
 // how many are on hand. No slider — the Tier-1/2 one is a % of THIS TICK's output, which is 0
-// or 1 for a timed good (RULED 28-09-26: dropped here; the strip's typed field stays).
+// or 1 for a timed good (RULED 28-09-26: dropped here; the strip's typed field stays). With a
+// commitment, the rule also says what the week's settlement may take (Slice A): stock above the
+// reserve, and only when the week ends short.
 function timedSkPanel(good, rg, rank){
   var head = '<div class="sk-head"><span class="dir">▲</span><span class="aname">Stockpile</span>' + rank + '</div>';
   var rule = (rg && rg.window)
-    ? 'Every unit made after this week’s Syndicate target is met stays here.'
+    ? 'Every unit made after this week’s Syndicate target is met stays here. If the week ends short, stock above the reserve is delivered to cover it.'
     : 'With nothing committed, every unit made stays here.';
   return '<div class="sk-panel">' + head +
     '<div class="sk-collapsed"><div class="sk-in"><span class="sk-in-lbl">On hand</span>' +

@@ -11,10 +11,14 @@
 //      shows "1 unit / <timer>" off the row and "up to y /week" off tier3Contract, so the two
 //      must agree: ticksPerUnit × y is the week.
 //   2. Why it has no Production arm and no Consumption tab: no recipe consumes a timed good.
-//   3. Why its Distribution order is FIXED and nothing in it claims to hold units back (RULED
-//      28-09-26): for a committed timed good, the stored order, the old send control and the
-//      reserve level move no unit. Only the REPORTED hold (`fork.stockpile`) changes. And an
-//      uncommitted timed good gets no routing entry at all, so there is no fork to show.
+//   3. Why its Distribution order is FIXED (RULED 28-09-26): for a committed timed good, the
+//      stored order, the old send control and the reserve level move no unit during the week.
+//      Only the REPORTED hold (`fork.stockpile`) changes. And an uncommitted timed good gets no
+//      routing entry at all, so there is no fork to show.
+//      ⤳ Slice A (the settlement-time stockpile rescue, design.md §5, RULED 28-09-26): the reserve
+//      level now has one job, at the WEEK'S END only — a short week is topped up from stock above
+//      it (settlement-rescue.test.js). The run below stays inside the week and meets it, so its
+//      facts are unchanged; the console now says what the floor does at settlement.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');

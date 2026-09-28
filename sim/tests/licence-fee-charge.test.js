@@ -83,8 +83,14 @@ const licenceAll = (s, ids, committedOutputPct = 1) => intake(s, ids.map((id) =>
 // Pin the Syndicate send to a flat rate, so the pile at the boundary is a fact of the
 // fixture rather than whatever the paced default converges on (it converges on `Q`
 // exactly, which is the wrong thing for a test about what a SHORTFALL costs).
+// ⤳ Slice A (settlement rescue, 28-09-26): the mine makes twice what it sends, so the rest
+// piles up in the stockpile, and at the boundary a short licence is now topped up from stock
+// above the reserve floor. So the helper also sets a floor above anything this fixture can
+// pile up: the rescue finds no spare, and a short send is again a breach. The rescue has its
+// own tests (settlement-rescue.test.js); this file is about what a shortfall COSTS.
+const HOLD_THE_PILE = Number.MAX_SAFE_INTEGER;
 const setSend = (s, value, systemId = SYS) => intake(s, [createSetProductionProfileAction({
-  guildId: 'g1', systemId, goods: { [GOOD]: { syndicate: { mode: 'absolute', value } } },
+  guildId: 'g1', systemId, goods: { [GOOD]: { syndicate: { mode: 'absolute', value }, reserveLevel: HOLD_THE_PILE } },
 })]).state;
 
 const setPursue = (s, pursue) => intake(s, [createSetProductionProfileAction({

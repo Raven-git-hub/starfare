@@ -76,8 +76,15 @@ test('reserveDelta reports this tick net reserve change: + when fresh outpaces t
 test('Syndicate claimant draws FRESH ONLY: a large reserve is never reduced by the fork', () => {
   // This is the Slice-B REVERSAL of Slice A's "draws from the pot": commitment 5 but
   // fresh only 3, with a pre-seeded reserve of 10, N=1 so the pace targets the whole
-  // Q. Ranked first, the Syndicate still takes ONLY the 3 fresh — the reserve (10) is
-  // untouched, and the window BREACHES (delivered 3 < Q 5) rather than raiding the pile.
+  // Q. Ranked first, the Syndicate still takes ONLY the 3 fresh — the fork never draws the
+  // reserve.
+  //
+  // ⤳ (settlement rescue, design.md §5 RULED 28-09-26 — also named "Slice A", of the licence
+  // system, not the one-pot Slice A above.) N=1 makes this tick a BOUNDARY, and at a boundary a
+  // short licence is now topped up from the pile ABOVE the reserve floor. That is a separate
+  // step, not the fork: the fork still takes only the 3 fresh. With the default floor of 0 the
+  // rescue then takes the missing 2 from the pile and the window is MET. The old outcome — the
+  // pile untouched and a breach — is now what a floor holding the pile gives, pinned second.
   let s = sysState({
     ventures: [mine('t', 'titanium', 3, 5)],
     stockpiles: { titanium: 10 },
@@ -86,12 +93,29 @@ test('Syndicate claimant draws FRESH ONLY: a large reserve is never reduced by t
   const before = computeGalacticSupply(s).resources.titanium; // 10 (the pile)
   const g = goodOf(s, 'titanium');
   assert.equal(g.pot, 13);
-  assert.equal(g.fork.syndicate, 3, 'delivers only the 3 fresh — never the reserve');
-  assert.equal(g.window.status, 'breach', 'delivered 3 < Q 5 at the boundary ⇒ breach, not a reserve raid');
+  assert.equal(g.fork.syndicate, 3, 'the FORK delivers only the 3 fresh — never the reserve');
+  assert.equal(g.window.rescued, 2, 'the settlement rescue tops up the 2 short from the pile');
+  assert.equal(g.window.status, 'met', 'delivered 3 + 2 = Q 5 at the boundary ⇒ met');
   s = tick(s);
-  assert.equal(held(s, 'titanium'), 10, 'reserve untouched: 10 + 3 fresh − 3 delivered = 10');
-  assert.equal(before - computeGalacticSupply(s).resources.titanium, 0, 'galactic titanium net 0 (the 3 fresh sank, the pile stayed)');
+  assert.equal(held(s, 'titanium'), 8, 'reserve: 10 + 3 fresh − 3 delivered − 2 rescued = 8');
+  assert.equal(before - computeGalacticSupply(s).resources.titanium, 2, 'galactic titanium net −2 (the 3 fresh and 2 of the pile sank)');
   assert.deepEqual(checkInvariants(s, s.tick), []);
+
+  // The same run with the pile behind a floor of 10: nothing is above the floor, so the rescue
+  // takes nothing, the reserve is untouched and the window BREACHES — exactly the pre-rescue result.
+  let held10 = sysState({
+    ventures: [mine('t', 'titanium', 3, 5)],
+    profile: { goods: { titanium: { reserveLevel: 10 } } },
+    stockpiles: { titanium: 10 },
+    windowN: 1,
+  });
+  const g10 = goodOf(held10, 'titanium');
+  assert.equal(g10.fork.syndicate, 3);
+  assert.equal(g10.window.rescued, undefined, 'no stock above the floor ⇒ no rescue');
+  assert.equal(g10.window.status, 'breach', 'delivered 3 < Q 5 at the boundary ⇒ breach, not a reserve raid');
+  held10 = tick(held10);
+  assert.equal(held(held10, 'titanium'), 10, 'reserve untouched: 10 + 3 fresh − 3 delivered = 10');
+  assert.deepEqual(checkInvariants(held10, held10.tick), []);
 });
 
 // --- priority decides who reaches a tight pot first ----------------------------

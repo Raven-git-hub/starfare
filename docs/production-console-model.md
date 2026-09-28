@@ -364,10 +364,10 @@ describes the stored policy, but for a timed good most of it has no effect:
 
 | Stored field | Effect on a timed good | What the console does |
 |---|---|---|
-| `order` | none. A committed timed good is delivered Syndicate first whatever is stored (Slice 3b); an uncommitted one sends nothing | draws Syndicate `1 · fixed`, Stockpile `2 · fixed`, and writes no `order` (RULED 28-09-26) |
+| `order` | none. A committed timed good is delivered Syndicate first whatever is stored (Slice 3b); an uncommitted one sends nothing. Intake **refuses** one for a committed timed good (Slice A, 28-09-26) | draws Syndicate `1 · fixed`, Stockpile `2 · fixed`, and writes no `order` (RULED 28-09-26) |
 | `downstreamPct` | none: nothing consumes a timed good | no Production arm, no Consumption tab |
-| `syndicate` (send control) | none: not read for a timed good (Slice 3b) | no send slider or rate |
-| `reserveLevel` | moves no unit: there is no consumer, and the Syndicate takes only units made that tick. It changes only the reported `fork.stockpile` | the strip's typed field is kept as shipped; the % slider is dropped, because it reads a % of this tick's output (0 or 1). RULED 28-09-26. Its lack of effect is on the roadmap checklist |
+| `syndicate` (send control) | none: not read for a timed good (Slice 3b). Intake **refuses** one for a committed timed good (Slice A, 28-09-26) | no send slider or rate |
+| `reserveLevel` | during the week it moves no unit (no consumer; the Syndicate takes only units made that tick; only the reported `fork.stockpile` changes). **At the week's end it is the floor of the settlement rescue** (Slice A, 28-09-26): a short week is topped up from stock above it, never from stock at or below it | the strip's typed field is kept as shipped, and (when the good is committed) says "the reserve is never taken at the week's settlement"; the Stockpile arm says a short week takes stock above the reserve. The % slider stays dropped, because it reads a % of this tick's output (0 or 1). RULED 28-09-26 |
 | `pursue` | live: the boundary fill still ranks the good's licences | the roster's movers, unchanged |
 
 What the timed fork **reads** (all published, no new field):

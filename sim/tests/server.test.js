@@ -2561,6 +2561,27 @@ test('GET /console serves the Tier-3 fork: a timed good reads in whole units and
   assert.match(html, /function syndTopupSquare/);
 });
 
+// Slice A (design.md §5, the settlement-time stockpile rescue, RULED 28-09-26). The Tier-3 strip's
+// typed reserve field was shown but moved no unit; now it is the floor the week's settlement rescue
+// respects. The field and its POST are unchanged (the same `.rs-field` → setProductionProfile
+// reserveLevel the Tier-1/2 path uses), so what is pinned is that the page now SAYS what the floor
+// does, and that the Stockpile arm no longer claims every unit stays put.
+test('GET /console: the Tier-3 strip and Stockpile arm say what the reserve floor now does', async () => {
+  const html = await (await fetch(base + '/console')).text();
+  const fnBody = (name) => {
+    const i = html.indexOf('function ' + name + '(');
+    assert.ok(i >= 0, `the page defines ${name}`);
+    return html.slice(i, html.indexOf('\n}\n', i));
+  };
+  // The field is the same one, drawn by the same strip, holding the stored reserveLevel.
+  assert.match(fnBody('timedReservePanel'), /stockpileStrip\(good, onHand\(good\), goodPolicy\(good\)\.reserveLevel, null, note\)/);
+  assert.match(html, /t\.classList\.contains\('rs-field'\)\)\{\s*var v = fieldInt\(t\);[^\n]*\n\s*var gr = \{\}; gr\[good\] = \{ reserveLevel: v \}; sendProfile\(\{ goods: gr \}\)/);
+  // What the page now says.
+  assert.match(fnBody('timedReservePanel'), /the reserve is never taken at the week’s settlement/);
+  assert.match(fnBody('timedSkPanel'), /If the week ends short, stock above the reserve is delivered to cover it\./);
+  assert.ok(!/moves no unit of a timed good today/.test(html), 'the old "moves no unit" note is gone');
+});
+
 test('the EMBEDDED console\'s inventory rides the venture bridge into the game\'s right zone', async () => {
   // In `?embed=1` the console builds no side zones — the game shell owns them — so the
   // inventory panel that #36 added has nothing to render into. It travels the SAME

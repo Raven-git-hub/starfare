@@ -1136,6 +1136,9 @@ carried on to days ("6d 20h" rather than "164h 0m").
      `setProductionProfile` action), drop the slider on the timed path, and let nothing on the timed
      path claim the reserve holds units back. That it moves no unit today is recorded on the
      decision checklist.
+     *(⤳ 28-09-26, Slice A, below: the reserve level now has one job, at the week's end. A short
+     week is topped up from stock above it, never from stock at or below it, and the console now
+     says so.)*
 
 **Proven.**
 - `sim/tests/tier3-console-client.test.js` (4 tests) pins the engine facts the fork stands on:
@@ -1199,3 +1202,68 @@ carried on to days ("6d 20h" rather than "164h 0m").
     renderer noise, as the Establish slice also measured.
 
 **No engine change, no snapshot change, and no golden moved.**
+
+## As built (28-09-26) — Slice A: the settlement-time stockpile rescue, and the refusal of controls on a committed timed good
+
+Two rulings of 28-09-26 (design.md §5), built together. The rescue is a licence-system feature for
+**every tier**; this section records what it means for a timed good. The Tier-1/2 side is in
+design.md §5's AS-BUILT note and the roadmap's "Slice A" entry.
+
+**The rescue on the week's boundary.**
+- A committed timed good settles on the week (`windowNForGood`), so its rescue runs only on the week's
+  last tick, never on the six day boundaries inside it. That is the same gate as its verdict.
+- Just before the verdict, a licence that is short is topped up from the guild's stock of the good in
+  that system, from stock ABOVE `reserveLevel` only: `topUp = min(shortfall, stock above the floor
+  not yet used)`. The shortfall is the one the verdict's pursue fill leaves. Several short licences
+  share the pile in the pursue order, and the resolver checks that re-running the fill on the
+  topped-up pile credits each exactly its top-up (`settlementRescue`, `sim/production.js`).
+- Syndicate-first delivery means a short week has already sent the Syndicate every unit it made that
+  week. So the rescue can only take units made before the week: stock left over from a met week, or
+  stock the guild put there.
+- Partial is expected. With too little above the floor, all of it goes, the guild keeps exactly its
+  floor, and the week still breaches.
+
+**Paid once.** The rescued units are sold at the posted price through `commitmentSale` and
+`recordSale` (`sim/tick.js`), the owner keeping `1 − o`. A stockpiled unit was never progress-paid
+(the ruling), so this one sale is its only payment. The week's progress payments are unchanged,
+and the fresh deliveries still credit nothing. The test measures this: two guilds, identical but for
+the floor, are paid the same credits on every tick of the week before its boundary. On the boundary
+the only difference is one sale of the rescued units, plus the met fee discount.
+
+**The refusal.** `setProductionProfile` now refuses a `syndicate` send control or an `order` for a
+good that a venture in that system makes as a timed good and commits (`syndicateCommitment > 0`). The
+refusal names the field and the venture, and the state is unchanged. The engine never read either for
+such a good (Slice 3b), and the console POSTs neither. Still accepted:
+- `null` for either field, which clears a stale value;
+- `reserveLevel` and `pursue`;
+- a timed good nobody in that system commits;
+- every Tier-1/2 good.
+
+**The console.** The strip's typed reserve field was already live on the timed path: it is the same
+`.rs-field`, POSTing `setProductionProfile { reserveLevel }` like the Tier-1/2 path. This was checked
+in Chromium: the field is enabled, the POST carries only `reserveLevel`, the engine stores it, and the
+field re-renders with it. What changed is what the page says. For a committed timed good, the strip
+adds "the reserve is never taken at the week's settlement". The Stockpile arm's rule adds "If the week
+ends short, stock above the reserve is delivered to cover it." The other pages checked (two Tier-1
+goods, a Tier-2 good, an uncommitted timed good) render DOM identical to HEAD's page on the same galaxy.
+
+**Proven** (`sim/tests/settlement-rescue.test.js`, 12 tests). Named tripwires:
+- **(a)** rescued to met, paid for exactly the top-up at the posted price;
+- **(b)** stock at or under the floor is never taken, so the licence still breaches;
+- **(c)** a partial rescue delivers and pays for all the spare, leaves the floor, and still breaches;
+- **(d)** a timed good is paid once (the week above);
+- **(e)** conservation, every tick;
+- **(f)** the refusal.
+
+Then: the pursue order, only on the boundary, every tier (a Tier-2 factory), preview = tick, and the
+no-price halt. An isolation pin holds a no-shortfall run and a shortfall-with-no-spare run to hashes
+computed on HEAD d12ba58; each spans a Tier-3 week boundary. Run against HEAD's engine, 11 of the 12
+fail and the isolation pin passes. Eight deliberate breakages each turn a named test red:
+- skip the floor;
+- rescue one unit below the floor;
+- pay twice;
+- a partial rescue softens the breach;
+- hand the units over for nothing;
+- rescue on every tick;
+- ignore the pursue order;
+- drop the refusal.

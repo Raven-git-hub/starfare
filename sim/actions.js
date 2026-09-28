@@ -12,7 +12,7 @@ const {
   isValidCommitmentPct, isValidWindowDays, licenceFee, commitmentUnitsFor, licenceBasisFor, equityOf,
   signingBump, teardownSettlement, licenceEndTick, renegotiationFee, applyLapse, applyVentureClosure,
   TIER3_TERM_WINDOWS, licenceWindowN, weeklyOutputOf, committedUnitsCeiling, isValidCommittedUnits,
-  committedPctForUnits,
+  committedPctForUnits, isTimedVenture,
 } = require('./licence.js');
 const {
   producedGoodFor, baselineRateFor, isLicensedDeuteriumMine, isDockyard, ticksPerUnitFor,
@@ -1345,6 +1345,16 @@ function isValidOrder(order) {
   return seen.size === order.length && FORK_NAMES.every((name) => seen.has(name));
 }
 
+// committedTimedProducer(guild, systemId, good) -> the guild's first venture in `systemId` that
+// makes `good` as a timed Tier-3 good AND commits units of it, or null when there is none.
+// "Committed" is `syndicateCommitment > 0`, the same test the resolver uses to count a venture
+// towards the good's Syndicate target; "timed" is `isTimedVenture` (sim/licence.js), the same answer that
+// decides the timer and the week. So this refuses a control exactly where the engine would ignore it.
+function committedTimedProducer(guild, systemId, good) {
+  return (guild.ventures || []).find((v) => v.systemId === systemId
+    && producedGoodFor(v) === good && isTimedVenture(v) && v.syndicateCommitment > 0) || null;
+}
+
 function isIntInRange(n, lo, hi) {
   return typeof n === 'number' && Number.isInteger(n) && n >= lo && n <= hi;
 }
@@ -1896,6 +1906,20 @@ function validateAction(state, action) {
             }
           }
         }
+        // A COMMITTED TIMED GOOD TAKES NO SEND CONTROL AND NO ORDER (design.md §5, RULED 28-09-26,
+        // Slice A). Such a good is delivered Syndicate first, in a fixed order (Slice 3b): the
+        // engine reads neither field for it. Accepting one would store an instruction that does
+        // nothing, which is where silent bugs hide, so it is refused by name instead. A `null`
+        // (clear back to the default) is still accepted: it stores nothing, and it is how a
+        // stale value set before the good was committed can be removed. Every other good, and a
+        // timed good nobody here commits, is unchanged.
+        for (const field of ['syndicate', 'order']) {
+          if (policy[field] === undefined || policy[field] === null) continue;
+          const committer = committedTimedProducer(guild, action.systemId, good);
+          if (committer) {
+            return { valid: false, reason: `${field} for good ${JSON.stringify(good)} is refused: venture ${JSON.stringify(committer.id)} commits it, and a committed timed Tier-3 good is delivered to the Syndicate first in a fixed order, so the engine would ignore it (design.md §5)` };
+          }
+        }
       }
     }
     if (action.throttles !== undefined) {
@@ -1914,6 +1938,9 @@ function validateAction(state, action) {
     // reconciled at READ time — storing it ahead of, or after, the ventures it
     // references is legal. Do not "fix" this into a referential check: the engine
     // ignores stale entries at read time and a future venture picks up its policy.
+    // (The one check that DOES read the current ventures is the committed-timed-good
+    // refusal above. It is ruled, and it looks at the ventures only to tell whether the
+    // engine would ignore the field right now.)
     return { valid: true };
   }
 

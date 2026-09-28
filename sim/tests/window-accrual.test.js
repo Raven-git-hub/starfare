@@ -6,7 +6,8 @@
 // recipe-ratio.test.js style: controlled single-system scenarios, exact numbers. They
 // pin the accrual mechanics the windowed model turns on:
 //   (a) the fraction==1 deferral guard  (b) send carry fenced in [0,1)
-//   (c) delivered never exceeds Q        (d) fresh-only (never the stockpile)
+//   (c) delivered never exceeds Q        (d) fresh-only (the fork never draws the stockpile;
+//       only the boundary's settlement rescue, Slice A, does)
 //   (e) boundary met/breach + roll       (f) self-terminating overflow at Q
 //   (g) impossible-pace breach, guarded  (h) galacticSupply drops by exactly delivered
 //   (i) determinism over multi-window    (j) the send carry preserves determinism
@@ -127,16 +128,27 @@ test('(c) delivered never exceeds Q within a window, however aggressive the send
 test('(d) fresh-only: a full stockpile with zero fresh delivers 0 — the fork never touches the pile', () => {
   // An idle/offline committed mine (rate 0 — its commitment still counts toward Q, but
   // it produces no fresh) with a big pre-seeded pile. Fresh is 0, so the fresh-only
-  // Syndicate fork delivers 0 every tick and the 100-unit pile is never reduced.
+  // Syndicate fork delivers 0 every tick and never draws on the 100-unit pile.
+  //
+  // ⤳ Slice A (settlement rescue, 28-09-26). The FORK is still fresh-only. What is new is a
+  // separate step at each boundary: a short licence is topped up from the pile above the
+  // reserve floor (0 here). So the pile now moves on exactly the two boundary ticks, by exactly
+  // the 8 each window owes, and on no other tick. (The rescue has its own tests,
+  // settlement-rescue.test.js.)
   let s = sysState({ ventures: [mine('t', 'titanium', 0, 8)], stockpiles: { titanium: 100 }, windowN: 4 });
   for (let i = 0; i < 8; i += 1) {
-    const send = nextWindow(s, 'titanium').sendThisTick;
-    assert.equal(send, 0, 'zero fresh ⇒ nothing to send');
+    const pv = nextWindow(s, 'titanium');
+    assert.equal(pv.sendThisTick, 0, 'zero fresh ⇒ the fork sends nothing');
+    const rescued = pv.rescued || 0;
+    const before = held(s, 'titanium');
     s = tick(s);
-    assert.equal(held(s, 'titanium'), 100, 'the pile is untouched — the fork drew no reserve');
-    assert.equal(w(s, 'titanium').delivered, 0);
+    const boundary = s.tick % 4 === 0;
+    assert.equal(rescued, boundary ? 8 : 0, `tick ${s.tick}: only a boundary rescues, and it rescues the window's 8`);
+    assert.equal(held(s, 'titanium'), before - rescued, 'the fork drew nothing from the pile — only the rescue moved it');
+    assert.equal(w(s, 'titanium').delivered, boundary ? 8 : 0);
     assert.deepEqual(checkInvariants(s, s.tick), []);
   }
+  assert.equal(held(s, 'titanium'), 100 - 2 * 8, 'two windows, two rescues');
 });
 
 // --- (e) boundary: met/breach status; delivered resets + windowStart re-stamps ---
@@ -158,9 +170,12 @@ test('(e) boundary MET: status resolves met, then the next tick resets delivered
 
 test('(e) boundary BREACH: an under-delivering absolute send breaches at the boundary', () => {
   // absolute 1/tick against Q=4 over N=2 ⇒ delivered 2 by the boundary, short of Q.
+  // ⤳ Slice A (settlement rescue, 28-09-26): the 9 unsent units a tick pile up, and a short
+  // licence is now topped up from stock above the reserve floor at the boundary. A floor above
+  // anything this run can pile up keeps this test about the breach.
   let s = sysState({
     ventures: [mine('t', 'titanium', 10, 4)],
-    profile: { goods: { titanium: { syndicate: { mode: 'absolute', value: 1 } } } },
+    profile: { goods: { titanium: { syndicate: { mode: 'absolute', value: 1 }, reserveLevel: Number.MAX_SAFE_INTEGER } } },
     windowN: 2,
   });
   s = tick(s); // p=1: delivered 1

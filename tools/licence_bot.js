@@ -28,8 +28,10 @@
 //      factory demand). When fresh is scarce the surplus is negative, so the floor
 //      drops to 0: the reserve is RELEASED and the factory may draw the banked
 //      titanium out of the one pot (§5 one-pot: consumers draw reserve0 + fresh),
-//      so it never needlessly starves. Reserve can never feed the licence (the
-//      Syndicate fork is FRESH-ONLY), so the buffer only ever protects the factory.
+//      so it never needlessly starves. Reserve never feeds the licence tick to tick (the
+//      Syndicate fork is FRESH-ONLY), so the buffer protects the factory. (At a boundary a
+//      SHORT licence is topped up from stock ABOVE the floor — the settlement rescue,
+//      design.md §5, Slice A — which the floor this bot sets also bounds.)
 //   5. DETECT infeasibility: if the paced required-rate exceeds the fresh titanium
 //      available, the mine structurally cannot meet Q; the bot records that in the
 //      reasonTag and stays licence-first rather than thrashing.
