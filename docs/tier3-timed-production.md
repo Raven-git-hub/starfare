@@ -877,6 +877,8 @@ own. When it is on:
 - **Licence Summary.** It reads weekly: Committed `x / y <good> /week`, Fee `… ¢ /week`, Breach fee
   `= basic ¢ /week`, Renegotiate in `7 days`. The 3a checklist's "per cycle" label is fixed here,
   for timed goods in this popup.
+  *(⤳ 28-09-26: its Rate row now reads "Produces `y /week`", the weekly capacity. See "As built —
+  the client's weekly copy" below.)*
 - **Deploy.** `establishVenture` is exactly as before (equity rides on it). It is followed by
   `applyForLicence { guildId, ventureId, committedUnits: x }`, with no `committedOutputPct` and no
   `windowDays`. The receipt reads the stored contract back off the snapshot: `x` is
@@ -946,3 +948,103 @@ decision checklist):
 - the Venture Management and renegotiation popups' Tier-3 readings (3c's list);
 - the System Production Console (a later slice);
 - the items this slice defers.
+
+## As built (28-09-26) — the client's weekly copy: capacity in the Rate row, no per-tick words
+
+A follow-up to "As built — the client", in `client/game.html` only. The fork was right, but three
+things on the Tier-3 path still spoke Tier-1/2:
+- the Rate row showed the stamped `5 batches/tick`;
+- the unlicensed receipt said "First output next tick";
+- the licensed receipt and a help reel said the committed "share" is "paid tick by tick".
+
+A timed good makes one whole unit per timer, and nothing lands on the next tick. So this slice
+changes **only what the popup says, and what the Rate row shows**, for a timed good. The engine, the
+snapshot, the `applyForLicence` shape and the fork's mechanics (snapping, the fee graph, the deploy)
+are untouched. **The convention from here on:** every Tier-3 client surface speaks in whole units
+and weeks. It says no "share", no "per cycle" and no "per tick".
+
+**1. The Rate row shows weekly CAPACITY.** For a timed good the row is labelled **Produces**, and
+its value is `y /week`. `y` is the snapshot's `tier3Contract[good].weeklyOutput`, formatted as the
+fork already formats it (`fmtY`: 672, 3.5, 2.33). It is a property of the recipe. It reads neither
+the commitment nor the licence choice, so it is the same in every state. It pairs with the
+commitment below it: capacity `y` a week, then `x` of `y` committed.
+- The engine is unchanged. The stamped `productionRate` is still inert for a timed factory (the
+  decision checklist's Slice-2 question). The row now simply shows the figure that is true for a
+  timed good.
+- Every other venture keeps its **Rate** row exactly: a mine's units/tick, a factory's batches/tick
+  (including the four unclassified modules), the refinery's `/tick`.
+
+**2. The commitment readout.** On the Tier-3 path, the readout beside the whole-unit slider was
+already weekly (`x / y /week`). The Tier-1/2 readout (`cQty`) is hidden there, but it was still
+being filled with a `/cycle` figure sized off the stale continuous baseline. It is now left empty on
+the Tier-3 path. Tier 1/2 still read `– N/cycle`.
+
+**3. The confirm and the receipts.** For a timed good:
+- **The confirm:** "committing `x` of its `y` units a week to the Syndicate, on a fixed one-week
+  term … at a weekly fee of about N% of basic". Then: "It can make up to `y` units a week, one whole
+  unit at a time, and delivers the `x` you commit to the Syndicate first, each week." Then when the
+  first unit starts, and that the week ends in `termDays` days, when the Syndicate re-offers the
+  same terms. Unlicensed, it names the capacity and the first unit only.
+- **The licensed receipt:** `x` of the `y` units it can make a week, to the Syndicate, on a fixed
+  one-week term. It says when the week ends, and when the first unit starts. The fee lines are
+  unchanged. Their last sentence is now "The committed units are paid for steadily through the week,
+  as the factory works, not in a lump on delivery", which is Slice 3d's rule without "share" or
+  "tick". A "672 fuel tank a week" grammar slip became "672 units".
+- **The unlicensed receipt:** "on guild droids. It can make up to `y` units a week, one whole unit
+  at a time; its first unit starts once a full set of its inputs is in stock". Before, it said "at
+  baseline … First output next tick". ("At baseline" is dropped because baseline is the continuous,
+  per-tick idea.)
+- **The "Recorded:" line** names no rate for a timed venture: the stamped batches/tick is inert, and
+  the weekly capacity is already stated. It still names the venture and the site.
+
+**No ETA is shown.** The build prompt allowed "first unit in ~N hours" only if it could be sourced
+cleanly from the good's timer. It cannot. The page holds no timer (a served-page pin forbids
+`TICKS_PER_UNIT` in it), and working it out as `10,080 ÷ y` would be the browser computing a game
+number (§5's display rule). So the copy says what starts the first unit (a full set of its inputs in
+stock) and gives no time. This is on the decision checklist.
+
+**4. The two Tier-3 help reels.**
+- `commitUnits` now ties `y` to the Produces row.
+- Its second page says the `x` units go to the Syndicate first each week and are paid for steadily
+  as the factory works. Before, it said "your committed share … paid tick by tick".
+- `term3` names "the same `x` units a week".
+
+The three reels the Tier-3 path shares with Tier 1/2 (asset, licence, equity) are unchanged. They
+carry no per-tick or per-cycle rate, and changing them would change Tier 1/2.
+
+**Proven.**
+- `server.test.js` gets one new served-page pin (+1):
+  - the Rate row answers `y /week` before the per-tick branch, and reads none of `S.x`, `S.c`,
+    `S.o01` or `S.licensed`;
+  - the key swaps to Produces;
+  - `cQty` is empty on the Tier-3 path;
+  - the Tier-3 halves of the confirm, both receipts and the two reels carry no "next tick", "tick by
+    tick", "per tick", "/tick", "batches", "cycle" or "share" in their copy;
+  - the "Recorded:" line skips the rate for Tier 3;
+  - the Tier-1/2 per-tick and per-cycle strings are still there.
+- Six deliberate breakages each turn it red:
+  - the per-tick rate put back;
+  - the rate row gated on the licence choice;
+  - the `/cycle` readout written on Tier 3;
+  - "tick by tick" put back in the receipt;
+  - the rate put back in "Recorded:";
+  - "share" put back in the reel.
+- **By exercise**, in Chromium on two live dev servers (seed 7331): one served HEAD 3ef93a2's client
+  and one this slice's. The same script ran the real connect → home system → Settlements path on
+  both, in the same deploy order:
+  - A fuel tank reads "Produces 672 /week" in all 11 states tried: undecided; licensed at
+    `x` = 0, 1, 336, 671 and 672; equity 0, 25 and 49%; unlicensed; and back again. HEAD read
+    "Rate 5 batches/tick".
+  - A heavy engine reads "3.5 /week" in 5 states, and a deep scan mast "2.33 /week".
+  - An unclassified module (Drive Module) keeps "Rate 5 batches/tick".
+  - The Tier-3 confirms (licensed and unlicensed), both receipts and both reels carry none of the
+    words above. HEAD's receipts and reel carried "share", "tick by tick", "next tick" and
+    "batches/tick".
+  - **Parity:** every Tier-1 (mine), Tier-2, unclassified-module, Fuel and Tier-4 capture is
+    identical to HEAD's. That covers the panel in every slider state tried, the confirms, the
+    receipts of real deploys, and the Tier-1/2 and shared reels. Each of the five paths' popup
+    screenshots is a **byte-identical** PNG to a HEAD run. The renderer has a little run-to-run
+    noise: at most 12 pixels, at most 2 of 765 colour levels. HEAD shows the same noise against
+    itself, on the same pixels, so the check compared against three HEAD runs.
+
+**No engine change, and no golden moved.**

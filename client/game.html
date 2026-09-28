@@ -3203,7 +3203,7 @@ select.field{appearance:none; cursor:pointer;}
               <div class="row"><span class="k">Asset</span><span class="v" id="tAsset">— <span class="mut">none</span></span></div>
               <div class="row"><span class="k">Site</span><span class="v" id="tSite">—</span></div>
               <div class="row"><span class="k">Output</span><span class="v" id="tOutput">—</span></div>
-              <div class="row"><span class="k">Rate</span><span class="v" id="tRate">—</span></div>
+              <div class="row"><span class="k" id="tRateKey">Rate</span><span class="v" id="tRate">—</span></div>
               <div class="row"><span class="k">Licence</span><span class="v" id="tLic">— <span class="mut">undecided</span></span></div>
               <div class="row"><span class="k">Committed</span><span class="v" id="tCommit">—</span></div>
               <div class="row"><span class="k">Equity</span><span class="v" id="tEquity">—</span></div>
@@ -5937,9 +5937,12 @@ function draw(){
   // engine's `commitmentUnitsFor` — round(pct x baseline x N) — with N read live off
   // the snapshot and the good's baseline off GET /goods, so the preview is the quantity
   // `applyForLicence` will actually store.
+  // A TIMED Tier-3 good has no per-cycle figure: its commitment reads x / y a week beside its
+  // own whole-unit slider (applyTier3Fork). So this Tier-1/2 readout, hidden on that path, is
+  // left empty rather than holding a "/cycle" number sized off a baseline the timer never runs.
   var cQtyCycle = committedPerCycle();
   $('cPct').textContent = Math.round(S.c*100)+'%';
-  $('cQty').textContent = cQtyCycle === null ? '– —' : ('– '+fmt(cQtyCycle)+'/cycle');
+  $('cQty').textContent = t3 ? '' : (cQtyCycle === null ? '– —' : ('– '+fmt(cQtyCycle)+'/cycle'));
 
   var ePct = equityPctInt();
   $('oPct').textContent = ePct+'%';
@@ -6099,9 +6102,16 @@ function setRow(id,h){ $(id).innerHTML = h; }
    venture runs at; the browser only shows it. A mine's is units/tick, keyed by the good
    it mines; a factory's is batches/tick, keyed by the recipe. The FUEL refinery has no
    baseline and still sends the client's own rate, so it shows that. A dash when the
-   catalog was not read — never a guessed number. */
+   catalog was not read — never a guessed number.
+   TIER 3 is the exception (applyTier3Fork). A TIMED good is made one whole unit at a time,
+   so a per-tick figure is the wrong one to show (the 5 batches/tick the engine stamps is
+   inert for it). The row shows the factory's weekly CAPACITY instead: y, the snapshot's
+   `tier3Contract[good].weeklyOutput`, labelled "Produces". It belongs to the recipe, so it
+   stays the same whatever the commitment slider or the licence choice says. */
 function establishRateRow(){
   if(S.tier==='fuel') return ESTABLISH_RATE + ' <span class="mut">/tick</span>';
+  var t3 = tier3Terms();
+  if(t3) return fmtY(t3.weeklyOutput)+' <span class="mut">/week</span>';
   var goods = (window.__goodsCatalog && window.__goodsCatalog()) || {};
   var rate, unit;
   if(S.site && S.site.kind==='node'){
@@ -6120,10 +6130,12 @@ function drawLedger(fp, cQtyCycle, ePct){
   setRow('tSite', S.site ? esc(S.site.summary) : '—');
   setRow('tOutput', S.outGood ? esc(S.outLabel) : '<span class="mut">pick a recipe</span>');
   setRow('tRate', establishRateRow());
-  // A TIMED Tier-3 good reads in WEEKLY terms (applyTier3Fork): its commitment is x / y a week,
-  // its fee and breach fee are charged once a week, and its term is the fixed week in days — all
-  // off the snapshot's `tier3Contract`. Every Tier-1/2 row below is exactly as before.
+  // A TIMED Tier-3 good reads in WEEKLY terms (applyTier3Fork): its capacity is y a week, its
+  // commitment is x / y a week, its fee and breach fee are charged once a week, and its term is
+  // the fixed week in days — all off the snapshot's `tier3Contract`. Every Tier-1/2 row below is
+  // exactly as before.
   var t3 = tier3Terms();
+  $('tRateKey').textContent = t3 ? 'Produces' : 'Rate';
   var renegIn = t3 ? fmt(t3.termDays) : S.rnDays;
   var perWeek = t3 ? ' <span class="mut">/week</span>' : '';
   if(S.licensed===null){
@@ -6224,13 +6236,14 @@ var REELS = {
     'Until it elapses, the terms are locked — neither you nor the Syndicate can reopen them. Once it passes, the <em>Syndicate</em> sets the new terms, reading this venture’s standing: a steadier venture is leaned on less, a slipping one more, and only a Strong one earns a trimmed fee. You author the terms once, here; every renegotiation after is theirs to offer.',
     'When the window elapses you get one decision, in the Guild Hall’s Messages or in venture management: <em>accept</em> the Syndicate’s terms and re-lock, or <em>reject</em> and let the licence lapse — the venture goes unlicensed (you keep it, but forfeit the standing it built). The window is stored with the licence, in days, exactly as you set it.' ]},
   // The two TIER-3 controls (applyTier3Fork). Facts only, from docs/tier3-timed-production.md
-  // ("Income & commitment", "Delivery", "Contract & settlement", "Renegotiation").
+  // ("Income & commitment", "Delivery", "Contract & settlement", "Renegotiation"). Tier-3 copy
+  // speaks in whole units and weeks: no share, no cycle, no tick.
   commitUnits:{ title:'Output commitment — whole units', pages:[
-    'A Tier-3 part is made one <em>whole unit</em> at a time, on a timer. So its licence commits whole units: <em>x</em> of the <em>y</em> this factory makes in a week. The slider stops only on whole units, up to every whole unit a week holds.',
-    'Committed units go to the Syndicate <em>first</em>, each week, and your committed share of the work is paid tick by tick as it is done. Deliver all <em>x</em> and the week’s discounted fee is charged; fall one unit short and you pay the full basic fee. Commit conservatively.' ]},
+    'A Tier-3 part is made one <em>whole unit</em> at a time, on a timer. So its licence commits whole units: <em>x</em> of the <em>y</em> this factory can make in a week (its <em>Produces</em> figure in the summary). The slider stops only on whole units, up to every whole unit a week holds.',
+    'Each week your <em>x</em> units go to the Syndicate <em>first</em>, and they are paid for steadily through the week, as the factory works, not in a lump on delivery. Deliver all <em>x</em> in the week and its discounted fee is charged; fall one unit short and you pay the full basic fee. Commit conservatively.' ]},
   term3:{ title:'A one-week contract', pages:[
     'A Tier-3 contract runs exactly <em>one week</em>, and it settles on that same week. There is no window to choose.',
-    'When the week ends, the Syndicate re-offers the <em>same terms</em>: the same units, another week, the fee re-priced at the market. Accept it to renew. An offer nobody accepts lapses.' ]}
+    'When the week ends, the Syndicate re-offers the <em>same terms</em>: the same <em>x</em> units a week, for another week, with the fee re-priced at the market. Accept it to renew. An offer nobody accepts lapses.' ]}
 };
 var reelMode='info', reelState={key:null,page:0};
 function openReel(){ $('est-reel').classList.add('open'); }
@@ -6289,20 +6302,28 @@ function reelConfirm(){
     return;
   }
   var cq = committedPerCycle();
-  // TIER 3 speaks in whole units a week and a fixed term (applyTier3Fork); Tier 1/2 as before.
+  // TIER 3 speaks in whole units a week and a fixed one-week term (applyTier3Fork); Tier 1/2 as
+  // before. A timed good's first unit lands only after its timer runs, so it gets no "next tick".
+  // Nor does it get an ETA: the page holds no timer (the engine's), so it says what starts the
+  // first unit instead.
   var t3 = tier3Terms();
   var committing = t3
-    ? ('committing '+fmt(S.x)+' of its '+fmtY(t3.weeklyOutput)+' units a week')
+    ? ('committing '+fmt(S.x)+' of its '+fmtY(t3.weeklyOutput)+' units a week to the Syndicate, on a fixed one-week term')
     : ('committing '+(cq === null ? 'a share of' : (fmt(cq)+' of its'))+' baseline output each cycle');
   var lic = S.licensed
     ? ('<em>licensed</em>, '+committing
        + (equityPctInt()>0 ? (' and offering '+equityPctInt()+'% equity') : ' with no equity offered')
-       + ', at a fee of about '+Math.round(feePct(commitRatio(),S.o01))+'% of basic')
+       + ', at a '+(t3 ? 'weekly ' : '')+'fee of about '+Math.round(feePct(commitRatio(),S.o01))+'% of basic')
     : '<em>unlicensed</em>, with no fee and no commitment';
-  var firstOutput = t3 ? 'Its first unit starts once a full set of its inputs is in stock' : 'First output arrives next tick';
-  var renegIn = t3 ? fmt(t3.termDays) : S.rnDays;
+  // When output starts, and when the terms can next move.
+  var when = t3
+    ? ('It can make up to '+fmtY(t3.weeklyOutput)+' units a week, one whole unit at a time'
+       + (S.licensed ? (', and delivers the '+fmt(S.x)+' you commit to the Syndicate first, each week') : '')
+       + '. Its first unit starts once a full set of its inputs is in stock'
+       + (S.licensed ? ('. The week ends in '+fmt(t3.termDays)+' days, and the Syndicate then re-offers the same terms') : ''))
+    : ('First output arrives next tick'+(S.licensed ? (', and the terms are open to renegotiate in '+S.rnDays+' days') : ''));
   var body='<p>You are about to stand up a '+esc(S.outLabel.toLowerCase())+' venture on '+esc(S.site.summary)+' — '+lic+'.</p>'+
-           '<p>It will run your <em>'+esc(S.asset.label)+'</em> ('+esc(S.asset.id)+'). The machine is <em>occupied, not consumed</em>: it stays in your inventory, now referenced by this venture, and no other venture can take it. '+firstOutput+(S.licensed ? (', and the terms are open to renegotiate in '+renegIn+' days') : '')+'.</p>'+
+           '<p>It will run your <em>'+esc(S.asset.label)+'</em> ('+esc(S.asset.id)+'). The machine is <em>occupied, not consumed</em>: it stays in your inventory, now referenced by this venture, and no other venture can take it. '+when+'.</p>'+
            (S.licensed
              ? '<p class="lbl">The licence is filed as a second step, once the venture exists. The fee in the ledger is the engine\'s quote at the current market price; it is fixed against the price at the tick it is filed, and the receipt reports the figure actually locked.</p>'
              : '<p class="lbl">No licence is filed: nothing is committed, nothing is sold to the Syndicate, and no fee is owed.</p>')+
@@ -6525,9 +6546,15 @@ function showSuccess(action, licenceRefusal){
   S.deployedVentureId = action.ventureId;                  // so "Open venture management ▸" knows which venture
   var v = window.__myVenture ? window.__myVenture(action.ventureId) : null;
   var good = S.outLabel.toLowerCase();
+  // A TIMED Tier-3 good reads weekly throughout (applyTier3Fork): its capacity y a week, its first
+  // unit once its inputs are in, and no per-tick figure. null for every other venture.
+  var t3 = tier3Terms();
   var out = [];
 
-  if (!S.licensed){
+  if (!S.licensed && t3){
+    out.push('Your '+S.asset.label+' now runs a '+good+' venture — unlicensed, on guild droids. It can make up to '
+      + fmtY(t3.weeklyOutput)+' units a week, one whole unit at a time; its first unit starts once a full set of its inputs is in stock.');
+  } else if (!S.licensed){
     out.push('Your '+S.asset.label+' now runs a '+good+' venture — unlicensed, at baseline on guild droids. First output next tick.');
   } else if (licenceRefusal){
     // The honest partial failure: the venture is real, the licence is not.
@@ -6538,20 +6565,20 @@ function showSuccess(action, licenceRefusal){
       ? ('The '+offered+'% equity you offered IS recorded on the venture — it is a term of the venture, not of the licence — but with no commitment sale there is no income for it to take a share of.')
       : 'No equity was offered, so nothing is recorded against it.');
     out.push('The venture itself stands and produces. Licensing it is a separate application.');
-  } else if (v && v.licence && tier3Terms()){
+  } else if (v && v.licence && t3){
     // TIER 3 — the stored contract, read back: x is the venture's stored `syndicateCommitment`,
-    // y the engine's published weekly output, the days to renegotiation its `contractWindow`, and
-    // the two fees the ones the engine locked. Weekly throughout: the fee is charged at the
-    // week's end (Slice 3a), and the committed share is paid as the work is done (Slice 3d).
+    // y the engine's published weekly output, the days left in the week its `contractWindow`, and
+    // the two fees the ones the engine locked. Weekly throughout: committed units go to the
+    // Syndicate first each week (Slice 3b), the fee is charged at the week's end (Slice 3a), and
+    // the committed units are paid for as the factory works, not on delivery (Slice 3d).
     var eq3 = Math.round((v.equityPct || 0) * 100);
-    var t3 = tier3Terms();
     var days = v.contractWindow ? fmt(v.contractWindow.cyclesRemaining) : '—';
-    out.push('Your '+S.asset.label+' now runs a '+good+' venture — licensed, committing '+fmt(v.syndicateCommitment)+' of its '+fmtY(t3.weeklyOutput)+' '+good+' a week'
+    out.push('Your '+S.asset.label+' now runs a '+good+' venture — licensed, committing '+fmt(v.syndicateCommitment)+' of the '+fmtY(t3.weeklyOutput)+' units it can make a week to the Syndicate, on a fixed one-week term'
       + (eq3>0 ? (' with '+eq3+'% equity offered') : ' with no equity offered')
-      + ', renegotiable in '+days+' days. Its first unit starts once a full set of its inputs is in stock.');
+      + '. The week ends in '+days+' days, and the Syndicate then re-offers the same terms. Its first unit starts once a full set of its inputs is in stock.');
     out.push('Fee: '+fmt(v.licence.discountedFee)+' ¢ a week of a '+fmt(v.licence.basicFee)+' ¢ basic, locked against a posted price of '
       + Number(v.licence.lockedPrice).toFixed(2)+' at tick '+v.licence.signedTick+'. It is charged when the week ends: '
-      + fmt(v.licence.discountedFee)+' ¢ if you deliver all '+fmt(v.syndicateCommitment)+' units that week, the full '+fmt(v.licence.basicFee)+' ¢ if you fall short. Your committed share of the work is paid tick by tick as it is done.');
+      + fmt(v.licence.discountedFee)+' ¢ if you deliver all '+fmt(v.syndicateCommitment)+' units that week, the full '+fmt(v.licence.basicFee)+' ¢ if you fall short. The committed units are paid for steadily through the week, as the factory works, not in a lump on delivery.');
   } else if (v && v.licence){
     var eq = Math.round((v.equityPct || 0) * 100);
     out.push('Your '+S.asset.label+' now runs a '+good+' venture — licensed, committing '+fmt(v.syndicateCommitment)+' '+good+'/cycle'
@@ -6572,9 +6599,11 @@ function showSuccess(action, licenceRefusal){
   }
   // The rate is the one the ENGINE stamped (the action carries none — design.md §2), read
   // back off the snapshot. If the re-read missed the venture, say where it is, not a rate.
+  // A TIMED Tier-3 venture names no rate: the stamped batches/tick is inert for it. Its pace is
+  // the timer, and its capacity is the weekly figure the popup's Produces row showed.
   var unit = action.ventureType === 'mining' ? ' units/tick' : ' batches/tick';
   out.push('Recorded: venture '+action.ventureId+' on '+action.siteId
-    + ((v && typeof v.productionRate === 'number') ? (' at '+fmt(v.productionRate)+unit+'.') : '.'));
+    + ((!t3 && v && typeof v.productionRate === 'number') ? (' at '+fmt(v.productionRate)+unit+'.') : '.'));
   $('successMsg').textContent = out.join('  ');
   $('estForm').style.display='none';
   $('estSuccess').classList.add('show');

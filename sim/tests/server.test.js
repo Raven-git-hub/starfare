@@ -280,6 +280,76 @@ test('GET / serves the TIER-3 fork of the licence panel — the engine\'s classi
   assert.ok(!code.includes('windowDays'), 'no term on a Tier-3 licence');
 });
 
+// --- the Tier-3 popup speaks WEEKLY (Tier-3 economy — client copy) --------------------------
+//
+// A timed good makes one whole unit per timer, is committed in whole units a week, and is paid
+// on progress. So on the Tier-3 path the Rate row shows the factory's weekly CAPACITY (y, the
+// snapshot's `tier3Contract[good].weeklyOutput`), and no copy says "next tick", "tick by tick",
+// "/cycle", "share" or a batches/tick rate. A page that drifted back would render perfectly;
+// only these pins go red. Tier-1/2 keep their per-tick rate and per-cycle copy: pinned below too.
+test('GET / serves the Tier-3 popup in WEEKLY terms — capacity y /week in the Rate row, no per-tick or per-cycle copy on the Tier-3 path', async () => {
+  const html = await (await fetch(base + '/')).text();
+  const slice = (from, to) => {
+    const a = html.indexOf(from); const b = html.indexOf(to, a + from.length);
+    assert.ok(a >= 0 && b > a, `found ${from} … ${to}`);
+    return html.slice(a, b);
+  };
+  const noComments = (s) => s.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+  // The COPY a player reads: the code's quoted string literals only, so an identifier such as
+  // `contractWindow.cyclesRemaining` is not mistaken for per-cycle wording.
+  const copyOf = (s) => (noComments(s).match(/'(?:[^'\\]|\\.)*'/g) || []).join(' ');
+  const PER_TICK_OR_CYCLE = /next tick|tick by tick|per tick|\/tick|batches|cycle|\bshare\b/i;
+
+  // 1. THE RATE ROW. A timed good returns y /week off the snapshot, BEFORE the per-tick
+  //    baseline branch. It is capacity, a property of the recipe: the row reads neither the
+  //    commitment nor the licence choice, so moving the slider or toggling Licensed cannot move it.
+  const rateRow = noComments(slice('function establishRateRow(){', 'function drawLedger('));
+  assert.match(rateRow, /var t3 = tier3Terms\(\);\s*if\(t3\) return fmtY\(t3\.weeklyOutput\)\+' <span class="mut">\/week<\/span>';/);
+  assert.ok(rateRow.indexOf('if(t3) return') < rateRow.indexOf('goods.refineryBaseline'),
+    'the Tier-3 capacity is answered before the batches/tick baseline');
+  for (const lever of ['S.x', 'S.c', 'S.o01', 'S.licensed']) {
+    assert.ok(!rateRow.includes(lever), `the Rate row must not read ${lever}: capacity is the same in every state`);
+  }
+  assert.match(html, /<span class="k" id="tRateKey">Rate<\/span>/);
+  assert.match(html, /\$\('tRateKey'\)\.textContent = t3 \? 'Produces' : 'Rate';/);
+  // Tier 1/2 keep their per-tick rate, untouched.
+  assert.match(rateRow, /unit = 'units\/tick';/);
+  assert.match(rateRow, /unit = 'batches\/tick';/);
+
+  // 2. THE COMMITMENT READOUT. The Tier-1/2 "/cycle" figure is not written on the Tier-3 path;
+  //    the whole-unit slider's own x / y /week readout stands (pinned in the fork test above).
+  assert.match(html, /\$\('cQty'\)\.textContent = t3 \? '' : \(cQtyCycle === null \? '– —' : \('– '\+fmt\(cQtyCycle\)\+'\/cycle'\)\);/);
+  assert.match(html, /\$\('xUnit'\)\.textContent = '\/week';/);
+
+  // 3. THE CONFIRM. The Tier-3 half of its "when" clause names the weekly capacity and delivery,
+  //    and no tick; the Tier-1/2 half still says "First output arrives next tick".
+  const when = slice('var when = t3', "'First output arrives next tick'");
+  assert.doesNotMatch(copyOf(when), PER_TICK_OR_CYCLE);
+  assert.match(when, /'It can make up to '\+fmtY\(t3\.weeklyOutput\)\+' units a week, one whole unit at a time'/);
+  assert.match(html, /units a week to the Syndicate, on a fixed one-week term'\)/);
+
+  // 4. THE RECEIPTS. The Tier-3 unlicensed and licensed branches are weekly; the Tier-1/2
+  //    branches beside them are unchanged. The "Recorded" line names no rate for a Tier-3 venture.
+  const t3Unlicensed = slice('if (!S.licensed && t3){', '} else if (!S.licensed){');
+  assert.doesNotMatch(copyOf(t3Unlicensed), PER_TICK_OR_CYCLE);
+  assert.match(t3Unlicensed, /units a week/);
+  const t3Licensed = slice('} else if (v && v.licence && t3){', '} else if (v && v.licence){');
+  // "at tick N" is the signing tick, a timestamp — not a per-tick rate — so it is allowed.
+  assert.doesNotMatch(copyOf(t3Licensed), PER_TICK_OR_CYCLE);
+  assert.match(t3Licensed, /on a fixed one-week term/);
+  assert.match(t3Licensed, /paid for steadily through the week, as the factory works, not in a lump on delivery/);
+  assert.match(html, /\(\(!t3 && v && typeof v\.productionRate === 'number'\) \? \(' at '\+fmt\(v\.productionRate\)\+unit\+'\.'\) : '\.'\)/);
+  assert.match(html, /unlicensed, at baseline on guild droids\. First output next tick\./);
+  assert.match(html, /committing '\+fmt\(v\.syndicateCommitment\)\+' '\+good\+'\/cycle'/);
+
+  // 5. THE TWO TIER-3 HELP REELS: whole units and weeks only.
+  for (const key of ['commitUnits', 'term3']) {
+    const reel = slice(`${key}:{ title:`, ']}');
+    assert.doesNotMatch(reel, PER_TICK_OR_CYCLE, `the ${key} reel speaks weekly / whole-unit`);
+    assert.match(reel, /week/);
+  }
+});
+
 // --- the asset picker goes live (client-only, 31-08-26) ---------------------------
 //
 // The engine has required an explicit `assetId` since f1109d3, and the panel ran on a

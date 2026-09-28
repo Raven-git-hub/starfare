@@ -2116,6 +2116,29 @@ boundary so the later hex-map swap doesn't touch it.
   - **Still not safe to run live:** the Venture Management and renegotiation popups (3c's other client
     items), the console, and the checklist items below.
 
+- **Tier-3 Establish popup — weekly language + the capacity Rate row — ✅ BUILT 28-09-26 (Tier-3
+  economy — client copy).** `docs/tier3-timed-production.md` ("As built — the client's weekly copy" at
+  its end); design.md §2 and §5 notes. It closes two items from "Tier-3 Establish client" on the
+  checklist below (the Rate row and the copy). It is client-only: `client/game.html`.
+  - **The Rate row shows capacity.** For a timed good it reads **Produces `y /week`**, from
+    `tier3Contract[good].weeklyOutput`. It reads no commitment and no licence choice, so it is the
+    same in every state. Every other venture keeps its per-tick **Rate** row.
+  - **The copy is weekly.** On the Tier-3 path:
+    - the hidden `/cycle` readout is no longer filled;
+    - the confirm and both receipts say `x` units a week to the Syndicate, on a fixed one-week term;
+    - "First output next tick", "tick by tick", "share" and the batches/tick "Recorded" rate are gone;
+    - the two Tier-3 reels speak in whole units and weeks.
+  - **No ETA:** the page holds no timer, and working one out would be the browser computing a game
+    number (checklist).
+  - **Standing convention:** every Tier-3 client surface speaks in whole units and weeks. It says
+    no "share", no "per cycle" and no "per tick".
+  - **Goldens: none moved** (no engine change). Tier-1, Tier-2, the unclassified module, Fuel and
+    Tier-4 are identical to HEAD 3ef93a2's client. The panels, confirms, receipts and reels match,
+    and each popup screenshot is a byte-identical PNG to a HEAD run (Chromium, live servers, one
+    script; HEAD-vs-HEAD shows the same ≤12-pixel renderer noise).
+  - Sim suite 1,741 → **1,742 green**: one served-page pin in `server.test.js` (+1). Six deliberate
+    breakages are each caught. Tools **68 green**.
+
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
@@ -2367,7 +2390,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     timer instead? (A client / Slice-3 question.) The snapshot's venture row does not yet echo
     `unitTicksRemaining`; the production preview row does. *(⤳ 28-09-26, Tier-3 Establish client: the
     popup's Rate row still shows the stamped 5 batches/tick for a Tier-3 recipe; left as is, pending
-    this question.)*
+    this question.)* *(⤳ 28-09-26, weekly copy: the popup's Rate row now shows the weekly capacity
+    `y /week` from `tier3Contract`, not `productionRate`. The engine question itself stays open.)*
   - **Before Tier 3 runs live (Slice 3's job, recorded so it is not missed):** a Tier-3 licence's
     committed quantity (`commitmentUnitsFor`) and fee (`licenceFee`) still read the continuous
     `baselineOutputFor` (5 units/tick). A timed factory makes at most 1,440 ÷ `TICKS_PER_UNIT` a day,
@@ -2579,14 +2603,35 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     refuses the licence with its own reason. Confirm, or show a "cannot be licensed here" state (the
     field would then need to list the good with a flag).
   - **The Rate row** still shows the stamped 5 batches/tick for a timed recipe. That is the Slice-2
-    `productionRate` question above, not answered here.
+    `productionRate` question above, not answered here. **⤳ CLOSED 28-09-26 (weekly copy).** It
+    reads "Produces `y /week`", the weekly capacity from `tier3Contract.weeklyOutput`. The engine's
+    `productionRate` question above is still open.
   - **Copy for the copy pass.** Two short help reels (`commitUnits`, `term3`) and the Tier-3 confirm
     and receipt lines are new, and written from `docs/tier3-timed-production.md`. The unlicensed and
     refused-licence receipts, which were not touched, still say "First output next tick" for a Tier-3
-    venture.
+    venture. **⤳ 28-09-26 (weekly copy):** the Tier-3 confirm, both receipts and the two reels now
+    read weekly, with no "next tick", "tick by tick", "share" or batches/tick.
+    The refused-licence receipt never said "next tick"; only its "Recorded" rate did, and that is gone
+    too. The wording is still open to the human's copy pass.
   - **Notch density (layout, not a game number).** The whole-unit slider draws a notch per unit only
     when notches are at least 6 px apart on screen. A heavy engine shows 0·1·2·3; a 3-1 part's 672
     shows only its end values.
+
+- **Tier-3 Establish popup weekly copy — items for a ruling or a confirm** — *surfaced 28-09-26.*
+  - **A first-unit ETA (not built).** The build prompt allowed "first unit in ~N hours" only if it
+    could be sourced from the good's timer. The page holds no timer, and `10,080 ÷ y` would be the
+    browser computing a game number (§5). So the copy says only what starts the first unit. To show
+    an ETA, the engine would publish it: for example, `ticksPerUnit` beside `weeklyOutput` in
+    `tier3Contract`. Wanted?
+  - **The row's label.** Built as **Produces** (the prompt's example). **Capacity** is the other
+    obvious word. Confirm.
+  - **"Renegotiate in 7 days" on the Tier-3 path.** The Licence Summary key is the Tier-1/2 one. A
+    Tier-3 term is fixed and re-offered, not renegotiated. It was left as the prior slice built it,
+    because the days are the snapshot's own `termDays`. A copy-pass item.
+  - **Stale shared reels (noticed, not touched: they are Tier-1/2 copy too).** The `licence` reel's
+    last page says fee "*charging* it is the one part still to be built", but charging is built
+    (Slice 3b-iii). The `asset` reel says "there is no teardown", but voluntary teardown is built.
+    Fixing them changes Tier-1/2 copy, so it is a separate, human-approved edit.
 
 - **Tier-3 slice 1 — small items for a ruling or a confirm** — *surfaced 27-09-26 by the Tier-3
   price-bands slice.*
