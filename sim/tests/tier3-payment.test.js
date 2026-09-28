@@ -78,18 +78,21 @@ const ventureOf = (s, gid, vid) => guildOf(s, gid).ventures.find((v) => v.id ===
 // One galaxy, one week, one guild per case, each running ONE factory. Each case makes its own good
 // where that matters, so its price is under control: a good nobody stockpiles stays at its base
 // price all week, while fuel tanks (half of `even`'s output, and `stall`'s) pile up and their
-// price climbs. `T` is the ruled timer (1 tick = 1 min): 15 for a 3-1 part, 2,880 for a heavy
-// reactor engine. `y = 10,080 ÷ T` is the weekly output: 672 for a 3-1 part, 3.5 for the engine.
+// price climbs. `T` is the ruled timer (1 tick = 1 min): 15 for a 3-1 part, 2,520 for a heavy
+// reactor engine. `y = 10,080 ÷ T` is the weekly output: 672 for a 3-1 part, 4 for the engine.
+// (⤳ 28-09-26 retime: the engine was 2,880 and 3.5. Its x stayed 3, and a tick's committed work,
+// (x ÷ y) × (1 ÷ T) = x ÷ 10,080 of a unit, does not depend on the timer — so 3 of 4 is paid the
+// same 5,952.38 a tick, 60M a week, that 3 of 3.5 was.)
 //   even    fuel tanks,     x = 336 of 672     → paid every tick; the price rises as its 336 pile up
 //   full    hull plating,   x = 672 of 672     → every unit goes to the Syndicate; price flat at 100
-//   heavy   heavy engine,   x = 3 of 3.5       → a specialist; price flat at 20M
+//   heavy   heavy engine,   x = 3 of 4         → a specialist; price flat at 20M
 //   equity  power cells,    x = 336, o = 0.4   → the owner keeps 60% of what its work earns
 //   stall   fuel tanks,     x = 336, inputs for 100 units, 60 more added on tick 6,000
 //   free    cargo modules,  UNLICENSED         → never paid, every unit its own
 const CASES = {
   even: { recipe: 'fuel_tank', T: 15, x: 336, sets: 700 },
   full: { recipe: 'hull_plating', T: 15, x: 672, sets: 700 },
-  heavy: { recipe: 'heavy_reactor_engine', T: 2880, x: 3, sets: 4 },
+  heavy: { recipe: 'heavy_reactor_engine', T: 2520, x: 3, sets: 4 },
   equity: { recipe: 'power_cells', T: 15, x: 336, sets: 700, equityPct: 0.4 },
   stall: { recipe: 'fuel_tank', T: 15, x: 336, sets: 100 },
   free: { recipe: 'cargo_module', T: 15, x: 0, sets: 700 },
@@ -204,7 +207,7 @@ test('HEADLINE: a committed timed factory running gapless is paid SMOOTHLY — o
     assert.ok(t.paid <= Math.floor(t.inc) + 1 && t.paid < t.price / 10,
       `tick ${t.tick}: a unit landed and the guild was paid ${t.paid} (the tick's work: ${t.inc.toFixed(3)}; the unit: ${t.price})`);
   }
-  // The same holds for the flat-price specialist: 3 of 3.5 heavy engines at 20M is 5,952.38 a tick.
+  // The same holds for the flat-price specialist: 3 of 4 heavy engines at 20M is 5,952.38 a tick.
   for (const t of trace.heavy.ticks) assert.ok(t.paid === 5952 || t.paid === 5953, `heavy tick ${t.tick}: paid ${t.paid}`);
 });
 
@@ -224,8 +227,13 @@ test('THE TOTAL: a met week pays x units\' worth at the week\'s prices, once. At
   for (const id of ['even', 'full', 'heavy', 'equity']) {
     const t = trace[id];
     // Paid plus what is still carried is what the work was worth — short by less than a credit.
+    // (⤳ 28-09-26 retime: the "never more than owed" check now allows 1e-3, the same float allowance
+    // as the line above, not 1e-6. `owed` is the test's own sum of 10,080 float slices; for the heavy
+    // engine it comes to 59,999,999.99999674, against the 60,000,000 (3 × 20M) the engine now pays
+    // exactly. That is float noise in the reference sum (the exact total is 60,000,000), not an
+    // overpayment.)
     assert.ok(Math.abs(t.paid + lastCarry(id) - t.owed) < 1e-3, `${id}: paid ${t.paid} + carried ${lastCarry(id)} vs owed ${t.owed}`);
-    assert.ok(t.paid <= t.owed + 1e-6 && t.paid > t.owed - 1, `${id}: paid ${t.paid} for work worth ${t.owed}`);
+    assert.ok(t.paid <= t.owed + 1e-3 && t.paid > t.owed - 1, `${id}: paid ${t.paid} for work worth ${t.owed}`);
     // The week was MET: x delivered, the discounted fee charged.
     const w = getWindow(guildOf(end, id), SYS, getRecipe(CASES[id].recipe).output.good);
     assert.equal(w.delivered, CASES[id].x, `${id}: all x units delivered`);
@@ -411,9 +419,25 @@ test('determinism: a galaxy of committed timed factories (carries, equity, a sta
 // not turn Syndicate Top-Up on, so the rescue no longer fires and its short days breach again. Both
 // runs are once more the pre-rescue engine's to the byte: the three hashes are the original ones
 // above, unchanged. Slice A's were 71c11abc…7657, df1e6b65…dda1 and 49fd327d…24a4.
+// ⤳ RE-PINNED 28-09-26 by the Tier-3 whole-week retime (docs/phase-1-tuning.md "Tier-3 timers
+// REVISED"): ISO_ONE_SNAPSHOTS ONLY. This run builds none of the three retimed specialists, but
+// every snapshot carries the galaxy-wide per-good `feeQuote` row of every timed good, theirs
+// included, and those moved with y (at base price): heavy_reactor_engine 7,000,000 → 8,000,000
+// (y 3.5 → 4), stealth_module 2,800,000 → 2,400,000 (3.5 → 3), deep_scan_mast 4,666,667 → 4,000,000
+// (2.33 → 2). Checked against HEAD c99005b snapshot by snapshot: with those three goods' rows
+// removed, every snapshot is byte-identical, and every other hash here did not move.
+// Before: ba0913ac…eb3a.
 const ISO_ONE_STATE = '1d6bc270323c871eb8cf13b9fd633d87d248cd236490d2de40fe316ea304f150';
-const ISO_ONE_SNAPSHOTS = 'ba0913ace647be257183cd4125398d26f482332e3f51862beffe4e873b6eeb3a';
-const ISO_TWO_T12_GUILD = 'dd46d5985a3c0decfa435b2dfc18d12898c83d9eb16190e8d8c7a902f6d9a10c';
+const ISO_ONE_SNAPSHOTS = '66cf1a9f1d91a8e500f6fbb50e5e9d4b3bcd92bcdbb1d632698727a9fbfa3324';
+// ⤳ RE-PINNED 28-09-26 by the Tier-3 whole-week retime, and for a different reason: ISO_TWO_T12_GUILD
+// too. TWO's t3 guild commits a heavy engine at x = 3, and its y went 3.5 → 4, so the ratio x / y went
+// 6/7 → 3/4 and t3's signing bump fell (its heavy venture's RP 514 → 450). That lowers t3's issuance
+// modifier (1.2325 → 1.0725), so the galaxy's fuel demand, so the fuel price, and the t12 guild's
+// PHYSICAL grant for the same entitlement rises (59 at the reference price: 31 → 33 fuel on tick 180).
+// Checked against HEAD c99005b tick by tick: the only t12 fields that differ are its fuel —
+// fuelHoard, fuelHoardAtCycleStart, lastFuelGrant.{desired,granted} and fuelBurnHistory's granted.
+// Its ventures, licences, windows, sales, fees and stock are byte-identical. Before: dd46d598…a10c.
+const ISO_TWO_T12_GUILD = '06b257e32600f2ecfd4b78d242772c7123802f1783a697fe413d4ccf11e34a9a';
 const ISO_TWO_MIXED_T12_SLICE = 'dd507b95d13c73c1339d9fd77b872273ed8964d8ad0dc3d10d0502ff2c1925e9';
 // The snapshot hash is taken WITHOUT `tier3Contract`, the additive top-level key the Tier-3
 // Establish-popup slice added (sim/snapshot.js). That key is the same rules-derived map in every

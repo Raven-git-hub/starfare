@@ -433,7 +433,7 @@ function licenceFee({ baselineUnitsPerTick, windowN, lockedPrice, committedOutpu
 //     output `y = 10,080 ÷ TICKS_PER_UNIT` (docs/tier3-timed-production.md "Income &
 //     commitment"; every Tier-3 recipe makes one unit) — so the basic fee is
 //     `FEE_RATE × y × price-at-signing`, e.g. a 3-1 part 0.10 × 672 × price, a heavy reactor
-//     engine 0.10 × 3.5 × price. The same shape `capacityOutputFor` (sim/prices.js) uses for a
+//     engine 0.10 × 4 × price. The same shape `capacityOutputFor` (sim/prices.js) uses for a
 //     timed good's price capacity, over a week instead of a day. No new number.
 // Null when there is nothing to price: no baseline (the same refusal as before), or a timed
 // good in a galaxy whose day does not divide the week (it could never be settled — see
@@ -501,11 +501,19 @@ function licenceWindowN(venture, engineWindowN) {
 
 // weeklyOutputOf(basis) -> `y`, the output a licence is measured on over ONE of its windows:
 // `unitsPerTick × windowN` off `licenceBasisFor`. For a Tier-3 venture that is the ruled
-// `10,080 ÷ TICKS_PER_UNIT` (3a pinned that the two spellings agree exactly for every timer), and
-// it may be fractional — a heavy reactor engine makes 3.5 a week. The name says weekly because
-// only the Tier-3 path asks; for a Tier-1/2 basis it would be the output over one day.
+// `10,080 ÷ TICKS_PER_UNIT`. The name says weekly because only the Tier-3 path asks; for a
+// Tier-1/2 basis it would be the output over one day.
+//
+// `y` IS ALWAYS A WHOLE NUMBER, so the product is rounded back to it. A Tier-1/2 basis is a
+// whole baseline × a whole day. A Tier-3 timer must divide the week (RULED 28-09-26; the load-time
+// tripwire `assertWholeWeeklyOutput`, sim/windows.js, halts on one that does not). But the
+// per-tick pace is a pre-divided float, and multiplying it back up can land a hair above the
+// whole number: (1 ÷ 3,360) × 10,080 is 3.0000000000000004, not the stealth module's 3. Left
+// unrounded, a stealth module committed in full would store x/y = 0.9999999999999999, not 1.
+// For every other timer and every Tier-1/2 basis the product is already exact, so the round
+// changes nothing there.
 function weeklyOutputOf(basis) {
-  return basis.unitsPerTick * basis.windowN;
+  return Math.round(basis.unitsPerTick * basis.windowN);
 }
 
 // committedUnitsCeiling(unitsPerTick, windowN) -> the most whole units a licence can commit over
@@ -525,8 +533,8 @@ function isValidCommittedUnits(units, basis) {
 }
 
 // committedPctForUnits(units, basis) -> the ratio `x / y` a Tier-3 licence stores as its
-// `committedOutputPct`. EXACT: `y` keeps its fraction (3 of a heavy engine's 3.5 is 0.857…, not
-// 3 ÷ 4 or 3 ÷ 3), so the fee grid and the reputation formulas read the share the guild really
+// `committedOutputPct`. EXACT: the plain ratio of two whole numbers (3 of a heavy engine's 4 is
+// 0.75), so the fee grid and the reputation formulas read the share the guild really
 // promised. Never rounded to 2 dp — that normalisation is the Tier-1/2 ratchet's, and a ratio of
 // whole units is not a percentage.
 function committedPctForUnits(units, basis) {
@@ -1055,9 +1063,11 @@ function isValidWindowDays(value) {
 //
 // THE CEILING (Slice 3a): a commitment can never exceed what the venture makes in one window,
 // in WHOLE units — `floor(output over the window)`. For a Tier-3 good whose `y` is fractional
-// the plain rounding would overshoot: a heavy reactor engine makes 3.5 a week, and 100% of
-// that rounds to 4, one more than it can be sure to finish. The ruled bound is `floor(y)`
-// (docs/tier3-timed-production.md: "x is an integer in [0, floor(y)]"), so it is 3.
+// the plain rounding would overshoot: the original 48 h heavy reactor engine made 3.5 a week,
+// and 100% of that rounded to 4, one more than it could be sure to finish. The ruled bound is
+// `floor(y)` (docs/tier3-timed-production.md: "x is an integer in [0, floor(y)]"). Since the
+// 28-09-26 retime every timed `y` is whole (sim/windows.js halts on a timer that breaks it), so
+// today the ceiling bites on no Tier-3 good either — it stays as the ruled bound.
 // For every Tier-1/2 venture this is a no-op, provably: its output over a window is a whole
 // number (integer baseline × integer ticks), and a share `pct ≤ 1` of a whole number rounds to
 // at most that number — so `min` always picks the rounded share, byte for byte as before.

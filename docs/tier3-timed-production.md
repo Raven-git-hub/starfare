@@ -36,8 +36,15 @@ whole units only.
 
 Climbs by complexity: 3-1 15 min · 3-2 30 min · 3-3 1 h · then the specialists —
 extraction_head 6 h · fabrication_line 8 h · medium_reactor_engine 12 h ·
-interdiction_projector 24 h · stealth_module 48 h · heavy_reactor_engine 48 h ·
-deep_scan_mast 72 h. (Paired with base price: dearer ≈ slower.)
+interdiction_projector 24 h · stealth_module 56 h · heavy_reactor_engine 42 h ·
+deep_scan_mast 84 h. (Paired with base price: dearer ≈ slower.)
+
+*(⤳ REVISED 28-09-26 — every timer must divide the week, so every weekly output
+`y = 10,080 ÷ TICKS_PER_UNIT` is a WHOLE number (`phase-1-tuning.md`, "Tier-3 timers
+REVISED"). Three specialists were retimed: stealth_module 48 h → **56 h** (y 3.5 → 3),
+heavy_reactor_engine 48 h → **42 h** (y 3.5 → 4), deep_scan_mast 72 h → **84 h** (y 2.33 → 2).
+A load-time tripwire halts on any timer that breaks it — see "As built — the whole-week
+retime" below.)*
 
 ## Build time — assembly is a SEPARATE clock; parts are produced OR bought
 
@@ -65,7 +72,9 @@ A Tier-3 licence commits **`x` whole units of `y`**, where `y` is the venture's 
 timed output — `y = 10,080 ÷ TICKS_PER_UNIT` (fractional allowed; a heavy-engine factory
 is 3.5/week). `x` is an integer in **`[0, floor(y)]`** (whole units, for delivery); the
 exact ratio **`x/y`** (fractional `y` kept) is what the fee and reputation read — replacing
-T1/2's percentage-of-output commitment with a whole-unit count.
+T1/2's percentage-of-output commitment with a whole-unit count. *(⤳ RULED 28-09-26: `y` is
+no longer allowed to be fractional — every timer divides the week, so `y` is whole and
+`floor(y) = y`. A heavy-engine factory is now **4/week**. See "The timer ladder" above.)*
 
 **Fee — the 1/10th rule, on the timed output:** `FEE_RATE (0.10) × y × price-at-signing`.
 Measured on the good's REAL timed weekly output `y`, NOT the stale continuous
@@ -145,7 +154,8 @@ measured per a reference PERIOD, not per tick** — `capacity = units produced p
 producers`, so `level` reads as "**periods of production hoarded**" and gives a sensible
 gradient with the unchanged 0.05 sensitivity. The natural first-cut period is **one day
 (1,440 ticks)** — e.g. a 3-1 at 15 min makes 96/day, a heavy engine at 48 h makes 0.5/day
-— but the exact period is `[FIRST-CUT]` → `phase-1-tuning.md`. This applies to **all
+*(⤳ at 42 h since the 28-09-26 retime: 4/7 a day — a day's output may be fractional; only
+the week's is ruled whole)* — but the exact period is `[FIRST-CUT]` → `phase-1-tuning.md`. This applies to **all
 Tier-3 (all timed)**; **Tier-1/2 keep per-tick capacity** (they are continuous and fast).
 So the capacity basis is per production MODEL: timed → per-period, continuous → per-tick.
 Rarity preserved (more factories → higher capacity → lower level); throttle-gaming still
@@ -169,6 +179,10 @@ so this holds today; the caution is to keep it holding.
 3. Committed progress is paid exactly once (no double-count with completed-unit delivery).
    *(⤳ As built: Slice 3d — by construction, pinned by tests; see "As built — Slice 3d".)*
 4. A unit's build never starts without its full inputs present; inputs consumed at start.
+5. *(Added 28-09-26.)* Every timed good's weekly output `y = 10,080 ÷ TICKS_PER_UNIT` is a
+   whole number — the week divides every timer. A **load-time** tripwire
+   (`assertWholeWeeklyOutput`, `sim/windows.js`) halts the process, naming the good and its
+   timer, the moment the engine is loaded with a timer that breaks it.
 
 ## The nine Tier-4 bills
 
@@ -1321,3 +1335,42 @@ tier special-cased. What it means for a timed good:
   "Slice A2-client". Details: design.md §5, the AS-BUILT Slice A2-client note. **⤳ Fixed the same
   day, Slice A2-client-fix: the timed strip now draws the same Syndicate top-up control, in the
   week's words, so a Tier-3 guild can turn its week's top-up on and cap it from the console.**)*
+
+## As built (28-09-26) — the whole-week retime
+
+`phase-1-tuning.md`'s "Tier-3 timers REVISED" ruling, built. **No new number**: the three timers
+are the ruled ones, and the week is the existing `TIER3_WINDOW_N` (10,080).
+- **The three timers.** `TICKS_PER_UNIT` in `sim/baseline.js`: heavy_reactor_engine 2,880 → **2,520**
+  (42 h, y = **4**), stealth_module 2,880 → **3,360** (56 h, y = **3**), deep_scan_mast 4,320 →
+  **5,040** (84 h, y = **2**). The other seven rows are unchanged, and already whole (672 / 336 / 168 /
+  28 / 21 / 14 / 7).
+- **The tripwire.** `assertWholeWeeklyOutput` (`sim/windows.js`) checks `10,080 % TICKS_PER_UNIT === 0`
+  for every Tier-3 good that has a timer, when the file is loaded. It throws, naming the good, its
+  timer and the fractional `y`. The four unclassified modules have no timer, so they are skipped. It
+  sits beside the week, not beside the table: `windows.js` already requires `baseline.js`, so the
+  reverse require would be circular. Set the heavy engine back to 2,880 and the engine refuses to
+  load: "y = 10080 ÷ 2880 = 3.5 is not a whole number".
+- **One float seam, closed.** The engine works `y` out as the per-tick pace times the week,
+  `(1 ÷ TICKS_PER_UNIT) × 10,080`. For the new 3,360 timer that is **3.0000000000000004**, not 3. That
+  is float noise in a pre-divided number, and no ordering of the product avoids it. `floor(y)` was
+  still right (among all 72 divisors of the week, the noise only ever lands above the whole number).
+  But a stealth module committed in full would have stored `x / y` = 0.9999999999999999, and the
+  snapshot would have published that `y`. So `weeklyOutputOf` (`sim/licence.js`) now rounds the
+  product back to the whole number the ruling guarantees. That is a no-op for every other timer and
+  every Tier-1/2 basis, whose products are already exact.
+- **What moved (all derived).** Heavy engine: `floor(y)` 3 → 4, basic fee at base 7M → **8M**/week
+  (`0.10 × 4 × 20,000,000`), and at its most (x = 4) it is now a FULL commitment (ratio 1, not 6/7),
+  so its discounted fee is 8M × (1 − 0.25) = 6M. Stealth module: fee 2.8M → 2.4M. Deep scan mast:
+  4,666,667 → 4,000,000. The per-tick progress pay depends only on `x`, since
+  `(x ÷ y) × (1 ÷ T) = x ÷ 10,080`. So a heavy engine at x = 3 is paid the same 5,952.38 a tick as
+  before, and the extra is the fourth committable unit. The per-day capacity is still fractional
+  (a heavy engine 4/7, a deep scan mast 2/7): only the week is ruled whole.
+- **Older "As built" sections above** still quote the pre-retime worked examples (a heavy engine's
+  3.5 a week, 3 of 3.5, 7M / 5.5M, 48 h; a deep scan mast's 2.33 and 72 h). They record what those
+  slices built at the time, and the numbers above supersede them.
+- **Proven** in `sim/tests/tier3-timed-production.test.js` ("WHOLE WEEKS"): every timed good's `y`
+  is whole, the engine's own `y` is exactly the typed one, and `floor(y) = y`. The tripwire throws on
+  each of the three old timers and skips a good with no timer. Goods not retimed are byte-identical
+  to HEAD c99005b. Golden hashes moved only in runs that show or commit one of the three goods;
+  each re-pin is noted in its test file. Details: the roadmap's "Tier-3 whole-week retime".
+

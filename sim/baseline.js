@@ -143,12 +143,20 @@ const REFINERY_BASELINE = Object.freeze({
 // A Tier-3 factory does not run at a continuous rate like the tables above. It builds ONE WHOLE
 // UNIT at a time: its full input set is taken when the unit starts, the unit takes this many
 // ticks, and it lands in the stockpile at the end (sim/production.js). 1 tick = 1 minute, so
-// 15 = a quarter hour and 2,880 = two days. Dearer parts are slower on purpose — the timer is
+// 15 = a quarter hour and 1,440 = one day. Dearer parts are slower on purpose — the timer is
 // what keeps a 20M part from being a 20M-per-tick printer (design.md §5).
 //
 // [FIRST-CUT] every value. Keyed the way the ruling states them: by SUB-TIER for the three
 // uniform tiers, and by GOOD for each specialist (each specialist has its own timer, as it has
 // its own price). A good's class comes from TIER3_PRICE_CLASS (sim/resources.js).
+//
+// EVERY TIMER MUST DIVIDE THE WEEK (RULED 28-09-26). A good's weekly output is
+// y = 10,080 ÷ its timer, and it must be a WHOLE number, so a week always completes whole units
+// and a contract never reads "3 of 3.5". That is why the three slowest specialists are 42 h, 56 h
+// and 84 h (y = 4, 3 and 2) and not the original 48 h / 48 h / 72 h (3.5, 3.5 and 2.33). A timer
+// that breaks this throws at load — the tripwire is assertWholeWeeklyOutput in sim/windows.js,
+// beside the week it divides (it cannot live here: windows.js requires this file, so requiring
+// windows.js back from here would be circular).
 const TICKS_PER_UNIT = Object.freeze({
   '3-1': 15,                       // 15 min — bulk / dumb parts
   '3-2': 30,                       // 30 min — standard gear
@@ -157,9 +165,9 @@ const TICKS_PER_UNIT = Object.freeze({
   fabrication_line: 480,           // 8 h
   medium_reactor_engine: 720,      // 12 h
   interdiction_projector: 1440,    // 24 h
-  stealth_module: 2880,            // 48 h
-  heavy_reactor_engine: 2880,      // 48 h
-  deep_scan_mast: 4320,            // 72 h
+  stealth_module: 3360,            // 56 h
+  heavy_reactor_engine: 2520,      // 42 h
+  deep_scan_mast: 5040,            // 84 h
 });
 
 // ticksPerUnitFor(good) -> how many ticks one whole unit of `good` takes, or null when the good

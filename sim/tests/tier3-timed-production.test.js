@@ -6,7 +6,9 @@
 //
 // What this file proves, in order:
 //   1. THE NUMBERS — TICKS_PER_UNIT is the ruled table, every classified Tier-3 good resolves to
-//      its timer, and Tier-1/2 goods (and the four unclassified modules) stay continuous.
+//      its timer, and Tier-1/2 goods (and the four unclassified modules) stay continuous. Every
+//      timer divides the week, so every weekly output y is WHOLE (RULED 28-09-26), and the
+//      load-time tripwire that enforces it bites on a timer that does not.
 //   2. THE TIMER — a factory mints exactly one whole unit every TICKS_PER_UNIT ticks, 0 between.
 //   3. INPUTS UP FRONT — a unit never starts without its whole input set, and takes the whole set
 //      on its start tick (nothing is drawn while it is on the line).
@@ -30,7 +32,8 @@ const { checkInvariants, assertInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { previewProduction } = require('../production.js');
 const { getRecipe, listRecipes } = require('../recipes.js');
-const { getWindow } = require('../windows.js');
+const { getWindow, TIER3_WINDOW_N, assertWholeWeeklyOutput } = require('../windows.js');
+const { licenceBasisForGood, weeklyOutputOf, committedUnitsCeiling } = require('../licence.js');
 const {
   TIER3_GOODS, TIER3_PRICE_CLASS, SPECIALIST, UNCLASSIFIED, RAW_RESOURCES, PROCESSED_GOODS,
 } = require('../resources.js');
@@ -71,7 +74,8 @@ const previewRow = (s, id) => previewProduction(s)[0].systems[0].refineries.find
 
 test('TICKS_PER_UNIT is the ruled table, keyed by sub-tier and by specialist (docs/phase-1-tuning.md)', () => {
   // Typed here ON PURPOSE from docs/phase-1-tuning.md "Tier-3 production timers" — this is the
-  // tripwire that pins the ruling. Retune it there and here together.
+  // tripwire that pins the ruling. Retune it there and here together. (⤳ 28-09-26: the last three
+  // REVISED to whole-week timers — were 2,880 / 2,880 / 4,320, "Tier-3 timers REVISED".)
   assert.deepEqual({ ...TICKS_PER_UNIT }, {
     '3-1': 15,
     '3-2': 30,
@@ -80,10 +84,57 @@ test('TICKS_PER_UNIT is the ruled table, keyed by sub-tier and by specialist (do
     fabrication_line: 480,
     medium_reactor_engine: 720,
     interdiction_projector: 1440,
-    stealth_module: 2880,
-    heavy_reactor_engine: 2880,
-    deep_scan_mast: 4320,
+    stealth_module: 3360,
+    heavy_reactor_engine: 2520,
+    deep_scan_mast: 5040,
   });
+});
+
+test('WHOLE WEEKS: every timed good\'s weekly output y = 10,080 ÷ TICKS_PER_UNIT is a whole number — the retimed three make 4 / 3 / 2', () => {
+  // RULED 28-09-26 (docs/phase-1-tuning.md "Tier-3 timers REVISED"). The week is the engine's own
+  // constant; the y values are typed here from the doc, not read off the code.
+  assert.equal(TIER3_WINDOW_N, 10080, 'the week: 7 days × 1,440 ticks');
+  const typedY = {
+    fuel_tank: 672, comms_array: 336, chassis: 168, // one good per uniform sub-tier: 3-1, 3-2, 3-3
+    extraction_head: 28, fabrication_line: 21, medium_reactor_engine: 14, interdiction_projector: 7,
+    heavy_reactor_engine: 4, stealth_module: 3, deep_scan_mast: 2, // the three retimed 28-09-26
+  };
+  for (const [good, y] of Object.entries(typedY)) {
+    assert.equal(TIER3_WINDOW_N / ticksPerUnitFor(good), y, `${good}: 10,080 ÷ ${ticksPerUnitFor(good)} = ${y}`);
+  }
+  // Every timed good — not only the ten typed above — divides the week with nothing left over, and
+  // the y the ENGINE derives for a licence (pace × week, off the signing's own basis) is that same
+  // whole number exactly, with floor(y) = y: nothing is left for the ceiling to cut off.
+  const timed = TIER3_GOODS.filter((g) => ticksPerUnitFor(g) !== null);
+  assert.equal(timed.length, 21);
+  for (const good of timed) {
+    const t = ticksPerUnitFor(good);
+    assert.equal(TIER3_WINDOW_N % t, 0, `${good}: the ${t}-tick timer divides the week`);
+    const basis = licenceBasisForGood(good, 1440);
+    const y = weeklyOutputOf(basis);
+    assert.ok(Number.isInteger(y), `${good}: the engine's y is whole (got ${y})`);
+    assert.equal(y, TIER3_WINDOW_N / t, `${good}: the engine's y is exactly 10,080 ÷ ${t}`);
+    assert.equal(committedUnitsCeiling(basis.unitsPerTick, basis.windowN), y, `${good}: floor(y) = y`);
+  }
+  // The heavy engine's ceiling rose from floor(3.5) = 3 to 4: one more committable unit.
+  const heavy = licenceBasisForGood('heavy_reactor_engine', 1440);
+  assert.equal(committedUnitsCeiling(heavy.unitsPerTick, heavy.windowN), 4);
+});
+
+test('WHOLE WEEKS: the load-time tripwire FIRES on a timer that does not divide the week, naming the good and its timer', () => {
+  // The real timers pass (the check already ran when windows.js was required, or this file could
+  // not have loaded at all).
+  assert.doesNotThrow(() => assertWholeWeeklyOutput(TIER3_GOODS, ticksPerUnitFor));
+  // The heavy engine put back on its ORIGINAL 48 h timer: 10,080 ÷ 2,880 = 3.5 a week — halts.
+  const oldHeavy = (good) => (good === 'heavy_reactor_engine' ? 2880 : ticksPerUnitFor(good));
+  assert.throws(() => assertWholeWeeklyOutput(TIER3_GOODS, oldHeavy),
+    /"heavy_reactor_engine" has a TICKS_PER_UNIT timer of 2880 ticks, which does not divide the 10080-tick week — its weekly output y = 10080 ÷ 2880 = 3\.5 is not a whole number/);
+  // The other two original timers are caught the same way.
+  assert.throws(() => assertWholeWeeklyOutput(['stealth_module'], () => 2880), /"stealth_module".*2880/);
+  assert.throws(() => assertWholeWeeklyOutput(['deep_scan_mast'], () => 4320), /"deep_scan_mast".*4320.*2\.3333/);
+  // A good with NO timer (null) is continuous and has no weekly y, so it is skipped — this is how
+  // the four unclassified modules pass.
+  assert.doesNotThrow(() => assertWholeWeeklyOutput(['drive_module', 'titanium'], () => null));
 });
 
 test('every classified Tier-3 good resolves to its timer; Tier-1/2 and the four unclassified modules stay continuous', () => {
@@ -126,14 +177,14 @@ test('a 3-1 factory mints exactly one whole unit every 15 ticks, and nothing in 
   assert.deepEqual(mintTicks, [15, 30, 45, 60], 'one unit every 15 ticks, exactly');
 });
 
-test('a specialist runs its own, slower timer: a heavy reactor engine lands on tick 2,880 and not a tick before', () => {
+test('a specialist runs its own, slower timer: a heavy reactor engine lands on tick 2,520 and not a tick before', () => {
   let s = sysState([factory('f', 'heavy_reactor_engine')], inputSets('heavy_reactor_engine', 2));
   let firstMint = null;
-  for (let i = 1; i <= 2880; i += 1) {
+  for (let i = 1; i <= 2520; i += 1) {
     s = tick(s);
     if (firstMint === null && held(s, 'heavy_reactor_engine') > 0) firstMint = s.tick;
   }
-  assert.equal(firstMint, 2880, 'two days of work, then one engine');
+  assert.equal(firstMint, 2520, '42 hours of work, then one engine');
   assert.equal(held(s, 'heavy_reactor_engine'), 1);
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
@@ -320,8 +371,8 @@ test('capacity: a timed good counts per DAY (1,440 ÷ ticks-per-unit), a continu
   ]);
   const cap = productionCapacity(s);
   assert.equal(cap.fuel_tank, 192, 'two 3-1 factories: 2 × 96 a day');
-  assert.equal(cap.heavy_reactor_engine, 0.5, 'a heavy-engine factory: half a unit a day');
-  assert.equal(cap.deep_scan_mast, 1440 / 4320, 'a deep-scan-mast factory: a third a day');
+  assert.equal(cap.heavy_reactor_engine, 1440 / 2520, 'a heavy-engine factory: 4/7 of a unit a day (42 h a unit)');
+  assert.equal(cap.deep_scan_mast, 1440 / 5040, 'a deep-scan-mast factory: 2/7 of a unit a day (84 h a unit)');
   assert.equal(cap.titanium, 160, 'a titanium mine: its per-tick baseline, unchanged (not its rate)');
   assert.equal(cap.titanium_alloy, 5, 'an alloy refinery: its per-tick baseline, unchanged');
 });
@@ -333,19 +384,19 @@ test('HEADLINE: one finished heavy reactor engine nudges the price gently above 
   let s = sysState([factory('h', 'heavy_reactor_engine')], { heavy_reactor_engine: 1 });
   for (let i = 0; i < 150; i += 1) s = tick(s);
 
-  // Per-DAY capacity: 0.5 a day, so one engine is a level of 2 (two days of output), and the
-  // target is base × (1 + 0.05 × 2) = 22M — a 10% nudge.
+  // Per-DAY capacity: 4/7 a day (one per 42 h), so one engine is a level of 1.75 (a day and three
+  // quarters of output), and the target is base × (1 + 0.05 × 1.75) = 21.75M — an 8.75% nudge.
   const level = 1 / productionCapacity(s).heavy_reactor_engine;
-  assert.equal(level, 2);
+  assert.equal(level, 1.75);
   const gentle = band.base * (1 + LEVEL_SENSITIVITY * level);
-  assert.equal(gentle, 22000000);
+  assert.equal(gentle, 21750000);
   const posted = postedPrice(s, 'heavy_reactor_engine');
-  assert.ok(Math.abs(posted - gentle) < 1, `the price settled at ~22M (got ${posted})`);
+  assert.ok(Math.abs(posted - gentle) < 1, `the price settled at ~21.75M (got ${posted})`);
   assert.ok(posted < band.ceiling / 50, 'nowhere near the 2B ceiling');
   assert.deepEqual(checkInvariants(s, s.tick), []);
 
   // CONTRAST — the same hoard against a PER-TICK capacity (what the timed factory makes in one
-  // tick: 1/2,880 of an engine). The level is 2,880, the target 20M × 145 = 2.9B, past the
+  // tick: 1/2,520 of an engine). The level is 2,520, the target 20M × 127 = 2.54B, past the
   // ceiling — and the same smoothing the tick uses walks the value up and PEGS it there.
   const perTickCapacity = 1 / TICKS_PER_UNIT.heavy_reactor_engine;
   const degenerate = priceTarget(band, 1, perTickCapacity, 0);
@@ -354,7 +405,7 @@ test('HEADLINE: one finished heavy reactor engine nudges the price gently above 
   for (let i = 0; i < 150; i += 1) v = advanceLeading(band, v, degenerate);
   assert.equal(v, band.ceiling, 'per-tick capacity: one engine pins the price at the 2B ceiling');
   // …while the per-day target the engine now uses is the gentle one above.
-  assert.equal(priceTarget(band, 1, 0.5, 0), gentle);
+  assert.equal(priceTarget(band, 1, 1440 / 2520, 0), gentle);
 });
 
 test('the same fix holds at the cheap end: one finished 3-1 part is a fraction-of-a-percent nudge', () => {

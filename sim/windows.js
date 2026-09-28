@@ -32,8 +32,10 @@
 // is byte-identical to pre-Slice-B (the determinism hash is unchanged).
 
 // The one "is this good made on a timer?" answer (sim/baseline.js) — read to decide which
-// goods settle on the Tier-3 week (windowNForGood, below).
+// goods settle on the Tier-3 week (windowNForGood, below), and to check at load that every
+// timer divides that week (assertWholeWeeklyOutput, below), over the Tier-3 vocabulary.
 const { ticksPerUnitFor } = require('./baseline.js');
+const { TIER3_GOODS } = require('./resources.js');
 
 // The engine-wide window length in ticks — RULED 1,440 (27-08-26). This is NOT a
 // first cut and NOT an invented number: it is DERIVED from two things already ruled.
@@ -58,11 +60,40 @@ const DEFAULT_WINDOW_N = 1440;
 // ── THE TIER-3 WEEK (Slice 3a of the Tier-3 economy build) ────────────────────────────
 //
 // A Tier-3 good is made one whole unit at a time on a timer (docs/tier3-timed-production.md),
-// and a slow one makes only a handful a DAY (a heavy reactor engine makes 0.5). So a Tier-3
+// and a slow one makes less than one a DAY (a deep scan mast makes 2/7 of one). So a Tier-3
 // commitment is not judged daily: its contract and its settlement window are one WEEK —
 // RULED 27-09-26, "Contract & settlement": "exactly one 7-day window (10,080 ticks)". Not a
 // new number: 7 days × 1,440 ticks a day at the ruled 1 tick = 1 minute.
 const TIER3_WINDOW_N = 10080;
+
+// assertWholeWeeklyOutput(goods, timerOf) — THROWS, naming the good and its timer, if any
+// timed good in `goods` would make a FRACTIONAL number of units a week. `timerOf(good)` is its
+// ticks per unit, or null for a good made continuously (skipped: it has no weekly `y`).
+//
+// RULED 28-09-26 (docs/phase-1-tuning.md, "Tier-3 timers REVISED"): a timed good's weekly
+// output y = TIER3_WINDOW_N ÷ its timer must be a WHOLE number, so a factory's week always ends
+// on whole units and a contract reads "x of y" cleanly. That holds exactly when the timer
+// divides the week with nothing left over. Why a guard and not a test of today's numbers: a
+// fractional y crashes nothing — the fee, the committable ceiling floor(y) and the progress pay
+// would all quietly run off "3.5 a week" again — so a future timer that breaks the rule must
+// stop the process instead (§15.5: fail loud).
+//
+// THE LOAD-TIME TRIPWIRE, the same pattern as assertTier3Classified (sim/prices.js): it runs
+// below over the real Tier-3 vocabulary the instant this file is required, and it is exported
+// so a test can hand it a deliberately bad timer and prove the guard bites. It lives here,
+// beside the week, rather than beside TICKS_PER_UNIT in sim/baseline.js, because this file
+// requires baseline.js — baseline.js requiring this file back would be a circular require.
+function assertWholeWeeklyOutput(goods, timerOf) {
+  for (const good of goods) {
+    const ticksPerUnit = timerOf(good);
+    if (ticksPerUnit === null) continue; // continuous (an unclassified module) — no weekly y
+    if (TIER3_WINDOW_N % ticksPerUnit !== 0) {
+      throw new Error(`windows: Tier-3 good "${good}" has a TICKS_PER_UNIT timer of ${ticksPerUnit} ticks, which does not divide the ${TIER3_WINDOW_N}-tick week — its weekly output y = ${TIER3_WINDOW_N} ÷ ${ticksPerUnit} = ${TIER3_WINDOW_N / ticksPerUnit} is not a whole number (RULED 28-09-26: y must be whole). Retime it in sim/baseline.js to a divisor of ${TIER3_WINDOW_N}`);
+    }
+  }
+}
+
+assertWholeWeeklyOutput(TIER3_GOODS, ticksPerUnitFor);
 
 // windowNForGood(good, engineWindowN) -> the length, in ticks, of the window a commitment
 // on `good` accrues, settles and is charged over:
@@ -195,6 +226,6 @@ function cloneWindows(windows) {
 }
 
 module.exports = {
-  DEFAULT_WINDOW_N, TIER3_WINDOW_N, windowNForGood, tier3WindowNests, goodWindow,
+  DEFAULT_WINDOW_N, TIER3_WINDOW_N, assertWholeWeeklyOutput, windowNForGood, tier3WindowNests, goodWindow,
   winStartFor, isWindowBoundary, windowFraction, getWindow, setWindow, cloneWindows,
 };

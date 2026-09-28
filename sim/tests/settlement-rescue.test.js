@@ -497,16 +497,24 @@ function shortNoSpare() {
 // Tier-3 week. The jump carries the Tier-1/2 licences past their renegotiation deadlines, so the
 // auto-lapse step retires them and only the Tier-3 licence is judged after it. No shortfall: 11 × 2
 // + 1 = 23, all met. Short, no spare: 11 × 3 (held's two, bare's one) + 1 = 34, all breached.
+// ⤳ RE-PINNED 28-09-26 by the Tier-3 whole-week retime (docs/phase-1-tuning.md "Tier-3 timers
+// REVISED"): the two `snapshots` hashes ONLY. This run builds none of the three retimed
+// specialists, but every snapshot carries the galaxy-wide per-good `feeQuote` (and `tier3Contract`)
+// rows of every timed good, theirs included, and those moved with y (at base price):
+// heavy_reactor_engine 7,000,000 → 8,000,000 (y 3.5 → 4), stealth_module 2,800,000 → 2,400,000
+// (3.5 → 3), deep_scan_mast 4,666,667 → 4,000,000 (2.33 → 2). Checked against HEAD c99005b snapshot
+// by snapshot: with those three goods' rows removed, every snapshot is byte-identical, and every
+// other hash here did not move. Before: 4ddd45b9…85acb and 8c380524…5ce8.
 const ISO_NO_SHORTFALL = {
   final: '670451a841a79fa6c20c4b13041403751162018af300be2077b0dd7f77377ddf',
   everyTick: '590f3458c101bbd9cbe8c68328d2960d177995df527c46d81f9d9fefc29239ae',
-  snapshots: '4ddd45b9b6556c7a26bdfb7b3a06855108fdf564dab146456f163e8619485acb',
+  snapshots: 'c094c040ece29549897a3e395bcbe4e5fec130399378195cfdbe7062c347cf2c',
   verdicts: { met: 23, breach: 0 },
 };
 const ISO_SHORT_NO_SPARE = {
   final: '21e2423c6386849be718a9efb445551027eeeaa32dbeda8f1382057e3c08c33a',
   everyTick: '228e8fa513eda998b839fca94ac88f3df82dde6f5576574c3e4fc2790b878846',
-  snapshots: '8c38052457ebccda5bcb321bd481352c8af8dd14a4a20eac798388310f2a5ce8',
+  snapshots: '3689992698035669935e1b5d0d7da8fec11b794c0613c2de2e10865ec10d009e',
   verdicts: { met: 0, breach: 34 },
 };
 

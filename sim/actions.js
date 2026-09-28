@@ -1617,7 +1617,8 @@ function validateTier3Licence(state, action, venture, good) {
   }
   const y = weeklyOutputOf(basis);
   const most = committedUnitsCeiling(basis.unitsPerTick, basis.windowN);
-  // `y` is shown to 2 dp only for reading (a deep scan mast's 2.333… a week); the bound is exact.
+  // `y` is shown to 2 dp only for reading. Every timed `y` is whole since the 28-09-26 retime (a
+  // deep scan mast's is 2, not 2.333…), so today the rounding changes nothing; the bound is exact.
   const bound = `an integer from 0 to ${most} (the floor of its weekly output y = ${Math.round(y * 100) / 100})`;
   if (action.committedOutputPct !== undefined) {
     return { valid: false, reason: `${JSON.stringify(good)} is a Tier-3 good — its licence commits whole units, not a percentage: send committedUnits, ${bound}` };

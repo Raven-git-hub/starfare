@@ -1781,8 +1781,9 @@ function buildSnapshot(state) {
   // own test says a licence on it is the Tier-3 contract — `isTimedVenture`, asked about the
   // venture that makes the good, exactly as `licenceBasisForGood` asks — so the client needs no
   // good list of its own, and an unclassified module (no timer) is simply absent.
-  //   weeklyOutput          — `y`, off `weeklyOutputOf` over the signing's own basis. EXACT, so it
-  //                           may be fractional (a heavy reactor engine is 3.5 a week).
+  //   weeklyOutput          — `y`, off `weeklyOutputOf` over the signing's own basis. A WHOLE
+  //                           number for every timed good (RULED 28-09-26; a heavy reactor engine
+  //                           is 4 a week).
   //   committedUnitsCeiling — `floor(y)`, the most whole units `x` may be (`committedUnitsCeiling`,
   //                           the very bound `applyForLicence` refuses above).
   //   termDays              — the one-week term in calendar days: `TIER3_TERM_WINDOWS` windows of
