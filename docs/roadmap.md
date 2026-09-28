@@ -2372,6 +2372,31 @@ boundary so the later hex-map swap doesn't touch it.
     line, so a Tier-1/2 stockpile row is 13px shorter. **No number was invented.** Open items: the
     decision checklist, "Slice A2-client".
 
+- **Slice A2-client-fix (licence system — client) — the Tier-3 fork gets its Syndicate Top-Up control —
+  ✅ BUILT 28-09-26.** design.md §5 (the AS-BUILT Slice A2-client-fix note). Closes Slice A2-client's
+  first checklist item: the timed fork drew no top-up control, so a Tier-3 guild could not turn on
+  the rescue the opt-in was ruled for. `client/console.html` plus the one served-page assertion.
+  **No engine change, no snapshot change.**
+  - **Built as ruled:** `timedReservePanel` draws `syndTopupSquare(good, true)` in the Consumption
+    square's place on the strip. It is the Tier-1/2 control itself: the same `goodPolicy` read, the
+    one `.su-en` handler (`postTopUpSwitch`), and the one `.su-limit` handler. Only the words are the
+    week's (the label "limit /week", the tooltips). On the timed path the square never shows "active",
+    because the fork draws no per-tick projection. The reserve field is unchanged.
+  - **Test flipped:** `server.test.js`'s Tier-3 fork test no longer lists `syndTopupSquare` as
+    something the fork must not draw. It now pins that the strip draws it, with `.su-en` and
+    `.su-limit`, through exactly one handler of each. It still pins that the fork draws no
+    `consTopupSquare`. It fails by name against the pre-fix page.
+  - **Proof.** Sim **1,776 green**, tools **68 green** (no golden moved). Chromium on a live dev
+    server, 38 checks. The galaxy had fuel tank and hull plating licensed, a deep scan mast
+    uncommitted, and chassis idle. Every POST body was exactly one field: on, off, a limit of 3,
+    cleared to `null`, the stepper's 1, a refused −2, and the second timed good's own switch and
+    limit. Every value survived a reload, and it worked embedded too. **Parity** against the pre-fix
+    page:
+    - Tier 1/2, the unclassified module and Tier 4: raw-DOM identical and pixel-identical.
+    - Every timed case: exactly one element added; with it removed, the DOM and the whole stage's
+      pixels are identical.
+    The timed strip grows from 104–106px to 142px. **No number was invented.**
+
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
@@ -3043,7 +3068,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     never rescued unless the switch is set some other way (the raw action). The Stockpile arm's new
     copy ("If Syndicate Top-Up is on, …") is true, but the page offers no switch. Not built here: the
     build prompt kept placement as-is and said nothing about the timed path. Where it goes (the strip,
-    the Syndicate column) is a design call.
+    the Syndicate column) is a design call. **⤳ RULED + BUILT 28-09-26 (Slice A2-client-fix): in the
+    Consumption square's place on the timed strip, the same control in the week's words.**
   - **Placement (confirm).** The build prompt said the control "belongs on the Syndicate tab". In the
     page, and in the authoritative mockup (`docs/mockups/console_restructure.html`), it sits in the
     stockpile row beside the Consumption top-up, visible whichever right-hand tab is open. The prompt
@@ -3062,6 +3088,11 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   - **The square is 13px shorter (a consequence).** Without the MOCK tag its header fits on one line,
     so every Tier-1/2 stockpile row is 13px shorter and the panels below move up by that much. Nothing
     else moved (the parity check above).
+  - **The timed square never shows "active" (a consequence of Slice A2-client-fix; confirm).** On
+    Tier 1/2 the animation comes from the thermometer's per-tick projection. The timed fork draws no
+    projection (a timed good sends 0 on most ticks), so on a timed good the ✔ shows the switch and the
+    triangles stay idle. Any "this week will be topped up" look would need an engine field (see
+    "what 'active' means" above).
   - **Dead code noticed, not removed (housekeeping).** `armBody`'s Syndicate branch and
     `commitmentReadout` (`client/console.html`) are unreachable: `gate1Col` sends every `syndicate` arm
     to `synPanel`. Its stale "advisory" line was corrected anyway. Deleting them is a separate cleanup.

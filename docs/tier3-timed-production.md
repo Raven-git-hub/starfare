@@ -1076,6 +1076,9 @@ popup shows a recipe before any factory exists, so it has no row to read.)
   are gone too. In their place, under the title: "per factory · 1 unit / 15m" (the row's
   `ticksPerUnit`) and "up to 672 /week" (`tier3Contract.weeklyOutput`, shown to at most 2 dp as the
   popup does: 3.5, 2.33). The typed reserve field and the bar are unchanged (see the rulings below).
+  *(⤳ 28-09-26, Slice A2-client-fix: the Syndicate top-up square is back on this strip, in the
+  Consumption square's place and in the week's words, because the week's settlement rescue is now
+  the player's switch. See design.md §5, the AS-BUILT Slice A2-client-fix note.)*
 - **The Production column.** The per-tick trend card and sparkline become a cadence card: "1 unit /
   15m" and "Each factory makes one whole unit at a time — up to `y` a week — once a full set of its
   inputs is in stock". Under each factory's chip, where a consumer chip has its throttle, is the unit
@@ -1156,7 +1159,8 @@ carried on to days ("6d 20h" rather than "164h 0m").
   - `renderStage` forks in both branches, and the Tier-1/2 pieces are still what every other good
     gets;
   - the fork draws no top-up square, no trend, no Production arm, no `<select>`, no send or
-    stockpile slider and no tab bar, and keeps the reserve field;
+    stockpile slider and no tab bar, and keeps the reserve field; *(⤳ Slice A2-client-fix: it now
+    pins that the fork DOES draw the Syndicate top-up square, and still no Consumption square.)*
   - its figures come from the row, `tier3Contract` and the window;
   - its copy carries no "u/t", "/tick", "per tick", "cycle", "window" or "share";
   - the hero's timed row is the cadence;
@@ -1314,4 +1318,6 @@ tier special-cased. What it means for a timed good:
   Syndicate Top-Up is on, stock above the reserve is delivered at settlement to cover a short week, up
   to any limit you set." The Tier-1/2 square is live. The timed path still draws no top-up control, so
   a Tier-3 week's switch cannot be set from the console. That is on the roadmap's decision checklist,
-  "Slice A2-client". Details: design.md §5, the AS-BUILT Slice A2-client note.)*
+  "Slice A2-client". Details: design.md §5, the AS-BUILT Slice A2-client note. **⤳ Fixed the same
+  day, Slice A2-client-fix: the timed strip now draws the same Syndicate top-up control, in the
+  week's words, so a Tier-3 guild can turn its week's top-up on and cap it from the console.**)*

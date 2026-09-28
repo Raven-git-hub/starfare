@@ -2489,7 +2489,8 @@ test('GET /console serves the dockyard-tab layout + tier-3 pooling fixes', async
 });
 
 // The Tier-3 fork of the console (docs/tier3-timed-production.md, "As built — the client: the
-// System Production Console"). For a TIMED good the panel forks: no top-up squares, no per-tick
+// System Production Console"). For a TIMED good the panel forks: no Consumption top-up (the
+// Syndicate top-up square stays, in the week's words — Slice A2-client-fix), no per-tick
 // trend, two Distribution arms in a FIXED order (Syndicate, then Stockpile), and a Syndicate column
 // that reads in whole units over the week. A page that silently lost the fork would still render —
 // the Tier-1/2 console, with its per-tick slider writing a timed good's reserve level to 0 — so the
@@ -2516,15 +2517,25 @@ test('GET /console serves the Tier-3 fork: a timed good reads in whole units and
   assert.match(stage, /if \(t3\)\{[\s\S]*timedReservePanel\(good, t3, report\)[\s\S]*timedProducersCol\(producers, good, report, t3\)[\s\S]*timedGate1Col\(good, rg\)[\s\S]*timedSyndicateCol\(good, t3\)[\s\S]*return;/);
   assert.match(stage, /reservePanel2\(good, rg\) \+[\s\S]*producersCol2\(producers, good, rg, report\) \+[\s\S]*gate1Col\(good, rg\) \+/);
 
-  // 3. What the fork drops: the top-up squares, the per-tick trend, the Production arm, the rank
-  //    selectors, the send control and the per-tick % stockpile slider. It keeps the strip's typed
-  //    reserve field (RULED 28-09-26), which stockpileStrip draws.
+  // 3. What the fork drops: the Consumption top-up square, the per-tick trend, the Production arm,
+  //    the rank selectors, the send control and the per-tick % stockpile slider. It keeps the
+  //    strip's typed reserve field (RULED 28-09-26), which stockpileStrip draws.
   const fork = html.slice(html.indexOf('// THE TIER-3 FORK'), html.indexOf('// ---- OVERRIDE renderStage'));
   assert.ok(fork.length > 1000 && fork.length < 20000, 'the fork block was found');
-  for (const gone of ['consTopupSquare', 'syndTopupSquare', 'trendSpark', 'trendSeries', 'prodPanel', 'skPanel(',
+  for (const gone of ['consTopupSquare', 'trendSpark', 'trendSeries', 'prodPanel', 'skPanel(',
                       'synPanel(', '<select', 'sy-track', 'sy-rate-in', 'sk-track', 'rightTabBar()']) {
     assert.ok(!fork.includes(gone), `the Tier-3 fork must not draw ${gone}`);
   }
+  //    What it KEEPS (Slice A2-client-fix): the Syndicate top-up square, in the Consumption
+  //    square's place on the strip. It is the Tier-1/2 control itself — its switch (.su-en) and
+  //    limit (.su-limit) — in the week's words, and the wiring is not forked: the page still has
+  //    exactly one switch handler and one limit handler.
+  assert.match(fnBody('timedReservePanel'), /return '<div class="stock-row">' \+ strip \+ syndTopupSquare\(good, true\) \+ '<\/div>';/);
+  assert.match(fnBody('syndTopupSquare'), /class="su-en/);
+  assert.match(fnBody('syndTopupSquare'), /class="su-limit"/);
+  assert.match(fnBody('syndTopupSquare'), /timed \? 'limit \/week' : 'limit'/);
+  assert.equal((html.match(/closest\('\.su-en'\)/g) || []).length, 1, 'one switch handler for every tier');
+  assert.equal((html.match(/contains\('su-limit'\)/g) || []).length, 1, 'one limit handler for every tier');
   assert.match(fnBody('timedReservePanel'), /stockpileStrip\(good, onHand\(good\), goodPolicy\(good\)\.reserveLevel, null, note\)/);
   assert.match(fnBody('stockpileStrip'), /class="rs-field"/);
   assert.match(fnBody('timedGate1Col'), /class="prank fixed"[\s\S]*timedSynPanel\(rg, fixed\(1\)\) \+ timedSkPanel\(good, rg, fixed\(2\)\)/);

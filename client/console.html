@@ -2579,21 +2579,33 @@ function consTopupSquare(good, rg){
 // limit are the good's stored profile fields, read off the snapshot. Clicking the switch
 // POSTs `syndicateTopUp` (postTopUpSwitch); editing the limit POSTs `syndicateTopUpLimit`
 // (the stage's change handler). A null limit is "no limit", so the field is left blank.
-function syndTopupSquare(good){
-  var R = synResolve();
+//
+// `timed` is the Tier-3 fork's (timedReservePanel). The control is the SAME — the same
+// fields, the same two handlers, the same POSTs — and only the words change: a timed good
+// settles once a WEEK, so its limit caps one week's top-up. It also never shows "active":
+// on Tier 1/2 that look comes from the thermometer's projection (this tick's send carried
+// over the ticks left), and the fork draws no such projection, because a timed good sends
+// 0 on most ticks and 1 when a unit lands.
+function syndTopupSquare(good, timed){
   var pol = goodPolicy(good);
   var on = pol.syndicateTopUp === true;
-  var mode = !on ? 'idle' : (R.shortfall ? 'active' : 'idle');
+  var mode = (on && !timed && synResolve().shortfall) ? 'active' : 'idle';
   var glyph = mode === 'active' ? '▼' : '▽';
   var tris = '<div class="tu-tris">' + ['','',''].map(function(){ return '<span class="tu-tri">' + glyph + '</span>'; }).join('') + '</div>';
   var limit = pol.syndicateTopUpLimit == null ? '' : pol.syndicateTopUpLimit;
+  var enTitle = timed
+    ? 'at the week’s settlement, cover a short week from stock above the reserve (off until you turn it on)'
+    : 'at settlement, cover a short commitment from stock above the reserve (off until you turn it on)';
+  var limTitle = timed
+    ? 'the most one week’s settlement may deliver — blank for no limit'
+    : 'the most one settlement may deliver — blank for no limit';
   return '<div class="tu-sq ' + mode + '"><div class="tu-sq-h">Syndicate top-up</div>' +
     '<div class="topup ' + mode + ' tu-sq-body">' + tris + '</div>' +
     '<div class="tu-sq-ctrl">' +
-      '<div class="su-en' + (on ? ' on' : '') + '" data-suen="1" title="at settlement, cover a short commitment from stock above the reserve (off until you turn it on)">' +
+      '<div class="su-en' + (on ? ' on' : '') + '" data-suen="1" title="' + enTitle + '">' +
         '<span class="box">' + (on ? '✔' : '') + '</span>enabled</div>' +
-      '<div class="su-lim"><span class="k">limit</span><input class="su-limit" type="number" min="0" value="' + esc(limit) + '"' +
-        ' placeholder="no limit" title="the most one settlement may deliver — blank for no limit"></div>' +
+      '<div class="su-lim"><span class="k">' + (timed ? 'limit /week' : 'limit') + '</span><input class="su-limit" type="number" min="0" value="' + esc(limit) + '"' +
+        ' placeholder="no limit" title="' + limTitle + '"></div>' +
     '</div></div>';
 }
 
@@ -2611,9 +2623,10 @@ function reservePanel2(good, rg){
 // Syndicate commitment is `x` whole units settled over a 7-day WEEK, and nothing in a system
 // consumes its output (a Tier-3 part feeds Tier-4 assembly, not a pipeline). So for a timed
 // good the panel forks:
-//   - Stockpile strip: the reserve field stays; the two top-up squares and the per-tick
+//   - Stockpile strip: the reserve field stays; the Consumption top-up square and the per-tick
 //     chevrons go; the factory's cadence (1 unit / its timer, up to y a week) takes their place.
-//     The reserve is the floor the week's settlement rescue respects (Slice A, below).
+//     The reserve is the floor the week's settlement rescue respects (Slice A, below). The
+//     Syndicate top-up square stays, in the week's words: it turns that rescue on and caps it.
 //   - Production column: the cadence and each factory's unit on the line, not a per-tick trend.
 //   - Distribution: two arms, Syndicate then Stockpile, in a FIXED order. The engine delivers
 //     a committed timed good Syndicate first whatever order is stored (Slice 3b, "fixed" = not
@@ -2664,14 +2677,16 @@ function fmtTicksAsDays(ticks){
   return d > 0 ? (d + 'd ' + h + 'h') : fmtTicksAsDuration(m);
 }
 
-// The stockpile row for a timed good: the strip alone. There are no top-up squares. The
-// Consumption top-up has nothing to feed (nothing here consumes a timed good). The Syndicate
-// top-up's switch does cover a timed good in the engine, but this path draws no control for it
-// yet (roadmap decision checklist, Slice A2-client). The strip's reserve field is kept exactly
-// as it is for Tier 1/2 (whole units, the same action). It has a job at the week's settlement
-// (design.md §5, Slice A, made opt-in by Slice A2): if the good's Syndicate Top-Up is on and the
-// week ends short, the engine delivers stock ABOVE this floor to cover it, and never the stock
-// at or below it. The note under the cadence says so; the Stockpile arm says the rest.
+// The stockpile row for a timed good: the strip, then the Syndicate top-up square. There is no
+// Consumption top-up: nothing here consumes a timed good, so it has nothing to feed, and the
+// Syndicate square takes its place on the row. That square is the SAME control Tier 1/2 draw
+// (syndTopupSquare, in the week's words): the engine's switch and limit work the same on every
+// tier (design.md §5, "SYNDICATE TOP-UP"), and a timed specialist's week is the case the opt-in
+// was ruled for (Slice A2-client-fix). The strip's reserve field is kept exactly as it is for
+// Tier 1/2 (whole units, the same action). It has a job at the week's settlement (design.md §5,
+// Slice A, made opt-in by Slice A2): if the good's Syndicate Top-Up is on and the week ends
+// short, the engine delivers stock ABOVE this floor to cover it, and never the stock at or below
+// it. The note under the cadence says so; the Stockpile arm says the rest.
 function timedReservePanel(good, t3, report){
   var tpu = goodTicksPerUnit(report, good);
   // Only a committed good has a week to settle (its `window`), so only then is the note shown.
@@ -2680,7 +2695,7 @@ function timedReservePanel(good, t3, report){
     '<div class="rs-cad">up to <b>' + esc(fmtY(t3.weeklyOutput)) + '</b> /week' + (tpu != null ? '' : ' per factory') + '</div>' +
     (g && g.window ? '<div class="rs-cad">the reserve is never taken at the week’s settlement</div>' : '');
   var strip = stockpileStrip(good, onHand(good), goodPolicy(good).reserveLevel, null, note);
-  return '<div class="stock-row">' + strip + '</div>';
+  return '<div class="stock-row">' + strip + syndTopupSquare(good, true) + '</div>';
 }
 
 // One factory's unit on the line, as its row reports it — for the progress bar under its chip.
