@@ -1667,6 +1667,12 @@ select.field{appearance:none; cursor:pointer;}
 #est-overlay input[type=range]{-webkit-appearance:none; appearance:none; width:100%; height:6px; border-radius:4px; background:linear-gradient(var(--amber),var(--amber)) no-repeat, var(--raised); background-size:0% 100%; border:1px solid var(--line); cursor:ew-resize}
 #est-overlay input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:var(--ink); border:2px solid var(--void); box-shadow:0 0 0 1px var(--amber-dim); cursor:ew-resize}
 #est-overlay input[type=range]::-moz-range-thumb{width:16px; height:16px; border-radius:50%; background:var(--ink); border:2px solid var(--void); box-shadow:0 0 0 1px var(--amber-dim); cursor:ew-resize}
+/* The Tier-3 whole-unit slider's scale (drawUnitTicks): a notch per whole unit it can rest on,
+   and its two end values. Positioned on the THUMB's travel — 8px (half the 16px thumb) in from
+   each end — so a notch sits exactly under the thumb at that unit. */
+#est-overlay .xticks{position:relative; height:17px; margin-top:3px}
+#est-overlay .xticks i{position:absolute; top:0; width:1px; height:5px; background:var(--line2)}
+#est-overlay .xticks span{position:absolute; top:6px; font-family:var(--mono); font-size:9.5px; color:var(--ink3); transform:translateX(-50%)}
 
 #est-overlay .fee-graph{background:var(--void); border:1px solid var(--line); border-radius:10px; padding:14px 14px 8px; margin-top:16px}
 #est-overlay .fee-graph .gh{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px}
@@ -3073,7 +3079,9 @@ select.field{appearance:none; cursor:pointer;}
 <!-- ===== Establish-Venture popup (client-wiring Slice 3; licence panel wired) ====
      Opened from a VACANT site in the planet manifest. The Deploy button POSTs the
      REAL actions: `establishVenture` (carrying the picked `assetId`, and `equityPct`
-     when licensing) and then `applyForLicence` (`committedOutputPct`, `windowDays`).
+     when licensing) and then `applyForLicence` (`committedOutputPct`, `windowDays`) —
+     or, for a TIMED Tier-3 good, `applyForLicence` (`committedUnits`) alone: the Tier-3
+     fork (applyTier3Fork) swaps in a whole-unit slider and the fixed one-week term.
      The asset picker is the guild's REAL idle inventory off the snapshot, and deploy
      is gated to systems the guild holds (§4 gate 3). What remains design-ahead is the
      reputation meter (#61) (docs/venture-establishment.md §2.4–2.7). -->
@@ -3129,11 +3137,22 @@ select.field{appearance:none; cursor:pointer;}
           </div>
 
           <div class="blk" id="feeBlock">
-            <div class="slider">
+            <div class="slider" id="cSlider">
               <div class="sec-head"><span class="t">Output commitment</span><button class="help" data-reel="commit">?</button>
                 <span class="val" style="margin-left:auto"><b id="cPct">0%</b><span class="q" id="cQty"></span></span>
               </div>
               <input type="range" id="cRange" min="0" max="100" step="1" value="0">
+            </div>
+            <!-- TIER 3 · a TIMED good commits WHOLE UNITS, not a share (applyTier3Fork): x of the
+                 venture's weekly output y. Shown in place of the percentage slider above. Its max
+                 is floor(y) and its step 1, so it can only rest on a whole unit; both are set from
+                 the snapshot's `tier3Contract` each draw, so a new recipe re-scales it. -->
+            <div class="slider" id="xSlider" style="display:none">
+              <div class="sec-head"><span class="t">Output commitment</span><button class="help" data-reel="commitUnits">?</button>
+                <span class="val" style="margin-left:auto"><b id="xVal">0 / —</b><span class="q" id="xUnit"></span></span>
+              </div>
+              <input type="range" id="xRange" min="0" max="0" step="1" value="0">
+              <div class="xticks" id="xTicks"></div>
             </div>
 
             <div class="slider" style="margin-top:18px">
@@ -3156,11 +3175,20 @@ select.field{appearance:none; cursor:pointer;}
               </div>
             </div>
 
-            <div class="slider" style="margin-top:20px">
+            <div class="slider" id="rnSlider" style="margin-top:20px">
               <div class="sec-head"><span class="t">Renegotiation window</span><button class="help" data-reel="reneg">?</button>
                 <span class="val" style="margin-left:auto"><b id="rnDaysVal">14 days</b></span>
               </div>
               <input type="range" id="rnRange" min="7" max="42" step="1" value="14">
+            </div>
+            <!-- TIER 3 · the term is not the player's to pick: a Tier-3 contract is one week
+                 (applyTier3Fork). Read-only, in place of the slider above; its day count is the
+                 snapshot's `tier3Contract[good].termDays`, not a number this page holds. -->
+            <div class="slider" id="rnFixed" style="display:none; margin-top:20px">
+              <div class="sec-head"><span class="t">Renegotiation window</span><button class="help" data-reel="term3">?</button>
+                <span class="val" style="margin-left:auto"><b id="rnFixedVal">—</b><span class="q">fixed</span></span>
+              </div>
+              <div class="note">One week, then the Syndicate re-offers the same terms.</div>
             </div>
           </div>
 
@@ -5707,6 +5735,13 @@ window.openWaystationDetail = function(outpost){
                                 `establishVenture`, §5's term set at establishment) plus
                                 the licence itself (`applyForLicence` with
                                 `committedOutputPct` and `windowDays`).
+   REAL — reaches the engine:   for a TIMED Tier-3 good, the licence is the Tier-3
+                                contract instead (docs/tier3-timed-production.md):
+                                `applyForLicence` with `committedUnits` ALONE — x
+                                whole units of the weekly output y — and no term,
+                                because the term is fixed at one week. The popup
+                                forks to show that (applyTier3Fork); y, floor(y) and
+                                the term are the snapshot's `tier3Contract`.
    REAL — reaches the engine:   also the ASSET (§4). The picker lists the guild's own
                                 IDLE machines off the snapshot, and the one chosen rides
                                 the deploy as `assetId` — which the engine now REQUIRES
@@ -5809,6 +5844,32 @@ function quotedBasicFee(){
   return (typeof q === 'number' && isFinite(q)) ? q : null;
 }
 
+/* THE TIER-3 CONTRACT for the good this venture will make — the snapshot's own
+   `tier3Contract[good]` (sim/snapshot.js): { weeklyOutput, committedUnitsCeiling, termDays },
+   i.e. y, floor(y) and the one-week term in days. The engine lists a good there ONLY when a
+   licence on it is the Tier-3 contract (its `isTimedVenture` test), so this is also the
+   whole "is this a timed Tier-3 good?" question — the popup keeps no good list of its own.
+   null for every other good (Tier 1/2, the four unclassified modules, fuel, a dockyard),
+   and those keep today's panel exactly. */
+function tier3Terms(){
+  return (window.__tier3Contract && S.outGood) ? window.__tier3Contract(S.outGood) : null;
+}
+
+/* The commitment as the fee grid and the reputation meter read it. Tier 1/2: the slider's
+   share, `S.c`, unchanged. Tier 3: `x / y` — the exact ratio `applyForLicence` will store as
+   the licence's `committedOutputPct` (sim/licence.js `committedPctForUnits`), over the ENGINE's
+   y, fraction kept (3 of a heavy engine's 3.5 is 6/7). Everything downstream of it — the fee %,
+   the graph's marker, the credits, the reputation meter — then moves with the whole-unit slider. */
+function commitRatio(){
+  var t3 = tier3Terms();
+  return t3 ? S.x / t3.weeklyOutput : S.c;
+}
+
+/* y for READING. The engine's own convention (sim/actions.js, its refusal names y "to 2 dp only
+   for reading"): 672 reads 672, a heavy engine's 3.5 reads 3.5, a deep scan mast's 2.333… reads
+   2.33. Only the label is rounded; the ratio above uses the exact y. */
+function fmtY(y){ return (Math.round(y*100)/100).toLocaleString('en-US'); }
+
 /* The rate the illegal deuterium REFINERY is established at, and nothing else.
    [FIRST-CUT], recorded in docs/phase-1-tuning.md "Client establish-rate". Mines and
    factories no longer send a rate: the ENGINE stamps each one's droidless baseline
@@ -5821,8 +5882,10 @@ function label(id){ return String(id).split('_').map(function(w){ return w.charA
 function fmt(n){ return Math.round(n).toLocaleString('en-US'); }
 function $(id){ return document.getElementById(id); }
 
+/* `x` is the Tier-3 commitment: WHOLE units of the weekly output, 0..floor(y). `c` stays the
+   Tier-1/2 share. Only the one the chosen good uses is ever sent. */
 var S = { site:null, asset:null, tier:1, recipeId:null, outGood:null, outLabel:'—',
-          licensed:null, c:0, o01:0, rnDays:14, busy:false };
+          licensed:null, c:0, x:0, o01:0, rnDays:14, busy:false };
 
 /* The fee's SHAPE (design.md §5's four-corner grid): 100 / 75 / 75 / 0, with equity
    back-loaded by o^K — the same bilinear form as sim/licence.js `feeFraction`. This is
@@ -5859,6 +5922,13 @@ function equityFraction(){ return equityPctInt() / 100; }
 
 /* ------------------------------------------------------------------ render */
 function draw(){
+  // A new recipe can shrink floor(y) under the x already chosen (672 fuel tanks → a heavy
+  // engine's 3). Hold x inside the new bound so the slider, the readout and the deploy never
+  // carry a count the engine would refuse.
+  var t3 = tier3Terms();
+  if(t3 && S.x > t3.committedUnitsCeiling) S.x = t3.committedUnitsCeiling;
+  var cr = commitRatio();   // S.c for Tier 1/2; x / y for Tier 3
+
   $('cRange').style.backgroundSize=(S.c*100)+'% 100%';
   $('oRange').style.backgroundSize=(S.o01*100)+'% 100%';
   $('rnRange').style.backgroundSize=((S.rnDays-7)/35*100)+'% 100%';
@@ -5877,10 +5947,10 @@ function draw(){
   // The big readout stays the RELIEF (% of basic) — the curve's own unit, and the thing
   // the two sliders actually move. The credit figures live in the ledger below, off the
   // engine's published quote.
-  var fp=feePct(S.c,S.o01);
+  var fp=feePct(cr,S.o01);
   $('feePctBig').textContent = Math.round(fp)+'%';
 
-  var rg=repGain(S.c,S.o01);
+  var rg=repGain(cr,S.o01);
   // The bar fills against `REP_MAX`, the full-terms maximum — the earn is tier-blind now
   // (§2.6, 06-09-26), so a full-terms licence draws a full bar at every tier. It reads
   // "how good are these terms", which is exactly what the two sliders move.
@@ -5893,6 +5963,7 @@ function draw(){
   $('feeBlock').classList.toggle('disabled', S.licensed===false);
   applyFuelCollapse();
   applyDockyardCollapse();
+  applyTier3Fork();
   gate();
 }
 
@@ -5946,6 +6017,51 @@ function applyDockyardCollapse(){
   $('deployBtn').textContent  = dock ? 'Establish dockyard'  : 'Deploy venture';
 }
 
+/* TIER 3 · a TIMED good forks the licence panel (docs/tier3-timed-production.md "Income &
+   commitment", "Contract & settlement"), the way FUEL and TIER 4 fold theirs above. The trigger
+   is the ENGINE's classification, read off the snapshot (tier3Terms): no good list lives here, and
+   an unclassified module, which has no timer, keeps the Tier-1/2 panel. The fork swaps two
+   controls and nothing else:
+     - the percentage slider becomes a WHOLE-UNIT slider, 0..floor(y), reading `x / y` a week;
+     - the 7–42-day window slider becomes the fixed one-week term, read-only.
+   Equity, the fee graph, the reputation meter and the ledger stay; they read x / y through
+   commitRatio. Runs AFTER the two collapses. FUEL and Tier 4 never name a timed good, so it
+   never fights them. Reversible: pick a Tier-2 recipe and the Tier-1/2 controls come back. */
+function applyTier3Fork(){
+  var t3 = tier3Terms();
+  $('cSlider').style.display  = t3 ? 'none' : '';
+  $('xSlider').style.display  = t3 ? '' : 'none';
+  $('rnSlider').style.display = t3 ? 'none' : '';
+  $('rnFixed').style.display  = t3 ? '' : 'none';
+  if(!t3) return;
+  // Re-scale to THIS good: a new max and a new readout every draw, so changing the recipe
+  // re-scales the slider live. step="1" in the markup is what makes it rest on whole units only.
+  var most = t3.committedUnitsCeiling, xr = $('xRange');
+  xr.max = most;
+  xr.value = S.x;
+  xr.style.backgroundSize = (most > 0 ? 100*S.x/most : 0)+'% 100%';
+  $('xVal').textContent = fmt(S.x)+' / '+fmtY(t3.weeklyOutput);
+  $('xUnit').textContent = '/week';
+  $('rnFixedVal').textContent = fmt(t3.termDays)+' days';
+  drawUnitTicks(most);
+}
+
+/* The whole-unit slider's scale: its two end values, and a notch at every whole unit when the
+   notches are far enough apart to read (a heavy engine's 0·1·2·3). A 3-1 part's 672 would be a
+   solid bar, so it shows the ends only. Layout, not a game number: the spacing is measured in
+   screen pixels off the slider's own width. */
+function drawUnitTicks(most){
+  var at = function(u){ return 'calc(8px + (100% - 16px) * '+(most > 0 ? u/most : 0)+')'; };
+  var track = $('xRange').clientWidth - 16;
+  var h = '';
+  if(most > 0 && track / most >= 6){
+    for(var u=0; u<=most; u++) h += '<i style="left:'+at(u)+'"></i>';
+  }
+  h += '<span style="left:'+at(0)+'">0</span>';
+  if(most > 0) h += '<span style="left:'+at(most)+'">'+fmt(most)+'</span>';
+  $('xTicks').innerHTML = h;
+}
+
 /* The hinge graph, ported intact: the amber line is the fee across commitment at
    the CURRENT equity, hinging down from the right as equity rises; the marker rides
    it at the chosen commitment. Two dashed guides show equity 0 and equity max. */
@@ -5960,11 +6076,20 @@ function drawGraph(fp){
   s+=seg(0,'stroke="rgba(232,223,200,0.14)" stroke-width="1" stroke-dasharray="3 3"');
   s+=seg(1,'stroke="rgba(232,223,200,0.14)" stroke-width="1" stroke-dasharray="3 3"');
   s+=seg(S.o01,'stroke="#C9A227" stroke-width="2"');
-  var mx=X(S.c),my=Y(fp);
+  // The marker rides the commitment the grid reads: the share for Tier 1/2, x / y for Tier 3.
+  var mx=X(commitRatio()),my=Y(fp);
   s+='<line x1="'+mx+'" y1="'+my+'" x2="'+mx+'" y2="'+y1+'" stroke="#7A6420" stroke-width="1" stroke-dasharray="2 2"/>';
   s+='<circle cx="'+mx+'" cy="'+my+'" r="5" fill="#E8DFC8" stroke="#0B0D12" stroke-width="2"/>';
-  s+='<text x="'+x0+'" y="'+(H-6)+'" fill="#565B68" font-size="8" font-family="IBM Plex Mono">commit 0%</text>';
-  s+='<text x="'+(x1-46)+'" y="'+(H-6)+'" fill="#565B68" font-size="8" font-family="IBM Plex Mono">100%</text>';
+  var t3 = tier3Terms();
+  if(t3){
+    // Tier 3: the axis runs 0 to y units a week. When y is fractional the marker cannot reach
+    // the right edge (a heavy engine's most is 3 of 3.5), which is the truth of that contract.
+    s+='<text x="'+x0+'" y="'+(H-6)+'" fill="#565B68" font-size="8" font-family="IBM Plex Mono">commit 0</text>';
+    s+='<text x="'+x1+'" y="'+(H-6)+'" text-anchor="end" fill="#565B68" font-size="8" font-family="IBM Plex Mono">'+fmtY(t3.weeklyOutput)+' /week</text>';
+  } else {
+    s+='<text x="'+x0+'" y="'+(H-6)+'" fill="#565B68" font-size="8" font-family="IBM Plex Mono">commit 0%</text>';
+    s+='<text x="'+(x1-46)+'" y="'+(H-6)+'" fill="#565B68" font-size="8" font-family="IBM Plex Mono">100%</text>';
+  }
   $('feeSvg').innerHTML = s;
 }
 
@@ -5995,10 +6120,16 @@ function drawLedger(fp, cQtyCycle, ePct){
   setRow('tSite', S.site ? esc(S.site.summary) : '—');
   setRow('tOutput', S.outGood ? esc(S.outLabel) : '<span class="mut">pick a recipe</span>');
   setRow('tRate', establishRateRow());
+  // A TIMED Tier-3 good reads in WEEKLY terms (applyTier3Fork): its commitment is x / y a week,
+  // its fee and breach fee are charged once a week, and its term is the fixed week in days — all
+  // off the snapshot's `tier3Contract`. Every Tier-1/2 row below is exactly as before.
+  var t3 = tier3Terms();
+  var renegIn = t3 ? fmt(t3.termDays) : S.rnDays;
+  var perWeek = t3 ? ' <span class="mut">/week</span>' : '';
   if(S.licensed===null){
     setRow('tLic','— <span class="mut">undecided</span>');
     ['tCommit','tEquity','tFee','tBreach'].forEach(function(id){ setRow(id,'—'); });
-    setRow('tReneg', S.rnDays+' days');
+    setRow('tReneg', renegIn+' days');
     return;
   }
   if(S.licensed===false){
@@ -6009,21 +6140,31 @@ function drawLedger(fp, cQtyCycle, ePct){
     return;
   }
   setRow('tLic','<span class="amber">Licensed</span>');
-  setRow('tCommit', cQtyCycle === null ? '<span class="mut">cycle or baseline unread</span>'
-    : (cQtyCycle>0 ? (fmt(cQtyCycle)+' '+esc(S.outLabel.toLowerCase())+' <span class="mut">/cycle</span>')
-                   : '<span class="mut">0 — none</span>'));
+  if(t3){
+    // x of y WHOLE units a week — the count `applyForLicence` will store, over the engine's y.
+    setRow('tCommit', S.x>0 ? (fmt(S.x)+' / '+fmtY(t3.weeklyOutput)+' '+esc(S.outLabel.toLowerCase())+perWeek)
+                            : '<span class="mut">0 — none</span>');
+  } else {
+    setRow('tCommit', cQtyCycle === null ? '<span class="mut">cycle or baseline unread</span>'
+      : (cQtyCycle>0 ? (fmt(cQtyCycle)+' '+esc(S.outLabel.toLowerCase())+' <span class="mut">/cycle</span>')
+                     : '<span class="mut">0 — none</span>'));
+  }
   setRow('tEquity', ePct>0 ? (ePct+'%') : '<span class="mut">none</span>');
   // The fee in CREDITS. `basic` is the ENGINE's figure for this good (`feeQuote`); the
   // only arithmetic here is the relief the sliders already draw, applied to it — which is
   // exactly the `discountedFee` the engine will lock if the licence is filed at this
   // price, down to the same rounding. Moves live as the sliders move.
+  // For a Tier-3 good the quote IS the weekly fee (`0.10 × y × price`, sim/snapshot.js), and
+  // the relief reads x / y (commitRatio), so the same line is the engine's weekly figure.
   var basic = quotedBasicFee();
   setRow('tFee', basic === null ? '—' : ('<b>'+fmt(Math.round(basic * fp / 100))+' ¢</b>'));
   // Breach is the WHOLE basic fee: falling short of the commitment voids the discount
   // outright (§5), so this row is the un-discounted quote and does NOT move with the
   // sliders. A dash, never a 0, when the good has no quote.
   setRow('tBreach', basic === null ? '—' : ('<b>'+fmt(basic)+' ¢</b>'));
-  setRow('tReneg', S.rnDays+' days');
+  // A Tier-3 fee (and its breach fee) is charged once a WEEK, so both figures say so.
+  if(t3 && basic !== null){ $('tFee').innerHTML += perWeek; $('tBreach').innerHTML += perWeek; }
+  setRow('tReneg', renegIn+' days');
 }
 
 function esc(v){
@@ -6081,7 +6222,15 @@ var REELS = {
   reneg:{ title:'Renegotiation window', pages:[
     'This sets when the contract first becomes open to <em>renegotiation</em>, in days. It does not end anything: the venture keeps running on these terms until you choose to renegotiate in venture management.',
     'Until it elapses, the terms are locked — neither you nor the Syndicate can reopen them. Once it passes, the <em>Syndicate</em> sets the new terms, reading this venture’s standing: a steadier venture is leaned on less, a slipping one more, and only a Strong one earns a trimmed fee. You author the terms once, here; every renegotiation after is theirs to offer.',
-    'When the window elapses you get one decision, in the Guild Hall’s Messages or in venture management: <em>accept</em> the Syndicate’s terms and re-lock, or <em>reject</em> and let the licence lapse — the venture goes unlicensed (you keep it, but forfeit the standing it built). The window is stored with the licence, in days, exactly as you set it.' ]}
+    'When the window elapses you get one decision, in the Guild Hall’s Messages or in venture management: <em>accept</em> the Syndicate’s terms and re-lock, or <em>reject</em> and let the licence lapse — the venture goes unlicensed (you keep it, but forfeit the standing it built). The window is stored with the licence, in days, exactly as you set it.' ]},
+  // The two TIER-3 controls (applyTier3Fork). Facts only, from docs/tier3-timed-production.md
+  // ("Income & commitment", "Delivery", "Contract & settlement", "Renegotiation").
+  commitUnits:{ title:'Output commitment — whole units', pages:[
+    'A Tier-3 part is made one <em>whole unit</em> at a time, on a timer. So its licence commits whole units: <em>x</em> of the <em>y</em> this factory makes in a week. The slider stops only on whole units, up to every whole unit a week holds.',
+    'Committed units go to the Syndicate <em>first</em>, each week, and your committed share of the work is paid tick by tick as it is done. Deliver all <em>x</em> and the week’s discounted fee is charged; fall one unit short and you pay the full basic fee. Commit conservatively.' ]},
+  term3:{ title:'A one-week contract', pages:[
+    'A Tier-3 contract runs exactly <em>one week</em>, and it settles on that same week. There is no window to choose.',
+    'When the week ends, the Syndicate re-offers the <em>same terms</em>: the same units, another week, the fee re-priced at the market. Accept it to renew. An offer nobody accepts lapses.' ]}
 };
 var reelMode='info', reelState={key:null,page:0};
 function openReel(){ $('est-reel').classList.add('open'); }
@@ -6140,13 +6289,20 @@ function reelConfirm(){
     return;
   }
   var cq = committedPerCycle();
+  // TIER 3 speaks in whole units a week and a fixed term (applyTier3Fork); Tier 1/2 as before.
+  var t3 = tier3Terms();
+  var committing = t3
+    ? ('committing '+fmt(S.x)+' of its '+fmtY(t3.weeklyOutput)+' units a week')
+    : ('committing '+(cq === null ? 'a share of' : (fmt(cq)+' of its'))+' baseline output each cycle');
   var lic = S.licensed
-    ? ('<em>licensed</em>, committing '+(cq === null ? 'a share of' : (fmt(cq)+' of its'))+' baseline output each cycle'
+    ? ('<em>licensed</em>, '+committing
        + (equityPctInt()>0 ? (' and offering '+equityPctInt()+'% equity') : ' with no equity offered')
-       + ', at a fee of about '+Math.round(feePct(S.c,S.o01))+'% of basic')
+       + ', at a fee of about '+Math.round(feePct(commitRatio(),S.o01))+'% of basic')
     : '<em>unlicensed</em>, with no fee and no commitment';
+  var firstOutput = t3 ? 'Its first unit starts once a full set of its inputs is in stock' : 'First output arrives next tick';
+  var renegIn = t3 ? fmt(t3.termDays) : S.rnDays;
   var body='<p>You are about to stand up a '+esc(S.outLabel.toLowerCase())+' venture on '+esc(S.site.summary)+' — '+lic+'.</p>'+
-           '<p>It will run your <em>'+esc(S.asset.label)+'</em> ('+esc(S.asset.id)+'). The machine is <em>occupied, not consumed</em>: it stays in your inventory, now referenced by this venture, and no other venture can take it. First output arrives next tick'+(S.licensed ? (', and the terms are open to renegotiate in '+S.rnDays+' days') : '')+'.</p>'+
+           '<p>It will run your <em>'+esc(S.asset.label)+'</em> ('+esc(S.asset.id)+'). The machine is <em>occupied, not consumed</em>: it stays in your inventory, now referenced by this venture, and no other venture can take it. '+firstOutput+(S.licensed ? (', and the terms are open to renegotiate in '+renegIn+' days') : '')+'.</p>'+
            (S.licensed
              ? '<p class="lbl">The licence is filed as a second step, once the venture exists. The fee in the ledger is the engine\'s quote at the current market price; it is fixed against the price at the tick it is filed, and the receipt reports the figure actually locked.</p>'
              : '<p class="lbl">No licence is filed: nothing is committed, nothing is sold to the Syndicate, and no fee is owed.</p>')+
@@ -6169,7 +6325,8 @@ function reelConfirm(){
    action would close the gap; it is noted as a follow-up, not built in this slice.)
 
    The client keeps every term inside the range the engine validates — commitment
-   0..1 from a 0..100 slider, window 7..42 days, equity 0..EQUITY_CEILING — so a licence
+   0..1 from a 0..100 slider, window 7..42 days, equity 0..EQUITY_CEILING; for a Tier-3
+   good, whole units 0..floor(y) from a step-1 slider and no term at all — so a licence
    refusal should be rare. Rare is not never, and rare is exactly when a client lies. */
 async function doDeploy(){
   var player = window.__player ? window.__player() : null;
@@ -6211,13 +6368,22 @@ async function doDeploy(){
   // optional precisely so its absence leaves an unlicensed establish byte-identical.
   if (S.licensed) establish.equityPct = equityFraction();
 
-  var licence = S.licensed ? {
+  // A TIMED Tier-3 good signs the Tier-3 contract (Slice 3c): `committedUnits` ALONE — x whole
+  // units, 0..floor(y), which the slider cannot leave — and NO committedOutputPct and NO windowDays,
+  // because the engine writes the one-week term itself and refuses either field on a Tier-3 good.
+  var t3 = tier3Terms();
+  var licence = !S.licensed ? null : t3 ? {
+    type: 'applyForLicence',
+    guildId: player.guildId,
+    ventureId: ventureId,
+    committedUnits: S.x,       // x WHOLE units of the weekly output y — the Tier-3 shape
+  } : {
     type: 'applyForLicence',
     guildId: player.guildId,
     ventureId: ventureId,
     committedOutputPct: S.c,   // the slider's fraction, 0..1 — the engine's own range
     windowDays: S.rnDays,      // whole days, 7..42 (§5's renegotiation bounds)
-  } : null;
+  };
 
   S.busy = true; gate();
   $('reelNext').disabled = true;
@@ -6372,6 +6538,20 @@ function showSuccess(action, licenceRefusal){
       ? ('The '+offered+'% equity you offered IS recorded on the venture — it is a term of the venture, not of the licence — but with no commitment sale there is no income for it to take a share of.')
       : 'No equity was offered, so nothing is recorded against it.');
     out.push('The venture itself stands and produces. Licensing it is a separate application.');
+  } else if (v && v.licence && tier3Terms()){
+    // TIER 3 — the stored contract, read back: x is the venture's stored `syndicateCommitment`,
+    // y the engine's published weekly output, the days to renegotiation its `contractWindow`, and
+    // the two fees the ones the engine locked. Weekly throughout: the fee is charged at the
+    // week's end (Slice 3a), and the committed share is paid as the work is done (Slice 3d).
+    var eq3 = Math.round((v.equityPct || 0) * 100);
+    var t3 = tier3Terms();
+    var days = v.contractWindow ? fmt(v.contractWindow.cyclesRemaining) : '—';
+    out.push('Your '+S.asset.label+' now runs a '+good+' venture — licensed, committing '+fmt(v.syndicateCommitment)+' of its '+fmtY(t3.weeklyOutput)+' '+good+' a week'
+      + (eq3>0 ? (' with '+eq3+'% equity offered') : ' with no equity offered')
+      + ', renegotiable in '+days+' days. Its first unit starts once a full set of its inputs is in stock.');
+    out.push('Fee: '+fmt(v.licence.discountedFee)+' ¢ a week of a '+fmt(v.licence.basicFee)+' ¢ basic, locked against a posted price of '
+      + Number(v.licence.lockedPrice).toFixed(2)+' at tick '+v.licence.signedTick+'. It is charged when the week ends: '
+      + fmt(v.licence.discountedFee)+' ¢ if you deliver all '+fmt(v.syndicateCommitment)+' units that week, the full '+fmt(v.licence.basicFee)+' ¢ if you fall short. Your committed share of the work is paid tick by tick as it is done.');
   } else if (v && v.licence){
     var eq = Math.round((v.equityPct || 0) * 100);
     out.push('Your '+S.asset.label+' now runs a '+good+' venture — licensed, committing '+fmt(v.syndicateCommitment)+' '+good+'/cycle'
@@ -6518,7 +6698,7 @@ function fillAssets(kind){
 /* ------------------------------------------------------------ open / close */
 window.openEstablish = function(site){
   S = { site:site, asset:null, tier:1, recipeId:null, outGood:site.resource||null,
-        outLabel:site.resLabel||'—', licensed:null, c:0, o01:0, rnDays:14, busy:false };
+        outLabel:site.resLabel||'—', licensed:null, c:0, x:0, o01:0, rnDays:14, busy:false };
   $('siteNode').textContent = site.nodeLabel;
   $('siteRes').textContent = site.kind==='node' ? site.resLabel : 'Factory';
   $('sitePlanet').textContent = site.planet;
@@ -6536,7 +6716,7 @@ window.openEstablish = function(site){
   }
   // Side art: the site's own planet, served from client/assets (no embedded blob).
   $('sideArt').style.backgroundImage = "url('assets/planets/"+(site.archKey||'rocky')+".jpg')";
-  $('cRange').value=0; $('oRange').value=0; $('rnRange').value=14;
+  $('cRange').value=0; $('oRange').value=0; $('rnRange').value=14; $('xRange').value=0;
   $('segLic').classList.remove('on'); $('segUn').classList.remove('on');
   $('assetSel').value='';
   $('deployHint').classList.remove('err');
@@ -6569,6 +6749,8 @@ function setLicensed(v){ S.licensed=v; $('segLic').classList.toggle('on',v===tru
     S.c=(+$('cRange').value)/100; S.o01=(+$('oRange').value)/P.EQUITY_CEIL; S.rnDays=+$('rnRange').value; draw();
   });
 });
+// The Tier-3 whole-unit slider: step 1 over 0..floor(y), so its value is already a whole x.
+$('xRange').addEventListener('input', function(){ S.x = +this.value; draw(); });
 Array.prototype.forEach.call(document.querySelectorAll('#est-overlay .help'), function(b){
   b.addEventListener('click', function(){ reel(this.getAttribute('data-reel')); });
 });
@@ -7153,6 +7335,9 @@ function applySnapshot(snap){
         syndicateCommitment: v.syndicateCommitment || 0,
         equityPct: v.equityPct || 0,
         licence: v.licence || null,
+        // The engine's own contract window (days left in the term) — the Tier-3 receipt's
+        // "renegotiable in N days", where the stored `windowDays` counts weeks, not days.
+        contractWindow: v.contractWindow || null,
         committedFromTick: v.committedFromTick == null ? null : v.committedFromTick,
         // The rate the engine stamped at establish (design.md §2) — the receipt reports it.
         productionRate: v.productionRate,
@@ -7353,6 +7538,13 @@ window.__windowN = function(){ return LIVE.windowN; };
 window.__feeQuote = function(good){
   var q = LIVE.snap && LIVE.snap.feeQuote;
   return (q && typeof q[good] === 'number') ? q[good] : null;
+};
+// The Tier-3 contract a licence on ONE good would carry — the engine's own `tier3Contract` row
+// (sim/snapshot.js): { weeklyOutput, committedUnitsCeiling, termDays }. null for a good that is
+// not timed; the establish panel then keeps its Tier-1/2 form (its applyTier3Fork trigger).
+window.__tier3Contract = function(good){
+  var t = LIVE.snap && LIVE.snap.tier3Contract;
+  return (t && t[good]) || null;
 };
 // The player's own IDLE machines of one kind (§4) — what the establish panel offers in
 // its asset picker, and the list the chosen `assetId` is taken from. "Idle" is the

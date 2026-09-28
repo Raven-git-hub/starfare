@@ -468,6 +468,14 @@ test('(d) HEADLINE: a Tier-1/2 licence still commits a percentage, picks a 7–4
 // build session and pinned: the new engine must reproduce them.
 const ISO_STATE_EVERY_TICK = '96e4b9caba27f61dcd8d2518db6e9cbe56b09e2928300082cfb6e2c2f0993006';
 const ISO_SNAPSHOTS_AND_RESULTS = '240ee2aa089e496e5a65ae7bd10f30fdbeb8ebfc1aaf3ca7057cca94060b6af6';
+// The snapshot hash is taken WITHOUT `tier3Contract`, the additive top-level key the Tier-3
+// Establish-popup slice added (sim/snapshot.js). That key is the same rules-derived map in every
+// snapshot, and it did not exist when the pinned hash was computed on the pre-slice engine. Stripping
+// it, and it alone, keeps the pin at that engine's own hash: every OTHER snapshot byte must still match.
+function withoutTier3Contract(snap) {
+  const { tier3Contract, ...rest } = snap;
+  return rest;
+}
 
 function isolationRun() {
   const N = 60;
@@ -511,7 +519,7 @@ function isolationRun() {
     }
     s = tick(s);
     stateHash.update(hashState(s));
-    if (s.tick % 10 === 0) snapHash.update(hashState(buildSnapshot(s)));
+    if (s.tick % 10 === 0) snapHash.update(hashState(withoutTier3Contract(buildSnapshot(s))));
   }
   return { state: stateHash.digest('hex'), snaps: snapHash.digest('hex') };
 }

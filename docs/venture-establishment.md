@@ -97,6 +97,11 @@ seed/state facts) · **CONFIG** (tunable constants, not per-save state) · **PRE
 | Resolved renegotiation-open tick | STORED/DERIVED | `establishTick + days × ticks-per-day` |
 | Ticks-per-day / tick-duration constant | CONFIG | `phase-1-tuning.md` (unresolved) — the per-hour/day display seam |
 
+*(⤳ 28-09-26, the Tier-3 fork: for a TIMED Tier-3 good the panel commits `x` whole units of the weekly
+output `y` in place of `c` (§2.4), and shows the fixed one-week term in place of this window. `y`,
+`floor(y)` and the term come from the snapshot's `tier3Contract`. See `docs/tier3-timed-production.md`
+"As built — the client".)*
+
 ### 2.7 Deploy — the compound action (not data, the write)
 `establishVenture({ siteId, assetId, recipeId|resourceType, productionRate })` — which OCCUPIES the asset
 it names (BUILT 30-08-26; `assetId` made **required** 31-08-26), so there is no separate `consumeAsset`

@@ -237,6 +237,49 @@ test('GET / serves the WIRED licence panel — the two real actions, and no mock
   assert.ok(!html.includes('NOT YET CHARGED'), 'the charge is built — the old caveat is false');
 });
 
+// --- the Tier-3 fork of the licence panel (Tier-3 economy, client slice) ------------------
+//
+// A licence on a TIMED Tier-3 good is the Tier-3 contract (Slice 3c): `applyForLicence
+// { committedUnits }` alone — x whole units of the weekly output y, 0..floor(y) — and no term.
+// The engine refuses the Tier-1/2 shape for such a good, so a page that quietly reverted to
+// sending it would render perfectly and fail every Tier-3 deploy; only these pins would go red.
+// The Tier-1/2 pins in the test above are untouched: that path still sends the share and term.
+test('GET / serves the TIER-3 fork of the licence panel — the engine\'s classification, a whole-unit slider, a fixed week, committedUnits on the deploy', async () => {
+  const html = await (await fetch(base + '/')).text();
+
+  // The trigger is the ENGINE's classification, read off the snapshot's `tier3Contract` — the
+  // page keeps no good list, no timer and no week of its own.
+  assert.match(html, /window\.__tier3Contract = function\(good\)/);
+  assert.match(html, /LIVE\.snap && LIVE\.snap\.tier3Contract/);
+  for (const token of ['10080', '10,080', 'TICKS_PER_UNIT', 'ticksPerUnit', 'heavy_reactor_engine', 'fuel_tank', 'deep_scan_mast']) {
+    assert.ok(!html.includes(token), `the page must not carry its own ${token}`);
+  }
+  // It switches the panel the way FUEL and TIER 4 do: one more fold, run after theirs in draw().
+  assert.match(html, /function applyTier3Fork\(\)/);
+  assert.match(html, /applyFuelCollapse\(\);\s*applyDockyardCollapse\(\);\s*applyTier3Fork\(\);/);
+
+  // WHOLE UNITS: a step-1 slider, re-scaled every draw to the snapshot's floor(y).
+  assert.match(html, /<input type="range" id="xRange" min="0" max="0" step="1" value="0">/);
+  assert.match(html, /var most = t3\.committedUnitsCeiling, xr = \$\('xRange'\);/);
+  assert.match(html, /xr\.max = most;/);
+  assert.match(html, /\$\('xVal'\)\.textContent = fmt\(S\.x\)\+' \/ '\+fmtY\(t3\.weeklyOutput\);/);
+  // The fee grid, the marker and the reputation meter read x / y over the ENGINE's y.
+  assert.match(html, /return t3 \? S\.x \/ t3\.weeklyOutput : S\.c;/);
+  assert.match(html, /var fp=feePct\(cr,S\.o01\);/);
+  assert.match(html, /var rg=repGain\(cr,S\.o01\);/);
+  // THE FIXED TERM, read off the snapshot, in place of the 7–42 slider.
+  assert.match(html, /id="rnFixed"/);
+  assert.match(html, /\$\('rnFixedVal'\)\.textContent = fmt\(t3\.termDays\)\+' days';/);
+
+  // THE DEPLOY: the Tier-3 licence object carries committedUnits and NEITHER Tier-1/2 term.
+  const t3Licence = html.match(/: t3 \? \{\s*type: 'applyForLicence',[\s\S]*?\} : \{/);
+  assert.ok(t3Licence, 'the Tier-3 licence object must be built beside the Tier-1/2 one');
+  assert.match(t3Licence[0], /committedUnits: S\.x,/);
+  const code = t3Licence[0].replace(/\/\/.*$/gm, '');
+  assert.ok(!code.includes('committedOutputPct'), 'no percentage on a Tier-3 licence');
+  assert.ok(!code.includes('windowDays'), 'no term on a Tier-3 licence');
+});
+
 // --- the asset picker goes live (client-only, 31-08-26) ---------------------------
 //
 // The engine has required an explicit `assetId` since f1109d3, and the panel ran on a
@@ -805,8 +848,13 @@ test('the served licence panel\'s mirrored constants still match the engine', as
   // panel's `repGain` still matches the engine's tier-blind `metGain`, term for term.
   assert.match(html, /function repGain\(c, o01\)\{ return P\.REP_MAX\*\(P\.REP_WC\*c \+ P\.REP_WO\*o01\); \}/,
     'the earn preview must mirror the engine\'s tier-blind metGain, term for term');
-  assert.match(html, /repGain\(S\.c,S\.o01\)/,
+  // (⤳ Tier-3 fork, 28-09-26: the meter now passes `cr` — `commitRatio()`, which IS `S.c` for a
+  // Tier-1/2 licence and `x / y` for a Tier-3 one, the ratio the engine's `metGain` reads for each.
+  // Still two arguments, no tier.)
+  assert.match(html, /repGain\(cr,S\.o01\)/,
     'and the meter must call it without a tier argument');
+  assert.match(html, /function commitRatio\(\)\{\s*var t3 = tier3Terms\(\);\s*return t3 \? S\.x \/ t3\.weeklyOutput : S\.c;\s*\}/,
+    'and `cr` is the Tier-1/2 share itself unless the good is timed');
   // And the tier term is really GONE, not merely unread — the `TIER_WEIGHT` mirror
   // declaration and the `tierFactor` helper are both removed, so neither can be silently
   // reintroduced. (Matched as the code that declares them, not the prose that names them —

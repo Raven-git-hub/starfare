@@ -403,6 +403,14 @@ const ISO_ONE_STATE = '1d6bc270323c871eb8cf13b9fd633d87d248cd236490d2de40fe316ea
 const ISO_ONE_SNAPSHOTS = 'ba0913ace647be257183cd4125398d26f482332e3f51862beffe4e873b6eeb3a';
 const ISO_TWO_T12_GUILD = 'dd46d5985a3c0decfa435b2dfc18d12898c83d9eb16190e8d8c7a902f6d9a10c';
 const ISO_TWO_MIXED_T12_SLICE = 'dd507b95d13c73c1339d9fd77b872273ed8964d8ad0dc3d10d0502ff2c1925e9';
+// The snapshot hash is taken WITHOUT `tier3Contract`, the additive top-level key the Tier-3
+// Establish-popup slice added (sim/snapshot.js). That key is the same rules-derived map in every
+// snapshot, and it did not exist when the pinned hash was computed on the pre-slice engine. Stripping
+// it, and it alone, keeps the pin at that engine's own hash: every OTHER snapshot byte must still match.
+function withoutTier3Contract(snap) {
+  const { tier3Contract, ...rest } = snap;
+  return rest;
+}
 
 const t12Row = () => ({
   id: 't12', credits: 5000000, fuelHoard: 0,
@@ -420,7 +428,7 @@ function isolationOne() {
   for (let i = 0; i < 1200; i += 1) {
     s = tick(s);
     state.update(hashState(s));
-    if (s.tick % 10 === 0) snaps.update(hashState(buildSnapshot(s)));
+    if (s.tick % 10 === 0) snaps.update(hashState(withoutTier3Contract(buildSnapshot(s))));
   }
   return { state: state.digest('hex'), snaps: snaps.digest('hex'), invariants: checkInvariants(s, s.tick) };
 }

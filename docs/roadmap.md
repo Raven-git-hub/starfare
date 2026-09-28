@@ -2001,6 +2001,7 @@ boundary so the later hex-map swap doesn't touch it.
   - **Still not safe to run live:**
     - the per-tick progress payment is 3d; *(⤳ built by Slice 3d, below)*
     - the client still sends the Tier-1/2 shape for a Tier-3 factory, which the engine now refuses;
+      *(⤳ the Establish popup: built 28-09-26, "Tier-3 fork of the Establish popup" below)*
     - the Slice-3c checklist items below.
 
 - **Tier-3 per-tick progress payment — ✅ BUILT 28-09-26 (Slice 3d of the Tier-3 economy build; the
@@ -2051,6 +2052,8 @@ boundary so the later hex-map swap doesn't touch it.
     instead of the committed share, ignoring the owner split, paying every good on progress (caught by
     the isolation pin), and no halt on an impossible `x`. Tools **68 green**.
   - **Still not safe to run live:** the client (3c's item) and the checklist items for 3c and 3d.
+    *(⤳ The Establish popup: built 28-09-26, below. The Venture Management / renegotiation popups and
+    the console are still open.)*
 
 - **Tier-3 re-offer keeps the Strong discount; two lifecycle rulings recorded — ✅ BUILT 28-09-26
   (Tier-3 economy — cleanup).** `docs/tier3-timed-production.md` ("Renegotiation — fixed re-offer";
@@ -2072,6 +2075,46 @@ boundary so the later hex-map swap doesn't touch it.
     part and a heavy engine: the commitment never moves, and the discount is there only at Strong).
     Against HEAD's `sim/licence.js`, 3 of the file's 14 fail. Two deliberate breakages (the ratchet put
     back; the discount at every band) are each caught. Tools **68 green**.
+
+- **Tier-3 fork of the Establish popup — ✅ BUILT 28-09-26 (Tier-3 economy — client).**
+  `docs/tier3-timed-production.md` ("As built — the client" at its end); design.md §5 AS-BUILT note.
+  Closes 3c's first client item. The popup sent the Tier-1/2 licence shape for every factory, which 3c
+  refuses for a timed good, so every licensed Tier-3 deploy landed unlicensed.
+  - **The fork** (`client/game.html`, `applyTier3Fork`). It is triggered the way Fuel and Tier 4 fold
+    the popup, by the engine's classification read off the snapshot, so there is no good list in the
+    client. For a timed good:
+    - the commitment is a whole-unit slider, `0..floor(y)` with step 1, reading `x / y /week` and
+      re-scaled live by the recipe;
+    - equity is unchanged;
+    - the fee %, the ¢/week and the graph marker read `x / y` through the existing mirror of the grid;
+    - the 7–42-day slider becomes a read-only `7 days · fixed`;
+    - the Licence Summary reads weekly;
+    - the deploy sends `applyForLicence { committedUnits: x }` alone.
+    Every non-timed recipe (Tier 1/2, the four unclassified modules), Fuel, Tier 4 and Deuterium are
+    unchanged.
+  - **One additive, derived snapshot field (flagged).** Nothing the client read carried `y`,
+    `floor(y)` or which goods are timed, so `tier3Contract` publishes them per timed good:
+    `{ weeklyOutput, committedUnitsCeiling, termDays }`, from `weeklyOutputOf`,
+    `committedUnitsCeiling` and the schedule's term, listed only where `isTimedVenture` says so. It
+    has no stored byte, no hash and no schema bump. No engine behaviour changed.
+  - **Goldens: none moved; nothing re-pinned.** The two isolation pins that hash whole snapshots
+    (`tier3-contract` `ISO_SNAPSHOTS_AND_RESULTS`, `tier3-payment` `ISO_ONE_SNAPSHOTS`) now hash them
+    without the new key and still match the pre-slice engine's hashes. `server.test.js`'s meter pin
+    now matches `repGain(cr,S.o01)` (`cr` is `S.c` for Tier 1/2).
+  - **Proven by exercise** (Chromium, a live dev server, the real connect → homeworld → Settlements
+    path):
+    - the fork switches by recipe;
+    - the slider snaps (336.7 → 337; a click → 2 of 3) and re-scales 0–672 / 0–3 of 3.5 / 0–2 of 2.33;
+    - at every point of an `x` × equity sweep, the ¢/week equals the engine's `licenceFee`
+      arithmetic;
+    - the deploy's `{ committedUnits: 2 }` was accepted, with the locked fee equal to the panel's;
+    - the pre-slice client's `{ committedOutputPct: 0.5, windowDays: 14 }` was refused;
+    - the Tier-2 popup is pixel-identical to the pre-slice client's.
+  - Sim suite 1,734 → **1,741 green**: `sim/tests/tier3-establish-client.test.js` (+6, including an
+    HTTP end-to-end of the popup's two actions) and a served-page pin in `server.test.js` (+1). Six
+    deliberate breakages are each caught. Tools **68 green**.
+  - **Still not safe to run live:** the Venture Management and renegotiation popups (3c's other client
+    items), the console, and the checklist items below.
 
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
@@ -2322,7 +2365,9 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     batches/tick); the timed path only needs it above 0. The console still shows it, and the
     snapshot's `equityPerCycle` projection multiplies it. Retire it for timed factories, or show the
     timer instead? (A client / Slice-3 question.) The snapshot's venture row does not yet echo
-    `unitTicksRemaining`; the production preview row does.
+    `unitTicksRemaining`; the production preview row does. *(⤳ 28-09-26, Tier-3 Establish client: the
+    popup's Rate row still shows the stamped 5 batches/tick for a Tier-3 recipe; left as is, pending
+    this question.)*
   - **Before Tier 3 runs live (Slice 3's job, recorded so it is not missed):** a Tier-3 licence's
     committed quantity (`commitmentUnitsFor`) and fee (`licenceFee`) still read the continuous
     `baselineOutputFor` (5 units/tick). A timed factory makes at most 1,440 ÷ `TICKS_PER_UNIT` a day,
@@ -2377,7 +2422,9 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   - **Display, not engine.** `lastLicenceFee` is replaced at every charge, so in a guild with both tiers
     a Tier-3 weekly verdict is overwritten by the next day's Tier-1/2 charge. The client also still labels
     fee quotes and commitments "per cycle", but a Tier-3 figure is per WEEK. Both are client / read-model
-    follow-ups.
+    follow-ups. *(⤳ 28-09-26: the label is fixed in the Establish popup, where a Tier-3 recipe reads its
+    commitment, fee and breach fee per week. Venture Management and the console still say "per cycle";
+    `lastLicenceFee` is unchanged.)*
 
 - **Tier-3 slice 3b (Syndicate-first delivery) — items for a ruling or a confirm** — *surfaced
   27-09-26.*
@@ -2449,9 +2496,13 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   - **Client / read-model follow-ups** (not engine questions):
     - The Establish panel still sends `committedOutputPct` + `windowDays` for a Tier-3 factory. The
       engine now refuses that, with the right bound in the reason. The client must send
-      `committedUnits`.
+      `committedUnits`. **⤳ CLOSED 28-09-26 (Tier-3 Establish client).** It sends `committedUnits`
+      alone for a timed good.
     - To offer an `x`, the client needs `y` / `floor(y)`. The server's commitment preview
-      (`BASELINE_UNITS_BY_GOOD`) is still the stale 5/tick figure for a Tier-3 good.
+      (`BASELINE_UNITS_BY_GOOD`) is still the stale 5/tick figure for a Tier-3 good. **⤳ CLOSED
+      28-09-26:** the snapshot's new `tier3Contract` publishes `y`, `floor(y)` and the term, and the
+      popup reads those. GET /goods's `baselineUnits` is unchanged (still 5/tick for a Tier-3 good);
+      the popup no longer reads it for one.
     - Venture Management reads `lic.windowDays` as days. A Tier-3 licence would show "renegotiable in
       1 days", and its window bar divides 7 remaining days by 1.
     - The renegotiation popup shows a commitment as a whole-number percentage. A Tier-3 ratio like
@@ -2506,6 +2557,36 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   - **Read model, not engine.** For a timed good, `lastSyndicateSale.goods[good]` now holds two
     events: `credited` is that tick's progress payment, and `units` is the whole units delivered that
     tick (usually 0). The client does not read `syndicateSale` yet.
+
+- **Tier-3 Establish client (the popup's Tier-3 fork) — items for a ruling or a confirm** — *surfaced
+  28-09-26.*
+  - **The new snapshot field (confirm).** `tier3Contract: { <timed good>: { weeklyOutput,
+    committedUnitsCeiling, termDays } }`. It was added because the popup could not render without it,
+    as the build prompt allowed. Confirm the name and shape before a second reader (Venture Management,
+    the console) depends on it.
+  - **`termDays` copies one expression.** It is `TIER3_TERM_WINDOWS × (week ÷ day)`, the expression
+    `renegotiationSchedule` uses inline; `sim/licence.js` exports no "term in days" helper, and the
+    engine was out of scope. A test pins the two agree at a 1,440- and a 60-tick day. Factor a shared
+    helper the next time `sim/licence.js` is open?
+  - **`x` across a recipe change.** Built as: `x` carries over and is held to the new `floor(y)` (400
+    fuel tanks become 3 heavy engines), as the Tier-1/2 share carries over. The alternative is to reset
+    `x` to 0 on every recipe change. A UI call; confirm.
+  - **`y` is shown to 2 dp** (`2 / 2.33` for a deep scan mast), following the engine's own "to 2 dp
+    only for reading" convention in its refusal. The ratio uses the exact `y`. Confirm, or show a
+    fraction (2⅓).
+  - **A timed good this galaxy cannot license** (a day that does not divide the week; a dev setup
+    only). The snapshot lists no contract for it, so the popup shows the Tier-1/2 panel, and the engine
+    refuses the licence with its own reason. Confirm, or show a "cannot be licensed here" state (the
+    field would then need to list the good with a flag).
+  - **The Rate row** still shows the stamped 5 batches/tick for a timed recipe. That is the Slice-2
+    `productionRate` question above, not answered here.
+  - **Copy for the copy pass.** Two short help reels (`commitUnits`, `term3`) and the Tier-3 confirm
+    and receipt lines are new, and written from `docs/tier3-timed-production.md`. The unlicensed and
+    refused-licence receipts, which were not touched, still say "First output next tick" for a Tier-3
+    venture.
+  - **Notch density (layout, not a game number).** The whole-unit slider draws a notch per unit only
+    when notches are at least 6 px apart on screen. A heavy engine shows 0·1·2·3; a 3-1 part's 672
+    shows only its end values.
 
 - **Tier-3 slice 1 — small items for a ruling or a confirm** — *surfaced 27-09-26 by the Tier-3
   price-bands slice.*

@@ -52,10 +52,11 @@ const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
 const { previewProduction } = require('./production.js');
 const { PRICED_GOODS, postedPrice, basePriceFor } = require('./prices.js');
-const { isLicensedDeuteriumMine, isIllegalDeuteriumRefinery, producedGoodFor } = require('./baseline.js');
+const { isLicensedDeuteriumMine, isIllegalDeuteriumRefinery, producedGoodFor, producerShapeFor } = require('./baseline.js');
 const {
   licenceFee, licenceBasisFor, licenceBasisForGood, teardownSettlement, licenceEndTick, ventureStanding,
   renegotiationFee, renegotiationScheduleFor,
+  TIER3_TERM_WINDOWS, isTimedVenture, weeklyOutputOf, committedUnitsCeiling,
 } = require('./licence.js');
 const { clonePriceHistory } = require('./price-history.js');
 const { getFuelPriceRing } = require('./fuel-price-history.js');
@@ -485,6 +486,15 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 //   - each vehicle row gains `capacity` and `used` — the craft's hold cap (stored per-class) and its
 //     occupied hold space `usedSpace(v.cargo)`, so the selected-berth hero shows `hold used / capacity`
 //     without the client summing volumes.
+// (28-09-26, the Tier-3 fork of the Establish popup — docs/tier3-timed-production.md "As built — the
+// client"): top-level `tier3Contract` — per TIMED Tier-3 good, the shape of the contract a licence
+// signed NOW would carry: `{ weeklyOutput, committedUnitsCeiling, termDays }`. ADDITIVE, NO schema
+// bump — nothing existing changed shape (the same call `feeQuote` made). DERIVED on read: no
+// serialized byte, no determinism hash. It invents no number: each field is an engine function's
+// own answer (see the block beside `feeQuote` below). It exists because the popup must offer `x`
+// whole units of `y` and cannot learn `y`, `floor(y)` or which goods are timed from anything else
+// it reads — `feeQuote` is only the basic fee, and GET /goods's `baselineUnits` is the continuous
+// 5-a-tick figure, not the timer.
 const SNAPSHOT_SCHEMA = 7;
 
 // contractWindowForVenture(state, venture) -> the venture's licence window in CYCLES, or null.
@@ -688,6 +698,8 @@ function computeAttention(state) {
 //     fuelPriceHistory: [ <6h avg>, ... ],   // galaxy-wide fuel-price trend, ≤12, []-safe
 //     feeQuote: { <priced good with a baseline>: <basic licence fee, int credits> },
 //       // what a licence signed NOW would cost, per good — sim/licence.js's own licenceFee
+//     tier3Contract: { <timed Tier-3 good>: { weeklyOutput, committedUnitsCeiling, termDays } },
+//       // the Tier-3 contract a licence signed NOW would carry: y, floor(y), the term in days
 //     guilds: [ { id, name, isBot, credits, fuelHoard, fuelHoardValue,
 //                 fuelHoardAtCycleStart, fuelHoardAtCycleStartValue,  // Guild Hall A | null
 //                 deuterium, deuteriumFuel, deuteriumFuelValue,       // §1.4 stores (1a/1b)
@@ -1757,6 +1769,34 @@ function buildSnapshot(state) {
     }).basicFee;
   }
 
+  // THE TIER-3 CONTRACT a licence signed NOW would carry, per TIMED good (Slice 3c's shape;
+  // docs/tier3-timed-production.md "Income & commitment", "Contract & settlement"). The
+  // Establish popup reads it to offer `x` whole units of `y` and to show the fixed term, so it
+  // computes none of these itself (§5's display rule). A good is listed ONLY when the engine's
+  // own test says a licence on it is the Tier-3 contract — `isTimedVenture`, asked about the
+  // venture that makes the good, exactly as `licenceBasisForGood` asks — so the client needs no
+  // good list of its own, and an unclassified module (no timer) is simply absent.
+  //   weeklyOutput          — `y`, off `weeklyOutputOf` over the signing's own basis. EXACT, so it
+  //                           may be fractional (a heavy reactor engine is 3.5 a week).
+  //   committedUnitsCeiling — `floor(y)`, the most whole units `x` may be (`committedUnitsCeiling`,
+  //                           the very bound `applyForLicence` refuses above).
+  //   termDays              — the one-week term in calendar days: `TIER3_TERM_WINDOWS` windows of
+  //                           the week, over the day. The same `windowDays × (window ÷ day)` that
+  //                           `renegotiationSchedule` counts a signed licence's term in, so 7 at
+  //                           the ruled 1,440-tick day (a test pins the two agree).
+  // Omitted, like a fee quote, where the good has no basis: a galaxy whose day does not divide the
+  // week cannot sign a Tier-3 licence at all. Walked in PRICED_GOODS' order (stable bytes).
+  const tier3Contract = {};
+  for (const good of PRICED_GOODS) {
+    const basis = licenceBasisForGood(good, calN);
+    if (basis == null || !isTimedVenture(producerShapeFor(good))) continue;
+    tier3Contract[good] = {
+      weeklyOutput: weeklyOutputOf(basis),
+      committedUnitsCeiling: committedUnitsCeiling(basis.unitsPerTick, basis.windowN),
+      termDays: TIER3_TERM_WINDOWS * (basis.windowN / calN),
+    };
+  }
+
   return {
     schemaVersion: SNAPSHOT_SCHEMA,
     tick: state.tick,
@@ -1868,6 +1908,9 @@ function buildSnapshot(state) {
     // itself (§5's display rule). Un-discounted: the commitment/equity relief is the
     // player's own live terms, and the client already draws that curve.
     feeQuote,
+    // Per TIMED Tier-3 good, the contract a licence signed this tick would carry — `y`,
+    // `floor(y)` and the term in days (built above). The popup's Tier-3 fork reads it.
+    tier3Contract,
     guilds,
     // The resolved production preview (§5, ruled 07-08-26; rate-based 10-08-26): per
     // guild → per system → this tick's fresh, the Gate-1 fork split, the drawdown

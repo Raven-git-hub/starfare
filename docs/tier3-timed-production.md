@@ -621,6 +621,7 @@ cross-guild coupling, not a Tier-1/2 change.
 - the payment (3d); *(⤳ built by Slice 3d, below)*
 - **the client**, which still sends the Tier-1/2 shape for a Tier-3 factory. The engine now refuses
   that, and the refusal names the right `x`;
+  *(⤳ The Establish popup: built 28-09-26, "As built — the client" at the end.)*
 - the Slice-3c items on the roadmap's decision checklist.
 
 ## As built (28-09-26) — Slice 3d: the per-tick progress payment
@@ -783,6 +784,7 @@ Tier-1/2 galaxy; the Tier-1/2 guild and slice beside the committed Tier-3 guilds
 
 **Before Tier 3 runs live.** The engine slices are done. Still open:
 - **the client**, which still sends the Tier-1/2 licence shape for a Tier-3 factory (3c's item);
+  *(⤳ The Establish popup: built 28-09-26, "As built — the client" at the end.)*
 - the Slice 3c and 3d items on the roadmap's decision checklist.
 
 ## As built (28-09-26) — the Strong discount on the re-offer, and two rulings recorded
@@ -827,3 +829,120 @@ There is no auto-renew step. See "Renegotiation — fixed re-offer".
 (hashes computed on HEAD 5867c18) passes unchanged, and so does the (d) ratchet test. **No golden
 moved.** No pinned run renegotiates a Strong Tier-3 venture: the only other Tier-3 re-lock in the suite
 (`tier3-settlement.test.js`) is at Steady, where the discount is 0 as before.
+
+## As built (28-09-26) — the client: the Tier-3 fork of the Establish popup
+
+The engine slices were done, but the game client still sent the Tier-1/2 licence shape (a percentage
+and a 7–42-day window) for every factory, and 3c's engine refuses that for a timed good. So every
+licensed Tier-3 deploy from the game landed **unlicensed**, with the refusal in its receipt. This
+slice is client-only, except for one additive snapshot field. The engine's behaviour is unchanged.
+
+**The one engine-side change: a derived snapshot field, `tier3Contract`** (`sim/snapshot.js`). The
+popup must offer `x` whole units of `y`. It must also know which goods are timed, and it may compute
+no game number. Nothing it read said any of that. `feeQuote` is the basic fee only, and GET /goods's
+`baselineUnits` is the continuous 5-a-tick figure, not the timer. So the snapshot now publishes, per
+**timed** good only:
+
+    tier3Contract: { <good>: { weeklyOutput, committedUnitsCeiling, termDays } }
+
+- `weeklyOutput` is `y`, from `weeklyOutputOf` over the signing's own basis (`licenceBasisForGood`).
+  It is exact, so it may be fractional (a heavy reactor engine is 3.5).
+- `committedUnitsCeiling` is `floor(y)`, from `committedUnitsCeiling`. That is the bound
+  `applyForLicence` refuses above.
+- `termDays` is `TIER3_TERM_WINDOWS × (week ÷ day)`, the same expression `renegotiationSchedule`
+  counts a signed licence's term in. It is 7 at the ruled 1,440-tick day.
+
+A good is listed only when `isTimedVenture` says so, asked about the venture that makes it. That
+gives the 21 timed goods, and never the four unclassified modules. A galaxy whose day does not
+divide the week lists none, because it cannot sign one. The field is derived on read: no stored
+byte, no determinism hash, no schema bump. **No number was invented.**
+
+**The fork** (`client/game.html`, `applyTier3Fork`). It is triggered the way FUEL and TIER 4
+already fold the popup: one more function run from `draw()`, after theirs. The test is "is the
+chosen recipe's good in `tier3Contract`?", so the client holds no good list, timer or week of its
+own. When it is on:
+- **Commitment.** The percentage slider is swapped for a whole-unit slider, `0..floor(y)`, `step 1`.
+  It can only rest on a whole unit (336.7 snaps to 337; a click at 60% of a heavy engine's track
+  lands on 2). It reads `x / y /week`, with `y` as the engine gives it. A new recipe re-scales it
+  live: a new max, new notches, a new readout. An `x` above the new `floor(y)` is held to it (400
+  fuel tanks become 3 heavy engines), so the deploy can never carry an `x` the engine would refuse.
+- **Equity** is unchanged.
+- **Fee, graph and reputation** read `x / y`. That is the exact ratio the signing stores as
+  `committedOutputPct` (`committedPctForUnits`), fed through the popup's existing, test-guarded
+  mirror of the engine's four-corner grid (`feePct`) and `metGain` (`repGain`). The basic fee is
+  the snapshot's `feeQuote`, which for a timed good is already the weekly `0.10 × y × price`. The
+  graph's axis reads `commit 0 … y /week`. With a fractional `y` the marker cannot reach the right
+  edge (3 of 3.5 is 6/7), which is the truth of that contract.
+- **Renegotiation window.** The 7–42-day slider is replaced by a read-only `termDays days · fixed`.
+- **Licence Summary.** It reads weekly: Committed `x / y <good> /week`, Fee `… ¢ /week`, Breach fee
+  `= basic ¢ /week`, Renegotiate in `7 days`. The 3a checklist's "per cycle" label is fixed here,
+  for timed goods in this popup.
+- **Deploy.** `establishVenture` is exactly as before (equity rides on it). It is followed by
+  `applyForLicence { guildId, ventureId, committedUnits: x }`, with no `committedOutputPct` and no
+  `windowDays`. The receipt reads the stored contract back off the snapshot: `x` is
+  `syndicateCommitment`, the days are `contractWindow.cyclesRemaining` (not the stored `windowDays`,
+  which counts weeks), and the fees are the locked ones.
+
+Every non-timed recipe keeps today's popup. The Tier-1/2 slider, window and ledger lines are
+untouched, and so are the Fuel, Tier-4 and Deuterium paths. The hero art is the popup's existing
+planet image, loaded as before.
+
+**`y` for reading.** The label shows `y` to at most 2 dp (a deep scan mast's 2.333… reads `2.33`),
+following the engine's own convention: `validateTier3Licence` names `y` "to 2 dp only for reading".
+The ratio always uses the exact `y`.
+
+**Proven.**
+- `sim/tests/tier3-establish-client.test.js` (6 tests):
+  - the field lists exactly the 21 timed goods;
+  - at `floor(y)` each is accepted and stores the published `x ÷ y` to the bit, and one more is
+    refused, naming the same bound;
+  - the quoted fee is the locked fee;
+  - `termDays` equals the schedule's term and the Venture Management window at a 1,440- and a
+    60-tick day (7 and 168);
+  - the field is omitted at a 50-tick day;
+  - it is derived only and deterministic;
+  - **end to end over HTTP**, the popup's exact two actions for a heavy engine are ACCEPTED, and the
+    old `{ committedOutputPct, windowDays }` is REFUSED with the bound named.
+- `server.test.js` pins the served page:
+  - the trigger reads `tier3Contract`, and the page carries no timer, week or timed-good name;
+  - the fork runs after the two collapses;
+  - the step-1 slider is re-scaled to `floor(y)`;
+  - the fee and meter read `x / y`;
+  - the fixed term reads `termDays`;
+  - the Tier-3 licence object carries `committedUnits` and neither Tier-1/2 term.
+- Six deliberate breakages each turn tests red:
+  - `termDays` not over the day;
+  - every good listed;
+  - `y` rounded;
+  - the old shape sent;
+  - the fee reading `S.c` on Tier 3;
+  - the fork not called.
+- **By exercise**, in Chromium on a live dev server, through the real connect → system → homeworld →
+  Settlements path:
+  - the fork switches on and off by recipe (an unclassified module keeps the Tier-1/2 panel, and
+    back to Tier 2 restores it);
+  - the slider snaps, and re-scales from 0–672 (fuel tank) to 0–3 of 3.5 (heavy engine) and 0–2 of
+    2.33 (deep scan mast);
+  - at every point of a sweep of `x` and equity, the ledger's ¢/week equals the engine's
+    `licenceFee` arithmetic, and the fee % and the marker move with it (3 of 3.5 reads 5,500,000,
+    the worked example in "As built — Slice 3c");
+  - the deploy sent `{ committedUnits: 2 }` alone and was accepted, and the locked fee equalled the
+    panel's pre-deploy figure;
+  - the same Tier-3 deploy through the **pre-slice client** (HEAD 5aa9099) sent
+    `{ committedOutputPct: 0.5, windowDays: 14 }` and was refused, leaving the venture unlicensed;
+  - the Tier-2 popup screenshot is **pixel-identical** to the pre-slice client's, and its two
+    actions, confirm text and receipt are identical.
+
+**Isolation, and the one test change.** No engine behaviour changed, and no golden moved. Two
+isolation pins hash whole snapshots: `ISO_SNAPSHOTS_AND_RESULTS` in `tier3-contract.test.js` and
+`ISO_ONE_SNAPSHOTS` in `tier3-payment.test.js`. The new top-level key moved them. They now hash the
+snapshot **without `tier3Contract`**, and both still match the hashes computed on the pre-slice
+engine, so every other snapshot byte is unchanged. **Nothing was re-pinned.** `server.test.js`'s
+tier-blind meter pin now matches `repGain(cr,S.o01)`, where `cr` is `S.c` for Tier 1/2. It still
+guards "two arguments, no tier".
+
+**Before Tier 3 runs live.** The Establish popup is no longer a blocker. Still open (roadmap
+decision checklist):
+- the Venture Management and renegotiation popups' Tier-3 readings (3c's list);
+- the System Production Console (a later slice);
+- the items this slice defers.
