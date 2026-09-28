@@ -435,7 +435,8 @@ function licenceBasisForGood(good, engineWindowN) {
 // licence in exactly three ways, and each is decided by the good, never by a stored flag:
 //   1. it commits `x` WHOLE UNITS of its weekly output `y`, not a percentage;
 //   2. its term is ONE week (`TIER3_TERM_WINDOWS` windows of the week), not 7–42 days;
-//   3. its renegotiation re-offers the SAME terms (`renegotiationTerms` below), no ratchet.
+//   3. its renegotiation re-offers the SAME terms (`renegotiationTerms` below), no ratchet
+//      (a Strong venture still keeps its fee discount).
 // Everything else — the fee grid, reputation, delivery, the weekly settlement — is shared, and
 // reads the one `committedOutputPct = x / y` the signing stores.
 
@@ -1084,7 +1085,8 @@ function ventureStanding(venture) {
 // renegotiationTerms(venture) -> { committedOutputPct, windowDays, feeDiscount }
 // The whole "terms function" design.md §5 describes: a small, obviously-correct read of
 // the venture's standing into the three outputs the Syndicate offers. Pure, no mutation.
-// (A Tier-3 venture skips it: its re-offer is fixed — see the first branch below.)
+// (A Tier-3 venture skips the commitment ratchet: its re-offer is fixed, though a Strong one keeps
+// the fee discount — see the first branch below.)
 //
 //   committedOutputPct — the current committed pct stepped up by band, clamped to 1.0:
 //                        strong keeps it (may coast); steady +0.10; subPar +0.25; atRisk
@@ -1104,14 +1106,18 @@ function renegotiationTerms(venture) {
   }
   // THE TIER-3 FIXED RE-OFFER (Slice 3c; docs/tier3-timed-production.md "Renegotiation — fixed
   // re-offer"): "the Syndicate re-offers identical terms (same committed unit count, same week
-  // window) … no standing ratchet". So a Tier-3 venture's standing is not read at all: the same
-  // `x / y`, carried EXACTLY (no 2-dp normalisation — it is a ratio of whole units, and rounding
-  // it would change `x`), the same one-week term, and no Strong discount (the discount is a
-  // standing reward, and the ruling drops the standing-keyed recompute for Tier 3 — the decision
-  // checklist asks the human to confirm this reading). Only the PRICE is refreshed, and that is
-  // `renegotiationFee`'s job, at the current posted price, as for every tier.
+  // window) … no standing ratchet". So standing never moves a Tier-3 COMMITMENT: the same `x / y`,
+  // carried EXACTLY (no 2-dp normalisation — it is a ratio of whole units, and rounding it would
+  // change `x`), and the same one-week term. What the ruling drops is the ratchet ONLY: a Strong
+  // venture KEEPS its Strong fee discount, exactly as a Tier-1/2 one does (RULED 28-09-26 —
+  // standing is read here for the discount and nothing else). The PRICE is refreshed by
+  // `renegotiationFee`, at the current posted price, as for every tier.
   if (isTimedVenture(venture)) {
-    return { committedOutputPct: lic.committedOutputPct, windowDays: lic.windowDays, feeDiscount: 0 };
+    return {
+      committedOutputPct: lic.committedOutputPct,                    // the same x / y — no ratchet
+      windowDays: lic.windowDays,                                    // the same one-week term
+      feeDiscount: ventureStanding(venture) === 'strong' ? STRONG_FEE_DISCOUNT : 0,
+    };
   }
   const standing = ventureStanding(venture);
   const current = lic.committedOutputPct;

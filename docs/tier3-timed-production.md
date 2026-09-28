@@ -95,7 +95,9 @@ the settlement window are the same week. Sign → produce for the week → **set
 boundary (a delivered-or-not verdict on the whole committed `x` units; under-delivery →
 breach → full fee) → the Syndicate **re-offers identical terms** (see Renegotiation below)
 → renew or lapse. It is a **rolling weekly commitment** that, because the re-offer never
-changes, effectively auto-renews unless the guild opts out. There is **no separate
+changes, effectively auto-renews unless the guild opts out. *(⤳ RULED 28-09-26: auto-lapse is
+intended. The guild renews by accepting the re-offer; an offer nobody accepts auto-lapses. There
+is no auto-renew step. See Renegotiation below.)* There is **no separate
 multi-cycle term** (`windowDays`) for Tier-3 — term and settlement window are one week,
 collapsing the T1/2 term-vs-cadence distinction. Teardown owes at most this one week's
 settlement fee.
@@ -107,14 +109,26 @@ weekly windows, derived from the good.)*
 Committed units go to the Syndicate first; the guild's own units are whatever completes
 beyond the commitment. No staggering. It is the Syndicate's risk premium and it gates the
 guild's own capital output, so breach bites harder on specialists — commit conservatively.
-*(⤳ As built: Slice 3b, "As built — Slice 3b" at the end.)*
+*(⤳ As built: Slice 3b, "As built — Slice 3b" at the end. **RULED 28-09-26:** on a breached
+week the Syndicate keeps every unit delivered, while the guild is paid only its committed share
+`x / y` of its work. That is an intended breach penalty, not a defect; see "As built — Slice 3d".)*
 
 ## Renegotiation — fixed re-offer
 
 At contract end the Syndicate re-offers identical terms (same committed unit count, same
 week window), price refreshed to current market; no standing ratchet, equity untouched.
-Accept (renew) or reject (lapse). Drops T1/2's `renegotiationTerms` recompute for Tier-3.
-*(⤳ As built: Slice 3c, "As built — Slice 3c" at the end.)*
+Accept (renew) or reject (lapse). Drops T1/2's `renegotiationTerms` commitment recompute (the
+ratchet) for Tier-3.
+
+**The Strong discount is KEPT (RULED 28-09-26).** A Strong-standing venture's Tier-3 re-offer
+carries the same Strong fee discount a Tier-1/2 one does (`STRONG_FEE_DISCOUNT`, −10%). Standing
+still never moves the commitment or the term; the ruling drops only the ratchet.
+
+**Auto-lapse is intended (RULED 28-09-26).** The re-offer renews only if the guild accepts it. An
+offer nobody accepts auto-lapses on the existing timers (a day of grace, then a 5-day offer).
+There is no auto-renew step.
+*(⤳ As built: Slice 3c, "As built — Slice 3c" at the end. The discount: "As built — the Strong
+discount on the re-offer" at the end.)*
 
 ## Teardown
 
@@ -522,11 +536,14 @@ reads the licence's own window. For a Tier-1/2 licence that is the day, as befor
     that the engine does not do this.
 - The snapshot's `contractWindow` still counts in calendar days (a Tier-3 term shows 7).
 
-**3. The fixed re-offer.** `renegotiationTerms` returns a Tier-3 licence's own terms, and it does not
-read the venture's standing:
+**3. The fixed re-offer.** `renegotiationTerms` returns a Tier-3 licence's own terms. Standing never
+moves the commitment or the term:
 - the same `x / y`, to the bit (no 2-dp normalisation);
 - the same one-week term;
-- a fee discount of 0 at every band, including Strong.
+- the Strong fee discount for a Strong venture, and none at any other band. *(⤳ Changed 28-09-26. As
+  3c first built it, the discount was 0 at every band, Strong included. The human then ruled that a
+  Strong venture keeps it and only the ratchet is dropped. See "As built — the Strong discount on the
+  re-offer" at the end.)*
 
 `renegotiationFee` re-prices those terms at today's posted price, as it does for every tier.
 `renegotiateLicence` is unchanged: it re-derives the committed units from the ratio, and
@@ -680,7 +697,7 @@ delivery tick instead. Syndicate-first delivery is front-loaded: at `x = 336`, a
 Syndicate by tick 5,040, while the stock is empty and the price is at its base. After that, the guild's
 own 336 units pile up and push the fuel-tank price to 117. So the week is now paid at its average price.
 
-**A consequence worth knowing** (on the decision checklist): **within a week, delivery and payment
+**A consequence worth knowing** (RULED 28-09-26: intended): **within a week, delivery and payment
 disagree.**
 - Delivery is Syndicate-first: whole units, the first `Q` made. Payment is `x / y` of every tick's work.
 - Over a met week they agree: `x` delivered, `x` units' worth paid.
@@ -691,7 +708,14 @@ disagree.**
 - Under the old sale the same factory was paid for all 160.
 
 This follows from the two rulings together: delivery (3b) was not touched, and neither was the payment
-rule. Whether it is intended ("the Syndicate's risk premium … breach bites harder") is for the human.
+rule. *(As first written: whether it is intended ("the Syndicate's risk premium … breach bites harder")
+is for the human.)*
+
+**RULED 28-09-26 — intended, not a defect.** On a breached Tier-3 week the Syndicate keeps every unit
+delivered, while the guild is paid only its committed share `x / y` of the work. That is a deliberate
+breach penalty: it is the ruled "breach bites harder" of Syndicate-first delivery, and the reason to
+commit conservatively. Neither delivery nor payment changes. (The two alternatives the checklist
+offered, both of which would have touched delivery, are not taken.)
 
 **Proven.** `sim/tests/tier3-payment.test.js` has 12 tests. One shared week has six guilds, each with one
 factory:
@@ -760,3 +784,46 @@ Tier-1/2 galaxy; the Tier-1/2 guild and slice beside the committed Tier-3 guilds
 **Before Tier 3 runs live.** The engine slices are done. Still open:
 - **the client**, which still sends the Tier-1/2 licence shape for a Tier-3 factory (3c's item);
 - the Slice 3c and 3d items on the roadmap's decision checklist.
+
+## As built (28-09-26) — the Strong discount on the re-offer, and two rulings recorded
+
+A cleanup after 3c and 3d. Three lifecycle items those slices flagged for the human are now **RULED**.
+One needed a code change; the other two are recorded here only.
+
+**1. A Strong venture keeps its Strong discount on the Tier-3 re-offer (code).** 3c built the fixed
+re-offer with a fee discount of 0 at every band. The ruling is that a Tier-3 re-offer drops only the
+commitment **ratchet**. So `renegotiationTerms` (`sim/licence.js`) now returns, for a Tier-3 licence:
+- the same `x / y`, to the bit, and the same one-week term, at every band (unchanged);
+- `feeDiscount = STRONG_FEE_DISCOUNT` (the existing −10%) for a Strong venture, and 0 otherwise.
+
+Standing is read for the discount and for nothing else. `renegotiationFee`, the `renegotiateLicence`
+re-lock and the snapshot's `renegotiationOffer` all read that one function, so the offer shown and the
+fee locked still agree. Example: a Strong heavy reactor engine at `x = 3`, re-offered at 20M, is re-locked
+at 90% of 7,000,000 and 5,500,000, which is **6,300,000 and 4,950,000**. The discount is taken off the
+freshly priced fee at each renewal, so it never compounds. **No new number:** `STRONG_FEE_DISCOUNT` is
+the existing constant. The Tier-1/2 branch is not touched.
+
+**2. The breached-week divergence is intended (docs only).** On a breached week the Syndicate keeps
+every unit delivered, while the guild is paid only its committed share `x / y`. This is a deliberate
+breach penalty; see "A consequence worth knowing" in "As built — Slice 3d".
+
+**3. Auto-lapse is intended (docs only).** An unaccepted Tier-3 re-offer lapses on the existing timers.
+There is no auto-renew step. See "Renegotiation — fixed re-offer".
+
+**Proven** (`sim/tests/tier3-contract.test.js`):
+- The (c) headline now expects the discount at Strong only. At today's price of 150, a 200-of-672
+  re-offer is re-locked at 10,080 / 9,330 at every other band and at 9,072 / 8,397 at Strong (typed by
+  hand). A second renewal is priced the same, so the discount is not applied twice. The offer shown
+  matches the fee locked, `feeDiscountApplied` included.
+- A new **tripwire** probes both sides of every band edge (−300 / 0 / 500), for a 3-1 part and for a
+  heavy engine (`x / y = 6/7`). The commitment and term never move, and the discount is there only at
+  Strong. It also checks the 6.3M / 4.95M example above, and the full fee one RP below Strong.
+- The 5,139-pair round trip now also checks the discount at each of the four bands.
+- Run against HEAD's `sim/licence.js`, 3 of the file's 14 tests fail (the three re-offer tests). Two
+  deliberate breakages are each caught by the same three: the Tier-3 ratchet put back, and the discount
+  given at every band.
+
+**Isolation.** Only the Tier-3 branch of `renegotiationTerms` changed. The 3c Tier-1/2 isolation pin
+(hashes computed on HEAD 5867c18) passes unchanged, and so does the (d) ratchet test. **No golden
+moved.** No pinned run renegotiates a Strong Tier-3 venture: the only other Tier-3 re-lock in the suite
+(`tier3-settlement.test.js`) is at Steady, where the discount is 0 as before.

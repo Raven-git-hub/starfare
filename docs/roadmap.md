@@ -1976,7 +1976,8 @@ boundary so the later hex-map swap doesn't touch it.
   - **The fixed re-offer.** `renegotiationTerms` returns a Tier-3 licence's own terms, whatever its
     standing: the same exact `x / y`, the same term, and no Strong discount. `renegotiationFee`
     re-prices them at today's price; the re-lock re-derives the same `x` (pinned for all 5,139
-    `(good, x)` pairs).
+    `(good, x)` pairs). *(⤳ RULED 28-09-26: a Strong venture keeps the Strong discount; only the
+    ratchet is dropped. Built by the cleanup entry below.)*
   - **Invariant:** a timed-good licence has `windowDays` 1 (`tier3-term-is-one-week`), and its `x` is
     whole, within `[0, floor(y)]` and equal to `committedOutputPct × y` exactly
     (`tier3-commitment-is-x-of-y`). Tier-1/2 keeps the 7–42 bound.
@@ -2050,6 +2051,27 @@ boundary so the later hex-map swap doesn't touch it.
     instead of the committed share, ignoring the owner split, paying every good on progress (caught by
     the isolation pin), and no halt on an impossible `x`. Tools **68 green**.
   - **Still not safe to run live:** the client (3c's item) and the checklist items for 3c and 3d.
+
+- **Tier-3 re-offer keeps the Strong discount; two lifecycle rulings recorded — ✅ BUILT 28-09-26
+  (Tier-3 economy — cleanup).** `docs/tier3-timed-production.md` ("Renegotiation — fixed re-offer";
+  as-built "the Strong discount on the re-offer, and two rulings recorded" at its end); design.md §5
+  RULED note. Resolves three items the 3c/3d checklists carried.
+  - **The fix (one return field).** `renegotiationTerms`' Tier-3 branch returned `feeDiscount: 0` at
+    every band. It now returns `STRONG_FEE_DISCOUNT` (the existing −10%) for a Strong venture and 0
+    otherwise, exactly as the Tier-1/2 branch does. The commitment `x / y` (exact) and the one-week
+    term are unchanged, and there is still no ratchet: standing is read for the discount only.
+  - **Recorded as RULED (docs only, no code):** the breached-week delivery/payment divergence is an
+    intended breach penalty; auto-lapse (no auto-renew) is intended.
+  - **Goldens: none moved.** No pinned run renegotiates a Strong Tier-3 venture (the one other Tier-3
+    re-lock in the suite is at Steady). The Tier-1/2 branch is untouched, and the 3c Tier-1/2
+    isolation pin passes unchanged.
+  - Test updated deliberately: `tier3-contract.test.js`'s (c) headline expected no discount at Strong.
+    It now expects 9,072 / 8,397 at Strong and 10,080 / 9,330 elsewhere (typed by hand), and checks a
+    second renewal is not discounted twice. The 5,139-pair round trip also checks the discount by band.
+  - Sim suite 1,733 → **1,734 green** (a new tripwire probes both sides of every band edge for a 3-1
+    part and a heavy engine: the commitment never moves, and the discount is there only at Strong).
+    Against HEAD's `sim/licence.js`, 3 of the file's 14 fail. Two deliberate breakages (the ratchet put
+    back; the discount at every band) are each caught. Tools **68 green**.
 
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
@@ -2394,6 +2416,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
       grace), then the offer stands for 5 days, then the licence **auto-lapses** if nobody accepts it.
     - Alternative: an auto-renew step that re-locks the identical terms at the deadline instead of
       lapsing them. That is a new tick behaviour, so it was not guessed.
+    - **⤳ RULED 28-09-26: auto-lapse is intended.** The guild renews by accepting the re-offer; an
+      offer nobody accepts auto-lapses. No auto-renew step. No code change.
   - **The term is not aligned to the settlement week.** The ruling says "the contract term and the
     settlement window are the same week". Built with the existing re-lock rule:
     - A term runs signing + 10,080. A licence signed mid-week spans two settlement weeks.
@@ -2407,7 +2431,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   - **No Strong discount on a Tier-3 re-offer.** Built as: the re-offer is identical at every standing,
     Strong included, so there is no −10% fee. The ruling's "identical terms … no standing ratchet …
     Drops T1/2's `renegotiationTerms` recompute" was read as dropping the whole standing-keyed terms
-    function, discount and all. Confirm.
+    function, discount and all. Confirm. **⤳ RULED 28-09-26: the Tier-3 re-offer KEEPS the Strong
+    discount and drops only the commitment ratchet. Built 28-09-26 (Tier-3 cleanup, above).**
   - **Grace is keyed on the contract's length in days.** A Tier-3 week is 7 days at the ruled day, so
     its grace is 1 day. On a test galaxy with a shorter day the same week is more "days" (168 at a
     60-tick day), so the grace is 5 days. This matters only off the ruled day. Confirm.
@@ -2449,6 +2474,10 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
       If not, the options are (each a ruling, and each would touch delivery, so none was built):
       - pay a delivered unit's uncommitted share on delivery;
       - or deliver only as much as the committed progress has paid for.
+    - **⤳ RULED 28-09-26: intended, not a defect.** On a breached Tier-3 week the Syndicate keeps
+      every delivered unit, while the guild is paid only its committed share `x / y`. That is a
+      deliberate breach penalty ("commit conservatively"). Neither alternative is taken; delivery and
+      payment are unchanged.
   - **Whole credits: floor-and-carry (confirm).** One tick of committed work is often worth under a
     credit. A 3-1 part at base 100 committed at `x = 50` earns ~0.5 a tick, and at `x = 1` about
     0.01.

@@ -293,8 +293,10 @@ with the countdown, and an unanswered venture auto-lapses off MESSAGES.
 ### Tier-3 licences (28-09-26, Slice 3c of the Tier-3 economy build)
 
 A licence on a **timed** Tier-3 good does not ratchet. `renegotiationTerms` returns its own terms at every
-standing: the same whole-unit ratio `x / y` (exact, not 2-dp normalised), the same one-week term, and no
-Strong discount. `renegotiationFee` re-prices them at today's posted price. Its term is one of its weekly
+standing: the same whole-unit ratio `x / y` (exact, not 2-dp normalised) and the same one-week term. A
+Strong venture keeps the Strong fee discount; every other band gets none. `renegotiationFee` re-prices
+them at today's posted price. *(⤳ As 3c first built it there was no Strong discount at any band. RULED
+28-09-26: a Tier-3 re-offer drops only the ratchet, and keeps the discount.)* Its term is one of its weekly
 windows, so the timers run through `renegotiationScheduleFor`, which counts the term in the licence's
 own window: a Tier-3 contract is 7 days long at the ruled day, and gets a 7-day contract's timeline.
 Tier-1/2 renegotiation is unchanged. `docs/tier3-timed-production.md` "As built — Slice 3c".

@@ -9,7 +9,9 @@
 //       in [0, floor(y)], and stores the exact ratio `committedOutputPct = x / y`;
 //   (b) its term is ONE WEEK — one of its weekly settlement windows — so a teardown owes at most
 //       that one week's fee and locks the node only until the week ends;
-//   (c) at term end the Syndicate re-offers IDENTICAL terms, whatever the venture's standing.
+//   (c) at term end the Syndicate re-offers IDENTICAL terms, whatever the venture's standing:
+//       the same commitment and term, no ratchet. A Strong venture still gets its Strong fee
+//       discount — the ruling drops the ratchet only (RULED 28-09-26).
 //   (d) A Tier-1/2 licence keeps its percentage, its 7–42 day term and the standing ratchet, and
 //       a Tier-1/2 galaxy reproduces the pre-slice engine's bytes (hashes computed on HEAD 5867c18).
 //
@@ -39,8 +41,8 @@ const { postedPrice } = require('../prices.js');
 const { getWindow } = require('../windows.js');
 const {
   FEE_RATE, feeFraction, normalisedTerms, ventureTierWeight, teardownSettlement, licenceEndTick,
-  renegotiationSchedule, renegotiationScheduleFor, renegotiationTerms, commitmentUnitsFor,
-  licenceBasisForGood, licenceWindowN, committedPctForUnits, STRONG_FEE_DISCOUNT,
+  renegotiationSchedule, renegotiationScheduleFor, renegotiationTerms, renegotiationFee, commitmentUnitsFor,
+  licenceBasisForGood, licenceWindowN, committedPctForUnits, STRONG_FEE_DISCOUNT, ventureStanding,
 } = require('../licence.js');
 const { HOME_SYSTEM, HOME_SLOT } = require('./home-anchor.js');
 
@@ -333,8 +335,13 @@ test('(a)(b) the invariant names a Tier-3 licence whose term was chosen, or whos
 
 // --- 3. (c) THE FIXED RE-OFFER -----------------------------------------------------------------
 
-test('(c) HEADLINE: a Tier-3 licence renegotiates to IDENTICAL terms at every standing — no ratchet, no jump to 100%, no Strong discount; only the price is refreshed', () => {
+test('(c) HEADLINE: a Tier-3 licence renegotiates to the SAME commitment and term at every standing — no ratchet, no jump to 100%; a Strong venture keeps its Strong discount; the price is refreshed', () => {
+  // Typed by hand at today's price of 150: basic = 0.10 × 672 × 150 = 10,080; the grid takes
+  // 25 × 200/672 points off, 10,080 − 750 = 9,330. A Strong venture pays 90% of both
+  // (STRONG_FEE_DISCOUNT, −10%): 9,072 and 8,397. Every other band pays the full re-priced fee.
+  const fees = { atRisk: [10080, 9330], subPar: [10080, 9330], steady: [10080, 9330], strong: [9072, 8397] };
   for (const [band, rp] of Object.entries(BANDS)) {
+    const strong = band === 'strong';
     let s = galaxy([guildRow('g1', [factory('f', 'g1', 'fuel_tank')])]);
     s = sign(s, [units('g1', 'f', 200)]);
     const signedLic = { ...ventureOf(s, 'g1', 'f').licence };
@@ -342,26 +349,63 @@ test('(c) HEADLINE: a Tier-3 licence renegotiates to IDENTICAL terms at every st
     // The market moved since signing: the re-offer is priced at today's posted price.
     s.prices.fuel_tank.posted = 150;
     s.tick = renegotiationScheduleFor(ventureOf(s, 'g1', 'f'), DAY, 0).actsTick;
-    assert.deepEqual(renegotiationTerms(ventureOf(s, 'g1', 'f')), { committedOutputPct: 200 / 672, windowDays: 1, feeDiscount: 0 }, band);
+    assert.deepEqual(renegotiationTerms(ventureOf(s, 'g1', 'f')),
+      { committedOutputPct: 200 / 672, windowDays: 1, feeDiscount: strong ? STRONG_FEE_DISCOUNT : 0 }, band);
     const offer = buildSnapshot(s).ventures.find((v) => v.id === 'f').renegotiationOffer;
     s = sign(s, [createRenegotiateLicenceAction({ guildId: 'g1', ventureId: 'f' })]);
     const v = ventureOf(s, 'g1', 'f');
     assert.equal(v.licence.committedOutputPct, signedLic.committedOutputPct, `${band}: the same x / y, to the bit`);
     assert.equal(v.syndicateCommitment, 200, `${band}: the same 200 whole units`);
     assert.equal(v.licence.windowDays, 1, `${band}: the same one-week term`);
-    const basicFee = Math.round(FEE_RATE * 672 * 150);
-    assert.equal(v.licence.basicFee, basicFee, `${band}: re-priced at today's 150 (was ${signedLic.basicFee})`);
-    assert.equal(v.licence.discountedFee, Math.round(basicFee * (1 - 0.25 * (200 / 672))), `${band}: no Strong discount`);
+    assert.deepEqual([v.licence.basicFee, v.licence.discountedFee], fees[band],
+      `${band}: re-priced at today's 150 (was ${signedLic.basicFee})${strong ? ', less the Strong discount' : ', no discount'}`);
     assert.equal(v.reputation, rp, `${band}: RP carries, no fresh bump`);
     assert.deepEqual({ c: offer.committedOutputPct, b: offer.basicFee, d: offer.discountedFee, f: offer.feeDiscountApplied },
-      { c: v.licence.committedOutputPct, b: v.licence.basicFee, d: v.licence.discountedFee, f: false }, `${band}: the offer shown is what was locked`);
+      { c: v.licence.committedOutputPct, b: v.licence.basicFee, d: v.licence.discountedFee, f: strong }, `${band}: the offer shown is what was locked`);
     assert.deepEqual(checkInvariants(s, s.tick), [], band);
-    // And again: a second renewal a week later still holds x.
+    // And again: a second renewal a week later still holds x, and a Strong discount is taken off
+    // the freshly priced fee each time — never compounded on the last one.
     s.tick = renegotiationScheduleFor(v, DAY, 0).actsTick;
     s = sign(s, [createRenegotiateLicenceAction({ guildId: 'g1', ventureId: 'f' })]);
     assert.equal(ventureOf(s, 'g1', 'f').syndicateCommitment, 200, `${band}: still 200 after two renewals`);
     assert.equal(ventureOf(s, 'g1', 'f').licence.committedOutputPct, signedLic.committedOutputPct);
+    assert.deepEqual([ventureOf(s, 'g1', 'f').licence.basicFee, ventureOf(s, 'g1', 'f').licence.discountedFee], fees[band],
+      `${band}: the second renewal is priced the same, not discounted twice`);
   }
+});
+
+test('(c) TRIPWIRE: the Tier-3 re-offer reads standing for the Strong discount ONLY — the commitment never moves, at every band and at every band edge', () => {
+  // The band edges are design.md §5's table (−300 / 0 / 500), probed on both sides.
+  const edges = [
+    [-100000, 'atRisk'], [-300, 'atRisk'], [-299, 'subPar'], [-1, 'subPar'],
+    [0, 'steady'], [499, 'steady'], [500, 'strong'], [100000, 'strong'],
+  ];
+  // A 3-1 part at a half commitment and a heavy reactor engine at its most (6/7, a fractional y):
+  // under the Tier-1/2 ratchet the first would step to 0.6 / 0.75 / 1 and the second jump to 1.
+  for (const [recipeId, x] of [['fuel_tank', 336], ['heavy_reactor_engine', 3]]) {
+    let s = galaxy([guildRow('g1', [factory('f', 'g1', recipeId)])]);
+    s = sign(s, [units('g1', 'f', x)]);
+    const pct = ventureOf(s, 'g1', 'f').licence.committedOutputPct;
+    for (const [rp, band] of edges) {
+      setRp(s, 'g1', 'f', rp);
+      const v = ventureOf(s, 'g1', 'f');
+      assert.equal(ventureStanding(v), band, `rp ${rp} is ${band}`);
+      const terms = renegotiationTerms(v);
+      assert.equal(terms.committedOutputPct, pct, `${recipeId} rp ${rp} (${band}): no ratchet — the same x / y, to the bit`);
+      assert.equal(terms.windowDays, 1, `${recipeId} rp ${rp}: the same one-week term`);
+      assert.equal(terms.feeDiscount, band === 'strong' ? STRONG_FEE_DISCOUNT : 0,
+        `${recipeId} rp ${rp} (${band}): the Strong discount iff Strong`);
+    }
+  }
+  // Worked by hand through the fee: a Strong heavy engine at x = 3, re-offered at the 20M it was
+  // signed at, pays 90% of 7,000,000 and of 5,500,000.
+  const heavy = { id: 'h', type: 'refining', recipeId: 'heavy_reactor_engine', reputation: 600, licence: { committedOutputPct: 3 / 3.5, windowDays: 1 } };
+  const basis = licenceBasisForGood('heavy_reactor_engine', DAY);
+  const fee = renegotiationFee({ venture: heavy, baselineUnitsPerTick: basis.unitsPerTick, windowN: basis.windowN, lockedPrice: 20000000 });
+  assert.deepEqual(fee, { committedOutputPct: 3 / 3.5, basicFee: 6300000, discountedFee: 4950000, feeDiscountApplied: true });
+  heavy.reputation = 499;
+  assert.deepEqual(renegotiationFee({ venture: heavy, baselineUnitsPerTick: basis.unitsPerTick, windowN: basis.windowN, lockedPrice: 20000000 }),
+    { committedOutputPct: 3 / 3.5, basicFee: 7000000, discountedFee: 5500000, feeDiscountApplied: false }, 'one RP short of Strong: full fee');
 });
 
 test('(c) every legal x survives the re-lock unchanged — all 21 timed goods, every x from 0 to floor(y), at every standing', () => {
@@ -374,6 +418,7 @@ test('(c) every legal x survives the re-lock unchanged — all 21 timed goods, e
         const venture = { id: 'v', type: 'refining', recipeId: good, reputation: rp, licence: { committedOutputPct: pct, windowDays: 1 } };
         const terms = renegotiationTerms(venture);
         assert.equal(terms.committedOutputPct, pct);
+        assert.equal(terms.feeDiscount, rp === BANDS.strong ? STRONG_FEE_DISCOUNT : 0, `${good} x = ${x} rp ${rp}`);
         assert.equal(commitmentUnitsFor(terms.committedOutputPct, basis.unitsPerTick, basis.windowN), x, `${good} x = ${x}`);
       }
       checked += 1;
