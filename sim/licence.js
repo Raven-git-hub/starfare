@@ -38,8 +38,9 @@
 // 3b-i computes and locks the number; **Slice 3b-iii (28-08-26) CHARGES it** — `feeOwed`
 // below is the per-venture arithmetic, and sim/tick.js sums a guild's oweds into the one
 // boundary debit (the fee charge was renumbered when 3b-ii became the mid-window
-// pro-rate). This file still moves no credit itself: `commitmentSale`, `feeOwed` and (Slice 3d)
-// `progressPayment` all return numbers, and the tick is the only place a balance changes.
+// pro-rate). This file still moves no credit itself: `commitmentSale`, `feeOwed`, (Slice 3d)
+// `progressPayment` and (Slice A-fix) `rescueSale` all return numbers, and the tick is the only
+// place a balance changes.
 
 const {
   windowFraction, DEFAULT_WINDOW_N, TIER3_WINDOW_N, tier3WindowNests, windowNForGood,
@@ -139,6 +140,10 @@ function committedContribution(venture, windowStart, N) {
 // goods by a ranking that does not exist until the boundary, and cannot be known on
 // the tick the goods are actually handed over.
 //
+// (A settlement RESCUE is the exception, and it does not come through here: its units are
+// not co-mingled — each covers one known venture's shortfall — so `rescueSale`, below, pays
+// each on that venture's own equity. Slice A-fix, design.md §5 ruling 3.)
+//
 // Delivered units with no committing venture at all cannot happen (`Q` is built from
 // those very commitments), but if they somehow did, the owner keeps the lot rather
 // than the engine quietly pocketing goods it can't attribute.
@@ -186,6 +191,40 @@ function ownerFraction(ventures, good, windowStart, N) {
 function commitmentSale({ ventures, good, delivered, price, windowStart, windowN }) {
   const gross = delivered * price;
   return { gross, ownerCredits: Math.round(ownerFraction(ventures, good, windowStart, windowN) * gross) };
+}
+
+// rescueSale({ ventures, topUps, good, price, windowStart, windowN }) -> { gross, ownerCredits }
+// — the payment for a SETTLEMENT RESCUE (design.md §5, Slice A-fix ruling 3). Same shape and same
+// rounding rule as `commitmentSale` above; only the split differs.
+//
+// WHY NOT THE BLEND. `commitmentSale` blends `1 − o` across the good's ventures because a tick's
+// delivered units are co-mingled and cannot be traced to one venture. A rescued unit can: it left
+// the guild's stock to cover ONE venture's shortfall, and `topUps` ({ [ventureId]: units },
+// from `settlementRescue` in sim/production.js) says which. So each venture's top-up is split on
+// THAT venture's own equity. With one committing venture, or equal equity, the answer is the
+// blend's; it differs only when two licences on one good offered different equity, the one case
+// where the blend would pay one licence's investors on another's terms.
+//
+// Each venture's share is `ownerFraction` over that ONE venture: the same arithmetic the blend
+// uses, so a good with a single committing venture is paid exactly as before, to the last bit.
+// The owner's shares are added up unrounded and rounded ONCE at the end, and that one integer is
+// both the guild's gain and the ledger's debit (invariant 2), as in `commitmentSale`.
+//
+// A top-up for a venture that is not in `ventures` cannot happen (the resolver built the top-ups
+// from these same ventures this tick). If it ever does, halt rather than pay on made-up terms.
+// Pure: reads its arguments, mutates nothing.
+function rescueSale({ ventures, topUps, good, price, windowStart, windowN }) {
+  let units = 0;
+  let ownerShare = 0; // the owner's part of the gross, before the one rounding
+  for (const [ventureId, topUp] of Object.entries(topUps)) {
+    const venture = ventures.find((v) => v.id === ventureId);
+    if (!venture) {
+      throw new Error(`rescueSale: the settlement rescue of ${good} topped up venture ${ventureId}, which is not among the ventures being paid — refusing to split its proceeds on unknown terms`);
+    }
+    units += topUp;
+    ownerShare += ownerFraction([venture], good, windowStart, windowN) * (topUp * price);
+  }
+  return { gross: units * price, ownerCredits: Math.round(ownerShare) };
 }
 
 // --- The progress payment (Tier 3, Slice 3d) -------------------------------------
@@ -1393,7 +1432,7 @@ function applyVentureClosure(state, guild, venture, cause, tick) {
 
 module.exports = {
   EQUITY_CEILING, equityOf, isValidEquityPct, committedContribution, ownerFraction, commitmentSale,
-  paidOnProgress, committedShareOf, progressPayment,
+  rescueSale, paidOnProgress, committedShareOf, progressPayment,
   FEE_RATE, CORNERS, EQUITY_SHAPE_K, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
   feeFraction, normalisedTerms, licenceFee, feeOwed, teardownSettlement, licenceEndTick, isValidCommitmentPct, isValidWindowDays,
   commitmentUnitsFor, licenceBasisFor, licenceBasisForGood,

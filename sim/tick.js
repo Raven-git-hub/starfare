@@ -44,7 +44,7 @@ const { recordFuelPriceSample } = require('./fuel-price-history.js');
 const { recordPriceRing } = require('./price-ring.js');
 const { recomputePrices, postedPrice } = require('./prices.js');
 const {
-  commitmentSale, committedContribution, feeOwed, reputationDelta, gainFactor, RP_FLOOR,
+  commitmentSale, rescueSale, committedContribution, feeOwed, reputationDelta, gainFactor, RP_FLOOR,
   deuteriumMetGain, renegotiationScheduleFor, applyLapse, applyVentureClosure,
   paidOnProgress, committedShareOf, progressPayment,
 } = require('./licence.js');
@@ -607,23 +607,32 @@ function applyProduction(state, guild, systemId, ctx) {
 
   // ── THE SETTLEMENT-TIME STOCKPILE RESCUE (Slice A; design.md §5, RULED 28-09-26) ──────────────
   // At a good's own boundary a licence that came up short is topped up from the guild's stockpile
-  // of that good, from stock above the reserve floor only. The resolver has already worked out how
-  // many units (`window.rescued`, `settlementRescue` in sim/production.js) and judged the verdict
-  // on the topped-up pile, so the fee and reputation below read the rescued result with no change
-  // to their own code. This loop does the two things the resolver cannot: it MOVES the units and
-  // it PAYS for them.
+  // of that good, from stock above the reserve floor only. (A commitment with no stored licence,
+  // the dev scaffold, is not rescued: the same skip as the fee charge below. Slice A-fix, ruling 2.)
+  // The resolver has already worked out how many units, and for which venture (`window.rescued`,
+  // `report.rescueTopUps`, `settlementRescue` in sim/production.js), and credited each venture its
+  // own top-up in the verdict, so the fee and reputation below read the rescued result with no
+  // change to their own code. This loop does the two things the resolver cannot: it MOVES the
+  // units and it PAYS for them.
   //
   // It runs after the delivery above and before the window write-back and the verdict below, the
   // same order the resolver computed it in. A good with no rescue has no `rescued` key, so on every
   // other tick, and every boundary where no licence was short or no spare stock existed, nothing
   // here runs and the tick is exactly what it was before this slice.
   //
-  // PAID AS A DELIVERY, EVERY TIER. The rescued units are sold at the POSTED price through
-  // `commitmentSale` and recorded by `recordSale`, exactly as a Tier-1/2 boundary delivery is: the
-  // owner is paid its `1 − o` share, and the `o` share stays in the ledger. For a TIMED Tier-3 good
-  // this is the one payment those units ever get. Its units delivered during the week were paid on
-  // progress (above) and their delivery credited nothing; a unit sitting in the stockpile was never
-  // progress-paid (design.md §5's ruling), so paying for it here pays it once, not twice.
+  // PAID AS A DELIVERY, EVERY TIER. The rescued units are sold at the POSTED price and recorded by
+  // `recordSale`, exactly as a Tier-1/2 boundary delivery is: the owner is paid its `1 − o` share,
+  // and the `o` share stays in the ledger. For a TIMED Tier-3 good this is the one payment those
+  // units ever get. Its units delivered during the week were paid on progress (above) and their
+  // delivery credited nothing; a unit sitting in the stockpile was never progress-paid (design.md
+  // §5's ruling), so paying for it here pays it once, not twice.
+  //
+  // EACH TOP-UP ON ITS OWN LICENCE'S EQUITY (Slice A-fix, ruling 3). The sale is `rescueSale`, not
+  // `commitmentSale`: the resolver says which venture each rescued unit was for
+  // (`report.rescueTopUps`), so each venture's top-up is split on that venture's own `o`, not on the
+  // good's blend. The units recorded and the credits paid for the good are still one sum; only the
+  // line between the owner's keep and the ledger's `o` share can move, and only when two licences
+  // on the good offered different equity.
   for (const good of Object.keys(report.goods).sort()) {
     const w = report.goods[good].window;
     const rescued = w && w.rescued ? w.rescued : 0;
@@ -643,10 +652,19 @@ function applyProduction(state, guild, systemId, ctx) {
       throw new Error(`applyProduction: guild ${guild.id}'s settlement rescue would deliver ${rescued} ${good} to the Syndicate at tick ${state.tick + 1} but the good has no posted price — refusing to hand over goods for nothing`);
     }
 
+    // The per-venture top-ups must add up to the window's `rescued`. They are two reports of one
+    // plan, so a mismatch means a rescued unit would be paid for on no one's terms, or twice. Halt.
+    const topUps = (report.rescueTopUps || {})[good] || {};
+    let topUpTotal = 0;
+    for (const units of Object.values(topUps)) topUpTotal += units;
+    if (topUpTotal !== rescued) {
+      throw new Error(`applyProduction: guild ${guild.id}'s settlement rescue of ${good} at tick ${state.tick + 1} moved ${rescued} units but its per-venture top-ups add up to ${topUpTotal} — refusing to pay a rescue it cannot attribute`);
+    }
+
     addStock(guild, systemId, good, -rescued);
     const saleWin = windowOf(good);
-    const { ownerCredits } = commitmentSale({
-      ventures: systemVentures, good, delivered: rescued, price,
+    const { ownerCredits } = rescueSale({
+      ventures: systemVentures, topUps, good, price,
       windowStart: saleWin.windowStart, windowN: saleWin.windowN,
     });
     guild.credits += ownerCredits;

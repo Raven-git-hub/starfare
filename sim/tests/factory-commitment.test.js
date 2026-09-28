@@ -356,7 +356,7 @@ test('DEFERRED, PINNED: "percent" send mode on a refined good still sends nothin
   // there would mean resolving one good's window in two different places depending on how
   // it is produced, so the gap is left OPEN and VISIBLE rather than guessed at: paced (the
   // default) and absolute are exact for a factory, percent intends 0 and will breach
-  // (unless the boundary rescue covers it from stock — see below).
+  // (unless, for a real licence, the boundary rescue covers it from stock — see below).
   // Recorded on the decision checklist (docs/roadmap.md). Delete this test only when the
   // gap is actually closed.
   let s = fixture(suppliedChain([factory('f', 5, { syndicateCommitment: FACTORY_Q })]));
@@ -366,15 +366,17 @@ test('DEFERRED, PINNED: "percent" send mode on a refined good still sends nothin
   while (s.tick < N - 1) s = tick(s);
   assert.equal(windows(s)[OUT].delivered, 0, 'the known gap — NOT the intended behaviour: no tick sends a unit');
   // ⤳ Slice A (settlement rescue, 28-09-26). The send is still broken on every tick, including the
-  // boundary's. But the alloy it never sent piled up in the stockpile, and with the default floor
-  // of 0 the boundary's settlement rescue now delivers the whole target from that stock. So the
-  // rescue covers for the gap wherever stock sits above the floor. It does not close it: the units
-  // arrive all at once at the window's end, not tick by tick (decision checklist).
+  // boundary's. For a REAL licence, the alloy it never sent piles up in the stockpile and the
+  // boundary's settlement rescue delivers the target from it: the rescue covers for the gap wherever
+  // stock sits above the floor, without closing it (the units arrive all at once at the window's
+  // end, not tick by tick — decision checklist). This fixture's commitment, though, is set straight
+  // on the venture with no stored licence (the dev scaffold's shape), and since Slice A-fix (ruling
+  // 2) the rescue skips such a commitment, as the fee charge does. So here the gap shows unrescued.
   const boundary = preview(s).goods[OUT];
   assert.equal(boundary.fork.syndicate, 0, 'the boundary tick sends nothing either');
-  assert.equal(boundary.window.rescued, FACTORY_Q, 'the rescue delivers the target from stock');
+  assert.equal(boundary.window.rescued, undefined, 'no licence, no rescue (Slice A-fix ruling 2)');
   s = tick(s);
-  assert.equal(windows(s)[OUT].delivered, FACTORY_Q);
+  assert.equal(windows(s)[OUT].delivered, 0, 'the window closes with nothing delivered');
 });
 
 // --- 8. determinism (invariant 9) -------------------------------------------------

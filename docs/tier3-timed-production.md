@@ -1217,6 +1217,8 @@ design.md §5's AS-BUILT note and the roadmap's "Slice A" entry.
   not yet used)`. The shortfall is the one the verdict's pursue fill leaves. Several short licences
   share the pile in the pursue order, and the resolver checks that re-running the fill on the
   topped-up pile credits each exactly its top-up (`settlementRescue`, `sim/production.js`).
+  *(⤳ Slice A-fix, below: a commitment with no stored licence is no longer rescued, and each
+  venture is credited its own top-up directly; the check runs wherever every commitment has a licence.)*
 - Syndicate-first delivery means a short week has already sent the Syndicate every unit it made that
   week. So the rescue can only take units made before the week: stock left over from a met week, or
   stock the guild put there.
@@ -1224,7 +1226,8 @@ design.md §5's AS-BUILT note and the roadmap's "Slice A" entry.
   floor, and the week still breaches.
 
 **Paid once.** The rescued units are sold at the posted price through `commitmentSale` and
-`recordSale` (`sim/tick.js`), the owner keeping `1 − o`. A stockpiled unit was never progress-paid
+`recordSale` (`sim/tick.js`), the owner keeping `1 − o`. *(⤳ Slice A-fix, below: through
+`rescueSale` now, each top-up on its own licence's `1 − o`.)* A stockpiled unit was never progress-paid
 (the ruling), so this one sale is its only payment. The week's progress payments are unchanged,
 and the fresh deliveries still credit nothing. The test measures this: two guilds, identical but for
 the floor, are paid the same credits on every tick of the week before its boundary. On the boundary
@@ -1267,3 +1270,21 @@ fail and the isolation pin passes. Eight deliberate breakages each turn a named 
 - rescue on every tick;
 - ignore the pursue order;
 - drop the refusal.
+
+## As built (28-09-26) — Slice A-fix: no licence, no rescue; each top-up on its own licence's equity
+
+Rulings (2) and (3) of design.md §5's "SETTLEMENT RESCUE — three follow-up rulings", built for every
+tier. What they mean for a timed good:
+- **No licence, no rescue.** A Tier-3 commitment with no stored `licence` (only the
+  `setSyndicateCommitment` dev scaffold makes one) is not topped up at the week's end. It is judged
+  on what it delivered, and pays no fee, as before. Every real Tier-3 licence comes from
+  `applyForLicence`, so real play is unchanged.
+- **Each top-up on its own equity.** The rescue's one payment for a timed good's stockpiled units is
+  now `rescueSale` (`sim/licence.js`): each venture's top-up is split on that venture's own `1 − o`,
+  not the blend across the good's ventures. It only differs from before when two licences on one
+  timed good offered different equity. The week's progress payments keep the blend, unchanged
+  (`progressPayment`), and the fresh deliveries still credit nothing, so a unit is still paid once.
+- **Proven** in `sim/tests/settlement-rescue-fix.test.js`. Its isolation pin runs a Tier-3 week (a
+  fuel-tank licence at equity 0.2, rescued from stock at the week's end) beside a Tier-1 and a
+  Tier-2 licence, and reproduces the engine before this slice (HEAD d7ef657) byte for byte, every
+  tick. The details are in design.md §5's AS-BUILT Slice A-fix note and the roadmap's "Slice A-fix".

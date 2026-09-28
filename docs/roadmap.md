@@ -2232,6 +2232,58 @@ boundary so the later hex-map swap doesn't touch it.
     twice, a partial rescue softening the breach, a free hand-over, rescue on every tick, ignore the
     pursue order, drop the refusal. Tools **68 green**. **No number was invented.**
 
+- **Slice A-fix (licence system) — the settlement rescue skips a licence-less commitment and pays each
+  top-up on its own licence's equity — ✅ BUILT 28-09-26.** design.md §5 ("SETTLEMENT RESCUE — three
+  follow-up rulings", (2) and (3), and the AS-BUILT Slice A-fix note after Slice A's). Closes Slice A's
+  two checklist items on the equity split and the dev scaffold. Ruling (1) (input-raiding is intended)
+  was already as-built and is untouched, as is everything else Slice A built: the floor, the boundary
+  timing, partial rescue, the posted price, both halts, the fee, reputation and forced closure.
+  - **(2) No licence, no rescue.** `settlementRescue` (`sim/production.js`) skips a venture with no
+    stored `licence`, the fee charge's own test (`Boolean(v.licence)`, carried on the venture's target
+    row). The skipped venture keeps what the pursue fill gave it and is judged on that; the spare
+    passes on to the next licence. The verdict after a rescue is now each venture's fill plus its own
+    top-up (`creditTopUps`). Slice A's halt (that credit must equal the fill re-run on the topped-up
+    pile) still runs wherever every commitment on the good has a licence, which is all of real play.
+  - **(3) Each top-up on its own equity.** The resolver's report carries `rescueTopUps` (`{ [good]: {
+    [ventureId]: units } }`, only when a rescue moved units). `applyProduction` (`sim/tick.js`) pays the
+    rescue through a new `rescueSale` (`sim/licence.js`): each top-up split on `ownerFraction` over its
+    one venture, summed and rounded once, one integer on both legs. The posted price, the no-price
+    halt, the below-floor halt, `addStock(-rescued)` and `recordSale` (units and credits summed for the
+    good) are unchanged. New halts: the top-ups must add up to `rescued`, and `rescueSale` refuses a
+    top-up for a venture it cannot find. `commitmentSale`, the per-tick delivery and the progress
+    payment keep the blend.
+  - **Nothing new shows.** `previewProduction` leaves `rescueTopUps` out, so the snapshot's shape is
+    unchanged. No stored field, no schema bump.
+  - **Isolation (both changes have a tight blast radius).**
+    - The whole final suite (1,768 sim, all green; the 68 tools tests never tick the engine) was run
+      with the engine compared to HEAD d7ef657 from the same input on every tick: of 180,501 ticks,
+      180,490 are identical, 11 differ, 0 unexplained. 7 are ruling (2), a scaffold commitment HEAD
+      rescued: `reserve-priority` (1), `window-accrual` (2), `factory-commitment` (1) and the new (g)
+      tests (3). 4 are ruling (3), a good with licences at equity 0.1 and 0.4: the new (h) and (j)
+      tests. Previews: identical on every tick but the 7 of ruling (2).
+    - **No existing pin moved**, the four Slice A re-pins (`tier3-contract`, `-delivery`, `-payment`,
+      `-settlement`) included: their rescues are real licences, one per good.
+    - A new standing pin (hashes computed on HEAD d7ef657) holds two runs of REAL play with the rescue
+      firing on every boundary to HEAD's bytes, every tick, every preview and every day's snapshot:
+      one licence per good (Tier 1, 2 and 3, at equities 0.3, 0.15 and 0.2; 23 rescues), and two
+      licences on one good at equal equity 0.3, both topped up every boundary (11 rescues, 22 top-ups).
+  - **Tests updated deliberately** (each fixture commits straight on the venture, with no stored
+    licence, so the rescue now skips it and the test returns to its pre-Slice-A outcome):
+    `reserve-priority` "fresh only" (the pile untouched, the window breaches; the floor-10 twin gives
+    the same), `window-accrual` (d) (the pile never moves, on a boundary or off it), and
+    `factory-commitment` "DEFERRED, PINNED" (the percent gap now shows unrescued: 0 delivered).
+  - Sim suite 1,760 → **1,768 green** (`sim/tests/settlement-rescue-fix.test.js`, +8). Named tripwires:
+    (g) no licence, no rescue (in both rankings, and a scaffold alone); (h) own equity, not the blend
+    (saving one licence, and topping up both); (i) equal equity is the blend; (j) the delivery still
+    blends beside the rescue; (k) one venture is bit-for-bit the old sale. Conservation (every
+    invariant, credits only between guild and ledger) is checked across each boundary. Against HEAD's
+    engine 6 of the 8 fail; the 2 that pass do so by design ((i), and the isolation pin). Five
+    deliberate breakages each turn a named test red: rescue a no-licence commitment ((g) ×2 and the
+    three updated tests); pay the rescue on the blend ((h) ×2, (j)); never let Slice A's check stand
+    aside ((g) halts with Slice A's attribution message); round each licence's share separately ((h)
+    both, the isolation pin); let the snapshot carry `rescueTopUps` (the isolation pin). Tools **68
+    green**. **No number was invented.**
+
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
@@ -2791,18 +2843,22 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     is the good's contribution-weighted `1 − o` across its committed ventures, not the `1 − o` of the
     licence the pursue fill credited them to. With one committed venture per good, or equal equity, the
     two are the same. With two ventures of different equity, the rescued units are paid at the blend
-    (the same question 3d's progress payment raised).
+    (the same question 3d's progress payment raised). **⤳ CLOSED 28-09-26 — RULED (design.md §5, the
+    follow-up rulings, (3)) and BUILT (Slice A-fix): each top-up is paid on its own licence's equity
+    (`rescueSale`). The per-tick delivery and the progress payment keep the blend.**
   - **A dev-scaffold commitment is rescued too (confirm).** The rescue runs over the verdict's own set,
     every venture with `syndicateCommitment > 0`, including a `setSyndicateCommitment` one with no
     licence (no fee to save, but a verdict and a paid delivery). Leaving them out would split the one
-    pursue attribution in two.
+    pursue attribution in two. **⤳ CLOSED 28-09-26 — RULED (design.md §5, the follow-up rulings, (2))
+    and BUILT (Slice A-fix): no licence, no rescue, matching the fee charge. The split attribution this
+    item foresaw is recorded under Slice A-fix, below.**
   - **The rescue takes any stock above the floor, whatever it was held for (a consequence, confirm).**
     Stock kept as another line's input is rescued unless it is floored: e.g. titanium alloy held as a
     fuel-tank factory's input sets (each of the four re-pinned runs rescues alloy that a fuel-tank
     factory beside it also draws on), or Tier-3 parts
     held for a Tier-4 build. The rescue runs in step 1, before the dockyard sub-step, so a boundary can
     take parts a build would have started on that tick. The reserve floor is the only protection, as
-    ruled.
+    ruled. **⤳ RULED 28-09-26 (design.md §5, the follow-up rulings, (1)): intended, as built.**
   - **Only the venture's own system (confirm).** Stock of the good in the guild's OTHER systems is not
     used (stockpiles are per system, ruling B1). This reads "its own stockpile" as the guild's pile where
     the venture is.
@@ -2816,13 +2872,37 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     That is unchanged on every tick. But the factory's output piles up, and at the boundary the rescue
     now delivers the target from that stock (above the floor). So the window meets, with every unit
     handed over at the window's end. `factory-commitment.test.js` "DEFERRED, PINNED" now pins both
-    halves. (The gap itself is not on this checklist today; design.md says it should be.)
+    halves. (The gap itself is not on this checklist today; design.md says it should be.) *(⤳ Slice
+    A-fix: that test's fixture commits with no stored licence, so it now pins the gap unrescued. A
+    real licence is still covered at the boundary, as described.)*
   - **The Tier-1/2 console says nothing about the rescue (client follow-up).** The rescue is live for
     Tier 1/2 too, but this slice changed only the timed path's copy. The Tier-1/2 strip and reserve
     controls still describe the per-tick flow. Nothing shows `window.rescued` yet, on either path.
   - **Reputation moves with the rescue, so fuel grants can too (a consequence).** A rescued licence is
     `met`, not `breach`, so its RP moves the other way. Through the shared pool, that can move other
     guilds' fuel grants, as 3c recorded for Tier-3 standing.
+
+- **Slice A-fix (no licence, no rescue; each top-up on its own equity) — items for a ruling or a
+  confirm** — *surfaced 28-09-26. Each was built one way, stated here, not chosen silently.*
+  - **With a scaffold on the good, the verdict is no longer one fill of the window's pile (a
+    consequence, confirm).** Ruling (2) skips a licence-less commitment, so the verdict after a rescue
+    is each venture's fill plus its OWN top-up, not the pursue fill re-run on the topped-up pile. The
+    two agree whenever every commitment on the good has a licence (all of real play), and Slice A's
+    halt still checks that. They differ only when a short scaffold is ranked ahead of a rescued
+    licence: the scaffold keeps what the fill gave it and breaches, and the licence behind it is met.
+    The re-run fill would have handed the scaffold the rescued units instead. Only the dev scaffold can
+    reach this.
+  - **The per-licence top-ups are not shown (a display question).** The tick gets them from the
+    resolver (`rescueTopUps`), but the snapshot leaves them out so its shape, and every pinned hash,
+    stays as it was. A client can read the window's `rescued` (the good's total) and each licence's
+    verdict row. Showing "licence X was rescued by N units" would need a snapshot field.
+  - **One rounding per good per boundary (built as the existing rule, confirm).** The owner's shares
+    of a good's top-ups are added up unrounded and rounded once, the same "round once, one integer on
+    both legs" rule `commitmentSale` follows (#43). The build prompt's "summing the owner credits"
+    could also be read as rounding each licence's share and adding the integers, but then two licences
+    at equal equity could be paid a credit more or less than the blend, which the prompt ruled out.
+    With no investors yet, the `o` share still stays in the ledger, so today ruling (3) moves only the
+    line between the owner's keep and the ledger.
 
 - **Tier-3 slice 1 — small items for a ruling or a confirm** — *surfaced 27-09-26 by the Tier-3
   price-bands slice.*

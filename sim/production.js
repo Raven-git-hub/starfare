@@ -91,6 +91,10 @@ const { getHistory } = require('./history.js');
 // settlement rescue took from the stockpile on this boundary (Slice A — `settlementRescue`).
 // All of it DERIVED: only windowStart/delivered/sendCarry echo stored
 // state, and nothing here enters the determinism hash.
+// When a rescue moved units the report also carries `rescueTopUps` =
+// { [good]: { [ventureId]: units } }, which venture each rescued unit was for (Slice A-fix).
+// The tick pays each venture's top-up on that venture's own equity; the snapshot leaves it
+// out (previewProduction).
 // GOOD-LEVEL integers (§5 one-pot distribution, Slice A): `fresh` = the units produced
 // HERE this tick — Σ mine output for a mined good, Σ refinery `minted` for a refined one
 // (28-08-26; a good is one or the other, never both);
@@ -212,6 +216,11 @@ function resolveProduction(guild, systemId, opts = {}) {
   // the FCFS throttle default already uses. A `qᵢ` of 0 (a sliver of a window that
   // rounds away) still gets a row: it is a real licence with a target of zero units,
   // and it reads `met` because zero units is what it owed.
+  //
+  // Each row also says whether the venture has a stored `licence` — the same test the fee
+  // charge makes (`if (!venture.licence) continue;`, sim/tick.js). Only the settlement rescue
+  // reads it: a commitment with no licence (the `setSyndicateCommitment` dev scaffold) is
+  // judged like any other, but never rescued (design.md §5, Slice A-fix ruling 2).
   const commitmentQ = {};
   const ventureTargets = {};
   for (const v of ventures) {
@@ -226,7 +235,7 @@ function resolveProduction(guild, systemId, opts = {}) {
     if (contribution <= 0) continue;
     const q = Math.round(contribution);
     (ventureTargets[producedGood] || (ventureTargets[producedGood] = []))
-      .push({ ventureId: v.id, q });
+      .push({ ventureId: v.id, q, licensed: Boolean(v.licence) });
     commitmentQ[producedGood] = (commitmentQ[producedGood] || 0) + q;
   }
 
@@ -489,6 +498,10 @@ function resolveProduction(guild, systemId, opts = {}) {
   // sees the pot minus what consumers really took (not the offered pool). goodPlans
   // is already in sorted-good order (built in the sorted good-loop), so this is
   // deterministic. The fork reports reserve HELD / consumer DRAW / syndicate DRAW.
+  //
+  // `rescueTopUps` collects, per good, how many units a settlement rescue gave each venture
+  // (below). The tick needs it to pay each top-up on its own venture's equity (Slice A-fix).
+  const rescueTopUps = {};
   for (const plan of goodPlans) {
     let consumerDraw = 0;
     for (const line of lines) if (line.good === plan.good) consumerDraw += line.drawn;
@@ -597,20 +610,30 @@ function resolveProduction(guild, systemId, opts = {}) {
         const topUps = settlementRescue(plan.targets, plan.pursue, perVenture, spare);
         for (const units of Object.values(topUps)) rescued += units;
         if (rescued > 0) {
-          const judged = pursueFill(plan.targets, plan.pursue, newDelivered + rescued, isBoundary);
-          // ONE ATTRIBUTION, CHECKED. The verdict re-judges the topped-up pile with the
-          // unchanged fill, and each venture must come out credited with exactly what it had
-          // plus its own top-up. If the two ever disagreed, a unit would be paid for as saving
-          // one licence while the verdict gave it to another. Halt rather than charge that.
-          for (const id of Object.keys(perVenture)) {
-            const expected = perVenture[id].delivered + (topUps[id] || 0);
-            if (judged[id].delivered !== expected) {
-              throw new Error(`resolveProduction: the settlement rescue of ${plan.good} in system ${systemId} at tick ${p} credited venture ${id} with ${expected} units, but the re-judged fill gave it ${judged[id].delivered} — the rescue and the verdict must attribute units the same way`);
+          // EACH VENTURE IS CREDITED ITS OWN TOP-UP (Slice A-fix). The verdict is the fill plus
+          // each venture's own top-up. The tick pays each top-up from this same map, so a unit is
+          // always paid for as saving the licence the verdict credits it to.
+          const credited = creditTopUps(perVenture, topUps);
+          // ONE ATTRIBUTION, CHECKED (Slice A). When every commitment on the good has a licence
+          // (always, in real play), that credit must also be what the pursue fill gives when it
+          // is re-run on the topped-up pile. A pursue fill leaves its short ventures at the end
+          // of the order, so the two agree by construction; halt if they ever do not.
+          // A commitment with no licence (the dev scaffold) is judged but never rescued (ruling
+          // 2). If it is short and ranked ahead of a licence that IS rescued, the re-run fill
+          // would hand it the rescued units. So on such a good the credit above is the verdict,
+          // and this check stands aside.
+          if (plan.targets.every((t) => t.licensed)) {
+            const judged = pursueFill(plan.targets, plan.pursue, newDelivered + rescued, isBoundary);
+            for (const id of Object.keys(credited)) {
+              if (judged[id].delivered !== credited[id].delivered) {
+                throw new Error(`resolveProduction: the settlement rescue of ${plan.good} in system ${systemId} at tick ${p} credited venture ${id} with ${credited[id].delivered} units, but the re-judged fill gave it ${judged[id].delivered} — the rescue and the verdict must attribute units the same way`);
+              }
             }
           }
-          perVenture = judged;
+          perVenture = credited;
           newDelivered += rescued;
           newReserve -= rescued;
+          rescueTopUps[plan.good] = topUps;
         }
       }
 
@@ -644,7 +667,13 @@ function resolveProduction(guild, systemId, opts = {}) {
     goods[plan.good] = goodEntry;
   }
 
-  return { systemId, mines, goods, lines, refineries };
+  // `rescueTopUps` is added only when a rescue moved units, so every other report keeps its
+  // exact shape. It is for the tick's payment, not for display: previewProduction leaves it
+  // out of the snapshot (see there).
+  return {
+    systemId, mines, goods, lines, refineries,
+    ...(Object.keys(rescueTopUps).length > 0 ? { rescueTopUps } : {}),
+  };
 }
 
 // ── TIMED PRODUCTION (Tier 3) — docs/tier3-timed-production.md ─────────────────────────────
@@ -910,12 +939,21 @@ function rollupStatus(perVenture, isBoundary) {
 // order and then re-running the fill on the bigger pile credit every venture identically. The
 // caller checks that they agree, and halts if they ever do not.
 //
+// NO LICENCE, NO RESCUE (Slice A-fix, ruling 2). A commitment with no stored `licence` is skipped,
+// exactly as the fee charge skips it (`if (!venture.licence) continue;`, sim/tick.js). Only the
+// `setSyndicateCommitment` dev scaffold makes one; real play never does. A skipped venture keeps
+// what the fill gave it and is judged on that, and the spare stock passes on to the next licence
+// in the order. (This is why the caller's agreement check only runs on a good where every
+// commitment has a licence: skipping a short scaffold ranked ahead of a real licence is the one
+// case where the re-run fill would credit the rescued units differently.)
+//
 // PARTIAL IS EXPECTED. If the spare stock cannot cover every shortfall, all of it goes (the guild
 // can be left holding exactly its floor), and the licence still short after that still breaches.
 // The rescue can only turn a shortfall it fully covers into `met`. It never softens a breach.
 //
 // The rescued units are a real delivery: sim/tick.js removes them from the stockpile and pays for
-// them at the posted price through the normal sale. This function only works out how many.
+// them at the posted price, each venture's top-up on that venture's own equity (`rescueSale`,
+// sim/licence.js). This function only works out how many, and for whom.
 //
 // settlementRescue(targets, pursue, fill, spare) -> { [ventureId]: topUp } — only ventures whose
 // top-up is above 0. `fill` is pursueFill's verdict for this boundary; `spare` is the stock above
@@ -924,6 +962,7 @@ function settlementRescue(targets, pursue, fill, spare) {
   const topUps = {};
   let spareLeft = spare;
   for (const t of reconcilePursue(targets, pursue)) {
+    if (!t.licensed) continue; // no stored licence (the dev scaffold): never rescued
     const row = fill[t.ventureId];
     const shortfall = row.commitment - row.delivered;
     const topUp = Math.min(shortfall, spareLeft);
@@ -933,6 +972,23 @@ function settlementRescue(targets, pursue, fill, spare) {
     }
   }
   return topUps;
+}
+
+// creditTopUps(fill, topUps) -> the boundary verdict after a rescue: each venture's row from the
+// fill, plus its OWN top-up (0 if it got none), judged again: `met` if that reaches its
+// commitment, `breach` if not. The rescue only runs on a boundary, so no row is left `accruing`.
+// The rows have the same keys, in the same order, as `pursueFill`'s. Pure: mutates nothing.
+function creditTopUps(fill, topUps) {
+  const out = {};
+  for (const [ventureId, row] of Object.entries(fill)) {
+    const delivered = row.delivered + (topUps[ventureId] || 0);
+    out[ventureId] = {
+      commitment: row.commitment,
+      delivered,
+      status: delivered >= row.commitment ? 'met' : 'breach',
+    };
+  }
+  return out;
 }
 
 // resolveWindow(...) -> the §5 per-good windowed-accrual send for ONE tick. Reads the
@@ -1170,11 +1226,17 @@ function previewProduction(state) {
       .sort((a, b) => (String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0));
     return {
       guildId: guild.id,
-      systems: systemIds.map((sys) => ({
-        ...resolveProduction(guild, sys, opts),
-        review: reviewSystem(guild, sys),
-        history: systemHistory(guild, sys),
-      })),
+      systems: systemIds.map((sys) => {
+        // Everything the tick will do, except `rescueTopUps`: that is the tick's payment input
+        // (Slice A-fix). The window's `rescued` and each licence's verdict row already show the
+        // player the rescue, so leaving it out keeps the snapshot's shape exactly as it was.
+        const { rescueTopUps, ...report } = resolveProduction(guild, sys, opts);
+        return {
+          ...report,
+          review: reviewSystem(guild, sys),
+          history: systemHistory(guild, sys),
+        };
+      }),
     };
   });
 }

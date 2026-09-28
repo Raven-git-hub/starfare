@@ -81,10 +81,11 @@ test('Syndicate claimant draws FRESH ONLY: a large reserve is never reduced by t
   //
   // ⤳ (settlement rescue, design.md §5 RULED 28-09-26 — also named "Slice A", of the licence
   // system, not the one-pot Slice A above.) N=1 makes this tick a BOUNDARY, and at a boundary a
-  // short licence is now topped up from the pile ABOVE the reserve floor. That is a separate
-  // step, not the fork: the fork still takes only the 3 fresh. With the default floor of 0 the
-  // rescue then takes the missing 2 from the pile and the window is MET. The old outcome — the
-  // pile untouched and a breach — is now what a floor holding the pile gives, pinned second.
+  // short LICENCE is topped up from the pile above the reserve floor. This mine's commitment is
+  // set straight on the venture, with no stored licence (what the `setSyndicateCommitment` dev
+  // scaffold makes), and since Slice A-fix (ruling 2) the rescue skips such a commitment, exactly
+  // as the fee charge does. So the pile is untouched and the window BREACHES, as it did before the
+  // rescue existed. (A real licence here would be rescued: settlement-rescue.test.js.)
   let s = sysState({
     ventures: [mine('t', 'titanium', 3, 5)],
     stockpiles: { titanium: 10 },
@@ -94,15 +95,15 @@ test('Syndicate claimant draws FRESH ONLY: a large reserve is never reduced by t
   const g = goodOf(s, 'titanium');
   assert.equal(g.pot, 13);
   assert.equal(g.fork.syndicate, 3, 'the FORK delivers only the 3 fresh — never the reserve');
-  assert.equal(g.window.rescued, 2, 'the settlement rescue tops up the 2 short from the pile');
-  assert.equal(g.window.status, 'met', 'delivered 3 + 2 = Q 5 at the boundary ⇒ met');
+  assert.equal(g.window.rescued, undefined, 'no licence, no rescue (Slice A-fix ruling 2)');
+  assert.equal(g.window.status, 'breach', 'delivered 3 < Q 5 at the boundary ⇒ breach, not a reserve raid');
   s = tick(s);
-  assert.equal(held(s, 'titanium'), 8, 'reserve: 10 + 3 fresh − 3 delivered − 2 rescued = 8');
-  assert.equal(before - computeGalacticSupply(s).resources.titanium, 2, 'galactic titanium net −2 (the 3 fresh and 2 of the pile sank)');
+  assert.equal(held(s, 'titanium'), 10, 'reserve untouched: 10 + 3 fresh − 3 delivered = 10');
+  assert.equal(before - computeGalacticSupply(s).resources.titanium, 0, 'galactic titanium net 0 (the 3 fresh sank, the pile stayed)');
   assert.deepEqual(checkInvariants(s, s.tick), []);
 
-  // The same run with the pile behind a floor of 10: nothing is above the floor, so the rescue
-  // takes nothing, the reserve is untouched and the window BREACHES — exactly the pre-rescue result.
+  // The same run with the pile behind a floor of 10: nothing is above the floor either, so the
+  // outcome is the same — the reserve untouched and the window BREACHES.
   let held10 = sysState({
     ventures: [mine('t', 'titanium', 3, 5)],
     profile: { goods: { titanium: { reserveLevel: 10 } } },

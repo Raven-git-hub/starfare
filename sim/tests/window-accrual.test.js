@@ -7,7 +7,7 @@
 // pin the accrual mechanics the windowed model turns on:
 //   (a) the fraction==1 deferral guard  (b) send carry fenced in [0,1)
 //   (c) delivered never exceeds Q        (d) fresh-only (the fork never draws the stockpile;
-//       only the boundary's settlement rescue, Slice A, does)
+//       only the boundary's settlement rescue, Slice A, does — and only for a real licence)
 //   (e) boundary met/breach + roll       (f) self-terminating overflow at Q
 //   (g) impossible-pace breach, guarded  (h) galacticSupply drops by exactly delivered
 //   (i) determinism over multi-window    (j) the send carry preserves determinism
@@ -130,25 +130,23 @@ test('(d) fresh-only: a full stockpile with zero fresh delivers 0 — the fork n
   // it produces no fresh) with a big pre-seeded pile. Fresh is 0, so the fresh-only
   // Syndicate fork delivers 0 every tick and never draws on the 100-unit pile.
   //
-  // ⤳ Slice A (settlement rescue, 28-09-26). The FORK is still fresh-only. What is new is a
-  // separate step at each boundary: a short licence is topped up from the pile above the
-  // reserve floor (0 here). So the pile now moves on exactly the two boundary ticks, by exactly
-  // the 8 each window owes, and on no other tick. (The rescue has its own tests,
-  // settlement-rescue.test.js.)
+  // ⤳ Slice A (settlement rescue, 28-09-26). The FORK is still fresh-only. A separate step at
+  // each boundary tops a short LICENCE up from the pile above the reserve floor. This mine's
+  // commitment is set straight on the venture, with no stored licence (what the
+  // `setSyndicateCommitment` dev scaffold makes), and since Slice A-fix (ruling 2) the rescue
+  // skips such a commitment, exactly as the fee charge does. So the pile is never touched, on a
+  // boundary or off one, as before the rescue existed. (The rescue has its own tests,
+  // settlement-rescue.test.js and settlement-rescue-fix.test.js.)
   let s = sysState({ ventures: [mine('t', 'titanium', 0, 8)], stockpiles: { titanium: 100 }, windowN: 4 });
   for (let i = 0; i < 8; i += 1) {
     const pv = nextWindow(s, 'titanium');
     assert.equal(pv.sendThisTick, 0, 'zero fresh ⇒ the fork sends nothing');
-    const rescued = pv.rescued || 0;
-    const before = held(s, 'titanium');
+    assert.equal(pv.rescued, undefined, `tick ${s.tick + 1}: no licence, no rescue (Slice A-fix ruling 2)`);
     s = tick(s);
-    const boundary = s.tick % 4 === 0;
-    assert.equal(rescued, boundary ? 8 : 0, `tick ${s.tick}: only a boundary rescues, and it rescues the window's 8`);
-    assert.equal(held(s, 'titanium'), before - rescued, 'the fork drew nothing from the pile — only the rescue moved it');
-    assert.equal(w(s, 'titanium').delivered, boundary ? 8 : 0);
+    assert.equal(held(s, 'titanium'), 100, 'the pile is untouched — the fork drew no reserve');
+    assert.equal(w(s, 'titanium').delivered, 0);
     assert.deepEqual(checkInvariants(s, s.tick), []);
   }
-  assert.equal(held(s, 'titanium'), 100 - 2 * 8, 'two windows, two rescues');
 });
 
 // --- (e) boundary: met/breach status; delivered resets + windowStart re-stamps ---
