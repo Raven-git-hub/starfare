@@ -18,7 +18,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
-| 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,777 tests, deterministic) |
+| 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,779 tests, deterministic) |
 | 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
@@ -1839,7 +1839,9 @@ boundary so the later hex-map swap doesn't touch it.
   **68**). The per-slice rows below (Slice 1 → the Syndicate Top-Up client) are the build record.
   **Next is playtest, not more build:** the only open items are the `[FIRST-CUT]` numbers in
   `phase-1-tuning.md` — the `TICKS_PER_UNIT` ladder, the sub-tier / specialist price bands,
-  `FEE_RATE`, the capacity reference period, and the four unclassified modules.
+  `FEE_RATE`, the capacity reference period, and the four unclassified modules. *(⤳ 28-09-26: the
+  ladder's first retune is in: every weekly output is now whole. See "Tier-3 whole-week retime" at
+  the end of these rows.)*
 
 - **Tuning — Tier-3 sub-tier + specialist price bands, and the final Tier-4 bills — ✅ BUILT 27-09-26
   (Slice 1 of the Tier-3 economy build; data/pricing only).** design.md §5 "TIER-3 SUB-TIERS, SPECIALIST
@@ -1869,7 +1871,8 @@ boundary so the later hex-map swap doesn't touch it.
   "Build time", "The price fix"; as-built at its end); numbers in `docs/phase-1-tuning.md`; design.md §5
   AS-BUILT note. **Every classified Tier-3 good is produced on a timer.**
   - `TICKS_PER_UNIT` (`sim/baseline.js`) is the ruled ladder: 3-1 15 · 3-2 30 · 3-3 60 · specialists
-    360–4,320. `ticksPerUnitFor(good)` is the one "timed or continuous?" answer.
+    360–4,320 *(⤳ 360–5,040 since the 28-09-26 whole-week retime)*. `ticksPerUnitFor(good)` is the one
+    "timed or continuous?" answer.
   - A timed factory takes its **whole input set when a unit starts**, counts down the new
     `venture.unitTicksRemaining` (omitted when the line is empty), and mints **one whole unit** at 0.
     With steady inputs that is one unit every `TICKS_PER_UNIT` ticks and 0 in between.
@@ -2448,6 +2451,51 @@ boundary so the later hex-map swap doesn't touch it.
     - The DOM compare normalises the sparkline's gradient ids (`sg<n>`). They come from a per-render
       counter, so they vary between two renders of the same page on HEAD too.
     **No number was invented.**
+- **Tier-3 whole-week retime — every weekly output is a whole number — ✅ BUILT 28-09-26 (Tier-3
+  tuning).** `docs/phase-1-tuning.md` ("Tier-3 timers REVISED" and its AS-BUILT note);
+  `docs/tier3-timed-production.md` ("As built — the whole-week retime"); design.md §5 (the ladder note).
+  **No new number:** the three timers are the human's ruling, and the week is `TIER3_WINDOW_N`.
+  - **The retime.** `TICKS_PER_UNIT` (`sim/baseline.js`): heavy_reactor_engine 2,880 → **2,520** (42 h,
+    y = 4), stealth_module 2,880 → **3,360** (56 h, y = 3), deep_scan_mast 4,320 → **5,040** (84 h,
+    y = 2). The other seven rows are unchanged.
+  - **The tripwire.** `assertWholeWeeklyOutput` (`sim/windows.js`, beside the week) runs at load and
+    throws, naming the good, its timer and the fractional `y`, if `10,080 % TICKS_PER_UNIT` is not 0 for
+    any Tier-3 good with a timer. The unclassified four have none, so they are skipped. Shown live: the
+    heavy engine set back to 2,880 stops the engine loading ("y = 10080 ÷ 2880 = 3.5 is not a whole
+    number").
+  - **A float seam, closed.** `(1 ÷ 3,360) × 10,080` is 3.0000000000000004, so `weeklyOutputOf`
+    (`sim/licence.js`) rounds the engine's `y` back to its whole number. That is a no-op for every
+    other good. Without it a stealth module committed in full would store `x / y` = 0.9999999999999999.
+    The existing float-safety test caught the same seam; it now pins exact `y` plus the same whole
+    units from `floor` and `round`.
+  - **What moved (derived).** Heavy engine `floor(y)` 3 → **4**, fee at base 7M → **8M**/week, and its
+    most (x = 4) is now a full commitment (discounted 6M). Stealth 2.8M → 2.4M/week; deep scan mast
+    4,666,667 → 4,000,000/week. A tick of committed work is `x ÷ 10,080` of a unit whatever the timer,
+    so the progress pay for a given `x` is unchanged.
+  - **Isolation.** Goods not retimed are byte-identical to HEAD c99005b. A week plus a day with all 18
+    non-retimed timed goods committed, plus Tier-1/2 licences, gives the same state every tick, and
+    every snapshot matches once the three retimed goods' quote rows are removed. Every other pinned
+    hash held.
+  - **Re-pinned (each noted in its file):**
+    - Eight **snapshot** hashes in five tests, whose runs build none of the three. The snapshot
+      publishes every timed good's `feeQuote` / `tier3Contract` row, and those rows moved. Checked
+      snapshot by snapshot: identical to HEAD with those rows removed, and the state hashes did not
+      move. They are `settlement-rescue-fix` (both runs), `settlement-rescue` (both),
+      `syndicate-top-up` (on and off), `tier3-contract`'s Tier-1/2 isolation, and `tier3-payment`'s
+      ISO_ONE_SNAPSHOTS.
+    - `tier3-payment`'s **ISO_TWO_T12_GUILD**. Its galaxy commits a heavy engine at x = 3, now 3 of 4,
+      not 6/7. So that guild's signing RP fell (514 → 450), then its issuance modifier, then the fuel
+      price. The Tier-1/2 guild's physical fuel grant rose (31 → 33 on tick 180). Only its fuel fields
+      differ from HEAD.
+  - **Tests.** The "at its most" heavy-engine cases move to x = 4. The 4th unit lands on tick 10,080,
+    the week's last, and it counts: met. The payment test keeps x = 3 (now 3 of 4). Its "never more
+    than owed" check allows 1e-3, the float allowance its sibling line uses: the engine now pays exactly
+    60,000,000, and the test's own float sum reads 59,999,999.99999674. New: "WHOLE WEEKS", every `y`
+    whole and the engine's `y` exact, and the tripwire firing on each old timer. Sim 1,776 →
+    **1,778 green**; tools **68 green**.
+  - **Left for the client slice (out of scope here):** `client/console.html`'s `fmtY` comment still
+    cites "a deep scan mast's 2.333… reads 2.33". The console shows whatever the snapshot publishes,
+    so it now reads 4 / 3 / 2.
 
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
@@ -2926,11 +2974,14 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     engine was out of scope. A test pins the two agree at a 1,440- and a 60-tick day. Factor a shared
     helper the next time `sim/licence.js` is open?
   - **`x` across a recipe change.** Built as: `x` carries over and is held to the new `floor(y)` (400
-    fuel tanks become 3 heavy engines), as the Tier-1/2 share carries over. The alternative is to reset
+    fuel tanks become 3 heavy engines *(⤳ 4 since the 28-09-26 whole-week retime)*), as the Tier-1/2
+    share carries over. The alternative is to reset
     `x` to 0 on every recipe change. A UI call; confirm.
   - **`y` is shown to 2 dp** (`2 / 2.33` for a deep scan mast), following the engine's own "to 2 dp
     only for reading" convention in its refusal. The ratio uses the exact `y`. Confirm, or show a
-    fraction (2⅓).
+    fraction (2⅓). *(⤳ 28-09-26: moot for today's timers. The whole-week ruling makes every `y` whole
+    (a deep scan mast is 2), and a load-time tripwire keeps it so, so the 2 dp formatting never shows
+    a fraction. It is kept.)*
   - **A timed good this galaxy cannot license** (a day that does not divide the week; a dev setup
     only). The snapshot lists no contract for it, so the popup shows the Tier-1/2 panel, and the engine
     refuses the licence with its own reason. Confirm, or show a "cannot be licensed here" state (the
@@ -3158,6 +3209,28 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   - **Dead code noticed, not removed (housekeeping).** `armBody`'s Syndicate branch and
     `commitmentReadout` (`client/console.html`) are unreachable: `gate1Col` sends every `syndicate` arm
     to `synPanel`. Its stale "advisory" line was corrected anyway. Deleting them is a separate cleanup.
+
+- **Tier-3 whole-week retime — items for a confirm** — *surfaced 28-09-26. Each was built one way,
+  stated here, not chosen silently. No number was chosen.*
+  - **The float seam is closed by rounding `y` in `weeklyOutputOf` (confirm).** The engine's `y` is the
+    per-tick pace times the week, and for the 3,360 timer that product is 3.0000000000000004. Rounding
+    it back is exact given the ruling, a one-line change, and a no-op for every other good. The
+    alternative is to carry an exact `y` (`qty × week ÷ timer`, divided last) on the licence basis. That
+    changes the basis's shape and its readers. `floor(y)` and the fee were already right.
+  - **The tripwire lives in `sim/windows.js`, not `sim/baseline.js` (a consequence).** It needs the week,
+    and `windows.js` already requires `baseline.js`. A comment by `TICKS_PER_UNIT` points to it.
+  - **Eight snapshot re-pins (five tests) in runs that build none of the three goods (confirm).** The build prompt
+    said a run touching none of the three must not move, and none of their states did. But every
+    snapshot publishes each timed good's fee quote and `y`, so their snapshot hashes had to move. Each
+    was checked against HEAD with only those three goods' rows removed. The alternative is to strip
+    those rows before hashing, as `tier3Contract` already is in two of them. That would need new pins
+    anyway, since the old pins included the old rows.
+  - **"At its most" is now a full commitment (a consequence).** With `y` whole, `x = floor(y)` means
+    `x / y` = 1 for every timed good. The heavy engine tests that meant "at its most" moved to x = 4.
+    Those that used x = 3 as "a partial commitment" stay at 3 (now 3 of 4).
+  - **Dead-ish paths (housekeeping, not removed).** `floor(y)` (`committedUnitsCeiling`) and the
+    2 dp display of `y` (engine refusal and client `fmtY`) now never cut anything for today's timers.
+    They are kept as the ruled bound and harmless formatting. Simplifying them is a separate cleanup.
 
 - **Tier-3 slice 1 — small items for a ruling or a confirm** — *surfaced 27-09-26 by the Tier-3
   price-bands slice.*

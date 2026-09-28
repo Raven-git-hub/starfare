@@ -380,11 +380,19 @@ function twoLicencesEqualEquity() {
 // deadlines, so only the Tier-3 licence is judged after it). One licence per good: 11 × 2 + 1 = 23
 // rescues, and all 23 verdicts met. Equal equity: 11 boundaries, each rescuing BOTH licences from
 // one pile (one rescue of the good, two top-ups), so 11 rescues and 22 verdicts, all met.
+// ⤳ RE-PINNED 28-09-26 by the Tier-3 whole-week retime (docs/phase-1-tuning.md "Tier-3 timers
+// REVISED"): the two `snapshots` hashes ONLY. This run builds none of the three retimed
+// specialists, but every snapshot carries the galaxy-wide per-good `feeQuote` (and `tier3Contract`)
+// rows of every timed good, theirs included, and those moved with y (at base price):
+// heavy_reactor_engine 7,000,000 → 8,000,000 (y 3.5 → 4), stealth_module 2,800,000 → 2,400,000
+// (3.5 → 3), deep_scan_mast 4,666,667 → 4,000,000 (2.33 → 2). Checked against HEAD c99005b snapshot
+// by snapshot: with those three goods' rows removed, every snapshot is byte-identical, and every
+// other hash here did not move. Before: 77749c72…f231a and 32ed9be5…3e86.
 const ISO_ONE_LICENCE_PER_GOOD = {
   final: '1f12e438f60eae2993c2465d783257c0a486e4f2241a6d993441523c9a0ce312',
   everyTick: '9b7941440541e47601892d384ebb008c0db04fc224e0a385277ff3f8de7c9f75',
   previews: '0b2e68aa123c0eb231d26c1850ec63ef01f462cfcba98d3926c3870df1be0235',
-  snapshots: '77749c720be4f6f548030b5055393142ab9ea387bb5d6fe44b7a3be88f0f231a',
+  snapshots: 'a52644bc1b7acd877a083a4f8fe13da8cb217b5999ed75e9d19124f957d5b92a',
   counts: { rescues: 23, met: 23, breach: 0 },
   switchesOn: 3,
 };
@@ -392,7 +400,7 @@ const ISO_TWO_LICENCES_EQUAL_EQUITY = {
   final: 'a9ca4dd303facb6a8a4e282df63379605b4587ebead32328f127f12a258838f2',
   everyTick: '1e18c2d1a37c05a97a3012618b65eef905fac040c5ecc502242a173d6ab63534',
   previews: 'addf5c93be7ff5d1edfc3b292fee1e6af27457e85e954c0961cd2fd64a91a6e2',
-  snapshots: '32ed9be5db2cbaeebeb4db874973bca5722f2806c06a4b8c5b160cfde60a3e86',
+  snapshots: 'f6895554082956c1d8783b97f273baf33ac362bab435dc77f0c0d7f33724b2b1',
   counts: { rescues: 11, met: 22, breach: 0 },
   switchesOn: 1,
 };

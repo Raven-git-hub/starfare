@@ -92,7 +92,7 @@ const guildOf = (s, id) => s.guilds.find((g) => g.id === id);
 //   sendOff         50%, the old send control set to "absolute 0"  → still met (the control is inert)
 //   sibling         50% factory + an UNLICENSED factory of the same good → the one pot fills Q
 //   twoLic          two factories at 25% each (Q = 168 + 168)       → both met
-//   heavy           a heavy reactor engine at x = 3 = floor(3.5), its most → met
+//   heavy           a heavy reactor engine at x = 4 = floor(4), its most → met (the 28-09-26 retime)
 const LEVELS = [0.1, 0.25, 0.5, 0.75, 0.9, 1];
 const levelId = (pct) => `pct${Math.round(pct * 100)}`;
 const RUN_END = WEEK + 30;
@@ -120,7 +120,7 @@ function runWeek() {
     ...LEVELS.map((pct) => commitUnits(levelId(pct), 'f', unitsAt(pct))),
     commitUnits('under', 'f', 336), commitUnits('reserveFirst', 'f', 336), commitUnits('sendOff', 'f', 336),
     commitUnits('sibling', 'f', 336), commitUnits('twoLic', 'f', 168), commitUnits('twoLic', 'f2', 168),
-    commitUnits('heavy', 'f', 3),
+    commitUnits('heavy', 'f', 4),
   ]);
   const signed = JSON.parse(JSON.stringify(s));
 
@@ -293,14 +293,15 @@ test('two licences on one good: the one Syndicate-first pile fills both, and bot
   assert.equal(w.fee.ventures.f2.status, 'met');
 });
 
-test('a heavy reactor engine at its most, x = floor(3.5) = 3, delivers its 3 on the DEFAULT send and is met', () => {
-  // 2,880 ticks a unit: units land on 2,880, 5,760 and 8,640; the fourth is still on the line at
-  // the week's end. Each of the three went to the Syndicate the tick it was minted.
+test('a heavy reactor engine at its most, x = floor(4) = 4, delivers its 4 on the DEFAULT send and is met', () => {
+  // 2,520 ticks a unit (42 h, the 28-09-26 retime; was 2,880 and x = 3 of 3.5): units land on 2,520,
+  // 5,040, 7,560 and 10,080 — the fourth ON the week's last tick, and it still counts for this week.
+  // Each of the four went to the Syndicate the tick it was minted.
   const run = runWeek();
-  assert.equal(ticksPerUnitFor('heavy_reactor_engine'), 2880);
+  assert.equal(ticksPerUnitFor('heavy_reactor_engine'), 2520);
   const w = run.atWeekEnd.heavy;
-  assert.deepEqual({ Q: w.Q, delivered: w.delivered, stock: w.stock }, { Q: 3, delivered: 3, stock: 0 });
-  assert.equal(run.trace.heavy.qMetTick, 8640);
+  assert.deepEqual({ Q: w.Q, delivered: w.delivered, stock: w.stock }, { Q: 4, delivered: 4, stock: 0 });
+  assert.equal(run.trace.heavy.qMetTick, WEEK);
   assert.equal(w.fee.ventures.f.status, 'met');
 });
 

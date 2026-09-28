@@ -418,18 +418,26 @@ function isolationRun(switchOn) {
 // plus the one Tier-3 week: 23 verdicts. ON: m1 breaches on the first day (the partial) and the
 // Tier-3 week breaches (12 of 15); the other 21 are rescued to met. OFF: all 23 breach, and nothing
 // is rescued. (The scaffold m3 has no licence, so it is never rescued and has no fee row.)
+// ⤳ RE-PINNED 28-09-26 by the Tier-3 whole-week retime (docs/phase-1-tuning.md "Tier-3 timers
+// REVISED"): the two `snapshots` hashes ONLY. This run builds none of the three retimed
+// specialists, but every snapshot carries the galaxy-wide per-good `feeQuote` (and `tier3Contract`)
+// rows of every timed good, theirs included, and those moved with y (at base price):
+// heavy_reactor_engine 7,000,000 → 8,000,000 (y 3.5 → 4), stealth_module 2,800,000 → 2,400,000
+// (3.5 → 3), deep_scan_mast 4,666,667 → 4,000,000 (2.33 → 2). Checked against HEAD c99005b snapshot
+// by snapshot: with those three goods' rows removed, every snapshot is byte-identical, and every
+// other hash here did not move. Before: 556532c4…cd12c and b755a87f…1264.
 const ISO_ON_IS_THE_OLD_RESCUE = {
   final: '7eb4426c1a491e2bfc9605f37a72a27a60e3200ed6afdbca9930b58c3fdef48a',
   everyTick: '6c206885906cc36bdd03c259faf2ce08db8bdb1b891e0bf6ea48adceb922d713',
   previews: 'da5c423a39ec00cfb992e0f4d36579aeff84f9ac454d3df8b3652e85d8528aad',
-  snapshots: '556532c48244d0113164e595b5d69c4f5aea5a12ddab042c8333ca76265cd12c',
+  snapshots: 'c39ed79fe94507284caeac34e368047e58a7809ac725702ed88639270a3d0150',
   counts: { rescued: 104752, met: 21, breach: 2 },
 };
 const ISO_OFF_IS_NO_RESCUE = {
   final: 'a337c8cd11fbb8f8b2abec6b419674e2cf317f56a4905268a6b7f217d895449a',
   everyTick: '90b6e6d162637fc01524bab19b03fbdf049f1a5403aed95908aa45c99f9785d0',
   previews: 'ce91994da972a1ae281ed8df18c7053bb5bb43e5b2417b35fddd3fbd9c04222c',
-  snapshots: 'b755a87f752022eb6d0e3b6e535934f2c116cb67b4dcd93fe026e22365221264',
+  snapshots: 'caa9653f40f34c3872e5c4d56732873e8d7b57c21b5dadf5547d52b3ceb6095d',
   counts: { rescued: 0, met: 0, breach: 23 },
 };
 

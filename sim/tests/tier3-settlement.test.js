@@ -57,7 +57,7 @@ const { TIER3_GOODS, RAW_RESOURCES, PROCESSED_GOODS } = require('../resources.js
 const { postedPrice, PRICED_GOODS } = require('../prices.js');
 const {
   FEE_RATE, feeFraction, normalisedTerms, commitmentUnitsFor, licenceBasisFor, licenceBasisForGood,
-  renegotiationScheduleFor,
+  renegotiationScheduleFor, weeklyOutputOf,
 } = require('../licence.js');
 
 const SYS = 'sysA';
@@ -206,9 +206,10 @@ test('(a) HEADLINE: a Tier-3 licence\'s basic fee is 0.10 × (10,080 ÷ TICKS_PE
     const { c, oNorm } = normalisedTerms({ committedOutputPct: unitsAt(good, 0.5) / yOf(good), equityPct: 0 });
     assert.equal(lic.discountedFee, Math.round(expected * feeFraction(c, oNorm)), `${good}: the grid discounts the new basis`);
   }
-  // Two worked examples, typed out: a 3-1 fuel tank (672 a week) and a heavy engine (3.5 a week).
+  // Two worked examples, typed out: a 3-1 fuel tank (672 a week) and a heavy engine (4 a week).
   assert.equal(ventureOf(s, 'g1', 'f_fuel_tank').licence.basicFee, 6720, '0.10 × 672 × 100 (was 72,000)');
-  assert.equal(ventureOf(s, 'g1', 'f_heavy_reactor_engine').licence.basicFee, 7000000, '0.10 × 3.5 × 20,000,000');
+  assert.equal(ventureOf(s, 'g1', 'f_heavy_reactor_engine').licence.basicFee, 8000000,
+    '0.10 × 4 × 20,000,000 (the 28-09-26 retime; at 3.5 a week it was 7,000,000)');
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
@@ -226,21 +227,32 @@ test('(a) the committed quantity is the x whole units signed, of the weekly outp
         Math.min(Math.round(pct * y), Math.floor(y)), `${good} at ${pct * 100}%`);
     }
   }
-  // The ceiling bites exactly where y is fractional: a heavy engine makes 3.5 a week, and the most
-  // it can commit is 3 — 4 is more than it can be sure to finish, and is refused.
+  // The ceiling is floor(y). Since the 28-09-26 retime every y is whole, so it is y itself: a heavy
+  // engine makes 4 a week (it made 3.5, and could commit only 3) and may commit all 4 — 5 is more
+  // than it makes, and is refused.
   let s = galaxy([guildRow('g1', [factory('h', 'g1', 'heavy_reactor_engine')])]);
-  assert.equal(validateAction(s, commitUnits('g1', 'h', 4)).valid, false, 'floor(3.5) is 3, not round(3.5) = 4');
-  s = sign(s, [commitUnits('g1', 'h', 3)]);
-  assert.equal(ventureOf(s, 'g1', 'h').syndicateCommitment, 3);
+  assert.equal(validateAction(s, commitUnits('g1', 'h', 5)).valid, false, 'floor(4) is 4: a fifth is refused');
+  s = sign(s, [commitUnits('g1', 'h', 4)]);
+  assert.equal(ventureOf(s, 'g1', 'h').syndicateCommitment, 4);
 });
 
 test('(a) float-safety: timer-pace × week lands on exactly the typed y for every timed good and every whole percent', () => {
   // The fee and the commitment multiply (1 ÷ TICKS_PER_UNIT) × 10,080 — the timer's pace over the
   // week — rather than dividing 10,080 by the timer. This pins that the two spellings of y never
   // round to different whole units, so no commitment is off by one on float noise.
+  //
+  // ⤳ 28-09-26 retime: the raw product is no longer always EXACT. The stealth module's new 3,360
+  // timer gives (1 ÷ 3,360) × 10,080 = 3.0000000000000004 — a pre-divided float, however it is
+  // multiplied back. So this pins what matters instead: the y the engine uses (`weeklyOutputOf`,
+  // which rounds the product back to the whole number the ruling guarantees) is exactly the typed
+  // y, and the raw product floors and rounds to that same whole y — never a unit off either way.
   for (const good of TIMED) {
     const basis = licenceBasisForGood(good, DAY);
-    assert.equal(basis.unitsPerTick * basis.windowN, yOf(good), `${good}: pace × week is exactly y`);
+    const raw = basis.unitsPerTick * basis.windowN;
+    assert.equal(weeklyOutputOf(basis), yOf(good), `${good}: the engine's y is exactly the typed y`);
+    assert.ok(Math.abs(raw - yOf(good)) < 1e-9, `${good}: pace × week is y to within float noise (got ${raw})`);
+    assert.equal(Math.floor(raw), yOf(good), `${good}: pace × week floors to y — the ceiling is not a unit short`);
+    assert.equal(Math.round(raw), yOf(good), `${good}: pace × week rounds to y`);
     for (let i = 0; i <= 100; i += 1) {
       const pct = i / 100;
       assert.equal(commitmentUnitsFor(pct, basis.unitsPerTick, basis.windowN),
@@ -314,7 +326,7 @@ test('a Tier-3 re-lock (renegotiateLicence) re-prices on the SAME weekly basis �
 //   mixed    a titanium mine (T1, 25%) + the `met` factory       → the mine every day, the factory weekly
 //   solo     the same titanium mine alone                        → (c)'s reference: mixed's mine must match it
 //   late     the `met` factory, licensed at tick 5,040 (mid-week) → met on a half-week target, half the fee
-//   heavy    a heavy reactor engine at its most, absolute send   → commits floor(3.5) = 3, met on 10,080
+//   heavy    a heavy reactor engine at its most, absolute send   → commits floor(4) = 4, met on 10,080
 //   paced    the `met` factory on the DEFAULT send               → met (3a's gap, closed by Slice 3b)
 const LATE_TICK = 5040;
 let weekRun = null;
@@ -333,7 +345,7 @@ function runWeek() {
   s = sign(s, [
     commitUnits('met', 'f', 336), commitUnits('starved', 'f', 336),
     licence('mixed', 'm', 0.25), commitUnits('mixed', 'f', 336), licence('solo', 'm', 0.25),
-    commitUnits('heavy', 'f', 3), commitUnits('paced', 'f', 336),
+    commitUnits('heavy', 'f', 4), commitUnits('paced', 'f', 336),
   ]);
   const signed = JSON.parse(JSON.stringify(s));
   const firstPreview = previewProduction(s);
@@ -440,11 +452,13 @@ test('a Tier-3 licence signed MID-WEEK owes the week pro-rated: half the week pr
   assert.equal(row.owed, Math.round(v.licence.discountedFee * 0.5));
 });
 
-test('a heavy reactor engine at its most commits floor(3.5) = 3 and meets it on the week boundary', () => {
+test('a heavy reactor engine at its most commits floor(4) = 4 and meets it on the week boundary', () => {
+  // (⤳ 28-09-26 retime: 42 h a unit, y = 4 — was 48 h, y = 3.5, at most 3 committed, fee 7M.)
   const { signed, fees } = runWeek();
   const v = signed.guilds.find((g) => g.id === 'heavy').ventures[0];
-  assert.equal(v.syndicateCommitment, 3);
-  assert.equal(v.licence.basicFee, Math.round(FEE_RATE * 3.5 * 20000000));
+  assert.equal(v.syndicateCommitment, 4);
+  assert.equal(v.licence.basicFee, Math.round(FEE_RATE * 4 * 20000000));
+  assert.equal(v.licence.basicFee, 8000000, '0.10 × 4 × 20,000,000');
   assert.deepEqual(fees.heavy.map((f) => f.tick), [WEEK]);
   assert.equal(fees.heavy[0].ventures.f.status, 'met');
 });

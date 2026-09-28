@@ -86,10 +86,12 @@ test('HEADLINE: tier3Contract lists exactly the timed goods, and its y, floor(y)
     assert.equal(lic.basicFee, snap.feeQuote[good], `${good}: the fee quoted is the fee locked`);
   }
 
-  // Worked by hand, the three shapes the popup must render: a fast whole y, a half y, a third y.
+  // Worked by hand: a fast y and the three slow specialists. Since the 28-09-26 retime every y is
+  // whole, so floor(y) = y (they were 3.5 / 3.5 / 2.33, with ceilings 3 / 3 / 2).
   assert.deepEqual(snap.tier3Contract.fuel_tank, { weeklyOutput: 672, committedUnitsCeiling: 672, termDays: 7 });
-  assert.deepEqual(snap.tier3Contract.heavy_reactor_engine, { weeklyOutput: 3.5, committedUnitsCeiling: 3, termDays: 7 });
-  assert.deepEqual(snap.tier3Contract.deep_scan_mast, { weeklyOutput: 10080 / 4320, committedUnitsCeiling: 2, termDays: 7 });
+  assert.deepEqual(snap.tier3Contract.heavy_reactor_engine, { weeklyOutput: 4, committedUnitsCeiling: 4, termDays: 7 });
+  assert.deepEqual(snap.tier3Contract.stealth_module, { weeklyOutput: 3, committedUnitsCeiling: 3, termDays: 7 });
+  assert.deepEqual(snap.tier3Contract.deep_scan_mast, { weeklyOutput: 2, committedUnitsCeiling: 2, termDays: 7 });
 });
 
 test('no Tier-1/2 good and none of the four unclassified modules is listed — they keep the Tier-1/2 licence', () => {
@@ -188,17 +190,17 @@ test('END TO END: the popup\'s Tier-3 deploy — establishVenture, then applyFor
   const est = await post('/action', establishFor(ventureId, 'heavy_reactor_engine'));
   assert.equal(est.accepted, true, est.reason);
   const contract = est.snapshot.tier3Contract.heavy_reactor_engine;
-  assert.deepEqual(contract, { weeklyOutput: 3.5, committedUnitsCeiling: 3, termDays: 7 });
+  assert.deepEqual(contract, { weeklyOutput: 4, committedUnitsCeiling: 4, termDays: 7 });
   const old = await post('/action', { type: 'applyForLicence', guildId: 'player-guild', ventureId, committedOutputPct: 0.5, windowDays: 14 });
   assert.equal(old.accepted, false, 'the Tier-1/2 shape is refused for a timed good');
-  assert.match(old.reason, /its licence commits whole units, not a percentage: send committedUnits, an integer from 0 to 3 \(the floor of its weekly output y = 3.5\)/);
+  assert.match(old.reason, /its licence commits whole units, not a percentage: send committedUnits, an integer from 0 to 4 \(the floor of its weekly output y = 4\)/);
 
-  // The NEW shape, at the slider's most: x = floor(y) = 3.
+  // The NEW shape, at the slider's most: x = floor(y) = 4 (a full commitment since the retime).
   const lic = await post('/action', { type: 'applyForLicence', guildId: 'player-guild', ventureId, committedUnits: contract.committedUnitsCeiling });
   assert.equal(lic.accepted, true, lic.reason);
   const row = lic.snapshot.ventures.find((v) => v.id === ventureId);
-  assert.equal(row.syndicateCommitment, 3, 'x stored');
-  assert.equal(row.licence.committedOutputPct, 3 / 3.5, 'x / y stored, exact');
+  assert.equal(row.syndicateCommitment, 4, 'x stored');
+  assert.equal(row.licence.committedOutputPct, 1, 'x / y stored, exact: 4 of 4');
   assert.equal(row.licence.windowDays, 1, 'one week, written by the engine');
   assert.equal(row.licence.basicFee, est.snapshot.feeQuote.heavy_reactor_engine, 'the fee the popup quoted');
   assert.equal(row.contractWindow.cyclesRemaining, contract.termDays, 'renegotiable in the term the popup showed');

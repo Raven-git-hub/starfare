@@ -114,13 +114,15 @@ test('(a) HEADLINE: a Tier-3 licence commits x whole units of its weekly output 
     }
     assert.deepEqual(checkInvariants(s, s.tick), []);
   }
-  // Worked by hand: a heavy reactor engine (y = 3.5) at its most, x = 3. The ratio is 6/7, not a
-  // full commitment, so the grid takes 25 × 6/7 points off the fee: 7,000,000 × (1 − 0.25 × 6/7).
+  // Worked by hand: a heavy reactor engine (y = 4) at its most, x = 4. Its y is whole (the 28-09-26
+  // retime, 42 h a unit), so its most IS a full commitment — the ratio is exactly 1, where the old
+  // 48 h engine's most was 3 of 3.5 = 6/7 — and the grid takes the full 25 points off the fee:
+  // 0.10 × 4 × 20,000,000 = 8,000,000, then 8,000,000 × (1 − 0.25 × 1) = 6,000,000.
   let s = galaxy([guildRow('g1', [factory('h', 'g1', 'heavy_reactor_engine')])]);
-  s = sign(s, [units('g1', 'h', 3)]);
+  s = sign(s, [units('g1', 'h', 4)]);
   const h = ventureOf(s, 'g1', 'h');
-  assert.equal(h.licence.committedOutputPct, 3 / 3.5);
-  assert.deepEqual([h.licence.basicFee, h.licence.discountedFee], [7000000, 5500000]);
+  assert.equal(h.licence.committedOutputPct, 1);
+  assert.deepEqual([h.licence.basicFee, h.licence.discountedFee], [8000000, 6000000]);
 });
 
 test('(a) x must be a whole number in [0, floor(y)] — anything else is refused, and the refusal names the bound', () => {
@@ -134,11 +136,12 @@ test('(a) x must be a whole number in [0, floor(y)] — anything else is refused
     assert.match(v.reason, /committedUnits must be an integer from 0 to 672 \(the floor of its weekly output y = 672\)/);
   }
   assert.match(validateAction(s, raw('t', {})).reason, /from 0 to 672/, 'no x at all');
-  // A fractional y: the bound is its floor, and the refusal says so.
-  assert.match(validateAction(s, units('g1', 'h', 4)).reason, /from 0 to 3 \(the floor of its weekly output y = 3\.5\)/);
-  assert.match(validateAction(s, units('g1', 'd', 3)).reason, /from 0 to 2 \(the floor of its weekly output y = 2\.33\)/);
+  // The slow specialists: y is whole (the 28-09-26 retime), so the bound is y itself, and one
+  // unit past it is refused, the refusal naming the bound.
+  assert.match(validateAction(s, units('g1', 'h', 5)).reason, /from 0 to 4 \(the floor of its weekly output y = 4\)/);
+  assert.match(validateAction(s, units('g1', 'd', 3)).reason, /from 0 to 2 \(the floor of its weekly output y = 2\)/);
   // Every whole number in range is accepted, ends included.
-  for (const [vid, x] of [['t', 0], ['t', 672], ['h', 3], ['d', 2], ['d', 0]]) {
+  for (const [vid, x] of [['t', 0], ['t', 672], ['h', 4], ['d', 2], ['d', 0]]) {
     assert.deepEqual(validateAction(s, units('g1', vid, x)), { valid: true }, `${vid} x = ${x}`);
   }
 });
@@ -380,8 +383,8 @@ test('(c) TRIPWIRE: the Tier-3 re-offer reads standing for the Strong discount O
     [-100000, 'atRisk'], [-300, 'atRisk'], [-299, 'subPar'], [-1, 'subPar'],
     [0, 'steady'], [499, 'steady'], [500, 'strong'], [100000, 'strong'],
   ];
-  // A 3-1 part at a half commitment and a heavy reactor engine at its most (6/7, a fractional y):
-  // under the Tier-1/2 ratchet the first would step to 0.6 / 0.75 / 1 and the second jump to 1.
+  // A 3-1 part at a half commitment and a heavy reactor engine at 3 of its 4 (0.75): under the
+  // Tier-1/2 ratchet the first would step to 0.6 / 0.75 / 1 and the second to 0.85 / 1 / 1.
   for (const [recipeId, x] of [['fuel_tank', 336], ['heavy_reactor_engine', 3]]) {
     let s = galaxy([guildRow('g1', [factory('f', 'g1', recipeId)])]);
     s = sign(s, [units('g1', 'f', x)]);
@@ -397,15 +400,15 @@ test('(c) TRIPWIRE: the Tier-3 re-offer reads standing for the Strong discount O
         `${recipeId} rp ${rp} (${band}): the Strong discount iff Strong`);
     }
   }
-  // Worked by hand through the fee: a Strong heavy engine at x = 3, re-offered at the 20M it was
-  // signed at, pays 90% of 7,000,000 and of 5,500,000.
-  const heavy = { id: 'h', type: 'refining', recipeId: 'heavy_reactor_engine', reputation: 600, licence: { committedOutputPct: 3 / 3.5, windowDays: 1 } };
+  // Worked by hand through the fee: a Strong heavy engine at x = 3 of 4, re-offered at the 20M it
+  // was signed at, pays 90% of 8,000,000 (0.10 × 4 × 20M) and of 6,500,000 (8M × (1 − 0.25 × 0.75)).
+  const heavy = { id: 'h', type: 'refining', recipeId: 'heavy_reactor_engine', reputation: 600, licence: { committedOutputPct: 3 / 4, windowDays: 1 } };
   const basis = licenceBasisForGood('heavy_reactor_engine', DAY);
   const fee = renegotiationFee({ venture: heavy, baselineUnitsPerTick: basis.unitsPerTick, windowN: basis.windowN, lockedPrice: 20000000 });
-  assert.deepEqual(fee, { committedOutputPct: 3 / 3.5, basicFee: 6300000, discountedFee: 4950000, feeDiscountApplied: true });
+  assert.deepEqual(fee, { committedOutputPct: 3 / 4, basicFee: 7200000, discountedFee: 5850000, feeDiscountApplied: true });
   heavy.reputation = 499;
   assert.deepEqual(renegotiationFee({ venture: heavy, baselineUnitsPerTick: basis.unitsPerTick, windowN: basis.windowN, lockedPrice: 20000000 }),
-    { committedOutputPct: 3 / 3.5, basicFee: 7000000, discountedFee: 5500000, feeDiscountApplied: false }, 'one RP short of Strong: full fee');
+    { committedOutputPct: 3 / 4, basicFee: 8000000, discountedFee: 6500000, feeDiscountApplied: false }, 'one RP short of Strong: full fee');
 });
 
 test('(c) every legal x survives the re-lock unchanged — all 21 timed goods, every x from 0 to floor(y), at every standing', () => {
@@ -424,7 +427,9 @@ test('(c) every legal x survives the re-lock unchanged — all 21 timed goods, e
       checked += 1;
     }
   }
-  assert.equal(checked, 5139, 'every (good, x) pair');
+  // (⤳ 28-09-26 retime: 5,139 → 5,140. The heavy engine's floor(y) rose 3 → 4, one more x; the
+  // stealth module (3 → 3) and deep scan mast (2 → 2) kept theirs.)
+  assert.equal(checked, 5140, 'every (good, x) pair');
 });
 
 // --- 4. (d) TIER 1/2 UNCHANGED -----------------------------------------------------------------
@@ -477,8 +482,16 @@ test('(d) HEADLINE: a Tier-1/2 licence still commits a percentage, picks a 7–4
 // turns Syndicate Top-Up on, so the rescue no longer fires and g1's alloy licence breaches at those
 // six boundaries again. The run is once more the pre-rescue engine's to the byte: the two hashes
 // are the original ones above, unchanged. Slice A's were f2d7dcc6…b22d and 2905fc00…eb20.
+// ⤳ RE-PINNED 28-09-26 by the Tier-3 whole-week retime (docs/phase-1-tuning.md "Tier-3 timers
+// REVISED"): the snapshots-and-results hash ONLY. This run builds none of the three retimed
+// specialists, but every snapshot carries the galaxy-wide per-good `feeQuote` row of every timed
+// good, theirs included, and those moved with y (at base price): heavy_reactor_engine
+// 7,000,000 → 8,000,000 (y 3.5 → 4), stealth_module 2,800,000 → 2,400,000 (3.5 → 3), deep_scan_mast
+// 4,666,667 → 4,000,000 (2.33 → 2). Checked against HEAD c99005b snapshot by snapshot: with those
+// three goods' rows removed, every snapshot is byte-identical, and every other hash here did not
+// move. Before: 240ee2aa…b6af6.
 const ISO_STATE_EVERY_TICK = '96e4b9caba27f61dcd8d2518db6e9cbe56b09e2928300082cfb6e2c2f0993006';
-const ISO_SNAPSHOTS_AND_RESULTS = '240ee2aa089e496e5a65ae7bd10f30fdbeb8ebfc1aaf3ca7057cca94060b6af6';
+const ISO_SNAPSHOTS_AND_RESULTS = 'c1c80ba10bafb22a2f1a8906b08cdf995388cffdcea39cf567532a81a7adbbcd';
 // The snapshot hash is taken WITHOUT `tier3Contract`, the additive top-level key the Tier-3
 // Establish-popup slice added (sim/snapshot.js). That key is the same rules-derived map in every
 // snapshot, and it did not exist when the pinned hash was computed on the pre-slice engine. Stripping

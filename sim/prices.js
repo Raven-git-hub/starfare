@@ -314,11 +314,11 @@ const CAPACITY_PERIOD_TICKS = 1440;
 // (every Tier-1 mine, every Tier-2 refinery) is measured PER TICK, exactly as before — this
 // just hands back `baselineOutputFor`. A TIMED good (Tier 3) makes less than one unit a tick —
 // the fastest, a 3-1 part, makes one per 15 — so a per-tick capacity would be a fraction
-// (1/15 … 1/4,320) and `stock ÷ fraction` explodes: ONE finished heavy engine would read as a
-// level of 2,880 and peg the price at its ceiling. So a timed good is measured per PERIOD
+// (1/15 … 1/5,040) and `stock ÷ fraction` explodes: ONE finished heavy engine would read as a
+// level of 2,520 and peg the price at its ceiling. So a timed good is measured per PERIOD
 // instead: units per day = 1,440 ÷ ticks-per-unit × the recipe's output (a 3-1 factory 96/day,
-// a heavy-engine factory 0.5/day). The level then reads "days of production hoarded", and the
-// unchanged 0.05 sensitivity gives a gentle gradient. The basis is per GOOD (ticksPerUnitFor),
+// a heavy-engine factory 4/7 of one a day). The level then reads "days of production hoarded",
+// and the unchanged 0.05 sensitivity gives a gentle gradient. The basis is per GOOD (ticksPerUnitFor),
 // so one good's capacity can never mix the two timescales.
 //
 // WHY A SEPARATE READER, not a change to `baselineOutputFor`: that function is ALSO the licence
@@ -326,8 +326,9 @@ const CAPACITY_PERIOD_TICKS = 1440;
 // Changing it would silently re-price every Tier-3 licence — a Slice-3 decision. So the fee
 // keeps reading `baselineOutputFor` exactly as before, and only the capacity sum reads this.
 //
-// A timed good's figure can be FRACTIONAL (a 72 h part makes ⅓ a day). That is fine: capacity
-// is a rate, not a balance, like the price itself ("FLOATS ARE CORRECT HERE" above).
+// A timed good's figure can be FRACTIONAL (an 84 h part makes 2/7 of one a day; only its WEEKLY
+// output is ruled whole, sim/windows.js). That is fine: capacity is a rate, not a balance, like
+// the price itself ("FLOATS ARE CORRECT HERE" above).
 function capacityOutputFor(venture) {
   const out = baselineOutputFor(venture);
   if (!out) return null;
