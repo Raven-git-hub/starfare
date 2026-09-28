@@ -355,6 +355,32 @@ message; the game simply stops displaying it. The divergence is layout only — 
 rows, the held order and the fills are the same data from the same
 `inventoryRows()`.
 
+## The Tier-3 fork — what the console governs for a timed good *(28-09-26)*
+
+For a **timed** Tier-3 good, one named in the snapshot's `tier3Contract`, the console forks
+(`client/console.html`, "THE TIER-3 FORK"; the full account is `docs/tier3-timed-production.md`, "As
+built — the client: the System Production Console"). The three-claimant catalogue above still
+describes the stored policy, but for a timed good most of it has no effect:
+
+| Stored field | Effect on a timed good | What the console does |
+|---|---|---|
+| `order` | none. A committed timed good is delivered Syndicate first whatever is stored (Slice 3b); an uncommitted one sends nothing | draws Syndicate `1 · fixed`, Stockpile `2 · fixed`, and writes no `order` (RULED 28-09-26) |
+| `downstreamPct` | none: nothing consumes a timed good | no Production arm, no Consumption tab |
+| `syndicate` (send control) | none: not read for a timed good (Slice 3b) | no send slider or rate |
+| `reserveLevel` | moves no unit: there is no consumer, and the Syndicate takes only units made that tick. It changes only the reported `fork.stockpile` | the strip's typed field is kept as shipped; the % slider is dropped, because it reads a % of this tick's output (0 or 1). RULED 28-09-26. Its lack of effect is on the roadmap checklist |
+| `pursue` | live: the boundary fill still ranks the good's licences | the roster's movers, unchanged |
+
+What the timed fork **reads** (all published, no new field):
+- `tier3Contract[good]`: the trigger, `weeklyOutput` (`y`) and `termDays`;
+- each timed factory's row in `…systems[…].refineries`: `timed`, `ticksPerUnit`,
+  `unitTicksRemaining`, `minted` and `bottleneckGood`. These give the cadence ("1 unit / 15m") and
+  each factory's unit on the line;
+- `…goods[good].window` for the WEEK: `Q`, `delivered`, `pctAchieved`, `ticksRemaining` (to the
+  week's end), `status` (breach only at the week's end) and `perVenture`.
+
+Note that an **uncommitted** timed good has no `goods` entry at all, since nothing routes it. The
+fork then shows the cadence, the factories and "no commitment", and no fork figures.
+
 ## The storyteller lens
 
 The storyteller (design.md, Rimworld-style: targets whoever has grown too

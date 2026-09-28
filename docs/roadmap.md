@@ -2114,7 +2114,8 @@ boundary so the later hex-map swap doesn't touch it.
     HTTP end-to-end of the popup's two actions) and a served-page pin in `server.test.js` (+1). Six
     deliberate breakages are each caught. Tools **68 green**.
   - **Still not safe to run live:** the Venture Management and renegotiation popups (3c's other client
-    items), the console, and the checklist items below.
+    items), the console, and the checklist items below. *(⤳ The console: built 28-09-26, "Tier-3
+    fork of the System Production Console" below.)*
 
 - **Tier-3 Establish popup — weekly language + the capacity Rate row — ✅ BUILT 28-09-26 (Tier-3
   economy — client copy).** `docs/tier3-timed-production.md` ("As built — the client's weekly copy" at
@@ -2138,6 +2139,41 @@ boundary so the later hex-map swap doesn't touch it.
     script; HEAD-vs-HEAD shows the same ≤12-pixel renderer noise).
   - Sim suite 1,741 → **1,742 green**: one served-page pin in `server.test.js` (+1). Six deliberate
     breakages are each caught. Tools **68 green**.
+
+- **Tier-3 fork of the System Production Console — ✅ BUILT 28-09-26 (Tier-3 economy — client).**
+  `docs/tier3-timed-production.md` ("As built — the client: the System Production Console" at its
+  end); `docs/production-console-model.md` ("The Tier-3 fork"); design.md §5 AS-BUILT note. It is
+  client-only: `client/console.html`, with no engine change and no snapshot change.
+  - **The trigger** is `tier3Contract`, the same list the Establish popup forks on, so the page holds
+    no good list, timer or week. Every other good, and Tier 4, is unchanged.
+  - **For a timed good:**
+    - the stockpile strip loses its top-up squares and per-tick chevrons, and shows "per factory · 1
+      unit / 15m · up to 672 /week";
+    - the Production column shows the cadence and each factory's unit on the line, not a per-tick
+      trend;
+    - Distribution has two arms, **Syndicate 1 · fixed, then Stockpile 2 · fixed**, with no
+      Production arm, no rank selector and no send control;
+    - the right column is always the Syndicate, weekly: the thermometer shows delivered against the
+      week's `Q`, the countdown runs to the week's end ("6d 20h left in the week"), a breach shows at
+      the week's end, the fee is "charged once a week", and the term is the fixed `termDays` days.
+      There is no Consumption tab;
+    - the standalone hero's "Output u/tick" row becomes "Makes 1 unit / 15m".
+  - **No new snapshot field.** The timer and the unit on the line were already published on each
+    timed factory's production row (`ticksPerUnit`, `unitTicksRemaining`).
+  - **Two display rulings, made by the human during the build (checklist below):**
+    - the order is drawn fixed and never written;
+    - the reserve floor keeps the strip's typed field but drops the per-tick % slider, and no copy
+      claims the reserve holds units back (it moves no unit of a timed good today).
+  - **Goldens: none moved** (no engine change). By exercise in Chromium on a live server, 14 Tier-1/2
+    cases (standalone and embedded, both tabs, an idle good, an unclassified module, Tier 4) rendered
+    identical DOM and byte-identical screenshots against HEAD's page (apart from a one-pixel renderer
+    blip that HEAD shows against itself too). A fuel tank (3-1) and a heavy
+    reactor engine (specialist) read correctly from tick 200 through the week's breach and roll-over.
+  - Sim suite 1,742 → **1,747 green**: `sim/tests/tier3-console-client.test.js` (+4, the engine facts
+    the fork's display stands on) and a served-page pin in `server.test.js` (+1). Nine deliberate
+    breakages, two of them in the engine, are each caught. Tools **68 green**.
+  - **Still not safe to run live:** the Venture Management and renegotiation popups (3c's other client
+    items), and the checklist items below.
 
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
@@ -2392,6 +2428,11 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     popup's Rate row still shows the stamped 5 batches/tick for a Tier-3 recipe; left as is, pending
     this question.)* *(⤳ 28-09-26, weekly copy: the popup's Rate row now shows the weekly capacity
     `y /week` from `tier3Contract`, not `productionRate`. The engine question itself stays open.)*
+    *(⤳ 28-09-26, the console's Tier-3 fork: on a timed good's own page the console shows the timer
+    off the production row ("1 unit / 15m"), never a rate. It never read `productionRate`. On an
+    INPUT good's page, e.g. titanium alloy, a timed factory is still listed as a consumer with the
+    row's per-tick `rate` (`1 ÷ TICKS_PER_UNIT`, "0.07/t"). That is the Tier-1/2 page, left
+    byte-identical by that slice; see its checklist block below.)*
   - **Before Tier 3 runs live (Slice 3's job, recorded so it is not missed):** a Tier-3 licence's
     committed quantity (`commitmentUnitsFor`) and fee (`licenceFee`) still read the continuous
     `baselineOutputFor` (5 units/tick). A timed factory makes at most 1,440 ÷ `TICKS_PER_UNIT` a day,
@@ -2448,7 +2489,10 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     fee quotes and commitments "per cycle", but a Tier-3 figure is per WEEK. Both are client / read-model
     follow-ups. *(⤳ 28-09-26: the label is fixed in the Establish popup, where a Tier-3 recipe reads its
     commitment, fee and breach fee per week. Venture Management and the console still say "per cycle";
-    `lastLicenceFee` is unchanged.)*
+    `lastLicenceFee` is unchanged.)* *(⤳ 28-09-26: the console's Tier-3 fork now reads a timed good
+    weekly: week target, the week's countdown, and the fee "once a week, when the week settles".
+    Venture Management still says "per cycle". The console's last-charge line is still the
+    guild-wide `licenceFee` record, which a Tier-1/2 day overwrites.)*
 
 - **Tier-3 slice 3b (Syndicate-first delivery) — items for a ruling or a confirm** — *surfaced
   27-09-26.*
@@ -2464,7 +2508,10 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     good, or keep accepting them as harmless? The console still shows a timed good's "pace" and
     "resolved send", and offers the send control. `requiredRate` is still reported (it is true
     telemetry: the pace that would still meet `Q`), but the control does nothing. A client / read-model
-    follow-up either way.
+    follow-up either way. *(⤳ 28-09-26, the console's Tier-3 fork, RULED by the human during that
+    build: for a timed good the console draws the order as fixed (Syndicate 1, Stockpile 2), with no
+    selector, no send control and no pace, and POSTs neither. Whether INTAKE should refuse them is
+    still open.)*
   - **One pot per good: an unlicensed sibling's units fill `Q` too.** `Q` is the good's target in a
     system, and the fork has always drawn on the good's whole fresh output there, so an unlicensed
     factory beside a licensed one of the same good feeds the Syndicate first as well. This is unchanged
@@ -2632,6 +2679,48 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     last page says fee "*charging* it is the one part still to be built", but charging is built
     (Slice 3b-iii). The `asset` reel says "there is no teardown", but voluntary teardown is built.
     Fixing them changes Tier-1/2 copy, so it is a separate, human-approved edit.
+
+- **Tier-3 console fork (the System Production Console's Tier-3 fork) — items for a ruling or a
+  confirm** — *surfaced 28-09-26.*
+  - **The Distribution order is drawn fixed.** RULED 28-09-26 (the human, during the build). The
+    build prompt asked for rank selectors over the two arms, but the engine never reads the order for
+    a timed good:
+    - committed: the Syndicate is lifted first (3b);
+    - uncommitted: it sends nothing.
+
+    So the console draws "1 · fixed" and "2 · fixed" and writes no `order`. Intake still accepts an
+    `order` or a send control for a timed good (3b's item above, still open).
+  - **The reserve floor moves no unit of a timed good.** RULED 28-09-26 (the human, during the
+    build): keep the strip's typed reserve field as shipped, and drop the Tier-1/2 Distribution slider
+    on the timed path. That slider is a % of this tick's output (0 or 1 for a timed good), so a drag
+    would write the level to 0 or 1.
+    - The finding behind the ruling: `reserveLevel` is read only in Gate 1. A timed good has no
+      consumer, and its Syndicate is lifted first and takes only the units made that tick. So the
+      level changes only the REPORTED hold (`fork.stockpile`). A test pins this
+      (`tier3-console-client.test.js`).
+    - Tier-4 assembly and a Syndicate sale do not read it either.
+    - **Open:** should the reserve get a job for a timed good (e.g. hold stock back from a Tier-4
+      build start or a sale)? Or should the field be hidden on the timed path until it has one?
+      Nothing on the timed path claims it holds units back.
+  - **A timed good this galaxy cannot license** (a day that does not divide the week; a dev setup
+    only). `tier3Contract` is empty there, so the console shows such a good in the Tier-1/2 layout,
+    though its production is timed. This matches the Establish popup's item above. Confirm, or fork on
+    the production row's `timed` flag as well.
+  - **The unit countdown is the preview's.** "12m left on this unit" is the row's
+    `unitTicksRemaining`, the work left AFTER the coming tick. Every console figure is the next
+    tick's preview, so it reads one minute under a wall-clock "lands in". It is shown verbatim, with
+    no `+1`. Confirm.
+  - **An input good's page still speaks per tick about timed factories.** On, e.g., titanium alloy's
+    (Tier-2) page, a fuel-tank factory is listed as a consumer with the row's `rate` ("0.07/t"). The
+    hero shows "Eff. rate … u/t" and "Makes 0 u/t" for it. That page is the Tier-1/2 console, left
+    byte-identical by this slice's scope. It is a later read-model / copy item.
+  - **Copy for the copy pass:**
+    - the cadence reads "1 unit / 48h 0m", the shared `fmtTicksAsDuration` format; changing the helper
+      would change every Tier-1/2 countdown;
+    - "left on this unit", "unit made", "waiting on …" and "idle";
+    - the Syndicate arm's rule sentence;
+    - the Stockpile arm's "On hand" duplicates the strip's figure (a layout choice);
+    - the footer's week sentence.
 
 - **Tier-3 slice 1 — small items for a ruling or a confirm** — *surfaced 27-09-26 by the Tier-3
   price-bands slice.*

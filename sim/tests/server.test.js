@@ -2485,6 +2485,82 @@ test('GET /console serves the dockyard-tab layout + tier-3 pooling fixes', async
   assert.match(html, /t === 4 \? hasDock : tierGoods\(t\)\.some\(isPooledGood\)/);
 });
 
+// The Tier-3 fork of the console (docs/tier3-timed-production.md, "As built — the client: the
+// System Production Console"). For a TIMED good the panel forks: no top-up squares, no per-tick
+// trend, two Distribution arms in a FIXED order (Syndicate, then Stockpile), and a Syndicate column
+// that reads in whole units over the week. A page that silently lost the fork would still render —
+// the Tier-1/2 console, with its per-tick slider writing a timed good's reserve level to 0 — so the
+// tripwire is on the served bytes, like every client slice before it.
+test('GET /console serves the Tier-3 fork: a timed good reads in whole units and weeks, Tier 1/2 untouched', async () => {
+  const html = await (await fetch(base + '/console')).text();
+  const fnBody = (name) => {
+    const i = html.indexOf('function ' + name + '(');
+    assert.ok(i >= 0, `the page defines ${name}`);
+    return html.slice(i, html.indexOf('\n}\n', i));
+  };
+
+  // 1. THE TRIGGER is the snapshot's own list of timed goods — the one the Establish popup forks
+  //    on. The page holds no good list, no timer and no week of its own.
+  assert.match(fnBody('timedContract'), /STATE\.snap && STATE\.snap\.tier3Contract/);
+  for (const g of TIER3_GOODS) assert.ok(!html.includes(`'${g}'`) && !html.includes(`"${g}"`), `the console must not name ${g}`);
+  assert.ok(!/TICKS_PER_UNIT|10,?080/.test(html), 'no timer and no week typed into the page');
+
+  // 2. renderStage forks on it, in the idle branch and the full flow, and the Tier-1/2 pieces are
+  //    still what every other good gets.
+  const stage = fnBody('renderStage');
+  assert.match(stage, /var t3 = timedContract\(good\);/);
+  assert.match(stage, /\(t3 \? timedReservePanel\(good, t3, report\) : reservePanel2\(good, null\)\)/);
+  assert.match(stage, /if \(t3\)\{[\s\S]*timedReservePanel\(good, t3, report\)[\s\S]*timedProducersCol\(producers, good, report, t3\)[\s\S]*timedGate1Col\(good, rg\)[\s\S]*timedSyndicateCol\(good, t3\)[\s\S]*return;/);
+  assert.match(stage, /reservePanel2\(good, rg\) \+[\s\S]*producersCol2\(producers, good, rg, report\) \+[\s\S]*gate1Col\(good, rg\) \+/);
+
+  // 3. What the fork drops: the top-up squares, the per-tick trend, the Production arm, the rank
+  //    selectors, the send control and the per-tick % stockpile slider. It keeps the strip's typed
+  //    reserve field (RULED 28-09-26), which stockpileStrip draws.
+  const fork = html.slice(html.indexOf('// THE TIER-3 FORK'), html.indexOf('// ---- OVERRIDE renderStage'));
+  assert.ok(fork.length > 1000 && fork.length < 20000, 'the fork block was found');
+  for (const gone of ['consTopupSquare', 'syndTopupSquare', 'trendSpark', 'trendSeries', 'prodPanel', 'skPanel(',
+                      'synPanel(', '<select', 'sy-track', 'sy-rate-in', 'sk-track', 'rightTabBar()']) {
+    assert.ok(!fork.includes(gone), `the Tier-3 fork must not draw ${gone}`);
+  }
+  assert.match(fnBody('timedReservePanel'), /stockpileStrip\(good, onHand\(good\), goodPolicy\(good\)\.reserveLevel, null, note\)/);
+  assert.match(fnBody('stockpileStrip'), /class="rs-field"/);
+  assert.match(fnBody('timedGate1Col'), /class="prank fixed"[\s\S]*timedSynPanel\(rg, fixed\(1\)\) \+ timedSkPanel\(good, rg, fixed\(2\)\)/);
+  assert.match(fnBody('timedSyndicateCol'), /<div class="rt-tab on">Syndicate<\/div>/);
+
+  // 4. Every figure is the snapshot's: the timer and the unit on the line off the factory's own
+  //    production row, `y` and the term off tier3Contract, the week off the good's window.
+  assert.match(fnBody('timedRow'), /r\.ventureId === ventureId && r\.timed/);
+  assert.match(fnBody('goodTicksPerUnit'), /return r\.ticksPerUnit;/);
+  assert.match(fnBody('unitProgress'), /row\.unitTicksRemaining/);
+  assert.match(fork, /fmtY\(t3\.weeklyOutput\)/);
+  assert.match(fnBody('synStatsWeek'), /fmt\(t3\.termDays\)/);
+  assert.match(fnBody('synStatsWeek'), /fmtTicksAsDays\(w\.ticksRemaining\)/);
+  assert.match(fnBody('synThermWeek'), /w\.pctAchieved/);
+  assert.ok(!/projected|deficit/.test(fnBody('synThermWeek').replace(/\/\/.*$/gm, '')), 'no per-tick projection on the week');
+
+  // 5. The copy is weekly: no string the fork draws says per tick, per cycle or window. (Comments
+  //    are stripped first; they may explain the Tier-1/2 behaviour the fork replaces.)
+  const strings = (src) => (src.replace(/\/\/.*$/gm, '').match(/'(?:[^'\\]|\\.)*'/g) || []).join(' ');
+  const forkCopy = strings(fork) + ' ' + strings(fnBody('synFeeFoot').split(': \'The licence fee is charged at each cycle')[0]);
+  for (const bad of [/u\/t\b/, /\/tick/, /per tick/i, /tick by tick/i, /\bcycle/i, /\bwindow\b/i, /u\/hr/, /\bshare\b/i]) {
+    assert.ok(!bad.test(forkCopy), `the Tier-3 fork's copy must not say ${bad}`);
+  }
+  assert.match(fnBody('synFeeFoot'), /The licence fee is charged once a week, when the week settles/);
+  assert.match(fnBody('statusDot'), /\(timed \? 'week' : 'window'\)/);
+  assert.match(fnBody('licRow'), /this ' \+ \(timed \? 'week' : 'window'\)/);
+  // …and the hero's per-tick Output row is the cadence for a timed factory.
+  assert.match(fnBody('heroPanel'), /timedContract\(good\) \? timedRow\(report, id\) : null/);
+  assert.match(fnBody('heroPanel'), /statRow\('Makes', [^\n]*fmtCadence\(trow\.ticksPerUnit\)/);
+
+  // 6. The Tier-1/2 strings are all still served, for every good the fork does not touch.
+  assert.match(html, /The licence fee is charged at each cycle boundary/);
+  assert.match(html, /no cycle has closed on a licence of yours/);
+  assert.match(html, /accruing — the ' \+ \(timed \? 'week' : 'window'\) \+ ' is still running/);
+  assert.match(html, /<span class="us"> u\/tick<\/span>/);
+  assert.match(html, /function consTopupSquare/);
+  assert.match(html, /function syndTopupSquare/);
+});
+
 test('the EMBEDDED console\'s inventory rides the venture bridge into the game\'s right zone', async () => {
   // In `?embed=1` the console builds no side zones — the game shell owns them — so the
   // inventory panel that #36 added has nothing to render into. It travels the SAME

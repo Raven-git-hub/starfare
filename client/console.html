@@ -32,6 +32,9 @@
              and are never presented as live. The Syndicate THERMOMETER's figures are
              real window telemetry — only the roster around it is design-ahead.
 
+  A TIMED Tier-3 good (one the snapshot lists in `tier3Contract`) forks the panel: whole units,
+  a 7-day week, Syndicate first. See "THE TIER-3 FORK" in the script below.
+
   Served at /console. The player client embeds it as
   /console?embed=1&guild=<id>&system=<id>, which pins the focus and drops the two side
   zones (the client supplies those itself, including the industrial hero art it drives
@@ -702,6 +705,20 @@
   .vthr input{width:56px; background:var(--void); border:1px solid var(--line2); border-radius:5px;
     color:var(--ink); font-family:var(--mono); font-size:11px; padding:2px 5px}
   .vthr .u{font-family:var(--mono); font-size:10px; color:var(--ink3)}
+
+  /* ---- the Tier-3 fork (a timed good): cadence, unit progress, a fixed rank ------
+     Only the timed path renders these classes; every other good never meets them. */
+  .rs-cad{font-family:var(--mono); font-size:10px; letter-spacing:.04em; color:var(--ink3); margin-top:4px; white-space:nowrap}
+  .rs-cad b{color:var(--amber); font-weight:500}
+  .tq-note{font-family:var(--mono); font-size:10px; line-height:1.55; color:var(--ink3)}
+  /* the unit on the line, under its factory chip (where a consumer chip has its throttle) */
+  .vprog{display:flex; align-items:center; gap:7px; padding:0 2px 4px 30px}
+  .vprog .vp-bar{flex:1 1 auto; min-width:24px; height:5px; border-radius:3px; background:var(--void); border:1px solid var(--line2); overflow:hidden}
+  .vprog .vp-bar i{display:block; height:100%; background:linear-gradient(90deg,var(--amber-dim),var(--amber))}
+  .vprog .vp-txt{flex:none; font-family:var(--mono); font-size:9.5px; color:var(--ink3); white-space:nowrap}
+  /* a rank that is drawn, not offered: Syndicate first is fixed for a timed good */
+  .prank.fixed{cursor:default; color:var(--ink3); white-space:nowrap}
+  .sy-rule{font-size:11.5px; line-height:1.5; color:var(--ink2); margin:0 0 14px}
 
   /* ---- MOCK tag: design-ahead of the engine, shown but never read as live ------ */
   .mocktag{font-family:var(--mono); font-size:8.5px; letter-spacing:.12em; text-transform:uppercase;
@@ -1387,9 +1404,10 @@ function clampLbl(p){ return Math.max(4, Math.min(96, p)); }
 // `accruing` is a window still running: no verdict has been reached yet. A venture with
 // no commitment, or one the engine is not filling this window, gets a neutral mark —
 // nothing has been judged, which is not the same as having failed.
-function statusDot(st){
+// `timed` (the Tier-3 fork) only swaps the word: a timed good's licence runs over the week.
+function statusDot(st, timed){
   if (st === 'met')      return '<span class="st-dot met" title="MET — this licence was delivered its whole commitment">✔</span>';
-  if (st === 'accruing' || st === 'proj') return '<span class="st-dot proj" title="accruing — the window is still running, no verdict yet"></span>';
+  if (st === 'accruing' || st === 'proj') return '<span class="st-dot proj" title="accruing — the ' + (timed ? 'week' : 'window') + ' is still running, no verdict yet"></span>';
   if (st === 'breach' || st === 'fail')   return '<span class="st-dot fail" title="BREACH — short of this licence\'s commitment (binary: one unit short is a breach)">!</span>';
   return '<span class="st-dot none" title="no commitment on this venture — nothing to meet or breach">–</span>';
 }
@@ -1405,7 +1423,8 @@ function statusDot(st){
 // `rank` (1-based) is the row's place in the pursue order; it is passed in rather than
 // derived here so the row stays a pure renderer. Only a committed row gets the reorder
 // buttons: an unlicensed producer has no licence to prioritise.
-function licRow(l, rank, total){
+// `timed` is the Tier-3 fork's: the same row, with "this week" where Tier 1/2 say "this window".
+function licRow(l, rank, total, timed){
   var cmt;
   if (!l.licensed) {
     cmt = '<span class="cmt" style="color:var(--ink3)">no commitment</span>';
@@ -1413,7 +1432,7 @@ function licRow(l, rank, total){
     // Licensed, but the engine is filling no window for it — show the target alone.
     cmt = '<span class="cmt">' + fmt(l.commitment) + '<span class="u">u</span></span>';
   } else {
-    cmt = '<span class="cmt" title="delivered to this licence / its commitment this window">' +
+    cmt = '<span class="cmt" title="delivered to this licence / its commitment this ' + (timed ? 'week' : 'window') + '">' +
       fmt(l.delivered) + '<span class="u"> / </span>' + fmt(l.commitment) + '<span class="u">u</span></span>';
   }
   // The figures sit UNDER the name, not beside it. Beside it they cost ~30px of a 152px
@@ -1438,7 +1457,7 @@ function licRow(l, rank, total){
       '</span>'
     : '';
   return '<div class="sm-lic' + (l.licensed ? ' pursue' : ' out') + '"' + flex + '>' +
-    statusDot(l.status) + idwrap + rankCtl +
+    statusDot(l.status, timed) + idwrap + rankCtl +
   '</div>';
 }
 function synTherm(R){
@@ -1468,7 +1487,8 @@ function synTherm(R){
 // uncommitted producers (compact fixed weight) below — never removed, just outside the
 // bar's reach and outside the ranking. Rank 1 is the licence the boundary fill feeds
 // first, to its full commitment, before rank 2 sees a unit.
-function synRoster(R){
+// `timed` (the Tier-3 fork) is passed straight on to each row, for its wording only.
+function synRoster(R, timed){
   if (!R.display.length){
     return '<div class="sm-rostwrap"><div class="sm-roster"><div class="empty" style="margin:10px">nothing in this system produces this good</div></div></div>';
   }
@@ -1481,7 +1501,7 @@ function synRoster(R){
   var rows = R.display.map(function(l){
     l._flex = anyCommitted ? (l.commitment > 0 ? l.commitment : 1) : 0;
     if (l.licensed) rank += 1;
-    return licRow(l, rank, n);
+    return licRow(l, rank, n, timed);
   }).join('');
   // The clear-back-to-default affordance, shown only when a ranking is actually stored:
   // it POSTs `pursue: null`, the engine's own tri-state clear, and the roster reverts to
@@ -1513,21 +1533,31 @@ function synRoster(R){
 // titanium roster would invite reading a galaxy-wide debit as titanium's. The browser
 // computes NO part of it: the lump, the tick and the record's existence are all engine
 // facts (§5's display rule).
-function synFeeFoot(){
-  var mech = 'The licence fee is charged at each cycle boundary — the discounted fee if the ' +
-    'licence met its commitment that cycle, the full basic fee if it breached.';
+//
+// `timed` (the Tier-3 fork) says the same thing in the week's terms: a Tier-3 licence is charged
+// only on its own week's last tick (Slice 3a), never at a daily boundary. The last-charge
+// sentence is shared, because the record is the same guild-wide lump either way.
+function synFeeFoot(timed){
+  var mech = timed
+    ? 'The licence fee is charged once a week, when the week settles — the discounted fee if the ' +
+      'licence met its commitment that week, the full basic fee if it breached.'
+    : 'The licence fee is charged at each cycle boundary — the discounted fee if the ' +
+      'licence met its commitment that cycle, the full basic fee if it breached.';
   var g = ((STATE.snap && STATE.snap.guilds) || []).find(function(x){ return x.id === STATE.guildId; }) || {};
   var f = g.licenceFee;
-  if (!f) return mech + ' Nothing charged yet — no cycle has closed on a licence of yours.';
+  if (!f) return mech + (timed ? ' Nothing charged yet — no licence of yours has settled.'
+                               : ' Nothing charged yet — no cycle has closed on a licence of yours.');
   return mech + ' Last charged at tick ' + fmt(f.tick) + ': ' + fmt(f.charged) +
     ' \u00a2 across all your licences, guild-wide.';
 }
+// One labelled figure in the footer row (shared with the Tier-3 fork's synStatsWeek).
+function synStat(k, v, u){
+  return '<div class="st"><span class="k">' + k + '</span><span class="v">' + v +
+    (u ? '<span class="u">' + u + '</span>' : '') + '</span></div>';
+}
 function synStats(R){
   var done = R.committed.filter(function(l){ return l.status === 'met'; }).length;
-  var stat = function(k, v, u){
-    return '<div class="st"><span class="k">' + k + '</span><span class="v">' + v +
-      (u ? '<span class="u">' + u + '</span>' : '') + '</span></div>';
-  };
+  var stat = synStat;
   if (!R.total){
     return '<div class="sm-stats">' + stat('Window target', '—') + stat('Delivered', '—') +
       stat('Ventures met', '0/' + R.committed.length) + '</div>' +
@@ -1766,7 +1796,9 @@ function topupMode(rg, stock, reserve){
 }
 
 
-function stockpileStrip(good, stock, reserve, delta){
+// `headNote` is the Tier-3 fork's (see timedReservePanel): when given, it takes the place of the
+// per-tick ▲/▼ chevrons under the title. Tier 1/2 never pass it, so their strip is unchanged.
+function stockpileStrip(good, stock, reserve, delta, headNote){
   stock = Math.max(0, stock || 0); reserve = Math.max(0, reserve || 0);
   var maxv = Math.max(stock, reserve, 1);
   var excess = stock >= reserve;                                  // regime A when stock >= reserve
@@ -1784,8 +1816,11 @@ function stockpileStrip(good, stock, reserve, delta){
       '<div class="rs-zone r ' + rightCls + '" style="width:' + (100 - linePct) + '%"></div>' +
       '<div class="rs-line" style="left:' + linePct + '%"></div>' +
     '</div>';
+  var head = headNote
+    ? '<div class="head"><div><div class="rs-name">Stockpile</div>' + headNote + '</div></div>'
+    : '<div class="head">' + chevs + '<div class="rs-name">Stockpile</div></div>';
   return '<div class="panel reserve">' +
-    '<div class="head">' + chevs + '<div class="rs-name">Stockpile</div></div>' +
+    head +
     '<div class="rs-sendwrap">' + field + bar + '</div>' +
     '<div class="rs-onhand">' +
       '<div class="rs-oh-lbl">Stockpile</div>' +
@@ -2445,12 +2480,17 @@ function heroPanel(good, report, rg){
     kind = (found.kind || 'Mine');
     var isRef = kind.toLowerCase().indexOf('refin') >= 0;
     art = isRef ? refineryArt(tint) : mineArt(tint);
+    // A timed Tier-3 factory makes one whole unit per timer, not a per-tick output, so its
+    // row says the cadence instead (timedRow / fmtCadence — the Tier-3 fork, below).
+    var trow = timedContract(good) ? timedRow(report, id) : null;
     live =
       statRow('Planet', esc(sitePlanet(place))) +
       // The node's REAL good (the mockup's "rich seam" was an invented node quality —
       // the engine has no node grades, so it is not shown).
       statRow('Node', '<span class="tag">' + esc(prettyGood(found.good || good)) + '</span>') +
-      statRow('Output', '<span class="v amber">' + fmt(found.amount) + '<span class="us"> u/tick</span></span>');
+      (trow
+        ? statRow('Makes', '<span class="v amber">' + esc(fmtCadence(trow.ticksPerUnit)) + '</span>')
+        : statRow('Output', '<span class="v amber">' + fmt(found.amount) + '<span class="us"> u/tick</span></span>'));
     fac = facilityMock(id, isRef ? 12 : 8);
   } else {
     var ref = (report.refineries || []).find(function(r){ return r.ventureId === id; });
@@ -2537,6 +2577,214 @@ function reservePanel2(good, rg){
   return '<div class="stock-row">' + strip + consTopupSquare(good, rg) + syndTopupSquare(good) + '</div>';
 }
 
+// ============================================================================
+// THE TIER-3 FORK — the console for a TIMED good (docs/tier3-timed-production.md,
+// "As built — the client: the System Production Console")
+// ----------------------------------------------------------------------------
+// A timed Tier-3 factory does not flow per tick. It makes ONE WHOLE UNIT per timer, its
+// Syndicate commitment is `x` whole units settled over a 7-day WEEK, and nothing in a system
+// consumes its output (a Tier-3 part feeds Tier-4 assembly, not a pipeline). So for a timed
+// good the panel forks:
+//   - Stockpile strip: the reserve field stays; the two top-up squares and the per-tick
+//     chevrons go; the factory's cadence (1 unit / its timer, up to y a week) takes their place.
+//   - Production column: the cadence and each factory's unit on the line, not a per-tick trend.
+//   - Distribution: two arms, Syndicate then Stockpile, in a FIXED order. The engine delivers
+//     a committed timed good Syndicate first whatever order is stored (Slice 3b, "fixed" = not
+//     a lever), so there is no rank selector and no send control to set. No Production arm.
+//   - Right column: always the Syndicate, read in whole units over the week. No Consumption tab.
+// Every non-timed good (Tier 1, Tier 2, the four unclassified modules) never reaches this
+// block and keeps the console exactly as it was.
+//
+// THE TRIGGER is the snapshot's own list of timed goods, `tier3Contract` — the one the
+// Establish popup forks on — so this page keeps no good list, no timer and no week of its own.
+// Every figure below is read off the snapshot (§5's display rule): `y` from `tier3Contract`,
+// the timer and the unit on the line from the factory's own production row, and the week
+// from the good's `window`. The only arithmetic is bar widths and clock formatting.
+
+// The snapshot's Tier-3 contract for `good` ({ weeklyOutput, committedUnitsCeiling, termDays })
+// when it is a timed good, else null. Non-null is what forks the panel.
+function timedContract(good){
+  var tc = (STATE.snap && STATE.snap.tier3Contract) || {};
+  return tc[good] || null;
+}
+// A timed factory's own production row: { timed, ticksPerUnit, unitTicksRemaining, minted,
+// bottleneckGood, … }, published per factory in the snapshot's `refineries` (sim/production.js,
+// resolveTimedFactory). Null if this venture has no timed row here.
+function timedRow(report, ventureId){
+  var rows = (report && report.refineries) || [];
+  return rows.find(function(r){ return r.ventureId === ventureId && r.timed; }) || null;
+}
+// The good's timer as the engine reports it, read off the first factory making it here. Every
+// factory of one good runs the same timer (the good decides it), so the first is as good as
+// any. Null when nothing here makes it: then only the weekly capacity `y` is shown.
+function goodTicksPerUnit(report, good){
+  var p = report ? producersOf(report, good) : [];
+  for (var i = 0; i < p.length; i++){ var r = timedRow(report, p[i].id); if (r) return r.ticksPerUnit; }
+  return null;
+}
+// `y` for reading: at most 2 dp (a deep scan mast's 2.333… reads 2.33), the Establish popup's
+// own fmtY convention. It is only ever shown, never used in a sum.
+function fmtY(y){ return (Math.round(y*100)/100).toLocaleString('en-US'); }
+// "1 unit / 15m" — the timer said as a duration (a tick is one minute).
+function fmtCadence(ticksPerUnit){ return '1 unit / ' + fmtTicksAsDuration(ticksPerUnit); }
+// A long count of ticks (the week's countdown) said in days and hours: the same minutes-to-clock
+// conversion as fmtTicksAsDuration, carried on to days, because "142h 3m" is hard to read as
+// most of a week. Under a day it falls back to hours and minutes.
+function fmtTicksAsDays(ticks){
+  var m = Math.max(0, Math.round(Number(ticks) || 0));
+  var minutesPerDay = 24 * 60;
+  var d = Math.floor(m / minutesPerDay), h = Math.floor((m % minutesPerDay) / 60);
+  return d > 0 ? (d + 'd ' + h + 'h') : fmtTicksAsDuration(m);
+}
+
+// The stockpile row for a timed good: the strip alone. There are no top-up squares — nothing
+// here consumes a timed good, so there is nothing to top up, and the Syndicate takes only units
+// made this tick. The strip's reserve field is kept exactly as it is for Tier 1/2 (whole units,
+// the same action). RULED 28-09-26: keep it — but note it moves no unit of a timed good today
+// (docs/roadmap.md decision checklist), so nothing here says it holds units back.
+function timedReservePanel(good, t3, report){
+  var tpu = goodTicksPerUnit(report, good);
+  var note = (tpu != null ? '<div class="rs-cad">per factory · <b>' + esc(fmtCadence(tpu)) + '</b></div>' : '') +
+    '<div class="rs-cad">up to <b>' + esc(fmtY(t3.weeklyOutput)) + '</b> /week' + (tpu != null ? '' : ' per factory') + '</div>';
+  var strip = stockpileStrip(good, onHand(good), goodPolicy(good).reserveLevel, null, note);
+  return '<div class="stock-row">' + strip + '</div>';
+}
+
+// One factory's unit on the line, as its row reports it — for the progress bar under its chip.
+// `unitTicksRemaining` is the engine's countdown AFTER the coming tick's work (the snapshot
+// previews the next tick, as every figure on this page does). The bar's fill is display math
+// on the row's two numbers, like the dockyard's donut.
+function unitProgress(row){
+  if (row.unitTicksRemaining != null){
+    return { frac: (row.ticksPerUnit - row.unitTicksRemaining) / row.ticksPerUnit,
+             text: fmtTicksAsDuration(row.unitTicksRemaining) + ' left on this unit' };
+  }
+  if (row.minted > 0) return { frac: 1, text: 'unit made' };
+  if (row.bottleneckGood) return { frac: 0, text: 'waiting on ' + prettyGood(row.bottleneckGood) };
+  return { frac: 0, text: 'idle' };
+}
+
+// The Production column for a timed good: the cadence where the per-tick trend card was, then
+// the factories — each chip with its unit's progress under it (in place of a per-tick rate).
+function timedProducersCol(producers, good, report, t3){
+  var tpu = goodTicksPerUnit(report, good);
+  var card = '<div class="tcard">' +
+      '<div class="tc-top"><span class="tc-name">Production</span>' +
+        '<span class="tc-now">' + esc(tpu != null ? fmtCadence(tpu) : fmtY(t3.weeklyOutput) + ' /week') + '</span></div>' +
+      '<div class="tq-note">Each factory makes one whole unit at a time — up to ' + esc(fmtY(t3.weeklyOutput)) +
+        ' a week — once a full set of its inputs is in stock.</div>' +
+    '</div>';
+  var stack = producers.length
+    ? '<div class="vstack">' + producers.map(function(p){
+        var row = timedRow(report, p.id);
+        var pr = row ? unitProgress(row) : null;
+        return ventChip(p.id, 'producer', null) + (pr
+          ? '<div class="vprog"><span class="vp-bar"><i style="width:' + (100 * pr.frac).toFixed(1) + '%"></i></span>' +
+            '<span class="vp-txt">' + esc(pr.text) + '</span></div>'
+          : '');
+      }).join('') + '</div>'
+    : '<div class="empty">no factory makes this here</div>';
+  return '<div class="col">' + card + stack + '</div>';
+}
+
+// Distribution for a timed good: the Syndicate, then the Stockpile, in a FIXED order (RULED
+// 28-09-26). For a committed timed good the engine lifts the Syndicate to the front whatever
+// order is stored; for an uncommitted one the Syndicate takes nothing. So a rank selector would
+// write an order the engine does not follow — the rank is drawn, not offered.
+function timedGate1Col(good, rg){
+  var fixed = function(n){
+    return '<span class="prank fixed" title="fixed: a timed good is delivered Syndicate first, so this order is not a setting">' + n + ' · fixed</span>';
+  };
+  return '<div class="col gate1"><div class="colhead"><span class="lbl">Distribution</span><span class="hint">syndicate first · fixed</span></div>' +
+    timedSynPanel(rg, fixed(1)) + timedSkPanel(good, rg, fixed(2)) + '</div>';
+}
+// The week's status, in the week's terms: a licence is judged once, at the week's end, so
+// "accruing" reads as the time left in the week (the engine's own `ticksRemaining`).
+function weekStatusText(w){
+  if (w.status === 'accruing') return fmtTicksAsDays(w.ticksRemaining) + ' left in the week';
+  return w.status === 'met' ? 'Met' : 'Breach';
+}
+// The Syndicate arm for a timed good. No send slider or rate: the engine reads no send control
+// for a timed good (Slice 3b) — every unit made goes to the Syndicate until the week's `Q` is
+// met. What is left is the week's progress, in whole units, off the good's `window`.
+function timedSynPanel(rg, rank){
+  var w = rg ? rg.window : null;
+  var head = '<div class="sy-head"><span class="dir">▼</span><span class="aname">Syndicate</span>' + rank + '</div>';
+  if (!w){
+    return '<div class="sy-panel">' + head +
+      '<div class="sy-none">no licence commits units to the Syndicate — every unit made stays in the stockpile</div></div>';
+  }
+  var pctDone = Math.max(0, Math.min(100, w.pctAchieved || 0));
+  return '<div class="sy-panel">' + head +
+    '<div class="sy-rule">Syndicate first: every unit made goes to the Syndicate until this week’s target is met, then to the stockpile.</div>' +
+    '<div class="sy-gauge"><div class="sy-grow"><span class="c2">This week</span><span class="sy-st ' + esc(w.status) + '">' + esc(weekStatusText(w)) + '</span></div>' +
+      '<div class="sy-bar"><div class="sy-lic" style="width:' + pctDone + '%"></div><div class="sy-licpct" style="left:' + Math.max(6, Math.min(94, pctDone)) + '%">' + Math.round(pctDone) + '%</div></div>' +
+      '<div class="sy-foot"><span class="tot"><b>' + fmt(w.delivered) + '</b> of ' + fmt(w.Q) + ' units delivered</span></div></div></div>';
+}
+// The Stockpile arm for a timed good: where the units the Syndicate does not take end up, and
+// how many are on hand. No slider — the Tier-1/2 one is a % of THIS TICK's output, which is 0
+// or 1 for a timed good (RULED 28-09-26: dropped here; the strip's typed field stays).
+function timedSkPanel(good, rg, rank){
+  var head = '<div class="sk-head"><span class="dir">▲</span><span class="aname">Stockpile</span>' + rank + '</div>';
+  var rule = (rg && rg.window)
+    ? 'Every unit made after this week’s Syndicate target is met stays here.'
+    : 'With nothing committed, every unit made stays here.';
+  return '<div class="sk-panel">' + head +
+    '<div class="sk-collapsed"><div class="sk-in"><span class="sk-in-lbl">On hand</span>' +
+      '<div class="sk-in-box">' + fmt(onHand(good)) + '<span class="u">u</span></div></div>' +
+      '<div class="sk-note">' + rule + '</div></div></div>';
+}
+
+// The right column for a timed good: always the Syndicate (nothing consumes a timed good, so
+// there is no Consumption tab). The roster is the same live roster Tier 1/2 read, with "week"
+// for "window"; the thermometer measures delivered against the week's `Q` in whole units.
+function timedSyndicateCol(good, t3){
+  var R = synResolve();
+  var report = systemReport();
+  var g = report ? (report.goods || {})[good] : null;
+  var w = g ? g.window : null;
+  var head = '<div class="sm-top">' +
+    '<div class="sm-presets"><span class="sm-plbl">Commitments · ' + esc(prettyGood(good)) + ' · weekly</span>' +
+      '<span class="lbl">' + R.display.length + ' producing venture' + (R.display.length === 1 ? '' : 's') +
+      ' · ' + R.committed.length + ' committed</span></div>' +
+  '</div>';
+  return '<div class="col sm-col"><div class="rt-tabs"><div class="rt-tab on">Syndicate</div></div>' +
+    '<div class="sm-wrap">' + head +
+      '<div class="sm-body"><div class="sm-main">' + synThermWeek(R, w) + synRoster(R, true) + '</div></div>' +
+      synStatsWeek(R, w, t3) +
+    '</div>' +
+  '</div>';
+}
+// The week's thermometer: delivered against `Q`, filled by the engine's own `pctAchieved`.
+// Tier 1/2's "projected" and "deficit" marks are left off: they extend THIS tick's send over the
+// ticks left, and a timed good sends 0 on most ticks and 1 when a unit lands.
+function synThermWeek(R, w){
+  if (!R.total || !w) return synTherm(R);      // nothing committed: the same empty tube
+  var fillPct = Math.max(0, Math.min(100, w.pctAchieved || 0));
+  var inner = '<div class="sm-fill" style="height:' + fillPct + '%"></div>' +
+    '<div class="sm-therm-lbl deliv" style="top:' + clampLbl(fillPct) + '%"><span class="s">delivered</span>' +
+      Math.round(fillPct) + '% · ' + fmt(R.delivered) + 'u</div>';
+  return '<div class="sm-therm-col"><div class="sm-therm" style="height:' + R.barPct + '%">' + inner + '</div></div>';
+}
+// The footer: the week's target, delivered and verdicts (the same three engine figures Tier 1/2
+// show), then when the week settles, the fixed term (`termDays`, off the snapshot) and the fee.
+function synStatsWeek(R, w, t3){
+  var done = R.committed.filter(function(l){ return l.status === 'met'; }).length;
+  if (!R.total || !w){
+    return '<div class="sm-stats">' + synStat('Week target', '—') + synStat('Delivered', '—') +
+      synStat('Ventures met', '0/' + R.committed.length) + '</div>' +
+      '<div class="sm-foot">No licence on this good yet — nothing goes to the Syndicate, so there is nothing ' +
+      'to meet or breach this week. ' + esc(synFeeFoot(true)) + '</div>';
+  }
+  return '<div class="sm-stats">' +
+      synStat('Week target', fmt(R.total), 'u') +
+      synStat('Delivered', fmt(R.delivered), 'u') +
+      synStat('Ventures met', done + '/' + R.committed.length) +
+    '</div>' +
+    '<div class="sm-foot">' + esc('The week settles in ' + fmtTicksAsDays(w.ticksRemaining) + '. Each licence is a fixed ' +
+      fmt(t3.termDays) + '-day term, judged once, at the week’s end. ' + synFeeFoot(true)) + '</div>';
+}
+
 // ---- OVERRIDE renderStage: 4-column flow, no inner trend/top-up columns ----
 function renderStage(report){
   // Tier 4 · Assets renders the dockyard view (its own layout + data), not the good pipeline.
@@ -2547,9 +2795,11 @@ function renderStage(report){
   var producers = report ? producersOf(report, good) : [];
   var consumers = report ? (report.lines || []).filter(function(l){ return l.good === good; }) : [];
   var stage = document.getElementById('stage');
+  // Non-null for a TIMED Tier-3 good, which forks the panel (THE TIER-3 FORK, above).
+  var t3 = timedContract(good);
 
   if (!rg && producers.length === 0 && consumers.length === 0){
-    stage.innerHTML = reservePanel2(good, null) +
+    stage.innerHTML = (t3 ? timedReservePanel(good, t3, report) : reservePanel2(good, null)) +
       '<div class="panel flow flow-r"><div class="col" style="grid-column:1/-1"><div class="empty" style="margin:8px">' +
       esc(prettyGood(good)) + ' is idle in ' + esc(STATE.sysId) + ' — nothing mined, refined, or consumed here. On hand: <b class="num">' + fmt(onHand(good)) + '</b>.</div></div></div>';
     decorateSteppers(stage);
@@ -2578,6 +2828,21 @@ function renderStage(report){
   }
   loadSystemInfo();
 
+  // A timed Tier-3 good takes the fork's four pieces (THE TIER-3 FORK, above); every other good
+  // takes exactly the pieces it always has. The Syndicate/Consumption tab choice is left alone,
+  // so it is still there when the player returns to a Tier-1/2 good.
+  if (t3){
+    stage.innerHTML =
+      timedReservePanel(good, t3, report) +
+      '<div class="panel flow flow-r">' +
+        timedProducersCol(producers, good, report, t3) +
+        timedGate1Col(good, rg) +
+        timedSyndicateCol(good, t3) +
+      '</div>';
+    decorateSteppers(stage);
+    paintIndustrialHero(good, report, rg);
+    return;
+  }
   var syndTab = STATE.rightTab === 'syndicate';
   var col3 = syndTab ? syndicateMgmtCol(good) : consumersCol2(good, rg, consumers, report);
   stage.innerHTML =

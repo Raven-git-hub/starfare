@@ -946,7 +946,8 @@ guards "two arguments, no tier".
 **Before Tier 3 runs live.** The Establish popup is no longer a blocker. Still open (roadmap
 decision checklist):
 - the Venture Management and renegotiation popups' Tier-3 readings (3c's list);
-- the System Production Console (a later slice);
+- the System Production Console (a later slice); *(⤳ built 28-09-26, "As built — the client: the
+  System Production Console" at the end)*
 - the items this slice defers.
 
 ## As built (28-09-26) — the client's weekly copy: capacity in the Rate row, no per-tick words
@@ -1048,3 +1049,153 @@ carry no per-tick or per-cycle rate, and changing them would change Tier 1/2.
     itself, on the same pixels, so the check compared against three HEAD runs.
 
 **No engine change, and no golden moved.**
+
+## As built (28-09-26) — the client: the System Production Console
+
+The console (`client/console.html`) still drew every good as a Tier-1/2 flow. For a timed good that
+meant a per-tick production trend of 0s and 1s, and a Syndicate send slider the engine does not
+read (3b). It also meant a Production arm and a Consumption tab for a good nothing consumes, top-up
+squares, a thermometer that projected THIS tick's send over the rest of the week, and "per cycle"
+and "u/t" wording. This slice forks the console for a timed good. It is **client-only**: no engine
+change, no snapshot change.
+
+**The trigger** is `tier3Contract`, the snapshot's own list of timed goods, which the Establish popup
+already forks on (`timedContract(good)`). The page holds no good list, no timer and no week. Every
+other good (Tier 1, Tier 2, the four unclassified modules), and Tier 4, never reaches the fork.
+
+**No new snapshot field was needed.** The one figure the popup could not source, the timer, is
+already published for the console: each timed factory's row in the production block
+(`refineries[]`, `resolveTimedFactory`) carries `timed`, `ticksPerUnit`, `unitTicksRemaining`,
+`minted` and `bottleneckGood`. So "hours per unit" is the row's `ticksPerUnit` said as a duration,
+and no game number is computed in the browser. (The Establish popup's no-ETA item is unchanged: the
+popup shows a recipe before any factory exists, so it has no row to read.)
+
+**What the fork shows, piece by piece:**
+- **The stockpile strip.** The two top-up squares are gone: nothing consumes a timed good, and the
+  Syndicate takes only units made that tick, so there is nothing to top up. The per-tick ▲/▼ chevrons
+  are gone too. In their place, under the title: "per factory · 1 unit / 15m" (the row's
+  `ticksPerUnit`) and "up to 672 /week" (`tier3Contract.weeklyOutput`, shown to at most 2 dp as the
+  popup does: 3.5, 2.33). The typed reserve field and the bar are unchanged (see the rulings below).
+- **The Production column.** The per-tick trend card and sparkline become a cadence card: "1 unit /
+  15m" and "Each factory makes one whole unit at a time — up to `y` a week — once a full set of its
+  inputs is in stock". Under each factory's chip, where a consumer chip has its throttle, is the unit
+  on the line. It is a bar, and one of: "`12m` left on this unit" (`unitTicksRemaining`, the
+  engine's countdown after the coming tick, as every figure on the page is the next tick's preview),
+  "unit made", "waiting on `<input>`" (`bottleneckGood`), or "idle". The bar's fill is display math
+  on the row's two numbers, like the dockyard's donut.
+- **Distribution: two arms, in a fixed order.** The Syndicate (1 · fixed), then the Stockpile
+  (2 · fixed).
+  - There is no Production arm: no recipe consumes a timed good. A test pins this, and fails if a
+    recipe ever does.
+  - The **Syndicate arm** has no send slider and no rate. It states the rule ("Syndicate first:
+    every unit made goes to the Syndicate until this week's target is met, then to the stockpile"),
+    then the week's progress from the good's `window`: a bar at `pctAchieved`, "`d` of `Q` units
+    delivered", and the status. The status is "`5d 22h` left in the week" while accruing, then
+    "Met" or "Breach".
+  - Uncommitted, the arm says no licence commits units to the Syndicate, and that every unit made
+    stays in the stockpile.
+  - The **Stockpile arm** says where the units the Syndicate does not take end up, and shows "On
+    hand".
+- **The right column is always the Syndicate.** It has one tab and no Consumption tab. The player's
+  Consumption/Syndicate choice is left alone for their next Tier-1/2 good.
+  - The roster is the same live roster (`perVenture`, the pursue movers), with "this week" where
+    Tier 1/2 say "this window".
+  - The thermometer fills to `pctAchieved`, with delivered against the week's `Q`. Tier 1/2's
+    "projected" and "deficit" marks are left off, because they extend this tick's send (0 or 1)
+    over the ticks left.
+  - The footer reads "Week target", "Delivered" and "Ventures met".
+  - The footer's copy: "The week settles in `6d 20h`. Each licence is a fixed `termDays`-day term,
+    judged once, at the week's end. The licence fee is charged once a week, when the week settles —
+    the discounted fee if the licence met its commitment that week, the full basic fee if it
+    breached." Then the guild-wide last-charge line, as for Tier 1/2.
+- **The standalone hero** (the right zone outside the console). A timed factory's per-tick
+  "Output `n` u/tick" row becomes "Makes 1 unit / 15m". Embedded, the game draws that zone, so
+  nothing changes there.
+
+Week countdowns use `fmtTicksAsDays`, the same minutes-to-clock conversion as `fmtTicksAsDuration`,
+carried on to days ("6d 20h" rather than "164h 0m").
+
+**RULED 28-09-26 (the human, during this build) — two display rulings:**
+1. **The order is drawn fixed, not offered.** The build prompt asked for rank selectors over the two
+   arms, but the order is never read for a timed good:
+   - for a committed one, the engine lifts the Syndicate to the front whatever is stored (3b, "fixed
+     = not a lever");
+   - for an uncommitted one, the Syndicate takes nothing.
+
+   So a selector would write an order the engine does not follow. The console draws "1 · fixed" and
+   "2 · fixed" and POSTs no `order` for a timed good. (Intake still accepts an `order` or a send
+   control for a timed good. That item stays on the checklist.)
+2. **The reserve floor: keep the typed field, drop the slider.**
+   - The build prompt's premise was that the reserve floor "holds back whole units before the
+     Syndicate draws". It does not. For a timed good `reserveLevel` moves **no unit**: there is no
+     consumer to hold back from, and the Syndicate is lifted first and takes only units made that
+     tick. It changes only the reported hold, `fork.stockpile`.
+   - The Tier-1/2 Distribution slider does misread for whole units. It sets the level as a % of THIS
+     TICK's output, which is 0 or 1 for a timed good, so dragging it would write the level to 0 or 1.
+   - Ruled: keep the strip's typed reserve field exactly as shipped (whole units, the same
+     `setProductionProfile` action), drop the slider on the timed path, and let nothing on the timed
+     path claim the reserve holds units back. That it moves no unit today is recorded on the
+     decision checklist.
+
+**Proven.**
+- `sim/tests/tier3-console-client.test.js` (4 tests) pins the engine facts the fork stands on:
+  - every timed factory's row carries the fields the fork reads, and `ticksPerUnit × y` is the week
+    for all 21 timed goods;
+  - `tier3Contract` lists exactly the goods whose factories publish a timed row, and none of the four
+    unclassified modules;
+  - no recipe consumes a timed good;
+  - for a committed fuel-tank factory over 1,200 ticks, a reserve ranked first (30), and "absolute 0"
+    with a reserve of 500, each deliver, stock and pay identically to the default **on every tick**.
+    Only the reported hold differs;
+  - an uncommitted timed good gets no routing entry, so there is no fork to show.
+- `server.test.js` gets one served-page pin (+1). It checks:
+  - the trigger reads `tier3Contract`, and the page names no Tier-3 good and types no timer or week;
+  - `renderStage` forks in both branches, and the Tier-1/2 pieces are still what every other good
+    gets;
+  - the fork draws no top-up square, no trend, no Production arm, no `<select>`, no send or
+    stockpile slider and no tab bar, and keeps the reserve field;
+  - its figures come from the row, `tier3Contract` and the window;
+  - its copy carries no "u/t", "/tick", "per tick", "cycle", "window" or "share";
+  - the hero's timed row is the cadence;
+  - the Tier-1/2 strings are all still served.
+- Nine deliberate breakages each turn a test red:
+  - a top-up square put back;
+  - a hardcoded good list as the trigger;
+  - "u/t" in the week status;
+  - the fork never taken;
+  - a rank `<select>` on the timed path;
+  - the reserve field dropped;
+  - the Tier-1/2 fee copy lost;
+  - (engine) the Syndicate-first lift dropped;
+  - (engine) the row's `unitTicksRemaining` renamed.
+- **By exercise**, in Chromium on a live dev server (seed 7331). The galaxy was built over HTTP:
+  - a titanium mine (Tier 1) and a titanium-alloy refinery (Tier 2), both licensed;
+  - a **fuel tank** factory (3-1, a 15-minute timer, `y = 672`) licensed at `x = 100`;
+  - a **heavy reactor engine** factory (specialist, 48 h, `y = 3.5`) licensed at `x = 3`, fed for
+    one unit only;
+  - an unlicensed deep scan mast (72 h, `y = 2.33`) with no inputs.
+
+  What it showed:
+  - Selecting a timed good forks the panel, standalone and embedded, with no page error. There are
+    two fixed arms, no top-up, no trend, one Syndicate tab, and no per-tick or cycle word on screen.
+  - **Tick 200:** the fuel tank reads "1 unit / 15m", "up to 672 /week", "13 of 100 units
+    delivered" and "6d 20h left in the week". The heavy engine reads "1 unit / 48h 0m", "up to 3.5
+    /week", "44h 39m left on this unit" and 0 of 3. The mast reads "waiting on Silicon Wafer" and
+    "no commitment yet".
+  - **Tick 2,000,** past day 1's end: the fuel tank reads "Met" at 100 of 100. The heavy engine is
+    still accruing, "5d 14h left in the week", with no daily breach.
+  - **Tick 10,079,** the week's last preview: the heavy engine reads **Breach**, 1 of 3, and its
+    roster dot is red. The fuel tank is "Met".
+  - **One tick on** (10,080): the week has rolled over ("7d 0h left", 0 of `Q`). The engine charged
+    the heavy engine's full 7,000,000 weekly fee and the fuel tank's discounted 6,470, and the footer
+    shows the new guild-wide charge.
+  - **Parity:** HEAD's `console.html` and this slice's rendered the same frozen state through the
+    same clicks. There were 14 cases, standalone and embedded: titanium and titanium alloy on both
+    tabs, an idle Tier-2 good, an unclassified module (Drive Module) and the Tier-4 tab. The stage,
+    hero, title and resource-bar DOM were identical, and every screenshot is a **byte-identical**
+    PNG (with CSS animations paused, since the conveyor and spinner otherwise differ by frame). One
+    repeat run showed a single pixel 11 colour levels off in one case, with identical DOM. HEAD run
+    against itself shows the same one-pixel blip, and the case was byte-identical when re-run: it is
+    renderer noise, as the Establish slice also measured.
+
+**No engine change, no snapshot change, and no golden moved.**
