@@ -709,8 +709,6 @@
 
   /* ---- the Tier-3 fork (a timed good): cadence, unit progress, a fixed rank ------
      Only the timed path renders these classes; every other good never meets them. */
-  .rs-cad{font-family:var(--mono); font-size:10px; letter-spacing:.04em; color:var(--ink3); margin-top:4px; white-space:nowrap}
-  .rs-cad b{color:var(--amber); font-weight:500}
   .tq-note{font-family:var(--mono); font-size:10px; line-height:1.55; color:var(--ink3)}
   /* the unit on the line, under its factory chip (where a consumer chip has its throttle) */
   .vprog{display:flex; align-items:center; gap:7px; padding:0 2px 4px 30px}
@@ -1805,9 +1803,10 @@ function topupMode(rg, stock, reserve){
 }
 
 
-// `headNote` is the Tier-3 fork's (see timedReservePanel): when given, it takes the place of the
-// per-tick ▲/▼ chevrons under the title. Tier 1/2 never pass it, so their strip is unchanged.
-function stockpileStrip(good, stock, reserve, delta, headNote){
+// `timed` is the Tier-3 fork's (see timedReservePanel): a timed good does not move per tick, so
+// its strip drops the per-tick ▲/▼ chevrons and shows only the title. Tier 1/2 never pass it,
+// so their strip is unchanged.
+function stockpileStrip(good, stock, reserve, delta, timed){
   stock = Math.max(0, stock || 0); reserve = Math.max(0, reserve || 0);
   var maxv = Math.max(stock, reserve, 1);
   var excess = stock >= reserve;                                  // regime A when stock >= reserve
@@ -1825,8 +1824,8 @@ function stockpileStrip(good, stock, reserve, delta, headNote){
       '<div class="rs-zone r ' + rightCls + '" style="width:' + (100 - linePct) + '%"></div>' +
       '<div class="rs-line" style="left:' + linePct + '%"></div>' +
     '</div>';
-  var head = headNote
-    ? '<div class="head"><div><div class="rs-name">Stockpile</div>' + headNote + '</div></div>'
+  var head = timed
+    ? '<div class="head"><div class="rs-name">Stockpile</div></div>'
     : '<div class="head">' + chevs + '<div class="rs-name">Stockpile</div></div>';
   return '<div class="panel reserve">' +
     head +
@@ -2623,10 +2622,11 @@ function reservePanel2(good, rg){
 // Syndicate commitment is `x` whole units settled over a 7-day WEEK, and nothing in a system
 // consumes its output (a Tier-3 part feeds Tier-4 assembly, not a pipeline). So for a timed
 // good the panel forks:
-//   - Stockpile strip: the reserve field stays; the Consumption top-up square and the per-tick
-//     chevrons go; the factory's cadence (1 unit / its timer, up to y a week) takes their place.
-//     The reserve is the floor the week's settlement rescue respects (Slice A, below). The
-//     Syndicate top-up square stays, in the week's words: it turns that rescue on and caps it.
+//   - Stockpile strip: the reserve field and the on-hand count stay; the Consumption top-up
+//     square and the per-tick chevrons go, and nothing is written in their place (the cadence is
+//     in the Production column). The reserve is the floor the week's settlement rescue respects
+//     (Slice A, below). The Syndicate top-up square stays, in the week's words: it turns that
+//     rescue on and caps it.
 //   - Production column: the cadence and each factory's unit on the line, not a per-tick trend.
 //   - Distribution: two arms, Syndicate then Stockpile, in a FIXED order. The engine delivers
 //     a committed timed good Syndicate first whatever order is stored (Slice 3b, "fixed" = not
@@ -2686,15 +2686,10 @@ function fmtTicksAsDays(ticks){
 // Tier 1/2 (whole units, the same action). It has a job at the week's settlement (design.md §5,
 // Slice A, made opt-in by Slice A2): if the good's Syndicate Top-Up is on and the week ends
 // short, the engine delivers stock ABOVE this floor to cover it, and never the stock at or below
-// it. The note under the cadence says so; the Stockpile arm says the rest.
-function timedReservePanel(good, t3, report){
-  var tpu = goodTicksPerUnit(report, good);
-  // Only a committed good has a week to settle (its `window`), so only then is the note shown.
-  var g = report ? (report.goods || {})[good] : null;
-  var note = (tpu != null ? '<div class="rs-cad">per factory · <b>' + esc(fmtCadence(tpu)) + '</b></div>' : '') +
-    '<div class="rs-cad">up to <b>' + esc(fmtY(t3.weeklyOutput)) + '</b> /week' + (tpu != null ? '' : ' per factory') + '</div>' +
-    (g && g.window ? '<div class="rs-cad">the reserve is never taken at the week’s settlement</div>' : '');
-  var strip = stockpileStrip(good, onHand(good), goodPolicy(good).reserveLevel, null, note);
+// it. The Stockpile arm says so. The strip itself carries no note (the human's call, 28-09-26:
+// it was clutter), so it shows only its figures.
+function timedReservePanel(good){
+  var strip = stockpileStrip(good, onHand(good), goodPolicy(good).reserveLevel, null, true);
   return '<div class="stock-row">' + strip + syndTopupSquare(good, true) + '</div>';
 }
 
@@ -2850,9 +2845,9 @@ function renderStage(report){
   var t3 = timedContract(good);
 
   if (!rg && producers.length === 0 && consumers.length === 0){
-    stage.innerHTML = (t3 ? timedReservePanel(good, t3, report) : reservePanel2(good, null)) +
+    stage.innerHTML = (t3 ? timedReservePanel(good) : reservePanel2(good, null)) +
       '<div class="panel flow flow-r"><div class="col" style="grid-column:1/-1"><div class="empty" style="margin:8px">' +
-      esc(prettyGood(good)) + ' is idle in ' + esc(STATE.sysId) + ' — nothing mined, refined, or consumed here. On hand: <b class="num">' + fmt(onHand(good)) + '</b>.</div></div></div>';
+      esc(prettyGood(good)) + ' — idle · on hand <b class="num">' + fmt(onHand(good)) + '</b></div></div></div>';
     decorateSteppers(stage);
     paintIndustrialHero(good, report, null);
     loadSystemInfo();
@@ -2884,7 +2879,7 @@ function renderStage(report){
   // so it is still there when the player returns to a Tier-1/2 good.
   if (t3){
     stage.innerHTML =
-      timedReservePanel(good, t3, report) +
+      timedReservePanel(good) +
       '<div class="panel flow flow-r">' +
         timedProducersCol(producers, good, report, t3) +
         timedGate1Col(good, rg) +

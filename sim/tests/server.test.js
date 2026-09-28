@@ -2513,8 +2513,8 @@ test('GET /console serves the Tier-3 fork: a timed good reads in whole units and
   //    still what every other good gets.
   const stage = fnBody('renderStage');
   assert.match(stage, /var t3 = timedContract\(good\);/);
-  assert.match(stage, /\(t3 \? timedReservePanel\(good, t3, report\) : reservePanel2\(good, null\)\)/);
-  assert.match(stage, /if \(t3\)\{[\s\S]*timedReservePanel\(good, t3, report\)[\s\S]*timedProducersCol\(producers, good, report, t3\)[\s\S]*timedGate1Col\(good, rg\)[\s\S]*timedSyndicateCol\(good, t3\)[\s\S]*return;/);
+  assert.match(stage, /\(t3 \? timedReservePanel\(good\) : reservePanel2\(good, null\)\)/);
+  assert.match(stage, /if \(t3\)\{[\s\S]*timedReservePanel\(good\)[\s\S]*timedProducersCol\(producers, good, report, t3\)[\s\S]*timedGate1Col\(good, rg\)[\s\S]*timedSyndicateCol\(good, t3\)[\s\S]*return;/);
   assert.match(stage, /reservePanel2\(good, rg\) \+[\s\S]*producersCol2\(producers, good, rg, report\) \+[\s\S]*gate1Col\(good, rg\) \+/);
 
   // 3. What the fork drops: the Consumption top-up square, the per-tick trend, the Production arm,
@@ -2536,7 +2536,7 @@ test('GET /console serves the Tier-3 fork: a timed good reads in whole units and
   assert.match(fnBody('syndTopupSquare'), /timed \? 'limit \/week' : 'limit'/);
   assert.equal((html.match(/closest\('\.su-en'\)/g) || []).length, 1, 'one switch handler for every tier');
   assert.equal((html.match(/contains\('su-limit'\)/g) || []).length, 1, 'one limit handler for every tier');
-  assert.match(fnBody('timedReservePanel'), /stockpileStrip\(good, onHand\(good\), goodPolicy\(good\)\.reserveLevel, null, note\)/);
+  assert.match(fnBody('timedReservePanel'), /stockpileStrip\(good, onHand\(good\), goodPolicy\(good\)\.reserveLevel, null, true\)/);
   assert.match(fnBody('stockpileStrip'), /class="rs-field"/);
   assert.match(fnBody('timedGate1Col'), /class="prank fixed"[\s\S]*timedSynPanel\(rg, fixed\(1\)\) \+ timedSkPanel\(good, rg, fixed\(2\)\)/);
   assert.match(fnBody('timedSyndicateCol'), /<div class="rt-tab on">Syndicate<\/div>/);
@@ -2579,8 +2579,10 @@ test('GET /console serves the Tier-3 fork: a timed good reads in whole units and
 // typed reserve field was shown but moved no unit; now it is the floor the week's settlement rescue
 // respects. The field and its POST are unchanged (the same `.rs-field` → setProductionProfile
 // reserveLevel the Tier-1/2 path uses), so what is pinned is that the page now SAYS what the floor
-// does, and that the Stockpile arm no longer claims every unit stays put.
-test('GET /console: the Tier-3 strip and Stockpile arm say what the reserve floor now does', async () => {
+// does, and that the Stockpile arm no longer claims every unit stays put. (The strip once said it
+// too — "the reserve is never taken at the week's settlement" — until the human cut the strip's
+// note as clutter, 28-09-26; the arm is now the one place it is said. The next test pins the cut.)
+test('GET /console: the Tier-3 Stockpile arm says what the reserve floor now does', async () => {
   const html = await (await fetch(base + '/console')).text();
   const fnBody = (name) => {
     const i = html.indexOf('function ' + name + '(');
@@ -2588,15 +2590,40 @@ test('GET /console: the Tier-3 strip and Stockpile arm say what the reserve floo
     return html.slice(i, html.indexOf('\n}\n', i));
   };
   // The field is the same one, drawn by the same strip, holding the stored reserveLevel.
-  assert.match(fnBody('timedReservePanel'), /stockpileStrip\(good, onHand\(good\), goodPolicy\(good\)\.reserveLevel, null, note\)/);
+  assert.match(fnBody('timedReservePanel'), /stockpileStrip\(good, onHand\(good\), goodPolicy\(good\)\.reserveLevel, null, true\)/);
   assert.match(html, /t\.classList\.contains\('rs-field'\)\)\{\s*var v = fieldInt\(t\);[^\n]*\n\s*var gr = \{\}; gr\[good\] = \{ reserveLevel: v \}; sendProfile\(\{ goods: gr \}\)/);
-  // What the page now says.
-  assert.match(fnBody('timedReservePanel'), /the reserve is never taken at the week’s settlement/);
   // Slice A2-client: the rescue is opt-in (Syndicate Top-Up), so the arm says so — it no longer
   // promises that a short week is always covered.
   assert.match(fnBody('timedSkPanel'), /If Syndicate Top-Up is on, stock above the reserve is delivered at settlement to cover a short week, up to any limit you set\./);
   assert.ok(!/If the week ends short, stock above the reserve is delivered to cover it\./.test(html), 'the always-covered promise is gone');
   assert.ok(!/moves no unit of a timed good today/.test(html), 'the old "moves no unit" note is gone');
+});
+
+// The Tier-3 stockpile strip carries no note (the human's call, 28-09-26: the three lines under its
+// title — the cadence, "up to y /week" and "the reserve is never taken…" — were clutter). It shows
+// only its figures: the title, the typed reserve field and the on-hand count. It must not get the
+// per-tick ▲/▼ chevrons back either (a timed good does not move per tick), which an empty note
+// would have done — so the strip takes a `timed` flag, not a note. The idle-good line is terse.
+test('GET /console: the Tier-3 stockpile strip carries no note, and the idle-good line is terse', async () => {
+  const html = await (await fetch(base + '/console')).text();
+  const fnBody = (name) => {
+    const i = html.indexOf('function ' + name + '(');
+    assert.ok(i >= 0, `the page defines ${name}`);
+    return html.slice(i, html.indexOf('\n}\n', i));
+  };
+  // 1. The note is gone, and its style with it: nothing on the page draws an rs-cad line.
+  assert.ok(!html.includes('rs-cad'), 'no strip-note class is left on the page');
+  const panel = fnBody('timedReservePanel');
+  for (const gone of ['up to', 'per factory', 'never taken', 'fmtCadence', 'fmtY']) {
+    assert.ok(!panel.includes(gone), `the Tier-3 strip must not draw ${gone}`);
+  }
+  // 2. The timed head is the title alone, with no chevrons. Tier 1/2 pass no flag, so they keep
+  //    the chevrons and their strip is unchanged.
+  assert.match(fnBody('stockpileStrip'), /var head = timed\s*\? '<div class="head"><div class="rs-name">Stockpile<\/div><\/div>'\s*: '<div class="head">' \+ chevs \+ '<div class="rs-name">Stockpile<\/div><\/div>';/);
+  assert.match(fnBody('reservePanel2'), /stockpileStrip\(good, onHand\(good\), goodPolicy\(good\)\.reserveLevel, rg \? rg\.reserveDelta : null\);/);
+  // 3. The idle-good line is the good, "idle" and the on-hand count, not a sentence.
+  assert.match(fnBody('renderStage'), /esc\(prettyGood\(good\)\) \+ ' — idle · on hand <b class="num">' \+ fmt\(onHand\(good\)\) \+ '<\/b>/);
+  assert.ok(!/nothing mined, refined, or consumed/.test(html), 'the long idle sentence is gone');
 });
 
 test('the EMBEDDED console\'s inventory rides the venture bridge into the game\'s right zone', async () => {

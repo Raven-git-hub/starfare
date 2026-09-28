@@ -7,9 +7,9 @@
 // so each fact it relies on is pinned here, where an engine change would trip it:
 //   1. The figures it reads: the snapshot publishes, per timed factory, a production row with
 //      `timed`, `ticksPerUnit`, `unitTicksRemaining`, `minted` and `bottleneckGood`, and
-//      `tier3Contract` lists exactly the goods whose factories publish such a row. The fork
-//      shows "1 unit / <timer>" off the row and "up to y /week" off tier3Contract, so the two
-//      must agree: ticksPerUnit × y is the week.
+//      `tier3Contract` lists exactly the goods whose factories publish such a row. The fork's
+//      Production column shows "1 unit / <timer>" off the row and "up to y a week" off
+//      tier3Contract, so the two must agree: ticksPerUnit × y is the week.
 //   2. Why it has no Production arm and no Consumption tab: no recipe consumes a timed good.
 //   3. Why its Distribution order is FIXED (RULED 28-09-26): for a committed timed good, the
 //      stored order, the old send control and the reserve level move no unit during the week.
@@ -87,7 +87,7 @@ test('the fork\'s figures: every timed factory publishes its timer and its unit 
     for (const k of ['timed', 'ticksPerUnit', 'unitTicksRemaining', 'minted', 'bottleneckGood']) {
       assert.ok(k in r, `${g}: the row carries ${k}`);
     }
-    // "1 unit / <timer>" and "up to y /week" are one fact said twice: the timer × y is the week.
+    // "1 unit / <timer>" and "up to y a week" are one fact said twice: the timer × y is the week.
     assert.equal(r.ticksPerUnit, ticksPerUnitFor(g), g);
     assert.equal(r.ticksPerUnit * snap.tier3Contract[g].weeklyOutput, WEEK, `${g}: timer × y = the week`);
     // A unit is on the line (it started on tick 1), and the countdown is a whole number of ticks
