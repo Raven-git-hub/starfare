@@ -24,6 +24,11 @@
 // checked across each of those boundaries. Then ISOLATION: two runs of REAL play where the rescue
 // fires on every boundary (one licence per good, and two licences at equal equity) reproduce the
 // engine before this slice (HEAD d7ef657) byte for byte, every tick.
+//
+// ⤳ Slice A2 (design.md §5 "SYNDICATE TOP-UP", RULED 28-09-26): the rescue is now the player's
+// Syndicate Top-Up, OFF unless the good's profile turns it on. These tests are about how a rescue
+// is attributed and paid, so every fixture turns it on, with no limit: the always-on rescue they
+// were written against. The switch and its limit are tested in syndicate-top-up.test.js.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -69,7 +74,8 @@ const nextWindow = (s) => previewProduction(s).find((g) => g.guildId === 'g1')
 
 // One guild with two titanium mines in one system. `ventures` gives each one's id and equity;
 // `licences` are the actions that commit them (a real licence or the dev scaffold); `goods` is the
-// titanium profile (the send, the floor, the pursue ranking).
+// titanium profile (the send, the floor, the pursue ranking). Syndicate Top-Up is always on here,
+// with no limit (Slice A2).
 function twoMines(ventures, licences, goods) {
   const s = createState({
     guilds: [{ id: 'g1', credits: 0, fuelHoard: 0, ventures: ventures.map(({ id, o }) => ({
@@ -79,7 +85,7 @@ function twoMines(ventures, licences, goods) {
     reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 }, windowN: N,
   });
   return sign(s, [...licences,
-    createSetProductionProfileAction({ guildId: 'g1', systemId: SYS, goods: { [GOOD]: goods } })]);
+    createSetProductionProfileAction({ guildId: 'g1', systemId: SYS, goods: { [GOOD]: { ...goods, syndicateTopUp: true } } })]);
 }
 const licence = (ventureId) => createApplyForLicenceAction({ guildId: 'g1', ventureId, committedOutputPct: 1, windowDays: 7 });
 // The dev scaffold, committing q a window: what a 100% licence owes, but with no stored licence.
@@ -260,6 +266,15 @@ test('(k) ONE VENTURE IS BIT-FOR-BIT THE OLD SALE: rescueSale over a good with o
 //     with equity that binary floating point cannot hold exactly, each short with stock to spare.
 //   TWO LICENCES, EQUAL EQUITY — two Tier-1 mines on one good at o = 0.3, both short, both rescued
 //     from one pile on every boundary.
+//
+// ⤳ Slice A2: SYNDICATE TOP-UP ON, NO LIMIT, IS THE OLD ALWAYS-ON RESCUE, TO THE BYTE. Both runs now
+// turn Syndicate Top-Up on for every committed good, with no limit, or the rescue would not fire.
+// The switch is stored in the guild's production profile, which is part of the state, so the
+// switch by itself would change every state and snapshot hash, though it changes nothing the engine
+// does. So those hashes are taken with that one key removed (`withoutTopUpSwitch`), and nothing
+// else. With it removed, the pins computed on HEAD d7ef657, before the switch existed, still hold
+// unchanged. The previews carry no profile, so they are hashed as they are. The test also checks
+// that the switch really is stored, so the removal is never removing nothing.
 const WEEK = 10080;
 const ISO_DAY = 60;
 const ISO_JUMP_TO = WEEK - 180;
@@ -267,6 +282,33 @@ function inputSets(recipeId, n) {
   const out = {};
   for (const inp of getRecipe(recipeId).inputs) out[inp.good] = inp.qty * n;
   return out;
+}
+// A copy of a state or a snapshot with every guild's `syndicateTopUp` switch taken out of its
+// production profile. Only that key: every other byte is hashed as it is. A good left with no
+// policy at all is removed, the profile's own rule (`setEntry`, sim/profile.js), so a good that
+// was given nothing but the switch reads exactly as a good that was never given a policy. (Both a
+// state and a snapshot keep the profile at `guilds[i].productionProfile`.)
+function withoutTopUpSwitch(value) {
+  const copy = structuredClone(value);
+  for (const g of copy.guilds) {
+    for (const entry of Object.values(g.productionProfile || {})) {
+      for (const [good, policy] of Object.entries(entry.goods || {})) {
+        delete policy.syndicateTopUp;
+        if (Object.keys(policy).length === 0) delete entry.goods[good];
+      }
+    }
+  }
+  return copy;
+}
+// How many goods have the switch stored ON, over every guild and system.
+function switchesOn(s) {
+  let n = 0;
+  for (const g of s.guilds) {
+    for (const entry of Object.values(g.productionProfile || {})) {
+      for (const policy of Object.values(entry.goods || {})) if (policy.syndicateTopUp === true) n += 1;
+    }
+  }
+  return n;
 }
 function isolationRun(rows, actions) {
   let s = createState({ guilds: rows, reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 }, windowN: ISO_DAY });
@@ -282,9 +324,9 @@ function isolationRun(rows, actions) {
       if (e.window && e.window.rescued) counts.rescues += 1;
     }
     s = tick(s);
-    everyTick.update(hashState(s));
+    everyTick.update(hashState(withoutTopUpSwitch(s)));
     if (s.tick % ISO_DAY !== 0) return;
-    snapshots.update(hashState(buildSnapshot(s)));
+    snapshots.update(hashState(withoutTopUpSwitch(buildSnapshot(s))));
     for (const g of s.guilds) {
       const fee = g.lastLicenceFee;
       if (fee && fee.tick === s.tick) for (const row of Object.values(fee.ventures)) counts[row.status] += 1;
@@ -294,8 +336,8 @@ function isolationRun(rows, actions) {
   s.tick = ISO_JUMP_TO;
   for (let i = 0; i < 300; i += 1) step();
   return {
-    final: hashState(s), everyTick: everyTick.digest('hex'), previews: previews.digest('hex'),
-    snapshots: snapshots.digest('hex'), counts,
+    final: hashState(withoutTopUpSwitch(s)), everyTick: everyTick.digest('hex'), previews: previews.digest('hex'),
+    snapshots: snapshots.digest('hex'), counts, switchesOn: switchesOn(s),
   };
 }
 function oneLicencePerGood() {
@@ -310,9 +352,11 @@ function oneLicencePerGood() {
       { id: 'ft', ownerGuildId: id, type: 'refining', systemId: SYS, recipeId: 'fuel_tank', productionRate: 5, equityPct: 0.2 },
     ],
     // Sends pinned at 1 a tick, far under target: every Tier-1/2 licence is short every day.
+    // Syndicate Top-Up on, with no limit, for each of the three committed goods.
     productionProfile: { [SYS]: { goods: {
-      titanium: { syndicate: { mode: 'absolute', value: 1 } },
-      titanium_alloy: { syndicate: { mode: 'absolute', value: 1 } },
+      titanium: { syndicate: { mode: 'absolute', value: 1 }, syndicateTopUp: true },
+      titanium_alloy: { syndicate: { mode: 'absolute', value: 1 }, syndicateTopUp: true },
+      fuel_tank: { syndicateTopUp: true },
     } } } }],
   [
     createApplyForLicenceAction({ guildId: id, ventureId: 'tm', committedOutputPct: 0.5, windowDays: 7 }),
@@ -325,7 +369,7 @@ function twoLicencesEqualEquity() {
   const mine = (vid) => ({ id: vid, ownerGuildId: id, type: 'mining', systemId: SYS, resourceType: 'titanium', productionRate: 400, equityPct: 0.3 });
   return isolationRun([{ id, credits: 0, fuelHoard: 0, stockpiles: { [SYS]: { titanium: 500 } },
     ventures: [mine('m1'), mine('m2')],
-    productionProfile: { [SYS]: { goods: { titanium: { syndicate: { mode: 'absolute', value: 1 } } } } } }],
+    productionProfile: { [SYS]: { goods: { titanium: { syndicate: { mode: 'absolute', value: 1 }, syndicateTopUp: true } } } } }],
   [
     createApplyForLicenceAction({ guildId: id, ventureId: 'm1', committedOutputPct: 0.5, windowDays: 7 }),
     createApplyForLicenceAction({ guildId: id, ventureId: 'm2', committedOutputPct: 0.5, windowDays: 7 }),
@@ -342,6 +386,7 @@ const ISO_ONE_LICENCE_PER_GOOD = {
   previews: '0b2e68aa123c0eb231d26c1850ec63ef01f462cfcba98d3926c3870df1be0235',
   snapshots: '77749c720be4f6f548030b5055393142ab9ea387bb5d6fe44b7a3be88f0f231a',
   counts: { rescues: 23, met: 23, breach: 0 },
+  switchesOn: 3,
 };
 const ISO_TWO_LICENCES_EQUAL_EQUITY = {
   final: 'a9ca4dd303facb6a8a4e282df63379605b4587ebead32328f127f12a258838f2',
@@ -349,9 +394,10 @@ const ISO_TWO_LICENCES_EQUAL_EQUITY = {
   previews: 'addf5c93be7ff5d1edfc3b292fee1e6af27457e85e954c0961cd2fd64a91a6e2',
   snapshots: '32ed9be5db2cbaeebeb4db874973bca5722f2806c06a4b8c5b160cfde60a3e86',
   counts: { rescues: 11, met: 22, breach: 0 },
+  switchesOn: 1,
 };
 
-test('ISOLATION: real play with the rescue firing every boundary (one licence per good; two licences at equal equity) reproduces the engine before this slice byte for byte, every tick', () => {
+test('ISOLATION: real play with the rescue firing every boundary (one licence per good; two licences at equal equity) reproduces the engine before this slice byte for byte, every tick — and, since Slice A2, with Syndicate Top-Up turned on and no limit', () => {
   const a = oneLicencePerGood();
   const b = twoLicencesEqualEquity();
   if (process.env.PRINT_ISO_PINS) console.log('ISO_PINS', JSON.stringify({ a, b }));

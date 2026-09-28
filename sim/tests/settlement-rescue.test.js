@@ -28,6 +28,12 @@
 // tier, is previewed exactly, halts without a price — and ISOLATION: runs with no shortfall, and
 // runs whose shortfalls have no spare above the floor, reproduce the pre-slice engine (HEAD d12ba58)
 // byte for byte, every tick.
+//
+// ⤳ Slice A2 (design.md §5 "SYNDICATE TOP-UP", RULED 28-09-26): the rescue is now the player's
+// Syndicate Top-Up, OFF unless the good's profile turns it on (`syndicateTopUp: true`). Every
+// fixture below that expects a rescue therefore opts in, with no limit, which is exactly the
+// always-on rescue these tests were written against. Nothing else in them changed. The switch
+// itself, and its limit, are tested in syndicate-top-up.test.js.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -81,8 +87,8 @@ const nextWindow = (s, good = GOOD, id = 'g1') => {
 function runTo(s, t) { while (s.tick < t) s = tick(s); return s; }
 
 // One guild, one licensed titanium mine, the send pinned short, and a reserve floor of `floor`.
-// (`reserve: { reserveLevel: 0 }` below is the galaxy's FUEL reserve — an unrelated field that
-// happens to share the name.)
+// Syndicate Top-Up is on, with no limit (Slice A2). (`reserve: { reserveLevel: 0 }` below is the
+// galaxy's FUEL reserve — an unrelated field that happens to share the name.)
 function mineGalaxy({ floor = 0, send = SEND } = {}) {
   let s = createState({
     guilds: [{ id: 'g1', credits: 0, fuelHoard: 0, ventures: [
@@ -93,7 +99,7 @@ function mineGalaxy({ floor = 0, send = SEND } = {}) {
   return sign(s, [
     createApplyForLicenceAction({ guildId: 'g1', ventureId: 'm', committedOutputPct: 1, windowDays: 7 }),
     createSetProductionProfileAction({ guildId: 'g1', systemId: SYS, goods: {
-      [GOOD]: { syndicate: { mode: 'absolute', value: send }, ...(floor ? { reserveLevel: floor } : {}) },
+      [GOOD]: { syndicate: { mode: 'absolute', value: send }, ...(floor ? { reserveLevel: floor } : {}), syndicateTopUp: true },
     } }),
   ]);
 }
@@ -188,7 +194,8 @@ test('(c) PARTIAL: spare below the shortfall is ALL delivered and paid for, the 
 // X = 50 units but has inputs for only MADE = 30, so its week falls short by 20. It also holds
 // HELD = 40 fuel tanks from earlier (units it made past a met week, never progress-paid). Two
 // guilds in one galaxy, identical but for the reserve floor: `rescue` at 0 (the rescue can take
-// the 20) and `held` at HELD (it cannot). Sharing the galaxy, they sell at one posted price.
+// the 20) and `held` at HELD (it cannot). Sharing the galaxy, they sell at one posted price. Both
+// turn Syndicate Top-Up on (Slice A2), so the floor is still their only difference.
 const WEEK = 10080;
 const T3 = { recipe: 'fuel_tank', good: 'fuel_tank', X: 50, MADE: 30, HELD: 40 };
 function inputSets(recipeId, n) {
@@ -206,7 +213,8 @@ function runTimedWeek() {
   s = sign(s, [
     createApplyForLicenceAction({ guildId: 'rescue', ventureId: 'f', committedUnits: T3.X }),
     createApplyForLicenceAction({ guildId: 'held', ventureId: 'f', committedUnits: T3.X }),
-    createSetProductionProfileAction({ guildId: 'held', systemId: SYS, goods: { [T3.good]: { reserveLevel: T3.HELD } } }),
+    createSetProductionProfileAction({ guildId: 'rescue', systemId: SYS, goods: { [T3.good]: { syndicateTopUp: true } } }),
+    createSetProductionProfileAction({ guildId: 'held', systemId: SYS, goods: { [T3.good]: { reserveLevel: T3.HELD, syndicateTopUp: true } } }),
   ]);
   const credits = { rescue: [], held: [] };
   let edge = null;
@@ -336,7 +344,7 @@ test('THE PURSUE ORDER: two short licences sharing one pile of spare are topped 
       createApplyForLicenceAction({ guildId: 'g1', ventureId: 'a', committedOutputPct: 1, windowDays: 7 }),
       createApplyForLicenceAction({ guildId: 'g1', ventureId: 'b', committedOutputPct: 1, windowDays: 7 }),
       createSetProductionProfileAction({ guildId: 'g1', systemId: SYS, goods: {
-        [GOOD]: { syndicate: { mode: 'absolute', value: SEND }, reserveLevel: pile - spare, pursue },
+        [GOOD]: { syndicate: { mode: 'absolute', value: SEND }, reserveLevel: pile - spare, pursue, syndicateTopUp: true },
       } }),
     ]);
   };
@@ -374,7 +382,7 @@ test('EVERY TIER: a short Tier-2 factory licence is rescued from its alloy stock
   });
   s = sign(s, [
     createApplyForLicenceAction({ guildId: 'g1', ventureId: 'fa', committedOutputPct: 1, windowDays: 7 }),
-    createSetProductionProfileAction({ guildId: 'g1', systemId: SYS, goods: { titanium_alloy: { syndicate: { mode: 'absolute', value: 1 } } } }),
+    createSetProductionProfileAction({ guildId: 'g1', systemId: SYS, goods: { titanium_alloy: { syndicate: { mode: 'absolute', value: 1 }, syndicateTopUp: true } } }),
   ]);
   s = runTo(s, N - 1);
   const pv = nextWindow(s, 'titanium_alloy');

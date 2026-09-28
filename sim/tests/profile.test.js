@@ -28,6 +28,9 @@ const DEFAULT_POLICY = {
   order: ['syndicate', 'downstream', 'stockpile'],
   downstreamPct: 100,
   reserveLevel: 0,
+  // Syndicate Top-Up (Slice A2): the settlement rescue is off, and has no limit, until set.
+  syndicateTopUp: false,
+  syndicateTopUpLimit: null,
 };
 
 // --- accessor defaults -----------------------------------------------------
@@ -45,6 +48,8 @@ test('a partially-set good entry fills only the set fields and defaults the rest
     order: ['syndicate', 'downstream', 'stockpile'], // defaulted
     downstreamPct: 40,                               // set
     reserveLevel: 0,                                 // defaulted
+    syndicateTopUp: false,                           // defaulted
+    syndicateTopUpLimit: null,                       // defaulted
   });
   // A DIFFERENT good in the same system still defaults everything.
   assert.deepEqual(getGoodPolicy(g, 'sys_0002', 'copper'), DEFAULT_POLICY);
@@ -66,6 +71,8 @@ test('a set policy and throttle round-trip back through get', () => {
     order: ['stockpile', 'syndicate', 'downstream'],
     downstreamPct: 0,
     reserveLevel: 500,
+    syndicateTopUp: false,
+    syndicateTopUpLimit: null,
   });
   assert.equal(getThrottlePct(g, 'sys_0002', 'refinery'), 25);
 });
@@ -78,6 +85,8 @@ test('a second setEntry merges field-by-field, not wholesale replace', () => {
     order: ['downstream', 'stockpile', 'syndicate'], // survived the second patch
     downstreamPct: 60,                               // added by the second patch
     reserveLevel: 0,
+    syndicateTopUp: false,
+    syndicateTopUpLimit: null,
   });
 });
 
@@ -134,6 +143,8 @@ test('getGoodPolicy returns a fresh object — a caller cannot alias into state'
     order: ['syndicate', 'downstream', 'stockpile'],
     downstreamPct: 40,
     reserveLevel: 0,
+    syndicateTopUp: false,
+    syndicateTopUpLimit: null,
   });
 });
 

@@ -1288,3 +1288,26 @@ tier. What they mean for a timed good:
   fuel-tank licence at equity 0.2, rescued from stock at the week's end) beside a Tier-1 and a
   Tier-2 licence, and reproduces the engine before this slice (HEAD d7ef657) byte for byte, every
   tick. The details are in design.md §5's AS-BUILT Slice A-fix note and the roadmap's "Slice A-fix".
+
+## As built (28-09-26) — Slice A2-engine: Syndicate Top-Up is opt-in, with a limit
+
+design.md §5's "SYNDICATE TOP-UP — opt-in + capped" ruling, engine half, built for every tier with no
+tier special-cased. What it means for a timed good:
+- **Off unless the player turns it on.** The week's settlement rescue (Slice A, above) now runs for a
+  timed good only when its profile has `syndicateTopUp: true`. It is off by default, so a short week
+  now breaches on its shortfall even with held units above the floor, unless the player opted in.
+  `setProductionProfile` accepts both fields on a committed timed good: they are not among the
+  controls refused there.
+- **Capped by the player's limit.** With `syndicateTopUpLimit` set, the week's rescue delivers the
+  lowest of the shortfall, the stock above `reserveLevel`, and the limit. No limit (absent, or sent as
+  `null`) is Slice A's rescue exactly.
+- **Everything else stands:** the floor, partial rescue, and the one payment at the posted price on
+  the licence's own equity.
+- **Proven** in `sim/tests/syndicate-top-up.test.js`: a three-guild galaxy's week, identical but for
+  the switch and the limit, breaches untouched when off, is met when on, and is topped up by exactly
+  the limit when capped. Its isolation pins hold a run with a Tier-3 week (and Tier-1 licences) to the
+  always-on engine's bytes when switched on, and to the pre-rescue engine's bytes when left off.
+  Details: design.md §5's AS-BUILT Slice A2-engine note and the roadmap's "Slice A2-engine".
+- **The console still says the old thing.** The Stockpile arm's "If the week ends short, stock above
+  the reserve is delivered to cover it." is now true only with top-up on. The panel's top-up control
+  is still a mock. Both are Slice A2-client's.

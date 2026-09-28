@@ -473,8 +473,12 @@ test('(d) HEADLINE: a Tier-1/2 licence still commits a percentage, picks a 7–4
 // new engine was checked against HEAD d12ba58 from the same input on every tick of this run: equal
 // on every tick without a rescue, different only on those six. Before the rescue the two hashes
 // were 96e4b9ca…3006 (state) and 240ee2aa…b6af6 (snapshots and results).
-const ISO_STATE_EVERY_TICK = 'f2d7dcc6785d61947bbe9eba9daaad7478a3f29cab2f0820275504e9e750b22d';
-const ISO_SNAPSHOTS_AND_RESULTS = '2905fc001b77201662ac1551fd0bca1ed0682638e2865b75f2d8901e41f1eb20';
+// ⤳ RESTORED 28-09-26 by Slice A2 (Syndicate Top-Up is opt-in, design.md §5). Nobody in this run
+// turns Syndicate Top-Up on, so the rescue no longer fires and g1's alloy licence breaches at those
+// six boundaries again. The run is once more the pre-rescue engine's to the byte: the two hashes
+// are the original ones above, unchanged. Slice A's were f2d7dcc6…b22d and 2905fc00…eb20.
+const ISO_STATE_EVERY_TICK = '96e4b9caba27f61dcd8d2518db6e9cbe56b09e2928300082cfb6e2c2f0993006';
+const ISO_SNAPSHOTS_AND_RESULTS = '240ee2aa089e496e5a65ae7bd10f30fdbeb8ebfc1aaf3ca7057cca94060b6af6';
 // The snapshot hash is taken WITHOUT `tier3Contract`, the additive top-level key the Tier-3
 // Establish-popup slice added (sim/snapshot.js). That key is the same rules-derived map in every
 // snapshot, and it did not exist when the pinned hash was computed on the pre-slice engine. Stripping

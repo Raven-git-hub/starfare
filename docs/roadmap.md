@@ -2284,6 +2284,61 @@ boundary so the later hex-map swap doesn't touch it.
     both, the isolation pin); let the snapshot carry `rescueTopUps` (the isolation pin). Tools **68
     green**. **No number was invented.**
 
+- **Slice A2-engine (licence system) — Syndicate Top-Up: the settlement rescue is opt-in and capped —
+  ✅ BUILT 28-09-26.** design.md §5 ("SYNDICATE TOP-UP — opt-in + capped", RULED 28-09-26, and the
+  AS-BUILT Slice A2-engine note). The engine half; the console's de-mock is **Slice A2-client (not
+  built)**. Every tier, none special-cased.
+  - **Two profile fields,** validated and stored by `setProductionProfile` beside `reserveLevel`:
+    `syndicateTopUp` (true/false; absent = false, OFF) and `syndicateTopUpLimit` (an integer ≥ 0,
+    validated like `reserveLevel`; absent or sent `null` = no limit). `getGoodPolicy` fills the
+    defaults. `null` clears either field (the profile's tri-state rule). Neither is refused on a
+    committed timed good.
+  - **The gate and the cap:** `settlementRescue` (`sim/production.js`) gains the switch (off ⇒ no
+    top-ups) and the limit (the pool starts at the lower of the stock above the floor and the limit).
+    Each venture's top-up is still `min(shortfall, pool left)` in the pursue order, so the good's rescue
+    is the lowest of the shortfalls, the stock above the floor and the limit. The fields reach it on
+    the good's plan, as `reserveLevel` and `pursue` do.
+  - **Untouched:** the payment (`rescueSale`, per-licence equity), no licence no rescue, the floor,
+    partial rescue, the verdict, fee, reputation and forced closure, and the per-tick Consumption
+    Top-Up. `sim/tick.js` gained a comment, no code.
+  - **Isolation.** The whole final suite was run with every `tick` and `previewProduction` call also
+    run on HEAD cad2877's engine (always-on) from the same input:
+    - **forced on, no limit, for every good:** 182,124 ticks and 12,394 previews, all byte-identical
+      (9 ticks halt identically in both);
+    - **as shipped:** 183,482 of 183,582 ticks identical (9 identical halts); the 91 that differ are
+      all explained good by good (switched off ⇒ 0 rescued; capped ⇒ exactly `min(HEAD's, limit)`),
+      0 unexplained. They are: the new tests (25); the four Tier-3 goldens (50); and three
+      `mid-window-prorate` tests (16) whose rescue fired incidentally and was never asserted. Previews:
+      27 of 12,408 differ, all explained.
+    - **Four pins RESTORED, not re-pinned** — `tier3-contract` (both), `tier3-delivery` (both),
+      `tier3-payment` (three of four), `tier3-settlement` (all four). Slice A re-pinned them only
+      because rescues appeared. Their guilds never turn the switch on, so they now reproduce their
+      original pre-Slice-A hashes (HEAD d12ba58's) exactly: the default-off proof.
+    - **Slice A-fix's pin flipped to on, not re-pinned:** it must keep rescuing, so its fixtures turn
+      the switch on. It hashes state and snapshots with that one key removed, and its HEAD d7ef657
+      hashes still hold unchanged: the on-with-no-limit proof.
+    - **A new standing pin (b)** holds one run of real play (a partial rescue, a scaffold ranked first,
+      two licences at equity 0.1 and 0.4, a Tier-3 week) to HEAD cad2877's bytes switched on, and to
+      HEAD d12ba58's (no rescue at all) left off.
+  - **Tests updated deliberately:** `settlement-rescue` and `settlement-rescue-fix` turn the switch on
+    in every fixture (they test a rescue that fires; nothing else changed in them). Seven
+    `profile`/`actions` tests gain the two defaults in the policy shape they pin. Comments only:
+    `tier3-console-client`, `tools/licence_bot.js`.
+  - Sim suite 1,768 → **1,776 green** (`sim/tests/syndicate-top-up.test.js`, +8). Named tripwires:
+    (a) off ⇒ no rescue, the breach stands (absent, false, false-with-a-limit; before/after beside it);
+    (b) on + no limit ⇒ the old engine; (c) the limit (a table of nine, per settlement, Tier 2,
+    Tier 3); (d) the floor still holds; (e) a shared limit pays each licence on its own equity;
+    (f) the two fields' validation. Against HEAD's engine all 8 fail. Six deliberate breakages each
+    turn named tests red:
+    - rescue while off: (a), (b), the Tier-2 and Tier-3 rows, and the four restored goldens (8 tests);
+    - ignore the limit: (c) ×4 and (e) (5 tests);
+    - a per-licence limit instead of one per good: (e);
+    - default on: 16 tests in the rescue, profile and Tier-3 files, among them (a), (b), (f), the four
+      goldens and the profile shapes;
+    - the limit replacing the floor: (c)/(d), stopped by the tick's floor halt;
+    - drop the validation: (f).
+    Tools **68 green**. **No number was invented.**
+
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.*
@@ -2837,7 +2892,9 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     - the footer's week sentence.
 
 - **Slice A (the settlement rescue + the timed-good refusal) — items for a ruling or a confirm** —
-  *surfaced 28-09-26. Each was built one way, stated here, not chosen silently.*
+  *surfaced 28-09-26. Each was built one way, stated here, not chosen silently.* *(⤳ Slice A2-engine:
+  every item below where the rescue "covers", "takes" or "moves" something now holds only for a good
+  whose Syndicate Top-Up is turned on.)*
   - **The rescue's equity split is the SALE's, not the fill's (confirm).** The build prompt said "pay it
     as the boundary delivery does", so the rescued units go through `commitmentSale`: the owner's share
     is the good's contribution-weighted `1 − o` across its committed ventures, not the `1 − o` of the
@@ -2903,6 +2960,44 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     at equal equity could be paid a credit more or less than the blend, which the prompt ruled out.
     With no investors yet, the `o` share still stays in the ledger, so today ruling (3) moves only the
     line between the owner's keep and the ledger.
+
+- **Slice A2-engine (Syndicate Top-Up, opt-in + capped) — items for a ruling or a confirm** —
+  *surfaced 28-09-26. Each was built one way, stated here, not chosen silently.*
+  - **The limit caps ONE settlement, and renews each boundary (confirm).** Built as the build prompt
+    specified ("the good's cumulative rescue = min(Σ shortfalls, stock above the floor, limit)", at a
+    boundary). So a guild short every day can be topped up by the limit every day. The limit is not a
+    running budget that runs down.
+  - **The limit belongs to the good, not to each licence (confirm).** It is shared by the good's
+    licences in the pursue order: two short licences under one limit get at most the limit between
+    them, not the limit each. A skipped scaffold uses none of it.
+  - **`null` for the switch clears it to OFF (confirm).** The prompt said "if present, must be a
+    boolean". Every other profile field takes `null` as "clear to the default" (§15.4's tri-state),
+    and so does the switch: `syndicateTopUp: null` deletes the key and reads `false`. Any other
+    non-boolean is refused.
+  - **A limit of 0 with the switch on rescues nothing (a consequence).** Legal, since the limit is an
+    integer ≥ 0, and in effect the same as off.
+  - **A stored switch or limit on a good nothing commits is accepted and inert (confirm).** Like
+    `reserveLevel` and `pursue`, it is standing intent that takes effect once the good is committed.
+    It is not refused the way a timed good's send control is.
+  - **Live galaxies lose their rescues at the next boundary (a consequence).** No migration turns
+    the switch on for existing profiles. So a persisted galaxy that relied on the always-on rescue
+    now breaches where it was rescued. Its fees and RP move accordingly, and its fuel grants can too,
+    through the shared pool. This is the ruled default ("DEFAULT: DISABLED").
+  - **The tick does not re-check the switch or the limit (confirm).** The resolver is the one place
+    that decides. The tick still re-checks the floor against the real pile (Slice A's halt), and a
+    breakage that took the limit in place of the floor was caught by that halt. A matching halt for
+    the switch and the limit would be defence in depth, but the build prompt kept the tick unchanged.
+  - **Nothing shows that a rescue was capped (a display question, for Slice A2-client).** The window's
+    `rescued` and the carried profile (switch and limit) are what a client can read. "Capped at your
+    limit" would need a derived field.
+  - **The console's text is now wrong in one place (Slice A2-client).** The Tier-3 Stockpile arm says
+    "If the week ends short, stock above the reserve is delivered to cover it." That is now true only
+    with the switch on, and `server.test.js` pins the string. The panel's top-up control
+    (`SYN = { topupEnabled, limit }`) is still a mock.
+  - **Slice A's fixture floors are now redundant (housekeeping).** Eight breach-subject tests got a
+    reserve floor in Slice A only to hold their pile away from the rescue. With the switch off by
+    default the floor no longer matters there. They were left as they are: they still pass, and still
+    pin the same verdicts.
 
 - **Tier-3 slice 1 — small items for a ruling or a confirm** — *surfaced 27-09-26 by the Tier-3
   price-bands slice.*

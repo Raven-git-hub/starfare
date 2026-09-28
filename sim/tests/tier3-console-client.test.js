@@ -19,6 +19,8 @@
 //      level now has one job, at the WEEK'S END only — a short week is topped up from stock above
 //      it (settlement-rescue.test.js). The run below stays inside the week and meets it, so its
 //      facts are unchanged; the console now says what the floor does at settlement.
+//      ⤳ Slice A2: that top-up now happens only when the good's Syndicate Top-Up is turned on
+//      (syndicate-top-up.test.js). This run never reaches a settlement, so nothing here changes.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');

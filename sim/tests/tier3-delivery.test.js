@@ -351,8 +351,12 @@ test('determinism: the same committed Tier-3 galaxy run twice gives the same byt
 // 240 (11). The new engine was checked against HEAD d12ba58 from the same input on every tick of
 // this run: equal on every tick without a rescue, different only on those ten. Before the rescue
 // the two hashes were 11fafaf8…16a0 (final) and fe166027…4a34 (every tick).
-const ISO_FINAL = '103ed0e1e3edea8372c4ac900e6bae71ed1dbd53b401e596e6546c35da9bb195';
-const ISO_EVERY_TICK = 'bd81549e79924dd773062fc26ec309eebebf54bdb9561022da238eefe42148a1';
+// ⤳ RESTORED 28-09-26 by Slice A2 (Syndicate Top-Up is opt-in, design.md §5). Neither `abs` nor
+// `reord` turns Syndicate Top-Up on, so the rescue no longer fires and their short days breach
+// again. The run is once more the pre-rescue engine's to the byte: the two hashes are the original
+// ones above, unchanged. Slice A's were 103ed0e1…b195 and bd81549e…48a1.
+const ISO_FINAL = '11fafaf8cd59b5cc649701f09151a5a7b399a7e438cf8f60de6b815d513c16a0';
+const ISO_EVERY_TICK = 'fe166027428d67b5c392d88bb780affca25e0a14f971fa5141bfcefd10a44a34';
 
 function isolationRun() {
   const crypto = require('node:crypto');

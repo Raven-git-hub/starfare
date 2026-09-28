@@ -1872,6 +1872,21 @@ function validateAction(state, action) {
             && (typeof policy.reserveLevel !== 'number' || !Number.isInteger(policy.reserveLevel) || policy.reserveLevel < 0)) {
           return { valid: false, reason: `reserveLevel for good ${JSON.stringify(good)} must be a non-negative integer (§15.2)` };
         }
+        // Syndicate Top-Up (design.md §5 "SYNDICATE TOP-UP", RULED 28-09-26, Slice A2): the
+        // player's switch and cap for the settlement rescue. `syndicateTopUp` is true or false
+        // (off until the player opts in, because the rescue spends stockpile).
+        // `syndicateTopUpLimit` is the most units one settlement may rescue for the good: a
+        // non-negative integer, checked exactly as `reserveLevel` is. Its null means "no limit",
+        // which is also its default, so clearing the limit and removing it are the same thing.
+        // Neither is refused for a committed timed good: the rescue runs for every tier.
+        if (policy.syndicateTopUp !== undefined && policy.syndicateTopUp !== null
+            && typeof policy.syndicateTopUp !== 'boolean') {
+          return { valid: false, reason: `syndicateTopUp for good ${JSON.stringify(good)} must be true or false` };
+        }
+        if (policy.syndicateTopUpLimit !== undefined && policy.syndicateTopUpLimit !== null
+            && (typeof policy.syndicateTopUpLimit !== 'number' || !Number.isInteger(policy.syndicateTopUpLimit) || policy.syndicateTopUpLimit < 0)) {
+          return { valid: false, reason: `syndicateTopUpLimit for good ${JSON.stringify(good)} must be a non-negative integer, or null for no limit (§15.2)` };
+        }
         // syndicate (§5 Slice B): the Syndicate fork's per-tick send control. ABSENT =
         // the paced required-rate default; null CLEARS back to it. When present it is
         // { mode, value } with mode ∈ {absolute, percent} and value an integer ≥ 0

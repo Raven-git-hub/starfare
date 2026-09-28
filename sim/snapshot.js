@@ -495,6 +495,11 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // whole units of `y` and cannot learn `y`, `floor(y)` or which goods are timed from anything else
 // it reads — `feeQuote` is only the basic fee, and GET /goods's `baselineUnits` is the continuous
 // 5-a-tick figure, not the timer.
+// (28-09-26, Syndicate Top-Up — design.md §5, Slice A2-engine): in each guild row's carried
+// `productionProfile`, a good's policy may now also hold `syndicateTopUp` (true/false) and
+// `syndicateTopUpLimit` (an integer ≥ 0). Sparse, as stored: an absent switch is OFF and an absent
+// limit is no limit. ADDITIVE, NO schema bump — nothing existing changed shape, the same call the
+// `pursue` ranking made.
 const SNAPSHOT_SCHEMA = 7;
 
 // contractWindowForVenture(state, venture) -> the venture's licence window in CYCLES, or null.

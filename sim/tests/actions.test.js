@@ -179,6 +179,8 @@ test('a valid production-profile patch stores and reads back', () => {
     order: ['downstream', 'stockpile', 'syndicate'],
     downstreamPct: 40,
     reserveLevel: 250,
+    syndicateTopUp: false,        // Syndicate Top-Up (Slice A2): off and unlimited until set
+    syndicateTopUpLimit: null,
   });
   assert.equal(getThrottlePct(next.guilds[0], 'sys_0002', 'refinery'), 30);
   // Untouched goods/throttles still read their defaults.

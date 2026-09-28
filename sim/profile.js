@@ -17,7 +17,8 @@
 // read accessors below fill the defaults in so callers never branch on "is this
 // key present." This module holds NO game-balance numbers and NO tick logic: the
 // only constants here are the STRUCTURAL defaults §15.4 fixes (the fork order,
-// 100, 0) — every real amount is player-supplied. It is storage plumbing only.
+// 100, 0, and Syndicate Top-Up's off / no limit) — every real amount is
+// player-supplied. It is storage plumbing only.
 
 // The Gate-1 fork ordering default (§15.4): pay the licence, feed the factories,
 // pile the rest. A permutation of exactly these three fork names. Returned as a
@@ -28,7 +29,9 @@ const DEFAULT_ORDER = Object.freeze(['syndicate', 'downstream', 'stockpile']);
 // field defaulted (§15.4): `order` = ["syndicate","downstream","stockpile"] (the
 // three claimants' priority), `downstreamPct` = 100 (feed the consumers fully),
 // `reserveLevel` = 0 (§5 one-pot distribution, Slice A: the quantity the Reserve
-// claimant holds back at its priority slot — 0 = hold nothing). A good/system with
+// claimant holds back at its priority slot — 0 = hold nothing), `syndicateTopUp` =
+// false and `syndicateTopUpLimit` = null (Syndicate Top-Up, Slice A2: the settlement
+// rescue is off until the player turns it on, and null means no limit). A good/system with
 // no stored entry returns the all-defaults policy; a partially-set entry fills only
 // the fields it set and defaults the rest. The returned object is fresh (the order
 // array copied), so a caller mutating it can never alias into engine state.
@@ -43,6 +46,13 @@ function getGoodPolicy(guild, systemId, good) {
     order: Array.isArray(stored.order) ? [...stored.order] : [...DEFAULT_ORDER],
     downstreamPct: stored.downstreamPct === undefined ? 100 : stored.downstreamPct,
     reserveLevel: stored.reserveLevel === undefined ? 0 : stored.reserveLevel,
+    // syndicateTopUp / syndicateTopUpLimit (design.md §5 "SYNDICATE TOP-UP", RULED 28-09-26,
+    // Slice A2): the player's switch and cap for the settlement rescue (`settlementRescue`,
+    // sim/production.js). The switch defaults to OFF because the rescue spends the guild's
+    // stockpile, so the player must opt in. The limit defaults to null, which means no cap.
+    // Both defaults are the ruling's, not tuning numbers.
+    syndicateTopUp: stored.syndicateTopUp === undefined ? false : stored.syndicateTopUp,
+    syndicateTopUpLimit: stored.syndicateTopUpLimit === undefined ? null : stored.syndicateTopUpLimit,
     // syndicate (§5 Slice B): the Syndicate fork's per-tick send control,
     // { mode: "absolute"|"percent", value: int ≥ 0 }. Unlike the other fields there is
     // no filled-in structural default — ABSENT means the PACED required-rate default,
@@ -156,6 +166,10 @@ function setEntry(guild, systemId, patch) {
       applyField(merged, 'order', policy.order, (v) => [...v]);
       applyField(merged, 'downstreamPct', policy.downstreamPct);
       applyField(merged, 'reserveLevel', policy.reserveLevel);
+      // Sent as null, either top-up field is deleted and reads back as its default: the
+      // switch off, the limit unbounded.
+      applyField(merged, 'syndicateTopUp', policy.syndicateTopUp);
+      applyField(merged, 'syndicateTopUpLimit', policy.syndicateTopUpLimit);
       applyField(merged, 'syndicate', policy.syndicate, (v) => ({ ...v }));
       applyField(merged, 'pursue', policy.pursue, (v) => [...v]);
       // A good whose every field has been cleared holds no policy — so DELETE the
@@ -180,7 +194,8 @@ function setEntry(guild, systemId, patch) {
 // object can never alias into engine state (state.js uses this in createGuild,
 // parallel to cloneStockpiles). Copies every level the shape actually nests:
 // the per-system entry, its goods map and each good's order array (reserveLevel /
-// downstreamPct are scalars, copied by the spread), and its throttles map.
+// downstreamPct / syndicateTopUp / syndicateTopUpLimit are scalars or null, copied by
+// the spread), and its throttles map.
 function cloneProfile(profile) {
   const out = {};
   for (const [systemId, entry] of Object.entries(profile || {})) {

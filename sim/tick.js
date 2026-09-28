@@ -609,6 +609,8 @@ function applyProduction(state, guild, systemId, ctx) {
   // At a good's own boundary a licence that came up short is topped up from the guild's stockpile
   // of that good, from stock above the reserve floor only. (A commitment with no stored licence,
   // the dev scaffold, is not rescued: the same skip as the fee charge below. Slice A-fix, ruling 2.)
+  // (Slice A2: only for a good whose Syndicate Top-Up the player turned on, and up to its limit.
+  // The resolver decides that; this loop just moves and pays for whatever it rescued.)
   // The resolver has already worked out how many units, and for which venture (`window.rescued`,
   // `report.rescueTopUps`, `settlementRescue` in sim/production.js), and credited each venture its
   // own top-up in the verdict, so the fee and reputation below read the rescued result with no

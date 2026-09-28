@@ -407,9 +407,13 @@ test('determinism: a galaxy of committed timed factories (carries, equity, a sta
 // same input on every tick of both runs: equal on every tick without a rescue, different only on
 // those. The mixed guild's titanium licence is always met, so ISO_TWO_MIXED_T12_SLICE did not move.
 // Before the rescue the three were 1d6bc270…f150, ba0913ac…b3a and dd46d598…a10c.
-const ISO_ONE_STATE = '71c11abcfe78193e53695c685a2013cbabec51ac471e80a882aefd71d6c97657';
-const ISO_ONE_SNAPSHOTS = 'df1e6b65d45a6eee7f23a69a5ddf64ff91296b25498c819fe1d513d63adadda1';
-const ISO_TWO_T12_GUILD = '49fd327d6c6476fe81cffda479722c163ef57d3e828df2b540e4e8f76c9c24a4';
+// ⤳ RESTORED 28-09-26 by Slice A2 (Syndicate Top-Up is opt-in, design.md §5). The t12 guild does
+// not turn Syndicate Top-Up on, so the rescue no longer fires and its short days breach again. Both
+// runs are once more the pre-rescue engine's to the byte: the three hashes are the original ones
+// above, unchanged. Slice A's were 71c11abc…7657, df1e6b65…dda1 and 49fd327d…24a4.
+const ISO_ONE_STATE = '1d6bc270323c871eb8cf13b9fd633d87d248cd236490d2de40fe316ea304f150';
+const ISO_ONE_SNAPSHOTS = 'ba0913ace647be257183cd4125398d26f482332e3f51862beffe4e873b6eeb3a';
+const ISO_TWO_T12_GUILD = 'dd46d5985a3c0decfa435b2dfc18d12898c83d9eb16190e8d8c7a902f6d9a10c';
 const ISO_TWO_MIXED_T12_SLICE = 'dd507b95d13c73c1339d9fd77b872273ed8964d8ad0dc3d10d0502ff2c1925e9';
 // The snapshot hash is taken WITHOUT `tier3Contract`, the additive top-level key the Tier-3
 // Establish-popup slice added (sim/snapshot.js). That key is the same rules-derived map in every

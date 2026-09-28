@@ -486,10 +486,14 @@ test('invariants hold at every day boundary of the week, for every guild', () =>
 // (125 each) and 200 (25) on the 50-tick day. The new engine was checked against HEAD d12ba58 from
 // the same input on every tick of both runs: equal on every tick without a rescue, different only
 // on those. Before the rescue the four were ec96eb5b…7b07, 0bddb509…55b6, 3951bbd1…ff7e, d578f294…9393.
-const ISO_FINAL_N60 = '2c8c6dca08795a5df59d101b420f88b82e191afc7c6fae51d6d4f65b14bd1b28';
-const ISO_EVERY_TICK_N60 = 'eb58638443de91385cd0b07f1cf653bf53d28ee3a24f644c2151a68fe571f429';
-const ISO_FINAL_N50 = '3d674731182edbbb823439007aced59f85e6687eda74ce1c290e7f1d038363e3';
-const ISO_EVERY_TICK_N50 = '5785bc09923e3bc06a67723e2dca401f138cab823ec568ab228995e560161ee8';
+// ⤳ RESTORED 28-09-26 by Slice A2 (Syndicate Top-Up is opt-in, design.md §5). g1 does not turn
+// Syndicate Top-Up on, so the rescue no longer fires and its short days breach again. Both runs are
+// once more the pre-rescue engine's to the byte: the four hashes are the original ones above,
+// unchanged. Slice A's were 2c8c6dca…1b28, eb586384…f429, 3d674731…63e3 and 5785bc09…1ee8.
+const ISO_FINAL_N60 = 'ec96eb5bf7778cd4c16181431afbcffb6d981a63812e4dfaf22b1aeb4fd47b07';
+const ISO_EVERY_TICK_N60 = '0bddb5091a455f8f395ba329482818b523a1fd38de9c1e7814efc706185e55b6';
+const ISO_FINAL_N50 = '3951bbd14ed39bf103bf53a4d4d794f08b6afb6c53c8ba12c89c35c8d57aff7e';
+const ISO_EVERY_TICK_N50 = 'd578f2949931a302068352991af3e29ccbf37eb5d17eb56e2a6a10803b2d9393';
 
 function isolationRun(windowN) {
   const crypto = require('node:crypto');

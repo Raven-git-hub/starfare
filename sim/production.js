@@ -357,6 +357,10 @@ function resolveProduction(guild, systemId, opts = {}) {
       // the one pass that already reads the good's policy, so the fill never opens the
       // profile a second time.
       Q, intendedSend, win, targets, pursue: policy.pursue || [],
+      // The player's Syndicate Top-Up switch and limit for this good (Slice A2): whether the
+      // settlement rescue may run at all, and the most it may deliver. Read here for the same
+      // reason as `pursue`: only the finalize pass uses them, at the boundary.
+      syndicateTopUp: policy.syndicateTopUp, syndicateTopUpLimit: policy.syndicateTopUpLimit,
       // The good's window length, so the finalize pass judges the verdict on the good's own
       // boundary (null for an uncommitted good, which has no verdict).
       windowN: goodWin ? goodWin.windowN : null,
@@ -601,13 +605,15 @@ function resolveProduction(guild, systemId, opts = {}) {
       let perVenture = pursueFill(plan.targets, plan.pursue, newDelivered, isBoundary);
 
       // THE SETTLEMENT-TIME STOCKPILE RESCUE (Slice A — see the section above
-      // `settlementRescue`, below). Only on the good's own boundary, and only from stock
-      // ABOVE the reserve floor. When nothing is rescued, nothing below runs, so every
-      // window without a rescue is exactly what it was before this slice.
+      // `settlementRescue`, below). Only on the good's own boundary, only from stock
+      // ABOVE the reserve floor, and only when the player has turned Syndicate Top-Up on
+      // for the good, up to its limit (Slice A2). When nothing is rescued, nothing below
+      // runs, so every window without a rescue is exactly what it was before this slice.
       let rescued = 0;
       if (isBoundary) {
         const spare = Math.max(0, newReserve - plan.reserveLevel);
-        const topUps = settlementRescue(plan.targets, plan.pursue, perVenture, spare);
+        const topUps = settlementRescue(plan.targets, plan.pursue, perVenture, spare,
+          plan.syndicateTopUp, plan.syndicateTopUpLimit);
         for (const units of Object.values(topUps)) rescued += units;
         if (rescued > 0) {
           // EACH VENTURE IS CREDITED ITS OWN TOP-UP (Slice A-fix). The verdict is the fill plus
@@ -925,11 +931,23 @@ function rollupStatus(perVenture, isBoundary) {
 // verdict, a short licence is topped up from that stockpile. The same rule holds for every tier,
 // on each good's own boundary: the day for Tier 1/2, the week for a timed Tier-3 good.
 //
+// ONLY WHEN THE PLAYER TURNS IT ON (Slice A2 — design.md §5 "SYNDICATE TOP-UP", RULED 28-09-26).
+// Slice A shipped this rescue always on. The ruling makes it the player's SYNDICATE TOP-UP: a
+// per-good switch, `syndicateTopUp`, OFF by default because the rescue spends the guild's
+// stockpile, and a per-good `syndicateTopUpLimit`, the most one settlement may deliver (null = no
+// limit). With the switch off nothing below runs and a short licence breaches on its shortfall,
+// exactly as if there were no rescue. (Not to be confused with the per-tick CONSUMPTION top-up,
+// the Gate-1 reserve drawdown that feeds downstream lines. That is a different mechanism, and
+// this switch does not touch it.)
+//
 // THE RULE, per short venture:
 //     topUp = min(its shortfall, the stock ABOVE the reserve floor that is still unused)
 // where the floor is the good's `reserveLevel` (the Gate-1 level the player already sets). Stock
 // at or below the floor is never touched. The stock is the guild's pile of the good in this
-// system, after this tick's production and delivery (`newReserve` in the finalize pass).
+// system, after this tick's production and delivery (`newReserve` in the finalize pass). With a
+// limit set, the pool the ventures draw on starts at the LOWER of that stock and the limit. So
+// the good's whole rescue is the lowest of three: the shortfalls, the stock above the floor, and
+// the limit.
 //
 // WHOSE SHORTFALL, AND IN WHAT ORDER. The fill above (`pursueFill`) has already said how many of
 // the window's units each venture got, walking the player's pursue order. A venture's shortfall
@@ -955,12 +973,18 @@ function rollupStatus(perVenture, isBoundary) {
 // them at the posted price, each venture's top-up on that venture's own equity (`rescueSale`,
 // sim/licence.js). This function only works out how many, and for whom.
 //
-// settlementRescue(targets, pursue, fill, spare) -> { [ventureId]: topUp } — only ventures whose
-// top-up is above 0. `fill` is pursueFill's verdict for this boundary; `spare` is the stock above
-// the floor. Whole units in, whole units out (§15.2). Pure: reads its arguments, mutates nothing.
-function settlementRescue(targets, pursue, fill, spare) {
+// settlementRescue(targets, pursue, fill, spare, enabled, limit) -> { [ventureId]: topUp } — only
+// ventures whose top-up is above 0. `fill` is pursueFill's verdict for this boundary; `spare` is
+// the stock above the floor; `enabled` and `limit` are the good's `syndicateTopUp` and
+// `syndicateTopUpLimit`. Whole units in, whole units out (§15.2). Pure: reads its arguments,
+// mutates nothing.
+function settlementRescue(targets, pursue, fill, spare, enabled, limit) {
   const topUps = {};
-  let spareLeft = spare;
+  // Syndicate Top-Up is off for this good (the default): nothing is rescued.
+  if (enabled !== true) return topUps;
+  // The pool this settlement may spend: the stock above the floor, and no more than the limit
+  // when the player set one (null = no limit, so the pool is just the stock above the floor).
+  let spareLeft = limit === null ? spare : Math.min(spare, limit);
   for (const t of reconcilePursue(targets, pursue)) {
     if (!t.licensed) continue; // no stored licence (the dev scaffold): never rescued
     const row = fill[t.ventureId];
