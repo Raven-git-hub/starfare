@@ -70,6 +70,8 @@ Expanded, the row shows a **manifest**:
 No fuel is shown here — a Syndicate delivery's fuel is spent once at dispatch, and the fuel gauges live
 elsewhere.
 
+**AS-BUILT 24-09-26 (guild craft + lanes now render here, 2.2 b2a → 3c; CLIENT `client/game.html`).** IN TRANSIT is no longer Syndicate-only. Alongside the Syndicate `shipments[]` rows above, the panel now lists the guild's OWN in-flight craft and its active REPEATING lanes. A guild row's identity line is the craft's **class + number** (e.g. `mediumTransport #01`) — the *Craft ID → craft-stats popup* named above stays future. A repeating lane adds a read-out — `Lap k of N · X fuel / lap · per-cycle` (every figure the snapshot's; `perLapUnits` is the engine's per-lap cost, the `+1` on `lapsDone` is presentation); a held lane reads `Holding for fuel` or `Next lap at cycle`; and the expanded region carries **Cancel** (asks first, then `cancelRoute`) and **Stop after this run** (`stopRouteAfterRun`, repeating lanes only). A lane that ENDS on its own — a stop's store gone, `laneEnded { reason: 'target-gone' }` — raises a dismissible notice at the top of IN TRANSIT (the alert's "destination lost in flight" trigger, now real for guild lanes; the reserved per-row alert pill is still unwired). **Still future:** the Craft-ID craft-stats popup, and the full DEPLOYED / IDLE / LEASED board where a waiting or ended-lane craft would also live (Phase 4).
+
 ## 5. DEPLOYED & IDLE — future (2.1 / 2.2 / 2.3)
 
 Both are **grouped by asset type under collapsible headers** (open Outposts without opening Toll Gates),
@@ -149,8 +151,12 @@ recall any time, time to re-availability). ID + Type buttons → the transport-m
   (2.2, design.md §4), and idle transports / build kits (their slices).
 - **2.1 (build yard):** idle assets + the **Manage popup** + deploy; DEPLOYED / IDLE populate.
 - **2.3 (tolls):** toll gates active; toll-route management.
-- **Phase 4 (guild transport + leasing):** guild craft fly trips (Craft IDs + craft-stats in IN
-  TRANSIT), leasing + recall (LEASED populates), mission dispatch.
+- **2.2 b2a → 3c (guild craft + lanes in IN TRANSIT) — BUILT (19–24-09-26):** the guild's own in-flight
+  craft render in IN TRANSIT, and its repeating lanes show the lap read-out (`Lap k of N · fuel / lap ·
+  per-cycle`), the held states (`Holding for fuel` / `Next lap at cycle`), Cancel / Stop-after-run, and an
+  ended-lane notice (§4 AS-BUILT). CLIENT only.
+- **Phase 4 (leasing + craft-stats):** the Craft ID → craft-stats popup on an IN TRANSIT row, leasing +
+  recall (LEASED populates), mission dispatch.
 
 ## 8. The management popups (future)
 
