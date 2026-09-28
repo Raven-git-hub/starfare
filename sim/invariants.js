@@ -358,6 +358,11 @@ function checkBatchCarry(state) {
 //       integer from 1 to TICKS_PER_UNIT − 1: the start tick already takes one tick off it, and
 //       at 0 the unit is minted and the key removed (sim/production.js). Anything else is a
 //       corrupt timer.
+//   (c) the progress payment's `paymentCarry` (Slice 3d) exists ONLY on a timed factory (no
+//       other venture is ever paid on progress), and only as a number in [0, 1) — the
+//       sanctioned sub-credit remainder, fenced like `batchCarry` and `sendCarry`. A value of 1
+//       or more is a whole credit the guild was owed and never paid; a negative one is a credit
+//       paid ahead of the work. Both are exactly what floor-and-carry exists to rule out.
 // "No fractional units in any stockpile" — the third timed-production tripwire — needs no new
 // code: the §15.2 integer sweep above already checks every stockpile cell of every good.
 // Like checkBatchCarry, an ABSENT field is legal; only a present, wrong one trips.
@@ -377,6 +382,15 @@ function checkTimedProduction(state) {
             where,
             detail: { good, ticksPerUnit, mine: !!v.resourceType, batchCarry: carried },
           });
+        }
+      }
+
+      const carry = v.paymentCarry;
+      if (carry !== undefined) {
+        if (ticksPerUnit === null || v.resourceType) {
+          out.push({ rule: 'payment-carry-only-on-a-timed-factory (Slice 3d)', where: `${where}.paymentCarry`, detail: { value: carry, good } });
+        } else if (typeof carry !== 'number' || Number.isNaN(carry) || carry < 0 || carry >= 1) {
+          out.push({ rule: 'payment-carry-in-[0,1) (Slice 3d)', where: `${where}.paymentCarry`, detail: { value: carry, good } });
         }
       }
 

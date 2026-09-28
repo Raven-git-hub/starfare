@@ -13,7 +13,8 @@
 //   4. THE THROTTLE — 0 stops new units; a unit on the line still finishes.
 //   5. ONE RESOLVER — the preview reports exactly what the tick then does.
 //   6. THE STATE — the countdown is omitted when the line is empty (the byte-identical no-op).
-//   7. SEAM 1 — a committed timed factory delivers lumpily through the UNCHANGED commitment sale.
+//   7. SEAM 1 — a committed timed factory delivers lumpily (and, since Slice 3d, is paid smoothly on
+//      its progress rather than through the delivery-basis sale).
 //   8. SEAM 2 — `baselineOutputFor` is untouched; the capacity path reads per day (the fee moved off it in Slice 3a).
 //   9. THE PRICE FIX — capacity per day, and the headline tripwire: one finished specialist is a
 //      gentle nudge above base, where a per-tick capacity would peg it at the ceiling.
@@ -252,29 +253,34 @@ test('the countdown is omitted when the line is empty, kept when handed in, and 
 
 // --- 7. SEAM 1 — the commitment/sale reads whatever production yields ----------------------
 
-test('SEAM 1: a committed timed factory delivers LUMPILY — one unit on a completion tick, 0 otherwise — through the unchanged sale', () => {
-  // A scaffold commitment (no licence, so no fee) far above what the timer can make, so the
-  // paced send always wants more than there is: the Syndicate fork is capped at the fresh units,
-  // which for a timed factory are 0 on most ticks and 1 on a completion tick. Nothing in the
-  // commitment/sale code changed for this; smoothing it is Slice 3.
-  let s = sysState([factory('f', 'fuel_tank', { syndicateCommitment: 10000 })], inputSets('fuel_tank', 5));
-  const saleTicks = [];
+// ⤳ Slice 3d (the progress payment) changed what this seam pins. It used to pin that the payment
+// was LUMPY: the unchanged delivery-basis sale paid one unit's worth on a completion tick and 0
+// otherwise. A committed timed factory is now paid tick by tick on its committed progress, and a
+// delivered unit arrives already paid (sim/tests/tier3-payment.test.js is the full proof). What
+// stands is the delivery half: whole units still land on completion ticks only. The scaffold
+// commitment was 10,000 — more than any Tier-3 licence can commit, which the payment now refuses —
+// so it is 672, the most a 3-1 factory can commit (`floor(y)`), which still sends every unit.
+test('SEAM 1 (as of Slice 3d): a committed timed factory DELIVERS lumpily — one unit on a completion tick — but is PAID smoothly on its progress', () => {
+  let s = sysState([factory('f', 'fuel_tank', { syndicateCommitment: 672 })], inputSets('fuel_tank', 5));
+  const deliveryTicks = [];
   for (let i = 1; i <= 45; i += 1) {
-    const price = postedPrice(s, 'fuel_tank'); // the sale executes at the posted price at step start
+    const price = postedPrice(s, 'fuel_tank'); // the payment is valued at the posted price at step start
     const credits = s.guilds[0].credits;
     const ledger = s.syndicate.ledger;
+    const delivered = (getWindow(s.guilds[0], SYS, 'fuel_tank') || { delivered: 0 }).delivered;
     s = tick(s);
     const paid = s.guilds[0].credits - credits;
-    if (paid !== 0) {
-      saleTicks.push(s.tick);
-      assert.equal(paid, Math.round(1 * price), `tick ${s.tick}: one unit sold at the posted price`);
-    }
+    if (getWindow(s.guilds[0], SYS, 'fuel_tank').delivered > delivered) deliveryTicks.push(s.tick);
+    // 672 of 672 × 1/15 of a unit × 100 = 6.67 credits of committed work a tick: 6 or 7 paid.
+    assert.equal(price, 100);
+    assert.ok(paid === 6 || paid === 7, `tick ${s.tick}: paid ${paid} for a tick of work, never a whole unit`);
     assert.equal(ledger - s.syndicate.ledger, paid, 'the Syndicate paid exactly what the guild got (invariant 2)');
     assert.equal(held(s, 'fuel_tank'), 0, 'every finished unit went to the Syndicate');
     assert.deepEqual(checkInvariants(s, s.tick), []);
   }
-  assert.deepEqual(saleTicks, [15, 30, 45], 'paid only on the ticks a unit landed');
+  assert.deepEqual(deliveryTicks, [15, 30, 45], 'delivered only on the ticks a unit landed');
   assert.equal(getWindow(s.guilds[0], SYS, 'fuel_tank').delivered, 3, 'three whole units delivered this window');
+  assert.equal(s.guilds[0].credits, 300, 'three units\' worth in all (45 ticks × 6.67), paid once');
 });
 
 // --- 8. SEAM 2 — the per-tick baseline is untouched ------------------------------------------

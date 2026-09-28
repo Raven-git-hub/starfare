@@ -38,8 +38,8 @@
 // 3b-i computes and locks the number; **Slice 3b-iii (28-08-26) CHARGES it** — `feeOwed`
 // below is the per-venture arithmetic, and sim/tick.js sums a guild's oweds into the one
 // boundary debit (the fee charge was renumbered when 3b-ii became the mid-window
-// pro-rate). This file still moves no credit itself: `commitmentSale` and `feeOwed` both
-// return numbers, and the tick is the only place a balance changes.
+// pro-rate). This file still moves no credit itself: `commitmentSale`, `feeOwed` and (Slice 3d)
+// `progressPayment` all return numbers, and the tick is the only place a balance changes.
 
 const {
   windowFraction, DEFAULT_WINDOW_N, TIER3_WINDOW_N, tier3WindowNests, windowNForGood,
@@ -186,6 +186,82 @@ function ownerFraction(ventures, good, windowStart, N) {
 function commitmentSale({ ventures, good, delivered, price, windowStart, windowN }) {
   const gross = delivered * price;
   return { gross, ownerCredits: Math.round(ownerFraction(ventures, good, windowStart, windowN) * gross) };
+}
+
+// --- The progress payment (Tier 3, Slice 3d) -------------------------------------
+//
+// docs/tier3-timed-production.md "Income & commitment". A committed TIMED good is NOT paid by
+// `commitmentSale` above. Each tick its factory does `progress` of a unit's work (1 ÷
+// TICKS_PER_UNIT while a unit is on the line, 0 when the line is empty), and the committed share
+// of that work, `(x / y) × progress`, is valued at THAT tick's posted price and paid. So:
+//   - the income is SMOOTH while the line runs, not a lump on the tick a unit lands;
+//   - it stops the moment the line stalls, and nothing was paid ahead of the work, so there is
+//     never anything to claw back;
+//   - over a full week of running it adds up to `x` units' worth.
+// The unit that work completes is still delivered Syndicate-first (Slice 3b), but it arrives
+// ALREADY PAID: sim/tick.js credits nothing on a timed good's delivery. That is the ruling's "no
+// double-count" (invariant 3 of that doc). Tier-1/2 goods keep `commitmentSale`, unchanged.
+
+// paidOnProgress(good) -> true iff a commitment on `good` is paid on progress (below) instead of
+// on delivery (`commitmentSale`): exactly the timed Tier-3 goods. The same `ticksPerUnitFor`
+// answer that decides timed production, the week, Syndicate-first delivery and the Tier-3
+// contract, so no good can be delivered one way and paid the other.
+function paidOnProgress(good) {
+  return ticksPerUnitFor(good) !== null;
+}
+
+// committedShareOf(venture, engineWindowN, tick) -> `x / y`, the share of each unit of this
+// venture's work that is committed to the Syndicate; 0 for an uncommitted venture (its output
+// goes to its own stockpile, unpaid until the guild sells it).
+//
+// `x` is `syndicateCommitment`, the SAME whole-unit count delivery and settlement read, and the
+// division is `committedPctForUnits`, the very one the signing stored as `committedOutputPct`
+// (the invariant pins the two equal). Reading `x` rather than the stored ratio means a
+// commitment with no licence (the dev scaffold) is paid the same way, instead of handing over
+// goods for nothing.
+//
+// It HALTS on an `x` outside the ruled `[0, floor(y)]`. Only the dev scaffold can set one (it
+// accepts any whole number). A share above 1 would pay for more of each unit than was made, and
+// quietly capping it would pay a contract nobody could have signed. `tick` is only for the message.
+function committedShareOf(venture, engineWindowN, tick) {
+  const x = venture.syndicateCommitment || 0;
+  if (x <= 0) return 0;
+  const basis = licenceBasisFor(venture, engineWindowN);
+  if (!basis || !isValidCommittedUnits(x, basis)) {
+    const y = basis ? weeklyOutputOf(basis) : null;
+    throw new Error(`committedShareOf: venture ${venture.id} commits ${x} units of ${producedGoodFor(venture)} at tick ${tick}, outside [0, floor(y)] for its weekly output y = ${y} — refusing to pay for a share of its progress that no Tier-3 licence can commit`);
+  }
+  return committedPctForUnits(x, basis);
+}
+
+// progressPayment({ ventures, good, committedProgress, price, windowStart, windowN, carry })
+//   -> { gross, ownerCredits, carry }
+//
+//   `gross`        — the committed progress's value, `committedProgress × price` (a float).
+//   `ownerCredits` — the WHOLE credits the owner guild is paid this tick, and, identically, the
+//                    integer the Syndicate ledger is debited by (one number, both legs, as the sale).
+//   `carry`        — the part of a credit the owner was owed but not yet paid, in [0, 1). The
+//                    caller stores it and hands it back next tick.
+//
+// THE SPLIT is the one `commitmentSale` uses: `ownerFraction` over the good's committing ventures
+// in its window (the owner keeps `1 − o`; the `o` share stays in the ledger, as there are no
+// investors yet). Nothing new about who gets what, only about when.
+//
+// THE ONE DIFFERENCE FROM THE SALE: floor-and-carry, not a single round. The sale pays for whole
+// units. A tick of progress is a sliver of one: `(x / y) × (1 ÷ TICKS_PER_UNIT)` works out to
+// `x ÷ 10,080` of a unit for every timer, so a 3-1 part (base price 100) committed at `x = 50` is
+// owed about half a credit a tick. Rounding each tick would pay it NOTHING all week, and at
+// `x = 67` would pay 1.5 times what it is owed. So this uses the ruled floor-and-carry discipline
+// of the send (`resolveWindow`, sim/production.js) and `batchCarry`: add up what is owed, pay the
+// whole credits, carry the rest. Flooring never pays ahead of the work (nothing to claw back),
+// and the carry keeps the total short by less than one credit, ever.
+//
+// Pure: reads its arguments, mutates nothing.
+function progressPayment({ ventures, good, committedProgress, price, windowStart, windowN, carry = 0 }) {
+  const gross = committedProgress * price;
+  const owed = carry + ownerFraction(ventures, good, windowStart, windowN) * gross;
+  const ownerCredits = Math.floor(owed);
+  return { gross, ownerCredits, carry: owed - ownerCredits };
 }
 
 
@@ -1311,6 +1387,7 @@ function applyVentureClosure(state, guild, venture, cause, tick) {
 
 module.exports = {
   EQUITY_CEILING, equityOf, isValidEquityPct, committedContribution, ownerFraction, commitmentSale,
+  paidOnProgress, committedShareOf, progressPayment,
   FEE_RATE, CORNERS, EQUITY_SHAPE_K, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
   feeFraction, normalisedTerms, licenceFee, feeOwed, teardownSettlement, licenceEndTick, isValidCommitmentPct, isValidWindowDays,
   commitmentUnitsFor, licenceBasisFor, licenceBasisForGood,

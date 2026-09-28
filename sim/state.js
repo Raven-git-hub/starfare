@@ -422,6 +422,7 @@ function createVenture({
   nextCommissionId = 0,
   batchCarry = {},
   unitTicksRemaining,
+  paymentCarry,
 }) {
   if (id === undefined) throw new Error('createVenture: id is required');
   if (ownerGuildId === undefined) throw new Error('createVenture: ownerGuildId is required');
@@ -684,6 +685,16 @@ function createVenture({
     // `!= null` (not truthiness): a 0 is not "absent" — it is a finished unit nobody minted — so
     // it is kept and reaches the tripwire rather than being swallowed here.
     ...(unitTicksRemaining != null ? { unitTicksRemaining } : {}),
+    // paymentCarry: the sub-credit remainder of a committed TIMED factory's progress payment
+    // (Slice 3d, docs/tier3-timed-production.md "Income & commitment"; sim/licence.js
+    // `progressPayment`). Each tick the factory's committed work is paid in whole credits, and
+    // the part of a credit still owed waits here, in [0, 1), to be added to the next tick's —
+    // the same floor-and-carry discipline as `batchCarry` and the send's `sendCarry`. It is not
+    // credits anyone holds (§15.2 keeps every balance whole); it is when the next credit lands.
+    // OMITTED when 0, so every venture that is not a committed timed factory carries no key and
+    // a galaxy without one serializes exactly as before. A 0 handed in is simply "nothing
+    // carried"; anything else is kept and reaches the tripwire (sim/invariants.js).
+    ...(paymentCarry != null && paymentCarry !== 0 ? { paymentCarry } : {}),
     // NOTE: the old typeless `outputStockpile` scalar was retired in the
     // resource-representation slice (02-08-26). Produced goods are typed and go
     // straight into the owner guild's `stockpiles` — one home, no drift. There

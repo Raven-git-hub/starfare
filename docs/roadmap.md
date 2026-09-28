@@ -1998,9 +1998,58 @@ boundary so the later hex-map swap doesn't touch it.
     against HEAD, where 12 of 13 fail; the isolation pin passes. Six deliberate breakages are each
     caught. Tools **68 green**.
   - **Still not safe to run live:**
-    - the per-tick progress payment is 3d;
+    - the per-tick progress payment is 3d; *(⤳ built by Slice 3d, below)*
     - the client still sends the Tier-1/2 shape for a Tier-3 factory, which the engine now refuses;
     - the Slice-3c checklist items below.
+
+- **Tier-3 per-tick progress payment — ✅ BUILT 28-09-26 (Slice 3d of the Tier-3 economy build; the
+  last engine slice).** `docs/tier3-timed-production.md` ("Income & commitment"; as-built "Slice 3d" at
+  its end); design.md §5 AS-BUILT note; `docs/commitment-sale.md`. For a committed **timed** good only
+  (decided by the good); Tier-1/2 keep the delivery-basis sale byte for byte.
+  - **The payment.** Each tick a committed timed factory's line moves, it is paid `ownerFraction ×
+    (x / y) × (output qty ÷ TICKS_PER_UNIT) × the posted price`: the committed share of that tick's
+    work, at that tick's price, with the sale's owner split. 0 on a tick with no unit on the line.
+    Smooth while running, nothing while stalled, nothing ever clawed back. A week of running is `x`
+    units' worth.
+  - **No double-count.** The delivery still moves the unit Syndicate-first and records it, but credits
+    nothing for a timed good. The payment runs just before it, so the unit arrives already paid.
+  - **Built as:** `paidOnProgress`, `committedShareOf` and `progressPayment` in `sim/licence.js` (pure
+    arithmetic), applied in `applyProduction` (`sim/tick.js`, "THE PROGRESS PAYMENT"). The resolver,
+    the preview and the snapshot are unchanged.
+    - `committedShareOf` halts on an `x` outside `[0, floor(y)]` (dev scaffold only), naming the tick,
+      `x` and `y`.
+    - A missing posted price halts, as it does for the sale.
+  - **Floor-and-carry** (build call, checklist). A tick of work can be worth under a credit (a 3-1 part
+    at `x = 50` earns ~0.5 a tick), so rounding each tick would pay it nothing. The payment pays whole
+    credits and carries the rest on the venture as **`paymentCarry`** in `[0, 1)`: the ruled
+    discipline of `sendCarry` / `batchCarry`. It is never ahead of the work and never more than a
+    credit behind.
+  - **New state, omitted when 0:** `venture.paymentCarry`. A galaxy without a committed timed factory
+    serializes as before; no fresh galaxy needed. New tripwire: it sits only on a timed factory, in
+    `[0, 1)`.
+  - **Measured, one week, one fed factory** (HEAD 4a0a651 → this slice):
+    - 3-1, `x = 672` (flat price 100): 672 × 100 = 67,200 → 6–7 on all 10,080 ticks = 67,200.
+    - Heavy engine, `x = 3` (flat 20M): 3 × 20M → 5,952–5,953 on all 10,080 ticks = 60M (short by
+      under a credit, which is carried).
+    - 3-1, `x = 336`: 33,600 on 336 ticks → 3–4 on all 10,080 ticks = 35,062. The week is paid at its
+      average price (100 → 117 as the guild's own half piles up); the old sale sampled only the
+      first-half price, because Syndicate-first delivery front-loads.
+  - **Goldens: none moved** (no pinned run commits a timed good). Every 3a/3b/3c isolation pin passes
+    unchanged. A new standing test pins Tier-1/2 committed goods to hashes computed on HEAD 4a0a651
+    over 1,200 ticks: alone (state every tick, snapshot every 10), and beside guilds paid on timed
+    progress (the Tier-1/2 guild's whole state, and the Tier-1/2 slice of a guild committing both
+    tiers). The same two galaxies were also diffed against HEAD for 3,000 ticks at a 1,440-tick day,
+    an anchored day and a 60-tick day: identical at every tick.
+  - Test updated deliberately: `tier3-timed-production.test.js` "SEAM 1" pinned the lumpy sale. It now
+    pins lumpy delivery with a smooth payment, and its scaffold `x` of 10,000 is now 672 (the payment
+    refuses `x > floor(y)`).
+  - Sim suite 1,721 → **1,733 green** (`sim/tests/tier3-payment.test.js`, +12; one shared 10,080-tick
+    week, six guilds, every tick checked). Run against HEAD: 10 of 12 fail (the two engine-independent
+    ones pass). Eight deliberate breakages are each caught: the delivery crediting too (double
+    count), rounding per tick, flooring with no carry, paying on idle ticks, paying the whole progress
+    instead of the committed share, ignoring the owner split, paying every good on progress (caught by
+    the isolation pin), and no halt on an impossible `x`. Tools **68 green**.
+  - **Still not safe to run live:** the client (3c's item) and the checklist items for 3c and 3d.
 
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
@@ -2331,6 +2380,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   - **Payment is still lumpy** (not a question; recorded so it is not missed). The sale still fires on
     delivery: nothing on most ticks, one whole unit's worth when a unit lands. The per-tick progress
     payment is 3d's. Until then, a met week is paid for exactly its `Q` delivered units, in lumps.
+    **⤳ CLOSED 28-09-26 (Slice 3d).** A committed timed good is paid every tick on its progress; its
+    delivery credits nothing.
   - **Still open before Tier 3 runs live:** the two 3a items above that are now 3c's (teardown
     settlement counted in days; the `windowDays` term and ratchet still applying to Tier 3).
     **⤳ Both CLOSED 28-09-26 (Slice 3c).**
@@ -2383,6 +2434,49 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   - **The `setSyndicateCommitment` dev scaffold** can now trip `tier3-commitment-is-x-of-y` if it
     rewrites a licensed Tier-3 venture's commitment without its ratio. That is intended: the fee and
     delivery would otherwise read two different promises.
+
+- **Tier-3 slice 3d (the per-tick progress payment) — items for a ruling or a confirm** — *surfaced
+  28-09-26.*
+  - **Delivery and payment disagree within a week (a ruling).** Delivery is Syndicate-first: whole
+    units, the first `Q` made (3b). Payment is `x / y` of every tick's work (3d). Over a met week they
+    agree: `x` delivered, `x` units' worth paid. Within a week they do not:
+    - A **short week** delivers more than it is paid for. A factory at `x = 336` of 672 that makes only
+      160 units delivers all 160 but is paid for 80. It then breaches and pays the full fee, as
+      before. Under the old sale it was paid for all 160.
+    - A **met week at `x < y`** delivers early and is paid evenly: at 50%, 336 delivered by tick 5,040,
+      168 paid by then.
+    - Both rulings were built as written. Is this the intended "risk premium … breach bites harder"?
+      If not, the options are (each a ruling, and each would touch delivery, so none was built):
+      - pay a delivered unit's uncommitted share on delivery;
+      - or deliver only as much as the committed progress has paid for.
+  - **Whole credits: floor-and-carry (confirm).** One tick of committed work is often worth under a
+    credit. A 3-1 part at base 100 committed at `x = 50` earns ~0.5 a tick, and at `x = 1` about
+    0.01.
+    - Built with the ruled floor-and-carry discipline of `sendCarry` / `batchCarry`: pay the whole
+      credits, and keep the part of a credit on the venture as `paymentCarry` in `[0, 1)`.
+    - Rounding each tick instead would pay `x ≤ 50` nothing all week and `x = 67` about 1.5×.
+    - New serialized state, omitted when 0. No fresh galaxy is needed.
+  - **The owner split is the good-level `ownerFraction`, as the build prompt specified (confirm).**
+    With one committed factory per good it is exactly `1 − o`. With two committed factories of one
+    good that offered different equity, each factory's progress is paid at their contribution-weighted
+    mean, not at its own `1 − o`. So if one stalls, the other is paid at the blend. Per-venture
+    `1 − o` would be exact, because progress, unlike a pooled delivery, is attributable.
+  - **A moving price re-weights the week** (a consequence, not a question). At a steady price the
+    week's total equals the old sale's exactly (hull plating 67,200; heavy engine 60M). When the price
+    moves, the week is paid at its average price instead of at the delivery ticks' prices. At
+    `x = 336` of 672 that is 35,062 against the old 33,600: Syndicate-first delivers every unit in the
+    first half at the base price, and the guild's own half then lifts the price to 117. This is "valued
+    at that tick's price", as ruled.
+  - **The dev scaffold now halts on `x > floor(y)` for a timed factory** (confirm). Its first tick of
+    work stops the galaxy, naming the tick, `x` and `y`; before this slice it was paid per delivered
+    unit. The scaffold intake (`setSyndicateCommitment`) still accepts such an `x`. Should it refuse
+    it instead, as `applyForLicence` does?
+  - **The carry after a lapse** (confirm). A teardown forfeits the carry (under a credit) with the
+    venture's partial progress. A lapse leaves it on the venture, and it is added to the next payment
+    if the venture is committed again.
+  - **Read model, not engine.** For a timed good, `lastSyndicateSale.goods[good]` now holds two
+    events: `credited` is that tick's progress payment, and `units` is the whole units delivered that
+    tick (usually 0). The client does not read `syndicateSale` yet.
 
 - **Tier-3 slice 1 — small items for a ruling or a confirm** — *surfaced 27-09-26 by the Tier-3
   price-bands slice.*

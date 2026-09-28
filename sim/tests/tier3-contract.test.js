@@ -13,7 +13,8 @@
 //   (d) A Tier-1/2 licence keeps its percentage, its 7–42 day term and the standing ratchet, and
 //       a Tier-1/2 galaxy reproduces the pre-slice engine's bytes (hashes computed on HEAD 5867c18).
 //
-// The payment (still on delivered units, so still lumpy) is Slice 3d's and is not tested here.
+// The payment (on delivered units when this slice was built, so lumpy) is Slice 3d's, tested in
+// tier3-payment.test.js.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');

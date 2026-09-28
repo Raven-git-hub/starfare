@@ -124,3 +124,24 @@ per-tick cadence, the posted price, the single rounding used for both legs — i
 good's delivery flows through `applyProduction`'s existing generic loop with no change at all. Pinned
 by "the equity split reads a FACTORY too" in `sim/tests/factory-commitment.test.js`; see
 `docs/licence-fee.md` §"Factory output commits" for the slice.
+
+
+---
+
+## A timed Tier-3 good is not sold on delivery (28-09-26, Tier-3 Slice 3d)
+
+A commitment on a **timed** Tier-3 good (`ticksPerUnitFor(good) !== null`) is no longer paid by this
+sale. It is paid **per tick on its progress**, the ruled Tier-3 model (`docs/tier3-timed-production.md`
+"Income & commitment"; as built in "As built — Slice 3d" there). Each tick the factory's committed share
+of the work done, `(x / y) × (1 ÷ TICKS_PER_UNIT)` of a unit, is valued at that tick's posted price and
+paid (`progressPayment`, `sim/licence.js`). The unit that work completes is still delivered
+Syndicate-first and still recorded in `lastSyndicateSale` (its `units`), but its delivery credits
+**nothing**: it arrives already paid, so it is never paid twice.
+
+Two things carry over from this sale unchanged: the **posted price** (the two-ticks-lagged value on
+state) and the **owner split** (`ownerFraction`, the contribution-weighted `(1 − o)`). One thing does
+not: the rounding. A tick of progress is worth a fraction of a credit for a cheap part, so the progress
+payment uses **floor-and-carry** instead of this sale's single `Math.round`: it pays the whole credits and
+keeps the sub-credit remainder on the venture (`paymentCarry`, in `[0, 1)`) for the next tick. Both legs
+still move one integer, so invariant 2 still holds to the credit. **Every Tier-1/2 good keeps this sale
+exactly as described above** (pinned to the pre-slice engine's bytes by `sim/tests/tier3-payment.test.js`).

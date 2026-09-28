@@ -659,6 +659,9 @@ function batchesAsked(venture) {
 // line, else 0; display telemetry, never stored) — plus the timed facts:
 //   timed: true, ticksPerUnit, started (a unit began this tick), unitTicksRemaining (the value
 //   applyProduction writes back — null means the line is now empty).
+// (The committed progress payment, Slice 3d, is worked out by sim/tick.js from these same facts:
+// a unit was on the line, so `output qty ÷ ticksPerUnit` of a unit's work was done. It is not a
+// key here, so the preview and the snapshot a timed factory shows are unchanged by it.)
 function resolveTimedFactory(venture, recipe, ticksPerUnit, allocated, throttlePct) {
   let remaining = venture.unitTicksRemaining; // undefined/null = the line is empty
   const drawn = {};
@@ -729,8 +732,10 @@ function resolveTimedFactory(venture, recipe, ticksPerUnit, allocated, throttleP
 //      reserve level (or, one day, an in-system consumer) can never catch a unit before it.
 // The existing fresh-only cap in the finalize walk then does the rest: it caps the intent at the
 // units minted this tick. So the Syndicate still never takes a unit from the stockpile, never
-// takes more than Q, and `delivered`, the verdict, the sale and the fee read exactly what they
-// read before — only which minted units reach the Syndicate changed.
+// takes more than Q, and `delivered`, the verdict and the fee read exactly what they read
+// before — only which minted units reach the Syndicate changed. (What the guild is PAID for a
+// timed good is not read off delivery at all since Slice 3d: it is paid tick by tick on its
+// progress, and a delivered unit arrives already paid — sim/tick.js "THE PROGRESS PAYMENT".)
 //
 // "FIXED" means not a lever: there is no staggering to set, so it is the same for every guild.
 // Tier-1 mines and Tier-2 refineries keep the paced / absolute / percent send untouched.

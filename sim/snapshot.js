@@ -1416,7 +1416,9 @@ function buildSnapshot(state) {
       ...(orderSnapshot(g.sellOrder) ? { sellOrder: orderSnapshot(g.sellOrder) } : {}),
       // What the Syndicate last BOUGHT from this guild under its commitment (Slice 3a) —
       // the credits it paid, the units it took and the posted price it paid them at, per
-      // good. `thisTick` is the engine answering "is this the current tick's sale?" so the
+      // good. (For a timed Tier-3 good, Slice 3d, `credited` is that tick's progress payment
+      // and `units` the whole units delivered that tick — usually 0 — since a delivered unit
+      // arrives already paid.) `thisTick` is the engine answering "is this the current tick's sale?" so the
       // console can print "you earned N credits from your commitment this tick" without
       // computing anything (§5's display rule). Deep-copied, like every other block here,
       // so a consumer mutating the snapshot can't reach back into live state. null for a

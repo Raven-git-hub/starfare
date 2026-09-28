@@ -45,6 +45,7 @@ const { recomputePrices, postedPrice } = require('./prices.js');
 const {
   commitmentSale, committedContribution, feeOwed, reputationDelta, gainFactor, RP_FLOOR,
   deuteriumMetGain, renegotiationScheduleFor, applyLapse, applyVentureClosure,
+  paidOnProgress, committedShareOf, progressPayment,
 } = require('./licence.js');
 const {
   producedGoodFor, isLicensedDeuteriumMine, isDeuteriumMine, isIllegalDeuteriumRefinery, isDockyard,
@@ -493,9 +494,61 @@ function applyProduction(state, guild, systemId, ctx) {
     v.updatedAtTick = state.tick;
   }
 
+  // This system's ventures: the set a good's owner split is weighted over, by the payment below
+  // and the sale after it.
+  const systemVentures = (guild.ventures || []).filter((v) => v.systemId === systemId);
+
+  // ── THE PROGRESS PAYMENT (Tier 3, Slice 3d; docs/tier3-timed-production.md "Income & commitment")
+  // A committed TIMED factory is paid for the work it does, tick by tick, not for the whole units
+  // it delivers. The work done this tick, `progress`, is one tick of the timer: `output qty ÷
+  // TICKS_PER_UNIT` of a unit (1 ÷ TICKS_PER_UNIT, every Tier-3 recipe making one) on a tick its
+  // countdown moved, and 0 when the line is empty. The committed share of that work,
+  // `(x / y) × progress`, is valued at THIS tick's posted price and paid now (`progressPayment`,
+  // sim/licence.js). So a running line earns a little every tick, a stalled line earns nothing
+  // for as long as it is stalled, and nothing is ever paid early that would need taking back.
+  //
+  // This runs BEFORE the delivery below, and that delivery credits nothing for a timed good: the
+  // unit this work completes reaches the Syndicate already paid. Paid once, never twice.
+  //
+  // An UNCOMMITTED timed factory (`x` = 0) is skipped: its units go to its own stockpile, unpaid
+  // until the guild sells them. The sub-credit part of a payment is kept on the venture as
+  // `paymentCarry` (in [0, 1), removed when 0) and added to the next tick's. It only changes on a
+  // tick the countdown moved, and the loop above stamps the venture on exactly those ticks.
+  // Rows are in establishment order, so the payments are too (invariant 9).
+  for (const r of report.refineries) {
+    // `rate > 0` is "a unit was on the line, so its countdown moved" — the same test the loop
+    // above stamps the venture on. An idle or starved timed factory did no work: nothing is paid.
+    if (!r.timed || !(r.rate > 0)) continue;
+    const v = byId.get(r.ventureId);
+    const share = committedShareOf(v, windowN, state.tick + 1);
+    if (share <= 0) continue;
+    const recipe = getRecipe(v.recipeId);
+    const good = recipe.output.good;
+    const progress = recipe.output.qty / r.ticksPerUnit;
+    // The same guard as the delivery below: committed work with no price to value it at is a
+    // broken state, not free work (§15.5).
+    const price = postedPrice(state, good);
+    if (price == null) {
+      throw new Error(`applyProduction: guild ${guild.id}'s committed venture ${v.id} made progress on ${good} at tick ${state.tick + 1} but the good has no posted price — refusing to value committed work at nothing`);
+    }
+    const payWin = windowOf(good);
+    const pay = progressPayment({
+      ventures: systemVentures, good, committedProgress: share * progress, price,
+      windowStart: payWin.windowStart, windowN: payWin.windowN, carry: v.paymentCarry,
+    });
+    if (pay.carry > 0) v.paymentCarry = pay.carry;
+    else delete v.paymentCarry;
+    if (pay.ownerCredits > 0) {
+      guild.credits += pay.ownerCredits;
+      state.syndicate.ledger -= pay.ownerCredits;
+      recordSale(guild, state.tick + 1, good, 0, price, pay.ownerCredits);
+    }
+  }
+
   // Deliver the Gate-1 Syndicate fork (§5 "Syndicate fork delivery", 10-08-26) — and,
-  // as of Slice 3a, PAY FOR IT. The committed units leave the guild's pool for the
-  // Syndicate's infinite backend exactly as before (invariants.js's galactic-supply
+  // as of Slice 3a, PAY FOR IT (a Tier-1/2 good; a timed Tier-3 good was paid on its
+  // progress, above, and its delivery credits nothing). The committed units leave the
+  // guild's pool for the Syndicate's infinite backend exactly as before (invariants.js's galactic-supply
   // check already treats selling as a sink, not a conservation break); what is new is
   // the credit leg beside it: the delivery is a SALE, not a tithe
   // (docs/licence-and-price-system.md Part 2; design.md §5 "Output commitment").
@@ -517,7 +570,6 @@ function applyProduction(state, guild, systemId, ctx) {
   // Goods are iterated in sorted key order for determinism (invariant 9). For an
   // unlicensed venture fork.syndicate is 0, so nothing here runs at all and the
   // credit-free path stays byte-identical.
-  const systemVentures = (guild.ventures || []).filter((v) => v.systemId === systemId);
   for (const good of Object.keys(report.goods).sort()) {
     const delivered = report.goods[good].fork.syndicate;
     if (delivered <= 0) continue;
@@ -531,6 +583,15 @@ function applyProduction(state, guild, systemId, ctx) {
     const price = postedPrice(state, good);
     if (price == null) {
       throw new Error(`applyProduction: guild ${guild.id} delivered ${delivered} ${good} to the Syndicate at tick ${state.tick + 1} but the good has no posted price — refusing to hand over goods for nothing`);
+    }
+
+    // A TIMED good's delivered units were already paid for, tick by tick, as the work on them was
+    // done (THE PROGRESS PAYMENT, above). The delivery still MOVES them — they left the pool just
+    // above, exactly as before — and it is recorded, but it credits nothing: paying here as well
+    // would pay for the same units twice.
+    if (paidOnProgress(good)) {
+      recordSale(guild, state.tick + 1, good, delivered, price, 0);
+      continue;
     }
 
     const saleWin = windowOf(good);
