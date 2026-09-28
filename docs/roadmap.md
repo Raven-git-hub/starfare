@@ -18,7 +18,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
-| 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,310 tests, deterministic) |
+| 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,776 tests, deterministic) |
 | 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
@@ -1830,6 +1830,16 @@ boundary so the later hex-map swap doesn't touch it.
   (plus, where deuterium auto-sells, the credits and ledger it pays). The "deuterium on T1" tripwire is
   replaced by "deuterium on its own 10 / 2 / 200 band, not T1's". Sim suite **1,598 green**; tools **68
   green**.
+
+- **Tier-3 timed-production economy + Syndicate Top-Up — ✅ COMPLETE (28-09-26).** The
+  specialist-manufacturing tier is whole end-to-end — sub-tier price bands, timed per-unit
+  production, weekly whole-unit settlement (progress-based payment, Syndicate-first delivery, a 7-day
+  rolling term + renegotiation), the settlement-time stockpile rescue, and the opt-in, capped Syndicate
+  Top-Up — engine + console client, verified live on the seed-42 galaxy (sim **1,776** / tools
+  **68**). The per-slice rows below (Slice 1 → the Syndicate Top-Up client) are the build record.
+  **Next is playtest, not more build:** the only open items are the `[FIRST-CUT]` numbers in
+  `phase-1-tuning.md` — the `TICKS_PER_UNIT` ladder, the sub-tier / specialist price bands,
+  `FEE_RATE`, the capacity reference period, and the four unclassified modules.
 
 - **Tuning — Tier-3 sub-tier + specialist price bands, and the final Tier-4 bills — ✅ BUILT 27-09-26
   (Slice 1 of the Tier-3 economy build; data/pricing only).** design.md §5 "TIER-3 SUB-TIERS, SPECIALIST
