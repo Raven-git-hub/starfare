@@ -2409,7 +2409,17 @@ boundary so the later hex-map swap doesn't touch it.
 
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
-  (already modelled). *Precondition for tolls, exploration, espionage.*
+  (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
+  now RULED - design.md §2 "The Prefecture - the territorial claim anchor" (29-09-26): one
+  Prefecture, on one settlement slot, claims the whole system and every node in it; exclusive against
+  other guilds' claims and their unleased deployment, with leasing the one contractual exception; the
+  home system exempt, so a guild can never be evicted from its homeworld; losing a Prefecture evicts
+  the guild's machines in that system into orbital limbo.** NOT BUILT, and **sequenced behind the
+  cross-system asset ferry** (design.md §4, deferred): a Prefecture kit is transported and deployed
+  like any other asset, so there is no claim action until an asset can move between systems. Three
+  questions are open and block the build - design.md §19 **#67** (what happens to an evicted system's
+  GOODS), **#68** (the Tier-4 bill, and the two orphan Tier-3 modules it would claim), **#69** (how a
+  Prefecture is removed by anyone but its owner - the design has no hostile-destruction mechanic).
 - **2.3 — Transport (guild tier) + tolls.** Routes (construction, rules, location/route bonuses),
   payload, travel time; toll gates (built at 2.1, placed on territory from 2.2), toll rules; the
   Syndicate transport contract (the Syndicate leases guild transports back — recall-time model:

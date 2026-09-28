@@ -111,6 +111,82 @@ Players control **territory**, which changes hands through conflict, negotiation
 
 Territories may also contain resources other guilds need, and owners can set **extraction and processing fees**, negotiable like tolls. Combined with the later ventures-decoupling decision (Section 4), territory owners now hold **three distinct economic levers**: tolls on transiting shipments, tariffs on resource extraction/processing, and land lease/rent for tenants who install fixed ventures on their land.
 
+### The Prefecture - the territorial claim anchor *(29-09-26)*
+
+**RULED 29-09-26. NOT BUILT - design-ahead, and sequenced behind mechanics that do not exist yet.**
+How a guild takes a system beyond the one it was founded on. Until this lands there is no claim
+action at all: a guild is boxed into its home system, and - the other half of the same gap -
+**nothing in the game can remove a claim**, which is why "a system lost" (§11.6) is currently
+unreachable. The Prefecture is the object that closes both halves: it is what *makes* a claim, and
+losing it is what *unmakes* one.
+
+A **Prefecture** is a guild structure placed on a **settlement slot**. **One Prefecture anywhere in a
+system claims the whole system and every node in it.** The claim row is unchanged - the existing
+`landmarkKind: 'system'` shape in `sim/claims.js` - so this authors no new claim model, and
+`guildHolds` / `heldSystemIds` keep answering exactly the question they answer today.
+
+**One is enough - the per-planet alternatives are ruled OUT, on measured grounds.** Settlement-slot
+counts are archetype-driven (§15.4) and three archetypes carry **zero** slots: gasGiant, molten and
+irradiated. A rule requiring a Prefecture on *every* planet, or on *half* of them, therefore makes
+whole systems permanently unclaimable - and since a system must be held before a venture may be
+established in it (§4, Gate 3), an unclaimable system is an unmineable one. Measured on the
+reference seed (7331; 1,500 systems, 5,290 planets):
+
+| Rule | Systems never claimable | Galaxy resource nodes stranded |
+|---|---|---|
+| **One Prefecture (RULED)** | 48 (3.2%) | 1.15% |
+| >=50% of planets | 108 (7.2%) | 5.94% |
+| One per planet | 687 (45.8%) | 54.1% |
+
+The all-planets rule is not a balance question but a fatal one: gas giants are the galaxy's only
+xenon source and irradiated worlds its only palladium source, and both carry zero settlement slots,
+so it strands **100% of xenon and 100% of palladium** (plus ~82% of gold / silver / tungsten). The
+50% rule is survivable and has attractive shape - its failures skew hard coreward (28.6% of
+inner-ring systems fail against 2.1% of outer-ring, because the rare-tier gradient puts the slotless
+archetypes in the core) - but it buys that shape with a **hard prohibition** on ~31% of palladium and
+~24% of neodymium, which §2's reachability stance does not allow (the >=2-rare-tier-within-1/3-radius
+repair pass exists precisely to prevent unreachability). A per-system **venture cap** scaling with the
+number of Prefectures was considered as a soft-ceiling substitute and **rejected as too complex**: a
+Prefecture is a boolean on a system, not an entity with capacity.
+
+**The residual 48.** Even under the ruled one-Prefecture rule, 48 systems (34 of them single-planet)
+have no settleable planet at all and can never be claimed - 1.15% of galaxy nodes, permanently dead
+land. Accepted knowingly, and recorded here rather than discovered in playtest.
+
+The rest of the ruling:
+
+- **It consumes one settlement slot.** A real opportunity cost, and it bites unevenly by archetype -
+  on an Oceanic world that is 1 of only 3-4 slots; on a Terran homeworld, 1 of 15. Note the build
+  consequence: site occupancy is **derived from ventures** (`sim/occupancy.js`), and a Prefecture is
+  not a venture (it produces nothing, holds no licence, earns no RP), so occupancy must learn to see
+  a non-venture occupant or a factory will deploy on top of one.
+- **It is exclusive, with leasing as the single exception.** A Prefecture blocks every other guild's
+  **claim** on that system and their **unleased deployment** in it. It does **not** override §4's
+  ventures-decoupled-from-territory: an active lease still confers a standing right of access
+  (§19 #23), so a tenant's presence in a Prefecture-held system is contractual, never trespass. The
+  holder's three levers - toll, tariff, rent - are untouched.
+- **It is transported and deployed like any other asset** - no bespoke placement path. This is the
+  ruling's hard dependency: `Asset.systemId` is set at creation and **immutable**, and cross-system
+  redeploy (the heavy-Vehicle ferry) is **deferred and unbuilt** (§4). A Prefecture kit must be
+  ferried into a system the guild does **not yet hold**, so the placement must also be exempt from
+  §4's Gate 3, which refuses a deploy into an unheld system. **The Prefecture cannot be built before
+  the ferry.**
+- **Losing it evicts the system.** When a Prefecture is torn down or destroyed, everything the guild
+  holds in that system is torn down, removed, and **sent into orbit around the planet it stood on,
+  awaiting pickup**. This is a reuse, not a new mechanic: it is §5's **orbital-limbo** recovery, the
+  same path a terminated lease already uses to return a tenant's machine. The machines survive; the
+  guild's position does not. (Also unbuilt. What happens to the system's *goods* is open - §19 #67.)
+- **The home system is exempt.** A guild cannot be evicted from the world it was founded on. Founding
+  grants its claim without a Prefecture, and no Prefecture mechanic can take a homeworld. This keeps
+  `docs/points-and-reputation.md`'s "the home base is **permanently floor-protected**" true - a
+  ruling that would otherwise quietly stop holding the moment claims became losable.
+
+**What it is for.** Less "settling" than **losability**. A single, visible, destructible anchor is
+what turns territory into something that can be contested, lost, defended and scouted; it is the
+precondition the `contested` flag on the claim row has been carrying a slot for, and it gives
+§11.6's "a system lost" its first reachable path. Whether anyone but the owner can actually remove
+one is itself open - §19 #69.
+
 ### Toll Gates & Toll Paths
 
 The "toll routes are exponentially safer and faster" principle above now has a concrete deployable structure behind it. A **Toll Gate** is a single-hex, guild-controlled claim in the same family as an Outpost, but purpose-built for the toll mechanic rather than as a relay hub.
@@ -1445,3 +1521,36 @@ Added by the fuel-consumption correction (21-07-26):
 
 66. **Which of the two engine truths the console's cycle countdown and verdict should show — the STORED window, or the next tick's projection.** *(Raised and reproduced by the console legibility pass, 28-08-26; deferred rather than answered.)* The snapshot's whole `production` block is `previewProduction(state)`, which resolves the tick the engine **would** run next (`state.tick + 1`) — deliberately, so the telemetry matches what `applyProduction` is about to do (the anti-drift guarantee, §5). The consequence is that every window figure the console shows is **one tick ahead of the stored window**, and at the boundary that is visible: with `N = 6`, at `state.tick 5` the panel already shows the boundary verdict (`met`, `ticksRemaining 1`), and at `state.tick 6` — the boundary tick itself, whose stored window still holds the full `delivered` — the panel already shows the NEXT window (`windowStart 7`, `delivered 2`). So the cycle appears to reset a tick before it does, and the verdict is on screen for exactly one tick before it is replaced. Not a bug in the engine (both numbers are engine truth), and not a small client fix: the stored window is **not in the snapshot at all** (`guild.syndicateWindows` is serialized state the snapshot does not echo), so showing it needs an additive snapshot block *and* a ruling on **which readout reads which** — the countdown, the thermometer, the per-row verdict and the paced send are not obviously all the same answer, and a send control that showed the pre-tick pace while the engine acts on the post-tick one would be a new kind of wrong. Needs the rule before the build. Until then the offset stands, documented here rather than papered over.
 
+**Added by the Prefecture ruling (29-09-26):**
+
+67. **What happens to a system's GOODS when its Prefecture falls.** The ruling (§2) sends the guild's
+**assets** in an evicted system into orbital limbo awaiting pickup, reusing §5's lease-recovery path.
+It says nothing about the **goods**: under ruling B1 a guild's stockpile is system-scoped
+(`stockpiles` = `systemId -> good -> int`, §15.4), so an evicted guild is left holding a pool keyed
+to a system it no longer holds. Three candidates, none ruled: (a) **destroyed** - an accounted goods
+sink like a destroyed laden craft (§4), the simplest and the harshest; (b) **stranded** - the pool
+survives, unreachable until the guild re-claims the system; (c) **recoverable** - the goods go into
+orbit with the machines and are hauled out, which needs a cargo-volume account for a pool that has
+never had one. The choice is **visible in the market, not just in fiction**: Galactic Supply (§15.4)
+counts every guild pool, so (a) drops the galaxy's supply total and (b) does not. The eviction path
+cannot be built until this is ruled.
+
+68. **Whether the Prefecture's Tier-4 bill is what finally claims `claim_beacon` and
+`habitation_module`.** Four Tier-3 modules are used by **no** bill - `drive_module`,
+`droid_components`, `claim_beacon`, `habitation_module` - and they sit on the placeholder
+`UNCLA§IFIED_TIER3_BAND` precisely because nothing consumes them, which is an open decision-checklist
+item (`docs/phase-1-tuning.md`; roadmap.md Phase 2). A Prefecture is the obvious consumer for two of
+them by name. **Nothing here is ruled**: the bill, its `BUILD_TICKS`, and the two modules' sub-tier
+bands are all unset, and picking them would invent numbers (working rule 5). Recorded so the
+connection is not re-discovered from scratch.
+
+69. **How a Prefecture is removed by anyone but its owner.** The ruling says "torn down or destroyed",
+but the design has **no hostile-destruction mechanic for a structure**. Owner teardown has a
+precedent (an Outpost is torn down permanently by owner or operator, §4); hostile removal does not -
+§5's pressure on a rival is economic and reputational (takeover, forced closure, forced lease) and
+§7's enforcement is council votes and fines, none of which demolish a building. So "destroyed"
+currently names an event nothing in the game can cause. Either a Prefecture is removable only by its
+owner and by the storyteller (§9) - making a system lost only by its holder's choice or by disaster,
+which is legible but not truly contestable - or the Prefecture is the thing that finally requires a
+contest / siege mechanic. This question decides whether the Prefecture delivers the losability it is
+being designed for.
