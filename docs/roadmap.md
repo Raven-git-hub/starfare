@@ -18,7 +18,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
-| 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,776 tests, deterministic) |
+| 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,777 tests, deterministic) |
 | 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
@@ -2159,7 +2159,8 @@ boundary so the later hex-map swap doesn't touch it.
     no good list, timer or week. Every other good, and Tier 4, is unchanged.
   - **For a timed good:**
     - the stockpile strip loses its top-up squares and per-tick chevrons, and shows "per factory · 1
-      unit / 15m · up to 672 /week";
+      unit / 15m · up to 672 /week"; *(⤳ 28-09-26: that note is cut as clutter, "Tier-3 console — the
+      stockpile strip's note cut" below)*
     - the Production column shows the cadence and each factory's unit on the line, not a per-tick
       trend;
     - Distribution has two arms, **Syndicate 1 · fixed, then Stockpile 2 · fixed**, with no
@@ -2406,6 +2407,47 @@ boundary so the later hex-map swap doesn't touch it.
     - Every timed case: exactly one element added; with it removed, the DOM and the whole stage's
       pixels are identical.
     The timed strip grows from 104–106px to 142px. **No number was invented.**
+
+- **Tier-3 console — the stockpile strip's note cut; the idle-good line terse — ✅ BUILT 28-09-26
+  (client copy, asked for by the human).** `docs/tier3-timed-production.md` ("As built — the
+  console's stockpile strip carries no note" at its end); design.md §5 notes. `client/console.html`
+  only. **No engine change, no snapshot change, no figure changed.**
+  - **The strip.** `timedReservePanel` draws no note. The three lines under the timed strip's title
+    are gone:
+    - "per factory · 1 unit / 15m";
+    - "up to `y` /week";
+    - "the reserve is never taken at the week's settlement".
+    The strip shows its title, the reserve field and bar, and on-hand, and still no chevrons.
+    `stockpileStrip`'s fifth argument is now a `timed` flag, not a note, because an empty note would
+    have drawn the per-tick chevrons back. Tier 1/2 pass nothing and are unchanged. The unused
+    `.rs-cad` style and `timedReservePanel`'s unused `t3`/`report` arguments are gone.
+  - **Still on the page:** the cadence and `y` in the Production column, and the floor's job in the
+    Stockpile arm. An idle timed good draws no Production column, so it no longer shows `y`.
+  - **The idle-good line, every tier:** "Lead — idle · on hand 7". It was "Lead is idle in sys_0006 —
+    nothing mined, refined, or consumed here. On hand: 7."
+  - **Tests:** `server.test.js` has two pins repointed to the new call shapes, and the Slice A pin no
+    longer asks for the strip's reserve line. The arm half is kept. A new pin (+1) checks four things:
+    - no `rs-cad` anywhere;
+    - no note words in `timedReservePanel`;
+    - the timed head is the title alone, and Tier 1/2's call is unchanged;
+    - the terse idle line, with the old sentence gone.
+    All three Tier-3 console pins fail against HEAD's page. Four deliberate breakages each turn a
+    named pin red: an empty note (chevrons back), the old idle sentence, a note line back in the
+    panel, and chevrons in the timed head. `tier3-console-client.test.js` changed in comments only.
+  - **Proof.** Sim 1,776 → **1,777 green**, tools **68 green**; no golden moved. Chromium ran on two
+    live dev servers, this page and HEAD c99005b's, on one galaxy built by the same actions (seed 7331,
+    tick 20). It had Tier-1 mines, Tier-2 refines, a committed fuel tank, an uncommitted power-cells
+    factory, an unclassified drive module, and idle lead, silicon wafer and hull plating. 18 cases in
+    all, standalone and embedded, both right tabs, and Tier 4:
+    - **Unchanged (11):** Tier 1/2, the unclassified module, Tier 4 and embedded are DOM-identical.
+      10 are pixel-identical. One differs by 100 pixels at ≤1/255, in the flow body, not the strip.
+      That is renderer noise: HEAD shows it against itself on another case.
+    - **Changed as intended (7):** each timed strip lost exactly its note, with no chevrons. Each idle
+      case shows the terse line.
+    - The stock row stays 142px.
+    - The DOM compare normalises the sparkline's gradient ids (`sg<n>`). They come from a per-render
+      counter, so they vary between two renders of the same page on HEAD too.
+    **No number was invented.**
 
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar

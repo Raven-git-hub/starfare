@@ -1078,7 +1078,9 @@ popup shows a recipe before any factory exists, so it has no row to read.)
   popup does: 3.5, 2.33). The typed reserve field and the bar are unchanged (see the rulings below).
   *(⤳ 28-09-26, Slice A2-client-fix: the Syndicate top-up square is back on this strip, in the
   Consumption square's place and in the week's words, because the week's settlement rescue is now
-  the player's switch. See design.md §5, the AS-BUILT Slice A2-client-fix note.)*
+  the player's switch. See design.md §5, the AS-BUILT Slice A2-client-fix note.)* *(⤳ 28-09-26: the
+  two cadence lines are cut from the strip as clutter, at the human's request. See "As built — the
+  console's stockpile strip carries no note" at the end.)*
 - **The Production column.** The per-tick trend card and sparkline become a cadence card: "1 unit /
   15m" and "Each factory makes one whole unit at a time — up to `y` a week — once a full set of its
   inputs is in stock". Under each factory's chip, where a consumer chip has its throttle, is the unit
@@ -1253,6 +1255,8 @@ field re-renders with it. What changed is what the page says. For a committed ti
 adds "the reserve is never taken at the week's settlement". The Stockpile arm's rule adds "If the week
 ends short, stock above the reserve is delivered to cover it." The other pages checked (two Tier-1
 goods, a Tier-2 good, an uncommitted timed good) render DOM identical to HEAD's page on the same galaxy.
+*(⤳ 28-09-26: the strip's line is cut as clutter; the Stockpile arm is now the one place the floor's
+job is said. See "As built — the console's stockpile strip carries no note" at the end.)*
 
 **Proven** (`sim/tests/settlement-rescue.test.js`, 12 tests). Named tripwires:
 - **(a)** rescued to met, paid for exactly the top-up at the posted price;
@@ -1321,3 +1325,20 @@ tier special-cased. What it means for a timed good:
   "Slice A2-client". Details: design.md §5, the AS-BUILT Slice A2-client note. **⤳ Fixed the same
   day, Slice A2-client-fix: the timed strip now draws the same Syndicate top-up control, in the
   week's words, so a Tier-3 guild can turn its week's top-up on and cap it from the console.**)*
+
+## As built (28-09-26) — the console's stockpile strip carries no note; the idle-good line is terse
+
+A client-only copy cut, asked for by the human: the timed strip's note was clutter. `client/console.html`
+only; no engine, snapshot or figure changed.
+- **The strip.** `timedReservePanel` no longer builds the three lines under the strip's title: "per
+  factory · 1 unit / 15m", "up to `y` /week" and, for a committed good, "the reserve is never taken at
+  the week's settlement". The strip now shows only its title, the typed reserve field and bar, and the
+  on-hand count. It still has no per-tick chevrons: `stockpileStrip` now takes a `timed` flag in place
+  of the note, because an empty note would have drawn the Tier-1/2 chevrons. Tier 1/2 pass no flag, so
+  their strip is unchanged. The unused `.rs-cad` style is gone.
+- **Still said elsewhere.** The cadence and `y` are in the Production column ("1 unit / 15m", "up to `y`
+  a week"). What the reserve floor does at the week's end is in the Stockpile arm. An idle timed good
+  draws no Production column, so it no longer shows `y` anywhere.
+- **The idle-good line** (every tier, not only Tier 3) is now "`<good>` — idle · on hand `N`". It was
+  "`<good>` is idle in `<system>` — nothing mined, refined, or consumed here. On hand: `N`."
+- Details and proof: the roadmap's "Tier-3 console — the stockpile strip's note cut".
