@@ -515,7 +515,10 @@ function createVenture({
     //
     //   { committedOutputPct,   // the share of BASELINE output promised, a fraction
     //     windowDays,           // §5's renegotiation window, in days — stored, inert
-    //                           //   until renegotiation resolves it to a tick
+    //                           //   until renegotiation resolves it to a tick. Counted in
+    //                           //   the licence's OWN window: for a timed Tier-3 licence
+    //                           //   (Slice 3c) it is 1, one 10,080-tick week, and
+    //                           //   `committedOutputPct` is the exact whole-unit ratio x / y
     //     signedTick,           // when the terms were struck (§15.2: record the tick)
     //     lockedPrice,          // the POSTED price at signing — what the fee is
     //                           //   priced off, fixed until renegotiation

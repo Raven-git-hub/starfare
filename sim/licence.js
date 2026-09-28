@@ -42,7 +42,7 @@
 // return numbers, and the tick is the only place a balance changes.
 
 const {
-  windowFraction, DEFAULT_WINDOW_N, TIER3_WINDOW_N, tier3WindowNests,
+  windowFraction, DEFAULT_WINDOW_N, TIER3_WINDOW_N, tier3WindowNests, windowNForGood,
 } = require('./windows.js');
 const {
   producedGoodFor, isLicensedDeuteriumMine, isDockyard,
@@ -238,6 +238,15 @@ const COMMITMENT_FLOOR = 0;
 const WINDOW_DAYS_MIN = 7;
 const WINDOW_DAYS_MAX = 42;
 
+// THE TIER-3 CONTRACT TERM (Slice 3c) — RULED, not a first cut: a Tier-3 contract is "exactly
+// one 7-day window (10,080 ticks) — the contract term and the settlement window are the same
+// week" (docs/tier3-timed-production.md "Contract & settlement"). It is stored in the licence's
+// existing `windowDays` field, which counts the licence's OWN windows: a day for a Tier-1/2
+// licence (so 7–42 of them, the bounds above), the 10,080-tick week for a timed Tier-3 one (so
+// exactly this one). Nothing new is stored — the week itself is derived from the good
+// (`licenceWindowN` below). The applicant does not choose it; `applyForLicence` writes it.
+const TIER3_TERM_WINDOWS = 1;
+
 // feeFraction(c, oNorm) -> the share of the basic fee actually payable, in [0, 1].
 // §5's bilinear interpolation over the four corners, with the equity axis shaped:
 //
@@ -343,6 +352,71 @@ function licenceBasisForGood(good, engineWindowN) {
   return basis && basis.good === good ? basis : null;
 }
 
+// --- The Tier-3 contract: whole units, one week, a fixed re-offer (Slice 3c) ---------
+//
+// docs/tier3-timed-production.md "Income & commitment", "Contract & settlement" and
+// "Renegotiation — fixed re-offer". A licence on a TIMED Tier-3 good differs from a Tier-1/2
+// licence in exactly three ways, and each is decided by the good, never by a stored flag:
+//   1. it commits `x` WHOLE UNITS of its weekly output `y`, not a percentage;
+//   2. its term is ONE week (`TIER3_TERM_WINDOWS` windows of the week), not 7–42 days;
+//   3. its renegotiation re-offers the SAME terms (`renegotiationTerms` below), no ratchet.
+// Everything else — the fee grid, reputation, delivery, the weekly settlement — is shared, and
+// reads the one `committedOutputPct = x / y` the signing stores.
+
+// isTimedVenture(venture) -> true when the venture makes a timed Tier-3 good, i.e. its licence
+// is the Tier-3 contract above. The SAME `ticksPerUnitFor` answer that decides timed production,
+// the weekly window and Syndicate-first delivery, so the four can never disagree about a venture.
+// The four unclassified modules have no timer, so they are false here and keep the Tier-1/2
+// licence (their status quo, docs/roadmap.md decision checklist).
+function isTimedVenture(venture) {
+  return ticksPerUnitFor(producedGoodFor(venture)) !== null;
+}
+
+// licenceWindowN(venture, engineWindowN) -> the length, in ticks, of ONE of this venture's
+// licence windows: the unit its `windowDays` term is counted in. The galaxy's day for a Tier-1/2
+// venture (exactly what every reader used before), the 10,080-tick week for a Tier-3 one. DERIVED
+// from the good through `windowNForGood` — the same answer the settlement reads — so the term a
+// licence runs for and the window it is judged on cannot drift apart. (Like `windowNForGood`, it
+// halts on a Tier-3 venture in a galaxy whose day does not divide the week: such a licence can
+// never be signed, and the invariant names it.)
+function licenceWindowN(venture, engineWindowN) {
+  return windowNForGood(producedGoodFor(venture), engineWindowN);
+}
+
+// weeklyOutputOf(basis) -> `y`, the output a licence is measured on over ONE of its windows:
+// `unitsPerTick × windowN` off `licenceBasisFor`. For a Tier-3 venture that is the ruled
+// `10,080 ÷ TICKS_PER_UNIT` (3a pinned that the two spellings agree exactly for every timer), and
+// it may be fractional — a heavy reactor engine makes 3.5 a week. The name says weekly because
+// only the Tier-3 path asks; for a Tier-1/2 basis it would be the output over one day.
+function weeklyOutputOf(basis) {
+  return basis.unitsPerTick * basis.windowN;
+}
+
+// committedUnitsCeiling(unitsPerTick, windowN) -> the most whole units a licence can commit over
+// one window: `floor(y)`. The ruled bound on `x` ("x is an integer in [0, floor(y)]"), and the
+// same cap `commitmentUnitsFor` has applied to the percentage since Slice 3a — one expression,
+// read by both.
+function committedUnitsCeiling(unitsPerTick, windowN) {
+  return Math.floor(unitsPerTick * windowN);
+}
+
+// isValidCommittedUnits(units, basis) -> is `units` a legal Tier-3 `x`: a whole number from 0 up
+// to `floor(y)`? Refused, not clamped (the equity and percentage checks' discipline): a committed
+// count the engine quietly rounded would be a contract the player did not sign.
+function isValidCommittedUnits(units, basis) {
+  return Number.isInteger(units) && units >= 0
+    && units <= committedUnitsCeiling(basis.unitsPerTick, basis.windowN);
+}
+
+// committedPctForUnits(units, basis) -> the ratio `x / y` a Tier-3 licence stores as its
+// `committedOutputPct`. EXACT: `y` keeps its fraction (3 of a heavy engine's 3.5 is 0.857…, not
+// 3 ÷ 4 or 3 ÷ 3), so the fee grid and the reputation formulas read the share the guild really
+// promised. Never rounded to 2 dp — that normalisation is the Tier-1/2 ratchet's, and a ratio of
+// whole units is not a percentage.
+function committedPctForUnits(units, basis) {
+  return units / weeklyOutputOf(basis);
+}
+
 // --- The charge (Slice 3b-iii) ---------------------------------------------------
 
 // feeOwed(licence, status, fraction) -> the INTEGER credits ONE licensed venture owes at
@@ -386,7 +460,8 @@ function feeOwed(licence, status, fraction) {
 //
 // Teardown INVENTS NO NUMBER (§0): every figure below is built from terms already ruled and
 // stored — the venture's own `reputation`, the licence's `discountedFee`/`windowDays`, and
-// the engine-wide `windowN`.
+// the licence's own window `windowN` (`licenceWindowN`: the engine-wide day for Tier 1/2, the
+// derived week for Tier 3 — Slice 3c).
 //
 //   rpForfeit       — the venture's whole earned standing, which leaves the guild sum when
 //                     the venture is removed (§3.1). Not a flat penalty: it is the row's own
@@ -412,7 +487,9 @@ function feeOwed(licence, status, fraction) {
 // preview of the RP it would surrender even though the action is deferred.
 
 // licenceEndTick(licence, windowN) -> the tick a licence's committed window ends on:
-// `signedTick + windowDays × windowN`. FACTORED OUT because two lifecycle numbers are this
+// `signedTick + windowDays × windowN`, where `windowN` is the licence's OWN window
+// (`licenceWindowN`; every caller passes it — a Tier-3 licence's one window is the week, so its
+// term ends 10,080 ticks after signing, Slice 3c). FACTORED OUT because two lifecycle numbers are this
 // exact value and must not be able to disagree: teardownSettlement's `lockoutUntilTick` — the
 // node's self-denial release when the term still has cycles left (§3.3) — and the snapshot's
 // `contractWindow.endTick`, the Venture Management popup's contract-window ledger. One
@@ -427,10 +504,14 @@ function teardownSettlement(state, guild, venture) {
   const lic = venture && venture.licence;
   if (!lic) return { settlementFee: 0, lockoutUntilTick: null, rpForfeit };
 
-  // A cycle is a day is `windowN` ticks — read the engine-wide value the same way the
-  // signing apply and the resolver read it, so the settlement is priced over the very
-  // window the licence's terms were locked against (sim/windows.js).
-  const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+  // A cycle is ONE OF THE LICENCE'S OWN WINDOWS, `windowN` ticks long — the window its fee is
+  // charged over, so `remainingCycles × discountedFee` counts in the same unit the fee was
+  // priced in. For a Tier-1/2 licence that is the galaxy's day, read exactly as the signing
+  // apply and the resolver read it, so its settlement is unchanged. For a Tier-3 licence it is
+  // the WEEK (Slice 3c), and its term is one of them: torn down part-way through its week it owes
+  // that one weekly fee and is locked out until the week's end — never the seven weekly fees a
+  // day-counted cycle once charged it (the 3a defect this closes).
+  const windowN = licenceWindowN(venture, state.windowN == null ? DEFAULT_WINDOW_N : state.windowN);
   const elapsedCycles = Math.floor((state.tick - lic.signedTick) / windowN);
   const remainingCycles = Math.max(0, lic.windowDays - elapsedCycles);
   const settlementFee = remainingCycles * lic.discountedFee;
@@ -864,8 +945,14 @@ function isValidWindowDays(value) {
 // For every Tier-1/2 venture this is a no-op, provably: its output over a window is a whole
 // number (integer baseline × integer ticks), and a share `pct ≤ 1` of a whole number rounds to
 // at most that number — so `min` always picks the rounded share, byte for byte as before.
+//
+// A TIER-3 LICENCE IS NOT SIGNED THROUGH HERE (Slice 3c): it commits whole units `x` directly and
+// stores `x / y`. The one Tier-3 reader left is the re-lock (`renegotiateLicence`), which hands
+// back that same exact `x / y`, and `round((x / y) × y)` is `x` again — pinned for every timed good
+// and every legal `x` by sim/tests/tier3-contract.test.js, and asserted every tick by the
+// `tier3-commitment-is-x-of-y` invariant.
 function commitmentUnitsFor(pct, baselineUnitsPerTick, windowN) {
-  const ceiling = Math.floor(baselineUnitsPerTick * windowN);
+  const ceiling = committedUnitsCeiling(baselineUnitsPerTick, windowN);
   return Math.min(Math.round(pct * baselineUnitsPerTick * windowN), ceiling);
 }
 
@@ -921,6 +1008,7 @@ function ventureStanding(venture) {
 // renegotiationTerms(venture) -> { committedOutputPct, windowDays, feeDiscount }
 // The whole "terms function" design.md §5 describes: a small, obviously-correct read of
 // the venture's standing into the three outputs the Syndicate offers. Pure, no mutation.
+// (A Tier-3 venture skips it: its re-offer is fixed — see the first branch below.)
 //
 //   committedOutputPct — the current committed pct stepped up by band, clamped to 1.0:
 //                        strong keeps it (may coast); steady +0.10; subPar +0.25; atRisk
@@ -937,6 +1025,17 @@ function renegotiationTerms(venture) {
   const lic = venture && venture.licence;
   if (!lic) {
     throw new Error(`renegotiationTerms: a venture must hold an ordinary licence to renegotiate — venture ${venture && venture.id} has none`);
+  }
+  // THE TIER-3 FIXED RE-OFFER (Slice 3c; docs/tier3-timed-production.md "Renegotiation — fixed
+  // re-offer"): "the Syndicate re-offers identical terms (same committed unit count, same week
+  // window) … no standing ratchet". So a Tier-3 venture's standing is not read at all: the same
+  // `x / y`, carried EXACTLY (no 2-dp normalisation — it is a ratio of whole units, and rounding
+  // it would change `x`), the same one-week term, and no Strong discount (the discount is a
+  // standing reward, and the ruling drops the standing-keyed recompute for Tier 3 — the decision
+  // checklist asks the human to confirm this reading). Only the PRICE is refreshed, and that is
+  // `renegotiationFee`'s job, at the current posted price, as for every tier.
+  if (isTimedVenture(venture)) {
+    return { committedOutputPct: lic.committedOutputPct, windowDays: lic.windowDays, feeDiscount: 0 };
   }
   const standing = ventureStanding(venture);
   const current = lic.committedOutputPct;
@@ -1038,31 +1137,51 @@ function graceDaysFor(windowDays) {
   return GRACE_DAYS_LONG;                                    // >= 28
 }
 
-// renegotiationSchedule(licence, windowN, dayAnchorTick) -> { windowEndTick, actsTick,
-// lapseTick } — the three DAY-ALIGNED ticks of a licence's renegotiation timeline, all built
-// on the calendar (`dayOf`/`tickAt`) off the SAME base day, so they cannot diverge:
+// renegotiationSchedule(licence, windowN, dayAnchorTick, termWindowN) -> { windowEndTick,
+// actsTick, lapseTick } — the three DAY-ALIGNED ticks of a licence's renegotiation timeline, all
+// built on the calendar (`dayOf`/`tickAt`) off the SAME base day, so they cannot diverge:
 //
 //   windowEndTick — the day-aligned window-end (the calendar `renegotiationDeadline`,
-//                   docs/cycle-and-calendar.md): the first tick of the day `windowDays` days
+//                   docs/cycle-and-calendar.md): the first tick of the day `termDays` days
 //                   after the day the licence was signed. This is the reconciliation of
 //                   Slice 1's raw `licenceEndTick` onto the calendar basis; for a licence
 //                   signed at a day boundary (the persistent-server norm) the two coincide.
-//   actsTick      — windowEndTick + graceDaysFor(windowDays) days: grace ends, the Syndicate
+//   actsTick      — windowEndTick + graceDaysFor(termDays) days: grace ends, the Syndicate
 //                   acts, the offer appears. Nothing is offered before this.
 //   lapseTick     — actsTick + ACCEPTANCE_WINDOW_DAYS days: the auto-lapse deadline. If the
 //                   player has neither accepted nor rejected by here, the tick lapses it.
 //
+// `termDays` is the contract's length IN DAYS: its `windowDays` windows, each `termWindowN`
+// ticks long, over the `windowN`-tick day. `termWindowN` is the licence's own window
+// (`licenceWindowN`). It defaults to the day, where `termDays` is plainly `windowDays` — every
+// Tier-1/2 licence, byte for byte as before. A Tier-3 licence's one window is the week, so its
+// contract is 10,080 ÷ 1,440 = 7 days long at the ruled day (Slice 3c): the offer, the grace
+// (a 7-day contract's grace, 1 day) and the acceptance clock run in days exactly as they do for a
+// 7-day Tier-1/2 licence. The engine reaches this only through `renegotiationScheduleFor`, which
+// passes the venture's window, so no caller can forget it.
+//
 // Pure: reads only the licence's `signedTick`/`windowDays` and the galaxy's cadence/anchor.
-function renegotiationSchedule(licence, windowN, dayAnchorTick = 0) {
+function renegotiationSchedule(licence, windowN, dayAnchorTick = 0, termWindowN = windowN) {
   const signDay = dayOf(licence.signedTick, windowN, dayAnchorTick);
-  const endDay = signDay + licence.windowDays;
-  const actsDay = endDay + graceDaysFor(licence.windowDays);
+  // Whole days: a licence window is either the day itself or the week, which the day divides
+  // (`tier3WindowNests` — a Tier-3 licence cannot be signed in a galaxy where it does not).
+  const termDays = licence.windowDays * (termWindowN / windowN);
+  const endDay = signDay + termDays;
+  const actsDay = endDay + graceDaysFor(termDays);
   const lapseDay = actsDay + ACCEPTANCE_WINDOW_DAYS;
   return {
     windowEndTick: tickAt(endDay, 0, windowN, dayAnchorTick),
     actsTick: tickAt(actsDay, 0, windowN, dayAnchorTick),
     lapseTick: tickAt(lapseDay, 0, windowN, dayAnchorTick),
   };
+}
+
+// renegotiationScheduleFor(venture, windowN, dayAnchorTick) -> the venture's renegotiation
+// schedule, with its term counted in its OWN window (`licenceWindowN`: the day for Tier 1/2,
+// the week for Tier 3). The ONE entry point the engine uses — the snapshot's contract window
+// and offer gate, and the tick's auto-lapse — so all three read one timeline by construction.
+function renegotiationScheduleFor(venture, windowN, dayAnchorTick = 0) {
+  return renegotiationSchedule(venture.licence, windowN, dayAnchorTick, licenceWindowN(venture, windowN));
 }
 
 // ventureName(venture) -> the venture's display name, the SAME string the renegotiation
@@ -1203,5 +1322,8 @@ module.exports = {
   ventureStanding, renegotiationTerms, renegotiationFee,
   GRACE_CUT_MED, GRACE_CUT_LONG, GRACE_CUT_MAX,
   GRACE_DAYS_MIN, GRACE_DAYS_SHORT, GRACE_DAYS_MED, GRACE_DAYS_LONG,
-  ACCEPTANCE_WINDOW_DAYS, graceDaysFor, renegotiationSchedule, applyLapse, applyVentureClosure,
+  ACCEPTANCE_WINDOW_DAYS, graceDaysFor, renegotiationSchedule, renegotiationScheduleFor,
+  applyLapse, applyVentureClosure,
+  TIER3_TERM_WINDOWS, isTimedVenture, licenceWindowN, weeklyOutputOf, committedUnitsCeiling,
+  isValidCommittedUnits, committedPctForUnits,
 };

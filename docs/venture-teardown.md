@@ -86,7 +86,11 @@ output for the contract term. That is what the fee charges, and only a licensed 
     remainingCycles = max(0, licence.windowDays − floor((state.tick − licence.signedTick) / windowN))
     settlementFee   = remainingCycles × licence.discountedFee
 
-where `windowN = state.windowN ?? DEFAULT_WINDOW_N` (a cycle = a day = `windowN` ticks, `sim/windows.js`). The
+where `windowN = state.windowN ?? DEFAULT_WINDOW_N` (a cycle = a day = `windowN` ticks, `sim/windows.js`).
+*(⤳ Tier-3 contract, Slice 3c, 28-09-26: `windowN` is the licence's **own** window, `licenceWindowN` — the day
+for a Tier-1/2 licence, exactly as above, and the 10,080-tick week for a timed Tier-3 licence, whose term is one
+of them (`windowDays: 1`). So a Tier-3 licence torn down on any day of its week owes that one weekly fee, and
+its lockout runs to signing + 10,080. `docs/tier3-timed-production.md` "As built — Slice 3c".)* The
 fee is the **negotiated (discounted) rate**, not the basic fee — the player pays out the deal they signed. The
 **current partial cycle counts as a whole one** (the `floor` on elapsed cycles), a deliberate first-cut that
 slightly favours the Syndicate and keeps the arithmetic a plain integer product — no rounding.

@@ -11,6 +11,8 @@ const {
   EQUITY_CEILING, isValidEquityPct, COMMITMENT_FLOOR, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX,
   isValidCommitmentPct, isValidWindowDays, licenceFee, commitmentUnitsFor, licenceBasisFor, equityOf,
   signingBump, teardownSettlement, licenceEndTick, renegotiationFee, applyLapse, applyVentureClosure,
+  TIER3_TERM_WINDOWS, licenceWindowN, weeklyOutputOf, committedUnitsCeiling, isValidCommittedUnits,
+  committedPctForUnits,
 } = require('./licence.js');
 const {
   producedGoodFor, baselineRateFor, isLicensedDeuteriumMine, isDockyard, ticksPerUnitFor,
@@ -776,9 +778,25 @@ function createSetSyndicateCommitmentAction({ guildId, ventureId, commitment }) 
 // investors, a 75% majority (§5, #57) — which this slice does not build, so a second
 // application on the same venture is refused rather than quietly re-locking the terms
 // at today's price.
-function createApplyForLicenceAction({ guildId, ventureId, committedOutputPct, windowDays }) {
+//
+// TWO SHAPES, one per kind of licence (Slice 3c, docs/tier3-timed-production.md "Income &
+// commitment"):
+//   - Tier 1/2 — `{ committedOutputPct, windowDays }`: a share of the baseline, and a term the
+//     player picks (7–42 days). Exactly as before.
+//   - Tier 3 (a timed good) — `{ committedUnits }` alone: `x` WHOLE units of the venture's weekly
+//     output `y`. There is no term to pick: a Tier-3 contract is always one week.
+// The creator has no state, so it cannot know which kind the venture is — it only builds the
+// shape it is given, and refuses a mix of the two. The validator, which can see the venture's
+// good, refuses the wrong shape for it.
+function createApplyForLicenceAction({ guildId, ventureId, committedOutputPct, windowDays, committedUnits }) {
   if (guildId === undefined) throw new Error('createApplyForLicenceAction: guildId is required');
   if (ventureId === undefined) throw new Error('createApplyForLicenceAction: ventureId is required');
+  if (committedUnits !== undefined) {
+    if (committedOutputPct !== undefined || windowDays !== undefined) {
+      throw new Error('createApplyForLicenceAction: committedUnits is the Tier-3 shape — it takes no committedOutputPct and no windowDays (whole units, a fixed one-week term)');
+    }
+    return { type: 'applyForLicence', guildId, ventureId, committedUnits };
+  }
   if (committedOutputPct === undefined) throw new Error('createApplyForLicenceAction: committedOutputPct is required');
   if (windowDays === undefined) throw new Error('createApplyForLicenceAction: windowDays is required');
   return { type: 'applyForLicence', guildId, ventureId, committedOutputPct, windowDays };
@@ -1557,6 +1575,52 @@ function pruneLockout(state, siteId) {
   if (state.nodeLockouts.length === 0) delete state.nodeLockouts;
 }
 
+// validateTier3Licence(state, action, venture, good) -> { valid } | { valid: false, reason }
+// The TERMS half of `applyForLicence`'s validation for a venture making a TIMED Tier-3 good
+// (Slice 3c; docs/tier3-timed-production.md "Income & commitment"). The checks common to every
+// licence (the guild, the venture, "already licensed", deuterium, fuel) have already passed.
+//
+// A Tier-3 licence commits `x` WHOLE units of the venture's weekly output `y = 10,080 ÷
+// TICKS_PER_UNIT`, an integer in [0, floor(y)], and its term is fixed at one week. So the action
+// must carry `committedUnits` and must NOT carry the Tier-1/2 terms: a percentage or a term here
+// would be a contract the engine cannot sign as written, and quietly converting or dropping it
+// would be the engine rewriting what the player asked for. Each refusal names the bound, so the
+// caller can see the right `x` to send.
+function validateTier3Licence(state, action, venture, good) {
+  // The fee is priced off the POSTED price at signing, so there must be one to lock.
+  if (postedPrice(state, good) == null) {
+    return { valid: false, reason: `${JSON.stringify(good)} has no posted price to lock the fee against` };
+  }
+  // A Tier-3 good settles on the 10,080-tick week (Slice 3a), which must end on a day boundary to
+  // be judged at all. At the ruled day it always does; a galaxy set up with a day that does not
+  // divide the week cannot settle one, so the licence is REFUSED here rather than signed and
+  // halted on at the next tick (sim/windows.js `windowNForGood`).
+  const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+  if (!tier3WindowNests(windowN)) {
+    return { valid: false, reason: `${JSON.stringify(good)} is a Tier-3 good and settles on the ${TIER3_WINDOW_N}-tick week, which this galaxy's ${windowN}-tick day does not divide — it could never be judged` };
+  }
+  // The weekly output `y` the commitment is counted against — the SAME basis the apply signs on
+  // (`licenceBasisFor`, sim/licence.js: the factory's timer over the week).
+  const basis = licenceBasisFor(venture, windowN);
+  if (!basis || !(basis.unitsPerTick > 0)) {
+    return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} has no droidless baseline output to price a fee against` };
+  }
+  const y = weeklyOutputOf(basis);
+  const most = committedUnitsCeiling(basis.unitsPerTick, basis.windowN);
+  // `y` is shown to 2 dp only for reading (a deep scan mast's 2.333… a week); the bound is exact.
+  const bound = `an integer from 0 to ${most} (the floor of its weekly output y = ${Math.round(y * 100) / 100})`;
+  if (action.committedOutputPct !== undefined) {
+    return { valid: false, reason: `${JSON.stringify(good)} is a Tier-3 good — its licence commits whole units, not a percentage: send committedUnits, ${bound}` };
+  }
+  if (action.windowDays !== undefined) {
+    return { valid: false, reason: `${JSON.stringify(good)} is a Tier-3 good — its contract term is fixed at one week, so it takes no windowDays` };
+  }
+  if (!isValidCommittedUnits(action.committedUnits, basis)) {
+    return { valid: false, reason: `committedUnits must be ${bound} — got ${JSON.stringify(action.committedUnits)}` };
+  }
+  return { valid: true };
+}
+
 // Validates ONE action against state-as-it-stands. Never mutates `state`.
 // Returns { valid: true } or { valid: false, reason }.
 function validateAction(state, action) {
@@ -1934,6 +1998,16 @@ function validateAction(state, action) {
     if (isFuel(committedGood)) {
       return { valid: false, reason: `${JSON.stringify(committedGood)} is Syndicate-regulated — fuel carries no venture licence (§8)` };
     }
+    // A TIMED Tier-3 good signs the Tier-3 contract (Slice 3c): whole units, a fixed week. Its
+    // terms are checked by their own function below; everything above was common to both.
+    if (ticksPerUnitFor(committedGood) !== null) {
+      return validateTier3Licence(state, action, venture, committedGood);
+    }
+    // A Tier-1/2 licence commits a SHARE. `committedUnits` is the Tier-3 shape, and this good
+    // is not made on a timer — refuse it by name rather than ignore it.
+    if (action.committedUnits !== undefined) {
+      return { valid: false, reason: `${JSON.stringify(committedGood)} is a Tier-1/2 good — its licence commits a share of output (committedOutputPct, with a windowDays term); committedUnits is the Tier-3 whole-unit commitment` };
+    }
     // The terms. Refused, not clamped — as with 3a's equity offer, a silently-adjusted
     // term would be the engine rewriting a contract the player agreed to.
     if (!isValidCommitmentPct(action.committedOutputPct)) {
@@ -1948,19 +2022,11 @@ function validateAction(state, action) {
     if (postedPrice(state, committedGood) == null) {
       return { valid: false, reason: `${JSON.stringify(committedGood)} has no posted price to lock the fee against` };
     }
-    // A TIMED Tier-3 good settles on the 10,080-tick week (Slice 3a), which must end on a day
-    // boundary to be judged at all. At the ruled day it always does; a galaxy set up with a
-    // day that does not divide the week cannot settle one, so the licence is REFUSED here
-    // rather than signed and halted on at the next tick (sim/windows.js `windowNForGood`).
-    const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
-    if (ticksPerUnitFor(committedGood) !== null && !tier3WindowNests(windowN)) {
-      return { valid: false, reason: `${JSON.stringify(committedGood)} is a Tier-3 good and settles on the ${TIER3_WINDOW_N}-tick week, which this galaxy's ${windowN}-tick day does not divide — it could never be judged` };
-    }
     // And the venture must have an output to price the fee off — the SAME basis the apply
-    // signs on (`licenceBasisFor`, sim/licence.js: the droidless baseline, or a Tier-3
-    // factory's timer). A mine whose resource has no baseline entry is caught by
-    // sim/baseline.js's drift guard; refusing here keeps a fee from being computed against
-    // a zero capacity.
+    // signs on (`licenceBasisFor`, sim/licence.js: the droidless baseline). A mine whose
+    // resource has no baseline entry is caught by sim/baseline.js's drift guard; refusing
+    // here keeps a fee from being computed against a zero capacity.
+    const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
     const basis = licenceBasisFor(venture, windowN);
     if (!basis || !(basis.unitsPerTick > 0)) {
       return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} has no droidless baseline output to price a fee against` };
@@ -2000,7 +2066,10 @@ function validateAction(state, action) {
     // Read `windowN` the SAME way applyForLicence does, and compare against the SAME
     // end-of-term tick teardownSettlement and the snapshot use (`licenceEndTick`), so a
     // renegotiation cannot open a tick before the panel says the window is up.
-    const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+    // The term is counted in the licence's OWN window (`licenceWindowN`): the day for Tier 1/2,
+    // exactly as before, and the week for a Tier-3 licence (Slice 3c), whose one-window term
+    // therefore reopens a week after signing, not a day.
+    const windowN = licenceWindowN(venture, state.windowN == null ? DEFAULT_WINDOW_N : state.windowN);
     if (state.tick < licenceEndTick(venture.licence, windowN)) {
       return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)}'s committed window has not elapsed (ends at tick ${licenceEndTick(venture.licence, windowN)}, now ${state.tick}) — terms reopen only at window-end (§5)` };
     }
@@ -2038,7 +2107,7 @@ function validateAction(state, action) {
     // And the committed window must have ELAPSED — the licence is only up for renegotiation
     // (accept OR lapse) at window-end (§5). `windowN` and `licenceEndTick` read the SAME way
     // renegotiateLicence reads them.
-    const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+    const windowN = licenceWindowN(venture, state.windowN == null ? DEFAULT_WINDOW_N : state.windowN);
     if (state.tick < licenceEndTick(venture.licence, windowN)) {
       return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)}'s committed window has not elapsed (ends at tick ${licenceEndTick(venture.licence, windowN)}, now ${state.tick}) — terms reopen only at window-end, so there is nothing to lapse yet (§5)` };
     }
@@ -3395,17 +3464,30 @@ function applyAction(state, action) {
     const windowN = basis.windowN;
     const baselineUnitsPerTick = basis.unitsPerTick;
 
+    // THE TERMS (Slice 3c). A Tier-1/2 licence stores what the player offered: a share and a
+    // term. A TIMED Tier-3 licence commits `x` whole units of its weekly output `y`, and stores the
+    // exact ratio `x / y` as its `committedOutputPct` — the one number the fee grid, the signing
+    // bump and the met/breach reputation all read, so they read the share the guild really
+    // promised. Its term is not the player's to pick: it is one week (`TIER3_TERM_WINDOWS`), in
+    // the licence's own weekly window. (Validation has already checked the action carries the
+    // right shape for the good, so the good alone decides which branch runs.)
+    const timed = ticksPerUnitFor(good) !== null;
+    const committedOutputPct = timed
+      ? committedPctForUnits(action.committedUnits, basis)
+      : action.committedOutputPct;
+    const windowDays = timed ? TIER3_TERM_WINDOWS : action.windowDays;
+
     const { basicFee, discountedFee } = licenceFee({
       baselineUnitsPerTick,
       windowN,
       lockedPrice,
-      committedOutputPct: action.committedOutputPct,
+      committedOutputPct,
       equityPct: equityOf(venture),   // the term offered at establishment (Slice 3a)
     });
 
     venture.licence = {
-      committedOutputPct: action.committedOutputPct,
-      windowDays: action.windowDays,
+      committedOutputPct,
+      windowDays,
       signedTick: next.tick,          // §15.2: every mutation records its tick
       lockedPrice,
       basicFee,
@@ -3446,9 +3528,12 @@ function applyAction(state, action) {
     // The operative commitment: the share of BASELINE output promised over one window,
     // in whole units. This is the field the §5 accrual sums into `Q` and that 3a's sale
     // is paid on — so granting the licence is what switches the commitment sale on. For a
-    // Tier-3 venture it is a share of its WEEKLY output `y`, never more than `floor(y)`
-    // whole units (`commitmentUnitsFor`'s ceiling), accrued over the week it settles on.
-    venture.syndicateCommitment = commitmentUnitsFor(action.committedOutputPct, baselineUnitsPerTick, windowN);
+    // Tier-3 venture it is simply `x`, the whole units it committed (Slice 3c) — the SAME `x`
+    // its stored `x / y` was built from, so delivery (3b), settlement (3a), the fee and
+    // reputation all read one commitment — accrued over the week it settles on.
+    venture.syndicateCommitment = timed
+      ? action.committedUnits
+      : commitmentUnitsFor(action.committedOutputPct, baselineUnitsPerTick, windowN);
 
     // The MID-WINDOW PRO-RATE (§5's join ruling, Option A; Slice 3b-ii). Stamping this
     // is what makes `windowFraction` (sim/windows.js) stop returning 1: a venture
@@ -3484,9 +3569,11 @@ function applyAction(state, action) {
     // read the SAME way applyForLicence reads them, through the one `licenceBasisFor`
     // (sim/licence.js; no number invented). For a Tier-3 venture that is its timed weekly
     // output (Slice 3a), so a re-lock can never slide it back onto the stale 5 batches/tick ×
-    // a day it was signed off. ONLY THE BASIS is shared: the Syndicate's terms function (the
-    // commitment ratchet below) is unchanged for every tier — Tier-3's fixed re-offer is a
-    // later slice (docs/tier3-timed-production.md "Renegotiation").
+    // a day it was signed off. The TERMS differ by tier inside `renegotiationTerms`
+    // (sim/licence.js): a Tier-1/2 venture gets the standing ratchet, a Tier-3 one the fixed
+    // re-offer (Slice 3c) — the same `x / y` and the same one-week term, re-priced at today's
+    // price — so this apply is shared, and re-deriving the commitment below hands back the
+    // same `x`.
     const engineWindowN = next.windowN == null ? DEFAULT_WINDOW_N : next.windowN;
     const basis = licenceBasisFor(venture, engineWindowN);
     const good = basis.good;

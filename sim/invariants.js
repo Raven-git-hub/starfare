@@ -70,6 +70,7 @@ const { PRICED_GOODS, PUBLISH_LAG, bandFor } = require('./prices.js');
 const {
   EQUITY_CEILING, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX, isValidWindowDays,
   RP_FLOOR, RP_SOFT_CAP,
+  TIER3_TERM_WINDOWS, licenceBasisFor, weeklyOutputOf, isValidCommittedUnits, committedPctForUnits,
 } = require('./licence.js');
 const { ASSET_CONDITION_NEW, ASSET_CONDITION_MIN, isAssetKind, assetKindForVentureType } = require('./assets.js');
 const {
@@ -802,7 +803,37 @@ function checkLicenceTerms(state) {
         || lic.committedOutputPct < 0 || lic.committedOutputPct > 1) {
         out.push({ rule: 'commitment-is-a-fraction (§5)', where: `${at}.committedOutputPct`, detail: { value: lic.committedOutputPct } });
       }
-      if (!isValidWindowDays(lic.windowDays)) {
+      // THE TIER-3 CONTRACT (Slice 3c; docs/tier3-timed-production.md "Income & commitment",
+      // "Contract & settlement"). A licence on a TIMED good is the Tier-3 contract, and two of its
+      // terms are fixed by the ruling rather than chosen, so a state that disagrees with them was
+      // built or edited around the signing — and would settle a contract nobody signed:
+      //   - its TERM is exactly one of its weekly windows (`TIER3_TERM_WINDOWS`), never a 7–42
+      //     day term — a 7 here would be seven WEEKS, and a teardown would charge seven weekly fees;
+      //   - its COMMITMENT is `x` whole units of its weekly output `y`, an integer in [0, floor(y)],
+      //     and the stored `committedOutputPct` is exactly `x / y`. `syndicateCommitment` (what
+      //     delivery and settlement read) and `committedOutputPct` (what the fee and reputation
+      //     read) are two stored copies of ONE promise; this is the check that they still agree.
+      //     The comparison is exact on purpose: both sides are the same division of the same two
+      //     numbers, so any difference at all means one of them was changed without the other.
+      // A Tier-1/2 licence keeps the 7–42 day bounds, exactly as before.
+      if (ticksPerUnitFor(producedGoodFor(v)) !== null) {
+        if (lic.windowDays !== TIER3_TERM_WINDOWS) {
+          out.push({ rule: 'tier3-term-is-one-week (Tier-3 contract)', where: `${at}.windowDays`, detail: { value: lic.windowDays, expected: TIER3_TERM_WINDOWS } });
+        }
+        // In a galaxy whose day does not divide the week there is no `y` to check against — the
+        // nesting rule above has already named this venture.
+        const engineN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+        const basis = tier3WindowNests(engineN) ? licenceBasisFor(v, engineN) : null;
+        if (basis) {
+          const x = v.syndicateCommitment;
+          if (!isValidCommittedUnits(x, basis) || lic.committedOutputPct !== committedPctForUnits(x, basis)) {
+            out.push({ rule: 'tier3-commitment-is-x-of-y (Tier-3 contract)', where: `venture:${v.id}`, detail: {
+              syndicateCommitment: x, committedOutputPct: lic.committedOutputPct, y: weeklyOutputOf(basis),
+              expectedPct: Number.isInteger(x) ? committedPctForUnits(x, basis) : null,
+            } });
+          }
+        }
+      } else if (!isValidWindowDays(lic.windowDays)) {
         out.push({ rule: 'renegotiation-window-in-bounds (§5)', where: `${at}.windowDays`, detail: { value: lic.windowDays, min: WINDOW_DAYS_MIN, max: WINDOW_DAYS_MAX } });
       }
       if (typeof lic.lockedPrice !== 'number' || !Number.isFinite(lic.lockedPrice) || lic.lockedPrice <= 0) {

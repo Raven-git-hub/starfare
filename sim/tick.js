@@ -44,7 +44,7 @@ const { recordPriceRing } = require('./price-ring.js');
 const { recomputePrices, postedPrice } = require('./prices.js');
 const {
   commitmentSale, committedContribution, feeOwed, reputationDelta, gainFactor, RP_FLOOR,
-  deuteriumMetGain, renegotiationSchedule, applyLapse, applyVentureClosure,
+  deuteriumMetGain, renegotiationScheduleFor, applyLapse, applyVentureClosure,
 } = require('./licence.js');
 const {
   producedGoodFor, isLicensedDeuteriumMine, isDeuteriumMine, isIllegalDeuteriumRefinery, isDockyard,
@@ -1563,7 +1563,9 @@ function stepAutoLapse(state, _actions) {
       // Only an ORDINARY licence renegotiates; a deuterium mine carries `deuteriumLicence`
       // (windowless, §1.4) and has no `licence`, so it is skipped by this very test.
       if (!venture.licence) continue;
-      const { lapseTick } = renegotiationSchedule(venture.licence, windowN, dayAnchorTick);
+      // Its OWN schedule (`renegotiationScheduleFor`): the term counted in the licence's own
+      // window — the day for Tier 1/2, the week for a Tier-3 licence (Slice 3c).
+      const { lapseTick } = renegotiationScheduleFor(venture, windowN, dayAnchorTick);
       // cause 'timeout' (the player let the offer expire); the notice's tick is `thisTick`,
       // the tick being built — the deadline this step just reached (docs/event-log.md §2).
       if (thisTick >= lapseTick) applyLapse(guild, venture, 'timeout', thisTick);

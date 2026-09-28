@@ -55,7 +55,7 @@ const { PRICED_GOODS, postedPrice, basePriceFor } = require('./prices.js');
 const { isLicensedDeuteriumMine, isIllegalDeuteriumRefinery, producedGoodFor } = require('./baseline.js');
 const {
   licenceFee, licenceBasisFor, licenceBasisForGood, teardownSettlement, licenceEndTick, ventureStanding,
-  renegotiationFee, renegotiationSchedule,
+  renegotiationFee, renegotiationScheduleFor,
 } = require('./licence.js');
 const { clonePriceHistory } = require('./price-history.js');
 const { getFuelPriceRing } = require('./fuel-price-history.js');
@@ -518,7 +518,9 @@ function contractWindowForVenture(state, venture) {
   // signed at a day boundary (the persistent-server norm) the two coincide, so teardown's
   // raw `lockoutUntilTick` still agrees there; they diverge only for a mid-day signing, which
   // is teardown's own basis to keep (out of scope this slice). Field SHAPE is unchanged.
-  const endTick = renegotiationSchedule(lic, windowN, dayAnchorTick).windowEndTick;
+  // The venture's OWN schedule (Slice 3c): a Tier-3 licence's one-window term is the WEEK, so
+  // its window ends 7 days after signing, still counted here in calendar days (cycles).
+  const endTick = renegotiationScheduleFor(venture, windowN, dayAnchorTick).windowEndTick;
   const endCycle = dayOf(endTick, windowN, dayAnchorTick);
   const cyclesRemaining = Math.max(0, endCycle - dayOf(state.tick, windowN, dayAnchorTick));
   return {
@@ -581,7 +583,7 @@ function renegotiationFieldsFor(state, venture) {
   const standing = ventureStanding(venture);
   const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
   const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
-  const sched = renegotiationSchedule(lic, windowN, dayAnchorTick);
+  const sched = renegotiationScheduleFor(venture, windowN, dayAnchorTick);
   let renegotiationOffer = null;
   // #64 Slice 2: the offer appears only once GRACE HAS PASSED and the Syndicate has ACTED
   // (`actsTick`), NOT at window-end. During grace the venture carries `standing` but no offer,

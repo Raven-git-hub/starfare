@@ -60,9 +60,18 @@ function guildRow(id, ventures, stock, goods) {
     ...(goods ? { productionProfile: { [SYS]: { goods } } } : {}),
   };
 }
+// A Tier-1/2 licence: a share of output and a 7-day term.
 const licence = (guildId, ventureId, committedOutputPct) => createApplyForLicenceAction({
   guildId, ventureId, committedOutputPct, windowDays: 7,
 });
+// A Tier-3 licence (Slice 3c): `x` whole units of the weekly output, and no term to choose.
+const commitUnits = (guildId, ventureId, committedUnits) => createApplyForLicenceAction({
+  guildId, ventureId, committedUnits,
+});
+// The whole units a 3-1 factory commits at each of 3b's levels. Since Slice 3c a Tier-3 licence
+// commits whole units rather than a percentage, so each level commits the SAME Q 3b measured at
+// that percentage: x = round(pct × 672), the old sizing (at most 672).
+const unitsAt = (pct) => Math.min(Math.round(pct * 672), 672);
 function sign(s, actions) {
   const out = intake(s, actions);
   for (const r of out.results) assert.equal(r.accepted, true, `licence refused: ${r.reason}`);
@@ -76,13 +85,14 @@ const guildOf = (s, id) => s.guilds.find((g) => g.id === id);
 // galaxy and one run (a week plus 30 ticks, so the next week's first units are seen too). One guild
 // per case, each in its own system, each making 3-1 fuel tanks (one every 15 ticks, y = 672 a week)
 // unless noted. Every one is on the DEFAULT send — no guild sets a send control except `sendOff`.
-//   pct10 … pct100  one fed factory at 10/25/50/75/90/100%        → met, delivered Q, keeps 672 − Q
+// (Every licence below commits whole units, the Slice 3c shape; "50%" means x = 336 of 672.)
+//   pct10 … pct100  one fed factory at 10/25/50/75/90/100% (x = 67 … 672) → met, delivered Q, keeps 672 − Q
 //   under           50% (Q 336) but inputs for only 100 units      → delivers all 100, breaches
 //   reserveFirst    50%, order [stockpile, downstream, syndicate], reserveLevel 1,000 → still met
 //   sendOff         50%, the old send control set to "absolute 0"  → still met (the control is inert)
 //   sibling         50% factory + an UNLICENSED factory of the same good → the one pot fills Q
 //   twoLic          two factories at 25% each (Q = 168 + 168)       → both met
-//   heavy           a heavy reactor engine at 100% (Q = floor(3.5) = 3) → met
+//   heavy           a heavy reactor engine at x = 3 = floor(3.5), its most → met
 const LEVELS = [0.1, 0.25, 0.5, 0.75, 0.9, 1];
 const levelId = (pct) => `pct${Math.round(pct * 100)}`;
 const RUN_END = WEEK + 30;
@@ -107,10 +117,10 @@ function runWeek() {
     syndicate: { ledger: 0 },
   });
   s = sign(s, [
-    ...LEVELS.map((pct) => licence(levelId(pct), 'f', pct)),
-    licence('under', 'f', 0.5), licence('reserveFirst', 'f', 0.5), licence('sendOff', 'f', 0.5),
-    licence('sibling', 'f', 0.5), licence('twoLic', 'f', 0.25), licence('twoLic', 'f2', 0.25),
-    licence('heavy', 'f', 1),
+    ...LEVELS.map((pct) => commitUnits(levelId(pct), 'f', unitsAt(pct))),
+    commitUnits('under', 'f', 336), commitUnits('reserveFirst', 'f', 336), commitUnits('sendOff', 'f', 336),
+    commitUnits('sibling', 'f', 336), commitUnits('twoLic', 'f', 168), commitUnits('twoLic', 'f2', 168),
+    commitUnits('heavy', 'f', 3),
   ]);
   const signed = JSON.parse(JSON.stringify(s));
 
@@ -180,7 +190,8 @@ const signedLicence = (run, gid, vid = 'f') => guildOf(run.signed, gid).ventures
 
 test('HEADLINE: on the DEFAULT send a committed 3-1 factory delivers its whole weekly Q and settles MET, at every level from 10% to 100%', () => {
   const run = runWeek();
-  // Q typed from the ruled sizing (3a): round(pct × 672), capped at 672. Under 3a's paced send
+  // Q typed from the ruled sizing: round(pct × 672), capped at 672 — since Slice 3c the whole units
+  // each licence committed (`unitsAt`), typed out again here. Under 3a's paced send
   // these same factories delivered 27 / 69 / 100 / 132 / 142 / 211 and breached at every level.
   const TYPED_Q = { pct10: 67, pct25: 168, pct50: 336, pct75: 504, pct90: 605, pct100: 672 };
   for (const pct of LEVELS) {
@@ -282,7 +293,7 @@ test('two licences on one good: the one Syndicate-first pile fills both, and bot
   assert.equal(w.fee.ventures.f2.status, 'met');
 });
 
-test('a heavy reactor engine at 100% (Q = floor(3.5) = 3) delivers its 3 on the DEFAULT send and is met', () => {
+test('a heavy reactor engine at its most, x = floor(3.5) = 3, delivers its 3 on the DEFAULT send and is met', () => {
   // 2,880 ticks a unit: units land on 2,880, 5,760 and 8,640; the fourth is still on the line at
   // the week's end. Each of the three went to the Syndicate the tick it was minted.
   const run = runWeek();
@@ -319,7 +330,7 @@ test('determinism: the same committed Tier-3 galaxy run twice gives the same byt
         { fuel_tank: { order: ['stockpile', 'syndicate', 'downstream'], reserveLevel: 3 } })],
       reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 },
     });
-    s = sign(s, [licence('g1', 'f', 0.5)]);
+    s = sign(s, [commitUnits('g1', 'f', 336)]);
     const h = crypto.createHash('sha256');
     for (let i = 0; i < 400; i += 1) { s = tick(s); h.update(hashState(s)); }
     return h.digest('hex');

@@ -1951,7 +1951,56 @@ boundary so the later hex-map swap doesn't touch it.
     where 11 of the 14 fail, and against four deliberate breakages, each caught). Tools **68 green**.
   - **Still not safe to run live:** delivery is fixed, but two 3a defects remain for 3c (decision
     checklist): teardown settlement counted in days, and the Tier-1/2 `windowDays` term and ratchet
-    still applying to Tier 3.
+    still applying to Tier 3. *(⤳ Both closed by Slice 3c, below.)*
+
+- **Tier-3 contract: whole-unit `x`, the one-week rolling term, the fixed re-offer — ✅ BUILT 28-09-26
+  (Slice 3c of the Tier-3 economy build).** `docs/tier3-timed-production.md` ("Income & commitment",
+  "Contract & settlement", "Renegotiation — fixed re-offer"; as-built "Slice 3c" at its end);
+  design.md §5 AS-BUILT note. Closes the two 3a defects the checklist carried for 3c. For a licence on
+  a **timed** good only (decided by the good; the four unclassified modules keep the Tier-1/2 licence).
+  - **Whole units.** `applyForLicence` takes `{ committedUnits }` for a Tier-3 venture: an integer `x`
+    in `[0, floor(y)]`, `y = 10,080 ÷ TICKS_PER_UNIT`. It stores `committedOutputPct = x / y`
+    exactly and `syndicateCommitment = x`, so the fee, RP, delivery and settlement read one
+    commitment.
+    - Refused, naming the bound: an out-of-range, fractional or wrong-typed `x`; a percentage or a
+      `windowDays` on a Tier-3 licence; `committedUnits` on a Tier-1/2 licence.
+    - The Tier-1/2 shape `{ committedOutputPct, windowDays }` is unchanged.
+  - **The one-week term.** A Tier-3 licence stores `windowDays: 1` (`TIER3_TERM_WINDOWS`), counted in
+    its own window. `licenceWindowN` derives that window from the good: the week for Tier 3, the day
+    for Tier 1/2. No new field. It is threaded through:
+    - teardown: a Tier-3 teardown owes **one** weekly fee on any day of its week (was 7 on day 1) and
+      locks the node until signing + 10,080;
+    - the renegotiate/lapse gate;
+    - the renegotiation schedule (`renegotiationScheduleFor`, read by the snapshot and the auto-lapse
+      step). It is a 7-day contract's timeline: 1 day of grace, a 5-day offer, then auto-lapse.
+  - **The fixed re-offer.** `renegotiationTerms` returns a Tier-3 licence's own terms, whatever its
+    standing: the same exact `x / y`, the same term, and no Strong discount. `renegotiationFee`
+    re-prices them at today's price; the re-lock re-derives the same `x` (pinned for all 5,139
+    `(good, x)` pairs).
+  - **Invariant:** a timed-good licence has `windowDays` 1 (`tier3-term-is-one-week`), and its `x` is
+    whole, within `[0, floor(y)]` and equal to `committedOutputPct × y` exactly
+    (`tier3-commitment-is-x-of-y`). Tier-1/2 keeps the 7–42 bound.
+  - **Unchanged:** the sale on delivered units (still lumpy, 3d), Syndicate-first delivery (3b), the
+    week and fee sizing (3a), and the Tier-1/2 licence lifecycle. No schema change. A save holding a
+    pre-slice Tier-3 licence fails the new invariant (Tier 3 was never declared safe to run live).
+  - **Goldens: none moved** (no pinned run licenses Tier 3).
+    - A new standing test pins a Tier-1/2 lifecycle to hashes computed on HEAD 5867c18: state every
+      tick, snapshot every 10 ticks, every intake result.
+    - Three Tier-1/2 lifecycle runs were diffed against HEAD: identical state, snapshots (5,160),
+      intake results and refusal reasons.
+    - Beside a *licensed* Tier-3 guild, the Tier-1/2 licences, rows, fees and verdicts are identical.
+      Their fuel grants can move with the Tier-3 guild's RP through the shared pool (decision
+      checklist).
+  - Tests updated deliberately (`tier3-settlement.test.js`, `tier3-delivery.test.js`):
+    - their Tier-3 licences commit whole units (the same `Q` as before);
+    - 3a's re-lock test now expects the fixed re-offer instead of Steady's +0.10.
+  - Sim suite 1,708 → **1,721 green** (`sim/tests/tier3-contract.test.js`, +13). It was also run
+    against HEAD, where 12 of 13 fail; the isolation pin passes. Six deliberate breakages are each
+    caught. Tools **68 green**.
+  - **Still not safe to run live:**
+    - the per-tick progress payment is 3d;
+    - the client still sends the Tier-1/2 shape for a Tier-3 factory, which the engine now refuses;
+    - the Slice-3c checklist items below.
 
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
@@ -2236,14 +2285,20 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     down on day 1 is charged 7 weekly fees. The ruling says "Teardown owes at most this one week's
     settlement fee". That is still ~10× less than before this slice (the old daily fee was ~10× larger),
     but it is wrong by construction. The fix belongs with the one-week term (3b) and was not changed here.
-    *(⤳ Re-cut: the one-week term is now 3c. Still open after 3b.)*
+    *(⤳ Re-cut: the one-week term is now 3c. Still open after 3b.)* **⤳ CLOSED 28-09-26 (Slice 3c).**
+    The teardown now counts in the licence's own window, which is the week for Tier 3. A Tier-3
+    licence owes one weekly fee on any day of its week and is locked out until the week ends.
   - **A Tier-3 licence still carries `windowDays` (7–42) and the day-based renegotiation schedule.**
     The ruled Tier-3 contract term is one week with a fixed re-offer (no ratchet). 3a shares only the
     fee basis with renegotiation, so a re-lock re-prices on `y`. The Steady/Sub-par/At-risk commitment
-    ratchet still applies to Tier-3 until 3b. *(⤳ Re-cut: now 3c. Still open after 3b.)*
+    ratchet still applies to Tier-3 until 3b. *(⤳ Re-cut: now 3c. Still open after 3b.)* **⤳ CLOSED
+    28-09-26 (Slice 3c).** A Tier-3 licence's term is fixed at one week (`windowDays: 1` in its weekly
+    window), and it gets the fixed re-offer, not the ratchet.
   - **The `floor(y)` ceiling on the percentage commitment** (e.g. a heavy engine at 100% commits 3, not
     `round(3.5) = 4`). This applies the ruled `x ≤ floor(y)` to today's percentage expression; the
-    whole-unit `x` is 3b's. Confirm. *(⤳ Re-cut: whole-unit `x` is now 3c.)*
+    whole-unit `x` is 3b's. Confirm. *(⤳ Re-cut: whole-unit `x` is now 3c.)* **⤳ 28-09-26 (Slice
+    3c):** a Tier-3 licence no longer signs a percentage. It commits `x ∈ [0, floor(y)]` directly, so
+    this cap now matters only to the re-lock's re-derivation, which hands back the same `x`.
   - **A day that does not divide the week** (`state.windowN`, a setup knob; e.g. the 50 one test uses) is
     built REFUSE + HALT + INVARIANT for Tier 3 only. Tier-1/2 in such a galaxy is untouched, and its
     Tier-3 fee quotes are omitted. Confirm (the alternative would be refusing such a `setWindowN`
@@ -2278,6 +2333,56 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     payment is 3d's. Until then, a met week is paid for exactly its `Q` delivered units, in lumps.
   - **Still open before Tier 3 runs live:** the two 3a items above that are now 3c's (teardown
     settlement counted in days; the `windowDays` term and ratchet still applying to Tier 3).
+    **⤳ Both CLOSED 28-09-26 (Slice 3c).**
+
+- **Tier-3 slice 3c (whole units, the one-week term, the fixed re-offer) — items for a ruling or a
+  confirm** — *surfaced 28-09-26.*
+  - **Auto-renew or auto-lapse?** The ruling says a Tier-3 contract "effectively auto-renews unless
+    the guild opts out", and also "Accept (renew) or reject (lapse)".
+    - Built as: the existing Tier-1/2 timers. The week ends, then a day of grace (a 7-day contract's
+      grace), then the offer stands for 5 days, then the licence **auto-lapses** if nobody accepts it.
+    - Alternative: an auto-renew step that re-locks the identical terms at the deadline instead of
+      lapsing them. That is a new tick behaviour, so it was not guessed.
+  - **The term is not aligned to the settlement week.** The ruling says "the contract term and the
+    settlement window are the same week". Built with the existing re-lock rule:
+    - A term runs signing + 10,080. A licence signed mid-week spans two settlement weeks.
+    - Accepting the re-offer, at any point in its 5-day window, resets `signedTick` and
+      `committedFromTick`.
+    - So the week it is accepted in has its target **and fee** pro-rated from the acceptance tick. The
+      part of the week before acceptance goes uncharged, though the factory kept delivering. For Tier
+      1/2 that is at most part of a day. For Tier 3 it can be most of a week's fee: accepted on day
+      10, week 2 is charged 57% of its fee (measured); on the last offer day, 29%.
+    - Aligning term, offer and renewal to the week boundary is a design question.
+  - **No Strong discount on a Tier-3 re-offer.** Built as: the re-offer is identical at every standing,
+    Strong included, so there is no −10% fee. The ruling's "identical terms … no standing ratchet …
+    Drops T1/2's `renegotiationTerms` recompute" was read as dropping the whole standing-keyed terms
+    function, discount and all. Confirm.
+  - **Grace is keyed on the contract's length in days.** A Tier-3 week is 7 days at the ruled day, so
+    its grace is 1 day. On a test galaxy with a shorter day the same week is more "days" (168 at a
+    60-tick day), so the grace is 5 days. This matters only off the ruled day. Confirm.
+  - **Fuel-pool coupling (a consequence, not a question).** A Tier-3 licence's ratio `x / y` sets that
+    venture's RP (the signing bump and the met gain). The shared fuel pool splits by RP across every
+    guild.
+    - So, next to HEAD, a Tier-3 guild beside Tier-1/2 guilds can move **their fuel grants**. Example:
+      a heavy engine at its most is now 6/7, where HEAD's 100% gave a bigger bump.
+    - Their licences, fees and verdicts are identical to HEAD. This is the existing coupling that any
+      RP change carries.
+  - **One pot per good is unchanged.** 3b asked whether an unlicensed sibling's units should stop
+    filling `Q` "when whole-unit `x` lands". 3c did not change it: `x` sums into the good's `Q` as the
+    percentage did. The question stays open.
+  - **Client / read-model follow-ups** (not engine questions):
+    - The Establish panel still sends `committedOutputPct` + `windowDays` for a Tier-3 factory. The
+      engine now refuses that, with the right bound in the reason. The client must send
+      `committedUnits`.
+    - To offer an `x`, the client needs `y` / `floor(y)`. The server's commitment preview
+      (`BASELINE_UNITS_BY_GOOD`) is still the stale 5/tick figure for a Tier-3 good.
+    - Venture Management reads `lic.windowDays` as days. A Tier-3 licence would show "renegotiable in
+      1 days", and its window bar divides 7 remaining days by 1.
+    - The renegotiation popup shows a commitment as a whole-number percentage. A Tier-3 ratio like
+      6/7 would show as 86%.
+  - **The `setSyndicateCommitment` dev scaffold** can now trip `tier3-commitment-is-x-of-y` if it
+    rewrites a licensed Tier-3 venture's commitment without its ratio. That is intended: the fee and
+    delivery would otherwise read two different promises.
 
 - **Tier-3 slice 1 — small items for a ruling or a confirm** — *surfaced 27-09-26 by the Tier-3
   price-bands slice.*

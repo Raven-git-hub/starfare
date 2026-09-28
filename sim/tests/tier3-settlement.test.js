@@ -12,9 +12,10 @@
 //      does not divide the week refuses a Tier-3 licence, halts rather than mis-settle, and
 //      the invariant names it. An UNLICENSED Tier-3 factory reads no window at all.
 //   3. (a) THE FEE — a Tier-3 licence's basic fee is 0.10 × (10,080 ÷ TICKS_PER_UNIT) × the
-//      price at signing, NOT the old 5-batches/tick × 1,440 figure; its commitment is a share
-//      of `y`, never more than floor(y) whole units. The quote, the signing and the re-lock all
-//      read that one basis. A Tier-1/2 fee is unchanged.
+//      price at signing, NOT the old 5-batches/tick × 1,440 figure; its commitment is whole
+//      units of `y`, never more than floor(y) (since Slice 3c the licence commits `x` directly —
+//      sim/tests/tier3-contract.test.js). The quote, the signing and the re-lock all read that one
+//      basis. A Tier-1/2 fee is unchanged.
 //   4. (b) + (c) ONE WEEK, SEVERAL GUILDS — a committed Tier-3 factory is judged and charged on
 //      the 10,080 boundary and on no daily one before it; a Tier-1/2 licence beside it is still
 //      judged and charged every day, byte for byte as if the Tier-3 licence were not there.
@@ -56,7 +57,7 @@ const { TIER3_GOODS, RAW_RESOURCES, PROCESSED_GOODS } = require('../resources.js
 const { postedPrice, PRICED_GOODS } = require('../prices.js');
 const {
   FEE_RATE, feeFraction, normalisedTerms, commitmentUnitsFor, licenceBasisFor, licenceBasisForGood,
-  renegotiationSchedule,
+  renegotiationScheduleFor,
 } = require('../licence.js');
 
 const SYS = 'sysA';
@@ -95,9 +96,18 @@ function guildRow(id, ventures, stock = {}, absoluteSend = []) {
 function galaxy(guilds, extra = {}) {
   return createState({ guilds, reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 }, ...extra });
 }
+// A Tier-1/2 licence: a share of output and a 7-day term.
 const licence = (guildId, ventureId, committedOutputPct) => createApplyForLicenceAction({
   guildId, ventureId, committedOutputPct, windowDays: 7,
 });
+// A Tier-3 licence (Slice 3c): `x` whole units of the weekly output `y`, and no term to choose.
+// This file is 3a's; where it signed a Tier-3 licence at a percentage it now commits the whole
+// units that percentage sized to (`round(pct × y)`, at most floor(y)), so every Q it measures is
+// the one 3a measured.
+const commitUnits = (guildId, ventureId, committedUnits) => createApplyForLicenceAction({
+  guildId, ventureId, committedUnits,
+});
+const unitsAt = (good, pct) => Math.min(Math.round(pct * yOf(good)), Math.floor(yOf(good)));
 function sign(s, actions) {
   const out = intake(s, actions);
   for (const r of out.results) assert.equal(r.accepted, true, `licence refused: ${r.reason}`);
@@ -155,7 +165,7 @@ test('(d) a galaxy whose day does not divide the week cannot license a Tier-3 ve
 
   // Refused at intake, with the reason — not signed and then halted on.
   const s = galaxy([guildRow('g1', [factory('f', 'g1', 'fuel_tank')])], { windowN: 50 });
-  const v = validateAction(s, licence('g1', 'f', 0.5));
+  const v = validateAction(s, commitUnits('g1', 'f', 336));
   assert.equal(v.valid, false);
   assert.match(v.reason, /Tier-3 good.*10080-tick week.*50-tick day/);
 
@@ -180,10 +190,11 @@ test('an UNLICENSED Tier-3 factory reads no window — it runs in any galaxy and
 // --- 3. (a) THE FEE AT SIGNING ------------------------------------------------------------------
 
 test('(a) HEADLINE: a Tier-3 licence\'s basic fee is 0.10 × (10,080 ÷ TICKS_PER_UNIT) × price-at-signing — NOT 5 batches/tick × 1,440', () => {
-  // One factory of every timed good, all signed at tick 0 at 50% with no equity.
+  // One factory of every timed good, all signed at tick 0 at half its weekly output in whole
+  // units (Slice 3c: x = round(y / 2), so x / y is 0.5 or just off it) with no equity.
   const ventures = TIMED.map((good) => factory(`f_${good}`, 'g1', good));
   let s = galaxy([guildRow('g1', ventures)]);
-  s = sign(s, TIMED.map((good) => licence('g1', `f_${good}`, 0.5)));
+  s = sign(s, TIMED.map((good) => commitUnits('g1', `f_${good}`, unitsAt(good, 0.5))));
   for (const good of TIMED) {
     const lic = ventureOf(s, 'g1', `f_${good}`).licence;
     const price = postedPrice(s, good);
@@ -192,7 +203,7 @@ test('(a) HEADLINE: a Tier-3 licence\'s basic fee is 0.10 × (10,080 ÷ TICKS_PE
     assert.equal(lic.basicFee, expected, `${good}: 0.10 × ${yOf(good)} × ${price}`);
     const stale = Math.round(FEE_RATE * REFINERY_BASELINE[good] * getRecipe(good).output.qty * DAY * price);
     assert.notEqual(lic.basicFee, stale, `${good}: not the old 5-batches/tick × 1,440 figure`);
-    const { c, oNorm } = normalisedTerms({ committedOutputPct: 0.5, equityPct: 0 });
+    const { c, oNorm } = normalisedTerms({ committedOutputPct: unitsAt(good, 0.5) / yOf(good), equityPct: 0 });
     assert.equal(lic.discountedFee, Math.round(expected * feeFraction(c, oNorm)), `${good}: the grid discounts the new basis`);
   }
   // Two worked examples, typed out: a 3-1 fuel tank (672 a week) and a heavy engine (3.5 a week).
@@ -201,22 +212,26 @@ test('(a) HEADLINE: a Tier-3 licence\'s basic fee is 0.10 × (10,080 ÷ TICKS_PE
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
-test('(a) the committed quantity is a share of the weekly output y, capped at floor(y) whole units', () => {
+test('(a) the committed quantity is the x whole units signed, of the weekly output y, at most floor(y)', () => {
+  // 3a sized a percentage of y here; since Slice 3c the licence commits whole units directly, so
+  // the committed quantity is exactly the `x` signed (sim/tests/tier3-contract.test.js has the
+  // headline). The same three goods and three sizes as 3a, so the same quantities.
   const goods = ['fuel_tank', 'heavy_reactor_engine', 'deep_scan_mast'];
   for (const pct of [0.25, 0.5, 1]) {
     let s = galaxy([guildRow('g1', goods.map((g) => factory(`f_${g}`, 'g1', g)))]);
-    s = sign(s, goods.map((g) => licence('g1', `f_${g}`, pct)));
+    s = sign(s, goods.map((g) => commitUnits('g1', `f_${g}`, unitsAt(g, pct))));
     for (const good of goods) {
       const y = yOf(good);
       assert.equal(ventureOf(s, 'g1', `f_${good}`).syndicateCommitment,
         Math.min(Math.round(pct * y), Math.floor(y)), `${good} at ${pct * 100}%`);
     }
   }
-  // The ceiling bites exactly where y is fractional and the rounding would overshoot: a heavy
-  // engine makes 3.5 a week, 100% of that rounds to 4, and 4 is more than it can be sure to finish.
+  // The ceiling bites exactly where y is fractional: a heavy engine makes 3.5 a week, and the most
+  // it can commit is 3 — 4 is more than it can be sure to finish, and is refused.
   let s = galaxy([guildRow('g1', [factory('h', 'g1', 'heavy_reactor_engine')])]);
-  s = sign(s, [licence('g1', 'h', 1)]);
-  assert.equal(ventureOf(s, 'g1', 'h').syndicateCommitment, 3, 'floor(3.5), not round(3.5) = 4');
+  assert.equal(validateAction(s, commitUnits('g1', 'h', 4)).valid, false, 'floor(3.5) is 3, not round(3.5) = 4');
+  s = sign(s, [commitUnits('g1', 'h', 3)]);
+  assert.equal(ventureOf(s, 'g1', 'h').syndicateCommitment, 3);
 });
 
 test('(a) float-safety: timer-pace × week lands on exactly the typed y for every timed good and every whole percent', () => {
@@ -256,8 +271,10 @@ test('the quote a player reads is the fee a signature locks — for every priced
   let s = galaxy([guildRow('g1', ventures)]);
   const quote = buildSnapshot(s).feeQuote;
   // Deuterium never takes the ordinary licence (§1.4), so it is quoted but not signed here.
+  // Each signs at a zero commitment: 0% for Tier 1/2, x = 0 whole units for a timed Tier-3 good.
   const signable = makers.filter(({ good }) => good !== 'deuterium');
-  s = sign(s, signable.map(({ good }) => licence('g1', `v_${good}`, 0)));
+  s = sign(s, signable.map(({ good }) => (ticksPerUnitFor(good) !== null
+    ? commitUnits('g1', `v_${good}`, 0) : licence('g1', `v_${good}`, 0))));
   for (const { good } of signable) {
     assert.equal(quote[good], ventureOf(s, 'g1', `v_${good}`).licence.basicFee, `${good}: quote = signed fee`);
   }
@@ -270,18 +287,19 @@ test('the quote a player reads is the fee a signature locks — for every priced
 
 test('a Tier-3 re-lock (renegotiateLicence) re-prices on the SAME weekly basis — it never slides back to the stale one', () => {
   let s = galaxy([guildRow('g1', [factory('f', 'g1', 'fuel_tank')])]);
-  s = sign(s, [licence('g1', 'f', 0.5)]);
+  s = sign(s, [commitUnits('g1', 'f', 336)]);
   // Jump to the Syndicate's acts tick without ticking (the renegotiation tests' own pattern),
-  // so nothing else moves. Standing is Steady (the signing bump), so the terms step +0.10.
-  s.tick = renegotiationSchedule(ventureOf(s, 'g1', 'f').licence, DAY, 0).actsTick;
+  // so nothing else moves. Standing is Steady (the signing bump). 3a stepped the terms +0.10
+  // here; since Slice 3c a Tier-3 re-offer is FIXED — the same 336 of 672 — and only re-priced.
+  s.tick = renegotiationScheduleFor(ventureOf(s, 'g1', 'f'), DAY, 0).actsTick;
   const offer = buildSnapshot(s).ventures.find((v) => v.id === 'f').renegotiationOffer;
   const out = intake(s, [createRenegotiateLicenceAction({ guildId: 'g1', ventureId: 'f' })]);
   assert.equal(out.results[0].accepted, true, out.results[0].reason);
   const v = ventureOf(out.state, 'g1', 'f');
   const price = postedPrice(out.state, 'fuel_tank');
-  assert.equal(v.licence.committedOutputPct, 0.6, 'the unchanged terms function (Steady +0.10)');
+  assert.equal(v.licence.committedOutputPct, 0.5, 'the fixed re-offer: 336 of 672 again, no Steady +0.10 (Slice 3c)');
   assert.equal(v.licence.basicFee, Math.round(FEE_RATE * yOf('fuel_tank') * price), 'weekly basis');
-  assert.equal(v.syndicateCommitment, Math.round(0.6 * yOf('fuel_tank')), '60% of 672 a week');
+  assert.equal(v.syndicateCommitment, 336, 'the same 336 whole units a week');
   assert.equal(offer.basicFee, v.licence.basicFee, 'the previewed offer is what was locked');
   assert.equal(offer.discountedFee, v.licence.discountedFee);
 });
@@ -290,12 +308,13 @@ test('a Tier-3 re-lock (renegotiateLicence) re-prices on the SAME weekly basis �
 //
 // One galaxy, one week (10,080 ticks — the Tier-3 boundary cannot be reached any faster, so the
 // run is shared by every test below rather than repeated). Guilds, all in one system each:
+// (Since Slice 3c each Tier-3 factory commits whole units; "50%" is x = 336 of 672.)
 //   met      a 3-1 factory at 50%, fed, absolute send            → met on 10,080, discounted fee
 //   starved  the same with NO inputs                             → breach on 10,080, full fee
 //   mixed    a titanium mine (T1, 25%) + the `met` factory       → the mine every day, the factory weekly
 //   solo     the same titanium mine alone                        → (c)'s reference: mixed's mine must match it
 //   late     the `met` factory, licensed at tick 5,040 (mid-week) → met on a half-week target, half the fee
-//   heavy    a heavy reactor engine at 100%, absolute send       → commits floor(3.5) = 3, met on 10,080
+//   heavy    a heavy reactor engine at its most, absolute send   → commits floor(3.5) = 3, met on 10,080
 //   paced    the `met` factory on the DEFAULT send               → met (3a's gap, closed by Slice 3b)
 const LATE_TICK = 5040;
 let weekRun = null;
@@ -312,9 +331,9 @@ function runWeek() {
     guildRow('paced', [tank('paced')], inputSets('fuel_tank', 700)),
   ]);
   s = sign(s, [
-    licence('met', 'f', 0.5), licence('starved', 'f', 0.5),
-    licence('mixed', 'm', 0.25), licence('mixed', 'f', 0.5), licence('solo', 'm', 0.25),
-    licence('heavy', 'f', 1), licence('paced', 'f', 0.5),
+    commitUnits('met', 'f', 336), commitUnits('starved', 'f', 336),
+    licence('mixed', 'm', 0.25), commitUnits('mixed', 'f', 336), licence('solo', 'm', 0.25),
+    commitUnits('heavy', 'f', 3), commitUnits('paced', 'f', 336),
   ]);
   const signed = JSON.parse(JSON.stringify(s));
   const firstPreview = previewProduction(s);
@@ -326,7 +345,7 @@ function runWeek() {
   const starvedVerdict = {}; // the resolver's verdict for the starved factory, on a day's end and the week's end
   for (const g of s.guilds) { fees[g.id] = []; reputation[g.id] = []; }
   while (s.tick < WEEK + 1) {
-    if (s.tick === LATE_TICK) s = sign(s, [licence('late', 'f', 0.5)]);
+    if (s.tick === LATE_TICK) s = sign(s, [commitUnits('late', 'f', 336)]);
     if (s.tick === DAY - 1 || s.tick === WEEK - 1) {
       // previewProduction reports what the NEXT tick (a day end / the week end) will resolve.
       const w = previewProduction(s).find((g) => g.guildId === 'starved').systems[0].goods.fuel_tank.window;
@@ -421,7 +440,7 @@ test('a Tier-3 licence signed MID-WEEK owes the week pro-rated: half the week pr
   assert.equal(row.owed, Math.round(v.licence.discountedFee * 0.5));
 });
 
-test('a heavy reactor engine at 100% commits floor(3.5) = 3 and meets it on the week boundary', () => {
+test('a heavy reactor engine at its most commits floor(3.5) = 3 and meets it on the week boundary', () => {
   const { signed, fees } = runWeek();
   const v = signed.guilds.find((g) => g.id === 'heavy').ventures[0];
   assert.equal(v.syndicateCommitment, 3);
