@@ -26,11 +26,12 @@
              browser plots the series verbatim — it no longer accumulates one, so
              the graph is instant on load, survives a reload, and is the same for
              every viewer. Never seeded, never smoothed, never extrapolated.
-    MOCK   — the Syndicate licence ROSTER and the hero's Facility block. The licence
-             economy is not in the engine (every syndicateCommitment is 0) and no
-             droid/condition/asset exists. Both carry a visible MOCK tag, POST nothing,
-             and are never presented as live. The Syndicate THERMOMETER's figures are
-             real window telemetry — only the roster around it is design-ahead.
+    MOCK   — the hero's Facility block, and nothing else. No droid/condition
+             management exists in the engine, so it carries a visible MOCK tag, POSTs
+             nothing and is never presented as live. (The Syndicate roster and the
+             Syndicate top-up control used to be mock too. Both are live now: the roster
+             reads each licence's own figures, and the top-up reads and POSTs the good's
+             `syndicateTopUp` / `syndicateTopUpLimit` profile fields, Slice A2-client.)
 
   A TIMED Tier-3 good (one the snapshot lists in `tier3Contract`) forks the panel: whole units,
   a 7-day week, Syndicate first. See "THE TIER-3 FORK" in the script below.
@@ -720,13 +721,6 @@
   .prank.fixed{cursor:default; color:var(--ink3); white-space:nowrap}
   .sy-rule{font-size:11.5px; line-height:1.5; color:var(--ink2); margin:0 0 14px}
 
-  /* ---- MOCK tag: design-ahead of the engine, shown but never read as live ------ */
-  .mocktag{font-family:var(--mono); font-size:8.5px; letter-spacing:.12em; text-transform:uppercase;
-    color:var(--amber); border:1px solid rgba(201,162,39,.45); background:rgba(201,162,39,.10);
-    border-radius:5px; padding:1px 6px; margin-left:6px; white-space:nowrap}
-  .mocknote{font-family:var(--mono); font-size:9.5px; line-height:1.55; color:var(--ink3);
-    border-top:1px solid var(--line); margin-top:8px; padding-top:7px}
-  .mocknote b{color:var(--amber); font-weight:500}
   /* The Syndicate panel's footer: three figures, not a paragraph. Each is an engine
      number the panel already reads (the window's Q, its delivered, and how many of the
      committed rows the engine has judged `met`). */
@@ -956,10 +950,12 @@
   trend lines are the only client-side element, a rolling buffer of values the engine really
   sent. Tabs pick a <b>tier</b>, the row below a <b>resource</b>; goods with no local
   production/consumption show <b>idle</b>. The <b>Syndicate</b> tab lists this good's real
-  producing ventures and the commitment the engine holds for each — 0 for all of them until
-  the licence layer is built, so its thermometer reads <i>no commitment yet</i>. The top-up
-  control and the hero's <b>facility</b> block are <b>MOCK</b> — design-ahead of an engine
-  that does not have them; they are tagged on screen and send nothing.
+  producing ventures, each licence's own commitment and verdict, and a thermometer of what
+  has been delivered against the target; a good no licence commits reads <i>no commitment
+  yet</i>. The <b>Syndicate top-up</b> square is real: it turns on this good's settlement
+  top-up (off until you turn it on) and sets its limit (blank = no limit). The hero's
+  <b>facility</b> block is <b>MOCK</b> — design-ahead of an engine that does not have it;
+  it is tagged on screen and sends nothing.
 </div>
 <script>
 'use strict';
@@ -1012,7 +1008,9 @@ function fmtRate(x){ if (x == null) return '—'; return Number.isInteger(x) ? S
 function fmtPct(x){ if (x == null) return '—'; return (Number.isInteger(x) ? String(x) : x.toFixed(1)) + '%'; }
 
 // ---- profile defaults (§15.4 documented structural constants, NOT invented) -
-var PROFILE_DEFAULTS = { order: ['syndicate','downstream','stockpile'], downstreamPct: 100, reserveLevel: 0, throttle: 100 };
+// The Syndicate Top-Up pair are §15.4's documented defaults too: off, and no limit (null).
+var PROFILE_DEFAULTS = { order: ['syndicate','downstream','stockpile'], downstreamPct: 100, reserveLevel: 0, throttle: 100,
+                         syndicateTopUp: false, syndicateTopUpLimit: null };
 // The three Gate-1 claimants, keyed by their engine `order` names. Display names map
 // the mockup's forks: stockpile → Reserve (▲), downstream → Production (▶), syndicate (▼).
 var ARM = {
@@ -1066,22 +1064,19 @@ if (STATE.embedded) {
   ['btnTick','btnReset'].forEach(function(id){ var b = document.getElementById(id); if (b) b.style.display = 'none'; });
 }
 
-// --- The Syndicate TOP-UP control — MOCK, and the last mock left in this panel ------
-// ADVISORY ONLY: there is no top-up in the engine, so these two settings live in the
-// browser, are tagged mock on screen and POST nothing.
-//
-// Everything ELSE in the Syndicate tab is now live engine state, and the roster is the
-// part that changed most recently: the fabricated seven-mine licence set that used to
-// sit here was deleted when the roster started reading the good's REAL producers, and
-// as of the console-rewire slice each row also reads its OWN target, delivered and
+// --- The Syndicate panel is live engine state, all of it ---------------------------
+// The roster reads the good's REAL producers, and each row its OWN target, delivered and
 // met/breach verdict from the window's `perVenture` block, ranked by the good's stored
-// `pursue` order (which the roster's movers write). The FEE is live too as of Slice
-// 3b-iii: it is debited at each cycle boundary, and the panel's footer reads the guild's
-// last charge off the snapshot's `licenceFee` record.
-var SYN = {
-  topupEnabled: false,
-  limit: 0
-};
+// `pursue` order (which the roster's movers write). The FEE is live as of Slice 3b-iii:
+// it is debited at each cycle boundary, and the panel's footer reads the guild's last
+// charge off the snapshot's `licenceFee` record.
+//
+// The Syndicate TOP-UP square (syndTopupSquare, in the stockpile row) was the last mock
+// here. As of Slice A2-client it is real (design.md §5, "SYNDICATE TOP-UP"): its switch
+// and its limit are the good's `syndicateTopUp` / `syndicateTopUpLimit` profile fields,
+// read from the snapshot by goodPolicy() and POSTed through setProductionProfile like
+// every other control. The browser keeps no copy of them.
+
 // reconcilePursueIds(stored, ids) — the committed rows in the order the engine will fill
 // them at the boundary. It mirrors `reconcilePursue` (sim/production.js) EXACTLY, and
 // must keep mirroring it: drop a ranked id that is not a committed producer of this good
@@ -1233,6 +1228,11 @@ function goodPolicy(good){
     // roster's "clear" affordance keys off (there is nothing to clear if it is absent).
     pursue: Array.isArray(s.pursue) ? s.pursue.slice() : [],
     pursueSet: Array.isArray(s.pursue),
+    // The Syndicate Top-Up (design.md §5, Slice A2): may the settlement rescue run for this
+    // good, and how much may one settlement deliver at most. Absent switch = OFF; absent
+    // limit = null, which means NO limit (not zero).
+    syndicateTopUp: s.syndicateTopUp != null ? s.syndicateTopUp : PROFILE_DEFAULTS.syndicateTopUp,
+    syndicateTopUpLimit: s.syndicateTopUpLimit != null ? s.syndicateTopUpLimit : PROFILE_DEFAULTS.syndicateTopUpLimit,
   };
 }
 function throttleOf(good, ventureId){
@@ -1632,7 +1632,7 @@ document.addEventListener('click', function(e){
   var t = e.target.closest ? e.target : null; if (!t) return;
   var tab = t.closest('.rt-tab');       if (tab){ STATE.rightTab = tab.dataset.rtab; rerenderStage(); return; }
   var mng = t.closest('.sy-manage');    if (mng){ STATE.rightTab = 'syndicate'; rerenderStage(); return; }
-  var suen = t.closest('.su-en');       if (suen){ SYN.topupEnabled = !SYN.topupEnabled; rerenderStage(); return; }
+  var suen = t.closest('.su-en');       if (suen){ postTopUpSwitch(); return; }
   var mv = t.closest('.pu-btn');        if (mv){ movePursue(mv.dataset.vent, mv.classList.contains('pu-up') ? -1 : 1); return; }
   var clr = t.closest('.pu-clear');     if (clr){ postPursue(null); return; }
   // Tier-4 dockyard tab (B2). The Add button opens the Add-commission est-card (which POSTs
@@ -1669,6 +1669,18 @@ function movePursue(ventureId, delta){
   ids[i] = ids[j]; ids[j] = ventureId;
   postPursue(ids);
 }
+
+// --- The Syndicate Top-Up switch: flip it, POST it --------------------------------
+// One click POSTs the good's switch flipped from what the SNAPSHOT says it is now (never
+// from a copy kept in the browser), carrying only that one field. The square is redrawn
+// from the POST's own response, so what you see after a click is the engine's answer.
+// Held against the LIVE poll exactly as a pursue move is (see holdPoll below): the switch
+// is a click-driven control too, and a redraw mid-click would lose the click.
+function postTopUpSwitch(){
+  var g = {}; g[STATE.good] = { syndicateTopUp: !goodPolicy(STATE.good).syndicateTopUp };
+  holdPoll();
+  Promise.resolve(sendProfile({ goods: g })).catch(function(){}).then(releasePoll);
+}
 // Hold the LIVE poll across a click-driven control, the same discipline `trackDrag`
 // applies to the sliders and for the same reason: a re-render between mousedown and
 // click detaches the button, and the click then lands on nothing. Held from mousedown
@@ -1681,7 +1693,7 @@ var pressHeld = false;                  // a mousedown's hold, outstanding until
 function holdPoll(){ pollHold += 1; }
 function releasePoll(){ pollHold = Math.max(0, pollHold - 1); }
 document.addEventListener('mousedown', function(e){
-  if (e.target.closest && e.target.closest('.pu-btn, .pu-clear')){ pressHeld = true; holdPoll(); }
+  if (e.target.closest && e.target.closest('.pu-btn, .pu-clear, .su-en')){ pressHeld = true; holdPoll(); }
 });
 // Released on ANY mouseup, not only one over the button: a press dragged off the control
 // never becomes a click, and a hold that outlived its press would freeze LIVE for good.
@@ -1689,9 +1701,6 @@ window.addEventListener('mouseup', function(){
   if (!pressHeld) return;
   pressHeld = false;
   setTimeout(releasePoll, 0);
-});
-document.addEventListener('change', function(e){
-  var t = e.target; if (t && t.classList && t.classList.contains('su-limit')){ var v = parseInt(t.value, 10); if (!isNaN(v) && v >= 0){ SYN.limit = v; } }
 });
 
 // --- Trend history (ENGINE state, read verbatim) ------------------------------
@@ -1868,7 +1877,7 @@ function synPanel(good, pol, rg, rank){
   if (w){ var rr = w.requiredRate || 0; req = { reqRate: rr, reqPct: fresh > 0 ? Math.max(0, Math.min(100, (rr / fresh) * 100)) : 0 }; }
   var body = synSlider(good, fresh, sendPct, req) + '<div class="sy-readout">' + synConveyor() + synRate(sendAbs, sendPct) + '</div>';
   if (!w){
-    return '<div class="sy-panel">' + head + body + '<div class="sy-none">no commitment yet — the send is advisory until a licence is issued</div></div>';
+    return '<div class="sy-panel">' + head + body + '<div class="sy-none">no commitment yet — the send takes effect once a licence commits this good</div></div>';
   }
   var pctDone = Math.max(0, Math.min(100, w.pctAchieved || 0));
   // `ticksRemaining` is a count of TICKS = minutes; printing it as hours was 60x wrong.
@@ -1985,7 +1994,7 @@ function armBody(forkName, good, pol, rg){
 // pace AND the resolved send SIDE BY SIDE (§5). No client-side pace/ahead/behind math.
 function commitmentReadout(rg){
   var w = rg && rg.window;
-  if (!w) return '<div class="cmt"><div class="none">no commitment yet — advisory until a licence is issued</div></div>';
+  if (!w) return '<div class="cmt"><div class="none">no commitment yet — the send takes effect once a licence commits this good</div></div>';
   var pct = Math.max(0, Math.min(100, w.pctAchieved));
   return '<div class="cmt">' +
     '<div class="cbar"><div class="cfill" style="width:' + pct + '%"></div></div>' +
@@ -2074,6 +2083,14 @@ document.getElementById('stage').addEventListener('change', function(e){
   if (t.classList.contains('rlevel') || t.classList.contains('rlevel-arm') || t.classList.contains('rs-field')){
     var v = fieldInt(t); if (v === null){ setStatus('reserve level: enter an integer', 'error'); return; }
     var gr = {}; gr[good] = { reserveLevel: v }; sendProfile({ goods: gr }); return;
+  }
+  // The Syndicate Top-Up limit. A BLANK field means no limit: it POSTs null, the profile's
+  // own clear-path (§15.4), and the limit reads back as unbounded. A number is sent as typed,
+  // and the engine checks it (an integer ≥ 0) exactly as it checks reserveLevel.
+  if (t.classList.contains('su-limit')){
+    var lim = t.value === '' ? null : fieldInt(t);
+    if (t.value !== '' && lim === null){ setStatus('top-up limit: enter an integer, or leave it blank for no limit', 'error'); return; }
+    var gl = {}; gl[good] = { syndicateTopUpLimit: lim }; sendProfile({ goods: gl }); return;
   }
   if (t.classList.contains('dscap')){
     var d = fieldInt(t); if (d === null){ setStatus('downstream cap: enter an integer', 'error'); return; }
@@ -2558,16 +2575,25 @@ function consTopupSquare(good, rg){
   return '<div class="tu-sq ' + m.mode + '"><div class="tu-sq-h">Consumption top-up</div>' +
     '<div class="topup ' + m.mode + ' tu-sq-body">' + tris + amt + '</div></div>';
 }
+// The Syndicate Top-Up square (design.md §5, "SYNDICATE TOP-UP", Slice A2). Its switch and
+// limit are the good's stored profile fields, read off the snapshot. Clicking the switch
+// POSTs `syndicateTopUp` (postTopUpSwitch); editing the limit POSTs `syndicateTopUpLimit`
+// (the stage's change handler). A null limit is "no limit", so the field is left blank.
 function syndTopupSquare(good){
   var R = synResolve();
-  var mode = !SYN.topupEnabled ? 'idle' : (R.shortfall ? 'active' : 'idle');
+  var pol = goodPolicy(good);
+  var on = pol.syndicateTopUp === true;
+  var mode = !on ? 'idle' : (R.shortfall ? 'active' : 'idle');
   var glyph = mode === 'active' ? '▼' : '▽';
   var tris = '<div class="tu-tris">' + ['','',''].map(function(){ return '<span class="tu-tri">' + glyph + '</span>'; }).join('') + '</div>';
-  return '<div class="tu-sq ' + mode + '"><div class="tu-sq-h">Syndicate top-up <span class="mocktag">mock</span></div>' +
+  var limit = pol.syndicateTopUpLimit == null ? '' : pol.syndicateTopUpLimit;
+  return '<div class="tu-sq ' + mode + '"><div class="tu-sq-h">Syndicate top-up</div>' +
     '<div class="topup ' + mode + ' tu-sq-body">' + tris + '</div>' +
     '<div class="tu-sq-ctrl">' +
-      '<div class="su-en' + (SYN.topupEnabled ? ' on' : '') + '" data-suen="1"><span class="box">' + (SYN.topupEnabled ? '✔' : '') + '</span>enabled</div>' +
-      '<div class="su-lim"><span class="k">limit</span><input class="su-limit" type="number" min="0" value="' + esc(SYN.limit) + '"></div>' +
+      '<div class="su-en' + (on ? ' on' : '') + '" data-suen="1" title="at settlement, cover a short commitment from stock above the reserve (off until you turn it on)">' +
+        '<span class="box">' + (on ? '✔' : '') + '</span>enabled</div>' +
+      '<div class="su-lim"><span class="k">limit</span><input class="su-limit" type="number" min="0" value="' + esc(limit) + '"' +
+        ' placeholder="no limit" title="the most one settlement may deliver — blank for no limit"></div>' +
     '</div></div>';
 }
 
@@ -2638,12 +2664,14 @@ function fmtTicksAsDays(ticks){
   return d > 0 ? (d + 'd ' + h + 'h') : fmtTicksAsDuration(m);
 }
 
-// The stockpile row for a timed good: the strip alone. There are no top-up squares — nothing
-// here consumes a timed good, so there is nothing to top up, and the Syndicate takes only units
-// made this tick. The strip's reserve field is kept exactly as it is for Tier 1/2 (whole units,
-// the same action). It now has a job (design.md §5, the settlement-time stockpile rescue, Slice A):
-// if the week ends short, the engine delivers stock ABOVE this floor to cover it, and never the
-// stock at or below it. The note under the cadence says so; the Stockpile arm says the rest.
+// The stockpile row for a timed good: the strip alone. There are no top-up squares. The
+// Consumption top-up has nothing to feed (nothing here consumes a timed good). The Syndicate
+// top-up's switch does cover a timed good in the engine, but this path draws no control for it
+// yet (roadmap decision checklist, Slice A2-client). The strip's reserve field is kept exactly
+// as it is for Tier 1/2 (whole units, the same action). It has a job at the week's settlement
+// (design.md §5, Slice A, made opt-in by Slice A2): if the good's Syndicate Top-Up is on and the
+// week ends short, the engine delivers stock ABOVE this floor to cover it, and never the stock
+// at or below it. The note under the cadence says so; the Stockpile arm says the rest.
 function timedReservePanel(good, t3, report){
   var tpu = goodTicksPerUnit(report, good);
   // Only a committed good has a week to settle (its `window`), so only then is the note shown.
@@ -2729,12 +2757,13 @@ function timedSynPanel(rg, rank){
 // The Stockpile arm for a timed good: where the units the Syndicate does not take end up, and
 // how many are on hand. No slider — the Tier-1/2 one is a % of THIS TICK's output, which is 0
 // or 1 for a timed good (RULED 28-09-26: dropped here; the strip's typed field stays). With a
-// commitment, the rule also says what the week's settlement may take (Slice A): stock above the
-// reserve, and only when the week ends short.
+// commitment, the rule also says what the week's settlement may take (Slice A, opt-in since
+// Slice A2): stock above the reserve, only when the week ends short, and only if the good's
+// Syndicate Top-Up is on, up to its limit.
 function timedSkPanel(good, rg, rank){
   var head = '<div class="sk-head"><span class="dir">▲</span><span class="aname">Stockpile</span>' + rank + '</div>';
   var rule = (rg && rg.window)
-    ? 'Every unit made after this week’s Syndicate target is met stays here. If the week ends short, stock above the reserve is delivered to cover it.'
+    ? 'Every unit made after this week’s Syndicate target is met stays here. If Syndicate Top-Up is on, stock above the reserve is delivered at settlement to cover a short week, up to any limit you set.'
     : 'With nothing committed, every unit made stays here.';
   return '<div class="sk-panel">' + head +
     '<div class="sk-collapsed"><div class="sk-in"><span class="sk-in-lbl">On hand</span>' +

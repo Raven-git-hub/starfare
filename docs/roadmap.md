@@ -2286,8 +2286,8 @@ boundary so the later hex-map swap doesn't touch it.
 
 - **Slice A2-engine (licence system) — Syndicate Top-Up: the settlement rescue is opt-in and capped —
   ✅ BUILT 28-09-26.** design.md §5 ("SYNDICATE TOP-UP — opt-in + capped", RULED 28-09-26, and the
-  AS-BUILT Slice A2-engine note). The engine half; the console's de-mock is **Slice A2-client (not
-  built)**. Every tier, none special-cased.
+  AS-BUILT Slice A2-engine note). The engine half; the console's de-mock is **Slice A2-client (✅ built,
+  below)**. Every tier, none special-cased.
   - **Two profile fields,** validated and stored by `setProductionProfile` beside `reserveLevel`:
     `syndicateTopUp` (true/false; absent = false, OFF) and `syndicateTopUpLimit` (an integer ≥ 0,
     validated like `reserveLevel`; absent or sent `null` = no limit). `getGoodPolicy` fills the
@@ -2338,6 +2338,39 @@ boundary so the later hex-map swap doesn't touch it.
     - the limit replacing the floor: (c)/(d), stopped by the tick's floor halt;
     - drop the validation: (f).
     Tools **68 green**. **No number was invented.**
+
+- **Slice A2-client (licence system — client) — Syndicate Top-Up: the console's control is live — ✅ BUILT
+  28-09-26.** design.md §5 ("SYNDICATE TOP-UP", and the AS-BUILT Slice A2-client note). `client/console.html`
+  only, plus the served-page pins it changed. **No engine change, no snapshot change.**
+  - **De-mocked:** the Syndicate top-up square (in a Tier-1/2 good's stockpile row, where it always sat)
+    reads the good's `syndicateTopUp` / `syndicateTopUpLimit` off the snapshot through `goodPolicy`,
+    beside `reserveLevel` (absent ⇒ OFF / no limit). A click on the switch POSTs `{ syndicateTopUp: <bool> }`
+    via `sendProfile`, flipped from the snapshot's value (`postTopUpSwitch`, which holds the LIVE poll
+    like the pursue movers). A limit edit POSTs `{ syndicateTopUpLimit: <int> }`, and a blank field POSTs
+    `null` (no limit, shown as "no limit"). The engine does the validation. The browser-only `SYN`
+    object, its "ADVISORY … POST nothing" note, the mock tag and the orphaned `.mocktag`/`.mocknote` CSS
+    are gone.
+  - **Stale text fixed (prose only):** the legend and file header (the licence layer "not built", the
+    top-up "MOCK"); an uncommitted good's "the send is advisory until a licence is issued" (×2, one in
+    unreachable code) → "the send takes effect once a licence commits this good"; the timed Stockpile
+    arm → "If Syndicate Top-Up is on, stock above the reserve is delivered at settlement to cover a
+    short week, up to any limit you set." The hero's Facility block keeps its MOCK tag.
+  - **Proof.** Sim suite **1,776 green** (unchanged count, no golden moved). Tools **68 green**. Two
+    served-page pins updated with their intent kept (`server.test.js`: the design-ahead panel now
+    numbers one and the top-up is not tagged mock; the timed Stockpile arm's new copy, and the old line
+    gone). **Exercise:** Chromium on a live dev server, with the galaxy built over HTTP (two titanium
+    mines, one licensed; a titanium-alloy refinery; a licensed fuel-tank factory). 38 checks, all
+    green:
+    - every POST body matched exactly: on, off, a limit of 25, cleared to `null`, the stepper's 1, a
+      refused −3, a second good's own switch, and embedded mode;
+    - every value re-read from `/snapshot`, and after a full reload;
+    - the old strings gone from the served page, and the Facility tag still there.
+    **Parity** against HEAD's page on the same frozen galaxy: 12 cases (Tier 1–4, committed,
+    uncommitted, idle, timed, standalone and embedded). The DOM is identical outside the three changed
+    elements. With those held to HEAD's size, every stage screenshot is byte-identical (HEAD is stable
+    against itself). The one visible side-effect: without the MOCK tag the square's header fits on one
+    line, so a Tier-1/2 stockpile row is 13px shorter. **No number was invented.** Open items: the
+    decision checklist, "Slice A2-client".
 
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
@@ -2989,15 +3022,49 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     the switch and the limit would be defence in depth, but the build prompt kept the tick unchanged.
   - **Nothing shows that a rescue was capped (a display question, for Slice A2-client).** The window's
     `rescued` and the carried profile (switch and limit) are what a client can read. "Capped at your
-    limit" would need a derived field.
+    limit" would need a derived field. *(⤳ Still open after Slice A2-client: its build prompt kept the
+    engine and the snapshot unchanged, so no such field exists and the console does not show one.)*
   - **The console's text is now wrong in one place (Slice A2-client).** The Tier-3 Stockpile arm says
     "If the week ends short, stock above the reserve is delivered to cover it." That is now true only
     with the switch on, and `server.test.js` pins the string. The panel's top-up control
-    (`SYN = { topupEnabled, limit }`) is still a mock.
+    (`SYN = { topupEnabled, limit }`) is still a mock. **⤳ CLOSED 28-09-26 (Slice A2-client): the arm
+    now says the top-up is opt-in (the pin moved with it), and the control is live.**
   - **Slice A's fixture floors are now redundant (housekeeping).** Eight breach-subject tests got a
     reserve floor in Slice A only to hold their pile away from the rescue. With the switch off by
     default the floor no longer matters there. They were left as they are: they still pass, and still
     pin the same verdicts.
+
+- **Slice A2-client (the console's Syndicate Top-Up control) — items for a ruling or a confirm** —
+  *surfaced 28-09-26. Each was built one way, stated here, not chosen silently.*
+  - **A timed Tier-3 good has no Syndicate Top-Up control (needs a ruling).** The engine's switch
+    covers every tier, a Tier-3 week included. But the timed fork draws no top-up square: it was
+    dropped with the Consumption square in the Tier-3 console slice, and `server.test.js` pins that the
+    fork draws neither. So a Tier-3 guild cannot turn the rescue on from the console, and its week is
+    never rescued unless the switch is set some other way (the raw action). The Stockpile arm's new
+    copy ("If Syndicate Top-Up is on, …") is true, but the page offers no switch. Not built here: the
+    build prompt kept placement as-is and said nothing about the timed path. Where it goes (the strip,
+    the Syndicate column) is a design call.
+  - **Placement (confirm).** The build prompt said the control "belongs on the Syndicate tab". In the
+    page, and in the authoritative mockup (`docs/mockups/console_restructure.html`), it sits in the
+    stockpile row beside the Consumption top-up, visible whichever right-hand tab is open. The prompt
+    also said "keep its placement/visual as-is", so it was not moved.
+  - **Switching off POSTs `false`, not `null` (confirm).** The prompt said to POST a boolean. The engine
+    stores `syndicateTopUp: false`, which reads exactly as absent. The alternative, `null`, is the
+    profile's clear-path (§15.4's "absent = default is the single canonical encoding") and would keep
+    the profile sparse. Behaviour is identical either way. Only the stored bytes differ.
+  - **What "active" means on the square (confirm, or rule a field).** As in the mock, the triangles
+    turn amber and animate when the switch is on and the thermometer projects a short window. That
+    projection is the thermometer's existing one (this tick's send over the ticks left). It is not an
+    engine field. The top-up itself runs only at settlement and only from stock above the reserve,
+    which the square does not check. So "active" means "on, and heading short", not "delivering now".
+    It was kept as-is per the prompt. An engine-resolved "will top up N" field would pair with the
+    open "nothing shows a rescue was capped" item above.
+  - **The square is 13px shorter (a consequence).** Without the MOCK tag its header fits on one line,
+    so every Tier-1/2 stockpile row is 13px shorter and the panels below move up by that much. Nothing
+    else moved (the parity check above).
+  - **Dead code noticed, not removed (housekeeping).** `armBody`'s Syndicate branch and
+    `commitmentReadout` (`client/console.html`) are unreachable: `gate1Col` sends every `syndicate` arm
+    to `synPanel`. Its stale "advisory" line was corrected anyway. Deleting them is a separate cleanup.
 
 - **Tier-3 slice 1 — small items for a ruling or a confirm** — *surfaced 27-09-26 by the Tier-3
   price-bands slice.*

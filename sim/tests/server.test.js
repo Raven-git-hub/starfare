@@ -1288,9 +1288,12 @@ test('GET /console serves the RESTRUCTURED console (the authoritative design)', 
   for (const marker of ['MOCK_GOODS', 'mockDerive(', 'mockTick(', 'apiLive', 'seedSeries']) {
     assert.ok(!html.includes(marker), `the console must not carry the mockup's ${marker}`);
   }
-  // The two design-ahead panels that DO remain are tagged as mock on screen.
-  assert.match(html, /mocktag/);
+  // The one design-ahead panel that DOES remain, the hero's Facility block, is tagged as
+  // mock on screen. The Syndicate top-up was the other; it is live now (Slice A2-client),
+  // so it keeps no browser-only state and carries no mock tag.
   assert.match(html, /mock · no engine/);
+  assert.ok(!/var SYN = /.test(html), 'the Syndicate top-up keeps no browser-only state');
+  assert.ok(!/Syndicate top-up <span class="mocktag">/.test(html), 'the live Syndicate top-up is not tagged mock');
 });
 
 test('GET /starters lists the seed\'s startable home systems', async () => {
@@ -2578,7 +2581,10 @@ test('GET /console: the Tier-3 strip and Stockpile arm say what the reserve floo
   assert.match(html, /t\.classList\.contains\('rs-field'\)\)\{\s*var v = fieldInt\(t\);[^\n]*\n\s*var gr = \{\}; gr\[good\] = \{ reserveLevel: v \}; sendProfile\(\{ goods: gr \}\)/);
   // What the page now says.
   assert.match(fnBody('timedReservePanel'), /the reserve is never taken at the week’s settlement/);
-  assert.match(fnBody('timedSkPanel'), /If the week ends short, stock above the reserve is delivered to cover it\./);
+  // Slice A2-client: the rescue is opt-in (Syndicate Top-Up), so the arm says so — it no longer
+  // promises that a short week is always covered.
+  assert.match(fnBody('timedSkPanel'), /If Syndicate Top-Up is on, stock above the reserve is delivered at settlement to cover a short week, up to any limit you set\./);
+  assert.ok(!/If the week ends short, stock above the reserve is delivered to cover it\./.test(html), 'the always-covered promise is gone');
   assert.ok(!/moves no unit of a timed good today/.test(html), 'the old "moves no unit" note is gone');
 });
 

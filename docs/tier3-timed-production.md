@@ -1310,4 +1310,8 @@ tier special-cased. What it means for a timed good:
   Details: design.md §5's AS-BUILT Slice A2-engine note and the roadmap's "Slice A2-engine".
 - **The console still says the old thing.** The Stockpile arm's "If the week ends short, stock above
   the reserve is delivered to cover it." is now true only with top-up on. The panel's top-up control
-  is still a mock. Both are Slice A2-client's.
+  is still a mock. Both are Slice A2-client's. *(⤳ 28-09-26, Slice A2-client: the arm now reads "If
+  Syndicate Top-Up is on, stock above the reserve is delivered at settlement to cover a short week, up
+  to any limit you set." The Tier-1/2 square is live. The timed path still draws no top-up control, so
+  a Tier-3 week's switch cannot be set from the console. That is on the roadmap's decision checklist,
+  "Slice A2-client". Details: design.md §5, the AS-BUILT Slice A2-client note.)*

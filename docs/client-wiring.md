@@ -62,7 +62,8 @@ client**, on the real committed seed, against the live persistent engine:
 > unlicensed producer reads rather than what everything reads. The seven phantom titanium mines that
 > appeared on every good's page are deleted, along with the invented per-licence fees and
 > the order presets that had nothing to order by; the advisory top-up control remains,
-> tagged mock, POSTing nothing.
+> tagged mock, POSTing nothing. *(⤳ 28-09-26, Slice A2-client: the top-up control is live. It
+> reads and POSTs the good's `syndicateTopUp` / `syndicateTopUpLimit`, design.md §5.)*
 
 > **Console rebuilt to the authoritative design — 25-08-26 (follow-up to Slice 4).**
 > Slice 4 pointed the client's iframe at the live `/console`, but `client/console.html`
