@@ -24,7 +24,9 @@ const {
 const {
   isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation,
 } = require('./vehicles.js');
-const { outpostId, nextOutpostSerial, outpostDockTurnaround } = require('./outposts.js');
+const {
+  outpostId, nextOutpostSerial, outpostDockTurnaround, OUTPOST_DEPLOY_RANGE,
+} = require('./outposts.js');
 const { resolveManifest, usedSpace, manifestAmountError, copyManifestLine } = require('./manifest.js');
 const {
   REPEAT_MODES, CADENCES, copyRouteWaypoint, savedRouteId, nextSavedRouteSerial,
@@ -33,14 +35,14 @@ const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { checkQuote, quotedPrice } = require('./price-ring.js');
 const { DEFAULT_WINDOW_N, TIER3_WINDOW_N, tier3WindowNests } = require('./windows.js');
 const {
-  isStockpileGood, isFuel, DEUTERIUM, DEPLOYABLE_KITS, isDeployableGood, kitGoodFor,
+  isStockpileGood, isFuel, DEUTERIUM, OUTPOST_KIT, DEPLOYABLE_KITS, isDeployableGood, kitGoodFor,
 } = require('./resources.js');
 const { setEntry } = require('./profile.js');
 const { getStock, addStock } = require('./stock.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { foundingEndowmentFor } = require('./meanline.js');
 const { grantFor } = require('./issuance.js');
-const { guildHolds } = require('./claims.js');
+const { guildHolds, heldSystemIds } = require('./claims.js');
 const {
   nearestWaystation, arrivalTickFor, hexDistance, legHexAtTick, legTicks, legFuelBurn,
 } = require('./transport.js');
@@ -1113,6 +1115,18 @@ function createGrantKitAction({ guildId, vehicleId: vId, kind }) {
   return { type: 'grantKit', guildId, vehicleId: vId, kind };
 }
 
+// deployAsset: place the structure a craft's kit packs, at the bare hex the craft is idle on, consuming
+// the kit (roadmap 2.2, the deploy pipeline slice 1; docs/territory-model.md §5 — "on arrival,
+// deployment is instant"). The kind is read from the kit the craft carries, so the action names only the
+// craft; this slice's one kind is the Outpost. It is a standalone, manual action on a craft that has
+// ALREADY arrived — folding it into a dispatch as an on-arrival step is the next slice. The constructor
+// only enforces the required fields are present; validateAction judges legality.
+function createDeployAssetAction({ guildId, vehicleId: vId }) {
+  if (guildId === undefined) throw new Error('createDeployAssetAction: guildId is required');
+  if (vId === undefined) throw new Error('createDeployAssetAction: vehicleId is required');
+  return { type: 'deployAsset', guildId, vehicleId: vId };
+}
+
 // dispatchRouteWithActions: send an IDLE craft along a route whose waypoints can carry a load/unload
 // ACTION, executed automatically as the craft arrives at each stop (transport-model.md §11, roadmap
 // 2.2 automation slice 1a — the chained-legs model). `waypoints` is a non-empty ordered array of
@@ -1399,6 +1413,54 @@ function ownedOutpostAt(state, guildId, anchor) {
   return (state.outposts || []).find(
     (o) => o.ownerGuildId === guildId && o.coords.q === q && o.coords.r === rr,
   ) || null;
+}
+
+// hexOccupant(state, coords) -> { kind, id } for the structure already standing on hex `coords`, or null
+// when the hex is free. ONE STRUCTURE PER HEX (design.md §4 / §2): a hex is taken by a seed landmark (a
+// system, a Syndicate waystation, or the Citadel) or by a guild Outpost. Toll gates are not built, so
+// there are none to check; a claim occupies its landmark's hex, already covered by the seed check.
+// THE ONE occupancy question, shared by the operator's spawnOutpost and a guild's deployAsset, so the
+// two can never disagree about which hexes are free.
+function hexOccupant(state, coords) {
+  const landmark = seedLandmarkAtHex(coords.q, coords.r);
+  if (landmark) return { kind: landmark.kind, id: landmark.id };
+  const outpost = (state.outposts || []).find((o) => o.coords && o.coords.q === coords.q && o.coords.r === coords.r);
+  return outpost ? { kind: 'outpost', id: outpost.id } : null;
+}
+
+// mintOutpost(state, guild, coords, anchorSystemId) -> the new Outpost row, having MUTATED `state` and
+// `guild`. THE ONE Outpost mint path (design.md §4 / §15.4), shared by the operator's spawnOutpost and a
+// guild's deployAsset: bump the guild's monotonic mint serial (never reused), mint the
+// `outpost_<guild>_NN` id from it (sim/outposts.js), and push the SHARED row into `state.outposts`.
+// `capacity`/`dockCapacity` default from the constants; the stockpile is born empty; `createdAtTick`
+// records the tick (§15.2). The caller has already validated the hex and the anchor.
+function mintOutpost(state, guild, coords, anchorSystemId) {
+  const serial = nextOutpostSerial(guild);
+  guild.outpostSerial = serial;
+  if (!Array.isArray(state.outposts)) state.outposts = [];
+  const outpost = createOutpost({
+    id: outpostId(guild.id, serial),
+    ownerGuildId: guild.id,
+    coords,             // createOutpost copies it
+    anchorSystemId,
+    createdAtTick: state.tick,
+  });
+  state.outposts.push(outpost);
+  return outpost;
+}
+
+// nearestHeldSystem(state, guildId, coords) -> { systemId, distance } for the system the guild HOLDS that
+// is nearest to hex `coords` (in hexes, `hexDistance`), or null when it holds none. A tie goes to the
+// LOWER system id: `heldSystemIds` is sorted, and only a strictly nearer system replaces the one kept, so
+// the answer is stable (invariant 9). deployAsset uses it twice with one meaning: its `distance` is the
+// deploy-range test, and its `systemId` is the new Outpost's anchor.
+function nearestHeldSystem(state, guildId, coords) {
+  let best = null;
+  for (const systemId of heldSystemIds(state, guildId)) {
+    const distance = hexDistance(coords, getSystem(systemId).coords);
+    if (best === null || distance < best.distance) best = { systemId, distance };
+  }
+  return best;
 }
 
 // routeStoreAt(state, guildId, anchor) -> the STORE a route action at `anchor` works against, or null
@@ -2959,17 +3021,11 @@ function validateAction(state, action) {
     if (!coords || typeof coords !== 'object' || Array.isArray(coords) || !isHexInBounds(coords.q, coords.r)) {
       return { valid: false, reason: `coords must be an in-bounds hex { q, r } of integers, got ${JSON.stringify(coords)}` };
     }
-    // ONE STRUCTURE PER HEX (§4 / §2): the hex must not already hold a seed landmark (a system, a
-    // Syndicate waystation, or the Citadel) ...
-    const landmark = seedLandmarkAtHex(coords.q, coords.r);
-    if (landmark) {
-      return { valid: false, reason: `hex { q: ${coords.q}, r: ${coords.r} } is already occupied by ${landmark.kind} ${JSON.stringify(landmark.id)} — one structure per hex` };
-    }
-    // ... nor another guild Outpost (toll gates are not built yet, so there is none to check; a
-    // claim occupies its landmark's hex, already covered by the seed-landmark check above).
-    const occupied = (state.outposts || []).find((o) => o.coords && o.coords.q === coords.q && o.coords.r === coords.r);
-    if (occupied) {
-      return { valid: false, reason: `hex { q: ${coords.q}, r: ${coords.r} } is already occupied by outpost ${JSON.stringify(occupied.id)} — one structure per hex` };
+    // ONE STRUCTURE PER HEX (§4 / §2): no seed landmark and no other guild Outpost on it — the shared
+    // `hexOccupant`, the same question deployAsset asks.
+    const occupant = hexOccupant(state, coords);
+    if (occupant) {
+      return { valid: false, reason: `hex { q: ${coords.q}, r: ${coords.r} } is already occupied by ${occupant.kind} ${JSON.stringify(occupant.id)} — one structure per hex` };
     }
     return { valid: true };
   }
@@ -3118,6 +3174,60 @@ function validateAction(state, action) {
     const free = craft.capacity - usedSpace(craft.cargo);
     if (volumeOf(good) > free) {
       return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} (class ${JSON.stringify(craft.class)}) has ${free} cargo space free, but an ${good} takes ${volumeOf(good)} — a whole heavy hold, so only an EMPTY heavy transport can carry one` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'deployAsset') {
+    // Roadmap 2.2 deploy pipeline slice 1 (docs/territory-model.md §5, the SPACE lane): a craft idle on a
+    // bare hex places the Outpost its kit packs. Refused whole, gates in the order a failure is felt.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    const craft = (guild.vehicles || []).find((v) => v.id === action.vehicleId);
+    if (!craft) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no vehicle ${JSON.stringify(action.vehicleId)}` };
+    }
+    // The craft has ARRIVED: idle, not flying and not in a dock slot. The idle check also guarantees it
+    // has a `location` (an in-transit craft carries a trip instead, §15.4).
+    if (craft.status !== 'idle') {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is not idle (status ${JSON.stringify(craft.status)}) — a kit deploys from a craft that has arrived` };
+    }
+    // A craft on a lane is driven by its lane (the transferCargo discipline, §11.10).
+    if (craft.route) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is running a lane — stop the lane or re-dispatch the craft before deploying` };
+    }
+    // An Outpost is placed on OPEN GROUND (design.md §4): the craft must sit on a bare hex, not berthed
+    // at a system or waystation landmark.
+    const where = resolveVehicleLocation(craft.location);
+    if (!where || where.form !== 'hex') {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is berthed at a landmark ${JSON.stringify(craft.location)} — an Outpost deploys on a bare hex; fly the craft to open space first` };
+    }
+    // EXACTLY ONE outpost kit and nothing else. The kind is read from the kit: the outpost kit is the
+    // only kind this slice, so it is the only one this action knows how to place. (A kit fills a whole
+    // heavy hold, so "nothing else" also holds by capacity; it is checked here so the reason is plain.)
+    const cargo = craft.cargo || {};
+    const goods = Object.keys(cargo);
+    if (goods.length !== 1 || goods[0] !== OUTPOST_KIT || cargo[OUTPOST_KIT] !== 1) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} must carry exactly one ${OUTPOST_KIT} and nothing else to deploy — its hold is ${JSON.stringify(cargo)}` };
+    }
+    // ONE STRUCTURE PER HEX — the same `hexOccupant` question spawnOutpost asks. This is also what
+    // refuses a craft parked at a guild Outpost (it sits on that Outpost's hex).
+    const coords = where.coords;
+    const occupant = hexOccupant(state, coords);
+    if (occupant) {
+      return { valid: false, reason: `hex { q: ${coords.q}, r: ${coords.r} } is already occupied by ${occupant.kind} ${JSON.stringify(occupant.id)} — one structure per hex` };
+    }
+    // THE RANGE (territory-model.md §5 "Deploy ranges"): an Outpost deploys within OUTPOST_DEPLOY_RANGE
+    // hexes of a system the guild HOLDS, inclusive. The nearest held system decides — it is also the
+    // anchor the apply uses, so the range tested and the anchor chosen are the same system.
+    const nearest = nearestHeldSystem(state, action.guildId, coords);
+    if (!nearest) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} holds no system — an Outpost deploys within ${OUTPOST_DEPLOY_RANGE} hexes of a system its guild holds` };
+    }
+    if (nearest.distance > OUTPOST_DEPLOY_RANGE) {
+      return { valid: false, reason: `hex { q: ${coords.q}, r: ${coords.r} } is ${nearest.distance} hexes from the nearest system guild ${JSON.stringify(action.guildId)} holds (${nearest.systemId}) — an Outpost deploys within ${OUTPOST_DEPLOY_RANGE}` };
     }
     return { valid: true };
   }
@@ -4335,25 +4445,13 @@ function applyAction(state, action) {
   }
 
   if (action.type === 'spawnOutpost') {
-    // design.md §4 / §15.4 (the outpost ladder, slice 1): place one guild Outpost. Bump the guild's
-    // monotonic mint serial (never reused, exactly as vehicleSerial) and mint from it — the SAME
-    // serial + `outpost_<guild>_NN` id scheme sim/outposts.js owns. The row is SHARED, so it lands in
-    // `state.outposts`, not on the guild. `capacity`/`dockCapacity` default from the constants
-    // (30 × HEAVY_HOLD and the [FIRST-CUT] 10); the stockpile is born empty. `createdAtTick` records
-    // the mutation's tick (§15.2). It moves NO fuel/credits/points/reputation/claims — an outpost
-    // feeds none — so there is no conserving counter-move and galacticSupply is untouched.
+    // design.md §4 / §15.4 (the outpost ladder, slice 1): place one guild Outpost through the shared
+    // mint path (mintOutpost — serial, `outpost_<guild>_NN` id, the SHARED row, createdAtTick), the same
+    // one deployAsset uses. The hex is in-bounds and unoccupied and the anchor a real system: all already
+    // validated. It moves NO fuel/credits/points/reputation/claims — an outpost feeds none — so there is
+    // no conserving counter-move and galacticSupply is untouched.
     const guild = findGuild(next, action.guildId);
-    const serial = nextOutpostSerial(guild);
-    guild.outpostSerial = serial;
-    const id = outpostId(action.guildId, serial);
-    if (!Array.isArray(next.outposts)) next.outposts = [];
-    next.outposts.push(createOutpost({
-      id,
-      ownerGuildId: action.guildId,
-      coords: action.coords,     // in-bounds, unoccupied — already validated; createOutpost copies it
-      anchorSystemId: action.anchorSystemId,
-      createdAtTick: next.tick,
-    }));
+    mintOutpost(next, guild, action.coords, action.anchorSystemId);
     return next;
   }
 
@@ -4530,6 +4628,26 @@ function applyAction(state, action) {
     const good = kitGoodFor(action.kind);
     craft.cargo = { ...(craft.cargo || {}), [good]: ((craft.cargo || {})[good] || 0) + 1 };
     craft.updatedAtTick = next.tick; // §15.2: the grant is a mutation of the craft — record its tick
+    return next;
+  }
+
+  if (action.type === 'deployAsset') {
+    // Roadmap 2.2 deploy pipeline slice 1 (docs/territory-model.md §5): the deploy is INSTANT — the kit
+    // was built earlier, so there is no build time. Place the Outpost at the craft's hex through the ONE
+    // mint path spawnOutpost uses, anchored to the nearest system the guild holds (validate proved it is
+    // within range), and consume the kit.
+    const guild = findGuild(next, action.guildId);
+    const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
+    const coords = { q: craft.location.q, r: craft.location.r }; // validate proved it is a bare hex
+    const anchor = nearestHeldSystem(next, action.guildId, coords);
+    mintOutpost(next, guild, coords, anchor.systemId);
+    // The kit WAS the whole hold (validate: exactly one kit, nothing else), so the hold is now empty and
+    // the key goes — the omit-when-empty discipline. The craft stays idle where it is, which is now the
+    // new Outpost's hex, so it is parked at its own Outpost.
+    delete craft.cargo;
+    craft.updatedAtTick = next.tick; // §15.2: the deploy is a mutation of the craft — record its tick
+    // Nothing else moves. The kit was off-market and off-supply, and a placed Outpost is not a good, so
+    // no credits, fuel, supply or price change — the supply cache needs no refresh.
     return next;
   }
 
@@ -4752,6 +4870,7 @@ module.exports = {
   createDispatchVehicleAction,
   createTransferCargoAction,
   createGrantKitAction,
+  createDeployAssetAction,
   createDispatchRouteWithActionsAction,
   createSaveRouteAction,
   createDeleteRouteAction,

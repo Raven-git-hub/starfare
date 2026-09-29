@@ -43,6 +43,13 @@ const OUTPOST_CAPACITY = 30 * HEAVY_HOLD;
 // guarantee, §4).
 const OUTPOST_DOCK_SLOTS = 10;
 
+// OUTPOST_DEPLOY_RANGE — how far, in hexes (`hexDistance`), a guild may deploy an Outpost from a system
+// it HOLDS (roadmap 2.2, the deploy pipeline slice 1). INCLUSIVE: a hex exactly this far away is in
+// range; one hex further is not. `[FIRST-CUT]` 10, ruled 29-09-26 (docs/territory-model.md §5 "Deploy
+// ranges"; recorded in docs/phase-1-tuning.md "Territory & deployment"). Read by `deployAsset`
+// (sim/actions.js) and nowhere else. The operator's `spawnOutpost` still places freely, without it.
+const OUTPOST_DEPLOY_RANGE = 10;
+
 // OUTPOST_DOCK_TURNAROUND — the per-class load/unload time (ticks a craft holds a dock slot),
 // RULED 21-09-26 (design.md §4 "The dock model"; recorded in docs/phase-1-tuning.md): light 5,
 // medium 30, heavy 120 ticks. It is the whole dock cycle's cost — one manifest, however many
@@ -105,6 +112,7 @@ function nextOutpostSerial(guild) {
 module.exports = {
   OUTPOST_CAPACITY,
   OUTPOST_DOCK_SLOTS,
+  OUTPOST_DEPLOY_RANGE,
   OUTPOST_DOCK_TURNAROUND,
   outpostDockTurnaround,
   outpostId,

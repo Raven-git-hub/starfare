@@ -10,7 +10,9 @@ ruling headline live in `design.md`; the computational model lives here.
 ferry** — which, as §5 shows, *is* the deployment pipeline this document specifies, so
 building the pipeline is what unblocks claims (the Prefecture, `design.md` §2). Numbers
 here marked `[FIRST-CUT]` are placeholders for the tuner (`phase-1-tuning.md`) / the
-decision checklist, never fixed here (working rule 5).
+decision checklist, never fixed here (working rule 5). *(29-09-26: §5's first rung — the deployable
+outpost kit and a manual outpost deploy — is now BUILT; see the AS-BUILT note at the end of §5. Everything
+else here stays design-ahead.)*
 
 ---
 
@@ -159,6 +161,20 @@ with the eviction / limbo slice, not this one.)*
 **Client note.** BUILD ROUTE mode currently loses map panning (click places waypoints, so
 it cannot also recentre). The deploy-map picker needs **arrow-key pan** (or restored
 click-to-centre) added alongside it. *(Small client build detail, not a design blocker.)*
+
+**AS-BUILT — slice 1, the deployable good + outpost deploy (29-09-26; engine + operator CLI, no client).**
+Built to this section, no design change. The kit is a **deployable good** — `outpost_kit`, in
+`DEPLOYABLE_GOODS` (`sim/resources.js`), deliberately outside `STOCKPILE_GOODS`, so it is never priced,
+never in Galactic Supply, and legal only in a craft's hold. It sizes to `ASSET_CARGO_VOLUME`, so only a heavy
+carries one, one at a time. An operator lever, `grantKit`, mints one into an empty heavy (the test seam — the
+dockyard and founding-grant sources are later rungs). `deployAsset` is the **space lane** for the outpost: a
+craft idle on a bare, unoccupied hex within `OUTPOST_DEPLOY_RANGE` (the ruled `[FIRST-CUT]` 10) of a system
+its guild holds places an Outpost there — instantly, through the same mint path as `spawnOutpost` — anchored
+to the **nearest** held system (a tie → the lower system id), and the kit is consumed. It is a **standalone
+manual action on a craft that has already arrived**: folding it into the dispatch as an on-arrival step, and
+so the arrival re-validation above, is the next rung. A kit never rides a repeating lane and is never named
+by a manifest. Not built: the client flow, the other kinds, the ground lane, pickup from orbit, and the §1–§3
+control layer (a deployed Outpost writes no claim row).
 
 ## 6. Generation — starter spacing
 

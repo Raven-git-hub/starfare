@@ -720,7 +720,7 @@ boundary so the later hex-map swap doesn't touch it.
     queued-then-parked display order, and the enlarged font/row-height figures (display sizes, tunable). **Deferred,
     not invented:** the unified-queue promotion/priority ruling → slice B; giving a parked craft an order / manual
     dispatch → slice B.
-  - **slice 4 — the Tier-4 build/deploy path.** The buildable/deployable kit, placement range, anchor-ownership.
+  - **slice 4 — the Tier-4 build/deploy path.** The buildable/deployable kit, placement range, anchor-ownership. *→ Now the **deploy pipeline** item (below, `territory-model.md` §5): its slice 1 builds the deployable `outpost_kit`, the placement range and anchor-ownership (a guild deploys within 10 hexes of a system it holds). The BUILDABLE half — a dockyard producing the kit — is a later rung there.*
 - **2.2 — cargo: the load / haul / unload engine (design.md §4 "The dock model").** The craft's hold
   and the manifest that fills/empties it — the substrate that turns dispatch (above) into a real
   load → haul → unload loop. Built as a ladder around the design's split (a transfer is INSTANT at a
@@ -2520,6 +2520,17 @@ boundary so the later hex-map swap doesn't touch it.
     (`updatedAtTick`); moves no credits / fuel / supply. And a kit never rides a lane: `grantKit` refuses a
     craft on one, and `dispatchRouteWithActions` refuses to launch a REPEATING lane on a kit-laden craft (a
     one-shot route still carries it — that is how it reaches its target).
+    **Built so far — the deploy:** the journalled `deployAsset { guildId, vehicleId }` (`sim/actions.js`; the kind
+    is read from the kit aboard). Refused whole unless the guild owns the craft; it is idle, not on a lane, and on
+    a BARE HEX (not berthed at a system / waystation landmark — an Outpost goes on open ground); it carries
+    exactly one `outpost_kit` and nothing else; the hex is unoccupied (the shared `hexOccupant` — no seed
+    landmark, no guild Outpost — now also what `spawnOutpost` asks); and the hex is within
+    `OUTPOST_DEPLOY_RANGE` (the ruled `[FIRST-CUT]` 10, `sim/outposts.js`, recorded in `phase-1-tuning.md`
+    "Territory & deployment") of a system the guild holds. The apply mints the Outpost through the ONE mint
+    path `spawnOutpost` now shares (`mintOutpost` — the same `outpost_<guild>_NN` serial, the same shared row),
+    anchored to the NEAREST held system (a tie → the lower system id), and consumes the kit (the hold key goes).
+    Instant (no build time, §5); moves no credits / fuel / supply / price, writes no claim row. The craft stays
+    idle on the hex, so it now reads as parked at its new Outpost.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
@@ -2532,7 +2543,7 @@ boundary so the later hex-map swap doesn't touch it.
   like any other asset, so there is no claim action until an asset can move between systems. Three
   questions are open and block the build - design.md §19 **#67** (what happens to an evicted system's
   GOODS), **#68** (the Tier-4 bill, and the two orphan Tier-3 modules it would claim), **#69** (how a
-  Prefecture is removed by anyone but its owner - the design has no hostile-destruction mechanic). **The spatial control layer + the deploy pipeline are now designed — `docs/territory-model.md` (29-09-26):** the 7-hex footprint with first-settled seniority over overlaps, semi-controlled detection corridors, the two-lane cross-system deploy pipeline (the ferry that unblocks the Prefecture), and the starter ≥ 3 spacing rule; the open `[FIRST-CUT]` numbers are on the checklist below. **The spatial control layer + the deploy pipeline are now designed — `docs/territory-model.md` (29-09-26):** the 7-hex footprint with first-settled seniority over overlaps, semi-controlled detection corridors, the two-lane cross-system deploy pipeline (the ferry that unblocks the Prefecture), and the starter ≥ 3 spacing rule; the open `[FIRST-CUT]` numbers are on the checklist below.
+  Prefecture is removed by anyone but its owner - the design has no hostile-destruction mechanic). **The spatial control layer + the deploy pipeline are now designed — `docs/territory-model.md` (29-09-26):** the 7-hex footprint with first-settled seniority over overlaps, semi-controlled detection corridors, the two-lane cross-system deploy pipeline (the ferry that unblocks the Prefecture), and the starter ≥ 3 spacing rule; the open `[FIRST-CUT]` numbers are on the checklist below.
 - **2.3 — Transport (guild tier) + tolls.** Routes (construction, rules, location/route bonuses),
   payload, travel time; toll gates (built at 2.1, placed on territory from 2.2), toll rules; the
   Syndicate transport contract (the Syndicate leases guild transports back — recall-time model:
@@ -2629,8 +2640,7 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
 ## Decision checklist (open)
 
 **Phase 2 — new, from the design notes (need rulings before their slice becomes a build prompt):**
-- **Territory & deployment `[FIRST-CUT]` numbers (29-09-26, `docs/territory-model.md`)** — need rulings before the deploy/claim build: the space-asset **deploy ranges** (outpost 10 / toll gate 10 / deep scan 5 hexes), the **semi-control aura radii** (system 5 / outpost 3 / gate·scan 2), the **starter minimum separation** (3 hexes = 2×claimRadius + 1), and the **arrival-revalidation** failure rule (a kit arriving to an illegal target stays aboard and the craft idles — confirm). Squatting enforcement (detection / penalty / report-bounty) is a ruled *direction* deferred to 2.5 / Phase-6, not a number.
-- **Territory & deployment `[FIRST-CUT]` numbers (29-09-26, `docs/territory-model.md`)** — need rulings before the deploy/claim build: the space-asset **deploy ranges** (outpost 10 / toll gate 10 / deep scan 5 hexes), the **semi-control aura radii** (system 5 / outpost 3 / gate·scan 2), the **starter minimum separation** (3 hexes = 2×claimRadius + 1), and the **arrival-revalidation** failure rule (a kit arriving to an illegal target stays aboard and the craft idles — confirm). Squatting enforcement (detection / penalty / report-bounty) is a ruled *direction* deferred to 2.5 / Phase-6, not a number.
+- **Territory & deployment `[FIRST-CUT]` numbers (29-09-26, `docs/territory-model.md`)** — need rulings before the deploy/claim build: the space-asset **deploy ranges** (outpost 10 / toll gate 10 / deep scan 5 hexes), the **semi-control aura radii** (system 5 / outpost 3 / gate·scan 2), the **starter minimum separation** (3 hexes = 2×claimRadius + 1), and the **arrival-revalidation** failure rule (a kit arriving to an illegal target stays aboard and the craft idles — confirm). Squatting enforcement (detection / penalty / report-bounty) is a ruled *direction* deferred to 2.5 / Phase-6, not a number. **⤳ 29-09-26 — the OUTPOST deploy range (10) is RULED as the `[FIRST-CUT]`** and recorded in `phase-1-tuning.md` "Territory & deployment" (`OUTPOST_DEPLOY_RANGE`, built with the 2.2 deploy pipeline slice 1). **Still open:** the toll-gate / deep-scan ranges, the aura radii, the starter separation, and the arrival-revalidation rule (the next deploy slice, auto-deploy on arrival, is the one that needs it).
 
 - **Asset-presence vs. production** — *surfaced 16-09-26 by the operator adjust levers
   (`docs/operator-adjust.md` §3.5 AS-BUILT).* Production is currently **asset-blind** — a venture
