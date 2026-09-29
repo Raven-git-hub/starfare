@@ -140,6 +140,22 @@ space assets need supply runs) — outpost ≤ **10** hexes from a **system**; t
 **10** from a **system OR outpost**; deep scan ≤ **5** from a **system or outpost** (→
 `phase-1-tuning.md` / decision checklist; the gate/outpost figures mirror `design.md` §2).
 
+**Painting the range (the snapshot contract).** The engine tells the client WHERE a
+deploy is legal; the client never computes that itself (§18 — the range distance is a game
+number). Each guild row carries a lane-keyed `deployRange`. This slice fills the one built
+lane: `deployRange.outpost = { radius, anchors }`, where `radius` is `OUTPOST_DEPLOY_RANGE`
+and `anchors` is the ids of the systems the guild holds (`heldSystemIds`, sorted — invariant
+9), the same set the range is measured to. **Omit-when-empty:** a guild that holds no system
+carries no `deployRange` (it can deploy nowhere). The client draws the union of the
+`hexDistance ≤ radius` disks around the anchor coordinates it ALREADY renders, and the
+structures it already draws on top read as occupied — so the paint is accurate to everything
+the client can know. It is guidance, not a verdict: **`deployCheck` re-run at pick-confirm,
+at dispatch, and again at arrival (above) is the sole authority on legality** — the only thing
+that can catch a rival taking the hex, or the anchor going, between polls. That re-check is
+PERMANENT, not a stop-gap; it is the ruled transport-planner split (the client estimates, the
+engine is authoritative at apply). Lane-keyed so `tollGate` and `deepScan` slot in additively
+when their lanes are built (their anchors add outposts) — no reshape.
+
 **Route legality is target-only.** The *path* is legal anywhere — open space is not
 illegal, it is merely less safe / tolled — so there is nothing to "route around." Only the
 **target** is validated. The player therefore **builds the route themselves** (reusing the
