@@ -142,6 +142,39 @@ function legHexAtTick(from, to, departureTick, arrivalTick, tick) {
   return cubeRound(qScaled, rScaled, span);
 }
 
+// hexStepToward(from, to, n) -> { reached: true } | { reached: false, hex: { q, r } } — the hex `n` hexes
+// from `from` along the straight line to `to` (two hex coords { q, r }). Its one caller today is the deploy
+// RETREAT (roadmap 2.2 deploy pipeline slice 2, docs/territory-model.md §5): a craft whose on-arrival
+// deploy fails pulls back `n` hexes from its target toward the nearest system its guild holds.
+//
+// NEVER OVERSHOOTS. When `to` is `n` hexes away or closer, the step would reach `to` (or pass it), so the
+// answer is `{ reached: true }` and no hex is computed — the caller lands the craft AT `to` itself. That is
+// also what keeps the division below safe: `d` is at least 1 whenever a hex is computed.
+//
+// OTHERWISE it is the same interpolate-then-round as legHexAtTick (§2.3 + §2.4), with distance in place of
+// time. The line is d = hexDistance(from, to) hexes long, so the point `n` hexes along it is
+//   point = from + (n / d) × (to − from)
+// Everything is multiplied through by `d`, so no fraction is ever formed: qScaled / d is the point's
+// fractional q. cubeRound then picks the hex that contains the point — exact whole-number maths, so the
+// same inputs always give the same hex, on every run and every replay (§15.5 invariant 9).
+//
+// The hex it returns is exactly `n` hexes from `from` and `d − n` from `to` — it is the n-th hex of the
+// straight hex line between the two (the coordinate that changes most moves by exactly n, and the rounding
+// keeps the other two inside it). It is the unbounded grid's hex: whether it is inside the galaxy is the
+// caller's question (isHexInBounds), as it is for legHexAtTick. Inputs must be whole numbers and `n` must
+// not be negative; anything else throws rather than returning a hex computed from bad input.
+function hexStepToward(from, to, n) {
+  const inputs = [from.q, from.r, to.q, to.r, n];
+  if (!inputs.every(Number.isInteger) || n < 0) {
+    throw new Error(`hexStepToward: needs whole-number coords and a step count n >= 0 — got ${JSON.stringify({ from, to, n })}`);
+  }
+  const d = hexDistance(from, to);
+  if (d <= n) return { reached: true }; // the step reaches `to` — land there, never past it
+  const qScaled = from.q * d + (to.q - from.q) * n;
+  const rScaled = from.r * d + (to.r - from.r) * n;
+  return { reached: false, hex: cubeRound(qScaled, rScaled, d) };
+}
+
 // nearestWaystation(destinationSystemId) -> { outpost, distance } | null
 //
 // THE WAYSTATIONS ARE THE SEED'S OUTPOSTS. Not a choice made here: the ruling
@@ -180,6 +213,6 @@ function arrivalTickFor(currentTick, distance) {
 }
 
 module.exports = {
-  CRAFT_SPEED, TOLL_BUFF, hexDistance, cubeRound, legHexAtTick, legTicks, legFuelBurn, nearestWaystation,
-  arrivalTickFor,
+  CRAFT_SPEED, TOLL_BUFF, hexDistance, cubeRound, legHexAtTick, hexStepToward, legTicks, legFuelBurn,
+  nearestWaystation, arrivalTickFor,
 };
