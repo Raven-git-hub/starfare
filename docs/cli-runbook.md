@@ -65,3 +65,27 @@ top-level `outposts` / `claims`.
 - `save-route "NAME" --guild ID --route "w;w;…"` / `delete-route --guild ID --id ROUTE_ID`.
 - `stop-route-after-run --guild ID --id VEHICLE_ID` / `cancel-route --guild ID --id VEHICLE_ID`.
 - `spawn-vehicle` / `spawn-outpost` / `remove-outpost` / the `adjust-*` levers / `tick [n]`.
+- `grant-kit --guild ID --id VEHICLE_ID --kind outpost` / `deploy-asset --guild ID --id VEHICLE_ID` —
+  the deploy pipeline (next section; not part of the automation demo).
+
+## The deploy pipeline — a kit hauled and deployed (2.2 deploy slice 1)
+
+The operator path for `docs/territory-model.md` §5's first rung: mint an Outpost kit into a heavy
+transport, fly it out, and deploy it. There is no script for this one; the steps are short. On a
+throwaway galaxy (see the warning above), with `B="--base http://host:port"` if not the default:
+
+    node tools/admin.js seat-demo --seed 42 $B                    # a guild that holds its home system
+    HOME=$(node tools/admin.js snapshot --pick guilds.0.homeSystemId $B)
+    node tools/admin.js adjust-fuel --guild seat_demo --delta 100000 $B
+    node tools/admin.js spawn-vehicle --guild seat_demo --class heavyTransport --system $HOME $B
+    node tools/admin.js grant-kit --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --kind outpost $B
+    node tools/admin.js dispatch-vehicle --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --waypoints "Q,R" $B
+    node tools/admin.js tick N $B                                 # N = the arrivalTick dispatch printed, minus now
+    node tools/admin.js deploy-asset --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 $B
+
+`Q,R` is any free bare hex (no system, waystation or Outpost on it) within the outpost deploy range of
+the home system (`phase-1-tuning.md` "Territory & deployment"). `deploy-asset` prints the new Outpost's
+id, hex and anchor system; the craft is left idle on that hex with an empty hold (it reads as parked at
+its new Outpost). Refusals exit 1 with the engine's reason: a kit onto anything but an empty heavy, a
+deploy while in flight or while berthed at a system, a deploy on an occupied hex, or one out of range
+(the reason names the distance and the nearest held system). A kit survives a restart like any cargo.

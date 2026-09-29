@@ -43,7 +43,7 @@ const FLAG_SPEC = Object.freeze({
   delta: 'int',       // signed integer: a grant (+) or remove (−) for the scalar levers
   system: 'string',   // adjust-goods / grant-asset: which system's cell / where to mint
   good: 'string',     // adjust-goods: which stockpile good
-  kind: 'string',     // grant-asset: miner | factory
+  kind: 'string',     // grant-asset: miner | factory; grant-kit: outpost (the kit's kind)
   asset: 'string',    // remove-asset: which asset id
   venture: 'string',  // remove-venture: which venture id
   close: 'bool',      // remove-asset: tear the venture down (else detach)
@@ -53,7 +53,7 @@ const FLAG_SPEC = Object.freeze({
   outpost: 'string',  // spawn-vehicle: berth at an outpost landmark
   hex: 'string',      // spawn-vehicle: berth at a bare hex, "q,r"
   condition: 'number', // spawn-vehicle: starting maintenanceCondition fraction (default 1)
-  id: 'string',       // remove-vehicle / dispatch-vehicle / transfer-cargo: which vehicle id; delete-route: which route id
+  id: 'string',       // remove-vehicle / dispatch-vehicle / transfer-cargo / grant-kit / deploy-asset: which vehicle id; delete-route: which route id
   waypoints: 'string', // dispatch-vehicle: "w;w;…", each sys:<id> | out:<id> | q,r
   route: 'string',    // dispatch-route / save-route: "w;w;…", each anchor[@load:…][@unload:…] (per-waypoint actions)
   repeat: 'string',   // dispatch-route: the launch mode — once | continuous[:CADENCE] | nRun:N[:CADENCE]
@@ -541,6 +541,30 @@ function removeOutpostBody(flags) {
   };
 }
 
+// The two deploy-pipeline subcommands (docs/territory-model.md §5, roadmap 2.2 deploy slice 1) — thin HTTP
+// clients over POST /admin/vehicle/grant-kit|deploy-asset: mint a kit into a craft's hold, and deploy it.
+const DEPLOY_COMMANDS = Object.freeze(['grant-kit', 'deploy-asset']);
+
+// grantKitBody(flags) -> the POST /admin/vehicle/grant-kit request body. `--kind` is passed through
+// verbatim ('outpost'): WHICH kinds have a kit is the engine's vocabulary (sim/resources.js), not this
+// file's. PURE and exported so admin.test.js can assert the mapping without a server.
+function grantKitBody(flags) {
+  return {
+    guildId: requireFlag(flags, 'guild', 'grant-kit'),
+    vehicleId: requireFlag(flags, 'id', 'grant-kit'),
+    kind: requireFlag(flags, 'kind', 'grant-kit'),
+  };
+}
+
+// deployAssetBody(flags) -> the POST /admin/vehicle/deploy-asset request body. No kind and no hex: the
+// engine reads the kind from the kit aboard and the hex from where the craft sits. PURE and exported.
+function deployAssetBody(flags) {
+  return {
+    guildId: requireFlag(flags, 'guild', 'deploy-asset'),
+    vehicleId: requireFlag(flags, 'id', 'deploy-asset'),
+  };
+}
+
 // The two saved-route subcommands (transport-model.md §11.9, automation slice 2a) — thin HTTP clients
 // over POST /admin/route/save|delete. A guild's saved routes are read back with `snapshot`.
 const ROUTE_COMMANDS = Object.freeze(['save-route', 'delete-route']);
@@ -580,6 +604,7 @@ module.exports = {
   parseRouteWaypointToken, parseRouteFlag, parseRepeatFlag, dispatchRouteBody, stopRouteAfterRunBody, cancelRouteBody,
   parseCargoFlag, transferCargoBody,
   spawnOutpostBody, removeOutpostBody, OUTPOST_COMMANDS,
+  grantKitBody, deployAssetBody, DEPLOY_COMMANDS,
   saveRouteBody, deleteRouteBody, ROUTE_COMMANDS,
   EXPECTED_COMMITMENT, EXPECTED_WINDOW_N,
 };
@@ -1096,6 +1121,57 @@ async function cmdRemoveOutpost(base, flags) {
   row('outposts', `${(out.snapshot.outposts || []).length}`);
 }
 
+// grant-kit / deploy-asset (docs/territory-model.md §5, roadmap 2.2 deploy slice 1): build the body (the
+// PURE grantKitBody / deployAssetBody) and POST it to the gated /admin/vehicle/* endpoint. A refused action
+// comes back accepted:false -> throw -> exit 1. Each prints the state that resulted: the craft's hold, and
+// for a deploy the new Outpost too.
+function craftIn(snapshot, guildId, vehicleId) {
+  const guild = (snapshot.guilds || []).find((g) => g.id === guildId) || null;
+  return ((guild && guild.vehicles) || []).find((v) => v.id === vehicleId) || null;
+}
+function holdLine(craft) {
+  const hold = (craft && craft.cargo) || {};
+  const goods = Object.keys(hold).sort();
+  return goods.length ? goods.map((good) => `${good}:${hold[good]}`).join(', ') : 'empty';
+}
+
+async function cmdGrantKit(base, flags) {
+  const body = grantKitBody(flags);
+  const out = await postJson(base, '/admin/vehicle/grant-kit', body);
+  if (!out.accepted) throw new Error(`grant-kit refused: ${out.reason}`);
+  const craft = craftIn(out.snapshot, body.guildId, body.vehicleId);
+  row('action', 'grantKit');
+  row('guild', body.guildId);
+  row('vehicle', body.vehicleId);
+  row('kind', body.kind);
+  if (craft) {
+    row('status', craft.status);
+    row('location', JSON.stringify(craft.location));
+    row('hold', `${holdLine(craft)} (${craft.used} / ${craft.capacity} space)`);
+  }
+}
+
+async function cmdDeployAsset(base, flags) {
+  const body = deployAssetBody(flags);
+  const out = await postJson(base, '/admin/vehicle/deploy-asset', body);
+  if (!out.accepted) throw new Error(`deploy-asset refused: ${out.reason}`);
+  const craft = craftIn(out.snapshot, body.guildId, body.vehicleId);
+  const mine = (out.snapshot.outposts || []).filter((o) => o.ownerGuildId === body.guildId);
+  const placed = mine[mine.length - 1] || null; // the just-minted outpost is the guild's newest row
+  row('action', 'deployAsset');
+  row('guild', body.guildId);
+  row('vehicle', body.vehicleId);
+  if (placed) {
+    // `log`, not `row`: an outpost id is wider than row's 12-character label column.
+    log(`  outpost   ${placed.id} at ${JSON.stringify(placed.coords)}, anchored to ${placed.anchorSystemId}`);
+  }
+  if (craft) {
+    row('status', craft.status);
+    row('hold', holdLine(craft));
+  }
+  row('outposts', `${(out.snapshot.outposts || []).length}`);
+}
+
 // save-route / delete-route (transport-model.md §11.9, automation slice 2a): build the body (the PURE
 // saveRouteBody / deleteRouteBody) and POST it to the gated /admin/route/* endpoint. A refused action comes
 // back accepted:false -> throw -> exit 1. Prints the guild's saved routes as they now stand, so the operator
@@ -1185,6 +1261,15 @@ Guild-Outpost spawn/remove primitive (design.md §4 — operator, exit 1 on a re
                   (one structure per hex; placed freely — range/anchor-ownership deferred)
   remove-outpost  --guild ID --id OUTPOST_ID   tear the named outpost down (id never reissued)
 
+Deploy pipeline (territory-model.md §5 — operator, exit 1 on a refused action)
+  grant-kit       --guild ID --id VEHICLE_ID --kind outpost
+                  mint one deployable kit into an idle craft's hold (a kit is a whole heavy hold, so
+                  only an EMPTY heavy transport takes one)
+  deploy-asset    --guild ID --id VEHICLE_ID
+                  the craft, idle on a free bare hex within the outpost deploy range of a system the guild
+                  holds (phase-1-tuning.md "Territory & deployment"), places the Outpost its kit packs,
+                  anchored to the nearest held system; the kit is used up
+
 Saved routes (transport-model.md §11.9 — operator, exit 1 on a refused action; read them back with snapshot)
   save-route "NAME" --guild ID --route "w;w;…"
                   save a named, origin-free route (same --route grammar as dispatch-route); a NAME the
@@ -1205,7 +1290,7 @@ Flags
   --system ID    adjust-goods / grant-asset: which system's cell / where to mint;
                  spawn-outpost: the system the outpost anchors to
   --good G       adjust-goods: which stockpile good
-  --kind K       grant-asset: miner | factory
+  --kind K       grant-asset: miner | factory; grant-kit: outpost
   --asset ID     remove-asset: which asset id
   --venture ID   remove-venture: which venture id
   --close        remove-asset: tear the occupying venture down (default: detach it)
@@ -1215,7 +1300,8 @@ Flags
   --hex q,r      spawn-vehicle: berth the craft at a bare in-bounds hex;
                  spawn-outpost: the single hex the outpost occupies
   --condition F  spawn-vehicle: starting maintenanceCondition fraction in [0, 1] (default 1)
-  --id ID        remove-vehicle / dispatch-vehicle / stop-route-after-run / cancel-route: which vehicle id;
+  --id ID        remove-vehicle / dispatch-vehicle / stop-route-after-run / cancel-route / grant-kit /
+                 deploy-asset: which vehicle id;
                  remove-outpost: which outpost id; delete-route: which saved-route id
   --waypoints W  dispatch-vehicle: "w;w;…" route, each w = sys:<id> | out:<id> | q,r
   --route W      dispatch-route / save-route: "w;w;…" route, each w = anchor[@load:G:N,…][@unload:G:N,…]
@@ -1247,6 +1333,8 @@ async function main(argv) {
     case 'transfer-cargo': await cmdTransferCargo(base, flags); return;
     case 'spawn-outpost': await cmdSpawnOutpost(base, flags); return;
     case 'remove-outpost': await cmdRemoveOutpost(base, flags); return;
+    case 'grant-kit': await cmdGrantKit(base, flags); return;
+    case 'deploy-asset': await cmdDeployAsset(base, flags); return;
     case 'save-route': await cmdSaveRoute(base, flags); return;
     case 'delete-route': await cmdDeleteRoute(base, flags); return;
     default:

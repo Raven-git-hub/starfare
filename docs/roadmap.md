@@ -18,8 +18,8 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
-| 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,779 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders); the guild↔guild contest (a rival, territory, the market) is not built yet |
+| 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,818 tests, deterministic) |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first rung — a hauled Outpost kit deployed); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -2504,7 +2504,7 @@ boundary so the later hex-map swap doesn't touch it.
   actioned-route machinery) → the client (Manage popup, deploy-map picker, range paint) → the kit SOURCES
   (the dockyard building a kit, the founding-grant kit, loading a kit from a store) → the other kinds
   (toll gate, deep-scan array, the Prefecture).
-  - **slice 1 — the deployable good + outpost deploy (engine + operator CLI, NO client).** 🔶 *IN PROGRESS.*
+  - **slice 1 — the deployable good + outpost deploy (engine + operator CLI, NO client).** 🟢 *BUILT (29-09-26).*
     **Built so far — the deployable good:** `DEPLOYABLE_GOODS` = [`outpost_kit`] + `isDeployableGood` /
     `kitGoodFor` (`sim/resources.js`), a sibling category to the stockpile goods and deliberately NOT in
     `STOCKPILE_GOODS` — so it has no price row, no Galactic Supply row, and is illegal in a system pool or an
@@ -2531,6 +2531,24 @@ boundary so the later hex-map swap doesn't touch it.
     anchored to the NEAREST held system (a tie → the lower system id), and consumes the kit (the hold key goes).
     Instant (no build time, §5); moves no credits / fuel / supply / price, writes no claim row. The craft stays
     idle on the hex, so it now reads as parked at its new Outpost.
+    **The operator surface:** `POST /admin/vehicle/grant-kit` + `POST /admin/vehicle/deploy-asset` (Access-gated,
+    through the same validate → journal → apply path as every `/admin/vehicle/*` endpoint) and `tools/admin.js
+    grant-kit --guild ID --id VEHICLE_ID --kind outpost` / `deploy-asset --guild ID --id VEHICLE_ID` (each prints
+    the resulting hold; a deploy also prints the new Outpost's id, hex and anchor). `docs/cli-runbook.md` has the
+    sequence. No snapshot change: a kit shows as an ordinary `cargo` key (its `used` a whole heavy hold).
+    **A NO-OP on a galaxy with no kit and no deploy** — no existing test or golden changed (persist / determinism /
+    galactic-supply goldens byte-identical). Sim 1,779 → **1,818 green** (`deployable-goods.test.js` +15,
+    `deploy-asset.test.js` +22, `server.test.js` +2); `tools/admin.test.js` 68 → **71**. Driven end to end
+    against a live persisted server (seed 42): grant → dispatch 3 hexes → tick → deploy; exactly-10 deploys,
+    11 is refused; a `kill -9` (journal replay) and a SIGTERM restart both come back canonically byte-identical.
+    **Deferred (not invented):** the client (the Manage popup, the deploy-map picker, the range painted on the
+    map — `client/game.html` untouched; today a kit just lists as an "Outpost Kit" cargo row); auto-deploy on
+    arrival (a dispatch's on-arrival action) and with it the arrival re-validation rule (open on the checklist);
+    the kit SOURCES (the dockyard building one, the founding-grant kit, loading one from a pool / Outpost —
+    `transferCargo` and the route-action gates stay stockpile-only); storing a kit AT an Outpost (§4); the other
+    kinds (toll gate, deep-scan array, the Prefecture) and their ranges; the spatial control layer
+    (`territory-model.md` §1–§3 — a deployed Outpost writes no claim row); the Outpost's GP weight and deploy RP
+    offset (`phase-1-tuning.md`, still `[DEFERRED]` — a deploy moves no points, exactly as `spawnOutpost` never has).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is

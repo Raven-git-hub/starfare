@@ -92,6 +92,7 @@ const {
   createDispatchVehicleAction, createTransferCargoAction, createDispatchRouteWithActionsAction, quoteDispatch,
   createSpawnOutpostAction, createRemoveOutpostAction,
   createSaveRouteAction, createDeleteRouteAction, createStopRouteAfterRunAction, createCancelRouteAction,
+  createGrantKitAction, createDeployAssetAction,
 } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
 const { saveState, appendJournal, clearJournal, loadOrInit, saveSeed, loadSeed, deleteGalaxy } = require('./persist.js');
@@ -1139,6 +1140,76 @@ async function handleRequest(req, res) {
       sendJson(res, 200, applyOneAction(action));
     } catch (err) {
       sendJson(res, 500, { error: 'error applying cancelRoute (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // --- the deploy pipeline (docs/territory-model.md §5, roadmap 2.2 deploy slice 1) -------------
+  // Two OPERATOR endpoints, gated and routed exactly like /admin/vehicle/* above: they construct the
+  // engine action from the body and run it through the SAME validate → journal → apply path POST
+  // /action uses (applyOneAction), so a granted kit and a deployed Outpost survive restart and replay.
+
+  // POST /admin/vehicle/grant-kit { guildId, vehicleId, kind } — mint one deployable kit ('outpost')
+  // straight into a craft's hold (the operator test seam until the real kit sources land).
+  if (method === 'POST' && path === '/admin/vehicle/grant-kit') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","vehicleId":"vehicle_g1_heavyTransport_01","kind":"outpost"}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId, vehicleId and kind' });
+      return;
+    }
+    let action;
+    try {
+      // The constructor enforces the required fields; legality — an idle craft the guild owns, not on a
+      // lane, with room for the kit — is validateAction's job, run inside applyOneAction below.
+      action = createGrantKitAction({ guildId: body.guildId, vehicleId: body.vehicleId, kind: body.kind });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed grant-kit request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying grantKit (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // POST /admin/vehicle/deploy-asset { guildId, vehicleId } — the craft, idle on a bare hex, places the
+  // Outpost its kit packs and the kit is consumed. (The player client will send the same action through
+  // POST /action in the client slice.)
+  if (method === 'POST' && path === '/admin/vehicle/deploy-asset') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","vehicleId":"vehicle_g1_heavyTransport_01"}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId and vehicleId' });
+      return;
+    }
+    let action;
+    try {
+      // The constructor enforces the required fields; legality — the craft is idle on a free bare hex
+      // within range of a held system, carrying exactly one kit — is validateAction's job, below.
+      action = createDeployAssetAction({ guildId: body.guildId, vehicleId: body.vehicleId });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed deploy-asset request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying deployAsset (invariant violation or engine throw)', detail: String((err && err.message) || err) });
     }
     return;
   }

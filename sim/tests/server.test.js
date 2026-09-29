@@ -1678,6 +1678,72 @@ test('POST /admin/outpost/remove refuses an unknown outpost id (200, accepted:fa
   assert.match(rm.body.reason, /owns no outpost/);
 });
 
+// --- the deploy pipeline (docs/territory-model.md §5, roadmap 2.2 deploy slice 1) ----------------
+
+// The first free hex exactly one hex from the home system — derived from the seed, like FREE_HEX.
+const { getSystem } = require('../seed.js');
+const { hexDistance } = require('../transport.js');
+function freeHexBesideHome() {
+  const home = getSystem(HOME_SYSTEM).coords;
+  for (let q = home.q - 1; q <= home.q + 1; q += 1) {
+    for (let r = home.r - 1; r <= home.r + 1; r += 1) {
+      const hex = { q, r };
+      if (hexDistance(hex, home) === 1 && isHexInBounds(q, r) && !seedLandmarkAtHex(q, r)) return hex;
+    }
+  }
+  throw new Error('server.test: no free hex beside the home system');
+}
+
+test('POST /admin/vehicle/grant-kit + /deploy-asset: a kit becomes an Outpost on the hex; neither ticks', async () => {
+  await reset();
+  await found(); // the founding claim is the held system the Outpost anchors to
+  const hex = freeHexBesideHome();
+  await req('POST', '/admin/vehicle/spawn', { guildId: 'player-guild', class: 'heavyTransport', location: hex });
+  const VID = 'vehicle_player-guild_heavyTransport_01';
+
+  const grant = await req('POST', '/admin/vehicle/grant-kit', { guildId: 'player-guild', vehicleId: VID, kind: 'outpost' });
+  assert.equal(grant.status, 200);
+  assert.equal(grant.body.accepted, true);
+  assert.equal(grant.body.snapshot.tick, 0, 'a grant must not tick');
+  assert.deepEqual(grant.body.snapshot.guilds[0].vehicles[0].cargo, { outpost_kit: 1 });
+
+  const deploy = await req('POST', '/admin/vehicle/deploy-asset', { guildId: 'player-guild', vehicleId: VID });
+  assert.equal(deploy.status, 200);
+  assert.equal(deploy.body.accepted, true);
+  assert.equal(deploy.body.snapshot.tick, 0, 'a deploy must not tick');
+  const [outpost] = deploy.body.snapshot.outposts;
+  assert.equal(outpost.id, 'outpost_player-guild_01');
+  assert.deepEqual(outpost.coords, hex);
+  assert.equal(outpost.anchorSystemId, HOME_SYSTEM);
+  const craft = deploy.body.snapshot.guilds[0].vehicles[0];
+  assert.deepEqual(craft.cargo, {}, 'the kit is consumed');
+  assert.equal(craft.status, 'idle');
+});
+
+test('POST /admin/vehicle/grant-kit + /deploy-asset refuse (200, accepted:false) and 400 a malformed body', async () => {
+  await reset();
+  await found();
+  await req('POST', '/admin/vehicle/spawn', { guildId: 'player-guild', class: 'lightTransport', location: freeHexBesideHome() });
+  const VID = 'vehicle_player-guild_lightTransport_01';
+  // A light hold is smaller than one kit → the engine refuses (200, accepted:false).
+  const refused = await req('POST', '/admin/vehicle/grant-kit', { guildId: 'player-guild', vehicleId: VID, kind: 'outpost' });
+  assert.equal(refused.status, 200);
+  assert.equal(refused.body.accepted, false);
+  assert.match(refused.body.reason, /only an EMPTY heavy transport can carry one/);
+  // No kit aboard → deploy refused.
+  const noKit = await req('POST', '/admin/vehicle/deploy-asset', { guildId: 'player-guild', vehicleId: VID });
+  assert.equal(noKit.status, 200);
+  assert.equal(noKit.body.accepted, false);
+  assert.match(noKit.body.reason, /exactly one outpost_kit/);
+  // Structurally malformed requests (no kind / no vehicleId) are 400s — the constructors refuse them.
+  const badGrant = await req('POST', '/admin/vehicle/grant-kit', { guildId: 'player-guild', vehicleId: VID });
+  assert.equal(badGrant.status, 400);
+  assert.match(badGrant.body.error, /malformed grant-kit/);
+  const badDeploy = await req('POST', '/admin/vehicle/deploy-asset', { guildId: 'player-guild' });
+  assert.equal(badDeploy.status, 400);
+  assert.match(badDeploy.body.error, /malformed deploy-asset/);
+});
+
 // --- the saved-route store (transport-model.md §11.9, automation slice 2a) -------------------
 
 test('POST /admin/route/save saves + upserts a route; GET /snapshot reads it; /admin/route/delete removes it; none tick', async () => {
