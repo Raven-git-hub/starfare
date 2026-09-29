@@ -810,7 +810,9 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
 // `laneEnded` (slice 3a — transport-model.md §11.6) is likewise never assembled here: when a lane ENDS
 // on its own (a stop's store gone), the executor drops the `route` and flags the craft
 // `{ reason: 'target-gone', tick }` so the player sees why it stopped. OMITTED otherwise, and cleared by
-// the craft's next dispatch.
+// the craft's next dispatch. `deployFailed` (roadmap 2.2 deploy pipeline slice 2) is the same kind of
+// flag: set by the arrival step when a craft's on-arrival deploy fails and it retreats — `{ reason:
+// 'occupied' | 'out-of-range', tick }` — never assembled here, and cleared by the next dispatch.
 function createVehicle({
   id,
   ownerGuildId,

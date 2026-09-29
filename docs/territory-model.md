@@ -11,8 +11,9 @@ ferry** — which, as §5 shows, *is* the deployment pipeline this document spec
 building the pipeline is what unblocks claims (the Prefecture, `design.md` §2). Numbers
 here marked `[FIRST-CUT]` are placeholders for the tuner (`phase-1-tuning.md`) / the
 decision checklist, never fixed here (working rule 5). *(29-09-26: §5's first rung — the deployable
-outpost kit and a manual outpost deploy — is now BUILT; see the AS-BUILT note at the end of §5. Everything
-else here stays design-ahead.)*
+outpost kit and a manual outpost deploy — is now BUILT; see the AS-BUILT note at the end of §5. 30-09-26:
+its second rung — the deploy as a dispatch's on-arrival action, with the arrival re-validation and the
+retreat rule — is BUILT too (the slice-2 AS-BUILT note). Everything else here stays design-ahead.)*
 
 ---
 
@@ -149,9 +150,23 @@ theirs to make.
 **Arrival re-validates the target** — the same dual-check `sim/claims.js` exists for
 (valid at dispatch AND at arrival), hooked to the named "resolve a scheduled arrival" seam
 (`design.md` §15). A kit can arrive to find the hex taken, the system claimed by a rival
-first, or its range-anchor gone. On a failed arrival the **kit stays aboard and the craft
-goes idle at the hex** — nothing lost but the trip and its non-refundable fuel
-(`transport-model.md` §11.3). *(Exact failure semantics → decision checklist.)*
+first, or its range-anchor gone.
+
+**On a failed arrival the craft RETREATS** *(RULED 30-09-26 — revises the earlier "the craft goes
+idle at the hex")*. A craft left idle on a hex it could not deploy on may be sitting in a rival's
+space — which can draw a fine (2.3) — so it pulls back instead. Let `T` be the target hex and `S` the
+**nearest system the guild holds** (always exists — a guild can never lose its homeworld, §4). The
+craft snaps **`DEPLOY_RETREAT_HEXES`** (`[FIRST-CUT]` **3**, `phase-1-tuning.md` "Territory &
+deployment") hexes from `T` toward `S` — the cube-round of the point `DEPLOY_RETREAT_HEXES /
+hexDistance(T, S)` of the way along the line, so integer, deterministic and replay-identical — and is
+**clamped so it never overshoots**: if `S` is that close or closer, it lands **at `S`**, parked at the
+system. The **kit stays aboard** and the craft is **idle** there. It is a forced repositioning, **not
+travel** — no fuel, no time, no toll or fine, no supply move — so nothing is lost but the trip and its
+non-refundable fuel (`transport-model.md` §11.3). The craft is flagged **`deployFailed = { reason,
+tick }`** (`occupied` / `out-of-range`), the `laneEnded` pattern, so the player can see why; the next
+dispatch clears it. *(Deferred, not built: guaranteeing the landing hex is not itself rival or contested
+space. Pulling toward the nearest held system is the ruled behaviour; refining the landing needs the
+§1–§3 control map, and lands with it.)*
 
 **The reverse — pickup from orbit.** An evicted or torn-down asset sits in **orbital limbo**
 around its planet (`design.md` §5). Recovering it is an ordinary transport haul: fly to the
@@ -175,6 +190,23 @@ manual action on a craft that has already arrived**: folding it into the dispatc
 so the arrival re-validation above, is the next rung. A kit never rides a repeating lane and is never named
 by a manifest. Not built: the client flow, the other kinds, the ground lane, pickup from orbit, and the §1–§3
 control layer (a deployed Outpost writes no claim row).
+
+**AS-BUILT — slice 2, auto-deploy on arrival + the retreat rule (30-09-26; engine + operator CLI, no client).**
+Built to this section as revised above. A `dispatchRouteWithActions` waypoint may carry a second action type,
+`{ type: 'deploy', kind }` (`transport-model.md` §11.1's type tag — `dock` was the first). The dispatch refuses
+it whole unless the kind has a kit, it is on the **final** waypoint, that waypoint is a **bare hex**, and — the
+up-front pre-check, so a doomed trip is never flown — the deploy would succeed **now**: exactly one matching kit
+and nothing else aboard, the hex free, within `OUTPOST_DEPLOY_RANGE` of a held system. It needs no store at its
+stop (it is exempt from `routeStoreAt`), and it rides a one-shot route only (a kit never rides a repeating lane —
+slice 1's gate, unchanged). A saved route never carries one. On arrival, `resolveRouteArrival` re-validates
+through **the one deploy rule** slice 1's manual `deployAsset` now shares (`deployCheck`) and deploys through the
+**one deploy apply** (`deployKit`) — one implementation, two triggers. On failure the craft retreats (above),
+the geometry being `hexStepToward` (`sim/transport.js`), and is flagged `deployFailed`. **One provisional edge,
+on the decision checklist:** near the galaxy's rim the 3-hex step can fall just off the lattice (9 system /
+in-range-hex pairs on the live seed), where a craft cannot be left; the build then steps on along the same line
+to the first on-lattice hex (at worst `S`). The manual `deployAsset` is unchanged. Not built: the client (the
+Manage popup, the deploy-map picker, the painted range, the `deployFailed` message), the retreat-landing
+refinement above, the other kinds, and the kit sources.
 
 ## 6. Generation — starter spacing
 
@@ -209,7 +241,11 @@ exploration slice lands. *(Lands in the founding-endowment path, `phase-1-tuning
 
 - Deploy ranges (outpost / gate / scan = 10 / 10 / 5) and semi-control aura radii (system /
   outpost / gate·scan = 5 / 3 / 2) — `[FIRST-CUT]` numbers for the tuner.
-- Arrival-revalidation failure semantics (kit stays aboard, craft idles — confirm/pin).
+- ~~Arrival-revalidation failure semantics~~ — **RULED 30-09-26:** the craft RETREATS `DEPLOY_RETREAT_HEXES` (3)
+  toward the nearest held system, kit aboard, flagged `deployFailed` (§5). **Still open under it:** where a
+  retreat lands when that step falls just off the lattice near the rim (built provisionally as "step on along
+  the same line to the first on-lattice hex"), and refining the landing to avoid rival / contested space (with
+  the §1–§3 control map).
 - Starter minimum separation value (3) — confirm as the generation constant.
 - Squatting enforcement (detection, penalty, report/bounty) — deferred to 2.5 / Phase-6.
 - The BUILD-ROUTE / deploy-map pan control — client build detail.

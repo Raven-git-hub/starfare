@@ -46,9 +46,27 @@ const OUTPOST_DOCK_SLOTS = 10;
 // OUTPOST_DEPLOY_RANGE — how far, in hexes (`hexDistance`), a guild may deploy an Outpost from a system
 // it HOLDS (roadmap 2.2, the deploy pipeline slice 1). INCLUSIVE: a hex exactly this far away is in
 // range; one hex further is not. `[FIRST-CUT]` 10, ruled 29-09-26 (docs/territory-model.md §5 "Deploy
-// ranges"; recorded in docs/phase-1-tuning.md "Territory & deployment"). Read by `deployAsset`
-// (sim/actions.js) and nowhere else. The operator's `spawnOutpost` still places freely, without it.
+// ranges"; recorded in docs/phase-1-tuning.md "Territory & deployment"). Read by the one deploy rule,
+// `deployCheck` (sim/actions.js) — for the manual `deployAsset` and the on-arrival deploy alike — and
+// nowhere else. The operator's `spawnOutpost` still places freely, without it.
 const OUTPOST_DEPLOY_RANGE = 10;
+
+// DEPLOY_RETREAT_HEXES — how far, in hexes, a craft pulls back when its ON-ARRIVAL deploy fails (roadmap
+// 2.2, the deploy pipeline slice 2; docs/territory-model.md §5, the retreat rule). The craft does not idle
+// on a hex it could not deploy on — that hex may be a rival's space, where idling could draw a fine — so it
+// snaps this many hexes toward the nearest system its guild holds, landing AT that system if it is this
+// close or closer (never past it). `[FIRST-CUT]` 3, ruled 30-09-26 (recorded in docs/phase-1-tuning.md
+// "Territory & deployment"). Read only by the retreat (`retreatLanding`, sim/actions.js), never inlined.
+const DEPLOY_RETREAT_HEXES = 3;
+
+// DEPLOY_FAILED_REASONS — why an on-arrival deploy failed, recorded on the craft as `deployFailed =
+// { reason, tick }` (the `laneEnded` pattern) so the player can see why the craft pulled back:
+//   'occupied'     — the target hex holds a structure now (a seed landmark or an Outpost placed first);
+//   'out-of-range' — no system the guild holds is within OUTPOST_DEPLOY_RANGE of the hex any more.
+// These are the two deploy checks a craft's flight can change. The other two cannot fail on arrival — the
+// dispatch proved the target is a bare hex (an anchor never moves) and the hold exactly one kit (a kit is
+// never manifested) — so they have no reason here; an arrival that trips one halts loudly instead.
+const DEPLOY_FAILED_REASONS = Object.freeze(['occupied', 'out-of-range']);
 
 // OUTPOST_DOCK_TURNAROUND — the per-class load/unload time (ticks a craft holds a dock slot),
 // RULED 21-09-26 (design.md §4 "The dock model"; recorded in docs/phase-1-tuning.md): light 5,
@@ -113,6 +131,8 @@ module.exports = {
   OUTPOST_CAPACITY,
   OUTPOST_DOCK_SLOTS,
   OUTPOST_DEPLOY_RANGE,
+  DEPLOY_RETREAT_HEXES,
+  DEPLOY_FAILED_REASONS,
   OUTPOST_DOCK_TURNAROUND,
   outpostDockTurnaround,
   outpostId,

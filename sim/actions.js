@@ -25,7 +25,8 @@ const {
   isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation,
 } = require('./vehicles.js');
 const {
-  outpostId, nextOutpostSerial, outpostDockTurnaround, OUTPOST_DEPLOY_RANGE,
+  outpostId, nextOutpostSerial, outpostDockTurnaround, OUTPOST_DEPLOY_RANGE, DEPLOY_RETREAT_HEXES,
+  DEPLOY_FAILED_REASONS,
 } = require('./outposts.js');
 const { resolveManifest, usedSpace, manifestAmountError, copyManifestLine } = require('./manifest.js');
 const {
@@ -44,7 +45,7 @@ const { foundingEndowmentFor } = require('./meanline.js');
 const { grantFor } = require('./issuance.js');
 const { guildHolds, heldSystemIds } = require('./claims.js');
 const {
-  nearestWaystation, arrivalTickFor, hexDistance, legHexAtTick, legTicks, legFuelBurn,
+  nearestWaystation, arrivalTickFor, hexDistance, legHexAtTick, hexStepToward, legTicks, legFuelBurn,
 } = require('./transport.js');
 const {
   GUILD_STARTING_FUEL, routeFuelCost, burnFuel, fuelValue,
@@ -390,6 +391,14 @@ function resolveRouteArrival(state, guild, craft, thisTick) {
     advanceRoute(state, guild, craft, thisTick); // a no-action waypoint is a pure turning point — chain straight through
     return;
   }
+  if (wp.action.type === 'deploy') {
+    // A DEPLOY (slice 2) acts on open ground, so it has no store to find — it never asks routeStoreAt. It
+    // resolves at once (deploy or retreat), and the deploy stop is the route's last, so advanceRoute then
+    // ends the one-shot run: the route goes and the craft is left idle wherever the deploy put it.
+    resolveDeployArrival(state, guild, craft, thisTick);
+    advanceRoute(state, guild, craft, thisTick);
+    return;
+  }
   // WHERE the craft sits decides HOW the action resolves — the SAME split transferCargo uses (§4), read
   // through `routeStoreAt`, the one predicate the lap-start re-check shares:
   const store = routeStoreAt(state, guild.id, craft.location);
@@ -418,6 +427,61 @@ function resolveRouteArrival(state, guild, craft, thisTick) {
   // §11.6 anchor-gone). The lane ENDS: the craft is idle at its current berth (the now-bare hex), route
   // cleared, flagged. Goods are conserved — nothing moved for the un-resolved action.
   endLane(craft, 'target-gone', thisTick);
+}
+
+// resolveDeployArrival(state, guild, craft, thisTick) — a routed craft has just landed on its final
+// waypoint, whose action is `{ type: 'deploy', kind }` (roadmap 2.2 deploy pipeline slice 2;
+// docs/territory-model.md §5). ARRIVAL RE-VALIDATES THE TARGET: the dispatch checked it, but while the
+// craft flew the hex may have been taken, or the system it was in range of lost. The re-check is THE ONE
+// deploy rule (deployCheck) and the apply THE ONE deploy apply (deployKit) — the same pair the manual
+// deployAsset runs, so there is one deploy implementation with two triggers.
+//   - It passes → the Outpost is placed on the craft's hex and the kit consumed; the craft idles there,
+//     parked at its new Outpost.
+//   - It fails → the craft RETREATS. It does not idle on a hex it could not deploy on — that hex may be a
+//     rival's space, where sitting idle could draw a fine — so it is pulled back toward the nearest system
+//     its guild holds (retreatLanding), the kit still aboard, and flagged `deployFailed = { reason, tick }`
+//     so the player can see why (the `laneEnded` pattern; the next dispatch clears it). The pull-back is a
+//     forced SNAP, not travel: no fuel, no time, no toll or fine, and nothing else moves.
+function resolveDeployArrival(state, guild, craft, thisTick) {
+  const check = deployCheck(state, guild.id, craft.id, craft.location, craft.cargo);
+  if (check.ok) {
+    deployKit(state, guild, craft, check, thisTick);
+    return;
+  }
+  if (!DEPLOY_FAILED_REASONS.includes(check.failure)) {
+    // Only the hex ('occupied') or the range ('out-of-range') can change while a craft flies. The dispatch
+    // proved the target is a bare hex (an anchor never moves) and the hold exactly one kit (a kit is never
+    // manifested); and a guild never loses its home system, so it always holds one ('no-held-system'). Any
+    // of those failing here means the state is corrupt — HALT with the tick and the values rather than guess
+    // where to put the craft (§15.5: a silent violation is worse than a crash).
+    throw new Error(`deploy on arrival, tick ${thisTick}: guild ${JSON.stringify(guild.id)} vehicle ${JSON.stringify(craft.id)} failed the "${check.failure}" check, which the dispatch gate rules out — ${check.reason}`);
+  }
+  craft.location = retreatLanding(state, guild.id, craft.location);
+  craft.deployFailed = { reason: check.failure, tick: thisTick };
+  craft.updatedAtTick = thisTick; // §15.2: the retreat is a mutation of the craft — record its tick
+}
+
+// retreatLanding(state, guildId, from) -> the location a craft retreats to when its on-arrival deploy fails
+// on the bare hex `from` (docs/territory-model.md §5, the retreat rule). S is the NEAREST system the guild
+// holds (nearestHeldSystem — a tie goes to the lower id; the caller has proved there is one). The craft moves
+// DEPLOY_RETREAT_HEXES hexes from `from` straight toward S (hexStepToward — the cube-round of the point that
+// far along the line, whole-number exact, so a replay lands it on the same hex, §15.5 invariant 9):
+//   - S is DEPLOY_RETREAT_HEXES away or closer → the craft lands AT S, as that system's landmark location:
+//     parked at the system, never carried past it;
+//   - otherwise → the bare hex it stepped to.
+// OFF-THE-LATTICE (provisional — on the decision checklist, not a ruling): near the galaxy's rim the stepped
+// hex can fall just outside the lattice (the live seed has 9 such system / in-range-hex pairs), and a craft
+// cannot be left outside the galaxy. It then steps on along the SAME line, one hex at a time, to the first hex
+// inside the galaxy — at worst S itself, which always is. Same direction, never past S, still deterministic.
+function retreatLanding(state, guildId, from) {
+  const fromCoords = resolveVehicleLocation(from).coords;
+  const home = nearestHeldSystem(state, guildId, fromCoords);
+  const homeCoords = getSystem(home.systemId).coords;
+  for (let n = DEPLOY_RETREAT_HEXES; ; n += 1) {
+    const step = hexStepToward(fromCoords, homeCoords, n);
+    if (step.reached) return { landmarkKind: 'system', landmarkId: home.systemId };
+    if (isHexInBounds(step.hex.q, step.hex.r)) return step.hex;
+  }
 }
 
 // endLane(craft, reason, thisTick) — a lane ENDS on its own (transport-model.md §11.6): the route is
@@ -1119,7 +1183,8 @@ function createGrantKitAction({ guildId, vehicleId: vId, kind }) {
 // the kit (roadmap 2.2, the deploy pipeline slice 1; docs/territory-model.md §5 — "on arrival,
 // deployment is instant"). The kind is read from the kit the craft carries, so the action names only the
 // craft; this slice's one kind is the Outpost. It is a standalone, manual action on a craft that has
-// ALREADY arrived — folding it into a dispatch as an on-arrival step is the next slice. The constructor
+// ALREADY arrived. Its on-arrival twin is a dispatch's `deploy` waypoint action (slice 2, below) — the same
+// deploy rule and apply (deployCheck / deployKit), fired by the arrival instead of by hand. The constructor
 // only enforces the required fields are present; validateAction judges legality.
 function createDeployAssetAction({ guildId, vehicleId: vId }) {
   if (guildId === undefined) throw new Error('createDeployAssetAction: guildId is required');
@@ -1132,7 +1197,9 @@ function createDeployAssetAction({ guildId, vehicleId: vId }) {
 // 2.2 automation slice 1a — the chained-legs model). `waypoints` is a non-empty ordered array of
 // `{ anchor, action? }`: `anchor` is the same location shape a plain dispatch waypoint uses
 // ({ landmarkKind, landmarkId } or { q, r }); `action` (optional) is `{ type: 'dock', manifest }`, the
-// §4 load/unload manifest fired on arrival. Unlike the plain frozen `dispatchVehicle` (§11.2 — left
+// §4 load/unload manifest fired on arrival — or, on the FINAL waypoint only, `{ type: 'deploy', kind }`
+// (roadmap 2.2 deploy pipeline slice 2): place the kit the craft carries on that bare hex the moment it
+// lands, or retreat if it no longer can (territory-model.md §5). Unlike the plain frozen `dispatchVehicle` (§11.2 — left
 // as-is for no-action routes), this flies leg by leg: the whole run's fuel burns UP FRONT (§11.3,
 // legs are known even though timing is not), the route + a cursor are journalled onto the craft, and
 // each leg is re-dispatched by the tick hooks (`advanceRoute`) as the craft completes the stop before
@@ -1579,7 +1646,13 @@ function manifestError(manifest) {
 // an in-bounds hex), and the action, if present, is a { type: 'dock', manifest } with a well-formed §4
 // manifest. Anything that needs a CRAFT — leg lengths, fuel, a spycraft's empty hold — is the dispatch's
 // own gate, since a saved route has no craft and no origin. `i` numbers the waypoint in the reason.
-function routeWaypointError(wp, i) {
+//
+// `allowDeploy` (roadmap 2.2 deploy pipeline slice 2) lets the action also be a DEPLOY — `{ type: 'deploy',
+// kind }`, "place the kit this craft carries, on arrival" — with `kind` a deployable kind that has a kit
+// (`kitGoodFor`). Only the dispatch passes it: a deploy is a one-shot trip to one target, so it is never
+// SAVED as a reusable route (saveRoute keeps the dock-only gate). Where a deploy may sit on the route, and
+// whether it would succeed, need the whole route and the craft — the dispatch's own deploy gate.
+function routeWaypointError(wp, i, { allowDeploy = false } = {}) {
   if (!wp || typeof wp !== 'object' || Array.isArray(wp)) {
     return `waypoint ${i} must be a { anchor, action? } object, got ${JSON.stringify(wp)}`;
   }
@@ -1588,9 +1661,19 @@ function routeWaypointError(wp, i) {
     return `waypoint ${i} does not resolve to a valid anchor — a landmark { landmarkKind: "system"|"outpost", landmarkId } that resolves, or an in-bounds hex { q, r }`;
   }
   if (wp.action !== undefined) {
-    // The only action type today is 'dock' (§11.1 — the tag is what lets later types slot in).
+    if (allowDeploy && wp.action && typeof wp.action === 'object' && wp.action.type === 'deploy') {
+      if (kitGoodFor(wp.action.kind) === null) {
+        return `waypoint ${i} deploy action: ${JSON.stringify(wp.action.kind)} is not a deployable kind with a kit (known: ${Object.keys(DEPLOYABLE_KITS).join(', ')})`;
+      }
+      return null;
+    }
+    // Otherwise the action is a 'dock' (§11.1 — the type tag is what lets later types slot in; 'deploy' is
+    // the second, dispatch-only).
     if (!wp.action || typeof wp.action !== 'object' || wp.action.type !== 'dock') {
-      return `waypoint ${i} action must be { type: "dock", manifest } (the only action type is "dock", §11.1), got ${JSON.stringify(wp.action)}`;
+      const shapes = allowDeploy
+        ? '{ type: "dock", manifest } or { type: "deploy", kind } (the action types, §11.1)'
+        : '{ type: "dock", manifest } (the only action type a saved route carries is "dock", §11.1)';
+      return `waypoint ${i} action must be ${shapes}, got ${JSON.stringify(wp.action)}`;
     }
     // The manifest is judged exactly as a manual transferCargo manifest is (the shared gate).
     const mError = manifestError(wp.action.manifest);
@@ -3294,7 +3377,7 @@ function validateAction(state, action) {
     }
     for (let i = 0; i < action.waypoints.length; i += 1) {
       const wp = action.waypoints[i];
-      const wpError = routeWaypointError(wp, i);
+      const wpError = routeWaypointError(wp, i, { allowDeploy: true });
       if (wpError) return { valid: false, reason: wpError };
       // A capacity-0 craft (spycraft) carries no cargo, so an action it can never perform is a
       // whole-route refusal (§11 — validate whole, refuse whole), not a silent no-op on arrival.
@@ -3321,6 +3404,35 @@ function validateAction(state, action) {
     const kitAboard = Object.keys(craft.cargo || {}).find(isDeployableGood);
     if (repeating && kitAboard) {
       return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} carries an ${kitAboard} — a deployable kit never rides a repeating lane (dispatch it once, to where it deploys)` };
+    }
+    // A DEPLOY ACTION (roadmap 2.2 deploy pipeline slice 2; territory-model.md §5) — "send this heavy and
+    // its kit to hex X, and plant the Outpost the moment it lands". Refused whole, up front, when:
+    //   - it is not on the FINAL waypoint: the craft deploys where its trip ends (after a deploy the kit is
+    //     gone, so there is nothing left to haul on to a later stop);
+    //   - that waypoint is a landmark, not a bare hex: an Outpost goes on open ground;
+    //   - the deploy would fail NOW — THE ONE deploy rule (deployCheck), asked of the target hex today with
+    //     the hold the craft has today: exactly one kit and nothing else, the hex free, and within range of a
+    //     system the guild holds. So a visibly doomed trip is never flown (and never fuelled). The arrival
+    //     asks the same rule again, because the hex can be taken or the range lost while the craft flies.
+    // The kind was checked per waypoint (a known kind). The outpost kit is the only kit today, so "the craft
+    // carries the kit this kind names" is exactly deployCheck's "one outpost kit". A deploy rides a ONE-SHOT
+    // route only, with no gate of its own: it needs a kit aboard, and the kit gate just above refuses a
+    // repeating lane on a kit-laden craft. A deploy needs no STORE at its stop (routeStoreAt), unlike a dock
+    // action — it acts on open ground.
+    const deployAt = action.waypoints.findIndex((wp) => wp.action !== undefined && wp.action.type === 'deploy');
+    if (deployAt !== -1) {
+      const last = action.waypoints.length - 1;
+      if (deployAt !== last) {
+        return { valid: false, reason: `waypoint ${deployAt} carries a deploy action, but a deploy rides the FINAL waypoint only — the craft deploys where its route ends (waypoint ${last})` };
+      }
+      const target = action.waypoints[last].anchor;
+      if (resolveVehicleLocation(target).form !== 'hex') { // routeWaypointError proved it resolves
+        return { valid: false, reason: `the deploy waypoint ${last} is a landmark ${JSON.stringify(target)} — an Outpost deploys on a bare hex { q, r }` };
+      }
+      const check = deployCheck(state, action.guildId, action.vehicleId, target, craft.cargo);
+      if (!check.ok) {
+        return { valid: false, reason: `the deploy at waypoint ${last} would fail now — ${check.reason}` };
+      }
     }
     // Build + price the WHOLE route (dispatchRoute is the one home): leg 0 from the craft's location
     // through every waypoint anchor, each resolving and non-zero-length. It returns the whole-run burn.
@@ -4538,8 +4650,10 @@ function applyAction(state, action) {
     // CANCEL a pending Outpost transfer (design.md §4 "a parked or queued craft is cancelled by being
     // re-dispatched away — that drops its pending manifest") — the shared sweep, see cancelQueuedManifest.
     cancelQueuedManifest(next, craft.id);
-    // A fresh dispatch CLEARS an ended-lane flag (§11.6): the player has re-tasked the craft.
+    // A fresh dispatch CLEARS an ended-lane flag (§11.6): the player has re-tasked the craft. It clears a
+    // failed-deploy flag (deploy pipeline slice 2) the same way, for the same reason.
     delete craft.laneEnded;
+    delete craft.deployFailed;
     // …and DROPS any lane the idle craft was still carrying (one WAITING for fuel at its last stop, or
     // queued at an Outpost stop): re-dispatching a craft cancels what it was waiting on (§4). A plain
     // trip must not land carrying a stale route, or the arrival step would resolve that route's stop.
@@ -4690,8 +4804,10 @@ function applyAction(state, action) {
     // is idle, so it passed the idle gate; its manual manifest is dropped when it is re-dispatched).
     cancelQueuedManifest(next, craft.id);
     // A fresh dispatch CLEARS an ended-lane flag (§11.6) — before this run starts, so a flag set below (a
-    // skipped W1 whose store is gone, resolved at once) is this run's own.
+    // skipped W1 whose store is gone, resolved at once) is this run's own. A failed-deploy flag (deploy
+    // pipeline slice 2) is cleared the same way: the player has re-tasked the craft.
     delete craft.laneEnded;
+    delete craft.deployFailed;
 
     // Re-derive + price the whole route BEFORE the craft leaves its berth (dispatchRoute reads
     // craft.location); validate guaranteed { ok: true }, so this cannot fail — the shared helper keeps

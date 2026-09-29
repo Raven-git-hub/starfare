@@ -66,7 +66,7 @@
 // One violation record shape everywhere: { rule, where, detail }.
 
 const {
-  isRawResource, isStockpileGood, isDeployableGood, FUEL_GOOD,
+  isRawResource, isStockpileGood, isDeployableGood, kitGoodFor, FUEL_GOOD,
 } = require('./resources.js');
 const { PRICED_GOODS, PUBLISH_LAG, bandFor } = require('./prices.js');
 const {
@@ -96,7 +96,7 @@ const { computeGalacticSupply } = require('./supply.js');
 const {
   getSite, getLandmark, getSystem, getTerranHomeworld, isHexInBounds, seedLandmarkAtHex,
 } = require('./seed.js');
-const { outpostNumberOf } = require('./outposts.js');
+const { outpostNumberOf, DEPLOY_FAILED_REASONS } = require('./outposts.js');
 const {
   REPEAT_MODES, CADENCES, LANE_END_REASONS, WAIT_REASONS, savedRouteId, savedRouteNumberOf,
 } = require('./routes.js');
@@ -1431,6 +1431,9 @@ function tripViolation(trip) {
 // one-shot, a whole number >= 0; `N`, the launched lap target, rides an nRun alone, a whole number >= 1;
 // and on an nRun the count-up and the count-down always add back to the target — lapsDone +
 // lapsRemaining === N. A drift there means a lap was counted one way and not the other.
+// A DEPLOY action `{ type: 'deploy', kind }` (roadmap 2.2 deploy pipeline slice 2) may ride a craft's route
+// — never a saved one — and only where the dispatch lets it: a known kind, on the LAST waypoint, whose anchor
+// is a bare hex, on a one-shot route (no mode). See deployActionViolation.
 // The one home of the route shape, used by checkVehicleIntegrity below.
 function routeViolation(route) {
   if (!route || typeof route !== 'object' || !Array.isArray(route.waypoints) || route.waypoints.length === 0) {
@@ -1500,7 +1503,31 @@ function routeViolation(route) {
       return { reason: 'only a perCycle lane holds for its cadence — an immediate lane starts its next lap at once', cadence: route.cadence, waiting: w };
     }
   }
-  return waypointListViolation(route.waypoints);
+  return waypointListViolation(route.waypoints, { allowDeploy: true }) || deployActionViolation(route);
+}
+
+// deployActionViolation(route) -> a detail object naming a deploy action out of place on a craft's
+// route, or null (roadmap 2.2 deploy pipeline slice 2). The dispatch places a deploy only on the FINAL
+// waypoint (the craft deploys where its trip ends), only on a bare-hex anchor (an Outpost goes on open
+// ground), and only on a one-shot route (a kit never rides a repeating lane). The executor never moves a
+// deploy action, so a route breaking any of these was corrupted after launch. `waypointListViolation` has
+// already checked each action's own shape.
+function deployActionViolation(route) {
+  const last = route.waypoints.length - 1;
+  for (let i = 0; i <= last; i += 1) {
+    const wp = route.waypoints[i];
+    if (!wp.action || wp.action.type !== 'deploy') continue;
+    if (i !== last) {
+      return { reason: `waypoint ${i} carries a deploy action, which rides the final waypoint only`, waypoints: route.waypoints.length };
+    }
+    if (resolveVehicleLocation(wp.anchor).form !== 'hex') {
+      return { reason: `the deploy waypoint ${i}'s anchor must be a bare hex`, anchor: wp.anchor };
+    }
+    if (route.mode !== undefined) {
+      return { reason: 'a deploy action rides a one-shot route only (a kit never rides a repeating lane)', mode: route.mode };
+    }
+  }
+  return null;
 }
 
 // waypointListViolation(waypoints) -> a detail object naming the first malformed { anchor, action? }
@@ -1508,8 +1535,9 @@ function routeViolation(route) {
 // spelling of the per-waypoint check, shared by a craft's journalled `route` (routeViolation above) and
 // a guild's SAVED routes (checkSavedRouteIntegrity below) — both hold the SAME §11.1 list, so they are
 // judged identically. Each waypoint's `anchor` resolves (resolveVehicleLocation), and any `action` is a
-// { type: 'dock', manifest } with a non-empty manifest of well-formed lines.
-function waypointListViolation(waypoints) {
+// { type: 'dock', manifest } with a non-empty manifest of well-formed lines — or, when `allowDeploy` (a
+// craft's route only; a saved route never carries one), a { type: 'deploy', kind } with a known kind.
+function waypointListViolation(waypoints, { allowDeploy = false } = {}) {
   for (let i = 0; i < waypoints.length; i += 1) {
     const wp = waypoints[i];
     if (!wp || typeof wp !== 'object' || Array.isArray(wp)) {
@@ -1520,6 +1548,12 @@ function waypointListViolation(waypoints) {
     }
     if (wp.action !== undefined) {
       const a = wp.action;
+      if (allowDeploy && a && typeof a === 'object' && a.type === 'deploy') {
+        if (kitGoodFor(a.kind) === null) {
+          return { reason: `waypoint ${i}'s deploy action must name a deployable kind with a kit`, action: a };
+        }
+        continue;
+      }
       if (!a || typeof a !== 'object' || a.type !== 'dock' || !Array.isArray(a.manifest) || a.manifest.length === 0) {
         return { reason: `waypoint ${i}'s action must be a { type: "dock", manifest } with a non-empty manifest`, action: a };
       }
@@ -1660,6 +1694,21 @@ function checkVehicleIntegrity(state) {
         }
         if (v.route !== undefined) {
           out.push({ rule: 'vehicle-lane-ended-no-route', where: `guild:${g.id}.vehicle:${v.id}`, detail: { laneEnded: le, routeCursor: v.route && v.route.cursor } });
+        }
+      }
+      // The FAILED-DEPLOY flag (roadmap 2.2 deploy pipeline slice 2 — the laneEnded pattern). ABSENT is legal
+      // (the usual case); a PRESENT flag is `{ reason, tick }` with a known reason and a whole tick no later
+      // than now (§15.2 — it records when the deploy failed), and it rides a craft with NO route: the failed
+      // deploy was the route's last stop, so the route ended there, and the next dispatch clears the flag.
+      if (v.deployFailed !== undefined) {
+        const df = v.deployFailed;
+        const shapeOk = df && typeof df === 'object' && DEPLOY_FAILED_REASONS.includes(df.reason)
+          && Number.isInteger(df.tick) && df.tick >= 0 && df.tick <= state.tick;
+        if (!shapeOk) {
+          out.push({ rule: 'vehicle-deploy-failed-valid', where: `guild:${g.id}.vehicle:${v.id}.deployFailed`, detail: { deployFailed: df, tick: state.tick, reasons: DEPLOY_FAILED_REASONS } });
+        }
+        if (v.route !== undefined) {
+          out.push({ rule: 'vehicle-deploy-failed-no-route', where: `guild:${g.id}.vehicle:${v.id}`, detail: { deployFailed: df, routeCursor: v.route && v.route.cursor } });
         }
       }
       if (seenIds.has(v.id)) {

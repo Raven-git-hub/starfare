@@ -677,9 +677,13 @@ change-flagging) for this layer.
 ### 11.1 The route with actions — the entity
 A route is an ordered list of WAYPOINTS, each `{ anchor, action? }`. An `anchor` is the §4 location shape
 (a system / outpost landmark, or a bare hex). An `action` is `{ type:'dock', manifest }`: `type` tags the
-action ('dock' is the only type now — the tag is what lets later action types, e.g. missions, slot in
+action ('dock' was the only type at first — the tag is what lets later action types, e.g. missions, slot in
 without reshaping the entity), and `manifest` is the §4 load/unload manifest (the same amount/max lines
-the dock editor builds). A waypoint with no action is a pure turning point. **The route is ORIGIN-FREE —
+the dock editor builds). A waypoint with no action is a pure turning point. *(**The second type, 30-09-26 —
+`{ type:'deploy', kind }`**, roadmap 2.2 deploy pipeline slice 2, `territory-model.md` §5: place the kit the
+craft carries on the waypoint's bare hex the moment it arrives, or retreat if the target no longer allows it.
+It has no manifest and needs no store at its stop, rides only the FINAL waypoint of a ONE-SHOT dispatch, and
+is never saved — a saved route (§11.5 / §11.9) stays dock-only.)* **The route is ORIGIN-FREE —
 it stores only its waypoints, never a start location.** The launching craft's current location is always the
 runtime origin (see §11.4).
 

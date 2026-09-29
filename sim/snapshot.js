@@ -734,11 +734,13 @@ function computeAttention(state) {
 //                               cargo, capacity, used,              //   hold + space figures (2.2 Outpost Mgr)
 //                               dockStatus?, location?, trip?,      //   trip: { legs[{from,to,isToll,
 //                                                                   //   departureTick,arrivalTick}], arrivalTick, fuelCost }
-//                               route?, laneEnded? } ],             //   route: { waypoints, cursor, mode?,
-//                                                                   //   cadence?, lapsDone?, N?,
+//                               route?, laneEnded?,                 //   route: { waypoints, cursor, mode?,
+//                               deployFailed? } ],                  //   cadence?, lapsDone?, N?,
 //                                                                   //   lapsRemaining?, waiting?,
 //                                                                   //   stopAfterRun? } (§11.10);
-//                                                                   //   laneEnded: { reason, tick } (§11.6)
+//                                                                   //   laneEnded: { reason, tick } (§11.6);
+//                                                                   //   deployFailed: { reason, tick }
+//                                                                   //   (deploy pipeline slice 2)
 //                 savedRoutes?: [ { id, name,                     // §11.9 saved routes (2.2 automation 2a),
 //                                   waypoints: [ { anchor, action? } ] } ], // omit-when-empty, stored order
 //                 productionProfile: { ... } } ],               // §5 profile, sparse as stored
@@ -895,6 +897,11 @@ function snapshotVehicleRow(v, fuelPrice, dockStatus) {
     // its own — `{ reason: 'target-gone', tick }` — so the client can show the player WHY an idle craft
     // stopped. A fresh copy; cleared by the craft's next dispatch. Omit-when-absent.
     ...(v.laneEnded ? { laneEnded: { ...v.laneEnded } } : {}),
+    // deployFailed (roadmap 2.2 deploy pipeline slice 2 — the laneEnded pattern). PRESENT only when the
+    // craft's on-arrival deploy FAILED and it pulled back — `{ reason: 'occupied' | 'out-of-range', tick }` —
+    // so the client can later say "deploy failed — hex taken / out of range; craft pulled back". A fresh
+    // copy; cleared by the craft's next dispatch. Omit-when-absent.
+    ...(v.deployFailed ? { deployFailed: { ...v.deployFailed } } : {}),
   };
   if (v.status === 'inTransit' && v.trip) {
     let totalUnits = 0;

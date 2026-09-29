@@ -18,8 +18,8 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
-| 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,818 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first rung — a hauled Outpost kit deployed); the guild↔guild contest (a rival, territory, the market) is not built yet |
+| 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,845 tests, deterministic) |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first two rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -2543,12 +2543,47 @@ boundary so the later hex-map swap doesn't touch it.
     11 is refused; a `kill -9` (journal replay) and a SIGTERM restart both come back canonically byte-identical.
     **Deferred (not invented):** the client (the Manage popup, the deploy-map picker, the range painted on the
     map — `client/game.html` untouched; today a kit just lists as an "Outpost Kit" cargo row); auto-deploy on
-    arrival (a dispatch's on-arrival action) and with it the arrival re-validation rule (open on the checklist);
+    arrival (a dispatch's on-arrival action) and with it the arrival re-validation rule (open on the checklist)
+    *(⤳ BUILT in slice 2, below)*;
     the kit SOURCES (the dockyard building one, the founding-grant kit, loading one from a pool / Outpost —
     `transferCargo` and the route-action gates stay stockpile-only); storing a kit AT an Outpost (§4); the other
     kinds (toll gate, deep-scan array, the Prefecture) and their ranges; the spatial control layer
     (`territory-model.md` §1–§3 — a deployed Outpost writes no claim row); the Outpost's GP weight and deploy RP
     offset (`phase-1-tuning.md`, still `[DEFERRED]` — a deploy moves no points, exactly as `spawnOutpost` never has).
+  - **slice 2 — auto-deploy on arrival + the retreat rule (engine + operator CLI, NO client).** 🟢 *BUILT (30-09-26).*
+    **The deploy waypoint action:** a `dispatchRouteWithActions` waypoint may carry `{ type: 'deploy', kind }`
+    beside `dock` ("send this heavy + kit to hex X; it plants the Outpost the moment it lands"). Refused whole at
+    dispatch unless the kind has a kit (`kitGoodFor`), it is on the FINAL waypoint, that anchor is a BARE HEX, and
+    the deploy would pass NOW — exactly one matching kit and nothing else aboard, the hex free, within
+    `OUTPOST_DEPLOY_RANGE` of a held system — so a doomed trip is never flown or fuelled. It is exempt from
+    `routeStoreAt` (open ground has no store); slice 1's repeating-lane gate is unchanged, so it rides a one-shot
+    route only; `saveRoute` keeps its dock-only gate (a deploy is a one-off trip, never a saved lane).
+    **The on-arrival deploy:** `resolveRouteArrival` gains a `deploy` branch that re-validates and applies through
+    slice 1's core, now shared — `deployCheck` (bare hex, one kit, `hexOccupant`, `nearestHeldSystem` range) and
+    `deployKit` (`mintOutpost` + consume the kit) — so the manual `deployAsset` and the arrival are one deploy
+    implementation with two triggers (`deployAsset` itself is unchanged). `mintOutpost` now takes its tick, since an
+    arrival mints on `state.tick + 1`.
+    **The retreat (the arrival-revalidation rule, RULED 30-09-26 — `territory-model.md` §5):** on a failed
+    arrival the craft does NOT idle on the hex (it may be a rival's space). It snaps `DEPLOY_RETREAT_HEXES`
+    (`[FIRST-CUT]` 3, `sim/outposts.js`, recorded in `phase-1-tuning.md` "Territory & deployment") hexes toward the
+    nearest held system — `hexStepToward` (`sim/transport.js`, a whole-number cube-round of the interpolated point)
+    — clamped to land AT the system (a landmark location) when it is that close or closer. Kit aboard, idle; no
+    fuel, time, toll/fine or supply move. Flagged `deployFailed = { reason: 'occupied' | 'out-of-range', tick }`,
+    the `laneEnded` pattern: cleared by the next dispatch (either kind), surfaced on the snapshot's vehicle row,
+    shape-checked by `sim/invariants.js` (a known reason, a whole tick ≤ now, no route alongside); the route
+    invariant also pins a craft's deploy action to the last waypoint, a bare hex and a one-shot route. A failure the
+    dispatch rules out (a kit lost in flight, a guild holding no system) HALTS the tick with the values instead of
+    guessing. **One provisional edge (decision checklist):** a 3-hex step that falls just off the lattice near the
+    rim (9 system / in-range-hex pairs on the live seed) steps on along the same line to the first on-lattice hex.
+    **A NO-OP on a galaxy that dispatches no deploy** — the branch is never taken and `deployFailed` never set; no
+    existing test or golden changed (persist / determinism / galactic-supply goldens byte-identical). Sim 1,818 →
+    **1,845 green** (`deploy-on-arrival.test.js` +27: the retreat geometry, happy path, retreat on occupied /
+    out-of-range, the clamp, the flag's clear, every dispatch gate, determinism across save/restore, two craft on
+    one hex, the off-lattice walk, the loud halt, the invariant shapes).
+    **Deferred (not invented):** the client (the Manage popup, the deploy-map picker, the painted range, and the
+    `deployFailed` message — "deploy failed — hex taken / out of range; craft pulled back"); refining the retreat
+    LANDING to avoid rival / contested space (needs the §1–§3 spatial control layer); the other kinds; the kit
+    sources; auto-deploy for the ground-asset lane (that is the establish flow, not this).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
@@ -2658,7 +2693,7 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
 ## Decision checklist (open)
 
 **Phase 2 — new, from the design notes (need rulings before their slice becomes a build prompt):**
-- **Territory & deployment `[FIRST-CUT]` numbers (29-09-26, `docs/territory-model.md`)** — need rulings before the deploy/claim build: the space-asset **deploy ranges** (outpost 10 / toll gate 10 / deep scan 5 hexes), the **semi-control aura radii** (system 5 / outpost 3 / gate·scan 2), the **starter minimum separation** (3 hexes = 2×claimRadius + 1), and the **arrival-revalidation** failure rule (a kit arriving to an illegal target stays aboard and the craft idles — confirm). Squatting enforcement (detection / penalty / report-bounty) is a ruled *direction* deferred to 2.5 / Phase-6, not a number. **⤳ 29-09-26 — the OUTPOST deploy range (10) is RULED as the `[FIRST-CUT]`** and recorded in `phase-1-tuning.md` "Territory & deployment" (`OUTPOST_DEPLOY_RANGE`, built with the 2.2 deploy pipeline slice 1). **Still open:** the toll-gate / deep-scan ranges, the aura radii, the starter separation, and the arrival-revalidation rule (the next deploy slice, auto-deploy on arrival, is the one that needs it).
+- **Territory & deployment `[FIRST-CUT]` numbers (29-09-26, `docs/territory-model.md`)** — need rulings before the deploy/claim build: the space-asset **deploy ranges** (outpost 10 / toll gate 10 / deep scan 5 hexes), the **semi-control aura radii** (system 5 / outpost 3 / gate·scan 2), the **starter minimum separation** (3 hexes = 2×claimRadius + 1), and the **arrival-revalidation** failure rule (a kit arriving to an illegal target stays aboard and the craft idles — confirm). Squatting enforcement (detection / penalty / report-bounty) is a ruled *direction* deferred to 2.5 / Phase-6, not a number. **⤳ 29-09-26 — the OUTPOST deploy range (10) is RULED as the `[FIRST-CUT]`** and recorded in `phase-1-tuning.md` "Territory & deployment" (`OUTPOST_DEPLOY_RANGE`, built with the 2.2 deploy pipeline slice 1). **⤳ 30-09-26 — the arrival-revalidation rule is RULED and CLOSED:** a failed on-arrival deploy RETREATS the craft `DEPLOY_RETREAT_HEXES` (`[FIRST-CUT]` 3, recorded in `phase-1-tuning.md`) toward the nearest held system, clamped at that system, kit aboard, flagged `deployFailed` (`territory-model.md` §5; built with the deploy pipeline slice 2). **Still open:** the toll-gate / deep-scan ranges, the aura radii, the starter separation; **the off-lattice retreat landing** — near the rim the 3-hex step can land just outside the galaxy (9 system / in-range-hex pairs on the live seed); slice 2 builds it PROVISIONALLY as "step on along the same line to the first on-lattice hex (at worst the system)" — confirm or rule otherwise; and refining the retreat landing to avoid rival / contested space (with the spatial control layer).
 
 - **Asset-presence vs. production** — *surfaced 16-09-26 by the operator adjust levers
   (`docs/operator-adjust.md` §3.5 AS-BUILT).* Production is currently **asset-blind** — a venture
