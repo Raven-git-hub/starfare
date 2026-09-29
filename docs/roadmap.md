@@ -2512,6 +2512,14 @@ boundary so the later hex-map swap doesn't touch it.
     new number), so only a heavy carries one, one at a time; `checkVehicleIntegrity`'s cargo known-good check
     widened to accept a deployable good IN A HOLD ONLY. The manual `transferCargo` gate and the route-action
     manifest gate stay stockpile-only (a kit is never manifested, never automated).
+    **Built so far — the mint lever:** the journalled `grantKit { guildId, vehicleId, kind }` (`sim/actions.js`)
+    mints one kit (`kind: 'outpost'` → `outpost_kit`) straight into an idle craft's hold — the operator test
+    seam until the real kit sources land. Refused whole unless the guild owns the craft, the kind has a kit,
+    the craft is idle and not on a lane, and its hold has room for the kit — which, at `HEAVY_HOLD`, means an
+    EMPTY heavy (a light / medium / spycraft is refused as over capacity; no separate class rule). Tick-stamped
+    (`updatedAtTick`); moves no credits / fuel / supply. And a kit never rides a lane: `grantKit` refuses a
+    craft on one, and `dispatchRouteWithActions` refuses to launch a REPEATING lane on a kit-laden craft (a
+    one-shot route still carries it — that is how it reaches its target).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is

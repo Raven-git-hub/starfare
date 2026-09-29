@@ -32,7 +32,9 @@ const {
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { checkQuote, quotedPrice } = require('./price-ring.js');
 const { DEFAULT_WINDOW_N, TIER3_WINDOW_N, tier3WindowNests } = require('./windows.js');
-const { isStockpileGood, isFuel, DEUTERIUM } = require('./resources.js');
+const {
+  isStockpileGood, isFuel, DEUTERIUM, DEPLOYABLE_KITS, isDeployableGood, kitGoodFor,
+} = require('./resources.js');
 const { setEntry } = require('./profile.js');
 const { getStock, addStock } = require('./stock.js');
 const { computeGalacticSupply } = require('./supply.js');
@@ -1096,6 +1098,19 @@ function createTransferCargoAction({ guildId, vehicleId: vId, manifest }) {
   if (vId === undefined) throw new Error('createTransferCargoAction: vehicleId is required');
   if (manifest === undefined) throw new Error('createTransferCargoAction: manifest is required');
   return { type: 'transferCargo', guildId, vehicleId: vId, manifest };
+}
+
+// grantKit: mint ONE deployable kit straight into a guild craft's hold — the operator lever (roadmap 2.2,
+// the deploy pipeline slice 1; docs/territory-model.md §5). `kind` names the structure the kit deploys as
+// ('outpost' -> an `outpost_kit`, sim/resources.js `kitGoodFor`). This is the TEST SEAM for the deploy:
+// the real kit sources (a dockyard building one, the founding grant, loading one from a store) are later
+// slices. The constructor only enforces the required fields are present; validateAction judges legality
+// (an idle craft the guild owns, not on a lane, with room in its hold for the kit).
+function createGrantKitAction({ guildId, vehicleId: vId, kind }) {
+  if (guildId === undefined) throw new Error('createGrantKitAction: guildId is required');
+  if (vId === undefined) throw new Error('createGrantKitAction: vehicleId is required');
+  if (kind === undefined) throw new Error('createGrantKitAction: kind is required');
+  return { type: 'grantKit', guildId, vehicleId: vId, kind };
 }
 
 // dispatchRouteWithActions: send an IDLE craft along a route whose waypoints can carry a load/unload
@@ -3072,6 +3087,41 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'grantKit') {
+    // Roadmap 2.2 deploy pipeline slice 1: mint one deployable kit into a craft's hold (the operator
+    // test seam). Refused whole, gates in the order a failure is felt (mirroring transferCargo's block).
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    const craft = (guild.vehicles || []).find((v) => v.id === action.vehicleId);
+    if (!craft) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no vehicle ${JSON.stringify(action.vehicleId)}` };
+    }
+    const good = kitGoodFor(action.kind);
+    if (good === null) {
+      return { valid: false, reason: `${JSON.stringify(action.kind)} is not a deployable kind with a kit (known: ${Object.keys(DEPLOYABLE_KITS).join(', ')})` };
+    }
+    // Only an idle craft is handed a kit: an in-transit craft is mid-flight, and a `loading` one is in an
+    // Outpost dock slot whose transfer is still to resolve against this very hold (§4).
+    if (craft.status !== 'idle') {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is not idle (status ${JSON.stringify(craft.status)}) — a kit is granted to an idle craft only` };
+    }
+    // A craft RUNNING A LANE is driven by its lane — the transferCargo discipline (§11.10). It also keeps
+    // a kit off a repeating lane: a deployable good never automates.
+    if (craft.route) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is running a lane — a deployable kit never rides one; stop the lane or re-dispatch the craft first (transport-model.md §11.10)` };
+    }
+    // ROOM FOR THE KIT. A kit takes a whole heavy hold (volumeOf -> ASSET_CARGO_VOLUME), so this one check
+    // is what makes the kit heavy-only (a light or medium hold is smaller than one kit) and one-at-a-time
+    // (a heavy already holding anything has no room left). No separate class rule, and no new number.
+    const free = craft.capacity - usedSpace(craft.cargo);
+    if (volumeOf(good) > free) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} (class ${JSON.stringify(craft.class)}) has ${free} cargo space free, but an ${good} takes ${volumeOf(good)} — a whole heavy hold, so only an EMPTY heavy transport can carry one` };
+    }
+    return { valid: true };
+  }
+
   if (action.type === 'dispatchRouteWithActions') {
     // transport-model.md §11 (the automation layer, slice 1a): send an idle craft along a route of
     // { anchor, action? } waypoints, executed leg by leg. Validate WHOLE, refuse WHOLE — the existing
@@ -3120,6 +3170,13 @@ function validateAction(state, action) {
     const repeating = action.repeat !== undefined && action.repeat.mode !== 'once';
     if (repeating && action.waypoints.length < 2) {
       return { valid: false, reason: `a repeating lane needs at least two waypoints — a one-stop cycle has no leg to fly, so it would lap in place within one tick (transport-model.md §11.4 / §11.10)` };
+    }
+    // A DEPLOYABLE good never rides a repeating lane (roadmap 2.2 deploy pipeline slice 1). A kit is
+    // hauled to ONE target and placed there; no manifest can unload it, so a lane would carry it round
+    // and round for ever. A one-shot route may still carry one — that is how a kit reaches its target.
+    const kitAboard = Object.keys(craft.cargo || {}).find(isDeployableGood);
+    if (repeating && kitAboard) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} carries an ${kitAboard} — a deployable kit never rides a repeating lane (dispatch it once, to where it deploys)` };
     }
     // Build + price the WHOLE route (dispatchRoute is the one home): leg 0 from the craft's location
     // through every waypoint anchor, each resolving and non-zero-length. It returns the whole-run burn.
@@ -4463,6 +4520,19 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'grantKit') {
+    // Roadmap 2.2 deploy pipeline slice 1: one kit appears in the hold. Validate proved the hold has room
+    // for it, which (a kit being a whole heavy hold) means the hold was empty — so this is always 0 -> 1.
+    // The kit is a deployable good: never priced and never in Galactic Supply (supply.js sums stockpile
+    // goods only), so it moves no credits, fuel or supply and the supply cache needs no refresh.
+    const guild = findGuild(next, action.guildId);
+    const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
+    const good = kitGoodFor(action.kind);
+    craft.cargo = { ...(craft.cargo || {}), [good]: ((craft.cargo || {})[good] || 0) + 1 };
+    craft.updatedAtTick = next.tick; // §15.2: the grant is a mutation of the craft — record its tick
+    return next;
+  }
+
   if (action.type === 'dispatchRouteWithActions') {
     // transport-model.md §11.2/§11.3: the chained-legs model. The whole run's fuel burns UP FRONT
     // (the legs are known even though the timing is not), the route + a cursor are JOURNALLED onto the
@@ -4681,6 +4751,7 @@ module.exports = {
   createRemoveOutpostAction,
   createDispatchVehicleAction,
   createTransferCargoAction,
+  createGrantKitAction,
   createDispatchRouteWithActionsAction,
   createSaveRouteAction,
   createDeleteRouteAction,
