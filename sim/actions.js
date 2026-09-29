@@ -1428,13 +1428,15 @@ function hexOccupant(state, coords) {
   return outpost ? { kind: 'outpost', id: outpost.id } : null;
 }
 
-// mintOutpost(state, guild, coords, anchorSystemId) -> the new Outpost row, having MUTATED `state` and
-// `guild`. THE ONE Outpost mint path (design.md §4 / §15.4), shared by the operator's spawnOutpost and a
-// guild's deployAsset: bump the guild's monotonic mint serial (never reused), mint the
+// mintOutpost(state, guild, coords, anchorSystemId, tick) -> the new Outpost row, having MUTATED `state`
+// and `guild`. THE ONE Outpost mint path (design.md §4 / §15.4), shared by the operator's spawnOutpost and
+// a guild's deploy (deployKit): bump the guild's monotonic mint serial (never reused), mint the
 // `outpost_<guild>_NN` id from it (sim/outposts.js), and push the SHARED row into `state.outposts`.
 // `capacity`/`dockCapacity` default from the constants; the stockpile is born empty; `createdAtTick`
-// records the tick (§15.2). The caller has already validated the hex and the anchor.
-function mintOutpost(state, guild, coords, anchorSystemId) {
+// records `tick` (§15.2). The tick is passed in, not read from `state.tick`, because a deploy can happen
+// inside a tick step (a craft's arrival), where the tick being made is `state.tick + 1`. The caller has
+// already validated the hex and the anchor.
+function mintOutpost(state, guild, coords, anchorSystemId, tick) {
   const serial = nextOutpostSerial(guild);
   guild.outpostSerial = serial;
   if (!Array.isArray(state.outposts)) state.outposts = [];
@@ -1443,7 +1445,7 @@ function mintOutpost(state, guild, coords, anchorSystemId) {
     ownerGuildId: guild.id,
     coords,             // createOutpost copies it
     anchorSystemId,
-    createdAtTick: state.tick,
+    createdAtTick: tick,
   });
   state.outposts.push(outpost);
   return outpost;
@@ -1461,6 +1463,65 @@ function nearestHeldSystem(state, guildId, coords) {
     if (best === null || distance < best.distance) best = { systemId, distance };
   }
   return best;
+}
+
+// deployCheck(state, guildId, vehicleId, location, cargo) -> { ok: true, coords, anchorSystemId }
+//                                                          | { ok: false, failure, reason }
+//
+// THE ONE deploy rule (roadmap 2.2 deploy pipeline; docs/territory-model.md §5 — the SPACE lane, an
+// Outpost): may the guild's craft `vehicleId`, holding `cargo`, deploy its kit at `location`? One rule, two
+// triggers — the manual deployAsset (the craft is already there) and the on-arrival deploy of a routed
+// craft (slice 2, which also asks it up front, at dispatch, of the hex the craft is being sent to) — so
+// every trigger judges a deploy by the same four checks, in the same order:
+//   'not-bare-hex'   — an Outpost goes on OPEN GROUND (design.md §4), never at a system or waystation;
+//   'kit'            — the hold is exactly one outpost kit and nothing else (the kind is read from it);
+//   'occupied'       — ONE STRUCTURE PER HEX, the same `hexOccupant` question spawnOutpost asks;
+//   'no-held-system' / 'out-of-range' — the hex is within OUTPOST_DEPLOY_RANGE hexes (inclusive) of a
+//                      system the guild HOLDS (territory-model.md §5 "Deploy ranges").
+// `failure` names the check that failed, for a caller that must act on it (a failed arrival retreats);
+// `reason` is the refusal text. On success it hands back the hex and the anchor — the NEAREST held system
+// (a tie → the lower id), which is also the system the range was measured to — so the apply (deployKit)
+// places exactly what was checked. A pure read: it changes nothing.
+function deployCheck(state, guildId, vehicleId, location, cargo) {
+  const where = resolveVehicleLocation(location);
+  if (!where || where.form !== 'hex') {
+    return { ok: false, failure: 'not-bare-hex', reason: `vehicle ${JSON.stringify(vehicleId)} is berthed at a landmark ${JSON.stringify(location)} — an Outpost deploys on a bare hex; fly the craft to open space first` };
+  }
+  // EXACTLY ONE outpost kit and nothing else. The outpost kit is the only kind today, so it is the only
+  // one this rule knows how to place. (A kit fills a whole heavy hold, so "nothing else" also holds by
+  // capacity; it is checked here so the reason is plain.)
+  const hold = cargo || {};
+  const goods = Object.keys(hold);
+  if (goods.length !== 1 || goods[0] !== OUTPOST_KIT || hold[OUTPOST_KIT] !== 1) {
+    return { ok: false, failure: 'kit', reason: `vehicle ${JSON.stringify(vehicleId)} must carry exactly one ${OUTPOST_KIT} and nothing else to deploy — its hold is ${JSON.stringify(hold)}` };
+  }
+  // This is also what refuses a craft parked at a guild Outpost (it sits on that Outpost's hex).
+  const coords = where.coords;
+  const occupant = hexOccupant(state, coords);
+  if (occupant) {
+    return { ok: false, failure: 'occupied', reason: `hex { q: ${coords.q}, r: ${coords.r} } is already occupied by ${occupant.kind} ${JSON.stringify(occupant.id)} — one structure per hex` };
+  }
+  const nearest = nearestHeldSystem(state, guildId, coords);
+  if (!nearest) {
+    return { ok: false, failure: 'no-held-system', reason: `guild ${JSON.stringify(guildId)} holds no system — an Outpost deploys within ${OUTPOST_DEPLOY_RANGE} hexes of a system its guild holds` };
+  }
+  if (nearest.distance > OUTPOST_DEPLOY_RANGE) {
+    return { ok: false, failure: 'out-of-range', reason: `hex { q: ${coords.q}, r: ${coords.r} } is ${nearest.distance} hexes from the nearest system guild ${JSON.stringify(guildId)} holds (${nearest.systemId}) — an Outpost deploys within ${OUTPOST_DEPLOY_RANGE}` };
+  }
+  return { ok: true, coords, anchorSystemId: nearest.systemId };
+}
+
+// deployKit(state, guild, craft, check, tick) — THE ONE deploy apply, for a `check` deployCheck passed:
+// place the Outpost at the checked hex through the ONE mint path spawnOutpost uses, anchored to the checked
+// system, and consume the kit. Instant (territory-model.md §5 — the kit was built earlier, so no build time).
+// The kit WAS the whole hold (the check: exactly one kit, nothing else), so the hold key goes — the
+// omit-when-empty discipline. The craft stays idle where it is, which is now the new Outpost's hex, so it
+// reads as parked at its own Outpost. Nothing else moves: the kit was off-market and off-supply, and a placed
+// Outpost is not a good, so no credits, fuel, supply or price change and no claim row is written.
+function deployKit(state, guild, craft, check, tick) {
+  mintOutpost(state, guild, check.coords, check.anchorSystemId, tick);
+  delete craft.cargo;
+  craft.updatedAtTick = tick; // §15.2: the deploy is a mutation of the craft — record its tick
 }
 
 // routeStoreAt(state, guildId, anchor) -> the STORE a route action at `anchor` works against, or null
@@ -3198,37 +3259,10 @@ function validateAction(state, action) {
     if (craft.route) {
       return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is running a lane — stop the lane or re-dispatch the craft before deploying` };
     }
-    // An Outpost is placed on OPEN GROUND (design.md §4): the craft must sit on a bare hex, not berthed
-    // at a system or waystation landmark.
-    const where = resolveVehicleLocation(craft.location);
-    if (!where || where.form !== 'hex') {
-      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is berthed at a landmark ${JSON.stringify(craft.location)} — an Outpost deploys on a bare hex; fly the craft to open space first` };
-    }
-    // EXACTLY ONE outpost kit and nothing else. The kind is read from the kit: the outpost kit is the
-    // only kind this slice, so it is the only one this action knows how to place. (A kit fills a whole
-    // heavy hold, so "nothing else" also holds by capacity; it is checked here so the reason is plain.)
-    const cargo = craft.cargo || {};
-    const goods = Object.keys(cargo);
-    if (goods.length !== 1 || goods[0] !== OUTPOST_KIT || cargo[OUTPOST_KIT] !== 1) {
-      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} must carry exactly one ${OUTPOST_KIT} and nothing else to deploy — its hold is ${JSON.stringify(cargo)}` };
-    }
-    // ONE STRUCTURE PER HEX — the same `hexOccupant` question spawnOutpost asks. This is also what
-    // refuses a craft parked at a guild Outpost (it sits on that Outpost's hex).
-    const coords = where.coords;
-    const occupant = hexOccupant(state, coords);
-    if (occupant) {
-      return { valid: false, reason: `hex { q: ${coords.q}, r: ${coords.r} } is already occupied by ${occupant.kind} ${JSON.stringify(occupant.id)} — one structure per hex` };
-    }
-    // THE RANGE (territory-model.md §5 "Deploy ranges"): an Outpost deploys within OUTPOST_DEPLOY_RANGE
-    // hexes of a system the guild HOLDS, inclusive. The nearest held system decides — it is also the
-    // anchor the apply uses, so the range tested and the anchor chosen are the same system.
-    const nearest = nearestHeldSystem(state, action.guildId, coords);
-    if (!nearest) {
-      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} holds no system — an Outpost deploys within ${OUTPOST_DEPLOY_RANGE} hexes of a system its guild holds` };
-    }
-    if (nearest.distance > OUTPOST_DEPLOY_RANGE) {
-      return { valid: false, reason: `hex { q: ${coords.q}, r: ${coords.r} } is ${nearest.distance} hexes from the nearest system guild ${JSON.stringify(action.guildId)} holds (${nearest.systemId}) — an Outpost deploys within ${OUTPOST_DEPLOY_RANGE}` };
-    }
+    // The deploy itself — a bare hex, exactly one kit, the hex free, within range of a held system — is
+    // THE ONE deploy rule (deployCheck), the same one the on-arrival deploy runs (slice 2).
+    const check = deployCheck(state, action.guildId, action.vehicleId, craft.location, craft.cargo);
+    if (!check.ok) return { valid: false, reason: check.reason };
     return { valid: true };
   }
 
@@ -4451,7 +4485,7 @@ function applyAction(state, action) {
     // validated. It moves NO fuel/credits/points/reputation/claims — an outpost feeds none — so there is
     // no conserving counter-move and galacticSupply is untouched.
     const guild = findGuild(next, action.guildId);
-    mintOutpost(next, guild, action.coords, action.anchorSystemId);
+    mintOutpost(next, guild, action.coords, action.anchorSystemId, next.tick);
     return next;
   }
 
@@ -4633,21 +4667,14 @@ function applyAction(state, action) {
 
   if (action.type === 'deployAsset') {
     // Roadmap 2.2 deploy pipeline slice 1 (docs/territory-model.md §5): the deploy is INSTANT — the kit
-    // was built earlier, so there is no build time. Place the Outpost at the craft's hex through the ONE
-    // mint path spawnOutpost uses, anchored to the nearest system the guild holds (validate proved it is
-    // within range), and consume the kit.
+    // was built earlier, so there is no build time. The ONE deploy rule is asked again (validate proved it
+    // passes) for the hex and the anchor, and the ONE deploy apply places the Outpost and consumes the kit
+    // — the same pair the on-arrival deploy uses. Nothing moves but the kit, so the supply cache needs no
+    // refresh.
     const guild = findGuild(next, action.guildId);
     const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
-    const coords = { q: craft.location.q, r: craft.location.r }; // validate proved it is a bare hex
-    const anchor = nearestHeldSystem(next, action.guildId, coords);
-    mintOutpost(next, guild, coords, anchor.systemId);
-    // The kit WAS the whole hold (validate: exactly one kit, nothing else), so the hold is now empty and
-    // the key goes — the omit-when-empty discipline. The craft stays idle where it is, which is now the
-    // new Outpost's hex, so it is parked at its own Outpost.
-    delete craft.cargo;
-    craft.updatedAtTick = next.tick; // §15.2: the deploy is a mutation of the craft — record its tick
-    // Nothing else moves. The kit was off-market and off-supply, and a placed Outpost is not a good, so
-    // no credits, fuel, supply or price change — the supply cache needs no refresh.
+    const check = deployCheck(next, action.guildId, action.vehicleId, craft.location, craft.cargo);
+    deployKit(next, guild, craft, check, next.tick);
     return next;
   }
 
