@@ -36,6 +36,7 @@
 
 const { nearestWaystation } = require('./transport.js');
 const { tierOf } = require('./points.js');
+const { isDeployableGood } = require('./resources.js');
 
 // GUILD_STARTING_FUEL — the fuel a guild's hoard opens with at founding.
 //
@@ -127,7 +128,8 @@ const TIER_VOLUME = Object.freeze({ 1: 1, 2: 100, 3: 60000 });
 // fills: a WHOLE heavy hold (== HEAVY_HOLD). So a bought asset (2.1d, buyAssetFromSyndicate)
 // flies heavy, alone, and its delivery burns the heavy rate (§5.1, RULED 14-09-26 — superseding
 // asset-purchase.md's light-rate placeholder). Its own constant, not a `TIER_VOLUME[4]`, because
-// a T4 asset is not a stockpile good `tierOf` ever resolves — it never rides a cart.
+// a T4 asset is not a stockpile good `tierOf` ever resolves — it never rides a cart. It is also the
+// volume of a DEPLOYABLE kit in a guild craft's hold (`volumeOf` below; roadmap 2.2 deploy pipeline).
 const ASSET_CARGO_VOLUME = HEAVY_HOLD;
 
 // volumeOf(good) -> the cargo space ONE unit of `good` takes, from its manufacturing
@@ -136,7 +138,14 @@ const ASSET_CARGO_VOLUME = HEAVY_HOLD;
 // a cart is only ever priced goods (validate refuses fuel and non-priced names up
 // front), so a good reaching here without a volume is a bug, and under-sizing a load
 // by scoring it 0 would be the quietest possible under-charge (§18 / §15.5).
+//
+// ONE EXCEPTION, checked first: a DEPLOYABLE good (an undeployed kit, sim/resources.js) has no
+// manufacturing tier — it is not a stockpile good — but it IS cargo. It is a packed Tier-4
+// structure, so it takes the same room as any Tier-4 asset: ASSET_CARGO_VOLUME, one whole heavy
+// hold (design.md §4, territory-model.md §5). No new number. That single value is also why only a
+// heavy carries a kit, and only one at a time.
 function volumeOf(good) {
+  if (isDeployableGood(good)) return ASSET_CARGO_VOLUME;
   const tier = tierOf(good);
   const volume = tier === null ? undefined : TIER_VOLUME[tier];
   if (volume === undefined) {

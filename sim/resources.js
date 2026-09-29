@@ -198,6 +198,29 @@ const STOCKPILE_GOODS = Object.freeze([...RAW_RESOURCES, ...PROCESSED_GOODS, ...
 const STOCKPILE_GOOD_SET = new Set(STOCKPILE_GOODS);
 const TIER3_GOOD_SET = new Set(TIER3_GOODS);
 
+// ── DEPLOYABLE GOODS (roadmap 2.2 — the deploy pipeline, docs/territory-model.md §5) ──────────────
+//
+// A deployable good is an undeployed Tier-4 KIT: a structure packed as cargo. A transport hauls it
+// to a target, and the deploy that places the structure consumes it. It is the FIRST good the game
+// MOVES but never TRADES, so it is a sibling category of the stockpile goods and deliberately NOT a
+// member of STOCKPILE_GOODS (the same way fuel sits outside it). That one exclusion is what keeps it
+// off the market with no further wiring:
+//   - prices.js prices only STOCKPILE_GOODS, so a kit has no price row;
+//   - supply.js sums only STOCKPILE_GOODS, so a kit never enters Galactic Supply;
+//   - invariants.js accepts only stockpile goods in a system pool or an Outpost stockpile, so a kit
+//     can never be stored there. The one place it IS legal is a craft's HOLD.
+// In a hold it takes a whole heavy hold (fuel.js `volumeOf` -> ASSET_CARGO_VOLUME), so only a heavy
+// transport can carry one, and only one at a time — no separate class rule is needed.
+//
+// Keyed by the KIND of structure the kit deploys as. Adding a kind later (toll gate, deep-scan array,
+// the Prefecture) is one new row here — a data change, not a refactor. Only the outpost kit exists.
+const OUTPOST_KIT = 'outpost_kit';
+const DEPLOYABLE_KITS = Object.freeze({ outpost: OUTPOST_KIT });
+
+// Every deployable good, sorted for a stable order (invariant 9), like the lists above.
+const DEPLOYABLE_GOODS = Object.freeze(Object.values(DEPLOYABLE_KITS).sort());
+const DEPLOYABLE_GOOD_SET = new Set(DEPLOYABLE_GOODS);
+
 // Is `id` a raw, minable resource — i.e. a legal key for a guild stockpile and
 // a row in the galactic resource totals? (Fuel is not: it is held as fuel, not
 // as a stockpiled resource.)
@@ -229,8 +252,22 @@ function isStockpileGood(id) {
   return STOCKPILE_GOOD_SET.has(id);
 }
 
+// Is `id` a deployable good (an undeployed kit — haulable, never traded)? Never true for a
+// stockpile good, and never true for fuel: the three categories do not overlap.
+function isDeployableGood(id) {
+  return DEPLOYABLE_GOOD_SET.has(id);
+}
+
+// kitGoodFor(kind) -> the deployable good that packs a structure of `kind` ('outpost' ->
+// 'outpost_kit'), or null for a kind that has no kit. null (not a throw) so a caller can ASK and
+// refuse loudly itself, the same shape `vehicleSpec` / `getRecipe` have.
+function kitGoodFor(kind) {
+  return Object.prototype.hasOwnProperty.call(DEPLOYABLE_KITS, kind) ? DEPLOYABLE_KITS[kind] : null;
+}
+
 module.exports = {
   RAW_RESOURCES, PROCESSED_GOODS, STOCKPILE_GOODS, TIER3_GOODS, FUEL_GOOD, DEUTERIUM,
   TIER3_PRICE_CLASS, SPECIALIST, UNCLASSIFIED,
-  isRawResource, isFuel, isProcessedGood, isTier3Good, isStockpileGood,
+  OUTPOST_KIT, DEPLOYABLE_KITS, DEPLOYABLE_GOODS,
+  isRawResource, isFuel, isProcessedGood, isTier3Good, isStockpileGood, isDeployableGood, kitGoodFor,
 };

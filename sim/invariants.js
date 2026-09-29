@@ -65,7 +65,9 @@
 
 // One violation record shape everywhere: { rule, where, detail }.
 
-const { isRawResource, isStockpileGood, FUEL_GOOD } = require('./resources.js');
+const {
+  isRawResource, isStockpileGood, isDeployableGood, FUEL_GOOD,
+} = require('./resources.js');
 const { PRICED_GOODS, PUBLISH_LAG, bandFor } = require('./prices.js');
 const {
   EQUITY_CEILING, WINDOW_DAYS_MIN, WINDOW_DAYS_MAX, isValidWindowDays,
@@ -1600,15 +1602,18 @@ function checkVehicleIntegrity(state) {
       }
       // The HOLD (2.2 cargo, engine slice 1 — design.md §4 "The dock model", §15.4 the `cargo` field).
       // ABSENT is legal (the omit-when-empty discipline — a cargo-less craft is the no-op path); a
-      // PRESENT hold must be honest: every key a known stockpile good, every qty a positive integer
-      // (§15.2 integer goods), and the used space `Σ qty×volumeOf` within `capacity`. Guards a corrupt
-      // hold from a save-reload or a future slice, exactly as the fields above are guarded; the
-      // transferCargo resolution maintains all three by construction, this ASSERTS them. `volumeOf`
-      // never throws — a non-stockpile key is caught first, and every stockpile good is T1/T2/T3.
+      // PRESENT hold must be honest: every key a known good, every qty a positive integer (§15.2
+      // integer goods), and the used space `Σ qty×volumeOf` within `capacity`. Guards a corrupt hold
+      // from a save-reload or a future slice, exactly as the fields above are guarded; the actions
+      // that fill a hold maintain all three by construction, this ASSERTS them.
+      // A "known good" HERE is a stockpile good OR a DEPLOYABLE good (an undeployed kit — roadmap 2.2
+      // deploy pipeline, sim/resources.js). A hold is the one place a kit may live; the pool and
+      // Outpost-stockpile checks stay stockpile-only, so a kit anywhere else still trips. `volumeOf`
+      // never throws — an unknown key is caught first, and every known good has a ruled volume.
       if (v.cargo !== undefined) {
         let used = 0;
         for (const [good, qty] of Object.entries(v.cargo)) {
-          if (!isStockpileGood(good)) {
+          if (!isStockpileGood(good) && !isDeployableGood(good)) {
             out.push({ rule: 'vehicle-cargo-known-good (resources.js)', where: `guild:${g.id}.vehicle:${v.id}.cargo`, detail: { good } });
             continue; // don't size an unknown good — volumeOf would throw
           }

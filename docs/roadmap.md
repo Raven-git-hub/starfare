@@ -2497,6 +2497,21 @@ boundary so the later hex-map swap doesn't touch it.
     cites "a deep scan mast's 2.333… reads 2.33". The console shows whatever the snapshot publishes,
     so it now reads 4 / 3 / 2.
 
+- **2.2 — The deploy pipeline: the cross-system asset ferry (`docs/territory-model.md` §5).** Haul a
+  Tier-4 kit on a transport to a target and place it on arrival — the ferry that unblocks the Prefecture
+  (the item below). Built as a ladder: **slice 1** the deployable good + a manual outpost deploy (engine +
+  operator CLI) → **slice 2** auto-insert the deploy on arrival (a dispatch's on-arrival action, via the
+  actioned-route machinery) → the client (Manage popup, deploy-map picker, range paint) → the kit SOURCES
+  (the dockyard building a kit, the founding-grant kit, loading a kit from a store) → the other kinds
+  (toll gate, deep-scan array, the Prefecture).
+  - **slice 1 — the deployable good + outpost deploy (engine + operator CLI, NO client).** 🔶 *IN PROGRESS.*
+    **Built so far — the deployable good:** `DEPLOYABLE_GOODS` = [`outpost_kit`] + `isDeployableGood` /
+    `kitGoodFor` (`sim/resources.js`), a sibling category to the stockpile goods and deliberately NOT in
+    `STOCKPILE_GOODS` — so it has no price row, no Galactic Supply row, and is illegal in a system pool or an
+    Outpost stockpile; `volumeOf('outpost_kit')` = `ASSET_CARGO_VOLUME` (= `HEAVY_HOLD`, `sim/fuel.js` — no
+    new number), so only a heavy carries one, one at a time; `checkVehicleIntegrity`'s cargo known-good check
+    widened to accept a deployable good IN A HOLD ONLY. The manual `transferCargo` gate and the route-action
+    manifest gate stay stockpile-only (a kit is never manifested, never automated).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
