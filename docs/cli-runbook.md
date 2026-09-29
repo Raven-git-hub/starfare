@@ -66,7 +66,8 @@ top-level `outposts` / `claims`.
 - `stop-route-after-run --guild ID --id VEHICLE_ID` / `cancel-route --guild ID --id VEHICLE_ID`.
 - `spawn-vehicle` / `spawn-outpost` / `remove-outpost` / the `adjust-*` levers / `tick [n]`.
 - `grant-kit --guild ID --id VEHICLE_ID --kind outpost` / `deploy-asset --guild ID --id VEHICLE_ID` —
-  the deploy pipeline (next section; not part of the automation demo).
+  the deploy pipeline (next section; not part of the automation demo). `dispatch-route` also takes a
+  last stop `q,r@deploy:KIND`, the deploy on arrival (the section after it).
 
 ## The deploy pipeline — a kit hauled and deployed (2.2 deploy slice 1)
 
@@ -89,3 +90,33 @@ id, hex and anchor system; the craft is left idle on that hex with an empty hold
 its new Outpost). Refusals exit 1 with the engine's reason: a kit onto anything but an empty heavy, a
 deploy while in flight or while berthed at a system, a deploy on an occupied hex, or one out of range
 (the reason names the distance and the nearest held system). A kit survives a restart like any cargo.
+
+## The deploy on arrival — and the retreat (2.2 deploy slice 2)
+
+The same pipeline without the manual step: the deploy rides the dispatch as the route's last stop,
+`q,r@deploy:KIND`, and resolves on the tick the craft lands (`docs/territory-model.md` §5). From the
+granted kit above (on seed 42 the home system is at `104,55`):
+
+    node tools/admin.js dispatch-route --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --route "101,55@deploy:outpost" $B
+    node tools/admin.js tick N $B                                 # N = firstLegArrivalTick minus now
+    node tools/admin.js snapshot --pick outposts $B               # the new Outpost, on 101,55
+
+The dispatch prints the stop as `deploy outpost`. It is refused up front (exit 1, the engine's reason)
+unless the deploy would succeed NOW — exactly one matching kit aboard, the hex free, within range of a
+held system — and unless it is the route's last stop, on a bare hex, on a one-shot route. On landing the
+Outpost is placed and the kit consumed; the craft idles, parked at its new Outpost. Nothing else moves.
+
+**The retreat.** If the hex is taken, or the range lost, while the craft flies, it does not deploy and
+does not idle there: it snaps 3 hexes (`DEPLOY_RETREAT_HEXES`) back toward the nearest held system — or
+lands AT that system if it is that close — kit still aboard, and carries a `deployFailed` flag. To see
+it, occupy the target mid-flight:
+
+    node tools/admin.js grant-kit --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --kind outpost $B
+    node tools/admin.js dispatch-route --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --route "104,48@deploy:outpost" $B
+    node tools/admin.js spawn-outpost --guild seat_demo --system $HOME --hex 104,48 $B   # someone got there first
+    node tools/admin.js tick N $B
+    node tools/admin.js snapshot --pick guilds.0.vehicles.0.location $B       # {q:104,r:51}: 3 back toward 104,55
+    node tools/admin.js snapshot --pick guilds.0.vehicles.0.deployFailed $B   # { reason: occupied, tick }
+
+The snap costs no fuel and no time. The flag clears on the craft's next dispatch, and the kit is still
+aboard, so the next dispatch can send it somewhere free.

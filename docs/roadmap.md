@@ -2575,6 +2575,16 @@ boundary so the later hex-map swap doesn't touch it.
     dispatch rules out (a kit lost in flight, a guild holding no system) HALTS the tick with the values instead of
     guessing. **One provisional edge (decision checklist):** a 3-hex step that falls just off the lattice near the
     rim (9 system / in-range-hex pairs on the live seed) steps on along the same line to the first on-lattice hex.
+    **The operator surface:** no new endpoint — `tools/admin.js dispatch-route` takes a last stop
+    `q,r@deploy:KIND` (e.g. `--route "101,55@deploy:outpost"`; one action per waypoint, so never beside `@load` /
+    `@unload`) and prints it as `deploy KIND`; `docs/cli-runbook.md` has the sequence, retreat included.
+    `tools/admin.test.js` 71 → **73**. Driven end to end against a live persisted server (seed 42): a heavy
+    dispatched `101,55@deploy:outpost` planted `outpost_seat_demo_01` on its arrival tick with credits, fuel,
+    Galactic Supply, stockpiles, prices and claims byte-equal to a twin server flying the same route with no
+    action; a deploy onto that now-occupied hex was refused up front; one sent to `104,48` and occupied
+    mid-flight retreated to `104,51` (3 back toward home at `104,55`), kit aboard, `deployFailed: occupied`; the
+    flag cleared on re-dispatch; a `kill -9` mid-flight, a SIGTERM restart and a `kill -9` replaying a journalled
+    dispatch all came back canonically byte-identical.
     **A NO-OP on a galaxy that dispatches no deploy** — the branch is never taken and `deployFailed` never set; no
     existing test or golden changed (persist / determinism / galactic-supply goldens byte-identical). Sim 1,818 →
     **1,845 green** (`deploy-on-arrival.test.js` +27: the retreat geometry, happy path, retreat on occupied /

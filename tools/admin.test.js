@@ -553,6 +553,43 @@ test('parseRouteFlag / dispatchRouteBody: builds the exact body; blanks ignored;
   assert.throws(() => A.dispatchRouteBody({ guild: 'g1', id: 'v' }), /--route is required/);
 });
 
+// --- @deploy:KIND (roadmap 2.2 deploy pipeline slice 2 — the on-arrival deploy action) ---------------
+
+test('parseRouteWaypointToken: anchor@deploy:KIND builds a { type: "deploy", kind } action', () => {
+  assert.deepEqual(
+    A.parseRouteWaypointToken('101,55@deploy:outpost'),
+    { anchor: { q: 101, r: 55 }, action: { type: 'deploy', kind: 'outpost' } },
+  );
+  // The kind is passed through as written — which kinds exist is the engine's call, not the CLI's.
+  assert.deepEqual(A.parseRouteWaypointToken(' -3,4 @ deploy:tollGate '), { anchor: { q: -3, r: 4 }, action: { type: 'deploy', kind: 'tollGate' } });
+  // One action per waypoint: a deploy never shares it with a load/unload, and never appears twice.
+  assert.throws(() => A.parseRouteWaypointToken('1,2@deploy:outpost@load:titanium:1'), /anchor@deploy:KIND on its own/);
+  assert.throws(() => A.parseRouteWaypointToken('1,2@unload:titanium:1@deploy:outpost'), /anchor@deploy:KIND on its own/);
+  assert.throws(() => A.parseRouteWaypointToken('1,2@deploy:outpost@deploy:outpost'), /on its own/);
+  // A kind is required.
+  assert.throws(() => A.parseRouteWaypointToken('1,2@deploy'), /anchor@deploy:KIND/);
+  assert.throws(() => A.parseRouteWaypointToken('1,2@deploy:'), /anchor@deploy:KIND/);
+  // The bad-verb message now names the third verb.
+  assert.throws(() => A.parseRouteWaypointToken('sys:A@plant:outpost'), /@load:… or @unload:… \(a dock\), or @deploy:KIND/);
+});
+
+test('dispatchRouteBody: --route "…; q,r@deploy:outpost" maps to the exact dispatch-route body', () => {
+  assert.deepEqual(
+    A.dispatchRouteBody({ guild: 'g1', id: 'vehicle_g1_heavyTransport_01', route: '101,55@deploy:outpost' }),
+    {
+      guildId: 'g1',
+      vehicleId: 'vehicle_g1_heavyTransport_01',
+      waypoints: [{ anchor: { q: 101, r: 55 }, action: { type: 'deploy', kind: 'outpost' } }],
+    },
+  );
+  // A turning point first, the deploy last — the shape the engine accepts (a deploy rides the last stop).
+  assert.deepEqual(
+    A.dispatchRouteBody({ guild: 'g1', id: 'v', route: '100,55; 101,55@deploy:outpost' }).waypoints,
+    [{ anchor: { q: 100, r: 55 } }, { anchor: { q: 101, r: 55 }, action: { type: 'deploy', kind: 'outpost' } }],
+  );
+  assert.equal('repeat' in A.dispatchRouteBody({ guild: 'g1', id: 'v', route: '101,55@deploy:outpost' }), false, 'a one-shot request');
+});
+
 // --- repetition (transport-model.md §11.10, automation slice 3a) -----------------------------------
 
 test('parseRepeatFlag: once | continuous | nRun:N -> the engine repeat; anything else throws', () => {
