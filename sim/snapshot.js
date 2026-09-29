@@ -39,7 +39,7 @@ const { computeOccupancy } = require('./occupancy.js');
 const { deployedAssetIds } = require('./assets.js');
 const { SYNDICATE_SELLABLE_KINDS, BUILD_TICKS, priceAssetForPurchase } = require('./asset-recipes.js');
 const { BUILDABLE_VEHICLE_KINDS, vehicleSpec, resolveVehicleLocation, vehicleCoords } = require('./vehicles.js');
-const { outpostDockTurnaround } = require('./outposts.js');
+const { outpostDockTurnaround, OUTPOST_DEPLOY_RANGE } = require('./outposts.js');
 const { usedSpace, copyManifestLine } = require('./manifest.js');
 // copyRouteWaypoint (sim/routes.js — the ONE spelling of the { anchor, action? } waypoint copy, shared
 // so a snapshotted route — a craft's journalled one or a guild's saved one — can't drift from the stored).
@@ -743,6 +743,9 @@ function computeAttention(state) {
 //                                                                   //   (deploy pipeline slice 2)
 //                 savedRoutes?: [ { id, name,                     // §11.9 saved routes (2.2 automation 2a),
 //                                   waypoints: [ { anchor, action? } ] } ], // omit-when-empty, stored order
+//                 deployRange?: { outpost: { radius,              // territory-model.md §5 (deploy slice 3):
+//                                            anchors: [ systemId ] } }, // radius = OUTPOST_DEPLOY_RANGE, anchors =
+//                                                                //   held systems, sorted; lane-keyed; omit-when-empty
 //                 productionProfile: { ... } } ],               // §5 profile, sparse as stored
 //     production: [ { guildId,                                  // previewProduction(state)
 //       systems: [ { systemId, mines, goods, lines, refineries,     // resolved per-system
@@ -823,6 +826,28 @@ function orderSnapshot(order) {
     haulerTier: haulerTierForSpace(totalSpace),
     overCap: totalSpace > HEAVY_HOLD,
   };
+}
+
+// deployRangeFor(state, guildId) -> where the guild may legally deploy, lane-keyed, or null when it holds no
+// system (so the caller omits the key). docs/territory-model.md §5 "Painting the range (the snapshot
+// contract)"; roadmap 2.2, the deploy pipeline slice 3. The client paints the union of `hexDistance ≤ radius`
+// disks around the anchors; it must not hold the distance itself, because the range is a game number (§18).
+//
+//   { outpost: { radius, anchors } }
+//     radius  — OUTPOST_DEPLOY_RANGE, the engine's own constant, never a literal here.
+//     anchors — heldSystemIds(state, guildId), VERBATIM: the same list `nearestHeldSystem` (sim/actions.js)
+//               measures the range to, so the paint and the rule read one set. Already sorted and deduped at
+//               the source (invariant 9), so it is not re-sorted here; a fresh array, so no aliasing.
+//
+// LANE-KEYED so `tollGate` / `deepScan` can join as sibling keys when their lanes are built, with no reshape.
+// Only the outpost lane is built, so only `outpost` is filled. null for a guild that holds nothing: it can
+// deploy nowhere, so there is no range to paint (the omit-when-empty discipline `savedRoutes` keeps).
+// GUIDANCE, not a verdict — `deployCheck` stays the sole authority on legality. Pure derived telemetry, like
+// `fuelCost`: reads state, mutates nothing, no serialized byte, no determinism hash.
+function deployRangeFor(state, guildId) {
+  const anchors = heldSystemIds(state, guildId);
+  if (anchors.length === 0) return null;
+  return { outpost: { radius: OUTPOST_DEPLOY_RANGE, anchors } };
 }
 
 // snapshotRoute(route) -> a routed craft's `route` as the snapshot shows it (transport-model.md §11.1 /
@@ -1074,6 +1099,9 @@ function buildSnapshot(state) {
     // day in the snapshot (docs/event-log.md §9). Derived on read, no stored byte.
     const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
     const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
+    // The legal deploy range (deploy slice 3), computed once so the omit-when-empty test and the field read
+    // one value. null when the guild holds no system.
+    const deployRange = deployRangeFor(state, g.id);
     return {
       id: g.id,
       name: g.name,
@@ -1429,6 +1457,12 @@ function buildSnapshot(state) {
             })),
           }
         : {}),
+      // deployRange: where the guild may deploy an Outpost — `{ outpost: { radius, anchors } }` (see
+      // deployRangeFor), so the client's range paint reads the engine's numbers instead of computing them
+      // (§18). PRESENT ONLY when the guild holds a system (omit-when-empty), so a galaxy whose guilds hold
+      // nothing snapshots byte-identically to pre-slice. ADDITIVE, NO schema bump — nothing existing changed
+      // shape, the same call `savedRoutes` made. Pure derived telemetry: no serialized byte, no determinism hash.
+      ...(deployRange ? { deployRange } : {}),
       // buyOrder / sellOrder: the guild's HELD Syndicate orders, echoed with the engine-computed
       // per-line `space`, the Σ `totalUnits`/`totalSpace`, the `haulerTier` and the `overCap` flag
       // (docs/syndicate-orders.md §4) — so the trade-floor gauge and the finalise popup render the

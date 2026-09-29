@@ -18,8 +18,8 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
-| 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,845 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first two rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule); the guild↔guild contest (a rival, territory, the market) is not built yet |
+| 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,855 tests, deterministic) |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -2501,9 +2501,10 @@ boundary so the later hex-map swap doesn't touch it.
   Tier-4 kit on a transport to a target and place it on arrival — the ferry that unblocks the Prefecture
   (the item below). Built as a ladder: **slice 1** the deployable good + a manual outpost deploy (engine +
   operator CLI) → **slice 2** auto-insert the deploy on arrival (a dispatch's on-arrival action, via the
-  actioned-route machinery) → the client (Manage popup, deploy-map picker, range paint) → the kit SOURCES
-  (the dockyard building a kit, the founding-grant kit, loading a kit from a store) → the other kinds
-  (toll gate, deep-scan array, the Prefecture).
+  actioned-route machinery) → **slice 3** the deploy range in the snapshot (the data the range paint
+  reads) → the client (Manage popup, deploy-map picker, range paint) → the kit SOURCES (the dockyard
+  building a kit, the founding-grant kit, loading a kit from a store) → the other kinds (toll gate,
+  deep-scan array, the Prefecture).
   - **slice 1 — the deployable good + outpost deploy (engine + operator CLI, NO client).** 🟢 *BUILT (29-09-26).*
     **Built so far — the deployable good:** `DEPLOYABLE_GOODS` = [`outpost_kit`] + `isDeployableGood` /
     `kitGoodFor` (`sim/resources.js`), a sibling category to the stockpile goods and deliberately NOT in
@@ -2594,6 +2595,39 @@ boundary so the later hex-map swap doesn't touch it.
     `deployFailed` message — "deploy failed — hex taken / out of range; craft pulled back"); refining the retreat
     LANDING to avoid rival / contested space (needs the §1–§3 spatial control layer); the other kinds; the kit
     sources; auto-deploy for the ground-asset lane (that is the establish flow, not this).
+  - **slice 3 — the deploy range in the snapshot (engine + snapshot, NO client).** 🟢 *BUILT (29-09-26).*
+    Built to `territory-model.md` §5 "Painting the range (the snapshot contract)", no design change. Each guild
+    row in `buildSnapshot` (`sim/snapshot.js`) gains a lane-keyed `deployRange = { outpost: { radius, anchors } }`
+    (`deployRangeFor`): `radius` is the engine's `OUTPOST_DEPLOY_RANGE` (imported — no literal in the snapshot, §18)
+    and `anchors` is `heldSystemIds(state, guildId)` verbatim — sorted and deduped at the source (invariant 9), the
+    same set `nearestHeldSystem` measures the range to. **Omit-when-empty:** a guild holding no system carries no
+    `deployRange` key (it can deploy nowhere), the `savedRoutes` discipline. Lane-keyed so `tollGate` / `deepScan`
+    join as sibling keys with no reshape; only `outpost` is filled. The thin shape by ruling — no enumerated hex set,
+    no occupancy or bounds filtering: the client draws `hexDistance ≤ radius` disks and `deployCheck` stays the sole
+    authority on legality. ADDITIVE, no schema bump (`SNAPSHOT_SCHEMA` stays 7); the guild-row shape comment
+    documents `deployRange?`. Pure derived telemetry, like `fuelCost`: reads state, mutates nothing, no serialized
+    byte, no determinism hash. No behaviour change — `deployCheck` / `deployAsset` / `deployKit`, the deploy
+    waypoint action and the retreat are untouched; no endpoint, CLI or operator change (`GET /snapshot` already
+    serves the row verbatim).
+    **The tripwire:** `deploy-range.test.js`'s `assertDeployRange` checks every guild row against the state it was
+    built from — absent when nothing is held; otherwise exactly the `outpost` lane, exactly `{ radius, anchors }`,
+    `radius === OUTPOST_DEPLOY_RANGE`, every anchor held (`guildHolds`) and the list equal to `heldSystemIds` in
+    order — and throws with the tick and the offending values. It is a snapshot-shape assertion in the test file,
+    not a `sim/invariants.js` check, because those read STATE every tick and `deployRange` exists only in the
+    snapshot.
+    **A NO-OP on every golden** — no existing test or golden changed: the persist / determinism / galactic-supply
+    state goldens (`persist.test.js`, `commitment-scaffold.test.js`, …) cannot move, since nothing is serialized;
+    the snapshot-hash goldens (`tier3-contract`, `settlement-rescue`, `syndicate-top-up`) hold no system, so the key
+    is omitted and their bytes are unchanged. Proven directly too: a founded two-guild galaxy run 60 ticks before and
+    after the change gives the same state hash at every tick and the same snapshot bytes once `deployRange` is
+    stripped. Sim 1,845 → **1,855 green** (`deploy-range.test.js` +10: the N-systems shape, omit-when-empty, own
+    systems only (not a rival's, a non-system claim or an Outpost), derived-not-stale through a hand-edited claim
+    list and the real `foundGuild`, determinism + sorted-not-insertion order, purity + no aliasing, the painted edge
+    agreeing with `deployAsset` (exactly `radius` passes, one further is refused), the tripwire firing on each kind
+    of drift, and holding every tick of a founded galaxy); tools **73** unchanged.
+    **Deferred (not invented):** the client — painting the range on the deploy-map picker (the next slice;
+    `client/game.html` untouched), with the Manage popup and the `deployFailed` message; the `tollGate` /
+    `deepScan` lanes and their anchors (outposts join them) with their ranges, still `[FIRST-CUT]` on the checklist.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is

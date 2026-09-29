@@ -224,6 +224,14 @@ to the first on-lattice hex (at worst `S`). The manual `deployAsset` is unchange
 Manage popup, the deploy-map picker, the painted range, the `deployFailed` message), the retreat-landing
 refinement above, the other kinds, and the kit sources.
 
+**AS-BUILT — slice 3, the deploy range in the snapshot (29-09-26; engine + snapshot, no client).**
+Built to "Painting the range" above, no design change. Each guild row carries `deployRange = { outpost: { radius,
+anchors } }` (`deployRangeFor`, `sim/snapshot.js`): `radius` is `OUTPOST_DEPLOY_RANGE` imported from the engine, and
+`anchors` is `heldSystemIds` verbatim — no re-sort, no copy-and-sort. Omitted when the guild holds no system. Pure
+derived telemetry: no serialized byte, no determinism hash, and no deploy rule touched — `deployCheck` stays the
+authority. A tripwire in `sim/tests/deploy-range.test.js` fails loudly if the field ever drifts from `heldSystemIds`
+or the constant. Not built: the paint itself (the client, next), and the `tollGate` / `deepScan` lanes.
+
 ## 6. Generation — starter spacing
 
 The generator sets **no minimum spacing between systems** (systems are shuffled onto
