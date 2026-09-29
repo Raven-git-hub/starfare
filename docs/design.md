@@ -187,6 +187,10 @@ precondition the `contested` flag on the claim row has been carrying a slot for,
 §11.6's "a system lost" its first reachable path. Whether anyone but the owner can actually remove
 one is itself open - §19 #69.
 
+> **The full territory & deployment model lives in `docs/territory-model.md` (design-ahead, 29-09-26).** The spatial control layer — the 7-hex control footprint with **first-settled seniority** over overlaps, and the semi-controlled **detection** corridors (trunk & feeder, own-nodes only) — plus the Prefecture-as-flag and squatting-as-deferred-direction, the **cross-system deploy pipeline** (which *is* the ferry the Prefecture waits on), the **starter ≥ 3 spacing** generation rule, and the founding-grant change. This section holds the narrative and the headline rulings; that file is the computational model.
+
+> **The full territory & deployment model lives in `docs/territory-model.md` (design-ahead, 29-09-26).** The spatial control layer — the 7-hex control footprint with **first-settled seniority** over overlaps, and the semi-controlled **detection** corridors (trunk & feeder, own-nodes only) — plus the Prefecture-as-flag and squatting-as-deferred-direction, the **cross-system deploy pipeline** (which *is* the ferry the Prefecture waits on), the **starter ≥ 3 spacing** generation rule, and the founding-grant change. This section holds the narrative and the headline rulings; that file is the computational model.
+
 ### Toll Gates & Toll Paths
 
 The "toll routes are exponentially safer and faster" principle above now has a concrete deployable structure behind it. A **Toll Gate** is a single-hex, guild-controlled claim in the same family as an Outpost, but purpose-built for the toll mechanic rather than as a relay hub.
