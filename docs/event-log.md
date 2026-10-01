@@ -53,7 +53,7 @@ is gone (§2).
 
 ## 2. The two types & the four writers
 
-The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is added by the 2.2 deploy pipeline — §10):
+The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine half BUILT):
 
 - **`licence_lapsed`** — an ordinary licence lapsed back to unlicensed.
 - **`venture_closed`** — a venture was removed.
@@ -131,7 +131,7 @@ Both are **derived on read**: no serialized byte beyond `Guild.events` / `Guild.
 themselves, no determinism hash, invariant 9 holds.
 
 Each surfaced `guilds[].events` row also carries two **derived calendar days** (the redesign,
-§9) beside the copied `{ ...e, payload: { ...e.payload } }` — computed on read over the galaxy's
+§9) beside the copied `{ ...e, payload: cloneEventPayload(e.payload) }` — computed on read over the galaxy's
 `windowN` / `dayAnchorTick`, exactly as the renegotiation countdown's `daysToLapse` is:
 
 - **`whenDay`** — `dayOf(e.tick, …)`, the calendar day the notice was written (the popup's
@@ -268,7 +268,8 @@ counting the player's own `attention.notices` beside the open offers.
 
 ## 10. The `deploy_failed` notice — the fleet / ops lane (2.2 deploy pipeline, RULED 01-10-26)
 
-*Status: **RULED.** A THIRD event type, written by the deploy pipeline, and the first notice that carries a
+*Status: **RULED**; the **ENGINE half is BUILT** (01-10-26 — the type, the write and the payload; AS-BUILT at the end
+of this section). The surface (the inbox row, the pilot popup, Show on map) is the CLIENT slice, not built. A THIRD event type, written by the deploy pipeline, and the first notice that carries a
 **domain character** rather than the uniform Syndicate voice (§9): the parked domain-character advisers
 (§5), **un-parked for the fleet / ops lane**. Syndicate ENFORCEMENT notices (`venture_closed` /
 `licence_lapsed`) stay uniform; a fleet / ops notice wears its character. Visual contract:
@@ -313,3 +314,22 @@ any notice. The popup is the same adviser-reel card, re-dressed for this type:
 
 Opening the message acknowledges it (§8, read-on-open), unchanged. This **replaces** the earlier idea of
 an Operations · In-Transit strip notice — the message is the surface.
+
+**AS-BUILT — the engine half (01-10-26; engine only, NO client).** Built to this section, no design change.
+`DEPLOY_FAILED = 'deploy_failed'` joins `EVENT_TYPES` in `sim/events.js`, so `checkEventLog` accepts it; the log,
+`recordEvent`, retention and acknowledge are untouched and the type rides all of them. The writer is the retreat
+branch of `resolveDeployArrival` (`sim/actions.js`): after it snaps the craft and sets `deployFailed` (unchanged), it
+records one row through `recordEvent` on the same guild at the same tick (the arrival tick). The payload is built
+there: `cause` is the flag's reason; `kind` is the deploy waypoint's `action.kind` (the route is still on the craft
+at that point); `targetHex` is a fresh `{ q, r }` copy of the craft's location before the snap (deployCheck has
+just proved it a bare hex); `craftId` / `craftClass` are the craft's `id` / `class`; `retreatSystemId` is
+`nearestHeldSystem` asked with the same arguments `retreatLanding` uses on the next line, so it names the system the
+craft is pulled toward; `retreatSystemName` is that system's seed name, falling back to its id (the `ventureName`
+pattern). **No snapshot field:** `guilds[].events` surfaces the row with `whenDay` (no `unlockDay`, no node is
+held) and `attention.notices` counts it while unread. **One copy fix:** this is the first payload with a nested
+object (`targetHex`), so the one-level `{ ...e.payload }` copies in `createState` and the snapshot would have shared
+it with engine state. All three copy sites now go through `cloneEventPayload` (`sim/events.js`, a `structuredClone`
+of the payload). The output is byte-identical. Not built: the client surface above (the inbox row "Deployment
+failed — {Kind}", the pilot popup, the facts block, Show on map). Until it lands, the current client's notice
+renderer treats any type that is not `venture_closed` as a licence lapse, so a `deploy_failed` row would read as
+"Licence lapsed — Venture".

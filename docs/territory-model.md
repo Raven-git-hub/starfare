@@ -268,6 +268,13 @@ and keeps the map open. Arrow-key panning is added to the shared planning mode. 
 (client slice 1, its own slice), a time / fuel quote before Deploy (on the decision checklist, as is the pan step),
 the other lanes and the kit sources.
 
+**AS-BUILT — the `deploy_failed` notice, engine half (01-10-26; engine only, no client).** Built to `event-log.md` §10,
+no design change, and the retreat itself is untouched. Where `resolveDeployArrival` sets `deployFailed`, it also
+records a `deploy_failed` row on the guild's event log at the same tick: `cause`, `kind`, `targetHex`, `craftId` /
+`craftClass`, and `retreatSystemId` / `retreatSystemName` (the nearest held system the retreat pulls toward). The
+`deployFailed` flag stays as it was. A successful deploy writes nothing. Not built: the Guild Hall message that
+renders it (the client slice).
+
 ## 6. Generation — starter spacing
 
 The generator sets **no minimum spacing between systems** (systems are shuffled onto

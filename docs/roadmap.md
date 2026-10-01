@@ -19,7 +19,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
 | 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,855 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map); the guild↔guild contest (a rival, territory, the market) is not built yet |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map; a failed deploy's retreat now records a `deploy_failed` notice); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -2666,6 +2666,45 @@ boundary so the later hex-map swap doesn't touch it.
     (its own slice, not built here); showing the engine's time / fuel quote before DEPLOY, and the pan step
     (both on the decision checklist); re-judging a picked hex on every poll (DEPLOY re-checks at the click, the
     engine at dispatch and arrival); the other lanes (toll gate, deep scan, ground assets) and the kit sources.
+  - **the `deploy_failed` notice — ENGINE (the type + the write, NO client).** 🟢 *BUILT (01-10-26).*
+    Built to `docs/event-log.md` §10, no design change. **The type:** `DEPLOY_FAILED = 'deploy_failed'` is the third
+    entry in `EVENT_TYPES` (`sim/events.js`), so `checkEventLog` accepts it. The log, `recordEvent`, retention and
+    acknowledge are unchanged, and the new type rides all of them. **The write:** `resolveDeployArrival`'s retreat
+    branch (`sim/actions.js`), where it already sets `craft.deployFailed`, also records one row through `recordEvent`
+    on the same guild at the same tick. One writer, so the flag and the message cannot disagree. The flag, the deploy
+    and the retreat logic are untouched. **The payload** (self-contained, built at the retreat): `cause` (the flag's
+    reason, `'occupied'` / `'out-of-range'`), `kind` (the deploy waypoint's `action.kind`, `'outpost'`), `targetHex`
+    (a fresh `{ q, r }` of the hex it could not deploy on, read before the snap), `craftId` + `craftClass`, and
+    `retreatSystemId` + `retreatSystemName`. The system is `nearestHeldSystem` asked with the same arguments
+    `retreatLanding` uses, so it names the system the craft is pulled toward. The name is its seed name, falling back
+    to the id (the `ventureName` pattern). **No snapshot field:** `guilds[].events` already surfaces the row with
+    `whenDay` (no `unlockDay`), and `attention.notices` counts it while unread. **One copy fix, flagged in the PR:**
+    `targetHex` is the first NESTED payload value, and the one-level `{ ...e.payload }` copies in `createState` and
+    the snapshot (`guilds[].events`, `attention.notices`) would have shared it with engine state. All three now go
+    through one `cloneEventPayload` (`sim/events.js`, a `structuredClone`). The output is byte-identical, with no new
+    field and no schema bump.
+    **The tripwires** (`deploy-failed-event.test.js` +10, `events.test.js` +3): a retreat writes exactly one row, on
+    the retreating guild only, with the full payload, for both causes, and the row and the flag agree on reason and
+    tick. With a nearer second system held, the craft and the notice both go there; in the clamp case the craft
+    parks AT the named system. Two heavies landing on one hex write one row, naming the one that retreated. A
+    successful deploy, or a craft with no deploy action, writes nothing and leaves no `events` key. The row is
+    identical across a mid-flight save/restore and a post-retreat round trip. It surfaces with `whenDay`, counts
+    unread, is acknowledged idempotently, and ages out on both clocks like the other two types. `checkEventLog`
+    accepts three types in one log and still trips on a shared id, a bad tick, `readTick < tick` and a near-miss
+    type. The payload copy is deep. Each tripwire was shown to fire: a shallow copy fails 2 tests, dropping the
+    write fails 7, and dropping the type from the vocabulary fails 11 (the existing retreat tests included).
+    **A NO-OP on every galaxy that never retreats.** No existing test or golden changed; the one edited assertion
+    is the vocabulary test, from "exactly two" to "exactly three" types. Proven directly too, running the same
+    script against a clean worktree of the parent commit and against this change: a founded two-guild galaxy over
+    301 ticks and a successful deploy over 401 ticks give the same state hash and the same snapshot hash at every
+    tick, and neither carries an `events` key. A retreating deploy's state hash first differs on its arrival tick.
+    With `events` / `eventSeq` stripped it is identical at every tick, so the event log is the only thing that
+    moved. Sim 1,855 → **1,868 green**; tools **73** unchanged.
+    **Deferred (not invented):** the CLIENT slice. That is the inbox row "Deployment failed — {Kind}", the pilot
+    popup (eyebrow, voice, facts block) and Show on map. **Known gap until it lands:** the current client's notice
+    renderer (`noticeTitle` / `noticeBody`, `client/game.html`) treats any type other than `venture_closed` as a
+    licence lapse. So a `deploy_failed` row would show in the inbox as "Licence lapsed — Venture" with the lapse
+    body. Ship this slice with the client slice, or accept that mislabel in between.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is

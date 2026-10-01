@@ -3,15 +3,17 @@
 // events.test.js — the event log / MESSAGES notices ENGINE slice (docs/event-log.md;
 // design.md §5 "Message delivery"). Covers the module (sim/events.js), the acknowledge
 // action, retention, the four writers' causes, the snapshot surfacing, the checkEventLog
-// invariant, and the omit-when-empty determinism no-op.
+// invariant, and the omit-when-empty determinism no-op. Plus the third type, `deploy_failed`
+// (§10): its place in the vocabulary and the invariant, and the deep payload copy its nested
+// `targetHex` needs. Its writer (the deploy retreat) is tested in deploy-failed-event.test.js.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-  LICENCE_LAPSED, VENTURE_CLOSED, EVENT_TYPES, isEventType,
+  LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED, EVENT_TYPES, isEventType,
   RETENTION_UNREAD_TICKS, RETENTION_READ_TICKS, isEventLive,
-  recordEvent, liveEvents,
+  recordEvent, liveEvents, cloneEventPayload,
 } = require('../events.js');
 const { applyLapse, applyVentureClosure } = require('../licence.js');
 const { createState } = require('../state.js');
@@ -33,11 +35,12 @@ function baseState(guildExtra = {}) {
 
 // ─── the vocabulary ──────────────────────────────────────────────────────────────
 
-test('the type vocabulary is exactly the two notice types', () => {
-  assert.deepEqual([...EVENT_TYPES].sort(), ['licence_lapsed', 'venture_closed']);
+test('the type vocabulary is exactly the three notice types', () => {
+  assert.deepEqual([...EVENT_TYPES].sort(), ['deploy_failed', 'licence_lapsed', 'venture_closed']);
   assert.equal(LICENCE_LAPSED, 'licence_lapsed');
   assert.equal(VENTURE_CLOSED, 'venture_closed');
-  assert.ok(isEventType('licence_lapsed') && isEventType('venture_closed'));
+  assert.equal(DEPLOY_FAILED, 'deploy_failed', 'the third type, written by the deploy retreat (docs/event-log.md §10)');
+  assert.ok(isEventType('licence_lapsed') && isEventType('venture_closed') && isEventType('deploy_failed'));
   assert.ok(!isEventType('rival_bought_in') && !isEventType(undefined));
 });
 
@@ -286,6 +289,64 @@ test('checkEventLog trips on a duplicate id, a bad type, a negative/non-integer 
   const corrupt = baseState();
   corrupt.guilds[0].events = { not: 'an array' };
   assert.ok(checkInvariants(corrupt, corrupt.tick).some((v) => /event-log-is-an-array/.test(v.rule)), 'a non-array log');
+});
+
+// A deploy_failed row as the retreat writes it (docs/event-log.md §10) — the shape only; the writer
+// itself is proven against the real tick in deploy-failed-event.test.js.
+const deployFailedRow = (id, tick, extra = {}) => ({
+  id, tick, type: 'deploy_failed',
+  payload: {
+    cause: 'occupied', kind: 'outpost', targetHex: { q: 4, r: -2 },
+    craftId: 'vehicle_g_heavyTransport_01', craftClass: 'heavyTransport',
+    retreatSystemId: 'sysA', retreatSystemName: 'Sys A',
+  },
+  ...extra,
+});
+
+test('checkEventLog accepts a deploy_failed row, and its rows still hold with three types in one log', () => {
+  const mixed = baseState({
+    events: [
+      { id: 0, tick: 5, type: 'venture_closed', payload: { cause: 'forced' } },
+      deployFailedRow(1, 6, { readTick: 7 }),
+      { id: 2, tick: 8, type: 'licence_lapsed', payload: { cause: 'timeout' } },
+    ],
+    eventSeq: 3,
+  });
+  assert.deepEqual(checkInvariants(mixed, mixed.tick), [], 'all three types in one log pass');
+  // Each per-row rule still fires on a deploy_failed row exactly as on the other two types.
+  assert.ok(tripsOn({ events: [{ id: 0, tick: 5, type: 'venture_closed', payload: {} }, deployFailedRow(0, 6)], eventSeq: 2 }, /event-id-unique/),
+    'an id shared across types is still a collision — one id, one notice');
+  assert.ok(tripsOn({ events: [deployFailedRow(0, 1.5)], eventSeq: 1 }, /event-tick/), 'a non-integer tick');
+  assert.ok(tripsOn({ events: [deployFailedRow(0, 10, { readTick: 9 })], eventSeq: 1 }, /event-readTick/), 'read before it happened');
+  assert.ok(tripsOn({ events: [{ ...deployFailedRow(0, 5), type: 'deploy_fail' }], eventSeq: 1 }, /event-type-in-vocabulary/),
+    'a near-miss type is still refused');
+});
+
+// ─── the payload copy: deep, so a nested targetHex never aliases ───────────────────
+
+test('cloneEventPayload copies a nested payload deeply — a deploy_failed targetHex is not shared', () => {
+  const payload = deployFailedRow(0, 5).payload;
+  const copy = cloneEventPayload(payload);
+  assert.deepEqual(copy, payload);
+  assert.notEqual(copy.targetHex, payload.targetHex, 'a fresh targetHex object, not the same one');
+  copy.targetHex.q = 999;
+  assert.equal(payload.targetHex.q, 4, 'editing the copy leaves the original alone');
+});
+
+test('createState and the snapshot never alias a deploy_failed targetHex into or out of engine state', () => {
+  const seeded = [deployFailedRow(0, 5)];
+  const s = baseState({ events: seeded, eventSeq: 1 });
+  seeded[0].payload.targetHex.q = 999;   // the caller edits its own array after handing it in
+  assert.equal(s.guilds[0].events[0].payload.targetHex.q, 4, 'createState deep-copied the nested hex');
+
+  s.tick = 6;
+  const snap = buildSnapshot(s);
+  const row = snap.guilds.find((g) => g.id === 'g').events[0];
+  const notice = snap.attention.notices[0];
+  assert.deepEqual(row.payload, s.guilds[0].events[0].payload, 'the snapshot surfaces the payload verbatim');
+  row.payload.targetHex.q = 111;
+  notice.payload.targetHex.q = 222;
+  assert.equal(s.guilds[0].events[0].payload.targetHex.q, 4, 'editing either snapshot copy leaves engine state alone');
 });
 
 test('checkEventLog passes a well-formed log and a guild with no log at all', () => {

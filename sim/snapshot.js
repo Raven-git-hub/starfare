@@ -61,7 +61,7 @@ const {
 const { clonePriceHistory } = require('./price-history.js');
 const { getFuelPriceRing } = require('./fuel-price-history.js');
 const { cloneModifierHistory } = require('./modifier-history.js');
-const { liveEvents } = require('./events.js');
+const { liveEvents, cloneEventPayload } = require('./events.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
 const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 
@@ -648,7 +648,7 @@ function renegotiationFieldsFor(state, venture) {
 //     display `ventureName` (the SEED site name — engine-owned display text, the same string
 //     the venture row publishes), the `standing` band, and the full `offer`.
 //   - `notices` — the guild's UNREAD live event-log notices (a discrete event, docs/event-log.md
-//     §2/§3): the `licence_lapsed` / `venture_closed` rows still within their unread retention
+//     §2/§3/§10): the `licence_lapsed` / `venture_closed` / `deploy_failed` rows still within their unread retention
 //     window and not yet acknowledged. This is the source of the panel's unread badge; a READ
 //     notice still shows in the full Notices list (`guilds[].events`) but is not an open
 //     action-item, so it drops out here.
@@ -679,10 +679,10 @@ function computeAttention(state) {
     }
     // Unread live notices — the ones an "attention" badge counts. `liveEvents` already
     // newest-first and retention-filtered; keep only the UNREAD (no `readTick`). Deep-copied
-    // (payload spread) so the snapshot can never alias into engine state.
+    // (`cloneEventPayload`) so the snapshot can never alias into engine state.
     for (const e of liveEvents(g, state.tick)) {
       if (e.readTick != null) continue;
-      notices.push({ guildId: g.id, id: e.id, tick: e.tick, type: e.type, payload: { ...e.payload } });
+      notices.push({ guildId: g.id, id: e.id, tick: e.tick, type: e.type, payload: cloneEventPayload(e.payload) });
     }
   }
   return { renegotiations, notices };
@@ -1519,7 +1519,7 @@ function buildSnapshot(state) {
       // NEWEST-FIRST (`liveEvents`), so an aged-out notice never reaches the panel and the freshest
       // sits at the top; each row carries `{ id, tick, type, payload, readTick? }` — `readTick`
       // present once acknowledged. This is the `productionHistory → history` pattern: engine-owned
-      // stored state surfaced verbatim, deep-copied (payload spread) so the snapshot never aliases
+      // stored state surfaced verbatim, deep-copied (`cloneEventPayload`) so the snapshot never aliases
       // into engine state. ALWAYS EMITTED as an array (a stable [] for a guild that has recorded
       // none), unlike the STORED `guild.events` which is omitted-when-empty for the determinism
       // hash — the snapshot answers to a reader, and a stable shape is kinder than a key that
@@ -1535,11 +1535,11 @@ function buildSnapshot(state) {
       //                   (`payload.lockoutUntilTick`): the day the node frees. Absent
       //                   otherwise (a lapse, or an unlicensed teardown, holds no node — the
       //                   popup must not show a "Node held until" it doesn't have).
-      // The deep-copy discipline (`payload: { ...e.payload }`) is kept so the snapshot never
-      // aliases engine state.
+      // The payload is deep-copied (`cloneEventPayload`, sim/events.js) so the snapshot never
+      // aliases engine state — a one-level spread would share a `deploy_failed`'s nested `targetHex`.
       events: liveEvents(g, state.tick).map((e) => ({
         ...e,
-        payload: { ...e.payload },
+        payload: cloneEventPayload(e.payload),
         whenDay: dayOf(e.tick, windowN, dayAnchorTick),
         ...(e.payload.lockoutUntilTick != null
           ? { unlockDay: dayOf(e.payload.lockoutUntilTick, windowN, dayAnchorTick) }

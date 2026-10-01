@@ -44,6 +44,7 @@ const { computeGalacticSupply } = require('./supply.js');
 const { foundingEndowmentFor } = require('./meanline.js');
 const { grantFor } = require('./issuance.js');
 const { guildHolds, heldSystemIds } = require('./claims.js');
+const { recordEvent, DEPLOY_FAILED } = require('./events.js');
 const {
   nearestWaystation, arrivalTickFor, hexDistance, legHexAtTick, hexStepToward, legTicks, legFuelBurn,
 } = require('./transport.js');
@@ -441,7 +442,10 @@ function resolveRouteArrival(state, guild, craft, thisTick) {
 //     rival's space, where sitting idle could draw a fine — so it is pulled back toward the nearest system
 //     its guild holds (retreatLanding), the kit still aboard, and flagged `deployFailed = { reason, tick }`
 //     so the player can see why (the `laneEnded` pattern; the next dispatch clears it). The pull-back is a
-//     forced SNAP, not travel: no fuel, no time, no toll or fine, and nothing else moves.
+//     forced SNAP, not travel: no fuel, no time, no toll or fine, and nothing else moves. The retreat is
+//     also a DISCRETE EVENT the player must be told about, so it records a `deploy_failed` notice on the
+//     guild's event log (docs/event-log.md §10) — HERE, beside the flag, so there is one writer and the
+//     flag and the message cannot disagree.
 function resolveDeployArrival(state, guild, craft, thisTick) {
   const check = deployCheck(state, guild.id, craft.id, craft.location, craft.cargo);
   if (check.ok) {
@@ -456,9 +460,34 @@ function resolveDeployArrival(state, guild, craft, thisTick) {
     // where to put the craft (§15.5: a silent violation is worse than a crash).
     throw new Error(`deploy on arrival, tick ${thisTick}: guild ${JSON.stringify(guild.id)} vehicle ${JSON.stringify(craft.id)} failed the "${check.failure}" check, which the dispatch gate rules out — ${check.reason}`);
   }
+  // Read what the notice needs BEFORE the snap moves the craft. The craft still sits on the target, which
+  // deployCheck has just proved is a bare hex (both retreatable failures come after its bare-hex check), so
+  // its location IS the `{ q, r }` it could not deploy on — copied, so the notice never aliases the craft.
+  // The retreat system is asked of nearestHeldSystem with exactly the arguments retreatLanding gives it on
+  // the next line (this guild, this hex, nothing changed in between), so it names the very system the craft
+  // is pulled toward.
+  const targetHex = { q: craft.location.q, r: craft.location.r };
+  const retreatSystemId = nearestHeldSystem(state, guild.id, targetHex).systemId;
   craft.location = retreatLanding(state, guild.id, craft.location);
   craft.deployFailed = { reason: check.failure, tick: thisTick };
   craft.updatedAtTick = thisTick; // §15.2: the retreat is a mutation of the craft — record its tick
+  // The notice, on the same guild at the same tick as the flag. Its payload is SELF-CONTAINED (§10) — the
+  // craft may have been re-dispatched (its flag cleared) by the time the player reads it.
+  //   - `cause`  — the same reason the flag carries ('occupied' | 'out-of-range');
+  //   - `kind`   — what was being deployed, read off the deploy waypoint the craft has just reached (its
+  //                route is still on it here — the caller ends the run only after this returns);
+  //   - `retreatSystemName` — the system's SEED name, falling back to its id, the way the licence notices
+  //                resolve a venture's site name (sim/licence.js `ventureName`).
+  const retreatSystem = getSystem(retreatSystemId);
+  recordEvent(guild, thisTick, DEPLOY_FAILED, {
+    cause: check.failure,
+    kind: craft.route.waypoints[craft.route.cursor].action.kind,
+    targetHex,
+    craftId: craft.id,
+    craftClass: craft.class,
+    retreatSystemId,
+    retreatSystemName: (retreatSystem && retreatSystem.name) || retreatSystemId,
+  });
 }
 
 // retreatLanding(state, guildId, from) -> the location a craft retreats to when its on-arrival deploy fails

@@ -15,20 +15,22 @@
 // `{ id, tick, type, payload }` rows, surfaced read-only in the snapshot's Notices seam
 // (the client panel renders it in a following slice).
 //
-// THIS SLICE'S WRITERS. Only the two shared licence removers write here (sim/licence.js):
-// `applyLapse` writes `licence_lapsed`, `applyVentureClosure` writes `venture_closed`. The
+// THE WRITERS. The two shared licence removers (sim/licence.js): `applyLapse` writes
+// `licence_lapsed`, `applyVentureClosure` writes `venture_closed`. And the deploy retreat
+// (sim/actions.js `resolveDeployArrival`, docs/event-log.md §10) writes `deploy_failed`. The
 // storyteller / rival / disaster writers are future work (§5). Renegotiation ACCEPT writes
 // nothing — an accept is a re-lock, not a discrete loss.
 
-// --- The type vocabulary (docs/event-log.md §2) ----------------------------------
+// --- The type vocabulary (docs/event-log.md §2, §10) -----------------------------
 //
-// The two notice types this slice can write, ONE source of truth for "what a notice type
-// is", used by the writers and by the checkEventLog invariant (sim/invariants.js). Kept as
-// named constants beside a frozen set, mirroring resources.js's RAW_RESOURCES / its set.
+// The notice types the engine can write, ONE source of truth for "what a notice type is",
+// used by the writers and by the checkEventLog invariant (sim/invariants.js). Kept as named
+// constants beside a frozen set, mirroring resources.js's RAW_RESOURCES / its set.
 const LICENCE_LAPSED = 'licence_lapsed';   // an ordinary licence lapsed to unlicensed
 const VENTURE_CLOSED = 'venture_closed';   // a venture was removed (torn down / forced-closed)
+const DEPLOY_FAILED = 'deploy_failed';     // a hauled kit could not be placed on arrival; the craft retreated
 
-const EVENT_TYPES = Object.freeze([LICENCE_LAPSED, VENTURE_CLOSED]);
+const EVENT_TYPES = Object.freeze([LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED]);
 const EVENT_TYPE_SET = new Set(EVENT_TYPES);
 
 // isEventType(id) -> is `id` a known notice type?
@@ -101,8 +103,19 @@ function liveEvents(guild, currentTick) {
     .sort((a, b) => b.id - a.id);
 }
 
+// cloneEventPayload(payload) -> a DEEP copy of a notice's payload, so a copy of the log (a
+// createState hand-in, the snapshot rows, the attention notices) can never alias engine state.
+// THE ONE copy every copy site uses. A one-level spread (`{ ...payload }`) was enough while every
+// payload held only strings and numbers, but `deploy_failed` carries a nested `targetHex: { q, r }`
+// (docs/event-log.md §10), which a spread would share rather than copy. A payload is plain data, so
+// structuredClone copies all of it — the same deep copy tick.js's cloneState makes of the state. A
+// missing payload copies as `{}`, exactly as the spread it replaced did, so no copy's output changes.
+function cloneEventPayload(payload) {
+  return structuredClone(payload || {});
+}
+
 module.exports = {
-  LICENCE_LAPSED, VENTURE_CLOSED, EVENT_TYPES, isEventType,
+  LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED, EVENT_TYPES, isEventType,
   RETENTION_UNREAD_TICKS, RETENTION_READ_TICKS, isEventLive,
-  recordEvent, liveEvents,
+  recordEvent, liveEvents, cloneEventPayload,
 };

@@ -27,6 +27,7 @@ const { cloneFuelBurnHistory } = require('./fuel-burn-history.js');
 const { seedPrices } = require('./prices.js');
 const { clonePriceHistory } = require('./price-history.js');
 const { cloneFuelPriceHistory } = require('./fuel-price-history.js');
+const { cloneEventPayload } = require('./events.js');
 const { seedPriceRing, clonePriceRing } = require('./price-ring.js');
 const { ASSET_CONDITION_NEW } = require('./assets.js');
 const { REFERENCE_FUEL_PRICE } = require('./fuel.js');
@@ -344,9 +345,10 @@ function createGuild({
     // `syndicateWindows` / `productionHistory` / `assets` above: a guild that has recorded no
     // notice carries NEITHER key and serializes byte-identically to pre-slice state (the
     // determinism no-op proof). CARRIED here so a scenario or a restored save that hands them
-    // in keeps them; the events are DEEP-copied (a fresh array of fresh row objects) so a
-    // caller's array can never alias into engine state, the same discipline the maps above use.
-    ...(Array.isArray(events) && events.length ? { events: events.map((e) => ({ ...e, payload: { ...e.payload } })) } : {}),
+    // in keeps them; the events are DEEP-copied (a fresh array of fresh row objects, each payload
+    // through `cloneEventPayload` — a `deploy_failed` payload nests a `targetHex`) so a caller's
+    // array can never alias into engine state, the same discipline the maps above use.
+    ...(Array.isArray(events) && events.length ? { events: events.map((e) => ({ ...e, payload: cloneEventPayload(e.payload) })) } : {}),
     ...(eventSeq ? { eventSeq } : {}),
     ventures: ventures.map(createVenture),
     vehicles: vehicles.map(createVehicle),
