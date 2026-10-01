@@ -53,7 +53,7 @@ is gone (§2).
 
 ## 2. The two types & the four writers
 
-The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine half BUILT):
+The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT):
 
 - **`licence_lapsed`** — an ordinary licence lapsed back to unlicensed.
 - **`venture_closed`** — a venture was removed.
@@ -192,7 +192,9 @@ detail opens in a **popup** (`docs/mockups/guild-hall-messages.html`). **Client 
   sentence** is likewise appended only when `lockoutUntilTick` is present, so a lapse or an
   unlicensed teardown never claims a held node. (Design note: the precise unlock day rides the
   facts block only; the body sentence stays static — no game number is typed twice, honouring the
-  mockup's FIELD → SOURCE contract, which maps only `Facts · Node held until` to `unlockDay`.)
+  mockup's FIELD → SOURCE contract, which maps only `Facts · Node held until` to `unlockDay`.) A `deploy_failed`
+  notice is the one exception to the uniform adviser: it re-dresses this same card with the pilot (§10, client
+  AS-BUILT).
 - **Read = opening the message.** Clicking a notice row opens its popup (filled from that row in
   `meGuild().events` by its id) and dispatches the existing `acknowledgeEvent { guildId, eventId }`
   for its id (sent as a Number — the apply matches by `===`), so the row renders read on the next
@@ -268,8 +270,9 @@ counting the player's own `attention.notices` beside the open offers.
 
 ## 10. The `deploy_failed` notice — the fleet / ops lane (2.2 deploy pipeline, RULED 01-10-26)
 
-*Status: **RULED**; the **ENGINE half is BUILT** (01-10-26 — the type, the write and the payload; AS-BUILT at the end
-of this section). The surface (the inbox row, the pilot popup, Show on map) is the CLIENT slice, not built. A THIRD event type, written by the deploy pipeline, and the first notice that carries a
+*Status: **RULED + BUILT.** The **ENGINE half is BUILT** (01-10-26 — the type, the write and the payload) and the
+**CLIENT half is BUILT** (01-10-26 — the inbox row, the pilot popup, Show on map); both AS-BUILT records are at the end
+of this section. A THIRD event type, written by the deploy pipeline, and the first notice that carries a
 **domain character** rather than the uniform Syndicate voice (§9): the parked domain-character advisers
 (§5), **un-parked for the fleet / ops lane**. Syndicate ENFORCEMENT notices (`venture_closed` /
 `licence_lapsed`) stay uniform; a fleet / ops notice wears its character. Visual contract:
@@ -332,4 +335,34 @@ it with engine state. All three copy sites now go through `cloneEventPayload` (`
 of the payload). The output is byte-identical. Not built: the client surface above (the inbox row "Deployment
 failed — {Kind}", the pilot popup, the facts block, Show on map). Until it lands, the current client's notice
 renderer treats any type that is not `venture_closed` as a licence lapse, so a `deploy_failed` row would read as
-"Licence lapsed — Venture".
+"Licence lapsed — Venture". *⤳ Closed by the client half, next.*
+
+**AS-BUILT — the client half (01-10-26; `client/game.html` only, NO `sim/` change).** Built to this section, no
+design change, as a small addition to §8's notice code. `venture_closed` / `licence_lapsed` are untouched: their
+popup card is pixel-identical before and after.
+- **The row.** `noticeTitle` / `noticeRowTitle` gain a `deploy_failed` branch: "Deployment failed — {Kind}", where
+  `{Kind}` is `prettyGood(payload.kind)` ("Outpost"; a missing kind reads "Kit", the engine's word for what was
+  hauled). `NOTICE_ICON` gains 🚀, illustrative like ⚖ / 🔒. Newest-first order, the unread dot and read dimming
+  are §8's, unchanged.
+- **The popup.** `openNotice` re-dresses the shared `#notice-overlay` card on EVERY open. For a `deploy_failed` it
+  sets the eyebrow (`#noticeEyebrow`) to "Fleet — Dispatch", the hero (`#noticeArt`) to
+  `assets/characters/pilot.jpg`, and shows SHOW ON MAP (`#noticeShowMap`) beside Dismiss. Any other notice is set
+  back to "Syndicate Notice", `advisor.jpg` and no SHOW ON MAP, so the shared card never keeps the pilot. The body
+  is this section's two beats verbatim (`DEPLOY_FAILED_BODY`), one `<p>` per beat; `#noticeBody` is now a container
+  of paragraphs, and a Syndicate notice's one line is one `<p>` with the same layout. The facts
+  (`deployFailedFacts`), in order: `Craft` = `prettyClass(craftClass)` + " · #" + the number `craftId` ends on — the
+  name the Dispatch popup gives the same craft ("Heavy Transport · #01"; this section writes `craftClass · NN`, so
+  the `#` is flagged on the roadmap decision checklist); `Target` = `hex {q}, {r}`; `Reason` = Hex taken / Out of
+  range; `Pulled back to` = `retreatSystemName`; `Failed` = `whenDay`.
+- **Show on map** (`showNoticeOnMap`) closes the popup and finds the live craft by `payload.craftId` on the player's
+  guild row. It resolves the craft's hex through the Dispatch popup's own `coordsOf`, now shared as
+  `window.__craftCoords` (a bare hex, or the system a clamped retreat parked it at), and `__flyTo`s it at zoom 9,
+  the Dispatch popup's Show on map zoom (`__flyTo` closes the Guild Hall itself). A craft that is gone — or flying
+  again, so it has no hex — falls back to `payload.targetHex` (the flying case is flagged on the checklist).
+- **Read-on-open** is §8's, unchanged: opening dispatches `acknowledgeEvent` by id while unread.
+- **One layout fix.** The pilot's two beats + five facts are about 60px taller than the card's fixed
+  `min(80vh, 600px)`. The card's text column could not shrink below its content, so the footer and its buttons
+  were clipped off the card. `#notice-overlay .reel-text` gains `min-height:0`: `.reel-body` now scrolls, as its
+  `overflow-y:auto` intends, and the footer stays on the card. The last fact (`Failed`) sits just below the fold.
+  A notice that fits is unaffected (measured identical). Whether this card should be taller instead is on the
+  decision checklist.

@@ -2332,11 +2332,15 @@ select.field{appearance:none; cursor:pointer;}
    popup uses), no per-type art accent (§9). A notice carries no Accept/Reject — only a single
    Dismiss — and read-on-open is the client's trigger (§9); the engine action is unchanged. The
    reel styling mirrors #reneg-overlay (the codebase already carries the reel look per-overlay, as
-   #est-reel does); the .facts block is the notice's own detail — label → value, two columns. ===== */
+   #est-reel does); the .facts block is the notice's own detail — label → value, two columns.
+   A deploy_failed notice (the fleet / ops lane, §10) wears the pilot instead, on these same rules. ===== */
 #notice-overlay{position:fixed; inset:0; background:rgba(6,7,10,.80); backdrop-filter:blur(3px); display:none; align-items:center; justify-content:center; z-index:620; padding:26px}
 #notice-overlay.open{display:flex}
 #notice-overlay .reel-card{position:relative; width:100%; max-width:760px; height:min(80vh,600px); display:grid; grid-template-columns:1fr 300px; background:linear-gradient(180deg,#141821,#0F1218); border:1px solid var(--line2); border-radius:14px; overflow:hidden; box-shadow:0 30px 90px rgba(0,0,0,.65)}
-#notice-overlay .reel-text{display:flex; flex-direction:column; padding:30px 30px 26px; min-width:0}
+/* min-height:0 lets the text column stay the card's height, so a long notice (the pilot's two beats +
+   five facts, §10) scrolls inside .reel-body and the footer's buttons stay on the card — without it the
+   grid row grows to fit the content and the card's overflow:hidden clips the footer away. */
+#notice-overlay .reel-text{display:flex; flex-direction:column; padding:30px 30px 26px; min-width:0; min-height:0}
 #notice-overlay .reel-eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--amber); margin-bottom:12px}
 #notice-overlay .reel-title{font-family:var(--serif); font-weight:600; font-size:25px; color:var(--ink); letter-spacing:.01em; margin-bottom:18px; line-height:1.2}
 #notice-overlay .reel-body{flex:1; overflow-y:auto; font-size:15px; color:var(--ink); line-height:1.75}
@@ -3561,27 +3565,33 @@ select.field{appearance:none; cursor:pointer;}
      block + a single Dismiss. Every value is a PUBLISHED snapshot field (the client types none and
      computes no game number, §18). Uniform Syndicate tone — one eyebrow, one portrait, no per-type
      accent (§9) — and the SAME advisor.jpg the reneg popup uses. Opening a row dispatches the
-     existing acknowledgeEvent (read = opening, §9); there is no ACKNOWLEDGE button here. ===== -->
+     existing acknowledgeEvent (read = opening, §9); there is no ACKNOWLEDGE button here.
+     The ONE exception is the fleet / ops lane (§10): a `deploy_failed` notice re-dresses this same
+     card with the pilot — eyebrow, portrait and voice — and shows Show on map beside Dismiss. So
+     openNotice sets the eyebrow, the art, the body and the button on EVERY open. ===== -->
 <div id="notice-overlay">
   <div class="reel-card">
     <button class="reel-close" id="noticeClose" type="button" aria-label="Close">&times;</button>
     <div class="reel-text">
-      <div class="reel-eyebrow">Syndicate Notice</div>
+      <div class="reel-eyebrow" id="noticeEyebrow">Syndicate Notice</div>
       <div class="reel-title" id="noticeTitle"></div>
       <div class="reel-body">
-        <p id="noticeBody"></p>
+        <!-- One <p> per paragraph: a Syndicate notice is one line, the pilot's report two beats. -->
+        <div id="noticeBody"></div>
         <div class="facts" id="noticeFacts"></div>
       </div>
       <div class="reel-foot">
         <div class="reneg-note"></div>
         <div class="reel-actions">
+          <button class="btn accept" id="noticeShowMap" type="button" hidden>Show on map</button>
           <button class="btn accept" id="noticeDismiss" type="button">Dismiss</button>
         </div>
       </div>
     </div>
     <!-- The uniform guild-adviser portrait — the same asset the reneg popup uses, no per-type
-         accent (§9). A Syndicate-specific portrait is the parked domain-character decision (§5). -->
-    <div class="reel-art" style="background-image:url('assets/characters/advisor.jpg')"></div>
+         accent (§9). A Syndicate-specific portrait is the parked domain-character decision (§5).
+         A deploy_failed notice swaps in the pilot (§10). -->
+    <div class="reel-art" id="noticeArt" style="background-image:url('assets/characters/advisor.jpg')"></div>
   </div>
 </div>
 
@@ -10782,8 +10792,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // the popup body is static copy keyed on `type` + `payload.cause` (the four writers, §2).
 
   // Per-type icon — muted, calmer than an action row's scales. ⚖ for a licence matter, 🔒 for a
-  // closed venture whose node is held. Illustrative (the mockup's own note icons are), not data.
-  var NOTICE_ICON = { licence_lapsed:'⚖', venture_closed:'🔒' };
+  // closed venture whose node is held, 🚀 for a fleet dispatch (deploy_failed, §10). Illustrative
+  // (the mockup's own note icons are), not data.
+  var NOTICE_ICON = { licence_lapsed:'⚖', venture_closed:'🔒', deploy_failed:'🚀' };
 
   // The venture kind word for the title label — the payload carries the kind (§2) because
   // `ventureName` alone is a *location*, not a "{Good} Mine" name.
@@ -10796,19 +10807,23 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var kind = KIND_WORD[p.ventureType] || 'Venture';
     return good ? (good + ' ' + kind) : kind;
   }
-  // The popup title (plain text): "Venture closed — Gold Mine" / "Licence lapsed — Copper Mine".
+  // The popup title (plain text): "Venture closed — Gold Mine" / "Licence lapsed — Copper Mine" /
+  // "Deployment failed — Outpost".
   function noticeTitle(n){
     var p = (n && n.payload) || {};
+    if(n.type === 'deploy_failed') return 'Deployment failed — ' + deployKindLabel(p);
     return (n.type === 'venture_closed' ? 'Venture closed — ' : 'Licence lapsed — ') + noticeLabel(p);
   }
   // The subject-line row title: the same prefix, with the label in the muted `.who` span.
   function noticeRowTitle(n){
     var p = (n && n.payload) || {};
+    if(n.type === 'deploy_failed') return 'Deployment failed &mdash; <span class="who">' + esc(deployKindLabel(p)) + '</span>';
     var prefix = n.type === 'venture_closed' ? 'Venture closed' : 'Licence lapsed';
     return esc(prefix) + ' &mdash; <span class="who">' + esc(noticeLabel(p)) + '</span>';
   }
   // The popup body — one static line per `type` + `payload.cause` (§2), one plain Syndicate tone
-  // (the domain-character voices are parked, §5). The node-held sentence is appended ONLY when a
+  // (the domain-character voices are parked, §5 — bar the fleet lane's pilot, DEPLOY_FAILED_BODY
+  // below, §10). The node-held sentence is appended ONLY when a
   // lockout was written (`payload.lockoutUntilTick`, §9) — a lapse or an unlicensed teardown holds
   // no node, so the body must not claim one. The precise day rides the facts block (`unlockDay`),
   // not this prose, so the body stays static and the client renders no game number here.
@@ -10828,6 +10843,48 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       base += " Its node stays held under the Syndicate's lockout — no one may re-establish there until the term clears.";
     }
     return base;
+  }
+
+  // --- The deploy_failed notice — the fleet / ops lane (docs/event-log.md §10) -------------------
+  // The first notice with its own character: the PILOT reports it, not the Syndicate adviser. It is
+  // the same card re-dressed (openNotice, below), and its pieces live here. Every value is still a
+  // payload field or the engine's whenDay — the client types none and computes no game number (§18).
+
+  // The title's {Kind} — "Outpost" from payload.kind 'outpost'. Degrades to "Kit", the engine's own
+  // word for what was hauled, so the title never reads "null" or ends on a dash.
+  function deployKindLabel(p){ return p.kind ? prettyGood(p.kind) : 'Kit'; }
+
+  // The pilot's report, verbatim from §10 — two beats, rendered as two paragraphs. Static copy: it
+  // names no number and reads the same for both causes; the facts block carries the specifics.
+  var DEPLOY_FAILED_BODY = [
+    "Right, so, we flew the asset out here where you wanted and... well... long story short, it’s going to need to go somewhere else. I pulled back to a safe spot for now.",
+    "I hate to pester you like this, Guildmaster, but we can’t float around out here forever. We need a decision from you."
+  ];
+
+  // payload.cause -> the Reason fact: the two reasons a deploy retreats on (§10).
+  var DEPLOY_FAILED_REASON = { 'occupied':'Hex taken', 'out-of-range':'Out of range' };
+
+  // A camelCase-splitting display name (heavyTransport -> "Heavy Transport"). Display vocabulary
+  // only (§18) — a local copy, the Dispatch popup's prettyClass is out of this IIFE's scope.
+  function prettyClass(key){
+    return String(key == null ? '' : key)
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/\b\w/g, function(c){ return c.toUpperCase(); });
+  }
+
+  // The facts block (§10), in its order. Craft is named the way the Dispatch popup names a craft —
+  // its class + the number its id ends on (vehicle_<guild>_<class>_NN -> "Heavy Transport · #01").
+  function deployFailedFacts(n){
+    var p = n.payload || {};
+    var craft = p.craftId ? (prettyClass(p.craftClass) + ' · #' + String(p.craftId).split('_').slice(-1)[0]) : '—';
+    var facts = [
+      ['Craft', craft, false],
+      ['Target', p.targetHex ? ('hex ' + p.targetHex.q + ', ' + p.targetHex.r) : '—', false],
+      ['Reason', DEPLOY_FAILED_REASON[p.cause] || '—', false],
+      ['Pulled back to', p.retreatSystemName || p.retreatSystemId || '—', false]
+    ];
+    if(n.whenDay != null){ facts.push(['Failed', 'Day ' + n.whenDay, false]); }
+    return facts;
   }
 
   // The player guild's UNREAD live notices, off the top-level attention derive (§5) — the count
@@ -10920,6 +10977,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // the EXISTING acknowledgeEvent { guildId, eventId } (id as a Number — the engine matches by
   // strict ===), so the row renders read on the next poll. The engine no-ops an aged-out id, and a
   // reopened (already-read) notice re-dispatches nothing — read-on-open only fires while unread.
+  var shownNotice = null;   // the notice the popup is showing — Show on map reads its payload
   function openNotice(eventId){
     var me = meGuild();
     var events = (me && Array.isArray(me.events)) ? me.events : [];
@@ -10927,14 +10985,31 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     for(var i=0;i<events.length;i++){ if(events[i].id === eventId){ n = events[i]; break; } }
     if(!n) return;
     var p = n.payload || {};
+    shownNotice = n;
+    // Who is speaking. A deploy_failed is the fleet / ops lane: the pilot's eyebrow, portrait and voice,
+    // plus Show on map (§10). Every other notice is the Syndicate's uniform adviser (§9). The card is
+    // shared, so all of this is set on every open — a Syndicate notice opened after a deploy one must
+    // not keep the pilot.
+    var fleet = n.type === 'deploy_failed';
+    var art = fleet ? 'assets/characters/pilot.jpg' : 'assets/characters/advisor.jpg';
+    el('noticeEyebrow').textContent = fleet ? 'Fleet — Dispatch' : 'Syndicate Notice';
+    el('noticeArt').style.backgroundImage = "url('" + art + "')";
+    el('noticeShowMap').hidden = !fleet;
     el('noticeTitle').textContent = noticeTitle(n);
-    el('noticeBody').textContent = noticeBody(n);
-    // Facts: Location (payload.ventureName); the event day (Closed / Lapsed = whenDay); and — a
-    // closure carrying a lockout only — Node held until (unlockDay). The unlock row is gated on the
-    // published unlockDay, so a lapse or an unlicensed teardown never shows a held node (§9).
-    var facts = [['Location', p.ventureName || p.ventureId || '—', false]];
-    if(n.whenDay != null){ facts.push([n.type === 'venture_closed' ? 'Closed' : 'Lapsed', 'Day ' + n.whenDay, false]); }
-    if(n.type === 'venture_closed' && n.unlockDay != null){ facts.push(['Node held until', 'Day ' + n.unlockDay, true]); }
+    // The body, one <p> per paragraph: the pilot's two beats, or a Syndicate notice's one line.
+    var paras = fleet ? DEPLOY_FAILED_BODY : [noticeBody(n)];
+    el('noticeBody').innerHTML = paras.map(function(t){ return '<p>' + esc(t) + '</p>'; }).join('');
+    var facts;
+    if(fleet){
+      facts = deployFailedFacts(n);
+    } else {
+      // Facts: Location (payload.ventureName); the event day (Closed / Lapsed = whenDay); and — a
+      // closure carrying a lockout only — Node held until (unlockDay). The unlock row is gated on the
+      // published unlockDay, so a lapse or an unlicensed teardown never shows a held node (§9).
+      facts = [['Location', p.ventureName || p.ventureId || '—', false]];
+      if(n.whenDay != null){ facts.push([n.type === 'venture_closed' ? 'Closed' : 'Lapsed', 'Day ' + n.whenDay, false]); }
+      if(n.type === 'venture_closed' && n.unlockDay != null){ facts.push(['Node held until', 'Day ' + n.unlockDay, true]); }
+    }
     el('noticeFacts').innerHTML = facts.map(function(f){
       return '<div class="row"><span class="k">'+esc(f[0])+'</span><span class="v'+(f[2]?' held':'')+'">'+esc(f[1])+'</span></div>';
     }).join('');
@@ -10949,6 +11024,21 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
   function closeNotice(){ el('notice-overlay').classList.remove('open'); }
   window.__openNotice = openNotice;   // the notice popup's single entry point (§9)
+
+  // Show on map — a deploy_failed notice only (§10). Close the popup and fly the map to the craft's
+  // CURRENT hex: the live craft, found by payload.craftId in the snapshot, its location resolved by the
+  // Dispatch popup's own coordsOf (a bare hex, or the system a retreat parked it at). A retreated craft
+  // waits there until the player acts, so "current" is reliable. If the craft is gone — or flying again,
+  // so it has no hex — fall back to the hex the deploy failed on. Zoom 9, as the Dispatch popup's Show
+  // on map uses. __flyTo closes the Guild Hall itself.
+  function showNoticeOnMap(){
+    var p = (shownNotice && shownNotice.payload) || {};
+    var me = meGuild();
+    var craft = me ? (me.vehicles || []).filter(function(v){ return v.id === p.craftId; })[0] : null;
+    var c = (craft && window.__craftCoords && window.__craftCoords(craft)) || p.targetHex;
+    closeNotice();
+    if(c && window.__flyTo) window.__flyTo(c.q, c.r, 9);
+  }
 
   function centreFor(sub, me){
     if(sub === 'standing') return standingPanel(me);
@@ -11039,8 +11129,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     });
   }
 
-  // The notice popup's own close wiring (a single Dismiss; the × ; a scrim click).
+  // The notice popup's own close wiring (a single Dismiss; the × ; a scrim click) — plus Show on map,
+  // which only a deploy_failed notice shows (§10).
   var noticeDismiss = el('noticeDismiss'); if(noticeDismiss){ noticeDismiss.addEventListener('click', closeNotice); }
+  var noticeShowMap = el('noticeShowMap'); if(noticeShowMap){ noticeShowMap.addEventListener('click', showNoticeOnMap); }
   var noticeCloseX = el('noticeClose'); if(noticeCloseX){ noticeCloseX.addEventListener('click', closeNotice); }
   var noticeOverlay = el('notice-overlay'); if(noticeOverlay){ noticeOverlay.addEventListener('click', function(e){ if(e.target === this) closeNotice(); }); }
 
@@ -12157,6 +12249,7 @@ function paintInventoryHero(d){
   window.__dispatchDeploy = dispatchDeploy;       // the deploy map's DEPLOY chip calls this
   window.__fetchQuote = fetchQuote;               // the deploy map's pre-DEPLOY quote asks through this…
   window.__quoteFigures = quoteFigures;           // …and formats it the way the Finalise view does
+  window.__craftCoords = coordsOf;                // the deploy_failed notice's Show on map finds the craft's hex here
 
   $('dpClose').addEventListener('click', closeDispatch);
   $('dispatch-overlay').addEventListener('click', function(e){ if(e.target === this) closeDispatch(); });

@@ -19,7 +19,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
 | 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,855 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice); the guild↔guild contest (a rival, territory, the market) is not built yet |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -2704,7 +2704,8 @@ boundary so the later hex-map swap doesn't touch it.
     popup (eyebrow, voice, facts block) and Show on map. **Known gap until it lands:** the current client's notice
     renderer (`noticeTitle` / `noticeBody`, `client/game.html`) treats any type other than `venture_closed` as a
     licence lapse. So a `deploy_failed` row would show in the inbox as "Licence lapsed — Venture" with the lapse
-    body. Ship this slice with the client slice, or accept that mislabel in between.
+    body. Ship this slice with the client slice, or accept that mislabel in between. *⤳ Closed: the client slice is
+    BUILT 01-10-26, "the `deploy_failed` message — CLIENT" below.*
   - **client — the pre-deploy quote on the deploy map (CLIENT ONLY, `client/game.html`).** 🟢 *BUILT (01-10-26).*
     Closes the decision-checklist call "(1) No quote before DEPLOY" (ruled yes) and builds it to `territory-model.md`
     §5 "The deploy map", now revised to say so. Once a VALID target is selected, the Deploy Target row shows the
@@ -2738,6 +2739,40 @@ boundary so the later hex-map swap doesn't touch it.
     - no page errors.
     **Deferred (not invented):** re-quoting on a poll (asked once per selection, as Finalise asks once per route);
     an affordability cue (Finalise has none either, only its disabled Dispatch, and DEPLOY is not gated).
+  - **the `deploy_failed` message — CLIENT (the inbox row, the pilot popup, Show on map; `client/game.html` only).**
+    🟢 *BUILT (01-10-26).* Built to `docs/event-log.md` §10, no design change; AS-BUILT in §10. A small addition to
+    the MESSAGES notice code that already exists. **Reused:** the inbox render (newest-first, unread dot, read
+    dimming), `noticeTitle` / `noticeRowTitle`, `openNotice` / `__openNotice` and its read-on-open
+    `acknowledgeEvent`, the `#notice-overlay` card and its styles, the facts renderer, `prettyGood`, `__flyTo`,
+    and the Dispatch popup's `coordsOf` (shared through one new bridge, `window.__craftCoords`). **Added:** a
+    `deploy_failed` branch in the two title builders ("Deployment failed — Outpost"), a 🚀 `NOTICE_ICON`,
+    `deployKindLabel`, `DEPLOY_FAILED_BODY` (§10's two beats verbatim), `DEPLOY_FAILED_REASON`, a local
+    `prettyClass` (the codebase's per-IIFE copy pattern), `deployFailedFacts`, and `showNoticeOnMap`. `openNotice`
+    now sets the eyebrow, hero art, body paragraphs and SHOW ON MAP on every open: the pilot ("Fleet — Dispatch",
+    `pilot.jpg`) for a `deploy_failed`, the uniform adviser for everything else. **Show on map** flies (zoom 9) to
+    the live craft's hex, falling back to `payload.targetHex` when the craft is gone or flying. **One layout fix:**
+    the pilot card's content overflows the fixed 600px card by about 60px, which had clipped the footer buttons off
+    the card. `#notice-overlay .reel-text` gains `min-height:0`, so the body scrolls and the buttons stay. The
+    venture / licence notices are untouched: their card is the same PNG bytes before and after.
+    **A NO-OP for `sim/`:** no engine, snapshot, test or golden touched (`git diff` is `client/game.html` + docs).
+    Sim **1,868 green** and tools **73 green**, both unchanged. Driven headless on a seated seed-42 server, with
+    the notice produced by the engine itself: a heavy granted a kit was sent to `104,48@deploy:outpost`, the hex was
+    occupied mid-flight, and on arrival it retreated to `104,51`, writing the `deploy_failed` row. A venture
+    teardown wrote a `venture_closed` row beside it. Every check scripted to fail loudly:
+    - the inbox showed "Deployment failed — Outpost" (🚀, unread) above "Venture closed — Titanium Mine";
+    - the popup read "Fleet — Dispatch" over the pilot, with the title, the two beats as two paragraphs (verbatim),
+      and the facts Heavy Transport · #01 / hex 104, 48 / Hex taken / BAR-1337 / Day 1;
+    - SHOW ON MAP and DISMISS were both inside the card's visible bounds;
+    - opening it stamped `readTick`, dropped it from `attention.notices`, and the row re-rendered read;
+    - a venture notice opened next was back to "Syndicate Notice" + the adviser, with no SHOW ON MAP, and its card
+      was byte-identical to the pre-change client's;
+    - SHOW ON MAP closed the popup and the Guild Hall and flew to `(104, 51)` at zoom 9, the craft's current hex,
+      not the target;
+    - `__craftCoords` resolved a craft parked AT the home system to that system's hex;
+    - with the craft removed, SHOW ON MAP fell back to the target `(104, 48)`;
+    - no page errors.
+    **Flagged, not ruled (decision checklist):** the `#` in the Craft fact, the card fit, and Show on map for a
+    craft already flying again.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
@@ -2859,6 +2894,15 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   informational only, so DEPLOY does not wait on it (2.2 deploy pipeline, "the pre-deploy quote"; `territory-model.md`
   §5). **(2) The arrow-key pan step** — still open — is built at **120 screen px per press** (`PAN_STEP_PX`, both planning
   modes). It is a presentation default, not a game number; confirm or retune.
+- **The `deploy_failed` message: three client calls (01-10-26, 2.2 deploy pipeline, `event-log.md` §10 client
+  AS-BUILT)**, built one way and flagged rather than ruled. **(1) The Craft fact** reads "Heavy Transport · #01",
+  the name the Dispatch popup and Outpost Manager already give a craft; §10 writes `craftClass · NN`, with no `#`.
+  Confirm, or drop the `#` here only. **(2) The card fit.** The pilot's two beats + five facts are about 60px taller
+  than the notice card's fixed `min(80vh, 600px)`, so the body scrolls and the last fact (`Failed`) sits just below
+  the fold. Accept, or rule a taller card for this notice. **(3) Show on map for a craft flying again.** §10 rules
+  the craft's current hex, falling back to `targetHex` "if the craft is gone". A craft the player has already
+  re-dispatched has no hex, so it is built to fall back to `targetHex` too. Confirm, or rule another target (e.g.
+  its destination).
 
 - **Asset-presence vs. production** — *surfaced 16-09-26 by the operator adjust levers
   (`docs/operator-adjust.md` §3.5 AS-BUILT).* Production is currently **asset-blind** — a venture
