@@ -3683,7 +3683,9 @@ select.field{appearance:none; cursor:pointer;}
   // is the DEPLOY MAP — the same planner reduced to one leg — and null for an ordinary route. In deploy
   // mode the candidate IS the target (there are no waypoints until DEPLOY sends one); `deploySending` holds
   // the chip while the dispatch posts, and `deployRefused` is the engine's reason if it refused it.
-  let PLAN = null;              // { vehicle, origin, waypoints:[{anchor, action?},…], candidate:anchor|null, candidateArmed:bool, candidateAction:action|null, routeName:string, loop:bool, deploy:kind|null, deploySending:bool, deployRefused:string }
+  // `deployQuote` is the engine's time / fuel quote for the selected target, `{ target, quote }`: `target` is
+  // the candidate it was asked for, and `quote` is null while the fetch is out (see requestDeployQuote).
+  let PLAN = null;              // { vehicle, origin, waypoints:[{anchor, action?},…], candidate:anchor|null, candidateArmed:bool, candidateAction:action|null, routeName:string, loop:bool, deploy:kind|null, deploySending:bool, deployRefused:string, deployQuote:{target, quote}|null }
   let planActive = false;       // true while the map is in planning mode (the click branch + draw pass read this)
 
   // Automation 2b — Load Route. `liveSavedRoutes` is the player's guild's saved routes, pushed by
@@ -3876,7 +3878,7 @@ select.field{appearance:none; cursor:pointer;}
   function startPlanning(vehicle, waypoints, routeName, loop, deployKind) {
     if (!vehicle || !vehicle.location) return;
     PLAN = { vehicle: vehicle, origin: vehicle.location, waypoints: (waypoints || []).map(copyWaypoint), candidate: null, candidateArmed: false, candidateAction: null, routeName: routeName || '', loop: !!loop,
-             deploy: deployKind || null, deploySending: false, deployRefused: '' };
+             deploy: deployKind || null, deploySending: false, deployRefused: '', deployQuote: null };
     closeLoadMenu();
     planActive = true;
     const c = resolveAnchor(vehicle.location);
@@ -3929,8 +3931,10 @@ select.field{appearance:none; cursor:pointer;}
 
   // Re-cost/re-draw hook: every list edit (add/remove/reorder) — and every candidate change, since the
   // deploy map's list shows its candidate as the target — re-runs the dead-leg sweep and gates Finalise.
-  // The polyline redraws on the next frame from PLAN, so there is nothing to repaint here.
+  // On the deploy map it also asks for a newly selected target's quote. The polyline redraws on the next
+  // frame from PLAN, so there is nothing to repaint here.
   function refreshPlanState() {
+    if (PLAN && PLAN.deploy) requestDeployQuote();
     renderPlanList();
     renderPlanChip();
     const f = document.getElementById('planFinalise');
@@ -3963,13 +3967,18 @@ select.field{appearance:none; cursor:pointer;}
     };
     box.appendChild(mkRow({ cls: 'origin', ix: '◎', name: anchorLabel(PLAN.origin) + '  · origin' }));
     // The DEPLOY map (territory-model.md §5) has one stop, the target, not a list: the selected hex with the
-    // deploy action DEPLOY will append (and, flagged, the engine's reason if it refused it), or a quiet
-    // prompt until one is picked. No reorder / remove — the chip's Cancel clears it.
+    // deploy action DEPLOY will append, the leg's quote under it (deployQuoteLines), and, flagged, the
+    // engine's reason if it refused the dispatch — or a quiet prompt until one is picked. No reorder /
+    // remove — the chip's Cancel clears it.
     if (PLAN.deploy) {
       const target = deployTarget();
-      box.appendChild(target
-        ? mkRow({ ix: '1', name: anchorLabel(target), act: actionSummary(deployAction()), warn: PLAN.deployRefused ? 'Refused: ' + PLAN.deployRefused : '' })
-        : mkRow({ ix: '1', name: '—', note: 'no target yet — pick a bare hex inside the ring' }));
+      if (!target) {
+        box.appendChild(mkRow({ ix: '1', name: '—', note: 'no target yet — pick a bare hex inside the ring' }));
+        return;
+      }
+      const quote = deployQuoteLines(target);
+      box.appendChild(mkRow({ ix: '1', name: anchorLabel(target), act: actionSummary(deployAction()), note: quote.note,
+        warn: PLAN.deployRefused ? 'Refused: ' + PLAN.deployRefused : quote.warn }));
       return;
     }
     // (automation 3c) A plan for a REPEATING launch reads as a loop: a hand-closed one says so on its last
@@ -4121,8 +4130,8 @@ select.field{appearance:none; cursor:pointer;}
   }
   function clearCandidate() {
     if (!PLAN) return;
-    PLAN.candidate = null; PLAN.candidateArmed = false; PLAN.candidateAction = null; PLAN.deployRefused = '';
-    refreshPlanState(); // hides the chip; the deploy map's list drops its target too
+    PLAN.candidate = null; PLAN.candidateArmed = false; PLAN.candidateAction = null; PLAN.deployRefused = ''; PLAN.deployQuote = null;
+    refreshPlanState(); // hides the chip; the deploy map's list drops its target (and its quote) too
   }
 
   // ---------- 2.2 deploy pipeline, client slice 2: the DEPLOY MAP (territory-model.md §5, RULED 01-10-26) ----------
@@ -4209,6 +4218,38 @@ select.field{appearance:none; cursor:pointer;}
     });
     ctx.stroke();
     ctx.restore();
+  }
+
+  // requestDeployQuote() — once a VALID target is selected, ask the engine what the leg will cost: the route
+  // builder's own fetchQuote (window.__fetchQuote → POST /vehicle/quote), given the SAME one waypoint DEPLOY
+  // sends. Asked once per selection (a refused hex asks nothing). The ask is captured, as openCandidateAction
+  // captures its candidate, so a late answer for a target since cancelled or changed is dropped, never shown
+  // on the wrong hex. Informational only: DEPLOY never waits on it — the engine re-checks and re-costs at
+  // dispatch.
+  function requestDeployQuote() {
+    const target = deployTarget();
+    if (!target || (PLAN.deployQuote && PLAN.deployQuote.target === target)) return;
+    const plan = PLAN;
+    const ask = { target: target, quote: null };
+    plan.deployQuote = ask;
+    window.__fetchQuote(plan.vehicle, [{ anchor: target, action: deployAction() }]).then((q) => {
+      if (PLAN !== plan || plan.deployQuote !== ask) return; // the target changed, or planning ended
+      ask.quote = q;
+      renderPlanList();
+    });
+  }
+
+  // deployQuoteLines(target) -> { note, warn } — the quote's lines on the target row: "Quoting…" while the
+  // fetch is out; then the engine's Time · Cost, in the Finalise view's own formatting (window.__quoteFigures);
+  // or, for a leg the engine cannot quote ({ ok:false }), its reason as the flagged line, as Finalise shows
+  // it. Every figure is the engine's (§18) — this only lays them out.
+  function deployQuoteLines(target) {
+    const ask = PLAN.deployQuote;
+    const q = ask && ask.target === target ? ask.quote : null;
+    if (!q) return { note: 'Quoting…', warn: '' };
+    if (!q.ok) return { note: '', warn: q.reason || 'This route cannot be dispatched.' };
+    const f = window.__quoteFigures(q);
+    return { note: 'Time ' + f.time + ' · Cost ' + f.cost, warn: '' };
   }
 
   // DEPLOY (the chip) → send the ONE leg with the deploy action appended. There is no Finalise view: the
@@ -5171,6 +5212,7 @@ select.field{appearance:none; cursor:pointer;}
       PLAN.candidateArmed = false; // a fresh click re-proposes (back to the ADD step)
       PLAN.candidateAction = null; // …and an action pending on the old candidate never carries to a new hex
       PLAN.deployRefused = '';     // …as does an engine refusal of the old deploy target
+      PLAN.deployQuote = null;     // …and the old target's quote (a valid new one asks for its own)
       closeLoadMenu();             // a map click dismisses an open Load Route menu, like any dropdown
       refreshPlanState();          // the chip, and the deploy map's target row
       return;
@@ -11637,12 +11679,12 @@ function paintInventoryHero(d){
         '<div class="nm">Return to ' + esc(wpName(DP.waypoints[0].anchor)) + '<div class="note">' + esc(rc.loopReturnNote) + '</div></div>' +
         '<div class="slot"></div></div>';
     }
-    // Time over Cost — read straight from the quote; the fuel cost is presented in CREDITS (§8.0), not
-    // units. An { ok:false } quote has no figures, so those cells read "—" and Dispatch is disabled below.
-    var okQ = q && q.ok;
+    // Time over Cost — read straight from the quote (quoteFigures). An { ok:false } quote has no figures,
+    // so those cells read "—" and Dispatch is disabled below.
     var block = dispatchBlock(route);
-    var timeVal = okQ ? (window.__fmtETA ? window.__fmtETA(q.totalTicks) : q.totalTicks) : '—';
-    var costVal = okQ ? (q.credits + ' ¢') : '—';
+    var figs = quoteFigures(q);
+    var timeVal = figs.time;
+    var costVal = figs.cost;
     $('dpSection').innerHTML =
       '<div class="dp-sechead" style="margin-bottom:10px">Planned Route</div>' +
       '<div class="dp-route">' +
@@ -11682,6 +11724,18 @@ function paintInventoryHero(d){
     $('dpSaveBtn').addEventListener('click', onSaveRoute);
     refreshSaveBtn();
     wireLaunch();
+  }
+
+  // quoteFigures(q) -> { time, cost } — an engine quote's two figures as the player reads them: the trip
+  // time (the map's fmtETA of totalTicks) and the fuel cost presented in CREDITS (§8.0), not units. A quote
+  // with no figures (null, or { ok:false }) reads "—" for both. Formatting only (§18). ONE copy, shared with
+  // the deploy map's target row (window.__quoteFigures), so the two views read a quote the same way.
+  function quoteFigures(q){
+    var okQ = q && q.ok;
+    return {
+      time: okQ ? (window.__fmtETA ? window.__fmtETA(q.totalTicks) : q.totalTicks) : '—',
+      cost: okQ ? (q.credits + ' ¢') : '—',
+    };
   }
 
   // canDispatch() — every gate Dispatch waits on, in one place: an ok, affordable engine quote; no client
@@ -11971,7 +12025,9 @@ function paintInventoryHero(d){
   // fetchQuote(v, waypoints) -> the ENGINE's quote for this route from this craft (POST /vehicle/quote)
   // — the only source of time / fuel / credits (§18). A network/HTTP failure comes back { ok:false }-
   // shaped, so the one render path shows a reason rather than throwing. Shared by Finalise and by a
-  // Remove in the Finalise list (automation 2b), the two things that change the route's geometry.
+  // Remove in the Finalise list (automation 2b), the two things that change the route's geometry — and
+  // by the deploy map (window.__fetchQuote), which asks it for the one leg DEPLOY will send. Only the
+  // anchors go (anchorsOf): an action never changes a leg, so a deploy leg quotes as its bare flight.
   async function fetchQuote(v, waypoints){
     var player = window.__player ? window.__player() : null;
     var gid = player && player.guildId;
@@ -12099,6 +12155,8 @@ function paintInventoryHero(d){
   window.__dispatchClose = closeDispatch;
   window.__dispatchFinalise = dispatchFinalise;   // the map's Finalise Route calls this
   window.__dispatchDeploy = dispatchDeploy;       // the deploy map's DEPLOY chip calls this
+  window.__fetchQuote = fetchQuote;               // the deploy map's pre-DEPLOY quote asks through this…
+  window.__quoteFigures = quoteFigures;           // …and formats it the way the Finalise view does
 
   $('dpClose').addEventListener('click', closeDispatch);
   $('dispatch-overlay').addEventListener('click', function(e){ if(e.target === this) closeDispatch(); });

@@ -169,6 +169,9 @@ ring** and an on-tile **DEPLOY / CANCEL** chip appears, exactly as the route bui
 does (`#plan-chip`). It is the route builder reduced to **one leg with the deploy action appended
 automatically**: **DEPLOY** confirms that single leg and dispatches — there is no multi-waypoint and
 no separate FINALISE beat, the chip's DEPLOY *is* the finalise — and **CANCEL** clears the selection.
+Once a hex is picked, the **Deploy Target** panel shows the engine's **time / fuel quote** for that leg
+(`POST /vehicle/quote`, the figures the route builder's Finalise view shows before Dispatch) *(RULED
+01-10-26)*. It is informational: DEPLOY never waits on it, and the engine re-checks and re-costs at dispatch.
 While a hex is selected, clicking another hex does nothing (CANCEL first). On arrival the engine
 deploys or retreats (the `deployFailed` rule above), surfaced as a `deploy_failed` message in the Guild Hall (`event-log.md` §10 — the pilot’s report). **Arrow-key panning** is added to this map mode (in the shared planning mode, so the
 route builder gains it too): clicks place the target so they cannot also recentre the view — arrow
@@ -265,8 +268,8 @@ is guidance; `deployCheck` stays the authority. A picked hex shows the one-stage
 the map until Cancel. **Deploy** sends the single waypoint with `{ type: 'deploy', kind: 'outpost' }` appended through
 the existing `dispatchActionFor` → `dispatchRouteWithActions` path. An engine refusal shows on the Deploy Target row
 and keeps the map open. Arrow-key panning is added to the shared planning mode. Not built: the `deployFailed` notice
-(client slice 1, its own slice), a time / fuel quote before Deploy (on the decision checklist, as is the pan step),
-the other lanes and the kit sources.
+(client slice 1, its own slice), a time / fuel quote before Deploy (on the decision checklist, as is the pan step;
+*⤳ the quote is ruled and BUILT 01-10-26, below*), the other lanes and the kit sources.
 
 **AS-BUILT — the `deploy_failed` notice, engine half (01-10-26; engine only, no client).** Built to `event-log.md` §10,
 no design change, and the retreat itself is untouched. Where `resolveDeployArrival` sets `deployFailed`, it also
@@ -274,6 +277,16 @@ records a `deploy_failed` row on the guild's event log at the same tick: `cause`
 `craftClass`, and `retreatSystemId` / `retreatSystemName` (the nearest held system the retreat pulls toward). The
 `deployFailed` flag stays as it was. A successful deploy writes nothing. Not built: the Guild Hall message that
 renders it (the client slice).
+
+**AS-BUILT — the pre-deploy quote on the deploy map (01-10-26; `client/game.html` only, no engine).** Built to "The
+deploy map" above, closing the decision-checklist question it left open. When a **valid** target is selected, the
+map asks the engine for the leg's quote through the route builder's own `fetchQuote` (`POST /vehicle/quote`), given
+the same single deploy waypoint DEPLOY sends. The quote endpoint reads anchors only, so the deploy leg is quoted as
+its bare flight, the same leg the dispatch burns for. The Deploy Target row reads "Quoting…" while the fetch is out,
+then the engine's **Time · Cost**, formatted by the same `quoteFigures` the Finalise view uses. A leg the engine
+cannot quote (`{ ok:false }`) shows the engine's reason instead. A refused hex asks nothing. Cancel, or a new target,
+drops the old quote, and a late answer for a target since changed is ignored. DEPLOY is not gated on the quote. The
+quote is asked once per selection, as Finalise asks once per route, so a poll does not refresh it.
 
 ## 6. Generation — starter spacing
 
@@ -314,9 +327,9 @@ exploration slice lands. *(Lands in the founding-endowment path, `phase-1-tuning
   the same line to the first on-lattice hex"), and refining the landing to avoid rival / contested space (with
   the §1–§3 control map).
 - Starter minimum separation value (3) — confirm as the generation constant.
-- The deploy map (client slice 2): whether to show the engine's time / fuel quote before Deploy (today the chip's
-  Deploy sends with no quote, as ruled), and the arrow-key pan step (built at 120 screen px) — see the roadmap's
-  decision checklist.
+- The deploy map (client slice 2): ~~whether to show the engine's time / fuel quote before Deploy~~ — **RULED yes,
+  BUILT 01-10-26:** the Deploy Target panel shows it once a hex is picked (§5). **Still open:** the arrow-key pan
+  step (built at 120 screen px) — see the roadmap's decision checklist.
 - Squatting enforcement (detection, penalty, report/bounty) — deferred to 2.5 / Phase-6.
 - ~~The BUILD-ROUTE / deploy-map pan control — client build detail.~~ — **BUILT 01-10-26:** arrow-key pan in the
   shared planning mode (client slice 2; its step is the item above).

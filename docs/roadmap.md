@@ -19,7 +19,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
 | 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,855 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map; a failed deploy's retreat now records a `deploy_failed` notice); the guild↔guild contest (a rival, territory, the market) is not built yet |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -2664,7 +2664,7 @@ boundary so the later hex-map swap doesn't touch it.
     after refuelling went out.
     **Deferred (not invented):** client slice 1, the `deployFailed` notice on the Operations · In-Transit strip
     (its own slice, not built here); showing the engine's time / fuel quote before DEPLOY, and the pan step
-    (both on the decision checklist); re-judging a picked hex on every poll (DEPLOY re-checks at the click, the
+    (both on the decision checklist; *⤳ the quote is ruled yes and BUILT 01-10-26, "the pre-deploy quote" below*); re-judging a picked hex on every poll (DEPLOY re-checks at the click, the
     engine at dispatch and arrival); the other lanes (toll gate, deep scan, ground assets) and the kit sources.
   - **the `deploy_failed` notice — ENGINE (the type + the write, NO client).** 🟢 *BUILT (01-10-26).*
     Built to `docs/event-log.md` §10, no design change. **The type:** `DEPLOY_FAILED = 'deploy_failed'` is the third
@@ -2705,6 +2705,39 @@ boundary so the later hex-map swap doesn't touch it.
     renderer (`noticeTitle` / `noticeBody`, `client/game.html`) treats any type other than `venture_closed` as a
     licence lapse. So a `deploy_failed` row would show in the inbox as "Licence lapsed — Venture" with the lapse
     body. Ship this slice with the client slice, or accept that mislabel in between.
+  - **client — the pre-deploy quote on the deploy map (CLIENT ONLY, `client/game.html`).** 🟢 *BUILT (01-10-26).*
+    Closes the decision-checklist call "(1) No quote before DEPLOY" (ruled yes) and builds it to `territory-model.md`
+    §5 "The deploy map", now revised to say so. Once a VALID target is selected, the Deploy Target row shows the
+    engine's time and fuel cost for the leg, the same figures the route builder's Finalise view shows before Dispatch.
+    **Reused, not rebuilt:** the route builder's `fetchQuote` (`POST /vehicle/quote`, the read-only `quoteDispatch`)
+    is asked for the SAME single deploy waypoint DEPLOY sends. It reaches the map through a new bridge,
+    `window.__fetchQuote`. `fetchQuote` sends anchors only (`anchorsOf`), and the engine's quote never reads an
+    action, so the deploy leg is quoted as its bare flight: the same `dispatchRoute` leg the deploy dispatch burns
+    for. The figures are formatted by `quoteFigures`, the Finalise view's Time / Cost cells pulled into one helper
+    with unchanged output. It is shared as `window.__quoteFigures`, so both views read a quote one way (§18: the
+    client formats, the engine computes). **The flow:** `refreshPlanState` (the hook every candidate change already
+    runs) calls `requestDeployQuote`. That asks once per selection and records the ask on `PLAN.deployQuote = { target,
+    quote }`, keyed to the candidate the way `openCandidateAction` keys its save. So an answer for a target since
+    cancelled or changed is dropped, never shown on the wrong hex. `deployQuoteLines` lays it on the target row:
+    "Quoting…" while the fetch is out, then "Time … · Cost … ¢". For a leg the engine cannot quote (`{ ok:false }`)
+    it shows the engine's reason as the flagged line instead, as Finalise does. A refused hex asks nothing. Cancel
+    and a fresh click drop the old quote beside the old `deployRefused`. **DEPLOY is not gated on it:** the quote is
+    informational, and the engine re-checks and re-costs at dispatch.
+    **A NO-OP for `sim/`:** no engine, snapshot, test or golden touched (`git diff` is `client/game.html` + docs).
+    Sim **1,868 green** and tools **73 green**, both unchanged. Driven headless on a seated seed-42 server (heavies
+    given kits by `grant-kit`), every check scripted to fail loudly:
+    - a bare hex 5 out read "Quoting…" with DEPLOY enabled, then the engine's own "Time 18h 45m · Cost 5000 ¢";
+    - exactly one request went out for it, the one leg, anchors only;
+    - Cancel cleared the target and its quote, and a new target 6 out re-read "Quoting…" before its own quote;
+    - a slow answer for a target cancelled in flight landed after the next target was quoted, and was dropped;
+    - the home system was refused with no request sent;
+    - DEPLOY went out with the one `deploy:outpost` waypoint, and the engine burned exactly the quoted 600 fuel units;
+    - a craft no longer idle showed the engine's own `{ ok:false }` reason in place of figures;
+    - DEPLOY clicked mid-quote still went out, and the late answer landed harmlessly;
+    - the route builder's Finalise Time / Cost still read the engine's figures exactly;
+    - no page errors.
+    **Deferred (not invented):** re-quoting on a poll (asked once per selection, as Finalise asks once per route);
+    an affordability cue (Finalise has none either, only its disabled Dispatch, and DEPLOY is not gated).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
@@ -2816,12 +2849,15 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
 **Phase 2 — new, from the design notes (need rulings before their slice becomes a build prompt):**
 - **Territory & deployment `[FIRST-CUT]` numbers (29-09-26, `docs/territory-model.md`)** — need rulings before the deploy/claim build: the space-asset **deploy ranges** (outpost 10 / toll gate 10 / deep scan 5 hexes), the **semi-control aura radii** (system 5 / outpost 3 / gate·scan 2), the **starter minimum separation** (3 hexes = 2×claimRadius + 1), and the **arrival-revalidation** failure rule (a kit arriving to an illegal target stays aboard and the craft idles — confirm). Squatting enforcement (detection / penalty / report-bounty) is a ruled *direction* deferred to 2.5 / Phase-6, not a number. **⤳ 29-09-26 — the OUTPOST deploy range (10) is RULED as the `[FIRST-CUT]`** and recorded in `phase-1-tuning.md` "Territory & deployment" (`OUTPOST_DEPLOY_RANGE`, built with the 2.2 deploy pipeline slice 1). **⤳ 30-09-26 — the arrival-revalidation rule is RULED and CLOSED:** a failed on-arrival deploy RETREATS the craft `DEPLOY_RETREAT_HEXES` (`[FIRST-CUT]` 3, recorded in `phase-1-tuning.md`) toward the nearest held system, clamped at that system, kit aboard, flagged `deployFailed` (`territory-model.md` §5; built with the deploy pipeline slice 2). **Still open:** the toll-gate / deep-scan ranges, the aura radii, the starter separation; **the off-lattice retreat landing** — near the rim the 3-hex step can land just outside the galaxy (9 system / in-range-hex pairs on the live seed); slice 2 builds it PROVISIONALLY as "step on along the same line to the first on-lattice hex (at worst the system)" — confirm or rule otherwise; and refining the retreat landing to avoid rival / contested space (with the spatial control layer).
 - **The deploy map: two client calls (01-10-26, 2.2 deploy pipeline client slice 2, `territory-model.md` §5)**, built
-  one way and flagged rather than ruled. **(1) No quote before DEPLOY.** The ruling makes the chip's DEPLOY the
+  one way and flagged rather than ruled. **(1) No quote before DEPLOY.** ~~The ruling makes the chip's DEPLOY the
   finalise, so the deploy map sends the leg without ever showing the engine's time / fuel / credit quote. The route
   builder shows that quote (`POST /vehicle/quote`) in the Dispatch popup's Finalise view before Dispatch. Today the
   player first sees a deploy's fuel figure only if the engine refuses for fuel ("route burns 400 fuel units up
   front but the guild holds 0"). Should the quote show once a hex is picked (e.g. on the Deploy Target row), before
-  DEPLOY? **(2) The arrow-key pan step** is built at **120 screen px per press** (`PAN_STEP_PX`, both planning
+  DEPLOY?~~ **⤳ 01-10-26 — RULED yes, BUILT and CLOSED:** once a valid hex is picked, the Deploy Target row shows the
+  engine's time / fuel quote for the leg (the route builder's `fetchQuote` + the Finalise view's formatting),
+  informational only, so DEPLOY does not wait on it (2.2 deploy pipeline, "the pre-deploy quote"; `territory-model.md`
+  §5). **(2) The arrow-key pan step** — still open — is built at **120 screen px per press** (`PAN_STEP_PX`, both planning
   modes). It is a presentation default, not a game number; confirm or retune.
 
 - **Asset-presence vs. production** — *surfaced 16-09-26 by the operator adjust levers
