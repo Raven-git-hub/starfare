@@ -174,7 +174,7 @@ deploys or retreats (the `deployFailed` rule above), surfaced on the Operations 
 like `laneEnded`. **Arrow-key panning** is added to this map mode (in the shared planning mode, so the
 route builder gains it too): clicks place the target so they cannot also recentre the view — arrow
 keys close that long-standing click-to-recentre gap (this supersedes the "needs arrow-key pan (or
-restored click-to-centre)" note below). The visual target is `docs/mockups/deploy-client.html`; this
+restored click-to-centre)" note below). This
 paragraph is the as-designed client flow for the outpost lane and supersedes the generic "Manage popup
 → pick a transport" wording of **The player flow** above, which describes the later, fuller vision.
 
