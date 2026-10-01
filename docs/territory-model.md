@@ -213,7 +213,8 @@ with the eviction / limbo slice, not this one.)*
 
 **Client note.** BUILD ROUTE mode currently loses map panning (click places waypoints, so
 it cannot also recentre). The deploy-map picker needs **arrow-key pan** (or restored
-click-to-centre) added alongside it. *(Small client build detail, not a design blocker.)*
+click-to-centre) added alongside it. *(Small client build detail, not a design blocker.)* *(⤳ BUILT 01-10-26:
+arrow-key pan in the shared planning mode, client slice 2 below.)*
 
 **AS-BUILT — slice 1, the deployable good + outpost deploy (29-09-26; engine + operator CLI, no client).**
 Built to this section, no design change. The kit is a **deployable good** — `outpost_kit`, in
@@ -254,6 +255,20 @@ derived telemetry: no serialized byte, no determinism hash, and no deploy rule t
 authority. A tripwire in `sim/tests/deploy-range.test.js` fails loudly if the field ever drifts from `heldSystemIds`
 or the constant. Not built: the paint itself (the client, next), and the `tollGate` / `deepScan` lanes.
 
+**AS-BUILT — client slice 2, the deploy map + on-tile DEPLOY (01-10-26; `client/game.html` only, no engine).**
+Built to "The deploy map" above, no design change. A heavy carrying an `outpost_kit` gets a **Deploy** button in its
+Dispatch popup, beside Plan Route; it opens the route builder's planning mode in a deploy variant at 4×, centred on
+the craft. The legal range is the player guild row's `deployRange.outpost`, drawn as the dashed outer border of the
+union of the anchors' `hexesInRadius` disks (the radius is the engine's). The client refuses a click on a hex that
+is not bare (a system, a waystation, the Citadel's hex, any guild's Outpost), is off the disc, or is outside the
+ring the way the planner refuses a bad candidate: the chip's Deploy is disabled, with the reason as its hint. That
+is guidance; `deployCheck` stays the authority. A picked hex shows the one-stage **Deploy / Cancel** chip and locks
+the map until Cancel. **Deploy** sends the single waypoint with `{ type: 'deploy', kind: 'outpost' }` appended through
+the existing `dispatchActionFor` → `dispatchRouteWithActions` path. An engine refusal shows on the Deploy Target row
+and keeps the map open. Arrow-key panning is added to the shared planning mode. Not built: the `deployFailed` notice
+(client slice 1, its own slice), a time / fuel quote before Deploy (on the decision checklist, as is the pan step),
+the other lanes and the kit sources.
+
 ## 6. Generation — starter spacing
 
 The generator sets **no minimum spacing between systems** (systems are shuffled onto
@@ -293,5 +308,9 @@ exploration slice lands. *(Lands in the founding-endowment path, `phase-1-tuning
   the same line to the first on-lattice hex"), and refining the landing to avoid rival / contested space (with
   the §1–§3 control map).
 - Starter minimum separation value (3) — confirm as the generation constant.
+- The deploy map (client slice 2): whether to show the engine's time / fuel quote before Deploy (today the chip's
+  Deploy sends with no quote, as ruled), and the arrow-key pan step (built at 120 screen px) — see the roadmap's
+  decision checklist.
 - Squatting enforcement (detection, penalty, report/bounty) — deferred to 2.5 / Phase-6.
-- The BUILD-ROUTE / deploy-map pan control — client build detail.
+- ~~The BUILD-ROUTE / deploy-map pan control — client build detail.~~ — **BUILT 01-10-26:** arrow-key pan in the
+  shared planning mode (client slice 2; its step is the item above).

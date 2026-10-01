@@ -19,7 +19,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
 | 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,855 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client); the guild↔guild contest (a rival, territory, the market) is not built yet |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -2502,7 +2502,8 @@ boundary so the later hex-map swap doesn't touch it.
   (the item below). Built as a ladder: **slice 1** the deployable good + a manual outpost deploy (engine +
   operator CLI) → **slice 2** auto-insert the deploy on arrival (a dispatch's on-arrival action, via the
   actioned-route machinery) → **slice 3** the deploy range in the snapshot (the data the range paint
-  reads) → the client (Manage popup, deploy-map picker, range paint) → the kit SOURCES (the dockyard
+  reads) → the client (Manage popup, deploy-map picker, range paint — *⤳ re-ruled 01-10-26 as the
+  craft-initiated deploy map, `territory-model.md` §5; client slice 2 below*) → the kit SOURCES (the dockyard
   building a kit, the founding-grant kit, loading a kit from a store) → the other kinds (toll gate,
   deep-scan array, the Prefecture).
   - **slice 1 — the deployable good + outpost deploy (engine + operator CLI, NO client).** 🟢 *BUILT (29-09-26).*
@@ -2628,6 +2629,43 @@ boundary so the later hex-map swap doesn't touch it.
     **Deferred (not invented):** the client — painting the range on the deploy-map picker (the next slice;
     `client/game.html` untouched), with the Manage popup and the `deployFailed` message; the `tollGate` /
     `deepScan` lanes and their anchors (outposts join them) with their ranges, still `[FIRST-CUT]` on the checklist.
+  - **client slice 2 — the deploy map + on-tile DEPLOY (CLIENT ONLY, `client/game.html`).** 🟢 *BUILT (01-10-26).*
+    Built to `territory-model.md` §5 "The deploy map (client, as designed — RULED 01-10-26)", no design change: the
+    transport route builder re-skinned, with no new visual language. **Entry:** the Dispatch popup's pre-plan row gains
+    **Deploy** beside Plan Route, shown ONLY when the craft's hold carries an `outpost_kit` (`deployKindOf`). It opens
+    the map in the **deploy variant of planning mode** (`startPlanning(…, deployKind)`) at **4×** (`DEPLOY_MAP_ZOOM`,
+    the ruling's zoom), centred on the craft. **The ring:** `drawDeployRing` paints the player guild row's
+    `deployRange.outpost`: the union of `hexesInRadius(anchor, radius)` over every anchor, its boundary edges only
+    (an edge whose neighbour is outside the union), in the player teal with the toll path's dashed stroke. The radius
+    is the engine's, never a literal (§18). **Select + the chip:** a click proposes `PLAN.candidate` as before; on the
+    deploy map `#plan-chip` is ONE stage, **[Deploy] [Cancel]**. A non-bare hex (a system, a waystation, the Citadel's
+    hex, any guild's Outpost), an off-disc hex or one outside the ring is refused the route builder's way: the chip
+    stays, Deploy disabled, the reason as its hint (`deployRefusal`, which asks deployCheck's questions in its order;
+    guidance, never the verdict). A refused candidate is replaced by the next click. A SELECTED target locks the map,
+    so a click elsewhere does nothing until Cancel. **DEPLOY** builds the one waypoint `{ anchor, action: { type:
+    'deploy', kind: 'outpost' } }` and sends it down the Dispatch popup's own path (`__dispatchDeploy` →
+    `dispatchActionFor` → `dispatchRouteWithActions` via `wireWaypoints`). The chip is the finalise: no Finalise
+    view, no launch picker, always a one-shot. The map stays in deploy mode until the engine answers. An accept
+    closes it and re-reads the snapshot, so the craft draws in transit. A refusal puts the engine's reason on the
+    target row and keeps the selection. DEPLOY also re-checks the hex first, so one an Outpost took since it was
+    picked is caught with nothing sent. **Arrow-key panning** goes into the SHARED planning mode, so the route
+    builder gains it too: each press moves `focusTarget` `PAN_STEP_PX` (120) screen px, screen-relative at any orbit
+    angle, and the frame loop's ease animates it. Drag-orbit is untouched, and a key typed into a field is ignored.
+    **Chrome reused:** the banner reads "Deploying Outpost · Heavy Transport"; the left panel, "Deploy Target", shows
+    the origin + the one target, its action read through the shared `actionSummary` (which now reads a deploy
+    action); `#app.deploying` hides Load Route / Finalise; the map key and zoom readout are unchanged.
+    **A NO-OP for `sim/`:** no engine, snapshot, test or golden touched (`git diff` is `client/game.html` + docs).
+    Sim **1,855 green** and tools **73 green**, both unchanged. Driven headless on a seated seed-42 server (a heavy
+    given a kit by `grant-kit`): Deploy shows on the kit-carrying heavy and not on a light. The map opens at 4× with
+    the ring. The home system and a hex 11 out are refused. A bare hex 6 out selected → DEPLOY → in transit with
+    exactly one waypoint carrying the deploy action, one-shot, and on arrival the engine planted the Outpost there.
+    A second click while selected did nothing, and the arrow keys panned both modes (measured to the pixel). A hex
+    taken after it was picked was caught at DEPLOY. An engine refusal (no fuel) showed on the target, and a retry
+    after refuelling went out.
+    **Deferred (not invented):** client slice 1, the `deployFailed` notice on the Operations · In-Transit strip
+    (its own slice, not built here); showing the engine's time / fuel quote before DEPLOY, and the pan step
+    (both on the decision checklist); re-judging a picked hex on every poll (DEPLOY re-checks at the click, the
+    engine at dispatch and arrival); the other lanes (toll gate, deep scan, ground assets) and the kit sources.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
@@ -2738,6 +2776,14 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
 
 **Phase 2 — new, from the design notes (need rulings before their slice becomes a build prompt):**
 - **Territory & deployment `[FIRST-CUT]` numbers (29-09-26, `docs/territory-model.md`)** — need rulings before the deploy/claim build: the space-asset **deploy ranges** (outpost 10 / toll gate 10 / deep scan 5 hexes), the **semi-control aura radii** (system 5 / outpost 3 / gate·scan 2), the **starter minimum separation** (3 hexes = 2×claimRadius + 1), and the **arrival-revalidation** failure rule (a kit arriving to an illegal target stays aboard and the craft idles — confirm). Squatting enforcement (detection / penalty / report-bounty) is a ruled *direction* deferred to 2.5 / Phase-6, not a number. **⤳ 29-09-26 — the OUTPOST deploy range (10) is RULED as the `[FIRST-CUT]`** and recorded in `phase-1-tuning.md` "Territory & deployment" (`OUTPOST_DEPLOY_RANGE`, built with the 2.2 deploy pipeline slice 1). **⤳ 30-09-26 — the arrival-revalidation rule is RULED and CLOSED:** a failed on-arrival deploy RETREATS the craft `DEPLOY_RETREAT_HEXES` (`[FIRST-CUT]` 3, recorded in `phase-1-tuning.md`) toward the nearest held system, clamped at that system, kit aboard, flagged `deployFailed` (`territory-model.md` §5; built with the deploy pipeline slice 2). **Still open:** the toll-gate / deep-scan ranges, the aura radii, the starter separation; **the off-lattice retreat landing** — near the rim the 3-hex step can land just outside the galaxy (9 system / in-range-hex pairs on the live seed); slice 2 builds it PROVISIONALLY as "step on along the same line to the first on-lattice hex (at worst the system)" — confirm or rule otherwise; and refining the retreat landing to avoid rival / contested space (with the spatial control layer).
+- **The deploy map: two client calls (01-10-26, 2.2 deploy pipeline client slice 2, `territory-model.md` §5)**, built
+  one way and flagged rather than ruled. **(1) No quote before DEPLOY.** The ruling makes the chip's DEPLOY the
+  finalise, so the deploy map sends the leg without ever showing the engine's time / fuel / credit quote. The route
+  builder shows that quote (`POST /vehicle/quote`) in the Dispatch popup's Finalise view before Dispatch. Today the
+  player first sees a deploy's fuel figure only if the engine refuses for fuel ("route burns 400 fuel units up
+  front but the guild holds 0"). Should the quote show once a hex is picked (e.g. on the Deploy Target row), before
+  DEPLOY? **(2) The arrow-key pan step** is built at **120 screen px per press** (`PAN_STEP_PX`, both planning
+  modes). It is a presentation default, not a game number; confirm or retune.
 
 - **Asset-presence vs. production** — *surfaced 16-09-26 by the operator adjust levers
   (`docs/operator-adjust.md` §3.5 AS-BUILT).* Production is currently **asset-blind** — a venture

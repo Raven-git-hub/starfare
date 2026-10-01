@@ -111,6 +111,9 @@
   #plan-banner .bt { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 12px; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; }
   #plan-banner .bs { font-size: 10px; letter-spacing: 1px; color: var(--text-dim); margin-top: 3px; }
   #plan-controls { position: absolute; top: 116px; right: 22px; z-index: 520; display: flex; gap: 10px; pointer-events: auto; }
+  /* the DEPLOY variant (#app.deploying, territory-model.md §5): one leg, so no saved route to load and no
+     Finalise — the chip's DEPLOY is the finalise. Cancel stays, to leave the deploy map. */
+  #app.deploying #planLoad, #app.deploying #planFinalise { display: none; }
   .plan-btn {
     font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
     background: rgba(8,10,16,0.92); border: 1px solid var(--line-bright); color: var(--text);
@@ -3001,11 +3004,13 @@ select.field{appearance:none; cursor:pointer;}
   <!-- b2b-2 route-planner: the galaxy-map PLANNING MODE overlays. Hidden until the map IIFE puts
        #app into .planning (Plan Route). The banner names the craft; the list shows Origin + each
        turning point with reorder/remove; Finalise/Cancel are the two deliberate exits; the chip is
-       glued to the candidate hex by the JS each frame (ADD, then Confirm/Cancel). -->
+       glued to the candidate hex by the JS each frame (ADD, then Confirm/Cancel). The DEPLOY map
+       (territory-model.md §5) is the same overlays, retitled by startPlanning: one target, a
+       Deploy/Cancel chip. -->
   <div id="plan-ui">
     <div id="plan-banner">
       <div class="bt" id="plan-banner-title">Planning Route</div>
-      <div class="bs">Click a hex to add a turning point</div>
+      <div class="bs" id="plan-banner-sub">Click a hex to add a turning point</div>
     </div>
     <div id="plan-controls">
       <!-- automation 2b: Load Route — shown only when the guild has a saved route (omit-when-empty);
@@ -3021,7 +3026,7 @@ select.field{appearance:none; cursor:pointer;}
       <div class="plload-rows" id="planLoadRows"></div>
     </div>
     <div id="plan-list">
-      <div class="plh">Route Waypoints</div>
+      <div class="plh" id="plan-list-title">Route Waypoints</div>
       <div class="plrows" id="planRows"></div>
       <div class="plfade"></div>
     </div>
@@ -3674,7 +3679,11 @@ select.field{appearance:none; cursor:pointer;}
   // `loop` (automation 3c) is true when the Dispatch popup's launch picker has a REPEATING mode on and sent
   // the player back here through Edit Route: the plan then shows the lap's return leg (see canRepeat /
   // loopClosed). A fresh Plan Route starts with it off — the mode is picked after planning, in the popup.
-  let PLAN = null;              // { vehicle, origin, waypoints:[{anchor, action?},…], candidate:anchor|null, candidateArmed:bool, candidateAction:action|null, routeName:string, loop:bool }
+  // `deploy` (2.2 deploy pipeline, territory-model.md §5) is the deploy lane's kind ('outpost') when this
+  // is the DEPLOY MAP — the same planner reduced to one leg — and null for an ordinary route. In deploy
+  // mode the candidate IS the target (there are no waypoints until DEPLOY sends one); `deploySending` holds
+  // the chip while the dispatch posts, and `deployRefused` is the engine's reason if it refused it.
+  let PLAN = null;              // { vehicle, origin, waypoints:[{anchor, action?},…], candidate:anchor|null, candidateArmed:bool, candidateAction:action|null, routeName:string, loop:bool, deploy:kind|null, deploySending:bool, deployRefused:string }
   let planActive = false;       // true while the map is in planning mode (the click branch + draw pass read this)
 
   // Automation 2b — Load Route. `liveSavedRoutes` is the player's guild's saved routes, pushed by
@@ -3742,8 +3751,10 @@ select.field{appearance:none; cursor:pointer;}
 
   // actionSummary(action) -> a one-line read-out of a set action, e.g. "dock · load titanium 400,
   // unload iron max" — so a list shows at a glance which stops act. Display only: it echoes the
-  // player's own manifest lines, computing nothing.
+  // player's own manifest lines, computing nothing. A deploy action (territory-model.md §5) carries no
+  // manifest, only its kind: "deploy · outpost".
   function actionSummary(action) {
+    if (action && action.type === 'deploy') return 'deploy · ' + action.kind;
     if (!action || !action.manifest) return '';
     return action.type + ' · ' + action.manifest.map(l =>
       l.dir + ' ' + String(l.good).replace(/_/g, ' ') + ' ' + (l.max ? 'max' : l.qty)
@@ -3859,15 +3870,27 @@ select.field{appearance:none; cursor:pointer;}
   // `routeName` (automation 2b) is the saved route's name when the list came from Load Route — it rides to
   // the popup so its Save field starts on that name (re-saving it updates the lane in place, §11.9).
   // `loop` (automation 3c) — see PLAN above.
-  function startPlanning(vehicle, waypoints, routeName, loop) {
+  // `deployKind` (2.2 deploy pipeline) opens the DEPLOY MAP instead (territory-model.md §5, RULED 01-10-26):
+  // the same mode, chrome and draw pass, retitled for the kit's lane, at the ruled 4× (DEPLOY_MAP_ZOOM),
+  // with #app.deploying hiding Load Route / Finalise. Omitted for every ordinary route.
+  function startPlanning(vehicle, waypoints, routeName, loop, deployKind) {
     if (!vehicle || !vehicle.location) return;
-    PLAN = { vehicle: vehicle, origin: vehicle.location, waypoints: (waypoints || []).map(copyWaypoint), candidate: null, candidateArmed: false, candidateAction: null, routeName: routeName || '', loop: !!loop };
+    PLAN = { vehicle: vehicle, origin: vehicle.location, waypoints: (waypoints || []).map(copyWaypoint), candidate: null, candidateArmed: false, candidateAction: null, routeName: routeName || '', loop: !!loop,
+             deploy: deployKind || null, deploySending: false, deployRefused: '' };
     closeLoadMenu();
     planActive = true;
     const c = resolveAnchor(vehicle.location);
-    document.getElementById('app').classList.add('planning');
-    document.getElementById('plan-banner-title').textContent = 'Planning Route · ' + prettyClass(vehicle.class);
-    if (c) window.__flyTo(c.q, c.r, Math.max(VECTOR_ZOOM_THRESHOLD + 2, 6));
+    const app = document.getElementById('app');
+    app.classList.add('planning');
+    app.classList.toggle('deploying', !!PLAN.deploy);
+    document.getElementById('plan-banner-title').textContent = PLAN.deploy
+      ? 'Deploying ' + prettyClass(PLAN.deploy) + ' · ' + prettyClass(vehicle.class)
+      : 'Planning Route · ' + prettyClass(vehicle.class);
+    document.getElementById('plan-banner-sub').textContent = PLAN.deploy
+      ? 'Click a bare hex inside the dashed ring · arrow keys pan'
+      : 'Click a hex to add a turning point · arrow keys pan';
+    document.getElementById('plan-list-title').textContent = PLAN.deploy ? 'Deploy Target' : 'Route Waypoints';
+    if (c) window.__flyTo(c.q, c.r, PLAN.deploy ? DEPLOY_MAP_ZOOM : Math.max(VECTOR_ZOOM_THRESHOLD + 2, 6));
     // __flyTo leaves the system-info panel open on the origin; the planner has its own list, so hide it
     // to keep the top-right clear for Finalise/Cancel.
     document.getElementById('syspanel').style.display = 'none';
@@ -3880,7 +3903,7 @@ select.field{appearance:none; cursor:pointer;}
   // which hands the SAME PLAN to the popup; every other exit discards it.
   function exitPlanning(keepPlan) {
     planActive = false;
-    document.getElementById('app').classList.remove('planning');
+    document.getElementById('app').classList.remove('planning', 'deploying');
     document.getElementById('plan-chip').classList.remove('on');
     closeLoadMenu();
     if (!keepPlan) PLAN = null;
@@ -3904,8 +3927,9 @@ select.field{appearance:none; cursor:pointer;}
     if (window.__dispatchFinalise) window.__dispatchFinalise(vehicle, waypoints, PLAN.routeName);
   }
 
-  // Re-cost/re-draw hook: every list edit (add/remove/reorder) re-runs the dead-leg sweep and gates
-  // Finalise. The polyline redraws on the next frame from PLAN, so there is nothing to repaint here.
+  // Re-cost/re-draw hook: every list edit (add/remove/reorder) — and every candidate change, since the
+  // deploy map's list shows its candidate as the target — re-runs the dead-leg sweep and gates Finalise.
+  // The polyline redraws on the next frame from PLAN, so there is nothing to repaint here.
   function refreshPlanState() {
     renderPlanList();
     renderPlanChip();
@@ -3938,6 +3962,16 @@ select.field{appearance:none; cursor:pointer;}
       return row;
     };
     box.appendChild(mkRow({ cls: 'origin', ix: '◎', name: anchorLabel(PLAN.origin) + '  · origin' }));
+    // The DEPLOY map (territory-model.md §5) has one stop, the target, not a list: the selected hex with the
+    // deploy action DEPLOY will append (and, flagged, the engine's reason if it refused it), or a quiet
+    // prompt until one is picked. No reorder / remove — the chip's Cancel clears it.
+    if (PLAN.deploy) {
+      const target = deployTarget();
+      box.appendChild(target
+        ? mkRow({ ix: '1', name: anchorLabel(target), act: actionSummary(deployAction()), warn: PLAN.deployRefused ? 'Refused: ' + PLAN.deployRefused : '' })
+        : mkRow({ ix: '1', name: '—', note: 'no target yet — pick a bare hex inside the ring' }));
+      return;
+    }
     // (automation 3c) A plan for a REPEATING launch reads as a loop: a hand-closed one says so on its last
     // stop; an open one gets a return row after its last stop (below the rows).
     const looping = PLAN.loop && canRepeat(PLAN);
@@ -3990,6 +4024,8 @@ select.field{appearance:none; cursor:pointer;}
     if (!chip || !PLAN || !PLAN.candidate) { if (chip) chip.classList.remove('on'); return; }
     const dead = candidateIsDeadLeg();
     btns.innerHTML = '';
+    // The DEPLOY map swaps in its own one-stage buttons; the hint and the placement are shared.
+    if (PLAN.deploy) { showPlanChip(chip, hint, fillDeployChip(btns)); return; }
     // The Action button, built once and slotted in after the step's primary button (Add or Confirm).
     // Disabled on a dead leg like its siblings — a stop that can't be placed can't carry an action.
     let actBtn = null;
@@ -4020,12 +4056,40 @@ select.field{appearance:none; cursor:pointer;}
       if (actBtn) btns.appendChild(actBtn);
       btns.appendChild(no);
     }
-    hint.style.display = dead ? 'block' : 'none';
-    if (dead) hint.textContent = 'Same hex as the last point';
+    showPlanChip(chip, hint, dead ? 'Same hex as the last point' : '');
+  }
+
+  // Show the chip with `hintText` under its buttons ('' for no hint) — the refusal line, shared by the
+  // route chip and the deploy chip so a bad hex reads the same in both.
+  function showPlanChip(chip, hint, hintText) {
+    hint.style.display = hintText ? 'block' : 'none';
+    hint.textContent = hintText;
     // position it now (not only on the next render frame) so it never flashes at a stale spot
     const cc = resolveAnchor(PLAN.candidate);
     if (cc) { const s = worldToScreen(hexToPixel(cc.q, cc.r, galaxy.galaxyParams.hexSize).x, hexToPixel(cc.q, cc.r, galaxy.galaxyParams.hexSize).y); chip.style.left = s.x + 'px'; chip.style.top = s.y + 'px'; }
     chip.classList.add('on');
+  }
+
+  // The DEPLOY map's chip (territory-model.md §5): ONE stage, [Deploy] [Cancel] — no Add → Confirm, since
+  // the chip's Deploy IS the finalise. A refused hex keeps the chip with Deploy disabled and the reason as
+  // its hint, as a dead-leg candidate's chip does. While a DEPLOY posts, the chip holds ("Deploying…");
+  // an engine refusal points at the target panel, where its (long) reason has room to wrap.
+  // Fills `btns` and returns the hint text ('' for none).
+  function fillDeployChip(btns) {
+    const refusal = deployRefusal(PLAN.candidate);
+    const ok = document.createElement('button');
+    ok.textContent = PLAN.deploySending ? 'Deploying…' : 'Deploy';
+    ok.disabled = !!refusal || PLAN.deploySending;
+    ok.addEventListener('click', confirmDeploy);
+    const no = document.createElement('button');
+    no.className = 'cancel';
+    no.textContent = 'Cancel';
+    no.disabled = PLAN.deploySending;
+    no.addEventListener('click', clearCandidate);
+    btns.appendChild(ok);
+    btns.appendChild(no);
+    if (refusal) return refusal;
+    return PLAN.deployRefused ? 'Refused — see the deploy target' : '';
   }
 
   // The chip's [Action] → open the dock editor in COLLECT mode for this craft (pre-filled if an action
@@ -4057,8 +4121,112 @@ select.field{appearance:none; cursor:pointer;}
   }
   function clearCandidate() {
     if (!PLAN) return;
-    PLAN.candidate = null; PLAN.candidateArmed = false; PLAN.candidateAction = null;
-    document.getElementById('plan-chip').classList.remove('on');
+    PLAN.candidate = null; PLAN.candidateArmed = false; PLAN.candidateAction = null; PLAN.deployRefused = '';
+    refreshPlanState(); // hides the chip; the deploy map's list drops its target too
+  }
+
+  // ---------- 2.2 deploy pipeline, client slice 2: the DEPLOY MAP (territory-model.md §5, RULED 01-10-26) ----------
+  // The route builder reduced to ONE leg with the deploy action appended automatically. Everything above is
+  // reused as is — the mode, the chrome, the chip, the draw pass; this section adds only what is new: which
+  // hex may be the target, the range ring, and the DEPLOY send. PRESENTATION ONLY (§18): the radius and the
+  // anchors are the engine's (`deployRange`), the client draws geometry from them and sends the action, and
+  // the engine's deployCheck — re-run at dispatch and again on arrival — is the sole authority on legality.
+
+  // The deploy map opens at 4× (the ruling), centred on the craft: close enough that hexes draw, wide
+  // enough that a 10-hex range fits on screen. A view zoom — presentation, not a game number.
+  const DEPLOY_MAP_ZOOM = 4;
+
+  // The six axial neighbour steps, in the order of a hex's six EDGES as hexCorners draws them: edge k runs
+  // from corner k to corner k+1 (flat-top, corner k at 60k°), and the neighbour across it is
+  // AXIAL_NEIGHBOURS[k] (under hexToPixel its centre sits at 30° + 60k°). So "edge k is on the ring's
+  // border" is exactly "neighbour k is outside the range".
+  const AXIAL_NEIGHBOURS = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
+
+  // deployAction() -> the action DEPLOY appends to the leg: { type:'deploy', kind } (transport-model.md
+  // §11.1's type tag) — the shape dispatchRouteWithActions takes on a final waypoint.
+  function deployAction() { return { type: 'deploy', kind: PLAN.deploy }; }
+
+  // deployTarget() -> the selected target, or null. A candidate the map refuses is not a selection — the
+  // next click simply replaces it, as a re-click does in the route builder — so only a candidate with no
+  // refusal counts. While there is one, a click elsewhere does nothing (CANCEL first, §5).
+  function deployTarget() {
+    return PLAN && PLAN.deploy && PLAN.candidate && !deployRefusal(PLAN.candidate) ? PLAN.candidate : null;
+  }
+
+  // deployReach(kind) -> { radius, centres:[{q,r}] } — the player's guild's legal range for lane `kind`,
+  // read off its live snapshot row (`deployRange[kind] = { radius, anchors }`, "Painting the range"), with
+  // the anchor system ids resolved to the seed coords the map already draws. null when the row carries no
+  // such lane (a guild that holds no system can deploy nowhere, so the snapshot omits it).
+  function deployReach(kind) {
+    const snap = window.__snapshot ? window.__snapshot() : null;
+    const me = snap && (snap.guilds || []).find((g) => g.id === PLAYER_GUILD.guildId);
+    const lane = me && me.deployRange && me.deployRange[kind];
+    if (!lane) return null;
+    const centres = lane.anchors.map((id) => systemById.get(id)).filter(Boolean).map((s) => s.coords);
+    return { radius: lane.radius, centres: centres };
+  }
+
+  // deployRefusal(anchor) -> why the deploy map refuses this hex as the target, or '' when it may be picked.
+  // GUIDANCE from what the map already draws, never the verdict (that is the engine's deployCheck). It asks
+  // deployCheck's questions in deployCheck's order:
+  //  - open ground: not a system or a Syndicate waystation (a click there makes a landmark anchor), not the
+  //    Citadel's hex, not a hex any guild's Outpost stands on — one structure per hex (design.md §4);
+  //  - on the galaxy: a hex off the disc is not one a craft can be sent to (the engine's bounds check);
+  //  - in range: within the engine's radius of one of the guild's anchors — inside the dashed ring.
+  function deployRefusal(a) {
+    if (!a || typeof a.q !== 'number' || typeof a.r !== 'number') return 'Not a bare hex';
+    if (guildOutpostByKey.has(a.q + ',' + a.r) || sameHex(a, galaxy.citadel.coords)) return 'Not a bare hex';
+    const p = hexToPixel(a.q, a.r, galaxy.galaxyParams.hexSize);
+    if (Math.hypot(p.x, p.y) > galaxy.galaxyParams.radius) return 'Off the galaxy';
+    const reach = deployReach(PLAN.deploy);
+    if (!reach || !reach.centres.some((c) => hexDistAxial(a, c) <= reach.radius)) return 'Outside the deploy range';
+    return '';
+  }
+
+  // drawDeployRing(reach) — the legal range as a dashed OUTER-BORDER ring, not filled hexes (§5): the union
+  // of the hexesInRadius disks around every anchor, and only the edges of it whose neighbour is outside the
+  // union. Drawn in the player teal with the toll path's dash, on the same hex geometry as every other
+  // layer. A few hundred hexes per anchor, so it is simply recomputed each frame (as the territory map is).
+  function drawDeployRing(reach) {
+    const hs = galaxy.galaxyParams.hexSize;
+    const inside = new Set();
+    reach.centres.forEach((c) => hexesInRadius(c, reach.radius).forEach((h) => inside.add(h.q + ',' + h.r)));
+    ctx.save();
+    ctx.setLineDash([5, 5]);
+    ctx.strokeStyle = col('player', 0.85);
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    inside.forEach((key) => {
+      const [q, r] = key.split(',').map(Number);
+      const p = hexToPixel(q, r, hs);
+      const corners = hexCorners(p.x, p.y, hs).map((k) => worldToScreen(k.x, k.y));
+      AXIAL_NEIGHBOURS.forEach(([dq, dr], k) => {
+        if (inside.has((q + dq) + ',' + (r + dr))) return; // an inner edge — the next hex is in range too
+        const from = corners[k], to = corners[(k + 1) % 6];
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(to.x, to.y);
+      });
+    });
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // DEPLOY (the chip) → send the ONE leg with the deploy action appended. There is no Finalise view: the
+  // waypoint goes straight to the Dispatch popup's own send path (window.__dispatchDeploy →
+  // dispatchActionFor → dispatchRouteWithActions, via wireWaypoints). The map stays in deploy mode until the
+  // engine answers: an accept ends it (the craft is now in transit); a refusal is shown on the target, the
+  // selection kept, so the player can CANCEL and pick again.
+  async function confirmDeploy() {
+    if (!PLAN || !PLAN.deploy || !PLAN.candidate || PLAN.deploySending || !window.__dispatchDeploy) return;
+    if (deployRefusal(PLAN.candidate)) { refreshPlanState(); return; } // the map moved under the selection
+    const plan = PLAN;
+    plan.deploySending = true; plan.deployRefused = '';
+    refreshPlanState();
+    const out = await window.__dispatchDeploy(plan.vehicle, [{ anchor: plan.candidate, action: deployAction() }]);
+    if (PLAN !== plan) return; // planning ended while the dispatch posted (an accept closes it)
+    plan.deploySending = false;
+    if (!(out && out.accepted)) plan.deployRefused = (out && out.reason) || 'the Syndicate declined';
+    refreshPlanState();
   }
 
   // ---------- automation slice 2b: Load Route — the guild's saved lanes (transport-model.md §11.9) ----------
@@ -4715,6 +4883,11 @@ select.field{appearance:none; cursor:pointer;}
     // ONLY (§18): resolve anchors to coords and draw; the numbers (time/fuel/credits) are the engine's
     // quote, never computed here.
     if (planActive && PLAN) {
+      // the DEPLOY map's range ring, first, so the leg, the origin tag and the candidate draw over it
+      if (PLAN.deploy) {
+        const reach = deployReach(PLAN.deploy);
+        if (reach) drawDeployRing(reach);
+      }
       const hsP = galaxy.galaxyParams.hexSize;
       // resolved coords → screen point, the one conversion this pass draws through
       const scrOf = (c) => { const p = hexToPixel(c.q, c.r, hsP); return worldToScreen(p.x, p.y); };
@@ -4956,13 +5129,36 @@ select.field{appearance:none; cursor:pointer;}
     }
   });
 
+  // Arrow-key PANNING in planning mode — the route builder and the deploy map alike (territory-model.md §5,
+  // RULED 01-10-26). A click there places a waypoint or the target, so it cannot also recentre the view;
+  // the arrow keys pan instead. Each press slides the view PAN_STEP_PX across the SCREEN — "up" is up
+  // whatever angle the drag-orbit left the map at — by moving focusTarget (moving focus alone would be
+  // undone: tick() eases focus toward focusTarget every frame, and that ease is what animates the pan).
+  // Drag-orbit is untouched. A key typed into a field is left alone.
+  const PAN_STEP_PX = 120;
+  const PAN_KEYS = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+  document.addEventListener('keydown', (e) => {
+    const dir = PAN_KEYS[e.key];
+    if (!dir || !planActive || !galaxy) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    e.preventDefault(); // the arrow keys pan the map, not the page
+    // the world-space step that moves the view one step along `dir` on screen
+    const cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+    const a = screenToWorld(cx, cy);
+    const b = screenToWorld(cx + dir[0] * PAN_STEP_PX, cy + dir[1] * PAN_STEP_PX);
+    focusTarget = { x: focusTarget.x + (b.x - a.x), y: focusTarget.y + (b.y - a.y) };
+  });
+
   function handleClick(e) {
     // PLANNING MODE intercepts at the TOP (before the normal selection chain, §C): a click resolves to
     // a CANDIDATE anchor instead of selecting a hex. If a system sits on the hex it is a system anchor;
     // a Syndicate outpost, an outpost anchor; otherwise a bare hex. Nothing is added yet — the ADD →
     // Confirm chip does that, so a pan/mis-click is safe. Re-uses the same screenToWorld→pixelToAxial
-    // resolution the normal handler uses (one geometry).
+    // resolution the normal handler uses (one geometry). On the DEPLOY map a selected target holds: a click
+    // does nothing until the chip's Cancel clears it (territory-model.md §5).
     if (planActive && PLAN) {
+      if (deployTarget()) return;
       const wp = screenToWorld(e.clientX, e.clientY);
       const hs = galaxy.galaxyParams.hexSize;
       const ax = pixelToAxial(wp.x, wp.y, hs);
@@ -4974,8 +5170,9 @@ select.field{appearance:none; cursor:pointer;}
       else PLAN.candidate = { q: ax.q, r: ax.r };
       PLAN.candidateArmed = false; // a fresh click re-proposes (back to the ADD step)
       PLAN.candidateAction = null; // …and an action pending on the old candidate never carries to a new hex
+      PLAN.deployRefused = '';     // …as does an engine refusal of the old deploy target
       closeLoadMenu();             // a map click dismisses an open Load Route menu, like any dropdown
-      renderPlanChip();
+      refreshPlanState();          // the chip, and the deploy map's target row
       return;
     }
 
@@ -5339,6 +5536,9 @@ select.field{appearance:none; cursor:pointer;}
   // the popup receives a copy ({ anchor, action? } each) on Finalise and hands it back on Edit.
   // (automation 3c) `loop` is the popup saying its launch picker has a repeating mode on (Edit Route).
   window.__planRoute = function (vehicle, waypoints, loop) { startPlanning(vehicle, waypoints, '', loop); };
+  // 2.2 deploy pipeline: the popup's Deploy opens the DEPLOY map — planning mode for this craft and its kit's
+  // lane (`kind`, e.g. 'outpost'), with no waypoints; the chip's DEPLOY hands back to __dispatchDeploy.
+  window.__planDeploy = function (vehicle, kind) { startPlanning(vehicle, [], '', false, kind); };
   window.__abandonPlanning = function () { if (planActive || PLAN) exitPlanning(false); };
   window.__fmtETA = fmtETA;
   // Automation 1b: the Dispatch popup's Finalise list uses the SAME action gate and the SAME summary
@@ -11370,8 +11570,18 @@ function paintInventoryHero(d){
       '<div class="msum">' + fmtNum(used) + ' / ' + fmtNum(cap) + ' cargo space</div>';
   }
 
+  // deployKindOf(v) -> the deploy lane this craft's kit opens ('outpost'), or null when it carries none
+  // (2.2 deploy pipeline, territory-model.md §5). The outpost kit is the only deployable good built, so it
+  // is the only pairing here — the engine's own kitGoodFor('outpost') is 'outpost_kit'. Read off the
+  // craft's published hold (§18): the client looks for the key and computes nothing.
+  function deployKindOf(v){
+    var cargo = (v && v.cargo) || {};
+    return cargo.outpost_kit ? 'outpost' : null;
+  }
+
   // PRE-PLAN state (§A): the Onboard Manifest (the craft's real hold) + the Maintenance (disabled) /
-  // Plan Route buttons. Re-read from DP.vehicle each call so the box reflects the current cargo (§18).
+  // Plan Route buttons — and, ONLY when the craft carries a kit, Deploy (territory-model.md §5). Re-read
+  // from DP.vehicle each call so the box reflects the current cargo (§18).
   function renderPrePlan(){
     $('dpSection').innerHTML =
       '<div class="dp-manifest">' +
@@ -11379,10 +11589,13 @@ function paintInventoryHero(d){
         manifestHtml(DP.vehicle) +
       '</div>';
     var acts = $('dpActions');
+    var kind = deployKindOf(DP.vehicle);
     acts.innerHTML =
       '<button class="dp-btn" id="dpMaintBtn" type="button" disabled title="Maintenance arrives later">Maintenance</button>' +
-      '<button class="dp-btn primary" id="dpPlanBtn" type="button">Plan Route</button>';
+      '<button class="dp-btn primary" id="dpPlanBtn" type="button">Plan Route</button>' +
+      (kind ? '<button class="dp-btn primary" id="dpDeployBtn" type="button" title="Pick a hex on the map and deploy the kit there">Deploy</button>' : '');
     $('dpPlanBtn').addEventListener('click', onPlanRoute);
+    if(kind) $('dpDeployBtn').addEventListener('click', onDeploy);
   }
 
   // POST-FINALISE state (§D): the two-box Planned Route (a scrollable Origin+waypoints list beside
@@ -11725,6 +11938,13 @@ function paintInventoryHero(d){
     $('dispatch-overlay').classList.remove('open');
     if(window.__planRoute) window.__planRoute(v, []);
   }
+  // Deploy → open the DEPLOY map (territory-model.md §5): the planner's deploy variant for this craft and
+  // its kit's lane, at 4× on the craft. The same soft hide as Plan Route.
+  function onDeploy(){
+    var v = DP.vehicle, kind = deployKindOf(v); if(!v || !kind) return;
+    $('dispatch-overlay').classList.remove('open');
+    if(window.__planDeploy) window.__planDeploy(v, kind);
+  }
   // Edit Route → re-enter planning with the CURRENT waypoints (the finalised list), same soft hide.
   // (Automation 3c) With a repeating mode picked, the planner is told so, and draws the plan as a loop too.
   function onEditRoute(){
@@ -11824,6 +12044,30 @@ function paintInventoryHero(d){
     if(btn){ btn.disabled = false; btn.textContent = 'Dispatch'; }
     showDispatchRefuse('Refused: ' + ((out && out.reason) || 'the Syndicate declined'));
   }
+  // DEPLOY (territory-model.md §5) — called BY the deploy map's chip with its ONE waypoint, the deploy
+  // action already appended. The chip's DEPLOY is the finalise, so there is no Finalise view and no launch
+  // picker (a kit never rides a lane — always once): the leg goes out through Dispatch's own send path,
+  // where dispatchActionFor sees the action and sends dispatchRouteWithActions (wireWaypoints). Returns the
+  // engine's answer for the map to show. On accept: close (which also ends the deploy map) and re-read the
+  // snapshot, so the craft draws in transit. The engine re-checks the deploy now and again on arrival.
+  async function dispatchDeploy(vehicle, waypoints){
+    var v = liveVehicle(vehicle.id) || vehicle;
+    DP.vehicle = v; DP.waypoints = waypoints.slice(); DP.quote = null;
+    resetLaunch();
+    var player = window.__player ? window.__player() : null;
+    var out;
+    try {
+      out = await window.__sendAction(dispatchActionFor(player && player.guildId, v));
+    } catch(err){
+      out = { accepted:false, reason:'the Syndicate could not be reached: ' + (err && err.message || err) };
+    }
+    if(out && out.accepted){
+      closeDispatch();
+      if(window.__refreshNow){ try { await window.__refreshNow(); } catch(e){} }
+    }
+    return out;
+  }
+
   // Show an engine refusal beneath the route boxes without rebuilding the section (the route stays
   // visible so the player can Edit and retry).
   function showDispatchRefuse(msg){
@@ -11854,6 +12098,7 @@ function paintInventoryHero(d){
   window.__openDispatch = openDispatch;   // the ONE entry point both call sites use
   window.__dispatchClose = closeDispatch;
   window.__dispatchFinalise = dispatchFinalise;   // the map's Finalise Route calls this
+  window.__dispatchDeploy = dispatchDeploy;       // the deploy map's DEPLOY chip calls this
 
   $('dpClose').addEventListener('click', closeDispatch);
   $('dispatch-overlay').addEventListener('click', function(e){ if(e.target === this) closeDispatch(); });
