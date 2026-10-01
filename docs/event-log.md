@@ -53,7 +53,7 @@ is gone (§2).
 
 ## 2. The two types & the four writers
 
-The type vocabulary this slice writes is exactly two, in `sim/events.js`:
+The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is added by the 2.2 deploy pipeline — §10):
 
 - **`licence_lapsed`** — an ordinary licence lapsed back to unlicensed.
 - **`venture_closed`** — a venture was removed.
@@ -225,7 +225,7 @@ Accept / Reject resolve the offer as before.
 
 **The popup wears the adviser-reel card** — the two-column hero card of `client/game.html`'s
 `#reneg-overlay` (eyebrow, serif title, body, footer). Its hero panel is the **guild-adviser
-portrait** (`assets/characters/advisor.jpg`), **uniform across every notice type**: a
+portrait** (`assets/characters/advisor.jpg`), **uniform across every Syndicate notice type** (the fleet / ops lane carries its own character — §10): a
 Syndicate-specific portrait is the parked domain-character-advisers decision (§5), and no per-type
 art accent is used — one calm Syndicate tone.
 
@@ -265,3 +265,51 @@ engine derives it and the client renders it verbatim.
 (design.md §5's union — action-items pinned on top, notices below, newest-first); the top-level
 Guild Hall pip and the Messages badge light while any offer is open **or** any notice is unread,
 counting the player's own `attention.notices` beside the open offers.
+
+## 10. The `deploy_failed` notice — the fleet / ops lane (2.2 deploy pipeline, RULED 01-10-26)
+
+*Status: **RULED.** A THIRD event type, written by the deploy pipeline, and the first notice that carries a
+**domain character** rather than the uniform Syndicate voice (§9): the parked domain-character advisers
+(§5), **un-parked for the fleet / ops lane**. Syndicate ENFORCEMENT notices (`venture_closed` /
+`licence_lapsed`) stay uniform; a fleet / ops notice wears its character. Visual contract:
+`docs/mockups/guild-hall-messages.html` (the `deploy_failed` entry).*
+
+**The type.** `deploy_failed` — a hauled kit’s on-arrival deploy could not be placed, so the craft
+RETREATED (`territory-model.md` §5, the retreat rule). Added to the `sim/events.js` vocabulary (so
+`checkEventLog` accepts it); it is exactly the "future writer adds its own type" §7 left room for.
+
+**The writer — the retreat itself.** `resolveDeployArrival` (`sim/actions.js`) is the ONE place a deploy
+retreats; where it already flags the craft `deployFailed = { reason, tick }` (§5), it also records a
+`deploy_failed` row through the same shared `recordEvent` the licence removers use (prune + append). One
+writer, so the craft flag and the message cannot disagree. Born unread; retention and acknowledge are
+§3 / §4’s, unchanged.
+
+**The payload** (self-contained, built at the retreat — all of it already in hand there):
+- `cause` — `'occupied'` | `'out-of-range'` (the two retreatable reasons; the §5 `deployFailed` reason).
+- `kind` — the deployable kind, `'outpost'` (the only one built).
+- `targetHex` — `{ q, r }`, the hex the deploy could not be placed on.
+- `craftId` + `craftClass` — the transport (the facts line, and the lookup for Show on map).
+- `retreatSystemId` + `retreatSystemName` — the nearest held system it pulled back toward (its seed name).
+
+**The surface — the MESSAGES inbox + popup (§8 / §9), but with its OWN character.** The inbox row
+reads **"Deployment failed — {Kind}"** ({Kind} from `payload.kind`), newest-first, with the unread dot as
+any notice. The popup is the same adviser-reel card, re-dressed for this type:
+- **the hero is the PILOT** (`client/assets/characters/pilot.jpg`), not the uniform adviser;
+- **the eyebrow is "Fleet — Dispatch"** (not "Syndicate Notice" / "Syndicate — Enforcement");
+- **the body is the pilot’s voice** — a dry, disgruntled report that pushes the Guildmaster for a
+  decision, rendered verbatim as two beats:
+
+  > Right, so, we flew the asset out here where you wanted and... well... long story short, it’s going to
+  > need to go somewhere else. I pulled back to a safe spot for now.
+  >
+  > I hate to pester you like this, Guildmaster, but we can’t float around out here forever. We need a
+  > decision from you.
+
+- **the facts block**: `Craft` = `craftClass · NN`; `Target` = `hex {q}, {r}`; `Reason` = Hex taken /
+  Out of range (from `cause`); `Pulled back to` = `retreatSystemName`; `Failed` = the event `whenDay`.
+- **a SHOW ON MAP button** beside Dismiss: closes the popup and flies the map to the **craft’s CURRENT
+  hex**, looked up live by `craftId` in the snapshot. A retreated craft sits on its hex INDEFINITELY until
+  the player acts on it, so "current" is reliable; if the craft is gone, fall back to `payload.targetHex`.
+
+Opening the message acknowledges it (§8, read-on-open), unchanged. This **replaces** the earlier idea of
+an Operations · In-Transit strip notice — the message is the surface.

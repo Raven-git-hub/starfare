@@ -170,8 +170,7 @@ does (`#plan-chip`). It is the route builder reduced to **one leg with the deplo
 automatically**: **DEPLOY** confirms that single leg and dispatches — there is no multi-waypoint and
 no separate FINALISE beat, the chip's DEPLOY *is* the finalise — and **CANCEL** clears the selection.
 While a hex is selected, clicking another hex does nothing (CANCEL first). On arrival the engine
-deploys or retreats (the `deployFailed` rule above), surfaced on the Operations · In-Transit strip
-like `laneEnded`. **Arrow-key panning** is added to this map mode (in the shared planning mode, so the
+deploys or retreats (the `deployFailed` rule above), surfaced as a `deploy_failed` message in the Guild Hall (`event-log.md` §10 — the pilot’s report). **Arrow-key panning** is added to this map mode (in the shared planning mode, so the
 route builder gains it too): clicks place the target so they cannot also recentre the view — arrow
 keys close that long-standing click-to-recentre gap (this supersedes the "needs arrow-key pan (or
 restored click-to-centre)" note below). This
