@@ -156,6 +156,28 @@ PERMANENT, not a stop-gap; it is the ruled transport-planner split (the client e
 engine is authoritative at apply). Lane-keyed so `tollGate` and `deepScan` slot in additively
 when their lanes are built (their anchors add outposts) — no reshape.
 
+**The deploy map (client, as designed — RULED 01-10-26).** The built outpost lane is deployed
+from the map, **reusing the transport route builder (planning mode) wholesale** — same chrome, same
+formatting, the same components (`#plan-chip`, the planning banner, the waypoint panel, the
+`hexesInRadius` territory paint): the deploy map introduces NO new visual language, it re-skins the
+one that exists. The flow is **craft-initiated** — the `outpost_kit` rides a specific heavy, so there
+is no separate "pick a carrier" step: from the Dispatch popup of a heavy that carries a kit, a
+**Deploy** action opens the galaxy map at **4× zoom**, centred on the craft. The legal range is drawn
+as a **dashed outer-border RING only** — not every hex filled — the boundary of the union of the
+guild's `deployRange` reaches (every system it holds). The player clicks a **bare hex inside the
+ring** and an on-tile **DEPLOY / CANCEL** chip appears, exactly as the route builder's **ADD** chip
+does (`#plan-chip`). It is the route builder reduced to **one leg with the deploy action appended
+automatically**: **DEPLOY** confirms that single leg and dispatches — there is no multi-waypoint and
+no separate FINALISE beat, the chip's DEPLOY *is* the finalise — and **CANCEL** clears the selection.
+While a hex is selected, clicking another hex does nothing (CANCEL first). On arrival the engine
+deploys or retreats (the `deployFailed` rule above), surfaced on the Operations · In-Transit strip
+like `laneEnded`. **Arrow-key panning** is added to this map mode (in the shared planning mode, so the
+route builder gains it too): clicks place the target so they cannot also recentre the view — arrow
+keys close that long-standing click-to-recentre gap (this supersedes the "needs arrow-key pan (or
+restored click-to-centre)" note below). The visual target is `docs/mockups/deploy-client.html`; this
+paragraph is the as-designed client flow for the outpost lane and supersedes the generic "Manage popup
+→ pick a transport" wording of **The player flow** above, which describes the later, fuller vision.
+
 **Route legality is target-only.** The *path* is legal anywhere — open space is not
 illegal, it is merely less safe / tolled — so there is nothing to "route around." Only the
 **target** is validated. The player therefore **builds the route themselves** (reusing the
