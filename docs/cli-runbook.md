@@ -68,7 +68,8 @@ top-level `outposts` / `claims`.
 - `grant-kit --guild ID --system ID --kind outpost` / `load-kit --guild ID --id VEHICLE_ID --asset ASSET_ID` /
   `unload-kit --guild ID --id VEHICLE_ID` / `deploy-asset --guild ID --id VEHICLE_ID` — the deploy pipeline
   (next section; not part of the automation demo). `dispatch-route` also takes a last stop
-  `q,r@deploy:KIND`, the deploy on arrival (the section after it).
+  `q,r@deploy:KIND`, the deploy on arrival (the section after it), or `sys:<id>@unload-kit`, the unload on
+  arrival (the section after that).
 
 ## The deploy pipeline — a kit hauled and deployed (2.2 deploy slice 1)
 
@@ -137,3 +138,24 @@ it, occupy the target mid-flight:
 The snap costs no fuel and no time. The flag clears on the craft's next dispatch, and the kit is still
 aboard, so the next dispatch can send it somewhere free — or, once the craft is idle at a held system,
 `unload-kit` drops the kit back into that system's inventory (which clears the flag too).
+
+## The unload on arrival — the Return fork (2.2 deploy, asset-initiated slice 3a)
+
+The route-borne `unload-kit`: the last stop `sys:<id>@unload-kit` flies the heavy and its kit to a system the
+guild holds and, on the tick it lands, drops the kit into that system's inventory as a fresh idle kit — the
+engine half of the `deploy_failed` message's Return fork (`docs/territory-model.md` §5). It is spelled
+`unload-kit`, not `unload`, because `@unload:good:qty` is the dock manifest's own segment. From a heavy with a
+kit aboard (granted and loaded as above, or left by a retreat):
+
+    node tools/admin.js dispatch-route --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --route "101,55; sys:$HOME@unload-kit" $B
+    node tools/admin.js tick N $B                                 # N = to the last stop's arrival
+    node tools/admin.js snapshot --pick guilds.0.vehicles.0 $B    # idle at $HOME, hold {}
+    node tools/admin.js snapshot --pick guilds.0.assets $B        # a fresh asset_seat_demo_outpost_NN in $HOME
+
+The dispatch prints the stop as `unload kit`. It is refused up front (exit 1, the engine's reason) unless the
+unload would succeed NOW (exactly one kit aboard and nothing else, at a system the guild holds) and unless it is
+the route's last stop, a system (not a bare hex or an Outpost), on a one-shot route with no deploy. The new kit
+takes the next number from the guild's kit serial, so a kit that went out as `_01` comes back as `_02`. A route
+of the one stop the craft is already at (`--route "sys:$HOME@unload-kit"`) unloads at once, burning no fuel,
+like the standalone `unload-kit`. If the target were no longer held when the craft lands (no play path does this
+today), the kit would stay aboard and the craft would idle there flagged `laneEnded: { reason: 'target-gone' }`.

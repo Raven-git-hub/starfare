@@ -583,8 +583,8 @@ test('parseRouteWaypointToken: anchor@deploy:KIND builds a { type: "deploy", kin
   // A kind is required.
   assert.throws(() => A.parseRouteWaypointToken('1,2@deploy'), /anchor@deploy:KIND/);
   assert.throws(() => A.parseRouteWaypointToken('1,2@deploy:'), /anchor@deploy:KIND/);
-  // The bad-verb message now names the third verb.
-  assert.throws(() => A.parseRouteWaypointToken('sys:A@plant:outpost'), /@load:… or @unload:… \(a dock\), or @deploy:KIND/);
+  // The bad-verb message names every verb (the fourth, @unload-kit, since asset-initiated slice 3a).
+  assert.throws(() => A.parseRouteWaypointToken('sys:A@plant:outpost'), /@load:… or @unload:… \(a dock\), @deploy:KIND or @unload-kit/);
 });
 
 test('dispatchRouteBody: --route "…; q,r@deploy:outpost" maps to the exact dispatch-route body', () => {
@@ -602,6 +602,37 @@ test('dispatchRouteBody: --route "…; q,r@deploy:outpost" maps to the exact dis
     [{ anchor: { q: 100, r: 55 } }, { anchor: { q: 101, r: 55 }, action: { type: 'deploy', kind: 'outpost' } }],
   );
   assert.equal('repeat' in A.dispatchRouteBody({ guild: 'g1', id: 'v', route: '101,55@deploy:outpost' }), false, 'a one-shot request');
+});
+
+// --- @unload-kit (asset-initiated slice 3a — the Return fork's on-arrival unload) --------------------
+
+test('parseRouteWaypointToken: anchor@unload-kit builds a { type: "unload" } action', () => {
+  assert.deepEqual(
+    A.parseRouteWaypointToken('sys:sys_0006@unload-kit'),
+    { anchor: { landmarkKind: 'system', landmarkId: 'sys_0006' }, action: { type: 'unload' } },
+  );
+  // Whether the anchor is a held system is the engine's call, not the CLI's: a hex parses too.
+  assert.deepEqual(A.parseRouteWaypointToken(' 1,2 @ unload-kit '), { anchor: { q: 1, r: 2 }, action: { type: 'unload' } });
+  // One action per waypoint: never beside a dock segment or a deploy, never twice.
+  assert.throws(() => A.parseRouteWaypointToken('sys:A@unload-kit@load:titanium:1'), /anchor@unload-kit on its own/);
+  assert.throws(() => A.parseRouteWaypointToken('sys:A@unload:titanium:1@unload-kit'), /anchor@unload-kit on its own/);
+  assert.throws(() => A.parseRouteWaypointToken('sys:A@unload-kit@unload-kit'), /on its own/);
+  assert.throws(() => A.parseRouteWaypointToken('sys:A@unload-kit@deploy:outpost'), /on its own/);
+  // `@unload:` stays the dock manifest's segment — the kit unload is only the exact word unload-kit.
+  assert.deepEqual(A.parseRouteWaypointToken('sys:A@unload:titanium:5').action, { type: 'dock', manifest: [{ dir: 'unload', good: 'titanium', qty: 5 }] });
+  assert.throws(() => A.parseRouteWaypointToken('sys:A@unload-kit:outpost'), /a waypoint action must be/);
+});
+
+test('dispatchRouteBody: --route "…; sys:ID@unload-kit" maps to the exact dispatch-route body', () => {
+  assert.deepEqual(
+    A.dispatchRouteBody({ guild: 'g1', id: 'vehicle_g1_heavyTransport_01', route: '101,55; sys:sys_0006@unload-kit' }),
+    {
+      guildId: 'g1',
+      vehicleId: 'vehicle_g1_heavyTransport_01',
+      waypoints: [{ anchor: { q: 101, r: 55 } }, { anchor: { landmarkKind: 'system', landmarkId: 'sys_0006' }, action: { type: 'unload' } }],
+    },
+  );
+  assert.equal('repeat' in A.dispatchRouteBody({ guild: 'g1', id: 'v', route: 'sys:sys_0006@unload-kit' }), false, 'a one-shot request');
 });
 
 // --- repetition (transport-model.md §11.10, automation slice 3a) -----------------------------------

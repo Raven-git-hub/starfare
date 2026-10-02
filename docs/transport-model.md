@@ -683,7 +683,12 @@ the dock editor builds). A waypoint with no action is a pure turning point. *(**
 `{ type:'deploy', kind }`**, roadmap 2.2 deploy pipeline slice 2, `territory-model.md` §5: place the kit the
 craft carries on the waypoint's bare hex the moment it arrives, or retreat if the target no longer allows it.
 It has no manifest and needs no store at its stop, rides only the FINAL waypoint of a ONE-SHOT dispatch, and
-is never saved — a saved route (§11.5 / §11.9) stays dock-only.)* **The route is ORIGIN-FREE —
+is never saved — a saved route (§11.5 / §11.9) stays dock-only.)* *(**The third type, 02-10-26 —
+`{ type:'unload' }`**, roadmap 2.2 deploy pipeline asset-initiated slice 3a, `territory-model.md` §5 (the Return
+fork): drop the kit the craft carries into the waypoint's system inventory the moment it arrives, as a fresh idle
+kit. It carries nothing but its type (the kit's kind is read off the hold), rides only the FINAL waypoint of a
+ONE-SHOT dispatch, whose anchor must be a system the guild holds, never shares a route with a deploy, and is never
+saved. It is not the dock manifest's `unload` line, which moves goods.)* **The route is ORIGIN-FREE —
 it stores only its waypoints, never a start location.** The launching craft's current location is always the
 runtime origin (see §11.4).
 

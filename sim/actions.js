@@ -401,6 +401,28 @@ function resolveRouteArrival(state, guild, craft, thisTick) {
     advanceRoute(state, guild, craft, thisTick);
     return;
   }
+  if (wp.action.type === 'unload') {
+    // An UNLOAD (asset-initiated slice 3a, the Return fork) drops the kit into the held system the craft has just
+    // reached. ARRIVAL RE-VALIDATES through THE ONE unload rule (unloadKitCheck) and applies through THE ONE
+    // unload apply (kitIntoInventory: the hold empties, a fresh idle kit is minted here from the stored serial,
+    // and any `deployFailed` clears) — the same pair the standalone unloadKit runs, so there is one unload with
+    // two triggers. The unload stop is the route's last, so advanceRoute then ends the one-shot run: the route
+    // goes and the craft is left idle at the system.
+    const check = unloadKitCheck(state, guild.id, craft.id, craft.location, craft.cargo);
+    if (!check.ok) {
+      // The dispatch proved this unload would succeed, and nothing can undo that in flight today: no path takes
+      // a system from a guild, and nothing touches a routed craft's hold. If that ever changes, the run ENDS the
+      // way a route action whose target is gone ends (§11.6, the dock branch below): the craft idle at this
+      // berth, the kit STILL ABOARD (never dropped), the route cleared, flagged laneEnded 'target-gone'. It does
+      // not halt, unlike the deploy's corrupt-state branch: the kit is safe aboard, and the flag says the trip
+      // did not finish (roadmap decision checklist, "Asset-initiated slice 3a").
+      endLane(craft, 'target-gone', thisTick);
+      return;
+    }
+    kitIntoInventory(guild, craft, check, thisTick);
+    advanceRoute(state, guild, craft, thisTick);
+    return;
+  }
   // WHERE the craft sits decides HOW the action resolves — the SAME split transferCargo uses (§4), read
   // through `routeStoreAt`, the one predicate the lap-start re-check shares:
   const store = routeStoreAt(state, guild.id, craft.location);
@@ -1241,8 +1263,9 @@ function createLoadKitAction({ guildId, vehicleId: vId, assetId: aId }) {
 // unloadKit: the inverse of loadKit — the kit in a heavy's hold becomes a fresh idle kit asset in the
 // inventory of the HELD system the heavy is berthed at (design.md §4, RULED 02-10-26). The kind is read
 // from the kit aboard, so the action names only the craft. This is the standalone (manual) unload; the
-// route-arrival unload (the deploy_failed "Return" fork) is a later slice that reuses the same check and
-// apply (unloadKitCheck / kitIntoInventory). The constructor only enforces the required fields.
+// route-arrival unload (the deploy_failed "Return" fork — a dispatchRouteWithActions whose last stop carries
+// `{ type: 'unload' }`, asset-initiated slice 3a) reuses the same check and apply (unloadKitCheck /
+// kitIntoInventory). The constructor only enforces the required fields.
 function createUnloadKitAction({ guildId, vehicleId: vId }) {
   if (guildId === undefined) throw new Error('createUnloadKitAction: guildId is required');
   if (vId === undefined) throw new Error('createUnloadKitAction: vehicleId is required');
@@ -1256,7 +1279,9 @@ function createUnloadKitAction({ guildId, vehicleId: vId }) {
 // ({ landmarkKind, landmarkId } or { q, r }); `action` (optional) is `{ type: 'dock', manifest }`, the
 // §4 load/unload manifest fired on arrival — or, on the FINAL waypoint only, `{ type: 'deploy', kind }`
 // (roadmap 2.2 deploy pipeline slice 2): place the kit the craft carries on that bare hex the moment it
-// lands, or retreat if it no longer can (territory-model.md §5). Unlike the plain frozen `dispatchVehicle` (§11.2 — left
+// lands, or retreat if it no longer can (territory-model.md §5) — or, also on the FINAL waypoint only and
+// instead of a deploy, `{ type: 'unload' }` (asset-initiated slice 3a, the Return fork): drop the kit the craft
+// carries into that held system's inventory the moment it lands. Unlike the plain frozen `dispatchVehicle` (§11.2 — left
 // as-is for no-action routes), this flies leg by leg: the whole run's fuel burns UP FRONT (§11.3,
 // legs are known even though timing is not), the route + a cursor are journalled onto the craft, and
 // each leg is re-dispatched by the tick hooks (`advanceRoute`) as the craft completes the stop before
@@ -1712,8 +1737,9 @@ function kitIntoHold(guild, craft, asset, tick) {
 //   - the craft is berthed AT a system (a landmark, not a bare hex or an Outpost — an inventory lives in
 //     a system, design.md §4);
 //   - the guild HOLDS that system (`guildHolds`) — a kit is dropped only on your own ground.
-// A pure read. Written with the location passed in, like deployCheck, so the later route-arrival unload
-// (the Return fork) can ask it of the stop the craft lands on.
+// A pure read. Written with the location passed in, like deployCheck, so the route-arrival unload (the
+// Return fork, asset-initiated slice 3a) asks it of the stop the craft lands on — and the dispatch asks it up
+// front of the stop the craft is being sent to.
 function unloadKitCheck(state, guildId, vehicleId, location, cargo) {
   const hold = cargo || {};
   const goods = Object.keys(hold);
@@ -1732,8 +1758,8 @@ function unloadKitCheck(state, guildId, vehicleId, location, cargo) {
 // kitIntoInventory(guild, craft, check, tick) — THE ONE unload apply, for a `check` unloadKitCheck passed:
 // the kit good leaves the hold (it was the whole hold, so the key goes) and a FRESH idle kit asset is
 // minted in the checked system, with a new id from the serial. One good in, one kit out. The tick is
-// passed in, not read from state.tick, so a later route-arrival unload can mint on `state.tick + 1`, as
-// deployKit does.
+// passed in, not read from state.tick, so the route-arrival unload (asset-initiated slice 3a) mints on
+// `state.tick + 1`, the tick being made, as deployKit does.
 //
 // It also CLEARS `deployFailed` (RULED 02-10-26). A craft carries that flag because a deploy failed and it
 // retreated with the kit aboard; once the kit is back in an inventory, that failed deploy is over, so the
@@ -1807,7 +1833,12 @@ function manifestError(manifest) {
 // (`kitGoodFor`). Only the dispatch passes it: a deploy is a one-shot trip to one target, so it is never
 // SAVED as a reusable route (saveRoute keeps the dock-only gate). Where a deploy may sit on the route, and
 // whether it would succeed, need the whole route and the craft — the dispatch's own deploy gate.
-function routeWaypointError(wp, i, { allowDeploy = false } = {}) {
+//
+// `allowUnload` (asset-initiated slice 3a, the Return fork) is its sibling: the action may also be an UNLOAD —
+// `{ type: 'unload' }`, "drop the kit this craft carries into this system's inventory, on arrival". It carries
+// nothing but its type, because the kit's kind is read off the hold (unloadKitCheck). Dispatch-only for the
+// same reason as a deploy, and where it may sit and whether it would succeed are, likewise, the dispatch's.
+function routeWaypointError(wp, i, { allowDeploy = false, allowUnload = false } = {}) {
   if (!wp || typeof wp !== 'object' || Array.isArray(wp)) {
     return `waypoint ${i} must be a { anchor, action? } object, got ${JSON.stringify(wp)}`;
   }
@@ -1822,11 +1853,17 @@ function routeWaypointError(wp, i, { allowDeploy = false } = {}) {
       }
       return null;
     }
-    // Otherwise the action is a 'dock' (§11.1 — the type tag is what lets later types slot in; 'deploy' is
-    // the second, dispatch-only).
+    if (allowUnload && wp.action && typeof wp.action === 'object' && wp.action.type === 'unload') {
+      return null;
+    }
+    // Otherwise the action is a 'dock' (§11.1 — the type tag is what lets later types slot in; 'deploy' and
+    // 'unload' are the dispatch-only kit actions).
     if (!wp.action || typeof wp.action !== 'object' || wp.action.type !== 'dock') {
-      const shapes = allowDeploy
-        ? '{ type: "dock", manifest } or { type: "deploy", kind } (the action types, §11.1)'
+      const allowed = ['{ type: "dock", manifest }'];
+      if (allowDeploy) allowed.push('{ type: "deploy", kind }');
+      if (allowUnload) allowed.push('{ type: "unload" }');
+      const shapes = allowed.length > 1
+        ? `${allowed.join(' or ')} (the action types, §11.1)`
         : '{ type: "dock", manifest } (the only action type a saved route carries is "dock", §11.1)';
       return `waypoint ${i} action must be ${shapes}, got ${JSON.stringify(wp.action)}`;
     }
@@ -3552,7 +3589,7 @@ function validateAction(state, action) {
       return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is running a lane — stop the lane or re-dispatch the craft before unloading` };
     }
     // The unload itself — exactly one kit aboard, berthed at a system, the guild holds it — is THE ONE
-    // unload rule (unloadKitCheck), which the later route-arrival unload will ask too.
+    // unload rule (unloadKitCheck), which the route-arrival unload (asset-initiated slice 3a) asks too.
     const check = unloadKitCheck(state, action.guildId, action.vehicleId, craft.location, craft.cargo);
     if (!check.ok) return { valid: false, reason: check.reason };
     return { valid: true };
@@ -3586,7 +3623,7 @@ function validateAction(state, action) {
     }
     for (let i = 0; i < action.waypoints.length; i += 1) {
       const wp = action.waypoints[i];
-      const wpError = routeWaypointError(wp, i, { allowDeploy: true });
+      const wpError = routeWaypointError(wp, i, { allowDeploy: true, allowUnload: true });
       if (wpError) return { valid: false, reason: wpError };
       // A capacity-0 craft (spycraft) carries no cargo, so an action it can never perform is a
       // whole-route refusal (§11 — validate whole, refuse whole), not a silent no-op on arrival.
@@ -3641,6 +3678,38 @@ function validateAction(state, action) {
       const check = deployCheck(state, action.guildId, action.vehicleId, target, craft.cargo);
       if (!check.ok) {
         return { valid: false, reason: `the deploy at waypoint ${last} would fail now — ${check.reason}` };
+      }
+    }
+    // AN UNLOAD ACTION (asset-initiated slice 3a; territory-model.md §5, the Return fork) — "fly this heavy and
+    // its kit to a system the guild holds, and drop the kit into that system's inventory the moment it lands".
+    // The deploy's mirror, refused whole, up front, when:
+    //   - the route also carries a deploy: a route ends in ONE kit action, a deploy or an unload, never both;
+    //   - it is not on the FINAL waypoint: the craft unloads where its route ends (after the unload the hold is
+    //     empty, so there is nothing left to haul on to a later stop);
+    //   - that waypoint is not a system: a kit unloads into a system's inventory, never on a bare hex or at an
+    //     Outpost;
+    //   - the unload would fail NOW — THE ONE unload rule (unloadKitCheck), asked of that system with the hold the
+    //     craft has today: exactly one kit and nothing else, and a system the guild holds. So a visibly doomed
+    //     trip is never flown (and never fuelled). The arrival asks the same rule again.
+    // Like a deploy, it rides a ONE-SHOT route only with no gate of its own (it needs a kit aboard, and the kit
+    // gate above refuses a repeating lane on a kit-laden craft), and it asks no routeStoreAt store: the inventory
+    // it fills is the guild's own, which unloadKitCheck judges.
+    const unloadAt = action.waypoints.findIndex((wp) => wp.action !== undefined && wp.action.type === 'unload');
+    if (unloadAt !== -1) {
+      const last = action.waypoints.length - 1;
+      if (deployAt !== -1) {
+        return { valid: false, reason: `the route carries a deploy (waypoint ${deployAt}) and an unload (waypoint ${unloadAt}) — a route ends in ONE kit action, a deploy or an unload, on its final waypoint` };
+      }
+      if (unloadAt !== last) {
+        return { valid: false, reason: `waypoint ${unloadAt} carries an unload action, but an unload rides the FINAL waypoint only — the craft unloads where its route ends (waypoint ${last})` };
+      }
+      const target = action.waypoints[last].anchor;
+      if (target.landmarkKind !== 'system') {
+        return { valid: false, reason: `the unload waypoint ${last} is ${JSON.stringify(target)}, not a system — a kit unloads into a held system's inventory, never on a bare hex or at an Outpost` };
+      }
+      const check = unloadKitCheck(state, action.guildId, action.vehicleId, target, craft.cargo);
+      if (!check.ok) {
+        return { valid: false, reason: `the unload at waypoint ${last} would fail now — ${check.reason}` };
       }
     }
     // Build + price the WHOLE route (dispatchRoute is the one home): leg 0 from the craft's location

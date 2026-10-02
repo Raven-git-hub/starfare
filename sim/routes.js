@@ -54,12 +54,16 @@ const WAIT_REASONS = Object.freeze(['fuel', 'cadence']);
 // actioned-route dispatch (journalling the route onto the craft), the saved-route store (createSavedRoute)
 // and the snapshot (surfacing both). Omit-when-absent: a no-action waypoint carries no `action` key,
 // exactly as it was authored.
-// Two action shapes: a 'dock' action `{ type, manifest }`, and a 'deploy' action `{ type, kind }` (roadmap
-// 2.2 deploy pipeline slice 2 — place the kit the craft carries, on arrival; it has no manifest).
+// Three action shapes: a 'dock' action `{ type, manifest }`; a 'deploy' action `{ type, kind }` (roadmap
+// 2.2 deploy pipeline slice 2 — place the kit the craft carries, on arrival; it has no manifest); and an
+// 'unload' action `{ type }` (asset-initiated slice 3a — drop the kit the craft carries into a held system's
+// inventory, on arrival; the kind is read off the hold, so it carries nothing but its type).
 function copyRouteWaypoint(wp) {
   const copy = { anchor: { ...wp.anchor } };
   if (wp.action && wp.action.type === 'deploy') {
     copy.action = { type: 'deploy', kind: wp.action.kind };
+  } else if (wp.action && wp.action.type === 'unload') {
+    copy.action = { type: 'unload' };
   } else if (wp.action) {
     copy.action = { type: wp.action.type, manifest: wp.action.manifest.map(copyManifestLine) };
   }

@@ -1483,6 +1483,8 @@ function tripViolation(trip) {
 // A DEPLOY action `{ type: 'deploy', kind }` (roadmap 2.2 deploy pipeline slice 2) may ride a craft's route
 // — never a saved one — and only where the dispatch lets it: a known kind, on the LAST waypoint, whose anchor
 // is a bare hex, on a one-shot route (no mode). See deployActionViolation.
+// An UNLOAD action `{ type: 'unload' }` (asset-initiated slice 3a, the Return fork) is its mirror: a craft's
+// route only, on the LAST waypoint, whose anchor is a system, on a one-shot route. See unloadActionViolation.
 // The one home of the route shape, used by checkVehicleIntegrity below.
 function routeViolation(route) {
   if (!route || typeof route !== 'object' || !Array.isArray(route.waypoints) || route.waypoints.length === 0) {
@@ -1552,7 +1554,8 @@ function routeViolation(route) {
       return { reason: 'only a perCycle lane holds for its cadence — an immediate lane starts its next lap at once', cadence: route.cadence, waiting: w };
     }
   }
-  return waypointListViolation(route.waypoints, { allowDeploy: true }) || deployActionViolation(route);
+  return waypointListViolation(route.waypoints, { allowDeploy: true, allowUnload: true })
+    || deployActionViolation(route) || unloadActionViolation(route);
 }
 
 // deployActionViolation(route) -> a detail object naming a deploy action out of place on a craft's
@@ -1579,14 +1582,39 @@ function deployActionViolation(route) {
   return null;
 }
 
+// unloadActionViolation(route) -> a detail object naming an unload action out of place on a craft's route, or
+// null (asset-initiated slice 3a, the Return fork). The deploy rule's mirror: the dispatch places an unload only
+// on the FINAL waypoint (the craft unloads where its trip ends), only on a system anchor (a kit unloads into a
+// system's inventory), and only on a one-shot route (a kit never rides a repeating lane). Both kit actions are
+// final-only, so a route can never carry a deploy AND an unload. The executor never moves an unload action, so a
+// route breaking any of these was corrupted after launch.
+function unloadActionViolation(route) {
+  const last = route.waypoints.length - 1;
+  for (let i = 0; i <= last; i += 1) {
+    const wp = route.waypoints[i];
+    if (!wp.action || wp.action.type !== 'unload') continue;
+    if (i !== last) {
+      return { reason: `waypoint ${i} carries an unload action, which rides the final waypoint only`, waypoints: route.waypoints.length };
+    }
+    if (wp.anchor.landmarkKind !== 'system') {
+      return { reason: `the unload waypoint ${i}'s anchor must be a system`, anchor: wp.anchor };
+    }
+    if (route.mode !== undefined) {
+      return { reason: 'an unload action rides a one-shot route only (a kit never rides a repeating lane)', mode: route.mode };
+    }
+  }
+  return null;
+}
+
 // waypointListViolation(waypoints) -> a detail object naming the first malformed { anchor, action? }
 // waypoint in an array, or null when every one is well-formed (transport-model.md §11.1). THE ONE
 // spelling of the per-waypoint check, shared by a craft's journalled `route` (routeViolation above) and
 // a guild's SAVED routes (checkSavedRouteIntegrity below) — both hold the SAME §11.1 list, so they are
 // judged identically. Each waypoint's `anchor` resolves (resolveVehicleLocation), and any `action` is a
 // { type: 'dock', manifest } with a non-empty manifest of well-formed lines — or, when `allowDeploy` (a
-// craft's route only; a saved route never carries one), a { type: 'deploy', kind } with a known kind.
-function waypointListViolation(waypoints, { allowDeploy = false } = {}) {
+// craft's route only; a saved route never carries one), a { type: 'deploy', kind } with a known kind — or,
+// when `allowUnload` (likewise a craft's route only), a { type: 'unload' }.
+function waypointListViolation(waypoints, { allowDeploy = false, allowUnload = false } = {}) {
   for (let i = 0; i < waypoints.length; i += 1) {
     const wp = waypoints[i];
     if (!wp || typeof wp !== 'object' || Array.isArray(wp)) {
@@ -1603,6 +1631,7 @@ function waypointListViolation(waypoints, { allowDeploy = false } = {}) {
         }
         continue;
       }
+      if (allowUnload && a && typeof a === 'object' && a.type === 'unload') continue;
       if (!a || typeof a !== 'object' || a.type !== 'dock' || !Array.isArray(a.manifest) || a.manifest.length === 0) {
         return { reason: `waypoint ${i}'s action must be a { type: "dock", manifest } with a non-empty manifest`, action: a };
       }

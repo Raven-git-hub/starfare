@@ -55,7 +55,7 @@ const FLAG_SPEC = Object.freeze({
   condition: 'number', // spawn-vehicle: starting maintenanceCondition fraction (default 1)
   id: 'string',       // remove-vehicle / dispatch-vehicle / transfer-cargo / load-kit / unload-kit / deploy-asset: which vehicle id; delete-route: which route id
   waypoints: 'string', // dispatch-vehicle: "w;w;…", each sys:<id> | out:<id> | q,r
-  route: 'string',    // dispatch-route / save-route: "w;w;…", each anchor[@load:…][@unload:…] or anchor@deploy:KIND (per-waypoint actions)
+  route: 'string',    // dispatch-route / save-route: "w;w;…", each anchor[@load:…][@unload:…], anchor@deploy:KIND or anchor@unload-kit (per-waypoint actions)
   repeat: 'string',   // dispatch-route: the launch mode — once | continuous[:CADENCE] | nRun:N[:CADENCE]
   load: 'string',     // transfer-cargo: "good:qty|max,…" to load pool -> hold
   unload: 'string',   // transfer-cargo: "good:qty|max,…" to unload hold -> pool
@@ -399,6 +399,11 @@ function dispatchVehicleBody(flags) {
 // `{ type: 'deploy', kind }` action: place the kit the craft carries on this hex when it lands, e.g.
 // `--route "101,55@deploy:outpost"`. A waypoint holds one action, so a deploy never shares it with a
 // load/unload. Which kinds exist, and where a deploy may sit on the route, the engine judges.
+// OR the waypoint carries ONE `@unload-kit` segment (asset-initiated slice 3a, the Return fork) — the
+// `{ type: 'unload' }` action: drop the kit the craft carries into this system's inventory when it lands,
+// e.g. `--route "sys:sys_0006@unload-kit"`. It is spelled `unload-kit`, after the standalone subcommand,
+// because `@unload:` is already the dock manifest's segment. Like a deploy it stands alone on its waypoint,
+// and where it may sit, and whether it would succeed, the engine judges.
 // PURE — the seed decides what resolves and which goods are real, not this file. `command` only names the
 // subcommand in an error (dispatch-route and save-route share this grammar).
 function parseRouteWaypointToken(tok, command = 'dispatch-route') {
@@ -413,12 +418,18 @@ function parseRouteWaypointToken(tok, command = 'dispatch-route') {
     }
     return { anchor, action: { type: 'deploy', kind } };
   }
+  if (segments.includes('unload-kit')) {
+    if (segments.length !== 1) {
+      throw new Error(`${command}: an unload-kit waypoint is anchor@unload-kit on its own (one action per waypoint), got ${JSON.stringify(String(tok).trim())}`);
+    }
+    return { anchor, action: { type: 'unload' } };
+  }
   const manifest = [];
   for (const seg of segments) {
     const colon = seg.indexOf(':');
     const dir = colon === -1 ? seg : seg.slice(0, colon);
     if (dir !== 'load' && dir !== 'unload') {
-      throw new Error(`${command}: a waypoint action must be @load:… or @unload:… (a dock), or @deploy:KIND, got ${JSON.stringify(`@${seg}`)}`);
+      throw new Error(`${command}: a waypoint action must be @load:… or @unload:… (a dock), @deploy:KIND or @unload-kit, got ${JSON.stringify(`@${seg}`)}`);
     }
     // The remainder after "load:"/"unload:" is the transfer-cargo cargo grammar ("good:qty|max,…").
     manifest.push(...parseCargoFlag(seg.slice(colon + 1), dir));
@@ -435,7 +446,7 @@ function parseRouteFlag(raw, command = 'dispatch-route') {
   if (typeof raw !== 'string') throw new Error(`--route must be a "w;w;…" string, got ${JSON.stringify(raw)}`);
   const tokens = raw.split(';').map((s) => s.trim()).filter((s) => s.length > 0);
   if (tokens.length === 0) {
-    throw new Error(`${command}: --route needs at least one waypoint (anchor[@load:…][@unload:…] or anchor@deploy:KIND), separated by ;`);
+    throw new Error(`${command}: --route needs at least one waypoint (anchor[@load:…][@unload:…], anchor@deploy:KIND or anchor@unload-kit), separated by ;`);
   }
   return tokens.map((tok) => parseRouteWaypointToken(tok, command));
 }
@@ -459,7 +470,7 @@ function parseRepeatFlag(raw) {
 }
 
 // dispatchRouteBody(flags) -> the POST /admin/vehicle/dispatch-route request body. PURE and exported so
-// admin.test.js can assert the arg→body mapping (including @load:/@unload:, :max and @deploy:) without a server.
+// admin.test.js can assert the arg→body mapping (including @load:/@unload:, :max, @deploy: and @unload-kit) without a server.
 // `repeat` is in the body only when --repeat is given, so a plain dispatch-route stays a one-shot request.
 function dispatchRouteBody(flags) {
   const body = {
@@ -996,8 +1007,9 @@ async function cmdDispatchVehicle(base, flags) {
 // route it will execute (each waypoint's anchor + any action), so the operator can tick through and
 // watch it load, haul, unload and land idle at the last waypoint. A deploy stop (slice 2) prints as
 // "deploy KIND": on the tick the craft lands there the kit is planted — or, if the hex was taken or the
-// range lost meanwhile, the craft retreats and carries `deployFailed` (read it with `snapshot`). A refused
-// action -> throw -> exit 1.
+// range lost meanwhile, the craft retreats and carries `deployFailed` (read it with `snapshot`). An unload
+// stop (asset-initiated slice 3a) prints as "unload kit": on the tick the craft lands there the kit becomes a
+// fresh idle kit in that system's inventory. A refused action -> throw -> exit 1.
 async function cmdDispatchRoute(base, flags) {
   const body = dispatchRouteBody(flags);
   const out = await postJson(base, '/admin/vehicle/dispatch-route', body);
@@ -1011,6 +1023,7 @@ async function cmdDispatchRoute(base, flags) {
   body.waypoints.forEach((wp, i) => {
     let act = '(no action)';
     if (wp.action && wp.action.type === 'deploy') act = `deploy ${wp.action.kind}`;
+    else if (wp.action && wp.action.type === 'unload') act = 'unload kit';
     else if (wp.action) act = wp.action.manifest.map((l) => `${l.dir} ${l.good}:${l.max ? 'max' : l.qty}`).join(', ');
     row(`waypoint ${i}`, `${JSON.stringify(wp.anchor)} — ${act}`);
   });
@@ -1322,6 +1335,9 @@ Vehicle spawn/remove primitive (design.md §15.4 — operator/Storyteller, exit 
                   carries on arrival — refused up front unless it would deploy now; if the hex is taken or
                   out of range by the time it lands, the craft pulls back 3 hexes toward the nearest held
                   system, kit aboard, flagged deployFailed
+                  a LAST waypoint sys:<id>@unload-kit (e.g. "sys:sys_0006@unload-kit") drops the kit the craft
+                  carries into that held system's inventory on arrival — refused up front unless it would
+                  unload now (exactly one kit aboard, a system the guild holds)
                   --repeat makes it a LANE (§11.10): continuous, or nRun:N full cycles; each lap repositions
                   to the first stop and is fuelled up front (waits at the last stop if the hoard is short);
                   add :perCycle (e.g. continuous:perCycle, nRun:3:perCycle) to hold at the last stop between
@@ -1392,7 +1408,7 @@ Flags
                  remove-outpost: which outpost id; delete-route: which saved-route id
   --waypoints W  dispatch-vehicle: "w;w;…" route, each w = sys:<id> | out:<id> | q,r
   --route W      dispatch-route / save-route: "w;w;…" route, each w = anchor[@load:G:N,…][@unload:G:N,…]
-                 or (dispatch-route, last waypoint only) q,r@deploy:KIND
+                 or (dispatch-route, last waypoint only) q,r@deploy:KIND or sys:<id>@unload-kit
   --repeat R     dispatch-route: the launch mode — once (default) | continuous | nRun:N (N full cycles),
                  a repeating mode optionally + :immediate (default) | :perCycle (one lap per fuel cycle)
   --load G:N,…   transfer-cargo: goods to load pool -> hold ("good:qty" or "good:max", comma-sep)

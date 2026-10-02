@@ -213,7 +213,10 @@ client-only. The range paint, the pre-deploy quote, and the arrival deploy/retre
   — not a reduced one-leg map. The legal **range ring** is shown as the guide for where the
   **final** waypoint may land, and a **deploy** action is auto-appended to that final waypoint when
   it is a bare hex in range. Intermediate stops are plain turning-points: the kit fills the whole
-  heavy hold, so no cargo action can ride them (the engine refuses a dock there regardless). *(⤳ BUILT
+  heavy hold, so no cargo action can ride them. *(⤳ Corrected 02-10-26, asset-initiated slice 3a: this read "the
+  engine refuses a dock there regardless", but it does not. A dispatch accepts a dock on an earlier stop of a kit
+  route and the dock moves nothing, because the hold is full. The client offers no Action there. Whether the
+  engine should refuse it outright is on the decision checklist.)* *(⤳ BUILT
   02-10-26 — client slice 2b: the deploy map is now the full multi-leg planner; "AS-BUILT — asset-initiated
   client slice 2b" below.)*
 
@@ -236,13 +239,15 @@ client-only. The range paint, the pre-deploy quote, and the arrival deploy/retre
   fixed** to the retreated heavy (no carrier pick), pick a new hex and go — or **Return** —
   plan a route to **any held system** with an **unload** action auto-appended, dropping the kit back
   into that system's idle list as an idle outpost. Until one fork resolves it, the kit waits aboard
-  the heavy.
+  the heavy. *(⤳ The Return fork's ENGINE half — the route-arrival unload — is BUILT 02-10-26: "AS-BUILT —
+  asset-initiated slice 3a" below. The message's two forks and the planner's unload mode are client slice 3b.)*
 
 - **Load / unload are kit-specific actions** (`design.md` §4), inverses of each other and
   distinct from the goods dock/manifest: **load** moves a kit inventory → hold (instant,
   same-system, at commit); **unload** moves it hold → a fresh idle outpost in a held system's
   inventory (on arrival, the Return fork). *(⤳ BUILT 02-10-26 as standalone engine actions, `loadKit` /
-  `unloadKit`; the on-arrival unload of the Return fork is a later slice.)*
+  `unloadKit`; the on-arrival unload of the Return fork is a later slice. ⤳ That on-arrival unload is BUILT
+  02-10-26 too, as the `{ type: 'unload' }` route action: "AS-BUILT — asset-initiated slice 3a" below.)*
 
 - **Sequencing.** The kit-as-idle-asset plus a source that mints one into a system (the repointed
   `grantKit`, with the load/unload actions) is the **prerequisite rung** — it lands before the
@@ -387,7 +392,8 @@ null`, which is what `__myIdleAssets('outpost')` reads. Operator surface: `POST 
 `/admin/vehicle/grant-kit`) and `POST /admin/vehicle/load-kit|unload-kit`, with `tools/admin.js grant-kit
 --system`, `load-kit` and `unload-kit`. Not built: the client (the idle-outpost Deploy button, the
 outpost-subject popup and carrier dropdown, the planner reuse, the message's Redeploy / Return), the
-route-arrival unload, the real kit sources, storing a kit at an Outpost, the other kinds. *(⤳ The Deploy button,
+route-arrival unload *(⤳ BUILT 02-10-26, "AS-BUILT — asset-initiated slice 3a" below)*, the real kit sources,
+storing a kit at an Outpost, the other kinds. *(⤳ The Deploy button,
 the popup and the carrier dropdown are BUILT 02-10-26 — client slice 2a, next.)*
 
 **AS-BUILT — asset-initiated client slice 2a, the entry + carrier picker + the `loadKit`-then-dispatch commit
@@ -450,6 +456,35 @@ not (still open on the decision checklist). **Retired:** the one-stage chip (`fi
 hidden while the map is open. **Ride-along:** the popup's Ready row is dropped (slice 2a's call (1), ruled). Slice 2a's
 known gap still holds: closing the popup after a load leaves the kit aboard, with no client path until slice 3. Not
 built: the `deploy_failed` message's Redeploy / Return (slice 3), and the other kinds.
+
+**AS-BUILT — asset-initiated slice 3a, the on-arrival unload route action (02-10-26; engine + operator CLI, no
+client).** Built to the REVISED block above (the Return fork's engine half, and "Load / unload"), no design change and
+no new number. A `dispatchRouteWithActions` waypoint may carry a third action type, **`{ type: 'unload' }`**: "drop the
+kit this craft carries into this system's inventory when it lands". It carries nothing but its type, because
+`unloadKitCheck` reads the kit's kind off the hold. It is the deploy action's mirror. `routeWaypointError` accepts it
+only under the dispatch-only `allowUnload` (a sibling of `allowDeploy`), so a saved route never carries one. **The
+dispatch refuses it whole, up front,** when the route also carries a deploy (a route ends in ONE kit action), when it is
+not on the **final** waypoint, when that waypoint is not a system (a bare hex, a waystation, a guild Outpost's hex), or
+when the unload would fail **now**: slice 1's `unloadKitCheck`, asked of that system with today's hold, wants exactly one
+kit and nothing else and a system the guild holds. So a doomed trip is never flown or fuelled. A repeating lane is
+refused by slice 1's kit gate, unchanged. **On arrival** `resolveRouteArrival` re-validates through `unloadKitCheck` and
+applies through `kitIntoInventory`, the two the standalone `unloadKit` runs: one unload, two triggers. The hold
+empties. A fresh idle kit is minted at the system with its number from the stored `kitAssetSerial`, so a returned kit
+never reissues an id. Any `deployFailed` clears. Then `advanceRoute` ends the one-shot run, leaving the craft idle at the
+system. **A failed arrival re-check** (the system no longer held, or the hold not exactly one kit) cannot happen today:
+no path takes a system from a guild, and nothing touches a routed craft's hold. If it ever does, the run ENDS the way a
+route action whose target is gone ends (`transport-model.md` §11.6). The craft is idle at its arrival berth, the kit
+still aboard and never dropped, the route cleared, and it is flagged `laneEnded = { reason: 'target-gone', tick }`.
+There is no new flag or reason, and no halt. This differs from the deploy, whose corrupt-state branch halts (decision
+checklist, "Asset-initiated slice 3a"). `copyRouteWaypoint` copies the new shape (the craft's journalled route and the
+snapshot), and the
+craft-route invariant gains `unloadActionViolation` (final waypoint, a system anchor, a one-shot route), the mirror of
+`deployActionViolation`. Operator surface: no new endpoint, since `/action` and `/admin/vehicle/dispatch-route` already
+carry any waypoint. `tools/admin.js dispatch-route` takes a last stop `sys:<id>@unload-kit` (named after the `unload-kit`
+subcommand, because `@unload:` is the dock manifest's) and prints it as "unload kit". **Client seam:** a craft flying an
+unload route publishes `{ type: 'unload' }` in its snapshot route. Today's `actionSummary` shows a blank action line for
+it (it returns `''` for a manifest-less action) and does not break. Not built: the `deploy_failed` message's Redeploy /
+Return forks and the planner's unload mode (client slice 3b), and the other kinds.
 
 ## 6. Generation — starter spacing
 
