@@ -442,11 +442,11 @@ function resolveRouteArrival(state, guild, craft, thisTick) {
 //   - It fails → the craft RETREATS. It does not idle on a hex it could not deploy on — that hex may be a
 //     rival's space, where sitting idle could draw a fine — so it is pulled back toward the nearest system
 //     its guild holds (retreatLanding), the kit still aboard, and flagged `deployFailed = { reason, tick }`
-//     so the player can see why (the `laneEnded` pattern; the next dispatch clears it). The pull-back is a
-//     forced SNAP, not travel: no fuel, no time, no toll or fine, and nothing else moves. The retreat is
-//     also a DISCRETE EVENT the player must be told about, so it records a `deploy_failed` notice on the
-//     guild's event log (docs/event-log.md §10) — HERE, beside the flag, so there is one writer and the
-//     flag and the message cannot disagree.
+//     so the player can see why (the `laneEnded` pattern; the next dispatch, or unloading the kit, clears
+//     it). The pull-back is a forced SNAP, not travel: no fuel, no time, no toll or fine, and nothing else
+//     moves. The retreat is also a DISCRETE EVENT the player must be told about, so it records a
+//     `deploy_failed` notice on the guild's event log (docs/event-log.md §10) — HERE, beside the flag, so
+//     there is one writer and the flag and the message cannot disagree.
 function resolveDeployArrival(state, guild, craft, thisTick) {
   const check = deployCheck(state, guild.id, craft.id, craft.location, craft.cargo);
   if (check.ok) {
@@ -1708,8 +1708,14 @@ function unloadKitCheck(state, guildId, vehicleId, location, cargo) {
 // minted in the checked system, with a new id from the serial. One good in, one kit out. The tick is
 // passed in, not read from state.tick, so a later route-arrival unload can mint on `state.tick + 1`, as
 // deployKit does.
+//
+// It also CLEARS `deployFailed` (RULED 02-10-26). A craft carries that flag because a deploy failed and it
+// retreated with the kit aboard; once the kit is back in an inventory, that failed deploy is over, so the
+// flag would only be stale on an empty, idle craft. The flag is omit-when-absent, so on a craft that never
+// failed the delete does nothing. (The next dispatch still clears it too, as before.)
 function kitIntoInventory(guild, craft, check, tick) {
   delete craft.cargo;
+  delete craft.deployFailed;
   mintKitAsset(guild, check.kind, check.systemId);
   craft.updatedAtTick = tick; // §15.2: the unload is a mutation of the craft — record its tick
 }

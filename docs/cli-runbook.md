@@ -136,4 +136,4 @@ it, occupy the target mid-flight:
 
 The snap costs no fuel and no time. The flag clears on the craft's next dispatch, and the kit is still
 aboard, so the next dispatch can send it somewhere free — or, once the craft is idle at a held system,
-`unload-kit` drops the kit back into that system's inventory.
+`unload-kit` drops the kit back into that system's inventory (which clears the flag too).

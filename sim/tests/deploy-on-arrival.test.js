@@ -33,7 +33,7 @@
 // inventory as an idle asset, then loaded onto the empty heavy berthed there (kit-fixtures.js `kitAboard`).
 // The deploy and the retreat are UNCHANGED; these tests prove they still work through the new model. And
 // one more: a craft whose retreat parks it AT a held system can drop its kit back into that system's
-// inventory with the standalone unloadKit.
+// inventory with the standalone unloadKit, which also clears its `deployFailed` (RULED 02-10-26).
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -397,13 +397,16 @@ test('clamp + unload: a craft pulled back AT its held system drops the kit into 
   const { s: flying, arrivalTick } = occupiedRun(DEPLOY_RETREAT_HEXES);
   const parked = tickToIdle(flying);
   assert.deepEqual(craftOf(parked).location, AT_HOME, 'the clamp parked it at home, kit aboard');
+  assert.deepEqual(craftOf(parked).deployFailed, { reason: 'occupied', tick: arrivalTick }, 'the retreat flagged it');
   const s = accept(parked, createUnloadKitAction({ guildId: 'g1', vehicleId: craftOf(parked).id }));
   assertKitsMoved(parked, s, 'g1', 0, 'unloadKit after a retreat');
   assert.equal(craftOf(s).cargo, undefined, 'the hold is empty');
   assert.deepEqual(s.guilds[0].assets, [{ id: 'asset_g1_outpost_02', kind: 'outpost', systemId: HOME.id, maintenanceCondition: 1 }],
     'a fresh idle kit at home — the loaded kit was _01, and ids never repeat');
-  // The flag is cleared by the next DISPATCH (the ruled rule, unchanged) — an unload is not one, so it stays.
-  assert.deepEqual(craftOf(s).deployFailed, { reason: 'occupied', tick: arrivalTick });
+  // The kit is back in an inventory, so the failed deploy is over: the unload clears the flag (RULED 02-10-26)
+  // rather than leaving it stale on an empty, idle craft. The key is gone, not set to null (omit-when-absent).
+  assert.equal('deployFailed' in craftOf(s), false, 'unloading the kit clears deployFailed');
+  assert.equal(buildSnapshot(s).guilds[0].vehicles[0].deployFailed, undefined, 'and the snapshot row drops it');
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 

@@ -320,6 +320,17 @@ test('unload: the kit leaves the hold and a FRESH idle kit asset appears in the 
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
+test('unload: a craft that never failed a deploy changes only its hold and its tick — no deployFailed appears', () => {
+  // Fix A (RULED 02-10-26): the unload clears `deployFailed`. On a craft that never carried the flag that
+  // clear must do nothing — the retreat-then-unload case is in deploy-on-arrival.test.js.
+  const before = loaded();
+  assert.equal('deployFailed' in craftOf(before), false);
+  const s = accept(before, unload(before));
+  const strip = (craft) => { const c = structuredClone(craft); delete c.cargo; delete c.updatedAtTick; return c; };
+  assert.deepEqual(strip(craftOf(s)), strip(craftOf(before)), 'every other field of the craft is untouched');
+  assert.equal('deployFailed' in craftOf(s), false);
+});
+
 test('unload gates: the hold must be exactly one kit and nothing else', () => {
   const empty = kitState();
   assert.match(refuse(empty, unload(empty)), /must carry exactly one kit and nothing else to unload — its hold is {}/);

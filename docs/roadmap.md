@@ -2837,6 +2837,19 @@ boundary so the later hex-map swap doesn't touch it.
     auto-appended unload action); the real kit sources; storing a kit AT an Outpost; the other kinds. **Two calls on the
     decision checklist** ("Asset-initiated slice 1 — two calls"): a standalone unload leaves a retreated craft's
     `deployFailed` set (only a dispatch clears it, as ruled); and an idle kit asset carries no tick of its own.
+    *(⤳ The first is RULED 02-10-26 — the unload clears it — and BUILT, "engine-integrity tidy" below.)*
+  - **engine-integrity tidy (ENGINE + tests, NO client).** 🟢 *BUILT (02-10-26).* No new number, no client, and the
+    deploy / retreat / `loadKit` are untouched.
+    **Fix A — `unloadKit` clears `deployFailed`** (closes the decision-checklist call "a standalone unload leaves
+    `deployFailed` set", RULED: the unload clears it). One line in `kitIntoInventory`, the ONE unload apply (so the
+    Return fork's on-arrival unload inherits it): once a retreated kit is back in an inventory the failed deploy is
+    over, so the flag would only be stale on an empty, idle craft. The flag is omit-when-absent, so a craft that never
+    failed is unchanged. The retreat still sets it and the next dispatch still clears it; this adds "…or unloading the
+    kit". `territory-model.md` §5 and `design.md` §4 annotated. `deploy-on-arrival.test.js`'s retreat-then-unload test
+    now asserts the flag is gone (it pinned the old behaviour); `kit-asset.test.js` +1 (a craft that never failed is
+    unchanged by an unload). Shown to fire: without the line the deploy test fails. **A NO-OP on every existing
+    golden:** `deployFailed` is omit-when-absent and no golden retreats, so no golden-bearing test file is touched.
+    Sim 1,886 → **1,887 green**; tools **73** green (unchanged).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
@@ -2969,10 +2982,11 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   its destination).
 - **Asset-initiated slice 1 — two calls (02-10-26, 2.2 deploy pipeline, the kit as an idle asset; `design.md` §4
   AS-BUILT)**, built the conservative way and flagged rather than ruled. **(1) A standalone unload leaves
-  `deployFailed` set.** The flag is ruled "cleared by the next dispatch", and an unload is not a dispatch, so a heavy
+  `deployFailed` set.** ~~The flag is ruled "cleared by the next dispatch", and an unload is not a dispatch, so a heavy
   that retreated AT a held system and then unloads its kit by hand keeps `deployFailed` until it next flies. The Return
   fork (a dispatch with an unload appended) clears it anyway. Confirm, or rule that `unloadKit` clears it too (it is
-  one line in `kitIntoInventory`). **(2) An idle kit asset carries no tick of its own.** `createAsset` deliberately
+  one line in `kitIntoInventory`).~~ **⤳ 02-10-26 — RULED: `unloadKit` clears it too. BUILT and CLOSED** (the one line
+  in `kitIntoInventory`; 2.2 deploy pipeline, "engine-integrity tidy"). **(2) An idle kit asset carries no tick of its own.** `createAsset` deliberately
   has no `updatedAtTick` / `createdAtTick` (its comment defers a stamp to the maintenance slice, the first thing that
   mutates an asset), so `grantKit` — like `grantAsset`, the Dockyard and the Syndicate delivery — records its tick only
   in the journal; `loadKit` / `unloadKit` stamp the craft. Confirm, or rule a `createdAtTick` on kit assets (or on all

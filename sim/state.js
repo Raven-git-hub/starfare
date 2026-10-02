@@ -825,7 +825,8 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
 // `{ reason: 'target-gone', tick }` so the player sees why it stopped. OMITTED otherwise, and cleared by
 // the craft's next dispatch. `deployFailed` (roadmap 2.2 deploy pipeline slice 2) is the same kind of
 // flag: set by the arrival step when a craft's on-arrival deploy fails and it retreats — `{ reason:
-// 'occupied' | 'out-of-range', tick }` — never assembled here, and cleared by the next dispatch.
+// 'occupied' | 'out-of-range', tick }` — never assembled here, and cleared by the next dispatch or by
+// unloading the kit (kitIntoInventory, sim/actions.js).
 function createVehicle({
   id,
   ownerGuildId,

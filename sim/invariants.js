@@ -1724,7 +1724,8 @@ function checkVehicleIntegrity(state) {
       // The FAILED-DEPLOY flag (roadmap 2.2 deploy pipeline slice 2 — the laneEnded pattern). ABSENT is legal
       // (the usual case); a PRESENT flag is `{ reason, tick }` with a known reason and a whole tick no later
       // than now (§15.2 — it records when the deploy failed), and it rides a craft with NO route: the failed
-      // deploy was the route's last stop, so the route ended there, and the next dispatch clears the flag.
+      // deploy was the route's last stop, so the route ended there, and the next dispatch (or unloading the
+      // kit) clears the flag.
       if (v.deployFailed !== undefined) {
         const df = v.deployFailed;
         const shapeOk = df && typeof df === 'object' && DEPLOY_FAILED_REASONS.includes(df.reason)

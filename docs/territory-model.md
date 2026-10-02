@@ -267,7 +267,8 @@ system. The **kit stays aboard** and the craft is **idle** there. It is a forced
 travel** — no fuel, no time, no toll or fine, no supply move — so nothing is lost but the trip and its
 non-refundable fuel (`transport-model.md` §11.3). The craft is flagged **`deployFailed = { reason,
 tick }`** (`occupied` / `out-of-range`), the `laneEnded` pattern, so the player can see why; the next
-dispatch clears it. *(Deferred, not built: guaranteeing the landing hex is not itself rival or contested
+dispatch clears it. *(⤳ 02-10-26: so does unloading the kit — `unloadKit`, "AS-BUILT — asset-initiated slice 1"
+below.)* *(Deferred, not built: guaranteeing the landing hex is not itself rival or contested
 space. Pulling toward the nearest held system is the ruled behaviour; refining the landing needs the
 §1–§3 control map, and lands with it.)*
 
@@ -363,7 +364,10 @@ name a kit. Three operator-journalled actions convert between them: **`grantKit 
 (repointed — mints one idle kit at a system), **`loadKit { guildId, vehicleId, assetId }`** (the named idle kit →
 an empty, idle heavy berthed at the kit's own system — the ruled same-system constraint) and **`unloadKit {
 guildId, vehicleId }`** (the heavy's one kit → a fresh idle kit in the held system it is berthed at; refused on a
-bare hex or at an Outpost). One kit in, one good out, and back; a deploy is still the only thing that consumes a
+bare hex or at an Outpost). *(⤳ 02-10-26: the unload also clears the craft's `deployFailed` — once a retreated
+kit is back in an inventory the failed deploy is over, so the flag would only be stale; the next dispatch still
+clears it too. One line in `kitIntoInventory`, the one unload apply, so the Return fork's on-arrival unload
+inherits it.)* One kit in, one good out, and back; a deploy is still the only thing that consumes a
 kit. Kit ids come from a stored per-guild serial (`asset_<guild>_outpost_NN`), because a loaded kit leaves the
 inventory and its number must never return (`design.md` §15.4). The unload's rule and apply take the location
 and tick as arguments, as `deployCheck` / `deployKit` do, so the Return fork's on-arrival unload can reuse them.
