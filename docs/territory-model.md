@@ -205,19 +205,24 @@ client-only. The range paint, the pre-deploy quote, and the arrival deploy/retre
   ruled constraint — `design.md` §4's per-system inventory — and it forces the player
   to position a hauler first, which is the point.) The old **heavy-first entry** (a Deploy action on
   a heavy's own Dispatch popup) is **removed**: a heavy only ever holds a kit mid-deployment or after
-  a retreat, and both are reached otherwise (below).
+  a retreat, and both are reached otherwise (below). *(⤳ BUILT 02-10-26 — the Deploy button, the popup, the
+  carrier dropdown, and the heavy-first entry removed: "AS-BUILT — asset-initiated client slice 2a" below.)*
 
 - **Plan — the normal route planner, reused whole.** Once a carrier is chosen the player plans
   with the **full multi-leg transport route planner** — same chrome, same confirm, same quote
   — not a reduced one-leg map. The legal **range ring** is shown as the guide for where the
   **final** waypoint may land, and a **deploy** action is auto-appended to that final waypoint when
   it is a bare hex in range. Intermediate stops are plain turning-points: the kit fills the whole
-  heavy hold, so no cargo action can ride them (the engine refuses a dock there regardless).
+  heavy hold, so no cargo action can ride them (the engine refuses a dock there regardless). *(⤳ Not yet:
+  client slice 2a plans on the single-leg deploy map, reused as built; lifting it to the multi-leg planner is
+  slice 2b.)*
 
 - **Commit — in the popup.** The planner's own **Finalise → Dispatch** is the commit (this
   replaces the built map's on-tile DEPLOY-as-finalise). On commit the kit **loads** onto the chosen
   carrier — **instant, because carrier and kit sit in the same system** — and the lane
-  launches as an ordinary route in Operations.
+  launches as an ordinary route in Operations. *(⤳ Interim, client slice 2a: the commit is still the map's
+  on-tile DEPLOY, which now sends `loadKit` and then, only if the load is accepted, the dispatch — this ruled order.
+  The commit moves into the popup with the multi-leg planner, slice 2b.)*
 
 - **Arrival — unchanged.** The deploy is instant and the carrier is left **parked on the new
   Outpost** (the derived `dockStatus: parked`, already built and test-locked).
@@ -326,7 +331,8 @@ or the constant. Not built: the paint itself (the client, next), and the `tollGa
 **AS-BUILT — client slice 2, the deploy map + on-tile DEPLOY (01-10-26; `client/game.html` only, no engine).**
 Built to "The deploy map" above, no design change. A heavy carrying an `outpost_kit` gets a **Deploy** button in its
 Dispatch popup, beside Plan Route; it opens the route builder's planning mode in a deploy variant at 4×, centred on
-the craft. The legal range is the player guild row's `deployRange.outpost`, drawn as the dashed outer border of the
+the craft. *(⤳ That entry is REMOVED 02-10-26 — the map now opens from the idle outpost, for a carrier picked in the
+Deploy Outpost popup: "AS-BUILT — asset-initiated client slice 2a" below. The map itself is unchanged.)* The legal range is the player guild row's `deployRange.outpost`, drawn as the dashed outer border of the
 union of the anchors' `hexesInRadius` disks (the radius is the engine's). The client refuses a click on a hex that
 is not bare (a system, a waystation, the Citadel's hex, any guild's Outpost), is off the disc, or is outside the
 ring the way the planner refuses a bad candidate: the chip's Deploy is disabled, with the reason as its hint. That
@@ -376,7 +382,36 @@ null`, which is what `__myIdleAssets('outpost')` reads. Operator surface: `POST 
 `/admin/vehicle/grant-kit`) and `POST /admin/vehicle/load-kit|unload-kit`, with `tools/admin.js grant-kit
 --system`, `load-kit` and `unload-kit`. Not built: the client (the idle-outpost Deploy button, the
 outpost-subject popup and carrier dropdown, the planner reuse, the message's Redeploy / Return), the
-route-arrival unload, the real kit sources, storing a kit at an Outpost, the other kinds.
+route-arrival unload, the real kit sources, storing a kit at an Outpost, the other kinds. *(⤳ The Deploy button,
+the popup and the carrier dropdown are BUILT 02-10-26 — client slice 2a, next.)*
+
+**AS-BUILT — asset-initiated client slice 2a, the entry + carrier picker + the `loadKit`-then-dispatch commit
+(02-10-26; `client/game.html` only, no engine).** Built to the REVISED block above, no design change and no new
+number. **The entry:** in OPERATIONS → IDLE an idle asset row of kind `'outpost'` (an undeployed kit) carries a
+**Deploy** button, the Dispatch / Dock button's own style; miner and factory rows are unchanged. **The popup:**
+Deploy opens the **Deploy Outpost** popup (`#deploy-overlay`), a small overlay built from the Dispatch popup's
+markup and classes. The CSS rules it uses name it beside `#dispatch-overlay` (and beside `#est-overlay` for the
+`est-select`), so the two popups share one rule each rather than a copy. It reads eyebrow "Deploy Outpost",
+"Outpost Kit · #NN", a summary (Kind / Stored at / Ready) and the outpost art. Its **Carrier** dropdown lists the
+player guild's heavy transports that are idle, off any lane, with an empty hold, and berthed at the kit's own
+system: exactly what `loadKit` accepts. With none it reads **"No Available Transport"** and Plan Route stays
+disabled; picking a carrier enables it. The list is read when the popup opens, and the chosen carrier is re-read
+at Plan Route. **Plan:** Plan Route opens the existing single-leg deploy map for the chosen carrier, unchanged
+(range ring, quote, DEPLOY / CANCEL chip, arrow-key pan), centred on the carrier at the kit's system. The map
+needs nothing from the hold, so the carrier starts empty. `startPlanning` carries the kit's id as
+`PLAN.deployKitAssetId`. **Commit:** for a plan carrying a kit id, the on-tile DEPLOY sends `loadKit { guildId,
+vehicleId, assetId }` through `__sendAction`, and only if it is accepted sends the deploy dispatch through the same
+`__dispatchDeploy` path as before. A refused load shows the engine's reason on the Deploy Target row and sends
+nothing more, so the kit stays in inventory. Once the load lands the plan drops its kit id. A dispatch refused after
+the load therefore leaves the heavy holding its kit (the state a retreat leaves). A retry from the still-open map is
+the plain dispatch, never a second load. `loadKit` fires only at DEPLOY, so Cancel, or leaving the map, leaves the
+kit in inventory. **The heavy-first entry is removed:** `deployKindOf`, the Dispatch popup's Deploy button and
+`onDeploy` are gone. A kit now reaches a hold only through `loadKit` (this commit, or the operator lever).
+**Known gap until slice 3:** a heavy holding a kit with no deploy under way (left by a retreat, by a dispatch
+refused after its load, or by an operator `load-kit`) has no client deploy path until the `deploy_failed`
+message's Redeploy fork lands. It is operator-recoverable (`unload-kit` back into inventory, then Deploy from the
+idle row), and a retreat is near-impossible in single-guild play. Not built: the multi-leg planner and the commit in
+the popup (slice 2b), the message's Redeploy / Return (slice 3), and the other kinds.
 
 ## 6. Generation — starter spacing
 

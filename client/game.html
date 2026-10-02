@@ -1312,7 +1312,8 @@ select.field{appearance:none; cursor:pointer;}
    collapsible headers (the same tree idiom the Deuterium rail uses, ops-prefixed). Both header
    levels toggle a `collapsed` class on their container; CSS alone hides the body and rotates the
    caret, so the click handler only flips the class (no re-render). Read-only this slice — the
-   machine rows are plain (no Manage popup, that is §8). */
+   machine rows are plain (no Manage popup, that is §8) — bar an idle outpost's row, which carries
+   DEPLOY (2.2 deploy pipeline; its rule sits with the Dispatch / Dock buttons below). */
 #tp-ops #ops-idle-list{padding:10px;}
 #tp-ops .ops-idle-sys{margin-bottom:8px;}
 #tp-ops .ops-idle-sys:last-child{margin-bottom:0;}
@@ -1380,9 +1381,16 @@ select.field{appearance:none; cursor:pointer;}
    flex pair — one button fills the width, two split it evenly. */
 #tp-ops .ops-tp-btns{display:flex; gap:6px;}
 #tp-ops .ops-tp-dispatch,
-#tp-ops .ops-tp-dock{width:100%; font-family:var(--ops-mono); font-size:10px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--ops-amber2); background:var(--ops-panel); border:1px solid var(--ops-amber-dim); border-radius:6px; padding:8px; cursor:pointer;}
+#tp-ops .ops-tp-dock,
+#tp-ops .ops-idle-deploy{width:100%; font-family:var(--ops-mono); font-size:10px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--ops-amber2); background:var(--ops-panel); border:1px solid var(--ops-amber-dim); border-radius:6px; padding:8px; cursor:pointer;}
 #tp-ops .ops-tp-dispatch:hover,
-#tp-ops .ops-tp-dock:hover{background:var(--ops-amber-dim); color:var(--ops-ink);}
+#tp-ops .ops-tp-dock:hover,
+#tp-ops .ops-idle-deploy:hover{background:var(--ops-amber-dim); color:var(--ops-ink);}
+/* An idle OUTPOST's row in IDLE (2.2 deploy pipeline) carries DEPLOY — the Dispatch / Dock button above, sized
+   to its label because it shares one line with the kit's id and kind. The id takes the slack, so the kind stays
+   beside the button (on a two-item miner / factory row that is the layout it already had). */
+#tp-ops .ops-idle-deploy{width:auto; flex:0 0 auto; padding:3px 10px;}
+#tp-ops .ops-idle-machine .mid{flex:1;}
 
 /* RIGHT: the pilot hero (client/assets/characters/pilot.jpg under the Guild-Hall scrim) */
 #tp-ops .ops-thero{position:relative; padding:0; overflow:hidden; min-height:0; border:1px solid var(--ops-line); border-radius:10px;}
@@ -1643,11 +1651,11 @@ select.field{appearance:none; cursor:pointer;}
    which never carried the marker.) */
 #est-overlay .note{font-family:var(--mono); font-size:10px; color:var(--ink3); line-height:1.6; margin:-4px 0 12px}
 
-#est-overlay select.est-select{font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--void); border:1px solid var(--line2); border-radius:8px; padding:11px 34px 11px 12px; cursor:pointer; width:100%; appearance:none; text-overflow:ellipsis;
+#est-overlay select.est-select, #deploy-overlay select.est-select{font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--void); border:1px solid var(--line2); border-radius:8px; padding:11px 34px 11px 12px; cursor:pointer; width:100%; appearance:none; text-overflow:ellipsis;
   background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);
   background-position:calc(100% - 18px) 52%, calc(100% - 13px) 52%; background-size:5px 5px,5px 5px; background-repeat:no-repeat}
-#est-overlay select.est-select:focus{outline:none; border-color:var(--amber)}
-#est-overlay select.est-select:disabled{opacity:.5; cursor:not-allowed}
+#est-overlay select.est-select:focus, #deploy-overlay select.est-select:focus{outline:none; border-color:var(--amber)}
+#est-overlay select.est-select:disabled, #deploy-overlay select.est-select:disabled{opacity:.5; cursor:not-allowed}
 
 #est-overlay .cfg{display:flex; align-items:stretch; gap:9px}
 #est-overlay .tierbadge{font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.05em; color:var(--void); background:var(--amber); border-radius:7px; padding:0 14px; display:flex; align-items:center; flex:none}
@@ -1908,8 +1916,11 @@ select.field{appearance:none; cursor:pointer;}
    side hero (the per-class unit art) with the primary action. This slice the ONLY action is "Show on
    map" (jump-and-centre on the craft's hex); destination / route / fuel / the real dispatch are slice
    (b). Every field is a PUBLISHED snapshot value (class, location, maintenance) — the client computes
-   no game number (§5/§18). ===== */
-#dispatch-overlay{
+   no game number (§5/§18).
+   #deploy-overlay — the DEPLOY OUTPOST popup (2.2 deploy pipeline, asset-initiated) — is built from this
+   same chrome: every rule it uses names it beside #dispatch-overlay, so the two popups share ONE rule
+   each and cannot drift apart. ===== */
+#dispatch-overlay, #deploy-overlay{
   --void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
   --line:rgba(232,223,200,0.10); --line2:rgba(232,223,200,0.20);
   --amber:#C9A227; --amber-dim:#7A6420; --amber-ghost:rgba(201,162,39,0.10);
@@ -1924,32 +1935,32 @@ select.field{appearance:none; cursor:pointer;}
   padding:26px 20px; overflow-y:auto; z-index:570;
   font-family:var(--sans); font-size:14px; line-height:1.45; color:var(--ink);
 }
-#dispatch-overlay.open{display:flex}
-#dispatch-overlay .est{width:100%; max-width:900px; background:linear-gradient(180deg,#12151C,#0F1218); border:1px solid var(--line2); border-radius:14px; box-shadow:0 30px 90px rgba(0,0,0,.6); overflow:hidden; position:relative}
-#dispatch-overlay .est-head{display:flex; align-items:flex-start; gap:16px; padding:18px 22px 16px; border-bottom:1px solid var(--line); background:radial-gradient(700px 200px at 85% -40%, rgba(201,162,39,.06), transparent 70%)}
-#dispatch-overlay .est-head .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
-#dispatch-overlay .est-head h2{font-family:var(--serif); font-weight:600; font-size:22px; margin:5px 0 0; letter-spacing:.02em}
-#dispatch-overlay .est-close{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--ink2); border-radius:8px; width:34px; height:34px; font-size:16px; cursor:pointer; flex:none}
-#dispatch-overlay .est-close:hover{border-color:var(--red); color:var(--red)}
-#dispatch-overlay .est-body{display:grid; grid-template-columns:1fr 340px; gap:0}
-#dispatch-overlay .est-main{padding:22px 22px 24px; border-right:1px solid var(--line)}
+#dispatch-overlay.open, #deploy-overlay.open{display:flex}
+#dispatch-overlay .est, #deploy-overlay .est{width:100%; max-width:900px; background:linear-gradient(180deg,#12151C,#0F1218); border:1px solid var(--line2); border-radius:14px; box-shadow:0 30px 90px rgba(0,0,0,.6); overflow:hidden; position:relative}
+#dispatch-overlay .est-head, #deploy-overlay .est-head{display:flex; align-items:flex-start; gap:16px; padding:18px 22px 16px; border-bottom:1px solid var(--line); background:radial-gradient(700px 200px at 85% -40%, rgba(201,162,39,.06), transparent 70%)}
+#dispatch-overlay .est-head .eyebrow, #deploy-overlay .est-head .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
+#dispatch-overlay .est-head h2, #deploy-overlay .est-head h2{font-family:var(--serif); font-weight:600; font-size:22px; margin:5px 0 0; letter-spacing:.02em}
+#dispatch-overlay .est-close, #deploy-overlay .est-close{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--ink2); border-radius:8px; width:34px; height:34px; font-size:16px; cursor:pointer; flex:none}
+#dispatch-overlay .est-close:hover, #deploy-overlay .est-close:hover{border-color:var(--red); color:var(--red)}
+#dispatch-overlay .est-body, #deploy-overlay .est-body{display:grid; grid-template-columns:1fr 340px; gap:0}
+#dispatch-overlay .est-main, #deploy-overlay .est-main{padding:22px 22px 24px; border-right:1px solid var(--line)}
 /* The summary the dispatch controls slot into next slice — a labelled read-out list. */
-#dispatch-overlay .dp-sechead{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2); margin-bottom:14px}
-#dispatch-overlay .dp-sum{border-top:1px solid var(--line)}
-#dispatch-overlay .dp-sum .row{display:flex; justify-content:space-between; align-items:baseline; gap:14px; padding:13px 2px; border-bottom:1px solid rgba(232,223,200,0.08)}
-#dispatch-overlay .dp-sum .row .k{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3)}
-#dispatch-overlay .dp-sum .row .v{font-family:var(--mono); font-size:14px; color:var(--ink); text-align:right; font-variant-numeric:tabular-nums}
+#dispatch-overlay .dp-sechead, #deploy-overlay .dp-sechead{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2); margin-bottom:14px}
+#dispatch-overlay .dp-sum, #deploy-overlay .dp-sum{border-top:1px solid var(--line)}
+#dispatch-overlay .dp-sum .row, #deploy-overlay .dp-sum .row{display:flex; justify-content:space-between; align-items:baseline; gap:14px; padding:13px 2px; border-bottom:1px solid rgba(232,223,200,0.08)}
+#dispatch-overlay .dp-sum .row .k, #deploy-overlay .dp-sum .row .k{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3)}
+#dispatch-overlay .dp-sum .row .v, #deploy-overlay .dp-sum .row .v{font-family:var(--mono); font-size:14px; color:var(--ink); text-align:right; font-variant-numeric:tabular-nums}
 /* The side column is a plain top-to-bottom stack: the whole portrait, then a solid footer with
    the label + action. Unlike the other est heroes it does NOT float a button over a full-bleed
    image — the ship shows uncropped and the button sits beneath it. */
-#dispatch-overlay .est-side{background:#0d0f14; display:flex; flex-direction:column; min-height:100%}
+#dispatch-overlay .est-side, #deploy-overlay .est-side{background:#0d0f14; display:flex; flex-direction:column; min-height:100%}
 /* The art files (assets/units/*.jpg) are 848×1264 portraits composed vertically. A box at the
    image's own ratio means background-size:cover fills it edge-to-edge with NO crop, so the entire
    craft reads top to bottom. It spans the side column's 340px grid track. The per-class
    background-image is set by the popup's JS (openDispatch) and left untouched here. */
-#dispatch-overlay .est-side .art{aspect-ratio:848 / 1264; background-size:cover; background-position:center; background-repeat:no-repeat}
-#dispatch-overlay .dp-foot{padding:16px 20px 20px; display:flex; flex-direction:column; gap:12px; background:#0d0f14}
-#dispatch-overlay .dp-foot .stitle{font-family:var(--mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
+#dispatch-overlay .est-side .art, #deploy-overlay .est-side .art{aspect-ratio:848 / 1264; background-size:cover; background-position:center; background-repeat:no-repeat}
+#dispatch-overlay .dp-foot, #deploy-overlay .dp-foot{padding:16px 20px 20px; display:flex; flex-direction:column; gap:12px; background:#0d0f14}
+#dispatch-overlay .dp-foot .stitle, #deploy-overlay .dp-foot .stitle{font-family:var(--mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
 #dispatch-overlay .dp-show{width:100%; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer}
 #dispatch-overlay .dp-show:hover{background:#DCB43A}
 /* ===== b2b-2 (the route-planner client): the left column's dynamic body. The pre-plan state is
@@ -1957,7 +1968,8 @@ select.field{appearance:none; cursor:pointer;}
    the Planned Route section (a scrollable waypoint list beside Time-over-Cost). Every game number here
    is the engine's — the manifest reads the craft's published cargo/used/capacity, and the route's
    time/cost come from POST /vehicle/quote (§18). ===== */
-#dispatch-overlay .dp-manifest{margin-top:22px}
+/* (the Deploy Outpost popup's Carrier section sits where the Onboard Manifest does, so it shares its spacing) */
+#dispatch-overlay .dp-manifest, #deploy-overlay .kd-carrier{margin-top:22px}
 #dispatch-overlay .dp-manifest .mbox{height:92px; overflow-y:auto; border:1px solid var(--line); border-radius:8px; background:var(--panel); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px}
 #dispatch-overlay .dp-manifest .mbox .empty{font-family:var(--mono); font-size:12px; letter-spacing:.06em; color:var(--ink2)}
 #dispatch-overlay .dp-manifest .mbox .cap{font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--ink3); font-variant-numeric:tabular-nums}
@@ -1968,12 +1980,12 @@ select.field{appearance:none; cursor:pointer;}
 #dispatch-overlay .dp-manifest .mbox .mrow .q{font-family:var(--mono); font-size:12px; color:var(--ink2); font-variant-numeric:tabular-nums; flex:none}
 #dispatch-overlay .dp-manifest .msum{margin-top:8px; font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--ink3); font-variant-numeric:tabular-nums; text-align:right}
 /* the left-column action buttons (Maintenance/Plan Route, then Edit/Dispatch) */
-#dispatch-overlay .dp-actions{margin-top:22px; display:flex; gap:12px}
-#dispatch-overlay .dp-btn{flex:1; font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; padding:13px 12px; border-radius:9px; cursor:pointer; background:var(--panel); border:1px solid var(--line2); color:var(--ink)}
-#dispatch-overlay .dp-btn:hover:not(:disabled){border-color:var(--amber); color:var(--amber)}
-#dispatch-overlay .dp-btn.primary{background:var(--amber); border:1px solid var(--amber); color:var(--void)}
-#dispatch-overlay .dp-btn.primary:hover:not(:disabled){background:#DCB43A; border-color:#DCB43A}
-#dispatch-overlay .dp-btn:disabled{opacity:.4; cursor:not-allowed}
+#dispatch-overlay .dp-actions, #deploy-overlay .dp-actions{margin-top:22px; display:flex; gap:12px}
+#dispatch-overlay .dp-btn, #deploy-overlay .dp-btn{flex:1; font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; padding:13px 12px; border-radius:9px; cursor:pointer; background:var(--panel); border:1px solid var(--line2); color:var(--ink)}
+#dispatch-overlay .dp-btn:hover:not(:disabled), #deploy-overlay .dp-btn:hover:not(:disabled){border-color:var(--amber); color:var(--amber)}
+#dispatch-overlay .dp-btn.primary, #deploy-overlay .dp-btn.primary{background:var(--amber); border:1px solid var(--amber); color:var(--void)}
+#dispatch-overlay .dp-btn.primary:hover:not(:disabled), #deploy-overlay .dp-btn.primary:hover:not(:disabled){background:#DCB43A; border-color:#DCB43A}
+#dispatch-overlay .dp-btn:disabled, #deploy-overlay .dp-btn:disabled{opacity:.4; cursor:not-allowed}
 /* the Planned Route section — two equal-height boxes: list | time-over-cost */
 #dispatch-overlay .dp-route{margin-top:22px; display:grid; grid-template-columns:1fr 148px; gap:12px}
 #dispatch-overlay .dp-route .wp-wrap{position:relative}
@@ -3421,6 +3433,45 @@ select.field{appearance:none; cursor:pointer;}
   </div>
 </div>
 
+<!-- The DEPLOY OUTPOST popup (2.2 deploy pipeline, asset-initiated — territory-model.md §5 REVISED). Opened from
+     an idle outpost's Deploy button in OPERATIONS, for ONE kit. The Dispatch popup's markup and classes, with the
+     kit as the subject: its summary, the Carrier dropdown, and Plan Route → the deploy map for the chosen carrier.
+     Filled by the deploy-kit-wire IIFE. -->
+<div id="deploy-overlay">
+  <div class="est">
+    <div class="est-head">
+      <div>
+        <div class="eyebrow">Deploy Outpost</div>
+        <h2 id="kdName">—</h2>
+      </div>
+      <button class="est-close" id="kdClose" title="Close (Esc)">✕</button>
+    </div>
+    <div class="est-body">
+      <div class="est-main">
+        <div class="dp-sechead">Outpost</div>
+        <div class="dp-sum">
+          <div class="row"><span class="k">Kind</span><span class="v" id="kdKind">—</span></div>
+          <div class="row"><span class="k">Stored at</span><span class="v" id="kdStored">—</span></div>
+          <div class="row"><span class="k">Ready</span><span class="v" id="kdReady">—</span></div>
+        </div>
+        <div class="kd-carrier">
+          <div class="dp-sechead">Carrier</div>
+          <select class="est-select" id="kdCarrier"></select>
+        </div>
+        <div class="dp-actions">
+          <button class="dp-btn primary" id="kdPlanBtn" type="button" disabled>Plan Route</button>
+        </div>
+      </div>
+      <div class="est-side">
+        <div class="art" style="background-image:url('assets/units/outpost.jpg')"></div>
+        <div class="dp-foot">
+          <div class="stitle">Outpost Kit</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- The read-only OUTPOST MANAGER (roadmap 2.2). Opened from a guild Outpost's OPEN DETAILS button.
      Three columns: the outpost hero (DOCKED / PARKED over the portrait) | the centre (storage donut +
      a parked Maintenance Hangar, then the per-tier resource tables) | the selected berth's craft hero.
@@ -3885,10 +3936,13 @@ select.field{appearance:none; cursor:pointer;}
   // `deployKind` (2.2 deploy pipeline) opens the DEPLOY MAP instead (territory-model.md §5, RULED 01-10-26):
   // the same mode, chrome and draw pass, retitled for the kit's lane, at the ruled 4× (DEPLOY_MAP_ZOOM),
   // with #app.deploying hiding Load Route / Finalise. Omitted for every ordinary route.
-  function startPlanning(vehicle, waypoints, routeName, loop, deployKind) {
+  // `deployKitAssetId` (asset-initiated, territory-model.md §5 REVISED) is the idle kit the deploy is for, still
+  // in the system's inventory: the vehicle is the carrier picked for it, and DEPLOY loads the kit (loadKit) before
+  // it dispatches. Nothing is loaded on the way in, so leaving the map leaves the kit where it was.
+  function startPlanning(vehicle, waypoints, routeName, loop, deployKind, deployKitAssetId) {
     if (!vehicle || !vehicle.location) return;
     PLAN = { vehicle: vehicle, origin: vehicle.location, waypoints: (waypoints || []).map(copyWaypoint), candidate: null, candidateArmed: false, candidateAction: null, routeName: routeName || '', loop: !!loop,
-             deploy: deployKind || null, deploySending: false, deployRefused: '', deployQuote: null };
+             deploy: deployKind || null, deployKitAssetId: deployKitAssetId || null, deploySending: false, deployRefused: '', deployQuote: null };
     closeLoadMenu();
     planActive = true;
     const c = resolveAnchor(vehicle.location);
@@ -4267,17 +4321,41 @@ select.field{appearance:none; cursor:pointer;}
   // dispatchActionFor → dispatchRouteWithActions, via wireWaypoints). The map stays in deploy mode until the
   // engine answers: an accept ends it (the craft is now in transit); a refusal is shown on the target, the
   // selection kept, so the player can CANCEL and pick again.
+  // An ASSET-INITIATED plan (it carries PLAN.deployKitAssetId — territory-model.md §5 REVISED) first LOADS the kit
+  // onto the carrier (loadKit), the ruled order: only an accepted load goes on to the dispatch, so a refused load
+  // sends nothing more and the kit stays in inventory. Once loaded the kit is aboard, so the plan drops its kit id:
+  // a dispatch refused after the load leaves the heavy holding its kit (the state a retreat leaves), and a retry
+  // from here — CANCEL, a new hex, DEPLOY — is the plain dispatch, never a second load.
   async function confirmDeploy() {
     if (!PLAN || !PLAN.deploy || !PLAN.candidate || PLAN.deploySending || !window.__dispatchDeploy) return;
     if (deployRefusal(PLAN.candidate)) { refreshPlanState(); return; } // the map moved under the selection
     const plan = PLAN;
     plan.deploySending = true; plan.deployRefused = '';
     refreshPlanState();
-    const out = await window.__dispatchDeploy(plan.vehicle, [{ anchor: plan.candidate, action: deployAction() }]);
+    let out = { accepted: true };
+    if (plan.deployKitAssetId) {
+      out = await loadDeployKit(plan);
+      if (out && out.accepted) plan.deployKitAssetId = null; // the kit is aboard now
+      if (PLAN !== plan) return; // planning ended while the load posted — send nothing more
+    }
+    if (out && out.accepted) out = await window.__dispatchDeploy(plan.vehicle, [{ anchor: plan.candidate, action: deployAction() }]);
     if (PLAN !== plan) return; // planning ended while the dispatch posted (an accept closes it)
     plan.deploySending = false;
     if (!(out && out.accepted)) plan.deployRefused = (out && out.reason) || 'the Syndicate declined';
     refreshPlanState();
+  }
+
+  // loadDeployKit(plan) -> the engine's answer to loading the plan's kit onto its carrier: loadKit { guildId,
+  // vehicleId, assetId } (design.md §4) moves the named idle kit into the carrier's empty hold, instantly, because
+  // both sit in the same system. The engine re-checks every condition the Carrier dropdown filtered on. A server
+  // that cannot be reached reads as a refusal, as it does for __dispatchDeploy, so the target row shows either.
+  async function loadDeployKit(plan) {
+    const action = { type: 'loadKit', guildId: PLAYER_GUILD.guildId, vehicleId: plan.vehicle.id, assetId: plan.deployKitAssetId };
+    try {
+      return await window.__sendAction(action);
+    } catch (err) {
+      return { accepted: false, reason: 'the Syndicate could not be reached: ' + (err && err.message || err) };
+    }
   }
 
   // ---------- automation slice 2b: Load Route — the guild's saved lanes (transport-model.md §11.9) ----------
@@ -5588,9 +5666,10 @@ select.field{appearance:none; cursor:pointer;}
   // the popup receives a copy ({ anchor, action? } each) on Finalise and hands it back on Edit.
   // (automation 3c) `loop` is the popup saying its launch picker has a repeating mode on (Edit Route).
   window.__planRoute = function (vehicle, waypoints, loop) { startPlanning(vehicle, waypoints, '', loop); };
-  // 2.2 deploy pipeline: the popup's Deploy opens the DEPLOY map — planning mode for this craft and its kit's
-  // lane (`kind`, e.g. 'outpost'), with no waypoints; the chip's DEPLOY hands back to __dispatchDeploy.
-  window.__planDeploy = function (vehicle, kind) { startPlanning(vehicle, [], '', false, kind); };
+  // 2.2 deploy pipeline: the Deploy Outpost popup's Plan Route opens the DEPLOY map — planning mode for the chosen
+  // carrier, the kit's lane (`kind`, e.g. 'outpost') and the kit itself (`kitAssetId`), with no waypoints; the
+  // chip's DEPLOY loads the kit, then hands the leg to __dispatchDeploy.
+  window.__planDeploy = function (vehicle, kind, kitAssetId) { startPlanning(vehicle, [], '', false, kind, kitAssetId); };
   window.__abandonPlanning = function () { if (planActive || PLAN) exitPlanning(false); };
   window.__fmtETA = fmtETA;
   // Automation 1b: the Dispatch popup's Finalise list uses the SAME action gate and the SAME summary
@@ -10123,10 +10202,16 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return known.concat(extra);
   }
 
+  // An idle OUTPOST — an undeployed kit (2.2 deploy pipeline, territory-model.md §5 asset-initiated) — carries a
+  // Deploy button that opens the Deploy Outpost popup for that kit. Miners and factories stay plain rows.
   function machineHtml(a){
+    var deploy = a.kind === 'outpost'
+      ? '<button class="ops-idle-deploy" type="button" data-kit-deploy="' + esc(a.id) + '">Deploy</button>'
+      : '';
     return '<div class="ops-idle-machine">'
       +   '<span class="mid">' + esc(a.id) + '</span>'
       +   '<span class="mkind">' + esc(a.kind) + '</span>'
+      +   deploy
       + '</div>';
   }
 
@@ -10429,6 +10514,13 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(dockBtn){
       var dvid = dockBtn.getAttribute('data-tp-dock');
       if(window.__openDock) window.__openDock(dvid, null);
+      return;
+    }
+    // DEPLOY on an idle outpost (2.2 deploy pipeline, asset-initiated) — opens the Deploy Outpost popup for that
+    // kit, which re-reads the kit off the snapshot by id. Checked beside Dispatch / Dock, ahead of the toggles.
+    var kitBtn = e.target.closest('.ops-idle-deploy');
+    if(kitBtn){
+      if(window.__openKitDeploy) window.__openKitDeploy(kitBtn.getAttribute('data-kit-deploy'));
       return;
     }
     var hd = e.target.closest('.ops-idle-syshd, .ops-idle-kindhd');
@@ -11704,18 +11796,10 @@ function paintInventoryHero(d){
       '<div class="msum">' + fmtNum(used) + ' / ' + fmtNum(cap) + ' cargo space</div>';
   }
 
-  // deployKindOf(v) -> the deploy lane this craft's kit opens ('outpost'), or null when it carries none
-  // (2.2 deploy pipeline, territory-model.md §5). The outpost kit is the only deployable good built, so it
-  // is the only pairing here — the engine's own kitGoodFor('outpost') is 'outpost_kit'. Read off the
-  // craft's published hold (§18): the client looks for the key and computes nothing.
-  function deployKindOf(v){
-    var cargo = (v && v.cargo) || {};
-    return cargo.outpost_kit ? 'outpost' : null;
-  }
-
   // PRE-PLAN state (§A): the Onboard Manifest (the craft's real hold) + the Maintenance (disabled) /
-  // Plan Route buttons — and, ONLY when the craft carries a kit, Deploy (territory-model.md §5). Re-read
-  // from DP.vehicle each call so the box reflects the current cargo (§18).
+  // Plan Route buttons. Re-read from DP.vehicle each call so the box reflects the current cargo (§18).
+  // (A deploy no longer starts here: it starts from the idle outpost — the Deploy Outpost popup — which picks
+  // this craft as its carrier; territory-model.md §5 REVISED removed the heavy-first entry.)
   function renderPrePlan(){
     $('dpSection').innerHTML =
       '<div class="dp-manifest">' +
@@ -11723,13 +11807,10 @@ function paintInventoryHero(d){
         manifestHtml(DP.vehicle) +
       '</div>';
     var acts = $('dpActions');
-    var kind = deployKindOf(DP.vehicle);
     acts.innerHTML =
       '<button class="dp-btn" id="dpMaintBtn" type="button" disabled title="Maintenance arrives later">Maintenance</button>' +
-      '<button class="dp-btn primary" id="dpPlanBtn" type="button">Plan Route</button>' +
-      (kind ? '<button class="dp-btn primary" id="dpDeployBtn" type="button" title="Pick a hex on the map and deploy the kit there">Deploy</button>' : '');
+      '<button class="dp-btn primary" id="dpPlanBtn" type="button">Plan Route</button>';
     $('dpPlanBtn').addEventListener('click', onPlanRoute);
-    if(kind) $('dpDeployBtn').addEventListener('click', onDeploy);
   }
 
   // POST-FINALISE state (§D): the two-box Planned Route (a scrollable Origin+waypoints list beside
@@ -12084,13 +12165,6 @@ function paintInventoryHero(d){
     $('dispatch-overlay').classList.remove('open');
     if(window.__planRoute) window.__planRoute(v, []);
   }
-  // Deploy → open the DEPLOY map (territory-model.md §5): the planner's deploy variant for this craft and
-  // its kit's lane, at 4× on the craft. The same soft hide as Plan Route.
-  function onDeploy(){
-    var v = DP.vehicle, kind = deployKindOf(v); if(!v || !kind) return;
-    $('dispatch-overlay').classList.remove('open');
-    if(window.__planDeploy) window.__planDeploy(v, kind);
-  }
   // Edit Route → re-enter planning with the CURRENT waypoints (the finalised list), same soft hide.
   // (Automation 3c) With a repeating mode picked, the planner is told so, and draws the plan as a loop too.
   function onEditRoute(){
@@ -12254,6 +12328,108 @@ function paintInventoryHero(d){
   $('dpClose').addEventListener('click', closeDispatch);
   $('dispatch-overlay').addEventListener('click', function(e){ if(e.target === this) closeDispatch(); });
   $('dpShowMap').addEventListener('click', showOnMap);
+})();
+</script>
+
+<script id="deploy-kit-wire">
+/* ============================================================================
+   THE DEPLOY OUTPOST POPUP (2.2 deploy pipeline, asset-initiated client slice 2a — territory-model.md §5 "The
+   deploy flow, REVISED"). A deployment starts from the OUTPOST, not the carrier: an idle outpost's Deploy button
+   (OPERATIONS → IDLE) opens this popup for that one kit — its summary, a Carrier dropdown of the heavies that can
+   take it, and Plan Route → the deploy map for the chosen carrier. Nothing is sent from here: the kit loads onto
+   the carrier only at the map's DEPLOY (loadKit, then the dispatch), so closing this popup, or cancelling the
+   map, leaves the kit in inventory. PRESENTATION ONLY (§18): the kit and the craft are snapshot rows, and the
+   engine's loadKit is the authority on which carrier may take the kit — the dropdown offers the ones it accepts.
+   ============================================================================ */
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); }
+
+  // The popup's own state: the kit (the snapshot `assets` row) it was opened for. Reset on open/close.
+  var KD = { kit: null };
+
+  // The player's own guild row, off the polled snapshot — null if it is momentarily absent.
+  function myGuild(){
+    var s = window.__snapshot ? window.__snapshot() : null;
+    var pid = window.__player ? window.__player().guildId : null;
+    return ((s && s.guilds) || []).filter(function(g){ return g.id === pid; })[0] || null;
+  }
+
+  // The last part of a stable id — asset_<guild>_outpost_NN / vehicle_<guild>_<class>_NN → "NN", the number
+  // the Dispatch popup titles a craft by.
+  function idSuffix(id){ return String(id).split('_').slice(-1)[0]; }
+
+  // carriersFor(kit) -> the guild's craft that loadKit would accept for this kit, by id: a heavy transport (a
+  // kit fills a whole heavy hold), idle, off any lane, with an EMPTY hold, and berthed at the kit's own system
+  // (design.md §4 — the ruled same-system constraint). Read off the published rows; the engine re-checks every
+  // one of these at DEPLOY.
+  function carriersFor(kit){
+    var g = myGuild();
+    return ((g && g.vehicles) || []).filter(function(v){
+      var loc = v.location;
+      return v.class === 'heavyTransport' && v.status === 'idle' && !v.route
+        && Object.keys(v.cargo || {}).length === 0
+        && !!loc && loc.landmarkKind === 'system' && loc.landmarkId === kit.systemId;
+    }).sort(function(x, y){ return x.id < y.id ? -1 : (x.id > y.id ? 1 : 0); });
+  }
+
+  // openKitDeploy(assetId) — fill the popup for one idle kit and show it. The kit is re-read off the snapshot by
+  // id; one no longer idle (loaded, or gone, since the row was drawn) opens nothing. Opening abandons any
+  // in-progress route, as opening the Dispatch popup does (§B).
+  function openKitDeploy(assetId){
+    var g = myGuild();
+    var kit = ((g && g.assets) || []).filter(function(a){ return a.id === assetId && a.deployedToVentureId == null; })[0];
+    if(!kit) return;
+    if(window.__abandonPlanning) window.__abandonPlanning();
+    KD.kit = kit;
+    $('kdName').textContent = 'Outpost Kit · #' + idSuffix(kit.id);
+    $('kdKind').textContent = kit.kind.charAt(0).toUpperCase() + kit.kind.slice(1);
+    $('kdStored').textContent = (window.__systemName && window.__systemName(kit.systemId)) || kit.systemId;
+    $('kdReady').textContent = 'Yes';   // idle in the inventory — the engine's own answer, checked above
+    renderCarriers();
+    $('deploy-overlay').classList.add('open');
+  }
+
+  // The Carrier dropdown: a "Select carrier" prompt, then one option per carrier — or, with none, the one
+  // "No Available Transport", disabled. Plan Route is enabled only once a carrier is picked.
+  function renderCarriers(){
+    var carriers = carriersFor(KD.kit);
+    var sel = $('kdCarrier');
+    sel.innerHTML = carriers.length
+      ? '<option value="">Select carrier</option>' + carriers.map(function(v){
+          return '<option value="' + esc(v.id) + '">Heavy Transport · #' + esc(idSuffix(v.id)) + '</option>';
+        }).join('')
+      : '<option value="">No Available Transport</option>';
+    sel.disabled = !carriers.length;
+    syncPlanBtn();
+  }
+  function syncPlanBtn(){ $('kdPlanBtn').disabled = !$('kdCarrier').value; }
+
+  // Plan Route → the DEPLOY map for the chosen carrier (territory-model.md §5): the planner's deploy variant on
+  // the kit's lane (its kind, 'outpost'), centred on the carrier (which sits at the kit's system), carrying the
+  // kit's id so the map's DEPLOY loads it first. Nothing loads here. The carrier is re-read off the live snapshot,
+  // so one that has left since the popup opened is caught: the dropdown redraws without it and nothing opens.
+  function onPlanRoute(){
+    var vid = $('kdCarrier').value;
+    var carrier = carriersFor(KD.kit).filter(function(v){ return v.id === vid; })[0];
+    if(!carrier){ renderCarriers(); return; }
+    var kit = KD.kit;
+    closeKitDeploy();
+    if(window.__planDeploy) window.__planDeploy(carrier, kit.kind, kit.id);
+  }
+
+  function closeKitDeploy(){
+    KD.kit = null;
+    $('deploy-overlay').classList.remove('open');
+  }
+
+  window.__openKitDeploy = openKitDeploy;   // OPERATIONS' idle-outpost Deploy button calls this
+
+  $('kdCarrier').addEventListener('change', syncPlanBtn);
+  $('kdPlanBtn').addEventListener('click', onPlanRoute);
+  $('kdClose').addEventListener('click', closeKitDeploy);
+  $('deploy-overlay').addEventListener('click', function(e){ if(e.target === this) closeKitDeploy(); });
+  document.addEventListener('keydown', function(e){ if(KD.kit && e.key === 'Escape') closeKitDeploy(); });
 })();
 </script>
 

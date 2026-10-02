@@ -140,7 +140,7 @@ recall any time, time to re-availability). ID + Type buttons → the transport-m
   caches as `LIVE.myAssets`); the browser computes no game number (§18). Rows are **grouped by system**
   (`Asset.systemId`, resolved to the system name via the shell's `__systemName` bridge) then **by kind**
   under collapsible headers (Miners / Factories), each header carrying a count; each machine row is its
-  **ID + kind descriptor** — read-only, no Manage popup (that is §8). A signature guard (the idle set +
+  **ID + kind descriptor** — read-only, no Manage popup (that is §8). *(⤳ 02-10-26: an idle OUTPOST row — an undeployed kit — carries a **Deploy** button, which opens the Deploy Outpost popup; roadmap 2.2 deploy pipeline, `territory-model.md` §5 "AS-BUILT — asset-initiated client slice 2a".)* A signature guard (the idle set +
   where each sits) rebuilds the tree only when it changes, so a poll never discards the reader's
   collapse state; the all-deployed case keeps a calm empty state. On a fresh founding this renders the
   starter **15 miners + 10 factories, all idle, at the home system** — the payoff. Proven end-to-end in
