@@ -11957,7 +11957,7 @@ function paintInventoryHero(d){
         '<div class="wp-wrap"><div class="wp-list">' + rows + '</div><div class="wp-fade"></div></div>' +
         '<div class="tc-box">' +
           '<div class="cell"><div class="lab">Time</div><div class="val">' + esc(String(timeVal)) + '</div></div>' +
-          '<div class="cell"><div class="lab">Cost</div><div class="val">' + esc(String(costVal)) + '</div></div>' +
+          '<div class="cell"><div class="lab">Fuel credits</div><div class="val">' + esc(String(costVal)) + '</div></div>' +
         '</div>' +
       '</div>' +
       // an { ok:false } quote surfaces its engine reason (a route the dispatch would refuse); otherwise
@@ -12600,7 +12600,7 @@ function paintInventoryHero(d){
         '<div class="wp-wrap"><div class="wp-list">' + rows + '</div><div class="wp-fade"></div></div>' +
         '<div class="tc-box">' +
           '<div class="cell"><div class="lab">Time</div><div class="val">' + esc(String(figs.time)) + '</div></div>' +
-          '<div class="cell"><div class="lab">Cost</div><div class="val">' + esc(String(figs.cost)) + '</div></div>' +
+          '<div class="cell"><div class="lab">Fuel credits</div><div class="val">' + esc(String(figs.cost)) + '</div></div>' +
         '</div>' +
       '</div>' +
       (q && q.ok === false ? '<div class="dp-refuse">' + esc(q.reason || 'This route cannot be dispatched.') + '</div>' : '') +

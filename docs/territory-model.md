@@ -447,7 +447,7 @@ off the disc, or outside the ring flags its row ("can't deploy here — outside 
 Finalise, as a dead leg does. **The map's quote** is the whole route's (the pre-deploy quote note above). **Fork 2 —
 Finalise lands in the popup.** On the deploy map, `finalisePlanning` hands the route to `__kitDeployFinalise` instead
 of the Dispatch popup. The Deploy Outpost popup re-opens in a post-finalise state built from the Dispatch popup's
-own: the Planned Route list (Origin, each stop, the deploy action on the last) beside the engine's Time / Cost
+own: the Planned Route list (Origin, each stop, the deploy action on the last) beside the engine's Time / Fuel credits
 (`fetchQuote` / `quoteFigures`), with **Edit Route** and **Deploy**. The summary shows a Carrier row there, in place of
 the dropdown. The CSS rules it uses name `#deploy-overlay` beside `#dispatch-overlay`, as slice 2a's did. Edit Route
 re-opens the map with the route kept. **Commit:** Deploy sends `loadKit { guildId, vehicleId, assetId }`, and only if
