@@ -180,6 +180,66 @@ restored click-to-centre)" note below). This
 paragraph is the as-designed client flow for the outpost lane and supersedes the generic "Manage popup
 → pick a transport" wording of **The player flow** above, which describes the later, fuller vision.
 
+**The deploy flow, REVISED — asset-initiated (RULED 02-10-26).** Playtest of the
+craft-initiated flow above showed it backwards: a deployment should begin from the *outpost*, not
+from the *carrier*. This block supersedes the **craft-initiated** framing of **The deploy map** and
+the Manage-popup wording of **The player flow** — the as-built client (the Deploy button on a
+heavy's Dispatch popup; the one-leg, commit-on-tile map) is revised to the flow below. The merged
+ENGINE is untouched by the multi-leg change: `dispatchRouteWithActions` already accepts a deploy on
+the **final waypoint of a route of any length** (slice 2 above), so lifting the one-leg limit is
+client-only. The range paint, the pre-deploy quote, and the arrival deploy/retreat all carry over.
+
+- **The kit is an idle asset, not a hold-only good.** An undeployed `outpost_kit` now lives as a
+  **system-scoped idle asset** in a system's idle-asset list — the `Asset.systemId` /
+  `deployedToVentureId == null` model miners and factories already use (`design.md` §4, revised
+  there) — presented to the player as an **idle outpost**. It reaches a system's inventory
+  through a source (the dockyard / founding grant / the repointed `grantKit` test seam); it is no
+  longer minted straight into a hold.
+
+- **Initiate — from the asset, pick the carrier.** In the system's idle-asset list the idle
+  outpost carries a **Deploy** button → an **outpost-subject dispatch popup** (the existing
+  `#dispatch-overlay` chrome, reused — no new visual language) with a **carrier dropdown**. The
+  dropdown offers only heavy transports that are **empty, idle, and in the same system as the kit**;
+  none → it reads **"No Available Transport"** and Deploy is unavailable. (Same-system is the
+  ruled constraint — `design.md` §4's per-system inventory — and it forces the player
+  to position a hauler first, which is the point.) The old **heavy-first entry** (a Deploy action on
+  a heavy's own Dispatch popup) is **removed**: a heavy only ever holds a kit mid-deployment or after
+  a retreat, and both are reached otherwise (below).
+
+- **Plan — the normal route planner, reused whole.** Once a carrier is chosen the player plans
+  with the **full multi-leg transport route planner** — same chrome, same confirm, same quote
+  — not a reduced one-leg map. The legal **range ring** is shown as the guide for where the
+  **final** waypoint may land, and a **deploy** action is auto-appended to that final waypoint when
+  it is a bare hex in range. Intermediate stops are plain turning-points: the kit fills the whole
+  heavy hold, so no cargo action can ride them (the engine refuses a dock there regardless).
+
+- **Commit — in the popup.** The planner's own **Finalise → Dispatch** is the commit (this
+  replaces the built map's on-tile DEPLOY-as-finalise). On commit the kit **loads** onto the chosen
+  carrier — **instant, because carrier and kit sit in the same system** — and the lane
+  launches as an ordinary route in Operations.
+
+- **Arrival — unchanged.** The deploy is instant and the carrier is left **parked on the new
+  Outpost** (the derived `dockStatus: parked`, already built and test-locked).
+
+- **Failed deploy — resolved from the message, two forks.** The retreat rule above is unchanged
+  (instant pull-back to the nearest held system, kit aboard, `deploy_failed` recorded). Because the
+  kit is now *aboard* a heavy and no longer in inventory, the asset-initiated entry cannot re-reach
+  it, so resolution moves to the `deploy_failed` notice (`event-log.md` §10): its map button
+  (replacing *Show on map*) offers **Redeploy** — the deploy planner with the carrier **already
+  fixed** to the retreated heavy (no carrier pick), pick a new hex and go — or **Return** —
+  plan a route to **any held system** with an **unload** action auto-appended, dropping the kit back
+  into that system's idle list as an idle outpost. Until one fork resolves it, the kit waits aboard
+  the heavy.
+
+- **Load / unload are kit-specific actions** (`design.md` §4), inverses of each other and
+  distinct from the goods dock/manifest: **load** moves a kit inventory → hold (instant,
+  same-system, at commit); **unload** moves it hold → a fresh idle outpost in a held system's
+  inventory (on arrival, the Return fork).
+
+- **Sequencing.** The kit-as-idle-asset plus a source that mints one into a system (the repointed
+  `grantKit`, with the load/unload actions) is the **prerequisite rung** — it lands before the
+  asset-initiated popup, the planner reuse, and the message rewire can be driven.
+
 **Route legality is target-only.** The *path* is legal anywhere — open space is not
 illegal, it is merely less safe / tolled — so there is nothing to "route around." Only the
 **target** is validated. The player therefore **builds the route themselves** (reusing the
