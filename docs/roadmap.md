@@ -19,7 +19,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
 | 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,855 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, the kit loaded at DEPLOY); the guild↔guild contest (a rival, territory, the market) is not built yet |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -2510,7 +2510,9 @@ boundary so the later hex-map swap doesn't touch it.
   prerequisite rung — the kit as an idle asset + load / unload + the repointed `grantKit` — is BUILT, "asset-initiated
   slice 1" below; the client (idle-outpost Deploy, carrier picker, planner reuse, message rewire) is next. ⤳ Its first rung — the
   idle-outpost Deploy, the carrier picker and the `loadKit`-then-dispatch commit on the single-leg map — is BUILT, "asset-initiated
-  client slice 2a" below; next the multi-leg planner with the commit in the popup (2b), then the message's Redeploy / Return (3).*
+  client slice 2a" below; next the multi-leg planner with the commit in the popup (2b), then the message's Redeploy / Return (3).
+  ⤳ Its second rung — the multi-leg planner and the commit in the popup — is BUILT, "asset-initiated client slice 2b" below;
+  next the message's Redeploy / Return (3).*
   - **slice 1 — the deployable good + outpost deploy (engine + operator CLI, NO client).** 🟢 *BUILT (29-09-26).*
     **Built so far — the deployable good:** `DEPLOYABLE_GOODS` = [`outpost_kit`] + `isDeployableGood` /
     `kitGoodFor` (`sim/resources.js`), a sibling category to the stockpile goods and deliberately NOT in
@@ -2837,7 +2839,7 @@ boundary so the later hex-map swap doesn't touch it.
     restart replayed the journal to a leaf-identical snapshot.
     **Deferred (not invented):** the client (the idle-outpost Deploy button, the outpost-subject popup and carrier
     dropdown, the planner reuse, the message's Redeploy / Return forks) *(⤳ the Deploy button and the popup with its carrier
-    dropdown are BUILT 02-10-26, "asset-initiated client slice 2a" below; the planner reuse is slice 2b)*; the route-arrival unload (the Return fork's
+    dropdown are BUILT 02-10-26, "asset-initiated client slice 2a" below; the planner reuse is slice 2b, BUILT 02-10-26 below)*; the route-arrival unload (the Return fork's
     auto-appended unload action); the real kit sources; storing a kit AT an Outpost; the other kinds. **Two calls on the
     decision checklist** ("Asset-initiated slice 1 — two calls"): a standalone unload leaves a retreated craft's
     `deployFailed` set (only a dispatch clears it, as ruled); and an idle kit asset carries no tick of its own.
@@ -2923,9 +2925,73 @@ boundary so the later hex-map swap doesn't touch it.
     - the Dock editor still titled and closed its own craft (the first run caught the new popup reusing the Dock
       editor's `dk*` ids, renamed `kd*` before landing);
     - no page errors.
-    **Deferred (not invented):** the multi-leg planner and the commit in the popup (slice 2b); the message's Redeploy /
-    Return (slice 3). **Two calls on the decision checklist** ("Asset-initiated client slice 2a — two calls"): what the
-    Ready row reads, and whether DEPLOY should hold the load when the leg is not affordable.
+    **Deferred (not invented):** the multi-leg planner and the commit in the popup (slice 2b) *(⤳ BUILT 02-10-26, next)*;
+    the message's Redeploy / Return (slice 3). **Two calls on the decision checklist** ("Asset-initiated client slice 2a —
+    two calls"): what the Ready row reads, and whether DEPLOY should hold the load when the leg is not affordable. *(⤳ The
+    first is RULED 02-10-26 — drop the row — and BUILT in slice 2b; the second is half-ruled, see the checklist.)*
+  - **asset-initiated client slice 2b — the multi-leg planner + the commit in the popup (CLIENT ONLY,
+    `client/game.html`).** 🟢 *BUILT (02-10-26).* Built to `territory-model.md` §5 "The deploy flow, REVISED" ("Plan" and
+    "Commit", Fork 2), no design change and no new number; AS-BUILT in §5. A deployment now runs: OPERATIONS → IDLE → an
+    idle outpost's **Deploy** → the **Deploy Outpost** popup → pick a carrier → **Plan Route** → the deploy map, now the
+    full route planner (one stop or many) → **Finalise** → back in the popup: the Planned Route and its Time / Cost →
+    **Deploy**, which sends `loadKit` and then, only if the load is accepted, the dispatch.
+    **Reused as is:** the planner — `startPlanning`, the Add → Confirm chip (`renderPlanChip` / `confirmCandidate`), the
+    waypoint list with reorder / remove (`renderPlanList`), `#planFinalise` / `finalisePlanning`, `anyDeadLeg`,
+    `refreshPlanState`; the deploy map's range ring (`deployReach` / `drawDeployRing`), `deployRefusal`, `deployAction`,
+    `DEPLOY_MAP_ZOOM` centring and arrow-key pan; the quote (`fetchQuote` / `quoteFigures`); the Dispatch popup's
+    post-finalise markup (`.dp-route` / `.wp-list` / `.wp-row` / `.tc-box` / `.dp-refuse` / `.dp-actions`), shared by
+    naming `#deploy-overlay` beside `#dispatch-overlay` on each rule it uses, not copied; the send path `__dispatchDeploy`
+    (`dispatchActionFor` → `dispatchRouteWithActions`, `wireWaypoints`); `__routeActionSummary`,
+    `__routeChecks.hereNote`, `__sendAction`, `__player`; slice 2a's `openKitDeploy` / `carriersFor` / `renderCarriers`.
+    **Changed:** `deployTarget()` is now the route's LAST stop when the kit may deploy there (it was the selected
+    candidate). One Finalise gate, `canFinalise()`, is shared by the button and `finalisePlanning`: the old rule, plus a
+    legal last stop on the deploy map. On the deploy map `finalisePlanning` hands the route to the popup. The chip
+    offers no Action in deploy mode. The map's quote is keyed to the route (`routeKey`), not a candidate. A map click and
+    the chip's Cancel are back to the route builder's own (the chip only). `__planDeploy(vehicle, kind, waypoints)`
+    takes a route (it took the kit id), so Edit Route can hand one back. The popup's Plan Route only hides it, as the
+    Dispatch popup's does, so it keeps the kit for Finalise. Escape closes the popup only while it is shown.
+    **Added:** `deployWaypoints` (the one place the deploy action is added: on the last stop), `deployRow` (the last
+    row's lines), `routeKey`, `canFinalise`; in the popup, `renderPrePlan` / `renderPostFinalise` (the Dispatch popup's
+    two states), `kitDeployFinalise` (`__kitDeployFinalise`), `onEditRoute`, `onDeploy` with its `loadKit`, the `aboard`
+    flag, and a Carrier row in the summary (post-finalise); `__anchorLabel` (the planner's `anchorLabel`, so the popup
+    names stops the way the map does).
+    **Removed:** `fillDeployChip`, `confirmDeploy`, `loadDeployKit`, the click lock on a selected target, `PLAN`'s
+    `deployKitAssetId` / `deploySending` / `deployRefused`, the CSS rule hiding Finalise in deploy mode (Load Route stays
+    hidden), the "Deploy Target" list retitle, and the popup's Ready row (slice 2a's checklist call (1), ruled).
+    **A NO-OP for `sim/`:** no engine, snapshot, test or golden touched (`git diff` is `client/game.html` + docs, and
+    `git diff -- sim tools` is empty). Sim **1,901 green** and tools **73 green**, both unchanged (the `game.html`
+    served-page tripwires included). Driven headless on a seated seed-42 server (home `sys_0006` at `104,55`): a kit
+    granted at home and an empty heavy spawned there. 59 scripted checks, each failing loudly, with every `POST /action`
+    body recorded:
+    - the popup's summary read Kind / Stored at, with no Ready row;
+    - Plan Route opened the deploy map with Finalise shown (disabled, no stop yet), Load Route hidden, and nothing sent;
+    - the chip on the held home system offered Add, then Confirm / Cancel, with no Action;
+    - one stop `(109, 54)` carried "deploy · outpost" and enabled Finalise; a second stop `(106, 49)` took the deploy
+      action from it, and the route's quote showed under it ("Time 2d 00h · Cost 13000 ¢");
+    - a third stop `(115, 55)`, 11 hexes out, flagged "can't deploy here — outside the deploy range" and disabled Finalise,
+      as did the home system as the last stop ("not a bare hex"); removing the stop re-enabled it;
+    - Escape on the map left planning running;
+    - Finalise re-opened the popup with Origin / `(109, 54)` / `(106, 49)` + "deploy · outpost", the engine's Time / Cost,
+      a Carrier row and Edit Route / Deploy, with nothing sent and the kit in inventory;
+    - Edit Route re-opened the map with the route kept, and closing the popup left no plan behind; neither sent anything,
+      and the kit stayed in inventory;
+    - Deploy with 10 titanium in the carrier sent ONLY `loadKit` (guild / carrier / kit), showed the engine's "has cargo
+      aboard" reason without claiming the kit aboard, and left the kit in inventory;
+    - Deploy with the guild's fuel at 0 sent `loadKit` THEN `dispatchRouteWithActions`: the load landed (kit aboard,
+      inventory empty, craft idle), and the refusal ended "— the kit is now aboard Heavy Transport · #01.";
+    - Deploy again with fuel restored sent ONLY the dispatch: two waypoints, `{ type: 'deploy', kind: 'outpost' }` on the
+      last only. The popup closed and the heavy flew; in flight its route cursor went stop 1 → stop 2;
+    - on landing `outpost_seat_demo_01` stood on `(106, 49)`, the heavy was idle there with an empty hold and
+      `dockStatus` parked on that Outpost, and no idle kit was left;
+    - a single-stop route (a second kit and heavy, stop `(101, 55)`) sent `loadKit` then one deploy waypoint, and placed
+      a second Outpost there;
+    - the ordinary planner was unchanged: its chip on the home system offered Add + Action, and its Finalise opened the
+      Dispatch popup (Save Route and the launch picker intact), sending nothing;
+    - no page errors.
+    **Deferred (not invented):** the message's Redeploy / Return (slice 3). **Calls on the decision checklist:** slice 2a's
+    call (2) is half-ruled and still open for the popup's Deploy (should it hold the load on an unaffordable or
+    unquotable route?); and "Asset-initiated client slice 2b — two calls": the deploy map's Cancel leaving to the plain
+    map, and no Load Route on the deploy map.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
@@ -3068,15 +3134,28 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   in the journal; `loadKit` / `unloadKit` stamp the craft. Confirm, or rule a `createdAtTick` on kit assets (or on all
   assets).
 - **Asset-initiated client slice 2a — two calls (02-10-26, 2.2 deploy pipeline, `territory-model.md` §5 AS-BUILT)**, built
-  one way and flagged rather than ruled. **(1) The Ready row.** The Deploy Outpost popup's summary is Kind / Stored at /
+  one way and flagged rather than ruled. **(1) The Ready row.** ~~The Deploy Outpost popup's summary is Kind / Stored at /
   Ready. An idle kit carries no tick or status of its own (call (2) of slice 1, above), and the popup opens only for a
-  kit the engine reports idle, so Ready reads a constant "Yes". Confirm, or rule what Ready should say (or drop it).
+  kit the engine reports idle, so Ready reads a constant "Yes". Confirm, or rule what Ready should say (or drop it).~~
+  **⤳ 02-10-26 — RULED: drop it. BUILT and CLOSED** (2.2 deploy pipeline, "asset-initiated client slice 2b").
   **(2) A dispatch refused after the load.** The ruled order loads first. A dispatch the engine then refuses leaves the
   heavy holding the kit. On the live seed that means a guild that cannot cover the leg's fuel. The map stays open, and
   a retry there is the plain dispatch. But leaving the map strands the kit aboard with no client path until slice 3
   (operator `unload-kit` recovers it). The pre-deploy quote already says when the guild cannot afford the leg. Should
   DEPLOY hold the load when the quote says so? DEPLOY is ruled not to wait on the quote today. And should the refusal
-  also say the kit is now aboard? Built as neither: the engine's reason only.
+  also say the kit is now aboard? Built as neither: the engine's reason only. **⤳ 02-10-26 — half RULED:** the refusal
+  now says the kit is aboard ("… — the kit is now aboard Heavy Transport · #01."), BUILT in slice 2b. **Still open:**
+  the commit is now the Deploy Outpost popup's **Deploy** (slice 2b), which shows the route's Time / Cost above it.
+  Should Deploy hold the load when that quote says the guild can't afford the route (`affordable: false`), or when the
+  engine can't quote it (`ok: false`)? The Dispatch popup disables its Dispatch in both cases. Deploy is built not to
+  wait on the quote, as ruled for the map's DEPLOY; an `ok: false` quote's reason does show under the route.
+- **Asset-initiated client slice 2b — two calls (02-10-26, 2.2 deploy pipeline, `territory-model.md` §5 AS-BUILT)**, built
+  one way and flagged rather than ruled. **(1) The deploy map's Cancel** leaves to the plain map, as the route builder's
+  Cancel does. The kit stays in inventory, and the player re-opens the Deploy Outpost popup from IDLE (it starts
+  pre-plan). Confirm, or rule that Cancel returns to the popup (pre-plan, or post-finalise when the map was opened by
+  Edit Route). **(2) No Load Route on the deploy map.** It stays hidden. A saved lane's stops carry dock actions, which a
+  deploy route cannot, and loading one re-plans as an ordinary route. Confirm, or rule that a saved route may seed a
+  deploy route (its actions dropped, the deploy added to its last stop).
 - **Split the oversized engine files — WHEN? (02-10-26, flagged by the 2.2 deploy pipeline engine-integrity tidy.)**
   `sim/actions.js` (5,258 lines) and `sim/server.js` (1,530) are far past a readable size for a codebase the human
   reads line by line; `sim/invariants.js` (2,386), `sim/snapshot.js` (2,120) and `sim/tick.js` (1,771) are also large.
@@ -3087,7 +3166,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   **when** (e.g. between slices, or at the Phase 3 hardening). *(⤳ 02-10-26, flagged by asset-initiated client slice
   2a: `client/game.html` belongs in the same question. It is 13,243 lines with 16 inline scripts, and the slice added
   about 180. The same pure move would split it, e.g. one file per IIFE. Several sim tests read `game.html` as a
-  served-page tripwire, so they would follow the moved code.)*
+  served-page tripwire, so they would follow the moved code.)* *(⤳ 02-10-26, asset-initiated client slice 2b: 13,343
+  lines now, +100 net — it retired the single-leg commit as it added the popup's post-finalise view.)*
 
 - **Asset-presence vs. production** — *surfaced 16-09-26 by the operator adjust levers
   (`docs/operator-adjust.md` §3.5 AS-BUILT).* Production is currently **asset-blind** — a venture

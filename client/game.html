@@ -111,9 +111,10 @@
   #plan-banner .bt { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 12px; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; }
   #plan-banner .bs { font-size: 10px; letter-spacing: 1px; color: var(--text-dim); margin-top: 3px; }
   #plan-controls { position: absolute; top: 116px; right: 22px; z-index: 520; display: flex; gap: 10px; pointer-events: auto; }
-  /* the DEPLOY variant (#app.deploying, territory-model.md §5): one leg, so no saved route to load and no
-     Finalise — the chip's DEPLOY is the finalise. Cancel stays, to leave the deploy map. */
-  #app.deploying #planLoad, #app.deploying #planFinalise { display: none; }
+  /* the DEPLOY variant (#app.deploying, territory-model.md §5): no saved route to load. A saved lane's stops
+     carry dock actions, and Load Route re-plans as an ordinary route. Finalise and Cancel stay: Finalise hands
+     the route back to the Deploy Outpost popup, where the commit is. */
+  #app.deploying #planLoad { display: none; }
   .plan-btn {
     font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
     background: rgba(8,10,16,0.92); border: 1px solid var(--line-bright); color: var(--text);
@@ -1986,24 +1987,25 @@ select.field{appearance:none; cursor:pointer;}
 #dispatch-overlay .dp-btn.primary, #deploy-overlay .dp-btn.primary{background:var(--amber); border:1px solid var(--amber); color:var(--void)}
 #dispatch-overlay .dp-btn.primary:hover:not(:disabled), #deploy-overlay .dp-btn.primary:hover:not(:disabled){background:#DCB43A; border-color:#DCB43A}
 #dispatch-overlay .dp-btn:disabled, #deploy-overlay .dp-btn:disabled{opacity:.4; cursor:not-allowed}
-/* the Planned Route section — two equal-height boxes: list | time-over-cost */
-#dispatch-overlay .dp-route{margin-top:22px; display:grid; grid-template-columns:1fr 148px; gap:12px}
-#dispatch-overlay .dp-route .wp-wrap{position:relative}
-#dispatch-overlay .dp-route .wp-list{height:154px; overflow-y:auto; border:1px solid var(--line); border-radius:8px; background:var(--panel)}
-#dispatch-overlay .dp-route .wp-fade{position:absolute; left:1px; right:1px; bottom:1px; height:22px; border-radius:0 0 8px 8px; background:linear-gradient(rgba(18,21,28,0), var(--panel)); pointer-events:none}
-#dispatch-overlay .dp-route .wp-row{display:flex; align-items:center; gap:10px; padding:9px 11px; border-bottom:1px solid rgba(232,223,200,0.06)}
-#dispatch-overlay .dp-route .wp-row .ix{font-family:var(--mono); font-size:9px; width:22px; height:22px; flex:none; border-radius:50%; border:1px solid var(--line2); display:flex; align-items:center; justify-content:center; color:var(--ink2)}
-#dispatch-overlay .dp-route .wp-row.origin .ix{border-color:var(--amber); color:var(--amber)}
-#dispatch-overlay .dp-route .wp-row .nm{font-size:12px; color:var(--ink); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-#dispatch-overlay .dp-route .wp-row .slot{min-width:16px; min-height:16px; flex:none; display:flex; gap:6px; align-items:center}
+/* the Planned Route section — two equal-height boxes: list | time-over-cost. The Deploy Outpost popup's
+   post-finalise view (2.2 deploy pipeline) is the same section, so the rules it uses name #deploy-overlay too. */
+#dispatch-overlay .dp-route, #deploy-overlay .dp-route{margin-top:22px; display:grid; grid-template-columns:1fr 148px; gap:12px}
+#dispatch-overlay .dp-route .wp-wrap, #deploy-overlay .dp-route .wp-wrap{position:relative}
+#dispatch-overlay .dp-route .wp-list, #deploy-overlay .dp-route .wp-list{height:154px; overflow-y:auto; border:1px solid var(--line); border-radius:8px; background:var(--panel)}
+#dispatch-overlay .dp-route .wp-fade, #deploy-overlay .dp-route .wp-fade{position:absolute; left:1px; right:1px; bottom:1px; height:22px; border-radius:0 0 8px 8px; background:linear-gradient(rgba(18,21,28,0), var(--panel)); pointer-events:none}
+#dispatch-overlay .dp-route .wp-row, #deploy-overlay .dp-route .wp-row{display:flex; align-items:center; gap:10px; padding:9px 11px; border-bottom:1px solid rgba(232,223,200,0.06)}
+#dispatch-overlay .dp-route .wp-row .ix, #deploy-overlay .dp-route .wp-row .ix{font-family:var(--mono); font-size:9px; width:22px; height:22px; flex:none; border-radius:50%; border:1px solid var(--line2); display:flex; align-items:center; justify-content:center; color:var(--ink2)}
+#dispatch-overlay .dp-route .wp-row.origin .ix, #deploy-overlay .dp-route .wp-row.origin .ix{border-color:var(--amber); color:var(--amber)}
+#dispatch-overlay .dp-route .wp-row .nm, #deploy-overlay .dp-route .wp-row .nm{font-size:12px; color:var(--ink); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+#dispatch-overlay .dp-route .wp-row .slot, #deploy-overlay .dp-route .wp-row .slot{min-width:16px; min-height:16px; flex:none; display:flex; gap:6px; align-items:center}
 /* automation 1b: the slot's route-ACTION control — dashed "+ Action" when unset, filled amber
    "● Action" when set — and the set action's summary as a wrapping sub-line under the stop's name. */
 #dispatch-overlay .dp-route .wp-act{font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink2); background:transparent; border:1px dashed var(--line2); border-radius:6px; padding:4px 7px; cursor:pointer; white-space:nowrap}
 #dispatch-overlay .dp-route .wp-act:hover{border-color:var(--amber); color:var(--amber)}
 #dispatch-overlay .dp-route .wp-act.set{background:var(--amber-ghost); border:1px solid var(--amber); color:var(--amber)}
-#dispatch-overlay .dp-route .wp-row .nm .act{margin-top:2px; font-family:var(--mono); font-size:10px; color:var(--amber); white-space:normal; overflow-wrap:anywhere}
+#dispatch-overlay .dp-route .wp-row .nm .act, #deploy-overlay .dp-route .wp-row .nm .act{margin-top:2px; font-family:var(--mono); font-size:10px; color:var(--amber); white-space:normal; overflow-wrap:anywhere}
 /* automation 2b: a stop's quiet "you are here — acts in place" note (dim), and its flagged line (red) */
-#dispatch-overlay .dp-route .wp-row .nm .note{margin-top:2px; font-family:var(--mono); font-size:10px; color:var(--ink2); white-space:normal}
+#dispatch-overlay .dp-route .wp-row .nm .note, #deploy-overlay .dp-route .wp-row .nm .note{margin-top:2px; font-family:var(--mono); font-size:10px; color:var(--ink2); white-space:normal}
 #dispatch-overlay .dp-route .wp-row .nm .warn{margin-top:2px; font-family:var(--mono); font-size:10px; color:var(--red); white-space:normal}
 /* automation 2b: a BROKEN stop's row — tinted in the flag red, its index ring red — and its small Remove */
 #dispatch-overlay .dp-route .wp-row.broken{background:rgba(194,96,58,0.10)}
@@ -2014,12 +2016,12 @@ select.field{appearance:none; cursor:pointer;}
 #dispatch-overlay .dp-route .wp-row.return .nm{color:var(--ink2)}
 #dispatch-overlay .dp-route .wp-rm{font-family:var(--mono); font-size:11px; line-height:1; color:var(--ink2); background:transparent; border:1px solid var(--line2); border-radius:6px; padding:4px 7px; cursor:pointer}
 #dispatch-overlay .dp-route .wp-rm:hover{border-color:var(--red); color:var(--red)}
-#dispatch-overlay .dp-route .tc-box{border:1px solid var(--line); border-radius:8px; background:var(--panel); display:flex; flex-direction:column}
-#dispatch-overlay .dp-route .tc-box .cell{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; padding:10px}
-#dispatch-overlay .dp-route .tc-box .cell + .cell{border-top:1px solid var(--line)}
-#dispatch-overlay .dp-route .tc-box .cell .lab{font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3)}
-#dispatch-overlay .dp-route .tc-box .cell .val{font-family:var(--mono); font-size:18px; color:var(--ink); font-variant-numeric:tabular-nums}
-#dispatch-overlay .dp-refuse{margin-top:12px; font-family:var(--mono); font-size:11px; color:var(--red); line-height:1.5}
+#dispatch-overlay .dp-route .tc-box, #deploy-overlay .dp-route .tc-box{border:1px solid var(--line); border-radius:8px; background:var(--panel); display:flex; flex-direction:column}
+#dispatch-overlay .dp-route .tc-box .cell, #deploy-overlay .dp-route .tc-box .cell{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; padding:10px}
+#dispatch-overlay .dp-route .tc-box .cell + .cell, #deploy-overlay .dp-route .tc-box .cell + .cell{border-top:1px solid var(--line)}
+#dispatch-overlay .dp-route .tc-box .cell .lab, #deploy-overlay .dp-route .tc-box .cell .lab{font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3)}
+#dispatch-overlay .dp-route .tc-box .cell .val, #deploy-overlay .dp-route .tc-box .cell .val{font-family:var(--mono); font-size:18px; color:var(--ink); font-variant-numeric:tabular-nums}
+#dispatch-overlay .dp-refuse, #deploy-overlay .dp-refuse{margin-top:12px; font-family:var(--mono); font-size:11px; color:var(--red); line-height:1.5}
 /* automation 2b: Save Route — a name field + a Save button under the Planned Route, then the engine's
    answer (green saved / red refused). The field wears the popup's panel + line palette. */
 #dispatch-overlay .dp-save{margin-top:14px; display:flex; gap:12px}
@@ -3021,8 +3023,8 @@ select.field{appearance:none; cursor:pointer;}
        #app into .planning (Plan Route). The banner names the craft; the list shows Origin + each
        turning point with reorder/remove; Finalise/Cancel are the two deliberate exits; the chip is
        glued to the candidate hex by the JS each frame (ADD, then Confirm/Cancel). The DEPLOY map
-       (territory-model.md §5) is the same overlays, retitled by startPlanning: one target, a
-       Deploy/Cancel chip. -->
+       (territory-model.md §5) is the same overlays, retitled by startPlanning, with the range ring
+       drawn and no Load Route; its Finalise hands the route to the Deploy Outpost popup. -->
   <div id="plan-ui">
     <div id="plan-banner">
       <div class="bt" id="plan-banner-title">Planning Route</div>
@@ -3042,7 +3044,7 @@ select.field{appearance:none; cursor:pointer;}
       <div class="plload-rows" id="planLoadRows"></div>
     </div>
     <div id="plan-list">
-      <div class="plh" id="plan-list-title">Route Waypoints</div>
+      <div class="plh">Route Waypoints</div>
       <div class="plrows" id="planRows"></div>
       <div class="plfade"></div>
     </div>
@@ -3435,8 +3437,9 @@ select.field{appearance:none; cursor:pointer;}
 
 <!-- The DEPLOY OUTPOST popup (2.2 deploy pipeline, asset-initiated — territory-model.md §5 REVISED). Opened from
      an idle outpost's Deploy button in OPERATIONS, for ONE kit. The Dispatch popup's markup and classes, with the
-     kit as the subject: its summary, the Carrier dropdown, and Plan Route → the deploy map for the chosen carrier.
-     Filled by the deploy-kit-wire IIFE. -->
+     kit as the subject, and the Dispatch popup's two states: pre-plan (the Carrier dropdown, and Plan Route → the
+     deploy map for the chosen carrier) and post-finalise (the Planned Route the map's Finalise hands back, with
+     Edit Route / Deploy). Filled by the deploy-kit-wire IIFE. -->
 <div id="deploy-overlay">
   <div class="est">
     <div class="est-head">
@@ -3452,15 +3455,14 @@ select.field{appearance:none; cursor:pointer;}
         <div class="dp-sum">
           <div class="row"><span class="k">Kind</span><span class="v" id="kdKind">—</span></div>
           <div class="row"><span class="k">Stored at</span><span class="v" id="kdStored">—</span></div>
-          <div class="row"><span class="k">Ready</span><span class="v" id="kdReady">—</span></div>
+          <!-- the chosen carrier: shown post-finalise, where it replaces the dropdown -->
+          <div class="row" id="kdCarrierRow"><span class="k">Carrier</span><span class="v" id="kdCarrierName">—</span></div>
         </div>
-        <div class="kd-carrier">
-          <div class="dp-sechead">Carrier</div>
-          <select class="est-select" id="kdCarrier"></select>
-        </div>
-        <div class="dp-actions">
-          <button class="dp-btn primary" id="kdPlanBtn" type="button" disabled>Plan Route</button>
-        </div>
+        <!-- The dynamic body: the pre-plan Carrier dropdown OR the post-finalise Planned Route, and the buttons
+             under it (Plan Route, or Edit Route / Deploy). Filled by renderPrePlan / renderPostFinalise, as the
+             Dispatch popup fills its own. -->
+        <div id="kdSection"></div>
+        <div class="dp-actions" id="kdActions"></div>
       </div>
       <div class="est-side">
         <div class="art" style="background-image:url('assets/units/outpost.jpg')"></div>
@@ -3741,12 +3743,12 @@ select.field{appearance:none; cursor:pointer;}
   // the player back here through Edit Route: the plan then shows the lap's return leg (see canRepeat /
   // loopClosed). A fresh Plan Route starts with it off — the mode is picked after planning, in the popup.
   // `deploy` (2.2 deploy pipeline, territory-model.md §5) is the deploy lane's kind ('outpost') when this
-  // is the DEPLOY MAP — the same planner reduced to one leg — and null for an ordinary route. In deploy
-  // mode the candidate IS the target (there are no waypoints until DEPLOY sends one); `deploySending` holds
-  // the chip while the dispatch posts, and `deployRefused` is the engine's reason if it refused it.
-  // `deployQuote` is the engine's time / fuel quote for the selected target, `{ target, quote }`: `target` is
-  // the candidate it was asked for, and `quote` is null while the fetch is out (see requestDeployQuote).
-  let PLAN = null;              // { vehicle, origin, waypoints:[{anchor, action?},…], candidate:anchor|null, candidateArmed:bool, candidateAction:action|null, routeName:string, loop:bool, deploy:kind|null, deploySending:bool, deployRefused:string, deployQuote:{target, quote}|null }
+  // is the DEPLOY MAP — this same planner, for a route that ends on the deploy target — and null for an
+  // ordinary route. In deploy mode no stop carries an action of its own: the deploy action is added to the
+  // LAST stop when the route is handed on (deployWaypoints), so it moves as stops are added or reordered.
+  // `deployQuote` is the engine's time / fuel quote for the route, `{ key, quote }`: `key` is the route it
+  // was asked for (routeKey), and `quote` is null while the fetch is out (see requestDeployQuote).
+  let PLAN = null;              // { vehicle, origin, waypoints:[{anchor, action?},…], candidate:anchor|null, candidateArmed:bool, candidateAction:action|null, routeName:string, loop:bool, deploy:kind|null, deployQuote:{key, quote}|null }
   let planActive = false;       // true while the map is in planning mode (the click branch + draw pass read this)
 
   // Automation 2b — Load Route. `liveSavedRoutes` is the player's guild's saved routes, pushed by
@@ -3933,16 +3935,18 @@ select.field{appearance:none; cursor:pointer;}
   // `routeName` (automation 2b) is the saved route's name when the list came from Load Route — it rides to
   // the popup so its Save field starts on that name (re-saving it updates the lane in place, §11.9).
   // `loop` (automation 3c) — see PLAN above.
-  // `deployKind` (2.2 deploy pipeline) opens the DEPLOY MAP instead (territory-model.md §5, RULED 01-10-26):
-  // the same mode, chrome and draw pass, retitled for the kit's lane, at the ruled 4× (DEPLOY_MAP_ZOOM),
-  // with #app.deploying hiding Load Route / Finalise. Omitted for every ordinary route.
-  // `deployKitAssetId` (asset-initiated, territory-model.md §5 REVISED) is the idle kit the deploy is for, still
-  // in the system's inventory: the vehicle is the carrier picked for it, and DEPLOY loads the kit (loadKit) before
-  // it dispatches. Nothing is loaded on the way in, so leaving the map leaves the kit where it was.
-  function startPlanning(vehicle, waypoints, routeName, loop, deployKind, deployKitAssetId) {
+  // `deployKind` (2.2 deploy pipeline) opens the DEPLOY MAP instead (territory-model.md §5 REVISED): the same
+  // mode, chrome, chip, list and draw pass, retitled for the kit's lane, at the ruled 4× (DEPLOY_MAP_ZOOM), with
+  // the range ring drawn and #app.deploying hiding Load Route. `vehicle` is the carrier the Deploy Outpost popup
+  // picked; Finalise hands the route back to that popup, which holds the kit and makes the commit. Nothing is
+  // loaded or sent from the map. Omitted for every ordinary route.
+  function startPlanning(vehicle, waypoints, routeName, loop, deployKind) {
     if (!vehicle || !vehicle.location) return;
-    PLAN = { vehicle: vehicle, origin: vehicle.location, waypoints: (waypoints || []).map(copyWaypoint), candidate: null, candidateArmed: false, candidateAction: null, routeName: routeName || '', loop: !!loop,
-             deploy: deployKind || null, deployKitAssetId: deployKitAssetId || null, deploySending: false, deployRefused: '', deployQuote: null };
+    // A deploy plan's stops carry no action (the deploy is added to the last one on the way out), so a route
+    // the popup's Edit Route hands back drops the deploy action its last stop carried.
+    const seed = (waypoints || []).map(deployKind ? (wp) => ({ anchor: wp.anchor }) : copyWaypoint);
+    PLAN = { vehicle: vehicle, origin: vehicle.location, waypoints: seed, candidate: null, candidateArmed: false, candidateAction: null, routeName: routeName || '', loop: !!loop,
+             deploy: deployKind || null, deployQuote: null };
     closeLoadMenu();
     planActive = true;
     const c = resolveAnchor(vehicle.location);
@@ -3953,9 +3957,8 @@ select.field{appearance:none; cursor:pointer;}
       ? 'Deploying ' + prettyClass(PLAN.deploy) + ' · ' + prettyClass(vehicle.class)
       : 'Planning Route · ' + prettyClass(vehicle.class);
     document.getElementById('plan-banner-sub').textContent = PLAN.deploy
-      ? 'Click a bare hex inside the dashed ring · arrow keys pan'
+      ? 'Click a hex to add a turning point · end on a bare hex inside the dashed ring · arrow keys pan'
       : 'Click a hex to add a turning point · arrow keys pan';
-    document.getElementById('plan-list-title').textContent = PLAN.deploy ? 'Deploy Target' : 'Route Waypoints';
     if (c) window.__flyTo(c.q, c.r, PLAN.deploy ? DEPLOY_MAP_ZOOM : Math.max(VECTOR_ZOOM_THRESHOLD + 2, 6));
     // __flyTo leaves the system-info panel open on the origin; the planner has its own list, so hide it
     // to keep the top-right clear for Finalise/Cancel.
@@ -3983,26 +3986,41 @@ select.field{appearance:none; cursor:pointer;}
 
   // Finalise — leave planning WITHOUT discarding the route, and hand it to the Dispatch popup, which
   // fetches the engine quote and shows the two-box Planned Route. Guarded by the same rule the button
-  // is: at least one waypoint and no dead leg. (Nothing else blocks Finalise — a stop the popup can
-  // fix, like an idle one-stop route at the berth, is gated at Dispatch instead, so the player can
-  // always REACH the popup to fix it.)
+  // is (canFinalise). (Nothing else blocks Finalise — a stop the popup can fix, like an idle one-stop
+  // route at the berth, is gated at Dispatch instead, so the player can always REACH the popup to fix it.)
+  // The DEPLOY map hands its route, the deploy action on the last stop, to the Deploy Outpost popup
+  // instead (territory-model.md §5 REVISED): that popup holds the kit, shows the same Planned Route, and
+  // makes the commit.
   function finalisePlanning() {
-    if (!PLAN || !PLAN.waypoints.length || anyDeadLeg(PLAN)) return;
-    const vehicle = PLAN.vehicle, waypoints = PLAN.waypoints.map(copyWaypoint);
+    if (!canFinalise()) return;
+    const vehicle = PLAN.vehicle;
+    const waypoints = PLAN.deploy ? deployWaypoints() : PLAN.waypoints.map(copyWaypoint);
+    const toDeployPopup = !!PLAN.deploy;
     exitPlanning(true); // clears the .planning class + the chip; keeps PLAN for the popup / Edit Route
+    if (toDeployPopup) {
+      if (window.__kitDeployFinalise) window.__kitDeployFinalise(vehicle, waypoints);
+      return;
+    }
     if (window.__dispatchFinalise) window.__dispatchFinalise(vehicle, waypoints, PLAN.routeName);
   }
 
-  // Re-cost/re-draw hook: every list edit (add/remove/reorder) — and every candidate change, since the
-  // deploy map's list shows its candidate as the target — re-runs the dead-leg sweep and gates Finalise.
-  // On the deploy map it also asks for a newly selected target's quote. The polyline redraws on the next
-  // frame from PLAN, so there is nothing to repaint here.
+  // canFinalise() — the Finalise gate, shared by the button and finalisePlanning: at least one waypoint
+  // and no dead leg. On the deploy map the route must also END where the kit can deploy (deployTarget),
+  // and the last row says why when it can't, as a dead leg's row does.
+  function canFinalise() {
+    if (!PLAN || !PLAN.waypoints.length || anyDeadLeg(PLAN)) return false;
+    return !PLAN.deploy || !!deployTarget();
+  }
+
+  // Re-cost/re-draw hook: every list edit (add/remove/reorder) re-runs the dead-leg sweep and gates
+  // Finalise. On the deploy map it also asks for the route's quote once the route ends on a legal target.
+  // The polyline redraws on the next frame from PLAN, so there is nothing to repaint here.
   function refreshPlanState() {
     if (PLAN && PLAN.deploy) requestDeployQuote();
     renderPlanList();
     renderPlanChip();
     const f = document.getElementById('planFinalise');
-    if (f) f.disabled = !PLAN || !PLAN.waypoints.length || anyDeadLeg(PLAN);
+    if (f) f.disabled = !canFinalise();
   }
 
   // The waypoint list panel: an Origin row (fixed, no controls) then one row per waypoint — its index,
@@ -4030,19 +4048,9 @@ select.field{appearance:none; cursor:pointer;}
       return row;
     };
     box.appendChild(mkRow({ cls: 'origin', ix: '◎', name: anchorLabel(PLAN.origin) + '  · origin' }));
-    // The DEPLOY map (territory-model.md §5) has one stop, the target, not a list: the selected hex with the
-    // deploy action DEPLOY will append, the leg's quote under it (deployQuoteLines), and, flagged, the
-    // engine's reason if it refused the dispatch — or a quiet prompt until one is picked. No reorder /
-    // remove — the chip's Cancel clears it.
-    if (PLAN.deploy) {
-      const target = deployTarget();
-      if (!target) {
-        box.appendChild(mkRow({ ix: '1', name: '—', note: 'no target yet — pick a bare hex inside the ring' }));
-        return;
-      }
-      const quote = deployQuoteLines(target);
-      box.appendChild(mkRow({ ix: '1', name: anchorLabel(target), act: actionSummary(deployAction()), note: quote.note,
-        warn: PLAN.deployRefused ? 'Refused: ' + PLAN.deployRefused : quote.warn }));
+    // The DEPLOY map (territory-model.md §5) with no stop yet: a quiet prompt for where the route must end.
+    if (PLAN.deploy && !PLAN.waypoints.length) {
+      box.appendChild(mkRow({ ix: '1', name: '—', note: 'no stops yet — end the route on a bare hex inside the ring' }));
       return;
     }
     // (automation 3c) A plan for a REPEATING launch reads as a loop: a hand-closed one says so on its last
@@ -4053,9 +4061,14 @@ select.field{appearance:none; cursor:pointer;}
       const dead = deadLegAt(PLAN, i);
       const broken = brokenAt(PLAN, i);
       const idle = i === 0 && idleAtBerth(PLAN);
-      // The flagged line: a dead leg first (it blocks Finalise), then a broken stop (it blocks Dispatch —
-      // remove it here, or Finalise and Clear its action there), then the idle one-stop cue.
+      // (2.2 deploy pipeline) On the DEPLOY map the last stop is the deploy target: its lines come from
+      // deployRow. The stops before it are plain turning points and read as any other stop.
+      const target = PLAN.deploy && i === last ? deployRow(wp.anchor) : null;
+      // The flagged line: a dead leg first (it blocks Finalise), then a deploy target the kit can't use (it
+      // blocks Finalise too), then a broken stop (it blocks Dispatch — remove it here, or Finalise and Clear
+      // its action there), then the idle one-stop cue.
       const warn = dead ? 'zero-length leg — remove or reorder'
+        : target && target.warn ? target.warn
         : broken ? brokenReason(PLAN)
         : idle ? IDLE_AT_BERTH_CUE : '';
       const ctl =
@@ -4066,8 +4079,8 @@ select.field{appearance:none; cursor:pointer;}
         cls: dead ? 'deadleg' : (broken ? 'broken' : ''),
         ix: String(i + 1),
         name: anchorLabel(wp.anchor),
-        act: actionSummary(wp.action),
-        note: (looping && i === last && loopClosed(PLAN)) ? LOOP_CLOSED_NOTE : hereNote(PLAN, i),
+        act: target ? target.act : actionSummary(wp.action),
+        note: target ? target.note : (looping && i === last && loopClosed(PLAN)) ? LOOP_CLOSED_NOTE : hereNote(PLAN, i),
         warn: warn,
         ctl: ctl,
       }));
@@ -4097,12 +4110,12 @@ select.field{appearance:none; cursor:pointer;}
     if (!chip || !PLAN || !PLAN.candidate) { if (chip) chip.classList.remove('on'); return; }
     const dead = candidateIsDeadLeg();
     btns.innerHTML = '';
-    // The DEPLOY map swaps in its own one-stage buttons; the hint and the placement are shared.
-    if (PLAN.deploy) { showPlanChip(chip, hint, fillDeployChip(btns)); return; }
     // The Action button, built once and slotted in after the step's primary button (Add or Confirm).
     // Disabled on a dead leg like its siblings — a stop that can't be placed can't carry an action.
+    // Never on the DEPLOY map (territory-model.md §5): the kit fills the hold, so its stops are plain
+    // turning points, and the deploy action is added to the last stop on its own (deployWaypoints).
     let actBtn = null;
-    if (routeActionAllowed(PLAN.vehicle, PLAN.candidate)) {
+    if (!PLAN.deploy && routeActionAllowed(PLAN.vehicle, PLAN.candidate)) {
       actBtn = document.createElement('button');
       actBtn.textContent = PLAN.candidateAction ? 'Action ✓' : 'Action';
       if (PLAN.candidateAction) { actBtn.className = 'set'; actBtn.title = actionSummary(PLAN.candidateAction); }
@@ -4132,8 +4145,7 @@ select.field{appearance:none; cursor:pointer;}
     showPlanChip(chip, hint, dead ? 'Same hex as the last point' : '');
   }
 
-  // Show the chip with `hintText` under its buttons ('' for no hint) — the refusal line, shared by the
-  // route chip and the deploy chip so a bad hex reads the same in both.
+  // Show the chip with `hintText` under its buttons ('' for no hint) — the dead-leg refusal line.
   function showPlanChip(chip, hint, hintText) {
     hint.style.display = hintText ? 'block' : 'none';
     hint.textContent = hintText;
@@ -4141,28 +4153,6 @@ select.field{appearance:none; cursor:pointer;}
     const cc = resolveAnchor(PLAN.candidate);
     if (cc) { const s = worldToScreen(hexToPixel(cc.q, cc.r, galaxy.galaxyParams.hexSize).x, hexToPixel(cc.q, cc.r, galaxy.galaxyParams.hexSize).y); chip.style.left = s.x + 'px'; chip.style.top = s.y + 'px'; }
     chip.classList.add('on');
-  }
-
-  // The DEPLOY map's chip (territory-model.md §5): ONE stage, [Deploy] [Cancel] — no Add → Confirm, since
-  // the chip's Deploy IS the finalise. A refused hex keeps the chip with Deploy disabled and the reason as
-  // its hint, as a dead-leg candidate's chip does. While a DEPLOY posts, the chip holds ("Deploying…");
-  // an engine refusal points at the target panel, where its (long) reason has room to wrap.
-  // Fills `btns` and returns the hint text ('' for none).
-  function fillDeployChip(btns) {
-    const refusal = deployRefusal(PLAN.candidate);
-    const ok = document.createElement('button');
-    ok.textContent = PLAN.deploySending ? 'Deploying…' : 'Deploy';
-    ok.disabled = !!refusal || PLAN.deploySending;
-    ok.addEventListener('click', confirmDeploy);
-    const no = document.createElement('button');
-    no.className = 'cancel';
-    no.textContent = 'Cancel';
-    no.disabled = PLAN.deploySending;
-    no.addEventListener('click', clearCandidate);
-    btns.appendChild(ok);
-    btns.appendChild(no);
-    if (refusal) return refusal;
-    return PLAN.deployRefused ? 'Refused — see the deploy target' : '';
   }
 
   // The chip's [Action] → open the dock editor in COLLECT mode for this craft (pre-filled if an action
@@ -4194,16 +4184,18 @@ select.field{appearance:none; cursor:pointer;}
   }
   function clearCandidate() {
     if (!PLAN) return;
-    PLAN.candidate = null; PLAN.candidateArmed = false; PLAN.candidateAction = null; PLAN.deployRefused = ''; PLAN.deployQuote = null;
-    refreshPlanState(); // hides the chip; the deploy map's list drops its target (and its quote) too
+    PLAN.candidate = null; PLAN.candidateArmed = false; PLAN.candidateAction = null;
+    document.getElementById('plan-chip').classList.remove('on');
   }
 
-  // ---------- 2.2 deploy pipeline, client slice 2: the DEPLOY MAP (territory-model.md §5, RULED 01-10-26) ----------
-  // The route builder reduced to ONE leg with the deploy action appended automatically. Everything above is
-  // reused as is — the mode, the chrome, the chip, the draw pass; this section adds only what is new: which
-  // hex may be the target, the range ring, and the DEPLOY send. PRESENTATION ONLY (§18): the radius and the
-  // anchors are the engine's (`deployRange`), the client draws geometry from them and sends the action, and
-  // the engine's deployCheck — re-run at dispatch and again on arrival — is the sole authority on legality.
+  // ---------- 2.2 deploy pipeline: the DEPLOY MAP (territory-model.md §5, RULED 01-10-26; REVISED 02-10-26) ----------
+  // The full route builder, planning a route of one stop or many that ENDS on the deploy target: the deploy
+  // action rides the last stop, added on the way out (deployWaypoints). Finalise hands the route to the Deploy
+  // Outpost popup, where the commit is; nothing is sent from the map. Everything above is reused as is — the
+  // mode, the chrome, the chip, the list, the draw pass. This section adds only what is new: which hex may be
+  // the target, the range ring, and the route's quote. PRESENTATION ONLY (§18): the radius and the anchors are
+  // the engine's (`deployRange`), the client draws geometry from them, and the engine's deployCheck — re-run
+  // at dispatch and again on arrival — is the sole authority on legality.
 
   // The deploy map opens at 4× (the ruling), centred on the craft: close enough that hexes draw, wide
   // enough that a 10-hex range fits on screen. A view zoom — presentation, not a game number.
@@ -4215,15 +4207,34 @@ select.field{appearance:none; cursor:pointer;}
   // border" is exactly "neighbour k is outside the range".
   const AXIAL_NEIGHBOURS = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
 
-  // deployAction() -> the action DEPLOY appends to the leg: { type:'deploy', kind } (transport-model.md
+  // deployAction() -> the action the route's last stop carries: { type:'deploy', kind } (transport-model.md
   // §11.1's type tag) — the shape dispatchRouteWithActions takes on a final waypoint.
   function deployAction() { return { type: 'deploy', kind: PLAN.deploy }; }
 
-  // deployTarget() -> the selected target, or null. A candidate the map refuses is not a selection — the
-  // next click simply replaces it, as a re-click does in the route builder — so only a candidate with no
-  // refusal counts. While there is one, a click elsewhere does nothing (CANCEL first, §5).
+  // deployTarget() -> the route's LAST stop when the kit can deploy there (a bare hex inside the ring), or
+  // null — no stop yet, or a last stop the map refuses (deployRefusal). The stops before it may be anywhere:
+  // the path is legal anywhere, only the target is validated (§5).
   function deployTarget() {
-    return PLAN && PLAN.deploy && PLAN.candidate && !deployRefusal(PLAN.candidate) ? PLAN.candidate : null;
+    const last = PLAN && PLAN.deploy ? PLAN.waypoints[PLAN.waypoints.length - 1] : null;
+    return last && !deployRefusal(last.anchor) ? last.anchor : null;
+  }
+
+  // deployWaypoints() -> the plan's stops as the deploy dispatch takes them: fresh { anchor } copies, with
+  // the deploy action on the LAST stop only. The one place the action is added — for the quote, and for
+  // the route Finalise hands to the Deploy Outpost popup.
+  function deployWaypoints() {
+    const last = PLAN.waypoints.length - 1;
+    return PLAN.waypoints.map((wp, i) => i === last ? { anchor: wp.anchor, action: deployAction() } : { anchor: wp.anchor });
+  }
+
+  // deployRow(anchor) -> { act, note, warn }, the lines of the plan list's LAST row on the deploy map: the
+  // deploy action the stop will carry and the route's quote under it (deployQuoteLines) — or, flagged, why
+  // the kit can't deploy there. That flag also holds Finalise (canFinalise), as a dead leg's does.
+  function deployRow(anchor) {
+    const refusal = deployRefusal(anchor);
+    if (refusal) return { act: '', note: '', warn: 'can\'t deploy here — ' + refusal.toLowerCase() };
+    const quote = deployQuoteLines();
+    return { act: actionSummary(deployAction()), note: quote.note, warn: quote.warn };
   }
 
   // deployReach(kind) -> { radius, centres:[{q,r}] } — the player's guild's legal range for lane `kind`,
@@ -4284,78 +4295,42 @@ select.field{appearance:none; cursor:pointer;}
     ctx.restore();
   }
 
-  // requestDeployQuote() — once a VALID target is selected, ask the engine what the leg will cost: the route
-  // builder's own fetchQuote (window.__fetchQuote → POST /vehicle/quote), given the SAME one waypoint DEPLOY
-  // sends. Asked once per selection (a refused hex asks nothing). The ask is captured, as openCandidateAction
-  // captures its candidate, so a late answer for a target since cancelled or changed is dropped, never shown
-  // on the wrong hex. Informational only: DEPLOY never waits on it — the engine re-checks and re-costs at
-  // dispatch.
+  // requestDeployQuote() — once the route ENDS on a legal target, ask the engine what the whole route will
+  // cost: the route builder's own fetchQuote (window.__fetchQuote → POST /vehicle/quote), given the SAME stops
+  // Finalise hands on (deployWaypoints). Asked once per route (routeKey): a list edit asks again, while a
+  // re-render or a candidate click asks nothing, and a route ending on a refused hex asks nothing. The ask is
+  // captured, as openCandidateAction captures its candidate, so a late answer for a route since edited is
+  // dropped, never shown against the wrong one. Informational only: Finalise never waits on it — the Deploy
+  // Outpost popup asks its own at Finalise, and the engine re-checks and re-costs at dispatch.
   function requestDeployQuote() {
-    const target = deployTarget();
-    if (!target || (PLAN.deployQuote && PLAN.deployQuote.target === target)) return;
+    if (!deployTarget()) return;
+    const key = routeKey(PLAN.waypoints);
+    if (PLAN.deployQuote && PLAN.deployQuote.key === key) return;
     const plan = PLAN;
-    const ask = { target: target, quote: null };
+    const ask = { key: key, quote: null };
     plan.deployQuote = ask;
-    window.__fetchQuote(plan.vehicle, [{ anchor: target, action: deployAction() }]).then((q) => {
-      if (PLAN !== plan || plan.deployQuote !== ask) return; // the target changed, or planning ended
+    window.__fetchQuote(plan.vehicle, deployWaypoints()).then((q) => {
+      if (PLAN !== plan || plan.deployQuote !== ask) return; // the route changed, or planning ended
       ask.quote = q;
       renderPlanList();
     });
   }
 
-  // deployQuoteLines(target) -> { note, warn } — the quote's lines on the target row: "Quoting…" while the
-  // fetch is out; then the engine's Time · Cost, in the Finalise view's own formatting (window.__quoteFigures);
-  // or, for a leg the engine cannot quote ({ ok:false }), its reason as the flagged line, as Finalise shows
-  // it. Every figure is the engine's (§18) — this only lays them out.
-  function deployQuoteLines(target) {
+  // routeKey(waypoints) -> the route's stops as one string: what a quote was asked for. An add, a remove or a
+  // reorder changes it; nothing else does.
+  function routeKey(waypoints) { return JSON.stringify(waypoints.map((wp) => wp.anchor)); }
+
+  // deployQuoteLines() -> { note, warn } — the quote's lines on the target row: "Quoting…" while the fetch is
+  // out; then the engine's Time · Cost for the whole route, in the Finalise view's own formatting
+  // (window.__quoteFigures); or, for a route the engine cannot quote ({ ok:false }), its reason as the flagged
+  // line, as Finalise shows it. Every figure is the engine's (§18) — this only lays them out.
+  function deployQuoteLines() {
     const ask = PLAN.deployQuote;
-    const q = ask && ask.target === target ? ask.quote : null;
+    const q = ask && ask.key === routeKey(PLAN.waypoints) ? ask.quote : null;
     if (!q) return { note: 'Quoting…', warn: '' };
     if (!q.ok) return { note: '', warn: q.reason || 'This route cannot be dispatched.' };
     const f = window.__quoteFigures(q);
     return { note: 'Time ' + f.time + ' · Cost ' + f.cost, warn: '' };
-  }
-
-  // DEPLOY (the chip) → send the ONE leg with the deploy action appended. There is no Finalise view: the
-  // waypoint goes straight to the Dispatch popup's own send path (window.__dispatchDeploy →
-  // dispatchActionFor → dispatchRouteWithActions, via wireWaypoints). The map stays in deploy mode until the
-  // engine answers: an accept ends it (the craft is now in transit); a refusal is shown on the target, the
-  // selection kept, so the player can CANCEL and pick again.
-  // An ASSET-INITIATED plan (it carries PLAN.deployKitAssetId — territory-model.md §5 REVISED) first LOADS the kit
-  // onto the carrier (loadKit), the ruled order: only an accepted load goes on to the dispatch, so a refused load
-  // sends nothing more and the kit stays in inventory. Once loaded the kit is aboard, so the plan drops its kit id:
-  // a dispatch refused after the load leaves the heavy holding its kit (the state a retreat leaves), and a retry
-  // from here — CANCEL, a new hex, DEPLOY — is the plain dispatch, never a second load.
-  async function confirmDeploy() {
-    if (!PLAN || !PLAN.deploy || !PLAN.candidate || PLAN.deploySending || !window.__dispatchDeploy) return;
-    if (deployRefusal(PLAN.candidate)) { refreshPlanState(); return; } // the map moved under the selection
-    const plan = PLAN;
-    plan.deploySending = true; plan.deployRefused = '';
-    refreshPlanState();
-    let out = { accepted: true };
-    if (plan.deployKitAssetId) {
-      out = await loadDeployKit(plan);
-      if (out && out.accepted) plan.deployKitAssetId = null; // the kit is aboard now
-      if (PLAN !== plan) return; // planning ended while the load posted — send nothing more
-    }
-    if (out && out.accepted) out = await window.__dispatchDeploy(plan.vehicle, [{ anchor: plan.candidate, action: deployAction() }]);
-    if (PLAN !== plan) return; // planning ended while the dispatch posted (an accept closes it)
-    plan.deploySending = false;
-    if (!(out && out.accepted)) plan.deployRefused = (out && out.reason) || 'the Syndicate declined';
-    refreshPlanState();
-  }
-
-  // loadDeployKit(plan) -> the engine's answer to loading the plan's kit onto its carrier: loadKit { guildId,
-  // vehicleId, assetId } (design.md §4) moves the named idle kit into the carrier's empty hold, instantly, because
-  // both sit in the same system. The engine re-checks every condition the Carrier dropdown filtered on. A server
-  // that cannot be reached reads as a refusal, as it does for __dispatchDeploy, so the target row shows either.
-  async function loadDeployKit(plan) {
-    const action = { type: 'loadKit', guildId: PLAYER_GUILD.guildId, vehicleId: plan.vehicle.id, assetId: plan.deployKitAssetId };
-    try {
-      return await window.__sendAction(action);
-    } catch (err) {
-      return { accepted: false, reason: 'the Syndicate could not be reached: ' + (err && err.message || err) };
-    }
   }
 
   // ---------- automation slice 2b: Load Route — the guild's saved lanes (transport-model.md §11.9) ----------
@@ -5284,10 +5259,9 @@ select.field{appearance:none; cursor:pointer;}
     // a CANDIDATE anchor instead of selecting a hex. If a system sits on the hex it is a system anchor;
     // a Syndicate outpost, an outpost anchor; otherwise a bare hex. Nothing is added yet — the ADD →
     // Confirm chip does that, so a pan/mis-click is safe. Re-uses the same screenToWorld→pixelToAxial
-    // resolution the normal handler uses (one geometry). On the DEPLOY map a selected target holds: a click
-    // does nothing until the chip's Cancel clears it (territory-model.md §5).
+    // resolution the normal handler uses (one geometry). The DEPLOY map clicks the same way: any hex may be a
+    // turning point, and only the route's last stop is checked as the target (territory-model.md §5).
     if (planActive && PLAN) {
-      if (deployTarget()) return;
       const wp = screenToWorld(e.clientX, e.clientY);
       const hs = galaxy.galaxyParams.hexSize;
       const ax = pixelToAxial(wp.x, wp.y, hs);
@@ -5299,10 +5273,8 @@ select.field{appearance:none; cursor:pointer;}
       else PLAN.candidate = { q: ax.q, r: ax.r };
       PLAN.candidateArmed = false; // a fresh click re-proposes (back to the ADD step)
       PLAN.candidateAction = null; // …and an action pending on the old candidate never carries to a new hex
-      PLAN.deployRefused = '';     // …as does an engine refusal of the old deploy target
-      PLAN.deployQuote = null;     // …and the old target's quote (a valid new one asks for its own)
       closeLoadMenu();             // a map click dismisses an open Load Route menu, like any dropdown
-      refreshPlanState();          // the chip, and the deploy map's target row
+      renderPlanChip();
       return;
     }
 
@@ -5666,16 +5638,18 @@ select.field{appearance:none; cursor:pointer;}
   // the popup receives a copy ({ anchor, action? } each) on Finalise and hands it back on Edit.
   // (automation 3c) `loop` is the popup saying its launch picker has a repeating mode on (Edit Route).
   window.__planRoute = function (vehicle, waypoints, loop) { startPlanning(vehicle, waypoints, '', loop); };
-  // 2.2 deploy pipeline: the Deploy Outpost popup's Plan Route opens the DEPLOY map — planning mode for the chosen
-  // carrier, the kit's lane (`kind`, e.g. 'outpost') and the kit itself (`kitAssetId`), with no waypoints; the
-  // chip's DEPLOY loads the kit, then hands the leg to __dispatchDeploy.
-  window.__planDeploy = function (vehicle, kind, kitAssetId) { startPlanning(vehicle, [], '', false, kind, kitAssetId); };
+  // 2.2 deploy pipeline: the Deploy Outpost popup's Plan Route / Edit Route open the DEPLOY map — planning mode for
+  // the chosen carrier and the kit's lane (`kind`, e.g. 'outpost'), with no waypoints (Plan Route) or the finalised
+  // route (Edit Route). Its Finalise hands the route back to the popup (__kitDeployFinalise).
+  window.__planDeploy = function (vehicle, kind, waypoints) { startPlanning(vehicle, waypoints, '', false, kind); };
   window.__abandonPlanning = function () { if (planActive || PLAN) exitPlanning(false); };
   window.__fmtETA = fmtETA;
   // Automation 1b: the Dispatch popup's Finalise list uses the SAME action gate and the SAME summary
   // line as the map chip / left list — one copy of each, shared across the two IIFEs like __fmtETA.
   window.__routeActionAllowed = routeActionAllowed;
   window.__routeActionSummary = actionSummary;
+  // 2.2 deploy pipeline: the Deploy Outpost popup's Planned Route names its stops with the planner's own anchorLabel.
+  window.__anchorLabel = anchorLabel;
   // Automation 2b: the route checks, shared the same way. The popup passes its OWN finalised route
   // ({ vehicle, origin, waypoints }), so the planner and the Finalise list judge a route by one rule.
   window.__routeChecks = {
@@ -11902,7 +11876,8 @@ function paintInventoryHero(d){
   // quoteFigures(q) -> { time, cost } — an engine quote's two figures as the player reads them: the trip
   // time (the map's fmtETA of totalTicks) and the fuel cost presented in CREDITS (§8.0), not units. A quote
   // with no figures (null, or { ok:false }) reads "—" for both. Formatting only (§18). ONE copy, shared with
-  // the deploy map's target row (window.__quoteFigures), so the two views read a quote the same way.
+  // the deploy map's target row and the Deploy Outpost popup (window.__quoteFigures), so every view reads a
+  // quote the same way.
   function quoteFigures(q){
     var okQ = q && q.ok;
     return {
@@ -12192,8 +12167,8 @@ function paintInventoryHero(d){
   // — the only source of time / fuel / credits (§18). A network/HTTP failure comes back { ok:false }-
   // shaped, so the one render path shows a reason rather than throwing. Shared by Finalise and by a
   // Remove in the Finalise list (automation 2b), the two things that change the route's geometry — and
-  // by the deploy map (window.__fetchQuote), which asks it for the one leg DEPLOY will send. Only the
-  // anchors go (anchorsOf): an action never changes a leg, so a deploy leg quotes as its bare flight.
+  // by the deploy map and the Deploy Outpost popup (window.__fetchQuote), for the route a deploy will send.
+  // Only the anchors go (anchorsOf): an action never changes a leg, so a deploy route quotes as its bare flight.
   async function fetchQuote(v, waypoints){
     var player = window.__player ? window.__player() : null;
     var gid = player && player.guildId;
@@ -12266,12 +12241,13 @@ function paintInventoryHero(d){
     if(btn){ btn.disabled = false; btn.textContent = 'Dispatch'; }
     showDispatchRefuse('Refused: ' + ((out && out.reason) || 'the Syndicate declined'));
   }
-  // DEPLOY (territory-model.md §5) — called BY the deploy map's chip with its ONE waypoint, the deploy
-  // action already appended. The chip's DEPLOY is the finalise, so there is no Finalise view and no launch
-  // picker (a kit never rides a lane — always once): the leg goes out through Dispatch's own send path,
-  // where dispatchActionFor sees the action and sends dispatchRouteWithActions (wireWaypoints). Returns the
-  // engine's answer for the map to show. On accept: close (which also ends the deploy map) and re-read the
-  // snapshot, so the craft draws in transit. The engine re-checks the deploy now and again on arrival.
+  // DEPLOY (territory-model.md §5) — called BY the Deploy Outpost popup's Deploy, once its kit is loaded, with
+  // the finalised route: one stop or many, the deploy action on the last. That popup is the deploy's Finalise
+  // view, so there is no launch picker here (a kit never rides a lane — always once): the route goes out
+  // through Dispatch's own send path, where dispatchActionFor sees the action and sends
+  // dispatchRouteWithActions (wireWaypoints). Returns the engine's answer for the popup to show. On accept:
+  // close (which also discards the plan the map kept) and re-read the snapshot, so the craft draws in
+  // transit. The engine re-checks the deploy now and again on arrival.
   async function dispatchDeploy(vehicle, waypoints){
     var v = liveVehicle(vehicle.id) || vehicle;
     DP.vehicle = v; DP.waypoints = waypoints.slice(); DP.quote = null;
@@ -12320,9 +12296,9 @@ function paintInventoryHero(d){
   window.__openDispatch = openDispatch;   // the ONE entry point both call sites use
   window.__dispatchClose = closeDispatch;
   window.__dispatchFinalise = dispatchFinalise;   // the map's Finalise Route calls this
-  window.__dispatchDeploy = dispatchDeploy;       // the deploy map's DEPLOY chip calls this
-  window.__fetchQuote = fetchQuote;               // the deploy map's pre-DEPLOY quote asks through this…
-  window.__quoteFigures = quoteFigures;           // …and formats it the way the Finalise view does
+  window.__dispatchDeploy = dispatchDeploy;       // the Deploy Outpost popup's Deploy calls this
+  window.__fetchQuote = fetchQuote;               // the deploy map and the Deploy Outpost popup ask their quote through this…
+  window.__quoteFigures = quoteFigures;           // …and format it the way the Finalise view does
   window.__craftCoords = coordsOf;                // the deploy_failed notice's Show on map finds the craft's hex here
 
   $('dpClose').addEventListener('click', closeDispatch);
@@ -12333,20 +12309,29 @@ function paintInventoryHero(d){
 
 <script id="deploy-kit-wire">
 /* ============================================================================
-   THE DEPLOY OUTPOST POPUP (2.2 deploy pipeline, asset-initiated client slice 2a — territory-model.md §5 "The
-   deploy flow, REVISED"). A deployment starts from the OUTPOST, not the carrier: an idle outpost's Deploy button
-   (OPERATIONS → IDLE) opens this popup for that one kit — its summary, a Carrier dropdown of the heavies that can
-   take it, and Plan Route → the deploy map for the chosen carrier. Nothing is sent from here: the kit loads onto
-   the carrier only at the map's DEPLOY (loadKit, then the dispatch), so closing this popup, or cancelling the
-   map, leaves the kit in inventory. PRESENTATION ONLY (§18): the kit and the craft are snapshot rows, and the
-   engine's loadKit is the authority on which carrier may take the kit — the dropdown offers the ones it accepts.
+   THE DEPLOY OUTPOST POPUP (2.2 deploy pipeline, asset-initiated client slices 2a + 2b — territory-model.md §5
+   "The deploy flow, REVISED"). A deployment starts from the OUTPOST, not the carrier: an idle outpost's Deploy
+   button (OPERATIONS → IDLE) opens this popup for that one kit. It has the Dispatch popup's two states:
+    - PRE-PLAN: the kit's summary, a Carrier dropdown of the heavies that can take it, and Plan Route → the
+      planner's deploy map for the chosen carrier;
+    - POST-FINALISE: the map's Finalise hands the route back here — the Planned Route beside the engine's Time /
+      Cost, with Edit Route (back to the map, the route kept) and Deploy, the COMMIT: loadKit, then the dispatch.
+   loadKit fires only at Deploy, so closing this popup, Edit Route, or cancelling the map leaves the kit in
+   inventory. PRESENTATION ONLY (§18): the kit and the craft are snapshot rows, the quote is the engine's, and the
+   engine's loadKit and dispatch are the authority — the dropdown offers the carriers loadKit accepts.
    ============================================================================ */
 (function(){
   function $(id){ return document.getElementById(id); }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); }
 
-  // The popup's own state: the kit (the snapshot `assets` row) it was opened for. Reset on open/close.
-  var KD = { kit: null };
+  // The popup's own state, for the one kit it was opened for (`kit`, the snapshot `assets` row). Post-finalise
+  // it also holds the route: its `carrier`, its `waypoints` (the deploy action on the last) and the engine's
+  // `quote`. `aboard` turns true once a load has landed: the kit has left the inventory, so a retry after a
+  // refused dispatch sends the dispatch alone, never a second load. `sending` holds the buttons while Deploy
+  // posts; `refused` is the last refusal. A FRESH object on every open and close, so an answer that lands after
+  // the popup has moved on can tell (see onDeploy). Plan Route / Edit Route only hide the popup, keeping it.
+  function freshKD(kit){ return { kit: kit, carrier: null, waypoints: [], quote: null, aboard: false, sending: false, refused: '' }; }
+  var KD = freshKD(null);
 
   // The player's own guild row, off the polled snapshot — null if it is momentarily absent.
   function myGuild(){
@@ -12358,11 +12343,13 @@ function paintInventoryHero(d){
   // The last part of a stable id — asset_<guild>_outpost_NN / vehicle_<guild>_<class>_NN → "NN", the number
   // the Dispatch popup titles a craft by.
   function idSuffix(id){ return String(id).split('_').slice(-1)[0]; }
+  // A carrier's name, as the dropdown lists it and the refusal names it (a carrier is always a heavy).
+  function carrierName(v){ return 'Heavy Transport · #' + idSuffix(v.id); }
 
   // carriersFor(kit) -> the guild's craft that loadKit would accept for this kit, by id: a heavy transport (a
   // kit fills a whole heavy hold), idle, off any lane, with an EMPTY hold, and berthed at the kit's own system
   // (design.md §4 — the ruled same-system constraint). Read off the published rows; the engine re-checks every
-  // one of these at DEPLOY.
+  // one of these at Deploy.
   function carriersFor(kit){
     var g = myGuild();
     return ((g && g.vehicles) || []).filter(function(v){
@@ -12373,21 +12360,34 @@ function paintInventoryHero(d){
     }).sort(function(x, y){ return x.id < y.id ? -1 : (x.id > y.id ? 1 : 0); });
   }
 
-  // openKitDeploy(assetId) — fill the popup for one idle kit and show it. The kit is re-read off the snapshot by
-  // id; one no longer idle (loaded, or gone, since the row was drawn) opens nothing. Opening abandons any
-  // in-progress route, as opening the Dispatch popup does (§B).
+  // openKitDeploy(assetId) — fill the popup for one idle kit and show it, pre-plan. The kit is re-read off the
+  // snapshot by id; one no longer idle (loaded, or gone, since the row was drawn) opens nothing. Opening abandons
+  // any in-progress route, as opening the Dispatch popup does (§B).
   function openKitDeploy(assetId){
     var g = myGuild();
     var kit = ((g && g.assets) || []).filter(function(a){ return a.id === assetId && a.deployedToVentureId == null; })[0];
     if(!kit) return;
     if(window.__abandonPlanning) window.__abandonPlanning();
-    KD.kit = kit;
+    KD = freshKD(kit);
     $('kdName').textContent = 'Outpost Kit · #' + idSuffix(kit.id);
     $('kdKind').textContent = kit.kind.charAt(0).toUpperCase() + kit.kind.slice(1);
     $('kdStored').textContent = (window.__systemName && window.__systemName(kit.systemId)) || kit.systemId;
-    $('kdReady').textContent = 'Yes';   // idle in the inventory — the engine's own answer, checked above
-    renderCarriers();
+    renderPrePlan();
     $('deploy-overlay').classList.add('open');
+  }
+
+  // PRE-PLAN state: the Carrier dropdown + Plan Route. (No Carrier row in the summary yet: the dropdown is it.)
+  function renderPrePlan(){
+    $('kdCarrierRow').style.display = 'none';
+    $('kdSection').innerHTML =
+      '<div class="kd-carrier">' +
+        '<div class="dp-sechead">Carrier</div>' +
+        '<select class="est-select" id="kdCarrier"></select>' +
+      '</div>';
+    $('kdActions').innerHTML = '<button class="dp-btn primary" id="kdPlanBtn" type="button" disabled>Plan Route</button>';
+    $('kdCarrier').addEventListener('change', syncPlanBtn);
+    $('kdPlanBtn').addEventListener('click', onPlanRoute);
+    renderCarriers();
   }
 
   // The Carrier dropdown: a "Select carrier" prompt, then one option per carrier — or, with none, the one
@@ -12397,7 +12397,7 @@ function paintInventoryHero(d){
     var sel = $('kdCarrier');
     sel.innerHTML = carriers.length
       ? '<option value="">Select carrier</option>' + carriers.map(function(v){
-          return '<option value="' + esc(v.id) + '">Heavy Transport · #' + esc(idSuffix(v.id)) + '</option>';
+          return '<option value="' + esc(v.id) + '">' + esc(carrierName(v)) + '</option>';
         }).join('')
       : '<option value="">No Available Transport</option>';
     sel.disabled = !carriers.length;
@@ -12406,30 +12406,130 @@ function paintInventoryHero(d){
   function syncPlanBtn(){ $('kdPlanBtn').disabled = !$('kdCarrier').value; }
 
   // Plan Route → the DEPLOY map for the chosen carrier (territory-model.md §5): the planner's deploy variant on
-  // the kit's lane (its kind, 'outpost'), centred on the carrier (which sits at the kit's system), carrying the
-  // kit's id so the map's DEPLOY loads it first. Nothing loads here. The carrier is re-read off the live snapshot,
-  // so one that has left since the popup opened is caught: the dropdown redraws without it and nothing opens.
+  // the kit's lane (its kind, 'outpost'), centred on the carrier (which sits at the kit's system), with no stops
+  // yet. Nothing loads here. The carrier is re-read off the live snapshot, so one that has left since the popup
+  // opened is caught: the dropdown redraws without it and nothing opens. The popup is only HIDDEN, as the
+  // Dispatch popup's Plan Route hides its own: it keeps the kit for the map's Finalise to come back to.
   function onPlanRoute(){
     var vid = $('kdCarrier').value;
     var carrier = carriersFor(KD.kit).filter(function(v){ return v.id === vid; })[0];
     if(!carrier){ renderCarriers(); return; }
-    var kit = KD.kit;
-    closeKitDeploy();
-    if(window.__planDeploy) window.__planDeploy(carrier, kit.kind, kit.id);
+    KD.carrier = carrier;
+    $('deploy-overlay').classList.remove('open');
+    if(window.__planDeploy) window.__planDeploy(carrier, KD.kit.kind, []);
   }
 
+  // kitDeployFinalise(vehicle, waypoints) — called BY the deploy map's Finalise (the map has already left
+  // planning): remember the route, ask the engine's quote for it, and re-show the popup post-finalise. The
+  // Dispatch popup's dispatchFinalise, for a deployment. `waypoints` carry the deploy action on the last stop.
+  async function kitDeployFinalise(vehicle, waypoints){
+    if(!KD.kit) return;   // the popup was closed meanwhile: there is no kit to deploy
+    KD.carrier = vehicle; KD.waypoints = waypoints.slice(); KD.refused = '';
+    KD.quote = await window.__fetchQuote(vehicle, KD.waypoints);
+    renderPostFinalise();
+    $('deploy-overlay').classList.add('open');
+  }
+
+  // POST-FINALISE state — the Dispatch popup's renderPostFinalise, for a deployment: the Planned Route (Origin,
+  // then each stop, the last one showing its deploy action) beside Time over Cost, then Edit Route / Deploy.
+  // Every figure is the engine's quote (§18), formatted by the Finalise view's own quoteFigures. Deploy does not
+  // wait on the quote (§5: the engine re-checks and re-costs at dispatch); a route it cannot quote shows why.
+  function renderPostFinalise(){
+    var v = KD.carrier, q = KD.quote, label = window.__anchorLabel;
+    $('kdCarrierRow').style.display = '';
+    $('kdCarrierName').textContent = carrierName(v);
+    var route = { vehicle: v, origin: v.location, waypoints: KD.waypoints };
+    var rows = '<div class="wp-row origin"><div class="ix">◎</div><div class="nm">' + esc(label(v.location)) + '</div><div class="slot"></div></div>';
+    KD.waypoints.forEach(function(wp, i){
+      var sub = wp.action ? '<div class="act">' + esc(window.__routeActionSummary(wp.action)) + '</div>' : '';
+      var note = window.__routeChecks.hereNote(route, i);
+      if(note) sub += '<div class="note">' + esc(note) + '</div>';
+      rows += '<div class="wp-row"><div class="ix">' + (i+1) + '</div>' +
+        '<div class="nm">' + esc(label(wp.anchor)) + sub + '</div><div class="slot"></div></div>';
+    });
+    var figs = window.__quoteFigures(q);
+    $('kdSection').innerHTML =
+      '<div class="dp-sechead" style="margin-bottom:10px">Planned Route</div>' +
+      '<div class="dp-route">' +
+        '<div class="wp-wrap"><div class="wp-list">' + rows + '</div><div class="wp-fade"></div></div>' +
+        '<div class="tc-box">' +
+          '<div class="cell"><div class="lab">Time</div><div class="val">' + esc(String(figs.time)) + '</div></div>' +
+          '<div class="cell"><div class="lab">Cost</div><div class="val">' + esc(String(figs.cost)) + '</div></div>' +
+        '</div>' +
+      '</div>' +
+      (q && q.ok === false ? '<div class="dp-refuse">' + esc(q.reason || 'This route cannot be dispatched.') + '</div>' : '') +
+      (KD.refused ? '<div class="dp-refuse">' + esc(KD.refused) + '</div>' : '');
+    $('kdActions').innerHTML =
+      '<button class="dp-btn" id="kdEditBtn" type="button">Edit Route</button>' +
+      '<button class="dp-btn primary" id="kdDeployBtn" type="button">' + (KD.sending ? 'Deploying…' : 'Deploy') + '</button>';
+    $('kdEditBtn').disabled = KD.sending;
+    $('kdDeployBtn').disabled = KD.sending;
+    $('kdEditBtn').addEventListener('click', onEditRoute);
+    $('kdDeployBtn').addEventListener('click', onDeploy);
+  }
+
+  // Edit Route → back into the deploy map with the finalised route, the same soft hide as Plan Route (the
+  // Dispatch popup's Edit Route). Nothing is loaded or sent: the kit stays where it is.
+  function onEditRoute(){
+    if(KD.sending || !KD.carrier) return;
+    $('deploy-overlay').classList.remove('open');
+    if(window.__planDeploy) window.__planDeploy(KD.carrier, KD.kit.kind, KD.waypoints);
+  }
+
+  // Deploy → the COMMIT, in the ruled order (§5). First loadKit moves the kit from the system's inventory into
+  // the carrier's empty hold (instant: both sit in the same system). Only an accepted load goes on to the
+  // dispatch: the finalised route, the deploy action on its last stop, sent through the Dispatch popup's own
+  // send path (window.__dispatchDeploy → dispatchActionFor → dispatchRouteWithActions). A refused load sends
+  // nothing more, so the kit stays in inventory. Once the load lands the kit is ABOARD: a dispatch refused after
+  // it says so, and a retry is the dispatch alone. If the popup is closed while a send posts, nothing more is
+  // sent and nothing is shown. On an accepted dispatch the popup closes: the craft is in transit.
+  async function onDeploy(){
+    var kd = KD;
+    if(kd.sending || !kd.carrier || !kd.waypoints.length) return;
+    kd.sending = true; kd.refused = '';
+    renderPostFinalise();
+    var out = { accepted: true };
+    if(!kd.aboard){
+      out = await loadKit(kd);
+      if(out && out.accepted) kd.aboard = true;
+      if(KD !== kd) return;   // closed while the load posted
+    }
+    if(out && out.accepted) out = await window.__dispatchDeploy(kd.carrier, kd.waypoints);
+    if(KD !== kd) return;     // closed while the dispatch posted
+    kd.sending = false;
+    if(out && out.accepted){ closeKitDeploy(); return; }
+    kd.refused = 'Refused: ' + ((out && out.reason) || 'the Syndicate declined') +
+      (kd.aboard ? ' — the kit is now aboard ' + carrierName(kd.carrier) + '.' : '');
+    renderPostFinalise();
+  }
+
+  // loadKit(kd) -> the engine's answer to loading the kit onto the carrier: loadKit { guildId, vehicleId,
+  // assetId } (design.md §4). The engine re-checks every condition the Carrier dropdown filtered on. A server
+  // that cannot be reached reads as a refusal, as it does for the dispatch.
+  async function loadKit(kd){
+    var player = window.__player ? window.__player() : null;
+    try {
+      return await window.__sendAction({ type: 'loadKit', guildId: player && player.guildId, vehicleId: kd.carrier.id, assetId: kd.kit.id });
+    } catch(err){
+      return { accepted: false, reason: 'the Syndicate could not be reached: ' + (err && err.message || err) };
+    }
+  }
+
+  // Close (✕ / backdrop / Escape, or an accepted Deploy): hide the popup, reset its state, and abandon the plan
+  // the map kept at Finalise, as closing the Dispatch popup does (§B).
   function closeKitDeploy(){
-    KD.kit = null;
+    KD = freshKD(null);
+    if(window.__abandonPlanning) window.__abandonPlanning();
     $('deploy-overlay').classList.remove('open');
   }
 
-  window.__openKitDeploy = openKitDeploy;   // OPERATIONS' idle-outpost Deploy button calls this
+  window.__openKitDeploy = openKitDeploy;           // OPERATIONS' idle-outpost Deploy button calls this
+  window.__kitDeployFinalise = kitDeployFinalise;   // the deploy map's Finalise calls this
 
-  $('kdCarrier').addEventListener('change', syncPlanBtn);
-  $('kdPlanBtn').addEventListener('click', onPlanRoute);
   $('kdClose').addEventListener('click', closeKitDeploy);
   $('deploy-overlay').addEventListener('click', function(e){ if(e.target === this) closeKitDeploy(); });
-  document.addEventListener('keydown', function(e){ if(KD.kit && e.key === 'Escape') closeKitDeploy(); });
+  // Escape closes the popup only while it is SHOWN — not while it is hidden behind the deploy map.
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && $('deploy-overlay').classList.contains('open')) closeKitDeploy(); });
 })();
 </script>
 

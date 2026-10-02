@@ -213,16 +213,17 @@ client-only. The range paint, the pre-deploy quote, and the arrival deploy/retre
   — not a reduced one-leg map. The legal **range ring** is shown as the guide for where the
   **final** waypoint may land, and a **deploy** action is auto-appended to that final waypoint when
   it is a bare hex in range. Intermediate stops are plain turning-points: the kit fills the whole
-  heavy hold, so no cargo action can ride them (the engine refuses a dock there regardless). *(⤳ Not yet:
-  client slice 2a plans on the single-leg deploy map, reused as built; lifting it to the multi-leg planner is
-  slice 2b.)*
+  heavy hold, so no cargo action can ride them (the engine refuses a dock there regardless). *(⤳ BUILT
+  02-10-26 — client slice 2b: the deploy map is now the full multi-leg planner; "AS-BUILT — asset-initiated
+  client slice 2b" below.)*
 
 - **Commit — in the popup.** The planner's own **Finalise → Dispatch** is the commit (this
   replaces the built map's on-tile DEPLOY-as-finalise). On commit the kit **loads** onto the chosen
   carrier — **instant, because carrier and kit sit in the same system** — and the lane
-  launches as an ordinary route in Operations. *(⤳ Interim, client slice 2a: the commit is still the map's
-  on-tile DEPLOY, which now sends `loadKit` and then, only if the load is accepted, the dispatch — this ruled order.
-  The commit moves into the popup with the multi-leg planner, slice 2b.)*
+  launches as an ordinary route in Operations. *(⤳ BUILT 02-10-26 — client slice 2b: the deploy map's Finalise
+  hands the route back to the Deploy Outpost popup, whose **Deploy** sends `loadKit` and then, only if the load is
+  accepted, the dispatch — this ruled order. The map's on-tile DEPLOY is retired. "AS-BUILT — asset-initiated
+  client slice 2b" below.)*
 
 - **Arrival — unchanged.** The deploy is instant and the carrier is left **parked on the new
   Outpost** (the derived `dockStatus: parked`, already built and test-locked).
@@ -339,7 +340,9 @@ ring the way the planner refuses a bad candidate: the chip's Deploy is disabled,
 is guidance; `deployCheck` stays the authority. A picked hex shows the one-stage **Deploy / Cancel** chip and locks
 the map until Cancel. **Deploy** sends the single waypoint with `{ type: 'deploy', kind: 'outpost' }` appended through
 the existing `dispatchActionFor` → `dispatchRouteWithActions` path. An engine refusal shows on the Deploy Target row
-and keeps the map open. Arrow-key panning is added to the shared planning mode. Not built: the `deployFailed` notice
+and keeps the map open. *(⤳ The one-stage chip and the commit on the tile are RETIRED 02-10-26: the map is now
+the full multi-leg planner, and the commit is in the Deploy Outpost popup — "AS-BUILT — asset-initiated client slice
+2b" below. The range ring, the refusal rules, the quote and arrow-key pan carry over.)* Arrow-key panning is added to the shared planning mode. Not built: the `deployFailed` notice
 (client slice 1, its own slice), a time / fuel quote before Deploy (on the decision checklist, as is the pan step;
 *⤳ the quote is ruled and BUILT 01-10-26, below*), the other lanes and the kit sources.
 
@@ -358,7 +361,9 @@ its bare flight, the same leg the dispatch burns for. The Deploy Target row read
 then the engine's **Time · Cost**, formatted by the same `quoteFigures` the Finalise view uses. A leg the engine
 cannot quote (`{ ok:false }`) shows the engine's reason instead. A refused hex asks nothing. Cancel, or a new target,
 drops the old quote, and a late answer for a target since changed is ignored. DEPLOY is not gated on the quote. The
-quote is asked once per selection, as Finalise asks once per route, so a poll does not refresh it.
+quote is asked once per selection, as Finalise asks once per route, so a poll does not refresh it. *(⤳ 02-10-26,
+client slice 2b: the map plans a route of one stop or many, so the quote is now the WHOLE route's. It is asked once
+the route ends on a legal target, again after each add / remove / reorder, and shown under the last stop.)*
 
 **AS-BUILT — asset-initiated slice 1, the kit as a system-scoped idle asset (02-10-26; engine + operator CLI, no
 client).** Built to the REVISED block above and `design.md` §4's ruling, no design change and no new number. An
@@ -392,11 +397,13 @@ number. **The entry:** in OPERATIONS → IDLE an idle asset row of kind `'outpos
 Deploy opens the **Deploy Outpost** popup (`#deploy-overlay`), a small overlay built from the Dispatch popup's
 markup and classes. The CSS rules it uses name it beside `#dispatch-overlay` (and beside `#est-overlay` for the
 `est-select`), so the two popups share one rule each rather than a copy. It reads eyebrow "Deploy Outpost",
-"Outpost Kit · #NN", a summary (Kind / Stored at / Ready) and the outpost art. Its **Carrier** dropdown lists the
+"Outpost Kit · #NN", a summary (Kind / Stored at / Ready) and the outpost art *(⤳ 02-10-26, slice 2b: Ready
+dropped — it always read "Yes")*. Its **Carrier** dropdown lists the
 player guild's heavy transports that are idle, off any lane, with an empty hold, and berthed at the kit's own
 system: exactly what `loadKit` accepts. With none it reads **"No Available Transport"** and Plan Route stays
 disabled; picking a carrier enables it. The list is read when the popup opens, and the chosen carrier is re-read
-at Plan Route. **Plan:** Plan Route opens the existing single-leg deploy map for the chosen carrier, unchanged
+at Plan Route. *(⤳ The **Plan** and **Commit** below were slice 2a's interim; both are SUPERSEDED 02-10-26 by
+"AS-BUILT — asset-initiated client slice 2b", next.)* **Plan:** Plan Route opens the existing single-leg deploy map for the chosen carrier, unchanged
 (range ring, quote, DEPLOY / CANCEL chip, arrow-key pan), centred on the carrier at the kit's system. The map
 needs nothing from the hold, so the carrier starts empty. `startPlanning` carries the kit's id as
 `PLAN.deployKitAssetId`. **Commit:** for a plan carrying a kit id, the on-tile DEPLOY sends `loadKit { guildId,
@@ -411,7 +418,38 @@ kit in inventory. **The heavy-first entry is removed:** `deployKindOf`, the Disp
 refused after its load, or by an operator `load-kit`) has no client deploy path until the `deploy_failed`
 message's Redeploy fork lands. It is operator-recoverable (`unload-kit` back into inventory, then Deploy from the
 idle row), and a retreat is near-impossible in single-guild play. Not built: the multi-leg planner and the commit in
-the popup (slice 2b), the message's Redeploy / Return (slice 3), and the other kinds.
+the popup (slice 2b) *(⤳ BUILT 02-10-26, next)*, the message's Redeploy / Return (slice 3), and the other kinds.
+
+**AS-BUILT — asset-initiated client slice 2b, the multi-leg planner + the commit in the popup (02-10-26;
+`client/game.html` only, no engine).** Built to the REVISED block above ("Plan" and "Commit"), no design change and no
+new number. It replaces the two interim pieces slice 2a named. **Plan:** the deploy map is now the full route planner.
+Plan Route in the Deploy Outpost popup opens it for the chosen carrier, with the normal Add → Confirm chip, the
+waypoint list with reorder / remove, and Finalise. The dashed range ring stays drawn as the guide. In deploy mode no
+stop carries an action of its own. The `{ type: 'deploy', kind }` action is added to the LAST stop when the route is
+handed on (`deployWaypoints`), so it moves when stops are added, removed or reordered, and the list shows it on the
+last row. The chip offers no Action (no dock), so every earlier stop is a plain turning point, and it may be any hex.
+Load Route stays hidden: a saved lane's stops carry dock actions, and loading one re-plans as an ordinary route.
+**The Finalise gate** is the planner's own (at least one stop, no dead leg) plus a last stop the kit can deploy on.
+`deployTarget()` now reads the route's last stop through the unchanged `deployRefusal`. A last stop that is not bare,
+off the disc, or outside the ring flags its row ("can't deploy here — outside the deploy range") and disables
+Finalise, as a dead leg does. **The map's quote** is the whole route's (the pre-deploy quote note above). **Fork 2 —
+Finalise lands in the popup.** On the deploy map, `finalisePlanning` hands the route to `__kitDeployFinalise` instead
+of the Dispatch popup. The Deploy Outpost popup re-opens in a post-finalise state built from the Dispatch popup's
+own: the Planned Route list (Origin, each stop, the deploy action on the last) beside the engine's Time / Cost
+(`fetchQuote` / `quoteFigures`), with **Edit Route** and **Deploy**. The summary shows a Carrier row there, in place of
+the dropdown. The CSS rules it uses name `#deploy-overlay` beside `#dispatch-overlay`, as slice 2a's did. Edit Route
+re-opens the map with the route kept. **Commit:** Deploy sends `loadKit { guildId, vehicleId, assetId }`, and only if
+the load is accepted sends the dispatch through the unchanged `__dispatchDeploy` (`dispatchActionFor` →
+`dispatchRouteWithActions`, `wireWaypoints`). `loadKit` fires only at Deploy, so the map's Cancel, Edit Route or
+closing the popup leaves the kit in inventory. A refused load shows the engine's reason and sends nothing more. Once
+the load lands the popup marks the kit aboard: a dispatch refused after it says so ("… — the kit is now aboard Heavy
+Transport · #01."), and a retry sends the dispatch alone. Deploy does not wait on the quote, as the map's DEPLOY did
+not (still open on the decision checklist). **Retired:** the one-stage chip (`fillDeployChip`), `confirmDeploy`,
+`loadDeployKit`, the "a selected target locks the map" click rule, `PLAN.deployKitAssetId` / `deploySending` /
+`deployRefused`, and the CSS rule that hid Finalise in deploy mode. The kit now lives in the popup, which is only
+hidden while the map is open. **Ride-along:** the popup's Ready row is dropped (slice 2a's call (1), ruled). Slice 2a's
+known gap still holds: closing the popup after a load leaves the kit aboard, with no client path until slice 3. Not
+built: the `deploy_failed` message's Redeploy / Return (slice 3), and the other kinds.
 
 ## 6. Generation — starter spacing
 
