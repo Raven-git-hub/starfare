@@ -170,7 +170,7 @@ detail opens in a **popup** (`docs/mockups/guild-hall-messages.html`). **Client 
 / snapshot / `sim/` runtime change; it renders the published rows and dispatches exactly one action
 (`acknowledgeEvent`).
 
-- **The inbox rows** are subject lines only (icon + one-line title + a "when"/status in `.meta`),
+- **The inbox rows** are subject lines only (an offer's icon + one-line title + a "when"/status in `.meta`),
   no inline detail. The **offers** keep their standing chip and their engine-derived acceptance
   countdown (`deadlineLabel` off `daysToLapse`) and still open the reneg popup on click. The
   **notices** are the player guild's `guilds[].events` (read + unread) in the snapshot's own
@@ -213,7 +213,7 @@ fields ship, §2 and §5 folded in above), and the **client slice** (the inbox +
 Visual contract: `docs/mockups/guild-hall-messages.html`.*
 
 The MESSAGES panel becomes an **email inbox**. Every row — the pinned action-items **and** the
-notices below — is a **clickable subject line**: an icon, a one-line title, a "when" (or, for an
+notices below — is a **clickable subject line**: an icon (an offer only), a one-line title, a "when" (or, for an
 offer, its status/countdown), and, for an unread notice, the amber unread dot. The full detail no
 longer renders inline; clicking a row opens a **popup**. This replaces §8's fat notice rows
 (inline title + detail + inline ACKNOWLEDGE).
@@ -347,8 +347,8 @@ design change, as a small addition to §8's notice code. `venture_closed` / `lic
 popup card is pixel-identical before and after.
 - **The row.** `noticeTitle` / `noticeRowTitle` gain a `deploy_failed` branch: "Deployment failed — {Kind}", where
   `{Kind}` is `prettyGood(payload.kind)` ("Outpost"; a missing kind reads "Kit", the engine's word for what was
-  hauled). `NOTICE_ICON` gains 🚀, illustrative like ⚖ / 🔒. Newest-first order, the unread dot and read dimming
-  are §8's, unchanged.
+  hauled). The row has no icon: notice rows dropped the illustrative `NOTICE_ICON` (⚖ / 🔒 / 🚀) on 02-10-26.
+  Newest-first order, the unread dot and read dimming are §8's, unchanged.
 - **The popup.** `openNotice` re-dresses the shared `#notice-overlay` card on EVERY open. For a `deploy_failed` it
   sets the eyebrow (`#noticeEyebrow`) to "Fleet — Dispatch", the hero (`#noticeArt`) to
   `assets/characters/pilot.jpg`, and shows SHOW ON MAP (`#noticeShowMap`) beside Dismiss. Any other notice is set

@@ -3146,6 +3146,16 @@ boundary so the later hex-map swap doesn't touch it.
     **Deferred (not invented):** a kit left aboard with no notice (a refused dispatch after its load, or an operator
     `load-kit`) still has no client path. **Calls on the decision checklist** ("Asset-initiated client slice 3b — three
     calls").
+  - **client polish — guild notice rows carry no emoji icon (CLIENT ONLY, `client/game.html`).** 🟢 *BUILT (02-10-26).*
+    Presentation only: the icons were decorative, not data. `NOTICE_ICON` (⚖ / 🔒 / 🚀) is removed, and a notice row
+    (`msg note`) renders the unread dot, the title and the "when", with no icon box. The one CSS rule only that box
+    used, `#tp-guild .msg.note .ic`, is removed. Action rows keep their ⚖, the shared `.ic` rule and `.msg.action .ic`.
+    Type, title, order, unread dot, read dimming and the popup are unchanged. The popup never carried an emoji, and its
+    card is the same PNG bytes before and after. AS-BUILT in `event-log.md` §10, with the §8 / §9 row wording to
+    match. **A NO-OP for `sim/` and `tools/`:** `git diff -- sim tools` is empty. Sim **1,918 green** and tools **75
+    green**, both unchanged. Driven headless on a seated seed-42 server, with an engine-written `deploy_failed` and
+    `venture_closed`: no notice row has an `.ic`, there is no emoji in the panel or either popup, the dot → title gap
+    is the row's 12px, and the rows are 43px tall (51px before, the icon box's height).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is

@@ -1080,9 +1080,9 @@ select.field{appearance:none; cursor:pointer;}
 #tp-guild .gh-railfoot{padding:12px 15px; border-top:1px solid var(--gh-line); color:var(--gh-ink4); font-size:10px; letter-spacing:.04em; line-height:1.5;}
 
 /* MESSAGES panel — the email-style inbox (docs/mockups/guild-hall-messages.html, the §9 redesign).
-   Every row is a one-line SUBJECT LINE: icon + title + a "when"/status in .meta, and — a notice —
-   the amber unread dot. The full detail no longer renders inline; clicking a row opens a per-type
-   popup. Both action-items and notices share this row shape. */
+   Every row is a one-line SUBJECT LINE: title + a "when"/status in .meta, led by an action-item's
+   icon or a notice's amber unread dot. The full detail no longer renders inline; clicking a row
+   opens a per-type popup. Both action-items and notices share this row shape. */
 #tp-guild .gh-seclab{font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--gh-ink4); padding:14px 16px 6px;}
 #tp-guild .msg{display:flex; align-items:center; gap:12px; padding:12px 16px; border-top:1px solid var(--gh-line); cursor:pointer; transition:.12s;}
 #tp-guild .msg:hover{background:#1b2029;}
@@ -1101,7 +1101,6 @@ select.field{appearance:none; cursor:pointer;}
 /* action-required rows are pinned + amber-edged; notices are calmer */
 #tp-guild .msg.action{background:rgba(201,162,39,.045);}
 #tp-guild .msg.action .ic{background:var(--gh-amber-dim); color:var(--gh-amber2);}
-#tp-guild .msg.note .ic{background:rgba(232,223,200,.06); color:var(--gh-ink3);}
 #tp-guild .msg.note .t{color:var(--gh-ink2);}
 /* an unread notice: the amber dot on the left. read = dimmed, dot hidden. */
 #tp-guild .msg .unreaddot{width:6px; height:6px; border-radius:50%; background:var(--gh-amber); flex:none;}
@@ -10941,11 +10940,6 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // (§18): the row "when" and the popup facts are the engine-derived `whenDay` / `unlockDay`, and
   // the popup body is static copy keyed on `type` + `payload.cause` (the four writers, §2).
 
-  // Per-type icon — muted, calmer than an action row's scales. ⚖ for a licence matter, 🔒 for a
-  // closed venture whose node is held, 🚀 for a fleet dispatch (deploy_failed, §10). Illustrative
-  // (the mockup's own note icons are), not data.
-  var NOTICE_ICON = { licence_lapsed:'⚖', venture_closed:'🔒', deploy_failed:'🚀' };
-
   // The venture kind word for the title label — the payload carries the kind (§2) because
   // `ventureName` alone is a *location*, not a "{Good} Mine" name.
   var KIND_WORD = { mining:'Mine', refining:'Refinery' };
@@ -11096,11 +11090,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     } else {
       notices.forEach(function(n){
         var unread = n.readTick == null;   // born unread; acknowledgeEvent stamps readTick (§3)
-        var icon = NOTICE_ICON[n.type] || '⚖';
         var whenTxt = (n.whenDay != null) ? ('Day ' + n.whenDay) : '';
         rows += '<div class="msg note'+(unread ? '' : ' read')+'" data-note="'+esc(n.id)+'">'
           + '<span class="unreaddot"></span>'
-          + '<div class="ic">'+icon+'</div>'
           + '<div class="body">'
           +   '<div class="t">'+noticeRowTitle(n)+'</div>'
           + '</div>'
