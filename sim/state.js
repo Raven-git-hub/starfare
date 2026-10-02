@@ -110,6 +110,7 @@ function createGuild({
   savedRouteSerial = 0,
   syndicateCommissionSerial = 0,
   kitAssetSerial = 0,
+  removedAssetHighWater = {},
   events = [],
   eventSeq = 0,
 }) {
@@ -401,6 +402,15 @@ function createGuild({
     // Guarded by `checkAssetOccupancy`. OMITTED when 0 so a guild that has never had a kit carries no key
     // and serializes byte-identically to pre-slice (invariant 9). A restored save that HANDS ONE IN keeps it.
     ...(kitAssetSerial !== 0 ? { kitAssetSerial } : {}),
+    // removedAssetHighWater: per venture asset kind (miner / factory), the HIGHEST asset number an
+    // operator lever has ever deleted — `{ [kind]: NN }` (design.md §15.4 "Ids never repeat"; §4 AS-BUILT).
+    // Miners and factories number from "the highest live number + 1" (sim/assets.js nextAssetNumber),
+    // which is safe while nothing deletes them; removeAsset and removeVenture { asset: 'remove' } do, so
+    // they record the deleted number here (sim/actions.js deleteAsset) and nextAssetNumber never mints at
+    // or below it. It only ever climbs. Guarded by `checkAssetOccupancy`. OMITTED when empty so a guild
+    // that never had an asset deleted carries no key and serializes byte-identically to pre-fix
+    // (invariant 9). A restored save that HANDS ONE IN keeps it (copied, so it never aliases the caller's).
+    ...(Object.keys(removedAssetHighWater).length ? { removedAssetHighWater: { ...removedAssetHighWater } } : {}),
   };
 }
 

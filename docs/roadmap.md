@@ -2838,18 +2838,39 @@ boundary so the later hex-map swap doesn't touch it.
     decision checklist** ("Asset-initiated slice 1 — two calls"): a standalone unload leaves a retreated craft's
     `deployFailed` set (only a dispatch clears it, as ruled); and an idle kit asset carries no tick of its own.
     *(⤳ The first is RULED 02-10-26 — the unload clears it — and BUILT, "engine-integrity tidy" below.)*
-  - **engine-integrity tidy (ENGINE + tests, NO client).** 🟢 *BUILT (02-10-26).* No new number, no client, and the
-    deploy / retreat / `loadKit` are untouched.
+  - **engine-integrity tidy — two independent fixes (ENGINE + tests, NO client).** 🟢 *BUILT (02-10-26).* No new
+    number, no client, and the deploy / retreat / `loadKit` / founding / the asset id scheme are untouched.
     **Fix A — `unloadKit` clears `deployFailed`** (closes the decision-checklist call "a standalone unload leaves
     `deployFailed` set", RULED: the unload clears it). One line in `kitIntoInventory`, the ONE unload apply (so the
     Return fork's on-arrival unload inherits it): once a retreated kit is back in an inventory the failed deploy is
     over, so the flag would only be stale on an empty, idle craft. The flag is omit-when-absent, so a craft that never
     failed is unchanged. The retreat still sets it and the next dispatch still clears it; this adds "…or unloading the
-    kit". `territory-model.md` §5 and `design.md` §4 annotated. `deploy-on-arrival.test.js`'s retreat-then-unload test
-    now asserts the flag is gone (it pinned the old behaviour); `kit-asset.test.js` +1 (a craft that never failed is
-    unchanged by an unload). Shown to fire: without the line the deploy test fails. **A NO-OP on every existing
-    golden:** `deployFailed` is omit-when-absent and no golden retreats, so no golden-bearing test file is touched.
-    Sim 1,886 → **1,887 green**; tools **73** green (unchanged).
+    kit". `territory-model.md` §5 and `design.md` §4 annotated. **Fix B — miner / factory ids never repeat across the
+    operator remove levers** (`design.md` §15.4 "Ids never repeat"; AS-BUILT in `design.md` §4 beside the kit-serial
+    block). `nextAssetNumber` is "highest LIVE number + 1", safe in play (nothing deletes a machine) but not under the
+    operator levers `removeAsset` / `removeVenture { asset: 'remove' }`, which do: deleting the top miner let the next
+    grant or build reissue its id. Both levers now delete through ONE helper, `deleteAsset` (`sim/actions.js`), which
+    first records the deleted number in a per-kind **removed high-water**, `guild.removedAssetHighWater = { [kind]: NN }`
+    (omit-when-empty, `createGuild`); `nextAssetNumber` (`sim/assets.js`) returns `max(highest live, high-water) + 1`.
+    The mark only climbs; a kit is not recorded (kits number from `kitAssetSerial`). Founding is untouched; `grantAsset`,
+    the Dockyard and the Syndicate delivery all mint through `nextAssetNumber`. **Invariants** (`checkAssetOccupancy`):
+    `removed-asset-high-water-valid` (each key a venture kind, each value a whole number ≥ 1) and
+    `removed-asset-number-not-reissued` (no live asset carries its kind's recorded number). The suggested mirror of the
+    kit rule, "the mark ≥ every live number", was NOT used: it is false in a legal state (delete miner 03 while 04..15
+    live → mark 3). **Tripwires:** `asset-id-high-water.test.js` (new, +14) — each remover (idle, occupied detach /
+    close, and the venture-side remove) then a grant → `_16`, never the deleted `_15`; a Dockyard build after a delete;
+    a non-top delete does not inflate the next number; the mark never drops, even with no miner left alive; kinds kept
+    apart; a kit not recorded; determinism run twice, by journalled replay, and from a state saved WITH a mark; both
+    invariant rules firing; the no-op shape. `deploy-on-arrival.test.js`'s retreat-then-unload test now asserts the flag
+    is gone (it pinned the old behaviour); `kit-asset.test.js` +1 (a craft that never failed is unchanged by an unload).
+    Shown to fire: without Fix A's line the deploy test fails; without the high-water read 9 of the 14 new tests fail
+    (the ticking-invariants one through `removed-asset-number-not-reissued`).
+    **A NO-OP on every existing golden:** no golden scenario uses either remove lever, the high-water is omitted until
+    one deletes something, and `deployFailed` is omit-when-absent, so none of the 32 golden-bearing test files is
+    touched and all pass. And directly: one delete-free script exercising every changed path (two grants, a venture
+    removed with `keep`, a Dockyard miner build, a kit granted / loaded / unloaded) gives the same state hash as a clean
+    worktree of the parent commit at all 819 steps (11 actions + 800 ticks). Sim 1,886 → **1,901 green** (+14
+    asset-id-high-water, +1 kit-asset); tools **73** green (unchanged).
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
@@ -2991,6 +3012,14 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   mutates an asset), so `grantKit` — like `grantAsset`, the Dockyard and the Syndicate delivery — records its tick only
   in the journal; `loadKit` / `unloadKit` stamp the craft. Confirm, or rule a `createdAtTick` on kit assets (or on all
   assets).
+- **Split the oversized engine files — WHEN? (02-10-26, flagged by the 2.2 deploy pipeline engine-integrity tidy.)**
+  `sim/actions.js` (5,258 lines) and `sim/server.js` (1,530) are far past a readable size for a codebase the human
+  reads line by line; `sim/invariants.js` (2,386), `sim/snapshot.js` (2,120) and `sim/tick.js` (1,771) are also large.
+  A future refactor should split them by concern — e.g. `actions.js` by action family (operator levers, ventures /
+  licences, transport and routes, the deploy pipeline), each family keeping its validate and apply side by side, and
+  `server.js` by route group. It is a pure move (no behaviour change, every golden byte-identical, the whole suite
+  green before and after), so its risk is in the seams, not the logic. **Not done** — logged for a ruling on
+  **when** (e.g. between slices, or at the Phase 3 hardening).
 
 - **Asset-presence vs. production** — *surfaced 16-09-26 by the operator adjust levers
   (`docs/operator-adjust.md` §3.5 AS-BUILT).* Production is currently **asset-blind** — a venture

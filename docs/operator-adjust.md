@@ -74,7 +74,9 @@ go below zero, if `good` is not a known good, or if `systemId` is not a real sys
 Mint one **idle** machine into `guild.assets`: `{ id, kind, systemId, maintenanceCondition:
 ASSET_CONDITION_NEW }`, via `createAsset` (`sim/state.js`). The `id` follows the `sim/assets.js`
 scheme `asset_<guildId>_<kind>_NN`, choosing the **next free NN** for that guild+kind (max existing
-+ 1) so it is unique and stable. `kind` must satisfy `isAssetKind` (today `miner` / `factory`; a new
++ 1) so it is unique and stable. *(⤳ 02-10-26: "existing" now includes every number `removeAsset` /
+`removeVenture { asset: 'remove' }` has deleted — both record it in `guild.removedAssetHighWater`, so a deleted
+id is never reissued, design.md §15.4 "Ids never repeat"; design.md §4 AS-BUILT "the removed high-water".)* `kind` must satisfy `isAssetKind` (today `miner` / `factory`; a new
 kind is covered automatically). `systemId` a real system. Idle -- it attaches to no venture; standing
 up a working venture is `establishVenture`'s job (sec. 7), not this. (Removal of an asset is via
 `removeAsset`, sec. 3.5 -- `grantAsset` has no negative form; an idle asset is removed by id.)

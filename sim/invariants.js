@@ -1330,6 +1330,14 @@ function checkSiteOccupancy(state) {
 //     (`kit-asset-serial-monotonic`): a loaded kit leaves the inventory, so kits
 //     number from that stored counter, and a live kit above it means the counter
 //     drifted and a future kit could re-issue an id (§15.4 "Ids never repeat").
+// The REMOVED HIGH-WATER (§15.4 "Ids never repeat"; sim/actions.js deleteAsset) has two:
+//   - when present, `removedAssetHighWater` maps a venture asset kind (miner / factory)
+//     to a whole number >= 1 (`removed-asset-high-water-valid`);
+//   - that number is never LIVE (`removed-asset-number-not-reissued`): the asset that
+//     carried it was deleted, and nextAssetNumber mints only above the mark, so a live
+//     asset with that number is the deleted id issued again.
+//   It is deliberately NOT "the mark >= every live number" (the kit-serial rule's shape):
+//   deleting miner 03 while 04..15 are live records 3, below live numbers — a legal state.
 function checkAssetOccupancy(state) {
   const out = [];
   for (const g of state.guilds || []) {
@@ -1392,6 +1400,22 @@ function checkAssetOccupancy(state) {
     const kitSerial = g.kitAssetSerial || 0; // omitted-when-0 (state.js): absent means no kit ever minted
     if (kitSerial < maxKitNumber) {
       out.push({ rule: 'kit-asset-serial-monotonic', where: `guild:${g.id}.kitAssetSerial`, detail: { kitAssetSerial: kitSerial, highestLiveKitNumber: maxKitNumber } });
+    }
+
+    // The removed high-water — see the note above. Absent is legal (no asset was ever deleted).
+    const marks = g.removedAssetHighWater;
+    if (marks !== undefined) {
+      const shapeOk = marks !== null && typeof marks === 'object' && !Array.isArray(marks)
+        && Object.entries(marks).every(([kind, n]) => isAssetKind(kind) && Number.isSafeInteger(n) && n >= 1);
+      if (!shapeOk) {
+        out.push({ rule: 'removed-asset-high-water-valid', where: `guild:${g.id}.removedAssetHighWater`, detail: { removedAssetHighWater: marks } });
+      } else {
+        for (const a of g.assets || []) {
+          if (isAssetKind(a.kind) && assetNumberOf(a.id) === marks[a.kind]) {
+            out.push({ rule: 'removed-asset-number-not-reissued', where: `guild:${g.id}.asset:${a.id}`, detail: { assetId: a.id, kind: a.kind, removedHighWater: marks[a.kind] } });
+          }
+        }
+      }
     }
   }
   return out;

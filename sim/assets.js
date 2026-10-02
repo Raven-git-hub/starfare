@@ -122,18 +122,26 @@ function assetNumberOf(id) {
 }
 
 // nextAssetNumber(guild, kind) -> the next free per-(guild, kind) asset NUMBER: one above the
-// highest suffix among this guild's assets of that kind (0 -> 1 when it owns none). The Dockyard
-// mints a built asset's id from this (docs/build-yard.md §4), CONTINUING the per-(guild, kind)
-// sequence above the founding grant's `01..STARTER_*` range.
+// higher of (a) the highest suffix among this guild's assets of that kind and (b) the guild's
+// removed high-water for that kind (both 0 when absent, so 0 -> 1 for a guild with neither). The
+// Dockyard, the Syndicate delivery and grantAsset mint from this (docs/build-yard.md §4), CONTINUING
+// the per-(guild, kind) sequence above the founding grant's `01..STARTER_*` range.
 //
-// DETERMINISTIC and MONOTONIC (invariant 9): a miner or factory is not deleted in play (teardown frees an
-// asset to idle, it does not remove it — sim/licence.js), so the max only ever grows and a minted id can
-// never collide with the founding gift or an earlier build. Two emissions in one tick get distinct
-// ids because the build step pushes each emitted asset into `guild.assets` BEFORE minting the next,
-// so the second read sees the first and returns a higher number. A KIT asset is different — loading it
-// onto a heavy removes it — so kits do NOT number from this; they use `nextKitAssetSerial` below.
+// WHY (b): design.md §15.4 "Ids never repeat". In play a miner or factory is never deleted (teardown
+// frees an asset to idle, it does not remove it — sim/licence.js), so the live max alone would only ever
+// grow. But the operator levers removeAsset and removeVenture { asset: 'remove' } DO delete one, and
+// deleting the top-numbered miner would let the live max hand its number out again. So those levers
+// record the number they delete in `guild.removedAssetHighWater` (sim/actions.js deleteAsset), and
+// this reads it: a number at or below it is never minted again. Omitted until a lever deletes an
+// asset, so a guild that never had one removed numbers exactly as before.
+//
+// DETERMINISTIC (invariant 9): two emissions in one tick get distinct ids because the build step
+// pushes each emitted asset into `guild.assets` BEFORE minting the next, so the second read sees the
+// first and returns a higher number. A KIT asset is different — loading it onto a heavy removes it —
+// so kits do NOT number from this; they use `nextKitAssetSerial` below.
 function nextAssetNumber(guild, kind) {
-  let max = 0;
+  const removed = guild.removedAssetHighWater;
+  let max = (removed && removed[kind]) || 0;
   for (const a of (guild.assets || [])) {
     if (a.kind !== kind) continue;
     const n = assetNumberOf(a.id);

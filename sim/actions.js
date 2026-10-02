@@ -55,7 +55,7 @@ const {
 const {
   STARTER_MINERS, STARTER_FACTORIES, starterAssetSpecs, assetKindForVentureType,
   deployedAssetIds, isAssetKind, assetId, nextAssetNumber, ASSET_CONDITION_NEW, ASSET_CONDITION_MIN,
-  isKitAssetKind, nextKitAssetSerial,
+  isKitAssetKind, nextKitAssetSerial, assetNumberOf,
 } = require('./assets.js');
 
 // vehicleDeliveryFuelBurn(destinationSystemId, vehicleClass) -> { fuelBurn: int }
@@ -1088,9 +1088,10 @@ function createAdjustGoodsAction({ guildId, systemId, good, delta }) {
 }
 
 // grantAsset: mint one IDLE machine into the guild's inventory (§3.4) — a fresh
-// `asset_<guildId>_<kind>_NN` id (max existing + 1), new condition, attached to no
-// venture. `kind` must be a buildable asset kind; `systemId` a real system. There is
-// no negative form — an asset is removed by id via removeAsset.
+// `asset_<guildId>_<kind>_NN` id (nextAssetNumber: above every live AND every removed
+// number of that kind), new condition, attached to no venture. `kind` must be a
+// buildable asset kind; `systemId` a real system. There is no negative form — an asset
+// is removed by id via removeAsset.
 function createGrantAssetAction({ guildId, kind, systemId }) {
   if (guildId === undefined) throw new Error('createGrantAssetAction: guildId is required');
   if (kind === undefined) throw new Error('createGrantAssetAction: kind is required');
@@ -1645,6 +1646,31 @@ function deployKit(state, guild, craft, check, tick) {
   mintOutpost(state, guild, check.coords, check.anchorSystemId, tick);
   delete craft.cargo;
   craft.updatedAtTick = tick; // §15.2: the deploy is a mutation of the craft — record its tick
+}
+
+// --- deleting an asset: the operator remove levers (design.md §15.4 "Ids never repeat") -----------------
+
+// deleteAsset(guild, assetId) — THE ONE way an operator lever deletes an asset from a guild's inventory,
+// shared by removeAsset and removeVenture { asset: 'remove' } so the two cannot drift apart.
+//
+// Before the row goes, a miner's or factory's NUMBER (the `NN` of `asset_<guild>_<kind>_NN`) is recorded
+// in the guild's per-kind REMOVED HIGH-WATER, `guild.removedAssetHighWater = { [kind]: NN }`.
+// nextAssetNumber (sim/assets.js) reads it, so a deleted number is never minted again — without it,
+// deleting the top-numbered miner would let the next grant or build reissue that id. The mark only
+// climbs: deleting a number at or below the one already recorded changes nothing, and the map is
+// created only when it is first written (omit-when-absent, sim/state.js).
+//
+// A KIT is not recorded: kits number from `kitAssetSerial`, a stored counter that already never goes back.
+// Nothing is conserved for an asset, so there is no counter-move; and like grantAsset, the tick is
+// recorded in the journal (an asset carries no tick of its own).
+function deleteAsset(guild, assetId) {
+  const asset = (guild.assets || []).find((a) => a.id === assetId);
+  const n = asset ? assetNumberOf(asset.id) : null;
+  const marks = guild.removedAssetHighWater || {};
+  if (asset && isAssetKind(asset.kind) && n != null && n > (marks[asset.kind] || 0)) {
+    guild.removedAssetHighWater = { ...marks, [asset.kind]: n };
+  }
+  guild.assets = (guild.assets || []).filter((a) => a.id !== assetId);
 }
 
 // --- the kit as an idle asset: load / unload (design.md §4, RULED 02-10-26) ---------------------------
@@ -4677,10 +4703,10 @@ function applyAction(state, action) {
   }
 
   if (action.type === 'grantAsset') {
-    // §3.4: mint one IDLE asset — a fresh `asset_<guildId>_<kind>_NN` id (max existing +1
-    // for this guild+kind, via nextAssetNumber), new condition, at the named system. It
-    // attaches to no venture, so occupancy stays clean; no quantity is conserved, so there
-    // is no counter-move.
+    // §3.4: mint one IDLE asset — a fresh `asset_<guildId>_<kind>_NN` id (above every live
+    // and every removed number for this guild+kind, via nextAssetNumber), new condition, at
+    // the named system. It attaches to no venture, so occupancy stays clean; no quantity is
+    // conserved, so there is no counter-move.
     const guild = findGuild(next, action.guildId);
     if (!Array.isArray(guild.assets)) guild.assets = [];
     const id = assetId(action.guildId, action.kind, nextAssetNumber(guild, action.kind));
@@ -4707,7 +4733,7 @@ function applyAction(state, action) {
       // set null) to keep the omit-when-null serialization discipline createVenture uses.
       delete holder.assetId;
     }
-    guild.assets = (guild.assets || []).filter((a) => a.id !== action.assetId);
+    deleteAsset(guild, action.assetId); // records its number first, so it is never reissued (§15.4)
     return next;
   }
 
@@ -4722,7 +4748,7 @@ function applyAction(state, action) {
     const freedAssetId = venture.assetId;
     applyVentureClosure(next, guild, venture, 'operator', next.tick);
     if (action.asset === 'remove' && freedAssetId != null) {
-      guild.assets = (guild.assets || []).filter((a) => a.id !== freedAssetId);
+      deleteAsset(guild, freedAssetId); // records its number first, so it is never reissued (§15.4)
     }
     return next;
   }
