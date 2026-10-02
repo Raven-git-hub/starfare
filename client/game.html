@@ -111,10 +111,10 @@
   #plan-banner .bt { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 12px; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; }
   #plan-banner .bs { font-size: 10px; letter-spacing: 1px; color: var(--text-dim); margin-top: 3px; }
   #plan-controls { position: absolute; top: 116px; right: 22px; z-index: 520; display: flex; gap: 10px; pointer-events: auto; }
-  /* the DEPLOY variant (#app.deploying, territory-model.md §5): no saved route to load. A saved lane's stops
-     carry dock actions, and Load Route re-plans as an ordinary route. Finalise and Cancel stay: Finalise hands
-     the route back to the Deploy Outpost popup, where the commit is. */
-  #app.deploying #planLoad { display: none; }
+  /* the two KIT variants (#app.kitroute, territory-model.md §5): the deploy map and unload mode. No saved route to
+     load: a saved lane's stops carry dock actions, and Load Route re-plans as an ordinary route. Finalise and Cancel
+     stay: Finalise hands the route on to the popup where the commit is. */
+  #app.kitroute #planLoad { display: none; }
   .plan-btn {
     font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
     background: rgba(8,10,16,0.92); border: 1px solid var(--line-bright); color: var(--text);
@@ -3620,8 +3620,9 @@ select.field{appearance:none; cursor:pointer;}
      accent (§9) — and the SAME advisor.jpg the reneg popup uses. Opening a row dispatches the
      existing acknowledgeEvent (read = opening, §9); there is no ACKNOWLEDGE button here.
      The ONE exception is the fleet / ops lane (§10): a `deploy_failed` notice re-dresses this same
-     card with the pilot — eyebrow, portrait and voice — and shows Show on map beside Dismiss. So
-     openNotice sets the eyebrow, the art, the body and the button on EVERY open. ===== -->
+     card with the pilot — eyebrow, portrait and voice — and shows the decision the pilot asks for,
+     its two forks Redeploy and Return, beside Dismiss (territory-model.md §5 REVISED). So openNotice
+     sets the eyebrow, the art, the body and the buttons on EVERY open. ===== -->
 <div id="notice-overlay">
   <div class="reel-card">
     <button class="reel-close" id="noticeClose" type="button" aria-label="Close">&times;</button>
@@ -3634,9 +3635,11 @@ select.field{appearance:none; cursor:pointer;}
         <div class="facts" id="noticeFacts"></div>
       </div>
       <div class="reel-foot">
-        <div class="reneg-note"></div>
+        <!-- A deploy_failed fork that finds nothing to act on says so here, quietly. -->
+        <div class="reneg-note" id="noticeNote"></div>
         <div class="reel-actions">
-          <button class="btn accept" id="noticeShowMap" type="button" hidden>Show on map</button>
+          <button class="btn accept" id="noticeRedeploy" type="button" hidden>Redeploy</button>
+          <button class="btn accept" id="noticeReturn" type="button" hidden>Return</button>
           <button class="btn accept" id="noticeDismiss" type="button">Dismiss</button>
         </div>
       </div>
@@ -3745,10 +3748,18 @@ select.field{appearance:none; cursor:pointer;}
   // `deploy` (2.2 deploy pipeline, territory-model.md §5) is the deploy lane's kind ('outpost') when this
   // is the DEPLOY MAP — this same planner, for a route that ends on the deploy target — and null for an
   // ordinary route. In deploy mode no stop carries an action of its own: the deploy action is added to the
-  // LAST stop when the route is handed on (deployWaypoints), so it moves as stops are added or reordered.
+  // LAST stop when the route is handed on (kitWaypoints), so it moves as stops are added or reordered.
   // `deployQuote` is the engine's time / fuel quote for the route, `{ key, quote }`: `key` is the route it
   // was asked for (routeKey), and `quote` is null while the fetch is out (see requestDeployQuote).
-  let PLAN = null;              // { vehicle, origin, waypoints:[{anchor, action?},…], candidate:anchor|null, candidateArmed:bool, candidateAction:action|null, routeName:string, loop:bool, deploy:kind|null, deployQuote:{key, quote}|null }
+  // `unload` (the Return fork, territory-model.md §5 REVISED) is true in UNLOAD MODE: this same planner, for a
+  // heavy whose kit is aboard, on a route that ends on a system the guild holds. The { type:'unload' } action is
+  // added to the last stop on the way out, as the deploy is. There is no range ring: an unload is not range-bound.
+  // The deploy map and unload mode are the planner's two KIT modes (isKitPlan).
+  // `fromInventory` says where a kit route's Finalise goes. It is true only for a FRESH deploy, opened by the Deploy
+  // Outpost popup with the kit still in inventory: Finalise goes back to that popup, which loads the kit at its
+  // commit. With the kit already aboard (the deploy_failed message's Redeploy / Return) it is false, and Finalise
+  // goes to the heavy's own Dispatch popup, the ordinary route commit.
+  let PLAN = null;              // { vehicle, origin, waypoints:[{anchor, action?},…], candidate:anchor|null, candidateArmed:bool, candidateAction:action|null, routeName:string, loop:bool, deploy:kind|null, unload:bool, fromInventory:bool, deployQuote:{key, quote}|null }
   let planActive = false;       // true while the map is in planning mode (the click branch + draw pass read this)
 
   // Automation 2b — Load Route. `liveSavedRoutes` is the player's guild's saved routes, pushed by
@@ -3814,12 +3825,21 @@ select.field{appearance:none; cursor:pointer;}
     return !!vehicle && vehicle['class'] !== 'spycraft' && isActionableAnchor(a);
   }
 
+  // isKitAction(action) — a KIT action (a deploy or an unload, territory-model.md §5), not a dock. It moves a
+  // kit, not goods: it rides the last stop only, never a saved lane or a repeat, and its stop is judged by the
+  // kit planner's own gate (deployTarget / unloadTarget), not by the store gate above.
+  function isKitAction(action) {
+    return !!action && (action.type === 'deploy' || action.type === 'unload');
+  }
+
   // actionSummary(action) -> a one-line read-out of a set action, e.g. "dock · load titanium 400,
   // unload iron max" — so a list shows at a glance which stops act. Display only: it echoes the
   // player's own manifest lines, computing nothing. A deploy action (territory-model.md §5) carries no
-  // manifest, only its kind: "deploy · outpost".
+  // manifest, only its kind: "deploy · outpost". An unload action carries nothing at all (the engine reads
+  // the kit off the hold): "unload · kit".
   function actionSummary(action) {
     if (action && action.type === 'deploy') return 'deploy · ' + action.kind;
+    if (action && action.type === 'unload') return 'unload · kit';
     if (!action || !action.manifest) return '';
     return action.type + ' · ' + action.manifest.map(l =>
       l.dir + ' ' + String(l.good).replace(/_/g, ' ') + ' ' + (l.max ? 'max' : l.qty)
@@ -3887,10 +3907,11 @@ select.field{appearance:none; cursor:pointer;}
   // dead — §11.9's "reverts to a plain hex, action orphaned and visible". Decided by the SAME gate that
   // offers the Action button (routeActionAllowed), so there is one rule, not two. Because it is judged
   // at render time, a loaded saved route needs no separate re-validation pass: it simply renders its
-  // dead stops as broken (§11.9, soft re-validation).
+  // dead stops as broken (§11.9, soft re-validation). A KIT action is never broken here (isKitAction): it
+  // needs no store (a deploy's stop is open ground by design), and the kit planner's own gate judges its stop.
   function brokenAt(route, i) {
     const wp = route.waypoints[i];
-    return !!wp.action && !routeActionAllowed(route.vehicle, wp.anchor);
+    return !!wp.action && !isKitAction(wp.action) && !routeActionAllowed(route.vehicle, wp.anchor);
   }
   function anyBroken(route) {
     for (let i = 0; i < route.waypoints.length; i++) if (brokenAt(route, i)) return true;
@@ -3908,9 +3929,11 @@ select.field{appearance:none; cursor:pointer;}
   // canRepeat(route) — may this route launch as a repeating lane? It mirrors the engine: only the
   // actioned-route dispatch takes a `repeat`, and it refuses a repeating lane with fewer than two stops (a
   // one-stop cycle has no leg to fly). So: two or more stops, and some stop carries an action (a route
-  // with no action goes out as the plain dispatch, which always runs once).
+  // with no action goes out as the plain dispatch, which always runs once). And no kit action: a kit never
+  // rides a lane, and the engine refuses a repeating launch on a kit-laden craft (2.2 deploy pipeline).
   function canRepeat(route) {
-    return route.waypoints.length >= 2 && route.waypoints.some((wp) => !!wp.action);
+    return route.waypoints.length >= 2 && route.waypoints.some((wp) => !!wp.action)
+      && !route.waypoints.some((wp) => isKitAction(wp.action));
   }
 
   // loopClosed(route) — the player CLOSED the loop by hand: the last stop sits on stop 1's hex
@@ -3935,31 +3958,35 @@ select.field{appearance:none; cursor:pointer;}
   // `routeName` (automation 2b) is the saved route's name when the list came from Load Route — it rides to
   // the popup so its Save field starts on that name (re-saving it updates the lane in place, §11.9).
   // `loop` (automation 3c) — see PLAN above.
-  // `deployKind` (2.2 deploy pipeline) opens the DEPLOY MAP instead (territory-model.md §5 REVISED): the same
-  // mode, chrome, chip, list and draw pass, retitled for the kit's lane, at the ruled 4× (DEPLOY_MAP_ZOOM), with
-  // the range ring drawn and #app.deploying hiding Load Route. `vehicle` is the carrier the Deploy Outpost popup
-  // picked; Finalise hands the route back to that popup, which holds the kit and makes the commit. Nothing is
-  // loaded or sent from the map. Omitted for every ordinary route.
-  function startPlanning(vehicle, waypoints, routeName, loop, deployKind) {
+  // `kit` (2.2 deploy pipeline, territory-model.md §5 REVISED) opens one of the two KIT modes instead (see PLAN
+  // above): `{ deploy: kind, fromInventory }` the DEPLOY MAP, or `{ unload: true }` UNLOAD MODE. Both are the same
+  // mode, chrome, chip, list and draw pass, retitled, at the ruled 4× (DEPLOY_MAP_ZOOM), with #app.kitroute hiding
+  // Load Route; the deploy map also draws the range ring. `vehicle` is the heavy carrying (or about to carry) the
+  // kit. Nothing is loaded or sent from the map. Omitted for every ordinary route.
+  function startPlanning(vehicle, waypoints, routeName, loop, kit) {
     if (!vehicle || !vehicle.location) return;
-    // A deploy plan's stops carry no action (the deploy is added to the last one on the way out), so a route
-    // the popup's Edit Route hands back drops the deploy action its last stop carried.
-    const seed = (waypoints || []).map(deployKind ? (wp) => ({ anchor: wp.anchor }) : copyWaypoint);
+    kit = kit || {};
+    const kitMode = !!(kit.deploy || kit.unload);
+    // A kit route's stops carry no action (the kit action is added to the last one on the way out), so a route
+    // that Edit Route hands back drops the deploy or unload its last stop carried.
+    const seed = (waypoints || []).map(kitMode ? (wp) => ({ anchor: wp.anchor }) : copyWaypoint);
     PLAN = { vehicle: vehicle, origin: vehicle.location, waypoints: seed, candidate: null, candidateArmed: false, candidateAction: null, routeName: routeName || '', loop: !!loop,
-             deploy: deployKind || null, deployQuote: null };
+             deploy: kit.deploy || null, unload: !!kit.unload, fromInventory: !!kit.fromInventory, deployQuote: null };
     closeLoadMenu();
     planActive = true;
     const c = resolveAnchor(vehicle.location);
     const app = document.getElementById('app');
     app.classList.add('planning');
-    app.classList.toggle('deploying', !!PLAN.deploy);
+    app.classList.toggle('kitroute', kitMode);
     document.getElementById('plan-banner-title').textContent = PLAN.deploy
       ? 'Deploying ' + prettyClass(PLAN.deploy) + ' · ' + prettyClass(vehicle.class)
+      : PLAN.unload ? 'Returning Kit · ' + prettyClass(vehicle.class)
       : 'Planning Route · ' + prettyClass(vehicle.class);
     document.getElementById('plan-banner-sub').textContent = PLAN.deploy
       ? 'Click a hex to add a turning point · end on a bare hex inside the dashed ring · arrow keys pan'
+      : PLAN.unload ? 'Click a hex to add a turning point · end on a system you hold · arrow keys pan'
       : 'Click a hex to add a turning point · arrow keys pan';
-    if (c) window.__flyTo(c.q, c.r, PLAN.deploy ? DEPLOY_MAP_ZOOM : Math.max(VECTOR_ZOOM_THRESHOLD + 2, 6));
+    if (c) window.__flyTo(c.q, c.r, kitMode ? DEPLOY_MAP_ZOOM : Math.max(VECTOR_ZOOM_THRESHOLD + 2, 6));
     // __flyTo leaves the system-info panel open on the origin; the planner has its own list, so hide it
     // to keep the top-right clear for Finalise/Cancel.
     document.getElementById('syspanel').style.display = 'none';
@@ -3972,7 +3999,7 @@ select.field{appearance:none; cursor:pointer;}
   // which hands the SAME PLAN to the popup; every other exit discards it.
   function exitPlanning(keepPlan) {
     planActive = false;
-    document.getElementById('app').classList.remove('planning', 'deploying');
+    document.getElementById('app').classList.remove('planning', 'kitroute');
     document.getElementById('plan-chip').classList.remove('on');
     closeLoadMenu();
     if (!keepPlan) PLAN = null;
@@ -3988,14 +4015,15 @@ select.field{appearance:none; cursor:pointer;}
   // fetches the engine quote and shows the two-box Planned Route. Guarded by the same rule the button
   // is (canFinalise). (Nothing else blocks Finalise — a stop the popup can fix, like an idle one-stop
   // route at the berth, is gated at Dispatch instead, so the player can always REACH the popup to fix it.)
-  // The DEPLOY map hands its route, the deploy action on the last stop, to the Deploy Outpost popup
-  // instead (territory-model.md §5 REVISED): that popup holds the kit, shows the same Planned Route, and
-  // makes the commit.
+  // A KIT route (territory-model.md §5 REVISED) goes out with its kit action on the last stop (kitWaypoints),
+  // and where it goes depends on where the kit is. A FRESH deploy (fromInventory) goes to the Deploy Outpost
+  // popup instead: that popup holds the kit, shows the same Planned Route, and loads the kit at its commit. A
+  // kit already aboard (Redeploy / Return) goes to the Dispatch popup like any route: nothing to load.
   function finalisePlanning() {
     if (!canFinalise()) return;
     const vehicle = PLAN.vehicle;
-    const waypoints = PLAN.deploy ? deployWaypoints() : PLAN.waypoints.map(copyWaypoint);
-    const toDeployPopup = !!PLAN.deploy;
+    const waypoints = isKitPlan() ? kitWaypoints() : PLAN.waypoints.map(copyWaypoint);
+    const toDeployPopup = !!PLAN.deploy && PLAN.fromInventory;
     exitPlanning(true); // clears the .planning class + the chip; keeps PLAN for the popup / Edit Route
     if (toDeployPopup) {
       if (window.__kitDeployFinalise) window.__kitDeployFinalise(vehicle, waypoints);
@@ -4005,12 +4033,19 @@ select.field{appearance:none; cursor:pointer;}
   }
 
   // canFinalise() — the Finalise gate, shared by the button and finalisePlanning: at least one waypoint
-  // and no dead leg. On the deploy map the route must also END where the kit can deploy (deployTarget),
-  // and the last row says why when it can't, as a dead leg's row does.
+  // and no dead leg. On the deploy map the route must also END where the kit can deploy (deployTarget), and
+  // in unload mode where it can unload (unloadTarget). The last row says why when it can't, as a dead leg's
+  // row does.
   function canFinalise() {
     if (!PLAN || !PLAN.waypoints.length || anyDeadLeg(PLAN)) return false;
-    return !PLAN.deploy || !!deployTarget();
+    if (PLAN.deploy) return !!deployTarget();
+    if (PLAN.unload) return !!unloadTarget();
+    return true;
   }
+
+  // isKitPlan() — is this plan one of the two KIT modes, the deploy map or unload mode? Their stops carry no
+  // action of their own, the chip offers no Action, and the kit action rides the last stop (kitWaypoints).
+  function isKitPlan() { return !!PLAN && (!!PLAN.deploy || PLAN.unload); }
 
   // Re-cost/re-draw hook: every list edit (add/remove/reorder) re-runs the dead-leg sweep and gates
   // Finalise. On the deploy map it also asks for the route's quote once the route ends on a legal target.
@@ -4048,9 +4083,10 @@ select.field{appearance:none; cursor:pointer;}
       return row;
     };
     box.appendChild(mkRow({ cls: 'origin', ix: '◎', name: anchorLabel(PLAN.origin) + '  · origin' }));
-    // The DEPLOY map (territory-model.md §5) with no stop yet: a quiet prompt for where the route must end.
-    if (PLAN.deploy && !PLAN.waypoints.length) {
-      box.appendChild(mkRow({ ix: '1', name: '—', note: 'no stops yet — end the route on a bare hex inside the ring' }));
+    // A KIT route (territory-model.md §5) with no stop yet: a quiet prompt for where the route must end.
+    if (isKitPlan() && !PLAN.waypoints.length) {
+      const where = PLAN.deploy ? 'a bare hex inside the ring' : 'a system you hold';
+      box.appendChild(mkRow({ ix: '1', name: '—', note: 'no stops yet — end the route on ' + where }));
       return;
     }
     // (automation 3c) A plan for a REPEATING launch reads as a loop: a hand-closed one says so on its last
@@ -4061,12 +4097,13 @@ select.field{appearance:none; cursor:pointer;}
       const dead = deadLegAt(PLAN, i);
       const broken = brokenAt(PLAN, i);
       const idle = i === 0 && idleAtBerth(PLAN);
-      // (2.2 deploy pipeline) On the DEPLOY map the last stop is the deploy target: its lines come from
-      // deployRow. The stops before it are plain turning points and read as any other stop.
-      const target = PLAN.deploy && i === last ? deployRow(wp.anchor) : null;
-      // The flagged line: a dead leg first (it blocks Finalise), then a deploy target the kit can't use (it
-      // blocks Finalise too), then a broken stop (it blocks Dispatch — remove it here, or Finalise and Clear
-      // its action there), then the idle one-stop cue.
+      // (2.2 deploy pipeline) On a KIT route the last stop is the kit's target: its lines come from deployRow
+      // (the deploy map) or unloadRow (unload mode). The stops before it are plain turning points and read as
+      // any other stop.
+      const target = isKitPlan() && i === last ? (PLAN.deploy ? deployRow(wp.anchor) : unloadRow(wp.anchor)) : null;
+      // The flagged line: a dead leg first (it blocks Finalise), then a target the kit can't use (it blocks
+      // Finalise too), then a broken stop (it blocks Dispatch — remove it here, or Finalise and Clear its
+      // action there), then the idle one-stop cue.
       const warn = dead ? 'zero-length leg — remove or reorder'
         : target && target.warn ? target.warn
         : broken ? brokenReason(PLAN)
@@ -4112,10 +4149,10 @@ select.field{appearance:none; cursor:pointer;}
     btns.innerHTML = '';
     // The Action button, built once and slotted in after the step's primary button (Add or Confirm).
     // Disabled on a dead leg like its siblings — a stop that can't be placed can't carry an action.
-    // Never on the DEPLOY map (territory-model.md §5): the kit fills the hold, so its stops are plain
-    // turning points, and the deploy action is added to the last stop on its own (deployWaypoints).
+    // Never on a KIT route, the deploy map or unload mode (territory-model.md §5): the kit fills the hold, so
+    // its stops are plain turning points, and the kit action is added to the last stop on its own (kitWaypoints).
     let actBtn = null;
-    if (!PLAN.deploy && routeActionAllowed(PLAN.vehicle, PLAN.candidate)) {
+    if (!isKitPlan() && routeActionAllowed(PLAN.vehicle, PLAN.candidate)) {
       actBtn = document.createElement('button');
       actBtn.textContent = PLAN.candidateAction ? 'Action ✓' : 'Action';
       if (PLAN.candidateAction) { actBtn.className = 'set'; actBtn.title = actionSummary(PLAN.candidateAction); }
@@ -4190,15 +4227,17 @@ select.field{appearance:none; cursor:pointer;}
 
   // ---------- 2.2 deploy pipeline: the DEPLOY MAP (territory-model.md §5, RULED 01-10-26; REVISED 02-10-26) ----------
   // The full route builder, planning a route of one stop or many that ENDS on the deploy target: the deploy
-  // action rides the last stop, added on the way out (deployWaypoints). Finalise hands the route to the Deploy
-  // Outpost popup, where the commit is; nothing is sent from the map. Everything above is reused as is — the
+  // action rides the last stop, added on the way out (kitWaypoints). Finalise hands the route to the Deploy
+  // Outpost popup for a fresh deploy, or to the heavy's Dispatch popup when the kit is already aboard (a
+  // Redeploy); that is where the commit is, and nothing is sent from the map. Everything above is reused as is — the
   // mode, the chrome, the chip, the list, the draw pass. This section adds only what is new: which hex may be
   // the target, the range ring, and the route's quote. PRESENTATION ONLY (§18): the radius and the anchors are
   // the engine's (`deployRange`), the client draws geometry from them, and the engine's deployCheck — re-run
   // at dispatch and again on arrival — is the sole authority on legality.
 
   // The deploy map opens at 4× (the ruling), centred on the craft: close enough that hexes draw, wide
-  // enough that a 10-hex range fits on screen. A view zoom — presentation, not a game number.
+  // enough that a 10-hex range fits on screen. Unload mode opens at the same zoom: the same heavy, near the
+  // same systems. A view zoom — presentation, not a game number.
   const DEPLOY_MAP_ZOOM = 4;
 
   // The six axial neighbour steps, in the order of a hex's six EDGES as hexCorners draws them: edge k runs
@@ -4207,9 +4246,10 @@ select.field{appearance:none; cursor:pointer;}
   // border" is exactly "neighbour k is outside the range".
   const AXIAL_NEIGHBOURS = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
 
-  // deployAction() -> the action the route's last stop carries: { type:'deploy', kind } (transport-model.md
-  // §11.1's type tag) — the shape dispatchRouteWithActions takes on a final waypoint.
-  function deployAction() { return { type: 'deploy', kind: PLAN.deploy }; }
+  // kitAction() -> the kit action a KIT route's last stop carries, in the shape dispatchRouteWithActions takes on
+  // a final waypoint (transport-model.md §11.1's type tag): { type:'deploy', kind } on the deploy map, or
+  // { type:'unload' } in unload mode. An unload names no kind: the engine reads the kit off the hold.
+  function kitAction() { return PLAN.unload ? { type: 'unload' } : { type: 'deploy', kind: PLAN.deploy }; }
 
   // deployTarget() -> the route's LAST stop when the kit can deploy there (a bare hex inside the ring), or
   // null — no stop yet, or a last stop the map refuses (deployRefusal). The stops before it may be anywhere:
@@ -4219,12 +4259,12 @@ select.field{appearance:none; cursor:pointer;}
     return last && !deployRefusal(last.anchor) ? last.anchor : null;
   }
 
-  // deployWaypoints() -> the plan's stops as the deploy dispatch takes them: fresh { anchor } copies, with
-  // the deploy action on the LAST stop only. The one place the action is added — for the quote, and for
-  // the route Finalise hands to the Deploy Outpost popup.
-  function deployWaypoints() {
+  // kitWaypoints() -> the plan's stops as the kit dispatch takes them: fresh { anchor } copies, with the kit
+  // action (kitAction) on the LAST stop only. The one place a kit action is added — for the deploy map's quote,
+  // and for the route Finalise hands on.
+  function kitWaypoints() {
     const last = PLAN.waypoints.length - 1;
-    return PLAN.waypoints.map((wp, i) => i === last ? { anchor: wp.anchor, action: deployAction() } : { anchor: wp.anchor });
+    return PLAN.waypoints.map((wp, i) => i === last ? { anchor: wp.anchor, action: kitAction() } : { anchor: wp.anchor });
   }
 
   // deployRow(anchor) -> { act, note, warn }, the lines of the plan list's LAST row on the deploy map: the
@@ -4234,7 +4274,7 @@ select.field{appearance:none; cursor:pointer;}
     const refusal = deployRefusal(anchor);
     if (refusal) return { act: '', note: '', warn: 'can\'t deploy here — ' + refusal.toLowerCase() };
     const quote = deployQuoteLines();
-    return { act: actionSummary(deployAction()), note: quote.note, warn: quote.warn };
+    return { act: actionSummary(kitAction()), note: quote.note, warn: quote.warn };
   }
 
   // deployReach(kind) -> { radius, centres:[{q,r}] } — the player's guild's legal range for lane `kind`,
@@ -4297,11 +4337,12 @@ select.field{appearance:none; cursor:pointer;}
 
   // requestDeployQuote() — once the route ENDS on a legal target, ask the engine what the whole route will
   // cost: the route builder's own fetchQuote (window.__fetchQuote → POST /vehicle/quote), given the SAME stops
-  // Finalise hands on (deployWaypoints). Asked once per route (routeKey): a list edit asks again, while a
+  // Finalise hands on (kitWaypoints). Asked once per route (routeKey): a list edit asks again, while a
   // re-render or a candidate click asks nothing, and a route ending on a refused hex asks nothing. The ask is
   // captured, as openCandidateAction captures its candidate, so a late answer for a route since edited is
-  // dropped, never shown against the wrong one. Informational only: Finalise never waits on it — the Deploy
-  // Outpost popup asks its own at Finalise, and the engine re-checks and re-costs at dispatch.
+  // dropped, never shown against the wrong one. Informational only: Finalise never waits on it — the popup the
+  // route goes to (the Deploy Outpost popup, or the Dispatch popup for a Redeploy) asks its own at Finalise and
+  // gates its commit on that, and the engine re-checks and re-costs at dispatch.
   function requestDeployQuote() {
     if (!deployTarget()) return;
     const key = routeKey(PLAN.waypoints);
@@ -4309,7 +4350,7 @@ select.field{appearance:none; cursor:pointer;}
     const plan = PLAN;
     const ask = { key: key, quote: null };
     plan.deployQuote = ask;
-    window.__fetchQuote(plan.vehicle, deployWaypoints()).then((q) => {
+    window.__fetchQuote(plan.vehicle, kitWaypoints()).then((q) => {
       if (PLAN !== plan || plan.deployQuote !== ask) return; // the route changed, or planning ended
       ask.quote = q;
       renderPlanList();
@@ -4331,6 +4372,39 @@ select.field{appearance:none; cursor:pointer;}
     if (!q.ok) return { note: '', warn: q.reason || 'This route cannot be dispatched.' };
     const f = window.__quoteFigures(q);
     return { note: 'Time ' + f.time + ' · Cost ' + f.cost, warn: '' };
+  }
+
+  // ---------- 2.2 deploy pipeline: UNLOAD MODE — the Return fork (territory-model.md §5 REVISED) ----------
+  // The same planner again, for a heavy whose kit is aboard, on a route that ENDS on a system the guild holds.
+  // The { type:'unload' } action rides the last stop (kitWaypoints), and on arrival the engine drops the kit
+  // back into that system's idle list. It is light: no range ring (an unload is not range-bound) and no map
+  // quote, so the Dispatch popup asks the quote at Finalise, as it does for an ordinary route. PRESENTATION
+  // ONLY (§18): "held" is the snapshot's own claim list, and the engine's unloadKitCheck, at dispatch and again
+  // on arrival, is the authority.
+
+  // unloadRefusal(anchor) -> why unload mode refuses this stop as the route's end, or '' when the kit may unload
+  // there. It must be a system (a click on one makes a system anchor) that the player's guild holds: the
+  // snapshot's claims, the same list isActionableAnchor reads (the client's view of the engine's guildHolds).
+  function unloadRefusal(a) {
+    if (!a || a.landmarkKind !== 'system') return 'Not a system';
+    if (!PLAYER_GUILD.ownedSystemIds.includes(a.landmarkId)) return 'Not a system you hold';
+    return '';
+  }
+
+  // unloadTarget() -> the route's LAST stop when the kit can unload there, or null: no stop yet, or a last stop
+  // unload mode refuses (unloadRefusal). The stops before it may be anywhere.
+  function unloadTarget() {
+    const last = PLAN && PLAN.unload ? PLAN.waypoints[PLAN.waypoints.length - 1] : null;
+    return last && !unloadRefusal(last.anchor) ? last.anchor : null;
+  }
+
+  // unloadRow(anchor) -> { act, note, warn }, the lines of the plan list's LAST row in unload mode: the unload
+  // the stop will carry, or, flagged, why the kit can't unload there. That flag also holds Finalise
+  // (canFinalise), as the deploy map's does.
+  function unloadRow(anchor) {
+    const refusal = unloadRefusal(anchor);
+    if (refusal) return { act: '', note: '', warn: 'can\'t unload here — ' + refusal.toLowerCase() };
+    return { act: actionSummary(kitAction()), note: '', warn: '' };
   }
 
   // ---------- automation slice 2b: Load Route — the guild's saved lanes (transport-model.md §11.9) ----------
@@ -5638,10 +5712,18 @@ select.field{appearance:none; cursor:pointer;}
   // the popup receives a copy ({ anchor, action? } each) on Finalise and hands it back on Edit.
   // (automation 3c) `loop` is the popup saying its launch picker has a repeating mode on (Edit Route).
   window.__planRoute = function (vehicle, waypoints, loop) { startPlanning(vehicle, waypoints, '', loop); };
-  // 2.2 deploy pipeline: the Deploy Outpost popup's Plan Route / Edit Route open the DEPLOY map — planning mode for
-  // the chosen carrier and the kit's lane (`kind`, e.g. 'outpost'), with no waypoints (Plan Route) or the finalised
-  // route (Edit Route). Its Finalise hands the route back to the popup (__kitDeployFinalise).
-  window.__planDeploy = function (vehicle, kind, waypoints) { startPlanning(vehicle, waypoints, '', false, kind); };
+  // 2.2 deploy pipeline: the Deploy Outpost popup's Plan Route / Edit Route open the DEPLOY map for a FRESH deploy —
+  // planning mode for the chosen carrier and the kit's lane (`kind`, e.g. 'outpost'), the kit still in inventory,
+  // with no waypoints (Plan Route) or the finalised route (Edit Route). Its Finalise hands the route back to the
+  // popup (__kitDeployFinalise), which loads the kit at its commit.
+  window.__planDeploy = function (vehicle, kind, waypoints) { startPlanning(vehicle, waypoints, '', false, { deploy: kind, fromInventory: true }); };
+  // …and __planKitRoute plans for a heavy whose kit is ALREADY ABOARD: the deploy_failed message's Redeploy /
+  // Return, and the Dispatch popup's Edit Route of the route they made. `action` is the kit action the route ends
+  // in: { type:'deploy', kind } opens the deploy map, { type:'unload' } unload mode. Its Finalise goes to the
+  // heavy's Dispatch popup (__dispatchFinalise), the ordinary route commit. Nothing loads: the kit is in the hold.
+  window.__planKitRoute = function (vehicle, action, waypoints) {
+    startPlanning(vehicle, waypoints, '', false, action.type === 'unload' ? { unload: true } : { deploy: action.kind, fromInventory: false });
+  };
   window.__abandonPlanning = function () { if (planActive || PLAN) exitPlanning(false); };
   window.__fmtETA = fmtETA;
   // Automation 1b: the Dispatch popup's Finalise list uses the SAME action gate and the SAME summary
@@ -5666,6 +5748,8 @@ select.field{appearance:none; cursor:pointer;}
     loopClosed: loopClosed,
     loopReturnNote: LOOP_RETURN_NOTE,
     loopClosedNote: LOOP_CLOSED_NOTE,
+    // 2.2 deploy pipeline: which actions are KIT actions, so the popup knows a kit route when it is handed one
+    isKitAction: isKitAction,
   };
 
   resize(); tick();
@@ -11043,7 +11127,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // the EXISTING acknowledgeEvent { guildId, eventId } (id as a Number — the engine matches by
   // strict ===), so the row renders read on the next poll. The engine no-ops an aged-out id, and a
   // reopened (already-read) notice re-dispatches nothing — read-on-open only fires while unread.
-  var shownNotice = null;   // the notice the popup is showing — Show on map reads its payload
+  var shownNotice = null;   // the notice the popup is showing — the deploy_failed forks read its payload
   function openNotice(eventId){
     var me = meGuild();
     var events = (me && Array.isArray(me.events)) ? me.events : [];
@@ -11053,14 +11137,16 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var p = n.payload || {};
     shownNotice = n;
     // Who is speaking. A deploy_failed is the fleet / ops lane: the pilot's eyebrow, portrait and voice,
-    // plus Show on map (§10). Every other notice is the Syndicate's uniform adviser (§9). The card is
-    // shared, so all of this is set on every open — a Syndicate notice opened after a deploy one must
-    // not keep the pilot.
+    // plus its two forks, Redeploy and Return (§10; territory-model.md §5 REVISED). Every other notice is
+    // the Syndicate's uniform adviser (§9). The card is shared, so all of this is set on every open — a
+    // Syndicate notice opened after a deploy one must not keep the pilot, and no notice keeps an old note.
     var fleet = n.type === 'deploy_failed';
     var art = fleet ? 'assets/characters/pilot.jpg' : 'assets/characters/advisor.jpg';
     el('noticeEyebrow').textContent = fleet ? 'Fleet — Dispatch' : 'Syndicate Notice';
     el('noticeArt').style.backgroundImage = "url('" + art + "')";
-    el('noticeShowMap').hidden = !fleet;
+    el('noticeRedeploy').hidden = !fleet;
+    el('noticeReturn').hidden = !fleet;
+    el('noticeNote').textContent = '';
     el('noticeTitle').textContent = noticeTitle(n);
     // The body, one <p> per paragraph: the pilot's two beats, or a Syndicate notice's one line.
     var paras = fleet ? DEPLOY_FAILED_BODY : [noticeBody(n)];
@@ -11091,19 +11177,40 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   function closeNotice(){ el('notice-overlay').classList.remove('open'); }
   window.__openNotice = openNotice;   // the notice popup's single entry point (§9)
 
-  // Show on map — a deploy_failed notice only (§10). Close the popup and fly the map to the craft's
-  // CURRENT hex: the live craft, found by payload.craftId in the snapshot, its location resolved by the
-  // Dispatch popup's own coordsOf (a bare hex, or the system a retreat parked it at). A retreated craft
-  // waits there until the player acts, so "current" is reliable. If the craft is gone — or flying again,
-  // so it has no hex — fall back to the hex the deploy failed on. Zoom 9, as the Dispatch popup's Show
-  // on map uses. __flyTo closes the Guild Hall itself.
-  function showNoticeOnMap(){
-    var p = (shownNotice && shownNotice.payload) || {};
+  // The kit good each deployable kind packs: the engine's kitGoodFor ('outpost' -> 'outpost_kit'), the one
+  // pairing built. Read against a published hold (§18): the client looks for the key and computes nothing.
+  var KIT_GOOD = { outpost: 'outpost_kit' };
+
+  // retreatedCraft(p) -> the live heavy a deploy_failed notice is about, or null when there is nothing to act
+  // on. It is found by payload.craftId on the player's guild row, and counts only while it is still as the
+  // retreat left it: idle, off any route, with the kit of payload.kind aboard. A craft that has moved on (a fork
+  // already resolved it, or an operator moved or unloaded it) does not.
+  function retreatedCraft(p){
     var me = meGuild();
     var craft = me ? (me.vehicles || []).filter(function(v){ return v.id === p.craftId; })[0] : null;
-    var c = (craft && window.__craftCoords && window.__craftCoords(craft)) || p.targetHex;
+    var good = KIT_GOOD[p.kind];
+    if(!craft || craft.status !== 'idle' || craft.route || !good || !(craft.cargo || {})[good]) return null;
+    return craft;
+  }
+
+  // The deploy_failed notice's two forks (territory-model.md §5 REVISED) — the decision the pilot asks for.
+  // Each closes the popup and opens the planner for the retreated heavy, its kit already aboard, centred on the
+  // craft (window.__planKitRoute; __flyTo closes the Guild Hall itself):
+  //  - Redeploy ('deploy') plans a new deploy on the deploy map: the ring, a bare hex in range, the deploy on
+  //    the last stop;
+  //  - Return ('unload') plans a route to a system the guild holds, the unload on the last stop.
+  // Both finalise into the heavy's own Dispatch popup, the ordinary route commit. Nothing loads, since the kit
+  // is in the hold. If the craft is no longer waiting with its kit, nothing opens: the footer says so quietly.
+  function noticeFork(type){
+    var p = (shownNotice && shownNotice.payload) || {};
+    var craft = retreatedCraft(p);
+    if(!craft){
+      el('noticeNote').textContent = 'Nothing left to resolve.';
+      return;
+    }
     closeNotice();
-    if(c && window.__flyTo) window.__flyTo(c.q, c.r, 9);
+    var action = type === 'deploy' ? { type:'deploy', kind: p.kind } : { type:'unload' };
+    if(window.__planKitRoute) window.__planKitRoute(craft, action, []);
   }
 
   function centreFor(sub, me){
@@ -11195,10 +11302,11 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     });
   }
 
-  // The notice popup's own close wiring (a single Dismiss; the × ; a scrim click) — plus Show on map,
-  // which only a deploy_failed notice shows (§10).
+  // The notice popup's own close wiring (a single Dismiss; the × ; a scrim click) — plus the two forks,
+  // Redeploy and Return, which only a deploy_failed notice shows (§10).
   var noticeDismiss = el('noticeDismiss'); if(noticeDismiss){ noticeDismiss.addEventListener('click', closeNotice); }
-  var noticeShowMap = el('noticeShowMap'); if(noticeShowMap){ noticeShowMap.addEventListener('click', showNoticeOnMap); }
+  var noticeRedeploy = el('noticeRedeploy'); if(noticeRedeploy){ noticeRedeploy.addEventListener('click', function(){ noticeFork('deploy'); }); }
+  var noticeReturn = el('noticeReturn'); if(noticeReturn){ noticeReturn.addEventListener('click', function(){ noticeFork('unload'); }); }
   var noticeCloseX = el('noticeClose'); if(noticeCloseX){ noticeCloseX.addEventListener('click', closeNotice); }
   var noticeOverlay = el('notice-overlay'); if(noticeOverlay){ noticeOverlay.addEventListener('click', function(e){ if(e.target === this) closeNotice(); }); }
 
@@ -11734,6 +11842,16 @@ function paintInventoryHero(d){
     var v = liveVehicle(vehicle.id) || vehicle;
     DP.vehicle = v; DP.waypoints = []; DP.quote = null; DP.saveName = ''; DP.saving = false;
     resetLaunch();
+    fillHead(v);
+    renderPrePlan();
+    $('dispatch-overlay').classList.add('open');
+  }
+
+  // fillHead(v) — the FIXED head, summary and art for craft `v`. openDispatch fills it on open, and
+  // dispatchFinalise fills it again: a route can reach Finalise without this popup ever having been opened for
+  // the craft (the deploy_failed message's Redeploy / Return plan straight from the message, 2.2 deploy
+  // pipeline), and the head must name the craft the route is for.
+  function fillHead(v){
     var suffix = String(v.id).split('_').slice(-1)[0];   // vehicle_<guild>_<class>_NN -> "NN"
     $('dpName').textContent = prettyClass(v.class) + ' · #' + suffix;
     $('dpClass').textContent = prettyClass(v.class);
@@ -11743,8 +11861,6 @@ function paintInventoryHero(d){
     // per-class hero art (client/assets/units/<class>.jpg, all four classes resolve): heavyTransport
     // -> "heavytransport.jpg", spycraft -> "spycraft.jpg".
     $('dpArt').style.backgroundImage = "url('assets/units/" + String(v.class).toLowerCase() + ".jpg')";
-    renderPrePlan();
-    $('dispatch-overlay').classList.add('open');
   }
 
   // The Onboard Manifest box — a PURE DISPLAY of the craft's published hold (§18): the goods it
@@ -11829,6 +11945,9 @@ function paintInventoryHero(d){
     // Time over Cost — read straight from the quote (quoteFigures). An { ok:false } quote has no figures,
     // so those cells read "—" and Dispatch is disabled below.
     var block = dispatchBlock(route);
+    // (2.2 deploy pipeline) A KIT route — a Redeploy or a Return — never rides a saved lane or a repeat, so it
+    // has no Save row and no launch picker: it flies once (the engine would refuse either).
+    var kit = !!routeKitAction();
     var figs = quoteFigures(q);
     var timeVal = figs.time;
     var costVal = figs.cost;
@@ -11846,8 +11965,7 @@ function paintInventoryHero(d){
       // needs no sentence — the disabled Dispatch button is the quiet cue (§D).
       (q && q.ok === false ? '<div class="dp-refuse">' + esc(q.reason || 'This route cannot be dispatched.') + '</div>'
         : (block ? '<div class="dp-refuse">' + esc(block) + '</div>' : '')) +
-      saveRowHtml() +
-      launchHtml(q);
+      (kit ? '' : saveRowHtml() + launchHtml(q));
     var acts = $('dpActions');
     acts.innerHTML =
       '<button class="dp-btn" id="dpEditBtn" type="button">Edit Route</button>' +
@@ -11864,6 +11982,7 @@ function paintInventoryHero(d){
     Array.prototype.forEach.call($('dpSection').querySelectorAll('.wp-rm'), function(b){
       b.addEventListener('click', function(){ onRowRemove(Number(b.getAttribute('data-rm'))); });
     });
+    if(kit) return;   // no Save row or launch picker to wire
     // Save Route: typing updates DP.saveName and the button (no re-render, so the field keeps focus);
     // Enter saves, like the button.
     $('dpSaveName').addEventListener('input', function(){ DP.saveName = this.value; showSaveMsg('', false); refreshSaveBtn(); });
@@ -11871,6 +11990,15 @@ function paintInventoryHero(d){
     $('dpSaveBtn').addEventListener('click', onSaveRoute);
     refreshSaveBtn();
     wireLaunch();
+  }
+
+  // routeKitAction() -> the KIT action the finalised route ends in ({ type:'deploy', kind } or { type:'unload' },
+  // 2.2 deploy pipeline, territory-model.md §5), or null for an ordinary route. A route with one is flown by a
+  // heavy whose kit is aboard — the deploy_failed message's Redeploy / Return — and planned on the planner's kit
+  // modes, which put the kit action on the last stop.
+  function routeKitAction(){
+    var wp = DP.waypoints.filter(function(w){ return window.__routeChecks.isKitAction(w.action); })[0];
+    return wp ? wp.action : null;
   }
 
   // quoteFigures(q) -> { time, cost } — an engine quote's two figures as the player reads them: the trip
@@ -11886,11 +12014,17 @@ function paintInventoryHero(d){
     };
   }
 
-  // canDispatch() — every gate Dispatch waits on, in one place: an ok, affordable engine quote; no client
-  // route gate (dispatchBlock); and a complete launch choice (launchBlock).
+  // canDispatch() — every gate Dispatch waits on, in one place: an ok, affordable engine quote (quoteAllows); no
+  // client route gate (dispatchBlock); and a complete launch choice (launchBlock).
   function canDispatch(){
-    var q = DP.quote;
-    return !!(q && q.ok && q.affordable !== false && !dispatchBlock(dpRoute()) && !launchBlock());
+    return quoteAllows(DP.quote) && !dispatchBlock(dpRoute()) && !launchBlock();
+  }
+
+  // quoteAllows(q) — the engine's quote lets the route go: it is ok, and the guild can afford it. The quote half of
+  // canDispatch, shared with the Deploy Outpost popup's Deploy (window.__quoteAllows), so the two commits read the
+  // engine's answer by ONE rule. The client reacts to the engine's verdict and computes no number of its own (§18).
+  function quoteAllows(q){
+    return !!(q && q.ok && q.affordable !== false);
   }
 
   // ---------- automation slice 3c: the LAUNCH picker (transport-model.md §11.10) ----------
@@ -11904,7 +12038,8 @@ function paintInventoryHero(d){
   // actioned-route dispatch (dispatchRouteWithActions) takes a `repeat`, and it refuses a repeating lane
   // with fewer than two stops (a one-stop cycle has no leg to fly, §11.10). So a route repeats only when
   // some stop carries an action (a route with no action goes out as the plain dispatch, which always runs
-  // once) AND it has two or more stops. The planner reads the same rule for its loop drawing.
+  // once) AND it has two or more stops — and carries no kit action (a kit never rides a lane). The planner
+  // reads the same rule for its loop drawing.
   function repeatAllowed(){ return window.__routeChecks.canRepeat(dpRoute()); }
 
   // launchRepeat() -> the `repeat` object the dispatch carries, or null for a one-shot. It sends only what
@@ -12073,8 +12208,11 @@ function paintInventoryHero(d){
   // the map chip uses, window.__routeActionAllowed) shows "+ Action" when unset; a stop that carries an
   // action shows a filled "● Action" (its summary is the sub-line beside it). A set action ALWAYS keeps
   // its control, even if the stop has since stopped being actionable, so it can still be seen and
-  // cleared. Any other stop leaves the slot empty.
+  // cleared. Any other stop leaves the slot empty. So does every stop of a KIT route (2.2 deploy pipeline): the
+  // kit fills the hold, so no stop can dock, and its kit action is not a dock the editor could change — the
+  // planner's kit modes offer no Action either.
   function actionSlotHtml(wp, i){
+    if(routeKitAction()) return '';
     var allowed = window.__routeActionAllowed && window.__routeActionAllowed(DP.vehicle, wp.anchor);
     if(!wp.action && !allowed) return '';
     return wp.action
@@ -12142,9 +12280,14 @@ function paintInventoryHero(d){
   }
   // Edit Route → re-enter planning with the CURRENT waypoints (the finalised list), same soft hide.
   // (Automation 3c) With a repeating mode picked, the planner is told so, and draws the plan as a loop too.
+  // (2.2 deploy pipeline) A KIT route goes back to the kit mode it was planned in, named by its kit action: the
+  // deploy map or unload mode (__planKitRoute). The ordinary planner would read its deploy or unload as a stop's
+  // own action, and keep it on that stop when another is added after it.
   function onEditRoute(){
     var v = DP.vehicle; if(!v) return;
     $('dispatch-overlay').classList.remove('open');
+    var kitAct = routeKitAction();
+    if(kitAct){ if(window.__planKitRoute) window.__planKitRoute(v, kitAct, DP.waypoints.slice()); return; }
     if(window.__planRoute) window.__planRoute(v, (DP.waypoints || []).slice(), !!launchRepeat());
   }
 
@@ -12155,6 +12298,7 @@ function paintInventoryHero(d){
   async function dispatchFinalise(vehicle, waypoints, routeName){
     var v = liveVehicle(vehicle.id) || vehicle;
     DP.vehicle = v; DP.waypoints = (waypoints || []).slice();
+    fillHead(v);
     // A route that came from Load Route arrives with its saved name: the Save field starts on it, so
     // re-saving an edited lane updates it in place (§11.9 upsert). Otherwise the field keeps its text.
     if(routeName) DP.saveName = routeName;
@@ -12299,7 +12443,7 @@ function paintInventoryHero(d){
   window.__dispatchDeploy = dispatchDeploy;       // the Deploy Outpost popup's Deploy calls this
   window.__fetchQuote = fetchQuote;               // the deploy map and the Deploy Outpost popup ask their quote through this…
   window.__quoteFigures = quoteFigures;           // …and format it the way the Finalise view does
-  window.__craftCoords = coordsOf;                // the deploy_failed notice's Show on map finds the craft's hex here
+  window.__quoteAllows = quoteAllows;             // the Deploy Outpost popup's Deploy is gated on the quote by this, as Dispatch is
 
   $('dpClose').addEventListener('click', closeDispatch);
   $('dispatch-overlay').addEventListener('click', function(e){ if(e.target === this) closeDispatch(); });
@@ -12432,8 +12576,10 @@ function paintInventoryHero(d){
 
   // POST-FINALISE state — the Dispatch popup's renderPostFinalise, for a deployment: the Planned Route (Origin,
   // then each stop, the last one showing its deploy action) beside Time over Cost, then Edit Route / Deploy.
-  // Every figure is the engine's quote (§18), formatted by the Finalise view's own quoteFigures. Deploy does not
-  // wait on the quote (§5: the engine re-checks and re-costs at dispatch); a route it cannot quote shows why.
+  // Every figure is the engine's quote (§18), formatted by the Finalise view's own quoteFigures. Deploy is gated on
+  // that quote exactly as the Dispatch popup's Dispatch is (window.__quoteAllows): a route the engine cannot quote
+  // ({ ok:false }, its reason shown) or the guild cannot afford (affordable: false, the disabled button the quiet
+  // cue) holds Deploy, so no kit is loaded for a trip the dispatch would refuse.
   function renderPostFinalise(){
     var v = KD.carrier, q = KD.quote, label = window.__anchorLabel;
     $('kdCarrierRow').style.display = '';
@@ -12463,7 +12609,7 @@ function paintInventoryHero(d){
       '<button class="dp-btn" id="kdEditBtn" type="button">Edit Route</button>' +
       '<button class="dp-btn primary" id="kdDeployBtn" type="button">' + (KD.sending ? 'Deploying…' : 'Deploy') + '</button>';
     $('kdEditBtn').disabled = KD.sending;
-    $('kdDeployBtn').disabled = KD.sending;
+    $('kdDeployBtn').disabled = KD.sending || !window.__quoteAllows(q);
     $('kdEditBtn').addEventListener('click', onEditRoute);
     $('kdDeployBtn').addEventListener('click', onDeploy);
   }
@@ -12485,7 +12631,7 @@ function paintInventoryHero(d){
   // sent and nothing is shown. On an accepted dispatch the popup closes: the craft is in transit.
   async function onDeploy(){
     var kd = KD;
-    if(kd.sending || !kd.carrier || !kd.waypoints.length) return;
+    if(kd.sending || !kd.carrier || !kd.waypoints.length || !window.__quoteAllows(kd.quote)) return;
     kd.sending = true; kd.refused = '';
     renderPostFinalise();
     var out = { accepted: true };

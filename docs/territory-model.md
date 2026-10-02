@@ -226,7 +226,9 @@ client-only. The range paint, the pre-deploy quote, and the arrival deploy/retre
   launches as an ordinary route in Operations. *(⤳ BUILT 02-10-26 — client slice 2b: the deploy map's Finalise
   hands the route back to the Deploy Outpost popup, whose **Deploy** sends `loadKit` and then, only if the load is
   accepted, the dispatch — this ruled order. The map's on-tile DEPLOY is retired. "AS-BUILT — asset-initiated
-  client slice 2b" below.)*
+  client slice 2b" below.)* *(⤳ 02-10-26, client slice 3b: the popup's Deploy is now gated on that route's quote, as
+  the Dispatch popup's Dispatch is — an unquotable or unaffordable route holds it, so the kit is never loaded for a trip
+  the dispatch would refuse.)*
 
 - **Arrival — unchanged.** The deploy is instant and the carrier is left **parked on the new
   Outpost** (the derived `dockStatus: parked`, already built and test-locked).
@@ -240,7 +242,9 @@ client-only. The range paint, the pre-deploy quote, and the arrival deploy/retre
   plan a route to **any held system** with an **unload** action auto-appended, dropping the kit back
   into that system's idle list as an idle outpost. Until one fork resolves it, the kit waits aboard
   the heavy. *(⤳ The Return fork's ENGINE half — the route-arrival unload — is BUILT 02-10-26: "AS-BUILT —
-  asset-initiated slice 3a" below. The message's two forks and the planner's unload mode are client slice 3b.)*
+  asset-initiated slice 3a" below. The message's two forks and the planner's unload mode are client slice 3b.)* *(⤳ BUILT 02-10-26 — client
+  slice 3b: the popup's Redeploy / Return, each planning for the retreated heavy and committing in its Dispatch popup,
+  and the planner's unload mode. "AS-BUILT — asset-initiated client slice 3b" below.)*
 
 - **Load / unload are kit-specific actions** (`design.md` §4), inverses of each other and
   distinct from the goods dock/manifest: **load** moves a kit inventory → hold (instant,
@@ -423,7 +427,9 @@ kit in inventory. **The heavy-first entry is removed:** `deployKindOf`, the Disp
 **Known gap until slice 3:** a heavy holding a kit with no deploy under way (left by a retreat, by a dispatch
 refused after its load, or by an operator `load-kit`) has no client deploy path until the `deploy_failed`
 message's Redeploy fork lands. It is operator-recoverable (`unload-kit` back into inventory, then Deploy from the
-idle row), and a retreat is near-impossible in single-guild play. Not built: the multi-leg planner and the commit in
+idle row), and a retreat is near-impossible in single-guild play. *(⤳ The retreat case is CLOSED 02-10-26 by client
+slice 3b: the `deploy_failed` message's Redeploy / Return reach a retreated kit. A kit left aboard by a refused dispatch
+or an operator `load-kit` writes no notice, so no fork reaches it; that part stays open on the decision checklist.)* Not built: the multi-leg planner and the commit in
 the popup (slice 2b) *(⤳ BUILT 02-10-26, next)*, the message's Redeploy / Return (slice 3), and the other kinds.
 
 **AS-BUILT — asset-initiated client slice 2b, the multi-leg planner + the commit in the popup (02-10-26;
@@ -450,7 +456,8 @@ the load is accepted sends the dispatch through the unchanged `__dispatchDeploy`
 closing the popup leaves the kit in inventory. A refused load shows the engine's reason and sends nothing more. Once
 the load lands the popup marks the kit aboard: a dispatch refused after it says so ("… — the kit is now aboard Heavy
 Transport · #01."), and a retry sends the dispatch alone. Deploy does not wait on the quote, as the map's DEPLOY did
-not (still open on the decision checklist). **Retired:** the one-stage chip (`fillDeployChip`), `confirmDeploy`,
+not (still open on the decision checklist). *(⤳ RULED 02-10-26 — gate it — and BUILT in client slice 3b: Deploy is
+disabled on an `{ ok:false }` or unaffordable quote, as Dispatch is.)* **Retired:** the one-stage chip (`fillDeployChip`), `confirmDeploy`,
 `loadDeployKit`, the "a selected target locks the map" click rule, `PLAN.deployKitAssetId` / `deploySending` /
 `deployRefused`, and the CSS rule that hid Finalise in deploy mode. The kit now lives in the popup, which is only
 hidden while the map is open. **Ride-along:** the popup's Ready row is dropped (slice 2a's call (1), ruled). Slice 2a's
@@ -483,8 +490,51 @@ craft-route invariant gains `unloadActionViolation` (final waypoint, a system an
 carry any waypoint. `tools/admin.js dispatch-route` takes a last stop `sys:<id>@unload-kit` (named after the `unload-kit`
 subcommand, because `@unload:` is the dock manifest's) and prints it as "unload kit". **Client seam:** a craft flying an
 unload route publishes `{ type: 'unload' }` in its snapshot route. Today's `actionSummary` shows a blank action line for
-it (it returns `''` for a manifest-less action) and does not break. Not built: the `deploy_failed` message's Redeploy /
-Return forks and the planner's unload mode (client slice 3b), and the other kinds.
+it (it returns `''` for a manifest-less action) and does not break. *(⤳ Labelled "unload · kit" 02-10-26, client slice
+3b.)* Not built: the `deploy_failed` message's Redeploy /
+Return forks and the planner's unload mode (client slice 3b), and the other kinds. *(⤳ BUILT 02-10-26, next.)*
+
+**AS-BUILT — asset-initiated client slice 3b, the `deploy_failed` message's two forks + the Deploy-gating parity
+(02-10-26; `client/game.html` only, no engine).** Built to the REVISED block above ("Failed deploy — resolved from the
+message, two forks"), no design change and no new number. It closes the retreated-kit gap slice 2a named, and is the
+last rung of the asset-initiated pipeline. **The forks.** The pilot's popup (`event-log.md` §10) replaces Show on map
+with **Redeploy** and **Return**, beside Dismiss. Each reads the retreated heavy by the notice's `payload.craftId`, and
+acts only while the heavy is as the retreat left it: idle, off any route, with the kit of `payload.kind` aboard
+(`retreatedCraft`). A heavy that has moved on (a fork already taken, flying again, moved by an operator) opens nothing,
+and the popup's footer says "Nothing left to resolve." Otherwise the fork closes the popup and opens the planner for that
+heavy, centred on it, through one new bridge, `__planKitRoute(vehicle, action, waypoints)`:
+- **Redeploy** opens the deploy map as it is: the ring, `deployTarget` / `deployRefusal`, the map's quote, the deploy on
+  the last stop. The carrier is the retreated heavy, so there is no carrier pick.
+- **Return** opens the planner's new **unload mode**: the same planner, titled "Returning Kit", with no range ring (an
+  unload is not range-bound) and no map quote. Its route must END on a system the guild holds. `unloadRefusal` asks that
+  of the last stop, off the snapshot's own claims (`PLAYER_GUILD.ownedSystemIds`, the list the route-action gate already
+  reads). A last stop that is not a system, or not a held one, flags its row ("can't unload here — not a system you
+  hold") and disables Finalise. `{ type: 'unload' }` is added to the last stop on the way out, as the deploy is.
+
+**Where Finalise goes.** `PLAN` carries `fromInventory`, true only for a fresh deploy (`__planDeploy`, from the Deploy
+Outpost popup) and false for the forks. `finalisePlanning` sends a fresh deploy to the Deploy Outpost popup, slice 2b's
+path unchanged. Every other route, a kit already aboard included, goes to the heavy's own Dispatch popup: the ordinary
+commit, which sends `dispatchRouteWithActions` through `dispatchActionFor` and is already gated on the quote. Nothing
+loads, because the kit is in the hold, and the engine (slice 3a) unloads or deploys on arrival. **The Dispatch popup
+learns a kit route**, so a route ending in a kit action reads right there:
+- `dispatchFinalise` fills the popup's head (`fillHead`, split out of `openDispatch`). A fork reaches Finalise without
+  the popup ever having been opened for that heavy.
+- A kit route shows no Save Route row, no launch picker and no dock Action control. A kit never rides a saved lane or a
+  repeat, and it fills the hold.
+- Its Edit Route re-opens the kit mode it came from (`__planKitRoute`), not the ordinary planner.
+- The shared route checks learn `isKitAction`. `brokenAt` never flags a kit action: a deploy's stop is open ground, with
+  no store by design, which had read as "store gone" and would have blocked Dispatch. `canRepeat` refuses a kit route,
+  as the engine does. `actionSummary` labels the unload "unload · kit" (slice 3a's blank line).
+
+**The gating parity.** The Deploy Outpost popup's Deploy is disabled when the engine's quote is `{ ok:false }` (its
+reason shown, as before) or `affordable: false`. That is the quote half of the Dispatch popup's `canDispatch`, now one
+shared rule, `quoteAllows` (`window.__quoteAllows`), so the kit is never loaded for a trip the dispatch would refuse. The
+quote is asked once at Finalise, as Dispatch's is. **Renamed:** `deployAction` / `deployWaypoints` are `kitAction` /
+`kitWaypoints` (they serve both kit modes); `#app.deploying` is `#app.kitroute`; `startPlanning`'s fifth argument is a
+`kit` object (`{ deploy, fromInventory }` or `{ unload: true }`), not a kind. **Retired:** `showNoticeOnMap`,
+`#noticeShowMap`, and the `window.__craftCoords` bridge only it used. **Still a gap:** a kit left aboard by a dispatch
+refused after its load (the popup then closed), or by an operator `load-kit`, writes no `deploy_failed` notice, so no
+fork reaches it. It stays operator-recoverable (decision checklist). Not built: the kit sources and the other kinds.
 
 ## 6. Generation — starter spacing
 

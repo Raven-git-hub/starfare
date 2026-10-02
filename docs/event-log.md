@@ -272,7 +272,8 @@ counting the player's own `attention.notices` beside the open offers.
 
 *Status: **RULED + BUILT.** The **ENGINE half is BUILT** (01-10-26 — the type, the write and the payload) and the
 **CLIENT half is BUILT** (01-10-26 — the inbox row, the pilot popup, Show on map); both AS-BUILT records are at the end
-of this section. A THIRD event type, written by the deploy pipeline, and the first notice that carries a
+of this section. *(⤳ 02-10-26: Show on map is REPLACED by the decision the pilot asks for, the two forks **Redeploy**
+and **Return** (`territory-model.md` §5 REVISED); "AS-BUILT — the two forks", the last record below.)* A THIRD event type, written by the deploy pipeline, and the first notice that carries a
 **domain character** rather than the uniform Syndicate voice (§9): the parked domain-character advisers
 (§5), **un-parked for the fleet / ops lane**. Syndicate ENFORCEMENT notices (`venture_closed` /
 `licence_lapsed`) stay uniform; a fleet / ops notice wears its character. Visual contract:
@@ -292,7 +293,8 @@ writer, so the craft flag and the message cannot disagree. Born unread; retentio
 - `cause` — `'occupied'` | `'out-of-range'` (the two retreatable reasons; the §5 `deployFailed` reason).
 - `kind` — the deployable kind, `'outpost'` (the only one built).
 - `targetHex` — `{ q, r }`, the hex the deploy could not be placed on.
-- `craftId` + `craftClass` — the transport (the facts line, and the lookup for Show on map).
+- `craftId` + `craftClass` — the transport (the facts line, and the lookup for Show on map). *(⤳ Now the forks'
+  lookup: Show on map is replaced, below.)*
 - `retreatSystemId` + `retreatSystemName` — the nearest held system it pulled back toward (its seed name).
 
 **The surface — the MESSAGES inbox + popup (§8 / §9), but with its OWN character.** The inbox row
@@ -314,6 +316,9 @@ any notice. The popup is the same adviser-reel card, re-dressed for this type:
 - **a SHOW ON MAP button** beside Dismiss: closes the popup and flies the map to the **craft’s CURRENT
   hex**, looked up live by `craftId` in the snapshot. A retreated craft sits on its hex INDEFINITELY until
   the player acts on it, so "current" is reliable; if the craft is gone, fall back to `payload.targetHex`.
+  *(⤳ SUPERSEDED 02-10-26 by `territory-model.md` §5 REVISED ("Failed deploy — resolved from the message, two forks"):
+  the map button is replaced by **Redeploy** and **Return**, which open the planner centred on the craft, so a
+  standalone Show on map is subsumed. BUILT, "AS-BUILT — the two forks" below.)*
 
 Opening the message acknowledges it (§8, read-on-open), unchanged. This **replaces** the earlier idea of
 an Operations · In-Transit strip notice — the message is the surface.
@@ -359,6 +364,7 @@ popup card is pixel-identical before and after.
   `window.__craftCoords` (a bare hex, or the system a clamped retreat parked it at), and `__flyTo`s it at zoom 9,
   the Dispatch popup's Show on map zoom (`__flyTo` closes the Guild Hall itself). A craft that is gone — or flying
   again, so it has no hex — falls back to `payload.targetHex` (the flying case is flagged on the checklist).
+  *(⤳ RETIRED 02-10-26 with `window.__craftCoords`: the two forks replace it, next.)*
 - **Read-on-open** is §8's, unchanged: opening dispatches `acknowledgeEvent` by id while unread.
 - **One layout fix.** The pilot's two beats + five facts are about 60px taller than the card's fixed
   `min(80vh, 600px)`. The card's text column could not shrink below its content, so the footer and its buttons
@@ -366,3 +372,22 @@ popup card is pixel-identical before and after.
   `overflow-y:auto` intends, and the footer stays on the card. The last fact (`Failed`) sits just below the fold.
   A notice that fits is unaffected (measured identical). Whether this card should be taller instead is on the
   decision checklist.
+
+**AS-BUILT — the two forks (02-10-26; `client/game.html` only, NO `sim/` change; roadmap 2.2 deploy pipeline,
+asset-initiated client slice 3b).** Built to `territory-model.md` §5 REVISED, which replaces this section's Show on map.
+The full record, the planner's unload mode included, is "AS-BUILT — asset-initiated client slice 3b" there. Here, only
+what the notice itself does:
+- **The buttons.** `#noticeShowMap` is replaced by `#noticeRedeploy` and `#noticeReturn`, beside Dismiss and in the same
+  `btn accept` style. `openNotice` shows both for a `deploy_failed` and hides both for any other notice, on every open,
+  as it did Show on map. A `venture_closed` notice still shows Dismiss alone under "Syndicate Notice" (checked in the
+  live client).
+- **What a fork does.** It finds the live craft by `payload.craftId`, as Show on map did, and acts only while that craft
+  is still idle, off any route, with the kit of `payload.kind` aboard. Then it closes the popup and opens the planner for
+  that craft (`__flyTo` closes the Guild Hall itself). Redeploy opens the deploy map, Return the planner's unload mode;
+  both commit in the craft's own Dispatch popup.
+- **Nothing to act on.** A craft that has moved on (a fork already taken, flying again, moved by an operator) opens
+  nothing. The footer's empty note slot, now `#noticeNote`, reads "Nothing left to resolve." `openNotice` clears it on
+  every open.
+- **Read-on-open** is §8's, unchanged. The notice stays in the inbox after a fork, like any read notice.
+- **The card fit** is as before: the footer now holds three buttons and still fits the card, and the last fact
+  (`Failed`) still sits just below the fold.
