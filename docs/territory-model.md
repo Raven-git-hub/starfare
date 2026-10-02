@@ -194,7 +194,8 @@ client-only. The range paint, the pre-deploy quote, and the arrival deploy/retre
   `deployedToVentureId == null` model miners and factories already use (`design.md` §4, revised
   there) — presented to the player as an **idle outpost**. It reaches a system's inventory
   through a source (the dockyard / founding grant / the repointed `grantKit` test seam); it is no
-  longer minted straight into a hold.
+  longer minted straight into a hold. *(⤳ BUILT 02-10-26, engine half — "AS-BUILT — asset-initiated slice 1"
+  below.)*
 
 - **Initiate — from the asset, pick the carrier.** In the system's idle-asset list the idle
   outpost carries a **Deploy** button → an **outpost-subject dispatch popup** (the existing
@@ -234,11 +235,13 @@ client-only. The range paint, the pre-deploy quote, and the arrival deploy/retre
 - **Load / unload are kit-specific actions** (`design.md` §4), inverses of each other and
   distinct from the goods dock/manifest: **load** moves a kit inventory → hold (instant,
   same-system, at commit); **unload** moves it hold → a fresh idle outpost in a held system's
-  inventory (on arrival, the Return fork).
+  inventory (on arrival, the Return fork). *(⤳ BUILT 02-10-26 as standalone engine actions, `loadKit` /
+  `unloadKit`; the on-arrival unload of the Return fork is a later slice.)*
 
 - **Sequencing.** The kit-as-idle-asset plus a source that mints one into a system (the repointed
   `grantKit`, with the load/unload actions) is the **prerequisite rung** — it lands before the
-  asset-initiated popup, the planner reuse, and the message rewire can be driven.
+  asset-initiated popup, the planner reuse, and the message rewire can be driven. *(⤳ This rung is BUILT
+  02-10-26 — below.)*
 
 **Route legality is target-only.** The *path* is legal anywhere — open space is not
 illegal, it is merely less safe / tolled — so there is nothing to "route around." Only the
@@ -283,7 +286,9 @@ Built to this section, no design change. The kit is a **deployable good** — `o
 `DEPLOYABLE_GOODS` (`sim/resources.js`), deliberately outside `STOCKPILE_GOODS`, so it is never priced,
 never in Galactic Supply, and legal only in a craft's hold. It sizes to `ASSET_CARGO_VOLUME`, so only a heavy
 carries one, one at a time. An operator lever, `grantKit`, mints one into an empty heavy (the test seam — the
-dockyard and founding-grant sources are later rungs). `deployAsset` is the **space lane** for the outpost: a
+dockyard and founding-grant sources are later rungs). *(⤳ Repointed 02-10-26: `grantKit` now mints an idle kit
+asset into a system's inventory, and a kit reaches a hold through `loadKit` — "AS-BUILT — asset-initiated
+slice 1" below.)* `deployAsset` is the **space lane** for the outpost: a
 craft idle on a bare, unoccupied hex within `OUTPOST_DEPLOY_RANGE` (the ruled `[FIRST-CUT]` 10) of a system
 its guild holds places an Outpost there — instantly, through the same mint path as `spawnOutpost` — anchored
 to the **nearest** held system (a tie → the lower system id), and the kit is consumed. It is a **standalone
@@ -347,6 +352,27 @@ then the engine's **Time · Cost**, formatted by the same `quoteFigures` the Fin
 cannot quote (`{ ok:false }`) shows the engine's reason instead. A refused hex asks nothing. Cancel, or a new target,
 drops the old quote, and a late answer for a target since changed is ignored. DEPLOY is not gated on the quote. The
 quote is asked once per selection, as Finalise asks once per route, so a poll does not refresh it.
+
+**AS-BUILT — asset-initiated slice 1, the kit as a system-scoped idle asset (02-10-26; engine + operator CLI, no
+client).** Built to the REVISED block above and `design.md` §4's ruling, no design change and no new number. An
+undeployed kit now has two representations, one at a time: an idle **asset** of kind `'outpost'` in a system's
+inventory (`guild.assets`, the miner/factory model), and the `outpost_kit` **good** in a heavy's hold — the one
+`deployCheck` / `deployKit` already read, so the deploy, the retreat and the `deploy_failed` notice are untouched.
+`'outpost'` is a kit kind, kept apart from the venture kinds (`ASSET_KINDS` unchanged), so no venture can ever
+name a kit. Three operator-journalled actions convert between them: **`grantKit { guildId, systemId, kind }`**
+(repointed — mints one idle kit at a system), **`loadKit { guildId, vehicleId, assetId }`** (the named idle kit →
+an empty, idle heavy berthed at the kit's own system — the ruled same-system constraint) and **`unloadKit {
+guildId, vehicleId }`** (the heavy's one kit → a fresh idle kit in the held system it is berthed at; refused on a
+bare hex or at an Outpost). One kit in, one good out, and back; a deploy is still the only thing that consumes a
+kit. Kit ids come from a stored per-guild serial (`asset_<guild>_outpost_NN`), because a loaded kit leaves the
+inventory and its number must never return (`design.md` §15.4). The unload's rule and apply take the location
+and tick as arguments, as `deployCheck` / `deployKit` do, so the Return fork's on-arrival unload can reuse them.
+Snapshot unchanged: an idle kit is already an `assets` row with `kind: 'outpost'` and `deployedToVentureId:
+null`, which is what `__myIdleAssets('outpost')` reads. Operator surface: `POST /admin/guild/grant-kit` (was
+`/admin/vehicle/grant-kit`) and `POST /admin/vehicle/load-kit|unload-kit`, with `tools/admin.js grant-kit
+--system`, `load-kit` and `unload-kit`. Not built: the client (the idle-outpost Deploy button, the
+outpost-subject popup and carrier dropdown, the planner reuse, the message's Redeploy / Return), the
+route-arrival unload, the real kit sources, storing a kit at an Outpost, the other kinds.
 
 ## 6. Generation — starter spacing
 

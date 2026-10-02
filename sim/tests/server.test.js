@@ -1694,23 +1694,55 @@ function freeHexBesideHome() {
   throw new Error('server.test: no free hex beside the home system');
 }
 
-test('POST /admin/vehicle/grant-kit + /deploy-asset: a kit becomes an Outpost on the hex; neither ticks', async () => {
+// The asset-initiated kit (design.md §4, RULED 02-10-26): grant-kit mints an idle kit asset into a system's
+// inventory; load-kit / unload-kit move it between that inventory and a heavy's hold.
+const HEAVY_ID = 'vehicle_player-guild_heavyTransport_01';
+const AT_HOME_SYSTEM = { landmarkKind: 'system', landmarkId: HOME_SYSTEM };
+const kitRows = (snapshot) => snapshot.guilds[0].assets.filter((a) => a.kind === 'outpost');
+
+test('POST /admin/guild/grant-kit + /admin/vehicle/load-kit + /unload-kit: the kit moves inventory <-> hold; none tick', async () => {
   await reset();
-  await found(); // the founding claim is the held system the Outpost anchors to
-  const hex = freeHexBesideHome();
-  await req('POST', '/admin/vehicle/spawn', { guildId: 'player-guild', class: 'heavyTransport', location: hex });
-  const VID = 'vehicle_player-guild_heavyTransport_01';
+  await found(); // the founding claim is the held system the kit unloads into
+  await req('POST', '/admin/vehicle/spawn', { guildId: 'player-guild', class: 'heavyTransport', location: AT_HOME_SYSTEM });
 
-  const grant = await req('POST', '/admin/vehicle/grant-kit', { guildId: 'player-guild', vehicleId: VID, kind: 'outpost' });
+  const grant = await req('POST', '/admin/guild/grant-kit', { guildId: 'player-guild', systemId: HOME_SYSTEM, kind: 'outpost' });
   assert.equal(grant.status, 200);
-  assert.equal(grant.body.accepted, true);
+  assert.equal(grant.body.accepted, true, grant.body.reason);
   assert.equal(grant.body.snapshot.tick, 0, 'a grant must not tick');
-  assert.deepEqual(grant.body.snapshot.guilds[0].vehicles[0].cargo, { outpost_kit: 1 });
+  assert.deepEqual(kitRows(grant.body.snapshot), [{ id: 'asset_player-guild_outpost_01', kind: 'outpost', systemId: HOME_SYSTEM, maintenanceCondition: 1, deployedToVentureId: null }]);
+  assert.deepEqual(grant.body.snapshot.guilds[0].vehicles[0].cargo, {}, 'a kit no longer appears in a hold');
 
-  const deploy = await req('POST', '/admin/vehicle/deploy-asset', { guildId: 'player-guild', vehicleId: VID });
+  const load = await req('POST', '/admin/vehicle/load-kit', { guildId: 'player-guild', vehicleId: HEAVY_ID, assetId: 'asset_player-guild_outpost_01' });
+  assert.equal(load.status, 200);
+  assert.equal(load.body.accepted, true, load.body.reason);
+  assert.equal(load.body.snapshot.tick, 0, 'a load must not tick');
+  assert.deepEqual(kitRows(load.body.snapshot), [], 'the kit left the inventory');
+  assert.deepEqual(load.body.snapshot.guilds[0].vehicles[0].cargo, { outpost_kit: 1 });
+
+  const unload = await req('POST', '/admin/vehicle/unload-kit', { guildId: 'player-guild', vehicleId: HEAVY_ID });
+  assert.equal(unload.status, 200);
+  assert.equal(unload.body.accepted, true, unload.body.reason);
+  assert.equal(unload.body.snapshot.tick, 0, 'an unload must not tick');
+  assert.deepEqual(kitRows(unload.body.snapshot).map((a) => a.id), ['asset_player-guild_outpost_02'], 'a fresh kit — ids never repeat');
+  assert.deepEqual(unload.body.snapshot.guilds[0].vehicles[0].cargo, {});
+});
+
+test('POST /admin/vehicle/deploy-asset: a loaded kit flown to a bare hex becomes an Outpost; the deploy does not tick', async () => {
+  await reset();
+  await found();
+  await req('POST', '/admin/vehicle/spawn', { guildId: 'player-guild', class: 'heavyTransport', location: AT_HOME_SYSTEM });
+  await req('POST', '/admin/guild/grant-kit', { guildId: 'player-guild', systemId: HOME_SYSTEM, kind: 'outpost' });
+  await req('POST', '/admin/vehicle/load-kit', { guildId: 'player-guild', vehicleId: HEAVY_ID, assetId: 'asset_player-guild_outpost_01' });
+  const hex = freeHexBesideHome();
+  const sent = await req('POST', '/admin/vehicle/dispatch', { guildId: 'player-guild', vehicleId: HEAVY_ID, waypoints: [hex] });
+  assert.equal(sent.body.accepted, true, sent.body.reason);
+  let snap = sent.body.snapshot;
+  while (snap.guilds[0].vehicles[0].status !== 'idle') snap = (await req('POST', '/tick')).body;
+
+  const deploy = await req('POST', '/admin/vehicle/deploy-asset', { guildId: 'player-guild', vehicleId: HEAVY_ID });
   assert.equal(deploy.status, 200);
-  assert.equal(deploy.body.accepted, true);
-  assert.equal(deploy.body.snapshot.tick, 0, 'a deploy must not tick');
+  assert.equal(deploy.body.accepted, true, deploy.body.reason);
+  assert.equal(deploy.body.snapshot.tick, snap.tick, 'a deploy must not tick');
   const [outpost] = deploy.body.snapshot.outposts;
   assert.equal(outpost.id, 'outpost_player-guild_01');
   assert.deepEqual(outpost.coords, hex);
@@ -1720,28 +1752,43 @@ test('POST /admin/vehicle/grant-kit + /deploy-asset: a kit becomes an Outpost on
   assert.equal(craft.status, 'idle');
 });
 
-test('POST /admin/vehicle/grant-kit + /deploy-asset refuse (200, accepted:false) and 400 a malformed body', async () => {
+test('the kit endpoints refuse (200, accepted:false), 400 a malformed body, and the old grant route is gone', async () => {
   await reset();
   await found();
-  await req('POST', '/admin/vehicle/spawn', { guildId: 'player-guild', class: 'lightTransport', location: freeHexBesideHome() });
-  const VID = 'vehicle_player-guild_lightTransport_01';
-  // A light hold is smaller than one kit → the engine refuses (200, accepted:false).
-  const refused = await req('POST', '/admin/vehicle/grant-kit', { guildId: 'player-guild', vehicleId: VID, kind: 'outpost' });
-  assert.equal(refused.status, 200);
-  assert.equal(refused.body.accepted, false);
-  assert.match(refused.body.reason, /only an EMPTY heavy transport can carry one/);
-  // No kit aboard → deploy refused.
-  const noKit = await req('POST', '/admin/vehicle/deploy-asset', { guildId: 'player-guild', vehicleId: VID });
-  assert.equal(noKit.status, 200);
+  await req('POST', '/admin/vehicle/spawn', { guildId: 'player-guild', class: 'lightTransport', location: AT_HOME_SYSTEM });
+  const LIGHT_ID = 'vehicle_player-guild_lightTransport_01';
+  // Engine refusals: a system not on the seed; a light carrier; an unload with nothing aboard; a deploy with no kit.
+  const noSystem = await req('POST', '/admin/guild/grant-kit', { guildId: 'player-guild', systemId: 'sys_nope', kind: 'outpost' });
+  assert.equal(noSystem.status, 200);
+  assert.equal(noSystem.body.accepted, false);
+  assert.match(noSystem.body.reason, /is not a system on the seed/);
+  await req('POST', '/admin/guild/grant-kit', { guildId: 'player-guild', systemId: HOME_SYSTEM, kind: 'outpost' });
+  const light = await req('POST', '/admin/vehicle/load-kit', { guildId: 'player-guild', vehicleId: LIGHT_ID, assetId: 'asset_player-guild_outpost_01' });
+  assert.equal(light.status, 200);
+  assert.equal(light.body.accepted, false);
+  assert.match(light.body.reason, /only a heavy transport carries one/);
+  const nothing = await req('POST', '/admin/vehicle/unload-kit', { guildId: 'player-guild', vehicleId: LIGHT_ID });
+  assert.equal(nothing.body.accepted, false);
+  assert.match(nothing.body.reason, /must carry exactly one kit and nothing else/);
+  // A craft on a bare hex with nothing aboard: the deploy is refused for the missing kit.
+  await req('POST', '/admin/vehicle/spawn', { guildId: 'player-guild', class: 'heavyTransport', location: freeHexBesideHome() });
+  const noKit = await req('POST', '/admin/vehicle/deploy-asset', { guildId: 'player-guild', vehicleId: 'vehicle_player-guild_heavyTransport_02' });
   assert.equal(noKit.body.accepted, false);
   assert.match(noKit.body.reason, /exactly one outpost_kit/);
-  // Structurally malformed requests (no kind / no vehicleId) are 400s — the constructors refuse them.
-  const badGrant = await req('POST', '/admin/vehicle/grant-kit', { guildId: 'player-guild', vehicleId: VID });
-  assert.equal(badGrant.status, 400);
-  assert.match(badGrant.body.error, /malformed grant-kit/);
-  const badDeploy = await req('POST', '/admin/vehicle/deploy-asset', { guildId: 'player-guild' });
-  assert.equal(badDeploy.status, 400);
-  assert.match(badDeploy.body.error, /malformed deploy-asset/);
+  // Structurally malformed requests are 400s — the constructors refuse them.
+  for (const [route, body, label] of [
+    ['/admin/guild/grant-kit', { guildId: 'player-guild', kind: 'outpost' }, 'grant-kit'],
+    ['/admin/vehicle/load-kit', { guildId: 'player-guild', vehicleId: LIGHT_ID }, 'load-kit'],
+    ['/admin/vehicle/unload-kit', { guildId: 'player-guild' }, 'unload-kit'],
+    ['/admin/vehicle/deploy-asset', { guildId: 'player-guild' }, 'deploy-asset'],
+  ]) {
+    const bad = await req('POST', route, body);
+    assert.equal(bad.status, 400, route);
+    assert.match(bad.body.error, new RegExp(`malformed ${label}`));
+  }
+  // The pre-02-10-26 route (a kit straight into a hold) no longer exists.
+  const old = await req('POST', '/admin/vehicle/grant-kit', { guildId: 'player-guild', vehicleId: LIGHT_ID, kind: 'outpost' });
+  assert.equal(old.status, 404);
 });
 
 // --- the saved-route store (transport-model.md §11.9, automation slice 2a) -------------------

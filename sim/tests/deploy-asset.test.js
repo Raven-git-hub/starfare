@@ -1,23 +1,22 @@
 'use strict';
 
 // deploy-asset.test.js — the deploy pipeline slice 1, roadmap 2.2 (docs/territory-model.md §5 — "haul
-// a Tier-4 kit on a transport to a target, and place it on arrival"). Two engine actions:
-//   - grantKit    — the operator mints one deployable kit straight into a craft's hold (the test seam;
-//                   the real kit sources are later slices);
+// a Tier-4 kit on a transport to a target, and place it on arrival"). The engine action under test:
 //   - deployAsset — a craft idle at a bare hex places the Outpost its kit packs, consuming the kit.
 //
-// The tripwires for grantKit, one per ruling:
-//   - GRANT: one kit lands in an empty heavy's hold, tick-stamped, moving no credits / fuel / supply;
-//   - HEAVY-ONLY + ONE-AT-A-TIME, BY VOLUME: a light, a medium and a spycraft are refused as over
-//     capacity; a heavy already holding a kit (or anything) is refused; a heavy holding a kit has a
-//     full hold, so a load there moves nothing;
-//   - the GATES: unknown guild / craft / kind, a craft in transit or in a dock slot, and a craft on a
-//     lane (a deployable good never rides one) all refuse whole;
+// HOW A KIT GETS ABOARD (02-10-26, the asset-initiated redesign — design.md §4): the kit is first an idle
+// asset in a system's inventory (grantKit), then loaded onto an empty heavy in that system (loadKit) —
+// kit-fixtures.js `kitAboard`. Those two actions and all their gates are tested in kit-asset.test.js; the
+// grantKit-straight-into-a-hold tests that used to open this file retired with that lever. The deploy
+// itself is UNCHANGED, and these tests prove it still works end to end through the new model.
+//
+// The tripwires for a kit aboard a heavy:
+//   - A FULL HOLD: a heavy holding a kit has no room left, so a load at its system moves nothing;
 //   - NEVER A LANE: a kit-laden craft may fly a ONE-SHOT route (that is how a kit reaches its target)
 //     but may not launch a REPEATING lane.
 //
 // The tripwires for deployAsset:
-//   - HAPPY PATH: grant a kit, dispatch the heavy, tick it home to a bare hex, deploy -> an Outpost at
+//   - HAPPY PATH: grant + load a kit, dispatch the heavy, fly it to a bare hex, deploy -> an Outpost at
 //     that hex (the `outpost_<guild>_NN` id, anchored to the held system), the hold emptied, and no
 //     credits / fuel / supply moved;
 //   - RANGE: exactly OUTPOST_DEPLOY_RANGE (10) hexes from a held system deploys; one further is refused;
@@ -27,8 +26,8 @@
 //     holding a system or an Outpost, is refused; so is a craft in transit, in a dock slot, or on a lane;
 //   - THE KIT: no kit, or a hold of anything but exactly one kit, is refused; so is another guild's craft;
 //   - IDS: a second deploy mints `_02`; after a teardown the next deploy never reuses a number;
-//   - DETERMINISM (invariant 9): grant -> dispatch -> deploy run twice is byte-identical, and a deploy
-//     journalled against a SAVED state replays to the same bytes on restore.
+//   - DETERMINISM (invariant 9): grant -> load -> dispatch -> deploy run twice is byte-identical, and the
+//     grant, load and dispatch journalled against a SAVED state replay to the same bytes on restore.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -52,13 +51,12 @@ const {
 } = require('../seed.js');
 const { OUTPOST_DEPLOY_RANGE, OUTPOST_CAPACITY, OUTPOST_DOCK_SLOTS } = require('../outposts.js');
 const seed = require('../../data/seed.json');
-const {
-  HEAVY_TRANSPORT, MEDIUM_TRANSPORT, LIGHT_TRANSPORT, SPYCRAFT,
-} = require('../vehicles.js');
+const { HEAVY_TRANSPORT } = require('../vehicles.js');
 const { starterHomeAtDistance } = require('./waystation-fixtures.js');
+const { kitAboard, placeCraft } = require('./kit-fixtures.js');
 const {
   validateAction, applyAction,
-  createSpawnVehicleAction, createGrantKitAction, createTransferCargoAction,
+  createSpawnVehicleAction, createGrantKitAction, createLoadKitAction, createTransferCargoAction,
   createDispatchRouteWithActionsAction, createDispatchVehicleAction, createDeployAssetAction,
   createSpawnOutpostAction, createRemoveOutpostAction,
 } = require('../actions.js');
@@ -124,54 +122,14 @@ function deployState({
   return s;
 }
 const craftOf = (s) => s.guilds[0].vehicles[0];
-const grant = (s, over = {}) => createGrantKitAction({ guildId: 'g1', vehicleId: craftOf(s).id, kind: 'outpost', ...over });
+// The kit, the asset-initiated way: granted into the home system's inventory and loaded onto the heavy
+// berthed there (kit-fixtures.js). The heavy must be at home, idle and empty.
+const withKit = (s) => kitAboard(s, 'g1', craftOf(s).id);
 
-// --- grantKit: the mint --------------------------------------------------------------------------
-
-test('grant: one outpost_kit lands in an empty heavy hold, tick-stamped, moving nothing else', () => {
-  const before = deployState();
-  const s = accept(before, grant(before));
-  assert.deepEqual(craftOf(s).cargo, { [OUTPOST_KIT]: 1 });
-  assert.equal(craftOf(s).updatedAtTick, s.tick, 'every mutation records its tick (§15.2)');
-  assert.equal(craftOf(s).status, 'idle');
-  // No credits, fuel or supply moved: a kit is off-market and off-supply.
-  assert.equal(s.guilds[0].credits, before.guilds[0].credits);
-  assert.equal(s.guilds[0].fuelHoard, before.guilds[0].fuelHoard);
-  assert.deepEqual(computeGalacticSupply(s), computeGalacticSupply(before));
-  assert.deepEqual(s.galacticSupply, before.galacticSupply, 'the cache needed no refresh');
-  assert.deepEqual(checkInvariants(s, s.tick), []);
-});
-
-// --- grantKit: heavy-only and one-at-a-time, both from the kit's volume ----------------------------
-
-test('heavy-only: a light, a medium and a spycraft are refused — their hold is smaller than one kit', () => {
-  for (const vehicleClass of [LIGHT_TRANSPORT, MEDIUM_TRANSPORT, SPYCRAFT]) {
-    const s = deployState({ vehicleClass });
-    const reason = refuse(s, grant(s));
-    assert.match(reason, /cargo space free/, `${vehicleClass}: refused on capacity`);
-    assert.match(reason, /only an EMPTY heavy transport can carry one/);
-  }
-});
-
-test('one-at-a-time: a second kit onto a heavy already holding one is refused', () => {
-  let s = deployState();
-  s = accept(s, grant(s));
-  const reason = refuse(s, grant(s));
-  assert.match(reason, /has 0 cargo space free/);
-});
-
-test('one-at-a-time: a heavy holding ANY cargo has no room for a kit', () => {
-  let s = deployState({ pool: { titanium: 1 } });
-  s = accept(s, createTransferCargoAction({
-    guildId: 'g1', vehicleId: craftOf(s).id, manifest: [{ dir: 'load', good: 'titanium', qty: 1 }],
-  }));
-  assert.deepEqual(craftOf(s).cargo, { titanium: 1 });
-  assert.match(refuse(s, grant(s)), /cargo space free/);
-});
+// --- a kit aboard: the hold is full ------------------------------------------------------------------
 
 test('a heavy holding a kit has an otherwise-full hold — a load at its system moves nothing', () => {
-  let s = deployState({ pool: { titanium: 50 } });
-  s = accept(s, grant(s));
+  let s = withKit(deployState({ pool: { titanium: 50 } }));
   assert.equal(usedSpace(craftOf(s).cargo), craftOf(s).capacity, 'the kit alone fills the hold');
   // The transfer is ACCEPTED (well-formed) but clamps to zero: there is no room (partial-safe, §4).
   s = accept(s, createTransferCargoAction({
@@ -182,43 +140,11 @@ test('a heavy holding a kit has an otherwise-full hold — a load at its system 
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
-// --- grantKit: the gates -------------------------------------------------------------------------
-
-test('grant gates: unknown guild, unknown craft and unknown kind are refused', () => {
-  const s = deployState();
-  assert.match(refuse(s, grant(s, { guildId: 'nobody' })), /no guild with id/);
-  assert.match(refuse(s, grant(s, { vehicleId: 'vehicle_g1_heavyTransport_99' })), /owns no vehicle/);
-  assert.match(refuse(s, grant(s, { kind: 'tollGate' })), /not a deployable kind with a kit/);
-  assert.match(refuse(s, grant(s, { kind: 'outpost_kit' })), /not a deployable kind/, 'the kind, not the good id');
-});
-
-test('grant gates: a craft in transit or in a dock slot is refused — idle craft only', () => {
-  for (const status of ['inTransit', 'loading']) {
-    const s = deployState();
-    craftOf(s).status = status;
-    assert.match(refuse(s, grant(s)), /is not idle/);
-  }
-});
-
-test('grant gates: a craft on a lane is refused — a deployable kit never rides a lane', () => {
-  const s = deployState();
-  // An idle craft holding a route is a lane WAITING at its last stop (§11.6) — idle, but lane-driven.
-  craftOf(s).route = {
-    waypoints: [{ anchor: AT_HOME }, { anchor: AT_HOME }],
-    cursor: 1,
-    mode: 'continuous',
-    lapsDone: 1,
-    waiting: { reason: 'fuel', sinceTick: 0 },
-  };
-  assert.match(refuse(s, grant(s)), /running a lane — a deployable kit never rides one/);
-});
-
 // --- never a lane: a kit rides a one-shot route, never a repeating one -----------------------------
 
 test('never a lane: a kit-laden heavy may fly a one-shot route but not launch a repeating lane', () => {
   const near = freeHexAtDistance(1);
-  let s = deployState({ fuelHoard: 10_000 });
-  s = accept(s, grant(s));
+  const s = withKit(deployState({ fuelHoard: 10_000 }));
   const route = (repeat) => createDispatchRouteWithActionsAction({
     guildId: 'g1',
     vehicleId: craftOf(s).id,
@@ -242,10 +168,12 @@ test('never a lane: a kit-laden heavy may fly a one-shot route but not launch a 
 
 // --- deployAsset: fixtures -----------------------------------------------------------------------
 
-// A heavy idle at `location` with one outpost kit aboard, granted through the real lever.
+// A heavy idle at `location` with one outpost kit aboard. The kit is granted and loaded at home through
+// the real actions, then the laden craft is PLACED at `location` — the stand-in for a flight (a real one
+// is 225 ticks a hex; `flyKitTo` below flies one). The deploy rule reads only where it sits and what it holds.
 function kitAt(location, opts = {}) {
-  const s = deployState({ location, ...opts });
-  return accept(s, grant(s));
+  const s = withKit(deployState(opts));
+  return placeCraft(s, 'g1', craftOf(s).id, location);
 }
 const deploy = (s, over = {}) => createDeployAssetAction({ guildId: 'g1', vehicleId: craftOf(s).id, ...over });
 const claimOf = (guildId, systemId, n) => ({
@@ -266,10 +194,9 @@ function freeHexNearHomeWhere(pred) {
   throw new Error('no free hex near home matches');
 }
 
-// A heavy flown for real: granted a kit at home, dispatched to `target`, ticked until it lands idle.
+// A heavy flown for real: a kit granted and loaded at home, dispatched to `target`, ticked until it lands idle.
 function flyKitTo(target) {
-  let s = deployState({ fuelHoard: 10_000 });
-  s = accept(s, grant(s));
+  let s = withKit(deployState({ fuelHoard: 10_000 }));
   s = accept(s, createDispatchVehicleAction({ guildId: 'g1', vehicleId: craftOf(s).id, waypoints: [target] }));
   while (craftOf(s).status !== 'idle') s = tick(s, []);
   return s;
@@ -277,7 +204,7 @@ function flyKitTo(target) {
 
 // --- deployAsset: the happy path -----------------------------------------------------------------
 
-test('deploy happy path: grant, dispatch, arrive at a bare hex, deploy -> an Outpost there, the hold empty', () => {
+test('deploy happy path: grant + load, dispatch, arrive at a bare hex, deploy -> an Outpost there, the hold empty', () => {
   const target = freeHexAtDistance(1);
   let s = flyKitTo(target);
   assert.deepEqual(craftOf(s).location, target, 'arrived idle at the bare hex');
@@ -344,8 +271,10 @@ test('range: exactly OUTPOST_DEPLOY_RANGE hexes from a held system deploys; one 
 
 test('range: a guild that holds no system cannot deploy', () => {
   let s = createState({ guilds: [{ id: 'g1', credits: 0, fuelHoard: 0 }], reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 } });
-  s = accept(s, createSpawnVehicleAction({ guildId: 'g1', class: HEAVY_TRANSPORT, location: freeHexAtDistance(1) }));
-  s = accept(s, grant(s));
+  // The kit loads at the (unheld) home system — loading needs the same system, not a held one — then the
+  // laden craft is placed on a bare hex beside it.
+  s = accept(s, createSpawnVehicleAction({ guildId: 'g1', class: HEAVY_TRANSPORT, location: AT_HOME }));
+  s = placeCraft(withKit(s), 'g1', craftOf(s).id, freeHexAtDistance(1));
   assert.match(refuse(s, deploy(s)), /holds no system/);
 });
 
@@ -409,8 +338,7 @@ test('occupancy: a bare-hex craft on a hex already holding a system or an Outpos
 });
 
 test('status gates: a craft in transit, in a dock slot, or on a lane is refused', () => {
-  let flying = deployState({ fuelHoard: 10_000 });
-  flying = accept(flying, grant(flying));
+  let flying = withKit(deployState({ fuelHoard: 10_000 }));
   flying = accept(flying, createDispatchVehicleAction({ guildId: 'g1', vehicleId: craftOf(flying).id, waypoints: [freeHexAtDistance(1)] }));
   assert.match(refuse(flying, deploy(flying)), /is not idle \(status "inTransit"\)/);
 
@@ -454,8 +382,9 @@ test('ids: deploy and spawn share one per-guild serial, and a torn-down number i
   assert.equal(s.outposts[0].id, 'outpost_g1_01');
   s = accept(s, createRemoveOutpostAction({ guildId: 'g1', outpostId: 'outpost_g1_01' }));
   assert.equal(s.outposts, undefined);
-  // The craft still sits on the now-bare hex: re-kit it and deploy on the same hex again.
-  s = accept(s, grant(s));
+  // The craft still sits on the now-bare hex: re-kit it at home and deploy on the same hex again.
+  const vid = craftOf(s).id;
+  s = placeCraft(withKit(placeCraft(s, 'g1', vid, AT_HOME)), 'g1', vid, hex);
   s = accept(s, deploy(s));
   assert.equal(s.outposts[0].id, 'outpost_g1_02', 'the torn-down 01 is never reissued');
   // The operator's spawn draws from the SAME serial.
@@ -467,7 +396,7 @@ test('ids: deploy and spawn share one per-guild serial, and a torn-down number i
 
 // --- deployAsset: determinism (invariant 9) ------------------------------------------------------
 
-test('determinism: grant -> dispatch -> deploy, run twice, is byte-identical', () => {
+test('determinism: grant -> load -> dispatch -> deploy, run twice, is byte-identical', () => {
   const run = () => {
     const s = flyKitTo(freeHexAtDistance(1));
     return accept(s, deploy(s));
@@ -475,9 +404,15 @@ test('determinism: grant -> dispatch -> deploy, run twice, is byte-identical', (
   assert.equal(hashState(run()), hashState(run()));
 });
 
-test('determinism: the mint + deploy, journalled against a SAVED state, replay to the same bytes', () => {
-  const start = deployState({ location: freeHexAtDistance(1) });
-  const actions = [grant(start), deploy(start)];
+test('determinism: the grant, load and dispatch, journalled against a SAVED state, replay to the same bytes', () => {
+  const target = freeHexAtDistance(1);
+  const start = deployState({ fuelHoard: 10_000 });
+  const vid = craftOf(start).id;
+  const actions = [
+    createGrantKitAction({ guildId: 'g1', systemId: HOME.id, kind: 'outpost' }),
+    createLoadKitAction({ guildId: 'g1', vehicleId: vid, assetId: 'asset_g1_outpost_01' }),
+    createDispatchVehicleAction({ guildId: 'g1', vehicleId: vid, waypoints: [target] }),
+  ];
   let direct = start;
   for (const a of actions) direct = accept(direct, a);
 
@@ -485,7 +420,12 @@ test('determinism: the mint + deploy, journalled against a SAVED state, replay t
   try {
     saveState(start, dir);
     for (const a of actions) appendJournal(start.tick, a, dir);
-    const restored = loadOrInit(dir, () => { throw new Error('expected the saved state to load'); });
+    let restored = loadOrInit(dir, () => { throw new Error('expected the saved state to load'); });
+    assert.equal(hashState(restored), hashState(direct));
+    // Both fly the rest of the way and deploy on arrival at the same bytes.
+    const land = (s) => { while (craftOf(s).status !== 'idle') s = tick(s, []); return accept(s, deploy(s)); };
+    direct = land(direct);
+    restored = land(restored);
     assert.equal(hashState(restored), hashState(direct));
     assert.equal(restored.outposts[0].id, 'outpost_g1_01');
     assert.equal(restored.guilds[0].vehicles[0].cargo, undefined);

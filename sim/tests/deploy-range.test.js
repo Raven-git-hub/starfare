@@ -38,9 +38,10 @@ const { OUTPOST_DEPLOY_RANGE } = require('../outposts.js');
 const { hexDistance } = require('../transport.js');
 const { getSystem, getStarterSystems, isHexInBounds, seedLandmarkAtHex } = require('../seed.js');
 const { HEAVY_TRANSPORT } = require('../vehicles.js');
+const { kitAboard, placeCraft } = require('./kit-fixtures.js');
 const {
   validateAction, applyAction,
-  createFoundGuildAction, createSpawnVehicleAction, createGrantKitAction, createDeployAssetAction,
+  createFoundGuildAction, createSpawnVehicleAction, createDeployAssetAction,
 } = require('../actions.js');
 
 // --- the tripwire ------------------------------------------------------------------------------------
@@ -255,12 +256,13 @@ test('the painted disk agrees with deployCheck at its edge: exactly radius passe
   const { radius, anchors } = rowOf(buildSnapshot(s), 'g1').deployRange.outpost;
   const anchorHex = getSystem(anchors[0]).coords;
 
-  // A heavy with a kit, idle on hex `hex` — then ask deployAsset's validate, which runs deployCheck.
+  // A heavy with a kit, idle on hex `hex` — then ask deployAsset's validate, which runs deployCheck. The kit
+  // is granted and loaded at the anchor system (kit-fixtures.js), and the laden heavy placed on the hex.
   const verdictAt = (hex) => {
     let t = JSON.parse(JSON.stringify(s));
-    t = accept(t, createSpawnVehicleAction({ guildId: 'g1', class: HEAVY_TRANSPORT, location: hex }));
+    t = accept(t, createSpawnVehicleAction({ guildId: 'g1', class: HEAVY_TRANSPORT, location: { landmarkKind: 'system', landmarkId: anchors[0] } }));
     const craftId = t.guilds[0].vehicles[0].id;
-    t = accept(t, createGrantKitAction({ guildId: 'g1', vehicleId: craftId, kind: 'outpost' }));
+    t = placeCraft(kitAboard(t, 'g1', craftId), 'g1', craftId, hex);
     return validateAction(t, createDeployAssetAction({ guildId: 'g1', vehicleId: craftId }));
   };
 

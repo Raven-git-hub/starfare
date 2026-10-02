@@ -38,9 +38,10 @@ const { OUTPOST_DEPLOY_RANGE, DEPLOY_RETREAT_HEXES } = require('../outposts.js')
 const { HEAVY_TRANSPORT } = require('../vehicles.js');
 const seed = require('../../data/seed.json');
 const { starterHomeAtDistance } = require('./waystation-fixtures.js');
+const { kitAboard, placeCraft } = require('./kit-fixtures.js');
 const {
   validateAction, applyAction, intake,
-  createSpawnVehicleAction, createGrantKitAction, createDispatchRouteWithActionsAction,
+  createSpawnVehicleAction, createDispatchRouteWithActionsAction,
   createDispatchVehicleAction, createSpawnOutpostAction, createAcknowledgeEventAction,
 } = require('../actions.js');
 
@@ -74,7 +75,9 @@ const accept = (state, action) => {
 };
 
 // g1 holds its home (plus `extraClaims`) and has heavies at `location`, each with one outpost kit aboard;
-// g2 is a rival that holds nothing — it places the Outposts that take g1's target hexes.
+// g2 is a rival that holds nothing — it places the Outposts that take g1's target hexes. Each kit comes the
+// asset-initiated way (design.md §4): granted into home's inventory and loaded onto the heavy berthed there
+// (kit-fixtures.js); the laden heavy is then PLACED at `location`, the stand-in for a flight.
 function kitAt(location, { extraClaims = [], craft = 1 } = {}) {
   let s = createState({
     guilds: [
@@ -86,8 +89,9 @@ function kitAt(location, { extraClaims = [], craft = 1 } = {}) {
     claims: [claimOf('g1', HOME.id, 'home'), ...extraClaims],
   });
   for (let i = 0; i < craft; i += 1) {
-    s = accept(s, createSpawnVehicleAction({ guildId: 'g1', class: HEAVY_TRANSPORT, location }));
-    s = accept(s, createGrantKitAction({ guildId: 'g1', vehicleId: s.guilds[0].vehicles[i].id, kind: 'outpost' }));
+    s = accept(s, createSpawnVehicleAction({ guildId: 'g1', class: HEAVY_TRANSPORT, location: AT_HOME }));
+    const vid = s.guilds[0].vehicles[i].id;
+    s = placeCraft(kitAboard(s, 'g1', vid), 'g1', vid, location);
   }
   return s;
 }

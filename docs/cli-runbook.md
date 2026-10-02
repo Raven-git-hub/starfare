@@ -65,21 +65,25 @@ top-level `outposts` / `claims`.
 - `save-route "NAME" --guild ID --route "w;w;…"` / `delete-route --guild ID --id ROUTE_ID`.
 - `stop-route-after-run --guild ID --id VEHICLE_ID` / `cancel-route --guild ID --id VEHICLE_ID`.
 - `spawn-vehicle` / `spawn-outpost` / `remove-outpost` / the `adjust-*` levers / `tick [n]`.
-- `grant-kit --guild ID --id VEHICLE_ID --kind outpost` / `deploy-asset --guild ID --id VEHICLE_ID` —
-  the deploy pipeline (next section; not part of the automation demo). `dispatch-route` also takes a
-  last stop `q,r@deploy:KIND`, the deploy on arrival (the section after it).
+- `grant-kit --guild ID --system ID --kind outpost` / `load-kit --guild ID --id VEHICLE_ID --asset ASSET_ID` /
+  `unload-kit --guild ID --id VEHICLE_ID` / `deploy-asset --guild ID --id VEHICLE_ID` — the deploy pipeline
+  (next section; not part of the automation demo). `dispatch-route` also takes a last stop
+  `q,r@deploy:KIND`, the deploy on arrival (the section after it).
 
 ## The deploy pipeline — a kit hauled and deployed (2.2 deploy slice 1)
 
-The operator path for `docs/territory-model.md` §5's first rung: mint an Outpost kit into a heavy
-transport, fly it out, and deploy it. There is no script for this one; the steps are short. On a
-throwaway galaxy (see the warning above), with `B="--base http://host:port"` if not the default:
+The operator path for `docs/territory-model.md` §5: mint an Outpost kit into a system's inventory, load it
+onto a heavy transport there, fly it out, and deploy it. Since 02-10-26 a kit is an **idle asset** first
+(`design.md` §4 — an "idle outpost", `asset_<guild>_outpost_NN`), and reaches a hold only by `load-kit`.
+There is no script for this one; the steps are short. On a throwaway galaxy (see the warning above), with
+`B="--base http://host:port"` if not the default:
 
     node tools/admin.js seat-demo --seed 42 $B                    # a guild that holds its home system
     HOME=$(node tools/admin.js snapshot --pick guilds.0.homeSystemId $B)
     node tools/admin.js adjust-fuel --guild seat_demo --delta 100000 $B
     node tools/admin.js spawn-vehicle --guild seat_demo --class heavyTransport --system $HOME $B
-    node tools/admin.js grant-kit --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --kind outpost $B
+    node tools/admin.js grant-kit --guild seat_demo --system $HOME --kind outpost $B        # prints the kit's id
+    node tools/admin.js load-kit --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --asset asset_seat_demo_outpost_01 $B
     node tools/admin.js dispatch-vehicle --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --waypoints "Q,R" $B
     node tools/admin.js tick N $B                                 # N = the arrivalTick dispatch printed, minus now
     node tools/admin.js deploy-asset --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 $B
@@ -87,15 +91,24 @@ throwaway galaxy (see the warning above), with `B="--base http://host:port"` if 
 `Q,R` is any free bare hex (no system, waystation or Outpost on it) within the outpost deploy range of
 the home system (`phase-1-tuning.md` "Territory & deployment"). `deploy-asset` prints the new Outpost's
 id, hex and anchor system; the craft is left idle on that hex with an empty hold (it reads as parked at
-its new Outpost). Refusals exit 1 with the engine's reason: a kit onto anything but an empty heavy, a
-deploy while in flight or while berthed at a system, a deploy on an occupied hex, or one out of range
-(the reason names the distance and the nearest held system). A kit survives a restart like any cargo.
+its new Outpost). Refusals exit 1 with the engine's reason: a load onto anything but an empty, idle heavy
+berthed at the kit's own system, a deploy while in flight or while berthed at a system, a deploy on an
+occupied hex, or one out of range (the reason names the distance and the nearest held system). A kit
+survives a restart, in inventory or in a hold.
+
+**Unload — a kit back into inventory.** A heavy carrying a kit, idle at a system its guild holds, drops it
+back as a fresh idle kit asset (a new id — a loaded kit's number never comes back):
+
+    node tools/admin.js unload-kit --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 $B
+
+It is refused on a bare hex, at an Outpost, at a system the guild does not hold, or with anything but
+exactly one kit aboard. The guild's idle kits read back as its `assets` rows with `kind: outpost`.
 
 ## The deploy on arrival — and the retreat (2.2 deploy slice 2)
 
 The same pipeline without the manual step: the deploy rides the dispatch as the route's last stop,
 `q,r@deploy:KIND`, and resolves on the tick the craft lands (`docs/territory-model.md` §5). From the
-granted kit above (on seed 42 the home system is at `104,55`):
+granted and loaded kit above (on seed 42 the home system is at `104,55`):
 
     node tools/admin.js dispatch-route --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --route "101,55@deploy:outpost" $B
     node tools/admin.js tick N $B                                 # N = firstLegArrivalTick minus now
@@ -111,7 +124,10 @@ does not idle there: it snaps 3 hexes (`DEPLOY_RETREAT_HEXES`) back toward the n
 lands AT that system if it is that close — kit still aboard, and carries a `deployFailed` flag. To see
 it, occupy the target mid-flight:
 
-    node tools/admin.js grant-kit --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --kind outpost $B
+    node tools/admin.js dispatch-vehicle --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --waypoints "sys:$HOME" $B
+    node tools/admin.js tick N $B                                 # home, empty: a kit loads only in its own system
+    node tools/admin.js grant-kit --guild seat_demo --system $HOME --kind outpost $B
+    node tools/admin.js load-kit --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --asset asset_seat_demo_outpost_02 $B
     node tools/admin.js dispatch-route --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --route "104,48@deploy:outpost" $B
     node tools/admin.js spawn-outpost --guild seat_demo --system $HOME --hex 104,48 $B   # someone got there first
     node tools/admin.js tick N $B
@@ -119,4 +135,5 @@ it, occupy the target mid-flight:
     node tools/admin.js snapshot --pick guilds.0.vehicles.0.deployFailed $B   # { reason: occupied, tick }
 
 The snap costs no fuel and no time. The flag clears on the craft's next dispatch, and the kit is still
-aboard, so the next dispatch can send it somewhere free.
+aboard, so the next dispatch can send it somewhere free — or, once the craft is idle at a held system,
+`unload-kit` drops the kit back into that system's inventory.

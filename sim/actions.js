@@ -22,13 +22,13 @@ const {
   priceAssetForPurchase, assetPurchaseBaseline, nextSyndicateCommissionId,
 } = require('./asset-recipes.js');
 const {
-  isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation,
+  isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation, HEAVY_TRANSPORT,
 } = require('./vehicles.js');
 const {
   outpostId, nextOutpostSerial, outpostDockTurnaround, OUTPOST_DEPLOY_RANGE, DEPLOY_RETREAT_HEXES,
   DEPLOY_FAILED_REASONS,
 } = require('./outposts.js');
-const { resolveManifest, usedSpace, manifestAmountError, copyManifestLine } = require('./manifest.js');
+const { resolveManifest, manifestAmountError, copyManifestLine } = require('./manifest.js');
 const {
   REPEAT_MODES, CADENCES, copyRouteWaypoint, savedRouteId, nextSavedRouteSerial,
 } = require('./routes.js');
@@ -36,7 +36,7 @@ const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { checkQuote, quotedPrice } = require('./price-ring.js');
 const { DEFAULT_WINDOW_N, TIER3_WINDOW_N, tier3WindowNests } = require('./windows.js');
 const {
-  isStockpileGood, isFuel, DEUTERIUM, OUTPOST_KIT, DEPLOYABLE_KITS, isDeployableGood, kitGoodFor,
+  isStockpileGood, isFuel, DEUTERIUM, OUTPOST_KIT, DEPLOYABLE_KITS, isDeployableGood, kitGoodFor, kindForKit,
 } = require('./resources.js');
 const { setEntry } = require('./profile.js');
 const { getStock, addStock } = require('./stock.js');
@@ -55,6 +55,7 @@ const {
 const {
   STARTER_MINERS, STARTER_FACTORIES, starterAssetSpecs, assetKindForVentureType,
   deployedAssetIds, isAssetKind, assetId, nextAssetNumber, ASSET_CONDITION_NEW, ASSET_CONDITION_MIN,
+  isKitAssetKind, nextKitAssetSerial,
 } = require('./assets.js');
 
 // vehicleDeliveryFuelBurn(destinationSystemId, vehicleClass) -> { fuelBurn: int }
@@ -1195,17 +1196,19 @@ function createTransferCargoAction({ guildId, vehicleId: vId, manifest }) {
   return { type: 'transferCargo', guildId, vehicleId: vId, manifest };
 }
 
-// grantKit: mint ONE deployable kit straight into a guild craft's hold — the operator lever (roadmap 2.2,
-// the deploy pipeline slice 1; docs/territory-model.md §5). `kind` names the structure the kit deploys as
-// ('outpost' -> an `outpost_kit`, sim/resources.js `kitGoodFor`). This is the TEST SEAM for the deploy:
-// the real kit sources (a dockyard building one, the founding grant, loading one from a store) are later
-// slices. The constructor only enforces the required fields are present; validateAction judges legality
-// (an idle craft the guild owns, not on a lane, with room in its hold for the kit).
-function createGrantKitAction({ guildId, vehicleId: vId, kind }) {
+// grantKit: mint ONE undeployed kit as an IDLE ASSET in a guild's inventory at a system — the operator
+// lever (roadmap 2.2 deploy pipeline; design.md §4 "The undeployed Outpost kit is a system-scoped idle
+// asset", RULED 02-10-26). `kind` names the structure the kit deploys as ('outpost'); the asset is
+// `asset_<guild>_outpost_NN`, idle, at `systemId`. REPOINTED 02-10-26: it used to mint the kit straight
+// into a craft's hold; now a kit reaches a hold only through `loadKit`. Still the TEST SEAM — the real kit
+// sources (a dockyard building one, the founding grant) are later slices. The constructor only enforces
+// the required fields are present; validateAction judges legality (a real guild, a real system, a kind
+// that has a kit).
+function createGrantKitAction({ guildId, systemId, kind }) {
   if (guildId === undefined) throw new Error('createGrantKitAction: guildId is required');
-  if (vId === undefined) throw new Error('createGrantKitAction: vehicleId is required');
+  if (systemId === undefined) throw new Error('createGrantKitAction: systemId is required');
   if (kind === undefined) throw new Error('createGrantKitAction: kind is required');
-  return { type: 'grantKit', guildId, vehicleId: vId, kind };
+  return { type: 'grantKit', guildId, systemId, kind };
 }
 
 // deployAsset: place the structure a craft's kit packs, at the bare hex the craft is idle on, consuming
@@ -1219,6 +1222,30 @@ function createDeployAssetAction({ guildId, vehicleId: vId }) {
   if (guildId === undefined) throw new Error('createDeployAssetAction: guildId is required');
   if (vId === undefined) throw new Error('createDeployAssetAction: vehicleId is required');
   return { type: 'deployAsset', guildId, vehicleId: vId };
+}
+
+// loadKit: move one idle kit asset from a system's inventory into a heavy's hold (design.md §4, RULED
+// 02-10-26 — "load: system inventory → a heavy's hold; instant, and legal only when the heavy is empty,
+// idle, and in the same system as the kit"). The action NAMES the kit asset, as establishVenture names
+// the machine it deploys: which kit goes is the player's choice. Once aboard, the kit is the
+// `outpost_kit` good the deploy already reads. The constructor only enforces the required fields are
+// present; validateAction judges legality.
+function createLoadKitAction({ guildId, vehicleId: vId, assetId: aId }) {
+  if (guildId === undefined) throw new Error('createLoadKitAction: guildId is required');
+  if (vId === undefined) throw new Error('createLoadKitAction: vehicleId is required');
+  if (aId === undefined) throw new Error('createLoadKitAction: assetId is required');
+  return { type: 'loadKit', guildId, vehicleId: vId, assetId: aId };
+}
+
+// unloadKit: the inverse of loadKit — the kit in a heavy's hold becomes a fresh idle kit asset in the
+// inventory of the HELD system the heavy is berthed at (design.md §4, RULED 02-10-26). The kind is read
+// from the kit aboard, so the action names only the craft. This is the standalone (manual) unload; the
+// route-arrival unload (the deploy_failed "Return" fork) is a later slice that reuses the same check and
+// apply (unloadKitCheck / kitIntoInventory). The constructor only enforces the required fields.
+function createUnloadKitAction({ guildId, vehicleId: vId }) {
+  if (guildId === undefined) throw new Error('createUnloadKitAction: guildId is required');
+  if (vId === undefined) throw new Error('createUnloadKitAction: vehicleId is required');
+  return { type: 'unloadKit', guildId, vehicleId: vId };
 }
 
 // dispatchRouteWithActions: send an IDLE craft along a route whose waypoints can carry a load/unload
@@ -1618,6 +1645,73 @@ function deployKit(state, guild, craft, check, tick) {
   mintOutpost(state, guild, check.coords, check.anchorSystemId, tick);
   delete craft.cargo;
   craft.updatedAtTick = tick; // §15.2: the deploy is a mutation of the craft — record its tick
+}
+
+// --- the kit as an idle asset: load / unload (design.md §4, RULED 02-10-26) ---------------------------
+//
+// A kit has TWO representations, and is in exactly one at a time:
+//   - in a system's inventory: an idle ASSET of a kit kind ('outpost'), in `guild.assets`;
+//   - aboard a heavy: the kit GOOD (`outpost_kit`) in the hold — what deployCheck / deployKit read.
+// loadKit turns the first into the second, unloadKit the second into the first, one for one. Nothing
+// else changes representation except the deploy, which consumes the good.
+
+// mintKitAsset(guild, kind, systemId) -> the new idle kit asset, having MUTATED `guild`. THE ONE kit-asset
+// mint, shared by grantKit and the unload: bump the guild's stored kit serial (never reused — a loaded
+// kit's id must not come back, design.md §15.4 "Ids never repeat"), build the `asset_<guild>_<kind>_NN`
+// id from it, and push a new-condition asset at `systemId`. No venture names it, so it is idle.
+function mintKitAsset(guild, kind, systemId) {
+  const serial = nextKitAssetSerial(guild);
+  guild.kitAssetSerial = serial;
+  if (!Array.isArray(guild.assets)) guild.assets = [];
+  const asset = createAsset({ id: assetId(guild.id, kind, serial), kind, systemId });
+  guild.assets.push(asset);
+  return asset;
+}
+
+// kitIntoHold(guild, craft, asset, tick) — THE ONE load apply, for a load validate passed: the kit asset
+// leaves the inventory and exactly one kit good lands in the (empty) hold. One kit in, one good out.
+// `assets` is dropped when it empties (omit-when-empty, as createGuild does). The tick is stamped on the
+// craft (§15.2) — the asset is gone, so it has nothing left to stamp.
+function kitIntoHold(guild, craft, asset, tick) {
+  guild.assets = guild.assets.filter((a) => a.id !== asset.id);
+  if (guild.assets.length === 0) delete guild.assets;
+  craft.cargo = { [kitGoodFor(asset.kind)]: 1 };
+  craft.updatedAtTick = tick;
+}
+
+// unloadKitCheck(state, guildId, vehicleId, location, cargo) -> { ok: true, systemId, kind }
+//                                                            | { ok: false, reason }
+// THE ONE unload rule: may this craft, holding `cargo` at `location`, drop its kit into an inventory?
+//   - the hold is exactly ONE kit and nothing else (the kind is read from it);
+//   - the craft is berthed AT a system (a landmark, not a bare hex or an Outpost — an inventory lives in
+//     a system, design.md §4);
+//   - the guild HOLDS that system (`guildHolds`) — a kit is dropped only on your own ground.
+// A pure read. Written with the location passed in, like deployCheck, so the later route-arrival unload
+// (the Return fork) can ask it of the stop the craft lands on.
+function unloadKitCheck(state, guildId, vehicleId, location, cargo) {
+  const hold = cargo || {};
+  const goods = Object.keys(hold);
+  if (goods.length !== 1 || !isDeployableGood(goods[0]) || hold[goods[0]] !== 1) {
+    return { ok: false, reason: `vehicle ${JSON.stringify(vehicleId)} must carry exactly one kit and nothing else to unload — its hold is ${JSON.stringify(hold)}` };
+  }
+  if (!location || location.landmarkKind !== 'system') {
+    return { ok: false, reason: `vehicle ${JSON.stringify(vehicleId)} is not berthed at a system (it is at ${JSON.stringify(location)}) — a kit unloads into a held system's inventory, not on a bare hex or at an Outpost` };
+  }
+  if (!guildHolds(state, guildId, location.landmarkId)) {
+    return { ok: false, reason: `guild ${JSON.stringify(guildId)} does not hold system ${JSON.stringify(location.landmarkId)} — a kit unloads only into a system its guild holds` };
+  }
+  return { ok: true, systemId: location.landmarkId, kind: kindForKit(goods[0]) };
+}
+
+// kitIntoInventory(guild, craft, check, tick) — THE ONE unload apply, for a `check` unloadKitCheck passed:
+// the kit good leaves the hold (it was the whole hold, so the key goes) and a FRESH idle kit asset is
+// minted in the checked system, with a new id from the serial. One good in, one kit out. The tick is
+// passed in, not read from state.tick, so a later route-arrival unload can mint on `state.tick + 1`, as
+// deployKit does.
+function kitIntoInventory(guild, craft, check, tick) {
+  delete craft.cargo;
+  mintKitAsset(guild, check.kind, check.systemId);
+  craft.updatedAtTick = tick; // §15.2: the unload is a mutation of the craft — record its tick
 }
 
 // routeStoreAt(state, guildId, anchor) -> the STORE a route action at `anchor` works against, or null
@@ -3317,36 +3411,17 @@ function validateAction(state, action) {
   }
 
   if (action.type === 'grantKit') {
-    // Roadmap 2.2 deploy pipeline slice 1: mint one deployable kit into a craft's hold (the operator
-    // test seam). Refused whole, gates in the order a failure is felt (mirroring transferCargo's block).
+    // design.md §4 (RULED 02-10-26): mint one idle kit asset into a guild's inventory at a system (the
+    // operator test seam). Like the operator's grantAsset, it places freely: any real system, held or not.
     const guild = findGuild(state, action.guildId);
     if (!guild) {
       return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
     }
-    const craft = (guild.vehicles || []).find((v) => v.id === action.vehicleId);
-    if (!craft) {
-      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no vehicle ${JSON.stringify(action.vehicleId)}` };
+    if (typeof action.systemId !== 'string' || !getSystem(action.systemId)) {
+      return { valid: false, reason: `system ${JSON.stringify(action.systemId)} is not a system on the seed` };
     }
-    const good = kitGoodFor(action.kind);
-    if (good === null) {
+    if (kitGoodFor(action.kind) === null) {
       return { valid: false, reason: `${JSON.stringify(action.kind)} is not a deployable kind with a kit (known: ${Object.keys(DEPLOYABLE_KITS).join(', ')})` };
-    }
-    // Only an idle craft is handed a kit: an in-transit craft is mid-flight, and a `loading` one is in an
-    // Outpost dock slot whose transfer is still to resolve against this very hold (§4).
-    if (craft.status !== 'idle') {
-      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is not idle (status ${JSON.stringify(craft.status)}) — a kit is granted to an idle craft only` };
-    }
-    // A craft RUNNING A LANE is driven by its lane — the transferCargo discipline (§11.10). It also keeps
-    // a kit off a repeating lane: a deployable good never automates.
-    if (craft.route) {
-      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is running a lane — a deployable kit never rides one; stop the lane or re-dispatch the craft first (transport-model.md §11.10)` };
-    }
-    // ROOM FOR THE KIT. A kit takes a whole heavy hold (volumeOf -> ASSET_CARGO_VOLUME), so this one check
-    // is what makes the kit heavy-only (a light or medium hold is smaller than one kit) and one-at-a-time
-    // (a heavy already holding anything has no room left). No separate class rule, and no new number.
-    const free = craft.capacity - usedSpace(craft.cargo);
-    if (volumeOf(good) > free) {
-      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} (class ${JSON.stringify(craft.class)}) has ${free} cargo space free, but an ${good} takes ${volumeOf(good)} — a whole heavy hold, so only an EMPTY heavy transport can carry one` };
     }
     return { valid: true };
   }
@@ -3374,6 +3449,79 @@ function validateAction(state, action) {
     // The deploy itself — a bare hex, exactly one kit, the hex free, within range of a held system — is
     // THE ONE deploy rule (deployCheck), the same one the on-arrival deploy runs (slice 2).
     const check = deployCheck(state, action.guildId, action.vehicleId, craft.location, craft.cargo);
+    if (!check.ok) return { valid: false, reason: check.reason };
+    return { valid: true };
+  }
+
+  if (action.type === 'loadKit') {
+    // design.md §4 (RULED 02-10-26): a named idle kit asset → a heavy's hold. Refused whole, gates in the
+    // order a failure is felt: who, which kit, which craft, then where.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    const craft = (guild.vehicles || []).find((v) => v.id === action.vehicleId);
+    if (!craft) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no vehicle ${JSON.stringify(action.vehicleId)}` };
+    }
+    // THE KIT: in THIS guild's inventory (ownership is "the guild whose array holds it", so a rival's
+    // kit fails here too), of a kit kind, and idle. Nothing deploys a kit to a venture (Gate 2 wants a
+    // miner or factory), so the idle check cannot fail today; it is asked so a corrupt state is refused
+    // here rather than loaded.
+    const asset = (guild.assets || []).find((a) => a.id === action.assetId);
+    if (!asset) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no asset ${JSON.stringify(action.assetId)}` };
+    }
+    if (!isKitAssetKind(asset.kind)) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is a ${asset.kind}, not a kit — only a kit loads onto a heavy` };
+    }
+    const heldBy = deployedAssetIds(guild).get(action.assetId);
+    if (heldBy !== undefined) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is deployed to venture ${JSON.stringify(heldBy)} — only an idle kit loads` };
+    }
+    // THE CARRIER: a heavy (a kit fills a whole heavy hold — ASSET_CARGO_VOLUME), idle, not on a lane (a
+    // kit never rides one), with an EMPTY hold.
+    if (craft.class !== HEAVY_TRANSPORT) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is a ${craft.class} — a kit fills a whole heavy hold, so only a heavy transport carries one` };
+    }
+    if (craft.status !== 'idle') {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is not idle (status ${JSON.stringify(craft.status)}) — a kit loads onto an idle heavy only` };
+    }
+    if (craft.route) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is running a lane — a deployable kit never rides one; stop the lane or re-dispatch the craft first (transport-model.md §11.10)` };
+    }
+    if (craft.cargo !== undefined && Object.keys(craft.cargo).length > 0) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} has cargo aboard (${JSON.stringify(craft.cargo)}) — a kit loads into an EMPTY heavy hold` };
+    }
+    // SAME SYSTEM (the ruled constraint, design.md §4's per-system inventory): the heavy must be berthed
+    // at the very system the kit sits in. "At a system" means the system landmark, the test transferCargo
+    // uses — a bare hex or an Outpost is not in any system's inventory.
+    const atKitSystem = !!(craft.location && craft.location.landmarkKind === 'system' && craft.location.landmarkId === asset.systemId);
+    if (!atKitSystem) {
+      return { valid: false, reason: `kit ${JSON.stringify(action.assetId)} sits in system ${JSON.stringify(asset.systemId)} but vehicle ${JSON.stringify(action.vehicleId)} is at ${JSON.stringify(craft.location)} — a kit loads only onto a heavy berthed in its own system (§4)` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'unloadKit') {
+    // design.md §4 (RULED 02-10-26): a heavy's kit → a fresh idle kit asset in the held system it sits at.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    const craft = (guild.vehicles || []).find((v) => v.id === action.vehicleId);
+    if (!craft) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no vehicle ${JSON.stringify(action.vehicleId)}` };
+    }
+    if (craft.status !== 'idle') {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is not idle (status ${JSON.stringify(craft.status)}) — a kit unloads from a craft that has arrived` };
+    }
+    if (craft.route) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is running a lane — stop the lane or re-dispatch the craft before unloading` };
+    }
+    // The unload itself — exactly one kit aboard, berthed at a system, the guild holds it — is THE ONE
+    // unload rule (unloadKitCheck), which the later route-arrival unload will ask too.
+    const check = unloadKitCheck(state, action.guildId, action.vehicleId, craft.location, craft.cargo);
     if (!check.ok) return { valid: false, reason: check.reason };
     return { valid: true };
   }
@@ -4796,15 +4944,29 @@ function applyAction(state, action) {
   }
 
   if (action.type === 'grantKit') {
-    // Roadmap 2.2 deploy pipeline slice 1: one kit appears in the hold. Validate proved the hold has room
-    // for it, which (a kit being a whole heavy hold) means the hold was empty — so this is always 0 -> 1.
-    // The kit is a deployable good: never priced and never in Galactic Supply (supply.js sums stockpile
-    // goods only), so it moves no credits, fuel or supply and the supply cache needs no refresh.
+    // design.md §4 (RULED 02-10-26): one idle kit asset appears in the guild's inventory at the system,
+    // through THE ONE kit mint. A kit is never priced and never in Galactic Supply (it is not a stockpile
+    // good, in either representation), so nothing else moves and the supply cache needs no refresh.
+    mintKitAsset(findGuild(next, action.guildId), action.kind, action.systemId);
+    return next;
+  }
+
+  if (action.type === 'loadKit') {
+    // design.md §4: instant — carrier and kit sit in the same system. THE ONE load apply.
     const guild = findGuild(next, action.guildId);
     const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
-    const good = kitGoodFor(action.kind);
-    craft.cargo = { ...(craft.cargo || {}), [good]: ((craft.cargo || {})[good] || 0) + 1 };
-    craft.updatedAtTick = next.tick; // §15.2: the grant is a mutation of the craft — record its tick
+    const asset = guild.assets.find((a) => a.id === action.assetId);
+    kitIntoHold(guild, craft, asset, next.tick);
+    return next;
+  }
+
+  if (action.type === 'unloadKit') {
+    // design.md §4: the inverse of the load. THE ONE unload rule is asked again (validate proved it
+    // passes) for the system and the kind, and THE ONE unload apply mints the fresh idle kit there.
+    const guild = findGuild(next, action.guildId);
+    const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
+    const check = unloadKitCheck(next, action.guildId, action.vehicleId, craft.location, craft.cargo);
+    kitIntoInventory(guild, craft, check, next.tick);
     return next;
   }
 
@@ -5042,6 +5204,8 @@ module.exports = {
   createDispatchVehicleAction,
   createTransferCargoAction,
   createGrantKitAction,
+  createLoadKitAction,
+  createUnloadKitAction,
   createDeployAssetAction,
   createDispatchRouteWithActionsAction,
   createSaveRouteAction,

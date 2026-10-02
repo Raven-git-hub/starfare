@@ -81,7 +81,7 @@ function stateWith({ vehicleClass = HEAVY_TRANSPORT, pool = {} } = {}) {
 }
 const craftOf = (s) => s.guilds[0].vehicles[0];
 
-// Put a hold in place directly. The grant-kit action (the real mint) is tested in deploy-asset.test.js;
+// Put a hold in place directly. The real way a kit gets aboard (grantKit + loadKit) is tested in kit-asset.test.js;
 // these tests are about what the CATEGORY allows, so they write the state the way a save-reload would.
 function withHold(s, cargo) {
   craftOf(s).cargo = { ...cargo };

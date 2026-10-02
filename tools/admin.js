@@ -41,10 +41,10 @@ const FLAG_SPEC = Object.freeze({
   // The operator adjust levers (docs/operator-adjust.md §5).
   guild: 'string',    // which guild the adjust acts on
   delta: 'int',       // signed integer: a grant (+) or remove (−) for the scalar levers
-  system: 'string',   // adjust-goods / grant-asset: which system's cell / where to mint
+  system: 'string',   // adjust-goods / grant-asset / grant-kit: which system's cell / where to mint
   good: 'string',     // adjust-goods: which stockpile good
   kind: 'string',     // grant-asset: miner | factory; grant-kit: outpost (the kit's kind)
-  asset: 'string',    // remove-asset: which asset id
+  asset: 'string',    // remove-asset / load-kit: which asset id
   venture: 'string',  // remove-venture: which venture id
   close: 'bool',      // remove-asset: tear the venture down (else detach)
   'remove-asset': 'bool', // remove-venture: delete the freed asset too (else keep it idle)
@@ -53,7 +53,7 @@ const FLAG_SPEC = Object.freeze({
   outpost: 'string',  // spawn-vehicle: berth at an outpost landmark
   hex: 'string',      // spawn-vehicle: berth at a bare hex, "q,r"
   condition: 'number', // spawn-vehicle: starting maintenanceCondition fraction (default 1)
-  id: 'string',       // remove-vehicle / dispatch-vehicle / transfer-cargo / grant-kit / deploy-asset: which vehicle id; delete-route: which route id
+  id: 'string',       // remove-vehicle / dispatch-vehicle / transfer-cargo / load-kit / unload-kit / deploy-asset: which vehicle id; delete-route: which route id
   waypoints: 'string', // dispatch-vehicle: "w;w;…", each sys:<id> | out:<id> | q,r
   route: 'string',    // dispatch-route / save-route: "w;w;…", each anchor[@load:…][@unload:…] or anchor@deploy:KIND (per-waypoint actions)
   repeat: 'string',   // dispatch-route: the launch mode — once | continuous[:CADENCE] | nRun:N[:CADENCE]
@@ -552,18 +552,39 @@ function removeOutpostBody(flags) {
   };
 }
 
-// The two deploy-pipeline subcommands (docs/territory-model.md §5, roadmap 2.2 deploy slice 1) — thin HTTP
-// clients over POST /admin/vehicle/grant-kit|deploy-asset: mint a kit into a craft's hold, and deploy it.
-const DEPLOY_COMMANDS = Object.freeze(['grant-kit', 'deploy-asset']);
+// The deploy-pipeline subcommands (docs/territory-model.md §5; design.md §4, the kit as an idle asset) —
+// thin HTTP clients: grant-kit mints an idle kit asset into a system's inventory (POST
+// /admin/guild/grant-kit), load-kit / unload-kit move a kit between that inventory and a heavy's hold
+// (POST /admin/vehicle/load-kit|unload-kit), and deploy-asset places it (POST /admin/vehicle/deploy-asset).
+const DEPLOY_COMMANDS = Object.freeze(['grant-kit', 'load-kit', 'unload-kit', 'deploy-asset']);
 
-// grantKitBody(flags) -> the POST /admin/vehicle/grant-kit request body. `--kind` is passed through
+// grantKitBody(flags) -> the POST /admin/guild/grant-kit request body. `--kind` is passed through
 // verbatim ('outpost'): WHICH kinds have a kit is the engine's vocabulary (sim/resources.js), not this
 // file's. PURE and exported so admin.test.js can assert the mapping without a server.
 function grantKitBody(flags) {
   return {
     guildId: requireFlag(flags, 'guild', 'grant-kit'),
-    vehicleId: requireFlag(flags, 'id', 'grant-kit'),
+    systemId: requireFlag(flags, 'system', 'grant-kit'),
     kind: requireFlag(flags, 'kind', 'grant-kit'),
+  };
+}
+
+// loadKitBody(flags) -> the POST /admin/vehicle/load-kit request body: the heavy (--id) and the idle kit
+// asset to load onto it (--asset). PURE and exported.
+function loadKitBody(flags) {
+  return {
+    guildId: requireFlag(flags, 'guild', 'load-kit'),
+    vehicleId: requireFlag(flags, 'id', 'load-kit'),
+    assetId: requireFlag(flags, 'asset', 'load-kit'),
+  };
+}
+
+// unloadKitBody(flags) -> the POST /admin/vehicle/unload-kit request body. No kind and no system: the
+// engine reads the kind from the kit aboard and the system from where the craft is berthed. PURE and exported.
+function unloadKitBody(flags) {
+  return {
+    guildId: requireFlag(flags, 'guild', 'unload-kit'),
+    vehicleId: requireFlag(flags, 'id', 'unload-kit'),
   };
 }
 
@@ -615,7 +636,7 @@ module.exports = {
   parseRouteWaypointToken, parseRouteFlag, parseRepeatFlag, dispatchRouteBody, stopRouteAfterRunBody, cancelRouteBody,
   parseCargoFlag, transferCargoBody,
   spawnOutpostBody, removeOutpostBody, OUTPOST_COMMANDS,
-  grantKitBody, deployAssetBody, DEPLOY_COMMANDS,
+  grantKitBody, loadKitBody, unloadKitBody, deployAssetBody, DEPLOY_COMMANDS,
   saveRouteBody, deleteRouteBody, ROUTE_COMMANDS,
   EXPECTED_COMMITMENT, EXPECTED_WINDOW_N,
 };
@@ -1135,10 +1156,10 @@ async function cmdRemoveOutpost(base, flags) {
   row('outposts', `${(out.snapshot.outposts || []).length}`);
 }
 
-// grant-kit / deploy-asset (docs/territory-model.md §5, roadmap 2.2 deploy slice 1): build the body (the
-// PURE grantKitBody / deployAssetBody) and POST it to the gated /admin/vehicle/* endpoint. A refused action
-// comes back accepted:false -> throw -> exit 1. Each prints the state that resulted: the craft's hold, and
-// for a deploy the new Outpost too.
+// grant-kit / load-kit / unload-kit / deploy-asset (docs/territory-model.md §5; design.md §4): build the
+// body (the PURE *Body helpers above) and POST it to the gated /admin endpoint. A refused action comes back
+// accepted:false -> throw -> exit 1. Each prints the state that resulted: the guild's idle kits, the craft's
+// hold, and for a deploy the new Outpost too.
 function craftIn(snapshot, guildId, vehicleId) {
   const guild = (snapshot.guilds || []).find((g) => g.id === guildId) || null;
   return ((guild && guild.vehicles) || []).find((v) => v.id === vehicleId) || null;
@@ -1149,20 +1170,63 @@ function holdLine(craft) {
   return goods.length ? goods.map((good) => `${good}:${hold[good]}`).join(', ') : 'empty';
 }
 
+// idleKitsIn(snapshot, guildId) -> the guild's idle KIT asset rows (kind 'outpost'), in id order — the
+// "idle outposts" the snapshot already lists among its assets (deployedToVentureId null). The kit kinds are
+// the engine's; this reads the one that exists. newestKit is the one with the highest number, which is the
+// one just minted (kit ids come from a per-guild serial that only climbs).
+function idleKitsIn(snapshot, guildId) {
+  const guild = (snapshot.guilds || []).find((g) => g.id === guildId) || null;
+  return ((guild && guild.assets) || []).filter((a) => a.kind === 'outpost' && a.deployedToVentureId == null);
+}
+function newestKit(kits) {
+  const num = (id) => parseInt(/_(\d+)$/.exec(id)[1], 10);
+  return kits.reduce((best, a) => (best === null || num(a.id) > num(best.id) ? a : best), null);
+}
+function printIdleKits(kits) {
+  row('idle kits', `${kits.length}`);
+  // `log`, not `row`: an asset id is wider than row's 12-character label column.
+  for (const a of kits) log(`  ${a.id}  in ${a.systemId}`);
+}
+
 async function cmdGrantKit(base, flags) {
   const body = grantKitBody(flags);
-  const out = await postJson(base, '/admin/vehicle/grant-kit', body);
+  const out = await postJson(base, '/admin/guild/grant-kit', body);
   if (!out.accepted) throw new Error(`grant-kit refused: ${out.reason}`);
-  const craft = craftIn(out.snapshot, body.guildId, body.vehicleId);
+  const kits = idleKitsIn(out.snapshot, body.guildId);
+  const minted = newestKit(kits);
   row('action', 'grantKit');
   row('guild', body.guildId);
-  row('vehicle', body.vehicleId);
   row('kind', body.kind);
-  if (craft) {
-    row('status', craft.status);
-    row('location', JSON.stringify(craft.location));
-    row('hold', `${holdLine(craft)} (${craft.used} / ${craft.capacity} space)`);
-  }
+  if (minted) log(`  minted    ${minted.id} (idle, in ${minted.systemId})`);
+  printIdleKits(kits);
+}
+
+async function cmdLoadKit(base, flags) {
+  const body = loadKitBody(flags);
+  const out = await postJson(base, '/admin/vehicle/load-kit', body);
+  if (!out.accepted) throw new Error(`load-kit refused: ${out.reason}`);
+  const craft = craftIn(out.snapshot, body.guildId, body.vehicleId);
+  row('action', 'loadKit');
+  row('guild', body.guildId);
+  row('vehicle', body.vehicleId);
+  log(`  loaded    ${body.assetId}`);
+  if (craft) row('hold', `${holdLine(craft)} (${craft.used} / ${craft.capacity} space)`);
+  printIdleKits(idleKitsIn(out.snapshot, body.guildId));
+}
+
+async function cmdUnloadKit(base, flags) {
+  const body = unloadKitBody(flags);
+  const out = await postJson(base, '/admin/vehicle/unload-kit', body);
+  if (!out.accepted) throw new Error(`unload-kit refused: ${out.reason}`);
+  const craft = craftIn(out.snapshot, body.guildId, body.vehicleId);
+  const kits = idleKitsIn(out.snapshot, body.guildId);
+  const minted = newestKit(kits);
+  row('action', 'unloadKit');
+  row('guild', body.guildId);
+  row('vehicle', body.vehicleId);
+  if (minted) log(`  unloaded  as ${minted.id} (idle, in ${minted.systemId})`);
+  if (craft) row('hold', holdLine(craft));
+  printIdleKits(kits);
 }
 
 async function cmdDeployAsset(base, flags) {
@@ -1280,9 +1344,14 @@ Guild-Outpost spawn/remove primitive (design.md §4 — operator, exit 1 on a re
   remove-outpost  --guild ID --id OUTPOST_ID   tear the named outpost down (id never reissued)
 
 Deploy pipeline (territory-model.md §5 — operator, exit 1 on a refused action)
-  grant-kit       --guild ID --id VEHICLE_ID --kind outpost
-                  mint one deployable kit into an idle craft's hold (a kit is a whole heavy hold, so
-                  only an EMPTY heavy transport takes one)
+  grant-kit       --guild ID --system ID --kind outpost
+                  mint one idle kit asset (an "idle outpost") into the guild's inventory at a system
+  load-kit        --guild ID --id VEHICLE_ID --asset ASSET_ID
+                  load that idle kit onto a heavy transport — the heavy must be idle, empty and berthed
+                  at the kit's own system (a kit fills a whole heavy hold)
+  unload-kit      --guild ID --id VEHICLE_ID
+                  the heavy's kit becomes a fresh idle kit asset in the system it is berthed at, which
+                  the guild must hold (refused on a bare hex or at an Outpost)
   deploy-asset    --guild ID --id VEHICLE_ID
                   the craft, idle on a free bare hex within the outpost deploy range of a system the guild
                   holds (phase-1-tuning.md "Territory & deployment"), places the Outpost its kit packs,
@@ -1305,11 +1374,11 @@ Flags
                  at creation — only a new galaxy can carry a different one.
   --guild ID     adjust levers: which guild the adjust acts on
   --delta N      adjust-credits/fuel/goods: a SIGNED integer (grant +, remove −)
-  --system ID    adjust-goods / grant-asset: which system's cell / where to mint;
+  --system ID    adjust-goods / grant-asset / grant-kit: which system's cell / where to mint;
                  spawn-outpost: the system the outpost anchors to
   --good G       adjust-goods: which stockpile good
   --kind K       grant-asset: miner | factory; grant-kit: outpost
-  --asset ID     remove-asset: which asset id
+  --asset ID     remove-asset / load-kit: which asset id
   --venture ID   remove-venture: which venture id
   --close        remove-asset: tear the occupying venture down (default: detach it)
   --remove-asset remove-venture: delete the freed asset too (default: keep it idle)
@@ -1318,8 +1387,8 @@ Flags
   --hex q,r      spawn-vehicle: berth the craft at a bare in-bounds hex;
                  spawn-outpost: the single hex the outpost occupies
   --condition F  spawn-vehicle: starting maintenanceCondition fraction in [0, 1] (default 1)
-  --id ID        remove-vehicle / dispatch-vehicle / stop-route-after-run / cancel-route / grant-kit /
-                 deploy-asset: which vehicle id;
+  --id ID        remove-vehicle / dispatch-vehicle / stop-route-after-run / cancel-route / load-kit /
+                 unload-kit / deploy-asset: which vehicle id;
                  remove-outpost: which outpost id; delete-route: which saved-route id
   --waypoints W  dispatch-vehicle: "w;w;…" route, each w = sys:<id> | out:<id> | q,r
   --route W      dispatch-route / save-route: "w;w;…" route, each w = anchor[@load:G:N,…][@unload:G:N,…]
@@ -1353,6 +1422,8 @@ async function main(argv) {
     case 'spawn-outpost': await cmdSpawnOutpost(base, flags); return;
     case 'remove-outpost': await cmdRemoveOutpost(base, flags); return;
     case 'grant-kit': await cmdGrantKit(base, flags); return;
+    case 'load-kit': await cmdLoadKit(base, flags); return;
+    case 'unload-kit': await cmdUnloadKit(base, flags); return;
     case 'deploy-asset': await cmdDeployAsset(base, flags); return;
     case 'save-route': await cmdSaveRoute(base, flags); return;
     case 'delete-route': await cmdDeleteRoute(base, flags); return;

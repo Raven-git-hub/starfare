@@ -109,6 +109,7 @@ function createGuild({
   savedRoutes = [],
   savedRouteSerial = 0,
   syndicateCommissionSerial = 0,
+  kitAssetSerial = 0,
   events = [],
   eventSeq = 0,
 }) {
@@ -392,6 +393,14 @@ function createGuild({
     // that has never commissioned carries no key and serializes byte-identically to pre-slice
     // (invariant 9). A scenario or a restored save that HANDS ONE IN keeps it.
     ...(syndicateCommissionSerial !== 0 ? { syndicateCommissionSerial } : {}),
+    // kitAssetSerial: the per-guild MONOTONIC kit-asset mint counter (design.md §15.4 "Ids never
+    // repeat"; §4 "The undeployed Outpost kit is a system-scoped idle asset"), the sibling of
+    // `vehicleSerial` above. An idle kit asset (`asset_<guild>_outpost_NN`) LEAVES the inventory when it
+    // is loaded onto a heavy, so its number must not come back: the counter is bumped at every kit mint
+    // (grantKit, and the unload that turns a hold's kit back into an asset), never on a load or a deploy.
+    // Guarded by `checkAssetOccupancy`. OMITTED when 0 so a guild that has never had a kit carries no key
+    // and serializes byte-identically to pre-slice (invariant 9). A restored save that HANDS ONE IN keeps it.
+    ...(kitAssetSerial !== 0 ? { kitAssetSerial } : {}),
   };
 }
 
@@ -713,9 +722,11 @@ function createVenture({
 
 // Asset (OWNED, design.md §4 "Ventures and Ground Assets" / "Asset occupancy",
 // 30-08-26) — the physical MACHINE a venture runs, as against the venture, which
-// is the operating company around it. Exactly two kinds exist: a `miner` (on a
+// is the operating company around it. Exactly two VENTURE kinds exist: a `miner` (on a
 // resource node) and a `factory` (on a settlement slot); sim/assets.js pins the
-// vocabulary.
+// vocabulary. An inventory row may also be an undeployed KIT (kind 'outpost' — §4,
+// RULED 02-10-26): the same shape, idle in a system, but never run by a venture; it
+// leaves the inventory when it is loaded onto a heavy (sim/actions.js `loadKit`).
 //
 // There is NO ownerGuildId and NO `isIdle` on purpose. Ownership is "the guild
 // whose `assets` array holds it" (the same fact seen from the other end, §15.4),

@@ -19,7 +19,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
 | 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,855 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map); the guild↔guild contest (a rival, territory, the market) is not built yet |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -2505,7 +2505,10 @@ boundary so the later hex-map swap doesn't touch it.
   reads) → the client (Manage popup, deploy-map picker, range paint — *⤳ re-ruled 01-10-26 as the
   craft-initiated deploy map, `territory-model.md` §5; client slice 2 below*) → the kit SOURCES (the dockyard
   building a kit, the founding-grant kit, loading a kit from a store) → the other kinds (toll gate,
-  deep-scan array, the Prefecture).
+  deep-scan array, the Prefecture). *⤳ Re-ruled 02-10-26 as ASSET-INITIATED (`territory-model.md` §5 REVISED,
+  `design.md` §4): the kit is a system-scoped idle asset, loaded onto a same-system heavy at commit. Its
+  prerequisite rung — the kit as an idle asset + load / unload + the repointed `grantKit` — is BUILT, "asset-initiated
+  slice 1" below; the client (idle-outpost Deploy, carrier picker, planner reuse, message rewire) is next.*
   - **slice 1 — the deployable good + outpost deploy (engine + operator CLI, NO client).** 🟢 *BUILT (29-09-26).*
     **Built so far — the deployable good:** `DEPLOYABLE_GOODS` = [`outpost_kit`] + `isDeployableGood` /
     `kitGoodFor` (`sim/resources.js`), a sibling category to the stockpile goods and deliberately NOT in
@@ -2773,6 +2776,67 @@ boundary so the later hex-map swap doesn't touch it.
     - no page errors.
     **Flagged, not ruled (decision checklist):** the `#` in the Craft fact, the card fit, and Show on map for a
     craft already flying again.
+  - **asset-initiated slice 1 — the kit as a system-scoped idle asset (ENGINE + operator CLI, NO client).** 🟢 *BUILT
+    (02-10-26).* Built to `territory-model.md` §5 "The deploy flow, REVISED — asset-initiated (RULED 02-10-26)" and
+    `design.md` §4 "The undeployed Outpost kit is a system-scoped idle asset", no design change and no new number;
+    AS-BUILT notes in both. **The model:** a kit is in exactly one of two representations — an idle ASSET of kind
+    `'outpost'` in a system's inventory (`guild.assets`, made by `createAsset`, a `systemId`, never a venture), or the
+    `outpost_kit` GOOD in a heavy's hold (what `deployCheck` / `deployKit` read — the deploy, the retreat and the
+    `deploy_failed` notice are UNTOUCHED). **The vocabulary:** `'outpost'` is a KIT kind (`KIT_ASSET_KINDS` /
+    `isKitAssetKind`, `sim/assets.js`, read off `DEPLOYABLE_KITS`), kept apart from the venture kinds — `ASSET_KINDS`
+    stays `[factory, miner]` and `isAssetKind('outpost')` is false, so `establishVenture`, the Syndicate purchase and
+    `grantAsset` all refuse a kit. `kindForKit` (`sim/resources.js`) is `kitGoodFor`'s inverse, off the same table.
+    **The actions** (`sim/actions.js`, all journalled): **`grantKit { guildId, systemId, kind }`** — REPOINTED, it now
+    mints one idle kit asset at any real system (the operator places freely, as `grantAsset` does), refusing an
+    unknown guild, a system not on the seed, or a kind with no kit; **`loadKit { guildId, vehicleId, assetId }`** —
+    names the kit, refused unless it is an idle kit in this guild's inventory and the carrier is this guild's heavy,
+    idle, off any lane, with an empty hold, berthed at the kit's own system; the asset leaves the inventory and exactly
+    one `outpost_kit` lands in the hold (tick-stamped on the craft); **`unloadKit { guildId, vehicleId }`** — refused
+    unless the craft is idle, off any lane, carries exactly one kit and nothing else, and is berthed at a system its
+    guild holds; the good leaves the hold and a fresh idle kit asset is minted there. The unload's rule and apply
+    (`unloadKitCheck` / `kitIntoInventory`) take location and tick as arguments — the `deployCheck` / `deployKit`
+    shape — so the Return fork's on-arrival unload can reuse them as a second trigger. **Ids never repeat:** a loaded
+    kit LEAVES the inventory, so the live-max `nextAssetNumber` could reissue its id; kits number from a stored
+    per-guild `kitAssetSerial` (`asset_<guild>_outpost_NN`, the `vehicleSerial` pattern, `design.md` §15.4),
+    omitted when 0. **Invariants** (`checkAssetOccupancy`): `asset-kind-known` accepts a venture kind OR a kit kind;
+    new `kit-asset-never-deployed` and `kit-asset-serial-monotonic`. **Snapshot:** unchanged — a kit is already an
+    `assets` row `{ kind: 'outpost', deployedToVentureId: null }`, which is all `__myIdleAssets('outpost')` reads (the
+    shape comment now says so). **The operator surface:** `POST /admin/guild/grant-kit` (renamed from
+    `/admin/vehicle/grant-kit`, which now 404s — it no longer touches a vehicle), `POST /admin/vehicle/load-kit` and
+    `POST /admin/vehicle/unload-kit`, mirroring the sibling endpoints; `tools/admin.js grant-kit --guild ID --system ID
+    --kind outpost`, `load-kit --guild ID --id VEHICLE_ID --asset ASSET_ID`, `unload-kit --guild ID --id VEHICLE_ID`
+    (each prints the guild's idle kits and the hold); `docs/cli-runbook.md` updated.
+    **The tests moved to the new flow:** every test that granted a kit into a hold now grants into a system and loads
+    it (`sim/tests/kit-fixtures.js` `kitAboard`); a test needing a laden heavy out on a hex places it there after the
+    load (`placeCraft` — the stand-in for a 225-ticks-a-hex flight; the happy paths still fly for real).
+    `deploy-asset.test.js`'s seven grant-into-a-hold tests retired — each ruling they pinned (heavy-only,
+    one-at-a-time, idle only, never on a lane, the unknown guild / kind) is now a `grantKit` / `loadKit` gate in the new
+    `kit-asset.test.js`. **Tripwires** (`kit-asset.test.js` +23): the vocabulary; the grant and its gates; the snapshot
+    row and the client's filter; establish / buy / grantAsset refusing a kit; load and unload, every refusal; the round
+    trip and no id reused; KIT CONSERVATION (idle kits + kits aboard unchanged by load / unload, −1 only on deploy —
+    `assertKitsMoved`, which throws with the tick and both counts); determinism live and across a journalled
+    save/restore; a founded guild's machines and venture running 30 ticks clean with kits beside them; and the new
+    invariant rules firing. Shown to fire: numbering kits from the live max fails 7, a load that forgets to remove the
+    asset fails 10, dropping the same-system gate / the held-system check / the never-deployed rule fails 1 each, and
+    an invariant that rejects kit kinds fails 7. Plus `deploy-on-arrival.test.js` +1: a clamped retreat parks the heavy
+    AT home, and `unloadKit` drops its kit back into home's inventory.
+    **A NO-OP on a galaxy that mints no kit:** no existing golden changed (none of the 25 golden-bearing test files is
+    touched; persist / determinism / galactic-supply all green). Proven directly too: one kit-free script (two founded
+    guilds, a venture, an Outpost, a heavy's dispatch and a light's docked route) run against a clean worktree of the
+    parent commit and against this change gives the same state hash AND snapshot hash at every one of 400 ticks.
+    Sim 1,868 → **1,886 green** (+23 kit-asset, −7 retired, +1 deploy-on-arrival, +1 server); tools **73** green,
+    the same count (three tests rewritten for the repointed `grant-kit` and the new bodies). Driven headless on a
+    seated seed-42 server through `tools/admin.js`: grant → `asset_seat_demo_outpost_01` idle in `sys_0006` (assets
+    25 → 26); load onto an empty heavy there → inventory 26 → 25, hold 6,000,000 / 6,000,000; dispatch
+    `101,55@deploy:outpost` + 675 ticks → `outpost_seat_demo_01` on `101,55`, the heavy parked on it, hold empty; a
+    second heavy granted `_02`, loaded, unloaded → a fresh idle `_03` in `sys_0006`, hold empty; a load onto the heavy
+    parked at the Outpost and an unload of an empty heavy were both refused with the engine's reason; a `kill -9`
+    restart replayed the journal to a leaf-identical snapshot.
+    **Deferred (not invented):** the client (the idle-outpost Deploy button, the outpost-subject popup and carrier
+    dropdown, the planner reuse, the message's Redeploy / Return forks); the route-arrival unload (the Return fork's
+    auto-appended unload action); the real kit sources; storing a kit AT an Outpost; the other kinds. **Two calls on the
+    decision checklist** ("Asset-initiated slice 1 — two calls"): a standalone unload leaves a retreated craft's
+    `deployFailed` set (only a dispatch clears it, as ruled); and an idle kit asset carries no tick of its own.
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
@@ -2903,6 +2967,16 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   the craft's current hex, falling back to `targetHex` "if the craft is gone". A craft the player has already
   re-dispatched has no hex, so it is built to fall back to `targetHex` too. Confirm, or rule another target (e.g.
   its destination).
+- **Asset-initiated slice 1 — two calls (02-10-26, 2.2 deploy pipeline, the kit as an idle asset; `design.md` §4
+  AS-BUILT)**, built the conservative way and flagged rather than ruled. **(1) A standalone unload leaves
+  `deployFailed` set.** The flag is ruled "cleared by the next dispatch", and an unload is not a dispatch, so a heavy
+  that retreated AT a held system and then unloads its kit by hand keeps `deployFailed` until it next flies. The Return
+  fork (a dispatch with an unload appended) clears it anyway. Confirm, or rule that `unloadKit` clears it too (it is
+  one line in `kitIntoInventory`). **(2) An idle kit asset carries no tick of its own.** `createAsset` deliberately
+  has no `updatedAtTick` / `createdAtTick` (its comment defers a stamp to the maintenance slice, the first thing that
+  mutates an asset), so `grantKit` — like `grantAsset`, the Dockyard and the Syndicate delivery — records its tick only
+  in the journal; `loadKit` / `unloadKit` stamp the craft. Confirm, or rule a `createdAtTick` on kit assets (or on all
+  assets).
 
 - **Asset-presence vs. production** — *surfaced 16-09-26 by the operator adjust levers
   (`docs/operator-adjust.md` §3.5 AS-BUILT).* Production is currently **asset-blind** — a venture

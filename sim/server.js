@@ -92,7 +92,7 @@ const {
   createDispatchVehicleAction, createTransferCargoAction, createDispatchRouteWithActionsAction, quoteDispatch,
   createSpawnOutpostAction, createRemoveOutpostAction,
   createSaveRouteAction, createDeleteRouteAction, createStopRouteAfterRunAction, createCancelRouteAction,
-  createGrantKitAction, createDeployAssetAction,
+  createGrantKitAction, createDeployAssetAction, createLoadKitAction, createUnloadKitAction,
 } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
 const { saveState, appendJournal, clearJournal, loadOrInit, saveSeed, loadSeed, deleteGalaxy } = require('./persist.js');
@@ -1144,31 +1144,32 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // --- the deploy pipeline (docs/territory-model.md §5, roadmap 2.2 deploy slice 1) -------------
-  // Two OPERATOR endpoints, gated and routed exactly like /admin/vehicle/* above: they construct the
-  // engine action from the body and run it through the SAME validate → journal → apply path POST
-  // /action uses (applyOneAction), so a granted kit and a deployed Outpost survive restart and replay.
+  // --- the deploy pipeline (docs/territory-model.md §5, roadmap 2.2 deploy pipeline) ---------------
+  // OPERATOR endpoints, gated and routed exactly like /admin/vehicle/* above: they construct the engine
+  // action from the body and run it through the SAME validate → journal → apply path POST /action uses
+  // (applyOneAction), so a granted, loaded, unloaded or deployed kit survives restart and replays.
 
-  // POST /admin/vehicle/grant-kit { guildId, vehicleId, kind } — mint one deployable kit ('outpost')
-  // straight into a craft's hold (the operator test seam until the real kit sources land).
-  if (method === 'POST' && path === '/admin/vehicle/grant-kit') {
+  // POST /admin/guild/grant-kit { guildId, systemId, kind } — mint one idle kit asset ('outpost') into a
+  // guild's inventory at a system (the operator test seam until the real kit sources land). Under
+  // /admin/guild/ since 02-10-26: it no longer touches a vehicle (design.md §4, the kit as an idle asset).
+  if (method === 'POST' && path === '/admin/guild/grant-kit') {
     if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
     let body;
     try {
       body = JSON.parse((await readBody(req)) || 'null');
     } catch {
-      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","vehicleId":"vehicle_g1_heavyTransport_01","kind":"outpost"}' });
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","systemId":"sys_0001","kind":"outpost"}' });
       return;
     }
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
-      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId, vehicleId and kind' });
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId, systemId and kind' });
       return;
     }
     let action;
     try {
-      // The constructor enforces the required fields; legality — an idle craft the guild owns, not on a
-      // lane, with room for the kit — is validateAction's job, run inside applyOneAction below.
-      action = createGrantKitAction({ guildId: body.guildId, vehicleId: body.vehicleId, kind: body.kind });
+      // The constructor enforces the required fields; legality — a real guild, a real system, a kind
+      // with a kit — is validateAction's job, run inside applyOneAction below.
+      action = createGrantKitAction({ guildId: body.guildId, systemId: body.systemId, kind: body.kind });
     } catch (err) {
       sendJson(res, 400, { error: 'malformed grant-kit request', detail: String((err && err.message) || err) });
       return;
@@ -1177,6 +1178,66 @@ async function handleRequest(req, res) {
       sendJson(res, 200, applyOneAction(action));
     } catch (err) {
       sendJson(res, 500, { error: 'error applying grantKit (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // POST /admin/vehicle/load-kit { guildId, vehicleId, assetId } — load the named idle kit asset onto an
+  // empty, idle heavy berthed in the kit's own system (design.md §4).
+  if (method === 'POST' && path === '/admin/vehicle/load-kit') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","vehicleId":"vehicle_g1_heavyTransport_01","assetId":"asset_g1_outpost_01"}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId, vehicleId and assetId' });
+      return;
+    }
+    let action;
+    try {
+      action = createLoadKitAction({ guildId: body.guildId, vehicleId: body.vehicleId, assetId: body.assetId });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed load-kit request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying loadKit (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // POST /admin/vehicle/unload-kit { guildId, vehicleId } — the heavy's kit becomes a fresh idle kit asset
+  // in the held system it is berthed at (design.md §4).
+  if (method === 'POST' && path === '/admin/vehicle/unload-kit') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","vehicleId":"vehicle_g1_heavyTransport_01"}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId and vehicleId' });
+      return;
+    }
+    let action;
+    try {
+      action = createUnloadKitAction({ guildId: body.guildId, vehicleId: body.vehicleId });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed unload-kit request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying unloadKit (invariant violation or engine throw)', detail: String((err && err.message) || err) });
     }
     return;
   }

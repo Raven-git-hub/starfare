@@ -28,6 +28,12 @@
 //      journalled dispatch); two craft landing on one hex in one tick resolve by id, the same every run.
 // Plus: act-in-place, the snapshot surface, the invariant shape checks, the off-the-lattice fallback,
 // the loud halt on a failure the dispatch rules out, and the no-deploy no-op.
+//
+// HOW A KIT GETS ABOARD (02-10-26, the asset-initiated redesign — design.md §4): granted into a system's
+// inventory as an idle asset, then loaded onto the empty heavy berthed there (kit-fixtures.js `kitAboard`).
+// The deploy and the retreat are UNCHANGED; these tests prove they still work through the new model. And
+// one more: a craft whose retreat parks it AT a held system can drop its kit back into that system's
+// inventory with the standalone unloadKit.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -51,9 +57,10 @@ const {
 const { HEAVY_TRANSPORT, LIGHT_TRANSPORT, SPYCRAFT } = require('../vehicles.js');
 const seed = require('../../data/seed.json');
 const { starterHomeAtDistance } = require('./waystation-fixtures.js');
+const { kitAboard, placeCraft, assertKitsMoved } = require('./kit-fixtures.js');
 const {
   validateAction, applyAction,
-  createSpawnVehicleAction, createGrantKitAction, createTransferCargoAction,
+  createSpawnVehicleAction, createTransferCargoAction, createUnloadKitAction,
   createDispatchRouteWithActionsAction, createDispatchVehicleAction, createSaveRouteAction,
   createSpawnOutpostAction,
 } = require('../actions.js');
@@ -191,12 +198,15 @@ function deployState({ vehicleClass = HEAVY_TRANSPORT, location = AT_HOME, extra
   return s;
 }
 const craftOf = (s, i = 0) => s.guilds[0].vehicles[i];
-const grant = (s, i = 0) => createGrantKitAction({ guildId: 'g1', vehicleId: craftOf(s, i).id, kind: 'outpost' });
+// The kit, the asset-initiated way: granted into the system the heavy is berthed at and loaded onto it.
+const withKit = (s, i = 0) => kitAboard(s, 'g1', craftOf(s, i).id);
 
-// A heavy idle at `location` with one outpost kit aboard, granted through the real lever.
+// A heavy idle at `location` with one outpost kit aboard: granted and loaded at home through the real
+// actions, then PLACED at `location` — the stand-in for a flight (kit-fixtures.js). The trips under test
+// all fly for real from there.
 function kitAt(location, opts = {}) {
-  const s = deployState({ location, ...opts });
-  return accept(s, grant(s));
+  const s = withKit(deployState(opts));
+  return placeCraft(s, 'g1', craftOf(s).id, location);
 }
 const dispatch = (s, waypoints, over = {}) => createDispatchRouteWithActionsAction({
   guildId: 'g1', vehicleId: craftOf(s).id, waypoints, ...over,
@@ -312,10 +322,10 @@ test('retreat: two heavies landing on one hex in one tick — the lower id deplo
   const dir = freeDirection(HOME_HEX, [6, 7, 3]);
   const target = along(HOME_HEX, dir, 6);
   const run = () => {
-    let s = deployState({ location: along(HOME_HEX, dir, 7) });
-    s = accept(s, createSpawnVehicleAction({ guildId: 'g1', class: HEAVY_TRANSPORT, location: along(HOME_HEX, dir, 7) }));
-    s = accept(s, grant(s, 0));
-    s = accept(s, grant(s, 1));
+    let s = deployState();
+    s = accept(s, createSpawnVehicleAction({ guildId: 'g1', class: HEAVY_TRANSPORT, location: AT_HOME }));
+    s = withKit(withKit(s, 0), 1);
+    for (const i of [0, 1]) placeCraft(s, 'g1', craftOf(s, i).id, along(HOME_HEX, dir, 7));
     for (const i of [1, 0]) { // dispatch order does not matter — the arrival step lands craft in id order
       s = accept(s, createDispatchRouteWithActionsAction({ guildId: 'g1', vehicleId: craftOf(s, i).id, waypoints: deployTo(target) }));
     }
@@ -381,6 +391,20 @@ test('clamp: a failed deploy DEPLOY_RETREAT_HEXES or fewer from the held system 
   // One hex further than the retreat is NOT clamped: it stops one hex short of home, on open ground.
   const { s: flying, dir } = occupiedRun(DEPLOY_RETREAT_HEXES + 1);
   assert.deepEqual(craftOf(tickToIdle(flying)).location, along(HOME_HEX, dir, 1));
+});
+
+test('clamp + unload: a craft pulled back AT its held system drops the kit into that system’s inventory', () => {
+  const { s: flying, arrivalTick } = occupiedRun(DEPLOY_RETREAT_HEXES);
+  const parked = tickToIdle(flying);
+  assert.deepEqual(craftOf(parked).location, AT_HOME, 'the clamp parked it at home, kit aboard');
+  const s = accept(parked, createUnloadKitAction({ guildId: 'g1', vehicleId: craftOf(parked).id }));
+  assertKitsMoved(parked, s, 'g1', 0, 'unloadKit after a retreat');
+  assert.equal(craftOf(s).cargo, undefined, 'the hold is empty');
+  assert.deepEqual(s.guilds[0].assets, [{ id: 'asset_g1_outpost_02', kind: 'outpost', systemId: HOME.id, maintenanceCondition: 1 }],
+    'a fresh idle kit at home — the loaded kit was _01, and ids never repeat');
+  // The flag is cleared by the next DISPATCH (the ruled rule, unchanged) — an unload is not one, so it stays.
+  assert.deepEqual(craftOf(s).deployFailed, { reason: 'occupied', tick: arrivalTick });
+  assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
 // --- 5. the flag clears on the next dispatch -----------------------------------------------------
@@ -543,8 +567,9 @@ test('off the lattice: a retreat step outside the galaxy walks on along the same
     guilds: [{ id: 'g1', credits: 0, fuelHoard: 10_000 }, { id: 'g2', credits: 0, fuelHoard: 0 }],
     reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 }, claims: [claimOf('g1', systemId, 1)],
   });
-  s = accept(s, createSpawnVehicleAction({ guildId: 'g1', class: HEAVY_TRANSPORT, location: from }));
-  s = accept(s, grant(s));
+  // The kit loads at the rim system itself (same-system), then the laden heavy is placed one hex off T.
+  s = accept(s, createSpawnVehicleAction({ guildId: 'g1', class: HEAVY_TRANSPORT, location: { landmarkKind: 'system', landmarkId: systemId } }));
+  s = placeCraft(withKit(s), 'g1', craftOf(s).id, from);
   s = accept(s, dispatch(s, deployTo(T)));
   s = accept(s, createSpawnOutpostAction({ guildId: 'g2', anchorSystemId: systemId, coords: T }));
   s = tickToIdle(s);

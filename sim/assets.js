@@ -1,5 +1,7 @@
 'use strict';
 
+const { DEPLOYABLE_KITS, kitGoodFor } = require('./resources.js');
+
 // assets.js — the ground-asset vocabulary and the derived "who is idle?" lookup
 // (design.md §4, "Asset occupancy — deploy, idle, and the build contract",
 // 30-08-26). A venture is the licenced operating company; an ASSET is the
@@ -19,12 +21,26 @@
 // guild. It constructs nothing — `createAsset` lives with the other entity
 // constructors in state.js — which is what keeps this file free of a require
 // cycle with state.js.
+//
+// TWO SETS OF KINDS, KEPT APART ON PURPOSE (design.md §4, "The undeployed Outpost kit
+// is a system-scoped idle asset", RULED 02-10-26). A guild's inventory also holds
+// undeployed KITS — an idle 'outpost' is a kit waiting to be loaded onto a heavy and
+// deployed in space. A kit is never run by a venture, so it is NOT in `ASSET_KINDS`
+// (the venture-deployable set, what `establishVenture` and the Syndicate purchase
+// accept); it has its own set, `KIT_ASSET_KINDS`, below. Keeping two lists is what
+// stops a venture ever naming a kit.
 
 // The two kinds. Lowercase, one word, matching how venture `type` is already
 // spelled ('mining' / 'refining') — pinned here once so no other file spells it.
 const MINER = 'miner';
 const FACTORY = 'factory';
 const ASSET_KINDS = [FACTORY, MINER];
+
+// The KIT asset kinds — an undeployed kit sitting idle in a system's inventory. Read off
+// the deployable-kit table (sim/resources.js `DEPLOYABLE_KITS`), so a kind is a kit asset
+// exactly when it has a kit good, and adding a kind later (toll gate, deep scan) is one row
+// THERE. Today: ['outpost']. Sorted for a stable order (invariant 9).
+const KIT_ASSET_KINDS = Object.freeze(Object.keys(DEPLOYABLE_KITS).sort());
 
 // maintenanceCondition — DESIGN-AHEAD, INERT IN THIS SLICE (design.md §4,
 // "Condition & maintenance — design-ahead, NOT built here"). Every asset carries
@@ -51,8 +67,15 @@ const ASSET_CONDITION_MIN = 0;
 const STARTER_MINERS = 15;
 const STARTER_FACTORIES = 10;
 
+// Is `kind` a VENTURE-deployable kind (miner / factory)? A kit kind is not — see above.
 function isAssetKind(kind) {
   return ASSET_KINDS.includes(kind);
+}
+
+// Is `kind` a KIT asset kind (an undeployed kit, e.g. 'outpost')? Asks the same table
+// `kitGoodFor` reads, so "is a kit asset" and "has a kit good" are one fact.
+function isKitAssetKind(kind) {
+  return kitGoodFor(kind) !== null;
 }
 
 // Which machine a venture type needs (design.md §4): a mining venture IS a miner
@@ -103,11 +126,12 @@ function assetNumberOf(id) {
 // mints a built asset's id from this (docs/build-yard.md §4), CONTINUING the per-(guild, kind)
 // sequence above the founding grant's `01..STARTER_*` range.
 //
-// DETERMINISTIC and MONOTONIC (invariant 9): assets are NEVER deleted (teardown frees an asset to
-// idle, it does not remove it — sim/licence.js), so the max only ever grows and a minted id can
+// DETERMINISTIC and MONOTONIC (invariant 9): a miner or factory is not deleted in play (teardown frees an
+// asset to idle, it does not remove it — sim/licence.js), so the max only ever grows and a minted id can
 // never collide with the founding gift or an earlier build. Two emissions in one tick get distinct
 // ids because the build step pushes each emitted asset into `guild.assets` BEFORE minting the next,
-// so the second read sees the first and returns a higher number.
+// so the second read sees the first and returns a higher number. A KIT asset is different — loading it
+// onto a heavy removes it — so kits do NOT number from this; they use `nextKitAssetSerial` below.
 function nextAssetNumber(guild, kind) {
   let max = 0;
   for (const a of (guild.assets || [])) {
@@ -116,6 +140,17 @@ function nextAssetNumber(guild, kind) {
     if (n != null && n > max) max = n;
   }
   return max + 1;
+}
+
+// nextKitAssetSerial(guild) -> the next per-guild KIT asset number: one above the guild's stored
+// `kitAssetSerial` counter (absent/0 -> 1). A kit asset LEAVES the inventory when it is loaded onto a
+// heavy, so "the highest live number + 1" (nextAssetNumber above) could hand a loaded kit's id to the
+// next kit — and design.md §15.4 "Ids never repeat" rules that out. So kits number from a STORED
+// counter that only ever climbs, the `vehicleSerial` / `outpostSerial` pattern. One counter for all of
+// a guild's kit kinds, as `vehicleSerial` is one counter for all its craft classes. The CALLER bumps
+// `guild.kitAssetSerial` to this value when it mints (this stays a pure read).
+function nextKitAssetSerial(guild) {
+  return (guild.kitAssetSerial || 0) + 1;
 }
 
 // deployedAssetIds(guild) -> Map<assetId, ventureId>. The DERIVATION everything
@@ -142,16 +177,19 @@ module.exports = {
   MINER,
   FACTORY,
   ASSET_KINDS,
+  KIT_ASSET_KINDS,
   ASSET_CONDITION_NEW,
   ASSET_CONDITION_MIN,
   STARTER_MINERS,
   STARTER_FACTORIES,
   isAssetKind,
+  isKitAssetKind,
   assetKindForVentureType,
   starterAssetSpecs,
   assetId,
   assetNumberOf,
   nextAssetNumber,
+  nextKitAssetSerial,
   deployedAssetIds,
   idleAssets,
 };

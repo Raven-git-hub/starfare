@@ -726,9 +726,9 @@ function computeAttention(state) {
 //                 events: [ { id, tick, type, payload, readTick? } ],  // event log, live, newest-first
 //                 stockpiles: { good: int },                    // flat guild total
 //                 stockpilesBySystem: { systemId: { good: int } }, // per-system
-//                 assets: [ { id, kind, systemId,                 // §4 inventory
-//                             maintenanceCondition,                //   systemId = location
-//                             deployedToVentureId: id | null } ],  //   null = IDLE
+//                 assets: [ { id, kind, systemId,                 // §4 inventory; kind miner | factory,
+//                             maintenanceCondition,                //   or 'outpost' = an idle kit (never
+//                             deployedToVentureId: id | null } ],  //   deployed); systemId = location; null = IDLE
 //                 vehicles: [ { id, class,                        // §15.4 transport inventory (2.2)
 //                               maintenanceCondition, status,       //   idle -> location; inTransit -> trip
 //                               cargo, capacity, used,              //   hold + space figures (2.2 Outpost Mgr)

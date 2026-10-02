@@ -265,9 +265,18 @@ function kitGoodFor(kind) {
   return Object.prototype.hasOwnProperty.call(DEPLOYABLE_KITS, kind) ? DEPLOYABLE_KITS[kind] : null;
 }
 
+// kindForKit(good) -> the kind of structure a deployable good packs ('outpost_kit' -> 'outpost'), or
+// null for a good that is not a kit. The inverse of `kitGoodFor`, read off the same one table, so the
+// two can never disagree. An unload uses it: the hold holds the GOOD, and the idle asset it turns back
+// into is named by its KIND (sim/assets.js, the kit asset kinds).
+function kindForKit(good) {
+  const kind = Object.keys(DEPLOYABLE_KITS).find((k) => DEPLOYABLE_KITS[k] === good);
+  return kind === undefined ? null : kind;
+}
+
 module.exports = {
   RAW_RESOURCES, PROCESSED_GOODS, STOCKPILE_GOODS, TIER3_GOODS, FUEL_GOOD, DEUTERIUM,
   TIER3_PRICE_CLASS, SPECIALIST, UNCLASSIFIED,
   OUTPOST_KIT, DEPLOYABLE_KITS, DEPLOYABLE_GOODS,
-  isRawResource, isFuel, isProcessedGood, isTier3Good, isStockpileGood, isDeployableGood, kitGoodFor,
+  isRawResource, isFuel, isProcessedGood, isTier3Good, isStockpileGood, isDeployableGood, kitGoodFor, kindForKit,
 };

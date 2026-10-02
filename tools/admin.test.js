@@ -447,13 +447,22 @@ test('OUTPOST_COMMANDS lists the outpost subcommands (spawn / remove)', () => {
   assert.deepEqual([...A.OUTPOST_COMMANDS].sort(), ['remove-outpost', 'spawn-outpost'].sort());
 });
 
-// --- the deploy pipeline (docs/territory-model.md §5, roadmap 2.2 deploy slice 1) ----------------
+// --- the deploy pipeline (docs/territory-model.md §5; design.md §4, the kit as an idle asset) -------------
 
-test('grantKitBody / deployAssetBody: build the exact request body from the flags', () => {
-  const argv = ['grant-kit', '--guild', 'g1', '--id', 'vehicle_g1_heavyTransport_01', '--kind', 'outpost'];
+test('grantKitBody / loadKitBody / unloadKitBody / deployAssetBody: build the exact request body from the flags', () => {
+  // grant-kit names a SYSTEM now (the kit lands in its inventory), not a vehicle.
   assert.deepEqual(
-    A.grantKitBody(A.parseArgs(argv).flags),
-    { guildId: 'g1', vehicleId: 'vehicle_g1_heavyTransport_01', kind: 'outpost' },
+    A.grantKitBody(A.parseArgs(['grant-kit', '--guild', 'g1', '--system', 'sys_0001', '--kind', 'outpost']).flags),
+    { guildId: 'g1', systemId: 'sys_0001', kind: 'outpost' },
+  );
+  assert.deepEqual(
+    A.loadKitBody(A.parseArgs(['load-kit', '--guild', 'g1', '--id', 'vehicle_g1_heavyTransport_01', '--asset', 'asset_g1_outpost_01']).flags),
+    { guildId: 'g1', vehicleId: 'vehicle_g1_heavyTransport_01', assetId: 'asset_g1_outpost_01' },
+  );
+  assert.deepEqual(
+    A.unloadKitBody(A.parseArgs(['unload-kit', '--guild=g1', '--id=vehicle_g1_heavyTransport_01']).flags),
+    { guildId: 'g1', vehicleId: 'vehicle_g1_heavyTransport_01' },
+    'no kind and no system: the engine reads both from the craft',
   );
   assert.deepEqual(
     A.deployAssetBody(A.parseArgs(['deploy-asset', '--guild=g1', '--id=vehicle_g1_heavyTransport_01']).flags),
@@ -462,16 +471,21 @@ test('grantKitBody / deployAssetBody: build the exact request body from the flag
   );
 });
 
-test('grantKitBody / deployAssetBody: a missing required flag throws rather than posting a half body', () => {
-  assert.throws(() => A.grantKitBody({ id: 'v', kind: 'outpost' }), /grant-kit: --guild is required/);
-  assert.throws(() => A.grantKitBody({ guild: 'g1', kind: 'outpost' }), /grant-kit: --id is required/);
-  assert.throws(() => A.grantKitBody({ guild: 'g1', id: 'v' }), /grant-kit: --kind is required/);
+test('the deploy-pipeline bodies: a missing required flag throws rather than posting a half body', () => {
+  assert.throws(() => A.grantKitBody({ system: 's', kind: 'outpost' }), /grant-kit: --guild is required/);
+  assert.throws(() => A.grantKitBody({ guild: 'g1', kind: 'outpost' }), /grant-kit: --system is required/);
+  assert.throws(() => A.grantKitBody({ guild: 'g1', system: 's' }), /grant-kit: --kind is required/);
+  assert.throws(() => A.loadKitBody({ id: 'v', asset: 'a' }), /load-kit: --guild is required/);
+  assert.throws(() => A.loadKitBody({ guild: 'g1', asset: 'a' }), /load-kit: --id is required/);
+  assert.throws(() => A.loadKitBody({ guild: 'g1', id: 'v' }), /load-kit: --asset is required/);
+  assert.throws(() => A.unloadKitBody({ id: 'v' }), /unload-kit: --guild is required/);
+  assert.throws(() => A.unloadKitBody({ guild: 'g1' }), /unload-kit: --id is required/);
   assert.throws(() => A.deployAssetBody({ id: 'v' }), /deploy-asset: --guild is required/);
   assert.throws(() => A.deployAssetBody({ guild: 'g1' }), /deploy-asset: --id is required/);
 });
 
-test('DEPLOY_COMMANDS lists the deploy subcommands (grant-kit / deploy-asset)', () => {
-  assert.deepEqual([...A.DEPLOY_COMMANDS].sort(), ['deploy-asset', 'grant-kit']);
+test('DEPLOY_COMMANDS lists the deploy subcommands (grant-kit / load-kit / unload-kit / deploy-asset)', () => {
+  assert.deepEqual([...A.DEPLOY_COMMANDS].sort(), ['deploy-asset', 'grant-kit', 'load-kit', 'unload-kit']);
 });
 
 test('dispatchVehicleBody: builds the exact request body; a missing required flag throws', () => {

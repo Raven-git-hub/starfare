@@ -74,7 +74,9 @@ const {
   RP_FLOOR, RP_SOFT_CAP,
   TIER3_TERM_WINDOWS, licenceBasisFor, weeklyOutputOf, isValidCommittedUnits, committedPctForUnits,
 } = require('./licence.js');
-const { ASSET_CONDITION_NEW, ASSET_CONDITION_MIN, isAssetKind, assetKindForVentureType } = require('./assets.js');
+const {
+  ASSET_CONDITION_NEW, ASSET_CONDITION_MIN, isAssetKind, isKitAssetKind, assetKindForVentureType, assetNumberOf,
+} = require('./assets.js');
 const {
   isVehicleClass, VEHICLE_STATUSES, resolveVehicleLocation, vehicleNumberOf,
 } = require('./vehicles.js');
@@ -1319,13 +1321,28 @@ function checkSiteOccupancy(state) {
 //   - a DEPLOYED asset's `systemId` equals its venture's system (§4, 12-09-26):
 //     Gate 2 deploys same-system and nothing moves a deployed asset, so a mismatch
 //     is corruption.
+// KIT assets (design.md §4, RULED 02-10-26 — an undeployed kit idle in a system,
+// kind 'outpost') share the inventory and every rule above that reads only the asset
+// (known kind, condition, systemId). Two more rules are theirs alone:
+//   - a kit is NEVER run by a venture (`kit-asset-never-deployed`): no path deploys
+//     one (Gate 2 wants a miner or factory), so a venture naming a kit is corruption;
+//   - `kitAssetSerial` >= the highest number among the guild's live kit assets
+//     (`kit-asset-serial-monotonic`): a loaded kit leaves the inventory, so kits
+//     number from that stored counter, and a live kit above it means the counter
+//     drifted and a future kit could re-issue an id (§15.4 "Ids never repeat").
 function checkAssetOccupancy(state) {
   const out = [];
   for (const g of state.guilds || []) {
     const owned = new Map(); // assetId -> asset, this guild's inventory
+    let maxKitNumber = 0; // the highest live kit-asset number, for the serial check below
     for (const a of g.assets || []) {
-      if (!isAssetKind(a.kind)) {
+      // A known kind is a venture kind (miner / factory) OR a kit kind ('outpost').
+      if (!isAssetKind(a.kind) && !isKitAssetKind(a.kind)) {
         out.push({ rule: 'asset-kind-known (assets.js)', where: `guild:${g.id}.asset:${a.id}`, detail: { kind: a.kind } });
+      }
+      if (isKitAssetKind(a.kind)) {
+        const n = assetNumberOf(a.id);
+        if (n != null && n > maxKitNumber) maxKitNumber = n;
       }
       const cond = a.maintenanceCondition;
       if (typeof cond !== 'number' || !Number.isFinite(cond) || cond < ASSET_CONDITION_MIN || cond > ASSET_CONDITION_NEW) {
@@ -1347,6 +1364,9 @@ function checkAssetOccupancy(state) {
       const asset = owned.get(v.assetId);
       if (!asset) {
         out.push({ rule: 'venture-asset-owned-by-same-guild', where: `venture:${v.id}.assetId`, detail: { assetId: v.assetId, guild: g.id } });
+      } else if (isKitAssetKind(asset.kind)) {
+        // A kit is loaded and deployed in space, never run by a venture — see the note above.
+        out.push({ rule: 'kit-asset-never-deployed', where: `venture:${v.id}.assetId`, detail: { assetId: v.assetId, assetKind: asset.kind, ventureType: v.type } });
       } else {
         const wanted = assetKindForVentureType(v.type);
         if (wanted !== null && asset.kind !== wanted) {
@@ -1367,6 +1387,11 @@ function checkAssetOccupancy(state) {
       } else {
         seenBy.set(v.assetId, v.id);
       }
+    }
+
+    const kitSerial = g.kitAssetSerial || 0; // omitted-when-0 (state.js): absent means no kit ever minted
+    if (kitSerial < maxKitNumber) {
+      out.push({ rule: 'kit-asset-serial-monotonic', where: `guild:${g.id}.kitAssetSerial`, detail: { kitAssetSerial: kitSerial, highestLiveKitNumber: maxKitNumber } });
     }
   }
   return out;
