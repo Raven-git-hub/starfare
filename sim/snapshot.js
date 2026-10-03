@@ -27,10 +27,12 @@
 
 const { computeGalacticSupply } = require('./supply.js');
 const {
-  REFERENCE_FUEL_PRICE, routeFuelBurnByTier, fuelValue,
+  REFERENCE_FUEL_PRICE, routeFuelBurnByTierFromHex, fuelValue,
   volumeOf, HAULER_TIERS, haulerTierForSpace, HEAVY_HOLD,
 } = require('./fuel.js');
-const { nearestWaystation, arrivalTickFor, hexDistance, legFuelBurn } = require('./transport.js');
+const {
+  nearestWaystation, nearestWaystationToHex, systemHex, arrivalTickFor, hexDistance, legFuelBurn,
+} = require('./transport.js');
 const { grantFor, targetReserve, DEUTERIUM_INFLUX_PER_CYCLE } = require('./issuance.js');
 const { heldSystemIds } = require('./claims.js');
 const { guildPoints } = require('./points.js');
@@ -288,6 +290,15 @@ const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 // the TRADE-4 commission popup and the In-Progress rows quote a CRAFT's arrival from the engine
 // instead of the wrong hauler leg (§18). ADDITIVE, NO schema bump; `0` per class for a no-route
 // system, matching `travelTicks`. Pure derived telemetry, exactly as `travelTicks` beside it.
+// (03-10-26, syndicate-orders.md §9 — trading to/from outposts, engine slice 1a): each guild row
+// gains `outpostFuelCost` — the same `fuelCost` entry (`fuelBurn`, `creditCost`, `travelTicks`,
+// `vehicleTravelTicks`, `fuelBurnByTier`, `creditCostByTier`) for each of the guild's OWN Outposts,
+// keyed by outpost id, sorted, measured from the Outpost's own hex to its nearest waystation. Both maps
+// are built by one `routeQuoteFor(hex, fuelPrice)`, so the shapes cannot drift, and a system's entry is
+// unchanged (its centre hex is the hex it was always measured from). A SIBLING key rather than more
+// `fuelCost` keys because the live client reads `fuelCost`'s keys as the held-system list. OMITTED for
+// a guild with no Outpost. ADDITIVE, NO schema bump; pure derived telemetry, no serialized byte, no
+// determinism hash — so the later SELL-from-node client renders the leg and computes nothing (§18).
 // (2.2 (b1), the guild-transport dispatch slice): an IN-TRANSIT vehicle row now carries its
 // in-flight `trip` in place of `location` — the ordered legs with RESOLVED endpoint coords + per-leg
 // departureTick/arrivalTick (so a later client can draw the polyline and interpolate position, §2.3),
@@ -721,6 +732,8 @@ function computeAttention(state) {
 //                              entitlement } | null,           // entitlement: this cycle's, echoed
 //                 fuelCost: { systemId: { fuelBurn, creditCost, travelTicks, // held systems, sorted
 //                             vehicleTravelTicks: { <class>: duration } } },   // per-craft self-delivery leg (2.2)
+//                 outpostFuelCost?: { outpostId: { <same entry shape> } },   // own Outposts, sorted; the leg
+//                                                                   //   from the Outpost's hex (§9); omit-when-empty
 //                 syndicateSale: { tick, thisTick, credited, goods } | null, // Slice 3a
 //                 licenceFee: { tick, thisTick, charged, ventures } | null,   // Slice 3b-iii
 //                 events: [ { id, tick, type, payload, readTick? } ],  // event log, live, newest-first
@@ -848,6 +861,60 @@ function deployRangeFor(state, guildId) {
   const anchors = heldSystemIds(state, guildId);
   if (anchors.length === 0) return null;
   return { outpost: { radius: OUTPOST_DEPLOY_RANGE, anchors } };
+}
+
+// routeQuoteFor(hex, fuelPrice) -> one `fuelCost` entry — what a Syndicate trade through the node on
+// `hex` costs in fuel and time: { fuelBurn, creditCost, travelTicks, vehicleTravelTicks,
+// fuelBurnByTier, creditCostByTier }. `hex` is the node's hex (docs/syndicate-orders.md §9): a held
+// system's centre hex (`systemHex`) for `fuelCost`, an Outpost's own `coords` for `outpostFuelCost`.
+// ONE builder for both, so an Outpost's entry is the same shape as a system's and cannot drift. For a
+// system it is exactly what this block computed inline before §9: `routeFuelBurnByTier(systemId)` and
+// `nearestWaystation(systemId)` are now these same hex forms, given the system's centre hex. A null
+// hex (or no reachable waystation) reads 0 everywhere — the honest no-route value.
+function routeQuoteFor(hex, fuelPrice) {
+  // PER-TIER BURNS (§5.1): three ints, one per Syndicate hauler tier, from the
+  // engine's own `routeFuelBurnByTier` — the client sizes its cart's space
+  // (`Σ qty × goodVolumes[good]`), maps it to a tier via the `haulerTiers` ladder
+  // below, and reads the matching burn here (§18: it computes no burn).
+  const fuelBurnByTier = routeFuelBurnByTierFromHex(hex);
+  const creditCostByTier = Object.fromEntries(
+    Object.entries(fuelBurnByTier).map(([tier, burn]) => [tier, fuelValue(burn, fuelPrice)]),
+  );
+  // `fuelBurn` / `creditCost` STAY the LIGHT-tier values — today's numbers — so a
+  // pre-cart reader (the deployed single-good popup) is unchanged; the byTier maps
+  // are purely additive. Light is the tier a small leg already flew, so this is the
+  // same figure `routeFuelCost` used to return for a cargo-independent burn.
+  const fuelBurn = fuelBurnByTier.light;
+  // Same route the burn uses; a system with no reachable waystation → 0
+  // travel ticks, matching the 0 `fuelBurn` reports for that no-route case.
+  const near = nearestWaystationToHex(hex);
+  const travelTicks = near ? arrivalTickFor(0, near.distance) : 0;
+  // PER-VEHICLE-CLASS delivery leg (2.2-foundation) — the vehicle mirror of `travelTicks`
+  // above. `travelTicks` times a SYNDICATE-HAULER delivery (ground assets, goods) at the
+  // flat CRAFT_SPEED; a bought guild transport is NOT carried — it flies ITSELF in at its
+  // OWN `speed[class]` ticks/hex (phase-1-tuning.md §"Guild transports"), so its delivery
+  // duration is `ceil(distance × speed[class])` — the SAME clock stepSyndicateBuilds
+  // (sim/tick.js) flies a vehicle in on, over the SAME `nearestWaystation` route the burn
+  // uses. Published as a per-class DURATION (never an absolute tick), keyed by class, so the
+  // TRADE-4 commission popup can quote a CRAFT's arrival before the buy and the In-Progress
+  // rows can time its delivery leg — without the browser knowing a distance or a craft speed
+  // (§18: the client computes no game number). A no-route system gets 0 for every class,
+  // the same honest no-route value `travelTicks`/`fuelBurn` report. Pure derived telemetry:
+  // no serialized byte, no determinism hash — a galaxy that buys nothing is byte-identical.
+  const vehicleTravelTicks = Object.fromEntries(
+    BUILDABLE_VEHICLE_KINDS.map((cls) => [
+      cls,
+      near ? Math.ceil(near.distance * vehicleSpec(cls).speed) : 0,
+    ]),
+  );
+  return {
+    fuelBurn,
+    creditCost: fuelValue(fuelBurn, fuelPrice),
+    travelTicks,
+    vehicleTravelTicks,
+    fuelBurnByTier,
+    creditCostByTier,
+  };
 }
 
 // snapshotRoute(route) -> a routed craft's `route` as the snapshot shows it (transport-model.md §11.1 /
@@ -1102,6 +1169,11 @@ function buildSnapshot(state) {
     // The legal deploy range (deploy slice 3), computed once so the omit-when-empty test and the field read
     // one value. null when the guild holds no system.
     const deployRange = deployRangeFor(state, g.id);
+    // This guild's own Outposts, sorted by id (invariant 9), for `outpostFuelCost`. Outposts are
+    // SHARED (state.outposts), so the owner is picked out here.
+    const ownOutposts = (state.outposts || [])
+      .filter((o) => o.ownerGuildId === g.id)
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     return {
       id: g.id,
       name: g.name,
@@ -1218,56 +1290,27 @@ function buildSnapshot(state) {
       // Pure derived telemetry: reads state as it stands, mutates nothing, enters
       // no serialized byte and no determinism hash. Nothing is charged — the
       // deduction is Slice 3.
+      //
+      // Each entry is built by `routeQuoteFor` (above buildSnapshot) from the system's
+      // centre hex — the per-entry detail lives there, shared with `outpostFuelCost`.
       fuelCost: Object.fromEntries(
-        heldSystemIds(state, g.id).map((systemId) => {
-          // PER-TIER BURNS (§5.1): three ints, one per Syndicate hauler tier, from the
-          // engine's own `routeFuelBurnByTier` — the client sizes its cart's space
-          // (`Σ qty × goodVolumes[good]`), maps it to a tier via the `haulerTiers` ladder
-          // below, and reads the matching burn here (§18: it computes no burn).
-          const fuelBurnByTier = routeFuelBurnByTier(systemId);
-          const creditCostByTier = Object.fromEntries(
-            Object.entries(fuelBurnByTier).map(([tier, burn]) => [tier, fuelValue(burn, fuelPrice)]),
-          );
-          // `fuelBurn` / `creditCost` STAY the LIGHT-tier values — today's numbers — so a
-          // pre-cart reader (the deployed single-good popup) is unchanged; the byTier maps
-          // are purely additive. Light is the tier a small leg already flew, so this is the
-          // same figure `routeFuelCost` used to return for a cargo-independent burn.
-          const fuelBurn = fuelBurnByTier.light;
-          // Same route the burn uses; a system with no reachable waystation → 0
-          // travel ticks, matching the 0 `fuelBurn` reports for that no-route case.
-          const near = nearestWaystation(systemId);
-          const travelTicks = near ? arrivalTickFor(0, near.distance) : 0;
-          // PER-VEHICLE-CLASS delivery leg (2.2-foundation) — the vehicle mirror of `travelTicks`
-          // above. `travelTicks` times a SYNDICATE-HAULER delivery (ground assets, goods) at the
-          // flat CRAFT_SPEED; a bought guild transport is NOT carried — it flies ITSELF in at its
-          // OWN `speed[class]` ticks/hex (phase-1-tuning.md §"Guild transports"), so its delivery
-          // duration is `ceil(distance × speed[class])` — the SAME clock stepSyndicateBuilds
-          // (sim/tick.js) flies a vehicle in on, over the SAME `nearestWaystation` route the burn
-          // uses. Published as a per-class DURATION (never an absolute tick), keyed by class, so the
-          // TRADE-4 commission popup can quote a CRAFT's arrival before the buy and the In-Progress
-          // rows can time its delivery leg — without the browser knowing a distance or a craft speed
-          // (§18: the client computes no game number). A no-route system gets 0 for every class,
-          // the same honest no-route value `travelTicks`/`fuelBurn` report. Pure derived telemetry:
-          // no serialized byte, no determinism hash — a galaxy that buys nothing is byte-identical.
-          const vehicleTravelTicks = Object.fromEntries(
-            BUILDABLE_VEHICLE_KINDS.map((cls) => [
-              cls,
-              near ? Math.ceil(near.distance * vehicleSpec(cls).speed) : 0,
-            ]),
-          );
-          return [
-            systemId,
-            {
-              fuelBurn,
-              creditCost: fuelValue(fuelBurn, fuelPrice),
-              travelTicks,
-              vehicleTravelTicks,
-              fuelBurnByTier,
-              creditCostByTier,
-            },
-          ];
-        }),
+        heldSystemIds(state, g.id).map((systemId) => [systemId, routeQuoteFor(systemHex(systemId), fuelPrice)]),
       ),
+      // outpostFuelCost: the SAME route quote for each of THIS guild's own Outposts, keyed by outpost id
+      // (docs/syndicate-orders.md §9 — "the per-node fuel/delivery telemetry is published for outposts
+      // too"). An Outpost's leg starts at its OWN hex, so one planted far from any waystation quotes a
+      // bigger burn than one beside it. Built by the same `routeQuoteFor`, so the entry shape cannot
+      // drift from a system's. The later SELL-from-node client reads it and computes nothing (§18).
+      //
+      // A SIBLING KEY, NOT MORE `fuelCost` KEYS, on purpose: the live client reads `fuelCost`'s KEYS as
+      // the list of systems the guild holds (`txHeldSystems`, the BUY "Deliver to" and SELL "Ship from"
+      // dropdowns), so an outpost id in there would show up as a system the engine then refuses.
+      // `fuelCost` therefore stays exactly the held systems. OMITTED when the guild owns no Outpost (the
+      // deployRange / savedRoutes discipline), so a galaxy with no Outposts snapshots exactly as before.
+      // Pure derived telemetry: no serialized byte, no determinism hash, no schema bump.
+      ...(ownOutposts.length
+        ? { outpostFuelCost: Object.fromEntries(ownOutposts.map((o) => [o.id, routeQuoteFor(o.coords, fuelPrice)])) }
+        : {}),
       influence: g.influence,
       // guildReputation: the guild's Reputation Points — Σ its ventures' `reputation`
       // (docs/points-and-reputation.md §2), ECHOED as stored, never re-summed here. The

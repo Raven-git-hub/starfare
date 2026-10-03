@@ -34,7 +34,7 @@
 // read Points and reputation and no geometry at all, which is a different rule from
 // the burn and the valuation below.
 
-const { nearestWaystation } = require('./transport.js');
+const { nearestWaystationToHex, systemHex } = require('./transport.js');
 const { tierOf } = require('./points.js');
 const { isDeployableGood } = require('./resources.js');
 
@@ -208,11 +208,25 @@ function rateForTier(tier) {
 // a no-route quote never depends on the load). An OVER-CAP space (> heavy hold) THROWS: it must
 // be reject-wholed by the caller before the fuel gate, so reaching here with one is a bug, and
 // returning a burn would price a trip no hauler can fly.
+//
+// ⤳ A NODE'S LEG (docs/syndicate-orders.md §9, 03-10-26): the burn is worked out from a HEX
+// in `routeFuelCostFromHex` below; this system form passes the system's centre hex. The
+// system answer is unchanged (same hex, same search, same rounding).
 function routeFuelCost(systemId, space) {
+  return routeFuelCostFromHex(systemHex(systemId), space);
+}
+
+// routeFuelCostFromHex(hex, space) -> { fuelBurn: int }
+//
+// `routeFuelCost` for any hex `{ q, r }` — a system's centre hex or a guild Outpost's own hex
+// (§9: "an outpost far from any waystation costs more fuel to trade through than one beside
+// it"). Everything said above holds: `space` is required, a no-route hex (or a null hex) burns
+// 0, an over-cap space throws. The SELL charges an Outpost origin through this.
+function routeFuelCostFromHex(hex, space) {
   if (space === undefined) {
     throw new Error('routeFuelCost: space is required — a charge site that omits the load would silently under-charge (transport-model.md §5.1)');
   }
-  const near = nearestWaystation(systemId);
+  const near = nearestWaystationToHex(hex);
   if (!near) return { fuelBurn: 0 };
   const tier = haulerTierForSpace(space);
   if (tier === null) {
@@ -229,7 +243,14 @@ function routeFuelCost(systemId, space) {
 // `routeFuelCost` reports. Every tier here is a plain `ceil(distance × rate)`, never a
 // re-derivation — the same geometry `routeFuelCost` uses.
 function routeFuelBurnByTier(systemId) {
-  const near = nearestWaystation(systemId);
+  return routeFuelBurnByTierFromHex(systemHex(systemId));
+}
+
+// routeFuelBurnByTierFromHex(hex) -> { light, medium, heavy } — the same three burns for any hex
+// (§9): what the snapshot publishes for a guild Outpost's own leg. A null or no-route hex reads 0
+// at every tier, exactly as a no-route system does.
+function routeFuelBurnByTierFromHex(hex) {
+  const near = nearestWaystationToHex(hex);
   const out = {};
   for (const t of HAULER_TIERS) {
     out[t.tier] = near ? Math.ceil(near.distance * t.rate) : 0;
@@ -310,7 +331,9 @@ module.exports = {
   haulerTierForSpace,
   rateForTier,
   routeFuelCost,
+  routeFuelCostFromHex,
   routeFuelBurnByTier,
+  routeFuelBurnByTierFromHex,
   fuelValue,
   burnFuel,
 };

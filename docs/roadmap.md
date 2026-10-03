@@ -19,7 +19,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
 | 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,855 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); the guild↔guild contest (a rival, territory, the market) is not built yet |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now sell to the Syndicate from one of its Outposts' stockpiles as well as from a system (engine; BUY to an Outpost and the client are next); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -657,7 +657,8 @@ boundary so the later hex-map swap doesn't touch it.
     park/queue/slot/turnaround, the finite stockpile enforced (an unload clamps to the room remaining),
     the destruction consequences (teardown destroys the stored goods and evicts docked craft) — all in the
     engine + operator CLI + snapshot. **Still deferred:** the load/unload CLIENT (the manual popup, the
-    OPERATIONS dock display) and selling to the Syndicate from the Outpost.
+    OPERATIONS dock display) and selling to the Syndicate from the Outpost. *(⤳ 03-10-26: selling from an
+    Outpost is now its own item, "2.2 — Trading to/from outposts" below; its engine half is BUILT, slice 1a.)*
   - **slice 3-client — the read-only Outpost Manager.** 🟢 *BUILT (21-09-26 — CLIENT + three derived
     snapshot fields; `client/game.html` `#outpost-overlay`, `sim/snapshot.js`).* Clicking a guild Outpost's
     **OPEN DETAILS** button (the `#sp-details` placeholder, now enabled + wired) opens a three-column popup
@@ -3156,6 +3157,54 @@ boundary so the later hex-map swap doesn't touch it.
     green**, both unchanged. Driven headless on a seated seed-42 server, with an engine-written `deploy_failed` and
     `venture_closed`: no notice row has an `.ic`, there is no emoji in the panel or either popup, the dot → title gap
     is the row's 12px, and the rows are 43px tall (51px before, the icon box's height).
+- **2.2 — Trading to/from outposts (`docs/syndicate-orders.md` §9, RULED 03-10-26).** The Syndicate trades
+  with any node the guild holds: a held system or one of its own Outposts. SELL is started from the node
+  (no origin picker). BUY goes to the node nearest a waystation by default, can be sent elsewhere, and
+  is capped by an Outpost's free space. The fuel leg runs from the node's hex. Built as a ladder: **1a** SELL
+  from a node (engine + operator CLI) → **1b** BUY to an Outpost (engine: the shipment to an Outpost, the
+  arrival deposit, the free-space gate that reserves against in-flight shipments) → the client (the
+  Outpost Manager's SELL, the system manifest's SELL, removing the origin dropdown; BUY's default-nearest
+  target).
+  - **slice 1a — SELL from a node (ENGINE + operator CLI, NO client).** 🟢 *BUILT (03-10-26).*
+    **Changed:** `sellToSyndicate` (`sim/actions.js`) takes exactly one of `originSystemId` (unchanged, still
+    what the live client sends) or the new **`originOutpostId`**. One reader, `sellOrigin`, gives validate and
+    apply the same origin: its id, its hex, its holding of a good, and how goods leave it. An Outpost origin
+    is gated on ownership (`ownerGuildId`, so a torn-down or rival Outpost is refused). Its stock gate reads
+    that Outpost's own `stockpile`, never the system pool, and names every short line. Its fuel leg runs from
+    the Outpost's hex. The sale drains the stockpile with omit-when-empty (a good sold to 0 loses its key,
+    an emptied stockpile loses `stockpile`), credits Σ `round(qty × quotedPrice)` from the ledger, burns one
+    leg, and ships nothing. Galactic supply already counts Outpost stockpiles, so the goods are sunk once.
+    The capacity gate and the quote-lock are unchanged.
+    **The leg, from a hex:** `nearestWaystationToHex` + `systemHex` (`sim/transport.js`) and
+    `routeFuelCostFromHex` / `routeFuelBurnByTierFromHex` (`sim/fuel.js`). The system forms now just look up
+    the system's centre hex and delegate. BUY, assets and `vehicleDeliveryFuelBurn` still call the system
+    forms.
+    **Snapshot:** each guild row gains `outpostFuelCost`, the `fuelCost` entry shape for each of its own
+    Outposts, keyed by outpost id. `routeQuoteFor(hex, fuelPrice)` builds both maps. It is omitted for a
+    guild with no Outpost, and has no stored byte, no hash, no schema bump. It is a sibling key, not more
+    `fuelCost` keys, because the live client reads `fuelCost`'s keys as its held-system list (calls below).
+    **Reused:** the held-order validate/apply, `getStock` / `addStock` (system branch),
+    `computeGalacticSupply`, `burnFuel`, the dock step's omit-when-empty discipline. **No operator change:**
+    `POST /action` takes `{ type: 'sellToSyndicate', guildId, originOutpostId }` as is; the drive stocked the
+    Outpost through the existing dock (a light transport's `transfer-cargo --unload`).
+    **A NO-OP for every existing golden:** the system leg matches the pre-§9 search for all 1,500 seed systems
+    at every tier boundary. That was checked by a test, and by a before/after dump of every system's
+    waystation, distance and burns, which was byte-identical. A seeded three-guild galaxy's snapshot and state
+    hash are byte-identical too. No golden-bearing test file was touched, and no golden sells from an Outpost.
+    `client/` is untouched. Sim **1,918 → 1,931 green** (+13, `sim/tests/sell-from-outpost.test.js`), tools
+    **75 green**. Each new test was checked by breaking the code it guards (7 mutations, each caught).
+    **Driven headless** on a seated seed-42 server (home `sys_0006` at `104,55`). `spawn-outpost --hex
+    106,12`. A light transport carried 3,000 titanium + 40 battery cells there and unloaded through the dock.
+    The snapshot quoted the Outpost's leg at light 8 / medium 9 / heavy 11, against the home system's
+    4 / 5 / 6. `addOrderLine` titanium 2,000 + battery cells 40, then `sellToSyndicate { originOutpostId:
+    outpost_seat_demo_01 }`: credits +3,337 (`round(2000 × 1.46874…)` + `round(40 × 10)`), fuel −8, the
+    stockpile went `{titanium 3000, battery_cells 40}` → `{titanium 1000}`, shipments 0 → 0, the order cleared,
+    and supply dropped by exactly the sold amounts. Refused whole, the draft kept: a short line ("in outpost
+    … titanium (need 1500, hold 1000)"), an Outpost the guild does not own, and both origins at once. A
+    system-origin refusal reads as before. After a second Outpost sale and a `SIGKILL`, the server replayed the
+    two journalled actions to a canonically identical snapshot.
+    **Deferred (not invented):** BUY to an Outpost (1b); the client. **Calls on the decision checklist**
+    ("Trading to/from outposts slice 1a — three calls").
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
@@ -3355,6 +3404,22 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   stop, but here the quote first shows at Finalise, in the Dispatch popup, as for an ordinary route. It opens at the
   deploy map's 4× (`DEPLOY_MAP_ZOOM`, a view zoom), its banner reads "Returning Kit · Heavy Transport", and its action
   reads "unload · kit". Confirm, or rule a map quote or other copy.
+- **Trading to/from outposts slice 1a — three calls (03-10-26, 2.2, `syndicate-orders.md` §9 / §9.2 AS-BUILT)**,
+  built one way and flagged rather than ruled. **(1) The Outpost legs are a sibling key, `outpostFuelCost`.**
+  The build prompt asked for them as more keys in `fuelCost`, beside the system ids. But the live client reads
+  `fuelCost`'s keys as the list of held systems (`txHeldSystems`, `client/game.html`), which fills the BUY
+  "Deliver to" and SELL "Ship from" dropdowns. An Outpost id there would appear as a target the engine then
+  refuses. So `fuelCost` stays exactly the held systems, and the Outposts sit beside it, built by the same
+  helper with the same entry shape. Confirm. Or rule that the client slice stops reading the held systems
+  from `fuelCost`'s keys, and the engine then merges the two into one map keyed by node id (§9.1's "one
+  ordering"). **(2) The origin shape: a separate `originOutpostId`.** A sale names exactly one of
+  `originSystemId` or `originOutpostId`, rather than a unified `origin: { kind, id }`. This kept the system
+  path's action and refusals unchanged. 1b would mirror it with a `destinationOutpostId` on the BUY. Confirm, or
+  rule the unified ref for both before 1b. **(3) No tick stamp on the Outpost.** §15.2 says every mutation
+  records its tick, but an Outpost has only `createdAtTick`. The dock step does not stamp the Outpost whose
+  stockpile it changes, and the system sale does not stamp the pool. So the Outpost sale follows its siblings
+  and adds no field. Confirm, or rule an `Outpost.updatedAtTick`. That is a stored field: it would enter saves
+  and the determinism hash, and the dock step would stamp it too.
 - **Split the oversized engine files — WHEN? (02-10-26, flagged by the 2.2 deploy pipeline engine-integrity tidy.)**
   `sim/actions.js` (5,258 lines) and `sim/server.js` (1,530) are far past a readable size for a codebase the human
   reads line by line; `sim/invariants.js` (2,386), `sim/snapshot.js` (2,120) and `sim/tick.js` (1,771) are also large.
@@ -3369,7 +3434,9 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   lines now, +100 net — it retired the single-leg commit as it added the popup's post-finalise view.)* *(⤳ 02-10-26,
   asset-initiated slice 3a: `sim/actions.js` 5,258 → 5,327 lines and `sim/invariants.js` 2,386 → 2,415, mostly
   comments beside the new unload gate, arrival branch and invariant.)* *(⤳ 02-10-26, asset-initiated client slice 3b:
-  `client/game.html` 13,343 → 13,489 lines, +146 net, mostly comments.)*
+  `client/game.html` 13,343 → 13,489 lines, +146 net, mostly comments.)* *(⤳ 03-10-26, trading to/from outposts slice
+  1a: `sim/actions.js` 5,327 → 5,408 lines and `sim/snapshot.js` 2,120 → 2,163, mostly comments. The snapshot's
+  per-system `fuelCost` body moved, unchanged, into `routeQuoteFor`.)*
 
 - **Asset-presence vs. production** — *surfaced 16-09-26 by the operator adjust levers
   (`docs/operator-adjust.md` §3.5 AS-BUILT).* Production is currently **asset-blind** — a venture
@@ -4010,7 +4077,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
     The bills were built exactly as tabled; which text is current is for the human.
 
 - **Deferred, flagged in docs (revisit with their slice, don't lose):** the SELL origin-picker helper
-  (offer only systems that hold every line — `syndicate-orders.md` §7, a client refinement); a
+  (offer only systems that hold every line — `syndicate-orders.md` §7, a client refinement; *⤳ ruled moot by
+  §9.2, 03-10-26: SELL starts from the node, so the picker goes, with the SELL-from-node client slice*); a
   contraband-fuel operator lever (`operator-adjust.md`); and Phase-3 per-role auth to fence the
   operator actions off from players.
 

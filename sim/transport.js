@@ -187,9 +187,37 @@ function hexStepToward(from, to, n) {
 // Null when the system does not exist, carries no coords, or there is no
 // coordinated outpost to sail from — the caller refuses the purchase rather than
 // inventing an origin.
+//
+// ⤳ A NODE'S LEG (docs/syndicate-orders.md §9, 03-10-26): the leg is really
+// "a hex → its nearest waystation", and a guild Outpost has a hex too. So the
+// search now lives in `nearestWaystationToHex` below, and this system form just
+// finds the system's centre hex and hands it over. Same search, same hex, same
+// answer as before — every system caller is unchanged.
 function nearestWaystation(destinationSystemId) {
-  const system = getSystem(destinationSystemId);
+  return nearestWaystationToHex(systemHex(destinationSystemId));
+}
+
+// systemHex(systemId) -> { q, r } | null — a system's centre hex, from the seed.
+// Null when the system does not exist or carries no coords (the no-route case
+// above). A fresh object, so a caller can never write into the seed index.
+function systemHex(systemId) {
+  const system = getSystem(systemId);
   if (!system || !system.coords) return null;
+  return { q: system.coords.q, r: system.coords.r };
+}
+
+// nearestWaystationToHex(hex) -> { outpost, distance } | null
+//
+// The nearest Syndicate waystation to any hex `{ q, r }` — a system's centre
+// hex, or a guild Outpost's own hex (§9: "compute it from the node's coords").
+// Still pure and seed-only: the caller looks the hex up (an Outpost's `coords`
+// live in state) and passes it in, so no live state enters this file.
+//
+// `outpost` in the result is the seed's WAYSTATION (the seed calls them
+// outposts), never a guild Outpost. Null for a missing hex, or when no
+// waystation carries coords.
+function nearestWaystationToHex(hex) {
+  if (!hex) return null;
 
   let best = null;
   // getOutposts() is sorted by outpost id, and the comparison below is STRICT,
@@ -197,7 +225,7 @@ function nearestWaystation(destinationSystemId) {
   // tiebreak (invariant 9), not whichever the iteration happened to reach.
   for (const outpost of getOutposts()) {
     if (!outpost.coords) continue;
-    const distance = hexDistance(outpost.coords, system.coords);
+    const distance = hexDistance(outpost.coords, hex);
     if (best === null || distance < best.distance) best = { outpost, distance };
   }
   return best;
@@ -214,5 +242,5 @@ function arrivalTickFor(currentTick, distance) {
 
 module.exports = {
   CRAFT_SPEED, TOLL_BUFF, hexDistance, cubeRound, legHexAtTick, hexStepToward, legTicks, legFuelBurn,
-  nearestWaystation, arrivalTickFor,
+  nearestWaystation, nearestWaystationToHex, systemHex, arrivalTickFor,
 };

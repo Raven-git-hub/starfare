@@ -47,9 +47,10 @@ const { guildHolds, heldSystemIds } = require('./claims.js');
 const { recordEvent, DEPLOY_FAILED } = require('./events.js');
 const {
   nearestWaystation, arrivalTickFor, hexDistance, legHexAtTick, hexStepToward, legTicks, legFuelBurn,
+  systemHex,
 } = require('./transport.js');
 const {
-  GUILD_STARTING_FUEL, routeFuelCost, burnFuel, fuelValue,
+  GUILD_STARTING_FUEL, routeFuelCost, routeFuelCostFromHex, burnFuel, fuelValue,
   volumeOf, haulerTierForSpace, HEAVY_HOLD, ASSET_CARGO_VOLUME,
 } = require('./fuel.js');
 const {
@@ -713,6 +714,8 @@ function quoteDispatch(state, { guildId, vehicleId, waypoints }) {
 //                         posted price (design.md §5 "SELL GOES LIVE", 29-08-26).
 //                         The FIRST action that mutates a stockpile, and so the
 //                         first that has to refresh the galactic-supply cache.
+//                         Ships from a held system OR one of the guild's own
+//                         Outposts (docs/syndicate-orders.md §9.2, 03-10-26).
 //   - buyFromSyndicate  — the mirror (design.md §6, "Syndicate Delivery — the BUY
 //                         side", 29-08-26): the cash is debited NOW and the goods
 //                         are SCHEDULED, arriving some ticks later. The first
@@ -1377,11 +1380,19 @@ function createSetWindowNAction({ windowN }) {
 // guild's `sellOrder` (many goods) from that one origin on one space-tiered leg. This is the only
 // path — the legacy `good` + `allocations` multi-system form was RETIRED with the client slice (§8),
 // as the deployed client sends only this shape.
-function createSellToSyndicateAction({ guildId, originSystemId, issueTick }) {
+//
+// ⤳ THE ORIGIN IS A NODE (§9, 03-10-26): a held system OR one of the guild's own Outposts. The
+// origin is given as EXACTLY ONE of `originSystemId` (sell from the guild's pool in that system —
+// the shape the live client sends) or `originOutpostId` (sell from that Outpost's own stockpile).
+// Only the field given goes into the action, so a system sell's action is byte-identical to before.
+function createSellToSyndicateAction({ guildId, originSystemId, originOutpostId, issueTick }) {
   if (guildId === undefined) throw new Error('createSellToSyndicateAction: guildId is required');
-  if (originSystemId === undefined) throw new Error('createSellToSyndicateAction: originSystemId is required');
+  if ((originSystemId === undefined) === (originOutpostId === undefined)) {
+    throw new Error('createSellToSyndicateAction: exactly one of originSystemId or originOutpostId is required');
+  }
   return {
-    type: 'sellToSyndicate', guildId, originSystemId,
+    type: 'sellToSyndicate', guildId,
+    ...(originOutpostId === undefined ? { originSystemId } : { originOutpostId }),
     ...(issueTick === undefined ? {} : { issueTick }),
   };
 }
@@ -1512,6 +1523,48 @@ function compareGood(a, b) {
 function buyFinalizeCart(state, action) {
   const guild = findGuild(state, action.guildId);
   return (guild && guild.buyOrder && guild.buyOrder.lines) || [];
+}
+
+// sellOrigin(state, guild, action) -> the NODE a SELL ships from (docs/syndicate-orders.md §9):
+//   { id, label, hex, held(good), remove(good, qty) }
+// A node is a held SYSTEM (`originSystemId`: the guild's pool in that system) or one of the guild's
+// own OUTPOSTS (`originOutpostId`: that Outpost's own `stockpile`). It is the ONE place the two kinds
+// differ, read by BOTH validate and apply, so the pile the stock gate checks is the pile apply
+// drains, and the hex the fuel gate prices is the hex apply burns for.
+//   id     — the origin's id, as named in a refusal;
+//   label  — "system \"…\"" / "outpost \"…\"", for the stock-gate refusal (a system's reads exactly
+//            as it always did);
+//   hex    — where the leg to the nearest waystation starts: a system's centre hex, an Outpost's own;
+//   held   — how much of a good the origin holds;
+//   remove — take sold goods out of the origin (apply only).
+// The Outpost branch trusts that the Outpost exists and is the guild's: validate's node-held gate
+// proves both before anything here is read.
+function sellOrigin(state, guild, action) {
+  if (action.originOutpostId === undefined) {
+    const systemId = action.originSystemId;
+    return {
+      id: systemId,
+      label: `system ${JSON.stringify(systemId)}`,
+      hex: systemHex(systemId),
+      held: (good) => getStock(guild, systemId, good),
+      remove: (good, qty) => { addStock(guild, systemId, good, -qty); },
+    };
+  }
+  const outpost = state.outposts.find((o) => o.id === action.originOutpostId);
+  return {
+    id: outpost.id,
+    label: `outpost ${JSON.stringify(outpost.id)}`,
+    hex: outpost.coords,
+    held: (good) => (outpost.stockpile && outpost.stockpile[good]) || 0,
+    // Omit-when-empty (the stockpile discipline, state.js): a good sold down to 0 loses its key, and
+    // a stockpile sold empty loses the `stockpile` key, so an emptied Outpost is byte-identical to
+    // one that never held anything — exactly what the dock step does when it empties one.
+    remove: (good, qty) => {
+      outpost.stockpile[good] -= qty;
+      if (outpost.stockpile[good] === 0) delete outpost.stockpile[good];
+      if (Object.keys(outpost.stockpile).length === 0) delete outpost.stockpile;
+    },
+  };
 }
 
 // A Gate-1 `order` is a PERMUTATION of exactly these three fork names (§15.4):
@@ -2908,9 +2961,28 @@ function validateAction(state, action) {
     // HELD single-origin order (docs/syndicate-orders.md §5): `originSystemId` + the guild's own
     // `sellOrder.lines` — many goods, ONE origin, ONE space-tiered leg. (The legacy `good` +
     // `allocations` multi-system path was RETIRED with the client slice, §8.)
-    if (typeof action.originSystemId !== 'string' || action.originSystemId.length === 0) {
+    //
+    // ⤳ THE ORIGIN IS A NODE (§9): EXACTLY ONE of `originSystemId` or `originOutpostId`. With no
+    // `originOutpostId` this is the system check it always was, word for word.
+    if (action.originOutpostId !== undefined) {
+      if (action.originSystemId !== undefined) {
+        return { valid: false, reason: 'a sell order ships from ONE origin — give originSystemId or originOutpostId, not both (docs/syndicate-orders.md §9)' };
+      }
+      if (typeof action.originOutpostId !== 'string' || action.originOutpostId.length === 0) {
+        return { valid: false, reason: 'originOutpostId must be a non-empty string' };
+      }
+      // THE NODE-HELD GATE (§9 / §9.4): an Outpost origin must exist and be THIS guild's — the
+      // Outpost's version of "the origin is yours". Outposts are SHARED (state.outposts), so the
+      // owner is checked explicitly, as removeOutpost does. One torn down (or never this guild's)
+      // between the popup opening and the confirm lands here.
+      const outpost = (state.outposts || []).find((o) => o.id === action.originOutpostId);
+      if (!outpost || outpost.ownerGuildId !== guild.id) {
+        return { valid: false, reason: `guild ${JSON.stringify(guild.id)} owns no outpost ${JSON.stringify(action.originOutpostId)} to sell from (docs/syndicate-orders.md §9.4)` };
+      }
+    } else if (typeof action.originSystemId !== 'string' || action.originSystemId.length === 0) {
       return { valid: false, reason: 'originSystemId must be a non-empty string' };
     }
+    const origin = sellOrigin(state, guild, action);
     const lines = (guild.sellOrder && guild.sellOrder.lines) || [];
     // An EMPTY (or absent) held order cannot be finalised (§5).
     if (lines.length === 0) {
@@ -2931,13 +3003,15 @@ function validateAction(state, action) {
       if (typeof line.qty !== 'number' || !Number.isInteger(line.qty) || line.qty <= 0) {
         return { valid: false, reason: `qty for ${JSON.stringify(line.good)} must be a positive integer (§15.2)` };
       }
-      const held = getStock(guild, action.originSystemId, line.good);
+      // The origin's own pile: the system pool, or the Outpost's stockpile (§9.2 — never the
+      // system pool for an Outpost sale).
+      const held = origin.held(line.good);
       if (held < line.qty) {
         short.push(`${line.good} (need ${line.qty}, hold ${held})`);
       }
     }
     if (short.length > 0) {
-      return { valid: false, reason: `guild ${guild.id} does not hold enough stock in system ${JSON.stringify(action.originSystemId)} for this sell order: ${short.join('; ')} (docs/syndicate-orders.md §7)` };
+      return { valid: false, reason: `guild ${guild.id} does not hold enough stock in ${origin.label} for this sell order: ${short.join('; ')} (docs/syndicate-orders.md §7)` };
     }
     // THE CAPACITY GATE (§5.1 / §8.0) — the WHOLE order flies from the one origin on ONE hauler,
     // so a load whose total cargo space (`Σ qty × volumeOf(good)`) exceeds the heavy hold is
@@ -2951,10 +3025,12 @@ function validateAction(state, action) {
     // `routeFuelCost` the BUY side uses and the snapshot quotes. RUN LATE, on purpose: a sale
     // refused for stock or capacity says so rather than blaming fuel. Over-cap space cannot reach
     // here (the capacity gate above reject-wholed it); an unreachable origin contributes 0 burn.
-    const { fuelBurn } = routeFuelCost(action.originSystemId, totalSpace);
+    // The leg starts at the ORIGIN'S HEX (§9): a system's centre hex — exactly what
+    // `routeFuelCost(systemId)` measures — or an Outpost's own hex.
+    const { fuelBurn } = routeFuelCostFromHex(origin.hex, totalSpace);
     const availableFuel = guild.fuelHoard + (guild.deuteriumFuel || 0);
     if (availableFuel < fuelBurn) {
-      return { valid: false, reason: `guild ${guild.id} holds ${availableFuel} fuel (legal + contraband), cannot burn ${fuelBurn} shipping this sell order from ${JSON.stringify(action.originSystemId)} — insufficient fuel: need ${fuelBurn}, have ${availableFuel} (fuel-supply-and-allocation.md §8)` };
+      return { valid: false, reason: `guild ${guild.id} holds ${availableFuel} fuel (legal + contraband), cannot burn ${fuelBurn} shipping this sell order from ${JSON.stringify(origin.id)} — insufficient fuel: need ${fuelBurn}, have ${availableFuel} (fuel-supply-and-allocation.md §8)` };
     }
     // THE QUOTE-LOCK GATE (§8.1) — LAST, exactly as on the BUY: refuse an EXPIRED issue tick
     // (past the TTL, or a cycle boundary crossed since issue). The expiry rules are
@@ -4480,6 +4556,9 @@ function applyAction(state, action) {
     // with the client slice, §8.)
     const guild = findGuild(next, action.guildId);
     const issueTick = action.issueTick === undefined ? next.tick : action.issueTick;
+    // The origin NODE (§9) — the same one validate gated, read from `next`, so the goods leave the
+    // copy being built: a held system's pool, or the guild's own Outpost's stockpile.
+    const origin = sellOrigin(next, guild, action);
     // Read the held lines, sorted by good so the mutation sequence and the Σ are fixed (invariant
     // 9). Each good is priced PER LINE (#43's `round(qty × price)`) — a multi-good order at
     // several prices.
@@ -4496,7 +4575,7 @@ function applyAction(state, action) {
       }
       // Remove the stock from the one origin; the goods LEAVE THE ECONOMY (absorbed into the
       // Syndicate's inexhaustible stock, §5) — deposited nowhere.
-      addStock(guild, action.originSystemId, line.good, -line.qty);
+      origin.remove(line.good, line.qty);
       totalProceeds += Math.round(line.qty * price);
     }
     // Credit-conservation-clean, the mirror of paySyndicateFee: the ledger FUNDS the payment, so
@@ -4505,12 +4584,12 @@ function applyAction(state, action) {
     next.syndicate.ledger -= totalProceeds;
 
     // THE BURN — ONE leg (origin → its nearest waystation) at the total-space tier, the SAME
-    // `routeFuelCost` validate checked. Fuel LEAVES the galaxy (burned, no counterparty), so
-    // invariant 1 balances only because `totalConsumed` rises to match the hoard falling. One
-    // deduction across both stores (legal-first `burnFuel`), so one consumption event. A 0 is the
-    // no-route case (unreachable origin), a no-op.
+    // `routeFuelCostFromHex(origin.hex)` validate checked. Fuel LEAVES the galaxy (burned, no
+    // counterparty), so invariant 1 balances only because `totalConsumed` rises to match the hoard
+    // falling. One deduction across both stores (legal-first `burnFuel`), so one consumption event.
+    // A 0 is the no-route case (unreachable origin), a no-op.
     const totalSpace = lines.reduce((sum, line) => sum + (line.qty * volumeOf(line.good)), 0);
-    const { fuelBurn } = routeFuelCost(action.originSystemId, totalSpace);
+    const { fuelBurn } = routeFuelCostFromHex(origin.hex, totalSpace);
     burnFuel(guild, fuelBurn);
     next.audit.totalConsumed += fuelBurn;
 
@@ -4521,7 +4600,9 @@ function applyAction(state, action) {
     // THE BETWEEN-TICK SEAM: a stockpile drained and fuel burned, and `POST /action` asserts every
     // invariant with no tick between, so refresh the derived cache through the SAME one selector the
     // tick uses — not a second derivation. Credits moved guild↔ledger without changing the total, so
-    // `expectedCreditTotal` is untouched.
+    // `expectedCreditTotal` is untouched. An Outpost sale sinks supply the same way: Outpost
+    // stockpiles are already summed into galactic supply (sim/supply.js), so the re-derive sees the
+    // smaller stockpile — counted once, never skipped.
     next.galacticSupply = computeGalacticSupply(next);
     return next;
   }

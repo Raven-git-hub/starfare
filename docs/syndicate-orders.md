@@ -223,6 +223,25 @@ through than one beside it — the emergent cost of where it was planted. The pe
 (`fuelBurnByTier` / `creditCostByTier` / `travelTicks`) is published for outposts too, the same additive,
 hash-free way it already is for systems (§4) — no determinism byte, no schema bump.
 
+> **AS-BUILT (engine slice 1a, 03-10-26) — the fuel leg from a node's hex, and its telemetry.**
+> - **The leg.** The waystation search now takes a hex: `nearestWaystationToHex(hex)` (`sim/transport.js`), with
+>   `routeFuelCostFromHex(hex, space)` and `routeFuelBurnByTierFromHex(hex)` (`sim/fuel.js`) beside it. The system
+>   forms (`nearestWaystation(systemId)`, `routeFuelCost`, `routeFuelBurnByTier`) look up the system's centre hex
+>   (`systemHex`) and hand it to the hex form, so a system's leg is unchanged. A test checks this against the old
+>   search for every seed system at every tier boundary, and the BUY and asset paths still call the system forms.
+>   `vehicleDeliveryFuelBurn` (a bought craft flying itself in, BUY-side) is not touched.
+> - **The telemetry.** Each guild row gains **`outpostFuelCost`**: one entry per Outpost the guild owns, keyed by
+>   outpost id and sorted. The entry has the same shape as a system's (`fuelBurn`, `creditCost`, `travelTicks`,
+>   `vehicleTravelTicks`, `fuelBurnByTier`, `creditCostByTier`) and is measured from the Outpost's own hex. One
+>   helper, `routeQuoteFor(hex, fuelPrice)` (`sim/snapshot.js`), builds both maps, so the shapes cannot drift. It
+>   is derived telemetry: no stored byte, no determinism hash, no schema bump, and the key is omitted for a guild
+>   with no Outpost.
+> - **Why a sibling key, not more `fuelCost` keys.** The live client reads `fuelCost`'s keys as the list of
+>   systems the guild holds (`txHeldSystems`, which fills the BUY "Deliver to" and SELL "Ship from" dropdowns). An
+>   Outpost id there would show up as a target the engine then refuses. So `fuelCost` stays exactly the held
+>   systems, and a test pins that. Whether to merge the two maps (one map keyed by node id, the "one ordering" of
+>   §9.1) once the client stops reading `fuelCost`'s keys that way is on the roadmap decision checklist.
+
 ### 9.1 BUY — the Syndicate delivers to the nearest node by default, overridable
 
 The Syndicate's default drop is the guild's **node nearest a waystation** (the cheapest delivery leg), and
@@ -246,6 +265,35 @@ anything.
   §8.1 quote-lock.
 
 ### 9.2 SELL — initiated from the node, no origin picker
+
+> **AS-BUILT (engine slice 1a, 03-10-26) — the engine SELL half.** `sellToSyndicate` (`sim/actions.js`) now
+> finalises from a held system or from one of the guild's own Outposts. The client is a later slice, so the
+> Outpost Manager's SELL and the removal of the origin dropdown are not built yet.
+> - **The origin shape.** The action takes **exactly one** of `originSystemId` (unchanged, and still what the live
+>   client sends) or **`originOutpostId`** (new). Both, or an empty id, is refused. Neither gets the old
+>   `originSystemId must be a non-empty string`. `createSellToSyndicateAction` puts only the field given into the
+>   action, so a system sale's action is exactly what it was. A separate field was chosen over a unified
+>   `origin: { kind, id }` ref so the system path did not change at all: the same action shape, the same refusal
+>   wording, and nothing to migrate.
+> - **One origin reader.** `sellOrigin(state, guild, action)` is the one place a system and an Outpost differ: the
+>   origin's id, its label in a refusal, its hex, how much of a good it holds, and how sold goods leave it.
+>   Validate and apply both read it, so the pile the stock gate checks is the pile apply drains.
+> - **The gates, for an Outpost origin.** *Node held:* the Outpost exists and its `ownerGuildId` is this guild,
+>   else `guild "…" owns no outpost "…" to sell from`. This also covers an Outpost torn down between the popup
+>   opening and the confirm (§9.4). *Stock:* each line is checked against **that Outpost's own `stockpile`**,
+>   never the system pool, and the refusal names every short line (§7's shape, reading `in outpost "…"`).
+>   *Fuel:* the leg runs from the Outpost's hex to its nearest waystation (§9 AS-BUILT above). The hauler-hold
+>   capacity gate and the §8.1 quote-lock work on the whole order, whatever the origin, and are unchanged.
+> - **Apply.** Each sold good leaves `outpost.stockpile`: a good sold to 0 loses its key, and a stockpile sold
+>   empty loses the `stockpile` key, as the dock step does. Σ `round(qty × quotedPrice)` per line is credited
+>   from the ledger. One leg is burned. The order clears. Settlement is immediate, with no shipment. Galactic
+>   supply already counts Outpost stockpiles (`sim/supply.js`), and the sale re-derives the cache, so the goods
+>   are counted once and sunk once.
+> - **No tick stamp on the Outpost.** An Outpost carries no `updatedAtTick` (only `createdAtTick`), and neither
+>   the dock step nor the system sale stamps the pile it changes. The sale follows its siblings (§15.2) rather than
+>   adding a field. This is flagged on the decision checklist.
+> - Tests: `sim/tests/sell-from-outpost.test.js` (13). Operator path: the existing `POST /action` with
+>   `{ type: 'sellToSyndicate', guildId, originOutpostId }`; no new endpoint or CLI verb.
 
 SELL is **initiated contextually from the node** whose goods are being sold — a held system's manifest or an
 outpost's manager — and the origin **is** that node. The origin dropdown (§5/§6) is **removed**: there is no
