@@ -201,3 +201,84 @@ Finally the **cleanup slice** — the transitional legacy paths removed (DONE, s
 > The held-order behaviour is byte-for-byte unchanged; the full suite is green and every
 > determinism/persist golden is byte-identical. NOTHING REMAINING for the order model except the
 > optional origin-picker refinement flagged in §6/§7.
+
+## 9. Trading from outposts — the node-target model (RULED 03-10-26)
+
+Outposts are deployable (roadmap 2.2, the deploy pipeline) and carry a real, capacity-bounded stockpile
+(`stockpile`; cap `OUTPOST_CAPACITY = 30 × HEAVY_HOLD`; `used = usedSpace(stockpile)`). This section extends
+the buy/sell order model (§1–§7) so the Syndicate trades **to and from an outpost**, not only a held system.
+The order itself (§2–§4) is unchanged — goods + qtys, engine state; what changes is the finalise TARGET and
+the fuel leg.
+
+**A node is a system OR an outpost.** Both BUY and SELL finalise against a **node the guild holds** — a held
+system (the claim) or one of the guild's own outposts (a single controlled hex). Everywhere §5 says
+"destination system" / "origin system", read **destination node / origin node**. The gate that the target is
+the guild's is the node check: a system by its claim, an outpost by `ownerGuildId`.
+
+**The fuel leg generalises from a system to a node's hex.** Today `vehicleDeliveryFuelBurn` and the snapshot
+`fuelCost` block key off a *system* and its `nearestWaystation(systemId)`. The leg is really
+*node-hex → nearest waystation* (SELL) / *waystation → node-hex* (BUY). Compute it from the node's **coords**
+(a system's centre hex, an outpost's hex), so an outpost far from any waystation costs more fuel to trade
+through than one beside it — the emergent cost of where it was planted. The per-node fuel/delivery telemetry
+(`fuelBurnByTier` / `creditCostByTier` / `travelTicks`) is published for outposts too, the same additive,
+hash-free way it already is for systems (§4) — no determinism byte, no schema bump.
+
+### 9.1 BUY — the Syndicate delivers to the nearest node by default, overridable
+
+The Syndicate's default drop is the guild's **node nearest a waystation** (the cheapest delivery leg), and
+the player **may override** to any held node, paying that node's larger leg. Narratively the Syndicate offers
+its own time-efficient drop; carrying goods deeper is the guild's choice, paid in fuel. Pressure, not
+prohibition: the default and the fuel price steer toward good trade-route management without forbidding
+anything.
+
+- **Default target** = the held node with the shortest *node → nearest-waystation* leg, read from the
+  engine-published per-node legs (the client selects the minimum; it computes no game number, §18 — if strict
+  §18 wants it, the snapshot may flag the default node rather than let the client pick). **Tie-break:** the
+  lower node id, the stable-ordering convention (invariant 9), systems and outposts in one ordering.
+- **Override** = any node the guild holds; the ledger's route fuel re-reads that node's leg.
+- **Capacity gate (NEW, outpost-only).** A system stockpile is uncapped; an **outpost** is bounded by
+  `OUTPOST_CAPACITY`. A BUY whose order exceeds the destination outpost's **free space**
+  (`OUTPOST_CAPACITY − used`) **reject-wholes**, naming the shortfall — the same reject-whole shape as the
+  hauler-hold cap (§5) and the SELL stock gate (§7): the draft is untouched, so the player trims, re-targets a
+  roomier node, or clears the outpost first. (A fresh outpost has 30× the heavy hold free, so this binds only
+  on an already-stocked outpost — real, but rare.)
+- The existing BUY gates are unchanged: hauler-hold capacity, credits, fuel hoard, destination held, the
+  §8.1 quote-lock.
+
+### 9.2 SELL — initiated from the node, no origin picker
+
+SELL is **initiated contextually from the node** whose goods are being sold — a held system's manifest or an
+outpost's manager — and the origin **is** that node. The origin dropdown (§5/§6) is **removed**: there is no
+pick, because the player is already looking at the pile. The order ships that node's stockpile → its nearest
+waystation, immediate settlement (§5), fuel = that leg.
+
+- **The Outpost Manager gains a SELL action** — it is read-only today; this is its one write affordance: sell
+  from the outpost's stockpile, exactly as a system manifest sells from a system's.
+- **An empty node offers no SELL** (nothing to ship — the affordance is absent/disabled).
+- The SELL stock gate (§7) still applies, now almost always satisfied by construction (you sell from a pile
+  you can see); it remains as the engine's backstop, reject-whole naming any short line.
+- This **retires** the §6/§7 "SELL origin-picker helper" as moot — there is no origin picker left to refine.
+
+### 9.3 Why BUY keeps a target and SELL does not
+
+They start from different places. SELL begins at a node the player is managing, so the origin is context. BUY
+begins at the Syndicate market (the TRADE tab), where there is no node context, so it must answer "deliver
+where?" — hence the default-nearest target with override. The combined model: **the Syndicate meets the guild
+at its frontier** — dropping buys at the nearest node, accepting sells shipped from wherever — and the guild's
+**own routes** (the transport layer) move goods between its nodes. The Syndicate runs the waystation leg; the
+guild runs the inside.
+
+### 9.4 Failure modes (hunted on paper — working practice #7)
+
+- **Destination outpost full / nearly full (BUY).** Reject-whole with the free-space shortfall (9.1). Never a
+  silent spill to another node — the drop is always the chosen (or default-nearest) node, legibly.
+- **The default-nearest node is a frontier outpost the player didn't want goods at.** Intended: the default is
+  the cheapest leg; delivering deeper is the override. The inward move is the transport layer's job, not the
+  Syndicate's.
+- **Outpost torn down / lost between popup-open and finalise.** The node-held gate reject-wholes, exactly as a
+  lost system destination does (§7).
+- **SELL from an outpost with a long leg to any waystation.** Allowed; the fuel simply costs more — the
+  planted-too-deep consequence, shown in the ledger before confirm.
+- **Outpost with an empty stockpile.** No SELL affordance; it can still be a BUY *destination* (delivering
+  stock to it is how it fills).
+- **Nearest-node tie.** Lower node id, deterministic (9.1).
