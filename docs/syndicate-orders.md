@@ -255,12 +255,16 @@ anything.
   §18 wants it, the snapshot may flag the default node rather than let the client pick). **Tie-break:** the
   lower node id, the stable-ordering convention (invariant 9), systems and outposts in one ordering.
 - **Override** = any node the guild holds; the ledger's route fuel re-reads that node's leg.
-- **Capacity gate (NEW, outpost-only).** A system stockpile is uncapped; an **outpost** is bounded by
-  `OUTPOST_CAPACITY`. A BUY whose order exceeds the destination outpost's **free space**
-  (`OUTPOST_CAPACITY − used`) **reject-wholes**, naming the shortfall — the same reject-whole shape as the
-  hauler-hold cap (§5) and the SELL stock gate (§7): the draft is untouched, so the player trims, re-targets a
-  roomier node, or clears the outpost first. (A fresh outpost has 30× the heavy hold free, so this binds only
-  on an already-stocked outpost — real, but rare.)
+- **Outpost capacity is NOT a placement gate — warn, don't block (REVISED 04-10-26).** A system stockpile is
+  uncapped; an **outpost** is bounded by `OUTPOST_CAPACITY`, but a BUY to a full (or too-full) outpost is
+  **still allowed to depart**: the Syndicate takes the payment and ships regardless — the player owns the
+  space. When the order's space exceeds the outpost's **current free space**, the engine writes a
+  **space-warning notice** (an inbox message in the Trader's voice, `docs/event-log.md`) the moment the buy
+  departs, so the player can clear room before the delivery lands. Capacity is then judged only **on arrival**
+  (9.4, all-or-nothing). An order can never exceed `OUTPOST_CAPACITY` whatever the outpost holds (it is capped
+  at one hauler hold, 1/30th of an outpost), so a placement gate would catch nothing arrival does not. (This
+  REPLACES the reject-whole placement gate first drafted here on 03-10-26 — the warning model gives the player
+  full agency and the jeopardy that goes with it.)
 - The existing BUY gates are unchanged: hauler-hold capacity, credits, fuel hoard, destination held, the
   §8.1 quote-lock.
 
@@ -318,8 +322,16 @@ guild runs the inside.
 
 ### 9.4 Failure modes (hunted on paper — working practice #7)
 
-- **Destination outpost full / nearly full (BUY).** Reject-whole with the free-space shortfall (9.1). Never a
-  silent spill to another node — the drop is always the chosen (or default-nearest) node, legibly.
+- **Destination outpost full when the delivery ARRIVES (BUY) — all-or-nothing loss (REVISED 04-10-26).**
+  Placement does not gate on capacity (9.1), so a buy can be sent to an outpost with no room now, the Trader's
+  space-warning notice telling the player to clear space before it lands. On arrival the engine checks the
+  WHOLE consignment against the outpost's free space: it fits → it deposits; it does not → the **entire**
+  consignment is lost, **no refund** (never a partial deposit), and a **turn-back notice** records that the
+  Syndicate was turned away for want of room. A buy that fit when placed can still be lost this way if the
+  guild over-committed the outpost while the delivery was in transit (a second buy, a dock unload) — the
+  jeopardy of sending goods somewhere you did not keep room. An outpost torn down while a delivery is in
+  transit is the same arrival-loss (nowhere to land, the same notice). Never a silent spill to another node —
+  the drop is the chosen (or default-nearest) node, or nothing.
 - **The default-nearest node is a frontier outpost the player didn't want goods at.** Intended: the default is
   the cheapest leg; delivering deeper is the override. The inward move is the transport layer's job, not the
   Syndicate's.
