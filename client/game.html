@@ -889,12 +889,7 @@ select.field{appearance:none; cursor:pointer;}
 #tp-trade .tw-scale.on{color:#0d0f14; background:var(--tw-amber); border-color:var(--tw-amber); font-weight:600;}
 #tp-trade .tw-g-foot{font-size:10px; letter-spacing:.04em; color:var(--tw-ink4); padding:0 18px 14px; display:flex; justify-content:space-between; flex:0 0 auto; gap:12px;}
 
-/* the Syndicate SELL card */
-#tp-trade .tw-mode{display:flex; gap:0;}
-#tp-trade .tw-mbtn{font-family:var(--tw-mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; padding:6px 15px; border:1px solid var(--tw-line2); background:var(--tw-panel); color:var(--tw-ink3); cursor:pointer; transition:.12s;}
-#tp-trade .tw-mbtn:first-child{border-radius:5px 0 0 5px;} #tp-trade .tw-mbtn:last-child{border-radius:0 5px 5px 0; border-left:none;}
-#tp-trade .tw-mbtn.on{background:var(--tw-amber); color:#0d0f14; border-color:var(--tw-amber); font-weight:600;}
-#tp-trade .tw-mbtn.na{opacity:.45; cursor:not-allowed;}
+/* the Syndicate Trade card (BUY; SELL is at the node, docs/syndicate-orders.md §9.2) */
 #tp-trade .tw-syn-body{padding:16px 18px 18px; display:flex; flex-direction:column; gap:14px; flex:1 1 auto; min-height:0;}
 #tp-trade .tw-sellhead{display:flex; align-items:baseline; justify-content:space-between; padding-bottom:11px; border-bottom:1px dashed var(--tw-line2);}
 #tp-trade .tw-sellhead .sg{font-family:var(--tw-serif); font-size:17px; font-weight:600; color:var(--tw-ink);}
@@ -2129,6 +2124,9 @@ select.field{appearance:none; cursor:pointer;}
 #outpost-overlay .om-act:hover{border-color:var(--amber); color:var(--amber)}
 #outpost-overlay .om-act.primary{background:var(--amber); border-color:var(--amber); color:var(--void)}
 #outpost-overlay .om-act.primary:hover{background:#DCB43A; border-color:#DCB43A}
+/* The Sell to Syndicate bar (§9.2) — one full-width .om-act.primary; gone while the stockpile is empty. */
+#outpost-overlay .om-sellbar{display:flex; flex:none}
+#outpost-overlay .om-sellbar:empty{display:none}
 /* centre column — a flex COLUMN inside the fixed-height body (2.2 playtest fix 3). It no longer scrolls
    as a whole (donut + Maintenance Hangar + tier tabs stay put); only the resource grid scrolls, via the
    .om-tiersec / .om-tierbody flex chain below. min-height:0 lets that inner scroll area shrink. */
@@ -2542,26 +2540,20 @@ select.field{appearance:none; cursor:pointer;}
         <div class="tw-card">
           <div class="tw-card-h">
             <span class="t">Syndicate Trade</span>
-            <!-- Sell / Buy now both LIVE. Buy is a single shipment to one destination; its
-                 finalise popup (with the arrival readout) is #tw-tx-overlay above. -->
-            <div class="tw-mode">
-              <button class="tw-mbtn on" id="tw-mode-sell" type="button" data-mode="sell">Sell</button>
-              <button class="tw-mbtn" id="tw-mode-buy" type="button" data-mode="buy">Buy</button>
-            </div>
+            <!-- BUY only. SELL moved to the node whose goods are sold (docs/syndicate-orders.md §9.2):
+                 a held system's System Manifest and an Outpost's manager each open the finalise popup
+                 over their own stockpile. The old Sell / Buy toggle went with it; this tag says where. -->
+            <span class="tw-tag">Buy &middot; sell at the node</span>
           </div>
           <div class="tw-syn-body">
+            <!-- The card head: the selected good + its posted price. Its ids keep their old `sell`
+                 names; they now head the BUY pane, the only pane left. -->
             <div class="tw-sellhead"><span class="sg" id="tw-sellgood">&mdash;</span><span class="sp" id="tw-sellprice"></span></div>
-            <!-- Both panes collapse to ONE shape (docs/syndicate-orders.md §6): a quantity for the
-                 selected good + an Add button that posts `addOrderLine`. The order is HELD BY THE
-                 ENGINE (§2) and rendered from the snapshot on the hero's badges — the card keeps no
-                 local basket, and the route/destination/fuel/arrival all live in the finalise popup. -->
-            <div id="tw-sell-pane">
-              <div class="tw-sysrow"><span class="snm">Quantity to add</span>
-                <div class="tw-qtybox"><input type="text" inputmode="numeric" id="tw-sellqty" value="0" aria-label="Quantity to add to sell order"><span class="u">u</span></div>
-              </div>
-              <button class="tw-exec" id="tw-sellbtn" type="button" disabled>Add to Sell Order</button>
-            </div>
-            <div id="tw-buy-pane" style="display:none">
+            <!-- A quantity for the selected good + an Add button that posts `addOrderLine`
+                 (docs/syndicate-orders.md §6). The order is HELD BY THE ENGINE (§2) and rendered from
+                 the snapshot on the hero's badge — the card keeps no local basket, and the
+                 route/destination/fuel/arrival all live in the finalise popup. -->
+            <div id="tw-buy-pane">
               <div class="tw-sysrow"><span class="snm">Quantity to add</span>
                 <div class="tw-qtybox"><input type="text" inputmode="numeric" id="tw-buyqty" value="0" aria-label="Quantity to add to buy order"><span class="u">u</span></div>
               </div>
@@ -2589,15 +2581,13 @@ select.field{appearance:none; cursor:pointer;}
       <aside class="tw-hero tw-thero">
         <div class="art"></div>
         <div class="scrim"></div>
-        <!-- The two HELD-ORDER buttons (docs/syndicate-orders.md §6), badged from the snapshot's
-             `buyOrder`/`sellOrder` line-count + total space (absent ⇒ "empty", disabled). Clicking
-             opens the finalise popup for that side. Filled by renderOrderButtons() each poll. -->
+        <!-- The HELD-ORDER button (docs/syndicate-orders.md §6), badged from the snapshot's
+             `buyOrder` line-count + total space (absent ⇒ "empty", disabled). Clicking opens the
+             finalise popup. Filled by renderOrderButtons() each poll. (The Sell Order button is
+             retired: a sell is built and finalised at the node, §9.2.) -->
         <div class="tw-thero-orders">
           <button class="tw-ordbtn empty" id="tw-order-buy" type="button" data-side="buy" disabled>
             <span class="l">Buy Order</span><span class="b" id="tw-order-buybadge">empty</span>
-          </button>
-          <button class="tw-ordbtn empty" id="tw-order-sell" type="button" data-side="sell" disabled>
-            <span class="l">Sell Order</span><span class="b" id="tw-order-sellbadge">empty</span>
           </button>
         </div>
         <div class="tbody">
@@ -2622,7 +2612,10 @@ select.field{appearance:none; cursor:pointer;}
         polls and fires the SAME sellToSyndicate / buyFromSyndicate the engine already applies. It
         computes NO game number (§18): route fuel credits are `fuelCost[sysId].creditCost`, the arrival
         is `fuelCost[sysId].travelTicks` formatted as a duration — neither is re-derived, and the client
-        holds no distance, no burn rate, and no craft speed. -->
+        holds no distance, no burn rate, and no craft speed.
+        The markup sits here, but the trade script lifts the overlay to <body> at load: its SELL half
+        opens from the node (docs/syndicate-orders.md §9.2 — the System Manifest and the Outpost
+        Manager), where this TRADE panel is hidden. -->
    <style id="tw-tx-css">
    #tw-tx-overlay{
      --void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
@@ -2633,9 +2626,12 @@ select.field{appearance:none; cursor:pointer;}
      --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
      --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
      --serif:'Cinzel',serif;
-     /* A modal over the TRADE tab: #tabPanel sits at z-index 480 and top:104px, so the popup
-        sits above the tab's own content and below the game's top chrome, matching #est-overlay. */
-     position:fixed; left:0; right:0; top:104px; bottom:0; z-index:90;
+     /* A PAGE-LEVEL modal: the trade script lifts this overlay to <body> at load, because a SELL
+        opens from the node (docs/syndicate-orders.md §9.2) — the System Manifest and the Outpost
+        Manager — not only from the TRADE tab. So it must clear #tabPanel (480) and #outpost-overlay
+        (570): it sits on the Dock editor's tier, over the manager, which stays open behind it. It
+        still starts at top:104px, below the game's top chrome, matching #est-overlay. */
+     position:fixed; left:0; right:0; top:104px; bottom:0; z-index:580;
      background:rgba(6,7,10,.72); backdrop-filter:blur(3px);
      display:none; align-items:flex-start; justify-content:center; padding:26px 20px; overflow-y:auto;
      font-family:var(--sans); font-size:14px; line-height:1.45; color:var(--ink);
@@ -2726,6 +2722,13 @@ select.field{appearance:none; cursor:pointer;}
    #tw-tx-overlay .mrow .mx{display:flex; justify-content:center}
    #tw-tx-overlay .mrow .mx button{background:none; border:1px solid var(--line); color:var(--ink3); border-radius:6px; width:24px; height:24px; font-size:11px; cursor:pointer}
    #tw-tx-overlay .mrow .mx button:hover{border-color:var(--red); color:var(--red)}
+   /* SELL from a node (§9.2): the same manifest, its Qty cell a quantity box (the target select's
+      look) and its last cell a MAX that fills the box with everything the node holds (the ✕'s look). */
+   #tw-tx-overlay .pick .mrow, #tw-tx-overlay .mhead.pick{grid-template-columns:118px 1fr 48px}
+   #tw-tx-overlay .mqin{width:100%; font-family:var(--mono); font-size:15px; font-weight:500; color:var(--amber); background:var(--void); border:1px solid var(--line2); border-radius:6px; padding:5px 8px; text-align:right; font-variant-numeric:tabular-nums}
+   #tw-tx-overlay .mqin:focus{outline:none; border-color:var(--amber)}
+   #tw-tx-overlay .mrow .mx button.mmax{width:44px; font-family:var(--mono); font-size:9.5px; letter-spacing:.08em}
+   #tw-tx-overlay .mrow .mx button.mmax:hover{border-color:var(--amber); color:var(--amber)}
    /* The over-capacity banner (§7) — the split-the-order state, confirm disabled. */
    #tw-tx-overlay .overcap{margin-bottom:16px; font-family:var(--mono); font-size:11px; line-height:1.5; letter-spacing:.02em; color:var(--orange); border:1px solid var(--orange); background:rgba(216,132,46,.08); border-radius:9px; padding:11px 13px}
    /* The transport tag on the hero side — TIER · used / hold, by the order's engine-computed tier. */
@@ -2761,6 +2764,9 @@ select.field{appearance:none; cursor:pointer;}
                     issued). Confirm is disabled and the player Refreshes to re-quote at the
                     current price. Both toggle via the `.show` class, like the success view. -->
                <div class="expired" id="tw-tx-expired">Quote expired &mdash; prices have moved.</div>
+               <!-- A refused node SELL (§9.2): the engine's own reason, in the expired banner's look.
+                    The popup stays open so the player can trim and retry. -->
+               <div class="expired" id="tw-tx-refused"></div>
                <button class="deploy" id="tw-tx-confirm" type="button" disabled>&mdash;</button>
                <button class="refresh" id="tw-tx-refresh" type="button">Refresh quote &#8635;</button>
              </div>
@@ -3512,6 +3518,9 @@ select.field{appearance:none; cursor:pointer;}
             <div class="ph">No craft under<br>maintenance · Later</div>
           </div>
         </div>
+        <!-- SELL from this Outpost (docs/syndicate-orders.md §9.2): filled with a Sell to Syndicate
+             button while the stockpile holds something to sell, empty (and hidden) otherwise. -->
+        <div class="om-sellbar" id="omSell"></div>
         <div class="om-tiersec">
           <div class="om-tiers" id="omTiers"></div>
           <div class="om-tierbody" id="omTierBody"></div>
@@ -5920,6 +5929,20 @@ function renderSystemView(){
     row.addEventListener('click', function(){ view={screen:'planet', planetId:p.id, planetTab:'resources'}; render(); });
     el.stack.appendChild(row);
   });
+  // SELL from this node (docs/syndicate-orders.md §9.2): a system the player holds offers Sell to
+  // Syndicate over its own pool, at the top of the index, in the waystation's Trade-row shape. The row
+  // lives only on this screen; syncSysSell shows it while the pool holds something to sell (an empty
+  // node offers no SELL) and re-checks on every poll, since the pool moves each tick.
+  if (window.__isMine && window.__isMine(SYSTEM.id)){
+    const sell=document.createElement('div');
+    sell.className='list-row tab tex-node'; sell.id='sysSell'; sell.setAttribute('data-sys', SYSTEM.id);
+    sell.innerHTML='<span class="node-meta"><span class="node-name">Sell to Syndicate</span></span><button type="button" class="venture-btn">OPEN</button>';
+    sell.addEventListener('click', function(){
+      if (window.__openNodeSell) window.__openNodeSell({ kind:'system', id: sell.getAttribute('data-sys') });
+    });
+    el.stack.insertBefore(sell, el.stack.firstChild);
+    syncSysSell();
+  }
 
   el.backBtn.classList.remove('visible');
   el.hero.className='hero star';
@@ -5928,6 +5951,15 @@ function renderSystemView(){
   // The console is mounted for a system the player actually controls (live claims).
   mountConsole(window.__isMine ? !!window.__isMine(SYSTEM.id) : false);
 }
+
+// Show the System Manifest's Sell to Syndicate row only while its system has something to sell
+// (§9.2). An inline display, not `hidden`: the row's class sets its own display, which would win.
+function syncSysSell(){
+  var row = document.getElementById('sysSell'); if (!row) return;
+  var sellable = !!(window.__nodeSellable && window.__nodeSellable({ kind:'system', id: row.getAttribute('data-sys') }));
+  row.style.display = sellable ? '' : 'none';
+}
+window.__sysSellRefresh = syncSysSell;
 
 function renderPlanetView(){
   mountConsole(false);
@@ -7869,6 +7901,9 @@ function applySnapshot(snap){
   // An open OUTPOST MANAGER re-reads too, so its dock berths count down, the storage donut and resource
   // tables move, and a torn-down outpost self-closes (roadmap 2.2) — the same open/refresh lifecycle.
   if (window.__outpostMgrRefresh) window.__outpostMgrRefresh();
+  // The System Manifest's Sell to Syndicate row follows its system's pool (docs/syndicate-orders.md
+  // §9.2 — shown while there is something to sell, gone when the pool is empty).
+  if (window.__sysSellRefresh) window.__sysSellRefresh();
 }
 
 // Who controls a system, for the detail screen's header. Reads the live claims —
@@ -8267,7 +8302,6 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
 
   var T = {
     open:false,
-    mode:'sell',     // 'sell' | 'buy' — which side of the Syndicate Trade card is showing
     tier:1,          // which tier tab is showing
     good:null,       // the selected good — HELD across polls, never reset by a refresh
     scale:null,      // which price-history resolution the chart is drawing
@@ -8617,9 +8651,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       + '<text x="'+(+ex-6)+'" y="'+(+ey-9)+'" fill="#e3c04a" font-size="10" font-family="monospace" text-anchor="end">NOW</text>';
   }
 
-  /* -- the Syndicate Trade card: the shared head (good + price) --------------- */
-  // The per-system allocation basket is RETIRED (§6): both panes are the qty + Add shape above,
-  // and the head just names the selected good and its posted unit price for both.
+  /* -- the Syndicate Trade card: the head (good + price) ---------------------- */
+  // The per-system allocation basket is RETIRED (§6) and so is the card's SELL pane (§9.2 — a sell
+  // starts at the node): the card is the BUY pane alone, and the head names the selected good and
+  // its posted unit price. (The name `renderSell` and its ids predate that; they head BUY now.)
   function renderSell(){
     var good = T.good, price = good ? priceOf(good) : null;
     el('tw-sellgood').textContent = good ? pretty(good) : '—';
@@ -8650,24 +8685,12 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(cn) cn.style.display = 'none';
     renderHoldings();
     renderChart();
-    renderSell();          // fills the shared head (good + price)
-    renderMode();          // show the sell pane or the buy pane, light the mode button
-    recalcAdd();           // both panes' Add-to-Order button gate
-    renderOrderButtons();  // the hero's two held-order badges, read from the snapshot
+    renderSell();          // fills the card head (good + price)
+    recalcAdd();           // the Add-to-Buy-Order button gate
+    renderOrderButtons();  // the hero's held-order badge, read from the snapshot
   }
 
-  // The Sell / Buy toggle (both LIVE now). Only the pane switches — the good, the chart
-  // and the holdings are shared, so nothing above the card is touched.
-  function renderMode(){
-    var sellOn = T.mode !== 'buy';
-    var sp = el('tw-sell-pane'), bp = el('tw-buy-pane');
-    if(sp) sp.style.display = sellOn ? '' : 'none';
-    if(bp) bp.style.display = sellOn ? 'none' : '';
-    var ms = el('tw-mode-sell'), mb = el('tw-mode-buy');
-    if(ms) ms.classList.toggle('on', sellOn);
-    if(mb) mb.classList.toggle('on', !sellOn);
-  }
-  // Both panes are now the SAME shape (§6): a quantity for the selected good + an Add button.
+  // The BUY pane (§6): a quantity for the selected good + an Add button.
   // The button only gates on "a positive qty of a priced good" — capacity and stock are NOT
   // checked here (a draft may be built past a hauler's hold and trimmed later, §3); the engine
   // is the authority, and the built order is read back off the snapshot on the hero.
@@ -8680,7 +8703,6 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
   function recalcAdd(){
     var price = T.good ? priceOf(T.good) : null;
-    if(el('tw-sellqty')) el('tw-sellbtn').disabled = !(addQtyOf('tw-sellqty') > 0 && price != null);
     if(el('tw-buyqty'))  el('tw-buybtn').disabled  = !(addQtyOf('tw-buyqty')  > 0 && price != null);
   }
   // Post an addOrderLine for the selected good (§3). The engine appends the line or tops up an
@@ -8716,10 +8738,11 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var o = side === 'buy' ? g.buyOrder : g.sellOrder;
     return (o && o.lines && o.lines.length) ? o : null;
   }
-  // Badge each hero button with its order's line-count + total space; an empty/absent order is
-  // muted and disabled. The click that OPENS the popup is delegated on the panel, below.
+  // Badge the hero's Buy Order button with its order's line-count + total space; an empty/absent
+  // order is muted and disabled. The click that OPENS the popup is delegated on the panel, below.
+  // (There is no Sell Order button: a sell order is built and finalised in one go at the node, §9.2.)
   function renderOrderButtons(){
-    ['buy','sell'].forEach(function(side){
+    ['buy'].forEach(function(side){
       var o = orderOf(side), btn = el('tw-order-' + side), badge = el('tw-order-' + side + 'badge');
       if(!btn || !badge) return;
       if(o){
@@ -9046,17 +9069,14 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(invRow){ selectGood(invRow.getAttribute('data-good')); return; }
     var scale = e.target.closest('.tw-scale');
     if(scale){ T.scale = scale.getAttribute('data-scale'); renderChart(); return; }
-    var mbtn = e.target.closest('.tw-mbtn');
-    if(mbtn && mbtn.getAttribute('data-mode')){ T.mode = mbtn.getAttribute('data-mode'); note(''); render(); return; }
-    // The Add buttons build the held order (addOrderLine); the hero's order buttons open the
+    // The Add button builds the held buy order (addOrderLine); the hero's order button opens the
     // finalise popup (openTx), where the manifest, the target, the ledger and the confirm live.
-    if(e.target.closest('#tw-sellbtn')){ addOrder('sell'); return; }
     if(e.target.closest('#tw-buybtn')){ addOrder('buy'); return; }
     var ord = e.target.closest('.tw-ordbtn');
     if(ord && !ord.disabled && ord.getAttribute('data-side')){ openTx(ord.getAttribute('data-side')); return; }
   });
   panel.addEventListener('input', function(e){
-    if(e.target.id === 'tw-sellqty' || e.target.id === 'tw-buyqty') recalcAdd();
+    if(e.target.id === 'tw-buyqty') recalcAdd();
   });
 
   /* ===== the held-order finalise popup (#tw-tx-overlay) ==========================
@@ -9068,11 +9088,20 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
      duration. The ledger's cost/proceeds are display sums of Σ round(qty × frozen price) per line.
      On confirm the ENGINE is authoritative — it reads the held order, and the success view reads the
      applied numbers back off the snapshot the action returns, never the popup's preview. */
-  // The popup renders the HELD order (§6): a multi-good manifest read from the snapshot, a
-  // finalise-time TARGET (BUY destination / SELL origin), and a confirm that posts the held-order
-  // finalise. It carries no basket of its own — the order is engine state (§2).
+  // BUY renders the HELD order (§6): a multi-good manifest read from the snapshot, a finalise-time
+  // destination, and a confirm that posts the held-order finalise. It carries no basket of its own —
+  // the order is engine state (§2).
+  // SELL starts at the NODE (§9.2 — the System Manifest or the Outpost Manager): the popup lists that
+  // node's own stockpile with a quantity box per good, the origin IS that node (no picker), and the
+  // confirm builds the held order from the boxes and finalises it in one go. Until then the picks
+  // are the popup's own and nothing is posted.
   var TX = { open:false, kind:null, target:null, last:null,
-             issueTick:null, frozen:null, rejected:false };
+             issueTick:null, frozen:null, rejected:false,
+             node:null,    // SELL: the origin node { kind:'system'|'outpost', id }, fixed at open
+             pick:{},      // SELL: the player's quantity per good, { good: qty } — client-side until confirm
+             goodsSig:'',  // SELL: which goods the node's rows were drawn for (a poll redraws on a change)
+             reason:'',    // SELL: the engine's reason for a refused confirm, shown in the popup
+             busy:false }; // SELL: a confirm's actions are in flight — the confirm stays disabled
   // QUOTE_TTL_TICKS — the §8.1 quote-lock window, MIRRORED from the engine's own constant
   // (sim/price-ring.js). `[FIRST-CUT]` 5 (docs/phase-1-tuning.md "Quote-lock"). §18 makes a
   // client copy of an engine number safe ONLY mirrored WITH A SERVED-PAGE TRIPWIRE, so
@@ -9094,20 +9123,78 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var d = Math.floor(t / 1440), h = Math.floor((t % 1440) / 60);
     return (d < 10 ? '0' : '') + d + 'd' + (h < 10 ? '0' : '') + h + 'h';
   }
-  // The route quote for one system, straight off the snapshot: { fuelBurn, creditCost,
-  // travelTicks } or null when the guild does not hold it / it has no route. The GATES read
-  // `fuelBurn` (units, exactly as the engine gates); the bar reads `creditCost`.
-  function txRoute(sysId){ var g = meGuild(); var c = (g && g.fuelCost) || {}; return c[sysId] || null; }
+  // The route quote for one NODE (§9), straight off the snapshot: { fuelBurn, creditCost,
+  // travelTicks, fuelBurnByTier, creditCostByTier, … } or null when the guild does not hold it. A held
+  // system's leg is `fuelCost[id]`; one of the guild's own Outposts' is `outpostFuelCost[id]` (slice
+  // 1a — the same entry shape, measured from the Outpost's hex). The two key sets never overlap, so a
+  // system id reads exactly what it always did. The GATES read the burn (units, exactly as the engine
+  // gates); the bar reads the credits.
+  function txRoute(nodeId){
+    var g = meGuild(), c = (g && g.fuelCost) || {}, o = (g && g.outpostFuelCost) || {};
+    return c[nodeId] || o[nodeId] || null;
+  }
   // The systems the guild HOLDS — `fuelCost` is keyed by `heldSystemIds`, so its keys ARE the
   // held set, already sorted (invariant 9). This is the BUY destination set.
   function txHeldSystems(){ var g = meGuild(); return (g && g.fuelCost) ? Object.keys(g.fuelCost).sort() : []; }
-  // The guild's HELD order for the popup's side, present ONLY when non-empty (§2/§4). Every derived
-  // field — `lines[].space`, `totalUnits`, `totalSpace`, `haulerTier`, `overCap` — is ENGINE-computed
-  // and read here, never re-derived (§18).
+  // The order the popup renders. BUY: the guild's HELD buy order, present ONLY when non-empty (§2/§4);
+  // every derived field — `lines[].space`, `totalUnits`, `totalSpace`, `haulerTier`, `overCap` — is
+  // ENGINE-computed and read here, never re-derived (§18). SELL: the order this node's picks WOULD
+  // place (nodeOrder, below) — it does not exist in the engine until the confirm builds it.
   function txOrder(){
+    if(TX.kind === 'sell') return nodeOrder();
     var g = meGuild(); if(!g) return null;
-    var o = TX.kind === 'buy' ? g.buyOrder : g.sellOrder;
+    var o = g.buyOrder;
     return (o && o.lines && o.lines.length) ? o : null;
+  }
+
+  /* -- SELL from a node (docs/syndicate-orders.md §9.2) ------------------------------------------- */
+  // The goods a node can sell right now, { good: qty }, in good-id order. The pile is the node's own:
+  // a held system's pool (`stockpilesBySystem[id]`) or one of the guild's own Outposts' `stockpile`. A
+  // node the guild does not hold has no leg in txRoute, so nothing to sell. Only goods the Syndicate
+  // prices and the TRADE tab lists count — the set the retired TRADE SELL card could add (fuel has no
+  // price; deuterium is untradeable, HIDDEN_GOODS).
+  function nodeStock(node){
+    var g = meGuild(), s = snap(), out = {};
+    if(!g || !node || !txRoute(node.id)) return out;
+    var pile;
+    if(node.kind === 'outpost'){
+      var row = ((s && s.outposts) || []).filter(function(o){ return o.id === node.id; })[0];
+      pile = row ? row.stockpile : null;
+    } else {
+      pile = (g.stockpilesBySystem || {})[node.id];
+    }
+    Object.keys(pile || {}).sort().forEach(function(good){
+      if(!HIDDEN_GOODS[good] && priceOf(good) != null && pile[good] > 0) out[good] = pile[good];
+    });
+    return out;
+  }
+  // Does a node offer SELL? An empty node does not (§9.2). The System Manifest and the Outpost
+  // Manager read this to show or drop their Sell to Syndicate action.
+  function nodeSellable(node){ return Object.keys(nodeStock(node)).length > 0; }
+  // The node's display name, from the shell's own resolvers, so it reads as it does everywhere else.
+  function nodeName(node){
+    if(node.kind === 'outpost') return (window.__outpostName && window.__outpostName(node.id)) || node.id;
+    return (window.__systemName && window.__systemName(node.id)) || node.id;
+  }
+  // The order the picks WOULD place: each pick capped at what the node holds now, zero picks dropped,
+  // in good-id order (the order the engine keeps lines in). It carries the fields the snapshot echoes
+  // for a held order (§4), so the ledger renders it the same way. `space` and the tier are a DISPLAY
+  // projection: `qty × goodVolumes[good]` (published for every priced good), sized to the smallest
+  // `haulerTiers` hold it fits — the sizing the snapshot publishes those two facts for
+  // (sim/snapshot.js), by the engine's own rule (space ≤ hold). The engine re-sizes the real order on
+  // confirm, and gates it.
+  function nodeOrder(){
+    var s = snap(), vol = (s && s.goodVolumes) || {}, ladder = (s && s.haulerTiers) || [];
+    var stock = nodeStock(TX.node), lines = [], units = 0, space = 0;
+    Object.keys(stock).forEach(function(good){
+      var qty = Math.min(TX.pick[good] || 0, stock[good]);
+      if(qty <= 0) return;
+      lines.push({ good: good, qty: qty, space: qty * vol[good] });
+      units += qty; space += qty * vol[good];
+    });
+    var tier = null;
+    for(var i = 0; i < ladder.length; i++){ if(space <= ladder[i].hold){ tier = ladder[i].tier; break; } }
+    return { lines: lines, totalUnits: units, totalSpace: space, haulerTier: tier, overCap: tier === null };
   }
   // A hauler tier's HOLD (its capacity), read from the snapshot's `haulerTiers` ladder — the client
   // picks no tier and knows no hold of its own (§18). null for an unknown tier.
@@ -9136,6 +9223,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // price feeds the ledger's frozen cost/proceeds total. Prices are the only per-good freeze.
     var order = txOrder(), priceByGood = {};
     if(order) order.lines.forEach(function(l){ var p = priceOf(l.good); if(p != null) priceByGood[l.good] = p; });
+    // SELL from a node (§9.2): the player picks AFTER the popup opens, so freeze every good the node
+    // holds, not only the picks so far.
+    if(TX.kind === 'sell') Object.keys(nodeStock(TX.node)).forEach(function(good){ var p = priceOf(good); if(p != null) priceByGood[good] = p; });
     // Freeze the per-system, PER-TIER route fuel credits for every system the guild holds (a
     // superset of the BUY destinations and the SELL origins), so the target the player picks already
     // has a firm figure at the order's tier — no live re-read. Geometry (burn, travelTicks) is NOT
@@ -9145,6 +9235,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       var r = fc[sysId];
       if(r && r.creditCostByTier) cc[sysId] = r.creditCostByTier;
     });
+    // ...and for each of the guild's own Outposts (§9.2 — a SELL can ship from one), by outpost id. The
+    // map is keyed by node id from here on; the two key sets never overlap.
+    var oc = (g && g.outpostFuelCost) || {};
+    Object.keys(oc).forEach(function(id){ if(oc[id] && oc[id].creditCostByTier) cc[id] = oc[id].creditCostByTier; });
     TX.frozen = { priceByGood: priceByGood, creditCostBySys: cc };
   }
   // The frozen posted price of one good — the number the popup showed at open, not the live feed.
@@ -9258,29 +9352,89 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return '<div class="mhead"><span>Qty</span><span>Resource</span><span></span></div>'
       + '<div class="manifest">' + rows + '</div>';
   }
-  // The finalise-time TARGET (§2/§6): BUY picks a DESTINATION to deliver to, SELL an ORIGIN to ship
-  // from. Both offer the systems the guild holds (`fuelCost` keys); the SELL origin-picker refinement
-  // (only systems that hold every line) is a later slice — here the engine's stock gate reject-wholes
-  // with the named shortfall (§7). Route fuel for the target reads the order's tier, frozen (§8.1).
-  function txTargetBlock(kind, order){
+  // The finalise-time DESTINATION (§2/§6): BUY picks the held system to deliver to (`fuelCost`
+  // keys). Route fuel for it reads the order's tier, frozen (§8.1). SELL has no target to pick: its
+  // origin is the node it was opened from (§9.2 — the origin dropdown is retired), drawn by
+  // txRenderNodeMain below.
+  function txTargetBlock(order){
     var systems = txHeldSystems(), target = TX.target;
     var routeCr = txQuotedCredit(target, order.haulerTier);
     var opts = systems.map(function(id){
       var nm = (window.__systemName && window.__systemName(id)) || id;
       return '<option value="' + id + '"' + (id === target ? ' selected' : '') + '>' + nm + '</option>';
     }).join('');
-    var buy = kind === 'buy';
-    var sel = '<select class="rowsel" id="tw-tx-target" aria-label="' + (buy ? 'Destination' : 'Origin') + ' system">'
-      + opts + (buy ? '<option disabled>&#9670; Controlled outpost &mdash; soon</option>' : '') + '</select>';
-    var route = buy
-      ? '<span class="rway">Syndicate waystation</span><span class="rarr">&#8594;</span>' + sel
-      : sel + '<span class="rarr">&#8594;</span><span class="rway">Syndicate waystation</span>';
-    return '<div class="blk"><div class="sec-head"><span class="t">' + (buy ? 'Deliver to' : 'Ship from') + '</span></div>'
+    var sel = '<select class="rowsel" id="tw-tx-target" aria-label="Destination system">'
+      + opts + '<option disabled>&#9670; Controlled outpost &mdash; soon</option></select>';
+    var route = '<span class="rway">Syndicate waystation</span><span class="rarr">&#8594;</span>' + sel;
+    return '<div class="blk"><div class="sec-head"><span class="t">Deliver to</span></div>'
       + '<div class="destcard"><div class="dtop"><span class="rroute">' + route + '</span>'
       + '<span class="dmeta">Route fuel <b>&#162;' + fmt(routeCr) + '</b></span></div></div></div>';
   }
+  // SELL's main column (§9.2), drawn at open and again only when the node's set of goods changes:
+  // the origin — this node, fixed, no picker — then the node's own stockpile as the manifest, a
+  // quantity box and a MAX per good. Typing redraws only the parts that move (txSellRefresh), never
+  // the boxes, so the cursor stays where the player left it.
+  function txRenderNodeMain(){
+    var goods = Object.keys(nodeStock(TX.node));
+    TX.goodsSig = goods.join(',');
+    var origin = '<div class="blk"><div class="sec-head"><span class="t">Ship from</span></div>'
+      + '<div class="destcard"><div class="dtop"><span class="rroute">' + nodeName(TX.node)
+      + '<span class="rarr">&#8594;</span><span class="rway">Syndicate waystation</span></span>'
+      + '<span class="dmeta">Route fuel <b id="tw-tx-routecr"></b></span></div></div></div>';
+    var rows = goods.map(function(good){
+      return '<div class="mrow">'
+        + '<span class="mq"><input class="mqin" type="text" inputmode="numeric" data-txpick="' + good + '" value="'
+          + (TX.pick[good] || 0) + '" aria-label="Quantity of ' + pretty(good) + ' to sell"></span>'
+        + '<span class="mr">' + pretty(good) + '<span class="msp" data-txheld="' + good + '"></span></span>'
+        + '<span class="mx"><button type="button" class="mmax" data-txmax="' + good + '" title="Sell all the ' + pretty(good) + ' here">Max</button></span>'
+        + '</div>';
+    }).join('');
+    var manifest = goods.length
+      ? '<div class="mhead pick"><span>Qty</span><span>Resource</span><span></span></div><div class="manifest pick">' + rows + '</div>'
+      : '<div class="tw-empty">Nothing left here to sell.</div>';
+    el('tw-tx-main').innerHTML = '<div id="tw-tx-over"></div>' + origin
+      + '<div class="blk"><div class="sec-head"><span class="t">Manifest</span><span class="aux" id="tw-tx-aux"></span></div>'
+      + manifest + '</div>';
+    txSellRefresh();
+  }
+  // The parts of SELL's main column that move — with the picks, and with the pile on a poll (a mine
+  // tops a system's pool up every tick): each row's "held · space" line, the manifest count, the
+  // route fuel at the order's tier, and the over-capacity banner; then the ledger. A pick above what
+  // the node now holds is cut back to it.
+  function txSellRefresh(){
+    var main = el('tw-tx-main'), stock = nodeStock(TX.node), vol = (snap() || {}).goodVolumes || {};
+    Array.prototype.forEach.call(main.querySelectorAll('[data-txpick]'), function(box){
+      var good = box.getAttribute('data-txpick'), held = stock[good] || 0;
+      if((TX.pick[good] || 0) > held){ TX.pick[good] = held; box.value = String(held); }
+      var q = TX.pick[good] || 0;
+      main.querySelector('[data-txheld="' + good + '"]').textContent =
+        fmt(held) + ' held' + (q > 0 ? ' · ' + fmt(q * vol[good]) + ' space' : '');
+    });
+    var order = nodeOrder();
+    el('tw-tx-aux').textContent = order.lines.length + (order.lines.length === 1 ? ' line' : ' lines')
+      + ' · ' + fmt(order.totalUnits) + ' u';
+    el('tw-tx-routecr').innerHTML = '&#162;' + fmt(txQuotedCredit(TX.target, order.haulerTier));
+    el('tw-tx-over').innerHTML = order.overCap
+      ? '<div class="overcap">This sale needs ' + fmt(order.totalSpace) + ' cargo space &mdash; more than the heaviest hauler’s hold. Sell less to bring it within capacity before it can ship.</div>'
+      : '';
+    txRenderLedger();
+  }
+  // Set one pick from its box: digits only, 0 up to what the node holds (the engine's stock gate is
+  // the backstop, §7). A changed pick clears a shown refusal — the player is trimming.
+  function txSetPick(good, box){
+    var held = nodeStock(TX.node)[good] || 0;
+    var v = parseInt(String(box.value).replace(/[^0-9]/g, ''), 10);
+    if(isNaN(v) || v < 0) v = 0;
+    if(v > held) v = held;
+    if(String(v) !== box.value) box.value = String(v);
+    TX.pick[good] = v;
+    TX.reason = '';
+    txSellRefresh();
+  }
   // The est-main: the target picker + the manifest, plus (over cap) the split-the-order banner.
+  // SELL draws its own (above).
   function txRenderMain(){
+    if(TX.kind === 'sell'){ txRenderNodeMain(); return; }
     var order = txOrder();
     if(!order){ el('tw-tx-main').innerHTML = '<div class="tw-empty">The order is empty.</div>'; return; }
     var over = order.overCap
@@ -9289,7 +9443,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var manifest = '<div class="blk"><div class="sec-head"><span class="t">Manifest</span>'
       + '<span class="aux">' + order.lines.length + (order.lines.length === 1 ? ' line' : ' lines')
       + ' &middot; ' + fmt(order.totalUnits) + ' u</span></div>' + txManifest(order) + '</div>';
-    el('tw-tx-main').innerHTML = over + txTargetBlock(TX.kind, order) + manifest;
+    el('tw-tx-main').innerHTML = over + txTargetBlock(order) + manifest;
   }
   // The est-side: the transport tag + art by the order's ENGINE-computed tier (the client picks
   // none, §18), then the ledger and the fuel bar; a BUY carries an arrival row, a SELL does not.
@@ -9340,14 +9494,34 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
         + '<div class="row2 fuel"><span class="k">Route Fuel Credits</span><span class="v"><b>&#8722;&#162;' + fmt(routeCr) + '</b></span></div>'
         + txFuelBar(routeCr, fuelShort);
       btn.textContent = 'Sell to Syndicate';
-      btn.disabled = order.overCap || fuelShort || !TX.target || !(t.units > 0);
+      btn.disabled = TX.busy || order.overCap || fuelShort || !TX.target || !(t.units > 0);
       TX.last = { units:t.units, goods:t.goods, before:{ credits:(g && g.credits) || 0, hoard:hoard } };
     }
+    var refused = el('tw-tx-refused');                 // SELL only: the engine's reason for a refusal
+    refused.textContent = TX.reason;
+    refused.classList.toggle('show', TX.kind === 'sell' && !!TX.reason);
     txApplyExpiry();                                   // §8.1: overrides the enable when stale
   }
 
   /* -- open / render / confirm / close ------------------------------------------- */
-  // Open the finalise popup for a side. The manifest is the HELD order read from the snapshot (§2)
+  // Open SELL for a node (§9.2) — the one entry point, called by the System Manifest and the Outpost
+  // Manager. The origin is fixed to that node: `TX.target` is its id (its leg, via txRoute) and
+  // `TX.node` says which kind it is, for the action's origin field. Every box starts at 0: the player
+  // chooses. An empty node never opens (its action is not offered). `busy` is left alone — a confirm
+  // still in flight from an earlier opening clears it when it lands.
+  function openNodeSell(node){
+    if(!meGuild() || !node || !nodeSellable(node)) return;
+    TX.kind = 'sell';
+    TX.node = { kind: node.kind, id: node.id };
+    TX.target = node.id;
+    TX.pick = {};
+    TX.reason = '';
+    TX.open = true;
+    txFreezeQuote();                                   // §8.1: freeze the prices + issue tick
+    txRender();
+    el('tw-tx-overlay').classList.add('open');
+  }
+  // Open the BUY finalise popup. The manifest is the HELD order read from the snapshot (§2)
   // — nothing is carried in from the card. The target defaults to the operating (home) system when
   // the guild holds it, else its first held system. An empty order never opens (the hero button is
   // disabled), and a guild with no held system cannot pick a target.
@@ -9374,19 +9548,21 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   function txSledRow(k, v){ return '<div><span class="k">' + k + '</span><span>' + v + '</span></div>'; }
   // Confirm posts the HELD-ORDER finalise (§5): the engine reads the guild's own order, so the
   // action carries NO cart, NO good, NO allocations — only the target and the frozen issue tick
-  // (§8.1, never a price; the engine re-derives and validates it). BUY → destinationSystemId,
-  // SELL → originSystemId. On success the engine clears the order.
+  // (§8.1, never a price; the engine re-derives and validates it). BUY → destinationSystemId.
+  // SELL first builds that order from the picks (txSellChain) and finalises it from the node.
+  // On success the engine clears the order.
   function txConfirm(){
     var player = (window.__player && window.__player()) || {};
     var order = txOrder(); if(!order || order.overCap || !TX.target) return;
+    if(TX.kind === 'sell' && (TX.busy || !order.lines.length)) return;
     var btn = el('tw-tx-confirm');
     var before = TX.last ? TX.last.before : { credits:0, hoard:0 };
     var pending;
     btn.disabled = true;
     if(TX.kind === 'sell'){
-      var sellAction = { type:'sellToSyndicate', guildId: player.guildId, originSystemId: TX.target };
-      if(typeof TX.issueTick === 'number') sellAction.issueTick = TX.issueTick;
-      pending = window.__sendAction(sellAction);
+      TX.busy = true;
+      TX.reason = '';
+      pending = txSellChain(player.guildId, order.lines);
     } else {
       var buyAction = { type:'buyFromSyndicate', guildId: player.guildId, destinationSystemId: TX.target };
       if(typeof TX.issueTick === 'number') buyAction.issueTick = TX.issueTick;
@@ -9394,7 +9570,54 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     }
     pending
       .then(function(res){ txAfter(res, player.guildId, before); })
-      .catch(function(err){ txError(err); });
+      .catch(function(err){
+        if(TX.kind === 'sell') txSellRefused(String((err && err.message) || err));
+        else txError(err);
+      });
+  }
+  // SELL from the node commits in ONE go (§9.2). It builds the held sell order from the picks —
+  // `addOrderLine` per chosen line, the build action the retired TRADE card used — then finalises it
+  // with `sellToSyndicate` from this node, carrying the frozen issue tick (§8.1). The engine sells its
+  // own held order, so a draft left over from before (the retired card, or a confirm cut off part-way)
+  // is cleared first: the order sold is exactly the one on screen. A refused step stops the chain, and
+  // its answer is what comes back.
+  function txSellChain(guildId, lines){
+    var send = window.__sendAction, g = meGuild(), node = TX.node, issueTick = TX.issueTick;
+    var step = (g && g.sellOrder)
+      ? send({ type:'clearOrder', guildId: guildId, side:'sell' })
+      : Promise.resolve({ accepted:true });
+    lines.forEach(function(l){
+      step = step.then(function(res){
+        if(!res || !res.accepted) return res;
+        return send({ type:'addOrderLine', guildId: guildId, side:'sell', good: l.good, qty: l.qty });
+      });
+    });
+    return step.then(function(res){
+      if(!res || !res.accepted) return res;
+      // The origin is the node's own field (slice 1a): exactly one of the two.
+      var sellAction = { type:'sellToSyndicate', guildId: guildId };
+      if(node.kind === 'outpost') sellAction.originOutpostId = node.id;
+      else sellAction.originSystemId = node.id;
+      if(typeof issueTick === 'number') sellAction.issueTick = issueTick;
+      return send(sellAction);
+    });
+  }
+  // A refused node SELL — over the hauler hold, short of fuel, an expired quote, a short line. The
+  // engine's reason stands, and the order this confirm built is cleared, so no half-built draft
+  // outlives the popup (§9.2 — the order is the popup's, built and spent in one go). The picks stay,
+  // so the player can trim and retry; a stale quote shows the expired state and its Refresh instead
+  // of the text. The confirm stays disabled until the clear has landed and the snapshot is re-read,
+  // so a retry never builds on top of the old draft.
+  function txSellRefused(reason){
+    var player = (window.__player && window.__player()) || {};
+    if(txIsQuoteRejection(reason)) TX.rejected = true;
+    else TX.reason = reason;
+    var reread = function(){
+      var done = function(){ TX.busy = false; if(TX.open && !txDone()) txRenderLedger(); };
+      if(window.__refreshNow) window.__refreshNow().then(done, done); else done();
+    };
+    window.__sendAction({ type:'clearOrder', guildId: player.guildId, side:'sell' }).then(reread, reread);
+    if(TX.open) txRenderLedger();
   }
   // READ THE APPLIED NUMBERS BACK OFF THE ENGINE (§5's display rule): the receipt shows what
   // POST /action actually did — the credit delta, the fuel actually burned, and for a BUY the
@@ -9402,6 +9625,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   function txAfter(res, guildId, before){
     if(!res || !res.accepted){
       var reason = res && res.reason ? res.reason : 'The Syndicate refused the transaction.';
+      // A node SELL keeps its popup open, clears the order it built and shows why (§9.2).
+      if(TX.kind === 'sell'){ txSellRefused(reason); return; }
       // §8.1: a stale-quote refusal (the tick advanced between the last poll and the click) is not
       // a generic failure — flip to the expired state + Refresh, keeping the popup open.
       if(txIsQuoteRejection(reason)){
@@ -9417,9 +9642,11 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // after-total. `nowFuel` likewise shows the combined credit value the bar draws.
     var nowFuel = after ? ('&#162;' + fmt(heldValue(after))) : '&mdash;';
     var manifest = (TX.last.goods || 0) + ((TX.last.goods === 1) ? ' good' : ' goods') + ' &times; ' + fmt(TX.last.units || 0) + ' u';
-    var targetName = (window.__systemName && window.__systemName(TX.target)) || TX.target;
+    var targetName = TX.kind === 'sell' ? nodeName(TX.node)
+      : ((window.__systemName && window.__systemName(TX.target)) || TX.target);
     var sled;
     if(TX.kind === 'sell'){
+      TX.busy = false;                                 // the sale landed; the engine cleared the order
       var credited = after ? (after.credits - before.credits) : null;
       var burned = after ? (before.hoard - heldUnits(after)) : null;
       sled = txSledRow('Sold', manifest)
@@ -9476,8 +9703,11 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       .catch(function(){});
   }
 
-  // Delegated once on the overlay — every re-render keeps working with no rebinding.
+  // The popup is page-level: a SELL opens it over the System Manifest and the Outpost Manager, where
+  // this TRADE panel is hidden, so lift it out of #tp-trade to <body> (its z-index is in #tw-tx-css).
   var ov = el('tw-tx-overlay');
+  document.body.appendChild(ov);
+  // Delegated once on the overlay — every re-render keeps working with no rebinding.
   ov.addEventListener('click', function(e){
     if(e.target === ov){ txClose(); return; }                 // click the backdrop
     if(e.target.closest('#tw-tx-close')){ txClose(); return; }
@@ -9486,22 +9716,55 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(e.target.closest('#tw-tx-confirm')){ txConfirm(); return; }
     var rm = e.target.closest('[data-txrm]');
     if(rm){ txRemoveLine(rm.getAttribute('data-txrm')); return; }
+    // SELL: MAX fills a good's box with everything the node holds of it.
+    var mx = e.target.closest('[data-txmax]');
+    if(mx){
+      var good = mx.getAttribute('data-txmax'), box = ov.querySelector('[data-txpick="' + good + '"]');
+      box.value = String(nodeStock(TX.node)[good] || 0);
+      txSetPick(good, box);
+      return;
+    }
+  });
+  ov.addEventListener('input', function(e){
+    // SELL: a quantity box changed — the preview follows, nothing is posted.
+    var good = e.target.getAttribute('data-txpick');
+    if(good) txSetPick(good, e.target);
+  });
+  ov.addEventListener('focusin', function(e){
+    // SELL: entering a box selects its number, so typing replaces it (a click must not leave the
+    // caret in front of the 0, turning "500" into "5000").
+    if(e.target.getAttribute('data-txpick')) e.target.select();
   });
   ov.addEventListener('change', function(e){
     // Switching the target re-renders the route fuel (main + ledger) at the new system; the
     // manifest and the frozen quote are untouched.
     if(e.target.id === 'tw-tx-target'){ TX.target = e.target.value; txRender(); return; }
   });
-  document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && TX.open) txClose(); });
+  // Escape closes the popup. A SELL sits over the System Manifest or the Outpost Manager, which close
+  // on Escape too, so — like the Dock editor — it takes the key in the capture phase and stops it
+  // there: only the popup closes. A BUY closes exactly as before.
+  document.addEventListener('keydown', function(e){
+    if(e.key !== 'Escape' || !TX.open) return;
+    if(TX.kind === 'sell') e.stopPropagation();
+    txClose();
+  }, true);
 
+  // SELL from a node (§9.2): the entry point and the empty-node gate, for the System Manifest and
+  // the Outpost Manager.
+  window.__openNodeSell = openNodeSell;
+  window.__nodeSellable = nodeSellable;
   // The shell drives these three: the tab opening, the tab closing, and every poll.
   window.__tradeOpen = function(){ T.open = true; T.navSig = ''; render(); };
   window.__tradeClosed = function(){ T.open = false; note(''); txClose(); };
   // On a poll, refresh the open popup's LEDGER only (gates + fuel bar + tag move with live state)
-  // and leave the target select untouched. The success receipt is left alone once shown.
+  // and leave the target select untouched. The success receipt is left alone once shown. A SELL
+  // refreshes its rows in place too (the pile moves); only a good arriving or running out redraws them.
   window.__tradeRefresh = function(){
     if(T.open) render();
-    if(TX.open && !txDone()) txRenderLedger();
+    if(!TX.open || txDone()) return;
+    if(TX.kind !== 'sell') txRenderLedger();
+    else if(Object.keys(nodeStock(TX.node)).join(',') !== TX.goodsSig) txRenderNodeMain();
+    else txSellRefresh();
   };
 })();
 </script>
@@ -12776,9 +13039,19 @@ function paintInventoryHero(d){
     renderTabs();
     renderLeft(row);
     renderStorage(row);
+    renderSell();
     renderTiers();
     renderTierBody(row);
     renderCraft(row);
+  }
+
+  // SELL from this Outpost (docs/syndicate-orders.md §9.2) — the manager's write affordance over its
+  // own stockpile. It opens the Syndicate finalise popup scoped to this Outpost (the TRADE script owns
+  // the popup and the gate), over the manager, as the Dock editor does. An Outpost with nothing to sell
+  // offers no SELL: the bar empties and hides.
+  function renderSell(){
+    var can = window.__nodeSellable && window.__nodeSellable({ kind:'outpost', id: OM.id });
+    $('omSell').innerHTML = can ? '<button class="om-act primary" type="button">Sell to Syndicate</button>' : '';
   }
 
   // Default the selection to the first occupied slot, else the first queued craft, else none — and keep
@@ -13018,6 +13291,9 @@ function paintInventoryHero(d){
   $('omTabDocked').addEventListener('click', function(){ OM.tab='DOCKED'; var r=outpostRow(); if(r){ renderTabs(); renderLeft(r); } });
   $('omTabParked').addEventListener('click', function(){ OM.tab='PARKED'; var r=outpostRow(); if(r){ renderTabs(); renderLeft(r); } });
   $('omClose').addEventListener('click', closeManager);
+  $('omSell').addEventListener('click', function(e){
+    if(e.target.closest('button') && window.__openNodeSell) window.__openNodeSell({ kind:'outpost', id: OM.id });
+  });
   $('outpost-overlay').addEventListener('click', function(e){ if(e.target===this) closeManager(); });
   document.addEventListener('keydown', function(e){ if(OM.open && e.key==='Escape') closeManager(); });
 

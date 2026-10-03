@@ -505,37 +505,35 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the SELL & 
   assert.match(html, />Open Market</);
   assert.match(html, />Your Listings</);
 
-  // THE ORDER MODEL, CLIENT HALF (docs/syndicate-orders.md §6). Both panes of the Syndicate Trade
-  // card now BUILD the held order: the exec buttons are Add to Sell/Buy Order and post addOrderLine.
-  // The old "Sell/Buy from Syndicate" exec LABELS on the card are gone (the popup confirm still
-  // carries them, set in JS — asserted below).
-  assert.match(html, /<button class="tw-exec" id="tw-sellbtn" type="button" disabled>Add to Sell Order<\/button>/);
+  // THE ORDER MODEL, CLIENT HALF (docs/syndicate-orders.md §6). The Syndicate Trade card BUILDS the
+  // held buy order: its exec button is Add to Buy Order and posts addOrderLine. Its SELL pane is
+  // RETIRED (§9.2 — a sell starts at the node, pinned in the next test): no sell pane, no Add to Sell
+  // Order, no Sell / Buy toggle.
   assert.match(html, /<button class="tw-exec" id="tw-buybtn" type="button" disabled>Add to Buy Order<\/button>/);
-  assert.match(html, /id="tw-sellqty"/);              // the sell pane's quantity
   assert.match(html, /id="tw-buyqty"/);               // the buy pane's quantity
   assert.match(html, /type:'addOrderLine', guildId: player\.guildId, side: side, good: good, qty: qty/,
-    'both Add buttons post addOrderLine for the selected good (§3)');
+    'the Add button posts addOrderLine for the selected good (§3)');
+  assert.ok(!/id="tw-sell-pane"/.test(html), 'the TRADE card SELL pane is retired (§9.2)');
+  assert.ok(!/id="tw-sellbtn"|Add to Sell Order/.test(html), 'the Add to Sell Order button is retired (§9.2)');
+  assert.ok(!/id="tw-sellqty"/.test(html), 'the sell pane quantity is retired (§9.2)');
+  assert.ok(!/id="tw-mode-(sell|buy)"/.test(html), 'the Sell / Buy toggle is retired with the sell pane (§9.2)');
   // The old per-system SELL basket is RETIRED (§6) — its table and its guild-wide-qty markup are gone.
   assert.ok(!/id="tw-sysalloc"/.test(html), 'the per-system SELL allocation table is retired');
   assert.ok(!/allocations: allocations/.test(html), 'the client no longer sends the legacy multi-system SELL');
   assert.ok(!/\bcart:/.test(html), 'the client no longer sends the legacy inline-cart BUY (retired, §8)');
 
-  // THE TWO HERO ORDER BUTTONS on the Syndicate Exchange hero (.tw-thero), badged from the snapshot's
-  // buyOrder/sellOrder and opening the finalise popup for that side.
+  // THE HERO ORDER BUTTON on the Syndicate Exchange hero (.tw-thero), badged from the snapshot's
+  // buyOrder and opening the finalise popup. The Sell Order button is RETIRED (§9.2).
   assert.match(html, /class="tw-thero-orders"/);
   assert.match(html, /id="tw-order-buy"[^>]*data-side="buy"/);
-  assert.match(html, /id="tw-order-sell"[^>]*data-side="sell"/);
   assert.match(html, />Buy Order</);
-  assert.match(html, />Sell Order</);
+  assert.ok(!/id="tw-order-sell"|>Sell Order</.test(html), 'the Sell Order hero button is retired (§9.2)');
   assert.match(html, /function renderOrderButtons\(\)/);
   assert.match(html, /side === 'buy' \? g\.buyOrder : g\.sellOrder/,
-    'the hero badges read the guild order rows off the snapshot (§4), never a local basket');
+    'the hero badge reads the guild order row off the snapshot (§4), never a local basket');
 
-  // The mode toggle is real (neither button carries `na`), and the finalise popup — one .est-style
-  // overlay scoped under #tw-tx-overlay — is served with its single confirm and the manifest.
-  assert.match(html, /id="tw-mode-sell"[^>]*data-mode="sell"/);
-  assert.match(html, /id="tw-mode-buy"[^>]*data-mode="buy"/);
-  assert.ok(!/class="tw-mbtn na"/.test(html), 'Buy is no longer dimmed — the popup slice wires it');
+  // The finalise popup — one .est-style overlay scoped under #tw-tx-overlay — is served with its
+  // single confirm and the manifest.
   assert.match(html, /id="tw-tx-overlay"/);           // the shared finalise popup
   assert.match(html, /id="tw-tx-confirm"/);           // its single confirm button
   assert.match(html, /id="tw-tx-herotag"/);           // the TIER · used / hold transport tag
@@ -549,21 +547,21 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the SELL & 
   assert.match(html, /order\.haulerTier/, 'the hero art + tag are driven by the order tier, engine-computed');
   assert.match(html, /order\.overCap/, 'the over-capacity split-the-order state is rendered');
 
-  // THE FINALISE posts the HELD-ORDER shape (§5): BUY carries a destinationSystemId and NO cart/good;
-  // SELL carries an originSystemId and NO allocations/good. The engine reads the guild's own order.
+  // THE FINALISE posts the HELD-ORDER shape (§5): BUY carries a destinationSystemId and NO cart/good.
+  // The engine reads the guild's own order. (SELL's finalise is pinned in the next test.)
   assert.match(html, /type:'buyFromSyndicate', guildId: player\.guildId, destinationSystemId: TX\.target/);
-  assert.match(html, /type:'sellToSyndicate', guildId: player\.guildId, originSystemId: TX\.target/);
   assert.match(html, /window\.__sendAction\(buyAction\)/);
-  assert.match(html, /window\.__sendAction\(sellAction\)/);
   assert.match(html, /buyAction\.issueTick = TX\.issueTick/,
     'the BUY confirm sends the frozen issueTick, so the engine prices at the quoted tick');
-  assert.match(html, /sellAction\.issueTick = TX\.issueTick/,
-    'the SELL confirm sends the frozen issueTick, so the engine prices at the quoted tick');
+  // The finalise-time target is BUY's destination only — the SELL origin dropdown is RETIRED (§9.2).
+  assert.match(html, /<select class="rowsel" id="tw-tx-target" aria-label="Destination system">/);
+  assert.ok(!/Origin system|'Origin'/.test(html), 'the SELL origin dropdown is retired (§9.2)');
 
   // §18 — the popup READS route fuel + arrival by the order's tier; it computes none. It reads the
   // engine's per-tier burn (`fuelBurnByTier`), the per-tier valuation (`creditCostByTier`) and the
   // travel duration (`.travelTicks`). It must carry NEITHER the burn rate, NOR the hex geometry, NOR
-  // the craft speed / arrival helper — and it picks NO tier itself (the tier is read off the order).
+  // the craft speed / arrival helper. A BUY reads its tier off the held order; a node SELL previews
+  // its tier from the published `goodVolumes` + `haulerTiers` (pinned in the next test).
   assert.match(html, /fuelBurnByTier/, 'the route burn is read per tier from the snapshot');
   assert.match(html, /creditCostByTier/, 'the route fuel credits are read per tier from the snapshot');
   assert.match(html, /\.travelTicks/, 'the BUY arrival is read from the snapshot, not recomputed');
@@ -598,6 +596,80 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the SELL & 
   assert.ok(!/\.postMessage\s*\(/.test(tradeBlock), 'the TRADE tab sends no postMessage — it rides no console bridge');
   assert.ok(!/contentWindow/.test(tradeBlock), 'the TRADE tab talks to no iframe');
   assert.ok(!/src\s*=\s*['"]?\/?console/.test(tradeBlock), 'the TRADE tab embeds no console');
+});
+
+// SELL FROM THE NODE (docs/syndicate-orders.md §9.2, 2.2 trading to/from outposts client slice 2). A
+// client-render tripwire on the SERVED bytes: SELL is started from the node whose goods are sold — a
+// held system's System Manifest or an own Outpost's manager — with the origin fixed to that node. The
+// popup would still render if the wiring silently reverted (to the TRADE card, or to a dropdown), so
+// only this fails.
+test('GET / serves SELL from the node — the two entry points, the fixed origin, and the one-shot confirm', async () => {
+  const html = await (await fetch(base + '/')).text();
+  const tradeBlock = html.slice(html.indexOf('<script id="trade-tab-wire">'), html.indexOf('<script id="deuterium-tab-wire">'));
+  const fnSrc = (name) => {
+    const m = tradeBlock.match(new RegExp('\\n  function ' + name + '\\([\\s\\S]*?\\n  \\}\\n'));
+    assert.ok(m, `${name} is served in the trade block`);
+    return m[0];
+  };
+
+  // ONE entry point and ONE empty-node gate, owned by the trade script, exported for the two homes.
+  assert.match(tradeBlock, /window\.__openNodeSell = openNodeSell;/);
+  assert.match(tradeBlock, /window\.__nodeSellable = nodeSellable;/);
+  assert.match(tradeBlock, /function nodeSellable\(node\)\{ return Object\.keys\(nodeStock\(node\)\)\.length > 0; \}/,
+    'an empty node offers no SELL (§9.2)');
+  // The two homes: the Outpost Manager's Sell bar and the System Manifest's index row, each gated.
+  assert.match(html, /<div class="om-sellbar" id="omSell"><\/div>/);
+  assert.match(html, /window\.__nodeSellable\(\{ kind:'outpost', id: OM\.id \}\)/);
+  assert.match(html, /window\.__openNodeSell\(\{ kind:'outpost', id: OM\.id \}\)/);
+  assert.match(html, /sell\.id='sysSell'/);
+  assert.match(html, /window\.__openNodeSell\(\{ kind:'system', id: sell\.getAttribute\('data-sys'\) \}\)/);
+  assert.match(html, /if \(window\.__sysSellRefresh\) window\.__sysSellRefresh\(\);/,
+    'the System Manifest row follows its pool on every poll');
+
+  // THE PILE is the node's own: a system's `stockpilesBySystem[id]`, an Outpost's `stockpile` —
+  // sellable goods only (priced, not deuterium: the TRADE tab's own HIDDEN_GOODS filter).
+  const stock = fnSrc('nodeStock');
+  assert.match(stock, /g\.stockpilesBySystem/);
+  assert.match(stock, /row \? row\.stockpile : null/);
+  assert.match(stock, /!HIDDEN_GOODS\[good\] && priceOf\(good\) != null/);
+  // THE LEG is the node's own (§18 — read, never derived): a held system's `fuelCost`, an Outpost's
+  // `outpostFuelCost` (slice 1a), and the quote-lock freezes both.
+  assert.match(fnSrc('txRoute'), /return c\[nodeId\] \|\| o\[nodeId\] \|\| null;/);
+  assert.match(fnSrc('txFreezeQuote'), /g\.outpostFuelCost/, 'the Outposts\' legs are frozen at open too (§8.1)');
+  assert.match(fnSrc('txFreezeQuote'), /if\(TX\.kind === 'sell'\) Object\.keys\(nodeStock\(TX\.node\)\)/,
+    'every good the node holds has its price frozen at open — the picks come after (§8.1)');
+  // THE PREVIEW sizes the tier from the PUBLISHED `goodVolumes` + `haulerTiers` ladder, by the
+  // engine's own rule (the smallest hold with space ≤ hold) — no volume or hold typed in the client.
+  const order = fnSrc('nodeOrder');
+  assert.match(order, /s\.goodVolumes/);
+  assert.match(order, /s\.haulerTiers/);
+  assert.match(order, /if\(space <= ladder\[i\]\.hold\)\{ tier = ladder\[i\]\.tier; break; \}/);
+
+  // THE ORIGIN IS FIXED: SELL's main column carries no picker of any kind.
+  assert.ok(!/<select/.test(fnSrc('txRenderNodeMain')), 'the SELL origin is the node — no dropdown (§9.2)');
+
+  // THE CONFIRM commits in one shot: addOrderLine per chosen line, THEN one sellToSyndicate naming
+  // the node's own origin field (exactly one of the two) and the frozen issue tick. A draft left from
+  // before is cleared first, so what sells is what is on screen.
+  const chain = fnSrc('txSellChain');
+  assert.match(chain, /\(g && g\.sellOrder\)\s*\? send\(\{ type:'clearOrder', guildId: guildId, side:'sell' \}\)/);
+  assert.match(chain, /send\(\{ type:'addOrderLine', guildId: guildId, side:'sell', good: l\.good, qty: l\.qty \}\)/);
+  assert.match(chain, /var sellAction = \{ type:'sellToSyndicate', guildId: guildId \};/);
+  assert.match(chain, /if\(node\.kind === 'outpost'\) sellAction\.originOutpostId = node\.id;\s*else sellAction\.originSystemId = node\.id;/);
+  assert.match(chain, /sellAction\.issueTick = issueTick/);
+  assert.ok(chain.indexOf("type:'addOrderLine'") < chain.indexOf("type:'sellToSyndicate'"),
+    'the lines are built before the finalise is sent');
+  // A REFUSED finalise clears the order it built and keeps the popup open with the engine's reason.
+  const refused = fnSrc('txSellRefused');
+  assert.match(refused, /type:'clearOrder', guildId: player\.guildId, side:'sell'/);
+  assert.match(refused, /TX\.reason = reason/);
+  assert.match(html, /<div class="expired" id="tw-tx-refused"><\/div>/);
+
+  // THE POPUP IS PAGE-LEVEL: lifted to <body> (the TRADE panel is hidden at the node) and stacked
+  // above the Outpost Manager, which stays open behind it.
+  assert.match(tradeBlock, /document\.body\.appendChild\(ov\);/);
+  const z = (sel) => Number(html.match(new RegExp(sel + '\\{[^}]*?z-index:(\\d+)'))[1]);
+  assert.ok(z('#tw-tx-overlay') > z('#outpost-overlay'), 'the SELL popup sits over the Outpost Manager');
 });
 
 // The DEUTERIUM client (§1.4 "The Deuterium Cycle" / "The illegal path") — slice 2a. A
