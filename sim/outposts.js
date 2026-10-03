@@ -25,6 +25,7 @@ const { HEAVY_HOLD } = require('./fuel.js');
 const {
   LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT,
 } = require('./vehicles.js');
+const { usedSpace } = require('./manifest.js');
 
 // OUTPOST_CAPACITY — the Outpost stockpile's hard space cap, in cargo space (the same
 // `Σ qty × volumeOf` unit a transport hold uses). RULED 20-09-26 (design.md §4 "Capacity";
@@ -127,6 +128,32 @@ function nextOutpostSerial(guild) {
   return (guild.outpostSerial || 0) + 1;
 }
 
+// outpostFreeSpace(outpost) -> the cargo space an Outpost can still take: its own `capacity` minus what
+// its stockpile already holds (`usedSpace`, the `Σ qty × volumeOf` unit). A Syndicate BUY to an Outpost
+// (docs/syndicate-orders.md §9.1 / §9.4) reads it twice — at departure, to decide the space-warning, and
+// on arrival, to decide all-or-nothing — so the two can never judge "room" differently. It reads the
+// Outpost's own `capacity` (minted as OUTPOST_CAPACITY), the same field the dock step's unload clamp and
+// the outpost-stockpile-within-capacity invariant read, so all of them agree on one cap.
+function outpostFreeSpace(outpost) {
+  return outpost.capacity - usedSpace(outpost.stockpile);
+}
+
+// consignmentSummary(cargo) -> { cargo, units, space } — the goods summary BOTH delivery notices carry
+// (docs/event-log.md §11), so the space-warning and the turn-back describe a consignment the same way.
+//   cargo — a FRESH good→qty copy, keys sorted by good id (invariant 9), so the notice never shares an
+//           object with the shipment (a save would split them; a copy keeps memory and disk alike);
+//   units — Σ qty, the goods count;
+//   space — `usedSpace(cargo)`, the cargo space the consignment needs at the Outpost.
+// A notice must still read after the shipment is gone (§1, "self-contained"), hence a copy, not a link.
+function consignmentSummary(cargo) {
+  const goods = Object.keys(cargo || {}).sort();
+  return {
+    cargo: Object.fromEntries(goods.map((good) => [good, cargo[good]])),
+    units: goods.reduce((sum, good) => sum + cargo[good], 0),
+    space: usedSpace(cargo),
+  };
+}
+
 module.exports = {
   OUTPOST_CAPACITY,
   OUTPOST_DOCK_SLOTS,
@@ -138,4 +165,6 @@ module.exports = {
   outpostId,
   outpostNumberOf,
   nextOutpostSerial,
+  outpostFreeSpace,
+  consignmentSummary,
 };

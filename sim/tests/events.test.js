@@ -11,7 +11,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-  LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED, EVENT_TYPES, isEventType,
+  LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, DELIVERY_TURNED_BACK,
+  EVENT_TYPES, isEventType,
   RETENTION_UNREAD_TICKS, RETENTION_READ_TICKS, isEventLive,
   recordEvent, liveEvents, cloneEventPayload,
 } = require('../events.js');
@@ -35,12 +36,18 @@ function baseState(guildExtra = {}) {
 
 // ─── the vocabulary ──────────────────────────────────────────────────────────────
 
-test('the type vocabulary is exactly the three notice types', () => {
-  assert.deepEqual([...EVENT_TYPES].sort(), ['deploy_failed', 'licence_lapsed', 'venture_closed']);
+test('the type vocabulary is exactly the five notice types', () => {
+  assert.deepEqual([...EVENT_TYPES].sort(), [
+    'delivery_space_warning', 'delivery_turned_back', 'deploy_failed', 'licence_lapsed', 'venture_closed',
+  ]);
   assert.equal(LICENCE_LAPSED, 'licence_lapsed');
   assert.equal(VENTURE_CLOSED, 'venture_closed');
   assert.equal(DEPLOY_FAILED, 'deploy_failed', 'the third type, written by the deploy retreat (docs/event-log.md §10)');
+  // The fourth and fifth, written by a Syndicate BUY to an Outpost (docs/event-log.md §11).
+  assert.equal(DELIVERY_SPACE_WARNING, 'delivery_space_warning');
+  assert.equal(DELIVERY_TURNED_BACK, 'delivery_turned_back');
   assert.ok(isEventType('licence_lapsed') && isEventType('venture_closed') && isEventType('deploy_failed'));
+  assert.ok(isEventType('delivery_space_warning') && isEventType('delivery_turned_back'));
   assert.ok(!isEventType('rival_bought_in') && !isEventType(undefined));
 });
 

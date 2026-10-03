@@ -787,13 +787,16 @@ function computeAttention(state) {
 //                 contested,
 //                 landmark: { kind, name?, coords?, ... } | null } ],
 //     shipments: [ { ownerGuildId, cargo: { good: int }, destinationSystemId,
-//                    arrivalTick, ticksRemaining, assetKind?,
+//                    arrivalTick, ticksRemaining, assetKind?, destinationOutpostId?,
 //                    originOutpostId, originCoords: {q,r}, departureTick } ],
 //       // IN-FLIGHT, design.md §6. The last three are the LEG the client draws
 //       // (transport-model.md §2.3/§6): leg origin (nearest waystation) + the
 //       // departure tick, so the client re-derives legProgress and tweens the
 //       // craft between departureTick and arrivalTick. Omitted for a row whose
-//       // nearestWaystation is null (defensive; should not happen in flight).
+//       // nearestWaystation is null (defensive; should not happen in flight) —
+//       // and, for now, for a delivery to an Outpost (`destinationOutpostId` set,
+//       // no `destinationSystemId`; syndicate-orders.md §9.1), whose leg the client
+//       // slice will publish.
 //       // `assetKind` marks a Syndicate ASSET delivery (asset-purchase.md) — the
 //       // manifest labels it "Miner"/"Factory"; a goods delivery carries none.
 //     nodeLockouts: [ { siteId, releaseTick, lockedAtTick, ticksRemaining } ], // teardown §3.3
@@ -1805,6 +1808,13 @@ function buildSnapshot(state) {
     // an asset shipment — the same distinction stepArrivals reads to mint instead of deposit. The
     // distance-derived leg fields below are unchanged (an asset flies the same Syndicate leg).
     if (ship.assetKind) row.assetKind = ship.assetKind;
+    // A DELIVERY TO AN OUTPOST (docs/syndicate-orders.md §9.1, trading to/from outposts slice 1b)
+    // names a `destinationOutpostId` instead of a `destinationSystemId`, surfaced additively (present
+    // only on such a row). Its LEG is not published yet: `nearestWaystation` of the absent system id
+    // is null, so the three leg fields below are left off, and the live client — which draws a leg to
+    // `destinationSystemId` and skips any row without leg fields — skips it. Publishing the Outpost's
+    // leg belongs with the client slice that can draw it.
+    if (ship.destinationOutpostId !== undefined) row.destinationOutpostId = ship.destinationOutpostId;
     const near = nearestWaystation(ship.destinationSystemId);
     if (near) {
       row.originOutpostId = near.outpost.id;

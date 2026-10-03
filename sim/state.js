@@ -1147,7 +1147,9 @@ function createState(scenario) {
       ? { outposts: scenario.outposts.map(createOutpost) }
       : {}),
     // IN-FLIGHT (§15.1). Today's only occupant is the Syndicate BUY delivery
-    // (design.md §6): `{ ownerGuildId, cargo, destinationSystemId, arrivalTick }`
+    // (design.md §6): `{ ownerGuildId, cargo, destinationSystemId, arrivalTick }` —
+    // or, for a BUY to a guild Outpost, `destinationOutpostId` in place of
+    // `destinationSystemId` (docs/syndicate-orders.md §9.1)
     // — a pure schedule, deposited by tick.js's stepArrivals on its absolute
     // arrival tick. ALWAYS PRESENT, even empty: the field has been in every state
     // (and so in every committed golden hash) since the walking skeleton, so

@@ -53,7 +53,7 @@ is gone (§2).
 
 ## 2. The two types & the four writers
 
-The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT):
+The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine half BUILT):
 
 - **`licence_lapsed`** — an ordinary licence lapsed back to unlicensed.
 - **`venture_closed`** — a venture was removed.
@@ -391,3 +391,55 @@ what the notice itself does:
 - **Read-on-open** is §8's, unchanged. The notice stays in the inbox after a fork, like any read notice.
 - **The card fit** is as before: the footer now holds three buttons and still fits the card, and the last fact
   (`Failed`) still sits just below the fold.
+
+## 11. The delivery notices — `delivery_space_warning` and `delivery_turned_back` (2.2 trading to/from outposts)
+
+*Status: **RULED** by `syndicate-orders.md` §9.1 / §9.4 (REVISED 04-10-26: warn, don't block; all-or-nothing on
+arrival). The **ENGINE half is BUILT** (04-10-26, trading to/from outposts slice 1b): the two types, the two writes and
+their payloads. The **CLIENT half is NOT built** — the inbox rows, the popup and the Trader's voice are a later slice.
+Modelled on §10: a writer that already holds everything the notice needs records one self-contained row through the
+shared `recordEvent`; retention, acknowledge and surfacing are §3–§5's, unchanged.*
+
+**Why two notices.** A Syndicate BUY to an Outpost is never refused for want of room (§9.1): the Syndicate takes the
+payment and ships, and the Outpost's free space is judged only when the delivery lands, all or nothing (§9.4). The
+player needs to hear about that twice — when a buy leaves for an Outpost that cannot hold it now, so they can clear
+room in time, and when a delivery is lost.
+
+**The types.** Both join `EVENT_TYPES` in `sim/events.js`, so `checkEventLog` accepts them:
+- **`delivery_space_warning`** — a BUY left for an Outpost whose free space at that moment is less than the order needs.
+- **`delivery_turned_back`** — a delivery to an Outpost was lost on arrival: no room for the whole consignment, or the
+  Outpost is gone.
+The names follow the log's `noun_pastparticiple` / `noun_noun` style (`venture_closed`, `deploy_failed`), and share the
+`delivery_` prefix so a client can group them.
+
+**The writers.**
+- **The warning** — the `buyFromSyndicate` apply (`sim/actions.js`), on the departure tick (the tick the action lands
+  on), right after the shipment is scheduled and the fuel burned. Only when the destination is an Outpost and the
+  order's space is more than `outpostFreeSpace(outpost)` — exactly equal fits, so no warning. It reads the stockpile as
+  it stands and does not count other deliveries already flying there (§9.4's jeopardy: a buy that fits now can still be
+  turned back, unwarned, if the guild fills the Outpost in transit).
+- **The turn-back** — `landOutpostDelivery` in `stepArrivals` (`sim/tick.js`), on the arrival tick, whenever an
+  Outpost delivery is lost. One writer for both causes, so the loss and its notice cannot disagree.
+A system is uncapped, so a system delivery writes neither. Both rows are born unread.
+
+**The payloads** (self-contained — the Outpost may be gone, and the shipment is gone, by the time a client reads them;
+plain integers and strings, no emoji, the notice-row convention of 02-10-26):
+- Both carry **`guildId`**, **`outpostId`** (on a turn-back, the last known id) and the goods summary the shared
+  `consignmentSummary` builds (`sim/outposts.js`), so the two describe a consignment the same way: **`cargo`** (a fresh
+  `good → qty` copy, keys sorted, never shared with the shipment), **`units`** (Σ qty) and **`space`** (its cargo space).
+- **`delivery_space_warning`** adds **`freeSpace`** (the Outpost's free space at departure), **`shortfall`**
+  (`space − freeSpace`) and **`arrivalTick`** (when it will land, the shipment's own tick).
+- **`delivery_turned_back`** adds **`cause`** — `'full'` | `'outpost-gone'` — and, for `'full'` only, **`freeSpace`**
+  (the room it found) and **`shortfall`**. `freeSpace` is carried even though `space − shortfall` gives it, because
+  the client computes no game number (§18).
+
+**The surface — today.** No snapshot change was needed: `guilds[].events` carries the rows with their `whenDay`
+(no `unlockDay`; no node is held), and `attention.notices` counts them while unread. Until the client half lands, the
+live client's notice renderer treats any type it does not know as a licence lapse, so these rows read
+"Licence lapsed — Venture" — the same gap `deploy_failed`'s engine half had. Nothing the live client can send writes
+one: it only buys to systems.
+
+**The surface — ruled, not built.** `syndicate-orders.md` §9.1 rules the warning as "an inbox message in the Trader's
+voice". The Trader's character, the row titles, the popup body and facts, and any action forks are the client slice's
+to build (and, where they need ruling, to rule).
+

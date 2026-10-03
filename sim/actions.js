@@ -26,7 +26,7 @@ const {
 } = require('./vehicles.js');
 const {
   outpostId, nextOutpostSerial, outpostDockTurnaround, OUTPOST_DEPLOY_RANGE, DEPLOY_RETREAT_HEXES,
-  DEPLOY_FAILED_REASONS,
+  DEPLOY_FAILED_REASONS, outpostFreeSpace, consignmentSummary,
 } = require('./outposts.js');
 const { resolveManifest, manifestAmountError, copyManifestLine } = require('./manifest.js');
 const {
@@ -44,10 +44,10 @@ const { computeGalacticSupply } = require('./supply.js');
 const { foundingEndowmentFor } = require('./meanline.js');
 const { grantFor } = require('./issuance.js');
 const { guildHolds, heldSystemIds } = require('./claims.js');
-const { recordEvent, DEPLOY_FAILED } = require('./events.js');
+const { recordEvent, DEPLOY_FAILED, DELIVERY_SPACE_WARNING } = require('./events.js');
 const {
   nearestWaystation, arrivalTickFor, hexDistance, legHexAtTick, hexStepToward, legTicks, legFuelBurn,
-  systemHex,
+  systemHex, nearestWaystationToHex,
 } = require('./transport.js');
 const {
   GUILD_STARTING_FUEL, routeFuelCost, routeFuelCostFromHex, burnFuel, fuelValue,
@@ -1415,17 +1415,26 @@ function createSellToSyndicateAction({ guildId, originSystemId, originOutpostId,
 // `guild.buyOrder.lines` as the cart — several goods to ONE destination on ONE hauler, sized by
 // the order's total cargo space (§5.1). This is the only path — the legacy inline `cart` and the
 // single-good `{ good, qty }` forms were RETIRED with the client slice (§8), as the deployed
-// client sends only this shape. `destinationSystemId` is always required.
+// client sends only this shape. The destination is always required (see the node note below).
 //
 // `issueTick` (§8.1's quote-lock) is OPTIONAL and behaves exactly as it does on the SELL
 // side: omitted ⇒ the current tick ⇒ today's posted price; a past tick prices EACH good in the
 // order from the ring at that one tick, validated for expiry. The route fuel it burns is seed
 // geometry and moves only with the order's total-space tier.
-function createBuyFromSyndicateAction({ guildId, destinationSystemId, issueTick }) {
+//
+// ⤳ THE DESTINATION IS A NODE (§9.1, 1b): a held system OR one of the guild's own Outposts, the
+// mirror of the SELL's origin. It is given as EXACTLY ONE of `destinationSystemId` (deliver into the
+// guild's pool in that system — the shape the live client sends) or `destinationOutpostId` (deliver
+// into that Outpost's own stockpile). Only the field given goes into the action, so a system buy's
+// action is byte-identical to before.
+function createBuyFromSyndicateAction({ guildId, destinationSystemId, destinationOutpostId, issueTick }) {
   if (guildId === undefined) throw new Error('createBuyFromSyndicateAction: guildId is required');
-  if (destinationSystemId === undefined) throw new Error('createBuyFromSyndicateAction: destinationSystemId is required');
+  if ((destinationSystemId === undefined) === (destinationOutpostId === undefined)) {
+    throw new Error('createBuyFromSyndicateAction: exactly one of destinationSystemId or destinationOutpostId is required');
+  }
   return {
-    type: 'buyFromSyndicate', guildId, destinationSystemId,
+    type: 'buyFromSyndicate', guildId,
+    ...(destinationOutpostId === undefined ? { destinationSystemId } : { destinationOutpostId }),
     ...(issueTick === undefined ? {} : { issueTick }),
   };
 }
@@ -1564,6 +1573,45 @@ function sellOrigin(state, guild, action) {
       if (outpost.stockpile[good] === 0) delete outpost.stockpile[good];
       if (Object.keys(outpost.stockpile).length === 0) delete outpost.stockpile;
     },
+  };
+}
+
+// buyDestination(state, guild, action) -> the NODE a BUY delivers to (docs/syndicate-orders.md §9.1),
+// the mirror of sellOrigin above:
+//   { id, hex, shipTo, freeSpace() }
+// A node is a held SYSTEM (`destinationSystemId`: the guild's pool in that system) or one of the
+// guild's own OUTPOSTS (`destinationOutpostId`: that Outpost's own `stockpile`). It is the ONE place
+// the two kinds differ, read by BOTH validate and apply, so the hex the fuel gate prices is the hex
+// apply burns for and times the flight from, and the node apply puts on the shipment is the node
+// validate gated.
+//   id        — the destination's id, as named in a refusal or a notice;
+//   hex       — where the leg from the nearest waystation ends: a system's centre hex, an Outpost's own;
+//   shipTo    — the destination field the SHIPMENT carries: `{ destinationSystemId }` (exactly what a
+//               system delivery always carried) or `{ destinationOutpostId }`, never both. stepArrivals
+//               (sim/tick.js) reads the node back from it on the arrival tick;
+//   freeSpace — the cargo space the node can take RIGHT NOW: `Infinity` for a system (a system pool is
+//               uncapped — the store convention sim/manifest.js uses), `outpostFreeSpace` for an Outpost.
+//               Apply reads it ONLY to decide the departure space-warning; it is never a gate (§9.1).
+// The Outpost branch trusts that the Outpost exists and is the guild's: validate's node-held gate
+// proves both before anything here is read. On the arrival tick it may be gone — stepArrivals checks
+// that again itself, and judges room with the same `outpostFreeSpace`. `guild` is unused today (a
+// delivery is deposited on arrival, not here); it is kept so the signature matches sellOrigin's.
+function buyDestination(state, guild, action) {
+  if (action.destinationOutpostId === undefined) {
+    const systemId = action.destinationSystemId;
+    return {
+      id: systemId,
+      hex: systemHex(systemId),
+      shipTo: { destinationSystemId: systemId },
+      freeSpace: () => Infinity,
+    };
+  }
+  const outpost = state.outposts.find((o) => o.id === action.destinationOutpostId);
+  return {
+    id: outpost.id,
+    hex: outpost.coords,
+    shipTo: { destinationOutpostId: outpost.id },
+    freeSpace: () => outpostFreeSpace(outpost),
   };
 }
 
@@ -3083,23 +3131,55 @@ function validateAction(state, action) {
       }
       seenGoods.add(line.good);
     }
-    if (typeof action.destinationSystemId !== 'string' || action.destinationSystemId.length === 0) {
-      return { valid: false, reason: 'destinationSystemId must be a non-empty string' };
+    // ⤳ THE DESTINATION IS A NODE (§9.1, 1b): EXACTLY ONE of `destinationSystemId` or
+    // `destinationOutpostId`. With no `destinationOutpostId` this is the system check it always
+    // was, word for word (the `else` below), and it still runs here, after the lines, as before.
+    if (action.destinationOutpostId !== undefined) {
+      if (action.destinationSystemId !== undefined) {
+        return { valid: false, reason: 'a buy order delivers to ONE destination — give destinationSystemId or destinationOutpostId, not both (docs/syndicate-orders.md §9)' };
+      }
+      if (typeof action.destinationOutpostId !== 'string' || action.destinationOutpostId.length === 0) {
+        return { valid: false, reason: 'destinationOutpostId must be a non-empty string' };
+      }
+      // THE NODE-HELD GATE (§9 / §9.4) — the Outpost's version of `guildHolds` below: it must
+      // exist and be THIS guild's. Outposts are SHARED (state.outposts), so the owner is checked
+      // explicitly, as the SELL's origin gate does. One torn down between the popup opening and
+      // the confirm lands here. stepArrivals asks the SAME question on the arrival tick, where a
+      // "no" loses the consignment (§9.4).
+      const outpost = (state.outposts || []).find((o) => o.id === action.destinationOutpostId);
+      if (!outpost || outpost.ownerGuildId !== guild.id) {
+        return { valid: false, reason: `guild ${JSON.stringify(guild.id)} owns no outpost ${JSON.stringify(action.destinationOutpostId)} to deliver to (docs/syndicate-orders.md §9.4)` };
+      }
+      // A waystation to sail from. An Outpost always has a hex, so this refuses only a seed with
+      // no waystation at all — refused rather than defaulted, as the system check below is.
+      if (!nearestWaystationToHex(outpost.coords)) {
+        return { valid: false, reason: `no Syndicate waystation can reach outpost ${JSON.stringify(outpost.id)}` };
+      }
+      // NO CAPACITY GATE (§9.1, REVISED 04-10-26). A buy to a full, or too-full, Outpost is still
+      // accepted and departs: the guild owns the space. Room is judged only on arrival, all or
+      // nothing (§9.4), and apply writes a space-warning notice when the order does not fit NOW.
+      // (One order is at most one heavy hold, 1/30th of an Outpost, so a placement gate would catch
+      // nothing arrival does not.)
+    } else {
+      if (typeof action.destinationSystemId !== 'string' || action.destinationSystemId.length === 0) {
+        return { valid: false, reason: 'destinationSystemId must be a non-empty string' };
+      }
+      // YOU MAY ONLY BUY INTO A SYSTEM YOU HOLD. `guildHolds` (sim/claims.js) is the
+      // ONE predicate for that question, and stepArrivals asks the SAME one at the
+      // arrival tick — where a `false` is what makes the cargo vanish (§6). Two
+      // different readings of "holds" would mean a delivery legal to schedule and
+      // impossible to land.
+      if (!guildHolds(state, action.guildId, action.destinationSystemId)) {
+        return { valid: false, reason: `guild ${guild.id} does not hold system ${JSON.stringify(action.destinationSystemId)} — a delivery goes only to a system you hold (§6)` };
+      }
+      // ...and there must be a waystation to sail from, and a destination with real
+      // coords to sail to. Refused rather than defaulted: an invented origin would
+      // silently invent an arrival tick.
+      if (!nearestWaystation(action.destinationSystemId)) {
+        return { valid: false, reason: `no Syndicate waystation can reach system ${JSON.stringify(action.destinationSystemId)} — it resolves to no seed coordinates` };
+      }
     }
-    // YOU MAY ONLY BUY INTO A SYSTEM YOU HOLD. `guildHolds` (sim/claims.js) is the
-    // ONE predicate for that question, and stepArrivals asks the SAME one at the
-    // arrival tick — where a `false` is what makes the cargo vanish (§6). Two
-    // different readings of "holds" would mean a delivery legal to schedule and
-    // impossible to land.
-    if (!guildHolds(state, action.guildId, action.destinationSystemId)) {
-      return { valid: false, reason: `guild ${guild.id} does not hold system ${JSON.stringify(action.destinationSystemId)} — a delivery goes only to a system you hold (§6)` };
-    }
-    // ...and there must be a waystation to sail from, and a destination with real
-    // coords to sail to. Refused rather than defaulted: an invented origin would
-    // silently invent an arrival tick.
-    if (!nearestWaystation(action.destinationSystemId)) {
-      return { valid: false, reason: `no Syndicate waystation can reach system ${JSON.stringify(action.destinationSystemId)} — it resolves to no seed coordinates` };
-    }
+    const destination = buyDestination(state, guild, action);
     // THE CAPACITY GATE (NEW, §5.1 / §8.0) — a STRUCTURAL check, run with the ones above
     // and BEFORE cost/fuel/quote: the whole cart flies on ONE hauler, and a load whose
     // total cargo space (`Σ qty × volumeOf(good)`) exceeds the heavy hold cannot be
@@ -3132,13 +3212,15 @@ function validateAction(state, action) {
     // per-hex rate of the hauler tier the cart's TOTAL SPACE selects (§5.1), the SAME
     // function the snapshot quotes. Over-cap space cannot reach here (the capacity gate above
     // reject-wholed it). A `fuelBurn` of 0 is the no-route case, already refused above.
-    const { fuelBurn } = routeFuelCost(action.destinationSystemId, totalSpace);
+    // The leg ends at the DESTINATION'S HEX (§9): a system's centre hex — exactly what
+    // `routeFuelCost(systemId)` measures — or an Outpost's own hex.
+    const { fuelBurn } = routeFuelCostFromHex(destination.hex, totalSpace);
     // COMBINED AVAILABILITY (§1.4 slice 1b): legal `fuelHoard` + contraband `deuteriumFuel`,
     // since apply burns legal-first then contraband (`burnFuel`). Same combined-total gate the
     // SELL side uses.
     const availableFuel = guild.fuelHoard + (guild.deuteriumFuel || 0);
     if (availableFuel < fuelBurn) {
-      return { valid: false, reason: `guild ${guild.id} holds ${availableFuel} fuel (legal + contraband), cannot burn ${fuelBurn} flying to ${JSON.stringify(action.destinationSystemId)} — insufficient fuel: need ${fuelBurn}, have ${availableFuel} (fuel-supply-and-allocation.md §8)` };
+      return { valid: false, reason: `guild ${guild.id} holds ${availableFuel} fuel (legal + contraband), cannot burn ${fuelBurn} flying to ${JSON.stringify(destination.id)} — insufficient fuel: need ${fuelBurn}, have ${availableFuel} (fuel-supply-and-allocation.md §8)` };
     }
     // THE QUOTE-LOCK GATE (docs/transport-model.md §8.1) — LAST, exactly like the fuel
     // gate above and for the same reason. Refuses an EXPIRED issue tick (past the TTL, or a
@@ -4616,6 +4698,9 @@ function applyAction(state, action) {
     // THE CART — the guild's HELD buy order (`guild.buyOrder.lines`, §5). (The inline `cart` /
     // legacy `good`/`qty` intake was RETIRED with the client slice, §8.)
     const cart = buyFinalizeCart(next, action);
+    // The destination NODE (§9.1) — the same one validate gated, read from `next`: a held system,
+    // or the guild's own Outpost.
+    const destination = buyDestination(next, guild, action);
 
     // ROUNDED PER GOOD then summed — #43's `round(qty × price)` per line, so a good bought
     // and immediately sold back at an UNMOVED price costs exactly nothing, and a one-good
@@ -4645,7 +4730,10 @@ function applyAction(state, action) {
     // lands (§15.6's "pure schedule"), and an absolute tick is what lets a save
     // reloaded mid-flight land on the right tick with no special case. Speed is
     // tier-independent (§5.1), so the arrival tick does not depend on the cart's space.
-    const { distance } = nearestWaystation(action.destinationSystemId);
+    // The leg ends at the destination's hex (§9): for a system that is its centre hex, which is
+    // exactly what `nearestWaystation(systemId)` measures, so a system's arrival tick is unchanged.
+    const { distance } = nearestWaystationToHex(destination.hex);
+    const arrivalTick = arrivalTickFor(next.tick, distance);
     if (!Array.isArray(next.shipments)) next.shipments = [];
     next.shipments.push({
       ownerGuildId: action.guildId,
@@ -4653,17 +4741,20 @@ function applyAction(state, action) {
       // never a `fuel` key, so invariant 1's fuel-in-transit sum reads 0 for a BUY delivery
       // (§6's fuel-invariant note). `stepArrivals` already deposits every good in this map.
       cargo,
-      destinationSystemId: action.destinationSystemId,
-      arrivalTick: arrivalTickFor(next.tick, distance),
+      // THE NODE (§9.1): `destinationSystemId` for a system — the field, and the place in the
+      // record, a system delivery always had — or `destinationOutpostId` for an Outpost. Never both.
+      ...destination.shipTo,
+      arrivalTick,
     });
     // NO origin, NO route, NO status (§6): nothing needs tracking between now and
     // arrival, and a field nobody reads is a fact with a second home waiting to
     // drift (invariant 5).
     //
     // THE BURN — the flight scheduled just above costs fuel, and this is where the guild
-    // pays it: `routeFuelCost(dest, totalSpace).fuelBurn` — the per-hex rate of the hauler
-    // tier the cart's TOTAL SPACE (`Σ qty × volumeOf`) selects (§5.1), from the SAME function
-    // the validate gate checked and the snapshot quotes. Recomputed here (not threaded from
+    // pays it: `routeFuelCostFromHex(destination.hex, totalSpace).fuelBurn` — the per-hex rate
+    // of the hauler tier the cart's TOTAL SPACE (`Σ qty × volumeOf`) selects (§5.1), from the
+    // SAME function and hex the validate gate checked and the snapshot quotes (for a system,
+    // exactly `routeFuelCost(systemId, totalSpace)`). Recomputed here (not threaded from
     // validate) because apply must be correct on its own terms, and it is a pure function of
     // the seed + cart, so the two calls cannot disagree.
     //
@@ -4679,13 +4770,33 @@ function applyAction(state, action) {
     // A `fuelBurn` of 0 makes both lines no-ops — the no-route case, already
     // refused up front by validate's waystation gate.
     const totalSpace = cart.reduce((sum, line) => sum + (line.qty * volumeOf(line.good)), 0);
-    const { fuelBurn } = routeFuelCost(action.destinationSystemId, totalSpace);
+    const { fuelBurn } = routeFuelCostFromHex(destination.hex, totalSpace);
     // LEGAL-FIRST (§1.4 slice 1b): `burnFuel` draws `fuelHoard` first, contraband
     // `deuteriumFuel` for the remainder — the same combined burn the SELL side does. Both are
     // held fuel, so one consumption event: `totalConsumed += fuelBurn` once, invariant 1 stays
     // closed. The combined-availability gate covered it, so neither store goes negative.
     burnFuel(guild, fuelBurn);
     next.audit.totalConsumed += fuelBurn;
+
+    // THE DEPARTURE SPACE-WARNING (§9.1, REVISED 04-10-26). The buy has gone, paid and fuelled,
+    // whatever the room. If the order needs more space than the destination has free RIGHT NOW,
+    // write a `delivery_space_warning` notice so the player can clear room before it lands
+    // (docs/event-log.md §11). A system's free space is `Infinity` (uncapped), so only an Outpost
+    // is ever warned. The warning reads the Outpost's stockpile as it stands; it does NOT count
+    // other deliveries already flying to it. So a buy that fits now can still be turned back on
+    // arrival, with no warning, if the guild fills the Outpost while it is in transit (another
+    // buy, a dock unload) — the jeopardy §9.4 rules, not a gap in this check.
+    const freeSpace = destination.freeSpace();
+    if (totalSpace > freeSpace) {
+      recordEvent(guild, next.tick, DELIVERY_SPACE_WARNING, {
+        guildId: guild.id,
+        outpostId: destination.id,
+        ...consignmentSummary(cargo),   // cargo, units, space
+        freeSpace,
+        shortfall: totalSpace - freeSpace,
+        arrivalTick,
+      });
+    }
 
     // CLEAR THE HELD ORDER on a successful finalise (§5). Deleting the key keeps it OMIT-WHEN-EMPTY
     // (§2). A reject-whole never reaches apply, so the draft is left untouched on refusal for free.

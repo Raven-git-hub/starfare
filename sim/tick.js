@@ -58,7 +58,8 @@ const {
 const { issuanceModifier } = require('./meanline.js');
 const { pushModifierSample } = require('./modifier-history.js');
 const { pushFuelBurnEntry } = require('./fuel-burn-history.js');
-const { outpostDockTurnaround } = require('./outposts.js');
+const { outpostDockTurnaround, outpostFreeSpace, consignmentSummary } = require('./outposts.js');
+const { recordEvent, DELIVERY_TURNED_BACK } = require('./events.js');
 const { resolveManifest, usedSpace } = require('./manifest.js');
 // The chained-route execution (the automation layer, transport-model.md §11.2) lives in actions.js:
 // `resolveRouteArrival` (a routed craft has just reached a waypoint — run its action, then go on) and
@@ -1122,6 +1123,67 @@ function stepScheduledEvents(state, _actions) {
   return stepSyndicateBuilds(state);
 }
 
+// landOutpostDelivery(state, guild, ship, thisTick) — land ONE Syndicate goods delivery bound for a
+// guild Outpost (a shipment with `destinationOutpostId`; docs/syndicate-orders.md §9.4, roadmap 2.2
+// trading to/from outposts slice 1b). MUTATES the Outpost's stockpile, or the guild's event log.
+// ALL-OR-NOTHING — the whole consignment lands, or none of it does; never a partial deposit:
+//   - the Outpost is gone, or is no longer this guild's → LOST, with a `delivery_turned_back` notice,
+//     cause 'outpost-gone'. The Outpost analogue of the system delivery's `guildHolds` vanish below,
+//     and the same question the BUY's node-held gate asked at departure;
+//   - the WHOLE consignment needs more space than the Outpost has free → LOST, notice cause 'full';
+//   - otherwise every good is deposited into `outpost.stockpile`.
+// Lost means lost: no refund, no divert to another node (§9.4). It is conservation-clean exactly as
+// the system vanish is — the cargo was never in a stockpile (galactic supply never counted it) and the
+// cash moved to the ledger at purchase — so dropping the shipment imbalances nothing. Supply is NOT
+// refreshed here; tick()'s end-of-steps derive owns the cache (see the note at the end of stepArrivals).
+function landOutpostDelivery(state, guild, ship, thisTick) {
+  const consignment = consignmentSummary(ship.cargo);   // { cargo, units, space } — what a notice reports
+  const outpost = (state.outposts || []).find((o) => o.id === ship.destinationOutpostId);
+
+  // THE VANISH CHECK — gone, or not this guild's any more.
+  if (!outpost || outpost.ownerGuildId !== ship.ownerGuildId) {
+    // No guild means no inbox to tell; the consignment is lost all the same. (No action deletes a
+    // guild today, so this is the defensive case, as in stepArrivals' asset-delivery branch.)
+    if (guild) {
+      recordEvent(guild, thisTick, DELIVERY_TURNED_BACK, {
+        guildId: ship.ownerGuildId,
+        outpostId: ship.destinationOutpostId,   // its last known id; the Outpost itself may be gone
+        ...consignment,
+        cause: 'outpost-gone',
+      });
+    }
+    return;
+  }
+  if (!guild) {
+    // An Outpost still naming a guild that does not exist is a broken state, not a lost delivery —
+    // halt loudly with the tick, exactly as the system delivery does for a claim with no guild (§15.5).
+    throw new Error(`stepArrivals: shipment for guild ${JSON.stringify(ship.ownerGuildId)} arriving at tick ${thisTick} is bound for its outpost ${JSON.stringify(ship.destinationOutpostId)} but no such guild exists`);
+  }
+
+  // THE ROOM CHECK — the WHOLE consignment against the Outpost's free space NOW, with the same
+  // `outpostFreeSpace` the departure warning read. Exactly full fits; one unit of space over does not.
+  const freeSpace = outpostFreeSpace(outpost);
+  if (consignment.space > freeSpace) {
+    recordEvent(guild, thisTick, DELIVERY_TURNED_BACK, {
+      guildId: ship.ownerGuildId,
+      outpostId: outpost.id,
+      ...consignment,
+      cause: 'full',
+      freeSpace,
+      shortfall: consignment.space - freeSpace,
+    });
+    return;
+  }
+
+  // THE DEPOSIT — every good, in sorted order (invariant 9). Each qty is a positive integer (the BUY
+  // built the cargo from the held order), so no key is ever written as 0 and the stockpile, created
+  // here if the Outpost had none, is never left empty (the omit-when-empty discipline holds).
+  if (!outpost.stockpile) outpost.stockpile = {};
+  for (const good of Object.keys(consignment.cargo)) {
+    outpost.stockpile[good] = (outpost.stockpile[good] || 0) + consignment.cargo[good];
+  }
+}
+
 // Step 5 — arrivals. Shipments that reach their destination this tick.
 //
 // FILLED 29-08-26 by the Syndicate BUY engine (design.md §6, "Syndicate Delivery
@@ -1155,9 +1217,17 @@ function stepArrivals(state, _actions) {
   // step's outcome DOES depend on order, the order must already be a decision
   // rather than whatever the array happened to hold. Sort is stable, so equal
   // keys keep their (deterministic) insertion order.
+  //
+  // ⤳ THAT DAY IS AN OUTPOST (§9.4): its room is finite, so when two deliveries land on ONE Outpost
+  // on the SAME tick, the first to land can take the room the second needed. `destinationOutpostId`
+  // is a key here (a system delivery has none, so it compares equal and the system order is
+  // unchanged); after it, two deliveries to the same Outpost on the same tick have the same owner and
+  // so fall through to the stable sort: they land in the order they were BOUGHT (the order apply
+  // pushed them). The earlier buy takes the room first.
   due.sort((a, b) => (
     a.arrivalTick - b.arrivalTick
     || cmp(a.destinationSystemId, b.destinationSystemId)
+    || cmp(a.destinationOutpostId, b.destinationOutpostId)
     || cmp(a.ownerGuildId, b.ownerGuildId)
   ));
 
@@ -1183,6 +1253,14 @@ function stepArrivals(state, _actions) {
       // field of its own (the shapes are shared and immutable — stamping one here would diverge it,
       // invariant 5) — the emission tick lives in the step, not on the entity.
       mintFinishedKind(guild, ship.assetKind, ship.destinationSystemId);
+      continue;
+    }
+
+    // A GOODS DELIVERY TO AN OUTPOST (docs/syndicate-orders.md §9.4) — a shipment naming a
+    // `destinationOutpostId` instead of a `destinationSystemId`. All-or-nothing, with a turn-back
+    // notice when it is lost (landOutpostDelivery, above). The system path below never sees one.
+    if (ship.destinationOutpostId !== undefined) {
+      landOutpostDelivery(state, guild, ship, thisTick);
       continue;
     }
 

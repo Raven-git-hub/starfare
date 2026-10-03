@@ -99,6 +99,9 @@ already carries. The trade-floor gauge and the finalise popup render these; they
 > along with its `createBuyFromSyndicateAction`/`createSellToSyndicateAction` legacy parameters and
 > the `buyIsHeldOrder`/inline-`cart` helpers. The held-order behaviour above is byte-for-byte
 > unchanged; only the dead intake was removed (§8).
+> *(⤳ §9, 03/04-10-26: the target is now a NODE. `sellToSyndicate` also takes `originOutpostId` (slice 1a,
+> §9.2 AS-BUILT) and `buyFromSyndicate` also takes `destinationOutpostId` (slice 1b, §9.1 / §9.4 AS-BUILT),
+> each as an exactly-one-of alternative to the system field. The system paths above are unchanged.)*
 
 The transaction popup's confirm **finalises the held order** — this is the permanent shape of
 `buyFromSyndicate` / `sellToSyndicate`, replacing PR #89's inline-cart BUY and the multi-system SELL:
@@ -229,7 +232,9 @@ hash-free way it already is for systems (§4) — no determinism byte, no schema
 >   forms (`nearestWaystation(systemId)`, `routeFuelCost`, `routeFuelBurnByTier`) look up the system's centre hex
 >   (`systemHex`) and hand it to the hex form, so a system's leg is unchanged. A test checks this against the old
 >   search for every seed system at every tier boundary, and the BUY and asset paths still call the system forms.
->   `vehicleDeliveryFuelBurn` (a bought craft flying itself in, BUY-side) is not touched.
+>   `vehicleDeliveryFuelBurn` (a bought craft flying itself in, BUY-side) is not touched. *(⤳ slice 1b: the goods BUY
+>   now calls the hex forms too, through `buyDestination` (§9.1 AS-BUILT). A system's hex is its centre hex, so its
+>   leg, burn and arrival tick are the same numbers as before. The asset buy still calls the system forms.)*
 > - **The telemetry.** Each guild row gains **`outpostFuelCost`**: one entry per Outpost the guild owns, keyed by
 >   outpost id and sorted. The entry has the same shape as a system's (`fuelBurn`, `creditCost`, `travelTicks`,
 >   `vehicleTravelTicks`, `fuelBurnByTier`, `creditCostByTier`) and is measured from the Outpost's own hex. One
@@ -243,6 +248,38 @@ hash-free way it already is for systems (§4) — no determinism byte, no schema
 >   §9.1) once the client stops reading `fuelCost`'s keys that way is on the roadmap decision checklist.
 
 ### 9.1 BUY — the Syndicate delivers to the nearest node by default, overridable
+
+> **AS-BUILT (engine slice 1b, 04-10-26) — the engine BUY half.** `buyFromSyndicate` (`sim/actions.js`) now
+> delivers to a held system or to one of the guild's own Outposts. The client is a later slice, so the
+> default-nearest target and the override picker below are not built yet; the engine takes whichever node it is given.
+> - **The destination shape.** The action takes **exactly one** of `destinationSystemId` (unchanged, and still what
+>   the live client sends) or **`destinationOutpostId`** (new), the mirror of 1a's `originSystemId` /
+>   `originOutpostId`. Both, or an empty id, is refused. Neither gets the old `destinationSystemId must be a
+>   non-empty string`. `createBuyFromSyndicateAction` puts only the field given into the action, so a system buy's
+>   action is exactly what it was.
+> - **One destination reader.** `buyDestination(state, guild, action)`, beside 1a's `sellOrigin`, is the one place a
+>   system and an Outpost differ: the node's id, its hex, the destination field the shipment carries
+>   (`{ destinationSystemId }` or `{ destinationOutpostId }`), and its free space right now (`Infinity` for a system,
+>   which is uncapped; the Outpost's `capacity − usedSpace(stockpile)` otherwise). Validate and apply both read it, so
+>   the hex the fuel gate prices is the hex apply burns for and times the flight from, and the node on the shipment
+>   is the node validate gated.
+> - **The gates, for an Outpost destination.** *Node held:* the Outpost exists and its `ownerGuildId` is this guild,
+>   else `guild "…" owns no outpost "…" to deliver to`. This also covers an Outpost torn down between the popup
+>   opening and the confirm (§9.4). *No capacity gate:* a buy to a full, or too-full, Outpost is accepted and departs
+>   (the ruling above). *Fuel:* the leg runs from the nearest waystation to the Outpost's hex. The hauler-hold cap, the
+>   credits gate and the §8.1 quote-lock work on the whole order, whatever the destination, and are unchanged. The
+>   gates run in the same order as before, so a system buy is refused for the same reason it always was.
+> - **Apply.** Credits move to the ledger and one leg is burned, as for a system. ONE shipment is scheduled:
+>   `{ ownerGuildId, cargo, destinationOutpostId, arrivalTick }`. The Outpost field takes the system field's place in
+>   the record, and `arrivalTick` comes from the Outpost's own leg. A system shipment is the same record it always was.
+> - **The departure space-warning.** When the order's space is more than the Outpost's free space at that moment,
+>   apply writes a **`delivery_space_warning`** notice on the departure tick (`docs/event-log.md` §11). A system is
+>   never warned. The warning reads the stockpile as it stands and does **not** count other deliveries already flying
+>   to the Outpost, so a buy that fits now can still be turned back, unwarned, if the guild fills the Outpost while it
+>   is in transit (§9.4).
+> - **No reservation, no hold, no fine** — those were ruled out. The cash and fuel are spent at departure either way.
+> - Tests: `sim/tests/buy-to-outpost.test.js` (20). Operator path: the existing `POST /action` with
+>   `{ type: 'buyFromSyndicate', guildId, destinationOutpostId }`; no new endpoint or CLI verb.
 
 The Syndicate's default drop is the guild's **node nearest a waystation** (the cheapest delivery leg), and
 the player **may override** to any held node, paying that node's larger leg. Narratively the Syndicate offers
@@ -321,6 +358,29 @@ at its frontier** — dropping buys at the nearest node, accepting sells shipped
 guild runs the inside.
 
 ### 9.4 Failure modes (hunted on paper — working practice #7)
+
+> **AS-BUILT (engine slice 1b, 04-10-26) — the arrival.** `stepArrivals` (`sim/tick.js`) lands a shipment that names
+> a `destinationOutpostId` through `landOutpostDelivery`, beside the asset branch. The system delivery's path is
+> untouched. All or nothing, never a partial deposit:
+> - **Outpost gone.** If the Outpost no longer exists, or is no longer this guild's, the consignment is lost and a
+>   **`delivery_turned_back`** notice is written with cause **`outpost-gone`**. It is the Outpost version of the system
+>   delivery's `guildHolds` vanish, and the same question the node-held gate asked at departure.
+> - **No room.** The WHOLE consignment's space is checked against the Outpost's free space at that moment
+>   (`outpostFreeSpace`, the same helper the departure warning read). It fits (exactly full counts) → every good is
+>   deposited into `outpost.stockpile`, created if the Outpost had none. It does not fit, even by one unit of space →
+>   the whole consignment is lost and a `delivery_turned_back` notice is written with cause **`full`**.
+> - **Lost is lost.** No refund, no divert to another node. The shipment leaves the list either way.
+> - **The cap.** Room is judged against the Outpost's own `capacity`, which is minted as `OUTPOST_CAPACITY` and is the
+>   field the dock step's unload clamp and the `outpost-stockpile-within-capacity` invariant read. One cap, three readers.
+> - **Same-tick deliveries to one Outpost** land in the order they were bought (the step's sort is stable, and the
+>   Outpost id is now one of its keys), so the earlier buy takes the room first.
+> - **Supply and conservation.** The step does not refresh galactic supply; tick's end-of-steps derive does, as for a
+>   system delivery. Outpost stockpiles are already counted in supply, so a landed delivery raises it by exactly the
+>   goods, and a lost one leaves it unchanged: the cargo was never in a stockpile, and the cash reached the ledger at
+>   purchase. Invariants 1 and 2 hold either way.
+> - **A broken state halts.** An Outpost that still names a guild that does not exist throws with the tick, as the
+>   system delivery does for a claim with no guild. (No action deletes a guild today.)
+> - **Not touched:** the dock step (`stepOutpostDocks`) and its free-space clamp, and SELL (1a).
 
 - **Destination outpost full when the delivery ARRIVES (BUY) — all-or-nothing loss (REVISED 04-10-26).**
   Placement does not gate on capacity (9.1), so a buy can be sent to an outpost with no room now, the Trader's
