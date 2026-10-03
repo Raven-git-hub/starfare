@@ -143,6 +143,9 @@ The transaction popup's confirm **finalises the held order** — this is the per
 >   split-the-order state (confirm disabled); and the §8.1 quote-lock (freeze at open, `issueTick` on
 >   confirm). Confirm posts the held-order finalise — BUY `buyFromSyndicate({ destinationSystemId,
 >   issueTick })`, SELL `sellToSyndicate({ originSystemId, issueTick })` — no `cart`/`good`/`allocations`.
+>   *(⤳ 04-10-26: the SELL target is now the node it was opened from (§9.2, client slice 2), and BUY's
+>   "Deliver to" lists the held NODES, opens on the nearest, and sends the node's own field (§9.1, client
+>   slice 3a).)*
 > - Verified by the served-bytes tripwire (`sim/tests/server.test.js`) and a headless-Chromium
 >   end-to-end (build a two-good buy order → manifest + tier + route fuel + arrival → confirm →
 >   order empties; a one-origin sell; an over-cap build with confirm disabled).
@@ -253,13 +256,16 @@ hash-free way it already is for systems (§4) — no determinism byte, no schema
 >   §9.1) once the client stops reading `fuelCost`'s keys that way is on the roadmap decision checklist.
 >   *(⤳ 04-10-26, client slice 2: the SELL dropdown is gone, so `txHeldSystems` now fills only BUY's "Deliver to".
 >   The node SELL reads a node's leg by id, `fuelCost[id]` or `outpostFuelCost[id]`. The merge stays open for the
->   BUY client slice.)*
+>   BUY client slice.)* *(⤳ 04-10-26, client slice 3a: `txHeldSystems` is gone. BUY's "Deliver to" now reads both
+>   maps' keys as held nodes (`txHeldNodes`), so no client reader depends on the two maps being apart. Merging
+>   them is now an engine tidy only, and stays open.)*
 
 ### 9.1 BUY — the Syndicate delivers to the nearest node by default, overridable
 
 > **AS-BUILT (engine slice 1b, 04-10-26) — the engine BUY half.** `buyFromSyndicate` (`sim/actions.js`) now
 > delivers to a held system or to one of the guild's own Outposts. The client is a later slice, so the
 > default-nearest target and the override picker below are not built yet; the engine takes whichever node it is given.
+> *(⤳ built in client slice 3a, 04-10-26 — the next block.)*
 > - **The destination shape.** The action takes **exactly one** of `destinationSystemId` (unchanged, and still what
 >   the live client sends) or **`destinationOutpostId`** (new), the mirror of 1a's `originSystemId` /
 >   `originOutpostId`. Both, or an empty id, is refused. Neither gets the old `destinationSystemId must be a
@@ -288,6 +294,35 @@ hash-free way it already is for systems (§4) — no determinism byte, no schema
 > - **No reservation, no hold, no fine** — those were ruled out. The cash and fuel are spent at departure either way.
 > - Tests: `sim/tests/buy-to-outpost.test.js` (20). Operator path: the existing `POST /action` with
 >   `{ type: 'buyFromSyndicate', guildId, destinationOutpostId }`; no new endpoint or CLI verb.
+
+> **AS-BUILT (client slice 3a, 04-10-26) — the BUY destination picker: held nodes, default nearest, override.**
+> `client/game.html` only, with no engine change. The ruling below, as built:
+> - **The list is the held nodes.** The BUY popup's "Deliver to" lists every node the guild holds: its held
+>   systems (`fuelCost`'s keys) and its own Outposts (`outpostFuelCost`'s keys), in one ordering by node id
+>   (`txHeldNodes`). Each is named by the shell's own resolvers, as it is everywhere else. The disabled
+>   "◆ Controlled outpost — soon" option is gone.
+> - **The default is the nearest node.** When the popup opens it selects the held node whose published leg is
+>   shortest (`txNearestNode`). It compares each leg's `travelTicks`, the engine's delivery duration. That
+>   number grows with the leg's hex length and is the same at every hauler tier. The client only picks the
+>   smallest published value and measures nothing itself (§18). A tie goes to the lower node id. This replaces
+>   the home-system default. Every opening selects the nearest again; an override lasts until the popup closes.
+> - **The override** is any node in the list. The route fuel, the fuel bar and the arrival re-read that node's
+>   leg at the order's tier, through the readers SELL already uses (`txRoute`, `txQuotedCredit`,
+>   `txRouteBurn`). The §8.1 freeze already covered the Outposts' legs.
+> - **The confirm names the node by its own field**, exactly one of the two: `destinationOutpostId` for an
+>   Outpost, `destinationSystemId` for a system. The node's kind is kept beside its id (`TX.node`, the field
+>   SELL keeps its origin in), taken from the map that listed it. A system buy sends exactly the action it
+>   always did. An Outpost torn down while the popup is open still goes as an Outpost, so the engine's
+>   node-held gate refuses it with the Outpost wording (§9.4).
+> - **The receipt** names the node and finds the shipment it just placed by that same field.
+> - **No capacity gate.** The popup never reads an Outpost's room. A buy to a full Outpost confirms, and the
+>   engine's departure notice warns (rendering it is client slice 3b).
+> - **Not yet:** the Trader's two notices (client slice 3b), and the Outpost delivery's map leg. An Outpost
+>   shipment is still left off the map and the IN TRANSIT list, as 1b left it.
+> - Tests: `sim/tests/buy-destination-picker.test.js` (5), which runs the page's own picker code against a real
+>   snapshot and checks its choice against the engine's own waystation distances. `sim/tests/server.test.js`:
+>   the TRADE tripwire's BUY pins now read the node's field and the "Deliver to" select, +1 test pinning the
+>   picker's served wiring.
 
 The Syndicate's default drop is the guild's **node nearest a waystation** (the cheapest delivery leg), and
 the player **may override** to any held node, paying that node's larger leg. Narratively the Syndicate offers
