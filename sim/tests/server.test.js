@@ -547,14 +547,17 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the SELL & 
   assert.match(html, /order\.haulerTier/, 'the hero art + tag are driven by the order tier, engine-computed');
   assert.match(html, /order\.overCap/, 'the over-capacity split-the-order state is rendered');
 
-  // THE FINALISE posts the HELD-ORDER shape (§5): BUY carries a destinationSystemId and NO cart/good.
-  // The engine reads the guild's own order. (SELL's finalise is pinned in the next test.)
-  assert.match(html, /type:'buyFromSyndicate', guildId: player\.guildId, destinationSystemId: TX\.target/);
+  // THE FINALISE posts the HELD-ORDER shape (§5): BUY carries its destination node and NO cart/good.
+  // The engine reads the guild's own order. (SELL's finalise is pinned in the next test.) The node is
+  // named by its own field, exactly one of the two (§9.1, slice 1b): an Outpost by
+  // destinationOutpostId, a system by destinationSystemId — the same action a system buy always sent.
+  assert.match(html, /var buyAction = \{ type:'buyFromSyndicate', guildId: player\.guildId \};/);
+  assert.match(html, /if\(TX\.node\.kind === 'outpost'\) buyAction\.destinationOutpostId = TX\.target;\s*else buyAction\.destinationSystemId = TX\.target;/);
   assert.match(html, /window\.__sendAction\(buyAction\)/);
   assert.match(html, /buyAction\.issueTick = TX\.issueTick/,
     'the BUY confirm sends the frozen issueTick, so the engine prices at the quoted tick');
   // The finalise-time target is BUY's destination only — the SELL origin dropdown is RETIRED (§9.2).
-  assert.match(html, /<select class="rowsel" id="tw-tx-target" aria-label="Destination system">/);
+  assert.match(html, /<select class="rowsel" id="tw-tx-target" aria-label="Deliver to">/);
   assert.ok(!/Origin system|'Origin'/.test(html), 'the SELL origin dropdown is retired (§9.2)');
 
   // §18 — the popup READS route fuel + arrival by the order's tier; it computes none. It reads the
@@ -670,6 +673,53 @@ test('GET / serves SELL from the node — the two entry points, the fixed origin
   assert.match(tradeBlock, /document\.body\.appendChild\(ov\);/);
   const z = (sel) => Number(html.match(new RegExp(sel + '\\{[^}]*?z-index:(\\d+)'))[1]);
   assert.ok(z('#tw-tx-overlay') > z('#outpost-overlay'), 'the SELL popup sits over the Outpost Manager');
+});
+
+// THE BUY DESTINATION PICKER (docs/syndicate-orders.md §9.1, 2.2 trading to/from outposts client slice
+// 3a). A client-render tripwire on the SERVED bytes: "Deliver to" lists every node the guild holds,
+// opens on the nearest, and the confirm names the picked node by its own field. The popup would still
+// render if the picker silently reverted to systems only, or the default to the home system, so only
+// this fails. (The picker's choice itself is run against the engine in buy-destination-picker.test.js.)
+test('GET / serves the BUY destination picker — held nodes, default nearest, the node\'s own field', async () => {
+  const html = await (await fetch(base + '/')).text();
+  const tradeBlock = html.slice(html.indexOf('<script id="trade-tab-wire">'), html.indexOf('<script id="deuterium-tab-wire">'));
+  const fnSrc = (name) => {
+    const m = tradeBlock.match(new RegExp('\\n  function ' + name + '\\([\\s\\S]*?\\n  \\}\\n'));
+    assert.ok(m, `${name} is served in the trade block`);
+    return m[0];
+  };
+
+  // THE LIST is the held nodes: the systems (`fuelCost`) AND the Outposts (`outpostFuelCost`), each
+  // named by the shell's resolvers. The "Controlled outpost — soon" stub and the systems-only list are gone.
+  const nodes = fnSrc('txHeldNodes');
+  assert.match(nodes, /g\.fuelCost/);
+  assert.match(nodes, /g\.outpostFuelCost/);
+  assert.match(fnSrc('txTargetBlock'), /var nodes = txHeldNodes\(\)/);
+  assert.match(fnSrc('txTargetBlock'), /nodeName\(n\)/);
+  assert.ok(!/Controlled outpost/.test(html), 'the "Controlled outpost — soon" stub is retired');
+  assert.ok(!/txHeldSystems/.test(html), 'the systems-only destination list is retired');
+
+  // THE DEFAULT is the nearest node, read off the published legs (§18 — it selects, never measures),
+  // with only a strictly shorter leg replacing the pick, so a tie keeps the lower id. It replaces the
+  // home-system default.
+  const nearest = fnSrc('txNearestNode');
+  assert.match(nearest, /txRoute\(n\.id\)\.travelTicks/);
+  assert.match(nearest, /if\(ticks < bestTicks\)/);
+  const open = fnSrc('openTx');
+  assert.match(open, /TX\.node = txNearestNode\(\);/);
+  assert.ok(!/homeSystemId/.test(open), 'the BUY default is no longer the home system');
+
+  // AN OVERRIDE re-reads the node — and its kind — from the same held-node list the options came from.
+  assert.match(tradeBlock, /TX\.node = txHeldNodes\(\)\.filter\(function\(n\)\{ return n\.id === picked; \}\)\[0\] \|\| null;/);
+
+  // THE RECEIPT finds the shipment it just placed by the node's own field.
+  assert.match(fnSrc('txAfter'), /var destField = TX\.node\.kind === 'outpost' \? 'destinationOutpostId' : 'destinationSystemId';/);
+
+  // WARN, DON'T BLOCK (§9.1): an Outpost's room is no gate on the BUY confirm — the engine's departure
+  // notice warns instead (slice 3b renders it). Neither the confirm nor its enable reads an Outpost's
+  // capacity or pile. (The ledger's "Over capacity" tag is the HAULER hold, the order's own overCap.)
+  assert.ok(!/\.capacity\b|freeSpace|usedSpace|\.stockpile\b/.test(fnSrc('txConfirm') + fnSrc('txRenderLedger')),
+    'the BUY confirm has no capacity gate');
 });
 
 // The DEUTERIUM client (§1.4 "The Deuterium Cycle" / "The illegal path") — slice 2a. A
