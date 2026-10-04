@@ -234,16 +234,23 @@ Flags: `--base <url>`, `--seed N`, `--pick a.b.c`, `--json`, `--window N`, `--he
 
 Run it after every redeploy (section 9) to prove the ruled commitment cycle is actually live on the
 running container. It creates a fresh galaxy, auto-finds a titanium node in an unclaimed starter,
-founds a guild, establishes a mine, licenses it at 100 %, reads the result back, and asserts three
+founds a guild, establishes a mine, licenses it at 100 %, reads the result back, and asserts five
 things — every figure read back from the server, none computed here:
 
     docker exec starfare node tools/admin.js verify-cycle
 
       PASS  venture.syndicateCommitment === 230400     read back 230400
       PASS  calendar.windowN === 1440                  read back 1440
-      PASS  calendar.dayAnchorTick present             read back -896
+      PASS  calendar.dayAnchorTick present             read back -1011
+      PASS  founding credits === 8000000               read back 8000000
+      PASS  starter craft + kit idle at home           read back heavyTransport, lightTransport, lightTransport, lightTransport; 1 kit(s)
 
-      ALL PASS — the 24-hour, midnight-anchored commitment cycle is live on this server.
+      ALL PASS — the 24-hour, midnight-anchored commitment cycle and the human starter package are live on this server.
+
+The last two checks read the guild as its founding left it. verify-cycle founds a **human** guild, so it
+receives the human founding starter package (`design.md` §13, 04-10-26): 8,000,000 credits, and one
+heavy plus three light transports and one Outpost kit, all idle at its home system. A container running
+code from before that slice reads back `2000` and `no craft; 0 kit(s)`, and fails.
 
 A `120` commitment or a `24` window means the container is running code from before the `N` 24 → 1,440
 flip; a `7200` commitment means it predates the resource yield tiers (24-09-26 — titanium's baseline

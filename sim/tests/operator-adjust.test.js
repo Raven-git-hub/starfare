@@ -96,11 +96,14 @@ test('adjustCredits grant and remove leave invariant 2 exact (guild ±C, ledger 
 });
 
 test('adjustCredits past the balance reject-wholes (credits unchanged)', () => {
-  const s = founded(2_000);
-  const { next, result } = apply(s, createAdjustCreditsAction({ guildId: GUILD, delta: -2_001 }));
+  // Read the balance rather than pass it in: this is a HUMAN founding, so it holds the starter
+  // credits whatever `credits` the action carried (design.md §13, 04-10-26).
+  const s = founded();
+  const balance = guildOf(s).credits;
+  const { next, result } = apply(s, createAdjustCreditsAction({ guildId: GUILD, delta: -(balance + 1) }));
   assert.equal(result.accepted, false);
   assert.match(result.reason, /below zero/);
-  assert.equal(guildOf(next).credits, 2_000, 'a refused remove leaves credits untouched');
+  assert.equal(guildOf(next).credits, balance, 'a refused remove leaves credits untouched');
   assert.deepEqual(checkInvariants(next, next.tick), []);
 });
 

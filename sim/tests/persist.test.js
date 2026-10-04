@@ -33,6 +33,7 @@ const { saveState, appendJournal, clearJournal, loadOrInit, journalPath } = requ
 const { guildTotals } = require('../stock.js');
 const { TIER3_GOODS } = require('../resources.js');
 const { STARTER_MINERS, STARTER_FACTORIES } = require('../assets.js');
+const { STARTER_HUMAN_CREDITS, STARTER_HUMAN_FLEET } = require('../starter-package.js');
 const { GUILD_STARTING_FUEL, REFERENCE_FUEL_PRICE } = require('../fuel.js');
 const { POOL_SEED, DEUTERIUM_INFLUX_PER_CYCLE } = require('../issuance.js');
 
@@ -78,6 +79,14 @@ function runScripted(dir, steps) {
 // home the establish-venture tests use): HOME_SYSTEM is the first starter,
 // HOME_MINE / HOME_MINE_2 two titanium nodes on its Terran homeworld.
 const FOUND = createFoundGuildAction({ guildId: 'player-guild', name: 'Player', credits: 120, influence: 100, homeSystemId: HOME_SYSTEM });
+// FOUND is a HUMAN founding (`isBot` absent), so it is granted the starter package (design.md §13,
+// 04-10-26): these four craft and this kit, minted in that order, plus the starter credits in place
+// of its 120. Named once so the tests below never spell a starter id.
+const STARTER_VEHICLE_IDS = [
+  'vehicle_player-guild_heavyTransport_01', 'vehicle_player-guild_lightTransport_02',
+  'vehicle_player-guild_lightTransport_03', 'vehicle_player-guild_lightTransport_04',
+];
+const STARTER_KIT_ID = 'asset_player-guild_outpost_01';
 // GOLDEN-PRESERVING assetIds (31-08-26): the deploy now NAMES its machine, and these
 // two name exactly the ones the previous auto-pick (lowest idle id) would have taken —
 // so every venture below lands with the same `assetId` it had before, and the four
@@ -142,15 +151,17 @@ test('spawn→remove→spawn journalled through the server protocol replays hash
   const dir = withTmpDir(t);
   // Found + one tick (snapshot @1 bakes the guild in), THEN the crash-window: spawn a craft at
   // the home system, spawn another at a bare hex, remove the first (destruction, serial NOT
-  // decremented), spawn a third — all journalled @tick 1, no further save. On recovery the three
-  // survivors and, crucially, the third's id (_03, never reissuing the removed _01) must come back
-  // exactly — the monotonic-serial guarantee across restart.
+  // decremented), spawn a third — all journalled @tick 1, no further save. On recovery the
+  // survivors and, crucially, the third's id (_07, never reissuing the removed _05) must come back
+  // exactly — the monotonic-serial guarantee across restart. FOUND is a HUMAN founding, so the
+  // guild already holds the starter fleet as _01.._04 (design.md §13, 04-10-26) and the spawns
+  // continue the same serial from _05.
   const original = runScripted(dir, [
     { action: FOUND },
     { tick: true },
     { action: createSpawnVehicleAction({ guildId: 'player-guild', class: 'lightTransport', location: { landmarkKind: 'system', landmarkId: HOME_SYSTEM } }) },
     { action: createSpawnVehicleAction({ guildId: 'player-guild', class: 'spycraft', location: { q: 0, r: 0 }, condition: 0.5 }) },
-    { action: createRemoveVehicleAction({ guildId: 'player-guild', vehicleId: 'vehicle_player-guild_lightTransport_01' }) },
+    { action: createRemoveVehicleAction({ guildId: 'player-guild', vehicleId: 'vehicle_player-guild_lightTransport_05' }) },
     { action: createSpawnVehicleAction({ guildId: 'player-guild', class: 'heavyTransport', location: { landmarkKind: 'outpost', landmarkId: 'out_01' } }) },
   ]);
 
@@ -158,8 +169,10 @@ test('spawn→remove→spawn journalled through the server protocol replays hash
 
   assert.equal(hashState(recovered), hashState(original));
   const vehicles = recovered.guilds[0].vehicles;
-  assert.deepEqual(vehicles.map((v) => v.id), ['vehicle_player-guild_spycraft_02', 'vehicle_player-guild_heavyTransport_03']);
-  assert.equal(recovered.guilds[0].vehicleSerial, 3, 'the serial survived restart and never reissued _01');
+  assert.deepEqual(vehicles.map((v) => v.id), [
+    ...STARTER_VEHICLE_IDS, 'vehicle_player-guild_spycraft_06', 'vehicle_player-guild_heavyTransport_07',
+  ]);
+  assert.equal(recovered.guilds[0].vehicleSerial, 7, 'the serial survived restart and never reissued _05');
 });
 
 // --- 3. double-apply guard (the WAL trap this design exists to avoid) -------
@@ -470,6 +483,32 @@ const GOLDEN_HASH_WITH_TIER3_CATALOG = 'c49c8e4c27dcfc26cab74baa5ce78f06e3fa8295
 // (⤳ re-pinned 27-09-26 for the Tier-3 re-band — see the note above GOLDEN_HASH_WITH_TIER3_CATALOG.)
 const GOLDEN_HASH_WITH_ASSET_SYSTEMID = 'ffa2b309ebd3b3308b1c2f3de4b0bf6464c9b6372086d521e1d618ac63fffd79';
 
+// THE HUMAN STARTER PACKAGE (design.md §13, RULED 04-10-26): the full hash once FOUND — a HUMAN
+// founding, `isBot` absent — opens on STARTER_HUMAN_CREDITS (not its 120) and is granted the four
+// starter craft and the Outpost kit. The delta from GOLDEN_HASH_WITH_ASSET_SYSTEMID is that package
+// alone, proven by asserting `withoutStarterPackage(s)` returns the value above.
+const GOLDEN_HASH_WITH_STARTER_PACKAGE = '3b6506503e5d17383f49520f261ebba20d2ee9976ad59c212b48f0264ed98a98';
+
+// withoutStarterPackage(state) -> a COPY of the canonical sequence's state with the human starter
+// package undone. The inverted strip-and-prove idiom, because one part of the delta is a changed VALUE
+// (credits) and cannot be stripped the way an added key can:
+//   - drop exactly the four starter craft and the starter kit, by the ids the founding mints, and the
+//     two serials that were 0 (so omitted) before — `vehicles` itself is always present, as `[]`;
+//   - put the 120 FOUND asked for back on the guild, and the matching difference back on the ledger.
+// Only the named ids are dropped, so if the founding ever minted anything else it would survive the
+// undo and the hash would fail.
+const withoutStarterPackage = (state) => {
+  const out = structuredClone(state);
+  const g = out.guilds.find((x) => x.id === 'player-guild');
+  g.vehicles = g.vehicles.filter((v) => !STARTER_VEHICLE_IDS.includes(v.id));
+  delete g.vehicleSerial;
+  g.assets = g.assets.filter((a) => a.id !== STARTER_KIT_ID);
+  delete g.kitAssetSerial;
+  g.credits += FOUND.credits - STARTER_HUMAN_CREDITS;
+  out.syndicate.ledger -= FOUND.credits - STARTER_HUMAN_CREDITS;
+  return out;
+};
+
 // The state minus the reserve's fuel price — everything the four goldens above covered.
 // Stripped inside `reserve`, leaving `reserveLevel` and every other top-level key in
 // place, so a change anywhere else still fails the assertion.
@@ -594,6 +633,16 @@ test('no-op proof: pure engine path (persistence OFF) matches the golden hash', 
   s = advance(s, []).state;
 
   assert.equal(s.tick, 2);
+  // THE HUMAN STARTER PACKAGE (04-10-26, design.md §13): FOUND is a human founding, so it now opens
+  // on the starter credits with four craft and a kit, and this sequence's FULL hash moved. Pin the
+  // new full state, check the package really landed (else the undo below is vacuous), then undo it —
+  // the newest, OUTERMOST strip — and every earlier golden below must return byte-for-byte: the proof
+  // that the package is this slice's ONLY delta.
+  assert.equal(hashState(s), GOLDEN_HASH_WITH_STARTER_PACKAGE, 'the full state, with the starter package, is pinned');
+  assert.equal(s.guilds[0].credits, STARTER_HUMAN_CREDITS, 'the run really was founded on the starter credits');
+  assert.equal(s.guilds[0].vehicles.length, STARTER_HUMAN_FLEET.length, 'with the starter fleet');
+  assert.ok(s.guilds[0].assets.some((a) => a.id === STARTER_KIT_ID), 'and the starter kit');
+  s = withoutStarterPackage(s);
   // A′ (03-09-26) added the founding-stamped `fuelHoardAtCycleStart`, so it is the OUTERMOST
   // strip now — peel it and every earlier golden returns byte-for-byte, the proof it is this
   // slice's only delta. `bare` composes it with the two reserve strips, as before.
@@ -677,7 +726,9 @@ test('no-op proof: subtract the founding fuel grant and the pre-slice golden com
   assert.equal(s.audit.totalProduced, s.reserve.reserveLevel + GUILD_STARTING_FUEL, 'and recorded it as produced');
   assert.equal(s.galacticSupply.fuel.guildHeld, GUILD_STARTING_FUEL, 'and refreshed the supply cache');
 
-  const ungranted = structuredClone(s);
+  // Undo the human starter package first (04-10-26) — the newest founding delta, which this golden
+  // predates. withoutStarterPackage returns a copy, so it stands in for the clone.
+  const ungranted = withoutStarterPackage(s);
   // …and un-endow the founding (A′, 31-08-26), so what comes back is the state as it stood
   // before ANY of the three slices that have touched founding since.
   ungranted.guilds[0].guildReputation -= ungranted.guilds[0].foundingEndowment;
@@ -727,7 +778,7 @@ test('no-op proof: un-seed the pool and the pre-slice-5a golden comes back', () 
     s.reserve.reserveLevel + s.guilds[0].fuelHoard,
     'conservation: produced − consumed == pool + Σ hoards');
 
-  const unseeded = structuredClone(s);
+  const unseeded = withoutStarterPackage(s); // a copy, with the 04-10-26 starter package undone first
   // The endowment landed after this golden was pinned, so it is undone here too — this
   // test is about the POOL seed being the only delta SLICE 5a made.
   unseeded.guilds[0].guildReputation -= unseeded.guilds[0].foundingEndowment;
@@ -772,7 +823,7 @@ test('no-op proof: un-endow the founding and the pre-endowment golden comes back
   // crosses no boundary, so the newborn's modifier rising to 1.0 granted it nothing here.
   assert.equal(g.lastFuelGrant, undefined);
 
-  const unendowed = structuredClone(s);
+  const unendowed = withoutStarterPackage(s); // a copy, with the 04-10-26 starter package undone first
   unendowed.guilds[0].guildReputation -= unendowed.guilds[0].foundingEndowment;
   delete unendowed.guilds[0].foundingEndowment;
   delete unendowed.guilds[0].foundingEntitlement; // Slice D′, a later founding-stamped key this golden predates

@@ -172,11 +172,14 @@ test('kinds are separate: a deleted miner does not move factory numbering, and e
 });
 
 test('a deleted KIT is not recorded — kits number from their own serial, which already never goes back', () => {
+  // A human founding already holds its starter kit as `_outpost_01` (design.md §13, 04-10-26), so the
+  // granted kit is `_02`. Deleting that TOP kit must not let the next grant reuse its number.
   let s = act(founded(), createGrantKitAction({ guildId: GUILD, systemId: HOME_SYSTEM, kind: 'outpost' }));
-  s = act(s, removeAsset(`asset_${GUILD}_outpost_01`));
+  assert.equal(newest(s), `asset_${GUILD}_outpost_02`, 'the grant follows the starter kit');
+  s = act(s, removeAsset(`asset_${GUILD}_outpost_02`));
   assert.equal('removedAssetHighWater' in guildOf(s), false);
   s = act(s, createGrantKitAction({ guildId: GUILD, systemId: HOME_SYSTEM, kind: 'outpost' }));
-  assert.equal(newest(s), `asset_${GUILD}_outpost_02`, 'the kit serial still moves on');
+  assert.equal(newest(s), `asset_${GUILD}_outpost_03`, 'the kit serial still moves on');
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 

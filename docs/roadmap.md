@@ -2519,7 +2519,9 @@ boundary so the later hex-map swap doesn't touch it.
   sends (3a) — is BUILT, "asset-initiated slice 3a" below; next the message's Redeploy / Return forks and the planner's
   unload mode (client, 3b). ⤳ Client slice 3b — the message's two forks, the planner's unload mode, and the Deploy-gating
   parity — is BUILT, "asset-initiated client slice 3b" below; the asset-initiated ladder is complete. Next on this item's
-  ladder above: the kit SOURCES, then the other kinds.*
+  ladder above: the kit SOURCES, then the other kinds. ⤳ The first kit source, the founding-grant kit, is BUILT for HUMAN
+  foundings, with the starter fleet and credits ("kit source — the human founding starter package" below); next the
+  dockyard building a kit, and loading one from a store.*
   - **slice 1 — the deployable good + outpost deploy (engine + operator CLI, NO client).** 🟢 *BUILT (29-09-26).*
     **Built so far — the deployable good:** `DEPLOYABLE_GOODS` = [`outpost_kit`] + `isDeployableGood` /
     `kitGoodFor` (`sim/resources.js`), a sibling category to the stockpile goods and deliberately NOT in
@@ -3159,6 +3161,39 @@ boundary so the later hex-map swap doesn't touch it.
     green**, both unchanged. Driven headless on a seated seed-42 server, with an engine-written `deploy_failed` and
     `venture_closed`: no notice row has an `.ic`, there is no emoji in the panel or either popup, the dot → title gap
     is the row's 12px, and the rows are 43px tall (51px before, the icon box's height).
+  - **kit source — the human founding starter package (ENGINE + operator CLI, NO client UI).** 🟢 *BUILT (04-10-26).*
+    RULED 04-10-26 in the design room (`design.md` §13 "The human founding starter package"; numbers in `phase-1-tuning.md`
+    "Guild starts"). It builds `territory-model.md` §7's founding grant, for humans only. A guild founded with
+    `isBot === false` now opens on **8,000,000 credits**, replacing the action's `credits`. They are still debited from the
+    Syndicate ledger, so invariant 2 nets to zero. It also gets a free grant, all idle at its home system: **1 heavy + 3 light
+    transports** and **1 Outpost kit** asset. A bot founding is byte-identical to before.
+    **Engine:** the numbers live once in the new `sim/starter-package.js` (`STARTER_HUMAN_CREDITS`, `STARTER_HUMAN_FLEET`,
+    `STARTER_HUMAN_KITS`, `STARTER_HEAVY_CONDITION`, `foundingCreditsFor`). `foundGuild`'s apply picks the credits once, for
+    both the guild and the ledger debit. After the home claim it runs `mintStarterPackage`: the fleet through `mintVehicle`
+    (extracted from the `spawnVehicle` apply, which now calls it too) and the kit through `mintKitAsset` (`grantKit`'s). The
+    ids follow the guild's own sequences in a fixed order: `vehicle_<guild>_heavyTransport_01`, `…_lightTransport_02`–`_04`,
+    `asset_<guild>_outpost_01`. `validateAction` now refuses a non-boolean `isBot`. Fuel genesis, the endowment and
+    entitlement, the home claim and inline ventures are untouched.
+    **Tools:** `verify-cycle` founds a human guild, so it receives the package, and the self-check now expects it. Two new
+    checks (founding credits === 8,000,000; the 4 craft + 1 kit idle at home) make a container on older code fail loudly.
+    `tools/automation-demo.sh` now reads its spawned medium at `vehicles.4`, because the starter craft hold 0–3. `sim/demo.js`
+    narrates the real founding figures. **Client:** nothing needed, because the HUD reads credits from the snapshot. Only the
+    `STARTING_CREDITS` comment in `client/game.html` changed: the 2,000 it sends now lands only on a bot founding.
+    **Existing tests:** 28 founded a human guild by default and now receive the package. Each was updated to the new truth.
+    Where a test needs something a human founding no longer gives (an exact credit balance, an empty fleet), it founds a bot,
+    with a comment saying why. The persist golden chain gained `withoutStarterPackage`, the newest strip: with the package
+    undone, every earlier golden returns byte for byte, and the new full hash is pinned.
+    **Proven by** `sim/tests/starter-package.test.js` (+18): the human credits, ledger debit, fleet and kit; every invariant,
+    between ticks and over five ticks, with the right check firing when the package is corrupted; a human founding with the
+    package undone is byte-identical to a bot founding at the same home; a bot founding matches two goldens recorded on
+    `main` before the change; determinism and save/restore; later spawn and grant ids continue at `_05` and `_02`; the
+    starter heavy loads the starter kit and a light cannot; a non-boolean `isBot` is refused. Mutation-checked: minting the
+    package for bots trips the bot goldens, and dropping the human credits trips the credit tests. Sim 1,975 → **1,993
+    green**; tools 75 → **77 green**. Driven against a live persisted server: `verify-cycle` ALL PASS (5/5), and
+    `seat-demo`'s `seat_demo` reads back 8,000,000 credits, the four craft and the kit at its home. The same `verify-cycle`
+    against a server on `main`'s code reads back `2000` and `no craft; 0 kit(s)`, and exits 1. `tools/automation-demo.sh`
+    runs clean end to end. **Deferred (not invented):** the four calls on the decision checklist ("The human founding
+    starter package — four calls"); the other kit sources (the dockyard building a kit, loading one from a store).
 - **2.2 — Trading to/from outposts (`docs/syndicate-orders.md` §9, RULED 03-10-26).** The Syndicate trades
   with any node the guild holds: a held system or one of its own Outposts. SELL is started from the node
   (no origin picker). BUY goes to the node nearest a waystation by default, can be sent elsewhere, and
@@ -3870,6 +3905,20 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   both-origins check use. So `originSystemId: null` (or `0`, or `''`) counts as given and still gets `originSystemId
   must be a non-empty string`. The live client never sends `null`. Confirm, or rule that `null` also counts as not
   given.
+- **The human founding starter package — four calls (04-10-26, the founding, `design.md` §13 AS-BUILT)**, built one
+  way and flagged rather than ruled. **(1) The starter heavy's condition.** The 04-10-26 ruling names the fleet but not
+  its condition. `territory-model.md` §7 had already ruled "starting `maintenanceCondition` 0.5" for the founding heavy,
+  so it is built at **0.5** (`STARTER_HEAVY_CONDITION`, `sim/starter-package.js`); the lights start new (1). Condition is
+  inert until the maintenance slice, but the client shows it as a percentage, so the heavy reads 50%. Confirm 0.5, or
+  rule new (one line). **(2) The Vehicle Gate and the Starter Quest's vehicle reward (§13).** A human now starts with
+  four craft, so as written the gate (other planets gated behind the guild's first vehicle) and the quest's reward (its
+  first Vehicle) no longer apply to a human. Neither is built. Retire both for humans, reshape them, or leave them for a
+  later onboarding pass? **(3) `credits` is still required on a human founding, and not used.** No new field was added,
+  as ruled, so `createFoundGuildAction` still requires `credits` and validation still checks it. The client and
+  `tools/admin.js` still send 2,000. Keep as is, or make `credits` optional for a human, or refuse it? **(4) A
+  non-boolean `isBot` is now refused** (`"false"`, `0`, `null`), because `isBot` now decides 8,000,000 credits and the
+  string `"false"` is truthy. Absent still means human. Confirm. *(Recorded, not a call: the heavy is minted first, as
+  the ruling lists it, so its id is `_01`.)*
 - **Split the oversized engine files — WHEN? (02-10-26, flagged by the 2.2 deploy pipeline engine-integrity tidy.)**
   `sim/actions.js` (5,258 lines) and `sim/server.js` (1,530) are far past a readable size for a codebase the human
   reads line by line; `sim/invariants.js` (2,386), `sim/snapshot.js` (2,120) and `sim/tick.js` (1,771) are also large.

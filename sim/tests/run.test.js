@@ -11,6 +11,7 @@ const { createFoundGuildAction, createPaySyndicateFeeAction } = require('../acti
 const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { GUILD_STARTING_FUEL } = require('../fuel.js');
+const { STARTER_HUMAN_CREDITS } = require('../starter-package.js');
 const { HOME_SYSTEM, HOME_PLANET } = require('./home-anchor.js');
 
 // --- the driver's guards + purity -----------------------------------------
@@ -73,7 +74,9 @@ test('foundGuild inserts the guild and debits its credits from the ledger', () =
   assert.equal(next.guilds.length, 1);
   const g = next.guilds[0];
   assert.equal(g.id, 'player-guild');
-  assert.equal(g.credits, 120);
+  // A HUMAN founding (`isBot` absent): it opens on the starter credits, not the 120 it passed
+  // (design.md §13, 04-10-26). sim/tests/starter-package.test.js covers the rest of the package.
+  assert.equal(g.credits, STARTER_HUMAN_CREDITS);
   // The founding fuel grant (fuel Slice 1): a new guild opens with the starter floor
   // in its hoard (docs/fuel-economy.md §7), not the 0 this used to assert.
   assert.equal(g.fuelHoard, GUILD_STARTING_FUEL);
@@ -87,17 +90,19 @@ test('foundGuild inserts the guild and debits its credits from the ledger', () =
   assert.ok(home, `a guild-owned home claim on ${HOME_SYSTEM} must exist`);
   assert.equal(home.landmarkKind, 'system');
 
-  // Credits MOVED, none minted: ledger 0 -> -120, and the credit-conservation
-  // invariant still holds (this is the whole point of routing founding through
-  // the ledger rather than pre-loading a magic balance).
-  assert.equal(next.syndicate.ledger, -120);
+  // Credits MOVED, none minted: ledger 0 -> -STARTER_HUMAN_CREDITS, and the
+  // credit-conservation invariant still holds (this is the whole point of routing
+  // founding through the ledger rather than pre-loading a magic balance).
+  assert.equal(next.syndicate.ledger, -STARTER_HUMAN_CREDITS);
   assert.deepEqual(checkInvariants(next, next.tick), []);
 });
 
 test('foundGuild refuses a duplicate guild id (first-valid-wins)', () => {
   const s = createZeroState();
-  const a = createFoundGuildAction({ guildId: 'dup', credits: 50, homeSystemId: HOME_SYSTEM });
-  const b = createFoundGuildAction({ guildId: 'dup', credits: 999, homeSystemId: HOME_SYSTEM });
+  // BOT foundings, because only a bot is founded with the `credits` it passes — so the two different
+  // figures tell us WHICH founding landed (a human gets the starter figure either way).
+  const a = createFoundGuildAction({ guildId: 'dup', isBot: true, credits: 50, homeSystemId: HOME_SYSTEM });
+  const b = createFoundGuildAction({ guildId: 'dup', isBot: true, credits: 999, homeSystemId: HOME_SYSTEM });
   const { state: next, results } = advance(s, [a, b]);
   assert.equal(results[0].accepted, true);
   assert.equal(results[1].accepted, false);

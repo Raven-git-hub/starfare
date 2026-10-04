@@ -7502,9 +7502,11 @@ window.__TOPUI = 104;   /* map is squeezed below the top bar via this offset (pa
    layer, visible to all). We never read galacticSupply, the Syndicate ledger, or
    another guild's stockpiles/production — that god's-eye view is /inspect. */
 
-// The founding grant, in credits. [FIRST-CUT] — recorded in docs/phase-1-tuning.md
-// pending a real ruling. Defined ONCE here; the engine debits it from the Syndicate
-// ledger (design.md §14), so the client only ever sends it.
+// The founding grant the action carries, in credits. [FIRST-CUT] — recorded in
+// docs/phase-1-tuning.md. The engine still requires it, but this client founds a HUMAN
+// guild, and a human is founded with the engine's own starter figure (8,000,000 —
+// design.md §13, 04-10-26) instead, so this number does not reach the player. The HUD
+// reads the real balance from the snapshot, as it always has.
 var STARTING_CREDITS = 2000;
 
 // How often the client re-reads the galaxy. A screen-refresh rate, not a game

@@ -228,9 +228,11 @@ test('the snapshot guildPoints drop by the venture that left', () => {
 
 test('the settlement fee is charged in full and may drive credits negative (invariant 2 stays exact)', () => {
   // Found with zero credits; the licensed mine's remaining-term fee dwarfs any sale income.
+  // A BOT founding, because only a bot is founded with the `credits` it passes — a human opens on
+  // the starter credits (design.md §13, 04-10-26), which the fee would not exhaust.
   let s = advance(createZeroState(), [
     createSetWindowNAction({ windowN: N }),
-    createFoundGuildAction({ guildId: GUILD, credits: 0, influence: 100, homeSystemId: HOME_SYSTEM }),
+    createFoundGuildAction({ guildId: GUILD, isBot: true, credits: 0, influence: 100, homeSystemId: HOME_SYSTEM }),
   ]).state;
   s = advance(s, [
     createEstablishVentureAction({ guildId: GUILD, ventureId: 'mine_1', siteId: HOME_MINE, assetId: M1, resourceType: 'titanium', productionRate: 5 }),

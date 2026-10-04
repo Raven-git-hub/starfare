@@ -565,6 +565,15 @@ hold for a kit). **A deep-scan array is deliberately NOT granted** — explorati
 2.5 and unbuilt, so it would be an inert asset; it joins the grant (or the market) when the
 exploration slice lands. *(Lands in the founding-endowment path, `phase-1-tuning.md`.)*
 
+*(⤳ **RULED again and BUILT 04-10-26 — for HUMAN foundings only** (`design.md` §13 "The human founding
+starter package"). The design room restated this grant, restricted it to a guild founded with
+`isBot === false`, and added an 8,000,000-credit founding figure for humans. A bot founding gets none of
+it. As built: one idle `outpost` kit asset, one Heavy and three lights, all idle at the home system,
+minted by the `foundGuild` apply through the same mints `grantKit` / `spawnVehicle` use
+(`sim/starter-package.js`, `sim/actions.js` `mintStarterPackage`). The Heavy's 0.5 condition above is
+honoured. The 04-10-26 ruling did not restate it, so it is on the roadmap's decision checklist to
+confirm.)*
+
 ## 8. Open items → decision checklist
 
 - Deploy ranges (outpost / gate / scan = 10 / 10 / 5) and semi-control aura radii (system /

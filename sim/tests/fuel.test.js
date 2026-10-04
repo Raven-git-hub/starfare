@@ -38,6 +38,7 @@ const { checkInvariants } = require('../invariants.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { computeGalacticSupply } = require('../supply.js');
 const { GUILD_STARTING_FUEL, REFERENCE_FUEL_PRICE, fuelValue } = require('../fuel.js');
+const { STARTER_HUMAN_CREDITS } = require('../starter-package.js');
 
 const found = (guildId, homeSystemId) => createFoundGuildAction({
   guildId, name: guildId, credits: 120, influence: 100, homeSystemId,
@@ -162,7 +163,8 @@ test('fuelHoardValue is derived telemetry — it reaches no stored byte and char
   assert.equal(s.prices.deuterium_fuel, undefined, 'fuel still has no posted price');
   // Marking the hoard to market moves no credits: the ledger and every guild balance
   // are exactly what founding left them, so invariant 2 cannot see this field at all.
-  assert.equal(s.guilds[0].credits, 120);
-  assert.equal(s.syndicate.ledger, -120);
+  // (A human founding: its credits are the starter figure, design.md §13 04-10-26.)
+  assert.equal(s.guilds[0].credits, STARTER_HUMAN_CREDITS);
+  assert.equal(s.syndicate.ledger, -STARTER_HUMAN_CREDITS);
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });

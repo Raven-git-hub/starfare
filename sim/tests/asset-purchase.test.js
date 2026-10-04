@@ -439,9 +439,11 @@ test('snapshot: the quote is DERIVED-on-read — a galaxy with no purchase seria
 
 test('headless end-to-end: found → buy → build → deliver → mint', () => {
   // Found a guild through the real action path (the only path that grants a home + starter gift).
+  // A BOT founding, because only a bot is founded with the `credits` it is passed: a human gets the
+  // 8,000,000 starter figure (design.md §13, 04-10-26), which does not cover the 12M purchase floor.
   const homeSystemId = starterHomeAtDistance(6).id;
   let s = intake(createZeroState(), [createFoundGuildAction({
-    guildId: 'e2e', credits: 20_000_000, influence: 100, homeSystemId,
+    guildId: 'e2e', isBot: true, credits: 20_000_000, influence: 100, homeSystemId,
   })]).state;
   const guild = () => s.guilds.find((g) => g.id === 'e2e');
   const startersFactories = idleAssets(guild(), FACTORY).length; // the 10 founding factories

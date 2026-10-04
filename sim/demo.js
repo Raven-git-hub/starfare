@@ -6,6 +6,9 @@
 //
 // Numbers fed in are sourced from docs/phase-1-tuning.md (player guild: $120,
 // influence 100, one Titanium mine -- Titanium's base extraction rate is 5/tick).
+// The player guild is founded as a HUMAN, so the engine founds it on its starter
+// credits instead of the $120 (design.md §13, 04-10-26) and gifts the starter
+// fleet + Outpost kit; the narration below prints what actually landed.
 
 const { createZeroState } = require('./scenarios/zero-state.js');
 const { advance } = require('./run.js');
@@ -15,6 +18,7 @@ const { computeOccupancy } = require('./occupancy.js');
 const { getSite, getStarterSystems, getTerranHomeworld } = require('./seed.js');
 const { hashState } = require('./serialize.js');
 const { guildTotals } = require('./stock.js');
+const { STARTER_HUMAN_CREDITS } = require('./starter-package.js');
 
 // The player's home, DERIVED from the seed (not hardcoded): the first starter
 // system and a titanium node on its Terran homeworld -- so the guild, its
@@ -72,11 +76,11 @@ console.log(summary(state));
 console.log('  invariants: OK\n');
 
 console.log('=== 2. The owner founds the first guild (one turn) ===');
-console.log(`  action: foundGuild player-guild ($120, influence 100, home ${HOME_SYSTEM}, one mine @ 5 Titanium/tick)`);
+console.log(`  action: foundGuild player-guild (human, influence 100, home ${HOME_SYSTEM}, one mine @ 5 Titanium/tick)`);
 const foundPlayer = createFoundGuildAction({
   guildId: 'player-guild',
   name: 'Player Guild',
-  credits: 120,       // [phase-1-tuning.md]
+  credits: 120,       // [phase-1-tuning.md] -- required, but a HUMAN founding gets STARTER_HUMAN_CREDITS instead
   influence: 100,     // [phase-1-tuning.md]
   homeSystemId: HOME_SYSTEM,
   ventures: [{ id: 'mine_1', ownerGuildId: 'player-guild', type: 'mining', siteId: MINE_SITE, resourceType: 'titanium', productionRate: 5 }], // [phase-1-tuning.md]
@@ -85,9 +89,12 @@ let res = advance(state, [foundPlayer]);
 state = res.state;
 console.log(`  intake: ${res.results[0].accepted ? 'accepted' : 'rejected'}`);
 console.log(summary(state));
-console.log('  note: ledger fell by exactly 120 -- credits MOVED from the Syndicate,');
-console.log('        none were minted. The founding turn also ran one tick, so the');
-console.log('        mine has already extracted its first 5 Titanium.\n');
+const founded = state.guilds.find((g) => g.id === 'player-guild');
+console.log(`  note: ledger fell by exactly ${STARTER_HUMAN_CREDITS} (the human starter credits) --`);
+console.log('        credits MOVED from the Syndicate, none were minted. The starter package');
+console.log(`        also gifted ${founded.vehicles.length} craft (${founded.vehicles.map((v) => v.class).join(', ')})`);
+console.log(`        and ${founded.assets.filter((a) => a.kind === 'outpost').length} Outpost kit, idle at home. The founding turn also ran`);
+console.log('        one tick, so the mine has already extracted its first 5 Titanium.\n');
 
 console.log('=== 3. Two quiet ticks (no actions) -- the mine keeps extracting ===');
 for (let i = 0; i < 2; i += 1) {

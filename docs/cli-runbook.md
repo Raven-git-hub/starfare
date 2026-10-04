@@ -82,12 +82,16 @@ There is no script for this one; the steps are short. On a throwaway galaxy (see
     node tools/admin.js seat-demo --seed 42 $B                    # a guild that holds its home system
     HOME=$(node tools/admin.js snapshot --pick guilds.0.homeSystemId $B)
     node tools/admin.js adjust-fuel --guild seat_demo --delta 100000 $B
-    node tools/admin.js spawn-vehicle --guild seat_demo --class heavyTransport --system $HOME $B
-    node tools/admin.js grant-kit --guild seat_demo --system $HOME --kind outpost $B        # prints the kit's id
     node tools/admin.js load-kit --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --asset asset_seat_demo_outpost_01 $B
     node tools/admin.js dispatch-vehicle --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --waypoints "Q,R" $B
     node tools/admin.js tick N $B                                 # N = the arrivalTick dispatch printed, minus now
     node tools/admin.js deploy-asset --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 $B
+
+No spawn or grant is needed: `seat-demo` founds a **human** guild, so it already holds the starter heavy
+`vehicle_seat_demo_heavyTransport_01` and the starter kit `asset_seat_demo_outpost_01`, idle at home
+(`design.md` §13, the human founding starter package, 04-10-26). To use a fresh pair instead,
+`spawn-vehicle --class heavyTransport` and `grant-kit --kind outpost` mint them; the spawn prints the new
+craft's id (`_05` here) and the grant the new kit's (`_02`).
 
 `Q,R` is any free bare hex (no system, waystation or Outpost on it) within the outpost deploy range of
 the home system (`phase-1-tuning.md` "Territory & deployment"). `deploy-asset` prints the new Outpost's

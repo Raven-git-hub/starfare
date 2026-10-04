@@ -12,6 +12,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const A = require('./admin.js');
 const { MINE_BASELINE } = require('../sim/baseline.js');
+const { STARTER_HUMAN_CREDITS, STARTER_HUMAN_FLEET, STARTER_HUMAN_KITS } = require('../sim/starter-package.js');
 
 // The engine's 100%-titanium commitment over one 1,440-tick day, DERIVED from the table
 // (⤳ 24-09-26, yield tiers: this was the literal 7,200 = 5 × 1,440 under the old uniform
@@ -164,17 +165,55 @@ test('findResourceNodes: collects up to the limit — how seat-demo gets its TWO
 // --- judgeVerify — the tripwire verify-cycle's exit code reads ---------------
 
 // A live, correctly-ruled galaxy: a 100% titanium licence over a 1,440-tick day,
-// created at 14:25 server time (so the anchor is -865).
+// created at 14:25 server time (so the anchor is -865), and a HUMAN founder that
+// received the starter package (design.md §13, 04-10-26) — its guild row shaped as
+// sim/snapshot.js emits it, trimmed to the fields the check reads.
+const HOME = 'sys_0006';
+const AT_HOME = { landmarkKind: 'system', landmarkId: HOME };
+const FOUNDER = {
+  id: 'verify_cycle', credits: 8000000, homeSystemId: HOME,
+  vehicles: [
+    { id: 'vehicle_verify_cycle_heavyTransport_01', class: 'heavyTransport', status: 'idle', location: AT_HOME },
+    { id: 'vehicle_verify_cycle_lightTransport_02', class: 'lightTransport', status: 'idle', location: AT_HOME },
+    { id: 'vehicle_verify_cycle_lightTransport_03', class: 'lightTransport', status: 'idle', location: AT_HOME },
+    { id: 'vehicle_verify_cycle_lightTransport_04', class: 'lightTransport', status: 'idle', location: AT_HOME },
+  ],
+  assets: [
+    { id: 'asset_verify_cycle_miner_01', kind: 'miner', systemId: HOME, deployedToVentureId: null },
+    { id: 'asset_verify_cycle_outpost_01', kind: 'outpost', systemId: HOME, deployedToVentureId: null },
+  ],
+};
 const GOOD = {
   venture: { id: 'verify_cycle_pl_00002_n02', syndicateCommitment: DAY_OF_TITANIUM },
   calendar: { day: 0, minute: 3, label: '0000:0003', windowN: 1440, dayAnchorTick: -865 },
+  founder: FOUNDER,
 };
 
-test('judgeVerify: the ruled galaxy passes all three checks', () => {
+test('judgeVerify: the ruled galaxy passes all five checks', () => {
   const v = A.judgeVerify(GOOD);
   assert.equal(v.pass, true, JSON.stringify(v.checks));
-  assert.equal(v.checks.length, 3);
+  assert.equal(v.checks.length, 5);
   assert.ok(v.checks.every((c) => c.ok));
+});
+
+test('judgeVerify: a server from BEFORE the starter package fails both founding checks, and says what it read', () => {
+  // A pre-package engine founds the human on the 2,000 verify-cycle sends, with no craft and no kit.
+  const old = { ...FOUNDER, credits: 2000, vehicles: [], assets: [FOUNDER.assets[0]] };
+  const v = A.judgeVerify({ ...GOOD, founder: old });
+  assert.equal(v.pass, false);
+  assert.ok(v.checks[0].ok && v.checks[1].ok && v.checks[2].ok, 'the cycle checks are unaffected');
+  assert.equal(v.checks[3].ok, false);
+  assert.match(v.checks[3].detail, /2000/);
+  assert.equal(v.checks[4].ok, false);
+  assert.match(v.checks[4].detail, /no craft; 0 kit/);
+});
+
+test('judgeVerify: the starter package must be idle AT HOME — a craft elsewhere, flying, or a kit gone fails', () => {
+  const withCraft = (i, over) => ({ ...FOUNDER, vehicles: FOUNDER.vehicles.map((x, j) => (j === i ? { ...x, ...over } : x)) });
+  assert.equal(A.judgeVerify({ ...GOOD, founder: withCraft(0, { location: { landmarkKind: 'system', landmarkId: 'sys_0001' } }) }).checks[4].ok, false, 'a craft away from home');
+  assert.equal(A.judgeVerify({ ...GOOD, founder: withCraft(2, { status: 'inTransit' }) }).checks[4].ok, false, 'a craft not idle');
+  assert.equal(A.judgeVerify({ ...GOOD, founder: { ...FOUNDER, vehicles: FOUNDER.vehicles.slice(1) } }).checks[4].ok, false, 'a craft missing');
+  assert.equal(A.judgeVerify({ ...GOOD, founder: { ...FOUNDER, assets: [FOUNDER.assets[0]] } }).checks[4].ok, false, 'the kit missing');
 });
 
 test('judgeVerify: the RETIRED 120-unit commitment fails, and says what it read', () => {
@@ -210,11 +249,13 @@ test('judgeVerify: anchor 0 PASSES — a galaxy created exactly at midnight is a
 });
 
 test('judgeVerify: nothing read back at all fails loudly rather than throwing', () => {
-  const v = A.judgeVerify({ venture: null, calendar: null });
+  const v = A.judgeVerify({ venture: null, calendar: null, founder: null });
   assert.equal(v.pass, false);
   assert.equal(v.checks.filter((c) => c.ok).length, 0);
   assert.match(v.checks[0].detail, /no venture read back/);
   assert.match(v.checks[1].detail, /no calendar block/);
+  assert.match(v.checks[3].detail, /no founded guild read back/);
+  assert.match(v.checks[4].detail, /no founded guild read back/);
   assert.equal(A.judgeVerify().pass, false, 'called with nothing at all');
 });
 
@@ -223,6 +264,10 @@ test('the expected figures are the ruled ones, quoted not authored', () => {
   // line is where the CLI's copy of them must be re-quoted, never patched blind.
   assert.equal(A.EXPECTED_COMMITMENT, DAY_OF_TITANIUM);
   assert.equal(A.EXPECTED_WINDOW_N, 1440);
+  // The starter package (design.md §13, 04-10-26): the CLI's copies are the engine's constants.
+  assert.equal(A.EXPECTED_STARTER_CREDITS, STARTER_HUMAN_CREDITS);
+  assert.deepEqual([...A.EXPECTED_STARTER_FLEET], STARTER_HUMAN_FLEET.map((c) => c.class));
+  assert.deepEqual([...A.EXPECTED_STARTER_KITS], [...STARTER_HUMAN_KITS]);
 });
 
 // --- pickIdleAssetId --------------------------------------------------------

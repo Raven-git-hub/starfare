@@ -48,6 +48,10 @@ async function req(method, path, body) {
 }
 const reset = () => req('POST', '/reset');
 const found = (over = {}) => req('POST', '/action', { type: 'foundGuild', guildId: 'player-guild', credits: 120, influence: 100, homeSystemId: HOME_SYSTEM, ...over });
+// The vehicle-endpoint tests below want a guild with NO craft, so their spawned ids start at `_01`.
+// A human founding is now granted the starter fleet (design.md §13, 04-10-26), so they found a BOT —
+// a bot founding is the bare one, with an empty fleet. The endpoints under test are the same either way.
+const foundEmptyFleet = () => found({ isBot: true });
 const mine = (over = {}) => req('POST', '/action', { type: 'establishVenture', guildId: 'player-guild', ventureId: 'm1', siteId: HOME_MINE, assetId: 'asset_player-guild_miner_01', resourceType: 'titanium', productionRate: 5, ...over });
 
 // --- read endpoints --------------------------------------------------------
@@ -1696,7 +1700,7 @@ test('POST /tick advances one tick and production mints', async () => {
 
 test('POST /admin/vehicle/spawn mints an idle craft; /admin/vehicle/remove destroys it; neither ticks', async () => {
   await reset();
-  await found();
+  await foundEmptyFleet();
   // Spawn a craft at the guild's home system landmark.
   const spawn = await req('POST', '/admin/vehicle/spawn', {
     guildId: 'player-guild', class: 'lightTransport', location: { landmarkKind: 'system', landmarkId: HOME_SYSTEM },
@@ -1727,7 +1731,7 @@ test('POST /admin/vehicle/spawn mints an idle craft; /admin/vehicle/remove destr
 
 test('POST /admin/vehicle/spawn refuses a bad location (200, accepted:false) and 400s a malformed body', async () => {
   await reset();
-  await found();
+  await foundEmptyFleet();
   // A resolvable-but-wrong location form → the engine refuses (200, accepted:false).
   const refused = await req('POST', '/admin/vehicle/spawn', {
     guildId: 'player-guild', class: 'lightTransport', location: { landmarkKind: 'system', landmarkId: 'sys_not_real' },
@@ -1753,7 +1757,7 @@ test('POST /admin/vehicle/remove refuses an unknown craft id (200, accepted:fals
 
 test('POST /admin/vehicle/transfer loads a craft at its system instantly; refuses in deep space; 400s a malformed body', async () => {
   await reset();
-  await found();
+  await foundEmptyFleet();
   await mine();
   await req('POST', '/tick'); // the mine mints 5 titanium into the home-system pool
   await req('POST', '/admin/vehicle/spawn', {
@@ -1882,7 +1886,7 @@ const kitRows = (snapshot) => snapshot.guilds[0].assets.filter((a) => a.kind ===
 
 test('POST /admin/guild/grant-kit + /admin/vehicle/load-kit + /unload-kit: the kit moves inventory <-> hold; none tick', async () => {
   await reset();
-  await found(); // the founding claim is the held system the kit unloads into
+  await foundEmptyFleet(); // the founding claim is the held system the kit unloads into
   await req('POST', '/admin/vehicle/spawn', { guildId: 'player-guild', class: 'heavyTransport', location: AT_HOME_SYSTEM });
 
   const grant = await req('POST', '/admin/guild/grant-kit', { guildId: 'player-guild', systemId: HOME_SYSTEM, kind: 'outpost' });
@@ -1934,7 +1938,7 @@ test('POST /admin/vehicle/deploy-asset: a loaded kit flown to a bare hex becomes
 
 test('the kit endpoints refuse (200, accepted:false), 400 a malformed body, and the old grant route is gone', async () => {
   await reset();
-  await found();
+  await foundEmptyFleet();
   await req('POST', '/admin/vehicle/spawn', { guildId: 'player-guild', class: 'lightTransport', location: AT_HOME_SYSTEM });
   const LIGHT_ID = 'vehicle_player-guild_lightTransport_01';
   // Engine refusals: a system not on the seed; a light carrier; an unload with nothing aboard; a deploy with no kit.
@@ -2037,7 +2041,7 @@ test('POST /admin/route/save|delete refuse a bad request (200, accepted:false) a
 
 test('POST /admin/vehicle/dispatch-route carries `repeat`; /admin/vehicle/stop-route-after-run stops the lane; neither ticks', async () => {
   await reset();
-  await found();
+  await foundEmptyFleet();
   const { getSystem } = require('../seed.js');
   const home = getSystem(HOME_SYSTEM).coords;
   // A free hex right beside the home system — a short, cheap lane (derived from the seed, never typed).
@@ -2101,7 +2105,7 @@ test('POST /admin/vehicle/dispatch-route carries `repeat`; /admin/vehicle/stop-r
 
 test('POST /admin/vehicle/cancel-route snaps a flying craft to the hex it is over; refuses a craft with no lane; never ticks', async () => {
   await reset();
-  await found();
+  await foundEmptyFleet();
   const { getSystem } = require('../seed.js');
   const { legHexAtTick } = require('../transport.js');
   const home = getSystem(HOME_SYSTEM).coords;
@@ -2157,7 +2161,7 @@ test('POST /admin/vehicle/cancel-route snaps a flying craft to the hex it is ove
 
 test('POST /vehicle/quote returns an engine-computed quote and MUTATES NOTHING', async () => {
   await reset();
-  await found();
+  await foundEmptyFleet();
   await req('POST', '/admin/vehicle/spawn', {
     guildId: 'player-guild', class: 'lightTransport', location: { landmarkKind: 'system', landmarkId: HOME_SYSTEM },
   });
@@ -2187,7 +2191,7 @@ test('POST /vehicle/quote returns an engine-computed quote and MUTATES NOTHING',
 
 test('POST /vehicle/quote: a ruled failure is a 200 { ok:false, reason }; a malformed body is a 400', async () => {
   await reset();
-  await found();
+  await foundEmptyFleet();
   await req('POST', '/admin/vehicle/spawn', {
     guildId: 'player-guild', class: 'lightTransport', location: { landmarkKind: 'system', landmarkId: HOME_SYSTEM },
   });
@@ -2205,7 +2209,7 @@ test('POST /vehicle/quote: a ruled failure is a 200 { ok:false, reason }; a malf
 
 test('POST /vehicle/quote: a craft already at W1 skips that leg, as the actioned dispatch does (slice 2a.1)', async () => {
   await reset();
-  await found();
+  await foundEmptyFleet();
   const HOME = { landmarkKind: 'system', landmarkId: HOME_SYSTEM };
   await req('POST', '/admin/vehicle/spawn', { guildId: 'player-guild', class: 'lightTransport', location: HOME });
   const quoteOf = (waypoints) => req('POST', '/vehicle/quote', {

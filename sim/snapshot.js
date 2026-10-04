@@ -2147,8 +2147,10 @@ if (require.main === module) {
   const { createFoundGuildAction, createEstablishVentureAction } = require('./actions.js');
 
   // Mirrors sim/demo.js's scenario (numbers sourced from phase-1-tuning.md):
-  // one Titanium mine seated on a real seed node, $120 / influence 100. The home
-  // is DERIVED from the seed (first starter + its Terran homeworld), not hardcoded.
+  // one Titanium mine seated on a real seed node, influence 100. A HUMAN founding,
+  // so it opens on the starter credits and package, not the $120 it passes
+  // (design.md §13, 04-10-26). The home is DERIVED from the seed (first starter +
+  // its Terran homeworld), not hardcoded.
   let state = createZeroState();
   const homeSystemId = getStarterSystems()[0].id;
   const homePlanetId = getTerranHomeworld(homeSystemId);

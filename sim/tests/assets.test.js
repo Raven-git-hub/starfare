@@ -33,6 +33,7 @@ const {
   STARTER_MINERS, STARTER_FACTORIES, ASSET_CONDITION_NEW, idleAssets, deployedAssetIds,
 } = require('../assets.js');
 const { GUILD_STARTING_FUEL } = require('../fuel.js');
+const { STARTER_HUMAN_CREDITS, STARTER_HUMAN_KITS } = require('../starter-package.js');
 const {
   intake, validateAction, createFoundGuildAction, createEstablishVentureAction,
 } = require('../actions.js');
@@ -44,6 +45,10 @@ function playerFounded() {
   })]).state;
 }
 const player = (state) => state.guilds.find((g) => g.id === 'player-guild');
+// Everything this HUMAN founding puts in `guild.assets`: the 25 starter machines, plus the starter
+// package's Outpost kit (design.md §13, 04-10-26). The kit is an idle asset too, never deployed by
+// a venture, so it counts in the inventory and the idle pool but in neither machine pool.
+const FOUNDED_ASSETS = STARTER_MINERS + STARTER_FACTORIES + STARTER_HUMAN_KITS.length;
 // The starter gift's own id scheme (sim/assets.js), so no test spells a raw id.
 const minerId = (n) => `asset_player-guild_miner_${String(n).padStart(2, '0')}`;
 const factoryId = (n) => `asset_player-guild_factory_${String(n).padStart(2, '0')}`;
@@ -63,14 +68,15 @@ test('a founded guild receives exactly 15 idle Miners + 10 Factories, all at ful
   const s = playerFounded();
   const g = player(s);
 
-  assert.equal(g.assets.length, STARTER_MINERS + STARTER_FACTORIES);
+  assert.equal(g.assets.length, FOUNDED_ASSETS);
   assert.equal(g.assets.filter((a) => a.kind === 'miner').length, STARTER_MINERS);
   assert.equal(g.assets.filter((a) => a.kind === 'factory').length, STARTER_FACTORIES);
+  assert.equal(g.assets.filter((a) => a.kind === 'outpost').length, STARTER_HUMAN_KITS.length, 'the rest is the starter kit');
   assert.ok(g.assets.every((a) => a.maintenanceCondition === ASSET_CONDITION_NEW), 'every starter asset is new');
 
   // ALL IDLE: idleness is derived, so the proof is that nothing references them.
   assert.equal(deployedAssetIds(g).size, 0, 'no venture references any of them');
-  assert.equal(idleAssets(g).length, STARTER_MINERS + STARTER_FACTORIES);
+  assert.equal(idleAssets(g).length, FOUNDED_ASSETS);
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
@@ -100,7 +106,7 @@ test('establishing a mine occupies an idle miner — it is referenced, NOT remov
   const g = player(s);
 
   assert.equal(g.ventures[0].assetId, minerId(1), 'the venture runs the machine the deploy named');
-  assert.equal(g.assets.length, STARTER_MINERS + STARTER_FACTORIES, 'OCCUPY, NOT CONSUME — the asset stays owned');
+  assert.equal(g.assets.length, FOUNDED_ASSETS, 'OCCUPY, NOT CONSUME — the asset stays owned');
   assert.equal(idleAssets(g, 'miner').length, STARTER_MINERS - 1, 'one fewer idle miner');
   assert.equal(idleAssets(g, 'factory').length, STARTER_FACTORIES, 'the factories are untouched');
   assert.deepEqual(checkInvariants(s, s.tick), []);
@@ -121,7 +127,7 @@ test('occupying an asset changes no game number — production is what it always
   const s = advance(playerFounded(), [mineAt(HOME_MINE)]).state;
   const g = player(s);
   assert.equal(guildTotals(g).titanium, 5, 'output is byte-for-byte the pre-asset baseline');
-  assert.equal(g.credits, 120, 'and the deploy moved no credits');
+  assert.equal(g.credits, STARTER_HUMAN_CREDITS, 'and the deploy moved no credits (a human founding\'s starter credits)');
   // The hoard is the founding grant, UNTOUCHED (fuel Slice 1): deploying an asset
   // burns no fuel — nothing spends fuel at all yet — so this still says what it always
   // said, that the deploy moved no game number.
@@ -150,7 +156,7 @@ test('naming a machine that is not the lowest idle id deploys THAT one', () => {
   assert.equal(deployed.get(minerId(7)), `mine_${HOME_MINE}`, 'and it reports the venture holding it');
   assert.ok(idleAssets(g, 'miner').some((a) => a.id === minerId(1)), 'the lowest idle Miner is still idle');
   assert.equal(idleAssets(g, 'miner').length, STARTER_MINERS - 1, 'one machine left the pool, not two');
-  assert.equal(g.assets.length, STARTER_MINERS + STARTER_FACTORIES, 'OCCUPY, NOT CONSUME');
+  assert.equal(g.assets.length, FOUNDED_ASSETS, 'OCCUPY, NOT CONSUME');
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
@@ -442,7 +448,7 @@ test('the snapshot reports each asset and whether it is deployed or idle', () =>
   const { state: s } = intake(playerFounded(), [mineAt(HOME_MINE)]);
   const g = buildSnapshot(s).guilds[0];
 
-  assert.equal(g.assets.length, STARTER_MINERS + STARTER_FACTORIES);
+  assert.equal(g.assets.length, FOUNDED_ASSETS);
   const deployed = g.assets.filter((a) => a.deployedToVentureId !== null);
   assert.deepEqual(deployed, [{
     id: 'asset_player-guild_miner_01',
@@ -451,7 +457,7 @@ test('the snapshot reports each asset and whether it is deployed or idle', () =>
     maintenanceCondition: ASSET_CONDITION_NEW,
     deployedToVentureId: `mine_${HOME_MINE}`,
   }], 'the engine answers idle-vs-deployed so the client never recomputes it');
-  assert.equal(g.assets.filter((a) => a.deployedToVentureId === null).length, STARTER_MINERS + STARTER_FACTORIES - 1);
+  assert.equal(g.assets.filter((a) => a.deployedToVentureId === null).length, FOUNDED_ASSETS - 1);
   // The same fact from the venture's end.
   assert.equal(buildSnapshot(s).ventures[0].assetId, 'asset_player-guild_miner_01');
   // Mutating the snapshot cannot reach back into engine state.

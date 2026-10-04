@@ -469,8 +469,11 @@ test('invariants: a founded guild with ventures runs clean with kits beside its 
   s = accept(s, createEstablishVentureAction({ guildId: 'player-guild', ventureId: 'mine_1', siteId: HOME_MINE, assetId: 'asset_player-guild_miner_01', resourceType: 'titanium' }));
   s = accept(s, createSpawnVehicleAction({ guildId: 'player-guild', class: HEAVY_TRANSPORT, location: at }));
   for (let i = 0; i < 2; i += 1) s = accept(s, createGrantKitAction({ guildId: 'player-guild', systemId: HOME_SYSTEM, kind: 'outpost' }));
-  s = accept(s, createLoadKitAction({ guildId: 'player-guild', vehicleId: 'vehicle_player-guild_heavyTransport_01', assetId: 'asset_player-guild_outpost_02' }));
-  assert.equal(s.guilds[0].assets.length, 26, '25 starter machines + the one idle kit');
+  // A human founding already holds the starter heavy (`_01`) and lights (`_02`..`_04`) and the starter
+  // kit (`_outpost_01`) — design.md §13, 04-10-26. So the spawned heavy is `_05` and the granted kits
+  // are `_02` and `_03`; one granted kit goes aboard the spawned heavy.
+  s = accept(s, createLoadKitAction({ guildId: 'player-guild', vehicleId: 'vehicle_player-guild_heavyTransport_05', assetId: 'asset_player-guild_outpost_02' }));
+  assert.equal(s.guilds[0].assets.length, 27, '25 starter machines + the starter kit + the granted kit still idle');
   for (let t = 0; t < 30; t += 1) {
     s = tick(s, []);
     assert.deepEqual(checkInvariants(s, s.tick), [], `tick ${s.tick}`);

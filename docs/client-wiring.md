@@ -241,7 +241,10 @@ not. This list is the working contract; it may be refined as panels are wired
   `/snapshot` on entry and either **adopts** the galaxy's existing guild (single-guild
   dev rig) or shows the found form; founding POSTs `foundGuild` with a name-slug id
   (suffixed if taken) and **2,000** starting credits (`[FIRST-CUT]`,
-  `phase-1-tuning.md`). Territory comes from `claims[]` (`landmarkKind === 'system'`),
+  `phase-1-tuning.md`). *(⤳ 04-10-26: the client founds a HUMAN guild, which the
+  engine now founds on the starter package's 8,000,000 credits instead, with a free
+  fleet and Outpost kit — `design.md` §13. The client still sends 2,000, because the
+  action requires it; only a bot founding uses that figure.)* Territory comes from `claims[]` (`landmarkKind === 'system'`),
   the player's own systems in the reserved accent and rivals by a stable per-id hue;
   the HUD's guild/credits/tick come from the poll, and the radial clock is kept as
   pure decoration that counts nothing. The **ring vocabulary needed no renderer fix**:

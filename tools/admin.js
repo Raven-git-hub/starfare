@@ -6,10 +6,11 @@
 // into a chat message.
 //
 // WHAT IT IS NOT: it is not the engine and it holds no game logic. Every number
-// it prints is read back from the server; the two figures `verify-cycle`
-// asserts on (7,200 units and a 1,440-tick window) are quoted engine truth
-// (docs/cycle-and-calendar.md §1, sim/tests/cycle-length.test.js), NOT values
-// this file authors. It calls only routes sim/server.js already serves and adds
+// it prints is read back from the server; the figures `verify-cycle` asserts
+// on (the 230,400-unit day of titanium, the 1,440-tick window, and the human
+// starter package's 8,000,000 credits + 4 craft + 1 kit) are quoted engine truth
+// (docs/cycle-and-calendar.md §1, sim/tests/cycle-length.test.js,
+// sim/starter-package.js), NOT values this file authors. It calls only routes sim/server.js already serves and adds
 // none.
 //
 // Dependency-free on purpose (plain Node + global `fetch`), so it runs in the
@@ -188,20 +189,51 @@ function pickResourceNode(layouts, resourceType) {
 const EXPECTED_COMMITMENT = 230400;
 const EXPECTED_WINDOW_N = 1440;
 
-// judgeVerify({ venture, calendar }) -> { pass, checks: [{ name, ok, detail }] }.
+// The human founding starter package (design.md §13, RULED 04-10-26). verify-cycle founds its
+// guild as a HUMAN (no `isBot`), so the guild RECEIVES the package, and the self-check expects
+// it: a container still running pre-package code founds it on the 2,000 it sends, with no craft,
+// and FAILS here. Quoted from sim/starter-package.js (STARTER_HUMAN_CREDITS, STARTER_HUMAN_FLEET in
+// mint order, STARTER_HUMAN_KITS), never authored; tools/admin.test.js ties these copies to them.
+const EXPECTED_STARTER_CREDITS = 8000000;
+const EXPECTED_STARTER_FLEET = Object.freeze(['heavyTransport', 'lightTransport', 'lightTransport', 'lightTransport']);
+const EXPECTED_STARTER_KITS = Object.freeze(['outpost']);
+
+// starterPackageReadBack(founder) -> { ok, detail } — the founded guild's craft and kits, as the
+// snapshot reports them, judged against the package: exactly the expected classes in mint order and
+// exactly the expected kits, every one idle at the guild's home system. Pure, like judgeVerify.
+function starterPackageReadBack(founder) {
+  if (!founder) return { ok: false, detail: 'no founded guild read back from the snapshot' };
+  const home = founder.homeSystemId;
+  const craft = founder.vehicles || [];
+  const kits = (founder.assets || []).filter((a) => EXPECTED_STARTER_KITS.includes(a.kind));
+  const atHome = (loc) => !!loc && loc.landmarkKind === 'system' && loc.landmarkId === home;
+  const ok = JSON.stringify(craft.map((v) => v.class)) === JSON.stringify(EXPECTED_STARTER_FLEET)
+    && craft.every((v) => v.status === 'idle' && atHome(v.location))
+    && JSON.stringify(kits.map((a) => a.kind)) === JSON.stringify(EXPECTED_STARTER_KITS)
+    && kits.every((a) => a.systemId === home && a.deployedToVentureId == null);
+  const classes = craft.length ? craft.map((v) => v.class).join(', ') : 'no craft';
+  return { ok, detail: `read back ${classes}; ${kits.length} kit(s)` };
+}
+
+// judgeVerify({ venture, calendar, founder }) -> { pass, checks: [{ name, ok, detail }] }.
 // The load-bearing tripwire: `verify-cycle`'s exit code is `pass`. It is pure —
-// it reads back what the server said and judges it, computing nothing.
+// it reads back what the server said and judges it, computing nothing. `founder` is
+// the founded guild's row from the snapshot the founding itself returned, before
+// anything else has touched it.
 //
 // On the anchor: the snapshot always emits an INTEGER `dayAnchorTick` (a galaxy
 // with none defaults to 0, which is the legitimate value for one created exactly
 // at midnight), so the check is "present and an integer", not "negative". A null
 // or missing anchor means the calendar layer is not live on that server.
-function judgeVerify({ venture, calendar } = {}) {
+function judgeVerify({ venture, calendar, founder } = {}) {
   const v = venture || null;
   const c = calendar || null;
+  const f = founder || null;
   const commitment = v ? v.syndicateCommitment : undefined;
   const windowN = c ? c.windowN : undefined;
   const anchor = c ? c.dayAnchorTick : undefined;
+  const credits = f ? f.credits : undefined;
+  const pkg = starterPackageReadBack(f);
   const checks = [
     {
       name: `venture.syndicateCommitment === ${EXPECTED_COMMITMENT}`,
@@ -219,6 +251,16 @@ function judgeVerify({ venture, calendar } = {}) {
       detail: Number.isInteger(anchor)
         ? `read back ${anchor}`
         : `read back ${JSON.stringify(anchor)} — this galaxy is not midnight-anchored`,
+    },
+    {
+      name: `founding credits === ${EXPECTED_STARTER_CREDITS}`,
+      ok: credits === EXPECTED_STARTER_CREDITS,
+      detail: f ? `read back ${JSON.stringify(credits)}` : 'no founded guild read back from the snapshot',
+    },
+    {
+      name: 'starter craft + kit idle at home',
+      ok: pkg.ok,
+      detail: pkg.detail,
     },
   ];
   return { pass: checks.every((k) => k.ok), checks };
@@ -650,6 +692,7 @@ module.exports = {
   grantKitBody, loadKitBody, unloadKitBody, deployAssetBody, DEPLOY_COMMANDS,
   saveRouteBody, deleteRouteBody, ROUTE_COMMANDS,
   EXPECTED_COMMITMENT, EXPECTED_WINDOW_N,
+  EXPECTED_STARTER_CREDITS, EXPECTED_STARTER_FLEET, EXPECTED_STARTER_KITS,
 };
 
 // ---------------------------------------------------------------------------
@@ -660,6 +703,10 @@ const DEFAULT_BASE = process.env.STARFARE_BASE || 'http://localhost:7331';
 
 // Operator-supplied setup values, every one QUOTED from somewhere that already
 // ruled it — this file chooses no game number.
+// STARTING_CREDITS is what seat-demo / verify-cycle SEND, and it is still required on every founding.
+// But both found a HUMAN guild, and a human is founded with the engine's STARTER_HUMAN_CREDITS
+// (8,000,000 — sim/starter-package.js, design.md §13 04-10-26) instead, so this figure only lands on a
+// bot founding. Kept matching client/game.html's copy.
 const STARTING_CREDITS = 2000;   // client/game.html's STARTING_CREDITS [FIRST-CUT]
 const FULL_COMMITMENT = 1;       // committedOutputPct as a fraction — 1 = 100%
 const WINDOW_DAYS = 7;           // sim/licence.js WINDOW_DAYS_MIN, the shortest legal term
@@ -885,8 +932,9 @@ async function cmdSeatDemo(base, flags) {
 }
 
 async function cmdVerifyCycle(base, flags) {
-  // The post-redeploy self-check: build a galaxy from scratch, license one mine
-  // at 100%, read the result back, and judge it.
+  // The post-redeploy self-check: build a galaxy from scratch, found a HUMAN guild
+  // (so it receives the starter package), license one mine at 100%, read the
+  // result back, and judge it.
   await cmdNewGalaxy(base, flags);
   const snap = await liveSnapshot(base);
   const { starter, nodes } = await scanStarters(base, snap, DEMO_GOOD, 1);
@@ -913,7 +961,10 @@ async function cmdVerifyCycle(base, flags) {
 
   const after = await liveSnapshot(base);
   const venture = (after.ventures || []).find((v) => v.id === ventureId) || null;
-  const verdict = judgeVerify({ venture, calendar: after.calendar });
+  // The founder as the founding itself left it — before the mine and the licence — so the
+  // starter-package checks read exactly what the founding granted.
+  const founder = (founded.guilds || []).find((g) => g.id === guildId) || null;
+  const verdict = judgeVerify({ venture, calendar: after.calendar, founder });
 
   log('');
   row('licensed', `${ventureId} on ${node.nodeId} (${starter.id})`);
@@ -923,8 +974,8 @@ async function cmdVerifyCycle(base, flags) {
   }
   log('');
   log(verdict.pass
-    ? 'ALL PASS — the 24-hour, midnight-anchored commitment cycle is live on this server.'
-    : 'FAILED — this server is not running the ruled cycle.');
+    ? 'ALL PASS — the 24-hour, midnight-anchored commitment cycle and the human starter package are live on this server.'
+    : 'FAILED — this server is not running the ruled cycle and starter package.');
   if (!verdict.pass) throw new Error('verify-cycle failed');
 }
 

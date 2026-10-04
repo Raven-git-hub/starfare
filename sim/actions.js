@@ -58,6 +58,7 @@ const {
   deployedAssetIds, isAssetKind, assetId, nextAssetNumber, ASSET_CONDITION_NEW, ASSET_CONDITION_MIN,
   isKitAssetKind, nextKitAssetSerial, assetNumberOf,
 } = require('./assets.js');
+const { STARTER_HUMAN_FLEET, STARTER_HUMAN_KITS, foundingCreditsFor } = require('./starter-package.js');
 
 // vehicleDeliveryFuelBurn(destinationSystemId, vehicleClass) -> { fuelBurn: int }
 //
@@ -704,7 +705,8 @@ function quoteDispatch(state, { guildId, vehicleId, waypoints }) {
 //                         starting credits are debited from the ledger, so
 //                         nothing is minted, and it seats + claims the home. It
 //                         also GRANTS the starter asset gift (§4, 30-08-26) —
-//                         engine policy, not an action field.
+//                         engine policy, not an action field — and, for a HUMAN
+//                         guild only, the starter package (§13, 04-10-26).
 //   - establishVenture  — seat a NEW venture on a real seed node so it produces
 //                         on the next tick, OCCUPYING an idle asset of the
 //                         matching kind. Three gates (§4): vacant node, idle
@@ -776,6 +778,15 @@ function createPaySyndicateFeeAction({ guildId, amount }) {
 // the match). The genesis home-claim deliberately does NOT grant the "+20 on
 // claiming an uncontested system" earn bonus — that is for play actions, not
 // setup — so a guild starts at exactly its passed influence.
+//
+// THE HUMAN STARTER PACKAGE (design.md §13, RULED 04-10-26). `isBot` decides it.
+// A HUMAN founding (`isBot` false — the default) is founded with
+// STARTER_HUMAN_CREDITS (sim/starter-package.js) INSTEAD of `credits`, and is
+// granted a free fleet (1 heavy + 3 light transports) and one Outpost kit, idle
+// at its home system. A BOT founding (`isBot: true`) gets `credits` exactly as
+// passed and no fleet or kit — the bare founding, unchanged. So `credits` is
+// still required and still validated for every founding, but only a bot's is
+// used. Like the fuel grant, the package is ENGINE POLICY, not an action field.
 function createFoundGuildAction({
   guildId, name, isBot = false, credits, influence = 0, incomeRate = 0, homeSystemId, ventures = [],
 }) {
@@ -1226,8 +1237,9 @@ function createTransferCargoAction({ guildId, vehicleId: vId, manifest }) {
 // lever (roadmap 2.2 deploy pipeline; design.md §4 "The undeployed Outpost kit is a system-scoped idle
 // asset", RULED 02-10-26). `kind` names the structure the kit deploys as ('outpost'); the asset is
 // `asset_<guild>_outpost_NN`, idle, at `systemId`. REPOINTED 02-10-26: it used to mint the kit straight
-// into a craft's hold; now a kit reaches a hold only through `loadKit`. Still the TEST SEAM — the real kit
-// sources (a dockyard building one, the founding grant) are later slices. The constructor only enforces
+// into a craft's hold; now a kit reaches a hold only through `loadKit`. Still the TEST SEAM. Of the real kit
+// sources, the founding grant is BUILT for a human founding (mintStarterPackage, design.md §13, 04-10-26) and
+// shares this lever's mint; a dockyard building one is a later slice. The constructor only enforces
 // the required fields are present; validateAction judges legality (a real guild, a real system, a kind
 // that has a kit).
 function createGrantKitAction({ guildId, systemId, kind }) {
@@ -1871,6 +1883,51 @@ function mintKitAsset(guild, kind, systemId) {
   return asset;
 }
 
+// mintVehicle(guild, vehicleClass, location, condition) -> the new idle craft, having MUTATED `guild`.
+// THE ONE operator-style craft mint, shared by spawnVehicle and the human founding's starter fleet
+// (design.md §13, 04-10-26) — the vehicle twin of mintKitAsset above. Bump the guild's monotonic mint
+// serial (never reused, design.md §15.4 "Ids never repeat"), build the `vehicle_<guild>_<class>_NN` id
+// from it, and push an idle craft with the per-class VEHICLE_SPECS stats at `location`. The caller has
+// already judged `location` (exactly one valid form) and `condition` (in [0, 1]). The buy/build mint
+// (`mintFinishedKind`, sim/tick.js) uses the same serial, id scheme and stats, so a craft from any of
+// these paths is indistinguishable once it lands.
+function mintVehicle(guild, vehicleClass, location, condition) {
+  if (!Array.isArray(guild.vehicles)) guild.vehicles = [];
+  const serial = nextVehicleSerial(guild);
+  guild.vehicleSerial = serial;
+  const spec = vehicleSpec(vehicleClass);
+  const craft = createVehicle({
+    id: vehicleId(guild.id, vehicleClass, serial),
+    ownerGuildId: guild.id,
+    class: vehicleClass,
+    speed: spec.speed,
+    capacity: spec.capacity,       // spycraft's 0 is legal — createVehicle checks !== undefined
+    defenseRating: spec.defenseRating,
+    fuelCostToRun: spec.fuelCostToRun,
+    location,                      // createVehicle copies it, so the caller's object never aliases in
+    maintenanceCondition: condition,
+  });
+  guild.vehicles.push(craft);
+  return craft;
+}
+
+// mintStarterPackage(guild, homeSystemId) — THE HUMAN FOUNDING'S FREE GRANT (design.md §13, RULED
+// 04-10-26; the numbers in sim/starter-package.js). Mints the starter fleet (1 heavy + 3 light
+// transports), idle and berthed at the home system, then the starter kit (one idle Outpost kit asset)
+// in the home system's inventory. Each goes through the SAME mint the operator levers use (mintVehicle
+// for spawnVehicle, mintKitAsset for grantKit), so ids and serials follow the guild's usual sequences.
+// Minted in the fixed order of STARTER_HUMAN_FLEET then STARTER_HUMAN_KITS, so two runs give identical
+// ids (invariant 9).
+//
+// It is a GIFT. A craft or kit is not a priced good and not in Galactic Supply, and an empty craft
+// carries no cargo, so no credits, fuel, goods or supply move here. The founding's only money move is
+// still the ledger debit of the founding credits.
+function mintStarterPackage(guild, homeSystemId) {
+  const home = { landmarkKind: 'system', landmarkId: homeSystemId };
+  for (const craft of STARTER_HUMAN_FLEET) mintVehicle(guild, craft.class, home, craft.condition);
+  for (const kind of STARTER_HUMAN_KITS) mintKitAsset(guild, kind, homeSystemId);
+}
+
 // kitIntoHold(guild, craft, asset, tick) — THE ONE load apply, for a load validate passed: the kit asset
 // leaves the inventory and exactly one kit good lands in the (empty) hold. One kit in, one good out.
 // `assets` is dropped when it empties (omit-when-empty, as createGuild does). The tick is stamped on the
@@ -2230,6 +2287,13 @@ function validateAction(state, action) {
     }
     if (typeof action.credits !== 'number' || !Number.isInteger(action.credits) || action.credits < 0) {
       return { valid: false, reason: 'credits must be a non-negative integer (§15.2)' };
+    }
+    // `isBot` now decides the human starter package (design.md §13, 04-10-26), so it must
+    // mean what it says. Absent is fine — it defaults to human, as createGuild defaults it to
+    // false. But a non-boolean is refused: the string "false" is truthy, and would otherwise
+    // found a human guild as a bot without the package, silently.
+    if (action.isBot !== undefined && typeof action.isBot !== 'boolean') {
+      return { valid: false, reason: `isBot must be true or false when given, got ${JSON.stringify(action.isBot)}` };
     }
     // Home must be a real starter-eligible system (§13) that no one has claimed
     // yet — checked against state-as-it-stands, so two guilds racing for the
@@ -4130,11 +4194,16 @@ function applyAction(state, action) {
         assetId: unclaimed[assetKindForVentureType(v.type)].shift().id,
       };
     });
+    // The founding credits: STARTER_HUMAN_CREDITS for a human, the action's own `credits` for a
+    // bot (sim/starter-package.js, design.md §13 04-10-26). Read ONCE into `credits`, and that one
+    // value feeds both the guild below and the ledger debit further down, so the two legs of
+    // invariant 2 always match.
+    const credits = foundingCreditsFor(action);
     const guild = createGuild({
       id: action.guildId,
       name: action.name,
       isBot: action.isBot,
-      credits: action.credits,
+      credits,
       fuelHoard: GUILD_STARTING_FUEL, // the starter floor -- see createFoundGuildAction's note
       influence: action.influence,
       incomeRate: action.incomeRate,
@@ -4152,6 +4221,12 @@ function applyAction(state, action) {
       claimedAtTick: next.tick,
       contested: false,
     });
+    // THE HUMAN STARTER PACKAGE (design.md §13, RULED 04-10-26): the free fleet and the Outpost
+    // kit, idle at the home system. A human founding only — a bot gets nothing here. Minted HERE,
+    // after the home claim above, so the guild already holds the system its craft berth at and its
+    // kit sits in. It changes neither the endowment nor the entitlement below: both are sized from
+    // held systems (and ventures), and craft and kits are neither.
+    if (!action.isBot) mintStarterPackage(guild, action.homeSystemId);
     // THE FOUNDING ENDOWMENT (docs/points-and-reputation.md §2.5, A′). Set HERE, after the
     // home claim above, because the amount is sized off the systems the guild holds — and
     // it holds none until that claim exists.
@@ -4204,7 +4279,9 @@ function applyAction(state, action) {
     // none are created. expectedCreditTotal is unchanged (guild +C, ledger -C
     // => net 0), so invariant 2 still holds. Founding does NOT grant the +20
     // claim bonus (setup, not a play action -- see createFoundGuildAction).
-    next.syndicate.ledger -= action.credits;
+    // `credits` is the same value the guild was created with above (8M for a
+    // human, the action's own figure for a bot).
+    next.syndicate.ledger -= credits;
 
     // FUEL-GENESIS, and the audit entry that makes it honest. Invariant 1 reads
     //   Σ guild.fuelHoard + reserve.reserveLevel + inTransit
@@ -5097,23 +5174,10 @@ function applyAction(state, action) {
     // matching the buy/build mint and grantAsset — the tick is recorded in the journal, §15.2).
     // It moves NO fuel/credits/points/reputation/claims — a vehicle feeds none — so there is no
     // conserving counter-move and galacticSupply (stockpiles + hoards only) is untouched.
-    const guild = findGuild(next, action.guildId);
-    if (!Array.isArray(guild.vehicles)) guild.vehicles = [];
-    const serial = nextVehicleSerial(guild);
-    guild.vehicleSerial = serial;
-    const id = vehicleId(action.guildId, action.class, serial);
-    const spec = vehicleSpec(action.class);
-    guild.vehicles.push(createVehicle({
-      id,
-      ownerGuildId: action.guildId,
-      class: action.class,
-      speed: spec.speed,
-      capacity: spec.capacity,       // spycraft's 0 is legal — createVehicle checks !== undefined
-      defenseRating: spec.defenseRating,
-      fuelCostToRun: spec.fuelCostToRun,
-      location: action.location,     // exactly-one-form, already validated; createVehicle copies it
-      maintenanceCondition: action.condition === undefined ? ASSET_CONDITION_NEW : action.condition,
-    }));
+    // The mint itself is THE ONE craft mint, mintVehicle — shared with the human founding's
+    // starter fleet. The location is exactly-one-form and already validated.
+    const condition = action.condition === undefined ? ASSET_CONDITION_NEW : action.condition;
+    mintVehicle(findGuild(next, action.guildId), action.class, action.location, condition);
     return next;
   }
 
