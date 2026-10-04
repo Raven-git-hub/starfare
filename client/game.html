@@ -2651,9 +2651,10 @@ select.field{appearance:none; cursor:pointer;}
         pattern): ONE .est-style overlay, its own scoped palette, all the mockup's generic classes
         namespaced under #tw-tx-overlay so nothing collides. It reads the SAME snapshot the trade tab
         polls and fires the SAME sellToSyndicate / buyFromSyndicate the engine already applies. It
-        computes NO game number (§18): route fuel credits are `fuelCost[sysId].creditCost`, the arrival
-        is `fuelCost[sysId].travelTicks` formatted as a duration — neither is re-derived, and the client
-        holds no distance, no burn rate, and no craft speed. -->
+        computes NO game number (§18): route fuel credits and the arrival are read off the target's
+        published leg (`fuelCost[id]` for a held system, `outpostFuelCost[id]` for an own Outpost — its
+        `creditCostByTier` and `travelTicks`, the latter formatted as a duration) — neither is re-derived,
+        and the client holds no distance, no burn rate, and no craft speed. -->
    <style id="tw-tx-css">
    #tw-tx-overlay{
      --void:#0B0D12; --panel:#12151C; --panel2:#171B24; --raised:#1C212B;
@@ -9099,16 +9100,19 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
      The BUY and SELL halves of the ORDER model (docs/syndicate-orders.md §6), wired to the live
      snapshot. The manifest is the guild's own `buyOrder`/`sellOrder` (§4) — the client renders it
      and COMPUTES NO GAME NUMBER (§18): each line's `space` and the order's `totalSpace`/`haulerTier`
-     are engine-computed; route fuel is `fuelCost[target].fuelBurnByTier[tier]` (burn) and
-     `creditCostByTier[tier]` (credits); the arrival is `fuelCost[target].travelTicks` formatted as a
-     duration. The ledger's cost/proceeds are display sums of Σ round(qty × frozen price) per line.
+     are engine-computed; route fuel is the target's published leg (`fuelCost[target]` for a held
+     system, `outpostFuelCost[target]` for one of the guild's own Outposts — a BUY can deliver to
+     either, §9.1): `.fuelBurnByTier[tier]` (burn) and `.creditCostByTier[tier]` (credits); the
+     arrival is its `.travelTicks` formatted as a duration. The ledger's cost/proceeds are display
+     sums of Σ round(qty × frozen price) per line.
      On confirm the ENGINE is authoritative — it reads the held order, and the success view reads the
      applied numbers back off the snapshot the action returns, never the popup's preview. */
   // The popup renders the HELD order (§6): a multi-good manifest read from the snapshot, a
   // finalise-time TARGET (BUY destination / SELL origin), and a confirm that posts the held-order
   // finalise. It carries no basket of its own — the order is engine state (§2).
   var TX = { open:false, kind:null, target:null, last:null,
-             issueTick:null, frozen:null, rejected:false };
+             issueTick:null, frozen:null, rejected:false,
+             toOutpost:false };   // is `target` one of the guild's own Outposts? Fixed when it is picked (txPickTarget).
   // QUOTE_TTL_TICKS — the §8.1 quote-lock window, MIRRORED from the engine's own constant
   // (sim/price-ring.js). `[FIRST-CUT]` 5 (docs/phase-1-tuning.md "Quote-lock"). §18 makes a
   // client copy of an engine number safe ONLY mirrored WITH A SERVED-PAGE TRIPWIRE, so
@@ -9130,13 +9134,59 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var d = Math.floor(t / 1440), h = Math.floor((t % 1440) / 60);
     return (d < 10 ? '0' : '') + d + 'd' + (h < 10 ? '0' : '') + h + 'h';
   }
-  // The route quote for one system, straight off the snapshot: { fuelBurn, creditCost,
-  // travelTicks } or null when the guild does not hold it / it has no route. The GATES read
-  // `fuelBurn` (units, exactly as the engine gates); the bar reads `creditCost`.
-  function txRoute(sysId){ var g = meGuild(); var c = (g && g.fuelCost) || {}; return c[sysId] || null; }
+  // Is this node id one of the guild's OWN Outposts? The engine publishes each Outpost's leg in
+  // `outpostFuelCost` and each held system's in `fuelCost`; an Outpost id is never a system id, so
+  // the map that holds the id says which kind of node it is.
+  function txIsOutpost(nodeId){
+    var g = meGuild(), o = g && g.outpostFuelCost;
+    return !!(o && Object.prototype.hasOwnProperty.call(o, nodeId));
+  }
+  // The route quote for one node, straight off the snapshot: { fuelBurn, creditCost,
+  // travelTicks, … } read from the map that publishes its leg, or null when the guild does not hold
+  // it. The GATES read `fuelBurn` (units, exactly as the engine gates); the bar reads `creditCost`.
+  function txRoute(nodeId){
+    var g = meGuild(); if(!g) return null;
+    var legs = (txIsOutpost(nodeId) ? g.outpostFuelCost : g.fuelCost) || {};
+    return legs[nodeId] || null;
+  }
   // The systems the guild HOLDS — `fuelCost` is keyed by `heldSystemIds`, so its keys ARE the
-  // held set, already sorted (invariant 9). This is the BUY destination set.
+  // held set, already sorted (invariant 9). This is the SELL origin set (the Ship-from dropdown).
   function txHeldSystems(){ var g = meGuild(); return (g && g.fuelCost) ? Object.keys(g.fuelCost).sort() : []; }
+  // The nodes the guild HOLDS (§9.1) — its held systems AND its own Outposts, as ids. This is the BUY
+  // destination set. Systems and Outposts share ONE ordering, by node id (invariant 9): the order the
+  // Deliver-to list shows, and the order the default's tie-break reads.
+  function txHeldNodes(){
+    var g = meGuild();
+    var outposts = (g && g.outpostFuelCost) ? Object.keys(g.outpostFuelCost) : [];
+    return txHeldSystems().concat(outposts).sort();
+  }
+  // The DEFAULT BUY destination (§9.1): the held node nearest a Syndicate waystation — the one whose
+  // published leg (`travelTicks`) is shortest, so the cheapest delivery. The client only picks the
+  // smallest of the engine's own values; it works out no game number (§18). The list is in node-id
+  // order and only a STRICTLY shorter leg replaces the pick, so a tie goes to the lower node id.
+  // null when the guild holds no node.
+  function txNearestNode(){
+    var best = null, bestTicks = Infinity;
+    txHeldNodes().forEach(function(id){
+      var ticks = txRoute(id).travelTicks;
+      if(ticks < bestTicks){ best = id; bestTicks = ticks; }
+    });
+    return best;
+  }
+  // A node's display name: an Outpost by the ONE canonical outpost resolver ("<anchor system>
+  // Outpost"), a system by its seed name — each reads exactly as it does everywhere else.
+  function txNodeName(nodeId){
+    var name = txIsOutpost(nodeId) ? (window.__outpostName && window.__outpostName(nodeId))
+                                   : (window.__systemName && window.__systemName(nodeId));
+    return name || nodeId;
+  }
+  // Point the popup at a target node. Its kind is fixed HERE, when it is picked, so the confirm still
+  // names an Outpost as an Outpost if it is torn down while the popup is open — the engine then
+  // refuses with its own "owns no outpost" reason (§9.4) rather than a confusing system refusal.
+  function txPickTarget(nodeId){
+    TX.target = nodeId || null;
+    TX.toOutpost = !!nodeId && txIsOutpost(nodeId);
+  }
   // The guild's HELD order for the popup's side, present ONLY when non-empty (§2/§4). Every derived
   // field — `lines[].space`, `totalUnits`, `totalSpace`, `haulerTier`, `overCap` — is ENGINE-computed
   // and read here, never re-derived (§18).
@@ -9160,8 +9210,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
      poll stops re-pricing those figures. The client computes NO price (§18): it freezes a
      display and sends the tick; the ENGINE re-derives both prices at that tick and validates it.
      Seed geometry — distances, fuel-unit burns, the BUY arrival readout — never moves, so it
-     stays live. The fuel price the client shows is per-system route fuel CREDITS
-     (`fuelCost[sys].creditCost` = burn × the engine's fuel price); freezing those credit figures
+     stays live. The fuel price the client shows is per-node route fuel CREDITS
+     (a leg's `creditCostByTier` = burn × the engine's fuel price); freezing those credit figures
      freezes the fuel price for display without the client ever seeing a raw price. */
   function txFreezeQuote(){
     var s = snap();
@@ -9172,16 +9222,17 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // price feeds the ledger's frozen cost/proceeds total. Prices are the only per-good freeze.
     var order = txOrder(), priceByGood = {};
     if(order) order.lines.forEach(function(l){ var p = priceOf(l.good); if(p != null) priceByGood[l.good] = p; });
-    // Freeze the per-system, PER-TIER route fuel credits for every system the guild holds (a
-    // superset of the BUY destinations and the SELL origins), so the target the player picks already
-    // has a firm figure at the order's tier — no live re-read. Geometry (burn, travelTicks) is NOT
-    // frozen; it never moves, and stays live for the gate and the arrival readout.
-    var g = meGuild(), fc = (g && g.fuelCost) || {}, cc = {};
-    Object.keys(fc).forEach(function(sysId){
-      var r = fc[sysId];
-      if(r && r.creditCostByTier) cc[sysId] = r.creditCostByTier;
+    // Freeze the per-node, PER-TIER route fuel credits for every node the guild holds — each held
+    // system (the SELL origins) and each of its own Outposts (with the systems, the BUY destinations,
+    // §9.1) — so the target the player picks already has a firm figure at the order's tier — no live
+    // re-read. Geometry (burn, travelTicks) is NOT frozen; it never moves, and stays live for the
+    // gate and the arrival readout.
+    var cc = {};
+    txHeldNodes().forEach(function(nodeId){
+      var r = txRoute(nodeId);
+      if(r && r.creditCostByTier) cc[nodeId] = r.creditCostByTier;
     });
-    TX.frozen = { priceByGood: priceByGood, creditCostBySys: cc };
+    TX.frozen = { priceByGood: priceByGood, creditCostByNode: cc };
   }
   // The frozen posted price of one good — the number the popup showed at open, not the live feed.
   // Falls back to live only if nothing was frozen for it (defensive; the popup freezes at open).
@@ -9190,18 +9241,18 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(f && Object.prototype.hasOwnProperty.call(f, good)) return f[good];
     return priceOf(good);
   }
-  // The frozen route fuel credits for one system AT THE ORDER'S TIER (the fuel price, made concrete
-  // for the hauler the order sizes to). A system/tier with no frozen value reads live.
-  function txQuotedCredit(sysId, tier){
-    var f = TX.frozen && TX.frozen.creditCostBySys, m = f && f[sysId];
+  // The frozen route fuel credits for one node AT THE ORDER'S TIER (the fuel price, made concrete
+  // for the hauler the order sizes to). A node/tier with no frozen value reads live.
+  function txQuotedCredit(nodeId, tier){
+    var f = TX.frozen && TX.frozen.creditCostByNode, m = f && f[nodeId];
     if(m && tier && m[tier] != null) return m[tier];
-    var r = txRoute(sysId);
+    var r = txRoute(nodeId);
     return (r && r.creditCostByTier && tier && r.creditCostByTier[tier] != null) ? r.creditCostByTier[tier] : 0;
   }
-  // The route's fuel BURN (units) for one system at the order's tier — seed geometry, read LIVE from
+  // The route's fuel BURN (units) for one node at the order's tier — seed geometry, read LIVE from
   // the snapshot's `fuelBurnByTier` (the client holds no burn rate, §18). This is the SELL/BUY gate.
-  function txRouteBurn(sysId, tier){
-    var r = txRoute(sysId);
+  function txRouteBurn(nodeId, tier){
+    var r = txRoute(nodeId);
     return (r && r.fuelBurnByTier && tier && r.fuelBurnByTier[tier] != null) ? r.fuelBurnByTier[tier] : 0;
   }
   // The cycle index a tick sits in — MIRRORS sim/price-ring.js cycleIndexOf: floor((tick −
@@ -9317,19 +9368,20 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       + '<div class="manifest">' + rows + '</div>';
   }
   // The finalise-time TARGET (§2/§6): BUY picks a DESTINATION to deliver to, SELL an ORIGIN to ship
-  // from. Both offer the systems the guild holds (`fuelCost` keys); the SELL origin-picker refinement
-  // (only systems that hold every line) is a later slice — here the engine's stock gate reject-wholes
-  // with the named shortfall (§7). Route fuel for the target reads the order's tier, frozen (§8.1).
+  // from. BUY offers every node the guild holds — its held systems AND its own Outposts (§9.1); SELL
+  // offers the held systems only (`fuelCost` keys — an Outpost sells from its own manager, §9.2). The
+  // SELL origin-picker refinement (only systems that hold every line) is a later slice — here the
+  // engine's stock gate reject-wholes with the named shortfall (§7). Route fuel for the target reads
+  // the order's tier, frozen (§8.1).
   function txTargetBlock(kind, order){
-    var systems = txHeldSystems(), target = TX.target;
-    var routeCr = txQuotedCredit(target, order.haulerTier);
-    var opts = systems.map(function(id){
-      var nm = (window.__systemName && window.__systemName(id)) || id;
-      return '<option value="' + id + '"' + (id === target ? ' selected' : '') + '>' + nm + '</option>';
-    }).join('');
     var buy = kind === 'buy';
-    var sel = '<select class="rowsel" id="tw-tx-target" aria-label="' + (buy ? 'Destination' : 'Origin') + ' system">'
-      + opts + (buy ? '<option disabled>&#9670; Controlled outpost &mdash; soon</option>' : '') + '</select>';
+    var ids = buy ? txHeldNodes() : txHeldSystems(), target = TX.target;
+    var routeCr = txQuotedCredit(target, order.haulerTier);
+    var opts = ids.map(function(id){
+      return '<option value="' + id + '"' + (id === target ? ' selected' : '') + '>' + txNodeName(id) + '</option>';
+    }).join('');
+    var sel = '<select class="rowsel" id="tw-tx-target" aria-label="' + (buy ? 'Destination' : 'Origin system') + '">'
+      + opts + '</select>';
     var route = buy
       ? '<span class="rway">Syndicate waystation</span><span class="rarr">&#8594;</span>' + sel
       : sel + '<span class="rarr">&#8594;</span><span class="rway">Syndicate waystation</span>';
@@ -9406,15 +9458,20 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
 
   /* -- open / render / confirm / close ------------------------------------------- */
   // Open the finalise popup for a side. The manifest is the HELD order read from the snapshot (§2)
-  // — nothing is carried in from the card. The target defaults to the operating (home) system when
-  // the guild holds it, else its first held system. An empty order never opens (the hero button is
-  // disabled), and a guild with no held system cannot pick a target.
+  // — nothing is carried in from the card. A BUY's destination defaults to the held node nearest a
+  // waystation (§9.1, txNearestNode); the player may pick any other. A SELL's origin defaults to the
+  // operating (home) system when the guild holds it, else its first held system. An empty order never
+  // opens (the hero button is disabled), and a guild that holds no node cannot pick a target.
   function openTx(kind){
     var guild = meGuild(); if(!guild) return;
     TX.kind = kind;
     var order = txOrder(); if(!order) return;
-    var held = txHeldSystems(), home = guild.homeSystemId;
-    TX.target = (home && held.indexOf(home) >= 0) ? home : (held[0] || null);
+    if(kind === 'buy'){
+      txPickTarget(txNearestNode());
+    } else {
+      var held = txHeldSystems(), home = guild.homeSystemId;
+      txPickTarget((home && held.indexOf(home) >= 0) ? home : (held[0] || null));
+    }
     if(!TX.target) return;
     TX.open = true;
     txFreezeQuote();                                   // §8.1: freeze the prices + issue tick
@@ -9432,8 +9489,11 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   function txSledRow(k, v){ return '<div><span class="k">' + k + '</span><span>' + v + '</span></div>'; }
   // Confirm posts the HELD-ORDER finalise (§5): the engine reads the guild's own order, so the
   // action carries NO cart, NO good, NO allocations — only the target and the frozen issue tick
-  // (§8.1, never a price; the engine re-derives and validates it). BUY → destinationSystemId,
-  // SELL → originSystemId. On success the engine clears the order.
+  // (§8.1, never a price; the engine re-derives and validates it). BUY → exactly ONE destination
+  // field, the target's own: destinationOutpostId for an Outpost, destinationSystemId for a system
+  // (the engine refuses both at once). SELL → originSystemId. On success the engine clears the order.
+  // No capacity check here: a buy to a full Outpost still departs (§9.1, warn don't block) — the
+  // engine writes its own space-warning notice.
   function txConfirm(){
     var player = (window.__player && window.__player()) || {};
     var order = txOrder(); if(!order || order.overCap || !TX.target) return;
@@ -9446,7 +9506,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       if(typeof TX.issueTick === 'number') sellAction.issueTick = TX.issueTick;
       pending = window.__sendAction(sellAction);
     } else {
-      var buyAction = { type:'buyFromSyndicate', guildId: player.guildId, destinationSystemId: TX.target };
+      var buyAction = TX.toOutpost
+        ? { type:'buyFromSyndicate', guildId: player.guildId, destinationOutpostId: TX.target }
+        : { type:'buyFromSyndicate', guildId: player.guildId, destinationSystemId: TX.target };
       if(typeof TX.issueTick === 'number') buyAction.issueTick = TX.issueTick;
       pending = window.__sendAction(buyAction);
     }
@@ -9475,7 +9537,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // after-total. `nowFuel` likewise shows the combined credit value the bar draws.
     var nowFuel = after ? ('&#162;' + fmt(heldValue(after))) : '&mdash;';
     var manifest = (TX.last.goods || 0) + ((TX.last.goods === 1) ? ' good' : ' goods') + ' &times; ' + fmt(TX.last.units || 0) + ' u';
-    var targetName = (window.__systemName && window.__systemName(TX.target)) || TX.target;
+    var targetName = txNodeName(TX.target);
     var sled;
     if(TX.kind === 'sell'){
       var credited = after ? (after.credits - before.credits) : null;
@@ -9490,7 +9552,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       var spent = after ? (before.credits - after.credits) : null;
       var burnedB = after ? (before.hoard - heldUnits(after)) : null;
       var ships = (res.snapshot && res.snapshot.shipments) || [];
-      var mine = ships.filter(function(s){ return s.ownerGuildId === guildId && s.destinationSystemId === TX.target; });
+      // Match the delivery by the field the confirm sent: an Outpost delivery names its node in
+      // `destinationOutpostId`, a system delivery in `destinationSystemId`.
+      var destField = TX.toOutpost ? 'destinationOutpostId' : 'destinationSystemId';
+      var mine = ships.filter(function(s){ return s.ownerGuildId === guildId && s[destField] === TX.target; });
       var ship = mine.length ? mine[mine.length - 1] : null;   // shipments arrive sorted; the last match is the one just placed
       var arr = ship ? txEta(ship.ticksRemaining) : txEta(TX.last.arr);
       sled = txSledRow('Ordered', manifest)
@@ -9546,9 +9611,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(rm){ txRemoveLine(rm.getAttribute('data-txrm')); return; }
   });
   ov.addEventListener('change', function(e){
-    // Switching the target re-renders the route fuel (main + ledger) at the new system; the
+    // Switching the target re-renders the route fuel (main + ledger) at the new node; the
     // manifest and the frozen quote are untouched.
-    if(e.target.id === 'tw-tx-target'){ TX.target = e.target.value; txRender(); return; }
+    if(e.target.id === 'tw-tx-target'){ txPickTarget(e.target.value); txRender(); return; }
   });
   document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && TX.open) txClose(); });
 

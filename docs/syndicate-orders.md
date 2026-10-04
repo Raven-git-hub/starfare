@@ -249,12 +249,16 @@ hash-free way it already is for systems (§4) — no determinism byte, no schema
 >   Outpost id there would show up as a target the engine then refuses. So `fuelCost` stays exactly the held
 >   systems, and a test pins that. Whether to merge the two maps (one map keyed by node id, the "one ordering" of
 >   §9.1) once the client stops reading `fuelCost`'s keys that way is on the roadmap decision checklist.
+>   *(⤳ 04-10-26, the client BUY picker (§9.1 AS-BUILT): "Deliver to" now reads both maps' keys, joined into one
+>   node-id ordering. "Ship from" still reads `fuelCost`'s keys alone as the held systems, so the sibling key still
+>   does its job.)*
 
 ### 9.1 BUY — the Syndicate delivers to the nearest node by default, overridable
 
 > **AS-BUILT (engine slice 1b, 04-10-26) — the engine BUY half.** `buyFromSyndicate` (`sim/actions.js`) now
 > delivers to a held system or to one of the guild's own Outposts. The client is a later slice, so the
 > default-nearest target and the override picker below are not built yet; the engine takes whichever node it is given.
+> *(⤳ 04-10-26: the picker is BUILT — the client AS-BUILT at the end of this section.)*
 > - **The destination shape.** The action takes **exactly one** of `destinationSystemId` (unchanged, and still what
 >   the live client sends) or **`destinationOutpostId`** (new), the mirror of 1a's `originSystemId` /
 >   `originOutpostId`. Both, or an empty id, is refused. Neither gets the old `destinationSystemId must be a
@@ -307,6 +311,37 @@ anything.
   full agency and the jeopardy that goes with it.)
 - The existing BUY gates are unchanged: hauler-hold capacity, credits, fuel hoard, destination held, the
   §8.1 quote-lock.
+
+> **AS-BUILT (client: the BUY destination picker, 04-10-26).** `client/game.html` only; no `sim/` change. The
+> TRADE tab's BUY finalise (`#tw-tx-overlay`) now delivers to any node the guild holds. The rest of the popup is
+> as §6 built it.
+> - **The list.** "Deliver to" lists the held systems (`fuelCost`'s keys) AND the guild's own Outposts
+>   (`outpostFuelCost`'s keys), in ONE node-id ordering (`txHeldNodes`). That is the order the tie-break reads.
+>   An Outpost is named by the one canonical resolver (`__outpostName`, "<anchor system> Outpost") and a system by
+>   its seed name. The disabled "◆ Controlled outpost — soon" option is gone.
+> - **The default.** On open, the target is the node whose published leg `travelTicks` is smallest
+>   (`txNearestNode`). The list is in id order and only a strictly shorter leg replaces the pick, so a tie goes to
+>   the lower node id. The client only selects a minimum among the engine's values; it computes no game number
+>   (§18). This replaces the home-system default for BUY. The player may pick any other node; a poll does not undo
+>   the pick.
+> - **The leg follows the node.** `txRoute` reads `outpostFuelCost[id]` when the id is one of the guild's own
+>   Outposts and `fuelCost[id]` when it is a held system (`txIsOutpost`: the two key sets never overlap).
+>   `txQuotedCredit` and `txRouteBurn` read through it, so the route fuel, the fuel bar, the fuel gate and the
+>   arrival all re-read the chosen node's leg. The §8.1 freeze now covers every held node, so an Outpost's
+>   per-tier fuel credits are frozen at open like a system's.
+> - **The confirm sends one field.** `buyFromSyndicate { destinationOutpostId }` for an Outpost, `{ destinationSystemId }`
+>   for a system (unchanged), never both. The node's kind is fixed when it is picked (`txPickTarget`, `TX.toOutpost`).
+>   So an Outpost torn down while the popup is open is still sent as an Outpost, and the engine refuses it with its
+>   own "owns no outpost" reason (§9.4). The receipt finds the new shipment by the same field, reads its arrival, and
+>   names the node.
+> - **No capacity gate or warning in the popup** (warn, don't block). A buy to a full Outpost confirms. The warning
+>   is the engine's departure notice; rendering the two delivery notices in MESSAGES is the next slice.
+> - **Unchanged:** the SELL finalise. Its Ship-from still lists the held systems alone (`txHeldSystems`) and still
+>   defaults to home; an Outpost sells from its own manager (§9.2). Also unchanged: the Outpost Manager and the
+>   asset commission.
+> - Tests: the served-page tripwire (`sim/tests/server.test.js`) +1. It pins the node list, the retired stub, the
+>   outpost-aware leg reader and freeze, the strict-minimum default, the one-field confirm, the receipt match, and
+>   no room check in the confirm. The existing `destinationSystemId: TX.target` pin still holds for a system.
 
 ### 9.2 SELL — from a held system (trade tab) or an outpost (its manager)
 

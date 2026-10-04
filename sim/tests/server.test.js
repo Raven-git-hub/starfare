@@ -554,8 +554,9 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the SELL & 
   assert.match(html, /order\.haulerTier/, 'the hero art + tag are driven by the order tier, engine-computed');
   assert.match(html, /order\.overCap/, 'the over-capacity split-the-order state is rendered');
 
-  // THE FINALISE posts the HELD-ORDER shape (§5): BUY carries a destinationSystemId and NO cart/good;
-  // SELL carries an originSystemId and NO allocations/good. The engine reads the guild's own order.
+  // THE FINALISE posts the HELD-ORDER shape (§5): BUY carries a destinationSystemId (for a system —
+  // an Outpost's destinationOutpostId is pinned in the BUY destination picker test below) and NO
+  // cart/good; SELL carries an originSystemId and NO allocations/good. The engine reads the guild's own order.
   assert.match(html, /type:'buyFromSyndicate', guildId: player\.guildId, destinationSystemId: TX\.target/);
   assert.match(html, /type:'sellToSyndicate', guildId: player\.guildId, originSystemId: TX\.target/);
   assert.match(html, /window\.__sendAction\(buyAction\)/);
@@ -608,6 +609,49 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the SELL & 
   assert.ok(!/\.postMessage\s*\(/.test(tradeBlock), 'the TRADE tab sends no postMessage — it rides no console bridge');
   assert.ok(!/contentWindow/.test(tradeBlock), 'the TRADE tab talks to no iframe');
   assert.ok(!/src\s*=\s*['"]?\/?console/.test(tradeBlock), 'the TRADE tab embeds no console');
+});
+
+// The BUY destination picker (docs/syndicate-orders.md §9.1 — client). A served-bytes tripwire: the BUY
+// finalise's Deliver to lists every node the guild holds — its held systems (`fuelCost`) AND its own
+// Outposts (`outpostFuelCost`) — opens on the node with the shortest published leg (a tie to the lower
+// node id), and sends exactly ONE destination field. The SELL Ship-from stays systems-only. If the picker
+// drifted back to systems-only, or the confirm sent a system field for an Outpost, the page would still
+// render — only this fails.
+test('GET / serves the BUY destination picker — held nodes, default nearest, one destination field', async () => {
+  const html = await (await fetch(base + '/')).text();
+  // One function's source, from its declaration to the next one's (each name is declared once).
+  const fn = (name, next) => html.slice(html.indexOf('function ' + name + '('), html.indexOf('function ' + next + '('));
+
+  // THE LIST: BUY reads the held nodes (systems + own Outposts, one id ordering); SELL the held systems.
+  // The old disabled "Controlled outpost — soon" option is gone.
+  assert.ok(!/Controlled outpost/.test(html), 'the "Controlled outpost — soon" stub is retired');
+  assert.match(html, /var ids = buy \? txHeldNodes\(\) : txHeldSystems\(\)/, 'BUY lists nodes; SELL stays systems-only');
+  const heldNodes = fn('txHeldNodes', 'txNearestNode');
+  assert.match(heldNodes, /g\.outpostFuelCost/, 'the Outposts come from the published Outpost legs');
+  assert.match(heldNodes, /return txHeldSystems\(\)\.concat\(outposts\)\.sort\(\);/, 'systems + Outposts in ONE node-id ordering');
+  assert.match(html, /'>' \+ txNodeName\(id\) \+ '<\/option>'/, 'each option is named by the node resolver');
+  assert.match(fn('txNodeName', 'txPickTarget'), /window\.__outpostName\(nodeId\)/, 'an Outpost reads the one canonical outpost name');
+
+  // THE LEG: the readers read an Outpost's leg from outpostFuelCost, a system's from fuelCost...
+  assert.match(fn('txRoute', 'txHeldSystems'), /var legs = \(txIsOutpost\(nodeId\) \? g\.outpostFuelCost : g\.fuelCost\) \|\| \{\};/);
+  // ...and the §8.1 freeze covers every held node, so an Outpost target's fuel credits are frozen too.
+  assert.match(fn('txFreezeQuote', 'txQuotedPrice'), /txHeldNodes\(\)\.forEach/);
+
+  // THE DEFAULT (§9.1): the smallest published travelTicks, strictly (a tie keeps the lower node id).
+  const nearest = fn('txNearestNode', 'txNodeName');
+  assert.match(nearest, /var ticks = txRoute\(id\)\.travelTicks;/);
+  assert.match(nearest, /if\(ticks < bestTicks\)/, 'only a strictly shorter leg wins — a tie goes to the lower node id');
+  assert.match(html, /if\(kind === 'buy'\)\{\s*txPickTarget\(txNearestNode\(\)\);/, 'BUY opens on the nearest node');
+  assert.match(html, /txPickTarget\(e\.target\.value\)/, 'the player can override it');
+
+  // THE CONFIRM: exactly one destination field, by the picked node's kind; no capacity gate (§9.1).
+  const confirm = fn('txConfirm', 'txAfter');
+  assert.match(confirm, /var buyAction = TX\.toOutpost\s*\? \{ type:'buyFromSyndicate', guildId: player\.guildId, destinationOutpostId: TX\.target \}\s*: \{ type:'buyFromSyndicate', guildId: player\.guildId, destinationSystemId: TX\.target \};/);
+  assert.ok(!/capacity|stockpile|freeSpace/i.test(confirm.replace(/\/\/.*$/gm, '')),
+    'the BUY confirm checks no Outpost room — warn, don\'t block (§9.1)');
+  // THE RECEIPT finds the new shipment by the field the confirm sent.
+  assert.match(html, /var destField = TX\.toOutpost \? 'destinationOutpostId' : 'destinationSystemId';/);
+  assert.match(html, /s\[destField\] === TX\.target/);
 });
 
 // The Outpost Manager's SELL (docs/syndicate-orders.md §9.2 — client slice). A served-bytes tripwire:

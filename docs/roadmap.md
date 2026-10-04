@@ -19,7 +19,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
 | 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,855 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile (client; BUY's destination picker and the notices are next); the guild↔guild contest (a rival, territory, the market) is not built yet |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile, and BUY's Deliver to now offers the guild's Outposts beside its systems, opening on the node nearest a waystation (client; the notices are next); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -3343,7 +3343,58 @@ boundary so the later hex-map swap doesn't touch it.
     one page do). Its Sell Order → Ship from `sys_0006` → confirm sent `sellToSyndicate { originSystemId: sys_0006,
     issueTick }`, no cart; home titanium 5,000 → 4,750 and the held order cleared. No page errors.
     **Deferred (not invented):** BUY's destination picker and the two delivery notices (the next client slices).
+    *(⤳ 04-10-26: BUY's destination picker is BUILT, next.)*
     **Calls on the decision checklist** ("Trading to/from outposts — the Outpost Manager's SELL — five calls").
+  - **client: the BUY destination picker (CLIENT ONLY, `client/game.html`).** 🟢 *BUILT (04-10-26).* The client for
+    §9.1: the TRADE tab's BUY finalise delivers to any node the guild holds, opening on the nearest. AS-BUILT in
+    `syndicate-orders.md` §9.1.
+    **Changed:** "Deliver to" lists the held systems (`fuelCost` keys) and the guild's own Outposts
+    (`outpostFuelCost` keys) in one node-id ordering, each named as everywhere else (`__systemName` /
+    `__outpostName`). The disabled "Controlled outpost — soon" option is gone. On open the target is the node with
+    the smallest published `travelTicks`; only a strictly shorter leg replaces the pick, so a tie goes to the lower
+    node id. This replaces the home-system default for BUY. The player may override to any node, and the route fuel,
+    the fuel bar, the fuel gate and the arrival follow it. The confirm sends `destinationOutpostId` for an Outpost
+    and `destinationSystemId` for a system, never both. The receipt matches the new shipment by the same field and
+    names the node. There is no capacity gate or warning in the popup (§9.1, warn don't block).
+    **Made outpost-aware:** `txRoute` reads `outpostFuelCost[id]` for an own Outpost and `fuelCost[id]` for a held
+    system (`txIsOutpost`). `txQuotedCredit` and `txRouteBurn` read through it, unchanged but for the parameter
+    name. `txFreezeQuote` freezes every held node's per-tier fuel credits (`creditCostByNode`, was
+    `creditCostBySys`), so an Outpost target is quote-locked too. **Added:** `txHeldNodes`, `txNearestNode`,
+    `txNodeName`, and `txPickTarget`, which fixes the node's kind (`TX.toOutpost`) when it is picked, so an Outpost
+    torn down mid-popup is still sent as an Outpost and refused by the engine's own reason. **Reused unchanged:**
+    the popup, its CSS and markup, `txHeldSystems` (now the SELL origin set alone), `txEta`, `txFuelBar`, the
+    ledger, the confirm path, `__outpostName`. **Unchanged:** the SELL finalise (Ship from: held systems,
+    home default), the Outpost Manager, the asset commission.
+    **The brief vs the code:** the brief said the served-page tripwire pinned the "soon" option. No test pinned
+    it (or `tw-tx-target`), so there was no pin to update. A new test pins the real node list and the stub's
+    absence. The existing `destinationSystemId: TX.target` pin still matches the system branch. Two dated history
+    records (`client-wiring.md` "Revision — the SELL & BUY transaction popups", `transport-model.md` 03-09-26) still
+    describe the original popup's stub and were left as history.
+    **Pins (`sim/tests/server.test.js`):** +1 test. It pins the node list, the retired stub, the outpost-aware
+    `txRoute` and freeze, the strict-minimum default on open, the override, the one-field confirm, the receipt
+    match, and that the confirm reads no Outpost room. Eight mutations of the page each turned it red: systems-only
+    list, an always-system confirm, `<=` in the tie-break, a home default, a capacity gate in the confirm, a
+    `fuelCost`-only `txRoute`, a systems-only freeze, and a system-only receipt match.
+    **A NO-OP for `sim/` and `tools/`:** `git diff -- sim tools ':!sim/tests/server.test.js'` is empty; no engine
+    file or golden was touched. Sim **1,968 → 1,969 green** (+1, the picker's served-page test), tools **75 green**.
+    **Driven headless** on a seated seed-42 server (home `sys_0006` BAR-1337, leg 1,200 ticks). `spawn-outpost`
+    `outpost_seat_demo_01` at `109,52` (BAR-1337 Outpost, leg 450) and `outpost_seat_demo_02` at `104,62` (anchored
+    `sys_0936`, BAR-7159 Outpost, leg 1,800). Held buy order: 50 battery cells + 300 titanium (LIGHT · 5,300 /
+    10,000). (a) Deliver to listed BAR-1337 Outpost, BAR-7159 Outpost and BAR-1337, opened on BAR-1337 Outpost:
+    Route fuel ¢20, arrival 00d07h. (b) Override to BAR-7159 Outpost: ¢60, 01d06h. To BAR-1337: ¢40, 00d20h. Two polls
+    left the override in place. (c) Back to BAR-1337 Outpost, Buy sent exactly
+    `{"type":"buyFromSyndicate","guildId":"seat_demo","destinationOutpostId":"outpost_seat_demo_01","issueTick":0}`.
+    Credits 52,000 → 51,200, fuel −2 (the Outpost's light leg), the order cleared, and the snapshot carried the
+    shipment `{ cargo: {battery_cells 50, titanium 300}, destinationOutpostId: outpost_seat_demo_01, arrivalTick 450 }`.
+    The receipt read Destination BAR-1337 Outpost, arrival 00d07h. At tick 450 it landed in the Outpost's stockpile.
+    (d) A 100-titanium order re-opened on the nearest node again. Overridden to BAR-1337, Buy sent
+    `{"type":"buyFromSyndicate","guildId":"seat_demo","destinationSystemId":"sys_0006","issueTick":0}`, unchanged.
+    (e) The SELL popup's Ship from listed BAR-1337 alone, defaulted home, aria label "Origin system", unchanged. Tie: a
+    third Outpost `outpost_seat_demo_03` at `115,50` (leg 450, = `_01`), and the BUY popup still opened on `_01`.
+    No page errors.
+    **Deferred (not invented):** the two delivery notices in MESSAGES (the next client slice); the Outpost
+    delivery's map leg and IN TRANSIT row (slice 1b call 5). **Calls on the decision checklist** ("Trading to/from
+    outposts — the BUY destination picker — four calls").
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
@@ -3597,6 +3648,26 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   Add tops up (`addOrderLine`); here the box shows the line's quantity when re-opened, and Add sets it. Confirm.
   **(5) No receipt after a sale.** The trade popup shows a "Consignment sold" view; the manager, as briefed, clears the
   draft and lets the next poll show the smaller pile and the credits. Confirm, or rule a short receipt line.
+- **Trading to/from outposts — the BUY destination picker — four calls (04-10-26, 2.2 client, `syndicate-orders.md`
+  §9.1 client AS-BUILT)**, built one way and flagged rather than ruled. **(1) The list shows the tie-break's order.**
+  "Deliver to" is in one node-id ordering, the ordering §9.1 rules for the tie-break. Outpost ids (`outpost_…`) sort
+  before system ids (`sys_…`), so a guild's Outposts list above its systems ("BAR-1337 Outpost" above "BAR-1337").
+  The ruling fixes the tie-break's ordering, not the display order. Using one ordering for both means the first of
+  two equal legs in the list is the one picked. Confirm, or rule a display order of its own (systems first, or
+  nearest first). **(2) The default reads `travelTicks`,** as the brief named. It does not depend on the tier and is
+  exactly `CRAFT_SPEED` (150) × the hex leg, so it orders nodes by leg length with no rounding ties. The per-tier
+  burn would also mean "the cheapest delivery", but it is rounded up (`ceil(distance × rate)`), so different legs
+  can tie: a 3-hex and a 4-hex leg both burn 2 at light, and the id tie-break could then pick the farther node.
+  A node with no reachable waystation publishes `travelTicks` 0 and would be picked. That can only happen in a
+  galaxy with no waystation, or for a system with no seed coordinates, where the engine refuses every buy anyway,
+  so it is not special-cased (the brief: use the published legs as they are). Confirm, or rule that the snapshot
+  flags the default node itself (§9.1's own "if strict §18 wants it" option). **(3) The node's kind is fixed when it
+  is picked.** `TX.toOutpost` is set when the popup opens and when the player picks, not re-read at confirm. So an
+  Outpost torn down while the popup is open is still sent as `destinationOutpostId`, and the engine refuses it with
+  its own "owns no outpost … to deliver to" (§9.4). Re-reading it at confirm would send the dead Outpost's id as a
+  `destinationSystemId` and get a misleading system refusal. Confirm. **(4) The default is chosen again at every
+  open.** An override lasts for that popup only; the next BUY opens on the nearest node again, as briefed ("when
+  the BUY popup opens"). Confirm, or rule that the last pick is remembered for the session.
 - **Split the oversized engine files — WHEN? (02-10-26, flagged by the 2.2 deploy pipeline engine-integrity tidy.)**
   `sim/actions.js` (5,258 lines) and `sim/server.js` (1,530) are far past a readable size for a codebase the human
   reads line by line; `sim/invariants.js` (2,386), `sim/snapshot.js` (2,120) and `sim/tick.js` (1,771) are also large.
