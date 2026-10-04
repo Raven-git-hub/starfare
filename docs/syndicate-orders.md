@@ -344,6 +344,28 @@ anything.
 >   outpost-aware leg reader and freeze, the strict-minimum default, the one-field confirm, the receipt match, and
 >   no room check in the confirm. The existing `destinationSystemId: TX.target` pin still holds for a system.
 
+> **AS-BUILT (the Outpost delivery in transit — snapshot leg + client render, 04-10-26).** A buy to an Outpost now
+> shows in flight exactly like a buy to a system: on the map and in Operations → In Transit. No state, tick or action
+> change.
+> - **The snapshot** (`sim/snapshot.js`, the `shipments` rows). An Outpost delivery's row now carries the same three
+>   leg fields a system row does: `originOutpostId`, `originCoords` (the nearest waystation) and `departureTick`. They
+>   are measured from the Outpost's own hex with `nearestWaystationToHex`, the search the BUY apply timed the flight
+>   with, so `departureTick` is the tick the buy was placed. They are derived on read: the stored shipment is still
+>   `{ ownerGuildId, cargo, destinationOutpostId, arrivalTick }`, with no stored byte, no determinism hash and no schema
+>   bump. No destination-coords field is added; the client finds the Outpost's coords in the snapshot's `outposts` rows,
+>   as it finds a system's in the seed.
+> - **An Outpost torn down mid-flight** leaves no hex to measure from, so its row keeps its cargo and `ticksRemaining`
+>   but has no leg, and neither render draws it. The consignment is still lost on arrival (§9.4); its feedback is the
+>   `delivery_turned_back` notice, not the map.
+> - **The client** (`client/game.html`). The map resolves an Outpost destination by id from the guild-outpost rows
+>   (`guildOutpostById`, beside `guildOutpostByKey`) and draws the leg to its hex. The tag still reads "Syndicate" and
+>   the engine's `ticksRemaining`; the Outpost is named by its own map label, as a system is. Operations → In Transit
+>   keys the row and names its destination by `destinationOutpostId` when it is set, through `__outpostName`. Both
+>   still keep a row on its leg fields alone and compute no number (§18).
+> - **A system delivery is unchanged**, field for field.
+> - Tests: `sim/tests/buy-to-outpost.test.js` (1b's "no leg yet" pin replaced by four tests) and the served-page
+>   tripwire `sim/tests/server.test.js` (+1).
+
 ### 9.2 SELL — from a held system (trade tab) or an outpost (its manager)
 
 > **AS-BUILT (engine slice 1a, 03-10-26) — the engine SELL half.** `sellToSyndicate` (`sim/actions.js`) now

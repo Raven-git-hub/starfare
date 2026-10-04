@@ -192,6 +192,37 @@ test('GET / serves the OPERATIONS tab — the rename, the #tp-ops panel, IN TRAN
   assert.match(html, /assets\/characters\/pilot\.jpg/);
 });
 
+// THE OUTPOST DELIVERY IN TRANSIT (04-10-26, roadmap 2.2 slice 1b call 5; syndicate-orders.md §9.1). A
+// Syndicate delivery to a guild Outpost names `destinationOutpostId` instead of `destinationSystemId`, and
+// the snapshot now publishes its leg. Both in-transit renders must resolve that destination: the map from
+// the live outpost rows (its coords), OPERATIONS by the one name resolver. A page that only looked up
+// systems would find nothing and silently skip the row, and only this would go red.
+test('GET / serves an Outpost delivery in transit — the map leg to the Outpost, the IN TRANSIT row named by __outpostName', async () => {
+  const html = await (await fetch(base + '/')).text();
+
+  // THE MAP. A by-id lookup of the guild Outposts, built from the same rows as the by-hex one…
+  assert.match(html, /guildOutpostById = new Map\(guildOutposts\.map\(o => \[o\.id, o\]\)\);/);
+  // …the live-shipments door keeps the Outpost id…
+  assert.match(html, /destinationOutpostId: s\.destinationOutpostId,/);
+  // …and the draw resolves the leg's far end from it (a system from the seed otherwise), then reads its coords.
+  assert.match(html, /const dest = ship\.destinationOutpostId\s*\? guildOutpostById\.get\(ship\.destinationOutpostId\)\s*: systemById\.get\(ship\.destinationSystemId\);/);
+  assert.match(html, /hexToPixel\(dest\.coords\.q, dest\.coords\.r, hsT\)/);
+
+  // OPERATIONS IN TRANSIT. The row key and the destination cell both name the Outpost when there is one.
+  assert.match(html, /function shipKey\(sh\)\{ return sh\.originOutpostId \+ '>' \+ \(sh\.destinationOutpostId \|\| sh\.destinationSystemId\) \+ '@' \+ sh\.arrivalTick; \}/);
+  assert.match(html, /'<span class="ops-dest">' \+ esc\(sh\.destinationOutpostId \? outpostName\(sh\.destinationOutpostId\) : systemName\(sh\.destinationSystemId\)\)/);
+  assert.ok(!html.includes('esc(systemName(sh.destinationSystemId))'), 'no system-only destination cell is left');
+
+  // Neither render drops an Outpost row by its destination: both keep a row on its leg fields alone.
+  const door = html.match(/window\.__setLiveShipments = function \(live\) \{[\s\S]*?\n  \};/);
+  const list = html.match(/function myTransit\(guild, s\)\{[\s\S]*?\n  \}/);
+  assert.ok(door && list, 'both in-transit readers are found');
+  for (const [name, body] of [['__setLiveShipments', door[0]], ['myTransit', list[0]]]) {
+    const filters = body.match(/\.filter\([^\n]*/g).join('\n');
+    assert.doesNotMatch(filters, /destinationSystemId|destinationOutpostId/, `${name} must not filter on the destination`);
+  }
+});
+
 test('GET / serves the WIRED licence panel — the two real actions, and no mock caveat', async () => {
   const res = await fetch(base + '/');
   const html = await res.text();

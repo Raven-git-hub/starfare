@@ -3762,7 +3762,7 @@ select.field{appearance:none; cursor:pointer;}
   // popup, while a click on the craft's hex/marker falls through to normal hex handling. Labels draw
   // only above 1×, so below that this is simply empty and there is nothing to click.
   let craftLabelHits = [];
-  let systemById = new Map(), guildById = new Map(), systemToGuild = new Map(), guildOutpostByKey = new Map(), gateByKey = new Map();
+  let systemById = new Map(), guildById = new Map(), systemToGuild = new Map(), guildOutpostByKey = new Map(), guildOutpostById = new Map(), gateByKey = new Map();
 
   // ---------- b2b-2: the interactive ROUTE PLANNER (transport-model.md §4/§9, design.md §18) ----------
   // The whole in-progress route lives in ONE object. `waypoints` is the ordered turning-point list —
@@ -4920,7 +4920,8 @@ select.field{appearance:none; cursor:pointer;}
     // brass leg (nearest waystation → destination), a gold craft chevron tweened along it,
     // and a carrier+ETA tag. PRESENTATION ONLY (design.md §5/§18): the engine surfaces each
     // leg's start endpoint (`originCoords`) and its two ticks (`departureTick`/`arrivalTick`);
-    // the client resolves the destination's coords from the seed like any system, and
+    // the client resolves the destination's coords from the seed like any system (a guild
+    // Outpost's from the live outpost rows, `guildOutpostById`), and
     // re-derives the smooth position between ticks (transport-model.md §2.3/§6) — exactly as
     // the clock ring animates off an engine period/phase. It invents no game number.
     if (liveShipments.length) {
@@ -4931,8 +4932,13 @@ select.field{appearance:none; cursor:pointer;}
       const Tf = window.__fractionalTick ? window.__fractionalTick() : null;
       if (Tf !== null) {
         liveShipments.forEach((ship) => {
-          const dest = systemById.get(ship.destinationSystemId);
-          if (!dest) return; // destination not in the seed — nothing to anchor the leg to
+          // The leg's far end: a guild Outpost (from the live outpost rows) or a system (from the seed).
+          // Both carry `coords`. An Outpost torn down mid-flight is gone from the rows (and its row has
+          // no leg fields anyway), so it is skipped like any destination with nothing to anchor to.
+          const dest = ship.destinationOutpostId
+            ? guildOutpostById.get(ship.destinationOutpostId)
+            : systemById.get(ship.destinationSystemId);
+          if (!dest) return; // destination not found — nothing to anchor the leg to
           const oPix = hexToPixel(ship.originCoords.q, ship.originCoords.r, hsT);
           const dPix = hexToPixel(dest.coords.q, dest.coords.r, hsT);
           const A = worldToScreen(oPix.x, oPix.y);
@@ -5582,6 +5588,9 @@ select.field{appearance:none; cursor:pointer;}
 
     claimsData = { guilds: parsed.guilds, systemClaims: parsed.systemClaims, guildOutposts, tollGates: [], tollPaths: [] };
     guildOutpostByKey = new Map(guildOutposts.map(o => [`${o.coords.q},${o.coords.r}`, o]));
+    // By id too: a Syndicate delivery to an Outpost names its destination by id, and the in-flight
+    // pass resolves the leg's far end here, as a system delivery resolves its end from systemById.
+    guildOutpostById = new Map(guildOutposts.map(o => [o.id, o]));
     gateByKey = new Map();
   }
 
@@ -5641,7 +5650,8 @@ select.field{appearance:none; cursor:pointer;}
   // (`ownerGuildId === myGuildId`) — a rival's logistics are not free intel (a slice-local
   // ruling; espionage is a later phase). Drops any row the engine surfaced WITHOUT its leg
   // geometry (an unresolvable destination — no waystation, no leg to draw): the engine omits
-  // the fields defensively and the map mirrors that by skipping the row. Keeps only what the
+  // the fields defensively and the map mirrors that by skipping the row — as it does for a delivery
+  // to an Outpost torn down mid-flight, which has no hex left to measure a leg from. Keeps only what the
   // draw reads; the map computes nothing else from it.
   window.__setLiveShipments = function (live) {
     const rows = (live && live.shipments) || [];
@@ -5652,6 +5662,7 @@ select.field{appearance:none; cursor:pointer;}
       .map((s) => ({
         originCoords: { q: s.originCoords.q, r: s.originCoords.r },
         destinationSystemId: s.destinationSystemId,
+        destinationOutpostId: s.destinationOutpostId, // set instead of destinationSystemId on a delivery to an Outpost
         departureTick: s.departureTick,
         arrivalTick: s.arrivalTick,
         ticksRemaining: s.ticksRemaining,
@@ -9962,7 +9973,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // A stable key per in-flight Syndicate leg: origin + destination + the absolute arrival tick.
   // There is no craft id this tier (transport-model.md §3), so this identifies the delivery for the
   // expand-state map and the structure signature.
-  function shipKey(sh){ return sh.originOutpostId + '>' + sh.destinationSystemId + '@' + sh.arrivalTick; }
+  // A delivery to an Outpost names `destinationOutpostId` instead of `destinationSystemId`.
+  function shipKey(sh){ return sh.originOutpostId + '>' + (sh.destinationOutpostId || sh.destinationSystemId) + '@' + sh.arrivalTick; }
 
   // The player's OWN in-flight deliveries with their leg geometry, soonest-arrival first. Same two
   // filters the map's __setLiveShipments applies: own only (ownerGuildId === myGuildId — a rival's
@@ -9979,7 +9991,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
 
   // One IN TRANSIT row (collapsed head + the hidden manifest). Row order per §4:
-  //   origin waystation · progress bar · [reserved alert] · time remaining · destination system
+  //   origin waystation · progress bar · [reserved alert] · time remaining · destination system (or Outpost)
   // The manifest carries the carrier identity line (Syndicate — no craft id, §3) and the cargo,
   // itemised `Good: Nu`. A Syndicate BUY is single-good, so today it is one line; the loop keeps
   // the list ready for the mixed cargo a guild transport carries (Phase 4).
@@ -10012,7 +10024,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       +   '<span class="ops-bar"><span class="ops-fill"></span></span>'
       +   '<span class="ops-alert" aria-hidden="true"></span>'
       +   '<span class="ops-eta"></span>'
-      +   '<span class="ops-dest">' + esc(systemName(sh.destinationSystemId)) + '</span>'
+      +   '<span class="ops-dest">' + esc(sh.destinationOutpostId ? outpostName(sh.destinationOutpostId) : systemName(sh.destinationSystemId)) + '</span>'
       + '</div>'
       + '<div class="ops-manifest">'
       +   '<div class="ops-idline">Carrier: <b>Syndicate</b></div>'

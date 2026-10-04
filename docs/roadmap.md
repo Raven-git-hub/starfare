@@ -3176,6 +3176,7 @@ boundary so the later hex-map swap doesn't touch it.
   into any node it holds (nearest by default), and hears from the Trader in MESSAGES when a buy leaves for an Outpost
   without room and when a delivery is lost. Still open, as calls on the decision checklist rather than missing rungs:
   the Outpost delivery's map leg and IN TRANSIT row (slice 1b call 5), and the delivery notices' calls (last slice).
+  *(⤳ 04-10-26: the Outpost delivery's map leg and IN TRANSIT row are BUILT, the last rung below.)*
   - **slice 1a — SELL from a node (ENGINE + operator CLI, NO client).** 🟢 *BUILT (03-10-26).*
     **Changed:** `sellToSyndicate` (`sim/actions.js`) takes exactly one of `originSystemId` (unchanged, still
     what the live client sends) or the new **`originOutpostId`**. One reader, `sellOrigin`, gives validate and
@@ -3446,6 +3447,40 @@ boundary so the later hex-map swap doesn't touch it.
     **Deferred (not invented):** an Arrives day; a name for a torn-down Outpost; the duplicate-name limitation (two
     Outposts on one system read alike — a separate issue). **Calls on the decision checklist** ("Trading to/from
     outposts — the delivery notices — five calls").
+  - **the Outpost delivery in transit — snapshot leg + client render (slice 1b call 5; `sim/snapshot.js` +
+    `client/game.html`).** 🟢 *BUILT (04-10-26).* A buy to an Outpost was created, flown and landed correctly but was
+    invisible in flight: its snapshot row had no leg, so the map and Operations → In Transit skipped it. It now shows
+    like a system delivery. AS-BUILT in `syndicate-orders.md` §9.1.
+    **Snapshot:** an Outpost row carries `originOutpostId` / `originCoords` / `departureTick`, from
+    `nearestWaystationToHex(outpost.coords)`, the search the BUY apply times the flight with (so `departureTick` is the
+    buy's tick). Derived on read: no stored byte, no hash, no schema bump, no destination-coords field. An Outpost torn
+    down mid-flight has no hex, so its row has no leg (cargo + `ticksRemaining` only) and is not drawn; it is still lost
+    on arrival (§9.4). **Client:** the map resolves the leg's far end from a new `guildOutpostById` (built beside
+    `guildOutpostByKey`); Operations → In Transit's `shipKey` and destination cell read `destinationOutpostId` when it is
+    set, named by `__outpostName`. Neither reader filters on the destination. **Unchanged:** every system row, the BUY,
+    the arrival, the notices, `state.shipments`.
+    **Pins:** `buy-to-outpost.test.js` — 1b's "no leg yet" pin is replaced by four tests: the Outpost row's leg (origin =
+    the waystation nearest the Outpost, `departureTick = arrivalTick − legTicks` = the buy's tick, the wire key set, the
+    stored record and `hashState` unchanged); the countdown; the system row's exact keys, its own leg and no
+    `destinationOutpostId`; a torn-down Outpost's row (no leg, no throw). `server.test.js` +1, on the served page: the
+    by-id lookup, the door keeping `destinationOutpostId`, the draw's Outpost-or-system resolve and its coords, the key
+    and the destination cell, and no destination filter in either reader. 7 engine mutations and 7 page mutations each
+    turned a test red.
+    **Byte-identical for every golden:** no golden-bearing test file was touched, and all pass. A scratch scenario
+    (multi-good system buys, arrivals one tick apart, a refusal; then the same with two Outpost buys in flight) was run
+    1,400 ticks on `origin/main` and on this branch. The system-only run's 1,400 state and snapshot hashes are
+    byte-identical. With the Outpost buys every state hash is identical, and every snapshot hash is identical once the
+    Outpost rows' three leg fields are stripped. Sim **1,970 → 1,974 green** (+4), tools **75 green**.
+    **Driven headless** on a seated seed-42 server (home `sys_0006` BAR-1337). `spawn-outpost` `outpost_seat_demo_01` at
+    `109,52`; a 2,000-titanium buy to it at tick 0 and a 100-titanium buy home. The Outpost row read `originOutpostId
+    out_60`, `originCoords 112,50`, `departureTick 0`, `arrivalTick 450`, beside the system row's unchanged `out_60` / `0`
+    / `1200`. 100 ticks on, `ticksRemaining` 350. After `remove-outpost` that row kept its cargo and countdown with no
+    leg, and `state.json` held only the four stored keys on each shipment. `outpost_seat_demo_02` at `106,12` and a
+    300-titanium buy at tick 100: `out_56` at `112,21`, `departureTick 100`, arrival 2350. In headless Chromium the map
+    drew the dashed leg Halo's Reach → BAR-1337 Outpost with the craft and "Syndicate 1d 13h", and Operations → In
+    Transit listed "Halo's Reach … 1d 13h → BAR-1337 Outpost" under the system row; the torn-down delivery was not
+    listed. No page errors. **Calls on the decision checklist** ("Trading to/from outposts — the Outpost delivery in
+    transit — four calls").
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
@@ -3676,7 +3711,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   Confirm, or rule another tie-break (e.g. smallest first). **(5) The Outpost delivery's map leg is not
   published:** its snapshot row carries `destinationOutpostId` but no `originCoords` / `departureTick`, so the
   live client skips it in the IN TRANSIT list and on the map. Publishing it (from the Outpost's hex) belongs with
-  the client slice that can draw a leg to an Outpost. Confirm that sequencing.
+  the client slice that can draw a leg to an Outpost. Confirm that sequencing. *(⤳ 04-10-26: BUILT in that sequence —
+  the leg and its draw shipped together, "the Outpost delivery in transit" (2.2). Its own calls are below.)*
 - **Trading to/from outposts — the inline-cart SELL — two calls (04-10-26, 2.2, `syndicate-orders.md` §9.2
   AS-BUILT)**, built one way and flagged rather than ruled. **(1) The cart's presence picks the path.** The brief
   said a non-empty array selects the cart. Built: any `cart` key selects it, and an empty or non-array cart is
@@ -3740,6 +3776,21 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   **(5) The warning overflows the card.** Its three lines and five facts are taller than the card, so the body
   scrolls (the `deploy_failed` fix, §10) and Free space and Ordered sit below the fold. The same question as the
   `deploy_failed` card-fit call: confirm, or rule a taller card or fewer facts.
+- **Trading to/from outposts — the Outpost delivery in transit — four calls (04-10-26, 2.2, `syndicate-orders.md` §9.1
+  AS-BUILT)**, built one way and flagged rather than ruled. **(1) The map tag does not name the destination.** The brief
+  asked the map to label an Outpost destination with `__outpostName`. The map's delivery tag names no destination for a
+  system either: it reads "Syndicate" and the ETA, and the destination is named by its own map label. The player's own
+  Outposts already carry one ("BAR-1337 OUTPOST"), so the tag is unchanged for both kinds. Confirm, or rule a destination
+  line on the tag for both. **(2) The leg is published for any Outpost that still exists,** looked up by id alone. An
+  Outpost that is no longer this guild's (no action does this today) would still have its leg drawn, though the arrival
+  turns the delivery back (§9.4). Confirm, or rule that it is left undrawn like a torn-down one. **(3) The empty state's
+  copy.** Operations → In Transit's empty state still reads "A Syndicate delivery appears here the moment you buy goods or
+  commission an asset to a system you hold." It is not wrong, but it is no longer the whole story: a buy to an Outpost
+  lists too. Left as is (copy is outside this slice). Confirm, or rule new words. **(4) An Outpost row's in-memory
+  `destinationSystemId: undefined`.** Since 1b the snapshot's row literal always writes `destinationSystemId`, so an
+  Outpost row carries the key with no value. JSON drops it, so the client never sees it, and the new tests check the
+  keys on the wire. It was left alone so the system path's code is untouched. Confirm, or rule that the row adds the key
+  only when it is set (no change on the wire).
 - **Split the oversized engine files — WHEN? (02-10-26, flagged by the 2.2 deploy pipeline engine-integrity tidy.)**
   `sim/actions.js` (5,258 lines) and `sim/server.js` (1,530) are far past a readable size for a codebase the human
   reads line by line; `sim/invariants.js` (2,386), `sim/snapshot.js` (2,120) and `sim/tick.js` (1,771) are also large.

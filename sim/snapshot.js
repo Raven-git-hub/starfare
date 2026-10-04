@@ -1782,6 +1782,9 @@ function buildSnapshot(state) {
   // departureTick))` and tween the craft's position between them; the engine
   // publishes endpoints + ticks, NOT a progress fraction (§6 — the client owns
   // the smooth tween, like the clock ring off an engine-given period).
+  // For a delivery to a guild Outpost the destination endpoint is
+  // `destinationOutpostId` instead, and the client resolves its coords from the
+  // `outposts` rows above (see the AS-BUILT note in the loop below).
   //
   // All three are DERIVED on read from `destinationSystemId` + `arrivalTick` +
   // the seed geometry — no stored byte on `state.shipments` (the record
@@ -1793,7 +1796,8 @@ function buildSnapshot(state) {
   // discipline `cargo` gets. Defensive: if `nearestWaystation` returns null (no
   // resolvable waystation — should not happen for a valid in-flight shipment),
   // the three leg fields are omitted rather than throwing; the row still
-  // surfaces with its cargo + ticks.
+  // surfaces with its cargo + ticks. An Outpost row is derived the same way, from
+  // `destinationOutpostId` + `arrivalTick` + the Outpost's live `coords`.
   const shipments = (state.shipments || []).map((ship) => {
     const row = {
       ownerGuildId: ship.ownerGuildId,
@@ -1810,12 +1814,25 @@ function buildSnapshot(state) {
     if (ship.assetKind) row.assetKind = ship.assetKind;
     // A DELIVERY TO AN OUTPOST (docs/syndicate-orders.md §9.1, trading to/from outposts slice 1b)
     // names a `destinationOutpostId` instead of a `destinationSystemId`, surfaced additively (present
-    // only on such a row). Its LEG is not published yet: `nearestWaystation` of the absent system id
-    // is null, so the three leg fields below are left off, and the live client — which draws a leg to
-    // `destinationSystemId` and skips any row without leg fields — skips it. Publishing the Outpost's
-    // leg belongs with the client slice that can draw it.
-    if (ship.destinationOutpostId !== undefined) row.destinationOutpostId = ship.destinationOutpostId;
-    const near = nearestWaystation(ship.destinationSystemId);
+    // only on such a row).
+    // ⤳ AS-BUILT (04-10-26, the Outpost delivery in transit): its LEG is now published too — the same
+    // three fields, from the same waystation search the BUY apply timed the flight with
+    // (`nearestWaystationToHex`), given the Outpost's own hex instead of a system's centre hex. So
+    // `departureTick` lands on the tick the buy was placed, exactly as for a system. The client
+    // resolves the Outpost's coords from the snapshot's `outposts` rows, as it resolves a system's
+    // from the seed, so no destination-coords field is added.
+    // An Outpost torn down mid-flight is no longer in `state.outposts`, so there is no hex to measure
+    // from: the leg fields are left off (the defensive omit below) and the client leaves the row
+    // undrawn. That consignment is already lost on arrival (§9.4); its feedback is the
+    // `delivery_turned_back` notice, not the map.
+    let near;
+    if (ship.destinationOutpostId !== undefined) {
+      row.destinationOutpostId = ship.destinationOutpostId;
+      const outpost = (state.outposts || []).find((o) => o.id === ship.destinationOutpostId);
+      near = outpost ? nearestWaystationToHex(outpost.coords) : null;
+    } else {
+      near = nearestWaystation(ship.destinationSystemId);
+    }
     if (near) {
       row.originOutpostId = near.outpost.id;
       row.originCoords = { ...near.outpost.coords };

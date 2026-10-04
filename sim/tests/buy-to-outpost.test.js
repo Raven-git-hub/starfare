@@ -22,7 +22,10 @@
 //     landed one is counted once;
 //   - determinism (invariant 9) across save + journal replay, mid-flight;
 //   - the SYSTEM destination is untouched: same action shape, same shipment record, same leg, no notice;
-//   - the two notice types are in the vocabulary, and their payloads are self-contained and emoji-free.
+//   - the two notice types are in the vocabulary, and their payloads are self-contained and emoji-free;
+//   - (04-10-26, the Outpost delivery in transit) the snapshot publishes an Outpost delivery's leg from the
+//     Outpost's own hex, derived on read; a system row keeps its exact shape; a torn-down Outpost's row
+//     has no leg and does not throw.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -538,25 +541,92 @@ test('the two notice types are in the vocabulary; their payloads are self-contai
   assert.notEqual(warned.guilds[0].events[0].payload.cargo, warned.shipments[0].cargo);
 });
 
-test('the snapshot surfaces an Outpost delivery\'s destinationOutpostId with no leg yet, the system row unchanged, and the notices with their day', () => {
+// THE OUTPOST DELIVERY IN TRANSIT (04-10-26, slice 1b call 5): the snapshot publishes an Outpost
+// delivery's leg exactly as it does a system's — the same three fields, measured from the Outpost's own
+// hex — so the client can draw it. Derived on read: nothing is stored on the shipment.
+const LEG_KEYS = ['originOutpostId', 'originCoords', 'departureTick'];
+// The keys a row has on the WIRE (JSON drops a key whose value is undefined), which is what the client reads.
+const wireKeys = (row) => Object.keys(JSON.parse(JSON.stringify(row)));
+
+test('the snapshot publishes an Outpost delivery\'s leg from the Outpost\'s hex: origin = its nearest waystation, departureTick = arrivalTick − the leg — derived, nothing stored', () => {
+  const placed = buildBuy(outpostState({ outpostStock: roomFor(1000) }), ORDER);
+  const s = accept(placed, buyToOutpost('outpost_g1_01'));
+  const hashBefore = hashState(s);
+  const snap = buildSnapshot(s);
+  const [row] = snap.shipments;
+
+  // The waystation the BUY apply timed the flight from: the one nearest the OUTPOST's hex.
+  const near = nearestWaystationToHex(OUT_HEX);
+  assert.equal(row.destinationOutpostId, 'outpost_g1_01');
+  assert.equal(row.originOutpostId, near.outpost.id, 'origin = the waystation nearest the Outpost');
+  assert.deepEqual(row.originCoords, near.outpost.coords);
+  assert.notEqual(row.originCoords, near.outpost.coords, 'a fresh object — never an alias into the seed');
+  assert.equal(row.departureTick, row.arrivalTick - TRAVEL_OUT, 'departureTick = arrivalTick − the Outpost leg\'s ticks');
+  assert.equal(row.departureTick, placed.tick, 'so the leg starts on the tick the buy was placed');
+  assert.notEqual(TRAVEL_OUT, TRAVEL_HOME, 'premise: an anchor-system leg would give a different departureTick');
+  assert.equal(row.ticksRemaining, TRAVEL_OUT);
+  for (const k of ['arrivalTick', 'ticksRemaining', 'departureTick']) {
+    assert.ok(Number.isInteger(row[k]), `${k} is a whole tick (§15.2)`);
+  }
+
+  // The row the client receives: the system row's fields, with the Outpost id in place of the system id.
+  assert.deepEqual(wireKeys(row), [
+    'ownerGuildId', 'cargo', 'arrivalTick', 'ticksRemaining', 'destinationOutpostId', ...LEG_KEYS,
+  ]);
+
+  // DERIVED ON READ: the stored shipment is the same four keys, and building the snapshot moved no
+  // stored byte, so the determinism hash cannot see the leg.
+  assert.deepEqual(Object.keys(s.shipments[0]), ['ownerGuildId', 'cargo', 'destinationOutpostId', 'arrivalTick']);
+  assert.equal(hashState(s), hashBefore, 'building the snapshot changes no stored byte');
+});
+
+test('an Outpost delivery\'s ticksRemaining counts down while its leg stays put', () => {
+  const s = buy(outpostState(), ORDER, buyToOutpost('outpost_g1_01'));
+  const first = buildSnapshot(s).shipments[0];
+  const next = tick(s, []);
+  const second = buildSnapshot(next).shipments[0];
+  assert.equal(second.ticksRemaining, first.ticksRemaining - 1, 'one tick later, one tick less');
+  for (const k of LEG_KEYS) assert.deepEqual(second[k], first[k], `${k} does not move in flight`);
+
+  const eve = buildSnapshot({ ...s, tick: first.arrivalTick - 1 }).shipments[0];
+  assert.equal(eve.ticksRemaining, 1, 'the eve of arrival reads 1');
+  assert.equal(eve.departureTick, first.departureTick);
+});
+
+test('a system shipment row beside an Outpost one keeps its exact shape: destinationSystemId, its own leg, no destinationOutpostId', () => {
   const s = buy(
     buy(outpostState({ outpostStock: roomFor(1000) }), ORDER, buyToOutpost('outpost_g1_01')),
     [[T1, 5]], buyToSystem(HOME.id),
   );
   const snap = buildSnapshot(s);
-  const [toOutpost, toSystem] = snap.shipments;
-  assert.equal(toOutpost.destinationOutpostId, 'outpost_g1_01');
-  assert.equal(toOutpost.destinationSystemId, undefined);
-  for (const k of ['originOutpostId', 'originCoords', 'departureTick']) {
-    assert.equal(k in toOutpost, false, `${k}: the Outpost leg is not published yet (the live client skips a leg-less row)`);
-  }
+  const toSystem = snap.shipments.find((r) => r.destinationSystemId === HOME.id);
   assert.deepEqual(Object.keys(toSystem), [
-    'ownerGuildId', 'cargo', 'destinationSystemId', 'arrivalTick', 'ticksRemaining',
-    'originOutpostId', 'originCoords', 'departureTick',
+    'ownerGuildId', 'cargo', 'destinationSystemId', 'arrivalTick', 'ticksRemaining', ...LEG_KEYS,
   ], 'a system row keeps its exact shape');
+  assert.equal('destinationOutpostId' in toSystem, false);
+  const near = nearestWaystation(HOME.id);
+  assert.equal(toSystem.originOutpostId, near.outpost.id);
+  assert.deepEqual(toSystem.originCoords, near.outpost.coords);
+  assert.equal(toSystem.departureTick, toSystem.arrivalTick - TRAVEL_HOME, 'the system\'s own leg, unchanged');
 
+  // The notices still surface with their day (slice 1b's pin, kept).
   const g1 = snap.guilds.find((g) => g.id === 'g1');
   assert.deepEqual(g1.events.map((e) => e.type), [DELIVERY_SPACE_WARNING]);
   assert.equal(typeof g1.events[0].whenDay, 'number', 'the day it was written, derived on read');
   assert.deepEqual(g1.events[0].payload, s.guilds[0].events[0].payload);
+});
+
+test('an Outpost torn down mid-flight: its row omits the three leg fields and the snapshot does not throw', () => {
+  const after = buy(outpostState(), ORDER, buyToOutpost('outpost_g1_01'));
+  const torn = accept(after, createRemoveOutpostAction({ guildId: 'g1', outpostId: 'outpost_g1_01' }));
+  assert.equal(outpostOf(torn, 'outpost_g1_01'), undefined, 'premise: the Outpost is gone');
+  assert.equal(torn.shipments.length, 1, 'premise: its delivery is still in flight');
+
+  let snap;
+  assert.doesNotThrow(() => { snap = buildSnapshot(torn); });
+  const [row] = snap.shipments;
+  assert.deepEqual(wireKeys(row), ['ownerGuildId', 'cargo', 'arrivalTick', 'ticksRemaining', 'destinationOutpostId'],
+    'the row still surfaces with its cargo and countdown, but no leg to draw');
+  for (const k of LEG_KEYS) assert.equal(k in row, false, `${k}: no Outpost hex to measure from`);
+  assert.deepEqual(row.cargo, { [T2]: 50, [T1]: 300 });
 });
