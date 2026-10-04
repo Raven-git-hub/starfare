@@ -3143,6 +3143,73 @@ test('GET / serves the MESSAGES inbox + the renegotiation and notice popups, wir
   assert.match(html, /window\.__openRenegotiation\(player\.guildId, VM\.ventureId\)/, 'entry point 2: the VM Renegotiate button');
 });
 
+// The Trader's two delivery notices in MESSAGES (docs/event-log.md §11; roadmap 2.2, trading to/from
+// outposts client slice 3b), pinned on the SERVED BYTES. delivery-notices-client.test.js runs this same
+// code against notices the engine wrote; this catches a page that stopped serving it. Both notices are
+// PASSIVE: the Trader's eyebrow, hero and words on the shared notice card, with Dismiss alone.
+test('GET / serves the delivery notices — the Trader, passive, Dismiss only', async () => {
+  const html = await (await fetch(base + '/')).text();
+  const guildBlock = html.slice(html.indexOf('<script id="guild-tab-wire">'), html.indexOf('<script id="ind-hero-wire">'));
+  const fnSrc = (name) => {
+    const m = guildBlock.match(new RegExp('\\n  function ' + name + '\\([\\s\\S]*?\\n  \\}\\n'));
+    assert.ok(m, `${name} is served in the Guild Hall block`);
+    return m[0];
+  };
+
+  // 1. THE TITLES. The row names the Outpost through the shell's one outpost resolver; the popup title
+  //    leaves it to the facts.
+  assert.match(fnSrc('noticeTitle'), /if\(n\.type === 'delivery_space_warning'\) return 'No room at the outpost';/);
+  assert.match(fnSrc('noticeTitle'), /if\(n\.type === 'delivery_turned_back'\) return 'Delivery turned back';/);
+  assert.match(fnSrc('noticeRowTitle'), /'No room at the outpost &mdash; <span class="who">' \+ esc\(deliveryOutpostName\(p\)\)/);
+  assert.match(fnSrc('noticeRowTitle'), /'Delivery turned back &mdash; <span class="who">' \+ esc\(deliveryOutpostName\(p\)\)/);
+  assert.match(guildBlock, /function deliveryOutpostName\(p\)\{ return \(window\.__outpostName && window\.__outpostName\(p\.outpostId\)\)/);
+
+  // 2. THE TRADER re-dresses the shared card: the Trader's eyebrow and the TRADE tab's own hero art, framed as
+  //    that hero frames it. The forks stay the pilot's alone, so a delivery notice shows Dismiss only,
+  //    and the card carries no button beyond the three it had.
+  const open = fnSrc('openNotice');
+  assert.match(open, /var trade = isDeliveryNotice\(n\);/);
+  assert.match(open, /if\(trade\)\{ eyebrow = 'Trade — Syndicate'; art = 'assets\/mission\/Trader\.jpg'; \}/);
+  assert.match(open, /el\('noticeArt'\)\.style\.backgroundPosition = trade \? 'right bottom' : '';/);
+  assert.match(html, /#tp-trade \.tw-thero \.art\{[^}]*url\("assets\/mission\/Trader\.jpg"\)[^}]*background-position:right bottom;/,
+    'the framing is the TRADE hero\'s own, for the same art');
+  assert.match(open, /el\('noticeRedeploy'\)\.hidden = !fleet;/, 'Redeploy shows for the pilot\'s notice alone');
+  assert.match(open, /el\('noticeReturn'\)\.hidden = !fleet;/, 'Return shows for the pilot\'s notice alone');
+  assert.match(open, /else if\(trade\) paras = deliveryBody\(n\);/);
+  assert.match(open, /\} else if\(trade\)\{\s*facts = deliveryFacts\(n\);/);
+  const overlay = html.slice(html.indexOf('<div id="notice-overlay">'), html.indexOf('<!-- The adviser reel'));
+  assert.equal((overlay.match(/<button class="btn accept"/g) || []).length, 3, 'Redeploy, Return, Dismiss — no new button');
+  assert.equal((await fetch(base + '/assets/mission/Trader.jpg')).status, 200, 'the Trader hero is served');
+
+  // 3. THE TRADER'S WORDS, verbatim (event-log.md §11 AS-BUILT) — the warning as its three lines, and
+  //    one line per turn-back cause.
+  for (const line of [
+    "Guildmaster, I just saw the manifest for your latest order from the Syndicate and I just need to let you know that we don't currently have enough space at the outpost.",
+    "You'll have to tell me what you want to do with the units we have on hand, otherwise - if the Syndicate can't unload - they'll just turn back with everything with no refund.",
+    'What would you like me to do?',
+    "Guildmaster — the Syndicate reached the outpost and there still wasn't room for your order, so they've turned back with the lot. No refund — the consignment's gone.",
+    "Guildmaster — the Syndicate carried your order out to the outpost, but it wasn't there to receive it. They've turned back with the lot. No refund.",
+  ]) {
+    assert.ok(guildBlock.includes(JSON.stringify(line)), `the Trader's line is served verbatim: ${line}`);
+  }
+  assert.match(fnSrc('deliveryBody'), /p\.cause === 'outpost-gone' \? DELIVERY_GONE_BODY : DELIVERY_FULL_BODY/);
+
+  // 4. THE FACTS are the payload's own fields (§18): formatted, never summed or subtracted, and the
+  //    arrival tick is not turned into a day by the client.
+  const facts = fnSrc('deliveryFacts');
+  for (const field of ['p.units', 'p.space', 'p.shortfall', 'p.freeSpace']) {
+    assert.ok(facts.includes('fmt(' + field + ')'), `the facts read ${field}`);
+  }
+  assert.match(facts, /'Day ' \+ n\.whenDay/);
+  assert.ok(!/arrivalTick/.test(facts), 'no Arrives fact: the client converts no tick');
+  assert.match(guildBlock, /var DELIVERY_TURNED_BACK_REASON = \{ 'full':'No room', 'outpost-gone':'Outpost gone' \};/);
+
+  // 5. EMOJI-FREE — the notice-row convention (02-10-26): nothing in the trade lane is a pictograph.
+  const lane = guildBlock.slice(guildBlock.indexOf('// --- The delivery notices'), guildBlock.indexOf('function myUnreadNotices'));
+  assert.ok(lane.length > 0, 'the trade lane is served');
+  assert.ok(!/\p{Extended_Pictographic}/u.test(lane + fnSrc('noticeTitle') + fnSrc('noticeRowTitle')), 'no emoji in the delivery notices');
+});
+
 // The two Venture Management snapshot derives are PUBLISHED on the venture row a licensed venture
 // produces (docs/venture-management.md §7 / Part 1) — so the client renders them rather than
 // computing a game number. This drives the live server end-to-end: found, establish, license, tick.

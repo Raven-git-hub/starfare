@@ -318,7 +318,9 @@ hash-free way it already is for systems (§4) — no determinism byte, no schema
 > - **No capacity gate.** The popup never reads an Outpost's room. A buy to a full Outpost confirms, and the
 >   engine's departure notice warns (rendering it is client slice 3b).
 > - **Not yet:** the Trader's two notices (client slice 3b), and the Outpost delivery's map leg. An Outpost
->   shipment is still left off the map and the IN TRANSIT list, as 1b left it.
+>   shipment is still left off the map and the IN TRANSIT list, as 1b left it. *(⤳ 04-10-26: the Trader's two
+>   notices are BUILT, client slice 3b, `docs/event-log.md` §11 AS-BUILT. The map leg is still open, slice 1b's
+>   call (5) on the decision checklist.)*
 > - Tests: `sim/tests/buy-destination-picker.test.js` (5), which runs the page's own picker code against a real
 >   snapshot and checks its choice against the engine's own waystation distances. `sim/tests/server.test.js`:
 >   the TRADE tripwire's BUY pins now read the node's field and the "Deliver to" select, +1 test pinning the

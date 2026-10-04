@@ -3627,10 +3627,11 @@ select.field{appearance:none; cursor:pointer;}
      computes no game number, §18). Uniform Syndicate tone — one eyebrow, one portrait, no per-type
      accent (§9) — and the SAME advisor.jpg the reneg popup uses. Opening a row dispatches the
      existing acknowledgeEvent (read = opening, §9); there is no ACKNOWLEDGE button here.
-     The ONE exception is the fleet / ops lane (§10): a `deploy_failed` notice re-dresses this same
-     card with the pilot — eyebrow, portrait and voice — and shows the decision the pilot asks for,
-     its two forks Redeploy and Return, beside Dismiss (territory-model.md §5 REVISED). So openNotice
-     sets the eyebrow, the art, the body and the buttons on EVERY open. ===== -->
+     Two lanes wear their own character. The fleet / ops lane (§10): a `deploy_failed` notice re-dresses
+     this same card with the pilot — eyebrow, portrait and voice — and shows the decision the pilot asks
+     for, its two forks Redeploy and Return, beside Dismiss (territory-model.md §5 REVISED). The trade
+     lane (§11): the two delivery notices wear the Trader — eyebrow, portrait and voice — with Dismiss
+     alone. So openNotice sets the eyebrow, the art, the body and the buttons on EVERY open. ===== -->
 <div id="notice-overlay">
   <div class="reel-card">
     <button class="reel-close" id="noticeClose" type="button" aria-label="Close">&times;</button>
@@ -3654,7 +3655,7 @@ select.field{appearance:none; cursor:pointer;}
     </div>
     <!-- The uniform guild-adviser portrait — the same asset the reneg popup uses, no per-type
          accent (§9). A Syndicate-specific portrait is the parked domain-character decision (§5).
-         A deploy_failed notice swaps in the pilot (§10). -->
+         A deploy_failed notice swaps in the pilot (§10), a delivery notice the Trader (§11). -->
     <div class="reel-art" id="noticeArt" style="background-image:url('assets/characters/advisor.jpg')"></div>
   </div>
 </div>
@@ -11246,16 +11247,21 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return good ? (good + ' ' + kind) : kind;
   }
   // The popup title (plain text): "Venture closed — Gold Mine" / "Licence lapsed — Copper Mine" /
-  // "Deployment failed — Outpost".
+  // "Deployment failed — Outpost" / "No room at the outpost" / "Delivery turned back". The two
+  // delivery titles leave the Outpost to the facts block; their rows name it (below).
   function noticeTitle(n){
     var p = (n && n.payload) || {};
     if(n.type === 'deploy_failed') return 'Deployment failed — ' + deployKindLabel(p);
+    if(n.type === 'delivery_space_warning') return 'No room at the outpost';
+    if(n.type === 'delivery_turned_back') return 'Delivery turned back';
     return (n.type === 'venture_closed' ? 'Venture closed — ' : 'Licence lapsed — ') + noticeLabel(p);
   }
   // The subject-line row title: the same prefix, with the label in the muted `.who` span.
   function noticeRowTitle(n){
     var p = (n && n.payload) || {};
     if(n.type === 'deploy_failed') return 'Deployment failed &mdash; <span class="who">' + esc(deployKindLabel(p)) + '</span>';
+    if(n.type === 'delivery_space_warning') return 'No room at the outpost &mdash; <span class="who">' + esc(deliveryOutpostName(p)) + '</span>';
+    if(n.type === 'delivery_turned_back') return 'Delivery turned back &mdash; <span class="who">' + esc(deliveryOutpostName(p)) + '</span>';
     var prefix = n.type === 'venture_closed' ? 'Venture closed' : 'Licence lapsed';
     return esc(prefix) + ' &mdash; <span class="who">' + esc(noticeLabel(p)) + '</span>';
   }
@@ -11322,6 +11328,63 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       ['Pulled back to', p.retreatSystemName || p.retreatSystemId || '—', false]
     ];
     if(n.whenDay != null){ facts.push(['Failed', 'Day ' + n.whenDay, false]); }
+    return facts;
+  }
+
+  // --- The delivery notices — the trade lane (docs/event-log.md §11) -----------------------------
+  // A Syndicate BUY to an Outpost is never refused for want of room (syndicate-orders.md §9.1). So the
+  // engine warns when a buy leaves for an Outpost that cannot hold it now (delivery_space_warning), and
+  // reports a consignment lost on arrival (delivery_turned_back, §9.4). The TRADER reports both, on the
+  // same card re-dressed (openNotice, below), as the pilot reports a failed deploy. Both are passive:
+  // Dismiss only. The player clears room through the normal UI (the node's SELL, a dispatch), not here.
+  // Every value is a payload field or the engine's whenDay — the client computes no game number (§18).
+
+  function isDeliveryNotice(n){ return n.type === 'delivery_space_warning' || n.type === 'delivery_turned_back'; }
+
+  // The Outpost's name, from the shell's one outpost resolver, so it reads as it does on every other
+  // screen. The payload carries only the id, so an Outpost torn down since (an 'outpost-gone' turn-back)
+  // is no longer on the snapshot, and the resolver gives back its raw id.
+  function deliveryOutpostName(p){ return (window.__outpostName && window.__outpostName(p.outpostId)) || p.outpostId || '—'; }
+
+  // The Trader's words, verbatim. Static copy keyed on type + cause, one <p> per line. The warning's
+  // closing question is the Trader's call to action: the card offers no choice beyond Dismiss.
+  var DELIVERY_SPACE_WARNING_BODY = [
+    "Guildmaster, I just saw the manifest for your latest order from the Syndicate and I just need to let you know that we don't currently have enough space at the outpost.",
+    "You'll have to tell me what you want to do with the units we have on hand, otherwise - if the Syndicate can't unload - they'll just turn back with everything with no refund.",
+    "What would you like me to do?"
+  ];
+  var DELIVERY_FULL_BODY = "Guildmaster — the Syndicate reached the outpost and there still wasn't room for your order, so they've turned back with the lot. No refund — the consignment's gone.";
+  var DELIVERY_GONE_BODY = "Guildmaster — the Syndicate carried your order out to the outpost, but it wasn't there to receive it. They've turned back with the lot. No refund.";
+
+  function deliveryBody(n){
+    if(n.type === 'delivery_space_warning') return DELIVERY_SPACE_WARNING_BODY;
+    var p = n.payload || {};
+    return [p.cause === 'outpost-gone' ? DELIVERY_GONE_BODY : DELIVERY_FULL_BODY];
+  }
+
+  // payload.cause -> the Reason fact: the two ways a delivery is lost (§11).
+  var DELIVERY_TURNED_BACK_REASON = { 'full':'No room', 'outpost-gone':'Outpost gone' };
+
+  // The facts block, in its order. The consignment reads as the BUY receipt read it ("2 goods × 350 u"),
+  // plus its cargo space, the unit room is judged in. Room short and Free space come only with a
+  // shortfall: every warning, and a 'full' turn-back (an 'outpost-gone' one has no room to report).
+  // Room short comes first: it is how much the player must clear, and the warning's long body leaves
+  // the later facts below the fold.
+  // There is no Arrives fact: the payload's arrivalTick is a tick, and the inbox shows only the days
+  // the engine derives (whenDay) — it converts no tick itself.
+  function deliveryFacts(n){
+    var p = n.payload || {};
+    var goods = Object.keys(p.cargo || {}).length;
+    var facts = [
+      ['Outpost', deliveryOutpostName(p), false],
+      ['Consignment', goods + (goods === 1 ? ' good' : ' goods') + ' × ' + fmt(p.units) + ' u · ' + fmt(p.space) + ' space', false]
+    ];
+    if(n.type === 'delivery_turned_back'){ facts.push(['Reason', DELIVERY_TURNED_BACK_REASON[p.cause] || '—', false]); }
+    if(p.shortfall != null){
+      facts.push(['Room short', fmt(p.shortfall), false]);
+      facts.push(['Free space', fmt(p.freeSpace), false]);
+    }
+    if(n.whenDay != null){ facts.push([n.type === 'delivery_space_warning' ? 'Ordered' : 'Turned back', 'Day ' + n.whenDay, false]); }
     return facts;
   }
 
@@ -11423,23 +11486,36 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var p = n.payload || {};
     shownNotice = n;
     // Who is speaking. A deploy_failed is the fleet / ops lane: the pilot's eyebrow, portrait and voice,
-    // plus its two forks, Redeploy and Return (§10; territory-model.md §5 REVISED). Every other notice is
-    // the Syndicate's uniform adviser (§9). The card is shared, so all of this is set on every open — a
-    // Syndicate notice opened after a deploy one must not keep the pilot, and no notice keeps an old note.
+    // plus its two forks, Redeploy and Return (§10; territory-model.md §5 REVISED). A delivery notice is
+    // the trade lane: the Trader's eyebrow, portrait and voice, and no button but Dismiss (§11). Every
+    // other notice is the Syndicate's uniform adviser (§9). The card is shared, so all of this is set on
+    // every open — a notice must not keep the last one's speaker, and no notice keeps an old note.
     var fleet = n.type === 'deploy_failed';
-    var art = fleet ? 'assets/characters/pilot.jpg' : 'assets/characters/advisor.jpg';
-    el('noticeEyebrow').textContent = fleet ? 'Fleet — Dispatch' : 'Syndicate Notice';
+    var trade = isDeliveryNotice(n);
+    var eyebrow = 'Syndicate Notice', art = 'assets/characters/advisor.jpg';
+    if(fleet){ eyebrow = 'Fleet — Dispatch'; art = 'assets/characters/pilot.jpg'; }
+    if(trade){ eyebrow = 'Trade — Syndicate'; art = 'assets/mission/Trader.jpg'; }
+    el('noticeEyebrow').textContent = eyebrow;
     el('noticeArt').style.backgroundImage = "url('" + art + "')";
+    // The Trader stands at the right of the picture, so it is framed as the TRADE tab's hero frames it;
+    // '' hands the portraits back to the card's own framing.
+    el('noticeArt').style.backgroundPosition = trade ? 'right bottom' : '';
     el('noticeRedeploy').hidden = !fleet;
     el('noticeReturn').hidden = !fleet;
     el('noticeNote').textContent = '';
     el('noticeTitle').textContent = noticeTitle(n);
-    // The body, one <p> per paragraph: the pilot's two beats, or a Syndicate notice's one line.
-    var paras = fleet ? DEPLOY_FAILED_BODY : [noticeBody(n)];
+    // The body, one <p> per paragraph: the pilot's two beats, the Trader's lines, or a Syndicate
+    // notice's one line.
+    var paras;
+    if(fleet) paras = DEPLOY_FAILED_BODY;
+    else if(trade) paras = deliveryBody(n);
+    else paras = [noticeBody(n)];
     el('noticeBody').innerHTML = paras.map(function(t){ return '<p>' + esc(t) + '</p>'; }).join('');
     var facts;
     if(fleet){
       facts = deployFailedFacts(n);
+    } else if(trade){
+      facts = deliveryFacts(n);
     } else {
       // Facts: Location (payload.ventureName); the event day (Closed / Lapsed = whenDay); and — a
       // closure carrying a lockout only — Node held until (unlockDay). The unlock row is gated on the
