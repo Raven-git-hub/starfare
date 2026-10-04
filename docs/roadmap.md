@@ -19,7 +19,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
 | 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,855 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile, and BUY's Deliver to now offers the guild's Outposts beside its systems, opening on the node nearest a waystation (client; the notices are next); the guild↔guild contest (a rival, territory, the market) is not built yet |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile, BUY's Deliver to now offers the guild's Outposts beside its systems, opening on the node nearest a waystation, and the MESSAGES inbox shows both delivery notices in the Trader's voice (client; the trading to/from outposts item is complete); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -3171,6 +3171,11 @@ boundary so the later hex-map swap doesn't touch it.
   *(⤳ REVISED again 04-10-26, `syndicate-orders.md` §9.2: SELL from an Outpost is ADDITIVE. The trade-tab SELL
   and its origin dropdown stay as they are; the Outpost Manager gains its own SELL, sent to the engine as an
   inline cart (built below). The client slices built to the node-relocation were reverted from `main`.)*
+  ✅ **COMPLETE (04-10-26)** — 1a → 1b → the inline-cart SELL → the Outpost Manager's SELL → BUY's destination
+  picker → the Trader's delivery notices, all BUILT. A guild sells from an Outpost's stockpile in its manager, buys
+  into any node it holds (nearest by default), and hears from the Trader in MESSAGES when a buy leaves for an Outpost
+  without room and when a delivery is lost. Still open, as calls on the decision checklist rather than missing rungs:
+  the Outpost delivery's map leg and IN TRANSIT row (slice 1b call 5), and the delivery notices' calls (last slice).
   - **slice 1a — SELL from a node (ENGINE + operator CLI, NO client).** 🟢 *BUILT (03-10-26).*
     **Changed:** `sellToSyndicate` (`sim/actions.js`) takes exactly one of `originSystemId` (unchanged, still
     what the live client sends) or the new **`originOutpostId`**. One reader, `sellOrigin`, gives validate and
@@ -3394,7 +3399,53 @@ boundary so the later hex-map swap doesn't touch it.
     No page errors.
     **Deferred (not invented):** the two delivery notices in MESSAGES (the next client slice); the Outpost
     delivery's map leg and IN TRANSIT row (slice 1b call 5). **Calls on the decision checklist** ("Trading to/from
-    outposts — the BUY destination picker — four calls").
+    outposts — the BUY destination picker — four calls"). *(⤳ 04-10-26: the two delivery notices are BUILT, next.)*
+  - **client: the Trader's two delivery notices in MESSAGES (CLIENT ONLY, `client/game.html`).** 🟢 *BUILT
+    (04-10-26).* The last rung: the inbox renders `delivery_space_warning` and `delivery_turned_back`, which until now
+    fell through to the unknown-type fallback and read "Licence lapsed — Venture". AS-BUILT in `event-log.md` §11.
+    **Changed:** `noticeTitle` / `noticeRowTitle` gain a branch per type, beside `deploy_failed`'s. Rows read
+    "No room at the outpost — {Outpost}" and "Delivery turned back — {Outpost}", the Outpost named by the shell's one
+    resolver (`__outpostName`); the popup titles are "No room at the outpost" and "Delivery turned back". `openNotice`
+    re-dresses the shared card for the Trader as it does for the pilot: eyebrow "Trade — Syndicate", hero
+    `assets/mission/Trader.jpg` (the TRADE tab's own hero art, framed `right bottom` as that hero frames it; every
+    other notice is handed back the card's own framing), and Dismiss alone — the Redeploy / Return forks stay the
+    pilot's. The body is the Trader's copy verbatim, keyed on type + cause: the warning as its three lines (three
+    paragraphs), one line for a `full` turn-back and one for `outpost-gone`. No buttons: the warning's closing
+    question is the Trader's call to action, and the player clears room through the Outpost Manager or a dispatch.
+    **Added** (the trade lane, beside the pilot's pieces): `isDeliveryNotice`, `deliveryOutpostName`, `deliveryBody`
+    and `deliveryFacts`. The facts are payload fields and the engine's `whenDay`, formatted, never derived (§18):
+    Outpost; Consignment ("2,000 u / 1 good" — `units`, and the number of goods in `cargo`); Reason (turn-back:
+    No room / Outpost gone); Room short and Free space (`shortfall`, `freeSpace`, in cargo space; every warning and a
+    `full` turn-back); and the day (Ordered / Turned back = `whenDay`). There is no Arrives fact: the payload's
+    `arrivalTick` is a tick, and the inbox shows only days the engine derives. **Reused unchanged:** the notice card
+    and its CSS, the inbox row render, read-on-open (`acknowledgeEvent`), `deployFailedFacts`' shape, `fmt` / `esc`.
+    **Unchanged:** `licence_lapsed`, `venture_closed` and `deploy_failed`.
+    **Pins (`sim/tests/server.test.js`):** +1 test, the served bytes: the four title branches, the one resolver, the
+    Trader's eyebrow, art and framing, the forks hidden for her, no new button on the card, the five lines verbatim,
+    facts with no arithmetic over a payload field and no `arrivalTick`, and no emoji in the lane. Nine mutations of
+    the page each turned it red: the row branch disabled, the forks shown for the Trader, the hyphens reworded to
+    dashes, a client-computed shortfall, an emoji in a title, the adviser's art, a new button, an Arrives day from
+    the tick, and the `full` body for an `outpost-gone` turn-back. The existing MESSAGES pins were untouched.
+    **A NO-OP for `sim/` and `tools/`:** `git diff -- sim tools ':!sim/tests/server.test.js'` is empty; no engine
+    file or golden was touched. Sim **1,969 → 1,970 green** (+1, the served-page test), tools **75 green**.
+    **Driven headless** on a seated seed-42 server (home `sys_0006` BAR-1337). `outpost_seat_demo_01` at `109,52`
+    and `_02` at `115,50`, both anchored BAR-1337 (leg 450). `_01` was filled through the feature itself: 30 buys
+    (29 × 6,000,000 titanium + 5,999,000) landed at tick 450, leaving 1,000 free. At tick 450 a 2,000-titanium buy
+    to `_01` wrote the warning (free 1,000, shortfall 1,000, arrival 900), and a 300 titanium + 50 battery cells buy
+    to `_02` departed; `_02` was then torn down. At tick 900 both were turned back: `_01` cause `full`, `_02` cause
+    `outpost-gone`. A `venture_closed` (a teardown) and a `deploy_failed` (a retreat from a hex taken in flight) were
+    written beside them. (a) The inbox: "No room at the outpost — BAR-1337 Outpost", "Delivery turned back —
+    BAR-1337 Outpost", "Delivery turned back — outpost_seat_demo_02" (a torn-down Outpost reads as its raw id, as on
+    any screen), each unread, no icon, no emoji. (b) Each popup: TRADE — SYNDICATE, the Trader, the facts above off
+    the payload, the copy verbatim, and only Dismiss and the × visible (Redeploy / Return hidden). The warning's
+    three lines and five facts run past the card, so its body scrolls, as `deploy_failed`'s does. (c) The `full`
+    and `outpost-gone` bodies both. Opening each sent `acknowledgeEvent` (id 0 included) and the rows dimmed; the
+    server stamped every `readTick`. **The other notices are unchanged:** on `origin/main`'s page the three delivery
+    rows read "Licence lapsed — Venture"; the `venture_closed` and `deploy_failed` popups, opened the same way on that
+    page and this one, are pixel-identical. No page errors.
+    **Deferred (not invented):** an Arrives day; a name for a torn-down Outpost; the duplicate-name limitation (two
+    Outposts on one system read alike — a separate issue). **Calls on the decision checklist** ("Trading to/from
+    outposts — the delivery notices — five calls").
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
@@ -3668,6 +3719,27 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   `destinationSystemId` and get a misleading system refusal. Confirm. **(4) The default is chosen again at every
   open.** An override lasts for that popup only; the next BUY opens on the nearest node again, as briefed ("when
   the BUY popup opens"). Confirm, or rule that the last pick is remembered for the session.
+- **Trading to/from outposts — the delivery notices — five calls (04-10-26, 2.2 client, `event-log.md` §11 client
+  AS-BUILT)**, built one way and flagged rather than ruled. **(1) No Arrives fact.** The brief offered "Arrives (Day N
+  from `arrivalTick`) if you format ticks the way the inbox already does, else omit". The inbox formats no tick: every
+  day it shows is one the engine derived (`whenDay`, `unlockDay`). So it is omitted. Confirm, or rule an engine
+  `arrivalDay` derive on the surfaced warning row, as `unlockDay` is derived for a closure (§9) — a small snapshot
+  slice, no stored byte. **(2) A torn-down Outpost reads as its raw id.** The payloads carry only `outpostId`, and the
+  one resolver needs the live Outpost, so an `outpost-gone` turn-back always reads e.g. "outpost_seat_demo_02", and
+  so does any delivery notice whose Outpost is torn down while it is still in the inbox. §1 asks a payload to carry
+  what its notice needs after the thing it names is gone (`ventureName`, `retreatSystemName`). Confirm, or rule an
+  engine payload field (e.g. the Outpost's name, or its anchor system, captured at write time). Not the duplicate-name
+  limitation, which is a separate issue and untouched. **(3) The Trader's framing.** At the card's own framing
+  (`50% 12%`) the Trader, who stands at the right edge of her picture, is cut in half. She is framed `right bottom`,
+  as the TRADE tab's hero frames the same art, set on each open like the art itself and reset for every other notice.
+  Confirm, or rule a portrait crop of the art. **(4) Slice-local copy.** The eyebrow "Trade — Syndicate" (the brief's
+  suggestion); the fact labels Outpost, Consignment, Reason, Room short, Free space; the Consignment form "2,000 u /
+  1 good" (the brief's "{units} u / {goods} goods"; the BUY receipt writes "1 good × 2,000 u"); "space" after the two
+  room figures, since room is cargo space, not units; and a day fact the brief did not list, Ordered (warning) /
+  Turned back, because every other notice carries its day (Closed / Lapsed / Failed). Confirm, or rule other words.
+  **(5) The warning overflows the card.** Its three lines and five facts are taller than the card, so the body
+  scrolls (the `deploy_failed` fix, §10) and Free space and Ordered sit below the fold. The same question as the
+  `deploy_failed` card-fit call: confirm, or rule a taller card or fewer facts.
 - **Split the oversized engine files — WHEN? (02-10-26, flagged by the 2.2 deploy pipeline engine-integrity tidy.)**
   `sim/actions.js` (5,258 lines) and `sim/server.js` (1,530) are far past a readable size for a codebase the human
   reads line by line; `sim/invariants.js` (2,386), `sim/snapshot.js` (2,120) and `sim/tick.js` (1,771) are also large.
@@ -3689,6 +3761,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   gates, warning and arrival branch.)* *(⤳ 04-10-26, the inline-cart SELL: `sim/actions.js` 5,519 → 5,588 lines,
   mostly comments beside the three new helpers.)* *(⤳ 04-10-26, the Outpost Manager's SELL: `client/game.html` 13,481
   → 13,869 lines, +388: the SELL block (its own section inside the manager's IIFE, heavily commented) and its CSS.)*
+  *(⤳ 04-10-26, the delivery notices: `client/game.html` 13,935 → 14,007 lines, +72, mostly the Trader's copy and
+  comments beside the four new notice helpers.)*
 
 - **Asset-presence vs. production** — *surfaced 16-09-26 by the operator adjust levers
   (`docs/operator-adjust.md` §3.5 AS-BUILT).* Production is currently **asset-blind** — a venture

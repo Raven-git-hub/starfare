@@ -335,7 +335,8 @@ anything.
 >   own "owns no outpost" reason (§9.4). The receipt finds the new shipment by the same field, reads its arrival, and
 >   names the node.
 > - **No capacity gate or warning in the popup** (warn, don't block). A buy to a full Outpost confirms. The warning
->   is the engine's departure notice; rendering the two delivery notices in MESSAGES is the next slice.
+>   is the engine's departure notice; rendering the two delivery notices in MESSAGES is the next slice. *(⤳ 04-10-26:
+>   BUILT — the Trader's two notices, passive, Dismiss only; `event-log.md` §11 client AS-BUILT.)*
 > - **Unchanged:** the SELL finalise. Its Ship-from still lists the held systems alone (`txHeldSystems`) and still
 >   defaults to home; an Outpost sells from its own manager (§9.2). Also unchanged: the Outpost Manager and the
 >   asset commission.

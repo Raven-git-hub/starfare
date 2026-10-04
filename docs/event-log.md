@@ -53,7 +53,7 @@ is gone (§2).
 
 ## 2. The two types & the four writers
 
-The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine half BUILT):
+The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine and client halves BUILT):
 
 - **`licence_lapsed`** — an ordinary licence lapsed back to unlicensed.
 - **`venture_closed`** — a venture was removed.
@@ -193,8 +193,8 @@ detail opens in a **popup** (`docs/mockups/guild-hall-messages.html`). **Client 
   unlicensed teardown never claims a held node. (Design note: the precise unlock day rides the
   facts block only; the body sentence stays static — no game number is typed twice, honouring the
   mockup's FIELD → SOURCE contract, which maps only `Facts · Node held until` to `unlockDay`.) A `deploy_failed`
-  notice is the one exception to the uniform adviser: it re-dresses this same card with the pilot (§10, client
-  AS-BUILT).
+  notice is one exception to the uniform adviser: it re-dresses this same card with the pilot (§10, client
+  AS-BUILT). The two delivery notices are the other: they wear the Trader (§11, client AS-BUILT).
 - **Read = opening the message.** Clicking a notice row opens its popup (filled from that row in
   `meGuild().events` by its id) and dispatches the existing `acknowledgeEvent { guildId, eventId }`
   for its id (sent as a Number — the apply matches by `===`), so the row renders read on the next
@@ -227,7 +227,7 @@ Accept / Reject resolve the offer as before.
 
 **The popup wears the adviser-reel card** — the two-column hero card of `client/game.html`'s
 `#reneg-overlay` (eyebrow, serif title, body, footer). Its hero panel is the **guild-adviser
-portrait** (`assets/characters/advisor.jpg`), **uniform across every Syndicate notice type** (the fleet / ops lane carries its own character — §10): a
+portrait** (`assets/characters/advisor.jpg`), **uniform across every Syndicate notice type** (the fleet / ops lane carries its own character — §10 — and so does the trade lane — §11): a
 Syndicate-specific portrait is the parked domain-character-advisers decision (§5), and no per-type
 art accent is used — one calm Syndicate tone.
 
@@ -396,7 +396,8 @@ what the notice itself does:
 
 *Status: **RULED** by `syndicate-orders.md` §9.1 / §9.4 (REVISED 04-10-26: warn, don't block; all-or-nothing on
 arrival). The **ENGINE half is BUILT** (04-10-26, trading to/from outposts slice 1b): the two types, the two writes and
-their payloads. The **CLIENT half is NOT built** — the inbox rows, the popup and the Trader's voice are a later slice.
+their payloads. The **CLIENT half is BUILT** (04-10-26, trading to/from outposts, the last client rung): the inbox rows,
+the popup and the Trader's voice — "AS-BUILT — the client half", the last record below.
 Modelled on §10: a writer that already holds everything the notice needs records one self-contained row through the
 shared `recordEvent`; retention, acknowledge and surfacing are §3–§5's, unchanged.*
 
@@ -437,9 +438,53 @@ plain integers and strings, no emoji, the notice-row convention of 02-10-26):
 (no `unlockDay`; no node is held), and `attention.notices` counts them while unread. Until the client half lands, the
 live client's notice renderer treats any type it does not know as a licence lapse, so these rows read
 "Licence lapsed — Venture" — the same gap `deploy_failed`'s engine half had. Nothing the live client can send writes
-one: it only buys to systems.
+one: it only buys to systems. *(⤳ 04-10-26: both gaps are closed. BUY's destination picker (`syndicate-orders.md` §9.1)
+lets the live client buy to an Outpost, and the client half below renders both types.)*
 
 **The surface — ruled, not built.** `syndicate-orders.md` §9.1 rules the warning as "an inbox message in the Trader's
 voice". The Trader's character, the row titles, the popup body and facts, and any action forks are the client slice's
-to build (and, where they need ruling, to rule).
+to build (and, where they need ruling, to rule). *(⤳ 04-10-26: BUILT, below — passive, no action forks, by ruling.)*
 
+**AS-BUILT — the client half (04-10-26; `client/game.html` only, NO `sim/` change; roadmap 2.2 trading to/from
+outposts, the last client rung).** Built to this section and the slice's brief, as a small addition beside §10's notice
+code. `licence_lapsed`, `venture_closed` and `deploy_failed` keep their code paths unchanged. Driven live, a `venture_closed`
+and a `deploy_failed` popup, opened the same way on the page before and after, are pixel-identical.
+- **The rows.** `noticeTitle` / `noticeRowTitle` gain a branch per type: "No room at the outpost — {Outpost}" and
+  "Delivery turned back — {Outpost}". `{Outpost}` comes from the shell's one outpost resolver (`__outpostName`, "<anchor
+  system> Outpost"), via `deliveryOutpostName`. The payload carries only `outpostId`, so an Outpost that is gone from
+  the snapshot (always, for an `outpost-gone` turn-back) reads as its raw id, as it would on any screen (decision
+  checklist). The popup titles are the bare "No room at the outpost" / "Delivery turned back"; the facts name the
+  Outpost. Newest-first order, the unread dot and read dimming are §8's, unchanged. No emoji, the 02-10-26 convention.
+- **The popup — the Trader.** `openNotice` re-dresses the shared card on every open, as it does for the pilot. For a
+  delivery notice (`isDeliveryNotice`): the eyebrow "Trade — Syndicate", the hero `assets/mission/Trader.jpg` (the
+  TRADE tab's own hero art, no new asset), framed `right bottom` as the TRADE hero frames it, since the Trader stands at
+  the right edge of the picture. Every other notice has the framing handed back to the card's own (`50% 12%`).
+  **Dismiss alone:** the Redeploy / Return forks stay hidden, as they are for every notice but `deploy_failed`.
+  The notice is passive by ruling; the player clears room through the normal UI (the Outpost Manager's sell, a dispatch).
+- **The body — the Trader's voice, verbatim,** static copy keyed on type + cause (`deliveryBody`), one `<p>` per line.
+  The warning is its three lines:
+
+  > Guildmaster, I just saw the manifest for your latest order from the Syndicate and I just need to let you know that
+  > we don't currently have enough space at the outpost.
+  >
+  > You'll have to tell me what you want to do with the units we have on hand, otherwise - if the Syndicate can't
+  > unload - they'll just turn back with everything with no refund.
+  >
+  > What would you like me to do?
+
+  The closing question is the Trader's in-character call to action, not a promise of on-screen choices. A turn-back
+  is one line by cause. `full`: "Guildmaster — the Syndicate reached the outpost and there still wasn't room for your
+  order, so they've turned back with the lot. No refund — the consignment's gone." `outpost-gone`: "Guildmaster — the
+  Syndicate carried your order out to the outpost, but it wasn't there to receive it. They've turned back with the
+  lot. No refund."
+- **The facts** (`deliveryFacts`, mirroring `deployFailedFacts`), in order. Every value is a payload field or the
+  engine's `whenDay`, formatted, never derived (§18):
+  `Outpost` = the resolver's name; `Consignment` = `units` + " u / " + the number of goods in `cargo` ("2,000 u / 1
+  good"); `Reason` (turn-back only) = No room / Outpost gone, from `cause`; `Room short` = `shortfall` and `Free space` =
+  `freeSpace`, each followed by "space" (room is cargo space, not units), on every warning and a `full` turn-back; the
+  day, `Ordered` (warning) / `Turned back` = `whenDay`. **No Arrives fact:** `arrivalTick` is a tick, and the inbox
+  shows only days the engine derives (decision checklist).
+- **The card fit.** The warning's three lines and five facts run past the card, so its body scrolls (§10's
+  `min-height:0` fix) and the last two facts sit below the fold, as `deploy_failed`'s last fact does.
+- **Read-on-open** is §8's, unchanged: opening dispatches `acknowledgeEvent` by id while unread (checked live, id 0
+  included).

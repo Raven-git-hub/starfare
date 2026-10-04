@@ -3130,6 +3130,70 @@ test('GET / serves the MESSAGES inbox + the renegotiation and notice popups, wir
   assert.match(html, /window\.__openRenegotiation\(player\.guildId, VM\.ventureId\)/, 'entry point 2: the VM Renegotiate button');
 });
 
+// The Trader's two delivery notices in MESSAGES (docs/event-log.md §11 — client). A served-bytes tripwire:
+// a delivery_space_warning / delivery_turned_back row is named by its Outpost (the one outpost resolver),
+// and the shared notice card re-dresses for the Trader — her eyebrow, her art, her words verbatim — with
+// Dismiss alone. If the page fell back to the unknown-type "Licence lapsed — Venture", grew the pilot's
+// forks on a delivery notice, or worked out a room figure itself, it would still render — only this fails.
+test('GET / serves the delivery notices — the Trader, passive, Dismiss only', async () => {
+  const html = await (await fetch(base + '/')).text();
+  // One function's source, from its declaration to the next one's (each name is declared once).
+  const fn = (name, next) => html.slice(html.indexOf('function ' + name + '('), html.indexOf('function ' + next + '('));
+
+  // THE TITLES: the popup's are plain; the row's name the Outpost through the shell's one resolver.
+  const title = fn('noticeTitle', 'noticeRowTitle');
+  assert.match(title, /if\(n\.type === 'delivery_space_warning'\) return 'No room at the outpost';/);
+  assert.match(title, /if\(n\.type === 'delivery_turned_back'\) return 'Delivery turned back';/);
+  const rowTitle = fn('noticeRowTitle', 'noticeBody');
+  assert.match(rowTitle, /if\(n\.type === 'delivery_space_warning'\) return 'No room at the outpost &mdash; <span class="who">' \+ esc\(deliveryOutpostName\(p\)\)/);
+  assert.match(rowTitle, /if\(n\.type === 'delivery_turned_back'\) return 'Delivery turned back &mdash; <span class="who">' \+ esc\(deliveryOutpostName\(p\)\)/);
+  assert.match(fn('deliveryOutpostName', 'deliveryBody'), /window\.__outpostName\(p\.outpostId\)/, 'the one outpost resolver');
+  assert.match(fn('isDeliveryNotice', 'deliveryOutpostName'),
+    /return n\.type === 'delivery_space_warning' \|\| n\.type === 'delivery_turned_back';/);
+
+  // THE CARD: the Trader's eyebrow and the TRADE hero's own art, framed as that hero frames it. The forks
+  // stay the pilot's, so a delivery notice shows Dismiss alone, and the card has no button it did not have.
+  const open = fn('openNotice', 'closeNotice');
+  assert.match(open, /var trade = isDeliveryNotice\(n\);/);
+  assert.match(open, /if\(trade\)\{ eyebrow = 'Trade — Syndicate'; art = 'assets\/mission\/Trader\.jpg'; \}/);
+  assert.match(open, /el\('noticeArt'\)\.style\.backgroundPosition = trade \? 'right bottom' : '';/);
+  assert.match(html, /#tp-trade \.tw-thero \.art\{[^}]*url\("assets\/mission\/Trader\.jpg"\)[^}]*background-position:right bottom;/,
+    'the framing is the TRADE hero\'s own, for the same art');
+  assert.match(open, /el\('noticeRedeploy'\)\.hidden = !fleet;/, 'Redeploy shows for the pilot\'s notice alone');
+  assert.match(open, /el\('noticeReturn'\)\.hidden = !fleet;/, 'Return shows for the pilot\'s notice alone');
+  assert.match(open, /else if\(trade\) paras = deliveryBody\(n\);/);
+  assert.match(open, /\} else if\(trade\)\{\s*facts = deliveryFacts\(n\);/);
+  const overlay = html.slice(html.indexOf('<div id="notice-overlay">'), html.indexOf('<!-- The adviser reel'));
+  assert.equal((overlay.match(/<button class="btn accept"/g) || []).length, 3, 'Redeploy, Return, Dismiss — no new button');
+  assert.equal((await fetch(base + '/assets/mission/Trader.jpg')).status, 200, 'the Trader hero is served');
+
+  // THE TRADER'S WORDS, verbatim — the warning as its three lines, one line per turn-back cause.
+  for (const line of [
+    "Guildmaster, I just saw the manifest for your latest order from the Syndicate and I just need to let you know that we don't currently have enough space at the outpost.",
+    "You'll have to tell me what you want to do with the units we have on hand, otherwise - if the Syndicate can't unload - they'll just turn back with everything with no refund.",
+    'What would you like me to do?',
+    "Guildmaster — the Syndicate reached the outpost and there still wasn't room for your order, so they've turned back with the lot. No refund — the consignment's gone.",
+    "Guildmaster — the Syndicate carried your order out to the outpost, but it wasn't there to receive it. They've turned back with the lot. No refund.",
+  ]) assert.ok(html.includes('"' + line + '"'), `the Trader's line is served verbatim: ${line}`);
+  assert.match(fn('deliveryBody', 'deliveryFacts'), /return \[p\.cause === 'outpost-gone' \? DELIVERY_GONE_BODY : DELIVERY_FULL_BODY\];/);
+
+  // THE FACTS are payload fields and the engine's whenDay, formatted — never a sum or a difference over
+  // the payload (§18), and no tick turned into a day by the client (so no Arrives fact from arrivalTick).
+  const facts = fn('deliveryFacts', 'myUnreadNotices');
+  assert.match(facts, /fmt\(p\.units\)/);
+  assert.match(facts, /fmt\(p\.shortfall\)/);
+  assert.match(facts, /fmt\(p\.freeSpace\)/);
+  assert.match(facts, /'Day ' \+ n\.whenDay/);
+  assert.match(html, /var DELIVERY_TURNED_BACK_REASON = \{ 'full':'No room', 'outpost-gone':'Outpost gone' \};/);
+  assert.match(facts, /DELIVERY_TURNED_BACK_REASON\[p\.cause\]/, 'the Reason is the turn-back\'s cause');
+  assert.ok(!/p\.\w+\s*[-*/]/.test(facts), 'no arithmetic over a payload field');
+  assert.ok(!/arrivalTick/.test(facts), 'no tick converted by the client');
+
+  // EMOJI-FREE — the notice-row convention, over the titles and the whole trade lane.
+  const lane = html.slice(html.indexOf('// --- The delivery notices'), html.indexOf('function myUnreadNotices('));
+  assert.ok(lane.length > 0 && !/\p{Extended_Pictographic}/u.test(title + rowTitle + lane), 'no emoji in a title, fact or line');
+});
+
 // The two Venture Management snapshot derives are PUBLISHED on the venture row a licensed venture
 // produces (docs/venture-management.md §7 / Part 1) — so the client renders them rather than
 // computing a game number. This drives the live server end-to-end: found, establish, license, tick.
