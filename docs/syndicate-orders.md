@@ -305,7 +305,7 @@ anything.
 - The existing BUY gates are unchanged: hauler-hold capacity, credits, fuel hoard, destination held, the
   §8.1 quote-lock.
 
-### 9.2 SELL — initiated from the node, no origin picker
+### 9.2 SELL — from a held system (trade tab) or an outpost (its manager)
 
 > **AS-BUILT (engine slice 1a, 03-10-26) — the engine SELL half.** `sellToSyndicate` (`sim/actions.js`) now
 > finalises from a held system or from one of the guild's own Outposts. The client is a later slice, so the
@@ -336,26 +336,58 @@ anything.
 > - Tests: `sim/tests/sell-from-outpost.test.js` (13). Operator path: the existing `POST /action` with
 >   `{ type: 'sellToSyndicate', guildId, originOutpostId }`; no new endpoint or CLI verb.
 
-SELL is **initiated contextually from the node** whose goods are being sold — a held system's manifest or an
-outpost's manager — and the origin **is** that node. The origin dropdown (§5/§6) is **removed**: there is no
-pick, because the player is already looking at the pile. The order ships that node's stockpile → its nearest
-waystation, immediate settlement (§5), fuel = that leg.
+SELL finalises from a **node the guild holds**, by one of **two paths** — and the trade-tab SELL built in §6
+is **unchanged**: the outpost is an *additional* origin, never a replacement.
 
-- **The Outpost Manager gains a SELL action** — it is read-only today; this is its one write affordance: sell
-  from the outpost's stockpile, exactly as a system manifest sells from a system's.
-- **An empty node offers no SELL** (nothing to ship — the affordance is absent/disabled).
-- The SELL stock gate (§7) still applies, now almost always satisfied by construction (you sell from a pile
-  you can see); it remains as the engine's backstop, reject-whole naming any short line.
-- This **retires** the §6/§7 "SELL origin-picker helper" as moot — there is no origin picker left to refine.
+- **From the trade tab — a held system (unchanged).** The player builds the held sell order (§3), opens the
+  SELL finalise (§6), and chooses a held **system** as the origin from the Ship-from dropdown. Held order,
+  immediate settlement, system-hex → nearest waystation. Nothing on this path changes.
+- **From an outpost — its manager (new).** The Outpost Manager — read-only today — gains a **Sell to
+  Syndicate** affordance, its one write. The origin **is** that outpost (no picker — the player is already
+  looking at the pile), drawing only from its `stockpile`. The consignment is built in the manager by picking
+  quantities from the outpost's own resource tables (a **MAX** prefill = the held amount of that good); the
+  summary occupies the manager's right hero while an order is live — the transport hero by hauler tier, a
+  static **"Syndicate Waystation"** label for the drop, the consignment, the proceeds, the fuel cost, and the
+  fuel credits remaining, then the **Sell to Syndicate** button — and confirm ships that outpost's goods → its
+  nearest waystation, immediate settlement. An **empty outpost offers no SELL** (the affordance is absent/disabled).
+
+Both paths run the identical gates and settlement (§5, and the slice-1a AS-BUILT above): each line stock-gated
+against that node's own pile (reject-whole naming any short line, §7), the one-hauler-hold capacity cap, the
+§8.1 quote-lock, and the node-hex → nearest-waystation fuel leg; immediate settlement, no shipment. The
+player's act is the same in both places — pick quantities, read proceeds and fuel, confirm — differing only in
+where it starts.
+
+**The outpost sell is carried to the engine as an inline cart, not the held order — the one engine change the
+client half needs.** `sellToSyndicate` gains an inline **`cart`** path (the mirror of `buyFromSyndicate`'s
+existing inline cart) carried alongside `originOutpostId`: it reads the cart's lines, runs the same gates and
+settlement, and **does not read, write or clear `guild.sellOrder`**. There is only one `guild.sellOrder`, so
+this keeps an outpost sale independent of any order the player is mid-way through in the trade tab, and keeps
+the outpost draft **ephemeral** — it lives in the manager popup, not in persisted guild state (the right
+lifetime for a look-at-the-pile-and-sell-it-now act). The trade-tab system SELL keeps reading the held order
+(§5) exactly as before. §18 holds: the summary's proceeds, fuel, consignment space and hauler tier are display
+echoes of the engine's own formulas over the published volume/hold tables, and the engine is the authoritative
+gate — an order over one hauler hold is reject-wholed at confirm.
+
+> **SUPERSEDED (reversed after playtest, 04-10-26) — the node-relocation of SELL.** The 03–04/10 version of
+> this section made SELL *only* contextual: the trade-tab SELL card retired, the origin dropdown removed, all
+> selling moved onto the node. In play that gutted the trade tab — it left a half BUY-only flow — and changed
+> working UI that was never meant to change. **Withdrawn.** The trade-tab SELL (held order, system origin via
+> the dropdown) stands as §6 built it; the outpost is an *additional* origin via the inline-cart sell above;
+> and the §6/§7 origin-picker is **not** retired. The engine SELL half from slice 1a (the AS-BUILT block above
+> — `originOutpostId`, `sellOrigin`, the gates) is sound and stays; only the client's node-relocation was
+> wrong, and its three client slices (2/3a/3b) were reverted from `main` on 04-10-26.
 
 ### 9.3 Why BUY keeps a target and SELL does not
 
-They start from different places. SELL begins at a node the player is managing, so the origin is context. BUY
-begins at the Syndicate market (the TRADE tab), where there is no node context, so it must answer "deliver
-where?" — hence the default-nearest target with override. The combined model: **the Syndicate meets the guild
-at its frontier** — dropping buys at the nearest node, accepting sells shipped from wherever — and the guild's
-**own routes** (the transport layer) move goods between its nodes. The Syndicate runs the waystation leg; the
-guild runs the inside.
+Both are nodes the guild holds, but they are reached differently. **BUY** is always initiated from the
+Syndicate market (the TRADE tab), which has no node context, so it must answer "deliver where?" — the
+default-nearest destination with override (§9.1). **SELL** never has a destination to answer: it always ships
+to the origin's nearest waystation, so there is no target pick either way. Its *origin* is a pick only when
+there is no node context to supply it — from the TRADE tab the player names a held **system** in the Ship-from
+dropdown (§6); from an outpost's manager the origin simply **is** that outpost, no pick. The combined model:
+**the Syndicate meets the guild at its frontier** — dropping buys at the nearest node, accepting sells shipped
+from wherever — and the guild's **own routes** (the transport layer) move goods between its nodes. The
+Syndicate runs the waystation leg; the guild runs the inside.
 
 ### 9.4 Failure modes (hunted on paper — working practice #7)
 
