@@ -518,7 +518,12 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the SELL & 
   // The old per-system SELL basket is RETIRED (§6) — its table and its guild-wide-qty markup are gone.
   assert.ok(!/id="tw-sysalloc"/.test(html), 'the per-system SELL allocation table is retired');
   assert.ok(!/allocations: allocations/.test(html), 'the client no longer sends the legacy multi-system SELL');
-  assert.ok(!/\bcart:/.test(html), 'the client no longer sends the legacy inline-cart BUY (retired, §8)');
+  // The inline-cart BUY stays retired (§8). The page now carries exactly ONE `cart:` — the Outpost
+  // Manager's inline-cart SELL from an Outpost (syndicate-orders.md §9.2, pinned in its own test below).
+  assert.ok(!/type:'buyFromSyndicate'[^}]*\bcart\b/.test(html), 'the client no longer sends the legacy inline-cart BUY (retired, §8)');
+  assert.equal((html.match(/\bcart:/g) || []).length, 1, 'the only cart the client sends is the Outpost SELL\'s');
+  assert.match(html, /type:'sellToSyndicate', guildId: player\.guildId, originOutpostId: OM\.id, cart: cart/,
+    'that one cart rides a sellToSyndicate FROM AN OUTPOST, never a system-origin trade-tab sell');
 
   // THE TWO HERO ORDER BUTTONS on the Syndicate Exchange hero (.tw-thero), badged from the snapshot's
   // buyOrder/sellOrder and opening the finalise popup for that side.
@@ -578,10 +583,15 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the SELL & 
     'the client quote-lock TTL must mirror sim/price-ring.js QUOTE_TTL_TICKS');
   // ...and the mirror is APPLIED — the expiry test reads QUOTE_TTL_TICKS, not a bare 5, and the
   // client mirrors the fuel-price cycle rule off the snapshot's calendar (windowN / dayAnchorTick).
-  assert.match(html, /s\.tick - TX\.issueTick > QUOTE_TTL_TICKS/,
+  // The rule lives once, in txQuoteExpiredSince(issueTick), shared by this popup (TX.issueTick) and the
+  // Outpost Manager's SELL (its own issue tick, §9.2) — so there is still ONE mirrored TTL.
+  assert.match(html, /s\.tick - issueTick > QUOTE_TTL_TICKS/,
     'the client TTL rule must read the mirrored constant, not a hardcoded window');
-  assert.match(html, /txCycleIndex\(s\.tick, N, anchor\) !== txCycleIndex\(TX\.issueTick, N, anchor\)/,
+  assert.match(html, /txCycleIndex\(s\.tick, N, anchor\) !== txCycleIndex\(issueTick, N, anchor\)/,
     'the client must mirror the engine cycle-boundary expiry rule off the snapshot calendar');
+  assert.match(html, /return txQuoteExpiredSince\(TX\.issueTick\);/,
+    'the trade popup applies that one rule to its own frozen issue tick');
+  assert.equal((html.match(/QUOTE_TTL_TICKS = \d+;/g) || []).length, 1, 'the TTL is mirrored exactly once in the page');
   // The popup FREEZES the two prices at open and stops re-pricing them — it reads the frozen
   // figures, not the live feed. (Geometry — burn, travelTicks — stays live, tested above.)
   assert.match(html, /function txFreezeQuote\(\)/);
@@ -598,6 +608,61 @@ test('GET / serves the TRADE tab — the renamed tab, the panel, and the SELL & 
   assert.ok(!/\.postMessage\s*\(/.test(tradeBlock), 'the TRADE tab sends no postMessage — it rides no console bridge');
   assert.ok(!/contentWindow/.test(tradeBlock), 'the TRADE tab talks to no iframe');
   assert.ok(!/src\s*=\s*['"]?\/?console/.test(tradeBlock), 'the TRADE tab embeds no console');
+});
+
+// The Outpost Manager's SELL (docs/syndicate-orders.md §9.2 — client slice). A served-bytes tripwire:
+// the manager builds a LOCAL draft from its resource cells and sends it whole as the inline-cart
+// sellToSyndicate from the Outpost. If it ever drifted onto the held order (addOrderLine / clearOrder,
+// guild.sellOrder) or recomputed a figure the snapshot publishes, it would still render — only this fails.
+test('GET / serves the Outpost Manager SELL — local draft, inline cart from the Outpost, reused finalise parts', async () => {
+  const html = await (await fetch(base + '/')).text();
+  const start = html.indexOf('THE OUTPOST MANAGER (read-only)');
+  const block = html.slice(start, html.indexOf('THE DOCK / MANIFEST EDITOR POPUP'));
+  assert.ok(start > 0 && block.length > 1000, 'the Outpost Manager block is served');
+
+  // THE CONFIRM: one sellToSyndicate from the Outpost, the draft as an inline cart, the frozen issue tick.
+  assert.match(block, /var action = \{ type:'sellToSyndicate', guildId: player\.guildId, originOutpostId: OM\.id, cart: cart \};/);
+  assert.match(block, /if\(typeof draft\.issueTick === 'number'\) action\.issueTick = draft\.issueTick;/);
+  assert.match(block, /window\.__sendAction\(action\)/);
+  // THE DRAFT IS LOCAL (§9.2): built in OM.sell, never posted line by line, never the held order.
+  assert.match(block, /function freshSell\(\)/);
+  assert.ok(!/type:\s*'(addOrderLine|removeOrderLine|clearOrder)'/.test(block),
+    'the manager never builds or clears the held order — its draft is local and goes as a cart');
+  assert.ok(!/originSystemId/.test(block), 'the manager sells from its Outpost only, never a system');
+
+  // THE BUILDER: a held, priced good's cell opens a qty box + MAX + Add to order; a 0-held cell is inert.
+  assert.match(block, /data-sell-cell="/);
+  assert.match(block, /data-sell-qty="/);
+  assert.match(block, /data-sell-max="[^>]*>MAX</);
+  assert.match(block, /data-sell-add="[^>]*>Add to order</);
+  assert.match(block, /var canSell = sellableQty\(row, g\) > 0;/, 'only a cell the Outpost can sell from opens');
+  // Add clamps to 1..held and freezes the §8.1 quote when the summary first appears.
+  assert.match(block, /var qty = Math\.min\(parseQty\(OM\.sell\.edit\), sellableQty\(row, good\)\);/);
+  assert.match(block, /if\(first\) sellFreezeQuote\(\);/);
+
+  // THE SUMMARY's figures are DISPLAY ECHOES of published values (§18): space from goodVolumes, the tier
+  // from the haulerTiers ladder by the engine's rule, the leg from this Outpost's outpostFuelCost entry.
+  assert.match(block, /space \+= qty \* vol\[good\];/);
+  assert.match(block, /if\(space <= ladder\[i\]\.hold\)\{ tier = ladder\[i\]\.tier; break; \}/);
+  assert.match(block, /g\.outpostFuelCost\[OM\.id\]/);
+  assert.match(block, /leg\.fuelBurnByTier\[tier\]/);
+  assert.match(block, /proceeds \+= Math\.round\(qty \* price\)/, 'proceeds round per line, as the engine credits');
+  assert.match(block, /Syndicate Waystation/, 'the drop is a static label — the snapshot names no waystation');
+  assert.match(block, /Over one hold &mdash; trim the order\./, 'the over-capacity hint');
+  assert.match(block, /var off = OM\.sell\.busy \|\| f\.overCap \|\| short \|\| f\.expired;/, 'Sell is off over cap, short of fuel, or expired');
+
+  // REUSED, not copied: the trade popup hands its finalise parts over, and the manager reads them.
+  assert.match(html, /window\.__txParts = \{/);
+  assert.match(html, /quoteExpiredSince: txQuoteExpiredSince,/);
+  assert.match(html, /fuelBar: txFuelBar/);
+  assert.match(block, /p\.quoteExpiredSince\(OM\.sell\.issueTick\)/, 'the manager runs the ONE quote-lock rule');
+  assert.match(block, /p\.fuelBar\(f\.credits, short\)/, 'the manager draws the trade popup\'s fuel bar');
+  assert.match(block, /p\.art\[artTier\]/, 'the hero art is the trade popup\'s TX_ART by tier');
+  assert.ok(!/QUOTE_TTL_TICKS/.test(block), 'the manager carries no copy of the TTL');
+  // ...and the look is the trade popup's own CSS, shared by selector list (no new visual language).
+  assert.match(html, /#tw-tx-overlay \.herotag, #outpost-overlay \.herotag\{/);
+  assert.match(html, /#tw-tx-overlay \.ledger \.row2, #outpost-overlay \.ledger \.row2\{/);
+  assert.match(html, /#tw-tx-overlay \.deploy, #outpost-overlay \.deploy\{/);
 });
 
 // The DEUTERIUM client (§1.4 "The Deuterium Cycle" / "The illegal path") — slice 2a. A

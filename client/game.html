@@ -2070,6 +2070,8 @@ select.field{appearance:none; cursor:pointer;}
   --amber:#C9A227; --amber-dim:#7A6420; --amber-ghost:rgba(201,162,39,0.10);
   --ink:#E8DFC8; --ink2:#8B8F9C; --ink3:#565B68; --ink4:#3a3f49;
   --green:#4E9A87; --red:#C2603A;
+  /* the sell summary's shared #tw-tx-overlay rules also read these two — the same values as there */
+  --amber2:#B79433; --orange:#D8842E;
   --mono:'IBM Plex Mono',ui-monospace,monospace;
   --sans:'IBM Plex Sans',system-ui,sans-serif;
   --serif:'Cinzel',serif;
@@ -2165,6 +2167,35 @@ select.field{appearance:none; cursor:pointer;}
 #outpost-overlay .om-cell i{position:absolute; left:0; top:0; bottom:0; background:rgba(201,162,39,.20); z-index:0}
 #outpost-overlay .om-cell .nm{position:relative; z-index:1; font-size:15px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 #outpost-overlay .om-cell .q{position:relative; z-index:1; font-family:var(--mono); font-size:15px; color:var(--ink); font-variant-numeric:tabular-nums; margin-top:3px}
+/* SELL to the Syndicate (docs/syndicate-orders.md §9.2). A held, priced good's cell is the order
+   builder: clickable, and when open it spans the whole row to hold a quantity box + MAX (the Dock
+   editor's .dk-qtywrap look, shared) and an Add to order button (.om-act.primary). A good already in
+   the draft carries a small "In order" tag after its quantity, in the .sqhead lettering. A 0-held
+   cell is unchanged. */
+#outpost-overlay .om-cell.sellable{cursor:pointer}
+#outpost-overlay .om-cell.sellable:not(.open):hover{border-color:var(--line2)}
+#outpost-overlay .om-cell.open{grid-column:1 / -1; border-color:var(--amber); cursor:default}
+#outpost-overlay .om-cell .om-inorder{margin-left:8px; font-family:var(--mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--amber)}
+#outpost-overlay .om-build{position:relative; z-index:1; display:flex; gap:6px; margin-top:9px}
+#outpost-overlay .om-build .dk-qtywrap{flex:1; min-width:0}
+#outpost-overlay .om-build .om-act{flex:none; padding:9px 14px}
+#outpost-overlay .om-act:disabled{opacity:.4; cursor:not-allowed}
+#outpost-overlay .om-act.primary:disabled:hover{background:var(--amber); border-color:var(--amber)}
+/* The right hero while a sell draft is live: the summary, top to bottom — transport tag, Shipping to,
+   the consignment (its list takes the spare height, never less than one row, and scrolls), the
+   ledger + fuel bar, then the banners and the Sell button. Its look is the trade finalise popup's
+   own (the shared rules). The column itself scrolls only if banners (over capacity, a refusal, an
+   expired quote) push it past the hero's height. */
+#outpost-overlay .om-sell{display:flex; flex-direction:column; gap:10px; flex:1; min-height:0; overflow-y:auto}
+#outpost-overlay .om-sell .herotag{align-self:flex-start}
+#outpost-overlay .om-sell .sec-head{margin-bottom:8px}
+/* the consignment sits on the "Shipping to" card's panel (.destcard's look), so its rows stay legible
+   over the transport art */
+#outpost-overlay .om-sell .om-cons{flex:1 1 auto; min-height:110px; display:flex; flex-direction:column; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px 4px}
+#outpost-overlay .om-sell .manifest{max-height:none; flex:1 1 auto; min-height:0}
+#outpost-overlay .om-sell .ledger{margin-top:0}
+#outpost-overlay .om-sell .overcap{margin-bottom:0}
+#outpost-overlay .om-sell .expired, #outpost-overlay .om-sell .deploy, #outpost-overlay .om-sell .refresh{margin-top:0}
 /* the parked placeholder box (ASSETS tab, an empty tier). */
 #outpost-overlay .om-parked{border:1px dashed var(--line2); border-radius:8px; padding:26px 16px; text-align:center; font-family:var(--mono); font-size:11px; letter-spacing:.05em; color:var(--ink3)}
 /* right hero — the selected craft's read-out, pinned to the bottom of the portrait. */
@@ -2237,12 +2268,12 @@ select.field{appearance:none; cursor:pointer;}
 #dock-overlay .dk-sel:focus{outline:none; border-color:var(--amber)}
 /* the qty input sits beside a MAX toggle; when MAX is on the input is disabled + greyed (design: no
    capacity prose, just the greyed field). */
-#dock-overlay .dk-qtywrap{display:flex; gap:6px}
-#dock-overlay .dk-qty{flex:1; min-width:0; font-family:var(--mono); font-size:12px; color:var(--ink); background:var(--panel); border:1px solid var(--line2); border-radius:7px; padding:9px 8px; text-align:right; font-variant-numeric:tabular-nums}
-#dock-overlay .dk-qty:focus{outline:none; border-color:var(--amber)}
+#dock-overlay .dk-qtywrap, #outpost-overlay .dk-qtywrap{display:flex; gap:6px}
+#dock-overlay .dk-qty, #outpost-overlay .dk-qty{flex:1; min-width:0; font-family:var(--mono); font-size:12px; color:var(--ink); background:var(--panel); border:1px solid var(--line2); border-radius:7px; padding:9px 8px; text-align:right; font-variant-numeric:tabular-nums}
+#dock-overlay .dk-qty:focus, #outpost-overlay .dk-qty:focus{outline:none; border-color:var(--amber)}
 #dock-overlay .dk-qty:disabled{opacity:.35; cursor:not-allowed}
-#dock-overlay .dk-max{flex:none; width:52px; font-family:var(--mono); font-size:10px; letter-spacing:.08em; color:var(--ink2); background:var(--panel); border:1px solid var(--line2); border-radius:7px; cursor:pointer}
-#dock-overlay .dk-max:hover{border-color:var(--amber); color:var(--amber)}
+#dock-overlay .dk-max, #outpost-overlay .dk-max{flex:none; width:52px; font-family:var(--mono); font-size:10px; letter-spacing:.08em; color:var(--ink2); background:var(--panel); border:1px solid var(--line2); border-radius:7px; cursor:pointer}
+#dock-overlay .dk-max:hover, #outpost-overlay .dk-max:hover{border-color:var(--amber); color:var(--amber)}
 #dock-overlay .dk-max.on{background:var(--amber); border-color:var(--amber); color:var(--void)}
 #dock-overlay .dk-rm{flex:none; width:34px; height:34px; font-size:15px; color:var(--ink3); background:var(--panel); border:1px solid var(--line); border-radius:7px; cursor:pointer}
 #dock-overlay .dk-rm:hover{border-color:var(--red); color:var(--red)}
@@ -2650,16 +2681,20 @@ select.field{appearance:none; cursor:pointer;}
    #tw-tx-overlay .est-close:hover{border-color:var(--red); color:var(--red)}
    #tw-tx-overlay .est-body{display:grid; grid-template-columns:1fr 340px; gap:0}
    #tw-tx-overlay .est-main{padding:20px 22px 22px; border-right:1px solid var(--line)}
+   /* A rule below that also names #outpost-overlay is SHARED with the Outpost Manager's sell summary
+      (docs/syndicate-orders.md §9.2): the same section heads, route card, manifest, ledger, fuel bar,
+      confirm, banners, transport tag and the scrim over the transport art, so the two SELL paths read
+      alike. Adding the second selector leaves this popup's own look exactly as it was. */
    #tw-tx-overlay .blk{margin-bottom:24px} #tw-tx-overlay .blk:last-child{margin-bottom:0}
-   #tw-tx-overlay .sec-head{display:flex; align-items:center; gap:9px; margin-bottom:12px}
-   #tw-tx-overlay .sec-head .t{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2)}
-   #tw-tx-overlay .sec-head .aux{margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--ink3); letter-spacing:.04em}
+   #tw-tx-overlay .sec-head, #outpost-overlay .sec-head{display:flex; align-items:center; gap:9px; margin-bottom:12px}
+   #tw-tx-overlay .sec-head .t, #outpost-overlay .sec-head .t{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2)}
+   #tw-tx-overlay .sec-head .aux, #outpost-overlay .sec-head .aux{margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--ink3); letter-spacing:.04em}
    /* the target picker's route line (BUY destination / SELL origin) */
-   #tw-tx-overlay .destcard{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px}
-   #tw-tx-overlay .dtop{display:flex; align-items:baseline; gap:12px}
-   #tw-tx-overlay .rroute{font-family:var(--mono); font-size:13px; color:var(--ink); letter-spacing:.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+   #tw-tx-overlay .destcard, #outpost-overlay .destcard{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px}
+   #tw-tx-overlay .dtop, #outpost-overlay .dtop{display:flex; align-items:baseline; gap:12px}
+   #tw-tx-overlay .rroute, #outpost-overlay .rroute{font-family:var(--mono); font-size:13px; color:var(--ink); letter-spacing:.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
    #tw-tx-overlay .rroute .rarr{color:var(--ink3); margin:0 6px}
-   #tw-tx-overlay .rroute .rway{color:var(--amber2)}
+   #tw-tx-overlay .rroute .rway, #outpost-overlay .rroute .rway{color:var(--amber2)}
    #tw-tx-overlay .rowsel{font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--void); border:1px solid var(--line2); border-radius:6px; padding:4px 22px 4px 8px; cursor:pointer; appearance:none; letter-spacing:.01em;
      background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);
      background-position:calc(100% - 12px) 55%, calc(100% - 8px) 55%; background-size:4px 4px,4px 4px; background-repeat:no-repeat}
@@ -2669,42 +2704,42 @@ select.field{appearance:none; cursor:pointer;}
    /* right hero + ledger */
    #tw-tx-overlay .est-side{position:relative; background:#0d0f14; display:flex; flex-direction:column; min-height:520px}
    #tw-tx-overlay .est-side .art{position:absolute; inset:0; background-size:cover; background-position:50% 20%; z-index:0}
-   #tw-tx-overlay .est-side .scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(10,11,15,.34) 0%, rgba(10,11,15,.70) 44%, rgba(10,11,15,.96) 100%); z-index:1}
+   #tw-tx-overlay .est-side .scrim, #outpost-overlay .om-right.selling .scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(10,11,15,.34) 0%, rgba(10,11,15,.70) 44%, rgba(10,11,15,.96) 100%); z-index:1}
    #tw-tx-overlay .est-side .inner{position:relative; z-index:2; padding:20px 18px 20px; display:flex; flex-direction:column; flex:1}
-   #tw-tx-overlay .ledger{font-family:var(--mono); font-size:12px; margin-top:auto}
-   #tw-tx-overlay .ledger .row2{display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:9px 0; border-bottom:1px solid rgba(232,223,200,0.09)}
-   #tw-tx-overlay .ledger .row2 .k{color:var(--ink3); letter-spacing:.06em; text-transform:uppercase; font-size:10px}
-   #tw-tx-overlay .ledger .row2 .v{color:var(--ink); text-align:right; font-variant-numeric:tabular-nums}
-   #tw-tx-overlay .ledger .row2.profit .v b{color:var(--green); font-size:16px; font-weight:600}
+   #tw-tx-overlay .ledger, #outpost-overlay .ledger{font-family:var(--mono); font-size:12px; margin-top:auto}
+   #tw-tx-overlay .ledger .row2, #outpost-overlay .ledger .row2{display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:9px 0; border-bottom:1px solid rgba(232,223,200,0.09)}
+   #tw-tx-overlay .ledger .row2 .k, #outpost-overlay .ledger .row2 .k{color:var(--ink3); letter-spacing:.06em; text-transform:uppercase; font-size:10px}
+   #tw-tx-overlay .ledger .row2 .v, #outpost-overlay .ledger .row2 .v{color:var(--ink); text-align:right; font-variant-numeric:tabular-nums}
+   #tw-tx-overlay .ledger .row2.profit .v b, #outpost-overlay .ledger .row2.profit .v b{color:var(--green); font-size:16px; font-weight:600}
    #tw-tx-overlay .ledger .row2.cost .v b{color:var(--red); font-size:16px; font-weight:600}
-   #tw-tx-overlay .ledger .row2.fuel .v b{color:var(--red); font-size:14px}
+   #tw-tx-overlay .ledger .row2.fuel .v b, #outpost-overlay .ledger .row2.fuel .v b{color:var(--red); font-size:14px}
    #tw-tx-overlay .ledger .row2.treasury.short .v{color:var(--orange)}
    /* fuel-credit bar */
-   #tw-tx-overlay .fcblk{padding-top:13px}
-   #tw-tx-overlay .fcblk .fchead{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px}
-   #tw-tx-overlay .fcblk .fchead .k{color:var(--ink3); letter-spacing:.06em; text-transform:uppercase; font-size:10px; font-family:var(--mono)}
-   #tw-tx-overlay .fcblk .fchead .state{font-family:var(--mono); font-size:10px; letter-spacing:.04em}
-   #tw-tx-overlay .fcblk .fchead .state.ok{color:var(--ink3)}
-   #tw-tx-overlay .fcblk .fchead .state.illegal{color:var(--red)}
-   #tw-tx-overlay .fcblk .fchead .state.bad{color:var(--orange); font-weight:500}
-   #tw-tx-overlay .fcbar{position:relative; height:16px; border-radius:5px; background:var(--void); border:1px solid var(--line); overflow:hidden}
-   #tw-tx-overlay .fcbar .seg{position:absolute; top:0; bottom:0}
-   #tw-tx-overlay .fcbar .fc-red{left:0; background:linear-gradient(180deg, rgba(194,96,58,.85), rgba(194,96,58,.6))}
-   #tw-tx-overlay .fcbar .fc-blue{background:linear-gradient(180deg, rgba(62,130,181,.9), rgba(62,130,181,.62))}
-   #tw-tx-overlay .fcbar .fc-spend{background:repeating-linear-gradient(45deg, rgba(8,9,12,.72), rgba(8,9,12,.72) 4px, rgba(8,9,12,.5) 4px, rgba(8,9,12,.5) 8px)}
-   #tw-tx-overlay .fcbar .fc-marker{position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--ink); box-shadow:0 0 6px rgba(232,223,200,.7); z-index:3}
-   #tw-tx-overlay .fcbar.bad .fc-red,#tw-tx-overlay .fcbar.bad .fc-blue{background:linear-gradient(180deg, rgba(216,132,46,.9), rgba(216,132,46,.6))}
-   #tw-tx-overlay .fcbar.bad .fc-marker{background:var(--orange); box-shadow:0 0 6px rgba(216,132,46,.8)}
-   #tw-tx-overlay .deploy{width:100%; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer; margin-top:16px}
-   #tw-tx-overlay .deploy:hover{background:#DCB43A}
-   #tw-tx-overlay .deploy:disabled{background:rgba(28,33,43,.85); color:var(--ink3); cursor:not-allowed; border:1px solid var(--line)}
+   #tw-tx-overlay .fcblk, #outpost-overlay .fcblk{padding-top:13px}
+   #tw-tx-overlay .fcblk .fchead, #outpost-overlay .fcblk .fchead{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px}
+   #tw-tx-overlay .fcblk .fchead .k, #outpost-overlay .fcblk .fchead .k{color:var(--ink3); letter-spacing:.06em; text-transform:uppercase; font-size:10px; font-family:var(--mono)}
+   #tw-tx-overlay .fcblk .fchead .state, #outpost-overlay .fcblk .fchead .state{font-family:var(--mono); font-size:10px; letter-spacing:.04em}
+   #tw-tx-overlay .fcblk .fchead .state.ok, #outpost-overlay .fcblk .fchead .state.ok{color:var(--ink3)}
+   #tw-tx-overlay .fcblk .fchead .state.illegal, #outpost-overlay .fcblk .fchead .state.illegal{color:var(--red)}
+   #tw-tx-overlay .fcblk .fchead .state.bad, #outpost-overlay .fcblk .fchead .state.bad{color:var(--orange); font-weight:500}
+   #tw-tx-overlay .fcbar, #outpost-overlay .fcbar{position:relative; height:16px; border-radius:5px; background:var(--void); border:1px solid var(--line); overflow:hidden}
+   #tw-tx-overlay .fcbar .seg, #outpost-overlay .fcbar .seg{position:absolute; top:0; bottom:0}
+   #tw-tx-overlay .fcbar .fc-red, #outpost-overlay .fcbar .fc-red{left:0; background:linear-gradient(180deg, rgba(194,96,58,.85), rgba(194,96,58,.6))}
+   #tw-tx-overlay .fcbar .fc-blue, #outpost-overlay .fcbar .fc-blue{background:linear-gradient(180deg, rgba(62,130,181,.9), rgba(62,130,181,.62))}
+   #tw-tx-overlay .fcbar .fc-spend, #outpost-overlay .fcbar .fc-spend{background:repeating-linear-gradient(45deg, rgba(8,9,12,.72), rgba(8,9,12,.72) 4px, rgba(8,9,12,.5) 4px, rgba(8,9,12,.5) 8px)}
+   #tw-tx-overlay .fcbar .fc-marker, #outpost-overlay .fcbar .fc-marker{position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--ink); box-shadow:0 0 6px rgba(232,223,200,.7); z-index:3}
+   #tw-tx-overlay .fcbar.bad .fc-red,#tw-tx-overlay .fcbar.bad .fc-blue, #outpost-overlay .fcbar.bad .fc-red, #outpost-overlay .fcbar.bad .fc-blue{background:linear-gradient(180deg, rgba(216,132,46,.9), rgba(216,132,46,.6))}
+   #tw-tx-overlay .fcbar.bad .fc-marker, #outpost-overlay .fcbar.bad .fc-marker{background:var(--orange); box-shadow:0 0 6px rgba(216,132,46,.8)}
+   #tw-tx-overlay .deploy, #outpost-overlay .deploy{width:100%; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer; margin-top:16px}
+   #tw-tx-overlay .deploy:hover, #outpost-overlay .deploy:hover{background:#DCB43A}
+   #tw-tx-overlay .deploy:disabled, #outpost-overlay .deploy:disabled{background:rgba(28,33,43,.85); color:var(--ink3); cursor:not-allowed; border:1px solid var(--line)}
    /* §8.1 quote-lock — the expired banner and the Refresh control. Hidden until the
       frozen quote expires; toggled with `.show` exactly like .success above. */
-   #tw-tx-overlay .expired{display:none; margin-top:14px; font-family:var(--mono); font-size:11px; letter-spacing:.04em; color:var(--orange); border:1px solid var(--orange); background:rgba(216,132,46,.08); border-radius:9px; padding:11px 13px; text-align:center}
-   #tw-tx-overlay .expired.show{display:block}
-   #tw-tx-overlay .refresh{display:none; width:100%; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer; margin-top:12px}
-   #tw-tx-overlay .refresh:hover{background:#DCB43A}
-   #tw-tx-overlay .refresh.show{display:block}
+   #tw-tx-overlay .expired, #outpost-overlay .expired{display:none; margin-top:14px; font-family:var(--mono); font-size:11px; letter-spacing:.04em; color:var(--orange); border:1px solid var(--orange); background:rgba(216,132,46,.08); border-radius:9px; padding:11px 13px; text-align:center}
+   #tw-tx-overlay .expired.show, #outpost-overlay .expired.show{display:block}
+   #tw-tx-overlay .refresh, #outpost-overlay .refresh{display:none; width:100%; font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:9px; padding:14px; cursor:pointer; margin-top:12px}
+   #tw-tx-overlay .refresh:hover, #outpost-overlay .refresh:hover{background:#DCB43A}
+   #tw-tx-overlay .refresh.show, #outpost-overlay .refresh.show{display:block}
    #tw-tx-overlay .success{display:none; padding:40px 26px; text-align:center}
    #tw-tx-overlay .success.show{display:block}
    #tw-tx-overlay .success .tick{width:56px; height:56px; border-radius:50%; border:2px solid var(--green); color:var(--green); display:flex; align-items:center; justify-content:center; font-size:28px; margin:0 auto 16px}
@@ -2716,23 +2751,23 @@ select.field{appearance:none; cursor:pointer;}
    #tw-tx-overlay .tw-empty{font-size:12px; color:var(--ink3); letter-spacing:.02em; padding:6px 2px}
    /* The held-order MANIFEST (docs/syndicate-orders.md §6): a two-column Qty | Resource list in a
       FIXED-HEIGHT scroll box — a long order scrolls, the popup never resizes. */
-   #tw-tx-overlay .mhead{display:grid; grid-template-columns:118px 1fr 26px; gap:10px; padding:0 2px 8px; border-bottom:1px solid var(--line); font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3)}
-   #tw-tx-overlay .manifest{max-height:236px; overflow-y:auto; margin-top:4px}
-   #tw-tx-overlay .mrow{display:grid; grid-template-columns:118px 1fr 26px; gap:10px; align-items:center; padding:9px 2px; border-bottom:1px solid rgba(232,223,200,0.06)}
-   #tw-tx-overlay .mrow .mq{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:17px; font-weight:500; color:var(--amber)}
-   #tw-tx-overlay .mrow .mq .u{font-size:10px; color:var(--ink3); margin-left:4px; letter-spacing:.08em}
-   #tw-tx-overlay .mrow .mr{font-size:13px; color:var(--ink)}
-   #tw-tx-overlay .mrow .mr .msp{display:block; font-family:var(--mono); font-size:10px; letter-spacing:.04em; color:var(--ink3); margin-top:2px}
-   #tw-tx-overlay .mrow .mx{display:flex; justify-content:center}
-   #tw-tx-overlay .mrow .mx button{background:none; border:1px solid var(--line); color:var(--ink3); border-radius:6px; width:24px; height:24px; font-size:11px; cursor:pointer}
-   #tw-tx-overlay .mrow .mx button:hover{border-color:var(--red); color:var(--red)}
+   #tw-tx-overlay .mhead, #outpost-overlay .mhead{display:grid; grid-template-columns:118px 1fr 26px; gap:10px; padding:0 2px 8px; border-bottom:1px solid var(--line); font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3)}
+   #tw-tx-overlay .manifest, #outpost-overlay .manifest{max-height:236px; overflow-y:auto; margin-top:4px}
+   #tw-tx-overlay .mrow, #outpost-overlay .mrow{display:grid; grid-template-columns:118px 1fr 26px; gap:10px; align-items:center; padding:9px 2px; border-bottom:1px solid rgba(232,223,200,0.06)}
+   #tw-tx-overlay .mrow .mq, #outpost-overlay .mrow .mq{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:17px; font-weight:500; color:var(--amber)}
+   #tw-tx-overlay .mrow .mq .u, #outpost-overlay .mrow .mq .u{font-size:10px; color:var(--ink3); margin-left:4px; letter-spacing:.08em}
+   #tw-tx-overlay .mrow .mr, #outpost-overlay .mrow .mr{font-size:13px; color:var(--ink)}
+   #tw-tx-overlay .mrow .mr .msp, #outpost-overlay .mrow .mr .msp{display:block; font-family:var(--mono); font-size:10px; letter-spacing:.04em; color:var(--ink3); margin-top:2px}
+   #tw-tx-overlay .mrow .mx, #outpost-overlay .mrow .mx{display:flex; justify-content:center}
+   #tw-tx-overlay .mrow .mx button, #outpost-overlay .mrow .mx button{background:none; border:1px solid var(--line); color:var(--ink3); border-radius:6px; width:24px; height:24px; font-size:11px; cursor:pointer}
+   #tw-tx-overlay .mrow .mx button:hover, #outpost-overlay .mrow .mx button:hover{border-color:var(--red); color:var(--red)}
    /* The over-capacity banner (§7) — the split-the-order state, confirm disabled. */
-   #tw-tx-overlay .overcap{margin-bottom:16px; font-family:var(--mono); font-size:11px; line-height:1.5; letter-spacing:.02em; color:var(--orange); border:1px solid var(--orange); background:rgba(216,132,46,.08); border-radius:9px; padding:11px 13px}
+   #tw-tx-overlay .overcap, #outpost-overlay .overcap{margin-bottom:16px; font-family:var(--mono); font-size:11px; line-height:1.5; letter-spacing:.02em; color:var(--orange); border:1px solid var(--orange); background:rgba(216,132,46,.08); border-radius:9px; padding:11px 13px}
    /* The transport tag on the hero side — TIER · used / hold, by the order's engine-computed tier. */
-   #tw-tx-overlay .herotag{align-self:flex-start; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink2); background:rgba(13,15,20,.55); border:1px solid var(--line2); border-radius:7px; padding:8px 11px}
-   #tw-tx-overlay .herotag b{color:var(--amber2); font-weight:600}
-   #tw-tx-overlay .herotag.over{color:var(--orange); border-color:var(--orange)}
-   #tw-tx-overlay .herotag:empty{display:none}
+   #tw-tx-overlay .herotag, #outpost-overlay .herotag{align-self:flex-start; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink2); background:rgba(13,15,20,.55); border:1px solid var(--line2); border-radius:7px; padding:8px 11px}
+   #tw-tx-overlay .herotag b, #outpost-overlay .herotag b{color:var(--amber2); font-weight:600}
+   #tw-tx-overlay .herotag.over, #outpost-overlay .herotag.over{color:var(--orange); border-color:var(--orange)}
+   #tw-tx-overlay .herotag:empty, #outpost-overlay .herotag:empty{display:none}
    @media(max-width:760px){ #tw-tx-overlay .est-body{grid-template-columns:1fr} #tw-tx-overlay .est-main{border-right:none; border-bottom:1px solid var(--line)} }
    </style>
 
@@ -3517,7 +3552,8 @@ select.field{appearance:none; cursor:pointer;}
           <div class="om-tierbody" id="omTierBody"></div>
         </div>
       </div>
-      <!-- right hero: the selected berth's craft portrait + read-out -->
+      <!-- right hero: the selected berth's craft portrait + read-out — or, while a sell draft has a line,
+           the Sell to Syndicate summary (docs/syndicate-orders.md §9.2), which sits on top -->
       <div class="om-hero om-right">
         <div class="art" id="omCraftArt"></div>
         <div class="scrim"></div>
@@ -9178,12 +9214,18 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // is the enforcer; this timer is the courtesy that flips the popup before the player clicks.
   function txExpired(){
     if(TX.rejected) return true;
+    return txQuoteExpiredSince(TX.issueTick);
+  }
+  // The two checkQuote rules themselves, against ANY issue tick. One copy, read by this popup
+  // (TX.issueTick, above) and by the Outpost Manager's SELL (its own issue tick, handed over below —
+  // docs/syndicate-orders.md §9.2), so the mirrored rule and its TTL can never fork into two.
+  function txQuoteExpiredSince(issueTick){
     var s = snap();
-    if(!s || TX.issueTick == null || typeof s.tick !== 'number') return false;
-    if(s.tick - TX.issueTick > QUOTE_TTL_TICKS) return true;
+    if(!s || issueTick == null || typeof s.tick !== 'number') return false;
+    if(s.tick - issueTick > QUOTE_TTL_TICKS) return true;
     var cal = s.calendar || {}, N = cal.windowN, anchor = cal.dayAnchorTick;
     if(typeof N === 'number' && N >= 1 && typeof anchor === 'number'
-       && txCycleIndex(s.tick, N, anchor) !== txCycleIndex(TX.issueTick, N, anchor)) return true;
+       && txCycleIndex(s.tick, N, anchor) !== txCycleIndex(issueTick, N, anchor)) return true;
     return false;
   }
   // Flip the popup into (or out of) its expired state — called at the foot of each ledger render,
@@ -9235,6 +9277,22 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       + '<div class="fc-marker" style="left:' + markerPct.toFixed(2) + '%;display:' + (routeCredits > 0 ? 'block' : 'none') + '"></div>'
       + '</div></div>';
   }
+
+  // THE FINALISE PARTS the Outpost Manager's SELL reuses (docs/syndicate-orders.md §9.2). The manager
+  // is its own IIFE further down, so this popup's parts are handed over on one window object rather
+  // than copied: one hero-art map, one hold lookup, one posted-price read, one fuel reading, one
+  // quote-lock expiry rule (with its one mirrored TTL), one stale-quote test and one fuel bar. None of
+  // them reads or writes TX for the manager — it keeps its own draft and its own frozen quote.
+  window.__txParts = {
+    art: TX_ART,
+    holdFor: txHoldFor,
+    priceOf: priceOf,
+    heldUnits: heldUnits,
+    heldValue: heldValue,
+    quoteExpiredSince: txQuoteExpiredSince,
+    isQuoteRejection: txIsQuoteRejection,
+    fuelBar: txFuelBar
+  };
 
   /* -- the held-order popup (BUY + SELL are mirror halves of one model, §1/§6) ---- */
   // The order's frozen totals: Σ round(qty × frozen posted price) per line (the ledger's cost for a
@@ -12682,6 +12740,9 @@ function paintInventoryHero(d){
    figure is a published snapshot value (used/capacity/eta/totalTicks/stockpile) or a pure display ratio
    of published figures (a fill fraction, a thousands separator, a tick difference). Its own well-named
    CSS block + this IIFE, isolated exactly as #dispatch-overlay is.
+   Its ONE write is SELL TO SYNDICATE (docs/syndicate-orders.md §9.2) — its own block below: the
+   resource cells build a local sell draft, the right hero shows its summary, and the confirm sends the
+   whole draft as an inline cart from this Outpost.
    ============================================================================ */
 (function(){
   function $(id){ return document.getElementById(id); }
@@ -12701,8 +12762,19 @@ function paintInventoryHero(d){
 
   // The open outpost, the left tab ('DOCKED' berths | 'PARKED' waiting line), the selected craft, and
   // the tier tab. `sel` is { kind:'slot'|'queue'|'parked', id:<vehicleId> } or null (nothing selected).
-  // Reset on open.
-  var OM = { open:false, id:null, tab:'DOCKED', sel:null, tier:1 };
+  // `sell` is this open's SELL draft (freshSell, in the SELL block below) and `painted` the HTML last
+  // written to each region (paint, below). Reset on open.
+  var OM = { open:false, id:null, tab:'DOCKED', sel:null, tier:1, sell:freshSell(), painted:{} };
+
+  // Write a region's HTML only when it CHANGED. The poll re-renders every second; rewriting a region
+  // that has not changed would knock the caret out of the sell quantity box mid-typing, and could
+  // swallow a click whose mousedown and mouseup straddle the rewrite. Returns true when it wrote.
+  function paint(id, html){
+    if(OM.painted[id] === html) return false;
+    $(id).innerHTML = html;
+    OM.painted[id] = html;
+    return true;
+  }
 
   // The tier vocabulary, read the SAME way the TRADE tab reads it — off the shared goods catalog
   // (window.__goodsCatalog, GET /goods) with the same deuterium filter — so the buckets never diverge
@@ -12755,12 +12827,15 @@ function paintInventoryHero(d){
   function openManager(id){
     if(!id) return;
     OM.open = true; OM.id = id; OM.tab = 'DOCKED'; OM.sel = null; OM.tier = 1;
+    OM.sell = freshSell(); OM.painted = {};          // a new open starts with no draft, painted from scratch
     if(!outpostRow()) { OM.open = false; return; }  // gone between click and open — don't show an empty shell
     render();
     $('outpost-overlay').classList.add('open');
   }
+  // Closing drops the sell draft with the popup (§9.2 — it belongs to this open). That includes the
+  // self-close when the Outpost is torn down while open.
   function closeManager(){
-    OM.open = false; OM.id = null; OM.sel = null;
+    OM.open = false; OM.id = null; OM.sel = null; OM.sell = freshSell();
     $('outpost-overlay').classList.remove('open');
   }
 
@@ -12777,8 +12852,9 @@ function paintInventoryHero(d){
     renderLeft(row);
     renderStorage(row);
     renderTiers();
+    syncSellDraft(row);
     renderTierBody(row);
-    renderCraft(row);
+    renderRight(row);
   }
 
   // Default the selection to the first occupied slot, else the first queued craft, else none — and keep
@@ -12895,7 +12971,7 @@ function paintInventoryHero(d){
     Array.prototype.forEach.call($('omList').querySelectorAll('.om-row[data-vid]'), function(el){
       el.addEventListener('click', function(){
         OM.sel = { kind: el.getAttribute('data-kind'), id: el.getAttribute('data-vid') };
-        var r = outpostRow(); if(r){ renderLeftSelection(); renderCraft(r); }
+        var r = outpostRow(); if(r){ renderLeftSelection(); renderRight(r); }
       });
     });
     // The parked-row action buttons (2.2 cargo slice B). stopPropagation so a button click does NOT also
@@ -12969,20 +13045,33 @@ function paintInventoryHero(d){
   // cell's fill = the good's share of the MAX qty in that tier (a display ratio of published figures);
   // a good the outpost doesn't hold reads 0 (dim, no fill). Tier 4 (ASSETS) is parked — the engine has
   // no tier-4-asset-at-outpost storage (the stockpile is goods-only), so there is nothing to render.
+  // SELL (§9.2): a cell this Outpost can sell from (sellableQty > 0) is clickable and opens into the
+  // order builder (sellBuilderHtml); a good already in the draft carries an "In order" tag. A 0-held
+  // cell is inert, exactly as before.
   function renderTierBody(row){
-    if(OM.tier===4){ $('omTierBody').innerHTML = '<div class="om-parked">No assets stored · later</div>'; return; }
+    if(OM.tier===4){ paint('omTierBody', '<div class="om-parked">No assets stored · later</div>'); return; }
     var goods = tierGoods(OM.tier);
-    if(!goods.length){ $('omTierBody').innerHTML = '<div class="om-parked">No goods at this tier.</div>'; return; }
+    if(!goods.length){ paint('omTierBody', '<div class="om-parked">No goods at this tier.</div>'); return; }
     var stock = row.stockpile || {};
     var maxQ = 0; goods.forEach(function(g){ maxQ = Math.max(maxQ, stock[g]||0); });
+    if(OM.sell.open && !(sellableQty(row, OM.sell.open) > 0)) OM.sell.open = null;  // its good ran out: fold it
     var cells = goods.map(function(g){
       var q = stock[g]||0;
       var frac = maxQ>0 ? q/maxQ : 0;
       var bar = q>0 ? '<i style="width:'+(frac*100).toFixed(1)+'%"></i>' : '';
-      return '<div class="om-cell'+(q>0?'':' zero')+'">'+bar+
-        '<div class="nm">'+esc(pretty(g))+'</div><div class="q">'+fmtNum(q)+'</div></div>';
+      var canSell = sellableQty(row, g) > 0;
+      var open = canSell && OM.sell.open === g;
+      var cls = 'om-cell' + (q>0?'':' zero') + (canSell?' sellable':'') + (open?' open':'');
+      return '<div class="'+cls+'"'+(canSell ? ' data-sell-cell="'+esc(g)+'"' : '')+'>'+bar+
+        '<div class="nm">'+esc(pretty(g))+'</div>'+
+        '<div class="q">'+fmtNum(q)+(OM.sell.lines[g] ? '<span class="om-inorder">In order</span>' : '')+'</div>'+
+        (open ? sellBuilderHtml(g) : '')+
+        '</div>';
     }).join('');
-    $('omTierBody').innerHTML = '<div class="om-res">'+cells+'</div>';
+    // A repaint while the player is typing (the pile moved under them) puts the caret back in the box.
+    var typing = !!(document.activeElement && document.activeElement.hasAttribute &&
+                    document.activeElement.hasAttribute('data-sell-qty'));
+    if(paint('omTierBody', '<div class="om-res">'+cells+'</div>')) syncBuilder(typing);
   }
 
   function crow(k, v){ return '<div class="crow"><span class="k">'+esc(k)+'</span><span>'+esc(v)+'</span></div>'; }
@@ -12991,11 +13080,11 @@ function paintInventoryHero(d){
   // departs-in for a loading craft, hold used/capacity). No selection ⇒ a neutral "Select a berth"
   // placeholder over the (blank) art.
   function renderCraft(row){
-    var art = $('omCraftArt'), inner = $('omCraftInner');
+    var art = $('omCraftArt');
     var v = OM.sel ? vehicleById()[OM.sel.id] : null;
     if(!v){
       art.style.backgroundImage = '';
-      inner.innerHTML = '<div class="om-empty-hero">Select a berth</div>';
+      paint('omCraftInner', '<div class="om-empty-hero">Select a berth</div>');
       return;
     }
     art.style.backgroundImage = "url('assets/units/"+String(v.class).toLowerCase()+".jpg')";
@@ -13011,8 +13100,308 @@ function paintInventoryHero(d){
     }
     // hold used / capacity — the two published vehicle fields (§18), no client volume-summing.
     lines += crow('Hold', fmtNum(v.used)+' / '+fmtNum(v.capacity));
-    inner.innerHTML = '<div class="om-craft"><div class="cname">'+esc(pretty(v.class))+' · #'+esc(suffix)+'</div>'+lines+'</div>';
+    paint('omCraftInner', '<div class="om-craft"><div class="cname">'+esc(pretty(v.class))+' · #'+esc(suffix)+'</div>'+lines+'</div>');
   }
+
+  /* ===== SELL TO SYNDICATE from this Outpost (docs/syndicate-orders.md §9.2 / §9.3) ==================
+     The manager's one write. The player builds a sell DRAFT from the resource cells (a quantity box,
+     MAX, Add to order), the right hero shows its summary while it has a line, and Sell to Syndicate
+     sends the whole draft in one action: sellToSyndicate with originOutpostId + an inline cart. The
+     origin IS this Outpost — no picker — and the goods always go to its nearest Syndicate waystation.
+     - The draft is LOCAL: it lives in OM.sell for this open only. It is never posted line by line and
+       never touches guild.sellOrder, so the TRADE tab's own sell order is left exactly as it is.
+     - Every figure is a DISPLAY ECHO (design.md §18) of published values: the posted prices, the
+       goodVolumes / haulerTiers tables, this Outpost's leg (outpostFuelCost) and the fuel hoard. The
+       engine re-checks the whole cart at confirm and refuses it whole if anything is off.
+     - The finalise parts — hero art, hold lookup, quote-lock rule, fuel bar — are the TRADE popup's
+       own, handed over as window.__txParts; the look is its CSS, shared by selector list. */
+
+  // A fresh, empty draft. `lines` is { good: qty }; `open` is the good whose cell is expanded and
+  // `edit` the text in its box; `issueTick` / `prices` / `legCredits` / `rejected` are the §8.1 quote;
+  // `reason` is the engine's answer to a refused sale; `busy` is true while a sale is in flight.
+  function freshSell(){
+    return { lines:{}, open:null, edit:'', issueTick:null, prices:null, legCredits:null,
+             rejected:false, reason:'', busy:false };
+  }
+  function txParts(){ return window.__txParts || null; }   // the TRADE popup's finalise parts
+  function myGuild(){
+    var s = snap(), mine = (window.__player && window.__player().guildId) || null;
+    return ((s && s.guilds) || []).filter(function(g){ return g.id === mine; })[0] || null;
+  }
+  function draftGoods(){ return Object.keys(OM.sell.lines).sort(); }   // good-id order, the engine's
+  // How much of `good` this Outpost can sell: what its stockpile holds, if the Outpost is the player's
+  // own and the Syndicate prices the good (an unpriced good is one the engine refuses to buy). 0 otherwise.
+  function sellableQty(row, good){
+    var p = txParts(), mine = (window.__player && window.__player().guildId) || null;
+    if(!p || !row || row.ownerGuildId !== mine || p.priceOf(good) == null) return 0;
+    return (row.stockpile && row.stockpile[good]) || 0;
+  }
+  // Does this Outpost offer SELL at all? Not when it holds nothing it can sell (§9.2, §9.4).
+  function sellOffered(row){
+    return Object.keys((row && row.stockpile) || {}).some(function(g){ return sellableQty(row, g) > 0; });
+  }
+  // An Outpost that can no longer sell (its pile ran out) has no draft and no open cell (§9.2: an empty
+  // Outpost offers no SELL). Run on every render, before the cells and the hero are drawn.
+  function syncSellDraft(row){
+    if(!sellOffered(row) && (draftGoods().length || OM.sell.open)) OM.sell = freshSell();
+  }
+  function parseQty(text){ var v = parseInt(String(text).replace(/[^0-9]/g, ''), 10); return isNaN(v) ? 0 : v; }
+
+  /* -- the §8.1 quote-lock ------------------------------------------------------------------------ */
+  // The trade popup's txFreezeQuote, mirrored into this draft's OWN state (calling txFreezeQuote itself
+  // would overwrite the trade popup's quote). Frozen when the summary first appears — the first Add —
+  // and again on Refresh: the issue tick, the posted price of EVERY good (lines are added after the
+  // freeze, and the engine prices each at the issue tick), and this Outpost's fuel credits per tier.
+  // The fuel BURN is route geometry, so it stays live, as it does in the trade popup.
+  function sellLeg(){ var g = myGuild(); return (g && g.outpostFuelCost && g.outpostFuelCost[OM.id]) || null; }
+  function sellFreezeQuote(){
+    var s = snap(), leg = sellLeg();
+    OM.sell.issueTick = (s && typeof s.tick === 'number') ? s.tick : null;
+    OM.sell.prices = Object.assign({}, (s && s.prices) || {});
+    OM.sell.legCredits = Object.assign({}, (leg && leg.creditCostByTier) || {});
+    OM.sell.rejected = false;
+  }
+  // The frozen posted price of a good (live only if nothing was frozen for it, as txQuotedPrice does).
+  function sellPrice(good){
+    var f = OM.sell.prices;
+    if(f && Object.prototype.hasOwnProperty.call(f, good)) return f[good];
+    return txParts().priceOf(good);
+  }
+  // The frozen fuel credits of this Outpost's leg at a tier (live only if nothing was frozen for it).
+  function sellLegCredits(tier){
+    var f = OM.sell.legCredits, leg = sellLeg();
+    if(f && f[tier] != null) return f[tier];
+    return (leg && leg.creditCostByTier && leg.creditCostByTier[tier]) || 0;
+  }
+
+  // Every figure the summary shows, from the draft and the published tables (§18 display echoes):
+  //   space    = Σ qty × goodVolumes[good]
+  //   tier     = the smallest haulerTiers hold the space fits (the engine's own rule); null = over
+  //              the heaviest hold, which the engine refuses whole — the over-capacity state
+  //   proceeds = Σ round(qty × frozen price), rounded per line as the engine credits it
+  //   credits / burn = this Outpost's leg at that tier (frozen credits, live burn)
+  // The fuel test is the trade popup's: the burn against the combined hoard, in fuel units.
+  function sellFigures(){
+    var s = snap() || {}, p = txParts(), g = myGuild(), leg = sellLeg();
+    var vol = s.goodVolumes || {}, ladder = s.haulerTiers || [];
+    var goods = draftGoods(), units = 0, space = 0, proceeds = 0;
+    goods.forEach(function(good){
+      var qty = OM.sell.lines[good], price = sellPrice(good);
+      units += qty;
+      space += qty * vol[good];
+      if(price != null) proceeds += Math.round(qty * price);
+    });
+    var tier = null;
+    for(var i = 0; i < ladder.length; i++){ if(space <= ladder[i].hold){ tier = ladder[i].tier; break; } }
+    var credits = tier ? sellLegCredits(tier) : 0;
+    var burn = (tier && leg && leg.fuelBurnByTier && leg.fuelBurnByTier[tier]) || 0;
+    var fuelShort = burn > p.heldUnits(g);
+    return {
+      goods: goods, units: units, space: space, tier: tier, overCap: tier === null,
+      proceeds: proceeds, credits: credits, fuelShort: fuelShort,
+      remaining: p.heldValue(g) - credits,
+      expired: OM.sell.rejected || p.quoteExpiredSince(OM.sell.issueTick)
+    };
+  }
+
+  /* -- the order builder, in the resource cells ------------------------------------------------------ */
+  // The open cell's builder row: a quantity box + MAX (the Dock editor's control), then Add to order.
+  // The box's value is NOT in this HTML — syncBuilder sets it — so typing never changes what paint()
+  // compares, and the poll never rewrites the box under the caret.
+  function sellBuilderHtml(good){
+    return '<div class="om-build">'+
+      '<div class="dk-qtywrap">'+
+        '<input class="dk-qty" type="text" inputmode="numeric" placeholder="0" data-sell-qty="'+esc(good)+'" '+
+          'aria-label="Quantity of '+esc(pretty(good))+' to sell">'+
+        '<button class="dk-max" type="button" data-sell-max="'+esc(good)+'" title="Everything held here">MAX</button>'+
+      '</div>'+
+      '<button class="om-act primary" type="button" data-sell-add="'+esc(good)+'">Add to order</button>'+
+    '</div>';
+  }
+  // Put the draft's typed text into the open cell's box, light Add only for a quantity of 1 or more,
+  // and (when asked) put the caret back in the box.
+  function syncBuilder(focus){
+    var box = $('omTierBody').querySelector('[data-sell-qty]'); if(!box) return;
+    box.value = OM.sell.edit;
+    $('omTierBody').querySelector('[data-sell-add]').disabled = !(parseQty(OM.sell.edit) >= 1);
+    if(focus) box.focus();
+  }
+  // Open a cell's builder (prefilled with the good's draft qty, if it has one), or fold it if open.
+  function sellToggleCell(row, good){
+    if(OM.sell.open === good){ OM.sell.open = null; renderTierBody(row); return; }
+    OM.sell.open = good;
+    OM.sell.edit = OM.sell.lines[good] ? String(OM.sell.lines[good]) : '';
+    renderTierBody(row);
+    var box = $('omTierBody').querySelector('[data-sell-qty]');
+    if(box){ box.focus(); box.select(); }               // typing replaces the prefill
+  }
+  // Digits only, as the TRADE card's quantity box takes them.
+  function sellTyped(box){
+    var digits = String(box.value).replace(/[^0-9]/g, '');
+    if(digits !== box.value) box.value = digits;
+    OM.sell.edit = digits;
+    $('omTierBody').querySelector('[data-sell-add]').disabled = !(parseQty(digits) >= 1);
+  }
+  // MAX fills the box with everything this Outpost holds of the good.
+  function sellMax(row, good){
+    OM.sell.edit = String(sellableQty(row, good));
+    syncBuilder(true);
+  }
+  // Add to order: set the good's line to the box's quantity, clamped to 1..held (an integer — the
+  // box takes digits only). It REPLACES the line, so re-opening a good edits its line rather than
+  // topping it up. The first line brings the summary up, and that is when the quote freezes (§8.1).
+  function sellAdd(row, good){
+    if(OM.sell.busy) return;
+    var qty = Math.min(parseQty(OM.sell.edit), sellableQty(row, good));
+    if(!(qty >= 1)) return;
+    var first = draftGoods().length === 0;
+    OM.sell.lines[good] = qty;
+    OM.sell.open = null; OM.sell.edit = ''; OM.sell.reason = '';
+    if(first) sellFreezeQuote();
+    renderTierBody(row); renderRight(row);
+  }
+  // ✕ on a consignment row drops that line. The last one gone, the summary goes with it (and its quote).
+  function sellRemove(row, good){
+    if(OM.sell.busy) return;
+    delete OM.sell.lines[good];
+    OM.sell.reason = '';
+    if(!draftGoods().length){
+      OM.sell.issueTick = null; OM.sell.prices = null; OM.sell.legCredits = null; OM.sell.rejected = false;
+    }
+    renderTierBody(row); renderRight(row);
+  }
+
+  /* -- the summary, in the right hero ------------------------------------------------------------------ */
+  // The right hero is the sell summary while the draft has a line, and the selected berth's craft
+  // read-out otherwise (the ruling: the summary sits on top).
+  function renderRight(row){
+    var selling = draftGoods().length > 0;
+    document.querySelector('#outpost-overlay .om-right').classList.toggle('selling', selling);  // the trade hero's scrim
+    if(selling) renderSellSummary(row);
+    else renderCraft(row);
+  }
+  function renderSellSummary(row){
+    var p = txParts(), f = sellFigures();
+    // The transport art + tag by the tier, as the trade popup draws them. Over one hold there is no
+    // tier: show the heaviest hauler, flagged.
+    var artTier = f.tier || 'heavy';
+    $('omCraftArt').style.backgroundImage = "url('" + (p.art[artTier] || p.art.heavy) + "')";
+    var tag = f.overCap
+      ? '<div class="herotag over"><b>Over capacity</b> &middot; '+fmtNum(f.space)+' / '+fmtNum(p.holdFor(artTier))+'</div>'
+      : '<div class="herotag"><b>'+esc(f.tier.toUpperCase())+'</b> &middot; '+fmtNum(f.space)+' / '+fmtNum(p.holdFor(f.tier))+'</div>';
+    // Shipping to — a static label: SELL always ships to the origin's nearest waystation (§9.3), and the
+    // snapshot names no waystation, so there is nothing to look up.
+    var ship = '<div><div class="sec-head"><span class="t">Shipping to</span></div>'+
+      '<div class="destcard"><div class="dtop"><span class="rroute"><span class="rway">Syndicate Waystation</span></span></div></div></div>';
+    // The consignment — the trade popup's Qty | Resource list, each row with its ✕.
+    var vol = (snap() || {}).goodVolumes || {};
+    var rows = f.goods.map(function(good){
+      var qty = OM.sell.lines[good];
+      return '<div class="mrow">'+
+        '<span class="mq">'+fmtNum(qty)+'<span class="u">u</span></span>'+
+        '<span class="mr">'+esc(pretty(good))+'<span class="msp">'+fmtNum(qty * vol[good])+' space</span></span>'+
+        '<span class="mx"><button type="button" data-sell-rm="'+esc(good)+'" title="Remove '+esc(pretty(good))+'">&#10005;</button></span>'+
+      '</div>';
+    }).join('');
+    var cons = '<div class="om-cons"><div class="sec-head"><span class="t">Consignment</span>'+
+      '<span class="aux">'+f.goods.length+(f.goods.length === 1 ? ' line' : ' lines')+' &middot; '+fmtNum(f.units)+' u</span></div>'+
+      '<div class="mhead"><span>Qty</span><span>Resource</span><span></span></div>'+
+      '<div class="manifest">'+rows+'</div></div>';
+    // The ledger + the fuel bar (the trade popup's). Over one hold there is no leg to price: "—".
+    var noLeg = f.overCap, short = f.fuelShort;
+    var ledger = '<div class="ledger">'+
+      '<div class="row2 profit"><span class="k">Proceeds</span><span class="v"><b>+&#162;'+fmtNum(f.proceeds)+'</b></span></div>'+
+      '<div class="row2 fuel"><span class="k">Fuel cost</span><span class="v"><b>'+(noLeg ? '&mdash;' : '&#8722;&#162;'+fmtNum(f.credits))+'</b></span></div>'+
+      '<div class="row2"><span class="k">Fuel credits remaining</span><span class="v">'+(noLeg || short ? '&mdash;' : '&#162;'+fmtNum(f.remaining))+'</span></div>'+
+      p.fuelBar(f.credits, short)+
+    '</div>';
+    // The banners, then the button. Sell is off over one hold, short of fuel, on an expired quote, and
+    // while a sale is in flight; the engine re-checks all of it anyway and refuses whole.
+    var banners =
+      (f.overCap ? '<div class="overcap">Over one hold &mdash; trim the order.</div>' : '')+
+      (OM.sell.reason ? '<div class="expired show">'+esc(OM.sell.reason)+'</div>' : '')+
+      (f.expired ? '<div class="expired show">Quote expired &mdash; prices have moved.</div>' : '');
+    var off = OM.sell.busy || f.overCap || short || f.expired;
+    var buttons = '<button class="deploy" type="button" data-sell-act="confirm"'+(off ? ' disabled' : '')+'>Sell to Syndicate</button>'+
+      (f.expired ? '<button class="refresh show" type="button" data-sell-act="refresh">Refresh quote &#8635;</button>' : '');
+    paint('omCraftInner', '<div class="om-sell">'+tag+ship+cons+ledger+banners+buttons+'</div>');
+  }
+
+  /* -- confirm ------------------------------------------------------------------------------------------- */
+  // Sell to Syndicate: ONE action for the whole draft — the inline-cart SELL (§9.2), from this Outpost,
+  // with the frozen issue tick (§8.1). The engine sells the cart and leaves guild.sellOrder alone.
+  //   accepted → the draft is spent: clear it (the hero reverts to the berth read-out) and re-read the
+  //              snapshot, which shows the smaller pile and the credits.
+  //   refused  → keep the draft so the player can trim and retry, and say why: a stale quote flips to
+  //              the expired state + Refresh (as in the trade popup); anything else shows the reason.
+  // If the manager was closed (or reopened) before the answer came back, the answer changes nothing.
+  function sellConfirm(){
+    var row = outpostRow(); if(!row || OM.sell.busy) return;
+    var f = sellFigures();
+    if(!f.goods.length || f.overCap || f.fuelShort || f.expired) return;   // the button is off for each
+    var player = (window.__player && window.__player()) || {};
+    var draft = OM.sell;
+    var cart = f.goods.map(function(good){ return { good: good, qty: draft.lines[good] }; });
+    var action = { type:'sellToSyndicate', guildId: player.guildId, originOutpostId: OM.id, cart: cart };
+    if(typeof draft.issueTick === 'number') action.issueTick = draft.issueTick;
+    draft.busy = true; draft.reason = '';
+    renderRight(row);
+    window.__sendAction(action).then(function(res){
+      draft.busy = false;
+      if(OM.sell !== draft) return;
+      if(res && res.accepted){
+        OM.sell = freshSell();
+        render();
+        if(window.__refreshNow) window.__refreshNow();
+        return;
+      }
+      sellRefused((res && res.reason) || 'The Syndicate refused the sale.');
+    }, function(err){
+      draft.busy = false;
+      if(OM.sell !== draft) return;
+      sellRefused('the Syndicate could not be reached: ' + ((err && err.message) || err));
+    });
+  }
+  function sellRefused(reason){
+    if(txParts().isQuoteRejection(reason)) OM.sell.rejected = true;
+    else OM.sell.reason = String(reason);
+    var row = outpostRow(); if(row) renderRight(row);
+  }
+  // Refresh quote: re-freeze at the current tick, which clears the expired state.
+  function sellRefresh(row){
+    sellFreezeQuote();
+    OM.sell.reason = '';
+    renderRight(row);
+  }
+
+  // The SELL clicks and keys, delegated ONCE on the two regions that repaint — so a repaint never needs
+  // its listeners re-bound.
+  $('omTierBody').addEventListener('click', function(e){
+    var row = outpostRow(); if(!row) return;
+    var max = e.target.closest('[data-sell-max]');
+    if(max){ sellMax(row, max.getAttribute('data-sell-max')); return; }
+    var add = e.target.closest('[data-sell-add]');
+    if(add){ sellAdd(row, add.getAttribute('data-sell-add')); return; }
+    if(e.target.closest('.om-build')) return;                  // a click in the builder row folds nothing
+    var cell = e.target.closest('[data-sell-cell]');
+    if(cell) sellToggleCell(row, cell.getAttribute('data-sell-cell'));
+  });
+  $('omTierBody').addEventListener('input', function(e){
+    if(e.target.hasAttribute('data-sell-qty')) sellTyped(e.target);
+  });
+  $('omTierBody').addEventListener('keydown', function(e){   // Enter in the box = Add to order
+    if(e.key !== 'Enter' || !e.target.hasAttribute('data-sell-qty')) return;
+    var row = outpostRow(); if(row) sellAdd(row, e.target.getAttribute('data-sell-qty'));
+  });
+  $('omCraftInner').addEventListener('click', function(e){
+    var row = outpostRow(); if(!row) return;
+    var rm = e.target.closest('[data-sell-rm]');
+    if(rm){ sellRemove(row, rm.getAttribute('data-sell-rm')); return; }
+    var act = e.target.closest('[data-sell-act]');
+    if(!act || act.disabled) return;
+    if(act.getAttribute('data-sell-act') === 'confirm') sellConfirm();
+    else sellRefresh(row);
+  });
 
   // tab clicks — set state and re-render only the left list (no snapshot change).
   $('omTabDocked').addEventListener('click', function(){ OM.tab='DOCKED'; var r=outpostRow(); if(r){ renderTabs(); renderLeft(r); } });

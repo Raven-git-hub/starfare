@@ -19,7 +19,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
 | 1 | The guild↔Syndicate economy | ✅ Done (deep, 1,855 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine; the client is next); the guild↔guild contest (a rival, territory, the market) is not built yet |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile (client; BUY's destination picker and the notices are next); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -3287,6 +3287,63 @@ boundary so the later hex-map swap doesn't touch it.
     snapshot.
     **Deferred (not invented):** the client (the Outpost Manager's SELL, BUY's destination picker, the delivery
     notices). **Calls on the decision checklist** ("Trading to/from outposts — the inline-cart SELL — two calls").
+    *(⤳ 04-10-26: the Outpost Manager's SELL is BUILT, next.)*
+  - **client: the Outpost Manager's SELL panel (CLIENT ONLY, `client/game.html`).** 🟢 *BUILT (04-10-26).* The client
+    for §9.2's Outpost origin: the manager builds a local sell draft and sends it whole as the inline-cart
+    `sellToSyndicate`. AS-BUILT in `syndicate-orders.md` §9.2.
+    **Changed:** the Outpost Manager gains its one write, in its own block. A resource cell for a good the Outpost
+    holds (and the Syndicate prices) opens into a row with a quantity box, **MAX** and **Add to order**, which sets
+    that good's line in the draft (clamped 1..held). A 0-held cell is inert, and an Outpost with nothing to sell offers
+    no builder. While the draft has a line, the right hero is the sell summary: transport art + `TIER · space / hold`
+    by tier, **Shipping to: Syndicate Waystation**, the consignment with a ✕ per row, Proceeds / Fuel cost / Fuel
+    credits remaining, the fuel bar, and **Sell to Syndicate**. An empty draft reverts to the berth read-out. Space
+    (Σ `qty × goodVolumes`), the tier (the smallest `haulerTiers` hold) and the leg (`outpostFuelCost[id]` at that
+    tier) are display echoes (§18). Over the heavy hold the tag reads Over capacity, the hint "Over one hold — trim
+    the order." shows and Sell is disabled. The quote freezes at the first Add (and on Refresh). Confirm sends one
+    `sellToSyndicate { guildId, originOutpostId, cart, issueTick }`. Accepted clears the draft; refused keeps it and
+    shows the engine's reason (a stale quote shows the expired state + Refresh). The draft lives in the manager for
+    this open only and never touches `guild.sellOrder`. The 1-second poll rewrites a region only when its HTML
+    changed, so it never resets the draft, the quote or the caret.
+    **Reused:** the trade popup hands its finalise parts over as `window.__txParts` — `TX_ART`, `txHoldFor`,
+    `priceOf`, the combined fuel readings, the expiry rule `txQuoteExpiredSince` (split out of `txExpired`, which
+    now calls it, so the mirrored `QUOTE_TTL_TICKS` is still read in one place), `txIsQuoteRejection`, `txFuelBar` —
+    and `__sendAction`. The look is the trade popup's own CSS (51 rules) and the Dock editor's quantity box + MAX (5
+    rules), each rule gaining `#outpost-overlay` as a second selector; the summary's consignment sits on the "Shipping
+    to" card's panel so it reads over the art. **Added:** the manager's `paint` (write a region only when it changed)
+    and the SELL block. `txFreezeQuote` is mirrored (`sellFreezeQuote`), not called: it writes the trade popup's own
+    `TX` and freezes only the held order's goods, so calling it would overwrite an open trade quote.
+    **The brief vs the code:** the brief listed a "`tc-box` Time · Fuel credits ledger" among the trade finalise's
+    parts. The `tc-box` is the Dispatch / Deploy route quote; the trade SELL finalise's ledger is `.ledger` rows +
+    the fuel bar, which is what the summary reuses (decision checklist). There were no outpost-overlay markup pins in
+    the served-page tripwire to update.
+    **Pins (`sim/tests/server.test.js`):** the bare `!/\bcart:/` pin (written for the retired BUY cart) now checks
+    the BUY action carries no cart, and that the page's ONE `cart:` is a `sellToSyndicate` from `originOutpostId`. The
+    two quote-lock pins follow the shared rule, plus one checking the trade popup calls it with `TX.issueTick` and one
+    that the TTL is mirrored once. +1 test pins the panel: the inline-cart action, no `addOrderLine` / `clearOrder` /
+    `originSystemId` in the manager, the display-echo formulas, the reused parts, no TTL copy, the shared CSS. Four
+    mutations of the page (a system origin, a per-Add `addOrderLine`, a second TTL copy, the tier by units) each
+    turned it red.
+    **A NO-OP for `sim/` and `tools/`:** `git diff -- sim tools ':!sim/tests/server.test.js'` is empty; no engine
+    file or golden was touched. Sim **1,967 → 1,968 green** (+1, the panel's served-page test), tools **75 green**.
+    **Driven headless** on a seated seed-42 server (home `sys_0006`). `spawn-outpost --hex 105,55`, stocked through
+    two BUYs to the Outpost (1b): 3,000 titanium, 40 battery cells, 109 hull plating. A trade-tab draft was built
+    first (`addOrderLine` sell titanium 250). (a) Only the titanium cell opens on the Raw tab; Ammonia (0 held) does
+    not. MAX fills 3,000; typed "20x00" reads 2000; two polls later the caret and the 2000 are still in the box.
+    (b) Add brings the summary up: LIGHT · 2,000 / 10,000, then LIGHT · 6,000 / 10,000 with the battery cells. Two
+    polls leave it unchanged. Removing both lines reverts the hero to the berth read-out. (d) + 109 hull plating:
+    Over capacity · 6,546,000 / 6,000,000, the hint, Sell disabled; trimmed to 99, HEAVY · 5,946,000 / 6,000,000 and
+    Sell on. Six ticks expired the quote; Refresh re-quoted. (c) Sell sent exactly
+    `{"type":"sellToSyndicate","guildId":"seat_demo","originOutpostId":"outpost_seat_demo_01","cart":[{"good":"battery_cells","qty":40},{"good":"titanium","qty":2000}],"issueTick":1057}`.
+    The stockpile went `{battery_cells 40, hull_plating 109, titanium 3000}` → `{hull_plating 109, titanium 1000}`,
+    credits rose by exactly the summary's Proceeds (+3,603), fuel −4 (the light leg), the draft cleared, and
+    `guild.sellOrder` was byte-identical. An operator sale then took 600 of the last 1,000 titanium from under a
+    1,000 draft: Sell was refused ("… titanium (need 1000, hold 400)"), the reason showed in the summary, and the
+    draft was kept. (e) The TRADE tab, captured on the pre-change page and on this one at the same tick: the SELL
+    popup is pixel-identical (the whole tab differs at most in a few pixels of hero-art decode noise, as two loads of
+    one page do). Its Sell Order → Ship from `sys_0006` → confirm sent `sellToSyndicate { originSystemId: sys_0006,
+    issueTick }`, no cart; home titanium 5,000 → 4,750 and the held order cleared. No page errors.
+    **Deferred (not invented):** BUY's destination picker and the two delivery notices (the next client slices).
+    **Calls on the decision checklist** ("Trading to/from outposts — the Outpost Manager's SELL — five calls").
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
@@ -3526,6 +3583,20 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   The brief, and §9.2's "the mirror of `buyFromSyndicate`'s existing inline cart", describe both as live. They were
   retired in the cleanup slice (§5), so only the SELL cart was built, and a stray `allocations` key is still ignored,
   as before. Confirm. Or rule a BUY cart as its own slice, if the client's destination picker wants one.
+- **Trading to/from outposts — the Outpost Manager's SELL — five calls (04-10-26, 2.2 client, `syndicate-orders.md`
+  §9.2 client AS-BUILT)**, built one way and flagged rather than ruled. **(1) The ledger is the trade SELL's, not a
+  `tc-box`.** The brief named a "`tc-box` Time · Fuel credits ledger" as a trade finalise part, but the `tc-box` is
+  the Dispatch / Deploy route quote. The summary reuses the trade SELL popup's own ledger rows + fuel bar, so both
+  SELL paths read alike. Confirm, or rule the `tc-box` look for the summary. **(2) `txFreezeQuote` is mirrored, not
+  called.** It writes the trade popup's own state and freezes only the held order's goods, so the manager freezes into
+  its own draft by the same rule (the issue tick, every good's price, the Outpost's per-tier fuel credits). The
+  expiry rule and its one TTL are shared. Confirm. **(3) A draft is not trimmed when the pile shrinks under it.** If
+  a dock load or another sale takes goods after Add, the line keeps its quantity and the engine refuses the sale
+  whole, naming the short line; the player trims. Only an Outpost left with nothing to sell drops its draft. Confirm,
+  or rule a silent clamp to the held amount. **(4) Add replaces the line, it does not top it up.** The trade card's
+  Add tops up (`addOrderLine`); here the box shows the line's quantity when re-opened, and Add sets it. Confirm.
+  **(5) No receipt after a sale.** The trade popup shows a "Consignment sold" view; the manager, as briefed, clears the
+  draft and lets the next poll show the smaller pile and the credits. Confirm, or rule a short receipt line.
 - **Split the oversized engine files — WHEN? (02-10-26, flagged by the 2.2 deploy pipeline engine-integrity tidy.)**
   `sim/actions.js` (5,258 lines) and `sim/server.js` (1,530) are far past a readable size for a codebase the human
   reads line by line; `sim/invariants.js` (2,386), `sim/snapshot.js` (2,120) and `sim/tick.js` (1,771) are also large.
@@ -3545,7 +3616,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   per-system `fuelCost` body moved, unchanged, into `routeQuoteFor`.)* *(⤳ 04-10-26, trading to/from outposts slice
   1b: `sim/actions.js` 5,408 → 5,519 lines and `sim/tick.js` 1,771 → 1,849, mostly comments beside the new reader,
   gates, warning and arrival branch.)* *(⤳ 04-10-26, the inline-cart SELL: `sim/actions.js` 5,519 → 5,588 lines,
-  mostly comments beside the three new helpers.)*
+  mostly comments beside the three new helpers.)* *(⤳ 04-10-26, the Outpost Manager's SELL: `client/game.html` 13,481
+  → 13,869 lines, +388: the SELL block (its own section inside the manager's IIFE, heavily commented) and its CSS.)*
 
 - **Asset-presence vs. production** — *surfaced 16-09-26 by the operator adjust levers
   (`docs/operator-adjust.md` §3.5 AS-BUILT).* Production is currently **asset-blind** — a venture

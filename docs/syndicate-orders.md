@@ -312,7 +312,9 @@ anything.
 
 > **AS-BUILT (engine slice 1a, 03-10-26) — the engine SELL half.** `sellToSyndicate` (`sim/actions.js`) now
 > finalises from a held system or from one of the guild's own Outposts. The client is a later slice, so the
-> Outpost Manager's SELL and the removal of the origin dropdown are not built yet.
+> Outpost Manager's SELL and the removal of the origin dropdown are not built yet. *(⤳ 04-10-26: the Outpost
+> Manager's SELL is BUILT, sending the inline cart — the client AS-BUILT below. The origin dropdown stays: its
+> removal was withdrawn, see SUPERSEDED below.)*
 > - **The origin shape.** The action takes **exactly one** of `originSystemId` (unchanged, and still what the live
 >   client sends) or **`originOutpostId`** (new). Both, or an empty id, is refused. Neither gets the old
 >   `originSystemId must be a non-empty string`. `createSellToSyndicateAction` puts only the field given into the
@@ -373,7 +375,7 @@ gate — an order over one hauler hold is reject-wholed at confirm.
 
 > **AS-BUILT (engine: the inline-cart SELL, 04-10-26).** `sellToSyndicate` (`sim/actions.js`) now takes an optional
 > **`cart: [{ good, qty }, …]`** beside its origin. The client is a later slice, so the Outpost Manager's SELL is not
-> built yet.
+> built yet. *(⤳ 04-10-26: BUILT — the client AS-BUILT next.)*
 > - **Which path.** The cart's *presence* picks it. An action with a `cart` sells the cart; one without finalises the
 >   held order exactly as before. An empty cart, or one that is not an array, is refused (`a SELL cart must carry at
 >   least one { good, qty } line`), never read as "no cart", so a bad cart cannot fall through and sell the trade-tab
@@ -398,6 +400,47 @@ gate — an order over one hauler hold is reject-wholed at confirm.
 > - Tests: `sim/tests/sell-cart.test.js` (16). Operator path: the existing `POST /action` with
 >   `{ type: 'sellToSyndicate', guildId, originOutpostId, cart: [{ good, qty }, …] }` (or `originSystemId`); no new
 >   endpoint or CLI verb.
+
+> **AS-BUILT (client: the Outpost Manager's SELL panel, 04-10-26).** `client/game.html` only; no `sim/` change. The
+> Outpost Manager (`#outpost-overlay`) gains its one write, in its own block ("SELL TO SYNDICATE from this Outpost").
+> - **The builder.** A resource cell for a good this Outpost holds, and the Syndicate prices, is clickable. It opens
+>   into a full-width row: a quantity box (digits only), **MAX** (fills the held amount) and **Add to order**. Add sets
+>   that good's line to the box's quantity, clamped to 1..held. It replaces the line rather than topping it up, so
+>   re-opening a good edits its line. A good in the draft shows "In order" after its quantity. A 0-held cell is inert,
+>   as before. An Outpost with nothing it can sell offers no builder and no summary, and a draft left over when its
+>   pile runs out is dropped.
+> - **The draft is local.** It lives in the manager's own state for this open only: reset on open and on close,
+>   including the self-close when the Outpost is torn down. Nothing is posted until confirm, and `guild.sellOrder` is
+>   never read or written, so a trade-tab draft stays as it is. The 1-second poll rewrites a region only when its
+>   HTML changed, so it never resets the draft, the frozen quote, or the caret in the quantity box.
+> - **The summary** takes the right hero while the draft has a line; an empty draft reverts to the selected berth's
+>   read-out. Top to bottom: the transport art by tier (`TX_ART`, under the trade popup's scrim) and its
+>   `TIER · space / hold` tag; **Shipping to: Syndicate Waystation**, a static label (the snapshot names no
+>   waystation); the consignment (Qty | Resource, a ✕ per row); the ledger — **Proceeds** Σ `round(qty × frozen
+>   price)`, **Fuel cost** (`outpostFuelCost[id].creditCostByTier[tier]`, frozen), **Fuel credits remaining** (the
+>   combined hoard's credit value less that cost) — and the trade popup's fuel bar; then **Sell to Syndicate**.
+> - **Display echoes (§18).** Space = Σ `qty × goodVolumes[good]`; the tier is the smallest `haulerTiers` hold it fits,
+>   the engine's own rule; the fuel gate reads `fuelBurnByTier[tier]` against the combined hoard, as the trade popup
+>   does. Over the heavy hold the tag reads **Over capacity**, the hint "Over one hold — trim the order." shows, and
+>   Sell is disabled. The engine stays the gate.
+> - **Quote-lock (§8.1).** The quote freezes when the summary first appears (the first Add) and on Refresh: the issue
+>   tick, every good's posted price (lines are added after the freeze, and the engine prices each at the issue tick),
+>   and this Outpost's per-tier fuel credits. Expiry runs the trade popup's one rule against the draft's issue tick;
+>   expired shows the trade popup's banner and Refresh, and disables Sell.
+> - **Confirm** sends ONE action: `sellToSyndicate { guildId, originOutpostId, cart: [{ good, qty }, …], issueTick }`,
+>   the cart in good-id order. Accepted: the draft clears and the snapshot is re-read. Refused: the draft is kept so
+>   the player can trim and retry. A stale quote flips to the expired state; any other reason (short stock, fuel, over
+>   the hold) shows the engine's own words in the summary.
+> - **Reused, not copied.** The trade popup hands its finalise parts to the manager as `window.__txParts`: `TX_ART`,
+>   `txHoldFor`, `priceOf`, the combined fuel readings, `txQuoteExpiredSince` (the expiry rule, split out of
+>   `txExpired`, which now calls it with its own issue tick), `txIsQuoteRejection` and `txFuelBar`. The look is the
+>   trade popup's CSS (51 rules) and the Dock editor's quantity box + MAX (5 rules), each rule gaining `#outpost-overlay`
+>   as a second selector; the trade SELL popup renders pixel-identical. `txFreezeQuote` is mirrored rather than
+>   called, because it writes the trade popup's own state and freezes only the held order's goods.
+> - **Unchanged:** the TRADE tab — the SELL card, the Sell Order button, the held-order finalise, the Ship-from
+>   dropdown. The System Manifest has no sell.
+> - Tests: the served-page tripwire (`sim/tests/server.test.js`). Its bare `cart:` pin is narrowed to BUY, since the
+>   page's one `cart:` is now this sale; the two quote-lock pins follow the shared rule; +1 test pins this panel.
 
 > **SUPERSEDED (reversed after playtest, 04-10-26) — the node-relocation of SELL.** The 03–04/10 version of
 > this section made SELL *only* contextual: the trade-tab SELL card retired, the origin dropdown removed, all
