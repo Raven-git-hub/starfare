@@ -329,11 +329,17 @@ test('reject-whole: a malformed cart — fail loud, never deduplicated or coerce
 test('reject-whole: the origin is exactly one node and must be the guild\'s — with a cart as without', () => {
   const s = buildSell(cartState(), [[T1, 1]]);
   const raw = (fields) => ({ type: 'sellToSyndicate', guildId: 'g1', cart: CART, ...fields });
-  refuseUntouched(s, raw({ originSystemId: HOME.id, originOutpostId: 'outpost_g1_01' }),
-    /ONE origin — give originSystemId or originOutpostId, not both/);
-  // Neither: the system check's own refusal, word for word.
-  assert.equal(refuseUntouched(s, raw({}), /originSystemId/), 'originSystemId must be a non-empty string');
-  refuseUntouched(s, raw({ originOutpostId: '' }), /originOutpostId must be a non-empty string/);
+  // Both: unchanged, word for word.
+  assert.equal(refuseUntouched(s, raw({ originSystemId: HOME.id, originOutpostId: 'outpost_g1_01' }), /not both/),
+    'a sell order ships from ONE origin — give originSystemId or originOutpostId, not both (docs/syndicate-orders.md §9)');
+  // Neither: refused whole, and the refusal names BOTH origins. It must not fall back to the old
+  // `originSystemId`-only wording, which hid that an Outpost origin is just as valid.
+  const neither = refuseUntouched(s, raw({}), /ONE origin/);
+  assert.equal(neither, 'a sell order ships from ONE origin — give originSystemId or originOutpostId (docs/syndicate-orders.md §9)');
+  assert.notEqual(neither, 'originSystemId must be a non-empty string');
+  // One origin given but empty: each field's own check, unchanged, word for word.
+  assert.equal(refuseUntouched(s, raw({ originSystemId: '' }), /originSystemId/), 'originSystemId must be a non-empty string');
+  assert.equal(refuseUntouched(s, raw({ originOutpostId: '' }), /originOutpostId/), 'originOutpostId must be a non-empty string');
   // A rival's Outpost (stocked with titanium) — the node-held gate, not stock.
   refuseUntouched(s, raw({ originOutpostId: 'outpost_g2_01' }), /guild "g1" owns no outpost "outpost_g2_01" to sell from/);
 });

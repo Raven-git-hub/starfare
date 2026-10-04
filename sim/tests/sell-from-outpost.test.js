@@ -252,8 +252,10 @@ test('the origin is EXACTLY ONE node — both, an empty id, or neither is refuse
   const both = { type: 'sellToSyndicate', guildId: 'g1', originSystemId: HOME.id, originOutpostId: 'outpost_g1_01' };
   assert.match(refuse(s, both), /ONE origin — give originSystemId or originOutpostId, not both/);
   assert.match(refuse(s, { type: 'sellToSyndicate', guildId: 'g1', originOutpostId: '' }), /originOutpostId must be a non-empty string/);
-  // Neither: the system check's own refusal, word for word as before §9.
-  assert.equal(refuse(s, { type: 'sellToSyndicate', guildId: 'g1' }), 'originSystemId must be a non-empty string');
+  // Neither: the refusal names BOTH origins, never the old `originSystemId`-only wording.
+  const neither = refuse(s, { type: 'sellToSyndicate', guildId: 'g1' });
+  assert.equal(neither, 'a sell order ships from ONE origin — give originSystemId or originOutpostId (docs/syndicate-orders.md §9)');
+  assert.notEqual(neither, 'originSystemId must be a non-empty string');
 
   assert.throws(() => createSellToSyndicateAction({ guildId: 'g1', originSystemId: HOME.id, originOutpostId: 'outpost_g1_01' }), /exactly one/);
   assert.throws(() => createSellToSyndicateAction({ guildId: 'g1' }), /exactly one/);

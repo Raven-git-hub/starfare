@@ -3517,6 +3517,23 @@ boundary so the later hex-map swap doesn't touch it.
     The `outpost-gone` popup's Outpost fact read "a dismantled outpost", its body the Trader's line unchanged. The
     same drive on `origin/main`'s page read "Hold empty" on both panels and "outpost_test-guild_03" in the inbox. No
     page errors. **Calls on the decision checklist** ("Trading to/from outposts — the client niggles — four calls").
+  - **the neither-origin SELL message (ENGINE, `sim/actions.js`, wording only).** 🟢 *BUILT (04-10-26).* A niggle
+    found playing the finished item. A `sellToSyndicate` with neither `originSystemId` nor `originOutpostId` read
+    `originSystemId must be a non-empty string`, which hid that an Outpost origin is just as valid. It now reads
+    `a sell order ships from ONE origin — give originSystemId or originOutpostId (docs/syndicate-orders.md §9)`, in
+    the both-origins refusal's style and with its cite. **Behaviour is unchanged:** a neither sale is still refused
+    whole, held order or inline cart. The both-origins message and each field's empty-id message
+    (`originSystemId` / `originOutpostId must be a non-empty string`) are unchanged, word for word. "Not given" means
+    `undefined`, the same test the creator and the both-origins check use. AS-BUILT in `syndicate-orders.md` §9.2,
+    which quoted the old wording. No snapshot, state or client change.
+    **Pins:** `sim/tests/sell-from-outpost.test.js` (held order) and `sim/tests/sell-cart.test.js` (inline cart) now
+    pin the new wording exactly and assert it is not the old one. The cart test also pins, exactly, the both-origins
+    message and both empty-id messages (`originSystemId: ''` was not pinned before). Four mutations of the engine
+    each turned a test red: the neither branch removed (the old wording back), a falsy test in place of `undefined`
+    (an empty `originSystemId` swallowed by the neither branch), the both-origins message reworded, and the new
+    message naming only `originSystemId`. No golden-bearing test file was touched. Sim **1,975 → 1,975 green** (two
+    existing tests rewritten, none added), tools **75 green**. **Calls on the decision checklist** ("Trading to/from
+    outposts — the neither-origin SELL message — two calls").
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
@@ -3843,6 +3860,16 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   id, so this is unreachable. And §9.4's other `outpost-gone` case, an Outpost that still exists but is no longer
   this guild's (no action does this today), would show that Outpost's live name, since it is still on the snapshot.
   Confirm both.
+- **Trading to/from outposts — the neither-origin SELL message — two calls (04-10-26, 2.2, `syndicate-orders.md`
+  §9.2 AS-BUILT)**, built one way and flagged rather than ruled. **(1) BUY has the same niggle, left as is.** A
+  `buyFromSyndicate` with neither `destinationSystemId` nor `destinationOutpostId` still reads `destinationSystemId
+  must be a non-empty string` (pinned word for word in `sim/tests/buy-to-outpost.test.js`), which hides
+  `destinationOutpostId` the same way. The slice was SELL only. Confirm, or rule the mirror: `a buy order delivers to
+  ONE destination — give destinationSystemId or destinationOutpostId (docs/syndicate-orders.md §9)`. **(2) What "not
+  given" means.** The neither message fires only when both fields are `undefined`, the same test the creator and the
+  both-origins check use. So `originSystemId: null` (or `0`, or `''`) counts as given and still gets `originSystemId
+  must be a non-empty string`. The live client never sends `null`. Confirm, or rule that `null` also counts as not
+  given.
 - **Split the oversized engine files — WHEN? (02-10-26, flagged by the 2.2 deploy pipeline engine-integrity tidy.)**
   `sim/actions.js` (5,258 lines) and `sim/server.js` (1,530) are far past a readable size for a codebase the human
   reads line by line; `sim/invariants.js` (2,386), `sim/snapshot.js` (2,120) and `sim/tick.js` (1,771) are also large.
@@ -3865,7 +3892,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   mostly comments beside the three new helpers.)* *(⤳ 04-10-26, the Outpost Manager's SELL: `client/game.html` 13,481
   → 13,869 lines, +388: the SELL block (its own section inside the manager's IIFE, heavily commented) and its CSS.)*
   *(⤳ 04-10-26, the delivery notices: `client/game.html` 13,935 → 14,007 lines, +72, mostly the Trader's copy and
-  comments beside the four new notice helpers.)*
+  comments beside the four new notice helpers.)* *(⤳ 04-10-26, the neither-origin SELL message: `sim/actions.js`
+  5,588 → 5,593 lines, the new refusal branch and its comment.)*
 
 - **Asset-presence vs. production** — *surfaced 16-09-26 by the operator adjust levers
   (`docs/operator-adjust.md` §3.5 AS-BUILT).* Production is currently **asset-blind** — a venture

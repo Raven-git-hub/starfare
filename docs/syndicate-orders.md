@@ -375,7 +375,11 @@ anything.
 > removal was withdrawn, see SUPERSEDED below.)*
 > - **The origin shape.** The action takes **exactly one** of `originSystemId` (unchanged, and still what the live
 >   client sends) or **`originOutpostId`** (new). Both, or an empty id, is refused. Neither gets the old
->   `originSystemId must be a non-empty string`. `createSellToSyndicateAction` puts only the field given into the
+>   `originSystemId must be a non-empty string`. *(⤳ 04-10-26, the neither-origin message: neither now gets
+>   `a sell order ships from ONE origin — give originSystemId or originOutpostId (docs/syndicate-orders.md §9)`.
+>   It names both options, in the both-origins refusal's style; the old wording hid that an Outpost origin is just
+>   as valid. Still refused whole, so only the wording changed. A given but empty `originSystemId` keeps the old
+>   wording.)* `createSellToSyndicateAction` puts only the field given into the
 >   action, so a system sale's action is exactly what it was. A separate field was chosen over a unified
 >   `origin: { kind, id }` ref so the system path did not change at all: the same action shape, the same refusal
 >   wording, and nothing to migrate.

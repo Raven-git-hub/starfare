@@ -3062,7 +3062,8 @@ function validateAction(state, action) {
     // `allocations` multi-system path was RETIRED with the client slice, §8.)
     //
     // ⤳ THE ORIGIN IS A NODE (§9): EXACTLY ONE of `originSystemId` or `originOutpostId`. With no
-    // `originOutpostId` this is the system check it always was, word for word.
+    // `originOutpostId` this is the system check it always was, word for word — except NEITHER,
+    // whose refusal names both options (it used to name `originSystemId` alone).
     //
     // ⤳ AN INLINE CART (§9.2): an action carrying `cart` sells those lines instead of the held order,
     // through the SAME origin check and the SAME gates; only where the lines come from differs.
@@ -3081,6 +3082,10 @@ function validateAction(state, action) {
       if (!outpost || outpost.ownerGuildId !== guild.id) {
         return { valid: false, reason: `guild ${JSON.stringify(guild.id)} owns no outpost ${JSON.stringify(action.originOutpostId)} to sell from (docs/syndicate-orders.md §9.4)` };
       }
+    } else if (action.originSystemId === undefined) {
+      // NEITHER origin. Name both options, like the both-origins refusal above. "Not given" means
+      // `undefined`, the same test the creator and the both-origins check use.
+      return { valid: false, reason: 'a sell order ships from ONE origin — give originSystemId or originOutpostId (docs/syndicate-orders.md §9)' };
     } else if (typeof action.originSystemId !== 'string' || action.originSystemId.length === 0) {
       return { valid: false, reason: 'originSystemId must be a non-empty string' };
     }
