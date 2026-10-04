@@ -102,6 +102,9 @@ already carries. The trade-floor gauge and the finalise popup render these; they
 > *(⤳ §9, 03/04-10-26: the target is now a NODE. `sellToSyndicate` also takes `originOutpostId` (slice 1a,
 > §9.2 AS-BUILT) and `buyFromSyndicate` also takes `destinationOutpostId` (slice 1b, §9.1 / §9.4 AS-BUILT),
 > each as an exactly-one-of alternative to the system field. The system paths above are unchanged.)*
+> *(⤳ §9.2, 04-10-26: `sellToSyndicate` takes an inline `cart` again. It is a NEW path for the Outpost Manager's
+> sale, not the retired intake revived: it sells the cart and never touches `sellOrder`. BUY's inline cart and the
+> `allocations` SELL stay retired.)*
 
 The transaction popup's confirm **finalises the held order** — this is the permanent shape of
 `buyFromSyndicate` / `sellToSyndicate`, replacing PR #89's inline-cart BUY and the multi-system SELL:
@@ -367,6 +370,34 @@ lifetime for a look-at-the-pile-and-sell-it-now act). The trade-tab system SELL 
 (§5) exactly as before. §18 holds: the summary's proceeds, fuel, consignment space and hauler tier are display
 echoes of the engine's own formulas over the published volume/hold tables, and the engine is the authoritative
 gate — an order over one hauler hold is reject-wholed at confirm.
+
+> **AS-BUILT (engine: the inline-cart SELL, 04-10-26).** `sellToSyndicate` (`sim/actions.js`) now takes an optional
+> **`cart: [{ good, qty }, …]`** beside its origin. The client is a later slice, so the Outpost Manager's SELL is not
+> built yet.
+> - **Which path.** The cart's *presence* picks it. An action with a `cart` sells the cart; one without finalises the
+>   held order exactly as before. An empty cart, or one that is not an array, is refused (`a SELL cart must carry at
+>   least one { good, qty } line`), never read as "no cart", so a bad cart cannot fall through and sell the trade-tab
+>   draft. Two small helpers, `sellIsHeldOrder` and `sellFinalizeLines`, give validate and apply the same answer and
+>   the same lines.
+> - **A correction to the wording above.** `buyFromSyndicate` has no inline cart today: it was retired in the cleanup
+>   slice (§5). The SELL cart mirrors how that retired cart worked (its presence rule, its line checks, one reader for
+>   validate and apply). BUY is not given a cart back.
+> - **The checks.** A cart was never built through `addOrderLine`, so validate first checks what building would have
+>   refused: a line that is not an object, fuel, a good twice (`sellCartProblem`, in the words `addOrderLine` and the
+>   BUY use). Then the cart goes through the SAME per-line loop and gates as a held order: each good priced, each qty
+>   a positive integer, the stock in the origin's own pile (naming every short line, §7), the hauler-hold cap, the fuel
+>   leg from the origin's hex, and the §8.1 quote-lock. A malformed cart is refused whole, never deduplicated or
+>   coerced. Either origin works, read through `sellOrigin`, unchanged.
+> - **Apply.** Settlement is the held order's, line for line: the goods leave the origin (omit-when-empty), Σ
+>   `round(qty × quotedPrice)` is credited from the ledger, one leg is burned, galactic supply is re-derived, and no
+>   shipment is made. The one difference: **`guild.sellOrder` is not read, written or cleared.** The cart lives only on
+>   the action (and so in the journal), never on the guild, so `checkOrders` never sees it. The engine sorts a copy of
+>   the cart and leaves the action as it was sent.
+> - **Unchanged:** the held-order path (system and Outpost origins), `sellOrigin`, the gates, the leg, the pricing,
+>   and `buyFromSyndicate`. There is no `allocations` path to keep: it was retired with the BUY cart (§5).
+> - Tests: `sim/tests/sell-cart.test.js` (16). Operator path: the existing `POST /action` with
+>   `{ type: 'sellToSyndicate', guildId, originOutpostId, cart: [{ good, qty }, …] }` (or `originSystemId`); no new
+>   endpoint or CLI verb.
 
 > **SUPERSEDED (reversed after playtest, 04-10-26) — the node-relocation of SELL.** The 03–04/10 version of
 > this section made SELL *only* contextual: the trade-tab SELL card retired, the origin dropdown removed, all

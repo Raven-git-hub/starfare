@@ -3168,6 +3168,9 @@ boundary so the later hex-map swap doesn't touch it.
   target). *(⤳ REVISED 04-10-26, `syndicate-orders.md` §9.1 / §9.4: BUY is NOT capped at placement and
   nothing is reserved. A buy to a full Outpost departs, with a space-warning notice when it does not fit
   now; on arrival the whole consignment lands or is lost, with a turn-back notice. 1b is built to that.)*
+  *(⤳ REVISED again 04-10-26, `syndicate-orders.md` §9.2: SELL from an Outpost is ADDITIVE. The trade-tab SELL
+  and its origin dropdown stay as they are; the Outpost Manager gains its own SELL, sent to the engine as an
+  inline cart (built below). The client slices built to the node-relocation were reverted from `main`.)*
   - **slice 1a — SELL from a node (ENGINE + operator CLI, NO client).** 🟢 *BUILT (03-10-26).*
     **Changed:** `sellToSyndicate` (`sim/actions.js`) takes exactly one of `originSystemId` (unchanged, still
     what the live client sends) or the new **`originOutpostId`**. One reader, `sellOrigin`, gives validate and
@@ -3250,6 +3253,40 @@ boundary so the later hex-map swap doesn't touch it.
     **Deferred (not invented):** the client (the Trader's messages, BUY's default-nearest target and override,
     the Outpost delivery's map leg). **Calls on the decision checklist** ("Trading to/from outposts slice 1b —
     five calls").
+  - **engine: the inline-cart SELL (ENGINE + operator CLI, NO client).** 🟢 *BUILT (04-10-26).* The one engine
+    change the corrected §9.2 needs; the Outpost Manager's SELL that sends it is a later client slice.
+    **Changed:** `sellToSyndicate` (`sim/actions.js`) takes an optional **`cart: [{ good, qty }, …]`** beside its
+    origin. With a cart, the cart is the order: it is sold from the origin under the held order's gates and
+    settlement, and `guild.sellOrder` is not read, written or cleared. Without one, the held order is finalised
+    exactly as before. The cart's presence picks the path, so an empty or non-array cart is refused rather than
+    falling through to the draft. `createSellToSyndicateAction` puts `cart` into the action only when given.
+    **Added:** `sellIsHeldOrder` and `sellFinalizeLines` (one source of lines for validate and apply, as
+    `buyFinalizeCart` is for BUY), and `sellCartProblem` (what `addOrderLine` would have refused: a line that is not
+    an object, fuel, a good twice). **Reused unchanged:** `sellOrigin`, the per-line loop (priced, positive-integer
+    qty, the origin's stock), the capacity, fuel and quote-lock gates, `routeFuelCostFromHex`, `burnFuel`,
+    `computeGalacticSupply`. **No operator change:** `POST /action` takes `{ type: 'sellToSyndicate', guildId,
+    originOutpostId, cart }` as is, and journals the cart with the action.
+    **The brief vs the code:** the brief described `buyFromSyndicate`'s inline cart and a legacy `allocations` SELL
+    as live. Both were retired in the cleanup slice (`syndicate-orders.md` §5). The SELL cart mirrors how the
+    retired BUY cart worked; neither retired path was revived (§9.2 AS-BUILT).
+    **A NO-OP for every existing golden:** no golden-bearing test file was touched, and no golden sells by cart. One
+    scenario of the existing shapes (held-order sells from a system and an Outpost, a quote-locked sell, buys to both
+    node kinds, five refusals, a stray `allocations` key, then 1,200+ ticks) was run on `main` and on this branch:
+    all 1,230 recorded state and snapshot hashes were byte-identical. Sim **1,951 → 1,967 green** (+16,
+    `sim/tests/sell-cart.test.js`), tools **75 green**. Each new test was checked by breaking the code it guards
+    (10 mutations, each caught).
+    **Driven headless** on a seated seed-42 server (home `sys_0006`). The 1a test bed (`spawn-outpost --hex 106,12`)
+    was stocked by a light transport's dock unload: 3,000 titanium + 40 battery cells. A trade-tab draft was built
+    first (`addOrderLine` titanium 250 + ammonia 9). Then `sellToSyndicate { originOutpostId: outpost_seat_demo_01,
+    cart: [titanium 2000, battery_cells 40] }`: credits +3,337 (`round(2000 × 1.46874…)` + `round(40 × 10)`), fuel −8
+    (the Outpost's light leg; home's is 4), the stockpile `{titanium 3000, battery_cells 40}` → `{titanium 1000}`,
+    shipments 0 → 0, supply down by exactly the cart, and the draft **byte-identical**. Refused whole, nothing moved:
+    a short cart (naming both lines), a duplicate good, an empty cart, both origins, a future quote. A cart of 100
+    titanium from the home system: +147, fuel −4. The draft, trimmed, then finalised from home as before (+367, the
+    order cleared). After a `SIGKILL`, the server replayed the seven journalled actions to a canonically identical
+    snapshot.
+    **Deferred (not invented):** the client (the Outpost Manager's SELL, BUY's destination picker, the delivery
+    notices). **Calls on the decision checklist** ("Trading to/from outposts — the inline-cart SELL — two calls").
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
@@ -3481,6 +3518,14 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   published:** its snapshot row carries `destinationOutpostId` but no `originCoords` / `departureTick`, so the
   live client skips it in the IN TRANSIT list and on the map. Publishing it (from the Outpost's hex) belongs with
   the client slice that can draw a leg to an Outpost. Confirm that sequencing.
+- **Trading to/from outposts — the inline-cart SELL — two calls (04-10-26, 2.2, `syndicate-orders.md` §9.2
+  AS-BUILT)**, built one way and flagged rather than ruled. **(1) The cart's presence picks the path.** The brief
+  said a non-empty array selects the cart. Built: any `cart` key selects it, and an empty or non-array cart is
+  refused. Reading `cart: []` as "no cart" would sell the trade-tab draft instead, which is the one thing the cart
+  path exists to prevent. It is also the retired BUY cart's rule. Confirm. **(2) No BUY cart, no `allocations`.**
+  The brief, and §9.2's "the mirror of `buyFromSyndicate`'s existing inline cart", describe both as live. They were
+  retired in the cleanup slice (§5), so only the SELL cart was built, and a stray `allocations` key is still ignored,
+  as before. Confirm. Or rule a BUY cart as its own slice, if the client's destination picker wants one.
 - **Split the oversized engine files — WHEN? (02-10-26, flagged by the 2.2 deploy pipeline engine-integrity tidy.)**
   `sim/actions.js` (5,258 lines) and `sim/server.js` (1,530) are far past a readable size for a codebase the human
   reads line by line; `sim/invariants.js` (2,386), `sim/snapshot.js` (2,120) and `sim/tick.js` (1,771) are also large.
@@ -3499,7 +3544,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   1a: `sim/actions.js` 5,327 → 5,408 lines and `sim/snapshot.js` 2,120 → 2,163, mostly comments. The snapshot's
   per-system `fuelCost` body moved, unchanged, into `routeQuoteFor`.)* *(⤳ 04-10-26, trading to/from outposts slice
   1b: `sim/actions.js` 5,408 → 5,519 lines and `sim/tick.js` 1,771 → 1,849, mostly comments beside the new reader,
-  gates, warning and arrival branch.)*
+  gates, warning and arrival branch.)* *(⤳ 04-10-26, the inline-cart SELL: `sim/actions.js` 5,519 → 5,588 lines,
+  mostly comments beside the three new helpers.)*
 
 - **Asset-presence vs. production** — *surfaced 16-09-26 by the operator adjust levers
   (`docs/operator-adjust.md` §3.5 AS-BUILT).* Production is currently **asset-blind** — a venture

@@ -1385,7 +1385,13 @@ function createSetWindowNAction({ windowN }) {
 // origin is given as EXACTLY ONE of `originSystemId` (sell from the guild's pool in that system —
 // the shape the live client sends) or `originOutpostId` (sell from that Outpost's own stockpile).
 // Only the field given goes into the action, so a system sell's action is byte-identical to before.
-function createSellToSyndicateAction({ guildId, originSystemId, originOutpostId, issueTick }) {
+//
+// ⤳ AN INLINE CART (§9.2, 04-10-26): an optional `cart: [{ good, qty }, …]` is the ORDER ITSELF —
+// the Outpost Manager's sale, built in its popup and sent whole on the confirm. With a cart the
+// finalise sells those lines and never reads, writes or clears `guild.sellOrder`; without one it
+// finalises the held order exactly as before. The cart is put into the action only when given, so
+// a held-order sell's action is byte-identical to before. Its lines are checked by validate, not here.
+function createSellToSyndicateAction({ guildId, originSystemId, originOutpostId, cart, issueTick }) {
   if (guildId === undefined) throw new Error('createSellToSyndicateAction: guildId is required');
   if ((originSystemId === undefined) === (originOutpostId === undefined)) {
     throw new Error('createSellToSyndicateAction: exactly one of originSystemId or originOutpostId is required');
@@ -1393,6 +1399,7 @@ function createSellToSyndicateAction({ guildId, originSystemId, originOutpostId,
   return {
     type: 'sellToSyndicate', guildId,
     ...(originOutpostId === undefined ? { originSystemId } : { originOutpostId }),
+    ...(cart === undefined ? {} : { cart }),
     ...(issueTick === undefined ? {} : { issueTick }),
   };
 }
@@ -1532,6 +1539,50 @@ function compareGood(a, b) {
 function buyFinalizeCart(state, action) {
   const guild = findGuild(state, action.guildId);
   return (guild && guild.buyOrder && guild.buyOrder.lines) || [];
+}
+
+// sellIsHeldOrder(action) -> true when a `sellToSyndicate` finalises the guild's HELD sell order
+// (the trade tab, §5), false when it carries an inline `cart` (the Outpost Manager, §9.2). The cart's
+// PRESENCE picks the path, not its contents — the rule the retired BUY cart used — so a bad cart
+// (empty, not an array) is refused as a bad cart, never quietly swapped for the held order.
+function sellIsHeldOrder(action) {
+  return action.cart === undefined;
+}
+
+// sellFinalizeLines(state, action) -> the { good, qty } lines a SELL finalise sells: the inline `cart`
+// when the action carries one, else the guild's held `sellOrder.lines`. Called from BOTH validate and
+// apply so they read one source, as buyFinalizeCart is for the BUY.
+function sellFinalizeLines(state, action) {
+  if (!sellIsHeldOrder(action)) return action.cart;
+  const guild = findGuild(state, action.guildId);
+  return (guild && guild.sellOrder && guild.sellOrder.lines) || [];
+}
+
+// sellCartProblem(cart) -> why an inline SELL cart is malformed, or null when it is well-formed
+// (docs/syndicate-orders.md §9.2). A held order is kept well-formed as it is BUILT — addOrderLine checks
+// each line and checkOrders guards the stored order — but a cart arrives whole on the confirm. So the
+// rules building would have enforced are checked here, in the words addOrderLine and the BUY use: at
+// least one line; each line an object; no fuel; no good twice. Each line's good (priced) and qty (a
+// positive integer, §15.2) are then checked by the per-line loop every sell order goes through. A bad
+// cart is refused whole — never deduplicated, summed or coerced.
+function sellCartProblem(cart) {
+  if (!Array.isArray(cart) || cart.length === 0) {
+    return 'a SELL cart must carry at least one { good, qty } line';
+  }
+  const seenGoods = new Set();
+  for (const line of cart) {
+    if (!line || typeof line !== 'object' || Array.isArray(line)) {
+      return 'each cart line must be an object { good, qty }';
+    }
+    if (isFuel(line.good)) {
+      return `${JSON.stringify(line.good)} is Syndicate-regulated — fuel is never listed on the Exchange (§8)`;
+    }
+    if (seenGoods.has(line.good)) {
+      return `cart names ${JSON.stringify(line.good)} twice — one line per good`;
+    }
+    seenGoods.add(line.good);
+  }
+  return null;
 }
 
 // sellOrigin(state, guild, action) -> the NODE a SELL ships from (docs/syndicate-orders.md §9):
@@ -3012,6 +3063,9 @@ function validateAction(state, action) {
     //
     // ⤳ THE ORIGIN IS A NODE (§9): EXACTLY ONE of `originSystemId` or `originOutpostId`. With no
     // `originOutpostId` this is the system check it always was, word for word.
+    //
+    // ⤳ AN INLINE CART (§9.2): an action carrying `cart` sells those lines instead of the held order,
+    // through the SAME origin check and the SAME gates; only where the lines come from differs.
     if (action.originOutpostId !== undefined) {
       if (action.originSystemId !== undefined) {
         return { valid: false, reason: 'a sell order ships from ONE origin — give originSystemId or originOutpostId, not both (docs/syndicate-orders.md §9)' };
@@ -3031,13 +3085,24 @@ function validateAction(state, action) {
       return { valid: false, reason: 'originSystemId must be a non-empty string' };
     }
     const origin = sellOrigin(state, guild, action);
-    const lines = (guild.sellOrder && guild.sellOrder.lines) || [];
-    // An EMPTY (or absent) held order cannot be finalised (§5).
-    if (lines.length === 0) {
-      return { valid: false, reason: `guild ${guild.id} has no sell order to finalise` };
+    // THE LINES — the inline `cart` when the action carries one (§9.2, the Outpost Manager's sale),
+    // else the guild's held `sellOrder.lines` (§5, the trade tab). Every gate below runs on them
+    // the same way, whichever they are.
+    const lines = sellFinalizeLines(state, action);
+    if (sellIsHeldOrder(action)) {
+      // An EMPTY (or absent) held order cannot be finalised (§5).
+      if (lines.length === 0) {
+        return { valid: false, reason: `guild ${guild.id} has no sell order to finalise` };
+      }
+    } else {
+      // An inline cart was never built line by line through addOrderLine, so its shape is checked
+      // here, before any line is read as a { good, qty }.
+      const cartProblem = sellCartProblem(lines);
+      if (cartProblem !== null) return { valid: false, reason: cartProblem };
     }
-    // PER LINE — the goods are guaranteed priced + positive-int by addOrderLine and by
-    // checkOrders, but re-checked here so apply's loud guard is the backstop, not the first line.
+    // PER LINE — the good must be priced and the qty a positive integer (§15.2). A held line was
+    // already checked by addOrderLine and checkOrders, so for it this is a re-check; a cart line meets
+    // these checks here first. Either way apply's loud guard is the backstop, not the first line.
     // ORIGIN HOLDS THE STOCK (§5/§7): the one origin must carry every line's qty. The pile is the
     // ownership check. Short lines are named so the player can trim and retry (§7).
     const short = [];
@@ -4635,16 +4700,18 @@ function applyAction(state, action) {
     // HELD single-origin finalise (docs/syndicate-orders.md §5): many goods from ONE origin on ONE
     // space-tiered leg, settled immediately (no shipment — "sold goods leave the moment you place
     // them"), then clear the order. (The legacy `good` + `allocations` multi-system path was RETIRED
-    // with the client slice, §8.)
+    // with the client slice, §8.) ⤳ Or an INLINE CART (§9.2): the same settlement, from the cart's
+    // lines, and the held order is left alone.
     const guild = findGuild(next, action.guildId);
     const issueTick = action.issueTick === undefined ? next.tick : action.issueTick;
     // The origin NODE (§9) — the same one validate gated, read from `next`, so the goods leave the
     // copy being built: a held system's pool, or the guild's own Outpost's stockpile.
     const origin = sellOrigin(next, guild, action);
-    // Read the held lines, sorted by good so the mutation sequence and the Σ are fixed (invariant
-    // 9). Each good is priced PER LINE (#43's `round(qty × price)`) — a multi-good order at
-    // several prices.
-    const lines = [...guild.sellOrder.lines].sort((a, b) => compareGood(a.good, b.good));
+    // Read the lines — the inline `cart` (§9.2) or the held order (§5), the same source validate
+    // read — as a sorted COPY, so the mutation sequence and the Σ are fixed (invariant 9) and the
+    // action's own cart is never reordered. Each good is priced PER LINE (#43's
+    // `round(qty × price)`) — a multi-good order at several prices.
+    const lines = [...sellFinalizeLines(next, action)].sort((a, b) => compareGood(a.good, b.good));
     let totalProceeds = 0;
     for (const line of lines) {
       const price = quotedPrice(next, line.good, issueTick);
@@ -4677,7 +4744,9 @@ function applyAction(state, action) {
 
     // CLEAR THE HELD ORDER on a successful finalise (§5), keeping it omit-when-empty (§2). A
     // reject-whole never reaches apply, so the draft is left untouched on refusal for free.
-    delete guild.sellOrder;
+    // An inline cart IS the order and is never stored, so a cart sale leaves `sellOrder` exactly as
+    // it was — a trade-tab draft the player is part-way through survives an Outpost sale (§9.2).
+    if (sellIsHeldOrder(action)) delete guild.sellOrder;
 
     // THE BETWEEN-TICK SEAM: a stockpile drained and fuel burned, and `POST /action` asserts every
     // invariant with no tick between, so refresh the derived cache through the SAME one selector the

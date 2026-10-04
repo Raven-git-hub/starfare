@@ -458,7 +458,9 @@ guild assembles a buy/sell order line by line on the trade floor and finalises i
 path. The transitional dual-mode intake the bullets below describe — the inline `cart`/`good` BUY and the
 `allocations` multi-system SELL, kept for backward-compat through the client slice — has been removed from
 `sim/actions.js` (cleanup slice); the held-order behaviour is byte-for-byte unchanged. The order model —
-entity, actions, finalise, the adjusted popups — is `docs/syndicate-orders.md`.
+entity, actions, finalise, the adjusted popups — is `docs/syndicate-orders.md`. *(⤳ 04-10-26,
+`syndicate-orders.md` §9.2: `sellToSyndicate` also takes a NEW inline `cart`, the Outpost Manager's sale. It
+sells the cart under the same gates and never touches `sellOrder`. BUY still reads only its held order.)*
 
 **⤳ AS-BUILT (shipment rebuild slice 1, ENGINE) — the space-based burn and the reject-whole gate are built.**
 The burn (both directions) is now `ceil(hexDistance × rate[tier])` where the tier is `haulerTierForSpace`
