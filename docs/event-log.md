@@ -452,9 +452,11 @@ and a `deploy_failed` popup, opened the same way on the page before and after, a
 - **The rows.** `noticeTitle` / `noticeRowTitle` gain a branch per type: "No room at the outpost — {Outpost}" and
   "Delivery turned back — {Outpost}". `{Outpost}` comes from the shell's one outpost resolver (`__outpostName`, "<anchor
   system> Outpost"), via `deliveryOutpostName`. The payload carries only `outpostId`, so an Outpost that is gone from
-  the snapshot (always, for an `outpost-gone` turn-back) reads as its raw id, as it would on any screen (decision
-  checklist). The popup titles are the bare "No room at the outpost" / "Delivery turned back"; the facts name the
-  Outpost. Newest-first order, the unread dot and read dimming are §8's, unchanged. No emoji, the 02-10-26 convention.
+  the snapshot (always, for an `outpost-gone` turn-back) reads as the fixed neutral phrase "a dismantled outpost",
+  never its raw id: the resolver hands back an id it cannot find unchanged, and `deliveryOutpostName` takes that as
+  "no live Outpost". A gone Outpost has no name, and no payload field was added to carry one. *(⤳ RULED 04-10-26 and
+  built the same day, the client niggles; until then it read as its raw id, e.g. "outpost_seat_demo_02".)* The popup
+  titles are the bare "No room at the outpost" / "Delivery turned back"; the facts name the Outpost. Newest-first order, the unread dot and read dimming are §8's, unchanged. No emoji, the 02-10-26 convention.
 - **The popup — the Trader.** `openNotice` re-dresses the shared card on every open, as it does for the pilot. For a
   delivery notice (`isDeliveryNotice`): the eyebrow "Trade — Syndicate", the hero `assets/mission/Trader.jpg` (the
   TRADE tab's own hero art, no new asset), framed `right bottom` as the TRADE hero frames it, since the Trader stands at

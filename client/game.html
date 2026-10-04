@@ -3045,7 +3045,8 @@ select.field{appearance:none; cursor:pointer;}
     <div class="row" id="sp-planets-row" style="display:none"><span>Planets:</span> <b id="sp-planets">—</b></div>
     <div class="row" id="sp-ring-row" style="display:none"><span>Ring:</span> <b id="sp-ring">—</b></div>
     <!-- Guild-outpost detail (roadmap 2.2 slice 2): the anchor system + the engine-surfaced class
-         figures (capacity / dock slots) + the empty-hold line. Shown only for a guildOutpost hex. -->
+         figures (capacity / dock slots) + the Hold line (an own outpost's published `used`). Shown
+         only for a guildOutpost hex. -->
     <div id="sp-outpost-rows" style="display:none">
       <div class="row"><span>Anchor:</span> <b id="sp-anchor">—</b></div>
       <div class="row"><span>Capacity:</span> <b id="sp-capacity">—</b></div>
@@ -5453,6 +5454,18 @@ select.field{appearance:none; cursor:pointer;}
     return (Math.abs(a.q-b.q) + Math.abs(a.q+a.r-b.q-b.r) + Math.abs(a.r-b.r)) / 2;
   }
 
+  // The Guild Outpost panel's Hold line. For the player's OWN outpost it reads the engine's `used`
+  // over `capacity`, the figures the Outpost Manager's storage donut shows, in the vehicle popup's
+  // "used / capacity cargo space" form. Read, never summed from the stockpile here (§18). A rival's
+  // stockpile is its economics, not public (client-wiring §7), so a rival's Hold reads "—". So does a
+  // row with no `used`: "Hold empty" is said only when the engine says 0, never by default.
+  function outpostHoldText(o) {
+    if (o.guildId !== PLAYER_GUILD.guildId) return '—';
+    if (o.used === 0) return 'Hold empty';
+    if (o.used > 0) return `${o.used.toLocaleString()} / ${o.capacity.toLocaleString()} cargo space`;
+    return '—';
+  }
+
   function showSysPanel(hit, type, ax) {
     document.getElementById('syspanel').style.display = 'block';
     const nameEl = document.getElementById('sp-name');
@@ -5489,13 +5502,13 @@ select.field{appearance:none; cursor:pointer;}
       planetsRow.style.display = 'none';
       // The anchor system + the engine's class figures, read straight off the snapshot row
       // (design.md §18 — the client computes no game number). Capacity is a large integer;
-      // thousands separators are presentation only. The hold is empty this slice (no cargo yet),
-      // so it mirrors the vehicle popup's "Hold empty" placeholder.
+      // thousands separators are presentation only. The Hold line is the stockpile's published
+      // `used` (outpostHoldText), kept live by the poll (__setLiveTerritory).
       const anchor = systemById.get(hit.anchorSystemId);
       document.getElementById('sp-anchor').textContent = anchor && anchor.name ? anchor.name : hit.anchorSystemId;
       document.getElementById('sp-capacity').textContent = hit.capacity.toLocaleString() + ' cargo space';
       document.getElementById('sp-docks').textContent = hit.dockCapacity;
-      document.getElementById('sp-hold').textContent = 'Hold empty';
+      document.getElementById('sp-hold').textContent = outpostHoldText(hit);
       outpostRows.style.display = 'block';
       // OPEN DETAILS now opens the read-only Outpost Manager (roadmap 2.2) for this outpost.
       detailsBtn.disabled = false;
@@ -5564,8 +5577,9 @@ select.field{appearance:none; cursor:pointer;}
 
     // Guild outposts, from the snapshot's `outposts` rows (design.md §4, roadmap 2.2 slice 2).
     // EVERY guild's outpost is rendered — a structure's LOCATION is public (client-wiring §7); its
-    // economics are not, and this slice holds none to show. Each engine row
-    // { id, ownerGuildId, coords, anchorSystemId, capacity, dockCapacity, stockpile } is mapped to
+    // economics are not, so the one economic field carried, `used`, is shown for the player's OWN
+    // outposts only (outpostHoldText, below). Each engine row
+    // { id, ownerGuildId, coords, anchorSystemId, capacity, dockCapacity, stockpile, used } is mapped to
     // the shape the two draw passes read (guildId/coords) plus the extras the info panel names. The
     // display NAME is derived, not stored (design.md §18 — presentation, no game number): the anchor
     // system's name + " Outpost", falling back to the id's #NN suffix if the anchor isn't in the
@@ -5583,6 +5597,9 @@ select.field{appearance:none; cursor:pointer;}
         anchorSystemId: o.anchorSystemId,
         capacity: o.capacity,
         dockCapacity: o.dockCapacity,
+        // The stockpile's occupied cargo space, as the engine publishes it: the same `used` the
+        // Outpost Manager's storage donut reads, so the panel's Hold line and the manager agree.
+        used: o.used,
       };
     });
 
@@ -5643,6 +5660,13 @@ select.field{appearance:none; cursor:pointer;}
     PLAYER_GUILD.name = live.myGuildName || 'Your Guild';
     PLAYER_GUILD.guildId = live.myGuildId; // so the label pass tags only the player's OWN outposts
     loadClaims({ guilds, systemClaims: claims, outposts: live.outposts || [] });
+    // The panel is written on the click, so an open Guild Outpost panel re-reads its Hold line here:
+    // a delivery landing or a sale while it is open moves `used`. Looked up by id on the rows this
+    // poll just rebuilt; an outpost no longer in them leaves the line as it was.
+    if (selectedType === 'guildOutpost' && selected) {
+      const row = guildOutpostById.get(selected.id);
+      if (row) document.getElementById('sp-hold').textContent = outpostHoldText(row);
+    }
   };
 
   // The sibling door for the IN-FLIGHT layer: the player's own Syndicate deliveries, pushed
@@ -11184,9 +11208,13 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   function isDeliveryNotice(n){ return n.type === 'delivery_space_warning' || n.type === 'delivery_turned_back'; }
 
   // The Outpost's name, from the shell's one outpost resolver, so it reads as it does on every other
-  // screen. The payload carries only the id: an Outpost torn down since (an 'outpost-gone' turn-back) is
-  // off the snapshot, and the resolver gives back its raw id, as it would anywhere else.
-  function deliveryOutpostName(p){ return (window.__outpostName && window.__outpostName(p.outpostId)) || p.outpostId || '—'; }
+  // screen. The payload carries only the id, and the resolver hands back unchanged an id it cannot find
+  // on the live snapshot. That means the Outpost is gone (always, for an 'outpost-gone' turn-back), and a
+  // gone Outpost has no name, so it reads as a fixed neutral phrase, never its raw id (ruled 04-10-26).
+  function deliveryOutpostName(p){
+    var name = window.__outpostName && window.__outpostName(p.outpostId);
+    return (name && name !== p.outpostId) ? name : 'a dismantled outpost';
+  }
 
   // The Trader's words, verbatim — static copy keyed on type + cause, one <p> per line. The warning's
   // closing question is the Trader's call to action, not a promise of buttons: the card offers Dismiss alone.

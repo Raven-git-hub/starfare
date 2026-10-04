@@ -14,10 +14,12 @@ const { HOME_SYSTEM, HOME_PLANET, HOME_MINE } = require('./home-anchor.js');
 const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
+const vm = require('node:vm');
 const { spawn } = require('node:child_process');
 
 const { makeServer } = require('../server.js');
 const { STOCKPILE_GOODS, TIER3_GOODS } = require('../resources.js');
+const { OUTPOST_CAPACITY } = require('../outposts.js');
 
 let server;
 let base;
@@ -221,6 +223,44 @@ test('GET / serves an Outpost delivery in transit — the map leg to the Outpost
     const filters = body.match(/\.filter\([^\n]*/g).join('\n');
     assert.doesNotMatch(filters, /destinationSystemId|destinationOutpostId/, `${name} must not filter on the destination`);
   }
+});
+
+// The map's Guild Outpost panel — its Hold line (2.2 trading to/from outposts, the client niggles). It read
+// the literal "Hold empty" whatever the Outpost held, because the map's outpost rows never carried `used`.
+// A served-bytes tripwire plus a run of the page's own outpostHoldText: the line reads the engine's `used`
+// (the Outpost Manager's figure), says "Hold empty" only when that is 0, keeps a rival's stockpile private
+// (client-wiring §7), and is re-read on every poll while the panel is open.
+test('GET / serves the map Guild Outpost panel\'s Hold line — the published used, own Outposts only, live', async () => {
+  const html = await (await fetch(base + '/')).text();
+
+  // The map's outpost rows carry the engine's `used`, beside capacity and dockCapacity.
+  const rows = html.match(/function loadClaims\(parsed\) \{[\s\S]*?\n  \}\n/);
+  assert.ok(rows, 'loadClaims is found');
+  assert.match(rows[0], /\n\s*used: o\.used,\n/);
+
+  // The panel's outpost branch writes the line from the helper; no hardcoded "Hold empty" is left in it.
+  const branch = html.slice(html.indexOf("} else if (type === 'guildOutpost') {"), html.indexOf("} else if (type === 'tollGate') {"));
+  assert.ok(branch.length > 0, 'the panel\'s guildOutpost branch is found');
+  assert.match(branch, /document\.getElementById\('sp-hold'\)\.textContent = outpostHoldText\(hit\);/);
+  assert.ok(!branch.includes("'Hold empty'"), 'no hardcoded "Hold empty" in the panel branch');
+
+  // The poll re-reads an open panel's Hold line, by id, off the rows it just rebuilt.
+  const door = html.match(/window\.__setLiveTerritory = function \(live\) \{[\s\S]*?\n  \};/);
+  assert.ok(door, 'the live-territory door is found');
+  assert.match(door[0], /if \(selectedType === 'guildOutpost' && selected\) \{\s*const row = guildOutpostById\.get\(selected\.id\);\s*if \(row\) document\.getElementById\('sp-hold'\)\.textContent = outpostHoldText\(row\);/);
+
+  // Run the page's own helper. It reads `used`; it never sums the stockpile itself (§18).
+  const helper = html.match(/\n  function outpostHoldText\(o\) \{[\s\S]*?\n  \}\n/);
+  assert.ok(helper, 'outpostHoldText is found');
+  assert.doesNotMatch(helper[0], /stockpile/, 'the line is read off `used`, never summed from the stockpile');
+  const page = { PLAYER_GUILD: { guildId: 'g1' } };
+  vm.runInNewContext(helper[0], page);
+  const hold = (row) => page.outpostHoldText({ guildId: 'g1', capacity: OUTPOST_CAPACITY, ...row });
+  assert.equal(hold({ used: 2500 }), `${(2500).toLocaleString()} / ${OUTPOST_CAPACITY.toLocaleString()} cargo space`,
+    'an own Outpost holding goods shows its used / capacity');
+  assert.equal(hold({ used: 0 }), 'Hold empty', 'an empty Outpost still reads "Hold empty"');
+  assert.equal(hold({ used: 2500, guildId: 'rival' }), '—', 'a rival\'s stockpile stays private');
+  assert.equal(hold({}), '—', 'a row with no `used` is not called empty');
 });
 
 test('GET / serves the WIRED licence panel — the two real actions, and no mock caveat', async () => {
@@ -3179,6 +3219,25 @@ test('GET / serves the delivery notices — the Trader, passive, Dismiss only', 
   assert.match(rowTitle, /if\(n\.type === 'delivery_space_warning'\) return 'No room at the outpost &mdash; <span class="who">' \+ esc\(deliveryOutpostName\(p\)\)/);
   assert.match(rowTitle, /if\(n\.type === 'delivery_turned_back'\) return 'Delivery turned back &mdash; <span class="who">' \+ esc\(deliveryOutpostName\(p\)\)/);
   assert.match(fn('deliveryOutpostName', 'deliveryBody'), /window\.__outpostName\(p\.outpostId\)/, 'the one outpost resolver');
+  assert.doesNotMatch(fn('deliveryOutpostName', 'deliveryBody'), /\|\|\s*p\.outpostId/, 'the raw id is never the fallback');
+
+  // A GONE Outpost reads as a fixed neutral phrase, never its raw id (ruled 04-10-26). Run the page's own
+  // resolver and deliveryOutpostName together against a snapshot holding one Outpost: the live one is named,
+  // and one torn down (off the snapshot, as for every 'outpost-gone' turn-back) reads "a dismantled outpost".
+  const resolverSrc = html.match(/\nwindow\.__outpostName = function\(id\)\{[\s\S]*?\n\};\n/);
+  const deliveryNameSrc = html.match(/\n  function deliveryOutpostName\(p\)\{[\s\S]*?\n  \}\n/);
+  assert.ok(resolverSrc && deliveryNameSrc, 'the resolver and deliveryOutpostName are found');
+  const page = {
+    GAME: { galaxy: { outposts: [] } },
+    window: {
+      __snapshot: () => ({ outposts: [{ id: 'outpost_g_01', anchorSystemId: 'sys_0006' }] }),
+      __systemName: (id) => (id === 'sys_0006' ? 'BAR-1337' : id),
+    },
+  };
+  vm.runInNewContext(resolverSrc[0] + deliveryNameSrc[0], page);
+  assert.equal(page.deliveryOutpostName({ outpostId: 'outpost_g_01' }), 'BAR-1337 Outpost', 'a live Outpost is named');
+  assert.equal(page.deliveryOutpostName({ outpostId: 'outpost_g_02' }), 'a dismantled outpost', 'a gone Outpost is not its id');
+
   assert.match(fn('isDeliveryNotice', 'deliveryOutpostName'),
     /return n\.type === 'delivery_space_warning' \|\| n\.type === 'delivery_turned_back';/);
 

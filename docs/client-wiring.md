@@ -197,7 +197,12 @@ map draws each in its owner's colour and the panel names owner / anchor / static
 class figures only). *(AS-BUILT — roadmap 2.2 outpost slice 2, `client/game.html`:
 the map's territory-fill hex, diamond marker, click-map and "Guild Outpost" panel
 read `snapshot.outposts` — a derived name + engine `capacity`/`dockCapacity`,
-computing no game number §18; the hold is empty this slice.)* It also reads the **public Syndicate figures**, which are the same for
+computing no game number §18; the hold is empty this slice.)* *(⤳ 04-10-26, roadmap
+2.2 trading to/from outposts, the client niggles: the panel's Hold line now reads the
+engine's published `used` over `capacity` for the player's OWN Outposts — the Outpost
+Manager's figure — and "Hold empty" only when `used` is 0. A rival's Hold reads "—": its
+stockpile is economics, so the panel still shows a rival only owner / anchor / static
+class figures.)* It also reads the **public Syndicate figures**, which are the same for
 everyone and secret from no one: `prices` / `priceBase` / `priceHistory`, and
 `feeQuote` (the per-good basic licence fee in credits — see the revision at the
 end of this file). It must **NOT** render `galacticSupply` totals, the `syndicate.ledger`,

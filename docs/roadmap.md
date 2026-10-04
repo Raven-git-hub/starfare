@@ -644,7 +644,8 @@ boundary so the later hex-map swap doesn't touch it.
     the owner's colour (client-wiring §7 — a structure's location is public; its economics are not,
     and this slice holds none). The panel names the owner, the anchor system, and the engine's
     `capacity` / `dockCapacity` figures (displayed, never computed — §18; thousands-formatting and the
-    derived name are presentation), with a "Hold empty" line mirroring the vehicle popup. A name-tag
+    derived name are presentation), with a "Hold empty" line mirroring the vehicle popup *(⤳ 04-10-26: the
+    Hold line now reads an own Outpost's published `used` — trading to/from outposts, the client niggles)*. A name-tag
     (own outposts only, matching own-systems labelling) and a legend "Guild Outpost" diamond entry
     round it out. Sim suite still **1,383 green** (untouched); rendered end-to-end in headless
     Chromium (operator-spawned outpost → tinted hex + marker + name tag; click → the enriched panel;
@@ -3446,7 +3447,8 @@ boundary so the later hex-map swap doesn't touch it.
     page and this one, are pixel-identical. No page errors.
     **Deferred (not invented):** an Arrives day; a name for a torn-down Outpost; the duplicate-name limitation (two
     Outposts on one system read alike — a separate issue). **Calls on the decision checklist** ("Trading to/from
-    outposts — the delivery notices — five calls").
+    outposts — the delivery notices — five calls"). *(⤳ 04-10-26: a torn-down Outpost now reads "a dismantled
+    outpost", not its raw id — the client niggles, below.)*
   - **the Outpost delivery in transit — snapshot leg + client render (slice 1b call 5; `sim/snapshot.js` +
     `client/game.html`).** 🟢 *BUILT (04-10-26).* A buy to an Outpost was created, flown and landed correctly but was
     invisible in flight: its snapshot row had no leg, so the map and Operations → In Transit skipped it. It now shows
@@ -3481,6 +3483,40 @@ boundary so the later hex-map swap doesn't touch it.
     Transit listed "Halo's Reach … 1d 13h → BAR-1337 Outpost" under the system row; the torn-down delivery was not
     listed. No page errors. **Calls on the decision checklist** ("Trading to/from outposts — the Outpost delivery in
     transit — four calls").
+  - **client niggles: the map panel's Hold line, and a dismantled Outpost's name (CLIENT ONLY, `client/game.html`).**
+    🟢 *BUILT (04-10-26).* Two small fixes found playing the finished item. No engine, snapshot or state change.
+    **(1) The map's Guild Outpost panel always read "Hold empty",** because the map's outpost rows (`loadClaims`)
+    never carried the stockpile. They now carry the engine's published `used`, and a new `outpostHoldText` writes the
+    Hold line: for the player's OWN Outpost, `used` / `capacity` "cargo space" (the Outpost Manager's donut figure, in
+    the vehicle popup's form), and "Hold empty" only when `used` is 0. A rival's Hold reads "—": its stockpile is
+    economics (`client-wiring.md` §7). So does a row with no `used`, so the line never claims empty by default. The
+    panel is written on the click, so `__setLiveTerritory` re-reads an open Outpost panel's Hold line on each poll.
+    **(2) A delivery notice for a torn-down Outpost read as its raw id** ("outpost_seat_demo_02"). RULED 04-10-26:
+    no engine payload field (a gone Outpost has no name); `deliveryOutpostName` names a live Outpost through
+    `__outpostName` as before, and reads the fixed phrase "a dismantled outpost" when the resolver cannot find the id
+    (it hands the id back unchanged). This changes only the Outpost slot (the row title and the Outpost fact); the
+    Trader's sentences are untouched. AS-BUILT in `event-log.md` §11 and `client-wiring.md` (the outposts note).
+    **Pins (`sim/tests/server.test.js`):** +1 test for the Hold line: `loadClaims` carries `used`, the panel branch
+    writes the helper and holds no `'Hold empty'` literal, the poll re-reads it, and the page's own `outpostHoldText`
+    is run (`node:vm`): own 2,500 → "2,500 / 180,000,000 cargo space" (`OUTPOST_CAPACITY` from the engine), 0 → "Hold
+    empty", a rival → "—", no `used` → "—", and it never reads `stockpile`. The delivery-notices test gains: no
+    `|| p.outpostId` fallback, and the page's own `__outpostName` + `deliveryOutpostName` run together — a live
+    Outpost is "BAR-1337 Outpost", one off the snapshot is "a dismantled outpost". Ten mutations of the page each
+    turned a test red: the literal "Hold empty" back, `used` dropped from the rows, no poll re-read, no own-guild gate,
+    the empty case dropped, a missing `used` called empty, the figure summed from the stockpile, the old raw-id
+    fallback, the not-found check dropped, and other words for the phrase.
+    **A NO-OP for `sim/` and `tools/`:** `git diff -- sim tools ':!sim/tests/server.test.js'` is empty. Sim
+    **1,974 → 1,975 green** (+1), tools **75 green**.
+    **Driven headless** on a fresh seed-42 server, `test-guild` homed on BAR-1337 (`sys_0006`). `outpost_test-guild_01`
+    at `109,52`, `_02` at `115,50`, `_03` at `106,12`. At tick 0: 2,500 titanium bought to `_01`; 30 × 6,000,000 plus
+    1,000 to `_02`; 300 to `_03`, which was then torn down. (a) At tick 449 a click on `_01` read "Hold empty"; one tick
+    later, with no re-click, the open panel read "2,500 / 180,000,000 cargo space". `_02` read "180,000,000 /
+    180,000,000 cargo space". (b) A second guild's Outpost holding 700 read "—"; `_01` still read its figure. (c) The
+    inbox: "Delivery turned back — BAR-1337 Outpost" (`_02`, `full`), "Delivery turned back — a dismantled outpost"
+    (`_03`, `outpost-gone`), and a later 1,000 buy to the full `_02` wrote "No room at the outpost — BAR-1337 Outpost".
+    The `outpost-gone` popup's Outpost fact read "a dismantled outpost", its body the Trader's line unchanged. The
+    same drive on `origin/main`'s page read "Hold empty" on both panels and "outpost_test-guild_03" in the inbox. No
+    page errors. **Calls on the decision checklist** ("Trading to/from outposts — the client niggles — four calls").
 - **2.2 — Territory: claims as a live lever.** A claim action + contest resolution (first-valid-wins
   is already stubbed in the engine); expansion beyond the home system; the claim raises the GP/RP bar
   (already modelled). *Precondition for tolls, exploration, espionage.* **The claim action's SHAPE is
@@ -3765,7 +3801,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   so does any delivery notice whose Outpost is torn down while it is still in the inbox. §1 asks a payload to carry
   what its notice needs after the thing it names is gone (`ventureName`, `retreatSystemName`). Confirm, or rule an
   engine payload field (e.g. the Outpost's name, or its anchor system, captured at write time). Not the duplicate-name
-  limitation, which is a separate issue and untouched. **(3) The Trader's framing.** At the card's own framing
+  limitation, which is a separate issue and untouched. *(⤳ RULED 04-10-26: no payload field — a gone Outpost has no
+  name. The client reads the fixed phrase "a dismantled outpost" instead of the raw id. BUILT, the client niggles.)* **(3) The Trader's framing.** At the card's own framing
   (`50% 12%`) the Trader, who stands at the right edge of her picture, is cut in half. She is framed `right bottom`,
   as the TRADE tab's hero frames the same art, set on each open like the art itself and reset for every other notice.
   Confirm, or rule a portrait crop of the art. **(4) Slice-local copy.** The eyebrow "Trade — Syndicate" (the brief's
@@ -3791,6 +3828,21 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   Outpost row carries the key with no value. JSON drops it, so the client never sees it, and the new tests check the
   keys on the wire. It was left alone so the system path's code is untouched. Confirm, or rule that the row adds the key
   only when it is set (no change on the wire).
+- **Trading to/from outposts — the client niggles — four calls (04-10-26, 2.2 client, `client-wiring.md` outposts
+  note / `event-log.md` §11)**, built one way and flagged rather than ruled. **(1) The Hold line's words.** An own
+  Outpost reads "2,500 / 180,000,000 cargo space": the Outpost Manager's `used / capacity`, in the vehicle popup's
+  summary form. In the narrow panel it wraps onto a second line, as the Capacity line above it already does. Confirm,
+  or rule other words (e.g. "2,500 cargo space used"). **(2) A rival's Hold reads "—".** Its stockpile is economics,
+  which §7 keeps off the player's screen, so the line is withheld rather than claiming "Hold empty". Confirm, or rule
+  the row hidden for a rival. Noticed, not touched: OPEN DETAILS opens the Outpost Manager for ANY guild's Outpost,
+  and the manager shows a rival's storage donut and stock tables. Whether the manager should open for a rival at
+  all is a §7 call. **(3) Live on the poll.** The panel is written on the click; only the Hold line is re-read on each
+  poll while it is open (the other lines are static class figures). An Outpost torn down while its panel is open
+  still leaves the panel as it was, as before. Confirm, or rule the line click-time only. **(4) The phrase's edges.**
+  A payload with no `outpostId` now reads "a dismantled outpost" too (it read "—"); the engine always writes the
+  id, so this is unreachable. And §9.4's other `outpost-gone` case, an Outpost that still exists but is no longer
+  this guild's (no action does this today), would show that Outpost's live name, since it is still on the snapshot.
+  Confirm both.
 - **Split the oversized engine files — WHEN? (02-10-26, flagged by the 2.2 deploy pipeline engine-integrity tidy.)**
   `sim/actions.js` (5,258 lines) and `sim/server.js` (1,530) are far past a readable size for a codebase the human
   reads line by line; `sim/invariants.js` (2,386), `sim/snapshot.js` (2,120) and `sim/tick.js` (1,771) are also large.
