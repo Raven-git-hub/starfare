@@ -11,8 +11,6 @@ The guild builds up a **buy order** (goods to acquire, delivered to one destinat
 (goods to offload, shipped from one origin) by hitting **Add to Buy/Sell Order** on the trade floor as it
 browses goods, then **finalises** each in the transaction popup. Buy and sell are the two mirror halves of
 one model: many goods, one leg, one hauler sized by the order's total **cargo space** (§5.1).
-*(⤳ 04-10-26, §9.2 AS-BUILT: a SELL no longer starts on the trade floor. It is picked from a node's own pile
-— a held system's System Manifest or an Outpost's manager — and built and finalised there in one go.)*
 
 ## 2. The order is engine state (§18), not a browser draft
 
@@ -143,9 +141,6 @@ The transaction popup's confirm **finalises the held order** — this is the per
 >   split-the-order state (confirm disabled); and the §8.1 quote-lock (freeze at open, `issueTick` on
 >   confirm). Confirm posts the held-order finalise — BUY `buyFromSyndicate({ destinationSystemId,
 >   issueTick })`, SELL `sellToSyndicate({ originSystemId, issueTick })` — no `cart`/`good`/`allocations`.
->   *(⤳ 04-10-26: the SELL target is now the node it was opened from (§9.2, client slice 2), and BUY's
->   "Deliver to" lists the held NODES, opens on the nearest, and sends the node's own field (§9.1, client
->   slice 3a).)*
 > - Verified by the served-bytes tripwire (`sim/tests/server.test.js`) and a headless-Chromium
 >   end-to-end (build a two-good buy order → manifest + tier + route fuel + arrival → confirm →
 >   order empties; a one-origin sell; an over-cap build with confirm disabled).
@@ -157,9 +152,6 @@ The transaction popup's confirm **finalises the held order** — this is the per
 > with the named shortfall; offering only systems that hold every line (or per-line availability) is
 > a later refinement.
 > The client computes no game number (§18): space, tier, fuel, cost and arrival are all read from the snapshot.
-> *(⤳ 04-10-26, §9.2 AS-BUILT, client slice 2: the SELL half of this card is RETIRED — the SELL pane and its
-> Add to Sell Order, the Sell / Buy toggle, the Sell Order hero button and the SELL "Ship from" dropdown. A sell is
-> built and finalised at the node. The BUY half above is unchanged.)*
 
 - **Syndicate Trade card:** the Sell/Buy toggle's action button becomes **Add to Sell Order** /
   **Add to Buy Order** (calls `addOrderLine` for the selected good + qty). The card's mechanics — pick a
@@ -254,18 +246,12 @@ hash-free way it already is for systems (§4) — no determinism byte, no schema
 >   Outpost id there would show up as a target the engine then refuses. So `fuelCost` stays exactly the held
 >   systems, and a test pins that. Whether to merge the two maps (one map keyed by node id, the "one ordering" of
 >   §9.1) once the client stops reading `fuelCost`'s keys that way is on the roadmap decision checklist.
->   *(⤳ 04-10-26, client slice 2: the SELL dropdown is gone, so `txHeldSystems` now fills only BUY's "Deliver to".
->   The node SELL reads a node's leg by id, `fuelCost[id]` or `outpostFuelCost[id]`. The merge stays open for the
->   BUY client slice.)* *(⤳ 04-10-26, client slice 3a: `txHeldSystems` is gone. BUY's "Deliver to" now reads both
->   maps' keys as held nodes (`txHeldNodes`), so no client reader depends on the two maps being apart. Merging
->   them is now an engine tidy only, and stays open.)*
 
 ### 9.1 BUY — the Syndicate delivers to the nearest node by default, overridable
 
 > **AS-BUILT (engine slice 1b, 04-10-26) — the engine BUY half.** `buyFromSyndicate` (`sim/actions.js`) now
 > delivers to a held system or to one of the guild's own Outposts. The client is a later slice, so the
 > default-nearest target and the override picker below are not built yet; the engine takes whichever node it is given.
-> *(⤳ built in client slice 3a, 04-10-26 — the next block.)*
 > - **The destination shape.** The action takes **exactly one** of `destinationSystemId` (unchanged, and still what
 >   the live client sends) or **`destinationOutpostId`** (new), the mirror of 1a's `originSystemId` /
 >   `originOutpostId`. Both, or an empty id, is refused. Neither gets the old `destinationSystemId must be a
@@ -295,37 +281,6 @@ hash-free way it already is for systems (§4) — no determinism byte, no schema
 > - Tests: `sim/tests/buy-to-outpost.test.js` (20). Operator path: the existing `POST /action` with
 >   `{ type: 'buyFromSyndicate', guildId, destinationOutpostId }`; no new endpoint or CLI verb.
 
-> **AS-BUILT (client slice 3a, 04-10-26) — the BUY destination picker: held nodes, default nearest, override.**
-> `client/game.html` only, with no engine change. The ruling below, as built:
-> - **The list is the held nodes.** The BUY popup's "Deliver to" lists every node the guild holds: its held
->   systems (`fuelCost`'s keys) and its own Outposts (`outpostFuelCost`'s keys), in one ordering by node id
->   (`txHeldNodes`). Each is named by the shell's own resolvers, as it is everywhere else. The disabled
->   "◆ Controlled outpost — soon" option is gone.
-> - **The default is the nearest node.** When the popup opens it selects the held node whose published leg is
->   shortest (`txNearestNode`). It compares each leg's `travelTicks`, the engine's delivery duration. That
->   number grows with the leg's hex length and is the same at every hauler tier. The client only picks the
->   smallest published value and measures nothing itself (§18). A tie goes to the lower node id. This replaces
->   the home-system default. Every opening selects the nearest again; an override lasts until the popup closes.
-> - **The override** is any node in the list. The route fuel, the fuel bar and the arrival re-read that node's
->   leg at the order's tier, through the readers SELL already uses (`txRoute`, `txQuotedCredit`,
->   `txRouteBurn`). The §8.1 freeze already covered the Outposts' legs.
-> - **The confirm names the node by its own field**, exactly one of the two: `destinationOutpostId` for an
->   Outpost, `destinationSystemId` for a system. The node's kind is kept beside its id (`TX.node`, the field
->   SELL keeps its origin in), taken from the map that listed it. A system buy sends exactly the action it
->   always did. An Outpost torn down while the popup is open still goes as an Outpost, so the engine's
->   node-held gate refuses it with the Outpost wording (§9.4).
-> - **The receipt** names the node and finds the shipment it just placed by that same field.
-> - **No capacity gate.** The popup never reads an Outpost's room. A buy to a full Outpost confirms, and the
->   engine's departure notice warns (rendering it is client slice 3b).
-> - **Not yet:** the Trader's two notices (client slice 3b), and the Outpost delivery's map leg. An Outpost
->   shipment is still left off the map and the IN TRANSIT list, as 1b left it. *(⤳ 04-10-26: the Trader's two
->   notices are BUILT, client slice 3b, `docs/event-log.md` §11 AS-BUILT. The map leg is still open, slice 1b's
->   call (5) on the decision checklist.)*
-> - Tests: `sim/tests/buy-destination-picker.test.js` (5), which runs the page's own picker code against a real
->   snapshot and checks its choice against the engine's own waystation distances. `sim/tests/server.test.js`:
->   the TRADE tripwire's BUY pins now read the node's field and the "Deliver to" select, +1 test pinning the
->   picker's served wiring.
-
 The Syndicate's default drop is the guild's **node nearest a waystation** (the cheapest delivery leg), and
 the player **may override** to any held node, paying that node's larger leg. Narratively the Syndicate offers
 its own time-efficient drop; carrying goods deeper is the guild's choice, paid in fuel. Pressure, not
@@ -354,8 +309,7 @@ anything.
 
 > **AS-BUILT (engine slice 1a, 03-10-26) — the engine SELL half.** `sellToSyndicate` (`sim/actions.js`) now
 > finalises from a held system or from one of the guild's own Outposts. The client is a later slice, so the
-> Outpost Manager's SELL and the removal of the origin dropdown are not built yet. *(⤳ built in client slice 2,
-> 04-10-26 — the next block.)*
+> Outpost Manager's SELL and the removal of the origin dropdown are not built yet.
 > - **The origin shape.** The action takes **exactly one** of `originSystemId` (unchanged, and still what the live
 >   client sends) or **`originOutpostId`** (new). Both, or an empty id, is refused. Neither gets the old
 >   `originSystemId must be a non-empty string`. `createSellToSyndicateAction` puts only the field given into the
@@ -381,43 +335,6 @@ anything.
 >   adding a field. This is flagged on the decision checklist.
 > - Tests: `sim/tests/sell-from-outpost.test.js` (13). Operator path: the existing `POST /action` with
 >   `{ type: 'sellToSyndicate', guildId, originOutpostId }`; no new endpoint or CLI verb.
-
-> **AS-BUILT (client slice 2, 04-10-26) — SELL from the node: build AND sell at the node (Option 2).**
-> `client/game.html` only, with no engine change. The ruling below, as built:
-> - **Two homes, one popup.** The **Outpost Manager** has a **Sell to Syndicate** bar under its Storage square.
->   A held system's **System Manifest** has a **Sell to Syndicate** row at the top of its index, in the
->   waystation's Trade-row shape. Both open the existing finalise popup (`#tw-tx-overlay`), scoped to that node,
->   through one entry point (`__openNodeSell`). The popup now lives at page level, so it shows where the TRADE tab
->   is hidden, and it sits over the Outpost Manager, which stays open behind it as it does for the Dock editor.
-> - **The origin is the node.** The popup's "Ship from" names the node, with no picker. The SELL branch of the
->   target block and its origin dropdown are gone, and the target block is BUY's destination only.
-> - **The manifest is the node's own pile**: a system's `stockpilesBySystem[id]`, or an Outpost's `stockpile`.
->   Each good gets a quantity box (0 up to what the node holds) and a **Max**. Only sellable goods are listed:
->   priced ones, with deuterium hidden as it is on the TRADE tab. Every box starts at 0.
-> - **A live preview, held in the popup until confirm.** It shows the proceeds, Σ `round(qty × frozen price)` (the
->   same display echo as before). It also shows the hauler tier and the route fuel at that tier from the node's
->   own leg: `fuelCost[id]` for a system, `outpostFuelCost[id]` for an Outpost. The fuel bar and the
->   over-capacity banner follow the picks too. The tier is sized from the picks × the published `goodVolumes`,
->   against the published `haulerTiers` ladder: the smallest hold with space ≤ hold, the engine's own rule. That
->   is the sizing the snapshot publishes those two facts for. Nothing is posted while the player picks. The §8.1
->   quote-lock freezes at open: the price of every good the node holds (the picks come after), and the Outposts'
->   legs as well as the systems'.
-> - **Confirm commits in one shot.** It sends `addOrderLine({ side:'sell', good, qty })` for each chosen line, in
->   good-id order, then `sellToSyndicate` with `originSystemId` or `originOutpostId` and the frozen `issueTick`.
->   A held sell draft left from before (the retired card, or a confirm cut off part-way) is cleared first with
->   `clearOrder`, so the order sold is the one on screen. On acceptance the engine clears the order (1a), and the
->   receipt reads the applied numbers back. On a refusal (over the hold, short of fuel, an expired quote, a short
->   line), the popup stays open and shows the engine's reason, or the expired state with its Refresh. It also
->   posts `clearOrder`, so no half-built draft lingers. The confirm stays disabled until that has landed and the
->   snapshot is re-read.
-> - **An empty node offers no SELL.** The bar and the row are absent while the node holds nothing sellable, and
->   both follow the pile on every poll.
-> - **Retired:** the TRADE card's SELL pane (`tw-sell-pane`, Add to Sell Order) with its Sell / Buy toggle, the
->   Sell Order hero button and its badge, and the SELL origin dropdown. The TRADE tab keeps the BUY card, the Buy
->   Order button and the market view. A small tag where the toggle was reads "Buy · sell at the node".
-> - Tests: `sim/tests/server.test.js` (the TRADE tripwire now pins the retirement, +1 test pinning the node SELL's
->   served wiring), and `sim/tests/node-sell-preview.test.js` (4), which runs the page's own preview code against
->   the engine at every hauler-tier boundary and against the engine's echo of the same order.
 
 SELL is **initiated contextually from the node** whose goods are being sold — a held system's manifest or an
 outpost's manager — and the origin **is** that node. The origin dropdown (§5/§6) is **removed**: there is no
