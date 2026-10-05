@@ -44,7 +44,7 @@ const { computeGalacticSupply } = require('./supply.js');
 const { foundingEndowmentFor } = require('./meanline.js');
 const { grantFor } = require('./issuance.js');
 const { guildHolds, heldSystemIds } = require('./claims.js');
-const { recordEvent, DEPLOY_FAILED, DELIVERY_SPACE_WARNING } = require('./events.js');
+const { recordEvent, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, OUTPOST_PACKED } = require('./events.js');
 const {
   nearestWaystation, arrivalTickFor, hexDistance, legHexAtTick, hexStepToward, legTicks, legFuelBurn,
   systemHex, nearestWaystationToHex,
@@ -1205,6 +1205,19 @@ function createRemoveOutpostAction({ guildId, outpostId: oId }) {
   return { type: 'removeOutpost', guildId, outpostId: oId };
 }
 
+// reclaimOutpost: PACK UP the named Outpost into a kit aboard the one empty heavy parked on its hex
+// (docs/outpost-teardown.md; roadmap 2.2 Outpost teardown / redeploy). The inverse of the deploy: the
+// Outpost row goes and the heavy ends laden with one `outpost_kit`, idle where it stands — the same
+// state loadKit leaves — ready to be dispatched and deployed again. Unlike removeOutpost it destroys
+// nothing: the gate demands an empty stockpile and nothing docked. The action names only the Outpost;
+// the heavy is whichever single craft is parked there (the engine never picks among several). The
+// constructor only enforces the required fields are present; validateAction judges legality.
+function createReclaimOutpostAction({ guildId, outpostId: oId }) {
+  if (guildId === undefined) throw new Error('createReclaimOutpostAction: guildId is required');
+  if (oId === undefined) throw new Error('createReclaimOutpostAction: outpostId is required');
+  return { type: 'reclaimOutpost', guildId, outpostId: oId };
+}
+
 // dispatchVehicle: send an IDLE craft along a multi-leg route (transport-model.md §4, the polyline
 // model). `waypoints` is a non-empty ordered array of location anchors — each the same shape a
 // craft's `location` uses ({ landmarkKind: 'system'|'outpost', landmarkId } or { q, r }). The route
@@ -1728,6 +1741,20 @@ function ownedOutpostAt(state, guildId, anchor) {
   ) || null;
 }
 
+// craftParkedAt(state, outpost) -> the craft PARKED on `outpost`'s hex, in the guild's vehicle order: the
+// owner's craft whose resolved location is that hex — the same hex-coincidence ownedOutpostAtCraft asks, so
+// "parked here" and "at this Outpost" can never disagree. A craft in flight has no location, so it is never
+// parked anywhere. Status is NOT filtered: a queued or loading craft sits on the hex too; a caller that cares
+// asks the Outpost's queue / slots first (the reclaim gate does). Only the OWNER's craft count — a rival
+// parked on the hex is a territory-era case, deferred (docs/outpost-teardown.md §6).
+function craftParkedAt(state, outpost) {
+  const owner = findGuild(state, outpost.ownerGuildId);
+  return ((owner && owner.vehicles) || []).filter((v) => {
+    const at = ownedOutpostAtCraft(state, outpost.ownerGuildId, v);
+    return at !== null && at.id === outpost.id;
+  });
+}
+
 // hexOccupant(state, coords) -> { kind, id } for the structure already standing on hex `coords`, or null
 // when the hex is free. ONE STRUCTURE PER HEX (design.md §4 / §2): a hex is taken by a seed landmark (a
 // system, a Syndicate waystation, or the Citadel) or by a guild Outpost. Toll gates are not built, so
@@ -1928,15 +1955,24 @@ function mintStarterPackage(guild, homeSystemId) {
   for (const kind of STARTER_HUMAN_KITS) mintKitAsset(guild, kind, homeSystemId);
 }
 
+// stowKit(craft, kitGood, tick) — THE ONE way a kit good goes into a hold: exactly one `kitGood` as the
+// WHOLE hold (a kit fills a heavy, so the caller has proved the hold empty), with the craft's tick stamped
+// (§15.2). Shared by the load (kitIntoHold, below) and the Outpost reclaim (docs/outpost-teardown.md §3),
+// so a heavy packed at an Outpost is in exactly the state a heavy loaded at a system is — by construction,
+// not by two copies of the same line kept in step by hand.
+function stowKit(craft, kitGood, tick) {
+  craft.cargo = { [kitGood]: 1 };
+  craft.updatedAtTick = tick;
+}
+
 // kitIntoHold(guild, craft, asset, tick) — THE ONE load apply, for a load validate passed: the kit asset
 // leaves the inventory and exactly one kit good lands in the (empty) hold. One kit in, one good out.
 // `assets` is dropped when it empties (omit-when-empty, as createGuild does). The tick is stamped on the
-// craft (§15.2) — the asset is gone, so it has nothing left to stamp.
+// craft by stowKit (§15.2) — the asset is gone, so it has nothing left to stamp.
 function kitIntoHold(guild, craft, asset, tick) {
   guild.assets = guild.assets.filter((a) => a.id !== asset.id);
   if (guild.assets.length === 0) delete guild.assets;
-  craft.cargo = { [kitGoodFor(asset.kind)]: 1 };
-  craft.updatedAtTick = tick;
+  stowKit(craft, kitGoodFor(asset.kind), tick);
 }
 
 // unloadKitCheck(state, guildId, vehicleId, location, cargo) -> { ok: true, systemId, kind }
@@ -3673,6 +3709,69 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'reclaimOutpost') {
+    // docs/outpost-teardown.md §2: pack an Outpost back into a kit aboard the one empty heavy parked on its
+    // hex. Refused whole, each failure with its OWN reason, in the doc's order — the client will show these
+    // to explain the gate, and the engine is the only judge of it.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    // The Outpost is real and this guild's — the same ownership check removeOutpost makes (Outposts are
+    // SHARED, so the owner is checked explicitly). A second reclaim of one already packed fails here.
+    const outpost = (state.outposts || []).find((o) => o.id === action.outpostId);
+    if (!outpost || outpost.ownerGuildId !== action.guildId) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no outpost ${JSON.stringify(action.outpostId)}` };
+    }
+    const oid = JSON.stringify(outpost.id);
+
+    // RULE 1 — EMPTY AND QUIET. A reclaim destroys nothing (that is removeOutpost's job), so goods left in
+    // the stockpile would have nowhere to go: refuse until it is empty. The engine deletes a stockpile key
+    // when it reaches 0, so in practice any key is goods; only a positive quantity is counted, to be exact.
+    const stock = outpost.stockpile || {};
+    if (Object.values(stock).some((qty) => qty > 0)) {
+      return { valid: false, reason: `Outpost ${oid} still holds goods (${JSON.stringify(stock)}) — empty its stockpile first (sell from it, or load the goods out); only an empty Outpost packs into a kit` };
+    }
+    // Nothing docked: no craft mid-turnaround in a slot, none waiting in the queue. Read straight off the
+    // Outpost's own `slots` / `queue` — the dock model's one record of who is docked (isDockedAt reads them too).
+    const inSlot = (outpost.slots || [])[0];
+    if (inSlot) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(inSlot.vehicleId)} is mid-transfer in a dock slot at Outpost ${oid} — wait for its turnaround to finish; an Outpost packs up only when nothing is docked` };
+    }
+    const queued = (outpost.queue || [])[0];
+    if (queued) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(queued.vehicleId)} is queued to dock at Outpost ${oid} — let its transfer run, or re-dispatch it to cancel; an Outpost packs up only when nothing is docked` };
+    }
+
+    // RULE 2 — EXACTLY ONE CRAFT PARKED ON THE HEX, AND IT IS AN EMPTY HEAVY. The kit goes into that craft,
+    // so the engine never has to pick among several (craftParkedAt: own craft only, by hex coincidence).
+    const parked = craftParkedAt(state, outpost);
+    if (parked.length === 0) {
+      return { valid: false, reason: `no craft of guild ${JSON.stringify(action.guildId)} is parked on Outpost ${oid} (hex { q: ${outpost.coords.q}, r: ${outpost.coords.r} }) — park an empty heavy transport on this Outpost first; the Outpost is packed into its hold` };
+    }
+    if (parked.length > 1) {
+      return { valid: false, reason: `${parked.length} craft are parked on Outpost ${oid} (${parked.map((v) => JSON.stringify(v.id)).join(', ')}) — exactly one, an empty heavy transport, may be parked there to pack it up; move the others off first` };
+    }
+    const heavy = parked[0];
+    const vid = JSON.stringify(heavy.id);
+    // A kit fills a whole heavy hold (ASSET_CARGO_VOLUME = HEAVY_HOLD), so only a heavy can carry it.
+    if (heavy.class !== HEAVY_TRANSPORT) {
+      return { valid: false, reason: `vehicle ${vid} parked on Outpost ${oid} is a ${heavy.class} — a packed Outpost fills a whole heavy hold, so only a heavy transport can carry it; park an empty heavy here instead` };
+    }
+    if (heavy.status !== 'idle') {
+      return { valid: false, reason: `vehicle ${vid} is not idle (status ${JSON.stringify(heavy.status)}) — an Outpost packs into an idle heavy only` };
+    }
+    // An idle craft holding a route is a lane waiting at its stop; a kit never rides a lane (loadKit's rule).
+    if (heavy.route) {
+      return { valid: false, reason: `vehicle ${vid} is running a lane — a packed kit never rides one; stop the lane or re-dispatch the craft first (transport-model.md §11.10)` };
+    }
+    if (heavy.cargo !== undefined && Object.keys(heavy.cargo).length > 0) {
+      return { valid: false, reason: `vehicle ${vid} has cargo aboard (${JSON.stringify(heavy.cargo)}) — unload it first; a packed Outpost needs an EMPTY heavy hold` };
+    }
+    // RULE 3 — INSTANTANEOUS: nothing to check here; the apply resolves it on this tick.
+    return { valid: true };
+  }
+
   if (action.type === 'dispatchVehicle') {
     // transport-model.md §4 (the polyline model): send an IDLE craft along a multi-leg route,
     // refused whole with a clear reason (mirroring spawnVehicle's block). The order of the gates is
@@ -5249,6 +5348,52 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'reclaimOutpost') {
+    // docs/outpost-teardown.md §3: the Outpost becomes a kit in the parked heavy's hold, on this tick.
+    // This deliberately does NOT reuse removeOutpost's eviction loop or its goods sink above: the gate has
+    // already proved nothing is docked and the stockpile is empty, so there is no craft to evict and no good
+    // to destroy. Running them anyway would do nothing — and would hide it if the gate ever let one through.
+    const outpost = next.outposts.find((o) => o.id === action.outpostId); // validate: real, this guild's
+    const guild = findGuild(next, action.guildId);
+    const heavy = craftParkedAt(next, outpost)[0];                        // validate: exactly one, an empty heavy
+
+    // The notice's payload is built FIRST, because it reads the Outpost row and the row goes next. It is
+    // self-contained (docs/event-log.md §12): by the time the player reads it the Outpost is gone and the
+    // heavy may have flown. The anchor's SEED name falls back to its id, as resolveDeployArrival's
+    // `retreatSystemName` does; the hex is a fresh { q, r }, never the row's own object.
+    const anchor = getSystem(outpost.anchorSystemId);
+    const payload = {
+      outpostId: outpost.id,
+      anchorSystemId: outpost.anchorSystemId,
+      anchorSystemName: (anchor && anchor.name) || outpost.anchorSystemId,
+      hex: { q: outpost.coords.q, r: outpost.coords.r },
+      craftId: heavy.id,
+      craftClass: heavy.class,
+    };
+
+    // DELETE the row — its single-hex claim goes with it, so the hex is bare again. Omit-when-empty, exactly
+    // as removeOutpost: a galaxy back to zero Outposts drops the key. `guild.outpostSerial` is NOT touched,
+    // so this id is never reissued; a redeploy mints the next one (§15.4 "Ids never repeat").
+    next.outposts = next.outposts.filter((o) => o.id !== outpost.id);
+    if (next.outposts.length === 0) delete next.outposts;
+
+    // THE KIT INTO THE HOLD, through the same stowKit the load uses, so the heavy ends exactly as loadKit
+    // leaves one: `{ outpost_kit: 1 }`, idle, tick-stamped. No kit ASSET is minted and `kitAssetSerial` is not
+    // touched: in a hold the kit is a good with no id of its own (docs/outpost-teardown.md §3). Any stale
+    // `deployFailed` / `laneEnded` flag is left as the load leaves it; the next dispatch clears it (§5).
+    // The heavy's `location` needs no rewrite: it is already the bare hex. A craft's location can never name
+    // a guild Outpost — a landmark ref resolves only a seed system or Syndicate waystation (getLandmark).
+    stowKit(heavy, OUTPOST_KIT, next.tick);
+
+    // The success notice: one writer, this apply, on the tick the action lands. Born unread.
+    recordEvent(guild, next.tick, OUTPOST_PACKED, payload);
+
+    // Galactic Supply is unchanged (the stockpile was empty, and a kit is not a stockpile good), but refresh
+    // the cache across the between-action seam as the neighbours do — it keeps the cache honest, not lucky.
+    next.galacticSupply = computeGalacticSupply(next);
+    return next;
+  }
+
   if (action.type === 'dispatchVehicle') {
     // transport-model.md §4: the trip departs at the dispatch tick and the WHOLE schedule is frozen
     // here. Mirrors buyFromSyndicate's fuel handling (burn the hoard, record the consumption, refresh
@@ -5632,6 +5777,7 @@ module.exports = {
   createRemoveVehicleAction,
   createSpawnOutpostAction,
   createRemoveOutpostAction,
+  createReclaimOutpostAction,
   createDispatchVehicleAction,
   createTransferCargoAction,
   createGrantKitAction,

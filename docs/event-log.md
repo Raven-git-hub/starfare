@@ -53,7 +53,7 @@ is gone (§2).
 
 ## 2. The two types & the four writers
 
-The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine and client halves BUILT; a sixth, `outpost_packed`, is written by an Outpost reclaim — §12, RULED, not built):
+The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine and client halves BUILT; a sixth, `outpost_packed`, is written by an Outpost reclaim — §12, engine half BUILT, client half next):
 
 - **`licence_lapsed`** — an ordinary licence lapsed back to unlicensed.
 - **`venture_closed`** — a venture was removed.
@@ -493,7 +493,9 @@ and a `deploy_failed` popup, opened the same way on the page before and after, a
 
 ## 12. The `outpost_packed` notice — the reclaim's success message (2.2 Outpost teardown, RULED 05-10-26)
 
-*Status: **RULED, NOT BUILT.** Spec for the notice `docs/outpost-teardown.md` §8 describes. Modelled on §10:
+*Status: **RULED; the ENGINE half is BUILT** (05-10-26 — the type, the writer and the payload; AS-BUILT record
+at the end of this section). **The CLIENT half is next** (the inbox row, the pilot popup, Show on map). Spec for the
+notice `docs/outpost-teardown.md` §8 describes. Modelled on §10:
 a writer that already holds everything the notice needs records one self-contained row through the shared
 `recordEvent`; retention, acknowledge and surfacing are §3–§5's, unchanged. Like §10 it wears a domain
 character (the pilot), not the uniform Syndicate voice.*
@@ -530,3 +532,25 @@ Opening the message acknowledges it (§8, read-on-open), unchanged.
 
 **A NO-OP elsewhere.** A galaxy that never reclaims an Outpost writes no `outpost_packed` row, so every
 existing log, snapshot and golden is unchanged.
+
+**AS-BUILT — the engine half (05-10-26; engine only, NO client; roadmap 2.2 Outpost teardown / redeploy).** Built to
+this section, no design change. `OUTPOST_PACKED = 'outpost_packed'` joins `EVENT_TYPES` in `sim/events.js` (and its
+exports), so `checkEventLog` accepts it. The log, `recordEvent`, retention, acknowledge, `cloneEventPayload` and the
+snapshot's events seam are untouched, and the type rides all of them unchanged. The tripwires prove it: the row
+surfaces in `guilds[].events` with `whenDay` and no `unlockDay`, counts in `attention.notices` while unread, and is
+acknowledged and aged out by the shared predicate. **The writer** is the `reclaimOutpost` apply (`sim/actions.js`)
+and nothing else. It calls `recordEvent(guild, next.tick, OUTPOST_PACKED, payload)` on the tick the action lands,
+after the gate has passed. Born unread. **The payload as built** is built before the Outpost row is deleted, because
+it reads the row:
+- `outpostId` — the row's `id`;
+- `anchorSystemId` — its `anchorSystemId`;
+- `anchorSystemName` — that system's seed name via `getSystem`, falling back to the id, exactly as
+  `resolveDeployArrival`'s `retreatSystemName` does;
+- `hex` — a fresh `{ q, r }` copy of the row's `coords`;
+- `craftId` / `craftClass` — the one parked heavy's `id` / `class`.
+
+A REFUSED reclaim writes nothing. Two reclaims write two rows with ascending ids. Tripwires:
+`sim/tests/outpost-teardown.test.js` (the "notice:" tests), and `sim/tests/events.test.js`'s vocabulary test (now six
+types). **Interim gap, closed by the client half:** the current client's renderer treats an unknown type as a licence
+lapse, so until the client half lands an `outpost_packed` row would read "Licence lapsed — …" in MESSAGES. No client
+control issues a reclaim yet, so only an action posted straight to `POST /action` can write one.

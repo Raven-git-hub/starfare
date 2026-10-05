@@ -1,4 +1,4 @@
-# Outpost teardown / redeploy — reclaiming a deployed Outpost into a kit *(RULED 05-10-26 — design-ahead, NOT BUILT)*
+# Outpost teardown / redeploy — reclaiming a deployed Outpost into a kit *(RULED 05-10-26; engine half BUILT 05-10-26 — AS-BUILT §9; client half next)*
 
 The reclaim half of the deploy pipeline: turn a deployed guild Outpost back into an Outpost kit
 sitting in a heavy transport's hold, ready to be moved and deployed again. It is the inverse of
@@ -117,3 +117,108 @@ packed Outpost and has to decide where it goes.
 - **Why a notice at all.** The reclaim's visible result is a vanished Outpost and a heavy in a list; the
   player may not be looking at either. The pilot's question puts the next step, dispatch and deploy through
   the existing flow, in front of them.
+
+## 9. AS-BUILT — the engine half (05-10-26; engine only, NO client)
+
+Built to §1–§8, **no design change and no new number**. The ruling above is kept as written; this section
+records what the code does.
+
+**Files and functions touched.**
+- `sim/actions.js` —
+  - `createReclaimOutpostAction({ guildId, outpostId })` beside `createRemoveOutpostAction`, with the same
+    required-argument throws; it returns `{ type: 'reclaimOutpost', guildId, outpostId }` and is exported with
+    its neighbours.
+  - The `reclaimOutpost` validate branch, directly after `removeOutpost`'s: the §2 gate, refused in the §2 order.
+  - The `reclaimOutpost` apply branch, directly after `removeOutpost`'s. It reads the Outpost, the guild and
+    the one parked heavy. It builds the §8 payload first, because the payload reads the row. Then it deletes
+    the row, dropping `state.outposts` when it empties (as `removeOutpost` does), and stows the kit. It writes
+    the notice and refreshes `galacticSupply`. It does **not** reuse `removeOutpost`'s eviction loop or its
+    goods sink: the gate has proved there is nothing to evict and nothing to destroy. The code comment says why.
+  - **`stowKit(craft, kitGood, tick)`** (new). This is the one line that puts a kit good in a hold, as the whole
+    hold, with the craft's tick stamped. `kitIntoHold` (the load) now calls it, and the reclaim calls it too.
+    So "the same state `loadKit` leaves" holds by construction, not because two copies of a line were kept in
+    step. `kitIntoHold`'s behaviour is byte-identical.
+  - **`craftParkedAt(state, outpost)`** (new). It returns the owner's craft whose resolved location is the
+    Outpost's hex. It asks the existing `ownedOutpostAtCraft` hex-coincidence question, so "parked here" and
+    "at this Outpost" cannot disagree. A craft in flight has no location, so it is never parked. Only the
+    owner's craft count; a rival's craft on the hex is the territory-era case §6 defers.
+  - `removeOutpost`: **unchanged** (its constructor, validate and apply lines are untouched in the diff).
+- `sim/events.js` — `OUTPOST_PACKED = 'outpost_packed'` joins `EVENT_TYPES` and the exports, so
+  `checkEventLog` accepts it. `recordEvent`, retention, acknowledge and `cloneEventPayload` are untouched.
+- No snapshot, invariant, tick, server, persist or `tools/` change. `POST /action` and journal replay are
+  type-agnostic: they take any action through `validateAction` / `applyAction`. No list of action types
+  exists anywhere to extend. No admin endpoint or CLI command was added, since none is needed; the client
+  slice sends the action through `POST /action`.
+
+**The refusals as built**, in order. Each is its own reason string; the client slice can show them verbatim.
+`<…>` marks a value filled in at run time.
+1. `no guild with id "<guildId>"`
+2. `guild "<guildId>" owns no outpost "<outpostId>"`: the Outpost is unknown, or it is another guild's.
+   A second reclaim of an Outpost already packed fails here.
+3. `Outpost "<id>" still holds goods (<stockpile JSON>) — empty its stockpile first (sell from it, or load the
+   goods out); only an empty Outpost packs into a kit`. Only a positive quantity counts as goods. The engine
+   deletes a stockpile key when it reaches 0, so in practice any key is goods.
+4. `vehicle "<id>" is mid-transfer in a dock slot at Outpost "<id>" — wait for its turnaround to finish; an
+   Outpost packs up only when nothing is docked`. A **queued** craft gets
+   `vehicle "<id>" is queued to dock at Outpost "<id>" — let its transfer run, or re-dispatch it to cancel; an
+   Outpost packs up only when nothing is docked`. Both are read straight off the Outpost's own `slots` / `queue`.
+5. `no craft of guild "<guildId>" is parked on Outpost "<id>" (hex { q: <q>, r: <r> }) — park an empty heavy
+   transport on this Outpost first; the Outpost is packed into its hold`
+6. `<N> craft are parked on Outpost "<id>" ("<id>", "<id>", …) — exactly one, an empty heavy transport, may be
+   parked there to pack it up; move the others off first`. Two heavies are refused too.
+7. `vehicle "<id>" parked on Outpost "<id>" is a <class> — a packed Outpost fills a whole heavy hold, so only a
+   heavy transport can carry it; park an empty heavy here instead`
+8. `vehicle "<id>" is not idle (status "<status>") — an Outpost packs into an idle heavy only`. A heavy on a
+   lane gets `vehicle "<id>" is running a lane — a packed kit never rides one; stop the lane or re-dispatch the
+   craft first (transport-model.md §11.10)`. In a sound state the not-idle case cannot happen: a loading craft
+   is in a slot, so check 4 refuses it first. It stays as the gate's guard against a corrupt state.
+9. `vehicle "<id>" has cargo aboard (<cargo JSON>) — unload it first; a packed Outpost needs an EMPTY heavy hold`
+
+**The result as built.** The heavy's hold is exactly `{ outpost_kit: 1 }`. It stays idle on the same bare
+hex, and its `updatedAtTick` is the action's tick. Any stale `deployFailed` / `laneEnded` flag is left
+exactly as a load leaves it (§5). Nothing else is touched: `guild.outpostSerial` and `kitAssetSerial` keep
+their values, and no asset is minted. The notice is one `outpost_packed` row on the guild, born unread, on
+the action's tick, with the payload `{ outpostId, anchorSystemId, anchorSystemName, hex: { q, r }, craftId,
+craftClass }`. `anchorSystemName` is the seed name, falling back to the id, as `resolveDeployArrival`'s
+`retreatSystemName` does. `hex` is a fresh copy.
+
+**The location finding (§5).** A craft's `location` can **never** name a guild Outpost. A landmark ref is
+judged by `resolveVehicleLocation`, which accepts `landmarkKind` `'system'` or `'outpost'` and resolves it
+through `getLandmark`. There, `'outpost'` means the seed's Syndicate **waystations** (`getOutpost`, ids
+`out_NN`). A guild Outpost (`outpost_<guild>_NN`) is live state, not a seed landmark, so a location naming
+one does not resolve. `spawnVehicle` and a dispatch waypoint refuse it, and the `vehicle-location-resolves`
+invariant would trip on it. A craft at an Outpost is therefore always on a bare hex, which stays valid when
+the row goes. **No normalisation is needed**; a one-line comment in the apply says why, and a tripwire proves it.
+
+**Invariants a reclaim could touch, and why each holds** (all asserted after every reclaim in the tripwires,
+and on every tick of the real round trip):
+- *Outpost integrity* (`checkOutpostIntegrity`): the row is removed whole, so no dock entry is stranded
+  (the gate proved `queue` / `slots` empty). `outpost-serial-monotonic` holds because the serial never goes
+  down and the redeploy mints `_02`.
+- *Asset occupancy* (`checkAssetOccupancy`): no asset is touched, so `kit-asset-serial-monotonic` is unaffected.
+- *Galactic-supply consistency*: the stockpile was empty, and a kit is not a stockpile good. The value does not
+  change, and the cache is refreshed across the between-action seam anyway.
+- *Craft validity* (`checkVehicleIntegrity`): the location is an in-bounds bare hex that resolves. The hold is
+  a known deployable good within capacity (`ASSET_CARGO_VOLUME = HEAVY_HOLD` = the heavy's capacity). There
+  is no route, so the `laneEnded` / `deployFailed` "no route" rules hold.
+- *Event log* (`checkEventLog`): the type is in the vocabulary, the id comes from the guild's counter, and the
+  tick is a whole tick.
+- *Conservation* (invariants 1 and 2): no fuel and no credits move.
+
+**Tripwires:** `sim/tests/outpost-teardown.test.js` (31 tests). They cover the happy path; the `loadKit`
+parity (byte-identical craft, key order included); stale flags; every refusal separately, each leaving the
+state byte-identical; the refusal order; conservation and neutrality on a real founded guild (supply, credits,
+fuel, GP, the mean line, the issuance modifier and the entitlement, through the engine's own functions and the
+snapshot's fields); the no-op proof; the real round trip (deploy, reclaim, fly, deploy, with invariants on
+every tick and a new `_02` id); the notice (payload, copy not alias, `checkEventLog`, snapshot `whenDay`,
+`attention`, acknowledge, a refusal writes nothing, two rows with ascending ids, self-contained); a second
+reclaim in the same tick; an in-flight Syndicate buy turned back on arrival (`cause: 'outpost-gone'`); the
+location finding; `removeOutpost` unchanged; and determinism, save / restore and journal replay.
+`sim/tests/events.test.js`'s vocabulary tripwire now lists six types.
+
+**Not built: the client half (§7, slice 2).** The gated Teardown affordance in the Outpost Manager, and the
+notice's inbox row and pilot popup with Show on map. **Until it lands,** the current client's notice renderer
+treats any type it does not know as a licence lapse, so an `outpost_packed` row would read "Licence lapsed —
+…" in MESSAGES. No client control issues a reclaim yet, so only an action posted straight to `POST /action`
+can produce one. This is the same interim gap `event-log.md` §10 recorded for `deploy_failed`; the client
+slice closes it.

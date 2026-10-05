@@ -21,10 +21,12 @@
 // Syndicate BUY to an Outpost writes the two delivery notices (docs/event-log.md §11): the BUY
 // apply (sim/actions.js) writes `delivery_space_warning` at departure, and the arrival step
 // (sim/tick.js `stepArrivals`) writes `delivery_turned_back` when a consignment is lost. The
+// Outpost reclaim (sim/actions.js, the `reclaimOutpost` apply, docs/event-log.md §12) writes
+// `outpost_packed` when an Outpost is packed back into a kit. The
 // storyteller / rival / disaster writers are future work (§5). Renegotiation ACCEPT writes
 // nothing — an accept is a re-lock, not a discrete loss.
 
-// --- The type vocabulary (docs/event-log.md §2, §10, §11) ------------------------
+// --- The type vocabulary (docs/event-log.md §2, §10, §11, §12) -------------------
 //
 // The notice types the engine can write, ONE source of truth for "what a notice type is",
 // used by the writers and by the checkEventLog invariant (sim/invariants.js). Kept as named
@@ -36,9 +38,12 @@ const DEPLOY_FAILED = 'deploy_failed';     // a hauled kit could not be placed o
 const DELIVERY_SPACE_WARNING = 'delivery_space_warning';
 // a BUY to an Outpost was lost on arrival: no room, or the Outpost is gone
 const DELIVERY_TURNED_BACK = 'delivery_turned_back';
+// an Outpost was reclaimed: packed back into a kit aboard the heavy parked on its hex
+const OUTPOST_PACKED = 'outpost_packed';
 
 const EVENT_TYPES = Object.freeze([
   LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, DELIVERY_TURNED_BACK,
+  OUTPOST_PACKED,
 ]);
 const EVENT_TYPE_SET = new Set(EVENT_TYPES);
 
@@ -125,7 +130,7 @@ function cloneEventPayload(payload) {
 
 module.exports = {
   LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, DELIVERY_TURNED_BACK,
-  EVENT_TYPES, isEventType,
+  OUTPOST_PACKED, EVENT_TYPES, isEventType,
   RETENTION_UNREAD_TICKS, RETENTION_READ_TICKS, isEventLive,
   recordEvent, liveEvents, cloneEventPayload,
 };

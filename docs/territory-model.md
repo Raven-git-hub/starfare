@@ -536,7 +536,7 @@ quote is asked once at Finalise, as Dispatch's is. **Renamed:** `deployAction` /
 refused after its load (the popup then closed), or by an operator `load-kit`, writes no `deploy_failed` notice, so no
 fork reaches it. It stays operator-recoverable (decision checklist). Not built: the kit sources and the other kinds.
 
-> **RULED 05-10-26 — the reclaim (teardown → redeploy), design-ahead, NOT BUILT.** The inverse of the deploy: a deployed Outpost with an empty stockpile and nothing docked is packed back into an `outpost_kit` aboard the single empty heavy parked on its hex, which then re-enters this section's flow unchanged. Full ruling: `docs/outpost-teardown.md`; `design.md` §4.
+> **RULED 05-10-26 — the reclaim (teardown → redeploy); AS-BUILT 05-10-26, engine half.** The inverse of the deploy: a deployed Outpost with an empty stockpile and nothing docked is packed back into an `outpost_kit` aboard the single empty heavy parked on its hex, which then re-enters this section's flow unchanged. It is built as `reclaimOutpost` (`sim/actions.js`), with tripwires in `sim/tests/outpost-teardown.test.js`. The round-trip test runs deploy, reclaim, dispatch and deploy-on-arrival through this section's machinery, untouched; the redeploy takes a new id. The client half (the Outpost Manager's Teardown affordance) is next. Full ruling and AS-BUILT: `docs/outpost-teardown.md` §9; `design.md` §4.
 
 ## 6. Generation — starter spacing
 
