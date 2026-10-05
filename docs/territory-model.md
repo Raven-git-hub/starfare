@@ -536,6 +536,8 @@ quote is asked once at Finalise, as Dispatch's is. **Renamed:** `deployAction` /
 refused after its load (the popup then closed), or by an operator `load-kit`, writes no `deploy_failed` notice, so no
 fork reaches it. It stays operator-recoverable (decision checklist). Not built: the kit sources and the other kinds.
 
+> **RULED 05-10-26 — the reclaim (teardown → redeploy), design-ahead, NOT BUILT.** The inverse of the deploy: a deployed Outpost with an empty stockpile and nothing docked is packed back into an `outpost_kit` aboard the single empty heavy parked on its hex, which then re-enters this section's flow unchanged. Full ruling: `docs/outpost-teardown.md`; `design.md` §4.
+
 ## 6. Generation — starter spacing
 
 The generator sets **no minimum spacing between systems** (systems are shuffled onto

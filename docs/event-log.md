@@ -53,7 +53,7 @@ is gone (§2).
 
 ## 2. The two types & the four writers
 
-The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine and client halves BUILT):
+The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine and client halves BUILT; a sixth, `outpost_packed`, is written by an Outpost reclaim — §12, RULED, not built):
 
 - **`licence_lapsed`** — an ordinary licence lapsed back to unlicensed.
 - **`venture_closed`** — a venture was removed.
@@ -490,3 +490,43 @@ and a `deploy_failed` popup, opened the same way on the page before and after, a
   `min-height:0` fix) and the last two facts sit below the fold, as `deploy_failed`'s last fact does.
 - **Read-on-open** is §8's, unchanged: opening dispatches `acknowledgeEvent` by id while unread (checked live, id 0
   included).
+
+## 12. The `outpost_packed` notice — the reclaim's success message (2.2 Outpost teardown, RULED 05-10-26)
+
+*Status: **RULED, NOT BUILT.** Spec for the notice `docs/outpost-teardown.md` §8 describes. Modelled on §10:
+a writer that already holds everything the notice needs records one self-contained row through the shared
+`recordEvent`; retention, acknowledge and surfacing are §3–§5's, unchanged. Like §10 it wears a domain
+character (the pilot), not the uniform Syndicate voice.*
+
+**The type.** `outpost_packed` — an Outpost was reclaimed into a kit aboard a heavy. Joins `EVENT_TYPES` in
+`sim/events.js` so `checkEventLog` accepts it.
+
+**The writer.** The `reclaimOutpost` apply (`sim/actions.js`), after the gate has passed and before the Outpost
+row is removed, on the tick the action lands. Born unread.
+
+**The payload** (self-contained; the Outpost is gone by the time it is read):
+- `outpostId` — the reclaimed Outpost's id.
+- `anchorSystemId` + `anchorSystemName` — the system it anchored to (its seed name, falling back to the id, the
+  way §10's `retreatSystemName` resolves).
+- `hex` — `{ q, r }`, where the Outpost stood (copied; `cloneEventPayload` already deep-copies a nested hex).
+- `craftId` + `craftClass` — the heavy that now carries the kit.
+
+**The surface — the MESSAGES inbox + popup (§8 / §9), the pilot's character, as §10:**
+- the inbox row reads **"Outpost packed up"**, newest-first, with the unread dot as any notice;
+- the hero is the PILOT (`client/assets/characters/pilot.jpg`), the eyebrow is "Fleet — Dispatch";
+- the body is the pilot's voice, verbatim, one beat:
+
+  > The outpost has been packed up, ready to be deployed, Guildmaster. Where do you want me to take it?
+
+- the facts block: `Craft` = `craftClass · NN`; `Packed at` = `anchorSystemName` and hex `{q}, {r}`; `When` = the event
+  `whenDay`;
+- **one control, SHOW ON MAP**, beside Dismiss. It closes the popup and flies the map to the heavy's CURRENT hex,
+  looked up live by `craftId` in the snapshot. A packed heavy sits idle on its hex until the player acts, so
+  "current" is normally right; if the heavy is gone, in transit, or not on a hex, fall back to `payload.hex`.
+  There is no Deploy or Redeploy button: the message asks the question, and the player answers it through the
+  existing dispatch and deploy flow. (§10's Redeploy / Return forks are for a *failed* deploy and are not reused.)
+
+Opening the message acknowledges it (§8, read-on-open), unchanged.
+
+**A NO-OP elsewhere.** A galaxy that never reclaims an Outpost writes no `outpost_packed` row, so every
+existing log, snapshot and golden is unchanged.

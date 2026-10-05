@@ -2500,6 +2500,7 @@ boundary so the later hex-map swap doesn't touch it.
     cites "a deep scan mast's 2.333… reads 2.33". The console shows whatever the snapshot publishes,
     so it now reads 4 / 3 / 2.
 
+- **2.2 — Outpost teardown / redeploy (the reclaim half of the deploy pipeline; `docs/outpost-teardown.md`).** RULED 05-10-26, NOT BUILT. Reclaim a deployed Outpost into an `outpost_kit` in the empty heavy parked on its hex, ready to be dispatched and deployed again. Two slices: the engine action `reclaimOutpost` (the three-rule gate, the kit into the hold, distinct refusals, tripwires) → a small gated Teardown affordance in the Outpost Manager. No new number. Out of scope: territory-era cases, kit building, `removeOutpost`'s destroy semantics.
 - **2.2 — The deploy pipeline: the cross-system asset ferry (`docs/territory-model.md` §5).** Haul a
   Tier-4 kit on a transport to a target and place it on arrival — the ferry that unblocks the Prefecture
   (the item below). Built as a ladder: **slice 1** the deployable good + a manual outpost deploy (engine +
