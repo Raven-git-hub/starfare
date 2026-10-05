@@ -127,6 +127,25 @@ The space-asset deploy ranges: how far from a system the guild **holds** a struc
 - **Toll gate ≤ 10 from a system OR outpost; deep-scan array ≤ 5 from a system or outpost** — `[FIRST-CUT]`, **still open** on the decision checklist: those kinds are not built, so no constant exists for them yet.
 - **The kit's cargo volume is NOT a new number:** an `outpost_kit` takes `ASSET_CARGO_VOLUME` (= `HEAVY_HOLD`), the Tier-4 asset volume already ruled (design.md §4), via `sim/fuel.js` `volumeOf`. It is why only a heavy carries a kit, one at a time.
 
+### Exploration & scanning — the Deep Scan Array *(05-10-26 — `docs/exploration-model.md` §5; roadmap 2.5)*
+
+- **Deep Scan Array scan durations `[FIRST-CUT]`** (the human, 05-10-26; 1 tick = 1 min): an **L1
+  system scan** (reveals all a system's planet archetypes, one job) = **720 ticks (12 h)**; an **L2
+  per-planet scan** (reveals one planet's resource nodes) = **480 ticks (8 h)**. A six-planet
+  system thus surveys fully in 12 + 6×8 = **60 h (2.5 days)**. Tuned so a craft-scout (instant L1)
+  or a Prefecture (fast in-system L2) stays competitive with the array for close systems rather
+  than the array being strictly dominant. Both timers divide the 10,080-tick week (×14, ×21), so
+  they carry no fractional-week tension if the Tier-3 whole-week discipline is ever generalised.
+  One array runs **one active job at a time** (scale by building more arrays), with the **L1→L2
+  chain** enforced at queue time (you cannot queue an L2 on a planet whose system you do not yet
+  know at L1). Retune in play. Live once in the engine (the scan module), read only by the scan
+  scheduler, never inlined.
+- **Deep Scan Array deploy placement — NOT a range number.** The array is deploy-placed **adjacent
+  to ("attached to") a held system or outpost footprint**, which **supersedes** the `[FIRST-CUT]`
+  "deep scan ≤ 5 hexes" deploy range (`territory-model.md` §5/§8). Its **scan reach is galaxy-wide
+  / unbounded** — no range constant. The monitoring watch-fan (directional, ~4-hex reach) is
+  **deferred**; its radius is not ruled here.
+
 ### Production flow *(10-08-26)*
 - **Starved-line warn threshold** `[FIRST-CUT]` — a consuming line is flagged "starved" (the §5 pulsing box / future Plant-Manager cue) only when its effective rate is below this fraction of its own throttle, so a rounding wobble near 100% doesn't cry wolf. **95%** — pure first-cut, tune in play.
 - **Tick duration** — **RULED (24-08-26): 1 tick = 1 minute of real time** → 60 ticks/hour, 1,440 ticks/day. The engine stays per-tick and clock-free; this is the multiplier the per-hour UI display (§5) reads. Full entry below.

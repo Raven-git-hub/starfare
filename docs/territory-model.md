@@ -108,6 +108,17 @@ punishment exists:** detection, penalties and the report/bounty are 2.5 / Phase-
 machinery, and unclaimed mining with no jeopardy would just be free mining. Until then
 **Gate 3 stays hard.** (Rival-held land stays leasing's job — a contract, not squatting.)
 
+**You can't claim an unexplored system *(the exploration coupling, 05-10-26)*.** The claim gate
+now reads the guild's **exploration record** (`docs/exploration-model.md` §8): a Prefecture may be
+planted only on a **planet the guild knows at ≥ 1 resource node** in its record — however that
+fact was learned (its own Deep Scan Array survey, or the public record of a rival's lapsed
+licensed venture). Knowing a node on planet P opens the gate for P, not for a different planet in
+the same system; planting then reveals the rest of P's nodes. This is **recorded here by the
+exploration slice (roadmap 2.5) and ENFORCED by the Prefecture / claims slice that follows it** —
+the gate's data source (the record) exists from birth so the claim action is never retrofitted
+onto a fully-visible galaxy. It does not change the claim *row* (still `landmarkKind: 'system'`,
+§4 above); it adds a precondition on the deploy-onto-a-settlement-slot step.
+
 ## 5. The deployment pipeline — the cross-system asset ferry
 
 Deploying an asset is: **haul a Tier-4 kit on a transport to a target, and place it on
@@ -138,7 +149,12 @@ built earlier at the dockyard).
 **Deploy ranges `[FIRST-CUT]`** (space assets only; ground assets have none — narratively,
 space assets need supply runs) — outpost ≤ **10** hexes from a **system**; toll gate ≤
 **10** from a **system OR outpost**; deep scan ≤ **5** from a **system or outpost** (→
-`phase-1-tuning.md` / decision checklist; the gate/outpost figures mirror `design.md` §2).
+`phase-1-tuning.md` / decision checklist; the gate/outpost figures mirror `design.md` §2). *(⤳
+**The deep-scan array's 5-hex deploy range is SUPERSEDED 05-10-26** (`docs/exploration-model.md`
+§5). The array is **deploy-placed "attached"** — its hex directly adjacent to a system or outpost
+footprint the guild holds — not placed within a 5-hex range. Its *scan* reach is galaxy-wide, so
+placement is a flavour / future-monitoring concern, not a scan concern. The toll-gate 10-hex range
+is unchanged and still open.)*
 
 **Painting the range (the snapshot contract).** The engine tells the client WHERE a
 deploy is legal; the client never computes that itself (§18 — the range distance is a game
@@ -579,7 +595,11 @@ confirm.)*
 ## 8. Open items → decision checklist
 
 - Deploy ranges (outpost / gate / scan = 10 / 10 / 5) and semi-control aura radii (system /
-  outpost / gate·scan = 5 / 3 / 2) — `[FIRST-CUT]` numbers for the tuner.
+  outpost / gate·scan = 5 / 3 / 2) — `[FIRST-CUT]` numbers for the tuner. *(⤳ **deep-scan deploy
+  range SUPERSEDED 05-10-26:** the array is placed **adjacent to ("attached to") a held system or
+  outpost**, not within 5 hexes; galaxy-wide scan reach makes placement a monitoring/flavour
+  concern (`docs/exploration-model.md` §5). Outpost 10 remains ruled; gate 10 and all aura radii
+  remain open.)*
 - ~~Arrival-revalidation failure semantics~~ — **RULED 30-09-26:** the craft RETREATS `DEPLOY_RETREAT_HEXES` (3)
   toward the nearest held system, kit aboard, flagged `deployFailed` (§5). **Still open under it:** where a
   retreat lands when that step falls just off the lattice near the rim (built provisionally as "step on along

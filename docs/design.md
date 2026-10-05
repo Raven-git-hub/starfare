@@ -191,6 +191,47 @@ one is itself open - §19 #69.
 
 > **The full territory & deployment model lives in `docs/territory-model.md` (design-ahead, 29-09-26).** The spatial control layer — the 7-hex control footprint with **first-settled seniority** over overlaps, and the semi-controlled **detection** corridors (trunk & feeder, own-nodes only) — plus the Prefecture-as-flag and squatting-as-deferred-direction, the **cross-system deploy pipeline** (which *is* the ferry the Prefecture waits on), the **starter ≥ 3 spacing** generation rule, and the founding-grant change. This section holds the narrative and the headline rulings; that file is the computational model.
 
+### Fog of war — per-guild visibility *(05-10-26)*
+
+**DESIGN-AHEAD; the first half IN BUILD (roadmap 2.5, the exploration slice).** The galaxy
+flips from "one snapshot, everyone sees everything" to a **per-guild filtered view**. The
+through-line: the Syndicate is a public company and guilds are shareholders, so **licensed is
+public, ownership is public, geography is learnable-and-permanent, and operations are private**.
+
+Four visibility levels, each cut by a different method depending on the situation:
+
+- **L0 — never fogged, every system:** position + planet count + controlling guild (plus every
+  Syndicate waystation). Nothing hides it, so nothing cuts it.
+- **L1 — a system's planet archetypes:** cut by a transport sitting idle in the system (instant,
+  costs the trip) **or** a Deep Scan Array L1 scan (no trip, takes time).
+- **L2 — a system's resource nodes, per planet:** cut **only** by a Deep Scan Array, one planet
+  at a time (time-based). A transport has no survey gear. *(Later also a Prefecture's own faster
+  in-system scan, and L3 — both deferred.)*
+- **L3 — espionage, DEFERRED:** a rival's hidden interior (un-licensed nodes, stockpiles,
+  transports, arrays), cut only by a spycraft deployed to the rival system.
+
+Each guild's view is the union of two sources: a **per-guild exploration record** (static
+geography, **learn-once / known-forever**, any source writes it permanently — this is what the
+claim gate reads) and the **live rules** (controllers, rival *licensed* venture types, rival
+structures, waystations, your own deliveries — recomputed each tick, lifting and re-fogging on
+their own). A rival's **licensed** node shows its type and its planet's archetype but **never its
+stockpile** (§405); a rival's un-licensed nodes stay fogged until L3.
+
+Headline rulings (05-10-26): claiming a system reveals it to L1 and the **settled planet** to L2,
+but its other planets stay L2-fogged until surveyed (a **bounded** reveal); the **claim gate is
+per-planet** — a Prefecture may be planted only on a planet known at ≥ 1 node in the record
+("**you can't claim an unexplored system**"); a transport reveals **L1 only**; the **Deep Scan
+Array** scans **galaxy-wide** (unbounded reach), one job at a time, L1-before-L2, 12 h / 8 h
+`[FIRST-CUT]`, and is **deploy-placed adjacent to ("attached to") your own territory**; a new
+guild knows its **home system fully + L0 everywhere**, nothing else.
+
+> **The full exploration & fog model lives in `docs/exploration-model.md` (design-ahead,
+> 05-10-26).** The L0–L3 levels and the situation × method table, the two-source architecture, all
+> the rulings, the Deep Scan Array (discovery wired, monitoring design-ahead), founding state, the
+> per-guild snapshot architecture (the `buildSnapshot(state, guildId)` keystone + the `/galaxy`
+> leak noted-and-deferred), and the "can't claim unexplored" coupling the Prefecture slice will
+> enforce. This section holds the narrative and the headline rulings; that file is the model.
+
 ### Toll Gates & Toll Paths
 
 The "toll routes are exponentially safer and faster" principle above now has a concrete deployable structure behind it. A **Toll Gate** is a single-hex, guild-controlled claim in the same family as an Outpost, but purpose-built for the toll mechanic rather than as a relay hub.
@@ -402,7 +443,7 @@ Not yet covered: heavier ship classes, weapons recipes, station module recipes, 
 
 Guilds set up **ventures** — small production companies operating a **ground asset** under Syndicate Venture Licences (or unlicensed, at the legal risk described in Section 2). A ground asset is one of exactly two machines (Section 4): a **miner**, which extracts a raw resource on a resource node, or a **factory**, which sits on a settlement slot and is configured to **refine, manufacture, or construct** — so the two machines between them span all four tiers of the manufacturing tree. Goods sell into a shared market where scarcity commands better prices and abundance worse, with soft logistic floors/ceilings preventing runaway spirals. Guilds aren't required to sell to market: they can stockpile or consume internally, creating the **build-vs-buy** tension between vertical integration (secure, capital-intensive) and specialization (efficient, exposed).
 
-Supply chains are an explicit **attack surface**: a guild can starve a rival's venture by cornering an input market or pressuring a supplier's territory owner — all without direct conflict or rule-breaking. **Partial transparency** supports this: venture _types_ are visible (letting rivals infer likely inputs), but exact stockpiles are hidden, preserving room for market intuition and the future espionage layer.
+Supply chains are an explicit **attack surface**: a guild can starve a rival's venture by cornering an input market or pressuring a supplier's territory owner — all without direct conflict or rule-breaking. **Partial transparency** supports this: venture _types_ are visible (letting rivals infer likely inputs), but exact stockpiles are hidden, preserving room for market intuition and the future espionage layer. *(**Formalised 05-10-26** by the fog model, "Fog of war — per-guild visibility" above / `docs/exploration-model.md` §2: a rival's **licensed** node shows its venture type and its planet's archetype but never its stockpile, and a rival's **un-licensed** nodes stay fogged entirely until L3 espionage — which is exactly this "venture types visible, exact stockpiles hidden" rule made into per-guild visibility.)*
 
 **Production is automated.** Players set parameters — production rate, buy/sell thresholds, stop conditions, stockpile targets — rather than micromanaging, so casual players can set conservative defaults while engaged players tune aggressively. Production draws **no fuel**: ventures are renewable-powered, so a guild can mine, refine, and manufacture entirely within its own system without touching Deuterium (§3, open question #54). Fuel is the price of *movement and interaction* — reaching other systems, the Syndicate, and the market — which is where a squeeze actually bites: through fleet and route burn and the shared allocation pool, not through any venture-level draw.
 

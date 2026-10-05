@@ -3636,11 +3636,26 @@ boundary so the later hex-map swap doesn't touch it.
   forced-closure −500 vs the renegotiation `atRisk` band, and whether forced-lease triggers on a
   continuous RP threshold or at window-end; "forced lease" is a NEW lifecycle ending (venture
   transferred, not closed) that must slot into the built accept/reject/timeout/teardown/closure set.*
-- **2.5 — Exploration & espionage.** Layered fog-of-war: Layer 1 — everyone sees system position +
-  controlling guild (1A controlled: planet count + archetypes, not nodes; 1B uncontrolled: planet
-  count only); Layer 2 — a Deep Scan Array (built at 2.1) reveals archetypes then nodes of
-  non-controlled systems over time within range; Layer 3 — spycraft (built at 2.1) inspects a
-  specific enemy-controlled planet. *Open: scan durations + array range; espionage cost/risk.*
+- **2.5 — Exploration & espionage.** Per-guild fog of war on four levels, each cut by a different
+  method (RULED 05-10-26, `docs/exploration-model.md`; `design.md` §2 "Fog of war"): **L0** never
+  fogged — position + planet count + controlling guild, every system (+ waystations); **L1** a
+  system's planet archetypes — cut by a transport idle in the system (instant, costs the trip) OR a
+  Deep Scan Array L1 scan (timed, no trip); **L2** a system's resource nodes per planet — cut ONLY
+  by the Deep Scan Array, one planet at a time (timed); **L3** espionage (DEFERRED) — a rival's
+  hidden interior, cut only by a spycraft deployed to the rival system. Learn-once / known-forever:
+  a per-guild **exploration record** holds static geography permanently and is what the **claim
+  gate** reads ("can't claim an unexplored system"); the **live rules** (controllers, rival
+  *licensed* venture types, structures, waystations, your deliveries) recompute each tick. The
+  **Deep Scan Array** (built here) scans **galaxy-wide** (unbounded reach), **one job at a time**,
+  **L1-before-L2**, at **12 h / 8 h** `[FIRST-CUT]`, and is deploy-placed **adjacent to ("attached
+  to") held territory**. **⤳ IN BUILD 05-10-26** as sequential vertical slices: **(a) engine** —
+  per-guild `buildSnapshot(state, guildId)` + the exploration record + the two sources + founding
+  state (home fully known + L0 everywhere) + the claim-gate coupling recorded; **(b) the Deep Scan
+  Array** — entity + "attached" deploy + the scan-job queue (one active job, L1/L2, the chain,
+  completion-revalidation) + reveal-to-record; **(c) client** — the fog UI. *Deferred: monitoring
+  (the array's directional watch-fan → detection/corridors/catch-fine), L3 espionage, the
+  Prefecture self-scan, squatting. Still open: espionage cost/risk; the scan durations remain
+  `[FIRST-CUT]` for the tuner.*
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -3717,7 +3732,7 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
 ## Decision checklist (open)
 
 **Phase 2 — new, from the design notes (need rulings before their slice becomes a build prompt):**
-- **Territory & deployment `[FIRST-CUT]` numbers (29-09-26, `docs/territory-model.md`)** — need rulings before the deploy/claim build: the space-asset **deploy ranges** (outpost 10 / toll gate 10 / deep scan 5 hexes), the **semi-control aura radii** (system 5 / outpost 3 / gate·scan 2), the **starter minimum separation** (3 hexes = 2×claimRadius + 1), and the **arrival-revalidation** failure rule (a kit arriving to an illegal target stays aboard and the craft idles — confirm). Squatting enforcement (detection / penalty / report-bounty) is a ruled *direction* deferred to 2.5 / Phase-6, not a number. **⤳ 29-09-26 — the OUTPOST deploy range (10) is RULED as the `[FIRST-CUT]`** and recorded in `phase-1-tuning.md` "Territory & deployment" (`OUTPOST_DEPLOY_RANGE`, built with the 2.2 deploy pipeline slice 1). **⤳ 30-09-26 — the arrival-revalidation rule is RULED and CLOSED:** a failed on-arrival deploy RETREATS the craft `DEPLOY_RETREAT_HEXES` (`[FIRST-CUT]` 3, recorded in `phase-1-tuning.md`) toward the nearest held system, clamped at that system, kit aboard, flagged `deployFailed` (`territory-model.md` §5; built with the deploy pipeline slice 2). **Still open:** the toll-gate / deep-scan ranges, the aura radii, the starter separation; **the off-lattice retreat landing** — near the rim the 3-hex step can land just outside the galaxy (9 system / in-range-hex pairs on the live seed); slice 2 builds it PROVISIONALLY as "step on along the same line to the first on-lattice hex (at worst the system)" — confirm or rule otherwise; and refining the retreat landing to avoid rival / contested space (with the spatial control layer).
+- **Territory & deployment `[FIRST-CUT]` numbers (29-09-26, `docs/territory-model.md`)** — need rulings before the deploy/claim build: the space-asset **deploy ranges** (outpost 10 / toll gate 10 / deep scan 5 hexes), the **semi-control aura radii** (system 5 / outpost 3 / gate·scan 2), the **starter minimum separation** (3 hexes = 2×claimRadius + 1), and the **arrival-revalidation** failure rule (a kit arriving to an illegal target stays aboard and the craft idles — confirm). Squatting enforcement (detection / penalty / report-bounty) is a ruled *direction* deferred to 2.5 / Phase-6, not a number. **⤳ 29-09-26 — the OUTPOST deploy range (10) is RULED as the `[FIRST-CUT]`** and recorded in `phase-1-tuning.md` "Territory & deployment" (`OUTPOST_DEPLOY_RANGE`, built with the 2.2 deploy pipeline slice 1). **⤳ 30-09-26 — the arrival-revalidation rule is RULED and CLOSED:** a failed on-arrival deploy RETREATS the craft `DEPLOY_RETREAT_HEXES` (`[FIRST-CUT]` 3, recorded in `phase-1-tuning.md`) toward the nearest held system, clamped at that system, kit aboard, flagged `deployFailed` (`territory-model.md` §5; built with the deploy pipeline slice 2). **Still open:** the toll-gate ~~/ deep-scan~~ range, the aura radii, the starter separation; **the off-lattice retreat landing** — near the rim the 3-hex step can land just outside the galaxy (9 system / in-range-hex pairs on the live seed); slice 2 builds it PROVISIONALLY as "step on along the same line to the first on-lattice hex (at worst the system)" — confirm or rule otherwise; and refining the retreat landing to avoid rival / contested space (with the spatial control layer). **⤳ 05-10-26 — the DEEP-SCAN deploy range is RESOLVED, not as a number:** the deep-scan array is deploy-placed **adjacent to ("attached to") a held system or outpost** (its scan reach is galaxy-wide, so placement is a monitoring / flavour concern), superseding the `[FIRST-CUT]` 5-hex figure (`docs/exploration-model.md` §5, `territory-model.md` §5/§8). The toll-gate 10-hex range and the aura radii stay open.
 - **The deploy map: two client calls (01-10-26, 2.2 deploy pipeline client slice 2, `territory-model.md` §5)**, built
   one way and flagged rather than ruled. **(1) No quote before DEPLOY.** ~~The ruling makes the chip's DEPLOY the
   finalise, so the deploy map sends the leg without ever showing the engine's time / fuel / credit quote. The route
@@ -4662,7 +4677,7 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
 - **Investment:** are shares tradable (leaning no)? The share-price formula specifics and the RP-boost
   ratio. **The RP-band reconciliation** (forced-lease −300 vs forced-closure −500 vs renegotiation
   bands; continuous-threshold vs window-end trigger; forced-lease as a new venture-transfer ending).
-- **Exploration/espionage:** scan durations + array range; espionage cost/risk model.
+- **Exploration/espionage:** scan durations (**L1 12 h / L2 8 h `[FIRST-CUT]`** 05-10-26, → `phase-1-tuning.md`); array scan range **RULED galaxy-wide / unbounded** and deploy placement **RULED "attached"** (05-10-26) — both closed. **Still open:** espionage cost/risk model, and the scan durations remain first-cut for the tuner.
 - **Droids:** the production-boost mechanic + numbers.
 
 **Carried from Phase 1 / earlier:**
