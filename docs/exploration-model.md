@@ -8,7 +8,10 @@ headline rulings; **this file is the model**, the same split `territory-model.md
 
 Status by part: the **visibility model (§1–§3)**, the **per-guild snapshot + exploration
 record (§7)**, and the **Deep Scan Array's discovery scan (§5)** are the current build
-(roadmap 2.5, the exploration slice). **Monitoring (§5, the deferred half), L3 espionage,
+(roadmap 2.5, the exploration slice). *(⤳ 05-10-26: the ENGINE half of §3/§6/§7 — the record, the
+one `reveal`, founding state, the rival-licensed-venture source, and the per-guild
+`buildSnapshot(state, guildId)` — is BUILT, roadmap 2.5 (a); see the AS-BUILT notes in §3, §6, §7.
+The Deep Scan Array (§5) and the client are the next slices; §8's gate is recorded, not enforced.)* **Monitoring (§5, the deferred half), L3 espionage,
 the semi-controlled corridors, and the Prefecture self-scan (§4) are design-ahead and
 NOT built here** — recorded so the slices that build them read the real ruling, not a
 paraphrase.
@@ -246,6 +249,44 @@ stands on.
   god's-eye lens is **preserved for operator / debug** via an explicit all-seeing mode (no guild,
   or a sentinel), so `/inspect` and the operator tools keep their full view; the **player** path
   passes its guild.
+  **⤳ AS-BUILT 05-10-26 (roadmap 2.5 (a), part 2 — `sim/snapshot.js`, `sim/fog.js`).**
+  `buildSnapshot(state)` (or a null/undefined guild) is the **god's-eye lens, byte-identical to
+  before**: the old body is renamed `buildGodsEyeSnapshot`, unedited, and `tests/fog.test.js` pins
+  its output to hashes recorded on `main` (8c248d6) before the slice. `buildSnapshot(state,
+  guildId)` builds that same object and passes it through `fogForGuild`, which only **subtracts**
+  rival facts and **adds** two keys — so the two lenses can only differ by what fog.js does:
+  - **own data in full** — the viewer's guild row, ventures, outposts, deliveries, builds,
+    production preview and notices, byte-for-byte the god's-eye rows;
+  - **rival guild rows** cut to an **allow-list**: `id`, `name`, `isBot`, `homeSystemId` (the
+    controller fact). Credits, fuel, stockpiles, reputation, points, assets, **vehicles**, orders,
+    events — gone; `homePlanetId` too (a planet inside a rival system is L1 not yet learned);
+  - **rival ventures**: only those on the public register (`isOnPublicRegister` — the same
+    predicate the record observation uses), each cut to `id`, `ownerGuildId`, `type`, `siteId`,
+    `systemId`, `ventureName`, `site` (the node: kind, planet, system, resource type, name) plus
+    `planetArchetype` from the seed. An **unlicensed** rival venture is absent everywhere
+    (`ventures`, `occupancy`) — fogged until L3;
+  - **rival outposts** cut to `id`, `ownerGuildId`, `coords`, `anchorSystemId` (stockpile, used
+    space, capacities and the dock — which names rival craft — dropped);
+  - **rival deliveries, pending Syndicate builds, production preview and notices** removed
+    (your own deliveries stay — ruling 5);
+  - **claims**: every row kept — ownership is public (controllers, waystations, the Citadel) — but
+    a **rival's system claim** has its resolved seed landmark cut to L0 (`id`, `kind`, `name`,
+    `coords`): the god's-eye landmark also carries `terranHomeworldId` / `starterEligible`, which
+    name and type a planet inside the rival system (L1 not learned);
+  - **public, passed through untouched:** prices and their histories, fee/contract/asset quotes, the
+    calendar, `nodeLockouts`, and the galaxy-wide `galacticSupply` / `syndicate` figures (see the
+    decision checklist: those aggregates let a guild subtract its own share — not decided here);
+  - **added:** `viewerGuildId`, and `geography = { systems, known }` — `systems` is **L0 for every
+    system** (`id`, `name` (position-derived), `coords`, `planetCount`, `controllerGuildId` from the
+    claims — never fogged, computed, never stored); `known` is the guild's **record**, resolved
+    through the seed, grouped `{ [systemId]: { [planetId]: { archetype, nodes: { [nodeId]:
+    resourceType } } } }`. The live half (a rival's licensed node + archetype) rides on that
+    rival's venture row, so the two sources stay distinct.
+  Every rival row is an **allow-list**, and every top-level god's-eye key must be classified public
+  or filtered in `fog.js` `TOP_LEVEL` — an unclassified key throws, and a test fails on a new one —
+  so nothing new reaches a player by default. The view is pure (it reads the record, writes
+  nothing). `GET /snapshot?guild=<id>` serves it for headless proof (404 for an unknown guild);
+  plain `GET /snapshot` is unchanged. The client wiring is slice (c).
 - **One source-agnostic reveal.** A single `reveal` writes geography into a guild's record,
   whatever the source — a scan completing, a craft visit, a claim, founding, and (later) a
   Prefecture scan. Ruling 1 already forces this (a scan and a rival's licensed venture both
@@ -265,6 +306,9 @@ stands on.
   of the snapshot filter. The **engine's per-guild view is the authority** and the tripwires test
   *it*; hardening the HTTP route (and the no-auth, client-picks-its-own-guild dev rig) is a
   **later backend slice**, recorded here so it is not silently forgotten.
+  *(⤳ 05-10-26, found while building (a): `GET /starters` — the home-system picker's seed route — is
+  the same kind of leak in miniature: it lists every starter system with its `terranHomeworldId`.
+  Same deferral, same later slice; the per-guild view itself does not carry it.)*
 
 ## 8. The claim-gate coupling — "you can't claim an unexplored system"
 
@@ -275,6 +319,12 @@ lapsed venture). This coupling is **not** in the repo's Prefecture model today (
 `territory-model.md` §4). **This slice does not build the Prefecture** — it records the gate so
 the Prefecture / claims slice (next) reads the real ruling, and so the exploration record is
 already the gate's data source from birth.
+
+> **⤳ AS-BUILT 05-10-26 (roadmap 2.5 (a)) — RECORDED, NOT ENFORCED.** The record this gate reads
+> now exists from founding, keyed per planet exactly as ruling 7 needs it, and `knowsNode(guild,
+> nodeId)` / `exploration[planetId].nodes` (`sim/exploration.js`) is the read the Prefecture slice
+> will gate on ("knows ≥ 1 node of planet P"). Nothing calls it as a gate yet: the claim and
+> establish validations are untouched.
 
 ## 9. Scope & the vertical split
 

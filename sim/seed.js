@@ -106,6 +106,10 @@ function buildIndex() {
   // waystations on distinct hexes), so a plain last-writer map is faithful.
   const byHex = new Map();
   const hexKey = (coords) => `${coords.q},${coords.r}`;
+  // l0Systems — every system's NEVER-FOGGED facts (docs/exploration-model.md §1, L0): its identity,
+  // position and planet count, one row per system, built once here (the controller is live state,
+  // added by the per-guild view from the claims). A position-derived name is identity, not geography.
+  const l0Systems = [];
 
   for (const sys of seed.systems || []) {
     // The lowest-id Terran planet is the homeworld a guild starts on (§13);
@@ -144,6 +148,7 @@ function buildIndex() {
     // (with nodes + slots) on demand without a second pass over the seed. It's a
     // reference into the already-cached seed object, not a copy.
     bySystemRaw.set(sys.id, sys);
+    l0Systems.push({ id: sys.id, name: sys.name, coords: sys.coords, planetCount: (sys.planets || []).length });
     if (sys.coords) byHex.set(hexKey(sys.coords), { id: sys.id, kind: 'system', coords: sys.coords });
   }
 
@@ -165,7 +170,8 @@ function buildIndex() {
   // SAME two numbers the generator used (tools/generate_seed.js), never a chosen constant
   // (§18 / CLAUDE.md "Never invent a number"). A generator-less test seed may omit them,
   // in which case there is no lattice to bound and `isHexInBounds` answers false.
-  return { bySite, byPlanet, bySystem, bySystemRaw, byOutpost, byHex, citadel, seedNumber: seed.seed, galaxyParams: seed.galaxyParams || null };
+  l0Systems.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return { bySite, byPlanet, bySystem, bySystemRaw, byOutpost, byHex, l0Systems, citadel, seedNumber: seed.seed, galaxyParams: seed.galaxyParams || null };
 }
 
 function index() {
@@ -349,6 +355,13 @@ function getSystemLayout(id) {
   };
 }
 
+// getL0Systems() -> every system's L0 row `{ id, name, coords, planetCount }`, sorted by id — the
+// part of the map no guild is ever fogged from (docs/exploration-model.md §1). The cached rows are
+// SHARED with the index, so a caller emitting them copies first (the per-guild view does).
+function getL0Systems() {
+  return index().l0Systems;
+}
+
 // getSeedNumber() -> the integer the seed was generated from. The live world
 // records this so a galaxy knows which seed it is built over.
 function getSeedNumber() {
@@ -360,5 +373,5 @@ module.exports = {
   getSite, getPlanet, isResourceNode, isSettlementSlot, findNodesByResource, siteName, roman,
   getCitadel, getSystem, getOutpost, getOutposts, getLandmark,
   hexToPixel, isHexInBounds, seedLandmarkAtHex,
-  isStarterSystem, getTerranHomeworld, getStarterSystems, getSystemLayout, getSeedNumber,
+  isStarterSystem, getTerranHomeworld, getStarterSystems, getSystemLayout, getL0Systems, getSeedNumber,
 };

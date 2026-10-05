@@ -225,6 +225,14 @@ Array** scans **galaxy-wide** (unbounded reach), one job at a time, L1-before-L2
 `[FIRST-CUT]`, and is **deploy-placed adjacent to ("attached to") your own territory**; a new
 guild knows its **home system fully + L0 everywhere**, nothing else.
 
+> **⤳ ENGINE HALF BUILT 05-10-26 (roadmap 2.5 (a)).** Each guild now carries its exploration record
+> (`Guild.exploration`, §15.4; seeded with the whole home system at founding; a rival's licensed
+> venture adds its node at the end of each tick, §15.6), and `buildSnapshot(state, guildId)` is the
+> per-guild view — own data in full, every rival cut to its public facts, plus L0 for every system
+> and the guild's record (`sim/fog.js`). `buildSnapshot(state)` stays the god's-eye operator lens,
+> byte-identical. No Deep Scan Array, no client, no claim gate yet. AS-BUILT detail:
+> `docs/exploration-model.md` §3/§6/§7/§8.
+
 > **The full exploration & fog model lives in `docs/exploration-model.md` (design-ahead,
 > 05-10-26).** The L0–L3 levels and the situation × method table, the two-source architecture, all
 > the rulings, the Deep Scan Array (discovery wired, monitoring design-ahead), founding state, the

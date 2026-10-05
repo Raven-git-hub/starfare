@@ -18,7 +18,8 @@
 // same question rather than two spellings of it that could drift apart.
 // `landmarkKind` is part of the match for the same reason getLandmark demands it:
 // an outpost id must never resolve as a system by luck.
-const isSystemClaimFor = (c, guildId) => c.ownerGuildId === guildId && c.landmarkKind === 'system';
+const isSystemClaim = (c) => c.landmarkKind === 'system';
+const isSystemClaimFor = (c, guildId) => c.ownerGuildId === guildId && isSystemClaim(c);
 
 // guildHolds(state, guildId, systemId) -> boolean. A claim on that exact system,
 // of kind 'system', owned by that guild.
@@ -47,4 +48,19 @@ function heldSystemIds(state, guildId) {
   return [...ids].sort((a, b) => a.localeCompare(b));
 }
 
-module.exports = { guildHolds, heldSystemIds };
+// systemControllers(state) -> Map systemId -> the guild id holding it. The L0 "controlling
+// guild" fact (docs/exploration-model.md §1 — never fogged, every system) for the whole galaxy at
+// once, so the per-guild view does not ask `guildHolds` 1,500 × guilds times. Built on the SAME
+// `isSystemClaim` test as the two questions above, so `systemControllers(s).get(x) === g` and
+// `guildHolds(s, g, x)` agree. A system with no system claim is simply absent (unclaimed).
+// If two claim rows ever named one system, the FIRST in `state.claims` order would answer —
+// deterministic (invariant 9); nothing builds that today (founding refuses an already-claimed home).
+function systemControllers(state) {
+  const out = new Map();
+  for (const c of state.claims || []) {
+    if (isSystemClaim(c) && !out.has(c.landmarkId)) out.set(c.landmarkId, c.ownerGuildId);
+  }
+  return out;
+}
+
+module.exports = { guildHolds, heldSystemIds, systemControllers };

@@ -18,7 +18,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
-| 1 | The guild↔Syndicate economy | ✅ Done (deep, 2,042 tests, deterministic) |
+| 1 | The guild↔Syndicate economy | ✅ Done (deep, 2,086 tests, deterministic) |
 | 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile, BUY's Deliver to now offers the guild's Outposts beside its systems, opening on the node nearest a waystation, and the MESSAGES inbox shows both delivery notices in the Trader's voice (client; the trading to/from outposts item is complete); a deployed Outpost can now be packed back into a kit aboard the empty heavy parked on it, ready to be flown and deployed again, with an `outpost_packed` notice (engine), and the Outpost Manager's Teardown button sends it, the pilot's message reporting it in MESSAGES with Show on map (client; the teardown item is complete, though no button yet sends the packed heavy to deploy — decision checklist); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
@@ -3674,6 +3674,22 @@ boundary so the later hex-map swap doesn't touch it.
     record) and `starter-package.test.js` (the two bot founding goldens, re-pinned as `…_WITH_EXPLORATION`
     with the old values kept as the stripped proof). Guild-less and scenario-built states are
     byte-identical (no key). Tests: `tests/exploration.test.js`.
+  - **(a) engine slice 1 — ⤳ AS-BUILT 05-10-26, part 2 of 2: the per-guild FILTER.**
+    `buildSnapshot(state, guildId)` (`sim/snapshot.js` → new `sim/fog.js` `fogForGuild`) is the
+    player lens: the viewer's own data in full; every rival cut by **allow-lists** to its public
+    facts — guild row `id`/`name`/`isBot`/`homeSystemId`; ventures ONLY if licensed (node, planet
+    archetype, type — no stockpile, rate, terms or reputation); outposts where-and-whose; claims
+    all kept (ownership is public) but a rival system claim's seed landmark cut to L0 (it named the
+    rival's Terran homeworld); rival deliveries, builds, production preview and notices removed; an
+    unlicensed rival node absent everywhere — plus `geography` (**L0 for all 1,500 systems** with controllers, and the guild's
+    **record** resolved through the seed). `buildSnapshot(state)` is the **god's-eye operator lens,
+    byte-identical** — the old body renamed `buildGodsEyeSnapshot`, unedited, and pinned to five
+    hashes recorded on `main` (8c248d6) before the slice. Every god's-eye top-level key is
+    classified public/filtered (`TOP_LEVEL`); a new key throws and fails a test. `GET
+    /snapshot?guild=<id>` serves it for headless proof (404 unknown guild); the client wiring is
+    (c). Tests: `tests/fog.test.js` (18), `tests/fog-route.test.js` (1). **Open, on the checklist
+    below (not decided here):** the galaxy-wide aggregates' subtraction leak, and the exact
+    contents of a rival's public venture / guild / outpost rows.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -4696,6 +4712,14 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   ratio. **The RP-band reconciliation** (forced-lease −300 vs forced-closure −500 vs renegotiation
   bands; continuous-threshold vs window-end trigger; forced-lease as a new venture-transfer ending).
 - **Exploration/espionage:** scan durations (**L1 12 h / L2 8 h `[FIRST-CUT]`** 05-10-26, → `phase-1-tuning.md`); array scan range **RULED galaxy-wide / unbounded** and deploy placement **RULED "attached"** (05-10-26) — both closed. **Still open:** espionage cost/risk model, and the scan durations remain first-cut for the tuner.
+- **Fog engine slice 1 (2.5 (a), per-guild view) — items for a ruling or a confirm** — *surfaced 05-10-26 by the build. Each was built the conservative way (hide what is not ruled public — a hidden fact can be lifted later; a leaked one cannot be taken back), and none is decided by the code beyond that.*
+  1. **The aggregate subtraction leak.** The per-guild view passes the galaxy-wide `galacticSupply` (`resources` = Σ every guild's stockpiles; `fuel.guildHeld` / `total` = Σ every hoard) and `syndicate.ledger` (which with the credit invariant encodes Σ guild credits) through untouched. A guild can subtract its own share and read the rivals' **total** holdings — **exactly** the rival's when there is one rival. `design.md` §5 already rules "the real supply figure is hidden; players see only the value and its history." **Proposed:** the per-guild view drops `galacticSupply.resources`, `fuel.guildHeld` and `fuel.total` (keeping `fuelPrice`, `reserve`, `avgDraw`, `targetReserve`); and rule whether the Syndicate ledger is public (the "public company" through-line suggests its books might be). Not done here: it is beyond the fog model's enumerated list.
+  2. **A rival LICENSED venture's public row.** Built: node, planet archetype, venture `type` (`mining` / `refining`) — nothing else. **Hidden pending a ruling:** its `reputation` (`design.md` §5 "Ventures carry a **fully visible** reputation score" vs the fog model's enumerated list), its licence terms (commitment %, window, fees), and a refinery's recipe / produced good (§5 says types are visible "letting rivals infer likely inputs" — `refining` alone does not let anyone infer an input).
+  3. **A rival guild's public row.** Built: `id`, `name`, `isBot`, `homeSystemId`. Hidden: `homePlanetId` (L1 of a planet in a rival system), `guildReputation`, `guildPoints` (GP counts unlicensed ventures), everything else. Confirm.
+  4. **A rival Outpost's public row.** Built: `id`, `ownerGuildId`, `coords`, `anchorSystemId`. Hidden with the stockpile and dock: `capacity` / `dockCapacity` (structural constants, arguably public). Confirm.
+  5. **When the register is observed.** At the END of each tick only — so a venture licensed and closed between two ticks is never observed and teaches nothing. Confirm, or rule that the licence action itself also observes.
+  6. **`nodeLockouts` stays public** (the Syndicate's own bar on a node; no guild, no holding) — it names the site of a torn-down licensed venture. Confirm.
+  7. **L0 rows carry the system `name`** (the generator derives it from position alone — sector + a coords catalog number), alongside `id`, `coords`, `planetCount`, controller. Confirm.
 - **Droids:** the production-boost mechanic + numbers.
 
 **Carried from Phase 1 / earlier:**
