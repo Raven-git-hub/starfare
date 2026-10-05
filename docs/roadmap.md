@@ -3656,6 +3656,24 @@ boundary so the later hex-map swap doesn't touch it.
   (the array's directional watch-fan → detection/corridors/catch-fine), L3 espionage, the
   Prefecture self-scan, squatting. Still open: espionage cost/risk; the scan durations remain
   `[FIRST-CUT]` for the tuner.*
+  - **(a) engine slice 1 — ⤳ AS-BUILT 05-10-26, part 1 of 2: the exploration RECORD.** New
+    `sim/exploration.js`: the owned per-guild record `guild.exploration = { [planetId]: { tick,
+    nodes: { [nodeId]: tick } } }` (ids only — archetype and node type stay in the seed; omitted when
+    empty), the ONE source-agnostic `reveal` (`{ planetId }` L1 / `{ nodeId }` L2, learn-once),
+    `revealSystem`, and `observePublicRegister`. **Founding** (`foundGuild` apply) reveals the whole
+    home system (every planet + every resource node) at the founding tick, bot or human. **A rival's
+    licensed venture** (an ordinary or deuterium licence) teaches every other guild its node + planet
+    archetype, observed at the END of each tick (`sim/tick.js`, beside the fuel-price sample — the
+    eight-step order unchanged; the view stays pure); closing it later takes nothing back, an
+    unlicensed venture teaches nothing. `createGuild` carries the record; `seed.js` gained
+    `getPlanet`; tripwire `checkExplorationRecord` (`sim/invariants.js`). The **claim-gate coupling**
+    (`exploration-model.md` §8) is RECORDED, not enforced: the record is the gate's data source from
+    birth (`knowsNode`), and the Prefecture slice enforces it. **Goldens moved by exactly the added
+    key, each with a strip-and-prove of the pre-slice hash:** `persist.test.js`
+    (`GOLDEN_HASH_WITH_EXPLORATION` new; the three un-grant/un-seed/un-endow proofs now also peel the
+    record) and `starter-package.test.js` (the two bot founding goldens, re-pinned as `…_WITH_EXPLORATION`
+    with the old values kept as the stripped proof). Guild-less and scenario-built states are
+    byte-identical (no key). Tests: `tests/exploration.test.js`.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the

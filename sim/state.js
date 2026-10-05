@@ -34,6 +34,7 @@ const { REFERENCE_FUEL_PRICE } = require('./fuel.js');
 const { OUTPOST_CAPACITY, OUTPOST_DOCK_SLOTS } = require('./outposts.js');
 const { copyRouteWaypoint } = require('./routes.js');
 const { DEUTERIUM_INFLUX_PER_CYCLE } = require('./issuance.js');
+const { cloneExploration } = require('./exploration.js');
 
 // cloneShipments(list) -> a deep-enough copy of the IN-FLIGHT rows. `cargo` is the
 // only nested object a shipment carries (§6: no origin, no route, no status), so
@@ -113,6 +114,7 @@ function createGuild({
   removedAssetHighWater = {},
   events = [],
   eventSeq = 0,
+  exploration = null,
 }) {
   if (id === undefined) throw new Error('createGuild: id is required');
   if (credits === undefined) throw new Error('createGuild: credits is required');
@@ -411,6 +413,16 @@ function createGuild({
     // that never had an asset deleted carries no key and serializes byte-identically to pre-fix
     // (invariant 9). A restored save that HANDS ONE IN keeps it (copied, so it never aliases the caller's).
     ...(Object.keys(removedAssetHighWater).length ? { removedAssetHighWater: { ...removedAssetHighWater } } : {}),
+    // exploration: the guild's EXPLORATION RECORD (docs/exploration-model.md §3/§7, roadmap 2.5) —
+    // `{ [planetId]: { tick, nodes: { [nodeId]: tick } } }`, the static geography it has LEARNED,
+    // learn-once / known-forever. Ids only: the archetype and node types stay in the seed (§15.3).
+    // WRITTEN ONLY through `reveal` (sim/exploration.js) — by the `foundGuild` apply (the home system)
+    // and the end-of-tick public-register observation (a rival's licensed venture) — never set here.
+    // CARRIED here so a scenario or a restored save that HANDS ONE IN keeps it, deep-copied through
+    // cloneExploration so a caller's object can never alias into engine state. OMITTED when empty,
+    // like `assets`: a guild that knows nothing (every guild built by a scenario rather than founded)
+    // carries NO key and serializes byte-identically to pre-slice state (invariant 9).
+    ...(cloneExploration(exploration) ? { exploration: cloneExploration(exploration) } : {}),
   };
 }
 

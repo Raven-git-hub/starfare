@@ -30,6 +30,9 @@ const path = require('node:path');
 //   outpost : { id, kind: 'outpost', name, coords }
 //   system  : { id, kind: 'system', name, ring, coords, starterEligible,
 //               terranHomeworldId }   // homeworld = its lowest-id Terran planet
+// A "planet" entry (added 05-10-26 for the exploration record, docs/exploration-model.md §7):
+//   { id, archetype, systemId }
+// — the one fact a guild learns at L1 (a planet's archetype) and where that planet sits.
 let _index = null;
 
 // The ACTIVE seed object this module indexes. Null means "nobody has set one",
@@ -92,6 +95,7 @@ function buildIndex() {
   const seed = _seed || require(path.join(__dirname, '..', 'data', 'seed.json'));
 
   const bySite = new Map();
+  const byPlanet = new Map();
   const bySystem = new Map();
   const bySystemRaw = new Map();
   const byOutpost = new Map();
@@ -113,6 +117,7 @@ function buildIndex() {
     let ordinal = 0;
     for (const planet of sys.planets || []) {
       ordinal += 1;
+      byPlanet.set(planet.id, { id: planet.id, archetype: planet.archetype, systemId: sys.id });
       if (planet.archetype === 'terran') {
         if (terranHomeworldId === null || planet.id < terranHomeworldId) terranHomeworldId = planet.id;
       }
@@ -160,7 +165,7 @@ function buildIndex() {
   // SAME two numbers the generator used (tools/generate_seed.js), never a chosen constant
   // (§18 / CLAUDE.md "Never invent a number"). A generator-less test seed may omit them,
   // in which case there is no lattice to bound and `isHexInBounds` answers false.
-  return { bySite, bySystem, bySystemRaw, byOutpost, byHex, citadel, seedNumber: seed.seed, galaxyParams: seed.galaxyParams || null };
+  return { bySite, byPlanet, bySystem, bySystemRaw, byOutpost, byHex, citadel, seedNumber: seed.seed, galaxyParams: seed.galaxyParams || null };
 }
 
 function index() {
@@ -184,6 +189,14 @@ function isResourceNode(id) {
 function isSettlementSlot(id) {
   const s = getSite(id);
   return !!s && s.kind === 'settlement';
+}
+
+// getPlanet(id) -> { id, archetype, systemId }, or null if no such planet exists in the
+// seed. The exploration record (sim/exploration.js) stores only planet and node IDS; this
+// is how it — and the per-guild view — resolve a known planet id back to the archetype
+// the seed says it has, so the archetype lives in one place (design.md §15.3, invariant 5).
+function getPlanet(id) {
+  return index().byPlanet.get(id) || null;
 }
 
 // findNodesByResource(type) -> every resource-node site of that good. For
@@ -344,7 +357,7 @@ function getSeedNumber() {
 
 module.exports = {
   setSeed,
-  getSite, isResourceNode, isSettlementSlot, findNodesByResource, siteName, roman,
+  getSite, getPlanet, isResourceNode, isSettlementSlot, findNodesByResource, siteName, roman,
   getCitadel, getSystem, getOutpost, getOutposts, getLandmark,
   hexToPixel, isHexInBounds, seedLandmarkAtHex,
   isStarterSystem, getTerranHomeworld, getStarterSystems, getSystemLayout, getSeedNumber,

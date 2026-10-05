@@ -220,19 +220,34 @@ test('a human founding with the package undone is byte-identical to a bot foundi
 // and say why; if anything else moves them, the bot path has been touched by accident.
 const BOT_FOUNDING_GOLDEN = 'aac003c6384ef74b615ace9ca963e67e3b7070260d39c71f53874774ae2bd971';
 const BOT_INLINE_FOUNDING_GOLDEN = '5925d6ad724ccfe8aed5f6e866b59d29676c37dd931f11ef6e0b333109149d47';
+// ⤳ 05-10-26 (roadmap 2.5, the exploration record): EVERY founding — bot included — now seeds the
+// guild's `exploration` record with its home system (docs/exploration-model.md §6), so both full
+// hashes moved. They are re-pinned below, and the two goldens above are KEPT and asserted against the
+// state with that one added key stripped — the proof that the record is the only thing that moved.
+const BOT_FOUNDING_GOLDEN_WITH_EXPLORATION = 'fbf7f22cfa88719c8e68035c4a13d4505d1b66fd9db916815c85a7effd7a65ca';
+const BOT_INLINE_FOUNDING_GOLDEN_WITH_EXPLORATION = 'ee23d4a166c0ffcfd7e3e392d904c3071c060da061d074f18209be25cb38c3be';
+const withoutExploration = (state) => ({
+  ...state,
+  guilds: state.guilds.map((g) => { const { exploration, ...rest } = g; return rest; }),
+});
 
 test('bot: founding is byte-identical to the pre-slice golden (bare, and with an inline venture)', () => {
   const z = createZeroState();
   const bare = createFoundGuildAction({ guildId: 'bot_a', name: 'Bot A', isBot: true, credits: 2000, influence: 100, homeSystemId: HOME_SYSTEM });
   assert.equal(validateAction(z, bare).valid, true);
-  assert.equal(hashState(applyAction(z, bare)), BOT_FOUNDING_GOLDEN);
+  const bareState = applyAction(z, bare);
+  assert.equal(hashState(bareState), BOT_FOUNDING_GOLDEN_WITH_EXPLORATION, 'the full bot founding, record included, is pinned');
+  assert.ok(bareState.guilds[0].exploration, 'the record really landed, so the strip below is a real proof');
+  assert.equal(hashState(withoutExploration(bareState)), BOT_FOUNDING_GOLDEN, 'and the record is its ONLY delta');
 
   const inline = createFoundGuildAction({
     guildId: 'bot_b', name: 'Bot B', isBot: true, credits: 2000, influence: 100, homeSystemId: HOME_SYSTEM,
     ventures: [{ id: 'bot_b_mine', ownerGuildId: 'bot_b', type: 'mining', siteId: HOME_MINE, resourceType: 'titanium', productionRate: 5 }],
   });
   assert.equal(validateAction(z, inline).valid, true);
-  assert.equal(hashState(applyAction(z, inline)), BOT_INLINE_FOUNDING_GOLDEN);
+  const inlineState = applyAction(z, inline);
+  assert.equal(hashState(inlineState), BOT_INLINE_FOUNDING_GOLDEN_WITH_EXPLORATION, 'the full inline founding, record included, is pinned');
+  assert.equal(hashState(withoutExploration(inlineState)), BOT_INLINE_FOUNDING_GOLDEN, 'and the record is its ONLY delta');
 });
 
 test('bot: the passed credits, no craft, no kit, no serials', () => {

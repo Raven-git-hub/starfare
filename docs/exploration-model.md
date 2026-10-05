@@ -81,6 +81,21 @@ model honest:
 
 A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live rules (recomputed)**.
 
+> **⤳ AS-BUILT 05-10-26 (roadmap 2.5 (a), engine slice 1 — the record half; `sim/exploration.js`).**
+> Source 1 is built as `guild.exploration` (the shape is in §7's AS-BUILT note). The one source this
+> slice wires into it besides founding is **a rival's licensed venture**, observed by
+> `observePublicRegister` at the **END of every tick** (`sim/tick.js`, after the eight steps, beside
+> the fuel-price sample): every guild reads each *rival's* licensed ventures (an ordinary `licence`
+> or a `deuteriumLicence`) off the register and `reveal`s what each teaches — on a resource node, that
+> node (and with it its planet's archetype); on a settlement slot, only the planet's archetype (a slot
+> is not a node). Why there: **not in the view**, which stays pure (a read that wrote state would make
+> the record depend on who looked, and when — invariant 9); **not inside a step**, because it is
+> observation, not economy — no step reads the record, so its position cannot move any number, and the
+> eight-step order is unchanged; **last**, so it reads the register as the tick leaves it. A venture
+> licensed by an action is observed at the next tick's end, so one licensed and closed between two
+> ticks was never on the register at a tick and teaches nothing. A guild never learns from its own
+> ventures. An unlicensed rival venture writes nothing. Closing a licensed venture undoes nothing.
+
 ## 4. The rulings
 
 **Settled earlier (carried, authoritative):**
@@ -191,6 +206,15 @@ A newly founded guild knows:
 The home-system knowledge is seeded into the guild's exploration record at founding, by the same
 source-agnostic reveal path (§7) everything else uses.
 
+> **⤳ AS-BUILT 05-10-26 (roadmap 2.5 (a)).** The `foundGuild` apply (`sim/actions.js`), right after
+> the home claim, calls `revealSystem(guild, homeSystemId, tick)` — every planet of the home system
+> (L1) and every resource node on each (L2), read from the seed's own layout and stamped with the
+> founding tick. **Every** founding, bot or human (knowing your home is not part of the human starter
+> package). L0 is **not** stored — it is computed for every system in the view. The founding flow is
+> otherwise untouched: no credits, fuel or goods move for it (invariants 1/2/3), and the founding
+> goldens moved by exactly the added `exploration` key (each re-pin carries a strip-and-prove of the
+> pre-slice hash).
+
 ## 7. The per-guild snapshot architecture
 
 The keystone. This is the architectural end of "one snapshot, everyone sees everything," and the
@@ -204,6 +228,18 @@ stands on.
   fact. It is **serialized and covered by the determinism hash** (invariant 9), and it only ever
   grows (learn-once / known-forever, §3), like `lifetimeProduced`. Shape to confirm at build: a
   per-planet / per-node granularity sufficient for the per-planet claim gate (§8).
+  **⤳ AS-BUILT 05-10-26 — the shape:** `guild.exploration = { [planetId]: { tick, nodes: { [nodeId]:
+  tick } } }`. A planet key = its archetype is known (L1); a node key under it = that node and its
+  resource type are known (L2); `nodes` is `{}` for an L1-only planet. **Ids only** — the archetype
+  and the node type are NOT copied in; the seed stays the one map (`design.md` §15.3 "link by
+  reference only", invariant 5) and the view resolves each id through `getPlanet` / `getSite`. Each
+  fact carries the **tick it was learned** (§15.2), and a re-reveal keeps the first. Keyed flat by
+  planet because that is the gate's granularity (§8: "knows ≥ 1 node of planet P" is
+  `Object.keys(exploration[P].nodes).length ≥ 1`); the system a planet sits in is the seed's fact.
+  **Omit-when-empty**: a guild that knows nothing carries no key. Guarded every tick by
+  `checkExplorationRecord` (`sim/invariants.js`: real planets, real resource nodes on their own
+  planet, ticks in `[0, now]` with a node never before its planet, no empty record). Learn-once is a
+  two-tick property, so it is pinned across scripted runs in `tests/exploration.test.js`.
 - **`buildSnapshot` becomes per-guild.** Today `buildSnapshot(state)` (`sim/snapshot.js`) is PURE
   and sees every guild's data, producing one shared view. It becomes **`buildSnapshot(state,
   guildId)`**, producing that guild's filtered view = L0 ∪ record ∪ live rules (§3). The
@@ -214,6 +250,11 @@ stands on.
   whatever the source — a scan completing, a craft visit, a claim, founding, and (later) a
   Prefecture scan. Ruling 1 already forces this (a scan and a rival's licensed venture both
   write the record), so it is not speculative generality.
+  **⤳ AS-BUILT 05-10-26:** `reveal(guild, fact, tick)` in `sim/exploration.js`, where `fact` is
+  `{ planetId }` (L1) or `{ nodeId }` (L2 — which also reveals the node's planet). It returns how many
+  NEW facts it learned (0 = a no-op), refuses an id the seed does not hold, and records what and
+  when, never how. Its callers this slice: `revealSystem` (founding) and `observePublicRegister` (a
+  rival's licensed venture). The Deep Scan Array (slice (b)) and the Prefecture become callers later.
 - **Determinism & goldens.** A per-guild snapshot is deterministic given `(state, guildId)`. The
   snapshot shape changing to per-guild is a **large but intended goldens change** that must be
   proven **deliberate, not accidental**: where a guild sees everything (a single-guild galaxy, or
