@@ -493,9 +493,9 @@ and a `deploy_failed` popup, opened the same way on the page before and after, a
 
 ## 12. The `outpost_packed` notice — the reclaim's success message (2.2 Outpost teardown, RULED 05-10-26)
 
-*Status: **RULED; the ENGINE half is BUILT** (05-10-26 — the type, the writer and the payload; AS-BUILT record
-at the end of this section). **The CLIENT half is next** (the inbox row, the pilot popup, Show on map). Spec for the
-notice `docs/outpost-teardown.md` §8 describes. Modelled on §10:
+*Status: **RULED + BUILT.** The **ENGINE half is BUILT** (05-10-26 — the type, the writer and the payload) and the
+**CLIENT half is BUILT** (05-10-26 — the inbox row, the pilot popup, Show on map); both AS-BUILT records are at the end
+of this section. Spec for the notice `docs/outpost-teardown.md` §8 describes. Modelled on §10:
 a writer that already holds everything the notice needs records one self-contained row through the shared
 `recordEvent`; retention, acknowledge and surfacing are §3–§5's, unchanged. Like §10 it wears a domain
 character (the pilot), not the uniform Syndicate voice.*
@@ -514,7 +514,9 @@ row is removed, on the tick the action lands. Born unread.
 - `craftId` + `craftClass` — the heavy that now carries the kit.
 
 **The surface — the MESSAGES inbox + popup (§8 / §9), the pilot's character, as §10:**
-- the inbox row reads **"Outpost packed up"**, newest-first, with the unread dot as any notice;
+- the inbox row reads **"Outpost packed up"**, newest-first, with the unread dot as any notice; *(⤳ 05-10-26, the
+  client brief: the row carries the Outpost's name too, "Outpost packed up — {anchorSystemName} Outpost", as the
+  delivery rows name theirs; the popup title stays the bare "Outpost packed up". Client AS-BUILT below.)*
 - the hero is the PILOT (`client/assets/characters/pilot.jpg`), the eyebrow is "Fleet — Dispatch";
 - the body is the pilot's voice, verbatim, one beat:
 
@@ -553,4 +555,43 @@ A REFUSED reclaim writes nothing. Two reclaims write two rows with ascending ids
 `sim/tests/outpost-teardown.test.js` (the "notice:" tests), and `sim/tests/events.test.js`'s vocabulary test (now six
 types). **Interim gap, closed by the client half:** the current client's renderer treats an unknown type as a licence
 lapse, so until the client half lands an `outpost_packed` row would read "Licence lapsed — …" in MESSAGES. No client
-control issues a reclaim yet, so only an action posted straight to `POST /action` can write one.
+control issues a reclaim yet, so only an action posted straight to `POST /action` can write one. *(⤳ Closed 05-10-26:
+the client half, next, renders the type and the Outpost Manager's Teardown issues the reclaim.)*
+
+**AS-BUILT — the client half (05-10-26; `client/game.html` only, NO `sim/` change; roadmap 2.2 Outpost teardown /
+redeploy, client slice).** Built to this section and the slice's brief, as a small addition beside §10's notice code.
+The Teardown control that writes the notice is `outpost-teardown.md` §10.
+- **The row.** `noticeTitle` gains an `outpost_packed` branch, "Outpost packed up", and `noticeRowTitle` one that
+  names the Outpost in the muted `.who` span: "Outpost packed up — AXE-4032 Outpost". The Outpost is gone by the
+  time the row is read, so the shell's resolver (`__outpostName`) cannot find it. `packedOutpostName` builds the
+  name from the payload instead: `anchorSystemName`, falling back to `anchorSystemId`, + " Outpost" (the
+  resolver's own "<anchor system> Outpost" shape). Newest-first order, the unread dot and read dimming are §8's.
+- **The type audit.** Every place the client reads notices was checked. `noticeTitle` and `noticeRowTitle` would
+  have fallen through to the licence-lapse wording and now branch on the type. `openNotice` dresses the card per
+  type (below). The Messages list (`messagesPanel`), the badge and both attention pips (`myUnreadNotices`,
+  `paintMessagesRail`, `paintTopLevelAttn`) are type-agnostic, so the new row lists, counts and lights them
+  unchanged. `isDeliveryNotice` is correctly false for it. `noticeBody`, `deliveryBody` / `deliveryFacts`
+  and the forks' `retreatedCraft` / `noticeFork` are reached only by other types. No other client page reads events.
+- **The pilot / fleet split.** `openNotice` used one flag, `fleet` (`deploy_failed`), for both the speaker and the
+  forks. It now has two: **`pilot`** (`deploy_failed` or `outpost_packed`) sets the eyebrow "Fleet — Dispatch" and the
+  portrait `assets/characters/pilot.jpg`; **`fleet`** still shows Redeploy / Return for a `deploy_failed` only. A new
+  `packed` flag shows **`#noticeShowMap`** for an `outpost_packed` only. All three buttons, the note, the eyebrow,
+  the portrait and its framing are set on every open, so no notice keeps the last one's.
+- **The body** is §12's one beat verbatim, `OUTPOST_PACKED_BODY`, beside `DEPLOY_FAILED_BODY`.
+- **The facts** (`outpostPackedFacts`): `Craft` = "Heavy Transport · #01" through `craftLabel`, the helper
+  `deployFailedFacts` now shares (its output is unchanged; the `#` is the open checklist item for both notices);
+  `Packed at` = "{anchorSystemName} · hex {q}, {r}"; `When` = "Day {whenDay}".
+- **Show on map** (`noticeShowMap`), beside Dismiss: it closes the popup and calls `__flyTo(q, r, 9)` (the Dispatch
+  popup's zoom; `__flyTo` closes the Guild Hall itself). The hex is `packedCraftHex`'s. It looks the heavy up live by
+  `payload.craftId` on the player's guild row. While the heavy is idle with a bare-hex `location`, that hex is used,
+  even if it has moved on to another bare hex. Otherwise (gone, in flight, or at a system or waystation) it falls
+  back to `payload.hex`, where the Outpost stood. Navigation only; it computes no game number. No Deploy or
+  Redeploy button.
+- **Read-on-open** is §8's, unchanged.
+- **The visual contract.** The brief names the `deploy_failed` entry of `docs/mockups/guild-hall-messages.html` as the
+  visual contract, but that mockup has no `deploy_failed` entry (only the four Syndicate notices). The live
+  `deploy_failed` popup was followed instead: the same card, eyebrow, portrait, facts and button styles.
+- **Tripwires:** `sim/tests/outpost-teardown-client.test.js` runs the page's own notice code in a `node:vm` sandbox
+  against a real reclaim's snapshot. It checks the row and title, the unread count, the popup (speaker, verbatim line,
+  facts, buttons), the pilot / fleet split across a sequence of opens, read-on-open, and Show on map's target in each
+  case: idle on the hex, idle on another hex, really dispatched (in flight), landed at a system, and gone.

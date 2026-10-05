@@ -18,8 +18,8 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
-| 1 | The guild↔Syndicate economy | ✅ Done (deep, 2,024 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile, BUY's Deliver to now offers the guild's Outposts beside its systems, opening on the node nearest a waystation, and the MESSAGES inbox shows both delivery notices in the Trader's voice (client; the trading to/from outposts item is complete); a deployed Outpost can now be packed back into a kit aboard the empty heavy parked on it, ready to be flown and deployed again, with an `outpost_packed` notice (engine; the Outpost Manager's Teardown button and the notice's inbox row are next); the guild↔guild contest (a rival, territory, the market) is not built yet |
+| 1 | The guild↔Syndicate economy | ✅ Done (deep, 2,042 tests, deterministic) |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile, BUY's Deliver to now offers the guild's Outposts beside its systems, opening on the node nearest a waystation, and the MESSAGES inbox shows both delivery notices in the Trader's voice (client; the trading to/from outposts item is complete); a deployed Outpost can now be packed back into a kit aboard the empty heavy parked on it, ready to be flown and deployed again, with an `outpost_packed` notice (engine), and the Outpost Manager's Teardown button sends it, the pilot's message reporting it in MESSAGES with Show on map (client; the teardown item is complete, though no button yet sends the packed heavy to deploy — decision checklist); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -2500,7 +2500,7 @@ boundary so the later hex-map swap doesn't touch it.
     cites "a deep scan mast's 2.333… reads 2.33". The console shows whatever the snapshot publishes,
     so it now reads 4 / 3 / 2.
 
-- **2.2 — Outpost teardown / redeploy (the reclaim half of the deploy pipeline; `docs/outpost-teardown.md`).** RULED 05-10-26; **engine slice BUILT 05-10-26, client slice NEXT.** Reclaim a deployed Outpost into an `outpost_kit` in the empty heavy parked on its hex, ready to be dispatched and deployed again. Two slices: the engine action `reclaimOutpost` (the three-rule gate, the kit into the hold, distinct refusals, tripwires) → a small gated Teardown affordance in the Outpost Manager. No new number. Out of scope: territory-era cases, kit building, `removeOutpost`'s destroy semantics.
+- **2.2 — Outpost teardown / redeploy (the reclaim half of the deploy pipeline; `docs/outpost-teardown.md`).** RULED 05-10-26; ✅ **COMPLETE (05-10-26)** — the engine slice and the client slice are both BUILT. Reclaim a deployed Outpost into an `outpost_kit` in the empty heavy parked on its hex, ready to be dispatched and deployed again. Two slices: the engine action `reclaimOutpost` (the three-rule gate, the kit into the hold, distinct refusals, tripwires) → a small gated Teardown affordance in the Outpost Manager. No new number. Out of scope: territory-era cases, kit building, `removeOutpost`'s destroy semantics.
   - **Engine slice — BUILT 05-10-26** (`docs/outpost-teardown.md` §9 AS-BUILT; `design.md` §4; `event-log.md` §12).
     The new action is `reclaimOutpost { guildId, outpostId }` in `sim/actions.js`, beside `removeOutpost`. Its nine
     refusals fire in the doc's order, each with its own reason string, ready for the client to show. On success the
@@ -2515,10 +2515,30 @@ boundary so the later hex-map swap doesn't touch it.
     needed. Tripwires: `sim/tests/outpost-teardown.test.js` (+31); `sim/tests/events.test.js`'s vocabulary test
     now lists six types. Sim 1,993 → **2,024 green**; tools **77 green**; every golden byte-identical.
     *Flag: `sim/actions.js` is now ~5,800 lines (+146 here); the roadmap's split item stands, not done here.*
-  - **Client slice — NEXT.** The gated Teardown affordance in the Outpost Manager, and the `outpost_packed` inbox
-    row + pilot popup with Show on map (`event-log.md` §12). Until it lands, an `outpost_packed` row would render
-    as a licence lapse in MESSAGES; only an action posted straight to `POST /action` can write one today. See the
-    decision checklist for the one call this slice needs first.
+  - **Client slice — BUILT 05-10-26** (`docs/outpost-teardown.md` §10 AS-BUILT; `event-log.md` §12 client AS-BUILT;
+    `client/game.html` only, NO `sim/` change). The checklist's open call ("how the button learns whether the reclaim
+    would pass") was answered by the brief: the button is always live and the engine's refusal is shown verbatim
+    (option b), so no snapshot field was added. On the player's own Outpost the Outpost Manager's head carries a
+    **Teardown** button and a static hint ("Needs an empty stockpile, nothing docked, and one empty heavy parked
+    here."), placed in the head so it adds no height. A footer version pushed the card past a 1440×900 screen. Teardown
+    opens an inline confirm ("Pack up this Outpost?"), and Confirm sends one `reclaimOutpost`, busy-guarded against a
+    double send. A refusal keeps the manager open and shows the engine's reason word for word. An accept re-reads the
+    snapshot, the manager closes itself (its Outpost is gone), and the pilot's notice opens (the brief's auto-open, one
+    removable block). MESSAGES gains the `outpost_packed` row ("Outpost packed up — AXE-4032 Outpost"). Its popup is
+    in the pilot's voice, with Craft / Packed at / When and one control, **Show on map**, which flies to the heavy's
+    current hex, falling back to where the Outpost stood. The notice popup's speaker (`pilot`) and the
+    `deploy_failed` forks (`fleet`) are now separate flags. Tripwires: `sim/tests/outpost-teardown-client.test.js`
+    (+18), which runs the page's own code in a `node:vm` sandbox against a real reclaim, plus a twelve-mutation pass;
+    `server.test.js`'s notice-card button count goes from three to four (Show on map, gated on its own type).
+    Driven end to end in headless Chromium: found, deploy the founding kit, the four everyday refusals, Teardown →
+    Confirm → the pilot's popup → Show on map → the inbox row → a redeploy to a new `_02` Outpost. No-op checked old
+    against new in the browser: a rival's manager, the MESSAGES panel and a `deploy_failed` popup render as before.
+    Sim 2,024 → **2,042 green**; tools **77 green**.
+    **Two things for the human (decision checklist, "The Outpost teardown client slice").** (1) The client has no
+    button yet that sends a heavy already carrying a kit to deploy, so the pilot's question has no in-game answer.
+    The browser run reached the redeploy through the planner's own kit path from the console. (2) The auto-open marks
+    the notice read as it opens it.
+    *Flag: `client/game.html` is now ~14,200 lines (+~200 here); it wants splitting, not done here.*
 - **2.2 — The deploy pipeline: the cross-system asset ferry (`docs/territory-model.md` §5).** Haul a
   Tier-4 kit on a transport to a target and place it on arrival — the ferry that unblocks the Prefecture
   (the item below). Built as a ladder: **slice 1** the deployable good + a manual outpost deploy (engine +
@@ -3715,7 +3735,25 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   the snapshot publishes an engine-derived verdict per Outpost row, e.g. `reclaim: { ok, reason }`, from the same
   gate `validateAction` runs, so the client computes no rule (§18). Or (b) the button is always live and the engine's
   refusal reason is shown after the post, as the BUY / SELL gates do today. (a) is a small additive snapshot field,
-  and none was added in the engine slice because it was not in scope. Not chosen here.
+  and none was added in the engine slice because it was not in scope. Not chosen here. **⤳ 05-10-26 — RULED (b) by
+  the client slice's brief, BUILT and CLOSED** (`outpost-teardown.md` §10): the button is always live on an own
+  Outpost, the hint is static, and the engine's reason is shown verbatim.
+- **The Outpost teardown client slice — three calls (05-10-26, 2.2 Outpost teardown / redeploy, `outpost-teardown.md`
+  §10).** Built one way and flagged rather than ruled. **(1) No player path from a packed heavy to a deploy.** After a
+  teardown the heavy idles with the kit in its hold, and the pilot asks where to take it. The engine deploys it
+  through the existing flow. The client has no button for it: the deploy map opens only from the Deploy Outpost
+  popup (a kit asset in an inventory) and from a `deploy_failed` notice's Redeploy / Return forks. The ordinary
+  Plan Route offers only a dock action per stop, and `territory-model.md` §5 REVISED removed the heavy-first deploy
+  entry. The brief rules a fork on this notice out of scope, so nothing was added. Options: give `outpost_packed`
+  a Redeploy fork (the planner path the `deploy_failed` fork uses, `window.__planKitRoute`, already plans for a heavy
+  with the kit aboard; the payload carries no `kind`, so the fork would name the outpost kit itself); restore a
+  Deploy entry in the Dispatch popup when the hold carries a kit; or something else. Needs a ruling before the redeploy loop is
+  playable. **(2) The auto-open** (the brief's own UX call) opens the notice the moment the teardown is accepted,
+  which marks it read (read-on-open, `event-log.md` §8). The inbox row therefore never shows the unread dot after a
+  teardown done in the client. Keep, or drop `openPackedNotice`. **(3) The placement.** The Teardown strip sits in the
+  manager's head, beside ✕, not in a footer (the footer pushed the card past a 1440×900 screen). Confirm, or rule
+  another spot. The `#` in the Craft fact ("Heavy Transport · #01") now appears on this notice too: it is the
+  `deploy_failed` message's open call (1), below, and one ruling covers both.
 - **The `deploy_failed` message: three client calls (01-10-26, 2.2 deploy pipeline, `event-log.md` §10 client
   AS-BUILT)**, built one way and flagged rather than ruled. **(1) The Craft fact** reads "Heavy Transport · #01",
   the name the Dispatch popup and Outpost Manager already give a craft; §10 writes `craftClass · NN`, with no `#`.

@@ -3257,8 +3257,12 @@ test('GET / serves the delivery notices — the Trader, passive, Dismiss only', 
   assert.match(open, /el\('noticeReturn'\)\.hidden = !fleet;/, 'Return shows for the pilot\'s notice alone');
   assert.match(open, /else if\(trade\) paras = deliveryBody\(n\);/);
   assert.match(open, /\} else if\(trade\)\{\s*facts = deliveryFacts\(n\);/);
+  // The card's buttons: deploy_failed's two forks, outpost_packed's Show on map (event-log.md §12, added by the
+  // Outpost teardown client slice) and Dismiss. Each optional one is gated on its own type, so a delivery notice
+  // still shows Dismiss alone.
+  assert.match(open, /el\('noticeShowMap'\)\.hidden = !packed;/, 'Show on map shows for the packed notice alone');
   const overlay = html.slice(html.indexOf('<div id="notice-overlay">'), html.indexOf('<!-- The adviser reel'));
-  assert.equal((overlay.match(/<button class="btn accept"/g) || []).length, 3, 'Redeploy, Return, Dismiss — no new button');
+  assert.equal((overlay.match(/<button class="btn accept"/g) || []).length, 4, 'Redeploy, Return, Show on map, Dismiss — no other button');
   assert.equal((await fetch(base + '/assets/mission/Trader.jpg')).status, 200, 'the Trader hero is served');
 
   // THE TRADER'S WORDS, verbatim — the warning as its three lines, one line per turn-back cause.

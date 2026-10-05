@@ -2204,11 +2204,29 @@ select.field{appearance:none; cursor:pointer;}
 #outpost-overlay .om-craft .crow{display:flex; justify-content:space-between; align-items:baseline; gap:12px; font-family:var(--mono); font-size:11.5px; color:var(--ink); border-top:1px solid var(--line); padding:7px 0}
 #outpost-overlay .om-craft .crow .k{color:var(--ink3); letter-spacing:.08em; text-transform:uppercase; font-size:9.5px}
 #outpost-overlay .om-empty-hero{margin:auto; font-family:var(--mono); font-size:11px; letter-spacing:.08em; color:var(--ink3); text-align:center}
+/* The Teardown strip (docs/outpost-teardown.md, the client slice), on the player's OWN Outpost only. It sits in
+   the head, right-aligned between the title and ✕, so it adds no height: as a footer it pushed the manager past
+   a 900px-tall screen, and a refusal landed below the fold. On any other Outpost it is painted empty, and :empty
+   hides it, so that manager looks exactly as it did before. The strip takes the head's spare width; ✕ then sits
+   right beside it instead of taking the auto margin. */
+#outpost-overlay .om-tear{margin-left:auto; max-width:520px; display:flex; flex-direction:column; align-items:flex-end; gap:6px; text-align:right}
+#outpost-overlay .om-tear:empty{display:none}
+#outpost-overlay .om-tear:not(:empty) + .est-close{margin-left:0}
+#outpost-overlay .om-tear .tear-row{display:flex; align-items:center; gap:10px}
+#outpost-overlay .om-tear .om-act{flex:none; padding:8px 16px}
+#outpost-overlay .om-tear .hint{font-family:var(--mono); font-size:11px; letter-spacing:.03em; color:var(--ink3)}
+#outpost-overlay .om-tear .ask{font-family:var(--mono); font-size:11.5px; letter-spacing:.03em; color:var(--ink)}
+#outpost-overlay .om-tear .why{font-family:var(--mono); font-size:11px; line-height:1.5; color:var(--red)}
 /* One-column phone layout: the columns stack; the heroes need an explicit height for the absolute art. */
 @media(max-width:960px){
   /* stacked one-column: the columns flow and the whole overlay scrolls, so the body height is released
      back to auto and the centre column / grid grow naturally rather than scrolling internally. */
   #outpost-overlay .est-body{grid-template-columns:1fr; height:auto}
+  /* the Teardown strip wraps onto its own row under the title, left-aligned. The title block shrinks, as it
+     did before wrap was on, so ✕ stays beside it on the first row. */
+  #outpost-overlay .est-head{flex-wrap:wrap}
+  #outpost-overlay .est-head > div:first-child{flex:1 1 0; min-width:0}
+  #outpost-overlay .om-tear{order:3; flex-basis:100%; max-width:none; align-items:flex-start; text-align:left}
   #outpost-overlay .om-left, #outpost-overlay .om-right{border:none; border-bottom:1px solid var(--line)}
   #outpost-overlay .om-hero{min-height:360px}
   #outpost-overlay .om-list{max-height:240px}
@@ -2377,8 +2395,8 @@ select.field{appearance:none; cursor:pointer;}
    Dismiss — and read-on-open is the client's trigger (§9); the engine action is unchanged. The
    reel styling mirrors #reneg-overlay (the codebase already carries the reel look per-overlay, as
    #est-reel does); the .facts block is the notice's own detail — label → value, two columns.
-   A deploy_failed notice (the fleet / ops lane, §10) wears the pilot instead, and a delivery notice (the
-   trade lane, §11) the Trader, on these same rules. ===== */
+   A deploy_failed or outpost_packed notice (the fleet / ops lane, §10, §12) wears the pilot instead, and a
+   delivery notice (the trade lane, §11) the Trader, on these same rules. ===== */
 #notice-overlay{position:fixed; inset:0; background:rgba(6,7,10,.80); backdrop-filter:blur(3px); display:none; align-items:center; justify-content:center; z-index:620; padding:26px}
 #notice-overlay.open{display:flex}
 #notice-overlay .reel-card{position:relative; width:100%; max-width:760px; height:min(80vh,600px); display:grid; grid-template-columns:1fr 300px; background:linear-gradient(180deg,#141821,#0F1218); border:1px solid var(--line2); border-radius:14px; overflow:hidden; box-shadow:0 30px 90px rgba(0,0,0,.65)}
@@ -3524,6 +3542,10 @@ select.field{appearance:none; cursor:pointer;}
         <h2 id="omName">—</h2>
         <div class="om-sub" id="omSub">—</div>
       </div>
+      <!-- The Teardown strip (docs/outpost-teardown.md, the client slice), painted by renderTeardown: on the
+           player's own Outpost, Teardown (or the inline confirm) over its static gate hint, then any refusal.
+           Empty, and so hidden, on anyone else's Outpost. -->
+      <div class="om-tear" id="omTeardown"></div>
       <button class="est-close" id="omClose" title="Close (Esc)">✕</button>
     </div>
     <div class="est-body">
@@ -3659,7 +3681,8 @@ select.field{appearance:none; cursor:pointer;}
      existing acknowledgeEvent (read = opening, §9); there is no ACKNOWLEDGE button here.
      Two lanes wear their own character. The fleet / ops lane (§10): a `deploy_failed` notice re-dresses
      this same card with the pilot — eyebrow, portrait and voice — and shows the decision the pilot asks
-     for, its two forks Redeploy and Return, beside Dismiss (territory-model.md §5 REVISED). The trade
+     for, its two forks Redeploy and Return, beside Dismiss (territory-model.md §5 REVISED). An
+     `outpost_packed` notice (§12) wears the same pilot but shows Show on map alone, no forks. The trade
      lane (§11): the two delivery notices wear the Trader — eyebrow, portrait and voice — with Dismiss
      alone. So openNotice sets the eyebrow, the art, the body and the buttons on EVERY open. ===== -->
 <div id="notice-overlay">
@@ -3679,13 +3702,14 @@ select.field{appearance:none; cursor:pointer;}
         <div class="reel-actions">
           <button class="btn accept" id="noticeRedeploy" type="button" hidden>Redeploy</button>
           <button class="btn accept" id="noticeReturn" type="button" hidden>Return</button>
+          <button class="btn accept" id="noticeShowMap" type="button" hidden>Show on map</button>
           <button class="btn accept" id="noticeDismiss" type="button">Dismiss</button>
         </div>
       </div>
     </div>
     <!-- The uniform guild-adviser portrait — the same asset the reneg popup uses, no per-type
          accent (§9). A Syndicate-specific portrait is the parked domain-character decision (§5).
-         A deploy_failed notice swaps in the pilot (§10), a delivery notice the Trader (§11). -->
+         A deploy_failed or outpost_packed notice swaps in the pilot (§10, §12), a delivery notice the Trader (§11). -->
     <div class="reel-art" id="noticeArt" style="background-image:url('assets/characters/advisor.jpg')"></div>
   </div>
 </div>
@@ -11115,11 +11139,13 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return good ? (good + ' ' + kind) : kind;
   }
   // The popup title (plain text): "Venture closed — Gold Mine" / "Licence lapsed — Copper Mine" /
-  // "Deployment failed — Outpost" / "No room at the outpost" / "Delivery turned back". The two
-  // delivery titles leave the Outpost's name to the facts block; their rows carry it (below).
+  // "Deployment failed — Outpost" / "No room at the outpost" / "Delivery turned back" / "Outpost
+  // packed up". The two delivery titles and the packed title leave the Outpost's name to the facts
+  // block; their rows carry it (below).
   function noticeTitle(n){
     var p = (n && n.payload) || {};
     if(n.type === 'deploy_failed') return 'Deployment failed — ' + deployKindLabel(p);
+    if(n.type === 'outpost_packed') return 'Outpost packed up';
     if(n.type === 'delivery_space_warning') return 'No room at the outpost';
     if(n.type === 'delivery_turned_back') return 'Delivery turned back';
     return (n.type === 'venture_closed' ? 'Venture closed — ' : 'Licence lapsed — ') + noticeLabel(p);
@@ -11128,6 +11154,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   function noticeRowTitle(n){
     var p = (n && n.payload) || {};
     if(n.type === 'deploy_failed') return 'Deployment failed &mdash; <span class="who">' + esc(deployKindLabel(p)) + '</span>';
+    if(n.type === 'outpost_packed') return 'Outpost packed up &mdash; <span class="who">' + esc(packedOutpostName(p)) + '</span>';
     if(n.type === 'delivery_space_warning') return 'No room at the outpost &mdash; <span class="who">' + esc(deliveryOutpostName(p)) + '</span>';
     if(n.type === 'delivery_turned_back') return 'Delivery turned back &mdash; <span class="who">' + esc(deliveryOutpostName(p)) + '</span>';
     var prefix = n.type === 'venture_closed' ? 'Venture closed' : 'Licence lapsed';
@@ -11184,19 +11211,67 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       .replace(/\b\w/g, function(c){ return c.toUpperCase(); });
   }
 
-  // The facts block (§10), in its order. Craft is named the way the Dispatch popup names a craft —
-  // its class + the number its id ends on (vehicle_<guild>_<class>_NN -> "Heavy Transport · #01").
+  // The Craft fact, named the way the Dispatch popup names a craft — its class + the number its id ends
+  // on (vehicle_<guild>_<class>_NN -> "Heavy Transport · #01"). Both pilot notices carry craftId +
+  // craftClass, so both name the craft through this one helper.
+  function craftLabel(p){
+    return p.craftId ? (prettyClass(p.craftClass) + ' · #' + String(p.craftId).split('_').slice(-1)[0]) : '—';
+  }
+
+  // The facts block (§10), in its order.
   function deployFailedFacts(n){
     var p = n.payload || {};
-    var craft = p.craftId ? (prettyClass(p.craftClass) + ' · #' + String(p.craftId).split('_').slice(-1)[0]) : '—';
     var facts = [
-      ['Craft', craft, false],
+      ['Craft', craftLabel(p), false],
       ['Target', p.targetHex ? ('hex ' + p.targetHex.q + ', ' + p.targetHex.r) : '—', false],
       ['Reason', DEPLOY_FAILED_REASON[p.cause] || '—', false],
       ['Pulled back to', p.retreatSystemName || p.retreatSystemId || '—', false]
     ];
     if(n.whenDay != null){ facts.push(['Failed', 'Day ' + n.whenDay, false]); }
     return facts;
+  }
+
+  // --- The outpost_packed notice — the fleet / ops lane again (docs/event-log.md §12) -------------
+  // A teardown packed an Outpost into a kit aboard a heavy (the Outpost Manager's Teardown, the engine's
+  // reclaimOutpost). The PILOT reports it, on the same card as a failed deploy, but asks a question rather
+  // than offering forks: its one control is Show on map. The player answers through the existing dispatch
+  // and deploy flow. Every value is a payload field or the engine's whenDay; the client computes no game
+  // number (§18).
+
+  // The packed Outpost's name for the row. The Outpost is gone, so the shell's resolver (__outpostName)
+  // cannot find it; the name is built from the anchor system the payload carries, the way the resolver
+  // names a live one ("<anchor system> Outpost").
+  function packedOutpostName(p){
+    var at = p.anchorSystemName || p.anchorSystemId;
+    return at ? (at + ' Outpost') : 'Outpost';
+  }
+
+  // The pilot's question, verbatim from §12 — one paragraph.
+  var OUTPOST_PACKED_BODY = [
+    "The outpost has been packed up, ready to be deployed, Guildmaster. Where do you want me to take it?"
+  ];
+
+  // The facts block (§12), in its order: the craft carrying the kit, where the Outpost stood, and the day.
+  function outpostPackedFacts(n){
+    var p = n.payload || {};
+    var at = p.anchorSystemName || p.anchorSystemId || '—';
+    var facts = [
+      ['Craft', craftLabel(p), false],
+      ['Packed at', p.hex ? (at + ' · hex ' + p.hex.q + ', ' + p.hex.r) : at, false]
+    ];
+    if(n.whenDay != null){ facts.push(['When', 'Day ' + n.whenDay, false]); }
+    return facts;
+  }
+
+  // Where Show on map goes: the packed heavy's CURRENT hex. It is found live by payload.craftId on the
+  // player's guild row. While it sits idle on a bare hex, that hex is where it is. Otherwise (gone, flying,
+  // or at a system or waystation) it falls back to payload.hex, where the Outpost stood.
+  function packedCraftHex(p){
+    var me = meGuild();
+    var craft = me ? (me.vehicles || []).filter(function(v){ return v.id === p.craftId; })[0] : null;
+    var loc = (craft && craft.status === 'idle') ? craft.location : null;
+    if(loc && typeof loc.q === 'number' && typeof loc.r === 'number') return { q: loc.q, r: loc.r };
+    return p.hex || null;
   }
 
   // --- The delivery notices — the trade lane (docs/event-log.md §11) ----------------------------
@@ -11343,7 +11418,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // the EXISTING acknowledgeEvent { guildId, eventId } (id as a Number — the engine matches by
   // strict ===), so the row renders read on the next poll. The engine no-ops an aged-out id, and a
   // reopened (already-read) notice re-dispatches nothing — read-on-open only fires while unread.
-  var shownNotice = null;   // the notice the popup is showing — the deploy_failed forks read its payload
+  var shownNotice = null;   // the notice the popup is showing — the deploy_failed forks and Show on map read its payload
   function openNotice(eventId){
     var me = meGuild();
     var events = (me && Array.isArray(me.events)) ? me.events : [];
@@ -11352,15 +11427,19 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(!n) return;
     var p = n.payload || {};
     shownNotice = n;
-    // Who is speaking. A deploy_failed is the fleet / ops lane: the pilot's eyebrow, portrait and voice,
-    // plus its two forks, Redeploy and Return (§10; territory-model.md §5 REVISED). A delivery notice is
+    // Who is speaking, and which buttons show. The fleet / ops lane is the pilot's: eyebrow, portrait and
+    // voice. Two notices are in it, with different buttons. A deploy_failed (`fleet`) offers its two forks,
+    // Redeploy and Return (§10; territory-model.md §5 REVISED). An outpost_packed (`packed`) offers Show on
+    // map alone (§12). So `pilot` (the speaker) and the buttons are separate flags. A delivery notice is
     // the trade lane: the Trader's eyebrow, portrait and voice, and no button but Dismiss (§11). Every
     // other notice is the Syndicate's uniform adviser (§9). The card is shared, so all of this is set on
-    // every open — a notice must not keep the last one's speaker, and no notice keeps an old note.
+    // every open — a notice must not keep the last one's speaker or buttons, and no notice keeps an old note.
     var fleet = n.type === 'deploy_failed';
+    var packed = n.type === 'outpost_packed';
+    var pilot = fleet || packed;
     var trade = isDeliveryNotice(n);
     var eyebrow = 'Syndicate Notice', art = 'assets/characters/advisor.jpg';
-    if(fleet){ eyebrow = 'Fleet — Dispatch'; art = 'assets/characters/pilot.jpg'; }
+    if(pilot){ eyebrow = 'Fleet — Dispatch'; art = 'assets/characters/pilot.jpg'; }
     if(trade){ eyebrow = 'Trade — Syndicate'; art = 'assets/mission/Trader.jpg'; }
     el('noticeEyebrow').textContent = eyebrow;
     el('noticeArt').style.backgroundImage = "url('" + art + "')";
@@ -11369,18 +11448,22 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     el('noticeArt').style.backgroundPosition = trade ? 'right bottom' : '';
     el('noticeRedeploy').hidden = !fleet;
     el('noticeReturn').hidden = !fleet;
+    el('noticeShowMap').hidden = !packed;
     el('noticeNote').textContent = '';
     el('noticeTitle').textContent = noticeTitle(n);
-    // The body, one <p> per paragraph: the pilot's two beats, the Trader's lines, or a Syndicate
-    // notice's one line.
+    // The body, one <p> per paragraph: the pilot's two beats or one question, the Trader's lines, or a
+    // Syndicate notice's one line.
     var paras;
     if(fleet) paras = DEPLOY_FAILED_BODY;
+    else if(packed) paras = OUTPOST_PACKED_BODY;
     else if(trade) paras = deliveryBody(n);
     else paras = [noticeBody(n)];
     el('noticeBody').innerHTML = paras.map(function(t){ return '<p>' + esc(t) + '</p>'; }).join('');
     var facts;
     if(fleet){
       facts = deployFailedFacts(n);
+    } else if(packed){
+      facts = outpostPackedFacts(n);
     } else if(trade){
       facts = deliveryFacts(n);
     } else {
@@ -11440,6 +11523,16 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     closeNotice();
     var action = type === 'deploy' ? { type:'deploy', kind: p.kind } : { type:'unload' };
     if(window.__planKitRoute) window.__planKitRoute(craft, action, []);
+  }
+
+  // The outpost_packed notice's one control (§12): close the popup and fly the map to the packed heavy
+  // (packedCraftHex). Navigation only. Zoom 9 is the Dispatch popup's Show on map zoom, and __flyTo closes
+  // the Guild Hall itself.
+  function noticeShowMap(){
+    var p = (shownNotice && shownNotice.payload) || {};
+    var hex = packedCraftHex(p);
+    closeNotice();
+    if(hex && window.__flyTo) window.__flyTo(hex.q, hex.r, 9);
   }
 
   function centreFor(sub, me){
@@ -11532,10 +11625,12 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
 
   // The notice popup's own close wiring (a single Dismiss; the × ; a scrim click) — plus the two forks,
-  // Redeploy and Return, which only a deploy_failed notice shows (§10).
+  // Redeploy and Return, which only a deploy_failed notice shows (§10), and Show on map, which only an
+  // outpost_packed notice shows (§12).
   var noticeDismiss = el('noticeDismiss'); if(noticeDismiss){ noticeDismiss.addEventListener('click', closeNotice); }
   var noticeRedeploy = el('noticeRedeploy'); if(noticeRedeploy){ noticeRedeploy.addEventListener('click', function(){ noticeFork('deploy'); }); }
   var noticeReturn = el('noticeReturn'); if(noticeReturn){ noticeReturn.addEventListener('click', function(){ noticeFork('unload'); }); }
+  var noticeShowMapBtn = el('noticeShowMap'); if(noticeShowMapBtn){ noticeShowMapBtn.addEventListener('click', noticeShowMap); }
   var noticeCloseX = el('noticeClose'); if(noticeCloseX){ noticeCloseX.addEventListener('click', closeNotice); }
   var noticeOverlay = el('notice-overlay'); if(noticeOverlay){ noticeOverlay.addEventListener('click', function(e){ if(e.target === this) closeNotice(); }); }
 
@@ -12919,9 +13014,12 @@ function paintInventoryHero(d){
    figure is a published snapshot value (used/capacity/eta/totalTicks/stockpile) or a pure display ratio
    of published figures (a fill fraction, a thousands separator, a tick difference). Its own well-named
    CSS block + this IIFE, isolated exactly as #dispatch-overlay is.
-   Its ONE write is SELL TO SYNDICATE (docs/syndicate-orders.md §9.2) — its own block below: the
+   Its first write is SELL TO SYNDICATE (docs/syndicate-orders.md §9.2) — its own block below: the
    resource cells build a local sell draft, the right hero shows its summary, and the confirm sends the
    whole draft as an inline cart from this Outpost.
+   Its second write is TEARDOWN (docs/outpost-teardown.md, the client slice) — its own block below the
+   SELL's: on the player's own Outpost, a strip in the head sends reclaimOutpost, which packs the Outpost into
+   a kit aboard the empty heavy parked on it.
    ============================================================================ */
 (function(){
   function $(id){ return document.getElementById(id); }
@@ -12941,9 +13039,10 @@ function paintInventoryHero(d){
 
   // The open outpost, the left tab ('DOCKED' berths | 'PARKED' waiting line), the selected craft, and
   // the tier tab. `sel` is { kind:'slot'|'queue'|'parked', id:<vehicleId> } or null (nothing selected).
-  // `sell` is this open's SELL draft (freshSell, in the SELL block below) and `painted` the HTML last
-  // written to each region (paint, below). Reset on open.
-  var OM = { open:false, id:null, tab:'DOCKED', sel:null, tier:1, sell:freshSell(), painted:{} };
+  // `sell` is this open's SELL draft (freshSell, in the SELL block below), `teardown` the Teardown strip's
+  // state (freshTeardown, in the TEARDOWN block below) and `painted` the HTML last written to each region
+  // (paint, below). Reset on open.
+  var OM = { open:false, id:null, tab:'DOCKED', sel:null, tier:1, sell:freshSell(), teardown:freshTeardown(), painted:{} };
 
   // Write a region's HTML only when it CHANGED. The poll re-renders every second; rewriting a region
   // that has not changed would knock the caret out of the sell quantity box mid-typing, and could
@@ -13007,14 +13106,15 @@ function paintInventoryHero(d){
     if(!id) return;
     OM.open = true; OM.id = id; OM.tab = 'DOCKED'; OM.sel = null; OM.tier = 1;
     OM.sell = freshSell(); OM.painted = {};          // a new open starts with no draft, painted from scratch
+    OM.teardown = freshTeardown();                   // …and no pending confirm or old refusal
     if(!outpostRow()) { OM.open = false; return; }  // gone between click and open — don't show an empty shell
     render();
     $('outpost-overlay').classList.add('open');
   }
-  // Closing drops the sell draft with the popup (§9.2 — it belongs to this open). That includes the
-  // self-close when the Outpost is torn down while open.
+  // Closing drops the sell draft with the popup (§9.2 — it belongs to this open), and the Teardown strip's
+  // confirm or refusal with it. That includes the self-close when the Outpost is torn down while open.
   function closeManager(){
-    OM.open = false; OM.id = null; OM.sel = null; OM.sell = freshSell();
+    OM.open = false; OM.id = null; OM.sel = null; OM.sell = freshSell(); OM.teardown = freshTeardown();
     $('outpost-overlay').classList.remove('open');
   }
 
@@ -13034,6 +13134,7 @@ function paintInventoryHero(d){
     syncSellDraft(row);
     renderTierBody(row);
     renderRight(row);
+    renderTeardown(row);
   }
 
   // Default the selection to the first occupied slot, else the first queued craft, else none — and keep
@@ -13582,9 +13683,107 @@ function paintInventoryHero(d){
     else sellRefresh(row);
   });
 
-  // tab clicks — set state and re-render only the left list (no snapshot change).
-  $('omTabDocked').addEventListener('click', function(){ OM.tab='DOCKED'; var r=outpostRow(); if(r){ renderTabs(); renderLeft(r); } });
-  $('omTabParked').addEventListener('click', function(){ OM.tab='PARKED'; var r=outpostRow(); if(r){ renderTabs(); renderLeft(r); } });
+  /* ==================================================================================================
+     TEARDOWN (docs/outpost-teardown.md, the client slice). Packs the player's OWN Outpost into a kit
+     aboard the one empty heavy parked on it, through the engine's reclaimOutpost. The engine is the
+     only judge of whether that is allowed (§2): the client checks nothing, so the button is always
+     live on an own Outpost, the hint beside it is static copy, and a refusal shows the engine's reason
+     word for word. The strip sits in the manager's head (#omTeardown), away from the tabs and the SELL.
+     ================================================================================================== */
+  function freshTeardown(){ return { confirming:false, busy:false, reason:'' }; }
+  var TEARDOWN_HINT = 'Needs an empty stockpile, nothing docked, and one empty heavy parked here.';
+
+  // Paint the strip: Teardown (or the inline confirm) over the hint, and any refusal reason underneath.
+  // Anyone else's Outpost gets an empty strip, which the CSS hides.
+  function renderTeardown(row){
+    var mine = (window.__player && window.__player().guildId) || null;
+    if(!mine || row.ownerGuildId !== mine){ paint('omTeardown', ''); return; }
+    var t = OM.teardown, act;
+    if(t.confirming){
+      // The Outpost goes away on Confirm, so the click asks first. Both buttons are off while the
+      // answer is on its way, so a second click cannot send a second reclaim.
+      var off = t.busy ? ' disabled' : '';
+      act = '<span class="ask">Pack up this Outpost?</span>'+
+        '<button class="om-act primary" type="button" data-tear="confirm"'+off+'>'+(t.busy ? 'Packing up…' : 'Confirm')+'</button>'+
+        '<button class="om-act" type="button" data-tear="cancel"'+off+'>Cancel</button>';
+    } else {
+      act = '<button class="om-act" type="button" data-tear="start">Teardown</button>';
+    }
+    var html = '<div class="tear-row">'+act+'</div><div class="hint">'+esc(TEARDOWN_HINT)+'</div>';
+    if(t.reason) html += '<div class="why">'+esc(t.reason)+'</div>';
+    paint('omTeardown', html);
+  }
+
+  // A tab change clears a refusal reason (the tab handlers, below). Close clears it too (closeManager).
+  function clearTeardownReason(row){
+    if(!OM.teardown.reason) return;
+    OM.teardown.reason = '';
+    renderTeardown(row);
+  }
+
+  // Confirm: ONE reclaimOutpost for this Outpost (§2).
+  //   accepted → re-read the snapshot. The Outpost is gone from it, so this manager closes itself
+  //              through render's own "no row" path. Then open the pilot's notice (openPackedNotice).
+  //   refused  → stay open, back to the Teardown button, and show the engine's reason as it came.
+  // If the manager was closed (or reopened) before the answer came back, the answer changes nothing.
+  function teardownConfirm(){
+    var t = OM.teardown;
+    if(t.busy) return;
+    var player = (window.__player && window.__player()) || {};
+    var outpostId = OM.id;          // captured now: the refresh that follows an accept clears OM.id
+    t.busy = true;
+    var row = outpostRow(); if(row) renderTeardown(row);
+    window.__sendAction({ type:'reclaimOutpost', guildId: player.guildId, outpostId: outpostId }).then(function(res){
+      if(OM.teardown !== t) return;
+      if(res && res.accepted){
+        // Stay busy: the strip is never repainted idle, because the refresh closes the manager.
+        if(window.__refreshNow) window.__refreshNow().then(function(){ openPackedNotice(outpostId); }, function(){});
+        return;
+      }
+      teardownRefused((res && res.reason) || 'The Syndicate refused the teardown.');
+    }, function(err){
+      if(OM.teardown !== t) return;
+      teardownRefused('the Syndicate could not be reached: ' + ((err && err.message) || err));
+    });
+  }
+  function teardownRefused(reason){
+    OM.teardown.busy = false;
+    OM.teardown.confirming = false;
+    OM.teardown.reason = String(reason);
+    var row = outpostRow(); if(row) renderTeardown(row);
+  }
+
+  // AUTO-OPEN (a UX call from the brief; delete this function and its one call above to drop it). After an
+  // accepted teardown, open the pilot's outpost_packed notice for the Outpost just packed, so the question
+  // "where do you want me to take it?" lands the moment the player acts. The newest matching row (the
+  // highest id) wins. If none is found, nothing opens: the unread row is still in MESSAGES.
+  function openPackedNotice(outpostId){
+    var s = snap(); if(!s || !window.__openNotice) return;
+    var mine = (window.__player && window.__player().guildId) || null;
+    var g = (s.guilds || []).filter(function(x){ return x.id === mine; })[0];
+    var hit = null;
+    ((g && g.events) || []).forEach(function(e){
+      if(e.type === 'outpost_packed' && e.payload && e.payload.outpostId === outpostId && (!hit || e.id > hit.id)) hit = e;
+    });
+    if(hit) window.__openNotice(hit.id);
+  }
+
+  // The strip's clicks, delegated once on #omTeardown so a repaint never needs them re-bound. Teardown opens
+  // the confirm (and clears an old refusal); Cancel folds it back.
+  $('omTeardown').addEventListener('click', function(e){
+    var b = e.target.closest('[data-tear]');
+    if(!b || b.disabled) return;
+    var act = b.getAttribute('data-tear');
+    if(act === 'confirm'){ teardownConfirm(); return; }
+    OM.teardown.confirming = (act === 'start');
+    OM.teardown.reason = '';
+    var row = outpostRow(); if(row) renderTeardown(row);
+  });
+
+  // tab clicks — set state and re-render only the left list (no snapshot change). A tab change also clears
+  // a Teardown refusal: the reason answered the last attempt, not the view the player has moved on to.
+  $('omTabDocked').addEventListener('click', function(){ OM.tab='DOCKED'; var r=outpostRow(); if(r){ renderTabs(); renderLeft(r); clearTeardownReason(r); } });
+  $('omTabParked').addEventListener('click', function(){ OM.tab='PARKED'; var r=outpostRow(); if(r){ renderTabs(); renderLeft(r); clearTeardownReason(r); } });
   $('omClose').addEventListener('click', closeManager);
   $('outpost-overlay').addEventListener('click', function(e){ if(e.target===this) closeManager(); });
   document.addEventListener('keydown', function(e){ if(OM.open && e.key==='Escape') closeManager(); });

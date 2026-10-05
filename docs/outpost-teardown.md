@@ -1,4 +1,4 @@
-# Outpost teardown / redeploy — reclaiming a deployed Outpost into a kit *(RULED 05-10-26; engine half BUILT 05-10-26 — AS-BUILT §9; client half next)*
+# Outpost teardown / redeploy — reclaiming a deployed Outpost into a kit *(RULED 05-10-26; BUILT 05-10-26 — engine half AS-BUILT §9, client half AS-BUILT §10)*
 
 The reclaim half of the deploy pipeline: turn a deployed guild Outpost back into an Outpost kit
 sitting in a heavy transport's hold, ready to be moved and deployed again. It is the inverse of
@@ -40,7 +40,8 @@ running a lane; the heavy's hold is not empty.
 - The heavy ends **laden with one kit, idle, on the now-bare hex, re-dispatchable**: its hold is
   `{ outpost_kit: 1 }`, the same "kit in a heavy's hold" state `loadKit` produces. The kit is NOT put
   into a system inventory. The craft's `updatedAtTick` is stamped (§15.2).
-- The player then dispatches and deploys through the existing flow.
+- The player then dispatches and deploys through the existing flow. *(⤳ 05-10-26: true of the engine; the client
+  has no button for it yet. See §10, "A finding", and the decision checklist.)*
 
 **Ruling on ids (a gap the seed left open).** In a hold the kit is a *good* (`outpost_kit`) with no
 id of its own; only a kit *asset* in an inventory has an id, and `loadKit` already destroys that id
@@ -221,4 +222,102 @@ notice's inbox row and pilot popup with Show on map. **Until it lands,** the cur
 treats any type it does not know as a licence lapse, so an `outpost_packed` row would read "Licence lapsed —
 …" in MESSAGES. No client control issues a reclaim yet, so only an action posted straight to `POST /action`
 can produce one. This is the same interim gap `event-log.md` §10 recorded for `deploy_failed`; the client
-slice closes it.
+slice closes it. *(⤳ Closed 05-10-26 by the client half, §10.)*
+
+## 10. AS-BUILT — the client half (05-10-26; `client/game.html` only, NO `sim/` change)
+
+Built to §2, §7 and §8 and the slice's brief, **no engine change and no new number**. The ruling is kept as written;
+this section records what the client does. The roadmap's open call for this slice ("how the button learns whether
+the reclaim would pass") was answered by the brief: **option (b)**, the button is always live and the engine's
+refusal is shown after the post, as the BUY / SELL gates do. No snapshot field was added.
+
+**Where the Teardown control sits.** In the Outpost Manager's **head**, right-aligned between the Outpost's name
+and ✕ (`#omTeardown`). It is shown only when the open Outpost is the player's own (`row.ownerGuildId` equals the
+player's `guildId`). It is a quiet button in the manager's own outline style (`.om-act`), with the static hint under it:
+"Needs an empty stockpile, nothing docked, and one empty heavy parked here." Why the head: it sits away from the
+DOCKED / PARKED tabs (the left column) and the SELL summary (the right hero), and it uses the head's spare width, so
+it adds no height. It was first built as a footer under the three columns. That pushed the manager past a
+1440×900 screen: the button sat on the bottom edge and a refusal landed below the fold, so a player who pressed
+Confirm saw nothing happen. In the head, the whole card fits at 1440×900, and with a refusal showing it grows by
+about 34px and still fits. On a phone (≤ 960px) the strip wraps onto its own row under the name, and ✕ stays beside
+the name. On anyone else's Outpost the strip is painted empty and `:empty` hides it.
+
+**The gate is the engine's alone (§2).** The client checks nothing: no stockpile, dock or parked-craft test enables
+or disables the button. The hint is static copy. A tripwire asserts the Teardown block reads none of the gate's
+inputs.
+
+**The flow.**
+1. **Teardown** opens an inline confirm in the same place: "Pack up this Outpost?" with Confirm / Cancel. Cancel
+   folds it back.
+2. **Confirm** sends ONE action through the manager's existing send path:
+   `window.__sendAction({ type: 'reclaimOutpost', guildId, outpostId })`, exactly what
+   `createReclaimOutpostAction` builds. While the answer is on its way, both buttons are disabled and Confirm reads
+   "Packing up…", so a second click cannot send a second reclaim (the SELL's `busy` discipline).
+3. **Refused:** the manager stays open, the strip goes back to the Teardown button, and the engine's `reason` is
+   shown under the hint **verbatim**. It is never reworded, mapped or truncated. It clears on the next Teardown
+   click, on a DOCKED / PARKED tab change, and on close. A network failure reads "the Syndicate could not be
+   reached: …", as the SELL's does.
+4. **Accepted:** the client re-reads the snapshot (`window.__refreshNow`). The Outpost is gone from it, so the
+   manager closes itself through `render`'s existing "no row → `closeManager`" path. The strip stays in its busy
+   state until then, so it never flashes back to idle.
+5. **Closed or reopened before the answer:** the answer changes nothing in the manager (the SELL's
+   `if(OM.sell !== draft) return` guard, here `if(OM.teardown !== t) return`). That includes the auto-open below.
+
+**The auto-open (the brief's UX call, one small block: `openPackedNotice`).** After an accepted teardown and the
+refresh, the client finds the newest `outpost_packed` row on the player's guild whose `payload.outpostId` is the
+Outpost just packed (its id was captured before sending), and calls `window.__openNotice` with it. If none is
+found, nothing opens; the unread row is still in MESSAGES. One consequence: opening the notice is what marks it
+read (`event-log.md` §8), so after an auto-open the inbox row is already read. To drop the auto-open, delete
+`openPackedNotice` and its one call in `teardownConfirm`.
+
+**The notice.** The inbox row, the pilot popup and Show on map are `event-log.md` §12's client AS-BUILT.
+
+**The refusals as the client shows them**, captured in the browser run below (ids from that run):
+- Goods in the stockpile: `Outpost "outpost_raven-guild_01" still holds goods ({"titanium":10}) — empty its
+  stockpile first (sell from it, or load the goods out); only an empty Outpost packs into a kit`
+- Two craft parked: `2 craft are parked on Outpost "outpost_raven-guild_01" ("vehicle_raven-guild_heavyTransport_01",
+  "vehicle_raven-guild_lightTransport_05") — exactly one, an empty heavy transport, may be parked there to pack it
+  up; move the others off first`
+- A non-heavy parked: `vehicle "vehicle_raven-guild_lightTransport_05" parked on Outpost "outpost_raven-guild_01" is a
+  lightTransport — a packed Outpost fills a whole heavy hold, so only a heavy transport can carry it; park an empty
+  heavy here instead`
+- Nothing parked: `no craft of guild "raven-guild" is parked on Outpost "outpost_raven-guild_01" (hex { q: -9, r: 136 })
+  — park an empty heavy transport on this Outpost first; the Outpost is packed into its hold`
+
+**A finding: no player path from a packed heavy to a deploy yet (decision checklist).** §3 says "the player then
+dispatches and deploys through the existing flow". The engine does. The client does not: the deploy map opens only
+from the Deploy Outpost popup (a kit **asset** in an inventory) and from a `deploy_failed` notice's Redeploy /
+Return forks. The ordinary Dispatch → Plan Route planner offers only a dock action per stop, and
+`territory-model.md` §5 REVISED removed the heavy-first deploy entry. So a heavy that a teardown has left laden, idle
+and un-retreated cannot be sent to deploy by any button today. The pilot's question has no in-game answer yet. The
+brief rules a Deploy fork on this notice out of scope, so nothing was added; the browser run reached the redeploy
+through the planner's own kit path (`window.__planKitRoute`, the code the Redeploy fork uses) from the console.
+
+**Tripwires:** `sim/tests/outpost-teardown-client.test.js` (18 tests). They cut the page's own code out of
+`game.html` and run it in a `node:vm` sandbox with a stub DOM, against a real engine reclaim, its real snapshot and
+the engine's real refusal strings: the strip on an own and a rival's Outpost; the button live whatever the gate
+would say, and the block reading none of the gate's inputs; the confirm, Cancel, the one action sent in the
+engine's own shape, and no double-send; an accept (refresh, self-close, the right notice opened, none when no
+match); each of the four everyday refusals shown verbatim and cleared; the tab-change clear; the network failure;
+the closed-before-the-answer guard. Plain source checks pin the markup, the listeners, the self-close path and the
+CSS. A mutation pass (twelve deliberate breakages of `game.html`, one at a time) turned a test red every time.
+One existing tripwire changed: `sim/tests/server.test.js`'s served-bytes check on the delivery notices counted the
+notice card's buttons as exactly three ("no new button"). It now counts four, names Show on map, and asserts that
+Show on map is gated on `outpost_packed` alone, so a delivery notice still shows Dismiss alone.
+
+**Browser run (headless Chromium, the testbed server, seed 42).** The whole loop was driven in the real page:
+found a guild from the splash form; deploy its founding kit through the Deploy Outpost popup and the deploy map;
+open the Outpost's manager (the Teardown button and hint); Teardown → the confirm; each of the four refusals above,
+staged for real (a Syndicate BUY delivered to the Outpost, a light transport spawned beside the heavy, the heavy
+stepped one hex off, the light removed); the heavy back on the Outpost, Teardown → Confirm → the manager closed
+and the pilot's popup opened with the verbatim line; Show on map closed the popup and flew to the heavy's hex at
+zoom 9; the MESSAGES row; then the redeploy through `__planKitRoute`, which put down `outpost_raven-guild_02`. No
+page errors (the only console errors were web-font fetches failing through the sandbox proxy).
+**No-op, checked old against new.** `HEAD`'s `game.html` and this one were loaded side by side against the same live
+snapshot. Web fonts were blocked in both, and the animated page behind the overlays hidden (the map) or closed (the
+Guild Hall), so only the code differed. A rival's Outpost Manager is pixel-identical, at 1440px and 420px wide. The
+MESSAGES panel holding a real `deploy_failed` notice is byte-identical HTML. That notice's popup card is
+pixel-identical in 10 of 11 runs. The one miss was not diffed. An earlier miss, with the Guild Hall still open behind
+the card, was diffed: 41 pixels, all in the card's rounded corners, where the page behind shows through. The card's
+HTML differs only by the new hidden Show on map button.
+
