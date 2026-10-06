@@ -138,8 +138,12 @@ The space-asset deploy ranges: how far from a system the guild **holds** a struc
   they carry no fractional-week tension if the Tier-3 whole-week discipline is ever generalised.
   One array runs **one active job at a time** (scale by building more arrays), with the **L1→L2
   chain** enforced at queue time (you cannot queue an L2 on a planet whose system you do not yet
-  know at L1). Retune in play. Live once in the engine (the scan module), read only by the scan
-  scheduler, never inlined.
+  know at L1 — *refined 06-10-26: per PLANET, the target planet's own archetype must be known;
+  `exploration-model.md` §5*). Retune in play. Live once in the engine (the scan module), read only by the scan
+  scheduler, never inlined. *(⤳ BUILT 06-10-26, roadmap 2.5 (b2), with no other number: `SCAN_L1_TICKS`
+  = 720 and `SCAN_L2_TICKS` = 480 live once in `sim/deep-scan-arrays.js` (`SCAN_TICKS`), read by the
+  `queueScan` apply (a job's `completeTick = startedTick + SCAN_TICKS[level]`) and checked by the scan-job
+  invariant; a test ties them to this entry.)*
 - **Deep Scan Array deploy placement — NOT a range number.** The array is deploy-placed **adjacent
   to ("attached to") a held system or outpost footprint**, which **supersedes** the `[FIRST-CUT]`
   "deep scan ≤ 5 hexes" deploy range (`territory-model.md` §5/§8). Its **scan reach is galaxy-wide
@@ -147,7 +151,8 @@ The space-asset deploy ranges: how far from a system the guild **holds** a struc
   **deferred**; its radius is not ruled here. *(⤳ BUILT 06-10-26, roadmap 2.5 (b1), still with **no
   number**: "attached" is geometry — a bare hex exactly `claimRadius + 1` from a held system's centre
   (`claimRadius` is seed data, `data/seed.json`, 1 for every system today), or 1 from an Outpost the guild
-  owns (`sim/actions.js` `attachedPlacement`). The scan timers above are not built — slice (b2).)*
+  owns (`sim/actions.js` `attachedPlacement`). The scan timers above are not built — slice (b2).)* *(⤳ The
+  scan timers are BUILT 06-10-26, roadmap 2.5 (b2) — see the entry above.)*
 
 ### Production flow *(10-08-26)*
 - **Starved-line warn threshold** `[FIRST-CUT]` — a consuming line is flagged "starved" (the §5 pulsing box / future Plant-Manager cue) only when its effective rate is below this fraction of its own throttle, so a rounding wobble near 100% doesn't cry wolf. **95%** — pure first-cut, tune in play.

@@ -62,6 +62,7 @@ const { outpostDockTurnaround, outpostFreeSpace, consignmentSummary } = require(
 const { recordEvent, DELIVERY_TURNED_BACK } = require('./events.js');
 const { resolveManifest, usedSpace } = require('./manifest.js');
 const { observePublicRegister } = require('./exploration.js');
+const { stepScanCompletions } = require('./deep-scan-arrays.js');
 // The chained-route execution (the automation layer, transport-model.md §11.2) lives in actions.js:
 // `resolveRouteArrival` (a routed craft has just reached a waypoint — run its action, then go on) and
 // `advanceRoute` (dispatch the next leg, or reach the lap boundary: end the run, or start a repeating
@@ -1854,6 +1855,22 @@ function tick(state, actions = []) {
   // sample above. Ventures licensed by an action are observed at the next tick's end; one licensed and
   // closed between two ticks was never on the register at a tick and teaches nothing.
   observePublicRegister(next, next.tick);
+
+  // THE DEEP SCAN ARRAY'S SCAN COMPLETIONS (docs/exploration-model.md §5, roadmap 2.5 (b2)). Every array
+  // whose scan job falls due on this tick finishes it: unless a RIVAL now holds the target's system, the
+  // job's geography goes into its guild's record through the one `reveal`; either way the job clears.
+  //
+  // WHY HERE, beside the public-register observation, for the same reasons (§15.6):
+  //   - NOT inside one of the eight steps: a scan is OBSERVATION, not economy. It moves no credits, fuel or
+  //     goods, and no step reads the record or a scan job, so where it runs cannot change any number a step
+  //     computes. The eight-step order is unchanged.
+  //   - AFTER the steps: the completion RE-CHECKS the target's controller, so it reads the claims as the
+  //     tick leaves them.
+  //   - ORDER against observePublicRegister is free: both only ADD facts to records, each stamped
+  //     `next.tick`, and learn-once keeps the first stamp — so the record ends the same either way.
+  // `next.tick` is the tick just built, so a job is due when `completeTick <= next.tick`: queued at tick T,
+  // it reveals at the end of tick T + its duration. It is a state MUTATION (serialized), like the two above.
+  stepScanCompletions(next, next.tick);
 
   // Derive pass, NOT a §15.6 step: refresh the galactic-supply cache from the
   // state the eight steps just produced. Kept out of the STEPS array on purpose

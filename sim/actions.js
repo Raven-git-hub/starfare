@@ -4,7 +4,7 @@ const {
   createGuild, createVenture, createAsset, createVehicle, createOutpost, createDeepScanArray, createSavedRoute,
 } = require('./state.js');
 const {
-  isStarterSystem, getTerranHomeworld, getSite, getSystem, getClaimRadius, isHexInBounds, seedLandmarkAtHex,
+  isStarterSystem, getTerranHomeworld, getSite, getSystem, getPlanet, getClaimRadius, isHexInBounds, seedLandmarkAtHex,
 } = require('./seed.js');
 const { getRecipe } = require('./recipes.js');
 const {
@@ -28,7 +28,9 @@ const {
   outpostId, nextOutpostSerial, outpostDockTurnaround, OUTPOST_DEPLOY_RANGE, DEPLOY_RETREAT_HEXES,
   DEPLOY_FAILED_REASONS, outpostFreeSpace, consignmentSummary,
 } = require('./outposts.js');
-const { deepScanArrayId, nextDeepScanArraySerial } = require('./deep-scan-arrays.js');
+const {
+  deepScanArrayId, nextDeepScanArraySerial, SCAN_TICKS, SCAN_LEVELS,
+} = require('./deep-scan-arrays.js');
 const { resolveManifest, manifestAmountError, copyManifestLine } = require('./manifest.js');
 const {
   REPEAT_MODES, CADENCES, copyRouteWaypoint, savedRouteId, nextSavedRouteSerial,
@@ -44,8 +46,8 @@ const { getStock, addStock } = require('./stock.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { foundingEndowmentFor } = require('./meanline.js');
 const { grantFor } = require('./issuance.js');
-const { guildHolds, heldSystemIds } = require('./claims.js');
-const { revealSystem } = require('./exploration.js');
+const { guildHolds, heldSystemIds, systemControllers } = require('./claims.js');
+const { revealSystem, knowsPlanet } = require('./exploration.js');
 const { recordEvent, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, OUTPOST_PACKED } = require('./events.js');
 const {
   nearestWaystation, arrivalTickFor, hexDistance, legHexAtTick, hexStepToward, legTicks, legFuelBurn,
@@ -1215,6 +1217,33 @@ function createRemoveOutpostAction({ guildId, outpostId: oId }) {
   if (guildId === undefined) throw new Error('createRemoveOutpostAction: guildId is required');
   if (oId === undefined) throw new Error('createRemoveOutpostAction: outpostId is required');
   return { type: 'removeOutpost', guildId, outpostId: oId };
+}
+
+// queueScan: give one of the guild's Deep Scan Arrays its ONE scan job (docs/exploration-model.md §5
+// "Discovery — the scan"; roadmap 2.5 (b2)). `level` is 'L1' — a SYSTEM scan, naming `targetSystemId`,
+// that reveals every planet's archetype — or 'L2' — a PLANET scan, naming `targetPlanetId`, that reveals
+// that planet's resource nodes. It completes SCAN_TICKS[level] ticks later (sim/deep-scan-arrays.js). The
+// constructor only enforces the always-required fields and passes on whichever target it was given;
+// validateAction judges legality (the array idle, the target real and unclaimed, the L1→L2 chain).
+function createQueueScanAction({ guildId, arrayId, level, targetSystemId, targetPlanetId }) {
+  if (guildId === undefined) throw new Error('createQueueScanAction: guildId is required');
+  if (arrayId === undefined) throw new Error('createQueueScanAction: arrayId is required');
+  if (level === undefined) throw new Error('createQueueScanAction: level is required');
+  return {
+    type: 'queueScan', guildId, arrayId, level,
+    ...(targetSystemId !== undefined ? { targetSystemId } : {}),
+    ...(targetPlanetId !== undefined ? { targetPlanetId } : {}),
+  };
+}
+
+// removeDeepScanArray: the OPERATOR remove lever for a Deep Scan Array (roadmap 2.5 (b2)) — the array
+// mirror of removeOutpost: a plain owner-checked delete of the row. The array's scan job lives ON the row,
+// so it goes too (§5: an array "torn down or destroyed mid-job loses the job"). The guild's mint serial is
+// untouched, so the id is never reissued. Not a player teardown — a reclaim flow is a later slice.
+function createRemoveDeepScanArrayAction({ guildId, arrayId }) {
+  if (guildId === undefined) throw new Error('createRemoveDeepScanArrayAction: guildId is required');
+  if (arrayId === undefined) throw new Error('createRemoveDeepScanArrayAction: arrayId is required');
+  return { type: 'removeDeepScanArray', guildId, arrayId };
 }
 
 // reclaimOutpost: PACK UP the named Outpost into a kit aboard the one empty heavy parked on its hex
@@ -3833,6 +3862,84 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'queueScan') {
+    // docs/exploration-model.md §5 "Discovery — the scan" (roadmap 2.5 (b2)). Refused whole, each failure
+    // with its own reason, in the order a failure is felt. NO reach check: scan reach is galaxy-wide (§5,
+    // ruled 05-10-26), so any system in the galaxy is a legal target as far as distance goes.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    // Arrays are SHARED (state.deepScanArrays), so the owner is checked explicitly, as removeOutpost does.
+    const array = (state.deepScanArrays || []).find((a) => a.id === action.arrayId);
+    if (!array || array.ownerGuildId !== action.guildId) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no Deep Scan Array ${JSON.stringify(action.arrayId)}` };
+    }
+    // ONE ACTIVE JOB PER ARRAY, NO BACKLOG (§5, the first cut): a busy array takes nothing until its job is
+    // done — the way to scan more at once is to build more arrays. There is no cancel (none is ruled).
+    if (array.scan) {
+      const job = array.scan;
+      const target = job.level === 'L1' ? `system ${job.targetSystemId}` : `planet ${job.targetPlanetId}`;
+      return { valid: false, reason: `Deep Scan Array ${JSON.stringify(array.id)} is already running an ${job.level} scan of ${target} (it completes at tick ${job.completeTick}) — one job per array, and no queue behind it` };
+    }
+    // The level, and exactly the one target that level names: an L1 scans a whole SYSTEM, an L2 one PLANET.
+    // `systemId` is the system the target sits in — the one whose controller is asked below.
+    if (!SCAN_LEVELS.includes(action.level)) {
+      return { valid: false, reason: `level must be one of ${SCAN_LEVELS.join(', ')}, got ${JSON.stringify(action.level)}` };
+    }
+    let systemId;
+    if (action.level === 'L1') {
+      if (action.targetPlanetId != null) {
+        return { valid: false, reason: 'an L1 scan surveys a whole system — name targetSystemId, not targetPlanetId' };
+      }
+      if (typeof action.targetSystemId !== 'string' || !getSystem(action.targetSystemId)) {
+        return { valid: false, reason: `targetSystemId ${JSON.stringify(action.targetSystemId)} is not a system on the seed` };
+      }
+      systemId = action.targetSystemId;
+    } else {
+      if (action.targetSystemId != null) {
+        return { valid: false, reason: 'an L2 scan surveys one planet — name targetPlanetId, not targetSystemId' };
+      }
+      const planet = typeof action.targetPlanetId === 'string' ? getPlanet(action.targetPlanetId) : null;
+      if (!planet) {
+        return { valid: false, reason: `targetPlanetId ${JSON.stringify(action.targetPlanetId)} is not a planet on the seed` };
+      }
+      systemId = planet.systemId;
+    }
+    // UNCLAIMED TARGETS ONLY (§5; §4 ruling 4). The controller is read from the claim rows through
+    // `systemControllers` — the SAME read the completion step re-asks (sim/deep-scan-arrays.js), so the
+    // check at queue and the check at completion are one question. Absent = unclaimed.
+    const controller = systemControllers(state).get(systemId);
+    if (controller === action.guildId) {
+      return { valid: false, reason: `system ${systemId} is yours — your own ground you already know (claiming it revealed it); an array scans unclaimed systems only` };
+    }
+    if (controller !== undefined) {
+      return { valid: false, reason: `system ${systemId} is held by guild ${JSON.stringify(controller)} — scanning a rival's territory is espionage (L3), not built; an array scans unclaimed systems only` };
+    }
+    // THE L1→L2 CHAIN, per PLANET (§5, refined 06-10-26): an L2 on planet P needs P's ARCHETYPE already in
+    // the record. Usually that comes from an L1 scan of P's system, which reveals every archetype at once,
+    // but the gate asks about the target planet only. It keeps a human in the loop: survey broadly, look,
+    // then spend the slower per-planet scan on what is worth it.
+    if (action.level === 'L2' && !knowsPlanet(guild, action.targetPlanetId)) {
+      return { valid: false, reason: `planet ${action.targetPlanetId}'s archetype is not known yet — an L2 scan needs the planet known at L1 first (an L1 scan of system ${systemId} reveals it)` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'removeDeepScanArray') {
+    // The operator remove lever (roadmap 2.5 (b2)), validated exactly as removeOutpost: a real guild, and an
+    // array that guild owns. A running scan job is no bar — removing the array is how a job is lost (§5).
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    const array = (state.deepScanArrays || []).find((a) => a.id === action.arrayId);
+    if (!array || array.ownerGuildId !== action.guildId) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no Deep Scan Array ${JSON.stringify(action.arrayId)}` };
+    }
+    return { valid: true };
+  }
+
   if (action.type === 'reclaimOutpost') {
     // docs/outpost-teardown.md §2: pack an Outpost back into a kit aboard the one empty heavy parked on its
     // hex. Refused whole, each failure with its OWN reason, in the doc's order — the client will show these
@@ -5487,6 +5594,33 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'queueScan') {
+    // §5: the array takes its one job, starting now. Its length is the level's ruled `[FIRST-CUT]` duration
+    // (SCAN_TICKS, sim/deep-scan-arrays.js ← docs/phase-1-tuning.md), so the reveal lands at the END of tick
+    // `completeTick` (stepScanCompletions) — exactly SCAN_TICKS[level] ticks after this one. Nothing is paid:
+    // a scan burns no fuel (§5: "no fuel and no craft travel"), and no credit price for it is ruled.
+    const array = next.deepScanArrays.find((a) => a.id === action.arrayId); // validate: real, this guild's, idle
+    array.scan = {
+      level: action.level,
+      ...(action.level === 'L1' ? { targetSystemId: action.targetSystemId } : { targetPlanetId: action.targetPlanetId }),
+      startedTick: next.tick,
+      completeTick: next.tick + SCAN_TICKS[action.level],
+    };
+    return next;
+  }
+
+  if (action.type === 'removeDeepScanArray') {
+    // DELETE the row. Its scan job lives ON the row, so the job goes with it — nothing is left to orphan, and
+    // its reveal never fires (§5: an array "torn down or destroyed mid-job loses the job"). Geography already
+    // learned stays: this touches no record (learn-once, §3). An array holds no goods, fuel or craft, so
+    // nothing else moves and the supply cache needs no refresh. Omit-when-empty, as removeOutpost: a galaxy
+    // back to zero arrays drops the key. `guild.deepScanArraySerial` is NOT touched, so the id is never
+    // reissued (§15.4 "Ids never repeat").
+    next.deepScanArrays = next.deepScanArrays.filter((a) => a.id !== action.arrayId);
+    if (next.deepScanArrays.length === 0) delete next.deepScanArrays;
+    return next;
+  }
+
   if (action.type === 'reclaimOutpost') {
     // docs/outpost-teardown.md §3: the Outpost becomes a kit in the parked heavy's hold, on this tick.
     // This deliberately does NOT reuse removeOutpost's eviction loop or its goods sink above: the gate has
@@ -5918,6 +6052,8 @@ module.exports = {
   createSpawnOutpostAction,
   createRemoveOutpostAction,
   createReclaimOutpostAction,
+  createQueueScanAction,
+  createRemoveDeepScanArrayAction,
   createDispatchVehicleAction,
   createTransferCargoAction,
   createGrantKitAction,

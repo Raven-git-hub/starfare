@@ -14,7 +14,9 @@ one `reveal`, founding state, the rival-licensed-venture source, and the per-gui
 The Deep Scan Array (§5) and the client are the next slices; §8's gate is recorded, not enforced.)*
 *(⤳ 06-10-26: the Deep Scan Array's **Form** and **Deploy placement** (§5) are BUILT, roadmap 2.5
 (b1) — the array is a deployable structure that sits there; its **scan** is slice (b2), still
-design-ahead.)* **Monitoring (§5, the deferred half), L3 espionage,
+design-ahead.)* *(⤳ 06-10-26: the **Discovery — the scan** half of §5 is BUILT, roadmap 2.5 (b2) — one job
+per array, L1/L2, the per-planet chain, unclaimed targets, completion re-validated, the job lost with its
+array; AS-BUILT note in §5.)* **Monitoring (§5, the deferred half), L3 espionage,
 the semi-controlled corridors, and the Prefecture self-scan (§4) are design-ahead and
 NOT built here** — recorded so the slices that build them read the real ruling, not a
 paraphrase.
@@ -229,9 +231,11 @@ footprint and changes no territory.
 >   god's-eye hashes of 2.5 (a) still hold.
 > **Not built:** the scan (below — slice (b2)), monitoring, teardown or removal of an array, a dockyard
 > build path, the client (the deploy map's `deployRange.deepScan` paint lane, the array on the map).
+> *(⤳ 06-10-26, 2.5 (b2): the scan is BUILT, and so is an **operator** removal, `removeDeepScanArray` — see
+> the scan's AS-BUILT note below. A player teardown / reclaim is still not built.)*
 
-**Discovery — the scan (IN SCOPE).** *(⤳ NOT BUILT YET — slice (b2). Design-ahead as
-written.)* The throttle, now that distance is removed, is **time +
+**Discovery — the scan (IN SCOPE).** *(⤳ BUILT 06-10-26, roadmap 2.5 (b2) — the AS-BUILT note
+follows the bullets.)* The throttle, now that distance is removed, is **time +
 queue depth**:
 
 - **One active scan job per array.** Scale by building more arrays, not by parallelising one.
@@ -243,9 +247,12 @@ queue depth**:
   thus takes 12 + 6×8 = **60 h (2.5 days)** to survey fully — tuned so that for close systems a
   craft-scout (instant L1) or a Prefecture (fast in-system L2) stays competitive with the array
   rather than the array being strictly dominant.
-- **The L1→L2 chain.** You cannot queue an L2 scan on a planet until you already know its system
-  at **L1** (archetypes). This keeps a human in the loop — survey broadly, look, then spend the
-  expensive per-planet L2 on what is worth it — rather than the array becoming an automatic
+- **The L1→L2 chain — per PLANET.** You cannot queue an L2 scan on a planet until you already know
+  **that planet's archetype** (L1). *(REFINED 06-10-26 from "know its system at L1": the gate asks
+  about the target planet only, not the whole system. In practice you get there by an L1 scan of the
+  system, which reveals every archetype in it at once, or a craft visit — but knowing planet P opens an
+  L2 on P, not on its neighbour Q.)* This keeps a human in the loop — survey broadly, look, then spend
+  the expensive per-planet L2 on what is worth it — rather than the array becoming an automatic
   all-mapper.
 - **Targets are unclaimed systems only.** The queue refuses a rival-controlled target (that is
   L3, deferred); your own systems you already know. **Revalidate at completion** — the same
@@ -253,6 +260,59 @@ queue depth**:
   system you are scanning becomes rival-held before the job finishes, the job **completes to
   nothing** (no partial reveal). An array **torn down or destroyed mid-job loses the job**; any
   geography already banked persists (learn-once, §3).
+
+> **⤳ AS-BUILT 06-10-26 — Discovery, the scan (roadmap 2.5 (b2); engine + operator/headless, no client, no
+> monitoring).** Built to the bullets above. **No new number:** the two durations are the ruled
+> `[FIRST-CUT]` ones from `phase-1-tuning.md`, defined once as `SCAN_L1_TICKS` (720) / `SCAN_L2_TICKS` (480)
+> in `sim/deep-scan-arrays.js` (`SCAN_TICKS`). The scan is a new **source** for the existing record — it
+> writes only through the one `reveal`, never a second writer.
+> - **The job** is one optional field on the array row, **`scan`**: `{ level: 'L1', targetSystemId,
+>   startedTick, completeTick }` or `{ level: 'L2', targetPlanetId, startedTick, completeTick }`, with
+>   `completeTick = startedTick + SCAN_TICKS[level]`. **Omit-when-idle** — an idle array carries no key, so it
+>   is byte-identical to a b1 row, and a finished job deletes the key. Serialized (invariant 9); no
+>   monitoring field.
+> - **`queueScan`** (`sim/actions.js`) — `{ guildId, arrayId, level, targetSystemId | targetPlanetId }`.
+>   Refused whole, in this order: the guild is real; the array is real **and this guild's**; the array is
+>   **idle** (one job, no backlog — the throttle is building more arrays; there is no cancel); `level` is L1
+>   or L2 and the action names **exactly** that level's target, which the seed holds (an L1 a system, an L2
+>   a planet); the target's system is **unclaimed** (`systemControllers` has no row for it — a rival's is
+>   refused as L3 espionage, your own as ground you already know); for an L2, **the chain**:
+>   `knowsPlanet(guild, targetPlanetId)`. **No reach check** — any system in the galaxy is a target. The
+>   apply stamps the job from the current tick. A scan costs no fuel and no credits (no price is ruled).
+> - **Completion — a due-tick reveal**, `stepScanCompletions` (`sim/deep-scan-arrays.js`), run in
+>   `sim/tick.js`'s **end-of-tick observation block** right after `observePublicRegister`: observation, not
+>   economy (no step reads a job or the record, so the eight-step order is untouched), after the steps so it
+>   reads the claims as the tick leaves them, and stamped with the tick just built, so its order against the
+>   register observation changes no value. Arrays in id order; a job is due when `completeTick <= tick`, so
+>   one queued at tick T reveals at the end of tick T + 720 (L1) or T + 480 (L2). **Re-validated:** if a
+>   **rival** now controls the target's system the job **completes to nothing**; unclaimed, or now held by
+>   the scanning guild itself, both reveal. **L1** → `revealSystemArchetypes` (every planet's archetype, **no
+>   node** — unlike founding's `revealSystem`); **L2** → `revealPlanetNodes` (every resource node of the one
+>   planet). Both are loops over `reveal` (`sim/exploration.js`), so learn-once holds: a known fact is a
+>   no-op and keeps its first tick. The job clears either way.
+> - **Array lost mid-job.** The operator lever **`removeDeepScanArray`** (`{ guildId, arrayId }`) mirrors
+>   `removeOutpost`: an owner-checked delete of the row, the per-guild serial untouched (ids never repeat),
+>   the list dropped when it empties. The job lives on the row, so it goes with it and its reveal never
+>   fires; banked geography stays. Not a player teardown — that is a later slice.
+> - **The view.** `snapshotDeepScanArrayRow` carries the job (a fresh copy, omitted when idle) so slice (c)
+>   can show it. `sim/fog.js` is unchanged: arrays are own-only, so the job rides the owner's row and never
+>   reaches a rival — a rival's scan, queued or completed, moves not one byte of the viewer's view.
+> - **Tripwire** (`checkDeepScanArrayIntegrity` → `checkScanJob`, `sim/invariants.js`): a present job is an
+>   object (omit-when-idle), of a ruled level, naming exactly its level's real target; `startedTick` in
+>   [the array's `createdAtTick`, now]; `completeTick` exactly the ruled duration on; **never overdue**
+>   (`completeTick > now` — a due job is cleared on its tick); and an L2's planet is still in the owner's
+>   record (the chain, kept true by learn-once). The completion step halts, naming the tick, on a job of an
+>   unknown level or an array with no owning guild.
+> - **Proved:** a galaxy whose arrays are idle is byte-identical to `main` before the slice (state, the
+>   god's-eye lens and both guilds' views, hashes recorded on 52e5e3f — `tests/idle-array-script.js`,
+>   `tests/deep-scan-job.test.js`), and the five god's-eye hashes of 2.5 (a) and the outpost-path hashes of
+>   (b1) still hold.
+> **Kit kind — RULED 06-10-26:** the array's kit kind stays **`deepScan`** (it matches the deploy-lane
+> convention `tollGate` / `deepScan`). Its correspondence with the installation bill's kind
+> `deep_scan_array` (`sim/asset-recipes.js`) is a **deliberate seam**: the future slice that gives
+> installations a dockyard build path bridges it, for the array and the toll gate together.
+> **Not built:** monitoring, L3 espionage, a scan cancel, a player teardown / reclaim, a completion notice,
+> the client.
 
 **Monitoring — the watch (DEFERRED; design-ahead, NOT built).** A continuous watch that surfaces
 dynamic activity (rival transports, anomalies) — the counter-play to "operations are private",
@@ -372,6 +432,8 @@ stands on.
   NEW facts it learned (0 = a no-op), refuses an id the seed does not hold, and records what and
   when, never how. Its callers this slice: `revealSystem` (founding) and `observePublicRegister` (a
   rival's licensed venture). The Deep Scan Array (slice (b)) and the Prefecture become callers later.
+  *(⤳ 06-10-26, 2.5 (b2): the Deep Scan Array is now a caller — its scan completion reveals through
+  `revealSystemArchetypes` (L1) and `revealPlanetNodes` (L2), two loops over `reveal`.)*
 - **Determinism & goldens.** A per-guild snapshot is deterministic given `(state, guildId)`. The
   snapshot shape changing to per-guild is a **large but intended goldens change** that must be
   proven **deliberate, not accidental**: where a guild sees everything (a single-guild galaxy, or

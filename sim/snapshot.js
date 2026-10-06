@@ -48,6 +48,7 @@ const { deployedAssetIds } = require('./assets.js');
 const { SYNDICATE_SELLABLE_KINDS, BUILD_TICKS, priceAssetForPurchase } = require('./asset-recipes.js');
 const { BUILDABLE_VEHICLE_KINDS, vehicleSpec, resolveVehicleLocation, vehicleCoords } = require('./vehicles.js');
 const { outpostDockTurnaround, OUTPOST_DEPLOY_RANGE } = require('./outposts.js');
+const { copyScanJob } = require('./deep-scan-arrays.js');
 const { usedSpace, copyManifestLine } = require('./manifest.js');
 // copyRouteWaypoint (sim/routes.js — the ONE spelling of the { anchor, action? } waypoint copy, shared
 // so a snapshotted route — a craft's journalled one or a guild's saved one — can't drift from the stored).
@@ -793,9 +794,12 @@ function computeAttention(state) {
 //     claims: [ { claimId, ownerGuildId, landmarkId, landmarkKind, claimedAtTick,
 //                 contested,
 //                 landmark: { kind, name?, coords?, ... } | null } ],
-//     deepScanArrays?: [ { id, ownerGuildId, coords: {q,r}, anchorSystemId } ],
+//     deepScanArrays?: [ { id, ownerGuildId, coords: {q,r}, anchorSystemId,
+//                          scan?: { level: 'L1'|'L2', targetSystemId? | targetPlanetId?,
+//                                   startedTick, completeTick } } ],
 //       // 2.5 (b1), docs/exploration-model.md §5 — OMITTED while no array exists (byte-identical to
-//       // pre-slice); in a per-guild view, only the viewer's OWN arrays (sim/fog.js).
+//       // pre-slice); in a per-guild view, only the viewer's OWN arrays (sim/fog.js). `scan` (2.5 (b2))
+//       // is the array's running job, omitted while it is idle.
 //     shipments: [ { ownerGuildId, cargo: { good: int }, destinationSystemId,
 //                    arrivalTick, ticksRemaining, assetKind?, destinationOutpostId?,
 //                    originOutpostId, originCoords: {q,r}, departureTick } ],
@@ -1101,13 +1105,18 @@ function snapshotOutpostRow(o, thisTick, vehicleClassById) {
 // (b1)). The array mirror of `snapshotOutpostRow`: a FRESH derived object, so a consumer mutating the
 // snapshot can't alias into engine state. Identity (`id` / `ownerGuildId`), the single hex (`coords`) and
 // the system it hangs off (`anchorSystemId`) — the same four facts a rival Outpost's row keeps. An array
-// has no stockpile, capacity or dock, and no scan job yet (slice (b2)), so there is nothing else to show.
+// has no stockpile, capacity or dock.
+// 2.5 (b2): plus its running SCAN JOB, echoed as stored (a fresh copy), so the client slice (c) can show
+// what it is scanning and when it finishes. OMITTED WHEN IDLE, exactly as on the row — so an idle array's
+// row is byte-identical to b1's. The per-guild view keeps only the viewer's own arrays (sim/fog.js), so a
+// job never reaches a rival.
 function snapshotDeepScanArrayRow(a) {
   return {
     id: a.id,
     ownerGuildId: a.ownerGuildId,
     coords: { q: a.coords.q, r: a.coords.r },
     anchorSystemId: a.anchorSystemId,
+    ...(a.scan ? { scan: copyScanJob(a.scan) } : {}),
   };
 }
 

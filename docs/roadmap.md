@@ -3653,7 +3653,7 @@ boundary so the later hex-map swap doesn't touch it.
   state (home fully known + L0 everywhere) + the claim-gate coupling recorded; **(b) the Deep Scan
   Array** — entity + "attached" deploy + the scan-job queue (one active job, L1/L2, the chain,
   completion-revalidation) + reveal-to-record *(⤳ split 06-10-26: **(b1)** the entity + the attached deploy
-  — BUILT, below; **(b2)** the scan job + reveal — next)*; **(c) client** — the fog UI. *Deferred: monitoring
+  — BUILT, below; **(b2)** the scan job + reveal — BUILT 06-10-26, below)*; **(c) client** — the fog UI. *Deferred: monitoring
   (the array's directional watch-fan → detection/corridors/catch-fine), L3 espionage, the
   Prefecture self-scan, squatting. Still open: espionage cost/risk; the scan durations remain
   `[FIRST-CUT]` for the tuner.*
@@ -3734,6 +3734,38 @@ boundary so the later hex-map swap doesn't touch it.
     exactly what it did. `docs/cli-runbook.md` gains the array section. Tests: `tests/deep-scan-array.test.js`
     (18), `tests/fog.test.js` (+2), `tools/admin.test.js` (+1). Sim 2,090 → **2,110**, tools 77 → **78**.
     Next: **(b2)** the scan job. Checklist items below.
+  - **(b2) the Deep Scan Array's discovery scan — ⤳ AS-BUILT 06-10-26 (engine + operator/headless; no
+    client, no monitoring, no toll gate).** `docs/exploration-model.md` §5 "Discovery — the scan" (AS-BUILT
+    note there). **No new number:** the durations are the ruled `[FIRST-CUT]` **L1 720 / L2 480 ticks**
+    (`phase-1-tuning.md`), defined once as `SCAN_L1_TICKS` / `SCAN_L2_TICKS` (`SCAN_TICKS`) in
+    `sim/deep-scan-arrays.js`. The scan is a new **source** into the existing record — it writes only
+    through the one `reveal`. **The job:** one optional field on the array row, `scan = { level: 'L1',
+    targetSystemId | level: 'L2', targetPlanetId, startedTick, completeTick }`, **omitted when idle**
+    (`createDeepScanArray` copies it). **`queueScan`** (`{ guildId, arrayId, level, targetSystemId |
+    targetPlanetId }`, `sim/actions.js`): the array real, this guild's and **idle** (one job, no backlog,
+    no cancel); exactly the level's target, real on the seed; the target's system **unclaimed**
+    (`systemControllers` — a rival's refused as L3, your own as already known); for an L2 the **chain,
+    per PLANET** — `knowsPlanet(guild, targetPlanetId)` (RULED 06-10-26, refining §5's "know its system at
+    L1"); **no reach check**. **Completion:** `stepScanCompletions` in `sim/tick.js`'s end-of-tick
+    observation block, right after `observePublicRegister` (observation, not economy; reads the claims as
+    the tick leaves them); arrays in id order, due at `completeTick <= tick`; **re-validated** — a target
+    whose system a **rival** now holds completes to nothing, unclaimed or now-own ground reveals; **L1** →
+    new `revealSystemArchetypes` (archetypes only, no node), **L2** → new `revealPlanetNodes` (that planet's
+    nodes), both loops over `reveal` in `sim/exploration.js`; the job clears either way. **Removal:** the
+    operator lever **`removeDeepScanArray`** (`{ guildId, arrayId }`), mirroring `removeOutpost` — the job
+    lives on the row, so it goes with it and never fires; the serial is untouched. **Snapshot:** the array
+    row carries its `scan` (omitted when idle); `sim/fog.js` unchanged — arrays are own-only, so a rival
+    never sees the job. **Tripwire:** `checkScanJob` inside `checkDeepScanArrayIntegrity` (a well-formed
+    job of a ruled level and its one real target; `startedTick` within the array's life; `completeTick`
+    exactly the ruled duration on; **never overdue**; an L2's planet still in the owner's record). The
+    completion step halts naming the tick on an unknown level or an ownerless array. **Kit kind RULED:**
+    stays `deepScan`; the `deepScan` ↔ `deep_scan_array` (bill) correspondence is a deliberate seam the
+    future installation dockyard-build slice bridges for the array and the toll gate together.
+    **Proved:** a galaxy whose arrays are idle is byte-identical to `main` (state, god's-eye lens and both
+    guilds' views, hashed on 52e5e3f — `tests/idle-array-script.js`); the five god's-eye hashes of (a) and
+    the outpost-path hashes of (b1) still hold. Driven headless over `POST /action` (no new endpoint).
+    Tests: `tests/deep-scan-job.test.js` (21), `tests/fog.test.js` (+2). Sim 2,110 → **2,133**, tools
+    **78** (unchanged). Next: **(c)** the client. Checklist items below.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -4768,9 +4800,16 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   1. **A hex INSIDE a held footprint.** Built literally: "attached" is `hexDistance === claimRadius + 1`, so a bare hex inside a held system's control disk (today, the 6 hexes 1 from the centre) is refused as `not-attached` — it is *in* the footprint, not touching it. One quirk follows: such a hex **does** pass when it also sits beside an Outpost the guild owns. Confirm, or rule that inside-the-disk is legal too (the predicate would become `1 ≤ distance ≤ claimRadius + 1`).
   2. **The anchor of an Outpost-attached array.** Stored as that Outpost's own `anchorSystemId`, so `anchorSystemId` always names a system; *which* Outpost it touched is not recorded (that id would dangle once the Outpost is packed up). Confirm, or name the slice that needs the Outpost id.
   3. **Attachment is judged at deploy only.** An array stays when the Outpost it touched is later packed up or removed (no invariant demands it stay attached). Confirm, or rule what happens to it.
-  4. **No way to remove an array.** No existing operator remove lever generalises (`removeOutpost` is Outpost-only) and a reclaim flow was out of scope, so an array is permanent this slice. Needed when ruled: an operator remove lever and/or the reclaim.
-  5. **Two spellings of one installation.** The kit kind is `deepScan` (the deploy-range lane key, as the build prompt named it), but the installation bill's kind is `deep_scan_array` (`sim/asset-recipes.js` `INSTALLATION_BILLS`). The slice that gives installations a dockyard build path must map one to the other, or rule a rename.
+  4. **No way to remove an array.** No existing operator remove lever generalises (`removeOutpost` is Outpost-only) and a reclaim flow was out of scope, so an array is permanent this slice. Needed when ruled: an operator remove lever and/or the reclaim. **⤳ 06-10-26, (b2): the OPERATOR lever is BUILT — `removeDeepScanArray`, mirroring `removeOutpost` (it is how a scan job is lost). Still open: a player teardown / reclaim of an array.**
+  5. **Two spellings of one installation.** The kit kind is `deepScan` (the deploy-range lane key, as the build prompt named it), but the installation bill's kind is `deep_scan_array` (`sim/asset-recipes.js` `INSTALLATION_BILLS`). The slice that gives installations a dockyard build path must map one to the other, or rule a rename. **⤳ RULED 06-10-26 — CLOSED:** keep the kit kind **`deepScan`** (it matches the deploy-lane convention `tollGate` / `deepScan`); the `deepScan` ↔ `deep_scan_array` correspondence is a **deliberate seam** that the future installation dockyard-build slice bridges, for the array and the toll gate together. No rename. (Noted at the bill kinds in `sim/asset-recipes.js`.)
   6. **Client seams for (c) / the deploy map — not decisions, recorded so they are not lost:** `deployRange.deepScan` is not published (adding it moves every held-system guild row of the god's-eye lens, so it should land with the client that paints it); the `deploy_failed` Reason fact has no label for `not-attached` (reads "—") and the inbox title prints the raw kind ("Deployment failed — deepScan"-ish via `prettyGood`); the client's `KIT_GOOD` knows only the outpost, so the notice's Redeploy / Return forks cannot reach a retreated array kit (operator-recoverable: `unload-kit`); an idle array kit has no Deploy button; arrays are not drawn on the map.
+- **Deep Scan Array slice (b2) (2.5, the discovery scan) — items for a ruling or a confirm** — *surfaced 06-10-26 by the build; each was built the way stated, and none is decided by the code beyond that.*
+  1. **A scan costs nothing but time.** §5 rules "no fuel and no craft travel"; no credit price is ruled, so `queueScan` charges nothing. Confirm, or rule a price.
+  2. **A redundant scan is accepted.** An L1 of a system whose archetypes the guild already knows, or an L2 of a planet whose nodes it already knows (e.g. from a rival's lapsed venture), is not refused — it runs its full time and completes as a learn-once no-op. Confirm, or rule a refusal (the gate would be "the target holds at least one unknown fact").
+  3. **No completion notice.** A finished scan — and a scan voided by a rival's claim — writes no inbox notice: the job simply clears (`docs/event-log.md` has no such type). For the client slice (c) to decide, with a ruled notice type if one is wanted.
+  4. **The array cannot survey your own far planets.** Own ground is refused (§5 "your own systems you already know"), but a claimed system's other planets stay L2-fogged (§4 ruling 6) — the ruled way to fill them in is the Prefecture self-scan (§4 ruling 9, deferred). Today the only held systems are homes, fully known from founding, so nothing is blocked yet. Confirm when the claim slice lands.
+  5. **No scan cancel.** Not ruled, not built: a running job finishes or is lost with its array.
+  6. **Seams for (c) — not decisions:** the job row carries `startedTick` / `completeTick` but no derived `ticksRemaining` (the shipment row has one) — (c) may want it engine-side so the client computes no number; `queueScan` and `removeDeepScanArray` have no `/admin` endpoint or `tools/admin.js` command (they are driven over `POST /action`, as any action is).
 - **Droids:** the production-boost mechanic + numbers.
 
 **Carried from Phase 1 / earlier:**

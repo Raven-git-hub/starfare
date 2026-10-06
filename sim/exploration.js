@@ -29,7 +29,8 @@
 // state, and every guild built by a scenario rather than founded, serializes exactly as before.
 //
 // THE ONE WRITE PATH is `reveal` below. Every source funnels through it — founding (§6) and a
-// rival's licensed venture (§3) in this slice; the Deep Scan Array, a craft visit and the
+// rival's licensed venture (§3) since 2.5 (a); the Deep Scan Array's scan (§5) since 2.5 (b2), through
+// the two loops `revealSystemArchetypes` (L1) and `revealPlanetNodes` (L2); a craft visit and the
 // Prefecture later. It is source-agnostic on purpose: it records WHAT was learned and WHEN, never
 // HOW, so a new source adds a caller, not a second writer.
 
@@ -93,6 +94,32 @@ function revealSystem(guild, systemId, tick) {
     learned += reveal(guild, { planetId: planet.id }, tick);
     for (const node of planet.resourceNodes) learned += reveal(guild, { nodeId: node.id }, tick);
   }
+  return learned;
+}
+
+// revealSystemArchetypes(guild, systemId, tick) -> new facts learned. L1 of ONE system: every planet's
+// ARCHETYPE, through `reveal` — and NO node. That is the whole difference from `revealSystem` above,
+// which is founding's "it has lived there" and reveals every node too. An L1 scan sees what the planets
+// ARE, not what lies on them (§1). Its caller: a Deep Scan Array's L1 scan completing
+// (sim/deep-scan-arrays.js `stepScanCompletions`).
+function revealSystemArchetypes(guild, systemId, tick) {
+  const layout = getSystemLayout(systemId);
+  if (!layout) throw new Error(`exploration.revealSystemArchetypes: ${JSON.stringify(systemId)} is not a system in the seed`);
+  let learned = 0;
+  for (const planet of layout.planets) learned += reveal(guild, { planetId: planet.id }, tick);
+  return learned;
+}
+
+// revealPlanetNodes(guild, planetId, tick) -> new facts learned. L2 of ONE planet: every resource node on
+// it, through `reveal`. (A node fact also reveals its planet, but the scan's L1→L2 chain means the planet
+// is already known by the time this runs.) Its caller: a Deep Scan Array's L2 scan completing.
+function revealPlanetNodes(guild, planetId, tick) {
+  const planet = getPlanet(planetId);
+  if (!planet) throw new Error(`exploration.revealPlanetNodes: ${JSON.stringify(planetId)} is not a planet in the seed`);
+  // The seed's own layout says which nodes the planet has — nothing listed here by hand.
+  const row = getSystemLayout(planet.systemId).planets.find((p) => p.id === planetId);
+  let learned = 0;
+  for (const node of row.resourceNodes) learned += reveal(guild, { nodeId: node.id }, tick);
   return learned;
 }
 
@@ -172,6 +199,6 @@ function observePublicRegister(state, tick) {
 }
 
 module.exports = {
-  reveal, revealSystem, knowsPlanet, knowsNode, cloneExploration,
+  reveal, revealSystem, revealSystemArchetypes, revealPlanetNodes, knowsPlanet, knowsNode, cloneExploration,
   isOnPublicRegister, publicRegisterFacts, observePublicRegister,
 };
